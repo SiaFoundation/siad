@@ -716,6 +716,223 @@ Returns the version of the Sia daemon currently running.
 **version** | string  
 This is the version number that is visible to its peers on the network.
 
+# FeeManager
+
+The feemanager allows applications built on top of Sia to charge the Sia user a
+fee. The feemanager's API endpoints expose methods for viewing information about
+the feemanager and for adding and canceling fees. 
+
+## /feemanager [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/feemanager"
+```
+
+returns information about the feemanager.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "payoutheight":249854 // blockheight
+}
+```
+
+**payoutheight** | blockheight  
+Height at which the FeeManager will payout the pending fees.
+
+## /feemanager/add [POST]
+> curl example  
+
+```go
+// Required Fields Only
+curl -A "Sia-Agent" -u "":<apipassword> --data "amount=1000&address=1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab&appuid=supercoolapp" "localhost:9980/feemanager/add"
+
+// All Fields
+curl -A "Sia-Agent" -u "":<apipassword> --data "amount=1000&address=1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab&appuid=supercoolapp&recurring=true" "localhost:9980/feemanager/add"
+```
+sets a fee and associates it with the provided application UID.
+
+### Query String Parameters
+### REQUIRED
+**amount** | hastings  
+The amount is how much the fee will charge the user.
+
+**address** | address  
+The address is the application developer's wallet address that the fee should be
+paid out to.
+
+**appuid** | string  
+The unique application identifier for the application that set the fee.
+
+### OPTIONAL
+**recurring** | bool  
+Indicates whether or not this fee will be a recurring fee. 
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "feeuid":"9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd"  // string
+}
+```
+
+**feeuid** | string  
+This is the unique identifier for the fee that was just added
+
+## /feemanager/cancel [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data "feeuid=9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd" "localhost:9980/feemanager/cancel"
+```
+
+cancels a fee.
+
+### Query String Parameters
+### REQUIRED
+**feeuid** | string  
+The unique identifier for the fee.
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
+## /feemanager/paidfees [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/feemanager/paidfees"
+```
+
+returns the paid fees that the feemanager managed.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "paidfees": [
+    {
+      "address":            "f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056", // hash
+      "amount":             "1000",  // hastings
+      "appuid":             "okapp", // string
+      "feeuid":             "9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd" // string
+      "paymentcompleted":   true,    // bool
+      "payoutheight":       12345,   // types.BlockHeight
+      "recurring":          false,   // bool
+      "timestamp":          "2018-09-23T08:00:00.000000000+04:00",     // Unix timestamp
+      "transactioncreated": true,    // bool
+    }
+  ]
+}
+
+```
+
+**paidfees** | []AppFee  
+List of historical fees that have been paid out by the FeeManager. 
+
+**address** | address  
+The application developer's wallet address that the fee should be paid out to.
+
+**amount** | hastings  
+The number of hastings the fee will charge the user.
+
+**appuid** | string  
+Indicates the uid of the application requesting the fee.  
+
+**feeuid** | string  
+This is the unique identifier for the fee
+
+**paymentcompleted** | bool  
+Indicates whether or not the payment has been confirmed on-chain  
+
+**payoutheight** | bool  
+Indicates the height at which the fee is supposed to be paid out. The fee may be
+paid out (or have been paid out for completed fees) at a later height than this,
+but not earlier.  
+
+**recurring** | bool  
+Indicates whether or not this fee will be a recurring fee. 
+
+**timestamp** | Unix timestamp  
+This is the moment that the fee was requested.  
+
+**transactioncreated** | bool  
+Indicates whether the transaction to pay the fee has been created. If this is
+set to true and paymentcompleted is set to false, it means that the transaction
+has not yet been confirmed on-chain  
+
+## /feemanager/pendingfees [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/feemanager/pendingfees"
+```
+
+returns the pending fees that the feemanager is managing.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "pendingfees": [
+    {
+      "address":            "f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056", // hash
+      "amount":             "1000",  // hastings
+      "appuid":             "okapp", // string
+      "feeuid":             "9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd" // string
+      "paymentcompleted":   true,    // bool
+      "payoutheight":       12345,   // types.BlockHeight
+      "recurring":          false,   // bool
+      "timestamp":          "2018-09-23T08:00:00.000000000+04:00",     // Unix timestamp
+      "transactioncreated": true,    // bool
+    }
+  ]
+}
+
+```
+
+**pendingfees** | []AppFee  
+List of pending fees that the FeeManager is managing that will pay out this
+period. 
+
+**address** | address  
+The application developer's wallet address that the fee should be paid out to.
+
+**amount** | hastings  
+The number of hastings the fee will charge the user.
+
+**appuid** | string  
+The unique application identifier for the application that set the fee.
+
+**feeuid** | string  
+This is the unique identifier for the fee
+
+**paymentcompleted** | bool  
+Indicates whether or not the payment has been confirmed on-chain  
+
+**payoutheight** | bool  
+Indicates the height at which the fee is supposed to be paid out. The fee may be
+paid out (or have been paid out for completed fees) at a later height than this,
+but not earlier.  
+
+**recurring** | bool  
+Indicates whether or not this fee will be a recurring fee. 
+
+**timestamp** | Unix timestamp  
+This is the moment that the fee was requested.  
+
+**transactioncreated** | bool  
+Indicates whether the transaction to pay the fee has been created. If this is
+set to true and paymentcompleted is set to false, it means that the transaction
+has not yet been confirmed on-chain  
+
 # Gateway
 
 The gateway maintains a peer to peer connection to the network and provides a

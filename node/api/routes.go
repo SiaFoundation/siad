@@ -45,6 +45,15 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/explorer/hashes/:hash", api.explorerHashHandler)
 	}
 
+	// FeeManager API Calls
+	if api.feemanager != nil {
+		router.GET("/feemanager", api.feemanagerHandlerGET)
+		router.POST("/feemanager/add", RequirePassword(api.feemanagerAddHandlerPOST, requiredPassword))
+		router.POST("/feemanager/cancel", RequirePassword(api.feemanagerCancelHandlerPOST, requiredPassword))
+		router.GET("/feemanager/paidfees", api.feemanagerPaidFeesHandlerGET)
+		router.GET("/feemanager/pendingfees", api.feemanagerPendingFeesHandlerGET)
+	}
+
 	// Gateway API Calls
 	if api.gateway != nil {
 		router.GET("/gateway", api.gatewayHandlerGET)
