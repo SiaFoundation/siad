@@ -60,8 +60,8 @@ func New(address string) (*Client, error) {
 		return nil, errors.AddContext(err, "could not locate api password")
 	}
 	return &Client{
-		Address:  address,
-		Password: pw,
+		Address:   address,
+		Password:  pw,
 		UserAgent: "Sia-Agent",
 	}, nil
 }
