@@ -40,6 +40,7 @@ var (
 func main() {
 	fmt.Printf("Skynet performance analysis tool.\n\n")
 
+	// Determine which port to use when talking to siad.
 	args := os.Args
 	var addr string
 	if len(args) == 1 {
@@ -59,7 +60,13 @@ func main() {
 		return
 	}
 
-	c = client.New(addr)
+	// Create the client that will be used to talk to siad.
+	var err error
+	c, err = client.New(addr)
+	if err != nil {
+		fmt.Println("Unable to create Sia client:", err)
+		return
+	}
 
 	// Establish the directories that we will be using for testing.
 	dirBasePath, err := modules.NewSiaPath(testSiaDir)
