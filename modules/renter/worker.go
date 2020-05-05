@@ -382,8 +382,10 @@ func (w *worker) managedTryRefillAccount() {
 			defer w.renter.tg.Done()
 			defer w.staticAccount.managedCommitDeposit(refillAmount, err == nil)
 			_, err = w.managedFundAccount(refillAmount)
-			w.renter.log.Println("ERROR: failed to refill account", err)
-			// TODO: add cooldown mechanism
+			if err != nil {
+				w.renter.log.Println("ERROR: failed to refill account", err)
+				// TODO: add cooldown mechanism
+			}
 		}()
 	}
 }
@@ -403,8 +405,10 @@ func (w *worker) managedTryUpdatePriceTable() {
 		go func() {
 			defer w.renter.tg.Done()
 			err := w.managedUpdatePriceTable()
-			w.renter.log.Println("ERROR: failed to update price table", err)
-			// TODO: add retry mechanism
+			if err != nil {
+				w.renter.log.Println("ERROR: failed to update price table", err)
+				// TODO: add retry mechanism
+			}
 		}()
 	}
 }
