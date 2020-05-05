@@ -311,7 +311,7 @@ func (w *worker) scheduleRefillAccount() {
 
 	// Fetch the account's available balance and skip if it's above the
 	// threshold
-	balance := w.staticAccount.AvailableBalance()
+	balance := w.staticAccount.managedAvailableBalance()
 	if balance.Cmp(threshold) >= 0 {
 		return
 	}
