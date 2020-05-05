@@ -23,7 +23,7 @@ pkgs = ./build \
 	./cmd/sia-node-scanner \
 	./cmd/siac \
 	./cmd/siad \
-	./cmd/skynet-test \
+	./cmd/skynet-benchmark \
 	./compatibility \
 	./crypto \
 	./encoding \
@@ -85,7 +85,7 @@ run = .
 
 # util-pkgs determine the set of packages that are built when running
 # 'make utils'
-util-pkgs = ./cmd/sia-node-scanner ./cmd/skynet-test
+util-pkgs = ./cmd/sia-node-scanner ./cmd/skynet-benchmark
 
 # dependencies list all packages needed to run make commands used to build, test
 # and lint siac/siad locally and in CI systems.

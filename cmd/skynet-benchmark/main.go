@@ -55,7 +55,7 @@ func main() {
 		}
 		addr = "localhost:" + args[1]
 	} else if len(args) > 2 {
-		fmt.Println("Usage: ./skynet-test [optional: port for siad api]")
+		fmt.Println("Usage: ./skynet-benchmark [optional: port for siad api]")
 		return
 	}
 
