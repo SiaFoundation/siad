@@ -213,21 +213,15 @@ func TestAccountPersistenceToBytes(t *testing.T) {
 	t.Parallel()
 
 	ap := createRandomTestAccountPersistence()
-	apBytes, err := ap.toBytes()
-	if err != nil {
-		t.Fatal(err)
-	}
+	apBytes := ap.toBytes()
 
 	var uMar accountPersistence
-	err = encoding.Unmarshal(apBytes, &uMar)
-	if err != nil {
-		t.Fatal(err)
-	}
-	uMarBytes, err := uMar.toBytes()
+	err := encoding.Unmarshal(apBytes, &uMar)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	uMarBytes := uMar.toBytes()
 	if !bytes.Equal(apBytes, uMarBytes) {
 		t.Fatal("Account persistence object not equal after unmarshaling the account persistence bytes")
 	}

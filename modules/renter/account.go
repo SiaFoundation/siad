@@ -278,12 +278,8 @@ func (r *Renter) managedSaveAccounts() error {
 		accountData := account.toAccountPersistence()
 		account.staticMu.Unlock()
 
-		bytes, err := accountData.toBytes()
-		if err != nil {
-			r.log.Println("ERROR:", err)
-			continue
-		}
-		_, err = r.staticAccountsFile.WriteAt(bytes, account.staticOffset)
+		bytes := accountData.toBytes()
+		_, err := r.staticAccountsFile.WriteAt(bytes, account.staticOffset)
 		if err != nil {
 			r.log.Println("ERROR:", err)
 			continue
@@ -346,15 +342,15 @@ func (ap accountPersistence) checksum() crypto.Hash {
 
 // toBytes is a helper method on the persistence object that marshals the object
 // into a byte slice and performs a sanity check on the length
-func (ap accountPersistence) toBytes() ([]byte, error) {
+func (ap accountPersistence) toBytes() []byte {
 	apMar := encoding.Marshal(ap)
 	if len(apMar) > accountSize {
-		return nil, errors.New("marshaled object is larger than expected size")
+		build.Critical("marshaled object is larger than expected size")
 	}
 
 	accountBytes := make([]byte, accountSize, accountSize)
 	copy(accountBytes, apMar)
-	return accountBytes, nil
+	return accountBytes
 }
 
 // verifyChecksum creates a checksum of the accountPersistence object and
