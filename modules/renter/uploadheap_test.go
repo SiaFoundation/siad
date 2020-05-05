@@ -65,11 +65,13 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	goodForRenew := make(map[string]bool)
 
 	// Manually add workers to worker pool
+	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < int(f.NumChunks()); i++ {
 		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			killChan: make(chan struct{}),
 		}
 	}
+	rt.renter.staticWorkerPool.mu.Unlock()
 
 	// Call managedBuildUnfinishedChunks as not stuck loop, all un stuck chunks
 	// should be returned
@@ -160,11 +162,13 @@ func TestBuildChunkHeap(t *testing.T) {
 
 	// Manually add workers to worker pool and create host map
 	hosts := make(map[string]struct{})
+	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < int(f1.NumChunks()); i++ {
 		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			killChan: make(chan struct{}),
 		}
 	}
+	rt.renter.staticWorkerPool.mu.Unlock()
 
 	// Call managedBuildChunkHeap as repair loop, we should see all the chunks
 	// from the file added
@@ -382,11 +386,13 @@ func TestAddChunksToHeap(t *testing.T) {
 
 	// Manually add workers to worker pool and create host map
 	hosts := make(map[string]struct{})
+	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < rsc.MinPieces(); i++ {
 		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			killChan: make(chan struct{}),
 		}
 	}
+	rt.renter.staticWorkerPool.mu.Unlock()
 
 	// Make sure directory Heap is ready
 	err = rt.renter.managedPushUnexploredDirectory(modules.RootSiaPath())
@@ -457,13 +463,13 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	goodForRenew := make(map[string]bool)
 
 	// Manually add workers to worker pool
+	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < int(f.NumChunks()); i++ {
-		rt.renter.staticWorkerPool.mu.Lock()
 		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			killChan: make(chan struct{}),
 		}
-		rt.renter.staticWorkerPool.mu.Unlock()
 	}
+	rt.renter.staticWorkerPool.mu.Unlock()
 
 	// Confirm we are starting with an empty upload and directory heap
 	if rt.renter.uploadHeap.managedLen() != 0 {

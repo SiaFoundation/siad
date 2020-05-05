@@ -65,24 +65,16 @@ type worker struct {
 	staticHostPubKeyStr string
 
 	// Cached value for the contract utility, updated infrequently.
+	cachedContractID      types.FileContractID
 	cachedContractUtility modules.ContractUtility
-
-	// Download variables that are not protected by a mutex, but also do not
-	// need to be protected by a mutex, as they are only accessed by the master
-	// thread for the worker.
-	//
-	// The 'owned' prefix here indicates that only the master thread for the
-	// object (in this case, 'threadedWorkLoop') is allowed to access these
-	// variables. Because only that thread is allowed to access the variables,
-	// that thread is able to access these variables without a mutex.
-	ownedDownloadConsecutiveFailures int       // How many failures in a row?
-	ownedDownloadRecentFailure       time.Time // How recent was the last failure?
 
 	// Download variables related to queuing work. They have a separate mutex to
 	// minimize lock contention.
-	downloadChunks     []*unfinishedDownloadChunk // Yet unprocessed work items.
-	downloadMu         sync.Mutex
-	downloadTerminated bool // Has downloading been terminated for this worker?
+	downloadChunks              []*unfinishedDownloadChunk // Yet unprocessed work items.
+	downloadMu                  sync.Mutex
+	downloadTerminated          bool      // Has downloading been terminated for this worker?
+	downloadConsecutiveFailures int       // How many failures in a row?
+	downloadRecentFailure       time.Time // How recent was the last failure?
 
 	// Job queues for the worker.
 	staticFetchBackupsJobQueue   fetchBackupsJobQueue
@@ -112,6 +104,45 @@ type worker struct {
 	mu       sync.Mutex
 	renter   *Renter
 	wakeChan chan struct{} // Worker will check queues if given a wake signal.
+}
+
+// status returns the status of the worker.
+func (w *worker) status() modules.WorkerStatus {
+	downloadOnCoolDown := w.onDownloadCooldown()
+	uploadOnCoolDown, uploadCoolDownTime := w.onUploadCooldown()
+
+	var uploadCoolDownErr string
+	if w.uploadRecentFailureErr != nil {
+		uploadCoolDownErr = w.uploadRecentFailureErr.Error()
+	}
+
+	return modules.WorkerStatus{
+		// Contract Information
+		ContractID:      w.cachedContractID,
+		ContractUtility: w.cachedContractUtility,
+		HostPubKey:      w.staticHostPubKey,
+
+		// Download information
+		DownloadOnCoolDown: downloadOnCoolDown,
+		DownloadQueueSize:  len(w.downloadChunks),
+		DownloadTerminated: w.downloadTerminated,
+
+		// Upload information
+		UploadCoolDownError: uploadCoolDownErr,
+		UploadCoolDownTime:  uploadCoolDownTime,
+		UploadOnCoolDown:    uploadOnCoolDown,
+		UploadQueueSize:     len(w.unprocessedChunks),
+		UploadTerminated:    w.uploadTerminated,
+
+		// Ephemeral Account information
+		AvailableBalance:        w.staticAccount.AvailableBalance(),
+		BalanceTarget:           w.staticBalanceTarget,
+		FundAccountJobQueueSize: w.staticFundAccountJobQueue.managedLen(),
+
+		// Job Queues
+		BackupJobQueueSize:       w.staticFetchBackupsJobQueue.managedLen(),
+		DownloadRootJobQueueSize: w.staticJobQueueDownloadByRoot.managedLen(),
+	}
 }
 
 // managedBlockUntilReady will block until the worker has internet connectivity.
@@ -152,11 +183,12 @@ func (w *worker) managedUpdateCache() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	utility, exists := w.renter.hostContractor.ContractUtility(w.staticHostPubKey)
+	renterContract, exists := w.renter.hostContractor.ContractByPublicKey(w.staticHostPubKey)
 	if !exists {
 		return false
 	}
-	w.cachedContractUtility = utility
+	w.cachedContractID = renterContract.ID
+	w.cachedContractUtility = renterContract.Utility
 	return true
 }
 
@@ -204,13 +236,6 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillFundAccountJobs()
 	defer w.managedKillJobsDownloadByRoot()
 
-	// Fetch the cache for the worker before doing any work.
-	if !w.managedUpdateCache() {
-		w.renter.log.Println("Worker is being insta-killed because the cache update could not locate utility for the worker")
-		return
-	}
-	lastCacheUpdate := time.Now()
-
 	// Primary work loop. There are several types of jobs that the worker can
 	// perform, and they are attempted with a specific priority. If any type of
 	// work is attempted, the loop resets to check for higher priority work
@@ -220,6 +245,7 @@ func (w *worker) threadedWorkLoop() {
 	// 'workAttempted' indicates that there was a job to perform, and that a
 	// nontrivial amount of time was spent attempting to perform the job. The
 	// job may or may not have been successful, that is irrelevant.
+	lastCacheUpdate := time.Now()
 	for {
 		// There are certain conditions under which the worker should either
 		// block or exit. This function will block until those conditions are
@@ -311,7 +337,7 @@ func (w *worker) scheduleRefillAccount() {
 
 	// Fetch the account's available balance and skip if it's above the
 	// threshold
-	balance := w.staticAccount.AvailableBalance()
+	balance := w.staticAccount.managedAvailableBalance()
 	if balance.Cmp(threshold) >= 0 {
 		return
 	}
@@ -351,7 +377,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	// iteration.
 	balanceTarget := types.ZeroCurrency
 
-	return &worker{
+	w := &worker{
 		staticHostPubKey:    hostPubKey,
 		staticHostPubKeyStr: hostPubKey.String(),
 
@@ -361,5 +387,11 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),
 		renter:   r,
-	}, nil
+	}
+	// Get the worker cache set up before returning the worker. This prvents a
+	// race condition in some tests.
+	if !w.managedUpdateCache() {
+		return nil, errors.New("unable to build cache for worker")
+	}
+	return w, nil
 }

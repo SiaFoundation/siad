@@ -121,6 +121,7 @@ func (api *API) buildHTTPRoutes() {
 		router.POST("/renter/uploads/resume", RequirePassword(api.renterUploadsResumeHandler, requiredPassword))
 		router.POST("/renter/uploadstream/*siapath", RequirePassword(api.renterUploadStreamHandler, requiredPassword))
 		router.POST("/renter/validatesiapath/*siapath", RequirePassword(api.renterValidateSiaPathHandler, requiredPassword))
+		router.GET("/renter/workers", api.renterWorkersHandler)
 
 		// Skynet endpoints
 		router.GET("/skynet/blacklist", api.skynetBlacklistHandlerGET)
