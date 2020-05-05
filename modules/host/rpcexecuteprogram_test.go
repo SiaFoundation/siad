@@ -2,7 +2,6 @@ package host
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
@@ -14,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -31,52 +29,6 @@ func updateRunningCosts(pt *modules.RPCPriceTable, runningCost, runningRefund, r
 	runningCollateral = runningCollateral.Add(collateral)
 
 	return runningCost, runningRefund, runningCollateral, runningMemory
-}
-
-// newHasSectorInstruction is a convenience method for creating a single
-// 'HasSector' instruction.
-func newHasSectorInstruction(dataOffset uint64, pt *modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, types.Currency, uint64, uint64) {
-	i := mdm.NewHasSectorInstruction(dataOffset)
-	cost, refund := modules.MDMHasSectorCost(pt)
-	collateral := modules.MDMHasSectorCollateral()
-	return i, cost, refund, collateral, modules.MDMHasSectorMemory(), modules.MDMTimeHasSector
-}
-
-// newHasSectorProgram is a convenience method which prepares the instructions
-// and the program data for a program that executes a single
-// HasSectorInstruction.
-func newHasSectorProgram(merkleRoot crypto.Hash, pt *modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64) {
-	data := make([]byte, crypto.HashSize)
-	copy(data[:crypto.HashSize], merkleRoot[:])
-	initCost := modules.MDMInitCost(pt, uint64(len(data)), 1)
-	i, cost, refund, collateral, memory, time := newHasSectorInstruction(0, pt)
-	cost, refund, collateral, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, collateral, memory, time)
-	instructions := []modules.Instruction{i}
-	return instructions, data, cost, refund, collateral, memory
-}
-
-// newReadSectorInstruction is a convenience method for creating a single
-// 'ReadSector' instruction.
-func newReadSectorInstruction(length uint64, merkleProof bool, dataOffset uint64, pt *modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, types.Currency, uint64, uint64) {
-	i := mdm.NewReadSectorInstruction(dataOffset, dataOffset+8, dataOffset+16, merkleProof)
-	cost, refund := modules.MDMReadCost(pt, length)
-	collateral := modules.MDMReadCollateral()
-	return i, cost, refund, collateral, modules.MDMReadMemory(), modules.MDMTimeReadSector
-}
-
-// newReadSectorProgram is a convenience method which prepares the instructions
-// and the program data for a program that executes a single
-// ReadSectorInstruction.
-func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt *modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64) {
-	data := make([]byte, 8+8+crypto.HashSize)
-	binary.LittleEndian.PutUint64(data[:8], length)
-	binary.LittleEndian.PutUint64(data[8:16], offset)
-	copy(data[16:], merkleRoot[:])
-	initCost := modules.MDMInitCost(pt, uint64(len(data)), 1)
-	i, cost, refund, collateral, memory, time := newReadSectorInstruction(length, true, 0, pt)
-	cost, refund, collateral, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, collateral, memory, time)
-	instructions := []modules.Instruction{i}
-	return instructions, data, cost, refund, collateral, memory
 }
 
 // TestExecuteProgramWriteDeadline verifies the ExecuteProgramRPC sets a write
@@ -115,7 +67,9 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 
 	// create the 'ReadSector' program.
 	pt := rhp.PriceTable()
-	program, programData, _, _, _, _ := newReadSectorProgram(modules.SectorSize, 0, sectorRoot, pt)
+	pb := modules.NewProgramBuilder(pt)
+	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
+	program, programData := pb.Program()
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
@@ -171,7 +125,10 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 
 	// create the 'ReadSector' program.
 	pt := rhp.PriceTable()
-	program, data, programCost, refund, collateral, _ := newReadSectorProgram(modules.SectorSize, 0, sectorRoot, pt)
+	pb := modules.NewProgramBuilder(pt)
+	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
+	program, data := pb.Program()
+	programCost, refund, collateral := pb.Cost(true)
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
@@ -328,7 +285,10 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 
 	// create the 'ReadSector' program.
 	pt := rhp.PriceTable()
-	program, data, programCost, refund, collateral, _ := newReadSectorProgram(length, offset, sectorRoot, pt)
+	pb := modules.NewProgramBuilder(pt)
+	pb.AddReadSectorInstruction(length, offset, sectorRoot, true)
+	program, data := pb.Program()
+	programCost, refund, collateral := pb.Cost(true)
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
@@ -447,7 +407,10 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 
 	// Create the 'HasSector' program.
 	pt := rhp.PriceTable()
-	program, data, programCost, refund, collateral, _ := newHasSectorProgram(sectorRoot, pt)
+	pb := modules.NewProgramBuilder(pt)
+	pb.AddHasSectorInstruction(sectorRoot)
+	program, data := pb.Program()
+	programCost, refund, collateral := pb.Cost(true)
 
 	// Prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
