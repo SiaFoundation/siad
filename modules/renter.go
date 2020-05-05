@@ -400,6 +400,11 @@ type FileUploadParams struct {
 	// CipherType was added later. If it is left blank, the renter will use the
 	// default encryption method (as of writing, Threefish)
 	CipherType crypto.CipherType
+
+	// CipherKey was added in v1.5.0. If it is left blank, the renter will use it
+	// to create a CipherKey with the given CipherType. This value override
+	// CipherType if it is set.
+	CipherKey crypto.CipherKey
 }
 
 // FileInfo provides information about a file.

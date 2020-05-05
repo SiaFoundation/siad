@@ -620,6 +620,27 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
+	// Grab the skykey specified.
+	skykeyName := queryForm.Get("skykeyname")
+	skykeyID := queryForm.Get("skykeyid")
+	if skykeyName != "" && skykeyID != "" {
+		WriteError(w, Error{"Can only use either skykeyname or skykeyid flag, not both."}, http.StatusBadRequest)
+		return
+	}
+
+	if skykeyName != "" {
+		lup.SkykeyName = skykeyName
+	}
+	if skykeyID != "" {
+		var ID skykey.SkykeyID
+		err = ID.FromString(skykeyID)
+		if err != nil {
+			WriteError(w, Error{"Unable to parse skykey ID"}, http.StatusBadRequest)
+			return
+		}
+		lup.SkykeyID = ID
+	}
+
 	// Enable CORS
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
