@@ -13,6 +13,7 @@ variables:
     ./cmd/sia-node-scanner
     ./cmd/siac
     ./cmd/siad
+    ./cmd/skynet-benchmark
     ./compatibility
     ./crypto
     ./encoding
