@@ -1801,6 +1801,7 @@ based on their needs.
       "potentialstoragerevenue":  "1234",             // hastings
       "potentialuploadrevenue":   "1234",             // hastings
       "riskedcollateral":         "1234",             // hastings
+      "revisionnumber":           0,                  // int
       "sectorrootscount":         2,                  // int
       "transactionfeesadded":     "1234",             // hastings
       "expirationheight":         123456,             // blocks
@@ -1812,6 +1813,8 @@ based on their needs.
       "proofconstructed":         true,               // boolean
       "revisionconfirmed":        false,              // boolean
       "revisionconstructed":      false,              // boolean
+      "validproofoutputs":        [],                 // []SiacoinOutput
+      "missedproofoutputs":       [],                 // []SiacoinOutput
     }
   ]
 }
@@ -1847,6 +1850,9 @@ completion of the obligation.
 **riskedcollateral** | hastings  
 Amount that the host might lose if the submission of the storage proof is not
 successful.
+
+**revisionnumber** | int  
+The last revision of the contract
 
 **sectorrootscount** | int  
 Number of sector roots.
@@ -1892,6 +1898,12 @@ the blockchain for this storage obligation.
 **revisionconstructed** | boolean  
 Revision constructed indicates whether there was a file contract revision
 constructed for this storage obligation.
+
+**validproofoutputs** | []SiacoinOutput   
+The payouts that the host and renter will receive if a valid proof is confirmed on the blockchain
+
+**missedproofoutputs** | []SiacoinOutput  
+The payouts that the host and renter will receive if a proof is not confirmed on the blockchain
 
 ## /host/storage [GET]
 > curl example  
