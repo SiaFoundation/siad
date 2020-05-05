@@ -123,25 +123,25 @@ func main() {
 	threadss := []uint64{1, 4, 16, 64} // threadss is the plural of threads, deal with it
 	downloadStart := time.Now()
 	for _, threads := range threadss {
-		err = downloadFileSet(dir64kbPath, 61440, threads)
+		err = downloadFileSet(dir64kbPath, threads)
 		if err != nil {
 			fmt.Println("Unable to download all 64kb files:", err)
 		}
 		fmt.Printf("64kb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
 		downloadStart = time.Now()
-		err = downloadFileSet(dir1mbPath, 983040, threads)
+		err = downloadFileSet(dir1mbPath, threads)
 		if err != nil {
 			fmt.Println("Unable to download all 1mb files:", err)
 		}
 		fmt.Printf("1mb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
 		downloadStart = time.Now()
-		err = downloadFileSet(dir4mbPath, 3932160, threads)
+		err = downloadFileSet(dir4mbPath, threads)
 		if err != nil {
 			fmt.Println("Unable to download all 4mb files:", err)
 		}
 		fmt.Printf("4mb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
 		downloadStart = time.Now()
-		err = downloadFileSet(dir10mbPath, 10e6, threads)
+		err = downloadFileSet(dir10mbPath, threads)
 		if err != nil {
 			fmt.Println("Unable to download all 10mb files:", err)
 		}
@@ -152,7 +152,7 @@ func main() {
 
 // downloadFileSet will download all of the files of the expected fetch size in
 // a dir.
-func downloadFileSet(dir modules.SiaPath, expectedFetchSize uint64, threads uint64) error {
+func downloadFileSet(dir modules.SiaPath, threads uint64) error {
 	// Create a thread pool and fill it. Need to grab a struct from the pool
 	// before launching a thread, need to drop the object back into the pool
 	// when done.
