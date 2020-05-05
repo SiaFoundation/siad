@@ -79,7 +79,7 @@ func (a *account) toAccountPersistence() accountPersistence {
 
 // readAccountAt tries to read an account object from the account persist file
 // at the given offset
-func (r *Renter) readAccountAt(offset int64) (*account, error) {
+func (r *Renter) readAccountAt(offset, accountOffset int64) (*account, error) {
 	// read account bytes
 	accountBytes := make([]byte, accountSize, accountSize)
 	_, err := r.staticAccountsFile.ReadAt(accountBytes, offset)
@@ -97,13 +97,12 @@ func (r *Renter) readAccountAt(offset int64) (*account, error) {
 	// verify the checksum
 	if !accountData.verifyChecksum(accountData.Checksum) {
 		return nil, errors.New("Account ignored because checksum did not match")
-
 	}
 
 	return &account{
 		staticID:        accountData.AccountID,
 		staticHostKey:   accountData.HostKey,
-		staticOffset:    offset,
+		staticOffset:    accountOffset,
 		staticSecretKey: accountData.SecretKey,
 		balance:         accountData.Balance,
 	}, nil
@@ -175,18 +174,21 @@ func (r *Renter) managedLoadAccounts() error {
 	accountOffset := initialOffset
 	for offset := initialOffset; ; offset += accountSize {
 		// read the account at offset
-		acc, err := r.readAccountAt(accountOffset)
+		acc, err := r.readAccountAt(offset, accountOffset)
+		if err == io.EOF {
+			break
+		}
 		if err != nil {
 			r.log.Println("ERROR: could not load account", err)
 			continue
 		}
-		accountOffset += accountSize
 
 		// reset the account balances after an unclean shutdown
 		if !metadata.Clean {
 			acc.balance = types.ZeroCurrency
 		}
 		accounts[acc.staticHostKey.String()] = acc
+		accountOffset += accountSize
 	}
 
 	// mark the metadata as 'dirty' and update the metadata on disk - this
