@@ -104,7 +104,7 @@ func (r *Renter) managedOpenAccount(hostKey types.SiaPublicKey) *account {
 	return acc
 }
 
-// newAccount returns an new account object for the given host.
+// newAccount returns a new account object for the given host.
 func (r *Renter) newAccount(hostKey types.SiaPublicKey) *account {
 	// calculate the account's offset
 	metadataPadding := accountSize - metadataSize
