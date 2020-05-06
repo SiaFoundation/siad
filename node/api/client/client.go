@@ -18,12 +18,12 @@ import (
 type (
 	// A Client makes requests to the siad HTTP API.
 	Client struct {
-		ClientOptions
+		Options
 	}
 
-	// ClientOptions defines the options that are available when creating a
+	// Options defines the options that are available when creating a
 	// client.
-	ClientOptions struct {
+	Options struct {
 		// Address is the API address of the siad server.
 		Address string
 
@@ -62,21 +62,21 @@ func (uc *UnsafeClient) Get(resource string, obj interface{}) error {
 // New creates a new Client using the provided address. The password will be set
 // using build.APIPasssword and the user agent will be set to "Sia-Agent". Both
 // can be changed manually by the caller after the client is returned.
-func New(opts ClientOptions) *Client {
+func New(opts Options) *Client {
 	return &Client{
-		ClientOptions: opts,
+		Options: opts,
 	}
 }
 
 // DefaultOptions returns the default options for a client. This includes
 // setting the default siad user agent to "Sia-Agent" and setting the password
 // using the build.APIPassword() function.
-func DefaultOptions() (ClientOptions, error) {
+func DefaultOptions() (Options, error) {
 	pw, err := build.APIPassword()
 	if err != nil {
-		return ClientOptions{}, errors.AddContext(err, "could not locate api password")
+		return Options{}, errors.AddContext(err, "could not locate api password")
 	}
-	return ClientOptions{
+	return Options{
 		Address:   "localhost:9980",
 		Password:  pw,
 		UserAgent: "Sia-Agent",
