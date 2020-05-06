@@ -36,12 +36,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-const (
-	// compatRHProtocolVersion is the minimum version a host must have in order
-	// to ensure we can use the new renter host protocol
-	compatRHProtocolVersion = "1.5.0"
-)
-
 var (
 	// workerCacheUpdateFrequency specifies how much time must pass before the
 	// worker updates its cache.
@@ -413,7 +407,7 @@ func (r *Renter) threadedUpdateBlockHeightOnWorkers() {
 // managedTryRefillAccount will check if the account needs to be refilled
 func (w *worker) managedTryRefillAccount() {
 	// check host version
-	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) < 0 {
+	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
 		return
 	}
 
@@ -441,7 +435,7 @@ func (w *worker) managedTryRefillAccount() {
 // managedTryUpdatePriceTable will check if the price table needs to be updated
 func (w *worker) managedTryUpdatePriceTable() {
 	// check host version
-	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) < 0 {
+	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
 		return
 	}
 
