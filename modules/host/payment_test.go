@@ -753,14 +753,6 @@ func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
 	if !balance.Equals(deposit.Sub(amount)) {
 		t.Fatalf("Unexpected account balance, expected %v but received %s", deposit.Sub(amount), balance.HumanString())
 	}
-
-	// try and perform the same request again, which should fail because the
-	// account balance is insufficient verify err is not nil and contains a
-	// mention of insufficient balance
-	err = run(renterFunc, hostFunc)
-	if err == nil || !strings.Contains(err.Error(), "balance was insufficient") {
-		t.Fatalf("Expected error to mention account balance was insuficient, instead error was: '%v'", err)
-	}
 }
 
 // testUnknownPaymentMethodError verifies the host returns an error if we

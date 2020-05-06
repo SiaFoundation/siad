@@ -250,7 +250,7 @@ func (wm *WithdrawalMessage) ValidateExpiry(blockHeight, expiry types.BlockHeigh
 func (wm *WithdrawalMessage) ValidateSignature(hash crypto.Hash, sig crypto.Signature) error {
 	err := crypto.VerifyHash(hash, wm.Account.PK(), sig)
 	if err != nil {
-		return errors.Extend(err, ErrWithdrawalInvalidSignature)
+		return errors.Compose(err, ErrWithdrawalInvalidSignature)
 	}
 	return nil
 }
