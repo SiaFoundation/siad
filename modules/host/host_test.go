@@ -488,6 +488,13 @@ func (p *renterHostPair) ExecuteProgram(epr modules.RPCExecuteProgramRequest, pr
 		return nil, limit, err
 	}
 
+	// Receive payment confirmation.
+	var pc modules.PayByEphemeralAccountResponse
+	err = modules.RPCRead(stream, &pc)
+	if err != nil {
+		return nil, limit, err
+	}
+
 	// Send the execute program request.
 	err = modules.RPCWrite(stream, epr)
 	if err != nil {
@@ -655,20 +662,27 @@ func (p *renterHostPair) payByContract(stream siamux.Stream, amount types.Curren
 }
 
 // payByEphemeralAccount is a helper that makes payment using the pair's EA.
-func (p *renterHostPair) payByEphemeralAccount(stream siamux.Stream, amount types.Currency) error {
+func (p *renterHostPair) payByEphemeralAccount(stream siamux.Stream, amount types.Currency) (modules.PayByEphemeralAccountResponse, error) {
 	// Send the payment request.
 	err := modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
 	if err != nil {
-		return err
+		return modules.PayByEphemeralAccountResponse{}, err
 	}
 
 	// Send the payment details.
 	pbear := newPayByEphemeralAccountRequest(p.staticAccountID, p.ht.host.BlockHeight()+6, amount, p.staticAccountKey)
 	err = modules.RPCWrite(stream, pbear)
 	if err != nil {
-		return err
+		return modules.PayByEphemeralAccountResponse{}, err
 	}
-	return nil
+
+	// Receive payment confirmation.
+	var resp modules.PayByEphemeralAccountResponse
+	err = modules.RPCRead(stream, &resp)
+	if err != nil {
+		return modules.PayByEphemeralAccountResponse{}, err
+	}
+	return resp, nil
 }
 
 // sign returns the renter's signature of the given revision
@@ -716,7 +730,7 @@ func (p *renterHostPair) UpdatePriceTable(payByFC bool) error {
 			return err
 		}
 	} else {
-		err = p.payByEphemeralAccount(stream, pt.UpdatePriceTableCost)
+		_, err = p.payByEphemeralAccount(stream, pt.UpdatePriceTableCost)
 		if err != nil {
 			return err
 		}
