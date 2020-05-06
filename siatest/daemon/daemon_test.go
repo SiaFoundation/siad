@@ -29,10 +29,12 @@ func TestDaemonAPIPassword(t *testing.T) {
 	}
 
 	// Make a manual API request without a password.
-	c, err := client.New(testNode.Server.APIAddress())
+	opts, err := client.DefaultOptions()
 	if err != nil {
 		t.Fatal(err)
 	}
+	opts.Address = testNode.Server.APIAddress()
+	c := client.New(opts)
 	if err := c.DaemonStopGet(); err == nil {
 		t.Error("expected unauthenticated API request to fail")
 	}

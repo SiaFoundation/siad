@@ -15,24 +15,32 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// A Client makes requests to the siad HTTP API.
-type Client struct {
-	// Address is the API address of the siad server.
-	Address string
+type (
+	// A Client makes requests to the siad HTTP API.
+	Client struct {
+		ClientOptions
+	}
 
-	// Password must match the password of the siad server.
-	Password string
+	// ClientOptions defines the options that are available when creating a
+	// client.
+	ClientOptions struct {
+		// Address is the API address of the siad server.
+		Address string
 
-	// UserAgent must match the User-Agent required by the siad server. If not
-	// set, it defaults to "Sia-Agent".
-	UserAgent string
-}
+		// Password must match the password of the siad server.
+		Password string
 
-// A UnsafeClient is a Client with additional access to unsafe methods that are
-// easy to misuse. It should only be used for testing.
-type UnsafeClient struct {
-	Client
-}
+		// UserAgent must match the User-Agent required by the siad server. If not
+		// set, it defaults to "Sia-Agent".
+		UserAgent string
+	}
+
+	// A UnsafeClient is a Client with additional access to unsafe methods that are
+	// easy to misuse. It should only be used for testing.
+	UnsafeClient struct {
+		Client
+	}
+)
 
 // NewUnsafeClient creates a new UnsafeClient using the provided address.
 func NewUnsafeClient(client Client) *UnsafeClient {
@@ -54,13 +62,22 @@ func (uc *UnsafeClient) Get(resource string, obj interface{}) error {
 // New creates a new Client using the provided address. The password will be set
 // using build.APIPasssword and the user agent will be set to "Sia-Agent". Both
 // can be changed manually by the caller after the client is returned.
-func New(address string) (*Client, error) {
+func New(opts ClientOptions) *Client {
+	return &Client{
+		ClientOptions: opts,
+	}
+}
+
+// DefaultOptions returns the default options for a client. This includes
+// setting the default siad user agent to "Sia-Agent" and setting the password
+// using the build.APIPassword() function.
+func DefaultOptions() (ClientOptions, error) {
 	pw, err := build.APIPassword()
 	if err != nil {
-		return nil, errors.AddContext(err, "could not locate api password")
+		return ClientOptions{}, errors.AddContext(err, "could not locate api password")
 	}
-	return &Client{
-		Address:   address,
+	return ClientOptions{
+		Address:   "localhost:9980",
 		Password:  pw,
 		UserAgent: "Sia-Agent",
 	}, nil
