@@ -92,7 +92,6 @@ type (
 	// FundAccountResponse contains the signature. This signature is a
 	// signed receipt, and can be used as proof of funding.
 	FundAccountResponse struct {
-		Balance   types.Currency
 		Receipt   Receipt
 		Signature crypto.Signature
 	}
