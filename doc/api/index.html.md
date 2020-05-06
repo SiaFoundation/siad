@@ -4527,7 +4527,7 @@ field which gets incremented if there is a failure that can be attributed to
 siad.
 
 Every download request will go into the TimeToFirstByte container, as well as
-the appropriate download contianer based on the size of the download. Within the
+the appropriate download container based on the size of the download. Within the
 chosen containers, every bucket will have the same field incremented. The field
 that gets incremented is the one that corresponds to the amount of time the
 request took.
