@@ -106,16 +106,24 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 
 // managedFundAccount will call the fundAccountRPC on the host and if successful
 // will deposit the given amount into the worker's ephemeral account.
-func (w *worker) managedFundAccount(amount types.Currency) (modules.FundAccountResponse, error) {
+func (w *worker) managedFundAccount(amount types.Currency) (resp modules.FundAccountResponse, err error) {
 	// check host version
 	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
 		build.Critical("Executing new RHP RPC on host with version", w.staticHostVersion)
 	}
 
+	// track the deposit
+	w.staticAccount.managedTrackDeposit(amount)
+	defer func() {
+		w.staticAccount.managedCommitDeposit(amount, err == nil)
+	}()
+
 	// create a new stream
-	stream, err := w.staticNewStream()
+	var stream siamux.Stream
+	stream, err = w.staticNewStream()
 	if err != nil {
-		return modules.FundAccountResponse{}, errors.AddContext(err, "Unable to create a new stream")
+		err = errors.AddContext(err, "Unable to create a new stream")
+		return
 	}
 	defer func() {
 		if err := stream.Close(); err != nil {
@@ -138,36 +146,34 @@ func (w *worker) managedFundAccount(amount types.Currency) (modules.FundAccountR
 	// write the specifier
 	err = modules.RPCWrite(stream, modules.RPCFundAccount)
 	if err != nil {
-		return modules.FundAccountResponse{}, err
+		return
 	}
 
 	// send price table uid
 	pt := w.staticHostPrices.managedPriceTable()
 	err = modules.RPCWrite(stream, pt.UID)
 	if err != nil {
-		return modules.FundAccountResponse{}, err
+		return
 	}
 
 	// send fund account request
 	err = modules.RPCWrite(stream, modules.FundAccountRequest{Account: w.staticAccount.staticID})
 	if err != nil {
-		return modules.FundAccountResponse{}, err
+		return
 	}
 
 	// provide payment
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, bh)
 	if err != nil {
-		return modules.FundAccountResponse{}, err
+		return
 	}
 
 	// receive FundAccountResponse
-	var resp modules.FundAccountResponse
 	err = modules.RPCRead(stream, &resp)
 	if err != nil {
-		return modules.FundAccountResponse{}, err
+		return
 	}
-
-	return resp, nil
+	return
 }
 
 // managedHasSector returns whether or not the host has a sector with given root

@@ -160,33 +160,6 @@ func (a *account) managedTrackWithdrawal(amount types.Currency) {
 	a.pendingWithdrawals = a.pendingWithdrawals.Add(amount)
 }
 
-// managedTryRefill will check if the available balance is below the
-// given threshold, if that is the case we add the refill amount to the pending
-// deposits and return 'true'. We have to increment pendingDeposits while
-// holding the lock to ensure concurrent calls to `managedTryRefill` does not
-// return twice (providing refillAmount is sufficiently large).
-func (a *account) managedTryRefill(threshold, refillAmount types.Currency) bool {
-	a.staticMu.Lock()
-	defer a.staticMu.Unlock()
-
-	var available types.Currency
-	total := a.balance.Add(a.pendingDeposits)
-	if a.pendingWithdrawals.Cmp(total) < 0 {
-		available = total.Sub(a.pendingWithdrawals)
-	}
-
-	// if the available balance exceeds the threshold we do not need a refill
-	if available.Cmp(threshold) >= 0 {
-		return false
-	}
-
-	// add the refill amount to the pending deposits, this ensures consecutive
-	// calls to managedTryRefill will not try to refill as the available balance
-	// now exceeds the threshold
-	a.pendingDeposits = a.pendingDeposits.Add(refillAmount)
-	return true
-}
-
 // newWithdrawalMessage is a helper function that takes a set of parameters and
 // a returns a new WithdrawalMessage.
 func newWithdrawalMessage(id modules.AccountID, amount types.Currency, blockHeight types.BlockHeight) modules.WithdrawalMessage {
