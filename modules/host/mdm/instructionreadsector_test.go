@@ -39,6 +39,8 @@ func TestInstructionReadSector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Get a new reader.
+	program = pb.Program()
 
 	// Expected outputs.
 	outputData, err := host.ReadSector(root)
@@ -94,6 +96,8 @@ func TestInstructionReadSector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Get a new reader.
+	program = pb.Program()
 
 	// Expected outputs.
 	proofStart := int(offset) / crypto.SegmentSize
@@ -123,6 +127,9 @@ func TestInstructionReadSector(t *testing.T) {
 	_, err = testCompareOutputs(outputs, expectedOutputs)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !budget.Remaining().IsZero() {
+		t.Fatalf("budget remaining should be zero but was %v", budget.Remaining().HumanString())
 	}
 
 	// No need to finalize the program since an this program is readonly.
@@ -159,6 +166,14 @@ func TestInstructionReadOutsideSector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Verify the values.
+	err = testCompareProgramValues(pt, program, finalValues)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Get a new reader.
+	program = pb.Program()
 
 	imr := crypto.Hash{}
 

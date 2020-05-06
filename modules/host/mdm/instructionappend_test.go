@@ -8,20 +8,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
-// newAppendProgram is a convenience method which prepares the instructions
-// and the program data for a program that executes a single
-// AppendInstruction.
-func newAppendProgram(sectorData []byte, merkleProof bool, pt *modules.RPCPriceTable) (modules.Program, modules.RunningProgramValues, modules.ProgramValues, error) {
-	pb := modules.NewProgramBuilder()
-	err := pb.AddAppendInstruction(sectorData, merkleProof)
-	if err != nil {
-		return modules.Program{}, modules.RunningProgramValues{}, modules.ProgramValues{}, err
-	}
-	program := pb.Program()
-	runningValues, finalValues, err := pb.Values(pt, true)
-	return program, runningValues[1], finalValues, err
-}
-
 // TestInstructionSingleAppend tests executing a program with a single
 // AppendInstruction.
 func TestInstructionSingleAppend(t *testing.T) {
@@ -33,9 +19,18 @@ func TestInstructionSingleAppend(t *testing.T) {
 	appendData1 := randomSectorData()
 	appendDataRoot1 := crypto.MerkleRoot(appendData1)
 	pt := newTestPriceTable()
-	program, runningValues, finalValues, err := newAppendProgram(appendData1, true, pt)
+	pb := modules.NewProgramBuilder()
+	err := pb.AddAppendInstruction(appendData1, true)
 	if err != nil {
 		t.Fatal(err)
+	}
+	program := pb.Program()
+	runningValues, finalValues, err := pb.Values(pt, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runningValues) != len(program.Instructions)+1 {
+		t.Fatalf("expected %v running values, got %v", len(program.Instructions), len(runningValues))
 	}
 
 	// Verify the values.
@@ -43,6 +38,8 @@ func TestInstructionSingleAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Get a new reader.
+	program = pb.Program()
 
 	// Expected outputs.
 	expectedOutputs := []Output{
@@ -52,7 +49,7 @@ func TestInstructionSingleAppend(t *testing.T) {
 				NewMerkleRoot: crypto.MerkleRoot(appendData1),
 				Proof:         []crypto.Hash{},
 			},
-			runningValues,
+			runningValues[1],
 		},
 	}
 
@@ -71,9 +68,6 @@ func TestInstructionSingleAppend(t *testing.T) {
 	_, err = testCompareOutputs(outputs, expectedOutputs)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if !budget.Remaining().IsZero() {
-		t.Fatalf("budget remaining should be zero but was %v", budget.Remaining().HumanString())
 	}
 
 	// The storage obligation should be unchanged before finalizing the program.
@@ -108,7 +102,13 @@ func TestInstructionSingleAppend(t *testing.T) {
 	// Execute same program again to append another sector.
 	appendData2 := randomSectorData() // new random data
 	appendDataRoot2 := crypto.MerkleRoot(appendData2)
-	program, runningValues, finalValues, err = newAppendProgram(appendData2, true, pt)
+	pb = modules.NewProgramBuilder()
+	err = pb.AddAppendInstruction(appendData2, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program = pb.Program()
+	runningValues, finalValues, err = pb.Values(pt, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,6 +118,8 @@ func TestInstructionSingleAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Get a new reader.
+	program = pb.Program()
 
 	// Expected outputs.
 	expectedOutputs = []Output{
@@ -127,7 +129,7 @@ func TestInstructionSingleAppend(t *testing.T) {
 				NewMerkleRoot: cachedMerkleRoot([]crypto.Hash{appendDataRoot1, appendDataRoot2}),
 				Proof:         []crypto.Hash{appendDataRoot1},
 			},
-			runningValues,
+			runningValues[1],
 		},
 	}
 
@@ -142,9 +144,6 @@ func TestInstructionSingleAppend(t *testing.T) {
 	_, err = testCompareOutputs(outputs, expectedOutputs)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if !budget.Remaining().IsZero() {
-		t.Fatalf("budget remaining should be zero but was %v", budget.Remaining().HumanString())
 	}
 
 	// The storage obligation should be unchanged before finalizing the program.

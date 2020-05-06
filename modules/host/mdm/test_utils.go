@@ -11,6 +11,8 @@ import (
 
 // testCompareProgramValues compares the values of a program calculated during a
 // test with the expected values returned from testProgramValues.
+//
+// NOTE: this function consumes the program data reader.
 func testCompareProgramValues(pt *modules.RPCPriceTable, p modules.Program, values modules.ProgramValues) error {
 	expectedValues, err := testProgramValues(p, pt)
 	if err != nil {
@@ -106,7 +108,7 @@ func testProgramValues(p modules.Program, pt *modules.RPCPriceTable) (modules.Pr
 	}
 
 	// Get the final values for the program.
-	finalValues := runningValues.FinalizeProgramValues(pt)
+	finalValues := runningValues.FinalizeProgramValues(pt, true)
 
 	return finalValues, nil
 }

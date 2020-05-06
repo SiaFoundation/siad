@@ -44,6 +44,8 @@ func TestInstructionHasSector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Get a new reader.
+	program = pb.Program()
 
 	// Expected outputs.
 	expectedOutputs := []Output{

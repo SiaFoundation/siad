@@ -70,17 +70,22 @@ func (b *ProgramBuilder) AddReadSectorInstruction(length, offset uint64, merkleR
 	binary.Write(b.dataBuf, binary.LittleEndian, merkleRoot[:])
 }
 
+// Program finishes building the program and returns it.
 func (b *ProgramBuilder) Program() Program {
 	programData := b.dataBuf.Bytes()
+	reader := bytes.NewReader(programData)
 
 	program := Program{
 		Instructions: b.instructions,
-		Data:         bytes.NewReader(programData),
+		Data:         reader,
 		DataLen:      uint64(len(programData)),
 	}
 	return program
 }
 
+// Values returns a list of all running values including values upon program
+// initialization as well as after each instruction, as well as the final set of
+// program values.
 func (b *ProgramBuilder) Values(pt *RPCPriceTable, finalized bool) ([]RunningProgramValues, ProgramValues, error) {
 	programData := b.dataBuf.Bytes()
 
@@ -120,10 +125,7 @@ func (b *ProgramBuilder) Values(pt *RPCPriceTable, finalized bool) ([]RunningPro
 	}
 
 	// Add the cost of finalizing the program.
-	var finalValues ProgramValues
-	if !runningValues.ReadOnly && finalized {
-		finalValues = runningValues.FinalizeProgramValues(pt)
-	}
+	finalValues := runningValues.FinalizeProgramValues(pt, finalized)
 
 	return allRunningValues, finalValues, nil
 }

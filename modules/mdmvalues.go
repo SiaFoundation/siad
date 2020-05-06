@@ -88,8 +88,11 @@ func (v *RunningProgramValues) AddValues(pt *RPCPriceTable, values InstructionVa
 
 // FinalizeProgramValues finalizes the values for a program by adding the cost
 // of committing.
-func (v RunningProgramValues) FinalizeProgramValues(pt *RPCPriceTable) ProgramValues {
-	cost := v.ExecutionCost.Add(MDMMemoryCost(pt, v.Memory, MDMTimeCommit))
+func (v RunningProgramValues) FinalizeProgramValues(pt *RPCPriceTable, finalized bool) ProgramValues {
+	cost := v.ExecutionCost
+	if !v.ReadOnly && finalized {
+		cost = cost.Add(MDMMemoryCost(pt, v.Memory, MDMTimeCommit))
+	}
 	values := ProgramValues{
 		ExecutionCost: cost,
 		Refund:        v.Refund,

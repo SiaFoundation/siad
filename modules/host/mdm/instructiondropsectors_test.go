@@ -84,6 +84,8 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Get a new reader.
+	program = pb.Program()
 
 	// Expected outputs.
 	expectedOutputs := []Output{
@@ -146,6 +148,9 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, finalValues.Collateral, so)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if finalize == nil {
+		t.Fatal("could not retrieve finalize function")
 	}
 
 	// Check outputs.
