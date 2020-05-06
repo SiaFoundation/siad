@@ -350,7 +350,7 @@ func (w *worker) threadedWorkLoop() {
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, blockHeight types.BlockHeight, account *account) (*worker, error) {
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, hostFCID types.FileContractID, blockHeight types.BlockHeight, account *account) (*worker, error) {
 	host, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
@@ -374,6 +374,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, blockHeight types.Bloc
 		staticHostMuxAddress: hostMuxAddress,
 		staticHostVersion:    host.Version,
 		staticHostPrices:     hostPrices{},
+		staticHostFCID:       hostFCID,
 
 		staticAccount:       account,
 		staticBalanceTarget: balanceTarget,
