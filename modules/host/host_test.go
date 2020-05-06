@@ -685,6 +685,66 @@ func (p *renterHostPair) sign(rev types.FileContractRevision) crypto.Signature {
 	return crypto.SignHash(hash, p.staticRenterSK)
 }
 
+// AccountBalance returns the account balance of the renter's EA on the host.
+func (p *renterHostPair) AccountBalance(payByFC bool) (types.Currency, error) {
+	stream := p.newStream()
+	defer stream.Close()
+
+	// Fetch the price table.
+	pt, err := p.FetchPriceTable()
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+
+	// initiate the RPC
+	err = modules.RPCWrite(stream, modules.RPCAccountBalance)
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+
+	// Write the pricetable uid.
+	err = modules.RPCWrite(stream, pt.UID)
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+
+	// provide payment
+	if payByFC {
+		err = p.payByContract(stream, p.pt.AccountBalanceCost, p.staticAccountID)
+		if err != nil {
+			return types.ZeroCurrency, err
+		}
+	} else {
+		err = p.payByEphemeralAccount(stream, p.pt.AccountBalanceCost)
+		if err != nil {
+			return types.ZeroCurrency, err
+		}
+	}
+
+	// send the request.
+	err = modules.RPCWrite(stream, modules.AccountBalanceRequest{
+		Account: p.staticAccountID,
+	})
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+
+	// read the response.
+	var abr modules.AccountBalanceResponse
+	err = modules.RPCRead(stream, &abr)
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+
+	// expect clean stream close
+	err = modules.RPCRead(stream, struct{}{})
+	if !errors.Contains(err, io.ErrClosedPipe) {
+		return types.ZeroCurrency, err
+	}
+
+	return abr.Balance, nil
+}
+
 // UpdatePriceTable runs the UpdatePriceTableRPC on the host and sets the price
 // table on the pair
 func (p *renterHostPair) UpdatePriceTable(payByFC bool) error {
