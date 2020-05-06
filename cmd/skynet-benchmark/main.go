@@ -61,12 +61,13 @@ func main() {
 	}
 
 	// Create the client that will be used to talk to siad.
-	var err error
-	c, err = client.New(addr)
+	opts, err := client.DefaultOptions()
 	if err != nil {
-		fmt.Println("Unable to create Sia client:", err)
+		fmt.Println("Unable to get Sia client options:", err)
 		return
 	}
+	opts.Address = addr
+	c = client.New(opts)
 
 	// Establish the directories that we will be using for testing.
 	dirBasePath, err := modules.NewSiaPath(testSiaDir)
