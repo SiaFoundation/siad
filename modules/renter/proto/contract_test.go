@@ -144,7 +144,7 @@ func TestContractUncommittedTxn(t *testing.T) {
 		t.Fatal("Merkle roots should match revised Merkle roots")
 	}
 	if sc.rc.numSectors != uint64(len(revisedRoots)) {
-		t.Fatalf("RefCounter's numSectors should match the revised Merkle roots. Expected %d, got %d.", len(initialRoots), sc.rc.numSectors)
+		t.Fatalf("RefCounter's numSectors should match the revised Merkle roots. Expected %d, got %d.", len(revisedRoots), sc.rc.numSectors)
 	}
 }
 
