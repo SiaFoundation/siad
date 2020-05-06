@@ -68,6 +68,7 @@ var (
 type worker struct {
 	// The host pub key also serves as an id for the worker, as there is only
 	// one worker per host.
+	staticHostFCID       types.FileContractID
 	staticHostPubKey     types.SiaPublicKey
 	staticHostPubKeyStr  string
 	staticHostMuxAddress string
