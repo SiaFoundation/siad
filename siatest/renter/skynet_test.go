@@ -847,7 +847,7 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(fmt.Sprintf("stats did not report the correct size. expected %d, found %d", statsBefore.UploadStats.TotalSize+uploadedFilesSize, statsAfter.UploadStats.TotalSize))
 	}
 	lt := statsAfter.PerformanceStats.Upload4MB.Lifetime
-	if lt.N60ms+lt.N120ms+lt.N240ms+lt.N500ms+lt.N1000ms+lt.N2000ms+lt.NLong == 0 {
+	if lt.N60ms+lt.N120ms+lt.N240ms+lt.N500ms+lt.N1000ms+lt.N2000ms+lt.N5000ms+lt.N10s+lt.NLong == 0 {
 		t.Error("lifetime upload stats are not reporting any uploads")
 	}
 }

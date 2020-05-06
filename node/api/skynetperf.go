@@ -35,7 +35,9 @@ type (
 		N500ms  float64 `json:"n500ms"`
 		N1000ms float64 `json:"n1000ms"`
 		N2000ms float64 `json:"n2000ms"`
-		NLong   float64 `json:"nlong"` // Requests taking longer than 2 seconds.
+		N5000ms float64 `json:"n5000ms"`
+		N10s    float64 `json:"n10s"`
+		NLong   float64 `json:"nlong"` // Requests taking longer than 10 seconds.
 		NErr    float64 `json:"nerr"`  // Requests that errored out.
 	}
 
@@ -49,7 +51,7 @@ type (
 		FiveMinutes     RequestTimeDistribution `json:"fiveminutes"`
 		FifteenMinutes  RequestTimeDistribution `json:"fifteenminutes"`
 		TwentyFourHours RequestTimeDistribution `json:"twentyfourhours"`
-		Lifetime        RequestTimeDistribution `json:"lifetime"`
+		Lifetime        RequestTimeDistribution `json:"lifetime"` // No decay applied.
 	}
 
 	// SkynetPerformanceStats contains a set of performance metrics, bucketed by
@@ -146,7 +148,7 @@ func (hld *HalfLifeDistribution) AddRequest(speed time.Duration) {
 		hld.Lifetime.N500ms++
 		return
 	}
-	if speed <= 1000*time.Millisecond {
+	if speed <= 1e3*time.Millisecond {
 		hld.OneMinute.N1000ms++
 		hld.FiveMinutes.N1000ms++
 		hld.FifteenMinutes.N1000ms++
@@ -154,12 +156,28 @@ func (hld *HalfLifeDistribution) AddRequest(speed time.Duration) {
 		hld.Lifetime.N1000ms++
 		return
 	}
-	if speed <= 2000*time.Millisecond {
+	if speed <= 2e3*time.Millisecond {
 		hld.OneMinute.N2000ms++
 		hld.FiveMinutes.N2000ms++
 		hld.FifteenMinutes.N2000ms++
 		hld.TwentyFourHours.N2000ms++
 		hld.Lifetime.N2000ms++
+		return
+	}
+	if speed <= 5e3*time.Millisecond {
+		hld.OneMinute.N5000ms++
+		hld.FiveMinutes.N5000ms++
+		hld.FifteenMinutes.N5000ms++
+		hld.TwentyFourHours.N5000ms++
+		hld.Lifetime.N5000ms++
+		return
+	}
+	if speed <= 10e3*time.Millisecond {
+		hld.OneMinute.N10s++
+		hld.FiveMinutes.N10s++
+		hld.FifteenMinutes.N10s++
+		hld.TwentyFourHours.N10s++
+		hld.Lifetime.N10s++
 		return
 	}
 
@@ -196,6 +214,8 @@ func (hld *HalfLifeDistribution) Update() {
 		buckets[i].N500ms *= multiples[i]
 		buckets[i].N1000ms *= multiples[i]
 		buckets[i].N2000ms *= multiples[i]
+		buckets[i].N5000ms *= multiples[i]
+		buckets[i].N10s *= multiples[i]
 		buckets[i].NLong *= multiples[i]
 		buckets[i].NErr *= multiples[i]
 	}
