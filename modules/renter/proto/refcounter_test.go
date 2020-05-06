@@ -414,7 +414,7 @@ func TestRefCounterIncrement(t *testing.T) {
 		t.Fatal("Failed to create an increment update:", err)
 	}
 
-	// verify: we expect the value to have increased from the base 1 to 2
+	// verify that the value of the counter has increased by 1 and is currently 2
 	val, err := rc.readCount(secIdx)
 	if err != nil {
 		t.Fatal("Failed to read value after increment:", err)

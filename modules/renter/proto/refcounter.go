@@ -249,14 +249,16 @@ func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update)
 	if err = txn.SignalUpdatesApplied(); err != nil {
 		return errors.AddContext(err, "failed to signal that updates are applied")
 	}
-	// Update the in-memory helper fields unless the refcounter is deleted.
-	if !rc.isDeleted {
-		fi, err := os.Stat(rc.filepath)
-		if err != nil {
-			return errors.AddContext(err, "failed to read from disk after updates")
-		}
-		rc.numSectors = uint64((fi.Size() - RefCounterHeaderSize) / 2)
+	// If the refcounter got deleted then we're done.
+	if rc.isDeleted {
+		return nil
 	}
+	// Update the in-memory helper fields.
+	fi, err := os.Stat(rc.filepath)
+	if err != nil {
+		return errors.AddContext(err, "failed to read from disk after updates")
+	}
+	rc.numSectors = uint64((fi.Size() - RefCounterHeaderSize) / 2)
 	return nil
 }
 
@@ -357,10 +359,7 @@ func (rc *RefCounter) SetCount(secIdx uint64, c uint16) (writeaheadlog.Update, e
 	if rc.isDeleted {
 		return writeaheadlog.Update{}, ErrUpdateAfterDelete
 	}
-	// this allows the client to set multiple new counts in random order
-	if secIdx >= rc.numSectors {
-		rc.numSectors = secIdx + 1
-	}
+
 	rc.newSectorCounts[secIdx] = c
 	return createWriteAtUpdate(rc.filepath, secIdx, c), nil
 }
