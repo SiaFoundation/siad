@@ -517,18 +517,7 @@ func runPayByEphemeralAccountFlow(pair *renterHostPair, rStream, hStream siamux.
 
 			// send PaymentRequest & PayByEphemeralAccountRequest
 			pRequest := modules.PaymentRequest{Type: modules.PayByEphemeralAccount}
-			err := modules.RPCWriteAll(rStream, pRequest, pbeaRequest)
-			if err != nil {
-				return err
-			}
-
-			// receive PayByEphemeralAccountResponse
-			var payByResponse modules.PayByEphemeralAccountResponse
-			err = modules.RPCRead(rStream, &payByResponse)
-			if err != nil {
-				return err
-			}
-			return nil
+			return modules.RPCWriteAll(rStream, pRequest, pbeaRequest)
 		},
 		func() error {
 			// process payment request
@@ -638,11 +627,6 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 		t.Fatal("could not verify host's signature")
 	}
 
-	// Verify the amount in the response.
-	if !payByResponse.Balance.Equals(types.ZeroCurrency) {
-		t.Fatal("account should have been empty before")
-	}
-
 	// verify the host updated the storage obligation
 	updated, err := host.managedGetStorageObligation(pair.staticFCID)
 	if err != nil {
@@ -704,10 +688,6 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Verify the amount in the response.
-	if !payByResponse.Balance.Equals(refund) {
-		t.Fatalf("amount should have been %v but was %v", amount.HumanString(), payByResponse.Balance.HumanString())
-	}
 
 	//  Run the code again. This time it should fail due to no refund account
 	//  being provided.
@@ -741,23 +721,12 @@ func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
 	defer hStream.Close()
 
 	var payment modules.PaymentDetails
-	var payByResponse modules.PayByEphemeralAccountResponse
 
 	renterFunc := func() error {
 		// send PaymentRequest & PayByEphemeralAccountRequest
 		pRequest := modules.PaymentRequest{Type: modules.PayByEphemeralAccount}
 		pbcRequest := newPayByEphemeralAccountRequest(accountID, host.blockHeight+6, amount, sk)
-		err := modules.RPCWriteAll(rStream, pRequest, pbcRequest)
-		if err != nil {
-			return err
-		}
-
-		// receive PayByEphemeralAccountResponse
-		err = modules.RPCRead(rStream, &payByResponse)
-		if err != nil {
-			return err
-		}
-		return nil
+		return modules.RPCWriteAll(rStream, pRequest, pbcRequest)
 	}
 	hostFunc := func() error {
 		// process payment request
@@ -777,11 +746,6 @@ func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
 	// verify the account id that's returned equals the account
 	if payment.AccountID() != accountID {
 		t.Fatalf("Unexpected account id, expected %s but received %s", accountID, payment.AccountID())
-	}
-
-	// verify the response contains the amount that got withdrawn
-	if !payByResponse.Balance.Equals(deposit) {
-		t.Fatalf("Unexpected payment amount, expected %s, but received %s", deposit.HumanString(), payByResponse.Balance.HumanString())
 	}
 
 	// verify the payment got withdrawn from the ephemeral account

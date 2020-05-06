@@ -58,6 +58,7 @@ func (h *Host) managedRPCFundEphemeralAccount(stream siamux.Stream) error {
 
 	// send the FundAccountResponse
 	err = modules.RPCWrite(stream, modules.FundAccountResponse{
+		Balance:   h.staticAccountManager.callAccountBalance(far.Account),
 		Receipt:   receipt,
 		Signature: signature,
 	})
