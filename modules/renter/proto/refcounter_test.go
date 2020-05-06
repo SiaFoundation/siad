@@ -563,13 +563,18 @@ func TestRefCounterSetCount(t *testing.T) {
 	}
 
 	// test SetCount on an existing sector counter
+	oldNumSec := rc.numSectors
 	secIdx := rc.numSectors - 2
 	count := uint16(fastrand.Intn(10_000))
 	u, err := rc.SetCount(secIdx, count)
 	if err != nil {
 		t.Fatal("Failed to create a set count update:", err)
 	}
-	// verify that the value of the counter value was correctly set
+	// verify that the number of sectors did not change
+	if rc.numSectors != oldNumSec {
+		t.Fatalf("wrong number of sectors after setting the value of an existing sector. Expected %d number of sectors, got %d", oldNumSec, rc.numSectors)
+	}
+	// verify that the counter value was correctly set
 	val, err := rc.readCount(secIdx)
 	if err != nil {
 		t.Fatal("Failed to read value after set count:", err)
@@ -600,7 +605,7 @@ func TestRefCounterSetCount(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to start an update session", err)
 	}
-	oldNumSec := rc.numSectors
+	oldNumSec = rc.numSectors
 	secIdx = rc.numSectors + 2
 	count = uint16(fastrand.Intn(10_000))
 	u, err = rc.SetCount(secIdx, count)
@@ -611,7 +616,7 @@ func TestRefCounterSetCount(t *testing.T) {
 	if rc.numSectors != oldNumSec+3 {
 		t.Fatalf("wrong number of sectors after setting the value of a sector beyond the current last sector. Expected %d number of sectors, got %d", oldNumSec+3, rc.numSectors)
 	}
-	// verify that the value of the counter value was correctly set
+	// verify that the counter value was correctly set
 	val, err = rc.readCount(secIdx)
 	if err != nil {
 		t.Fatal("Failed to read value after set count:", err)
