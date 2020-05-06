@@ -942,6 +942,12 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 	r.staticSkynetPortals = sp
 
+	// Load all saved data.
+	err = r.managedInitPersist()
+	if err != nil {
+		return nil, err
+	}
+
 	// Load the accounts.
 	err = r.managedLoadAccounts()
 	if err != nil {
@@ -955,11 +961,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		}
 	}
 
-	// Load all saved data.
-	err = r.managedInitPersist()
-	if err != nil {
-		return nil, err
-	}
 	// After persist is initialized, push the root directory onto the directory
 	// heap for the repair process.
 	r.managedPushUnexploredDirectory(modules.RootSiaPath())
