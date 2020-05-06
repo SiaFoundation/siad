@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
@@ -144,7 +145,15 @@ func (pdbr *projectDownloadByRoot) managedRemoveWorker(w *worker) {
 // root exists on a host, and after the worker has gained the imperative to
 // fetch the data from the host.
 func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
-	data, err := w.Download(pdbr.staticRoot, pdbr.staticOffset, pdbr.staticLength)
+	var data []byte
+	var err error
+
+	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) >= 0 {
+		data, err = w.managedReadSector(pdbr.staticRoot, pdbr.staticOffset, pdbr.staticLength)
+	} else {
+		data, err = w.Download(pdbr.staticRoot, pdbr.staticOffset, pdbr.staticLength)
+	}
+
 	if err != nil {
 		w.renter.log.Debugln("worker failed a projectDownloadByRoot job:", err)
 		pdbr.managedWakeStandbyWorker()
@@ -171,12 +180,27 @@ func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
 		return
 	}
 
-	// Download a single byte to see if the root is available.
-	_, err := w.Download(pdbr.staticRoot, 0, 1)
-	if err != nil {
-		w.renter.log.Debugln("worker failed a download by root job:", err)
-		pdbr.managedRemoveWorker(w)
-		return
+	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) >= 0 {
+		// Execute a HasSector program on the host to see if the root is
+		// available.
+		hasSector, err := w.managedHasSector(pdbr.staticRoot)
+		if err != nil {
+			w.renter.log.Debugln("worker failed a download by root job:", err)
+			pdbr.managedRemoveWorker(w)
+			return
+		}
+		if !hasSector {
+			pdbr.managedRemoveWorker(w)
+			return
+		}
+	} else {
+		// Download a single byte to see if the root is available.
+		_, err := w.Download(pdbr.staticRoot, 0, 1)
+		if err != nil {
+			w.renter.log.Debugln("worker failed a download by root job:", err)
+			pdbr.managedRemoveWorker(w)
+			return
+		}
 	}
 
 	// The host has the root. Check in with the project and see if the root
