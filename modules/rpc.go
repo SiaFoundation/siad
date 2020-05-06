@@ -14,7 +14,7 @@ import (
 const (
 	// MinimumSupportedNewRenterHostProtocolVersion is the minimum version a
 	// host must have in order to ensure we can use the new renter host protocol
-	MinimumSupportedNewRenterHostProtocolVersion = "1.5.0"
+	MinimumSupportedNewRenterHostProtocolVersion = "1.4.8"
 )
 
 // RPCPriceTable contains the cost of executing a RPC on a host. Each host can

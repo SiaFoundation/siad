@@ -482,10 +482,10 @@ func (hp *hostPrices) managedPriceTable() modules.RPCPriceTable {
 	return hp.priceTable
 }
 
-// managedTryUpdate is a helper function that checks whether or not we have to
+// managedNeedsUpdate is a helper function that checks whether or not we have to
 // update the price table. If so, it flips the 'updating' flag on the hostPrices
 // object to ensure we only try this once.
-func (hp *hostPrices) managedTryUpdate() bool {
+func (hp *hostPrices) managedNeedsUpdate() bool {
 	hp.staticMu.Lock()
 	defer hp.staticMu.Unlock()
 
@@ -496,10 +496,10 @@ func (hp *hostPrices) managedTryUpdate() bool {
 	return false
 }
 
-// managedUpdatePriceTable is a helper function that sets the priceTable and
+// managedUpdate is a helper function that sets the priceTable and
 // calculates when we should try and update the price table again. It flips the
 // 'updating' flag to false.
-func (hp *hostPrices) managedUpdatePriceTable(pt modules.RPCPriceTable) {
+func (hp *hostPrices) managedUpdate(pt modules.RPCPriceTable) {
 	hp.staticMu.Lock()
 	defer hp.staticMu.Unlock()
 

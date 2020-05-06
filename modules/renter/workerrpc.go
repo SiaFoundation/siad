@@ -301,7 +301,7 @@ func (w *worker) managedUpdatePriceTable() error {
 	}
 
 	// update the price table
-	w.staticHostPrices.managedUpdatePriceTable(pt)
+	w.staticHostPrices.managedUpdate(pt)
 	return nil
 }
 

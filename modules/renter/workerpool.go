@@ -97,7 +97,7 @@ func (wp *workerPool) callUpdate() {
 		// never happen.
 		account, ok := accountMap[contract.HostPublicKey.String()]
 		if !ok {
-			wp.renter.log.Println(fmt.Errorf("could not create a new worker for host %v, account not found", contract.HostPublicKey))
+			wp.renter.log.Critical(fmt.Errorf("could not create a new worker for host %v, account not found", contract.HostPublicKey))
 			continue
 		}
 
