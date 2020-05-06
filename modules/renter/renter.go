@@ -942,6 +942,19 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 	r.staticSkynetPortals = sp
 
+	// Load the accounts.
+	err = r.managedLoadAccounts()
+	if err != nil {
+		return nil, err
+	}
+	// Save accounts on shutdown.
+	if !r.deps.Disrupt("InterruptAccountSaveOnShutdown") {
+		err = r.tg.OnStop(r.managedSaveAccounts)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Load all saved data.
 	err = r.managedInitPersist()
 	if err != nil {
@@ -962,19 +975,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticSkykeyManager, err = skykey.NewSkykeyManager(skykeyManDir)
 	if err != nil {
 		return nil, err
-	}
-
-	// Load the accounts.
-	err = r.managedLoadAccounts()
-	if err != nil {
-		return nil, err
-	}
-	// Save accounts on shutdown.
-	if !r.deps.Disrupt("InterruptAccountSaveOnShutdown") {
-		err = r.tg.OnStop(r.managedSaveAccounts)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	// Spin up background threads which are not depending on the renter being
