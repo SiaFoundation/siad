@@ -240,10 +240,15 @@ func newTestReadSectorProgram(pt *modules.RPCPriceTable, root crypto.Hash, full 
 		offset = fastrand.Uint64n((modules.SectorSize/crypto.SegmentSize)-1) * crypto.SegmentSize
 		length = uint64(crypto.SegmentSize) * (fastrand.Uint64n(5) + 1)
 	}
-	p, data, cost, _, _, _ := newReadSectorProgram(length, offset, root, pt)
+
+	pb := modules.NewProgramBuilder(pt)
+	pb.AddReadSectorInstruction(length, offset, root, true)
+	program, programData := pb.Program()
+	cost, _, _ := pb.Cost(true)
+
 	return testMDMProgram{
-		program: p,
-		data:    data,
+		program: program,
+		data:    programData,
 		cost:    cost,
 	}
 }
@@ -252,10 +257,13 @@ func newTestReadSectorProgram(pt *modules.RPCPriceTable, root crypto.Hash, full 
 // on the host and returns a program that returns whether or not the host has
 // this sector.
 func newTestHasSectorProgram(pt *modules.RPCPriceTable, root crypto.Hash) testMDMProgram {
-	p, data, cost, _, _, _ := newHasSectorProgram(root, pt)
+	pb := modules.NewProgramBuilder(pt)
+	pb.AddHasSectorInstruction(root)
+	program, programData := pb.Program()
+	cost, _, _ := pb.Cost(true)
 	return testMDMProgram{
-		program: p,
-		data:    data,
+		program: program,
+		data:    programData,
 		cost:    cost,
 	}
 }
