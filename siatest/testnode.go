@@ -151,9 +151,12 @@ func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error)
 	}
 
 	// Create client
-	c := client.New(s.APIAddress())
-	c.UserAgent = userAgent
-	c.Password = password
+	opts := client.Options{
+		Address:   s.APIAddress(),
+		Password:  password,
+		UserAgent: userAgent,
+	}
+	c := client.New(opts)
 
 	// Create TestNode
 	tn := &TestNode{
