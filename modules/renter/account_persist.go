@@ -267,36 +267,36 @@ func (r *Renter) updateAccountsMetadata(am accountsMetadata) error {
 // bytes is a helper method on the persistence object that outputs the bytes to
 // put on disk, these include the checksum and the marshaled persistence object.
 func (ap accountPersistence) bytes() []byte {
-	apMar := encoding.Marshal(ap)
-	checksum := crypto.HashBytes(apMar)
-	if len(apMar)+len(checksum) > accountSize {
+	accBytes := encoding.Marshal(ap)
+	accBytesMaxSize := accountSize - crypto.HashSize // leave room for checksum
+	if len(accBytes) > accBytesMaxSize {
 		build.Critical("marshaled object is larger than expected size")
 	}
 
-	accountBytes := make([]byte, accountSize, accountSize)
-	copy(accountBytes[:len(checksum)], checksum[:])
-	copy(accountBytes[len(checksum):], apMar)
-	return accountBytes
+	// calculate checksum on padded account bytes
+	accBytesPadded := make([]byte, accBytesMaxSize, accBytesMaxSize)
+	copy(accBytesPadded, accBytes)
+	checksum := crypto.HashBytes(accBytesPadded)
+
+	// create final byte slice of account size
+	b := make([]byte, accountSize, accountSize)
+	copy(b[:len(checksum)], checksum[:])
+	copy(b[len(checksum):], accBytesPadded)
+	return b
 }
 
 // loadBytes is a helper method that takes a byte slice, containing a checksum
-// and the account bytes, and loads them onto the persistence object.
+// and the account bytes, and unmarshals them onto the persistence object if the
+// checksum is valid.
 func (ap *accountPersistence) loadBytes(b []byte) error {
-	// extract checksum and accountbytes
+	// extract checksum and verify it
 	checksum := b[:crypto.HashSize]
-	accountBytes := b[crypto.HashSize:]
-
-	// unmarshal the account bytes
-	err := encoding.Unmarshal(accountBytes, ap)
-	if err != nil {
-		return errors.AddContext(err, "Failed to unmarshal account bytes")
-	}
-
-	// generate the checksum and compare
-	uMarAccountBytes := ap.bytes()
-	uMarChecksum := uMarAccountBytes[:crypto.HashSize]
-	if !bytes.Equal(checksum, uMarChecksum[:]) {
+	accBytes := b[crypto.HashSize:]
+	accHash := crypto.HashBytes(accBytes)
+	if !bytes.Equal(checksum, accHash[:]) {
 		return errInvalidChecksum
 	}
-	return nil
+
+	// unmarshal the account bytes onto the persistence object
+	return errors.AddContext(encoding.Unmarshal(accBytes, ap), "Failed to unmarshal account bytes")
 }
