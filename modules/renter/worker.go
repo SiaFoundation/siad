@@ -129,6 +129,11 @@ func (w *worker) status() modules.WorkerStatus {
 		uploadCoolDownErr = w.uploadRecentFailureErr.Error()
 	}
 
+	var accountBalance types.Currency
+	if w.staticAccount != nil {
+		w.staticAccount.managedAvailableBalance()
+	}
+
 	return modules.WorkerStatus{
 		// Contract Information
 		ContractID:      w.cachedContractID,
@@ -148,7 +153,7 @@ func (w *worker) status() modules.WorkerStatus {
 		UploadTerminated:    w.uploadTerminated,
 
 		// Ephemeral Account information
-		AvailableBalance: w.staticAccount.managedAvailableBalance(),
+		AvailableBalance: accountBalance,
 		BalanceTarget:    w.staticBalanceTarget,
 
 		// Job Queues
@@ -334,13 +339,19 @@ func (w *worker) threadedWorkLoop() {
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, hostFCID types.FileContractID, blockHeight types.BlockHeight, account *account) (*worker, error) {
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, hostFCID types.FileContractID, blockHeight types.BlockHeight) (*worker, error) {
 	host, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
 	}
 	if !ok {
 		return nil, errors.New("host does not exist")
+	}
+
+	// open the account
+	account, err := r.managedOpenAccount(hostPubKey)
+	if err != nil {
+		return nil, errors.AddContext(err, "could not open account")
 	}
 
 	// set the balance target to 1SC

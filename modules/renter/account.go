@@ -11,46 +11,72 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 )
 
-// TODO: try to load account from persistence
-//
-// TODO: for now the account is a separate object that sits as first class
-// object on the worker, most probably though this will move as to not have two
-// separate mutex domains.
-
 // withdrawalValidityPeriod defines the period (in blocks) a withdrawal message
 // remains spendable after it has been created. Together with the current block
 // height at time of creation, this period makes up the WithdrawalMessage's
 // expiry height.
 const withdrawalValidityPeriod = 6
 
-// account represents a renter's ephemeral account on a host.
-type account struct {
-	staticID        modules.AccountID
-	staticHostKey   types.SiaPublicKey
-	staticSecretKey crypto.SecretKey
+type (
 
-	pendingDeposits    types.Currency
-	pendingWithdrawals types.Currency
-	balance            types.Currency
+	// account represents a renter's ephemeral account on a host.
+	account struct {
+		staticID        modules.AccountID
+		staticHostKey   types.SiaPublicKey
+		staticOffset    int64
+		staticSecretKey crypto.SecretKey
 
-	staticMu sync.Mutex
-}
+		balance            types.Currency
+		pendingWithdrawals types.Currency
+		pendingDeposits    types.Currency
 
-// managedOpenAccount returns an account for the given host key. If it does not
+		staticMu sync.RWMutex
+	}
+)
+
+// managedOpenAccount returns an account for the given host. If it does not
 // exist already one is created.
-func (r *Renter) managedOpenAccount(hostKey types.SiaPublicKey) *account {
-	// TODO: implementation follows in #4422 (adds persistence)
-	return newAccount(hostKey)
+func (r *Renter) managedOpenAccount(hostKey types.SiaPublicKey) (*account, error) {
+	id := r.mu.Lock()
+	defer r.mu.Unlock(id)
+
+	acc, ok := r.accounts[hostKey.String()]
+	if ok {
+		return acc, nil
+	}
+	acc, err := r.newAccount(hostKey)
+	if err != nil {
+		return nil, err
+	}
+	r.accounts[hostKey.String()] = acc
+	return acc, nil
 }
 
-// newAccount returns an new account object for the given host.
-func newAccount(hostKey types.SiaPublicKey) *account {
+// newAccount returns a new account object for the given host.
+func (r *Renter) newAccount(hostKey types.SiaPublicKey) (*account, error) {
+	// calculate the account's offset
+	offset := (len(r.accounts) + 1) * accountSize // +1 for metadata
+
+	// create the account
 	aid, sk := modules.NewAccountID()
-	return &account{
+	acc := &account{
 		staticID:        aid,
 		staticHostKey:   hostKey,
+		staticOffset:    int64(offset),
 		staticSecretKey: sk,
 	}
+
+	err := acc.managedPersist(r.staticAccountsFile)
+	if err != nil {
+		return nil, errors.AddContext(err, "Failed to persist account")
+	}
+
+	err = r.staticAccountsFile.Sync()
+	if err != nil {
+		return nil, errors.AddContext(err, "Failed to sync accounts file")
+	}
+
+	return acc, nil
 }
 
 // ProvidePayment takes a stream and various payment details and handles the
@@ -63,8 +89,6 @@ func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, 
 	// NOTE: we purposefully do not verify if the account has sufficient funds.
 	// Seeing as withdrawals are a blocking action on the host, it is perfectly
 	// ok to trigger them from an account with insufficient balance.
-
-	// TODO (follow-up !4256) cover with test yet
 
 	// create a withdrawal message
 	msg := newWithdrawalMessage(a.staticID, amount, blockHeight)
