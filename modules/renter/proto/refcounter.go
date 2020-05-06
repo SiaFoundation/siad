@@ -359,7 +359,10 @@ func (rc *RefCounter) SetCount(secIdx uint64, c uint16) (writeaheadlog.Update, e
 	if rc.isDeleted {
 		return writeaheadlog.Update{}, ErrUpdateAfterDelete
 	}
-
+	// this allows the client to set multiple new counts in random order
+	if secIdx >= rc.numSectors {
+		rc.numSectors = secIdx + 1
+	}
 	rc.newSectorCounts[secIdx] = c
 	return createWriteAtUpdate(rc.filepath, secIdx, c), nil
 }
