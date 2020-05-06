@@ -230,11 +230,11 @@ func (h *Host) managedVerifyNewContract(txnSet []types.Transaction, renterPK cry
 
 	// Check that the transaction set is not empty.
 	if len(txnSet) < 1 {
-		return extendErr("zero-length transaction set: ", errEmptyObject)
+		return extendErr("zero-length transaction set: ", ErrEmptyObject)
 	}
 	// Check that there is a file contract in the txnSet.
 	if len(txnSet[len(txnSet)-1].FileContracts) < 1 {
-		return extendErr("transaction without file contract: ", errEmptyObject)
+		return extendErr("transaction without file contract: ", ErrEmptyObject)
 	}
 
 	h.mu.RLock()
@@ -248,32 +248,32 @@ func (h *Host) managedVerifyNewContract(txnSet []types.Transaction, renterPK cry
 
 	// A new file contract should have a file size of zero.
 	if fc.FileSize != 0 {
-		return errBadFileSize
+		return ErrBadFileSize
 	}
 	if fc.FileMerkleRoot != (crypto.Hash{}) {
-		return errBadFileMerkleRoot
+		return ErrBadFileMerkleRoot
 	}
 	// WindowStart must be at least revisionSubmissionBuffer blocks into the
 	// future.
 	if fc.WindowStart <= blockHeight+revisionSubmissionBuffer {
 		h.log.Debugf("A renter tried to form a contract that had a window start which was too soon. The contract started at %v, the current height is %v, the revisionSubmissionBuffer is %v, and the comparison was %v <= %v\n", fc.WindowStart, blockHeight, revisionSubmissionBuffer, fc.WindowStart, blockHeight+revisionSubmissionBuffer)
-		return errEarlyWindow
+		return ErrEarlyWindow
 	}
 	// WindowEnd must be at least settings.WindowSize blocks after
 	// WindowStart.
 	if fc.WindowEnd < fc.WindowStart+eSettings.WindowSize {
-		return errSmallWindow
+		return ErrSmallWindow
 	}
 	// WindowStart must not be more than settings.MaxDuration blocks into the
 	// future.
 	if fc.WindowStart > blockHeight+eSettings.MaxDuration {
-		return errLongDuration
+		return ErrLongDuration
 	}
 
 	// ValidProofOutputs should have 2 outputs (renter + host) and missed
 	// outputs should have 3 (renter + host + void)
 	if len(fc.ValidProofOutputs) != 2 || len(fc.MissedProofOutputs) != 3 {
-		return errBadContractOutputCounts
+		return ErrBadContractOutputCounts
 	}
 	// The unlock hashes of the valid and missed proof outputs for the host
 	// must match the host's unlock hash. The third missed output should point
@@ -283,19 +283,19 @@ func (h *Host) managedVerifyNewContract(txnSet []types.Transaction, renterPK cry
 		return err
 	}
 	if fc.ValidHostOutput().UnlockHash != unlockHash || fc.MissedHostOutput().UnlockHash != unlockHash || voidOutput.UnlockHash != (types.UnlockHash{}) {
-		return errBadPayoutUnlockHashes
+		return ErrBadPayoutUnlockHashes
 	}
 	// Check that the payouts for the valid proof outputs and the missed proof
 	// outputs are the same - this is important because no data has been added
 	// to the file contract yet.
 	if !fc.ValidHostPayout().Equals(fc.MissedHostOutput().Value) {
-		return errMismatchedHostPayouts
+		return ErrMismatchedHostPayouts
 	}
 	// Check that there's enough payout for the host to cover at least the
 	// contract price. This will prevent negative currency panics when working
 	// with the collateral.
 	if fc.ValidHostPayout().Cmp(eSettings.ContractPrice) < 0 {
-		return errLowHostValidOutput
+		return ErrLowHostValidOutput
 	}
 	// Check that the collateral does not exceed the maximum amount of
 	// collateral allowed.
@@ -320,7 +320,7 @@ func (h *Host) managedVerifyNewContract(txnSet []types.Transaction, renterPK cry
 		SignaturesRequired: 2,
 	}.UnlockHash()
 	if fc.UnlockHash != expectedUH {
-		return errBadUnlockHash
+		return ErrBadUnlockHash
 	}
 
 	// Check that the transaction set has enough fees on it to get into the
@@ -328,7 +328,7 @@ func (h *Host) managedVerifyNewContract(txnSet []types.Transaction, renterPK cry
 	setFee := modules.CalculateFee(txnSet)
 	minFee, _ := h.tpool.FeeEstimation()
 	if setFee.Cmp(minFee) < 0 {
-		return errLowTransactionFees
+		return ErrLowTransactionFees
 	}
 	return nil
 }

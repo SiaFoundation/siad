@@ -3,6 +3,7 @@ package contractor
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -118,12 +119,22 @@ func newTestingContractor(testdir string, g modules.Gateway, cs modules.Consensu
 // used for testing host/renter interactions.
 func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, error) {
 	testdir := build.TempDir("contractor", name)
+
 	// create mux
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
 	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
 	if err != nil {
 		return nil, nil, nil, err
 	}
+
+	return newCustomTestingTrio(name, mux)
+}
+
+// newCustomTestingTrio creates a Host, Contractor, and TestMiner that can be
+// used for testing host/renter interactions. It allows to pass a custom siamux.
+func newCustomTestingTrio(name string, mux *siamux.SiaMux) (modules.Host, *Contractor, modules.TestMiner, error) {
+	testdir := build.TempDir("contractor", name)
+
 	// create miner
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
@@ -451,8 +462,12 @@ func TestIntegrationRenew(t *testing.T) {
 		c.mu.Lock()
 		numPubKeys := len(c.pubKeysToContractID)
 		c.mu.Unlock()
-		if len(c.Contracts()) != 1 && numPubKeys != 1 {
-			return errors.New("no contracts were formed")
+		numContracts := len(c.Contracts())
+		if numContracts != 1 {
+			return fmt.Errorf("Expected 1 contracts, found %v", numContracts)
+		}
+		if numPubKeys != 1 {
+			return fmt.Errorf("Expected 1 pubkey, found %v", numPubKeys)
 		}
 		return nil
 	})
@@ -478,6 +493,9 @@ func TestIntegrationRenew(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Grab the host settings.
+	hostSettings := editor.HostSettings()
+
 	// renew the contract
 	err = c.managedAcquireAndUpdateContractUtility(contract.ID, modules.ContractUtility{GoodForRenew: true})
 	if err != nil {
@@ -487,7 +505,7 @@ func TestIntegrationRenew(t *testing.T) {
 	if !ok {
 		t.Fatal("failed to acquire contract")
 	}
-	contract, err = c.managedRenew(oldContract, types.SiacoinPrecision.Mul64(50), c.blockHeight+200)
+	contract, err = c.managedRenew(oldContract, types.SiacoinPrecision.Mul64(50), c.blockHeight+200, hostSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -521,7 +539,7 @@ func TestIntegrationRenew(t *testing.T) {
 		t.Fatal(err)
 	}
 	oldContract, _ = c.staticContracts.Acquire(contract.ID)
-	contract, err = c.managedRenew(oldContract, types.SiacoinPrecision.Mul64(50), c.blockHeight+100)
+	contract, err = c.managedRenew(oldContract, types.SiacoinPrecision.Mul64(50), c.blockHeight+100, hostSettings)
 	if err != nil {
 		t.Fatal(err)
 	}

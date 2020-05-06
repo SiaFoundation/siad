@@ -11,13 +11,14 @@ import (
 // newAppendProgram is a convenience method which prepares the instructions
 // and the program data for a program that executes a single
 // AppendInstruction.
-func newAppendProgram(sectorData []byte, merkleProof bool, pt *modules.RPCPriceTable) (modules.Program, RunningProgramValues, ProgramValues, error) {
-	b := newProgramBuilder()
-	err := b.AddAppendInstruction(sectorData, merkleProof)
+func newAppendProgram(sectorData []byte, merkleProof bool, pt *modules.RPCPriceTable) (modules.Program, modules.RunningProgramValues, modules.ProgramValues, error) {
+	pb := modules.NewProgramBuilder()
+	err := pb.AddAppendInstruction(sectorData, merkleProof)
 	if err != nil {
-		return modules.Program{}, RunningProgramValues{}, ProgramValues{}, err
+		return modules.Program{}, modules.RunningProgramValues{}, modules.ProgramValues{}, err
 	}
-	program, runningValues, finalValues, err := b.Finalize(pt)
+	program := pb.Program()
+	runningValues, finalValues, err := pb.Values(pt, true)
 	return program, runningValues[1], finalValues, err
 }
 
@@ -57,7 +58,8 @@ func TestInstructionSingleAppend(t *testing.T) {
 
 	// Execute it.
 	so := newTestStorageObligation(true)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, finalValues.ExecutionCost, finalValues.Collateral, so)
+	budget := modules.NewBudget(finalValues.ExecutionCost)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, finalValues.Collateral, so)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,6 +72,9 @@ func TestInstructionSingleAppend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !budget.Remaining().IsZero() {
+		t.Fatalf("budget remaining should be zero but was %v", budget.Remaining().HumanString())
+	}
 
 	// The storage obligation should be unchanged before finalizing the program.
 	if len(so.sectorMap) > 0 {
@@ -81,6 +86,10 @@ func TestInstructionSingleAppend(t *testing.T) {
 	// Finalize the program.
 	if err := finalize(so); err != nil {
 		t.Fatal(err)
+	}
+	// Budget should be empty now.
+	if !budget.Remaining().IsZero() {
+		t.Fatal("budget wasn't completely depleted")
 	}
 	// Check the storage obligation again.
 	if len(so.sectorMap) != 1 {
@@ -123,7 +132,8 @@ func TestInstructionSingleAppend(t *testing.T) {
 	}
 
 	// Execute it.
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, program, finalValues.ExecutionCost, finalValues.Collateral, so)
+	budget = modules.NewBudget(finalValues.ExecutionCost)
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, program, budget, finalValues.Collateral, so)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,6 +142,9 @@ func TestInstructionSingleAppend(t *testing.T) {
 	_, err = testCompareOutputs(outputs, expectedOutputs)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !budget.Remaining().IsZero() {
+		t.Fatalf("budget remaining should be zero but was %v", budget.Remaining().HumanString())
 	}
 
 	// The storage obligation should be unchanged before finalizing the program.
@@ -144,6 +157,10 @@ func TestInstructionSingleAppend(t *testing.T) {
 	// Finalize the program.
 	if err := finalize(so); err != nil {
 		t.Fatal(err)
+	}
+	// Budget should be empty now.
+	if !budget.Remaining().IsZero() {
+		t.Fatal("budget wasn't completely depleted")
 	}
 	// Check the storage obligation again.
 	if len(so.sectorMap) != 2 {

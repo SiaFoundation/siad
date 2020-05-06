@@ -354,11 +354,11 @@ func (h *Host) staticReadPriceTableID(stream siamux.Stream) (*modules.RPCPriceTa
 	var found bool
 	pt, found := h.staticPriceTables.managedGet(uid)
 	if !found {
-		return nil, errors.New("Price table not found, it might be expired")
+		return nil, ErrPriceTableNotFound
 	}
 	// make sure the table isn't expired.
 	if pt.Expiry < time.Now().Unix() {
-		return nil, errors.New("Price table requested is expired")
+		return nil, ErrPriceTableExpired
 	}
 	return pt, nil
 }
@@ -398,7 +398,7 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	case modules.RPCExecuteProgram:
 		err = h.managedRPCExecuteProgram(stream)
 	case modules.RPCUpdatePriceTable:
-		err = h.staticRPCUpdatePriceTable(stream)
+		err = h.managedRPCUpdatePriceTable(stream)
 	case modules.RPCFundAccount:
 		err = h.managedRPCFundEphemeralAccount(stream)
 	default:
@@ -412,6 +412,36 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 		atomic.AddUint64(&h.atomicErroredCalls, 1)
 		h.managedLogError(err)
 	}
+}
+
+// staticGetPriceTable receives a stream and reads the price table's UID from
+// it, if it's a known UID we return the price table.
+//
+// NOTE: the price table UID is sent on every RPC call, this to ensure both
+// renter and host use the same pricing. If we were to keep the price table
+// related to the incoming stream (and thus its mux) as state, we would
+// introduce race conditions where host and renter use different price tables
+// within the context of a single RPC request. Having the renter specify it on
+// every request avoids the possiblity of these race conditions.
+func (h *Host) staticGetPriceTable(stream siamux.Stream) (*modules.RPCPriceTable, error) {
+	// read the price table uid
+	var uid modules.UniqueID
+	err := modules.RPCRead(stream, &uid)
+	if err != nil {
+		return nil, errors.AddContext(err, "Failed to read price table UID")
+	}
+
+	// check if we know the uid, if we do return it
+	pt, exists := h.staticPriceTables.managedGet(uid)
+	if !exists {
+		return nil, errors.New("Price table not found, it might be expired")
+	}
+
+	// check if it's still valid or if it has expired
+	if pt.Expiry < time.Now().Unix() {
+		return nil, errors.New("Price table expired")
+	}
+	return pt, nil
 }
 
 // threadedListen listens for incoming RPCs and spawns an appropriate handler for each.

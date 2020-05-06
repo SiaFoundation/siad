@@ -11,7 +11,7 @@ import (
 
 // testCompareProgramValues compares the values of a program calculated during a
 // test with the expected values returned from testProgramValues.
-func testCompareProgramValues(pt *modules.RPCPriceTable, p modules.Program, values ProgramValues) error {
+func testCompareProgramValues(pt *modules.RPCPriceTable, p modules.Program, values modules.ProgramValues) error {
 	expectedValues, err := testProgramValues(p, pt)
 	if err != nil {
 		return err
@@ -74,6 +74,41 @@ func testCompareOutputs(actualOutputs <-chan Output, expectedOutputs []Output) (
 	}
 
 	return lastOutput, nil
+}
+
+// testProgramValues estimates the execution cost, refund, collateral, memory,
+// and time given a program in the form of a list of instructions. This function
+// creates a dummy program that decodes the instructions and their parameters,
+// testing that they were properly encoded.
+func testProgramValues(p modules.Program, pt *modules.RPCPriceTable) (modules.ProgramValues, error) {
+	// Make a dummy program to allow us to get the instruction values.
+	program := &program{
+		staticProgramState: &programState{
+			priceTable: pt,
+		},
+		staticData: openProgramData(p.Data, p.DataLen),
+	}
+	runningValues := modules.InitialProgramValues(pt, p.DataLen, uint64(len(p.Instructions)))
+
+	for _, i := range p.Instructions {
+		// Decode instruction.
+		instruction, err := decodeInstruction(program, i)
+		if err != nil {
+			return modules.ProgramValues{}, err
+		}
+		// Get the values for the instruction.
+		values, err := instructionValues(instruction)
+		if err != nil {
+			return modules.ProgramValues{}, err
+		}
+		// Update running values.
+		runningValues.AddValues(pt, values)
+	}
+
+	// Get the final values for the program.
+	finalValues := runningValues.FinalizeProgramValues(pt)
+
+	return finalValues, nil
 }
 
 // randomSector is a testing helper function that initializes a random sector.

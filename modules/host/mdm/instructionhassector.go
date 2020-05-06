@@ -16,16 +16,6 @@ type instructionHasSector struct {
 	merkleRootOffset uint64
 }
 
-// NewHasSectorInstruction creates a modules.Instruction from arguments.
-func NewHasSectorInstruction(merkleRootOffset uint64) modules.Instruction {
-	i := modules.Instruction{
-		Specifier: modules.SpecifierHasSector,
-		Args:      make([]byte, modules.RPCIHasSectorLen),
-	}
-	binary.LittleEndian.PutUint64(i.Args[:8], merkleRootOffset)
-	return i
-}
-
 // staticDecodeHasSectorInstruction creates a new 'HasSector' instruction from
 // the provided generic instruction.
 func (p *program) staticDecodeHasSectorInstruction(instruction modules.Instruction) (instruction, error) {
@@ -82,7 +72,7 @@ func (i *instructionHasSector) Execute(prevOutput output) output {
 	}
 
 	// Fetch the requested information.
-	hasSector := i.staticState.sectors.hasSector(sectorRoot)
+	hasSector := i.staticState.host.HasSector(sectorRoot)
 
 	// Return the output.
 	out := []byte{0}

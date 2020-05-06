@@ -7,6 +7,8 @@ import (
 	"os"
 	"sync"
 
+	siasync "gitlab.com/NebulousLabs/Sia/sync"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -25,6 +27,10 @@ var (
 	// ErrInvalidVersion is returned when the version of the file we are trying to
 	// read does not match the current RefCounterHeaderSize
 	ErrInvalidVersion = errors.New("invalid file version")
+
+	// ErrInvalidUpdateInstruction is returned when trying to parse a WAL update
+	// instruction that is too short to possibly contain all the required data.
+	ErrInvalidUpdateInstruction = errors.New("instructions slice is too short to contain the required data")
 
 	// ErrUpdateWithoutUpdateSession is returned when an update operation is
 	// called without an open update session
@@ -71,6 +77,9 @@ type (
 		staticWal  *writeaheadlog.WAL
 		mu         sync.Mutex
 
+		// utility fields
+		staticDeps modules.Dependencies
+
 		refCounterUpdateControl
 	}
 
@@ -89,10 +98,11 @@ type (
 		// are allowed to be created and applied
 		isUpdateInProgress bool
 		// newSectorCounts holds the new values of sector counters during an
-		// update session, so we can use them even before they are store on disk
+		// update session, so we can use them even before they are stored on
+		// disk
 		newSectorCounts map[uint64]uint16
 		// muUpdates controls who can create and apply updates
-		muUpdate sync.Mutex
+		muUpdate siasync.TryMutex
 	}
 
 	// u16 is a utility type for ser/des of uint16 values
@@ -129,15 +139,16 @@ func LoadRefCounter(path string, wal *writeaheadlog.WAL) (*RefCounter, error) {
 		filepath:         path,
 		numSectors:       numSectors,
 		staticWal:        wal,
+		staticDeps:       modules.ProdDependencies,
 		refCounterUpdateControl: refCounterUpdateControl{
 			newSectorCounts: make(map[uint64]uint16),
 		},
 	}, nil
 }
 
-// NewRefCounter creates a new sector reference counter file to accompany
-// a contract file
-func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (*RefCounter, error) {
+// NewCustomRefCounter creates a new sector reference counter file to accompany
+// a contract file and allows setting custom dependencies
+func NewCustomRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL, deps modules.Dependencies) (*RefCounter, error) {
 	h := RefCounterHeader{
 		Version: RefCounterVersion,
 	}
@@ -155,10 +166,17 @@ func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (*RefCoun
 		filepath:         path,
 		numSectors:       numSec,
 		staticWal:        wal,
+		staticDeps:       deps,
 		refCounterUpdateControl: refCounterUpdateControl{
 			newSectorCounts: make(map[uint64]uint16),
 		},
 	}, err
+}
+
+// NewRefCounter creates a new sector reference counter file to accompany
+// a contract file
+func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (*RefCounter, error) {
+	return NewCustomRefCounter(path, numSec, wal, modules.ProdDependencies)
 }
 
 // Append appends one counter to the end of the refcounter file and
@@ -189,6 +207,14 @@ func (rc *RefCounter) Count(secIdx uint64) (uint16, error) {
 func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update) error {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
+	// We allow the creation of the file here because of the case where we got
+	// interrupted during the creation of the refcounter after writing the
+	// header update to the Wal but before applying it.
+	f, err := rc.staticDeps.OpenFile(rc.filepath, os.O_CREATE|os.O_RDWR, modules.DefaultFilePerm)
+	if err != nil {
+		return errors.AddContext(err, "failed to open refcounter file in order to apply updates")
+	}
+	defer f.Close()
 	if !rc.isUpdateInProgress {
 		return ErrUpdateWithoutUpdateSession
 	}
@@ -201,12 +227,20 @@ func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update)
 	if err := <-txn.SignalSetupComplete(); err != nil {
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
+	// Starting at this point, the changes to be made are written to the disk.
+	// This means that we need to panic in case applying the updates fails in
+	// order to avoid data corruption.
+	defer func() {
+		if err != nil {
+			panic(err)
+		}
+	}()
 	// Apply the updates.
-	if err := applyUpdates(rc.filepath, updates...); err != nil {
+	if err = applyUpdates(f, updates...); err != nil {
 		return errors.AddContext(err, "failed to apply updates")
 	}
 	// Updates are applied. Let the writeaheadlog know.
-	if err := txn.SignalUpdatesApplied(); err != nil {
+	if err = txn.SignalUpdatesApplied(); err != nil {
 		return errors.AddContext(err, "failed to signal that updates are applied")
 	}
 	return nil
@@ -229,7 +263,7 @@ func (rc *RefCounter) Decrement(secIdx uint64) (writeaheadlog.Update, error) {
 	}
 	count, err := rc.readCount(secIdx)
 	if err != nil {
-		return writeaheadlog.Update{}, errors.AddContext(err, "failed to read count")
+		return writeaheadlog.Update{}, errors.AddContext(err, "failed to read count from decrement")
 	}
 	if count == 0 {
 		return writeaheadlog.Update{}, errors.New("sector count underflow")
@@ -288,7 +322,7 @@ func (rc *RefCounter) Increment(secIdx uint64) (writeaheadlog.Update, error) {
 	}
 	count, err := rc.readCount(secIdx)
 	if err != nil {
-		return writeaheadlog.Update{}, errors.AddContext(err, "failed to read count")
+		return writeaheadlog.Update{}, errors.AddContext(err, "failed to read count from increment")
 	}
 	if count == math.MaxUint16 {
 		return writeaheadlog.Update{}, errors.New("sector count overflow")
@@ -301,15 +335,8 @@ func (rc *RefCounter) Increment(secIdx uint64) (writeaheadlog.Update, error) {
 // StartUpdate acquires a lock, ensuring the caller is the only one currently
 // allowed to perform updates on this refcounter file.
 func (rc *RefCounter) StartUpdate() error {
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
-	if rc.isDeleted {
-		return ErrUpdateAfterDelete
-	}
 	rc.muUpdate.Lock()
-	// open an update session
-	rc.isUpdateInProgress = true
-	return nil
+	return rc.managedStartUpdate()
 }
 
 // Swap swaps the two sectors at the given indices
@@ -327,11 +354,11 @@ func (rc *RefCounter) Swap(firstIdx, secondIdx uint64) ([]writeaheadlog.Update, 
 	}
 	firstVal, err := rc.readCount(firstIdx)
 	if err != nil {
-		return []writeaheadlog.Update{}, errors.AddContext(err, "failed to read count")
+		return []writeaheadlog.Update{}, errors.AddContext(err, "failed to read count from swap")
 	}
 	secondVal, err := rc.readCount(secondIdx)
 	if err != nil {
-		return []writeaheadlog.Update{}, errors.AddContext(err, "failed to read count")
+		return []writeaheadlog.Update{}, errors.AddContext(err, "failed to read count from swap")
 	}
 	rc.newSectorCounts[firstIdx] = secondVal
 	rc.newSectorCounts[secondIdx] = firstVal
@@ -361,6 +388,19 @@ func (rc *RefCounter) UpdateApplied() error {
 	return nil
 }
 
+// managedStartUpdate does everything StartUpdate needs, aside from acquiring a
+// lock
+func (rc *RefCounter) managedStartUpdate() error {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+	if rc.isDeleted {
+		return ErrUpdateAfterDelete
+	}
+	// open an update session
+	rc.isUpdateInProgress = true
+	return nil
+}
+
 // readCount reads the given sector count either from disk (if there are no
 // pending updates) or from the in-memory cache (if there are).
 func (rc *RefCounter) readCount(secIdx uint64) (uint16, error) {
@@ -374,7 +414,7 @@ func (rc *RefCounter) readCount(secIdx uint64) (uint16, error) {
 		return count, nil
 	}
 	// read the value from disk
-	f, err := os.Open(rc.filepath)
+	f, err := rc.staticDeps.Open(rc.filepath)
 	if err != nil {
 		return 0, errors.AddContext(err, "failed to open the refcounter file")
 	}
@@ -382,7 +422,7 @@ func (rc *RefCounter) readCount(secIdx uint64) (uint16, error) {
 
 	var b u16
 	if _, err = f.ReadAt(b[:], int64(offset(secIdx))); err != nil {
-		return 0, errors.AddContext(err, "failed to read from the refcounter file")
+		return 0, errors.AddContext(err, "failed to read from refcounter file")
 	}
 	return binary.LittleEndian.Uint16(b[:]), nil
 }
@@ -400,7 +440,7 @@ func applyDeleteUpdate(update writeaheadlog.Update) error {
 }
 
 // applyTruncateUpdate parses and applies a Truncate update.
-func applyTruncateUpdate(f *os.File, u writeaheadlog.Update) error {
+func applyTruncateUpdate(f modules.File, u writeaheadlog.Update) error {
 	if u.Name != UpdateNameTruncate {
 		return fmt.Errorf("applyAppendTruncate called on update of type %v", u.Name)
 	}
@@ -410,19 +450,11 @@ func applyTruncateUpdate(f *os.File, u writeaheadlog.Update) error {
 		return err
 	}
 	// Truncate the file to the needed size.
-	if err = f.Truncate(RefCounterHeaderSize + int64(newNumSec)*2); err != nil {
-		return err
-	}
-	return f.Sync()
+	return f.Truncate(RefCounterHeaderSize + int64(newNumSec)*2)
 }
 
 // applyUpdates takes a list of WAL updates and applies them.
-func applyUpdates(path string, updates ...writeaheadlog.Update) (err error) {
-	f, err := os.OpenFile(path, os.O_RDWR, modules.DefaultFilePerm)
-	if err != nil {
-		return errors.AddContext(err, "failed to open refcounter file in order to apply updates")
-	}
-	defer f.Close()
+func applyUpdates(f modules.File, updates ...writeaheadlog.Update) (err error) {
 	for _, update := range updates {
 		var err error
 		switch update.Name {
@@ -443,7 +475,7 @@ func applyUpdates(path string, updates ...writeaheadlog.Update) (err error) {
 }
 
 // applyWriteAtUpdate parses and applies a WriteAt update.
-func applyWriteAtUpdate(f *os.File, u writeaheadlog.Update) error {
+func applyWriteAtUpdate(f modules.File, u writeaheadlog.Update) error {
 	if u.Name != UpdateNameWriteAt {
 		return fmt.Errorf("applyAppendWriteAt called on update of type %v", u.Name)
 	}
@@ -453,10 +485,8 @@ func applyWriteAtUpdate(f *os.File, u writeaheadlog.Update) error {
 	// Write the value to disk.
 	var b u16
 	binary.LittleEndian.PutUint16(b[:], value)
-	if _, err = f.WriteAt(b[:], int64(offset(secIdx))); err != nil {
-		return err
-	}
-	return f.Sync()
+	_, err = f.WriteAt(b[:], int64(offset(secIdx)))
+	return err
 }
 
 // createDeleteUpdate is a helper function which creates a writeaheadlog update
@@ -510,7 +540,7 @@ func offset(secIdx uint64) uint64 {
 // readTruncateUpdate decodes a Truncate update
 func readTruncateUpdate(u writeaheadlog.Update) (path string, newNumSec uint64, err error) {
 	if len(u.Instructions) < 8 {
-		err = errors.New("instructions slice of update is too short to contain the size and path")
+		err = ErrInvalidUpdateInstruction
 		return
 	}
 	newNumSec = binary.LittleEndian.Uint64(u.Instructions[:8])
@@ -521,7 +551,7 @@ func readTruncateUpdate(u writeaheadlog.Update) (path string, newNumSec uint64, 
 // readWriteAtUpdate decodes a WriteAt update
 func readWriteAtUpdate(u writeaheadlog.Update) (path string, secIdx uint64, value uint16, err error) {
 	if len(u.Instructions) < 10 {
-		err = errors.New("instructions slice of update is too short to contain the size and path")
+		err = ErrInvalidUpdateInstruction
 		return
 	}
 	secIdx = binary.LittleEndian.Uint64(u.Instructions[:8])

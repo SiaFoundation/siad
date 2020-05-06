@@ -1,6 +1,8 @@
 package encoding
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 )
@@ -47,5 +49,18 @@ func WritePrefixedBytes(w io.Writer, data []byte) error {
 
 // WriteObject writes a length-prefixed object to w.
 func WriteObject(w io.Writer, v interface{}) error {
-	return WritePrefixedBytes(w, Marshal(v))
+	var buf bytes.Buffer
+	if s, ok := v.(interface{ MarshalSiaSize() int }); ok {
+		buf.Grow(8 + s.MarshalSiaSize())
+	}
+	enc := NewEncoder(&buf)
+	enc.WriteUint64(0) // placeholder
+	enc.Encode(v)
+	b := buf.Bytes()
+	binary.LittleEndian.PutUint64(b[:8], uint64(len(b)-8))
+	n, err := w.Write(b)
+	if err == nil && n != len(b) {
+		err = io.ErrShortWrite
+	}
+	return err
 }

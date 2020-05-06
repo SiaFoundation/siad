@@ -118,7 +118,7 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 	defer backup.Close()
 
 	// Prepare the siapath.
-	sp, err := modules.SnapshotsSiaPath().Join(name)
+	sp, err := modules.BackupFolder.Join(name)
 	if err != nil {
 		return err
 	}
@@ -201,7 +201,7 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 		return err
 	}
 	// Store it in the backup file set.
-	backupSiaPath, err := modules.SnapshotsSiaPath().Join(name)
+	backupSiaPath, err := modules.BackupFolder.Join(name)
 	if err != nil {
 		return err
 	}
@@ -209,7 +209,7 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 		return err
 	}
 	// Load the .sia file.
-	siaPath, err := modules.SnapshotsSiaPath().Join(name)
+	siaPath, err := modules.BackupFolder.Join(name)
 	if err != nil {
 		return err
 	}
@@ -526,7 +526,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 
 		// First, process any snapshot siafiles that may have finished uploading.
 		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
-		root := modules.SnapshotsSiaPath()
+		root := modules.BackupFolder
 		finfos, _, err := r.staticFileSystem.List(root, true, offlineMap, goodForRenewMap, contractsMap)
 		if err != nil {
 			r.log.Println("Could not get un-uploaded snapshots:", err)
@@ -537,7 +537,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			var meta modules.UploadedBackup
 			found := false
 			for _, meta = range r.persist.UploadedBackups {
-				sp, _ := info.SiaPath.Rebase(modules.SnapshotsSiaPath(), modules.RootSiaPath())
+				sp, _ := info.SiaPath.Rebase(modules.BackupFolder, modules.RootSiaPath())
 				if meta.Name == sp.String() {
 					found = true
 					break

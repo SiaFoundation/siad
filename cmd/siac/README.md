@@ -198,8 +198,8 @@ if you have multiple downloads happening simultaneously.
   will still be available on skynet as long as you continue maintaining the file
   in your renter.
 
-* `siac skynet unpin [siapath]` unpins a skyfile, deleting it from your list of
-  stored files.
+* `siac skynet unpin [siapath]` unpins one or more skyfiles or directories,
+  deleting them from your list of stored files or directories.
 
 * `siac skynet convert [source siaPath] [destination siaPath]` converts a
   siafile to a skyfile and then generates its skylink. A new skylink will be

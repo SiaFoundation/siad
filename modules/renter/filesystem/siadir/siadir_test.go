@@ -1,7 +1,6 @@
 package siadir
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,69 +8,36 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // checkMetadataInit is a helper that verifies that the metadata was initialized
 // properly
 func checkMetadataInit(md Metadata) error {
-	// Check Aggregate Fields
-	if md.AggregateHealth != DefaultDirHealth {
-		return fmt.Errorf("SiaDir AggregateHealth not set properly: got %v expected %v", md.AggregateHealth, DefaultDirHealth)
-	}
-	if !md.AggregateLastHealthCheckTime.IsZero() {
-		return fmt.Errorf("AggregateLastHealthCheckTime should be zero but was %v", md.AggregateLastHealthCheckTime)
-	}
-	if md.AggregateMinRedundancy != DefaultDirRedundancy {
-		return fmt.Errorf("SiaDir AggregateMinRedundancy not set properly: got %v expected %v", md.AggregateMinRedundancy, DefaultDirRedundancy)
-	}
+	// Check that the modTimes are not Zero
 	if md.AggregateModTime.IsZero() {
 		return errors.New("AggregateModTime not initialized")
-	}
-	if md.AggregateNumFiles != 0 {
-		return fmt.Errorf("SiaDir AggregateNumFiles not set properly: got %v expected 0", md.AggregateNumFiles)
-	}
-	if md.AggregateNumStuckChunks != 0 {
-		return fmt.Errorf("SiaDir AggregateNumStuckChunks not initialized properly, expected 0, got %v", md.AggregateNumStuckChunks)
-	}
-	if md.AggregateNumSubDirs != 0 {
-		return fmt.Errorf("SiaDir AggregateNumSubDirs not initialized properly, expected 0, got %v", md.AggregateNumSubDirs)
-	}
-	if md.AggregateStuckHealth != DefaultDirHealth {
-		return fmt.Errorf("SiaDir AggregateStuckHealth not set properly: got %v expected %v", md.AggregateStuckHealth, DefaultDirHealth)
-	}
-	if md.AggregateSize != 0 {
-		return fmt.Errorf("SiaDir AggregateSize not set properly: got %v expected 0", md.AggregateSize)
-	}
-
-	// Check SiaDir Fields
-	if md.Health != DefaultDirHealth {
-		return fmt.Errorf("SiaDir Health not set properly: got %v expected %v", md.Health, DefaultDirHealth)
-	}
-	if !md.LastHealthCheckTime.IsZero() {
-		return fmt.Errorf("LastHealthCheckTime should be zero but was %v", md.LastHealthCheckTime)
-	}
-	if md.MinRedundancy != DefaultDirRedundancy {
-		return fmt.Errorf("SiaDir MinRedundancy not set properly: got %v expected %v", md.MinRedundancy, DefaultDirRedundancy)
 	}
 	if md.ModTime.IsZero() {
 		return errors.New("ModTime not initialized")
 	}
-	if md.NumFiles != 0 {
-		return fmt.Errorf("SiaDir NumFiles not initialized properly, expected 0, got %v", md.NumFiles)
+
+	// All the rest of the metadata should be default values
+	initMetadata := Metadata{
+		AggregateHealth:        DefaultDirHealth,
+		AggregateMinRedundancy: DefaultDirRedundancy,
+		AggregateModTime:       md.AggregateModTime,
+		AggregateRemoteHealth:  DefaultDirHealth,
+		AggregateStuckHealth:   DefaultDirHealth,
+
+		Health:        DefaultDirHealth,
+		MinRedundancy: DefaultDirRedundancy,
+		ModTime:       md.ModTime,
+		RemoteHealth:  DefaultDirHealth,
+		StuckHealth:   DefaultDirHealth,
 	}
-	if md.NumStuckChunks != 0 {
-		return fmt.Errorf("SiaDir NumStuckChunks not initialized properly, expected 0, got %v", md.NumStuckChunks)
-	}
-	if md.NumSubDirs != 0 {
-		return fmt.Errorf("SiaDir NumSubDirs not initialized properly, expected 0, got %v", md.NumSubDirs)
-	}
-	if md.StuckHealth != DefaultDirHealth {
-		return fmt.Errorf("SiaDir stuck health not set properly: got %v expected %v", md.StuckHealth, DefaultDirHealth)
-	}
-	if md.Size != 0 {
-		return fmt.Errorf("SiaDir Size not set properly: got %v expected 0", md.Size)
-	}
-	return nil
+
+	return equalMetadatas(md, initMetadata)
 }
 
 // newRootDir creates a root directory for the test and removes old test files
@@ -82,6 +48,34 @@ func newRootDir(t *testing.T) (string, error) {
 		return "", err
 	}
 	return dir, nil
+}
+
+// randomMetadata returns a siadir Metadata struct with random values set
+func randomMetadata() Metadata {
+	md := Metadata{
+		AggregateHealth:              float64(fastrand.Intn(100)),
+		AggregateLastHealthCheckTime: time.Now(),
+		AggregateMinRedundancy:       float64(fastrand.Intn(100)),
+		AggregateModTime:             time.Now(),
+		AggregateNumFiles:            fastrand.Uint64n(100),
+		AggregateNumStuckChunks:      fastrand.Uint64n(100),
+		AggregateNumSubDirs:          fastrand.Uint64n(100),
+		AggregateRemoteHealth:        float64(fastrand.Intn(100)),
+		AggregateSize:                fastrand.Uint64n(100),
+		AggregateStuckHealth:         float64(fastrand.Intn(100)),
+
+		Health:              float64(fastrand.Intn(100)),
+		LastHealthCheckTime: time.Now(),
+		MinRedundancy:       float64(fastrand.Intn(100)),
+		ModTime:             time.Now(),
+		NumFiles:            fastrand.Uint64n(100),
+		NumStuckChunks:      fastrand.Uint64n(100),
+		NumSubDirs:          fastrand.Uint64n(100),
+		RemoteHealth:        float64(fastrand.Intn(100)),
+		Size:                fastrand.Uint64n(100),
+		StuckHealth:         float64(fastrand.Intn(100)),
+	}
+	return md
 }
 
 // TestNewSiaDir tests that siadirs are created on disk properly. It uses
@@ -221,28 +215,7 @@ func TestUpdateMetadata(t *testing.T) {
 	}
 
 	// Set the metadata
-	checkTime := time.Now()
-	metadataUpdate := md
-	// Aggregate fields
-	metadataUpdate.AggregateHealth = 7
-	metadataUpdate.AggregateLastHealthCheckTime = checkTime
-	metadataUpdate.AggregateMinRedundancy = 2.2
-	metadataUpdate.AggregateModTime = checkTime
-	metadataUpdate.AggregateNumFiles = 11
-	metadataUpdate.AggregateNumStuckChunks = 15
-	metadataUpdate.AggregateNumSubDirs = 5
-	metadataUpdate.AggregateSize = 2432
-	metadataUpdate.AggregateStuckHealth = 5
-	// SiaDir fields
-	metadataUpdate.Health = 4
-	metadataUpdate.LastHealthCheckTime = checkTime
-	metadataUpdate.MinRedundancy = 2
-	metadataUpdate.ModTime = checkTime
-	metadataUpdate.NumFiles = 5
-	metadataUpdate.NumStuckChunks = 6
-	metadataUpdate.NumSubDirs = 4
-	metadataUpdate.Size = 223
-	metadataUpdate.StuckHealth = 2
+	metadataUpdate := randomMetadata()
 
 	err = siaDir.UpdateMetadata(metadataUpdate)
 	if err != nil {

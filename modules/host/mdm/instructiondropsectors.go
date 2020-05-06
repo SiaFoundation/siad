@@ -17,19 +17,6 @@ type instructionDropSectors struct {
 	numSectorsOffset uint64
 }
 
-// NewDropSectorsInstruction creates a modules.Instruction from arguments.
-func NewDropSectorsInstruction(numSectorsOffset uint64, merkleProof bool) modules.Instruction {
-	i := modules.Instruction{
-		Specifier: modules.SpecifierDropSectors,
-		Args:      make([]byte, modules.RPCIDropSectorsLen),
-	}
-	binary.LittleEndian.PutUint64(i.Args[:8], numSectorsOffset)
-	if merkleProof {
-		i.Args[8] = 1
-	}
-	return i
-}
-
 // staticDecodeDropSectorsInstruction creates a new 'DropSectors' instruction from the
 // provided generic instruction.
 func (p *program) staticDecodeDropSectorsInstruction(instruction modules.Instruction) (instruction, error) {

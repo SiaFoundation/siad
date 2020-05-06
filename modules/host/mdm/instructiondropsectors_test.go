@@ -39,39 +39,40 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	// Construct the program.
 
 	pt := newTestPriceTable()
-	b := newProgramBuilder()
+	pb := modules.NewProgramBuilder()
 
 	sectorData1 := fastrand.Bytes(int(modules.SectorSize))
-	err := b.AddAppendInstruction(sectorData1, false)
+	err := pb.AddAppendInstruction(sectorData1, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	merkleRoots1 := []crypto.Hash{crypto.MerkleRoot(sectorData1)}
 
 	sectorData2 := fastrand.Bytes(int(modules.SectorSize))
-	err = b.AddAppendInstruction(sectorData2, false)
+	err = pb.AddAppendInstruction(sectorData2, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	merkleRoots2 := []crypto.Hash{merkleRoots1[0], crypto.MerkleRoot(sectorData2)}
 
 	sectorData3 := fastrand.Bytes(int(modules.SectorSize))
-	err = b.AddAppendInstruction(sectorData3, false)
+	err = pb.AddAppendInstruction(sectorData3, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	merkleRoots3 := []crypto.Hash{merkleRoots2[0], merkleRoots2[1], crypto.MerkleRoot(sectorData3)}
 
 	// Don't drop any sectors.
-	b.AddDropSectorsInstruction(0, true)
+	pb.AddDropSectorsInstruction(0, true)
 
 	// Drop one sector.
-	b.AddDropSectorsInstruction(1, true)
+	pb.AddDropSectorsInstruction(1, true)
 
 	// Drop two remaining sectors.
-	b.AddDropSectorsInstruction(2, true)
+	pb.AddDropSectorsInstruction(2, true)
 
-	program, runningValues, finalValues, err := b.Finalize(pt)
+	program := pb.Program()
+	runningValues, finalValues, err := pb.Values(pt, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +142,8 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 
 	// Execute the program.
 	so := newTestStorageObligation(true)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, finalValues.ExecutionCost, finalValues.Collateral, so)
+	budget := modules.NewBudget(finalValues.ExecutionCost)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, finalValues.Collateral, so)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,6 +166,11 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	// Finalize the program.
 	if err := finalize(so); err != nil {
 		t.Fatal(err)
+	}
+
+	// Budget should be empty now.
+	if !budget.Remaining().IsZero() {
+		t.Fatal("budget wasn't completely depleted")
 	}
 
 	// Update variables.

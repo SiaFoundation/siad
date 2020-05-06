@@ -125,6 +125,13 @@ func (c *Client) getReaderResponse(resource string) (http.Header, io.ReadCloser,
 		return nil, nil, errors.AddContext(err, "GET request failed")
 	}
 
+	// Add ErrAPICallNotRecognized if StatusCode is StatusNotFound to allow for
+	// handling of modules that are not loaded
+	if res.StatusCode == http.StatusNotFound {
+		err = errors.Compose(readAPIError(res.Body), api.ErrAPICallNotRecognized)
+		return nil, nil, errors.AddContext(err, "unable to perform GET on "+resource)
+	}
+
 	// If the status code is not 2xx, decode and return the accompanying
 	// api.Error.
 	if res.StatusCode < 200 || res.StatusCode > 299 {
@@ -156,8 +163,11 @@ func (c *Client) getRawPartialResponse(resource string, from, to uint64) ([]byte
 	}
 	defer drainAndClose(res.Body)
 
+	// Add ErrAPICallNotRecognized if StatusCode is StatusNotFound to allow for
+	// handling of modules that are not loaded
 	if res.StatusCode == http.StatusNotFound {
-		return nil, errors.AddContext(api.ErrAPICallNotRecognized, "unable to perform GET on "+resource)
+		err = errors.Compose(readAPIError(res.Body), api.ErrAPICallNotRecognized)
+		return nil, errors.AddContext(err, "unable to perform GET on "+resource)
 	}
 
 	// If the status code is not 2xx, decode and return the accompanying
@@ -239,6 +249,13 @@ func (c *Client) postRawResponseWithHeaders(resource string, body io.Reader, hea
 		return http.Header{}, nil, errors.AddContext(err, "POST request failed")
 	}
 	defer drainAndClose(res.Body)
+
+	// Add ErrAPICallNotRecognized if StatusCode is StatusNotFound to allow for
+	// handling of modules that are not loaded
+	if res.StatusCode == http.StatusNotFound {
+		err = errors.Compose(readAPIError(res.Body), api.ErrAPICallNotRecognized)
+		return http.Header{}, nil, errors.AddContext(err, "unable to perform POST on "+resource)
+	}
 
 	// If the status code is not 2xx, decode and return the accompanying
 	// api.Error.

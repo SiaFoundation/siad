@@ -196,7 +196,7 @@ func TestHasSector(t *testing.T) {
 func TestReadSector(t *testing.T) {
 	// Initialize the host and sectors.
 	sectorRoots := randomSectorRoots(initialContractSectors)
-	host := newTestHost()
+	host := newCustomTestHost(false)
 	host.sectors = randomSectorMap(sectorRoots)
 	sectorsGained := randomSectorRoots(initialContractSectors)
 	sectorRoots = append(sectorRoots, sectorsGained...)

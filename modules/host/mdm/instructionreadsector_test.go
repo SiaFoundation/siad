@@ -8,16 +8,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
-// newReadSectorProgram is a convenience method which prepares the instructions
-// and the program data for a program that executes a single
-// ReadSectorInstruction.
-func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, merkleProof bool, pt *modules.RPCPriceTable) (modules.Program, RunningProgramValues, ProgramValues, error) {
-	b := newProgramBuilder()
-	b.AddReadSectorInstruction(length, offset, merkleRoot, merkleProof)
-	program, runningValues, finalValues, err := b.Finalize(pt)
-	return program, runningValues[1], finalValues, err
-}
-
 // TestInstructionReadSector tests executing a program with a single
 // ReadSectorInstruction.
 func TestInstructionReadSector(t *testing.T) {
@@ -25,16 +15,22 @@ func TestInstructionReadSector(t *testing.T) {
 	mdm := New(host)
 	defer mdm.Stop()
 
-	// Create a program to read a full sector from the host.
+	// Prepare a priceTable.
 	pt := newTestPriceTable()
-	readLen := modules.SectorSize
+	// Prepare storage obligation.
 	so := newTestStorageObligation(true)
 	so.sectorRoots = randomSectorRoots(initialContractSectors)
 	root := so.sectorRoots[0]
-	program, runningValues, finalValues, err := newReadSectorProgram(readLen, 0, root, true, pt)
+	// Use a builder to build the program.
+	readLen := modules.SectorSize
+	pb := modules.NewProgramBuilder()
+	pb.AddReadSectorInstruction(readLen, 0, so.sectorRoots[0], true)
+	program := pb.Program()
+	runningValues, finalValues, err := pb.Values(pt, true)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
 
@@ -57,12 +53,13 @@ func TestInstructionReadSector(t *testing.T) {
 				Proof:         []crypto.Hash{},
 				Output:        outputData,
 			},
-			runningValues,
+			runningValues[1],
 		},
 	}
 
 	// Execute it.
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, finalValues.ExecutionCost, finalValues.Collateral, so)
+	budget := modules.NewBudget(finalValues.ExecutionCost)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, finalValues.Collateral, so)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +79,12 @@ func TestInstructionReadSector(t *testing.T) {
 	// Create a program to read half a sector from the host.
 	offset := modules.SectorSize / 2
 	length := offset
-	program, runningValues, finalValues, err = newReadSectorProgram(length, offset, so.sectorRoots[0], true, pt)
+
+	// Use a builder to build the program.
+	pb = modules.NewProgramBuilder()
+	pb.AddReadSectorInstruction(length, offset, so.sectorRoots[0], true)
+	program = pb.Program()
+	runningValues, finalValues, err = pb.Values(pt, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,12 +108,13 @@ func TestInstructionReadSector(t *testing.T) {
 				Proof:         proof,
 				Output:        outputData,
 			},
-			runningValues,
+			runningValues[1],
 		},
 	}
 
 	// Execute it.
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, program, finalValues.ExecutionCost, finalValues.Collateral, so)
+	budget = modules.NewBudget(finalValues.ExecutionCost)
+	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, program, budget, finalValues.Collateral, so)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,6 +126,72 @@ func TestInstructionReadSector(t *testing.T) {
 	}
 
 	// No need to finalize the program since an this program is readonly.
+	if finalize != nil {
+		t.Fatal("finalize callback should be nil for readonly program")
+	}
+}
+
+// TestInstructionReadOutsideSector tests reading a sector from outside the
+// storage obligation.
+func TestInstructionReadOutsideSector(t *testing.T) {
+	host := newTestHost()
+	mdm := New(host)
+	defer mdm.Stop()
+
+	// Add a sector root to the host but not to the SO.
+	sectorRoot := randomSectorRoots(1)[0]
+	sectorData, err := host.ReadSector(sectorRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a program to read a full sector from the host.
+	pt := newTestPriceTable()
+	readLen := modules.SectorSize
+
+	// Execute it.
+	so := newTestStorageObligation(true)
+	// Use a builder to build the program.
+	pb := modules.NewProgramBuilder()
+	pb.AddReadSectorInstruction(readLen, 0, sectorRoot, true)
+	program := pb.Program()
+	runningValues, finalValues, err := pb.Values(pt, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	imr := crypto.Hash{}
+
+	// Expected outputs.
+	expectedOutputs := []Output{
+		{
+			output{
+				NewSize:       0,
+				NewMerkleRoot: imr,
+				Proof:         []crypto.Hash{},
+				Output:        sectorData,
+			},
+			runningValues[1],
+		},
+	}
+
+	// Execute it.
+	budget := modules.NewBudget(finalValues.ExecutionCost)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, finalValues.Collateral, so)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check outputs.
+	_, err = testCompareOutputs(outputs, expectedOutputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !budget.Remaining().IsZero() {
+		t.Fatalf("budget remaining should be zero but was %v", budget.Remaining().HumanString())
+	}
+
+	// No need to finalize the program since this program is readonly.
 	if finalize != nil {
 		t.Fatal("finalize callback should be nil for readonly program")
 	}

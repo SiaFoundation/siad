@@ -1,0 +1,1 @@
+- Fix a bug in `parsePercentages` and added randomized testing

@@ -61,6 +61,34 @@ func TestSiaPublicKeyEquals(t *testing.T) {
 	}
 }
 
+// TestSiaPublicKeyToPublicKey tests the functionality of
+// 'ToPublicKey' on the SiaPublicKey object
+func TestSiaPublicKeyToPublicKey(t *testing.T) {
+	// randomSPK returns a random SiaPublicKey with specified key length
+	randomSPK := func(keyLength int) SiaPublicKey {
+		return SiaPublicKey{
+			Algorithm: SignatureEd25519,
+			Key:       fastrand.Bytes(keyLength),
+		}
+	}
+
+	// verify ToPublicKey for a correct key length
+	spk := randomSPK(crypto.PublicKeySize)
+	cpk := spk.ToPublicKey()
+	if !bytes.Equal(cpk[:], spk.Key[:]) {
+		t.Fatal("Expected crytpo.PublicKey to equal the Key in SiaPublicKey")
+	}
+
+	// verify the build.Critical for an incorrect key length
+	spk = randomSPK(crypto.PublicKeySize * 2)
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Converting a SiaPublicKey, with an incorrect key length, to a crypto.PublicKey did not cause a panic")
+		}
+	}()
+	_ = spk.ToPublicKey()
+}
+
 // TestUnlockHash runs the UnlockHash code.
 func TestUnlockHash(t *testing.T) {
 	uc := UnlockConditions{

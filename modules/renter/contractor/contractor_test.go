@@ -1,7 +1,7 @@
 package contractor
 
 import (
-	"errors"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/consensus"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
@@ -16,6 +17,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // newModules initializes the modules needed to test creating a new contractor
@@ -437,6 +439,147 @@ func TestHostMaxDuration(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("Contract should not have been renewed")
+	}
+}
+
+// TestPayment verifies the PaymentProvider interface on the contractor. It does
+// this by trying to pay the host using a filecontract and verifying if payment
+// can be made successfully.
+func TestPayment(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a siamux
+	testdir := build.TempDir("contractor", t.Name())
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create a testing trio with our mux injected
+	h, c, _, err := newCustomTestingTrio(t.Name(), mux)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hpk := h.PublicKey()
+
+	// set an allowance and wait for contracts
+	err = c.SetAllowance(modules.DefaultAllowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = build.Retry(50, 100*time.Millisecond, func() error {
+		if len(c.Contracts()) == 0 {
+			return errors.New("no contract created")
+		}
+		return nil
+	})
+
+	// create a refund account
+	aid, _ := modules.NewAccountID()
+
+	// backup the amount renter funds
+	contract, ok := c.ContractByPublicKey(hpk)
+	if !ok {
+		t.Fatal("No contract with host")
+	}
+	initial := contract.RenterFunds
+
+	// write the rpc id
+	stream, err := modules.NewHostStream(mux, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// read the updated response
+	var update modules.RPCUpdatePriceTableResponse
+	err = modules.RPCRead(stream, &update)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// unmarshal the JSON into a price table
+	var pt modules.RPCPriceTable
+	err = json.Unmarshal(update.PriceTableJSON, &pt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// provide payment
+	err = c.ProvidePayment(stream, contract.HostPublicKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, aid, c.blockHeight)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the contract was updated
+	contract, _ = c.ContractByPublicKey(hpk)
+	remaining := contract.RenterFunds
+	expected := initial.Sub(pt.UpdatePriceTableCost)
+	if !remaining.Equals(expected) {
+		t.Fatalf("Expected renter contract to reflect the payment, the renter funds should be %v but were %v", expected.HumanString(), remaining.HumanString())
+	}
+
+	// write the rpc id
+	stream, err = modules.NewHostStream(mux, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = modules.RPCWrite(stream, modules.RPCFundAccount)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// write the price table uid
+	err = modules.RPCWrite(stream, pt.UID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// send fund account request (re-use the refund account)
+	err = modules.RPCWrite(stream, modules.FundAccountRequest{Account: aid})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// provide payment
+	funding := remaining.Div64(2)
+	if funding.Cmp(h.InternalSettings().MaxEphemeralAccountBalance) > 0 {
+		funding = h.InternalSettings().MaxEphemeralAccountBalance
+	}
+
+	err = c.ProvidePayment(stream, hpk, modules.RPCFundAccount, funding.Add(pt.FundAccountCost), modules.ZeroAccountID, c.blockHeight)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// receive response
+	var resp modules.FundAccountResponse
+	err = modules.RPCRead(stream, &resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the receipt
+	receipt := resp.Receipt
+	err = crypto.VerifyHash(crypto.HashAll(receipt), hpk.ToPublicKey(), resp.Signature)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !receipt.Amount.Equals(funding) {
+		t.Fatalf("Unexpected funded amount in the receipt, expected %v but received %v", funding.HumanString(), receipt.Amount.HumanString())
+	}
+	if receipt.Account != aid {
+		t.Fatalf("Unexpected account id in the receipt, expected %v but received %v", aid, receipt.Account)
+	}
+	if !receipt.Host.Equals(hpk) {
+		t.Fatalf("Unexpected host pubkey in the receipt, expected %v but received %v", hpk, receipt.Host)
 	}
 }
 

@@ -17,19 +17,6 @@ type instructionAppend struct {
 	dataOffset uint64
 }
 
-// NewAppendInstruction creates a modules.Instruction from arguments.
-func NewAppendInstruction(dataOffset uint64, merkleProof bool) modules.Instruction {
-	i := modules.Instruction{
-		Specifier: modules.SpecifierAppend,
-		Args:      make([]byte, modules.RPCIAppendLen),
-	}
-	binary.LittleEndian.PutUint64(i.Args[:8], dataOffset)
-	if merkleProof {
-		i.Args[8] = 1
-	}
-	return i
-}
-
 // staticDecodeAppendInstruction creates a new 'Append' instruction from the
 // provided generic instruction.
 func (p *program) staticDecodeAppendInstruction(instruction modules.Instruction) (instruction, error) {

@@ -86,14 +86,14 @@ func (h *Host) managedRevisionIteration(conn net.Conn, so *storageObligation, fi
 			// is ActionInsert, we permit inserting at the end.
 			if modification.Type == modules.ActionInsert {
 				if modification.SectorIndex > uint64(len(so.SectorRoots)) {
-					return errBadModificationIndex
+					return ErrBadModificationIndex
 				}
 			} else if modification.SectorIndex >= uint64(len(so.SectorRoots)) {
-				return errBadModificationIndex
+				return ErrBadModificationIndex
 			}
 			// Check that the data sent for the sector is not too large.
 			if uint64(len(modification.Data)) > modules.SectorSize {
-				return errLargeSector
+				return ErrLargeSector
 			}
 
 			switch modification.Type {
@@ -105,7 +105,7 @@ func (h *Host) managedRevisionIteration(conn net.Conn, so *storageObligation, fi
 			case modules.ActionInsert:
 				// Check that the sector size is correct.
 				if uint64(len(modification.Data)) != modules.SectorSize {
-					return errBadSectorSize
+					return ErrBadSectorSize
 				}
 
 				// Update finances.
@@ -125,7 +125,7 @@ func (h *Host) managedRevisionIteration(conn net.Conn, so *storageObligation, fi
 				// checked for being appropriately small as well otherwise there is
 				// a risk of overflow.
 				if modification.Offset > modules.SectorSize || modification.Offset+uint64(len(modification.Data)) > modules.SectorSize {
-					return errIllegalOffsetAndLength
+					return ErrIllegalOffsetAndLength
 				}
 
 				// Get the data for the new sector.
@@ -145,7 +145,7 @@ func (h *Host) managedRevisionIteration(conn net.Conn, so *storageObligation, fi
 				sectorsGained[newRoot] = sector
 				so.SectorRoots[modification.SectorIndex] = newRoot
 			default:
-				return errUnknownModification
+				return ErrUnknownModification
 			}
 		}
 		newRevenue := storageRevenue.Add(bandwidthRevenue)
@@ -240,13 +240,13 @@ func (h *Host) managedRPCReviseContract(conn net.Conn) error {
 func verifyRevision(so storageObligation, revision types.FileContractRevision, blockHeight types.BlockHeight, expectedExchange, expectedCollateral types.Currency) error {
 	// Check that the revision is well-formed.
 	if len(revision.NewValidProofOutputs) != 2 || len(revision.NewMissedProofOutputs) != 3 {
-		return errBadContractOutputCounts
+		return ErrBadContractOutputCounts
 	}
 
 	// Check that the time to finalize and submit the file contract revision
 	// has not already passed.
 	if so.expiration()-revisionSubmissionBuffer <= blockHeight {
-		return errLateRevision
+		return ErrLateRevision
 	}
 
 	oldFCR := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0]
@@ -273,54 +273,54 @@ func verifyRevision(so storageObligation, revision types.FileContractRevision, b
 
 	// Check that all non-volatile fields are the same.
 	if oldFCR.ParentID != revision.ParentID {
-		return errBadContractParent
+		return ErrBadContractParent
 	}
 	if oldFCR.UnlockConditions.UnlockHash() != revision.UnlockConditions.UnlockHash() {
-		return errBadUnlockConditions
+		return ErrBadUnlockConditions
 	}
 	if oldFCR.NewRevisionNumber >= revision.NewRevisionNumber {
-		return errBadRevisionNumber
+		return ErrBadRevisionNumber
 	}
 	if revision.NewFileSize != uint64(len(so.SectorRoots))*modules.SectorSize {
-		return errBadFileSize
+		return ErrBadFileSize
 	}
 	if oldFCR.NewWindowStart != revision.NewWindowStart {
-		return errBadWindowStart
+		return ErrBadWindowStart
 	}
 	if oldFCR.NewWindowEnd != revision.NewWindowEnd {
-		return errBadWindowEnd
+		return ErrBadWindowEnd
 	}
 	if oldFCR.NewUnlockHash != revision.NewUnlockHash {
-		return errBadUnlockHash
+		return ErrBadUnlockHash
 	}
 
 	// Determine the amount that was transferred from the renter.
 	if revision.ValidRenterPayout().Cmp(oldFCR.ValidRenterPayout()) > 0 {
-		return extendErr("renter increased its valid proof output: ", errHighRenterValidOutput)
+		return extendErr("renter increased its valid proof output: ", ErrHighRenterValidOutput)
 	}
 	fromRenter := oldFCR.ValidRenterPayout().Sub(revision.ValidRenterPayout())
 	// Verify that enough money was transferred.
 	if fromRenter.Cmp(expectedExchange) < 0 {
 		s := fmt.Sprintf("expected at least %v to be exchanged, but %v was exchanged: ", expectedExchange, fromRenter)
-		return extendErr(s, errHighRenterValidOutput)
+		return extendErr(s, ErrHighRenterValidOutput)
 	}
 
 	// Determine the amount of money that was transferred to the host.
 	if oldFCR.ValidHostPayout().Cmp(revision.ValidHostPayout()) > 0 {
-		return extendErr("host valid proof output was decreased: ", errLowHostValidOutput)
+		return extendErr("host valid proof output was decreased: ", ErrLowHostValidOutput)
 	}
 	toHost := revision.ValidHostPayout().Sub(oldFCR.ValidHostPayout())
 	// Verify that enough money was transferred.
 	if !toHost.Equals(fromRenter) {
 		s := fmt.Sprintf("expected exactly %v to be transferred to the host, but %v was transferred: ", fromRenter, toHost)
-		return extendErr(s, errLowHostValidOutput)
+		return extendErr(s, ErrLowHostValidOutput)
 	}
 
 	// If the renter's valid proof output is larger than the renter's missed
 	// proof output, the renter has incentive to see the host fail. Make sure
 	// that this incentive is not present.
 	if revision.ValidRenterPayout().Cmp(revision.MissedRenterOutput().Value) > 0 {
-		return extendErr("renter has incentive to see host fail: ", errHighRenterMissedOutput)
+		return extendErr("renter has incentive to see host fail: ", ErrHighRenterMissedOutput)
 	}
 
 	// Check that the host is not going to be posting more collateral than is
@@ -330,18 +330,18 @@ func verifyRevision(so storageObligation, revision types.FileContractRevision, b
 		collateral := oldFCR.MissedHostOutput().Value.Sub(revision.MissedHostOutput().Value)
 		if collateral.Cmp(expectedCollateral) > 0 {
 			s := fmt.Sprintf("host expected to post at most %v collateral, but contract has host posting %v: ", expectedCollateral, collateral)
-			return extendErr(s, errLowHostMissedOutput)
+			return extendErr(s, ErrLowHostMissedOutput)
 		}
 	}
 
 	// Check that the revision count has increased.
 	if revision.NewRevisionNumber <= oldFCR.NewRevisionNumber {
-		return errBadRevisionNumber
+		return ErrBadRevisionNumber
 	}
 
 	// The Merkle root is checked last because it is the most expensive check.
 	if revision.NewFileMerkleRoot != cachedMerkleRoot(so.SectorRoots) {
-		return errBadFileMerkleRoot
+		return ErrBadFileMerkleRoot
 	}
 
 	return nil
@@ -353,10 +353,10 @@ func verifyRevision(so storageObligation, revision types.FileContractRevision, b
 func verifyClearingRevision(so storageObligation, revision types.FileContractRevision, blockHeight types.BlockHeight, expectedExchange, expectedCollateral types.Currency) error {
 	// Check that the revision is well-formed.
 	if len(revision.NewValidProofOutputs) != 2 || len(revision.NewMissedProofOutputs) != 2 {
-		return errBadContractOutputCounts
+		return ErrBadContractOutputCounts
 	}
 	if !reflect.DeepEqual(revision.NewValidProofOutputs, revision.NewMissedProofOutputs) {
-		return errBadPayoutUnlockHashes
+		return ErrBadPayoutUnlockHashes
 	}
 
 	// Check that the time to finalize and submit the file contract revision
@@ -365,7 +365,7 @@ func verifyClearingRevision(so storageObligation, revision types.FileContractRev
 	// renewal code.
 	//	if so.expiration()-revisionSubmissionBuffer <= blockHeight {
 	//		fmt.Println("trololo", so.expiration(), revisionSubmissionBuffer, blockHeight)
-	//		return errLateRevision
+	//		return ErrLateRevision
 	//	}
 
 	oldFCR := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0]
@@ -377,57 +377,57 @@ func verifyClearingRevision(so storageObligation, revision types.FileContractRev
 
 	// Check that all non-volatile fields are the same.
 	if oldFCR.ParentID != revision.ParentID {
-		return errBadContractParent
+		return ErrBadContractParent
 	}
 	if oldFCR.UnlockConditions.UnlockHash() != revision.UnlockConditions.UnlockHash() {
-		return errBadUnlockConditions
+		return ErrBadUnlockConditions
 	}
 	if oldFCR.NewRevisionNumber >= revision.NewRevisionNumber {
-		return errBadRevisionNumber
+		return ErrBadRevisionNumber
 	}
 	if revision.NewFileSize != uint64(len(so.SectorRoots))*modules.SectorSize {
-		return errBadFileSize
+		return ErrBadFileSize
 	}
 	if oldFCR.NewWindowStart != revision.NewWindowStart {
-		return errBadWindowStart
+		return ErrBadWindowStart
 	}
 	if oldFCR.NewWindowEnd != revision.NewWindowEnd {
-		return errBadWindowEnd
+		return ErrBadWindowEnd
 	}
 	if oldFCR.NewUnlockHash != revision.NewUnlockHash {
-		return errBadUnlockHash
+		return ErrBadUnlockHash
 	}
 
 	// Determine the amount that was transferred from the renter.
 	if revision.ValidRenterPayout().Cmp(oldFCR.ValidRenterPayout()) > 0 {
-		return extendErr("renter increased its valid proof output: ", errHighRenterValidOutput)
+		return extendErr("renter increased its valid proof output: ", ErrHighRenterValidOutput)
 	}
 	fromRenter := oldFCR.ValidRenterPayout().Sub(revision.ValidRenterPayout())
 	// Verify that enough money was transferred.
 	if fromRenter.Cmp(expectedExchange) < 0 {
 		s := fmt.Sprintf("expected at least %v to be exchanged, but %v was exchanged: ", expectedExchange, fromRenter)
-		return extendErr(s, errHighRenterValidOutput)
+		return extendErr(s, ErrHighRenterValidOutput)
 	}
 
 	// Determine the amount of money that was transferred to the host.
 	if oldFCR.ValidHostPayout().Cmp(revision.ValidHostPayout()) > 0 {
-		return extendErr("host valid proof output was decreased: ", errLowHostValidOutput)
+		return extendErr("host valid proof output was decreased: ", ErrLowHostValidOutput)
 	}
 	toHost := revision.ValidHostPayout().Sub(oldFCR.ValidHostPayout())
 	// Verify that enough money was transferred.
 	if !toHost.Equals(fromRenter) {
 		s := fmt.Sprintf("expected exactly %v to be transferred to the host, but %v was transferred: ", fromRenter, toHost)
-		return extendErr(s, errLowHostValidOutput)
+		return extendErr(s, ErrLowHostValidOutput)
 	}
 
 	// Check that the revision is set to the maximum.
 	if revision.NewRevisionNumber != math.MaxUint64 {
-		return errBadRevisionNumber
+		return ErrBadRevisionNumber
 	}
 
 	// The Merkle root is checked last because it is the most expensive check.
 	if revision.NewFileMerkleRoot != cachedMerkleRoot(so.SectorRoots) {
-		return errBadFileMerkleRoot
+		return ErrBadFileMerkleRoot
 	}
 
 	return nil

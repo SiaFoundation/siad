@@ -45,18 +45,18 @@ var validateBlockTests = []struct {
 	{
 		minTimestamp:   types.Timestamp(5),
 		blockTimestamp: types.Timestamp(4),
-		errWant:        errEarlyTimestamp,
+		errWant:        ErrEarlyTimestamp,
 		msg:            "ValidateBlock should reject blocks with timestamps that are too early",
 	},
 	{
 		blockSize: types.BlockSizeLimit + 1,
-		errWant:   errLargeBlock,
+		errWant:   ErrLargeBlock,
 		msg:       "ValidateBlock should reject excessively large blocks",
 	},
 	{
 		now:            types.Timestamp(50),
 		blockTimestamp: types.Timestamp(50) + types.ExtremeFutureThreshold + 1,
-		errWant:        errExtremeFutureTimestamp,
+		errWant:        ErrExtremeFutureTimestamp,
 		msg:            "ValidateBlock should reject blocks timestamped in the extreme future",
 	},
 }

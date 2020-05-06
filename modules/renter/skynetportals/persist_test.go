@@ -47,6 +47,9 @@ func TestPersist(t *testing.T) {
 	}
 
 	filename := filepath.Join(sp.staticPersistDir, persistFile)
+	if filename != sp.FilePath() {
+		t.Fatalf("Expected filepath %v, was %v", filename, sp.FilePath())
+	}
 
 	// There should be no portals in the list
 	if len(sp.portals) != 0 {
@@ -161,7 +164,7 @@ func TestPersist(t *testing.T) {
 	}
 }
 
-// TestPersistCorruption tests the persistence of the Skynet blacklist when
+// TestPersistCorruption tests the persistence of the Skynet portal list when
 // corruption occurs.
 func TestPersistCorruption(t *testing.T) {
 	if testing.Short() {
@@ -169,20 +172,17 @@ func TestPersistCorruption(t *testing.T) {
 	}
 	t.Parallel()
 
-	// Create a new SkynetBlacklist
+	// Create a new SkynetPortalList
 	testdir := testDir(t.Name())
 	sp, err := New(testdir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Get the starting filesize.
 	filename := filepath.Join(sp.staticPersistDir, persistFile)
-	fi, err := os.Stat(filename)
-	if err != nil {
-		t.Fatal(err)
+	if filename != sp.FilePath() {
+		t.Fatalf("Expected filepath %v, was %v", filename, sp.FilePath())
 	}
-	metadataSize := fi.Size()
 
 	// There should be no portals in the list
 	if len(sp.portals) != 0 {
@@ -196,13 +196,23 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	minNumBytes := int(2 * metadataPageSize)
-	corruptionSize, err := f.Write(fastrand.Bytes(minNumBytes + fastrand.Intn(minNumBytes)))
+	_, err = f.Write(fastrand.Bytes(minNumBytes + fastrand.Intn(minNumBytes)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = f.Close()
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// The filesize with corruption should be greater than the persist length.
+	fi, err := os.Stat(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filesize := fi.Size()
+	if filesize <= sp.persistLength {
+		t.Fatalf("Expected file size greater than %v, got %v", sp.persistLength, filesize)
 	}
 
 	// Update portals list
@@ -215,6 +225,17 @@ func TestPersistCorruption(t *testing.T) {
 	err = sp.UpdateSkynetPortals(add, remove)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// The filesize should be equal to the persist length now due to the
+	// truncate when updating.
+	fi, err = os.Stat(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filesize = fi.Size()
+	if filesize != sp.persistLength {
+		t.Fatalf("Expected file size %v, got %v", sp.persistLength, filesize)
 	}
 
 	// Portals list should be empty because we added and then removed the same
@@ -294,15 +315,20 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatalf("Expected address %v to be listed in portals list", portal.Address)
 	}
 
-	// The final filesize should be metadata + corruption size.
+	// The final filesize should be equal to the persist length.
 	fi, err = os.Stat(filename)
 	if err != nil {
 		t.Fatal(err)
 	}
-	filesize := fi.Size()
-	expectedSize := metadataSize + int64(corruptionSize)
-	if filesize != expectedSize {
-		t.Fatalf("Expected file size %v, got %v", expectedSize, filesize)
+	filesize = fi.Size()
+	if filesize != sp3.persistLength {
+		t.Fatalf("Expected file size %v, got %v", sp3.persistLength, filesize)
+	}
+
+	// Verify that the correct number of portals were persisted to verify no
+	// portals are being truncated
+	if err := checkNumPersistedPortals(filename, 4); err != nil {
+		t.Fatalf("error verifying correct number of portals: %v", err)
 	}
 }
 
@@ -358,7 +384,7 @@ func TestMarshalSia(t *testing.T) {
 
 	// Test unmarshalPersistPortals
 	r = bytes.NewBuffer(buf.Bytes())
-	portals, err := unmarshalPortals(r, 2)
+	portals, err := unmarshalPortals(r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,7 +491,7 @@ func TestMarshalMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = sp.unmarshalMetadata(mdBytes)
-	if err != errWrongVersion {
+	if !errors.Contains(err, errWrongVersion) {
 		t.Fatalf("Expected %v got %v", errWrongVersion, err)
 	}
 

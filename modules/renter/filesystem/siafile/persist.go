@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
@@ -579,7 +581,7 @@ func (sf *SiaFile) iterateChunksReadonly(iterFunc func(chunk chunk) error) error
 				return errors.AddContext(err, fmt.Sprintf("failed to unmarshal chunk %v", chunkIndex))
 			}
 		}
-		c.Index = int(chunkIndex)
+		c.Index = chunkIndex
 		if err := iterFunc(c); err != nil {
 			return errors.AddContext(err, fmt.Sprintf("failed to iterate over chunk %v", chunkIndex))
 		}
@@ -617,7 +619,7 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) (e
 	// Starting at this point the changes to be made are written to the WAL.
 	// This means we need to panic in case applying the updates fails.
 	defer func() {
-		if err != nil && !sf.deps.Disrupt("faultyFile") {
+		if err != nil && !sf.deps.Disrupt(dependencies.DisruptFaultyFile) {
 			panic(err)
 		}
 	}()
