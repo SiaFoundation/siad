@@ -482,10 +482,10 @@ type hostPrices struct {
 }
 
 // managedPriceTable returns the current price table
-func (hp *hostPrices) managedPriceTable() *modules.RPCPriceTable {
+func (hp *hostPrices) managedPriceTable() modules.RPCPriceTable {
 	hp.staticMu.Lock()
 	defer hp.staticMu.Unlock()
-	return &hp.priceTable
+	return hp.priceTable
 }
 
 // managedTryUpdate is a helper function that checks whether or not we have to
