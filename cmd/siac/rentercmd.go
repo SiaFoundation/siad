@@ -264,6 +264,13 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 		Long:  "View the list of files currently uploading.",
 		Run:   wrap(renteruploadscmd),
 	}
+
+	renterWorkersCmd = &cobra.Command{
+		Use:   "workers",
+		Short: "View the Renter's workers",
+		Long:  "View the status of the Renter's workers",
+		Run:   wrap(renterworkerscmd),
+	}
 )
 
 // abs returns the absolute representation of a path.
@@ -337,17 +344,36 @@ func rentercmd() {
 // renterFileHealthSummary prints out a summary of the status of all the files
 // in the renter to track the progress of the files
 func renterFileHealthSummary(dirs []directoryInfo) {
+	fullHealth, greater75, greater50, greater25, greater0, unrecoverable, err := filePercentageBreakdown(dirs)
+	if err != nil {
+		die(err)
+	}
+
+	percentages := []float64{fullHealth, greater75, greater50, greater25, greater0, unrecoverable}
+	percentages = parsePercentages(percentages)
+
+	fmt.Printf(`File Health Summary:
+  %% At 100%%:            %v%%
+  %% Between 75%% - 100%%: %v%%
+  %% Between 50%% - 75%%:  %v%%
+  %% Between 25%% - 50%%:  %v%%
+  %% Between 0%% - 25%%:   %v%%
+  %% Unrecoverable:      %v%%
+`, percentages[0], percentages[1], percentages[2], percentages[3], percentages[4], percentages[5])
+}
+
+// filePercentageBreakdown returns a percentage breakdown of the renter's files'
+// healths
+func filePercentageBreakdown(dirs []directoryInfo) (float64, float64, float64, float64, float64, float64, error) {
 	// Check for nil input
 	if len(dirs) == 0 {
-		fmt.Println("No Directories Found")
-		return
+		return 0, 0, 0, 0, 0, 0, errors.New("No Directories Found")
 	}
 
 	// Check for no files uploaded
 	total := float64(dirs[0].dir.AggregateNumFiles)
 	if total == 0 {
-		fmt.Println("No Files Uploaded")
-		return
+		return 0, 0, 0, 0, 0, 0, errors.New("No Files Uploaded")
 	}
 
 	var fullHealth, greater75, greater50, greater25, greater0, unrecoverable float64
@@ -362,7 +388,7 @@ func renterFileHealthSummary(dirs []directoryInfo) {
 				greater50++
 			case file.MaxHealthPercent > 25:
 				greater25++
-			case file.MaxHealthPercent > 0:
+			case file.MaxHealthPercent > 0 || file.OnDisk:
 				greater0++
 			default:
 				unrecoverable++
@@ -377,17 +403,7 @@ func renterFileHealthSummary(dirs []directoryInfo) {
 	greater0 = 100 * greater0 / total
 	unrecoverable = 100 * unrecoverable / total
 
-	percentages := []float64{fullHealth, greater75, greater50, greater25, greater0, unrecoverable}
-	percentages = parsePercentages(percentages)
-
-	fmt.Printf(`File Health Summary:
-  %% At 100%%:            %v%%
-  %% Between 75%% - 100%%: %v%%
-  %% Between 50%% - 75%%:  %v%%
-  %% Between 25%% - 50%%:  %v%%
-  %% Between 0%% - 25%%:   %v%%
-  %% Unrecoverable:      %v%%
-`, percentages[0], percentages[1], percentages[2], percentages[3], percentages[4], percentages[5])
+	return fullHealth, greater75, greater50, greater25, greater0, unrecoverable, nil
 }
 
 // renterFilesAndContractSummary prints out a summary of what the renter is
@@ -2530,4 +2546,92 @@ func renterratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 		die(errors.AddContext(err, "Could not set renter ratelimit speed"))
 	}
 	fmt.Println("Set renter maxdownloadspeed to ", downloadSpeedInt, " and maxuploadspeed to ", uploadSpeedInt)
+}
+
+// renterworkerscmd is the handler for the comand `siac renter workers`.
+// It lists the Renter's workers.
+func renterworkerscmd() {
+	rw, err := httpClient.RenterWorkersGet()
+	if err != nil {
+		die("Could not get contracts:", err)
+	}
+
+	// Print Worker Pool Summary
+	fmt.Printf(`Worker Pool Summary
+  Total Workers:                %v
+  Workers On Download Cooldown: %v
+  Workers On Upload Cooldown:   %v
+
+`, rw.NumWorkers, rw.TotalDownloadCoolDown, rw.TotalUploadCoolDown)
+
+	// Split Workers into GoodForUpload and !GoodForUpload
+	var goodForUpload, notGoodForUpload []modules.WorkerStatus
+	for _, worker := range rw.Workers {
+		if worker.ContractUtility.GoodForUpload {
+			goodForUpload = append(goodForUpload, worker)
+			continue
+		}
+		notGoodForUpload = append(notGoodForUpload, worker)
+	}
+
+	// List out GoorForUpload workers
+	fmt.Println("GoodForUpload Workers:")
+	if len(goodForUpload) == 0 {
+		fmt.Println("  No GoodForUpload workers.")
+	} else {
+		writeWorkers(goodForUpload)
+	}
+
+	// List out !GoorForUpload workers
+	fmt.Println("\nNot GoodForUpload Workers:")
+	if len(notGoodForUpload) == 0 {
+		fmt.Println("  All workers are GoodForUpload.")
+	} else {
+		writeWorkers(notGoodForUpload)
+	}
+}
+
+// writeWorkers is a helper function to display workers
+func writeWorkers(workers []modules.WorkerStatus) {
+	fmt.Println("  Number of Workers:", len(workers))
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	contractInfo := "Contract ID\tHost PubKey\tGood For Renew\tGood For Upload"
+	downloadInfo := "\tDownload On Cooldown\tDownload Queue\tDownload Terminated"
+	uploadInfo := "\tUpload Error\tUpload Cooldown Time\tUpload On Cooldown\tUpload Queue\tUpload Terminated"
+	eaInfo := "\tAvailable Balance\tBalance Targe\tFund Account Queue"
+	jobInfo := "\tBackup Queue\tDownload By Root Queue"
+	fmt.Fprintln(w, "  \n"+contractInfo+downloadInfo+uploadInfo+eaInfo+jobInfo)
+	for _, worker := range workers {
+		// Contract Info
+		fmt.Fprintf(w, "  %v\t%v\t%v\t%v",
+			worker.ContractID,
+			worker.HostPubKey.String(),
+			worker.ContractUtility.GoodForRenew,
+			worker.ContractUtility.GoodForUpload)
+
+		// Download Info
+		fmt.Fprintf(w, "\t%v\t%v\t%v",
+			worker.DownloadOnCoolDown,
+			worker.DownloadQueueSize,
+			worker.DownloadTerminated)
+
+		// Upload Info
+		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v",
+			worker.UploadCoolDownError,
+			worker.UploadCoolDownTime,
+			worker.UploadOnCoolDown,
+			worker.UploadQueueSize,
+			worker.UploadTerminated)
+
+		// EA Info
+		fmt.Fprintf(w, "\t%v\t%v",
+			worker.AvailableBalance,
+			worker.BalanceTarget)
+
+		// Job Info
+		fmt.Fprintf(w, "\t%v\t%v\n",
+			worker.BackupJobQueueSize,
+			worker.DownloadRootJobQueueSize)
+	}
+	w.Flush()
 }

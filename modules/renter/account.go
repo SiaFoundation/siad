@@ -96,6 +96,20 @@ func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, 
 	return nil
 }
 
+// managedAvailableBalance returns the amount of money that is available to
+// spend. It is calculated by taking into account pending spends and pending
+// funds.
+func (a *account) managedAvailableBalance() types.Currency {
+	a.staticMu.Lock()
+	defer a.staticMu.Unlock()
+
+	total := a.balance.Add(a.pendingDeposits)
+	if a.pendingWithdrawals.Cmp(total) < 0 {
+		return total.Sub(a.pendingWithdrawals)
+	}
+	return types.ZeroCurrency
+}
+
 // managedCommitDeposit commits a pending deposit, either after success or
 // failure. Depending on the outcome the given amount will be added to the
 // balance or not. If the pending delta is zero, and we altered the account
@@ -147,8 +161,10 @@ func (a *account) managedTrackWithdrawal(amount types.Currency) {
 }
 
 // managedTryRefill will check if the available balance is below the
-// given threshold, if that is the case it flips the 'refilling' flag to ensure
-// the same account is not being refilled twice
+// given threshold, if that is the case we add the refill amount to the pending
+// deposits and return 'true'. We have to increment pendingDeposits while
+// holding the lock to ensure concurrent calls to `managedTryRefill` does not
+// return twice (providing refillAmount is sufficiently large).
 func (a *account) managedTryRefill(threshold, refillAmount types.Currency) bool {
 	a.staticMu.Lock()
 	defer a.staticMu.Unlock()

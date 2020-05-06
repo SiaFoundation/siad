@@ -108,10 +108,9 @@ func AllModules(dir string) NodeParams {
 }
 
 // FeeManager returns a FeeManagerTemplate filled out with the provided dir.
-func FeeManager(dir, serverStr string) NodeParams {
+func FeeManager(dir string) NodeParams {
 	template := FeeManagerTemplate
 	template.Dir = dir
-	template.FeeManagerServerStr = serverStr
 	return template
 }
 

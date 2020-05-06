@@ -36,6 +36,12 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+const (
+	// compatRHProtocolVersion is the minimum version a host must have in order
+	// to ensure we can use the new renter host protocol
+	compatRHProtocolVersion = "1.5.0"
+)
+
 var (
 	// workerCacheUpdateFrequency specifies how much time must pass before the
 	// worker updates its cache.
@@ -67,13 +73,14 @@ type worker struct {
 	staticHostMuxAddress string
 	staticHostVersion    string
 
-	// Cached value for the contract utility, updated infrequently.
-	cachedContractUtility modules.ContractUtility
-
 	// Cached blockheight, updated by the renter when consensus changes. We
 	// cache it on the worker to avoid fetching it from consensus on every RPC
 	// call that requires to know the current block height.
 	cachedBlockHeight types.BlockHeight
+
+	// Cached value for the contract utility, updated infrequently.
+	cachedContractID      types.FileContractID
+	cachedContractUtility modules.ContractUtility
 
 	// Download variables that are not protected by a mutex, but also do not
 	// need to be protected by a mutex, as they are only accessed by the master
@@ -88,9 +95,11 @@ type worker struct {
 
 	// Download variables related to queuing work. They have a separate mutex to
 	// minimize lock contention.
-	downloadChunks     []*unfinishedDownloadChunk // Yet unprocessed work items.
-	downloadMu         sync.Mutex
-	downloadTerminated bool // Has downloading been terminated for this worker?
+	downloadChunks              []*unfinishedDownloadChunk // Yet unprocessed work items.
+	downloadMu                  sync.Mutex
+	downloadTerminated          bool      // Has downloading been terminated for this worker?
+	downloadConsecutiveFailures int       // How many failures in a row?
+	downloadRecentFailure       time.Time // How recent was the last failure?
 
 	// Job queues for the worker.
 	staticFetchBackupsJobQueue   fetchBackupsJobQueue
@@ -124,6 +133,44 @@ type worker struct {
 	mu       sync.Mutex
 	renter   *Renter
 	wakeChan chan struct{} // Worker will check queues if given a wake signal.
+}
+
+// status returns the status of the worker.
+func (w *worker) status() modules.WorkerStatus {
+	downloadOnCoolDown := w.onDownloadCooldown()
+	uploadOnCoolDown, uploadCoolDownTime := w.onUploadCooldown()
+
+	var uploadCoolDownErr string
+	if w.uploadRecentFailureErr != nil {
+		uploadCoolDownErr = w.uploadRecentFailureErr.Error()
+	}
+
+	return modules.WorkerStatus{
+		// Contract Information
+		ContractID:      w.cachedContractID,
+		ContractUtility: w.cachedContractUtility,
+		HostPubKey:      w.staticHostPubKey,
+
+		// Download information
+		DownloadOnCoolDown: downloadOnCoolDown,
+		DownloadQueueSize:  len(w.downloadChunks),
+		DownloadTerminated: w.downloadTerminated,
+
+		// Upload information
+		UploadCoolDownError: uploadCoolDownErr,
+		UploadCoolDownTime:  uploadCoolDownTime,
+		UploadOnCoolDown:    uploadOnCoolDown,
+		UploadQueueSize:     len(w.unprocessedChunks),
+		UploadTerminated:    w.uploadTerminated,
+
+		// Ephemeral Account information
+		AvailableBalance: w.staticAccount.managedAvailableBalance(),
+		BalanceTarget:    w.staticBalanceTarget,
+
+		// Job Queues
+		BackupJobQueueSize:       w.staticFetchBackupsJobQueue.managedLen(),
+		DownloadRootJobQueueSize: w.staticJobQueueDownloadByRoot.managedLen(),
+	}
 }
 
 // managedBlockUntilReady will block until the worker has internet connectivity.
@@ -164,11 +211,12 @@ func (w *worker) managedUpdateCache() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	utility, exists := w.renter.hostContractor.ContractUtility(w.staticHostPubKey)
+	renterContract, exists := w.renter.hostContractor.ContractByPublicKey(w.staticHostPubKey)
 	if !exists {
 		return false
 	}
-	w.cachedContractUtility = utility
+	w.cachedContractID = renterContract.ID
+	w.cachedContractUtility = renterContract.Utility
 	return true
 }
 
@@ -215,13 +263,6 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillFetchBackupsJobs()
 	defer w.managedKillJobsDownloadByRoot()
 
-	// Fetch the cache for the worker before doing any work.
-	if !w.managedUpdateCache() {
-		w.renter.log.Println("Worker is being insta-killed because the cache update could not locate utility for the worker")
-		return
-	}
-	lastCacheUpdate := time.Now()
-
 	// Primary work loop. There are several types of jobs that the worker can
 	// perform, and they are attempted with a specific priority. If any type of
 	// work is attempted, the loop resets to check for higher priority work
@@ -231,6 +272,7 @@ func (w *worker) threadedWorkLoop() {
 	// 'workAttempted' indicates that there was a job to perform, and that a
 	// nontrivial amount of time was spent attempting to perform the job. The
 	// job may or may not have been successful, that is irrelevant.
+	lastCacheUpdate := time.Now()
 	for {
 		// There are certain conditions under which the worker should either
 		// block or exit. This function will block until those conditions are
@@ -326,7 +368,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, blockHeight types.Bloc
 	// calculate the host's mux address
 	hostMuxAddress := fmt.Sprintf("%s:%s", host.NetAddress.Host(), host.HostExternalSettings.SiaMuxPort)
 
-	return &worker{
+	w := &worker{
 		staticHostPubKey:     hostPubKey,
 		staticHostPubKeyStr:  hostPubKey.String(),
 		staticHostMuxAddress: hostMuxAddress,
@@ -341,7 +383,13 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, blockHeight types.Bloc
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),
 		renter:   r,
-	}, nil
+	}
+	// Get the worker cache set up before returning the worker. This prvents a
+	// race condition in some tests.
+	if !w.managedUpdateCache() {
+		return nil, errors.New("unable to build cache for worker")
+	}
+	return w, nil
 }
 
 // threadedUpdateBlockHeightOnWorkers is called on consensus change and updates
@@ -356,15 +404,14 @@ func (r *Renter) threadedUpdateBlockHeightOnWorkers() {
 	// grab the current block height and have all workers cache it
 	blockHeight := r.cs.Height()
 	for _, worker := range r.staticWorkerPool.managedWorkers() {
-		worker.mu.Lock()
-		worker.cachedBlockHeight = blockHeight
-		worker.mu.Unlock()
+		worker.managedUpdateBlockHeight(blockHeight)
 	}
 }
 
 // managedTryRefillAccount will check if the account needs to be refilled
 func (w *worker) managedTryRefillAccount() {
-	if build.VersionCmp(w.staticHostVersion, "1.5.0") >= 0 {
+	// check host version
+	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) < 0 {
 		return
 	}
 
@@ -378,10 +425,9 @@ func (w *worker) managedTryRefillAccount() {
 			return
 		}
 		go func() {
-			var err error
 			defer w.renter.tg.Done()
-			defer w.staticAccount.managedCommitDeposit(refillAmount, err == nil)
 			_, err = w.managedFundAccount(refillAmount)
+			w.staticAccount.managedCommitDeposit(refillAmount, err == nil)
 			if err != nil {
 				w.renter.log.Println("ERROR: failed to refill account", err)
 				// TODO: add cooldown mechanism
@@ -392,7 +438,8 @@ func (w *worker) managedTryRefillAccount() {
 
 // managedTryUpdatePriceTable will check if the price table needs to be updated
 func (w *worker) managedTryUpdatePriceTable() {
-	if build.VersionCmp(w.staticHostVersion, "1.5.0") >= 0 {
+	// check host version
+	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) < 0 {
 		return
 	}
 
@@ -411,6 +458,13 @@ func (w *worker) managedTryUpdatePriceTable() {
 			}
 		}()
 	}
+}
+
+// managedUpdateBlockHeight sets the given block height on the worker
+func (w *worker) managedUpdateBlockHeight(blockHeight types.BlockHeight) {
+	w.mu.Lock()
+	w.cachedBlockHeight = blockHeight
+	w.mu.Unlock()
 }
 
 // hostPrices is a helper struct that wraps a priceTable and adds its own

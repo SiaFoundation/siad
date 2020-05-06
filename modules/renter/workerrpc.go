@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -19,6 +20,11 @@ type programResponse struct {
 
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
 func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) ([]programResponse, error) {
+	// check host version
+	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) < 0 {
+		build.Critical("Executing new RHP RPC on host with version", w.staticHostVersion)
+	}
+
 	// create a new stream
 	stream, err := w.staticNewStream()
 	if err != nil {
@@ -100,6 +106,11 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 // managedFundAccount will call the fundAccountRPC on the host and if successful
 // will deposit the given amount into the worker's ephemeral account.
 func (w *worker) managedFundAccount(amount types.Currency) (modules.FundAccountResponse, error) {
+	// check host version
+	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) < 0 {
+		build.Critical("Executing new RHP RPC on host with version", w.staticHostVersion)
+	}
+
 	// create a new stream
 	stream, err := w.staticNewStream()
 	if err != nil {
@@ -160,6 +171,11 @@ func (w *worker) managedFundAccount(amount types.Currency) (modules.FundAccountR
 
 // managedUpdatePriceTable performs the UpdatePriceTableRPC on the host.
 func (w *worker) managedUpdatePriceTable() error {
+	// check host version
+	if build.VersionCmp(w.staticHostVersion, compatRHProtocolVersion) < 0 {
+		build.Critical("Executing new RHP RPC on host with version", w.staticHostVersion)
+	}
+
 	// create a new stream
 	stream, err := w.staticNewStream()
 	if err != nil {

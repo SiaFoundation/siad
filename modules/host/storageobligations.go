@@ -387,6 +387,15 @@ func (so storageObligation) payouts() (valid []types.SiacoinOutput, missed []typ
 	return
 }
 
+// revisionNumber returns the last revision number of the latest revision
+// for the storage obligation
+func (so storageObligation) revisionNumber() uint64 {
+	if len(so.RevisionTransactionSet) > 0 {
+		return so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0].NewRevisionNumber
+	}
+	return so.OriginTransactionSet[len(so.OriginTransactionSet)-1].FileContracts[0].RevisionNumber
+}
+
 // proofDeadline returns the height by which the storage proof must be
 // submitted.
 func (so storageObligation) proofDeadline() types.BlockHeight {
@@ -1216,9 +1225,12 @@ func (h *Host) StorageObligations() (sos []modules.StorageObligation) {
 			if err != nil {
 				return build.ExtendErr("unable to unmarshal storage obligation:", err)
 			}
+
+			valid, missed := so.payouts()
 			mso := modules.StorageObligation{
 				ContractCost:             so.ContractCost,
 				DataSize:                 so.fileSize(),
+				RevisionNumber:           so.revisionNumber(),
 				LockedCollateral:         so.LockedCollateral,
 				ObligationId:             so.id(),
 				PotentialAccountFunding:  so.PotentialAccountFunding,
@@ -1240,7 +1252,11 @@ func (h *Host) StorageObligations() (sos []modules.StorageObligation) {
 				ProofConstructed:    so.ProofConstructed,
 				RevisionConfirmed:   so.RevisionConfirmed,
 				RevisionConstructed: so.RevisionConstructed,
+
+				ValidProofOutputs:  valid,
+				MissedProofOutputs: missed,
 			}
+
 			sos = append(sos, mso)
 			return nil
 		})
