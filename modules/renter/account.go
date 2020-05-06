@@ -105,15 +105,6 @@ func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, 
 	if err != nil {
 		return err
 	}
-
-	// receive PayByEphemeralAccountResponse
-	//
-	// TODO: this should not be blocking! handle as a callback
-	var payByResponse modules.PayByEphemeralAccountResponse
-	err = modules.RPCRead(stream, &payByResponse)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
