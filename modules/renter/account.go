@@ -74,6 +74,13 @@ func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, 
 	if err != nil {
 		return err
 	}
+
+	// receive PayByEphemeralAccountResponse
+	var payByResponse modules.PayByEphemeralAccountResponse
+	err = modules.RPCRead(stream, &payByResponse)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
