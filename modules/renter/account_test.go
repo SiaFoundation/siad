@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -123,7 +122,7 @@ func TestAccountSave(t *testing.T) {
 	}
 
 	// create a number of test accounts and reload the renter
-	accounts := createRandomTestAccountsOnRenter(r)
+	accounts := openRandomTestAccountsOnRenter(r)
 	r, err = rt.reloadRenter(r)
 	if err != nil {
 		t.Fatal(err)
@@ -169,7 +168,7 @@ func TestAccountUncleanShutdown(t *testing.T) {
 	r := rt.renter
 
 	// create a number accounts
-	accounts := createRandomTestAccountsOnRenter(r)
+	accounts := openRandomTestAccountsOnRenter(r)
 	for _, account := range accounts {
 		account.staticMu.Lock()
 		account.balance = types.NewCurrency64(fastrand.Uint64n(1e3))
@@ -238,7 +237,7 @@ func TestAccountCorrupted(t *testing.T) {
 	r := rt.renter
 
 	// create a number accounts
-	accounts := createRandomTestAccountsOnRenter(r)
+	accounts := openRandomTestAccountsOnRenter(r)
 
 	// select a random account of which we'll corrupt data on disk
 	var corrupted *account
@@ -298,79 +297,49 @@ func TestAccountCorrupted(t *testing.T) {
 	}
 }
 
-// TestAccountPersistenceToBytes verifies the functionality of the `toBytes`
-// method on the accountPersistence object
-func TestAccountPersistenceToBytes(t *testing.T) {
+// TestAccountPersistenceToAndFromBytes verifies the functionality of the
+// `bytes` and `loadBytes` method on the accountPersistence object
+func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 	t.Parallel()
 
-	ap := createRandomTestAccountPersistence()
-	apBytes := ap.bytes()
+	// create a random persistence object and get its bytes
+	ap := newRandomAccountPersistence()
+	accountBytes := ap.bytes()
+	if len(accountBytes) != accountSize {
+		t.Fatal("Unexpected account bytes")
+	}
 
+	// load the bytes onto a new persistence object and compare for equality
 	var uMar accountPersistence
-	err := encoding.Unmarshal(apBytes, &uMar)
+	err := uMar.loadBytes(accountBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !ap.AccountID.SPK().Equals(uMar.AccountID.SPK()) {
+		t.Fatal("Unexpected AccountID")
+	}
+	if !ap.Balance.Equals(uMar.Balance) {
+		t.Fatal("Unexpected balance")
+	}
+	if !ap.HostKey.Equals(uMar.HostKey) {
+		t.Fatal("Unexpected hostkey")
+	}
+	if !bytes.Equal(ap.SecretKey[:], uMar.SecretKey[:]) {
+		t.Fatal("Unexpected secretkey")
+	}
 
-	uMarBytes := uMar.bytes()
-	if !bytes.Equal(apBytes, uMarBytes) {
-		t.Fatal("Account persistence object not equal after unmarshaling the account persistence bytes")
+	// corrupt the checksum of the account bytes
+	corruptedBytes := accountBytes
+	fastrand.Read(corruptedBytes[:crypto.HashSize])
+	err = uMar.loadBytes(corruptedBytes)
+	if err != errInvalidChecksum {
+		t.Fatalf("Expected error '%v', instead '%v'", errInvalidChecksum, err)
 	}
 }
 
-// TestAccountPersistenceVerifyChecksum verifies the functionality of the
-// 'checksum' and 'verifyChecksum' methods on the account persistence object
-func TestAccountPersistenceVerifyChecksum(t *testing.T) {
-	t.Parallel()
-
-	ap := createRandomTestAccountPersistence()
-	checksum := ap.checksum()
-	if !ap.verifyChecksum(checksum) {
-		t.Fatal("Unexpected outcome of verifyChecksum")
-	}
-	fastrand.Read(checksum[:4]) // corrupt the checksum
-	if ap.verifyChecksum(checksum) {
-		t.Fatal("Unexpected outcome of verifyChecksum")
-	}
-}
-
-// TestAccountMetadataMarhsaling verifies the behaviour of the Marshal interface
-// on the accountsMetadata
-func TestAccountMetadataMarhsaling(t *testing.T) {
-	t.Parallel()
-
-	// create random metadata
-	var am accountsMetadata
-	fastrand.Read(am.Header[:])
-	fastrand.Read(am.Version[:])
-	am.Clean = fastrand.Intn(2) == 0
-
-	// marshal it into bytes and verify the length
-	mdBytes := encoding.Marshal(am)
-	if len(mdBytes) != metadataSize {
-		t.Fatalf("Unexpected metadata size, %v != %v", len(mdBytes), metadataSize)
-	}
-
-	// unmarshal and verify the unmarshaled object
-	var uMar accountsMetadata
-	err := encoding.Unmarshal(mdBytes, &uMar)
-	if err != nil {
-		t.Fatal("Failed to unmarshal metadata bytes", err)
-	}
-	if uMar.Header != am.Header {
-		t.Fatal("Unexpected header")
-	}
-	if uMar.Version != am.Version {
-		t.Fatal("Unexpected version")
-	}
-	if uMar.Clean != am.Clean {
-		t.Fatal("Unexpected clean flag")
-	}
-}
-
-// createRandomTestAccountsOnRenter is a helper function that creates a random
+// openRandomTestAccountsOnRenter is a helper function that creates a random
 // number of accounts by calling 'managedOpenAccount' on the given renter
-func createRandomTestAccountsOnRenter(r *Renter) []*account {
+func openRandomTestAccountsOnRenter(r *Renter) []*account {
 	accounts := make([]*account, 0)
 	for i := 0; i < fastrand.Intn(10)+1; i++ {
 		hostKey := types.SiaPublicKey{
@@ -386,18 +355,14 @@ func createRandomTestAccountsOnRenter(r *Renter) []*account {
 	return accounts
 }
 
-// createRandomTestAccountPersistence is a helper function that returns an
+// newRandomAccountPersistence is a helper function that returns an
 // accountPersistence object, initialised with random values
-func createRandomTestAccountPersistence() accountPersistence {
-	var checksum crypto.Hash
-	fastrand.Read(checksum[:])
+func newRandomAccountPersistence() accountPersistence {
 	aid, sk := modules.NewAccountID()
-	ap := accountPersistence{
+	return accountPersistence{
 		AccountID: aid,
 		Balance:   types.NewCurrency64(fastrand.Uint64n(1e3)),
 		HostKey:   types.SiaPublicKey{},
 		SecretKey: sk,
-		Checksum:  checksum,
 	}
-	return ap
 }

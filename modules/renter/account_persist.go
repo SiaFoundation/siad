@@ -31,6 +31,9 @@ var (
 	// Metadata validation errors
 	errWrongHeader  = errors.New("wrong header")
 	errWrongVersion = errors.New("wrong version")
+
+	// Persistence data validation errors
+	errInvalidChecksum = errors.New("invalid checksum")
 )
 
 type (
@@ -48,33 +51,22 @@ type (
 		Balance   types.Currency
 		HostKey   types.SiaPublicKey
 		SecretKey crypto.SecretKey
-		Checksum  crypto.Hash
 	}
 )
 
-// managedPersist will write the account bytes to the given file at the
-// account's offset
+// managedPersist will write the account to the given file at the account's
+// offset
 func (a *account) managedPersist(file modules.File) error {
 	a.staticMu.Lock()
-	accountData := a.toAccountPersistence()
-	accountOffset := a.staticOffset
-	a.staticMu.Unlock()
-
-	// write to disk
-	_, err := file.WriteAt(accountData.bytes(), accountOffset)
-	return err
-}
-
-// toAccountPersistence returns the account's persistence object
-func (a *account) toAccountPersistence() accountPersistence {
-	ap := accountPersistence{
+	accountData := accountPersistence{
 		AccountID: a.staticID,
 		Balance:   a.balance,
 		HostKey:   a.staticHostKey,
 		SecretKey: a.staticSecretKey,
 	}
-	ap.Checksum = ap.checksum()
-	return ap
+	a.staticMu.Unlock()
+	_, err := file.WriteAt(accountData.bytes(), a.staticOffset)
+	return err
 }
 
 // readAccountAt tries to read an account object from the account persist file
@@ -84,19 +76,14 @@ func (r *Renter) readAccountAt(offset, accountOffset int64) (*account, error) {
 	accountBytes := make([]byte, accountSize, accountSize)
 	_, err := r.staticAccountsFile.ReadAt(accountBytes, offset)
 	if err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "Failed to read account bytes")
 	}
 
-	// decode the account
+	// load the account bytes onto the a persistence object
 	var accountData accountPersistence
-	err = encoding.Unmarshal(accountBytes, &accountData)
+	err = accountData.loadBytes(accountBytes)
 	if err != nil {
-		return nil, errors.New("Failed to unmarshal account")
-	}
-
-	// verify the checksum
-	if !accountData.verifyChecksum(accountData.Checksum) {
-		return nil, errors.New("Account ignored because checksum did not match")
+		return nil, errors.AddContext(err, "Failed to load account bytes")
 	}
 
 	return &account{
@@ -127,7 +114,7 @@ func (r *Renter) managedOpenAccountsFile(path string) error {
 
 	// if the file is newly created, write the header
 	if os.IsNotExist(statErr) {
-		return r.managedUpdateMetadata(accountsMetadata{
+		return r.updateAccountsMetadata(accountsMetadata{
 			Header:  metadataHeader,
 			Version: metadataVersion,
 			Clean:   true,
@@ -167,18 +154,21 @@ func (r *Renter) managedLoadAccounts() error {
 		build.Critical(err)
 		return err
 	}
+
+	// the account offset is not necessarily the offset at which the account is
+	// read, this is to ensure corrupted accounts do not take up disk space but
+	// instead that disk space is reused.
 	initialOffset := int64(accountSize)
+	accountOffset := int64(accountSize)
 
 	// read the raw account data and decode them into accounts
 	accounts := make(map[string]*account)
-	accountOffset := initialOffset
 	for offset := initialOffset; ; offset += accountSize {
 		// read the account at offset
 		acc, err := r.readAccountAt(offset, accountOffset)
-		if err == io.EOF {
+		if errors.Contains(err, io.EOF) {
 			break
-		}
-		if err != nil {
+		} else if err != nil {
 			r.log.Println("ERROR: could not load account", err)
 			continue
 		}
@@ -194,7 +184,7 @@ func (r *Renter) managedLoadAccounts() error {
 	// mark the metadata as 'dirty' and update the metadata on disk - this
 	// ensures only after a successful shutdown, accounts are reloaded from disk
 	metadata.Clean = false
-	err = r.managedUpdateMetadata(metadata)
+	err = r.updateAccountsMetadata(metadata)
 	if err != nil {
 		return errors.AddContext(err, "Failed to write metadata to accounts file")
 	}
@@ -253,54 +243,60 @@ func (r *Renter) managedSaveAccounts() error {
 	}
 
 	// update the metadata and mark the file as clean
-	err = r.managedUpdateMetadata(accountsMetadata{
+	if err = r.updateAccountsMetadata(accountsMetadata{
 		Header:  metadataHeader,
 		Version: metadataVersion,
 		Clean:   true,
-	})
-	if err != nil {
+	}); err != nil {
 		return errors.AddContext(err, "Failed to update accounts file metadata")
 	}
 
-	// sync and close the persist file
-	return errors.Compose(
+	// sync and close the accounts file
+	return errors.AddContext(errors.Compose(
 		r.staticAccountsFile.Sync(),
 		r.staticAccountsFile.Close(),
-	)
+	), "Failed to sync and close the accounts file")
 }
 
-// managedUpdateMetadata writes the given metadata to the accounts file.
-func (r *Renter) managedUpdateMetadata(am accountsMetadata) error {
+// updateAccountsMetadata writes the given metadata to the accounts file.
+func (r *Renter) updateAccountsMetadata(am accountsMetadata) error {
 	_, err := r.staticAccountsFile.WriteAt(encoding.Marshal(am), 0)
 	return err
 }
 
-// checksum returns the checksum of the accountPeristence object
-func (ap accountPersistence) checksum() crypto.Hash {
-	return crypto.HashAll(
-		ap.AccountID,
-		ap.HostKey,
-		ap.SecretKey,
-		ap.Balance,
-	)
-}
-
-// bytes is a helper method on the persistence object that marshals the object
-// into a byte slice and performs a sanity check on the length
+// bytes is a helper method on the persistence object that outputs the bytes to
+// put on disk, these include the checksum and the marshaled persistence object.
 func (ap accountPersistence) bytes() []byte {
 	apMar := encoding.Marshal(ap)
-	if len(apMar) > accountSize {
+	checksum := crypto.HashBytes(apMar)
+	if len(apMar)+len(checksum) > accountSize {
 		build.Critical("marshaled object is larger than expected size")
 	}
 
 	accountBytes := make([]byte, accountSize, accountSize)
-	copy(accountBytes, apMar)
+	copy(accountBytes[:len(checksum)], checksum[:])
+	copy(accountBytes[len(checksum):], apMar)
 	return accountBytes
 }
 
-// verifyChecksum creates a checksum of the accountPersistence object and
-// checks if it's equal to the given checksum
-func (ap accountPersistence) verifyChecksum(checksum crypto.Hash) bool {
-	expected := ap.checksum()
-	return bytes.Equal(expected[:], checksum[:])
+// loadBytes is a helper method that takes a byte slice, containing a checksum
+// and the account bytes, and loads them onto the persistence object.
+func (ap *accountPersistence) loadBytes(b []byte) error {
+	// extract checksum and accountbytes
+	checksum := b[:crypto.HashSize]
+	accountBytes := b[crypto.HashSize:]
+
+	// unmarshal the account bytes
+	err := encoding.Unmarshal(accountBytes, ap)
+	if err != nil {
+		return errors.AddContext(err, "Failed to unmarshal account bytes")
+	}
+
+	// generate the checksum and compare
+	uMarAccountBytes := ap.bytes()
+	uMarChecksum := uMarAccountBytes[:crypto.HashSize]
+	if !bytes.Equal(checksum, uMarChecksum[:]) {
+		return errInvalidChecksum
+	}
+	return nil
 }
