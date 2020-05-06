@@ -116,6 +116,11 @@ func (w *worker) status() modules.WorkerStatus {
 		uploadCoolDownErr = w.uploadRecentFailureErr.Error()
 	}
 
+	var accountBalance types.Currency
+	if w.staticAccount != nil {
+		w.staticAccount.managedAvailableBalance()
+	}
+
 	return modules.WorkerStatus{
 		// Contract Information
 		ContractID:      w.cachedContractID,
@@ -135,7 +140,7 @@ func (w *worker) status() modules.WorkerStatus {
 		UploadTerminated:    w.uploadTerminated,
 
 		// Ephemeral Account information
-		AvailableBalance:        w.staticAccount.managedAvailableBalance(),
+		AvailableBalance:        accountBalance,
 		BalanceTarget:           w.staticBalanceTarget,
 		FundAccountJobQueueSize: w.staticFundAccountJobQueue.managedLen(),
 
