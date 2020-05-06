@@ -25,12 +25,12 @@ variables that are set by the user.
 **Environment Variables**
  - `SIA_API_PASSWORD` is the siaAPIPassword environment variable that sets a
    custom API password
- - `SIA_DATA_DIR` is the siaDataDir environment variable that tells siad where
-   to put the sia data
+ - `SIA_DATA_DIR` siaDataDir is the environment variable that tells siad where 
+    to put the general sia data, e.g. api password, configuration, logs, etc.
+ - `SIAD_DATA_DIR` siadDataDir is the environment variable which tells siad 
+    where to put the siad-specific data
  - `SIA_WALLET_PASSWORD` is the siaWalletPassword environment variable that can
    enable auto unlocking the wallet
- - `SKYNET_DATA_DIR` is the skynetDataDir environment variable that tells siad
-   where to put the miscellaneous skynet data
 
 ## Build Flags
 ### Key Files

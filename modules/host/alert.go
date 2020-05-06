@@ -12,10 +12,10 @@ func (h *Host) Alerts() (crit, err, warn []modules.Alert) {
 	return crit, err, warn
 }
 
-// TryUnregisterInsufficientCollateralBudgetAlert will be called when the host
+// tryUnregisterInsufficientCollateralBudgetAlert will be called when the host
 // updates his collateral budget setting or when the locked storage collateral
 // gets updated (in a way the updated storage collateral is lower).
-func (h *Host) TryUnregisterInsufficientCollateralBudgetAlert() {
+func (h *Host) tryUnregisterInsufficientCollateralBudgetAlert() {
 	// Unregister the alert if the collateral budget is enough to support cover
 	// a contract's max collateral and the currently locked storage collateral
 	if h.financialMetrics.LockedStorageCollateral.Add(h.settings.MaxCollateral).Cmp(h.settings.CollateralBudget) <= 0 {

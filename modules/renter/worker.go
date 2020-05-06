@@ -28,8 +28,21 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+
 	"gitlab.com/NebulousLabs/errors"
+)
+
+var (
+	// workerCacheUpdateFrequency specifies how much time must pass before the
+	// worker updates its cache.
+	workerCacheUpdateFrequency = build.Select(build.Var{
+		Dev:      time.Second * 5,
+		Standard: time.Minute,
+		Testing:  time.Second,
+	}).(time.Duration)
 )
 
 // A worker listens for work on a certain host.
@@ -51,22 +64,17 @@ type worker struct {
 	staticHostPubKey    types.SiaPublicKey
 	staticHostPubKeyStr string
 
-	// Download variables that are not protected by a mutex, but also do not
-	// need to be protected by a mutex, as they are only accessed by the master
-	// thread for the worker.
-	//
-	// The 'owned' prefix here indicates that only the master thread for the
-	// object (in this case, 'threadedWorkLoop') is allowed to access these
-	// variables. Because only that thread is allowed to access the variables,
-	// that thread is able to access these variables without a mutex.
-	ownedDownloadConsecutiveFailures int       // How many failures in a row?
-	ownedDownloadRecentFailure       time.Time // How recent was the last failure?
+	// Cached value for the contract utility, updated infrequently.
+	cachedContractID      types.FileContractID
+	cachedContractUtility modules.ContractUtility
 
 	// Download variables related to queuing work. They have a separate mutex to
 	// minimize lock contention.
-	downloadChunks     []*unfinishedDownloadChunk // Yet unprocessed work items.
-	downloadMu         sync.Mutex
-	downloadTerminated bool // Has downloading been terminated for this worker?
+	downloadChunks              []*unfinishedDownloadChunk // Yet unprocessed work items.
+	downloadMu                  sync.Mutex
+	downloadTerminated          bool      // Has downloading been terminated for this worker?
+	downloadConsecutiveFailures int       // How many failures in a row?
+	downloadRecentFailure       time.Time // How recent was the last failure?
 
 	// Job queues for the worker.
 	staticFetchBackupsJobQueue   fetchBackupsJobQueue
@@ -98,6 +106,45 @@ type worker struct {
 	wakeChan chan struct{} // Worker will check queues if given a wake signal.
 }
 
+// status returns the status of the worker.
+func (w *worker) status() modules.WorkerStatus {
+	downloadOnCoolDown := w.onDownloadCooldown()
+	uploadOnCoolDown, uploadCoolDownTime := w.onUploadCooldown()
+
+	var uploadCoolDownErr string
+	if w.uploadRecentFailureErr != nil {
+		uploadCoolDownErr = w.uploadRecentFailureErr.Error()
+	}
+
+	return modules.WorkerStatus{
+		// Contract Information
+		ContractID:      w.cachedContractID,
+		ContractUtility: w.cachedContractUtility,
+		HostPubKey:      w.staticHostPubKey,
+
+		// Download information
+		DownloadOnCoolDown: downloadOnCoolDown,
+		DownloadQueueSize:  len(w.downloadChunks),
+		DownloadTerminated: w.downloadTerminated,
+
+		// Upload information
+		UploadCoolDownError: uploadCoolDownErr,
+		UploadCoolDownTime:  uploadCoolDownTime,
+		UploadOnCoolDown:    uploadOnCoolDown,
+		UploadQueueSize:     len(w.unprocessedChunks),
+		UploadTerminated:    w.uploadTerminated,
+
+		// Ephemeral Account information
+		AvailableBalance:        w.staticAccount.managedAvailableBalance(),
+		BalanceTarget:           w.staticBalanceTarget,
+		FundAccountJobQueueSize: w.staticFundAccountJobQueue.managedLen(),
+
+		// Job Queues
+		BackupJobQueueSize:       w.staticFetchBackupsJobQueue.managedLen(),
+		DownloadRootJobQueueSize: w.staticJobQueueDownloadByRoot.managedLen(),
+	}
+}
+
 // managedBlockUntilReady will block until the worker has internet connectivity.
 // 'false' will be returned if a kill signal is received or if the renter is
 // shut down before internet connectivity is restored. 'true' will be returned
@@ -124,6 +171,24 @@ func (w *worker) managedBlockUntilReady() bool {
 		case <-time.After(offlineCheckFrequency):
 		}
 	}
+	return true
+}
+
+// managedUpdateCache will check how recently each of the cached values of the
+// worker has been updated and update anything that is not recent enough.
+//
+// 'false' will be returned if the cache cannot be updated, signaling that the
+// worker should exit.
+func (w *worker) managedUpdateCache() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	renterContract, exists := w.renter.hostContractor.ContractByPublicKey(w.staticHostPubKey)
+	if !exists {
+		return false
+	}
+	w.cachedContractID = renterContract.ID
+	w.cachedContractUtility = renterContract.Utility
 	return true
 }
 
@@ -180,6 +245,7 @@ func (w *worker) threadedWorkLoop() {
 	// 'workAttempted' indicates that there was a job to perform, and that a
 	// nontrivial amount of time was spent attempting to perform the job. The
 	// job may or may not have been successful, that is irrelevant.
+	lastCacheUpdate := time.Now()
 	for {
 		// There are certain conditions under which the worker should either
 		// block or exit. This function will block until those conditions are
@@ -187,6 +253,15 @@ func (w *worker) threadedWorkLoop() {
 		// worker should exit.
 		if !w.managedBlockUntilReady() {
 			return
+		}
+
+		// Check if the cache needs to be updated.
+		if time.Since(lastCacheUpdate) > workerCacheUpdateFrequency {
+			if !w.managedUpdateCache() {
+				w.renter.log.Debugln("worker is being killed because the cache could not be updated")
+				return
+			}
+			lastCacheUpdate = time.Now()
 		}
 
 		// Check if the account needs to be refilled.
@@ -221,14 +296,30 @@ func (w *worker) threadedWorkLoop() {
 			continue
 		}
 
-		// Block until new work is received via the upload or download channels,
-		// or until a kill or stop signal is received.
+		// Create a timer and a drain function for the timer.
+		cacheUpdateTimer := time.NewTimer(workerCacheUpdateFrequency)
+		drainCacheTimer := func() {
+			if !cacheUpdateTimer.Stop() {
+				<-cacheUpdateTimer.C
+			}
+		}
+
+		// Block until:
+		//    + New work has been submitted
+		//    + The cache timer fires
+		//    + The worker is killed
+		//    + The renter is stopped
 		select {
 		case <-w.wakeChan:
+			drainCacheTimer()
+			continue
+		case <-cacheUpdateTimer.C:
 			continue
 		case <-w.killChan:
+			drainCacheTimer()
 			return
 		case <-w.renter.tg.StopChan():
+			drainCacheTimer()
 			return
 		}
 	}
@@ -286,7 +377,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, account *account) (*wo
 	// iteration.
 	balanceTarget := types.ZeroCurrency
 
-	return &worker{
+	w := &worker{
 		staticHostPubKey:    hostPubKey,
 		staticHostPubKeyStr: hostPubKey.String(),
 
@@ -296,5 +387,11 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, account *account) (*wo
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),
 		renter:   r,
-	}, nil
+	}
+	// Get the worker cache set up before returning the worker. This prvents a
+	// race condition in some tests.
+	if !w.managedUpdateCache() {
+		return nil, errors.New("unable to build cache for worker")
+	}
+	return w, nil
 }

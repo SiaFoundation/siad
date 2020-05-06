@@ -11,10 +11,20 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 )
 
-// staticRPCUpdatePriceTable returns a copy of the host's current rpc price
+var (
+	// ErrPriceTableNotFound is returned when the price table for a certain UID
+	// can not be found in the tracked price tables
+	ErrPriceTableNotFound = errors.New("Price table not found, it might be expired")
+
+	// ErrPriceTableExpired is returned when the specified price table has
+	// expired
+	ErrPriceTableExpired = errors.New("Price table requested is expired")
+)
+
+// managedRPCUpdatePriceTable returns a copy of the host's current rpc price
 // table. These prices are valid for the duration of the
 // rpcPriceGuaranteePeriod, which is defined by the price table's Expiry
-func (h *Host) staticRPCUpdatePriceTable(stream siamux.Stream) error {
+func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	// copy the host's price table and give it a random UID
 	pt := h.staticPriceTables.managedCurrent()
 	fastrand.Read(pt.UID[:])

@@ -124,18 +124,6 @@ const (
 	// the renter's filesystem.
 	FileSystemRoot = "fs"
 
-	// HomeFolderRoot is the name of the directory that is used to store all of
-	// the user accessible data.
-	HomeFolderRoot = "home"
-
-	// UserRoot is the name of the directory that is used to store the
-	// renter's siafiles.
-	UserRoot = "user"
-
-	// BackupRoot is the name of the directory that is used to store the renter's
-	// snapshot siafiles.
-	BackupRoot = "snapshots"
-
 	// CombinedChunksRoot is the name of the directory that contains combined
 	// chunks consisting of multiple partial chunks.
 	CombinedChunksRoot = "combinedchunks"
@@ -300,19 +288,19 @@ func (a Allowance) Active() bool {
 // ContractUtility contains metrics internal to the contractor that reflect the
 // utility of a given contract.
 type ContractUtility struct {
-	GoodForUpload bool
-	GoodForRenew  bool
+	GoodForUpload bool `json:"goodforupload"`
+	GoodForRenew  bool `json:"goodforrenew"`
 
 	// BadContract will be set to true if there's good reason to believe that
 	// the contract is unusable and will continue to be unusable. For example,
 	// if the host is claiming that the contract does not exist, the contract
 	// should be marked as bad.
-	BadContract bool
-	LastOOSErr  types.BlockHeight // OOS means Out Of Storage
+	BadContract bool              `json:"badcontract"`
+	LastOOSErr  types.BlockHeight `json:"lastooserr"` // OOS means Out Of Storage
 
 	// If a contract is locked, the utility should not be updated. 'Locked' is a
 	// value that gets persisted.
-	Locked bool
+	Locked bool `json:"locked"`
 }
 
 // ContractWatchStatus provides information about the status of a contract in
@@ -412,6 +400,11 @@ type FileUploadParams struct {
 	// CipherType was added later. If it is left blank, the renter will use the
 	// default encryption method (as of writing, Threefish)
 	CipherType crypto.CipherType
+
+	// CipherKey was added in v1.5.0. If it is left blank, the renter will use it
+	// to create a CipherKey with the given CipherType. This value override
+	// CipherType if it is set.
+	CipherKey crypto.CipherKey
 }
 
 // FileInfo provides information about a file.
@@ -733,6 +726,46 @@ type UploadedBackup struct {
 	UploadProgress float64
 }
 
+type (
+	// WorkerPoolStatus contains information about the status of the workerPool
+	// and the workers
+	WorkerPoolStatus struct {
+		NumWorkers            int            `json:"numworkers"`
+		TotalDownloadCoolDown int            `json:"totaldownloadcooldown"`
+		TotalUploadCoolDown   int            `json:"totaluploadcooldown"`
+		Workers               []WorkerStatus `json:"workers"`
+	}
+
+	// WorkerStatus contains information about the status of a worker
+	WorkerStatus struct {
+		// Worker contract information
+		ContractID      types.FileContractID `json:"contractid"`
+		ContractUtility ContractUtility      `json:"contractutility"`
+		HostPubKey      types.SiaPublicKey   `json:"hostpubkey"`
+
+		// Download status information
+		DownloadOnCoolDown bool `json:"downloadoncooldown"`
+		DownloadQueueSize  int  `json:"downloadqueuesize"`
+		DownloadTerminated bool `json:"downloadterminated"`
+
+		// Upload status information
+		UploadCoolDownError string        `json:"uploadcooldownerror"`
+		UploadCoolDownTime  time.Duration `json:"uploadcooldowntime"`
+		UploadOnCoolDown    bool          `json:"uploadoncooldown"`
+		UploadQueueSize     int           `json:"uploadqueuesize"`
+		UploadTerminated    bool          `json:"uploadterminated"`
+
+		// Ephemeral Account information
+		AvailableBalance        types.Currency `json:"availablebalance"`
+		BalanceTarget           types.Currency `json:"balancetarget"`
+		FundAccountJobQueueSize int            `json:"fundaccountjobqueuesize"`
+
+		// Job Queues
+		BackupJobQueueSize       int `json:"backupjobqueuesize"`
+		DownloadRootJobQueueSize int `json:"downloadrootjobqueuesize"`
+	}
+)
+
 // A Renter uploads, tracks, repairs, and downloads a set of files for the
 // user.
 type Renter interface {
@@ -986,6 +1019,9 @@ type Renter interface {
 
 	// UpdateSkynetPortals updates the list of known skynet portals.
 	UpdateSkynetPortals(additions []SkynetPortal, removals []NetAddress) error
+
+	// WorkerPoolStatus returns the current status of the Renter's worker pool
+	WorkerPoolStatus() (WorkerPoolStatus, error)
 }
 
 // Streamer is the interface implemented by the Renter's streamer type which

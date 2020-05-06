@@ -154,7 +154,9 @@ There are three environment variables supported by siad.
  - `SIA_API_PASSWORD` is the environment variable that sets a custom API
    password if the default is not used
  - `SIA_DATA_DIR` is the environment variable that tells siad where to put the
-   sia data
+   general sia data, e.g. api password, configuration, logs, etc.
+ - `SIAD_DATA_DIR` is the environment variable that tells siad where to put the
+   siad-specific data
  - `SIA_WALLET_PASSWORD` is the environment variable that can be set to enable
    auto unlocking the wallet
 
@@ -713,6 +715,223 @@ Returns the version of the Sia daemon currently running.
 ```
 **version** | string  
 This is the version number that is visible to its peers on the network.
+
+# FeeManager
+
+The feemanager allows applications built on top of Sia to charge the Sia user a
+fee. The feemanager's API endpoints expose methods for viewing information about
+the feemanager and for adding and canceling fees. 
+
+## /feemanager [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/feemanager"
+```
+
+returns information about the feemanager.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "payoutheight":249854 // blockheight
+}
+```
+
+**payoutheight** | blockheight  
+Height at which the FeeManager will payout the pending fees.
+
+## /feemanager/add [POST]
+> curl example  
+
+```go
+// Required Fields Only
+curl -A "Sia-Agent" -u "":<apipassword> --data "amount=1000&address=1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab&appuid=supercoolapp" "localhost:9980/feemanager/add"
+
+// All Fields
+curl -A "Sia-Agent" -u "":<apipassword> --data "amount=1000&address=1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab&appuid=supercoolapp&recurring=true" "localhost:9980/feemanager/add"
+```
+sets a fee and associates it with the provided application UID.
+
+### Query String Parameters
+### REQUIRED
+**amount** | hastings  
+The amount is how much the fee will charge the user.
+
+**address** | address  
+The address is the application developer's wallet address that the fee should be
+paid out to.
+
+**appuid** | string  
+The unique application identifier for the application that set the fee.
+
+### OPTIONAL
+**recurring** | bool  
+Indicates whether or not this fee will be a recurring fee. 
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "feeuid":"9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd"  // string
+}
+```
+
+**feeuid** | string  
+This is the unique identifier for the fee that was just added
+
+## /feemanager/cancel [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data "feeuid=9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd" "localhost:9980/feemanager/cancel"
+```
+
+cancels a fee.
+
+### Query String Parameters
+### REQUIRED
+**feeuid** | string  
+The unique identifier for the fee.
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
+## /feemanager/paidfees [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/feemanager/paidfees"
+```
+
+returns the paid fees that the feemanager managed.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "paidfees": [
+    {
+      "address":            "f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056", // hash
+      "amount":             "1000",  // hastings
+      "appuid":             "okapp", // string
+      "feeuid":             "9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd" // string
+      "paymentcompleted":   true,    // bool
+      "payoutheight":       12345,   // types.BlockHeight
+      "recurring":          false,   // bool
+      "timestamp":          "2018-09-23T08:00:00.000000000+04:00",     // Unix timestamp
+      "transactioncreated": true,    // bool
+    }
+  ]
+}
+
+```
+
+**paidfees** | []AppFee  
+List of historical fees that have been paid out by the FeeManager. 
+
+**address** | address  
+The application developer's wallet address that the fee should be paid out to.
+
+**amount** | hastings  
+The number of hastings the fee will charge the user.
+
+**appuid** | string  
+Indicates the uid of the application requesting the fee.  
+
+**feeuid** | string  
+This is the unique identifier for the fee
+
+**paymentcompleted** | bool  
+Indicates whether or not the payment has been confirmed on-chain  
+
+**payoutheight** | bool  
+Indicates the height at which the fee is supposed to be paid out. The fee may be
+paid out (or have been paid out for completed fees) at a later height than this,
+but not earlier.  
+
+**recurring** | bool  
+Indicates whether or not this fee will be a recurring fee. 
+
+**timestamp** | Unix timestamp  
+This is the moment that the fee was requested.  
+
+**transactioncreated** | bool  
+Indicates whether the transaction to pay the fee has been created. If this is
+set to true and paymentcompleted is set to false, it means that the transaction
+has not yet been confirmed on-chain  
+
+## /feemanager/pendingfees [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/feemanager/pendingfees"
+```
+
+returns the pending fees that the feemanager is managing.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "pendingfees": [
+    {
+      "address":            "f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056", // hash
+      "amount":             "1000",  // hastings
+      "appuid":             "okapp", // string
+      "feeuid":             "9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd" // string
+      "paymentcompleted":   true,    // bool
+      "payoutheight":       12345,   // types.BlockHeight
+      "recurring":          false,   // bool
+      "timestamp":          "2018-09-23T08:00:00.000000000+04:00",     // Unix timestamp
+      "transactioncreated": true,    // bool
+    }
+  ]
+}
+
+```
+
+**pendingfees** | []AppFee  
+List of pending fees that the FeeManager is managing that will pay out this
+period. 
+
+**address** | address  
+The application developer's wallet address that the fee should be paid out to.
+
+**amount** | hastings  
+The number of hastings the fee will charge the user.
+
+**appuid** | string  
+The unique application identifier for the application that set the fee.
+
+**feeuid** | string  
+This is the unique identifier for the fee
+
+**paymentcompleted** | bool  
+Indicates whether or not the payment has been confirmed on-chain  
+
+**payoutheight** | bool  
+Indicates the height at which the fee is supposed to be paid out. The fee may be
+paid out (or have been paid out for completed fees) at a later height than this,
+but not earlier.  
+
+**recurring** | bool  
+Indicates whether or not this fee will be a recurring fee. 
+
+**timestamp** | Unix timestamp  
+This is the moment that the fee was requested.  
+
+**transactioncreated** | bool  
+Indicates whether the transaction to pay the fee has been created. If this is
+set to true and paymentcompleted is set to false, it means that the transaction
+has not yet been confirmed on-chain  
 
 # Gateway
 
@@ -1582,6 +1801,7 @@ based on their needs.
       "potentialstoragerevenue":  "1234",             // hastings
       "potentialuploadrevenue":   "1234",             // hastings
       "riskedcollateral":         "1234",             // hastings
+      "revisionnumber":           0,                  // int
       "sectorrootscount":         2,                  // int
       "transactionfeesadded":     "1234",             // hastings
       "expirationheight":         123456,             // blocks
@@ -1593,6 +1813,8 @@ based on their needs.
       "proofconstructed":         true,               // boolean
       "revisionconfirmed":        false,              // boolean
       "revisionconstructed":      false,              // boolean
+      "validproofoutputs":        [],                 // []SiacoinOutput
+      "missedproofoutputs":       [],                 // []SiacoinOutput
     }
   ]
 }
@@ -1628,6 +1850,9 @@ completion of the obligation.
 **riskedcollateral** | hastings  
 Amount that the host might lose if the submission of the storage proof is not
 successful.
+
+**revisionnumber** | int  
+The last revision of the contract
 
 **sectorrootscount** | int  
 Number of sector roots.
@@ -1673,6 +1898,12 @@ the blockchain for this storage obligation.
 **revisionconstructed** | boolean  
 Revision constructed indicates whether there was a file contract revision
 constructed for this storage obligation.
+
+**validproofoutputs** | []SiacoinOutput   
+The payouts that the host and renter will receive if a valid proof is confirmed on the blockchain
+
+**missedproofoutputs** | []SiacoinOutput  
+The payouts that the host and renter will receive if a proof is not confirmed on the blockchain
 
 ## /host/storage [GET]
 > curl example  
@@ -3649,10 +3880,10 @@ only the entry in the renter. Will return an error if the target is a folder.
 Path to the file in the renter on the network.
 
 ### OPTIONAL
- **root** | bool
- Whether or not to treat the siapath as being relative to the user's home
- directory. If this field is not set, the siapath will be interpreted as
- relative to 'home/user/'.  
+**root** | bool  
+Whether or not to treat the siapath as being relative to the user's home
+directory. If this field is not set, the siapath will be interpreted as relative
+to 'home/user/'.
 
 ### Response
 
@@ -3899,7 +4130,11 @@ that have already been scanned.
 
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "newsiapath=myfile2" "localhost:9980/renter/rename/myfile"
+
+curl -A "Sia-Agent" -u "":<apipassword> --data "newsiapath=myfile2&root=true" "localhost:9980/renter/rename/myfile"
 ```
+
+change the siaPath for a file that is being managed by the renter.
 
 ### Path Parameters
 ### REQUIRED
@@ -3910,6 +4145,12 @@ Path to the file in the renter on the network.
 ### REQUIRED
 **newsiapath** | string  
 New location of the file in the renter on the network.  
+
+### OPTIONAL
+**root** | bool  
+Whether or not to treat the siapath as being relative to the user's home
+directory. If this field is not set, the siapath will be interpreted as
+relative to 'home/user/'.
 
 ### Response
 
@@ -4139,6 +4380,134 @@ siapath to test.
 ### Response
 standard success or error response, a successful response means a valid siapath.
 See [standard responses](#standard-responses).
+
+## /renter/wokers [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/renter/workers"
+```
+
+returns the the status of all the workers in the renter's workerpool.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "numworkers":            2, // int
+  "totaldownloadcooldown": 0, // int
+  "totaluploadcooldown":   0, // int
+  
+  "workers": [ // []WorkerStatus
+    {
+      "contractid": "e93de33cc04bb1f27a412ecdf57b3a7345b9a4163a33e03b4cb23edeb922822c", // hash
+      "contractutility": {      // ContractUtility
+        "goodforupload": true,  // boolean
+        "goodforrenew":  true,  // boolean
+        "badcontract":   false, // boolean
+        "lastooserr":    0,     // BlockHeight
+        "locked":        false  // boolean
+      },
+      "hostpubkey": {
+        "algorithm": "ed25519", // string
+        "key": "BervnaN85yB02PzIA66y/3MfWpsjRIgovCU9/L4d8zQ=" // hash
+      },
+      
+      "downloadoncooldown": false, // boolean
+      "downloadqueuesize":  0,     // int
+      "downloadterminated": false, // boolean
+      
+      "uploadcooldownerror": "",                   // string
+      "uploadcooldowntime":  -9223372036854775808, // time.Duration
+      "uploadoncooldown":    false,                // boolean
+      "uploadqueuesize":     0,                    // int
+      "uploadterminated":    false,                // boolean
+      
+      "availablebalance":    "0", // hastings
+      "balancetarget":       "0", // hastings
+      "fundaccountjobqueuesize": 0,   // int
+      
+      "backupjobqueuesize":       0, // int
+      "downloadrootjobqueuesize": 0  // int
+    }
+  ]
+}
+```
+
+**numworkers** | int  
+Number of workers in the workerpool
+
+**totaldownloadcooldown** | int  
+Number of workers on download cooldown
+
+**totaluploadcooldown** | int  
+Number of workers on upload cooldown
+
+**workers** | []WorkerStatus  
+List of workers
+
+**contractid** | hash  
+The ID of the File Contract that the worker is associated with
+
+**contractutility** | ContractUtility  
+
+**goodforupload** | boolean  
+The worker's contract can be uploaded to
+
+**goodforrenew** | boolean  
+The worker's contract will be renewed
+
+**badcontract** | boolean  
+The worker's contract is marked as bad and won't be used
+
+**lastooserr** | BlockHeight  
+The blockheight when the host the worker represents was out of storage
+
+**locked** | boolean  
+The worker's contract's utility is locked
+
+**hostpublickey** | SiaPublicKey  
+Public key of the host that the file contract is formed with.  
+
+**downloadoncooldown** | boolean  
+Indicates if the worker is on download cooldown
+
+**downloadqueuesize** | int  
+The size of the worker's download queue
+
+**downloadterminated** | boolean  
+Downloads for the worker have been terminated
+
+**uploadcooldownerror** | error  
+The error reason for the worker being on upload cooldown
+
+**uploadcooldowntime** | time.Duration  
+How long the worker is on upload cooldown
+
+**uploadoncooldown** | boolean  
+Indicates if the worker is on upload cooldown
+
+**uploadqueuesize** | int  
+The size of the worker's upload queue
+
+**uploadterminated** | boolean  
+Uploads for the worker have been terminated
+
+**availablebalance** | hastings  
+The worker's Ephemeral Account available balance
+
+**balancetarget** | hastings  
+The worker's Ephemeral Account target balance
+
+**fundaccountjobqueuesize** | int  
+The size of the worker's Ephemeral Account fund account job queue
+
+**backupjobqueuesize** | int  
+The size of the worker's backup job queue
+
+**downloadrootjobqueuesize** | int  
+The size of the worker's download by root job queue
 
 # Skynet
 
@@ -4411,6 +4780,17 @@ used.
 Whether or not to treat the siapath as being relative to the root directory. If
 this field is not set, the siapath will be interpreted as relative to
 'var/skynet'.
+
+**skykeyname** | string  
+The name of the skykey that will be used to encrypt this skyfile. Only the
+name or the ID of the skykey should be specified.
+
+**OR**
+
+**skykeyid** | string  
+The ID of the skykey that will be used to encrypt this skyfile. Only the
+name or the ID of the skykey should be specified.
+
 
 ### Http Headers
 ### OPTIONAL

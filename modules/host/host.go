@@ -110,16 +110,16 @@ var (
 	// its prices to the renter.
 	rpcPriceGuaranteePeriod = build.Select(build.Var{
 		Standard: 10 * time.Minute,
-		Dev:      1 * time.Minute,
-		Testing:  5 * time.Second,
+		Dev:      5 * time.Minute,
+		Testing:  15 * time.Second,
 	}).(time.Duration)
 
 	// pruneExpiredRPCPriceTableFrequency is the frequency at which the host
 	// checks if it can expire price tables that have an expiry in the past.
 	pruneExpiredRPCPriceTableFrequency = build.Select(build.Var{
 		Standard: 15 * time.Minute,
-		Dev:      5 * time.Minute,
-		Testing:  10 * time.Second,
+		Dev:      10 * time.Minute,
+		Testing:  30 * time.Second,
 	}).(time.Duration)
 )
 
@@ -229,8 +229,9 @@ func (hp *hostPrices) managedGet(uid modules.UniqueID) (pt *modules.RPCPriceTabl
 	return
 }
 
-// managedUpdate overwrites the current price table with the one that's given
-func (hp *hostPrices) managedUpdate(pt modules.RPCPriceTable) {
+// managedSetCurrent overwrites the current price table with the one that's
+// given
+func (hp *hostPrices) managedSetCurrent(pt modules.RPCPriceTable) {
 	hp.mu.Lock()
 	defer hp.mu.Unlock()
 	hp.current = pt
@@ -376,7 +377,7 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
 	// create a new RPC price table and set the expiry
-	_ = h.managedInternalSettings()
+	es := h.managedExternalSettings()
 	priceTable := modules.RPCPriceTable{
 		Expiry: time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
 
@@ -390,11 +391,15 @@ func (h *Host) managedUpdatePriceTable() {
 		MemoryTimeCost:    types.NewCurrency64(1),
 		ReadBaseCost:      types.NewCurrency64(1),
 		ReadLengthCost:    types.NewCurrency64(1),
+
+		// Bandwidth related fields.
+		DownloadBandwidthCost: es.DownloadBandwidthPrice,
+		UploadBandwidthCost:   es.UploadBandwidthPrice,
 	}
 	fastrand.Read(priceTable.UID[:])
 
 	// update the pricetable
-	h.staticPriceTables.managedUpdate(priceTable)
+	h.staticPriceTables.managedSetCurrent(priceTable)
 }
 
 // threadedPruneExpiredPriceTables will expire price tables which have an expiry
@@ -592,9 +597,7 @@ func (h *Host) ExternalSettings() modules.HostExternalSettings {
 		build.Critical("Call to ExternalSettings after close")
 	}
 	defer h.tg.Done()
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.externalSettings()
+	return h.managedExternalSettings()
 }
 
 // BandwidthCounters returns the Hosts's upload and download bandwidth
@@ -684,7 +687,7 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 
 	// The locked storage collateral was altered, we potentially want to
 	// unregister the insufficient collateral budget alert
-	h.TryUnregisterInsufficientCollateralBudgetAlert()
+	h.tryUnregisterInsufficientCollateralBudgetAlert()
 
 	err = h.saveSync()
 	if err != nil {
@@ -708,4 +711,13 @@ func (h *Host) BlockHeight() types.BlockHeight {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.blockHeight
+}
+
+// managedExternalSettings returns the host's external settings. These values
+// cannot be set by the user (host is configured through InternalSettings), and
+// are the values that get displayed to other hosts on the network.
+func (h *Host) managedExternalSettings() modules.HostExternalSettings {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.externalSettings()
 }

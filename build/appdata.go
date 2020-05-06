@@ -11,20 +11,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-var (
-	// siaAPIPassword is the environment variable that sets a custom API
-	// password if the default is not used
-	siaAPIPassword = "SIA_API_PASSWORD"
-
-	// siaDataDir is the environment variable that tells siad where to put the
-	// sia data
-	siaDataDir = "SIA_DATA_DIR"
-
-	// siaWalletPassword is the environment variable that can be set to enable
-	// auto unlocking the wallet
-	siaWalletPassword = "SIA_WALLET_PASSWORD"
-)
-
 // APIPassword returns the Sia API Password either from the environment variable
 // or from the password file. If no environment variable is set and no file
 // exists, a password file is created and that password is returned
@@ -52,6 +38,13 @@ func APIPassword() (string, error) {
 		return "", err
 	}
 	return pw, nil
+}
+
+// SiadDataDir returns the siad consensus data directory from the
+// environment variable. If there is no environment variable it returns an empty
+// string, instructing siad to store the consensus in the current directory.
+func SiadDataDir() string {
+	return os.Getenv(siadDataDir)
 }
 
 // SiaDir returns the Sia data directory either from the environment variable or
@@ -83,7 +76,16 @@ func apiPasswordFilePath() string {
 // createAPIPasswordFile creates an api password file in the Sia data directory
 // and returns the newly created password
 func createAPIPasswordFile() (string, error) {
-	err := os.Mkdir(SiaDir(), 0700)
+	err := os.MkdirAll(SiaDir(), 0700)
+	if err != nil {
+		return "", err
+	}
+	// Ensure SiaDir has the correct mode as MkdirAll won't change the mode of
+	// an existent directory. We specifically use 0700 in order to prevent
+	// potential attackers from accessing the sensitive information inside, both
+	// by reading the contents of the directory and/or by creating files with
+	// specific names which siad would later on read from and/or write to.
+	err = os.Chmod(SiaDir(), 0700)
 	if err != nil {
 		return "", err
 	}

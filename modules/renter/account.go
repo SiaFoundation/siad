@@ -11,13 +11,11 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 )
 
-const (
-	// withdrawalValidityPeriod defines the period (in blocks) a withdrawal
-	// message remains spendable after it has been created. Together with the
-	// current block height at time of creation, this period makes up the
-	// WithdrawalMessage's expiry height.
-	withdrawalValidityPeriod = 6
-)
+// withdrawalValidityPeriod defines the period (in blocks) a withdrawal message
+// remains spendable after it has been created. Together with the current block
+// height at time of creation, this period makes up the WithdrawalMessage's
+// expiry height.
+const withdrawalValidityPeriod = 6
 
 type (
 
@@ -28,13 +26,55 @@ type (
 		staticOffset    int64
 		staticSecretKey crypto.SecretKey
 
-		balance       types.Currency
-		pendingFunds  types.Currency
-		pendingSpends types.Currency
+		balance            types.Currency
+		pendingWithdrawals types.Currency
+		pendingDeposits    types.Currency
 
 		staticMu sync.RWMutex
 	}
 )
+
+// managedOpenAccount returns an account for the given host. If it does not
+// exist already one is created.
+func (r *Renter) managedOpenAccount(hostKey types.SiaPublicKey) (*account, error) {
+	id := r.mu.Lock()
+	defer r.mu.Unlock(id)
+
+	acc, ok := r.accounts[hostKey.String()]
+	if ok {
+		return acc, nil
+	}
+	acc, err := r.newAccount(hostKey)
+	if err != nil {
+		return nil, err
+	}
+	r.accounts[hostKey.String()] = acc
+	return acc, nil
+}
+
+// newAccount returns a new account object for the given host.
+func (r *Renter) newAccount(hostKey types.SiaPublicKey) (*account, error) {
+	// calculate the account's offset
+	offset := (len(r.accounts) + 1) * accountSize // +1 for metadata
+
+	// create the account
+	aid, sk := modules.NewAccountID()
+	acc := &account{
+		staticID:        aid,
+		staticHostKey:   hostKey,
+		staticOffset:    int64(offset),
+		staticSecretKey: sk,
+	}
+
+	if err := errors.Compose(
+		acc.managedPersist(r.staticAccountsFile),
+		r.staticAccountsFile.Sync(),
+	); err != nil {
+		return nil, err
+	}
+
+	return acc, nil
+}
 
 // ProvidePayment takes a stream and various payment details and handles the
 // payment by sending and processing payment request and response objects.
@@ -78,56 +118,64 @@ func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, 
 // spend. It is calculated by taking into account pending spends and pending
 // funds.
 func (a *account) managedAvailableBalance() types.Currency {
-	a.staticMu.RLock()
-	defer a.staticMu.RUnlock()
+	a.staticMu.Lock()
+	defer a.staticMu.Unlock()
 
-	total := a.balance.Add(a.pendingFunds)
-	if a.pendingSpends.Cmp(total) < 0 {
-		return total.Sub(a.pendingSpends)
+	total := a.balance.Add(a.pendingDeposits)
+	if a.pendingWithdrawals.Cmp(total) < 0 {
+		return total.Sub(a.pendingWithdrawals)
 	}
 	return types.ZeroCurrency
 }
 
-// managedOpenAccount returns an account for the given host. If it does not
-// exist already one is created.
-func (r *Renter) managedOpenAccount(hostKey types.SiaPublicKey) (*account, error) {
-	id := r.mu.Lock()
-	defer r.mu.Unlock(id)
+// managedCommitDeposit commits a pending deposit, either after success or
+// failure. Depending on the outcome the given amount will be added to the
+// balance or not. If the pending delta is zero, and we altered the account
+// balance, we update the account.
+func (a *account) managedCommitDeposit(amount types.Currency, success bool) {
+	a.staticMu.Lock()
+	defer a.staticMu.Unlock()
 
-	acc, ok := r.accounts[hostKey.String()]
-	if ok {
-		return acc, nil
+	// (no need to sanity check - the implementation of 'Sub' does this for us)
+	a.pendingDeposits = a.pendingDeposits.Sub(amount)
+
+	// reflect the successful deposit in the balance field
+	if success {
+		a.balance = a.balance.Add(amount)
 	}
-	acc, err := r.newAccount(hostKey)
-	if err != nil {
-		return nil, err
-	}
-	r.accounts[hostKey.String()] = acc
-	return acc, nil
 }
 
-// newAccount returns a new account object for the given host.
-func (r *Renter) newAccount(hostKey types.SiaPublicKey) (*account, error) {
-	// calculate the account's offset
-	offset := (len(r.accounts) + 1) * accountSize // +1 for metadata
+// managedCommitWithdrawal commits a pending withdrawal, either after success or
+// failure. Depending on the outcome the given amount will be deducted from the
+// balance or not. If the pending delta is zero, and we altered the account
+// balance, we update the account.
+func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
+	a.staticMu.Lock()
+	defer a.staticMu.Unlock()
 
-	// create the account
-	aid, sk := modules.NewAccountID()
-	acc := &account{
-		staticID:        aid,
-		staticHostKey:   hostKey,
-		staticOffset:    int64(offset),
-		staticSecretKey: sk,
+	// (no need to sanity check - the implementation of 'Sub' does this for us)
+	a.pendingWithdrawals = a.pendingWithdrawals.Sub(amount)
+
+	// reflect the successful withdrawal in the balance field
+	if success {
+		a.balance = a.balance.Sub(amount)
 	}
+}
 
-	if err := errors.Compose(
-		acc.managedPersist(r.staticAccountsFile),
-		r.staticAccountsFile.Sync(),
-	); err != nil {
-		return nil, err
-	}
+// managedTrackDeposit keeps track of pending deposits by adding the given
+// amount to the 'pendingDeposits' field.
+func (a *account) managedTrackDeposit(amount types.Currency) {
+	a.staticMu.Lock()
+	defer a.staticMu.Unlock()
+	a.pendingDeposits = a.pendingDeposits.Add(amount)
+}
 
-	return acc, nil
+// managedTrackWithdrawal keeps track of pending withdrawals by adding the given
+// amount to the 'pendingWithdrawals' field.
+func (a *account) managedTrackWithdrawal(amount types.Currency) {
+	a.staticMu.Lock()
+	defer a.staticMu.Unlock()
+	a.pendingWithdrawals = a.pendingWithdrawals.Add(amount)
 }
 
 // newWithdrawalMessage is a helper function that takes a set of parameters and

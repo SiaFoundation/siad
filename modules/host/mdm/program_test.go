@@ -32,7 +32,8 @@ func TestNewEmptyProgram(t *testing.T) {
 	var r io.Reader
 	// Shouldn't be able to execute empty program.
 	pt := newTestPriceTable()
-	_, _, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, modules.MDMInitCost(pt, 0, 0), types.ZeroCurrency, newTestStorageObligation(true), 0, r)
+	budget := modules.NewBudget(modules.MDMInitCost(pt, 0, 0))
+	_, _, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, budget, types.ZeroCurrency, newTestStorageObligation(true), 0, r)
 	if !errors.Contains(err, ErrEmptyProgram) {
 		t.Fatal("expected ErrEmptyProgram", err)
 	}
@@ -42,11 +43,14 @@ func TestNewEmptyProgram(t *testing.T) {
 func TestNewProgramLowInitBudget(t *testing.T) {
 	// Create MDM
 	mdm := New(newTestHost())
-	program, data, _, _, _, _ := newHasSectorProgram(crypto.Hash{}, newTestPriceTable())
+	pb := modules.NewProgramBuilder(newTestPriceTable())
+	pb.AddHasSectorInstruction(crypto.Hash{})
+	program, data := pb.Program()
 	r := bytes.NewReader(data)
 	// Execute the program.
 	pt := newTestPriceTable()
-	_, _, err := mdm.ExecuteProgram(context.Background(), pt, program, types.ZeroCurrency, types.ZeroCurrency, newTestStorageObligation(true), 0, r)
+	budget := modules.NewBudget(types.ZeroCurrency)
+	_, _, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, types.ZeroCurrency, newTestStorageObligation(true), 0, r)
 	if !errors.Contains(err, modules.ErrMDMInsufficientBudget) {
 		t.Fatal("missing error")
 	}
@@ -59,13 +63,17 @@ func TestNewProgramLowBudget(t *testing.T) {
 	mdm := New(newTestHost())
 	// Create instruction.
 	pt := newTestPriceTable()
-	instructions, programData, _, _, collateral, _ := newReadSectorProgram(modules.SectorSize, 0, crypto.Hash{}, pt)
+	pb := modules.NewProgramBuilder(pt)
+	pb.AddReadSectorInstruction(modules.SectorSize, 0, crypto.Hash{}, true)
+	instructions, programData := pb.Program()
+	_, _, collateral := pb.Cost(true)
 	r := bytes.NewReader(programData)
 	dataLen := uint64(len(programData))
 	// Execute the program with enough money to init the mdm but not enough
 	// money to execute the first instruction.
 	cost := modules.MDMInitCost(pt, dataLen, 1)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, newTestStorageObligation(true), dataLen, r)
+	budget := modules.NewBudget(cost)
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, budget, collateral, newTestStorageObligation(true), dataLen, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,9 +108,10 @@ func TestNewProgramLowCollateralBudget(t *testing.T) {
 	// Create instruction.
 	pt := newTestPriceTable()
 	instructions, programData, cost, _, _, _ := newAppendProgram(fastrand.Bytes(int(modules.SectorSize)), false, pt)
+	budget := modules.NewBudget(cost)
 	// Execute the program with no collateral budget.
 	so := newTestStorageObligation(true)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, types.ZeroCurrency, so, uint64(len(programData)), bytes.NewReader(programData))
+	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, budget, types.ZeroCurrency, so, uint64(len(programData)), bytes.NewReader(programData))
 	if err != nil {
 		t.Fatal(err)
 	}

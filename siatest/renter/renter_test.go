@@ -1501,6 +1501,7 @@ func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependen
 		t.Fatal(err)
 	}
 	renter := nodes[0]
+	numHosts := len(tg.Hosts())
 
 	// Call fail on the dependency every 10 ms.
 	cancel := make(chan struct{})
@@ -1532,8 +1533,10 @@ func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependen
 		if err != nil {
 			return err
 		}
-		if len(rc.Contracts) != len(tg.Hosts())*2 {
-			return fmt.Errorf("Incorrect number of staticContracts: have %v expected %v", len(rc.Contracts), len(tg.Hosts())*2)
+		// Need to use old contract endpoint field as it is pulling from the
+		// Contractor's staticContracts field which is where the bug was seen
+		if len(rc.Contracts) != numHosts*2 {
+			return fmt.Errorf("Incorrect number of staticContracts: have %v expected %v", len(rc.Contracts), numHosts*2)
 		}
 		return nil
 	})
@@ -1554,19 +1557,25 @@ func testContractInterrupted(t *testing.T, tg *siatest.TestGroup, deps *dependen
 		t.Fatal(err)
 	}
 	err = build.Retry(70, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterInactiveContractsGet()
+		// Check for older compatibility fields.
+		// If we don't check this fields we are not checking the right conditions.
+		rc, err := renter.RenterExpiredContractsGet()
 		if err != nil {
 			return err
 		}
-		if len(rc.InactiveContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("Incorrect number of inactive contracts: have %v expected %v", len(rc.InactiveContracts), len(tg.Hosts()))
+		if len(rc.InactiveContracts) != 0 {
+			return fmt.Errorf("Incorrect number of inactive contracts: have %v expected %v", len(rc.InactiveContracts), 0)
 		}
-		if len(rc.ActiveContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("Incorrect number of active contracts: have %v expected %v", len(rc.ActiveContracts), len(tg.Hosts()))
+		if len(rc.ActiveContracts) != numHosts {
+			return fmt.Errorf("Incorrect number of active contracts: have %v expected %v", len(rc.ActiveContracts), numHosts)
 		}
-		if len(rc.Contracts) != len(tg.Hosts()) {
-			return fmt.Errorf("Incorrect number of staticContracts: have %v expected %v", len(rc.Contracts), len(tg.Hosts()))
+		if len(rc.Contracts) != numHosts {
+			return fmt.Errorf("Incorrect number of staticContracts: have %v expected %v", len(rc.Contracts), numHosts)
 		}
+		if len(rc.ExpiredContracts) != numHosts {
+			return fmt.Errorf("Incorrect number of expired contracts: have %v expected %v", len(rc.ExpiredContracts), numHosts)
+		}
+
 		if err = m.MineBlock(); err != nil {
 			return err
 		}
@@ -2015,75 +2024,51 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 	}
 	renter := nodes[0]
 
+	// Grab the number of hosts
+	numHosts := len(tg.Hosts())
+
 	// Test Resetting allowance
 	// Cancel the allowance
 	if err := renter.RenterAllowanceCancelPost(); err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
-	// Give it some time to mark the contracts as !goodForUpload and
-	// !goodForRenew.
+	// Mark sure contracts have been updated
 	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterInactiveContractsGet()
-		if err != nil {
-			return err
-		}
-		// Should now only have inactive contracts.
-		if len(rc.ActiveContracts) != 0 {
-			return fmt.Errorf("expected 0 active contracts, got %v", len(rc.ActiveContracts))
-		}
-		if len(rc.InactiveContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("expected %v inactive contracts, got %v", len(tg.Hosts()), len(rc.InactiveContracts))
-		}
-		for _, c := range rc.InactiveContracts {
-			if c.GoodForUpload {
-				return errors.New("contract shouldn't be goodForUpload")
-			}
-			if c.GoodForRenew {
-				return errors.New("contract shouldn't be goodForRenew")
-			}
-		}
-		return nil
+		return siatest.CheckExpectedNumberOfContracts(renter, 0, 0, 0, numHosts, 0, 0)
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
 	// Set the allowance again.
 	if err := renter.RenterPostAllowance(siatest.DefaultAllowance); err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
 	// Mine a block to start the threadedContractMaintenance.
-	if err := tg.Miners()[0].MineBlock(); err != nil {
+	m := tg.Miners()[0]
+	if err := m.MineBlock(); err != nil {
 		t.Fatal(err)
 	}
 
 	// Give it some time to mark the contracts as goodForUpload and
 	// goodForRenew again.
-	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterInactiveContractsGet()
-		if err != nil {
-			return err
-		}
-		// Should now only have active contracts.
-		if len(rc.ActiveContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("expected %v active contracts, got %v", len(tg.Hosts()), len(rc.ActiveContracts))
-		}
-		if len(rc.InactiveContracts) != 0 {
-			return fmt.Errorf("expected 0 inactive contracts, got %v", len(rc.InactiveContracts))
-		}
-		for _, c := range rc.ActiveContracts {
-			if !c.GoodForUpload {
-				return errors.New("contract should be goodForUpload")
-			}
-			if !c.GoodForRenew {
-				return errors.New("contract should be goodForRenew")
+	tries := 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if tries%20 == 0 {
+			err := m.MineBlock()
+			if err != nil {
+				return err
 			}
 		}
-		return nil
+		return siatest.CheckExpectedNumberOfContracts(renter, numHosts, 0, 0, 0, 0, 0)
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
@@ -2093,44 +2078,29 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 	parityPieces := uint64(len(tg.Hosts()) - 1)
 	_, rf, err := renter.UploadNewFileBlocking(100, dataPieces, parityPieces, false)
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
 	// Cancel the allowance
 	if err := renter.RenterAllowanceCancelPost(); err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
 	// Give it some time to mark the contracts as !goodForUpload and
 	// !goodForRenew.
-	err = build.Retry(200, 100*time.Millisecond, func() error {
-		rc, err := renter.RenterInactiveContractsGet()
-		if err != nil {
-			return err
-		}
-		// Should now have 2 inactive contracts.
-		if len(rc.ActiveContracts) != 0 {
-			return fmt.Errorf("expected 0 active contracts, got %v", len(rc.ActiveContracts))
-		}
-		if len(rc.InactiveContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("expected %v inactive contracts, got %v", len(tg.Hosts()), len(rc.InactiveContracts))
-		}
-		for _, c := range rc.InactiveContracts {
-			if c.GoodForUpload {
-				return errors.New("contract shouldn't be goodForUpload")
-			}
-			if c.GoodForRenew {
-				return errors.New("contract shouldn't be goodForRenew")
-			}
-		}
-		return nil
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(renter, 0, 0, 0, numHosts, 0, 0)
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
 	// Try downloading the file; should succeed.
 	if _, _, err := renter.DownloadByStream(rf); err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal("downloading file failed", err)
 	}
 
@@ -2141,6 +2111,7 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 	// Try to upload a file after the allowance was cancelled. Should succeed.
 	_, rf2, err := renter.UploadNewFile(100, dataPieces, parityPieces, false)
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
@@ -2150,6 +2121,7 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 	// Redundancy should still be 0.
 	renterFiles, err := renter.RenterFilesGet(false)
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal("Failed to get files")
 	}
 	if len(renterFiles.Files) != 2 {
@@ -2157,6 +2129,7 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 	}
 	fileInfo, err := renter.File(rf2)
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 	if fileInfo.UploadProgress > 0 || fileInfo.UploadedBytes > 0 || fileInfo.Redundancy > 0 {
@@ -2164,16 +2137,22 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Mine enough blocks for the period to pass and the contracts to expire.
-	miner := tg.Miners()[0]
 	for i := types.BlockHeight(0); i < siatest.DefaultAllowance.Period; i++ {
-		if err := miner.MineBlock(); err != nil {
+		if err := m.MineBlock(); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// All contracts should be expired.
-	err = build.Retry(200, 100*time.Millisecond, func() error {
-		return siatest.CheckExpectedNumberOfContracts(renter, 0, 0, 0, 0, len(tg.Hosts()), 0)
+	tries = 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if tries%20 == 0 {
+			err := m.MineBlock()
+			if err != nil {
+				return err
+			}
+		}
+		return siatest.CheckExpectedNumberOfContracts(renter, 0, 0, 0, 0, numHosts, 0)
 	})
 	if err != nil {
 		renter.PrintDebugInfo(t, true, true, true)
@@ -2182,6 +2161,7 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 
 	// Try downloading the file; should fail.
 	if _, _, err := renter.DownloadByStream(rf2); err == nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal("downloading file succeeded even though it shouldnt", err)
 	}
 
@@ -2197,6 +2177,7 @@ func testRenterAllowanceCancel(t *testing.T, tg *siatest.TestGroup) {
 		return nil
 	})
 	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 }
@@ -3441,7 +3422,7 @@ func TestSiafileCompatCodeV137(t *testing.T) {
 		t.Fatal("Error should be ErrNotExist but was", err)
 	}
 	// Make sure the siafile is exactly where we would expect it.
-	expectedLocation := filepath.Join(renterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, "sub1", "sub2", "testfile.sia")
+	expectedLocation := filepath.Join(renterDir, modules.FileSystemRoot, modules.UserFolder.String(), "sub1", "sub2", "testfile.sia")
 	if _, err := os.Stat(expectedLocation); err != nil {
 		t.Fatal(err)
 	}
@@ -3575,11 +3556,11 @@ func TestSiafileCompatCodeV140(t *testing.T) {
 		t.Fatal("Error should be ErrNotExist but was", err)
 	}
 	// Make sure the files are where we would expect them.
-	expectedLocation := filepath.Join(renterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, dummySiafile)
+	expectedLocation := filepath.Join(renterDir, modules.FileSystemRoot, modules.UserFolder.String(), dummySiafile)
 	if _, err := os.Stat(expectedLocation); err != nil {
 		t.Fatal(err)
 	}
-	expectedLocation = filepath.Join(renterDir, modules.FileSystemRoot, modules.BackupRoot, dummySnapshot)
+	expectedLocation = filepath.Join(renterDir, modules.FileSystemRoot, modules.BackupFolder.String(), dummySnapshot)
 	if _, err := os.Stat(expectedLocation); err != nil {
 		t.Fatal(err)
 	}
@@ -4556,5 +4537,140 @@ func testDirMode(t *testing.T, tg *siatest.TestGroup) {
 	// The created dir should have the specified permissions.
 	if di.DirMode != mode {
 		t.Fatalf("Expected folder permissions to be %v but was %v", mode, di.DirMode)
+	}
+}
+
+// TestWorkerStatus probes the WorkerPoolStatus
+func TestWorkerStatus(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	r := tg.Renters()[0]
+	numHosts := len(tg.Hosts())
+
+	// Build Contract ID and PubKey maps
+	rc, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	contracts := make(map[types.FileContractID]struct{})
+	pks := make(map[string]struct{})
+	for _, c := range rc.ActiveContracts {
+		contracts[c.ID] = struct{}{}
+		pks[c.HostPublicKey.String()] = struct{}{}
+	}
+
+	// Get the worker status
+	rwg, err := r.RenterWorkersGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be the same number of workers as Hosts
+	if rwg.NumWorkers != numHosts {
+		t.Errorf("Expected NumWorkers to be %v but got %v", numHosts, rwg.NumWorkers)
+	}
+	if len(rwg.Workers) != numHosts {
+		t.Errorf("Expected %v Workers but got %v", numHosts, len(rwg.Workers))
+	}
+
+	// No workers should be on cooldown
+	if rwg.TotalDownloadCoolDown != 0 {
+		t.Error("Didn't expect any workers on download cool down but found", rwg.TotalDownloadCoolDown)
+	}
+	if rwg.TotalUploadCoolDown != 0 {
+		t.Error("Didn't expect any workers on upload cool down but found", rwg.TotalUploadCoolDown)
+	}
+
+	// Check Worker information
+	for _, worker := range rwg.Workers {
+		// Contract Field checks
+		if _, ok := contracts[worker.ContractID]; !ok {
+			t.Error("Worker Contract ID not found in Contract map", worker.ContractID)
+		}
+		cu := worker.ContractUtility
+		if !cu.GoodForUpload {
+			t.Error("Worker contract should be GFR")
+		}
+		if !cu.GoodForRenew {
+			t.Error("Worker contract should be GFR")
+		}
+		if cu.BadContract {
+			t.Error("Worker contract should not be marked as Bad")
+		}
+		if cu.LastOOSErr != 0 {
+			t.Error("Worker contract LastOOSErr should be 0")
+		}
+		if cu.Locked {
+			t.Error("Worker contract should not be locked")
+		}
+		if _, ok := pks[worker.HostPubKey.String()]; !ok {
+			t.Error("Worker PubKey not found in PubKey map", worker.HostPubKey)
+		}
+
+		// Download Field checks
+		if worker.DownloadOnCoolDown {
+			t.Error("Worker should not be on cool down")
+		}
+		if worker.DownloadQueueSize != 0 {
+			t.Error("Expected download queue to be empty but was", worker.DownloadQueueSize)
+		}
+		if worker.DownloadTerminated {
+			t.Error("Worker should not be marked as DownloadTerminated")
+		}
+
+		// Upload Field checks
+		if worker.UploadCoolDownError != "" {
+			t.Error("Cool down error should be nil but was", worker.UploadCoolDownError)
+		}
+		if worker.UploadCoolDownTime.Nanoseconds() >= 0 {
+			t.Error("Cool down time should be negative but was", worker.UploadCoolDownTime)
+		}
+		if worker.UploadOnCoolDown {
+			t.Error("Worker should not be on cool down")
+		}
+		if worker.UploadQueueSize != 0 {
+			t.Error("Expected upload queue to be empty but was", worker.UploadQueueSize)
+		}
+		if worker.UploadTerminated {
+			t.Error("Worker should not be marked as UploadTerminated")
+		}
+
+		// Ephemeral Account cheks
+		if !worker.AvailableBalance.IsZero() {
+			t.Error("Expected available balance to be zero but was", worker.AvailableBalance.HumanString())
+		}
+		if !worker.BalanceTarget.IsZero() {
+			t.Error("Expected balance target to be zero but was", worker.BalanceTarget.HumanString())
+		}
+		if worker.FundAccountJobQueueSize != 0 {
+			t.Error("Expected fund account queue to be empty but was", worker.FundAccountJobQueueSize)
+		}
+
+		// Job Queues
+		if worker.BackupJobQueueSize != 0 {
+			t.Error("Expected backup queue to be empty but was", worker.BackupJobQueueSize)
+		}
+		if worker.DownloadRootJobQueueSize != 0 {
+			t.Error("Expected download by root queue to be empty but was", worker.DownloadRootJobQueueSize)
+		}
 	}
 }

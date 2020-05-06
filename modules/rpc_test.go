@@ -126,7 +126,7 @@ func TestRPCExecuteProgramResponseMarshalSia(t *testing.T) {
 	}
 	epr := RPCExecuteProgramResponse{
 		AdditionalCollateral: types.NewCurrency64(fastrand.Uint64n(100)),
-		Output:               fastrand.Bytes(10),
+		OutputLength:         fastrand.Uint64n(10),
 		NewMerkleRoot:        randomHash(),
 		NewSize:              fastrand.Uint64n(100),
 		Proof:                randomProof(),
@@ -148,9 +148,9 @@ func TestRPCExecuteProgramResponseMarshalSia(t *testing.T) {
 		t.Log(epr2.AdditionalCollateral)
 		t.Fatal("field doesn't match")
 	}
-	if !bytes.Equal(epr.Output, epr2.Output) {
-		t.Log(epr.Output)
-		t.Log(epr2.Output)
+	if epr.OutputLength != epr2.OutputLength {
+		t.Log(epr.OutputLength)
+		t.Log(epr2.OutputLength)
 		t.Fatal("field doesn't match")
 	}
 	if !bytes.Equal(epr.NewMerkleRoot[:], epr2.NewMerkleRoot[:]) {

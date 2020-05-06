@@ -620,13 +620,40 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
+	// Grab the skykey specified.
+	skykeyName := queryForm.Get("skykeyname")
+	skykeyID := queryForm.Get("skykeyid")
+	if skykeyName != "" && skykeyID != "" {
+		WriteError(w, Error{"Can only use either skykeyname or skykeyid flag, not both."}, http.StatusBadRequest)
+		return
+	}
+
+	if skykeyName != "" {
+		lup.SkykeyName = skykeyName
+	}
+	if skykeyID != "" {
+		var ID skykey.SkykeyID
+		err = ID.FromString(skykeyID)
+		if err != nil {
+			WriteError(w, Error{"Unable to parse skykey ID"}, http.StatusBadRequest)
+			return
+		}
+		lup.SkykeyID = ID
+	}
+
 	// Enable CORS
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Check for a convertpath input
+	convertPathStr := queryForm.Get("convertpath")
+	if convertPathStr != "" && lup.FileMetadata.Filename != "" {
+		WriteError(w, Error{fmt.Sprintf("cannot set both a convertpath and a filename")}, http.StatusBadRequest)
+		return
+	}
 
 	// Check whether this is a streaming upload or a siafile conversion. If no
 	// convert path is provided, assume that the req.Body will be used as a
 	// streaming upload.
-	convertPathStr := queryForm.Get("convertpath")
 	if convertPathStr == "" {
 		// Ensure we have a filename
 		if lup.FileMetadata.Filename == "" {
