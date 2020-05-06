@@ -352,7 +352,7 @@ func (w *worker) scheduleRefillAccount() {
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, account *account) (*worker, error) {
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	_, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
@@ -380,8 +380,6 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, account *account) (*wo
 	w := &worker{
 		staticHostPubKey:    hostPubKey,
 		staticHostPubKeyStr: hostPubKey.String(),
-
-		staticAccount:       account,
 		staticBalanceTarget: balanceTarget,
 
 		killChan: make(chan struct{}),

@@ -66,11 +66,14 @@ func (r *Renter) newAccount(hostKey types.SiaPublicKey) (*account, error) {
 		staticSecretKey: sk,
 	}
 
-	if err := errors.Compose(
-		acc.managedPersist(r.staticAccountsFile),
-		r.staticAccountsFile.Sync(),
-	); err != nil {
-		return nil, err
+	err := acc.managedPersist(r.staticAccountsFile)
+	if err != nil {
+		return nil, errors.AddContext(err, "Failed to persist account")
+	}
+
+	err = r.staticAccountsFile.Sync()
+	if err != nil {
+		return nil, errors.AddContext(err, "Failed to sync accounts file")
 	}
 
 	return acc, nil
