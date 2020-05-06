@@ -219,6 +219,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 
 	// rerun the program but now make sure the given budget does not cover the
 	// cost, we expect this to return ErrInsufficientBandwidthBudget
+	program = pb.Program()
 	cost = cost.Sub64(1)
 	_, limit, err = rhp.callExecuteProgram(epr, program.Data, cost)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientBandwidthBudget.Error()) {
@@ -453,7 +454,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Log the bandwidth used by this RPC.
-	t.Logf("Used bandwidth (valid program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+	t.Logf("Used bandwidth (valid has sector program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
 	// There should only be a single response.
 	if len(resps) != 1 {
 		t.Fatalf("expected 1 response but got %v", len(resps))
@@ -495,13 +496,14 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	}
 
 	// Execute program again. This time pay for 1 less byte of bandwidth. This should fail.
+	program = pb.Program()
 	cost = finalValues.ExecutionCost.Add(bandwidthCost.Sub64(1))
 	_, limit, err = rhp.callExecuteProgram(epr, program.Data, cost)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientBandwidthBudget.Error()) {
 		t.Fatalf("expected callExecuteProgram to fail due to insufficient bandwidth budget: %v", err)
 	}
 	// Log the bandwidth used by this RPC.
-	t.Logf("Used bandwidth (invalid program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+	t.Logf("Used bandwidth (invalid has sector program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
 	// Check that the remaining balance is correct again. We expect the host to
 	// charge us for the program since the bandwidth limit was reached when
 	// sending the response, after executing the program.
