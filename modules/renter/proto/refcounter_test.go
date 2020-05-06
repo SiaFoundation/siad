@@ -562,15 +562,14 @@ func TestRefCounterSetCount(t *testing.T) {
 		t.Fatal("Failed to start an update session", err)
 	}
 
-	// test SetCount
+	// test SetCount on an existing sector counter
 	secIdx := rc.numSectors - 2
 	count := uint16(fastrand.Intn(10_000))
 	u, err := rc.SetCount(secIdx, count)
 	if err != nil {
 		t.Fatal("Failed to create a set count update:", err)
 	}
-
-	// verify: we expect the value to have increased from the base 1 to 2
+	// verify that the value of the counter value was correctly set
 	val, err := rc.readCount(secIdx)
 	if err != nil {
 		t.Fatal("Failed to read value after set count:", err)
@@ -578,7 +577,48 @@ func TestRefCounterSetCount(t *testing.T) {
 	if val != count {
 		t.Fatalf("read wrong value after increment. Expected %d, got %d", count, val)
 	}
+	// apply the update
+	err = rc.CreateAndApplyTransaction(u)
+	if err != nil {
+		t.Fatal("Failed to apply a set count update:", err)
+	}
+	err = rc.UpdateApplied()
+	if err != nil {
+		t.Fatal("Failed to finish the update session:", err)
+	}
+	// check the value on disk (the in-mem map is now gone)
+	val, err = rc.readCount(secIdx)
+	if err != nil {
+		t.Fatal("Failed to read value after set count:", err)
+	}
+	if val != count {
+		t.Fatalf("read wrong value from disk after set count. Expected %d, got %d", count, val)
+	}
 
+	// test SetCount on a sector beyond the current last sector
+	err = rc.StartUpdate()
+	if err != nil {
+		t.Fatal("Failed to start an update session", err)
+	}
+	oldNumSec := rc.numSectors
+	secIdx = rc.numSectors + 2
+	count = uint16(fastrand.Intn(10_000))
+	u, err = rc.SetCount(secIdx, count)
+	if err != nil {
+		t.Fatal("Failed to create a set count update:", err)
+	}
+	// verify that the number of sectors increased by 3
+	if rc.numSectors != oldNumSec+3 {
+		t.Fatalf("wrong number of sectors after setting the value of a sector beyond the current last sector. Expected %d number of sectors, got %d", oldNumSec+3, rc.numSectors)
+	}
+	// verify that the value of the counter value was correctly set
+	val, err = rc.readCount(secIdx)
+	if err != nil {
+		t.Fatal("Failed to read value after set count:", err)
+	}
+	if val != count {
+		t.Fatalf("read wrong value after increment. Expected %d, got %d", count, val)
+	}
 	// apply the update
 	err = rc.CreateAndApplyTransaction(u)
 	if err != nil {
