@@ -716,7 +716,7 @@ func (p *renterHostPair) UpdatePriceTable(payByFC bool) error {
 			return err
 		}
 	} else {
-		_, err = p.payByEphemeralAccount(stream, pt.UpdatePriceTableCost)
+		err = p.payByEphemeralAccount(stream, pt.UpdatePriceTableCost)
 		if err != nil {
 			return err
 		}
