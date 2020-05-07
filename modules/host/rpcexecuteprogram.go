@@ -15,6 +15,12 @@ import (
 
 // managedRPCExecuteProgram handles incoming ExecuteProgram RPCs.
 func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
+	defer func() {
+		limit := stream.Limit()
+		fmt.Println("DL:", limit.Downloaded())
+		fmt.Println("UL:", limit.Uploaded())
+	}()
+
 	// read the price table
 	pt, err := h.staticReadPriceTableID(stream)
 	if err != nil {

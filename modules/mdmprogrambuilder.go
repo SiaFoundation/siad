@@ -88,6 +88,13 @@ func (pb *ProgramBuilder) AddReadSectorInstruction(length, offset uint64, merkle
 	pb.addInstruction(collateral, cost, refund, memory, time, dlBandwidthReadSector, ulBandwidthReadSector)
 }
 
+// BandwidthCost returns the current bandwidth cost of the program being built
+// by the builder. Note this is an overestimate of the actual costs to ensure
+// there is ample budget.
+func (pb *ProgramBuilder) BandwidthCost() types.Currency {
+	return MDMBandwidthCost(pb.staticPT, pb.uploadBandwidth, pb.downloadBandwidth)
+}
+
 // Cost returns the current cost of the program being built by the builder. If
 // 'finalized' is 'true', the memory cost of finalizing the program is included.
 func (pb *ProgramBuilder) Cost(finalized bool) (cost, refund, collateral types.Currency) {
@@ -103,12 +110,7 @@ func (pb *ProgramBuilder) Cost(finalized bool) (cost, refund, collateral types.C
 	}
 
 	// Add the bandwidth cost
-	bandwidthCost := pb.staticPT.DownloadBandwidthCost.Mul64(pb.downloadBandwidth).Add(pb.staticPT.UploadBandwidthCost.Mul64(pb.uploadBandwidth))
-	cost = cost.Add(bandwidthCost)
-
-	// Multiply to ensure we have sufficient bandwidth
-	// TODO: remove when #4117 and !4444 are done
-	cost = cost.Mul64(100)
+	cost = cost.Add(pb.BandwidthCost())
 
 	return cost, pb.potentialRefund, pb.riskedCollateral
 }

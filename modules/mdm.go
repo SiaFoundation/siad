@@ -223,6 +223,17 @@ func MDMReadMemory() uint64 {
 	return 0 // 'Read' doesn't hold on to any memory beyond the lifetime of the instruction.
 }
 
+// MDMBandwidthCost computes the total bandwidth cost given a price table and
+// used up- and download bandwidth.
+func MDMBandwidthCost(pt *RPCPriceTable, uploadBandwidth, downloadBandwidth uint64) types.Currency {
+	uploadCost := pt.UploadBandwidthCost.Mul64(uploadBandwidth)
+	downloadCost := pt.DownloadBandwidthCost.Mul64(downloadBandwidth)
+	totalCost := uploadCost.Add(downloadCost)
+	// Multiply to ensure we have sufficient bandswidth
+	// TODO: remove when #4117 and !4444 are done
+	return totalCost.Mul64(100)
+}
+
 // MDMMemoryCost computes the memory cost given a price table, memory and time.
 func MDMMemoryCost(pt *RPCPriceTable, usedMemory, time uint64) types.Currency {
 	return pt.MemoryTimeCost.Mul64(usedMemory * time)

@@ -33,6 +33,7 @@ func TestInstructionHasSector(t *testing.T) {
 	instructions, programData := pb.Program()
 	cost, refund, collateral := pb.Cost(true)
 	dataLen := uint64(len(programData))
+
 	// Execute it.
 	budget := modules.NewBudget(cost)
 	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, budget, collateral, so, dataLen, bytes.NewReader(programData))
@@ -58,8 +59,8 @@ func TestInstructionHasSector(t *testing.T) {
 		if !bytes.Equal(output.Output, []byte{1}) {
 			t.Fatalf("expected returned value to be [1] for 'true' but was %v", output.Output)
 		}
-		if !output.ExecutionCost.Equals(cost) {
-			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
+		if !output.ExecutionCost.Equals(cost.Sub(pb.BandwidthCost())) {
+			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.Sub(pb.BandwidthCost()).HumanString())
 		}
 		if !budget.Remaining().Equals(cost.Sub(output.ExecutionCost)) {
 			t.Fatalf("budget should be equal to the initial budget minus the execution cost: %v != %v",
