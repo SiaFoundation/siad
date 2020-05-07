@@ -371,7 +371,7 @@ func (md Metadata) backup() (b Metadata) {
 		copy(b.Skylinks, md.Skylinks)
 	}
 	// If the backup was successful it should match the original.
-	if build.Release == "testing" && !md.equal(b) {
+	if build.Release == "testing" && !md.equals(b) {
 		fmt.Println("md:\n", md)
 		fmt.Println("b:\n", b)
 		build.Critical("backup: copy doesn't match original")
@@ -410,7 +410,7 @@ func (md *Metadata) restore(b Metadata) {
 	md.PubKeyTableOffset = b.PubKeyTableOffset
 	md.Skylinks = b.Skylinks
 	// If the backup was successful it should match the backup.
-	if build.Release == "testing" && !md.equal(b) {
+	if build.Release == "testing" && !md.equals(b) {
 		fmt.Println("md:\n", md)
 		fmt.Println("b:\n", b)
 		build.Critical("restore: copy doesn't match original")
@@ -421,7 +421,10 @@ func (md *Metadata) restore(b Metadata) {
 // the serialized representations.
 //
 // WARNING: Do not use in production!
-func (md *Metadata) equal(b Metadata) bool {
+func (md *Metadata) equals(b Metadata) bool {
+	if build.Release != "testing" {
+		build.Critical("Metadata.equals used in non-testing code!")
+	}
 	mdBytes, err := json.Marshal(md)
 	if err != nil {
 		build.Critical("failed to marshal:", err)
@@ -430,7 +433,7 @@ func (md *Metadata) equal(b Metadata) bool {
 	if err != nil {
 		build.Critical("failed to marshal:", err)
 	}
-	return bytes.Compare(mdBytes, bBytes) == 0
+	return bytes.Equal(mdBytes, bBytes)
 }
 
 // rename changes the name of the file to a new one. To guarantee that renaming
