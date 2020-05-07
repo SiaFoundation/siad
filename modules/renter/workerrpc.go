@@ -206,6 +206,9 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
 
+	// take into account bandwidth costs
+	cost = cost.Add(pb.BandwidthCost())
+
 	// exeucte it
 	var responses []programResponse
 	responses, err = w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
@@ -244,6 +247,9 @@ func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64
 	pb.AddReadSectorInstruction(length, offset, sectorRoot, true)
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
+
+	// take into account bandwidth costs
+	cost = cost.Add(pb.BandwidthCost())
 
 	// exeucte it
 	responses, err := w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
