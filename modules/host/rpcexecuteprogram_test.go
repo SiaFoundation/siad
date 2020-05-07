@@ -179,11 +179,14 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	if resp.Error != nil {
 		t.Fatal(resp.Error)
 	}
-	if resp.NewSize != sos.staticContractSize {
-		t.Fatalf("expected contract size to stay the same: %v != %v", sos.staticContractSize, resp.NewSize)
+	// programs that don't require a snapshot return a 0 contract size.
+	if resp.NewSize != 0 {
+		t.Fatalf("expected contract size to stay the same: %v != %v", 0, resp.NewSize)
 	}
-	if resp.NewMerkleRoot != sos.staticMerkleRoot {
-		t.Fatalf("expected merkle root to stay the same: %v != %v", sos.staticMerkleRoot, resp.NewMerkleRoot)
+	// programs that don't require a snapshot return a zero hash.
+	zh := crypto.Hash{}
+	if resp.NewMerkleRoot != zh {
+		t.Fatalf("expected merkle root to stay the same: %v != %v", zh, resp.NewMerkleRoot)
 	}
 	if len(resp.Proof) != 0 {
 		t.Fatalf("expected proof length to be %v but was %v", 0, len(resp.Proof))
