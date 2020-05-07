@@ -411,17 +411,20 @@ func (w *worker) managedTryRefillAccount() {
 		return
 	}
 
-	// refill if the balance is less than half the balance target
+	// check if refill is necessary
 	balance := w.staticAccount.managedAvailableBalance()
-	threshold := w.staticBalanceTarget.Div64(2)
-	if balance.Cmp(threshold) < 0 {
-		amount := w.staticBalanceTarget.Sub(balance)
-		_, err := w.managedFundAccount(amount)
-		if err != nil {
-			w.renter.log.Println("ERROR: failed to refill account", err)
-			// TODO: add cooldown mechanism
-		}
+	if balance.Cmp(w.staticBalanceTarget.Div64(2)) >= 0 {
+		return
 	}
+
+	// the account balance dropped to below half the balance target, refill
+	amount := w.staticBalanceTarget.Sub(balance)
+	_, err := w.managedFundAccount(amount)
+	if err != nil {
+		w.renter.log.Println("ERROR: failed to refill account", err)
+		// TODO: add cooldown mechanism
+	}
+	return
 }
 
 // managedTryUpdatePriceTable will check if the price table needs to be updated
