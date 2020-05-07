@@ -20,16 +20,25 @@ type programResponse struct {
 }
 
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
-func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) ([]programResponse, error) {
+func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, err error) {
 	// check host version
 	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
 		build.Critical("Executing new RHP RPC on host with version", w.staticHostVersion)
 	}
 
+	// track the withdrawal
+	// TODO: this is very naive and does not consider refunds at all
+	w.staticAccount.managedTrackWithdrawal(cost)
+	defer func() {
+		w.staticAccount.managedCommitWithdrawal(cost, err == nil)
+	}()
+
 	// create a new stream
-	stream, err := w.staticNewStream()
+	var stream siamux.Stream
+	stream, err = w.staticNewStream()
 	if err != nil {
-		return nil, errors.AddContext(err, "Unable to create a new stream")
+		err = errors.AddContext(err, "Unable to create a new stream")
+		return
 	}
 	defer func() {
 		if err := stream.Close(); err != nil {
@@ -45,14 +54,14 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	// write the specifier
 	err = modules.RPCWrite(stream, modules.RPCExecuteProgram)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	// send price table uid
 	pt := w.staticHostPrices.managedPriceTable()
 	err = modules.RPCWrite(stream, pt.UID)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	// prepare the request.
@@ -65,27 +74,27 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	// provide payment
 	err = w.staticAccount.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, bh)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	// send the execute program request.
 	err = modules.RPCWrite(stream, epr)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	// send the programData.
 	_, err = stream.Write(data)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	// read the responses.
-	responses := make([]programResponse, len(epr.Program))
+	responses = make([]programResponse, len(epr.Program))
 	for i := range responses {
 		err = modules.RPCRead(stream, &responses[i])
 		if err != nil {
-			return nil, err
+			return
 		}
 
 		// Read the output data.
@@ -93,7 +102,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 		responses[i].Output = make([]byte, outputLen, outputLen)
 		_, err = io.ReadFull(stream, responses[i].Output)
 		if err != nil {
-			return nil, err
+			return
 		}
 
 		// If the response contains an error we are done.
@@ -101,7 +110,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 			break
 		}
 	}
-	return responses, nil
+	return
 }
 
 // managedFundAccount will call the fundAccountRPC on the host and if successful
