@@ -561,7 +561,7 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 		SiaPath: modules.RandomSiaPath(),
 	}
 
-	// Try and convert to a Skyfile, this should fail due to the the original
+	// Try and convert to a Skyfile, this should fail due to the original
 	// siafile being a N-of-M redundancy
 	skylink, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
 	if !strings.Contains(err.Error(), renter.ErrRedundancyNotSupported.Error()) {
@@ -1896,7 +1896,7 @@ func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 		}
 		_, err = r.RenterFileRootGet(skyfilePath)
 		if err == nil || !strings.Contains(err.Error(), "path does not exist") {
-			t.Fatal(errors.New("Skyfile not deleted after dry run."))
+			t.Fatal(errors.New("skyfile not deleted after dry run"))
 		}
 
 		sup.DryRun = false

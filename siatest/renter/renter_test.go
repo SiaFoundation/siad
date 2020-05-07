@@ -3050,7 +3050,7 @@ func TestSetFileTrackingPath(t *testing.T) {
 		t.SkipNow()
 	}
 
-	// Create a group for the subtests
+	// Create a testgroup.
 	gp := siatest.GroupParams{
 		Hosts:   5,
 		Renters: 1,

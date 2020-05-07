@@ -63,6 +63,10 @@ func equalBubbledMetadata(md1, md2 siadir.Metadata) error {
 	if md1.NumSubDirs != md2.NumSubDirs {
 		return fmt.Errorf("NumSubDirs not equal, %v and %v", md1.NumSubDirs, md2.NumSubDirs)
 	}
+	// Check Size
+	if md1.Size != md2.Size {
+		return fmt.Errorf("sizes not equal, %v and %v", md1.Size, md2.Size)
+	}
 	// Check StuckHealth
 	if md1.StuckHealth != md2.StuckHealth {
 		return fmt.Errorf("stuck healths not equal, %v and %v", md1.StuckHealth, md2.StuckHealth)

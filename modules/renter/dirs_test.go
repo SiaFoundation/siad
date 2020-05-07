@@ -211,7 +211,7 @@ func TestRenterListDirectory(t *testing.T) {
 	}
 	files, err := rt.renter.FileList(modules.RootSiaPath(), false, false)
 	if len(files) != 1 {
-		t.Fatal("Expected 1 FileInfos but got", len(files))
+		t.Fatal("Expected 1 FileInfo but got", len(files))
 	}
 
 	// Refresh the directories.
@@ -227,8 +227,10 @@ func TestRenterListDirectory(t *testing.T) {
 		}
 		root := directories[0]
 		// Check the aggregate and siadir fields.
-		if root.AggregateNumSubDirs != 4 {
-			return fmt.Errorf("Expected 4 subdirs in aggregate but got %v", root.AggregateNumSubDirs)
+		//
+		// Expecting /home, /home/user, /var, /var/skynet, /snapshots, /foo
+		if root.AggregateNumSubDirs != 6 {
+			return fmt.Errorf("Expected 6 subdirs in aggregate but got %v", root.AggregateNumSubDirs)
 		}
 		if root.NumSubDirs != 4 {
 			return fmt.Errorf("Expected 4 subdirs but got %v", root.NumSubDirs)
@@ -241,6 +243,9 @@ func TestRenterListDirectory(t *testing.T) {
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Verify that the directory information matches the on disk information
 	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath())
