@@ -56,7 +56,7 @@ type (
 
 // managedPersist will write the account to the given file at the account's
 // offset
-func (a *account) managedPersist(file modules.File) error {
+func (a *account) managedPersist() error {
 	a.staticMu.Lock()
 	accountData := accountPersistence{
 		AccountID: a.staticID,
@@ -65,7 +65,7 @@ func (a *account) managedPersist(file modules.File) error {
 		SecretKey: a.staticSecretKey,
 	}
 	a.staticMu.Unlock()
-	_, err := file.WriteAt(accountData.bytes(), a.staticOffset)
+	_, err := a.staticFile.WriteAt(accountData.bytes(), a.staticOffset)
 	return err
 }
 
@@ -91,44 +91,17 @@ func (r *Renter) readAccountAt(offset, accountOffset int64) (*account, error) {
 		staticHostKey:   accountData.HostKey,
 		staticOffset:    accountOffset,
 		staticSecretKey: accountData.SecretKey,
+		staticFile:      r.staticAccountsFile,
 		balance:         accountData.Balance,
 	}, nil
-}
-
-// managedOpenAccountsFile opens the accounts file at the given path. If the
-// file does not exist, it will create it and write the accountsMetadat header.
-func (r *Renter) managedOpenAccountsFile(path string) error {
-	// fetch the file info
-	_, statErr := os.Stat(path)
-
-	// open the file, create it if it does not exist yet
-	file, err := r.deps.OpenFile(path, os.O_RDWR|os.O_CREATE, defaultFilePerm)
-	if err != nil {
-		return err
-	}
-
-	// set it on the renter
-	id := r.mu.Lock()
-	r.staticAccountsFile = file
-	r.mu.Unlock(id)
-
-	// if the file is newly created, write the header
-	if os.IsNotExist(statErr) {
-		return r.updateAccountsMetadata(accountsMetadata{
-			Header:  metadataHeader,
-			Version: metadataVersion,
-			Clean:   true,
-		})
-	}
-	return nil
 }
 
 // managedLoadAccounts loads the accounts from the persistence file onto the
 // Renter object.
 func (r *Renter) managedLoadAccounts() error {
-	// open accounts file
+	// load accounts file
 	path := filepath.Join(r.persistDir, accountsFilename)
-	err := r.managedOpenAccountsFile(path)
+	err := r.managedLoadAccountsFile(path)
 	if err != nil {
 		return errors.AddContext(err, "Failed to open accounts file")
 	}
@@ -147,18 +120,18 @@ func (r *Renter) managedLoadAccounts() error {
 		return errors.AddContext(errWrongVersion, "Failed to verify accounts metadata")
 	}
 
-	// sanity check that the account size is larger than the metadata size,
+	// sanity check that the metadata size is not larger than the account size
 	// before setting the initial offset
 	if metadataSize > accountSize {
 		err = errors.New("Metadata size is larger than account size, this means the initial offset is too small")
 		build.Critical(err)
 		return err
 	}
-
-	// the account offset is not necessarily the offset at which the account is
-	// read, this is to ensure corrupted accounts do not take up disk space but
-	// instead that disk space is reused.
 	initialOffset := int64(accountSize)
+
+	// the account offset is not necessarily the offset at which the account
+	// data is read, this is to ensure corrupted accounts do not take up disk
+	// space but instead that disk space is reused.
 	accountOffset := int64(accountSize)
 
 	// read the raw account data and decode them into accounts
@@ -181,8 +154,9 @@ func (r *Renter) managedLoadAccounts() error {
 		accountOffset += accountSize
 	}
 
-	// mark the metadata as 'dirty' and update the metadata on disk - this
-	// ensures only after a successful shutdown, accounts are reloaded from disk
+	// mark the metadata as 'dirty' and update the metadata on disk, this
+	// ensures the account balances will be ignored in the event of an an
+	// unclean shutdown
 	metadata.Clean = false
 	err = r.updateAccountsMetadata(metadata)
 	if err != nil {
@@ -197,6 +171,35 @@ func (r *Renter) managedLoadAccounts() error {
 	id := r.mu.Lock()
 	r.accounts = accounts
 	r.mu.Unlock(id)
+	return nil
+}
+
+// managedLoadAccountsFile opens the accounts file at the given path and sets it
+// on the renter. If the file does not exist it will create it and write the
+// metadata header.
+func (r *Renter) managedLoadAccountsFile(path string) error {
+	// fetch the file info
+	_, statErr := os.Stat(path)
+
+	// open the file, create it if it does not exist yet
+	file, err := r.deps.OpenFile(path, os.O_RDWR|os.O_CREATE, defaultFilePerm)
+	if err != nil {
+		return err
+	}
+
+	// set it on the renter
+	id := r.mu.Lock()
+	r.staticAccountsFile = file
+	r.mu.Unlock(id)
+
+	// if the file is newly created, write the header
+	if os.IsNotExist(statErr) {
+		return r.updateAccountsMetadata(accountsMetadata{
+			Header:  metadataHeader,
+			Version: metadataVersion,
+			Clean:   true,
+		})
+	}
 	return nil
 }
 
@@ -229,7 +232,7 @@ func (r *Renter) managedSaveAccounts() error {
 
 	// save the account data to disk
 	for _, account := range accounts {
-		err := account.managedPersist(r.staticAccountsFile)
+		err := account.managedPersist()
 		if err != nil {
 			r.log.Println("ERROR:", err)
 			continue
@@ -274,12 +277,12 @@ func (ap accountPersistence) bytes() []byte {
 	}
 
 	// calculate checksum on padded account bytes
-	accBytesPadded := make([]byte, accBytesMaxSize, accBytesMaxSize)
+	accBytesPadded := make([]byte, accBytesMaxSize)
 	copy(accBytesPadded, accBytes)
 	checksum := crypto.HashBytes(accBytesPadded)
 
 	// create final byte slice of account size
-	b := make([]byte, accountSize, accountSize)
+	b := make([]byte, accountSize)
 	copy(b[:len(checksum)], checksum[:])
 	copy(b[len(checksum):], accBytesPadded)
 	return b

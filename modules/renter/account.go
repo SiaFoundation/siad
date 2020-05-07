@@ -30,7 +30,8 @@ type (
 		pendingWithdrawals types.Currency
 		pendingDeposits    types.Currency
 
-		staticMu sync.RWMutex
+		staticFile modules.File
+		staticMu   sync.RWMutex
 	}
 )
 
@@ -64,13 +65,17 @@ func (r *Renter) newAccount(hostKey types.SiaPublicKey) (*account, error) {
 		staticHostKey:   hostKey,
 		staticOffset:    int64(offset),
 		staticSecretKey: sk,
+		staticFile:      r.staticAccountsFile,
 	}
 
-	err := acc.managedPersist(r.staticAccountsFile)
+	err := acc.managedPersist()
 	if err != nil {
 		return nil, errors.AddContext(err, "Failed to persist account")
 	}
 
+	// sync the file to ensure the secret key is saved, even if the renter
+	// experiences an unclean shutdown, the secret key will remain available to
+	// us for potential account balance recovery
 	err = r.staticAccountsFile.Sync()
 	if err != nil {
 		return nil, errors.AddContext(err, "Failed to sync accounts file")
