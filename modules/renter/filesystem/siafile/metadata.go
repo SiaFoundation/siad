@@ -1,11 +1,12 @@
 package siafile
 
 import (
+	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -370,7 +371,7 @@ func (md Metadata) backup() (b Metadata) {
 		copy(b.Skylinks, md.Skylinks)
 	}
 	// If the backup was successful it should match the original.
-	if build.Release == "testing" && !reflect.DeepEqual(md, b) {
+	if build.Release == "testing" && !md.equal(b) {
 		fmt.Println("md:\n", md)
 		fmt.Println("b:\n", b)
 		build.Critical("backup: copy doesn't match original")
@@ -409,11 +410,27 @@ func (md *Metadata) restore(b Metadata) {
 	md.PubKeyTableOffset = b.PubKeyTableOffset
 	md.Skylinks = b.Skylinks
 	// If the backup was successful it should match the backup.
-	if build.Release == "testing" && !reflect.DeepEqual(*md, b) {
+	if build.Release == "testing" && !md.equal(b) {
 		fmt.Println("md:\n", md)
 		fmt.Println("b:\n", b)
-		build.Critical("backup: copy doesn't match original")
+		build.Critical("restore: copy doesn't match original")
 	}
+}
+
+// equal compares the two structs for equality by serializing them and comparing
+// the serialized representations.
+//
+// WARNING: Do not use in production!
+func (md *Metadata) equal(b Metadata) bool {
+	mdBytes, err := json.Marshal(md)
+	if err != nil {
+		build.Critical("failed to marshal:", err)
+	}
+	bBytes, err := json.Marshal(b)
+	if err != nil {
+		build.Critical("failed to marshal:", err)
+	}
+	return bytes.Compare(mdBytes, bBytes) == 0
 }
 
 // rename changes the name of the file to a new one. To guarantee that renaming
