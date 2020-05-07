@@ -58,8 +58,8 @@ func TestInstructionReadSector(t *testing.T) {
 		if uint64(len(output.Output)) != modules.SectorSize {
 			t.Fatalf("expected returned data to have length %v but was %v", modules.SectorSize, len(output.Output))
 		}
-		if !output.ExecutionCost.Equals(cost.Sub(pb.BandwidthCost())) {
-			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.Sub(pb.BandwidthCost()).HumanString())
+		if !output.ExecutionCost.Equals(cost) {
+			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
 		if !budget.Remaining().Equals(cost.Sub(output.ExecutionCost)) {
 			t.Fatalf("budget should be equal to the initial budget minus the execution cost: %v != %v",
@@ -118,8 +118,8 @@ func TestInstructionReadSector(t *testing.T) {
 		if !bytes.Equal(output.Output, sectorData[modules.SectorSize/2:]) {
 			t.Fatal("output should match the second half of the sector data")
 		}
-		if !output.ExecutionCost.Equals(cost.Sub(pb.BandwidthCost())) {
-			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.Sub(pb.BandwidthCost()).HumanString())
+		if !output.ExecutionCost.Equals(cost) {
+			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
 		if !budget.Remaining().Equals(cost.Sub(output.ExecutionCost)) {
 			t.Fatalf("budget should be equal to the initial budget minus the execution cost: %v != %v",
@@ -194,8 +194,8 @@ func TestInstructionReadOutsideSector(t *testing.T) {
 		if !bytes.Equal(output.Output, sectorData) {
 			t.Fatal("output data doesn't match")
 		}
-		if !output.ExecutionCost.Equals(cost.Sub(pb.BandwidthCost())) {
-			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.Sub(pb.BandwidthCost()).HumanString())
+		if !output.ExecutionCost.Equals(cost) {
+			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
 		}
 		if !budget.Remaining().Equals(cost.Sub(output.ExecutionCost)) {
 			t.Fatalf("budget should be equal to the initial budget minus the execution cost: %v != %v",

@@ -40,6 +40,7 @@ func TestInstructionHasSector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	// Check outputs.
 	numOutputs := 0
 	for output := range outputs {
@@ -59,12 +60,12 @@ func TestInstructionHasSector(t *testing.T) {
 		if !bytes.Equal(output.Output, []byte{1}) {
 			t.Fatalf("expected returned value to be [1] for 'true' but was %v", output.Output)
 		}
-		if !output.ExecutionCost.Equals(cost.Sub(pb.BandwidthCost())) {
+		if !output.ExecutionCost.Equals(cost) {
 			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.Sub(pb.BandwidthCost()).HumanString())
 		}
 		if !budget.Remaining().Equals(cost.Sub(output.ExecutionCost)) {
 			t.Fatalf("budget should be equal to the initial budget minus the execution cost: %v != %v",
-				budget.Remaining().HumanString(), cost.Sub(output.ExecutionCost).HumanString())
+				budget.Remaining().HumanString(), cost.HumanString())
 		}
 		if !output.AdditionalCollateral.Equals(collateral) {
 			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())

@@ -109,9 +109,6 @@ func (pb *ProgramBuilder) Cost(finalized bool) (cost, refund, collateral types.C
 		cost = cost.Add(MDMMemoryCost(pb.staticPT, pb.usedMemory, MDMTimeCommit))
 	}
 
-	// Add the bandwidth cost
-	cost = cost.Add(pb.BandwidthCost())
-
 	return cost, pb.potentialRefund, pb.riskedCollateral
 }
 
