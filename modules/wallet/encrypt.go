@@ -438,8 +438,12 @@ func (w *Wallet) Reset() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	w.cs.Unsubscribe(w)
-	w.tpool.Unsubscribe(w)
+	// If the wallet was subscribed to the consensus and tpool then unsubscribe
+	if w.subscribed {
+		w.cs.Unsubscribe(w)
+		w.tpool.Unsubscribe(w)
+		w.subscribed = false
+	}
 
 	err := dbReset(w.dbTx)
 	if err != nil {
@@ -452,7 +456,6 @@ func (w *Wallet) Reset() error {
 	w.unconfirmedProcessedTransactions = []modules.ProcessedTransaction{}
 	w.unlocked = false
 	w.encrypted = false
-	w.subscribed = false
 
 	return nil
 }

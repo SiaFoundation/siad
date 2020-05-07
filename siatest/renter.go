@@ -211,12 +211,18 @@ func (tn *TestNode) DownloadToDiskWithDiskFetch(rf *RemoteFile, async bool, disa
 }
 
 // File returns the file queried by the user
-func (tn *TestNode) File(rf *RemoteFile) (modules.FileInfo, error) {
-	rfile, err := tn.RenterFileGet(rf.SiaPath())
-	if err != nil {
-		return rfile.File, err
+func (tn *TestNode) File(rf *RemoteFile) (fi modules.FileInfo, err error) {
+	var rfile api.RenterFile
+	if rf.Root() {
+		rfile, err = tn.RenterFileRootGet(rf.SiaPath())
+	} else {
+		rfile, err = tn.RenterFileGet(rf.SiaPath())
 	}
-	return rfile.File, err
+	if err != nil {
+		return
+	}
+	fi = rfile.File
+	return
 }
 
 // Files lists the files tracked by the renter
@@ -247,9 +253,16 @@ func (tn *TestNode) KnowsHost(host *TestNode) error {
 	return errors.New("host is unknown")
 }
 
-// Rename renames a remoteFile and returns the new file.
+// Rename renames a remoteFile with the root parameter set to false and returns
+// the new file.
 func (tn *TestNode) Rename(rf *RemoteFile, newPath modules.SiaPath) (*RemoteFile, error) {
-	err := tn.RenterRenamePost(rf.SiaPath(), newPath)
+	return tn.RenameRoot(rf, newPath, false)
+}
+
+// RenameRoot renames a remoteFile with the option of setting the root parameter
+// and returns the new file.
+func (tn *TestNode) RenameRoot(rf *RemoteFile, newPath modules.SiaPath, root bool) (*RemoteFile, error) {
+	err := tn.RenterRenamePost(rf.SiaPath(), newPath, root)
 	if err != nil {
 		return nil, err
 	}
@@ -401,8 +414,9 @@ func (tn *TestNode) UploadNewFileBlocking(filesize int, dataPieces uint64, parit
 	return localFile, remoteFile, tn.WaitForUploadHealth(remoteFile)
 }
 
-// UploadBlocking attempts to upload an existing file with the option to overwrite if exists
-// and waits for the upload to reach 100% progress and redundancy.
+// UploadBlocking attempts to upload an existing file with the option to
+// overwrite if exists and waits for the upload to reach 100% progress and
+// full health.
 func (tn *TestNode) UploadBlocking(localFile *LocalFile, dataPieces uint64, parityPieces uint64, force bool) (*RemoteFile, error) {
 	// Upload file, creating a parity piece for each host in the group
 	remoteFile, err := tn.Upload(localFile, tn.SiaPath(localFile.path), dataPieces, parityPieces, force)

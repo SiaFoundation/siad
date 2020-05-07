@@ -89,7 +89,7 @@ type skyfileLayout struct {
 	fanoutDataPieces   uint8
 	fanoutParityPieces uint8
 	cipherType         crypto.CipherType
-	cipherKey          [64]byte // cipherKey is incompatible with ciphers that need keys larger than 64 bytes
+	keyData            [64]byte // keyData is incompatible with ciphers that need keys larger than 64 bytes
 }
 
 // encode will return a []byte that has compactly encoded all of the layout
@@ -111,8 +111,8 @@ func (ll *skyfileLayout) encode() []byte {
 	offset += 1
 	copy(b[offset:], ll.cipherType[:])
 	offset += len(ll.cipherType)
-	copy(b[offset:], ll.cipherKey[:])
-	offset += len(ll.cipherKey)
+	copy(b[offset:], ll.keyData[:])
+	offset += len(ll.keyData)
 
 	// Sanity check. If this check fails, encode() does not match the
 	// SkyfileLayoutSize.
@@ -139,8 +139,8 @@ func (ll *skyfileLayout) decode(b []byte) {
 	offset += 1
 	copy(ll.cipherType[:], b[offset:])
 	offset += len(ll.cipherType)
-	copy(ll.cipherKey[:], b[offset:])
-	offset += len(ll.cipherKey)
+	copy(ll.keyData[:], b[offset:])
+	offset += len(ll.keyData)
 
 	// Sanity check. If this check fails, decode() does not match the
 	// SkyfileLayoutSize.
@@ -203,8 +203,6 @@ func fileUploadParamsFromLUP(lup modules.SkyfileUploadParameters) (modules.FileU
 		Force:               lup.Force,
 		DisablePartialChunk: true,  // must be set to true - partial chunks change, content addressed files must not change.
 		Repair:              false, // indicates whether this is a repair operation
-
-		CipherType: crypto.TypePlain,
 	}, nil
 }
 
@@ -260,7 +258,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 	// to catch early errors.
 	var ll skyfileLayout
 	masterKey := fileNode.MasterKey()
-	if len(masterKey.Key()) > len(ll.cipherKey) {
+	if len(masterKey.Key()) > len(ll.keyData) {
 		return modules.Skylink{}, errors.New("cipher key is not supported by the skyfile format")
 	}
 	ec := fileNode.ErasureCode()
@@ -307,11 +305,21 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 		fanoutParityPieces: uint8(ec.NumPieces() - ec.MinPieces()),
 		cipherType:         masterKey.Type(),
 	}
-	copy(ll.cipherKey[:], masterKey.Key())
+	// If we're uploading in plaintext, we put the key in the baseSector
+	if !encryptionEnabled(lup) {
+		copy(ll.keyData[:], masterKey.Key())
+	}
 
 	// Create the base sector.
 	baseSector, fetchSize := skyfileBuildBaseSector(ll.encode(), fanoutBytes, metadataBytes, nil)
-	baseSectorReader := bytes.NewReader(baseSector)
+
+	// Encrypt the base sector if necessary.
+	if encryptionEnabled(lup) {
+		err = encryptBaseSectorWithSkykey(baseSector, ll, lup.FileSpecificSkykey)
+		if err != nil {
+			return modules.Skylink{}, errors.AddContext(err, "Failed to encrypt base sector for upload")
+		}
+	}
 
 	// Create the skylink.
 	baseSectorRoot := crypto.MerkleRoot(baseSector)
@@ -335,19 +343,12 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 		return skylink, errors.AddContext(err, "unable to add skylink to the sianodes")
 	}
 
-	// Perform the full upload.
-	fileUploadParams, err := fileUploadParamsFromLUP(lup)
+	// Upload the base sector.
+	err = r.managedUploadBaseSector(lup, baseSector, skylink)
 	if err != nil {
-		return modules.Skylink{}, errors.AddContext(err, "unable to build the file upload parameters")
+		return modules.Skylink{}, errors.AddContext(err, "Unable to upload base sector for file node. ")
 	}
 
-	newFileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader, false)
-	if err != nil {
-		return modules.Skylink{}, errors.AddContext(err, "skyfile base chunk upload failed")
-	}
-	defer newFileNode.Close()
-
-	err = newFileNode.AddSkylink(skylink)
 	return skylink, errors.AddContext(err, "unable to add skylink to the sianodes")
 }
 
@@ -535,7 +536,21 @@ func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParamete
 		Force:               lup.Force,
 		DisablePartialChunk: true,  // must be set to true - partial chunks change, content addressed files must not change.
 		Repair:              false, // indicates whether this is a repair operation
-		CipherType:          crypto.TypePlain,
+
+		CipherType: crypto.TypePlain,
+	}
+
+	// Check if an encryption key was specified.
+	if encryptionEnabled(lup) {
+		fanoutSkykey, err := lup.FileSpecificSkykey.DeriveSubkey(fanoutNonceDerivation[:])
+		if err != nil {
+			return modules.Skylink{}, errors.AddContext(err, "unable to derive fanout subkey")
+		}
+		fup.CipherKey, err = fanoutSkykey.CipherKey()
+		if err != nil {
+			return modules.Skylink{}, errors.AddContext(err, "unable to get skykey cipherkey")
+		}
+		fup.CipherType = lup.FileSpecificSkykey.CipherType
 	}
 
 	var fileNode *filesystem.FileNode
@@ -582,6 +597,7 @@ func (r *Renter) managedUploadBaseSector(lup modules.SkyfileUploadParameters, ba
 	if err != nil {
 		return errors.AddContext(err, "failed to create siafile upload parameters")
 	}
+	fileUploadParams.CipherType = crypto.TypePlain // the baseSector should be encrypted by the caller.
 
 	// Perform the actual upload. This will require turning the base sector into
 	// a reader.
@@ -605,12 +621,21 @@ func (r *Renter) managedUploadSkyfileSmallFile(lup modules.SkyfileUploadParamete
 		version:      SkyfileVersion,
 		filesize:     uint64(len(fileBytes)),
 		metadataSize: uint64(len(metadataBytes)),
-		// No fanout, no encryption.
+		// No fanout is set yet.
+		// If encryption is set in the upload params, this will be overwritten.
+		cipherType: crypto.TypePlain,
 	}
 
 	// Create the base sector. This is done as late as possible so that any
 	// errors are caught before a large block of memory is allocated.
 	baseSector, fetchSize := skyfileBuildBaseSector(ll.encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
+
+	if encryptionEnabled(lup) {
+		err := encryptBaseSectorWithSkykey(baseSector, ll, lup.FileSpecificSkykey)
+		if err != nil {
+			return modules.Skylink{}, errors.AddContext(err, "Failed to encrypt base sector for upload")
+		}
+	}
 
 	// Create the skylink.
 	baseSectorRoot := crypto.MerkleRoot(baseSector) // Should be identical to the sector roots for each sector in the siafile.
@@ -659,7 +684,10 @@ func parseSkyfileMetadata(baseSector []byte) (sl skyfileLayout, fanoutBytes []by
 	}
 
 	// Parse the fanout.
-	fanoutBytes = baseSector[offset : offset+sl.fanoutSize]
+	// NOTE: we copy the fanoutBytes instead of returning a slice into baseSector
+	// because in PinSkylink the baseSector may be re-encrypted.
+	fanoutBytes = make([]byte, sl.fanoutSize)
+	copy(fanoutBytes, baseSector[offset:offset+sl.fanoutSize])
 	offset += sl.fanoutSize
 
 	// Parse the metadata.
@@ -699,6 +727,15 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 	}
 	if len(baseSector) < SkyfileLayoutSize {
 		return modules.SkyfileMetadata{}, nil, errors.New("download did not fetch enough data, layout cannot be decoded")
+	}
+
+	// Check if the base sector is encrypted, and attempt to decrypt it.
+	// This will fail if we don't have the decryption key.
+	if isEncryptedBaseSector(baseSector) {
+		err = r.decryptBaseSector(baseSector)
+		if err != nil {
+			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "Unable to decrypt skyfile base sector")
+		}
 	}
 
 	// Parse out the metadata of the skyfile.
@@ -742,10 +779,55 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 		return errors.New("download did not fetch enough data, file cannot be re-pinned")
 	}
 
+	// Check if the base sector is encrypted, and attempt to decrypt it.
+	encrypted := isEncryptedBaseSector(baseSector)
+	if encrypted {
+		err = r.decryptBaseSector(baseSector)
+		if err != nil {
+			return errors.AddContext(err, "Unable to decrypt skyfile base sector")
+		}
+	}
+
 	// Parse out the metadata of the skyfile.
 	layout, fanoutBytes, _, _, err := parseSkyfileMetadata(baseSector)
 	if err != nil {
 		return errors.AddContext(err, "error parsing skyfile metadata")
+	}
+
+	// Start setting up the FUP.
+	fup := modules.FileUploadParams{
+		Force:               lup.Force,
+		DisablePartialChunk: true,  // must be set to true - partial chunks change, content addressed files must not change.
+		Repair:              false, // indicates whether this is a repair operation
+		CipherType:          crypto.TypePlain,
+	}
+
+	// Re-encrypt the baseSector for upload and add the fanout key to the fup.
+	if encrypted {
+		fileSpecificSkykey, err := r.deriveFileSpecificKey(&layout)
+		if err != nil {
+			return errors.AddContext(err, "Unable to derive file-specific Skykey")
+		}
+		err = encryptBaseSectorWithSkykey(baseSector, layout, fileSpecificSkykey)
+		if err != nil {
+			return errors.AddContext(err, "Error re-encrypting base sector")
+		}
+
+		// Derive the fanout key and add to the fup.
+		fanoutSkykey, err := fileSpecificSkykey.DeriveSubkey(fanoutNonceDerivation[:])
+		if err != nil {
+			return errors.AddContext(err, "Error deriving fanout skykey")
+		}
+		fup.CipherKey, err = fanoutSkykey.CipherKey()
+		if err != nil {
+			return errors.AddContext(err, "Error getting fanout CipherKey")
+		}
+		fup.CipherType = fanoutSkykey.CipherType
+
+		// These fields aren't used yet, but we'll set them anyway to mimic behavior in
+		// upload/download code for consistency.
+		lup.SkykeyName = fileSpecificSkykey.Name
+		lup.FileSpecificSkykey = fileSpecificSkykey
 	}
 
 	// Re-upload the baseSector.
@@ -758,32 +840,25 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	if layout.fanoutSize == 0 {
 		return nil
 	}
-
 	// Create the erasure coder to use when uploading the file bulk.
-	ec, err := siafile.NewRSSubCode(int(layout.fanoutDataPieces), int(layout.fanoutParityPieces), crypto.SegmentSize)
+	fup.ErasureCode, err = siafile.NewRSSubCode(int(layout.fanoutDataPieces), int(layout.fanoutParityPieces), crypto.SegmentSize)
 	if err != nil {
 		return errors.AddContext(err, "unable to create erasure coder for large file")
 	}
 	// Create the siapath for the skyfile extra data. This is going to be the
 	// same as the skyfile upload siapath, except with a suffix.
-	siaPath, err := modules.NewSiaPath(lup.SiaPath.String() + "-extended")
+	fup.SiaPath, err = modules.NewSiaPath(lup.SiaPath.String() + "-extended")
 	if err != nil {
 		return errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
 	}
-	fup := modules.FileUploadParams{
-		SiaPath:             siaPath,
-		ErasureCode:         ec,
-		Force:               lup.Force,
-		DisablePartialChunk: true,  // must be set to true - partial chunks change, content addressed files must not change.
-		Repair:              false, // indicates whether this is a repair operation
 
-		CipherType: crypto.TypePlain,
-	}
-
+	// Create the fanout streamer that will download the file.
 	streamer, err := r.newFanoutStreamer(skylink, layout, fanoutBytes, timeout)
 	if err != nil {
 		return errors.AddContext(err, "Failed to create fanout streamer for large skyfile pin")
 	}
+
+	// Upload directly from the fanout download streamer.
 	fileNode, err := r.callUploadStreamFromReader(fup, streamer, false)
 	if err != nil {
 		return errors.AddContext(err, "unable to upload large skyfile")
@@ -805,6 +880,30 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "skyfile upload parameters are incorrect")
 	}
+
+	// If a skykey name or ID was specified, generate a file-specific key for this
+	// upload.
+	if encryptionEnabled(lup) && lup.SkykeyName != "" {
+		key, err := r.SkykeyByName(lup.SkykeyName)
+		if err != nil {
+			return modules.Skylink{}, errors.AddContext(err, "UploadSkyfile unable to get skykey")
+		}
+		lup.FileSpecificSkykey, err = key.GenerateFileSpecificSubkey()
+		if err != nil {
+			return modules.Skylink{}, errors.AddContext(err, "UploadSkyfile unable to generate subkey")
+		}
+	} else if encryptionEnabled(lup) {
+		key, err := r.SkykeyByID(lup.SkykeyID)
+		if err != nil {
+			return modules.Skylink{}, errors.AddContext(err, "UploadSkyfile unable to get skykey")
+		}
+
+		lup.FileSpecificSkykey, err = key.GenerateFileSpecificSubkey()
+		if err != nil {
+			return modules.Skylink{}, errors.AddContext(err, "UploadSkyfile unable to generate subkey")
+		}
+	}
+
 	// Additional input check - this check is unique to uploading a skyfile
 	// from a streamer. The convert siafile function does not need to be passed
 	// a reader.
@@ -829,6 +928,7 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to retrieve leading chunk file bytes")
 	}
+
 	var skylink modules.Skylink
 	if largeFile {
 		skylink, err = r.managedUploadSkyfileLargeFile(lup, metadataBytes, fileReader)

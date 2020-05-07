@@ -7,9 +7,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,8 +19,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/vbauerster/mpb/v5"
-	"github.com/vbauerster/mpb/v5/decor"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -269,76 +265,11 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 		Run:   wrap(renteruploadscmd),
 	}
 
-	skynetCmd = &cobra.Command{
-		Use:   "skynet",
-		Short: "Perform actions related to Skynet",
-		Long: `Perform actions related to Skynet, a file sharing and data publication platform
-on top of Sia.`,
-		Run: skynetcmd,
-	}
-
-	skynetBlacklistCmd = &cobra.Command{
-		Use:   "blacklist [skylink]",
-		Short: "Blacklist a skylink from skynet.",
-		Long: `Blacklist a skylink from skynet. Use the --remove flag to
-remove a skylink from the blacklist.`,
-		Run: skynetblacklistcmd,
-	}
-
-	skynetDownloadCmd = &cobra.Command{
-		Use:   "download [skylink] [destination]",
-		Short: "Download a skylink from skynet.",
-		Long: `Download a file from skynet using a skylink. The download may fail unless this
-node is configured as a skynet portal. Use the --portal flag to fetch a skylink
-file from a chosen skynet portal.`,
-		Run: skynetdownloadcmd,
-	}
-
-	skynetPinCmd = &cobra.Command{
-		Use:   "pin [skylink] [destination siapath]",
-		Short: "Pin a skylink from skynet by re-uploading it yourself.",
-		Long: `Pin the file associated with this skylink by re-uploading an exact copy. This
-ensures that the file will still be available on skynet as long as you continue
-maintaining the file in your renter.`,
-		Run: wrap(skynetpincmd),
-	}
-
-	skynetUnpinCmd = &cobra.Command{
-		Use:   "unpin [siapath]",
-		Short: "Unpin a pinned skyfile.",
-		Long: `Unpin the pinned skyfile at the given siapath. The file will continue to be
-available on Skynet if other nodes have pinned the file.`,
-		Run: wrap(skynetunpincmd),
-	}
-
-	skynetLsCmd = &cobra.Command{
-		Use:   "ls",
-		Short: "List all skyfiles that the user has pinned.",
-		Long: `List all skyfiles that the user has pinned along with the corresponding
-skylinks. By default, only files in var/skynet/ will be displayed. The --root
-flag can be used to view skyfiles pinned in other folders.`,
-		Run: skynetlscmd,
-	}
-
-	skynetUploadCmd = &cobra.Command{
-		Use:   "upload [source path] [destination siapath]",
-		Short: "Upload a file or a directory to Skynet.",
-		Long: `Upload a file or a directory to Skynet. A skylink will be produced which can be
-shared and used to retrieve the file. If the given path is a directory all files under that directory will
-be uploaded individually and an individual skylink will be produced for each. All files that get uploaded
-will be pinned to this Sia node, meaning that this node will pay for storage and repairs until the files 
-are manually deleted. Use the --dry-run flag to fetch the skylink without actually uploading the file.`,
-		Run: wrap(skynetuploadcmd),
-	}
-
-	skynetConvertCmd = &cobra.Command{
-		Use:   "convert [source siaPath] [destination siaPath]",
-		Short: "Convert a siafile to a skyfile with a skylink.",
-		Long: `Convert a siafile to a skyfile and then generate its skylink. A new skylink
-	will be created in the user's skyfile directory. The skyfile and the original
-	siafile are both necessary to pin the file and keep the skylink active. The
-	skyfile will consume an additional 40 MiB of storage.`,
-		Run: wrap(skynetconvertcmd),
+	renterWorkersCmd = &cobra.Command{
+		Use:   "workers",
+		Short: "View the Renter's workers",
+		Long:  "View the status of the Renter's workers",
+		Run:   wrap(renterworkerscmd),
 	}
 )
 
@@ -405,7 +336,7 @@ func rentercmd() {
 	rateLimitSummary(rg.Settings.MaxDownloadSpeed, rg.Settings.MaxUploadSpeed)
 
 	// Print out file health summary for the renter
-	dirs := getDir(modules.RootSiaPath(), false, true)
+	dirs := getDir(modules.RootSiaPath(), true, true)
 	fmt.Println()
 	renterFileHealthSummary(dirs)
 }
@@ -413,45 +344,10 @@ func rentercmd() {
 // renterFileHealthSummary prints out a summary of the status of all the files
 // in the renter to track the progress of the files
 func renterFileHealthSummary(dirs []directoryInfo) {
-	// Check for nil input
-	if len(dirs) == 0 {
-		fmt.Println("No Directories Found")
-		return
+	fullHealth, greater75, greater50, greater25, greater0, unrecoverable, err := filePercentageBreakdown(dirs)
+	if err != nil {
+		die(err)
 	}
-
-	// Check for no files uploaded
-	total := float64(dirs[0].dir.AggregateNumFiles)
-	if total == 0 {
-		fmt.Println("No Files Uploaded")
-		return
-	}
-
-	var fullHealth, greater75, greater50, greater25, greater0, unrecoverable float64
-	for _, dir := range dirs {
-		for _, file := range dir.files {
-			switch {
-			case file.MaxHealthPercent == 100:
-				fullHealth++
-			case file.MaxHealthPercent > 75:
-				greater75++
-			case file.MaxHealthPercent > 50:
-				greater50++
-			case file.MaxHealthPercent > 25:
-				greater25++
-			case file.MaxHealthPercent > 0:
-				greater0++
-			default:
-				unrecoverable++
-			}
-		}
-	}
-
-	fullHealth = 100 * fullHealth / total
-	greater75 = 100 * greater75 / total
-	greater50 = 100 * greater50 / total
-	greater25 = 100 * greater25 / total
-	greater0 = 100 * greater0 / total
-	unrecoverable = 100 * unrecoverable / total
 
 	percentages := []float64{fullHealth, greater75, greater50, greater25, greater0, unrecoverable}
 	percentages = parsePercentages(percentages)
@@ -466,16 +362,60 @@ func renterFileHealthSummary(dirs []directoryInfo) {
 `, percentages[0], percentages[1], percentages[2], percentages[3], percentages[4], percentages[5])
 }
 
+// filePercentageBreakdown returns a percentage breakdown of the renter's files'
+// healths
+func filePercentageBreakdown(dirs []directoryInfo) (float64, float64, float64, float64, float64, float64, error) {
+	// Check for nil input
+	if len(dirs) == 0 {
+		return 0, 0, 0, 0, 0, 0, errors.New("No Directories Found")
+	}
+
+	// Check for no files uploaded
+	total := float64(dirs[0].dir.AggregateNumFiles)
+	if total == 0 {
+		return 0, 0, 0, 0, 0, 0, errors.New("No Files Uploaded")
+	}
+
+	var fullHealth, greater75, greater50, greater25, greater0, unrecoverable float64
+	for _, dir := range dirs {
+		for _, file := range dir.files {
+			switch {
+			case file.MaxHealthPercent == 100:
+				fullHealth++
+			case file.MaxHealthPercent > 75:
+				greater75++
+			case file.MaxHealthPercent > 50:
+				greater50++
+			case file.MaxHealthPercent > 25:
+				greater25++
+			case file.MaxHealthPercent > 0 || file.OnDisk:
+				greater0++
+			default:
+				unrecoverable++
+			}
+		}
+	}
+
+	fullHealth = 100 * fullHealth / total
+	greater75 = 100 * greater75 / total
+	greater50 = 100 * greater50 / total
+	greater25 = 100 * greater25 / total
+	greater0 = 100 * greater0 / total
+	unrecoverable = 100 * unrecoverable / total
+
+	return fullHealth, greater75, greater50, greater25, greater0, unrecoverable, nil
+}
+
 // renterFilesAndContractSummary prints out a summary of what the renter is
 // storing
 func renterFilesAndContractSummary() error {
-	rf, err := httpClient.RenterDirGet(modules.RootSiaPath())
+	rf, err := httpClient.RenterDirRootGet(modules.RootSiaPath())
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("\n  Status: %s\n\n", moduleNotReadyStatus)
 		return nil
 	} else if err != nil {
-		return errors.AddContext(err, "unable to get root dir with RenterDirGet")
+		return errors.AddContext(err, "unable to get root dir with RenterDirRootGet")
 	}
 
 	rc, err := httpClient.RenterDisabledContractsGet()
@@ -1791,7 +1731,13 @@ func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
 		if err != nil {
 			die("Couldn't parse SiaPath:", err)
 		}
+
 		// Try to delete file.
+		//
+		// In the case where the path points to a dir, this will fail and we
+		// silently move on to deleting it as a dir. This is more efficient than
+		// querying the renter first to see if it is a file or a dir, as that is
+		// guaranteed to always be two renter calls.
 		var errFile error
 		if renterDeleteRoot {
 			errFile = httpClient.RenterFileDeleteRootPost(siaPath)
@@ -1804,7 +1750,7 @@ func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
 		} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
 			die(fmt.Sprintf("Failed to delete file %v: %v", path, errFile))
 		}
-		// Try to delete folder.
+		// Try to delete dir.
 		var errDir error
 		if renterDeleteRoot {
 			errDir = httpClient.RenterDirDeleteRootPost(siaPath)
@@ -1817,7 +1763,8 @@ func renterfilesdeletecmd(cmd *cobra.Command, paths []string) {
 		} else if !strings.Contains(errDir.Error(), filesystem.ErrNotExist.Error()) {
 			die(fmt.Sprintf("Failed to delete directory %v: %v", path, errDir))
 		}
-		// Unknown file/folder.
+
+		// Unknown file/dir.
 		die(fmt.Sprintf("Unknown path '%v'", path))
 	}
 	return
@@ -1845,7 +1792,7 @@ func renterfilesdownloadcmd(path, destination string) {
 	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download folder:", err)
 	}
-	die(fmt.Sprintf("Unknown file '%v'", path))
+	die(fmt.Sprintf("Unknown path '%v'", path))
 }
 
 // renterfilesdownload downloads the file at the specified path from the Sia
@@ -2275,7 +2222,7 @@ func renterfilesrenamecmd(path, newpath string) {
 	if err := errors.Compose(err1, err2); err != nil {
 		die("Couldn't parse SiaPath:", err)
 	}
-	err := httpClient.RenterRenamePost(siaPath, newSiaPath)
+	err := httpClient.RenterRenamePost(siaPath, newSiaPath, renterRenameRoot)
 	if err != nil {
 		die("Could not rename file:", err)
 	}
@@ -2509,546 +2456,6 @@ func renterfilesuploadresumecmd() {
 	fmt.Println("Renter uploads have been resumed")
 }
 
-// skynetcmd displays the usage info for the command.
-//
-// TODO: Could put some stats or summaries or something here.
-func skynetcmd(cmd *cobra.Command, args []string) {
-	cmd.UsageFunc()(cmd)
-	os.Exit(exitCodeUsage)
-}
-
-// skynetblacklistcmd handles adding and removing a skylink from the Skynet
-// Blacklist
-func skynetblacklistcmd(cmd *cobra.Command, args []string) {
-	if len(args) != 1 {
-		cmd.UsageFunc()(cmd)
-		os.Exit(exitCodeUsage)
-	}
-
-	// Get the skylink
-	skylink := args[0]
-	skylink = strings.TrimPrefix(skylink, "sia://")
-
-	// Check if this is an addition or removal
-	var add, remove []string
-	if skynetBlacklistRemove {
-		remove = append(remove, skylink)
-	} else {
-		add = append(add, skylink)
-	}
-
-	// Try to update the Skynet Blacklist.
-	err := httpClient.SkynetBlacklistPost(add, remove)
-	if err != nil {
-		die("Unable to update skynet blacklist:", err)
-	}
-	fmt.Println("Skynet Blacklist updated")
-}
-
-// skynetdownloadcmd will perform the download of a skylink.
-func skynetdownloadcmd(cmd *cobra.Command, args []string) {
-	if len(args) != 2 {
-		cmd.UsageFunc()(cmd)
-		os.Exit(exitCodeUsage)
-	}
-
-	// Open the file.
-	skylink := args[0]
-	skylink = strings.TrimPrefix(skylink, "sia://")
-	filename := args[1]
-	file, err := os.Create(filename)
-	if err != nil {
-		die("Unable to create destination file:", err)
-	}
-	defer file.Close()
-
-	// Check whether the portal flag is set, if so use the portal download
-	// method.
-	var reader io.ReadCloser
-	if skynetDownloadPortal != "" {
-		url := skynetDownloadPortal + "/" + skylink
-		resp, err := http.Get(url)
-		if err != nil {
-			die("Unable to download from portal:", err)
-		}
-		reader = resp.Body
-		defer reader.Close()
-	} else {
-		// Try to perform a download using the client package.
-		reader, err = httpClient.SkynetSkylinkReaderGet(skylink)
-		if err != nil {
-			die("Unable to fetch skylink:", err)
-		}
-		defer reader.Close()
-	}
-
-	_, err = io.Copy(file, reader)
-	if err != nil {
-		die("Unable to write full data:", err)
-	}
-}
-
-// skynetlscmd is the handler for the command `siac skynet ls`. Works very
-// similar to 'siac renter ls' but defaults to the SkynetFolder and only
-// displays files that are pinning skylinks.
-func skynetlscmd(cmd *cobra.Command, args []string) {
-	var path string
-	switch len(args) {
-	case 0:
-		path = "."
-	case 1:
-		path = args[0]
-	default:
-		cmd.UsageFunc()(cmd)
-		os.Exit(exitCodeUsage)
-	}
-	// Parse the input siapath.
-	var sp modules.SiaPath
-	var err error
-	if path == "." || path == "" || path == "/" {
-		sp = modules.RootSiaPath()
-	} else {
-		sp, err = modules.NewSiaPath(path)
-		if err != nil {
-			die("could not parse siapath:", err)
-		}
-	}
-
-	// Check whether the command is based in root or based in the skynet folder.
-	if !skynetLsRoot {
-		if sp.IsRoot() {
-			sp = modules.SkynetFolder
-		} else {
-			sp, err = modules.SkynetFolder.Join(sp.String())
-			if err != nil {
-				die("could not build siapath:", err)
-			}
-		}
-	}
-
-	// Check if the command is hitting a single file.
-	if !sp.IsRoot() {
-		rf, err := httpClient.RenterFileRootGet(sp)
-		if err == nil {
-			if len(rf.File.Skylinks) == 0 {
-				fmt.Println("File is not pinning any skylinks")
-				return
-			}
-			json, err := json.MarshalIndent(rf.File, "", "  ")
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			fmt.Println()
-			fmt.Println(string(json))
-			fmt.Println()
-			return
-		} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
-			die(fmt.Sprintf("Error getting file %v: %v", path, err))
-		}
-	}
-
-	// Get the full set of files and directories.
-	//
-	// NOTE: Always query recursively so that we can filter out non-tracked
-	// files and get accurate, consistent sizes for dirs. If the --recursive
-	// flag was not passed, we limit the directory output later.
-	dirs := getDir(sp, true, true)
-
-	// Sort the directories and the files.
-	sort.Sort(byDirectoryInfo(dirs))
-	for i := 0; i < len(dirs); i++ {
-		sort.Sort(bySiaPathDir(dirs[i].subDirs))
-		sort.Sort(bySiaPathFile(dirs[i].files))
-	}
-
-	// Keep track of the aggregate sizes for dirs as we may be adjusting them.
-	sizePerDir := make(map[modules.SiaPath]uint64)
-	for _, dir := range dirs {
-		sizePerDir[dir.dir.SiaPath] = dir.dir.AggregateSize
-	}
-
-	// Drop any files that are not tracking skylinks.
-	var numDropped uint64
-	numOmittedPerDir := make(map[modules.SiaPath]int)
-	for j := 0; j < len(dirs); j++ {
-		for i := 0; i < len(dirs[j].files); i++ {
-			file := dirs[j].files[i]
-			if len(file.Skylinks) != 0 {
-				continue
-			}
-
-			siaPath := dirs[j].dir.SiaPath
-			numDropped++
-			numOmittedPerDir[siaPath]++
-			// Subtract the size from the aggregate size for the dir and all
-			// parent dirs.
-			for {
-				sizePerDir[siaPath] -= file.Filesize
-				if siaPath.IsRoot() {
-					break
-				}
-				siaPath, err = siaPath.Dir()
-				if err != nil {
-					die("could not parse parent dir:", err)
-				}
-				if _, exists := sizePerDir[siaPath]; !exists {
-					break
-				}
-			}
-			// Remove the file.
-			dirs[j].files = append(dirs[j].files[:i], dirs[j].files[i+1:]...)
-			i--
-		}
-	}
-
-	// Get the total number of listings (subdirs and files).
-	root := dirs[0] // Root directory we are querying.
-	var numFilesDirs uint64
-	if skynetLsRecursive {
-		numFilesDirs = root.dir.AggregateNumFiles + root.dir.AggregateNumSubDirs
-		numFilesDirs -= numDropped
-	} else {
-		numFilesDirs = root.dir.NumFiles + root.dir.NumSubDirs
-		numFilesDirs -= uint64(numOmittedPerDir[root.dir.SiaPath])
-	}
-
-	// Print totals.
-	totalStoredStr := modules.FilesizeUnits(sizePerDir[root.dir.SiaPath])
-	fmt.Printf("\nListing %v files/dirs:\t%9s\n\n", numFilesDirs, totalStoredStr)
-
-	// Print dirs.
-	for _, dir := range dirs {
-		fmt.Printf("%v/", dir.dir.SiaPath)
-		if numOmitted := numOmittedPerDir[dir.dir.SiaPath]; numOmitted > 0 {
-			fmt.Printf("\t(%v omitted)", numOmitted)
-		}
-		fmt.Println()
-
-		// Print subdirs.
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		for _, subDir := range dir.subDirs {
-			subDirName := subDir.SiaPath.Name() + "/"
-			sizeUnits := modules.FilesizeUnits(sizePerDir[subDir.SiaPath])
-			fmt.Fprintf(w, "  %v\t\t%9v\n", subDirName, sizeUnits)
-		}
-
-		// Print files.
-		for _, file := range dir.files {
-			name := file.SiaPath.Name()
-			firstSkylink := file.Skylinks[0]
-			size := modules.FilesizeUnits(file.Filesize)
-			fmt.Fprintf(w, "  %v\t%v\t%9v\n", name, firstSkylink, size)
-			for _, skylink := range file.Skylinks[1:] {
-				fmt.Fprintf(w, "\t%v\t\n", skylink)
-			}
-		}
-		w.Flush()
-		fmt.Println()
-
-		if !skynetLsRecursive {
-			// If not --recursive, finish early after the first dir.
-			break
-		}
-	}
-}
-
-// skynetpincmd will pin the file from this skylink.
-func skynetpincmd(sourceSkylink, destSiaPath string) {
-	skylink := strings.TrimPrefix(sourceSkylink, "sia://")
-	// Create the siapath.
-	siaPath, err := modules.NewSiaPath(destSiaPath)
-	if err != nil {
-		die("Could not parse destination siapath:", err)
-	}
-
-	spp := modules.SkyfilePinParameters{
-		SiaPath: siaPath,
-		Root:    skynetUploadRoot,
-	}
-
-	err = httpClient.SkynetSkylinkPinPost(skylink, spp)
-	if err != nil {
-		die("could not pin file to Skynet:", err)
-	}
-
-	fmt.Printf("Skyfile pinned successfully \nSkylink: sia://%v\n", skylink)
-}
-
-// skynetuploadcmd will upload a file or directory to Skynet. If --dry-run is
-// passed, it will fetch the skylinks without uploading.
-func skynetuploadcmd(sourcePath, destSiaPath string) {
-	// Open the source file.
-	file, err := os.Open(sourcePath)
-	if err != nil {
-		die("Unable to open source path:", err)
-	}
-	defer file.Close()
-	fi, err := file.Stat()
-	if err != nil {
-		die("Unable to fetch source fileinfo:", err)
-	}
-
-	// create a new progress bar set:
-	pbs := mpb.New(mpb.WithWidth(40))
-
-	if !fi.IsDir() {
-		skynetUploadFile(sourcePath, sourcePath, destSiaPath, pbs)
-		if skynetUploadDryRun {
-			fmt.Print("[dry run] ")
-		}
-		fmt.Printf("Successfully uploaded skyfile!\n")
-		return
-	}
-
-	// Walk the target directory and collect all files that are going to be
-	// uploaded.
-	filesToUpload := make([]string, 0)
-	err = filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			fmt.Println("Warning: skipping file:", err)
-			return nil
-		}
-		if !info.IsDir() {
-			filesToUpload = append(filesToUpload, path)
-		}
-		return nil
-	})
-	if err != nil {
-		die(err)
-	}
-	// Confirm with the user that they want to upload all of them.
-	if skynetUploadDryRun {
-		fmt.Print("[dry run] ")
-	}
-	ok := askForConfirmation(fmt.Sprintf("Are you sure that you want to upload %d files to Skynet?", len(filesToUpload)))
-	if !ok {
-		os.Exit(0)
-	}
-
-	// Start the workers.
-	filesChan := make(chan string)
-	var wg sync.WaitGroup
-	for i := 0; i < SimultaneousSkynetUploads; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for filename := range filesChan {
-				// get only the filename and path, relative to the original destSiaPath
-				// in order to figure out where to put the file
-				newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(filename, sourcePath))
-				skynetUploadFile(sourcePath, filename, newDestSiaPath, pbs)
-			}
-		}()
-	}
-	// Send all files for upload.
-	for _, path := range filesToUpload {
-		filesChan <- path
-	}
-	// Signal the workers that there is no more work.
-	close(filesChan)
-	wg.Wait()
-	pbs.Wait()
-	if skynetUploadDryRun {
-		fmt.Print("[dry run] ")
-	}
-	fmt.Printf("Successfully uploaded %d skyfiles!\n", len(filesToUpload))
-}
-
-// skynetUploadFile uploads a file to Skynet
-func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.Progress) (skylink string) {
-	// Create the siapath.
-	siaPath, err := modules.NewSiaPath(destSiaPath)
-	if err != nil {
-		die("Could not parse destination siapath:", err)
-	}
-	filename := filepath.Base(sourcePath)
-
-	// Open the source file.
-	file, err := os.Open(sourcePath)
-	if err != nil {
-		die("Unable to open source path:", err)
-	}
-	defer file.Close()
-	fi, err := file.Stat()
-	if err != nil {
-		die("Unable to fetch source fileinfo:", err)
-	}
-
-	if skynetUploadSilent {
-		// Silently upload the file and print a simple source -> skylink
-		// matching after it's done.
-		skylink = skynetUploadFileFromReader(file, filename, siaPath, fi.Mode())
-		fmt.Printf("%s -> %s\n", sourcePath, skylink)
-		return
-	}
-
-	// Display progress bars while uploading and processing the file.
-	var relPath string
-	if sourcePath == basePath {
-		// when uploading a single file we only display the filename
-		relPath = filename
-	} else {
-		// when uploading multiple files we strip the common basePath
-		relPath, err = filepath.Rel(basePath, sourcePath)
-		if err != nil {
-			die("Could not get relative path:", err)
-		}
-	}
-	rc := io.ReadCloser(file)
-	// Wrap the file reader in a progress bar reader
-	pUpload, rc := newProgressReader(pbs, fi.Size(), relPath, rc)
-	// Set a spinner to start after the upload is finished
-	pSpinner := newProgressSpinner(pbs, pUpload, relPath)
-	// Perform the upload
-	skylink = skynetUploadFileFromReader(rc, filename, siaPath, fi.Mode())
-	// Replace the spinner with the skylink and stop it
-	newProgressSkylink(pbs, pSpinner, relPath, skylink)
-	return
-}
-
-// skynetUploadFileFromReader is a helper method that uploads a file to Skynet
-func skynetUploadFileFromReader(source io.Reader, filename string, siaPath modules.SiaPath, mode os.FileMode) (skylink string) {
-	// Upload the file and return a skylink
-	sup := modules.SkyfileUploadParameters{
-		SiaPath: siaPath,
-		Root:    skynetUploadRoot,
-
-		DryRun: skynetUploadDryRun,
-
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: filename,
-			Mode:     mode,
-		},
-
-		Reader: source,
-	}
-	skylink, _, err := httpClient.SkynetSkyfilePost(sup)
-	if err != nil {
-		die("could not upload file to Skynet:", err)
-	}
-	return skylink
-}
-
-// newProgressReader is a helper method for adding a new progress bar to an
-// existing *mpb.Progress object.
-func newProgressReader(pbs *mpb.Progress, size int64, filename string, file io.Reader) (*mpb.Bar, io.ReadCloser) {
-	bar := pbs.AddBar(
-		size,
-		mpb.PrependDecorators(
-			decor.Name(pBarJobUpload, decor.WC{W: 10}),
-			decor.Percentage(decor.WC{W: 6}),
-		),
-		mpb.AppendDecorators(
-			decor.Name(filename, decor.WC{W: len(filename) + 1, C: decor.DidentRight}),
-		),
-	)
-	return bar, bar.ProxyReader(file)
-}
-
-// newProgressSpinner creates a spinner that is queued after `afterBar` is
-// complete.
-func newProgressSpinner(pbs *mpb.Progress, afterBar *mpb.Bar, filename string) *mpb.Bar {
-	return pbs.AddSpinner(
-		1,
-		mpb.SpinnerOnMiddle,
-		mpb.SpinnerStyle([]string{"∙∙∙", "●∙∙", "∙●∙", "∙∙●", "∙∙∙"}),
-		mpb.BarQueueAfter(afterBar),
-		mpb.BarFillerClearOnComplete(),
-		mpb.PrependDecorators(
-			decor.OnComplete(decor.Name(pBarJobProcess, decor.WC{W: 10}), pBarJobDone),
-			decor.Name("", decor.WC{W: 6, C: decor.DidentRight}),
-		),
-		mpb.AppendDecorators(
-			decor.Name(filename, decor.WC{W: len(filename) + 1, C: decor.DidentRight}),
-		),
-	)
-}
-
-// newProgressSkylink creates a static progress bar that starts after `afterBar`
-// and displays the skylink. The bar is stopped immediately.
-func newProgressSkylink(pbs *mpb.Progress, afterBar *mpb.Bar, filename, skylink string) *mpb.Bar {
-	bar := pbs.AddBar(
-		1, // we'll increment it once to stop it
-		mpb.BarQueueAfter(afterBar),
-		mpb.BarFillerClearOnComplete(),
-		mpb.PrependDecorators(
-			decor.Name(pBarJobDone, decor.WC{W: 10}),
-			decor.Name(skylink),
-		),
-		mpb.AppendDecorators(
-			decor.Name(filename, decor.WC{W: len(filename) + 1, C: decor.DidentRight}),
-		),
-	)
-	afterBar.Increment()
-	bar.Increment()
-	return bar
-}
-
-// skynetunpincmd will unpin and delete the file from the Renter.
-func skynetunpincmd(siaPathStr string) {
-	// Create the siapath.
-	siaPath, err := modules.NewSiaPath(siaPathStr)
-	if err != nil {
-		die("Could not parse siapath:", err)
-	}
-
-	// Parse out the intended siapath.
-	if !skynetUnpinRoot {
-		siaPath, err = modules.SkynetFolder.Join(siaPath.String())
-		if err != nil {
-			die("could not build siapath:", err)
-		}
-	}
-
-	// Try to delete file.
-	errFile := httpClient.RenterFileDeleteRootPost(siaPath)
-	if errFile == nil {
-		fmt.Printf("Unpinned skyfile '%v'\n", siaPath)
-		return
-	} else if !(strings.Contains(errFile.Error(), filesystem.ErrNotExist.Error()) || strings.Contains(errFile.Error(), filesystem.ErrDeleteFileIsDir.Error())) {
-		die(fmt.Sprintf("Failed to unpin skyfile %v: %v", siaPath, errFile))
-	}
-
-	// Unknown file/folder.
-	die(fmt.Sprintf("Unknown path '%v'", siaPath))
-}
-
-// skynetconvertcmd will convert an existing siafile to a skyfile and skylink on
-// the Sia network.
-func skynetconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
-	// Create the siapaths.
-	sourceSiaPath, err := modules.NewSiaPath(sourceSiaPathStr)
-	if err != nil {
-		die("Could not parse source siapath:", err)
-	}
-	destSiaPath, err := modules.NewSiaPath(destSiaPathStr)
-	if err != nil {
-		die("Could not parse destination siapath:", err)
-	}
-
-	// Perform the conversion and print the result.
-	sup := modules.SkyfileUploadParameters{
-		SiaPath: destSiaPath,
-	}
-	skylink, err := httpClient.SkynetConvertSiafileToSkyfilePost(sup, sourceSiaPath)
-	if err != nil {
-		die("could not convert siafile to skyfile:", err)
-	}
-
-	// Calculate the siapath that was used for the upload.
-	var skypath modules.SiaPath
-	if skynetUploadRoot {
-		skypath = destSiaPath
-	} else {
-		skypath, err = modules.SkynetFolder.Join(destSiaPath.String())
-		if err != nil {
-			die("could not fetch skypath:", err)
-		}
-	}
-	fmt.Printf("Skyfile uploaded successfully to %v\nSkylink: sia://%v\n", skypath, skylink)
-}
-
 // renterpricescmd is the handler for the command `siac renter prices`, which
 // displays the prices of various storage operations. The user can submit an
 // allowance to have the estimate reflect those settings or the user can submit
@@ -3136,4 +2543,93 @@ func renterratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 		die(errors.AddContext(err, "Could not set renter ratelimit speed"))
 	}
 	fmt.Println("Set renter maxdownloadspeed to ", downloadSpeedInt, " and maxuploadspeed to ", uploadSpeedInt)
+}
+
+// renterworkerscmd is the handler for the comand `siac renter workers`.
+// It lists the Renter's workers.
+func renterworkerscmd() {
+	rw, err := httpClient.RenterWorkersGet()
+	if err != nil {
+		die("Could not get contracts:", err)
+	}
+
+	// Print Worker Pool Summary
+	fmt.Printf(`Worker Pool Summary
+  Total Workers:                %v
+  Workers On Download Cooldown: %v
+  Workers On Upload Cooldown:   %v
+
+`, rw.NumWorkers, rw.TotalDownloadCoolDown, rw.TotalUploadCoolDown)
+
+	// Split Workers into GoodForUpload and !GoodForUpload
+	var goodForUpload, notGoodForUpload []modules.WorkerStatus
+	for _, worker := range rw.Workers {
+		if worker.ContractUtility.GoodForUpload {
+			goodForUpload = append(goodForUpload, worker)
+			continue
+		}
+		notGoodForUpload = append(notGoodForUpload, worker)
+	}
+
+	// List out GoorForUpload workers
+	fmt.Println("GoodForUpload Workers:")
+	if len(goodForUpload) == 0 {
+		fmt.Println("  No GoodForUpload workers.")
+	} else {
+		writeWorkers(goodForUpload)
+	}
+
+	// List out !GoorForUpload workers
+	fmt.Println("\nNot GoodForUpload Workers:")
+	if len(notGoodForUpload) == 0 {
+		fmt.Println("  All workers are GoodForUpload.")
+	} else {
+		writeWorkers(notGoodForUpload)
+	}
+}
+
+// writeWorkers is a helper function to display workers
+func writeWorkers(workers []modules.WorkerStatus) {
+	fmt.Println("  Number of Workers:", len(workers))
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	contractInfo := "Contract ID\tHost PubKey\tGood For Renew\tGood For Upload"
+	downloadInfo := "\tDownload On Cooldown\tDownload Queue\tDownload Terminated"
+	uploadInfo := "\tUpload Error\tUpload Cooldown Time\tUpload On Cooldown\tUpload Queue\tUpload Terminated"
+	eaInfo := "\tAvailable Balance\tBalance Targe\tFund Account Queue"
+	jobInfo := "\tBackup Queue\tDownload By Root Queue"
+	fmt.Fprintln(w, "  \n"+contractInfo+downloadInfo+uploadInfo+eaInfo+jobInfo)
+	for _, worker := range workers {
+		// Contract Info
+		fmt.Fprintf(w, "  %v\t%v\t%v\t%v",
+			worker.ContractID,
+			worker.HostPubKey.String(),
+			worker.ContractUtility.GoodForRenew,
+			worker.ContractUtility.GoodForUpload)
+
+		// Download Info
+		fmt.Fprintf(w, "\t%v\t%v\t%v",
+			worker.DownloadOnCoolDown,
+			worker.DownloadQueueSize,
+			worker.DownloadTerminated)
+
+		// Upload Info
+		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v",
+			worker.UploadCoolDownError,
+			worker.UploadCoolDownTime,
+			worker.UploadOnCoolDown,
+			worker.UploadQueueSize,
+			worker.UploadTerminated)
+
+		// EA Info
+		fmt.Fprintf(w, "\t%v\t%v\t%v",
+			worker.AvailableBalance,
+			worker.BalanceTarget,
+			worker.FundAccountJobQueueSize)
+
+		// Job Info
+		fmt.Fprintf(w, "\t%v\t%v\n",
+			worker.BackupJobQueueSize,
+			worker.DownloadRootJobQueueSize)
+	}
+	w.Flush()
 }

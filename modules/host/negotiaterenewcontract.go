@@ -4,6 +4,8 @@ import (
 	"net"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -33,8 +35,17 @@ func renewBasePrice(so storageObligation, settings modules.HostExternalSettings,
 // renewContractCollateral returns the amount of collateral that the host is
 // expected to add to the file contract based on the file contract and host
 // settings.
-func renewContractCollateral(so storageObligation, settings modules.HostExternalSettings, fc types.FileContract) types.Currency {
-	return fc.ValidHostPayout().Sub(settings.ContractPrice).Sub(renewBasePrice(so, settings, fc))
+func renewContractCollateral(so storageObligation, settings modules.HostExternalSettings, fc types.FileContract) (types.Currency, error) {
+	if fc.ValidHostPayout().Cmp(settings.ContractPrice) < 0 {
+		return types.Currency{}, errors.New("ContractPrice higher than ValidHostOutput")
+	}
+
+	diff := fc.ValidHostPayout().Sub(settings.ContractPrice)
+	rbp := renewBasePrice(so, settings, fc)
+	if diff.Cmp(rbp) < 0 {
+		return types.Currency{}, errors.New("ValidHostOutput smaller than ContractPrice + RenewBasePrice")
+	}
+	return diff.Sub(rbp), nil
 }
 
 // managedAddRenewCollateral adds the host's collateral to the renewed file
@@ -43,7 +54,11 @@ func (h *Host) managedAddRenewCollateral(so storageObligation, settings modules.
 	txn := txnSet[len(txnSet)-1]
 	parents := txnSet[:len(txnSet)-1]
 	fc := txn.FileContracts[0]
-	hostPortion := renewContractCollateral(so, settings, fc)
+	hostPortion, err := renewContractCollateral(so, settings, fc)
+	if err != nil {
+		return nil, nil, nil, nil, extendErr("could not compute contract collateral: ", ErrorCommunication(err.Error()))
+	}
+
 	builder, err = h.wallet.RegisterTransaction(txn, parents)
 	if err != nil {
 		return
@@ -178,10 +193,15 @@ func (h *Host) managedRPCRenewContract(conn net.Conn) error {
 	// During finalization the signatures sent by the renter are all checked.
 	h.mu.RLock()
 	fc := txnSet[len(txnSet)-1].FileContracts[0]
-	renewCollateral := renewContractCollateral(so, settings, fc)
 	renewRevenue := renewBasePrice(so, settings, fc)
 	renewRisk := renewBaseCollateral(so, settings, fc)
+	renewCollateral, err := renewContractCollateral(so, settings, fc)
 	h.mu.RUnlock()
+	if err != nil {
+		modules.WriteNegotiationRejection(conn, err)
+		return extendErr("failed to compute contract collateral: ", err)
+	}
+
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
 		renewal:                 false,
@@ -290,7 +310,10 @@ func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types
 
 	// Check that the collateral does not exceed the maximum amount of
 	// collateral allowed.
-	expectedCollateral := renewContractCollateral(so, externalSettings, fc)
+	expectedCollateral, err := renewContractCollateral(so, externalSettings, fc)
+	if err != nil {
+		return errors.AddContext(err, "Failed to compute contract collateral")
+	}
 	if expectedCollateral.Cmp(externalSettings.MaxCollateral) > 0 {
 		return errMaxCollateralReached
 	}

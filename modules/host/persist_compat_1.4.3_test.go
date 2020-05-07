@@ -49,10 +49,16 @@ func TestV120HostUpgrade(t *testing.T) {
 
 	// load a new host, the siamux should be created in the sia root.
 	siaMuxDir := filepath.Join(persistDir, modules.SiaMuxDir)
-	host, err := loadExistingHostWithNewDeps(persistDir, siaMuxDir, hostPersistDir)
+	closefn, host, err := loadExistingHostWithNewDeps(persistDir, siaMuxDir, hostPersistDir)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := closefn()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
 	// the old siamux files should be gone.
 	_, err1 = os.Stat(filepath.Join(persistDir, "siamux.json"))

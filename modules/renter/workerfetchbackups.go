@@ -41,6 +41,13 @@ type fetchBackupsJobResult struct {
 	uploadedBackups []modules.UploadedBackup
 }
 
+// managedLen returns the length of the fetchBackupsJobQueue queue
+func (queue *fetchBackupsJobQueue) managedLen() int {
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	return len(queue.queue)
+}
+
 // checkFetchBackupsGouging looks at the current renter allowance and the active
 // settings for a host and determines whether an backup fetch should be halted
 // due to price gouging.

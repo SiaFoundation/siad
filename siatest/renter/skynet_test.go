@@ -28,6 +28,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/skykey"
@@ -68,7 +69,10 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
 		{Name: "TestSkynetDryRunUpload", Test: testSkynetDryRunUpload},
 		{Name: "TestRegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
+		{Name: "TestRenameSiaPath", Test: testRenameSiaPath},
 		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
+		{Name: "TestSkynetEncryption", Test: testSkynetEncryption},
+		{Name: "TestSkynetEncryptionLargeFile", Test: testSkynetEncryptionLargeFile},
 	}
 
 	// Run tests
@@ -161,31 +165,13 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Error("bad filename")
 	}
 
-	// Try to download the file using the ReaderGet method.
+	// Try to download the file explicitly using the ReaderGet method with the
+	// no formatter.
 	skylinkReader, err := r.SkynetSkylinkReaderGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
 	readerData, err := ioutil.ReadAll(skylinkReader)
-	if err != nil {
-		err = errors.Compose(err, skylinkReader.Close())
-		t.Fatal(err)
-	}
-	err = skylinkReader.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(readerData, data) {
-		t.Fatal("reader data doesn't match data")
-	}
-
-	// Try to download the file explicitly using the ReaderGet method with the
-	// no formatter.
-	skylinkReader, err = r.SkynetSkylinkReaderGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	readerData, err = ioutil.ReadAll(skylinkReader)
 	if err != nil {
 		err = errors.Compose(err, skylinkReader.Close())
 		t.Fatal(err)
@@ -565,7 +551,7 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	// siafile being a N-of-M redundancy
 	skylink, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
 	if !strings.Contains(err.Error(), renter.ErrRedundancyNotSupported.Error()) {
-		t.Fatalf("Expected Error to contrain %v but got %v", renter.ErrRedundancyNotSupported, err)
+		t.Fatalf("Expected Error to contain %v but got %v", renter.ErrRedundancyNotSupported, err)
 	}
 
 	// Upload a new file with a 1-N redundancy by setting the datapieces to 1
@@ -832,27 +818,9 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	files["statfile2"] = modules.SectorSize + 123
 
 	// upload the files and keep track of their expected impact on the stats
-	uploadedFilesSize := uint64(0)
-	uploadedFilesCount := uint64(0)
+	var uploadedFilesSize, uploadedFilesCount uint64
 	for name, size := range files {
-		uploadSiaPath, err := modules.NewSiaPath(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		data := fastrand.Bytes(int(size))
-		sup := modules.SkyfileUploadParameters{
-			SiaPath:             uploadSiaPath,
-			Force:               false,
-			Root:                false,
-			BaseChunkRedundancy: 2,
-			FileMetadata: modules.SkyfileMetadata{
-				Filename: name,
-				Mode:     modules.DefaultFilePerm,
-			},
-
-			Reader: bytes.NewReader(data),
-		}
-		if _, _, err = r.SkynetSkyfilePost(sup); err != nil {
+		if _, _, _, err := r.UploadNewSkyfileBlocking(name, size, false); err != nil {
 			t.Fatal(err)
 		}
 
@@ -879,6 +847,10 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if statsBefore.UploadStats.TotalSize+uploadedFilesSize != statsAfter.UploadStats.TotalSize {
 		t.Fatal(fmt.Sprintf("stats did not report the correct size. expected %d, found %d", statsBefore.UploadStats.TotalSize+uploadedFilesSize, statsAfter.UploadStats.TotalSize))
+	}
+	lt := statsAfter.PerformanceStats.Upload4MB.Lifetime
+	if lt.N60ms+lt.N120ms+lt.N240ms+lt.N500ms+lt.N1000ms+lt.N2000ms+lt.N5000ms+lt.N10s+lt.NLong == 0 {
+		t.Error("lifetime upload stats are not reporting any uploads")
 	}
 }
 
@@ -995,7 +967,8 @@ func testSkynetNoFilename(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testSkynetSubDirDownload verifies downloading data from a skyfile using a path to download single subfiles or subdirectories
+// testSkynetSubDirDownload verifies downloading data from a skyfile using a
+// path to download single subfiles or subdirectories
 func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
@@ -1331,64 +1304,23 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetDisableForce(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	// Create some data to upload.
-	data := fastrand.Bytes(100)
-	reader := bytes.NewReader(data)
-
-	// Create the sia path
-	uploadSiaPath, err := modules.NewSiaPath("testDisableForce")
+	// Upload Skyfile
+	_, _, _, err := r.UploadNewSkyfileBlocking(t.Name(), 100, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Verify normal force behaviour
-	sup := modules.SkyfileUploadParameters{
-		SiaPath:             uploadSiaPath,
-		Force:               false,
-		Root:                false,
-		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: "testDisableForce",
-			Mode:     os.FileMode(0640), // Intentionally does not match any defaults.
-		},
-		Reader: reader,
-	}
-	skylink, _, err := r.SkynetSkyfilePost(sup)
-	if err != nil {
-		t.Fatal(err)
-	}
-	downloaded, _, err := r.SkynetSkylinkGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(downloaded, data) {
-		t.Fatal("Unexpected data returned for skylink")
-	}
-
-	// Upload data to that same siapath again, without setting the force
-	// flag, this should result in failure as there already exists a file at
-	// that specified path.
-	data = fastrand.Bytes(100)
-	sup.Reader = bytes.NewReader(data)
-	_, _, err = r.SkynetSkyfilePost(sup)
+	// Upload at same path without force, assert this fails
+	_, _, _, err = r.UploadNewSkyfileBlocking(t.Name(), 100, false)
 	if !strings.Contains(err.Error(), "already exists") {
 		t.Fatal(err)
 	}
 
 	// Upload once more, but now use force. It should allow us to
 	// overwrite the file at the existing path
-	sup.Force = true
-	sup.Reader = bytes.NewReader(data)
-	skylink, _, err = r.SkynetSkyfilePost(sup)
+	_, sup, _, err := r.UploadNewSkyfileBlocking(t.Name(), 100, true)
 	if err != nil {
 		t.Fatal(err)
-	}
-	downloaded, _, err = r.SkynetSkylinkGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(downloaded, data) {
-		t.Fatal("Unexpected data returned for skylink")
 	}
 
 	// Upload using the force flag again, however now we set the
@@ -1411,33 +1343,15 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 
 	// Create skyfile upload params, data should be larger than a sector size to
 	// test large file uploads and the deletion of their extended data.
-	data := fastrand.Bytes(int(modules.SectorSize) + 100 + siatest.Fuzz())
-	reader := bytes.NewReader(data)
-	filename := "skyfile"
-	uploadSiaPath, err := modules.NewSiaPath("testblacklist")
-	if err != nil {
-		t.Fatal(err)
-	}
-	lup := modules.SkyfileUploadParameters{
-		SiaPath:             uploadSiaPath,
-		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: filename,
-			Mode:     0640, // Intentionally does not match any defaults.
-		},
-
-		Reader: reader,
-	}
-
-	// Upload and create a skylink
-	skylink, sshp, err := r.SkynetSkyfilePost(lup)
+	size := modules.SectorSize + uint64(100+siatest.Fuzz())
+	skylink, sup, sshp, err := r.UploadNewSkyfileBlocking(t.Name(), size, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Confirm that the skyfile and its extended info are registered with the
 	// renter
-	sp, err := modules.SkynetFolder.Join(uploadSiaPath.String())
+	sp, err := modules.SkynetFolder.Join(sup.SiaPath.String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1450,6 +1364,12 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	_, err = r.RenterFileRootGet(spExtended)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the data
+	data, _, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1488,9 +1408,9 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	// Try and upload again with force as true to avoid error of path already
 	// existing. Additionally need to recreate the reader again from the file
 	// data. This should also fail due to the blacklist
-	lup.Force = true
-	lup.Reader = bytes.NewReader(data)
-	_, _, err = r.SkynetSkyfilePost(lup)
+	sup.Force = true
+	sup.Reader = bytes.NewReader(data)
+	_, _, err = r.SkynetSkyfilePost(sup)
 	if err == nil {
 		t.Fatal("Expected upload to fail")
 	}
@@ -1517,7 +1437,7 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 
 	// Try Pinning the file, this should fail due to the blacklist
 	pinlup := modules.SkyfilePinParameters{
-		SiaPath:             uploadSiaPath,
+		SiaPath:             sup.SiaPath,
 		BaseChunkRedundancy: 2,
 		Force:               true,
 	}
@@ -1720,20 +1640,7 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Upload a skyfile
-	reader := bytes.NewReader(fastrand.Bytes(100))
-	uploadSiaPath, err := modules.NewSiaPath(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	skylink, _, err := r.SkynetSkyfilePost(modules.SkyfileUploadParameters{
-		SiaPath:             uploadSiaPath,
-		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: "TestSkynetHeadRequest",
-			Mode:     0640,
-		},
-		Reader: reader,
-	})
+	skylink, _, _, err := r.UploadNewSkyfileBlocking(t.Name(), 100, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1792,12 +1699,12 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 	if strContentDisposition == "" {
 		t.Fatal("Expected 'Content-Disposition' response header to be present")
 	}
-	if strContentDisposition != "inline; filename=\"TestSkynetHeadRequest\"" {
+	if !strings.Contains(strContentDisposition, "inline; filename=") {
 		t.Fatal("Unexpected 'Content-Disposition' header")
 	}
 
 	// Perform a HEAD request with a timeout that exceeds the max timeout
-	status, _, _ = r.SkynetSkylinkHead(skylink, 901)
+	status, _, _ = r.SkynetSkylinkHead(skylink, api.MaxSkynetRequestTimeout+1)
 	if status != http.StatusBadRequest {
 		t.Fatalf("Expected StatusBadRequest for a request with a timeout that exceeds the MaxSkynetRequestTimeout, instead received %v", status)
 	}
@@ -1822,6 +1729,12 @@ func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	r := nodes[0]
+	defer func() {
+		err = tg.RemoveNode(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Since the renter doesn't have an allowance, we know the renter doesn't
 	// have any contracts and therefore the worker pool will be empty. Confirm
@@ -1832,6 +1745,12 @@ func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Error is nil, expected error due to no worker")
 	} else if !strings.Contains(err.Error(), "no workers") {
 		t.Errorf("Expected error containing 'no workers' but got %v", err)
+	}
+
+	// Remove the renter from test group so other subtests don't use it and fail
+	// unexpectedly.
+	if err = tg.RemoveNode(r); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -1947,29 +1866,8 @@ func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	reader := bytes.NewReader(fastrand.Bytes(100))
-	uploadSiaPath, err := modules.NewSiaPath(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	sup := modules.SkyfileUploadParameters{
-		SiaPath:             uploadSiaPath,
-		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: "testSkynetRequestTimeout",
-			Mode:     0640,
-		},
-		Reader: reader,
-		Force:  true,
-	}
 	// Upload a skyfile
-	skylink, _, err := r.SkynetSkyfilePost(sup)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Verify it was uploaded properly
-	_, _, err = r.SkynetSkylinkGet(skylink)
+	skylink, _, _, err := r.UploadNewSkyfileBlocking(t.Name(), 100, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2000,13 +1898,6 @@ func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
 	}
 	r = nodes[0]
 	defer tg.RemoveNode(r)
-
-	// Upload a skyfile
-	sup.Reader = bytes.NewReader(fastrand.Bytes(100))
-	skylink, _, err = r.SkynetSkyfilePost(sup)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// Verify timeout on head request
 	status, _, err := r.SkynetSkylinkHead(skylink, 1)
@@ -2039,21 +1930,14 @@ func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
 // which happened when a timeout was hit right before a download project was
 // resumed.
 func testRegressionTimeoutPanic(t *testing.T, tg *siatest.TestGroup) {
-	reader := bytes.NewReader(fastrand.Bytes(100))
-	uploadSiaPath, err := modules.NewSiaPath(t.Name())
+	r := tg.Renters()[0]
+
+	// Upload a skyfile
+	skylink, _, _, err := r.UploadNewSkyfileBlocking(t.Name(), 100, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sup := modules.SkyfileUploadParameters{
-		SiaPath:             uploadSiaPath,
-		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: "testRegressionTimeoutPanic",
-			Mode:     0640,
-		},
-		Reader: reader,
-		Force:  true,
-	}
+
 	// Create a renter with a BlockResumeJobDownloadUntilTimeout dependency.
 	testDir := renterTestDir(t.Name())
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
@@ -2062,15 +1946,8 @@ func testRegressionTimeoutPanic(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := nodes[0]
+	r = nodes[0]
 	defer tg.RemoveNode(r)
-
-	// Upload a skyfile
-	sup.Reader = bytes.NewReader(fastrand.Bytes(100))
-	skylink, _, err := r.SkynetSkyfilePost(sup)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// Verify timeout on download request doesn't panic.
 	_, _, err = r.SkynetSkylinkGetWithTimeout(skylink, 1)
@@ -2083,31 +1960,18 @@ func testRegressionTimeoutPanic(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetLargeMetadata(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	// Create some data to upload as a skyfile.
-	data := fastrand.Bytes(100 + siatest.Fuzz())
-	// Need it to be a reader.
-	reader := bytes.NewReader(data)
 	// Prepare a filename that's greater than a sector. That's the easiest way
 	// to force the metadata to be larger than a sector.
 	filename := hex.EncodeToString(fastrand.Bytes(int(modules.SectorSize + 1)))
+
 	// Quick fuzz on the force value so that sometimes it is set, sometimes it
 	// is not.
 	var force bool
 	if fastrand.Intn(2) == 0 {
 		force = true
 	}
-	sup := modules.SkyfileUploadParameters{
-		SiaPath:             modules.RandomSiaPath(),
-		Force:               force,
-		Root:                false,
-		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: filename,
-			Mode:     0640, // Intentionally does not match any defaults.
-		},
-		Reader: reader,
-	}
-	_, _, err := r.SkynetSkyfilePost(sup)
+
+	_, _, _, err := r.UploadNewSkyfileBlocking(filename, uint64(100+siatest.Fuzz()), force)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrMetadataTooBig.Error()) {
 		t.Fatal("Should fail due to ErrMetadataTooBig", err)
 	}
@@ -2212,5 +2076,247 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if skykeyGet.Skykey != sk2Str {
 		t.Fatal("Expected same result from  unsafe client")
+	}
+}
+
+// testRenameSiaPath verifies that the siapath to the skyfile can be renamed.
+func testRenameSiaPath(t *testing.T, tg *siatest.TestGroup) {
+	// Grab Renter
+	r := tg.Renters()[0]
+
+	// Create a skyfile
+	skylink, sup, _, err := r.UploadNewSkyfileBlocking("testRenameFile", 100, false)
+	siaPath := sup.SiaPath
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Rename Skyfile with root set to false should fail
+	err = r.RenterRenamePost(siaPath, modules.RandomSiaPath(), false)
+	if err == nil {
+		t.Error("Rename should have failed if the root flag is false")
+	}
+	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		t.Errorf("Expected error to contain %v but got %v", filesystem.ErrNotExist, err)
+	}
+
+	// Rename Skyfile with root set to true should be successful
+	siaPath, err = modules.SkynetFolder.Join(siaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	newSiaPath, err := modules.SkynetFolder.Join(persist.RandomSuffix())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = r.RenterRenamePost(siaPath, newSiaPath, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the skyfile can still be downloaded
+	_, _, err = r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// testSkynetEncryption tests the uploading and pinning of small skyfiles using
+// encryption.
+func testSkynetEncryption(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+	encKeyName := "encryption-test-key"
+
+	// Create some data to upload as a skyfile.
+	data := fastrand.Bytes(100 + siatest.Fuzz())
+	// Need it to be a reader.
+	reader := bytes.NewReader(data)
+	// Call the upload skyfile client call.
+	filename := "testEncryptSmall"
+	uploadSiaPath, err := modules.NewSiaPath(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: filename,
+			Mode:     0640, // Intentionally does not match any defaults.
+		},
+		Reader:     reader,
+		SkykeyName: encKeyName,
+	}
+
+	_, _, err = r.SkynetSkyfilePost(sup)
+	if err == nil {
+		t.Fatal("Expected error for using unknown key")
+	}
+
+	// Try again after adding a key.
+	// Note we must create a new reader in the params!
+	sup.Reader = bytes.NewReader(data)
+
+	_, err = r.SkykeyCreateKeyPost(encKeyName, crypto.TypeXChaCha20)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	skylink, sfMeta, err := r.SkynetSkyfilePost(sup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to download the file behind the skylink.
+	fetchedData, metadata, err := r.SkynetSkylinkGet(sfMeta.Skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(fetchedData, data) {
+		t.Error("upload and download doesn't match")
+		t.Log(data)
+		t.Log(fetchedData)
+	}
+	if metadata.Mode != 0640 {
+		t.Error("bad mode")
+	}
+	if metadata.Filename != filename {
+		t.Error("bad filename")
+	}
+
+	if sfMeta.Skylink != skylink {
+		t.Log(sfMeta.Skylink)
+		t.Log(skylink)
+		t.Fatal("Expected metadata skylink to match returned skylink")
+	}
+
+	// Pin the encrypted Skyfile.
+	pinSiaPath, err := modules.NewSiaPath("testSmallEncryptedPinPath")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinLUP := modules.SkyfilePinParameters{
+		SiaPath:             pinSiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 3,
+	}
+	err = r.SkynetSkylinkPinPost(skylink, pinLUP)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// See if the file is present.
+	fullPinSiaPath, err := modules.SkynetFolder.Join(pinSiaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinnedFile, err := r.RenterFileRootGet(fullPinSiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pinnedFile.File.Skylinks) != 1 {
+		t.Fatal("expecting 1 skylink")
+	}
+	if pinnedFile.File.Skylinks[0] != skylink {
+		t.Fatal("skylink mismatch")
+	}
+}
+
+// testSkynetEncryption tests the uploading and pinning of large skyfiles using
+// encryption.
+func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+	encKeyName := "large-file-encryption-test-key"
+
+	// Create some data to upload as a skyfile.
+	data := fastrand.Bytes(5 * int(modules.SectorSize))
+	// Need it to be a reader.
+	reader := bytes.NewReader(data)
+	// Call the upload skyfile client call.
+	filename := "testEncryptLarge"
+	uploadSiaPath, err := modules.NewSiaPath(filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: filename,
+			Mode:     0640, // Intentionally does not match any defaults.
+		},
+		Reader:     reader,
+		SkykeyName: encKeyName,
+	}
+
+	_, err = r.SkykeyCreateKeyPost(encKeyName, crypto.TypeXChaCha20)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	skylink, sfMeta, err := r.SkynetSkyfilePost(sup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if sfMeta.Skylink != skylink {
+		t.Log(sfMeta.Skylink)
+		t.Log(skylink)
+		t.Fatal("Expected metadata skylink to match returned skylink")
+	}
+
+	// Try to download the file behind the skylink.
+	fetchedData, metadata, err := r.SkynetSkylinkGet(sfMeta.Skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(fetchedData, data) {
+		t.Error("upload and download doesn't match")
+		t.Log(data)
+		t.Log(fetchedData)
+	}
+	if metadata.Mode != 0640 {
+		t.Error("bad mode")
+	}
+	if metadata.Filename != filename {
+		t.Error("bad filename")
+	}
+	t.Log(skylink)
+
+	// Pin the encrypted Skyfile.
+	pinSiaPath, err := modules.NewSiaPath("testEncryptedPinPath")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinLUP := modules.SkyfilePinParameters{
+		SiaPath:             pinSiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+	}
+	err = r.SkynetSkylinkPinPost(skylink, pinLUP)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// See if the file is present.
+	fullPinSiaPath, err := modules.SkynetFolder.Join(pinSiaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinnedFile, err := r.RenterFileRootGet(fullPinSiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pinnedFile.File.Skylinks) != 1 {
+		t.Fatal("expecting 1 skylink")
+	}
+	if pinnedFile.File.Skylinks[0] != skylink {
+		t.Fatal("skylink mismatch")
 	}
 }

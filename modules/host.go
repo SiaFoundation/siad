@@ -273,6 +273,7 @@ type (
 	// the host has accepted.
 	StorageObligation struct {
 		ContractCost             types.Currency       `json:"contractcost"`
+		RevisionNumber           uint64               `json:"revisionnumber"`
 		DataSize                 uint64               `json:"datasize"`
 		LockedCollateral         types.Currency       `json:"lockedcollateral"`
 		ObligationId             types.FileContractID `json:"obligationid"`
@@ -301,6 +302,11 @@ type (
 		ProofConstructed    bool   `json:"proofconstructed"`
 		RevisionConfirmed   bool   `json:"revisionconfirmed"`
 		RevisionConstructed bool   `json:"revisionconstructed"`
+
+		// The outputs that will be created after the expiration of the contract
+		// or a proof has been confirmed on the blockchain.
+		ValidProofOutputs  []types.SiacoinOutput `json:"validproofoutputs"`
+		MissedProofOutputs []types.SiacoinOutput `json:"missedproofoutputs"`
 	}
 
 	// HostWorkingStatus reports the working state of a host. Can be one of

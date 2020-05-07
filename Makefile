@@ -23,6 +23,7 @@ pkgs = ./build \
 	./cmd/sia-node-scanner \
 	./cmd/siac \
 	./cmd/siad \
+	./cmd/skynet-benchmark \
 	./compatibility \
 	./crypto \
 	./encoding \
@@ -84,7 +85,7 @@ run = .
 
 # util-pkgs determine the set of packages that are built when running
 # 'make utils'
-util-pkgs = ./cmd/sia-node-scanner
+util-pkgs = ./cmd/sia-node-scanner ./cmd/skynet-benchmark
 
 # dependencies list all packages needed to run make commands used to build, test
 # and lint siac/siad locally and in CI systems.
@@ -113,8 +114,12 @@ lint: markdown-spellcheck lint-analysis
 
 # lint-ci runs golint.
 lint-ci:
+# golint is skipped on Windows.
+ifneq ("$(OS)","Windows_NT")
+# Linux
 	go get golang.org/x/lint/golint
 	golint -min_confidence=1.0 -set_exit_status $(pkgs)
+endif
 
 # lint-analysis runs the custom analyzers.
 lint-analysis:
@@ -147,6 +152,8 @@ release:
 	go install -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
 release-race:
 	go install -race -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
+release-util:
+	go install -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs) $(util-pkgs)
 
 # clean removes all directories that get automatically created during
 # development.

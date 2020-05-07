@@ -139,6 +139,7 @@ OUTER:
 			// Disk has failed, all future attempts to load the wal will fail so
 			// we need to reset the dependency and try again
 			fdd.Reset()
+			atomic.AddUint64(&track.atomicNumRecoveries, 1)
 			continue
 		}
 		if err != nil {
@@ -327,6 +328,21 @@ func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
 		t.counts[secIdx1], t.counts[secIdx2] = t.counts[secIdx2], t.counts[secIdx1]
 		updates = append(updates, us...)
 	}
+
+	// In case of an error in its critical section, CreateAndApplyTransaction
+	// will panic. An injected disk error can cause such a panic. We need to
+	// recover from it and handle it as a normal faulty disk error within this
+	// test.
+	defer func() {
+		r := recover()
+		e, ok := r.(error)
+		if ok && errors.Contains(e, dependencies.ErrDiskFault) {
+			// we recovered by a panic caused by the faulty disk dependency
+			err = dependencies.ErrDiskFault
+		} else if r != nil {
+			panic(r)
+		}
+	}()
 
 	if len(updates) > 0 {
 		err = rc.CreateAndApplyTransaction(updates...)

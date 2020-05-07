@@ -79,6 +79,15 @@ To ensure consistent spacing please remove leading spaces from the first line,
 the file content should start with `- ` and please remove new lines and spaces
 at the end of the file.
 
+### Ignored Files
+Files with filenames listed in `.changelogignore` which are contained
+in changelog directory structure will be ignored, i.e. changelog items will
+not be created from them. Examples are:
+
+- `.init` files which need to be included if directory structure, so that
+otherwise empty directory structure can be committed to git.
+- `.DS_Store` files, which are added to directories automatically by MacOS
+
 ## Change Types
 ### Key Updates
 Key update are new features and notable product updates. Any key updates should
