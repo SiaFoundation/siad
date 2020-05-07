@@ -78,7 +78,7 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 	// Create the faulty disk dependency
 	fdd := dependencies.NewFaultyDiskDependency(10000) // Fails after 10000 writes.
 	// Attach it to the refcounter
-	rc, err := NewCustomRefCounter(rcFilePath, 200, wal, fdd)
+	rc, err := callNewCustomRefCounter(rcFilePath, 200, wal, fdd)
 	if err != nil {
 		t.Fatal("Failed to create a reference counter:", err)
 	}
@@ -149,7 +149,7 @@ OUTER:
 	}
 
 	// Load the refcounter from disk.
-	rc, err = LoadRefCounter(rcFilePath, wal)
+	rc, err = callLoadRefCounter(rcFilePath, wal)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func newTracker(rc *RefCounter) *tracker {
 		counts: make([]uint16, rc.numSectors),
 	}
 	for i := uint64(0); i < rc.numSectors; i++ {
-		c, err := rc.Count(i)
+		c, err := rc.callCount(i)
 		if err != nil {
 			panic("Failed to read count from refcounter.")
 		}
@@ -240,7 +240,7 @@ func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
 	// This will wipe the temporary in-mem changes to the counters.
 	// On success that's OK.
 	// On error we need to crash anyway, so it's OK as well.
-	defer rc.UpdateApplied()
+	defer rc.callUpdateApplied()
 
 	// We can afford to lock the tracker because only one goroutine is
 	// allowed to make changes at any given time anyway.
@@ -269,7 +269,7 @@ func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
 			if errValidate := validateIncrement(rc, secIdx); errValidate != nil {
 				continue
 			}
-			if u, err = rc.Increment(secIdx); err != nil {
+			if u, err = rc.callIncrement(secIdx); err != nil {
 				return
 			}
 			t.counts[secIdx]++
@@ -286,7 +286,7 @@ func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
 			if errValidate := validateDecrement(rc, secIdx); errValidate != nil {
 				continue
 			}
-			if u, err = rc.Decrement(secIdx); err != nil {
+			if u, err = rc.callDecrement(secIdx); err != nil {
 				return
 			}
 			t.counts[secIdx]--
@@ -296,7 +296,7 @@ func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
 
 	// 40% chance to append
 	if fastrand.Intn(100) < 40 {
-		if u, err = rc.Append(); err != nil {
+		if u, err = rc.callAppend(); err != nil {
 			return
 		}
 		t.counts = append(t.counts, 1)
@@ -309,7 +309,7 @@ func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
 		// check if the operation is valid - we won't gain anything
 		// from running out of sectors
 		if errValidate := validateDropSectors(rc, secNum); errValidate == nil {
-			if u, err = rc.DropSectors(secNum); err != nil {
+			if u, err = rc.callDropSectors(secNum); err != nil {
 				return
 			}
 			t.counts = t.counts[:len(t.counts)-int(secNum)]
@@ -322,7 +322,7 @@ func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
 		var us []writeaheadlog.Update
 		secIdx1 := fastrand.Uint64n(rc.numSectors)
 		secIdx2 := fastrand.Uint64n(rc.numSectors)
-		if us, err = rc.Swap(secIdx1, secIdx2); err != nil {
+		if us, err = rc.callSwap(secIdx1, secIdx2); err != nil {
 			return
 		}
 		t.counts[secIdx1], t.counts[secIdx2] = t.counts[secIdx2], t.counts[secIdx1]
@@ -344,7 +344,7 @@ func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
 	}()
 
 	if len(updates) > 0 {
-		err = rc.CreateAndApplyTransaction(updates...)
+		err = rc.callCreateAndApplyTransaction(updates...)
 	}
 	return
 }
@@ -378,7 +378,7 @@ func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFa
 			return nil, err
 		}
 		// Reload the refcounter from disk
-		newRc, err := LoadRefCounter(rcFilePath, newWal)
+		newRc, err := callLoadRefCounter(rcFilePath, newWal)
 		if err != nil {
 			return nil, err
 		}
@@ -440,7 +440,7 @@ func validateStatusAfterAllTests(rc *RefCounter, t *tracker) error {
 	}
 	var errorList []error
 	for i := uint64(0); i < numSec; i++ {
-		n, err := rc.Count(i)
+		n, err := rc.callCount(i)
 		if err != nil {
 			return errors.AddContext(err, "failed to read count")
 		}

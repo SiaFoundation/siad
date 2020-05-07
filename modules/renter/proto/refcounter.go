@@ -107,7 +107,7 @@ type (
 		newSectorCounts map[uint64]uint16
 
 		// muUpdates serializes updates to the refcounter. It is acquired by
-		// StartUpdate and released by UpdateApplied.
+		// callStartUpdate and released by callUpdateApplied.
 		muUpdate siasync.TryMutex
 	}
 
@@ -115,8 +115,8 @@ type (
 	u16 [2]byte
 )
 
-// LoadRefCounter loads a refcounter from disk
-func LoadRefCounter(path string, wal *writeaheadlog.WAL) (*RefCounter, error) {
+// callLoadRefCounter loads a refcounter from disk
+func callLoadRefCounter(path string, wal *writeaheadlog.WAL) (*RefCounter, error) {
 	// Open the file and start loading the data.
 	f, err := os.Open(path)
 	if err != nil {
@@ -152,9 +152,9 @@ func LoadRefCounter(path string, wal *writeaheadlog.WAL) (*RefCounter, error) {
 	}, nil
 }
 
-// NewCustomRefCounter creates a new sector reference counter file to accompany
+// callNewCustomRefCounter creates a new sector reference counter file to accompany
 // a contract file and allows setting custom dependencies
-func NewCustomRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL, deps modules.Dependencies) (*RefCounter, error) {
+func callNewCustomRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL, deps modules.Dependencies) (*RefCounter, error) {
 	h := RefCounterHeader{
 		Version: RefCounterVersion,
 	}
@@ -179,15 +179,15 @@ func NewCustomRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL, dep
 	}, err
 }
 
-// NewRefCounter creates a new sector reference counter file to accompany
+// callNewRefCounter creates a new sector reference counter file to accompany
 // a contract file
-func NewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (*RefCounter, error) {
-	return NewCustomRefCounter(path, numSec, wal, modules.ProdDependencies)
+func callNewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (*RefCounter, error) {
+	return callNewCustomRefCounter(path, numSec, wal, modules.ProdDependencies)
 }
 
-// Append appends one counter to the end of the refcounter file and
+// callAppend appends one counter to the end of the refcounter file and
 // initializes it with `1`
-func (rc *RefCounter) Append() (writeaheadlog.Update, error) {
+func (rc *RefCounter) callAppend() (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
@@ -201,16 +201,16 @@ func (rc *RefCounter) Append() (writeaheadlog.Update, error) {
 	return createWriteAtUpdate(rc.filepath, rc.numSectors-1, 1), nil
 }
 
-// Count returns the number of references to the given sector
-func (rc *RefCounter) Count(secIdx uint64) (uint16, error) {
+// callCount returns the number of references to the given sector
+func (rc *RefCounter) callCount(secIdx uint64) (uint16, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	return rc.readCount(secIdx)
 }
 
-// CreateAndApplyTransaction is a helper method that creates a writeaheadlog
+// callCreateAndApplyTransaction is a helper method that creates a writeaheadlog
 // transaction and applies it.
-func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update) error {
+func (rc *RefCounter) callCreateAndApplyTransaction(updates ...writeaheadlog.Update) error {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	// We allow the creation of the file here because of the case where we got
@@ -262,10 +262,10 @@ func (rc *RefCounter) CreateAndApplyTransaction(updates ...writeaheadlog.Update)
 	return nil
 }
 
-// Decrement decrements the reference counter of a given sector. The sector
+// callDecrement decrements the reference counter of a given sector. The sector
 // is specified by its sequential number (secIdx).
 // Returns the updated number of references or an error.
-func (rc *RefCounter) Decrement(secIdx uint64) (writeaheadlog.Update, error) {
+func (rc *RefCounter) callDecrement(secIdx uint64) (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
@@ -289,8 +289,8 @@ func (rc *RefCounter) Decrement(secIdx uint64) (writeaheadlog.Update, error) {
 	return createWriteAtUpdate(rc.filepath, secIdx, count), nil
 }
 
-// DeleteRefCounter deletes the counter's file from disk
-func (rc *RefCounter) DeleteRefCounter() (writeaheadlog.Update, error) {
+// callDeleteRefCounter deletes the counter's file from disk
+func (rc *RefCounter) callDeleteRefCounter() (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
@@ -304,8 +304,8 @@ func (rc *RefCounter) DeleteRefCounter() (writeaheadlog.Update, error) {
 	return createDeleteUpdate(rc.filepath), nil
 }
 
-// DropSectors removes the last numSec sector counts from the refcounter file
-func (rc *RefCounter) DropSectors(numSec uint64) (writeaheadlog.Update, error) {
+// callDropSectors removes the last numSec sector counts from the refcounter file
+func (rc *RefCounter) callDropSectors(numSec uint64) (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
@@ -321,10 +321,10 @@ func (rc *RefCounter) DropSectors(numSec uint64) (writeaheadlog.Update, error) {
 	return createTruncateUpdate(rc.filepath, rc.numSectors), nil
 }
 
-// Increment increments the reference counter of a given sector. The sector
+// callIncrement increments the reference counter of a given sector. The sector
 // is specified by its sequential number (secIdx).
 // Returns the updated number of references or an error.
-func (rc *RefCounter) Increment(secIdx uint64) (writeaheadlog.Update, error) {
+func (rc *RefCounter) callIncrement(secIdx uint64) (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
@@ -348,9 +348,9 @@ func (rc *RefCounter) Increment(secIdx uint64) (writeaheadlog.Update, error) {
 	return createWriteAtUpdate(rc.filepath, secIdx, count), nil
 }
 
-// SetCount sets the value of the reference counter of a given sector. The
+// callSetCount sets the value of the reference counter of a given sector. The
 // sector is specified by its sequential number (secIdx).
-func (rc *RefCounter) SetCount(secIdx uint64, c uint16) (writeaheadlog.Update, error) {
+func (rc *RefCounter) callSetCount(secIdx uint64, c uint16) (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
@@ -367,15 +367,15 @@ func (rc *RefCounter) SetCount(secIdx uint64, c uint16) (writeaheadlog.Update, e
 	return createWriteAtUpdate(rc.filepath, secIdx, c), nil
 }
 
-// StartUpdate acquires a lock, ensuring the caller is the only one currently
+// callStartUpdate acquires a lock, ensuring the caller is the only one currently
 // allowed to perform updates on this refcounter file.
-func (rc *RefCounter) StartUpdate() error {
+func (rc *RefCounter) callStartUpdate() error {
 	rc.muUpdate.Lock()
 	return rc.managedStartUpdate()
 }
 
-// Swap swaps the two sectors at the given indices
-func (rc *RefCounter) Swap(firstIdx, secondIdx uint64) ([]writeaheadlog.Update, error) {
+// callSwap swaps the two sectors at the given indices
+func (rc *RefCounter) callSwap(firstIdx, secondIdx uint64) ([]writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
@@ -403,9 +403,9 @@ func (rc *RefCounter) Swap(firstIdx, secondIdx uint64) ([]writeaheadlog.Update, 
 	}, nil
 }
 
-// UpdateApplied cleans up temporary data and releases the update lock, thus
+// callUpdateApplied cleans up temporary data and releases the update lock, thus
 // allowing other actors to acquire it in order to update the refcounter.
-func (rc *RefCounter) UpdateApplied() error {
+func (rc *RefCounter) callUpdateApplied() error {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 
@@ -423,7 +423,7 @@ func (rc *RefCounter) UpdateApplied() error {
 	return nil
 }
 
-// managedStartUpdate does everything StartUpdate needs, aside from acquiring a
+// managedStartUpdate does everything callStartUpdate needs, aside from acquiring a
 // lock
 func (rc *RefCounter) managedStartUpdate() error {
 	rc.mu.Lock()

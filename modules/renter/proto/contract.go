@@ -334,16 +334,16 @@ func (c *SafeContract) applySetRoot(root crypto.Hash, index int) error {
 	if build.Release == "testing" {
 		// update the reference counter before signalling that the update was
 		// successfully applied
-		err = c.rc.StartUpdate()
+		err = c.rc.callStartUpdate()
 		if err != nil {
 			return err
 		}
-		defer c.rc.UpdateApplied()
-		u, err := c.rc.SetCount(uint64(index), 1)
+		defer c.rc.callUpdateApplied()
+		u, err := c.rc.callSetCount(uint64(index), 1)
 		if err != nil {
 			return err
 		}
-		return c.rc.CreateAndApplyTransaction(u)
+		return c.rc.callCreateAndApplyTransaction(u)
 	}
 	return nil
 }
@@ -701,7 +701,7 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 	}
 	rc := &RefCounter{}
 	if build.Release == "testing" {
-		rc, err = NewRefCounter(rcFilePath, uint64(len(roots)), cs.wal)
+		rc, err = callNewRefCounter(rcFilePath, uint64(len(roots)), cs.wal)
 		if err != nil {
 			return modules.RenterContract{}, errors.AddContext(err, "failed to create a refcounter")
 		}
@@ -806,9 +806,9 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountF
 	rc := &RefCounter{}
 	if build.Release == "testing" {
 		// load the reference counter or create a new one if it doesn't exist
-		rc, err = LoadRefCounter(refCountFileName, cs.wal)
+		rc, err = callLoadRefCounter(refCountFileName, cs.wal)
 		if errors.Contains(err, ErrRefCounterNotExist) {
-			rc, err = NewRefCounter(refCountFileName, uint64(merkleRoots.numMerkleRoots), cs.wal)
+			rc, err = callNewRefCounter(refCountFileName, uint64(merkleRoots.numMerkleRoots), cs.wal)
 		}
 		if err != nil {
 			return errors.AddContext(err, "failed to load or create a refcounter")
