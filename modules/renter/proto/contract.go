@@ -811,7 +811,7 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountF
 			rc, err = NewRefCounter(refCountFileName, uint64(merkleRoots.numMerkleRoots), cs.wal)
 		}
 		if err != nil {
-			return err
+			return errors.AddContext(err, "failed to load or create a refcounter")
 		}
 	}
 	// add to set

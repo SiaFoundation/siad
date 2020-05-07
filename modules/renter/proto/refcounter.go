@@ -120,24 +120,24 @@ func LoadRefCounter(path string, wal *writeaheadlog.WAL) (*RefCounter, error) {
 	// Open the file and start loading the data.
 	f, err := os.Open(path)
 	if err != nil {
-		return &RefCounter{}, ErrRefCounterNotExist
+		return nil, ErrRefCounterNotExist
 	}
 	defer f.Close()
 
 	var header RefCounterHeader
 	headerBytes := make([]byte, RefCounterHeaderSize)
 	if _, err = f.ReadAt(headerBytes, 0); err != nil {
-		return &RefCounter{}, errors.AddContext(err, "unable to read from file")
+		return nil, errors.AddContext(err, "unable to read from file")
 	}
 	if err = deserializeHeader(headerBytes, &header); err != nil {
-		return &RefCounter{}, errors.AddContext(err, "unable to load refcounter header")
+		return nil, errors.AddContext(err, "unable to load refcounter header")
 	}
 	if header.Version != RefCounterVersion {
-		return &RefCounter{}, errors.AddContext(ErrInvalidVersion, fmt.Sprintf("expected version %d, got version %d", RefCounterVersion, header.Version))
+		return nil, errors.AddContext(ErrInvalidVersion, fmt.Sprintf("expected version %d, got version %d", RefCounterVersion, header.Version))
 	}
 	fi, err := os.Stat(path)
 	if err != nil {
-		return &RefCounter{}, errors.AddContext(err, "failed to read file stats")
+		return nil, errors.AddContext(err, "failed to read file stats")
 	}
 	numSectors := uint64((fi.Size() - RefCounterHeaderSize) / 2)
 	return &RefCounter{
