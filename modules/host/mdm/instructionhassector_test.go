@@ -31,10 +31,7 @@ func TestInstructionHasSector(t *testing.T) {
 	pb := modules.NewProgramBuilder()
 	pb.AddHasSectorInstruction(sectorRoot)
 	program := pb.Program()
-	runningValues, finalValues, err := pb.Values(pt, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	runningValues, finalValues := pb.Values(pt, true)
 
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()

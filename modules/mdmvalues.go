@@ -35,9 +35,9 @@ type RunningProgramValues struct {
 
 // Equals returns true iff the two ProgramValues objects are equal.
 func (v ProgramValues) Equals(v2 ProgramValues) bool {
-	return v.ExecutionCost.Cmp(v2.ExecutionCost) == 0 &&
-		v.Refund.Cmp(v2.Refund) == 0 &&
-		v.Collateral.Cmp(v2.Collateral) == 0 &&
+	return v.ExecutionCost.Equals(v2.ExecutionCost) &&
+		v.Refund.Equals(v2.Refund) &&
+		v.Collateral.Equals(v2.Collateral) &&
 		v.ReadOnly == v2.ReadOnly
 }
 

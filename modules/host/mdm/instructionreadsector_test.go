@@ -26,16 +26,13 @@ func TestInstructionReadSector(t *testing.T) {
 	pb := modules.NewProgramBuilder()
 	pb.AddReadSectorInstruction(readLen, 0, so.sectorRoots[0], true)
 	program := pb.Program()
-	runningValues, finalValues, err := pb.Values(pt, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	runningValues, finalValues := pb.Values(pt, true)
 
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
 
 	// Verify the values.
-	err = testCompareProgramValues(pt, program, finalValues)
+	err := testCompareProgramValues(pt, program, finalValues)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,10 +83,7 @@ func TestInstructionReadSector(t *testing.T) {
 	pb = modules.NewProgramBuilder()
 	pb.AddReadSectorInstruction(length, offset, so.sectorRoots[0], true)
 	program = pb.Program()
-	runningValues, finalValues, err = pb.Values(pt, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	runningValues, finalValues = pb.Values(pt, true)
 
 	// Verify the values.
 	err = testCompareProgramValues(pt, program, finalValues)
@@ -162,10 +156,7 @@ func TestInstructionReadOutsideSector(t *testing.T) {
 	pb := modules.NewProgramBuilder()
 	pb.AddReadSectorInstruction(readLen, 0, sectorRoot, true)
 	program := pb.Program()
-	runningValues, finalValues, err := pb.Values(pt, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	runningValues, finalValues := pb.Values(pt, true)
 
 	// Verify the values.
 	err = testCompareProgramValues(pt, program, finalValues)

@@ -25,10 +25,7 @@ func TestInstructionSingleAppend(t *testing.T) {
 		t.Fatal(err)
 	}
 	program := pb.Program()
-	runningValues, finalValues, err := pb.Values(pt, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	runningValues, finalValues := pb.Values(pt, true)
 	if len(runningValues) != len(program.Instructions)+1 {
 		t.Fatalf("expected %v running values, got %v", len(program.Instructions), len(runningValues))
 	}
@@ -108,10 +105,7 @@ func TestInstructionSingleAppend(t *testing.T) {
 		t.Fatal(err)
 	}
 	program = pb.Program()
-	runningValues, finalValues, err = pb.Values(pt, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	runningValues, finalValues = pb.Values(pt, true)
 	ics := so.ContractSize()
 
 	err = testCompareProgramValues(pt, program, finalValues)

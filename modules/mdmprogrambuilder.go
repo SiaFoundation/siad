@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 )
 
@@ -12,7 +13,6 @@ import (
 // a time.
 type ProgramBuilder struct {
 	dataBuf      *bytes.Buffer
-	dataOffset   uint64 // the data offset for the next instruction
 	instructions []Instruction
 }
 
@@ -20,14 +20,13 @@ type ProgramBuilder struct {
 func NewProgramBuilder() ProgramBuilder {
 	return ProgramBuilder{
 		dataBuf:      new(bytes.Buffer),
-		dataOffset:   0,
 		instructions: make([]Instruction, 0),
 	}
 }
 
 // AddAppendInstruction adds an append instruction to the builder, updating its
 // internal state.
-func (b *ProgramBuilder) AddAppendInstruction(data ProgramData, merkleProof bool) error {
+func (b *ProgramBuilder) AddAppendInstruction(data []byte, merkleProof bool) error {
 	if uint64(len(data)) != SectorSize {
 		return fmt.Errorf("expected length of data to be the size of a sector %v, was %v", SectorSize, len(data))
 	}
@@ -86,7 +85,7 @@ func (b *ProgramBuilder) Program() Program {
 // Values returns a list of all running values including values upon program
 // initialization as well as after each instruction, as well as the final set of
 // program values.
-func (b *ProgramBuilder) Values(pt *RPCPriceTable, finalized bool) ([]RunningProgramValues, ProgramValues, error) {
+func (b *ProgramBuilder) Values(pt *RPCPriceTable, finalized bool) ([]RunningProgramValues, ProgramValues) {
 	programData := b.dataBuf.Bytes()
 
 	// Store intermediate values for every instruction plus the initial program
@@ -118,7 +117,7 @@ func (b *ProgramBuilder) Values(pt *RPCPriceTable, finalized bool) ([]RunningPro
 			executionCost, refund := MDMReadCost(pt, length)
 			values = InstructionValues{executionCost, refund, MDMReadCollateral(), MDMReadMemory(), MDMTimeReadSector, true}
 		default:
-			return nil, ProgramValues{}, fmt.Errorf("unknown instruction specifier: %v", i.Specifier)
+			build.Critical("Unknown instruction specifier:", i.Specifier)
 		}
 		runningValues.AddValues(pt, values)
 		allRunningValues = append(allRunningValues, runningValues)
@@ -127,7 +126,7 @@ func (b *ProgramBuilder) Values(pt *RPCPriceTable, finalized bool) ([]RunningPro
 	// Add the cost of finalizing the program.
 	finalValues := runningValues.FinalizeProgramValues(pt, finalized)
 
-	return allRunningValues, finalValues, nil
+	return allRunningValues, finalValues
 }
 
 // NewAppendInstruction creates an Instruction from arguments.

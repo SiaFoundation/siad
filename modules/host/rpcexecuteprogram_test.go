@@ -127,10 +127,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	pb := modules.NewProgramBuilder()
 	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
 	program := pb.Program()
-	_, finalValues, err := pb.Values(pt, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	_, finalValues := pb.Values(pt, true)
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
@@ -291,10 +288,7 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	pb := modules.NewProgramBuilder()
 	pb.AddReadSectorInstruction(length, offset, sectorRoot, true)
 	program := pb.Program()
-	_, finalValues, err := pb.Values(pt, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	_, finalValues := pb.Values(pt, true)
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
@@ -416,10 +410,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	pb := modules.NewProgramBuilder()
 	pb.AddHasSectorInstruction(sectorRoot)
 	program := pb.Program()
-	_, finalValues, err := pb.Values(pt, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	_, finalValues := pb.Values(pt, true)
 
 	// Prepare the request.
 	epr := modules.RPCExecuteProgramRequest{

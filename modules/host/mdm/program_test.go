@@ -50,10 +50,7 @@ func TestNewProgramLowBudget(t *testing.T) {
 	pb := modules.NewProgramBuilder()
 	pb.AddReadSectorInstruction(modules.SectorSize, 0, crypto.Hash{}, true)
 	program := pb.Program()
-	_, finalValues, err := pb.Values(pt, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	_, finalValues := pb.Values(pt, true)
 	// Execute the program with enough money to init the mdm but not enough
 	// money to execute the first instruction.
 	cost := modules.MDMInitCost(pt, program.DataLen, 1)
@@ -99,7 +96,7 @@ func TestNewProgramLowCollateralBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	program := pb.Program()
-	_, values, err := pb.Values(pt, true)
+	_, values := pb.Values(pt, true)
 	// Execute the program with no collateral budget.
 	budget := modules.NewBudget(values.ExecutionCost)
 	so := newTestStorageObligation(true)
