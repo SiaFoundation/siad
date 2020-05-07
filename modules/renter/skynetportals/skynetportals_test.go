@@ -8,9 +8,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -23,7 +21,7 @@ func testDir(name string) string {
 // checkNumPersistedPortals checks that the expected number of portals has been
 // persisted on disk by checking the size of the persistence file.
 func checkNumPersistedPortals(portalsPath string, numPortals int) error {
-	expectedSize := numPortals*int(persistPortalSize) + int(metadataPageSize)
+	expectedSize := numPortals*int(persistSize) + int(modules.MetadataPageSize)
 	if fi, err := os.Stat(portalsPath); err != nil {
 		return errors.AddContext(err, "failed to get portal list filesize")
 	} else if fi.Size() != int64(expectedSize) {
@@ -46,9 +44,9 @@ func TestPersist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	filename := filepath.Join(sp.staticPersistDir, persistFile)
-	if filename != sp.FilePath() {
-		t.Fatalf("Expected filepath %v, was %v", filename, sp.FilePath())
+	filename := filepath.Join(sp.aop.PersistDir, persistFile)
+	if filename != sp.aop.FilePath() {
+		t.Fatalf("Expected filepath %v, was %v", filename, sp.aop.FilePath())
 	}
 
 	// There should be no portals in the list
@@ -179,9 +177,9 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	filename := filepath.Join(sp.staticPersistDir, persistFile)
-	if filename != sp.FilePath() {
-		t.Fatalf("Expected filepath %v, was %v", filename, sp.FilePath())
+	filename := filepath.Join(sp.aop.PersistDir, persistFile)
+	if filename != sp.aop.FilePath() {
+		t.Fatalf("Expected filepath %v, was %v", filename, sp.aop.FilePath())
 	}
 
 	// There should be no portals in the list
@@ -195,7 +193,7 @@ func TestPersistCorruption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	minNumBytes := int(2 * metadataPageSize)
+	minNumBytes := int(2 * modules.MetadataPageSize)
 	_, err = f.Write(fastrand.Bytes(minNumBytes + fastrand.Intn(minNumBytes)))
 	if err != nil {
 		t.Fatal(err)
@@ -211,8 +209,8 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	filesize := fi.Size()
-	if filesize <= sp.persistLength {
-		t.Fatalf("Expected file size greater than %v, got %v", sp.persistLength, filesize)
+	if uint64(filesize) <= sp.aop.PersistLength {
+		t.Fatalf("Expected file size greater than %v, got %v", sp.aop.PersistLength, filesize)
 	}
 
 	// Update portals list
@@ -234,8 +232,8 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	filesize = fi.Size()
-	if filesize != sp.persistLength {
-		t.Fatalf("Expected file size %v, got %v", sp.persistLength, filesize)
+	if uint64(filesize) != sp.aop.PersistLength {
+		t.Fatalf("Expected file size %v, got %v", sp.aop.PersistLength, filesize)
 	}
 
 	// Portals list should be empty because we added and then removed the same
@@ -321,8 +319,8 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	filesize = fi.Size()
-	if filesize != sp3.persistLength {
-		t.Fatalf("Expected file size %v, got %v", sp3.persistLength, filesize)
+	if uint64(filesize) != sp3.aop.PersistLength {
+		t.Fatalf("Expected file size %v, got %v", sp3.aop.PersistLength, filesize)
 	}
 
 	// Verify that the correct number of portals were persisted to verify no
@@ -384,7 +382,7 @@ func TestMarshalSia(t *testing.T) {
 
 	// Test unmarshalPersistPortals
 	r = bytes.NewBuffer(buf.Bytes())
-	portals, err := unmarshalPortals(r)
+	portals, err := unmarshalObjects(r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,126 +395,5 @@ func TestMarshalSia(t *testing.T) {
 	_, ok := portals[address]
 	if !ok {
 		t.Fatal("address not found in portals list")
-	}
-}
-
-// TestMarshalMetadata verifies that the marshaling and unmarshaling of the
-// metadata and length provides the expected results
-func TestMarshalMetadata(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Create persist file
-	testdir := testDir(t.Name())
-	err := os.MkdirAll(testdir, modules.DefaultDirPerm)
-	if err != nil {
-		t.Fatal(err)
-	}
-	filename := filepath.Join(testdir, persistFile)
-	f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-
-	// Create empty struct of a skynet portals list and set the length. Not
-	// using the New method to avoid overwriting the persist file on disk.
-	sp := SkynetPortals{}
-	sp.persistLength = metadataPageSize
-
-	// Marshal the metadata and write to disk
-	metadataBytes, err := sp.marshalMetadata()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = f.Write(metadataBytes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = f.Sync()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Update the length, and write to disk
-	lengthOffset := int64(2 * types.SpecifierLen)
-	lengthBytes := encoding.Marshal(2 * metadataPageSize)
-	_, err = f.WriteAt(lengthBytes, lengthOffset)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = f.Sync()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Try unmarshaling the metadata to ensure that it did not get corrupted by
-	// the length updates
-	metadataSize := lengthOffset + lengthSize
-	mdBytes := make([]byte, metadataSize)
-	_, err = f.ReadAt(mdBytes, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The header and the version are checked during the unmarshaling of the
-	// metadata
-	err = sp.unmarshalMetadata(mdBytes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sp.persistLength != 2*metadataPageSize {
-		t.Fatalf("incorrect decoded length, got %v expected %v", sp.persistLength, 2*metadataPageSize)
-	}
-
-	// Write an incorrect version and verify that unmarshaling the metadata will
-	// fail for unmarshaling a bad version
-	badVersion := types.NewSpecifier("badversion")
-	badBytes, err := badVersion.MarshalText()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = f.WriteAt(badBytes, types.SpecifierLen)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = f.Sync()
-	if err != nil {
-		t.Fatal(err)
-	}
-	mdBytes = make([]byte, metadataSize)
-	_, err = f.ReadAt(mdBytes, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = sp.unmarshalMetadata(mdBytes)
-	if !errors.Contains(err, errWrongVersion) {
-		t.Fatalf("Expected %v got %v", errWrongVersion, err)
-	}
-
-	// Write an incorrect header and verify that unmarshaling the metadata will
-	// fail for unmarshaling a bad header
-	badHeader := types.NewSpecifier("badheader")
-	badBytes, err = badHeader.MarshalText()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = f.WriteAt(badBytes, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = f.Sync()
-	if err != nil {
-		t.Fatal(err)
-	}
-	mdBytes = make([]byte, metadataSize)
-	_, err = f.ReadAt(mdBytes, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = sp.unmarshalMetadata(mdBytes)
-	if err != errWrongHeader {
-		t.Fatalf("Expected %v got %v", errWrongHeader, err)
 	}
 }

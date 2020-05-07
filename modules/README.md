@@ -14,6 +14,7 @@ The modules package is the top-level package for all modules. It contains the in
 
 ## Subsystems
 - [Alert System](#alert-system)
+- [Append-Only Persist](#append-only-persist)
 - [Dependencies](#dependencies)
 - [Negotiate](#negotiate)
 - [Network Addresses](#network-addresses)
@@ -103,6 +104,19 @@ The following levels of severity are currently available:
 - **Warning**: Warns the user about potential issues which might require preventive actions
 - **Error**: Alerts the user of an issue that requires immediate action to prevent further issues like loss of data
 - **Critical**: Indicates that a critical error is imminent. e.g. lack of funds causing contracts to get lost
+
+### Append-Only Persist
+**Key Files**
+- [appendonlypersist.go](./appendonlypersist.go)
+
+The Persistence System is responsible for the disk interaction and ensuring safe
+and performant ACID operations. An append only structure is used with a length
+of fsync'd bytes encoded in the metadata.
+
+**Inbound Complexities**
+ - `NewAppendOnlyPersist` initializes the persistence file
+ - `UpdateAndAppend` updates the persistence file and appends the information to
+   the persistence file
 
 ### Dependencies
 **Key Files**
