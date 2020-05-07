@@ -56,7 +56,7 @@ type (
 
 // managedPersist will write the account to the given file at the account's
 // offset
-func (a *account) managedPersist(file modules.File) error {
+func (a *account) managedPersist() error {
 	a.staticMu.Lock()
 	accountData := accountPersistence{
 		AccountID: a.staticID,
@@ -65,7 +65,7 @@ func (a *account) managedPersist(file modules.File) error {
 		SecretKey: a.staticSecretKey,
 	}
 	a.staticMu.Unlock()
-	_, err := file.WriteAt(accountData.bytes(), a.staticOffset)
+	_, err := a.staticFile.WriteAt(accountData.bytes(), a.staticOffset)
 	return err
 }
 
@@ -91,6 +91,7 @@ func (r *Renter) readAccountAt(offset, accountOffset int64) (*account, error) {
 		staticHostKey:   accountData.HostKey,
 		staticOffset:    accountOffset,
 		staticSecretKey: accountData.SecretKey,
+		staticFile:      r.staticAccountsFile,
 		balance:         accountData.Balance,
 	}, nil
 }
@@ -231,7 +232,7 @@ func (r *Renter) managedSaveAccounts() error {
 
 	// save the account data to disk
 	for _, account := range accounts {
-		err := account.managedPersist(r.staticAccountsFile)
+		err := account.managedPersist()
 		if err != nil {
 			r.log.Println("ERROR:", err)
 			continue
@@ -276,12 +277,12 @@ func (ap accountPersistence) bytes() []byte {
 	}
 
 	// calculate checksum on padded account bytes
-	accBytesPadded := make([]byte, accBytesMaxSize, accBytesMaxSize)
+	accBytesPadded := make([]byte, accBytesMaxSize)
 	copy(accBytesPadded, accBytes)
 	checksum := crypto.HashBytes(accBytesPadded)
 
 	// create final byte slice of account size
-	b := make([]byte, accountSize, accountSize)
+	b := make([]byte, accountSize)
 	copy(b[:len(checksum)], checksum[:])
 	copy(b[len(checksum):], accBytesPadded)
 	return b
