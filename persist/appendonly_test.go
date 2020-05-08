@@ -1,4 +1,4 @@
-package modules
+package persist
 
 import (
 	"os"
@@ -22,12 +22,12 @@ func TestMarshalMetadata(t *testing.T) {
 	// Create persist file
 	testdir := build.TempDir(t.Name())
 	testfile := "testpersist"
-	err := os.MkdirAll(testdir, DefaultDirPerm)
+	err := os.MkdirAll(testdir, DefaultDirPermissions)
 	if err != nil {
 		t.Fatal(err)
 	}
 	filename := filepath.Join(testdir, testfile)
-	f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, DefaultFilePerm)
+	f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, DefaultFilePermissions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,11 +36,11 @@ func TestMarshalMetadata(t *testing.T) {
 	// Manually create struct of a persist object and set the length. Not using
 	// the New method to avoid overwriting the persist file on disk.
 	aop := AppendOnlyPersist{
-		PersistDir:      testdir,
-		PersistFile:     testfile,
-		MetadataHeader:  types.NewSpecifier("header\n"),
-		MetadataVersion: types.NewSpecifier("version\n"),
-		PersistLength:   MetadataPageSize,
+		staticPath:            filename,
+		staticMetadataHeader:  types.NewSpecifier("header\n"),
+		staticMetadataVersion: types.NewSpecifier("version\n"),
+
+		persistLength: MetadataPageSize,
 	}
 
 	// Marshal the metadata and write to disk
@@ -83,8 +83,8 @@ func TestMarshalMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if aop.PersistLength != 2*MetadataPageSize {
-		t.Fatalf("incorrect decoded length, got %v expected %v", aop.PersistLength, 2*MetadataPageSize)
+	if aop.persistLength != 2*MetadataPageSize {
+		t.Fatalf("incorrect decoded length, got %v expected %v", aop.persistLength, 2*MetadataPageSize)
 	}
 
 	// Write an incorrect version and verify that unmarshaling the metadata will

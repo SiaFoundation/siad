@@ -16,7 +16,7 @@ import (
 // BenchmarkWrite512MiB checks how long it takes to write 512MiB sequentially.
 func BenchmarkWrite512MiB(b *testing.B) {
 	testDir := build.TempDir("persist", b.Name())
-	err := os.MkdirAll(testDir, 0700)
+	err := os.MkdirAll(testDir, DefaultDirPermissions)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func BenchmarkWrite512MiB(b *testing.B) {
 // stepwise truncate.
 func BenchmarkWrite512MiBTrunc(b *testing.B) {
 	testDir := build.TempDir("persist", b.Name())
-	err := os.MkdirAll(testDir, 0700)
+	err := os.MkdirAll(testDir, DefaultDirPermissions)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func BenchmarkWrite512MiBTrunc(b *testing.B) {
 // BenchmarkWrite512MiBRand checks how long it takes to write 512MiB randomly.
 func BenchmarkWrite512MiBRand(b *testing.B) {
 	testDir := build.TempDir("persist", b.Name())
-	err := os.MkdirAll(testDir, 0700)
+	err := os.MkdirAll(testDir, DefaultDirPermissions)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func BenchmarkWrite512MiBRand(b *testing.B) {
 // BenchmarkRead512MiB checks how long it takes to read 512MiB sequentially.
 func BenchmarkRead512MiB(b *testing.B) {
 	testDir := build.TempDir("persist", b.Name())
-	err := os.MkdirAll(testDir, 0700)
+	err := os.MkdirAll(testDir, DefaultDirPermissions)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -228,7 +228,7 @@ func BenchmarkRead512MiB(b *testing.B) {
 // BenchmarkRead512MiBRand checks how long it takes to read 512MiB randomly.
 func BenchmarkRead512MiBRand(b *testing.B) {
 	testDir := build.TempDir("persist", b.Name())
-	err := os.MkdirAll(testDir, 0700)
+	err := os.MkdirAll(testDir, DefaultDirPermissions)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -299,7 +299,7 @@ func BenchmarkRead512MiBRand(b *testing.B) {
 // BenchmarkTruncate512MiB checks how long it takes to truncate a 512 MiB file.
 func BenchmarkTruncate512MiB(b *testing.B) {
 	testDir := build.TempDir("persist", b.Name())
-	err := os.MkdirAll(testDir, 0700)
+	err := os.MkdirAll(testDir, DefaultDirPermissions)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -340,7 +340,7 @@ func BenchmarkTruncate512MiB(b *testing.B) {
 		b.StartTimer()
 
 		// Open the file.
-		f, err = os.OpenFile(filename, os.O_RDWR, 0600)
+		f, err = os.OpenFile(filename, os.O_RDWR, DefaultFilePermissions)
 		if err != nil {
 			b.Fatal(err)
 		}

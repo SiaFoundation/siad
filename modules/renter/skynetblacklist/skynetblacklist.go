@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -33,7 +34,7 @@ var (
 // SkynetBlacklist manages a set of blacklisted skylinks by tracking the
 // merkleroots and persists the list to disk
 type SkynetBlacklist struct {
-	aop *modules.AppendOnlyPersist
+	aop *persist.AppendOnlyPersist
 
 	merkleroots map[crypto.Hash]struct{}
 
@@ -43,10 +44,12 @@ type SkynetBlacklist struct {
 // New creates a new SkynetBlacklist.
 func New(persistDir string) (*SkynetBlacklist, error) {
 	// Initialize the persistence of the blacklist.
-	aop, r, err := modules.NewAppendOnlyPersist(persistDir, persistFile, persistSize, metadataHeader, metadataVersion)
+	aop, r, err := persist.NewAppendOnlyPersist(persistDir, persistFile, persistSize, metadataHeader, metadataVersion)
 	if err != nil {
 		return nil, errors.AddContext(err, fmt.Sprintf("unable to initialize the skynet blacklist persistence at '%v'", aop.FilePath()))
 	}
+	defer r.Close()
+
 	sb := &SkynetBlacklist{
 		aop:         aop,
 		merkleroots: make(map[crypto.Hash]struct{}),
@@ -90,7 +93,7 @@ func (sb *SkynetBlacklist) UpdateSkynetBlacklist(additions, removals []modules.S
 	if err != nil {
 		return errors.AddContext(err, fmt.Sprintf("unable to update skynet blacklist persistence at '%v'", sb.aop.FilePath()))
 	}
-	err = sb.aop.UpdateAndAppend(buf)
+	_, err = sb.aop.Write(buf.Bytes())
 	return errors.AddContext(err, fmt.Sprintf("unable to update skynet blacklist persistence at '%v'", sb.aop.FilePath()))
 }
 
@@ -149,18 +152,18 @@ func unmarshalObjects(r io.Reader) (map[crypto.Hash]struct{}, error) {
 }
 
 // marshalSia implements the encoding.SiaMarshaler interface.
-func marshalSia(w io.Writer, merkleRoot crypto.Hash, blacklisted bool) error {
+func marshalSia(w io.Writer, merkleRoot crypto.Hash, listed bool) error {
 	e := encoding.NewEncoder(w)
 	e.Encode(merkleRoot)
-	e.WriteBool(blacklisted)
+	e.WriteBool(listed)
 	return e.Err()
 }
 
 // unmarshalSia implements the encoding.SiaUnmarshaler interface.
-func unmarshalSia(r io.Reader) (merkleRoot crypto.Hash, blacklisted bool, err error) {
+func unmarshalSia(r io.Reader) (merkleRoot crypto.Hash, listed bool, err error) {
 	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
 	d.Decode(&merkleRoot)
-	blacklisted = d.NextBool()
+	listed = d.NextBool()
 	err = d.Err()
 	return
 }

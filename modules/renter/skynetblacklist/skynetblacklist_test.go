@@ -9,6 +9,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -21,7 +22,7 @@ func testDir(name string) string {
 // checkNumPersistedLinks checks that the expected number of links has been
 // persisted on disk by checking the size of the persistence file.
 func checkNumPersistedLinks(blacklistPath string, numLinks int) error {
-	expectedSize := numLinks*int(persistSize) + int(modules.MetadataPageSize)
+	expectedSize := numLinks*int(persistSize) + int(persist.MetadataPageSize)
 	if fi, err := os.Stat(blacklistPath); err != nil {
 		return errors.AddContext(err, "failed to get blacklist filesize")
 	} else if fi.Size() != int64(expectedSize) {
@@ -44,7 +45,7 @@ func TestPersist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	filename := filepath.Join(sb.aop.PersistDir, persistFile)
+	filename := filepath.Join(testdir, persistFile)
 	if filename != sb.aop.FilePath() {
 		t.Fatalf("Expected filepath %v, was %v", filename, sb.aop.FilePath())
 	}
@@ -164,7 +165,7 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	filename := filepath.Join(sb.aop.PersistDir, persistFile)
+	filename := filepath.Join(testdir, persistFile)
 	if filename != sb.aop.FilePath() {
 		t.Fatalf("Expected filepath %v, was %v", filename, sb.aop.FilePath())
 	}
@@ -180,7 +181,7 @@ func TestPersistCorruption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	minNumBytes := int(2 * modules.MetadataPageSize)
+	minNumBytes := int(2 * persist.MetadataPageSize)
 	_, err = f.Write(fastrand.Bytes(minNumBytes + fastrand.Intn(minNumBytes)))
 	if err != nil {
 		t.Fatal(err)
@@ -196,8 +197,8 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	filesize := fi.Size()
-	if uint64(filesize) <= sb.aop.PersistLength {
-		t.Fatalf("Expected file size greater than %v, got %v", sb.aop.PersistLength, filesize)
+	if uint64(filesize) <= sb.aop.PersistLength() {
+		t.Fatalf("Expected file size greater than %v, got %v", sb.aop.PersistLength(), filesize)
 	}
 
 	// Update blacklist
@@ -216,8 +217,8 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	filesize = fi.Size()
-	if uint64(filesize) != sb.aop.PersistLength {
-		t.Fatalf("Expected file size %v, got %v", sb.aop.PersistLength, filesize)
+	if uint64(filesize) != sb.aop.PersistLength() {
+		t.Fatalf("Expected file size %v, got %v", sb.aop.PersistLength(), filesize)
 	}
 
 	// Blacklist should be empty because we added and then removed the same
@@ -294,8 +295,8 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	filesize = fi.Size()
-	if uint64(filesize) != sb3.aop.PersistLength {
-		t.Fatalf("Expected file size %v, got %v", sb3.aop.PersistLength, filesize)
+	if uint64(filesize) != sb3.aop.PersistLength() {
+		t.Fatalf("Expected file size %v, got %v", sb3.aop.PersistLength(), filesize)
 	}
 
 	// Verify that the correct number of links were persisted to verify no links

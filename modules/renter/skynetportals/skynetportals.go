@@ -8,6 +8,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -42,7 +43,7 @@ var (
 // SkynetPortals manages a list of known Skynet portals by persisting the list
 // to disk.
 type SkynetPortals struct {
-	aop *modules.AppendOnlyPersist
+	aop *persist.AppendOnlyPersist
 
 	portals map[modules.NetAddress]bool
 
@@ -52,10 +53,12 @@ type SkynetPortals struct {
 // New creates a new SkynetPortals.
 func New(persistDir string) (*SkynetPortals, error) {
 	// Initialize the persistence of the portal list.
-	aop, r, err := modules.NewAppendOnlyPersist(persistDir, persistFile, persistSize, metadataHeader, metadataVersion)
+	aop, r, err := persist.NewAppendOnlyPersist(persistDir, persistFile, persistSize, metadataHeader, metadataVersion)
 	if err != nil {
 		return nil, errors.AddContext(err, fmt.Sprintf("unable to initialize the skynet portal list persistence at '%v'", aop.FilePath()))
 	}
+	defer r.Close()
+
 	sp := &SkynetPortals{
 		aop:     aop,
 		portals: make(map[modules.NetAddress]bool),
@@ -94,7 +97,7 @@ func (sp *SkynetPortals) UpdateSkynetPortals(additions []modules.SkynetPortal, r
 	if err != nil {
 		return errors.AddContext(err, fmt.Sprintf("unable to update skynet portal list persistence at '%v'", sp.aop.FilePath()))
 	}
-	err = sp.aop.UpdateAndAppend(buf)
+	_, err = sp.aop.Write(buf.Bytes())
 	return errors.AddContext(err, fmt.Sprintf("unable to update skynet portal list persistence at '%v'", sp.aop.FilePath()))
 }
 

@@ -14,11 +14,17 @@ import (
 )
 
 const (
-	// FixedMetadataSize is the size of the FixedMetadata header in bytes
-	FixedMetadataSize = 32
+	// DefaultDirPermissions is the default permissions when creating dirs.
+	DefaultDirPermissions = 0700
 
 	// DefaultDiskPermissionsTest when creating files or directories in tests.
 	DefaultDiskPermissionsTest = 0750
+
+	// DefaultFilePermissions is the default permissions when creating files.
+	DefaultFilePermissions = 0600
+
+	// FixedMetadataSize is the size of the FixedMetadata header in bytes
+	FixedMetadataSize = 32
 
 	// persistDir defines the folder that is used for testing the persist
 	// package.

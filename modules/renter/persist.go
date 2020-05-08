@@ -28,7 +28,7 @@ const (
 )
 
 var (
-	//ErrBadFile is an error when a file does not qualify as .sia file
+	// ErrBadFile is an error when a file does not qualify as .sia file
 	ErrBadFile = errors.New("not a .sia file")
 	// ErrIncompatible is an error when file is not compatible with current
 	// version

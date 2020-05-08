@@ -19,7 +19,7 @@ func TestSaveLoadJSON(t *testing.T) {
 	}
 	// Create the directory used for testing.
 	dir := filepath.Join(build.TempDir(persistDir), t.Name())
-	err := os.MkdirAll(dir, 0700)
+	err := os.MkdirAll(dir, DefaultDirPermissions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +285,7 @@ func TestSaveJSONCorruptedMainFile(t *testing.T) {
 
 	// Create the directory used for testing.
 	dir := filepath.Join(build.TempDir(persistDir), t.Name())
-	err := os.MkdirAll(dir, 0700)
+	err := os.MkdirAll(dir, DefaultDirPermissions)
 	if err != nil {
 		t.Fatal(err)
 	}

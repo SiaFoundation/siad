@@ -9,6 +9,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -21,7 +22,7 @@ func testDir(name string) string {
 // checkNumPersistedPortals checks that the expected number of portals has been
 // persisted on disk by checking the size of the persistence file.
 func checkNumPersistedPortals(portalsPath string, numPortals int) error {
-	expectedSize := numPortals*int(persistSize) + int(modules.MetadataPageSize)
+	expectedSize := numPortals*int(persistSize) + int(persist.MetadataPageSize)
 	if fi, err := os.Stat(portalsPath); err != nil {
 		return errors.AddContext(err, "failed to get portal list filesize")
 	} else if fi.Size() != int64(expectedSize) {
@@ -44,7 +45,7 @@ func TestPersist(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	filename := filepath.Join(sp.aop.PersistDir, persistFile)
+	filename := filepath.Join(testdir, persistFile)
 	if filename != sp.aop.FilePath() {
 		t.Fatalf("Expected filepath %v, was %v", filename, sp.aop.FilePath())
 	}
@@ -177,7 +178,7 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	filename := filepath.Join(sp.aop.PersistDir, persistFile)
+	filename := filepath.Join(testdir, persistFile)
 	if filename != sp.aop.FilePath() {
 		t.Fatalf("Expected filepath %v, was %v", filename, sp.aop.FilePath())
 	}
@@ -193,7 +194,7 @@ func TestPersistCorruption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	minNumBytes := int(2 * modules.MetadataPageSize)
+	minNumBytes := int(2 * persist.MetadataPageSize)
 	_, err = f.Write(fastrand.Bytes(minNumBytes + fastrand.Intn(minNumBytes)))
 	if err != nil {
 		t.Fatal(err)
@@ -209,8 +210,8 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	filesize := fi.Size()
-	if uint64(filesize) <= sp.aop.PersistLength {
-		t.Fatalf("Expected file size greater than %v, got %v", sp.aop.PersistLength, filesize)
+	if uint64(filesize) <= sp.aop.PersistLength() {
+		t.Fatalf("Expected file size greater than %v, got %v", sp.aop.PersistLength(), filesize)
 	}
 
 	// Update portals list
@@ -232,8 +233,8 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	filesize = fi.Size()
-	if uint64(filesize) != sp.aop.PersistLength {
-		t.Fatalf("Expected file size %v, got %v", sp.aop.PersistLength, filesize)
+	if uint64(filesize) != sp.aop.PersistLength() {
+		t.Fatalf("Expected file size %v, got %v", sp.aop.PersistLength(), filesize)
 	}
 
 	// Portals list should be empty because we added and then removed the same
@@ -319,8 +320,8 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	filesize = fi.Size()
-	if uint64(filesize) != sp3.aop.PersistLength {
-		t.Fatalf("Expected file size %v, got %v", sp3.aop.PersistLength, filesize)
+	if uint64(filesize) != sp3.aop.PersistLength() {
+		t.Fatalf("Expected file size %v, got %v", sp3.aop.PersistLength(), filesize)
 	}
 
 	// Verify that the correct number of portals were persisted to verify no
