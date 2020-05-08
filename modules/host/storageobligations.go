@@ -254,6 +254,17 @@ type StorageObligationSnapshot struct {
 	staticSectorRoots         []crypto.Hash
 }
 
+// ZeroStorageObligationSnapshot returns the storage obligation snapshot of an
+// empty contract. All fields are set to the defaults.
+func ZeroStorageObligationSnapshot() StorageObligationSnapshot {
+	return StorageObligationSnapshot{
+		staticContractSize:        0,
+		staticMerkleRoot:          crypto.Hash{},
+		staticRemainingCollateral: types.ZeroCurrency,
+		staticSectorRoots:         []crypto.Hash{},
+	}
+}
+
 // ContractSize returns the size of the underlying contract, which is static and
 // is the value of the contract size at the time the snapshot was taken.
 func (sos StorageObligationSnapshot) ContractSize() uint64 {
