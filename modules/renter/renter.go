@@ -211,6 +211,8 @@ type Renter struct {
 
 	// Account management.
 	accounts           map[string]*account
+	accountsClosed     bool
+	staticAccountsWg   sync.WaitGroup
 	staticAccountsFile modules.File
 
 	// Utilities.
@@ -907,7 +909,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),
 
-		accounts: make(map[string]*account),
+		accounts:       make(map[string]*account),
+		accountsClosed: true,
 
 		cs:                    cs,
 		deps:                  deps,

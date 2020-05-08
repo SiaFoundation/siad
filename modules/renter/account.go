@@ -2,6 +2,7 @@ package renter
 
 import (
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -45,6 +46,15 @@ func (r *Renter) managedOpenAccount(hostKey types.SiaPublicKey) (*account, error
 	if ok {
 		return acc, nil
 	}
+
+	// verify the accounts are not closed yet
+	if r.accountsClosed {
+		return nil, errors.New("Trying to open a new account after the accounts file has been closed")
+	}
+
+	r.staticAccountsWg.Add(1)
+	defer r.staticAccountsWg.Done()
+
 	acc, err := r.newAccount(hostKey)
 	if err != nil {
 		return nil, err
