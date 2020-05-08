@@ -250,7 +250,7 @@ func (tn *TestNode) KnowsHost(host *TestNode) error {
 			return nil
 		}
 	}
-	return errors.New("host ist unknown")
+	return errors.New("host is unknown")
 }
 
 // Rename renames a remoteFile with the root parameter set to false and returns

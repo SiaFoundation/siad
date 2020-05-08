@@ -3343,19 +3343,19 @@ Path to the directory on the sia network
 {
   "directories": [
     {
-      "aggregatenumfiles":        2,    // uint64
-      "aggregatenumstuckchunks":  4,    // uint64
-      "aggregatesize":            4096, // uint64
-      "heatlh":                   1.0,  // float64
-      "lasthealtchecktime": "2018-09-23T08:00:00.000000000+04:00" // timestamp
-      "maxhealth":                0.5,  // float64
-      "minredundancy":            2.6,  // float64
-      "mostrecentmodtime":  "2018-09-23T08:00:00.000000000+04:00" // timestamp
-      "stuckhealth":              1.0,  // float64
+      "aggregatenumfiles":       2,    // uint64
+      "aggregatenumstuckchunks": 4,    // uint64
+      "aggregatesize":           4096, // uint64
 
-      "numfiles":   3,        // uint64
-      "numsubdirs": 2,        // uint64
-      "siapath":    "foo/bar" // string
+      "health":             1.0,      // float64
+      "lasthealtchecktime": "2018-09-23T08:00:00.000000000+04:00" // timestamp
+      "maxhealth":          0.5,      // float64
+      "minredundancy":      2.6,      // float64
+      "mostrecentmodtime":  "2018-09-23T08:00:00.000000000+04:00" // timestamp
+      "numfiles":           3,        // uint64
+      "numsubdirs":         2,        // uint64
+      "siapath":            "foo/bar" // string
+      "stuckhealth":        1.0,      // float64
     }
   ],
   "files": []
@@ -3400,6 +3400,12 @@ the number of directories in the directory
 
 **siapath** | string  
 The path to the directory on the sia network
+
+**size** | string
+The size in bytes of files in the directory
+
+**stuckhealth** | string
+The health of the most in need siafile in the directory, stuck or not stuck
 
 **files** Same response as [files](#files)
 
