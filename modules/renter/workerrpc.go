@@ -156,13 +156,6 @@ func (w *worker) managedFundAccount(amount types.Currency) (resp modules.FundAcc
 	bh := w.cachedBlockHeight
 	w.mu.Unlock()
 
-	// close the stream
-	defer func() {
-		if err := stream.Close(); err != nil {
-			w.renter.log.Println("ERROR: failed to close stream", err)
-		}
-	}()
-
 	// write the specifier
 	err = modules.RPCWrite(stream, modules.RPCFundAccount)
 	if err != nil {
