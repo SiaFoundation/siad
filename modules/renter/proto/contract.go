@@ -327,25 +327,7 @@ func (c *SafeContract) applySetHeader(h contractHeader) error {
 }
 
 func (c *SafeContract) applySetRoot(root crypto.Hash, index int) error {
-	err := c.merkleRoots.insert(index, root)
-	if err != nil {
-		return err
-	}
-	if build.Release == "testing" {
-		// update the reference counter before signalling that the update was
-		// successfully applied
-		err = c.rc.callStartUpdate()
-		if err != nil {
-			return err
-		}
-		defer c.rc.callUpdateApplied()
-		u, err := c.rc.callSetCount(uint64(index), 1)
-		if err != nil {
-			return err
-		}
-		return c.rc.callCreateAndApplyTransaction(u)
-	}
-	return nil
+	return c.merkleRoots.insert(index, root)
 }
 
 func (c *SafeContract) managedRecordUploadIntent(rev types.FileContractRevision, root crypto.Hash, storageCost, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
@@ -359,11 +341,15 @@ func (c *SafeContract) managedRecordUploadIntent(rev types.FileContractRevision,
 	newHeader.StorageSpending = newHeader.StorageSpending.Add(storageCost)
 	newHeader.UploadSpending = newHeader.UploadSpending.Add(bandwidthCost)
 
+	newRootIndex := c.merkleRoots.len()
 	t, err := c.wal.NewTransaction([]writeaheadlog.Update{
 		c.makeUpdateSetHeader(newHeader),
-		c.makeUpdateSetRoot(root, c.merkleRoots.len()),
+		c.makeUpdateSetRoot(root, newRootIndex),
 	})
 	if err != nil {
+		return nil, err
+	}
+	if err = setRefCounterValue(c, newRootIndex, 1); err != nil {
 		return nil, err
 	}
 	if err := <-t.SignalSetupComplete(); err != nil {
@@ -947,6 +933,25 @@ func (mrs *MerkleRootSet) UnmarshalJSON(b []byte) error {
 		copy(umrs[i][:], fullBytes[i*crypto.HashSize:(i+1)*crypto.HashSize])
 	}
 	*mrs = umrs
+	return nil
+}
+
+// setRefCounterValue is a helper method that handles the WAL transaction for
+// setting the value of a given refcounter.
+func setRefCounterValue(c *SafeContract, secIdx int, val uint16) error {
+	if build.Release == "testing" {
+		// update the reference counter before signalling that the update was
+		// successfully applied
+		if err := c.rc.callStartUpdate(); err != nil {
+			return err
+		}
+		defer func() { _ = c.rc.callUpdateApplied() }()
+		u, err := c.rc.callSetCount(uint64(secIdx), val)
+		if err != nil {
+			return err
+		}
+		return c.rc.callCreateAndApplyTransaction(u)
+	}
 	return nil
 }
 
