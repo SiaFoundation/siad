@@ -347,10 +347,11 @@ func TestAccountCorrupted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	randomN := fastrand.Intn(accountSize-2) + 2
-	n, err := file.WriteAt(fastrand.Bytes(randomN), corrupted.staticOffset)
-	if n != randomN {
-		t.Fatalf("Unexpected amount of bytes written, %v != %v", n, randomN)
+	rN := fastrand.Intn(5) + 1
+	rOffset := corrupted.staticOffset + int64(fastrand.Intn(accountSize-rN))
+	n, err := file.WriteAt(fastrand.Bytes(rN), rOffset)
+	if n != rN {
+		t.Fatalf("Unexpected amount of bytes written, %v != %v", n, rN)
 	}
 	if err != nil {
 		t.Fatal("Could not write corrupted account data")
@@ -423,8 +424,7 @@ func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 
 	// corrupt the checksum of the account bytes
 	corruptedBytes := accountBytes
-	offset := fastrand.Intn(crypto.HashSize - 2)
-	fastrand.Read(corruptedBytes[offset : offset+2])
+	corruptedBytes[fastrand.Intn(crypto.HashSize)] += 1
 	err = uMar.loadBytes(corruptedBytes)
 	if err != errInvalidChecksum {
 		t.Fatalf("Expected error '%v', instead '%v'", errInvalidChecksum, err)
@@ -432,8 +432,7 @@ func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 
 	// corrupt the account data bytes
 	corruptedBytes2 := accountBytes
-	offset = fastrand.Intn(accountSize-crypto.HashSize-2) + crypto.HashSize
-	fastrand.Read(corruptedBytes2[offset : offset+2])
+	corruptedBytes2[fastrand.Intn(accountSize-crypto.HashSize)+crypto.HashSize] += 1
 	err = uMar.loadBytes(corruptedBytes2)
 	if err != errInvalidChecksum {
 		t.Fatalf("Expected error '%v', instead '%v'", errInvalidChecksum, err)
