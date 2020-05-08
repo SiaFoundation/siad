@@ -156,10 +156,10 @@ func TestRefCounterAppend(t *testing.T) {
 	}
 }
 
-// TestRefCountercallCreateAndApplyTransaction test that callCreateAndApplyTransaction
+// TestRefCounterCreateAndApplyTransaction test that callCreateAndApplyTransaction
 // panics and restores the original in-memory structures on a failure to apply
 // updates.
-func TestRefCountercallCreateAndApplyTransaction(t *testing.T) {
+func TestRefCounterCreateAndApplyTransaction(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -174,7 +174,7 @@ func TestRefCountercallCreateAndApplyTransaction(t *testing.T) {
 	}
 
 	// add some valid updates
-	updates := make([]writeaheadlog.Update, 0)
+	var updates []writeaheadlog.Update
 	u, err := rc.callAppend()
 	if err != nil {
 		t.Fatal("Failed to create an append update", err)
@@ -459,13 +459,13 @@ func TestRefCounterLoad(t *testing.T) {
 	rc := testPrepareRefCounter(fastrand.Uint64n(10), t)
 
 	// happy case
-	_, err := callLoadRefCounter(rc.filepath, testWAL)
+	_, err := loadRefCounter(rc.filepath, testWAL)
 	if err != nil {
 		t.Fatal("Failed to load refcounter:", err)
 	}
 
 	// fails with os.ErrNotExist for a non-existent file
-	_, err = callLoadRefCounter("there-is-no-such-file.rc", testWAL)
+	_, err = loadRefCounter("there-is-no-such-file.rc", testWAL)
 	if !errors.Contains(err, ErrRefCounterNotExist) {
 		t.Fatal("Expected ErrRefCounterNotExist, got something else:", err)
 	}
@@ -504,7 +504,7 @@ func TestRefCounterLoadInvalidHeader(t *testing.T) {
 
 	// Make sure we fail to load from that file and that we fail with the right
 	// error
-	_, err = callLoadRefCounter(path, testWAL)
+	_, err = loadRefCounter(path, testWAL)
 	if !errors.Contains(err, io.EOF) {
 		t.Fatal(fmt.Sprintf("Should not be able to read file with bad header, expected `%s` error, got:", io.EOF.Error()), err)
 	}
@@ -542,7 +542,7 @@ func TestRefCounterLoadInvalidVersion(t *testing.T) {
 	}
 
 	// ensure that we cannot load it and we return the correct error
-	_, err = callLoadRefCounter(path, testWAL)
+	_, err = loadRefCounter(path, testWAL)
 	if !errors.Contains(err, ErrInvalidVersion) {
 		t.Fatal(fmt.Sprintf("Should not be able to read file with wrong version, expected `%s` error, got:", ErrInvalidVersion.Error()), err)
 	}
@@ -978,7 +978,7 @@ func testPrepareRefCounter(numSec uint64, t *testing.T) *RefCounter {
 	}
 	path := filepath.Join(td, tcid.String()+refCounterExtension)
 	// create a ref counter
-	rc, err := callNewRefCounter(path, numSec, testWAL)
+	rc, err := newRefCounter(path, numSec, testWAL)
 	if err != nil {
 		t.Fatal("Failed to create a reference counter:", err)
 	}

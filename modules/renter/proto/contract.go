@@ -699,9 +699,9 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 	if err := rootsFile.Sync(); err != nil {
 		return modules.RenterContract{}, err
 	}
-	rc := &RefCounter{}
+	var rc *RefCounter
 	if build.Release == "testing" {
-		rc, err = callNewRefCounter(rcFilePath, uint64(len(roots)), cs.wal)
+		rc, err = newRefCounter(rcFilePath, uint64(len(roots)), cs.wal)
 		if err != nil {
 			return modules.RenterContract{}, errors.AddContext(err, "failed to create a refcounter")
 		}
@@ -803,12 +803,12 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountF
 			unappliedTxns = append(unappliedTxns, t)
 		}
 	}
-	rc := &RefCounter{}
+	var rc *RefCounter
 	if build.Release == "testing" {
 		// load the reference counter or create a new one if it doesn't exist
-		rc, err = callLoadRefCounter(refCountFileName, cs.wal)
+		rc, err = loadRefCounter(refCountFileName, cs.wal)
 		if errors.Contains(err, ErrRefCounterNotExist) {
-			rc, err = callNewRefCounter(refCountFileName, uint64(merkleRoots.numMerkleRoots), cs.wal)
+			rc, err = newRefCounter(refCountFileName, uint64(merkleRoots.numMerkleRoots), cs.wal)
 		}
 		if err != nil {
 			return errors.AddContext(err, "failed to load or create a refcounter")

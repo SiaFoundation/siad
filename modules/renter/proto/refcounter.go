@@ -115,8 +115,8 @@ type (
 	u16 [2]byte
 )
 
-// callLoadRefCounter loads a refcounter from disk
-func callLoadRefCounter(path string, wal *writeaheadlog.WAL) (*RefCounter, error) {
+// loadRefCounter loads a refcounter from disk
+func loadRefCounter(path string, wal *writeaheadlog.WAL) (*RefCounter, error) {
 	// Open the file and start loading the data.
 	f, err := os.Open(path)
 	if err != nil {
@@ -152,9 +152,9 @@ func callLoadRefCounter(path string, wal *writeaheadlog.WAL) (*RefCounter, error
 	}, nil
 }
 
-// callNewCustomRefCounter creates a new sector reference counter file to accompany
+// newCustomRefCounter creates a new sector reference counter file to accompany
 // a contract file and allows setting custom dependencies
-func callNewCustomRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL, deps modules.Dependencies) (*RefCounter, error) {
+func newCustomRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL, deps modules.Dependencies) (*RefCounter, error) {
 	h := RefCounterHeader{
 		Version: RefCounterVersion,
 	}
@@ -179,10 +179,10 @@ func callNewCustomRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL,
 	}, err
 }
 
-// callNewRefCounter creates a new sector reference counter file to accompany
+// newRefCounter creates a new sector reference counter file to accompany
 // a contract file
-func callNewRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (*RefCounter, error) {
-	return callNewCustomRefCounter(path, numSec, wal, modules.ProdDependencies)
+func newRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (*RefCounter, error) {
+	return newCustomRefCounter(path, numSec, wal, modules.ProdDependencies)
 }
 
 // callAppend appends one counter to the end of the refcounter file and

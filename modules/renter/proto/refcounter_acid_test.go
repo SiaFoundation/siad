@@ -78,7 +78,7 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 	// Create the faulty disk dependency
 	fdd := dependencies.NewFaultyDiskDependency(10000) // Fails after 10000 writes.
 	// Attach it to the refcounter
-	rc, err := callNewCustomRefCounter(rcFilePath, 200, wal, fdd)
+	rc, err := newCustomRefCounter(rcFilePath, 200, wal, fdd)
 	if err != nil {
 		t.Fatal("Failed to create a reference counter:", err)
 	}
@@ -149,7 +149,7 @@ OUTER:
 	}
 
 	// Load the refcounter from disk.
-	rc, err = callLoadRefCounter(rcFilePath, wal)
+	rc, err = loadRefCounter(rcFilePath, wal)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +378,7 @@ func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFa
 			return nil, err
 		}
 		// Reload the refcounter from disk
-		newRc, err := callLoadRefCounter(rcFilePath, newWal)
+		newRc, err := loadRefCounter(rcFilePath, newWal)
 		if err != nil {
 			return nil, err
 		}
