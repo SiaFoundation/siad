@@ -31,15 +31,23 @@ var (
 	metadataVersion = types.NewSpecifier("v1.4.3\n")
 )
 
-// SkynetBlacklist manages a set of blacklisted skylinks by tracking the
-// merkleroots and persists the list to disk
-type SkynetBlacklist struct {
-	aop *persist.AppendOnlyPersist
+type (
+	// SkynetBlacklist manages a set of blacklisted skylinks by tracking the
+	// merkleroots and persists the list to disk
+	SkynetBlacklist struct {
+		aop *persist.AppendOnlyPersist
 
-	merkleroots map[crypto.Hash]struct{}
+		merkleroots map[crypto.Hash]struct{}
 
-	mu sync.Mutex
-}
+		mu sync.Mutex
+	}
+
+	// listedLink contains a Skynet blacklist list and whether it is listed.
+	listedLink struct {
+		merkleRoot crypto.Hash
+		listed     bool
+	}
+)
 
 // New creates a new SkynetBlacklist.
 func New(persistDir string) (*SkynetBlacklist, error) {
@@ -51,8 +59,7 @@ func New(persistDir string) (*SkynetBlacklist, error) {
 	defer r.Close()
 
 	sb := &SkynetBlacklist{
-		aop:         aop,
-		merkleroots: make(map[crypto.Hash]struct{}),
+		aop: aop,
 	}
 	blacklist, err := unmarshalObjects(r)
 	if err != nil {
@@ -107,10 +114,12 @@ func (sb *SkynetBlacklist) marshalObjects(additions, removals []modules.Skylink)
 	for _, skylink := range additions {
 		// Add skylink merkleroot to map
 		mr := skylink.MerkleRoot()
+		listed := true
 		sb.merkleroots[mr] = struct{}{}
 
 		// Marshal the update
-		err := marshalSia(&buf, mr, true)
+		ll := listedLink{mr, listed}
+		err := ll.MarshalSia(&buf)
 		if err != nil {
 			return bytes.Buffer{}, errors.AddContext(err, "unable to encode persisted blacklist link")
 		}
@@ -118,10 +127,12 @@ func (sb *SkynetBlacklist) marshalObjects(additions, removals []modules.Skylink)
 	for _, skylink := range removals {
 		// Remove skylink merkleroot from map
 		mr := skylink.MerkleRoot()
+		listed := false
 		delete(sb.merkleroots, mr)
 
 		// Marshal the update
-		err := marshalSia(&buf, mr, false)
+		ll := listedLink{mr, listed}
+		err := ll.MarshalSia(&buf)
 		if err != nil {
 			return bytes.Buffer{}, errors.AddContext(err, "unable to encode persisted blacklist removal link")
 		}
@@ -135,35 +146,37 @@ func unmarshalObjects(r io.Reader) (map[crypto.Hash]struct{}, error) {
 	blacklist := make(map[crypto.Hash]struct{})
 	// Unmarshal blacklisted links one by one until EOF.
 	for {
-		merkleRoot, blacklisted, err := unmarshalSia(r)
+		var ll listedLink
+		err := ll.UnmarshalSia(r)
 		if errors.Contains(err, io.EOF) {
 			break
 		}
 		if err != nil {
 			return nil, err
 		}
-		if !blacklisted {
-			delete(blacklist, merkleRoot)
+		if !ll.listed {
+			delete(blacklist, ll.merkleRoot)
 			continue
 		}
-		blacklist[merkleRoot] = struct{}{}
+		blacklist[ll.merkleRoot] = struct{}{}
 	}
 	return blacklist, nil
 }
 
-// marshalSia implements the encoding.SiaMarshaler interface.
-func marshalSia(w io.Writer, merkleRoot crypto.Hash, listed bool) error {
+// MarshalSia implements the encoding.SiaMarshaler interface.
+func (ll listedLink) MarshalSia(w io.Writer) error {
 	e := encoding.NewEncoder(w)
-	e.Encode(merkleRoot)
-	e.WriteBool(listed)
+	e.Encode(ll.merkleRoot)
+	e.WriteBool(ll.listed)
 	return e.Err()
 }
 
-// unmarshalSia implements the encoding.SiaUnmarshaler interface.
-func unmarshalSia(r io.Reader) (merkleRoot crypto.Hash, listed bool, err error) {
+// UnmarshalSia implements the encoding.SiaUnmarshaler interface.
+func (ll *listedLink) UnmarshalSia(r io.Reader) error {
+	*ll = listedLink{}
 	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
-	d.Decode(&merkleRoot)
-	listed = d.NextBool()
-	err = d.Err()
-	return
+	d.Decode(&ll.merkleRoot)
+	ll.listed = d.NextBool()
+	err := d.Err()
+	return err
 }

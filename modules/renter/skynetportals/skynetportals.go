@@ -40,15 +40,24 @@ var (
 	metadataVersion = types.NewSpecifier("v1.4.8\n")
 )
 
-// SkynetPortals manages a list of known Skynet portals by persisting the list
-// to disk.
-type SkynetPortals struct {
-	aop *persist.AppendOnlyPersist
+type (
+	// SkynetPortals manages a list of known Skynet portals by persisting the
+	// list to disk.
+	SkynetPortals struct {
+		aop *persist.AppendOnlyPersist
 
-	portals map[modules.NetAddress]bool
+		portals map[modules.NetAddress]bool
 
-	mu sync.Mutex
-}
+		mu sync.Mutex
+	}
+
+	// listedPortal contains a Skynet portal and whether it is listed.
+	listedPortal struct {
+		address modules.NetAddress
+		public  bool
+		listed  bool
+	}
+)
 
 // New creates a new SkynetPortals.
 func New(persistDir string) (*SkynetPortals, error) {
@@ -60,8 +69,7 @@ func New(persistDir string) (*SkynetPortals, error) {
 	defer r.Close()
 
 	sp := &SkynetPortals{
-		aop:     aop,
-		portals: make(map[modules.NetAddress]bool),
+		aop: aop,
 	}
 	portals, err := unmarshalObjects(r)
 	if err != nil {
@@ -112,20 +120,25 @@ func (sp *SkynetPortals) marshalObjects(additions []modules.SkynetPortal, remova
 		// Add portal to map
 		address := portal.Address
 		public := portal.Public
+		listed := true
 		sp.portals[address] = public
 
 		// Marshal the update
-		err := marshalSia(&buf, address, public, true)
+		lp := listedPortal{address, public, listed}
+		err := lp.MarshalSia(&buf)
 		if err != nil {
 			return bytes.Buffer{}, errors.AddContext(err, "unable to encode persisted portal")
 		}
 	}
 	for _, address := range removals {
 		// Remove portal from map
+		public := true
+		listed := false
 		delete(sp.portals, address)
 
 		// Marshal the update
-		err := marshalSia(&buf, address, true, false)
+		lp := listedPortal{address, public, listed}
+		err := lp.MarshalSia(&buf)
 		if err != nil {
 			return bytes.Buffer{}, errors.AddContext(err, "unable to encode persisted portal")
 		}
@@ -134,68 +147,69 @@ func (sp *SkynetPortals) marshalObjects(additions []modules.SkynetPortal, remova
 	return buf, nil
 }
 
-// unmarshalObjects unmarshals the sia encoded portals list
+// unmarshalObjects unmarshals the sia encoded objects.
 func unmarshalObjects(r io.Reader) (map[modules.NetAddress]bool, error) {
 	portals := make(map[modules.NetAddress]bool)
 	// Unmarshal portals one by one until EOF.
 	for {
-		address, public, listed, err := unmarshalSia(r)
+		var lp listedPortal
+		err := lp.UnmarshalSia(r)
 		if errors.Contains(err, io.EOF) {
 			break
 		}
 		if err != nil {
 			return nil, err
 		}
-		if !listed {
-			delete(portals, address)
+		if !lp.listed {
+			delete(portals, lp.address)
 			continue
 		}
-		portals[address] = public
+		portals[lp.address] = lp.public
 	}
 	return portals, nil
 }
 
-// marshalSia implements the encoding.SiaMarshaler interface.
-func marshalSia(w io.Writer, address modules.NetAddress, public, listed bool) error {
-	if len(address) > modules.MaxEncodedNetAddressLength {
-		return errors.New("given address " + string(address) + " does not fit in " + string(modules.MaxEncodedNetAddressLength) + " bytes")
+// MarshalSia implements the encoding.SiaMarshaler interface.
+func (lp listedPortal) MarshalSia(w io.Writer) error {
+	if len(lp.address) > modules.MaxEncodedNetAddressLength {
+		return errors.New("given address " + string(lp.address) + " does not fit in " + string(modules.MaxEncodedNetAddressLength) + " bytes")
 	}
 	e := encoding.NewEncoder(w)
 	// Create a padded buffer so that we always write the same amount of bytes.
 	buf := make([]byte, modules.MaxEncodedNetAddressLength)
-	copy(buf, address)
+	copy(buf, lp.address)
 	e.Write(buf)
-	e.WriteBool(public)
-	e.WriteBool(listed)
+	e.WriteBool(lp.public)
+	e.WriteBool(lp.listed)
 	return e.Err()
 }
 
-// unmarshalSia implements the encoding.SiaUnmarshaler interface.
-func unmarshalSia(r io.Reader) (address modules.NetAddress, public, listed bool, err error) {
+// UnmarshalSia implements the encoding.SiaUnmarshaler interface.
+func (lp *listedPortal) UnmarshalSia(r io.Reader) error {
+	*lp = listedPortal{}
 	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
 	// Read into a padded buffer and extract the address string.
 	buf := make([]byte, modules.MaxEncodedNetAddressLength)
 	n, err := d.Read(buf)
 	if err != nil {
-		err = errors.AddContext(err, "unable to read address")
-		return
+		return errors.AddContext(err, "unable to read address")
 	}
 	if n != len(buf) {
-		err = errors.New("did not read address correctly")
-		return
+		return errors.New("did not read address correctly")
 	}
 	end := bytes.IndexByte(buf, 0)
 	if end == -1 {
 		end = len(buf)
 	}
-	address = modules.NetAddress(string(buf[:end]))
-	public = d.NextBool()
-	listed = d.NextBool()
+	lp.address = modules.NetAddress(string(buf[:end]))
+	lp.public = d.NextBool()
+	lp.listed = d.NextBool()
 	err = d.Err()
-	return
+	return err
 }
 
-// validatePortalChanges validates the changes to be made to the Skynet portals list.
+// validatePortalChanges validates the changes to be made to the Skynet portals
+// list.
 func (sp *SkynetPortals) validatePortalChanges(additions []modules.SkynetPortal, removals []modules.NetAddress) error {
 	// Check for nil input
 	if len(additions)+len(removals) == 0 {

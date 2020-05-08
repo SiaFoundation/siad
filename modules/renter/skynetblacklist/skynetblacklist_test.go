@@ -312,16 +312,17 @@ func TestMarshalSia(t *testing.T) {
 	var skylink modules.Skylink
 	var buf bytes.Buffer
 	merkleRoot := skylink.MerkleRoot()
-	blacklisted := false
-	err := marshalSia(&buf, merkleRoot, blacklisted)
+	listed := false
+	ll := listedLink{merkleRoot, listed}
+	err := ll.MarshalSia(&buf)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if uint64(buf.Len()) != persistSize {
 		t.Fatalf("Expected buf to be of size %v but got %v", persistSize, buf.Len())
 	}
-	blacklisted = true
-	err = marshalSia(&buf, merkleRoot, blacklisted)
+	ll.listed = true
+	err = ll.MarshalSia(&buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,24 +332,24 @@ func TestMarshalSia(t *testing.T) {
 
 	// Test unmarshalSia, links should unmarshal in the order they were marshalled
 	r := bytes.NewBuffer(buf.Bytes())
-	mr, bl, err := unmarshalSia(r)
+	err = ll.UnmarshalSia(r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if merkleRoot != mr {
-		t.Fatalf("MerkleRoots don't match, expected %v, got %v", merkleRoot, mr)
+	if merkleRoot != ll.merkleRoot {
+		t.Fatalf("MerkleRoots don't match, expected %v, got %v", merkleRoot, ll.merkleRoot)
 	}
-	if bl {
+	if ll.listed {
 		t.Fatal("expected persisted link to not be blacklisted")
 	}
-	mr, bl, err = unmarshalSia(r)
+	err = ll.UnmarshalSia(r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if merkleRoot != mr {
-		t.Fatalf("MerkleRoots don't match, expected %v, got %v", merkleRoot, mr)
+	if merkleRoot != ll.merkleRoot {
+		t.Fatalf("MerkleRoots don't match, expected %v, got %v", merkleRoot, ll.merkleRoot)
 	}
-	if !bl {
+	if !ll.listed {
 		t.Fatal("expected persisted link to be blacklisted")
 	}
 

@@ -340,44 +340,46 @@ func TestMarshalSia(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	address := portal.Address
-	public := portal.Public
 	listed := false
-	err := marshalSia(&buf, address, public, listed)
+	public := portal.Public
+	lp := listedPortal{address, public, listed}
+	err := lp.MarshalSia(&buf)
 	if err != nil {
 		t.Fatal(err)
 	}
-	listed = true
-	err = marshalSia(&buf, address, public, listed)
+	lp.listed = true
+	err = lp.MarshalSia(&buf)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Test unmarshalSia, portals should unmarshal in the order they were marshalled
+	// Test UnmarshalSia, portals should unmarshal in the order they were
+	// marshalled.
 	r := bytes.NewBuffer(buf.Bytes())
-	addr, p, l, err := unmarshalSia(r)
+	err = lp.UnmarshalSia(r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if address != addr {
-		t.Fatalf("Addresses don't match, expected %v, got %v", address, addr)
+	if address != lp.address {
+		t.Fatalf("Addresses don't match, expected %v, got %v", address, lp.address)
 	}
-	if public != p {
-		t.Fatalf("Publicness doesn't match, expected %v, got %v", public, p)
+	if public != lp.public {
+		t.Fatalf("Publicness doesn't match, expected %v, got %v", public, lp.public)
 	}
-	if l {
+	if lp.listed {
 		t.Fatal("expected persisted portal to not be listed")
 	}
-	addr, p, l, err = unmarshalSia(r)
+	err = lp.UnmarshalSia(r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if public != p {
-		t.Fatalf("Publicness doesn't match, expected %v, got %v", public, p)
+	if public != lp.public {
+		t.Fatalf("Publicness doesn't match, expected %v, got %v", public, lp.public)
 	}
-	if address != addr {
-		t.Fatalf("Addresses don't match, expected %v, got %v", address, addr)
+	if address != lp.address {
+		t.Fatalf("Addresses don't match, expected %v, got %v", address, lp.address)
 	}
-	if !l {
+	if !lp.listed {
 		t.Fatal("expected persisted portal to be listed")
 	}
 
