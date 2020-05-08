@@ -170,6 +170,7 @@ func (r *Renter) managedLoadAccounts() error {
 	// load the accounts on to the renter
 	id := r.mu.Lock()
 	r.accounts = accounts
+	r.accountsClosed = false
 	r.mu.Unlock(id)
 	return nil
 }
@@ -225,8 +226,21 @@ func (r *Renter) managedLoadMetadata() (accountsMetadata, error) {
 // managedSaveAccounts is called on shutdown and ensures the account data is
 // properly persisted to disk
 func (r *Renter) managedSaveAccounts() error {
+	// indicate we are saving the accounts and mark them as 'closed'
+	id := r.mu.Lock()
+	if r.accountsClosed {
+		r.mu.Unlock(id)
+		build.Critical("Trying to save accounts twice")
+		return errors.New("Trying to save accounts twice")
+	}
+	r.accountsClosed = true
+	r.mu.Unlock(id)
+
+	// wait until all running threads are done persisting the account
+	r.staticAccountsWg.Wait()
+
 	// grab the accounts
-	id := r.mu.RLock()
+	id = r.mu.RLock()
 	accounts := r.accounts
 	r.mu.RUnlock(id)
 

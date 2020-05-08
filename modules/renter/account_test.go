@@ -2,8 +2,10 @@ package renter
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -178,6 +180,69 @@ func TestNewWithdrawalMessage(t *testing.T) {
 	var nonce [modules.WithdrawalNonceSize]byte
 	if bytes.Equal(msg.Nonce[:], nonce[:]) {
 		t.Fatal("Uninitialized nonce")
+	}
+}
+
+// TestAccountCriticalOnDoubleSave verifies the critical when
+// managedSaveAccounts is called twice.
+func TestAccountCriticalOnDoubleSave(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a renter
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := rt.renter
+
+	// close it immediately
+	err = rt.Close()
+	if err != nil {
+		t.Log(err)
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%v", r)
+			if !strings.Contains(err.Error(), "Trying to save accounts twice") {
+				t.Fatal("Expected error not returned")
+			}
+		}
+	}()
+	err = r.managedSaveAccounts()
+	if err == nil {
+		t.Fatal("Expected build.Critical on double save")
+	}
+}
+
+// TestAccountClosed verifies accounts can not be opened after the 'closed' flag
+// has been set to true by the save.
+func TestAccountClosed(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a renter
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := rt.renter
+
+	// close it immediately
+	err = rt.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hk, _ := newRandomHostKey()
+	_, err = r.managedOpenAccount(hk)
+	if !strings.Contains(err.Error(), "the accounts file has been closed") {
+		t.Fatal("Unexpected error when opening an account, err:", err)
 	}
 }
 
