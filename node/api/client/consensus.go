@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -36,6 +37,7 @@ func (c *Client) ConsensusBlocksHeightGet(height types.BlockHeight) (cbg api.Con
 // be required before the subscriber is fully caught up. It returns the latest
 // change ID; if no changes were sent, this will be the same as the input ID.
 func (c *Client) ConsensusSubscribeSingle(subscriber modules.ConsensusSetSubscriber, ccid modules.ConsensusChangeID, cancel <-chan struct{}) (modules.ConsensusChangeID, error) {
+	// TODO: cancel context
 	_, body, err := c.getReaderResponse(fmt.Sprintf("/consensus/subscribe/%s", ccid))
 	if err != nil {
 		return ccid, err
@@ -44,6 +46,11 @@ func (c *Client) ConsensusSubscribeSingle(subscriber modules.ConsensusSetSubscri
 
 	dec := encoding.NewDecoder(body, 1e6)
 	for {
+		select {
+		case <-cancel:
+			return ccid, context.Canceled
+		default:
+		}
 		var cc modules.ConsensusChange
 		if err := dec.Decode(&cc); errors.Is(err, io.EOF) {
 			return ccid, nil
@@ -60,13 +67,24 @@ func (c *Client) ConsensusSubscribeSingle(subscriber modules.ConsensusSetSubscri
 // changes until the subscriber is fully caught up. It will send any error
 // encountered down the returned channel, or nil. Consequently, the caller
 // should always wait for the first error before proceeding with initialization.
-// Subsequent errors may be handled asynchronously.
-func (c *Client) ConsensusSetSubscribe(subscriber modules.ConsensusSetSubscriber, ccid modules.ConsensusChangeID, cancel <-chan struct{}) <-chan error {
+// Subsequent errors may be handled asynchronously. It also returns a function
+// that can be called to unsubscribe from further changes.
+func (c *Client) ConsensusSetSubscribe(subscriber modules.ConsensusSetSubscriber, ccid modules.ConsensusChangeID, cancel <-chan struct{}) (<-chan error, func()) {
 	ch := make(chan error, 2)
+	cancelMux := make(chan struct{})
+	unsub := make(chan struct{})
+	go func() {
+		select {
+		case <-cancel:
+			close(cancelMux)
+		case <-unsub:
+			close(cancelMux)
+		}
+	}()
 	go func() {
 		// poll until caught up
 		for caughtUp := false; !caughtUp; {
-			newID, err := c.ConsensusSubscribeSingle(subscriber, ccid, cancel)
+			newID, err := c.ConsensusSubscribeSingle(subscriber, ccid, cancelMux)
 			if err != nil {
 				ch <- err
 				return
@@ -78,8 +96,12 @@ func (c *Client) ConsensusSetSubscribe(subscriber modules.ConsensusSetSubscriber
 		ch <- nil
 		// request every half-block-interval indefinitely
 		for {
-			time.Sleep(time.Duration(types.BlockFrequency) * time.Second / 2)
-			newID, err := c.ConsensusSubscribeSingle(subscriber, ccid, cancel)
+			select {
+			case <-time.After(time.Duration(types.BlockFrequency) * time.Second / 2):
+			case <-unsub:
+				return
+			}
+			newID, err := c.ConsensusSubscribeSingle(subscriber, ccid, cancelMux)
 			if err != nil {
 				ch <- err
 				return
@@ -87,5 +109,5 @@ func (c *Client) ConsensusSetSubscribe(subscriber modules.ConsensusSetSubscriber
 			ccid = newID
 		}
 	}()
-	return ch
+	return ch, func() { close(unsub) }
 }

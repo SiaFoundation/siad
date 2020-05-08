@@ -315,12 +315,6 @@ func (api *API) consensusSubscribeHandler(w http.ResponseWriter, req *http.Reque
 		errCh <- api.cs.ConsensusSetSubscribe(ccs, ccid, req.Context().Done())
 		api.cs.Unsubscribe(ccs)
 	}()
-	// TODO: stop when any one of these conditions is met:
-	// - subscriber is fully up-to-date
-	// - the HTTP request was cancelled
-	// - 100 changes have been processed (?)
-	// - >10 MB has been written (?)
-	// - 10 seconds have elapsed (?)
 	err := <-errCh
 	if err != nil {
 		// TODO: we can't call WriteError here; the client is expecting binary.
