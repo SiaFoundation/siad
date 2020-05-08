@@ -16,6 +16,8 @@ github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
 github.com/dchest/threefish v0.0.0-20120919164726-3ecf4c494abf h1:K5VXW9LjmJv/xhjvQcNWTdk4WOSyreil6YaubuCPeRY=
 github.com/dchest/threefish v0.0.0-20120919164726-3ecf4c494abf/go.mod h1:bXVurdTuvOiJu7NHALemFe0JMvC2UmwYHW+7fcZaZ2M=
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
+github.com/gorilla/websocket v1.4.2 h1:+/TMaTYc4QFitKJxsQ7Yye35DkWvkdLcvGKqM+x0Ufc=
+github.com/gorilla/websocket v1.4.2/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/hanwen/go-fuse v1.0.0 h1:GxS9Zrn6c35/BnfiVsZVWmsG803xwE7eVRDvcf/BEVc=
 github.com/hanwen/go-fuse v1.0.0/go.mod h1:unqXarDXqzAk0rt98O2tVndEPIpUgLD9+rwFisZH3Ok=
 github.com/hanwen/go-fuse/v2 v2.0.2 h1:BtsqKI5RXOqDMnTgpCb0IWgvRgGLJdqYVZ/Hm6KgKto=
@@ -92,6 +94,8 @@ gitlab.com/NebulousLabs/siamux v0.0.0-20200424151054-7bcafb9dfdcb h1:Z2YNNTnC3hc
 gitlab.com/NebulousLabs/siamux v0.0.0-20200424151054-7bcafb9dfdcb/go.mod h1:iZX6BpR2WxttE8jAi+exhrMssZWxNQ0JxZOlm2wKuBY=
 gitlab.com/NebulousLabs/siamux v0.0.0-20200427113430-a093e50f04a7 h1:AJ9YjaxLWXZwzzzfn9E4MoCakalQ6zf2dvMDn9GFaAg=
 gitlab.com/NebulousLabs/siamux v0.0.0-20200427113430-a093e50f04a7/go.mod h1:iZX6BpR2WxttE8jAi+exhrMssZWxNQ0JxZOlm2wKuBY=
+gitlab.com/NebulousLabs/siamux v0.0.0-20200508151059-3563f9f89c30 h1:tB4t/Xy3ffdODgA2q4RVIaNjyGcOmbzXqDsTb7QEBqA=
+gitlab.com/NebulousLabs/siamux v0.0.0-20200508151059-3563f9f89c30/go.mod h1:oaTSN0KXMgdNRKLg0CVH1vuZB2NcsmkngWf2pYK0N1Y=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20180716154133-88a11db9e46c h1:psW9YBmnyKKCddPncr7mwJCx6n7FzlIs1EWIiSo7fyQ=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20180716154133-88a11db9e46c/go.mod h1:w05nvlkvHlk3Vfc7mcU29Toic1X0BcYUnKoTHS0ea2Y=
 gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190703190009-cb822c37bc94/go.mod h1:Lhpa9AcbWcYKcc4amZsOHqJdQglnkWrGuUI68XC7U2Q=
