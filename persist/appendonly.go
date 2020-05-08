@@ -49,7 +49,7 @@ func NewAppendOnlyPersist(dir, file string, size uint64, metadataHeader, metadat
 		staticMetadataHeader:  metadataHeader,
 		staticMetadataVersion: metadataVersion,
 	}
-	r, err := aop.initPersist()
+	r, err := aop.initPersist(dir)
 	return aop, r, err
 }
 
@@ -108,9 +108,9 @@ func (aop *AppendOnlyPersist) Write(b []byte) (int, error) {
 
 // initPersist initializes the persistence file and returns the non-metadata
 // bytes.
-func (aop *AppendOnlyPersist) initPersist() (io.ReadCloser, error) {
+func (aop *AppendOnlyPersist) initPersist(dir string) (io.ReadCloser, error) {
 	// Initialize the persistence directory
-	err := os.MkdirAll(aop.staticPath, DefaultDirPermissions)
+	err := os.MkdirAll(dir, DefaultDirPermissions)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to make persistence directory")
 	}
