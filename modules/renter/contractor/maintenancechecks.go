@@ -28,6 +28,17 @@ func (c *Contractor) badContractCheck(u modules.ContractUtility) (modules.Contra
 	return u, false
 }
 
+// renewedCheck will return a contract with no utility and a required update if
+// the contract has been renewed, no changes otherwise.
+func (c *Contractor) renewedCheck(u modules.ContractUtility, renewed bool) (modules.ContractUtility, bool) {
+	if renewed {
+		u.GoodForUpload = false
+		u.GoodForRenew = false
+		return u, true
+	}
+	return u, false
+}
+
 // managedCheckHostScore checks host scorebreakdown against minimum accepted
 // scores.  forceUpdate is true if the utility change must be taken.
 func (c *Contractor) managedCheckHostScore(contract modules.RenterContract, sb modules.HostScoreBreakdown, minScoreGFR, minScoreGFU types.Currency) (modules.ContractUtility, utilityUpdateStatus) {
@@ -120,9 +131,16 @@ func (c *Contractor) managedCriticalUtilityChecks(contract modules.RenterContrac
 	blockHeight := c.blockHeight
 	renewWindow := c.allowance.RenewWindow
 	period := c.allowance.Period
+	_, renewed := c.renewedTo[contract.ID]
 	c.mu.RUnlock()
 
-	u, needsUpdate := c.badContractCheck(contract.Utility)
+	// A contract that has been renewed should be set to !GFU and !GFR.
+	u, needsUpdate := c.renewedCheck(contract.Utility, renewed)
+	if needsUpdate {
+		return u, needsUpdate
+	}
+
+	u, needsUpdate = c.badContractCheck(contract.Utility)
 	if needsUpdate {
 		return u, needsUpdate
 	}
