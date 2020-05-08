@@ -89,17 +89,6 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 		return
 	}
 
-	// TODO we call this manually here in order to save a RT and write the
-	// program instructions and data before reading. Remove when !4446 is
-	// merged.
-
-	// receive PayByEphemeralAccountResponse
-	var payByResponse modules.PayByEphemeralAccountResponse
-	err = modules.RPCRead(stream, &payByResponse)
-	if err != nil {
-		return
-	}
-
 	// read the responses.
 	responses = make([]programResponse, len(epr.Program))
 	for i := range responses {
