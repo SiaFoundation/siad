@@ -910,8 +910,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),
 
-		accounts:       make(map[string]*account),
-		accountsClosed: true,
+		accounts: make(map[string]*account),
 
 		cs:                    cs,
 		deps:                  deps,
