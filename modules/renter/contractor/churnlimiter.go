@@ -228,6 +228,12 @@ func (c *Contractor) managedMarkContractsUtility() error {
 
 	// Update utility fields for each contract.
 	for _, contract := range c.staticContracts.ViewAll() {
+		// TODO: I believe that there is a race condition here with other
+		// processes that could be using the contract. We should probably lock
+		// the contract during the entire set of maintenance checks, because
+		// something like a renewal could change the status of the contract in
+		// between the previous check and the committed update.
+
 		u := contract.Utility
 
 		// If the utility is locked, do nothing.
@@ -239,6 +245,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 		host, u, needsUpdate := c.managedHostInHostDBCheck(contract)
 		if needsUpdate {
 			if err = c.managedAcquireAndUpdateContractUtility(contract.ID, u); err != nil {
+				c.log.Println("Unable to acquire and update contract utility:", err)
 				return errors.AddContext(err, "unable to update utility after hostdb check")
 			}
 			continue
@@ -249,6 +256,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 		if needsUpdate {
 			err = c.managedAcquireAndUpdateContractUtility(contract.ID, u)
 			if err != nil {
+				c.log.Println("Unable to acquire and update contract utility:", err)
 				return errors.AddContext(err, "unable to update utility after criticalUtilityChecks")
 			}
 			continue
@@ -256,7 +264,8 @@ func (c *Contractor) managedMarkContractsUtility() error {
 
 		sb, err := c.hdb.ScoreBreakdown(host)
 		if err != nil {
-			return err
+			c.log.Println("Unable to get ScoreBreakdown for", host.PublicKey.String(), "got err:", err)
+			continue // continue, not return, because it may just be this host that has an issue.
 		}
 
 		// Check the host scorebreakdown against the minimum accepted scores.
@@ -275,6 +284,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			// Apply changes.
 			err = c.managedAcquireAndUpdateContractUtility(contract.ID, u)
 			if err != nil {
+				c.log.Println("Unable to acquire and update contract utility:", err)
 				return errors.AddContext(err, "unable to update utility after checkHostScore")
 			}
 			continue
@@ -292,6 +302,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 		// Apply changes.
 		err = c.managedAcquireAndUpdateContractUtility(contract.ID, u)
 		if err != nil {
+			c.log.Println("Unable to acquire and update contract utility:", err)
 			return errors.AddContext(err, "unable to update utility after all checks passed.")
 		}
 	}
@@ -299,6 +310,7 @@ func (c *Contractor) managedMarkContractsUtility() error {
 	// Process the suggested updates through the churn limiter.
 	err = c.staticChurnLimiter.managedProcessSuggestedUpdates(suggestedUpdateQueue)
 	if err != nil {
+		c.log.Println("Unable process suggested utility updates:", err)
 		return errors.AddContext(err, "churnLimiter processSuggestedUpdates err")
 	}
 
