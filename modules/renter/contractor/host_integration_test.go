@@ -29,53 +29,57 @@ import (
 
 // newTestingWallet is a helper function that creates a ready-to-use wallet
 // and mines some coins into it.
-func newTestingWallet(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool) (modules.Wallet, error) {
+func newTestingWallet(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool) (modules.Wallet, closeFn, error) {
 	w, err := modWallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	encrypted, err := w.Encrypted()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !encrypted {
 		_, err = w.Encrypt(key)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	err = w.Unlock(key)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// give it some money
 	m, err := miner.New(cs, tp, w, filepath.Join(testdir, modules.MinerDir))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for i := types.BlockHeight(0); i <= types.MaturityDelay; i++ {
 		_, err := m.AddBlock()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	return w, nil
+
+	cf := func() error {
+		return errors.Compose(m.Close(), w.Close())
+	}
+	return w, cf, nil
 }
 
 // newTestingHost is a helper function that creates a ready-to-use host.
-func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool, mux *siamux.SiaMux) (modules.Host, error) {
+func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool, mux *siamux.SiaMux) (modules.Host, closeFn, error) {
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	w, err := newTestingWallet(testdir, cs, tp)
+	w, walletCF, err := newTestingWallet(testdir, cs, tp)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	h, err := host.NewCustomHost(modules.ProdDependencies, cs, g, tp, w, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// configure host to accept contracts
@@ -83,36 +87,46 @@ func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.Transact
 	settings.AcceptingContracts = true
 	err = h.SetInternalSettings(settings)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// add storage to host
 	storageFolder := filepath.Join(testdir, "storage")
 	err = os.MkdirAll(storageFolder, 0700)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	err = h.AddStorageFolder(storageFolder, modules.SectorSize*64)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return h, nil
+	cf := func() error {
+		return errors.Compose(h.Close(), walletCF(), g.Close())
+	}
+	return h, cf, nil
 }
 
 // newTestingContractor is a helper function that creates a ready-to-use
 // contractor.
-func newTestingContractor(testdir string, g modules.Gateway, cs modules.ConsensusSet, tp modules.TransactionPool) (*Contractor, error) {
-	w, err := newTestingWallet(testdir, cs, tp)
+func newTestingContractor(testdir string, g modules.Gateway, cs modules.ConsensusSet, tp modules.TransactionPool) (*Contractor, closeFn, error) {
+	w, walletCF, err := newTestingWallet(testdir, cs, tp)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	hdb, errChan := hostdb.New(g, cs, tp, filepath.Join(testdir, "hostdb"))
 	if err := <-errChan; err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	contractor, errChan := New(cs, w, tp, hdb, filepath.Join(testdir, "contractor"))
-	return contractor, <-errChan
+	err = <-errChan
+	if err != nil {
+		return nil, nil, err
+	}
+	cf := func() error {
+		return errors.Compose(contractor.Close(), hdb.Close(), walletCF())
+	}
+	return contractor, cf, <-errChan
 }
 
 // newTestingTrio creates a Host, Contractor, and TestMiner that can be
@@ -173,11 +187,11 @@ func newCustomTestingTrio(name string, mux *siamux.SiaMux) (modules.Host, *Contr
 	}
 
 	// create host and contractor, using same consensus set and gateway
-	h, err := newTestingHost(filepath.Join(testdir, "Host"), cs, tp, mux)
+	h, hostCF, err := newTestingHost(filepath.Join(testdir, "Host"), cs, tp, mux)
 	if err != nil {
 		return nil, nil, nil, nil, build.ExtendErr("error creating testing host", err)
 	}
-	c, err := newTestingContractor(filepath.Join(testdir, "Contractor"), g, cs, tp)
+	c, contractorCF, err := newTestingContractor(filepath.Join(testdir, "Contractor"), g, cs, tp)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -217,7 +231,7 @@ func newCustomTestingTrio(name string, mux *siamux.SiaMux) (modules.Host, *Contr
 	}
 
 	cf := func() error {
-		return errors.Compose(mux.Close(), m.Close(), c.Close(), h.Close(), w.Close(), tp.Close(), cs.Close(), g.Close())
+		return errors.Compose(mux.Close(), m.Close(), contractorCF(), hostCF(), w.Close(), tp.Close(), cs.Close(), g.Close())
 	}
 	return h, c, m, cf, nil
 }

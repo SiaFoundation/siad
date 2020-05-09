@@ -148,10 +148,11 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	defer tryClose(cf, t)
 
 	// this test requires two hosts: create another one
-	h, err = newTestingHost(build.TempDir("hostdata", ""), c.cs.(modules.ConsensusSet), c.tpool.(modules.TransactionPool), mux)
+	h, hostCF, err := newTestingHost(build.TempDir("hostdata", ""), c.cs.(modules.ConsensusSet), c.tpool.(modules.TransactionPool), mux)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tryClose(hostCF, t)
 
 	// announce the extra host
 	err = h.Announce()
