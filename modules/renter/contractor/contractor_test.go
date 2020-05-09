@@ -141,10 +141,11 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	}
 
 	// create testing trio
-	h, c, m, err := newTestingTrio(t.Name())
+	h, c, m, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tryClose(cf, t)
 
 	// this test requires two hosts: create another one
 	h, err = newTestingHost(build.TempDir("hostdata", ""), c.cs.(modules.ConsensusSet), c.tpool.(modules.TransactionPool), mux)
@@ -325,10 +326,11 @@ func TestHostMaxDuration(t *testing.T) {
 	t.Parallel()
 
 	// create testing trio
-	h, c, m, err := newTestingTrio(t.Name())
+	h, c, m, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tryClose(cf, t)
 
 	// Set host's MaxDuration to 5 to test if host will be skipped when contract
 	// is formed
@@ -476,10 +478,11 @@ func TestPayment(t *testing.T) {
 	}
 
 	// create a testing trio with our mux injected
-	h, c, _, err := newCustomTestingTrio(t.Name(), mux)
+	h, c, _, cf, err := newCustomTestingTrio(t.Name(), mux)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tryClose(cf, t)
 	hpk := h.PublicKey()
 
 	// set an allowance and wait for contracts
@@ -608,10 +611,11 @@ func TestLinkedContracts(t *testing.T) {
 	t.Parallel()
 
 	// create testing trio
-	h, c, m, err := newTestingTrio(t.Name())
+	h, c, m, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tryClose(cf, t)
 
 	// Create allowance
 	a := modules.Allowance{
