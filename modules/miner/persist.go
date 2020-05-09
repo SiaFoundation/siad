@@ -61,6 +61,9 @@ func (m *Miner) initPersist() error {
 	if err != nil {
 		return err
 	}
+	m.tg.AfterStop(func() error {
+		return m.log.Close()
+	})
 
 	return m.initSettings()
 }

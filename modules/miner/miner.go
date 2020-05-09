@@ -11,8 +11,9 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
-	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
+
+	"gitlab.com/NebulousLabs/threadgroup"
 )
 
 var (
@@ -108,7 +109,7 @@ type Miner struct {
 	persistDir string
 	// tg signals the Miner's goroutines to shut down and blocks until all
 	// goroutines have exited before returning from Close().
-	tg siasync.ThreadGroup
+	tg threadgroup.ThreadGroup
 }
 
 // startupRescan will rescan the blockchain in the event that the miner
@@ -139,8 +140,9 @@ func (m *Miner) startupRescan() error {
 	if err != nil {
 		return err
 	}
-	m.tg.OnStop(func() {
+	m.tg.OnStop(func() error {
 		m.cs.Unsubscribe(m)
+		return nil
 	})
 	return nil
 }
@@ -206,13 +208,15 @@ func New(cs modules.ConsensusSet, tpool modules.TransactionPool, w modules.Walle
 	} else if err != nil {
 		return nil, errors.New("miner subscription failed: " + err.Error())
 	}
-	m.tg.OnStop(func() {
+	m.tg.OnStop(func() error {
 		m.cs.Unsubscribe(m)
+		return nil
 	})
 
 	m.tpool.TransactionPoolSubscribe(m)
-	m.tg.OnStop(func() {
+	m.tg.OnStop(func() error {
 		m.tpool.Unsubscribe(m)
+		return nil
 	})
 
 	// Save after synchronizing with consensus
