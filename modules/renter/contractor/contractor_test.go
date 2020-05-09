@@ -20,29 +20,44 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+// Create a closeFn type that allows helpers which need to be closed to return
+// methods that close the helpers.
+type closeFn func() error
+
+// tryClose is shorthand to run a t.Error() if a closeFn fails.
+func tryClose(cf closeFn, t *testing.T) {
+	err := cf()
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 // newModules initializes the modules needed to test creating a new contractor
-func newModules(testdir string) (modules.ConsensusSet, modules.Wallet, modules.TransactionPool, modules.HostDB, error) {
+func newModules(testdir string) (modules.ConsensusSet, modules.Wallet, modules.TransactionPool, modules.HostDB, closeFn, error) {
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
 	if err := <-errChan; err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	w, err := wallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	hdb, errChanHDB := hostdb.New(g, cs, tp, testdir)
 	if err := <-errChanHDB; err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
-	return cs, w, tp, hdb, nil
+	cf := func() error {
+		return errors.Compose(hdb.Close(), w.Close(), tp.Close(), cs.Close(), g.Close())
+	}
+	return cs, w, tp, hdb, cf, nil
 }
 
 // TestNew tests the New function.
@@ -52,10 +67,11 @@ func TestNew(t *testing.T) {
 	}
 	// Create the modules.
 	dir := build.TempDir("contractor", t.Name())
-	cs, w, tpool, hdb, err := newModules(dir)
+	cs, w, tpool, hdb, closeFn, err := newModules(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tryClose(closeFn, t)
 
 	// Sane values.
 	_, errChan := New(cs, w, tpool, hdb, dir)
