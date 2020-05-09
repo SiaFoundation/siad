@@ -111,6 +111,9 @@ func (w *Wallet) initPersist() error {
 	if err != nil {
 		return err
 	}
+	w.tg.AfterStop(func() error {
+		return w.log.Close()
+	})
 
 	// Open the database.
 	dbFilename := filepath.Join(w.persistDir, dbFile)
