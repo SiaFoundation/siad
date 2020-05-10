@@ -65,6 +65,14 @@ func (m *Miner) initPersist() error {
 		return m.log.Close()
 	})
 
+	// Save on shutdown, make sure this is queued to run before the logger
+	// stops.
+	m.tg.AfterStop(func() error {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return m.saveSync()
+	})
+
 	return m.initSettings()
 }
 

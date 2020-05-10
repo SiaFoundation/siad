@@ -139,6 +139,7 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tryClose(mux.Close, t)
 
 	// create testing trio
 	h, c, m, cf, err := newTestingTrio(t.Name())
