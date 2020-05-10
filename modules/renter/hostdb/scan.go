@@ -21,6 +21,17 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+var (
+	// scanTimeElapsedRequirement defines the amount of time that must elapse
+	// between scans in order for a new scan to be accepted into the hostdb as
+	// part of the scan history.
+	scanTimeElapsedRequirement = build.Select(build.Var{
+		Standard: 60 * time.Minute,
+		Dev:      2 * time.Minute,
+		Testing:  500 * time.Millisecond,
+	}).(time.Duration)
+)
+
 // equalIPNets checks if two slices of IP subnets contain the same subnets.
 func equalIPNets(ipNetsA, ipNetsB []string) bool {
 	// Check the length first.
@@ -248,7 +259,7 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 		// passed since the previous scan.
 		newTimestamp := time.Now()
 		prevTimestamp := newEntry.ScanHistory[len(newEntry.ScanHistory)-1].Timestamp
-		if newTimestamp.After(prevTimestamp.Add(60 * time.Minute)) {
+		if newTimestamp.After(prevTimestamp.Add(scanTimeElapsedRequirement)) {
 			if newEntry.ScanHistory[len(newEntry.ScanHistory)-1].Success && netErr != nil {
 				hdb.staticLog.Printf("Host %v is being downgraded from an online host to an offline host: %v\n", newEntry.PublicKey.String(), netErr)
 			}
