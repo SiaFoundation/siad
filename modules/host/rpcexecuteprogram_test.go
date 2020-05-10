@@ -283,8 +283,11 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	}
 	ht.host.managedUnlockStorageObligation(rhp.staticFCID)
 
-	offset := uint64(fastrand.Uint64n((modules.SectorSize/crypto.SegmentSize)-1) * crypto.SegmentSize)
-	length := uint64(crypto.SegmentSize) * (fastrand.Uint64n(5) + 1)
+	// select a random number of segments to read at random offset
+	numSegments := fastrand.Uint64n(5) + 1
+	totalSegments := modules.SectorSize / crypto.SegmentSize
+	offset := fastrand.Uint64n(totalSegments-numSegments+1) * crypto.SegmentSize
+	length := numSegments * crypto.SegmentSize
 
 	// create the 'ReadSector' program.
 	pt := rhp.PriceTable()
