@@ -68,6 +68,18 @@ func TestUpdateEntry(t *testing.T) {
 		t.Error("new entry was not given success values despite a successful scan")
 	}
 
+	// Try inserting the entry twice rapidly, nothing should change in the scan
+	// history length because it won't accept such a short turnaround.
+	hdbt.hdb.updateEntry(entry1, nil)
+	hdbt.hdb.updateEntry(entry1, nil)
+	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry1.PublicKey)
+	if !exists {
+		t.Fatal("Entry did not get inserted into the host tree")
+	}
+	if len(updatedEntry.ScanHistory) != 2 {
+		t.Fatal("new updates should have been ignored", len(updatedEntry.ScanHistory))
+	}
+
 	// Insert the first entry twice more, with no error. There should be 4
 	// entries, and the timestamps should be strictly increasing. Sleep for a
 	// bit between each update, because the hostdb during testing will not count
