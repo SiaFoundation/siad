@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"sync"
 	"testing"
@@ -241,7 +242,7 @@ func TestConsensusSubscribe(t *testing.T) {
 	cancel := make(chan struct{})
 	close(cancel)
 	errCh, _ := testNode.ConsensusSetSubscribe(s, modules.ConsensusChangeBeginning, cancel)
-	if err := <-errCh; err != context.Canceled {
+	if err := <-errCh; errors.Is(err, context.Canceled) {
 		t.Fatal("expected context.Canceled, got", err)
 	}
 	// subscribe again without cancelling

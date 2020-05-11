@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"net/http"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -37,14 +37,23 @@ func (c *Client) ConsensusBlocksHeightGet(height types.BlockHeight) (cbg api.Con
 // be required before the subscriber is fully caught up. It returns the latest
 // change ID; if no changes were sent, this will be the same as the input ID.
 func (c *Client) ConsensusSubscribeSingle(subscriber modules.ConsensusSetSubscriber, ccid modules.ConsensusChangeID, cancel <-chan struct{}) (modules.ConsensusChangeID, error) {
-	// TODO: cancel context
-	_, body, err := c.getReaderResponse(fmt.Sprintf("/consensus/subscribe/%s", ccid))
+	// We need to cancel the request when the cancel chan closes, so we have to
+	// construct it manually.
+	req, err := c.NewRequest("GET", fmt.Sprintf("/consensus/subscribe/%s", ccid), nil)
 	if err != nil {
 		return ccid, err
 	}
-	defer ioutil.ReadAll(body) // ensure that we fully read the body, even if we return early
+	req.Cancel = cancel
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return ccid, err
+	}
+	defer drainAndClose(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return ccid, readAPIError(resp.Body)
+	}
 
-	dec := encoding.NewDecoder(body, 1e6)
+	dec := encoding.NewDecoder(resp.Body, 1e6)
 	for {
 		select {
 		case <-cancel:
