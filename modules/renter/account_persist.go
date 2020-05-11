@@ -170,7 +170,6 @@ func (r *Renter) managedLoadAccounts() error {
 	// load the accounts on to the renter
 	id := r.mu.Lock()
 	r.accounts = accounts
-	r.accountsClosed = false
 	r.mu.Unlock(id)
 	return nil
 }
@@ -198,7 +197,7 @@ func (r *Renter) managedLoadAccountsFile(path string) error {
 		return r.updateAccountsMetadata(accountsMetadata{
 			Header:  metadataHeader,
 			Version: metadataVersion,
-			Clean:   true,
+			Clean:   false,
 		})
 	}
 	return nil
