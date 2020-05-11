@@ -213,6 +213,10 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 	// take into account bandwidth costs
 	cost = cost.Add(pb.BandwidthCost())
 
+	// TODO temporarily increase budget to ensure it is sufficient to cover the
+	// cost, until we have defined the true bandwidth cost of the new protocol
+	cost = cost.Mul64(10)
+
 	// exeucte it
 	var responses []programResponse
 	responses, err = w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
@@ -254,6 +258,10 @@ func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64
 
 	// take into account bandwidth costs
 	cost = cost.Add(pb.BandwidthCost())
+
+	// TODO temporarily increase budget to ensure it is sufficient to cover the
+	// cost, until we have defined the true bandwidth cost of the new protocol
+	cost = cost.Mul64(10)
 
 	// exeucte it
 	responses, err := w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
