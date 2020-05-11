@@ -776,7 +776,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 		fileMetadata := file.Metadata()
 		fileHealth := fileMetadata.CachedHealth
 		_, err := os.Stat(fileMetadata.LocalPath)
-		remoteFile := err != nil
+		remoteFile := fileMetadata.LocalPath == "" || err != nil
 		if (fileHealth < dirHeapHealth || !remoteFile && dirHeapRemote) && target == targetUnstuckChunks {
 			// Track the health
 			if !remoteFile && worstHealthRemote {
