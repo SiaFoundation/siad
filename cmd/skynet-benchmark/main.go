@@ -24,11 +24,29 @@ const (
 	// the files when performing test downloads.
 	testSiaDir = "var/skynet-benchmark"
 
+	// A range of files of different sizes.
 	dir64kb = "64kb"
 	dir1mb  = "1mb"
 	dir4mb  = "4mb"
 	dir10mb = "10mb"
 
+	// The exact sizes of each file. This size is chosen so that when the
+	// metadata is added to the file, and then the filesize is converted to a
+	// fetch size, the final fetch size is as close as possible to the filesize
+	// of the dir without going over.
+	exactSize64kb = 61e3
+	exactSize1mb  = 982e3
+	exactSize4mb  = 3931e3
+	exactSize10mb = 10e6 // Once over 4 MB, fetch size doesn't matter, can use exact sizes.
+
+	// Fetch size is the largest fetch size that can be set using the skylink
+	// naming standard without exceeding the filesize.
+	fetchSize64kb = 61440
+	fetchSize1mb  = 983040
+	fetchSize4mb  = 3932160
+	fetchSize10mb = 10e6 // Once over 4 MB, fetch size doesn't matter, can use exact sizes.
+
+	// The total number of files of each size that we download during testing.
 	filesPerDir = 200
 )
 
@@ -99,25 +117,25 @@ func main() {
 	// the expected filesize to leave room for metadata overhead. The expected
 	// filesize used is the largest filesize that fits inside of the file limits
 	// for the metrics collector.
-	err = uploadFileSet(dir64kbPath, 61e3, 61440)
+	err = uploadFileSet(dir64kbPath, exactSize64kb, fetchSize64kb)
 	if err != nil {
 		fmt.Println("Unable to upload 64kb files:", err)
 		return
 	}
 	fmt.Println("64kb files are ready to go.")
-	err = uploadFileSet(dir1mbPath, 982e3, 983040)
+	err = uploadFileSet(dir1mbPath, exactSize1mb, fetchSize1mb)
 	if err != nil {
 		fmt.Println("Unable to upload 1mb files:", err)
 		return
 	}
 	fmt.Println("1mb files are ready to go.")
-	err = uploadFileSet(dir4mbPath, 3931e3, 3932160)
+	err = uploadFileSet(dir4mbPath, exactSize4mb, fetchSize4mb)
 	if err != nil {
 		fmt.Println("Unable to upload 4mb files:", err)
 		return
 	}
 	fmt.Println("4mb files are ready to go.")
-	err = uploadFileSet(dir10mbPath, 10e6, 10e6)
+	err = uploadFileSet(dir10mbPath, exactSize10mb, fetchSize10mb)
 	if err != nil {
 		fmt.Println("Unable to upload 10mb files:", err)
 		return
@@ -130,25 +148,25 @@ func main() {
 	threadss := []uint64{1, 4, 16, 64} // threadss is the plural of threads
 	downloadStart := time.Now()
 	for _, threads := range threadss {
-		err = downloadFileSet(dir64kbPath, 61e3, threads)
+		err = downloadFileSet(dir64kbPath, exactSize64kb, threads)
 		if err != nil {
 			fmt.Println("Unable to download all 64kb files:", err)
 		}
 		fmt.Printf("64kb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
 		downloadStart = time.Now()
-		err = downloadFileSet(dir1mbPath, 982e3, threads)
+		err = downloadFileSet(dir1mbPath, exactSize1mb, threads)
 		if err != nil {
 			fmt.Println("Unable to download all 1mb files:", err)
 		}
 		fmt.Printf("1mb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
 		downloadStart = time.Now()
-		err = downloadFileSet(dir4mbPath, 3931e3, threads)
+		err = downloadFileSet(dir4mbPath, exactSize4mb, threads)
 		if err != nil {
 			fmt.Println("Unable to download all 4mb files:", err)
 		}
 		fmt.Printf("4mb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
 		downloadStart = time.Now()
-		err = downloadFileSet(dir10mbPath, 10e6, threads)
+		err = downloadFileSet(dir10mbPath, exactSize10mb, threads)
 		if err != nil {
 			fmt.Println("Unable to download all 10mb files:", err)
 		}
@@ -213,7 +231,7 @@ func downloadFileSet(dir modules.SiaPath, fileSize int, threads uint64) error {
 			// not the data.
 			data, err := ioutil.ReadAll(reader)
 			if err != nil {
-				fmt.Println("Error performing download:", err)
+				fmt.Printf("Error performing download, only got %v bytes: %v\n", len(data), err)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
