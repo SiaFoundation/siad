@@ -409,11 +409,7 @@ func filePercentageBreakdown(dirs []directoryInfo) (float64, float64, float64, f
 // renterFilesAndContractSummary prints out a summary of what the renter is
 // storing
 func renterFilesAndContractSummary() error {
-<<<<<<< HEAD
-	rf, err := siacGlobalHttpClient.RenterDirRootGet(modules.RootSiaPath())
-=======
-	rf, err := httpClient.RenterDirGet(modules.RootSiaPath())
->>>>>>> Revert global httpClient renaming
+	rf, err := httpClient.RenterDirRootGet(modules.RootSiaPath())
 	if errors.Contains(err, api.ErrAPICallNotRecognized) {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("\n  Status: %s\n\n", moduleNotReadyStatus)
@@ -2226,11 +2222,7 @@ func renterfilesrenamecmd(path, newpath string) {
 	if err := errors.Compose(err1, err2); err != nil {
 		die("Couldn't parse SiaPath:", err)
 	}
-<<<<<<< HEAD
-	err := siacGlobalHttpClient.RenterRenamePost(siaPath, newSiaPath, renterRenameRoot)
-=======
-	err := httpClient.RenterRenamePost(siaPath, newSiaPath)
->>>>>>> Revert global httpClient renaming
+	err := httpClient.RenterRenamePost(siaPath, newSiaPath, renterRenameRoot)
 	if err != nil {
 		die("Could not rename file:", err)
 	}
@@ -2556,7 +2548,7 @@ func renterratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 // renterworkerscmd is the handler for the comand `siac renter workers`.
 // It lists the Renter's workers.
 func renterworkerscmd() {
-	rw, err := siacGlobalHttpClient.RenterWorkersGet()
+	rw, err := httpClient.RenterWorkersGet()
 	if err != nil {
 		die("Could not get contracts:", err)
 	}
