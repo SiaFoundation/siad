@@ -43,8 +43,8 @@ Pop-Location
 Push-Location "C:\gitlab-runner"
 
 # Register runner
-# Use pre-clone-script to fix gitlab cache permissions (Permission denied
-# issues on cloning git repo)
+# Use pre-clone-script to fix gitlab cache permissions 
+# (Permission denied issues on cloning git repo)
 gitlab-runner.exe register --non-interactive --url https://gitlab.com/ --registration-token $token --executor shell --pre-clone-script "remove-item .\builds\*\*\*\*\.cache -Force -Recurse -ErrorAction SilentlyContinue" --description Win10-Server-Hetzner --tag-list nebulous-windows
 
 # Install and run the service
