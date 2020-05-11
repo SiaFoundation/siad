@@ -73,7 +73,7 @@ Latest:
 - Fix permission issues for Windows runner, do not perform linting during Windows tests.
 - Move filenames to ignore in changelog generator to `.changelogignore` file
 - Created `Merge Request.md` to document the merge request standards and process.
-- Remove backslash check in SiaPath validation, add `\` to list of accepted
+- Remove backslash check in SiaPath validation, add \ to list of accepted
   characters
 - `siac skynet upload` with the `--dry-run` flag will now print more clear messages to emphasize that no files are actually uploaded.
 - Move `scanCheckInterval` to be a build variable for the `hostdb`
