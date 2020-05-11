@@ -100,7 +100,7 @@ func (w *worker) managedDropUploadChunks() {
 
 	for i := 0; i < len(chunksToDrop); i++ {
 		w.managedDropChunk(chunksToDrop[i])
-		w.renter.repairLog.Debugf("dropping chunk %v of %s because the worker is dropping all chunks", chunksToDrop[i].index, chunksToDrop[i].staticSiaPath)
+		w.renter.repairLog.Debugf("dropping chunk %v of %s because the worker is dropping all chunks", chunksToDrop[i].staticIndex, chunksToDrop[i].staticSiaPath)
 	}
 }
 
@@ -210,7 +210,7 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 	w.mu.Unlock()
 
 	// Add piece to renterFile
-	err = uc.fileEntry.AddPiece(w.staticHostPubKey, uc.index, pieceIndex, root)
+	err = uc.fileEntry.AddPiece(w.staticHostPubKey, uc.staticIndex, pieceIndex, root)
 	if err != nil {
 		failureErr := fmt.Errorf("Worker failed to add new piece to SiaFile: %v", err)
 		w.renter.log.Debugln(failureErr)
@@ -313,7 +313,7 @@ func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint6
 		w.uploadConsecutiveFailures++
 		failures := w.uploadConsecutiveFailures
 		w.mu.Unlock()
-		w.renter.repairLog.Debugf("Worker upload failed. Worker: %v, Consecutive Failures: %v, Chunk: %v of %s, Error: %v", w.staticHostPubKey, failures, uc.index, uc.staticSiaPath, failureErr)
+		w.renter.repairLog.Debugf("Worker upload failed. Worker: %v, Consecutive Failures: %v, Chunk: %v of %s, Error: %v", w.staticHostPubKey, failures, uc.staticIndex, uc.staticSiaPath, failureErr)
 	}
 
 	// Unregister the piece from the chunk and hunt for a replacement.
