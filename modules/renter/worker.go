@@ -434,12 +434,16 @@ func (w *worker) managedTryUpdatePriceTable() {
 		return
 	}
 
-	if w.staticHostPrices.managedNeedsUpdate() {
-		err := w.managedUpdatePriceTable()
-		if err != nil {
-			w.renter.log.Println("ERROR: failed to update price table", err)
-			// TODO: add retry mechanism
-		}
+	// check if update is necessary
+	if !w.staticHostPrices.managedNeedsUpdate() {
+		return
+	}
+
+	// update the price table
+	err := w.managedUpdatePriceTable()
+	if err != nil {
+		w.renter.log.Println("ERROR: failed to update price table", err)
+		// TODO: add retry mechanism
 	}
 }
 
