@@ -185,6 +185,12 @@ func (c *Contractor) managedHostInHostDBCheck(contract modules.RenterContract) (
 		u.GoodForRenew = false
 		return host, u, true
 	}
+
+	// TODO: If the host is not in the hostdb, we need to do some sort of rescan
+	// to recover the host. The hostdb is not supposed to be dropping hosts that
+	// we have formed contracts with. We should do what we can to get the host
+	// back.
+
 	return host, u, false
 }
 

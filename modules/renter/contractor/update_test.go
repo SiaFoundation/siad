@@ -22,10 +22,11 @@ func TestIntegrationAutoRenew(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	_, c, m, err := newTestingTrio(t.Name())
+	_, c, m, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tryClose(cf, t)
 
 	// form a contract with the host
 	a := modules.Allowance{
@@ -106,12 +107,11 @@ func TestIntegrationRenewInvalidate(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	_, c, m, err := newTestingTrio(t.Name())
+	_, c, m, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
-	defer m.Close()
+	defer tryClose(cf, t)
 
 	// form a contract with the host
 	a := modules.Allowance{
