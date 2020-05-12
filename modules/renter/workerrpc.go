@@ -3,6 +3,7 @@ package renter
 import (
 	"encoding/json"
 	"io"
+	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -331,6 +332,14 @@ func (w *worker) managedUpdatePriceTable() error {
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, w.staticAccount.staticID, bh)
 	if err != nil {
 		return err
+	}
+
+	// expect stream to be closed (the host only sees a PT as valid if it
+	// successfully managed to process payment, not awaiting the close allows
+	// for a race condition where we consider it valid but the host does not
+	err = modules.RPCRead(stream, struct{}{})
+	if err == nil || !strings.Contains(err.Error(), io.ErrClosedPipe.Error()) {
+		w.renter.log.Println("ERROR: expected io.ErrClosedPipe, instead received err:", err)
 	}
 
 	// update the price table
