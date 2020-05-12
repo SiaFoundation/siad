@@ -2,7 +2,6 @@ package contractor
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -10,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 
@@ -29,53 +29,57 @@ import (
 
 // newTestingWallet is a helper function that creates a ready-to-use wallet
 // and mines some coins into it.
-func newTestingWallet(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool) (modules.Wallet, error) {
+func newTestingWallet(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool) (modules.Wallet, closeFn, error) {
 	w, err := modWallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	encrypted, err := w.Encrypted()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !encrypted {
 		_, err = w.Encrypt(key)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	err = w.Unlock(key)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// give it some money
 	m, err := miner.New(cs, tp, w, filepath.Join(testdir, modules.MinerDir))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for i := types.BlockHeight(0); i <= types.MaturityDelay; i++ {
 		_, err := m.AddBlock()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	return w, nil
+
+	cf := func() error {
+		return errors.Compose(m.Close(), w.Close())
+	}
+	return w, cf, nil
 }
 
 // newTestingHost is a helper function that creates a ready-to-use host.
-func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool, mux *siamux.SiaMux) (modules.Host, error) {
+func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool, mux *siamux.SiaMux) (modules.Host, closeFn, error) {
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	w, err := newTestingWallet(testdir, cs, tp)
+	w, walletCF, err := newTestingWallet(testdir, cs, tp)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	h, err := host.NewCustomHost(modules.ProdDependencies, cs, g, tp, w, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// configure host to accept contracts
@@ -83,48 +87,58 @@ func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.Transact
 	settings.AcceptingContracts = true
 	err = h.SetInternalSettings(settings)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// add storage to host
 	storageFolder := filepath.Join(testdir, "storage")
 	err = os.MkdirAll(storageFolder, 0700)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	err = h.AddStorageFolder(storageFolder, modules.SectorSize*64)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return h, nil
+	cf := func() error {
+		return errors.Compose(h.Close(), walletCF(), g.Close())
+	}
+	return h, cf, nil
 }
 
 // newTestingContractor is a helper function that creates a ready-to-use
 // contractor.
-func newTestingContractor(testdir string, g modules.Gateway, cs modules.ConsensusSet, tp modules.TransactionPool) (*Contractor, error) {
-	w, err := newTestingWallet(testdir, cs, tp)
+func newTestingContractor(testdir string, g modules.Gateway, cs modules.ConsensusSet, tp modules.TransactionPool) (*Contractor, closeFn, error) {
+	w, walletCF, err := newTestingWallet(testdir, cs, tp)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	hdb, errChan := hostdb.New(g, cs, tp, filepath.Join(testdir, "hostdb"))
 	if err := <-errChan; err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	contractor, errChan := New(cs, w, tp, hdb, filepath.Join(testdir, "contractor"))
-	return contractor, <-errChan
+	err = <-errChan
+	if err != nil {
+		return nil, nil, err
+	}
+	cf := func() error {
+		return errors.Compose(contractor.Close(), hdb.Close(), walletCF())
+	}
+	return contractor, cf, <-errChan
 }
 
 // newTestingTrio creates a Host, Contractor, and TestMiner that can be
 // used for testing host/renter interactions.
-func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, error) {
+func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, closeFn, error) {
 	testdir := build.TempDir("contractor", name)
 
 	// create mux
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
 	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	return newCustomTestingTrio(name, mux)
@@ -132,66 +146,66 @@ func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, 
 
 // newCustomTestingTrio creates a Host, Contractor, and TestMiner that can be
 // used for testing host/renter interactions. It allows to pass a custom siamux.
-func newCustomTestingTrio(name string, mux *siamux.SiaMux) (modules.Host, *Contractor, modules.TestMiner, error) {
+func newCustomTestingTrio(name string, mux *siamux.SiaMux) (modules.Host, *Contractor, modules.TestMiner, closeFn, error) {
 	testdir := build.TempDir("contractor", name)
 
 	// create miner
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
 	if err := <-errChan; err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	w, err := modWallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	encrypted, err := w.Encrypted()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	if !encrypted {
 		_, err = w.Encrypt(key)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 	}
 	err = w.Unlock(key)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	m, err := miner.New(cs, tp, w, filepath.Join(testdir, modules.MinerDir))
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	// create host and contractor, using same consensus set and gateway
-	h, err := newTestingHost(filepath.Join(testdir, "Host"), cs, tp, mux)
+	h, hostCF, err := newTestingHost(filepath.Join(testdir, "Host"), cs, tp, mux)
 	if err != nil {
-		return nil, nil, nil, build.ExtendErr("error creating testing host", err)
+		return nil, nil, nil, nil, build.ExtendErr("error creating testing host", err)
 	}
-	c, err := newTestingContractor(filepath.Join(testdir, "Contractor"), g, cs, tp)
+	c, contractorCF, err := newTestingContractor(filepath.Join(testdir, "Contractor"), g, cs, tp)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	// announce the host
 	err = h.Announce()
 	if err != nil {
-		return nil, nil, nil, build.ExtendErr("error announcing host", err)
+		return nil, nil, nil, nil, build.ExtendErr("error announcing host", err)
 	}
 
 	// mine a block, processing the announcement
 	_, err = m.AddBlock()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	// wait for hostdb to scan host
@@ -213,10 +227,13 @@ func newCustomTestingTrio(name string, mux *siamux.SiaMux) (modules.Host, *Contr
 		return nil
 	})
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
-	return h, c, m, nil
+	cf := func() error {
+		return errors.Compose(mux.Close(), m.Close(), contractorCF(), hostCF(), w.Close(), tp.Close(), cs.Close(), g.Close())
+	}
+	return h, c, m, cf, nil
 }
 
 // TestIntegrationFormContract tests that the contractor can form contracts
@@ -226,12 +243,11 @@ func TestIntegrationFormContract(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	h, c, _, err := newTestingTrio(t.Name())
+	h, c, _, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer h.Close()
-	defer c.Close()
+	defer tryClose(cf, t)
 
 	// acquire the contract maintenance lock for the duration of the test. This
 	// prevents theadedContractMaintenance from running.
@@ -267,12 +283,11 @@ func TestFormContractSmallAllowance(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	h, c, _, err := newTestingTrio(t.Name())
+	h, c, _, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer h.Close()
-	defer c.Close()
+	defer tryClose(cf, t)
 
 	// get the host's entry from the db
 	hostEntry, ok, err := c.hdb.Host(h.PublicKey())
@@ -308,12 +323,11 @@ func TestIntegrationReviseContract(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	h, c, _, err := newTestingTrio(t.Name())
+	h, c, _, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer h.Close()
-	defer c.Close()
+	defer tryClose(cf, t)
 
 	// acquire the contract maintenance lock for the duration of the test. This
 	// prevents theadedContractMaintenance from running.
@@ -365,12 +379,11 @@ func TestIntegrationUploadDownload(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	h, c, _, err := newTestingTrio(t.Name())
+	h, c, _, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer h.Close()
-	defer c.Close()
+	defer tryClose(cf, t)
 
 	// get the host's entry from the db
 	hostEntry, ok, err := c.hdb.Host(h.PublicKey())
@@ -434,13 +447,11 @@ func TestIntegrationRenew(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	h, c, m, err := newTestingTrio(t.Name())
+	_, c, m, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer h.Close()
-	defer c.Close()
-	defer m.Close()
+	defer tryClose(cf, t)
 
 	// set an allowance and wait for a contract to be formed.
 	a := modules.DefaultAllowance
@@ -574,12 +585,11 @@ func TestIntegrationDownloaderCaching(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	h, c, m, err := newTestingTrio(t.Name())
+	_, c, m, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer h.Close()
-	defer c.Close()
+	defer tryClose(cf, t)
 
 	// set an allowance and wait for a contract to be formed.
 	if err := c.SetAllowance(modules.DefaultAllowance); err != nil {
@@ -674,13 +684,11 @@ func TestIntegrationEditorCaching(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	h, c, m, err := newTestingTrio(t.Name())
+	_, c, m, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer h.Close()
-	defer c.Close()
-	defer m.Close()
+	defer tryClose(cf, t)
 
 	// set an allowance and wait for a contract to be formed.
 	if err := c.SetAllowance(modules.DefaultAllowance); err != nil {
@@ -778,12 +786,11 @@ func TestContractPresenceLeak(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	h, c, _, err := newTestingTrio(t.Name())
+	h, c, _, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer h.Close()
-	defer c.Close()
+	defer tryClose(cf, t)
 
 	// get the host's entry from the db
 	hostEntry, ok, err := c.hdb.Host(h.PublicKey())

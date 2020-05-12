@@ -4787,12 +4787,15 @@ Whether or not to treat the siapath as being relative to the root directory. If
 this field is not set, the siapath will be interpreted as relative to
 'var/skynet'.
 
+
+**UNSTABLE - subject to change in v1.4.9**
 **skykeyname** | string  
 The name of the skykey that will be used to encrypt this skyfile. Only the
 name or the ID of the skykey should be specified.
 
 **OR**
 
+**UNSTABLE - subject to change in v1.4.9**
 **skykeyid** | string  
 The ID of the skykey that will be used to encrypt this skyfile. Only the
 name or the ID of the skykey should be specified.
@@ -4910,6 +4913,7 @@ The performance stats fields are not protected by a compatibility promise, and
 may change over time.
 
 
+**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/addskykey [POST]
 > curl example
 
@@ -4930,6 +4934,7 @@ standard success or error response. See [standard
 responses](#standard-responses).
 
 
+**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/createskykey [POST]
 > curl example
 
@@ -4957,6 +4962,7 @@ desired name of the skykey
 base-64 encoded skykey
 
 
+**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/skykey [GET]
 > curl example
 
@@ -4991,6 +4997,7 @@ base-64 encoded ID of the skykey being queried
 base-64 encoded skykey
 
 
+**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/skykeyid [GET]
 > curl example
 

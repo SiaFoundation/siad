@@ -97,6 +97,12 @@ func (c *Contractor) managedCheckForDuplicates() {
 
 			// Link the contracts to each other and then store the old contract
 			// in the record of historic contracts.
+			//
+			// Note: This means that if there are multiple duplicates, say 3
+			// contracts that all share the same host, then the ordering may not
+			// be perfect. If in reality the renewal order was A<->B<->C, it's
+			// possible for the contractor to end up with A->C and B<->C in the
+			// mapping.
 			c.mu.Lock()
 			c.renewedFrom[newContract.ID] = oldContract.ID
 			c.renewedTo[oldContract.ID] = newContract.ID
@@ -118,12 +124,6 @@ func (c *Contractor) managedCheckForDuplicates() {
 			c.staticContracts.Delete(oldSC)
 
 			// Update the pubkeys map to contain the newest contract id.
-			//
-			// TODO: This means that if there are multiple duplicates, say 3
-			// contracts that all share the same host, then the ordering may not
-			// be perfect. If in reality the renewal order was A<->B<->C, it's
-			// possible for the contractor to end up with A->C and B<->C in the
-			// mapping.
 			pubkeys[contract.HostPublicKey.String()] = newContract.ID
 		}
 	}
@@ -434,6 +434,12 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 
 	contractValue := contract.RenterFunds
 	c.log.Printf("Formed contract %v with %v for %v", contract.ID, host.NetAddress, contractValue.HumanString())
+
+	// Update the hostdb to include the new contract.
+	err = c.hdb.UpdateContracts(c.staticContracts.ViewAll())
+	if err != nil {
+		c.log.Println("Unable to update hostdb contracts:", err)
+	}
 	return contractFunding, contract, nil
 }
 
@@ -638,6 +644,12 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	c.mu.Lock()
 	c.pubKeysToContractID[newContract.HostPublicKey.String()] = newContract.ID
 	c.mu.Unlock()
+
+	// Update the hostdb to include the new contract.
+	err = c.hdb.UpdateContracts(c.staticContracts.ViewAll())
+	if err != nil {
+		c.log.Println("Unable to update hostdb contracts:", err)
+	}
 
 	return newContract, nil
 }
@@ -854,6 +866,16 @@ func (c *Contractor) managedAcquireAndUpdateContractUtility(id types.FileContrac
 		return errors.New("failed to acquire contract for update")
 	}
 	defer c.staticContracts.Return(safeContract)
+
+	// Sanity check to verify that we aren't attempting to set a good utility on
+	// a contract that has been renewed.
+	c.mu.Lock()
+	_, exists := c.renewedTo[id]
+	c.mu.Unlock()
+	if exists && (utility.GoodForRenew || utility.GoodForUpload) {
+		c.log.Critical("attempting to update contract utility on a contract that has been renewed")
+	}
+
 	return c.callUpdateUtility(safeContract, utility, false)
 }
 
@@ -934,7 +956,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	err = c.hdb.UpdateContracts(c.staticContracts.ViewAll())
 	if err != nil {
-		c.log.Debugln("Unable to update hostdb contracts:", err)
+		c.log.Println("Unable to update hostdb contracts:", err)
 		return
 	}
 
