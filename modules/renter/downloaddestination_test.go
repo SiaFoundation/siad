@@ -15,7 +15,7 @@ func TestWritePiecesPanic(t *testing.T) {
 		progress: 50,
 	}
 
-	// Test case of offset being less then the progess. Ignore the error since
+	// Test case of offset being less then the progress. Ignore the error since
 	// we are only concerned with the mutex panic.
 	rsc, _ := siafile.NewRSCode(1, 1)
 	ddw.WritePieces(rsc, [][]byte{}, 0, 0, 0)
