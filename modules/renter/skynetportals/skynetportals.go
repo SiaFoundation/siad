@@ -36,9 +36,9 @@ var (
 )
 
 type (
-	// PersistList manages a list of known Skynet portals by persisting the
+	// SkynetPortals manages a list of known Skynet portals by persisting the
 	// list to disk.
-	PersistList struct {
+	SkynetPortals struct {
 		staticAop *persist.AppendOnlyPersist
 
 		// portals is a map of portal addresses to public status.
@@ -56,33 +56,33 @@ type (
 	}
 )
 
-// New returns an initialized PersistList.
-func New(persistDir string) (*PersistList, error) {
+// New returns an initialized SkynetPortals.
+func New(persistDir string) (*SkynetPortals, error) {
 	// Initialize the persistence of the portal list.
 	aop, bytes, err := persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
 	if err != nil {
 		return nil, errors.AddContext(err, fmt.Sprintf("unable to initialize the skynet portal list persistence at '%v'", aop.FilePath()))
 	}
 
-	pl := &PersistList{
+	sp := &SkynetPortals{
 		staticAop: aop,
 	}
 	portals, err := unmarshalObjects(bytes)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to unmarshal persist objects")
 	}
-	pl.portals = portals
+	sp.portals = portals
 
-	return pl, nil
+	return sp, nil
 }
 
 // Portals returns the list of known Skynet portals.
-func (pl *PersistList) Portals() []modules.SkynetPortal {
-	pl.mu.Lock()
-	defer pl.mu.Unlock()
+func (sp *SkynetPortals) Portals() []modules.SkynetPortal {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
 
 	var portals []modules.SkynetPortal
-	for addr, public := range pl.portals {
+	for addr, public := range sp.portals {
 		portal := modules.SkynetPortal{
 			Address: addr,
 			Public:  public,
@@ -93,9 +93,9 @@ func (pl *PersistList) Portals() []modules.SkynetPortal {
 }
 
 // UpdatePortals updates the list of known Skynet portals.
-func (pl *PersistList) UpdatePortals(additions []modules.SkynetPortal, removals []modules.NetAddress) error {
-	pl.mu.Lock()
-	defer pl.mu.Unlock()
+func (sp *SkynetPortals) UpdatePortals(additions []modules.SkynetPortal, removals []modules.NetAddress) error {
+	sp.mu.Lock()
+	defer sp.mu.Unlock()
 
 	// Convert portal addresses to lowercase for case-insensitivity.
 	addPortals := make([]modules.SkynetPortal, len(additions))
@@ -111,30 +111,30 @@ func (pl *PersistList) UpdatePortals(additions []modules.SkynetPortal, removals 
 	}
 
 	// Validate now before we start making changes.
-	err := pl.validatePortalChanges(additions, removals)
+	err := sp.validatePortalChanges(additions, removals)
 	if err != nil {
 		return errors.AddContext(err, ErrSkynetPortalsValidation.Error())
 	}
 
-	buf, err := pl.marshalObjects(additions, removals)
+	buf, err := sp.marshalObjects(additions, removals)
 	if err != nil {
-		return errors.AddContext(err, fmt.Sprintf("unable to update skynet portal list persistence at '%v'", pl.staticAop.FilePath()))
+		return errors.AddContext(err, fmt.Sprintf("unable to update skynet portal list persistence at '%v'", sp.staticAop.FilePath()))
 	}
-	_, err = pl.staticAop.Write(buf.Bytes())
-	return errors.AddContext(err, fmt.Sprintf("unable to update skynet portal list persistence at '%v'", pl.staticAop.FilePath()))
+	_, err = sp.staticAop.Write(buf.Bytes())
+	return errors.AddContext(err, fmt.Sprintf("unable to update skynet portal list persistence at '%v'", sp.staticAop.FilePath()))
 }
 
 // marshalObjects marshals the given objects into a byte buffer.
 //
 // NOTE: this method does not check for duplicate additions or removals
-func (pl *PersistList) marshalObjects(additions []modules.SkynetPortal, removals []modules.NetAddress) (bytes.Buffer, error) {
+func (sp *SkynetPortals) marshalObjects(additions []modules.SkynetPortal, removals []modules.NetAddress) (bytes.Buffer, error) {
 	// Create buffer for encoder
 	var buf bytes.Buffer
 	// Create and encode the persist portals
 	listed := true
 	for _, portal := range additions {
 		// Add portal to map
-		pl.portals[portal.Address] = portal.Public
+		sp.portals[portal.Address] = portal.Public
 
 		// Marshal the update
 		pe := persistEntry{portal.Address, portal.Public, listed}
@@ -146,11 +146,11 @@ func (pl *PersistList) marshalObjects(additions []modules.SkynetPortal, removals
 	listed = false
 	for _, address := range removals {
 		// Remove portal from map
-		public, exists := pl.portals[address]
+		public, exists := sp.portals[address]
 		if !exists {
 			return bytes.Buffer{}, fmt.Errorf("address %v does not exist", address)
 		}
-		delete(pl.portals, address)
+		delete(sp.portals, address)
 
 		// Marshal the update
 		pe := persistEntry{address, public, listed}
@@ -188,7 +188,9 @@ func unmarshalObjects(readBytes []byte) (map[modules.NetAddress]bool, error) {
 
 // MarshalSia implements the encoding.SiaMarshaler interface.
 //
-// TODO: get rid of these, the length is already handled by marshal methods.
+// TODO: Remove these custom marshal functions and use encoding marshal
+// functions. Note that removing these changes the marshal format and is not
+// backwards-compatible.
 func (pe persistEntry) MarshalSia(w io.Writer) error {
 	if len(pe.address) > modules.MaxEncodedNetAddressLength {
 		return fmt.Errorf("given address %v does not fit in %v bytes", pe.address, modules.MaxEncodedNetAddressLength)
@@ -229,7 +231,7 @@ func (pe *persistEntry) UnmarshalSia(r io.Reader) error {
 
 // validatePortalChanges validates the changes to be made to the Skynet portals
 // list.
-func (pl *PersistList) validatePortalChanges(additions []modules.SkynetPortal, removals []modules.NetAddress) error {
+func (sp *SkynetPortals) validatePortalChanges(additions []modules.SkynetPortal, removals []modules.NetAddress) error {
 	// Check for nil input
 	if len(additions)+len(removals) == 0 {
 		return errors.New("no portals being added or removed")
@@ -248,7 +250,7 @@ func (pl *PersistList) validatePortalChanges(additions []modules.SkynetPortal, r
 		if err := removalAddress.IsStdValid(); err != nil {
 			return errors.New("invalid network address: " + err.Error())
 		}
-		if _, exists := pl.portals[removalAddress]; !exists {
+		if _, exists := sp.portals[removalAddress]; !exists {
 			if _, added := additionsMap[removalAddress]; !added {
 				return errors.New("address " + string(removalAddress) + " not already present in list of portals or being added")
 			}

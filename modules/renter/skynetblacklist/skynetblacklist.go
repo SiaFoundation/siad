@@ -32,9 +32,9 @@ var (
 )
 
 type (
-	// PersistList manages a set of blacklisted skylinks by tracking the
+	// SkynetBlacklist manages a set of blacklisted skylinks by tracking the
 	// merkleroots and persists the list to disk.
-	PersistList struct {
+	SkynetBlacklist struct {
 		staticAop *persist.AppendOnlyPersist
 
 		// merkleRoots is a set of blacklisted links.
@@ -51,64 +51,64 @@ type (
 	}
 )
 
-// New returns an initialized PersistList.
-func New(persistDir string) (*PersistList, error) {
+// New returns an initialized SkynetBlacklist.
+func New(persistDir string) (*SkynetBlacklist, error) {
 	// Initialize the persistence of the blacklist.
 	aop, bytes, err := persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
 	if err != nil {
 		return nil, errors.AddContext(err, fmt.Sprintf("unable to initialize the skynet blacklist persistence at '%v'", aop.FilePath()))
 	}
 
-	pl := &PersistList{
+	sb := &SkynetBlacklist{
 		staticAop: aop,
 	}
 	blacklist, err := unmarshalObjects(bytes)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to unmarshal persist objects")
 	}
-	pl.merkleRoots = blacklist
+	sb.merkleRoots = blacklist
 
-	return pl, nil
+	return sb, nil
 }
 
 // Blacklist returns the merkleroots that are blacklisted
-func (pl *PersistList) Blacklist() []crypto.Hash {
-	pl.mu.Lock()
-	defer pl.mu.Unlock()
+func (sb *SkynetBlacklist) Blacklist() []crypto.Hash {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
 
 	var blacklist []crypto.Hash
-	for mr := range pl.merkleRoots {
+	for mr := range sb.merkleRoots {
 		blacklist = append(blacklist, mr)
 	}
 	return blacklist
 }
 
 // IsBlacklisted indicates if a skylink is currently blacklisted
-func (pl *PersistList) IsBlacklisted(skylink modules.Skylink) bool {
-	pl.mu.Lock()
-	defer pl.mu.Unlock()
+func (sb *SkynetBlacklist) IsBlacklisted(skylink modules.Skylink) bool {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
 
-	_, ok := pl.merkleRoots[skylink.MerkleRoot()]
+	_, ok := sb.merkleRoots[skylink.MerkleRoot()]
 	return ok
 }
 
 // UpdateBlacklist updates the list of skylinks that are blacklisted.
-func (pl *PersistList) UpdateBlacklist(additions, removals []modules.Skylink) error {
-	pl.mu.Lock()
-	defer pl.mu.Unlock()
+func (sb *SkynetBlacklist) UpdateBlacklist(additions, removals []modules.Skylink) error {
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
 
-	buf, err := pl.marshalObjects(additions, removals)
+	buf, err := sb.marshalObjects(additions, removals)
 	if err != nil {
-		return errors.AddContext(err, fmt.Sprintf("unable to update skynet blacklist persistence at '%v'", pl.staticAop.FilePath()))
+		return errors.AddContext(err, fmt.Sprintf("unable to update skynet blacklist persistence at '%v'", sb.staticAop.FilePath()))
 	}
-	_, err = pl.staticAop.Write(buf.Bytes())
-	return errors.AddContext(err, fmt.Sprintf("unable to update skynet blacklist persistence at '%v'", pl.staticAop.FilePath()))
+	_, err = sb.staticAop.Write(buf.Bytes())
+	return errors.AddContext(err, fmt.Sprintf("unable to update skynet blacklist persistence at '%v'", sb.staticAop.FilePath()))
 }
 
 // marshalObjects marshals the given objects into a byte buffer.
 //
 // NOTE: this method does not check for duplicate additions or removals
-func (pl *PersistList) marshalObjects(additions, removals []modules.Skylink) (bytes.Buffer, error) {
+func (sb *SkynetBlacklist) marshalObjects(additions, removals []modules.Skylink) (bytes.Buffer, error) {
 	// Create buffer for encoder
 	var buf bytes.Buffer
 	// Create and encode the persist links
@@ -116,7 +116,7 @@ func (pl *PersistList) marshalObjects(additions, removals []modules.Skylink) (by
 	for _, skylink := range additions {
 		// Add skylink merkleroot to map
 		mr := skylink.MerkleRoot()
-		pl.merkleRoots[mr] = struct{}{}
+		sb.merkleRoots[mr] = struct{}{}
 
 		// Marshal the update
 		pe := persistEntry{mr, listed}
@@ -127,7 +127,7 @@ func (pl *PersistList) marshalObjects(additions, removals []modules.Skylink) (by
 	for _, skylink := range removals {
 		// Remove skylink merkleroot from map
 		mr := skylink.MerkleRoot()
-		delete(pl.merkleRoots, mr)
+		delete(sb.merkleRoots, mr)
 
 		// Marshal the update
 		pe := persistEntry{mr, listed}

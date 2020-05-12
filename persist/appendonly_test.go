@@ -51,6 +51,22 @@ func TestWrite(t *testing.T) {
 		t.Fatalf("Expected persist length %v, was %v", MetadataPageSize, aop.PersistLength())
 	}
 
+	// Write some corruption data to the persist file before any other write, it
+	// should get truncated off.
+	f, err := os.OpenFile(filepath, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	minNumBytes := int(2 * MetadataPageSize)
+	_, err = f.Write(fastrand.Bytes(minNumBytes + fastrand.Intn(minNumBytes)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Write some data to the AOP.
 	length1 := 1000
 	bytes1 := fastrand.Bytes(length1)
@@ -60,6 +76,21 @@ func TestWrite(t *testing.T) {
 	}
 	if numBytes != length1 {
 		t.Fatalf("Expected to write %v bytes, wrote %v bytes", length1, numBytes)
+	}
+
+	// Write some corruption data to the persist file after another write, it
+	// should get truncated off.
+	f, err = os.OpenFile(filepath, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.Write(fastrand.Bytes(minNumBytes + fastrand.Intn(minNumBytes)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = f.Close()
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Load the AOP again.

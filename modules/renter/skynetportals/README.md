@@ -21,4 +21,4 @@ updates.
  - `Portals` returns the list of known Skynet portals and whether they are
    public
  - `New` creates and returns a new Skynet Portals List
- - `UpdateSkynetPortals` updates the Portals List
+ - `UpdatePortals` updates the Portals List

@@ -105,19 +105,6 @@ The following levels of severity are currently available:
 - **Error**: Alerts the user of an issue that requires immediate action to prevent further issues like loss of data
 - **Critical**: Indicates that a critical error is imminent. e.g. lack of funds causing contracts to get lost
 
-### Append-Only Persist
-**Key Files**
-- [appendonlypersist.go](./appendonlypersist.go)
-
-The Persistence System is responsible for the disk interaction and ensuring safe
-and performant ACID operations. An append only structure is used with a length
-of fsync'd bytes encoded in the metadata.
-
-**Inbound Complexities**
- - `NewAppendOnlyPersist` initializes the persistence file
- - `UpdateAndAppend` updates the persistence file and appends the information to
-   the persistence file
-
 ### Dependencies
 **Key Files**
 - [dependencies.go](./dependencies.go)
