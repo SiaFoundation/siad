@@ -13,6 +13,13 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+var (
+	// testHeader is the header specifier for testing.
+	testHeader = types.NewSpecifier("TestHeader\n")
+	// testVersion is the version specifier for testing
+	testVersion = types.NewSpecifier("TestVersion\n")
+)
+
 // TestWrite tests that written data is appended and persistent.
 func TestWrite(t *testing.T) {
 	if testing.Short() {
@@ -23,9 +30,7 @@ func TestWrite(t *testing.T) {
 	// Create a new AppendOnlyPersist.
 	testdir := build.TempDir("appendonlypersist", t.Name())
 	filename := "test"
-	header := types.NewSpecifier("AppendOnlyPersistTest\n")
-	version := types.NewSpecifier("x.x.x\n")
-	aop, readBytes, err := NewAppendOnlyPersist(testdir, filename, header, version)
+	aop, readBytes, err := NewAppendOnlyPersist(testdir, filename, testHeader, testVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +63,7 @@ func TestWrite(t *testing.T) {
 	}
 
 	// Load the AOP again.
-	aop, readBytes, err = NewAppendOnlyPersist(testdir, filename, header, version)
+	aop, readBytes, err = NewAppendOnlyPersist(testdir, filename, testHeader, testVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,12 +86,12 @@ func TestWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if numBytes != length1 {
-		t.Fatalf("Expected to write %v bytes, wrote %v bytes", length1, numBytes)
+	if numBytes != length2 {
+		t.Fatalf("Expected to write %v bytes, wrote %v bytes", length2, numBytes)
 	}
 
 	// Load the AOP again.
-	aop, readBytes, err = NewAppendOnlyPersist(testdir, filename, header, version)
+	aop, readBytes, err = NewAppendOnlyPersist(testdir, filename, testHeader, testVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,8 +136,8 @@ func TestMarshalMetadata(t *testing.T) {
 		staticPath: filename,
 
 		metadata: appendOnlyPersistMetadata{
-			Header:  types.NewSpecifier("header\n"),
-			Version: types.NewSpecifier("version\n"),
+			Header:  testHeader,
+			Version: testVersion,
 
 			Length: MetadataPageSize,
 		},
@@ -238,7 +243,7 @@ func TestMarshalMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = aop.updateMetadata(aopm)
-	if err != ErrWrongHeader {
+	if !errors.Contains(err, ErrWrongHeader) {
 		t.Fatalf("Expected %v got %v", ErrWrongHeader, err)
 	}
 }
