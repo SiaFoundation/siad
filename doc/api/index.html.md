@@ -3343,19 +3343,19 @@ Path to the directory on the sia network
 {
   "directories": [
     {
-      "aggregatenumfiles":        2,    // uint64
-      "aggregatenumstuckchunks":  4,    // uint64
-      "aggregatesize":            4096, // uint64
-      "heatlh":                   1.0,  // float64
-      "lasthealtchecktime": "2018-09-23T08:00:00.000000000+04:00" // timestamp
-      "maxhealth":                0.5,  // float64
-      "minredundancy":            2.6,  // float64
-      "mostrecentmodtime":  "2018-09-23T08:00:00.000000000+04:00" // timestamp
-      "stuckhealth":              1.0,  // float64
+      "aggregatenumfiles":       2,    // uint64
+      "aggregatenumstuckchunks": 4,    // uint64
+      "aggregatesize":           4096, // uint64
 
-      "numfiles":   3,        // uint64
-      "numsubdirs": 2,        // uint64
-      "siapath":    "foo/bar" // string
+      "health":             1.0,      // float64
+      "lasthealtchecktime": "2018-09-23T08:00:00.000000000+04:00" // timestamp
+      "maxhealth":          0.5,      // float64
+      "minredundancy":      2.6,      // float64
+      "mostrecentmodtime":  "2018-09-23T08:00:00.000000000+04:00" // timestamp
+      "numfiles":           3,        // uint64
+      "numsubdirs":         2,        // uint64
+      "siapath":            "foo/bar" // string
+      "stuckhealth":        1.0,      // float64
     }
   ],
   "files": []
@@ -3400,6 +3400,12 @@ the number of directories in the directory
 
 **siapath** | string  
 The path to the directory on the sia network
+
+**size** | string
+The size in bytes of files in the directory
+
+**stuckhealth** | string
+The health of the most in need siafile in the directory, stuck or not stuck
 
 **files** Same response as [files](#files)
 
@@ -4781,12 +4787,15 @@ Whether or not to treat the siapath as being relative to the root directory. If
 this field is not set, the siapath will be interpreted as relative to
 'var/skynet'.
 
+
+**UNSTABLE - subject to change in v1.4.9**
 **skykeyname** | string  
 The name of the skykey that will be used to encrypt this skyfile. Only the
 name or the ID of the skykey should be specified.
 
 **OR**
 
+**UNSTABLE - subject to change in v1.4.9**
 **skykeyid** | string  
 The ID of the skykey that will be used to encrypt this skyfile. Only the
 name or the ID of the skykey should be specified.
@@ -4904,6 +4913,7 @@ The performance stats fields are not protected by a compatibility promise, and
 may change over time.
 
 
+**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/addskykey [POST]
 > curl example
 
@@ -4924,6 +4934,7 @@ standard success or error response. See [standard
 responses](#standard-responses).
 
 
+**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/createskykey [POST]
 > curl example
 
@@ -4951,6 +4962,7 @@ desired name of the skykey
 base-64 encoded skykey
 
 
+**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/skykey [GET]
 > curl example
 
@@ -4985,6 +4997,7 @@ base-64 encoded ID of the skykey being queried
 base-64 encoded skykey
 
 
+**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/skykeyid [GET]
 > curl example
 

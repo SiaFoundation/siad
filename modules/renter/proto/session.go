@@ -362,7 +362,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 			u.LastOOSErr = s.height
 			err = errors.Compose(err, sc.UpdateUtility(u))
 		}
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, errors.AddContext(err, "marking host as not good for upload because the host is out of storage")
 	}
 	txn.TransactionSignatures[1].Signature = hostSig.Signature
 

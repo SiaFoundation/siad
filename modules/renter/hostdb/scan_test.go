@@ -68,16 +68,32 @@ func TestUpdateEntry(t *testing.T) {
 		t.Error("new entry was not given success values despite a successful scan")
 	}
 
-	// Insert the first entry twice more, with no error. There should be 4
-	// entries, and the timestamps should be strictly increasing.
+	// Try inserting the entry twice rapidly, nothing should change in the scan
+	// history length because it won't accept such a short turnaround.
 	hdbt.hdb.updateEntry(entry1, nil)
 	hdbt.hdb.updateEntry(entry1, nil)
 	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry1.PublicKey)
 	if !exists {
 		t.Fatal("Entry did not get inserted into the host tree")
 	}
+	if len(updatedEntry.ScanHistory) != 2 {
+		t.Fatal("new updates should have been ignored", len(updatedEntry.ScanHistory))
+	}
+
+	// Insert the first entry twice more, with no error. There should be 4
+	// entries, and the timestamps should be strictly increasing. Sleep for a
+	// bit between each update, because the hostdb during testing will not count
+	// scans if they are added too close together.
+	time.Sleep(3 * scanTimeElapsedRequirement)
+	hdbt.hdb.updateEntry(entry1, nil)
+	time.Sleep(3 * scanTimeElapsedRequirement)
+	hdbt.hdb.updateEntry(entry1, nil)
+	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry1.PublicKey)
+	if !exists {
+		t.Fatal("Entry did not get inserted into the host tree")
+	}
 	if len(updatedEntry.ScanHistory) != 4 {
-		t.Fatal("new entry was not given two scanning history entries")
+		t.Fatal("new entry was not given two scanning history entries", len(updatedEntry.ScanHistory))
 	}
 	if !updatedEntry.ScanHistory[1].Timestamp.Before(updatedEntry.ScanHistory[2].Timestamp) {
 		t.Error("new entry was not provided with a sorted scanning history")
@@ -90,6 +106,7 @@ func TestUpdateEntry(t *testing.T) {
 	}
 
 	// Add a non-successful scan and verify that it is registered properly.
+	time.Sleep(3 * scanTimeElapsedRequirement)
 	hdbt.hdb.updateEntry(entry1, someErr)
 	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry1.PublicKey)
 	if !exists {
@@ -122,6 +139,7 @@ func TestUpdateEntry(t *testing.T) {
 	// Add enough entries to get to minScans total length. When that length is
 	// reached, the entry should be deleted.
 	for i := len(updatedEntry.ScanHistory); i < minScans; i++ {
+		time.Sleep(3 * scanTimeElapsedRequirement)
 		hdbt.hdb.updateEntry(entry2, someErr)
 	}
 	// The entry should no longer exist in the hostdb, wiped for being offline.
@@ -142,6 +160,7 @@ func TestUpdateEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := len(updatedEntry.ScanHistory); i <= minScans; i++ {
+		time.Sleep(3 * scanTimeElapsedRequirement)
 		hdbt.hdb.updateEntry(entry1, someErr)
 	}
 	// The result should be compression, and not the entry getting deleted.
@@ -169,6 +188,7 @@ func TestUpdateEntry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	time.Sleep(3 * scanTimeElapsedRequirement)
 	hdbt.hdb.updateEntry(entry1, someErr)
 	// The result should be compression, and not the entry getting deleted.
 	updatedEntry, exists = hdbt.hdb.staticHostTree.Select(entry1.PublicKey)
@@ -251,6 +271,7 @@ func TestUpdateEntryWithKnownHost(t *testing.T) {
 	hdbt.hdb.knownContracts[entry.PublicKey.String()] = contractInfo{HostPublicKey: entry.PublicKey}
 	hdbt.hdb.mu.Unlock()
 
+	time.Sleep(3 * scanTimeElapsedRequirement)
 	hdbt.hdb.updateEntry(entry, someErr)
 	updatedEntry, exists := hdbt.hdb.staticHostTree.Select(entry.PublicKey)
 	if !exists {
@@ -276,6 +297,7 @@ func TestUpdateEntryWithKnownHost(t *testing.T) {
 
 	// Add enough entries to get to minScans total length.
 	for i := len(updatedEntry.ScanHistory); i < minScans; i++ {
+		time.Sleep(3 * scanTimeElapsedRequirement)
 		hdbt.hdb.updateEntry(entry, someErr)
 	}
 	// The entry should **still** exist in the hostdb, despite being offline.
@@ -289,6 +311,7 @@ func TestUpdateEntryWithKnownHost(t *testing.T) {
 	hdbt.hdb.mu.Lock()
 	delete(hdbt.hdb.knownContracts, updatedEntry.PublicKey.String())
 	hdbt.hdb.mu.Unlock()
+	time.Sleep(3 * scanTimeElapsedRequirement)
 	hdbt.hdb.updateEntry(entry, someErr)
 
 	// Entry should not exist.

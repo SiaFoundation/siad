@@ -274,9 +274,31 @@ func (p Program) ReadOnly() bool {
 			return false
 		case SpecifierDropSectors:
 			return false
+		case SpecifierHasSector:
+		case SpecifierReadSector:
+		default:
+			build.Critical("ReadOnly: unknown instruction")
 		}
 	}
 	return true
+}
+
+// RequiresSnapshot returns true if the program
+func (p Program) RequiresSnapshot() bool {
+	// Only certain read programs require a snapshot.
+	for _, instruction := range p {
+		switch instruction.Specifier {
+		case SpecifierAppend:
+			return true
+		case SpecifierDropSectors:
+			return true
+		case SpecifierHasSector:
+		case SpecifierReadSector:
+		default:
+			build.Critical("RequiresSnapshot: unknown instruction")
+		}
+	}
+	return false
 }
 
 // RPCBudget is a helper type for threadsafe budget handling.
