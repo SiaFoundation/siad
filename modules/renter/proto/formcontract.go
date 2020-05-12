@@ -14,9 +14,9 @@ import (
 // transaction to tpool. The contract is added to the ContractSet and its
 // metadata is returned.
 func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, formationTxnSet []types.Transaction, sweepTxn types.Transaction, sweepParents []types.Transaction, err error) {
-	// Check that the host version is high enough as belt-and-suspenders. This
-	// should never happen because hosts with old versions should be blacklisted
-	// by the contractor.
+	// Check that the host version is high enough. This should never happen
+	// because hosts with old versions should be filtered / blocked by the
+	// contractor anyway.
 	if build.VersionCmp(params.Host.Version, modules.MinimumSupportedRenterHostProtocolVersion) < 0 {
 		return modules.RenterContract{}, nil, types.Transaction{}, nil, ErrBadHostVersion
 	}
@@ -78,6 +78,7 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 	}
 
 	// Create file contract.
+	renterPostTaxPayout := types.PostTax(startHeight, totalPayout).Sub(hostPayout)
 	fc := types.FileContract{
 		FileSize:       0,
 		FileMerkleRoot: crypto.Hash{}, // no proof possible without data
@@ -88,13 +89,13 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 		RevisionNumber: 0,
 		ValidProofOutputs: []types.SiacoinOutput{
 			// Outputs need to account for tax.
-			{Value: types.PostTax(startHeight, totalPayout).Sub(hostPayout), UnlockHash: refundAddress}, // This is the renter payout, but with tax applied.
+			{Value: renterPostTaxPayout, UnlockHash: refundAddress}, // This is the renter payout, but with tax applied.
 			// Collateral is returned to host.
 			{Value: hostPayout, UnlockHash: host.UnlockHash},
 		},
 		MissedProofOutputs: []types.SiacoinOutput{
 			// Same as above.
-			{Value: types.PostTax(startHeight, totalPayout).Sub(hostPayout), UnlockHash: refundAddress},
+			{Value: renterPostTaxPayout, UnlockHash: refundAddress},
 			// Same as above.
 			{Value: hostPayout, UnlockHash: host.UnlockHash},
 			// Once we start doing revisions, we'll move some coins to the host and some to the void.
