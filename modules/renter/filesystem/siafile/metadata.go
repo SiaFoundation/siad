@@ -427,11 +427,11 @@ func (md *Metadata) equals(b Metadata) bool {
 	}
 	mdBytes, err := json.Marshal(md)
 	if err != nil {
-		build.Critical("failed to marshal:", err)
+		build.Critical(fmt.Sprintf("failed to marshal: %s. Problematic entity: %+v\n", err.Error(), md))
 	}
 	bBytes, err := json.Marshal(b)
 	if err != nil {
-		build.Critical("failed to marshal:", err)
+		build.Critical(fmt.Sprintf("failed to marshal: %s. Problematic entity: %+v\n", err.Error(), b))
 	}
 	return bytes.Equal(mdBytes, bBytes)
 }
