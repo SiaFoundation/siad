@@ -388,7 +388,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		wakeChan: make(chan struct{}, 1),
 		renter:   r,
 	}
-	// Get the worker cache set up before returning the worker. This prvents a
+	// Get the worker cache set up before returning the worker. This prevents a
 	// race condition in some tests.
 	if !w.managedUpdateCache() {
 		return nil, errors.New("unable to build cache for worker")

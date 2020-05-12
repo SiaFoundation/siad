@@ -38,7 +38,6 @@ type unfinishedUploadChunk struct {
 	// structures.
 	fileRecentlySuccessful bool // indicates if the file the chunk is from had a recent successful repair
 	health                 float64
-	index                  uint64
 	length                 uint64
 	memoryNeeded           uint64 // memory needed in bytes
 	memoryReleased         uint64 // memory that has been returned of memoryNeeded
@@ -50,7 +49,8 @@ type unfinishedUploadChunk struct {
 	stuckRepair            bool   // indicates if the chunk was identified for repair by the stuck loop
 	priority               bool   // indicates if the chunks is supposed to be repaired asap
 
-	// Cache the siapath of the underlying file.
+	// Static cached fields.
+	staticIndex   uint64
 	staticSiaPath string
 
 	// The logical data is the data that is presented to the user when the user
@@ -135,6 +135,21 @@ func (uc *unfinishedUploadChunk) staticAvailable() bool {
 	}
 }
 
+// managedIncreaseRemainingWorkers increases the number of remaining workers but
+// the given value
+func (uc *unfinishedUploadChunk) managedIncreaseRemainingWorkers(numWorkers int) {
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+	uc.workersRemaining += numWorkers
+}
+
+// managedUpdateDistributionTime updates the chunk's distribution time
+func (uc *unfinishedUploadChunk) managedUpdateDistributionTime() {
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+	uc.chunkDistributionTime = time.Now()
+}
+
 // managedNotifyStandbyWorkers is called when a worker fails to upload a piece, meaning
 // that the standby workers may now be needed to help the piece finish
 // uploading.
@@ -187,29 +202,19 @@ func readDataPieces(r io.Reader, ec modules.ErasureCoder, pieceSize uint64) ([][
 // physical data and distribute it to the worker pool.
 func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 	// Give the chunk to each worker, marking the number of workers that have
-	// received the chunk. The workers cannot be interacted with while the
-	// renter is holding a lock, so we need to build a list of workers while
-	// under lock and then launch work jobs after that.
-	r.staticWorkerPool.mu.RLock()
-	uc.workersRemaining += len(r.staticWorkerPool.workers)
-	workers := make([]*worker, 0, len(r.staticWorkerPool.workers))
-	for _, worker := range r.staticWorkerPool.workers {
-		workers = append(workers, worker)
-	}
-	r.staticWorkerPool.mu.RUnlock()
-
-	// Filter through the workers, ignoring any that are not good for upload,
-	// and ignoring any that are on upload cooldown.
+	// received the chunk. Filter through the workers, ignoring any that are not
+	// good for upload, and ignoring any that are on upload cooldown.
+	workers := r.staticWorkerPool.callWorkers()
+	uc.managedIncreaseRemainingWorkers(len(workers))
 	jobsDistributed := 0
 	for _, w := range workers {
 		if w.callQueueUploadChunk(uc) {
 			jobsDistributed++
 		}
 	}
-	uc.mu.Lock()
-	uc.chunkDistributionTime = time.Now()
-	uc.mu.Unlock()
-	r.repairLog.Printf("Distributed chunk %v of %s to %v workers.", uc.index, uc.staticSiaPath, jobsDistributed)
+
+	uc.managedUpdateDistributionTime()
+	r.repairLog.Printf("Distributed chunk %v of %s to %v workers.", uc.staticIndex, uc.staticSiaPath, jobsDistributed)
 	r.managedCleanUpUploadChunk(uc)
 }
 
@@ -228,7 +233,7 @@ func (uc *unfinishedUploadChunk) padAndEncryptPiece(i int) {
 		uc.logicalChunkData[i] = append(uc.logicalChunkData[i], make([]byte, short)...)
 	}
 	// Encrypt the piece.
-	key := uc.fileEntry.MasterKey().Derive(uc.index, uint64(i))
+	key := uc.fileEntry.MasterKey().Derive(uc.staticIndex, uint64(i))
 	// TODO: Switch this to perform in-place encryption.
 	uc.logicalChunkData[i] = key.EncryptBytes(uc.logicalChunkData[i])
 }
@@ -244,7 +249,7 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 	// TODO: There is a disparity in the way that the upload and download code
 	// handle the last chunk, which may not be full sized.
 	downloadLength := chunk.length
-	if chunk.index == chunk.fileEntry.NumChunks()-1 && chunk.fileEntry.Size()%chunk.length != 0 {
+	if chunk.staticIndex == chunk.fileEntry.NumChunks()-1 && chunk.fileEntry.Size()%chunk.length != 0 {
 		downloadLength = chunk.fileEntry.Size() % chunk.length
 	}
 
@@ -367,7 +372,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		chunk.workersRemaining = 0
 		r.memoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
 		chunk.memoryReleased += erasureCodingMemory + pieceCompletedMemory
-		r.repairLog.Printf("Unable to fetch the logical data for chunk %v of %s - marking as stuck: %v", chunk.index, chunk.staticSiaPath, err)
+		r.repairLog.Printf("Unable to fetch the logical data for chunk %v of %s - marking as stuck: %v", chunk.staticIndex, chunk.staticSiaPath, err)
 
 		// If Sia is not currently online, the chunk doesn't need to be marked
 		// as stuck.
@@ -376,10 +381,10 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		}
 		// Mark chunk as stuck because the renter was unable to fetch the
 		// logical data.
-		r.repairLog.Printf("Marking a chunk %v of file %s as stuck because the logical data could not be fetched: %v", chunk.index, chunk.staticSiaPath, err)
-		err = chunk.fileEntry.SetStuck(chunk.index, true)
+		r.repairLog.Printf("Marking a chunk %v of file %s as stuck because the logical data could not be fetched: %v", chunk.staticIndex, chunk.staticSiaPath, err)
+		err = chunk.fileEntry.SetStuck(chunk.staticIndex, true)
 		if err != nil {
-			r.repairLog.Printf("Error marking chunk %v of file %s as stuck: %v", chunk.index, chunk.staticSiaPath, err)
+			r.repairLog.Printf("Error marking chunk %v of file %s as stuck: %v", chunk.staticIndex, chunk.staticSiaPath, err)
 		}
 		return
 	}
@@ -594,9 +599,9 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	released := uc.released
 	if chunkComplete && !released {
 		if uc.piecesCompleted >= uc.piecesNeeded {
-			r.repairLog.Printf("Completed repair for chunk %v of %s, %v pieces were completed out of %v", uc.index, uc.staticSiaPath, uc.piecesCompleted, uc.piecesNeeded)
+			r.repairLog.Printf("Completed repair for chunk %v of %s, %v pieces were completed out of %v", uc.staticIndex, uc.staticSiaPath, uc.piecesCompleted, uc.piecesNeeded)
 		} else {
-			r.repairLog.Printf("Repair of chunk %v of %s was unsuccessful, %v pieces were completed out of %v", uc.index, uc.staticSiaPath, uc.piecesCompleted, uc.piecesNeeded)
+			r.repairLog.Printf("Repair of chunk %v of %s was unsuccessful, %v pieces were completed out of %v", uc.staticIndex, uc.staticSiaPath, uc.piecesCompleted, uc.piecesNeeded)
 		}
 		if !uc.staticAvailable() {
 			uc.err = errors.New("unable to upload file, file is not available on the network")
@@ -666,7 +671,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 // fileEntry
 func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, stuck bool) error {
 	// Update chunk stuck status
-	err := uc.fileEntry.SetStuck(uc.index, stuck)
+	err := uc.fileEntry.SetStuck(uc.staticIndex, stuck)
 	if err != nil {
 		return fmt.Errorf("WARN: unable to update chunk stuck status for file %v: %v", uc.fileEntry.SiaFilePath(), err)
 	}
