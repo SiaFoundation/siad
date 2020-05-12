@@ -906,6 +906,9 @@ func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
 	}
 	// Create chunk updates.
 	chunkUpdates, errIter := sf.iterateChunks(func(chunk *chunk) (bool, error) {
+		if len(setStuck) == 0 {
+			return false, nil
+		}
 		if chunk.Index == setStuck[0].Index {
 			chunk.Stuck = stuck
 			setStuck = setStuck[1:]
