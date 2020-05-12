@@ -10,11 +10,12 @@ Version History
 
 Latest:
 
-## Apr 28, 2020:
+## May 11, 2020:
 ### v1.4.8
 **Key Updates**
 - Enable FundEphemeralAccountRPC on the host
 - Enable UpdatePriceTableRPC on the host
+- Add `startheight` and `endheight` flags for `siac wallet transactions` pagination
 - Add progress bars to Skynet uploads. Those can be disabled by passing the 
   `--silent` flag.
 - Add the Execute Program RPC to the host
@@ -23,6 +24,8 @@ Latest:
 - Add MinBaseRPCPrice and MinSectorAccessPrice to `siac host -v`
 - Add `basePriceAdjustment` to the host score to check for `BaseRPCPrice` and
   `SectorAccessPrice` price violations.
+- Add support for unpinning directories from Skynet.
+- Add support for unpinning multiple files in a single command.
 - Change payment processing to always use ephemeral accounts, even for contract payments
 - Increase renew alert severity in 2nd half of renew window
 - Prioritize remote repairs
@@ -30,17 +33,34 @@ Latest:
   siad-specific data. This complements the SIA_DATA_DIR variable which tells 
   `siad` where to store general Sia data, such as the API password,
   configuration, etc.
+- Update the `siac renter` summaries to use the `root` flags for the API calls
+- Add `root` flag to `renter/rename` so that all file in the filesystem can be renamed
+- Allow for `wallet/verifypassword` endpoint to accept the primary seed as well as a password
+- Add `/renter/workers` API endpoint to get the current status of the workers. This pulls it out of the log files as well. 
+- Add `siac renter workers` command to siac
+- Add valid and missed proof outputs to StorageObligation for `/host/contracts` 
 
 **Bugs Fixed**
 - Fix decode bug for the rpcResponse object
 - Fix bug in rotation of fingerprint buckets
++ fix hostdb log being incorrectly named
 - Refactor the environment variables into the `build` package to address bug
   where `siac` and `siad` could be using different API Passwords.
 - Fix bug in converting siafile to skyfile and enable testing.
 - Fixed bug in bubble code that would overwrite the `siadir` metadata with old
   metadata
+- Fixed the output of `siac skynet ls` not counting subdirectories.
+- Fix a bug in `parsePercentages` and added randomized testing
 - Fixed bug where backups where not being repaired
 - The `AggregateNumSubDirs` count was fixed as it was always 0. This is a piece of metadata keeping track of the number of all subdirs of a directory, counted recursively.
+- Address missed locations of API error returns for handling of Modules not running
++ add missing local ranges to IsLocal function
++ workers now more consistently use the most recent contract
++ improved performance logging in repair.log, especially in debug mode
++ general upload performance improvements (minor)
+- Fixed bug in `siac renter -v` where the health summary wasn't considering `OnDisk` when deciding if the file was recoverable
+- Fix panic condition in Renter's `uploadheap` due to change in chunk's stuck status
+- renewed contracts must be marked as not good for upload and not good for renew
 
 **Other**
 - Add 'AccountFunding' to the Host's financial metrics
@@ -50,11 +70,18 @@ Latest:
 - Fixed checking number of contracts in testContractInterrupted test.
 - Move generate-changelog.sh script to changelog directory.
 - Generate changelog from any file extension (.md is not needed)
+- Fix permission issues for Windows runner, do not perform linting during Windows tests.
+- Move filenames to ignore in changelog generator to `.changelogignore` file
 - Created `Merge Request.md` to document the merge request standards and process.
-- Remove backslash check in SiaPath validation, add `\` to list of accepted
+- Remove backslash check in SiaPath validation, add \ to list of accepted
   characters
 - `siac skynet upload` with the `--dry-run` flag will now print more clear messages to emphasize that no files are actually uploaded.
 - Move `scanCheckInterval` to be a build variable for the `hostdb`
+- Skynet portals and blacklist persistence errors have been made more clear and now include the persist file locations.
+- add some performance stats for upload and download speeds to /skynet/stats
+- set the password and user agent automatically in client.New
+- Publish test logs also for regular pipelines (not only for nightly
+  pipelines).
 - Setup Windows runner for nightly test executions.
 
 ## Apr 2, 2020:
