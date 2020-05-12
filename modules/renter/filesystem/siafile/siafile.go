@@ -673,7 +673,8 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 		return nil
 	})
 	if err != nil {
-		build.Critical("failed to iterate over chunks: ", err)
+		err = fmt.Errorf("failed to iterate over chunks of file '%v': %v", sf.siaFilePath, err)
+		build.Critical(err)
 		return 0, 0, 0, 0, 0
 	}
 
