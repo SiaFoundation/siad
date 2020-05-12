@@ -48,10 +48,10 @@ type (
 	// appendOnlyPersistMetadata contains metadata for the AppendOnly Persist
 	// file.
 	appendOnlyPersistMetadata struct {
-		staticHeader  types.Specifier
-		staticVersion types.Specifier
+		Header  types.Specifier
+		Version types.Specifier
 
-		length uint64
+		Length uint64
 	}
 )
 
@@ -61,8 +61,8 @@ func NewAppendOnlyPersist(dir, file string, metadataHeader, metadataVersion type
 	aop := &AppendOnlyPersist{
 		staticPath: filepath.Join(dir, file),
 		metadata: appendOnlyPersistMetadata{
-			staticHeader:  metadataHeader,
-			staticVersion: metadataVersion,
+			Header:  metadataHeader,
+			Version: metadataVersion,
 		},
 	}
 	bytes, err := aop.initOrLoadPersist(dir)
@@ -79,7 +79,7 @@ func (aop *AppendOnlyPersist) PersistLength() uint64 {
 	aop.mu.Lock()
 	defer aop.mu.Unlock()
 
-	return aop.metadata.length
+	return aop.metadata.Length
 }
 
 // Write implements the io.Writer interface. It updates the persist file,
@@ -90,7 +90,7 @@ func (aop *AppendOnlyPersist) Write(b []byte) (int, error) {
 
 	filepath := aop.FilePath()
 	// Truncate the file to remove any corrupted data that may have been added.
-	err := os.Truncate(filepath, int64(aop.metadata.length))
+	err := os.Truncate(filepath, int64(aop.metadata.Length))
 	if err != nil {
 		return 0, err
 	}
@@ -102,7 +102,7 @@ func (aop *AppendOnlyPersist) Write(b []byte) (int, error) {
 	defer f.Close()
 
 	// Append data and sync
-	numBytes, err := f.WriteAt(b, int64(aop.metadata.length))
+	numBytes, err := f.WriteAt(b, int64(aop.metadata.Length))
 	if err != nil {
 		return 0, errors.AddContext(err, "unable to append new data to blacklist persist file")
 	}
@@ -112,8 +112,8 @@ func (aop *AppendOnlyPersist) Write(b []byte) (int, error) {
 	}
 
 	// Update length and sync
-	aop.metadata.length += uint64(numBytes)
-	lengthBytes := encoding.Marshal(aop.metadata.length)
+	aop.metadata.Length += uint64(numBytes)
+	lengthBytes := encoding.Marshal(aop.metadata.Length)
 
 	// Write to file
 	lengthOffset := int64(2 * types.SpecifierLen)
@@ -154,7 +154,7 @@ func (aop *AppendOnlyPersist) initOrLoadPersist(dir string) ([]byte, error) {
 	defer f.Close()
 
 	// Marshal the metadata.
-	aop.metadata.length = MetadataPageSize
+	aop.metadata.Length = MetadataPageSize
 	metadataBytes := encoding.Marshal(aop.metadata)
 
 	// Sanity check that the metadataBytes are less than the MetadataPageSize
@@ -208,13 +208,13 @@ func (aop *AppendOnlyPersist) load() ([]byte, error) {
 	}
 
 	// Check if there are persisted objects after the metadata.
-	goodBytes := aop.metadata.length - MetadataPageSize
+	goodBytes := aop.metadata.Length - MetadataPageSize
 	if goodBytes <= 0 {
 		return []byte{}, nil
 	}
 
 	// Truncate the file to remove any corrupted data that may have been added.
-	err = os.Truncate(filepath, int64(aop.metadata.length))
+	err = os.Truncate(filepath, int64(aop.metadata.Length))
 	if err != nil {
 		return nil, err
 	}
@@ -234,16 +234,16 @@ func (aop *AppendOnlyPersist) load() ([]byte, error) {
 
 // updateMetadata updates the metadata, validating its correctness.
 func (aop *AppendOnlyPersist) updateMetadata(metadata appendOnlyPersistMetadata) error {
-	if metadata.staticHeader != aop.metadata.staticHeader {
+	if metadata.Header != aop.metadata.Header {
 		// Convert headers to strings and strip newlines for displaying.
-		expected := string(bytes.Split(aop.metadata.staticHeader[:], []byte{'\n'})[0])
-		received := string(bytes.Split(metadata.staticHeader[:], []byte{'\n'})[0])
+		expected := string(bytes.Split(aop.metadata.Header[:], []byte{'\n'})[0])
+		received := string(bytes.Split(metadata.Header[:], []byte{'\n'})[0])
 		return errors.AddContext(ErrWrongHeader, fmt.Sprintf("expected %v, received %v", expected, received))
 	}
-	if metadata.staticVersion != aop.metadata.staticVersion {
+	if metadata.Version != aop.metadata.Version {
 		// Convert versions to strings and strip newlines for displaying.
-		expected := string(bytes.Split(aop.metadata.staticVersion[:], []byte{'\n'})[0])
-		received := string(bytes.Split(metadata.staticVersion[:], []byte{'\n'})[0])
+		expected := string(bytes.Split(aop.metadata.Version[:], []byte{'\n'})[0])
+		received := string(bytes.Split(metadata.Version[:], []byte{'\n'})[0])
 		return errors.AddContext(ErrWrongVersion, fmt.Sprintf("expected %v, received %v", expected, received))
 	}
 
@@ -263,17 +263,17 @@ func (aopm *appendOnlyPersistMetadata) UnmarshalSia(r io.Reader) error {
 	lengthOffset := 2 * types.SpecifierLen
 
 	// Unmarshal and check header and version for correctness.
-	err = aopm.staticHeader.UnmarshalText(raw[:versionOffset])
+	err = aopm.Header.UnmarshalText(raw[:versionOffset])
 	if err != nil {
 		return errors.AddContext(err, "unable to unmarshal header")
 	}
-	err = aopm.staticVersion.UnmarshalText(raw[versionOffset:lengthOffset])
+	err = aopm.Version.UnmarshalText(raw[versionOffset:lengthOffset])
 	if err != nil {
 		return errors.AddContext(err, "unable to unmarshal version")
 	}
 
 	// Unmarshal the length
-	err = encoding.Unmarshal(raw[lengthOffset:], &aopm.length)
+	err = encoding.Unmarshal(raw[lengthOffset:], &aopm.Length)
 	if err != nil {
 		return errors.AddContext(err, "unable to unmarshal persist length")
 	}

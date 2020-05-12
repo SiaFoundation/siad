@@ -131,10 +131,10 @@ func TestMarshalMetadata(t *testing.T) {
 		staticPath: filename,
 
 		metadata: appendOnlyPersistMetadata{
-			staticHeader:  types.NewSpecifier("header\n"),
-			staticVersion: types.NewSpecifier("version\n"),
+			Header:  types.NewSpecifier("header\n"),
+			Version: types.NewSpecifier("version\n"),
 
-			length: MetadataPageSize,
+			Length: MetadataPageSize,
 		},
 	}
 
@@ -180,8 +180,8 @@ func TestMarshalMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if aop.metadata.length != 2*MetadataPageSize {
-		t.Fatalf("incorrect decoded length, got %v expected %v", aop.metadata.length, 2*MetadataPageSize)
+	if aop.metadata.Length != 2*MetadataPageSize {
+		t.Fatalf("incorrect decoded length, got %v expected %v", aop.metadata.Length, 2*MetadataPageSize)
 	}
 
 	// Write an incorrect version and verify that unmarshaling the metadata will
