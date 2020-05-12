@@ -32,151 +32,137 @@ var (
 )
 
 type (
-	// SkynetBlacklist manages a set of blacklisted skylinks by tracking the
-	// merkleroots and persists the list to disk
-	SkynetBlacklist struct {
-		aop *persist.AppendOnlyPersist
+	// PersistList manages a set of blacklisted skylinks by tracking the
+	// merkleroots and persists the list to disk.
+	PersistList struct {
+		staticAop *persist.AppendOnlyPersist
 
-		merkleroots map[crypto.Hash]struct{}
+		// merkleRoots is a set of blacklisted links.
+		merkleRoots map[crypto.Hash]struct{}
 
 		mu sync.Mutex
 	}
 
-	// listedLink contains a Skynet blacklist list and whether it is listed.
-	listedLink struct {
-		merkleRoot crypto.Hash
-		listed     bool
+	// persistEntry contains a Skynet blacklist link and whether it should be
+	// listed as being in the persistence file.
+	persistEntry struct {
+		MerkleRoot crypto.Hash
+		Listed     bool
 	}
 )
 
-// New creates a new SkynetBlacklist.
-func New(persistDir string) (*SkynetBlacklist, error) {
+// New returns an initialized PersistList.
+func New(persistDir string) (*PersistList, error) {
 	// Initialize the persistence of the blacklist.
-	aop, r, err := persist.NewAppendOnlyPersist(persistDir, persistFile, persistSize, metadataHeader, metadataVersion)
+	aop, bytes, err := persist.NewAppendOnlyPersist(persistDir, persistFile, persistSize, metadataHeader, metadataVersion)
 	if err != nil {
 		return nil, errors.AddContext(err, fmt.Sprintf("unable to initialize the skynet blacklist persistence at '%v'", aop.FilePath()))
 	}
-	defer r.Close()
 
-	sb := &SkynetBlacklist{
-		aop: aop,
+	pl := &PersistList{
+		staticAop: aop,
 	}
-	blacklist, err := unmarshalObjects(r)
+	blacklist, err := unmarshalObjects(bytes)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to unmarshal persist objects")
 	}
-	sb.merkleroots = blacklist
+	pl.merkleRoots = blacklist
 
-	return sb, nil
+	return pl, nil
 }
 
 // Blacklist returns the merkleroots that are blacklisted
-func (sb *SkynetBlacklist) Blacklist() []crypto.Hash {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
+func (pl *PersistList) Blacklist() []crypto.Hash {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
 
 	var blacklist []crypto.Hash
-	for mr := range sb.merkleroots {
+	for mr := range pl.merkleRoots {
 		blacklist = append(blacklist, mr)
 	}
 	return blacklist
 }
 
 // IsBlacklisted indicates if a skylink is currently blacklisted
-func (sb *SkynetBlacklist) IsBlacklisted(skylink modules.Skylink) bool {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
+func (pl *PersistList) IsBlacklisted(skylink modules.Skylink) bool {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
 
-	_, ok := sb.merkleroots[skylink.MerkleRoot()]
+	_, ok := pl.merkleRoots[skylink.MerkleRoot()]
 	return ok
 }
 
-// UpdateSkynetBlacklist updates the list of skylinks that are blacklisted
-func (sb *SkynetBlacklist) UpdateSkynetBlacklist(additions, removals []modules.Skylink) error {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
+// UpdateBlacklist updates the list of skylinks that are blacklisted.
+func (pl *PersistList) UpdateBlacklist(additions, removals []modules.Skylink) error {
+	pl.mu.Lock()
+	defer pl.mu.Unlock()
 
-	buf, err := sb.marshalObjects(additions, removals)
+	buf, err := pl.marshalObjects(additions, removals)
 	if err != nil {
-		return errors.AddContext(err, fmt.Sprintf("unable to update skynet blacklist persistence at '%v'", sb.aop.FilePath()))
+		return errors.AddContext(err, fmt.Sprintf("unable to update skynet blacklist persistence at '%v'", pl.staticAop.FilePath()))
 	}
-	_, err = sb.aop.Write(buf.Bytes())
-	return errors.AddContext(err, fmt.Sprintf("unable to update skynet blacklist persistence at '%v'", sb.aop.FilePath()))
+	_, err = pl.staticAop.Write(buf.Bytes())
+	return errors.AddContext(err, fmt.Sprintf("unable to update skynet blacklist persistence at '%v'", pl.staticAop.FilePath()))
 }
 
 // marshalObjects marshals the given objects into a byte buffer.
 //
 // NOTE: this method does not check for duplicate additions or removals
-func (sb *SkynetBlacklist) marshalObjects(additions, removals []modules.Skylink) (bytes.Buffer, error) {
+func (pl *PersistList) marshalObjects(additions, removals []modules.Skylink) (bytes.Buffer, error) {
 	// Create buffer for encoder
 	var buf bytes.Buffer
 	// Create and encode the persist links
+	listed := true
 	for _, skylink := range additions {
 		// Add skylink merkleroot to map
 		mr := skylink.MerkleRoot()
-		listed := true
-		sb.merkleroots[mr] = struct{}{}
+		pl.merkleRoots[mr] = struct{}{}
 
 		// Marshal the update
-		ll := listedLink{mr, listed}
-		err := ll.MarshalSia(&buf)
-		if err != nil {
-			return bytes.Buffer{}, errors.AddContext(err, "unable to encode persisted blacklist link")
-		}
+		pe := persistEntry{mr, listed}
+		bytes := encoding.Marshal(pe)
+		buf.Write(bytes)
 	}
+	listed = false
 	for _, skylink := range removals {
 		// Remove skylink merkleroot from map
 		mr := skylink.MerkleRoot()
-		listed := false
-		delete(sb.merkleroots, mr)
+		delete(pl.merkleRoots, mr)
 
 		// Marshal the update
-		ll := listedLink{mr, listed}
-		err := ll.MarshalSia(&buf)
-		if err != nil {
-			return bytes.Buffer{}, errors.AddContext(err, "unable to encode persisted blacklist removal link")
-		}
+		pe := persistEntry{mr, listed}
+		bytes := encoding.Marshal(pe)
+		buf.Write(bytes)
 	}
 
 	return buf, nil
 }
 
 // unmarshalObjects unmarshals the sia encoded objects.
-func unmarshalObjects(r io.Reader) (map[crypto.Hash]struct{}, error) {
+func unmarshalObjects(bytes []byte) (map[crypto.Hash]struct{}, error) {
 	blacklist := make(map[crypto.Hash]struct{})
 	// Unmarshal blacklisted links one by one until EOF.
+	var offset uint64
 	for {
-		var ll listedLink
-		err := ll.UnmarshalSia(r)
+		if offset+persistSize > uint64(len(bytes)) {
+			break
+		}
+
+		var pe persistEntry
+		err := encoding.Unmarshal(bytes[offset:offset+persistSize], &pe)
 		if errors.Contains(err, io.EOF) {
 			break
 		}
 		if err != nil {
 			return nil, err
 		}
-		if !ll.listed {
-			delete(blacklist, ll.merkleRoot)
+		offset += persistSize
+
+		if !pe.Listed {
+			delete(blacklist, pe.MerkleRoot)
 			continue
 		}
-		blacklist[ll.merkleRoot] = struct{}{}
+		blacklist[pe.MerkleRoot] = struct{}{}
 	}
 	return blacklist, nil
-}
-
-// MarshalSia implements the encoding.SiaMarshaler interface.
-func (ll listedLink) MarshalSia(w io.Writer) error {
-	e := encoding.NewEncoder(w)
-	e.Encode(ll.merkleRoot)
-	e.WriteBool(ll.listed)
-	return e.Err()
-}
-
-// UnmarshalSia implements the encoding.SiaUnmarshaler interface.
-func (ll *listedLink) UnmarshalSia(r io.Reader) error {
-	*ll = listedLink{}
-	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
-	d.Decode(&ll.merkleRoot)
-	ll.listed = d.NextBool()
-	err := d.Err()
-	return err
 }

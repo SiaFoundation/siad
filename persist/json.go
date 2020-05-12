@@ -288,7 +288,7 @@ func SaveJSON(meta Metadata, object interface{}, filename string) error {
 			return nil
 		}
 
-		file, err := os.OpenFile(filename+tempSuffix, os.O_RDWR|os.O_TRUNC|os.O_CREATE, DefaultFilePermissions)
+		file, err := os.OpenFile(filename+tempSuffix, os.O_RDWR|os.O_TRUNC|os.O_CREATE, defaultFilePermissions)
 		if err != nil {
 			return build.ExtendErr("unable to open temp file", err)
 		}
@@ -313,7 +313,7 @@ func SaveJSON(meta Metadata, object interface{}, filename string) error {
 
 	// Write out the data to the real file, with a sync.
 	err = func() (err error) {
-		file, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_CREATE, DefaultFilePermissions)
+		file, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_CREATE, defaultFilePermissions)
 		if err != nil {
 			return build.ExtendErr("unable to open file", err)
 		}

@@ -14,14 +14,11 @@ responsibilities:
 
 The Skynet Portals subsystem contains the structure of the Skynet Portals List
 and is used to create a new Skynet Portals List and return information about the
-Portals.
+Portals. Uses Persist package's Append-Only File subsystem to ensure ACID disk
+updates.
 
 **Exports**
  - `Portals` returns the list of known Skynet portals and whether they are
    public
  - `New` creates and returns a new Skynet Portals List
  - `UpdateSkynetPortals` updates the Portals List
-
-**Outbound Complexities**
- - `New` calls the Persistence System's `NewAppendOnlyPersist` method
- - `Update` calls the Persistence System's `UpdateAndAppend` method

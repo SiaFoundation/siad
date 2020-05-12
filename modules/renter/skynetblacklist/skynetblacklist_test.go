@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
@@ -40,34 +41,34 @@ func TestPersist(t *testing.T) {
 
 	// Create a new SkynetBlacklist
 	testdir := testDir(t.Name())
-	sb, err := New(testdir)
+	pl, err := New(testdir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	filename := filepath.Join(testdir, persistFile)
-	if filename != sb.aop.FilePath() {
-		t.Fatalf("Expected filepath %v, was %v", filename, sb.aop.FilePath())
+	if filename != pl.staticAop.FilePath() {
+		t.Fatalf("Expected filepath %v, was %v", filename, pl.staticAop.FilePath())
 	}
 
 	// There should be no skylinks in the blacklist
-	if len(sb.merkleroots) != 0 {
-		t.Fatal("Expected blacklist to be empty but found:", len(sb.merkleroots))
+	if len(pl.merkleRoots) != 0 {
+		t.Fatal("Expected blacklist to be empty but found:", len(pl.merkleRoots))
 	}
 
 	// Update blacklist
 	var skylink modules.Skylink
 	add := []modules.Skylink{skylink}
 	remove := []modules.Skylink{skylink}
-	err = sb.UpdateSkynetBlacklist(add, remove)
+	err = pl.UpdateBlacklist(add, remove)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Blacklist should be empty because we added and then removed the same
 	// skylink
-	if len(sb.merkleroots) != 0 {
-		t.Fatal("Expected blacklist to be empty but found:", len(sb.merkleroots))
+	if len(pl.merkleRoots) != 0 {
+		t.Fatal("Expected blacklist to be empty but found:", len(pl.merkleRoots))
 	}
 
 	// Verify that the correct number of links were persisted to verify no links
@@ -77,23 +78,23 @@ func TestPersist(t *testing.T) {
 	}
 
 	// Add the skylink again
-	err = sb.UpdateSkynetBlacklist(add, []modules.Skylink{})
+	err = pl.UpdateBlacklist(add, []modules.Skylink{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// There should be 1 element in the blacklist now
-	if len(sb.merkleroots) != 1 {
-		t.Fatal("Expected 1 element in the blacklist but found:", len(sb.merkleroots))
+	if len(pl.merkleRoots) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(pl.merkleRoots))
 	}
-	_, ok := sb.merkleroots[skylink.MerkleRoot()]
+	_, ok := pl.merkleRoots[skylink.MerkleRoot()]
 	if !ok {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
 
 	// Load a new Skynet Blacklist to verify the contents from disk get loaded
 	// properly
-	sb2, err := New(testdir)
+	pl2, err := New(testdir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,32 +106,32 @@ func TestPersist(t *testing.T) {
 	}
 
 	// There should be 1 element in the blacklist
-	if len(sb2.merkleroots) != 1 {
-		t.Fatal("Expected 1 element in the blacklist but found:", len(sb2.merkleroots))
+	if len(pl2.merkleRoots) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(pl2.merkleRoots))
 	}
-	_, ok = sb2.merkleroots[skylink.MerkleRoot()]
+	_, ok = pl2.merkleRoots[skylink.MerkleRoot()]
 	if !ok {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
 
 	// Add the skylink again
-	err = sb2.UpdateSkynetBlacklist(add, []modules.Skylink{})
+	err = pl2.UpdateBlacklist(add, []modules.Skylink{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// There should still only be 1 element in the blacklist
-	if len(sb2.merkleroots) != 1 {
-		t.Fatal("Expected 1 element in the blacklist but found:", len(sb2.merkleroots))
+	if len(pl2.merkleRoots) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(pl2.merkleRoots))
 	}
-	_, ok = sb2.merkleroots[skylink.MerkleRoot()]
+	_, ok = pl2.merkleRoots[skylink.MerkleRoot()]
 	if !ok {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
 
 	// Load another new Skynet Blacklist to verify the contents from disk get loaded
 	// properly
-	sb3, err := New(testdir)
+	pl3, err := New(testdir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,10 +143,10 @@ func TestPersist(t *testing.T) {
 	}
 
 	// There should be 1 element in the blacklist
-	if len(sb3.merkleroots) != 1 {
-		t.Fatal("Expected 1 element in the blacklist but found:", len(sb3.merkleroots))
+	if len(pl3.merkleRoots) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(pl3.merkleRoots))
 	}
-	_, ok = sb3.merkleroots[skylink.MerkleRoot()]
+	_, ok = pl3.merkleRoots[skylink.MerkleRoot()]
 	if !ok {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
@@ -160,19 +161,19 @@ func TestPersistCorruption(t *testing.T) {
 
 	// Create a new SkynetBlacklist
 	testdir := testDir(t.Name())
-	sb, err := New(testdir)
+	pl, err := New(testdir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	filename := filepath.Join(testdir, persistFile)
-	if filename != sb.aop.FilePath() {
-		t.Fatalf("Expected filepath %v, was %v", filename, sb.aop.FilePath())
+	if filename != pl.staticAop.FilePath() {
+		t.Fatalf("Expected filepath %v, was %v", filename, pl.staticAop.FilePath())
 	}
 
 	// There should be no skylinks in the blacklist
-	if len(sb.merkleroots) != 0 {
-		t.Fatal("Expected blacklist to be empty but found:", len(sb.merkleroots))
+	if len(pl.merkleRoots) != 0 {
+		t.Fatal("Expected blacklist to be empty but found:", len(pl.merkleRoots))
 	}
 
 	// Append a bunch of random data to the end of the blacklist file to test
@@ -197,15 +198,15 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	filesize := fi.Size()
-	if uint64(filesize) <= sb.aop.PersistLength() {
-		t.Fatalf("Expected file size greater than %v, got %v", sb.aop.PersistLength(), filesize)
+	if uint64(filesize) <= pl.staticAop.PersistLength() {
+		t.Fatalf("Expected file size greater than %v, got %v", pl.staticAop.PersistLength(), filesize)
 	}
 
 	// Update blacklist
 	var skylink modules.Skylink
 	add := []modules.Skylink{skylink}
 	remove := []modules.Skylink{skylink}
-	err = sb.UpdateSkynetBlacklist(add, remove)
+	err = pl.UpdateBlacklist(add, remove)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,74 +218,74 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	filesize = fi.Size()
-	if uint64(filesize) != sb.aop.PersistLength() {
-		t.Fatalf("Expected file size %v, got %v", sb.aop.PersistLength(), filesize)
+	if uint64(filesize) != pl.staticAop.PersistLength() {
+		t.Fatalf("Expected file size %v, got %v", pl.staticAop.PersistLength(), filesize)
 	}
 
 	// Blacklist should be empty because we added and then removed the same
 	// skylink
-	if len(sb.merkleroots) != 0 {
-		t.Fatal("Expected blacklist to be empty but found:", len(sb.merkleroots))
+	if len(pl.merkleRoots) != 0 {
+		t.Fatal("Expected blacklist to be empty but found:", len(pl.merkleRoots))
 	}
 
 	// Add the skylink again
-	err = sb.UpdateSkynetBlacklist(add, []modules.Skylink{})
+	err = pl.UpdateBlacklist(add, []modules.Skylink{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// There should be 1 element in the blacklist now
-	if len(sb.merkleroots) != 1 {
-		t.Fatal("Expected 1 element in the blacklist but found:", len(sb.merkleroots))
+	if len(pl.merkleRoots) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(pl.merkleRoots))
 	}
-	_, ok := sb.merkleroots[skylink.MerkleRoot()]
+	_, ok := pl.merkleRoots[skylink.MerkleRoot()]
 	if !ok {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
 
 	// Load a new Skynet Blacklist to verify the contents from disk get loaded
 	// properly
-	sb2, err := New(testdir)
+	pl2, err := New(testdir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// There should be 1 element in the blacklist
-	if len(sb2.merkleroots) != 1 {
-		t.Fatal("Expected 1 element in the blacklist but found:", len(sb2.merkleroots))
+	if len(pl2.merkleRoots) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(pl2.merkleRoots))
 	}
-	_, ok = sb2.merkleroots[skylink.MerkleRoot()]
+	_, ok = pl2.merkleRoots[skylink.MerkleRoot()]
 	if !ok {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
 
 	// Add the skylink again
-	err = sb2.UpdateSkynetBlacklist(add, []modules.Skylink{})
+	err = pl2.UpdateBlacklist(add, []modules.Skylink{})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// There should still only be 1 element in the blacklist
-	if len(sb2.merkleroots) != 1 {
-		t.Fatal("Expected 1 element in the blacklist but found:", len(sb2.merkleroots))
+	if len(pl2.merkleRoots) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(pl2.merkleRoots))
 	}
-	_, ok = sb2.merkleroots[skylink.MerkleRoot()]
+	_, ok = pl2.merkleRoots[skylink.MerkleRoot()]
 	if !ok {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
 
 	// Load another new Skynet Blacklist to verify the contents from disk get loaded
 	// properly
-	sb3, err := New(testdir)
+	pl3, err := New(testdir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// There should be 1 element in the blacklist
-	if len(sb3.merkleroots) != 1 {
-		t.Fatal("Expected 1 element in the blacklist but found:", len(sb3.merkleroots))
+	if len(pl3.merkleRoots) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(pl3.merkleRoots))
 	}
-	_, ok = sb3.merkleroots[skylink.MerkleRoot()]
+	_, ok = pl3.merkleRoots[skylink.MerkleRoot()]
 	if !ok {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
@@ -295,8 +296,8 @@ func TestPersistCorruption(t *testing.T) {
 		t.Fatal(err)
 	}
 	filesize = fi.Size()
-	if uint64(filesize) != sb3.aop.PersistLength() {
-		t.Fatalf("Expected file size %v, got %v", sb3.aop.PersistLength(), filesize)
+	if uint64(filesize) != pl3.staticAop.PersistLength() {
+		t.Fatalf("Expected file size %v, got %v", pl3.staticAop.PersistLength(), filesize)
 	}
 
 	// Verify that the correct number of links were persisted to verify no links
@@ -313,49 +314,46 @@ func TestMarshalSia(t *testing.T) {
 	var buf bytes.Buffer
 	merkleRoot := skylink.MerkleRoot()
 	listed := false
-	ll := listedLink{merkleRoot, listed}
-	err := ll.MarshalSia(&buf)
-	if err != nil {
-		t.Fatal(err)
-	}
+	ll := persistEntry{merkleRoot, listed}
+	writtenBytes := encoding.Marshal(ll)
+	buf.Write(writtenBytes)
 	if uint64(buf.Len()) != persistSize {
 		t.Fatalf("Expected buf to be of size %v but got %v", persistSize, buf.Len())
 	}
-	ll.listed = true
-	err = ll.MarshalSia(&buf)
-	if err != nil {
-		t.Fatal(err)
-	}
+	ll.Listed = true
+	writtenBytes = encoding.Marshal(ll)
+	buf.Write(writtenBytes)
 	if uint64(buf.Len()) != 2*persistSize {
 		t.Fatalf("Expected buf to be of size %v but got %v", 2*persistSize, buf.Len())
 	}
 
-	// Test unmarshalSia, links should unmarshal in the order they were marshalled
-	r := bytes.NewBuffer(buf.Bytes())
-	err = ll.UnmarshalSia(r)
+	readBytes := buf.Bytes()
+	if uint64(len(readBytes)) != 2*persistSize {
+		t.Fatalf("Expected %v read bytes but got %v", 2*persistSize, len(readBytes))
+	}
+	err := encoding.Unmarshal(readBytes[:persistSize], &ll)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if merkleRoot != ll.merkleRoot {
-		t.Fatalf("MerkleRoots don't match, expected %v, got %v", merkleRoot, ll.merkleRoot)
+	if merkleRoot != ll.MerkleRoot {
+		t.Fatalf("MerkleRoots don't match, expected %v, got %v", merkleRoot, ll.MerkleRoot)
 	}
-	if ll.listed {
+	if ll.Listed {
 		t.Fatal("expected persisted link to not be blacklisted")
 	}
-	err = ll.UnmarshalSia(r)
+	err = encoding.Unmarshal(readBytes[persistSize:2*persistSize], &ll)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if merkleRoot != ll.merkleRoot {
-		t.Fatalf("MerkleRoots don't match, expected %v, got %v", merkleRoot, ll.merkleRoot)
+	if merkleRoot != ll.MerkleRoot {
+		t.Fatalf("MerkleRoots don't match, expected %v, got %v", merkleRoot, ll.MerkleRoot)
 	}
-	if !ll.listed {
+	if !ll.Listed {
 		t.Fatal("expected persisted link to be blacklisted")
 	}
 
 	// Test unmarshalBlacklist
-	r = bytes.NewBuffer(buf.Bytes())
-	blacklist, err := unmarshalObjects(r)
+	blacklist, err := unmarshalObjects(buf.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -363,7 +361,7 @@ func TestMarshalSia(t *testing.T) {
 	// Since the merkleroot is the same the blacklist should only have a length
 	// of 1 since the non blacklisted merkleroot was added first
 	if len(blacklist) != 1 {
-		t.Fatalf("Incorrect number of blacklisted merkleroots, expected %v, got %v", 1, len(blacklist))
+		t.Fatalf("Incorrect number of blacklisted merkleRoots, expected %v, got %v", 1, len(blacklist))
 	}
 	_, ok := blacklist[merkleRoot]
 	if !ok {

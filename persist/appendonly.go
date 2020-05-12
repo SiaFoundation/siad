@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -14,12 +16,15 @@ import (
 )
 
 const (
-	// LengthSize is the number of bytes set aside for the length on disk.
-	LengthSize uint64 = 8
-
 	// MetadataPageSize is the number of bytes set aside for the metadata page
-	// on disk.
+	// on disk. It is the length of a disk sector so that we can ensure that a
+	// metadata disk write is ACID with one write and sync and we don't have to
+	// worry about the persist data ever crossing the first disk sector.
 	MetadataPageSize uint64 = 4096
+
+	// lengthSize is the number of bytes set aside for storing the length of the
+	// data persisted on disk.
+	lengthSize uint64 = 8
 )
 
 var (
@@ -29,28 +34,39 @@ var (
 	ErrWrongVersion = errors.New("wrong version")
 )
 
-// AppendOnlyPersist is the object responsible for creating, loading, and
-// updating append-only persist files.
-type AppendOnlyPersist struct {
-	staticPath            string
-	staticObjectSize      uint64
-	staticMetadataHeader  types.Specifier
-	staticMetadataVersion types.Specifier
+type (
+	// AppendOnlyPersist is the object responsible for creating, loading, and
+	// updating append-only persist files.
+	AppendOnlyPersist struct {
+		staticPath       string
+		staticObjectSize uint64
 
-	persistLength uint64
-}
+		metadata appendOnlyPersistMetadata
+
+		mu sync.Mutex
+	}
+
+	appendOnlyPersistMetadata struct {
+		staticHeader  types.Specifier
+		staticVersion types.Specifier
+
+		length uint64
+	}
+)
 
 // NewAppendOnlyPersist creates a new AppendOnlyPersist object and initializes
 // the persistence file.
-func NewAppendOnlyPersist(dir, file string, size uint64, metadataHeader, metadataVersion types.Specifier) (*AppendOnlyPersist, io.ReadCloser, error) {
+func NewAppendOnlyPersist(dir, file string, size uint64, metadataHeader, metadataVersion types.Specifier) (*AppendOnlyPersist, []byte, error) {
 	aop := &AppendOnlyPersist{
-		staticPath:            filepath.Join(dir, file),
-		staticObjectSize:      size,
-		staticMetadataHeader:  metadataHeader,
-		staticMetadataVersion: metadataVersion,
+		staticPath:       filepath.Join(dir, file),
+		staticObjectSize: size,
+		metadata: appendOnlyPersistMetadata{
+			staticHeader:  metadataHeader,
+			staticVersion: metadataVersion,
+		},
 	}
-	r, err := aop.initPersist(dir)
-	return aop, r, err
+	bytes, err := aop.initOrLoadPersist(dir)
+	return aop, bytes, err
 }
 
 // FilePath returns the filepath of the persist file.
@@ -60,27 +76,33 @@ func (aop *AppendOnlyPersist) FilePath() string {
 
 // PersistLength returns the length of the persist data.
 func (aop *AppendOnlyPersist) PersistLength() uint64 {
-	return aop.persistLength
+	aop.mu.Lock()
+	defer aop.mu.Unlock()
+
+	return aop.metadata.length
 }
 
 // Write implements the io.Writer interface. It updates the persist file,
 // appending the changes to the persist file on disk.
 func (aop *AppendOnlyPersist) Write(b []byte) (int, error) {
+	aop.mu.Lock()
+	defer aop.mu.Unlock()
+
 	filepath := aop.FilePath()
 	// Truncate the file to remove any corrupted data that may have been added.
-	err := os.Truncate(filepath, int64(aop.persistLength))
+	err := os.Truncate(filepath, int64(aop.metadata.length))
 	if err != nil {
 		return 0, err
 	}
 	// Open file
-	f, err := os.OpenFile(filepath, os.O_RDWR, DefaultFilePermissions)
+	f, err := os.OpenFile(filepath, os.O_RDWR, defaultFilePermissions)
 	if err != nil {
 		return 0, errors.AddContext(err, "unable to open persistence file")
 	}
 	defer f.Close()
 
 	// Append data and sync
-	numBytes, err := f.WriteAt(b, int64(aop.persistLength))
+	numBytes, err := f.WriteAt(b, int64(aop.metadata.length))
 	if err != nil {
 		return 0, errors.AddContext(err, "unable to append new data to blacklist persist file")
 	}
@@ -90,8 +112,8 @@ func (aop *AppendOnlyPersist) Write(b []byte) (int, error) {
 	}
 
 	// Update length and sync
-	aop.persistLength += uint64(numBytes)
-	lengthBytes := encoding.Marshal(aop.persistLength)
+	aop.metadata.length += uint64(numBytes)
+	lengthBytes := encoding.Marshal(aop.metadata.length)
 
 	// Write to file
 	lengthOffset := int64(2 * types.SpecifierLen)
@@ -106,37 +128,34 @@ func (aop *AppendOnlyPersist) Write(b []byte) (int, error) {
 	return numBytes, nil
 }
 
-// initPersist initializes the persistence file and returns the non-metadata
-// bytes.
-func (aop *AppendOnlyPersist) initPersist(dir string) (io.ReadCloser, error) {
+// initOrLoadPersist initializes the persistence file if it doesn't exist or
+// loads it from disk if it does and then returns the non-metadata bytes.
+func (aop *AppendOnlyPersist) initOrLoadPersist(dir string) ([]byte, error) {
 	// Initialize the persistence directory
-	err := os.MkdirAll(dir, DefaultDirPermissions)
+	err := os.MkdirAll(dir, defaultDirPermissions)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to make persistence directory")
 	}
 
 	// Try and load persistence.
-	r, err := aop.load()
+	bytes, err := aop.load()
 	if err == nil {
 		// Return the loaded persistence bytes.
-		return r, nil
+		return bytes, nil
 	} else if !os.IsNotExist(err) {
 		return nil, errors.AddContext(err, "unable to load persistence")
 	}
 
 	// Persist file doesn't exist, create it.
-	f, err := os.OpenFile(aop.FilePath(), os.O_RDWR|os.O_CREATE, DefaultFilePermissions)
+	f, err := os.OpenFile(aop.FilePath(), os.O_RDWR|os.O_CREATE, defaultFilePermissions)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to open persistence file")
 	}
 	defer f.Close()
 
 	// Marshal the metadata.
-	aop.persistLength = MetadataPageSize
-	metadataBytes, err := aop.marshalMetadata()
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to marshal metadata")
-	}
+	aop.metadata.length = MetadataPageSize
+	metadataBytes := encoding.Marshal(aop.metadata)
 
 	// Sanity check that the metadataBytes are less than the MetadataPageSize
 	if uint64(len(metadataBytes)) > MetadataPageSize {
@@ -156,12 +175,12 @@ func (aop *AppendOnlyPersist) initPersist(dir string) (io.ReadCloser, error) {
 		return nil, errors.AddContext(err, "unable to fsync file")
 	}
 
-	// Return an empty reader since there were no persistence bytes.
-	return nil, nil
+	// Return empty bytes since there were no persistence bytes.
+	return []byte{}, nil
 }
 
-// load loads the persist file from disk.
-func (aop *AppendOnlyPersist) load() (io.ReadCloser, error) {
+// load loads the persist file from disk, returning the non-metadata bytes.
+func (aop *AppendOnlyPersist) load() ([]byte, error) {
 	// Open File
 	filepath := aop.FilePath()
 	f, err := os.Open(filepath)
@@ -169,27 +188,33 @@ func (aop *AppendOnlyPersist) load() (io.ReadCloser, error) {
 		// Intentionally don't add context to allow for IsNotExist error check
 		return nil, err
 	}
+	defer f.Close()
 
 	// Check the Header and Version of the file
-	metadataSize := uint64(2*types.SpecifierLen) + LengthSize
+	metadataSize := uint64(2*types.SpecifierLen) + lengthSize
 	metadataBytes := make([]byte, metadataSize)
 	_, err = f.ReadAt(metadataBytes, 0)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to read metadata bytes from file")
 	}
-	err = aop.unmarshalMetadata(metadataBytes)
+	var metadata appendOnlyPersistMetadata
+	err = encoding.Unmarshal(metadataBytes, &metadata)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to unmarshal metadata bytes")
 	}
+	err = aop.updateMetadata(metadata)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to update metadata")
+	}
 
 	// Check if there are persisted objects after the metadata.
-	goodBytes := aop.persistLength - MetadataPageSize
+	goodBytes := aop.metadata.length - MetadataPageSize
 	if goodBytes <= 0 {
-		return nil, nil
+		return []byte{}, nil
 	}
 
 	// Truncate the file to remove any corrupted data that may have been added.
-	err = os.Truncate(filepath, int64(aop.persistLength))
+	err = os.Truncate(filepath, int64(aop.metadata.length))
 	if err != nil {
 		return nil, err
 	}
@@ -199,46 +224,59 @@ func (aop *AppendOnlyPersist) load() (io.ReadCloser, error) {
 		return nil, errors.AddContext(err, "unable to seek to start of persist file")
 	}
 
-	return f, nil
+	bytes, err := ioutil.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+
+	return bytes, nil
 }
 
-// marshalMetadata marshals the persist file's metadata and returns the byte
-// slice.
-func (aop *AppendOnlyPersist) marshalMetadata() ([]byte, error) {
-	headerBytes, headerErr := aop.staticMetadataHeader.MarshalText()
-	versionBytes, versionErr := aop.staticMetadataVersion.MarshalText()
-	lengthBytes := encoding.Marshal(aop.persistLength)
-	metadataBytes := append(headerBytes, append(versionBytes, lengthBytes...)...)
-	return metadataBytes, errors.Compose(headerErr, versionErr)
+// updateMetadata updates the metadata, validating its correctness.
+func (aop *AppendOnlyPersist) updateMetadata(metadata appendOnlyPersistMetadata) error {
+	if metadata.staticHeader != aop.metadata.staticHeader {
+		// Convert headers to strings and strip newlines for displaying.
+		expected := string(bytes.Split(aop.metadata.staticHeader[:], []byte{'\n'})[0])
+		received := string(bytes.Split(metadata.staticHeader[:], []byte{'\n'})[0])
+		return errors.AddContext(ErrWrongHeader, fmt.Sprintf("expected %v, received %v", expected, received))
+	}
+	if metadata.staticVersion != aop.metadata.staticVersion {
+		// Convert versions to strings and strip newlines for displaying.
+		expected := string(bytes.Split(aop.metadata.staticVersion[:], []byte{'\n'})[0])
+		received := string(bytes.Split(metadata.staticVersion[:], []byte{'\n'})[0])
+		return errors.AddContext(ErrWrongVersion, fmt.Sprintf("expected %v, received %v", expected, received))
+	}
+
+	aop.metadata = metadata
+	return nil
 }
 
-// unmarshalMetadata ummarshals the persist file's metadata from the provided
-// byte slice.
-func (aop *AppendOnlyPersist) unmarshalMetadata(raw []byte) error {
+// UnmarshalSia implements the encoding.SiaUnmarshaler interface.
+func (aopm *appendOnlyPersistMetadata) UnmarshalSia(r io.Reader) error {
+	raw, err := ioutil.ReadAll(r)
+	if err != nil {
+		return errors.AddContext(err, "unable to read bytes from reader when marshalling")
+	}
+
 	// Define offsets for reading from provided byte slice.
 	versionOffset := types.SpecifierLen
 	lengthOffset := 2 * types.SpecifierLen
 
 	// Unmarshal and check header and version for correctness.
-	var header, version types.Specifier
-	err := header.UnmarshalText(raw[:versionOffset])
+	err = aopm.staticHeader.UnmarshalText(raw[:versionOffset])
 	if err != nil {
 		return errors.AddContext(err, "unable to unmarshal header")
 	}
-	if header != aop.staticMetadataHeader {
-		return ErrWrongHeader
-	}
-	err = version.UnmarshalText(raw[versionOffset:lengthOffset])
+	err = aopm.staticVersion.UnmarshalText(raw[versionOffset:lengthOffset])
 	if err != nil {
 		return errors.AddContext(err, "unable to unmarshal version")
 	}
-	if version != aop.staticMetadataVersion {
-		// Convert versions to strings and strip newlines for displaying.
-		expected := string(bytes.Split(aop.staticMetadataVersion[:], []byte{'\n'})[0])
-		received := string(bytes.Split(version[:], []byte{'\n'})[0])
-		return errors.AddContext(ErrWrongVersion, fmt.Sprintf("expected %v, received %v", expected, received))
-	}
 
 	// Unmarshal the length
-	return encoding.Unmarshal(raw[lengthOffset:], &aop.persistLength)
+	err = encoding.Unmarshal(raw[lengthOffset:], &aopm.length)
+	if err != nil {
+		return errors.AddContext(err, "unable to unmarshal persist length")
+	}
+
+	return nil
 }

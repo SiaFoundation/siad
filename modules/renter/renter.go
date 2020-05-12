@@ -172,8 +172,8 @@ type Renter struct {
 	staticFileSystem *filesystem.FileSystem
 
 	// Skynet Management
-	staticSkynetBlacklist *skynetblacklist.SkynetBlacklist
-	staticSkynetPortals   *skynetportals.SkynetPortals
+	staticSkynetBlacklist *skynetblacklist.PersistList
+	staticSkynetPortals   *skynetportals.PersistList
 
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.

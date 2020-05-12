@@ -22,12 +22,12 @@ func TestMarshalMetadata(t *testing.T) {
 	// Create persist file
 	testdir := build.TempDir(t.Name())
 	testfile := "testpersist"
-	err := os.MkdirAll(testdir, DefaultDirPermissions)
+	err := os.MkdirAll(testdir, defaultDirPermissions)
 	if err != nil {
 		t.Fatal(err)
 	}
 	filename := filepath.Join(testdir, testfile)
-	f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, DefaultFilePermissions)
+	f, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, defaultFilePermissions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,18 +36,18 @@ func TestMarshalMetadata(t *testing.T) {
 	// Manually create struct of a persist object and set the length. Not using
 	// the New method to avoid overwriting the persist file on disk.
 	aop := AppendOnlyPersist{
-		staticPath:            filename,
-		staticMetadataHeader:  types.NewSpecifier("header\n"),
-		staticMetadataVersion: types.NewSpecifier("version\n"),
+		staticPath: filename,
 
-		persistLength: MetadataPageSize,
+		metadata: appendOnlyPersistMetadata{
+			staticHeader:  types.NewSpecifier("header\n"),
+			staticVersion: types.NewSpecifier("version\n"),
+
+			length: MetadataPageSize,
+		},
 	}
 
 	// Marshal the metadata and write to disk
-	metadataBytes, err := aop.marshalMetadata()
-	if err != nil {
-		t.Fatal(err)
-	}
+	metadataBytes := encoding.Marshal(aop.metadata)
 	_, err = f.Write(metadataBytes)
 	if err != nil {
 		t.Fatal(err)
@@ -71,7 +71,7 @@ func TestMarshalMetadata(t *testing.T) {
 
 	// Try unmarshaling the metadata to ensure that it did not get corrupted by
 	// the length updates
-	metadataSize := uint64(lengthOffset) + LengthSize
+	metadataSize := uint64(lengthOffset) + lengthSize
 	mdBytes := make([]byte, metadataSize)
 	_, err = f.ReadAt(mdBytes, 0)
 	if err != nil {
@@ -79,12 +79,17 @@ func TestMarshalMetadata(t *testing.T) {
 	}
 	// The header and the version are checked during the unmarshaling of the
 	// metadata
-	err = aop.unmarshalMetadata(mdBytes)
+	var aopm appendOnlyPersistMetadata
+	err = encoding.Unmarshal(mdBytes, &aopm)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if aop.persistLength != 2*MetadataPageSize {
-		t.Fatalf("incorrect decoded length, got %v expected %v", aop.persistLength, 2*MetadataPageSize)
+	err = aop.updateMetadata(aopm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if aop.metadata.length != 2*MetadataPageSize {
+		t.Fatalf("incorrect decoded length, got %v expected %v", aop.metadata.length, 2*MetadataPageSize)
 	}
 
 	// Write an incorrect version and verify that unmarshaling the metadata will
@@ -107,7 +112,11 @@ func TestMarshalMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = aop.unmarshalMetadata(mdBytes)
+	err = encoding.Unmarshal(mdBytes, &aopm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = aop.updateMetadata(aopm)
 	if !errors.Contains(err, ErrWrongVersion) {
 		t.Fatalf("Expected %v got %v", ErrWrongVersion, err)
 	}
@@ -132,7 +141,11 @@ func TestMarshalMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = aop.unmarshalMetadata(mdBytes)
+	err = encoding.Unmarshal(mdBytes, &aopm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = aop.updateMetadata(aopm)
 	if err != ErrWrongHeader {
 		t.Fatalf("Expected %v got %v", ErrWrongHeader, err)
 	}

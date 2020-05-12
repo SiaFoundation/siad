@@ -14,14 +14,11 @@ responsibilities:
 
 The Skynet Blacklist subsystem contains the structure of the Skynet Blacklist
 and is used to create a new Skynet Blacklist and return information about the
-Blacklist.
+Blacklist. Uses Persist package's Append-Only File subsystem to ensure ACID disk
+updates.
 
 **Exports**
  - `Blacklist` returns the list of blacklisted merkle roots
  - `IsBlacklisted` returns whether or not a skylink merkleroot is blacklisted
  - `New` creates and returns a new Skynet Blacklist
  - `UpdateSkynetBlacklist` updates the blacklist
-
-**Outbound Complexities**
- - `New` calls the Persistence System's `NewAppendOnlyPersist` method
- - `Update` calls the Persistence System's `UpdateAndAppend` method

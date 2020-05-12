@@ -87,7 +87,7 @@ func TestOpenDatabase(t *testing.T) {
 	// Create a folder for the database file. If a folder by that name exists
 	// already, it will be replaced by an empty folder.
 	testDir := build.TempDir(persistDir, t.Name())
-	err := os.MkdirAll(testDir, DefaultDirPermissions)
+	err := os.MkdirAll(testDir, defaultDirPermissions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,14 +206,14 @@ func TestErrTxNotWritable(t *testing.T) {
 		t.SkipNow()
 	}
 	testDir := build.TempDir(persistDir, t.Name())
-	err := os.MkdirAll(testDir, DefaultDirPermissions)
+	err := os.MkdirAll(testDir, defaultDirPermissions)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i, in := range testInputs {
 		dbFilename := testFilenames[i%len(testFilenames)]
 		dbFilepath := filepath.Join(testDir, dbFilename)
-		db, err := bolt.Open(dbFilepath, DefaultFilePermissions, &bolt.Options{Timeout: 3 * time.Second})
+		db, err := bolt.Open(dbFilepath, defaultFilePermissions, &bolt.Options{Timeout: 3 * time.Second})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -245,13 +245,13 @@ func TestErrDatabaseNotOpen(t *testing.T) {
 		t.SkipNow()
 	}
 	testDir := build.TempDir(persistDir, t.Name())
-	err := os.MkdirAll(testDir, DefaultDirPermissions)
+	err := os.MkdirAll(testDir, defaultDirPermissions)
 	if err != nil {
 		t.Fatal(err)
 	}
 	dbFilepath := filepath.Join(testDir, "fake_filename")
 	md := Metadata{"Fake Header", "Fake Version"}
-	db, err := bolt.Open(dbFilepath, DefaultFilePermissions, &bolt.Options{Timeout: 3 * time.Second})
+	db, err := bolt.Open(dbFilepath, defaultFilePermissions, &bolt.Options{Timeout: 3 * time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,14 +281,14 @@ func TestErrCheckMetadata(t *testing.T) {
 		t.SkipNow()
 	}
 	testDir := build.TempDir(persistDir, t.Name())
-	err := os.MkdirAll(testDir, DefaultDirPermissions)
+	err := os.MkdirAll(testDir, defaultDirPermissions)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i, in := range testInputs {
 		dbFilename := testFilenames[i%len(testFilenames)]
 		dbFilepath := filepath.Join(testDir, dbFilename)
-		db, err := bolt.Open(dbFilepath, DefaultFilePermissions, &bolt.Options{Timeout: 3 * time.Second})
+		db, err := bolt.Open(dbFilepath, defaultFilePermissions, &bolt.Options{Timeout: 3 * time.Second})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -340,7 +340,7 @@ func TestErrIntegratedCheckMetadata(t *testing.T) {
 		t.SkipNow()
 	}
 	testDir := build.TempDir(persistDir, t.Name())
-	err := os.MkdirAll(testDir, DefaultDirPermissions)
+	err := os.MkdirAll(testDir, defaultDirPermissions)
 	if err != nil {
 		t.Fatal(err)
 	}
