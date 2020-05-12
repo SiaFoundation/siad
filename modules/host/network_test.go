@@ -176,7 +176,7 @@ func TestUnrecognizedRPCID(t *testing.T) {
 		}
 	}()
 
-	stream := pair.newStream()
+	stream := pair.managedNewStream()
 
 	// write a random rpc id to it and expect it to fail
 	var randomRPCID types.Specifier
