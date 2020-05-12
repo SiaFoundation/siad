@@ -1,0 +1,1 @@
+- Introduce PaymentProvider interface on the renter.

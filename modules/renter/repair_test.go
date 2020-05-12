@@ -63,6 +63,10 @@ func equalBubbledMetadata(md1, md2 siadir.Metadata) error {
 	if md1.NumSubDirs != md2.NumSubDirs {
 		return fmt.Errorf("NumSubDirs not equal, %v and %v", md1.NumSubDirs, md2.NumSubDirs)
 	}
+	// Check Size
+	if md1.Size != md2.Size {
+		return fmt.Errorf("sizes not equal, %v and %v", md1.Size, md2.Size)
+	}
 	// Check StuckHealth
 	if md1.StuckHealth != md2.StuckHealth {
 		return fmt.Errorf("stuck healths not equal, %v and %v", md1.StuckHealth, md2.StuckHealth)
@@ -1171,14 +1175,14 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 	goodForRenew := make(map[string]bool)
 
 	// Manually add workers to worker pool
+	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < int(f.NumChunks()); i++ {
-		rt.renter.staticWorkerPool.mu.Lock()
 		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			killChan: make(chan struct{}),
 			wakeChan: make(chan struct{}, 1),
 		}
-		rt.renter.staticWorkerPool.mu.Unlock()
 	}
+	rt.renter.staticWorkerPool.mu.Unlock()
 
 	// call managedAddStuckChunksToHeap, no chunks should be added
 	err = rt.renter.managedAddStuckChunksToHeap(up.SiaPath, hosts, offline, goodForRenew)

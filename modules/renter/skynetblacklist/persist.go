@@ -109,7 +109,7 @@ func (sb *SkynetBlacklist) callInitPersist() error {
 	}
 
 	// Persist File doesn't exist, create it
-	f, err := os.OpenFile(filepath.Join(sb.staticPersistDir, persistFile), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
+	f, err := os.OpenFile(sb.FilePath(), os.O_RDWR|os.O_CREATE, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "unable to open persistence file")
 	}
@@ -176,7 +176,7 @@ func (sb *SkynetBlacklist) callUpdateAndAppend(additions, removals []modules.Sky
 		}
 	}
 
-	filepath := filepath.Join(sb.staticPersistDir, persistFile)
+	filepath := sb.FilePath()
 	// Truncate the file to remove any corrupted data that may have been added.
 	err := os.Truncate(filepath, sb.persistLength)
 	if err != nil {
@@ -219,7 +219,7 @@ func (sb *SkynetBlacklist) callUpdateAndAppend(additions, removals []modules.Sky
 // load loads the persisted blacklist from disk
 func (sb *SkynetBlacklist) load() error {
 	// Open File
-	filepath := filepath.Join(sb.staticPersistDir, persistFile)
+	filepath := sb.FilePath()
 	f, err := os.Open(filepath)
 	if err != nil {
 		// Intentionally don't add context to allow for IsNotExist error check
@@ -288,9 +288,17 @@ func (sb *SkynetBlacklist) unmarshalMetadata(raw []byte) error {
 		return errors.AddContext(err, "unable to unmarshal version")
 	}
 	if version != metadataVersion {
-		return errWrongVersion
+		// Convert versions to strings and strip newlines for displaying.
+		expected := string(bytes.Split(metadataVersion[:], []byte{'\n'})[0])
+		received := string(bytes.Split(version[:], []byte{'\n'})[0])
+		return errors.AddContext(errWrongVersion, fmt.Sprintf("expected %v, received %v", expected, received))
 	}
 
 	// Unmarshal the length
 	return encoding.Unmarshal(raw[lengthOffset:], &sb.persistLength)
+}
+
+// FilePath returns the filepath of the persist file.
+func (sb *SkynetBlacklist) FilePath() string {
+	return filepath.Join(sb.staticPersistDir, persistFile)
 }

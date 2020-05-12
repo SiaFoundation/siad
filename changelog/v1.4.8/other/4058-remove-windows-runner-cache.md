@@ -1,1 +1,1 @@
-- Remove Go cache from Windows runner, do not perform linting during Windows tests.
+- Fix permission issues for Windows runner, do not perform linting during Windows tests.

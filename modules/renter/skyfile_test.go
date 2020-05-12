@@ -24,7 +24,7 @@ func TestSkyfileLayoutEncoding(t *testing.T) {
 		cipherType:         crypto.TypePlain,
 	}
 	rand := fastrand.Bytes(64)
-	copy(llOriginal.cipherKey[:], rand)
+	copy(llOriginal.keyData[:], rand)
 	encoded := llOriginal.encode()
 	var llRecovered skyfileLayout
 	llRecovered.decode(encoded)

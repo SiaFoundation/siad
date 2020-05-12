@@ -65,11 +65,13 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	goodForRenew := make(map[string]bool)
 
 	// Manually add workers to worker pool
+	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < int(f.NumChunks()); i++ {
 		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			killChan: make(chan struct{}),
 		}
 	}
+	rt.renter.staticWorkerPool.mu.Unlock()
 
 	// Call managedBuildUnfinishedChunks as not stuck loop, all un stuck chunks
 	// should be returned
@@ -160,11 +162,13 @@ func TestBuildChunkHeap(t *testing.T) {
 
 	// Manually add workers to worker pool and create host map
 	hosts := make(map[string]struct{})
+	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < int(f1.NumChunks()); i++ {
 		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			killChan: make(chan struct{}),
 		}
 	}
+	rt.renter.staticWorkerPool.mu.Unlock()
 
 	// Call managedBuildChunkHeap as repair loop, we should see all the chunks
 	// from the file added
@@ -382,11 +386,13 @@ func TestAddChunksToHeap(t *testing.T) {
 
 	// Manually add workers to worker pool and create host map
 	hosts := make(map[string]struct{})
+	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < rsc.MinPieces(); i++ {
 		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			killChan: make(chan struct{}),
 		}
 	}
+	rt.renter.staticWorkerPool.mu.Unlock()
 
 	// Make sure directory Heap is ready
 	err = rt.renter.managedPushUnexploredDirectory(modules.RootSiaPath())
@@ -457,13 +463,13 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	goodForRenew := make(map[string]bool)
 
 	// Manually add workers to worker pool
+	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < int(f.NumChunks()); i++ {
-		rt.renter.staticWorkerPool.mu.Lock()
 		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
 			killChan: make(chan struct{}),
 		}
-		rt.renter.staticWorkerPool.mu.Unlock()
 	}
+	rt.renter.staticWorkerPool.mu.Unlock()
 
 	// Confirm we are starting with an empty upload and directory heap
 	if rt.renter.uploadHeap.managedLen() != 0 {
@@ -673,4 +679,63 @@ func TestUploadHeapPauseChan(t *testing.T) {
 	// Call Resume twice in a row
 	uh.managedResume()
 	uh.managedResume()
+}
+
+// TestChunkSwitchStuckStatus is a regression test that confirms the upload heap
+// won't panic due to a chunk's stuck status changing while it is in the heap
+// and being added twice
+func TestChunkSwitchStuckStatus(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create renter
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	// Create minimum chunk
+	chunk := &unfinishedUploadChunk{
+		id: uploadChunkID{
+			fileUID: siafile.SiafileUID("chunk"),
+			index:   0,
+		},
+	}
+	// push chunk to heap
+	if !rt.renter.uploadHeap.managedPush(chunk) {
+		t.Fatal("unable to push chunk", chunk)
+	}
+	if rt.renter.uploadHeap.managedLen() != 1 {
+		t.Error("Expected only 1 chunk in heap")
+	}
+
+	// Mark chunk as stuck and push again
+	//
+	// Regression check 1: previously this second push call would succeed and
+	// the length of the heap would be 2
+	chunk.stuck = true
+	if rt.renter.uploadHeap.managedPush(chunk) {
+		t.Error("should not be able to push chunk again")
+	}
+	if rt.renter.uploadHeap.managedLen() != 1 {
+		t.Error("Expected only 1 chunk in heap")
+	}
+
+	// Pop the chunk
+	chunk = rt.renter.uploadHeap.managedPop()
+	if chunk == nil {
+		t.Fatal("Nil chunk popped")
+	}
+
+	// A second pop call should not panic
+	//
+	// Regression check 2: previously this would trigger the build.Critical that
+	// the popped chunk was already in the repair map
+	chunk = rt.renter.uploadHeap.managedPop()
+	if chunk != nil {
+		t.Fatal("Expected nil chunk")
+	}
 }

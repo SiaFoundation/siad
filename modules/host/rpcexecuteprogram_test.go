@@ -2,7 +2,6 @@ package host
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
@@ -14,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -31,52 +29,6 @@ func updateRunningCosts(pt *modules.RPCPriceTable, runningCost, runningRefund, r
 	runningCollateral = runningCollateral.Add(collateral)
 
 	return runningCost, runningRefund, runningCollateral, runningMemory
-}
-
-// newHasSectorInstruction is a convenience method for creating a single
-// 'HasSector' instruction.
-func newHasSectorInstruction(dataOffset uint64, pt *modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, types.Currency, uint64, uint64) {
-	i := mdm.NewHasSectorInstruction(dataOffset)
-	cost, refund := modules.MDMHasSectorCost(pt)
-	collateral := modules.MDMHasSectorCollateral()
-	return i, cost, refund, collateral, modules.MDMHasSectorMemory(), modules.MDMTimeHasSector
-}
-
-// newHasSectorProgram is a convenience method which prepares the instructions
-// and the program data for a program that executes a single
-// HasSectorInstruction.
-func newHasSectorProgram(merkleRoot crypto.Hash, pt *modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64) {
-	data := make([]byte, crypto.HashSize)
-	copy(data[:crypto.HashSize], merkleRoot[:])
-	initCost := modules.MDMInitCost(pt, uint64(len(data)), 1)
-	i, cost, refund, collateral, memory, time := newHasSectorInstruction(0, pt)
-	cost, refund, collateral, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, collateral, memory, time)
-	instructions := []modules.Instruction{i}
-	return instructions, data, cost, refund, collateral, memory
-}
-
-// newReadSectorInstruction is a convenience method for creating a single
-// 'ReadSector' instruction.
-func newReadSectorInstruction(length uint64, merkleProof bool, dataOffset uint64, pt *modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, types.Currency, uint64, uint64) {
-	i := mdm.NewReadSectorInstruction(dataOffset, dataOffset+8, dataOffset+16, merkleProof)
-	cost, refund := modules.MDMReadCost(pt, length)
-	collateral := modules.MDMReadCollateral()
-	return i, cost, refund, collateral, modules.MDMReadMemory(), modules.MDMTimeReadSector
-}
-
-// newReadSectorProgram is a convenience method which prepares the instructions
-// and the program data for a program that executes a single
-// ReadSectorInstruction.
-func newReadSectorProgram(length, offset uint64, merkleRoot crypto.Hash, pt *modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64) {
-	data := make([]byte, 8+8+crypto.HashSize)
-	binary.LittleEndian.PutUint64(data[:8], length)
-	binary.LittleEndian.PutUint64(data[8:16], offset)
-	copy(data[16:], merkleRoot[:])
-	initCost := modules.MDMInitCost(pt, uint64(len(data)), 1)
-	i, cost, refund, collateral, memory, time := newReadSectorInstruction(length, true, 0, pt)
-	cost, refund, collateral, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, collateral, memory, time)
-	instructions := []modules.Instruction{i}
-	return instructions, data, cost, refund, collateral, memory
 }
 
 // TestExecuteProgramWriteDeadline verifies the ExecuteProgramRPC sets a write
@@ -98,7 +50,7 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 
 	// prefund the EA
 	his := rhp.ht.host.managedInternalSettings()
-	_, err = rhp.callFundEphemeralAccount(his.MaxEphemeralAccountBalance)
+	_, err = rhp.FundEphemeralAccount(his.MaxEphemeralAccountBalance, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +67,9 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 
 	// create the 'ReadSector' program.
 	pt := rhp.PriceTable()
-	program, programData, _, _, _, _ := newReadSectorProgram(modules.SectorSize, 0, sectorRoot, pt)
+	pb := modules.NewProgramBuilder(pt)
+	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
+	program, programData := pb.Program()
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
@@ -126,9 +80,9 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 
 	// execute program.
 	budget := types.NewCurrency64(math.MaxUint64)
-	_, _, err = rhp.callExecuteProgram(epr, programData, budget)
+	_, _, err = rhp.ExecuteProgram(epr, programData, budget, true)
 	if err == nil || !errors.Contains(err, io.ErrClosedPipe) {
-		t.Fatal("Expected callExecuteProgram to fail with an ErrClosedPipe, instead err was", err)
+		t.Fatal("Expected ExecuteProgram to fail with an ErrClosedPipe, instead err was", err)
 	}
 }
 
@@ -171,7 +125,10 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 
 	// create the 'ReadSector' program.
 	pt := rhp.PriceTable()
-	program, data, programCost, refund, collateral, _ := newReadSectorProgram(modules.SectorSize, 0, sectorRoot, pt)
+	pb := modules.NewProgramBuilder(pt)
+	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
+	program, data := pb.Program()
+	programCost, refund, collateral := pb.Cost(true)
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
@@ -184,7 +141,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	his := rhp.ht.host.managedInternalSettings()
 	maxBalance := his.MaxEphemeralAccountBalance
 	fundingAmt := maxBalance.Add(pt.FundAccountCost)
-	_, err = rhp.callFundEphemeralAccount(fundingAmt)
+	_, err = rhp.FundEphemeralAccount(fundingAmt, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +159,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	cost := programCost.Add(bandwidthCost)
 
 	// execute program.
-	resps, limit, err := rhp.callExecuteProgram(epr, data, cost)
+	resps, limit, err := rhp.ExecuteProgram(epr, data, cost, true)
 	if err != nil {
 		t.Log("cost", cost.HumanString())
 		t.Log("expected ea balance", rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
@@ -222,11 +179,14 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	if resp.Error != nil {
 		t.Fatal(resp.Error)
 	}
-	if resp.NewSize != sos.staticContractSize {
-		t.Fatalf("expected contract size to stay the same: %v != %v", sos.staticContractSize, resp.NewSize)
+	// programs that don't require a snapshot return a 0 contract size.
+	if resp.NewSize != 0 {
+		t.Fatalf("expected contract size to stay the same: %v != %v", 0, resp.NewSize)
 	}
-	if resp.NewMerkleRoot != sos.staticMerkleRoot {
-		t.Fatalf("expected merkle root to stay the same: %v != %v", sos.staticMerkleRoot, resp.NewMerkleRoot)
+	// programs that don't require a snapshot return a zero hash.
+	zh := crypto.Hash{}
+	if resp.NewMerkleRoot != zh {
+		t.Fatalf("expected merkle root to stay the same: %v != %v", zh, resp.NewMerkleRoot)
 	}
 	if len(resp.Proof) != 0 {
 		t.Fatalf("expected proof length to be %v but was %v", 0, len(resp.Proof))
@@ -261,9 +221,9 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	// rerun the program but now make sure the given budget does not cover the
 	// cost, we expect this to return ErrInsufficientBandwidthBudget
 	cost = cost.Sub64(1)
-	_, limit, err = rhp.callExecuteProgram(epr, data, cost)
+	_, limit, err = rhp.ExecuteProgram(epr, data, cost, true)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientBandwidthBudget.Error()) {
-		t.Fatalf("expected callExecuteProgram to fail due to insufficient bandwidth budget: %v", err)
+		t.Fatalf("expected ExecuteProgram to fail due to insufficient bandwidth budget: %v", err)
 	}
 
 	// verify the host charged us by checking the EA balance and Check that the
@@ -323,12 +283,18 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	}
 	ht.host.managedUnlockStorageObligation(rhp.staticFCID)
 
-	offset := uint64(fastrand.Uint64n((modules.SectorSize/crypto.SegmentSize)-1) * crypto.SegmentSize)
-	length := uint64(crypto.SegmentSize)
+	// select a random number of segments to read at random offset
+	numSegments := fastrand.Uint64n(5) + 1
+	totalSegments := modules.SectorSize / crypto.SegmentSize
+	offset := fastrand.Uint64n(totalSegments-numSegments+1) * crypto.SegmentSize
+	length := numSegments * crypto.SegmentSize
 
 	// create the 'ReadSector' program.
 	pt := rhp.PriceTable()
-	program, data, programCost, refund, collateral, _ := newReadSectorProgram(length, offset, sectorRoot, pt)
+	pb := modules.NewProgramBuilder(pt)
+	pb.AddReadSectorInstruction(length, offset, sectorRoot, true)
+	program, data := pb.Program()
+	programCost, refund, collateral := pb.Cost(true)
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
@@ -339,7 +305,7 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 
 	// fund an account.
 	fundingAmt := rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.Add(pt.FundAccountCost)
-	_, err = rhp.callFundEphemeralAccount(fundingAmt)
+	_, err = rhp.FundEphemeralAccount(fundingAmt, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +323,7 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	cost := programCost.Add(bandwidthCost)
 
 	// execute program.
-	resps, bandwidth, err := rhp.callExecuteProgram(epr, data, cost)
+	resps, bandwidth, err := rhp.ExecuteProgram(epr, data, cost, true)
 	if err != nil {
 		t.Log("cost", cost.HumanString())
 		t.Log("expected ea balance", rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
@@ -447,7 +413,10 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 
 	// Create the 'HasSector' program.
 	pt := rhp.PriceTable()
-	program, data, programCost, refund, collateral, _ := newHasSectorProgram(sectorRoot, pt)
+	pb := modules.NewProgramBuilder(pt)
+	pb.AddHasSectorInstruction(sectorRoot)
+	program, data := pb.Program()
+	programCost, refund, collateral := pb.Cost(true)
 
 	// Prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
@@ -459,7 +428,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	// Fund an account with the max balance.
 	maxBalance := rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance
 	fundingAmt := maxBalance.Add(pt.FundAccountCost)
-	_, err = rhp.callFundEphemeralAccount(fundingAmt)
+	_, err = rhp.FundEphemeralAccount(fundingAmt, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -477,7 +446,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 
 	// Execute program.
 	cost := programCost.Add(bandwidthCost)
-	resps, limit, err := rhp.callExecuteProgram(epr, data, cost)
+	resps, limit, err := rhp.ExecuteProgram(epr, data, cost, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -525,9 +494,9 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 
 	// Execute program again. This time pay for 1 less byte of bandwidth. This should fail.
 	cost = programCost.Add(bandwidthCost.Sub64(1))
-	_, limit, err = rhp.callExecuteProgram(epr, data, cost)
+	_, limit, err = rhp.ExecuteProgram(epr, data, cost, true)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientBandwidthBudget.Error()) {
-		t.Fatalf("expected callExecuteProgram to fail due to insufficient bandwidth budget: %v", err)
+		t.Fatalf("expected ExecuteProgram to fail due to insufficient bandwidth budget: %v", err)
 	}
 	// Log the bandwidth used by this RPC.
 	t.Logf("Used bandwidth (invalid program): %v down, %v up", limit.Downloaded(), limit.Uploaded())

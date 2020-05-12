@@ -5,9 +5,11 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -69,6 +71,15 @@ type unfinishedUploadChunk struct {
 	// sourceReader is an optional source for the logical chunk data. If
 	// available it will be tried before the repair path or remote repair.
 	sourceReader io.ReadCloser
+
+	// Performance information.
+	chunkCreationTime        time.Time
+	chunkPoppedFromHeapTime  time.Time
+	chunkDistributionTime    time.Time
+	chunkFailedProcessTimes  []time.Time
+	chunkSuccessProcessTimes []time.Time
+	chunkAvailableTime       time.Time
+	chunkCompleteTime        time.Time
 
 	// Worker synchronization fields. The mutex only protects these fields.
 	//
@@ -186,9 +197,20 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 		workers = append(workers, worker)
 	}
 	r.staticWorkerPool.mu.RUnlock()
-	for _, worker := range workers {
-		worker.callQueueUploadChunk(uc)
+
+	// Filter through the workers, ignoring any that are not good for upload,
+	// and ignoring any that are on upload cooldown.
+	jobsDistributed := 0
+	for _, w := range workers {
+		if w.callQueueUploadChunk(uc) {
+			jobsDistributed++
+		}
 	}
+	uc.mu.Lock()
+	uc.chunkDistributionTime = time.Now()
+	uc.mu.Unlock()
+	r.repairLog.Printf("Distributed chunk %v of %s to %v workers.", uc.index, uc.staticSiaPath, jobsDistributed)
+	r.managedCleanUpUploadChunk(uc)
 }
 
 // padAndEncryptPiece will add padding to a piece and then encrypt it.
@@ -561,6 +583,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 
 	// Check if the chunk is now available.
 	if uc.piecesCompleted >= uc.minimumPieces && !uc.staticAvailable() && !uc.released {
+		uc.chunkAvailableTime = time.Now()
 		close(uc.availableChan)
 	}
 
@@ -577,9 +600,31 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		}
 		if !uc.staticAvailable() {
 			uc.err = errors.New("unable to upload file, file is not available on the network")
+			uc.chunkAvailableTime = time.Now()
 			close(uc.availableChan)
 		}
 		uc.released = true
+		uc.chunkCompleteTime = time.Now()
+
+		// Create a log message with all of the timings of the chunk uploading.
+		if build.DEBUG {
+			failedTimes := make([]int, 0, len(uc.chunkFailedProcessTimes))
+			for _, ft := range uc.chunkFailedProcessTimes {
+				failedTimes = append(failedTimes, int(time.Since(ft)/time.Millisecond))
+			}
+			successTimes := make([]int, 0, len(uc.chunkSuccessProcessTimes))
+			for _, st := range uc.chunkSuccessProcessTimes {
+				successTimes = append(successTimes, int(time.Since(st)/time.Millisecond))
+			}
+			r.repairLog.Debugf(`
+	Chunk Created: %v
+	Chunk Popped: %v
+	Chunk Distributed: %v
+	Chunk Available: %v
+	Chunk Complete: %v
+	Fail Times: %v
+	Success Times: %v`, int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), failedTimes, successTimes)
+		}
 	}
 	uc.memoryReleased += uint64(memoryReleased)
 	totalMemoryReleased := uc.memoryReleased

@@ -101,7 +101,6 @@ func (c *Contractor) managedCheckForDuplicates() {
 			c.renewedFrom[newContract.ID] = oldContract.ID
 			c.renewedTo[oldContract.ID] = newContract.ID
 			c.oldContracts[oldContract.ID] = oldSC.Metadata()
-			c.pubKeysToContractID[string(newContract.HostPublicKey.Key)] = newContract.ID
 
 			// Save the contractor and delete the contract.
 			//
@@ -435,24 +434,13 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 
 	contractValue := contract.RenterFunds
 	c.log.Printf("Formed contract %v with %v for %v", contract.ID, host.NetAddress, contractValue.HumanString())
-	return contractFunding, contract, nil
-}
 
-// managedPrunePubkeyMap will delete any pubkeys in the pubKeysToContractID map
-// that no longer map to an active contract.
-func (c *Contractor) managedPrunePubkeyMap() {
-	allContracts := c.staticContracts.ViewAll()
-	pks := make(map[string]struct{})
-	for _, c := range allContracts {
-		pks[c.HostPublicKey.String()] = struct{}{}
+	// Update the hostdb to include the new contract.
+	err = c.hdb.UpdateContracts(c.staticContracts.ViewAll())
+	if err != nil {
+		c.log.Println("Unable to update hostdb contracts:", err)
 	}
-	c.mu.Lock()
-	for pk := range c.pubKeysToContractID {
-		if _, exists := pks[pk]; !exists {
-			delete(c.pubKeysToContractID, pk)
-		}
-	}
-	c.mu.Unlock()
+	return contractFunding, contract, nil
 }
 
 // managedPrunedRedundantAddressRange uses the hostdb to find hosts that
@@ -656,6 +644,12 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	c.mu.Lock()
 	c.pubKeysToContractID[newContract.HostPublicKey.String()] = newContract.ID
 	c.mu.Unlock()
+
+	// Update the hostdb to include the new contract.
+	err = c.hdb.UpdateContracts(c.staticContracts.ViewAll())
+	if err != nil {
+		c.log.Println("Unable to update hostdb contracts:", err)
+	}
 
 	return newContract, nil
 }
@@ -943,7 +937,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	c.callRecoverContracts()
 	c.managedArchiveContracts()
 	c.managedCheckForDuplicates()
-	c.managedPrunePubkeyMap()
+	c.managedUpdatePubKeyToContractIDMap()
 	c.managedPrunedRedundantAddressRange()
 	err = c.managedMarkContractsUtility()
 	if err != nil {
@@ -952,7 +946,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	err = c.hdb.UpdateContracts(c.staticContracts.ViewAll())
 	if err != nil {
-		c.log.Debugln("Unable to update hostdb contracts:", err)
+		c.log.Println("Unable to update hostdb contracts:", err)
 		return
 	}
 

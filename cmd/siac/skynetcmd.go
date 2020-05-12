@@ -16,8 +16,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v5"
 	"github.com/vbauerster/mpb/v5/decor"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 )
 
 var (
@@ -269,47 +271,91 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	}
 
 	// Get the full set of files and directories.
-	dirs := getDir(sp, true, skynetLsRecursive)
+	//
+	// NOTE: Always query recursively so that we can filter out non-tracked
+	// files and get accurate, consistent sizes for dirs. If the --recursive
+	// flag was not passed, we limit the directory output later.
+	dirs := getDir(sp, true, true)
+
+	// Sort the directories and the files.
+	sort.Sort(byDirectoryInfo(dirs))
+	for i := 0; i < len(dirs); i++ {
+		sort.Sort(bySiaPathDir(dirs[i].subDirs))
+		sort.Sort(bySiaPathFile(dirs[i].files))
+	}
+
+	// Keep track of the aggregate sizes for dirs as we may be adjusting them.
+	sizePerDir := make(map[modules.SiaPath]uint64)
+	for _, dir := range dirs {
+		sizePerDir[dir.dir.SiaPath] = dir.dir.AggregateSize
+	}
+
 	// Drop any files that are not tracking skylinks.
+	var numDropped uint64
+	numOmittedPerDir := make(map[modules.SiaPath]int)
 	for j := 0; j < len(dirs); j++ {
 		for i := 0; i < len(dirs[j].files); i++ {
-			if len(dirs[j].files[i].Skylinks) == 0 {
-				dirs[j].files = append(dirs[j].files[:i], dirs[j].files[i+1:]...)
-				i--
+			file := dirs[j].files[i]
+			if len(file.Skylinks) != 0 {
+				continue
 			}
+
+			siaPath := dirs[j].dir.SiaPath
+			numDropped++
+			numOmittedPerDir[siaPath]++
+			// Subtract the size from the aggregate size for the dir and all
+			// parent dirs.
+			for {
+				sizePerDir[siaPath] -= file.Filesize
+				if siaPath.IsRoot() {
+					break
+				}
+				siaPath, err = siaPath.Dir()
+				if err != nil {
+					die("could not parse parent dir:", err)
+				}
+				if _, exists := sizePerDir[siaPath]; !exists {
+					break
+				}
+			}
+			// Remove the file.
+			dirs[j].files = append(dirs[j].files[:i], dirs[j].files[i+1:]...)
+			i--
 		}
 	}
 
-	// Produce the full information for these files.
-	numFiles := 0
-	var totalStored uint64
-	for _, dir := range dirs {
-		for _, file := range dir.files {
-			totalStored += file.Filesize
-		}
-		numFiles += len(dir.files)
+	// Get the total number of listings (subdirs and files).
+	root := dirs[0] // Root directory we are querying.
+	var numFilesDirs uint64
+	if skynetLsRecursive {
+		numFilesDirs = root.dir.AggregateNumFiles + root.dir.AggregateNumSubDirs
+		numFilesDirs -= numDropped
+	} else {
+		numFilesDirs = root.dir.NumFiles + root.dir.NumSubDirs
+		numFilesDirs -= uint64(numOmittedPerDir[root.dir.SiaPath])
 	}
-	if numFiles+len(dirs) < 1 {
-		fmt.Println("No files/dirs have been uploaded.")
-		return
-	}
-	fmt.Printf("\nListing %v files/dirs:", numFiles+len(dirs)-1)
-	fmt.Printf(" %9s\n", modules.FilesizeUnits(totalStored))
-	sort.Sort(byDirectoryInfo(dirs))
+
+	// Print totals.
+	totalStoredStr := modules.FilesizeUnits(sizePerDir[root.dir.SiaPath])
+	fmt.Printf("\nListing %v files/dirs:\t%9s\n\n", numFilesDirs, totalStoredStr)
+
 	// Print dirs.
 	for _, dir := range dirs {
-		fmt.Printf("%v/\n", dir.dir.SiaPath)
+		fmt.Printf("%v/", dir.dir.SiaPath)
+		if numOmitted := numOmittedPerDir[dir.dir.SiaPath]; numOmitted > 0 {
+			fmt.Printf("\t(%v omitted)", numOmitted)
+		}
+		fmt.Println()
+
 		// Print subdirs.
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		sort.Sort(bySiaPathDir(dir.subDirs))
 		for _, subDir := range dir.subDirs {
 			subDirName := subDir.SiaPath.Name() + "/"
-			size := modules.FilesizeUnits(subDir.AggregateSize)
-			fmt.Fprintf(w, "  %v\t\t%9v\n", subDirName, size)
+			sizeUnits := modules.FilesizeUnits(sizePerDir[subDir.SiaPath])
+			fmt.Fprintf(w, "  %v\t\t%9v\n", subDirName, sizeUnits)
 		}
 
 		// Print files.
-		sort.Sort(bySiaPathFile(dir.files))
 		for _, file := range dir.files {
 			name := file.SiaPath.Name()
 			firstSkylink := file.Skylinks[0]
@@ -321,6 +367,11 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 		}
 		w.Flush()
 		fmt.Println()
+
+		if !skynetLsRecursive {
+			// If not --recursive, finish early after the first dir.
+			break
+		}
 	}
 }
 
@@ -544,6 +595,22 @@ func skynetUploadFileFromReader(source io.Reader, filename string, siaPath modul
 
 		Reader: source,
 	}
+
+	if skykeyName != "" && skykeyID != "" {
+		die("Can only use either skykeyname or skykeyid flag, not both.")
+	}
+	// Set Encrypt param to true if a skykey ID or name is set.
+	if skykeyName != "" {
+		sup.SkykeyName = skykeyName
+	} else if skykeyID != "" {
+		var ID skykey.SkykeyID
+		err := ID.FromString(skykeyID)
+		if err != nil {
+			die("Unable to parse skykey ID")
+		}
+		sup.SkykeyID = ID
+	}
+
 	skylink, _, err := httpClient.SkynetSkyfilePost(sup)
 	if err != nil {
 		die("could not upload file to Skynet:", err)

@@ -5,32 +5,8 @@ import (
 	"context"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 )
-
-// newHasSectorInstruction is a convenience method for creating a single
-// 'HasSector' instruction.
-func newHasSectorInstruction(dataOffset uint64, pt *modules.RPCPriceTable) (modules.Instruction, types.Currency, types.Currency, types.Currency, uint64, uint64) {
-	i := NewHasSectorInstruction(dataOffset)
-	cost, refund := modules.MDMHasSectorCost(pt)
-	collateral := modules.MDMHasSectorCollateral()
-	return i, cost, refund, collateral, modules.MDMHasSectorMemory(), modules.MDMTimeHasSector
-}
-
-// newHasSectorProgram is a convenience method which prepares the instructions
-// and the program data for a program that executes a single
-// HasSectorInstruction.
-func newHasSectorProgram(merkleRoot crypto.Hash, pt *modules.RPCPriceTable) ([]modules.Instruction, []byte, types.Currency, types.Currency, types.Currency, uint64) {
-	data := make([]byte, crypto.HashSize)
-	copy(data[:crypto.HashSize], merkleRoot[:])
-	initCost := modules.MDMInitCost(pt, uint64(len(data)), 1)
-	i, cost, refund, collateral, memory, time := newHasSectorInstruction(0, pt)
-	cost, refund, collateral, memory = updateRunningCosts(pt, initCost, types.ZeroCurrency, types.ZeroCurrency, modules.MDMInitMemory(), cost, refund, collateral, memory, time)
-	instructions := []modules.Instruction{i}
-	return instructions, data, cost, refund, collateral, memory
-}
 
 // TestInstructionHasSector tests executing a program with a single
 // HasSectorInstruction.
@@ -50,8 +26,12 @@ func TestInstructionHasSector(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Build the program.
 	pt := newTestPriceTable()
-	instructions, programData, cost, refund, collateral, _ := newHasSectorProgram(sectorRoot, pt)
+	pb := modules.NewProgramBuilder(pt)
+	pb.AddHasSectorInstruction(sectorRoot)
+	instructions, programData := pb.Program()
+	cost, refund, collateral := pb.Cost(true)
 	dataLen := uint64(len(programData))
 	// Execute it.
 	budget := modules.NewBudget(cost)

@@ -277,6 +277,9 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	// Grab chunk stuck status
 	uuc.mu.Lock()
 	chunkStuck := uuc.stuck
+	if uuc.chunkCreationTime.IsZero() {
+		uuc.chunkCreationTime = time.Now()
+	}
 	uuc.mu.Unlock()
 
 	// Check if chunk is in any of the heap maps
@@ -285,10 +288,11 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	unstuckUUC, existsUnstuckHeap := uh.unstuckHeapChunks[uuc.id]
 	repairingUUC, existsRepairing := uh.repairingChunks[uuc.id]
 	stuckUUC, existsStuckHeap := uh.stuckHeapChunks[uuc.id]
+	exists := existsUnstuckHeap || existsRepairing || existsStuckHeap
 
 	// If the added chunk has a sourceReader and the existing one doesn't, replace
 	// them.
-	if uuc.sourceReader != nil && (existsUnstuckHeap || existsRepairing || existsStuckHeap) {
+	if uuc.sourceReader != nil && exists {
 		// Get the existing chunk.
 		var existingUUC *unfinishedUploadChunk
 		if existsStuckHeap {
@@ -313,8 +317,8 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	}
 
 	// Check if the chunk can be added to the heap
-	canAddStuckChunk := chunkStuck && !existsStuckHeap && !existsRepairing && len(uh.stuckHeapChunks) < maxStuckChunksInHeap
-	canAddUnstuckChunk := !chunkStuck && !existsUnstuckHeap && !existsRepairing
+	canAddStuckChunk := chunkStuck && !exists && len(uh.stuckHeapChunks) < maxStuckChunksInHeap
+	canAddUnstuckChunk := !chunkStuck && !exists
 	if canAddStuckChunk {
 		uh.stuckHeapChunks[uuc.id] = uuc
 		heap.Push(&uh.heap, uuc)
@@ -771,7 +775,8 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 		// is not remote
 		fileMetadata := file.Metadata()
 		fileHealth := fileMetadata.CachedHealth
-		remoteFile := fileMetadata.LocalPath == ""
+		_, err := os.Stat(fileMetadata.LocalPath)
+		remoteFile := fileMetadata.LocalPath == "" || err != nil
 		if (fileHealth < dirHeapHealth || !remoteFile && dirHeapRemote) && target == targetUnstuckChunks {
 			// Track the health
 			if !remoteFile && worstHealthRemote {
@@ -1240,6 +1245,9 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 		// Perform the work. managedPrepareNextChunk will block until
 		// enough memory is available to perform the work, slowing this
 		// thread down to using only the resources that are available.
+		nextChunk.mu.Lock()
+		nextChunk.chunkPoppedFromHeapTime = time.Now()
+		nextChunk.mu.Unlock()
 		err := r.managedPrepareNextChunk(nextChunk, hosts)
 		if err != nil {
 			// An error was return which means the renter was unable to allocate

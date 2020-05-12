@@ -2,6 +2,7 @@ package modules
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -55,6 +56,15 @@ func NewSiaMux(siaMuxDir, siaDir, address string) (*siamux.SiaMux, error) {
 		return siamux.CompatV1421NewWithKeyPair(address, logger, siaMuxDir, privKey, pubKey)
 	}
 	return siamux.New(address, logger, siaMuxDir)
+}
+
+// NewHostStream is a helper function that opens a stream on the given mux  to
+// the given host.
+func NewHostStream(mux *siamux.SiaMux, h Host) (siamux.Stream, error) {
+	hes := h.ExternalSettings()
+	muxAddress := fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
+	muxPK := SiaPKToMuxPK(h.PublicKey())
+	return mux.NewStream(HostSiaMuxSubscriberName, muxAddress, muxPK)
 }
 
 // SiaPKToMuxPK turns a SiaPublicKey into a mux.ED25519PublicKey

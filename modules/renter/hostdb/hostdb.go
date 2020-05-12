@@ -174,6 +174,7 @@ func (hdb *HostDB) managedSynced() bool {
 // updateContracts rebuilds the knownContracts of the HostDB using the provided
 // contracts.
 func (hdb *HostDB) updateContracts(contracts []modules.RenterContract) {
+	// Build a new set of known contracts.
 	knownContracts := make(map[string]contractInfo)
 	for _, contract := range contracts {
 		if n := len(contract.Transaction.FileContractRevisions); n != 1 {
@@ -185,7 +186,19 @@ func (hdb *HostDB) updateContracts(contracts []modules.RenterContract) {
 			StoredData:    contract.Transaction.FileContractRevisions[0].NewFileSize,
 		}
 	}
+
+	// Update the set of known contracts in the hostdb, log if the number of
+	// contracts has decreased.
+	if len(hdb.knownContracts) > len(knownContracts) {
+		hdb.staticLog.Printf("Hostdb is decreasing from %v known contracts to %v known contracts", len(hdb.knownContracts), len(knownContracts))
+	}
 	hdb.knownContracts = knownContracts
+
+	// Save the hostdb to persist the update.
+	err := hdb.saveSync()
+	if err != nil {
+		hdb.staticLog.Println("Error saving set of known contracts:", err)
+	}
 }
 
 // hostdbBlockingStartup handles the blocking portion of NewCustomHostDB.
@@ -227,7 +240,7 @@ func hostdbBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 
 	// Create the logger.
-	logger, err := persist.NewFileLogger(filepath.Join(persistDir, "hostdb.staticLog"))
+	logger, err := persist.NewFileLogger(filepath.Join(persistDir, "hostdb.log"))
 	if err != nil {
 		return nil, err
 	}
