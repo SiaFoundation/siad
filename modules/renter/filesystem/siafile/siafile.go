@@ -1342,8 +1342,13 @@ func (sf *SiaFile) uploadProgressAndBytes() (float64, uint64, error) {
 		return 100, uploaded, nil
 	}
 	desired := uint64(sf.numChunks) * modules.SectorSize * uint64(sf.staticMetadata.staticErasureCode.NumPieces())
+	calculatedUploadProgress := 100 * (float64(uploaded) / float64(desired))
+	// This might happen if we omit setting the number of chunks in the Siafile.
+	if math.IsNaN(calculatedUploadProgress) {
+		build.Critical("calculatedUploadProgress is NaN!")
+	}
 	// Update cache.
-	sf.staticMetadata.CachedUploadProgress = math.Min(100*(float64(uploaded)/float64(desired)), 100)
+	sf.staticMetadata.CachedUploadProgress = math.Min(calculatedUploadProgress, 100)
 	return sf.staticMetadata.CachedUploadProgress, uploaded, nil
 }
 
