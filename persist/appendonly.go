@@ -38,14 +38,15 @@ type (
 	// AppendOnlyPersist is the object responsible for creating, loading, and
 	// updating append-only persist files.
 	AppendOnlyPersist struct {
-		staticPath       string
-		staticObjectSize uint64
+		staticPath string
 
 		metadata appendOnlyPersistMetadata
 
 		mu sync.Mutex
 	}
 
+	// appendOnlyPersistMetadata contains metadata for the AppendOnly Persist
+	// file.
 	appendOnlyPersistMetadata struct {
 		staticHeader  types.Specifier
 		staticVersion types.Specifier
@@ -56,10 +57,9 @@ type (
 
 // NewAppendOnlyPersist creates a new AppendOnlyPersist object and initializes
 // the persistence file.
-func NewAppendOnlyPersist(dir, file string, size uint64, metadataHeader, metadataVersion types.Specifier) (*AppendOnlyPersist, []byte, error) {
+func NewAppendOnlyPersist(dir, file string, metadataHeader, metadataVersion types.Specifier) (*AppendOnlyPersist, []byte, error) {
 	aop := &AppendOnlyPersist{
-		staticPath:       filepath.Join(dir, file),
-		staticObjectSize: size,
+		staticPath: filepath.Join(dir, file),
 		metadata: appendOnlyPersistMetadata{
 			staticHeader:  metadataHeader,
 			staticVersion: metadataVersion,

@@ -59,7 +59,7 @@ type (
 // New returns an initialized PersistList.
 func New(persistDir string) (*PersistList, error) {
 	// Initialize the persistence of the portal list.
-	aop, bytes, err := persist.NewAppendOnlyPersist(persistDir, persistFile, persistSize, metadataHeader, metadataVersion)
+	aop, bytes, err := persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
 	if err != nil {
 		return nil, errors.AddContext(err, fmt.Sprintf("unable to initialize the skynet portal list persistence at '%v'", aop.FilePath()))
 	}

@@ -1,6 +1,7 @@
 package persist
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,7 +10,98 @@ import (
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 )
+
+// TestWrite tests that written data is appended and persistent.
+func TestWrite(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a new AppendOnlyPersist.
+	testdir := build.TempDir("appendonlypersist", t.Name())
+	filename := "test"
+	header := types.NewSpecifier("AppendOnlyPersistTest\n")
+	version := types.NewSpecifier("x.x.x\n")
+	aop, readBytes, err := NewAppendOnlyPersist(testdir, filename, header, version)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test FilePath().
+	filepath := filepath.Join(testdir, filename)
+	if filepath != aop.FilePath() {
+		t.Fatalf("Expected filepath %v, was %v", filepath, aop.FilePath())
+	}
+
+	// The returned bytes should be empty.
+	if len(readBytes) != 0 {
+		t.Fatalf("Expected %v returned bytes, got %v", 0, len(readBytes))
+	}
+
+	// Check the persist length.
+	if aop.PersistLength() != MetadataPageSize {
+		t.Fatalf("Expected persist length %v, was %v", MetadataPageSize, aop.PersistLength())
+	}
+
+	// Write some data to the AOP.
+	length1 := 1000
+	bytes1 := fastrand.Bytes(length1)
+	numBytes, err := aop.Write(bytes1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if numBytes != length1 {
+		t.Fatalf("Expected to write %v bytes, wrote %v bytes", length1, numBytes)
+	}
+
+	// Load the AOP again.
+	aop, readBytes, err = NewAppendOnlyPersist(testdir, filename, header, version)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check the persist length.
+	expectedLength := MetadataPageSize + uint64(length1)
+	if aop.PersistLength() != expectedLength {
+		t.Fatalf("Expected persist length %v, was %v", expectedLength, aop.PersistLength())
+	}
+
+	// Check the returned bytes.
+	if !bytes.Equal(readBytes, bytes1) {
+		t.Fatalf("Expected and received byte slices don't match")
+	}
+
+	// Write more data to the AOP.
+	length2 := 500
+	bytes2 := fastrand.Bytes(length2)
+	numBytes, err = aop.Write(bytes2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if numBytes != length1 {
+		t.Fatalf("Expected to write %v bytes, wrote %v bytes", length1, numBytes)
+	}
+
+	// Load the AOP again.
+	aop, readBytes, err = NewAppendOnlyPersist(testdir, filename, header, version)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check the persist length.
+	expectedLength = MetadataPageSize + uint64(length1) + uint64(length2)
+	if aop.PersistLength() != expectedLength {
+		t.Fatalf("Expected persist length %v, was %v", expectedLength, aop.PersistLength())
+	}
+
+	// Check the returned bytes (should have been appended).
+	if !bytes.Equal(readBytes, append(bytes1, bytes2...)) {
+		t.Fatalf("Expected and received byte slices don't match")
+	}
+}
 
 // TestMarshalMetadata verifies that the marshaling and unmarshaling of the
 // metadata and length provides the expected results
@@ -20,7 +112,7 @@ func TestMarshalMetadata(t *testing.T) {
 	t.Parallel()
 
 	// Create persist file
-	testdir := build.TempDir(t.Name())
+	testdir := build.TempDir("appendonlypersist", t.Name())
 	testfile := "testpersist"
 	err := os.MkdirAll(testdir, defaultDirPermissions)
 	if err != nil {
