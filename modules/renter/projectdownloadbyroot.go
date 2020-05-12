@@ -361,9 +361,13 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	case <-pdbr.completeChan:
 	}
 
+	// Fetch the error and the data. Then nil out the data in the pdbr so that
+	// other workers who haven't finished and are holding a reference to the
+	// pdbr aren't keeping a reference to this heavy object.
 	pdbr.mu.Lock()
 	err := pdbr.err
 	data := pdbr.data
+	pdbr.data = nil
 	pdbr.mu.Unlock()
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to fetch sector root from the network")

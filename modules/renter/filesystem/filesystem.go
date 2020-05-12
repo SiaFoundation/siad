@@ -557,7 +557,7 @@ func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached boo
 	// Open the folder.
 	dir, err := fs.managedOpenDir(siaPath.String())
 	if err != nil {
-		return nil, nil, errors.AddContext(err, "failed to open folder specified by FileList")
+		return nil, nil, errors.AddContext(err, fmt.Sprintf("failed to open folder '%v' specified by FileList", siaPath))
 	}
 	defer dir.Close()
 	return dir.managedList(fs.managedAbsPath(), recursive, cached, offlineMap, goodForRenewMap, contractsMap)

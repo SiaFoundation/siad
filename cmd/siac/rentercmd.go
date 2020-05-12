@@ -2082,8 +2082,8 @@ func getDir(siaPath modules.SiaPath, root, recursive bool) (dirs []directoryInfo
 	return
 }
 
-// renterfileslistcmd is the handler for the command `siac renter list`.
-// Lists files known to the renter on the network.
+// renterfileslistcmd is the handler for the command `siac renter ls`. Lists
+// files known to the renter on the network.
 func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	var path string
 	switch len(args) {
@@ -2127,18 +2127,6 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 
 	// Get dirs with their corresponding files.
 	dirs := getDir(sp, renterListRoot, renterListRecursive)
-	numFiles := 0
-	var totalStored uint64
-	for _, dir := range dirs {
-		for _, file := range dir.files {
-			totalStored += file.Filesize
-		}
-		numFiles += len(dir.files)
-	}
-	if numFiles+len(dirs) < 1 {
-		fmt.Println("No files/dirs have been uploaded.")
-		return
-	}
 
 	// Sort the directories and the files.
 	sort.Sort(byDirectoryInfo(dirs))
@@ -2147,15 +2135,24 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 		sort.Sort(bySiaPathFile(dirs[i].files))
 	}
 
-	// Print text that available for both verbose and not verbose output.
-	numFilesDirs := numFiles + len(dirs) - 1
+	// Get the total number of listings (subdirs and files).
+	root := dirs[0] // Root directory we are querying.
+	totalStored := root.dir.AggregateSize
+	var numFilesDirs uint64
+	if renterListRecursive {
+		numFilesDirs = root.dir.AggregateNumFiles + root.dir.AggregateNumSubDirs
+	} else {
+		numFilesDirs = root.dir.NumFiles + root.dir.NumSubDirs
+	}
+
+	// Print totals for both verbose and not verbose output.
 	totalStoredStr := modules.FilesizeUnits(totalStored)
-	fmt.Printf("\nListing %v files/dirs: %9s\n\n", numFilesDirs, totalStoredStr)
+	fmt.Printf("\nListing %v files/dirs:\t%9s\n\n", numFilesDirs, totalStoredStr)
 
 	// Handle the non verbose output.
 	if !renterListVerbose {
 		for _, dir := range dirs {
-			fmt.Println(dir.dir.SiaPath.String() + "/")
+			fmt.Printf("%v/\n", dir.dir.SiaPath)
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 			for _, subDir := range dir.subDirs {
 				name := subDir.SiaPath.Name() + "/"

@@ -434,6 +434,12 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 
 	contractValue := contract.RenterFunds
 	c.log.Printf("Formed contract %v with %v for %v", contract.ID, host.NetAddress, contractValue.HumanString())
+
+	// Update the hostdb to include the new contract.
+	err = c.hdb.UpdateContracts(c.staticContracts.ViewAll())
+	if err != nil {
+		c.log.Println("Unable to update hostdb contracts:", err)
+	}
 	return contractFunding, contract, nil
 }
 
@@ -638,6 +644,12 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	c.mu.Lock()
 	c.pubKeysToContractID[newContract.HostPublicKey.String()] = newContract.ID
 	c.mu.Unlock()
+
+	// Update the hostdb to include the new contract.
+	err = c.hdb.UpdateContracts(c.staticContracts.ViewAll())
+	if err != nil {
+		c.log.Println("Unable to update hostdb contracts:", err)
+	}
 
 	return newContract, nil
 }
@@ -934,7 +946,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	err = c.hdb.UpdateContracts(c.staticContracts.ViewAll())
 	if err != nil {
-		c.log.Debugln("Unable to update hostdb contracts:", err)
+		c.log.Println("Unable to update hostdb contracts:", err)
 		return
 	}
 
