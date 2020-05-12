@@ -177,6 +177,12 @@ func TestUnrecognizedRPCID(t *testing.T) {
 	}()
 
 	stream := pair.newStream()
+	defer func() {
+		err := stream.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
 	// write a random rpc id to it and expect it to fail
 	var randomRPCID types.Specifier
@@ -187,6 +193,6 @@ func TestUnrecognizedRPCID(t *testing.T) {
 	}
 	err = modules.RPCRead(stream, struct{}{})
 	if err == nil || !strings.Contains(err.Error(), randomRPCID.String()) {
-		t.Fatalf("Expected Unrecognized RPC ID error, but received '%v'", err)
+		t.Fatalf("Expected err '%v', but received '%v'", randomRPCID, err)
 	}
 }
