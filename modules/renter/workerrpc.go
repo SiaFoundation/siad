@@ -3,6 +3,7 @@ package renter
 import (
 	"encoding/json"
 	"io"
+	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -180,18 +181,6 @@ func (w *worker) managedFundAccount(amount types.Currency) (resp modules.FundAcc
 
 // managedHasSector returns whether or not the host has a sector with given root
 func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
-	// create a new stream
-	var stream siamux.Stream
-	stream, err := w.staticNewStream()
-	if err != nil {
-		return false, errors.AddContext(err, "Unable to create a new stream")
-	}
-	defer func() {
-		if err := stream.Close(); err != nil {
-			w.renter.log.Println("ERROR: failed to close stream", err)
-		}
-	}()
-
 	// create the program
 	pt := w.staticHostPrices.managedPriceTable()
 	pb := modules.NewProgramBuilder(&pt)
@@ -200,11 +189,16 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 	cost, _, _ := pb.Cost(true)
 
 	// take into account bandwidth costs
-	cost = cost.Add(pb.BandwidthCost())
+	bandwidthCost := pb.BandwidthCost()
+
+	// TODO temporarily increase budget to ensure it is sufficient to cover the
+	// cost, until we have defined the true bandwidth cost of the new protocol
+	bandwidthCost = bandwidthCost.Mul64(10)
+	cost = cost.Add(bandwidthCost)
 
 	// exeucte it
 	var responses []programResponse
-	responses, err = w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
+	responses, err := w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
 	if err != nil {
 		return false, errors.AddContext(err, "Unable to execute program")
 	}
@@ -223,17 +217,6 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 
 // managedReadSector returns the sector data for given root
 func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64) ([]byte, error) {
-	// create a new stream
-	stream, err := w.staticNewStream()
-	if err != nil {
-		return nil, errors.AddContext(err, "Unable to create a new stream")
-	}
-	defer func() {
-		if err := stream.Close(); err != nil {
-			w.renter.log.Println("ERROR: failed to close stream", err)
-		}
-	}()
-
 	// create the program
 	pt := w.staticHostPrices.managedPriceTable()
 	pb := modules.NewProgramBuilder(&pt)
@@ -242,7 +225,12 @@ func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64
 	cost, _, _ := pb.Cost(true)
 
 	// take into account bandwidth costs
-	cost = cost.Add(pb.BandwidthCost())
+	bandwidthCost := pb.BandwidthCost()
+
+	// TODO temporarily increase budget to ensure it is sufficient to cover the
+	// cost, until we have defined the true bandwidth cost of the new protocol
+	bandwidthCost = bandwidthCost.Mul64(1000)
+	cost = cost.Add(bandwidthCost)
 
 	// exeucte it
 	responses, err := w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
@@ -312,6 +300,14 @@ func (w *worker) managedUpdatePriceTable() error {
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, w.staticAccount.staticID, bh)
 	if err != nil {
 		return err
+	}
+
+	// expect stream to be closed (the host only sees a PT as valid if it
+	// successfully managed to process payment, not awaiting the close allows
+	// for a race condition where we consider it valid but the host does not
+	err = modules.RPCRead(stream, struct{}{})
+	if err == nil || !strings.Contains(err.Error(), io.ErrClosedPipe.Error()) {
+		w.renter.log.Println("ERROR: expected io.ErrClosedPipe, instead received err:", err)
 	}
 
 	// update the price table

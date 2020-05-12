@@ -2,7 +2,6 @@ package renter
 
 import (
 	"sync"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"

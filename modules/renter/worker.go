@@ -417,6 +417,12 @@ func (w *worker) managedTryRefillAccount() {
 		return
 	}
 
+	// check if price table is valid
+	if w.staticHostPrices.managedPriceTable().Expiry <= time.Now().Unix() {
+		w.renter.log.Println("ERROR: failed to refill account, current price table is expired")
+		return
+	}
+
 	// the account balance dropped to below half the balance target, refill
 	amount := w.staticBalanceTarget.Sub(balance)
 	_, err := w.managedFundAccount(amount)
@@ -434,12 +440,16 @@ func (w *worker) managedTryUpdatePriceTable() {
 		return
 	}
 
-	if w.staticHostPrices.managedNeedsUpdate() {
-		err := w.managedUpdatePriceTable()
-		if err != nil {
-			w.renter.log.Println("ERROR: failed to update price table", err)
-			// TODO: add retry mechanism
-		}
+	// check if update is necessary
+	if !w.staticHostPrices.managedNeedsUpdate() {
+		return
+	}
+
+	// update the price table
+	err := w.managedUpdatePriceTable()
+	if err != nil {
+		w.renter.log.Println("ERROR: failed to update price table", err)
+		// TODO: add retry mechanism
 	}
 }
 

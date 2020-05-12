@@ -206,8 +206,8 @@ func TestAccountCriticalOnDoubleSave(t *testing.T) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("%v", r)
-			if !strings.Contains(err.Error(), "Trying to save accounts twice") {
+			err := fmt.Sprint(r)
+			if !strings.Contains(err, "Trying to save accounts twice") {
 				t.Fatal("Expected error not returned")
 			}
 		}
