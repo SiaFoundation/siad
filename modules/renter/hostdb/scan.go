@@ -21,6 +21,17 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+var (
+	// scanTimeElapsedRequirement defines the amount of time that must elapse
+	// between scans in order for a new scan to be accepted into the hostdb as
+	// part of the scan history.
+	scanTimeElapsedRequirement = build.Select(build.Var{
+		Standard: 60 * time.Minute,
+		Dev:      2 * time.Minute,
+		Testing:  500 * time.Millisecond,
+	}).(time.Duration)
+)
+
 // equalIPNets checks if two slices of IP subnets contain the same subnets.
 func equalIPNets(ipNetsA, ipNetsB []string) bool {
 	// Check the length first.
@@ -74,7 +85,6 @@ func (hdb *HostDB) managedUpdateTxnFees() {
 	hwf := hdb.managedCalculateHostWeightFn(allowance)
 	// Set the weight function.
 	if err := hdb.managedSetWeightFunction(hwf); err != nil {
-		// This shouldn't happen.
 		build.Critical("Failed to set the new weight function", err)
 	}
 	hdb.staticLog.Println("Updated the hostdb txnFees to", newTxnFees.HumanString())
@@ -111,12 +121,12 @@ func (hdb *HostDB) queueScan(entry modules.HostDBEntry) {
 		hdb.staticLog.Critical("The hostdb scan map has seemingly grown too large:", len(hdb.scanMap), len(hdb.scanList), maxScanningThreads)
 	}
 
+	// Nobody is emptying the scan list, create and run a scan thread.
 	hdb.scanWait = true
 	go func() {
 		scanPool := make(chan modules.HostDBEntry)
 		defer close(scanPool)
 
-		// Nobody is emptying the scan list, volunteer.
 		if hdb.tg.Add() != nil {
 			// Hostdb is shutting down, don't spin up another thread.  It is
 			// okay to leave scanWait set to true as that will not affect
@@ -191,9 +201,8 @@ func (hdb *HostDB) queueScan(entry modules.HostDBEntry) {
 			hdb.staticLog.Debugf("Sending host %v for scan, %v hosts remain", entry.PublicKey.String(), scansRemaining)
 			select {
 			case scanPool <- entry:
-				// iterate again
+				continue
 			case <-hdb.tg.StopChan():
-				// quit
 				return
 			}
 		}
@@ -223,6 +232,8 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 	}
 
 	// Update the recent interactions with this host.
+	//
+	// No decay applied because block height is unknown.
 	if netErr == nil {
 		newEntry.RecentSuccessfulInteractions++
 	} else {
@@ -234,7 +245,7 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 		// Add two scans to the scan history. Two are needed because the scans
 		// are forward looking, but we want this first scan to represent as
 		// much as one week of uptime or downtime.
-		earliestStartTime := time.Now().Add(time.Hour * 7 * 24 * -1)                                                   // Permit up to a week of starting uptime or downtime.
+		earliestStartTime := time.Now().Add(time.Hour * 2 * 24 * -1)                                                   // Permit up two days starting uptime or downtime.
 		suggestedStartTime := time.Now().Add(time.Minute * 10 * time.Duration(hdb.blockHeight-entry.FirstSeen+1) * -1) // Add one to the FirstSeen in case FirstSeen is this block, guarantees incrementing order.
 		if suggestedStartTime.Before(earliestStartTime) {
 			suggestedStartTime = earliestStartTime
@@ -244,23 +255,16 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 			{Timestamp: time.Now(), Success: netErr == nil},
 		}
 	} else {
-		if newEntry.ScanHistory[len(newEntry.ScanHistory)-1].Success && netErr != nil {
-			hdb.staticLog.Debugf("Host %v is being downgraded from an online host to an offline host: %v\n", newEntry.PublicKey.String(), netErr)
-		}
-
-		// Make sure that the current time is after the timestamp of the
-		// previous scan. It may not be if the system clock has changed. This
-		// will prevent the sort-check sanity checks from triggering.
+		// Do not add a new timestamp for the scan unless more than an hour has
+		// passed since the previous scan.
 		newTimestamp := time.Now()
 		prevTimestamp := newEntry.ScanHistory[len(newEntry.ScanHistory)-1].Timestamp
-		if !newTimestamp.After(prevTimestamp) {
-			newTimestamp = prevTimestamp.Add(time.Second)
+		if newTimestamp.After(prevTimestamp.Add(scanTimeElapsedRequirement)) {
+			if newEntry.ScanHistory[len(newEntry.ScanHistory)-1].Success && netErr != nil {
+				hdb.staticLog.Printf("Host %v is being downgraded from an online host to an offline host: %v\n", newEntry.PublicKey.String(), netErr)
+			}
+			newEntry.ScanHistory = append(newEntry.ScanHistory, modules.HostDBScan{Timestamp: newTimestamp, Success: netErr == nil})
 		}
-
-		// Before appending, make sure that the scan we just performed is
-		// timestamped after the previous scan performed. It may not be if the
-		// system clock has changed.
-		newEntry.ScanHistory = append(newEntry.ScanHistory, modules.HostDBScan{Timestamp: newTimestamp, Success: netErr == nil})
 	}
 
 	// Check whether any of the recent scans demonstrate uptime. The pruning and
@@ -277,10 +281,13 @@ func (hdb *HostDB) updateEntry(entry modules.HostDBEntry, netErr error) {
 	// hostdb. Only delete if there have been enough scans over a long enough
 	// period to be confident that the host really is offline for good, and if we
 	// don't have any contracts with that host.
-	_, haveContractWithHost := hdb.knownContracts[entry.PublicKey.String()]
-	downPastMaxDowntime := time.Now().Sub(newEntry.ScanHistory[0].Timestamp) > maxHostDowntime && !recentUptime
+	_, haveContractWithHost := hdb.knownContracts[newEntry.PublicKey.String()]
+	downPastMaxDowntime := time.Since(newEntry.ScanHistory[0].Timestamp) > maxHostDowntime && !recentUptime
 	if !haveContractWithHost && downPastMaxDowntime && len(newEntry.ScanHistory) >= minScans {
-		// Remove from hosttrees
+		if newEntry.HistoricUptime > 0 {
+			hdb.staticLog.Printf("Removing %v with historic uptime from hostdb. Recent downtime timestamp is %v. Hostdb knows about %v contracts.", newEntry.PublicKey.String(), newEntry.ScanHistory[0].Timestamp, len(hdb.knownContracts))
+		}
+		// Remove the host from the hostdb.
 		err := hdb.remove(newEntry.PublicKey)
 		if err != nil {
 			hdb.staticLog.Println("ERROR: unable to remove host newEntry which has had a ton of downtime:", err)
@@ -627,6 +634,9 @@ func (hdb *HostDB) threadedScan() {
 		}
 	}
 	hdb.mu.Unlock()
+
+	// Do nothing until the scan list is empty. If there are hosts in the scan
+	// list, other threads are ensuring they all get scanned.
 	hdb.managedWaitForScans()
 
 	hdb.mu.Lock()

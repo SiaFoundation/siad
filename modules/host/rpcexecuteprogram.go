@@ -78,10 +78,13 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		defer h.managedUnlockStorageObligation(fcid)
 	}
 
-	// Get a snapshot of the storage obligation.
-	sos, err := h.managedGetStorageObligationSnapshot(fcid)
-	if err != nil {
-		return errors.AddContext(err, "Failed to get storage obligation snapshot")
+	// Get a snapshot of the storage obligation if required.
+	sos := ZeroStorageObligationSnapshot()
+	if program.RequiresSnapshot() {
+		sos, err = h.managedGetStorageObligationSnapshot(fcid)
+		if err != nil {
+			return errors.AddContext(err, "Failed to get storage obligation snapshot")
+		}
 	}
 
 	// Get the remaining unallocated collateral.
