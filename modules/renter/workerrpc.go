@@ -192,18 +192,6 @@ func (w *worker) managedFundAccount(amount types.Currency) (resp modules.FundAcc
 
 // managedHasSector returns whether or not the host has a sector with given root
 func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
-	// create a new stream
-	var stream siamux.Stream
-	stream, err := w.staticNewStream()
-	if err != nil {
-		return false, errors.AddContext(err, "Unable to create a new stream")
-	}
-	defer func() {
-		if err := stream.Close(); err != nil {
-			w.renter.log.Println("ERROR: failed to close stream", err)
-		}
-	}()
-
 	// create the program
 	pt := w.staticHostPrices.managedPriceTable()
 	pb := modules.NewProgramBuilder(&pt)
@@ -221,7 +209,7 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 
 	// exeucte it
 	var responses []programResponse
-	responses, err = w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
+	responses, err := w.managedExecuteProgram(program, programData, w.staticHostFCID, cost)
 	if err != nil {
 		return false, errors.AddContext(err, "Unable to execute program")
 	}
@@ -240,17 +228,6 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 
 // managedReadSector returns the sector data for given root
 func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64) ([]byte, error) {
-	// create a new stream
-	stream, err := w.staticNewStream()
-	if err != nil {
-		return nil, errors.AddContext(err, "Unable to create a new stream")
-	}
-	defer func() {
-		if err := stream.Close(); err != nil {
-			w.renter.log.Println("ERROR: failed to close stream", err)
-		}
-	}()
-
 	// create the program
 	pt := w.staticHostPrices.managedPriceTable()
 	pb := modules.NewProgramBuilder(&pt)
