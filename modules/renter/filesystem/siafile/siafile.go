@@ -1266,19 +1266,24 @@ func (sf *SiaFile) growNumChunks(numChunks uint64) (updates []writeaheadlog.Upda
 			sf.numChunks = oldNumChunks
 		}
 	}(sf.staticMetadata.backup())
-	// Update the fileSize.
-	sf.staticMetadata.FileSize = int64(sf.staticChunkSize() * uint64(sf.numChunks))
-	mdu, err := sf.saveMetadataUpdates()
-	if err != nil {
-		return nil, err
-	}
 	// Update the chunks.
+	newChunks := make([]chunk, 0, numChunks-uint64(sf.numChunks))
 	for uint64(sf.numChunks) < numChunks {
 		newChunk := chunk{
 			Index:  int(sf.numChunks),
 			Pieces: make([][]piece, sf.staticMetadata.staticErasureCode.NumPieces()),
 		}
 		sf.numChunks++
+		newChunks = append(newChunks, newChunk)
+	}
+	// Update the fileSize.
+	sf.staticMetadata.FileSize = int64(sf.staticChunkSize() * uint64(sf.numChunks))
+	mdu, err := sf.saveMetadataUpdates()
+	if err != nil {
+		return nil, err
+	}
+	// Prepare chunk updates.
+	for _, newChunk := range newChunks {
 		updates = append(updates, sf.saveChunkUpdate(newChunk))
 	}
 	return append(updates, mdu...), nil
