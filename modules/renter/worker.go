@@ -116,6 +116,11 @@ func (w *worker) status() modules.WorkerStatus {
 		uploadCoolDownErr = w.uploadRecentFailureErr.Error()
 	}
 
+	var accountBalance types.Currency
+	if w.staticAccount != nil {
+		w.staticAccount.managedAvailableBalance()
+	}
+
 	return modules.WorkerStatus{
 		// Contract Information
 		ContractID:      w.cachedContractID,
@@ -135,7 +140,7 @@ func (w *worker) status() modules.WorkerStatus {
 		UploadTerminated:    w.uploadTerminated,
 
 		// Ephemeral Account information
-		AvailableBalance:        w.staticAccount.managedAvailableBalance(),
+		AvailableBalance:        accountBalance,
 		BalanceTarget:           w.staticBalanceTarget,
 		FundAccountJobQueueSize: w.staticFundAccountJobQueue.managedLen(),
 
@@ -264,9 +269,6 @@ func (w *worker) threadedWorkLoop() {
 			lastCacheUpdate = time.Now()
 		}
 
-		// Check if the account needs to be refilled.
-		w.scheduleRefillAccount()
-
 		// Perform any job to fund the account
 		workAttempted := w.managedPerformFundAcountJob()
 		if workAttempted {
@@ -325,32 +327,6 @@ func (w *worker) threadedWorkLoop() {
 	}
 }
 
-// scheduleRefillAccount will check if the account needs to be refilled,
-// and will schedule a fund account job if so. This is called every time the
-// worker spends from the account.
-func (w *worker) scheduleRefillAccount() {
-	// Calculate the threshold, if the account's available balance is below this
-	// threshold, we want to trigger a refill. We only refill if we drop below a
-	// threshold because we want to avoid refilling every time we drop 1 hasting
-	// below the target.
-	threshold := w.staticBalanceTarget.Div64(2)
-
-	// Fetch the account's available balance and skip if it's above the
-	// threshold
-	balance := w.staticAccount.managedAvailableBalance()
-	if balance.Cmp(threshold) >= 0 {
-		return
-	}
-
-	// If it's below the threshold, calculate the refill amount and enqueue a
-	// new fund account job
-	refill := w.staticBalanceTarget.Sub(balance)
-	_ = w.callQueueFundAccount(refill)
-
-	// TODO: handle result chan
-	// TODO: add cooldown in case of failure
-}
-
 // newWorker will create and return a worker that is ready to receive jobs.
 func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	_, ok, err := r.hostDB.Host(hostPubKey)
@@ -380,8 +356,6 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	w := &worker{
 		staticHostPubKey:    hostPubKey,
 		staticHostPubKeyStr: hostPubKey.String(),
-
-		staticAccount:       newAccount(hostPubKey),
 		staticBalanceTarget: balanceTarget,
 
 		killChan: make(chan struct{}),
