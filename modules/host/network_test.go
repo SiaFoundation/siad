@@ -1,6 +1,7 @@
 package host
 
 import (
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -193,6 +194,6 @@ func TestUnrecognizedRPCID(t *testing.T) {
 	}
 	err = modules.RPCRead(stream, struct{}{})
 	if err == nil || !strings.Contains(err.Error(), randomRPCID.String()) {
-		t.Fatalf("Expected err '%v', but received '%v'", randomRPCID, err)
+		t.Fatalf("Expected err '%v', but received '%v'", fmt.Sprintf("Unrecognized RPC id %v", randomRPCID), err)
 	}
 }
