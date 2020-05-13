@@ -315,7 +315,7 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	// first, and then the job can be queued because cleanup of the project
 	// assumes that no more workers will be added to the project once the first
 	// worker has begun work.
-	workers := r.staticWorkerPool.managedWorkers()
+	workers := r.staticWorkerPool.callWorkers()
 	if len(workers) == 0 {
 		return nil, errors.New("cannot perform DownloadByRoot, no workers in worker pool")
 	}
@@ -337,9 +337,13 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	case <-pdbr.completeChan:
 	}
 
+	// Fetch the error and the data. Then nil out the data in the pdbr so that
+	// other workers who haven't finished and are holding a reference to the
+	// pdbr aren't keeping a reference to this heavy object.
 	pdbr.mu.Lock()
 	err := pdbr.err
 	data := pdbr.data
+	pdbr.data = nil
 	pdbr.mu.Unlock()
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to fetch sector root from the network")

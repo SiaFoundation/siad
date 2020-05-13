@@ -32,10 +32,10 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	ht := pair.ht
+	ht := pair.staticHT
 
 	// fetch the price table
-	pt := pair.PriceTable()
+	pt := pair.managedPriceTable()
 
 	// fetch some host variables
 	hpk := ht.host.PublicKey()
@@ -51,7 +51,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	// runWithRequest is a helper function that runs the fundEphemeralAccountRPC
 	// with the given pay by contract reuqest
 	runWithRequest := func(req modules.PayByContractRequest) (*modules.PayByContractResponse, *modules.FundAccountResponse, error) {
-		stream := pair.newStream()
+		stream := pair.managedNewStream()
 
 		// write rpc ID
 		err := modules.RPCWrite(stream, modules.RPCFundAccount)
@@ -129,11 +129,6 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 			t.Fatalf("Unexpected account balance, expected %v but received %v", prevBalance.Add(funding).HumanString(), currBalance.HumanString())
 		}
 
-		// verify the host responded with the correct new balance.
-		if !currBalance.Equals(fundResponse.Balance) {
-			t.Fatalf("Unexpected returned account balance, expected %v but received %v", fundResponse.Balance, currBalance.HumanString())
-		}
-
 		// verify the funding get added to the host's financial metrics
 		currPotAccFunding := ht.host.FinancialMetrics().PotentialAccountFunding
 		if !currPotAccFunding.Equals(prevPotAccFunding.Add(funding)) {
@@ -145,7 +140,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	// verify happy flow
 	funding := types.NewCurrency64(100)
 	fmPAF := ht.host.FinancialMetrics().PotentialAccountFunding
-	rev, sig, err := pair.paymentRevision(funding.Add(pt.FundAccountCost))
+	rev, sig, err := pair.managedPaymentRevision(funding.Add(pt.FundAccountCost))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,31 +156,31 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	}
 
 	// expect error when we move funds back to the renter
-	rev, _, err = pair.paymentRevision(funding.Add(pt.FundAccountCost))
+	rev, _, err = pair.managedPaymentRevision(funding.Add(pt.FundAccountCost))
 	if err != nil {
 		t.Fatal(err)
 	}
 	rev.SetValidRenterPayout(rev.ValidRenterPayout().Add64(1))
-	_, _, err = runWithRequest(newPayByContractRequest(rev, pair.sign(rev), refundAccount))
+	_, _, err = runWithRequest(newPayByContractRequest(rev, pair.managedSign(rev), refundAccount))
 
 	if err == nil || !strings.Contains(err.Error(), "rejected for low paying host valid output") {
 		t.Fatalf("Expected error indicating the invalid revision, instead error was: '%v'", err)
 	}
 
 	// expect error when we didn't move enough funds to the renter
-	rev, _, err = pair.paymentRevision(funding.Add(pt.FundAccountCost))
+	rev, _, err = pair.managedPaymentRevision(funding.Add(pt.FundAccountCost))
 	if err != nil {
 		t.Fatal(err)
 	}
 	rev.SetValidHostPayout(rev.ValidHostPayout().Sub64(1))
-	_, _, err = runWithRequest(newPayByContractRequest(rev, pair.sign(rev), refundAccount))
+	_, _, err = runWithRequest(newPayByContractRequest(rev, pair.managedSign(rev), refundAccount))
 
 	if err == nil || !strings.Contains(err.Error(), "rejected for low paying host valid output") {
 		t.Fatalf("Expected error indicating the invalid revision, instead error was: '%v'", err)
 	}
 
 	// expect error when the funds we move are not enough to cover the cost
-	rev, sig, err = pair.paymentRevision(pt.FundAccountCost.Sub64(1))
+	rev, sig, err = pair.managedPaymentRevision(pt.FundAccountCost.Sub64(1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +192,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 
 	// expect error when the funds exceed the host's max ephemeral account
 	// balance
-	rev, sig, err = pair.paymentRevision(pt.FundAccountCost.Add(his.MaxEphemeralAccountBalance.Add64(1)))
+	rev, sig, err = pair.managedPaymentRevision(pt.FundAccountCost.Add(his.MaxEphemeralAccountBalance.Add64(1)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +202,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	}
 
 	// expect error when we corrupt the renter's revision signature
-	rev, sig, err = pair.paymentRevision(funding.Add(pt.FundAccountCost))
+	rev, sig, err = pair.managedPaymentRevision(funding.Add(pt.FundAccountCost))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +240,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	ht.host.managedUnlockStorageObligation(so.id())
 
 	// create a revision and move some collateral
-	rev, _, err = pair.paymentRevision(funding.Add(pt.FundAccountCost))
+	rev, _, err = pair.managedPaymentRevision(funding.Add(pt.FundAccountCost))
 	rev.SetMissedHostPayout(rev.MissedHostOutput().Value.Sub(collateral))
 	voidOutput, err := rev.MissedVoidOutput()
 	if err != nil {
@@ -255,7 +250,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = runWithRequest(newPayByContractRequest(rev, pair.sign(rev), refundAccount))
+	_, _, err = runWithRequest(newPayByContractRequest(rev, pair.managedSign(rev), refundAccount))
 
 	if err == nil || !strings.Contains(err.Error(), "host not expecting to post any collateral") {
 		t.Fatalf("Expected error '%v', instead error was '%v'", "host not expecting to post any collateral", err)
@@ -277,7 +272,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	// verify happy flow again to make sure the error'ed out calls don't mess
 	// anything up
 	fmPAF = ht.host.FinancialMetrics().PotentialAccountFunding
-	rev, sig, err = pair.paymentRevision(funding.Add(pt.FundAccountCost))
+	rev, sig, err = pair.managedPaymentRevision(funding.Add(pt.FundAccountCost))
 	if err != nil {
 		t.Fatal(err)
 	}

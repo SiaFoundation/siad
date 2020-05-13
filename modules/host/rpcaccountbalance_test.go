@@ -47,8 +47,9 @@ func TestAccountBalance(t *testing.T) {
 // testAccountBalanceBasic tests the basic happy-flow functionality of the
 // AccountBalance RPC.
 func testAccountBalanceBasic(t *testing.T, rhp *renterHostPair) {
+	host := rhp.staticHT.host
 	// The balance should be 0 at this point.
-	balance := rhp.ht.host.staticAccountManager.callAccountBalance(rhp.staticAccountID)
+	balance := host.staticAccountManager.callAccountBalance(rhp.staticAccountID)
 	if !balance.IsZero() {
 		t.Fatal("expected balance to be 0 at beginning of test.")
 	}
@@ -63,28 +64,28 @@ func testAccountBalanceBasic(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// The balance should still be 0 at this point.
-	balance = rhp.ht.host.staticAccountManager.callAccountBalance(rhp.staticAccountID)
+	balance = host.staticAccountManager.callAccountBalance(rhp.staticAccountID)
 	if !balance.IsZero() {
 		t.Fatal("expected balance to be 0")
 	}
 
 	// Fund the account.
-	his := rhp.ht.host.managedInternalSettings()
-	_, err = rhp.FundEphemeralAccount(his.MaxEphemeralAccountBalance, false)
+	his := host.managedInternalSettings()
+	_, err = rhp.managedFundEphemeralAccount(his.MaxEphemeralAccountBalance, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// The balance should be the funded amount minus the cost for funding it.
 	expectedBalance := his.MaxEphemeralAccountBalance.Sub(rhp.pt.FundAccountCost)
-	balance = rhp.ht.host.staticAccountManager.callAccountBalance(rhp.staticAccountID)
+	balance = host.staticAccountManager.callAccountBalance(rhp.staticAccountID)
 	if !balance.Equals(expectedBalance) {
 		t.Fatalf("expectd balance to be %v but was %v", expectedBalance.HumanString(), balance.HumanString())
 	}
 
 	// Fetch the balance.
 	expectedBalance = expectedBalance.Sub(rhp.pt.AccountBalanceCost)
-	balance, err = rhp.AccountBalance(false)
+	balance, err = rhp.managedAccountBalance(false, rhp.pt.AccountBalanceCost, rhp.staticAccountID, rhp.staticAccountID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,9 +110,10 @@ func testAccountBalanceRandom(t *testing.T, rhp *renterHostPair) {
 
 // testAccountBalanceRefund tests the refund a host is expected to grant.
 func testAccountBalanceRefund(t *testing.T, rhp *renterHostPair) {
+	host := rhp.staticHT.host
 	// get balance before test.
-	maxBalance := rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance
-	balanceBefore := rhp.ht.host.staticAccountManager.callAccountBalance(rhp.staticAccountID)
+	maxBalance := host.managedInternalSettings().MaxEphemeralAccountBalance
+	balanceBefore := host.staticAccountManager.callAccountBalance(rhp.staticAccountID)
 	fundingAmt := rhp.pt.AccountBalanceCost.Add(maxBalance).Sub(balanceBefore)
 	// fetch the balance and pay for it by contract.
 	balance, err := rhp.managedAccountBalance(true, fundingAmt, rhp.staticAccountID, rhp.staticAccountID)

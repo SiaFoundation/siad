@@ -160,7 +160,11 @@ func (c *Contractor) load() error {
 
 // save saves the Contractor persistence data to disk.
 func (c *Contractor) save() error {
-	return persist.SaveJSON(persistMeta, c.persistData(), filepath.Join(c.persistDir, PersistFilename))
+	// c.persistData is broken out because stack traces will not include the
+	// function call otherwise.
+	persistData := c.persistData()
+	filename := filepath.Join(c.persistDir, PersistFilename)
+	return persist.SaveJSON(persistMeta, persistData, filename)
 }
 
 // convertPersist converts the pre-v1.3.1 contractor persist formats to the new

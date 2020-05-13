@@ -26,21 +26,19 @@ func TestSkykeyCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Set global HTTP client to the node's client.
-	httpClient = n.Client
+	defer n.Close()
 
 	// Set the (global) cipher type to the only allowed type.
 	// This is normally done by the flag parser.
 	skykeyCipherType = "XChaCha20"
 
 	testSkykeyString := "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
-	err = skykeyAdd(testSkykeyString)
+	err = skykeyAdd(n.Client, testSkykeyString)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = skykeyAdd(testSkykeyString)
+	err = skykeyAdd(n.Client, testSkykeyString)
 	if !strings.Contains(err.Error(), skykey.ErrSkykeyWithIDAlreadyExists.Error()) {
 		t.Fatal("Unexpected duplicate name error", err)
 	}
@@ -59,25 +57,25 @@ func TestSkykeyCommands(t *testing.T) {
 	}
 
 	// This should return a duplicate name error.
-	err = skykeyAdd(skString)
+	err = skykeyAdd(n.Client, skString)
 	if !strings.Contains(err.Error(), skykey.ErrSkykeyWithNameAlreadyExists.Error()) {
 		t.Fatal("Expected duplicate name error", err)
 	}
 
 	// Check that adding same key twice returns an error.
 	keyName := "createkey1"
-	newSkykey, err := skykeyCreate(keyName)
+	newSkykey, err := skykeyCreate(n.Client, keyName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = skykeyCreate(keyName)
+	_, err = skykeyCreate(n.Client, keyName)
 	if !strings.Contains(err.Error(), skykey.ErrSkykeyWithNameAlreadyExists.Error()) {
 		t.Fatal("Expected error when creating key with same name")
 	}
 
 	// Check that invalid cipher types are caught.
 	skykeyCipherType = "InvalidCipherType"
-	_, err = skykeyCreate("createkey2")
+	_, err = skykeyCreate(n.Client, "createkey2")
 	if !errors.Contains(err, crypto.ErrInvalidCipherType) {
 		t.Fatal("Expected error when creating key with invalid ciphertype")
 	}
@@ -85,7 +83,7 @@ func TestSkykeyCommands(t *testing.T) {
 
 	// Test skykeyGet
 	// known key should have no errors.
-	getKeyStr, err := skykeyGet(keyName, "")
+	getKeyStr, err := skykeyGet(n.Client, keyName, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,12 +93,12 @@ func TestSkykeyCommands(t *testing.T) {
 	}
 
 	// Using both name and id params should return an error
-	_, err = skykeyGet("name", "id")
+	_, err = skykeyGet(n.Client, "name", "id")
 	if err == nil {
 		t.Fatal("Expected error when using both name and id")
 	}
 	// Using neither name or id param should return an error
-	_, err = skykeyGet("", "")
+	_, err = skykeyGet(n.Client, "", "")
 	if err == nil {
 		t.Fatal("Expected error when using neither name or id params")
 	}

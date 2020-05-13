@@ -28,7 +28,7 @@ Wallet:
 * `siac wallet send [amount] [dest]` sends siacoin to an address
 
 Renter:
-* `siac renter ls` list all renter files
+* `siac renter ls` list all renter files and subdirectories
 * `siac renter upload [filepath] [nickname]` upload a file
 * `siac renter download [nickname] [filepath]` download a file
 
@@ -151,7 +151,7 @@ nickname is what you will use to refer to that file in the
 network. For example, it is common to have the nickname be the same as
 the filename.
 
-* `siac renter ls` displays a list of the your uploaded files
+* `siac renter ls` displays a list of uploaded files and subdirectories
 currently on the sia network by nickname, and their filesizes.
 
 * `siac renter download [nickname] [destination]` downloads a file
@@ -179,16 +179,17 @@ if you have multiple downloads happening simultaneously.
   money is spent on file contracts.
 
 #### Skynet tasks
-* `siac skynet upload [source filepath] [destination siapath]` 
-  uploads a file or directory to Skynet. A skylink will be produced for each 
-  file. The link can be shared and used to retrieve the file. The file(s) that 
-  get uploaded will be pinned to this Sia node, meaning that this node will pay 
-  for storage and repairs until the file(s) are manually deleted. If the 
+* `siac skynet upload [source filepath] [destination siapath]`
+  uploads a file or directory to Skynet. A skylink will be produced for each
+  file. The link can be shared and used to retrieve the file. The file(s) that
+  get uploaded will be pinned to this Sia node, meaning that this node will pay
+  for storage and repairs until the file(s) are manually deleted. If the
   `silent` flag is provided, `siac` will not output progress bars during upload.
 
-* `siac skynet ls` lists all skyfiles that the user has pinned along with the
-  corresponding skylinks. By default, only files in var/skynet/ will be
-  displayed.
+* `siac skynet ls` lists all skyfiles and subdirectories that the user has
+  pinned along with the corresponding skylinks. By default, only files in
+  var/skynet/ will be displayed. Files that are not tracking skylinks are not
+  counted.
 
 * `siac skynet download [skylink] [destination]` downloads a file from Skynet
   using a skylink.

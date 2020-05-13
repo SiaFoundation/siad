@@ -93,6 +93,10 @@ func (c *Contractor) tryAddContractToPubKeyMap(newContract modules.RenterContrac
 	// Ignore any contracts that have been renewed.
 	_, exists := c.renewedTo[newContract.ID]
 	if exists {
+		gfu, gfr := newContract.Utility.GoodForUpload, newContract.Utility.GoodForRenew
+		if gfu || gfr {
+			c.log.Critical("renewed contract is marked as good for upload or good for renew", gfu, gfr)
+		}
 		return
 	}
 	pk := newContract.HostPublicKey.String()
