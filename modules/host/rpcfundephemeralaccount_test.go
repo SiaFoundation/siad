@@ -49,7 +49,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	refundAccount := modules.ZeroAccountID
 
 	// runWithRequest is a helper function that runs the fundEphemeralAccountRPC
-	// with the given pay by contract reuqest
+	// with the given pay by contract request
 	runWithRequest := func(req modules.PayByContractRequest) (*modules.PayByContractResponse, *modules.FundAccountResponse, error) {
 		stream := pair.managedNewStream()
 
@@ -220,7 +220,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	}
 	_, _, err = runWithRequest(newPayByContractRequest(rev, sig, aid))
 	if err == nil {
-		t.Fatal("expected error when refund account is is provided for funding account")
+		t.Fatal("expected error when refund account is provided for funding account")
 	}
 
 	// expect error when revision moves collateral
