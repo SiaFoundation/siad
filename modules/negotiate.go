@@ -385,7 +385,7 @@ func (hes HostExternalSettings) MaxSectorAccessPrice() types.Currency {
 	return hes.DownloadBandwidthPrice.Mul64(MaxSectorAccessPriceVsBandwidth)
 }
 
-// SiaMuxAddress returns the address of its siamux.
+// SiaMuxAddress returns the address of the host's siamux.
 func (hes HostExternalSettings) SiaMuxAddress() string {
 	return fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
 }
