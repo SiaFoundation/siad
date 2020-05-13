@@ -380,7 +380,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, hostFCID types.FileCon
 		wakeChan: make(chan struct{}, 1),
 		renter:   r,
 	}
-	// Get the worker cache set up before returning the worker. This prvents a
+	// Get the worker cache set up before returning the worker. This prevents a
 	// race condition in some tests.
 	if !w.managedUpdateCache() {
 		return nil, errors.New("unable to build cache for worker")
@@ -399,7 +399,7 @@ func (r *Renter) threadedUpdateBlockHeightOnWorkers() {
 
 	// grab the current block height and have all workers cache it
 	blockHeight := r.cs.Height()
-	for _, worker := range r.staticWorkerPool.managedWorkers() {
+	for _, worker := range r.staticWorkerPool.callWorkers() {
 		worker.managedUpdateBlockHeight(blockHeight)
 	}
 }

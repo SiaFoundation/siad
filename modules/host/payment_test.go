@@ -268,12 +268,12 @@ func TestProcessPayment(t *testing.T) {
 // testPayByContract verifies payment is processed correctly in the case of the
 // PayByContract payment method.
 func testPayByContract(t *testing.T, pair *renterHostPair) {
-	host := pair.ht.host
+	host := pair.staticHT.host
 	amount := types.SiacoinPrecision.Div64(2)
 	amountStr := amount.HumanString()
 
 	// prepare an updated revision that pays the host
-	rev, sig, err := pair.paymentRevision(amount)
+	rev, sig, err := pair.managedPaymentRevision(amount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +369,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	}
 	rev.NewValidProofOutputs = validPayouts
 	rev.NewMissedProofOutputs = missedPayouts
-	sig = pair.sign(rev)
+	sig = pair.managedSign(rev)
 
 	// verify err is not nil
 	err = run(renterFunc, hostFunc)
@@ -379,14 +379,14 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 
 	// Manually add money to the refund account.
 	refund := types.NewCurrency64(fastrand.Uint64n(100) + 1)
-	err = pair.ht.host.staticAccountManager.callRefund(refundAccount, refund)
+	err = pair.staticHT.host.staticAccountManager.callRefund(refundAccount, refund)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Run the code again. This time since we funded the account, the
 	// payByResponse would report the funded amount instead of 0.
-	rev, sig, err = pair.paymentRevision(amount)
+	rev, sig, err = pair.managedPaymentRevision(amount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -407,7 +407,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 // testPayByEphemeralAccount verifies payment is processed correctly in the case
 // of the PayByEphemeralAccount payment method.
 func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
-	host := pair.ht.host
+	host := pair.staticHT.host
 	amount := types.NewCurrency64(5)
 	deposit := types.NewCurrency64(8) // enough to perform 1 payment, but not 2
 
@@ -483,7 +483,7 @@ func testUnknownPaymentMethodError(t *testing.T, pair *renterHostPair) {
 		return modules.RPCRead(rStream, struct{}{})
 	}, func() error {
 		// process payment request
-		_, err := pair.ht.host.ProcessPayment(hStream)
+		_, err := pair.staticHT.host.ProcessPayment(hStream)
 		if err != nil {
 			modules.RPCWriteError(hStream, err)
 		}

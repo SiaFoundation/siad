@@ -195,10 +195,11 @@ func TestWatchdogRevisionCheck(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	_, c, m, err := newTestingTrio(t.Name())
+	_, c, m, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tryClose(cf, t)
 
 	// form a contract with the host
 	a := modules.Allowance{
@@ -449,10 +450,11 @@ func TestWatchdogStorageProofCheck(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	_, c, m, err := newTestingTrio(t.Name())
+	_, c, m, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tryClose(cf, t)
 
 	// form a contract with the host
 	a := modules.Allowance{
@@ -706,10 +708,11 @@ func TestWatchdogPruning(t *testing.T) {
 	fcID := fcTxn.FileContractID(0)
 
 	// create testing trio
-	_, c, _, err := newTestingTrio(t.Name())
+	_, c, _, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tryClose(cf, t)
 	revisionTxn := createFakeRevisionTxn(fcID, 1, 10000, 10005)
 
 	// Give the watchdog a gated transaction pool. This precents it from
@@ -846,10 +849,11 @@ func TestWatchdogDependencyAdding(t *testing.T) {
 	fcID := fcTxn.FileContractID(0)
 
 	// create testing trio
-	_, c, _, err := newTestingTrio(t.Name())
+	_, c, _, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tryClose(cf, t)
 	revisionTxn := createFakeRevisionTxn(fcID, 1, 10000, 10005)
 	formationSet := []types.Transaction{fcTxn}
 

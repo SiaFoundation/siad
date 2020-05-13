@@ -5,7 +5,6 @@ package wallet
 
 import (
 	"bytes"
-	"fmt"
 	"sort"
 	"sync"
 
@@ -13,7 +12,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -214,27 +212,17 @@ func NewCustomWallet(cs modules.ConsensusSet, tpool modules.TransactionPool, per
 // Close terminates all ongoing processes involving the wallet, enabling
 // garbage collection.
 func (w *Wallet) Close() error {
-	if err := w.tg.Stop(); err != nil {
-		return err
-	}
-	var errs []error
+	w.cs.Unsubscribe(w)
+	w.tpool.Unsubscribe(w)
+	var lockErr error
 	// Lock the wallet outside of mu.Lock because Lock uses its own mu.Lock.
 	// Once the wallet is locked it cannot be unlocked except using the
 	// unexported unlock method (w.Unlock returns an error if the wallet's
 	// ThreadGroup is stopped).
 	if w.managedUnlocked() {
-		if err := w.managedLock(); err != nil {
-			errs = append(errs, err)
-		}
+		lockErr = w.managedLock()
 	}
-
-	w.cs.Unsubscribe(w)
-	w.tpool.Unsubscribe(w)
-
-	if err := w.log.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("log.Close failed: %v", err))
-	}
-	return build.JoinErrors(errs, "; ")
+	return errors.Compose(lockErr, w.tg.Stop())
 }
 
 // AllAddresses returns all addresses that the wallet is able to spend from,
