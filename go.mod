@@ -25,7 +25,7 @@ require (
 	gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a
 	gitlab.com/NebulousLabs/ratelimit v0.0.0-20191111145210-66b93e150b27
 	gitlab.com/NebulousLabs/siamux v0.0.0-20200511155832-64a7ac68c8ab
-	gitlab.com/NebulousLabs/threadgroup v0.0.0-20180716154133-88a11db9e46c
+	gitlab.com/NebulousLabs/threadgroup v0.0.0-20200513153928-67f056f80aa0
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190814160017-69f300e9bcb8
 	golang.org/x/crypto v0.0.0-20200423211502-4bdfaf469ed5
 	golang.org/x/sys v0.0.0-20200420163511-1957bb5e6d1f // indirect
