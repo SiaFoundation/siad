@@ -426,12 +426,12 @@ func (md *Metadata) equals(b Metadata) bool {
 		build.Critical("Metadata.equals used in non-testing code!")
 	}
 	mdBytes, err := json.Marshal(md)
-	if err != nil {
-		build.Critical(fmt.Sprintf("failed to marshal: %s. Problematic entity: %+v\n", err.Error(), md))
+	if err != nil && build.Release == "testing" {
+		panic(fmt.Sprintf("failed to marshal: %s. Problematic entity: %+v\n", err.Error(), md))
 	}
 	bBytes, err := json.Marshal(b)
-	if err != nil {
-		build.Critical(fmt.Sprintf("failed to marshal: %s. Problematic entity: %+v\n", err.Error(), b))
+	if err != nil && build.Release == "testing" {
+		panic(fmt.Sprintf("failed to marshal: %s. Problematic entity: %+v\n", err.Error(), b))
 	}
 	return bytes.Equal(mdBytes, bBytes)
 }
