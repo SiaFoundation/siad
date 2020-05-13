@@ -2621,10 +2621,9 @@ func writeWorkers(workers []modules.WorkerStatus) {
 			worker.UploadTerminated)
 
 		// EA Info
-		fmt.Fprintf(w, "\t%v\t%v\t%v",
+		fmt.Fprintf(w, "\t%v\t%v",
 			worker.AvailableBalance,
-			worker.BalanceTarget,
-			worker.FundAccountJobQueueSize)
+			worker.BalanceTarget)
 
 		// Job Info
 		fmt.Fprintf(w, "\t%v\t%v\n",

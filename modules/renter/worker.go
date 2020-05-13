@@ -79,7 +79,6 @@ type worker struct {
 	// Job queues for the worker.
 	staticFetchBackupsJobQueue   fetchBackupsJobQueue
 	staticJobQueueDownloadByRoot jobQueueDownloadByRoot
-	staticFundAccountJobQueue    fundAccountJobQueue
 
 	// Upload variables.
 	unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
@@ -140,9 +139,8 @@ func (w *worker) status() modules.WorkerStatus {
 		UploadTerminated:    w.uploadTerminated,
 
 		// Ephemeral Account information
-		AvailableBalance:        accountBalance,
-		BalanceTarget:           w.staticBalanceTarget,
-		FundAccountJobQueueSize: w.staticFundAccountJobQueue.managedLen(),
+		AvailableBalance: accountBalance,
+		BalanceTarget:    w.staticBalanceTarget,
 
 		// Job Queues
 		BackupJobQueueSize:       w.staticFetchBackupsJobQueue.managedLen(),
@@ -238,7 +236,6 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillUploading()
 	defer w.managedKillDownloading()
 	defer w.managedKillFetchBackupsJobs()
-	defer w.managedKillFundAccountJobs()
 	defer w.managedKillJobsDownloadByRoot()
 
 	// Primary work loop. There are several types of jobs that the worker can
@@ -269,14 +266,8 @@ func (w *worker) threadedWorkLoop() {
 			lastCacheUpdate = time.Now()
 		}
 
-		// Perform any job to fund the account
-		workAttempted := w.managedPerformFundAcountJob()
-		if workAttempted {
-			continue
-		}
-
 		// Perform any job to fetch the list of backups from the host.
-		workAttempted = w.managedPerformFetchBackupsJob()
+		workAttempted := w.managedPerformFetchBackupsJob()
 		if workAttempted {
 			continue
 		}
