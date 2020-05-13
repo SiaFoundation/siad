@@ -15,7 +15,7 @@ var buildInfoString = "(Sia v" + Version + ", Release: " + Release + ") "
 // issue tracker on Github. If the program does not panic, the call stack for
 // the running goroutine is printed to help determine the error.
 func Critical(v ...interface{}) {
-	s := "Critical error: " + buildInfoString + fmt.Sprintln(v...) + "Please submit a bug report here: https://gitlab.com/NebulousLabs/Sia/issues\n"
+	s := "Critical error: " + buildInfoString + fmt.Sprintln(v...) + "Please submit a bug report here: " + IssuesURL + "\n"
 	if Release != "testing" {
 		debug.PrintStack()
 		os.Stderr.WriteString(s)
