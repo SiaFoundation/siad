@@ -685,8 +685,8 @@ func (p *renterHostPair) sign(rev types.FileContractRevision) crypto.Signature {
 	return crypto.SignHash(hash, p.staticRenterSK)
 }
 
-// AccountBalance returns the account balance of the renter's EA on the host.
-func (p *renterHostPair) AccountBalance(payByFC bool) (types.Currency, error) {
+// AccountBalance returns the account balance of the specified account.
+func (p *renterHostPair) managedAccountBalance(payByFC bool, fundAmt types.Currency, fundAcc, balanceAcc modules.AccountID) (types.Currency, error) {
 	stream := p.newStream()
 	defer stream.Close()
 
@@ -710,12 +710,12 @@ func (p *renterHostPair) AccountBalance(payByFC bool) (types.Currency, error) {
 
 	// provide payment
 	if payByFC {
-		err = p.payByContract(stream, p.pt.AccountBalanceCost, p.staticAccountID)
+		err = p.payByContract(stream, fundAmt, fundAcc)
 		if err != nil {
 			return types.ZeroCurrency, err
 		}
 	} else {
-		err = p.payByEphemeralAccount(stream, p.pt.AccountBalanceCost)
+		err = p.payByEphemeralAccount(stream, fundAmt)
 		if err != nil {
 			return types.ZeroCurrency, err
 		}
@@ -723,7 +723,7 @@ func (p *renterHostPair) AccountBalance(payByFC bool) (types.Currency, error) {
 
 	// send the request.
 	err = modules.RPCWrite(stream, modules.AccountBalanceRequest{
-		Account: p.staticAccountID,
+		Account: balanceAcc,
 	})
 	if err != nil {
 		return types.ZeroCurrency, err
@@ -743,6 +743,11 @@ func (p *renterHostPair) AccountBalance(payByFC bool) (types.Currency, error) {
 	}
 
 	return abr.Balance, nil
+}
+
+// AccountBalance returns the account balance of the renter's EA on the host.
+func (p *renterHostPair) AccountBalance(payByFC bool) (types.Currency, error) {
+	return p.managedAccountBalance(payByFC, p.pt.AccountBalanceCost, p.staticAccountID, p.staticAccountID)
 }
 
 // UpdatePriceTable runs the UpdatePriceTableRPC on the host and sets the price
