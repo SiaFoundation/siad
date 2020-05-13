@@ -2,7 +2,6 @@ package host
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -593,11 +592,8 @@ func (p *renterHostPair) FundEphemeralAccount(amount types.Currency, updatePrice
 
 // newStream opens a stream to the pair's host and returns it
 func (p *renterHostPair) newStream() siamux.Stream {
-	host := p.ht.host
-	hes := host.ExternalSettings()
-
-	pk := modules.SiaPKToMuxPK(host.publicKey)
-	address := fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
+	pk := modules.SiaPKToMuxPK(p.ht.host.publicKey)
+	address := p.ht.host.ExternalSettings().SiaMuxAddress()
 	subscriber := modules.HostSiaMuxSubscriberName
 
 	stream, err := p.staticRenterMux.NewStream(subscriber, address, pk)
