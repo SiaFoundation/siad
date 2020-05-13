@@ -25,7 +25,6 @@ package renter
 // up any queued jobs after a worker has been killed.
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -62,16 +61,8 @@ var (
 type worker struct {
 	// The host pub key also serves as an id for the worker, as there is only
 	// one worker per host.
-	staticHostFCID       types.FileContractID
-	staticHostPubKey     types.SiaPublicKey
-	staticHostPubKeyStr  string
-	staticHostMuxAddress string
-	staticHostVersion    string
-
-	// Cached blockheight, updated by the renter when consensus changes. We
-	// cache it on the worker to avoid fetching it from consensus on every RPC
-	// call that requires to know the current block height.
-	cachedBlockHeight types.BlockHeight
+	staticHostPubKey    types.SiaPublicKey
+	staticHostPubKeyStr string
 
 	// Cached value for the contract utility, updated infrequently.
 	cachedContractID      types.FileContractID
@@ -88,6 +79,7 @@ type worker struct {
 	// Job queues for the worker.
 	staticFetchBackupsJobQueue   fetchBackupsJobQueue
 	staticJobQueueDownloadByRoot jobQueueDownloadByRoot
+	staticFundAccountJobQueue    fundAccountJobQueue
 
 	// Upload variables.
 	unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
@@ -102,11 +94,6 @@ type worker struct {
 	// staticBalanceTarget.
 	staticAccount       *account
 	staticBalanceTarget types.Currency
-
-	// The staticHostPrices hold information about the price table. It has its
-	// own mutex becaus we check if we need to update the price table in every
-	// iteration of the worker loop.
-	staticHostPrices hostPrices
 
 	// Utilities.
 	//
@@ -153,8 +140,9 @@ func (w *worker) status() modules.WorkerStatus {
 		UploadTerminated:    w.uploadTerminated,
 
 		// Ephemeral Account information
-		AvailableBalance: accountBalance,
-		BalanceTarget:    w.staticBalanceTarget,
+		AvailableBalance:        accountBalance,
+		BalanceTarget:           w.staticBalanceTarget,
+		FundAccountJobQueueSize: w.staticFundAccountJobQueue.managedLen(),
 
 		// Job Queues
 		BackupJobQueueSize:       w.staticFetchBackupsJobQueue.managedLen(),
@@ -250,6 +238,7 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillUploading()
 	defer w.managedKillDownloading()
 	defer w.managedKillFetchBackupsJobs()
+	defer w.managedKillFundAccountJobs()
 	defer w.managedKillJobsDownloadByRoot()
 
 	// Primary work loop. There are several types of jobs that the worker can
@@ -280,14 +269,14 @@ func (w *worker) threadedWorkLoop() {
 			lastCacheUpdate = time.Now()
 		}
 
-		// Check if the price table needs to be updated.
-		w.managedTryUpdatePriceTable()
-
-		// Check if the account needs to be refilled.
-		w.managedTryRefillAccount()
+		// Perform any job to fund the account
+		workAttempted := w.managedPerformFundAcountJob()
+		if workAttempted {
+			continue
+		}
 
 		// Perform any job to fetch the list of backups from the host.
-		workAttempted := w.managedPerformFetchBackupsJob()
+		workAttempted = w.managedPerformFetchBackupsJob()
 		if workAttempted {
 			continue
 		}
@@ -339,8 +328,8 @@ func (w *worker) threadedWorkLoop() {
 }
 
 // newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, hostFCID types.FileContractID, blockHeight types.BlockHeight) (*worker, error) {
-	host, ok, err := r.hostDB.Host(hostPubKey)
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
+	_, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
 	}
@@ -348,33 +337,26 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, hostFCID types.FileCon
 		return nil, errors.New("host does not exist")
 	}
 
-	// open the account
-	account, err := r.managedOpenAccount(hostPubKey)
-	if err != nil {
-		return nil, errors.AddContext(err, "could not open account")
-	}
+	// TODO: use the host's external settings settings to calc. an appropriate
+	// balance target
 
-	// set the balance target to 1SC
-	//
-	// TODO: check that the balance target  makes sense in function of the
-	// amount of MDM programs it can run with that amount of money
-	balanceTarget := types.SiacoinPrecision
+	// TODO: enable the account refiller by setting a balance target greater
+	// than the zero currency
 
-	// calculate the host's mux address
-	hostMuxAddress := fmt.Sprintf("%s:%s", host.NetAddress.Host(), host.HostExternalSettings.SiaMuxPort)
+	// TODO: (TL;DR mock causes infinite loop if target is not set to zero) the
+	// target is set to zero because as long as FundEphemeralAccount is mocked,
+	// setting a target larger than zero would create an endless refill loop,
+	// just because there is nothing holding back consecutive refill jobs from
+	// being enqueued (which wakes the workerloop and so on). This is due to
+	// pendingFunds not increasing, which causes the AvailableBalance to remain
+	// the same, which causes a fund account job to be scheduled on every
+	// iteration.
+	balanceTarget := types.ZeroCurrency
 
 	w := &worker{
-		staticHostPubKey:     hostPubKey,
-		staticHostPubKeyStr:  hostPubKey.String(),
-		staticHostMuxAddress: hostMuxAddress,
-		staticHostVersion:    host.Version,
-		staticHostPrices:     hostPrices{},
-		staticHostFCID:       hostFCID,
-
-		staticAccount:       account,
+		staticHostPubKey:    hostPubKey,
+		staticHostPubKeyStr: hostPubKey.String(),
 		staticBalanceTarget: balanceTarget,
-
-		cachedBlockHeight: blockHeight,
 
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),
@@ -386,111 +368,4 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey, hostFCID types.FileCon
 		return nil, errors.New("unable to build cache for worker")
 	}
 	return w, nil
-}
-
-// threadedUpdateBlockHeightOnWorkers is called on consensus change and updates
-// the (cached) blockheight on every individual worker.
-func (r *Renter) threadedUpdateBlockHeightOnWorkers() {
-	err := r.tg.Add()
-	if err != nil {
-		return
-	}
-	defer r.tg.Done()
-
-	// grab the current block height and have all workers cache it
-	blockHeight := r.cs.Height()
-	for _, worker := range r.staticWorkerPool.callWorkers() {
-		worker.managedUpdateBlockHeight(blockHeight)
-	}
-}
-
-// managedTryRefillAccount will check if the account needs to be refilled
-func (w *worker) managedTryRefillAccount() {
-	// check host version
-	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
-		return
-	}
-
-	// check if refill is necessary
-	balance := w.staticAccount.managedAvailableBalance()
-	if balance.Cmp(w.staticBalanceTarget.Div64(2)) >= 0 {
-		return
-	}
-
-	// check if price table is valid
-	if w.staticHostPrices.managedPriceTable().Expiry <= time.Now().Unix() {
-		w.renter.log.Println("ERROR: failed to refill account, current price table is expired")
-		return
-	}
-
-	// the account balance dropped to below half the balance target, refill
-	amount := w.staticBalanceTarget.Sub(balance)
-	_, err := w.managedFundAccount(amount)
-	if err != nil {
-		w.renter.log.Println("ERROR: failed to refill account", err)
-		// TODO: add cooldown mechanism
-	}
-	return
-}
-
-// managedTryUpdatePriceTable will check if the price table needs to be updated
-func (w *worker) managedTryUpdatePriceTable() {
-	// check host version
-	if build.VersionCmp(w.staticHostVersion, modules.MinimumSupportedNewRenterHostProtocolVersion) < 0 {
-		return
-	}
-
-	// check if update is necessary
-	if !w.staticHostPrices.managedNeedsUpdate() {
-		return
-	}
-
-	// update the price table
-	err := w.managedUpdatePriceTable()
-	if err != nil {
-		w.renter.log.Println("ERROR: failed to update price table", err)
-		// TODO: add retry mechanism
-	}
-}
-
-// managedUpdateBlockHeight sets the given block height on the worker
-func (w *worker) managedUpdateBlockHeight(blockHeight types.BlockHeight) {
-	w.mu.Lock()
-	w.cachedBlockHeight = blockHeight
-	w.mu.Unlock()
-}
-
-// hostPrices is a helper struct that wraps a priceTable and adds its own
-// separate mutex. It has an 'updateAt' property that is set when a price table
-// is updated and is set to the time when we want to update the host prices.
-type hostPrices struct {
-	priceTable modules.RPCPriceTable
-	updateAt   int64
-	staticMu   sync.Mutex
-}
-
-// managedPriceTable returns the current price table
-func (hp *hostPrices) managedPriceTable() modules.RPCPriceTable {
-	hp.staticMu.Lock()
-	defer hp.staticMu.Unlock()
-	return hp.priceTable
-}
-
-// managedNeedsUpdate is a helper function that checks whether or not we have to
-// update the price table. If so, it flips the 'updating' flag on the hostPrices
-// object to ensure we only try this once.
-func (hp *hostPrices) managedNeedsUpdate() bool {
-	hp.staticMu.Lock()
-	defer hp.staticMu.Unlock()
-	return time.Now().Unix() >= hp.updateAt
-}
-
-// managedUpdate is a helper function that sets the priceTable and
-// calculates when we should try and update the price table again. It flips the
-// 'updating' flag to false.
-func (hp *hostPrices) managedUpdate(pt modules.RPCPriceTable) {
-	hp.staticMu.Lock()
-	defer hp.staticMu.Unlock()
-	hp.priceTable = pt
-	hp.updateAt = time.Now().Unix() + (pt.Expiry-time.Now().Unix())/2
 }

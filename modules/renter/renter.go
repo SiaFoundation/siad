@@ -107,8 +107,6 @@ type hostContractor interface {
 	// billing period.
 	PeriodSpending() (modules.ContractorSpending, error)
 
-	modules.PaymentProvider
-
 	// OldContracts returns the oldContracts of the renter's hostContractor.
 	OldContracts() []modules.RenterContract
 
@@ -436,6 +434,13 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	r.mu.Unlock(id)
 
 	return est, allowance, nil
+}
+
+// managedRPCClient returns an RPC client for the host with given key
+func (r *Renter) managedRPCClient(host types.SiaPublicKey) (RPCClient, error) {
+	id := r.mu.Lock()
+	defer r.mu.Unlock(id)
+	return &MockRPCClient{}, nil
 }
 
 // managedContractUtilityMaps returns a set of maps that contain contract
@@ -780,10 +785,6 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	id := r.mu.Lock()
 	r.lastEstimationHosts = []modules.HostDBEntry{}
 	r.mu.Unlock(id)
-
-	if cc.Synced {
-		go r.threadedUpdateBlockHeightOnWorkers()
-	}
 }
 
 // SetIPViolationCheck is a passthrough method to the hostdb's method of the

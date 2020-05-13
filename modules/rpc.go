@@ -11,12 +11,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-const (
-	// MinimumSupportedNewRenterHostProtocolVersion is the minimum version a
-	// host must have in order to ensure we can use the new renter host protocol
-	MinimumSupportedNewRenterHostProtocolVersion = "1.4.8"
-)
-
 // RPCPriceTable contains the cost of executing a RPC on a host. Each host can
 // set its own prices for the individual MDM instructions and RPC costs.
 type RPCPriceTable struct {
@@ -92,7 +86,6 @@ type (
 	// FundAccountResponse contains the signature. This signature is a
 	// signed receipt, and can be used as proof of funding.
 	FundAccountResponse struct {
-		Balance   types.Currency
 		Receipt   Receipt
 		Signature crypto.Signature
 	}

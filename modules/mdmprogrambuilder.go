@@ -7,15 +7,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// Expected bandwidth constants
-const (
-	dlBandwidthReadSector = uint64(10220)
-	ulBandwidthReadSector = uint64(18980)
-
-	dlBandwidthHasSector = uint64(4380)
-	ulBandwidthHasSector = uint64(10220)
-)
-
 type (
 	// ProgramBuilder is a helper type to easily create programs and compute
 	// their cost.
@@ -30,9 +21,6 @@ type (
 		potentialRefund  types.Currency
 		riskedCollateral types.Currency
 		usedMemory       uint64
-
-		downloadBandwidth uint64
-		uploadBandwidth   uint64
 	}
 )
 
@@ -61,7 +49,7 @@ func (pb *ProgramBuilder) AddHasSectorInstruction(merkleRoot crypto.Hash) {
 	cost, refund := MDMHasSectorCost(pb.staticPT)
 	memory := MDMHasSectorMemory()
 	time := uint64(MDMTimeHasSector)
-	pb.addInstruction(collateral, cost, refund, memory, time, dlBandwidthHasSector, ulBandwidthHasSector)
+	pb.addInstruction(collateral, cost, refund, memory, time)
 }
 
 // AddReadSectorInstruction adds a ReadSector instruction to the program.
@@ -85,14 +73,7 @@ func (pb *ProgramBuilder) AddReadSectorInstruction(length, offset uint64, merkle
 	cost, refund := MDMReadCost(pb.staticPT, length)
 	memory := MDMReadMemory()
 	time := uint64(MDMTimeReadSector)
-	pb.addInstruction(collateral, cost, refund, memory, time, dlBandwidthReadSector, ulBandwidthReadSector)
-}
-
-// BandwidthCost returns the current bandwidth cost of the program being built
-// by the builder. Note this is an overestimate of the actual costs to ensure
-// there is ample budget.
-func (pb *ProgramBuilder) BandwidthCost() types.Currency {
-	return MDMBandwidthCost(pb.staticPT, pb.uploadBandwidth, pb.downloadBandwidth)
+	pb.addInstruction(collateral, cost, refund, memory, time)
 }
 
 // Cost returns the current cost of the program being built by the builder. If
@@ -108,7 +89,6 @@ func (pb *ProgramBuilder) Cost(finalized bool) (cost, refund, collateral types.C
 	if !pb.readonly && finalized {
 		cost = cost.Add(MDMMemoryCost(pb.staticPT, pb.usedMemory, MDMTimeCommit))
 	}
-
 	return cost, pb.potentialRefund, pb.riskedCollateral
 }
 
@@ -119,7 +99,7 @@ func (pb *ProgramBuilder) Program() (Program, []byte) {
 
 // addInstruction adds the collateral, cost, refund and memory cost of an
 // instruction to the builder's state.
-func (pb *ProgramBuilder) addInstruction(collateral, cost, refund types.Currency, memory, time, downloadBandwidth, uploadBandwidth uint64) {
+func (pb *ProgramBuilder) addInstruction(collateral, cost, refund types.Currency, memory, time uint64) {
 	// Update collateral
 	pb.riskedCollateral = pb.riskedCollateral.Add(collateral)
 	// Update memory and memory cost.
@@ -129,9 +109,6 @@ func (pb *ProgramBuilder) addInstruction(collateral, cost, refund types.Currency
 	// Update execution cost and refund.
 	pb.executionCost = pb.executionCost.Add(cost)
 	pb.potentialRefund = pb.potentialRefund.Add(refund)
-	// Update bandwidth
-	pb.downloadBandwidth += downloadBandwidth
-	pb.uploadBandwidth += uploadBandwidth
 }
 
 // NewHasSectorInstruction creates a modules.Instruction from arguments.
