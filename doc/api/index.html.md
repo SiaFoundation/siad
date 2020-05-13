@@ -3343,19 +3343,19 @@ Path to the directory on the sia network
 {
   "directories": [
     {
-      "aggregatenumfiles":        2,    // uint64
-      "aggregatenumstuckchunks":  4,    // uint64
-      "aggregatesize":            4096, // uint64
-      "heatlh":                   1.0,  // float64
-      "lasthealtchecktime": "2018-09-23T08:00:00.000000000+04:00" // timestamp
-      "maxhealth":                0.5,  // float64
-      "minredundancy":            2.6,  // float64
-      "mostrecentmodtime":  "2018-09-23T08:00:00.000000000+04:00" // timestamp
-      "stuckhealth":              1.0,  // float64
+      "aggregatenumfiles":       2,    // uint64
+      "aggregatenumstuckchunks": 4,    // uint64
+      "aggregatesize":           4096, // uint64
 
-      "numfiles":   3,        // uint64
-      "numsubdirs": 2,        // uint64
-      "siapath":    "foo/bar" // string
+      "health":             1.0,      // float64
+      "lasthealtchecktime": "2018-09-23T08:00:00.000000000+04:00" // timestamp
+      "maxhealth":          0.5,      // float64
+      "minredundancy":      2.6,      // float64
+      "mostrecentmodtime":  "2018-09-23T08:00:00.000000000+04:00" // timestamp
+      "numfiles":           3,        // uint64
+      "numsubdirs":         2,        // uint64
+      "siapath":            "foo/bar" // string
+      "stuckhealth":        1.0,      // float64
     }
   ],
   "files": []
@@ -3400,6 +3400,12 @@ the number of directories in the directory
 
 **siapath** | string  
 The path to the directory on the sia network
+
+**size** | string
+The size in bytes of files in the directory
+
+**stuckhealth** | string
+The health of the most in need siafile in the directory, stuck or not stuck
 
 **files** Same response as [files](#files)
 
@@ -4781,12 +4787,15 @@ Whether or not to treat the siapath as being relative to the root directory. If
 this field is not set, the siapath will be interpreted as relative to
 'var/skynet'.
 
+
+**UNSTABLE - subject to change in v1.4.9**
 **skykeyname** | string  
 The name of the skykey that will be used to encrypt this skyfile. Only the
 name or the ID of the skykey should be specified.
 
 **OR**
 
+**UNSTABLE - subject to change in v1.4.9**
 **skykeyid** | string  
 The ID of the skykey that will be used to encrypt this skyfile. Only the
 name or the ID of the skykey should be specified.
@@ -4851,6 +4860,8 @@ returns statistical information about Skynet, e.g. number of files uploaded
   "versioninfo": {
     "version":     "1.4.4-master", // string
     "gitrevision": "cd5a83712"     // string
+  },
+  "performancestats": {
   }
 }
 ```
@@ -4873,7 +4884,36 @@ Version is the siad version the node is running.
 **gitrevision** | string  
 Gitrevision refers to the commit hash used to build said.
 
+**performancestats** | object - api.SkynetPerforamnceStats  
+PerformanceStats is an object that contains a breakdown of performance metrics
+for the skynet endpoints. Things are broken down into containers based on the
+type of action performed. For example, there is a container for downloads less
+than 64kb in size.
 
+Within each container, there is a bucket of half lives. Every time a data point
+is added to a container, it is put in to every bucket, counting up the total
+number of requests. The buckets decay at the stated half life, which means they
+give a good representation of how much activity there has been over twice their
+halflife. So for the one minute bucket, the total number of datapoints in the
+bucket is a good representation of how many things have happened in the past two
+minutes.
+
+Within each bucket, there are several fields. For example, the n60ms field
+represents the number of requests that finished in under 60ms. There is an NErr
+field which gets incremented if there is a failure that can be attributed to
+siad.
+
+Every download request will go into the TimeToFirstByte container, as well as
+the appropriate download container based on the size of the download. Within the
+chosen containers, every bucket will have the same field incremented. The field
+that gets incremented is the one that corresponds to the amount of time the
+request took.
+
+The performance stats fields are not protected by a compatibility promise, and
+may change over time.
+
+
+**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/addskykey [POST]
 > curl example
 
@@ -4894,6 +4934,7 @@ standard success or error response. See [standard
 responses](#standard-responses).
 
 
+**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/createskykey [POST]
 > curl example
 
@@ -4921,6 +4962,7 @@ desired name of the skykey
 base-64 encoded skykey
 
 
+**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/skykey [GET]
 > curl example
 
@@ -4955,6 +4997,7 @@ base-64 encoded ID of the skykey being queried
 base-64 encoded skykey
 
 
+**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/skykeyid [GET]
 > curl example
 

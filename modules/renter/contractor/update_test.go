@@ -22,10 +22,11 @@ func TestIntegrationAutoRenew(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	_, c, m, err := newTestingTrio(t.Name())
+	_, c, m, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tryClose(cf, t)
 
 	// form a contract with the host
 	a := modules.Allowance{
@@ -61,11 +62,21 @@ func TestIntegrationAutoRenew(t *testing.T) {
 	}
 	contract := c.Contracts()[0]
 
-	// revise the contract
-	editor, err := c.Editor(contract.HostPublicKey, nil)
+	// Grab the editor in a retry statement, because there is a race condition
+	// between the contract set having contracts in it and the editor having
+	// access to the new contract.
+	var editor Editor
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		editor, err = c.Editor(contract.HostPublicKey, nil)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	data := fastrand.Bytes(int(modules.SectorSize))
 	// insert the sector
 	_, err = editor.Upload(data)
@@ -106,12 +117,11 @@ func TestIntegrationRenewInvalidate(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	_, c, m, err := newTestingTrio(t.Name())
+	_, c, m, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
-	defer m.Close()
+	defer tryClose(cf, t)
 
 	// form a contract with the host
 	a := modules.Allowance{
