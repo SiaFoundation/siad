@@ -1,6 +1,7 @@
 package mdm
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"testing"
@@ -39,50 +40,37 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	// Construct the program.
 
 	pt := newTestPriceTable()
-	pb := modules.NewProgramBuilder()
+	tb := newTestBuilder(pt, 6, 3*modules.SectorSize+3*8)
 
 	sectorData1 := fastrand.Bytes(int(modules.SectorSize))
-	err := pb.AddAppendInstruction(sectorData1, false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	runningValues1 := tb.TestAddAppendInstruction(sectorData1, false)
 	merkleRoots1 := []crypto.Hash{crypto.MerkleRoot(sectorData1)}
 
 	sectorData2 := fastrand.Bytes(int(modules.SectorSize))
-	err = pb.AddAppendInstruction(sectorData2, false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	runningValues2 := tb.TestAddAppendInstruction(sectorData2, false)
 	merkleRoots2 := []crypto.Hash{merkleRoots1[0], crypto.MerkleRoot(sectorData2)}
 
 	sectorData3 := fastrand.Bytes(int(modules.SectorSize))
-	err = pb.AddAppendInstruction(sectorData3, false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	runningValues3 := tb.TestAddAppendInstruction(sectorData3, false)
 	merkleRoots3 := []crypto.Hash{merkleRoots2[0], merkleRoots2[1], crypto.MerkleRoot(sectorData3)}
 
 	// Don't drop any sectors.
-	pb.AddDropSectorsInstruction(0, true)
+	runningValues4 := tb.TestAddDropSectorsInstruction(0, true)
 
 	// Drop one sector.
-	pb.AddDropSectorsInstruction(1, true)
+	runningValues5 := tb.TestAddDropSectorsInstruction(1, true)
 
 	// Drop two remaining sectors.
-	pb.AddDropSectorsInstruction(2, true)
+	runningValues6 := tb.TestAddDropSectorsInstruction(2, true)
 
-	program := pb.Program()
-	runningValues, finalValues := pb.Values(pt, true)
-	if len(runningValues) != len(program.Instructions)+1 {
-		t.Fatalf("expected %v running values, got %v", len(program.Instructions), len(runningValues))
-	}
+	program, data := tb.Program()
+	finalValues := tb.Values()
+	dataLen := uint64(len(data))
 
-	err = testCompareProgramValues(pt, program, finalValues)
+	err := testCompareProgramValues(pt, program, dataLen, bytes.NewReader(data), finalValues)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Get a new reader.
-	program = pb.Program()
 
 	// Expected outputs.
 	expectedOutputs := []Output{
@@ -92,7 +80,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				NewMerkleRoot: cachedMerkleRoot(merkleRoots1),
 				Proof:         []crypto.Hash{},
 			},
-			runningValues[1],
+			runningValues1,
 		},
 		{
 			output{
@@ -100,7 +88,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				NewMerkleRoot: cachedMerkleRoot(merkleRoots2),
 				Proof:         []crypto.Hash{},
 			},
-			runningValues[2],
+			runningValues2,
 		},
 		{
 			output{
@@ -108,7 +96,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				NewMerkleRoot: cachedMerkleRoot(merkleRoots3),
 				Proof:         []crypto.Hash{},
 			},
-			runningValues[3],
+			runningValues3,
 		},
 		// 0 sectors dropped.
 		{
@@ -117,7 +105,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				NewMerkleRoot: cachedMerkleRoot(merkleRoots3),
 				Proof:         []crypto.Hash{},
 			},
-			runningValues[4],
+			runningValues4,
 		},
 		// 1 sector dropped.
 		{
@@ -126,7 +114,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				NewMerkleRoot: cachedMerkleRoot(merkleRoots2),
 				Proof:         []crypto.Hash{cachedMerkleRoot(merkleRoots2)},
 			},
-			runningValues[5],
+			runningValues5,
 		},
 		// 2 remaining sectors dropped.
 		{
@@ -135,19 +123,19 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 				NewMerkleRoot: cachedMerkleRoot([]crypto.Hash{}),
 				Proof:         []crypto.Hash{},
 			},
-			runningValues[6],
+			runningValues6,
 		},
 	}
 
 	// Execute the program.
 	so := newTestStorageObligation(true)
 	budget := modules.NewBudget(finalValues.ExecutionCost)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, finalValues.Collateral, so)
+	finalizeFn, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, finalValues.Collateral, so, dataLen, bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if finalize == nil {
-		t.Fatal("could not retrieve finalize function")
+	if finalizeFn == nil {
+		t.Fatal("could not retrieve finalizeFn function")
 	}
 
 	// Check outputs.
@@ -166,7 +154,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	}
 
 	// Finalize the program.
-	if err := finalize(so); err != nil {
+	if err := finalizeFn(so); err != nil {
 		t.Fatal(err)
 	}
 

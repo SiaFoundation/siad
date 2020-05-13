@@ -3,130 +3,150 @@ package modules
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// ProgramBuilder is a helper used for constructing programs one instruction at
-// a time.
-type ProgramBuilder struct {
-	dataBuf      *bytes.Buffer
-	instructions []Instruction
-}
+type (
+	// ProgramBuilder is a helper type to easily create programs and compute
+	// their cost.
+	ProgramBuilder struct {
+		staticPT    *RPCPriceTable
+		readonly    bool
+		program     Program
+		programData *bytes.Buffer
 
-// NewProgramBuilder creates a new ProgramBuilder.
-func NewProgramBuilder() ProgramBuilder {
-	return ProgramBuilder{
-		dataBuf:      new(bytes.Buffer),
-		instructions: make([]Instruction, 0),
+		// Cost related fields.
+		ExecutionCost    types.Currency
+		PotentialRefund  types.Currency
+		RiskedCollateral types.Currency
+		UsedMemory       uint64
 	}
-}
+)
 
-// AddAppendInstruction adds an append instruction to the builder, updating its
-// internal state.
-func (b *ProgramBuilder) AddAppendInstruction(data []byte, merkleProof bool) error {
-	if uint64(len(data)) != SectorSize {
-		return fmt.Errorf("expected length of data to be the size of a sector %v, was %v", SectorSize, len(data))
+// NewProgramBuilder creates an empty program builder.
+func NewProgramBuilder(pt *RPCPriceTable) *ProgramBuilder {
+	pb := &ProgramBuilder{
+		programData: new(bytes.Buffer),
+		readonly:    true, // every program starts readonly
+		staticPT:    pt,
+		UsedMemory:  MDMInitMemory(),
 	}
-
-	i := NewAppendInstruction(uint64(b.dataBuf.Len()), merkleProof)
-	b.instructions = append(b.instructions, i)
-	// Update the program data.
-	binary.Write(b.dataBuf, binary.LittleEndian, data)
-
-	return nil
+	return pb
 }
 
-// AddDropSectorsInstruction adds a dropsectors instruction to the builder,
-// updating its internal state.
-func (b *ProgramBuilder) AddDropSectorsInstruction(numSectors uint64, merkleProof bool) {
-	i := NewDropSectorsInstruction(uint64(b.dataBuf.Len()), merkleProof)
-	b.instructions = append(b.instructions, i)
-	// Update the program data.
-	binary.Write(b.dataBuf, binary.LittleEndian, numSectors)
+// AddAppendInstruction adds an Append instruction to the program.
+func (pb *ProgramBuilder) AddAppendInstruction(data []byte, merkleProof bool) {
+	// Compute the argument offsets.
+	dataOffset := uint64(pb.programData.Len())
+	// Extend the programData.
+	binary.Write(pb.programData, binary.LittleEndian, data)
+	// Create the instruction.
+	i := NewAppendInstruction(dataOffset, merkleProof)
+	// Append instruction
+	pb.program = append(pb.program, i)
+	// Update cost, collateral and memory usage.
+	collateral := MDMAppendCollateral(pb.staticPT)
+	cost, refund := MDMAppendCost(pb.staticPT)
+	memory := MDMAppendMemory()
+	time := uint64(MDMTimeAppend)
+	pb.addInstruction(collateral, cost, refund, memory, time)
+	pb.readonly = false
 }
 
-// AddHasSectorInstruction adds a hassector instruction to the builder, updating
-// its internal state.
-func (b *ProgramBuilder) AddHasSectorInstruction(merkleRoot crypto.Hash) {
-	i := NewHasSectorInstruction(uint64(b.dataBuf.Len()))
-	b.instructions = append(b.instructions, i)
-	// Update the program data.
-	binary.Write(b.dataBuf, binary.LittleEndian, merkleRoot[:])
+// AddDropSectorsInstruction adds a DropSectors instruction to the program.
+func (pb *ProgramBuilder) AddDropSectorsInstruction(numSectors uint64, merkleProof bool) {
+	// Compute the argument offsets.
+	numSectorsOffset := uint64(pb.programData.Len())
+	// Extend the programData.
+	binary.Write(pb.programData, binary.LittleEndian, numSectors)
+	// Create the instruction.
+	i := NewDropSectorsInstruction(numSectorsOffset, merkleProof)
+	// Append instruction
+	pb.program = append(pb.program, i)
+	// Update cost, collateral and memory usage.
+	collateral := MDMDropSectorsCollateral()
+	cost, refund := MDMDropSectorsCost(pb.staticPT, numSectors)
+	memory := MDMDropSectorsMemory()
+	time := MDMDropSectorsTime(numSectors)
+	pb.addInstruction(collateral, cost, refund, memory, time)
+	pb.readonly = false
 }
 
-// AddReadSectorInstruction adds a readsector instruction to the builder,
-// updating its internal state.
-func (b *ProgramBuilder) AddReadSectorInstruction(length, offset uint64, merkleRoot crypto.Hash, merkleProof bool) {
-	dataOffset := uint64(b.dataBuf.Len())
-	i := NewReadSectorInstruction(dataOffset, dataOffset+8, dataOffset+16, merkleProof)
-	b.instructions = append(b.instructions, i)
-	// Update the program data.
-	binary.Write(b.dataBuf, binary.LittleEndian, length)
-	binary.Write(b.dataBuf, binary.LittleEndian, offset)
-	binary.Write(b.dataBuf, binary.LittleEndian, merkleRoot[:])
+// AddHasSectorInstruction adds a HasSector instruction to the program.
+func (pb *ProgramBuilder) AddHasSectorInstruction(merkleRoot crypto.Hash) {
+	// Compute the argument offsets.
+	merkleRootOffset := uint64(pb.programData.Len())
+	// Extend the programData.
+	binary.Write(pb.programData, binary.LittleEndian, merkleRoot[:])
+	// Create the instruction.
+	i := NewHasSectorInstruction(merkleRootOffset)
+	// Append instruction
+	pb.program = append(pb.program, i)
+	// Update cost, collateral and memory usage.
+	collateral := MDMHasSectorCollateral()
+	cost, refund := MDMHasSectorCost(pb.staticPT)
+	memory := MDMHasSectorMemory()
+	time := uint64(MDMTimeHasSector)
+	pb.addInstruction(collateral, cost, refund, memory, time)
 }
 
-// Program finishes building the program and returns it.
-func (b *ProgramBuilder) Program() Program {
-	programData := b.dataBuf.Bytes()
-	reader := bytes.NewReader(programData)
-
-	program := Program{
-		Instructions: b.instructions,
-		Data:         reader,
-		DataLen:      uint64(len(programData)),
-	}
-	return program
+// AddReadSectorInstruction adds a ReadSector instruction to the program.
+func (pb *ProgramBuilder) AddReadSectorInstruction(length, offset uint64, merkleRoot crypto.Hash, merkleProof bool) {
+	// Compute the argument offsets.
+	lengthOffset := uint64(pb.programData.Len())
+	offsetOffset := lengthOffset + 8
+	merkleRootOffset := offsetOffset + 8
+	// Extend the programData.
+	binary.Write(pb.programData, binary.LittleEndian, length)
+	binary.Write(pb.programData, binary.LittleEndian, offset)
+	binary.Write(pb.programData, binary.LittleEndian, merkleRoot[:])
+	// Create the instruction.
+	i := NewReadSectorInstruction(lengthOffset, offsetOffset, merkleRootOffset, merkleProof)
+	// Append instruction
+	pb.program = append(pb.program, i)
+	// Update cost, collateral and memory usage.
+	collateral := MDMReadCollateral()
+	cost, refund := MDMReadCost(pb.staticPT, length)
+	memory := MDMReadMemory()
+	time := uint64(MDMTimeReadSector)
+	pb.addInstruction(collateral, cost, refund, memory, time)
 }
 
-// Values returns a list of all running values including values upon program
-// initialization as well as after each instruction, as well as the final set of
-// program values.
-func (b *ProgramBuilder) Values(pt *RPCPriceTable, finalized bool) ([]RunningProgramValues, ProgramValues) {
-	programData := b.dataBuf.Bytes()
+// Cost returns the current cost of the program being built by the builder. If
+// 'finalized' is 'true', the memory cost of finalizing the program is included.
+func (pb *ProgramBuilder) Cost(finalized bool) (cost, refund, collateral types.Currency) {
+	// Calculate the init cost.
+	cost = MDMInitCost(pb.staticPT, uint64(pb.programData.Len()), uint64(len(pb.program)))
 
-	// Store intermediate values for every instruction plus the initial program
-	// state.
-	allRunningValues := make([]RunningProgramValues, 0, len(b.instructions)+1)
-
-	// Get the initial program values.
-	runningValues := InitialProgramValues(pt, uint64(len(programData)), uint64(len(b.instructions)))
-	allRunningValues = append(allRunningValues, runningValues)
-
-	// Iterate over instructions, adding their costs and saving running costs.
-	for _, i := range b.instructions {
-		var values InstructionValues
-		switch i.Specifier {
-		case SpecifierAppend:
-			executionCost, refund := MDMAppendCost(pt)
-			values = InstructionValues{executionCost, refund, MDMAppendCollateral(pt), MDMAppendMemory(), MDMTimeAppend, false}
-		case SpecifierDropSectors:
-			numSectorsOffset := binary.LittleEndian.Uint64(i.Args[:8])
-			numSectors := binary.LittleEndian.Uint64(programData[numSectorsOffset : numSectorsOffset+8])
-			executionCost, refund := MDMDropSectorsCost(pt, numSectors)
-			values = InstructionValues{executionCost, refund, MDMDropSectorsCollateral(), MDMDropSectorsMemory(), MDMDropSectorsTime(numSectors), false}
-		case SpecifierHasSector:
-			executionCost, refund := MDMHasSectorCost(pt)
-			values = InstructionValues{executionCost, refund, MDMHasSectorCollateral(), MDMHasSectorMemory(), MDMTimeHasSector, true}
-		case SpecifierReadSector:
-			lengthOffset := binary.LittleEndian.Uint64(i.Args[16:24])
-			length := binary.LittleEndian.Uint64(programData[lengthOffset : lengthOffset+8])
-			executionCost, refund := MDMReadCost(pt, length)
-			values = InstructionValues{executionCost, refund, MDMReadCollateral(), MDMReadMemory(), MDMTimeReadSector, true}
-		default:
-			build.Critical("Unknown instruction specifier:", i.Specifier)
-		}
-		runningValues.AddValues(pt, values)
-		allRunningValues = append(allRunningValues, runningValues)
-	}
+	// Add the cost of the added instructions
+	cost = cost.Add(pb.ExecutionCost)
 
 	// Add the cost of finalizing the program.
-	finalValues := runningValues.FinalizeProgramValues(pt, finalized)
+	if !pb.readonly && finalized {
+		cost = cost.Add(MDMMemoryCost(pb.staticPT, pb.UsedMemory, MDMTimeCommit))
+	}
+	return cost, pb.PotentialRefund, pb.RiskedCollateral
+}
 
-	return allRunningValues, finalValues
+// Program returns the built program and programData.
+func (pb *ProgramBuilder) Program() (Program, []byte) {
+	return pb.program, pb.programData.Bytes()
+}
+
+// addInstruction adds the collateral, cost, refund and memory cost of an
+// instruction to the builder's state.
+func (pb *ProgramBuilder) addInstruction(collateral, cost, refund types.Currency, memory, time uint64) {
+	// Update collateral
+	pb.RiskedCollateral = pb.RiskedCollateral.Add(collateral)
+	// Update memory and memory cost.
+	pb.UsedMemory += memory
+	memoryCost := MDMMemoryCost(pb.staticPT, pb.UsedMemory, time)
+	pb.ExecutionCost = pb.ExecutionCost.Add(memoryCost)
+	// Update execution cost and refund.
+	pb.ExecutionCost = pb.ExecutionCost.Add(cost)
+	pb.PotentialRefund = pb.PotentialRefund.Add(refund)
 }
 
 // NewAppendInstruction creates an Instruction from arguments.
@@ -155,7 +175,7 @@ func NewDropSectorsInstruction(numSectorsOffset uint64, merkleProof bool) Instru
 	return i
 }
 
-// NewHasSectorInstruction creates an Instruction from arguments.
+// NewHasSectorInstruction creates a modules.Instruction from arguments.
 func NewHasSectorInstruction(merkleRootOffset uint64) Instruction {
 	i := Instruction{
 		Specifier: SpecifierHasSector,
@@ -165,7 +185,7 @@ func NewHasSectorInstruction(merkleRootOffset uint64) Instruction {
 	return i
 }
 
-// NewReadSectorInstruction creates an Instruction from arguments.
+// NewReadSectorInstruction creates a modules.Instruction from arguments.
 func NewReadSectorInstruction(lengthOffset, offsetOffset, merkleRootOffset uint64, merkleProof bool) Instruction {
 	i := Instruction{
 		Specifier: SpecifierReadSector,

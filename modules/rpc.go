@@ -96,7 +96,7 @@ type (
 		// FileContractID is the id of the filecontract we would like to modify.
 		FileContractID types.FileContractID
 		// Instructions to be executed as a program.
-		Instructions []Instruction
+		Program Program
 		// ProgramDataLength is the length of the programData following this
 		// request.
 		ProgramDataLength uint64

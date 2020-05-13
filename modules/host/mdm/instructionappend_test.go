@@ -1,6 +1,7 @@
 package mdm
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
@@ -18,25 +19,18 @@ func TestInstructionSingleAppend(t *testing.T) {
 	// Create a program to append a full sector to a storage obligation.
 	appendData1 := randomSectorData()
 	appendDataRoot1 := crypto.MerkleRoot(appendData1)
+	dataLen := uint64(len(appendData1))
 	pt := newTestPriceTable()
-	pb := modules.NewProgramBuilder()
-	err := pb.AddAppendInstruction(appendData1, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	program := pb.Program()
-	runningValues, finalValues := pb.Values(pt, true)
-	if len(runningValues) != len(program.Instructions)+1 {
-		t.Fatalf("expected %v running values, got %v", len(program.Instructions), len(runningValues))
-	}
+	tb := newTestBuilder(pt, 1, dataLen)
+	runningValues1 := tb.TestAddAppendInstruction(appendData1, true)
+	program, data := tb.Program()
+	finalValues := tb.Values()
 
 	// Verify the values.
-	err = testCompareProgramValues(pt, program, finalValues)
+	err := testCompareProgramValues(pt, program, dataLen, bytes.NewReader(data), finalValues)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Get a new reader.
-	program = pb.Program()
 
 	// Expected outputs.
 	expectedOutputs := []Output{
@@ -46,19 +40,19 @@ func TestInstructionSingleAppend(t *testing.T) {
 				NewMerkleRoot: crypto.MerkleRoot(appendData1),
 				Proof:         []crypto.Hash{},
 			},
-			runningValues[1],
+			runningValues1,
 		},
 	}
 
 	// Execute it.
 	so := newTestStorageObligation(true)
 	budget := modules.NewBudget(finalValues.ExecutionCost)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, finalValues.Collateral, so)
+	finalizeFn, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, finalValues.Collateral, so, dataLen, bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if finalize == nil {
-		t.Fatal("could not retrieve finalize function")
+	if finalizeFn == nil {
+		t.Fatal("could not retrieve finalizeFn function")
 	}
 
 	// Check outputs.
@@ -75,7 +69,7 @@ func TestInstructionSingleAppend(t *testing.T) {
 		t.Fatalf("wrong sectorRoots len %v > %v", len(so.sectorRoots), 0)
 	}
 	// Finalize the program.
-	if err := finalize(so); err != nil {
+	if err := finalizeFn(so); err != nil {
 		t.Fatal(err)
 	}
 	// Budget should be empty now.
@@ -98,22 +92,18 @@ func TestInstructionSingleAppend(t *testing.T) {
 
 	// Execute same program again to append another sector.
 	appendData2 := randomSectorData() // new random data
+	dataLen = uint64(len(appendData2))
 	appendDataRoot2 := crypto.MerkleRoot(appendData2)
-	pb = modules.NewProgramBuilder()
-	err = pb.AddAppendInstruction(appendData2, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	program = pb.Program()
-	runningValues, finalValues = pb.Values(pt, true)
+	tb = newTestBuilder(pt, 1, dataLen)
+	runningValues1 = tb.TestAddAppendInstruction(appendData2, true)
+	program, data = tb.Program()
+	finalValues = tb.Values()
 	ics := so.ContractSize()
 
-	err = testCompareProgramValues(pt, program, finalValues)
+	err = testCompareProgramValues(pt, program, dataLen, bytes.NewReader(data), finalValues)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Get a new reader.
-	program = pb.Program()
 
 	// Expected outputs.
 	expectedOutputs = []Output{
@@ -123,13 +113,13 @@ func TestInstructionSingleAppend(t *testing.T) {
 				NewMerkleRoot: cachedMerkleRoot([]crypto.Hash{appendDataRoot1, appendDataRoot2}),
 				Proof:         []crypto.Hash{appendDataRoot1},
 			},
-			runningValues[1],
+			runningValues1,
 		},
 	}
 
 	// Execute it.
 	budget = modules.NewBudget(finalValues.ExecutionCost)
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, program, budget, finalValues.Collateral, so)
+	finalizeFn, outputs, err = mdm.ExecuteProgram(context.Background(), pt, program, budget, finalValues.Collateral, so, dataLen, bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +138,7 @@ func TestInstructionSingleAppend(t *testing.T) {
 		t.Fatalf("wrong sectorRoots len %v > %v", len(so.sectorRoots), 1)
 	}
 	// Finalize the program.
-	if err := finalize(so); err != nil {
+	if err := finalizeFn(so); err != nil {
 		t.Fatal(err)
 	}
 	// Budget should be empty now.

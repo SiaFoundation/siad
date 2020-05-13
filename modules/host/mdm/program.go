@@ -3,13 +3,13 @@ package mdm
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -53,7 +53,7 @@ type program struct {
 
 	staticBudget           *modules.RPCBudget
 	staticCollateralBudget types.Currency
-	runningValues          modules.RunningProgramValues
+	runningValues          runningProgramValues
 
 	renterSig  types.TransactionSignature
 	outputChan chan Output
@@ -63,7 +63,7 @@ type program struct {
 }
 
 // outputFromError is a convenience function to wrap an error in an Output.
-func outputFromError(err error, values modules.RunningProgramValues) Output {
+func outputFromError(err error, values runningProgramValues) Output {
 	return Output{
 		output: output{
 			Error: err,
@@ -92,9 +92,9 @@ func decodeInstruction(p *program, i modules.Instruction) (instruction, error) {
 
 // ExecuteProgram initializes a new program from a set of instructions and a
 // reader which can be used to fetch the program's data and executes it.
-func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p modules.Program, budget *modules.RPCBudget, collateralBudget types.Currency, sos StorageObligationSnapshot) (func(so StorageObligation) error, <-chan Output, error) {
+func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p modules.Program, budget *modules.RPCBudget, collateralBudget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
 	// Sanity check program length.
-	if len(p.Instructions) == 0 {
+	if len(p) == 0 {
 		return nil, nil, ErrEmptyProgram
 	}
 	// Build program.
@@ -107,9 +107,9 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 			sectors:     newSectors(sos.SectorRoots()),
 		},
 		staticBudget:           budget,
-		runningValues:          modules.InitialProgramValues(pt, p.DataLen, uint64(len(p.Instructions))),
+		runningValues:          initialProgramValues(pt, programDataLen, uint64(len(p))),
 		staticCollateralBudget: collateralBudget,
-		staticData:             openProgramData(p.Data, p.DataLen),
+		staticData:             openProgramData(data, programDataLen),
 		tg:                     &mdm.tg,
 	}
 	// Add initial execution cost of the program.
@@ -118,7 +118,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 	}
 
 	// Convert the instructions.
-	for _, i := range p.Instructions {
+	for _, i := range p {
 		instruction, err := decodeInstruction(program, i)
 		if err != nil {
 			return nil, nil, errors.Compose(err, program.staticData.Close())
@@ -180,7 +180,7 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		default:
 		}
 		// Get all values for the instruction.
-		newValues, err := instructionValues(i)
+		newValues, err := getInstructionValues(i)
 		// Increment collateral first.
 		err = p.addCollateral(newValues.Collateral)
 		if err != nil {
@@ -201,10 +201,6 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		}
 		// Add the instruction's potential refund to the total.
 		p.runningValues.Refund = p.runningValues.Refund.Add(newValues.Refund)
-		// Update ReadOnly flag.
-		if !newValues.ReadOnly {
-			p.runningValues.ReadOnly = false
-		}
 		// Execute next instruction.
 		output = i.Execute(output)
 		p.outputChan <- Output{

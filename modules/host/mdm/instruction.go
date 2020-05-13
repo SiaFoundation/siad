@@ -2,7 +2,6 @@ package mdm
 
 import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -30,21 +29,20 @@ type instruction interface {
 	Time() (uint64, error)
 }
 
-// instructionValues returns all values for the instruction.
-func instructionValues(i instruction) (modules.InstructionValues, error) {
-	values := modules.InstructionValues{}
+// getInstructionValues returns all values for the instruction.
+func getInstructionValues(i instruction) (instructionValues, error) {
+	values := instructionValues{}
 	var err error
 	values.ExecutionCost, values.Refund, err = i.Cost()
 	if err != nil {
-		return modules.InstructionValues{}, err
+		return instructionValues{}, err
 	}
 	values.Collateral = i.Collateral()
 	values.Memory = i.Memory()
 	values.Time, err = i.Time()
 	if err != nil {
-		return modules.InstructionValues{}, err
+		return instructionValues{}, err
 	}
-	values.ReadOnly = i.ReadOnly()
 	return values, nil
 }
 
@@ -54,7 +52,7 @@ type Output struct {
 
 	// RunningValues contains the running program values for the output
 	// including execution cost, potential refund and additional collateral.
-	RunningValues modules.RunningProgramValues
+	RunningValues runningProgramValues
 }
 
 // output is the type returned by all instructions when being executed.

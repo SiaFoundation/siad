@@ -66,20 +66,21 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 	}
 
 	// create the 'ReadSector' program.
-	pb := modules.NewProgramBuilder()
+	pt := rhp.PriceTable()
+	pb := modules.NewProgramBuilder(pt)
 	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
-	program := pb.Program()
+	program, data := pb.Program()
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
 		FileContractID:    rhp.staticFCID,
-		Instructions:      program.Instructions,
-		ProgramDataLength: program.DataLen,
+		Program:           program,
+		ProgramDataLength: uint64(len(data)),
 	}
 
 	// execute program.
 	budget := types.NewCurrency64(math.MaxUint64)
-	_, _, err = rhp.callExecuteProgram(epr, program.Data, budget)
+	_, _, err = rhp.callExecuteProgram(epr, data, budget)
 	if err == nil || !errors.Contains(err, io.ErrClosedPipe) {
 		t.Fatal("Expected callExecuteProgram to fail with an ErrClosedPipe, instead err was", err)
 	}
@@ -124,16 +125,16 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 
 	// create the 'ReadSector' program.
 	pt := rhp.PriceTable()
-	pb := modules.NewProgramBuilder()
+	pb := modules.NewProgramBuilder(pt)
 	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
-	program := pb.Program()
-	_, finalValues := pb.Values(pt, true)
+	program, data := pb.Program()
+	programCost, refund, collateral := pb.Cost(true)
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
 		FileContractID:    rhp.staticFCID, // TODO: leave this empty since it's not required for a readonly program.
-		Instructions:      program.Instructions,
-		ProgramDataLength: program.DataLen,
+		Program:           program,
+		ProgramDataLength: uint64(len(data)),
 	}
 
 	// fund an account.
@@ -155,10 +156,10 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
 	bandwidthCost := downloadCost.Add(uploadCost)
-	cost := finalValues.ExecutionCost.Add(bandwidthCost)
+	cost := programCost.Add(bandwidthCost)
 
 	// execute program.
-	resps, limit, err := rhp.callExecuteProgram(epr, program.Data, cost)
+	resps, limit, err := rhp.callExecuteProgram(epr, data, cost)
 	if err != nil {
 		t.Log("cost", cost.HumanString())
 		t.Log("expected ea balance", rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
@@ -188,11 +189,11 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 		t.Fatalf("expected proof length to be %v but was %v", 0, len(resp.Proof))
 	}
 
-	if !resp.AdditionalCollateral.Equals(finalValues.Collateral) {
-		t.Fatalf("collateral doesnt't match expected collateral: %v != %v", resp.AdditionalCollateral.HumanString(), finalValues.Collateral.HumanString())
+	if !resp.AdditionalCollateral.Equals(collateral) {
+		t.Fatalf("collateral doesnt't match expected collateral: %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
 	}
-	if !resp.PotentialRefund.Equals(finalValues.Refund) {
-		t.Fatalf("refund doesn't match expected refund: %v != %v", resp.PotentialRefund.HumanString(), finalValues.Refund.HumanString())
+	if !resp.PotentialRefund.Equals(refund) {
+		t.Fatalf("refund doesn't match expected refund: %v != %v", resp.PotentialRefund.HumanString(), refund.HumanString())
 	}
 	if uint64(len(resp.Output)) != modules.SectorSize {
 		t.Fatalf("expected returned data to have length %v but was %v", modules.SectorSize, len(resp.Output))
@@ -202,8 +203,8 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	}
 
 	// verify the cost
-	if !resp.TotalCost.Equals(finalValues.ExecutionCost) {
-		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), finalValues.ExecutionCost.HumanString())
+	if !resp.TotalCost.Equals(programCost) {
+		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
 	}
 
 	// verify the EA balance
@@ -216,9 +217,9 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 
 	// rerun the program but now make sure the given budget does not cover the
 	// cost, we expect this to return ErrInsufficientBandwidthBudget
-	program = pb.Program()
+	program, data = pb.Program()
 	cost = cost.Sub64(1)
-	_, limit, err = rhp.callExecuteProgram(epr, program.Data, cost)
+	_, limit, err = rhp.callExecuteProgram(epr, data, cost)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientBandwidthBudget.Error()) {
 		t.Fatalf("expected callExecuteProgram to fail due to insufficient bandwidth budget: %v", err)
 	}
@@ -230,7 +231,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	downloadCost = pt.DownloadBandwidthCost.Mul64(limit.Downloaded())
 	uploadCost = pt.UploadBandwidthCost.Mul64(limit.Uploaded())
 
-	expectedBalance = expectedBalance.Sub(downloadCost).Sub(uploadCost).Sub(finalValues.ExecutionCost)
+	expectedBalance = expectedBalance.Sub(downloadCost).Sub(uploadCost).Sub(programCost)
 	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
 	if err != nil {
 		t.Fatal(err)
@@ -285,16 +286,16 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 
 	// create the 'ReadSector' program.
 	pt := rhp.PriceTable()
-	pb := modules.NewProgramBuilder()
+	pb := modules.NewProgramBuilder(pt)
 	pb.AddReadSectorInstruction(length, offset, sectorRoot, true)
-	program := pb.Program()
-	_, finalValues := pb.Values(pt, true)
+	program, data := pb.Program()
+	programCost, refund, collateral := pb.Cost(true)
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
 		FileContractID:    rhp.staticFCID, // TODO: leave this empty since it's not required for a readonly program.
-		Instructions:      program.Instructions,
-		ProgramDataLength: program.DataLen,
+		Program:           program,
+		ProgramDataLength: uint64(len(data)),
 	}
 
 	// fund an account.
@@ -314,10 +315,10 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
 	bandwidthCost := downloadCost.Add(uploadCost)
-	cost := finalValues.ExecutionCost.Add(bandwidthCost)
+	cost := programCost.Add(bandwidthCost)
 
 	// execute program.
-	resps, bandwidth, err := rhp.callExecuteProgram(epr, program.Data, cost)
+	resps, bandwidth, err := rhp.callExecuteProgram(epr, data, cost)
 	if err != nil {
 		t.Log("cost", cost.HumanString())
 		t.Log("expected ea balance", rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
@@ -339,11 +340,11 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	if resp.NewMerkleRoot != sos.staticMerkleRoot {
 		t.Fatalf("expected merkle root to stay the same: %v != %v", sos.staticMerkleRoot, resp.NewMerkleRoot)
 	}
-	if !resp.AdditionalCollateral.Equals(finalValues.Collateral) {
-		t.Fatalf("collateral doesnt't match expected collateral: %v != %v", resp.AdditionalCollateral.HumanString(), finalValues.Collateral.HumanString())
+	if !resp.AdditionalCollateral.Equals(collateral) {
+		t.Fatalf("collateral doesnt't match expected collateral: %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
 	}
-	if !resp.PotentialRefund.Equals(finalValues.Refund) {
-		t.Fatalf("refund doesn't match expected refund: %v != %v", resp.PotentialRefund.HumanString(), finalValues.Refund.HumanString())
+	if !resp.PotentialRefund.Equals(refund) {
+		t.Fatalf("refund doesn't match expected refund: %v != %v", resp.PotentialRefund.HumanString(), refund.HumanString())
 	}
 	if uint64(len(resp.Output)) != length {
 		t.Fatalf("expected returned data to have length %v but was %v", length, len(resp.Output))
@@ -362,8 +363,8 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	}
 
 	// verify the cost
-	if !resp.TotalCost.Equals(finalValues.ExecutionCost) {
-		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), finalValues.ExecutionCost.HumanString())
+	if !resp.TotalCost.Equals(programCost) {
+		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
 	}
 
 	t.Logf("Used bandwidth (read partial sector program): %v down, %v up", bandwidth.Downloaded(), bandwidth.Uploaded())
@@ -407,16 +408,16 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 
 	// Create the 'HasSector' program.
 	pt := rhp.PriceTable()
-	pb := modules.NewProgramBuilder()
+	pb := modules.NewProgramBuilder(pt)
 	pb.AddHasSectorInstruction(sectorRoot)
-	program := pb.Program()
-	_, finalValues := pb.Values(pt, true)
+	program, data := pb.Program()
+	programCost, refund, collateral := pb.Cost(true)
 
 	// Prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
 		FileContractID:    rhp.staticFCID, // TODO: leave this empty since it's not required for a readonly program.
-		Instructions:      program.Instructions,
-		ProgramDataLength: program.DataLen,
+		Program:           program,
+		ProgramDataLength: uint64(len(data)),
 	}
 
 	// Fund an account with the max balance.
@@ -439,8 +440,8 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	bandwidthCost := downloadCost.Add(uploadCost)
 
 	// Execute program.
-	cost := finalValues.ExecutionCost.Add(bandwidthCost)
-	resps, limit, err := rhp.callExecuteProgram(epr, program.Data, cost)
+	cost := programCost.Add(bandwidthCost)
+	resps, limit, err := rhp.callExecuteProgram(epr, data, cost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -456,8 +457,8 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	if resp.Error != nil {
 		t.Fatal(resp.Error)
 	}
-	if !resp.AdditionalCollateral.Equals(finalValues.Collateral) {
-		t.Fatalf("wrong AdditionalCollateral %v != %v", resp.AdditionalCollateral.HumanString(), finalValues.Collateral.HumanString())
+	if !resp.AdditionalCollateral.Equals(collateral) {
+		t.Fatalf("wrong AdditionalCollateral %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
 	}
 	if resp.NewMerkleRoot != sos.MerkleRoot() {
 		t.Fatalf("wrong NewMerkleRoot %v != %v", resp.NewMerkleRoot, sos.MerkleRoot())
@@ -472,11 +473,11 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	if resp.Output[0] != 1 {
 		t.Fatalf("wrong Output %v != %v", resp.Output[0], []byte{1})
 	}
-	if !resp.TotalCost.Equals(finalValues.ExecutionCost) {
-		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), finalValues.ExecutionCost.HumanString())
+	if !resp.TotalCost.Equals(programCost) {
+		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
 	}
-	if !resp.PotentialRefund.Equals(finalValues.Refund) {
-		t.Fatalf("wrong PotentialRefund %v != %v", resp.PotentialRefund.HumanString(), finalValues.Refund.HumanString())
+	if !resp.PotentialRefund.Equals(refund) {
+		t.Fatalf("wrong PotentialRefund %v != %v", resp.PotentialRefund.HumanString(), refund.HumanString())
 	}
 	// Make sure the right amount of money remains on the EA.
 	am := rhp.ht.host.staticAccountManager
@@ -487,9 +488,9 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	}
 
 	// Execute program again. This time pay for 1 less byte of bandwidth. This should fail.
-	program = pb.Program()
-	cost = finalValues.ExecutionCost.Add(bandwidthCost.Sub64(1))
-	_, limit, err = rhp.callExecuteProgram(epr, program.Data, cost)
+	program, data = pb.Program()
+	cost = programCost.Add(bandwidthCost.Sub64(1))
+	_, limit, err = rhp.callExecuteProgram(epr, data, cost)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientBandwidthBudget.Error()) {
 		t.Fatalf("expected callExecuteProgram to fail due to insufficient bandwidth budget: %v", err)
 	}
@@ -501,7 +502,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	downloadCost = pt.DownloadBandwidthCost.Mul64(limit.Downloaded())
 	uploadCost = pt.UploadBandwidthCost.Mul64(limit.Uploaded())
 
-	expectedBalance = expectedBalance.Sub(downloadCost).Sub(uploadCost).Sub(finalValues.ExecutionCost)
+	expectedBalance = expectedBalance.Sub(downloadCost).Sub(uploadCost).Sub(programCost)
 	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
 	if err != nil {
 		t.Fatal(err)

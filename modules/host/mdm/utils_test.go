@@ -3,18 +3,17 @@ package mdm
 import (
 	"bytes"
 	"fmt"
+	"io"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// testCompareProgramValues compares the values of a program calculated during a
-// test with the expected values returned from testProgramValues.
-//
-// NOTE: this function consumes the program data reader.
-func testCompareProgramValues(pt *modules.RPCPriceTable, p modules.Program, values modules.ProgramValues) error {
-	expectedValues, err := testProgramValues(p, pt)
+// testCompareProgramValues compares the values of a program calculated using
+// the test builder with the expected values returned from an actual program.
+func testCompareProgramValues(pt *modules.RPCPriceTable, p modules.Program, programDataLen uint64, data io.Reader, values programValues) error {
+	expectedValues, err := testProgramValues(p, programDataLen, data, pt)
 	if err != nil {
 		return err
 	}
@@ -82,33 +81,33 @@ func testCompareOutputs(actualOutputs <-chan Output, expectedOutputs []Output) (
 // and time given a program in the form of a list of instructions. This function
 // creates a dummy program that decodes the instructions and their parameters,
 // testing that they were properly encoded.
-func testProgramValues(p modules.Program, pt *modules.RPCPriceTable) (modules.ProgramValues, error) {
+func testProgramValues(p modules.Program, programDataLen uint64, data io.Reader, pt *modules.RPCPriceTable) (programValues, error) {
 	// Make a dummy program to allow us to get the instruction values.
 	program := &program{
 		staticProgramState: &programState{
 			priceTable: pt,
 		},
-		staticData: openProgramData(p.Data, p.DataLen),
+		staticData: openProgramData(data, programDataLen),
 	}
-	runningValues := modules.InitialProgramValues(pt, p.DataLen, uint64(len(p.Instructions)))
+	runningValues := initialProgramValues(pt, programDataLen, uint64(len(p)))
 
-	for _, i := range p.Instructions {
+	for _, i := range p {
 		// Decode instruction.
 		instruction, err := decodeInstruction(program, i)
 		if err != nil {
-			return modules.ProgramValues{}, err
+			return programValues{}, err
 		}
 		// Get the values for the instruction.
-		values, err := instructionValues(instruction)
+		values, err := getInstructionValues(instruction)
 		if err != nil {
-			return modules.ProgramValues{}, err
+			return programValues{}, err
 		}
 		// Update running values.
 		runningValues.AddValues(pt, values)
 	}
 
 	// Get the final values for the program.
-	finalValues := runningValues.FinalizeProgramValues(pt, true)
+	finalValues := runningValues.FinalizeProgramValues(pt, p.ReadOnly(), true)
 
 	return finalValues, nil
 }

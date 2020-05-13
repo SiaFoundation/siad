@@ -68,15 +68,11 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}
 
 	// Extract the arguments.
-	fcid, instructions, dataLength := epr.FileContractID, epr.Instructions, epr.ProgramDataLength
+	fcid, instructions, dataLength := epr.FileContractID, epr.Program, epr.ProgramDataLength
+	program := modules.Program(instructions)
 
 	// If the program isn't readonly we need to acquire a lock on the storage
 	// obligation.
-	program := modules.Program{
-		Instructions: instructions,
-		Data:         stream,
-		DataLen:      dataLength,
-	}
 	readonly := program.ReadOnly()
 	if !readonly {
 		h.managedLockStorageObligation(fcid)
@@ -104,7 +100,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}()
 
 	// Execute the program.
-	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, budget, collateralBudget, sos)
+	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, budget, collateralBudget, sos, dataLength, stream)
 	if err != nil {
 		return errors.AddContext(err, "Failed to start execution of the program")
 	}

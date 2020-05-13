@@ -1,6 +1,7 @@
 package mdm
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
@@ -28,21 +29,20 @@ func TestInstructionHasSector(t *testing.T) {
 
 	// Build the program.
 	pt := newTestPriceTable()
-	pb := modules.NewProgramBuilder()
-	pb.AddHasSectorInstruction(sectorRoot)
-	program := pb.Program()
-	runningValues, finalValues := pb.Values(pt, true)
+	tb := newTestBuilder(pt, 1, crypto.HashSize)
+	runningValues1 := tb.TestAddHasSectorInstruction(sectorRoot)
+	program, data := tb.Program()
+	finalValues := tb.Values()
+	dataLen := uint64(len(data))
 
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
 
 	// Verify the values.
-	err = testCompareProgramValues(pt, program, finalValues)
+	err = testCompareProgramValues(pt, program, dataLen, bytes.NewReader(data), finalValues)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Get a new reader.
-	program = pb.Program()
 
 	// Expected outputs.
 	expectedOutputs := []Output{
@@ -53,13 +53,13 @@ func TestInstructionHasSector(t *testing.T) {
 				Proof:         []crypto.Hash{},
 				Output:        []byte{1},
 			},
-			runningValues[1],
+			runningValues1,
 		},
 	}
 
 	// Execute it.
 	budget := modules.NewBudget(finalValues.ExecutionCost)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, finalValues.Collateral, so)
+	finalizeFn, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, finalValues.Collateral, so, dataLen, bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestInstructionHasSector(t *testing.T) {
 	}
 
 	// No need to finalize the program since this program is readonly.
-	if finalize != nil {
-		t.Fatal("finalize callback should be nil for readonly program")
+	if finalizeFn != nil {
+		t.Fatal("finalizeFn callback should be nil for readonly program")
 	}
 }

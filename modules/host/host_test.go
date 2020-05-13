@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -441,7 +440,7 @@ type executeProgramResponse struct {
 // and returns the responses received by the host. A failure to execute an
 // instruction won't result in an error. Instead the returned responses need to
 // be inspected for that depending on the testcase.
-func (p *renterHostPair) callExecuteProgram(epr modules.RPCExecuteProgramRequest, programData io.Reader, budget types.Currency) ([]executeProgramResponse, mux.BandwidthLimit, error) {
+func (p *renterHostPair) callExecuteProgram(epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency) ([]executeProgramResponse, mux.BandwidthLimit, error) {
 	// fetch a price table
 	pt, err := p.FetchPriceTable()
 	if err != nil {
@@ -494,18 +493,14 @@ func (p *renterHostPair) callExecuteProgram(epr modules.RPCExecuteProgramRequest
 	}
 
 	// Send the programData.
-	bytes, err := ioutil.ReadAll(programData)
-	if err != nil {
-		return nil, limit, err
-	}
-	_, err = stream.Write(bytes)
+	_, err = stream.Write(programData)
 	if err != nil {
 		return nil, limit, err
 	}
 
 	// Read the responses.
-	responses := make([]executeProgramResponse, len(epr.Instructions))
-	for i := range epr.Instructions {
+	responses := make([]executeProgramResponse, len(epr.Program))
+	for i := range epr.Program {
 		// Read the response.
 		err = modules.RPCRead(stream, &responses[i])
 		if err != nil {

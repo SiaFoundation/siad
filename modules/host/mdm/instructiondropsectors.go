@@ -101,13 +101,14 @@ func (i *instructionDropSectors) Collateral() types.Currency {
 }
 
 // Cost returns the Cost of the DropSectors instruction.
-func (i *instructionDropSectors) Cost() (types.Currency, types.Currency, error) {
+func (i *instructionDropSectors) Cost() (executionCost types.Currency, refund types.Currency, err error) {
 	numSectorsDropped, err := i.staticData.Uint64(i.numSectorsOffset)
 	if err != nil {
-		return types.Currency{}, types.Currency{}, fmt.Errorf("bad input: numSectorsOffset: %v", err)
+		err = fmt.Errorf("bad input: numSectorsOffset: %v", err)
+		return
 	}
-	cost, refund := modules.MDMDropSectorsCost(i.staticState.priceTable, numSectorsDropped)
-	return cost, refund, nil
+	executionCost, refund = modules.MDMDropSectorsCost(i.staticState.priceTable, numSectorsDropped)
+	return
 }
 
 // Memory returns the memory allocated by the 'DropSectors' instruction beyond
