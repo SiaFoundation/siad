@@ -566,7 +566,7 @@ func (sf *SiaFile) UpdateUniqueID() {
 func (sf *SiaFile) UpdateAccessTime() (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	// backup the changed metadata before hcanging it. Revert the change on
+	// backup the changed metadata before changing it. Revert the change on
 	// error.
 	defer func(backup Metadata) {
 		if err != nil {
