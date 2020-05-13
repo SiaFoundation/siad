@@ -420,12 +420,12 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 			index:   chunkIndex,
 		},
 
-		index:    chunkIndex,
 		length:   entry.ChunkSize(),
 		offset:   int64(chunkIndex * entry.ChunkSize()),
 		onDisk:   onDisk,
 		priority: priority,
 
+		staticIndex:   chunkIndex,
 		staticSiaPath: entryCopy.SiaFilePath(),
 
 		// memoryNeeded has to also include the logical data, and also
@@ -1205,7 +1205,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			return nil
 		}
 		chunkPath := nextChunk.staticSiaPath
-		r.repairLog.Printf("Repairing chunk %v of %s, currently have %v out of %v pieces", nextChunk.index, chunkPath, nextChunk.piecesCompleted, nextChunk.piecesNeeded)
+		r.repairLog.Printf("Repairing chunk %v of %s, currently have %v out of %v pieces", nextChunk.staticIndex, chunkPath, nextChunk.piecesCompleted, nextChunk.piecesNeeded)
 
 		// Make sure we have enough workers for this chunk to reach minimum
 		// redundancy.
@@ -1226,9 +1226,9 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 					// chunk to reach minimum redundancy. Log an error, set the
 					// chunk as stuck, and close the file
 					r.repairLog.Printf("Allowance has insufficient hosts for %s, have %v, need %v", chunkPath, allowance.Hosts, nextChunk.minimumPieces)
-					err := nextChunk.fileEntry.SetStuck(nextChunk.index, true)
+					err := nextChunk.fileEntry.SetStuck(nextChunk.staticIndex, true)
 					if err != nil {
-						r.repairLog.Printf("WARN: unable to mark chunk %v of %s as stuck: %v", nextChunk.index, chunkPath, err)
+						r.repairLog.Printf("WARN: unable to mark chunk %v of %s as stuck: %v", nextChunk.staticIndex, chunkPath, err)
 					}
 				}
 			}
@@ -1254,7 +1254,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			// memory for the repair. Since that is not an issue with the file
 			// we will just close the chunk file entry instead of marking it as
 			// stuck
-			r.repairLog.Printf("WARN: error while preparing chunk %v from %s: %v", nextChunk.index, chunkPath, err)
+			r.repairLog.Printf("WARN: error while preparing chunk %v from %s: %v", nextChunk.staticIndex, chunkPath, err)
 			nextChunk.fileEntry.Close()
 			// Remove the chunk from the repairingChunks map
 			r.uploadHeap.managedMarkRepairDone(nextChunk.id)

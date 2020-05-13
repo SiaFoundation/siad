@@ -176,7 +176,7 @@ func TestUnrecognizedRPCID(t *testing.T) {
 		}
 	}()
 
-	stream := pair.newStream()
+	stream := pair.managedNewStream()
 	defer func() {
 		err := stream.Close()
 		if err != nil {

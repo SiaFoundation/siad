@@ -502,11 +502,22 @@ func TestPayment(t *testing.T) {
 	// create a refund account
 	aid, _ := modules.NewAccountID()
 
-	// backup the amount renter funds
-	contract, ok := c.ContractByPublicKey(hpk)
-	if !ok {
-		t.Fatal("No contract with host")
+	// Fetch the contracts, there's a race condition between contract creation
+	// and the contractor knowing the contract exists, so do this in a retry.
+	var contract modules.RenterContract
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		var ok bool
+		contract, ok = c.ContractByPublicKey(hpk)
+		if !ok {
+			return errors.New("contract not found")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
+
+	// backup the amount renter funds
 	initial := contract.RenterFunds
 
 	// write the rpc id
