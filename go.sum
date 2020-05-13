@@ -90,6 +90,8 @@ gitlab.com/NebulousLabs/siamux v0.0.0-20200511155832-64a7ac68c8ab h1:NUCtCUgbRos
 gitlab.com/NebulousLabs/siamux v0.0.0-20200511155832-64a7ac68c8ab/go.mod h1:oaTSN0KXMgdNRKLg0CVH1vuZB2NcsmkngWf2pYK0N1Y=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20180716154133-88a11db9e46c h1:psW9YBmnyKKCddPncr7mwJCx6n7FzlIs1EWIiSo7fyQ=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20180716154133-88a11db9e46c/go.mod h1:w05nvlkvHlk3Vfc7mcU29Toic1X0BcYUnKoTHS0ea2Y=
+gitlab.com/NebulousLabs/threadgroup v0.0.0-20200513153928-67f056f80aa0 h1:X0lt1AINYUCNsnHCfQya129gNIRVdB2Ak+HOeLIvOik=
+gitlab.com/NebulousLabs/threadgroup v0.0.0-20200513153928-67f056f80aa0/go.mod h1:w05nvlkvHlk3Vfc7mcU29Toic1X0BcYUnKoTHS0ea2Y=
 gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190703190009-cb822c37bc94/go.mod h1:Lhpa9AcbWcYKcc4amZsOHqJdQglnkWrGuUI68XC7U2Q=
 gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190814160017-69f300e9bcb8 h1:u74TgFUPYl9G1rYLUKmavwJoF8Li/qJLMSiU5ntafKA=
 gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190814160017-69f300e9bcb8/go.mod h1:Lhpa9AcbWcYKcc4amZsOHqJdQglnkWrGuUI68XC7U2Q=
