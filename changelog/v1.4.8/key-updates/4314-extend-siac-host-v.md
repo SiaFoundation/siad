@@ -1,1 +1,0 @@
-- Add MinBaseRPCPrice and MinSectorAccessPrice to `siac host -v`

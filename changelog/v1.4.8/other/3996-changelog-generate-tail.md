@@ -1,1 +1,0 @@
-- Add updating changelog tail to changelog generator.
