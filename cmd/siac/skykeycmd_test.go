@@ -118,7 +118,11 @@ func TestSkykeyCommandsXXX(t *testing.T) {
 
 	//xxxccc move to local variable after !4387 is merged
 	n := newTestNode(t)
-	defer n.Close()
+	defer func() {
+		if err := n.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	testClient = n.Client
 
 	// Set the (global) cipher type to the only allowed type.
