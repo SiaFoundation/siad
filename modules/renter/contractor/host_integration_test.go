@@ -713,7 +713,14 @@ func TestIntegrationEditorCaching(t *testing.T) {
 	contract := c.Contracts()[0]
 
 	// create an editor
-	d1, err := c.Editor(contract.HostPublicKey, nil)
+	var d1 Editor
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		d1, err = c.Editor(contract.HostPublicKey, nil)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

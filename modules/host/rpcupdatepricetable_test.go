@@ -97,10 +97,10 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	ht := rhp.ht
+	ht := rhp.staticHT
 
 	// verify the price table is being tracked
-	pt, err := rhp.FetchPriceTable()
+	pt, err := rhp.managedFetchPriceTable()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,11 +143,11 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	ht := pair.ht
+	ht := pair.staticHT
 
 	// renter-side logic
 	runWithRequest := func(pbcRequest modules.PayByContractRequest) (*modules.RPCPriceTable, error) {
-		stream := pair.newStream()
+		stream := pair.managedNewStream()
 		defer stream.Close()
 
 		// initiate the RPC
@@ -198,7 +198,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 
 	// verify happy flow
 	current := ht.host.staticPriceTables.managedCurrent()
-	rev, sig, err := pair.paymentRevision(current.UpdatePriceTableCost)
+	rev, sig, err := pair.managedPaymentRevision(current.UpdatePriceTableCost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	}
 
 	// expect failure if the payment revision does not cover the RPC cost
-	rev, sig, err = pair.paymentRevision(types.ZeroCurrency)
+	rev, sig, err = pair.managedPaymentRevision(types.ZeroCurrency)
 	if err != nil {
 		t.Fatal(err)
 	}

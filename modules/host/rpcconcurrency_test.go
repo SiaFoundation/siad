@@ -66,7 +66,7 @@ func TestRPCConcurrentCalls(t *testing.T) {
 
 		// prefund the EAs
 		funding := his.MaxEphemeralAccountBalance.Div64(1e5)
-		_, err = pair.FundEphemeralAccount(funding, true)
+		_, err = pair.managedFundEphemeralAccount(funding, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -77,7 +77,7 @@ func TestRPCConcurrentCalls(t *testing.T) {
 	// these to generate random MDM programs on the fly
 	sectorRoots := make(map[types.FileContractID]crypto.Hash)
 	for _, pair := range pairs {
-		root, _, err := pair.addRandomSector()
+		root, _, err := addRandomSector(pair)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -122,7 +122,7 @@ func TestRPCConcurrentCalls(t *testing.T) {
 					}
 
 					// execute it and handle the error
-					_, _, err := pair.ExecuteProgram(epr, p.data, cost, false)
+					_, _, err := pair.managedExecuteProgram(epr, p.data, cost, false)
 					if err != nil {
 						recoverChan <- err
 					} else {
@@ -143,7 +143,7 @@ func TestRPCConcurrentCalls(t *testing.T) {
 // program. Alongside the program and cost it returns a function that updates
 // the appropriate RPC tracker in the stats object.
 func randomMDMProgram(pair *renterHostPair, sectorRoot crypto.Hash) (program testMDMProgram, cost types.Currency, updateStats func(stats *rpcStats)) {
-	pt := pair.PriceTable()
+	pt := pair.managedPriceTable()
 	var expectedDLBandwidth uint64
 	var expectedULBandwidth uint64
 
@@ -176,7 +176,7 @@ func randomMDMProgram(pair *renterHostPair, sectorRoot crypto.Hash) (program tes
 // might be expected errors from which we want to recover. Examples of such
 // errors are expired price tables, or out of balance errors.
 func recoverFromError(ctx context.Context, t *testing.T, pair *renterHostPair, stats *rpcStats, errChan chan error, cancel context.CancelFunc) {
-	his := pair.ht.host.InternalSettings()
+	his := pair.staticHT.host.InternalSettings()
 	funding := his.MaxEphemeralAccountBalance.Div64(1e5)
 
 	for err := range errChan {
@@ -189,7 +189,7 @@ func recoverFromError(ctx context.Context, t *testing.T, pair *renterHostPair, s
 		// try to recover from insufficient balance
 		var recovered bool
 		if strings.Contains(err.Error(), ErrBalanceInsufficient.Error()) {
-			_, err = pair.FundEphemeralAccount(funding, false)
+			_, err = pair.managedFundEphemeralAccount(funding, false)
 			stats.trackFundEA()
 			recovered = err == nil
 		}
@@ -200,9 +200,9 @@ func recoverFromError(ctx context.Context, t *testing.T, pair *renterHostPair, s
 			// try using an EA, but fall back to contract payment, this
 			// ensures the price table gets updated, and attempts to do
 			// it in the fastest way possible
-			err = pair.UpdatePriceTable(false)
+			err = pair.managedUpdatePriceTable(false)
 			if err != nil {
-				err = pair.UpdatePriceTable(true)
+				err = pair.managedUpdatePriceTable(true)
 				payByFC = true
 			}
 			stats.trackUpdatePT(payByFC)
