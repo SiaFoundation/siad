@@ -1,1 +1,0 @@
-- Add valid and missed proof outputs to StorageObligation for `/host/contracts` 

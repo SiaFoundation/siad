@@ -1,1 +1,0 @@
-- Fixed the output of `siac skynet ls` not counting subdirectories.
