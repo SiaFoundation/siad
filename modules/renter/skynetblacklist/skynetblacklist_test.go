@@ -353,7 +353,7 @@ func TestMarshalSia(t *testing.T) {
 	}
 
 	// Test unmarshalBlacklist
-	blacklist, err := unmarshalObjects(buf.Bytes())
+	blacklist, err := unmarshalObjects(&buf)
 	if err != nil {
 		t.Fatal(err)
 	}

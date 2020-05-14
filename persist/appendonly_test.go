@@ -2,6 +2,7 @@ package persist
 
 import (
 	"bytes"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -30,7 +31,11 @@ func TestWrite(t *testing.T) {
 	// Create a new AppendOnlyPersist.
 	testdir := build.TempDir("appendonlypersist", t.Name())
 	filename := "test"
-	aop, readBytes, err := NewAppendOnlyPersist(testdir, filename, testHeader, testVersion)
+	aop, reader, err := NewAppendOnlyPersist(testdir, filename, testHeader, testVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readBytes, err := ioutil.ReadAll(reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +103,11 @@ func TestWrite(t *testing.T) {
 	}
 
 	// Load the AOP again.
-	aop, readBytes, err = NewAppendOnlyPersist(testdir, filename, testHeader, testVersion)
+	aop, reader, err = NewAppendOnlyPersist(testdir, filename, testHeader, testVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readBytes, err = ioutil.ReadAll(reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +139,11 @@ func TestWrite(t *testing.T) {
 	}
 
 	// Load the AOP again.
-	aop, readBytes, err = NewAppendOnlyPersist(testdir, filename, testHeader, testVersion)
+	aop, reader, err = NewAppendOnlyPersist(testdir, filename, testHeader, testVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readBytes, err = ioutil.ReadAll(reader)
 	if err != nil {
 		t.Fatal(err)
 	}

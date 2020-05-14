@@ -384,7 +384,7 @@ func TestMarshalSia(t *testing.T) {
 	}
 
 	// Test unmarshalPersistPortals
-	portals, err := unmarshalObjects(buf.Bytes())
+	portals, err := unmarshalObjects(&buf)
 	if err != nil {
 		t.Fatal(err)
 	}

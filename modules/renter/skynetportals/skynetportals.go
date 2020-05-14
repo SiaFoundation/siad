@@ -59,7 +59,7 @@ type (
 // New returns an initialized SkynetPortals.
 func New(persistDir string) (*SkynetPortals, error) {
 	// Initialize the persistence of the portal list.
-	aop, bytes, err := persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
+	aop, reader, err := persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
 	if err != nil {
 		return nil, errors.AddContext(err, fmt.Sprintf("unable to initialize the skynet portal list persistence at '%v'", aop.FilePath()))
 	}
@@ -67,7 +67,7 @@ func New(persistDir string) (*SkynetPortals, error) {
 	sp := &SkynetPortals{
 		staticAop: aop,
 	}
-	portals, err := unmarshalObjects(bytes)
+	portals, err := unmarshalObjects(reader)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to unmarshal persist objects")
 	}
@@ -169,13 +169,12 @@ func (sp *SkynetPortals) marshalObjects(additions []modules.SkynetPortal, remova
 }
 
 // unmarshalObjects unmarshals the sia encoded objects.
-func unmarshalObjects(readBytes []byte) (map[modules.NetAddress]bool, error) {
+func unmarshalObjects(reader io.Reader) (map[modules.NetAddress]bool, error) {
 	portals := make(map[modules.NetAddress]bool)
-	r := bytes.NewReader(readBytes)
 	// Unmarshal portals one by one until EOF.
 	for {
 		var pe persistEntry
-		err := pe.UnmarshalSia(r)
+		err := pe.UnmarshalSia(reader)
 		if errors.Contains(err, io.EOF) {
 			break
 		}

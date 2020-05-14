@@ -58,7 +58,7 @@ type (
 
 // NewAppendOnlyPersist creates a new AppendOnlyPersist object and initializes
 // the persistence file.
-func NewAppendOnlyPersist(dir, file string, metadataHeader, metadataVersion types.Specifier) (*AppendOnlyPersist, []byte, error) {
+func NewAppendOnlyPersist(dir, file string, metadataHeader, metadataVersion types.Specifier) (*AppendOnlyPersist, io.Reader, error) {
 	aop := &AppendOnlyPersist{
 		staticPath: filepath.Join(dir, file),
 		metadata: appendOnlyPersistMetadata{
@@ -66,8 +66,8 @@ func NewAppendOnlyPersist(dir, file string, metadataHeader, metadataVersion type
 			Version: metadataVersion,
 		},
 	}
-	bytes, err := aop.initOrLoadPersist(dir)
-	return aop, bytes, err
+	reader, err := aop.initOrLoadPersist(dir)
+	return aop, reader, err
 }
 
 // Close closes the persist file, freeing the resource and preventing further
@@ -131,7 +131,7 @@ func (aop *AppendOnlyPersist) Write(b []byte) (int, error) {
 
 // initOrLoadPersist initializes the persistence file if it doesn't exist or
 // loads it from disk if it does and then returns the non-metadata bytes.
-func (aop *AppendOnlyPersist) initOrLoadPersist(dir string) ([]byte, error) {
+func (aop *AppendOnlyPersist) initOrLoadPersist(dir string) (io.Reader, error) {
 	// Initialize the persistence directory
 	err := os.MkdirAll(dir, defaultDirPermissions)
 	if err != nil {
@@ -139,19 +139,20 @@ func (aop *AppendOnlyPersist) initOrLoadPersist(dir string) ([]byte, error) {
 	}
 
 	// Try and load persistence.
-	bytes, err := aop.load()
+	reader, err := aop.load()
 	if err == nil {
 		// Return the loaded persistence bytes.
-		return bytes, nil
+		return reader, nil
 	} else if !os.IsNotExist(err) {
 		return nil, errors.AddContext(err, "unable to load persistence")
 	}
 
-	return aop.init()
+	err = aop.init()
+	return bytes.NewReader([]byte{}), err
 }
 
 // init initializes the persistence file.
-func (aop *AppendOnlyPersist) init() ([]byte, error) {
+func (aop *AppendOnlyPersist) init() error {
 	// Marshal the metadata.
 	aop.metadata.Length = MetadataPageSize
 	metadataBytes := encoding.Marshal(aop.metadata)
@@ -160,13 +161,13 @@ func (aop *AppendOnlyPersist) init() ([]byte, error) {
 	if uint64(len(metadataBytes)) > MetadataPageSize {
 		err := fmt.Errorf("metadataBytes too long, %v > %v", len(metadataBytes), MetadataPageSize)
 		build.Critical(err)
-		return nil, err
+		return err
 	}
 
 	// Create the persist file.
 	f, err := os.OpenFile(aop.FilePath(), os.O_RDWR|os.O_CREATE, defaultFilePermissions)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to open persistence file")
+		return errors.AddContext(err, "unable to open persistence file")
 	}
 	aop.staticF = f
 
@@ -174,19 +175,18 @@ func (aop *AppendOnlyPersist) init() ([]byte, error) {
 	// so operation is ACID as a single write and sync.
 	_, err = aop.staticF.WriteAt(metadataBytes, 0)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to write metadata to file on initialization")
+		return errors.AddContext(err, "unable to write metadata to file on initialization")
 	}
 	err = aop.staticF.Sync()
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to fsync file")
+		return errors.AddContext(err, "unable to fsync file")
 	}
 
-	// Return empty bytes since there were no persistence bytes.
-	return []byte{}, nil
+	return nil
 }
 
 // load loads the persist file from disk, returning the non-metadata bytes.
-func (aop *AppendOnlyPersist) load() ([]byte, error) {
+func (aop *AppendOnlyPersist) load() (io.Reader, error) {
 	// Open File
 	filepath := aop.FilePath()
 	f, err := os.OpenFile(filepath, os.O_RDWR, defaultFilePermissions)
@@ -216,7 +216,7 @@ func (aop *AppendOnlyPersist) load() ([]byte, error) {
 	// Check if there are persisted objects after the metadata.
 	goodBytes := aop.metadata.Length - MetadataPageSize
 	if goodBytes <= 0 {
-		return []byte{}, nil
+		return bytes.NewReader([]byte{}), nil
 	}
 
 	// Truncate the file to remove any corrupted data that may have been added.
@@ -224,18 +224,13 @@ func (aop *AppendOnlyPersist) load() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Seek to the start of the persist file.
+	// Seek to the start of the persist data section.
 	_, err = aop.staticF.Seek(int64(MetadataPageSize), 0)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to seek to start of persist file")
 	}
 
-	bytes, err := ioutil.ReadAll(aop.staticF)
-	if err != nil {
-		return nil, err
-	}
-
-	return bytes, nil
+	return aop.staticF, nil
 }
 
 // updateMetadata updates the metadata, validating its correctness.

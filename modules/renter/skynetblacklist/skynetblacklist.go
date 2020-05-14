@@ -54,7 +54,7 @@ type (
 // New returns an initialized SkynetBlacklist.
 func New(persistDir string) (*SkynetBlacklist, error) {
 	// Initialize the persistence of the blacklist.
-	aop, bytes, err := persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
+	aop, reader, err := persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
 	if err != nil {
 		return nil, errors.AddContext(err, fmt.Sprintf("unable to initialize the skynet blacklist persistence at '%v'", aop.FilePath()))
 	}
@@ -62,7 +62,7 @@ func New(persistDir string) (*SkynetBlacklist, error) {
 	sb := &SkynetBlacklist{
 		staticAop: aop,
 	}
-	blacklist, err := unmarshalObjects(bytes)
+	blacklist, err := unmarshalObjects(reader)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to unmarshal persist objects")
 	}
@@ -144,20 +144,21 @@ func (sb *SkynetBlacklist) marshalObjects(additions, removals []modules.Skylink)
 }
 
 // unmarshalObjects unmarshals the sia encoded objects.
-func unmarshalObjects(bytes []byte) (map[crypto.Hash]struct{}, error) {
+func unmarshalObjects(reader io.Reader) (map[crypto.Hash]struct{}, error) {
 	blacklist := make(map[crypto.Hash]struct{})
 	// Unmarshal blacklisted links one by one until EOF.
 	var offset uint64
 	for {
-		if offset+persistSize > uint64(len(bytes)) {
-			break
-		}
-
-		var pe persistEntry
-		err := encoding.Unmarshal(bytes[offset:offset+persistSize], &pe)
+		buf := make([]byte, persistSize)
+		_, err := io.ReadFull(reader, buf)
 		if errors.Contains(err, io.EOF) {
 			break
 		}
+		if err != nil {
+			return nil, err
+		}
+		var pe persistEntry
+		err = encoding.Unmarshal(buf, &pe)
 		if err != nil {
 			return nil, err
 		}
