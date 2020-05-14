@@ -39,6 +39,7 @@ type (
 	// updating append-only persist files.
 	AppendOnlyPersist struct {
 		staticPath string
+		staticF    *os.File
 
 		metadata appendOnlyPersistMetadata
 
@@ -69,6 +70,12 @@ func NewAppendOnlyPersist(dir, file string, metadataHeader, metadataVersion type
 	return aop, bytes, err
 }
 
+// Close closes the persist file, freeing the resource and preventing further
+// writes.
+func (aop *AppendOnlyPersist) Close() error {
+	return aop.staticF.Close()
+}
+
 // FilePath returns the filepath of the persist file.
 func (aop *AppendOnlyPersist) FilePath() string {
 	return aop.staticPath
@@ -92,21 +99,15 @@ func (aop *AppendOnlyPersist) Write(b []byte) (int, error) {
 	// Truncate the file to remove any corrupted data that may have been added.
 	err := os.Truncate(filepath, int64(aop.metadata.Length))
 	if err != nil {
-		return 0, err
+		return 0, errors.AddContext(err, "could not truncate file before write")
 	}
-	// Open file
-	f, err := os.OpenFile(filepath, os.O_RDWR, defaultFilePermissions)
-	if err != nil {
-		return 0, errors.AddContext(err, "unable to open persistence file")
-	}
-	defer f.Close()
 
 	// Append data and sync
-	numBytes, err := f.WriteAt(b, int64(aop.metadata.Length))
+	numBytes, err := aop.staticF.WriteAt(b, int64(aop.metadata.Length))
 	if err != nil {
 		return 0, errors.AddContext(err, "unable to append new data to blacklist persist file")
 	}
-	err = f.Sync()
+	err = aop.staticF.Sync()
 	if err != nil {
 		return numBytes, errors.AddContext(err, "unable to fsync file")
 	}
@@ -117,11 +118,11 @@ func (aop *AppendOnlyPersist) Write(b []byte) (int, error) {
 
 	// Write to file
 	lengthOffset := int64(2 * types.SpecifierLen)
-	_, err = f.WriteAt(lengthBytes, lengthOffset)
+	_, err = aop.staticF.WriteAt(lengthBytes, lengthOffset)
 	if err != nil {
 		return numBytes, errors.AddContext(err, "unable to write length")
 	}
-	err = f.Sync()
+	err = aop.staticF.Sync()
 	if err != nil {
 		return numBytes, errors.AddContext(err, "unable to fsync file")
 	}
@@ -146,31 +147,36 @@ func (aop *AppendOnlyPersist) initOrLoadPersist(dir string) ([]byte, error) {
 		return nil, errors.AddContext(err, "unable to load persistence")
 	}
 
-	// Persist file doesn't exist, create it.
-	f, err := os.OpenFile(aop.FilePath(), os.O_RDWR|os.O_CREATE, defaultFilePermissions)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to open persistence file")
-	}
-	defer f.Close()
+	return aop.init()
+}
 
+// init initializes the persistence file.
+func (aop *AppendOnlyPersist) init() ([]byte, error) {
 	// Marshal the metadata.
 	aop.metadata.Length = MetadataPageSize
 	metadataBytes := encoding.Marshal(aop.metadata)
 
 	// Sanity check that the metadataBytes are less than the MetadataPageSize
 	if uint64(len(metadataBytes)) > MetadataPageSize {
-		err = fmt.Errorf("metadataBytes too long, %v > %v", len(metadataBytes), MetadataPageSize)
+		err := fmt.Errorf("metadataBytes too long, %v > %v", len(metadataBytes), MetadataPageSize)
 		build.Critical(err)
 		return nil, err
 	}
 
+	// Create the persist file.
+	f, err := os.OpenFile(aop.FilePath(), os.O_RDWR|os.O_CREATE, defaultFilePermissions)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to open persistence file")
+	}
+	aop.staticF = f
+
 	// Write metadata to beginning of file. This is a small amount of data and
 	// so operation is ACID as a single write and sync.
-	_, err = f.WriteAt(metadataBytes, 0)
+	_, err = aop.staticF.WriteAt(metadataBytes, 0)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to write metadata to file on initialization")
 	}
-	err = f.Sync()
+	err = aop.staticF.Sync()
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to fsync file")
 	}
@@ -183,17 +189,17 @@ func (aop *AppendOnlyPersist) initOrLoadPersist(dir string) ([]byte, error) {
 func (aop *AppendOnlyPersist) load() ([]byte, error) {
 	// Open File
 	filepath := aop.FilePath()
-	f, err := os.Open(filepath)
+	f, err := os.OpenFile(filepath, os.O_RDWR, defaultFilePermissions)
 	if err != nil {
 		// Intentionally don't add context to allow for IsNotExist error check
 		return nil, err
 	}
-	defer f.Close()
+	aop.staticF = f
 
 	// Check the Header and Version of the file
 	metadataSize := uint64(2*types.SpecifierLen) + lengthSize
 	metadataBytes := make([]byte, metadataSize)
-	_, err = f.ReadAt(metadataBytes, 0)
+	_, err = aop.staticF.ReadAt(metadataBytes, 0)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to read metadata bytes from file")
 	}
@@ -219,12 +225,12 @@ func (aop *AppendOnlyPersist) load() ([]byte, error) {
 		return nil, err
 	}
 	// Seek to the start of the persist file.
-	_, err = f.Seek(int64(MetadataPageSize), 0)
+	_, err = aop.staticF.Seek(int64(MetadataPageSize), 0)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to seek to start of persist file")
 	}
 
-	bytes, err := ioutil.ReadAll(f)
+	bytes, err := ioutil.ReadAll(aop.staticF)
 	if err != nil {
 		return nil, err
 	}

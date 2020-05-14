@@ -76,6 +76,11 @@ func New(persistDir string) (*SkynetPortals, error) {
 	return sp, nil
 }
 
+// Close closes and frees associated resources.
+func (sp *SkynetPortals) Close() error {
+	return sp.staticAop.Close()
+}
+
 // Portals returns the list of known Skynet portals.
 func (sp *SkynetPortals) Portals() []modules.SkynetPortal {
 	sp.mu.Lock()

@@ -83,6 +83,11 @@ func (sb *SkynetBlacklist) Blacklist() []crypto.Hash {
 	return blacklist
 }
 
+// Close closes and frees associated resources.
+func (sb *SkynetBlacklist) Close() error {
+	return sb.staticAop.Close()
+}
+
 // IsBlacklisted indicates if a skylink is currently blacklisted
 func (sb *SkynetBlacklist) IsBlacklisted(skylink modules.Skylink) bool {
 	sb.mu.Lock()

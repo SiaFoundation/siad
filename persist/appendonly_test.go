@@ -92,6 +92,10 @@ func TestWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	err = aop.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Load the AOP again.
 	aop, readBytes, err = NewAppendOnlyPersist(testdir, filename, testHeader, testVersion)
@@ -120,6 +124,10 @@ func TestWrite(t *testing.T) {
 	if numBytes != length2 {
 		t.Fatalf("Expected to write %v bytes, wrote %v bytes", length2, numBytes)
 	}
+	err = aop.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Load the AOP again.
 	aop, readBytes, err = NewAppendOnlyPersist(testdir, filename, testHeader, testVersion)
@@ -136,6 +144,10 @@ func TestWrite(t *testing.T) {
 	// Check the returned bytes (should have been appended).
 	if !bytes.Equal(readBytes, append(bytes1, bytes2...)) {
 		t.Fatalf("Expected and received byte slices don't match")
+	}
+	err = aop.Close()
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -173,6 +185,7 @@ func TestMarshalMetadata(t *testing.T) {
 			Length: MetadataPageSize,
 		},
 	}
+	defer aop.Close()
 
 	// Marshal the metadata and write to disk
 	metadataBytes := encoding.Marshal(aop.metadata)
