@@ -304,7 +304,7 @@ func (c *SafeContract) makeUpdateSetRoot(root crypto.Hash, index int) writeahead
 	}
 }
 
-func (c *SafeContract) makeUpdateSetRefCounterValueUpdate(secIdx int, val uint16) (writeaheadlog.Update, error) {
+func (c *SafeContract) makeUpdateSetRefCounterValue(secIdx int, val uint16) (writeaheadlog.Update, error) {
 	emptyUpdate := writeaheadlog.Update{
 		Name:         UpdateNameWriteAt,
 		Instructions: []byte{},
@@ -327,7 +327,7 @@ func (c *SafeContract) makeUpdateSetRefCounterValueUpdate(secIdx int, val uint16
 	return emptyUpdate, nil
 }
 
-func (c *SafeContract) applySetRefCounterValueUpdate(u writeaheadlog.Update) error {
+func (c *SafeContract) applySetRefCounterValue(u writeaheadlog.Update) error {
 	if build.Release == "testing" && len(u.Instructions) > 0 {
 		err := c.rc.callCreateAndApplyTransaction(u)
 		// If we don't have an open update session open one and try again.
@@ -380,7 +380,7 @@ func (c *SafeContract) managedRecordUploadIntent(rev types.FileContractRevision,
 	newHeader.UploadSpending = newHeader.UploadSpending.Add(bandwidthCost)
 
 	newRootIdx := c.merkleRoots.len()
-	rcUpdate, err := c.makeUpdateSetRefCounterValueUpdate(newRootIdx, 1)
+	rcUpdate, err := c.makeUpdateSetRefCounterValue(newRootIdx, 1)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to create a refcounter update")
 	}
@@ -416,14 +416,14 @@ func (c *SafeContract) managedCommitUpload(t *writeaheadlog.Transaction, signedT
 		return err
 	}
 	// create and apply a new refcounter update to go with the new setRoot txn
-	rcUpdate, err := c.makeUpdateSetRefCounterValueUpdate(newRootIdx, 1)
+	rcUpdate, err := c.makeUpdateSetRefCounterValue(newRootIdx, 1)
 	if errors.Contains(err, ErrUpdateWithoutUpdateSession) {
 		err = c.rc.callStartUpdate()
 	}
 	if err != nil {
 		return errors.AddContext(err, "failed to update refcounter")
 	}
-	if err = c.applySetRefCounterValueUpdate(rcUpdate); err != nil {
+	if err = c.applySetRefCounterValue(rcUpdate); err != nil {
 		return errors.AddContext(err, "failed to apply refcounter update")
 	}
 	if err := c.rc.callUpdateApplied(); err != nil {
@@ -562,7 +562,7 @@ func (c *SafeContract) managedCommitTxns() error {
 					return err
 				}
 			case UpdateNameWriteAt:
-				if err := c.applySetRefCounterValueUpdate(update); err != nil {
+				if err := c.applySetRefCounterValue(update); err != nil {
 					return err
 				}
 				rcUpdatesApplied = true
