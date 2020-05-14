@@ -156,15 +156,9 @@ func TestFileNumChunks(t *testing.T) {
 		if f.NumChunks() != expectedNumChunks {
 			t.Errorf("Test %v: expected %v, got %v", test, expectedNumChunks, f.NumChunks())
 		}
-		// Ensure `backup` will not log a `build.Critical`.
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					t.Fatal(r)
-				}
-			}()
-			f.Metadata().backup()
-		}()
+		if err := ensureMetadataValid(f.Metadata()); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -298,15 +292,9 @@ func TestFileRedundancy(t *testing.T) {
 		if r != expectedR || ur != expectedR {
 			t.Errorf("expected redundancy to ignore offline file contracts, wanted %f got %f", expectedR, r)
 		}
-		// Ensure `backup` will not log a `build.Critical`.
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					t.Fatal(r)
-				}
-			}()
-			f.Metadata().backup()
-		}()
+		if err := ensureMetadataValid(f.Metadata()); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -515,15 +503,9 @@ func TestFileHealth(t *testing.T) {
 	if numStuckChunks != 1 {
 		t.Fatalf("Expected 1 stuck chunk but found %v", numStuckChunks)
 	}
-	// Ensure `backup` will not log a `build.Critical`.
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Fatal(r)
-			}
-		}()
-		f.Metadata().backup()
-	}()
+	if err := ensureMetadataValid(f.Metadata()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestGrowNumChunks is a unit test for the SiaFile's GrowNumChunks method.
@@ -598,15 +580,9 @@ func TestGrowNumChunks(t *testing.T) {
 	}
 	// Check that size and chunks still match.
 	checkFile(sf, expectedChunks, expectedSize)
-	// Ensure `backup` will not log a `build.Critical`.
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Fatal(r)
-			}
-		}()
-		sf.Metadata().backup()
-	}()
+	if err := ensureMetadataValid(sf.Metadata()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestPruneHosts is a unit test for the pruneHosts method.
@@ -690,15 +666,9 @@ func TestPruneHosts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Ensure `backup` will not log a `build.Critical`.
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Fatal(r)
-			}
-		}()
-		sf.Metadata().backup()
-	}()
+	if err := ensureMetadataValid(sf.Metadata()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestNumPieces tests the chunk's numPieces method.
@@ -841,16 +811,12 @@ func TestDefragChunk(t *testing.T) {
 	if err := equalFiles(sf, sf2); err != nil {
 		t.Fatal(err)
 	}
-	// Ensure `backup` will not log a `build.Critical`.
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Fatal(r)
-			}
-		}()
-		sf.Metadata().backup()
-		sf2.Metadata().backup()
-	}()
+	if err := ensureMetadataValid(sf.Metadata()); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureMetadataValid(sf2.Metadata()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestChunkHealth probes the chunkHealth method
@@ -971,15 +937,9 @@ func TestChunkHealth(t *testing.T) {
 	if ch != newHealth {
 		t.Fatalf("Expected file to be %v, got %v", newHealth, ch)
 	}
-	// Ensure `backup` will not log a `build.Critical`.
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Fatal(r)
-			}
-		}()
-		sf.Metadata().backup()
-	}()
+	if err := ensureMetadataValid(sf.Metadata()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestStuckChunks checks to make sure the NumStuckChunks return the expected
@@ -1045,15 +1005,9 @@ func TestStuckChunks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Ensure `backup` will not log a `build.Critical`.
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Fatal(r)
-			}
-		}()
-		sf.Metadata().backup()
-	}()
+	if err := ensureMetadataValid(sf.Metadata()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestUploadedBytes tests that uploadedBytes() returns the expected values for
@@ -1085,15 +1039,9 @@ func TestUploadedBytes(t *testing.T) {
 	if uniqueBytes != modules.SectorSize {
 		t.Errorf("expected uniqueBytes to be %v, got %v", modules.SectorSize, uniqueBytes)
 	}
-	// Ensure `backup` will not log a `build.Critical`.
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Fatal(r)
-			}
-		}()
-		f.Metadata().backup()
-	}()
+	if err := ensureMetadataValid(f.Metadata()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestFileUploadProgressPinning verifies that uploadProgress() returns at most
@@ -1119,15 +1067,9 @@ func TestFileUploadProgressPinning(t *testing.T) {
 	if f.staticMetadata.CachedUploadProgress != 100 {
 		t.Fatal("expected uploadProgress to report 100% but was", f.staticMetadata.CachedUploadProgress)
 	}
-	// Ensure `backup` will not log a `build.Critical`.
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Fatal(r)
-			}
-		}()
-		f.Metadata().backup()
-	}()
+	if err := ensureMetadataValid(f.Metadata()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestFileExpiration probes the expiration method of the file type.
@@ -1183,15 +1125,9 @@ func TestFileExpiration(t *testing.T) {
 	if f.staticMetadata.CachedExpiration != 50 {
 		t.Error("file did not report lowest WindowStart", f.staticMetadata.CachedExpiration)
 	}
-	// Ensure `backup` will not log a `build.Critical`.
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				t.Fatal(r)
-			}
-		}()
-		f.Metadata().backup()
-	}()
+	if err := ensureMetadataValid(f.Metadata()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // BenchmarkLoadSiaFile benchmarks loading an existing siafile's metadata into
@@ -1359,4 +1295,17 @@ func BenchmarkRandomChunkRead(b *testing.B) {
 			}
 		}
 	}
+}
+
+// ensureMetadataValid is a helper method which ensures we can backup and
+// recover siafile metadata. By doing that, it also ensures that all the fields
+// have valid values.
+func ensureMetadataValid(md Metadata) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%s", r)
+		}
+	}()
+	md.backup()
+	return nil
 }
