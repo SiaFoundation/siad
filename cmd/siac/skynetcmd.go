@@ -469,6 +469,7 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 		if skynetUploadDryRun {
 			fmt.Print("[dry run] ")
 		}
+		pbs.Wait()
 		fmt.Printf("Successfully uploaded skyfile!\n")
 		return
 	}
