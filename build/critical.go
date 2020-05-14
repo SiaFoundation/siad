@@ -15,7 +15,7 @@ var buildInfoString = fmt.Sprintf("(Sia v%v, Release: %v)", Version, Release)
 // issue tracker on Github. If the program does not panic, the call stack for
 // the running goroutine is printed to help determine the error.
 func Critical(v ...interface{}) {
-	s := fmt.Sprintf("Critical error: %v %v\nPlease submit a bug report here: %v\n", buildInfoString, fmt.Sprint(v...), IssuesURL)
+	s := fmt.Sprintf("Critical error: %v %vPlease submit a bug report here: %v\n", buildInfoString, fmt.Sprintln(v...), IssuesURL)
 	if Release != "testing" {
 		debug.PrintStack()
 		os.Stderr.WriteString(s)
@@ -31,7 +31,7 @@ func Critical(v ...interface{}) {
 // generation failure), but where crashing is not strictly required to preserve
 // integrity.
 func Severe(v ...interface{}) {
-	s := fmt.Sprintf("Severe error: %v %v\n", buildInfoString, fmt.Sprint(v...))
+	s := fmt.Sprintf("Severe error: %v %v", buildInfoString, fmt.Sprintln(v...))
 	if Release != "testing" {
 		debug.PrintStack()
 		os.Stderr.WriteString(s)
