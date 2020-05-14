@@ -527,6 +527,11 @@ func (r *Renter) managedFetchLogicalChunkData(uc *unfinishedUploadChunk) error {
 		osFile, err := os.Open(uc.fileEntry.LocalPath())
 		if os.IsNotExist(err) {
 			// The file doesn't exist on disk anymore, drop the local path.
+			//
+			// NOTE: we are removing the localpath here to avoid potential
+			// future corruption by a different file with the same filename
+			// being added at the localpath location.
+			r.log.Println("WARN: local file not found on disk, setting localpath to '' to avoid corruption for", uc.fileEntry.SiaFilePath())
 			err = errors.Compose(err, uc.fileEntry.SetLocalPath(""))
 		}
 		if err != nil {
