@@ -374,7 +374,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	// update contract
 	//
 	// TODO: unnecessary?
-	err = sc.managedCommitAppend(walTxn, txn, crypto.Hash{}, storagePrice, bandwidthPrice)
+	err = sc.managedCommitAppend(walTxn, txn, storagePrice, bandwidthPrice)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}

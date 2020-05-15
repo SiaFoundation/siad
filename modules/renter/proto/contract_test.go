@@ -511,7 +511,7 @@ func TestContractRefCounter(t *testing.T) {
 		},
 	}
 	// commit the change
-	err = sc.managedCommitAppend(walTxn, txn, newRoot, storageCost, bandwidthCost)
+	err = sc.managedCommitAppend(walTxn, txn, storageCost, bandwidthCost)
 	if err != nil {
 		t.Fatal(err)
 	}

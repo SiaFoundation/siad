@@ -176,7 +176,7 @@ func (he *Editor) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	}
 
 	// update contract
-	err = sc.managedCommitAppend(walTxn, signedTxn, sectorRoot, sectorStoragePrice, sectorBandwidthPrice)
+	err = sc.managedCommitAppend(walTxn, signedTxn, sectorStoragePrice, sectorBandwidthPrice)
 	if err != nil {
 		return modules.RenterContract{}, crypto.Hash{}, err
 	}

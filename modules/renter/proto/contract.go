@@ -317,46 +317,36 @@ func (c *SafeContract) makeUpdateSetRoot(root crypto.Hash, index int) writeahead
 // refcounter value. If there is no open refcounter update session this method
 // will open one. This update session will be closed when we apply the update.
 func (c *SafeContract) makeUpdateRefCounterAppend() (writeaheadlog.Update, error) {
-	emptyUpdate := writeaheadlog.Update{
-		Name:         UpdateNameWriteAt,
-		Instructions: []byte{},
+	if build.Release != "testing" {
+		return writeaheadlog.Update{}, nil // no update needed
 	}
-	if build.Release == "testing" {
-		u, err := c.rc.callAppend()
-		// If we don't have an open update session open one and try again.
-		if errors.Contains(err, ErrUpdateWithoutUpdateSession) {
-			err = c.rc.callStartUpdate()
-			if err != nil {
-				return writeaheadlog.Update{}, err
-			}
-			u, err = c.rc.callAppend()
-		} else {
-			fmt.Println(" >>> update session already opened")
-		}
-		if err != nil {
+	u, err := c.rc.callAppend()
+	// If we don't have an open update session open one and try again.
+	if errors.Contains(err, ErrUpdateWithoutUpdateSession) {
+		if err = c.rc.callStartUpdate(); err != nil {
 			return writeaheadlog.Update{}, err
 		}
-		return u, nil
+		u, err = c.rc.callAppend()
 	}
-	return emptyUpdate, nil
+	return u, err
 }
 
 // applyRefCounterUpdate applies a refcounter WAL update. If there is no open
 // update session, it will open one and it will leave it open. This update
 // session must be closed by the calling method.
 func (c *SafeContract) applyRefCounterUpdate(u writeaheadlog.Update) error {
-	if build.Release == "testing" && len(u.Instructions) > 0 {
-		err := c.rc.callCreateAndApplyTransaction(u)
-		// If we don't have an open update session open one and try again.
-		if errors.Contains(err, ErrUpdateWithoutUpdateSession) {
-			err = c.rc.callStartUpdate()
-			if err != nil {
-				return err
-			}
-			err = c.rc.callCreateAndApplyTransaction(u)
-		}
+	if build.Release != "testing" {
+		return nil
 	}
-	return nil
+	err := c.rc.callCreateAndApplyTransaction(u)
+	// If we don't have an open update session open one and try again.
+	if errors.Contains(err, ErrUpdateWithoutUpdateSession) {
+		if err = c.rc.callStartUpdate(); err != nil {
+			return err
+		}
+		err = c.rc.callCreateAndApplyTransaction(u)
+	}
+	return err
 }
 
 // applySetHeader directly makes changes to the contract header on disk without
@@ -421,10 +411,10 @@ func (c *SafeContract) managedRecordAppendIntent(rev types.FileContractRevision,
 	return t, nil
 }
 
-// managedCommitAppend *ignores* all updates in the given transaction and
-// instead applies the provided signedTxn. This is necessary if we run into a
-// desync of contract revisions between the renter and the host.
-func (c *SafeContract) managedCommitAppend(t *writeaheadlog.Transaction, signedTxn types.Transaction, root crypto.Hash, storageCost, bandwidthCost types.Currency) error {
+// managedCommitAppend ignores the header update in the given transaction and
+// instead applies a new one based on the provided signedTxn. This is necessary
+// if we run into a desync of contract revisions between renter and host.
+func (c *SafeContract) managedCommitAppend(t *writeaheadlog.Transaction, signedTxn types.Transaction, storageCost, bandwidthCost types.Currency) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// construct new header
@@ -438,33 +428,30 @@ func (c *SafeContract) managedCommitAppend(t *writeaheadlog.Transaction, signedT
 	if err = c.applySetHeader(newHeader); err != nil {
 		return err
 	}
-	if err = c.applySetRoot(root, c.merkleRoots.len()); err != nil {
-		return err
-	}
-	// find the refcounter append update in the given transaction, so we can
-	// execute it
-	var rcUpdate writeaheadlog.Update
+
+	// pluck the refcounter and setRoot updates from the WAL txn
 	for _, u := range t.Updates {
-		if u.Name == UpdateNameWriteAt {
-			rcUpdate = u
-			break
+		switch u.Name {
+		case updateNameSetHeader:
+			// do nothing - we already applied a new version of this update
+		case updateNameSetRoot:
+			var sru updateSetRoot
+			if err := encoding.Unmarshal(u.Instructions, &sru); err != nil {
+				return err
+			}
+			if err := c.applySetRoot(sru.Root, sru.Index); err != nil {
+				return err
+			}
+		case UpdateNameWriteAt:
+			if err = c.applyRefCounterUpdate(u); err != nil {
+				return errors.AddContext(err, "failed to apply refcounter update")
+			}
+			if err = c.rc.callUpdateApplied(); err != nil {
+				return err
+			}
+		default:
+			build.Critical("unexpected update", u.Name)
 		}
-	}
-	// if we didn't find a refcounter append update, make one:
-	if rcUpdate.Name == "" {
-		if err = c.rc.callStartUpdate(); err != nil {
-			return errors.AddContext(err, "failed to start a refcounter update session")
-		}
-		rcUpdate, err = c.makeUpdateRefCounterAppend()
-		if err != nil {
-			return errors.AddContext(err, "failed to update refcounter")
-		}
-	}
-	if err = c.applyRefCounterUpdate(rcUpdate); err != nil {
-		return errors.AddContext(err, "failed to apply refcounter update")
-	}
-	if err = c.rc.callUpdateApplied(); err != nil {
-		return err
 	}
 
 	if err = c.headerFile.Sync(); err != nil {
