@@ -185,7 +185,7 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 
 	// Determine the amount that was transferred from the renter.
 	if paymentRevision.ValidRenterPayout().Cmp(existingRevision.ValidRenterPayout()) > 0 {
-		return errors.AddContext(ErrHighRenterValidOutput, "renter increased its valid proof output: ")
+		return errors.AddContext(ErrHighRenterValidOutput, "renter increased its valid proof output")
 	}
 	fromRenter := existingRevision.ValidRenterPayout().Sub(paymentRevision.ValidRenterPayout())
 	// Verify that enough money was transferred.
@@ -196,7 +196,7 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 
 	// Determine the amount of money that was transferred to the host.
 	if existingRevision.ValidHostPayout().Cmp(paymentRevision.ValidHostPayout()) > 0 {
-		return errors.AddContext(ErrLowHostValidOutput, "host valid proof output was decreased: ")
+		return errors.AddContext(ErrLowHostValidOutput, "host valid proof output was decreased")
 	}
 	toHost := paymentRevision.ValidHostPayout().Sub(existingRevision.ValidHostPayout())
 	// Verify that enough money was transferred.
@@ -209,13 +209,13 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 	// proof output, the renter has incentive to see the host fail. Make sure
 	// that this incentive is not present.
 	if paymentRevision.ValidRenterPayout().Cmp(paymentRevision.MissedRenterOutput().Value) > 0 {
-		return errors.AddContext(ErrHighRenterMissedOutput, "renter has incentive to see host fail: ")
+		return errors.AddContext(ErrHighRenterMissedOutput, "renter has incentive to see host fail")
 	}
 
 	// Check that the host is not going to be posting collateral.
 	if paymentRevision.MissedHostOutput().Value.Cmp(existingRevision.MissedHostOutput().Value) < 0 {
 		collateral := existingRevision.MissedHostOutput().Value.Sub(paymentRevision.MissedHostOutput().Value)
-		s := fmt.Sprintf("host not expecting to post any collateral, but contract has host posting %v collateral: ", collateral)
+		s := fmt.Sprintf("host not expecting to post any collateral, but contract has host posting %v collateral", collateral)
 		return errors.AddContext(ErrLowHostMissedOutput, s)
 	}
 
