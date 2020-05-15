@@ -53,7 +53,10 @@ type program struct {
 
 	staticBudget           *modules.RPCBudget
 	staticCollateralBudget types.Currency
-	runningValues          runningProgramValues
+	executionCost          types.Currency
+	additionalCollateral   types.Currency // collateral the host is required to add
+	potentialRefund        types.Currency // refund if the program isn't committed
+	usedMemory             uint64
 
 	renterSig  types.TransactionSignature
 	outputChan chan Output
@@ -63,13 +66,15 @@ type program struct {
 }
 
 // outputFromError is a convenience function to wrap an error in an Output.
-func outputFromError(err error, values runningProgramValues) Output {
+func outputFromError(err error, collateral, cost, refund types.Currency) Output {
 	return Output{
 		output: output{
 			Error: err,
 		},
 
-		RunningValues: values,
+		ExecutionCost:        cost,
+		AdditionalCollateral: collateral,
+		PotentialRefund:      refund,
 	}
 }
 
@@ -99,7 +104,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 	}
 	// Build program.
 	program := &program{
-		outputChan: make(chan Output),
+		outputChan: make(chan Output, len(p)),
 		staticProgramState: &programState{
 			blockHeight: mdm.host.BlockHeight(),
 			host:        mdm.host,
@@ -107,16 +112,11 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 			sectors:     newSectors(sos.SectorRoots()),
 		},
 		staticBudget:           budget,
-		runningValues:          initialProgramValues(pt, programDataLen, uint64(len(p))),
+		usedMemory:             modules.MDMInitMemory(),
 		staticCollateralBudget: collateralBudget,
 		staticData:             openProgramData(data, programDataLen),
 		tg:                     &mdm.tg,
 	}
-	// Add initial execution cost of the program.
-	if !program.staticBudget.Withdraw(program.runningValues.ExecutionCost) {
-		return nil, nil, errors.Compose(modules.ErrMDMInsufficientBudget, program.staticData.Close())
-	}
-
 	// Convert the instructions.
 	for _, i := range p {
 		instruction, err := decodeInstruction(program, i)
@@ -124,6 +124,11 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 			return nil, nil, errors.Compose(err, program.staticData.Close())
 		}
 		program.instructions = append(program.instructions, instruction)
+	}
+	// Increment the execution cost of the program.
+	err := program.addCost(modules.MDMInitCost(pt, program.staticData.Len(), uint64(len(program.instructions))))
+	if err != nil {
+		return nil, nil, errors.Compose(err, program.staticData.Close())
 	}
 	// Execute all the instructions.
 	if err := program.tg.Add(); err != nil {
@@ -146,11 +151,11 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 // a result the collateral becomes larger than the collateral budget of the
 // program, an error is returned.
 func (p *program) addCollateral(collateral types.Currency) error {
-	additionalCollateral := p.runningValues.Collateral.Add(collateral)
+	additionalCollateral := p.additionalCollateral.Add(collateral)
 	if p.staticCollateralBudget.Cmp(additionalCollateral) < 0 {
 		return modules.ErrMDMInsufficientCollateralBudget
 	}
-	p.runningValues.Collateral = additionalCollateral
+	p.additionalCollateral = additionalCollateral
 	return nil
 }
 
@@ -161,7 +166,7 @@ func (p *program) addCost(cost types.Currency) error {
 	if !p.staticBudget.Withdraw(cost) {
 		return modules.ErrMDMInsufficientBudget
 	}
-	p.runningValues.ExecutionCost = p.runningValues.ExecutionCost.Add(cost)
+	p.executionCost = p.executionCost.Add(cost)
 	return nil
 }
 
@@ -175,38 +180,47 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 	for _, i := range p.instructions {
 		select {
 		case <-ctx.Done(): // Check for interrupt
-			p.outputChan <- outputFromError(ErrInterrupted, p.runningValues)
+			p.outputChan <- outputFromError(ErrInterrupted, p.additionalCollateral, p.executionCost, p.potentialRefund)
 			return ErrInterrupted
 		default:
 		}
-		// Get all values for the instruction.
-		newValues, err := getInstructionValues(i)
 		// Increment collateral first.
-		err = p.addCollateral(newValues.Collateral)
+		collateral := i.Collateral()
+		err := p.addCollateral(collateral)
 		if err != nil {
-			p.outputChan <- outputFromError(err, p.runningValues)
+			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
 			return err
 		}
 		// Add the memory the next instruction is going to allocate to the
 		// total.
-		p.runningValues.Memory += newValues.Memory
-		memoryCost := modules.MDMMemoryCost(p.staticProgramState.priceTable, p.runningValues.Memory, newValues.Time)
-		// Get the full cost.
-		executionCost := memoryCost.Add(newValues.ExecutionCost)
-		// Increment the cost.
-		err = p.addCost(executionCost)
+		p.usedMemory += i.Memory()
+		time, err := i.Time()
 		if err != nil {
-			p.outputChan <- outputFromError(err, p.runningValues)
+			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
+		}
+		memoryCost := modules.MDMMemoryCost(p.staticProgramState.priceTable, p.usedMemory, time)
+		// Get the instruction cost and refund.
+		instructionCost, refund, err := i.Cost()
+		if err != nil {
+			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
+			return err
+		}
+		cost := memoryCost.Add(instructionCost)
+		// Increment the cost.
+		err = p.addCost(cost)
+		if err != nil {
+			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.potentialRefund)
 			return err
 		}
 		// Add the instruction's potential refund to the total.
-		p.runningValues.Refund = p.runningValues.Refund.Add(newValues.Refund)
+		p.potentialRefund = p.potentialRefund.Add(refund)
 		// Execute next instruction.
 		output = i.Execute(output)
 		p.outputChan <- Output{
-			output: output,
-
-			RunningValues: p.runningValues,
+			output:               output,
+			ExecutionCost:        p.executionCost,
+			AdditionalCollateral: p.additionalCollateral,
+			PotentialRefund:      p.potentialRefund,
 		}
 		// Abort if the last output contained an error.
 		if output.Error != nil {
@@ -224,7 +238,7 @@ func (p *program) managedFinalize(so StorageObligation) error {
 		return errors.Compose(p.outputErr, errors.New("can't call finalize on program that was aborted due to an error"))
 	}
 	// Compute the memory cost of finalizing the program.
-	memoryCost := modules.MDMMemoryCost(p.staticProgramState.priceTable, p.runningValues.Memory, modules.MDMTimeCommit)
+	memoryCost := modules.MDMMemoryCost(p.staticProgramState.priceTable, p.usedMemory, modules.MDMTimeCommit)
 	err := p.addCost(memoryCost)
 	if err != nil {
 		return err

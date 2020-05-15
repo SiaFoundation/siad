@@ -126,17 +126,17 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 
 		// Prepare the RPC response.
 		resp := modules.RPCExecuteProgramResponse{
-			AdditionalCollateral: output.RunningValues.Collateral,
+			AdditionalCollateral: output.AdditionalCollateral,
 			Error:                output.Error,
 			NewMerkleRoot:        output.NewMerkleRoot,
 			NewSize:              output.NewSize,
 			OutputLength:         uint64(len(output.Output)),
-			PotentialRefund:      output.RunningValues.Refund,
+			PotentialRefund:      output.PotentialRefund,
 			Proof:                output.Proof,
-			TotalCost:            output.RunningValues.ExecutionCost,
+			TotalCost:            output.ExecutionCost,
 		}
 		// Update cost and refund.
-		if output.RunningValues.ExecutionCost.Cmp(output.RunningValues.Refund) < 0 {
+		if output.ExecutionCost.Cmp(output.PotentialRefund) < 0 {
 			err = errors.New("executionCost can never be smaller than the refund")
 			build.Critical(err)
 			return err

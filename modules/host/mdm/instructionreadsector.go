@@ -109,7 +109,7 @@ func (i *instructionReadSector) Collateral() types.Currency {
 }
 
 // Cost returns the cost of a ReadSector instruction.
-func (i *instructionReadSector) Cost() (executionCost types.Currency, refund types.Currency, err error) {
+func (i *instructionReadSector) Cost() (executionCost, refund types.Currency, err error) {
 	length, err := i.staticData.Uint64(i.lengthOffset)
 	if err != nil {
 		return

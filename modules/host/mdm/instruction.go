@@ -29,30 +29,17 @@ type instruction interface {
 	Time() (uint64, error)
 }
 
-// getInstructionValues returns all values for the instruction.
-func getInstructionValues(i instruction) (instructionValues, error) {
-	values := instructionValues{}
-	var err error
-	values.ExecutionCost, values.Refund, err = i.Cost()
-	if err != nil {
-		return instructionValues{}, err
-	}
-	values.Collateral = i.Collateral()
-	values.Memory = i.Memory()
-	values.Time, err = i.Time()
-	if err != nil {
-		return instructionValues{}, err
-	}
-	return values, nil
-}
-
 // Output is the type of the outputs returned by a program run on the MDM.
 type Output struct {
 	output
 
-	// RunningValues contains the running program values for the output
-	// including execution cost, potential refund and additional collateral.
-	RunningValues runningProgramValues
+	// ExecutionCost contains the running program value for the execution cost.
+	ExecutionCost types.Currency
+	// AdditionalCollateral contains the running program value for the
+	// additional collateral.
+	AdditionalCollateral types.Currency
+	// PotentialRefund contains the running program value for the refund.
+	PotentialRefund types.Currency
 }
 
 // output is the type returned by all instructions when being executed.

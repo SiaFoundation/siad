@@ -1,8 +1,6 @@
 package mdm
 
 import (
-	"bytes"
-	"context"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -22,41 +20,20 @@ func TestInstructionSingleAppend(t *testing.T) {
 	dataLen := uint64(len(appendData1))
 	pt := newTestPriceTable()
 	tb := newTestBuilder(pt, 1, dataLen)
-	runningValues1 := tb.TestAddAppendInstruction(appendData1, true)
-	program, data := tb.Program()
-	finalValues := tb.Values()
-
-	// Verify the values.
-	err := testCompareProgramValues(pt, program, dataLen, bytes.NewReader(data), finalValues)
-	if err != nil {
-		t.Fatal(err)
-	}
+	tb.TestAddAppendInstruction(appendData1, true)
 
 	// Expected outputs.
-	expectedOutputs := []Output{
+	expectedOutputs := []output{
 		{
-			output{
-				NewSize:       modules.SectorSize,
-				NewMerkleRoot: crypto.MerkleRoot(appendData1),
-				Proof:         []crypto.Hash{},
-			},
-			runningValues1,
+			NewSize:       modules.SectorSize,
+			NewMerkleRoot: crypto.MerkleRoot(appendData1),
+			Proof:         []crypto.Hash{},
 		},
 	}
 
 	// Execute it.
 	so := newTestStorageObligation(true)
-	budget := modules.NewBudget(finalValues.ExecutionCost)
-	finalizeFn, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, finalValues.Collateral, so, dataLen, bytes.NewReader(data))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if finalizeFn == nil {
-		t.Fatal("could not retrieve finalizeFn function")
-	}
-
-	// Check outputs.
-	_, err = testCompareOutputs(outputs, expectedOutputs)
+	finalizeFn, budget, _, err := tb.AssertOutputs(mdm, so, expectedOutputs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,37 +72,20 @@ func TestInstructionSingleAppend(t *testing.T) {
 	dataLen = uint64(len(appendData2))
 	appendDataRoot2 := crypto.MerkleRoot(appendData2)
 	tb = newTestBuilder(pt, 1, dataLen)
-	runningValues1 = tb.TestAddAppendInstruction(appendData2, true)
-	program, data = tb.Program()
-	finalValues = tb.Values()
+	tb.TestAddAppendInstruction(appendData2, true)
 	ics := so.ContractSize()
 
-	err = testCompareProgramValues(pt, program, dataLen, bytes.NewReader(data), finalValues)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Expected outputs.
-	expectedOutputs = []Output{
+	expectedOutputs = []output{
 		{
-			output{
-				NewSize:       ics + modules.SectorSize,
-				NewMerkleRoot: cachedMerkleRoot([]crypto.Hash{appendDataRoot1, appendDataRoot2}),
-				Proof:         []crypto.Hash{appendDataRoot1},
-			},
-			runningValues1,
+			NewSize:       ics + modules.SectorSize,
+			NewMerkleRoot: cachedMerkleRoot([]crypto.Hash{appendDataRoot1, appendDataRoot2}),
+			Proof:         []crypto.Hash{appendDataRoot1},
 		},
 	}
 
 	// Execute it.
-	budget = modules.NewBudget(finalValues.ExecutionCost)
-	finalizeFn, outputs, err = mdm.ExecuteProgram(context.Background(), pt, program, budget, finalValues.Collateral, so, dataLen, bytes.NewReader(data))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Check outputs.
-	_, err = testCompareOutputs(outputs, expectedOutputs)
+	finalizeFn, budget, _, err = tb.AssertOutputs(mdm, so, expectedOutputs)
 	if err != nil {
 		t.Fatal(err)
 	}

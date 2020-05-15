@@ -1,8 +1,6 @@
 package mdm
 
 import (
-	"bytes"
-	"context"
 	"fmt"
 	"testing"
 
@@ -43,103 +41,66 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	tb := newTestBuilder(pt, 6, 3*modules.SectorSize+3*8)
 
 	sectorData1 := fastrand.Bytes(int(modules.SectorSize))
-	runningValues1 := tb.TestAddAppendInstruction(sectorData1, false)
+	tb.TestAddAppendInstruction(sectorData1, false)
 	merkleRoots1 := []crypto.Hash{crypto.MerkleRoot(sectorData1)}
 
 	sectorData2 := fastrand.Bytes(int(modules.SectorSize))
-	runningValues2 := tb.TestAddAppendInstruction(sectorData2, false)
+	tb.TestAddAppendInstruction(sectorData2, false)
 	merkleRoots2 := []crypto.Hash{merkleRoots1[0], crypto.MerkleRoot(sectorData2)}
 
 	sectorData3 := fastrand.Bytes(int(modules.SectorSize))
-	runningValues3 := tb.TestAddAppendInstruction(sectorData3, false)
+	tb.TestAddAppendInstruction(sectorData3, false)
 	merkleRoots3 := []crypto.Hash{merkleRoots2[0], merkleRoots2[1], crypto.MerkleRoot(sectorData3)}
 
 	// Don't drop any sectors.
-	runningValues4 := tb.TestAddDropSectorsInstruction(0, true)
+	tb.TestAddDropSectorsInstruction(0, true)
 
 	// Drop one sector.
-	runningValues5 := tb.TestAddDropSectorsInstruction(1, true)
+	tb.TestAddDropSectorsInstruction(1, true)
 
 	// Drop two remaining sectors.
-	runningValues6 := tb.TestAddDropSectorsInstruction(2, true)
-
-	program, data := tb.Program()
-	finalValues := tb.Values()
-	dataLen := uint64(len(data))
-
-	err := testCompareProgramValues(pt, program, dataLen, bytes.NewReader(data), finalValues)
-	if err != nil {
-		t.Fatal(err)
-	}
+	tb.TestAddDropSectorsInstruction(2, true)
 
 	// Expected outputs.
-	expectedOutputs := []Output{
+	expectedOutputs := []output{
 		{
-			output{
-				NewSize:       modules.SectorSize,
-				NewMerkleRoot: cachedMerkleRoot(merkleRoots1),
-				Proof:         []crypto.Hash{},
-			},
-			runningValues1,
+			NewSize:       modules.SectorSize,
+			NewMerkleRoot: cachedMerkleRoot(merkleRoots1),
+			Proof:         []crypto.Hash{},
 		},
 		{
-			output{
-				NewSize:       2 * modules.SectorSize,
-				NewMerkleRoot: cachedMerkleRoot(merkleRoots2),
-				Proof:         []crypto.Hash{},
-			},
-			runningValues2,
+			NewSize:       2 * modules.SectorSize,
+			NewMerkleRoot: cachedMerkleRoot(merkleRoots2),
+			Proof:         []crypto.Hash{},
 		},
 		{
-			output{
-				NewSize:       3 * modules.SectorSize,
-				NewMerkleRoot: cachedMerkleRoot(merkleRoots3),
-				Proof:         []crypto.Hash{},
-			},
-			runningValues3,
+			NewSize:       3 * modules.SectorSize,
+			NewMerkleRoot: cachedMerkleRoot(merkleRoots3),
+			Proof:         []crypto.Hash{},
 		},
 		// 0 sectors dropped.
 		{
-			output{
-				NewSize:       3 * modules.SectorSize,
-				NewMerkleRoot: cachedMerkleRoot(merkleRoots3),
-				Proof:         []crypto.Hash{},
-			},
-			runningValues4,
+			NewSize:       3 * modules.SectorSize,
+			NewMerkleRoot: cachedMerkleRoot(merkleRoots3),
+			Proof:         []crypto.Hash{},
 		},
 		// 1 sector dropped.
 		{
-			output{
-				NewSize:       2 * modules.SectorSize,
-				NewMerkleRoot: cachedMerkleRoot(merkleRoots2),
-				Proof:         []crypto.Hash{cachedMerkleRoot(merkleRoots2)},
-			},
-			runningValues5,
+			NewSize:       2 * modules.SectorSize,
+			NewMerkleRoot: cachedMerkleRoot(merkleRoots2),
+			Proof:         []crypto.Hash{cachedMerkleRoot(merkleRoots2)},
 		},
 		// 2 remaining sectors dropped.
 		{
-			output{
-				NewSize:       0,
-				NewMerkleRoot: cachedMerkleRoot([]crypto.Hash{}),
-				Proof:         []crypto.Hash{},
-			},
-			runningValues6,
+			NewSize:       0,
+			NewMerkleRoot: cachedMerkleRoot([]crypto.Hash{}),
+			Proof:         []crypto.Hash{},
 		},
 	}
 
 	// Execute the program.
 	so := newTestStorageObligation(true)
-	budget := modules.NewBudget(finalValues.ExecutionCost)
-	finalizeFn, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, finalValues.Collateral, so, dataLen, bytes.NewReader(data))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if finalizeFn == nil {
-		t.Fatal("could not retrieve finalizeFn function")
-	}
-
-	// Check outputs.
-	lastOutput, err := testCompareOutputs(outputs, expectedOutputs)
+	finalizeFn, budget, lastOutput, err := tb.AssertOutputs(mdm, so, expectedOutputs)
 	if err != nil {
 		t.Fatal(err)
 	}
