@@ -435,3 +435,21 @@ func (c *Client) SkykeyAddKeyPost(sk skykey.Skykey) error {
 
 	return nil
 }
+
+// SkykeyGetAllSkykeys requests the /skynet/allskykeys GET endpoint.
+func (c *Client) SkykeyGetAllSkykeys() ([]skykey.Skykey, error) {
+	var skykeysGet api.SkykeysGET
+	err := c.get("/skynet/allskykeys", &skykeysGet)
+	if err != nil {
+		return nil, errors.AddContext(err, "allskykeys GET request failed")
+	}
+
+	res := make([]skykey.Skykey, len(skykeysGet.Skykeys))
+	for i, skString := range skykeysGet.Skykeys {
+		err = res[i].FromString(skString)
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to decode skykey string")
+		}
+	}
+	return res, nil
+}
