@@ -336,6 +336,18 @@ func (sm *SkykeyManager) KeyByID(id SkykeyID) (Skykey, error) {
 	return key, nil
 }
 
+// AllSkykeys returns a slice containing each Skykey being stored.
+func (sm *SkykeyManager) AllSkykeys() []Skykey {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	keys := make([]Skykey, 0, len(sm.keysByID))
+	for _, sk := range sm.keysByID {
+		keys = append(keys, sk)
+	}
+	return keys
+}
+
 // NewSkykeyManager creates a SkykeyManager for managing skykeys.
 func NewSkykeyManager(persistDir string) (*SkykeyManager, error) {
 	sm := &SkykeyManager{
