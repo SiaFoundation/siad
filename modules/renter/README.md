@@ -681,6 +681,11 @@ to be successful the chunk must be at 1x redundancy or better. If a chunk is
 below 1x redundancy and the local file is not present the chunk, and therefore
 the file, is considered lost as there is no way to repair it. 
 
+**NOTE:** if the repair loop does not find a local file on disk, it will reset
+the localpath of the siafile to an empty string. This is done to avoid the
+siafile being corrupted in the future by a different file being placed on disk
+at the original localpath location.
+
 **Inbound Complexities**  
  - `Upload` adds chunks directly to the upload heap by calling
    `callBuildAndPushChunks`
