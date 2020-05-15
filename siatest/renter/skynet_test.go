@@ -1981,9 +1981,34 @@ func testSkynetLargeMetadata(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
+	// The renter should be initialized with 0 skykeys.
+	skykeys, err := r.SkykeyGetAllSkykeys()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skykeys) != 0 {
+		t.Log(skykeys)
+		t.Fatal("Expected 0 skykeys")
+	}
+
 	sk, err := r.SkykeyCreateKeyPost("testkey1", crypto.TypeXChaCha20)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Check that the newly created skykey shows up.
+	skykeys, err = r.SkykeyGetAllSkykeys()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skykeys) != 1 {
+		t.Log(skykeys)
+		t.Fatal("Expected 1 skykey")
+	}
+	if skykeys[0].ID() != sk.ID() || skykeys[0].Name != sk.Name {
+		t.Log(skykeys[0])
+		t.Log(sk)
+		t.Fatal("Expected same skykey")
 	}
 
 	// Adding the same key should return an error.
@@ -2044,6 +2069,54 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if skStr != sk3Str {
 		t.Fatal("Expected same Skykey string")
+	}
+
+	// Create a bunch of skykeys and check that they all get returned.
+	nKeys := 10
+	skykeySet := make(map[string]struct{})
+	for i := 0; i < nKeys; i++ {
+		nextSk, err := r.SkykeyCreateKeyPost(fmt.Sprintf("anotherkey-%d", i), crypto.TypeXChaCha20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		nextSkStr, err := nextSk.ToString()
+		if err != nil {
+			t.Fatal(err)
+		}
+		skykeySet[nextSkStr] = struct{}{}
+	}
+	if len(skykeySet) != nKeys {
+		t.Log(skykeySet)
+		t.Fatal("Expected more keys in set")
+	}
+
+	// Check that the expected number of keys was created.
+	skykeys, err = r.SkykeyGetAllSkykeys()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skykeys) != nKeys+2 {
+		t.Log(len(skykeys), nKeys+2)
+		t.Fatal("Wrong number of keys")
+	}
+
+	// Check that getting all the keys returns all the keys we just created.
+	for skStr := range skykeySet {
+		foundKey := false
+		for _, skFromList := range skykeys {
+			skStrFromList, err := skFromList.ToString()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if skStrFromList == skStr {
+				foundKey = true
+				break
+			}
+		}
+		if !foundKey {
+			t.Log(skStr, skykeys)
+			t.Fatal("Didn't find key")
+		}
 	}
 
 	// Test misuse of the /skynet/skykey endpoint using an UnsafeClient.
