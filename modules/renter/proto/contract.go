@@ -88,27 +88,34 @@ func (h *contractHeader) validate() error {
 	return nil
 }
 
+// copyTransaction creates a deep copy of the txn struct.
 func (h *contractHeader) copyTransaction() (txn types.Transaction) {
 	encoding.Unmarshal(encoding.Marshal(h.Transaction), &txn)
 	return
 }
 
+// LastRevision returns the last revision of the contract.
 func (h *contractHeader) LastRevision() types.FileContractRevision {
 	return h.Transaction.FileContractRevisions[0]
 }
 
+// ID returns the contract's ID.
 func (h *contractHeader) ID() types.FileContractID {
 	return h.LastRevision().ID()
 }
 
+// HostPublicKey returns the host's public key from the last contract revision.
 func (h *contractHeader) HostPublicKey() types.SiaPublicKey {
 	return h.LastRevision().HostPublicKey()
 }
 
+// RenterFunds returns the remaining renter funds as per the last contract
+// revision.
 func (h *contractHeader) RenterFunds() types.Currency {
 	return h.LastRevision().ValidRenterPayout()
 }
 
+// EndHeight returns the block height of the last constract revision.
 func (h *contractHeader) EndHeight() types.BlockHeight {
 	return h.LastRevision().EndHeight()
 }
@@ -281,6 +288,7 @@ func makeUpdateInsertContract(h contractHeader, roots []crypto.Hash) (writeahead
 	}, nil
 }
 
+// makeUpdateSetHeader creates an update that changes the header.
 func (c *SafeContract) makeUpdateSetHeader(h contractHeader) writeaheadlog.Update {
 	id := c.header.ID()
 	return writeaheadlog.Update{
@@ -292,6 +300,7 @@ func (c *SafeContract) makeUpdateSetHeader(h contractHeader) writeaheadlog.Updat
 	}
 }
 
+// makeUpdateSetRoot creates an update that sets a given root, existing or not.
 func (c *SafeContract) makeUpdateSetRoot(root crypto.Hash, index int) writeaheadlog.Update {
 	id := c.header.ID()
 	return writeaheadlog.Update{
@@ -304,20 +313,25 @@ func (c *SafeContract) makeUpdateSetRoot(root crypto.Hash, index int) writeahead
 	}
 }
 
-func (c *SafeContract) makeUpdateSetRefCounterValue(secIdx int, val uint16) (writeaheadlog.Update, error) {
+// makeUpdateRefCounterAppend creates a WAL update that sets a given
+// refcounter value. If there is no open refcounter update session this method
+// will open one. This update session will be closed when we apply the update.
+func (c *SafeContract) makeUpdateRefCounterAppend() (writeaheadlog.Update, error) {
 	emptyUpdate := writeaheadlog.Update{
 		Name:         UpdateNameWriteAt,
 		Instructions: []byte{},
 	}
 	if build.Release == "testing" {
-		u, err := c.rc.callSetCount(uint64(secIdx), val)
+		u, err := c.rc.callAppend()
 		// If we don't have an open update session open one and try again.
 		if errors.Contains(err, ErrUpdateWithoutUpdateSession) {
 			err = c.rc.callStartUpdate()
-			if err != nil && !errors.Contains(err, ErrUpdateAfterDelete) {
+			if err != nil {
 				return writeaheadlog.Update{}, err
 			}
-			u, err = c.rc.callSetCount(uint64(secIdx), val)
+			u, err = c.rc.callAppend()
+		} else {
+			fmt.Println(" >>> update session already opened")
 		}
 		if err != nil {
 			return writeaheadlog.Update{}, err
@@ -327,13 +341,16 @@ func (c *SafeContract) makeUpdateSetRefCounterValue(secIdx int, val uint16) (wri
 	return emptyUpdate, nil
 }
 
-func (c *SafeContract) applySetRefCounterValue(u writeaheadlog.Update) error {
+// applyRefCounterUpdate applies a refcounter WAL update. If there is no open
+// update session, it will open one and it will leave it open. This update
+// session must be closed by the calling method.
+func (c *SafeContract) applyRefCounterUpdate(u writeaheadlog.Update) error {
 	if build.Release == "testing" && len(u.Instructions) > 0 {
 		err := c.rc.callCreateAndApplyTransaction(u)
 		// If we don't have an open update session open one and try again.
 		if errors.Contains(err, ErrUpdateWithoutUpdateSession) {
 			err = c.rc.callStartUpdate()
-			if err != nil && !errors.Contains(err, ErrUpdateAfterDelete) {
+			if err != nil {
 				return err
 			}
 			err = c.rc.callCreateAndApplyTransaction(u)
@@ -342,6 +359,8 @@ func (c *SafeContract) applySetRefCounterValue(u writeaheadlog.Update) error {
 	return nil
 }
 
+// applySetHeader directly makes changes to the contract header on disk without
+// going through a WAL transaction.
 func (c *SafeContract) applySetHeader(h contractHeader) error {
 	if build.DEBUG {
 		// read the existing header on disk, to make sure we aren't overwriting
@@ -364,11 +383,15 @@ func (c *SafeContract) applySetHeader(h contractHeader) error {
 	return nil
 }
 
+// applySetRoot directly sets a given root hash at a given index on disk without
+// going through a WAL transaction.
 func (c *SafeContract) applySetRoot(root crypto.Hash, index int) error {
 	return c.merkleRoots.insert(index, root)
 }
 
-func (c *SafeContract) managedRecordUploadIntent(rev types.FileContractRevision, root crypto.Hash, storageCost, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
+// managedRecordAppendIntent creates a WAL update that adds a new sector to the
+// contract and queues this update for application.
+func (c *SafeContract) managedRecordAppendIntent(rev types.FileContractRevision, root crypto.Hash, storageCost, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// construct new header
@@ -379,14 +402,13 @@ func (c *SafeContract) managedRecordUploadIntent(rev types.FileContractRevision,
 	newHeader.StorageSpending = newHeader.StorageSpending.Add(storageCost)
 	newHeader.UploadSpending = newHeader.UploadSpending.Add(bandwidthCost)
 
-	newRootIdx := c.merkleRoots.len()
-	rcUpdate, err := c.makeUpdateSetRefCounterValue(newRootIdx, 1)
+	rcUpdate, err := c.makeUpdateRefCounterAppend()
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to create a refcounter update")
 	}
 	t, err := c.wal.NewTransaction([]writeaheadlog.Update{
 		c.makeUpdateSetHeader(newHeader),
-		c.makeUpdateSetRoot(root, newRootIdx),
+		c.makeUpdateSetRoot(root, c.merkleRoots.len()),
 		rcUpdate,
 	})
 	if err != nil {
@@ -399,7 +421,10 @@ func (c *SafeContract) managedRecordUploadIntent(rev types.FileContractRevision,
 	return t, nil
 }
 
-func (c *SafeContract) managedCommitUpload(t *writeaheadlog.Transaction, signedTxn types.Transaction, root crypto.Hash, storageCost, bandwidthCost types.Currency) error {
+// managedCommitAppend *ignores* all updates in the given transaction and
+// instead applies the provided signedTxn. This is necessary if we run into a
+// desync of contract revisions between the renter and the host.
+func (c *SafeContract) managedCommitAppend(t *writeaheadlog.Transaction, signedTxn types.Transaction, root crypto.Hash, storageCost, bandwidthCost types.Currency) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// construct new header
@@ -408,38 +433,52 @@ func (c *SafeContract) managedCommitUpload(t *writeaheadlog.Transaction, signedT
 	newHeader.StorageSpending = newHeader.StorageSpending.Add(storageCost)
 	newHeader.UploadSpending = newHeader.UploadSpending.Add(bandwidthCost)
 
-	if err := c.applySetHeader(newHeader); err != nil {
+	// we need this declaration so we don't shadow useful variables further down
+	var err error
+	if err = c.applySetHeader(newHeader); err != nil {
 		return err
 	}
-	newRootIdx := c.merkleRoots.len()
-	if err := c.applySetRoot(root, newRootIdx); err != nil {
+	if err = c.applySetRoot(root, c.merkleRoots.len()); err != nil {
 		return err
 	}
-	// create and apply a new refcounter update to go with the new setRoot txn
-	rcUpdate, err := c.makeUpdateSetRefCounterValue(newRootIdx, 1)
-	if errors.Contains(err, ErrUpdateWithoutUpdateSession) {
-		err = c.rc.callStartUpdate()
+	// find the refcounter append update in the given transaction, so we can
+	// execute it
+	var rcUpdate writeaheadlog.Update
+	for _, u := range t.Updates {
+		if u.Name == UpdateNameWriteAt {
+			rcUpdate = u
+			break
+		}
 	}
-	if err != nil {
-		return errors.AddContext(err, "failed to update refcounter")
+	// if we didn't find a refcounter append update, make one:
+	if rcUpdate.Name == "" {
+		if err = c.rc.callStartUpdate(); err != nil {
+			return errors.AddContext(err, "failed to start a refcounter update session")
+		}
+		rcUpdate, err = c.makeUpdateRefCounterAppend()
+		if err != nil {
+			return errors.AddContext(err, "failed to update refcounter")
+		}
 	}
-	if err = c.applySetRefCounterValue(rcUpdate); err != nil {
+	if err = c.applyRefCounterUpdate(rcUpdate); err != nil {
 		return errors.AddContext(err, "failed to apply refcounter update")
 	}
-	if err := c.rc.callUpdateApplied(); err != nil {
+	if err = c.rc.callUpdateApplied(); err != nil {
 		return err
 	}
 
-	if err := c.headerFile.Sync(); err != nil {
+	if err = c.headerFile.Sync(); err != nil {
 		return err
 	}
-	if err := t.SignalUpdatesApplied(); err != nil {
+	if err = t.SignalUpdatesApplied(); err != nil {
 		return err
 	}
 	c.unappliedTxns = nil
 	return nil
 }
 
+// managedRecordDownloadIntent creates a WAL update that updates the header with
+// the new download costs.
 func (c *SafeContract) managedRecordDownloadIntent(rev types.FileContractRevision, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -463,6 +502,8 @@ func (c *SafeContract) managedRecordDownloadIntent(rev types.FileContractRevisio
 	return t, nil
 }
 
+// managedCommitDownload *ignores* all updates in the given transaction and
+// instead applies the provided signedTxn. See managedCommitAppend.
 func (c *SafeContract) managedCommitDownload(t *writeaheadlog.Transaction, signedTxn types.Transaction, bandwidthCost types.Currency) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -562,7 +603,7 @@ func (c *SafeContract) managedCommitTxns() error {
 					return err
 				}
 			case UpdateNameWriteAt:
-				if err := c.applySetRefCounterValue(update); err != nil {
+				if err := c.applyRefCounterUpdate(update); err != nil {
 					return err
 				}
 				rcUpdatesApplied = true
@@ -918,7 +959,7 @@ func (cs *ContractSet) ConvertV130Contract(c V130Contract, cr V130CachedRevision
 		defer cs.Return(sc)
 		if len(cr.MerkleRoots) == sc.merkleRoots.len()+1 {
 			root := cr.MerkleRoots[len(cr.MerkleRoots)-1]
-			_, err = sc.managedRecordUploadIntent(cr.Revision, root, types.ZeroCurrency, types.ZeroCurrency)
+			_, err = sc.managedRecordAppendIntent(cr.Revision, root, types.ZeroCurrency, types.ZeroCurrency)
 		} else {
 			_, err = sc.managedRecordDownloadIntent(cr.Revision, types.ZeroCurrency)
 		}

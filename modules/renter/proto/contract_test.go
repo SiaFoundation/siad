@@ -77,7 +77,7 @@ func TestContractUncommittedTxn(t *testing.T) {
 	newRoot := revisedRoots[1]
 	storageCost := revisedHeader.StorageSpending.Sub(initialHeader.StorageSpending)
 	bandwidthCost := revisedHeader.UploadSpending.Sub(initialHeader.UploadSpending)
-	walTxn, err := sc.managedRecordUploadIntent(fcr, newRoot, storageCost, bandwidthCost)
+	walTxn, err := sc.managedRecordAppendIntent(fcr, newRoot, storageCost, bandwidthCost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestContractIncompleteWrite(t *testing.T) {
 	newRoot := revisedRoots[1]
 	storageCost := revisedHeader.StorageSpending.Sub(initialHeader.StorageSpending)
 	bandwidthCost := revisedHeader.UploadSpending.Sub(initialHeader.UploadSpending)
-	_, err = sc.managedRecordUploadIntent(fcr, newRoot, storageCost, bandwidthCost)
+	_, err = sc.managedRecordAppendIntent(fcr, newRoot, storageCost, bandwidthCost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -492,7 +492,7 @@ func TestContractRefCounter(t *testing.T) {
 	newRoot := crypto.Hash{2}
 	storageCost := revisedHeader.StorageSpending.Sub(initialHeader.StorageSpending)
 	bandwidthCost := revisedHeader.UploadSpending.Sub(initialHeader.UploadSpending)
-	walTxn, err := sc.managedRecordUploadIntent(newRev, newRoot, storageCost, bandwidthCost)
+	walTxn, err := sc.managedRecordAppendIntent(newRev, newRoot, storageCost, bandwidthCost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -511,7 +511,7 @@ func TestContractRefCounter(t *testing.T) {
 		},
 	}
 	// commit the change
-	err = sc.managedCommitUpload(walTxn, txn, newRoot, storageCost, bandwidthCost)
+	err = sc.managedCommitAppend(walTxn, txn, newRoot, storageCost, bandwidthCost)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -368,7 +368,9 @@ func (rc *RefCounter) callSetCount(secIdx uint64, c uint16) (writeaheadlog.Updat
 }
 
 // callStartUpdate acquires a lock, ensuring the caller is the only one currently
-// allowed to perform updates on this refcounter file.
+// allowed to perform updates on this refcounter file. This lock is released by
+// calling callUpdateApplied after calling callCreateAndApplyTransaction in
+// order to apply the updates.
 func (rc *RefCounter) callStartUpdate() error {
 	rc.muUpdate.Lock()
 	return rc.managedStartUpdate()
