@@ -185,38 +185,38 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 
 	// Determine the amount that was transferred from the renter.
 	if paymentRevision.ValidRenterPayout().Cmp(existingRevision.ValidRenterPayout()) > 0 {
-		return extendErr("renter increased its valid proof output: ", ErrHighRenterValidOutput)
+		return errors.AddContext(ErrHighRenterValidOutput, "renter increased its valid proof output: ")
 	}
 	fromRenter := existingRevision.ValidRenterPayout().Sub(paymentRevision.ValidRenterPayout())
 	// Verify that enough money was transferred.
 	if fromRenter.Cmp(expectedTransfer) < 0 {
 		s := fmt.Sprintf("expected at least %v to be exchanged, but %v was exchanged: ", expectedTransfer, fromRenter)
-		return extendErr(s, ErrHighRenterValidOutput)
+		return errors.AddContext(ErrHighRenterValidOutput, s)
 	}
 
 	// Determine the amount of money that was transferred to the host.
 	if existingRevision.ValidHostPayout().Cmp(paymentRevision.ValidHostPayout()) > 0 {
-		return extendErr("host valid proof output was decreased: ", ErrLowHostValidOutput)
+		return errors.AddContext(ErrLowHostValidOutput, "host valid proof output was decreased: ")
 	}
 	toHost := paymentRevision.ValidHostPayout().Sub(existingRevision.ValidHostPayout())
 	// Verify that enough money was transferred.
 	if !toHost.Equals(fromRenter) {
 		s := fmt.Sprintf("expected exactly %v to be transferred to the host, but %v was transferred: ", fromRenter, toHost)
-		return extendErr(s, ErrLowHostValidOutput)
+		return errors.AddContext(ErrLowHostValidOutput, s)
 	}
 
 	// If the renter's valid proof output is larger than the renter's missed
 	// proof output, the renter has incentive to see the host fail. Make sure
 	// that this incentive is not present.
 	if paymentRevision.ValidRenterPayout().Cmp(paymentRevision.MissedRenterOutput().Value) > 0 {
-		return extendErr("renter has incentive to see host fail: ", ErrHighRenterMissedOutput)
+		return errors.AddContext(ErrHighRenterMissedOutput, "renter has incentive to see host fail: ")
 	}
 
 	// Check that the host is not going to be posting collateral.
 	if paymentRevision.MissedHostOutput().Value.Cmp(existingRevision.MissedHostOutput().Value) < 0 {
 		collateral := existingRevision.MissedHostOutput().Value.Sub(paymentRevision.MissedHostOutput().Value)
 		s := fmt.Sprintf("host not expecting to post any collateral, but contract has host posting %v collateral: ", collateral)
-		return extendErr(s, ErrLowHostMissedOutput)
+		return errors.AddContext(ErrLowHostMissedOutput, s)
 	}
 
 	// Check that the revision count has increased.

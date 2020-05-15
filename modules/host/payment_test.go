@@ -499,7 +499,9 @@ func runPayByEphemeralAccountFlow(pair *renterHostPair, rStream, hStream siamux.
 			err = errors.AddContext(err, "Expected failure but error was nil")
 			return
 		}
-		if fail && err != nil && errors.Contains(err, modules.ErrWithdrawalInvalidSignature) {
+		// The error here needs to be checked by its string representation
+		// because modules.RPCRead wraps it.
+		if fail && err != nil && strings.Contains(err.Error(), modules.ErrWithdrawalInvalidSignature.Error()) {
 			err = nil
 		}
 	}()
@@ -524,11 +526,7 @@ func runPayByEphemeralAccountFlow(pair *renterHostPair, rStream, hStream siamux.
 
 			// receive PayByEphemeralAccountResponse
 			var payByResponse modules.PayByEphemeralAccountResponse
-			err = modules.RPCRead(rStream, &payByResponse)
-			if err != nil {
-				return err
-			}
-			return nil
+			return modules.RPCRead(rStream, &payByResponse)
 		},
 		func() error {
 			// process payment request
