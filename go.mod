@@ -12,7 +12,7 @@ require (
 	github.com/klauspost/cpuid v1.2.2 // indirect
 	github.com/klauspost/reedsolomon v1.9.3
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/spf13/cobra v0.0.5
+	github.com/spf13/cobra v1.0.0
 	github.com/vbauerster/mpb/v5 v5.0.3
 	github.com/xtaci/smux v1.3.3
 	gitlab.com/NebulousLabs/bolt v1.4.0
