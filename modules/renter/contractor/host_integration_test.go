@@ -136,7 +136,7 @@ func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, 
 
 	// create mux
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
-	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
