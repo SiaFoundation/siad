@@ -107,6 +107,12 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		return errors.AddContext(err, "Failed to start execution of the program")
 	}
 
+	// Return 16 bytes of data as a placeholder for a future cancellation token.
+	_, err = stream.Write(make([]byte, modules.MDMCancellationTokenLen))
+	if err != nil {
+		return errors.AddContext(err, "Failed to write cancellation token")
+	}
+
 	// Handle outputs.
 	executionFailed := false
 	numOutputs := 0
