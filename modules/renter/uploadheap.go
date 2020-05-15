@@ -603,6 +603,10 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		repairable := chunk.health <= 1 || chunk.onDisk
 		needsRepair := chunk.health >= RepairThreshold
 
+		if r.deps.Disrupt("AddUnrepairableChunks") && needsRepair {
+			incompleteChunks = append(incompleteChunks, chunk)
+			continue
+		}
 		// Add chunk to list of incompleteChunks if it is incomplete and
 		// repairable or if we are targeting stuck chunks
 		if needsRepair && (repairable || target == targetStuckChunks) {
@@ -788,7 +792,12 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 				// If the file is remote and we haven't been tracking the health
 				// of any remote files then we want to track the health of this
 				// file and set the worstHealthRemote to true
-				worstHealthRemote = true
+				//
+				// Only set worstHealthRemote to true if the remote health is
+				// in need of repair.
+				if fileHealth >= RepairThreshold {
+					worstHealthRemote = true
+				}
 				worstIgnoredHealth = fileHealth
 				continue
 			}
@@ -825,7 +834,12 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 					// If the chunk is remote and we haven't been tracking the health
 					// of any remote chunks then we want to track the health of this
 					// chunk and set the worstHealthRemote to true
-					worstHealthRemote = true
+					//
+					// Only set worstHealthRemote to true if the remote health is
+					// in need of repair.
+					if chunk.health >= RepairThreshold {
+						worstHealthRemote = true
+					}
 					worstIgnoredHealth = chunk.health
 				} else {
 					// Update the worstIgnoredHealth
@@ -866,7 +880,12 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 				// If the chunk is remote and we haven't been tracking the health
 				// of any remote chunks then we want to track the health of this
 				// chunk and set the worstHealthRemote to true
-				worstHealthRemote = true
+				//
+				// Only set worstHealthRemote to true if the remote health is
+				// in need of repair.
+				if chunk.health >= RepairThreshold {
+					worstHealthRemote = true
+				}
 				worstIgnoredHealth = chunk.health
 			} else {
 				// Update the worstIgnoredHealth
@@ -923,7 +942,12 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 			// If the chunk is remote and we haven't been tracking the health
 			// of any remote chunks then we want to track the health of this
 			// chunk and set the worstHealthRemote to true
-			worstHealthRemote = true
+			//
+			// Only set worstHealthRemote to true if the remote health is
+			// in need of repair.
+			if chunk.health >= RepairThreshold {
+				worstHealthRemote = true
+			}
 			worstIgnoredHealth = chunk.health
 		} else {
 			// Update the worstIgnoredHealth
@@ -971,11 +995,13 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	// unexplored directory exists on the directory heap, we need to make sure
 	// that the worst known health is represented in the aggregate value.
 	d := &directory{
+		staticSiaPath: dirSiaPath,
+
 		aggregateHealth: worstIgnoredHealth,
-		health:          worstIgnoredHealth,
 		explored:        true,
-		staticSiaPath:   dirSiaPath,
+		health:          worstIgnoredHealth,
 	}
+
 	// Update the RemoteHealths as well if we were tracking the health of remote
 	// files and chunks
 	if worstHealthRemote {
