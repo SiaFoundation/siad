@@ -27,22 +27,12 @@ package renter
 import (
 	"sync"
 	"time"
+	"unsafe"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
-)
-
-var (
-	// workerCacheUpdateFrequency specifies how much time must pass before the
-	// worker updates its cache.
-	workerCacheUpdateFrequency = build.Select(build.Var{
-		Dev:      time.Second * 5,
-		Standard: time.Minute,
-		Testing:  time.Second,
-	}).(time.Duration)
 )
 
 // A worker listens for work on a certain host.
@@ -59,14 +49,14 @@ var (
 // uploading and downloading with flaky hosts in the worker sets has
 // substantially reduced overall performance and throughput.
 type worker struct {
+	// atomicCache contains a pointer to the latest cache in the worker.
+	// Atomics are used to minimze lock contention on the worker object.
+	atomicCache                  unsafe.Pointer // points to a workerCache object
+
 	// The host pub key also serves as an id for the worker, as there is only
 	// one worker per host.
 	staticHostPubKey    types.SiaPublicKey
 	staticHostPubKeyStr string
-
-	// Cached value for the contract utility, updated infrequently.
-	cachedContractID      types.FileContractID
-	cachedContractUtility modules.ContractUtility
 
 	// Download variables related to queuing work. They have a separate mutex to
 	// minimize lock contention.
@@ -120,10 +110,11 @@ func (w *worker) status() modules.WorkerStatus {
 		w.staticAccount.managedAvailableBalance()
 	}
 
+	cache := w.staticCache()
 	return modules.WorkerStatus{
 		// Contract Information
-		ContractID:      w.cachedContractID,
-		ContractUtility: w.cachedContractUtility,
+		ContractID:      cache.staticContractID,
+		ContractUtility: cache.staticContractUtility,
 		HostPubKey:      w.staticHostPubKey,
 
 		// Download information
@@ -174,24 +165,6 @@ func (w *worker) managedBlockUntilReady() bool {
 		case <-time.After(offlineCheckFrequency):
 		}
 	}
-	return true
-}
-
-// managedUpdateCache will check how recently each of the cached values of the
-// worker has been updated and update anything that is not recent enough.
-//
-// 'false' will be returned if the cache cannot be updated, signaling that the
-// worker should exit.
-func (w *worker) managedUpdateCache() bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	renterContract, exists := w.renter.hostContractor.ContractByPublicKey(w.staticHostPubKey)
-	if !exists {
-		return false
-	}
-	w.cachedContractID = renterContract.ID
-	w.cachedContractUtility = renterContract.Utility
 	return true
 }
 
@@ -355,7 +328,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	}
 	// Get the worker cache set up before returning the worker. This prevents a
 	// race condition in some tests.
-	if !w.managedUpdateCache() {
+	if !w.staticTryUpdateCache() {
 		return nil, errors.New("unable to build cache for worker")
 	}
 	return w, nil
