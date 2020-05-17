@@ -74,6 +74,11 @@ func (w *worker) staticTryUpdateCache() bool {
 		staticLastUpdate: time.Now(),
 	}
 
+	// Wake the worker when the cache needs to be updated again.
+	w.renter.tg.AfterFunc(workerCacheUpdateFrequency, func() {
+		w.staticWake()
+	})
+
 	// Atomically store the cache object in the worker.
 	ptr := unsafe.Pointer(cache)
 	atomic.StorePointer(&w.atomicCache, ptr)
