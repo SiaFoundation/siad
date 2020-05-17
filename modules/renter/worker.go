@@ -51,7 +51,7 @@ import (
 type worker struct {
 	// atomicCache contains a pointer to the latest cache in the worker.
 	// Atomics are used to minimze lock contention on the worker object.
-	atomicCache                  unsafe.Pointer // points to a workerCache object
+	atomicCache unsafe.Pointer // points to a workerCache object
 
 	// The host pub key also serves as an id for the worker, as there is only
 	// one worker per host.
@@ -220,7 +220,6 @@ func (w *worker) threadedWorkLoop() {
 	// 'workAttempted' indicates that there was a job to perform, and that a
 	// nontrivial amount of time was spent attempting to perform the job. The
 	// job may or may not have been successful, that is irrelevant.
-	lastCacheUpdate := time.Now()
 	for {
 		// There are certain conditions under which the worker should either
 		// block or exit. This function will block until those conditions are
@@ -231,12 +230,9 @@ func (w *worker) threadedWorkLoop() {
 		}
 
 		// Check if the cache needs to be updated.
-		if time.Since(lastCacheUpdate) > workerCacheUpdateFrequency {
-			if !w.managedUpdateCache() {
-				w.renter.log.Debugln("worker is being killed because the cache could not be updated")
-				return
-			}
-			lastCacheUpdate = time.Now()
+		if !w.staticTryUpdateCache() {
+			w.renter.log.Printf("worker %v is being killed because the cache could not be updated", w.staticHostPubKeyStr)
+			return
 		}
 
 		// Perform any job to fetch the list of backups from the host.
@@ -262,30 +258,16 @@ func (w *worker) threadedWorkLoop() {
 			continue
 		}
 
-		// Create a timer and a drain function for the timer.
-		cacheUpdateTimer := time.NewTimer(workerCacheUpdateFrequency)
-		drainCacheTimer := func() {
-			if !cacheUpdateTimer.Stop() {
-				<-cacheUpdateTimer.C
-			}
-		}
-
 		// Block until:
 		//    + New work has been submitted
-		//    + The cache timer fires
 		//    + The worker is killed
 		//    + The renter is stopped
 		select {
 		case <-w.wakeChan:
-			drainCacheTimer()
-			continue
-		case <-cacheUpdateTimer.C:
 			continue
 		case <-w.killChan:
-			drainCacheTimer()
 			return
 		case <-w.renter.tg.StopChan():
-			drainCacheTimer()
 			return
 		}
 	}
