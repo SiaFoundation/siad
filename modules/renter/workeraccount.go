@@ -204,10 +204,12 @@ func (w *worker) managedAccountNeedsRefill() bool {
 	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
 		return false
 	}
+	/* - will be enabled when more of the worker code is in place.
 	// Check if the price table is valid.
 	if !w.staticPriceTable().staticValid() {
 		return false
 	}
+	*/
 
 	// Check if there is a cooldown in place, and check if the balance is low
 	// enough to justify a refill.
@@ -227,6 +229,7 @@ func (w *worker) managedAccountNeedsRefill() bool {
 	return true
 }
 
+/* - will be enabled once more of the worker code is in place.
 // managedTryRefillAccount will check if the account needs to be refilled
 func (w *worker) managedRefillAccount() {
 	// the account balance dropped to below half the balance target, refill
@@ -323,3 +326,4 @@ func (w *worker) managedRefillAccount() {
 	err = errors.AddContext(err, "could not read the account response")
 	return
 }
+*/

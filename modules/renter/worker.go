@@ -35,6 +35,11 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+const (
+	// minAsyncVersion defines the minimum version that is supported
+	minAsyncVersion = "1.4.9"
+)
+
 // A worker listens for work on a certain host.
 //
 // The mutex of the worker only protects the 'unprocessedChunks' and the

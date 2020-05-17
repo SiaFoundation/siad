@@ -130,22 +130,6 @@ func (r *Renter) managedInitPersist() error {
 		return err
 	}
 
-	// Initialize the logger.
-	r.log, err = persist.NewFileLogger(filepath.Join(r.persistDir, logFile))
-	if err != nil {
-		return err
-	}
-	if err := r.tg.AfterStop(r.log.Close); err != nil {
-		return err
-	}
-	r.repairLog, err = persist.NewFileLogger(filepath.Join(r.persistDir, repairLogFile))
-	if err != nil {
-		return err
-	}
-	if err := r.tg.AfterStop(r.repairLog.Close); err != nil {
-		return err
-	}
-
 	// Initialize the writeaheadlog.
 	options := writeaheadlog.Options{
 		StaticLog: r.log,
