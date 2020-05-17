@@ -15,6 +15,20 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// TestConstants makes sure that certain relationships between constnats exist.
+func TestConstants(t *testing.T) {
+	// Sanity check that the metadata size is not larger than the account size.
+	if metadataSize > accountSize {
+		t.Fatal("metadata size is larger than account size")
+	}
+	if accountSize > 4096 {
+		t.Fatal("account size must not be larger than a disk sector")
+	}
+	if 4096%accountSize != 0 {
+		t.Fatal("account size must be a factor of 4096")
+	}
+}
+
 // TestAccountTracking unit tests all of the methods on the account that track
 // deposits or withdrawals.
 func TestAccountTracking(t *testing.T) {
@@ -37,7 +51,7 @@ func TestAccountTracking(t *testing.T) {
 
 	// create a random account
 	hostKey, _ := newRandomHostKey()
-	account, err := r.newAccount(hostKey)
+	account, err := r.staticAccountManager.managedOpenAccount(hostKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,10 +140,10 @@ func TestNewAccount(t *testing.T) {
 	// going to validate has an offset different from 0
 	tmpKey := hostKey
 	fastrand.Read(tmpKey.Key[:4])
-	r.newAccount(tmpKey)
+	r.staticAccountManager.managedOpenAccount(tmpKey)
 
 	// create a new account object
-	account, err := r.newAccount(hostKey)
+	account, err := r.staticAccountManager.managedOpenAccount(hostKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +226,7 @@ func TestAccountCriticalOnDoubleSave(t *testing.T) {
 			}
 		}
 	}()
-	err = r.managedSaveAccounts()
+	err = r.staticAccountManager.managedSaveAndClose()
 	if err == nil {
 		t.Fatal("Expected build.Critical on double save")
 	}
@@ -240,8 +254,8 @@ func TestAccountClosed(t *testing.T) {
 	}
 
 	hk, _ := newRandomHostKey()
-	_, err = r.managedOpenAccount(hk)
-	if !strings.Contains(err.Error(), "the accounts file has been closed") {
+	_, err = r.staticAccountManager.managedOpenAccount(hk)
+	if !strings.Contains(err.Error(), "file already closed") {
 		t.Fatal("Unexpected error when opening an account, err:", err)
 	}
 }
@@ -268,7 +282,7 @@ func TestAccountSave(t *testing.T) {
 	r := rt.renter
 
 	// verify accounts file was loaded and set
-	if r.staticAccountsFile == nil {
+	if r.staticAccountManager.staticFile == nil {
 		t.Fatal("Accounts persistence file not set on the Renter after startup")
 	}
 
@@ -280,19 +294,20 @@ func TestAccountSave(t *testing.T) {
 	}
 
 	// verify the accounts got reloaded properly
-	id := r.mu.Lock()
-	reloaded := r.accounts
-	r.mu.Unlock(id)
-	if len(reloaded) != len(accounts) {
-		t.Fatalf("Unexpected amount of accounts, %v != %v", len(reloaded), len(accounts))
+	am := r.staticAccountManager
+	am.mu.Lock()
+	accountsLen := len(am.accounts)
+	am.mu.Unlock()
+	if accountsLen != len(accounts) {
+		t.Errorf("Unexpected amount of accounts, %v != %v", len(am.accounts), len(accounts))
 	}
 	for _, account := range accounts {
-		reloaded, err := r.managedOpenAccount(account.staticHostKey)
+		reloaded, err := am.managedOpenAccount(account.staticHostKey)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 		if !account.staticID.SPK().Equals(reloaded.staticID.SPK()) {
-			t.Fatal("Unexpected account ID")
+			t.Error("Unexpected account ID")
 		}
 	}
 }
@@ -321,9 +336,9 @@ func TestAccountUncleanShutdown(t *testing.T) {
 	// create a number accounts
 	accounts := openRandomTestAccountsOnRenter(r)
 	for _, account := range accounts {
-		account.staticMu.Lock()
+		account.mu.Lock()
 		account.balance = types.NewCurrency64(fastrand.Uint64n(1e3))
-		account.staticMu.Unlock()
+		account.mu.Unlock()
 	}
 
 	// close the renter and reload it with a dependency that interrupts the
@@ -336,7 +351,7 @@ func TestAccountUncleanShutdown(t *testing.T) {
 
 	// verify the accounts were saved on disk
 	for _, account := range accounts {
-		reloaded, err := r.managedOpenAccount(account.staticHostKey)
+		reloaded, err := r.staticAccountManager.managedOpenAccount(account.staticHostKey)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -359,7 +374,7 @@ func TestAccountUncleanShutdown(t *testing.T) {
 	// verify the accounts were reloaded but the balances were cleared due to
 	// the unclean shutdown
 	for _, account := range accounts {
-		reloaded, err := r.managedOpenAccount(account.staticHostKey)
+		reloaded, err := r.staticAccountManager.managedOpenAccount(account.staticHostKey)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -425,35 +440,25 @@ func TestAccountCorrupted(t *testing.T) {
 	// reopen the renter
 	persistDir := filepath.Join(rt.dir, modules.RenterDir)
 	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, persistDir)
-	err = rt.addRenter(r)
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
+	err = rt.addRenter(r)
 
 	// verify only the non corrupted accounts got reloaded properly
-	id := r.mu.Lock()
-	reloaded := r.accounts
-	r.mu.Unlock(id)
-
+	am := r.staticAccountManager
+	am.mu.Lock()
 	// verify the amount of accounts reloaded is one less
 	expected := len(accounts) - 1
-	if len(reloaded) != expected {
-		t.Fatalf("Unexpected amount of accounts, %v != %v", len(reloaded), expected)
+	if len(am.accounts) != expected {
+		t.Errorf("Unexpected amount of accounts, %v != %v", len(am.accounts), expected)
 	}
-
-	var maxOffset int64
-	for _, account := range reloaded {
+	for _, account := range am.accounts {
 		if account.staticID.SPK().Equals(corrupted.staticID.SPK()) {
-			t.Fatal("Corrupted account was not properly skipped")
-		}
-		if account.staticOffset > maxOffset {
-			maxOffset = account.staticOffset
+			t.Error("Corrupted account was not properly skipped")
 		}
 	}
-
-	if maxOffset >= int64(len(reloaded)+1)*accountSize {
-		t.Fatal("Unexpected max offset, corrupted account offset was not properly filled by the next valid account")
-	}
+	am.mu.Unlock()
 }
 
 // TestAccountPersistenceToAndFromBytes verifies the functionality of the
@@ -513,8 +518,9 @@ func openRandomTestAccountsOnRenter(r *Renter) []*account {
 			Algorithm: types.SignatureEd25519,
 			Key:       fastrand.Bytes(crypto.PublicKeySize),
 		}
-		account, err := r.managedOpenAccount(hostKey)
+		account, err := r.staticAccountManager.managedOpenAccount(hostKey)
 		if err != nil {
+			// TODO: Have this function return an error.
 			panic(err)
 		}
 		accounts = append(accounts, account)
