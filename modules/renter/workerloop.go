@@ -33,7 +33,7 @@ type (
 	getAsyncJob func() (job func(), readSize uint64, writeSize uint64)
 )
 
-// staticSerialJobRunning indiactes whether a serial job is currently running
+// staticSerialJobRunning indicates whether a serial job is currently running
 // for the worker.
 func (wls *workerLoopState) staticSerialJobRunning() bool {
 	return atomic.LoadUint64(&wls.atomicSerialJobRunning) == 1
