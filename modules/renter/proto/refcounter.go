@@ -106,7 +106,7 @@ type (
 		// disk
 		newSectorCounts map[uint64]uint16
 
-		// muUpdates serializes updates to the refcounter. It is acquired by
+		// muUpdate serializes updates to the refcounter. It is acquired by
 		// callStartUpdate and released by callUpdateApplied.
 		muUpdate siasync.TryMutex
 	}
