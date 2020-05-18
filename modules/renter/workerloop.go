@@ -29,7 +29,7 @@ type (
 	// getAsyncJob defines a function which returns an async job plus a read
 	// size and a write size for that job. The read and write size refer to the
 	// amount of read and write network bandwidth that will be consumed by
-	// calling fn(). If there is no job to perform, fn() is expected to be nil.
+	// calling fn(). If there is no job to perform, 'job' is expected to be nil.
 	getAsyncJob func() (job func(), readSize uint64, writeSize uint64)
 )
 
