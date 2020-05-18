@@ -15,7 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestConstants makes sure that certain relationships between constnats exist.
+// TestConstants makes sure that certain relationships between constants exist.
 func TestConstants(t *testing.T) {
 	// Sanity check that the metadata size is not larger than the account size.
 	if metadataSize > accountSize {
