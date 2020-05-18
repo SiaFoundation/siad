@@ -260,14 +260,10 @@ func (w *worker) managedRefillAccount() {
 		w.staticAccount.recentErr = err
 		w.staticAccount.mu.Unlock()
 
-		// Launch a goroutine to wake the worker when the cooldown has ended, so
-		// that the worker will try as fast as possible to put funds back into
-		// the account.
-		w.renter.tg.Launch(func() {
-			sleepDuration := cd.Sub(time.Now())
-			if w.renter.tg.Sleep(sleepDuration) {
-				w.staticWake()
-			}
+		// Have the threadgroup wake the worker when the account comes off of
+		// cooldown.
+		w.renter.tg.AfterFunc(cd.Sub(time.Now()), func() {
+			w.staticWake()
 		})
 	}()
 
