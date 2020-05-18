@@ -50,7 +50,7 @@ import (
 // substantially reduced overall performance and throughput.
 type worker struct {
 	// atomicCache contains a pointer to the latest cache in the worker.
-	// Atomics are used to minimze lock contention on the worker object.
+	// Atomics are used to minimize lock contention on the worker object.
 	atomicCache unsafe.Pointer // points to a workerCache object
 
 	// The host pub key also serves as an id for the worker, as there is only
