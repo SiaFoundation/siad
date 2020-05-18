@@ -99,7 +99,8 @@ type NodeParams struct {
 	StorageManagerDeps modules.Dependencies
 
 	// Custom settings for siamux
-	SiaMuxAddress string
+	SiaMuxTCPAddress string
+	SiaMuxWSAddress  string
 
 	// Custom settings for modules
 	Allowance   modules.Allowance
@@ -253,7 +254,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 	}
 
 	// Create the siamux.
-	mux, err := modules.NewSiaMux(filepath.Join(dir, modules.SiaMuxDir), dir, params.SiaMuxAddress)
+	mux, err := modules.NewSiaMux(filepath.Join(dir, modules.SiaMuxDir), dir, params.SiaMuxTCPAddress, params.SiaMuxWSAddress)
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create siamux"))
 		return nil, errChan
