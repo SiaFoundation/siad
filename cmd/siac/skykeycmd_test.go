@@ -106,14 +106,27 @@ func TestSkykeyCommands(t *testing.T) {
 
 	// Do some basic sanity checks on skykeyListKeys.
 	nKeys := 2
-	nExtraLines := 2
+	nExtraLines := 3
 	keyStrings := make([]string, nKeys)
 	keyNames := make([]string, nKeys)
+	keyIDs := make([]string, nKeys)
 
 	keyNames[0] = "key1"
 	keyNames[1] = "createkeyTest!"
 	keyStrings[0] = testSkykeyString
 	keyStrings[1] = getKeyStr
+
+	err = sk.FromString(testSkykeyString)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyIDs[0] = sk.ID().ToString()
+
+	err = sk.FromString(getKeyStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyIDs[0] = sk.ID().ToString()
 
 	keyListString, err := skykeyListKeys(n.Client, true)
 	if err != nil {
@@ -124,6 +137,10 @@ func TestSkykeyCommands(t *testing.T) {
 			t.Log(keyListString)
 			t.Fatal("Missing key name!", i)
 		}
+		if !strings.Contains(keyListString, keyIDs[i]) {
+			t.Log(keyListString)
+			t.Fatal("Missing id!", i)
+		}
 		if !strings.Contains(keyListString, keyStrings[i]) {
 			t.Log(keyListString)
 			t.Fatal("Missing key!", i)
@@ -131,6 +148,7 @@ func TestSkykeyCommands(t *testing.T) {
 	}
 	keyList := strings.Split(keyListString, "\n")
 	if len(keyList) != nKeys+nExtraLines {
+		t.Log(keyListString)
 		t.Fatal("Unpected number of lines/keys", len(keyList), nKeys+nExtraLines)
 	}
 
@@ -143,6 +161,10 @@ func TestSkykeyCommands(t *testing.T) {
 		if !strings.Contains(keyListString, keyNames[i]) {
 			t.Log(keyListString)
 			t.Fatal("Missing key name!", i)
+		}
+		if !strings.Contains(keyListString, keyIDs[i]) {
+			t.Log(keyListString)
+			t.Fatal("Missing id!", i)
 		}
 		if strings.Contains(keyListString, keyStrings[i]) {
 			t.Log(keyListString)
@@ -163,6 +185,12 @@ func TestSkykeyCommands(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		var nextSkykey skykey.Skykey
+		err = nextSkykey.FromString(nextSkStr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keyIDs = append(keyIDs, nextSkykey.ID().ToString())
 		keyStrings = append(keyStrings, nextSkStr)
 	}
 
@@ -175,6 +203,10 @@ func TestSkykeyCommands(t *testing.T) {
 		if !strings.Contains(keyListString, keyNames[i]) {
 			t.Log(keyListString)
 			t.Fatal("Missing key name!", i)
+		}
+		if !strings.Contains(keyListString, keyIDs[i]) {
+			t.Log(keyListString)
+			t.Fatal("Missing id!", i)
 		}
 		if !strings.Contains(keyListString, keyStrings[i]) {
 			t.Log(keyListString)
@@ -195,6 +227,10 @@ func TestSkykeyCommands(t *testing.T) {
 		if !strings.Contains(keyListString, keyNames[i]) {
 			t.Log(keyListString)
 			t.Fatal("Missing key name!", i)
+		}
+		if !strings.Contains(keyListString, keyIDs[i]) {
+			t.Log(keyListString)
+			t.Fatal("Missing id!", i)
 		}
 		if strings.Contains(keyListString, keyStrings[i]) {
 			t.Log(keyListString)
