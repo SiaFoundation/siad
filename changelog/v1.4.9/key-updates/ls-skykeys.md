@@ -1,0 +1,1 @@
+- Add /allskykeys endpoint and `siac skykey ls` command
