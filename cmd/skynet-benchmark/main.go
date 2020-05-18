@@ -240,6 +240,11 @@ func downloadFileSet(dir modules.SiaPath, fileSize int, threads uint64) error {
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
+			if len(data) != fileSize {
+				fmt.Printf("Error performing download, got %v bytes when expecting %v\n", len(data), fileSize)
+				atomic.AddUint64(&atomicDownloadErrors, 1)
+				return
+			}
 		}(i)
 	}
 	wg.Wait()
