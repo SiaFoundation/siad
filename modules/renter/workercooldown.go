@@ -29,7 +29,7 @@ func cooldownUntil(consecutiveFailures uint64) time.Time {
 	}
 
 	// Get a random cooldown time between 0 and 10e3 milliseconds.
-	randCooldown := time.Duration(fastrand.Intn(10e3)) * time.Millisecond
+	randCooldown := time.Duration(fastrand.Intn(cooldownBaseMaxMilliseconds)) * time.Millisecond
 	// Double the cooldown time for each consecutive failure, max possible
 	// cooldown time of ~3 hours.
 	for i := uint64(0); i < consecutiveFailures; i++ {
