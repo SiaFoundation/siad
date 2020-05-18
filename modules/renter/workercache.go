@@ -39,9 +39,6 @@ type (
 //
 // 'false' will be returned if the cache cannot be updated, signaling that the
 // worker should exit.
-//
-// TODO: When updating the block height, take into account whether or not we are
-// synced. Might make sense to add a staticSynced variable to the workerCache.
 func (w *worker) staticTryUpdateCache() bool {
 	// Check if an update is necessary. If not, return success.
 	cache := w.staticCache()
