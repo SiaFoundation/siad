@@ -35,7 +35,7 @@ type (
 	}
 )
 
-// staticUpdateCache will perform a cache update on the worker.
+// staticTryUpdateCache will perform a cache update on the worker.
 //
 // 'false' will be returned if the cache cannot be updated, signaling that the
 // worker should exit.
