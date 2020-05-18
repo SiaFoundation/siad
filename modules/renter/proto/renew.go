@@ -48,9 +48,6 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	// Make a copy of the transaction builder so far, to be used to by the watchdog
 	// to double spend these inputs in case the contract never appears on chain.
 	sweepBuilder := txnBuilder.Copy()
-	if err != nil {
-		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
-	}
 	// Add an output that sends all fund back to the refundAddress.
 	// Note that in order to send this transaction, a miner fee will have to be subtracted.
 	output := types.SiacoinOutput{
@@ -318,9 +315,6 @@ func (cs *ContractSet) newRenewAndClear(oldContract *SafeContract, params Contra
 	// Make a copy of the transaction builder so far, to be used to by the watchdog
 	// to double spend these inputs in case the contract never appears on chain.
 	sweepBuilder := txnBuilder.Copy()
-	if err != nil {
-		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
-	}
 	// Add an output that sends all fund back to the refundAddress.
 	// Note that in order to send this transaction, a miner fee will have to be subtracted.
 	output := types.SiacoinOutput{

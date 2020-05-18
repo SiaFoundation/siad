@@ -22,7 +22,7 @@ func TestSiaMuxCompat(t *testing.T) {
 
 	// create a new siamux, seeing as there won't be a host persistence file, it
 	// will act as if this is a fresh new node and create a new key pair
-	mux, err := NewSiaMux(siaMuxDir, siaDataDir, "localhost:0")
+	mux, err := NewSiaMux(siaMuxDir, siaDataDir, "localhost:0", "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestSiaMuxCompat(t *testing.T) {
 	mux.Close()
 
 	// re-open the mux and verify it uses the same keys
-	mux, err = NewSiaMux(siaMuxDir, siaDataDir, "localhost:0")
+	mux, err = NewSiaMux(siaMuxDir, siaDataDir, "localhost:0", "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestSiaMuxCompat(t *testing.T) {
 	}
 
 	// create a new siamux
-	mux, err = NewSiaMux(siaMuxDir, siaDataDir, "localhost:0")
+	mux, err = NewSiaMux(siaMuxDir, siaDataDir, "localhost:0", "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,11 +111,11 @@ func TestSiaMuxAbsolutePath(t *testing.T) {
 	for _, relPath := range []string{"", ".", ".."} {
 		func() {
 			defer assertRecover()
-			NewSiaMux(absPath, relPath, "localhost:0")
+			NewSiaMux(absPath, relPath, "localhost:0", "localhost:0")
 		}()
 		func() {
 			defer assertRecover()
-			NewSiaMux(relPath, absPath, "localhost:0")
+			NewSiaMux(relPath, absPath, "localhost:0", "localhost:0")
 		}()
 	}
 }

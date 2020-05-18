@@ -240,7 +240,8 @@ func (am *accountManager) managedSaveAndClose() error {
 	}
 
 	// Sync the file before updating the header. We want to make sure that the
-	// accounts have been put into a clean
+	// accounts have been put into a clean and finalized state before writing an
+	// update to the metadata.
 	err := am.staticFile.Sync()
 	if err != nil {
 		return errors.AddContext(err, "failed to sync accounts file")
@@ -304,7 +305,7 @@ func (am *accountManager) load() error {
 
 // checkMetadata will load the metadata from the account file and return whether
 // or not the previous shutdown was clean. If the metadata does not match the
-// expected metadata,
+// expected metadata, an error will be returned.
 //
 // NOTE: If we change the version of the file, this is probably the function
 // that should handle doing the persist upgrade. Inside of this function there
