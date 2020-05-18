@@ -86,8 +86,8 @@ gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a/go.mod h1:QxX
 gitlab.com/NebulousLabs/ratelimit v0.0.0-20180716154200-1308156c2eaf/go.mod h1:vowDA1cdvtWW678ugB7L/yKT2pCN37aH6zYp9NF5Isc=
 gitlab.com/NebulousLabs/ratelimit v0.0.0-20191111145210-66b93e150b27 h1:G8v2awvHcrvulXibvNpzLx3RlTuX0hB+0AZdl18pl50=
 gitlab.com/NebulousLabs/ratelimit v0.0.0-20191111145210-66b93e150b27/go.mod h1:hvNy5sMP9gGrNQ7kNgb+vWuiPptqTk4W45bQbbT/vmg=
-gitlab.com/NebulousLabs/siamux v0.0.0-20200511155832-64a7ac68c8ab h1:NUCtCUgbRosZfCOJ3v27O5GmEnK8+fXAyx3J1SEfHrE=
-gitlab.com/NebulousLabs/siamux v0.0.0-20200511155832-64a7ac68c8ab/go.mod h1:oaTSN0KXMgdNRKLg0CVH1vuZB2NcsmkngWf2pYK0N1Y=
+gitlab.com/NebulousLabs/siamux v0.0.0-20200515151423-3f0b6e54abec h1:zhfeOY0WlyHskjbie9UC+mDZ/2U9p7Ae+uDdam5+Hmg=
+gitlab.com/NebulousLabs/siamux v0.0.0-20200515151423-3f0b6e54abec/go.mod h1:E7SGW22LVJ3sqIRKcLq/scpqp2BYjwGtUW3qlCXHC3A=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20180716154133-88a11db9e46c h1:psW9YBmnyKKCddPncr7mwJCx6n7FzlIs1EWIiSo7fyQ=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20180716154133-88a11db9e46c/go.mod h1:w05nvlkvHlk3Vfc7mcU29Toic1X0BcYUnKoTHS0ea2Y=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20200513153928-67f056f80aa0 h1:X0lt1AINYUCNsnHCfQya129gNIRVdB2Ak+HOeLIvOik=
@@ -95,6 +95,7 @@ gitlab.com/NebulousLabs/threadgroup v0.0.0-20200513153928-67f056f80aa0/go.mod h1
 gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190703190009-cb822c37bc94/go.mod h1:Lhpa9AcbWcYKcc4amZsOHqJdQglnkWrGuUI68XC7U2Q=
 gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190814160017-69f300e9bcb8 h1:u74TgFUPYl9G1rYLUKmavwJoF8Li/qJLMSiU5ntafKA=
 gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190814160017-69f300e9bcb8/go.mod h1:Lhpa9AcbWcYKcc4amZsOHqJdQglnkWrGuUI68XC7U2Q=
+go.etcd.io/bbolt v1.3.4/go.mod h1:G5EMThwa9y8QZGBClrRx5EY+Yw9kAhnjy3bSjsnlVTQ=
 golang.org/x/crypto v0.0.0-20181203042331-505ab145d0a9/go.mod h1:6SG95UA2DQfeDnfUPMdvaQW0Q7yPrPDi9nlGo2tz2b4=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
 golang.org/x/crypto v0.0.0-20190530122614-20be4c3c3ed5/go.mod h1:yigFU9vqHzYiE8UmvKecakEJjdnWj3jj499lnFckfCI=
@@ -109,8 +110,6 @@ golang.org/x/crypto v0.0.0-20200311171314-f7b00557c8c4 h1:QmwruyY+bKbDDL0BaglrbZ
 golang.org/x/crypto v0.0.0-20200311171314-f7b00557c8c4/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
 golang.org/x/crypto v0.0.0-20200423211502-4bdfaf469ed5 h1:Q7tZBpemrlsc2I7IyODzhtallWRSm4Q0d09pL6XbQtU=
 golang.org/x/crypto v0.0.0-20200423211502-4bdfaf469ed5/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
-golang.org/x/lint v0.0.0-20200302205851-738671d3881b h1:Wh+f8QHJXR411sJR8/vRBTZ7YapZaRvUcLFFJhusH0k=
-golang.org/x/lint v0.0.0-20200302205851-738671d3881b/go.mod h1:3xt1FjdF8hUf6vQPIChWIBhFzV8gjjsPE/fR3IyQdNY=
 golang.org/x/mod v0.1.1-0.20191105210325-c90efee705ee h1:WG0RUwxtNT4qqaXX3DPA8zHFNm/D9xaBpxzHt1WcA/E=
 golang.org/x/mod v0.1.1-0.20191105210325-c90efee705ee/go.mod h1:QqPTAvyqsEbceGzBzNggFXnrqF1CaUcvgkdR5Ot7KZg=
 golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3 h1:0GoQqolDA55aaLxZyTzK/Y2ePZzZTUrRacwib7cNsYQ=
@@ -123,6 +122,7 @@ golang.org/x/sys v0.0.0-20181205085412-a5c9d58dba9a/go.mod h1:STP8DvDyc/dI5b8T5h
 golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
 golang.org/x/sys v0.0.0-20190412213103-97732733099d h1:+R4KGOnez64A81RvjARKc4UT5/tI9ujCIVX+P5KiHuI=
 golang.org/x/sys v0.0.0-20190412213103-97732733099d/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+golang.org/x/sys v0.0.0-20200202164722-d101bd2416d5/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20200302150141-5c8b2ff67527 h1:uYVVQ9WP/Ds2ROhcaGPeIdVq0RIXVLwsHlnvJ+cT1So=
 golang.org/x/sys v0.0.0-20200302150141-5c8b2ff67527/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20200420163511-1957bb5e6d1f h1:gWF768j/LaZugp8dyS4UwsslYCYz9XgFxvlgsn0n9H8=
