@@ -258,7 +258,7 @@ func (w *worker) threadedWorkLoop() {
 	*/
 	defer w.managedKillJobsDownloadByRoot()
 
-	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
+	if build.VersionCmp(minAsyncVersion, w.staticCache().staticHostVersion) < 0 {
 		// The worker cannot execute any async tasks unles the price table of the
 		// host is known, the balance of the worker account is known, and the
 		// account has sufficient funds in it. This update is done as a blocking
