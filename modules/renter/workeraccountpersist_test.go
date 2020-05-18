@@ -2,10 +2,8 @@ package renter
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
