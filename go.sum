@@ -86,12 +86,12 @@ gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a/go.mod h1:QxX
 gitlab.com/NebulousLabs/ratelimit v0.0.0-20180716154200-1308156c2eaf/go.mod h1:vowDA1cdvtWW678ugB7L/yKT2pCN37aH6zYp9NF5Isc=
 gitlab.com/NebulousLabs/ratelimit v0.0.0-20191111145210-66b93e150b27 h1:G8v2awvHcrvulXibvNpzLx3RlTuX0hB+0AZdl18pl50=
 gitlab.com/NebulousLabs/ratelimit v0.0.0-20191111145210-66b93e150b27/go.mod h1:hvNy5sMP9gGrNQ7kNgb+vWuiPptqTk4W45bQbbT/vmg=
-gitlab.com/NebulousLabs/siamux v0.0.0-20200515151423-3f0b6e54abec h1:zhfeOY0WlyHskjbie9UC+mDZ/2U9p7Ae+uDdam5+Hmg=
-gitlab.com/NebulousLabs/siamux v0.0.0-20200515151423-3f0b6e54abec/go.mod h1:E7SGW22LVJ3sqIRKcLq/scpqp2BYjwGtUW3qlCXHC3A=
+gitlab.com/NebulousLabs/siamux v0.0.0-20200518120401-20f1d5034f03 h1:+n3skulaiACA3z4wXFCrkYaP2JZvmPYWC4XRqe5hN4c=
+gitlab.com/NebulousLabs/siamux v0.0.0-20200518120401-20f1d5034f03/go.mod h1:E7SGW22LVJ3sqIRKcLq/scpqp2BYjwGtUW3qlCXHC3A=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20180716154133-88a11db9e46c h1:psW9YBmnyKKCddPncr7mwJCx6n7FzlIs1EWIiSo7fyQ=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20180716154133-88a11db9e46c/go.mod h1:w05nvlkvHlk3Vfc7mcU29Toic1X0BcYUnKoTHS0ea2Y=
-gitlab.com/NebulousLabs/threadgroup v0.0.0-20200513153928-67f056f80aa0 h1:X0lt1AINYUCNsnHCfQya129gNIRVdB2Ak+HOeLIvOik=
-gitlab.com/NebulousLabs/threadgroup v0.0.0-20200513153928-67f056f80aa0/go.mod h1:w05nvlkvHlk3Vfc7mcU29Toic1X0BcYUnKoTHS0ea2Y=
+gitlab.com/NebulousLabs/threadgroup v0.0.0-20200518123758-b458460120c6 h1:Z+YR+b4s+QAknrp8CBwBwcBqKblk5QPJ4yf0G592jYo=
+gitlab.com/NebulousLabs/threadgroup v0.0.0-20200518123758-b458460120c6/go.mod h1:av52iTyGuPtGU+GMcqfGtZu2vxhIjPgrxvIwVYelEvs=
 gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190703190009-cb822c37bc94/go.mod h1:Lhpa9AcbWcYKcc4amZsOHqJdQglnkWrGuUI68XC7U2Q=
 gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190814160017-69f300e9bcb8 h1:u74TgFUPYl9G1rYLUKmavwJoF8Li/qJLMSiU5ntafKA=
 gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190814160017-69f300e9bcb8/go.mod h1:Lhpa9AcbWcYKcc4amZsOHqJdQglnkWrGuUI68XC7U2Q=
