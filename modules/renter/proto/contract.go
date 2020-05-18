@@ -321,7 +321,7 @@ func (c *SafeContract) makeUpdateRefCounterAppend() (writeaheadlog.Update, error
 		return writeaheadlog.Update{}, nil // no update needed
 	}
 	u, err := c.rc.callAppend()
-	// If we don't have an open update session open one and try again.
+	// If we don't have an update session open one and try again.
 	if errors.Contains(err, ErrUpdateWithoutUpdateSession) {
 		if err = c.rc.callStartUpdate(); err != nil {
 			return writeaheadlog.Update{}, err
