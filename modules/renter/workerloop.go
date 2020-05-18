@@ -29,11 +29,11 @@ type (
 	// getAsyncJob defines a function which returns an async job plus a read
 	// size and a write size for that job. The read and write size refer to the
 	// amount of read and write network bandwidth that will be consumed by
-	// calling fn(). If there is no job to perform, fn() is expected to be nil.
+	// calling fn(). If there is no job to perform, 'job' is expected to be nil.
 	getAsyncJob func() (job func(), readSize uint64, writeSize uint64)
 )
 
-// staticSerialJobRunning indiactes whether a serial job is currently running
+// staticSerialJobRunning indicates whether a serial job is currently running
 // for the worker.
 func (wls *workerLoopState) staticSerialJobRunning() bool {
 	return atomic.LoadUint64(&wls.atomicSerialJobRunning) == 1
