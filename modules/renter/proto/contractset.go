@@ -256,8 +256,9 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 		nameNoExt := strings.TrimSuffix(filename, contractHeaderExtension)
 		headerPath := filepath.Join(dir, filename)
 		rootsPath := filepath.Join(dir, nameNoExt+contractRootsExtension)
+		refCounterPath := filepath.Join(dir, nameNoExt+refCounterExtension)
 
-		if err := cs.loadSafeContract(headerPath, rootsPath, walTxns); err != nil {
+		if err := cs.loadSafeContract(headerPath, rootsPath, refCounterPath, walTxns); err != nil {
 			extErr := fmt.Errorf("failed to load safecontract for header %v", headerPath)
 			return nil, errors.Compose(extErr, err)
 		}

@@ -261,8 +261,11 @@ func TestSiafileCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = rt.renter.staticFileSystem.OpenSiaFile(siaPath)
+	sf, err := rt.renter.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if sf.NumChunks() < 1 {
+		t.Fatal("invalid number of chunks in siafile:", sf.NumChunks())
 	}
 }

@@ -3773,6 +3773,10 @@ the siafile is the health of the worst unstuck chunk.
 
 **localpath** | string  
 Path to the local file on disk.  
+**NOTE** `siad` will set the localpath to an empty string if the local file is
+not found on disk. This is done to avoid the siafile being corrupted in the
+future by a different file being placed on disk at the original localpath
+location.  
 
 **maxhealth** | float64  
 the maxhealth is either the health or the stuckhealth of the siafile, whichever
