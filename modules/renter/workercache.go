@@ -35,6 +35,34 @@ type (
 	}
 )
 
+// staticUpdatedCache performs the actual worker cache update.
+func (w *worker) staticUpdatedCache() *workerCache {
+	// Grab the host to check the version.
+	host, ok, err := w.renter.hostDB.Host(w.staticHostPubKey)
+	if !ok || err != nil {
+		w.renter.log.Printf("Worker %v could not update the cache, hostdb found host with %v and %v values", w.staticHostPubKeyStr, ok, err)
+		return nil
+	}
+
+	// Grab the renter contract from the host contractor.
+	renterContract, exists := w.renter.hostContractor.ContractByPublicKey(w.staticHostPubKey)
+	if !exists {
+		w.renter.log.Printf("Worker %v could not update the cache, host not found in contractor", w.staticHostPubKeyStr)
+		return nil
+	}
+
+	// Create the cache object.
+	return &workerCache{
+		staticBlockHeight:     w.renter.cs.Height(),
+		staticContractID:      renterContract.ID,
+		staticContractUtility: renterContract.Utility,
+		staticHostVersion:     host.Version,
+		staticSynced:          w.renter.cs.Synced(),
+
+		staticLastUpdate: time.Now(),
+	}
+}
+
 // staticUpdateCache will perform a cache update on the worker.
 //
 // 'false' will be returned if the cache cannot be updated, signaling that the
@@ -46,29 +74,10 @@ func (w *worker) staticTryUpdateCache() bool {
 		return true
 	}
 
-	// Grab the host to check the version.
-	host, ok, err := w.renter.hostDB.Host(w.staticHostPubKey)
-	if !ok || err != nil {
-		w.renter.log.Printf("Worker %v could not update the cache, hostdb found host with %v and %v values", w.staticHostPubKeyStr, ok, err)
+	// Get the new cache.
+	newCache := w.staticUpdatedCache()
+	if newCache == nil {
 		return false
-	}
-
-	// Grab the renter contract from the host contractor.
-	renterContract, exists := w.renter.hostContractor.ContractByPublicKey(w.staticHostPubKey)
-	if !exists {
-		w.renter.log.Printf("Worker %v could not update the cache, host not found in contractor", w.staticHostPubKeyStr)
-		return false
-	}
-
-	// Create the cache object.
-	cache = &workerCache{
-		staticBlockHeight:     w.renter.cs.Height(),
-		staticContractID:      renterContract.ID,
-		staticContractUtility: renterContract.Utility,
-		staticHostVersion:     host.Version,
-		staticSynced:          w.renter.cs.Synced(),
-
-		staticLastUpdate: time.Now(),
 	}
 
 	// Wake the worker when the cache needs to be updated again.
@@ -77,7 +86,7 @@ func (w *worker) staticTryUpdateCache() bool {
 	})
 
 	// Atomically store the cache object in the worker.
-	ptr := unsafe.Pointer(cache)
+	ptr := unsafe.Pointer(newCache)
 	atomic.StorePointer(&w.atomicCache, ptr)
 	return true
 }
