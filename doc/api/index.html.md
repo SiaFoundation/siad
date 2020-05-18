@@ -4937,6 +4937,21 @@ base-64 encoded skykey
 standard success or error response. See [standard
 responses](#standard-responses).
 
+**UNSTABLE - subject to change in v1.4.9**
+## /skynet/allskykeys [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent"  -u "":<apipassword> --data "localhost:9980/skynet/allskykeys"
+```
+
+Returns a list of all Skykeys as base64-encoded strings.
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
 
 **UNSTABLE - subject to change in v1.4.9**
 ## /skynet/createskykey [POST]
