@@ -39,15 +39,15 @@ type tracker struct {
 	atomicNumSuccessfulIterations uint64
 }
 
-// Crash marks the tracker as crashed
-func (t *tracker) Crash() {
+// crash marks the tracker as crashed
+func (t *tracker) crash() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.crashed = true
 }
 
-// IsCrashed checks if the tracker is marked as crashed
-func (t *tracker) IsCrashed() bool {
+// isCrashed checks if the tracker is marked as crashed
+func (t *tracker) isCrashed() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.crashed
@@ -189,7 +189,7 @@ func loadWal(rcFilePath string, walPath string, fdd *dependencies.DependencyFaul
 
 // newTracker creates a tracker instance and initialises its counts
 // slice
-func newTracker(rc *RefCounter) *tracker {
+func newTracker(rc *refCounter) *tracker {
 	t := &tracker{
 		counts: make([]uint16, rc.numSectors),
 	}
@@ -205,14 +205,14 @@ func newTracker(rc *RefCounter) *tracker {
 
 // performUpdates keeps applying a random number of operations on the refcounter
 // until an error occurs.
-func performUpdates(rcLocal *RefCounter, t *tracker, testTimeoutChan <-chan struct{}) error {
+func performUpdates(rcLocal *refCounter, t *tracker, testTimeoutChan <-chan struct{}) error {
 	for {
 		err := performUpdateOperations(rcLocal, t)
 		if err != nil {
 			// we have an error, fake or not we should return
 			return err
 		}
-		if t.IsCrashed() {
+		if t.isCrashed() {
 			return nil
 		}
 
@@ -228,8 +228,8 @@ func performUpdates(rcLocal *RefCounter, t *tracker, testTimeoutChan <-chan stru
 
 // performUpdateOperations executes a randomised set of updates within an
 // update session.
-func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
-	err = rc.StartUpdateWithTimeout(100 * time.Millisecond)
+func performUpdateOperations(rc *refCounter, t *tracker) (err error) {
+	err = rc.startUpdateWithTimeout(100 * time.Millisecond)
 	if err != nil {
 		// don't fail the test on a timeout on the lock
 		if errors.Contains(err, errTimeoutOnLock) {
@@ -351,7 +351,7 @@ func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
 }
 
 // reloadRefCounter tries to reload the file. This simulates failures during recovery.
-func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFaultyDisk, t *tracker, doneChan <-chan struct{}) (*RefCounter, error) {
+func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFaultyDisk, t *tracker, doneChan <-chan struct{}) (*refCounter, error) {
 	// Try to reload the file. This simulates failures during recovery.
 	for tries := 1; ; tries++ {
 		select {
@@ -393,7 +393,7 @@ func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFa
 
 // validateDecrement is a helper method that ensures the counter is above 0.
 // This allows us to avoid a counter underflow.
-func validateDecrement(rc *RefCounter, secNum uint64) error {
+func validateDecrement(rc *refCounter, secNum uint64) error {
 	n, err := rc.readCount(secNum)
 	// Ignore errors coming from the dependency for this one
 	if err != nil && !errors.Contains(err, dependencies.ErrDiskFault) {
@@ -408,7 +408,7 @@ func validateDecrement(rc *RefCounter, secNum uint64) error {
 
 // validateDropSectors is a helper method that ensures the number of sectors we
 // want to drop does not exceed the number of sectors in the refcounter.
-func validateDropSectors(rc *RefCounter, secNum uint64) error {
+func validateDropSectors(rc *refCounter, secNum uint64) error {
 	if rc.numSectors < secNum {
 		return errors.New("Cannot drop more sectors than the total")
 	}
@@ -417,7 +417,7 @@ func validateDropSectors(rc *RefCounter, secNum uint64) error {
 
 // validateIncrement is a helper method that ensures the counter has not
 // reached its maximum value. This allows us to avoid a counter overflow.
-func validateIncrement(rc *RefCounter, secNum uint64) error {
+func validateIncrement(rc *refCounter, secNum uint64) error {
 	n, err := rc.readCount(secNum)
 	// Ignore errors coming from the dependency for this one
 	if err != nil && !errors.Contains(err, dependencies.ErrDiskFault) {
@@ -432,7 +432,7 @@ func validateIncrement(rc *RefCounter, secNum uint64) error {
 
 // validateStatusAfterAllTests does the final validation of the test by
 // comparing the state of the refcounter after all the test updates are applied.
-func validateStatusAfterAllTests(rc *RefCounter, t *tracker) error {
+func validateStatusAfterAllTests(rc *refCounter, t *tracker) error {
 	rc.mu.Lock()
 	numSec := rc.numSectors
 	rc.mu.Unlock()
