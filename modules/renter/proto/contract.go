@@ -136,7 +136,7 @@ type SafeContract struct {
 	wal        *writeaheadlog.WAL
 	mu         sync.Mutex
 
-	rc *RefCounter
+	staticRC *RefCounter
 
 	// revisionMu serializes revisions to the contract. It is acquired by
 	// (ContractSet).Acquire and released by (ContractSet).Return. When holding
@@ -320,13 +320,13 @@ func (c *SafeContract) makeUpdateRefCounterAppend() (writeaheadlog.Update, error
 	if build.Release != "testing" {
 		return writeaheadlog.Update{}, nil // no update needed
 	}
-	u, err := c.rc.callAppend()
+	u, err := c.staticRC.callAppend()
 	// If we don't have an update session open one and try again.
 	if errors.Contains(err, ErrUpdateWithoutUpdateSession) {
-		if err = c.rc.callStartUpdate(); err != nil {
+		if err = c.staticRC.callStartUpdate(); err != nil {
 			return writeaheadlog.Update{}, err
 		}
-		u, err = c.rc.callAppend()
+		u, err = c.staticRC.callAppend()
 	}
 	return u, err
 }
@@ -338,13 +338,13 @@ func (c *SafeContract) applyRefCounterUpdate(u writeaheadlog.Update) error {
 	if build.Release != "testing" {
 		return nil
 	}
-	err := c.rc.callCreateAndApplyTransaction(u)
+	err := c.staticRC.callCreateAndApplyTransaction(u)
 	// If we don't have an open update session open one and try again.
 	if errors.Contains(err, ErrUpdateWithoutUpdateSession) {
-		if err = c.rc.callStartUpdate(); err != nil {
+		if err = c.staticRC.callStartUpdate(); err != nil {
 			return err
 		}
-		err = c.rc.callCreateAndApplyTransaction(u)
+		err = c.staticRC.callCreateAndApplyTransaction(u)
 	}
 	return err
 }
@@ -446,7 +446,7 @@ func (c *SafeContract) managedCommitAppend(t *writeaheadlog.Transaction, signedT
 			if err = c.applyRefCounterUpdate(u); err != nil {
 				return errors.AddContext(err, "failed to apply refcounter update")
 			}
-			if err = c.rc.callUpdateApplied(); err != nil {
+			if err = c.staticRC.callUpdateApplied(); err != nil {
 				return err
 			}
 		default:
@@ -604,7 +604,7 @@ func (c *SafeContract) managedCommitTxns() error {
 		}
 	}
 	if rcUpdatesApplied {
-		if err := c.rc.callUpdateApplied(); err != nil {
+		if err := c.staticRC.callUpdateApplied(); err != nil {
 			return err
 		}
 	}
@@ -796,7 +796,7 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 		merkleRoots: merkleRoots,
 		headerFile:  headerFile,
 		wal:         cs.wal,
-		rc:          rc,
+		staticRC:    rc,
 	}
 	// Compatv144 fix missing void output.
 	cs.mu.Lock()
@@ -906,7 +906,7 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountF
 		unappliedTxns: unappliedTxns,
 		headerFile:    headerFile,
 		wal:           cs.wal,
-		rc:            rc,
+		staticRC:      rc,
 	}
 
 	// apply the wal txns if necessary.

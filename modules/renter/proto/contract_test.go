@@ -458,13 +458,13 @@ func TestContractRefCounter(t *testing.T) {
 	}
 	sc := cs.mustAcquire(t, c.ID)
 	// verify that the refcounter exists and has the correct size
-	if sc.rc == nil {
+	if sc.staticRC == nil {
 		t.Fatal("RefCounter was not created with the contract.")
 	}
-	if sc.rc.numSectors != uint64(sc.merkleRoots.numMerkleRoots) {
-		t.Fatalf("RefCounter has wrong number of sectors. Expected %d, found %d", uint64(sc.merkleRoots.numMerkleRoots), sc.rc.numSectors)
+	if sc.staticRC.numSectors != uint64(sc.merkleRoots.numMerkleRoots) {
+		t.Fatalf("RefCounter has wrong number of sectors. Expected %d, found %d", uint64(sc.merkleRoots.numMerkleRoots), sc.staticRC.numSectors)
 	}
-	fi, err := os.Stat(sc.rc.filepath)
+	fi, err := os.Stat(sc.staticRC.filepath)
 	if err != nil {
 		t.Fatal("Failed to read refcounter file from disk:", err)
 	}
@@ -516,10 +516,10 @@ func TestContractRefCounter(t *testing.T) {
 		t.Fatal(err)
 	}
 	// verify that the refcounter increased with 1, as expected
-	if sc.rc.numSectors != uint64(sc.merkleRoots.numMerkleRoots) {
-		t.Fatalf("RefCounter has wrong number of sectors. Expected %d, found %d", uint64(sc.merkleRoots.numMerkleRoots), sc.rc.numSectors)
+	if sc.staticRC.numSectors != uint64(sc.merkleRoots.numMerkleRoots) {
+		t.Fatalf("RefCounter has wrong number of sectors. Expected %d, found %d", uint64(sc.merkleRoots.numMerkleRoots), sc.staticRC.numSectors)
 	}
-	fi, err = os.Stat(sc.rc.filepath)
+	fi, err = os.Stat(sc.staticRC.filepath)
 	if err != nil {
 		t.Fatal("Failed to read refcounter file from disk:", err)
 	}
