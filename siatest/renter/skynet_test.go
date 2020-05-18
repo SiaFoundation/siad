@@ -812,9 +812,9 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatalf("Unexpected git revision return, expected '%v', actual '%v'", build.GitRevision, stats.VersionInfo.GitRevision)
 	}
 
-	// SiadUptime should be non zero
-	if stats.SiadUptime == 0 {
-		t.Error("SiadUptime is zero")
+	// Uptime should be non zero
+	if stats.Uptime == 0 {
+		t.Error("Uptime is zero")
 	}
 
 	// create two test files with sizes below and above the sector size
