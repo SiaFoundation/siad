@@ -165,6 +165,14 @@ func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
 	}
 }
 
+// managedOnCooldown returns true if the account is on cooldown and therefore
+// unlikely to receive additional funding in the near future.
+func (a *account) managedOnCooldown() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.cooldownUntil.After(time.Now())
+}
+
 // managedTrackDeposit keeps track of pending deposits by adding the given
 // amount to the 'pendingDeposits' field.
 func (a *account) managedTrackDeposit(amount types.Currency) {
@@ -317,5 +325,9 @@ func (w *worker) managedRefillAccount() {
 	var resp modules.FundAccountResponse
 	err = modules.RPCRead(stream, &resp)
 	err = errors.AddContext(err, "could not read the account response")
+
+	// Wake the worker so that any jobs potentially blocking on getting more
+	// money in the account can be activated.
+	w.staticWake()
 	return
 }

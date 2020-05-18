@@ -120,11 +120,12 @@ func (w *worker) managedKillUploading() {
 func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) bool {
 	// Check that the worker is allowed to be uploading before grabbing the
 	// worker lock.
+	cache := w.staticCache()
 	uc.mu.Lock()
 	_, candidateHost := uc.unusedHosts[w.staticHostPubKeyStr]
 	uc.mu.Unlock()
+	goodForUpload := cache.staticContractUtility.GoodForUpload
 	w.mu.Lock()
-	goodForUpload := w.staticCache().staticContractUtility.GoodForUpload
 	onCooldown, _ := w.onUploadCooldown()
 	uploadTerminated := w.uploadTerminated
 	if !goodForUpload || uploadTerminated || onCooldown || !candidateHost {
@@ -141,15 +142,23 @@ func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) bool {
 	return true
 }
 
+// managedHasUploadJob returns true if there is upload work available for the
+// worker.
+func (w *worker) managedHasUploadJob() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return len(w.unprocessedChunks) > 0
+}
+
 // managedPerformUploadChunkJob will perform some upload work and return 'false'
 // if there is no work to be done.
-func (w *worker) managedPerformUploadChunkJob() bool {
+func (w *worker) managedPerformUploadChunkJob() {
 	// Fetch any available chunk for uploading. If no chunk is found, return
 	// false.
 	w.mu.Lock()
 	if len(w.unprocessedChunks) == 0 {
 		w.mu.Unlock()
-		return false
+		return
 	}
 	nextChunk := w.unprocessedChunks[0]
 	w.unprocessedChunks = w.unprocessedChunks[1:]
@@ -159,7 +168,7 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 	nextChunk.cancelMU.Lock()
 	if nextChunk.canceled {
 		nextChunk.cancelMU.Unlock()
-		return true
+		return
 	}
 	// Add this worker to the chunk's cancelWG for the duration of this method.
 	nextChunk.cancelWG.Add(1)
@@ -173,7 +182,7 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 		nextChunk.mu.Lock()
 		nextChunk.chunkFailedProcessTimes = append(nextChunk.chunkFailedProcessTimes, time.Now())
 		nextChunk.mu.Unlock()
-		return true
+		return
 	}
 	// Open an editing connection to the host.
 	e, err := w.renter.hostContractor.Editor(w.staticHostPubKey, w.renter.tg.StopChan())
@@ -181,7 +190,7 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 		failureErr := fmt.Errorf("Worker failed to acquire an editor: %v", err)
 		w.renter.log.Debugln(failureErr)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
-		return true
+		return
 	}
 	defer e.Close()
 
@@ -193,7 +202,7 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 		failureErr := errors.AddContext(err, "worker uploader is not being used because price gouging was detected")
 		w.renter.log.Debugln(failureErr)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
-		return true
+		return
 	}
 
 	// Perform the upload, and update the failure stats based on the success of
@@ -203,7 +212,7 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 		failureErr := fmt.Errorf("Worker failed to upload via the editor: %v", err)
 		w.renter.log.Debugln(failureErr)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
-		return true
+		return
 	}
 	w.mu.Lock()
 	w.uploadConsecutiveFailures = 0
@@ -215,7 +224,7 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 		failureErr := fmt.Errorf("Worker failed to add new piece to SiaFile: %v", err)
 		w.renter.log.Debugln(failureErr)
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
-		return true
+		return
 	}
 
 	id := w.renter.mu.Lock()
@@ -233,7 +242,7 @@ func (w *worker) managedPerformUploadChunkJob() bool {
 	uc.mu.Unlock()
 	w.renter.memoryManager.Return(uint64(releaseSize))
 	w.renter.managedCleanUpUploadChunk(uc)
-	return true
+	return
 }
 
 // onUploadCooldown returns true if the worker is on cooldown from failed
@@ -249,10 +258,11 @@ func (w *worker) onUploadCooldown() (bool, time.Duration) {
 // managedProcessUploadChunk will process a chunk from the worker chunk queue.
 func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk *unfinishedUploadChunk, pieceIndex uint64) {
 	// Determine the usability value of this worker.
+	cache := w.staticCache()
 	w.mu.Lock()
 	onCooldown, _ := w.onUploadCooldown()
 	w.mu.Unlock()
-	goodForUpload := w.staticCache().staticContractUtility.GoodForUpload
+	goodForUpload := cache.staticContractUtility.GoodForUpload
 
 	// Determine what sort of help this chunk needs.
 	uc.mu.Lock()

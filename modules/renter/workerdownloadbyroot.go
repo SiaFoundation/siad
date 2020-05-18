@@ -11,6 +11,13 @@ type jobQueueDownloadByRoot struct {
 	mu    sync.Mutex
 }
 
+// managedHasJob returns true if there is a job that the worker could perform.
+func (queue *jobQueueDownloadByRoot) managedHasJob() bool {
+	queue.mu.Lock()
+	defer queue.mu.Unlock()
+	return len(queue.queue) > 0
+}
+
 // managedLen returns the length of the jobQueueDownloadByRoot queue
 func (queue *jobQueueDownloadByRoot) managedLen() int {
 	queue.mu.Lock()
@@ -48,16 +55,16 @@ func (w *worker) managedKillJobsDownloadByRoot() {
 
 // managedLaunchJobDownloadByRoot will attempt to download the root requested by
 // the project from the host.
-func (w *worker) managedLaunchJobDownloadByRoot() bool {
+func (w *worker) managedLaunchJobDownloadByRoot() {
 	// Fetch work if there is any work to be done.
 	w.staticJobQueueDownloadByRoot.mu.Lock()
 	if len(w.staticJobQueueDownloadByRoot.queue) == 0 {
 		w.staticJobQueueDownloadByRoot.mu.Unlock()
-		return false
+		return
 	}
 	jdbr := w.staticJobQueueDownloadByRoot.queue[0]
 	w.staticJobQueueDownloadByRoot.queue = w.staticJobQueueDownloadByRoot.queue[1:]
 	w.staticJobQueueDownloadByRoot.mu.Unlock()
 	jdbr.callPerformJobDownloadByRoot(w)
-	return true
+	return
 }
