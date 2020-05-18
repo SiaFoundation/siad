@@ -403,7 +403,7 @@ func (am *accountManager) readAccountAt(offset int64) (*account, error) {
 		return nil, errors.AddContext(err, "failed to read account bytes")
 	}
 
-	// load the account bytes onto the a persistence object
+	// load the account bytes onto the persistence object
 	var accountData accountPersistence
 	err = accountData.loadBytes(accountBytes)
 	if err != nil {
