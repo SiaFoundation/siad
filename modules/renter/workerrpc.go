@@ -46,9 +46,6 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 		}
 	}()
 
-	// grab some variables from the worker
-	bh := cache.staticBlockHeight
-
 	// write the specifier
 	err = modules.RPCWrite(stream, modules.RPCExecuteProgram)
 	if err != nil {
@@ -70,7 +67,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 
 	// provide payment
-	err = w.staticAccount.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, bh)
+	err = w.staticAccount.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, cache.staticBlockHeight)
 	if err != nil {
 		return
 	}
