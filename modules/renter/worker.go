@@ -56,7 +56,8 @@ const (
 type worker struct {
 	// atomicCache contains a pointer to the latest cache in the worker.
 	// Atomics are used to minimze lock contention on the worker object.
-	atomicCache unsafe.Pointer // points to a workerCache object
+	atomicCache      unsafe.Pointer // points to a workerCache object
+	atomicPriceTable unsafe.Pointer // points to a workerPriceTable object
 
 	// The host pub key also serves as an id for the worker, as there is only
 	// one worker per host.
