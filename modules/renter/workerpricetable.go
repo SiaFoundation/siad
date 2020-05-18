@@ -16,6 +16,9 @@ import (
 // host's prices. This is a temporary variable and will be replaced when we add
 // a duration to the host's price table. For now it's just half of the
 // rpcPriceGuaranteePeriod set on the host
+//
+// TODO: Need to switch to setting the price table update based on the host
+// timeout instead.
 var updateTimeInterval = build.Select(build.Var{
 	Standard: 5 * time.Minute,
 	Dev:      3 * time.Minute,
@@ -48,9 +51,7 @@ type (
 // price table should be updated.
 func (w *worker) staticNeedsPriceTableUpdate() bool {
 	// Check the version.
-	//
-	// TODO: '<'
-	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) != 0 {
+	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
 		return false
 	}
 	return time.Now().After(w.staticPriceTable().staticUpdateTime)
@@ -89,8 +90,9 @@ func (wpt *workerPriceTable) staticValid() bool {
 
 // managedUpdatePriceTable performs the UpdatePriceTableRPC on the host.
 func (w *worker) staticUpdatePriceTable() {
-	// This function should not be running if the price table is not out of date
-	// yet.
+	// Sanity check - This function runs on a fairly strict schedule, the
+	// control loop should not have called this function unless the price table
+	// is after its updateTime.
 	updateTime := w.staticPriceTable().staticUpdateTime
 	currentTime := time.Now()
 	if currentTime.Before(updateTime) {
@@ -164,7 +166,12 @@ func (w *worker) staticUpdatePriceTable() {
 		return
 	}
 
-	// TODO: Check for gouging before paying.
+	// TODO: Check for gouging before paying. The cost of the price table RPC
+	// should be very little more (less than 2x) than the cost of the bandwidth.
+	//
+	// Also check that the host didn't suddenly bump some other price to
+	// unreasonable levels. If the host did, the renter will reject the price
+	// table and effectively disable the worker.
 
 	// provide payment
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
@@ -172,22 +179,22 @@ func (w *worker) staticUpdatePriceTable() {
 		return
 	}
 
-	// expect stream to be closed (the host only sees a PT as valid if it
-	// successfully managed to process payment, not awaiting the close allows
-	// for a race condition where we consider it valid but the host does not
+	// The price table will not become valid until the host has received and
+	// confirmed our payment. The only way for us to know that the payment has
+	// been confirmed is to do a read, and we expect that the host has closed
+	// the stream.
 	//
-	// We use a different error name here because this error shouldn't
-	// invalidate the price table.
-	//
-	// TODO: Why is this here?
-	bogusReadErr := modules.RPCRead(stream, struct{}{})
-	if bogusReadErr == nil || !strings.Contains(bogusReadErr.Error(), io.ErrClosedPipe.Error()) {
-		w.renter.log.Println("ERROR: expected io.ErrClosedPipe, instead received err:", bogusReadErr)
+	// TODO: Since this part is necessary for synchrony reasons, we should make
+	// it an explicit part of the protocol and have the host send an actual
+	// response.
+	expectedReadErr := modules.RPCRead(stream, struct{}{})
+	if expectedReadErr == nil || !strings.Contains(expectedReadErr.Error(), io.ErrClosedPipe.Error()) {
+		w.renter.log.Println("ERROR: expected io.ErrClosedPipe, instead received err:", expectedReadErr)
 	}
 
-	// Update the price table.
-	//
-	// TODO: Do something smarter for the update time than 5 minutes.
+	// Update the price table. We preserve the recent error even though there
+	// has not been an error for debugging purposes, if there has been an error
+	// previously the devs like to be able to see what it was.
 	wpt := &workerPriceTable{
 		staticPriceTable:          pt,
 		staticUpdateTime:          time.Now().Add(updateTimeInterval),

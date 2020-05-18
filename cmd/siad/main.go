@@ -32,11 +32,12 @@ type Config struct {
 	// The Siad variables are referenced directly by cobra, and are set
 	// according to the flags.
 	Siad struct {
-		APIaddr      string
-		RPCaddr      string
-		HostAddr     string
-		SiaMuxAddr   string
-		AllowAPIBind bool
+		APIaddr       string
+		RPCaddr       string
+		HostAddr      string
+		SiaMuxTCPAddr string
+		SiaMuxWSAddr  string
+		AllowAPIBind  bool
 
 		Modules           string
 		NoBootstrap       bool
@@ -182,7 +183,8 @@ func main() {
 	root.Flags().BoolVarP(&globalConfig.Siad.NoBootstrap, "no-bootstrap", "", false, "disable bootstrapping on this run")
 	root.Flags().StringVarP(&globalConfig.Siad.Profile, "profile", "", "", "enable profiling with flags 'cmt' for CPU, memory, trace")
 	root.Flags().StringVarP(&globalConfig.Siad.RPCaddr, "rpc-addr", "", ":9981", "which port the gateway listens on")
-	root.Flags().StringVarP(&globalConfig.Siad.SiaMuxAddr, "siamux-addr", "", ":9983", "which port the SiaMux listens on")
+	root.Flags().StringVarP(&globalConfig.Siad.SiaMuxTCPAddr, "siamux-addr", "", ":9983", "which port the SiaMux listens on")
+	root.Flags().StringVarP(&globalConfig.Siad.SiaMuxWSAddr, "siamux-addr-ws", "", ":9984", "which port the SiaMux websocket listens on")
 	root.Flags().StringVarP(&globalConfig.Siad.Modules, "modules", "M", "cghrtwf", "enabled modules, see 'siad modules' for more info")
 	root.Flags().BoolVarP(&globalConfig.Siad.AuthenticateAPI, "authenticate-api", "", true, "enable API password protection")
 	root.Flags().BoolVarP(&globalConfig.Siad.TempPassword, "temp-password", "", false, "enter a temporary API password during startup")
