@@ -320,6 +320,9 @@ func (c *SafeContract) makeUpdateRefCounterAppend() (writeaheadlog.Update, error
 	if build.Release != "testing" {
 		return writeaheadlog.Update{}, nil // no update needed
 	}
+	// TODO This hidden retry is a problem that we need to refactor away, most
+	// 	probably by refactoring the entire `contract` workflow. The same applies
+	// 	to `applyRefCounterUpdate`.
 	u, err := c.staticRC.callAppend()
 	// If we don't have an update session open one and try again.
 	if errors.Contains(err, ErrUpdateWithoutUpdateSession) {
