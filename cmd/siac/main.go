@@ -38,6 +38,7 @@ var (
 	siaDir                    string // Path to sia data dir
 	skykeyCipherType          string // CipherType used to create a Skykey.
 	skykeyName                string // Name used to identify a Skykey.
+	skykeyShowPrivateKeys     bool   // Set to true to show private key data.
 	skykeyID                  string // ID used to identify a Skykey.
 	skykeyRenameAs            string // Optional parameter to rename a Skykey while adding it.
 	skynetBlacklistRemove     bool   // Remove a skylink from the Skynet Blacklist.
@@ -316,11 +317,12 @@ func main() {
 	skynetBlacklistCmd.Flags().BoolVar(&skynetBlacklistRemove, "remove", false, "Remove the skylink from the blacklist")
 
 	root.AddCommand(skykeyCmd)
-	skykeyCmd.AddCommand(skykeyCreateCmd, skykeyAddCmd, skykeyGetCmd, skykeyGetIDCmd)
+	skykeyCmd.AddCommand(skykeyCreateCmd, skykeyAddCmd, skykeyGetCmd, skykeyGetIDCmd, skykeyListCmd)
 	skykeyAddCmd.Flags().StringVar(&skykeyRenameAs, "rename-as", "", "The new name for the skykey being added")
 	skykeyCreateCmd.Flags().StringVar(&skykeyCipherType, "cipher-type", "XChaCha20", "The cipher type of the skykey")
 	skykeyGetCmd.Flags().StringVar(&skykeyName, "name", "", "The name of the skykey")
 	skykeyGetCmd.Flags().StringVar(&skykeyID, "id", "", "The base-64 encoded skykey ID")
+	skykeyListCmd.Flags().BoolVar(&skykeyShowPrivateKeys, "show-priv-keys", false, "Show private key data.")
 
 	root.AddCommand(updateCmd)
 	updateCmd.AddCommand(updateCheckCmd)

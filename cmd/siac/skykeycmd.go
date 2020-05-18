@@ -49,6 +49,13 @@ var (
 		Long:  `Get the base64-encoded skykey id by its name`,
 		Run:   wrap(skykeygetidcmd),
 	}
+
+	skykeyListCmd = &cobra.Command{
+		Use:   "ls",
+		Short: "List all skykeys",
+		Long:  "List all skykeys. Use with --show-priv-keys to show full ecncoding with private key also.",
+		Run:   wrap(skykeylistcmd),
+	}
 )
 
 // skykeycmd displays the usage info for the command.
@@ -163,4 +170,70 @@ func skykeygetidcmd(skykeyName string) {
 		die("Failed to retrieve skykey:", err)
 	}
 	fmt.Printf("Found skykey ID: %v\n", sk.ID().ToString())
+}
+
+func skykeylistcmd() {
+	skykeysString, err := skykeyListKeys(httpClient, skykeyShowPrivateKeys)
+	if err != nil {
+		die("Failed to get all skykeys:", err)
+	}
+	fmt.Print(skykeysString)
+}
+
+func skykeyListKeys(c client.Client, showPrivateKeys bool) (string, error) {
+	skykeys, err := c.SkykeyGetAllSkykeys()
+	if err != nil {
+		return "", err
+	}
+
+	var b strings.Builder
+
+	// Define a function that adds a string to the builder and pads it with a
+	// certain number of spaces. This gets us nice columns for printing.
+	addAndPadRight := func(s string, maxLen int) {
+		b.WriteString(s)
+		for i := len(s); i < maxLen; i++ {
+			b.WriteString(" ")
+		}
+	}
+
+	// Get the max name length for padding purposes.
+	maxNameLength := 0
+	for _, sk := range skykeys {
+		if len(sk.Name) > maxNameLength {
+			maxNameLength = len(sk.Name)
+		}
+	}
+
+	// Print a title row.
+	maxIDStringLen := 24
+	addAndPadRight("ID", maxIDStringLen+2)
+	addAndPadRight("Name", maxNameLength+2)
+	if showPrivateKeys {
+		b.WriteString("Full Skykey")
+	}
+	b.WriteString("\n")
+
+	titleLen := b.Len() - 1
+	for i := 0; i < titleLen; i++ {
+		b.WriteString("-")
+	}
+	b.WriteString("\n")
+
+	for _, sk := range skykeys {
+		idStr := sk.ID().ToString()
+		addAndPadRight(idStr, maxIDStringLen+2)
+		addAndPadRight(sk.Name, maxNameLength+2)
+
+		if showPrivateKeys {
+			skStr, err := sk.ToString()
+			if err != nil {
+				return "", err
+			}
+			b.WriteString(skStr)
+		}
+		b.WriteString("\n")
+	}
+
+	return b.String(), nil
 }
