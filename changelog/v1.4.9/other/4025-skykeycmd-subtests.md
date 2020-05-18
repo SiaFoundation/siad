@@ -1,0 +1,1 @@
+- Skykeycmd test broken down to subtests.
