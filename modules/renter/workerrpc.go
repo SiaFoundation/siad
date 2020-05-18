@@ -9,7 +9,7 @@ import (
 
 // staticNewStream returns a new stream to the worker's host
 func (w *worker) staticNewStream() (siamux.Stream, error) {
-	if build.VersionCmp(minAsyncVersion, w.staticCache().staticHostVersion) < 0 {
+	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
 		w.renter.log.Critical("calling staticNewStream on a host that doesn't support the new protocol")
 		return nil, errors.New("host doesn't support this")
 	}
