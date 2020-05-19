@@ -18,7 +18,7 @@ const (
 	// (0.9 or lower) will be highly detrimental. A higher decay means that the
 	// predictor tends to be more accurate over time, but is less responsive to
 	// things like network load.
-	jobReadSectorPerformanceDecay = 0.95
+	jobReadSectorPerformanceDecay = 0.9
 )
 
 type (
