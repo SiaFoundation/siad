@@ -123,8 +123,8 @@ endif
 
 # lint-analysis runs the custom analyzers.
 lint-analysis:
-	go run ./analysis/cmd/analyze.go -lockcheck=false -- $(pkgs)
-	go run ./analysis/cmd/analyze.go -lockcheck -- $(lockcheckpkgs)
+	analyze -lockcheck=false -- $(pkgs)
+	analyze -lockcheck -- $(lockcheckpkgs)
 
 # spellcheck checks for misspelled words in comments or strings.
 spellcheck: markdown-spellcheck

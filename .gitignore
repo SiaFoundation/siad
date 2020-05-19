@@ -3,6 +3,7 @@
 *.swo
 
 # build artifacts
+analysis
 artifacts
 cover
 fullcover
