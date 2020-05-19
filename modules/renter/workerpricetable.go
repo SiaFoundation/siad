@@ -100,7 +100,10 @@ func (w *worker) staticUpdatePriceTable() {
 	}
 
 	// Create a goroutine to wake the worker when the time has come to check the
-	// price table again. Be careful when handling potential underflows.
+	// price table again. Make sure to grab the update time inside of the defer
+	// func, after the price table has been updated.
+	//
+	// This defer needs to run after the defer which updates the price table.
 	defer func() {
 		updateTime := w.staticPriceTable().staticUpdateTime
 		w.renter.tg.AfterFunc(updateTime.Sub(time.Now()), func() {
