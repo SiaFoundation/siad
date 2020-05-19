@@ -165,6 +165,7 @@ func (am *accountManager) managedOpenAccount(hostKey types.SiaPublicKey) (acc *a
 		if acc.externActive {
 			return acc, nil
 		}
+		return nil, errors.New("account creation failed")
 	}
 	// Open a new account.
 	offset := (len(am.accounts) + 1) * accountSize // +1 because the first slot in the file is used for metadata
