@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
@@ -191,17 +192,6 @@ func skykeyListKeys(c client.Client, showPrivateKeys bool) (string, error) {
 		return "", err
 	}
 
-	var b strings.Builder
-
-	// Define a function that adds a string to the builder and pads it with a
-	// certain number of spaces. This gets us nice columns for printing.
-	addAndPadRight := func(s string, maxLen int) {
-		b.WriteString(s)
-		for i := len(s); i < maxLen; i++ {
-			b.WriteString(" ")
-		}
-	}
-
 	// Get the max name length for padding purposes.
 	maxNameLength := 0
 	for _, sk := range skykeys {
@@ -210,35 +200,46 @@ func skykeyListKeys(c client.Client, showPrivateKeys bool) (string, error) {
 		}
 	}
 
-	// Print a title row.
 	maxIDStringLen := 24
-	addAndPadRight("ID", maxIDStringLen+2)
-	addAndPadRight("Name", maxNameLength+2)
-	if showPrivateKeys {
-		b.WriteString("Full Skykey")
+	minWidth := maxIDStringLen
+	if maxNameLength > minWidth {
+		minWidth = maxNameLength
 	}
-	b.WriteString("\n")
 
+	var b strings.Builder
+	w := tabwriter.NewWriter(&b, minWidth, 0, 2, ' ', 0)
+
+	// Print a title row.
+	if showPrivateKeys {
+		fmt.Fprintf(w, "ID\tName\tFull Skykey\n")
+	} else {
+		fmt.Fprintf(w, "ID\tName\n")
+	}
+
+	if err = w.Flush(); err != nil {
+		return "", err
+	}
 	titleLen := b.Len() - 1
 	for i := 0; i < titleLen; i++ {
-		b.WriteString("-")
+		fmt.Fprintf(w, "-")
 	}
-	b.WriteString("\n")
+	fmt.Fprintf(w, "\n")
 
 	for _, sk := range skykeys {
 		idStr := sk.ID().ToString()
-		addAndPadRight(idStr, maxIDStringLen+2)
-		addAndPadRight(sk.Name, maxNameLength+2)
-
-		if showPrivateKeys {
-			skStr, err := sk.ToString()
-			if err != nil {
-				return "", err
-			}
-			b.WriteString(skStr)
+		if !showPrivateKeys {
+			fmt.Fprintf(w, "%s\t%s\n", idStr, sk.Name)
+			continue
 		}
-		b.WriteString("\n")
+		skStr, err := sk.ToString()
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\n", idStr, sk.Name, skStr)
 	}
 
+	if err = w.Flush(); err != nil {
+		return "", err
+	}
 	return b.String(), nil
 }
