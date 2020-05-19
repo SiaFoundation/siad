@@ -797,12 +797,12 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 	skynetPerformanceStatsMu.Unlock()
 
 	// Grab the siad uptime
-	uptime := time.Since(api.StartTime()).Nanoseconds()
+	uptime := time.Since(api.StartTime()).Seconds()
 
 	WriteJSON(w, SkynetStatsGET{
 		PerformanceStats: perfStats,
 
-		Uptime:      uptime,
+		Uptime:      int64(uptime),
 		UploadStats: stats,
 		VersionInfo: SkynetVersion{
 			Version:     version,

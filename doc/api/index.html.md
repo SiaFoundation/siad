@@ -4853,7 +4853,7 @@ returns statistical information about Skynet, e.g. number of files uploaded
 ### JSON Response
 ```json
 {
-  "uptime": 123456789, // int
+  "uptime": 1234, // int
   "uploadstats": {
     "numfiles": 2,         // int
     "totalsize": 44527895  // int
@@ -4868,7 +4868,7 @@ returns statistical information about Skynet, e.g. number of files uploaded
 ```
 
 **uptime** | int  
-The amount of time in nanoseconds that siad has been running.
+The amount of time in seconds that siad has been running.
 
 **uploadstats** | object  
 Uploadstats is an object with statistics about the data uploaded to Skynet.
