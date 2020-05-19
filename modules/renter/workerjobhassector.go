@@ -1,8 +1,5 @@
 package renter
 
-// workerjobhassector.go defines the job to check whether a host has a sector
-// available.
-
 import (
 	"sync"
 	"time"
@@ -23,10 +20,10 @@ const (
 type (
 	// jobHasSector contains information about a hasSector query.
 	jobHasSector struct {
-		canceled     chan struct{}              // Can signal that the job has been canceled
-		responseChan chan *jobHasSectorResponse // Channel to send a response down
+		staticCanceledChan chan struct{}              // Can signal that the job has been canceled
+		staticResponseChan chan *jobHasSectorResponse // Channel to send a response down
 
-		sector crypto.Hash
+		staticSector crypto.Hash
 	}
 
 	// jobHasSectorQueue is a list of hasSector queries that have been assigned
@@ -87,7 +84,7 @@ func (w *worker) newJobHasSectorQueue() {
 // canceled.
 func (j *jobHasSector) staticCanceled() bool {
 	select {
-	case <-j.canceled:
+	case <-j.staticCanceledChan:
 		return true
 	default:
 		return false
@@ -105,7 +102,7 @@ func (jq *jobHasSectorQueue) callAdd(job jobHasSector) bool {
 		return false
 	}
 	// Check if the queue is on cooldown.
-	if jq.cooldownUntil.After(time.Now()) {
+	if time.Now().Before(jq.cooldownUntil) {
 		return false
 	}
 
@@ -146,7 +143,7 @@ func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
 	// Create the actual job that will be run by the async job launcher.
 	jobFn := func() {
 		start := time.Now()
-		available, err := jq.staticWorker.managedHasSector(job.sector)
+		available, err := jq.staticWorker.managedHasSector(job.staticSector)
 		jobTime := time.Since(start)
 		response := &jobHasSectorResponse{
 			staticAvailable: available,
@@ -163,8 +160,8 @@ func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
 			// project which issued the job will close job.canceled when the tg
 			// stops.
 			select {
-			case job.responseChan <- response:
-			case <-job.canceled:
+			case job.staticResponseChan <- response:
+			case <-job.staticCanceledChan:
 			}
 		})
 
@@ -175,7 +172,7 @@ func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
 			jq.cooldownUntil = cooldownUntil(jq.consecutiveFailures)
 			jq.consecutiveFailures++
 			jq.mu.Unlock()
-			jq.staticWorker.managedDumpJobsHasSector()
+			jq.staticWorker.managedDiscardJobsHasSector()
 			return
 		}
 
@@ -232,8 +229,9 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 	return hasSector, nil
 }
 
-// managedDumpJobsHasSector will release all remaining HasSector jobs as failed.
-func (w *worker) managedDumpJobsHasSector() {
+// managedDiscardJobsHasSector will release all remaining HasSector jobs as
+// failed.
+func (w *worker) managedDiscardJobsHasSector() {
 	jq := w.staticJobHasSectorQueue // Convenience variable
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
@@ -246,8 +244,8 @@ func (w *worker) managedDumpJobsHasSector() {
 				staticErr: errors.New("worker is dumping all has sector jobs"),
 			}
 			select {
-			case j.responseChan <- response:
-			case <-j.canceled:
+			case j.staticResponseChan <- response:
+			case <-j.staticCanceledChan:
 			}
 		})
 	}
@@ -268,8 +266,8 @@ func (w *worker) managedKillJobsHasSector() {
 				staticErr: errors.New("worker killed"),
 			}
 			select {
-			case j.responseChan <- response:
-			case <-j.canceled:
+			case j.staticResponseChan <- response:
+			case <-j.staticCanceledChan:
 			}
 		})
 	}
