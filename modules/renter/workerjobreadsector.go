@@ -56,9 +56,6 @@ type (
 		weightedJobsCompleted1m  float64
 		weightedJobsCompleted4m  float64
 
-		// TODO: This is really just for curiosity.
-		fastestJob time.Duration
-
 		staticWorker *worker
 		mu           sync.Mutex
 	}
