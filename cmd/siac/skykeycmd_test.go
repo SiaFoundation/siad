@@ -30,14 +30,11 @@ func TestSkykeyCommands(t *testing.T) {
 		}
 	}()
 
-	// Set the (global) cipher type to the only allowed type.
-	// This is normally done by the flag parser.
-	skykeyCipherType = "XChaCha20"
-
 	// Set test parameters for this test group
 	params := skykeycmdTestParams{
-		skykeyString: "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a",
-		client:       n.Client,
+		skykeyString:     "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a",
+		skykeyCipherType: "XChaCha20",
+		client:           n.Client,
 	}
 
 	// Define subtests
@@ -110,11 +107,11 @@ func testChangeKeyEntropyKeepName(t *testing.T, p skykeycmdTestParams) {
 func testAddKeyTwice(t *testing.T, p skykeycmdTestParams) {
 	// Check that adding same key twice returns an error.
 	keyName := "createkey1"
-	_, err := skykeyCreate(p.client, keyName)
+	_, err := skykeyCreate(p.client, keyName, p.skykeyCipherType)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = skykeyCreate(p.client, keyName)
+	_, err = skykeyCreate(p.client, keyName, p.skykeyCipherType)
 	if !strings.Contains(err.Error(), skykey.ErrSkykeyWithNameAlreadyExists.Error()) {
 		t.Fatal("Expected error when creating key with same name")
 	}
@@ -122,22 +119,17 @@ func testAddKeyTwice(t *testing.T, p skykeycmdTestParams) {
 
 // testInvalidCipherType tests that invalid cipher types are caught.
 func testInvalidCipherType(t *testing.T, p skykeycmdTestParams) {
-	// Note: When this test is executed in parallel, skykeyCreate() should be
-	// refactored not to use global skykeyCipherType, but a local cipher type
-	// parameter.
-	oldSkykeyCipherType := skykeyCipherType
-	skykeyCipherType = "InvalidCipherType"
-	_, err := skykeyCreate(p.client, "createkey2")
+	invalidSkykeyCipherType := "InvalidCipherType"
+	_, err := skykeyCreate(p.client, "createkey2", invalidSkykeyCipherType)
 	if !errors.Contains(err, crypto.ErrInvalidCipherType) {
 		t.Fatal("Expected error when creating key with invalid ciphertype")
 	}
-	skykeyCipherType = oldSkykeyCipherType //reset the ciphertype
 }
 
 // testSkykeyGet tests skykeyGet with known key should not return any errors.
 func testSkykeyGet(t *testing.T, p skykeycmdTestParams) {
 	keyName := "createkey testSkykeyGet"
-	newSkykey, err := skykeyCreate(p.client, keyName)
+	newSkykey, err := skykeyCreate(p.client, keyName, p.skykeyCipherType)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,6 +170,7 @@ type skykeycmdSubTest struct {
 // skykeycmdTestParams is a local helper struct to define common test
 // parameters for skykeycmd sub tests
 type skykeycmdTestParams struct {
-	skykeyString string
-	client       client.Client
+	skykeyString     string
+	skykeyCipherType string
+	client           client.Client
 }
