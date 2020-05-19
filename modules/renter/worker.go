@@ -45,8 +45,8 @@ type (
 	worker struct {
 		// atomicCache contains a pointer to the latest cache in the worker.
 		// Atomics are used to minimze lock contention on the worker object.
-		atomicCache      unsafe.Pointer // points to a workerCache object
-		atomicPriceTable unsafe.Pointer // points to a workerPriceTable object
+		atomicCache                  unsafe.Pointer // points to a workerCache object
+		atomicPriceTable             unsafe.Pointer // points to a workerPriceTable object
 
 		// The host pub key also serves as an id for the worker, as there is only
 		// one worker per host.
@@ -65,6 +65,8 @@ type (
 		// Job queues for the worker.
 		staticFetchBackupsJobQueue   fetchBackupsJobQueue
 		staticJobQueueDownloadByRoot jobQueueDownloadByRoot
+		staticJobHasSectorQueue      *jobHasSectorQueue
+		staticJobReadSectorQueue     *jobReadSectorQueue
 
 		// Upload variables.
 		unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
@@ -182,6 +184,8 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		renter:   r,
 	}
 	w.newPriceTable()
+	w.newJobHasSectorQueue()
+	w.newJobReadSectorQueue()
 	// Get the worker cache set up before returning the worker. This prvents a
 	// race condition in some tests.
 	if !w.staticTryUpdateCache() {
