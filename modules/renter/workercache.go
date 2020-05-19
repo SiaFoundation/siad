@@ -40,7 +40,7 @@ func (w *worker) staticUpdatedCache() *workerCache {
 	// Grab the host to check the version.
 	host, ok, err := w.renter.hostDB.Host(w.staticHostPubKey)
 	if !ok || err != nil {
-		w.renter.log.Printf("Worker %v could not update the cache, hostdb found host with %v and %v values", w.staticHostPubKeyStr, ok, err)
+		w.renter.log.Printf("Worker %v could not update the cache, hostdb found host %v, with error: %v", w.staticHostPubKeyStr, ok, err)
 		return nil
 	}
 
