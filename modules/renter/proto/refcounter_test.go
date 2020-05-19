@@ -33,10 +33,10 @@ var (
 	errTimeoutOnLock = errors.New("timeout while acquiring a lock ")
 )
 
-// startUpdateWithTimeout acquires a lock, ensuring the caller is the only one
+// managedStartUpdateWithTimeout acquires a lock, ensuring the caller is the only one
 // currently allowed to perform updates on this refcounter file. Returns an
 // error if the supplied timeout is <= 0 - use `callStartUpdate` instead.
-func (rc *refCounter) startUpdateWithTimeout(timeout time.Duration) error {
+func (rc *refCounter) managedStartUpdateWithTimeout(timeout time.Duration) error {
 	if timeout <= 0 {
 		return errors.New("non-positive timeout")
 	}
@@ -662,7 +662,7 @@ func TestRefCounterStartUpdate(t *testing.T) {
 	locked := make(chan error)
 	timeout := time.After(time.Second)
 	go func() {
-		locked <- rc.startUpdateWithTimeout(500 * time.Millisecond)
+		locked <- rc.managedStartUpdateWithTimeout(500 * time.Millisecond)
 	}()
 	select {
 	case err = <-locked:

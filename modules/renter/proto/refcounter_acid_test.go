@@ -39,15 +39,15 @@ type tracker struct {
 	atomicNumSuccessfulIterations uint64
 }
 
-// crash marks the tracker as crashed
-func (t *tracker) crash() {
+// managedSetCrash marks the tracker as crashed
+func (t *tracker) managedSetCrash() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.crashed = true
 }
 
-// isCrashed checks if the tracker is marked as crashed
-func (t *tracker) isCrashed() bool {
+// managedCrashed checks if the tracker is marked as crashed
+func (t *tracker) managedCrashed() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.crashed
@@ -212,7 +212,7 @@ func performUpdates(rcLocal *refCounter, t *tracker, testTimeoutChan <-chan stru
 			// we have an error, fake or not we should return
 			return err
 		}
-		if t.isCrashed() {
+		if t.managedCrashed() {
 			return nil
 		}
 
@@ -229,7 +229,7 @@ func performUpdates(rcLocal *refCounter, t *tracker, testTimeoutChan <-chan stru
 // performUpdateOperations executes a randomised set of updates within an
 // update session.
 func performUpdateOperations(rc *refCounter, t *tracker) (err error) {
-	err = rc.startUpdateWithTimeout(100 * time.Millisecond)
+	err = rc.managedStartUpdateWithTimeout(100 * time.Millisecond)
 	if err != nil {
 		// don't fail the test on a timeout on the lock
 		if errors.Contains(err, errTimeoutOnLock) {
