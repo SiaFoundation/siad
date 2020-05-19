@@ -41,8 +41,8 @@ type (
 		// greater backoff on fetching the price table.
 		staticConsecutiveFailures uint64
 
-		// staticRecentErr specifies the most recent error that the price table
-		// update has failed with.
+		// staticRecentErr specifies the most recent error that the worker's
+		// price table update has failed with.
 		staticRecentErr error
 	}
 )
@@ -96,8 +96,15 @@ func (w *worker) staticUpdatePriceTable() {
 	updateTime := w.staticPriceTable().staticUpdateTime
 	currentTime := time.Now()
 	if currentTime.Before(updateTime) {
-		build.Critical("price table is being updated prematurely")
+		w.renter.log.Critical("price table is being updated prematurely")
 	}
+	// Sanity check - only one price table update should be running at a time.
+	// If multiple are running at a time, there can be a race condition around
+	// 'staticConsecutiveFailures'.
+	if !atomic.CompareAndSwapUint64(&w.atomicPriceTableUpdateRunning, 0, 1) {
+		w.renter.log.Critical("price table is being updated in two threads concurrently")
+	}
+	defer atomic.StoreUint64(&w.atomicPriceTableUpdateRunning, 0)
 
 	// Create a goroutine to wake the worker when the time has come to check the
 	// price table again. Make sure to grab the update time inside of the defer
