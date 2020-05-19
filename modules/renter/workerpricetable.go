@@ -102,12 +102,11 @@ func (w *worker) staticUpdatePriceTable() {
 	// Create a goroutine to wake the worker when the time has come to check the
 	// price table again. Be careful when handling potential underflows.
 	defer func() {
-		go func() {
-			updateTime := w.staticPriceTable().staticUpdateTime
-			currentTime := time.Now()
+		updateTime := w.staticPriceTable().staticUpdateTime
+		w.renter.tg.AfterFunc(updateTime.Sub(time.Now()), func() {
 			time.Sleep(updateTime.Sub(currentTime))
 			w.staticWake()
-		}()
+		})
 	}()
 
 	// All remaining errors represent short term issues with the host, so the
