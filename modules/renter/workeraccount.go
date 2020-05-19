@@ -326,6 +326,19 @@ func (w *worker) managedRefillAccount() {
 	err = modules.RPCRead(stream, &resp)
 	err = errors.AddContext(err, "could not read the account response")
 
+	// TODO: We need to parse the response and check for an error, such as
+	// MaxBalanceExceeded. In the specific case of MaxBalanceExceeded, we need
+	// to do a balance inquiry and check that the balance is actually high
+	// enough.
+	//
+	// If we are stuck, and the host won't let us get to a good balance level,
+	// we need to go on cooldown, this worker is no good. That will happen as
+	// long as we return an error.
+	//
+	// If we are not stuck, and we have enough balance, we can set the error to
+	// nil (to prevent entering cooldown) even though it technically failed,
+	// because the failure does not indicate problem.
+
 	// Wake the worker so that any jobs potentially blocking on getting more
 	// money in the account can be activated.
 	w.staticWake()
