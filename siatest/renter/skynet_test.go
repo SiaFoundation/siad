@@ -1982,7 +1982,7 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// The renter should be initialized with 0 skykeys.
-	skykeys, err := r.SkykeyGetAllSkykeys()
+	skykeys, err := r.SkykeyGetSkykeys()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1997,7 +1997,7 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Check that the newly created skykey shows up.
-	skykeys, err = r.SkykeyGetAllSkykeys()
+	skykeys, err = r.SkykeyGetSkykeys()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2071,9 +2071,13 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Expected same Skykey string")
 	}
 
+	// Create a set with the strings of every skykey in the test.
+	skykeySet := make(map[string]struct{})
+	skykeySet[testSkykeyString] = struct{}{}
+	skykeySet[sk2Str] = struct{}{}
+
 	// Create a bunch of skykeys and check that they all get returned.
 	nKeys := 10
-	skykeySet := make(map[string]struct{})
 	for i := 0; i < nKeys; i++ {
 		nextSk, err := r.SkykeyCreateKeyPost(fmt.Sprintf("anotherkey-%d", i), crypto.TypeXChaCha20)
 		if err != nil {
@@ -2085,13 +2089,9 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 		}
 		skykeySet[nextSkStr] = struct{}{}
 	}
-	if len(skykeySet) != nKeys {
-		t.Log(skykeySet)
-		t.Fatal("Expected more keys in set")
-	}
 
 	// Check that the expected number of keys was created.
-	skykeys, err = r.SkykeyGetAllSkykeys()
+	skykeys, err = r.SkykeyGetSkykeys()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2101,20 +2101,13 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Check that getting all the keys returns all the keys we just created.
-	for skStr := range skykeySet {
-		foundKey := false
-		for _, skFromList := range skykeys {
-			skStrFromList, err := skFromList.ToString()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if skStrFromList == skStr {
-				foundKey = true
-				break
-			}
+	for _, skFromList := range skykeys {
+		skStrFromList, err := skFromList.ToString()
+		if err != nil {
+			t.Fatal(err)
 		}
-		if !foundKey {
-			t.Log(skStr, skykeys)
+		if _, ok := skykeySet[skStrFromList]; !ok {
+			t.Log(skStrFromList, skykeys)
 			t.Fatal("Didn't find key")
 		}
 	}

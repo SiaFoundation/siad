@@ -984,8 +984,8 @@ type Renter interface {
 	// exists.
 	SkykeyIDByName(string) (skykey.SkykeyID, error)
 
-	// AllSkykeys returns a slice containing each Skykey being stored by the renter.
-	AllSkykeys() ([]skykey.Skykey, error)
+	// Skykeys returns a slice containing each Skykey being stored by the renter.
+	Skykeys() ([]skykey.Skykey, error)
 
 	// CreateSkylinkFromSiafile will create a skylink from a siafile. This will
 	// result in some uploading - the base sector skyfile needs to be uploaded

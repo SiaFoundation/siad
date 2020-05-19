@@ -1052,10 +1052,9 @@ func (api *API) skykeyAddKeyHandlerPOST(w http.ResponseWriter, req *http.Request
 	WriteSuccess(w)
 }
 
-// skykeyHandlerGET handles the API call to get a Skykey and its ID using its
-// name or ID.
-func (api *API) allSkykeysHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	skykeys, err := api.renter.AllSkykeys()
+// skykeysHandlerGET handles the API call to get all of the renter's skykeys.
+func (api *API) skykeysHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	skykeys, err := api.renter.Skykeys()
 	if err != nil {
 		WriteError(w, Error{"Unable to get skykeys: " + err.Error()}, http.StatusInternalServerError)
 		return

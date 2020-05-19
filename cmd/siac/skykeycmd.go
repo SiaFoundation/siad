@@ -53,7 +53,7 @@ var (
 	skykeyListCmd = &cobra.Command{
 		Use:   "ls",
 		Short: "List all skykeys",
-		Long:  "List all skykeys. Use with --show-priv-keys to show full ecncoding with private key also.",
+		Long:  "List all skykeys. Use with --show-priv-keys to show full encoding with private key also.",
 		Run:   wrap(skykeylistcmd),
 	}
 )
@@ -172,6 +172,8 @@ func skykeygetidcmd(skykeyName string) {
 	fmt.Printf("Found skykey ID: %v\n", sk.ID().ToString())
 }
 
+//skykeylistcmd is a wrapper for skykeyListKeys that prints a list of all
+//skykeys.
 func skykeylistcmd() {
 	skykeysString, err := skykeyListKeys(httpClient, skykeyShowPrivateKeys)
 	if err != nil {
@@ -180,8 +182,11 @@ func skykeylistcmd() {
 	fmt.Print(skykeysString)
 }
 
+// skykeyListKeys returns a formatted string containing a list of all skykeys
+// being stored by the renter. It includes IDs, Names, and if showPrivateKeys is
+// set to true it will include the full encoded skykey.
 func skykeyListKeys(c client.Client, showPrivateKeys bool) (string, error) {
-	skykeys, err := c.SkykeyGetAllSkykeys()
+	skykeys, err := c.SkykeyGetSkykeys()
 	if err != nil {
 		return "", err
 	}

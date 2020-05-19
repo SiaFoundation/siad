@@ -336,8 +336,8 @@ func (sm *SkykeyManager) KeyByID(id SkykeyID) (Skykey, error) {
 	return key, nil
 }
 
-// AllSkykeys returns a slice containing each Skykey being stored.
-func (sm *SkykeyManager) AllSkykeys() []Skykey {
+// Skykeys returns a slice containing each Skykey being stored.
+func (sm *SkykeyManager) Skykeys() []Skykey {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 

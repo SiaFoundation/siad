@@ -126,7 +126,7 @@ func TestSkykeyCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	keyIDs[0] = sk.ID().ToString()
+	keyIDs[1] = sk.ID().ToString()
 
 	keyListString, err := skykeyListKeys(n.Client, true)
 	if err != nil {
@@ -149,7 +149,7 @@ func TestSkykeyCommands(t *testing.T) {
 	keyList := strings.Split(keyListString, "\n")
 	if len(keyList) != nKeys+nExtraLines {
 		t.Log(keyListString)
-		t.Fatal("Unpected number of lines/keys", len(keyList), nKeys+nExtraLines)
+		t.Fatalf("Unexpected number of lines/keys %d, Expected %d", len(keyList), nKeys+nExtraLines)
 	}
 
 	// Make sure key data isn't shown but otherwise the same checks pass.

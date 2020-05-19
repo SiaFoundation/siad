@@ -858,14 +858,14 @@ func (r *Renter) SkykeyIDByName(name string) (skykey.SkykeyID, error) {
 	return r.staticSkykeyManager.IDByName(name)
 }
 
-// AllSkykeys returns a slice containing each Skykey being stored by the renter.
-func (r *Renter) AllSkykeys() ([]skykey.Skykey, error) {
+// Skykeys returns a slice containing each Skykey being stored by the renter.
+func (r *Renter) Skykeys() ([]skykey.Skykey, error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, err
 	}
 	defer r.tg.Done()
 
-	return r.staticSkykeyManager.AllSkykeys(), nil
+	return r.staticSkykeyManager.Skykeys(), nil
 }
 
 // Enforce that Renter satisfies the modules.Renter interface.
