@@ -237,7 +237,7 @@ func (r *Renter) Close() error {
 		return nil
 	}
 
-	return errors.Compose(r.tg.Stop(), r.hostDB.Close(), r.hostContractor.Close())
+	return errors.Compose(r.tg.Stop(), r.hostDB.Close(), r.hostContractor.Close(), r.staticSkynetBlacklist.Close(), r.staticSkynetPortals.Close())
 }
 
 // PriceEstimation estimates the cost in siacoins of performing various storage
