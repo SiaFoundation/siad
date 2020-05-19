@@ -432,7 +432,7 @@ func (r *Renter) UpdateSkynetBlacklist(additions, removals []modules.Skylink) er
 		return err
 	}
 	defer r.tg.Done()
-	return r.staticSkynetBlacklist.UpdateSkynetBlacklist(additions, removals)
+	return r.staticSkynetBlacklist.UpdateBlacklist(additions, removals)
 }
 
 // Portals returns the list of known skynet portals.
@@ -452,7 +452,7 @@ func (r *Renter) UpdateSkynetPortals(additions []modules.SkynetPortal, removals 
 		return err
 	}
 	defer r.tg.Done()
-	return r.staticSkynetPortals.UpdateSkynetPortals(additions, removals)
+	return r.staticSkynetPortals.UpdatePortals(additions, removals)
 }
 
 // uploadSkyfileReadLeadingChunk will read the leading chunk of a skyfile. If

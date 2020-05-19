@@ -35,7 +35,7 @@ func TestFilePercentageBreakdown(t *testing.T) {
 		dir:   dir,
 		files: files,
 	}
-	fh, g75, g50, g25, g0, ur, err := filePercentageBreakdown(dirs)
+	percentages, err := filePercentageBreakdown(dirs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,28 +50,28 @@ func TestFilePercentageBreakdown(t *testing.T) {
 
 	// Check values
 	expected := float64(100) * float64(1) / float64(7)
-	if err := checkValue(expected, fh); err != nil {
+	if err := checkValue(expected, percentages[0]); err != nil {
 		t.Log("Full Health")
 		t.Error(err)
 	}
-	if err := checkValue(expected, g75); err != nil {
+	if err := checkValue(expected, percentages[1]); err != nil {
 		t.Log("Greater than 75")
 		t.Error(err)
 	}
-	if err := checkValue(expected, g50); err != nil {
+	if err := checkValue(expected, percentages[2]); err != nil {
 		t.Log("Greater than 50")
 		t.Error(err)
 	}
-	if err := checkValue(expected, g25); err != nil {
+	if err := checkValue(expected, percentages[3]); err != nil {
 		t.Log("Greater than 25")
 		t.Error(err)
 	}
-	if err := checkValue(expected, ur); err != nil {
+	if err := checkValue(expected, percentages[5]); err != nil {
 		t.Log("Unrecoverable")
 		t.Error(err)
 	}
 	expected = float64(100) * float64(2) / float64(7)
-	if err := checkValue(expected, g0); err != nil {
+	if err := checkValue(expected, percentages[4]); err != nil {
 		t.Log("Greater than 0")
 		t.Error(err)
 	}

@@ -71,6 +71,7 @@ func NewFromLegacyData(fd FileData, siaFilePath string, wal *writeaheadlog.WAL) 
 		},
 		deps:        modules.ProdDependencies,
 		deleted:     fd.Deleted,
+		numChunks:   len(fd.Chunks),
 		siaFilePath: siaFilePath,
 		wal:         wal,
 	}

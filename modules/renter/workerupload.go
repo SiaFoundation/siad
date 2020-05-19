@@ -124,7 +124,7 @@ func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) bool {
 	_, candidateHost := uc.unusedHosts[w.staticHostPubKeyStr]
 	uc.mu.Unlock()
 	w.mu.Lock()
-	goodForUpload := w.cachedContractUtility.GoodForUpload
+	goodForUpload := w.staticCache().staticContractUtility.GoodForUpload
 	onCooldown, _ := w.onUploadCooldown()
 	uploadTerminated := w.uploadTerminated
 	if !goodForUpload || uploadTerminated || onCooldown || !candidateHost {
@@ -251,8 +251,8 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 	// Determine the usability value of this worker.
 	w.mu.Lock()
 	onCooldown, _ := w.onUploadCooldown()
-	goodForUpload := w.cachedContractUtility.GoodForUpload
 	w.mu.Unlock()
+	goodForUpload := w.staticCache().staticContractUtility.GoodForUpload
 
 	// Determine what sort of help this chunk needs.
 	uc.mu.Lock()

@@ -1,1 +1,0 @@
-- The `AggregateNumSubDirs` count was fixed as it was always 0. This is a piece of metadata keeping track of the number of all subdirs of a directory, counted recursively.

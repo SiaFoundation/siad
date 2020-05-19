@@ -23,7 +23,7 @@ const (
 )
 
 // NewSiaMux returns a new SiaMux object
-func NewSiaMux(siaMuxDir, siaDir, address string) (*siamux.SiaMux, error) {
+func NewSiaMux(siaMuxDir, siaDir, tcpaddress, wsaddress string) (*siamux.SiaMux, error) {
 	// can't use relative path
 	if !filepath.IsAbs(siaMuxDir) || !filepath.IsAbs(siaDir) {
 		err := errors.New("paths need to be absolute")
@@ -53,9 +53,9 @@ func NewSiaMux(siaMuxDir, siaDir, address string) (*siamux.SiaMux, error) {
 	// recycle the host's key pair to use in the siamux
 	pubKey, privKey, compat := compatLoadKeysFromHost(siaDir)
 	if compat {
-		return siamux.CompatV1421NewWithKeyPair(address, logger, siaMuxDir, privKey, pubKey)
+		return siamux.CompatV1421NewWithKeyPair(tcpaddress, wsaddress, logger, siaMuxDir, privKey, pubKey)
 	}
-	return siamux.New(address, logger, siaMuxDir)
+	return siamux.New(tcpaddress, wsaddress, logger, siaMuxDir)
 }
 
 // NewHostStream is a helper function that opens a stream on the given mux  to

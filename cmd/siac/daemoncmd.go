@@ -70,30 +70,40 @@ func alertscmd() {
 		fmt.Println("There are no alerts registered.")
 		return
 	}
-	if len(al.Alerts) == numCriticalAlerts {
+	if len(al.Alerts) == len(al.CriticalAlerts) {
 		// Return since critical alerts are already displayed
 		return
 	}
-	fmt.Printf("\n  There are %v non Critical alerts\n", len(al.Alerts)-numCriticalAlerts)
-	alertCount := 0
-	for sev := 2; sev > 0; sev-- { // print the alerts in order of warning, error
-		for _, a := range al.Alerts {
-			if a.Severity == modules.AlertSeverity(sev) {
-				if alertCount > 1000 {
-					fmt.Println("Only the first 1000 alerts are displayed in siac")
-					return
-				}
-				alertCount++
-				fmt.Printf(`
-------------------
-  Module:   %s
-  Severity: %s
-  Message:  %s
-  Cause:    %s`, a.Module, a.Severity.String(), a.Msg, a.Cause)
-			}
-		}
+
+	// Print Error alerts
+	const maxAlerts = 1000
+	remainingAlerts := maxAlerts - len(al.CriticalAlerts)
+	if remainingAlerts <= 0 {
+		fmt.Println("Only first", maxAlerts, "alerts printed")
+		return
 	}
-	fmt.Printf("\n------------------\n\n")
+	alertsToPrint := remainingAlerts
+	if alertsToPrint > len(al.ErrorAlerts) {
+		alertsToPrint = len(al.ErrorAlerts)
+	}
+	printAlerts(al.ErrorAlerts[:alertsToPrint], modules.SeverityError)
+
+	// Print Warning alerts
+	remainingAlerts -= len(al.ErrorAlerts)
+	if remainingAlerts <= 0 {
+		fmt.Println("Only first", maxAlerts, "alerts printed")
+		return
+	}
+	alertsToPrint = remainingAlerts
+	if alertsToPrint > len(al.WarningAlerts) {
+		alertsToPrint = len(al.WarningAlerts)
+	}
+	printAlerts(al.WarningAlerts[:alertsToPrint], modules.SeverityWarning)
+
+	// Print max alerts message
+	if len(al.CriticalAlerts)+len(al.ErrorAlerts)+len(al.WarningAlerts) > maxAlerts {
+		fmt.Println("Only first", maxAlerts, "alerts printed")
+	}
 }
 
 // version prints the version of siac and siad.
@@ -183,4 +193,19 @@ func globalratelimitcmd(downloadSpeedStr, uploadSpeedStr string) {
 		die("Could not set global ratelimit speed:", err)
 	}
 	fmt.Println("Set global maxdownloadspeed to ", downloadSpeedInt, " and maxuploadspeed to ", uploadSpeedInt)
+}
+
+// printAlerts is a helper function to print details of a slice of alerts
+// with given severity description to command line
+func printAlerts(alerts []modules.Alert, as modules.AlertSeverity) {
+	fmt.Printf("\n  There are %v %s alerts\n", len(alerts), as.String())
+	for _, a := range alerts {
+		fmt.Printf(`
+------------------
+  Module:   %s
+  Severity: %s
+  Message:  %s
+  Cause:    %s`, a.Module, a.Severity.String(), a.Msg, a.Cause)
+	}
+	fmt.Printf("\n------------------\n\n")
 }
