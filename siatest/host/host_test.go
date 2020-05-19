@@ -346,15 +346,19 @@ func TestHostContracts(t *testing.T) {
 		t.Fatal("contract should have 1 sector uploaded")
 	}
 
-	if hc.Contracts[0].RevisionNumber != 2 {
-		t.Fatal("contract should have 1 revision from upload")
+	if hc.Contracts[0].RevisionNumber != 2+uint64(gp.Hosts) {
+		t.Fatal("contract should have 1 revision from upload, and 1 revision per host from funding an ephemeral account")
 	}
 
-	if hc.Contracts[0].PotentialUploadRevenue.Cmp64(0) != 1 {
+	if hc.Contracts[0].PotentialAccountFunding.IsZero() {
 		t.Fatal("contract should have upload revenue")
 	}
 
-	if hc.Contracts[0].PotentialStorageRevenue.Cmp64(0) != 1 {
+	if hc.Contracts[0].PotentialUploadRevenue.IsZero() {
+		t.Fatal("contract should have upload revenue")
+	}
+
+	if hc.Contracts[0].PotentialStorageRevenue.IsZero() {
 		t.Fatal("contract should have storage revenue")
 	}
 
