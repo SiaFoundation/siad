@@ -14,11 +14,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/skykey"
 )
 
-var (
-	testSkykeyString = "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
-	testSkykeyClient client.Client
-)
-
 // TestSkykeyCommands tests the basic functionality of the siac skykey commands
 // interface. More detailed testing of the skykey manager is done in the skykey
 // package.
@@ -27,25 +22,41 @@ func TestSkykeyCommands(t *testing.T) {
 		t.SkipNow()
 	}
 
+	// Create a test node/client for this test group
 	n := newTestNode(t)
 	defer func() {
 		if err := n.Close(); err != nil {
 			t.Fatal(err)
 		}
 	}()
-	testSkykeyClient = n.Client
 
 	// Set the (global) cipher type to the only allowed type.
 	// This is normally done by the flag parser.
 	skykeyCipherType = "XChaCha20"
 
-	t.Run("TestDuplicateSkykeyAdd", testDuplicateSkykeyAdd)
-	t.Run("TestChangeKeyEntropyKeepName", testChangeKeyEntropyKeepName)
-	t.Run("TestAddKeyTwice", testAddKeyTwice)
-	t.Run("TestInvalidCipherType", testInvalidCipherType)
-	t.Run("TestSkykeyGet", testSkykeyGet)
-	t.Run("TestSkykeyGetUsingNameAndID", testSkykeyGetUsingNameAndID)
-	t.Run("TestSkykeyGetUsingNoNameAndNoID", testSkykeyGetUsingNoNameAndNoID)
+	// Set test parameters for this test group
+	params := skykeycmdTestParams{
+		skykeyString: "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a",
+		client:       n.Client,
+	}
+
+	// Define subtests
+	subTests := []skykeycmdSubTest{
+		{Name: "TestDuplicateSkykeyAdd", Test: testDuplicateSkykeyAdd},
+		{Name: "TestChangeKeyEntropyKeepName", Test: testChangeKeyEntropyKeepName},
+		{Name: "TestAddKeyTwice", Test: testAddKeyTwice},
+		{Name: "TestInvalidCipherType", Test: testInvalidCipherType},
+		{Name: "TestSkykeyGet", Test: testSkykeyGet},
+		{Name: "TestSkykeyGetUsingNameAndID", Test: testSkykeyGetUsingNameAndID},
+		{Name: "TestSkykeyGetUsingNoNameAndNoID", Test: testSkykeyGetUsingNoNameAndNoID},
+	}
+
+	// Execute subtests
+	for _, test := range subTests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.Test(t, params)
+		})
+	}
 }
 
 // newTestNode creates a new Sia node for a test
@@ -59,13 +70,13 @@ func newTestNode(t *testing.T) *siatest.TestNode {
 
 // testDuplicateSkykeyAdd tests that adding with duplicate Skykey will return
 // duplicate name error.
-func testDuplicateSkykeyAdd(t *testing.T) {
-	err := skykeyAdd(testSkykeyClient, testSkykeyString)
+func testDuplicateSkykeyAdd(t *testing.T, p skykeycmdTestParams) {
+	err := skykeyAdd(p.client, p.skykeyString)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = skykeyAdd(testSkykeyClient, testSkykeyString)
+	err = skykeyAdd(p.client, p.skykeyString)
 	if !strings.Contains(err.Error(), skykey.ErrSkykeyWithIDAlreadyExists.Error()) {
 		t.Fatal("Expected duplicate name error but got", err)
 	}
@@ -73,10 +84,10 @@ func testDuplicateSkykeyAdd(t *testing.T) {
 
 // testChangeKeyEntropyKeepName tests that adding with changed entropy but the
 // same Skykey will return duplicate name error.
-func testChangeKeyEntropyKeepName(t *testing.T) {
+func testChangeKeyEntropyKeepName(t *testing.T, p skykeycmdTestParams) {
 	// Change the key entropy, but keep the same name.
 	var sk skykey.Skykey
-	err := sk.FromString(testSkykeyString)
+	err := sk.FromString(p.skykeyString)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +99,7 @@ func testChangeKeyEntropyKeepName(t *testing.T) {
 	}
 
 	// This should return a duplicate name error.
-	err = skykeyAdd(testSkykeyClient, skString)
+	err = skykeyAdd(p.client, skString)
 	if !strings.Contains(err.Error(), skykey.ErrSkykeyWithNameAlreadyExists.Error()) {
 		t.Fatal("Expected duplicate name error but got", err)
 	}
@@ -96,27 +107,27 @@ func testChangeKeyEntropyKeepName(t *testing.T) {
 
 // testAddKeyTwice tests that creating a Skykey with the same key name twice
 // returns duplicate name error.
-func testAddKeyTwice(t *testing.T) {
+func testAddKeyTwice(t *testing.T, p skykeycmdTestParams) {
 	// Check that adding same key twice returns an error.
 	keyName := "createkey1"
-	_, err := skykeyCreate(testSkykeyClient, keyName)
+	_, err := skykeyCreate(p.client, keyName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = skykeyCreate(testSkykeyClient, keyName)
+	_, err = skykeyCreate(p.client, keyName)
 	if !strings.Contains(err.Error(), skykey.ErrSkykeyWithNameAlreadyExists.Error()) {
 		t.Fatal("Expected error when creating key with same name")
 	}
 }
 
 // testInvalidCipherType tests that invalid cipher types are caught.
-func testInvalidCipherType(t *testing.T) {
+func testInvalidCipherType(t *testing.T, p skykeycmdTestParams) {
 	// Note: When this test is executed in parallel, skykeyCreate() should be
 	// refactored not to use global skykeyCipherType, but a local cipher type
 	// parameter.
 	oldSkykeyCipherType := skykeyCipherType
 	skykeyCipherType = "InvalidCipherType"
-	_, err := skykeyCreate(testSkykeyClient, "createkey2")
+	_, err := skykeyCreate(p.client, "createkey2")
 	if !errors.Contains(err, crypto.ErrInvalidCipherType) {
 		t.Fatal("Expected error when creating key with invalid ciphertype")
 	}
@@ -124,13 +135,13 @@ func testInvalidCipherType(t *testing.T) {
 }
 
 // testSkykeyGet tests skykeyGet with known key should not return any errors.
-func testSkykeyGet(t *testing.T) {
+func testSkykeyGet(t *testing.T, p skykeycmdTestParams) {
 	keyName := "createkey testSkykeyGet"
-	newSkykey, err := skykeyCreate(testSkykeyClient, keyName)
+	newSkykey, err := skykeyCreate(p.client, keyName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	getKeyStr, err := skykeyGet(testSkykeyClient, keyName, "")
+	getKeyStr, err := skykeyGet(p.client, keyName, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,8 +152,8 @@ func testSkykeyGet(t *testing.T) {
 
 // testSkykeyGetUsingNameAndID tests using both name and id params should return an
 // error.
-func testSkykeyGetUsingNameAndID(t *testing.T) {
-	_, err := skykeyGet(testSkykeyClient, "name", "id")
+func testSkykeyGetUsingNameAndID(t *testing.T, p skykeycmdTestParams) {
+	_, err := skykeyGet(p.client, "name", "id")
 	if err == nil {
 		t.Fatal("Expected error when using both name and id")
 	}
@@ -150,9 +161,23 @@ func testSkykeyGetUsingNameAndID(t *testing.T) {
 
 // testSkykeyGetUsingNoNameAndNoID test using neither name or id param should return an
 // error.
-func testSkykeyGetUsingNoNameAndNoID(t *testing.T) {
-	_, err := skykeyGet(testSkykeyClient, "", "")
+func testSkykeyGetUsingNoNameAndNoID(t *testing.T, p skykeycmdTestParams) {
+	_, err := skykeyGet(p.client, "", "")
 	if err == nil {
 		t.Fatal("Expected error when using neither name or id params")
 	}
+}
+
+// skykeycmdSubTest is a local helper struct for running skykeycmd subtests
+// so they can use the same skykeycmd test params
+type skykeycmdSubTest struct {
+	Name string
+	Test func(*testing.T, skykeycmdTestParams)
+}
+
+// skykeycmdTestParams is a local helper struct to define common test
+// parameters for skykeycmd sub tests
+type skykeycmdTestParams struct {
+	skykeyString string
+	client       client.Client
 }
