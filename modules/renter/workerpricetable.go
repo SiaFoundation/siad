@@ -94,8 +94,7 @@ func (w *worker) staticUpdatePriceTable() {
 	// control loop should not have called this function unless the price table
 	// is after its updateTime.
 	updateTime := w.staticPriceTable().staticUpdateTime
-	currentTime := time.Now()
-	if currentTime.Before(updateTime) {
+	if time.Now().Before(updateTime) {
 		w.renter.log.Critical("price table is being updated prematurely")
 	}
 	// Sanity check - only one price table update should be running at a time.
@@ -114,7 +113,6 @@ func (w *worker) staticUpdatePriceTable() {
 	defer func() {
 		updateTime := w.staticPriceTable().staticUpdateTime
 		w.renter.tg.AfterFunc(updateTime.Sub(time.Now()), func() {
-			time.Sleep(updateTime.Sub(currentTime))
 			w.staticWake()
 		})
 	}()
