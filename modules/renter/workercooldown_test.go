@@ -46,7 +46,7 @@ func TestCooldownUntil(t *testing.T) {
 		maxCooldown *= 2
 	}
 
-	// Run the same statisitcal tests, now when having more than the max number
+	// Run the same statistical tests, now when having more than the max number
 	// of consecutive failures. This function notably stops increasing the max
 	// cooldown.
 	for i := uint64(cooldownMaxConsecutiveFailures); i < cooldownMaxConsecutiveFailures*2; i++ {
