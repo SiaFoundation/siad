@@ -15,12 +15,11 @@ type Logger struct {
 var (
 	// options contains log options with Sia- and build-specific information.
 	options = log.Options{
-		BinaryName:      "Sia",
-		BugReportURL:    build.IssuesURL,
-		Debug:           build.Release == "testing",
-		PanicOnCritical: build.DEBUG,
-		Release:         build.Release,
-		Version:         build.Version,
+		BinaryName:   "Sia",
+		BugReportURL: build.IssuesURL,
+		Debug:        build.DEBUG,
+		Release:      build.Release,
+		Version:      build.Version,
 	}
 )
 
