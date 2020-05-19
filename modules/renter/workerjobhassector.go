@@ -36,7 +36,7 @@ type (
 		jobs   []jobHasSector
 
 		// Cooldown variables.
-		cooldownUntil time.Time
+		cooldownUntil       time.Time
 		consecutiveFailures uint64
 
 		// These variables contain an exponential weighted average of the

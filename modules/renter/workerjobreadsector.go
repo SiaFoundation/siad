@@ -43,7 +43,7 @@ type (
 		jobs   []jobReadSector
 
 		// Cooldown variables.
-		cooldownUntil time.Time
+		cooldownUntil       time.Time
 		consecutiveFailures uint64
 
 		// These float64s are converted time.Duration values. They are float64
@@ -207,7 +207,7 @@ func (jq *jobReadSectorQueue) callNext() (func(), uint64, uint64) {
 			jq.weightedJobsCompleted64k *= jobReadSectorPerformanceDecay
 			jq.weightedJobTime64k += float64(jobTime)
 			jq.weightedJobsCompleted64k++
-		} else if job.length < 1 << 20 {
+		} else if job.length < 1<<20 {
 			jq.weightedJobTime1m *= jobReadSectorPerformanceDecay
 			jq.weightedJobsCompleted1m *= jobReadSectorPerformanceDecay
 			jq.weightedJobTime1m += float64(jobTime)
