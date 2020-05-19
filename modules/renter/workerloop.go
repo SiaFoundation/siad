@@ -194,7 +194,6 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		return false
 	}
 
-	/* - will be added in a separate MR.
 	// Check every potential async job that can be launched.
 	if w.externLaunchAsyncJob(w.staticJobHasSectorQueue.callNext) {
 		return true
@@ -202,7 +201,6 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	if w.externLaunchAsyncJob(w.staticJobReadSectorQueue.callNext) {
 		return true
 	}
-	*/
 	return false
 }
 
@@ -238,10 +236,8 @@ func (w *worker) managedBlockUntilReady() bool {
 // managedDumpAsyncJobs will drop all of the worker's async jobs because the
 // worker has not met sufficient conditions to retain async jobs.
 func (w *worker) managedDumpAsyncJobs() {
-	/* - will be enabled when the full async job suite is implemented.
 	w.managedDumpJobsHasSector()
 	w.managedDumpJobsReadSector()
-	*/
 }
 
 // threadedWorkLoop is a perpetual loop run by the worker that accepts new jobs
@@ -255,10 +251,8 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillDownloading()
 	defer w.managedKillFetchBackupsJobs()
 	defer w.managedKillJobsDownloadByRoot()
-	/* - will be enabled when the full async job suite is implemented
 	defer w.managedKillJobsHasSector()
 	defer w.managedKillJobsReadSector()
-	*/
 	defer w.managedKillJobsDownloadByRoot()
 
 	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) >= 0 {
