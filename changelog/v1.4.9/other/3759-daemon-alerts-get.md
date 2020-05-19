@@ -1,0 +1,1 @@
+- Extend `/daemon/alerts` with `criticalalerts`, `erroralerts` and `warningalerts` fields along with `alerts`.
