@@ -27,7 +27,7 @@ var updateTimeInterval = build.Select(build.Var{
 
 type (
 	// workerPriceTable contains a price table and some information related to
-	// retrieveing the next update.
+	// retrieving the next update.
 	workerPriceTable struct {
 		// The actual price table.
 		staticPriceTable modules.RPCPriceTable
