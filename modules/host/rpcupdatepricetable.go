@@ -32,6 +32,10 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	// rpcPriceGuaranteePeriod
 	pt.Expiry = time.Now().Add(rpcPriceGuaranteePeriod).Unix()
 
+	// set the host's current blockheight, this allows the renter to create
+	// valid withdrawal messages in case it is not synced yet
+	pt.HostBlockHeight = h.BlockHeight()
+
 	// json encode the price table
 	ptBytes, err := json.Marshal(pt)
 	if err != nil {
