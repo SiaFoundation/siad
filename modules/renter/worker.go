@@ -183,7 +183,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		renter:   r,
 	}
 	w.newPriceTable()
-	// Get the worker cache set up before returning the worker. This prvents a
+	// Get the worker cache set up before returning the worker. This prevents a
 	// race condition in some tests.
 	if !w.staticTryUpdateCache() {
 		return nil, errors.New("unable to build cache for worker")

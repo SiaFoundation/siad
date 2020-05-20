@@ -337,7 +337,7 @@ func (w *worker) managedRefillAccount() {
 	//
 	// If we are not stuck, and we have enough balance, we can set the error to
 	// nil (to prevent entering cooldown) even though it technically failed,
-	// because the failure does not indicate problem.
+	// because the failure does not indicate a problem.
 
 	// Wake the worker so that any jobs potentially blocking on getting more
 	// money in the account can be activated.
