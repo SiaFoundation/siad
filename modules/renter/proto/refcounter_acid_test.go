@@ -306,7 +306,7 @@ func performUpdateOperations(rc *refCounter, tr *tracker) (err error) {
 	// 20% chance to drop up to 2 sectors
 	if fastrand.Intn(100) < 20 {
 		secNum := fastrand.Uint64n(3)
-		// check if the operation is valid - we won'tr gain anything
+		// check if the operation is valid - we won't gain anything
 		// from running out of sectors
 		if errValidate := validateDropSectors(rc, secNum); errValidate == nil {
 			if u, err = rc.callDropSectors(secNum); err != nil {
