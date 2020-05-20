@@ -66,5 +66,4 @@ func (w *worker) managedLaunchJobDownloadByRoot() {
 	w.staticJobQueueDownloadByRoot.queue = w.staticJobQueueDownloadByRoot.queue[1:]
 	w.staticJobQueueDownloadByRoot.mu.Unlock()
 	jdbr.callPerformJobDownloadByRoot(w)
-	return
 }

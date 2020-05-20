@@ -135,8 +135,8 @@ func (w *worker) externLaunchAsyncJob(getJob getAsyncJob) bool {
 		job()
 		// Subtract the outstanding data now that the job is complete. Atomic
 		// subtraction works by adding and using some bit tricks.
-		atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, ^uint64(downloadBandwidth-1))
-		atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, ^uint64(uploadBandwidth-1))
+		atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, -downloadBandwidth)
+		atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, -uploadBandwidth)
 		// Wake the worker to run any additional async jobs that may have been
 		// blocked / ignored because there was not enough bandwidth available.
 		w.staticWake()
@@ -146,8 +146,8 @@ func (w *worker) externLaunchAsyncJob(getJob getAsyncJob) bool {
 		// Renter has closed, but we want to represent that the work was
 		// processed anyway - returning true indicates that the worker should
 		// continue processing jobs.
-		atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, ^uint64(downloadBandwidth-1))
-		atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, ^uint64(uploadBandwidth-1))
+		atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, -downloadBandwidth)
+		atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, -uploadBandwidth)
 		return true
 	}
 	return true
@@ -211,16 +211,6 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 // shut down before internet connectivity is restored. 'true' will be returned
 // if internet connectivity is successfully restored.
 func (w *worker) managedBlockUntilReady() bool {
-	// Check if the worker has received a kill signal, or if the renter has
-	// received a stop signal.
-	select {
-	case <-w.renter.tg.StopChan():
-		return false
-	case <-w.killChan:
-		return false
-	default:
-	}
-
 	// Check internet connectivity. If the worker does not have internet
 	// connectivity, block until connectivity is restored.
 	for !w.renter.g.Online() {
@@ -262,10 +252,11 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillJobsDownloadByRoot()
 
 	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) >= 0 {
-		// The worker cannot execute any async tasks unles the price table of the
-		// host is known, the balance of the worker account is known, and the
-		// account has sufficient funds in it. This update is done as a blocking
-		// update to ensure nothing else runs until the price table is available.
+		// The worker cannot execute any async tasks unless the price table of
+		// the host is known, the balance of the worker account is known, and
+		// the account has sufficient funds in it. This update is done as a
+		// blocking update to ensure nothing else runs until the price table is
+		// available.
 		w.staticUpdatePriceTable()
 		// TODO: Do a balance query on the host right here. Even if we had a clean
 		// shutdown and know the exact balance, we should still be asking the host

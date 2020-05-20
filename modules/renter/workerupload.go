@@ -150,8 +150,7 @@ func (w *worker) managedHasUploadJob() bool {
 	return len(w.unprocessedChunks) > 0
 }
 
-// managedPerformUploadChunkJob will perform some upload work and return 'false'
-// if there is no work to be done.
+// managedPerformUploadChunkJob will perform some upload work.
 func (w *worker) managedPerformUploadChunkJob() {
 	// Fetch any available chunk for uploading. If no chunk is found, return
 	// false.
@@ -242,7 +241,6 @@ func (w *worker) managedPerformUploadChunkJob() {
 	uc.mu.Unlock()
 	w.renter.memoryManager.Return(uint64(releaseSize))
 	w.renter.managedCleanUpUploadChunk(uc)
-	return
 }
 
 // onUploadCooldown returns true if the worker is on cooldown from failed
