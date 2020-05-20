@@ -246,7 +246,7 @@ func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64
 		return nil, err
 	}
 
-	// return the response
+	// Pull the sector data from the response.
 	var sectorData []byte
 	for _, resp := range responses {
 		if resp.Error != nil {
@@ -254,6 +254,10 @@ func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64
 		}
 		sectorData = resp.Output
 		break
+	}
+	// Check that we received the amount of data that we were expecting.
+	if uint64(len(sectorData)) != length {
+		return nil, errors.New("worker returned the wrong amount of data")
 	}
 	return sectorData, nil
 }
