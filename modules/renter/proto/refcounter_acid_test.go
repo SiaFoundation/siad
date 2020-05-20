@@ -231,7 +231,7 @@ func performUpdates(rcLocal *refCounter, tr *tracker, testTimeoutChan <-chan str
 func performUpdateOperations(rc *refCounter, tr *tracker) (err error) {
 	err = rc.managedStartUpdateWithTimeout(100 * time.Millisecond)
 	if err != nil {
-		// don'tr fail the test on a timeout on the lock
+		// don't fail the test on a timeout on the lock
 		if errors.Contains(err, errTimeoutOnLock) {
 			err = nil
 		}
