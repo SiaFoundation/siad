@@ -117,7 +117,9 @@ func (so *TestStorageObligation) Update(sectorRoots []crypto.Hash, sectorsRemove
 // for every operation/rpc.
 func newTestPriceTable() *modules.RPCPriceTable {
 	return &modules.RPCPriceTable{
-		Expiry:               time.Now().Add(time.Minute).Unix(),
+		Expiry:    time.Minute,
+		Timestamp: time.Now().Unix(),
+
 		UpdatePriceTableCost: types.NewCurrency64(1),
 		InitBaseCost:         types.NewCurrency64(1),
 		MemoryTimeCost:       types.NewCurrency64(1),

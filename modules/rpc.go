@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -17,9 +18,9 @@ type RPCPriceTable struct {
 	// UID is a specifier that uniquely identifies this price table
 	UID UniqueID `json:"uid"`
 
-	// Expiry is a unix timestamp that specifies the time until which the
-	// MDMCostTable is valid.
-	Expiry int64 `json:"expiry"`
+	// Expiry is a duration that specifies how long the host guarantees these
+	// prices for.
+	Expiry time.Duration `json:"expiry"`
 
 	// UpdatePriceTableCost refers to the cost of fetching a new price table
 	// from the host.
@@ -64,6 +65,12 @@ type RPCPriceTable struct {
 	WriteBaseCost   types.Currency `json:"writebasecost"`
 	WriteLengthCost types.Currency `json:"writelengthcost"`
 	WriteStoreCost  types.Currency `json:"writestorecost"`
+
+	// Timestamp is the time at which the price table was created. We need this,
+	// in combination with the Expiry property, to figure out when to expire the
+	// price table. Note we can not simply communicate an expiry time because
+	// the renter and host's clock are not guaranteed to be in sync.
+	Timestamp int64 `json:"timestamp"`
 }
 
 var (

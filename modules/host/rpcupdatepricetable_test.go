@@ -19,7 +19,8 @@ import (
 // TestPriceTableMarshaling tests a PriceTable can be marshaled and unmarshaled
 func TestPriceTableMarshaling(t *testing.T) {
 	pt := modules.RPCPriceTable{
-		Expiry:               time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
+		Expiry:               rpcPriceGuaranteePeriod,
+		Timestamp:            time.Now().Unix(),
 		UpdatePriceTableCost: types.SiacoinPrecision,
 		InitBaseCost:         types.SiacoinPrecision.Mul64(1e2),
 		MemoryTimeCost:       types.SiacoinPrecision.Mul64(1e3),
@@ -52,12 +53,23 @@ func TestPriceTableMinHeap(t *testing.T) {
 
 	now := time.Now()
 	pth := priceTableHeap{heap: make([]*modules.RPCPriceTable, 0)}
-
 	// add 4 price tables (out of order) that expire somewhere in the future
-	pt1 := modules.RPCPriceTable{Expiry: now.Add(9 * time.Minute).Unix()}
-	pt2 := modules.RPCPriceTable{Expiry: now.Add(-3 * time.Minute).Unix()}
-	pt3 := modules.RPCPriceTable{Expiry: now.Add(-6 * time.Minute).Unix()}
-	pt4 := modules.RPCPriceTable{Expiry: now.Add(-1 * time.Minute).Unix()}
+	pt1 := modules.RPCPriceTable{
+		Expiry:    rpcPriceGuaranteePeriod,
+		Timestamp: now.Add(9 * time.Second).Unix(),
+	}
+	pt2 := modules.RPCPriceTable{
+		Expiry:    rpcPriceGuaranteePeriod,
+		Timestamp: now.Add(-3 * time.Second).Unix(),
+	}
+	pt3 := modules.RPCPriceTable{
+		Expiry:    rpcPriceGuaranteePeriod,
+		Timestamp: now.Add(-6 * time.Second).Unix(),
+	}
+	pt4 := modules.RPCPriceTable{
+		Expiry:    rpcPriceGuaranteePeriod,
+		Timestamp: now.Add(-1 * time.Second).Unix(),
+	}
 	pth.Push(&pt1)
 	pth.Push(&pt2)
 	pth.Push(&pt3)
@@ -213,7 +225,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		t.Fatalf("Expected price table with.UID %v to be tracked after successful update", pt.UID)
 	}
 	// ensure its expiry is in the future
-	if pt.Expiry <= time.Now().Unix() {
+	if pt.Expiry.Seconds() <= 0 {
 		t.Fatal("Expected price table expiry to be in the future")
 	}
 

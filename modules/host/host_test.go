@@ -479,10 +479,10 @@ func (p *renterHostPair) managedFetchPriceTable() (*modules.RPCPriceTable, error
 	// fetch a new pricetable if it's about to expire, rather than the second it
 	// expires. This ensures calls performed immediately after
 	// `managedFetchPriceTable` is called are set to succeed.
-	var expiryBuffer int64 = 3
+	expiryBuffer := time.Duration(3 * time.Second)
 
 	pt := p.managedPriceTable()
-	if pt.Expiry <= time.Now().Unix()+expiryBuffer {
+	if time.Now().Add(expiryBuffer).After(time.Unix(pt.Timestamp, 0).Add(pt.Expiry)) {
 		err := p.managedUpdatePriceTable(true)
 		if err != nil {
 			return nil, err

@@ -64,7 +64,6 @@ package host
 // TODO: update_test.go has commented out tests.
 
 import (
-	"container/heap"
 	"errors"
 	"fmt"
 	"net"
@@ -277,61 +276,6 @@ type lockedObligation struct {
 	n  uint
 }
 
-// priceTableHeap is a helper type that contains a min heap of rpc price tables,
-// sorted on their expiry. The heap is guarded by its own mutex and allows for
-// peeking at the min expiry.
-type priceTableHeap struct {
-	heap rpcPriceTableHeap
-	mu   sync.Mutex
-}
-
-// PopExpired returns the UIDs for all rpc price tables that have expired
-func (pth *priceTableHeap) PopExpired() (expired []modules.UniqueID) {
-	pth.mu.Lock()
-	defer pth.mu.Unlock()
-
-	now := time.Now().Unix()
-	for {
-		if pth.heap.Len() == 0 {
-			return
-		}
-
-		pt := heap.Pop(&pth.heap)
-		if now < pt.(*modules.RPCPriceTable).Expiry {
-			heap.Push(&pth.heap, pt)
-			break
-		}
-		expired = append(expired, pt.(*modules.RPCPriceTable).UID)
-	}
-	return
-}
-
-// Push will add a price table to the heap.
-func (pth *priceTableHeap) Push(pt *modules.RPCPriceTable) {
-	pth.mu.Lock()
-	defer pth.mu.Unlock()
-	heap.Push(&pth.heap, pt)
-}
-
-// rpcPriceTableHeap is a min heap of rpc price tables
-type rpcPriceTableHeap []*modules.RPCPriceTable
-
-// Implementation of heap.Interface for rpcPriceTableHeap.
-func (pth rpcPriceTableHeap) Len() int           { return len(pth) }
-func (pth rpcPriceTableHeap) Less(i, j int) bool { return pth[i].Expiry < pth[j].Expiry }
-func (pth rpcPriceTableHeap) Swap(i, j int)      { pth[i], pth[j] = pth[j], pth[i] }
-func (pth *rpcPriceTableHeap) Push(x interface{}) {
-	pt := x.(*modules.RPCPriceTable)
-	*pth = append(*pth, pt)
-}
-func (pth *rpcPriceTableHeap) Pop() interface{} {
-	old := *pth
-	n := len(old)
-	pt := old[n-1]
-	*pth = old[0 : n-1]
-	return pt
-}
-
 // checkUnlockHash will check that the host has an unlock hash. If the host
 // does not have an unlock hash, an attempt will be made to get an unlock hash
 // from the wallet. That may fail due to the wallet being locked, in which case
@@ -379,8 +323,6 @@ func (h *Host) managedUpdatePriceTable() {
 	// create a new RPC price table and set the expiry
 	es := h.managedExternalSettings()
 	priceTable := modules.RPCPriceTable{
-		Expiry: time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
-
 		// TODO: hardcoded cost should be updated to use a better value.
 		FundAccountCost:      types.NewCurrency64(1),
 		UpdatePriceTableCost: types.NewCurrency64(1),
