@@ -351,7 +351,7 @@ func TestHostContracts(t *testing.T) {
 	}
 
 	if hc.Contracts[0].PotentialAccountFunding.IsZero() {
-		t.Fatal("contract should have upload revenue")
+		t.Fatal("contract should have account funding")
 	}
 
 	if hc.Contracts[0].PotentialUploadRevenue.IsZero() {
