@@ -399,7 +399,7 @@ func (c *SafeContract) managedRecordAppendIntent(rev types.FileContractRevision,
 		c.makeUpdateSetHeader(newHeader),
 		c.makeUpdateSetRoot(root, c.merkleRoots.len()),
 	}
-	if build.Release != "testing" {
+	if build.Release == "testing" {
 		rcUpdate, err := c.makeUpdateRefCounterAppend()
 		if err != nil {
 			return nil, errors.AddContext(err, "failed to create a refcounter update")
