@@ -20,7 +20,7 @@ import (
 func TestPriceTableMarshaling(t *testing.T) {
 	pt := modules.RPCPriceTable{
 		Expiry:               rpcPriceGuaranteePeriod,
-		Timestamp:            time.Now().Unix(),
+		Timestamp:            time.Now(),
 		UpdatePriceTableCost: types.SiacoinPrecision,
 		InitBaseCost:         types.SiacoinPrecision.Mul64(1e2),
 		MemoryTimeCost:       types.SiacoinPrecision.Mul64(1e3),
@@ -56,25 +56,25 @@ func TestPriceTableMinHeap(t *testing.T) {
 
 	pt1 := modules.RPCPriceTable{
 		Expiry:    rpcPriceGuaranteePeriod,
-		Timestamp: now.Add(-rpcPriceGuaranteePeriod).Unix(),
+		Timestamp: now.Add(-rpcPriceGuaranteePeriod),
 	}
 	pth.Push(&pt1)
 
 	pt2 := modules.RPCPriceTable{
 		Expiry:    rpcPriceGuaranteePeriod,
-		Timestamp: now.Unix(),
+		Timestamp: now,
 	}
 	pth.Push(&pt2)
 
 	pt3 := modules.RPCPriceTable{
 		Expiry:    rpcPriceGuaranteePeriod,
-		Timestamp: now.Add(-3 * rpcPriceGuaranteePeriod).Unix(),
+		Timestamp: now.Add(-3 * rpcPriceGuaranteePeriod),
 	}
 	pth.Push(&pt3)
 
 	pt4 := modules.RPCPriceTable{
 		Expiry:    rpcPriceGuaranteePeriod,
-		Timestamp: now.Add(-2 * rpcPriceGuaranteePeriod).Unix(),
+		Timestamp: now.Add(-2 * rpcPriceGuaranteePeriod),
 	}
 	pth.Push(&pt4)
 
