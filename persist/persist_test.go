@@ -12,7 +12,7 @@ import (
 // valid files.
 func TestIntegrationRandomSuffix(t *testing.T) {
 	tmpDir := build.TempDir(persistDir, t.Name())
-	err := os.MkdirAll(tmpDir, 0700)
+	err := os.MkdirAll(tmpDir, defaultDirPermissions)
 	if err != nil {
 		t.Fatal(err)
 	}

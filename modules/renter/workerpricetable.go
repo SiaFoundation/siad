@@ -27,7 +27,7 @@ var updateTimeInterval = build.Select(build.Var{
 
 type (
 	// workerPriceTable contains a price table and some information related to
-	// retrieveing the next update.
+	// retrieving the next update.
 	workerPriceTable struct {
 		// The actual price table.
 		staticPriceTable modules.RPCPriceTable
@@ -41,8 +41,8 @@ type (
 		// greater backoff on fetching the price table.
 		staticConsecutiveFailures uint64
 
-		// staticRecentErr specifies the most recent error that the price table
-		// update has failed with.
+		// staticRecentErr specifies the most recent error that the worker's
+		// price table update has failed with.
 		staticRecentErr error
 	}
 )
@@ -94,20 +94,27 @@ func (w *worker) staticUpdatePriceTable() {
 	// control loop should not have called this function unless the price table
 	// is after its updateTime.
 	updateTime := w.staticPriceTable().staticUpdateTime
-	currentTime := time.Now()
-	if currentTime.Before(updateTime) {
-		build.Critical("price table is being updated prematurely")
+	if time.Now().Before(updateTime) {
+		w.renter.log.Critical("price table is being updated prematurely")
 	}
+	// Sanity check - only one price table update should be running at a time.
+	// If multiple are running at a time, there can be a race condition around
+	// 'staticConsecutiveFailures'.
+	if !atomic.CompareAndSwapUint64(&w.atomicPriceTableUpdateRunning, 0, 1) {
+		w.renter.log.Critical("price table is being updated in two threads concurrently")
+	}
+	defer atomic.StoreUint64(&w.atomicPriceTableUpdateRunning, 0)
 
 	// Create a goroutine to wake the worker when the time has come to check the
-	// price table again. Be careful when handling potential underflows.
+	// price table again. Make sure to grab the update time inside of the defer
+	// func, after the price table has been updated.
+	//
+	// This defer needs to run after the defer which updates the price table.
 	defer func() {
-		go func() {
-			updateTime := w.staticPriceTable().staticUpdateTime
-			currentTime := time.Now()
-			time.Sleep(updateTime.Sub(currentTime))
+		updateTime := w.staticPriceTable().staticUpdateTime
+		w.renter.tg.AfterFunc(updateTime.Sub(time.Now()), func() {
 			w.staticWake()
-		}()
+		})
 	}()
 
 	// All remaining errors represent short term issues with the host, so the

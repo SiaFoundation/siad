@@ -429,15 +429,14 @@ the rest of Sia.
 curl -A "Sia-Agent" "localhost:9980/daemon/alerts"
 ```
 
-Returns the alerts of the Sia instance sorted by severity from highest to
-lowest.
+Returns all alerts of all severities of the Sia instance sorted by severity from highest to lowest in `alerts` and the alerts of the Sia instance sorted by category in `criticalalerts`, `erroralerts` and `warningalerts`.
 
 ### JSON Response
 > JSON Response Example
  
 ```go
 {
-  "alerts": [
+    "alerts": [
     {
       "cause": "wallet is locked",
       "msg": "user's contracts need to be renewed but a locked wallet prevents renewal",
@@ -445,6 +444,16 @@ lowest.
       "severity": "warning",
     }
   ],
+  "criticalalerts": [],
+  "erroralerts": [],
+  "warningalerts": [
+    {
+      "cause": "wallet is locked",
+      "msg": "user's contracts need to be renewed but a locked wallet prevents renewal",
+      "module": "contractor",
+      "severity": "warning",
+    }
+  ]
 }
 ```
 **cause** | string  

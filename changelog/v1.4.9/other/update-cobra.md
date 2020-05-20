@@ -1,0 +1,1 @@
+- Update Cobra from v0.0.5 to v1.0.0.
