@@ -183,5 +183,4 @@ func (w *worker) managedPerformFetchBackupsJob() {
 		err:             errors.AddContext(err, "unable to download snapshot table"),
 	}
 	resultChan <- result
-	return
 }
