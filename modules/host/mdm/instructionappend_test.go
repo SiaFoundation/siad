@@ -17,27 +17,23 @@ func TestInstructionSingleAppend(t *testing.T) {
 	// Create a program to append a full sector to a storage obligation.
 	appendData1 := randomSectorData()
 	appendDataRoot1 := crypto.MerkleRoot(appendData1)
-	dataLen := uint64(len(appendData1))
 	pt := newTestPriceTable()
-	tb := newTestBuilder(pt, 1, dataLen)
-	tb.TestAddAppendInstruction(appendData1, true)
-
-	// Expected outputs.
-	expectedOutputs := []output{
-		{
-			NewSize:       modules.SectorSize,
-			NewMerkleRoot: crypto.MerkleRoot(appendData1),
-			Proof:         []crypto.Hash{},
-		},
-	}
+	tb := newTestBuilder(pt)
+	tb.AddAppendInstruction(appendData1, true)
 
 	// Execute it.
 	so := newTestStorageObligation(true)
-	finalizeFn, budget, _, err := tb.AssertOutputs(mdm, so, expectedOutputs)
+	finalizeFn, budget, outputs, err := mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-
+	// Assert the outputs.
+	for _, output := range outputs {
+		err = output.assert(modules.SectorSize, crypto.MerkleRoot(appendData1), []crypto.Hash{}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	// The storage obligation should be unchanged before finalizing the program.
 	if len(so.sectorMap) > 0 {
 		t.Fatalf("wrong sectorMap len %v > %v", len(so.sectorMap), 0)
@@ -69,27 +65,30 @@ func TestInstructionSingleAppend(t *testing.T) {
 
 	// Execute same program again to append another sector.
 	appendData2 := randomSectorData() // new random data
-	dataLen = uint64(len(appendData2))
 	appendDataRoot2 := crypto.MerkleRoot(appendData2)
-	tb = newTestBuilder(pt, 1, dataLen)
-	tb.TestAddAppendInstruction(appendData2, true)
+	tb = newTestBuilder(pt)
+	tb.AddAppendInstruction(appendData2, true)
 	ics := so.ContractSize()
 
-	// Expected outputs.
-	expectedOutputs = []output{
-		{
-			NewSize:       ics + modules.SectorSize,
-			NewMerkleRoot: cachedMerkleRoot([]crypto.Hash{appendDataRoot1, appendDataRoot2}),
-			Proof:         []crypto.Hash{appendDataRoot1},
-		},
+	// Expected outputs
+	expectedOutput := output{
+		NewSize:       ics + modules.SectorSize,
+		NewMerkleRoot: cachedMerkleRoot([]crypto.Hash{appendDataRoot1, appendDataRoot2}),
+		Proof:         []crypto.Hash{appendDataRoot1},
 	}
 
 	// Execute it.
-	finalizeFn, budget, _, err = tb.AssertOutputs(mdm, so, expectedOutputs)
+	finalizeFn, budget, outputs, err = mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-
+	// Assert the outputs.
+	for _, output := range outputs {
+		err = output.assert(expectedOutput.NewSize, expectedOutput.NewMerkleRoot, expectedOutput.Proof, expectedOutput.Output)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	// The storage obligation should be unchanged before finalizing the program.
 	if len(so.sectorMap) != 1 {
 		t.Fatalf("wrong sectorMap len %v > %v", len(so.sectorMap), 1)

@@ -131,7 +131,7 @@ func (pb *ProgramBuilder) Cost(finalized bool) (cost, refund, collateral types.C
 }
 
 // Program returns the built program and programData.
-func (pb *ProgramBuilder) Program() (Program, []byte) {
+func (pb *ProgramBuilder) Program() (Program, ProgramData) {
 	return pb.program, pb.programData.Bytes()
 }
 

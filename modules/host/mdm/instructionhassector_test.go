@@ -26,29 +26,21 @@ func TestInstructionHasSector(t *testing.T) {
 
 	// Build the program.
 	pt := newTestPriceTable()
-	tb := newTestBuilder(pt, 1, crypto.HashSize)
-	tb.TestAddHasSectorInstruction(sectorRoot)
+	tb := newTestBuilder(pt)
+	tb.AddHasSectorInstruction(sectorRoot)
 
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
 
-	// Expected outputs.
-	expectedOutputs := []output{
-		{
-			NewSize:       ics,
-			NewMerkleRoot: imr,
-			Proof:         []crypto.Hash{},
-			Output:        []byte{1},
-		},
-	}
-
 	// Execute it.
-	_, budget, _, err := tb.AssertOutputs(mdm, so, expectedOutputs)
+	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !budget.Remaining().IsZero() {
-		t.Fatalf("budget remaining should be zero but was %v", budget.Remaining().HumanString())
+	// Assert output.
+	err = outputs[0].assert(ics, imr, []crypto.Hash{}, []byte{1})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

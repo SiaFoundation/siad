@@ -38,28 +38,28 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	// Construct the program.
 
 	pt := newTestPriceTable()
-	tb := newTestBuilder(pt, 6, 3*modules.SectorSize+3*8)
+	tb := newTestBuilder(pt)
 
 	sectorData1 := fastrand.Bytes(int(modules.SectorSize))
-	tb.TestAddAppendInstruction(sectorData1, false)
+	tb.AddAppendInstruction(sectorData1, false)
 	merkleRoots1 := []crypto.Hash{crypto.MerkleRoot(sectorData1)}
 
 	sectorData2 := fastrand.Bytes(int(modules.SectorSize))
-	tb.TestAddAppendInstruction(sectorData2, false)
+	tb.AddAppendInstruction(sectorData2, false)
 	merkleRoots2 := []crypto.Hash{merkleRoots1[0], crypto.MerkleRoot(sectorData2)}
 
 	sectorData3 := fastrand.Bytes(int(modules.SectorSize))
-	tb.TestAddAppendInstruction(sectorData3, false)
+	tb.AddAppendInstruction(sectorData3, false)
 	merkleRoots3 := []crypto.Hash{merkleRoots2[0], merkleRoots2[1], crypto.MerkleRoot(sectorData3)}
 
 	// Don't drop any sectors.
-	tb.TestAddDropSectorsInstruction(0, true)
+	tb.AddDropSectorsInstruction(0, true)
 
 	// Drop one sector.
-	tb.TestAddDropSectorsInstruction(1, true)
+	tb.AddDropSectorsInstruction(1, true)
 
 	// Drop two remaining sectors.
-	tb.TestAddDropSectorsInstruction(2, true)
+	tb.AddDropSectorsInstruction(2, true)
 
 	// Expected outputs.
 	expectedOutputs := []output{
@@ -100,9 +100,21 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 
 	// Execute the program.
 	so := newTestStorageObligation(true)
-	finalizeFn, budget, lastOutput, err := tb.AssertOutputs(mdm, so, expectedOutputs)
+	finalizeFn, budget, outputs, err := mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, true)
 	if err != nil {
 		t.Fatal(err)
+	}
+	lastOutput := outputs[len(outputs)-1]
+
+	// Assert outputs.
+	if len(outputs) != len(expectedOutputs) {
+		t.Fatalf("expected %v outputs but got %v", len(expectedOutputs), len(outputs))
+	}
+	for i, output := range outputs {
+		expected := expectedOutputs[i]
+		if err := output.assert(expected.NewSize, expected.NewMerkleRoot, expected.Proof, expected.Output); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// The storage obligation should be unchanged before finalizing the program.

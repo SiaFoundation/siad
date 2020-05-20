@@ -104,7 +104,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 	}
 	// Build program.
 	program := &program{
-		outputChan: make(chan Output, len(p)),
+		outputChan: make(chan Output),
 		staticProgramState: &programState{
 			blockHeight: mdm.host.BlockHeight(),
 			host:        mdm.host,

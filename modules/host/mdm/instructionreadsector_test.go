@@ -20,66 +20,53 @@ func TestInstructionReadSector(t *testing.T) {
 	so := newTestStorageObligation(true)
 	so.sectorRoots = randomSectorRoots(initialContractSectors)
 	root := so.sectorRoots[0]
-	// Use a builder to build the program.
-	readLen := modules.SectorSize
-	tb := newTestBuilder(pt, 1, 16+crypto.HashSize)
-	tb.TestAddReadSectorInstruction(readLen, 0, so.sectorRoots[0], true)
-
-	ics := so.ContractSize()
-	imr := so.MerkleRoot()
-
-	// Expected outputs.
 	outputData, err := host.ReadSector(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	expectedOutputs := []output{
-		{
-			NewSize:       ics,
-			NewMerkleRoot: imr,
-			Proof:         []crypto.Hash{},
-			Output:        outputData,
-		},
-	}
+	// Use a builder to build the program.
+	readLen := modules.SectorSize
+	tb := newTestBuilder(pt)
+	tb.AddReadSectorInstruction(readLen, 0, so.sectorRoots[0], true)
+
+	ics := so.ContractSize()
+	imr := so.MerkleRoot()
 
 	// Execute it.
-	_, budget, lastOutput, err := tb.AssertOutputs(mdm, so, expectedOutputs)
+	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	sectorData := lastOutput.Output
+	// Assert the output.
+	err = outputs[0].assert(ics, imr, []crypto.Hash{}, outputData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sectorData := outputs[0].Output
 
 	// Create a program to read half a sector from the host.
 	offset := modules.SectorSize / 2
 	length := offset
 
 	// Use a builder to build the program.
-	tb = newTestBuilder(pt, 1, 16+crypto.HashSize)
-	tb.TestAddReadSectorInstruction(length, offset, so.sectorRoots[0], true)
-
-	// Expected outputs.
-	proofStart := int(offset) / crypto.SegmentSize
-	proofEnd := int(offset+length) / crypto.SegmentSize
-	proof := crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
-	outputData = sectorData[modules.SectorSize/2:]
-	expectedOutputs = []output{
-		{
-			NewSize:       ics,
-			NewMerkleRoot: imr,
-			Proof:         proof,
-			Output:        outputData,
-		},
-	}
+	tb = newTestBuilder(pt)
+	tb.AddReadSectorInstruction(length, offset, so.sectorRoots[0], true)
 
 	// Execute it.
-	_, budget, _, err = tb.AssertOutputs(mdm, so, expectedOutputs)
+	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !budget.Remaining().IsZero() {
-		t.Fatalf("budget remaining should be zero but was %v", budget.Remaining().HumanString())
+	// Assert the output.
+	proofStart := int(offset) / crypto.SegmentSize
+	proofEnd := int(offset+length) / crypto.SegmentSize
+	proof := crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
+	outputData = sectorData[modules.SectorSize/2:]
+	err = outputs[0].assert(ics, imr, proof, outputData)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -104,28 +91,16 @@ func TestInstructionReadOutsideSector(t *testing.T) {
 	// Execute it.
 	so := newTestStorageObligation(true)
 	// Use a builder to build the program.
-	tb := newTestBuilder(pt, 1, 16+crypto.HashSize)
-	tb.TestAddReadSectorInstruction(readLen, 0, sectorRoot, true)
-
+	tb := newTestBuilder(pt)
+	tb.AddReadSectorInstruction(readLen, 0, sectorRoot, true)
 	imr := crypto.Hash{}
 
-	// Expected outputs.
-	expectedOutputs := []output{
-		{
-			NewSize:       0,
-			NewMerkleRoot: imr,
-			Proof:         []crypto.Hash{},
-			Output:        sectorData,
-		},
-	}
-
 	// Execute it.
-	_, budget, _, err := tb.AssertOutputs(mdm, so, expectedOutputs)
+	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !budget.Remaining().IsZero() {
-		t.Fatalf("budget remaining should be zero but was %v", budget.Remaining().HumanString())
-	}
+	// Check output.
+	outputs[0].assert(0, imr, []crypto.Hash{}, sectorData)
 }

@@ -124,11 +124,6 @@ func (i *instructionReadSector) Memory() uint64 {
 	return modules.MDMReadMemory()
 }
 
-// ReadOnly for the 'ReadSector' instruction is 'true'.
-func (i *instructionReadSector) ReadOnly() bool {
-	return true
-}
-
 // Time returns the execution time of a 'ReadSector' instruction.
 func (i *instructionReadSector) Time() (uint64, error) {
 	return modules.MDMTimeReadSector, nil

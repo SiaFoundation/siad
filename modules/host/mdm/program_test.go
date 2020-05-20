@@ -30,8 +30,8 @@ func TestNewProgramLowInitBudget(t *testing.T) {
 	// Create MDM
 	mdm := New(newTestHost())
 	pt := newTestPriceTable()
-	pb := newTestBuilder(pt, 0, 0)
-	pb.TestAddHasSectorInstruction(crypto.Hash{})
+	pb := newTestBuilder(pt)
+	pb.AddHasSectorInstruction(crypto.Hash{})
 	program, data := pb.Program()
 	// Execute the program.
 	budget := modules.NewBudget(types.ZeroCurrency)
@@ -48,16 +48,17 @@ func TestNewProgramLowBudget(t *testing.T) {
 	mdm := New(newTestHost())
 	// Create instruction.
 	pt := newTestPriceTable()
-	pb := newTestBuilder(pt, 1, 16+crypto.HashSize)
-	pb.TestAddReadSectorInstruction(modules.SectorSize, 0, crypto.Hash{}, true)
+	pb := newTestBuilder(pt)
+	pb.AddReadSectorInstruction(modules.SectorSize, 0, crypto.Hash{}, true)
 	program, data := pb.Program()
-	values := pb.Cost(true)
+	values := pb.Cost()
+	_, _, collateral := values.Cost()
 	dataLen := uint64(len(data))
 	// Execute the program with enough money to init the mdm but not enough
 	// money to execute the first instruction.
 	cost := modules.MDMInitCost(pt, dataLen, 1)
 	budget := modules.NewBudget(cost)
-	finalizeFn, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, values.Collateral, newTestStorageObligation(true), dataLen, bytes.NewReader(data))
+	finalizeFn, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, collateral, newTestStorageObligation(true), dataLen, bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,16 +92,14 @@ func TestNewProgramLowCollateralBudget(t *testing.T) {
 	mdm := New(newTestHost())
 	// Create instruction.
 	sectorData := fastrand.Bytes(int(modules.SectorSize))
-	dataLen := uint64(len(sectorData))
 	pt := newTestPriceTable()
-	pb := newTestBuilder(pt, 1, dataLen)
-	pb.TestAddAppendInstruction(sectorData, false)
+	pb := newTestBuilder(pt)
+	pb.AddAppendInstruction(sectorData, false)
 	program, data := pb.Program()
-	values := pb.Cost(true)
+	budget := pb.Cost().Budget(true)
 	// Execute the program with no collateral budget.
-	budget := modules.NewBudget(values.ExecutionCost)
 	so := newTestStorageObligation(true)
-	finalizeFn, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, types.ZeroCurrency, so, dataLen, bytes.NewReader(data))
+	finalizeFn, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, types.ZeroCurrency, so, uint64(len(data)), bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}

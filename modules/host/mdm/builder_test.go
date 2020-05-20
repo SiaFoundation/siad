@@ -1,157 +1,91 @@
 package mdm
 
 import (
-	"bytes"
-	"context"
 	"fmt"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
-// testBuilder is a helper used for constructing test programs.
-type testBuilder struct {
-	*modules.ProgramBuilder
+// testProgramBuilder is a helper used for constructing test programs and
+// implicitly testing the modules.MDMProgramBuilder.
+type testProgramBuilder struct {
+	readonly bool
+	staticPT *modules.RPCPriceTable
 
-	readonly      bool
-	runningValues []values
-	staticPT      *modules.RPCPriceTable
-	values        values
+	// staticPB is an instance of the production program builder.
+	staticPB *modules.ProgramBuilder
+
+	// staticValues are the test implementation of an accumulator which the
+	// production program builder will implicitly be tested against.
+	staticValues TestValues
 }
 
 // newTestBuilder creates a new testBuilder.
-func newTestBuilder(pt *modules.RPCPriceTable, numInstructions, programDataLen uint64) *testBuilder {
-	return &testBuilder{
-		ProgramBuilder: modules.NewProgramBuilder(pt),
+func newTestBuilder(pt *modules.RPCPriceTable) *testProgramBuilder {
+	return &testProgramBuilder{
+		readonly: true,
+		staticPT: pt,
 
-		readonly:      true,
-		runningValues: make([]values, 0, numInstructions),
-		staticPT:      pt,
-		values: values{
-			ExecutionCost: modules.MDMInitCost(pt, programDataLen, numInstructions),
-			Memory:        modules.MDMInitMemory(),
-		},
+		staticPB:     modules.NewProgramBuilder(pt),
+		staticValues: NewTestValues(pt),
 	}
 }
 
-// AssertOutputs finishes building the program, gets the costs, and executes the
-// program. It asserts that the program has been built correctly and that the
-// outputs of the program are as expected.
-func (tb *testBuilder) AssertOutputs(mdm *MDM, so *TestStorageObligation, expectedOutputs []output) (func(so StorageObligation) error, *modules.RPCBudget, Output, error) {
-	program, programData := tb.Program()
-	dataLen := uint64(len(programData))
-	values := tb.Cost(true)
-	budget := modules.NewBudget(values.ExecutionCost)
-
-	err := testCompareProgramValues(tb.staticPT, program, dataLen, bytes.NewReader(programData), values)
-	if err != nil {
-		return nil, nil, Output{}, err
+// assertCosts makes sure that both values and pb return the same cost for
+// complete programs.
+func assertCosts(finalized bool, values TestValues, pb *modules.ProgramBuilder) {
+	cost1, refund1, collateral1 := pb.Cost(finalized)
+	_, refund2, collateral2 := values.Cost()
+	cost2 := values.Budget(finalized).Remaining()
+	if !cost1.Equals(cost2) {
+		panic(fmt.Sprintf("cost: %v != %v", cost1.HumanString(), cost2.HumanString()))
 	}
-
-	finalizeFn, outputChan, err := mdm.ExecuteProgram(context.Background(), tb.staticPT, program, budget, values.Collateral, so, dataLen, bytes.NewReader(programData))
-	if err != nil {
-		return nil, nil, Output{}, err
+	if !refund1.Equals(refund2) {
+		panic(fmt.Sprintf("refund: %v != %v", refund1.HumanString(), refund2.HumanString()))
 	}
-	if !tb.readonly && finalizeFn == nil {
-		return nil, nil, Output{}, errors.New("could not retrieve finalizeFn function")
+	if !collateral1.Equals(collateral2) {
+		panic(fmt.Sprintf("collateral: %v != %v", collateral1.HumanString(), collateral2.HumanString()))
 	}
-	if tb.readonly && finalizeFn != nil {
-		return nil, nil, Output{}, errors.New("finalizeFn callback should be nil for readonly program")
-	}
-
-	var i int
-	var lastOutput Output
-	for output := range outputChan {
-		// Check outputs.
-		values := tb.runningValues[i]
-		expectedOutput := Output{
-			output:               expectedOutputs[i],
-			ExecutionCost:        values.ExecutionCost,
-			AdditionalCollateral: values.Collateral,
-			PotentialRefund:      values.Refund,
-		}
-		err := testCompareOutputs(output, expectedOutput)
-		if err != nil {
-			return nil, nil, Output{}, err
-		}
-
-		lastOutput = output
-		i++
-	}
-	if i != len(expectedOutputs) {
-		return nil, nil, Output{}, fmt.Errorf("expected number of outputs %v, got %v", i, len(expectedOutputs))
-	}
-
-	return finalizeFn, budget, lastOutput, nil
 }
 
 // Cost returns the final costs of the program.
-func (tb *testBuilder) Cost(finalized bool) values {
-	values := tb.values
-	// Add the cost of finalizing the program.
-	if finalized {
-		values = values.Cost(tb.staticPT, tb.readonly)
-	}
-	return values
+func (tb *testProgramBuilder) Cost() TestValues {
+	// Make sure the programBuilder and test values produce the same costs.
+	assertCosts(true, tb.staticValues, tb.staticPB)
+	assertCosts(false, tb.staticValues, tb.staticPB)
+	// Return the test values for convenience.
+	return tb.staticValues
 }
 
-// TestAddAppendInstruction adds an append instruction to the builder, keeping
+// AddAppendInstruction adds an append instruction to the builder, keeping
 // track of running values.
-func (tb *testBuilder) TestAddAppendInstruction(data []byte, merkleProof bool) {
-	tb.AddAppendInstruction(data, merkleProof)
-
-	collateral := modules.MDMAppendCollateral(tb.staticPT)
-	cost, refund := modules.MDMAppendCost(tb.staticPT)
-	memory := modules.MDMAppendMemory()
-	time := uint64(modules.MDMTimeAppend)
-	tb.addValues(collateral, cost, refund, memory, time, false)
+func (tb *testProgramBuilder) AddAppendInstruction(data []byte, merkleProof bool) {
+	tb.staticPB.AddAppendInstruction(data, merkleProof)
+	tb.staticValues.AddAppendInstruction(data)
 }
 
-// TestAddDropSectorsInstruction adds a dropsectors instruction to the builder,
+// AddDropSectorsInstruction adds a dropsectors instruction to the builder,
 // keeping track of running values.
-func (tb *testBuilder) TestAddDropSectorsInstruction(numSectors uint64, merkleProof bool) {
-	tb.AddDropSectorsInstruction(numSectors, merkleProof)
-
-	collateral := modules.MDMDropSectorsCollateral()
-	cost, refund := modules.MDMDropSectorsCost(tb.staticPT, numSectors)
-	memory := modules.MDMDropSectorsMemory()
-	time := modules.MDMDropSectorsTime(numSectors)
-	tb.addValues(collateral, cost, refund, memory, time, false)
+func (tb *testProgramBuilder) AddDropSectorsInstruction(numSectors uint64, merkleProof bool) {
+	tb.staticPB.AddDropSectorsInstruction(numSectors, merkleProof)
+	tb.staticValues.AddDropSectorsInstruction(numSectors)
 }
 
-// TestAddHasSectorInstruction adds a hassector instruction to the builder, keeping track of running values.
-func (tb *testBuilder) TestAddHasSectorInstruction(merkleRoot crypto.Hash) {
-	tb.AddHasSectorInstruction(merkleRoot)
-
-	collateral := modules.MDMHasSectorCollateral()
-	cost, refund := modules.MDMHasSectorCost(tb.staticPT)
-	memory := modules.MDMHasSectorMemory()
-	time := uint64(modules.MDMTimeHasSector)
-	tb.addValues(collateral, cost, refund, memory, time, true)
+// AddHasSectorInstruction adds a hassector instruction to the builder, keeping track of running values.
+func (tb *testProgramBuilder) AddHasSectorInstruction(merkleRoot crypto.Hash) {
+	tb.staticPB.AddHasSectorInstruction(merkleRoot)
+	tb.staticValues.AddHasSectorInstruction()
 }
 
-// TestAddReadSectorInstruction adds a readsector instruction to the builder,
+// AddReadSectorInstruction adds a readsector instruction to the builder,
 // keeping track of running values.
-func (tb *testBuilder) TestAddReadSectorInstruction(length, offset uint64, merkleRoot crypto.Hash, merkleProof bool) {
-	tb.AddReadSectorInstruction(length, offset, merkleRoot, merkleProof)
-
-	collateral := modules.MDMReadCollateral()
-	cost, refund := modules.MDMReadCost(tb.staticPT, length)
-	memory := modules.MDMReadMemory()
-	time := uint64(modules.MDMTimeReadSector)
-	tb.addValues(collateral, cost, refund, memory, time, true)
+func (tb *testProgramBuilder) AddReadSectorInstruction(length, offset uint64, merkleRoot crypto.Hash, merkleProof bool) {
+	tb.staticPB.AddReadSectorInstruction(length, offset, merkleRoot, merkleProof)
+	tb.staticValues.AddReadSectorInstruction(length)
 }
 
-// addValues updates the current running values for the program being built.
-func (tb *testBuilder) addValues(collateral, cost, refund types.Currency, memory, time uint64, readonly bool) {
-	values := values{cost, refund, collateral, memory}
-	tb.values.AddValues(tb.staticPT, values, time)
-
-	tb.runningValues = append(tb.runningValues, tb.values)
-
-	if !readonly {
-		tb.readonly = false
-	}
+// Program returns the built program.
+func (tb *testProgramBuilder) Program() (modules.Program, modules.ProgramData) {
+	return tb.staticPB.Program()
 }

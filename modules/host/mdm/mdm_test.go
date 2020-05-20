@@ -1,6 +1,10 @@
 package mdm
 
 import (
+	"bytes"
+	"context"
+	"fmt"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -149,4 +153,73 @@ func TestNew(t *testing.T) {
 	if mdm.host != host {
 		t.Fatal("host wasn't set correctly")
 	}
+}
+
+// ExecuteProgram is a convenience wrapper around mdm.ExecuteProgram. It runs
+// the program constructed by tb with the storage obligation so. It will also
+// return the outputs as a slice for convenience.
+func (mdm *MDM) ExecuteProgramWithBuilder(tb *testProgramBuilder, so *TestStorageObligation, finalized bool) ([]Output, error) {
+	// Execute the program.
+	finalize, budget, outputs, err := mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, finalized)
+	if err != nil {
+		return nil, err
+	}
+	// Finalize the program if finalized is true.
+	if finalize == nil && finalized {
+		return nil, errors.New("finalize method was 'nil' but finalized was 'true'")
+	} else if finalized {
+		if err = finalize(so); err != nil {
+			return nil, err
+		}
+	}
+	// Budget should be drained now.
+	if remainingBudget := budget.Remaining(); !remainingBudget.IsZero() {
+		return nil, fmt.Errorf("remaining budget should be empty but was %v", remainingBudget)
+	}
+	return outputs, nil
+}
+
+// ExecuteProgram is a convenience wrapper around mdm.ExecuteProgram. It runs
+// the program constructed by tb with the storage obligation so. It will also
+// return the outputs as a slice for convenience.
+func (mdm *MDM) ExecuteProgramWithBuilderManualFinalize(tb *testProgramBuilder, so *TestStorageObligation, finalized bool) (func(so StorageObligation) error, *modules.RPCBudget, []Output, error) {
+	ctx := context.Background()
+	program, programData := tb.Program()
+	values := tb.Cost()
+	_, _, collateral := values.Cost()
+	budget := values.Budget(finalized)
+	finalize, outputChan, err := mdm.ExecuteProgram(ctx, tb.staticPT, program, budget, collateral, so, uint64(len(programData)), bytes.NewReader(programData))
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	// Collect outputs
+	var outputs []Output
+	for output := range outputChan {
+		outputs = append(outputs, output)
+	}
+	// Assert outputs
+	err = values.AssertOutputs(outputs)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return finalize, budget, outputs, nil
+}
+
+// assert asserts an output against the provided values. Costs should be
+// asserted using the TestValues type or they will be asserted implicitly when
+// using ExecuteProgramWithBuilder.
+func (o Output) assert(newSize uint64, newMerkleRoot crypto.Hash, proof []crypto.Hash, output []byte) error {
+	if o.NewSize != newSize {
+		return fmt.Errorf("expected newSize %v but got %v", newSize, o.NewSize)
+	}
+	if o.NewMerkleRoot != newMerkleRoot {
+		return fmt.Errorf("expected newMerkleRoot %v but got %v", newSize, o.NewMerkleRoot)
+	}
+	if !reflect.DeepEqual(o.Proof, proof) {
+		return fmt.Errorf("expected proof %v but got %v", proof, o.Proof)
+	}
+	if !bytes.Equal(o.Output, output) {
+		return fmt.Errorf("expected o %v but got %v", o, o.Output)
+	}
+	return nil
 }

@@ -117,11 +117,6 @@ func (i *instructionDropSectors) Memory() uint64 {
 	return modules.MDMDropSectorsMemory()
 }
 
-// ReadOnly for the 'DropSectors' instruction is 'false'.
-func (i *instructionDropSectors) ReadOnly() bool {
-	return false
-}
-
 // Time returns the execution time of the 'DropSectors' instruction.
 func (i *instructionDropSectors) Time() (uint64, error) {
 	numDropped, err := i.staticData.Uint64(i.numSectorsOffset)
