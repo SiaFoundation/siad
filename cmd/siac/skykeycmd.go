@@ -172,8 +172,8 @@ func skykeygetidcmd(skykeyName string) {
 	fmt.Printf("Found skykey ID: %v\n", sk.ID().ToString())
 }
 
-//skykeylistcmd is a wrapper for skykeyListKeys that prints a list of all
-//skykeys.
+// skykeylistcmd is a wrapper for skykeyListKeys that prints a list of all
+// skykeys.
 func skykeylistcmd() {
 	skykeysString, err := skykeyListKeys(httpClient, skykeyShowPrivateKeys)
 	if err != nil {

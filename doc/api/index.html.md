@@ -4941,7 +4941,7 @@ responses](#standard-responses).
 > curl example
 
 ```go
-curl -A "Sia-Agent"  -u "":<apipassword> --data "localhost:9980/skynet/allskykeys"
+curl -A "Sia-Agent"  -u "":<apipassword> --data "localhost:9980/skynet/skykeys"
 ```
 
 Returns a list of all Skykeys as base64-encoded strings.

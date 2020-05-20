@@ -1,1 +1,1 @@
-- Add /allskykeys endpoint and `siac skykey ls` command
+- Add /skykeys endpoint and `siac skykey ls` command
