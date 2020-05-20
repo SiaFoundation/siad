@@ -18,10 +18,10 @@ func TestSkykeyCommands(t *testing.T) {
 		t.SkipNow()
 	}
 
-	groupDir := skykeycmdTestDir(t.Name())
+	groupDir := siacTestDir(t.Name())
 
 	// Define subtests
-	subTests := []SubTest{
+	subTests := []subTest{
 		{Name: "TestDuplicateSkykeyAdd", Test: testDuplicateSkykeyAdd},
 		{Name: "TestChangeKeyEntropyKeepName", Test: testChangeKeyEntropyKeepName},
 		{Name: "TestAddKeyTwice", Test: testAddKeyTwice},
@@ -32,7 +32,7 @@ func TestSkykeyCommands(t *testing.T) {
 	}
 
 	// Run tests
-	if err := RunSubTests(t, groupDir, subTests); err != nil {
+	if err := runSubTests(t, groupDir, subTests); err != nil {
 		t.Fatal(err)
 	}
 }

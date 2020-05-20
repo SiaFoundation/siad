@@ -1,24 +1,27 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// SubTest is a helper struct for running subtests when tests can use the same
+// subTest is a helper struct for running subtests when tests can use the same
 // test http client
-type SubTest struct {
+type subTest struct {
 	Name string
 	Test func(*testing.T, client.Client)
 }
 
-// RunSubTests is a helper function to run the subtests when tests can use the
+// runSubTests is a helper function to run the subtests when tests can use the
 // same test http client
-func RunSubTests(t *testing.T, directory string, tests []SubTest) error {
+func runSubTests(t *testing.T, directory string, tests []subTest) error {
 	// Create a test node/client for this test group
 	n, err := newTestNode(directory)
 	if err != nil {
@@ -45,4 +48,20 @@ func newTestNode(dir string) (*siatest.TestNode, error) {
 		return nil, errors.AddContext(err, "Error creating a new test node")
 	}
 	return n, nil
+}
+
+// siacTestDir creates a temporary Sia testing directory for a cmd/siac test,
+// removing any files or directories that previously existed at that location.
+// This should only every be called once per test. Otherwise it will delete the
+// directory again.
+func siacTestDir(testName string) string {
+	path := filepath.Join(siatest.SiaTestingDir, "cmd/siac", testName)
+	err := os.RemoveAll(path)
+	if err != nil {
+		panic(err)
+	}
+	if err := os.MkdirAll(path, persist.DefaultDiskPermissionsTest); err != nil {
+		panic(err)
+	}
+	return path
 }
