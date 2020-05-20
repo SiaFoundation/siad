@@ -28,9 +28,9 @@ const (
 type projectDownloadByRootManager struct {
 	// Aggregate values for download by root projects. These are typically used
 	// for research purposes, as opposed to being used in real time.
-	totalTime64k   time.Duration
-	totalTime1m    time.Duration
-	totalTime4m    time.Duration
+	totalTime64k     time.Duration
+	totalTime1m      time.Duration
+	totalTime4m      time.Duration
 	totalRequests64k uint64
 	totalRequests1m  uint64
 	totalRequests4m  uint64
@@ -57,7 +57,7 @@ func (m *projectDownloadByRootManager) managedRecordProjectTime(length uint64, t
 	var totalAvg time.Duration
 	var totalRequests uint64
 	m.mu.Lock()
-	if length <= 1 << 16 {
+	if length <= 1<<16 {
 		m.totalTime64k += timeElapsed
 		m.totalRequests64k++
 		m.decayedTime64k *= projectDownloadByRootPerformanceDecay
@@ -68,7 +68,7 @@ func (m *projectDownloadByRootManager) managedRecordProjectTime(length uint64, t
 		recentAvg = time.Duration(m.decayedTime64k / m.decayedRequests64k)
 		totalAvg = m.totalTime64k / time.Duration(m.totalRequests64k)
 		totalRequests = m.totalRequests64k
-	} else if length <= 1 << 20 {
+	} else if length <= 1<<20 {
 		m.totalTime1m += timeElapsed
 		m.totalRequests1m++
 		m.decayedTime1m *= projectDownloadByRootPerformanceDecay
@@ -100,9 +100,9 @@ func (m *projectDownloadByRootManager) managedRecordProjectTime(length uint64, t
 func (m *projectDownloadByRootManager) managedAverageProjectTime(length uint64) time.Duration {
 	var avg time.Duration
 	m.mu.Lock()
-	if length <= 1 << 16 {
+	if length <= 1<<16 {
 		avg = time.Duration(m.decayedTime64k / m.decayedRequests64k)
-	} else if length <= 1 << 20 {
+	} else if length <= 1<<20 {
 		avg = time.Duration(m.decayedTime1m / m.decayedRequests1m)
 	} else {
 		avg = time.Duration(m.decayedTime4m / m.decayedRequests4m)
@@ -283,7 +283,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 			w := resp.staticWorker
 			jq := w.staticJobReadSectorQueue
 			usableWorkers[responses] = w
-			goodEnough = time.Since(start) + jq.callAverageJobTime(length) < pm.managedAverageProjectTime(length)
+			goodEnough = time.Since(start)+jq.callAverageJobTime(length) < pm.managedAverageProjectTime(length)
 			fmt.Printf("%v: HasSector positive response received: %v\n", w.staticHostPubKeyStr, time.Since(start))
 		}
 
