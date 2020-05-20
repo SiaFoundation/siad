@@ -43,6 +43,7 @@ func (v *TestValues) HumanString() string {
 		v.executionCost.HumanString(), v.refund.HumanString(), v.collateral.HumanString(), v.memory)
 }
 
+// AddAppendInstruction adds the cost of an append instruction to the object.
 func (v *TestValues) AddAppendInstruction(data []byte) {
 	memory := modules.MDMAppendMemory()
 	collateral := modules.MDMAppendCollateral(v.staticPT)
@@ -53,6 +54,8 @@ func (v *TestValues) AddAppendInstruction(data []byte) {
 	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly)
 }
 
+// AddDropSectorsInstruction adds the cost of a drop sectors instruction to the
+// object.
 func (v *TestValues) AddDropSectorsInstruction(numSectors uint64) {
 	collateral := modules.MDMDropSectorsCollateral()
 	cost, refund := modules.MDMDropSectorsCost(v.staticPT, numSectors)
