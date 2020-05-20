@@ -48,7 +48,7 @@ func (pth *priceTableHeap) PopExpired() (expired []modules.UniqueID) {
 		}
 
 		pt := heap.Pop(&pth.heap).(*modules.RPCPriceTable)
-		if now.Before(pt.Timestamp.Add(pt.Expiry)) {
+		if now.Before(time.Unix(pt.Timestamp, 0).Add(pt.Expiry)) {
 			heap.Push(&pth.heap, pt)
 			break
 		}
@@ -67,7 +67,7 @@ func (pth *priceTableHeap) Push(pt *modules.RPCPriceTable) {
 // Implementation of heap.Interface for rpcPriceTableHeap.
 func (pth rpcPriceTableHeap) Len() int { return len(pth) }
 func (pth rpcPriceTableHeap) Less(i, j int) bool {
-	return pth[i].Timestamp.Add(pth[i].Expiry).Before(pth[j].Timestamp.Add(pth[j].Expiry))
+	return time.Unix(pth[i].Timestamp, 0).Add(pth[i].Expiry).Before(time.Unix(pth[j].Timestamp, 0).Add(pth[j].Expiry))
 }
 func (pth rpcPriceTableHeap) Swap(i, j int) { pth[i], pth[j] = pth[j], pth[i] }
 func (pth *rpcPriceTableHeap) Push(x interface{}) {
@@ -93,7 +93,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	// update the epxiry to signal how long these prices are guaranteed and set
 	// the timestamp
 	pt.Expiry = rpcPriceGuaranteePeriod
-	pt.Timestamp = time.Now()
+	pt.Timestamp = time.Now().Unix()
 
 	// json encode the price table
 	ptBytes, err := json.Marshal(pt)
@@ -156,7 +156,7 @@ func (h *Host) staticReadPriceTableID(stream siamux.Stream) (*modules.RPCPriceTa
 	}
 
 	// make sure the table isn't expired.
-	if time.Now().After(pt.Timestamp.Add(pt.Expiry)) {
+	if time.Now().After(time.Unix(pt.Timestamp, 0).Add(pt.Expiry)) {
 		return nil, ErrPriceTableExpired
 	}
 	return pt, nil

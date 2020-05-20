@@ -13,7 +13,7 @@ import (
 func newTestWriteStorePriceTable() *modules.RPCPriceTable {
 	pt := &modules.RPCPriceTable{}
 	pt.Expiry = time.Minute
-	pt.Timestamp = time.Now()
+	pt.Timestamp = time.Now().Unix()
 
 	pt.WriteBaseCost = types.ZeroCurrency
 	pt.WriteLengthCost = types.ZeroCurrency

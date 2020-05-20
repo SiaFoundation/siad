@@ -71,7 +71,7 @@ type RPCPriceTable struct {
 	// the price table to be expired. Note we can not simply communicate an
 	// expiry time because the host's clock is not guaranteed to be in sync with
 	// the renter's clock.
-	Timestamp time.Time `json:"timestamp"`
+	Timestamp int64 `json:"timestamp"`
 }
 
 var (
