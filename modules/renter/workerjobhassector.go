@@ -133,10 +133,12 @@ func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
 		job = jq.jobs[0]
 		jq.jobs = jq.jobs[1:]
 
-		// Break out of the loop only if this job has not been canceled.
-		if !job.staticCanceled() {
-			break
+		// Grab the next job if this one has been canceled.
+		if job.staticCanceled() {
+			continue
 		}
+		// We have a job, can break out of the job search.
+		break
 	}
 	jq.mu.Unlock()
 
@@ -171,8 +173,8 @@ func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
 			jq.mu.Lock()
 			jq.cooldownUntil = cooldownUntil(jq.consecutiveFailures)
 			jq.consecutiveFailures++
+			jq.discardJobsHasSector()
 			jq.mu.Unlock()
-			jq.staticWorker.managedDiscardJobsHasSector()
 			return
 		}
 
@@ -229,17 +231,13 @@ func (w *worker) managedHasSector(sectorRoot crypto.Hash) (bool, error) {
 	return hasSector, nil
 }
 
-// managedDiscardJobsHasSector will release all remaining HasSector jobs as
-// failed.
-func (w *worker) managedDiscardJobsHasSector() {
-	jq := w.staticJobHasSectorQueue // Convenience variable
-	jq.mu.Lock()
-	defer jq.mu.Unlock()
+// discardJobsHasSector will release any has sector jobs in the queue.
+func (jq *jobHasSectorQueue) discardJobsHasSector() {
 	for _, job := range jq.jobs {
 		// Send the response in a goroutine so that the worker resources can be
 		// released faster.
 		j := job
-		w.renter.tg.Launch(func() {
+		jq.staticWorker.renter.tg.Launch(func() {
 			response := &jobHasSectorResponse{
 				staticErr: errors.New("worker is dumping all has sector jobs"),
 			}
@@ -252,25 +250,20 @@ func (w *worker) managedDiscardJobsHasSector() {
 	jq.jobs = nil
 }
 
+// managedDiscardJobsHasSector will release all remaining HasSector jobs as
+// failed.
+func (w *worker) managedDiscardJobsHasSector() {
+	jq := w.staticJobHasSectorQueue // Convenience variable
+	jq.mu.Lock()
+	jq.discardJobsHasSector()
+	jq.mu.Unlock()
+}
+
 // managedKillJobsHasSector will release all remaining HasSector jobs as failed.
 func (w *worker) managedKillJobsHasSector() {
 	jq := w.staticJobHasSectorQueue // Convenience variable
 	jq.mu.Lock()
-	defer jq.mu.Unlock()
-	for _, job := range jq.jobs {
-		// Send the response in a goroutine so that the worker resources can be
-		// released faster.
-		j := job
-		w.renter.tg.Launch(func() {
-			response := &jobHasSectorResponse{
-				staticErr: errors.New("worker killed"),
-			}
-			select {
-			case j.staticResponseChan <- response:
-			case <-j.staticCanceledChan:
-			}
-		})
-	}
+	jq.discardJobsHasSector()
 	jq.killed = true
-	jq.jobs = nil
+	jq.mu.Unlock()
 }
