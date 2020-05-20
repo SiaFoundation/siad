@@ -63,8 +63,12 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	}
 
 	// after payment has been received, track the price table in the host's list
-	// of price tables
+	// of price tables and signal the renter we consider the price table valid
 	h.staticPriceTables.managedTrack(&pt)
+	var tracked modules.RPCTrackedPriceTableResponse
+	if err = modules.RPCWrite(stream, tracked); err != nil {
+		return errors.AddContext(err, "Failed to signal renter we tracked the price table")
+	}
 
 	// refund the money we didn't use.
 	refund := payment.Amount().Sub(pt.UpdatePriceTableCost)

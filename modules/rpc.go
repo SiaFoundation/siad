@@ -119,6 +119,11 @@ type (
 		PriceTableJSON []byte
 	}
 
+	// RPCTrackedPriceTableResponse is an empty response sent by the host to
+	// signal it has received payment for the price table and has tracked it,
+	// thus considering it valid.
+	RPCTrackedPriceTableResponse struct{}
+
 	// rpcResponse is a helper type for encoding and decoding RPC response
 	// messages.
 	rpcResponse struct {

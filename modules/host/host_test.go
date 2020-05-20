@@ -694,6 +694,13 @@ func (p *renterHostPair) managedUpdatePriceTable(payByFC bool) error {
 		}
 	}
 
+	// read the tracked response
+	var tracked modules.RPCTrackedPriceTableResponse
+	err = modules.RPCRead(stream, &tracked)
+	if err != nil {
+		return err
+	}
+
 	// update the price table
 	p.staticMu.Lock()
 	p.pt = &pt

@@ -3,7 +3,6 @@ package host
 import (
 	"container/heap"
 	"encoding/json"
-	"io"
 	"reflect"
 	"strings"
 	"testing"
@@ -181,9 +180,10 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 			return nil, err
 		}
 
-		// expect clean stream close
-		err = modules.RPCRead(stream, struct{}{})
-		if !errors.Contains(err, io.ErrClosedPipe) {
+		// await tracked response
+		var tracked modules.RPCTrackedPriceTableResponse
+		err = modules.RPCRead(stream, &tracked)
+		if err != nil {
 			return nil, err
 		}
 		return &pt, nil
