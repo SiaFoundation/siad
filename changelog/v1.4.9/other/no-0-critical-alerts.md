@@ -1,1 +1,0 @@
-- Do not print critical alerts message if there are no critical alerts.

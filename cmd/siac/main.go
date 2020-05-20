@@ -378,10 +378,8 @@ func main() {
 	alerts, err := httpClient.DaemonAlertsGet()
 	if err == nil && len(alerts.CriticalAlerts) > 0 {
 		printAlerts(alerts.CriticalAlerts, modules.SeverityCritical)
-		if len(alerts.CriticalAlerts) > 0 {
-			fmt.Println("------------------")
-			fmt.Printf("\n  The above %v critical alerts should be resolved ASAP\n\n", len(alerts.CriticalAlerts))
-		}
+		fmt.Println("------------------")
+		fmt.Printf("\n  The above %v critical alerts should be resolved ASAP\n\n", len(alerts.CriticalAlerts))
 	}
 
 	// run
