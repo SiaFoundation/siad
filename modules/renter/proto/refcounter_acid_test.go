@@ -264,7 +264,7 @@ func performUpdateOperations(rc *refCounter, tr *tracker) (err error) {
 	for i := 0; i < 2; i++ {
 		if fastrand.Intn(100) < 50 {
 			secIdx := fastrand.Uint64n(rc.numSectors)
-			// check if the operation is valid - we won'tr gain anything
+			// check if the operation is valid - we won't gain anything
 			// from hitting an overflow
 			if errValidate := validateIncrement(rc, secIdx); errValidate != nil {
 				continue
