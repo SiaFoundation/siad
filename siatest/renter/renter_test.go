@@ -31,6 +31,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/Sia/test"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -404,7 +405,7 @@ func testClearDownloadHistory(t *testing.T, tg *siatest.TestGroup) {
 			}
 		}
 		// Download files to build download history
-		dest := filepath.Join(siatest.SiaTestingDir, strconv.Itoa(fastrand.Intn(math.MaxInt32)))
+		dest := filepath.Join(test.SiaTestingDir, strconv.Itoa(fastrand.Intn(math.MaxInt32)))
 		for i := 0; i < remainingDownloads; i++ {
 			_, err = r.RenterDownloadGet(rf.Files[0].SiaPath, dest, 0, rf.Files[0].Filesize, false, false)
 			if err != nil {

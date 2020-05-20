@@ -1,7 +1,10 @@
 package main
 
 import (
+	"os"
 	"time"
+
+	"gitlab.com/NebulousLabs/Sia/persist"
 )
 
 const (
@@ -25,3 +28,14 @@ const (
 	// suggests that a modules is not yet ready for usage.
 	moduleNotReadyStatus = "Module not loaded or still starting up"
 )
+
+// skykeycmdTestDir creates a temporary testing directory for a skykeycmd test. This
+// should only every be called once per test. Otherwise it will delete the
+// directory again.
+func skykeycmdTestDir(testName string) string {
+	path := TestDir("skykeycmd", testName)
+	if err := os.MkdirAll(path, persist.DefaultDiskPermissionsTest); err != nil {
+		panic(err)
+	}
+	return path
+}
