@@ -376,7 +376,7 @@ func main() {
 
 	// Check for Critical Alerts
 	alerts, err := httpClient.DaemonAlertsGet()
-	if err == nil {
+	if err == nil && len(alerts.CriticalAlerts) > 0 {
 		printAlerts(alerts.CriticalAlerts, modules.SeverityCritical)
 		if len(alerts.CriticalAlerts) > 0 {
 			fmt.Println("------------------")
