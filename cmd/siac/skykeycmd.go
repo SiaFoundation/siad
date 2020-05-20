@@ -192,22 +192,8 @@ func skykeyListKeys(c client.Client, showPrivateKeys bool) (string, error) {
 		return "", err
 	}
 
-	// Get the max name length for padding purposes.
-	maxNameLength := 0
-	for _, sk := range skykeys {
-		if len(sk.Name) > maxNameLength {
-			maxNameLength = len(sk.Name)
-		}
-	}
-
-	maxIDStringLen := 24
-	minWidth := maxIDStringLen
-	if maxNameLength > minWidth {
-		minWidth = maxNameLength
-	}
-
 	var b strings.Builder
-	w := tabwriter.NewWriter(&b, minWidth, 0, 2, ' ', 0)
+	w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
 
 	// Print a title row.
 	if showPrivateKeys {
