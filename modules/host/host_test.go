@@ -482,7 +482,7 @@ func (p *renterHostPair) managedFetchPriceTable() (*modules.RPCPriceTable, error
 	expiryBuffer := time.Duration(3 * time.Second)
 
 	pt := p.managedPriceTable()
-	if time.Now().Add(expiryBuffer).After(time.Unix(pt.Timestamp,0).Add(pt.Expiry)) {
+	if time.Now().Add(expiryBuffer).After(time.Unix(pt.Timestamp, 0).Add(pt.Expiry)) {
 		err := p.managedUpdatePriceTable(true)
 		if err != nil {
 			return nil, err
