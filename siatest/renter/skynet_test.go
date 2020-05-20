@@ -1982,7 +1982,7 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// The renter should be initialized with 0 skykeys.
-	skykeys, err := r.SkykeyGetSkykeys()
+	skykeys, err := r.SkykeySkykeysGet()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1997,7 +1997,7 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Check that the newly created skykey shows up.
-	skykeys, err = r.SkykeyGetSkykeys()
+	skykeys, err = r.SkykeySkykeysGet()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2091,7 +2091,7 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Check that the expected number of keys was created.
-	skykeys, err = r.SkykeyGetSkykeys()
+	skykeys, err = r.SkykeySkykeysGet()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -436,8 +436,8 @@ func (c *Client) SkykeyAddKeyPost(sk skykey.Skykey) error {
 	return nil
 }
 
-// SkykeyGetSkykeys requests the /skynet/skykeys GET endpoint.
-func (c *Client) SkykeyGetSkykeys() ([]skykey.Skykey, error) {
+// SkykeySkykeysGet requests the /skynet/skykeys GET endpoint.
+func (c *Client) SkykeySkykeysGet() ([]skykey.Skykey, error) {
 	var skykeysGet api.SkykeysGET
 	err := c.get("/skynet/skykeys", &skykeysGet)
 	if err != nil {

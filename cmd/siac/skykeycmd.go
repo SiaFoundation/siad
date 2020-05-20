@@ -187,7 +187,7 @@ func skykeylistcmd() {
 // being stored by the renter. It includes IDs, Names, and if showPrivateKeys is
 // set to true it will include the full encoded skykey.
 func skykeyListKeys(c client.Client, showPrivateKeys bool) (string, error) {
-	skykeys, err := c.SkykeyGetSkykeys()
+	skykeys, err := c.SkykeySkykeysGet()
 	if err != nil {
 		return "", err
 	}
