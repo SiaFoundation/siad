@@ -105,7 +105,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 
 		// Read the output data.
 		outputLen := responses[i].OutputLength
-		responses[i].Output = make([]byte, outputLen, outputLen)
+		responses[i].Output = make([]byte, outputLen)
 		_, err = io.ReadFull(stream, responses[i].Output)
 		if err != nil {
 			return
