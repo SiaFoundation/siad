@@ -67,9 +67,10 @@ type RPCPriceTable struct {
 	WriteStoreCost  types.Currency `json:"writestorecost"`
 
 	// Timestamp is the time at which the price table was created. We need this,
-	// in combination with the Expiry property, to figure out when to expire the
-	// price table. Note we can not simply communicate an expiry time because
-	// the host's clock is not guaranteed to be in sync with the renter's clock.
+	// in combination with the Expiry property to figure out when to consider
+	// the price table to be expired. Note we can not simply communicate an
+	// expiry time because the host's clock is not guaranteed to be in sync with
+	// the renter's clock.
 	Timestamp time.Time `json:"timestamp"`
 }
 
