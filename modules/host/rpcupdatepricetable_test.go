@@ -53,40 +53,43 @@ func TestPriceTableMinHeap(t *testing.T) {
 
 	now := time.Now()
 	pth := priceTableHeap{heap: make([]*modules.RPCPriceTable, 0)}
-	// add 4 price tables (out of order) that expire somewhere in the future
+
 	pt1 := modules.RPCPriceTable{
 		Expiry:    rpcPriceGuaranteePeriod,
-		Timestamp: now.Add(9 * time.Second).Unix(),
-	}
-	pt2 := modules.RPCPriceTable{
-		Expiry:    rpcPriceGuaranteePeriod,
-		Timestamp: now.Add(-3 * time.Second).Unix(),
-	}
-	pt3 := modules.RPCPriceTable{
-		Expiry:    rpcPriceGuaranteePeriod,
-		Timestamp: now.Add(-6 * time.Second).Unix(),
-	}
-	pt4 := modules.RPCPriceTable{
-		Expiry:    rpcPriceGuaranteePeriod,
-		Timestamp: now.Add(-1 * time.Second).Unix(),
+		Timestamp: now.Add(-rpcPriceGuaranteePeriod).Unix(),
 	}
 	pth.Push(&pt1)
+
+	pt2 := modules.RPCPriceTable{
+		Expiry:    rpcPriceGuaranteePeriod,
+		Timestamp: now.Unix(),
+	}
 	pth.Push(&pt2)
+
+	pt3 := modules.RPCPriceTable{
+		Expiry:    rpcPriceGuaranteePeriod,
+		Timestamp: now.Add(-3 * rpcPriceGuaranteePeriod).Unix(),
+	}
 	pth.Push(&pt3)
+
+	pt4 := modules.RPCPriceTable{
+		Expiry:    rpcPriceGuaranteePeriod,
+		Timestamp: now.Add(-2 * rpcPriceGuaranteePeriod).Unix(),
+	}
 	pth.Push(&pt4)
 
-	// verify it considers 3 to be expired if we pass it a threshold 7' from now
+	// verify it expires 3 of them
 	expired := pth.PopExpired()
 	if len(expired) != 3 {
-		t.Fatalf("Expected 3 price tables to be expired, yet managedExpired returned %d price tables", len(expired))
+		t.Fatalf("Unexpected amount of price tables expired, expected %v, received %d", 3, len(expired))
 	}
 
 	// verify 'pop' returns the last remaining price table
 	pth.mu.Lock()
-	expectedPt1 := heap.Pop(&pth.heap)
+	expectedPt2 := heap.Pop(&pth.heap)
 	pth.mu.Unlock()
-	if expectedPt1 != &pt1 {
-		t.Fatal("Expected the last price table to be equal to pt1, which is the price table with the highest expiry")
+	if expectedPt2 != &pt2 {
+		t.Fatal("Expected the last price table to be equal to pt2, which is the price table with the highest expiry")
 	}
 }
 
@@ -122,8 +125,7 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 		t.Fatal("Expected the testing price table to be tracked but isn't")
 	}
 
-	// sleep for the duration of the expiry frequency, seeing as that is greater
-	// than the price guarantee period, it is the worst case
+	// retry until the price table expired and got pruned
 	err = build.Retry(10, pruneExpiredRPCPriceTableFrequency, func() error {
 		_, exists := ht.host.staticPriceTables.managedGet(pt.UID)
 		if exists {
