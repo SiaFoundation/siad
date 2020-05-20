@@ -369,15 +369,14 @@ func filePercentageBreakdown(dirs []directoryInfo) ([]float64, error) {
 		return nil, errors.New("No Directories Found")
 	}
 
-	// Check for no files uploaded
-	total := float64(dirs[0].dir.AggregateNumFiles)
-	if total == 0 {
-		return nil, errors.New("No Files Uploaded")
-	}
-
-	var fullHealth, greater75, greater50, greater25, greater0, unrecoverable float64
+	// Note: we are manually counting the number of files here since the
+	// aggregate fields in the directory could be incorrect due to delays in the
+	// health loop. This is OK since we have to iterate over all the files
+	// anyways.
+	var total, fullHealth, greater75, greater50, greater25, greater0, unrecoverable float64
 	for _, dir := range dirs {
 		for _, file := range dir.files {
+			total++
 			switch {
 			case file.MaxHealthPercent == 100:
 				fullHealth++
@@ -393,6 +392,11 @@ func filePercentageBreakdown(dirs []directoryInfo) ([]float64, error) {
 				unrecoverable++
 			}
 		}
+	}
+
+	// Check for no files uploaded
+	if total == 0 {
+		return nil, errors.New("No Files Uploaded")
 	}
 
 	fullHealth = 100 * fullHealth / total

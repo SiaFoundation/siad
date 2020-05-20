@@ -116,13 +116,13 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.SetValidRenterPayout(curr.ValidRenterPayout().Add64(1))
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err == nil || !strings.Contains(err.Error(), string(ErrHighRenterValidOutput)) {
+	if !errors.Contains(err, ErrHighRenterValidOutput) {
 		t.Fatalf("Expected '%v' but received '%v'", string(ErrHighRenterValidOutput), err)
 	}
 
 	// expect an error saying not enough money was transferred
 	err = verifyPaymentRevision(curr, payment, height, amount.Add64(1))
-	if err == nil || !strings.Contains(err.Error(), string(ErrHighRenterValidOutput)) {
+	if !errors.Contains(err, ErrHighRenterValidOutput) {
 		t.Fatalf("Expected '%v' but received '%v'", string(ErrHighRenterValidOutput), err)
 	}
 	expectedErrorMsg := fmt.Sprintf("expected at least %v to be exchanged, but %v was exchanged: ", amount.Add64(1), curr.ValidRenterPayout().Sub(payment.ValidRenterPayout()))
@@ -134,7 +134,7 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.SetValidHostPayout(curr.ValidHostPayout().Sub64(1))
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err == nil || !strings.Contains(err.Error(), string(ErrLowHostValidOutput)) {
+	if !errors.Contains(err, ErrLowHostValidOutput) {
 		t.Fatalf("Expected '%v' but received '%v'", string(ErrLowHostValidOutput), err)
 	}
 
@@ -142,7 +142,7 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	badCurr = deepCopy(curr)
 	badCurr.SetValidHostPayout(curr.ValidHostPayout().Sub64(1))
 	err = verifyPaymentRevision(badCurr, payment, height, amount)
-	if err == nil || !strings.Contains(err.Error(), string(ErrLowHostValidOutput)) {
+	if !errors.Contains(err, ErrLowHostValidOutput) {
 		t.Fatalf("Expected '%v' but received '%v'", string(ErrLowHostValidOutput), err)
 	}
 
@@ -160,7 +160,7 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	currOut.Value = currOut.Value.Add64(1)
 	badCurr.NewMissedProofOutputs[1] = currOut
 	err = verifyPaymentRevision(badCurr, payment, height, amount)
-	if err == nil || !strings.Contains(err.Error(), string(ErrLowHostMissedOutput)) {
+	if !errors.Contains(err, ErrLowHostMissedOutput) {
 		t.Fatalf("Expected '%v' but received '%v'", string(ErrLowHostMissedOutput), err)
 	}
 
