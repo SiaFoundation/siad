@@ -111,7 +111,11 @@ func (w *worker) managedJobUploadSnapshot() {
 			staticErr: err,
 		}
 		w.renter.tg.Launch(func() {
-			job.staticResponseChan <- resp
+			select {
+			case job.staticResponseChan <- resp:
+			case <-job.staticCancelChan:
+			case <-w.renter.tg.StopChan():
+			}
 		})
 	}()
 

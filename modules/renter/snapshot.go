@@ -325,6 +325,8 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 		case resp = <-responseChan:
 		case <-maxWait.C:
 			break
+		case <-r.tg.StopChan():
+			return errors.New("renter is shutting down")
 		}
 		responses++
 
