@@ -34,8 +34,8 @@ var (
 var (
 	maxSnapshotUploadTime = build.Select(build.Var{
 		Standard: time.Minute * 15,
-		Dev: time.Minute * 3,
-		Testing: time.Minute,
+		Dev:      time.Minute * 3,
+		Testing:  time.Minute,
 	}).(time.Duration)
 )
 
