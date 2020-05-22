@@ -55,11 +55,7 @@ func newTestNode(dir string) (*siatest.TestNode, error) {
 // This should only every be called once per test. Otherwise it will delete the
 // directory again.
 func siacTestDir(testName string) string {
-	path := filepath.Join(siatest.SiaTestingDir, "cmd/siac", testName)
-	err := os.RemoveAll(path)
-	if err != nil {
-		panic(err)
-	}
+	path := siatest.TestDir("cmd/siac", testName)
 	if err := os.MkdirAll(path, persist.DefaultDiskPermissionsTest); err != nil {
 		panic(err)
 	}
