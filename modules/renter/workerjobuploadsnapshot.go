@@ -20,10 +20,10 @@ type (
 	// jobUploadSnapshot is a job for the worker to upload a snapshot to its
 	// respective host.
 	jobUploadSnapshot struct {
-		staticMetadata modules.UploadedBackup
+		staticMetadata    modules.UploadedBackup
 		staticSiaFileData []byte
 
-		staticCancelChan chan struct{}
+		staticCancelChan   chan struct{}
 		staticResponseChan chan *jobUploadSnapshotResponse
 	}
 
@@ -31,13 +31,13 @@ type (
 	// uploaded.
 	jobUploadSnapshotQueue struct {
 		killed bool
-		jobs []*jobUploadSnapshot
+		jobs   []*jobUploadSnapshot
 
-		cooldownUntil time.Time
+		cooldownUntil       time.Time
 		consecutiveFailures uint64
 
 		staticWorker *worker
-		mu sync.Mutex
+		mu           sync.Mutex
 	}
 
 	// jobUploa;dSnapshotResponse contains the response to an upload snapshot
@@ -117,7 +117,6 @@ func (w *worker) managedJobUploadSnapshot() {
 
 	// Check that the worker is good for upload.
 	if !w.staticCache().staticContractUtility.GoodForUpload {
-		println("skipping worker b/c not gfu")
 		err = errors.New("snapshot was not uploaded because the worker is not good for upload")
 		return
 	}
@@ -127,7 +126,6 @@ func (w *worker) managedJobUploadSnapshot() {
 	// Perform the actual upload.
 	sess, err := w.renter.hostContractor.Session(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
-		println("still didn't get the session:", err.Error())
 		w.renter.log.Debugln("unable to grab a session to perform an upload snapshot job:", err)
 		err = errors.AddContext(err, "unable to get host session")
 		return
@@ -140,10 +138,10 @@ func (w *worker) managedJobUploadSnapshot() {
 		err = errors.Compose(err, closeErr)
 	}()
 
-	// TODO: This function doesn't take any cancel channels or thread groups.
+	// Upload the snapshot to the host. The session is created by passing in a
+	// thread group, so this call should be responsive to fast shutdown.
 	err = w.renter.managedUploadSnapshotHost(job.staticMetadata, job.staticSiaFileData, sess)
 	if err != nil {
-		println("the actual upload part failed:", err.Error())
 		w.renter.log.Debugln("uploading a snapshot to a host failed:", err)
 		err = errors.AddContext(err, "uploading a snapshot to a host failed")
 		return
@@ -240,6 +238,5 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 		// the test doesn't fail.
 		return errors.AddContext(err, "could not perform sector replace for the snapshot")
 	}
-	println("THE REPLACE DID SUCCEED")
 	return nil
 }

@@ -289,10 +289,10 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 	// Submit a job to each worker.
 	for _, w := range workers {
 		job := &jobUploadSnapshot{
-			staticMetadata: meta,
+			staticMetadata:    meta,
 			staticSiaFileData: dotSia,
 
-			staticCancelChan: cancelChan, // We don't actually use this.
+			staticCancelChan:   cancelChan, // We don't actually use this.
 			staticResponseChan: responseChan,
 		}
 		w.staticJobUploadSnapshotQueue.callAdd(job)
@@ -303,7 +303,7 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 	responses := 0
 	successes := 0
 	maxWait := time.NewTimer(time.Minute * 15)
-	defer func (){
+	defer func() {
 		if !maxWait.Stop() {
 			<-maxWait.C
 		}
