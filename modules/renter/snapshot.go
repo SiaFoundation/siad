@@ -11,10 +11,10 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
+
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -229,80 +229,6 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	return err
 }
 
-// managedUploadSnapshotHost uploads a snapshot to a single host.
-func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia []byte, host contractor.Session) error {
-	// Get the wallet seed.
-	ws, _, err := r.w.PrimarySeed()
-	if err != nil {
-		return errors.AddContext(err, "failed to get wallet's primary seed")
-	}
-	// Derive the renter seed and wipe the memory once we are done using it.
-	rs := proto.DeriveRenterSeed(ws)
-	defer fastrand.Read(rs[:])
-	// Derive the secret and wipe it afterwards.
-	secret := crypto.HashAll(rs, snapshotKeySpecifier)
-	defer fastrand.Read(secret[:])
-
-	// split the snapshot .sia file into sectors
-	var sectors [][]byte
-	for buf := bytes.NewBuffer(dotSia); buf.Len() > 0; {
-		sector := make([]byte, modules.SectorSize)
-		copy(sector, buf.Next(len(sector)))
-		sectors = append(sectors, sector)
-	}
-	if len(sectors) > 4 {
-		return errors.New("snapshot is too large")
-	}
-
-	// upload the siafile, creating a snapshotEntry
-	var name [96]byte
-	copy(name[:], meta.Name)
-	entry := snapshotEntry{
-		Name:         name,
-		UID:          meta.UID,
-		CreationDate: meta.CreationDate,
-		Size:         meta.Size,
-	}
-	for j, piece := range sectors {
-		root, err := host.Upload(piece)
-		if err != nil {
-			return err
-		}
-		entry.DataSectors[j] = root
-	}
-
-	// download the current entry table
-	entryTable, err := r.managedDownloadSnapshotTable(host)
-	if err != nil {
-		return err
-	}
-	shouldOverwrite := len(entryTable) != 0 // only overwrite if the sector already contained an entryTable
-	entryTable = append(entryTable, entry)
-
-	// if entryTable is too large to fit in a sector, repeatedly remove the
-	// oldest entry until it fits
-	sort.Slice(r.persist.UploadedBackups, func(i, j int) bool {
-		return r.persist.UploadedBackups[i].CreationDate > r.persist.UploadedBackups[j].CreationDate
-	})
-	c, _ := crypto.NewSiaKey(crypto.TypeThreefish, secret[:])
-	for len(encoding.Marshal(entryTable)) > int(modules.SectorSize) {
-		entryTable = entryTable[:len(entryTable)-1]
-	}
-
-	// encode and encrypt the table
-	newTable := make([]byte, modules.SectorSize)
-	copy(newTable[:16], snapshotTableSpecifier[:])
-	copy(newTable[16:], encoding.Marshal(entryTable))
-	tableSector := c.EncryptBytes(newTable)
-
-	// swap the new entry table into index 0 and delete the old one
-	// (unless it wasn't an entry table)
-	if _, err := host.Replace(tableSector, 0, shouldOverwrite); err != nil {
-		return err
-	}
-	return nil
-}
-
 // managedSaveSnapshot saves snapshot metadata to disk.
 func (r *Renter) managedSaveSnapshot(meta modules.UploadedBackup) error {
 	id := r.mu.Lock()
@@ -344,50 +270,84 @@ func (r *Renter) managedSaveSnapshot(meta modules.UploadedBackup) error {
 
 // managedUploadSnapshot uploads a snapshot .sia file to all hosts.
 func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byte) error {
-	contracts := r.hostContractor.Contracts()
-
-	// count good hosts
+	// Grab all of the workers that are good for upload.
 	var total int
-	for _, c := range contracts {
-		if c.Utility.GoodForUpload {
+	workers := r.staticWorkerPool.callWorkers()
+	for i := 0; i < len(workers); i++ {
+		if workers[i].staticCache().staticContractUtility.GoodForUpload {
+			workers[total] = workers[i]
 			total++
 		}
 	}
+	workers = workers[:total]
 
-	// upload the siafile and update the entry table for each host
-	var succeeded int
-	for _, c := range contracts {
-		if !c.Utility.GoodForUpload {
-			continue
+	// Create a response channel for the workers to send results down.
+	cancelChan := make(chan struct{})
+	responseChan := make(chan *jobUploadSnapshotResponse, len(workers))
+
+	// Submit a job to each worker.
+	for _, w := range workers {
+		job := &jobUploadSnapshot{
+			staticMetadata: meta,
+			staticSiaFileData: dotSia,
+
+			staticCancelChan: cancelChan, // We don't actually use this.
+			staticResponseChan: responseChan,
 		}
-		err := func() error {
-			host, err := r.hostContractor.Session(c.HostPublicKey, r.tg.StopChan())
-			if err != nil {
-				return err
-			}
-			defer host.Close()
-			return r.managedUploadSnapshotHost(meta, dotSia, host)
-		}()
-		if err != nil {
-			r.log.Printf("Uploading snapshot to host %v failed: %v", c.HostPublicKey, err)
-			continue
+		w.staticJobUploadSnapshotQueue.callAdd(job)
+	}
+
+	// Wait for the responses. Do not give the project more than 15 minutes to
+	// complete.
+	responses := 0
+	successes := 0
+	maxWait := time.NewTimer(time.Minute * 15)
+	defer func (){
+		if !maxWait.Stop() {
+			<-maxWait.C
 		}
-		succeeded++
-		pct := 100 * float64(succeeded) / float64(total)
+	}
+	for responses < len(workers) {
+		var resp *jobUploadSnapshotResponse
+		select {
+		case resp = <-responseChan:
+		case <-maxWait.C:
+			break
+		}
+		resp := <-responseChan
+		responses++
+
+		// Update the progress.
+		pct := 100 * float64(responses) / float64(total)
 		meta.UploadProgress = calcSnapshotUploadProgress(100, pct)
-		if err := r.managedSaveSnapshot(meta); err != nil {
-			return err
+		err := r.managedSaveSnapshot(meta)
+		if err != nil {
+			r.log.Println("Error saving snapshot during upload:", err)
+			continue
 		}
+
+		// Log any error.
+		if resp.staticErr != nil {
+			r.log.Debugln("snapshot upload failed:", resp.staticErr)
+			continue
+		}
+		successes++
 	}
-	if succeeded == 0 {
-		r.log.Println("WARN: Failed to upload snapshot to at least one host")
+
+	// Check if there were too few successes to count this as a successful
+	// backup.
+	if successes < total/3 {
+		r.log.Printf("Unable to save snapshot effectively, wanted %v but only got %v successful snapshot backups", total, successes)
+		return fmt.Errorf("needed at least %v successes, only got %v", total/3, successes)
 	}
-	// save final version of snapshot
+
+	// Save the final version of the snapshot. Represent the progress at 100%
+	// even though not every host may have our snapshot. Really we only need 1
+	// working host to do a full recovery.
 	meta.UploadProgress = calcSnapshotUploadProgress(100, 100)
 	if err := r.managedSaveSnapshot(meta); err != nil {
-		return err
+		return errors.AddContext("error saving snapshot after upload completed")
 	}
-
 	return nil
 }
 

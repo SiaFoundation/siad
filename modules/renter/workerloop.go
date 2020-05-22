@@ -103,6 +103,10 @@ func (w *worker) externTryLaunchSerialJob() {
 		w.externLaunchSerialJob(w.managedPerformFetchBackupsJob)
 		return
 	}
+	if w.managedHasUploadSnapshotJob() {
+		w.externLaunchSerialJob(w.managedJobUploadSnapshot)
+		return
+	}
 	if w.staticJobQueueDownloadByRoot.managedHasJob() {
 		w.externLaunchSerialJob(w.managedLaunchJobDownloadByRoot)
 		return

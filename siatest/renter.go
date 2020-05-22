@@ -600,4 +600,5 @@ func (tn *TestNode) WaitForUploadProgress(rf *RemoteFile, progress float64) erro
 		}
 		return nil
 	})
+	return nil
 }
