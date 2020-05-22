@@ -44,7 +44,6 @@ func main() {
 	workDir := filepath.Join(home, "Nebulous/sia-upload-download-script") // script's working directory
 	filesDir := filepath.Join(workDir, "files")                           // path to directory where created files will be stored
 	downloadsDir := filepath.Join(workDir, "downloads")                   // path to the directory where downloaded files will be stored
-	contracts := 50                                                       // TODO - update to be number of hosts in the allownace
 
 	// File upload variables
 	var dataPieces, parityPieces uint64 = 10, 20
@@ -67,6 +66,10 @@ func main() {
 
 	// TODO - set allowance via the API so that it doesn't need to be set in the
 	// command line
+
+	// Get number of hosts in allowance
+	rg, err := client.RenterGet()
+	contracts := int(rg.Settings.Allowance.Hosts)
 
 	start := time.Now()
 	for {
