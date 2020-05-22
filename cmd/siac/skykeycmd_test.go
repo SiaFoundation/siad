@@ -22,13 +22,13 @@ func TestSkykeyCommands(t *testing.T) {
 
 	// Define subtests
 	subTests := []subTest{
-		{Name: "TestDuplicateSkykeyAdd", Test: testDuplicateSkykeyAdd},
-		{Name: "TestChangeKeyEntropyKeepName", Test: testChangeKeyEntropyKeepName},
-		{Name: "TestAddKeyTwice", Test: testAddKeyTwice},
-		{Name: "TestInvalidCipherType", Test: testInvalidCipherType},
-		{Name: "TestSkykeyGet", Test: testSkykeyGet},
-		{Name: "TestSkykeyGetUsingNameAndID", Test: testSkykeyGetUsingNameAndID},
-		{Name: "TestSkykeyGetUsingNoNameAndNoID", Test: testSkykeyGetUsingNoNameAndNoID},
+		{name: "TestDuplicateSkykeyAdd", test: testDuplicateSkykeyAdd},
+		{name: "TestChangeKeyEntropyKeepName", test: testChangeKeyEntropyKeepName},
+		{name: "TestAddKeyTwice", test: testAddKeyTwice},
+		{name: "TestInvalidCipherType", test: testInvalidCipherType},
+		{name: "TestSkykeyGet", test: testSkykeyGet},
+		{name: "TestSkykeyGetUsingNameAndID", test: testSkykeyGetUsingNameAndID},
+		{name: "TestSkykeyGetUsingNoNameAndNoID", test: testSkykeyGetUsingNoNameAndNoID},
 	}
 
 	// Run tests

@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/node"
@@ -15,8 +14,8 @@ import (
 // subTest is a helper struct for running subtests when tests can use the same
 // test http client
 type subTest struct {
-	Name string
-	Test func(*testing.T, client.Client)
+	name string
+	test func(*testing.T, client.Client)
 }
 
 // runSubTests is a helper function to run the subtests when tests can use the
@@ -34,8 +33,8 @@ func runSubTests(t *testing.T, directory string, tests []subTest) error {
 	}()
 	// Run subtests
 	for _, test := range tests {
-		t.Run(test.Name, func(t *testing.T) {
-			test.Test(t, n.Client)
+		t.Run(test.name, func(t *testing.T) {
+			test.test(t, n.Client)
 		})
 	}
 	return nil
