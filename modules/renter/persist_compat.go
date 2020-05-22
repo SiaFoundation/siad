@@ -410,6 +410,9 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to transform old file to new file")
 		}
+		if entry.NumChunks() < 1 {
+			return nil, errors.AddContext(err, "new file has invalid number of chunks")
+		}
 		names[i] = f.name
 		entry.Close()
 	}

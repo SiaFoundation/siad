@@ -796,11 +796,11 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 
 	// get the stats
 	stats, err := r.SkynetStatsGet()
-
-	// verify it contains the node's version information
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// verify it contains the node's version information
 	expected := build.Version
 	if build.ReleaseTag != "" {
 		expected += "-" + build.ReleaseTag
@@ -810,6 +810,11 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if stats.VersionInfo.GitRevision != build.GitRevision {
 		t.Fatalf("Unexpected git revision return, expected '%v', actual '%v'", build.GitRevision, stats.VersionInfo.GitRevision)
+	}
+
+	// Uptime should be non zero
+	if stats.Uptime == 0 {
+		t.Error("Uptime is zero")
 	}
 
 	// create two test files with sizes below and above the sector size

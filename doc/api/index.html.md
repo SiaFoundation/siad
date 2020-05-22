@@ -429,15 +429,14 @@ the rest of Sia.
 curl -A "Sia-Agent" "localhost:9980/daemon/alerts"
 ```
 
-Returns the alerts of the Sia instance sorted by severity from highest to
-lowest.
+Returns all alerts of all severities of the Sia instance sorted by severity from highest to lowest in `alerts` and the alerts of the Sia instance sorted by category in `criticalalerts`, `erroralerts` and `warningalerts`.
 
 ### JSON Response
 > JSON Response Example
  
 ```go
 {
-  "alerts": [
+    "alerts": [
     {
       "cause": "wallet is locked",
       "msg": "user's contracts need to be renewed but a locked wallet prevents renewal",
@@ -445,6 +444,16 @@ lowest.
       "severity": "warning",
     }
   ],
+  "criticalalerts": [],
+  "erroralerts": [],
+  "warningalerts": [
+    {
+      "cause": "wallet is locked",
+      "msg": "user's contracts need to be renewed but a locked wallet prevents renewal",
+      "module": "contractor",
+      "severity": "warning",
+    }
+  ]
 }
 ```
 **cause** | string  
@@ -3773,6 +3782,10 @@ the siafile is the health of the worst unstuck chunk.
 
 **localpath** | string  
 Path to the local file on disk.  
+**NOTE** `siad` will set the localpath to an empty string if the local file is
+not found on disk. This is done to avoid the siafile being corrupted in the
+future by a different file being placed on disk at the original localpath
+location.  
 
 **maxhealth** | float64  
 the maxhealth is either the health or the stuckhealth of the siafile, whichever
@@ -4853,6 +4866,7 @@ returns statistical information about Skynet, e.g. number of files uploaded
 ### JSON Response
 ```json
 {
+  "uptime": 1234, // int
   "uploadstats": {
     "numfiles": 2,         // int
     "totalsize": 44527895  // int
@@ -4866,7 +4880,10 @@ returns statistical information about Skynet, e.g. number of files uploaded
 }
 ```
 
-**uploadstats** | object
+**uptime** | int  
+The amount of time in seconds that siad has been running.
+
+**uploadstats** | object  
 Uploadstats is an object with statistics about the data uploaded to Skynet.
 
 **numfiles** | int  
@@ -5996,7 +6013,7 @@ ID of the transaction being requested.
 }
 ```
 **transaction**  
-Raw transaction. The rest of the fields in the resposne are determined from this
+Raw transaction. The rest of the fields in the response are determined from this
 raw transaction. It is left undocumented here as the processed transaction (the
 rest of the fields in this object) are usually what is desired.  
 

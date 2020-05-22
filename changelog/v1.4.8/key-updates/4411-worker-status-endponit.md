@@ -1,1 +1,0 @@
-- Add `/renter/workers` API endpoint to get the current status of the workers. This pulls it out of the log files as well. 

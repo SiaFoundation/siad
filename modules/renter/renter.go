@@ -26,6 +26,7 @@ package renter
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -107,6 +108,8 @@ type hostContractor interface {
 	// billing period.
 	PeriodSpending() (modules.ContractorSpending, error)
 
+	modules.PaymentProvider
+
 	// OldContracts returns the oldContracts of the renter's hostContractor.
 	OldContracts() []modules.RenterContract
 
@@ -165,12 +168,6 @@ type renterFuseManager interface {
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
-	// Alert management.
-	staticAlerter *modules.GenericAlerter
-
-	// File management.
-	staticFileSystem *filesystem.FileSystem
-
 	// Skynet Management
 	staticSkynetBlacklist *skynetblacklist.SkynetBlacklist
 	staticSkynetPortals   *skynetportals.SkynetPortals
@@ -207,12 +204,6 @@ type Renter struct {
 	bubbleUpdates   map[string]bubbleStatus
 	bubbleUpdatesMu sync.Mutex
 
-	// Account management.
-	accounts           map[string]*account
-	accountsClosed     bool
-	staticAccountsWg   sync.WaitGroup
-	staticAccountsFile modules.File
-
 	// Utilities.
 	cs                    modules.ConsensusSet
 	deps                  modules.Dependencies
@@ -226,6 +217,9 @@ type Renter struct {
 	memoryManager         *memoryManager
 	mu                    *siasync.RWMutex
 	repairLog             *persist.Logger
+	staticAccountManager  *accountManager
+	staticAlerter         *modules.GenericAlerter
+	staticFileSystem      *filesystem.FileSystem
 	staticFuseManager     renterFuseManager
 	staticSkykeyManager   *skykey.SkykeyManager
 	staticStreamBufferSet *streamBufferSet
@@ -243,7 +237,7 @@ func (r *Renter) Close() error {
 		return nil
 	}
 
-	return errors.Compose(r.tg.Stop(), r.hostDB.Close(), r.hostContractor.Close())
+	return errors.Compose(r.tg.Stop(), r.hostDB.Close(), r.hostContractor.Close(), r.staticSkynetBlacklist.Close(), r.staticSkynetPortals.Close())
 }
 
 // PriceEstimation estimates the cost in siacoins of performing various storage
@@ -910,8 +904,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),
 
-		accounts: make(map[string]*account),
-
 		cs:                    cs,
 		deps:                  deps,
 		g:                     g,
@@ -926,6 +918,30 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		tpool:                 tpool,
 	}
 	close(r.uploadHeap.pauseChan)
+
+	// Initialize the loggers so that they are available for the rest of the the
+	// components start up.
+	var err error
+	r.log, err = persist.NewFileLogger(filepath.Join(r.persistDir, logFile))
+	if err != nil {
+		return nil, err
+	}
+	if err := r.tg.AfterStop(r.log.Close); err != nil {
+		return nil, err
+	}
+	r.repairLog, err = persist.NewFileLogger(filepath.Join(r.persistDir, repairLogFile))
+	if err != nil {
+		return nil, err
+	}
+	if err := r.tg.AfterStop(r.repairLog.Close); err != nil {
+		return nil, err
+	}
+
+	// Initialize some of the components.
+	err = r.newAccountManager()
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to create account manager")
+	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
 	r.staticFuseManager = newFuseManager(r)
 	r.stuckStack = callNewStuckStack()
@@ -948,19 +964,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	err = r.managedInitPersist()
 	if err != nil {
 		return nil, err
-	}
-
-	// Load the accounts.
-	err = r.managedLoadAccounts()
-	if err != nil {
-		return nil, err
-	}
-	// Save accounts on shutdown.
-	if !r.deps.Disrupt("InterruptAccountSaveOnShutdown") {
-		err = r.tg.OnStop(r.managedSaveAccounts)
-		if err != nil {
-			return nil, err
-		}
 	}
 
 	// After persist is initialized, push the root directory onto the directory

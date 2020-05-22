@@ -757,6 +757,8 @@ func (sf *SiaFile) saveFile(chunks []chunk) (err error) {
 
 // saveChunkUpdate creates a writeaheadlog update that saves a single marshaled chunk
 // to disk when applied.
+// NOTE: For consistency chunk updates always need to be created after the
+// header or metadata updates.
 func (sf *SiaFile) saveChunkUpdate(chunk chunk) writeaheadlog.Update {
 	offset := sf.chunkOffset(chunk.Index)
 	chunkBytes := marshalChunk(chunk)
@@ -767,6 +769,8 @@ func (sf *SiaFile) saveChunkUpdate(chunk chunk) writeaheadlog.Update {
 // pubKeyTable of the SiaFile to disk using the writeaheadlog. If the metadata
 // and overlap due to growing too large and would therefore corrupt if they
 // were written to disk, a new page is allocated.
+// NOTE: For consistency chunk updates always need to be created after the
+// header or metadata updates.
 func (sf *SiaFile) saveHeaderUpdates() (_ []writeaheadlog.Update, err error) {
 	// Create a list of updates which need to be applied to save the metadata.
 	var updates []writeaheadlog.Update
@@ -819,6 +823,8 @@ func (sf *SiaFile) saveHeaderUpdates() (_ []writeaheadlog.Update, err error) {
 // on the harddrive. This means that using saveMetadataUpdate instead of
 // saveHeader is potentially faster for SiaFiles with a header that can not be
 // marshaled within a single page.
+// NOTE: For consistency chunk updates always need to be created after the
+// header or metadata updates.
 func (sf *SiaFile) saveMetadataUpdates() ([]writeaheadlog.Update, error) {
 	// Marshal the pubKeyTable.
 	pubKeyTable, err := marshalPubKeyTable(sf.pubKeyTable)

@@ -2,7 +2,6 @@ package host
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -126,7 +125,7 @@ func blankMockHostTester(d modules.Dependencies, name string) (*hostTester, erro
 
 	// Create the siamux.
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
-	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, err
 	}
@@ -330,7 +329,7 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create mux logger")
 	}
-	renterMux, err := siamux.New("127.0.0.1:0", muxLogger, renterMuxDir)
+	renterMux, err := siamux.New("127.0.0.1:0", "127.0.0.1:0", muxLogger, renterMuxDir)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create renter mux")
 	}
@@ -547,11 +546,8 @@ func (p *renterHostPair) managedFundEphemeralAccount(amount types.Currency, upda
 
 // managedNewStream opens a stream to the pair's host and returns it
 func (p *renterHostPair) managedNewStream() siamux.Stream {
-	host := p.staticHT.host
-	hes := host.ExternalSettings()
-
-	pk := modules.SiaPKToMuxPK(host.publicKey)
-	address := fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
+	pk := modules.SiaPKToMuxPK(p.staticHT.host.publicKey)
+	address := p.staticHT.host.ExternalSettings().SiaMuxAddress()
 	subscriber := modules.HostSiaMuxSubscriberName
 
 	stream, err := p.staticRenterMux.NewStream(subscriber, address, pk)

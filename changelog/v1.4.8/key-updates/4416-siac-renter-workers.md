@@ -1,1 +1,0 @@
-- Add `siac renter workers` command to siac

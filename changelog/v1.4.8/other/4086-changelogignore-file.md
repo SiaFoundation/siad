@@ -1,1 +1,0 @@
-- Move filenames to ignore in changelog generator to `.changelogignore` file
