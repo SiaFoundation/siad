@@ -344,7 +344,7 @@ func rentercmd() {
 // renterFileHealthSummary prints out a summary of the status of all the files
 // in the renter to track the progress of the files
 func renterFileHealthSummary(dirs []directoryInfo) {
-	percentages, err := filePercentageBreakdown(dirs)
+	percentages, numStuck, err := fileHealthBreakdown(dirs)
 	if err != nil {
 		die(err)
 	}
@@ -352,21 +352,22 @@ func renterFileHealthSummary(dirs []directoryInfo) {
 	percentages = parsePercentages(percentages)
 
 	fmt.Printf(`File Health Summary:
-  %% At 100%%:            %v%%
-  %% Between 75%% - 100%%: %v%%
-  %% Between 50%% - 75%%:  %v%%
-  %% Between 25%% - 50%%:  %v%%
-  %% Between 0%% - 25%%:   %v%%
-  %% Unrecoverable:      %v%%
-`, percentages[0], percentages[1], percentages[2], percentages[3], percentages[4], percentages[5])
+  %% At 100%%:             %v%%
+  %% Between 75%% - 100%%:  %v%%
+  %% Between 50%% - 75%%:   %v%%
+  %% Between 25%% - 50%%:   %v%%
+  %% Between 0%% - 25%%:    %v%%
+  %% Unrecoverable:       %v%%
+  Number of Stuck Files: %v
+`, percentages[0], percentages[1], percentages[2], percentages[3], percentages[4], percentages[5], numStuck)
 }
 
-// filePercentageBreakdown returns a percentage breakdown of the renter's files'
-// healths
-func filePercentageBreakdown(dirs []directoryInfo) ([]float64, error) {
+// fileHealthBreakdown returns a percentage breakdown of the renter's files'
+// healths and the number of stuck files
+func fileHealthBreakdown(dirs []directoryInfo) ([]float64, int, error) {
 	// Check for nil input
 	if len(dirs) == 0 {
-		return nil, errors.New("No Directories Found")
+		return nil, 0, errors.New("No Directories Found")
 	}
 
 	// Note: we are manually counting the number of files here since the
@@ -374,9 +375,13 @@ func filePercentageBreakdown(dirs []directoryInfo) ([]float64, error) {
 	// health loop. This is OK since we have to iterate over all the files
 	// anyways.
 	var total, fullHealth, greater75, greater50, greater25, greater0, unrecoverable float64
+	var numStuck int
 	for _, dir := range dirs {
 		for _, file := range dir.files {
 			total++
+			if file.Stuck {
+				numStuck++
+			}
 			switch {
 			case file.MaxHealthPercent == 100:
 				fullHealth++
@@ -396,7 +401,7 @@ func filePercentageBreakdown(dirs []directoryInfo) ([]float64, error) {
 
 	// Check for no files uploaded
 	if total == 0 {
-		return nil, errors.New("No Files Uploaded")
+		return nil, 0, errors.New("No Files Uploaded")
 	}
 
 	fullHealth = 100 * fullHealth / total
@@ -406,7 +411,7 @@ func filePercentageBreakdown(dirs []directoryInfo) ([]float64, error) {
 	greater0 = 100 * greater0 / total
 	unrecoverable = 100 * unrecoverable / total
 
-	return []float64{fullHealth, greater75, greater50, greater25, greater0, unrecoverable}, nil
+	return []float64{fullHealth, greater75, greater50, greater25, greater0, unrecoverable}, numStuck, nil
 }
 
 // renterFilesAndContractSummary prints out a summary of what the renter is
