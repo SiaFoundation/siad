@@ -96,7 +96,6 @@ func main() {
 	w.Flush()
 	i := 0
 	for remainingData > 0 {
-
 		// Only uploading one file at a time to get accurate upload speeds
 		if len(uploadMap) < 1 {
 			file = "Randfile" + strconv.Itoa(i) + "_" + strconv.Itoa(int(size/1e9)) + "GB" + strconv.FormatInt(time.Now().Unix(), 10)
@@ -155,7 +154,6 @@ func main() {
 	_, err = fmt.Fprintf(w, "The average time to download a %6.2fGB file was %s for an average download speed of %fMB/s\n", size/1e9, avgDownloadSpeed, size/float64(avgDownloadSpeed)*1e3)
 	check(err)
 	w.Flush()
-
 }
 
 // average calculates the average duration for a set of time durations
@@ -195,7 +193,6 @@ func createFile(path string, size int, chunk int, w *bufio.Writer) {
 		// Write data to file.
 		_, err := f.Write(data)
 		check(err)
-
 	}
 
 	// End time
@@ -240,7 +237,6 @@ func upload(c *client.Client, path string, dataPieces, parityPieces uint64, w *b
 	uploadMap[filepath.Base(path)] = time.Now()
 	// uploadMap[filepath.Join("/", filepath.Base(path))] = time.Now()
 	uploadMapLock.Unlock()
-
 }
 
 // checkRedundancy pings the files API endpoint to see if a file has been fully
@@ -262,7 +258,6 @@ func checkRedundancy(client *client.Client, wg *sync.WaitGroup, c chan struct{},
 		rf, err := client.RenterFilesGet(false)
 		check(err)
 		for _, fi := range rf.Files {
-
 			if _, ok := uploadMap[fi.SiaPath.Path]; ok && fi.Redundancy >= float64(r) {
 				// Deleting local copy of file
 				deleteLocalFile(dir[:len(dir)-1], fi.SiaPath, w)
@@ -279,7 +274,6 @@ func checkRedundancy(client *client.Client, wg *sync.WaitGroup, c chan struct{},
 				// Remove from map
 				delete(uploadMap, fi.SiaPath.Path)
 			}
-
 		}
 		uploadMapLock.Unlock()
 		time.Sleep(1 * time.Second)
