@@ -2,6 +2,7 @@ package renter
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -306,7 +307,7 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 		if !maxWait.Stop() {
 			<-maxWait.C
 		}
-	}
+	}()
 	for responses < len(workers) {
 		var resp *jobUploadSnapshotResponse
 		select {
@@ -314,7 +315,6 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 		case <-maxWait.C:
 			break
 		}
-		resp := <-responseChan
 		responses++
 
 		// Update the progress.
@@ -346,7 +346,7 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 	// working host to do a full recovery.
 	meta.UploadProgress = calcSnapshotUploadProgress(100, 100)
 	if err := r.managedSaveSnapshot(meta); err != nil {
-		return errors.AddContext("error saving snapshot after upload completed")
+		return errors.AddContext(err, "error saving snapshot after upload completed")
 	}
 	return nil
 }
