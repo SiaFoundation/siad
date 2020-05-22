@@ -270,12 +270,6 @@ func (sm *SkykeyManager) loadHeader(file *os.File) error {
 	if err = dec.Err(); err != nil {
 		return err
 	}
-
-	// Update the stored version if necessary.
-	if sm.staticVersion != skykeyVersion {
-		sm.staticVersion = skykeyVersion
-		return sm.saveHeader(file)
-	}
 	return nil
 }
 
