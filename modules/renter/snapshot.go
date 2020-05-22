@@ -9,6 +9,7 @@ import (
 	"sort"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -18,6 +19,24 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+)
+
+var (
+	// SnapshotKeySpecifier is the specifier used for deriving the secret used to
+	// encrypt a snapshot from the RenterSeed.
+	snapshotKeySpecifier = types.NewSpecifier("snapshot")
+
+	// snapshotTableSpecifier is the specifier used to identify a snapshot entry
+	// table stored in a sector.
+	snapshotTableSpecifier = types.NewSpecifier("SnapshotTable")
+)
+
+var (
+	maxSnapshotUploadTime = build.Select(build.Var{
+		Standard: time.Minute * 15,
+		Dev: time.Minute * 3,
+		Testing: time.Minute,
+	}).(time.Duration)
 )
 
 // A snapshotEntry is an entry within the snapshot table, identifying both the
@@ -30,16 +49,6 @@ type snapshotEntry struct {
 	Size         uint64         // size of snapshot .sia file
 	DataSectors  [4]crypto.Hash // pointers to sectors containing snapshot .sia file
 }
-
-var (
-	// SnapshotKeySpecifier is the specifier used for deriving the secret used to
-	// encrypt a snapshot from the RenterSeed.
-	snapshotKeySpecifier = types.NewSpecifier("snapshot")
-
-	// snapshotTableSpecifier is the specifier used to identify a snapshot entry
-	// table stored in a sector.
-	snapshotTableSpecifier = types.NewSpecifier("SnapshotTable")
-)
 
 // calcSnapshotUploadProgress calculates the upload progress of a snapshot.
 func calcSnapshotUploadProgress(fileUploadProgress float64, dotSiaUploadProgress float64) float64 {
@@ -282,11 +291,12 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 	}
 	workers = workers[:total]
 
-	// Create a response channel for the workers to send results down.
+	// Submit a job to each worker. Make sure the response channel has enough
+	// room in the buffer for all results, this way workers are not being
+	// blocked when returning their results.
 	cancelChan := make(chan struct{})
+	defer close(cancelChan)
 	responseChan := make(chan *jobUploadSnapshotResponse, len(workers))
-
-	// Submit a job to each worker.
 	for _, w := range workers {
 		job := &jobUploadSnapshot{
 			staticMetadata:    meta,
@@ -298,16 +308,17 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 		w.staticJobUploadSnapshotQueue.callAdd(job)
 	}
 
-	// Wait for the responses. Do not give the project more than 15 minutes to
-	// complete.
-	responses := 0
-	successes := 0
-	maxWait := time.NewTimer(time.Minute * 15)
+	// Cap the total amount of time that we wait for results.
+	maxWait := time.NewTimer(maxSnapshotUploadTime)
 	defer func() {
 		if !maxWait.Stop() {
 			<-maxWait.C
 		}
 	}()
+
+	// Iteratively grab the responses from the workers.
+	responses := 0
+	successes := 0
 	for responses < len(workers) {
 		var resp *jobUploadSnapshotResponse
 		select {
