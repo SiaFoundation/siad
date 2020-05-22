@@ -2,6 +2,7 @@ package renter
 
 import (
 	"bytes"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -14,6 +15,13 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+)
+
+const (
+	// snapshotUploadGougingFractionDenom sets the fraction to 1/100 because
+	// uploading backups is important, so there is less sensitivity to gouging.
+	// Also, this is a rare operation.
+	snapshotUploadGougingFractionDenom = 100
 )
 
 type (
@@ -46,6 +54,52 @@ type (
 		staticErr error
 	}
 )
+
+// checkUploadSnapshotGouging looks at the current renter allowance and the
+// active settings for a host and determines whether a snapshot upload should be
+// halted due to price gouging.
+func checkUploadSnapshotGouging(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
+	// Check whether the base RPC price is too high.
+	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) < 0 {
+		errStr := fmt.Sprintf("rpc price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.BaseRPCPrice, allowance.MaxRPCPrice)
+		return errors.New(errStr)
+	}
+	// Check whether the upload bandwidth price is too high.
+	if !allowance.MaxUploadBandwidthPrice.IsZero() && allowance.MaxUploadBandwidthPrice.Cmp(hostSettings.UploadBandwidthPrice) < 0 {
+		errStr := fmt.Sprintf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.UploadBandwidthPrice, allowance.MaxUploadBandwidthPrice)
+		return errors.New(errStr)
+	}
+	// Check whether the storage price is too high.
+	if !allowance.MaxStoragePrice.IsZero() && allowance.MaxStoragePrice.Cmp(hostSettings.StoragePrice) < 0 {
+		errStr := fmt.Sprintf("storage price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.StoragePrice, allowance.MaxStoragePrice)
+		return errors.New(errStr)
+	}
+
+	// If there is no allowance, general price gouging checks have to be
+	// disabled, because there is no baseline for understanding what might count
+	// as price gouging.
+	if allowance.Funds.IsZero() {
+		return nil
+	}
+
+	// Check that the combined prices make sense in the context of the overall
+	// allowance. The general idea is to compute the total cost of performing
+	// the same action repeatedly until a fraction of the desired total resource
+	// consumption established by the allowance has been reached. The fraction
+	// is determined on a case-by-case basis. If the host is too expensive to
+	// even satisfy a faction of the user's total desired resource consumption,
+	// the action will be blocked for price gouging.
+	singleUploadCost := hostSettings.BaseRPCPrice.Add(hostSettings.UploadBandwidthPrice.Mul64(modules.StreamDownloadSize)).Add(hostSettings.StoragePrice.Mul64(uint64(allowance.Period)).Mul64(modules.SectorSize))
+	fullCostPerByte := singleUploadCost.Div64(modules.SectorSize)
+	allowanceStorageCost := fullCostPerByte.Mul64(allowance.ExpectedStorage)
+	reducedCost := allowanceStorageCost.Div64(snapshotUploadGougingFractionDenom)
+	if reducedCost.Cmp(allowance.Funds) > 0 {
+		errStr := fmt.Sprintf("combined fetch backups pricing of host yields %v, which is more than the renter is willing to pay for storage: %v - price gouging protection enabled", reducedCost, allowance.Funds)
+		return errors.New(errStr)
+	}
+
+	return nil
+}
 
 // staticCanceled returns whether or not the job has been canceled.
 func (j *jobUploadSnapshot) staticCanceled() bool {
@@ -125,8 +179,6 @@ func (w *worker) managedJobUploadSnapshot() {
 		return
 	}
 
-	// TODO: Check for price gouging.
-
 	// Perform the actual upload.
 	sess, err := w.renter.hostContractor.Session(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
@@ -141,6 +193,14 @@ func (w *worker) managedJobUploadSnapshot() {
 		}
 		err = errors.Compose(err, closeErr)
 	}()
+
+	allowance := w.renter.hostContractor.Allowance()
+	hostSettings := sess.HostSettings()
+	err = checkUploadSnapshotGouging(allowance, hostSettings)
+	if err != nil {
+		err = errors.AddContext(err, "snapshot upload blocked because potential price gouging was detected")
+		return
+	}
 
 	// Upload the snapshot to the host. The session is created by passing in a
 	// thread group, so this call should be responsive to fast shutdown.
