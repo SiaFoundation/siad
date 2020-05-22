@@ -658,16 +658,11 @@ func (n *DirNode) managedNewSiaFile(fileName string, source string, ec modules.E
 func (n *DirNode) managedNewSiaDir(dirName string, rootPath string, mode os.FileMode) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	// Check if a file already exists with that name.
-	if _, exists := n.files[dirName]; exists {
+	// Make sure we don't have a file or folder with that name already.
+	if exists := n.childExists(dirName); exists {
 		return ErrExists
 	}
-	// Check that no dir or file exists on disk.
-	_, err := os.Stat(filepath.Join(n.absPath(), dirName+modules.SiaFileExtension))
-	if !os.IsNotExist(err) {
-		return ErrExists
-	}
-	_, err = siadir.New(filepath.Join(n.absPath(), dirName), rootPath, mode, n.staticWal)
+	_, err := siadir.New(filepath.Join(n.absPath(), dirName), rootPath, mode, n.staticWal)
 	if os.IsExist(err) {
 		return nil
 	}

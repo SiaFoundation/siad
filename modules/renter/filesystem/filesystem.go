@@ -298,7 +298,8 @@ func (fs *FileSystem) NewSiaFile(siaPath modules.SiaPath, source string, ec modu
 	if err != nil {
 		return err
 	}
-	if err := fs.NewSiaDir(dirSiaPath, fileMode); err != nil {
+	err = fs.NewSiaDir(dirSiaPath, fileMode)
+	if err != nil && !errors.Contains(err, ErrExists) {
 		return errors.AddContext(err, fmt.Sprintf("failed to create SiaDir %v for SiaFile %v", dirSiaPath.String(), siaPath.String()))
 	}
 	return fs.managedNewSiaFile(siaPath.String(), source, ec, mk, fileSize, fileMode, disablePartialUpload)

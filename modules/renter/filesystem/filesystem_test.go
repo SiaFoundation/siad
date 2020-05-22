@@ -32,7 +32,7 @@ func newTestFileSystemWithFile(name string) (*FileNode, *FileSystem, error) {
 	dir := testDir(name)
 	fs := newTestFileSystem(dir)
 	sp := modules.RandomSiaPath()
-	fs.AddTestSiaFile(sp)
+	fs.addTestSiaFile(sp)
 	sf, err := fs.OpenSiaFile(sp)
 	return sf, fs, err
 }
@@ -80,17 +80,17 @@ func newTestWAL() (*writeaheadlog.WAL, string) {
 	return wal, walFilePath
 }
 
-// AddTestSiaFile is a convenience method to add a SiaFile for testing to a
+// addTestSiaFile is a convenience method to add a SiaFile for testing to a
 // FileSystem.
-func (fs *FileSystem) AddTestSiaFile(siaPath modules.SiaPath) {
-	if err := fs.AddTestSiaFileWithErr(siaPath); err != nil {
+func (fs *FileSystem) addTestSiaFile(siaPath modules.SiaPath) {
+	if err := fs.addTestSiaFileWithErr(siaPath); err != nil {
 		panic(err)
 	}
 }
 
-// AddTestSiaFileWithErr is a convenience method to add a SiaFile for testing to
+// addTestSiaFileWithErr is a convenience method to add a SiaFile for testing to
 // a FileSystem.
-func (fs *FileSystem) AddTestSiaFileWithErr(siaPath modules.SiaPath) error {
+func (fs *FileSystem) addTestSiaFileWithErr(siaPath modules.SiaPath) error {
 	ec, err := siafile.NewRSSubCode(10, 20, crypto.SegmentSize)
 	if err != nil {
 		return err
@@ -170,7 +170,7 @@ func TestNewSiaFile(t *testing.T) {
 	fs := newTestFileSystem(root)
 	// Create file /sub/foo/file
 	sp := newSiaPath("sub/foo/file")
-	fs.AddTestSiaFile(sp)
+	fs.addTestSiaFile(sp)
 	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != ErrExists {
 		t.Fatal("err should be ErrExists but was", err)
 	}
@@ -182,7 +182,7 @@ func TestNewSiaFile(t *testing.T) {
 	}
 	// Create a file in the root dir.
 	sp = newSiaPath("file")
-	fs.AddTestSiaFile(sp)
+	fs.addTestSiaFile(sp)
 	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != ErrExists {
 		t.Fatal("err should be ErrExists but was", err)
 	}
@@ -331,7 +331,7 @@ func TestOpenSiaFile(t *testing.T) {
 	fs := newTestFileSystem(root)
 	// Create file /file
 	sp := newSiaPath("file")
-	fs.AddTestSiaFile(sp)
+	fs.addTestSiaFile(sp)
 	// Open the newly created file.
 	sf, err := fs.OpenSiaFile(sp)
 	if err != nil {
@@ -369,7 +369,7 @@ func TestOpenSiaFile(t *testing.T) {
 	}
 	// Create file /sub/file
 	sp = newSiaPath("/sub1/sub2/file")
-	fs.AddTestSiaFile(sp)
+	fs.addTestSiaFile(sp)
 	// Open the newly created file.
 	sf2, err := fs.OpenSiaFile(sp)
 	if err != nil {
@@ -498,7 +498,7 @@ func TestCloseSiaFile(t *testing.T) {
 	fs := newTestFileSystem(root)
 	// Create file /sub/file
 	sp := newSiaPath("sub/file")
-	fs.AddTestSiaFile(sp)
+	fs.addTestSiaFile(sp)
 	// Open the newly created file.
 	sf, err := fs.OpenSiaFile(sp)
 	if err != nil {
@@ -590,7 +590,7 @@ func TestDeleteFile(t *testing.T) {
 	fs := newTestFileSystem(root)
 	// Add a file to the root dir.
 	sp := newSiaPath("foo")
-	fs.AddTestSiaFile(sp)
+	fs.addTestSiaFile(sp)
 	// Open the file.
 	sf, err := fs.OpenSiaFile(sp)
 	if err != nil {
@@ -613,7 +613,7 @@ func TestDeleteFile(t *testing.T) {
 	if _, err := fs.OpenSiaFile(sp); err != ErrNotExist {
 		t.Fatal("err should be ErrNotExist but was:", err)
 	}
-	if err := fs.AddTestSiaFileWithErr(sp); err != nil {
+	if err := fs.addTestSiaFileWithErr(sp); err != nil {
 		t.Fatal("err should be nil but was:", err)
 	}
 }
@@ -629,9 +629,9 @@ func TestDeleteDirectory(t *testing.T) {
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
 	// Add some files.
-	fs.AddTestSiaFile(newSiaPath("dir/foo/bar/file1"))
-	fs.AddTestSiaFile(newSiaPath("dir/foo/bar/file2"))
-	fs.AddTestSiaFile(newSiaPath("dir/foo/bar/file3"))
+	fs.addTestSiaFile(newSiaPath("dir/foo/bar/file1"))
+	fs.addTestSiaFile(newSiaPath("dir/foo/bar/file2"))
+	fs.addTestSiaFile(newSiaPath("dir/foo/bar/file3"))
 	// Delete "foo"
 	if err := fs.DeleteDir(newSiaPath("/dir/foo")); err != nil {
 		t.Fatal(err)
@@ -664,7 +664,7 @@ func TestRenameFile(t *testing.T) {
 	foo := newSiaPath("foo")
 	foobar := newSiaPath("foobar")
 	barfoo := newSiaPath("bar/foo")
-	fs.AddTestSiaFile(foo)
+	fs.addTestSiaFile(foo)
 	// Rename the file.
 	if err := fs.RenameFile(foo, foobar); err != nil {
 		t.Fatal(err)
@@ -722,7 +722,7 @@ func TestThreadedAccess(t *testing.T) {
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
 	for _, fp := range filePaths {
-		fs.AddTestSiaFile(newSiaPath(fp))
+		fs.addTestSiaFile(newSiaPath(fp))
 	}
 	// Create a few threads which open files
 	var wg sync.WaitGroup
@@ -790,6 +790,7 @@ func TestSiaDirRename(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+
 	// Prepare a filesystem.
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	os.RemoveAll(root)
@@ -1754,5 +1755,98 @@ func TestFailedOpenFileFolder(t *testing.T) {
 	}
 	if len(fs.files) != 0 || len(fs.directories) != 0 {
 		t.Fatal("Expected 0 files and folders but got", len(fs.files), len(fs.directories))
+	}
+}
+
+// TestFileDirConflict makes sure that files and dirs cannot share the same
+// name.
+func TestFileDirConflict(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Prepare a filesystem.
+	root := filepath.Join(testDir(t.Name()), "fs-root")
+	os.RemoveAll(root)
+	fs := newTestFileSystem(root)
+
+	// Create a file.
+	filepath := newSiaPath("dir1/file1")
+	fs.addTestSiaFile(filepath)
+
+	// Make sure we can't create another file with the same name.
+	err := fs.addTestSiaFileWithErr(filepath)
+	if !errors.Contains(err, ErrExists) {
+		t.Fatalf("Expected err %v, got %v", ErrExists, err)
+	}
+
+	// Make sure we can't rename another file to the same name.
+	filepath2 := newSiaPath("dir1/file2")
+	fs.addTestSiaFile(filepath2)
+	err = fs.RenameFile(filepath2, filepath)
+	if !errors.Contains(err, ErrExists) {
+		t.Fatalf("Expected err %v, got %v", ErrExists, err)
+	}
+
+	// Make sure we (still) can't create another file with the same name.
+	err = fs.addTestSiaFileWithErr(filepath)
+	if !errors.Contains(err, ErrExists) {
+		t.Fatalf("Expected err %v, got %v", ErrExists, err)
+	}
+
+	// Make sure we can't create a dir with the same name.
+	err = fs.NewSiaDir(filepath, modules.DefaultDirPerm)
+	if !errors.Contains(err, ErrExists) {
+		t.Fatalf("Expected err %v, got %v", ErrExists, err)
+	}
+
+	// Create a dir.
+	dirpath := newSiaPath("dir2/dir3")
+	err = fs.NewSiaDir(dirpath, modules.DefaultDirPerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Make sure we can't create another dir with the same name as the first
+	// dir.
+	err = fs.NewSiaDir(dirpath, modules.DefaultDirPerm)
+	if !errors.Contains(err, ErrExists) {
+		t.Fatalf("Expected err %v, got %v", ErrExists, err)
+	}
+
+	// Make sure we can't rename a dir to the same name as the first file.
+	err = fs.RenameDir(dirpath, filepath)
+	if !errors.Contains(err, ErrExists) {
+		t.Fatalf("Expected err %v, got %v", ErrExists, err)
+	}
+
+	// Make sure we (still) can't create another dir with the same name as the
+	// first dir.
+	err = fs.NewSiaDir(dirpath, modules.DefaultDirPerm)
+	if !errors.Contains(err, ErrExists) {
+		t.Fatalf("Expected err %v, got %v", ErrExists, err)
+	}
+
+	// Make sure we can't create a file with the same name as the dir.
+	err = fs.addTestSiaFileWithErr(dirpath)
+	if !errors.Contains(err, ErrExists) {
+		t.Fatalf("Expected err %v, got %v", ErrExists, err)
+	}
+
+	// Make sure we can't rename a file to the same name as the first dir.
+	err = fs.RenameFile(filepath, dirpath)
+	if !errors.Contains(err, ErrExists) {
+		t.Fatalf("Expected err %v, got %v", ErrExists, err)
+	}
+
+	// Make sure we can't rename another dir to the same name as the first dir.
+	dirpath2 := newSiaPath("dir2/dir4")
+	err = fs.NewSiaDir(dirpath2, modules.DefaultDirPerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = fs.RenameDir(dirpath2, dirpath)
+	if !errors.Contains(err, ErrExists) {
+		t.Fatalf("Expected err %v, got %v", ErrExists, err)
 	}
 }
