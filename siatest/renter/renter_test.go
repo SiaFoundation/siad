@@ -4658,8 +4658,8 @@ func TestWorkerStatus(t *testing.T) {
 		if !worker.AvailableBalance.IsZero() {
 			t.Error("Expected available balance to be zero but was", worker.AvailableBalance.HumanString())
 		}
-		if !worker.BalanceTarget.IsZero() {
-			t.Error("Expected balance target to be 0SC but was", worker.BalanceTarget.HumanString())
+		if !worker.BalanceTarget.Equals(types.SiacoinPrecision) {
+			t.Error("Expected balance target to be 1SC but was", worker.BalanceTarget.HumanString())
 		}
 
 		// Job Queues

@@ -152,10 +152,12 @@ func (jq *jobReadSectorQueue) callNext() (func(), uint64, uint64) {
 		job = jq.jobs[0]
 		jq.jobs = jq.jobs[1:]
 
-		// Break out of the loop only if this job has not been canceled.
-		if !job.staticCanceled() {
-			break
+		// Grab the next job if this one has been canceled.
+		if job.staticCanceled() {
+			continue
 		}
+		// We have a job, can break out of the job search.
+		break
 	}
 	jq.mu.Unlock()
 
@@ -188,8 +190,8 @@ func (jq *jobReadSectorQueue) callNext() (func(), uint64, uint64) {
 			jq.mu.Lock()
 			jq.cooldownUntil = cooldownUntil(jq.consecutiveFailures)
 			jq.consecutiveFailures++
+			jq.discardJobsReadSector()
 			jq.mu.Unlock()
-			jq.staticWorker.managedDiscardJobsReadSector()
 			return
 		}
 
@@ -262,17 +264,13 @@ func (w *worker) managedReadSector(sectorRoot crypto.Hash, offset, length uint64
 	return sectorData, nil
 }
 
-// managedDiscardJobsReadSector will release all remaining ReadSector jobs as
-// failed.
-func (w *worker) managedDiscardJobsReadSector() {
-	jq := w.staticJobReadSectorQueue // Convenience variable
-	jq.mu.Lock()
-	defer jq.mu.Unlock()
+// discardJobsReadSector will drop all of the read sector jobs for this worker.
+func (jq *jobReadSectorQueue) discardJobsReadSector() {
 	for _, job := range jq.jobs {
 		// Send the response in a goroutine so that the worker resources can be
 		// released faster.
 		j := job
-		w.renter.tg.Launch(func() {
+		jq.staticWorker.renter.tg.Launch(func() {
 			response := &jobReadSectorResponse{
 				staticErr: errors.New("worker is dumping all read sector jobs"),
 			}
@@ -285,25 +283,20 @@ func (w *worker) managedDiscardJobsReadSector() {
 	jq.jobs = nil
 }
 
+// managedDiscardJobsReadSector will release all remaining ReadSector jobs as
+// failed.
+func (w *worker) managedDiscardJobsReadSector() {
+	jq := w.staticJobReadSectorQueue // Convenience variable
+	jq.mu.Lock()
+	jq.discardJobsReadSector()
+	jq.mu.Unlock()
+}
+
 // managedKillJobsReadSector will release all remaining ReadSector jobs as failed.
 func (w *worker) managedKillJobsReadSector() {
 	jq := w.staticJobReadSectorQueue // Convenience variable
 	jq.mu.Lock()
-	defer jq.mu.Unlock()
-	for _, job := range jq.jobs {
-		// Send the response in a goroutine so that the worker resources can be
-		// released faster.
-		j := job
-		w.renter.tg.Launch(func() {
-			response := &jobReadSectorResponse{
-				staticErr: errors.New("worker killed"),
-			}
-			select {
-			case j.staticResponseChan <- response:
-			case <-j.staticCanceledChan:
-			}
-		})
-	}
+	jq.discardJobsReadSector()
 	jq.killed = true
-	jq.jobs = nil
+	jq.mu.Unlock()
 }
