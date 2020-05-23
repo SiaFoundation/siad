@@ -68,6 +68,7 @@ type (
 		staticJobQueueDownloadByRoot jobQueueDownloadByRoot
 		staticJobHasSectorQueue      *jobHasSectorQueue
 		staticJobReadSectorQueue     *jobReadSectorQueue
+		staticJobUploadSnapshotQueue *jobUploadSnapshotQueue
 
 		// Upload variables.
 		unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
@@ -184,6 +185,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		wakeChan: make(chan struct{}, 1),
 		renter:   r,
 	}
+	w.initJobUploadSnapshotQueue()
 	w.newPriceTable()
 	w.newJobHasSectorQueue()
 	w.newJobReadSectorQueue()
