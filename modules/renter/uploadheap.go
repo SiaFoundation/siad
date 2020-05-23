@@ -659,6 +659,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 	prevHeapLen := r.uploadHeap.managedLen()
 	// Loop until the upload heap has maxUploadHeapChunks in it or the directory
 	// heap is empty
+	offline, goodForRenew, _ := r.managedContractUtilityMaps()
 	for r.uploadHeap.managedLen() < maxUploadHeapChunks && r.directoryHeap.managedLen() > 0 {
 		select {
 		case <-r.tg.StopChan():
@@ -689,7 +690,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		}
 
 		// Add chunks from the directory to the uploadHeap.
-		r.managedBuildChunkHeap(dir.staticSiaPath, hosts, targetUnstuckChunks)
+		r.managedBuildChunkHeap(dir.staticSiaPath, hosts, targetUnstuckChunks, offline, goodForRenew)
 
 		// Check to see if we are still adding chunks
 		heapLen := r.uploadHeap.managedLen()
@@ -998,7 +999,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 //
 // TODO: Explore whether there is a way to perform the task below without
 // opening a full file entry for each file in the directory.
-func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[string]struct{}, target repairTarget) {
+func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[string]struct{}, target repairTarget, offline, goodForRenew map[string]bool) {
 	// Get Directory files
 	fileinfos, err := r.staticFileSystem.ReadDir(dirSiaPath)
 	if err != nil {
@@ -1090,7 +1091,6 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 	}
 
 	// Build the unfinished upload chunks and add them to the upload heap
-	offline, goodForRenew, _ := r.managedContractUtilityMaps()
 	switch target {
 	case targetBackupChunks:
 		r.log.Debugln("Attempting to add backup chunks to heap")
@@ -1359,7 +1359,8 @@ func (r *Renter) threadedUploadAndRepair() {
 		// backups is different from the siafileset that stores non-system files
 		// and chunks.
 		heapLen := r.uploadHeap.managedLen()
-		r.managedBuildChunkHeap(modules.BackupFolder, hosts, targetBackupChunks)
+		offline, goodForRenew, _ := r.managedContractUtilityMaps()
+		r.managedBuildChunkHeap(modules.BackupFolder, hosts, targetBackupChunks, offline, goodForRenew)
 		numBackupChunks := r.uploadHeap.managedLen() - heapLen
 		if numBackupChunks > 0 {
 			r.repairLog.Printf("Added %v backup chunks to the upload heap", numBackupChunks)
