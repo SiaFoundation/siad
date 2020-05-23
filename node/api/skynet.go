@@ -81,6 +81,7 @@ type (
 	SkynetStatsGET struct {
 		PerformanceStats SkynetPerformanceStats `json:"performancestats"`
 
+		Uptime      int64         `json:"uptime"`
 		UploadStats SkynetStats   `json:"uploadstats"`
 		VersionInfo SkynetVersion `json:"versioninfo"`
 	}
@@ -795,9 +796,13 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 	perfStats := skynetPerformanceStats.Copy()
 	skynetPerformanceStatsMu.Unlock()
 
+	// Grab the siad uptime
+	uptime := time.Since(api.StartTime()).Seconds()
+
 	WriteJSON(w, SkynetStatsGET{
 		PerformanceStats: perfStats,
 
+		Uptime:      int64(uptime),
 		UploadStats: stats,
 		VersionInfo: SkynetVersion{
 			Version:     version,
