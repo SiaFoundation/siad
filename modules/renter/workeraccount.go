@@ -235,7 +235,7 @@ func (w *worker) managedAccountNeedsRefill() bool {
 	return true
 }
 
-// managedTryRefillAccount will check if the account needs to be refilled
+// managedRefillAccount will refill the account if it needs to be refilled
 func (w *worker) managedRefillAccount() {
 	// the account balance dropped to below half the balance target, refill
 	balance := w.staticAccount.managedAvailableBalance()
