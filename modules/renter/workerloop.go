@@ -185,8 +185,8 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	readOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
 	writeOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataOutstanding)
 	if readOutstanding > readLimit || writeOutstanding > writeLimit {
-		// Worker does not need to dump jobs, it is making progress, it's just
-		// not launching any new jobs until its current jobs finish up.
+		// Worker does not need to discard jobs, it is making progress, it's
+		// just not launching any new jobs until its current jobs finish up.
 		return false
 	}
 
@@ -201,19 +201,19 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	// Hosts that do not support the async protocol cannot do async jobs.
 	cache := w.staticCache()
 	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
-		w.managedDumpAsyncJobs()
+		w.managedDiscardAsyncJobs()
 		return false
 	}
 
 	// A valid price table is required to perform async tasks.
 	if !w.staticPriceTable().staticValid() {
-		w.managedDumpAsyncJobs()
+		w.managedDiscardAsyncJobs()
 		return false
 	}
 
 	// If the account is on cooldown, drop all async jobs.
 	if w.staticAccount.managedOnCooldown() {
-		w.managedDumpAsyncJobs()
+		w.managedDiscardAsyncJobs()
 		return false
 	}
 
@@ -248,12 +248,12 @@ func (w *worker) managedBlockUntilReady() bool {
 	return true
 }
 
-// managedDumpAsyncJobs will drop all of the worker's async jobs because the
+// managedDiscardAsyncJobs will drop all of the worker's async jobs because the
 // worker has not met sufficient conditions to retain async jobs.
-func (w *worker) managedDumpAsyncJobs() {
+func (w *worker) managedDiscardAsyncJobs() {
 	/* - will be enabled when the full async job suite is implemented.
-	w.managedDumpJobsHasSector()
-	w.managedDumpJobsReadSector()
+	w.managedDiscardJobsHasSector()
+	w.managedDiscardJobsReadSector()
 	*/
 }
 
