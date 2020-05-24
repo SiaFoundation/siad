@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -93,40 +92,9 @@ func (w *worker) externTryLaunchSerialJob() {
 		return
 	}
 
-	// Perform a disrupt for testing. This is some code that ensures only one
-	// serial job is running at a time.
+	// Perform a disrupt for testing. See the implementation in
+	// workerloop_test.go for more info.
 	if w.renter.deps.Disrupt("TestJobSerialization") {
-		// The whole purpose of the job is to make sure that the job continues
-		// to be marked as 'running' while it is running.
-		//
-		// There's a mutex here to ensure that the job does not complete before
-		// we can check that the job has been marked as running after launching
-		// the job.
-		var mu sync.Mutex
-		mu.Lock()
-		w.externLaunchSerialJob(func() {
-			if atomic.LoadUint64(&w.staticLoopState.atomicSerialJobRunning) != 1 {
-				build.Critical("running a job without having the serial job running flag set")
-			}
-			time.Sleep(time.Millisecond * 100)
-			if atomic.LoadUint64(&w.staticLoopState.atomicSerialJobRunning) != 1 {
-				build.Critical("running a job without having the serial job running flag set")
-			}
-
-			// This is a flush, the job will not complete until the check
-			// outside of this job has completed, solving a potential race
-			// condition where the job completes before we check that the job is
-			// still marked as running.
-			mu.Lock()
-			mu.Unlock()
-
-			// Signal that a job has completed.
-			w.renter.deps.Disrupt("TestJobSerializationCompleted")
-		})
-		if atomic.LoadUint64(&w.staticLoopState.atomicSerialJobRunning) != 1 {
-			build.Critical("running a job when another job is already running")
-		}
-		mu.Unlock()
 		return
 	}
 
@@ -210,6 +178,26 @@ func (w *worker) externLaunchAsyncJob(getJob getAsyncJob) bool {
 // queued at once to prevent jobs from being spread too thin and sharing too
 // much bandwidth.
 func (w *worker) externTryLaunchAsyncJob() bool {
+	// Verify that the worker has not reached its limits for doing multiple
+	// jobs at once.
+	readLimit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
+	writeLimit := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataLimit)
+	readOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
+	writeOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataOutstanding)
+	if readOutstanding > readLimit || writeOutstanding > writeLimit {
+		// Worker does not need to dump jobs, it is making progress, it's just
+		// not launching any new jobs until its current jobs finish up.
+		return false
+	}
+
+	// Perform a disrupt for testing. This is some code that ensures async job
+	// launches are controlled correctly. The disrupt operates on a mock worker,
+	// so it needs to happen after the ratelimit checks but before the cache,
+	// price table, and account checks.
+	if w.renter.deps.Disrupt("TestAsyncJobLaunches") {
+		return true
+	}
+
 	// Hosts that do not support the async protocol cannot do async jobs.
 	cache := w.staticCache()
 	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
@@ -226,18 +214,6 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	// If the account is on cooldown, drop all async jobs.
 	if w.staticAccount.managedOnCooldown() {
 		w.managedDumpAsyncJobs()
-		return false
-	}
-
-	// Verify that the worker has not reached its limits for doing multiple
-	// jobs at once.
-	readLimit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
-	writeLimit := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataLimit)
-	readOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
-	writeOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataOutstanding)
-	if readOutstanding > readLimit || writeOutstanding > writeLimit {
-		// Worker does not need to dump jobs, it is making progress, it's just
-		// not launching any new jobs until its current jobs finish up.
 		return false
 	}
 
