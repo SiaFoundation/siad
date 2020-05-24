@@ -268,12 +268,12 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillDownloading()
 	defer w.managedKillFetchBackupsJobs()
 	defer w.managedKillJobsDownloadByRoot()
+	defer w.managedKillJobsDownloadByRoot()
+	defer w.managedKillJobsUploadSnapshot()
 	/* - will be enabled when the full async job suite is implemented
 	defer w.managedKillJobsHasSector()
 	defer w.managedKillJobsReadSector()
 	*/
-	defer w.managedKillJobsDownloadByRoot()
-	defer w.managedKillJobsUploadSnapshot()
 
 	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) >= 0 {
 		// The worker cannot execute any async tasks unless the price table of
