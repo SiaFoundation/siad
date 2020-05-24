@@ -10,7 +10,7 @@ import (
 type (
 	// jobGeneric implements the basic functionality for a job.
 	jobGeneric struct {
-		staticCancelChan chan struct{}
+		staticCancelChan <-chan struct{}
 
 		staticQueue workerJobQueue
 	}
@@ -27,6 +27,7 @@ type (
 
 		cooldownUntil       time.Time
 		consecutiveFailures uint64
+		recentErr           error
 
 		staticWorkerObj *worker // name conflict with staticWorker method
 		mu              sync.Mutex
@@ -63,12 +64,20 @@ type (
 )
 
 // newJobGeneric returns an initialized jobGeneric. The queue that is associated
-// with the job should be used as the input to this function.
-func newJobGeneric(queue workerJobQueue) jobGeneric {
-	return jobGeneric{
-		staticCancelChan: make(chan struct{}),
+// with the job should be used as the input to this function. The job will
+// cancel itself if the cancelChan is closed.
+func newJobGeneric(queue workerJobQueue, cancelChan <-chan struct{}) *jobGeneric {
+	return &jobGeneric{
+		staticCancelChan: cancelChan,
 
 		staticQueue: queue,
+	}
+}
+
+// newJobGenericQueue will return an initialized generic job queue.
+func newJobGenericQueue(w *worker) *jobGenericQueue {
+	return &jobGenericQueue{
+		staticWorkerObj: w,
 	}
 }
 
@@ -138,9 +147,14 @@ func (jq *jobGenericQueue) callReportFailure(err error) {
 	jq.discardAll(err)
 	jq.cooldownUntil = cooldownUntil(jq.consecutiveFailures)
 	jq.consecutiveFailures++
+	jq.recentErr = err
 }
 
 // callReportSuccess lets the job queue know that there was a successsful job.
+// Note that this will reset the consecutive failure count, but will not reset
+// the recentErr value - the recentErr value is left as an error so that when
+// debugging later, developers and users can see what errors had been caused by
+// past issues.
 func (jq *jobGenericQueue) callReportSuccess() {
 	jq.mu.Lock()
 	jq.consecutiveFailures = 0

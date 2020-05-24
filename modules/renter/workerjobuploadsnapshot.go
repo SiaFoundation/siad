@@ -31,13 +31,13 @@ type (
 
 		staticResponseChan chan *jobUploadSnapshotResponse
 
-		jobGeneric
+		*jobGeneric
 	}
 
 	// jobUploadSnapshotQueue contains the set of snapshots that need to be
 	// uploaded.
 	jobUploadSnapshotQueue struct {
-		jobGenericQueue
+		*jobGenericQueue
 	}
 
 	// jobUploa;dSnapshotResponse contains the response to an upload snapshot
@@ -183,9 +183,7 @@ func (w *worker) initJobUploadSnapshotQueue() {
 	}
 
 	w.staticJobUploadSnapshotQueue = &jobUploadSnapshotQueue{
-		jobGenericQueue: jobGenericQueue{
-			staticWorkerObj: w,
-		},
+		jobGenericQueue: newJobGenericQueue(w),
 	}
 }
 
