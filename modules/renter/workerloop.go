@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -52,6 +53,11 @@ func (wls *workerLoopState) staticFinishSerialJob() {
 // 'threadedWorkLoop', and it is expected that only one instance of
 // 'threadedWorkLoop' is ever created per-worker.
 func (w *worker) externLaunchSerialJob(job func()) {
+	// Sanity check - no other job should be running at this point.
+	if atomic.LoadUint64(&w.staticLoopState.atomicSerialJobRunning) != 0 {
+		w.renter.log.Critical("running a job when another job is already running")
+	}
+
 	// Mark that there is now a job running.
 	atomic.StoreUint64(&w.staticLoopState.atomicSerialJobRunning, 1)
 	fn := func() {
@@ -84,6 +90,43 @@ func (w *worker) externTryLaunchSerialJob() {
 	// If there is already a serial job running, that job has exclusivity, do
 	// nothing.
 	if w.staticLoopState.staticSerialJobRunning() {
+		return
+	}
+
+	// Perform a disrupt for testing. This is some code that ensures only one
+	// serial job is running at a time.
+	if w.renter.deps.Disrupt("TestJobSerialization") {
+		// The whole purpose of the job is to make sure that the job continues
+		// to be marked as 'running' while it is running.
+		//
+		// There's a mutex here to ensure that the job does not complete before
+		// we can check that the job has been marked as running after launching
+		// the job.
+		var mu sync.Mutex
+		mu.Lock()
+		w.externLaunchSerialJob(func() {
+			if atomic.LoadUint64(&w.staticLoopState.atomicSerialJobRunning) != 1 {
+				build.Critical("running a job without having the serial job running flag set")
+			}
+			time.Sleep(time.Millisecond * 100)
+			if atomic.LoadUint64(&w.staticLoopState.atomicSerialJobRunning) != 1 {
+				build.Critical("running a job without having the serial job running flag set")
+			}
+
+			// This is a flush, the job will not complete until the check
+			// outside of this job has completed, solving a potential race
+			// condition where the job completes before we check that the job is
+			// still marked as running.
+			mu.Lock()
+			mu.Unlock()
+
+			// Signal that a job has completed.
+			w.renter.deps.Disrupt("TestJobSerializationCompleted")
+		})
+		if atomic.LoadUint64(&w.staticLoopState.atomicSerialJobRunning) != 1 {
+			build.Critical("running a job when another job is already running")
+		}
+		mu.Unlock()
 		return
 	}
 
