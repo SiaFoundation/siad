@@ -46,10 +46,18 @@ type (
 
 		// callExecute will run the actual job.
 		callExecute()
+
+		// callExpectedBandwidth will return the amount of bandwidth that a job
+		// expects to consume.
+		callExpectedBandwidth() (upload uint64, download uint64)
 	}
 
 	// workerJobQueue defines an interface to create a worker job queue.
 	workerJobQueue interface {
+		// callDiscardAll will discard all of the jobs in the queue using the
+		// provided error.
+		callDiscardAll(error)
+
 		// callReportFailure should be called on the queue every time that a job
 		// failes, and include the error associated with the failure.
 		callReportFailure(error)
@@ -96,12 +104,20 @@ func (jq *jobGenericQueue) callAdd(j workerJob) bool {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
+	// TODO: Should check if the account or price table is on cooldown as well.
 	if jq.killed || time.Now().Before(jq.cooldownUntil) {
 		return false
 	}
 	jq.jobs = append(jq.jobs, j)
 	jq.staticWorkerObj.staticWake()
 	return true
+}
+
+// callDiscardAll will discard all jobs in the queue using the provided error.
+func (jq *jobGenericQueue) callDiscardAll(err error) {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	jq.discardAll(err)
 }
 
 // callKill will kill the queue, discarding all jobs and ensuring no more jobs

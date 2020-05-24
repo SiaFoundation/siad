@@ -101,6 +101,12 @@ func (j *jobTest) callExecute() {
 	j.sendResult(result)
 }
 
+// callExpectedBandwidth returns the amount of bandwidth this job is expected to
+// consume.
+func (j *jobTest) callExpectedBandwidth() (ul, dl uint64) {
+	return 0, 0
+}
+
 // TestWorkerJobGeneric tests that all of the code for the generic worker job is
 // functioning correctly.
 func TestWorkerJobGeneric(t *testing.T) {

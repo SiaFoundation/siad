@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+
+	"gitlab.com/NebulousLabs/errors"
 )
 
 type (
@@ -25,12 +27,6 @@ type (
 		atomicReadDataLimit  uint64
 		atomicWriteDataLimit uint64
 	}
-
-	// getAsyncJob defines a function which returns an async job plus a read
-	// size and a write size for that job. The read and write size refer to the
-	// amount of read and write network bandwidth that will be consumed by
-	// calling fn(). If there is no job to perform, 'job' is expected to be nil.
-	getAsyncJob func() (job func(), readSize uint64, writeSize uint64)
 )
 
 // staticSerialJobRunning indicates whether a serial job is currently running
@@ -136,19 +132,13 @@ func (w *worker) externTryLaunchSerialJob() {
 // externLaunchAsyncJob accepts a function to retrieve a job and then uses that
 // to retrieve a job and launch it. The bandwidth consumption will be updated as
 // the job starts and finishes.
-func (w *worker) externLaunchAsyncJob(getJob getAsyncJob) bool {
-	// Get the job and its resource requirements.
-	job, uploadBandwidth, downloadBandwidth := getJob()
-	if job == nil {
-		// No job available.
-		return false
-	}
-
+func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 	// Add the resource requirements to the worker loop state.
+	uploadBandwidth, downloadBandwidth := job.callExpectedBandwidth()
 	atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, downloadBandwidth)
 	atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, uploadBandwidth)
 	fn := func() {
-		job()
+		job.callExecute()
 		// Subtract the outstanding data now that the job is complete. Atomic
 		// subtraction works by adding and using some bit tricks.
 		atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, -downloadBandwidth)
@@ -202,27 +192,31 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	// Hosts that do not support the async protocol cannot do async jobs.
 	cache := w.staticCache()
 	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
-		w.managedDiscardAsyncJobs()
+		w.managedDiscardAsyncJobs(errors.New("host version does not support async jobs"))
 		return false
 	}
 
 	// A valid price table is required to perform async tasks.
 	if !w.staticPriceTable().staticValid() {
-		w.managedDiscardAsyncJobs()
+		w.managedDiscardAsyncJobs(errors.New("price table with host is no longer valid"))
 		return false
 	}
 
 	// If the account is on cooldown, drop all async jobs.
 	if w.staticAccount.managedOnCooldown() {
-		w.managedDiscardAsyncJobs()
+		w.managedDiscardAsyncJobs(errors.New("the worker account is on cooldown"))
 		return false
 	}
 
 	// Check every potential async job that can be launched.
-	if w.externLaunchAsyncJob(w.staticJobHasSectorQueue.callNext) {
+	job := w.staticJobHasSectorQueue.callNext()
+	if job != nil {
+		w.externLaunchAsyncJob(job)
 		return true
 	}
-	if w.externLaunchAsyncJob(w.staticJobReadSectorQueue.callNext) {
+	job = w.staticJobReadSectorQueue.callNext()
+	if job != nil {
+		w.externLaunchAsyncJob(job)
 		return true
 	}
 	return false
@@ -249,9 +243,9 @@ func (w *worker) managedBlockUntilReady() bool {
 
 // managedDiscardAsyncJobs will drop all of the worker's async jobs because the
 // worker has not met sufficient conditions to retain async jobs.
-func (w *worker) managedDiscardAsyncJobs() {
-	w.managedDiscardJobsHasSector()
-	w.managedDiscardJobsReadSector()
+func (w *worker) managedDiscardAsyncJobs(err error) {
+	w.staticJobHasSectorQueue.callDiscardAll(err)
+	w.staticJobReadSectorQueue.callDiscardAll(err)
 }
 
 // threadedWorkLoop is a perpetual loop run by the worker that accepts new jobs
@@ -265,9 +259,9 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillDownloading()
 	defer w.managedKillFetchBackupsJobs()
 	defer w.managedKillJobsDownloadByRoot()
-	defer w.managedKillJobsHasSector()
-	defer w.managedKillJobsReadSector()
 	defer w.managedKillJobsDownloadByRoot()
+	defer w.staticJobHasSectorQueue.callKill()
+	defer w.staticJobReadSectorQueue.callKill()
 	defer w.staticJobUploadSnapshotQueue.callKill()
 
 	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) >= 0 {
