@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -113,6 +114,8 @@ type API struct {
 	requiredPassword  string
 	Shutdown          func() error
 	siadConfig        *modules.SiadConfig
+
+	staticStartTime time.Time
 }
 
 // api.ServeHTTP implements the http.Handler interface.
@@ -136,6 +139,11 @@ func (api *API) SetModules(cs modules.ConsensusSet, e modules.Explorer, fm modul
 	api.buildHTTPRoutes()
 }
 
+// StartTime returns the time at which the API started
+func (api *API) StartTime() time.Time {
+	return api.staticStartTime
+}
+
 // New creates a new Sia API from the provided modules.  The API will require
 // authentication using HTTP basic auth for certain endpoints of the supplied
 // password is not the empty string.  Usernames are ignored for authentication.
@@ -154,6 +162,8 @@ func New(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword str
 		requiredUserAgent: requiredUserAgent,
 		requiredPassword:  requiredPassword,
 		siadConfig:        cfg,
+
+		staticStartTime: time.Now(),
 	}
 
 	// Register API handlers

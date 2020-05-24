@@ -52,6 +52,11 @@ func (wls *workerLoopState) staticFinishSerialJob() {
 // 'threadedWorkLoop', and it is expected that only one instance of
 // 'threadedWorkLoop' is ever created per-worker.
 func (w *worker) externLaunchSerialJob(job func()) {
+	// Sanity check - no other job should be running at this point.
+	if atomic.LoadUint64(&w.staticLoopState.atomicSerialJobRunning) != 0 {
+		w.renter.log.Critical("running a job when another job is already running")
+	}
+
 	// Mark that there is now a job running.
 	atomic.StoreUint64(&w.staticLoopState.atomicSerialJobRunning, 1)
 	fn := func() {
@@ -87,6 +92,12 @@ func (w *worker) externTryLaunchSerialJob() {
 		return
 	}
 
+	// Perform a disrupt for testing. See the implementation in
+	// workerloop_test.go for more info.
+	if w.renter.deps.Disrupt("TestJobSerialization") {
+		return
+	}
+
 	// Check every potential serial job that the worker may be required to
 	// perform. This scheduling allows a flood of jobs earlier in the list to
 	// starve out jobs later in the list. At some point we will probably
@@ -101,6 +112,11 @@ func (w *worker) externTryLaunchSerialJob() {
 	}
 	if w.staticFetchBackupsJobQueue.managedHasJob() {
 		w.externLaunchSerialJob(w.managedPerformFetchBackupsJob)
+		return
+	}
+	job := w.staticJobUploadSnapshotQueue.callNext()
+	if job != nil {
+		w.externLaunchSerialJob(job.callExecute)
 		return
 	}
 	if w.staticJobQueueDownloadByRoot.managedHasJob() {
@@ -163,6 +179,26 @@ func (w *worker) externLaunchAsyncJob(getJob getAsyncJob) bool {
 // queued at once to prevent jobs from being spread too thin and sharing too
 // much bandwidth.
 func (w *worker) externTryLaunchAsyncJob() bool {
+	// Verify that the worker has not reached its limits for doing multiple
+	// jobs at once.
+	readLimit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
+	writeLimit := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataLimit)
+	readOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
+	writeOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataOutstanding)
+	if readOutstanding > readLimit || writeOutstanding > writeLimit {
+		// Worker does not need to discard jobs, it is making progress, it's
+		// just not launching any new jobs until its current jobs finish up.
+		return false
+	}
+
+	// Perform a disrupt for testing. This is some code that ensures async job
+	// launches are controlled correctly. The disrupt operates on a mock worker,
+	// so it needs to happen after the ratelimit checks but before the cache,
+	// price table, and account checks.
+	if w.renter.deps.Disrupt("TestAsyncJobLaunches") {
+		return true
+	}
+
 	// Hosts that do not support the async protocol cannot do async jobs.
 	cache := w.staticCache()
 	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
@@ -179,18 +215,6 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	// If the account is on cooldown, drop all async jobs.
 	if w.staticAccount.managedOnCooldown() {
 		w.managedDiscardAsyncJobs()
-		return false
-	}
-
-	// Verify that the worker has not reached its limits for doing multiple
-	// jobs at once.
-	readLimit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
-	writeLimit := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataLimit)
-	readOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
-	writeOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataOutstanding)
-	if readOutstanding > readLimit || writeOutstanding > writeLimit {
-		// Worker does not need to dump jobs, it is making progress, it's just
-		// not launching any new jobs until its current jobs finish up.
 		return false
 	}
 
@@ -244,6 +268,7 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillJobsHasSector()
 	defer w.managedKillJobsReadSector()
 	defer w.managedKillJobsDownloadByRoot()
+	defer w.staticJobUploadSnapshotQueue.callKill()
 
 	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) >= 0 {
 		// The worker cannot execute any async tasks unless the price table of

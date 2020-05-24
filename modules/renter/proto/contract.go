@@ -395,15 +395,18 @@ func (c *SafeContract) managedRecordAppendIntent(rev types.FileContractRevision,
 	newHeader.StorageSpending = newHeader.StorageSpending.Add(storageCost)
 	newHeader.UploadSpending = newHeader.UploadSpending.Add(bandwidthCost)
 
-	rcUpdate, err := c.makeUpdateRefCounterAppend()
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to create a refcounter update")
-	}
-	t, err := c.wal.NewTransaction([]writeaheadlog.Update{
+	updates := []writeaheadlog.Update{
 		c.makeUpdateSetHeader(newHeader),
 		c.makeUpdateSetRoot(root, c.merkleRoots.len()),
-		rcUpdate,
-	})
+	}
+	if build.Release == "testing" {
+		rcUpdate, err := c.makeUpdateRefCounterAppend()
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to create a refcounter update")
+		}
+		updates = append(updates, rcUpdate)
+	}
+	t, err := c.wal.NewTransaction(updates)
 	if err != nil {
 		return nil, err
 	}
