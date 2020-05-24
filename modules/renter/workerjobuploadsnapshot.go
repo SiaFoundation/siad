@@ -114,14 +114,33 @@ func (j *jobUploadSnapshot) staticCanceled() bool {
 // callAdd will add an upload snapshot job to the queue.
 func (jq *jobUploadSnapshotQueue) callAdd(j *jobUploadSnapshot) bool {
 	jq.mu.Lock()
+	defer jq.mu.Unlock()
+
 	if jq.killed || time.Now().Before(jq.cooldownUntil) {
-		jq.mu.Unlock()
 		return false
 	}
 	jq.jobs = append(jq.jobs, j)
-	jq.mu.Unlock()
 	jq.staticWorker.staticWake()
 	return true
+}
+
+// discardJobs will drop all of the jobs in the queue.
+func (jq *jobUploadSnapshotQueue) discardJobs() {
+	// Send a 'worker killed' response to every job in the queue.
+	w := jq.staticWorker
+	for _, job := range jq.jobs {
+		resp := &jobUploadSnapshotResponse{
+			staticErr: errors.New("worker is discarding all upload snapshot jobs"),
+		}
+		w.renter.tg.Launch(func() {
+			select {
+			case job.staticResponseChan <- resp:
+			case <-job.staticCancelChan:
+			case <-w.renter.tg.StopChan():
+			}
+		})
+	}
+	jq.jobs = nil
 }
 
 // managedHasUploadSnapshotJob will return true if there is a snapshot upload
@@ -130,6 +149,10 @@ func (w *worker) managedHasUploadSnapshotJob() bool {
 	jq := w.staticJobUploadSnapshotQueue
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
+
+	if jq.killed {
+		return false
+	}
 	if time.Now().Before(jq.cooldownUntil) {
 		return false
 	}
@@ -142,20 +165,7 @@ func (w *worker) managedKillJobsUploadSnapshot() {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
-	// Send a 'worker killed' response to every job in the queue.
-	for _, job := range jq.jobs {
-		resp := &jobUploadSnapshotResponse{
-			staticErr: errors.New("worker is being killed, upload snapshot job will not be completed"),
-		}
-		w.renter.tg.Launch(func() {
-			select {
-			case job.staticResponseChan <- resp:
-			case <-job.staticCancelChan:
-			case <-w.renter.tg.StopChan():
-			}
-		})
-	}
-	jq.jobs = nil
+	jq.discardJobs()
 	jq.killed = true
 }
 
@@ -172,7 +182,7 @@ func (w *worker) managedJobUploadSnapshot() {
 			return
 		}
 
-		// Grab the next job>
+		// Grab the next job.
 		job = jq.jobs[0]
 		jq.jobs = jq.jobs[1:]
 
@@ -199,7 +209,17 @@ func (w *worker) managedJobUploadSnapshot() {
 			}
 		})
 
-		// Put the job on cooldown if there was an error.
+		// Perform cooldown handling - reset the consecutive failures if
+		// success, put job queue on cooldown otherwise.
+		jq.mu.Lock()
+		defer jq.mu.Unlock()
+		if err == nil {
+			jq.consecutiveFailures = 0
+			return
+		}
+		jq.cooldownUntil = cooldownUntil(jq.consecutiveFailures)
+		jq.consecutiveFailures++
+		jq.discardJobs()
 	}()
 
 	// Check that the worker is good for upload.
