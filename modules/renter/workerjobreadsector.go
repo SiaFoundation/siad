@@ -65,7 +65,7 @@ func (j *jobReadSector) callDiscard(err error) {
 		response := &jobReadSectorResponse{
 			staticErr: errors.AddContext(err, "job being discarded"),
 		}
-		select{
+		select {
 		case j.staticResponseChan <- response:
 		case <-w.renter.tg.StopChan():
 		case <-j.staticCancelChan:
@@ -140,7 +140,7 @@ func (j *jobReadSector) callExecute() {
 // TODO: These values are overly conservative, once we've got the protocol more
 // optimized we can bring these down.
 func (j *jobReadSector) callExpectedBandwidth() (ul, dl uint64) {
-	ul = 1 << 15                              // 32 KiB
+	ul = 1 << 15                                      // 32 KiB
 	dl = uint64(float64(j.staticLength)*1.01) + 1<<14 // (readSize * 1.01 + 16 KiB)
 	return
 }
