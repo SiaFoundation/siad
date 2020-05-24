@@ -93,7 +93,7 @@ func checkUploadSnapshotGouging(allowance modules.Allowance, hostSettings module
 	return nil
 }
 
-// callDiscard will discard this job, sending an error down the repsonse
+// callDiscard will discard this job, sending an error down the response
 // channel.
 func (j *jobUploadSnapshot) callDiscard(err error) {
 	resp := &jobUploadSnapshotResponse{

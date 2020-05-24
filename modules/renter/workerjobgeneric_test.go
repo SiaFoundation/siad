@@ -46,7 +46,7 @@ type jobTestResult struct {
 // get blocked if nobody is listening on the resultChan. Note that also the
 // resultChan should generally be created as a buffered channel with enough
 // result slots that this should never block, but defensive programming suggests
-// that we should implement precuations on both ends.
+// that we should implement precautions on both ends.
 func (j *jobTest) sendResult(result *jobTestResult) {
 	w := j.staticQueue.staticWorker()
 	w.renter.tg.Launch(func() {
@@ -182,7 +182,7 @@ func TestWorkerJobGeneric(t *testing.T) {
 	if job == nil {
 		t.Fatal("call to grab the next job failed, there should be a job ready in the queue")
 	}
-	// Simulate a sucessful execution by the control loop.
+	// Simulate a successful execution by the control loop.
 	job.callExecute()
 	// There should be one more job in the queue.
 	job = jq.callNext()

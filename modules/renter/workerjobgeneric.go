@@ -169,7 +169,7 @@ func (jq *jobGenericQueue) discardAll(err error) {
 	jq.jobs = nil
 }
 
-// staticWorker will return the worker that is assoicated with this job queue.
+// staticWorker will return the worker that is associated with this job queue.
 func (jq *jobGenericQueue) staticWorker() *worker {
 	return jq.staticWorkerObj
 }
