@@ -30,6 +30,19 @@ const (
 	minAsyncVersion = "1.4.9"
 )
 
+const (
+	// These variables define the total amount of data that a worker is willing
+	// to queue at once when performing async tasks. If the worker has more data
+	// queued in its async queue than this, it will stop launching jobs so that
+	// the jobs it does launch have more breathing room to complete.
+	//
+	// The worker may adjust these values dynamically as it starts to run and
+	// determines how much stuff it can do simultaneously before its jobs start
+	// to have significant latency impact.
+	initialConcurrentAsyncReadData  = 10e6
+	initialConcurrentAsyncWriteData = 10e6
+)
+
 type (
 	// A worker listens for work on a certain host.
 	//
@@ -175,8 +188,8 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		// These may be updated in real time as the worker collects metrics
 		// about itself.
 		staticLoopState: workerLoopState{
-			atomicReadDataLimit:  10e6,
-			atomicWriteDataLimit: 10e6,
+			atomicReadDataLimit:  initialConcurrentAsyncReadData,
+			atomicWriteDataLimit: initialConcurrentAsyncWriteData,
 		},
 
 		killChan: make(chan struct{}),
