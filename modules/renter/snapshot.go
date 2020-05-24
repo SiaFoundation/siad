@@ -301,6 +301,7 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 	cancelChan := make(chan struct{})
 	defer close(cancelChan)
 	responseChan := make(chan *jobUploadSnapshotResponse, len(workers))
+	responses := 0
 	for _, w := range workers {
 		job := &jobUploadSnapshot{
 			staticMetadata:    meta,
@@ -309,7 +310,11 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 			staticCancelChan:   cancelChan, // We don't actually use this.
 			staticResponseChan: responseChan,
 		}
-		w.staticJobUploadSnapshotQueue.callAdd(job)
+
+		// If a job is not added correctly, count this as a failed response.
+		if !w.staticJobUploadSnapshotQueue.callAdd(job) {
+			responses++
+		}
 	}
 
 	// Cap the total amount of time that we wait for results.
@@ -321,7 +326,6 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 	}()
 
 	// Iteratively grab the responses from the workers.
-	responses := 0
 	successes := 0
 	for responses < len(workers) {
 		var resp *jobUploadSnapshotResponse

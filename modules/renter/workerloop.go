@@ -273,6 +273,7 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillJobsReadSector()
 	*/
 	defer w.managedKillJobsDownloadByRoot()
+	defer w.managedKillJobsUploadSnapshot()
 
 	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) >= 0 {
 		// The worker cannot execute any async tasks unless the price table of

@@ -112,12 +112,16 @@ func (j *jobUploadSnapshot) staticCanceled() bool {
 }
 
 // callAdd will add an upload snapshot job to the queue.
-func (jq *jobUploadSnapshotQueue) callAdd(j *jobUploadSnapshot) {
+func (jq *jobUploadSnapshotQueue) callAdd(j *jobUploadSnapshot) bool {
 	jq.mu.Lock()
+	if jq.killed {
+		jq.mu.Unlock()
+		return false
+	}
 	jq.jobs = append(jq.jobs, j)
 	jq.mu.Unlock()
 	jq.staticWorker.staticWake()
-	return
+	return true
 }
 
 // managedHasUploadSnapshotJob will return true if there is a snapshot upload
@@ -130,6 +134,29 @@ func (w *worker) managedHasUploadSnapshotJob() bool {
 		return false
 	}
 	return len(jq.jobs) > 0
+}
+
+// managedKillJobsUploadSnapshot will discard all upload snapshot jobs.
+func (w *worker) managedKillJobsUploadSnapshot() {
+	jq := w.staticJobUploadSnapshotQueue
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+
+	// Send a 'worker killed' response to every job in the queue.
+	for _, job := range jq.jobs {
+		resp := &jobUploadSnapshotResponse{
+			staticErr: errors.New("worker is being killed, upload snapshot job will not be completed"),
+		}
+		w.renter.tg.Launch(func() {
+			select {
+			case job.staticResponseChan <- resp:
+			case <-job.staticCancelChan:
+			case <-w.renter.tg.StopChan():
+			}
+		})
+	}
+	jq.jobs = nil
+	jq.killed = true
 }
 
 // managedJobUploadSnapshot will perform an upload snapshot job for the worker.
