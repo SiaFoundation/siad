@@ -32,6 +32,10 @@ var (
 )
 
 var (
+	// maxSnapshotUploadTime defines the total amount of time that the renter
+	// will allocate to complete an upload of a snapshot .sia file to all hosts.
+	// This is done with each host in parallel, and the .sia file is not
+	// expected to exceed a few megabytes even for very large renters.
 	maxSnapshotUploadTime = build.Select(build.Var{
 		Standard: time.Minute * 15,
 		Dev:      time.Minute * 3,
