@@ -114,7 +114,7 @@ func (j *jobUploadSnapshot) staticCanceled() bool {
 // callAdd will add an upload snapshot job to the queue.
 func (jq *jobUploadSnapshotQueue) callAdd(j *jobUploadSnapshot) bool {
 	jq.mu.Lock()
-	if jq.killed {
+	if jq.killed || time.Now().Before(jq.cooldownUntil) {
 		jq.mu.Unlock()
 		return false
 	}
@@ -198,6 +198,8 @@ func (w *worker) managedJobUploadSnapshot() {
 			case <-w.renter.tg.StopChan():
 			}
 		})
+
+		// Put the job on cooldown if there was an error.
 	}()
 
 	// Check that the worker is good for upload.
