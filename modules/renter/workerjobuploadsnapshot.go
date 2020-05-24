@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"sort"
-	"sync"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -31,21 +29,15 @@ type (
 		staticMetadata    modules.UploadedBackup
 		staticSiaFileData []byte
 
-		staticCancelChan   chan struct{}
 		staticResponseChan chan *jobUploadSnapshotResponse
+
+		jobGeneric
 	}
 
 	// jobUploadSnapshotQueue contains the set of snapshots that need to be
 	// uploaded.
 	jobUploadSnapshotQueue struct {
-		killed bool
-		jobs   []*jobUploadSnapshot
-
-		cooldownUntil       time.Time
-		consecutiveFailures uint64
-
-		staticWorker *worker
-		mu           sync.Mutex
+		jobGenericQueue
 	}
 
 	// jobUploa;dSnapshotResponse contains the response to an upload snapshot
@@ -101,125 +93,46 @@ func checkUploadSnapshotGouging(allowance modules.Allowance, hostSettings module
 	return nil
 }
 
-// staticCanceled returns whether or not the job has been canceled.
-func (j *jobUploadSnapshot) staticCanceled() bool {
-	select {
-	case <-j.staticCancelChan:
-		return true
-	default:
-		return false
+// callDiscard will discard this job, sending an error down the repsonse
+// channel.
+func (j *jobUploadSnapshot) callDiscard(err error) {
+	resp := &jobUploadSnapshotResponse{
+		staticErr: errors.AddContext(err, "job is being discarded"),
 	}
-}
-
-// callAdd will add an upload snapshot job to the queue.
-func (jq *jobUploadSnapshotQueue) callAdd(j *jobUploadSnapshot) bool {
-	jq.mu.Lock()
-	defer jq.mu.Unlock()
-
-	if jq.killed || time.Now().Before(jq.cooldownUntil) {
-		return false
-	}
-	jq.jobs = append(jq.jobs, j)
-	jq.staticWorker.staticWake()
-	return true
-}
-
-// discardJobs will drop all of the jobs in the queue.
-func (jq *jobUploadSnapshotQueue) discardJobs() {
-	// Send a 'worker killed' response to every job in the queue.
-	w := jq.staticWorker
-	for _, job := range jq.jobs {
-		resp := &jobUploadSnapshotResponse{
-			staticErr: errors.New("worker is discarding all upload snapshot jobs"),
+	j.staticQueue.staticWorker().renter.tg.Launch(func() {
+		select {
+		case j.staticResponseChan <- resp:
+		case <-j.staticCancelChan:
+		case <-j.staticQueue.staticWorker().renter.tg.StopChan():
 		}
-		w.renter.tg.Launch(func() {
-			select {
-			case job.staticResponseChan <- resp:
-			case <-job.staticCancelChan:
-			case <-w.renter.tg.StopChan():
-			}
-		})
-	}
-	jq.jobs = nil
+	})
 }
 
-// managedHasUploadSnapshotJob will return true if there is a snapshot upload
-// job in the worker's queue.
-func (w *worker) managedHasUploadSnapshotJob() bool {
-	jq := w.staticJobUploadSnapshotQueue
-	jq.mu.Lock()
-	defer jq.mu.Unlock()
-
-	if jq.killed {
-		return false
-	}
-	if time.Now().Before(jq.cooldownUntil) {
-		return false
-	}
-	return len(jq.jobs) > 0
-}
-
-// managedKillJobsUploadSnapshot will discard all upload snapshot jobs.
-func (w *worker) managedKillJobsUploadSnapshot() {
-	jq := w.staticJobUploadSnapshotQueue
-	jq.mu.Lock()
-	defer jq.mu.Unlock()
-
-	jq.discardJobs()
-	jq.killed = true
-}
-
-// managedJobUploadSnapshot will perform an upload snapshot job for the worker.
-func (w *worker) managedJobUploadSnapshot() {
-	// Get the latest job.
-	var job *jobUploadSnapshot
-	jq := w.staticJobUploadSnapshotQueue
-	jq.mu.Lock()
-	for {
-		// If there are no jobs, nothing to do.
-		if len(jq.jobs) == 0 {
-			jq.mu.Unlock()
-			return
-		}
-
-		// Grab the next job.
-		job = jq.jobs[0]
-		jq.jobs = jq.jobs[1:]
-
-		// Move onto the next job if this job has been canceled.
-		if job.staticCanceled() {
-			continue
-		}
-		break
-	}
-	jq.mu.Unlock()
+// callExecute will perform an upload snapshot job for the worker.
+func (j *jobUploadSnapshot) callExecute() {
+	w := j.staticQueue.staticWorker()
 
 	// Defer a function to send the result down a channel.
 	var err error
 	defer func() {
-		// Return an error to the caller.
+		// Return the error to the caller, error may be nil.
 		resp := &jobUploadSnapshotResponse{
 			staticErr: err,
 		}
 		w.renter.tg.Launch(func() {
 			select {
-			case job.staticResponseChan <- resp:
-			case <-job.staticCancelChan:
+			case j.staticResponseChan <- resp:
+			case <-j.staticCancelChan:
 			case <-w.renter.tg.StopChan():
 			}
 		})
 
-		// Perform cooldown handling - reset the consecutive failures if
-		// success, put job queue on cooldown otherwise.
-		jq.mu.Lock()
-		defer jq.mu.Unlock()
-		if err == nil {
-			jq.consecutiveFailures = 0
-			return
+		// Report a failure to the queue if this job had an error.
+		if err != nil {
+			j.staticQueue.callReportFailure(err)
+		} else {
+			j.staticQueue.callReportSuccess()
 		}
-		jq.cooldownUntil = cooldownUntil(jq.consecutiveFailures)
-		jq.consecutiveFailures++
-		jq.discardJobs()
 	}()
 
 	// Check that the worker is good for upload.
@@ -253,7 +166,7 @@ func (w *worker) managedJobUploadSnapshot() {
 
 	// Upload the snapshot to the host. The session is created by passing in a
 	// thread group, so this call should be responsive to fast shutdown.
-	err = w.renter.managedUploadSnapshotHost(job.staticMetadata, job.staticSiaFileData, sess)
+	err = w.renter.managedUploadSnapshotHost(j.staticMetadata, j.staticSiaFileData, sess)
 	if err != nil {
 		w.renter.log.Debugln("uploading a snapshot to a host failed:", err)
 		err = errors.AddContext(err, "uploading a snapshot to a host failed")
@@ -270,7 +183,9 @@ func (w *worker) initJobUploadSnapshotQueue() {
 	}
 
 	w.staticJobUploadSnapshotQueue = &jobUploadSnapshotQueue{
-		staticWorker: w,
+		jobGenericQueue: jobGenericQueue{
+			staticWorkerObj: w,
+		},
 	}
 }
 

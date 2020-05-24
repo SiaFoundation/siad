@@ -114,8 +114,9 @@ func (w *worker) externTryLaunchSerialJob() {
 		w.externLaunchSerialJob(w.managedPerformFetchBackupsJob)
 		return
 	}
-	if w.managedHasUploadSnapshotJob() {
-		w.externLaunchSerialJob(w.managedJobUploadSnapshot)
+	job := w.staticJobUploadSnapshotQueue.callNext()
+	if job != nil {
+		w.externLaunchSerialJob(job.callExecute)
 		return
 	}
 	if w.staticJobQueueDownloadByRoot.managedHasJob() {
@@ -269,7 +270,7 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillFetchBackupsJobs()
 	defer w.managedKillJobsDownloadByRoot()
 	defer w.managedKillJobsDownloadByRoot()
-	defer w.managedKillJobsUploadSnapshot()
+	defer w.staticJobUploadSnapshotQueue.callKill()
 	/* - will be enabled when the full async job suite is implemented
 	defer w.managedKillJobsHasSector()
 	defer w.managedKillJobsReadSector()

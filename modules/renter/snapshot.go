@@ -307,8 +307,9 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 			staticMetadata:    meta,
 			staticSiaFileData: dotSia,
 
-			staticCancelChan:   cancelChan, // We don't actually use this.
 			staticResponseChan: responseChan,
+
+			jobGeneric: newJobGeneric(w.staticJobUploadSnapshotQueue),
 		}
 
 		// If a job is not added correctly, count this as a failed response.
