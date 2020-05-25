@@ -19,8 +19,7 @@ import (
 // TestPriceTableMarshaling tests a PriceTable can be marshaled and unmarshaled
 func TestPriceTableMarshaling(t *testing.T) {
 	pt := modules.RPCPriceTable{
-		Expiry:               rpcPriceGuaranteePeriod,
-		Timestamp:            time.Now().Unix(),
+		Validity:             rpcPriceGuaranteePeriod,
 		UpdatePriceTableCost: types.SiacoinPrecision,
 		InitBaseCost:         types.SiacoinPrecision.Mul64(1e2),
 		MemoryTimeCost:       types.SiacoinPrecision.Mul64(1e3),
@@ -52,29 +51,29 @@ func TestPriceTableMinHeap(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
-	pth := priceTableHeap{heap: make([]*modules.RPCPriceTable, 0)}
+	pth := priceTableHeap{heap: make([]*hostRPCPriceTable, 0)}
 
-	pt1 := modules.RPCPriceTable{
-		Expiry:    rpcPriceGuaranteePeriod,
-		Timestamp: now.Add(-rpcPriceGuaranteePeriod).Unix(),
+	pt1 := hostRPCPriceTable{
+		modules.RPCPriceTable{Validity: rpcPriceGuaranteePeriod},
+		now.Add(-rpcPriceGuaranteePeriod),
 	}
 	pth.Push(&pt1)
 
-	pt2 := modules.RPCPriceTable{
-		Expiry:    rpcPriceGuaranteePeriod,
-		Timestamp: now.Unix(),
+	pt2 := hostRPCPriceTable{
+		modules.RPCPriceTable{Validity: rpcPriceGuaranteePeriod},
+		now,
 	}
 	pth.Push(&pt2)
 
-	pt3 := modules.RPCPriceTable{
-		Expiry:    rpcPriceGuaranteePeriod,
-		Timestamp: now.Add(-3 * rpcPriceGuaranteePeriod).Unix(),
+	pt3 := hostRPCPriceTable{
+		modules.RPCPriceTable{Validity: rpcPriceGuaranteePeriod},
+		now.Add(-3 * rpcPriceGuaranteePeriod),
 	}
 	pth.Push(&pt3)
 
-	pt4 := modules.RPCPriceTable{
-		Expiry:    rpcPriceGuaranteePeriod,
-		Timestamp: now.Add(-2 * rpcPriceGuaranteePeriod).Unix(),
+	pt4 := hostRPCPriceTable{
+		modules.RPCPriceTable{Validity: rpcPriceGuaranteePeriod},
+		now.Add(-2 * rpcPriceGuaranteePeriod),
 	}
 	pth.Push(&pt4)
 
@@ -226,9 +225,9 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	if !tracked {
 		t.Fatalf("Expected price table with.UID %v to be tracked after successful update", pt.UID)
 	}
-	// ensure its expiry is in the future
-	if pt.Expiry.Seconds() <= 0 {
-		t.Fatal("Expected price table expiry to be in the future")
+	// ensure its validity is in the future
+	if pt.Validity.Seconds() <= 0 {
+		t.Fatal("Expected price table validity to be in the future")
 	}
 
 	// expect failure if the payment revision does not cover the RPC cost

@@ -18,9 +18,9 @@ type RPCPriceTable struct {
 	// UID is a specifier that uniquely identifies this price table
 	UID UniqueID `json:"uid"`
 
-	// Expiry is a duration that specifies how long the host guarantees these
-	// prices for.
-	Expiry time.Duration `json:"expiry"`
+	// Validity is a duration that specifies how long the host guarantees these
+	// prices for and are thus considered valid.
+	Validity time.Duration `json:"validity"`
 
 	// UpdatePriceTableCost refers to the cost of fetching a new price table
 	// from the host.
@@ -65,13 +65,6 @@ type RPCPriceTable struct {
 	WriteBaseCost   types.Currency `json:"writebasecost"`
 	WriteLengthCost types.Currency `json:"writelengthcost"`
 	WriteStoreCost  types.Currency `json:"writestorecost"`
-
-	// Timestamp is the time at which the price table was created. We need this,
-	// in combination with the Expiry property to figure out when to consider
-	// the price table to be expired. Note we can not simply communicate an
-	// expiry time because the host's clock is not guaranteed to be in sync with
-	// the renter's clock.
-	Timestamp int64 `json:"timestamp"`
 }
 
 var (

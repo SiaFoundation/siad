@@ -208,7 +208,7 @@ func (w *worker) staticUpdatePriceTable() {
 	// previously the devs like to be able to see what it was.
 	wpt := &workerPriceTable{
 		staticPriceTable:          pt,
-		staticExpiryTime:          time.Now().Add(pt.Expiry),
+		staticExpiryTime:          time.Now().Add(pt.Validity),
 		staticUpdateTime:          time.Now().Add(updateTimeInterval),
 		staticConsecutiveFailures: 0,
 		staticRecentErr:           currentPT.staticRecentErr,

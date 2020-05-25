@@ -33,8 +33,22 @@ type (
 	}
 
 	// rpcPriceTableHeap is a min heap of rpc price tables
-	rpcPriceTableHeap []*modules.RPCPriceTable
+	rpcPriceTableHeap []*hostRPCPriceTable
+
+	// hostRPCPriceTable is a helper struct that wraps a price table alongside
+	// its creation timestamp. We need this, in combination with the price
+	// table's validity to figure out when to consider the price table to be
+	// expired.
+	hostRPCPriceTable struct {
+		modules.RPCPriceTable
+		creation time.Time
+	}
 )
+
+// Expiry returns the time at which the price table expires
+func (hpt hostRPCPriceTable) Expiry() time.Time {
+	return hpt.creation.Add(hpt.Validity)
+}
 
 // PopExpired returns the UIDs for all rpc price tables that have expired
 func (pth *priceTableHeap) PopExpired() (expired []modules.UniqueID) {
@@ -47,8 +61,8 @@ func (pth *priceTableHeap) PopExpired() (expired []modules.UniqueID) {
 			return
 		}
 
-		pt := heap.Pop(&pth.heap).(*modules.RPCPriceTable)
-		if now.Before(time.Unix(pt.Timestamp, 0).Add(pt.Expiry)) {
+		pt := heap.Pop(&pth.heap).(*hostRPCPriceTable)
+		if now.Before(pt.Expiry()) {
 			heap.Push(&pth.heap, pt)
 			break
 		}
@@ -58,7 +72,7 @@ func (pth *priceTableHeap) PopExpired() (expired []modules.UniqueID) {
 }
 
 // Push will add a price table to the heap.
-func (pth *priceTableHeap) Push(pt *modules.RPCPriceTable) {
+func (pth *priceTableHeap) Push(pt *hostRPCPriceTable) {
 	pth.mu.Lock()
 	defer pth.mu.Unlock()
 	heap.Push(&pth.heap, pt)
@@ -67,11 +81,11 @@ func (pth *priceTableHeap) Push(pt *modules.RPCPriceTable) {
 // Implementation of heap.Interface for rpcPriceTableHeap.
 func (pth rpcPriceTableHeap) Len() int { return len(pth) }
 func (pth rpcPriceTableHeap) Less(i, j int) bool {
-	return time.Unix(pth[i].Timestamp, 0).Add(pth[i].Expiry).Before(time.Unix(pth[j].Timestamp, 0).Add(pth[j].Expiry))
+	return pth[i].Expiry().Before(pth[j].Expiry())
 }
 func (pth rpcPriceTableHeap) Swap(i, j int) { pth[i], pth[j] = pth[j], pth[i] }
 func (pth *rpcPriceTableHeap) Push(x interface{}) {
-	pt := x.(*modules.RPCPriceTable)
+	pt := x.(*hostRPCPriceTable)
 	*pth = append(*pth, pt)
 }
 func (pth *rpcPriceTableHeap) Pop() interface{} {
@@ -90,10 +104,8 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	pt := h.staticPriceTables.managedCurrent()
 	fastrand.Read(pt.UID[:])
 
-	// update the epxiry to signal how long these prices are guaranteed and set
-	// the timestamp
-	pt.Expiry = rpcPriceGuaranteePeriod
-	pt.Timestamp = time.Now().Unix()
+	// update the epxiry to signal how long these prices are guaranteed
+	pt.Validity = rpcPriceGuaranteePeriod
 
 	// json encode the price table
 	ptBytes, err := json.Marshal(pt)
@@ -127,7 +139,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 
 	// after payment has been received, track the price table in the host's list
 	// of price tables
-	h.staticPriceTables.managedTrack(&pt)
+	h.staticPriceTables.managedTrack(&hostRPCPriceTable{pt, time.Now()})
 
 	// refund the money we didn't use.
 	refund := payment.Amount().Sub(pt.UpdatePriceTableCost)
@@ -156,8 +168,8 @@ func (h *Host) staticReadPriceTableID(stream siamux.Stream) (*modules.RPCPriceTa
 	}
 
 	// make sure the table isn't expired.
-	if time.Now().After(time.Unix(pt.Timestamp, 0).Add(pt.Expiry)) {
+	if time.Now().After(pt.Expiry()) {
 		return nil, ErrPriceTableExpired
 	}
-	return pt, nil
+	return &pt.RPCPriceTable, nil
 }

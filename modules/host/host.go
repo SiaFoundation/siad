@@ -208,7 +208,7 @@ type Host struct {
 // 'guaranteed' map.
 type hostPrices struct {
 	current       modules.RPCPriceTable
-	guaranteed    map[modules.UniqueID]*modules.RPCPriceTable
+	guaranteed    map[modules.UniqueID]*hostRPCPriceTable
 	staticMinHeap priceTableHeap
 	mu            sync.RWMutex
 }
@@ -221,7 +221,7 @@ func (hp *hostPrices) managedCurrent() modules.RPCPriceTable {
 }
 
 // managedGet returns the price table with given uid
-func (hp *hostPrices) managedGet(uid modules.UniqueID) (pt *modules.RPCPriceTable, found bool) {
+func (hp *hostPrices) managedGet(uid modules.UniqueID) (pt *hostRPCPriceTable, found bool) {
 	hp.mu.RLock()
 	defer hp.mu.RUnlock()
 	pt, found = hp.guaranteed[uid]
@@ -239,7 +239,7 @@ func (hp *hostPrices) managedSetCurrent(pt modules.RPCPriceTable) {
 // managedTrack adds the given price table to the 'guaranteed' map, that holds
 // all of the price tables the host has recently guaranteed to renters. It will
 // also add it to the heap which facilates efficient pruning of that map.
-func (hp *hostPrices) managedTrack(pt *modules.RPCPriceTable) {
+func (hp *hostPrices) managedTrack(pt *hostRPCPriceTable) {
 	hp.mu.Lock()
 	hp.guaranteed[pt.UID] = pt
 	hp.mu.Unlock()
@@ -400,9 +400,9 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*lockedObligation),
 		staticPriceTables: &hostPrices{
-			guaranteed: make(map[modules.UniqueID]*modules.RPCPriceTable),
+			guaranteed: make(map[modules.UniqueID]*hostRPCPriceTable),
 			staticMinHeap: priceTableHeap{
-				heap: make([]*modules.RPCPriceTable, 0),
+				heap: make([]*hostRPCPriceTable, 0),
 			},
 		},
 		persistDir: persistDir,
