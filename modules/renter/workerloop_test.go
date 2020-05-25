@@ -38,8 +38,7 @@ func (d *dependencyTestJobSerialExecution) Disrupt(s string) bool {
 	// There's a mutex here to ensure that the job does not complete before
 	// we can check that the job has been marked as running after launching
 	// the job.
-	var mu sync.Mutex
-	mu.Lock()
+	continueChan := make(chan struct{})
 	w.externLaunchSerialJob(func() {
 		if atomic.LoadUint64(&w.staticLoopState.atomicSerialJobRunning) != 1 {
 			build.Critical("running a job without having the serial job running flag set")
@@ -53,8 +52,7 @@ func (d *dependencyTestJobSerialExecution) Disrupt(s string) bool {
 		// outside of this job has completed, solving a potential race
 		// condition where the job completes before we check that the job is
 		// still marked as running.
-		mu.Lock()
-		mu.Unlock()
+		<-continueChan
 
 		// Signal that a job has completed.
 		d.mu.Lock()
@@ -64,7 +62,7 @@ func (d *dependencyTestJobSerialExecution) Disrupt(s string) bool {
 	if atomic.LoadUint64(&w.staticLoopState.atomicSerialJobRunning) != 1 {
 		build.Critical("running a job when another job is already running")
 	}
-	mu.Unlock()
+	close(continueChan)
 	return true
 }
 
