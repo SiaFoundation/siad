@@ -60,9 +60,17 @@ func TestCreateLoadBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
+	dirMDPath := filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.UserFolder.String(), "subDir", modules.SiaDirExtension)
+	fmt.Printf("dir: %v\n", dirMDPath)
+	if _, err := os.Stat(dirMDPath); os.IsNotExist(err) {
+		t.Fatalf(".siadir file at %v doesn't exist", dirMDPath)
+	}
 	// Delete the file locally.
 	if err := lf.Delete(); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := os.Stat(dirMDPath); os.IsExist(err) {
+		t.Fatal(".siadir file does exist:", dirMDPath)
 	}
 	// Create a backup.
 	backupPath := filepath.Join(r.FilesDir().Path(), "test.backup")
@@ -80,8 +88,8 @@ func TestCreateLoadBackup(t *testing.T) {
 	if err := r.RenterAllowanceCancelPost(); err != nil {
 		t.Fatal(err)
 	}
-	// Recover the backup into the same renter. No new files should appear but the
-	// allowance should be set again.
+	// Recover the backup into the same renter. No new files should appear but
+	// the allowance should be set again.
 	if err := r.RenterRecoverLocalBackupPost(backupPath); err != nil {
 		t.Fatal(err)
 	}
@@ -108,8 +116,8 @@ func TestCreateLoadBackup(t *testing.T) {
 	if err := tg.RemoveNode(r); err != nil {
 		t.Fatal(err)
 	}
-	// Start a new renter from the same seed Disable its health and repair loops to
-	// avoid updating the .siadir file.
+	// Start a new renter from the same seed. Disable its health and repair
+	// loops to avoid updating the .siadir file.
 	rt := node.RenterTemplate
 	rt.PrimarySeed = wsg.PrimarySeed
 	nodes, err := tg.AddNodes(rt)
@@ -122,14 +130,14 @@ func TestCreateLoadBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The .siadir file should also be recovered.
-	dirMDPath := filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.UserFolder.String(), "subDir", modules.SiaDirExtension)
+	dirMDPath = filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.UserFolder.String(), "subDir", modules.SiaDirExtension)
 	if _, err := os.Stat(dirMDPath); os.IsNotExist(err) {
-		t.Fatal(".siadir file doesn't exist:", dirMDPath)
+		t.Fatalf(".siadir file at %v doesn't exist", dirMDPath)
 	}
 	// There shouldn't be a .siadir_1 file as we don't replace existing .siadir
 	// files.
-	if _, err := os.Stat(dirMDPath + "_1"); !os.IsNotExist(err) {
-		t.Fatal(".siadir_1 file does exist")
+	if _, err := os.Stat(dirMDPath + "_1"); os.IsExist(err) {
+		t.Fatal(".siadir_1 file does exist:", err)
 	}
 	// The file should be available and ready for download again.
 	if _, _, err := r.DownloadByStream(rf); err != nil {

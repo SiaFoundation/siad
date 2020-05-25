@@ -183,7 +183,8 @@ func (fs *FileSystem) AddSiaFileFromReader(rs io.ReadSeeker, siaPath modules.Sia
 	if err != nil {
 		return err
 	}
-	if err := fs.managedNewSiaDir(dirSiaPath, sf.Mode()); err != nil {
+	err = fs.managedNewSiaDir(dirSiaPath, sf.Mode())
+	if err != nil && !errors.Contains(err, ErrExists) {
 		return err
 	}
 	dir, err := fs.managedOpenDir(dirSiaPath.String())
@@ -382,7 +383,8 @@ func (fs *FileSystem) NewSiaFileFromLegacyData(fd siafile.FileData) (*FileNode, 
 		return nil, err
 	}
 	// Create the dir if it doesn't exist.
-	if err := fs.NewSiaDir(dirSiaPath, 0755); err != nil {
+	err = fs.NewSiaDir(dirSiaPath, 0755)
+	if err != nil && !errors.Contains(err, ErrExists) {
 		return nil, err
 	}
 	// Open dir.
@@ -438,7 +440,8 @@ func (fs *FileSystem) RenameFile(oldSiaPath, newSiaPath modules.SiaPath) error {
 	if err != nil {
 		return err
 	}
-	if err := fs.NewSiaDir(newDirSiaPath, sf.managedMode()); err != nil {
+	err = fs.NewSiaDir(newDirSiaPath, sf.managedMode())
+	if err != nil && !errors.Contains(err, ErrExists) {
 		return errors.AddContext(err, fmt.Sprintf("failed to create SiaDir %v for SiaFile %v", newDirSiaPath.String(), oldSiaPath.String()))
 	}
 	newDir, err := fs.managedOpenSiaDir(newDirSiaPath)
