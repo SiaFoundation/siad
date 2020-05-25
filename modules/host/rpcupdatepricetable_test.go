@@ -225,9 +225,9 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	if !tracked {
 		t.Fatalf("Expected price table with.UID %v to be tracked after successful update", pt.UID)
 	}
-	// ensure its validity is in the future
+	// ensure its validity is positive and different from zero
 	if pt.Validity.Seconds() <= 0 {
-		t.Fatal("Expected price table validity to be in the future")
+		t.Fatal("Expected price table validity to be positive and non zero")
 	}
 
 	// expect failure if the payment revision does not cover the RPC cost
