@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	// SnapshotKeySpecifier is the specifier used for deriving the secret used to
+	// snapshotKeySpecifier is the specifier used for deriving the secret used to
 	// encrypt a snapshot from the RenterSeed.
 	snapshotKeySpecifier = types.NewSpecifier("snapshot")
 

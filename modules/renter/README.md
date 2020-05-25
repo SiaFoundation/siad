@@ -262,7 +262,7 @@ times, and not every job has been ported yet to the latest structure. But using
 the latest structure, you can call `queue.callAdd()` to add a job to a queue.
 The worker loop will make all of the decisions around when to execute the job.
 Jobs are split into two types, serial and async. Serial jobs are anything that
-require exclusive access to the file contract with the host, the worker will
+requires exclusive access to the file contract with the host, the worker will
 ensure that only one of these is running at a time. Async jobs are any jobs that
 don't require exclusive access to a resource, the worker will run multiple of
 these in parallel.
