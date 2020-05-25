@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -79,6 +80,11 @@ func TestJobSerialExecution(t *testing.T) {
 	w.renter = new(Renter)
 	w.renter.deps = d
 	d.staticWorker = w
+
+	// Initialize a worker cache & snapshot queue
+	wc := new(workerCache)
+	atomic.StorePointer(&w.atomicCache, unsafe.Pointer(wc))
+	w.initJobUploadSnapshotQueue()
 
 	// Launch a bunch of serial jobs in the worker. Each job that succeeded
 	// should take about 100ms to complete, we launch jobs 25ms apart for this
