@@ -108,7 +108,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}
 
 	// Return 16 bytes of data as a placeholder for a future cancellation token.
-	// NOTE: We write this to a buffer to safe one call to `Write`. In the
+	// NOTE: We write this to a buffer to save one call to `Write`. In the
 	// future we might reconsider this once we actually implement cancellation
 	// since this means the token is only returned after the first instruction
 	// is done executing.
