@@ -188,7 +188,7 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 
 	// sign the revision
 	renterSignature := signatureFromRequest(currentRevision, pbcr)
-	txn, err := createRevisionSignature(paymentRevision, renterSignature, h.secretKey, h.blockHeight)
+	txn, err := createRevisionSignature(paymentRevision, renterSignature, h.secretKey, bh)
 	if err != nil {
 		return types.ZeroCurrency, errors.AddContext(err, "Could not create revision signature")
 	}

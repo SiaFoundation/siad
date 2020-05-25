@@ -18,7 +18,7 @@ func TestLogger(t *testing.T) {
 	}
 	// Create a folder for the log file.
 	testdir := build.TempDir(persistDir, t.Name())
-	err := os.MkdirAll(testdir, 0700)
+	err := os.MkdirAll(testdir, defaultDirPermissions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestLogger(t *testing.T) {
 func TestLoggerCritical(t *testing.T) {
 	// Create a folder for the log file.
 	testdir := build.TempDir(persistDir, t.Name())
-	err := os.MkdirAll(testdir, 0700)
+	err := os.MkdirAll(testdir, defaultDirPermissions)
 	if err != nil {
 		t.Fatal(err)
 	}
