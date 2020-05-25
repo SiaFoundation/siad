@@ -164,8 +164,7 @@ lint:
     - apt-get update
     - apt-get -y install python3-pip
     - pip3 install codespell
-    - git clone gitlab.com/NebulousLabs/analysis
-    - go install ./analysis/cmd/analyze.go
+    - go get gitlab.com/NebulousLabs/analysis
     - ./bin/golangci-lint run -c .golangci.yml ./...
     - make lint-analysis
     - make markdown-spellcheck
