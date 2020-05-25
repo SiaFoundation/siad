@@ -776,7 +776,6 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	var tempChunkHeap uploadChunkHeap
 	var worstIgnoredHealth float64
 	var worstIgnoredRemote bool
-	dirHeapHealth, dirHeapRemote := r.directoryHeap.managedPeekHealth()
 	for _, file := range files {
 		// If this file has better health than other files that we have ignored,
 		// this file can be skipped. This only counts for unstuck chunks, if we
