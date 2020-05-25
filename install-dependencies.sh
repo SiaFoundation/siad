@@ -16,6 +16,5 @@ fi
 
 if ! [ -x "$(command -v analyze)" ]; then
   echo "Installing analyze..."
-  git clone https://gitlab.com/NebulousLabs/analysis
-  go install ./analysis/cmd/analyze.go
+  go get gitlab.com/NebulousLabs/analysis
 fi
