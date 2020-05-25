@@ -320,7 +320,7 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Upload the file.
-	dataPieces := uint64(len(tg.Hosts()) - 1)
+	dataPieces := 2 // for use with 5 hosts, minimizes exposure to the upload failure NDF
 	parityPieces := uint64(1)
 	rf, err := r.UploadBlocking(lf, dataPieces, parityPieces, false)
 	if err != nil {
@@ -567,7 +567,7 @@ func TestRemoteBackup(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(backups.Backups) != 2 {
-			t.Error("Not enough backups detected", len(backups.Backups))
+			t.Error("Wrong number of backups detected", len(backups.Backups))
 		}
 	}
 
