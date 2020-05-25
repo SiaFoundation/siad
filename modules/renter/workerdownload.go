@@ -216,7 +216,6 @@ func (w *worker) managedPerformDownloadChunkJob() {
 		}()
 	}
 	udc.mu.Unlock()
-	return
 }
 
 // managedKillDownloading will drop all of the download work given to the

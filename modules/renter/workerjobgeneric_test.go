@@ -16,7 +16,7 @@ import (
 // necessary, but most jobs will need to communicate some result to the caller.
 //
 // There are also some variables for tracking whether the job has been executed
-// or discarded, these are for  testing purposes and not actually part of a
+// or discarded, these are for testing purposes and not actually part of a
 // minimum viable job.
 type jobTest struct {
 	// jobGeneric implements a lot of the boilerplate job code for us.
@@ -26,12 +26,12 @@ type jobTest struct {
 	resultChan chan *jobTestResult
 
 	// These are variables for tracking the execution status of the job, they
-	// are only used for testing. 'shouldFail' tells the execution function
+	// are only used for testing. 'staticShouldFail' tells the execution function
 	// whether the job should simulate a success or a failure.
-	shouldFail bool
-	discarded  bool
-	executed   bool
-	mu         sync.Mutex
+	staticShouldFail bool
+	discarded        bool
+	executed         bool
+	mu               sync.Mutex
 }
 
 // jobTestResult is a minimum viable implementation for a worker job result.
@@ -82,12 +82,12 @@ func (j *jobTest) callDiscard(err error) {
 func (j *jobTest) callExecute() {
 	j.mu.Lock()
 	j.executed = true
-	shouldFail := j.shouldFail
+	staticShouldFail := j.staticShouldFail
 	j.mu.Unlock()
 
 	// Need to report a success if the job succeeded, and a fail otherwise.
 	var err error
-	if shouldFail {
+	if staticShouldFail {
 		err = errors.New("job is simulated to have failed")
 		j.staticQueue.callReportFailure(err)
 	} else {
@@ -234,8 +234,8 @@ func TestWorkerJobGeneric(t *testing.T) {
 
 		resultChan: resultChan,
 
-		// Set shouldFail to true, so the execution knows to fail the job.
-		shouldFail: true,
+		// Set staticShouldFail to true, so the execution knows to fail the job.
+		staticShouldFail: true,
 	}
 	if !jq.callAdd(j) {
 		t.Fatal("call to add job to new job queue should succeed")
@@ -332,8 +332,8 @@ func TestWorkerJobGeneric(t *testing.T) {
 
 		resultChan: resultChan,
 
-		// Set shouldFail to true, so the execution knows to fail the job.
-		shouldFail: true,
+		// Set staticShouldFail to true, so the execution knows to fail the job.
+		staticShouldFail: true,
 	}
 	if jq.callAdd(j) {
 		t.Fatal("job queue should be on cooldown")
