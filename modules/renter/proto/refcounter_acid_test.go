@@ -40,10 +40,10 @@ type tracker struct {
 }
 
 // managedSetCrashed marks the tracker as crashed
-func (t *tracker) managedSetCrashed() {
+func (t *tracker) managedSetCrashed(c bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.crashed = true
+	t.crashed = c
 }
 
 // managedCrashed checks if the tracker is marked as crashed
@@ -97,6 +97,9 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 	// The outer loop keeps restarting the tests until the time runs out
 OUTER:
 	for {
+		if track.managedCrashed() {
+			t.Fatal("The tracker is crashed on start.")
+		}
 		// Run a high number of tests in parallel
 		for i := 0; i < runtime.NumCPU()*10; i++ {
 			wg.Add(1)
@@ -384,7 +387,7 @@ func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFa
 			return nil, err
 		}
 		newRc.staticDeps = fdd
-		tr.managedSetCrashed()
+		tr.managedSetCrashed(false)
 		return newRc, nil
 	}
 }
