@@ -107,7 +107,7 @@ func (j *jobReadSector) callExecute() {
 		return
 	}
 
-	// Job succeded.
+	// Job succeeded.
 	//
 	// Update the metrics in the read sector queue based on the amount of
 	// time the read took. Stats should only be added if the job did not
