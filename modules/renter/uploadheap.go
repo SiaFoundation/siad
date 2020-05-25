@@ -9,7 +9,6 @@ package renter
 import (
 	"container/heap"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -773,9 +772,88 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	// the total number of chunks that it needs, and then it prunes itself by
 	// popping out the worst chunks, deleting the less bad chunks, and then
 	// re-adding the worst chunks again.
+	//
+	// When determining whether or not to skip a chunk in this directory, we
+	// consider the worst health of any chunk in the next directory, as well as
+	// the worst health of any chunk we have skipped so far.
+	//
+	// To prevent an infinite loop, we need to track the worst health of
+	// currently skipped chunks and the worst health of the next directory
+	// separately, so that if we skip only chunks that have better health than
+	// the next directory, when we re-add this directory to the directory heap,
+	// it gets added behind the next directory, ensuring progress is made.
 	var tempChunkHeap uploadChunkHeap
 	var worstIgnoredHealth float64
 	var worstIgnoredRemote bool
+	nextDirHealth, nextDirRemote := r.directoryHeap.managedPeekHealth()
+
+	// updateWorstHealth takes the health of a chunk that is being skipped and
+	// updates the worst healths to reflect the skip.
+	updateWorstHealth := func(health float64, remote bool) {
+		// This health is not worse if it is not remote but the worst health is
+		// remote.
+		if !remote && worstIgnoredRemote {
+			return
+		}
+		// If the worst health is not remote and this is remote, update both
+		// values.
+		if remote && !worstIgnoredRemote {
+			worstIgnoredHealth = health
+			worstIgnoredRemote = remote
+			return
+		}
+		if worstIgnoredHealth < health {
+			worstIgnoredHealth = health
+			return
+		}
+	}
+
+	// canSkip contains the logic for determining whether a chunk can be skipped
+	// based on the worst health of any chunk so far skipped, and also based on
+	// the worst health of any chunk in the next directory in the directory
+	// heap.
+	//
+	// We want to make sure that the upload heap has all of the absolute worst
+	// chunks in the renter in it, so we want to skip any chunk that we know is
+	// in better health than any chunk we will be retrying later.
+	canSkip := func(health float64, remote bool) bool {
+		// Cannot skip any chunks if we are not targeting unstuck chunks.
+		if target != targetUnstuckChunks {
+			return false
+		}
+
+		// If this chunk is not remote and there are skipped chunks that are
+		// remote, this chunk can be skipped.
+		if !remote && (worstIgnoredRemote || nextDirRemote) {
+			return true
+		}
+		// If this chunk is remote and nothing that has been skipped is remote,
+		// this chunk cannot be skipped.
+		if remote && !worstIgnoredRemote && !nextDirRemote {
+			return false
+		}
+		// If the chunk is not remote, neither are either of the other values.
+		// This chunk can be skipped only if its health is better than those
+		// other chunks.
+		if !remote && (health < nextDirHealth || health < worstIgnoredHealth) {
+			return true
+		} else if !remote {
+			return false
+		}
+
+		// The chunk is remote, and at least one of the other comparables is
+		// remote. Figure out what health to compare the chunk to.
+		var reqHealth float64
+		if nextDirRemote {
+			reqHealth = nextDirHealth
+		}
+		if worstIgnoredRemote && reqHealth < worstIgnoredHealth {
+			reqHealth = worstIgnoredHealth
+		}
+		return health < reqHealth
+	}
+
+	// Loop through all the files and build the temporary heap.
 	for _, file := range files {
 		// If this file has better health than other files that we have ignored,
 		// this file can be skipped. This only counts for unstuck chunks, if we
@@ -784,10 +862,8 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 		fileHealth := fileMetadata.CachedHealth
 		_, err := os.Stat(fileMetadata.LocalPath)
 		remoteFile := fileMetadata.LocalPath == "" || err != nil
-		if !remoteFile && worstIgnoredRemote && target == targetUnstuckChunks {
-			continue
-		}
-		if fileHealth < worstIgnoredHealth && target == targetUnstuckChunks {
+		if canSkip(fileHealth, remoteFile) {
+			updateWorstHealth(fileHealth, remoteFile)
 			continue
 		}
 
@@ -802,17 +878,13 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 				if err != nil {
 					r.log.Println("Error closing file entry:", err)
 				}
-				// Since the chunk is already in the heap we do not need to
-				// track the health of the chunk
+				// The chunk is already in the heap, so it does not count as
+				// being ignored even though technically we are skipping it. Do
+				// not update the worst health vars based on this chunk.
 				continue
 			}
-
-			// Skip this chunk if the health is better than the worst health we
-			// have already ignored, again only for unstuck chunks.
-			if chunk.onDisk && worstIgnoredRemote && target == targetUnstuckChunks {
-				continue
-			}
-			if chunk.health < worstIgnoredHealth && target == targetUnstuckChunks {
+			if canSkip(chunk.health, chunk.onDisk) {
+				updateWorstHealth(chunk.health, chunk.onDisk)
 				continue
 			}
 			// Add chunk to temp heap
@@ -851,20 +923,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 			if err != nil {
 				r.log.Println("Error closing file entry:", err)
 			}
-			if chunk.onDisk && worstIgnoredRemote {
-				// The worst ignored health is already worse than this chunk,
-				// nothing to update.
-			} else if !chunk.onDisk && !worstIgnoredRemote {
-				// This chunk, by nature of being remote, has a worse health
-				// than the worst health of any chunk we've ignored so far.
-				// Update the worst values to match this chunk's health.
-				worstIgnoredRemote = true
-				worstIgnoredHealth = chunk.health
-			} else {
-				// Update the worstIgnoredHealth to be the worst of its current
-				// value and the chunk's health value.
-				worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
-			}
+			updateWorstHealth(chunk.health, chunk.onDisk)
 
 			// Reset the temp heap to throw out all of the chunks that we don't
 			// care about.
@@ -911,21 +970,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 		if err != nil {
 			r.log.Println("Error closing file entry:", err)
 		}
-
-		if chunk.onDisk && worstIgnoredRemote {
-			// The worst ignored health is already worse than this chunk,
-			// nothing to update.
-		} else if !chunk.onDisk && !worstIgnoredRemote {
-			// This chunk, by nature of being remote, has a worse health than
-			// the worst health of any chunk we've ignored so far.  Update the
-			// worst values to match this chunk's health.
-			worstIgnoredRemote = true
-			worstIgnoredHealth = chunk.health
-		} else {
-			// Update the worstIgnoredHealth to be the worst of its current
-			// value and the chunk's health value.
-			worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
-		}
+		updateWorstHealth(chunk.health, chunk.onDisk)
 	}
 	// We are done with the temporary heap, reset it so the resources are closed
 	// and the memory is released.
@@ -953,13 +998,6 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	// This means that the directory may be added with a health that doesn't
 	// match its actual health, this is okay because the goal is to make sure
 	// that the upload heap is making progress.
-
-	// Sanity check - if the upload heap is not full, we should not be adding
-	// this directory back into the directory heap, any chunks should have been
-	// added to the heap instead of ignored.
-	if r.uploadHeap.managedLen() < maxUploadHeapChunks {
-		r.log.Critical("re-adding directory when the chunks that were ignored should have just been put in the upload heap")
-	}
 
 	// All files submitted are from the same directory so use the first one to
 	// get the directory siapath
