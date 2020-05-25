@@ -268,7 +268,7 @@ type renterHostPair struct {
 	staticRenterMux  *siamux.SiaMux
 
 	pt       *modules.RPCPriceTable
-	ptExpiry time.Time
+	ptExpiry time.Time // keep track of when the price table is set to expire
 
 	staticHT *hostTester
 	mu       sync.Mutex
@@ -739,9 +739,6 @@ func TestHostInitialization(t *testing.T) {
 	defer ht.host.staticPriceTables.mu.RUnlock()
 	if reflect.DeepEqual(ht.host.staticPriceTables.current, modules.RPCPriceTable{}) {
 		t.Fatal("RPC price table wasn't initialized")
-	}
-	if ht.host.staticPriceTables.current.Validity == 0 {
-		t.Fatal("RPC price table was not properly initialised")
 	}
 }
 

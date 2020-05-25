@@ -45,8 +45,8 @@ type (
 	}
 )
 
-// Expiry returns the time at which the price table expires
-func (hpt hostRPCPriceTable) Expiry() time.Time {
+// Expiry returns the time at which the price table is considered to be expired
+func (hpt *hostRPCPriceTable) Expiry() time.Time {
 	return hpt.creation.Add(hpt.Validity)
 }
 
@@ -104,7 +104,7 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	pt := h.staticPriceTables.managedCurrent()
 	fastrand.Read(pt.UID[:])
 
-	// update the epxiry to signal how long these prices are guaranteed
+	// set the validity to signal how long these prices are guaranteed for
 	pt.Validity = rpcPriceGuaranteePeriod
 
 	// json encode the price table
