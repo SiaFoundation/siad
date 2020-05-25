@@ -18,7 +18,7 @@ var (
 		BinaryName:   "Sia",
 		BugReportURL: build.IssuesURL,
 		Debug:        build.DEBUG,
-		Release:      build.Release,
+		Release:      buildReleaseType(),
 		Version:      build.Version,
 	}
 )
@@ -32,6 +32,22 @@ func NewFileLogger(logFilename string) (*Logger, error) {
 
 // NewLogger returns a logger that can be closed. Calls should not be made to
 // the logger after 'Close' has been called.
-func NewLogger(w io.Writer) *Logger {
-	return &Logger{log.NewLogger(w, options)}
+func NewLogger(w io.Writer) (*Logger, error) {
+	logger, err := log.NewLogger(w, options)
+	return &Logger{logger}, err
+}
+
+// buildReleaseType returns the release type for this build, defaulting to
+// Release.
+func buildReleaseType() log.ReleaseType {
+	switch build.Release {
+	case "standard":
+		return log.Release
+	case "dev":
+		return log.Dev
+	case "testing":
+		return log.Testing
+	default:
+		return log.Release
+	}
 }

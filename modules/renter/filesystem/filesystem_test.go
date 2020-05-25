@@ -58,7 +58,11 @@ func newSiaPath(path string) modules.SiaPath {
 // newTestFileSystem creates a new filesystem for testing.
 func newTestFileSystem(root string) *FileSystem {
 	wal, _ := newTestWAL()
-	fs, err := New(root, persist.NewLogger(ioutil.Discard), wal)
+	logger, err := persist.NewLogger(ioutil.Discard)
+	if err != nil {
+		panic(err.Error())
+	}
+	fs, err := New(root, logger, wal)
 	if err != nil {
 		panic(err.Error())
 	}
