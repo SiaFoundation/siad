@@ -357,7 +357,9 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 	}
 
 	// Check if there were too few successes to count this as a successful
-	// backup.
+	// backup. A 1/3 success rate is really quite arbitrary, picked because it
+	// ~feels~ like that should be enough to give the user security, but really
+	// who knows.
 	if successes < total/3 {
 		r.log.Printf("Unable to save snapshot effectively, wanted %v but only got %v successful snapshot backups", total, successes)
 		return fmt.Errorf("needed at least %v successes, only got %v", total/3, successes)
