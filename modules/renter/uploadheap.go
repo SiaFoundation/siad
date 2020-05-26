@@ -784,7 +784,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	// it gets added behind the next directory, ensuring progress is made.
 	var tempChunkHeap uploadChunkHeap
 	nextDirHealth, nextDirRemote := r.directoryHeap.managedPeekHealth()
-	wih := worstIgnoredHealth{
+	wh := worstIgnoredHealth{
 		nextDirHealth: nextDirHealth,
 		nextDirRemote: nextDirRemote,
 
@@ -799,8 +799,8 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 		fileHealth := fileMetadata.CachedHealth
 		_, err := os.Stat(fileMetadata.LocalPath)
 		remoteFile := fileMetadata.LocalPath == "" || err != nil
-		if wih.canSkip(fileHealth, remoteFile) {
-			wih.updateWorstIgnoredHealth(fileHealth, remoteFile)
+		if wh.canSkip(fileHealth, remoteFile) {
+			wh.updateWorstIgnoredHealth(fileHealth, remoteFile)
 			continue
 		}
 
@@ -820,8 +820,8 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 				// not update the worst health vars based on this chunk.
 				continue
 			}
-			if wih.canSkip(chunk.health, chunk.onDisk) {
-				wih.updateWorstIgnoredHealth(chunk.health, chunk.onDisk)
+			if wh.canSkip(chunk.health, chunk.onDisk) {
+				wh.updateWorstIgnoredHealth(chunk.health, chunk.onDisk)
 				continue
 			}
 			// Add chunk to temp heap
@@ -860,7 +860,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 			if err != nil {
 				r.log.Println("Error closing file entry:", err)
 			}
-			wih.updateWorstIgnoredHealth(chunk.health, chunk.onDisk)
+			wh.updateWorstIgnoredHealth(chunk.health, chunk.onDisk)
 
 			// Reset the temp heap to throw out all of the chunks that we don't
 			// care about.
@@ -907,7 +907,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 		if err != nil {
 			r.log.Println("Error closing file entry:", err)
 		}
-		wih.updateWorstIgnoredHealth(chunk.health, chunk.onDisk)
+		wh.updateWorstIgnoredHealth(chunk.health, chunk.onDisk)
 	}
 	// We are done with the temporary heap, reset it so the resources are closed
 	// and the memory is released.
@@ -923,7 +923,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	}
 	// If the worst ignored health is below the repair threshold, there is no
 	// need to re-add the directory to the directory heap.
-	if wih.health < RepairThreshold {
+	if wh.health < RepairThreshold {
 		return
 	}
 
@@ -958,16 +958,16 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	// race condition, the worst healths of all the directories will be used. We
 	// want to ensure that we don't shadow worse healths in subdirs.
 	d := &directory{
-		aggregateHealth: wih.health,
+		aggregateHealth: wh.health,
 		explored:        true,
-		health:          wih.health,
+		health:          wh.health,
 		staticSiaPath:   dirSiaPath,
 	}
 	// The remote health values should only be set if the worst health of any
 	// ignored chunk was a remote health chunk.
-	if wih.remote {
-		d.aggregateRemoteHealth = wih.health
-		d.remoteHealth = wih.health
+	if wh.remote {
+		d.aggregateRemoteHealth = wh.health
+		d.remoteHealth = wh.health
 	}
 	// Push the directory back onto the directory heap so that when the current
 	// upload heap is drained, the ignored chunks in this dir will be

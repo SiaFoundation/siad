@@ -8,52 +8,52 @@ import (
 // updateWorstIgnoredHealth function.
 func TestUpdateWorstIgnoredHealth(t *testing.T) {
 	// Start by updating a blank with blank values.
-	var wih worstIgnoredHealth
-	wih.updateWorstIgnoredHealth(0, false)
-	if wih.health != 0 || wih.remote != false {
-		t.Error("bad wih update")
+	var wh worstIgnoredHealth
+	wh.updateWorstIgnoredHealth(0, false)
+	if wh.health != 0 || wh.remote != false {
+		t.Error("bad wh update")
 	}
 	// Try updating with a higher health.
-	wih.updateWorstIgnoredHealth(0.2, false)
-	if wih.health != 0.2 || wih.remote != false {
-		t.Error("bad wih update")
+	wh.updateWorstIgnoredHealth(0.2, false)
+	if wh.health != 0.2 || wh.remote != false {
+		t.Error("bad wh update")
 	}
 	// Try updating with a lower health.
-	wih.updateWorstIgnoredHealth(0.1, false)
-	if wih.health != 0.2 || wih.remote != false {
-		t.Error("bad wih update")
+	wh.updateWorstIgnoredHealth(0.1, false)
+	if wh.health != 0.2 || wh.remote != false {
+		t.Error("bad wh update")
 	}
 	// Try updating with a lower health and remote set.
-	wih.updateWorstIgnoredHealth(0.1, true)
-	if wih.health != 0.1 || wih.remote != true {
-		t.Error("bad wih update")
+	wh.updateWorstIgnoredHealth(0.1, true)
+	if wh.health != 0.1 || wh.remote != true {
+		t.Error("bad wh update")
 	}
 	// Try updating with a lower health and remote set.
-	wih.updateWorstIgnoredHealth(0.01, true)
-	if wih.health != 0.1 || wih.remote != true {
-		t.Error("bad wih update")
+	wh.updateWorstIgnoredHealth(0.01, true)
+	if wh.health != 0.1 || wh.remote != true {
+		t.Error("bad wh update")
 	}
 	// Try updating with a lower health and remote not set.
-	wih.updateWorstIgnoredHealth(0.01, false)
-	if wih.health != 0.1 || wih.remote != true {
-		t.Error("bad wih update")
+	wh.updateWorstIgnoredHealth(0.01, false)
+	if wh.health != 0.1 || wh.remote != true {
+		t.Error("bad wh update")
 	}
 	// Try updating with a higher health but remote not set.
-	wih.updateWorstIgnoredHealth(1.01, false)
-	if wih.health != 0.1 || wih.remote != true {
-		t.Error("bad wih update")
+	wh.updateWorstIgnoredHealth(1.01, false)
+	if wh.health != 0.1 || wh.remote != true {
+		t.Error("bad wh update")
 	}
 	// Try updating with a higher health and remote set.
-	wih.updateWorstIgnoredHealth(1.01, true)
-	if wih.health != 1.01 || wih.remote != true {
-		t.Error("bad wih update")
+	wh.updateWorstIgnoredHealth(1.01, true)
+	if wh.health != 1.01 || wh.remote != true {
+		t.Error("bad wh update")
 	}
 }
 
 // TestWIHCanSkip checks the logic of the canSkip method.
 func TestWIHCanSkip(t *testing.T) {
 	// The target is not set, nothing should be skippable.
-	wih := worstIgnoredHealth{
+	wh := worstIgnoredHealth{
 		health: 0.2,
 		remote: false,
 
@@ -61,22 +61,22 @@ func TestWIHCanSkip(t *testing.T) {
 		nextDirRemote: false,
 	}
 	// TEST GROUP A
-	if wih.canSkip(0.1, true) {
+	if wh.canSkip(0.1, true) {
 		t.Error("Bad skip")
 	}
-	if wih.canSkip(0.1, false) {
+	if wh.canSkip(0.1, false) {
 		t.Error("Bad skip")
 	}
-	if wih.canSkip(2.1, false) {
+	if wh.canSkip(2.1, false) {
 		t.Error("Bad skip")
 	}
-	if wih.canSkip(2.1, true) {
+	if wh.canSkip(2.1, true) {
 		t.Error("Bad skip")
 	}
-	if wih.canSkip(0.3, true) {
+	if wh.canSkip(0.3, true) {
 		t.Error("Bad skip")
 	}
-	if wih.canSkip(0.3, false) {
+	if wh.canSkip(0.3, false) {
 		t.Error("Bad skip")
 	}
 
@@ -84,23 +84,23 @@ func TestWIHCanSkip(t *testing.T) {
 	// better than nextDirHealth.
 	//
 	// TEST GROUP B
-	wih.target = targetUnstuckChunks
-	if wih.canSkip(0.1, true) {
+	wh.target = targetUnstuckChunks
+	if wh.canSkip(0.1, true) {
 		t.Error("Bad skip")
 	}
-	if !wih.canSkip(0.1, false) {
+	if !wh.canSkip(0.1, false) {
 		t.Error("Bad skip")
 	}
-	if wih.canSkip(2.1, false) {
+	if wh.canSkip(2.1, false) {
 		t.Error("Bad skip")
 	}
-	if wih.canSkip(2.1, true) {
+	if wh.canSkip(2.1, true) {
 		t.Error("Bad skip")
 	}
-	if wih.canSkip(0.3, true) {
+	if wh.canSkip(0.3, true) {
 		t.Error("Bad skip")
 	}
-	if !wih.canSkip(0.3, false) {
+	if !wh.canSkip(0.3, false) {
 		t.Error("Bad skip")
 	}
 
@@ -108,47 +108,47 @@ func TestWIHCanSkip(t *testing.T) {
 	// anything under 0.2 health.
 	//
 	// TEST GROUP C
-	wih.remote = true
-	if !wih.canSkip(0.1, true) {
+	wh.remote = true
+	if !wh.canSkip(0.1, true) {
 		t.Error("Bad skip")
 	}
-	if !wih.canSkip(0.1, false) {
+	if !wh.canSkip(0.1, false) {
 		t.Error("Bad skip")
 	}
-	if !wih.canSkip(2.1, false) {
+	if !wh.canSkip(2.1, false) {
 		t.Error("Bad skip")
 	}
-	if wih.canSkip(2.1, true) {
+	if wh.canSkip(2.1, true) {
 		t.Error("Bad skip")
 	}
-	if wih.canSkip(0.3, true) {
+	if wh.canSkip(0.3, true) {
 		t.Error("Bad skip")
 	}
-	if !wih.canSkip(0.3, false) {
+	if !wh.canSkip(0.3, false) {
 		t.Error("Bad skip")
 	}
 
 	// Set the next dir to remote, now should be possible to skip remote chunks
-	// that are better than wih, and non-remote chunks at any health.
+	// that are better than wh, and non-remote chunks at any health.
 	//
 	// TEST GROUP D
-	wih.nextDirRemote = true
-	if !wih.canSkip(0.1, true) {
+	wh.nextDirRemote = true
+	if !wh.canSkip(0.1, true) {
 		t.Error("Bad skip")
 	}
-	if !wih.canSkip(0.1, false) {
+	if !wh.canSkip(0.1, false) {
 		t.Error("Bad skip")
 	}
-	if !wih.canSkip(2.1, false) {
+	if !wh.canSkip(2.1, false) {
 		t.Error("Bad skip")
 	}
-	if wih.canSkip(2.1, true) {
+	if wh.canSkip(2.1, true) {
 		t.Error("Bad skip")
 	}
-	if !wih.canSkip(0.3, true) {
+	if !wh.canSkip(0.3, true) {
 		t.Error("Bad skip")
 	}
-	if !wih.canSkip(0.3, false) {
+	if !wh.canSkip(0.3, false) {
 		t.Error("Bad skip")
 	}
 
@@ -156,26 +156,26 @@ func TestWIHCanSkip(t *testing.T) {
 	// group E. Results should be the same.
 	//
 	// TEST GROUP E
-	wih.health = 0.5
-	wih.remote = false
-	wih.nextDirHealth = 0.2
-	wih.nextDirRemote = false
-	if wih.canSkip(0.1, true) {
+	wh.health = 0.5
+	wh.remote = false
+	wh.nextDirHealth = 0.2
+	wh.nextDirRemote = false
+	if wh.canSkip(0.1, true) {
 		t.Error("Bad skip")
 	}
-	if !wih.canSkip(0.1, false) {
+	if !wh.canSkip(0.1, false) {
 		t.Error("Bad skip")
 	}
-	if wih.canSkip(2.1, false) {
+	if wh.canSkip(2.1, false) {
 		t.Error("Bad skip")
 	}
-	if wih.canSkip(2.1, true) {
+	if wh.canSkip(2.1, true) {
 		t.Error("Bad skip")
 	}
-	if wih.canSkip(0.3, true) {
+	if wh.canSkip(0.3, true) {
 		t.Error("Bad skip")
 	}
-	if !wih.canSkip(0.3, false) {
+	if !wh.canSkip(0.3, false) {
 		t.Error("Bad skip")
 	}
 
@@ -183,26 +183,26 @@ func TestWIHCanSkip(t *testing.T) {
 	// group F. Results should be the same.
 	//
 	// TEST GROUP F
-	wih.health = 0.5
-	wih.remote = false
-	wih.nextDirHealth = 0.2
-	wih.nextDirRemote = true
-	if !wih.canSkip(0.1, true) {
+	wh.health = 0.5
+	wh.remote = false
+	wh.nextDirHealth = 0.2
+	wh.nextDirRemote = true
+	if !wh.canSkip(0.1, true) {
 		t.Error("Bad skip")
 	}
-	if !wih.canSkip(0.1, false) {
+	if !wh.canSkip(0.1, false) {
 		t.Error("Bad skip")
 	}
-	if !wih.canSkip(2.1, false) {
+	if !wh.canSkip(2.1, false) {
 		t.Error("Bad skip")
 	}
-	if wih.canSkip(2.1, true) {
+	if wh.canSkip(2.1, true) {
 		t.Error("Bad skip")
 	}
-	if wih.canSkip(0.3, true) {
+	if wh.canSkip(0.3, true) {
 		t.Error("Bad skip")
 	}
-	if !wih.canSkip(0.3, false) {
+	if !wh.canSkip(0.3, false) {
 		t.Error("Bad skip")
 	}
 
@@ -210,27 +210,27 @@ func TestWIHCanSkip(t *testing.T) {
 	// group G. Results should be the same.
 	//
 	// TEST GROUP G
-	wih.health = 0.5
-	wih.remote = true
-	wih.nextDirHealth = 0.2
-	wih.nextDirRemote = false
-	wih.nextDirRemote = true
-	if !wih.canSkip(0.1, true) {
+	wh.health = 0.5
+	wh.remote = true
+	wh.nextDirHealth = 0.2
+	wh.nextDirRemote = false
+	wh.nextDirRemote = true
+	if !wh.canSkip(0.1, true) {
 		t.Error("Bad skip")
 	}
-	if !wih.canSkip(0.1, false) {
+	if !wh.canSkip(0.1, false) {
 		t.Error("Bad skip")
 	}
-	if !wih.canSkip(2.1, false) {
+	if !wh.canSkip(2.1, false) {
 		t.Error("Bad skip")
 	}
-	if wih.canSkip(2.1, true) {
+	if wh.canSkip(2.1, true) {
 		t.Error("Bad skip")
 	}
-	if !wih.canSkip(0.3, true) {
+	if !wh.canSkip(0.3, true) {
 		t.Error("Bad skip")
 	}
-	if !wih.canSkip(0.3, false) {
+	if !wh.canSkip(0.3, false) {
 		t.Error("Bad skip")
 	}
 }
