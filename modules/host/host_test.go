@@ -706,12 +706,6 @@ func (p *renterHostPair) managedUpdatePriceTable(payByFC bool) error {
 	p.pt = &pt
 	p.staticMu.Unlock()
 
-	// expect clean stream close
-	err = modules.RPCRead(stream, struct{}{})
-	if !errors.Contains(err, io.ErrClosedPipe) {
-		return err
-	}
-
 	return nil
 }
 

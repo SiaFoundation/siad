@@ -10,6 +10,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -136,12 +137,6 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		err := pair.Close()
-		if err != nil {
-			t.Error(err)
-		}
-	}()
 	ht := pair.staticHT
 
 	// renter-side logic
@@ -225,5 +220,36 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	_, err = runWithRequest(newPayByContractRequest(rev, sig, aid))
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientPaymentForRPC.Error()) {
 		t.Fatalf("Expected error '%v', instead error was '%v'", modules.ErrInsufficientPaymentForRPC, err)
+	}
+
+	// close the pair and recreate one with a custom dependency
+	err = pair.Close()
+	if err != nil {
+		t.Error(err)
+	}
+
+	// create a new renter host pair but now with a dependency that prevents the
+	// stream from closing
+	deps := &dependencies.DependencyDisableStreamClose{}
+	pair, err = newCustomRenterHostPair(t.Name(), deps)
+	defer func() {
+		err := pair.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+	ht = pair.staticHT
+
+	// verify the RPC does not block if the host does not close the stream on
+	// his side
+	current = ht.host.staticPriceTables.managedCurrent()
+	rev, sig, err = pair.managedPaymentRevision(current.UpdatePriceTableCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = runWithRequest(newPayByContractRequest(rev, sig, aid))
+	if err != nil {
+		t.Fatal(err)
 	}
 }
