@@ -12,7 +12,7 @@ require (
 	github.com/klauspost/cpuid v1.2.2 // indirect
 	github.com/klauspost/reedsolomon v1.9.3
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/spf13/cobra v0.0.5
+	github.com/spf13/cobra v1.0.0
 	github.com/vbauerster/mpb/v5 v5.0.3
 	github.com/xtaci/smux v1.3.3
 	gitlab.com/NebulousLabs/bolt v1.4.0
@@ -24,8 +24,8 @@ require (
 	gitlab.com/NebulousLabs/merkletree v0.0.0-20200118113624-07fbf710afc4
 	gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a
 	gitlab.com/NebulousLabs/ratelimit v0.0.0-20191111145210-66b93e150b27
-	gitlab.com/NebulousLabs/siamux v0.0.0-20200427113430-a093e50f04a7
-	gitlab.com/NebulousLabs/threadgroup v0.0.0-20180716154133-88a11db9e46c
+	gitlab.com/NebulousLabs/siamux v0.0.0-20200518120401-20f1d5034f03
+	gitlab.com/NebulousLabs/threadgroup v0.0.0-20200518123758-b458460120c6
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190814160017-69f300e9bcb8
 	golang.org/x/crypto v0.0.0-20200423211502-4bdfaf469ed5
 	golang.org/x/sys v0.0.0-20200420163511-1957bb5e6d1f // indirect

@@ -1,11 +1,12 @@
 package siafile
 
 import (
+	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -370,7 +371,7 @@ func (md Metadata) backup() (b Metadata) {
 		copy(b.Skylinks, md.Skylinks)
 	}
 	// If the backup was successful it should match the original.
-	if build.Release == "testing" && !reflect.DeepEqual(md, b) {
+	if build.Release == "testing" && !md.equals(b) {
 		fmt.Println("md:\n", md)
 		fmt.Println("b:\n", b)
 		build.Critical("backup: copy doesn't match original")
@@ -409,11 +410,30 @@ func (md *Metadata) restore(b Metadata) {
 	md.PubKeyTableOffset = b.PubKeyTableOffset
 	md.Skylinks = b.Skylinks
 	// If the backup was successful it should match the backup.
-	if build.Release == "testing" && !reflect.DeepEqual(*md, b) {
+	if build.Release == "testing" && !md.equals(b) {
 		fmt.Println("md:\n", md)
 		fmt.Println("b:\n", b)
-		build.Critical("backup: copy doesn't match original")
+		build.Critical("restore: copy doesn't match original")
 	}
+}
+
+// equal compares the two structs for equality by serializing them and comparing
+// the serialized representations.
+//
+// WARNING: Do not use in production!
+func (md *Metadata) equals(b Metadata) bool {
+	if build.Release != "testing" {
+		build.Critical("Metadata.equals used in non-testing code!")
+	}
+	mdBytes, err := json.Marshal(md)
+	if err != nil {
+		build.Critical(fmt.Sprintf("failed to marshal: %s. Problematic entity: %+v\n", err.Error(), md))
+	}
+	bBytes, err := json.Marshal(b)
+	if err != nil {
+		build.Critical(fmt.Sprintf("failed to marshal: %s. Problematic entity: %+v\n", err.Error(), b))
+	}
+	return bytes.Equal(mdBytes, bBytes)
 }
 
 // rename changes the name of the file to a new one. To guarantee that renaming
@@ -546,7 +566,7 @@ func (sf *SiaFile) UpdateUniqueID() {
 func (sf *SiaFile) UpdateAccessTime() (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	// backup the changed metadata before hcanging it. Revert the change on
+	// backup the changed metadata before changing it. Revert the change on
 	// error.
 	defer func(backup Metadata) {
 		if err != nil {

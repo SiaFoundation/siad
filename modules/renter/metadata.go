@@ -259,7 +259,7 @@ func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) 
 	_, err = os.Stat(sf.LocalPath())
 	onDisk := err == nil
 	if !onDisk && redundancy < 1 {
-		r.log.Debugln("File not found on disk and possibly unrecoverable:", sf.LocalPath())
+		r.log.Debugf("File not found on disk and possibly unrecoverable: LocalPath %v; SiaPath %v", sf.LocalPath(), siaPath.String())
 	}
 
 	return siafile.BubbledMetadata{

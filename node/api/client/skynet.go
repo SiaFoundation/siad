@@ -182,6 +182,15 @@ func (c *Client) SkynetSkyfilePost(params modules.SkyfileUploadParameters) (stri
 	rootStr := fmt.Sprintf("%t", params.Root)
 	values.Set("root", rootStr)
 
+	// Encode SkykeyName or SkykeyID.
+	if params.SkykeyName != "" {
+		values.Set("skykeyname", params.SkykeyName)
+	}
+	hasSkykeyID := params.SkykeyID != skykey.SkykeyID{}
+	if hasSkykeyID {
+		values.Set("skykeyid", params.SkykeyID.ToString())
+	}
+
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", params.SiaPath.String(), values.Encode())
 	_, resp, err := c.postRawResponse(query, params.Reader)
@@ -425,4 +434,22 @@ func (c *Client) SkykeyAddKeyPost(sk skykey.Skykey) error {
 	}
 
 	return nil
+}
+
+// SkykeySkykeysGet requests the /skynet/skykeys GET endpoint.
+func (c *Client) SkykeySkykeysGet() ([]skykey.Skykey, error) {
+	var skykeysGet api.SkykeysGET
+	err := c.get("/skynet/skykeys", &skykeysGet)
+	if err != nil {
+		return nil, errors.AddContext(err, "allskykeys GET request failed")
+	}
+
+	res := make([]skykey.Skykey, len(skykeysGet.Skykeys))
+	for i, skString := range skykeysGet.Skykeys {
+		err = res[i].FromString(skString)
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to decode skykey string")
+		}
+	}
+	return res, nil
 }

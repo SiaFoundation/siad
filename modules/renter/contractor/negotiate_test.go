@@ -14,6 +14,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	modWallet "gitlab.com/NebulousLabs/Sia/modules/wallet" // name conflicts with type
 	"gitlab.com/NebulousLabs/Sia/types"
+
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // contractorTester contains all of the modules that are used while testing the contractor.
@@ -42,45 +44,45 @@ func (rt *contractorTester) Close() error {
 
 // newContractorTester creates a ready-to-use contractor tester with money in the
 // wallet.
-func newContractorTester(name string) (*contractorTester, error) {
+func newContractorTester(name string) (*contractorTester, closeFn, error) {
 	// Create the modules.
 	testdir := build.TempDir("contractor", name)
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
 	if err := <-errChan; err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	w, err := modWallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	key := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	_, err = w.Encrypt(key)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	err = w.Unlock(key)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	hdb, errChan := hostdb.New(g, cs, tp, filepath.Join(testdir, modules.RenterDir))
 	if err := <-errChan; err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	m, err := miner.New(cs, tp, w, filepath.Join(testdir, modules.MinerDir))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	c, errChan := New(cs, w, tp, hdb, filepath.Join(testdir, modules.RenterDir))
 	if err := <-errChan; err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Assemble all pieces into a contractor tester.
@@ -99,10 +101,14 @@ func newContractorTester(name string) (*contractorTester, error) {
 	for i := types.BlockHeight(0); i <= types.MaturityDelay; i++ {
 		_, err := ct.miner.AddBlock()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	return ct, nil
+
+	cf := func() error {
+		return errors.Compose(c.Close(), m.Close(), hdb.Close(), w.Close(), tp.Close(), cs.Close(), g.Close())
+	}
+	return ct, cf, nil
 }
 
 func TestNegotiateContract(t *testing.T) {
@@ -110,11 +116,11 @@ func TestNegotiateContract(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	ct, err := newContractorTester(t.Name())
+	ct, cf, err := newContractorTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ct.Close()
+	defer tryClose(cf, t)
 
 	payout := types.NewCurrency64(1e16)
 
@@ -163,11 +169,11 @@ func TestReviseContract(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	ct, err := newContractorTester(t.Name())
+	ct, cf, err := newContractorTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ct.Close()
+	defer tryClose(cf, t)
 
 	// get an address
 	ourAddr, err := ct.wallet.NextAddress()

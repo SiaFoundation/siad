@@ -49,24 +49,24 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 	defer rhp.Close()
 
 	// prefund the EA
-	his := rhp.ht.host.managedInternalSettings()
-	_, err = rhp.callFundEphemeralAccount(his.MaxEphemeralAccountBalance)
+	his := rhp.staticHT.host.managedInternalSettings()
+	_, err = rhp.managedFundEphemeralAccount(his.MaxEphemeralAccountBalance, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// create stream
-	stream := rhp.newStream()
+	stream := rhp.managedNewStream()
 	defer stream.Close()
 
 	// create a random sector
-	sectorRoot, _, err := rhp.addRandomSector()
+	sectorRoot, _, err := addRandomSector(rhp)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// create the 'ReadSector' program.
-	pt := rhp.PriceTable()
+	pt := rhp.managedPriceTable()
 	pb := modules.NewProgramBuilder(pt)
 	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
 	program, data := pb.Program()
@@ -80,8 +80,8 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 
 	// execute program.
 	budget := types.NewCurrency64(math.MaxUint64)
-	_, _, err = rhp.callExecuteProgram(epr, data, budget)
-	if err == nil || !errors.Contains(err, io.ErrClosedPipe) {
+	_, _, err = rhp.managedExecuteProgram(epr, data, budget, false)
+	if !errors.Contains(err, io.ErrClosedPipe) {
 		t.Fatal("Expected callExecuteProgram to fail with an ErrClosedPipe, instead err was", err)
 	}
 }
@@ -105,10 +105,10 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	ht := rhp.ht
+	ht := rhp.staticHT
 
 	// create a random sector
-	sectorRoot, sectorData, err := rhp.addRandomSector()
+	sectorRoot, sectorData, err := addRandomSector(rhp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	}
 
 	// create the 'ReadSector' program.
-	pt := rhp.PriceTable()
+	pt := rhp.managedPriceTable()
 	pb := modules.NewProgramBuilder(pt)
 	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
 	program, data := pb.Program()
@@ -138,10 +138,10 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	}
 
 	// fund an account.
-	his := rhp.ht.host.managedInternalSettings()
+	his := rhp.staticHT.host.managedInternalSettings()
 	maxBalance := his.MaxEphemeralAccountBalance
 	fundingAmt := maxBalance.Add(pt.FundAccountCost)
-	_, err = rhp.callFundEphemeralAccount(fundingAmt)
+	_, err = rhp.managedFundEphemeralAccount(fundingAmt, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,10 +159,10 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	cost := programCost.Add(bandwidthCost)
 
 	// execute program.
-	resps, limit, err := rhp.callExecuteProgram(epr, data, cost)
+	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true)
 	if err != nil {
 		t.Log("cost", cost.HumanString())
-		t.Log("expected ea balance", rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
+		t.Log("expected ea balance", rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
 		t.Fatal(err)
 	}
 
@@ -179,11 +179,14 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	if resp.Error != nil {
 		t.Fatal(resp.Error)
 	}
-	if resp.NewSize != sos.staticContractSize {
-		t.Fatalf("expected contract size to stay the same: %v != %v", sos.staticContractSize, resp.NewSize)
+	// programs that don't require a snapshot return a 0 contract size.
+	if resp.NewSize != 0 {
+		t.Fatalf("expected contract size to stay the same: %v != %v", 0, resp.NewSize)
 	}
-	if resp.NewMerkleRoot != sos.staticMerkleRoot {
-		t.Fatalf("expected merkle root to stay the same: %v != %v", sos.staticMerkleRoot, resp.NewMerkleRoot)
+	// programs that don't require a snapshot return a zero hash.
+	zh := crypto.Hash{}
+	if resp.NewMerkleRoot != zh {
+		t.Fatalf("expected merkle root to stay the same: %v != %v", zh, resp.NewMerkleRoot)
 	}
 	if len(resp.Proof) != 0 {
 		t.Fatalf("expected proof length to be %v but was %v", 0, len(resp.Proof))
@@ -208,7 +211,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	}
 
 	// verify the EA balance
-	am := rhp.ht.host.staticAccountManager
+	am := rhp.staticHT.host.staticAccountManager
 	expectedBalance := maxBalance.Sub(cost)
 	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
 	if err != nil {
@@ -219,9 +222,9 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	// cost, we expect this to return ErrInsufficientBandwidthBudget
 	program, data = pb.Program()
 	cost = cost.Sub64(1)
-	_, limit, err = rhp.callExecuteProgram(epr, data, cost)
+	_, limit, err = rhp.managedExecuteProgram(epr, data, cost, true)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientBandwidthBudget.Error()) {
-		t.Fatalf("expected callExecuteProgram to fail due to insufficient bandwidth budget: %v", err)
+		t.Fatalf("expected ExecuteProgram to fail due to insufficient bandwidth budget: %v", err)
 	}
 
 	// verify the host charged us by checking the EA balance and Check that the
@@ -257,7 +260,7 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	ht := rhp.ht
+	ht := rhp.staticHT
 
 	// get a snapshot of the SO before running the program.
 	sos, err := ht.host.managedGetStorageObligationSnapshot(rhp.staticFCID)
@@ -281,11 +284,14 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	}
 	ht.host.managedUnlockStorageObligation(rhp.staticFCID)
 
-	offset := uint64(fastrand.Uint64n((modules.SectorSize/crypto.SegmentSize)-1) * crypto.SegmentSize)
-	length := uint64(crypto.SegmentSize)
+	// select a random number of segments to read at random offset
+	numSegments := fastrand.Uint64n(5) + 1
+	totalSegments := modules.SectorSize / crypto.SegmentSize
+	offset := fastrand.Uint64n(totalSegments-numSegments+1) * crypto.SegmentSize
+	length := numSegments * crypto.SegmentSize
 
 	// create the 'ReadSector' program.
-	pt := rhp.PriceTable()
+	pt := rhp.managedPriceTable()
 	pb := modules.NewProgramBuilder(pt)
 	pb.AddReadSectorInstruction(length, offset, sectorRoot, true)
 	program, data := pb.Program()
@@ -299,8 +305,8 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	}
 
 	// fund an account.
-	fundingAmt := rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.Add(pt.FundAccountCost)
-	_, err = rhp.callFundEphemeralAccount(fundingAmt)
+	fundingAmt := rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance.Add(pt.FundAccountCost)
+	_, err = rhp.managedFundEphemeralAccount(fundingAmt, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,10 +324,10 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	cost := programCost.Add(bandwidthCost)
 
 	// execute program.
-	resps, bandwidth, err := rhp.callExecuteProgram(epr, data, cost)
+	resps, bandwidth, err := rhp.managedExecuteProgram(epr, data, cost, true)
 	if err != nil {
 		t.Log("cost", cost.HumanString())
-		t.Log("expected ea balance", rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
+		t.Log("expected ea balance", rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
 		t.Fatal(err)
 	}
 	// there should only be a single response.
@@ -389,10 +395,10 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	ht := rhp.ht
+	ht := rhp.staticHT
 
 	// get a snapshot of the SO before running the program.
-	sos, err := rhp.ht.host.managedGetStorageObligationSnapshot(rhp.staticFCID)
+	sos, err := rhp.staticHT.host.managedGetStorageObligationSnapshot(rhp.staticFCID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -407,7 +413,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	}
 
 	// Create the 'HasSector' program.
-	pt := rhp.PriceTable()
+	pt := rhp.managedPriceTable()
 	pb := modules.NewProgramBuilder(pt)
 	pb.AddHasSectorInstruction(sectorRoot)
 	program, data := pb.Program()
@@ -421,9 +427,9 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	}
 
 	// Fund an account with the max balance.
-	maxBalance := rhp.ht.host.managedInternalSettings().MaxEphemeralAccountBalance
+	maxBalance := rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance
 	fundingAmt := maxBalance.Add(pt.FundAccountCost)
-	_, err = rhp.callFundEphemeralAccount(fundingAmt)
+	_, err = rhp.managedFundEphemeralAccount(fundingAmt, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -441,7 +447,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 
 	// Execute program.
 	cost := programCost.Add(bandwidthCost)
-	resps, limit, err := rhp.callExecuteProgram(epr, data, cost)
+	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -480,7 +486,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 		t.Fatalf("wrong PotentialRefund %v != %v", resp.PotentialRefund.HumanString(), refund.HumanString())
 	}
 	// Make sure the right amount of money remains on the EA.
-	am := rhp.ht.host.staticAccountManager
+	am := rhp.staticHT.host.staticAccountManager
 	expectedBalance := maxBalance.Sub(cost)
 	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
 	if err != nil {
@@ -490,9 +496,9 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	// Execute program again. This time pay for 1 less byte of bandwidth. This should fail.
 	program, data = pb.Program()
 	cost = programCost.Add(bandwidthCost.Sub64(1))
-	_, limit, err = rhp.callExecuteProgram(epr, data, cost)
+	_, limit, err = rhp.managedExecuteProgram(epr, data, cost, true)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientBandwidthBudget.Error()) {
-		t.Fatalf("expected callExecuteProgram to fail due to insufficient bandwidth budget: %v", err)
+		t.Fatalf("expected ExecuteProgram to fail due to insufficient bandwidth budget: %v", err)
 	}
 	// Log the bandwidth used by this RPC.
 	t.Logf("Used bandwidth (invalid has sector program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
@@ -507,6 +513,44 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// addRandomSector is a helper function that creates a random sector and adds it
+// to the storage obligation.
+func addRandomSector(rhp *renterHostPair) (crypto.Hash, []byte, error) {
+	// grab some variables
+	fcid := rhp.staticFCID
+	renterPK := rhp.staticRenterPK
+	host := rhp.staticHT.host
+	ht := rhp.staticHT
+
+	// create a random sector
+	sectorData := fastrand.Bytes(int(modules.SectorSize))
+	sectorRoot := crypto.MerkleRoot(sectorData)
+
+	// fetch the SO
+	so, err := host.managedGetStorageObligation(fcid)
+	if err != nil {
+		return crypto.Hash{}, nil, err
+	}
+
+	// add a new revision
+	so.SectorRoots = append(so.SectorRoots, sectorRoot)
+	so, err = ht.addNewRevision(so, renterPK, uint64(len(sectorData)), sectorRoot)
+	if err != nil {
+		return crypto.Hash{}, nil, err
+	}
+
+	// modify the SO
+	host.managedLockStorageObligation(fcid)
+	err = host.managedModifyStorageObligation(so, []crypto.Hash{}, map[crypto.Hash][]byte{sectorRoot: sectorData})
+	if err != nil {
+		host.managedUnlockStorageObligation(fcid)
+		return crypto.Hash{}, nil, err
+	}
+	host.managedUnlockStorageObligation(fcid)
+
+	return sectorRoot, sectorData, nil
 }
 
 // verifyBalance is a helper function that will verify if the ephemeral account

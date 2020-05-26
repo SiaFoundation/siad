@@ -1,1 +1,0 @@
-- Created `Merge Request.md` to document the merge request standards and process.

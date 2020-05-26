@@ -27,9 +27,13 @@ type xChaCha20CipherKey struct {
 	key   [chacha.KeySize]byte
 }
 
-// Key returns the XChaCha20 key.
+// Key returns the XChaCha20 key and nonce together. Both are returned in one
+// slice so that it may be used to create a new CipherKey with the same data.
 func (cipher xChaCha20CipherKey) Key() []byte {
-	return cipher.key[:]
+	k := make([]byte, chacha.KeySize+chacha.XNonceSize)
+	copy(k[:chacha.KeySize], cipher.key[:])
+	copy(k[chacha.KeySize:chacha.KeySize+chacha.XNonceSize], cipher.nonce[:])
+	return k
 }
 
 // Nonce returns the XChaCha20 nonce.

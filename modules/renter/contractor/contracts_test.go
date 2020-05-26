@@ -15,12 +15,11 @@ func TestPubkeysToContractIDMap(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	h, c, _, err := newTestingTrio(t.Name())
+	h, c, _, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer h.Close()
-	defer c.Close()
+	defer tryClose(cf, t)
 
 	// The contractor shouldn't have any contracts formed so the pubkey map
 	// should be empty

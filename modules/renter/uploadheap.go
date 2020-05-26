@@ -288,10 +288,11 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	unstuckUUC, existsUnstuckHeap := uh.unstuckHeapChunks[uuc.id]
 	repairingUUC, existsRepairing := uh.repairingChunks[uuc.id]
 	stuckUUC, existsStuckHeap := uh.stuckHeapChunks[uuc.id]
+	exists := existsUnstuckHeap || existsRepairing || existsStuckHeap
 
 	// If the added chunk has a sourceReader and the existing one doesn't, replace
 	// them.
-	if uuc.sourceReader != nil && (existsUnstuckHeap || existsRepairing || existsStuckHeap) {
+	if uuc.sourceReader != nil && exists {
 		// Get the existing chunk.
 		var existingUUC *unfinishedUploadChunk
 		if existsStuckHeap {
@@ -316,8 +317,8 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	}
 
 	// Check if the chunk can be added to the heap
-	canAddStuckChunk := chunkStuck && !existsStuckHeap && !existsRepairing && len(uh.stuckHeapChunks) < maxStuckChunksInHeap
-	canAddUnstuckChunk := !chunkStuck && !existsUnstuckHeap && !existsRepairing
+	canAddStuckChunk := chunkStuck && !exists && len(uh.stuckHeapChunks) < maxStuckChunksInHeap
+	canAddUnstuckChunk := !chunkStuck && !exists
 	if canAddStuckChunk {
 		uh.stuckHeapChunks[uuc.id] = uuc
 		heap.Push(&uh.heap, uuc)
@@ -419,12 +420,12 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 			index:   chunkIndex,
 		},
 
-		index:    chunkIndex,
 		length:   entry.ChunkSize(),
 		offset:   int64(chunkIndex * entry.ChunkSize()),
 		onDisk:   onDisk,
 		priority: priority,
 
+		staticIndex:   chunkIndex,
 		staticSiaPath: entryCopy.SiaFilePath(),
 
 		// memoryNeeded has to also include the logical data, and also
@@ -774,7 +775,8 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 		// is not remote
 		fileMetadata := file.Metadata()
 		fileHealth := fileMetadata.CachedHealth
-		remoteFile := fileMetadata.LocalPath == ""
+		_, err := os.Stat(fileMetadata.LocalPath)
+		remoteFile := fileMetadata.LocalPath == "" || err != nil
 		if (fileHealth < dirHeapHealth || !remoteFile && dirHeapRemote) && target == targetUnstuckChunks {
 			// Track the health
 			if !remoteFile && worstHealthRemote {
@@ -1203,7 +1205,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			return nil
 		}
 		chunkPath := nextChunk.staticSiaPath
-		r.repairLog.Printf("Repairing chunk %v of %s, currently have %v out of %v pieces", nextChunk.index, chunkPath, nextChunk.piecesCompleted, nextChunk.piecesNeeded)
+		r.repairLog.Printf("Repairing chunk %v of %s, currently have %v out of %v pieces", nextChunk.staticIndex, chunkPath, nextChunk.piecesCompleted, nextChunk.piecesNeeded)
 
 		// Make sure we have enough workers for this chunk to reach minimum
 		// redundancy.
@@ -1224,9 +1226,9 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 					// chunk to reach minimum redundancy. Log an error, set the
 					// chunk as stuck, and close the file
 					r.repairLog.Printf("Allowance has insufficient hosts for %s, have %v, need %v", chunkPath, allowance.Hosts, nextChunk.minimumPieces)
-					err := nextChunk.fileEntry.SetStuck(nextChunk.index, true)
+					err := nextChunk.fileEntry.SetStuck(nextChunk.staticIndex, true)
 					if err != nil {
-						r.repairLog.Printf("WARN: unable to mark chunk %v of %s as stuck: %v", nextChunk.index, chunkPath, err)
+						r.repairLog.Printf("WARN: unable to mark chunk %v of %s as stuck: %v", nextChunk.staticIndex, chunkPath, err)
 					}
 				}
 			}
@@ -1252,7 +1254,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 			// memory for the repair. Since that is not an issue with the file
 			// we will just close the chunk file entry instead of marking it as
 			// stuck
-			r.repairLog.Printf("WARN: error while preparing chunk %v from %s: %v", nextChunk.index, chunkPath, err)
+			r.repairLog.Printf("WARN: error while preparing chunk %v from %s: %v", nextChunk.staticIndex, chunkPath, err)
 			nextChunk.fileEntry.Close()
 			// Remove the chunk from the repairingChunks map
 			r.uploadHeap.managedMarkRepairDone(nextChunk.id)

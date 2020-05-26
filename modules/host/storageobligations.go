@@ -254,6 +254,17 @@ type StorageObligationSnapshot struct {
 	staticSectorRoots         []crypto.Hash
 }
 
+// ZeroStorageObligationSnapshot returns the storage obligation snapshot of an
+// empty contract. All fields are set to the defaults.
+func ZeroStorageObligationSnapshot() StorageObligationSnapshot {
+	return StorageObligationSnapshot{
+		staticContractSize:        0,
+		staticMerkleRoot:          crypto.Hash{},
+		staticRemainingCollateral: types.ZeroCurrency,
+		staticSectorRoots:         []crypto.Hash{},
+	}
+}
+
 // ContractSize returns the size of the underlying contract, which is static and
 // is the value of the contract size at the time the snapshot was taken.
 func (sos StorageObligationSnapshot) ContractSize() uint64 {
@@ -385,6 +396,15 @@ func (so storageObligation) payouts() (valid []types.SiacoinOutput, missed []typ
 	copy(valid, so.OriginTransactionSet[len(so.OriginTransactionSet)-1].FileContracts[0].ValidProofOutputs)
 	copy(missed, so.OriginTransactionSet[len(so.OriginTransactionSet)-1].FileContracts[0].MissedProofOutputs)
 	return
+}
+
+// revisionNumber returns the last revision number of the latest revision
+// for the storage obligation
+func (so storageObligation) revisionNumber() uint64 {
+	if len(so.RevisionTransactionSet) > 0 {
+		return so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0].NewRevisionNumber
+	}
+	return so.OriginTransactionSet[len(so.OriginTransactionSet)-1].FileContracts[0].RevisionNumber
 }
 
 // proofDeadline returns the height by which the storage proof must be
@@ -1216,9 +1236,12 @@ func (h *Host) StorageObligations() (sos []modules.StorageObligation) {
 			if err != nil {
 				return build.ExtendErr("unable to unmarshal storage obligation:", err)
 			}
+
+			valid, missed := so.payouts()
 			mso := modules.StorageObligation{
 				ContractCost:             so.ContractCost,
 				DataSize:                 so.fileSize(),
+				RevisionNumber:           so.revisionNumber(),
 				LockedCollateral:         so.LockedCollateral,
 				ObligationId:             so.id(),
 				PotentialAccountFunding:  so.PotentialAccountFunding,
@@ -1240,7 +1263,11 @@ func (h *Host) StorageObligations() (sos []modules.StorageObligation) {
 				ProofConstructed:    so.ProofConstructed,
 				RevisionConfirmed:   so.RevisionConfirmed,
 				RevisionConstructed: so.RevisionConstructed,
+
+				ValidProofOutputs:  valid,
+				MissedProofOutputs: missed,
 			}
+
 			sos = append(sos, mso)
 			return nil
 		})

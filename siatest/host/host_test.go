@@ -280,6 +280,97 @@ func TestHostBandwidth(t *testing.T) {
 	}
 }
 
+// TestHostContracts confirms that the host contracts endpoint returns the expected values
+func TestHostContracts(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	gp := siatest.GroupParams{
+		Hosts:   2,
+		Renters: 0,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(hostTestDir(t.Name()), gp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	hostNode := tg.Hosts()[0]
+	hc, err := hostNode.HostContractInfoGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(hc.Contracts) != 0 {
+		t.Fatal("expected host to have no contracts")
+	}
+
+	if _, err := tg.AddNodes(node.RenterTemplate); err != nil {
+		t.Fatal(err)
+	}
+
+	renterNode := tg.Renters()[0]
+	hc, err = hostNode.HostContractInfoGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(hc.Contracts) == 0 {
+		t.Fatal("expected host to have new contract")
+	}
+
+	if hc.Contracts[0].DataSize != 0 {
+		t.Fatal("contract should have 0 datasize")
+	}
+
+	prevValidPayout := hc.Contracts[0].ValidProofOutputs[1].Value
+	prevMissPayout := hc.Contracts[0].MissedProofOutputs[1].Value
+	_, _, err = renterNode.UploadNewFileBlocking(4096, 1, 1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hc, err = hostNode.HostContractInfoGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if hc.Contracts[0].DataSize != 4096 {
+		t.Fatal("contract should have 1 sector uploaded")
+	}
+
+	if hc.Contracts[0].RevisionNumber != 2+uint64(gp.Hosts) {
+		t.Fatal("contract should have 1 revision from upload, and 1 revision per host from funding an ephemeral account")
+	}
+
+	if hc.Contracts[0].PotentialAccountFunding.IsZero() {
+		t.Fatal("contract should have account funding")
+	}
+
+	if hc.Contracts[0].PotentialUploadRevenue.IsZero() {
+		t.Fatal("contract should have upload revenue")
+	}
+
+	if hc.Contracts[0].PotentialStorageRevenue.IsZero() {
+		t.Fatal("contract should have storage revenue")
+	}
+
+	if hc.Contracts[0].ValidProofOutputs[1].Value.Cmp(prevValidPayout) != 1 {
+		t.Fatal("valid payout should be greater than old valid payout")
+	}
+
+	if hc.Contracts[0].MissedProofOutputs[1].Value.Cmp(prevMissPayout) != -1 {
+		t.Fatal("missed payout should be less than old missed payout")
+	}
+}
+
 // TestHostValidPrices confirms that the user can't set invalid prices through
 // the API
 func TestHostValidPrices(t *testing.T) {

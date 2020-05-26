@@ -159,7 +159,7 @@ func (s *Session) Replace(data []byte, sectorIndex uint64, trim bool) (_ modules
 	}
 
 	rc, err := s.write(sc, actions)
-	return rc, crypto.MerkleRoot(data), err
+	return rc, crypto.MerkleRoot(data), errors.AddContext(err, "write to host failed")
 }
 
 // Write implements the Write RPC, except for ActionUpdate. A Merkle proof is
@@ -276,7 +276,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	// post-revision contract.
 	//
 	// TODO: update this for non-local root storage
-	walTxn, err := sc.managedRecordUploadIntent(rev, crypto.Hash{}, storagePrice, bandwidthPrice)
+	walTxn, err := sc.managedRecordAppendIntent(rev, crypto.Hash{}, storagePrice, bandwidthPrice)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
@@ -362,7 +362,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 			u.LastOOSErr = s.height
 			err = errors.Compose(err, sc.UpdateUtility(u))
 		}
-		return modules.RenterContract{}, err
+		return modules.RenterContract{}, errors.AddContext(err, "marking host as not good for upload because the host is out of storage")
 	}
 	txn.TransactionSignatures[1].Signature = hostSig.Signature
 
@@ -374,7 +374,7 @@ func (s *Session) write(sc *SafeContract, actions []modules.LoopWriteAction) (_ 
 	// update contract
 	//
 	// TODO: unnecessary?
-	err = sc.managedCommitUpload(walTxn, txn, crypto.Hash{}, storagePrice, bandwidthPrice)
+	err = sc.managedCommitAppend(walTxn, txn, storagePrice, bandwidthPrice)
 	if err != nil {
 		return modules.RenterContract{}, err
 	}

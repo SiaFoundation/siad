@@ -742,3 +742,10 @@ func (c *Client) RenterPost(values url.Values) (err error) {
 	err = c.post("/renter", values.Encode(), nil)
 	return
 }
+
+// RenterWorkersGet uses the /renter/workers endpoint to get the current status
+// of the renter's workers.
+func (c *Client) RenterWorkersGet() (wps modules.WorkerPoolStatus, err error) {
+	err = c.get("/renter/workers", &wps)
+	return
+}

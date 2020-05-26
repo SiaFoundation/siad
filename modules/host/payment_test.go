@@ -119,13 +119,13 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.SetValidRenterPayout(curr.ValidRenterPayout().Add64(1))
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err == nil || !strings.Contains(err.Error(), string(ErrHighRenterValidOutput)) {
+	if !errors.Contains(err, ErrHighRenterValidOutput) {
 		t.Fatalf("Expected '%v' but received '%v'", string(ErrHighRenterValidOutput), err)
 	}
 
 	// expect an error saying not enough money was transferred
 	err = verifyPaymentRevision(curr, payment, height, amount.Add64(1))
-	if err == nil || !strings.Contains(err.Error(), string(ErrHighRenterValidOutput)) {
+	if !errors.Contains(err, ErrHighRenterValidOutput) {
 		t.Fatalf("Expected '%v' but received '%v'", string(ErrHighRenterValidOutput), err)
 	}
 	expectedErrorMsg := fmt.Sprintf("expected at least %v to be exchanged, but %v was exchanged: ", amount.Add64(1), curr.ValidRenterPayout().Sub(payment.ValidRenterPayout()))
@@ -137,7 +137,7 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.SetValidHostPayout(curr.ValidHostPayout().Sub64(1))
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err == nil || !strings.Contains(err.Error(), string(ErrLowHostValidOutput)) {
+	if !errors.Contains(err, ErrLowHostValidOutput) {
 		t.Fatalf("Expected '%v' but received '%v'", string(ErrLowHostValidOutput), err)
 	}
 
@@ -145,7 +145,7 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	badCurr = deepCopy(curr)
 	badCurr.SetValidHostPayout(curr.ValidHostPayout().Sub64(1))
 	err = verifyPaymentRevision(badCurr, payment, height, amount)
-	if err == nil || !strings.Contains(err.Error(), string(ErrLowHostValidOutput)) {
+	if !errors.Contains(err, ErrLowHostValidOutput) {
 		t.Fatalf("Expected '%v' but received '%v'", string(ErrLowHostValidOutput), err)
 	}
 
@@ -163,7 +163,7 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	currOut.Value = currOut.Value.Add64(1)
 	badCurr.NewMissedProofOutputs[1] = currOut
 	err = verifyPaymentRevision(badCurr, payment, height, amount)
-	if err == nil || !strings.Contains(err.Error(), string(ErrLowHostMissedOutput)) {
+	if !errors.Contains(err, ErrLowHostMissedOutput) {
 		t.Fatalf("Expected '%v' but received '%v'", string(ErrLowHostMissedOutput), err)
 	}
 
@@ -451,7 +451,7 @@ func runPayByContractFlow(pair *renterHostPair, rStream, hStream siamux.Stream, 
 	err = run(
 		func() error {
 			// prepare an updated revision that pays the host
-			rev, sig, err := pair.paymentRevision(amount)
+			rev, sig, err := pair.managedPaymentRevision(amount)
 			if err != nil {
 				return err
 			}
@@ -477,7 +477,7 @@ func runPayByContractFlow(pair *renterHostPair, rStream, hStream siamux.Stream, 
 		func() error {
 			// process payment request
 			var pErr error
-			payment, pErr = pair.ht.host.ProcessPayment(hStream)
+			payment, pErr = pair.staticHT.host.ProcessPayment(hStream)
 			if pErr != nil {
 				modules.RPCWriteError(hStream, pErr)
 			}
@@ -499,6 +499,8 @@ func runPayByEphemeralAccountFlow(pair *renterHostPair, rStream, hStream siamux.
 			err = errors.AddContext(err, "Expected failure but error was nil")
 			return
 		}
+		// The error here needs to be checked by its string representation
+		// because modules.RPCRead wraps it.
 		if fail && err != nil && strings.Contains(err.Error(), modules.ErrWithdrawalInvalidSignature.Error()) {
 			err = nil
 		}
@@ -507,12 +509,12 @@ func runPayByEphemeralAccountFlow(pair *renterHostPair, rStream, hStream siamux.
 	err = run(
 		func() error {
 			// create the request
-			pbeaRequest := newPayByEphemeralAccountRequest(pair.staticAccountID, pair.ht.host.blockHeight+6, amount, pair.staticAccountKey)
+			pbeaRequest := newPayByEphemeralAccountRequest(pair.staticAccountID, pair.staticHT.host.blockHeight+6, amount, pair.staticAccountKey)
 
 			if fail {
 				// this induces failure because the nonce will be different and
 				// this the signature will be invalid
-				pbeaRequest.Signature = newPayByEphemeralAccountRequest(pair.staticAccountID, pair.ht.host.blockHeight+6, amount, pair.staticAccountKey).Signature
+				pbeaRequest.Signature = newPayByEphemeralAccountRequest(pair.staticAccountID, pair.staticHT.host.blockHeight+6, amount, pair.staticAccountKey).Signature
 			}
 
 			// send PaymentRequest & PayByEphemeralAccountRequest
@@ -524,15 +526,11 @@ func runPayByEphemeralAccountFlow(pair *renterHostPair, rStream, hStream siamux.
 
 			// receive PayByEphemeralAccountResponse
 			var payByResponse modules.PayByEphemeralAccountResponse
-			err = modules.RPCRead(rStream, &payByResponse)
-			if err != nil {
-				return err
-			}
-			return nil
+			return modules.RPCRead(rStream, &payByResponse)
 		},
 		func() error {
 			// process payment request
-			payment, err = pair.ht.host.ProcessPayment(hStream)
+			payment, err = pair.staticHT.host.ProcessPayment(hStream)
 			if err != nil {
 				modules.RPCWriteError(hStream, err)
 			}
@@ -573,12 +571,12 @@ func TestProcessPayment(t *testing.T) {
 // testPayByContract verifies payment is processed correctly in the case of the
 // PayByContract payment method.
 func testPayByContract(t *testing.T, pair *renterHostPair) {
-	host := pair.ht.host
+	host := pair.staticHT.host
 	amount := types.SiacoinPrecision.Div64(2)
 	amountStr := amount.HumanString()
 
 	// prepare an updated revision that pays the host
-	rev, sig, err := pair.paymentRevision(amount)
+	rev, sig, err := pair.managedPaymentRevision(amount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -679,7 +677,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	}
 	rev.NewValidProofOutputs = validPayouts
 	rev.NewMissedProofOutputs = missedPayouts
-	sig = pair.sign(rev)
+	sig = pair.managedSign(rev)
 
 	// verify err is not nil
 	err = run(renterFunc, hostFunc)
@@ -689,14 +687,14 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 
 	// Manually add money to the refund account.
 	refund := types.NewCurrency64(fastrand.Uint64n(100) + 1)
-	err = pair.ht.host.staticAccountManager.callRefund(refundAccount, refund)
+	err = pair.staticHT.host.staticAccountManager.callRefund(refundAccount, refund)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Run the code again. This time since we funded the account, the
 	// payByResponse would report the funded amount instead of 0.
-	rev, sig, err = pair.paymentRevision(amount)
+	rev, sig, err = pair.managedPaymentRevision(amount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -721,7 +719,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 // testPayByEphemeralAccount verifies payment is processed correctly in the case
 // of the PayByEphemeralAccount payment method.
 func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
-	host := pair.ht.host
+	host := pair.staticHT.host
 	amount := types.NewCurrency64(5)
 	deposit := types.NewCurrency64(8) // enough to perform 1 payment, but not 2
 
@@ -821,7 +819,7 @@ func testUnknownPaymentMethodError(t *testing.T, pair *renterHostPair) {
 		return modules.RPCRead(rStream, struct{}{})
 	}, func() error {
 		// process payment request
-		_, err := pair.ht.host.ProcessPayment(hStream)
+		_, err := pair.staticHT.host.ProcessPayment(hStream)
 		if err != nil {
 			modules.RPCWriteError(hStream, err)
 		}

@@ -79,6 +79,9 @@ type (
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
+		PerformanceStats SkynetPerformanceStats `json:"performancestats"`
+
+		Uptime      int64         `json:"uptime"`
 		UploadStats SkynetStats   `json:"uploadstats"`
 		VersionInfo SkynetVersion `json:"versioninfo"`
 	}
@@ -98,6 +101,10 @@ type (
 	// SkykeyGET contains a base64 encoded Skykey.
 	SkykeyGET struct {
 		Skykey string `json:"skykey"` // base64 encoded Skykey
+	}
+	// SkykeysGET contains a slice of Skykeys.
+	SkykeysGET struct {
+		Skykeys []string `json:"skykeys"`
 	}
 )
 
@@ -208,6 +215,15 @@ func (api *API) skynetPortalsHandlerPOST(w http.ResponseWriter, req *http.Reques
 // skynetSkylinkHandlerGET accepts a skylink as input and will stream the data
 // from the skylink out of the response body as output.
 func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Start the timer for the performance measurement.
+	startTime := time.Now()
+	isErr := true
+	defer func() {
+		if isErr {
+			skynetPerformanceStats.TimeToFirstByte.AddRequest(0)
+		}
+	}()
+
 	strLink := ps.ByName("skylink")
 	strLink = strings.TrimPrefix(strLink, "/")
 
@@ -334,6 +350,37 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
 		return
 	}
+
+	// Metadata has been parsed successfully, stop the time here for TTFB.
+	// Metadata was fetched from Skynet itself.
+	skynetPerformanceStatsMu.Lock()
+	skynetPerformanceStats.TimeToFirstByte.AddRequest(time.Since(startTime))
+	skynetPerformanceStatsMu.Unlock()
+
+	// No more errors, defer a function to record the total performance time.
+	isErr = false
+	defer func() {
+		skynetPerformanceStatsMu.Lock()
+		defer skynetPerformanceStatsMu.Unlock()
+
+		_, fetchSize, err := skylink.OffsetAndFetchSize()
+		if err != nil {
+			return
+		}
+		if fetchSize <= 64e3 {
+			skynetPerformanceStats.Download64KB.AddRequest(time.Since(startTime))
+			return
+		}
+		if fetchSize <= 1e6 {
+			skynetPerformanceStats.Download1MB.AddRequest(time.Since(startTime))
+			return
+		}
+		if fetchSize <= 4e6 {
+			skynetPerformanceStats.Download4MB.AddRequest(time.Since(startTime))
+			return
+		}
+		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
+	}()
 
 	// Only set the Content-Type header when the metadata defines one, if we
 	// were to set the header to an empty string, it would prevent the http
@@ -473,6 +520,9 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 // set, this is essentially an upload streaming endpoint for Skynet which
 // returns a skylink.
 func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Start the timer for the performance measurement.
+	startTime := time.Now()
+
 	// Parse the query params.
 	queryForm, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
@@ -620,6 +670,27 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
+	// Grab the skykey specified.
+	skykeyName := queryForm.Get("skykeyname")
+	skykeyID := queryForm.Get("skykeyid")
+	if skykeyName != "" && skykeyID != "" {
+		WriteError(w, Error{"Can only use either skykeyname or skykeyid flag, not both."}, http.StatusBadRequest)
+		return
+	}
+
+	if skykeyName != "" {
+		lup.SkykeyName = skykeyName
+	}
+	if skykeyID != "" {
+		var ID skykey.SkykeyID
+		err = ID.FromString(skykeyID)
+		if err != nil {
+			WriteError(w, Error{"Unable to parse skykey ID"}, http.StatusBadRequest)
+			return
+		}
+		lup.SkykeyID = ID
+	}
+
 	// Enable CORS
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -645,6 +716,20 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			WriteError(w, Error{fmt.Sprintf("failed to upload file to Skynet: %v", err)}, http.StatusBadRequest)
 			return
 		}
+
+		// Determine whether the file is large or not, and update the
+		// appropriate bucket.
+		file, err := api.renter.File(lup.SiaPath)
+		if err == nil && file.Filesize <= 4e6 {
+			skynetPerformanceStatsMu.Lock()
+			skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime))
+			skynetPerformanceStatsMu.Unlock()
+		} else if err == nil {
+			skynetPerformanceStatsMu.Lock()
+			skynetPerformanceStats.UploadLarge.AddRequest(time.Since(startTime))
+			skynetPerformanceStatsMu.Unlock()
+		}
+
 		WriteJSON(w, SkynetSkyfileHandlerPOST{
 			Skylink:    skylink.String(),
 			MerkleRoot: skylink.MerkleRoot(),
@@ -669,6 +754,12 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		WriteError(w, Error{fmt.Sprintf("failed to convert siafile to skyfile: %v", err)}, http.StatusBadRequest)
 		return
 	}
+
+	// No more errors, add metrics for the upload time. A convert is a 4MB
+	// upload.
+	skynetPerformanceStatsMu.Lock()
+	skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime))
+	skynetPerformanceStatsMu.Unlock()
 
 	WriteJSON(w, SkynetSkyfileHandlerPOST{
 		Skylink:    skylink.String(),
@@ -703,7 +794,25 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 		version += "-" + build.ReleaseTag
 	}
 
-	WriteJSON(w, SkynetStatsGET{UploadStats: stats, VersionInfo: SkynetVersion{Version: version, GitRevision: build.GitRevision}})
+	// Grab a copy of the performance stats.
+	skynetPerformanceStatsMu.Lock()
+	skynetPerformanceStats.Update()
+	perfStats := skynetPerformanceStats.Copy()
+	skynetPerformanceStatsMu.Unlock()
+
+	// Grab the siad uptime
+	uptime := time.Since(api.StartTime()).Seconds()
+
+	WriteJSON(w, SkynetStatsGET{
+		PerformanceStats: perfStats,
+
+		Uptime:      int64(uptime),
+		UploadStats: stats,
+		VersionInfo: SkynetVersion{
+			Version:     version,
+			GitRevision: build.GitRevision,
+		},
+	})
 }
 
 // serveTar serves skyfiles as a tar by reading them from r and writing the
@@ -946,4 +1055,25 @@ func (api *API) skykeyAddKeyHandlerPOST(w http.ResponseWriter, req *http.Request
 	}
 
 	WriteSuccess(w)
+}
+
+// skykeysHandlerGET handles the API call to get all of the renter's skykeys.
+func (api *API) skykeysHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	skykeys, err := api.renter.Skykeys()
+	if err != nil {
+		WriteError(w, Error{"Unable to get skykeys: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	res := SkykeysGET{
+		Skykeys: make([]string, len(skykeys)),
+	}
+	for i, sk := range skykeys {
+		res.Skykeys[i], err = sk.ToString()
+		if err != nil {
+			WriteError(w, Error{"failed to write skykey string: " + err.Error()}, http.StatusInternalServerError)
+			return
+		}
+	}
+	WriteJSON(w, res)
 }

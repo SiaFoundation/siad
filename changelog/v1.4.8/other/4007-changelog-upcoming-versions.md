@@ -1,1 +1,0 @@
-- Generate 2 patch level and 1 minor level upcoming changelog directories.

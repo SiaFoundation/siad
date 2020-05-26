@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -26,21 +27,19 @@ func TestSkykeyCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Set global HTTP client to the node's client.
-	httpClient = n.Client
+	defer n.Close()
 
 	// Set the (global) cipher type to the only allowed type.
 	// This is normally done by the flag parser.
 	skykeyCipherType = "XChaCha20"
 
 	testSkykeyString := "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
-	err = skykeyAdd(testSkykeyString)
+	err = skykeyAdd(n.Client, testSkykeyString)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = skykeyAdd(testSkykeyString)
+	err = skykeyAdd(n.Client, testSkykeyString)
 	if !strings.Contains(err.Error(), skykey.ErrSkykeyWithIDAlreadyExists.Error()) {
 		t.Fatal("Unexpected duplicate name error", err)
 	}
@@ -59,25 +58,25 @@ func TestSkykeyCommands(t *testing.T) {
 	}
 
 	// This should return a duplicate name error.
-	err = skykeyAdd(skString)
+	err = skykeyAdd(n.Client, skString)
 	if !strings.Contains(err.Error(), skykey.ErrSkykeyWithNameAlreadyExists.Error()) {
 		t.Fatal("Expected duplicate name error", err)
 	}
 
 	// Check that adding same key twice returns an error.
-	keyName := "createkey1"
-	newSkykey, err := skykeyCreate(keyName)
+	keyName := "createkeyTest!"
+	newSkykey, err := skykeyCreate(n.Client, keyName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = skykeyCreate(keyName)
+	_, err = skykeyCreate(n.Client, keyName)
 	if !strings.Contains(err.Error(), skykey.ErrSkykeyWithNameAlreadyExists.Error()) {
 		t.Fatal("Expected error when creating key with same name")
 	}
 
 	// Check that invalid cipher types are caught.
 	skykeyCipherType = "InvalidCipherType"
-	_, err = skykeyCreate("createkey2")
+	_, err = skykeyCreate(n.Client, "createkey2")
 	if !errors.Contains(err, crypto.ErrInvalidCipherType) {
 		t.Fatal("Expected error when creating key with invalid ciphertype")
 	}
@@ -85,7 +84,7 @@ func TestSkykeyCommands(t *testing.T) {
 
 	// Test skykeyGet
 	// known key should have no errors.
-	getKeyStr, err := skykeyGet(keyName, "")
+	getKeyStr, err := skykeyGet(n.Client, keyName, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,13 +94,151 @@ func TestSkykeyCommands(t *testing.T) {
 	}
 
 	// Using both name and id params should return an error
-	_, err = skykeyGet("name", "id")
+	_, err = skykeyGet(n.Client, "name", "id")
 	if err == nil {
 		t.Fatal("Expected error when using both name and id")
 	}
 	// Using neither name or id param should return an error
-	_, err = skykeyGet("", "")
+	_, err = skykeyGet(n.Client, "", "")
 	if err == nil {
 		t.Fatal("Expected error when using neither name or id params")
+	}
+
+	// Do some basic sanity checks on skykeyListKeys.
+	nKeys := 2
+	nExtraLines := 3
+	keyStrings := make([]string, nKeys)
+	keyNames := make([]string, nKeys)
+	keyIDs := make([]string, nKeys)
+
+	keyNames[0] = "key1"
+	keyNames[1] = "createkeyTest!"
+	keyStrings[0] = testSkykeyString
+	keyStrings[1] = getKeyStr
+
+	err = sk.FromString(testSkykeyString)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyIDs[0] = sk.ID().ToString()
+
+	err = sk.FromString(getKeyStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyIDs[1] = sk.ID().ToString()
+
+	keyListString, err := skykeyListKeys(n.Client, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < nKeys; i++ {
+		if !strings.Contains(keyListString, keyNames[i]) {
+			t.Log(keyListString)
+			t.Fatal("Missing key name!", i)
+		}
+		if !strings.Contains(keyListString, keyIDs[i]) {
+			t.Log(keyListString)
+			t.Fatal("Missing id!", i)
+		}
+		if !strings.Contains(keyListString, keyStrings[i]) {
+			t.Log(keyListString)
+			t.Fatal("Missing key!", i)
+		}
+	}
+	keyList := strings.Split(keyListString, "\n")
+	if len(keyList) != nKeys+nExtraLines {
+		t.Log(keyListString)
+		t.Fatalf("Unexpected number of lines/keys %d, Expected %d", len(keyList), nKeys+nExtraLines)
+	}
+
+	// Make sure key data isn't shown but otherwise the same checks pass.
+	keyListString, err = skykeyListKeys(n.Client, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < nKeys; i++ {
+		if !strings.Contains(keyListString, keyNames[i]) {
+			t.Log(keyListString)
+			t.Fatal("Missing key name!", i)
+		}
+		if !strings.Contains(keyListString, keyIDs[i]) {
+			t.Log(keyListString)
+			t.Fatal("Missing id!", i)
+		}
+		if strings.Contains(keyListString, keyStrings[i]) {
+			t.Log(keyListString)
+			t.Fatal("Found key!", i)
+		}
+	}
+	keyList = strings.Split(keyListString, "\n")
+	if len(keyList) != nKeys+nExtraLines {
+		t.Fatal("Unpected number of lines/keys", len(keyList))
+	}
+
+	nExtraKeys := 10
+	nKeys += nExtraKeys
+	for i := 0; i < nExtraKeys; i++ {
+		nextName := fmt.Sprintf("extrakey-%d", i)
+		keyNames = append(keyNames, nextName)
+		nextSkStr, err := skykeyCreate(n.Client, nextName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var nextSkykey skykey.Skykey
+		err = nextSkykey.FromString(nextSkStr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keyIDs = append(keyIDs, nextSkykey.ID().ToString())
+		keyStrings = append(keyStrings, nextSkStr)
+	}
+
+	// Check that all the key names and key data is there.
+	keyListString, err = skykeyListKeys(n.Client, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < nKeys; i++ {
+		if !strings.Contains(keyListString, keyNames[i]) {
+			t.Log(keyListString)
+			t.Fatal("Missing key name!", i)
+		}
+		if !strings.Contains(keyListString, keyIDs[i]) {
+			t.Log(keyListString)
+			t.Fatal("Missing id!", i)
+		}
+		if !strings.Contains(keyListString, keyStrings[i]) {
+			t.Log(keyListString)
+			t.Fatal("Missing key!", i)
+		}
+	}
+	keyList = strings.Split(keyListString, "\n")
+	if len(keyList) != nKeys+nExtraLines {
+		t.Fatal("Unpected number of lines/keys", len(keyList))
+	}
+
+	// Make sure key data isn't shown but otherwise the same checks pass.
+	keyListString, err = skykeyListKeys(n.Client, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < nKeys; i++ {
+		if !strings.Contains(keyListString, keyNames[i]) {
+			t.Log(keyListString)
+			t.Fatal("Missing key name!", i)
+		}
+		if !strings.Contains(keyListString, keyIDs[i]) {
+			t.Log(keyListString)
+			t.Fatal("Missing id!", i)
+		}
+		if strings.Contains(keyListString, keyStrings[i]) {
+			t.Log(keyListString)
+			t.Fatal("Found key!", i)
+		}
+	}
+	keyList = strings.Split(keyListString, "\n")
+	if len(keyList) != nKeys+nExtraLines {
+		t.Fatal("Unpected number of lines/keys", len(keyList))
 	}
 }

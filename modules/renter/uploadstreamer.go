@@ -179,9 +179,16 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup boo
 	if numContracts < requiredContracts && build.Release != "testing" {
 		return nil, fmt.Errorf("not enough contracts to upload file: got %v, needed %v", numContracts, (ec.NumPieces()+ec.MinPieces())/2)
 	}
+
+	// If there's a cipherKey defined already use that, otherwise generate a new
+	// key of the given cipherType.
+	cipherKey := up.CipherKey
+	if up.CipherKey == nil {
+		cipherKey = crypto.GenerateSiaKey(cipherType)
+	}
+
 	// Create the Siafile and add to renter
-	sk := crypto.GenerateSiaKey(cipherType)
-	err = r.staticFileSystem.NewSiaFile(siaPath, up.Source, up.ErasureCode, sk, 0, defaultFilePerm, up.DisablePartialChunk)
+	err = r.staticFileSystem.NewSiaFile(siaPath, up.Source, up.ErasureCode, cipherKey, 0, defaultFilePerm, up.DisablePartialChunk)
 	if err != nil {
 		return nil, err
 	}
