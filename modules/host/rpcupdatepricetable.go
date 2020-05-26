@@ -56,11 +56,7 @@ func (pth *priceTableHeap) PopExpired() (expired []modules.UniqueID) {
 	defer pth.mu.Unlock()
 
 	now := time.Now()
-	for {
-		if pth.heap.Len() == 0 {
-			return
-		}
-
+	for pth.heap.Len() > 0 {
 		pt := heap.Pop(&pth.heap).(*hostRPCPriceTable)
 		if now.Before(pt.Expiry()) {
 			heap.Push(&pth.heap, pt)
