@@ -759,6 +759,10 @@ type (
 		AvailableBalance types.Currency `json:"availablebalance"`
 		BalanceTarget    types.Currency `json:"balancetarget"`
 
+		// DEPRECATED: FundAccountJobQueueSizeDeprecated will always be zero as
+		// the fund account job queue was removed entirely
+		FundAccountJobQueueSizeDeprecated int `json:"fundaccountjobqueuesize"`
+
 		// Job Queues
 		BackupJobQueueSize       int `json:"backupjobqueuesize"`
 		DownloadRootJobQueueSize int `json:"downloadrootjobqueuesize"`
