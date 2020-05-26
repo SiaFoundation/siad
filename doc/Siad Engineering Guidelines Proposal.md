@@ -1,18 +1,5 @@
 ﻿### TODO
- - Need to make the repo match the ‘codebase filesystem layout’ section,
-   currently the layout section only describes how we would like things to be,
-and not at all how they actually are.
- - Should the get started page also link to contribution / developer education
-   on the website. Right now get-started is entirely oriented around users,
-maybe we should have some tie-ins for developers and contributors as well? Most
-websites have a developers page. We could split it out 1. Users 2.  Developers 
- - Resources.md in the Sia doc folder seems prone to get out of date. We try to
-   keep the get-started page on the Sia website up to date with all of this
-stuff, maybe it is better to keep it all located there? For example, the .md
-currently points to the Sia explorer and to SiaHub, both of which are pretty
-much defunct at this point. To me, I think all of the bases of Resources.md are
-covered in other ways at this point, including the readmes being discoverable
-just by natural navigation, and we probably don’t need it at this point.
+ - Fill in all code examples
   
   
 # Siad Engineering Handbook 
@@ -392,7 +379,12 @@ allowance each time the allowance is needed for a computation.
 ## Codebase Filesystem Layout
 The gitlab repo uses the following folder layout:
 
-/cmd /docs /internal /pkg /test /vendor
+/cmd 
+/docs 
+/internal 
+/pkg 
+/test 
+/vendor
 
 /cmd has all of the Sia core binaries. These binaries aim to have as little code
 as possible, drawing most of their code from libraries in /pkg and /internal.
