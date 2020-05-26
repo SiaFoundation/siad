@@ -85,7 +85,7 @@ func (v *TestValues) AddReadSectorInstruction(length uint64) {
 	cost, refund := modules.MDMReadCost(v.staticPT, length)
 	memory := modules.MDMReadMemory()
 	time := uint64(modules.MDMTimeReadSector)
-	newData := 8 * 3
+	newData := 8 + 8 + crypto.HashSize
 	readonly := true
 	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly)
 }
