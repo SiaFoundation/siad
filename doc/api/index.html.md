@@ -5585,9 +5585,10 @@ ID of the transaction being requested.
 }
 ```
 **transaction**  
-Raw transaction. The rest of the fields in the resposne are determined from this
-raw transaction. It is left undocumented here as the processed transaction (the
-rest of the fields in this object) are usually what is desired.  
+Raw transaction. The rest of the fields in the response are determined from
+this raw transaction. It is left undocumented here as the processed
+transaction (the rest of the fields in this object) are usually what is
+desired.
 
 See types.Transaction in
 https://gitlab.com/NebulousLabs/Sia/blob/master/types/transactions.go  
