@@ -71,7 +71,8 @@ type Skykey struct {
 
 // compatSkykeyV148 is the original skykey format. It is defined here for
 // compatibility purposes. It should only be used to convert keys of the old
-// format to the new format.
+// format to the new format. It was used to store skykeys in Sia v1.4.8 and
+// earlier.
 type compatSkykeyV148 struct {
 	name       string
 	ciphertype crypto.CipherType
