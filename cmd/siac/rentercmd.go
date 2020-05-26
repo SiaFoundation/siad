@@ -2597,7 +2597,7 @@ func writeWorkers(workers []modules.WorkerStatus) {
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 	contractInfo := "Contract ID\tHost PubKey\tGood For Renew\tGood For Upload"
 	downloadInfo := "\tDownload On Cooldown\tDownload Queue\tDownload Terminated"
-	uploadInfo := "\tLast Upload Error\tUpload Cooldown Time\tUpload On" + "Cooldown\tUpload Queue\tUpload Terminated"
+	uploadInfo := "\tLast Upload Error\tUpload Cooldown Time\tUpload On Cooldown\tUpload Queue\tUpload Terminated"
 	eaInfo := "\tAvailable Balance\tBalance Targe\tFund Account Queue"
 	jobInfo := "\tBackup Queue\tDownload By Root Queue"
 	fmt.Fprintln(w, "  \n"+contractInfo+downloadInfo+uploadInfo+eaInfo+jobInfo)
