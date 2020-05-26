@@ -320,7 +320,7 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Upload the file.
-	dataPieces := 2 // for use with 5 hosts, minimizes exposure to the upload failure NDF
+	dataPieces := uint64(2) // for use with 5 hosts, minimizes exposure to the upload failure NDF
 	parityPieces := uint64(1)
 	rf, err := r.UploadBlocking(lf, dataPieces, parityPieces, false)
 	if err != nil {
