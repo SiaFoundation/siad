@@ -36,12 +36,8 @@ func main() {
 	c := make(chan struct{})
 
 	// File Creation variables
-	size := 200e9 // 20GB
-	//xxx
-	size = 100e6
-	chunk := 200e6 // 20MB
-	//xxx
-	chunk = 200e3
+	size := 200e9                                                         // 20GB
+	chunk := 200e6                                                        // 20MB
 	remainingData := size * 50                                            // 50 is number of files to be uploaded to get 1TB
 	var file string                                                       // initializing file variable
 	home, err := os.UserHomeDir()                                         // user home dir
@@ -90,7 +86,7 @@ func main() {
 	for {
 		rc, e := client.RenterContractsGet()
 		check(e)
-		if len(rc.Contracts) >= contracts {
+		if len(rc.ActiveContracts) >= contracts {
 			elapse := time.Now().Sub(start)
 			_, err = fmt.Fprintf(w, "It took %s to create %d contracts.\n", elapse, contracts)
 			check(err)
