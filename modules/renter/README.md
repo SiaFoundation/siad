@@ -252,15 +252,19 @@ contracts that are no longer useful.
 Each worker in the worker pool is responsible for managing communications with a
 single host. The worker has an infinite loop where it checks for work, performs
 any outstanding work, and then sleeps for a wake, kill, or shutdown signal. The
-implementation for the worker is primarily in [worker.go](./worker.go).
+implementation for the worker is primarily in [worker.go](./worker.go) and
+[workerloop.go](./workerloop.go).
 
 Each type of work that the worker can perform has a queue. A unit of work is
-called a job. External subsystems can use `callQueueX` to add a job to the
-worker. External subsystems can only queue work with a worker, the worker makes
-all of the decisions around when the work is actually performed. Internally, the
-worker needs to remember to call `staticWake` after queuing a new job, otherwise
-the primary work thread will potentially continue sleeping and ignoring the work
-that has been queued.
+called a job. The worker queue and job structure has been re-written multiple
+times, and not every job has been ported yet to the latest structure. But using
+the latest structure, you can call `queue.callAdd()` to add a job to a queue.
+The worker loop will make all of the decisions around when to execute the job.
+Jobs are split into two types, serial and async. Serial jobs are anything that
+requires exclusive access to the file contract with the host, the worker will
+ensure that only one of these is running at a time. Async jobs are any jobs that
+don't require exclusive access to a resource, the worker will run multiple of
+these in parallel.
 
 When a worker wakes or otherwise begins the work loop, the worker will check for
 each type of work in a specific order, therefore giving certain types of work
@@ -273,14 +277,9 @@ When a worker is killed, the worker is responsible for going through the list of
 jobs that have been queued and gracefully terminating the jobs, returning or
 signaling errors where appropriate.
 
-[workerfetchbackups.go](./workerfetchbackups.go) is a good starting point to see
-how a simple job is implemented.
-
-The worker currently supports queueing these jobs:
- - Downloading a chunk [workerdownload.go](./workerdownload.go)
- - Fetching a list of backups stored on a host
-   [workerfetchbackups.go](./workerfetchbackups.go)
- - Uploading a chunk [workerupload.go](./workerupload.go)
+[workerjobgeneric.go](./workerjobgeneric.go) and
+[workerjobgeneric_test.go](./workerjobgeneric_test.go) contain all of the
+generic code and a basic reference implementation for building a job.
 
 ##### Inbound Complexities
  - `callQueueDownloadChunk` can be used to schedule a job to participate in a

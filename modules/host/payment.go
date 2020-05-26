@@ -79,7 +79,10 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 	}
 
 	// get the current blockheight
-	bh := h.BlockHeight()
+	h.mu.RLock()
+	bh := h.blockHeight
+	sk := h.secretKey
+	h.mu.RUnlock()
 
 	// extract the proposed revision
 	currentRevision, err := so.recentRevision()
@@ -96,7 +99,7 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 
 	// sign the revision
 	renterSignature := signatureFromRequest(currentRevision, pbcr)
-	txn, err := createRevisionSignature(paymentRevision, renterSignature, h.secretKey, h.blockHeight)
+	txn, err := createRevisionSignature(paymentRevision, renterSignature, sk, bh)
 	if err != nil {
 		return nil, errors.AddContext(err, "Could not create revision signature")
 	}
@@ -176,7 +179,7 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 
 	// sign the revision
 	renterSignature := signatureFromRequest(currentRevision, pbcr)
-	txn, err := createRevisionSignature(paymentRevision, renterSignature, h.secretKey, h.blockHeight)
+	txn, err := createRevisionSignature(paymentRevision, renterSignature, h.secretKey, bh)
 	if err != nil {
 		return types.ZeroCurrency, errors.AddContext(err, "Could not create revision signature")
 	}
