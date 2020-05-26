@@ -1670,6 +1670,12 @@ func TestContractorChurnLimiter(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
 	miner := tg.Miners()[0]
 
 	maxPeriodChurn := uint64(modules.SectorSize)
