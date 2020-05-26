@@ -4445,7 +4445,7 @@ returns the the status of all the workers in the renter's workerpool.
       
       "availablebalance":    "0", // hastings
       "balancetarget":       "0", // hastings
-      "fundaccountjobqueuesize": 0,   // int
+      "fundaccountjobqueuesize": 0,   // int (deprecated since v1.4.8)
       
       "backupjobqueuesize":       0, // int
       "downloadrootjobqueuesize": 0  // int
@@ -4519,7 +4519,7 @@ The worker's Ephemeral Account available balance
 **balancetarget** | hastings  
 The worker's Ephemeral Account target balance
 
-**fundaccountjobqueuesize** | int  
+**fundaccountjobqueuesize** | int  (deprecated since v1.4.8)
 The size of the worker's Ephemeral Account fund account job queue
 
 **backupjobqueuesize** | int  
