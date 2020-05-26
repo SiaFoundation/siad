@@ -215,7 +215,7 @@ func (o Output) assert(newSize uint64, newMerkleRoot crypto.Hash, proof []crypto
 	if o.NewMerkleRoot != newMerkleRoot {
 		return fmt.Errorf("expected newMerkleRoot %v but got %v", newSize, o.NewMerkleRoot)
 	}
-	if !reflect.DeepEqual(o.Proof, proof) {
+	if len(o.Proof)+len(proof) != 0 && !reflect.DeepEqual(o.Proof, proof) {
 		return fmt.Errorf("expected proof %v but got %v", proof, o.Proof)
 	}
 	if !bytes.Equal(o.Output, output) {
