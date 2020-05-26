@@ -167,7 +167,7 @@ func (jq *jobHasSectorQueue) callNext() (func(), uint64, uint64) {
 			}
 		})
 
-		// If the job fails, go on cooldown. Skip updating the performacne
+		// If the job fails, go on cooldown. Skip updating the performance
 		// metrics.
 		if err != nil {
 			jq.mu.Lock()
