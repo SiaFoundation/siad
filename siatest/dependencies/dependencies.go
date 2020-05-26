@@ -218,7 +218,7 @@ func (d *DependencyDisableAsyncStartup) Disrupt(s string) bool {
 
 // Disrupt returns true if the correct string is provided.
 func (d *DependencyDisableStreamClose) Disrupt(s string) bool {
-	return s == "BlockStreamClose"
+	return s == "DisableStreamClose"
 }
 
 // Disrupt returns true if the correct string is provided.

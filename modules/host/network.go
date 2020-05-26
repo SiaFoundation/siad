@@ -367,7 +367,7 @@ func (h *Host) staticReadPriceTableID(stream siamux.Stream) (*modules.RPCPriceTa
 func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	// close the stream when the method terminates
 	defer func() {
-		if h.dependencies.Disrupt("BlockStreamClose") {
+		if h.dependencies.Disrupt("DisableStreamClose") {
 			return
 		}
 		stream.Close()
