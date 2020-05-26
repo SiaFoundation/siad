@@ -291,8 +291,10 @@ func TestRemoteBackup(t *testing.T) {
 	filesSize := int(20e3)
 
 	// Create a testgroup.
+	//
+	// Need 5 hosts to address an NDF with the snapshot upload code.
 	groupParams := siatest.GroupParams{
-		Hosts:   2,
+		Hosts:   5,
 		Miners:  1,
 		Renters: 1,
 	}
@@ -318,7 +320,7 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Upload the file.
-	dataPieces := uint64(len(tg.Hosts()) - 1)
+	dataPieces := uint64(2) // for use with 5 hosts, minimizes exposure to the upload failure NDF
 	parityPieces := uint64(1)
 	rf, err := r.UploadBlocking(lf, dataPieces, parityPieces, false)
 	if err != nil {
@@ -475,8 +477,8 @@ func TestRemoteBackup(t *testing.T) {
 			return err
 		} else if len(ubs.Backups) != 2 {
 			return fmt.Errorf("expected two backups, got %v", ubs.Backups)
-		} else if len(ubs.SyncedHosts) != 2 {
-			return fmt.Errorf("expected two synced hosts, got %v", len(ubs.SyncedHosts))
+		} else if len(ubs.SyncedHosts) != 5 {
+			return fmt.Errorf("expected five hosts with synced backups, got %v", len(ubs.SyncedHosts))
 		}
 		return nil
 	})
@@ -565,7 +567,7 @@ func TestRemoteBackup(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(backups.Backups) != 2 {
-			t.Error("Not enough backups detected", len(backups.Backups))
+			t.Error("Wrong number of backups detected", len(backups.Backups))
 		}
 	}
 

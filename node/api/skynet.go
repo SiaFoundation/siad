@@ -102,6 +102,10 @@ type (
 	SkykeyGET struct {
 		Skykey string `json:"skykey"` // base64 encoded Skykey
 	}
+	// SkykeysGET contains a slice of Skykeys.
+	SkykeysGET struct {
+		Skykeys []string `json:"skykeys"`
+	}
 )
 
 // skynetBlacklistHandlerGET handles the API call to get the list of blacklisted
@@ -1051,4 +1055,25 @@ func (api *API) skykeyAddKeyHandlerPOST(w http.ResponseWriter, req *http.Request
 	}
 
 	WriteSuccess(w)
+}
+
+// skykeysHandlerGET handles the API call to get all of the renter's skykeys.
+func (api *API) skykeysHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	skykeys, err := api.renter.Skykeys()
+	if err != nil {
+		WriteError(w, Error{"Unable to get skykeys: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	res := SkykeysGET{
+		Skykeys: make([]string, len(skykeys)),
+	}
+	for i, sk := range skykeys {
+		res.Skykeys[i], err = sk.ToString()
+		if err != nil {
+			WriteError(w, Error{"failed to write skykey string: " + err.Error()}, http.StatusInternalServerError)
+			return
+		}
+	}
+	WriteJSON(w, res)
 }
