@@ -302,7 +302,7 @@ func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
 	}
 
 	// Calculate new filenames for the fingerprint buckets
-	currFilename, nextFilename := fingerprintsFilenames(ap.h.blockHeight)
+	currFilename, nextFilename := fingerprintsFilenames(ap.h.BlockHeight())
 
 	// Reopen files
 	fm.currentPath = filepath.Join(ap.h.persistDir, currFilename)
