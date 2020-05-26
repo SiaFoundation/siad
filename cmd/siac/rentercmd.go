@@ -351,15 +351,16 @@ func renterFileHealthSummary(dirs []directoryInfo) {
 
 	percentages = parsePercentages(percentages)
 
-	fmt.Printf(`File Health Summary:
-  %% At 100%%:             %v%%
-  %% Between 75%% - 100%%:  %v%%
-  %% Between 50%% - 75%%:   %v%%
-  %% Between 25%% - 50%%:   %v%%
-  %% Between 0%% - 25%%:    %v%%
-  %% Unrecoverable:       %v%%
-  Number of Stuck Files: %v
-`, percentages[0], percentages[1], percentages[2], percentages[3], percentages[4], percentages[5], numStuck)
+	fmt.Println("File Health Summary")
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "  %% At 100%%\t%v%%\n", percentages[0])
+	fmt.Fprintf(w, "  %% Between 75%% - 100%%\t%v%%\n", percentages[1])
+	fmt.Fprintf(w, "  %% Between 50%% - 75%%\t%v%%\n", percentages[2])
+	fmt.Fprintf(w, "  %% Between 25%% - 50%%\t%v%%\n", percentages[3])
+	fmt.Fprintf(w, "  %% Between 0%% - 25%%\t%v%%\n", percentages[4])
+	fmt.Fprintf(w, "  %% Unrecoverable\t%v%%\n", percentages[5])
+	fmt.Fprintf(w, "  Number of Stuck Files\t%v\n", numStuck)
+	w.Flush()
 }
 
 // fileHealthBreakdown returns a percentage breakdown of the renter's files'
