@@ -18,8 +18,12 @@ type (
 		collateral    types.Currency
 		memory        uint64
 
-		numInstructions   int
-		programDataLength int
+		// These are pointers to share them between the whole history. That way,
+		// when we add new values to the history, older values have their
+		// program length and num instructions updated. That way we can easily
+		// calculate the MDMInitCost of older values later.
+		numInstructions   *int
+		programDataLength *int
 
 		readonly bool
 		staticPT *modules.RPCPriceTable
@@ -32,16 +36,12 @@ type (
 // table to compute the costs with.
 func NewTestValues(pt *modules.RPCPriceTable) TestValues {
 	return TestValues{
-		readonly: true,
-		staticPT: pt,
-		memory:   modules.MDMInitMemory(),
+		readonly:          true,
+		staticPT:          pt,
+		memory:            modules.MDMInitMemory(),
+		numInstructions:   new(int),
+		programDataLength: new(int),
 	}
-}
-
-// HumanString returns a human-readable representation of the TestValues.
-func (v *TestValues) HumanString() string {
-	return fmt.Sprintf("TestValues{ ExecutionCost: %v, Refund: %v, Collateral: %v, Memory: %v }",
-		v.executionCost.HumanString(), v.refund.HumanString(), v.collateral.HumanString(), v.memory)
 }
 
 // AddAppendInstruction adds the cost of an append instruction to the object.
@@ -94,7 +94,7 @@ func (v *TestValues) AddReadSectorInstruction(length uint64) {
 // 'finalized' is 'true', the memory cost of finalizing the program is included.
 func (v TestValues) Cost() (cost, refund, collateral types.Currency) {
 	// Calculate the init cost.
-	cost = modules.MDMInitCost(v.staticPT, uint64(v.programDataLength), uint64(v.numInstructions))
+	cost = modules.MDMInitCost(v.staticPT, uint64(*v.programDataLength), uint64(*v.numInstructions))
 
 	// Add the cost of the added instructions
 	cost = cost.Add(v.executionCost)
@@ -119,7 +119,7 @@ func (v TestValues) Budget(finalized bool) *modules.RPCBudget {
 func (v *TestValues) AssertOutputs(outputs []Output) error {
 	// Check the whole history against the outputs.
 	var output Output
-	for _, value := range v.history {
+	for i, value := range v.history {
 		// Get next output to compare.
 		if len(outputs) == 0 {
 			return errors.New("ran out of outputs")
@@ -129,7 +129,7 @@ func (v *TestValues) AssertOutputs(outputs []Output) error {
 		// Assert the output.
 		err := value.AssertOutput(output)
 		if err != nil {
-			return err
+			return errors.AddContext(err, fmt.Sprintf("output #%v", i))
 		}
 	}
 	return nil
@@ -166,8 +166,8 @@ func (v *TestValues) addInstruction(collateral, cost, refund types.Currency, mem
 	v.executionCost = v.executionCost.Add(cost)
 	v.refund = v.refund.Add(refund)
 	// Update instructions, data and readonly states.
-	v.numInstructions++
-	v.programDataLength += newData
+	*v.numInstructions++
+	*v.programDataLength += newData
 	v.readonly = v.readonly && readonly
 	// Add the new values to the history.
 	v.history = append(v.history, *v)
