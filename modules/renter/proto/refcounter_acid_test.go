@@ -39,15 +39,15 @@ type tracker struct {
 	atomicNumSuccessfulIterations uint64
 }
 
-// Crash marks the tracker as crashed
-func (t *tracker) Crash() {
+// managedSetCrashed marks the tracker as crashed
+func (t *tracker) managedSetCrashed(c bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.crashed = true
+	t.crashed = c
 }
 
-// IsCrashed checks if the tracker is marked as crashed
-func (t *tracker) IsCrashed() bool {
+// managedCrashed checks if the tracker is marked as crashed
+func (t *tracker) managedCrashed() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.crashed
@@ -78,7 +78,7 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 	// Create the faulty disk dependency
 	fdd := dependencies.NewFaultyDiskDependency(10000) // Fails after 10000 writes.
 	// Attach it to the refcounter
-	rc, err := NewCustomRefCounter(rcFilePath, 200, wal, fdd)
+	rc, err := newCustomRefCounter(rcFilePath, 200, wal, fdd)
 	if err != nil {
 		t.Fatal("Failed to create a reference counter:", err)
 	}
@@ -97,6 +97,9 @@ func TestRefCounterFaultyDisk(t *testing.T) {
 	// The outer loop keeps restarting the tests until the time runs out
 OUTER:
 	for {
+		if track.managedCrashed() {
+			t.Fatal("The tracker is crashed on start.")
+		}
 		// Run a high number of tests in parallel
 		for i := 0; i < runtime.NumCPU()*10; i++ {
 			wg.Add(1)
@@ -149,7 +152,7 @@ OUTER:
 	}
 
 	// Load the refcounter from disk.
-	rc, err = LoadRefCounter(rcFilePath, wal)
+	rc, err = loadRefCounter(rcFilePath, wal)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,12 +192,12 @@ func loadWal(rcFilePath string, walPath string, fdd *dependencies.DependencyFaul
 
 // newTracker creates a tracker instance and initialises its counts
 // slice
-func newTracker(rc *RefCounter) *tracker {
+func newTracker(rc *refCounter) *tracker {
 	t := &tracker{
 		counts: make([]uint16, rc.numSectors),
 	}
 	for i := uint64(0); i < rc.numSectors; i++ {
-		c, err := rc.Count(i)
+		c, err := rc.callCount(i)
 		if err != nil {
 			panic("Failed to read count from refcounter.")
 		}
@@ -205,18 +208,18 @@ func newTracker(rc *RefCounter) *tracker {
 
 // performUpdates keeps applying a random number of operations on the refcounter
 // until an error occurs.
-func performUpdates(rcLocal *RefCounter, t *tracker, testTimeoutChan <-chan struct{}) error {
+func performUpdates(rcLocal *refCounter, tr *tracker, testTimeoutChan <-chan struct{}) error {
 	for {
-		err := performUpdateOperations(rcLocal, t)
+		err := performUpdateOperations(rcLocal, tr)
 		if err != nil {
 			// we have an error, fake or not we should return
 			return err
 		}
-		if t.IsCrashed() {
+		if tr.managedCrashed() {
 			return nil
 		}
 
-		atomic.AddUint64(&t.atomicNumSuccessfulIterations, 1)
+		atomic.AddUint64(&tr.atomicNumSuccessfulIterations, 1)
 
 		select {
 		case <-testTimeoutChan:
@@ -228,8 +231,8 @@ func performUpdates(rcLocal *RefCounter, t *tracker, testTimeoutChan <-chan stru
 
 // performUpdateOperations executes a randomised set of updates within an
 // update session.
-func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
-	err = rc.StartUpdateWithTimeout(100 * time.Millisecond)
+func performUpdateOperations(rc *refCounter, tr *tracker) (err error) {
+	err = rc.managedStartUpdateWithTimeout(100 * time.Millisecond)
 	if err != nil {
 		// don't fail the test on a timeout on the lock
 		if errors.Contains(err, errTimeoutOnLock) {
@@ -240,20 +243,20 @@ func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
 	// This will wipe the temporary in-mem changes to the counters.
 	// On success that's OK.
 	// On error we need to crash anyway, so it's OK as well.
-	defer rc.UpdateApplied()
+	defer rc.callUpdateApplied()
 
 	// We can afford to lock the tracker because only one goroutine is
 	// allowed to make changes at any given time anyway.
-	t.mu.Lock()
+	tr.mu.Lock()
 	defer func() {
 		// If we're returning a disk error we need to crash in order to avoid
 		// data corruption.
 		if errors.Contains(err, dependencies.ErrDiskFault) {
-			t.crashed = true
+			tr.crashed = true
 		}
-		t.mu.Unlock()
+		tr.mu.Unlock()
 	}()
-	if t.crashed {
+	if tr.crashed {
 		return nil
 	}
 
@@ -269,10 +272,10 @@ func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
 			if errValidate := validateIncrement(rc, secIdx); errValidate != nil {
 				continue
 			}
-			if u, err = rc.Increment(secIdx); err != nil {
+			if u, err = rc.callIncrement(secIdx); err != nil {
 				return
 			}
-			t.counts[secIdx]++
+			tr.counts[secIdx]++
 			updates = append(updates, u)
 		}
 	}
@@ -286,20 +289,20 @@ func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
 			if errValidate := validateDecrement(rc, secIdx); errValidate != nil {
 				continue
 			}
-			if u, err = rc.Decrement(secIdx); err != nil {
+			if u, err = rc.callDecrement(secIdx); err != nil {
 				return
 			}
-			t.counts[secIdx]--
+			tr.counts[secIdx]--
 			updates = append(updates, u)
 		}
 	}
 
 	// 40% chance to append
 	if fastrand.Intn(100) < 40 {
-		if u, err = rc.Append(); err != nil {
+		if u, err = rc.callAppend(); err != nil {
 			return
 		}
-		t.counts = append(t.counts, 1)
+		tr.counts = append(tr.counts, 1)
 		updates = append(updates, u)
 	}
 
@@ -309,10 +312,10 @@ func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
 		// check if the operation is valid - we won't gain anything
 		// from running out of sectors
 		if errValidate := validateDropSectors(rc, secNum); errValidate == nil {
-			if u, err = rc.DropSectors(secNum); err != nil {
+			if u, err = rc.callDropSectors(secNum); err != nil {
 				return
 			}
-			t.counts = t.counts[:len(t.counts)-int(secNum)]
+			tr.counts = tr.counts[:len(tr.counts)-int(secNum)]
 			updates = append(updates, u)
 		}
 	}
@@ -322,10 +325,10 @@ func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
 		var us []writeaheadlog.Update
 		secIdx1 := fastrand.Uint64n(rc.numSectors)
 		secIdx2 := fastrand.Uint64n(rc.numSectors)
-		if us, err = rc.Swap(secIdx1, secIdx2); err != nil {
+		if us, err = rc.callSwap(secIdx1, secIdx2); err != nil {
 			return
 		}
-		t.counts[secIdx1], t.counts[secIdx2] = t.counts[secIdx2], t.counts[secIdx1]
+		tr.counts[secIdx1], tr.counts[secIdx2] = tr.counts[secIdx2], tr.counts[secIdx1]
 		updates = append(updates, us...)
 	}
 
@@ -345,13 +348,13 @@ func performUpdateOperations(rc *RefCounter, t *tracker) (err error) {
 	}()
 
 	if len(updates) > 0 {
-		err = rc.CreateAndApplyTransaction(updates...)
+		err = rc.callCreateAndApplyTransaction(updates...)
 	}
 	return
 }
 
 // reloadRefCounter tries to reload the file. This simulates failures during recovery.
-func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFaultyDisk, t *tracker, doneChan <-chan struct{}) (*RefCounter, error) {
+func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFaultyDisk, tr *tracker, doneChan <-chan struct{}) (*refCounter, error) {
 	// Try to reload the file. This simulates failures during recovery.
 	for tries := 1; ; tries++ {
 		select {
@@ -372,28 +375,26 @@ func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFa
 		// Reload the wal from disk and apply unfinished txns
 		newWal, err := loadWal(rcFilePath, walPath, fdd)
 		if errors.Contains(err, dependencies.ErrDiskFault) {
-			atomic.AddUint64(&t.atomicNumRecoveries, 1)
+			atomic.AddUint64(&tr.atomicNumRecoveries, 1)
 			continue // try again
 		} else if err != nil {
 			// an actual error occurred, the test must fail
 			return nil, err
 		}
 		// Reload the refcounter from disk
-		newRc, err := LoadRefCounter(rcFilePath, newWal)
+		newRc, err := loadRefCounter(rcFilePath, newWal)
 		if err != nil {
 			return nil, err
 		}
 		newRc.staticDeps = fdd
-		t.mu.Lock()
-		t.crashed = false
-		t.mu.Unlock()
+		tr.managedSetCrashed(false)
 		return newRc, nil
 	}
 }
 
 // validateDecrement is a helper method that ensures the counter is above 0.
 // This allows us to avoid a counter underflow.
-func validateDecrement(rc *RefCounter, secNum uint64) error {
+func validateDecrement(rc *refCounter, secNum uint64) error {
 	n, err := rc.readCount(secNum)
 	// Ignore errors coming from the dependency for this one
 	if err != nil && !errors.Contains(err, dependencies.ErrDiskFault) {
@@ -408,7 +409,7 @@ func validateDecrement(rc *RefCounter, secNum uint64) error {
 
 // validateDropSectors is a helper method that ensures the number of sectors we
 // want to drop does not exceed the number of sectors in the refcounter.
-func validateDropSectors(rc *RefCounter, secNum uint64) error {
+func validateDropSectors(rc *refCounter, secNum uint64) error {
 	if rc.numSectors < secNum {
 		return errors.New("Cannot drop more sectors than the total")
 	}
@@ -417,7 +418,7 @@ func validateDropSectors(rc *RefCounter, secNum uint64) error {
 
 // validateIncrement is a helper method that ensures the counter has not
 // reached its maximum value. This allows us to avoid a counter overflow.
-func validateIncrement(rc *RefCounter, secNum uint64) error {
+func validateIncrement(rc *refCounter, secNum uint64) error {
 	n, err := rc.readCount(secNum)
 	// Ignore errors coming from the dependency for this one
 	if err != nil && !errors.Contains(err, dependencies.ErrDiskFault) {
@@ -432,24 +433,24 @@ func validateIncrement(rc *RefCounter, secNum uint64) error {
 
 // validateStatusAfterAllTests does the final validation of the test by
 // comparing the state of the refcounter after all the test updates are applied.
-func validateStatusAfterAllTests(rc *RefCounter, t *tracker) error {
+func validateStatusAfterAllTests(rc *refCounter, tr *tracker) error {
 	rc.mu.Lock()
 	numSec := rc.numSectors
 	rc.mu.Unlock()
-	if numSec != uint64(len(t.counts)) {
-		return fmt.Errorf("Expected %d sectors, got %d\n", uint64(len(t.counts)), numSec)
+	if numSec != uint64(len(tr.counts)) {
+		return fmt.Errorf("Expected %d sectors, got %d\n", uint64(len(tr.counts)), numSec)
 	}
 	var errorList []error
 	for i := uint64(0); i < numSec; i++ {
-		n, err := rc.Count(i)
+		n, err := rc.callCount(i)
 		if err != nil {
 			return errors.AddContext(err, "failed to read count")
 		}
-		t.mu.Lock()
-		if n != t.counts[i] {
-			errorList = append(errorList, fmt.Errorf("expected counter value for sector %d to be %d, got %d", i, t.counts[i], n))
+		tr.mu.Lock()
+		if n != tr.counts[i] {
+			errorList = append(errorList, fmt.Errorf("expected counter value for sector %d to be %d, got %d", i, tr.counts[i], n))
 		}
-		t.mu.Unlock()
+		tr.mu.Unlock()
 	}
 	if len(errorList) > 0 {
 		return errors.AddContext(errors.Compose(errorList...), "sector counter values do not match expectations")

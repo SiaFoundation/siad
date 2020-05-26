@@ -28,7 +28,7 @@ const (
 )
 
 var (
-	//ErrBadFile is an error when a file does not qualify as .sia file
+	// ErrBadFile is an error when a file does not qualify as .sia file
 	ErrBadFile = errors.New("not a .sia file")
 	// ErrIncompatible is an error when file is not compatible with current
 	// version
@@ -127,22 +127,6 @@ func (r *Renter) managedInitPersist() error {
 	fsRoot := filepath.Join(r.persistDir, modules.FileSystemRoot)
 	err := os.MkdirAll(fsRoot, 0700)
 	if err != nil {
-		return err
-	}
-
-	// Initialize the logger.
-	r.log, err = persist.NewFileLogger(filepath.Join(r.persistDir, logFile))
-	if err != nil {
-		return err
-	}
-	if err := r.tg.AfterStop(r.log.Close); err != nil {
-		return err
-	}
-	r.repairLog, err = persist.NewFileLogger(filepath.Join(r.persistDir, repairLogFile))
-	if err != nil {
-		return err
-	}
-	if err := r.tg.AfterStop(r.repairLog.Close); err != nil {
 		return err
 	}
 
