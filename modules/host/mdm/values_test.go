@@ -34,6 +34,7 @@ func NewTestValues(pt *modules.RPCPriceTable) TestValues {
 	return TestValues{
 		readonly: true,
 		staticPT: pt,
+		memory:   modules.MDMInitMemory(),
 	}
 }
 
@@ -116,9 +117,9 @@ func (v TestValues) Budget(finalized bool) *modules.RPCBudget {
 // program. It asserts that the program has been built correctly and that the
 // outputs of the program are as expected.
 func (v *TestValues) AssertOutputs(outputs []Output) error {
-	// Check the intermediarey values.
+	// Check the whole history against the outputs.
 	var output Output
-	for _, value := range append(v.history, *v) {
+	for _, value := range v.history {
 		// Get next output to compare.
 		if len(outputs) == 0 {
 			return errors.New("ran out of outputs")
@@ -155,8 +156,6 @@ func (v *TestValues) AssertOutput(output Output) error {
 // addInstruction adds the collateral, cost, refund and memory cost of an
 // instruction to the value's state.
 func (v *TestValues) addInstruction(collateral, cost, refund types.Currency, memory, time uint64, newData int, readonly bool) {
-	// Backup the values before doing the modification.
-	v.history = append(v.history, *v)
 	// Update collateral
 	v.collateral = v.collateral.Add(collateral)
 	// Update memory and memory cost.
@@ -170,4 +169,6 @@ func (v *TestValues) addInstruction(collateral, cost, refund types.Currency, mem
 	v.numInstructions++
 	v.programDataLength += newData
 	v.readonly = v.readonly && readonly
+	// Add the new values to the history.
+	v.history = append(v.history, *v)
 }
