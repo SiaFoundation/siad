@@ -213,6 +213,9 @@ func (cl *churnLimiter) managedCanChurnContract(contract modules.RenterContract)
 	return fitsInPeriodBudget && fitsInCurrentBudget
 }
 
+// managedMarkContractsUtility checks an active contract in the contractor and
+// figures out whether the contract is useful for uploading, and whether the
+// contract should be renewed.
 func (c *Contractor) managedMarkContractUtility(contract modules.RenterContract, minScoreGFR, minScoreGFU types.Currency) (modules.HostScoreBreakdown, modules.ContractUtility, bool, error) {
 	// Acquire contract.
 	sc, ok := c.staticContracts.Acquire(contract.ID)
@@ -310,11 +313,6 @@ func (c *Contractor) managedMarkContractsUtility() error {
 
 	// Update utility fields for each contract.
 	for _, contract := range c.staticContracts.ViewAll() {
-		// TODO: I believe that there is a race condition here with other
-		// processes that could be using the contract. We should probably lock
-		// the contract during the entire set of maintenance checks, because
-		// something like a renewal could change the status of the contract in
-		// between the previous check and the committed update.
 		sb, utility, update, err := c.managedMarkContractUtility(contract, minScoreGFR, minScoreGFU)
 		if err != nil {
 			return err
