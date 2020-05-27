@@ -5,6 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -137,12 +138,9 @@ func (j *jobHasSector) managedHasSector() (bool, error) {
 	//
 	// TODO: Are we expecting more than one response? Should we check that there
 	// was only one response?
-	//
-	// TODO: for this program we don't actually need the file contract - v149
-	// only.
 	var hasSector bool
 	var responses []programResponse
-	responses, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, cost)
+	responses, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
 	if err != nil {
 		return false, errors.AddContext(err, "Unable to execute program")
 	}
