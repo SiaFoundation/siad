@@ -36,8 +36,8 @@ func main() {
 	c := make(chan struct{})
 
 	// File Creation variables
-	size := 200e9                                                         // 20GB
-	chunk := 200e6                                                        // 20MB
+	size := 200e9                                                         // 200GB
+	chunk := 200e6                                                        // 200MB
 	remainingData := size * 50                                            // 50 is number of files to be uploaded to get 1TB
 	var file string                                                       // initializing file variable
 	home, err := os.UserHomeDir()                                         // user home dir
