@@ -181,7 +181,7 @@ func (j *jobUploadSnapshot) callExecute() {
 func (j *jobUploadSnapshot) callExpectedBandwidth() (ul, dl uint64) {
 	// Estimate 50kb in overhead for upload and download, and then 4 MiB
 	// necessary to send the actual full sector payload.
-	return 50e3 + 1 << 22, 50e3
+	return 50e3 + 1<<22, 50e3
 }
 
 // initJobUploadSnapshotQueue will initialize the upload snapshot job queue for
