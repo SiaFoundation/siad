@@ -810,7 +810,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 			chunk := unfinishedUploadChunks[i]
 			// Skip adding this chunk if it is already in the upload heap.
 			if r.uploadHeap.managedExists(chunk.id) {
-				// Close the file entry
+				// Close the file entry before skipping the chunk.
 				err := chunk.fileEntry.Close()
 				if err != nil {
 					r.log.Println("Error closing file entry:", err)
@@ -821,6 +821,12 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 				continue
 			}
 			if wh.canSkip(chunk.health, chunk.onDisk) {
+				// Close the file entry before skipping the chunk.
+				err := chunk.fileEntry.Close()
+				if err != nil {
+					r.log.Println("Error closing file entry:", err)
+				}
+
 				wh.updateWorstIgnoredHealth(chunk.health, chunk.onDisk)
 				continue
 			}
