@@ -159,7 +159,7 @@ func (s *Session) Replace(data []byte, sectorIndex uint64, trim bool) (_ modules
 	}
 
 	rc, err := s.write(sc, actions)
-	return rc, crypto.MerkleRoot(data), err
+	return rc, crypto.MerkleRoot(data), errors.AddContext(err, "write to host failed")
 }
 
 // Write implements the Write RPC, except for ActionUpdate. A Merkle proof is
