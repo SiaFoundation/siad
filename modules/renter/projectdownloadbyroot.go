@@ -287,9 +287,9 @@ func (pdbr *projectDownloadByRoot) staticComplete() bool {
 	}
 }
 
-// DownloadByRoot will spin up a project to locate a root and then download that
-// root.
-func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
+// DownloadByRootOld will spin up a project to locate a root and then download
+// that root.
+func (r *Renter) DownloadByRootOld(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
 	// Create the download by root project.
 	pdbr := &projectDownloadByRoot{
 		staticRoot:   root,
