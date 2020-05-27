@@ -2147,6 +2147,54 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	if skykeyGet.Skykey != sk2Str {
 		t.Fatal("Expected same result from  unsafe client")
 	}
+
+	// Use the unsafe client to check the Name and ID parameters are set in the
+	// GET response.
+	values = url.Values{}
+	values.Set("name", testSkykey.Name)
+	getQuery := fmt.Sprintf("/skynet/skykey?%s", values.Encode())
+
+	skykeyGet = api.SkykeyGET{}
+	err = uc.Get(getQuery, &skykeyGet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skykeyGet.Name != testSkykey.Name {
+		t.Log(skykeyGet)
+		t.Fatal("Wrong skykey name")
+	}
+	if skykeyGet.ID != testSkykey.ID().ToString() {
+		t.Log(skykeyGet)
+		t.Fatal("Wrong skykey ID")
+	}
+	if skykeyGet.Skykey != testSkykeyString {
+		t.Log(skykeyGet)
+		t.Fatal("Wrong skykey string")
+	}
+
+	// Check the Name and ID params from the /skynet/skykeys GET response.
+	var skykeysGet api.SkykeysGET
+	err = uc.Get("/skynet/skykeys", &skykeysGet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, skGet := range skykeysGet.Skykeys {
+		if _, ok := skykeySet[skGet.Skykey]; !ok {
+			t.Fatal("skykey not in test set")
+		}
+
+		var nextSk skykey.Skykey
+		err = nextSk.FromString(skGet.Skykey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if nextSk.Name != skGet.Name {
+			t.Fatal("Wrong skykey name")
+		}
+		if nextSk.ID().ToString() != skGet.ID {
+			t.Fatal("Wrong skykey name")
+		}
+	}
 }
 
 // testRenameSiaPath verifies that the siapath to the skyfile can be renamed.
