@@ -19,7 +19,6 @@ type (
 	// a worker, tracks whether or not it has been killed, and has a cooldown
 	// timer. It does not have an array of jobs that are in the queue, because
 	// those are type specific.
-	// uploaded.
 	jobGenericQueue struct {
 		jobs []workerJob
 
@@ -35,10 +34,6 @@ type (
 
 	// workerJob defines a job that the worker is able to perform.
 	workerJob interface {
-		// staticCanceled returns true if the job has been canceled, false
-		// otherwise.
-		staticCanceled() bool
-
 		// callDicard will discard this job, sending an error down the response
 		// channel of the job. The provided error should be part of the error
 		// that gets sent.
@@ -50,6 +45,10 @@ type (
 		// callExpectedBandwidth will return the amount of bandwidth that a job
 		// expects to consume.
 		callExpectedBandwidth() (upload uint64, download uint64)
+
+		// staticCanceled returns true if the job has been canceled, false
+		// otherwise.
+		staticCanceled() bool
 	}
 
 	// workerJobQueue defines an interface to create a worker job queue.
@@ -99,7 +98,7 @@ func (j *jobGeneric) staticCanceled() bool {
 	}
 }
 
-// callAdd will add an upload snapshot job to the queue.
+// callAdd will add a job to the queue.
 func (jq *jobGenericQueue) callAdd(j workerJob) bool {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
@@ -159,7 +158,7 @@ func (jq *jobGenericQueue) callReportFailure(err error) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
-	err = errors.AddContext(err, "job type is going on cooldown and all jobs are being discarded")
+	err = errors.AddContext(err, "discarding all jobs and going on cooldown")
 	jq.discardAll(err)
 	jq.cooldownUntil = cooldownUntil(jq.consecutiveFailures)
 	jq.consecutiveFailures++

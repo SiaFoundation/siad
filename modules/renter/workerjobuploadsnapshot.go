@@ -40,7 +40,7 @@ type (
 		*jobGenericQueue
 	}
 
-	// jobUploa;dSnapshotResponse contains the response to an upload snapshot
+	// jobUploadSnapshotResponse contains the response to an upload snapshot
 	// job.
 	jobUploadSnapshotResponse struct {
 		staticErr error
@@ -143,7 +143,8 @@ func (j *jobUploadSnapshot) callExecute() {
 	}
 
 	// Perform the actual upload.
-	sess, err := w.renter.hostContractor.Session(w.staticHostPubKey, w.renter.tg.StopChan())
+	var sess contractor.Session
+	sess, err = w.renter.hostContractor.Session(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
 		w.renter.log.Debugln("unable to grab a session to perform an upload snapshot job:", err)
 		err = errors.AddContext(err, "unable to get host session")

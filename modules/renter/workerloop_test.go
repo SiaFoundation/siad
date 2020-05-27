@@ -5,15 +5,16 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
-// dependencyTestJobSerialzation is a special dependency to change the behavior
-// of 'externTryLaunchSerialJob' to check that it does a good job of only having
-// a single serial job run at a time.
-type dependencyTestJobSerialization struct {
+// dependencyTestJobSerialExecution is a special dependency to change the
+// behavior of 'externTryLaunchSerialJob' to check that it does a good job of
+// only having a single serial job run at a time.
+type dependencyTestJobSerialExecution struct {
 	modules.ProductionDependencies
 
 	// Making this a time.Duration means we don't have to typecast it when
@@ -26,9 +27,9 @@ type dependencyTestJobSerialization struct {
 }
 
 // Disrupt will check for two specific disrupts and respond accordingly.
-func (d *dependencyTestJobSerialization) Disrupt(s string) bool {
+func (d *dependencyTestJobSerialExecution) Disrupt(s string) bool {
 	w := d.staticWorker
-	if s != "TestJobSerialization" {
+	if s != "TestJobSerialExecution" {
 		return false
 	}
 
@@ -38,8 +39,7 @@ func (d *dependencyTestJobSerialization) Disrupt(s string) bool {
 	// There's a mutex here to ensure that the job does not complete before
 	// we can check that the job has been marked as running after launching
 	// the job.
-	var mu sync.Mutex
-	mu.Lock()
+	continueChan := make(chan struct{})
 	w.externLaunchSerialJob(func() {
 		if atomic.LoadUint64(&w.staticLoopState.atomicSerialJobRunning) != 1 {
 			build.Critical("running a job without having the serial job running flag set")
@@ -53,8 +53,7 @@ func (d *dependencyTestJobSerialization) Disrupt(s string) bool {
 		// outside of this job has completed, solving a potential race
 		// condition where the job completes before we check that the job is
 		// still marked as running.
-		mu.Lock()
-		mu.Unlock()
+		<-continueChan
 
 		// Signal that a job has completed.
 		d.mu.Lock()
@@ -64,25 +63,30 @@ func (d *dependencyTestJobSerialization) Disrupt(s string) bool {
 	if atomic.LoadUint64(&w.staticLoopState.atomicSerialJobRunning) != 1 {
 		build.Critical("running a job when another job is already running")
 	}
-	mu.Unlock()
+	close(continueChan)
 	return true
 }
 
-// TestJobSerialization checks that only one serial job for the worker is
+// TestJobSerialExecution checks that only one serial job for the worker is
 // allowed to run at once.
-func TestJobSerialization(t *testing.T) {
+func TestJobSerialExecution(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 
 	// Create a stub worker.
-	d := &dependencyTestJobSerialization{}
+	d := &dependencyTestJobSerialExecution{}
 	w := new(worker)
 	w.renter = new(Renter)
 	w.renter.deps = d
 	d.staticWorker = w
 
-	// Launch a bunch of serial jobs in the worker. Each job that succeedsd
+	// Initialize a worker cache & snapshot queue
+	wc := new(workerCache)
+	atomic.StorePointer(&w.atomicCache, unsafe.Pointer(wc))
+	w.initJobUploadSnapshotQueue()
+
+	// Launch a bunch of serial jobs in the worker. Each job that succeeded
 	// should take about 100ms to complete, we launch jobs 25ms apart for this
 	// reason. To minimize code clutter, there is no shared state between the
 	// job that runs and what happens here, safety is instead checked using

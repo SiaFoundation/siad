@@ -90,7 +90,7 @@ func (w *worker) externTryLaunchSerialJob() {
 
 	// Perform a disrupt for testing. See the implementation in
 	// workerloop_test.go for more info.
-	if w.renter.deps.Disrupt("TestJobSerialization") {
+	if w.renter.deps.Disrupt("TestJobSerialExecution") {
 		return
 	}
 
