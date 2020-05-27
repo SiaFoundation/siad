@@ -18,7 +18,7 @@ func TestInstructionSingleAppend(t *testing.T) {
 	appendData1 := randomSectorData()
 	appendDataRoot1 := crypto.MerkleRoot(appendData1)
 	pt := newTestPriceTable()
-	tb := newTestBuilder(pt)
+	tb := newTestProgramBuilder(pt)
 	tb.AddAppendInstruction(appendData1, true)
 
 	// Execute it.
@@ -66,7 +66,7 @@ func TestInstructionSingleAppend(t *testing.T) {
 	// Execute same program again to append another sector.
 	appendData2 := randomSectorData() // new random data
 	appendDataRoot2 := crypto.MerkleRoot(appendData2)
-	tb = newTestBuilder(pt)
+	tb = newTestProgramBuilder(pt)
 	tb.AddAppendInstruction(appendData2, true)
 	ics := so.ContractSize()
 

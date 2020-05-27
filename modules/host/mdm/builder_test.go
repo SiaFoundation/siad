@@ -21,8 +21,8 @@ type testProgramBuilder struct {
 	staticValues TestValues
 }
 
-// newTestBuilder creates a new testBuilder.
-func newTestBuilder(pt *modules.RPCPriceTable) *testProgramBuilder {
+// newTestProgramBuilder creates a new testBuilder.
+func newTestProgramBuilder(pt *modules.RPCPriceTable) *testProgramBuilder {
 	return &testProgramBuilder{
 		readonly: true,
 		staticPT: pt,

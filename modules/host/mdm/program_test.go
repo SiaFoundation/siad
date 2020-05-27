@@ -30,7 +30,7 @@ func TestNewProgramLowInitBudget(t *testing.T) {
 	// Create MDM
 	mdm := New(newTestHost())
 	pt := newTestPriceTable()
-	pb := newTestBuilder(pt)
+	pb := newTestProgramBuilder(pt)
 	pb.AddHasSectorInstruction(crypto.Hash{})
 	program, data := pb.Program()
 	// Execute the program.
@@ -48,7 +48,7 @@ func TestNewProgramLowBudget(t *testing.T) {
 	mdm := New(newTestHost())
 	// Create instruction.
 	pt := newTestPriceTable()
-	pb := newTestBuilder(pt)
+	pb := newTestProgramBuilder(pt)
 	pb.AddReadSectorInstruction(modules.SectorSize, 0, crypto.Hash{}, true)
 	program, data := pb.Program()
 	values := pb.Cost()
@@ -93,7 +93,7 @@ func TestNewProgramLowCollateralBudget(t *testing.T) {
 	// Create instruction.
 	sectorData := fastrand.Bytes(int(modules.SectorSize))
 	pt := newTestPriceTable()
-	pb := newTestBuilder(pt)
+	pb := newTestProgramBuilder(pt)
 	pb.AddAppendInstruction(sectorData, false)
 	program, data := pb.Program()
 	budget := pb.Cost().Budget(true)

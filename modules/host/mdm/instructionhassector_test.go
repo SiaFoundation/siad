@@ -26,7 +26,7 @@ func TestInstructionHasSector(t *testing.T) {
 
 	// Build the program.
 	pt := newTestPriceTable()
-	tb := newTestBuilder(pt)
+	tb := newTestProgramBuilder(pt)
 	tb.AddHasSectorInstruction(sectorRoot)
 
 	ics := so.ContractSize()

@@ -18,10 +18,10 @@ type (
 		programData *bytes.Buffer
 
 		// Cost related fields.
-		ExecutionCost    types.Currency
-		PotentialRefund  types.Currency
-		RiskedCollateral types.Currency
-		UsedMemory       uint64
+		executionCost    types.Currency
+		potentialRefund  types.Currency
+		riskedCollateral types.Currency
+		usedMemory       uint64
 	}
 )
 
@@ -31,7 +31,7 @@ func NewProgramBuilder(pt *RPCPriceTable) *ProgramBuilder {
 		programData: new(bytes.Buffer),
 		readonly:    true, // every program starts readonly
 		staticPT:    pt,
-		UsedMemory:  MDMInitMemory(),
+		usedMemory:  MDMInitMemory(),
 	}
 	return pb
 }
@@ -121,13 +121,13 @@ func (pb *ProgramBuilder) Cost(finalized bool) (cost, refund, collateral types.C
 	cost = MDMInitCost(pb.staticPT, uint64(pb.programData.Len()), uint64(len(pb.program)))
 
 	// Add the cost of the added instructions
-	cost = cost.Add(pb.ExecutionCost)
+	cost = cost.Add(pb.executionCost)
 
 	// Add the cost of finalizing the program.
 	if !pb.readonly && finalized {
-		cost = cost.Add(MDMMemoryCost(pb.staticPT, pb.UsedMemory, MDMTimeCommit))
+		cost = cost.Add(MDMMemoryCost(pb.staticPT, pb.usedMemory, MDMTimeCommit))
 	}
-	return cost, pb.PotentialRefund, pb.RiskedCollateral
+	return cost, pb.potentialRefund, pb.riskedCollateral
 }
 
 // Program returns the built program and programData.
@@ -139,14 +139,14 @@ func (pb *ProgramBuilder) Program() (Program, ProgramData) {
 // instruction to the builder's state.
 func (pb *ProgramBuilder) addInstruction(collateral, cost, refund types.Currency, memory, time uint64) {
 	// Update collateral
-	pb.RiskedCollateral = pb.RiskedCollateral.Add(collateral)
+	pb.riskedCollateral = pb.riskedCollateral.Add(collateral)
 	// Update memory and memory cost.
-	pb.UsedMemory += memory
-	memoryCost := MDMMemoryCost(pb.staticPT, pb.UsedMemory, time)
-	pb.ExecutionCost = pb.ExecutionCost.Add(memoryCost)
+	pb.usedMemory += memory
+	memoryCost := MDMMemoryCost(pb.staticPT, pb.usedMemory, time)
+	pb.executionCost = pb.executionCost.Add(memoryCost)
 	// Update execution cost and refund.
-	pb.ExecutionCost = pb.ExecutionCost.Add(cost)
-	pb.PotentialRefund = pb.PotentialRefund.Add(refund)
+	pb.executionCost = pb.executionCost.Add(cost)
+	pb.potentialRefund = pb.potentialRefund.Add(refund)
 }
 
 // NewAppendInstruction creates an Instruction from arguments.

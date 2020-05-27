@@ -155,9 +155,9 @@ func TestNew(t *testing.T) {
 	}
 }
 
-// ExecuteProgram is a convenience wrapper around mdm.ExecuteProgram. It runs
-// the program constructed by tb with the storage obligation so. It will also
-// return the outputs as a slice for convenience.
+// ExecuteProgramWithBuilder is a convenience wrapper around mdm.ExecuteProgram.
+// It runs the program constructed by tb with the storage obligation so. It will
+// also return the outputs as a slice for convenience.
 func (mdm *MDM) ExecuteProgramWithBuilder(tb *testProgramBuilder, so *TestStorageObligation, finalized bool) ([]Output, error) {
 	// Execute the program.
 	finalize, budget, outputs, err := mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, finalized)
@@ -173,16 +173,17 @@ func (mdm *MDM) ExecuteProgramWithBuilder(tb *testProgramBuilder, so *TestStorag
 		}
 	}
 	// Budget should be drained now.
-	if remainingBudget := budget.Remaining(); !remainingBudget.IsZero() {
-		return nil, fmt.Errorf("remaining budget should be empty but was %v", remainingBudget)
+	if !budget.Remaining().IsZero() {
+		return nil, fmt.Errorf("remaining budget should be empty but was %v", budget.Remaining())
 	}
 	return outputs, nil
 }
 
-// ExecuteProgram is a convenience wrapper around mdm.ExecuteProgram. It runs
-// the program constructed by tb with the storage obligation so. It will also
-// return the outputs as a slice for convenience.
-func (mdm *MDM) ExecuteProgramWithBuilderManualFinalize(tb *testProgramBuilder, so *TestStorageObligation, finalized bool) (func(so StorageObligation) error, *modules.RPCBudget, []Output, error) {
+// ExecuteProgramWithBuilderManualFinalize is a convenience wrapper around
+// mdm.ExecuteProgram. It runs the program constructed by tb with the storage
+// obligation so. It will also return the outputs as a slice for convenience.
+// Finalization needs to be done manually after running the program.
+func (mdm *MDM) ExecuteProgramWithBuilderManualFinalize(tb *testProgramBuilder, so *TestStorageObligation, finalized bool) (FnFinalize, *modules.RPCBudget, []Output, error) {
 	ctx := context.Background()
 	program, programData := tb.Program()
 	values := tb.Cost()

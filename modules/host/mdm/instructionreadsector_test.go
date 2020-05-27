@@ -26,7 +26,7 @@ func TestInstructionReadSector(t *testing.T) {
 	}
 	// Use a builder to build the program.
 	readLen := modules.SectorSize
-	tb := newTestBuilder(pt)
+	tb := newTestProgramBuilder(pt)
 	tb.AddReadSectorInstruction(readLen, 0, so.sectorRoots[0], true)
 
 	ics := so.ContractSize()
@@ -50,7 +50,7 @@ func TestInstructionReadSector(t *testing.T) {
 	length := offset
 
 	// Use a builder to build the program.
-	tb = newTestBuilder(pt)
+	tb = newTestProgramBuilder(pt)
 	tb.AddReadSectorInstruction(length, offset, so.sectorRoots[0], true)
 
 	// Execute it.
@@ -91,7 +91,7 @@ func TestInstructionReadOutsideSector(t *testing.T) {
 	// Execute it.
 	so := newTestStorageObligation(true)
 	// Use a builder to build the program.
-	tb := newTestBuilder(pt)
+	tb := newTestProgramBuilder(pt)
 	tb.AddReadSectorInstruction(readLen, 0, sectorRoot, true)
 	imr := crypto.Hash{}
 

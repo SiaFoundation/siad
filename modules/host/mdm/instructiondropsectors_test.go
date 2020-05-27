@@ -38,7 +38,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	// Construct the program.
 
 	pt := newTestPriceTable()
-	tb := newTestBuilder(pt)
+	tb := newTestProgramBuilder(pt)
 
 	sectorData1 := fastrand.Bytes(int(modules.SectorSize))
 	tb.AddAppendInstruction(sectorData1, false)

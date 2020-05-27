@@ -82,7 +82,7 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 	budget := types.NewCurrency64(math.MaxUint64)
 	_, _, err = rhp.managedExecuteProgram(epr, data, budget, false)
 	if !errors.Contains(err, io.ErrClosedPipe) {
-		t.Fatal("Expected callExecuteProgram to fail with an ErrClosedPipe, instead err was", err)
+		t.Fatal("Expected managedExecuteProgram to fail with an ErrClosedPipe, instead err was", err)
 	}
 }
 

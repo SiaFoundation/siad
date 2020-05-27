@@ -113,9 +113,7 @@ func (v TestValues) Budget(finalized bool) *modules.RPCBudget {
 	return modules.NewBudget(cost)
 }
 
-// AssertOutputs finishes building the program, gets the costs, and executes the
-// program. It asserts that the program has been built correctly and that the
-// outputs of the program are as expected.
+// AssertOutputs asserts a slice of MDM outputs against the TestValues' history.
 func (v *TestValues) AssertOutputs(outputs []Output) error {
 	// Check the whole history against the outputs.
 	var output Output
@@ -131,6 +129,10 @@ func (v *TestValues) AssertOutputs(outputs []Output) error {
 		if err != nil {
 			return errors.AddContext(err, fmt.Sprintf("output #%v", i))
 		}
+	}
+	// Check if there are any outputs left.
+	if len(outputs) > 0 {
+		return fmt.Errorf("expected 0 outputs left after assertion but got %v", len(outputs))
 	}
 	return nil
 }
