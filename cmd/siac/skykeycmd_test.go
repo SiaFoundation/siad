@@ -30,6 +30,10 @@ func TestSkykeyCommands(t *testing.T) {
 		{name: "TestSkykeyGet", test: testSkykeyGet},
 		{name: "TestSkykeyGetUsingNameAndID", test: testSkykeyGetUsingNameAndID},
 		{name: "TestSkykeyGetUsingNoNameAndNoID", test: testSkykeyGetUsingNoNameAndNoID},
+		{name: "TestSkykeyListKeys", test: testSkykeyListKeys},
+		{name: "TestSkykeyListKeysDoesntShowPrivateKeys", test: testSkykeyListKeysDoesntShowPrivateKeys},
+		{name: "TestSkykeyListKeysAdditionalKeys", test: testSkykeyListKeysAdditionalKeys},
+		{name: "TestSkykeyListKeysAdditionalKeysDoesntShowPrivateKeys", test: testSkykeyListKeysAdditionalKeysDoesntShowPrivateKeys},
 	}
 
 	// Run tests
@@ -135,32 +139,19 @@ func testSkykeyGetUsingNoNameAndNoID(t *testing.T, c client.Client) {
 	if err == nil {
 		t.Fatal("Expected error when using neither name or id params")
 	}
+}
 
-	// Do some basic sanity checks on skykeyListKeys.
-	nKeys := 2
+// testSkykeyListKeys tests that skykeyListKeys shows key names, ids and keys
+func testSkykeyListKeys(t *testing.T, c client.Client) {
+	nKeys := 3
 	nExtraLines := 3
 	keyStrings := make([]string, nKeys)
 	keyNames := make([]string, nKeys)
 	keyIDs := make([]string, nKeys)
 
-	keyNames[0] = "key1"
-	keyNames[1] = "createkeyTest!"
-	keyStrings[0] = testSkykeyString
-	keyStrings[1] = getKeyStr
+	initSkykeyData(t, c, keyStrings, keyNames, keyIDs)
 
-	err = sk.FromString(testSkykeyString)
-	if err != nil {
-		t.Fatal(err)
-	}
-	keyIDs[0] = sk.ID().ToString()
-
-	err = sk.FromString(getKeyStr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	keyIDs[1] = sk.ID().ToString()
-
-	keyListString, err := skykeyListKeys(n.Client, true)
+	keyListString, err := skykeyListKeys(c, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,9 +174,20 @@ func testSkykeyGetUsingNoNameAndNoID(t *testing.T, c client.Client) {
 		t.Log(keyListString)
 		t.Fatalf("Unexpected number of lines/keys %d, Expected %d", len(keyList), nKeys+nExtraLines)
 	}
+}
 
-	// Make sure key data isn't shown but otherwise the same checks pass.
-	keyListString, err = skykeyListKeys(n.Client, false)
+// testKskykeyListKeysDoesntShowPrivateKeys tests that skykeyListKeys shows key names, ids and
+// doesn't show private keys
+func testSkykeyListKeysDoesntShowPrivateKeys(t *testing.T, c client.Client) {
+	nKeys := 3
+	nExtraLines := 3
+	keyStrings := make([]string, nKeys)
+	keyNames := make([]string, nKeys)
+	keyIDs := make([]string, nKeys)
+
+	initSkykeyData(t, c, keyStrings, keyNames, keyIDs)
+
+	keyListString, err := skykeyListKeys(c, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,17 +205,30 @@ func testSkykeyGetUsingNoNameAndNoID(t *testing.T, c client.Client) {
 			t.Fatal("Found key!", i)
 		}
 	}
-	keyList = strings.Split(keyListString, "\n")
+	keyList := strings.Split(keyListString, "\n")
 	if len(keyList) != nKeys+nExtraLines {
-		t.Fatal("Unpected number of lines/keys", len(keyList))
+		t.Fatal("Unexpected number of lines/keys", len(keyList))
 	}
+}
 
+// testSkykeyListKeysAdditionalKeys tests that after creating additional keys,
+// skykeyListKeys shows all key names, ids and keys
+func testSkykeyListKeysAdditionalKeys(t *testing.T, c client.Client) {
 	nExtraKeys := 10
-	nKeys += nExtraKeys
+	nKeys := 3 + nExtraKeys
+	nExtraLines := 3
+	keyStrings := make([]string, nKeys)
+	keyNames := make([]string, nKeys)
+	keyIDs := make([]string, nKeys)
+	skykeyCipherType := "XChaCha20"
+
+	initSkykeyData(t, c, keyStrings, keyNames, keyIDs)
+
+	// Add extra keys
 	for i := 0; i < nExtraKeys; i++ {
 		nextName := fmt.Sprintf("extrakey-%d", i)
 		keyNames = append(keyNames, nextName)
-		nextSkStr, err := skykeyCreate(n.Client, nextName)
+		nextSkStr, err := skykeyCreate(c, nextName, skykeyCipherType)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -227,7 +242,7 @@ func testSkykeyGetUsingNoNameAndNoID(t *testing.T, c client.Client) {
 	}
 
 	// Check that all the key names and key data is there.
-	keyListString, err = skykeyListKeys(n.Client, true)
+	keyListString, err := skykeyListKeys(c, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,13 +260,44 @@ func testSkykeyGetUsingNoNameAndNoID(t *testing.T, c client.Client) {
 			t.Fatal("Missing key!", i)
 		}
 	}
-	keyList = strings.Split(keyListString, "\n")
+	keyList := strings.Split(keyListString, "\n")
 	if len(keyList) != nKeys+nExtraLines {
 		t.Fatal("Unpected number of lines/keys", len(keyList))
 	}
+}
+
+// testSkykeyListKeysAdditionalKeysDoesntShowPrivateKeys tests that after creating additional keys,
+// skykeyListKeys shows all key names, ids and doesn't show private keys
+func testSkykeyListKeysAdditionalKeysDoesntShowPrivateKeys(t *testing.T, c client.Client) {
+	nExtraKeys := 10
+	nPrevKeys := 3
+	nKeys := nPrevKeys + nExtraKeys
+	nExtraLines := 3
+	keyStrings := make([]string, nPrevKeys)
+	keyNames := make([]string, nPrevKeys)
+	keyIDs := make([]string, nPrevKeys)
+
+	initSkykeyData(t, c, keyStrings, keyNames, keyIDs)
+
+	// Get extra keys
+	for i := 0; i < nExtraKeys; i++ {
+		nextName := fmt.Sprintf("extrakey-%d", i)
+		keyNames = append(keyNames, nextName)
+		nextSkStr, err := skykeyGet(c, nextName, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var nextSkykey skykey.Skykey
+		err = nextSkykey.FromString(nextSkStr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keyIDs = append(keyIDs, nextSkykey.ID().ToString())
+		keyStrings = append(keyStrings, nextSkStr)
+	}
 
 	// Make sure key data isn't shown but otherwise the same checks pass.
-	keyListString, err = skykeyListKeys(n.Client, false)
+	keyListString, err := skykeyListKeys(c, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,8 +315,51 @@ func testSkykeyGetUsingNoNameAndNoID(t *testing.T, c client.Client) {
 			t.Fatal("Found key!", i)
 		}
 	}
-	keyList = strings.Split(keyListString, "\n")
+	keyList := strings.Split(keyListString, "\n")
 	if len(keyList) != nKeys+nExtraLines {
-		t.Fatal("Unpected number of lines/keys", len(keyList))
+		t.Fatal("Unexpected number of lines/keys", len(keyList))
 	}
+}
+
+// initSkykeyData initializes keyStrings, keyNames, keyIDS slices with existing Skykey data
+func initSkykeyData(t *testing.T, c client.Client, keyStrings, keyNames, keyIDs []string) {
+	keyName1 := "createkey1"
+	keyName2 := "createkey testSkykeyGet"
+	testSkykeyString := "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+
+	getKeyStr1, err := skykeyGet(c, keyName1, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	getKeyStr2, err := skykeyGet(c, keyName2, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	keyNames[0] = "key1"
+	keyNames[1] = keyName1
+	keyNames[2] = keyName2
+	keyStrings[0] = testSkykeyString
+	keyStrings[1] = getKeyStr1
+	keyStrings[2] = getKeyStr2
+
+	var sk skykey.Skykey
+	err = sk.FromString(testSkykeyString)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyIDs[0] = sk.ID().ToString()
+
+	err = sk.FromString(getKeyStr1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyIDs[1] = sk.ID().ToString()
+
+	err = sk.FromString(getKeyStr2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyIDs[2] = sk.ID().ToString()
 }
