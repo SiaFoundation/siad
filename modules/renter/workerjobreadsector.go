@@ -179,7 +179,7 @@ func (j *jobReadSector) managedReadSector() ([]byte, error) {
 		break
 	}
 	// Check that we received the amount of data that we were expecting.
-	if uint64(len(sectorData)) != length {
+	if uint64(len(sectorData)) != j.staticLength {
 		return nil, errors.New("worker returned the wrong amount of data")
 	}
 	return sectorData, nil

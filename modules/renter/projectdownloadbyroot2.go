@@ -173,10 +173,15 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
 			continue
 		}
-		jhs := jobHasSector{
-			staticCanceledChan: cancelChan,
+		jhs := &jobHasSector{
 			staticSector:       root,
 			staticResponseChan: staticResponseChan,
+
+			jobGeneric: &jobGeneric{
+				staticCancelChan: cancelChan,
+
+				staticQueue: worker.staticJobHasSectorQueue,
+			},
 		}
 		if !worker.staticJobHasSectorQueue.callAdd(jhs) {
 			// This will filter out any workers that are on cooldown or
@@ -321,13 +326,18 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 
 		// Queue the job to download the sector root.
 		readSectorRespChan := make(chan *jobReadSectorResponse)
-		jrs := jobReadSector{
-			staticCanceledChan: cancelChan,
+		jrs := &jobReadSector{
 			staticResponseChan: readSectorRespChan,
 
 			staticLength: length,
 			staticOffset: offset,
 			staticSector: root,
+
+			jobGeneric: &jobGeneric{
+				staticCancelChan: cancelChan,
+
+				staticQueue: bestWorker.staticJobReadSectorQueue,
+			},
 		}
 		if !bestWorker.staticJobReadSectorQueue.callAdd(jrs) {
 			continue
