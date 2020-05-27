@@ -7,6 +7,8 @@ import (
 // TestUpdateWorstIgnoredHealth probes the implementation of the
 // updateWorstIgnoredHealth function.
 func TestUpdateWorstIgnoredHealth(t *testing.T) {
+	t.Parallel()
+
 	// Start by updating a blank with blank values.
 	var wh worstIgnoredHealth
 	wh.updateWorstIgnoredHealth(0, false)
@@ -68,6 +70,8 @@ func TestUpdateWorstIgnoredHealth(t *testing.T) {
 
 // TestWIHCanSkip checks the logic of the canSkip method.
 func TestWIHCanSkip(t *testing.T) {
+	t.Parallel()
+
 	// The target is not set, nothing should be skippable unless it is below the
 	// repair threshold.
 	wh := worstIgnoredHealth{
