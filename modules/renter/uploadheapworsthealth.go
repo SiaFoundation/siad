@@ -18,6 +18,10 @@ type (
 // updateWorstIgnoredHealth takes the health of a chunk that is being skipped
 // and updates the worst known health to account for this chunk.
 func (wh *worstIgnoredHealth) updateWorstIgnoredHealth(newHealth float64, newHealthRemote bool) {
+	// The new health is not worse if it is below the repair threshold.
+	if newHealth < RepairThreshold {
+		return
+	}
 	// The new health is not worse if it is not remote, but the worst health is
 	// remote.
 	if !newHealthRemote && wh.remote {
@@ -47,7 +51,12 @@ func (wh *worstIgnoredHealth) updateWorstIgnoredHealth(newHealth float64, newHea
 // better health than any chunk which is being ignored because its in another
 // directory.
 func (wh *worstIgnoredHealth) canSkip(chunkHealth float64, chunkRemote bool) bool {
-	// Cannot skip any chunks if we are not targeting unstuck chunks.
+	// Can skip any chunk that is below the repair threshold.
+	if chunkHealth < RepairThreshold {
+		return true
+	}
+	// Cannot skip any chunks if we are not targeting unstuck chunks. Assuming
+	// they are above the repair threshold.
 	if wh.target != targetUnstuckChunks {
 		return false
 	}
