@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"sort"
-	"sync"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -31,24 +29,18 @@ type (
 		staticMetadata    modules.UploadedBackup
 		staticSiaFileData []byte
 
-		staticCancelChan   chan struct{}
 		staticResponseChan chan *jobUploadSnapshotResponse
+
+		*jobGeneric
 	}
 
 	// jobUploadSnapshotQueue contains the set of snapshots that need to be
 	// uploaded.
 	jobUploadSnapshotQueue struct {
-		killed bool
-		jobs   []*jobUploadSnapshot
-
-		cooldownUntil       time.Time
-		consecutiveFailures uint64
-
-		staticWorker *worker
-		mu           sync.Mutex
+		*jobGenericQueue
 	}
 
-	// jobUploa;dSnapshotResponse contains the response to an upload snapshot
+	// jobUploadSnapshotResponse contains the response to an upload snapshot
 	// job.
 	jobUploadSnapshotResponse struct {
 		staticErr error
@@ -101,76 +93,47 @@ func checkUploadSnapshotGouging(allowance modules.Allowance, hostSettings module
 	return nil
 }
 
-// staticCanceled returns whether or not the job has been canceled.
-func (j *jobUploadSnapshot) staticCanceled() bool {
-	select {
-	case <-j.staticCancelChan:
-		return true
-	default:
-		return false
+// callDiscard will discard this job, sending an error down the response
+// channel.
+func (j *jobUploadSnapshot) callDiscard(err error) {
+	resp := &jobUploadSnapshotResponse{
+		staticErr: errors.AddContext(err, "job is being discarded"),
 	}
-}
-
-// callAdd will add an upload snapshot job to the queue.
-func (jq *jobUploadSnapshotQueue) callAdd(j *jobUploadSnapshot) {
-	jq.mu.Lock()
-	jq.jobs = append(jq.jobs, j)
-	jq.mu.Unlock()
-	jq.staticWorker.staticWake()
-	return
-}
-
-// managedHasUploadSnapshotJob will return true if there is a snapshot upload
-// job in the worker's queue.
-func (w *worker) managedHasUploadSnapshotJob() bool {
-	jq := w.staticJobUploadSnapshotQueue
-	jq.mu.Lock()
-	defer jq.mu.Unlock()
-	if time.Now().Before(jq.cooldownUntil) {
-		return false
-	}
-	return len(jq.jobs) > 0
-}
-
-// managedJobUploadSnapshot will perform an upload snapshot job for the worker.
-func (w *worker) managedJobUploadSnapshot() {
-	// Get the latest job.
-	var job *jobUploadSnapshot
-	jq := w.staticJobUploadSnapshotQueue
-	jq.mu.Lock()
-	for {
-		// If there are no jobs, nothing to do.
-		if len(jq.jobs) == 0 {
-			jq.mu.Unlock()
-			return
+	w := j.staticQueue.staticWorker()
+	w.renter.tg.Launch(func() {
+		select {
+		case j.staticResponseChan <- resp:
+		case <-j.staticCancelChan:
+		case <-w.renter.tg.StopChan():
 		}
+	})
+}
 
-		// Grab the next job>
-		job = jq.jobs[0]
-		jq.jobs = jq.jobs[1:]
-
-		// Move onto the next job if this job has been canceled.
-		if job.staticCanceled() {
-			continue
-		}
-		break
-	}
-	jq.mu.Unlock()
+// callExecute will perform an upload snapshot job for the worker.
+func (j *jobUploadSnapshot) callExecute() {
+	w := j.staticQueue.staticWorker()
 
 	// Defer a function to send the result down a channel.
 	var err error
 	defer func() {
-		// Return an error to the caller.
+		// Return the error to the caller, error may be nil.
 		resp := &jobUploadSnapshotResponse{
 			staticErr: err,
 		}
 		w.renter.tg.Launch(func() {
 			select {
-			case job.staticResponseChan <- resp:
-			case <-job.staticCancelChan:
+			case j.staticResponseChan <- resp:
+			case <-j.staticCancelChan:
 			case <-w.renter.tg.StopChan():
 			}
 		})
+
+		// Report a failure to the queue if this job had an error.
+		if err != nil {
+			j.staticQueue.callReportFailure(err)
+		} else {
+			j.staticQueue.callReportSuccess()
+		}
 	}()
 
 	// Check that the worker is good for upload.
@@ -180,7 +143,8 @@ func (w *worker) managedJobUploadSnapshot() {
 	}
 
 	// Perform the actual upload.
-	sess, err := w.renter.hostContractor.Session(w.staticHostPubKey, w.renter.tg.StopChan())
+	var sess contractor.Session
+	sess, err = w.renter.hostContractor.Session(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
 		w.renter.log.Debugln("unable to grab a session to perform an upload snapshot job:", err)
 		err = errors.AddContext(err, "unable to get host session")
@@ -204,12 +168,20 @@ func (w *worker) managedJobUploadSnapshot() {
 
 	// Upload the snapshot to the host. The session is created by passing in a
 	// thread group, so this call should be responsive to fast shutdown.
-	err = w.renter.managedUploadSnapshotHost(job.staticMetadata, job.staticSiaFileData, sess)
+	err = w.renter.managedUploadSnapshotHost(j.staticMetadata, j.staticSiaFileData, sess)
 	if err != nil {
 		w.renter.log.Debugln("uploading a snapshot to a host failed:", err)
 		err = errors.AddContext(err, "uploading a snapshot to a host failed")
 		return
 	}
+}
+
+// callExpectedBandwidth returns the amount of bandwidth this job is expected to
+// consume.
+func (j *jobUploadSnapshot) callExpectedBandwidth() (ul, dl uint64) {
+	// Estimate 50kb in overhead for upload and download, and then 4 MiB
+	// necessary to send the actual full sector payload.
+	return 50e3 + 1 << 22, 50e3
 }
 
 // initJobUploadSnapshotQueue will initialize the upload snapshot job queue for
@@ -221,7 +193,7 @@ func (w *worker) initJobUploadSnapshotQueue() {
 	}
 
 	w.staticJobUploadSnapshotQueue = &jobUploadSnapshotQueue{
-		staticWorker: w,
+		jobGenericQueue: newJobGenericQueue(w),
 	}
 }
 

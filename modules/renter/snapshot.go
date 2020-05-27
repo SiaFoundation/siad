@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	// SnapshotKeySpecifier is the specifier used for deriving the secret used to
+	// snapshotKeySpecifier is the specifier used for deriving the secret used to
 	// encrypt a snapshot from the RenterSeed.
 	snapshotKeySpecifier = types.NewSpecifier("snapshot")
 
@@ -32,6 +32,10 @@ var (
 )
 
 var (
+	// maxSnapshotUploadTime defines the total amount of time that the renter
+	// will allocate to complete an upload of a snapshot .sia file to all hosts.
+	// This is done with each host in parallel, and the .sia file is not
+	// expected to exceed a few megabytes even for very large renters.
 	maxSnapshotUploadTime = build.Select(build.Var{
 		Standard: time.Minute * 15,
 		Dev:      time.Minute * 3,
@@ -297,15 +301,21 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 	cancelChan := make(chan struct{})
 	defer close(cancelChan)
 	responseChan := make(chan *jobUploadSnapshotResponse, len(workers))
+	queued := 0
 	for _, w := range workers {
 		job := &jobUploadSnapshot{
 			staticMetadata:    meta,
 			staticSiaFileData: dotSia,
 
-			staticCancelChan:   cancelChan, // We don't actually use this.
 			staticResponseChan: responseChan,
+
+			jobGeneric: newJobGeneric(w.staticJobUploadSnapshotQueue, cancelChan),
 		}
-		w.staticJobUploadSnapshotQueue.callAdd(job)
+
+		// If a job is not added correctly, count this as a failed response.
+		if w.staticJobUploadSnapshotQueue.callAdd(job) {
+			queued++
+		}
 	}
 
 	// Cap the total amount of time that we wait for results.
@@ -319,7 +329,7 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 	// Iteratively grab the responses from the workers.
 	responses := 0
 	successes := 0
-	for responses < len(workers) {
+	for responses < queued {
 		var resp *jobUploadSnapshotResponse
 		select {
 		case resp = <-responseChan:
@@ -348,7 +358,10 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 	}
 
 	// Check if there were too few successes to count this as a successful
-	// backup.
+	// backup. A 1/3 success rate is really quite arbitrary, picked because it
+	// ~feels~ like that should be enough to give the user security, but really
+	// who knows. Like really we should probably be looking at the total number
+	// of hosts in the allowance and comparing against that.
 	if successes < total/3 {
 		r.log.Printf("Unable to save snapshot effectively, wanted %v but only got %v successful snapshot backups", total, successes)
 		return fmt.Errorf("needed at least %v successes, only got %v", total/3, successes)

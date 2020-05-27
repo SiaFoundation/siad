@@ -867,10 +867,16 @@ func (c *Contractor) managedAcquireAndUpdateContractUtility(id types.FileContrac
 	}
 	defer c.staticContracts.Return(safeContract)
 
+	return c.managedUpdateContractUtility(safeContract, utility)
+}
+
+// managedUpdateContractUtility is a helper function that updates the contract
+// with the given utility.
+func (c *Contractor) managedUpdateContractUtility(safeContract *proto.SafeContract, utility modules.ContractUtility) error {
 	// Sanity check to verify that we aren't attempting to set a good utility on
 	// a contract that has been renewed.
 	c.mu.Lock()
-	_, exists := c.renewedTo[id]
+	_, exists := c.renewedTo[safeContract.Metadata().ID]
 	c.mu.Unlock()
 	if exists && (utility.GoodForRenew || utility.GoodForUpload) {
 		c.log.Critical("attempting to update contract utility on a contract that has been renewed")
