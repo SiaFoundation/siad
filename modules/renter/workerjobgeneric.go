@@ -103,7 +103,6 @@ func (jq *jobGenericQueue) callAdd(j workerJob) bool {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
-	// TODO: Should check if the account or price table is on cooldown as well.
 	if jq.killed || time.Now().Before(jq.cooldownUntil) {
 		return false
 	}

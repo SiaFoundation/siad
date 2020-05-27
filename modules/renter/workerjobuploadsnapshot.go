@@ -179,15 +179,9 @@ func (j *jobUploadSnapshot) callExecute() {
 // callExpectedBandwidth returns the amount of bandwidth this job is expected to
 // consume.
 func (j *jobUploadSnapshot) callExpectedBandwidth() (ul, dl uint64) {
-	// TODO: Currently this doesn't matter because it's a sync job not an async
-	// job and we only use expected bandwidth on async jobs right now... that
-	// said this isn't intended to remain this way forever, we should clean this
-	// up and add a better estimate than 0.
-	//
-	// Even at an estimate of zero, this shouldn't do too much damange because
-	// it's a pretty rare job and the expected bandwidth is only used for load
-	// balancing purposes.
-	return 0, 0
+	// Estimate 50kb in overhead for upload and download, and then 4 MiB
+	// necessary to send the actual full sector payload.
+	return 50e3 + 1 << 22, 50e3
 }
 
 // initJobUploadSnapshotQueue will initialize the upload snapshot job queue for
