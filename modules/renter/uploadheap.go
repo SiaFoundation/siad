@@ -602,6 +602,10 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		repairable := chunk.health <= 1 || chunk.onDisk
 		needsRepair := chunk.health >= RepairThreshold
 
+		if r.deps.Disrupt("AddUnrepairableChunks") && needsRepair {
+			incompleteChunks = append(incompleteChunks, chunk)
+			continue
+		}
 		// Add chunk to list of incompleteChunks if it is incomplete and
 		// repairable or if we are targeting stuck chunks
 		if needsRepair && (repairable || target == targetStuckChunks) {

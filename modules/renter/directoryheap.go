@@ -219,6 +219,7 @@ func (dh *directoryHeap) update(d *directory) bool {
 		heapDir.explored = false
 	}
 	heapDir.mu.Unlock()
+	dh.heapDirectories[d.staticSiaPath] = heapDir
 	heap.Fix(&dh.heap, heapDir.index)
 	return true
 }
