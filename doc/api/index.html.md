@@ -4962,10 +4962,21 @@ Returns a list of all Skykeys as base64-encoded strings.
 ```go
 {
   "skykeys": [
-    "AAAAAAABoZWxsbwAAAAAAAAAEOAAAAAAAAAAYGZOQDcDQOoF9HHDBy8-l9bFyIjquzWlCg_9Efh96SfV2WN2S6eiroehM09rXAWtmfSZ0fDvRqg==",
-    "BwAAAAAAAABrZXRjaHVwAAAAAAAAAAQ4AAAAAAAAAM2K5y0IVBSV-_1vCPlNM9v_qBsqg00-oc9s84i-uK4Xja91mXQd3uJEsO50aL-f3cAso_sdgHrR",
-    "QAAAAAAAABoaS1naXRsYWIAAAAAAAAABDgAAAAAAAAAQnaoHcZy8QQhbiVYqowzbzKL03eSiItFNX0czcgMsaJ4sku_ij0KzreZtF_nzwt6qPv9EX6BR7E="
-  ]
+  {
+    "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+    "name": "testskykey1"
+    "id": "ai5z8cf5NWbcvPBaBn0DFQ=="
+  },
+  {
+    "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+    "name": "testskykey2"
+    "id": "bi5z8cf5NWbcvPBaBn0DFQ=="
+  },
+  {
+    "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+    "name": "testskykey3"
+    "id": "ci5z8cf5NWbcvPBaBn0DFQ=="
+  }
 }
 ```
 
@@ -5030,6 +5041,8 @@ base-64 encoded ID of the skykey being queried
 ```go
 {
   "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+  "name": "testskykey"
+  "id": "gi5z8cf5NWbcvPBaBn0DFQ=="
 }
 ```
 
