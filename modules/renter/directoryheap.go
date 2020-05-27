@@ -128,7 +128,13 @@ func (dh *directoryHeap) managedLen() int {
 	return dh.heap.Len()
 }
 
-// managedPeekHealth returns the current worst health of the directory heap
+// managedPeekHealth returns the current worst health of the directory heap. A
+// boolean is returned indicating whether or not the health is based on remote
+// health. If the file has poor remote health, this is considered more
+// significant than having even poorer local health.
+//
+// 'Remote' health indicates the health of all chunks that are not available
+// locally and therefore need to do remote repairs.
 func (dh *directoryHeap) managedPeekHealth() (float64, bool) {
 	dh.mu.Lock()
 	defer dh.mu.Unlock()
