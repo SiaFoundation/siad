@@ -288,6 +288,7 @@ func (p Program) ReadOnly() bool {
 			return false
 		case SpecifierHasSector:
 		case SpecifierReadSector:
+		case SpecifierReadOffset:
 		default:
 			build.Critical("ReadOnly: unknown instruction")
 		}
@@ -306,6 +307,7 @@ func (p Program) RequiresSnapshot() bool {
 			return true
 		case SpecifierHasSector:
 		case SpecifierReadSector:
+		case SpecifierReadOffset:
 		default:
 			build.Critical("RequiresSnapshot: unknown instruction")
 		}
