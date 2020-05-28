@@ -38,10 +38,10 @@ func main() {
 	// File Creation variables
 	size := 200e9                                                         // 200GB
 	chunk := 200e6                                                        // 200MB
-	remainingData := size * 50                                            // 50 is number of files to be uploaded to get 1TB
+	remainingData := size * 50                                            // 50 is number of files to be uploaded to get 10TB
 	var file string                                                       // initializing file variable
 	home, err := os.UserHomeDir()                                         // user home dir
-	workDir := filepath.Join(home, "Nebulous/sia-upload-download-script") // script's working directory
+	workDir := filepath.Join(home, "nebulous/sia-upload-download-script") // script's working directory
 	filesDir := filepath.Join(workDir, "files")                           // path to directory where created files will be stored
 	downloadsDir := filepath.Join(workDir, "downloads")                   // path to the directory where downloaded files will be stored
 
@@ -71,24 +71,50 @@ func main() {
 		check(err)
 	}
 
-	// Checking for n Contracts
+	/*
+		// Checking for n Contracts
+		_, err = fmt.Fprintf(w, "*********************************************.\n")
+		check(err)
+		_, err = fmt.Fprintf(w, "CREATING CONTRACTS.\n\n")
+		check(err)
+		w.Flush()
+
+		// Get number of hosts in allowance
+		rg, err = client.RenterGet()
+		contracts := int(rg.Settings.Allowance.Hosts)
+
+		start := time.Now()
+		for {
+			rc, e := client.RenterContractsGet()
+			check(e)
+			if len(rc.ActiveContracts) >= contracts {
+				elapse := time.Now().Sub(start)
+				_, err = fmt.Fprintf(w, "It took %s to create %d contracts.\n", elapse, contracts)
+				check(err)
+				w.Flush()
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+		_, err = fmt.Fprintf(w, "*********************************************.\n")
+		check(err)
+		w.Flush()
+	*/
+
+	// Waiting for upload ready
 	_, err = fmt.Fprintf(w, "*********************************************.\n")
 	check(err)
-	_, err = fmt.Fprintf(w, "CREATING CONTRACTS.\n\n")
+	_, err = fmt.Fprintf(w, "WAITING READY TO UPLOAD.\n\n")
 	check(err)
 	w.Flush()
 
-	// Get number of hosts in allowance
-	rg, err = client.RenterGet()
-	contracts := int(rg.Settings.Allowance.Hosts)
-
 	start := time.Now()
 	for {
-		rc, e := client.RenterContractsGet()
+		rur, e := client.RenterUploadReadyGet(dataPieces, parityPieces)
 		check(e)
-		if len(rc.ActiveContracts) >= contracts {
+		if rur.Ready {
 			elapse := time.Now().Sub(start)
-			_, err = fmt.Fprintf(w, "It took %s to create %d contracts.\n", elapse, contracts)
+			_, err = fmt.Fprintf(w, "It took %s for renter to be ready to upload.\n", elapse)
 			check(err)
 			w.Flush()
 			break
@@ -158,7 +184,9 @@ func main() {
 		downloadFile(client, fi.SiaPath, downloadsDir, false, w, uint64(size))
 
 		// delete downloaded file
-		deleteLocalFile(downloadsDir, fi.SiaPath, w)
+		filename := filepath.Base(fi.SiaPath.Path)
+		path := filepath.Join(downloadsDir, filename)
+		deleteLocalFile(path, w)
 	}
 
 	_, err = fmt.Fprintf(w, "*********************************************.\n")
@@ -224,12 +252,11 @@ func createFile(path string, size int, chunk int, w *bufio.Writer) {
 }
 
 // deleteLocalFile deletes a local file on disk
-func deleteLocalFile(dir string, siaPath modules.SiaPath, w *bufio.Writer) {
-	filename := siaPath.Path
-	err := os.RemoveAll(filepath.Join(dir, filename))
+func deleteLocalFile(path string, w *bufio.Writer) {
+	err := os.RemoveAll(path)
 	check(err)
 	_, file, line, _ := runtime.Caller(0)
-	_, err = fmt.Fprintf(w, "%s:%d %s deleted.\n", filepath.Base(file), line, filename)
+	_, err = fmt.Fprintf(w, "%s:%d %s deleted.\n", filepath.Base(file), line, path)
 	w.Flush()
 }
 
@@ -240,7 +267,8 @@ func upload(c *client.Client, path string, dataPieces, parityPieces uint64, w *b
 	check(err)
 
 	// Submit upload
-	siaPath, err := modules.NewSiaPath(filepath.Join("/upload-download-script", filepath.Base(path)))
+	siaFolder := "upload-download-script"
+	siaPath, err := modules.NewSiaPath(filepath.Join(siaFolder, filepath.Base(path)))
 	check(err)
 	// err = c.RenterUploadPost(abs, filepath.Join("/", filepath.Base(path)), dataPieces, parityPieces)
 	err = c.RenterUploadPost(abs, siaPath, dataPieces, parityPieces)
@@ -248,8 +276,8 @@ func upload(c *client.Client, path string, dataPieces, parityPieces uint64, w *b
 
 	// Add to uploadMap
 	uploadMapLock.Lock()
-	uploadMap[filepath.Base(path)] = time.Now()
-	// uploadMap[filepath.Join("/", filepath.Base(path))] = time.Now()
+	//xxx uploadMap[filepath.Base(path)] = time.Now()
+	uploadMap[filepath.Join(siaFolder, filepath.Base(path))] = time.Now()
 	uploadMapLock.Unlock()
 }
 
@@ -274,7 +302,9 @@ func checkRedundancy(client *client.Client, wg *sync.WaitGroup, c chan struct{},
 		for _, fi := range rf.Files {
 			if _, ok := uploadMap[fi.SiaPath.Path]; ok && fi.Redundancy >= float64(r) {
 				// Deleting local copy of file
-				deleteLocalFile(dir[:len(dir)-1], fi.SiaPath, w)
+				filename := filepath.Base(fi.SiaPath.Path)
+				path := filepath.Join(dir, filename)
+				deleteLocalFile(path, w)
 
 				// Max redundancy reached, calucalating elapsed time
 				elapse := time.Now().Sub(uploadMap[fi.SiaPath.Path])
