@@ -258,11 +258,10 @@ type renterHostPair struct {
 	staticRenterSK   crypto.SecretKey
 	staticRenterPK   types.SiaPublicKey
 	staticRenterMux  *siamux.SiaMux
+	staticHT         *hostTester
 
 	pt *modules.RPCPriceTable
-
-	staticHT *hostTester
-	staticMu sync.Mutex
+	mu sync.Mutex
 }
 
 // newRenterHostPair creates a new host tester and returns a renter host pair,
@@ -638,8 +637,8 @@ func (p *renterHostPair) managedPaymentRevision(amount types.Currency) (types.Fi
 
 // managedPriceTable returns the latest price table
 func (p *renterHostPair) managedPriceTable() *modules.RPCPriceTable {
-	p.staticMu.Lock()
-	defer p.staticMu.Unlock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	return p.pt
 }
 
@@ -657,8 +656,73 @@ func (p *renterHostPair) managedSign(rev types.FileContractRevision) crypto.Sign
 	return crypto.SignHash(hash, p.staticRenterSK)
 }
 
-// managedUpdatePriceTable runs the UpdatePriceTableRPC on the host and sets the
-// price table on the pair
+// AccountBalance returns the account balance of the specified account.
+func (p *renterHostPair) managedAccountBalance(payByFC bool, fundAmt types.Currency, fundAcc, balanceAcc modules.AccountID) (types.Currency, error) {
+	stream := p.managedNewStream()
+	defer stream.Close()
+
+	// Fetch the price table.
+	pt, err := p.managedFetchPriceTable()
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+
+	// initiate the RPC
+	err = modules.RPCWrite(stream, modules.RPCAccountBalance)
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+
+	// Write the pricetable uid.
+	err = modules.RPCWrite(stream, pt.UID)
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+
+	// provide payment
+	if payByFC {
+		err = p.managedPayByContract(stream, fundAmt, fundAcc)
+		if err != nil {
+			return types.ZeroCurrency, err
+		}
+	} else {
+		_, err = p.managedPayByEphemeralAccount(stream, fundAmt)
+		if err != nil {
+			return types.ZeroCurrency, err
+		}
+	}
+
+	// send the request.
+	err = modules.RPCWrite(stream, modules.AccountBalanceRequest{
+		Account: balanceAcc,
+	})
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+
+	// read the response.
+	var abr modules.AccountBalanceResponse
+	err = modules.RPCRead(stream, &abr)
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+
+	// expect clean stream close
+	err = modules.RPCRead(stream, struct{}{})
+	if !errors.Contains(err, io.ErrClosedPipe) {
+		return types.ZeroCurrency, err
+	}
+
+	return abr.Balance, nil
+}
+
+// AccountBalance returns the account balance of the renter's EA on the host.
+func (p *renterHostPair) AccountBalance(payByFC bool) (types.Currency, error) {
+	return p.managedAccountBalance(payByFC, p.pt.AccountBalanceCost, p.staticAccountID, p.staticAccountID)
+}
+
+// UpdatePriceTable runs the UpdatePriceTableRPC on the host and sets the price
+// table on the pair
 func (p *renterHostPair) managedUpdatePriceTable(payByFC bool) error {
 	stream := p.managedNewStream()
 	defer stream.Close()
@@ -695,9 +759,9 @@ func (p *renterHostPair) managedUpdatePriceTable(payByFC bool) error {
 	}
 
 	// update the price table
-	p.staticMu.Lock()
+	p.mu.Lock()
 	p.pt = &pt
-	p.staticMu.Unlock()
+	p.mu.Unlock()
 
 	// expect clean stream close
 	err = modules.RPCRead(stream, struct{}{})
