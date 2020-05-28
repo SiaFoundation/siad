@@ -56,7 +56,9 @@ func (m *projectDownloadByRootManager) managedRecordProjectTime(length uint64, t
 	var recentAvg time.Duration
 	var totalAvg time.Duration
 	var totalRequests uint64
+
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	if length <= 1<<16 {
 		m.totalTime64k += timeElapsed
 		m.totalRequests64k++
@@ -91,15 +93,15 @@ func (m *projectDownloadByRootManager) managedRecordProjectTime(length uint64, t
 		totalAvg = m.totalTime4m / time.Duration(m.totalRequests4m)
 		totalRequests = m.totalRequests4m
 	}
-	m.mu.Unlock()
-	fmt.Printf("Bucket %v has had recent performance %v, and historic performance %v over %v requests\n", bucket, recentAvg, totalAvg, totalRequests)
 }
 
 // managedAverageProjectTime will return the average download time that projects
 // have had for the given length.
 func (m *projectDownloadByRootManager) managedAverageProjectTime(length uint64) time.Duration {
-	var avg time.Duration
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var avg time.Duration
 	if length <= 1<<16 {
 		avg = time.Duration(m.decayedTime64k / m.decayedRequests64k)
 	} else if length <= 1<<20 {
@@ -107,7 +109,6 @@ func (m *projectDownloadByRootManager) managedAverageProjectTime(length uint64) 
 	} else {
 		avg = time.Duration(m.decayedTime4m / m.decayedRequests4m)
 	}
-	m.mu.Unlock()
 	return avg
 }
 
@@ -150,16 +151,12 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		close(cancelChan)
 	}()
 
-	// Get the full list of workers that could potentially download the root.
-	workers := r.staticWorkerPool.callWorkers()
-	if len(workers) == 0 {
-		return nil, errors.New("cannot perform DownloadByRoot, no workers in worker pool")
-	}
 
-	// Create a channel to receive all of the results from the workers. The
-	// channel is buffered with one slot per worker, so that the workers do not
-	// have to block when returning the result of the job, even if this thread
-	// is not listening.
+	// Get the full list of workers and create a channel to receive all of the
+	// results from the workers. The channel is buffered with one slot per
+	// worker, so that the workers do not have to block when returning the
+	// result of the job, even if this thread is not listening.
+	workers := r.staticWorkerPool.callWorkers()
 	staticResponseChan := make(chan *jobHasSectorResponse, len(workers))
 
 	// Filter out all workers that do not support the new protocol. It has been
@@ -192,6 +189,10 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		numAsyncWorkers++
 	}
 	workers = workers[:numAsyncWorkers]
+	// If there are no workers remaining, fail early.
+	if len(workers) == 0 {
+		return nil, errors.New("cannot perform DownloadByRoot, no workers in worker pool")
+	}
 
 	// Create a timer that is used to determine when the project should stop
 	// looking for a better worker, and instead go use the best worker it has
@@ -289,7 +290,6 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 			jq := w.staticJobReadSectorQueue
 			usableWorkers[responses] = w
 			goodEnough = time.Since(start)+jq.callAverageJobTime(length) < pm.managedAverageProjectTime(length)
-			fmt.Printf("%v: HasSector positive response received: %v\n", w.staticHostPubKeyStr, time.Since(start))
 		}
 
 		// Determine whether to move forward with the download or wait for more
@@ -361,19 +361,16 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		// If the read sector job was not successful, move on to the next
 		// worker.
 		if readSectorResp == nil || readSectorResp.staticErr != nil {
-			fmt.Printf("%v: Sector data fetch failed: %v\n", root, time.Since(start))
 			continue
 		}
 
 		// We got a good response! Record the total project time and return the
 		// data.
 		pm.managedRecordProjectTime(length, time.Since(start))
-		fmt.Printf("%v: Sector data received: %v\n", root, time.Since(start))
 		return readSectorResp.staticData, nil
 	}
 
 	// All workers have failed.
-	fmt.Println("Not found, all workers have failed.")
 	return nil, ErrRootNotFound
 }
 

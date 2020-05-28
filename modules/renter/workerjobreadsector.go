@@ -90,9 +90,6 @@ func (j *jobReadSector) callExecute() {
 	}
 	w := j.staticQueue.staticWorker()
 	w.renter.tg.Launch(func() {
-		// We don't listen on the tg stopChan because it is assumed that the
-		// project which issued the job will close job.canceled when the tg
-		// stops.
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCancelChan:
