@@ -129,6 +129,10 @@ func (j *jobTestAsync) callDiscard(err error) {
 	return
 }
 
+// callExecute will track the total number of jobs running at once. If there are
+// enough jobs to violate the bandwidth limits of the worker, a critical will be
+// thrown. Jobs take 100ms, which gives the renter time to explore how many it
+// can run in parallel.
 func (j *jobTestAsync) callExecute() {
 	d := j.staticQueue.staticWorker().renter.deps.(*dependencyTestAsyncJobLauncher)
 
