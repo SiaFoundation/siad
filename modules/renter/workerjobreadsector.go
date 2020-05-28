@@ -210,7 +210,7 @@ func (jq *jobReadSectorQueue) callAverageJobTime(length uint64) time.Duration {
 func (w *worker) initJobReadSectorQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobReadSectorQueue != nil {
-		w.renter.log.Critical("incorret call on newJobReadSectorQueue")
+		w.renter.log.Critical("incorret call on initJobReadSectorQueue")
 	}
 	w.staticJobReadSectorQueue = &jobReadSectorQueue{
 		jobGenericQueue: newJobGenericQueue(w),
