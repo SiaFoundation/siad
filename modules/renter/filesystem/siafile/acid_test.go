@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -32,8 +34,8 @@ func TestSiaFileFaultyDisk(t *testing.T) {
 	}
 
 	// Create the dependency.
-	fdd := newFaultyDiskDependency(10000) // Fails after 10000 writes.
-	fdd.disable()
+	fdd := dependencies.NewFaultyDiskDependency(10000) // Fails after 10000 writes.
+	fdd.Disable()
 
 	// Create a new blank siafile.
 	sf, wal, walPath := newBlankTestFileAndWAL(1)
@@ -55,7 +57,7 @@ func TestSiaFileFaultyDisk(t *testing.T) {
 	// The outer loop is responsible for simulating a restart of siad by
 	// reloading the wal, applying transactions and loading the sf from disk
 	// again.
-	fdd.enable()
+	fdd.Enable()
 	testDone := time.After(testTimeout)
 	numRecoveries := 0
 	numSuccessfulIterations := 0
@@ -84,7 +86,7 @@ OUTER:
 				offset := uint64(fastrand.Intn(int(sf.staticMetadata.FileSize)))
 				snap, err := sf.Snapshot(modules.RandomSiaPath())
 				if err != nil {
-					if errors.Contains(err, errDiskFault) {
+					if errors.Contains(err, dependencies.ErrDiskFault) {
 						numRecoveries++
 						break
 					}
@@ -95,7 +97,7 @@ OUTER:
 				chunkIndex, _ := snap.ChunkIndexByOffset(offset)
 				pieceIndex := uint64(fastrand.Intn(sf.staticMetadata.staticErasureCode.NumPieces()))
 				if err := sf.AddPiece(spk, chunkIndex, pieceIndex, crypto.Hash{}); err != nil {
-					if errors.Contains(err, errDiskFault) {
+					if errors.Contains(err, dependencies.ErrDiskFault) {
 						numRecoveries++
 						break
 					}
@@ -109,7 +111,7 @@ OUTER:
 
 		// 20% chance that drive is repaired.
 		if fastrand.Intn(100) < 20 {
-			fdd.reset()
+			fdd.Reset()
 		}
 
 		// Try to reload the file. This simulates failures during recovery.
@@ -118,7 +120,7 @@ OUTER:
 			// If we have already tried for 10 times, we reset the dependency
 			// to avoid getting stuck here.
 			if tries%10 == 0 {
-				fdd.reset()
+				fdd.Reset()
 			}
 			// Close existing wal.
 			_, err := wal.CloseIncomplete()
@@ -134,7 +136,7 @@ OUTER:
 			// Apply unfinished txns.
 			for _, txn := range txns {
 				if err := applyUpdates(fdd, txn.Updates...); err != nil {
-					if errors.Contains(err, errDiskFault) {
+					if errors.Contains(err, dependencies.ErrDiskFault) {
 						numRecoveries++
 						continue LOAD // try again
 					} else {
@@ -151,7 +153,7 @@ OUTER:
 						 TODO: Uncomment once we enable partial chunks again
 							_, err = loadSiaFile(sf.partialsSiaFile.siaFilePath, wal, fdd)
 							if err != nil {
-								if errors.Contains(err, errDiskFault) {
+								if errors.Contains(err, dependencies.ErrDiskFault) {
 									numRecoveries++
 									continue // try again
 								} else {
@@ -160,8 +162,9 @@ OUTER:
 							}
 			*/
 			sf, err = loadSiaFile(sf.siaFilePath, wal, fdd)
+			sf.deps = fdd
 			if err != nil {
-				if errors.Contains(err, errDiskFault) {
+				if errors.Contains(err, dependencies.ErrDiskFault) {
 					numRecoveries++
 					continue // try again
 				} else {
@@ -175,7 +178,6 @@ OUTER:
 							uint64(fastrand.Intn(math.MaxInt32)),
 						}
 			*/
-			sf.deps = fdd
 			//sf = dummyEntry(siafile)
 			sf.SetPartialsSiaFile(nil)
 			break

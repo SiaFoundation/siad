@@ -10,13 +10,14 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 // programData is a buffer for the program data. It will read packets from r and
 // append them to data.
 type programData struct {
 	// data contains the already received data.
-	data []byte
+	data modules.ProgramData
 
 	// staticLength is the expected length of the program data. This is the
 	// amount of data that was paid for and not more than that will be read from
@@ -47,7 +48,7 @@ type dataRequest struct {
 	c              chan struct{}
 }
 
-// openProgramData creates a new ProgramData object from the specified reader. It
+// openProgramData creates a new programData object from the specified reader. It
 // will read from the reader until dataLength is reached.
 func openProgramData(r io.Reader, dataLength uint64) *programData {
 	pd := &programData{
@@ -71,13 +72,13 @@ func (pd *programData) threadedFetchData() {
 	remainingData := int64(pd.staticLength)
 	quit := func(err error) {
 		pd.mu.Lock()
+		defer pd.mu.Unlock()
 		// Remember the error and close all open requests before stopping
 		// the loop.
 		pd.readErr = err
 		for _, r := range pd.requests {
 			close(r.c)
 		}
-		pd.mu.Unlock()
 	}
 	for remainingData > 0 {
 		select {
@@ -94,7 +95,7 @@ func (pd *programData) threadedFetchData() {
 		n, err := pd.r.Read(d)
 		if err != nil {
 			quit(err)
-			break
+			return
 		}
 		pd.mu.Lock()
 		remainingData -= int64(n)
@@ -117,7 +118,7 @@ func (pd *programData) threadedFetchData() {
 }
 
 // managedBytes tries to fetch length bytes at offset from the underlying data
-// slice of the ProgramData. If the data is not available yet, a request will be
+// slice of the programData. If the data is not available yet, a request will be
 // queued up and the method will block for the data to be read.
 func (pd *programData) managedBytes(offset, length uint64) ([]byte, error) {
 	// Check if request is valid.

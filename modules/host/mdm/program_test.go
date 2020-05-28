@@ -3,7 +3,6 @@ package mdm
 import (
 	"bytes"
 	"context"
-	"io"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -13,62 +12,34 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// updateRunningCosts is a testing helper function for updating the running
-// costs of a program after adding an instruction.
-func updateRunningCosts(pt modules.RPCPriceTable, runningCost, runningRefund, runningCollateral types.Currency, runningMemory uint64, cost, refund, collateral types.Currency, memory, time uint64) (types.Currency, types.Currency, types.Currency, uint64) {
-	runningMemory = runningMemory + memory
-	memoryCost := modules.MDMMemoryCost(pt, runningMemory, time)
-	runningCost = runningCost.Add(memoryCost).Add(cost)
-	runningRefund = runningRefund.Add(refund)
-	runningCollateral = runningCollateral.Add(collateral)
-
-	return runningCost, runningRefund, runningCollateral, runningMemory
-}
-
 // TestNewEmptyProgram runs a program without instructions.
 func TestNewEmptyProgram(t *testing.T) {
 	// Create MDM
 	mdm := New(newTestHost())
-	defer mdm.Stop()
-	var r io.Reader
-	// Execute the program.
+	// Shouldn't be able to execute empty program.
 	pt := newTestPriceTable()
 	duration := types.BlockHeight(0)
-	initCost := modules.MDMInitCost(pt, 0, 0)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, initCost, types.ZeroCurrency, newTestStorageObligation(true), duration, 0, r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// There should be no outputs since there were no instructions.
-	numOutputs := 0
-	for range outputs {
-		numOutputs++
-	}
-	if numOutputs > 0 {
-		t.Fatalf("numOutputs was %v but should be %v", numOutputs, 0)
-	}
-	// No need to finalize the progra since an empty program is readonly.
-	if finalize != nil {
-		t.Fatal("finalize callback should be nil for readonly program")
+	budget := modules.NewBudget(modules.MDMInitCost(pt, 0, 0))
+	_, _, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, budget, types.ZeroCurrency, newTestStorageObligation(true), duration, 0, bytes.NewReader([]byte{}))
+	if !errors.Contains(err, ErrEmptyProgram) {
+		t.Fatal("expected ErrEmptyProgram", err)
 	}
 }
 
-// TestNewEmptyProgramLowBudget runs a program without instructions with
-// insufficient funds.
-func TestNewEmptyProgramLowBudget(t *testing.T) {
+// TestNewProgramLowInitBudget runs a program that doesn't even have enough funds to init the MDM.
+func TestNewProgramLowInitBudget(t *testing.T) {
 	// Create MDM
 	mdm := New(newTestHost())
-	defer mdm.Stop()
-	var r io.Reader
-	// Execute the program.
 	pt := newTestPriceTable()
 	duration := types.BlockHeight(0)
-	_, _, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, types.ZeroCurrency, types.ZeroCurrency, newTestStorageObligation(true), duration, 0, r)
+	pb := newTestProgramBuilder(pt)
+	pb.AddHasSectorInstruction(crypto.Hash{})
+	program, data := pb.Program()
+	// Execute the program.
+	budget := modules.NewBudget(types.ZeroCurrency)
+	_, _, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, types.ZeroCurrency, newTestStorageObligation(true), duration, uint64(len(data)), bytes.NewReader(data))
 	if !errors.Contains(err, modules.ErrMDMInsufficientBudget) {
 		t.Fatal("missing error")
-	}
-	if err == nil {
-		t.Fatal("ExecuteProgram should return an error")
 	}
 }
 
@@ -80,14 +51,18 @@ func TestNewProgramLowBudget(t *testing.T) {
 	defer mdm.Stop()
 	// Create instruction.
 	pt := newTestPriceTable()
-	instructions, programData, _, _, collateral, _ := newReadSectorProgram(modules.SectorSize, 0, crypto.Hash{}, pt)
-	r := bytes.NewReader(programData)
-	dataLen := uint64(len(programData))
+	pb := newTestProgramBuilder(pt)
+	pb.AddReadSectorInstruction(modules.SectorSize, 0, crypto.Hash{}, true)
+	program, data := pb.Program()
+	values := pb.Cost()
+	_, _, collateral := values.Cost()
+	dataLen := uint64(len(data))
 	// Execute the program with enough money to init the mdm but not enough
 	// money to execute the first instruction.
 	cost := modules.MDMInitCost(pt, dataLen, 1)
 	duration := types.BlockHeight(0)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, collateral, newTestStorageObligation(true), duration, dataLen, r)
+	budget := modules.NewBudget(cost)
+	finalizeFn, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, collateral, newTestStorageObligation(true), duration, dataLen, bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,8 +84,8 @@ func TestNewProgramLowBudget(t *testing.T) {
 		t.Fatalf("numInsufficientBudgetErrs was %v but should be %v", numInsufficientBudgetErrs, 1)
 	}
 	// Finalize should be nil for readonly programs.
-	if finalize != nil {
-		t.Fatal("finalize should be 'nil' for readonly programs")
+	if finalizeFn != nil {
+		t.Fatal("finalizeFn should be 'nil' for readonly programs")
 	}
 }
 
@@ -121,13 +96,17 @@ func TestNewProgramLowCollateralBudget(t *testing.T) {
 	// Create MDM
 	mdm := New(host)
 	defer mdm.Stop()
-	so := newTestStorageObligation(true)
 	// Create instruction.
-	pt := newTestPriceTable()
+	sectorData := fastrand.Bytes(int(modules.SectorSize))
 	duration := types.BlockHeight(0)
-	instructions, programData, cost, _, _, _ := newAppendProgram(fastrand.Bytes(int(modules.SectorSize)), false, pt, duration)
+	pt := newTestPriceTable()
+	pb := newTestProgramBuilder(pt)
+	pb.AddAppendInstruction(sectorData, duration, false)
+	program, data := pb.Program()
+	budget := pb.Cost().Budget(true)
 	// Execute the program with no collateral budget.
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, cost, types.ZeroCurrency, so, duration, uint64(len(programData)), bytes.NewReader(programData))
+	so := newTestStorageObligation(true)
+	finalizeFn, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, types.ZeroCurrency, so, duration, uint64(len(data)), bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +117,7 @@ func TestNewProgramLowCollateralBudget(t *testing.T) {
 		if err := output.Error; errors.Contains(err, modules.ErrMDMInsufficientCollateralBudget) {
 			numInsufficientBudgetErrs++
 		} else if err != nil {
-			t.Fatal(err)
+			t.Fatalf("%v: using budget %v", err, budget)
 		}
 		numOutputs++
 	}
@@ -149,7 +128,7 @@ func TestNewProgramLowCollateralBudget(t *testing.T) {
 		t.Fatalf("numInsufficientBudgetErrs was %v but should be %v", numInsufficientBudgetErrs, 1)
 	}
 	// Try to finalize program. Should fail.
-	if err := finalize(so); err == nil {
+	if err := finalizeFn(so); err == nil {
 		t.Fatal("shouldn't be able to finalize program")
 	}
 }

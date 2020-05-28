@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/types"
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // WalletAddressGet requests a new address from the /wallet/address endpoint
@@ -49,7 +50,23 @@ func (c *Client) WalletChangePasswordWithSeedPost(seed modules.Seed, newPassword
 // WalletVerifyPasswordGet uses the /wallet/verifypassword endpoint to check
 // the wallet's password.
 func (c *Client) WalletVerifyPasswordGet(password string) (wvpg api.WalletVerifyPasswordGET, err error) {
-	err = c.get(fmt.Sprintf("/wallet/verifypassword?password=%v", password), &wvpg)
+	values := url.Values{}
+	values.Set("password", password)
+	err = c.get(fmt.Sprintf("/wallet/verifypassword?%s", values.Encode()), &wvpg)
+	return
+}
+
+// WalletVerifyPasswordSeedGet takes a seed and generates a seed string to
+// submit to the /wallet/verifypassword endpoint
+func (c *Client) WalletVerifyPasswordSeedGet(seed modules.Seed) (wvpg api.WalletVerifyPasswordGET, err error) {
+	dicts := []mnemonics.DictionaryID{"english", "german", "japanese"}
+	for _, dict := range dicts {
+		seedStr, seedErr := modules.SeedToString(seed, mnemonics.DictionaryID(dict))
+		if err == nil {
+			return c.WalletVerifyPasswordGet(seedStr)
+		}
+		err = errors.Compose(err, seedErr)
+	}
 	return
 }
 

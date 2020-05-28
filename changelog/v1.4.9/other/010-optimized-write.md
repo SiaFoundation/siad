@@ -1,0 +1,1 @@
+- Optimize bandwidth consumption for RPC write calls

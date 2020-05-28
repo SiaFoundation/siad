@@ -42,9 +42,13 @@ type renterTester struct {
 
 // Close shuts down the renter tester.
 func (rt *renterTester) Close() error {
-	rt.wallet.Lock()
 	rt.cs.Close()
 	rt.gateway.Close()
+	rt.miner.Close()
+	rt.tpool.Close()
+	rt.wallet.Close()
+	rt.mux.Close()
+	rt.renter.Close()
 	return nil
 }
 
@@ -54,7 +58,7 @@ func (rt *renterTester) addHost(name string) (modules.Host, error) {
 
 	// create a siamux for this particular host
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
-	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, err
 	}
@@ -139,6 +143,33 @@ func (rt *renterTester) createZeroByteFileOnDisk() (string, error) {
 	return path, nil
 }
 
+// reloadRenter closes the given renter and then re-adds it, effectively
+// reloading the renter.
+func (rt *renterTester) reloadRenter(r *Renter) (*Renter, error) {
+	return rt.reloadRenterWithDependency(r, r.deps)
+}
+
+// reloadRenterWithDependency closes the given renter and recreates it using the
+// given dependency, it then re-adds the renter on the renter tester effectively
+// relodaing it.
+func (rt *renterTester) reloadRenterWithDependency(r *Renter, deps modules.Dependencies) (*Renter, error) {
+	err := r.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	r, err = newRenterWithDependency(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(rt.dir, modules.RenterDir), deps)
+	if err != nil {
+		return nil, err
+	}
+
+	err = rt.addRenter(r)
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
 // newRenterTester creates a ready-to-use renter tester with money in the
 // wallet.
 func newRenterTester(name string) (*renterTester, error) {
@@ -165,7 +196,7 @@ func newRenterTester(name string) (*renterTester, error) {
 func newRenterTesterNoRenter(testdir string) (*renterTester, error) {
 	// Create the siamux
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
-	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, err
 	}
@@ -226,7 +257,7 @@ func newRenterTesterWithDependency(name string, deps modules.Dependencies) (*ren
 
 	// Create the siamux
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
-	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		return nil, err
 	}

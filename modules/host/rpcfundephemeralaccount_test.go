@@ -2,8 +2,8 @@ package host
 
 import (
 	"fmt"
+	"io"
 	"strings"
-	"sync"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -11,7 +11,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 // TestFundEphemeralAccountRPC tests the FundEphemeralAccountRPC by manually
@@ -22,16 +21,23 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	}
 	t.Parallel()
 
-	// setup host
-	ht, err := newHostTester(t.Name())
+	// setup renter host pair
+	pair, err := newRenterHostPair(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		err := pair.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+	ht := pair.staticHT
+
+	// fetch the price table
+	pt := pair.managedPriceTable()
 
 	// fetch some host variables
-	pt := ht.host.staticPriceTables.managedCurrent()
-	bh := ht.host.BlockHeight()
 	hpk := ht.host.PublicKey()
 	his := ht.host.InternalSettings()
 
@@ -39,45 +45,36 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	var hcpk crypto.PublicKey
 	copy(hcpk[:], hpk.Key)
 
-	// create a renter key pair
-	sk, rpk := crypto.GenerateKeyPair()
-	renterPK := types.SiaPublicKey{
-		Algorithm: types.SignatureEd25519,
-		Key:       rpk[:],
-	}
+	// specify a refund account. Needs to be zero account string for funding.
+	refundAccount := modules.ZeroAccountID
 
-	// setup storage obligation (emulating a renter creating a contract)
-	so, err := ht.newTesterStorageObligation()
-	if err != nil {
-		t.Fatal(err)
-	}
-	so, err = ht.addNoOpRevision(so, renterPK)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ht.host.managedUnlockStorageObligation(so.id())
-	fcid := so.id()
+	// runWithRequest is a helper function that runs the fundEphemeralAccountRPC
+	// with the given pay by contract request
+	runWithRequest := func(req modules.PayByContractRequest) (*modules.PayByContractResponse, *modules.FundAccountResponse, error) {
+		stream := pair.managedNewStream()
 
-	// prepare an ephemeral account
-	_, accountID := prepareAccount()
+		// write rpc ID
+		err := modules.RPCWrite(stream, modules.RPCFundAccount)
+		if err != nil {
+			return nil, nil, err
+		}
 
-	renterFunc := func(stream siamux.Stream, revision types.FileContractRevision, signature crypto.Signature) (*modules.PayByContractResponse, *modules.FundAccountResponse, error) {
+		// send price table uid
+		err = modules.RPCWrite(stream, pt.UID)
+		if err != nil {
+			return nil, nil, err
+		}
+
 		// send fund account request
-		req := modules.FundAccountRequest{Account: accountID}
-		err := modules.RPCWrite(stream, req)
+		far := modules.FundAccountRequest{Account: pair.staticAccountID}
+		err = modules.RPCWrite(stream, far)
 		if err != nil {
 			return nil, nil, err
 		}
 
 		// send PaymentRequest & PayByContractRequest
 		pRequest := modules.PaymentRequest{Type: modules.PayByContract}
-		pbcRequest := newPayByContractRequest(revision, signature)
-		err = modules.RPCWriteAll(stream, pRequest, pbcRequest)
+		err = modules.RPCWriteAll(stream, pRequest, req)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -95,48 +92,14 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		if err != nil {
 			return nil, nil, err
 		}
-		return &payByResponse, &resp, nil
-	}
 
-	hostFunc := func(stream siamux.Stream) error {
-		err := ht.host.managedRPCFundEphemeralAccount(stream, pt)
-		if err != nil {
-			return modules.RPCWriteError(stream, err)
+		// expect clean stream close
+		err = modules.RPCRead(stream, struct{}{})
+		if !errors.Contains(err, io.ErrClosedPipe) {
+			return nil, nil, err
 		}
-		return nil
-	}
 
-	var mu sync.Mutex
-	addBlock := func() {
-		mu.Lock()
-		defer mu.Unlock()
-		bh += 1
-	}
-
-	runWithRevision := func(rev types.FileContractRevision) (payByResponse *modules.PayByContractResponse, fundResponse *modules.FundAccountResponse, err error) {
-		// create streams
-		rStream, hStream := NewTestStreams()
-		defer rStream.Close()
-		defer hStream.Close()
-
-		var rErr, hErr error
-		sig := revisionSignature(rev, bh, sk)
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			payByResponse, fundResponse, rErr = renterFunc(rStream, rev, sig)
-			wg.Done()
-		}()
-
-		wg.Add(1)
-		go func() {
-			hErr = hostFunc(hStream)
-			wg.Done()
-		}()
-		wg.Wait()
-		addBlock() // increase the blockheight on every run
-		err = errors.Compose(rErr, hErr)
-		return
+		return &payByResponse, &resp, nil
 	}
 
 	verifyResponse := func(rev types.FileContractRevision, payByResponse *modules.PayByContractResponse, fundResponse *modules.FundAccountResponse, prevBalance, prevPotAccFunding, funding types.Currency) error {
@@ -153,15 +116,15 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		if !receipt.Amount.Equals(funding) {
 			return fmt.Errorf("Unexpected funded amount in the receipt, expected %v but received %v", funding.HumanString(), receipt.Amount.HumanString())
 		}
-		if receipt.Account != accountID {
-			return fmt.Errorf("Unexpected account id in the receipt, expected %v but received %v", accountID, receipt.Account)
+		if receipt.Account != pair.staticAccountID {
+			return fmt.Errorf("Unexpected account id in the receipt, expected %v but received %v", pair.staticAccountID, receipt.Account)
 		}
 		if !receipt.Host.Equals(hpk) {
 			return fmt.Errorf("Unexpected host pubkey in the receipt, expected %v but received %v", hpk, receipt.Host)
 		}
 
 		// verify the funding got deposited into the ephemeral account
-		currBalance := getAccountBalance(ht.host.staticAccountManager, accountID)
+		currBalance := getAccountBalance(ht.host.staticAccountManager, pair.staticAccountID)
 		if !currBalance.Equals(prevBalance.Add(funding)) {
 			t.Fatalf("Unexpected account balance, expected %v but received %v", prevBalance.Add(funding).HumanString(), currBalance.HumanString())
 		}
@@ -174,28 +137,15 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		return nil
 	}
 
-	recentSO := func() types.FileContractRevision {
-		so, err = ht.host.managedGetStorageObligation(fcid)
-		if err != nil {
-			t.Fatal(err)
-		}
-		recent, err := so.recentRevision()
-		if err != nil {
-			t.Fatal(err)
-		}
-		return recent
-	}
-
 	// verify happy flow
-	recent := recentSO()
 	funding := types.NewCurrency64(100)
 	fmPAF := ht.host.FinancialMetrics().PotentialAccountFunding
-	rev, err := recent.PaymentRevision(funding.Add(pt.FundAccountCost))
+	rev, sig, err := pair.managedPaymentRevision(funding.Add(pt.FundAccountCost))
 	if err != nil {
 		t.Fatal(err)
 	}
-	balance := getAccountBalance(ht.host.staticAccountManager, accountID)
-	pbcResp, fundAccResp, err := runWithRevision(rev)
+	balance := getAccountBalance(ht.host.staticAccountManager, pair.staticAccountID)
+	pbcResp, fundAccResp, err := runWithRequest(newPayByContractRequest(rev, sig, refundAccount))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,109 +156,77 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	}
 
 	// expect error when we move funds back to the renter
-	recent = recentSO()
-	rev, err = recent.PaymentRevision(funding.Add(pt.FundAccountCost))
+	rev, _, err = pair.managedPaymentRevision(funding.Add(pt.FundAccountCost))
 	if err != nil {
 		t.Fatal(err)
 	}
 	rev.SetValidRenterPayout(rev.ValidRenterPayout().Add64(1))
-	_, _, err = runWithRevision(rev)
+	_, _, err = runWithRequest(newPayByContractRequest(rev, pair.managedSign(rev), refundAccount))
+
 	if err == nil || !strings.Contains(err.Error(), "rejected for low paying host valid output") {
 		t.Fatalf("Expected error indicating the invalid revision, instead error was: '%v'", err)
 	}
 
 	// expect error when we didn't move enough funds to the renter
-	recent = recentSO()
-	rev, err = recent.PaymentRevision(funding.Add(pt.FundAccountCost))
+	rev, _, err = pair.managedPaymentRevision(funding.Add(pt.FundAccountCost))
 	if err != nil {
 		t.Fatal(err)
 	}
 	rev.SetValidHostPayout(rev.ValidHostPayout().Sub64(1))
-	_, _, err = runWithRevision(rev)
+	_, _, err = runWithRequest(newPayByContractRequest(rev, pair.managedSign(rev), refundAccount))
+
 	if err == nil || !strings.Contains(err.Error(), "rejected for low paying host valid output") {
 		t.Fatalf("Expected error indicating the invalid revision, instead error was: '%v'", err)
 	}
 
 	// expect error when the funds we move are not enough to cover the cost
-	recent = recentSO()
-	rev, err = recent.PaymentRevision(pt.FundAccountCost.Sub64(1))
+	rev, sig, err = pair.managedPaymentRevision(pt.FundAccountCost.Sub64(1))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = runWithRevision(rev)
+	_, _, err = runWithRequest(newPayByContractRequest(rev, sig, refundAccount))
+
 	if err == nil || !strings.Contains(err.Error(), "amount that was deposited did not cover the cost of the RPC") {
 		t.Fatalf("Expected error indicating the lack of funds, instead error was: '%v'", err)
 	}
 
 	// expect error when the funds exceed the host's max ephemeral account
 	// balance
-	recent = recentSO()
-	rev, err = recent.PaymentRevision(pt.FundAccountCost.Add(his.MaxEphemeralAccountBalance.Add64(1)))
+	rev, sig, err = pair.managedPaymentRevision(pt.FundAccountCost.Add(his.MaxEphemeralAccountBalance.Add64(1)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = runWithRevision(rev)
+	_, _, err = runWithRequest(newPayByContractRequest(rev, sig, refundAccount))
 	if err == nil || !strings.Contains(err.Error(), ErrBalanceMaxExceeded.Error()) {
 		t.Fatalf("Expected error '%v', instead error was '%v'", ErrBalanceMaxExceeded, err)
 	}
 
 	// expect error when we corrupt the renter's revision signature
-	recent = recentSO()
-	rStream, hStream := NewTestStreams()
-	var rErr, hErr error
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer rStream.Close()
-		sig := revisionSignature(rev, bh, sk)
-		fastrand.Read(sig[:4]) // corrupt the signature
-		_, _, rErr = renterFunc(rStream, rev, sig)
-	}()
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer hStream.Close()
-		hErr = hostFunc(hStream)
-	}()
-	wg.Wait()
-	if rErr == nil || !strings.Contains(rErr.Error(), "invalid signature") {
+	rev, sig, err = pair.managedPaymentRevision(funding.Add(pt.FundAccountCost))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fastrand.Read(sig[:4]) // corrupt the signature
+	_, _, err = runWithRequest(newPayByContractRequest(rev, sig, refundAccount))
+	if err == nil || !strings.Contains(err.Error(), "invalid signature") {
 		t.Fatalf("Unexpected renter err, expected 'invalid signature' but got '%v'", err)
 	}
-	if hErr != nil {
+
+	// expect error when refund account id is provided for funding account.
+	var aid modules.AccountID
+	err = aid.LoadString("prefix:deadbeef")
+	if err != nil {
 		t.Fatal(err)
 	}
-
-	// expect error when we run 2 revisions in parallel with the same revision
-	// number
-	recent = recentSO()
-	rev1, err1 := recent.PaymentRevision(funding.Add(pt.FundAccountCost))
-	rev2, err2 := recent.PaymentRevision(funding.Mul64(2).Add(pt.FundAccountCost))
-	if err := errors.Compose(err1, err2); err != nil {
-		t.Fatal(err)
-	}
-
-	wg.Add(1)
-	go func() {
-		_, _, err1 = runWithRevision(rev1)
-		wg.Done()
-	}()
-	wg.Add(1)
-	go func() {
-		_, _, err2 = runWithRevision(rev2)
-		wg.Done()
-	}()
-	wg.Wait()
-	err = errors.Compose(err1, err2)
+	_, _, err = runWithRequest(newPayByContractRequest(rev, sig, aid))
 	if err == nil {
-		t.Fatal("Expected failure when running 2 in parallel because they are using the same revision number, instead err was nil")
+		t.Fatal("expected error when refund account is provided for funding account")
 	}
 
 	// expect error when revision moves collateral
-
 	// update the host collateral
 	collateral := types.NewCurrency64(5)
-	so, err = ht.host.managedGetStorageObligation(recent.ID())
+	so, err := ht.host.managedGetStorageObligation(pair.staticFCID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -322,8 +240,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	ht.host.managedUnlockStorageObligation(so.id())
 
 	// create a revision and move some collateral
-	recent = recentSO()
-	rev, err = recent.PaymentRevision(funding.Add(pt.FundAccountCost))
+	rev, _, err = pair.managedPaymentRevision(funding.Add(pt.FundAccountCost))
 	rev.SetMissedHostPayout(rev.MissedHostOutput().Value.Sub(collateral))
 	voidOutput, err := rev.MissedVoidOutput()
 	if err != nil {
@@ -333,13 +250,14 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = runWithRevision(rev)
+	_, _, err = runWithRequest(newPayByContractRequest(rev, pair.managedSign(rev), refundAccount))
+
 	if err == nil || !strings.Contains(err.Error(), "host not expecting to post any collateral") {
 		t.Fatalf("Expected error '%v', instead error was '%v'", "host not expecting to post any collateral", err)
 	}
 
 	// undo host collateral update
-	so, err = ht.host.managedGetStorageObligation(recent.ID())
+	so, err = ht.host.managedGetStorageObligation(pair.staticFCID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,14 +271,14 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 
 	// verify happy flow again to make sure the error'ed out calls don't mess
 	// anything up
-	recent = recentSO()
 	fmPAF = ht.host.FinancialMetrics().PotentialAccountFunding
-	rev, err = recent.PaymentRevision(funding.Add(pt.FundAccountCost))
+	rev, sig, err = pair.managedPaymentRevision(funding.Add(pt.FundAccountCost))
 	if err != nil {
 		t.Fatal(err)
 	}
-	balance = getAccountBalance(ht.host.staticAccountManager, accountID)
-	pbcResp, fundAccResp, err = runWithRevision(rev)
+
+	balance = getAccountBalance(ht.host.staticAccountManager, pair.staticAccountID)
+	pbcResp, fundAccResp, err = runWithRequest(newPayByContractRequest(rev, sig, refundAccount))
 	if err != nil {
 		t.Fatal(err)
 	}

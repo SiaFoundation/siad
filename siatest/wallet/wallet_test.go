@@ -865,8 +865,34 @@ func TestWalletVerifyPassword(t *testing.T) {
 		t.Error("Password should not be valid")
 	}
 
+	// Verify that the Primary Seed will return valid
+	wsg, err := wallet.WalletSeedsGet()
+	if err != nil {
+		t.Error(err)
+	}
+	wvpg, err = wallet.WalletVerifyPasswordGet(wsg.PrimarySeed)
+	if err != nil {
+		t.Error(err)
+	}
+	if !wvpg.Valid {
+		t.Error("Primary Seed should be valid")
+	}
+
+	// Check primary seed with Seed Endpoint
+	seed, err := modules.StringToSeed(wsg.PrimarySeed, "english")
+	if err != nil {
+		t.Error(err)
+	}
+	wvpg, err = wallet.WalletVerifyPasswordSeedGet(seed)
+	if err != nil {
+		t.Error(err)
+	}
+	if !wvpg.Valid {
+		t.Error("Primary Seed should be valid")
+	}
+
 	// Reinit the wallet by using a specific password.
-	seed := modules.Seed{}
+	seed = modules.Seed{}
 	fastrand.Read(seed[:])
 	seedStr, err := modules.SeedToString(seed, mnemonics.DictionaryID("english"))
 	if err != nil {

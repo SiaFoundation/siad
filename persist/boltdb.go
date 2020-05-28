@@ -69,7 +69,7 @@ func (db *BoltDatabase) Close() error {
 func OpenDatabase(md Metadata, filename string) (*BoltDatabase, error) {
 	// Open the database using a 3 second timeout (without the timeout,
 	// database will potentially hang indefinitely.
-	db, err := bolt.Open(filename, 0600, &bolt.Options{Timeout: 3 * time.Second})
+	db, err := bolt.Open(filename, defaultFilePermissions, &bolt.Options{Timeout: 3 * time.Second})
 	if err != nil {
 		return nil, err
 	}

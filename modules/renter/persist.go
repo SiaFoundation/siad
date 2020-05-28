@@ -28,7 +28,7 @@ const (
 )
 
 var (
-	//ErrBadFile is an error when a file does not qualify as .sia file
+	// ErrBadFile is an error when a file does not qualify as .sia file
 	ErrBadFile = errors.New("not a .sia file")
 	// ErrIncompatible is an error when file is not compatible with current
 	// version
@@ -130,22 +130,6 @@ func (r *Renter) managedInitPersist() error {
 		return err
 	}
 
-	// Initialize the logger.
-	r.log, err = persist.NewFileLogger(filepath.Join(r.persistDir, logFile))
-	if err != nil {
-		return err
-	}
-	if err := r.tg.AfterStop(r.log.Close); err != nil {
-		return err
-	}
-	r.repairLog, err = persist.NewFileLogger(filepath.Join(r.persistDir, repairLogFile))
-	if err != nil {
-		return err
-	}
-	if err := r.tg.AfterStop(r.repairLog.Close); err != nil {
-		return err
-	}
-
 	// Initialize the writeaheadlog.
 	options := writeaheadlog.Options{
 		StaticLog: r.log,
@@ -207,15 +191,15 @@ func (r *Renter) managedInitPersist() error {
 	}
 
 	// Create the essential dirs in the filesystem.
-	err = fs.NewSiaDir(modules.HomeSiaPath(), modules.DefaultDirPerm)
+	err = fs.NewSiaDir(modules.HomeFolder, modules.DefaultDirPerm)
 	if err != nil && err != filesystem.ErrExists {
 		return err
 	}
-	err = fs.NewSiaDir(modules.UserSiaPath(), modules.DefaultDirPerm)
+	err = fs.NewSiaDir(modules.UserFolder, modules.DefaultDirPerm)
 	if err != nil && err != filesystem.ErrExists {
 		return err
 	}
-	err = fs.NewSiaDir(modules.SnapshotsSiaPath(), modules.DefaultDirPerm)
+	err = fs.NewSiaDir(modules.BackupFolder, modules.DefaultDirPerm)
 	if err != nil && err != filesystem.ErrExists {
 		return err
 	}

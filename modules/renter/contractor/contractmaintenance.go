@@ -6,6 +6,7 @@ package contractor
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"reflect"
 	"time"
@@ -18,6 +19,11 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
+
+// MaxCriticalRenewFailThreshold is the maximum number of contracts failing to renew as
+// fraction of the total hosts in the allowance before renew alerts are made
+// critical.
+const MaxCriticalRenewFailThreshold = 0.2
 
 var (
 	// ErrInsufficientAllowance indicates that the renter's allowance is less
@@ -33,8 +39,10 @@ var (
 type (
 	// fileContractRenewal is an instruction to renew a file contract.
 	fileContractRenewal struct {
-		id     types.FileContractID
-		amount types.Currency
+		id         types.FileContractID
+		amount     types.Currency
+		hostPubKey types.SiaPublicKey
+		endHeight  types.BlockHeight
 	}
 )
 
@@ -89,17 +97,25 @@ func (c *Contractor) managedCheckForDuplicates() {
 
 			// Link the contracts to each other and then store the old contract
 			// in the record of historic contracts.
+			//
+			// Note: This means that if there are multiple duplicates, say 3
+			// contracts that all share the same host, then the ordering may not
+			// be perfect. If in reality the renewal order was A<->B<->C, it's
+			// possible for the contractor to end up with A->C and B<->C in the
+			// mapping.
 			c.mu.Lock()
 			c.renewedFrom[newContract.ID] = oldContract.ID
 			c.renewedTo[oldContract.ID] = newContract.ID
 			c.oldContracts[oldContract.ID] = oldSC.Metadata()
-			c.pubKeysToContractID[string(newContract.HostPublicKey.Key)] = newContract.ID
 
 			// Save the contractor and delete the contract.
 			//
 			// TODO: Ideally these two things would happen atomically, but I'm
 			// not completely certain that's feasible with our current
 			// architecture.
+			//
+			// TODO: This should revert the in memory state in the event of an
+			// error and continue
 			err := c.save()
 			if err != nil {
 				c.log.Println("Failed to save the contractor after updating renewed maps.")
@@ -108,12 +124,6 @@ func (c *Contractor) managedCheckForDuplicates() {
 			c.staticContracts.Delete(oldSC)
 
 			// Update the pubkeys map to contain the newest contract id.
-			//
-			// TODO: This means that if there are multiple duplicates, say 3
-			// contracts that all share the same host, then the ordering may not
-			// be perfect. If in reality the renewal order was A<->B<->C, it's
-			// possible for the contractor to end up with A->C and B<->C in the
-			// mapping.
 			pubkeys[contract.HostPublicKey.String()] = newContract.ID
 		}
 	}
@@ -424,24 +434,13 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 
 	contractValue := contract.RenterFunds
 	c.log.Printf("Formed contract %v with %v for %v", contract.ID, host.NetAddress, contractValue.HumanString())
-	return contractFunding, contract, nil
-}
 
-// managedPrunePubkeyMap will delete any pubkeys in the pubKeysToContractID map
-// that no longer map to an active contract.
-func (c *Contractor) managedPrunePubkeyMap() {
-	allContracts := c.staticContracts.ViewAll()
-	pks := make(map[string]struct{})
-	for _, c := range allContracts {
-		pks[c.HostPublicKey.String()] = struct{}{}
+	// Update the hostdb to include the new contract.
+	err = c.hdb.UpdateContracts(c.staticContracts.ViewAll())
+	if err != nil {
+		c.log.Println("Unable to update hostdb contracts:", err)
 	}
-	c.mu.Lock()
-	for pk := range c.pubKeysToContractID {
-		if _, exists := pks[pk]; !exists {
-			delete(c.pubKeysToContractID, pk)
-		}
-	}
-	c.mu.Unlock()
+	return contractFunding, contract, nil
 }
 
 // managedPrunedRedundantAddressRange uses the hostdb to find hosts that
@@ -524,7 +523,7 @@ func checkFormContractGouging(allowance modules.Allowance, hostSettings modules.
 // managedRenew negotiates a new contract for data already stored with a host.
 // It returns the new contract. This is a blocking call that performs network
 // I/O.
-func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.Currency, newEndHeight types.BlockHeight) (modules.RenterContract, error) {
+func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.Currency, newEndHeight types.BlockHeight, hostSettings modules.HostExternalSettings) (modules.RenterContract, error) {
 	// For convenience
 	contract := sc.Metadata()
 	// Sanity check - should not be renewing a bad contract.
@@ -539,6 +538,21 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	if err != nil {
 		return modules.RenterContract{}, errors.AddContext(err, "error getting host from hostdb:")
 	}
+	// Use the most recent hostSettings, along with the host db entry.
+	host.HostExternalSettings = hostSettings
+
+	if c.staticDeps.Disrupt("DefaultRenewSettings") {
+		c.log.Debugln("Using default host settings")
+		host.HostExternalSettings = modules.DefaultHostExternalSettings()
+		// Reset some specific settings, not available through the default.
+		host.HostExternalSettings.NetAddress = hostSettings.NetAddress
+		host.HostExternalSettings.RemainingStorage = hostSettings.RemainingStorage
+		host.HostExternalSettings.TotalStorage = hostSettings.TotalStorage
+		host.HostExternalSettings.UnlockHash = hostSettings.UnlockHash
+		host.HostExternalSettings.RevisionNumber = hostSettings.RevisionNumber
+		host.HostExternalSettings.SiaMuxPort = hostSettings.SiaMuxPort
+	}
+
 	c.mu.Lock()
 	if reflect.DeepEqual(c.allowance, modules.Allowance{}) {
 		c.mu.Unlock()
@@ -546,6 +560,7 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	}
 	period := c.allowance.Period
 	c.mu.Unlock()
+
 	if !ok {
 		return modules.RenterContract{}, errors.New("no record of that host")
 	} else if host.Filtered {
@@ -630,6 +645,12 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	c.pubKeysToContractID[newContract.HostPublicKey.String()] = newContract.ID
 	c.mu.Unlock()
 
+	// Update the hostdb to include the new contract.
+	err = c.hdb.UpdateContracts(c.staticContracts.ViewAll())
+	if err != nil {
+		c.log.Println("Unable to update hostdb contracts:", err)
+	}
+
 	return newContract, nil
 }
 
@@ -643,6 +664,15 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	// Pull the variables out of the renewal.
 	id := renewInstructions.id
 	amount := renewInstructions.amount
+	hostPubKey := renewInstructions.hostPubKey
+
+	// Get a session with the host, before marking it as being renewed.
+	hs, err := c.Session(hostPubKey, c.tg.StopChan())
+	if err != nil {
+		err = errors.AddContext(err, "Unable to establish session with host")
+		return
+	}
+	s := hs.(*hostSession)
 
 	// Mark the contract as being renewed, and defer logic to unmark it
 	// once renewing is complete.
@@ -658,11 +688,11 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	}()
 
 	// Wait for any active editors/downloaders/sessions to finish for this
-	// contract, and then grab the latest revision.
+	// contract, and then grab the latest host settings.
+	var hostSettings modules.HostExternalSettings
 	c.mu.RLock()
 	e, eok := c.editors[id]
 	d, dok := c.downloaders[id]
-	s, sok := c.sessions[id]
 	c.mu.RUnlock()
 	if eok {
 		c.log.Debugln("Waiting for editor invalidation")
@@ -674,11 +704,16 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 		d.invalidate()
 		c.log.Debugln("Got downloader invalidation")
 	}
-	if sok {
-		c.log.Debugln("Waiting for session invalidation")
-		s.invalidate()
-		c.log.Debugln("Got session invalidation")
+
+	// Use the Settings RPC with the host and then invalidate the session.
+	hostSettings, err = s.Settings()
+	if err != nil {
+		err = errors.AddContext(err, "Unable to get host settings")
+		return
 	}
+	c.log.Debugln("Waiting for session invalidation")
+	s.invalidate()
+	c.log.Debugln("Got session invalidation")
 
 	// Fetch the contract that we are renewing.
 	c.log.Debugln("Acquiring contract from the contract set", id)
@@ -705,7 +740,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	// row and reached its second half of the renew window, we give up
 	// on renewing it and set goodForRenew to false.
 	c.log.Debugln("calling managedRenew on contract", id)
-	newContract, errRenew := c.managedRenew(oldContract, amount, endHeight)
+	newContract, errRenew := c.managedRenew(oldContract, amount, endHeight, hostSettings)
 	c.log.Debugln("managedRenew has returned with error:", errRenew)
 	if errRenew != nil {
 		// Increment the number of failed renews for the contract if it
@@ -831,6 +866,22 @@ func (c *Contractor) managedAcquireAndUpdateContractUtility(id types.FileContrac
 		return errors.New("failed to acquire contract for update")
 	}
 	defer c.staticContracts.Return(safeContract)
+
+	return c.managedUpdateContractUtility(safeContract, utility)
+}
+
+// managedUpdateContractUtility is a helper function that updates the contract
+// with the given utility.
+func (c *Contractor) managedUpdateContractUtility(safeContract *proto.SafeContract, utility modules.ContractUtility) error {
+	// Sanity check to verify that we aren't attempting to set a good utility on
+	// a contract that has been renewed.
+	c.mu.Lock()
+	_, exists := c.renewedTo[safeContract.Metadata().ID]
+	c.mu.Unlock()
+	if exists && (utility.GoodForRenew || utility.GoodForUpload) {
+		c.log.Critical("attempting to update contract utility on a contract that has been renewed")
+	}
+
 	return c.callUpdateUtility(safeContract, utility, false)
 }
 
@@ -902,7 +953,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	c.callRecoverContracts()
 	c.managedArchiveContracts()
 	c.managedCheckForDuplicates()
-	c.managedPrunePubkeyMap()
+	c.managedUpdatePubKeyToContractIDMap()
 	c.managedPrunedRedundantAddressRange()
 	err = c.managedMarkContractsUtility()
 	if err != nil {
@@ -911,7 +962,7 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	err = c.hdb.UpdateContracts(c.staticContracts.ViewAll())
 	if err != nil {
-		c.log.Debugln("Unable to update hostdb contracts:", err)
+		c.log.Println("Unable to update hostdb contracts:", err)
 		return
 	}
 
@@ -991,8 +1042,10 @@ func (c *Contractor) threadedContractMaintenance() {
 				continue
 			}
 			renewSet = append(renewSet, fileContractRenewal{
-				id:     contract.ID,
-				amount: renewAmount,
+				id:         contract.ID,
+				amount:     renewAmount,
+				hostPubKey: contract.HostPublicKey,
+				endHeight:  contract.EndHeight,
 			})
 			c.log.Debugln("Contract has been added to the renew set for being past the renew height")
 			continue
@@ -1024,8 +1077,10 @@ func (c *Contractor) threadedContractMaintenance() {
 			// the user in the event that the user stops uploading immediately
 			// after the renew.
 			refreshSet = append(refreshSet, fileContractRenewal{
-				id:     contract.ID,
-				amount: contract.TotalCost.Mul64(2),
+				id:         contract.ID,
+				amount:     contract.TotalCost.Mul64(2),
+				hostPubKey: contract.HostPublicKey,
+				endHeight:  contract.EndHeight,
 			})
 			c.log.Debugln("Contract identified as needing to be added to refresh set", contract.RenterFunds, sectorPrice.Mul64(3), percentRemaining, MinContractFundRenewalThreshold)
 		} else {
@@ -1072,6 +1127,9 @@ func (c *Contractor) threadedContractMaintenance() {
 	}
 	c.log.Debugln("Remaining funds in allowance:", fundsRemaining.HumanString())
 
+	// Keep track of the total number of renews that failed for any reason.
+	var numRenewFails int
+
 	// Register or unregister and alerts related to contract renewal or
 	// formation.
 	var registerLowFundsAlert bool
@@ -1082,8 +1140,17 @@ func (c *Contractor) threadedContractMaintenance() {
 		} else {
 			c.staticAlerter.UnregisterAlert(modules.AlertIDRenterAllowanceLowFunds)
 		}
+
+		alertSeverity := modules.SeverityError
+		// Increase the alert severity for renewal fails to critical if the number of
+		// contracts which failed to renew is more than 20% of the number of hosts.
+		if float64(numRenewFails) > math.Ceil(float64(allowance.Hosts)*MaxCriticalRenewFailThreshold) {
+			alertSeverity = modules.SeverityCritical
+		}
 		if renewErr != nil {
-			c.staticAlerter.RegisterAlert(modules.AlertIDRenterContractRenewalError, AlertMSGFailedContractRenewal, renewErr.Error(), modules.SeverityError)
+			c.log.Debugln("SEVERE", numRenewFails, float64(allowance.Hosts)*MaxCriticalRenewFailThreshold)
+			c.log.Debugln("alert err: ", renewErr)
+			c.staticAlerter.RegisterAlert(modules.AlertIDRenterContractRenewalError, AlertMSGFailedContractRenewal, renewErr.Error(), modules.AlertSeverity(alertSeverity))
 		} else {
 			c.staticAlerter.UnregisterAlert(modules.AlertIDRenterContractRenewalError)
 		}
@@ -1130,6 +1197,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		} else if err != nil {
 			c.log.Println("Error renewing a contract", renewal.id, err)
 			renewErr = errors.Compose(renewErr, err)
+			numRenewFails += 1
 		} else {
 			c.log.Println("Renewal completed without error")
 		}
@@ -1169,6 +1237,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		if err != nil {
 			c.log.Println("Error refreshing a contract", renewal.id, err)
 			renewErr = errors.Compose(renewErr, err)
+			numRenewFails += 1
 		} else {
 			c.log.Println("Refresh completed without error")
 		}

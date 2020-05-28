@@ -45,10 +45,11 @@ type fanoutStreamBufferDataSource struct {
 // interface on the skyfile, and then passing that to the stream buffer set.
 func (r *Renter) newFanoutStreamer(link modules.Skylink, ll skyfileLayout, fanoutBytes []byte, timeout time.Duration) (modules.Streamer, error) {
 	// Create the erasure coder and the master key.
-	masterKey, err := crypto.NewSiaKey(ll.cipherType, ll.cipherKey[:])
+	masterKey, err := r.deriveFanoutKey(&ll)
 	if err != nil {
 		return nil, errors.AddContext(err, "count not recover siafile fanout because cipher key was unavailable")
 	}
+
 	ec, err := siafile.NewRSSubCode(int(ll.fanoutDataPieces), int(ll.fanoutParityPieces), crypto.SegmentSize)
 	if err != nil {
 		return nil, errors.New("unable to initialize erasure code")

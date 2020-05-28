@@ -34,6 +34,12 @@ func TestAccountCallDeposit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -66,6 +72,12 @@ func TestAccountMaxBalance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -76,6 +88,11 @@ func TestAccountMaxBalance(t *testing.T) {
 	exceedingBalance := maxBalance.Add(types.NewCurrency64(1))
 	err = callDeposit(am, accountID, exceedingBalance)
 	if !errors.Contains(err, ErrBalanceMaxExceeded) {
+		t.Fatal(err)
+	}
+	// A refund should ignore the max account balance.
+	err = am.callRefund(accountID, exceedingBalance)
+	if err != nil {
 		t.Fatal(err)
 	}
 }
@@ -91,6 +108,12 @@ func TestAccountCallWithdraw(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -169,6 +192,12 @@ func TestAccountCallWithdrawTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare a new account
@@ -193,6 +222,12 @@ func TestAccountExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -235,6 +270,12 @@ func TestAccountWithdrawalSpent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -273,6 +314,12 @@ func TestAccountWithdrawalExpired(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -306,6 +353,12 @@ func TestAccountWithdrawalExtremeFuture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -349,6 +402,12 @@ func TestAccountWithdrawalInvalidSignature(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account and fund it
@@ -388,6 +447,12 @@ func TestAccountRiskBenchmark(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// These atomics cause the test to stop, if we encounter errors we want to
@@ -587,6 +652,12 @@ func TestAccountWithdrawalBenchmark(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	var atomicWithdrawalErrs uint64
@@ -686,6 +757,12 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Grab some settings
@@ -757,6 +834,12 @@ func TestAccountWithdrawalBlockMultiple(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -846,6 +929,12 @@ func TestAccountMaxEphemeralAccountRisk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	his := ht.host.InternalSettings()
@@ -920,6 +1009,12 @@ func TestAccountIndexRecycling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	numAcc := 100
@@ -1032,6 +1127,12 @@ func TestAccountWithdrawalsInactive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 	am := ht.host.staticAccountManager
 
 	// Prepare an account
@@ -1141,13 +1242,14 @@ func prepareWithdrawal(id modules.AccountID, amount types.Currency, expiry types
 
 // prepareAccount will create an account and return its secret key alonside it's
 // sia public key
-func prepareAccount() (crypto.SecretKey, modules.AccountID) {
+func prepareAccount() (_ crypto.SecretKey, aid modules.AccountID) {
 	sk, pk := crypto.GenerateKeyPair()
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
 	}
-	return sk, modules.AccountID(spk.String())
+	aid.FromSPK(spk)
+	return sk, aid
 }
 
 // randuint64 generates a random uint64

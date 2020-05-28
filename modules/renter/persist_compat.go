@@ -410,6 +410,9 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to transform old file to new file")
 		}
+		if entry.NumChunks() < 1 {
+			return nil, errors.AddContext(err, "new file has invalid number of chunks")
+		}
 		names[i] = f.name
 		entry.Close()
 	}
@@ -430,9 +433,9 @@ func (r *Renter) convertPersistVersionFrom140To142(path string) error {
 	}
 	// Rename siafiles folder to fs/home/user and snapshots to fs/snapshots.
 	fsRoot := filepath.Join(r.persistDir, modules.FileSystemRoot)
-	newHomePath := modules.HomeSiaPath().SiaDirSysPath(fsRoot)
-	newSiaFilesPath := modules.UserSiaPath().SiaDirSysPath(fsRoot)
-	newSnapshotsPath := modules.SnapshotsSiaPath().SiaDirSysPath(fsRoot)
+	newHomePath := modules.HomeFolder.SiaDirSysPath(fsRoot)
+	newSiaFilesPath := modules.UserFolder.SiaDirSysPath(fsRoot)
+	newSnapshotsPath := modules.BackupFolder.SiaDirSysPath(fsRoot)
 	if err := os.MkdirAll(newHomePath, 0700); err != nil {
 		return errors.AddContext(err, "failed to create new home dir")
 	}

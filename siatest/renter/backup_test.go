@@ -122,7 +122,7 @@ func TestCreateLoadBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The .siadir file should also be recovered.
-	dirMDPath := filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, "subDir", modules.SiaDirExtension)
+	dirMDPath := filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.UserFolder.String(), "subDir", modules.SiaDirExtension)
 	if _, err := os.Stat(dirMDPath); os.IsNotExist(err) {
 		t.Fatal(".siadir file doesn't exist:", dirMDPath)
 	}
@@ -193,7 +193,7 @@ func TestInterruptBackup(t *testing.T) {
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
-		Hosts:   2,
+		Hosts:   5,
 		Miners:  1,
 		Renters: 1,
 	}
@@ -223,20 +223,25 @@ func TestInterruptBackup(t *testing.T) {
 	parityPieces := uint64(1)
 	_, err = r.UploadBlocking(lf, dataPieces, parityPieces, false)
 	if err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 
 	// Create a snapshot.
 	if err := r.RenterCreateBackupPost("foo"); err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 	// The snapshot should be listed and not 100% uploaded.
 	ubs, err := r.RenterBackups()
 	if err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	} else if len(ubs.Backups) != 1 {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal("expected one backup, got", ubs)
 	} else if ubs.Backups[0].UploadProgress == 100 {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal("backup should not be 100% uploaded")
 	}
 
@@ -248,10 +253,13 @@ func TestInterruptBackup(t *testing.T) {
 	// The snapshot should still be listed and incomplete.
 	ubs, err = r.RenterBackups()
 	if err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	} else if len(ubs.Backups) != 1 {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal("expected one backup, got", ubs)
 	} else if ubs.Backups[0].UploadProgress == 100 {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal("backup should not be 100% uploaded")
 	}
 
@@ -259,14 +267,15 @@ func TestInterruptBackup(t *testing.T) {
 	err = build.Retry(60, time.Second, func() error {
 		ubs, _ := r.RenterBackups()
 		if len(ubs.Backups) != 1 {
-			return errors.New("expected one backup")
+			return fmt.Errorf("expected one backup for %v", len(ubs.Backups))
 		}
 		if ubs.Backups[0].UploadProgress != 100 {
-			return errors.New("backup not uploaded")
+			return fmt.Errorf("backup not uploaded, upload progress is %v", ubs.Backups[0].UploadProgress)
 		}
 		return nil
 	})
 	if err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 }
@@ -282,8 +291,10 @@ func TestRemoteBackup(t *testing.T) {
 	filesSize := int(20e3)
 
 	// Create a testgroup.
+	//
+	// Need 5 hosts to address an NDF with the snapshot upload code.
 	groupParams := siatest.GroupParams{
-		Hosts:   2,
+		Hosts:   5,
 		Miners:  1,
 		Renters: 1,
 	}
@@ -309,7 +320,7 @@ func TestRemoteBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Upload the file.
-	dataPieces := uint64(len(tg.Hosts()) - 1)
+	dataPieces := uint64(2) // for use with 5 hosts, minimizes exposure to the upload failure NDF
 	parityPieces := uint64(1)
 	rf, err := r.UploadBlocking(lf, dataPieces, parityPieces, false)
 	if err != nil {
@@ -466,8 +477,8 @@ func TestRemoteBackup(t *testing.T) {
 			return err
 		} else if len(ubs.Backups) != 2 {
 			return fmt.Errorf("expected two backups, got %v", ubs.Backups)
-		} else if len(ubs.SyncedHosts) != 2 {
-			return fmt.Errorf("expected two synced hosts, got %v", len(ubs.SyncedHosts))
+		} else if len(ubs.SyncedHosts) != 5 {
+			return fmt.Errorf("expected five hosts with synced backups, got %v", len(ubs.SyncedHosts))
 		}
 		return nil
 	})
@@ -556,7 +567,7 @@ func TestRemoteBackup(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(backups.Backups) != 2 {
-			t.Error("Not enough backups detected", len(backups.Backups))
+			t.Error("Wrong number of backups detected", len(backups.Backups))
 		}
 	}
 

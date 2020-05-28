@@ -213,6 +213,91 @@ func (cl *churnLimiter) managedCanChurnContract(contract modules.RenterContract)
 	return fitsInPeriodBudget && fitsInCurrentBudget
 }
 
+// managedMarkContractsUtility checks an active contract in the contractor and
+// figures out whether the contract is useful for uploading, and whether the
+// contract should be renewed.
+func (c *Contractor) managedMarkContractUtility(contract modules.RenterContract, minScoreGFR, minScoreGFU types.Currency) (modules.HostScoreBreakdown, modules.ContractUtility, bool, error) {
+	// Acquire contract.
+	sc, ok := c.staticContracts.Acquire(contract.ID)
+	if !ok {
+		return modules.HostScoreBreakdown{}, modules.ContractUtility{}, false, errors.New("managedMarkContractUtility: Unable to acquire contract")
+	}
+	defer c.staticContracts.Return(sc)
+
+	// Get latest metadata.
+	u := sc.Metadata().Utility
+
+	// If the utility is locked, do nothing.
+	if u.Locked {
+		return modules.HostScoreBreakdown{}, modules.ContractUtility{}, false, nil
+	}
+
+	// Get host from hostdb and check that it's not filtered.
+	host, u, needsUpdate := c.managedHostInHostDBCheck(contract)
+	if needsUpdate {
+		if err := c.managedUpdateContractUtility(sc, u); err != nil {
+			c.log.Println("Unable to acquire and update contract utility:", err)
+			return modules.HostScoreBreakdown{}, modules.ContractUtility{}, false, errors.AddContext(err, "unable to update utility after hostdb check")
+		}
+		return modules.HostScoreBreakdown{}, modules.ContractUtility{}, false, nil
+	}
+
+	// Do critical contract checks and update the utility if any checks fail.
+	u, needsUpdate = c.managedCriticalUtilityChecks(contract, host)
+	if needsUpdate {
+		err := c.managedUpdateContractUtility(sc, u)
+		if err != nil {
+			c.log.Println("Unable to acquire and update contract utility:", err)
+			return modules.HostScoreBreakdown{}, modules.ContractUtility{}, false, errors.AddContext(err, "unable to update utility after criticalUtilityChecks")
+		}
+		return modules.HostScoreBreakdown{}, modules.ContractUtility{}, false, nil
+	}
+
+	sb, err := c.hdb.ScoreBreakdown(host)
+	if err != nil {
+		c.log.Println("Unable to get ScoreBreakdown for", host.PublicKey.String(), "got err:", err)
+		return modules.HostScoreBreakdown{}, modules.ContractUtility{}, false, nil // it may just be this host that has an issue.
+	}
+
+	// Check the host scorebreakdown against the minimum accepted scores.
+	u, utilityUpdateStatus := c.managedCheckHostScore(contract, sb, minScoreGFR, minScoreGFU)
+	switch utilityUpdateStatus {
+	case noUpdate:
+
+	// suggestedUtilityUpdates are applied selectively by the churnLimiter.
+	// These are contracts with acceptable, but not very good host scores.
+	case suggestedUtilityUpdate:
+		c.log.Debugln("Queueing utility update", contract.ID, sb.Score)
+		return sb, u, true, nil
+
+	case necessaryUtilityUpdate:
+		// Apply changes.
+		err = c.managedUpdateContractUtility(sc, u)
+		if err != nil {
+			c.log.Println("Unable to acquire and update contract utility:", err)
+			return modules.HostScoreBreakdown{}, modules.ContractUtility{}, false, errors.AddContext(err, "unable to update utility after checkHostScore")
+		}
+		return modules.HostScoreBreakdown{}, modules.ContractUtility{}, false, nil
+
+	default:
+		c.log.Critical("Undefined checkHostScore utilityUpdateStatus", utilityUpdateStatus, contract.ID)
+	}
+
+	// All checks passed, marking contract as GFU and GFR.
+	if !u.GoodForUpload || !u.GoodForRenew {
+		c.log.Println("Marking contract as being both GoodForUpload and GoodForRenew", u.GoodForUpload, u.GoodForRenew, contract.ID)
+	}
+	u.GoodForUpload = true
+	u.GoodForRenew = true
+	// Apply changes.
+	err = c.managedUpdateContractUtility(sc, u)
+	if err != nil {
+		c.log.Println("Unable to acquire and update contract utility:", err)
+		return modules.HostScoreBreakdown{}, modules.ContractUtility{}, false, errors.AddContext(err, "unable to update utility after all checks passed.")
+	}
+	return modules.HostScoreBreakdown{}, modules.ContractUtility{}, false, nil
+}
+
 // managedMarkContractsUtility checks every active contract in the contractor and
 // figures out whether the contract is useful for uploading, and whether the
 // contract should be renewed.
@@ -228,77 +313,19 @@ func (c *Contractor) managedMarkContractsUtility() error {
 
 	// Update utility fields for each contract.
 	for _, contract := range c.staticContracts.ViewAll() {
-		u := contract.Utility
-
-		// If the utility is locked, do nothing.
-		if u.Locked {
-			continue
-		}
-
-		// Get host from hostdb and check that it's not filtered.
-		host, u, needsUpdate := c.managedHostInHostDBCheck(contract)
-		if needsUpdate {
-			if err = c.managedAcquireAndUpdateContractUtility(contract.ID, u); err != nil {
-				return errors.AddContext(err, "unable to update utility after hostdb check")
-			}
-			continue
-		}
-
-		// Do critical contract checks and update the utility if any checks fail.
-		u, needsUpdate = c.managedCriticalUtilityChecks(contract, host)
-		if needsUpdate {
-			err = c.managedAcquireAndUpdateContractUtility(contract.ID, u)
-			if err != nil {
-				return errors.AddContext(err, "unable to update utility after criticalUtilityChecks")
-			}
-			continue
-		}
-
-		sb, err := c.hdb.ScoreBreakdown(host)
+		sb, utility, update, err := c.managedMarkContractUtility(contract, minScoreGFR, minScoreGFU)
 		if err != nil {
 			return err
 		}
-
-		// Check the host scorebreakdown against the minimum accepted scores.
-		u, utilityUpdateStatus := c.managedCheckHostScore(contract, sb, minScoreGFR, minScoreGFU)
-		switch utilityUpdateStatus {
-		case noUpdate:
-
-		// suggestedUtilityUpdates are applied selectively by the churnLimiter.
-		// These are contracts with acceptable, but not very good host scores.
-		case suggestedUtilityUpdate:
-			c.log.Debugln("Queueing utility update", contract.ID, sb.Score)
-			suggestedUpdateQueue = append(suggestedUpdateQueue, contractScoreAndUtil{contract, sb.Score, u})
-			continue
-
-		case necessaryUtilityUpdate:
-			// Apply changes.
-			err = c.managedAcquireAndUpdateContractUtility(contract.ID, u)
-			if err != nil {
-				return errors.AddContext(err, "unable to update utility after checkHostScore")
-			}
-			continue
-
-		default:
-			c.log.Critical("Undefined checkHostScore utilityUpdateStatus", utilityUpdateStatus, contract.ID)
-		}
-
-		// All checks passed, marking contract as GFU and GFR.
-		if !u.GoodForUpload || !u.GoodForRenew {
-			c.log.Println("Marking contract as being both GoodForUpload and GoodForRenew", u.GoodForUpload, u.GoodForRenew, contract.ID)
-		}
-		u.GoodForUpload = true
-		u.GoodForRenew = true
-		// Apply changes.
-		err = c.managedAcquireAndUpdateContractUtility(contract.ID, u)
-		if err != nil {
-			return errors.AddContext(err, "unable to update utility after all checks passed.")
+		if update {
+			suggestedUpdateQueue = append(suggestedUpdateQueue, contractScoreAndUtil{contract, sb.Score, utility})
 		}
 	}
 
 	// Process the suggested updates through the churn limiter.
 	err = c.staticChurnLimiter.managedProcessSuggestedUpdates(suggestedUpdateQueue)
 	if err != nil {
+		c.log.Println("Unable process suggested utility updates:", err)
 		return errors.AddContext(err, "churnLimiter processSuggestedUpdates err")
 	}
 

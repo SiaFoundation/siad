@@ -2,14 +2,17 @@ package siadir
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
@@ -125,32 +128,6 @@ func LoadSiaDir(path string, deps modules.Dependencies, wal *writeaheadlog.WAL) 
 	return sd, err
 }
 
-// UpdateMetadata updates the SiaDir metadata on disk
-func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
-	sd.mu.Lock()
-	defer sd.mu.Unlock()
-	sd.metadata.AggregateHealth = metadata.AggregateHealth
-	sd.metadata.AggregateLastHealthCheckTime = metadata.AggregateLastHealthCheckTime
-	sd.metadata.AggregateMinRedundancy = metadata.AggregateMinRedundancy
-	sd.metadata.AggregateModTime = metadata.AggregateModTime
-	sd.metadata.AggregateNumFiles = metadata.AggregateNumFiles
-	sd.metadata.AggregateNumStuckChunks = metadata.AggregateNumStuckChunks
-	sd.metadata.AggregateNumSubDirs = metadata.AggregateNumSubDirs
-	sd.metadata.AggregateSize = metadata.AggregateSize
-	sd.metadata.AggregateStuckHealth = metadata.AggregateStuckHealth
-
-	sd.metadata.Health = metadata.Health
-	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
-	sd.metadata.MinRedundancy = metadata.MinRedundancy
-	sd.metadata.ModTime = metadata.ModTime
-	sd.metadata.NumFiles = metadata.NumFiles
-	sd.metadata.NumStuckChunks = metadata.NumStuckChunks
-	sd.metadata.NumSubDirs = metadata.NumSubDirs
-	sd.metadata.Size = metadata.Size
-	sd.metadata.StuckHealth = metadata.StuckHealth
-	return sd.saveDir()
-}
-
 // createDirMetadata makes sure there is a metadata file in the directory and
 // creates one as needed
 func createDirMetadata(path string, mode os.FileMode) (Metadata, writeaheadlog.Update, error) {
@@ -170,12 +147,14 @@ func createDirMetadata(path string, mode os.FileMode) (Metadata, writeaheadlog.U
 		AggregateHealth:        DefaultDirHealth,
 		AggregateMinRedundancy: DefaultDirRedundancy,
 		AggregateModTime:       time.Now(),
+		AggregateRemoteHealth:  DefaultDirHealth,
 		AggregateStuckHealth:   DefaultDirHealth,
 
 		Health:        DefaultDirHealth,
 		MinRedundancy: DefaultDirRedundancy,
 		Mode:          mode,
 		ModTime:       time.Now(),
+		RemoteHealth:  DefaultDirHealth,
 		StuckHealth:   DefaultDirHealth,
 	}
 	update, err := createMetadataUpdate(mdPath, md)
@@ -290,4 +269,73 @@ func (sd *SiaDir) SetPath(targetPath string) {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
 	sd.path = targetPath
+}
+
+// UpdateBubbledMetadata updates the SiaDir Metadata that is bubbled and saves
+// the changes to disk. For fields that are not bubbled, this method sets them
+// to the current values in the SiaDir metadata
+func (sd *SiaDir) UpdateBubbledMetadata(metadata Metadata) error {
+	sd.mu.Lock()
+	defer sd.mu.Unlock()
+	metadata.Mode = sd.metadata.Mode
+	metadata.Version = sd.metadata.Version
+	return sd.updateMetadata(metadata)
+}
+
+// UpdateLastHealthCheckTime updates the SiaDir LastHealthCheckTime and
+// AggregateLastHealthCheckTime and saves the changes to disk
+func (sd *SiaDir) UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, lastHealthCheckTime time.Time) error {
+	sd.mu.Lock()
+	defer sd.mu.Unlock()
+	md := sd.metadata
+	md.AggregateLastHealthCheckTime = aggregateLastHealthCheckTime
+	md.LastHealthCheckTime = lastHealthCheckTime
+	return sd.updateMetadata(md)
+}
+
+// UpdateMetadata updates the SiaDir metadata on disk
+func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
+	sd.mu.Lock()
+	defer sd.mu.Unlock()
+	return sd.updateMetadata(metadata)
+}
+
+// updateMetadata updates the SiaDir metadata on disk
+func (sd *SiaDir) updateMetadata(metadata Metadata) error {
+	sd.metadata.AggregateHealth = metadata.AggregateHealth
+	sd.metadata.AggregateLastHealthCheckTime = metadata.AggregateLastHealthCheckTime
+	sd.metadata.AggregateMinRedundancy = metadata.AggregateMinRedundancy
+	sd.metadata.AggregateModTime = metadata.AggregateModTime
+	sd.metadata.AggregateNumFiles = metadata.AggregateNumFiles
+	sd.metadata.AggregateNumStuckChunks = metadata.AggregateNumStuckChunks
+	sd.metadata.AggregateNumSubDirs = metadata.AggregateNumSubDirs
+	sd.metadata.AggregateRemoteHealth = metadata.AggregateRemoteHealth
+	sd.metadata.AggregateSize = metadata.AggregateSize
+	sd.metadata.AggregateStuckHealth = metadata.AggregateStuckHealth
+
+	sd.metadata.Health = metadata.Health
+	sd.metadata.LastHealthCheckTime = metadata.LastHealthCheckTime
+	sd.metadata.MinRedundancy = metadata.MinRedundancy
+	sd.metadata.ModTime = metadata.ModTime
+	sd.metadata.Mode = metadata.Mode
+	sd.metadata.NumFiles = metadata.NumFiles
+	sd.metadata.NumStuckChunks = metadata.NumStuckChunks
+	sd.metadata.NumSubDirs = metadata.NumSubDirs
+	sd.metadata.RemoteHealth = metadata.RemoteHealth
+	sd.metadata.Size = metadata.Size
+	sd.metadata.StuckHealth = metadata.StuckHealth
+
+	sd.metadata.Version = metadata.Version
+
+	// Testing check to ensure new fields aren't missed
+	if build.Release == "testing" && !reflect.DeepEqual(sd.metadata, metadata) {
+		str := fmt.Sprintf(`Input metadata not equal to set metadata
+		metadata
+		%v
+		sd.metadata
+		%v`, metadata, sd.metadata)
+		build.Critical(str)
+	}
+
+	return sd.saveDir()
 }

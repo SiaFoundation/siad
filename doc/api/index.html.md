@@ -154,7 +154,9 @@ There are three environment variables supported by siad.
  - `SIA_API_PASSWORD` is the environment variable that sets a custom API
    password if the default is not used
  - `SIA_DATA_DIR` is the environment variable that tells siad where to put the
-   sia data
+   general sia data, e.g. api password, configuration, logs, etc.
+ - `SIAD_DATA_DIR` is the environment variable that tells siad where to put the
+   siad-specific data
  - `SIA_WALLET_PASSWORD` is the environment variable that can be set to enable
    auto unlocking the wallet
 
@@ -427,15 +429,14 @@ the rest of Sia.
 curl -A "Sia-Agent" "localhost:9980/daemon/alerts"
 ```
 
-Returns the alerts of the Sia instance sorted by severity from highest to
-lowest.
+Returns all alerts of all severities of the Sia instance sorted by severity from highest to lowest in `alerts` and the alerts of the Sia instance sorted by category in `criticalalerts`, `erroralerts` and `warningalerts`.
 
 ### JSON Response
 > JSON Response Example
  
 ```go
 {
-  "alerts": [
+    "alerts": [
     {
       "cause": "wallet is locked",
       "msg": "user's contracts need to be renewed but a locked wallet prevents renewal",
@@ -443,6 +444,16 @@ lowest.
       "severity": "warning",
     }
   ],
+  "criticalalerts": [],
+  "erroralerts": [],
+  "warningalerts": [
+    {
+      "cause": "wallet is locked",
+      "msg": "user's contracts need to be renewed but a locked wallet prevents renewal",
+      "module": "contractor",
+      "severity": "warning",
+    }
+  ]
 }
 ```
 **cause** | string  
@@ -713,6 +724,223 @@ Returns the version of the Sia daemon currently running.
 ```
 **version** | string  
 This is the version number that is visible to its peers on the network.
+
+# FeeManager
+
+The feemanager allows applications built on top of Sia to charge the Sia user a
+fee. The feemanager's API endpoints expose methods for viewing information about
+the feemanager and for adding and canceling fees. 
+
+## /feemanager [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/feemanager"
+```
+
+returns information about the feemanager.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "payoutheight":249854 // blockheight
+}
+```
+
+**payoutheight** | blockheight  
+Height at which the FeeManager will payout the pending fees.
+
+## /feemanager/add [POST]
+> curl example  
+
+```go
+// Required Fields Only
+curl -A "Sia-Agent" -u "":<apipassword> --data "amount=1000&address=1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab&appuid=supercoolapp" "localhost:9980/feemanager/add"
+
+// All Fields
+curl -A "Sia-Agent" -u "":<apipassword> --data "amount=1000&address=1234567890abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789ab&appuid=supercoolapp&recurring=true" "localhost:9980/feemanager/add"
+```
+sets a fee and associates it with the provided application UID.
+
+### Query String Parameters
+### REQUIRED
+**amount** | hastings  
+The amount is how much the fee will charge the user.
+
+**address** | address  
+The address is the application developer's wallet address that the fee should be
+paid out to.
+
+**appuid** | string  
+The unique application identifier for the application that set the fee.
+
+### OPTIONAL
+**recurring** | bool  
+Indicates whether or not this fee will be a recurring fee. 
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "feeuid":"9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd"  // string
+}
+```
+
+**feeuid** | string  
+This is the unique identifier for the fee that was just added
+
+## /feemanager/cancel [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data "feeuid=9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd" "localhost:9980/feemanager/cancel"
+```
+
+cancels a fee.
+
+### Query String Parameters
+### REQUIRED
+**feeuid** | string  
+The unique identifier for the fee.
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
+## /feemanager/paidfees [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/feemanager/paidfees"
+```
+
+returns the paid fees that the feemanager managed.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "paidfees": [
+    {
+      "address":            "f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056", // hash
+      "amount":             "1000",  // hastings
+      "appuid":             "okapp", // string
+      "feeuid":             "9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd" // string
+      "paymentcompleted":   true,    // bool
+      "payoutheight":       12345,   // types.BlockHeight
+      "recurring":          false,   // bool
+      "timestamp":          "2018-09-23T08:00:00.000000000+04:00",     // Unix timestamp
+      "transactioncreated": true,    // bool
+    }
+  ]
+}
+
+```
+
+**paidfees** | []AppFee  
+List of historical fees that have been paid out by the FeeManager. 
+
+**address** | address  
+The application developer's wallet address that the fee should be paid out to.
+
+**amount** | hastings  
+The number of hastings the fee will charge the user.
+
+**appuid** | string  
+Indicates the uid of the application requesting the fee.  
+
+**feeuid** | string  
+This is the unique identifier for the fee
+
+**paymentcompleted** | bool  
+Indicates whether or not the payment has been confirmed on-chain  
+
+**payoutheight** | bool  
+Indicates the height at which the fee is supposed to be paid out. The fee may be
+paid out (or have been paid out for completed fees) at a later height than this,
+but not earlier.  
+
+**recurring** | bool  
+Indicates whether or not this fee will be a recurring fee. 
+
+**timestamp** | Unix timestamp  
+This is the moment that the fee was requested.  
+
+**transactioncreated** | bool  
+Indicates whether the transaction to pay the fee has been created. If this is
+set to true and paymentcompleted is set to false, it means that the transaction
+has not yet been confirmed on-chain  
+
+## /feemanager/pendingfees [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/feemanager/pendingfees"
+```
+
+returns the pending fees that the feemanager is managing.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "pendingfees": [
+    {
+      "address":            "f063edc8412e3d17f0e130f38bc6f25d134fae46b760b829e09a762c400fbd641a0c1539a056", // hash
+      "amount":             "1000",  // hastings
+      "appuid":             "okapp", // string
+      "feeuid":             "9ce7ff6c2b65a760b7362f5a041d3e84e65e22dd" // string
+      "paymentcompleted":   true,    // bool
+      "payoutheight":       12345,   // types.BlockHeight
+      "recurring":          false,   // bool
+      "timestamp":          "2018-09-23T08:00:00.000000000+04:00",     // Unix timestamp
+      "transactioncreated": true,    // bool
+    }
+  ]
+}
+
+```
+
+**pendingfees** | []AppFee  
+List of pending fees that the FeeManager is managing that will pay out this
+period. 
+
+**address** | address  
+The application developer's wallet address that the fee should be paid out to.
+
+**amount** | hastings  
+The number of hastings the fee will charge the user.
+
+**appuid** | string  
+The unique application identifier for the application that set the fee.
+
+**feeuid** | string  
+This is the unique identifier for the fee
+
+**paymentcompleted** | bool  
+Indicates whether or not the payment has been confirmed on-chain  
+
+**payoutheight** | bool  
+Indicates the height at which the fee is supposed to be paid out. The fee may be
+paid out (or have been paid out for completed fees) at a later height than this,
+but not earlier.  
+
+**recurring** | bool  
+Indicates whether or not this fee will be a recurring fee. 
+
+**timestamp** | Unix timestamp  
+This is the moment that the fee was requested.  
+
+**transactioncreated** | bool  
+Indicates whether the transaction to pay the fee has been created. If this is
+set to true and paymentcompleted is set to false, it means that the transaction
+has not yet been confirmed on-chain  
 
 # Gateway
 
@@ -1582,6 +1810,7 @@ based on their needs.
       "potentialstoragerevenue":  "1234",             // hastings
       "potentialuploadrevenue":   "1234",             // hastings
       "riskedcollateral":         "1234",             // hastings
+      "revisionnumber":           0,                  // int
       "sectorrootscount":         2,                  // int
       "transactionfeesadded":     "1234",             // hastings
       "expirationheight":         123456,             // blocks
@@ -1593,6 +1822,8 @@ based on their needs.
       "proofconstructed":         true,               // boolean
       "revisionconfirmed":        false,              // boolean
       "revisionconstructed":      false,              // boolean
+      "validproofoutputs":        [],                 // []SiacoinOutput
+      "missedproofoutputs":       [],                 // []SiacoinOutput
     }
   ]
 }
@@ -1628,6 +1859,9 @@ completion of the obligation.
 **riskedcollateral** | hastings  
 Amount that the host might lose if the submission of the storage proof is not
 successful.
+
+**revisionnumber** | int  
+The last revision of the contract
 
 **sectorrootscount** | int  
 Number of sector roots.
@@ -1673,6 +1907,12 @@ the blockchain for this storage obligation.
 **revisionconstructed** | boolean  
 Revision constructed indicates whether there was a file contract revision
 constructed for this storage obligation.
+
+**validproofoutputs** | []SiacoinOutput   
+The payouts that the host and renter will receive if a valid proof is confirmed on the blockchain
+
+**missedproofoutputs** | []SiacoinOutput  
+The payouts that the host and renter will receive if a proof is not confirmed on the blockchain
 
 ## /host/storage [GET]
 > curl example  
@@ -3112,19 +3352,19 @@ Path to the directory on the sia network
 {
   "directories": [
     {
-      "aggregatenumfiles":        2,    // uint64
-      "aggregatenumstuckchunks":  4,    // uint64
-      "aggregatesize":            4096, // uint64
-      "heatlh":                   1.0,  // float64
-      "lasthealtchecktime": "2018-09-23T08:00:00.000000000+04:00" // timestamp
-      "maxhealth":                0.5,  // float64
-      "minredundancy":            2.6,  // float64
-      "mostrecentmodtime":  "2018-09-23T08:00:00.000000000+04:00" // timestamp
-      "stuckhealth":              1.0,  // float64
+      "aggregatenumfiles":       2,    // uint64
+      "aggregatenumstuckchunks": 4,    // uint64
+      "aggregatesize":           4096, // uint64
 
-      "numfiles":   3,        // uint64
-      "numsubdirs": 2,        // uint64
-      "siapath":    "foo/bar" // string
+      "health":             1.0,      // float64
+      "lasthealtchecktime": "2018-09-23T08:00:00.000000000+04:00" // timestamp
+      "maxhealth":          0.5,      // float64
+      "minredundancy":      2.6,      // float64
+      "mostrecentmodtime":  "2018-09-23T08:00:00.000000000+04:00" // timestamp
+      "numfiles":           3,        // uint64
+      "numsubdirs":         2,        // uint64
+      "siapath":            "foo/bar" // string
+      "stuckhealth":        1.0,      // float64
     }
   ],
   "files": []
@@ -3169,6 +3409,12 @@ the number of directories in the directory
 
 **siapath** | string  
 The path to the directory on the sia network
+
+**size** | string
+The size in bytes of files in the directory
+
+**stuckhealth** | string
+The health of the most in need siafile in the directory, stuck or not stuck
 
 **files** Same response as [files](#files)
 
@@ -3536,6 +3782,10 @@ the siafile is the health of the worst unstuck chunk.
 
 **localpath** | string  
 Path to the local file on disk.  
+**NOTE** `siad` will set the localpath to an empty string if the local file is
+not found on disk. This is done to avoid the siafile being corrupted in the
+future by a different file being placed on disk at the original localpath
+location.  
 
 **maxhealth** | float64  
 the maxhealth is either the health or the stuckhealth of the siafile, whichever
@@ -3649,10 +3899,10 @@ only the entry in the renter. Will return an error if the target is a folder.
 Path to the file in the renter on the network.
 
 ### OPTIONAL
- **root** | bool
- Whether or not to treat the siapath as being relative to the user's home
- directory. If this field is not set, the siapath will be interpreted as
- relative to 'home/user/'.  
+**root** | bool  
+Whether or not to treat the siapath as being relative to the user's home
+directory. If this field is not set, the siapath will be interpreted as relative
+to 'home/user/'.
 
 ### Response
 
@@ -3899,7 +4149,11 @@ that have already been scanned.
 
 ```go
 curl -A "Sia-Agent" -u "":<apipassword> --data "newsiapath=myfile2" "localhost:9980/renter/rename/myfile"
+
+curl -A "Sia-Agent" -u "":<apipassword> --data "newsiapath=myfile2&root=true" "localhost:9980/renter/rename/myfile"
 ```
+
+change the siaPath for a file that is being managed by the renter.
 
 ### Path Parameters
 ### REQUIRED
@@ -3910,6 +4164,12 @@ Path to the file in the renter on the network.
 ### REQUIRED
 **newsiapath** | string  
 New location of the file in the renter on the network.  
+
+### OPTIONAL
+**root** | bool  
+Whether or not to treat the siapath as being relative to the user's home
+directory. If this field is not set, the siapath will be interpreted as
+relative to 'home/user/'.
 
 ### Response
 
@@ -4128,10 +4388,8 @@ responses](#standard-responses).
 curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/renter/validatesiapath/isthis-aval_idsiapath"
 ```
 
-validates whether or not the provided siapaht is a valid siapath. SiaPaths
-cannot contain traversal strings or be empty. Valid characters are:
-
-$, &, `, :, ;, #, %, @, <, >, =, ?, [, ], {, }, ^, |, ~, -, +, _, comma, ', "
+validates whether or not the provided siapath is a valid siapath. Every path
+valid under Unix is valid as a SiaPath.
 
 ### Path Parameters
 ### REQUIRED
@@ -4141,6 +4399,130 @@ siapath to test.
 ### Response
 standard success or error response, a successful response means a valid siapath.
 See [standard responses](#standard-responses).
+
+## /renter/wokers [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/renter/workers"
+```
+
+returns the the status of all the workers in the renter's workerpool.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "numworkers":            2, // int
+  "totaldownloadcooldown": 0, // int
+  "totaluploadcooldown":   0, // int
+  
+  "workers": [ // []WorkerStatus
+    {
+      "contractid": "e93de33cc04bb1f27a412ecdf57b3a7345b9a4163a33e03b4cb23edeb922822c", // hash
+      "contractutility": {      // ContractUtility
+        "goodforupload": true,  // boolean
+        "goodforrenew":  true,  // boolean
+        "badcontract":   false, // boolean
+        "lastooserr":    0,     // BlockHeight
+        "locked":        false  // boolean
+      },
+      "hostpubkey": {
+        "algorithm": "ed25519", // string
+        "key": "BervnaN85yB02PzIA66y/3MfWpsjRIgovCU9/L4d8zQ=" // hash
+      },
+      
+      "downloadoncooldown": false, // boolean
+      "downloadqueuesize":  0,     // int
+      "downloadterminated": false, // boolean
+      
+      "uploadcooldownerror": "",                   // string
+      "uploadcooldowntime":  -9223372036854775808, // time.Duration
+      "uploadoncooldown":    false,                // boolean
+      "uploadqueuesize":     0,                    // int
+      "uploadterminated":    false,                // boolean
+      
+      "availablebalance":    "0", // hastings
+      "balancetarget":       "0", // hastings
+      
+      "backupjobqueuesize":       0, // int
+      "downloadrootjobqueuesize": 0  // int
+    }
+  ]
+}
+```
+
+**numworkers** | int  
+Number of workers in the workerpool
+
+**totaldownloadcooldown** | int  
+Number of workers on download cooldown
+
+**totaluploadcooldown** | int  
+Number of workers on upload cooldown
+
+**workers** | []WorkerStatus  
+List of workers
+
+**contractid** | hash  
+The ID of the File Contract that the worker is associated with
+
+**contractutility** | ContractUtility  
+
+**goodforupload** | boolean  
+The worker's contract can be uploaded to
+
+**goodforrenew** | boolean  
+The worker's contract will be renewed
+
+**badcontract** | boolean  
+The worker's contract is marked as bad and won't be used
+
+**lastooserr** | BlockHeight  
+The blockheight when the host the worker represents was out of storage
+
+**locked** | boolean  
+The worker's contract's utility is locked
+
+**hostpublickey** | SiaPublicKey  
+Public key of the host that the file contract is formed with.  
+
+**downloadoncooldown** | boolean  
+Indicates if the worker is on download cooldown
+
+**downloadqueuesize** | int  
+The size of the worker's download queue
+
+**downloadterminated** | boolean  
+Downloads for the worker have been terminated
+
+**uploadcooldownerror** | error  
+The error reason for the worker being on upload cooldown
+
+**uploadcooldowntime** | time.Duration  
+How long the worker is on upload cooldown
+
+**uploadoncooldown** | boolean  
+Indicates if the worker is on upload cooldown
+
+**uploadqueuesize** | int  
+The size of the worker's upload queue
+
+**uploadterminated** | boolean  
+Uploads for the worker have been terminated
+
+**availablebalance** | hastings  
+The worker's Ephemeral Account available balance
+
+**balancetarget** | hastings  
+The worker's Ephemeral Account target balance
+
+**backupjobqueuesize** | int  
+The size of the worker's backup job queue
+
+**downloadrootjobqueuesize** | int  
+The size of the worker's download by root job queue
 
 # Skynet
 
@@ -4185,10 +4567,66 @@ endpoint can be used to both add and remove skylinks from the blacklist.
 At least one of the following fields needs to be non empty.
 
 **add** | array of strings  
-add is an array of skylinks that should be added to the blacklisted
+add is an array of skylinks that should be added to the blacklist.
 
 **remove** | array of strings  
-remove is an array of skylinks that should be removed from the blacklist
+remove is an array of skylinks that should be removed from the blacklist.
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
+## /skynet/portals [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/skynet/portals"
+```
+
+returns the list of known Skynet portals.
+
+### JSON Response
+> JSON Response Example
+
+```go
+{
+  "portals": [ // []SkynetPortal | null
+    {
+      "address": "siasky.net:443", // string
+      "public":  true              // bool
+    }
+  ]
+}
+```
+**address** | string  
+The IP or domain name and the port of the portal. Must be a valid network address.
+
+**public** | bool  
+Indicates whether the portal can be accessed publicly or not.
+
+## /skynet/portals [POST]
+> curl example
+
+```go
+curl -A "Sia-Agent" --user "":<apipassword> --data '{"add" : [{"address":"siasky.net:443","public":true}]}' "localhost:9980/skynet/portals"
+
+curl -A "Sia-Agent" --user "":<apipassword> --data '{"remove" : ["siasky.net:443"]}' "localhost:9980/skynet/portals"
+```
+
+updates the list of known Skynet portals. This endpoint can be used to both add
+and remove portals from the list.
+
+### Path Parameters
+### REQUIRED
+At least one of the following fields needs to be non empty.
+
+**add** | array of SkynetPortal  
+add is an array of portal info that should be added to the list of portals.
+
+**remove** | array of string  
+remove is an array of portal network addresses that should be removed from the
+list of portals.
 
 ### Response
 
@@ -4280,11 +4718,11 @@ supplied, this metadata will be relative to the given path.
 
 ```go
 {
-"mode":               // os.FileMode
+"mode":     640,      // os.FileMode
 "filename": "folder", // string
 "subfiles": [         // []SkyfileSubfileMetadata | null
   {
-  "mode":         640                 // os.FileMode
+  "mode":         640,                // os.FileMode
   "filename":     "folder/file1.txt", // string
   "contenttype":  "text/plain",       // string
   "offset":       0,                  // uint64
@@ -4358,6 +4796,20 @@ Whether or not to treat the siapath as being relative to the root directory. If
 this field is not set, the siapath will be interpreted as relative to
 'var/skynet'.
 
+
+**UNSTABLE - subject to change in v1.4.9**
+**skykeyname** | string  
+The name of the skykey that will be used to encrypt this skyfile. Only the
+name or the ID of the skykey should be specified.
+
+**OR**
+
+**UNSTABLE - subject to change in v1.4.9**
+**skykeyid** | string  
+The ID of the skykey that will be used to encrypt this skyfile. Only the
+name or the ID of the skykey should be specified.
+
+
 ### Http Headers
 ### OPTIONAL
 **Content-Disposition** | string  
@@ -4410,6 +4862,7 @@ returns statistical information about Skynet, e.g. number of files uploaded
 ### JSON Response
 ```json
 {
+  "uptime": 1234, // int
   "uploadstats": {
     "numfiles": 2,         // int
     "totalsize": 44527895  // int
@@ -4417,11 +4870,16 @@ returns statistical information about Skynet, e.g. number of files uploaded
   "versioninfo": {
     "version":     "1.4.4-master", // string
     "gitrevision": "cd5a83712"     // string
+  },
+  "performancestats": {
   }
 }
 ```
 
-**uploadstats** | object
+**uptime** | int  
+The amount of time in seconds that siad has been running.
+
+**uploadstats** | object  
 Uploadstats is an object with statistics about the data uploaded to Skynet.
 
 **numfiles** | int  
@@ -4439,7 +4897,36 @@ Version is the siad version the node is running.
 **gitrevision** | string  
 Gitrevision refers to the commit hash used to build said.
 
+**performancestats** | object - api.SkynetPerforamnceStats  
+PerformanceStats is an object that contains a breakdown of performance metrics
+for the skynet endpoints. Things are broken down into containers based on the
+type of action performed. For example, there is a container for downloads less
+than 64kb in size.
 
+Within each container, there is a bucket of half lives. Every time a data point
+is added to a container, it is put in to every bucket, counting up the total
+number of requests. The buckets decay at the stated half life, which means they
+give a good representation of how much activity there has been over twice their
+halflife. So for the one minute bucket, the total number of datapoints in the
+bucket is a good representation of how many things have happened in the past two
+minutes.
+
+Within each bucket, there are several fields. For example, the n60ms field
+represents the number of requests that finished in under 60ms. There is an NErr
+field which gets incremented if there is a failure that can be attributed to
+siad.
+
+Every download request will go into the TimeToFirstByte container, as well as
+the appropriate download container based on the size of the download. Within the
+chosen containers, every bucket will have the same field incremented. The field
+that gets incremented is the one that corresponds to the amount of time the
+request took.
+
+The performance stats fields are not protected by a compatibility promise, and
+may change over time.
+
+
+**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/addskykey [POST]
 > curl example
 
@@ -4459,7 +4946,35 @@ base-64 encoded skykey
 standard success or error response. See [standard
 responses](#standard-responses).
 
+## /skynet/skykeys [GET]
+> curl example
 
+```go
+curl -A "Sia-Agent"  -u "":<apipassword> --data "localhost:9980/skynet/skykeys"
+```
+
+Returns a list of all Skykeys as base64-encoded strings.
+
+### JSON Response
+
+> JSON Response Example
+
+```go
+{
+  "skykeys": [
+    "AAAAAAABoZWxsbwAAAAAAAAAEOAAAAAAAAAAYGZOQDcDQOoF9HHDBy8-l9bFyIjquzWlCg_9Efh96SfV2WN2S6eiroehM09rXAWtmfSZ0fDvRqg==",
+    "BwAAAAAAAABrZXRjaHVwAAAAAAAAAAQ4AAAAAAAAAM2K5y0IVBSV-_1vCPlNM9v_qBsqg00-oc9s84i-uK4Xja91mXQd3uJEsO50aL-f3cAso_sdgHrR",
+    "QAAAAAAAABoaS1naXRsYWIAAAAAAAAABDgAAAAAAAAAQnaoHcZy8QQhbiVYqowzbzKL03eSiItFNX0czcgMsaJ4sku_ij0KzreZtF_nzwt6qPv9EX6BR7E="
+  ]
+}
+```
+
+**skykeys** | []string  
+array of base-64 encoded skykeys
+
+
+
+**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/createskykey [POST]
 > curl example
 
@@ -4477,7 +4992,6 @@ desired name of the skykey
 ### JSON Response
 > JSON Response Example
 
- 
 ```go
 {
   "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
@@ -4488,6 +5002,7 @@ desired name of the skykey
 base-64 encoded skykey
 
 
+**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/skykey [GET]
 > curl example
 
@@ -4510,7 +5025,9 @@ or
 base-64 encoded ID of the skykey being queried
 
 
-### JSON Response ```json
+### JSON Response
+
+```go
 {
   "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
 }
@@ -4520,6 +5037,7 @@ base-64 encoded ID of the skykey being queried
 base-64 encoded skykey
 
 
+**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/skykeyid [GET]
 > curl example
 
@@ -4537,7 +5055,6 @@ name of the skykey being queried
 
 ### JSON Response
 > JSON Response Example
-
  
 ```go
 {
@@ -5519,9 +6036,10 @@ ID of the transaction being requested.
 }
 ```
 **transaction**  
-Raw transaction. The rest of the fields in the resposne are determined from this
-raw transaction. It is left undocumented here as the processed transaction (the
-rest of the fields in this object) are usually what is desired.  
+Raw transaction. The rest of the fields in the response are determined from
+this raw transaction. It is left undocumented here as the processed
+transaction (the rest of the fields in this object) are usually what is
+desired.
 
 See types.Transaction in
 https://gitlab.com/NebulousLabs/Sia/blob/master/types/transactions.go  

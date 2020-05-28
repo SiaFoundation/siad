@@ -87,12 +87,32 @@ type (
 		modules.ProductionDependencies
 	}
 
+	// DependencyInterruptAccountSaveOnShutdown will interrupt the account save
+	// when the renter shuts down.
+	DependencyInterruptAccountSaveOnShutdown struct {
+		modules.ProductionDependencies
+	}
+
 	// DependencyBlockResumeJobDownloadUntilTimeout blocks in
 	// managedResumeJobDownloadByRoot until the timeout for the download project
 	// is reached.
 	DependencyBlockResumeJobDownloadUntilTimeout struct {
 		DependencyTimeoutProjectDownloadByRoot
 		c chan struct{}
+	}
+
+	// DependencyDisableRotateFingerprintBuckets prevents rotation of the
+	// fingerprint buckets on disk.
+	DependencyDisableRotateFingerprintBuckets struct {
+		modules.ProductionDependencies
+	}
+
+	// DependencyDefaultRenewSettings causes the contractor to use default settings
+	// when renewing a contract.
+	DependencyDefaultRenewSettings struct {
+		modules.ProductionDependencies
+		enabled bool
+		mu      sync.Mutex
 	}
 )
 
@@ -213,6 +233,16 @@ func (d *DependencyLowFundsRefreshFail) Disrupt(s string) bool {
 // Disrupt causes contract renewal to not clear the contents of a contract.
 func (d *DependencyRenewWithoutClear) Disrupt(s string) bool {
 	return s == "RenewWithoutClear"
+}
+
+// Disrupt causes contract renewal to not clear the contents of a contract.
+func (d *DependencyInterruptAccountSaveOnShutdown) Disrupt(s string) bool {
+	return s == "InterruptAccountSaveOnShutdown"
+}
+
+// Disrupt causes contract renewal to not clear the contents of a contract.
+func (d *DependencyDisableRotateFingerprintBuckets) Disrupt(s string) bool {
+	return s == "DisableRotateFingerprintBuckets"
 }
 
 // Disrupt returns true if the correct string is provided and if the flag was
@@ -338,4 +368,27 @@ func (d *DependencyAddLatency) Disrupt(s string) bool {
 		return true
 	}
 	return false
+}
+
+// Disrupt causes the contractor to use default host settings
+// when renewing a contract.
+func (d *DependencyDefaultRenewSettings) Disrupt(s string) bool {
+	d.mu.Lock()
+	enabled := d.enabled
+	d.mu.Unlock()
+	return enabled && s == "DefaultRenewSettings"
+}
+
+// Enable enables the dependency.
+func (d *DependencyDefaultRenewSettings) Enable() {
+	d.mu.Lock()
+	d.enabled = true
+	d.mu.Unlock()
+}
+
+// Disable disables the dependency.
+func (d *DependencyDefaultRenewSettings) Disable() {
+	d.mu.Lock()
+	d.enabled = false
+	d.mu.Unlock()
 }

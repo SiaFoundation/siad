@@ -47,6 +47,9 @@ type Session interface {
 	// determine whether or not an operation should continue.
 	HostSettings() modules.HostExternalSettings
 
+	// Settings calls the Session RPC and updates the active host settings.
+	Settings() (modules.HostExternalSettings, error)
+
 	// Upload revises the underlying contract to store the new data. It
 	// returns the Merkle root of the data.
 	Upload(data []byte) (crypto.Hash, error)
@@ -182,7 +185,7 @@ func (hs *hostSession) Replace(data []byte, sectorIndex uint64, trim bool) (cryp
 
 	_, sectorRoot, err := hs.session.Replace(data, sectorIndex, trim)
 	if err != nil {
-		return crypto.Hash{}, err
+		return crypto.Hash{}, errors.AddContext(err, "unable to perform replace operation in session")
 	}
 	return sectorRoot, nil
 }
@@ -190,6 +193,11 @@ func (hs *hostSession) Replace(data []byte, sectorIndex uint64, trim bool) (cryp
 // HostSettings returns the currently active host settings for the session.
 func (hs *hostSession) HostSettings() modules.HostExternalSettings {
 	return hs.session.HostSettings()
+}
+
+// Settings calls the Session RPC and updates the active host settings.
+func (hs *hostSession) Settings() (modules.HostExternalSettings, error) {
+	return hs.session.Settings()
 }
 
 // Session returns a Session object that can be used to upload, modify, and

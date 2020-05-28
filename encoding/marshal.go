@@ -19,20 +19,41 @@ const (
 	DefaultAllocLimit = 1e6
 )
 
-// ErrAllocLimitExceeded is the error returned when an encoded object exceeds
-// the specified allocation limit.
-type ErrAllocLimitExceeded int
-
-// Error implements the error interface.
-func (e ErrAllocLimitExceeded) Error() string {
-	return fmt.Sprintf("encoded object exceeded allocation limit by %v bytes", int(e))
-}
-
 var (
-	errBadPointer = errors.New("cannot decode into invalid pointer")
+	// ErrBadPointer is returned when the given value cannot be decoded into a
+	// valid pointer
+	ErrBadPointer = errors.New("cannot decode into invalid pointer")
+
+	// ErrInvalidBoolean is returned when the given value cannot be parsed to a
+	// boolean.
+	ErrInvalidBoolean = errors.New("boolean value was not 0 or 1")
 )
 
 type (
+	// A Decoder reads and decodes values from an input stream. It also provides
+	// helper methods for writing custom SiaUnmarshaler implementations. These
+	// methods do not return errors, but instead set the value of d.Err(). Once
+	// d.Err() is set, future operations become no-ops.
+	Decoder struct {
+		r        io.Reader
+		buf      [8]byte
+		err      error
+		canAlloc uint64 // number of bytes that may be allocated
+	}
+
+	// An Encoder writes objects to an output stream. It also provides helper
+	// methods for writing custom SiaMarshaler implementations. All of its methods
+	// become no-ops after the Encoder encounters a Write error.
+	Encoder struct {
+		w   io.Writer
+		buf [8]byte
+		err error
+	}
+
+	// ErrAllocLimitExceeded is the error returned when an encoded object exceeds
+	// the specified allocation limit.
+	ErrAllocLimitExceeded int
+
 	// A SiaMarshaler can encode and write itself to a stream.
 	SiaMarshaler interface {
 		MarshalSia(io.Writer) error
@@ -44,13 +65,9 @@ type (
 	}
 )
 
-// An Encoder writes objects to an output stream. It also provides helper
-// methods for writing custom SiaMarshaler implementations. All of its methods
-// become no-ops after the Encoder encounters a Write error.
-type Encoder struct {
-	w   io.Writer
-	buf [8]byte
-	err error
+// Error implements the error interface.
+func (e ErrAllocLimitExceeded) Error() string {
+	return fmt.Sprintf("encoded object exceeded allocation limit by %v bytes", int(e))
 }
 
 // Write implements the io.Writer interface.
@@ -243,17 +260,6 @@ func WriteFile(filename string, v interface{}) error {
 	return nil
 }
 
-// A Decoder reads and decodes values from an input stream. It also provides
-// helper methods for writing custom SiaUnmarshaler implementations. These
-// methods do not return errors, but instead set the value of d.Err(). Once
-// d.Err() is set, future operations become no-ops.
-type Decoder struct {
-	r        io.Reader
-	buf      [8]byte
-	err      error
-	canAlloc uint64 // number of bytes that may be allocated
-}
-
 // Read implements the io.Reader interface.
 func (d *Decoder) Read(p []byte) (int, error) {
 	if d.err != nil {
@@ -301,7 +307,7 @@ func (d *Decoder) NextUint64() uint64 {
 func (d *Decoder) NextBool() bool {
 	d.ReadFull(d.buf[:1])
 	if d.buf[0] > 1 && d.err == nil {
-		d.err = errors.New("boolean value was not 0 or 1")
+		d.err = ErrInvalidBoolean
 	}
 	return d.buf[0] == 1
 }
@@ -332,7 +338,7 @@ func (d *Decoder) Decode(v interface{}) (err error) {
 	// v must be a pointer
 	pval := reflect.ValueOf(v)
 	if pval.Kind() != reflect.Ptr || pval.IsNil() {
-		return errBadPointer
+		return ErrBadPointer
 	}
 
 	// catch decoding panics and convert them to errors

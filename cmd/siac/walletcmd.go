@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"math"
 	"math/big"
 	"os"
 	"strconv"
@@ -16,7 +15,7 @@ import (
 	mnemonics "gitlab.com/NebulousLabs/entropy-mnemonics"
 	"golang.org/x/crypto/ssh/terminal"
 
-	"gitlab.com/NebulousLabs/Sia/cmd"
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -595,7 +594,7 @@ func walletsigncmdoffline(txn *types.Transaction, toSign []crypto.Hash) {
 // wallettransactionscmd lists all of the transactions related to the wallet,
 // providing a net flow of siacoins and siafunds for each.
 func wallettransactionscmd() {
-	wtg, err := httpClient.WalletTransactionsGet(0, math.MaxInt64)
+	wtg, err := httpClient.WalletTransactionsGet(types.BlockHeight(walletStartHeight), types.BlockHeight(walletEndHeight))
 	if err != nil {
 		die("Could not fetch transaction history:", err)
 	}
@@ -655,7 +654,7 @@ func wallettransactionscmd() {
 func walletunlockcmd() {
 	// try reading from environment variable first, then fallback to
 	// interactive method. Also allow overriding auto-unlock via -p
-	password := os.Getenv(cmd.SiaWalletPassword)
+	password := build.WalletPassword()
 	if password != "" && !initPassword {
 		fmt.Println("Using SIA_WALLET_PASSWORD environment variable")
 		err := httpClient.WalletUnlockPost(password)

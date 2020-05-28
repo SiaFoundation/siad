@@ -13,6 +13,7 @@ variables:
     ./cmd/sia-node-scanner
     ./cmd/siac
     ./cmd/siad
+    ./cmd/skynet-benchmark
     ./compatibility
     ./crypto
     ./encoding
@@ -33,6 +34,7 @@ variables:
     ./modules/renter/hostdb/hosttree
     ./modules/renter/proto
     ./modules/renter/skynetblacklist
+    ./modules/renter/skynetportals
     ./modules/miner
     ./modules/wallet
     ./modules/transactionpool
@@ -66,48 +68,8 @@ default: &default_params
     - export PATH=$PATH:$CI_PROJECT_DIR/.cache/bin/
     - export GOPATH="$CI_PROJECT_DIR/.cache"
 
-## Default params for Windows runner
-.default_windows: &default_windows_params
-  before_script:
-    - $env:USERNAME
-    - New-Item -ItemType Directory -Force .cache\gocache
-    - $env:PATH += ";$CI_PROJECT_DIR\.cache\bin"
-    - $env:PATH
-    - $env:GOPATH = "$CI_PROJECT_DIR\.cache"
-    - $env:GOPATH
-
-## Define the default test parameters.
-.default_test: &default_test_params
-  ## Merge the contents of the 'default_params' alias
-  <<: *default_params
-  stage: test
-
-  ## disable default tests for scheduled pipelines (nightlies)
-  except:
-    - schedules
-
-## Define the default test parameters
-## for Windows runner.
-.default_windows_test: &default_test_windows_params
-  ## Merge the contents of the 'default_windows_params' alias
-  <<: *default_windows_params
-  stage: test
-  tags:
-    - nebulous-windows
-
-  ## disable default tests for scheduled pipelines (nightlies)
-  except:
-    - schedules
-
-## Define the default nightly test parameters.
-.default_nightly_test: &default_nightly_params
-  <<: *default_test_params
-  ## Only run during scheduled pipelines.
-  except:
-   -  ""
-  only:
-   - schedules
-
+## Default common test params for regular and nightly pipelines
+.default_test_common: &default_test_common_params
   artifacts:
     name: "SiaTesting-$CI_JOB_NAME"
     paths:
@@ -118,16 +80,9 @@ default: &default_params
   after_script:
     - cp -R /tmp/SiaTesting $CI_PROJECT_DIR/SiaTesting
 
-## Define the default nightly test parameters
+## Default common test params for regular and nightly pipelines
 ## for Windows runner.
-.default_nightly_windows_test: &default_nightly_windows_params
-  <<: *default_test_windows_params
-  ## Only run during scheduled pipelines.
-  except:
-   -  ""
-  only:
-   - schedules
-
+.default_test_common_windows: &default_test_common_windows_params
   artifacts:
     name: "SiaTesting-$CI_JOB_NAME"
     paths:
@@ -137,9 +92,64 @@ default: &default_params
 
   after_script:
     - XCOPY "C:\Windows\Temp\SiaTesting\*" "$CI_PROJECT_DIR\SiaTesting" /S /I /Y > $null
-    # Git cache permission denied workaround
-    # on second and following runs
-    - Remove-Item -path "$CI_PROJECT_DIR\.cache" -recurse -force
+
+## Default params for Windows runner
+.default_windows: &default_windows_params
+  before_script:
+    - $env:USERNAME
+    - New-Item -ItemType Directory -Force .cache\gocache
+    - $env:PATH += ";$CI_PROJECT_DIR\.cache\bin"
+    - $env:PATH
+    - $env:GOPATH = "$CI_PROJECT_DIR\.cache"
+    - $env:GOPATH
+    
+## Define the default test parameters.
+.default_test: &default_test_params
+  ## Merge the contents of aliases
+  <<: *default_params
+  <<: *default_test_common_params
+  stage: test
+
+  ## disable default tests for scheduled pipelines (nightlies)
+  except:
+    - schedules
+
+## Define the default test parameters
+## for Windows runner.
+.default_windows_test: &default_test_windows_params
+  ## Merge the contents of aliases
+  <<: *default_windows_params
+  <<: *default_test_common_windows_params
+  stage: test
+  tags:
+    - nebulous-windows
+
+  ## disable default tests for scheduled pipelines (nightlies)
+  except:
+    - schedules
+
+## Define the default nightly test parameters.
+.default_nightly_test: &default_nightly_params
+  ## Merge the contents of aliases
+  <<: *default_test_params
+  <<: *default_test_common_params
+  ## Only run during scheduled pipelines.
+  except:
+   -  ""
+  only:
+   - schedules
+
+## Define the default nightly test parameters
+## for Windows runner.
+.default_nightly_windows_test: &default_nightly_windows_params
+  ## Merge the contents of aliases
+  <<: *default_test_windows_params
+  <<: *default_test_common_windows_params
+  ## Only run during scheduled pipelines.
+  except:
+   -  ""
+  only:
+   - schedules
 
 lint:
   stage: lint

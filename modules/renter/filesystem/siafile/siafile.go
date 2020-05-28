@@ -244,8 +244,13 @@ func New(siaFilePath, source string, wal *writeaheadlog.WAL, erasureCode modules
 func (sf *SiaFile) GrowNumChunks(numChunks uint64) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// Backup metadata before doing any kind of persistence.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
 	updates, err := sf.growNumChunks(numChunks)
-
 	if err != nil {
 		return err
 	}
@@ -261,7 +266,7 @@ func (sf *SiaFile) RemoveLastChunk() error {
 }
 
 // SetFileSize changes the fileSize of the SiaFile.
-func (sf *SiaFile) SetFileSize(fileSize uint64) error {
+func (sf *SiaFile) SetFileSize(fileSize uint64) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	if sf.deleted {
@@ -270,6 +275,13 @@ func (sf *SiaFile) SetFileSize(fileSize uint64) error {
 	if sf.staticMetadata.HasPartialChunk {
 		return errors.New("can't call SetFileSize on file with partial chunk")
 	}
+	// Backup the changed metadata before changing it. Revert the change on
+	// error.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
 	// Make sure that SetFileSize doesn't affect the number of total chunks within
 	// the file.
 	newNumChunks := fileSize / sf.staticChunkSize()
@@ -304,7 +316,7 @@ func (sf *SiaFile) SetFileSize(fileSize uint64) error {
 
 // AddPiece adds an uploaded piece to the file. It also updates the host table
 // if the public key of the host is not already known.
-func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64, merkleRoot crypto.Hash) error {
+func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64, merkleRoot crypto.Hash) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	// If the file was deleted we can't add a new piece since it would write
@@ -317,6 +329,15 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 	if sf.isIncompletePartialChunk(chunkIndex) {
 		return errors.New("can't add piece to incomplete partial chunk")
 	}
+	// Backup the changed metadata before changing it. Revert the change on
+	// error.
+	oldPubKeyTable := append([]HostPublicKey{}, sf.pubKeyTable...)
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+			sf.pubKeyTable = oldPubKeyTable
+		}
+	}(sf.staticMetadata.backup())
 
 	// Update cache.
 	defer sf.uploadProgressAndBytes()
@@ -444,15 +465,21 @@ func (sf *SiaFile) ChunkHealth(index int, offlineMap map[string]bool, goodForRen
 
 // Delete removes the file from disk and marks it as deleted. Once the file is
 // deleted, certain methods should return an error.
-func (sf *SiaFile) Delete() error {
+func (sf *SiaFile) Delete() (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	// We can't delete a file multiple times.
 	if sf.deleted {
 		return errors.AddContext(ErrDeleted, "requested file has already been deleted")
 	}
+	// Backup metadata before doing any kind of persistence.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
 	update := sf.createDeleteUpdate()
-	err := sf.createAndApplyTransaction(update)
+	err = sf.createAndApplyTransaction(update)
 	sf.deleted = true
 	return err
 }
@@ -471,9 +498,16 @@ func (sf *SiaFile) ErasureCode() modules.ErasureCoder {
 
 // SaveWithChunks saves the file's header to disk and appends the raw chunks provided at
 // the end of the file.
-func (sf *SiaFile) SaveWithChunks(chunks Chunks) error {
+func (sf *SiaFile) SaveWithChunks(chunks Chunks) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// Adding this should restore the metadata later.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
+
 	updates, err := sf.saveHeaderUpdates()
 	if err != nil {
 		return errors.AddContext(err, "failed to create header updates")
@@ -485,9 +519,16 @@ func (sf *SiaFile) SaveWithChunks(chunks Chunks) error {
 }
 
 // SaveHeader saves the file's header to disk.
-func (sf *SiaFile) SaveHeader() error {
+func (sf *SiaFile) SaveHeader() (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// Adding this should restore the metadata later.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
+
 	updates, err := sf.saveHeaderUpdates()
 	if err != nil {
 		return err
@@ -496,12 +537,20 @@ func (sf *SiaFile) SaveHeader() error {
 }
 
 // SaveMetadata saves the file's metadata to disk.
-func (sf *SiaFile) SaveMetadata() error {
+func (sf *SiaFile) SaveMetadata() (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	if sf.deleted {
 		return errors.AddContext(ErrDeleted, "can't SaveMetadata of deleted file")
 	}
+	// backup the changed metadata before changing it. Revert the change on
+	// error.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
+
 	updates, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err
@@ -624,7 +673,8 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 		return nil
 	})
 	if err != nil {
-		build.Critical("failed to iterate over chunks: ", err)
+		err = fmt.Errorf("failed to iterate over chunks of file '%v': %v", sf.siaFilePath, err)
+		build.Critical(err)
 		return 0, 0, 0, 0, 0
 	}
 
@@ -819,24 +869,29 @@ func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
 	if sf.deleted {
 		return errors.AddContext(ErrDeleted, "can't call SetStuck on deleted file")
 	}
-	// Update all the Stuck field for each chunk.
-	updates, errIter := sf.iterateChunks(func(chunk *chunk) (bool, error) {
-		if chunk.Stuck != stuck {
-			chunk.Stuck = stuck
-			return true, nil
+	// Backup metadata before doing any kind of persistence.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
 		}
-		return false, nil
+	}(sf.staticMetadata.backup())
+	// Figure out which chunks to update.
+	var setStuck []chunk
+	errIter := sf.iterateChunksReadonly(func(chunk chunk) error {
+		if chunk.Stuck != stuck {
+			setStuck = append(setStuck, chunk)
+			return nil
+		}
+		return nil
 	})
 	if errIter != nil {
 		return errIter
 	}
-	// Update NumStuckChunks in siafile metadata
-	nsc := sf.staticMetadata.NumStuckChunks
-	defer func() {
-		if err != nil {
-			sf.staticMetadata.NumStuckChunks = nsc
-		}
-	}()
+	// Check if work needs to be done.
+	if len(setStuck) == 0 {
+		return nil
+	}
+	// Update metadata.
 	if stuck && sf.staticMetadata.HasPartialChunk && len(sf.staticMetadata.PartialChunks) == 0 {
 		sf.staticMetadata.NumStuckChunks = uint64(sf.numChunks) - 1 // partial chunk can't be stuck in this state
 	} else if stuck {
@@ -844,20 +899,44 @@ func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
 	} else {
 		sf.staticMetadata.NumStuckChunks = 0
 	}
-	// Create metadata update and apply updates on disk
-	metadataUpdates, err := sf.saveMetadataUpdates()
+	// Create metadata updates and apply updates on disk
+	updates, err := sf.saveMetadataUpdates()
 	if err != nil {
 		return err
 	}
-	updates = append(updates, metadataUpdates...)
+	// Create chunk updates.
+	chunkUpdates, errIter := sf.iterateChunks(func(chunk *chunk) (bool, error) {
+		if len(setStuck) == 0 {
+			return false, nil
+		}
+		if chunk.Index == setStuck[0].Index {
+			chunk.Stuck = stuck
+			setStuck = setStuck[1:]
+			return true, nil
+		}
+		return false, nil
+	})
+	if errIter != nil {
+		return errIter
+	}
+	// Apply updates.
+	updates = append(updates, chunkUpdates...)
 	return sf.createAndApplyTransaction(updates...)
 }
 
 // SetChunkStatusCompleted sets the CombinedChunkStatus field of the metadata to
 // completed.
-func (sf *SiaFile) SetChunkStatusCompleted(pci uint64) error {
+func (sf *SiaFile) SetChunkStatusCompleted(pci uint64) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// Backup the changed metadata before changing it. Revert the change on
+	// error.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
+
 	sf.staticMetadata.PartialChunks[pci].Status = CombinedChunkStatusCompleted
 	updates, err := sf.saveMetadataUpdates()
 	if err != nil {
@@ -870,6 +949,12 @@ func (sf *SiaFile) SetChunkStatusCompleted(pci uint64) error {
 func (sf *SiaFile) SetStuck(index uint64, stuck bool) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// Backup the changed metadata before doing any king of persistence.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
 	return sf.setStuck(index, stuck)
 }
 
@@ -895,13 +980,21 @@ func (sf *SiaFile) UID() SiafileUID {
 // of the SiaFile. The keys of all used hosts should be passed to the method
 // and the SiaFile will update the flag for hosts it knows of to 'true' and set
 // hosts which were not passed in to 'false'.
-func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
+func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	// Can't update used hosts on deleted file.
 	if sf.deleted {
 		return errors.AddContext(ErrDeleted, "can't call UpdateUsedHosts on deleted file")
 	}
+	// Adding this should restore the metadata later.
+	oldPubKeyTable := append([]HostPublicKey{}, sf.pubKeyTable...)
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+			sf.pubKeyTable = oldPubKeyTable
+		}
+	}(sf.staticMetadata.backup())
 	// Create a map of the used keys for faster lookups.
 	usedMap := make(map[string]struct{})
 	for _, key := range used {
@@ -941,7 +1034,7 @@ func (sf *SiaFile) UpdateUsedHosts(used []types.SiaPublicKey) error {
 		updates = append(updates, headerUpdates...)
 	}
 	// Apply all updates.
-	err := sf.createAndApplyTransaction(updates...)
+	err = sf.createAndApplyTransaction(updates...)
 	if err != nil {
 		return err
 	}
@@ -1020,8 +1113,17 @@ func (sf *SiaFile) isIncompletePartialChunk(chunkIndex uint64) bool {
 // pruneHosts prunes the unused hostkeys from the file, updates the
 // HostTableOffset of the pieces and removes pieces which do no longer have a
 // host.
-func (sf *SiaFile) pruneHosts() ([]writeaheadlog.Update, error) {
+func (sf *SiaFile) pruneHosts() (_ []writeaheadlog.Update, err error) {
 	var prunedTable []HostPublicKey
+	// Backup the changed metadata before changing it. Revert the change on
+	// error.
+	oldPubKeyTable := append([]HostPublicKey{}, sf.pubKeyTable...)
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+			sf.pubKeyTable = oldPubKeyTable
+		}
+	}(sf.staticMetadata.backup())
 	// Create a map to track how the indices of the hostkeys changed when being
 	// pruned.
 	offsetMap := make(map[uint32]uint32)
@@ -1032,6 +1134,11 @@ func (sf *SiaFile) pruneHosts() ([]writeaheadlog.Update, error) {
 		}
 	}
 	sf.pubKeyTable = prunedTable
+	// Update the header first.
+	headerUpdates, err := sf.saveHeaderUpdates()
+	if err != nil {
+		return nil, err
+	}
 	// With this map we loop over all the chunks and pieces and update the ones
 	// who got a new offset and remove the ones that no longer have one.
 	chunkUpdates, err := sf.iterateChunks(func(chunk *chunk) (bool, error) {
@@ -1048,11 +1155,6 @@ func (sf *SiaFile) pruneHosts() ([]writeaheadlog.Update, error) {
 		}
 		return true, nil
 	})
-	if err != nil {
-		return nil, err
-	}
-	// The header needs to be saved too due to the changed pubKeyTable.
-	headerUpdates, err := sf.saveHeaderUpdates()
 	if err != nil {
 		return nil, err
 	}
@@ -1155,21 +1257,24 @@ func (sf *SiaFile) growNumChunks(numChunks uint64) (updates []writeaheadlog.Upda
 		sf.staticMetadata.FileSize = int64(sf.staticChunkSize() * uint64(sf.numChunks))
 		return nil, nil
 	}
-	// Remember the number of chunks we have before adding any and restore it in case of an error.
-	ncb := sf.numChunks
-	defer func() {
+	// Backup the changed metadata before changing it. Revert the change on
+	// error.
+	oldNumChunks := sf.numChunks
+	defer func(backup Metadata) {
 		if err != nil {
-			sf.numChunks = ncb
+			sf.staticMetadata.restore(backup)
+			sf.numChunks = oldNumChunks
 		}
-	}()
+	}(sf.staticMetadata.backup())
 	// Update the chunks.
+	newChunks := make([]chunk, 0, numChunks-uint64(sf.numChunks))
 	for uint64(sf.numChunks) < numChunks {
 		newChunk := chunk{
 			Index:  int(sf.numChunks),
 			Pieces: make([][]piece, sf.staticMetadata.staticErasureCode.NumPieces()),
 		}
 		sf.numChunks++
-		updates = append(updates, sf.saveChunkUpdate(newChunk))
+		newChunks = append(newChunks, newChunk)
 	}
 	// Update the fileSize.
 	sf.staticMetadata.FileSize = int64(sf.staticChunkSize() * uint64(sf.numChunks))
@@ -1177,19 +1282,30 @@ func (sf *SiaFile) growNumChunks(numChunks uint64) (updates []writeaheadlog.Upda
 	if err != nil {
 		return nil, err
 	}
+	// Prepare chunk updates.
+	for _, newChunk := range newChunks {
+		updates = append(updates, sf.saveChunkUpdate(newChunk))
+	}
 	return append(updates, mdu...), nil
 }
 
 // removeLastChunk removes the last chunk of the SiaFile and truncates the file
 // accordingly. This method might change the metadata but doesn't persist the
 // change itself. Handle this accordingly.
-func (sf *SiaFile) removeLastChunk() error {
+func (sf *SiaFile) removeLastChunk() (err error) {
 	if sf.deleted {
 		return errors.AddContext(ErrDeleted, "can't remove last chunk of deleted file")
 	}
 	if sf.staticMetadata.HasPartialChunk {
 		return errors.New("can't remove last chunk if it is a partial chunk")
 	}
+	// Backup the changed metadata before changing it. Revert the change on
+	// error.
+	defer func(backup Metadata) {
+		if err != nil {
+			sf.staticMetadata.restore(backup)
+		}
+	}(sf.staticMetadata.backup())
 	// Remove a chunk. If the removed chunk was stuck, update the metadata.
 	chunk, err := sf.chunk(sf.numChunks - 1)
 	if err != nil {
@@ -1203,11 +1319,8 @@ func (sf *SiaFile) removeLastChunk() error {
 	if err != nil {
 		return err
 	}
-	err = os.Truncate(sf.siaFilePath, fi.Size()-int64(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
-	if err != nil {
-		return err
-	}
-	return nil
+	update := writeaheadlog.TruncateUpdate(sf.siaFilePath, fi.Size()-int64(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
+	return sf.createAndApplyTransaction(update)
 }
 
 // setStuck sets the Stuck field of the chunk at the given index
@@ -1233,15 +1346,13 @@ func (sf *SiaFile) setStuck(index uint64, stuck bool) (err error) {
 	if stuck == chunk.Stuck {
 		return nil
 	}
-	// Remember the current number of stuck chunks in case an error happens.
-	nsc := sf.staticMetadata.NumStuckChunks
-	s := chunk.Stuck
-	defer func() {
+	// Backup the changed metadata before changing it. Revert the change on
+	// error.
+	defer func(backup Metadata) {
 		if err != nil {
-			sf.staticMetadata.NumStuckChunks = nsc
-			chunk.Stuck = s
+			sf.staticMetadata.restore(backup)
 		}
-	}()
+	}(sf.staticMetadata.backup())
 	// Update chunk and NumStuckChunks in siafile metadata
 	chunk.Stuck = stuck
 	if stuck {

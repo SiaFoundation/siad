@@ -9,7 +9,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/aead/chacha20/chacha"
+
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -45,11 +48,18 @@ var (
 	// SkykeyFileMagic is the first piece of data found in a Skykey file.
 	SkykeyFileMagic = types.NewSpecifier("SkykeyFile")
 
+	// ErrSkykeyWithNameAlreadyExists indicates that a key cannot be created or added
+	// because a key with the same name is already being stored.
+	ErrSkykeyWithNameAlreadyExists = errors.New("Skykey name already used by another key.")
+
+	// ErrSkykeyWithIDAlreadyExists indicates that a key cannot be created or
+	// added because a key with the same ID (and therefore same key entropy) is
+	// already being stored.
+	ErrSkykeyWithIDAlreadyExists = errors.New("Skykey ID already exists.")
+
 	errUnsupportedSkykeyCipherType = errors.New("Unsupported Skykey ciphertype")
 	errNoSkykeysWithThatName       = errors.New("No Skykey with that name")
 	errNoSkykeysWithThatID         = errors.New("No Skykey is assocated with that ID")
-	errSkykeyNameAlreadyExists     = errors.New("Skykey name already exists.")
-	errSkykeyWithIDAlreadyExists   = errors.New("Skykey ID already exists.")
 	errSkykeyNameToolong           = errors.New("Skykey name exceeds max length")
 
 	// SkykeyPersistFilename is the name of the skykey persistence file.
@@ -136,9 +146,21 @@ func (sk *Skykey) FromString(s string) error {
 	return sk.unmarshalSia(bytes.NewReader(keyBytes))
 }
 
-// ID returns the ID for the Skykey.
+// ID returns the ID for the Skykey. A master Skykey and all file-specific
+// skykeys derived from it share the same ID because they only differ in nonce
+// values, not key values. This fact is used to identify the master Skykey
+// with which a Skyfile was encrypted.
 func (sk Skykey) ID() (keyID SkykeyID) {
-	h := crypto.HashAll(SkykeySpecifier, sk.CipherType, sk.Entropy)
+	var entropy []byte
+	// Ignore the nonce for this type because the nonce is different for each
+	// file-specific subkey.
+	if sk.CipherType == crypto.TypeXChaCha20 {
+		entropy = sk.Entropy[:chacha.KeySize]
+	} else {
+		entropy = sk.Entropy
+	}
+
+	h := crypto.HashAll(SkykeySpecifier, sk.CipherType, entropy)
 	copy(keyID[:], h[:SkykeyIDLen])
 	return keyID
 }
@@ -163,7 +185,62 @@ func (id *SkykeyID) FromString(s string) error {
 
 // equals returns true if and only if the two Skykeys are equal.
 func (sk *Skykey) equals(otherKey Skykey) bool {
-	return sk.Name == otherKey.Name && sk.ID() == otherKey.ID() && sk.CipherType.String() == otherKey.CipherType.String()
+	return sk.Name == otherKey.Name && sk.CipherType == otherKey.CipherType && bytes.Equal(sk.Entropy[:], otherKey.Entropy[:])
+}
+
+// GenerateFileSpecificSubkey creates a new subkey specific to a certain file
+// being uploaded/downloaded. Skykeys can only be used once with a
+// given nonce, so this method is used to generate keys with new nonces when a
+// new file is uploaded.
+func (sk *Skykey) GenerateFileSpecificSubkey() (Skykey, error) {
+	// Generate a new random nonce.
+	nonce := make([]byte, chacha.XNonceSize)
+	fastrand.Read(nonce[:])
+	return sk.SubkeyWithNonce(nonce)
+}
+
+// DeriveSubkey is used to create Skykeys with the same key, but with a
+// different nonce. This is used to create file-specific keys, and separate keys
+// for Skyfile baseSector uploads and fanout uploads.
+func (sk *Skykey) DeriveSubkey(derivation []byte) (Skykey, error) {
+	nonce := sk.Nonce()
+	derivedNonceHash := crypto.HashAll(nonce, derivation)
+	derivedNonce := derivedNonceHash[:chacha.XNonceSize]
+
+	return sk.SubkeyWithNonce(derivedNonce)
+}
+
+// SubkeyWithNonce creates a new subkey with the same key data as this key, but
+// with the given nonce.
+func (sk *Skykey) SubkeyWithNonce(nonce []byte) (Skykey, error) {
+	if len(nonce) != chacha.XNonceSize {
+		return Skykey{}, errors.New("Incorrect nonce size")
+	}
+
+	entropy := make([]byte, chacha.KeySize+chacha.XNonceSize)
+	copy(entropy[:chacha.KeySize], sk.Entropy[:chacha.KeySize])
+	copy(entropy[chacha.KeySize:], nonce[:])
+
+	// Sanity check that we can actually make a CipherKey with this.
+	_, err := crypto.NewSiaKey(sk.CipherType, entropy)
+	if err != nil {
+		return Skykey{}, errors.AddContext(err, "error creating new skykey subkey")
+	}
+
+	subkey := Skykey{sk.Name, sk.CipherType, entropy}
+	return subkey, nil
+}
+
+// CipherKey returns the crypto.CipherKey equivalent of this Skykey.
+func (sk *Skykey) CipherKey() (crypto.CipherKey, error) {
+	return crypto.NewSiaKey(sk.CipherType, sk.Entropy)
+}
+
+// Nonce returns the nonce of this Skykey.
+func (sk *Skykey) Nonce() []byte {
+	nonce := make([]byte, chacha.XNonceSize)
+	copy(nonce[:], sk.Entropy[chacha.KeySize:])
+	return nonce
 }
 
 // SupportsCipherType returns true if and only if the SkykeyManager supports
@@ -185,7 +262,7 @@ func (sm *SkykeyManager) CreateKey(name string, cipherType crypto.CipherType) (S
 	defer sm.mu.Unlock()
 	_, ok := sm.idsByName[name]
 	if ok {
-		return Skykey{}, errSkykeyNameAlreadyExists
+		return Skykey{}, ErrSkykeyWithNameAlreadyExists
 	}
 
 	// Generate the new key.
@@ -204,14 +281,14 @@ func (sm *SkykeyManager) CreateKey(name string, cipherType crypto.CipherType) (S
 func (sm *SkykeyManager) AddKey(sk Skykey) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
-	_, ok := sm.idsByName[sk.Name]
+	_, ok := sm.keysByID[sk.ID()]
 	if ok {
-		return errSkykeyNameAlreadyExists
+		return ErrSkykeyWithIDAlreadyExists
 	}
 
-	_, ok = sm.keysByID[sk.ID()]
+	_, ok = sm.idsByName[sk.Name]
 	if ok {
-		return errSkykeyWithIDAlreadyExists
+		return ErrSkykeyWithNameAlreadyExists
 	}
 
 	return sm.saveKey(sk)
@@ -257,6 +334,18 @@ func (sm *SkykeyManager) KeyByID(id SkykeyID) (Skykey, error) {
 		return Skykey{}, errNoSkykeysWithThatID
 	}
 	return key, nil
+}
+
+// Skykeys returns a slice containing each Skykey being stored.
+func (sm *SkykeyManager) Skykeys() []Skykey {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	keys := make([]Skykey, 0, len(sm.keysByID))
+	for _, sk := range sm.keysByID {
+		keys = append(keys, sk)
+	}
+	return keys
 }
 
 // NewSkykeyManager creates a SkykeyManager for managing skykeys.

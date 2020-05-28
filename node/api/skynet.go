@@ -21,6 +21,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetportals"
 	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -62,9 +63,25 @@ type (
 		Remove []string `json:"remove"`
 	}
 
+	// SkynetPortalsGET contains the information queried for the /skynet/portals
+	// GET endpoint.
+	SkynetPortalsGET struct {
+		Portals []modules.SkynetPortal `json:"portals"`
+	}
+
+	// SkynetPortalsPOST contains the information needed for the /skynet/portals
+	// POST endpoint to be called.
+	SkynetPortalsPOST struct {
+		Add    []modules.SkynetPortal `json:"add"`
+		Remove []modules.NetAddress   `json:"remove"`
+	}
+
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
+		PerformanceStats SkynetPerformanceStats `json:"performancestats"`
+
+		Uptime      int64         `json:"uptime"`
 		UploadStats SkynetStats   `json:"uploadstats"`
 		VersionInfo SkynetVersion `json:"versioninfo"`
 	}
@@ -85,10 +102,14 @@ type (
 	SkykeyGET struct {
 		Skykey string `json:"skykey"` // base64 encoded Skykey
 	}
+	// SkykeysGET contains a slice of Skykeys.
+	SkykeysGET struct {
+		Skykeys []string `json:"skykeys"`
+	}
 )
 
-// skynetBlacklistHandlerGET handles the API call to get the list of
-// blacklisted skylinks
+// skynetBlacklistHandlerGET handles the API call to get the list of blacklisted
+// skylinks.
 func (api *API) skynetBlacklistHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	// Get the Blacklist
 	blacklist, err := api.renter.Blacklist()
@@ -102,7 +123,7 @@ func (api *API) skynetBlacklistHandlerGET(w http.ResponseWriter, _ *http.Request
 	})
 }
 
-// skynetBlacklistHandlerPOST handles the API call to blacklist certain skylinks
+// skynetBlacklistHandlerPOST handles the API call to blacklist certain skylinks.
 func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse parameters
 	var params SkynetBlacklistPOST
@@ -143,7 +164,48 @@ func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 	// Update the Skynet Blacklist
 	err = api.renter.UpdateSkynetBlacklist(addSkylinks, removeSkylinks)
 	if err != nil {
-		WriteError(w, Error{"unable to update the skynet blacklist: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"unable to update the skynet blacklist: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	WriteSuccess(w)
+}
+
+// skynetPortalsHandlerGET handles the API call to get the list of known skynet
+// portals.
+func (api *API) skynetPortalsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	// Get the list of portals.
+	portals, err := api.renter.Portals()
+	if err != nil {
+		WriteError(w, Error{"unable to get the portals list: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	WriteJSON(w, SkynetPortalsGET{
+		Portals: portals,
+	})
+}
+
+// skynetPortalsHandlerPOST handles the API call to add and remove portals from
+// the list of known skynet portals.
+func (api *API) skynetPortalsHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse parameters.
+	var params SkynetPortalsPOST
+	err := json.NewDecoder(req.Body).Decode(&params)
+	if err != nil {
+		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Update the list of known skynet portals.
+	err = api.renter.UpdateSkynetPortals(params.Add, params.Remove)
+	if err != nil {
+		// If validation fails, return a bad request status.
+		errStatus := http.StatusInternalServerError
+		if strings.Contains(err.Error(), skynetportals.ErrSkynetPortalsValidation.Error()) {
+			errStatus = http.StatusBadRequest
+		}
+		WriteError(w, Error{"unable to update the list of known skynet portals: " + err.Error()}, errStatus)
 		return
 	}
 
@@ -153,6 +215,15 @@ func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 // skynetSkylinkHandlerGET accepts a skylink as input and will stream the data
 // from the skylink out of the response body as output.
 func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Start the timer for the performance measurement.
+	startTime := time.Now()
+	isErr := true
+	defer func() {
+		if isErr {
+			skynetPerformanceStats.TimeToFirstByte.AddRequest(0)
+		}
+	}()
+
 	strLink := ps.ByName("skylink")
 	strLink = strings.TrimPrefix(strLink, "/")
 
@@ -279,6 +350,37 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
 		return
 	}
+
+	// Metadata has been parsed successfully, stop the time here for TTFB.
+	// Metadata was fetched from Skynet itself.
+	skynetPerformanceStatsMu.Lock()
+	skynetPerformanceStats.TimeToFirstByte.AddRequest(time.Since(startTime))
+	skynetPerformanceStatsMu.Unlock()
+
+	// No more errors, defer a function to record the total performance time.
+	isErr = false
+	defer func() {
+		skynetPerformanceStatsMu.Lock()
+		defer skynetPerformanceStatsMu.Unlock()
+
+		_, fetchSize, err := skylink.OffsetAndFetchSize()
+		if err != nil {
+			return
+		}
+		if fetchSize <= 64e3 {
+			skynetPerformanceStats.Download64KB.AddRequest(time.Since(startTime))
+			return
+		}
+		if fetchSize <= 1e6 {
+			skynetPerformanceStats.Download1MB.AddRequest(time.Since(startTime))
+			return
+		}
+		if fetchSize <= 4e6 {
+			skynetPerformanceStats.Download4MB.AddRequest(time.Since(startTime))
+			return
+		}
+		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
+	}()
 
 	// Only set the Content-Type header when the metadata defines one, if we
 	// were to set the header to an empty string, it would prevent the http
@@ -418,6 +520,9 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 // set, this is essentially an upload streaming endpoint for Skynet which
 // returns a skylink.
 func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Start the timer for the performance measurement.
+	startTime := time.Now()
+
 	// Parse the query params.
 	queryForm, err := url.ParseQuery(req.URL.RawQuery)
 	if err != nil {
@@ -565,25 +670,66 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
-	// Ensure we have a filename
-	if lup.FileMetadata.Filename == "" {
-		WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
+	// Grab the skykey specified.
+	skykeyName := queryForm.Get("skykeyname")
+	skykeyID := queryForm.Get("skykeyid")
+	if skykeyName != "" && skykeyID != "" {
+		WriteError(w, Error{"Can only use either skykeyname or skykeyid flag, not both."}, http.StatusBadRequest)
 		return
+	}
+
+	if skykeyName != "" {
+		lup.SkykeyName = skykeyName
+	}
+	if skykeyID != "" {
+		var ID skykey.SkykeyID
+		err = ID.FromString(skykeyID)
+		if err != nil {
+			WriteError(w, Error{"Unable to parse skykey ID"}, http.StatusBadRequest)
+			return
+		}
+		lup.SkykeyID = ID
 	}
 
 	// Enable CORS
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
+	// Check for a convertpath input
+	convertPathStr := queryForm.Get("convertpath")
+	if convertPathStr != "" && lup.FileMetadata.Filename != "" {
+		WriteError(w, Error{fmt.Sprintf("cannot set both a convertpath and a filename")}, http.StatusBadRequest)
+		return
+	}
+
 	// Check whether this is a streaming upload or a siafile conversion. If no
 	// convert path is provided, assume that the req.Body will be used as a
 	// streaming upload.
-	convertPathStr := queryForm.Get("convertpath")
 	if convertPathStr == "" {
+		// Ensure we have a filename
+		if lup.FileMetadata.Filename == "" {
+			WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
+			return
+		}
+
 		skylink, err := api.renter.UploadSkyfile(lup)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to upload file to Skynet: %v", err)}, http.StatusBadRequest)
 			return
 		}
+
+		// Determine whether the file is large or not, and update the
+		// appropriate bucket.
+		file, err := api.renter.File(lup.SiaPath)
+		if err == nil && file.Filesize <= 4e6 {
+			skynetPerformanceStatsMu.Lock()
+			skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime))
+			skynetPerformanceStatsMu.Unlock()
+		} else if err == nil {
+			skynetPerformanceStatsMu.Lock()
+			skynetPerformanceStats.UploadLarge.AddRequest(time.Since(startTime))
+			skynetPerformanceStatsMu.Unlock()
+		}
+
 		WriteJSON(w, SkynetSkyfileHandlerPOST{
 			Skylink:    skylink.String(),
 			MerkleRoot: skylink.MerkleRoot(),
@@ -608,6 +754,12 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		WriteError(w, Error{fmt.Sprintf("failed to convert siafile to skyfile: %v", err)}, http.StatusBadRequest)
 		return
 	}
+
+	// No more errors, add metrics for the upload time. A convert is a 4MB
+	// upload.
+	skynetPerformanceStatsMu.Lock()
+	skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime))
+	skynetPerformanceStatsMu.Unlock()
 
 	WriteJSON(w, SkynetSkyfileHandlerPOST{
 		Skylink:    skylink.String(),
@@ -642,7 +794,25 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 		version += "-" + build.ReleaseTag
 	}
 
-	WriteJSON(w, SkynetStatsGET{UploadStats: stats, VersionInfo: SkynetVersion{Version: version, GitRevision: build.GitRevision}})
+	// Grab a copy of the performance stats.
+	skynetPerformanceStatsMu.Lock()
+	skynetPerformanceStats.Update()
+	perfStats := skynetPerformanceStats.Copy()
+	skynetPerformanceStatsMu.Unlock()
+
+	// Grab the siad uptime
+	uptime := time.Since(api.StartTime()).Seconds()
+
+	WriteJSON(w, SkynetStatsGET{
+		PerformanceStats: perfStats,
+
+		Uptime:      int64(uptime),
+		UploadStats: stats,
+		VersionInfo: SkynetVersion{
+			Version:     version,
+			GitRevision: build.GitRevision,
+		},
+	})
 }
 
 // serveTar serves skyfiles as a tar by reading them from r and writing the
@@ -885,4 +1055,25 @@ func (api *API) skykeyAddKeyHandlerPOST(w http.ResponseWriter, req *http.Request
 	}
 
 	WriteSuccess(w)
+}
+
+// skykeysHandlerGET handles the API call to get all of the renter's skykeys.
+func (api *API) skykeysHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	skykeys, err := api.renter.Skykeys()
+	if err != nil {
+		WriteError(w, Error{"Unable to get skykeys: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	res := SkykeysGET{
+		Skykeys: make([]string, len(skykeys)),
+	}
+	for i, sk := range skykeys {
+		res.Skykeys[i], err = sk.ToString()
+		if err != nil {
+			WriteError(w, Error{"failed to write skykey string: " + err.Error()}, http.StatusInternalServerError)
+			return
+		}
+	}
+	WriteJSON(w, res)
 }

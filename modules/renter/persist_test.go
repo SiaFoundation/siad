@@ -257,12 +257,15 @@ func TestSiafileCompatibility(t *testing.T) {
 		t.Fatal("nickname not loaded properly:", names)
 	}
 	// Make sure that we can open the file afterwards.
-	siaPath, err := modules.UserSiaPath().Join(names[0])
+	siaPath, err := modules.UserFolder.Join(names[0])
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = rt.renter.staticFileSystem.OpenSiaFile(siaPath)
+	sf, err := rt.renter.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if sf.NumChunks() < 1 {
+		t.Fatal("invalid number of chunks in siafile:", sf.NumChunks())
 	}
 }

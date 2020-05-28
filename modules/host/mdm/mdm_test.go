@@ -1,6 +1,10 @@
 package mdm
 
 import (
+	"bytes"
+	"context"
+	"fmt"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -12,12 +16,16 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// errSectorNotFound return by ReadSector if the sector can't be found.
+var errSectorNotFound = errors.New("sector not found")
+
 type (
 	// TestHost is a dummy host for testing which satisfies the Host interface.
 	TestHost struct {
-		blockHeight types.BlockHeight
-		sectors     map[crypto.Hash][]byte
-		mu          sync.Mutex
+		generateSectors bool
+		blockHeight     types.BlockHeight
+		sectors         map[crypto.Hash][]byte
+		mu              sync.Mutex
 	}
 	// TestStorageObligation is a dummy storage obligation for testing which
 	// satisfies the StorageObligation interface.
@@ -28,8 +36,13 @@ type (
 )
 
 func newTestHost() *TestHost {
+	return newCustomTestHost(true)
+}
+
+func newCustomTestHost(generateSectors bool) *TestHost {
 	return &TestHost{
-		sectors: make(map[crypto.Hash][]byte),
+		generateSectors: generateSectors,
+		sectors:         make(map[crypto.Hash][]byte),
 	}
 }
 
@@ -59,9 +72,11 @@ func (h *TestHost) ReadSector(sectorRoot crypto.Hash) ([]byte, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	data, exists := h.sectors[sectorRoot]
-	if !exists {
+	if !exists && h.generateSectors {
 		data = fastrand.Bytes(int(modules.SectorSize))
 		h.sectors[sectorRoot] = data
+	} else if !exists && !h.generateSectors {
+		return nil, errSectorNotFound
 	}
 	return data, nil
 }
@@ -104,8 +119,8 @@ func (so *TestStorageObligation) Update(sectorRoots []crypto.Hash, sectorsRemove
 
 // newTestPriceTable returns a price table for testing that charges 1 Hasting
 // for every operation/rpc.
-func newTestPriceTable() modules.RPCPriceTable {
-	return modules.RPCPriceTable{
+func newTestPriceTable() *modules.RPCPriceTable {
+	return &modules.RPCPriceTable{
 		Expiry:               time.Now().Add(time.Minute).Unix(),
 		UpdatePriceTableCost: types.NewCurrency64(1),
 		InitBaseCost:         types.NewCurrency64(1),
@@ -116,11 +131,16 @@ func newTestPriceTable() modules.RPCPriceTable {
 		// Instruction costs
 		DropSectorsBaseCost: types.NewCurrency64(1),
 		DropSectorsUnitCost: types.NewCurrency64(1),
+		HasSectorBaseCost:   types.NewCurrency64(1),
 		ReadBaseCost:        types.NewCurrency64(1),
 		ReadLengthCost:      types.NewCurrency64(1),
 		WriteBaseCost:       types.NewCurrency64(1),
 		WriteLengthCost:     types.NewCurrency64(1),
 		WriteStoreCost:      types.NewCurrency64(1),
+
+		// Bandwidth costs
+		DownloadBandwidthCost: types.NewCurrency64(1),
+		UploadBandwidthCost:   types.NewCurrency64(1),
 	}
 }
 
@@ -134,4 +154,74 @@ func TestNew(t *testing.T) {
 	if mdm.host != host {
 		t.Fatal("host wasn't set correctly")
 	}
+}
+
+// ExecuteProgramWithBuilder is a convenience wrapper around mdm.ExecuteProgram.
+// It runs the program constructed by tb with the storage obligation so. It will
+// also return the outputs as a slice for convenience.
+func (mdm *MDM) ExecuteProgramWithBuilder(tb *testProgramBuilder, so *TestStorageObligation, duration types.BlockHeight, finalized bool) ([]Output, error) {
+	// Execute the program.
+	finalize, budget, outputs, err := mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, duration, finalized)
+	if err != nil {
+		return nil, err
+	}
+	// Finalize the program if finalized is true.
+	if finalize == nil && finalized {
+		return nil, errors.New("finalize method was 'nil' but finalized was 'true'")
+	} else if finalized {
+		if err = finalize(so); err != nil {
+			return nil, err
+		}
+	}
+	// Budget should be drained now.
+	if !budget.Remaining().IsZero() {
+		return nil, fmt.Errorf("remaining budget should be empty but was %v", budget.Remaining())
+	}
+	return outputs, nil
+}
+
+// ExecuteProgramWithBuilderManualFinalize is a convenience wrapper around
+// mdm.ExecuteProgram. It runs the program constructed by tb with the storage
+// obligation so. It will also return the outputs as a slice for convenience.
+// Finalization needs to be done manually after running the program.
+func (mdm *MDM) ExecuteProgramWithBuilderManualFinalize(tb *testProgramBuilder, so *TestStorageObligation, duration types.BlockHeight, finalized bool) (FnFinalize, *modules.RPCBudget, []Output, error) {
+	ctx := context.Background()
+	program, programData := tb.Program()
+	values := tb.Cost()
+	_, _, collateral := values.Cost()
+	budget := values.Budget(finalized)
+	finalize, outputChan, err := mdm.ExecuteProgram(ctx, tb.staticPT, program, budget, collateral, so, duration, uint64(len(programData)), bytes.NewReader(programData))
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	// Collect outputs
+	var outputs []Output
+	for output := range outputChan {
+		outputs = append(outputs, output)
+	}
+	// Assert outputs
+	err = values.AssertOutputs(outputs)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return finalize, budget, outputs, nil
+}
+
+// assert asserts an output against the provided values. Costs should be
+// asserted using the TestValues type or they will be asserted implicitly when
+// using ExecuteProgramWithBuilder.
+func (o Output) assert(newSize uint64, newMerkleRoot crypto.Hash, proof []crypto.Hash, output []byte) error {
+	if o.NewSize != newSize {
+		return fmt.Errorf("expected newSize %v but got %v", newSize, o.NewSize)
+	}
+	if o.NewMerkleRoot != newMerkleRoot {
+		return fmt.Errorf("expected newMerkleRoot %v but got %v", newSize, o.NewMerkleRoot)
+	}
+	if len(o.Proof)+len(proof) != 0 && !reflect.DeepEqual(o.Proof, proof) {
+		return fmt.Errorf("expected proof %v but got %v", proof, o.Proof)
+	}
+	if !bytes.Equal(o.Output, output) {
+		return fmt.Errorf("expected o %v but got %v", o, o.Output)
+	}
+	return nil
 }

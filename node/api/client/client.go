@@ -9,28 +9,38 @@ import (
 	"net/http"
 	"strings"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// A Client makes requests to the siad HTTP API.
-type Client struct {
-	// Address is the API address of the siad server.
-	Address string
+type (
+	// A Client makes requests to the siad HTTP API.
+	Client struct {
+		Options
+	}
 
-	// Password must match the password of the siad server.
-	Password string
+	// Options defines the options that are available when creating a
+	// client.
+	Options struct {
+		// Address is the API address of the siad server.
+		Address string
 
-	// UserAgent must match the User-Agent required by the siad server. If not
-	// set, it defaults to "Sia-Agent".
-	UserAgent string
-}
+		// Password must match the password of the siad server.
+		Password string
 
-// A UnsafeClient is a Client with additional access to unsafe methods that are
-// easy to misuse. It should only be used for testing.
-type UnsafeClient struct {
-	Client
-}
+		// UserAgent must match the User-Agent required by the siad server. If not
+		// set, it defaults to "Sia-Agent".
+		UserAgent string
+	}
+
+	// A UnsafeClient is a Client with additional access to unsafe methods that are
+	// easy to misuse. It should only be used for testing.
+	UnsafeClient struct {
+		Client
+	}
+)
 
 // NewUnsafeClient creates a new UnsafeClient using the provided address.
 func NewUnsafeClient(client Client) *UnsafeClient {
@@ -49,11 +59,28 @@ func (uc *UnsafeClient) Get(resource string, obj interface{}) error {
 	return uc.get(resource, obj)
 }
 
-// New creates a new Client using the provided address.
-func New(address string) *Client {
+// New creates a new Client using the provided address. The password will be set
+// using build.APIPasssword and the user agent will be set to "Sia-Agent". Both
+// can be changed manually by the caller after the client is returned.
+func New(opts Options) *Client {
 	return &Client{
-		Address: address,
+		Options: opts,
 	}
+}
+
+// DefaultOptions returns the default options for a client. This includes
+// setting the default siad user agent to "Sia-Agent" and setting the password
+// using the build.APIPassword() function.
+func DefaultOptions() (Options, error) {
+	pw, err := build.APIPassword()
+	if err != nil {
+		return Options{}, errors.AddContext(err, "could not locate api password")
+	}
+	return Options{
+		Address:   "localhost:9980",
+		Password:  pw,
+		UserAgent: "Sia-Agent",
+	}, nil
 }
 
 // NewRequest constructs a request to the siad HTTP API, setting the correct
@@ -125,6 +152,13 @@ func (c *Client) getReaderResponse(resource string) (http.Header, io.ReadCloser,
 		return nil, nil, errors.AddContext(err, "GET request failed")
 	}
 
+	// Add ErrAPICallNotRecognized if StatusCode is StatusNotFound to allow for
+	// handling of modules that are not loaded
+	if res.StatusCode == http.StatusNotFound {
+		err = errors.Compose(readAPIError(res.Body), api.ErrAPICallNotRecognized)
+		return nil, nil, errors.AddContext(err, "unable to perform GET on "+resource)
+	}
+
 	// If the status code is not 2xx, decode and return the accompanying
 	// api.Error.
 	if res.StatusCode < 200 || res.StatusCode > 299 {
@@ -156,8 +190,11 @@ func (c *Client) getRawPartialResponse(resource string, from, to uint64) ([]byte
 	}
 	defer drainAndClose(res.Body)
 
+	// Add ErrAPICallNotRecognized if StatusCode is StatusNotFound to allow for
+	// handling of modules that are not loaded
 	if res.StatusCode == http.StatusNotFound {
-		return nil, errors.AddContext(api.ErrAPICallNotRecognized, "unable to perform GET on "+resource)
+		err = errors.Compose(readAPIError(res.Body), api.ErrAPICallNotRecognized)
+		return nil, errors.AddContext(err, "unable to perform GET on "+resource)
 	}
 
 	// If the status code is not 2xx, decode and return the accompanying
@@ -239,6 +276,13 @@ func (c *Client) postRawResponseWithHeaders(resource string, body io.Reader, hea
 		return http.Header{}, nil, errors.AddContext(err, "POST request failed")
 	}
 	defer drainAndClose(res.Body)
+
+	// Add ErrAPICallNotRecognized if StatusCode is StatusNotFound to allow for
+	// handling of modules that are not loaded
+	if res.StatusCode == http.StatusNotFound {
+		err = errors.Compose(readAPIError(res.Body), api.ErrAPICallNotRecognized)
+		return http.Header{}, nil, errors.AddContext(err, "unable to perform POST on "+resource)
+	}
 
 	// If the status code is not 2xx, decode and return the accompanying
 	// api.Error.

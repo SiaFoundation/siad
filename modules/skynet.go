@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"gitlab.com/NebulousLabs/Sia/skykey"
 )
 
 // SkyfileMetadata is all of the metadata that gets placed into the first 4096
@@ -200,6 +202,18 @@ type SkyfileUploadParameters struct {
 
 	// Reader supplies the file data for the skyfile.
 	Reader io.Reader `json:"reader"`
+
+	// SkykeyName is the name of the Skykey that should be used to encrypt the
+	// Skyfile.
+	SkykeyName string `json:"skykeyname"`
+
+	// SkykeyID is the ID of Skykey that should be used to encrypt the file.
+	SkykeyID skykey.SkykeyID `json:"skykeyid"`
+
+	// If Encrypt is set to true and one of SkykeyName or SkykeyID was set, a
+	// Skykey will be derived from the Master Skykey found under that name/ID to
+	// be used for this specific upload.
+	FileSpecificSkykey skykey.Skykey
 }
 
 // SkyfileMultipartUploadParameters defines the parameters specific to multipart
@@ -226,4 +240,10 @@ type SkyfilePinParameters struct {
 	Force               bool    `json:"force"`
 	Root                bool    `json:"root"`
 	BaseChunkRedundancy uint8   `json:"basechunkredundancy"`
+}
+
+// SkynetPortal contains information identifying a Skynet portal.
+type SkynetPortal struct {
+	Address NetAddress `json:"address"` // the IP or domain name of the portal. Must be a valid network address
+	Public  bool       `json:"public"`  // indicates whether the portal can be accessed publicly or not
 }

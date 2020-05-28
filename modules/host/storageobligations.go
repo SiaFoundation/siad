@@ -190,6 +190,33 @@ func (i storageObligationStatus) String() string {
 	return "storageObligationStatus(" + strconv.FormatInt(int64(i), 10) + ")"
 }
 
+// managedGetStorageObligationSnapshot fetches a storage obligation from the
+// database and returns a snapshot.
+func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (StorageObligationSnapshot, error) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	var err error
+	var so storageObligation
+	if err = h.db.View(func(tx *bolt.Tx) error {
+		so, err = h.getStorageObligation(tx, id)
+		return err
+	}); err != nil {
+		return StorageObligationSnapshot{}, err
+	}
+
+	rev, err := so.recentRevision()
+	if err != nil {
+		return StorageObligationSnapshot{}, err
+	}
+	return StorageObligationSnapshot{
+		staticContractSize:        so.fileSize(),
+		staticMerkleRoot:          so.merkleRoot(),
+		staticRemainingCollateral: rev.MissedHostPayout(),
+		staticSectorRoots:         so.SectorRoots,
+	}, nil
+}
+
 // getStorageObligation fetches a storage obligation from the database tx.
 func (h *Host) getStorageObligation(tx *bolt.Tx, soid types.FileContractID) (so storageObligation, err error) {
 	soBytes := tx.Bucket(bucketStorageObligations).Get(soid[:])
@@ -221,15 +248,34 @@ func putStorageObligation(tx *bolt.Tx, so storageObligation) error {
 // snapshot only contains the properties required by the MDM to execute a
 // program. This can be extended in the future to support other use cases.
 type StorageObligationSnapshot struct {
-	staticContractSize uint64
-	staticMerkleRoot   crypto.Hash
-	staticSectorRoots  []crypto.Hash
+	staticContractSize        uint64
+	staticExpirationHeight    types.BlockHeight
+	staticMerkleRoot          crypto.Hash
+	staticRemainingCollateral types.Currency
+	staticSectorRoots         []crypto.Hash
+}
+
+// ZeroStorageObligationSnapshot returns the storage obligation snapshot of an
+// empty contract. All fields are set to the defaults.
+func ZeroStorageObligationSnapshot() StorageObligationSnapshot {
+	return StorageObligationSnapshot{
+		staticContractSize:        0,
+		staticExpirationHeight:    types.BlockHeight(0),
+		staticMerkleRoot:          crypto.Hash{},
+		staticRemainingCollateral: types.ZeroCurrency,
+		staticSectorRoots:         []crypto.Hash{},
+	}
 }
 
 // ContractSize returns the size of the underlying contract, which is static and
 // is the value of the contract size at the time the snapshot was taken.
 func (sos StorageObligationSnapshot) ContractSize() uint64 {
 	return sos.staticContractSize
+}
+
+// Expiration returns the expiration height of the underlying contract.
+func (sos StorageObligationSnapshot) Expiration() types.BlockHeight {
+	return sos.staticExpirationHeight
 }
 
 // MerkleRoot returns the merkle root, which is static and is the value of the
@@ -244,11 +290,22 @@ func (sos StorageObligationSnapshot) SectorRoots() []crypto.Hash {
 	return sos.staticSectorRoots
 }
 
+// UnallocatedCollateral returns the remaining collateral within the contract
+// that hasn't been allocated yet. This means it is not yet moved to the void in
+// case of a missed storage proof.
+func (sos StorageObligationSnapshot) UnallocatedCollateral() types.Currency {
+	return sos.staticRemainingCollateral
+}
+
 // Update will take a list of sector changes and update the database to account
 // for all of it.
-func (so storageObligation) Update(sectorRoots, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error {
+func (so storageObligation) Update(sectorRoots []crypto.Hash, sectorsRemoved map[crypto.Hash]struct{}, sectorsGained map[crypto.Hash][]byte) error {
 	so.SectorRoots = sectorRoots
-	return so.h.managedModifyStorageObligation(so, sectorsRemoved, sectorsGained)
+	sr := make([]crypto.Hash, 0, len(sectorsRemoved))
+	for sector := range sectorsRemoved {
+		sr = append(sr, sector)
+	}
+	return so.h.managedModifyStorageObligation(so, sr, sectorsGained)
 }
 
 // expiration returns the height at which the storage obligation expires.
@@ -346,6 +403,15 @@ func (so storageObligation) payouts() (valid []types.SiacoinOutput, missed []typ
 	copy(valid, so.OriginTransactionSet[len(so.OriginTransactionSet)-1].FileContracts[0].ValidProofOutputs)
 	copy(missed, so.OriginTransactionSet[len(so.OriginTransactionSet)-1].FileContracts[0].MissedProofOutputs)
 	return
+}
+
+// revisionNumber returns the last revision number of the latest revision
+// for the storage obligation
+func (so storageObligation) revisionNumber() uint64 {
+	if len(so.RevisionTransactionSet) > 0 {
+		return so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0].NewRevisionNumber
+	}
+	return so.OriginTransactionSet[len(so.OriginTransactionSet)-1].FileContracts[0].RevisionNumber
 }
 
 // proofDeadline returns the height by which the storage proof must be
@@ -555,33 +621,6 @@ func (h *Host) managedAddStorageObligation(so storageObligation, renewal bool) e
 	return nil
 }
 
-// managedGetStorageObligationSnapshot fetches a storage obligation from the
-// database and returns a snapshot.
-func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (StorageObligationSnapshot, error) {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	var err error
-	var so storageObligation
-	if err = h.db.View(func(tx *bolt.Tx) error {
-		so, err = h.getStorageObligation(tx, id)
-		return err
-	}); err != nil {
-		return StorageObligationSnapshot{}, err
-	}
-
-	rev, err := so.recentRevision()
-	if err != nil {
-		return StorageObligationSnapshot{}, errors.AddContext(err, "Could not get storage obligation snapshot")
-	}
-
-	return StorageObligationSnapshot{
-		staticContractSize: rev.NewFileSize,
-		staticMerkleRoot:   rev.NewFileMerkleRoot,
-		staticSectorRoots:  so.SectorRoots,
-	}, nil
-}
-
 // managedModifyStorageObligation will take an updated storage obligation along
 // with a list of sector changes and update the database to account for all of
 // it. The sector modifications are only used to update the sector database,
@@ -592,35 +631,37 @@ func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (Sto
 // will need to appear in 'sectorsRemoved' multiple times. Same with
 // 'sectorsGained'.
 func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemoved []crypto.Hash, sectorsGained map[crypto.Hash][]byte) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	// Sanity check - obligation should be under lock while being modified.
+	// Sanity check - all of the sector data should be modules.SectorSize
+	for _, data := range sectorsGained {
+		if uint64(len(data)) != modules.SectorSize {
+			h.log.Critical("modifying a revision with garbage sector sizes", len(data))
+			return errInsaneStorageObligationRevision
+		}
+	}
+
+	// TODO: remove this once the host was optimized for disk i/o
+	// If the contract is too large we delay for a bit to prevent rapid updates
+	// from clogging up disk i/o.
+	if so.fileSize() >= largeContractSize {
+		time.Sleep(largeContractUpdateDelay)
+	}
+
+	// Grab a couple of host state facts for sanity checks.
 	soid := so.id()
+	h.mu.Lock()
+	hostHeight := h.blockHeight
 	_, exists := h.lockedStorageObligations[soid]
+	h.mu.Unlock()
+	// Sanity check - obligation should be under lock while being modified.
 	if !exists {
 		err := errors.New("modifyStorageObligation called with an obligation that is not locked")
 		h.log.Print(err)
 		return err
 	}
-	// TODO: remove this once the host was optimized for disk i/o
-	// If the contract is too large we delay for a bit to prevent rapid updates
-	// from clogging up disk i/o.
-	if so.fileSize() >= largeContractSize {
-		h.mu.Unlock()
-		time.Sleep(largeContractUpdateDelay)
-		h.mu.Lock()
-	}
 	// Sanity check - there needs to be enough time to submit the file contract
 	// revision to the blockchain.
-	if so.expiration()-revisionSubmissionBuffer <= h.blockHeight {
+	if so.expiration()-revisionSubmissionBuffer <= hostHeight {
 		return errNoBuffer
-	}
-	// Sanity check - all of the sector data should be modules.SectorSize
-	for _, data := range sectorsGained {
-		if uint64(len(data)) != modules.SectorSize {
-			h.log.Critical("modifying a revision with garbase sector sizes", len(data))
-			return errInsaneStorageObligationRevision
-		}
 	}
 
 	// Note, for safe error handling, the operation order should be: add
@@ -649,6 +690,11 @@ func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemov
 		}
 		return err
 	}
+
+	// Lock the host while we update storage obligation and financial metrics.
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	// Update the database to contain the new storage obligation.
 	var oldSO storageObligation
 	err = h.db.Update(func(tx *bolt.Tx) error {
@@ -704,7 +750,7 @@ func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemov
 
 	// The locked storage collateral was altered, we potentially want to
 	// unregister the insufficient collateral budget alert
-	h.TryUnregisterInsufficientCollateralBudgetAlert()
+	h.tryUnregisterInsufficientCollateralBudgetAlert()
 
 	return nil
 }
@@ -770,7 +816,7 @@ func (h *Host) removeStorageObligation(so storageObligation, sos storageObligati
 
 			// The locked storage collateral was altered, we potentially want to
 			// unregister the insufficient collateral budget alert
-			h.TryUnregisterInsufficientCollateralBudgetAlert()
+			h.tryUnregisterInsufficientCollateralBudgetAlert()
 		}
 	}
 	if sos == obligationSucceeded {
@@ -802,7 +848,7 @@ func (h *Host) removeStorageObligation(so storageObligation, sos storageObligati
 
 		// The locked storage collateral was altered, we potentially want to
 		// unregister the insufficient collateral budget alert
-		h.TryUnregisterInsufficientCollateralBudgetAlert()
+		h.tryUnregisterInsufficientCollateralBudgetAlert()
 	}
 	if sos == obligationFailed {
 		// Remove the obligation statistics as potential risk and income.
@@ -821,7 +867,7 @@ func (h *Host) removeStorageObligation(so storageObligation, sos storageObligati
 
 		// The locked storage collateral was altered, we potentially want to
 		// unregister the insufficient collateral budget alert
-		h.TryUnregisterInsufficientCollateralBudgetAlert()
+		h.tryUnregisterInsufficientCollateralBudgetAlert()
 	}
 
 	// Update the storage obligation to be finalized but still in-database. The
@@ -1197,9 +1243,12 @@ func (h *Host) StorageObligations() (sos []modules.StorageObligation) {
 			if err != nil {
 				return build.ExtendErr("unable to unmarshal storage obligation:", err)
 			}
+
+			valid, missed := so.payouts()
 			mso := modules.StorageObligation{
 				ContractCost:             so.ContractCost,
 				DataSize:                 so.fileSize(),
+				RevisionNumber:           so.revisionNumber(),
 				LockedCollateral:         so.LockedCollateral,
 				ObligationId:             so.id(),
 				PotentialAccountFunding:  so.PotentialAccountFunding,
@@ -1221,7 +1270,11 @@ func (h *Host) StorageObligations() (sos []modules.StorageObligation) {
 				ProofConstructed:    so.ProofConstructed,
 				RevisionConfirmed:   so.RevisionConfirmed,
 				RevisionConstructed: so.RevisionConstructed,
+
+				ValidProofOutputs:  valid,
+				MissedProofOutputs: missed,
 			}
+
 			sos = append(sos, mso)
 			return nil
 		})

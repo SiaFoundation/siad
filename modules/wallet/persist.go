@@ -43,6 +43,9 @@ func (w *Wallet) openDB(filename string) (err error) {
 	if err != nil {
 		return err
 	}
+	w.tg.AfterStop(func() error {
+		return w.db.Close()
+	})
 	// initialize the database
 	err = w.db.Update(func(tx *bolt.Tx) error {
 		// check whether we need to init bucketAddrTransactions
@@ -111,6 +114,9 @@ func (w *Wallet) initPersist() error {
 	if err != nil {
 		return err
 	}
+	w.tg.AfterStop(func() error {
+		return w.log.Close()
+	})
 
 	// Open the database.
 	dbFilename := filepath.Join(w.persistDir, dbFile)

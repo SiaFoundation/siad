@@ -76,7 +76,12 @@ func TestHostWorkingStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
 	// TODO: this causes an ndf, because it relies on the host tester starting up
 	// and fully returning faster than the first check, which isnt always the
@@ -126,7 +131,12 @@ func TestHostConnectabilityStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
 	// TODO: this causes an ndf, because it relies on the host tester starting up
 	// and fully returning faster than the first check, which isnt always the
@@ -148,49 +158,42 @@ func TestHostConnectabilityStatus(t *testing.T) {
 	}
 }
 
-// TestHostSiaMuxSubscriber verifies the host is properly subscribed and is
-// listening for incoming streams.
-func TestHostSiaMuxSubscriber(t *testing.T) {
+// TestUnrecognizedRPCID verifies the host's stream handler returns an error if
+// we send an random RPC id.
+func TestUnrecognizedRPCID(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
 
-	ht, err := newHostTester(t.Name())
+	pair, err := newRenterHostPair(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		err := pair.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
-	hes := ht.host.ExternalSettings()
-	muxAddress := fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
-	mux := ht.host.staticMux
+	stream := pair.managedNewStream()
+	defer func() {
+		err := stream.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
 
-	// fetch a stream from the mux
-	stream, err := mux.NewStream(modules.HostSiaMuxSubscriberName, muxAddress, modules.SiaPKToMuxPK(ht.host.publicKey))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer stream.Close()
-
-	// write the RPC id on the stream
+	// write a random rpc id to it and expect it to fail
 	var randomRPCID types.Specifier
 	fastrand.Read(randomRPCID[:])
 	err = modules.RPCWrite(stream, randomRPCID)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// write the price table UID
-	var ptID types.Specifier
-	fastrand.Read(ptID[:])
-	err = modules.RPCWrite(stream, randomRPCID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	err = modules.RPCRead(stream, struct{}{})
 	if err == nil || !strings.Contains(err.Error(), randomRPCID.String()) {
-		t.Fatal("Expected Unrecognized RPC ID error")
+		t.Fatalf("Expected err '%v', but received '%v'", fmt.Sprintf("Unrecognized RPC id %v", randomRPCID), err)
 	}
 }

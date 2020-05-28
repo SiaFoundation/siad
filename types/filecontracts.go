@@ -158,6 +158,20 @@ func (fcr FileContractRevision) PaymentRevision(amount Currency) (FileContractRe
 	return rev, nil
 }
 
+// ToTransaction wraps the revision in a Transaction. Note that the
+// PublicKeyIndex is hardcoded at 0 as the renter key is always first, see
+// formContract
+func (fcr FileContractRevision) ToTransaction() Transaction {
+	return Transaction{
+		FileContractRevisions: []FileContractRevision{fcr},
+		TransactionSignatures: []TransactionSignature{{
+			ParentID:       crypto.Hash(fcr.ParentID),
+			CoveredFields:  CoveredFields{FileContractRevisions: []uint64{0}},
+			PublicKeyIndex: 0,
+		}},
+	}
+}
+
 // EndHeight returns the height at which the host is no longer obligated to
 // store the contract data.
 func (fcr FileContractRevision) EndHeight() BlockHeight {
@@ -288,6 +302,11 @@ func (fcr FileContractRevision) MissedRenterOutput() SiacoinOutput {
 // MissedHostOutput gets the host's missed proof output.
 func (fcr FileContractRevision) MissedHostOutput() SiacoinOutput {
 	return fcr.NewMissedProofOutputs[1]
+}
+
+// MissedHostPayout gets the value of the host's missed proof output.
+func (fcr FileContractRevision) MissedHostPayout() Currency {
+	return fcr.MissedHostOutput().Value
 }
 
 // MissedVoidOutput gets the void's missed proof output.

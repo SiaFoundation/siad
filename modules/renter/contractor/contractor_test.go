@@ -1,7 +1,7 @@
 package contractor
 
 import (
-	"errors"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/consensus"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
@@ -16,31 +17,47 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
+// Create a closeFn type that allows helpers which need to be closed to return
+// methods that close the helpers.
+type closeFn func() error
+
+// tryClose is shorthand to run a t.Error() if a closeFn fails.
+func tryClose(cf closeFn, t *testing.T) {
+	err := cf()
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 // newModules initializes the modules needed to test creating a new contractor
-func newModules(testdir string) (modules.ConsensusSet, modules.Wallet, modules.TransactionPool, modules.HostDB, error) {
+func newModules(testdir string) (modules.ConsensusSet, modules.Wallet, modules.TransactionPool, modules.HostDB, closeFn, error) {
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
 	if err := <-errChan; err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	w, err := wallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
 	hdb, errChanHDB := hostdb.New(g, cs, tp, testdir)
 	if err := <-errChanHDB; err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, err
 	}
-	return cs, w, tp, hdb, nil
+	cf := func() error {
+		return errors.Compose(hdb.Close(), w.Close(), tp.Close(), cs.Close(), g.Close())
+	}
+	return cs, w, tp, hdb, cf, nil
 }
 
 // TestNew tests the New function.
@@ -50,10 +67,11 @@ func TestNew(t *testing.T) {
 	}
 	// Create the modules.
 	dir := build.TempDir("contractor", t.Name())
-	cs, w, tpool, hdb, err := newModules(dir)
+	cs, w, tpool, hdb, closeFn, err := newModules(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tryClose(closeFn, t)
 
 	// Sane values.
 	_, errChan := New(cs, w, tpool, hdb, dir)
@@ -117,22 +135,25 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	// create a siamux
 	testdir := build.TempDir("contractor", t.Name())
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
-	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0")
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tryClose(mux.Close, t)
 
 	// create testing trio
-	h, c, m, err := newTestingTrio(t.Name())
+	h, c, m, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tryClose(cf, t)
 
 	// this test requires two hosts: create another one
-	h, err = newTestingHost(build.TempDir("hostdata", ""), c.cs.(modules.ConsensusSet), c.tpool.(modules.TransactionPool), mux)
+	h, hostCF, err := newTestingHost(build.TempDir("hostdata", ""), c.cs.(modules.ConsensusSet), c.tpool.(modules.TransactionPool), mux)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tryClose(hostCF, t)
 
 	// announce the extra host
 	err = h.Announce()
@@ -307,10 +328,11 @@ func TestHostMaxDuration(t *testing.T) {
 	t.Parallel()
 
 	// create testing trio
-	h, c, m, err := newTestingTrio(t.Name())
+	h, c, m, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tryClose(cf, t)
 
 	// Set host's MaxDuration to 5 to test if host will be skipped when contract
 	// is formed
@@ -440,6 +462,159 @@ func TestHostMaxDuration(t *testing.T) {
 	}
 }
 
+// TestPayment verifies the PaymentProvider interface on the contractor. It does
+// this by trying to pay the host using a filecontract and verifying if payment
+// can be made successfully.
+func TestPayment(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a siamux
+	testdir := build.TempDir("contractor", t.Name())
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create a testing trio with our mux injected
+	h, c, _, cf, err := newCustomTestingTrio(t.Name(), mux)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tryClose(cf, t)
+	hpk := h.PublicKey()
+
+	// set an allowance and wait for contracts
+	err = c.SetAllowance(modules.DefaultAllowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = build.Retry(50, 100*time.Millisecond, func() error {
+		if len(c.Contracts()) == 0 {
+			return errors.New("no contract created")
+		}
+		return nil
+	})
+
+	// create a refund account
+	aid, _ := modules.NewAccountID()
+
+	// Fetch the contracts, there's a race condition between contract creation
+	// and the contractor knowing the contract exists, so do this in a retry.
+	var contract modules.RenterContract
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		var ok bool
+		contract, ok = c.ContractByPublicKey(hpk)
+		if !ok {
+			return errors.New("contract not found")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// backup the amount renter funds
+	initial := contract.RenterFunds
+
+	// write the rpc id
+	stream, err := modules.NewHostStream(mux, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// read the updated response
+	var update modules.RPCUpdatePriceTableResponse
+	err = modules.RPCRead(stream, &update)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// unmarshal the JSON into a price table
+	var pt modules.RPCPriceTable
+	err = json.Unmarshal(update.PriceTableJSON, &pt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// provide payment
+	err = c.ProvidePayment(stream, contract.HostPublicKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, aid, c.blockHeight)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the contract was updated
+	contract, _ = c.ContractByPublicKey(hpk)
+	remaining := contract.RenterFunds
+	expected := initial.Sub(pt.UpdatePriceTableCost)
+	if !remaining.Equals(expected) {
+		t.Fatalf("Expected renter contract to reflect the payment, the renter funds should be %v but were %v", expected.HumanString(), remaining.HumanString())
+	}
+
+	// write the rpc id
+	stream, err = modules.NewHostStream(mux, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = modules.RPCWrite(stream, modules.RPCFundAccount)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// write the price table uid
+	err = modules.RPCWrite(stream, pt.UID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// send fund account request (re-use the refund account)
+	err = modules.RPCWrite(stream, modules.FundAccountRequest{Account: aid})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// provide payment
+	funding := remaining.Div64(2)
+	if funding.Cmp(h.InternalSettings().MaxEphemeralAccountBalance) > 0 {
+		funding = h.InternalSettings().MaxEphemeralAccountBalance
+	}
+
+	err = c.ProvidePayment(stream, hpk, modules.RPCFundAccount, funding.Add(pt.FundAccountCost), modules.ZeroAccountID, c.blockHeight)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// receive response
+	var resp modules.FundAccountResponse
+	err = modules.RPCRead(stream, &resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the receipt
+	receipt := resp.Receipt
+	err = crypto.VerifyHash(crypto.HashAll(receipt), hpk.ToPublicKey(), resp.Signature)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !receipt.Amount.Equals(funding) {
+		t.Fatalf("Unexpected funded amount in the receipt, expected %v but received %v", funding.HumanString(), receipt.Amount.HumanString())
+	}
+	if receipt.Account != aid {
+		t.Fatalf("Unexpected account id in the receipt, expected %v but received %v", aid, receipt.Account)
+	}
+	if !receipt.Host.Equals(hpk) {
+		t.Fatalf("Unexpected host pubkey in the receipt, expected %v but received %v", hpk, receipt.Host)
+	}
+}
+
 // TestLinkedContracts tests that the contractors maps are updated correctly
 // when renewing contracts
 func TestLinkedContracts(t *testing.T) {
@@ -449,10 +624,11 @@ func TestLinkedContracts(t *testing.T) {
 	t.Parallel()
 
 	// create testing trio
-	h, c, m, err := newTestingTrio(t.Name())
+	h, c, m, cf, err := newTestingTrio(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer tryClose(cf, t)
 
 	// Create allowance
 	a := modules.Allowance{

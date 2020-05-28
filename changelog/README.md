@@ -79,6 +79,15 @@ To ensure consistent spacing please remove leading spaces from the first line,
 the file content should start with `- ` and please remove new lines and spaces
 at the end of the file.
 
+### Ignored Files
+Files with filenames listed in `.changelogignore` which are contained
+in changelog directory structure will be ignored, i.e. changelog items will
+not be created from them. Examples are:
+
+- `.init` files which need to be included if directory structure, so that
+otherwise empty directory structure can be committed to git.
+- `.DS_Store` files, which are added to directories automatically by MacOS
+
 ## Change Types
 ### Key Updates
 Key update are new features and notable product updates. Any key updates should
@@ -142,6 +151,15 @@ The script creates the changelog by executing the following steps:
 Once generated, the new `CHANGELOG.md` should be pushed as a new merge request
 to be merged with master.
 
+### Updating and saving changelog tail
+To create the updated `CHANGELOG.md` file and to save generated versions
+to `changelog-tail.md` use `final` argument while generating the changelog:
+`generate-changelog.sh final`.
+
+The script executes the same steps as without `final` argument and does also:
+- saves all active versions to the `changelog-tail.md` in correct order
+- deletes all active versions directories with their items
+
 ### Editing
 The Changelog generator can have multiple versions in the `changelog` directory.
 Editing any version that currently has a directory in the `/changelog` directory
@@ -161,6 +179,14 @@ If in `release-scripts/generate-changelog.sh` is the following setting
 `generate_till_version=v1.4.4` and there is no upcoming version directory,
 then directory `v1.4.5` with sub-directories `key-updates`, `bugs-fixed` and
 `other` are created automatically.
+
+If in `release-scripts/generate-changelog.sh` is the following setting
+`generate_till_version=v1.4.4`, then following 2 upcoming patch level versions
+`v1.4.5` and `v1.4.6` directories will be created if they do not exist.
+Also 1 upcoming minor level version `v1.5.0` directory will be created
+if it doesn't exist. All created upcoming versions are created with
+sub-directories `key-updates`, `bugs-fixed` and `other` and `.init` items
+in them, so they can be committed to git.
 
 When the automatically generated upcoming version (e.g. `v1.4.6`) doesn't
 match what is wanted (e.g. `v1.5.0`) then the generated directory name can be

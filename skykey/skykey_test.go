@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/aead/chacha20/chacha"
+
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
@@ -14,7 +16,7 @@ import (
 // TestSkykeyManager tests the basic functionality of the skykeyManager.
 func TestSkykeyManager(t *testing.T) {
 	// Create a key manager.
-	persistDir := build.TempDir(t.Name())
+	persistDir := build.TempDir("skykey", t.Name())
 	keyMan, err := NewSkykeyManager(persistDir)
 	if err != nil {
 		t.Fatal(err)
@@ -74,7 +76,7 @@ func TestSkykeyManager(t *testing.T) {
 
 	// Check duplicate name errors.
 	_, err = keyMan.CreateKey("test_key1", cipherType)
-	if !errors.Contains(err, errSkykeyNameAlreadyExists) {
+	if !errors.Contains(err, ErrSkykeyWithNameAlreadyExists) {
 		t.Fatal("Expected skykey name to already exist", err)
 	}
 
@@ -186,8 +188,83 @@ func TestSkykeyManager(t *testing.T) {
 	// shown.
 	for _, key := range keyMan.keysByID {
 		err := addKeyMan.AddKey(key)
-		if !errors.Contains(err, errSkykeyNameAlreadyExists) {
+		if !errors.Contains(err, ErrSkykeyWithIDAlreadyExists) {
 			t.Fatal(err)
+		}
+	}
+}
+
+// TestSkykeyDerivation tests skykey derivation methods used in skyfile
+// encryption.
+func TestSkykeyDerivations(t *testing.T) {
+	// Create a key manager.
+	persistDir := build.TempDir("skykey", t.Name())
+	keyMan, err := NewSkykeyManager(persistDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	skykey, err := keyMan.CreateKey("derivation_test_key", crypto.TypeXChaCha20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	masterNonce := skykey.Nonce()
+
+	derivationPath1 := []byte("derivationtest1")
+	derivationPath2 := []byte("path2")
+
+	// Create file-specific keys.
+	numDerivedSkykeys := 5
+	derivedSkykeys := make([]Skykey, 0)
+	for i := 0; i < numDerivedSkykeys; i++ {
+		fsKey, err := skykey.GenerateFileSpecificSubkey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		derivedSkykeys = append(derivedSkykeys, fsKey)
+
+		// Further derive subkeys along the 2 test paths.
+		dk1, err := fsKey.DeriveSubkey(derivationPath1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dk2, err := fsKey.DeriveSubkey(derivationPath2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		derivedSkykeys = append(derivedSkykeys, dk1)
+		derivedSkykeys = append(derivedSkykeys, dk2)
+	}
+
+	// Include all keys.
+	numDerivedSkykeys *= 3
+
+	// Check that all keys have the same Key data.
+	for i := 0; i < numDerivedSkykeys; i++ {
+		if !bytes.Equal(skykey.Entropy[:chacha.KeySize], derivedSkykeys[i].Entropy[:chacha.KeySize]) {
+			t.Fatal("Expected each derived skykey to have the same key as the master skykey")
+		}
+		// Sanity check by checking ID equality also.
+		if skykey.ID() != derivedSkykeys[i].ID() {
+			t.Fatal("Expected each derived skykey to have the same ID as the master skykey")
+		}
+	}
+
+	// Check that all nonces have a different nonce, and are not considered equal.
+	for i := 0; i < numDerivedSkykeys; i++ {
+		ithNonce := derivedSkykeys[i].Nonce()
+		if bytes.Equal(ithNonce[:], masterNonce[:]) {
+			t.Fatal("Expected nonce different from master nonce", i)
+		}
+		for j := i + 1; j < numDerivedSkykeys; j++ {
+			jthNonce := derivedSkykeys[j].Nonce()
+			if bytes.Equal(ithNonce[:], jthNonce[:]) {
+				t.Fatal("Expected different nonces", ithNonce, jthNonce)
+			}
+			// Sanity check our definition of equals.
+			if derivedSkykeys[i].equals(derivedSkykeys[j]) {
+				t.Fatal("Expected skykey to be different", i, j)
+			}
 		}
 	}
 }

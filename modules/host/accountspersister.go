@@ -23,7 +23,11 @@ const (
 	accountSize = 1 << 7 // 128 bytes
 
 	// accountsFilename is the filename of the file that holds the accounts
-	accountsFilename = "accounts.txt"
+	accountsFilename = "accounts.dat"
+
+	// v148AccountsFilename is the filename of the file that holds the accounts
+	// used for version <= 1.4.8.
+	v148AccountsFilename = "accounts.txt"
 
 	// fingerprintSize is the fixed fingerprint size in bytes
 	fingerprintSize = 1 << 5 // 32 bytes
@@ -55,6 +59,9 @@ var (
 		Header:  types.NewSpecifier("Fingerprint"),
 		Version: specifierV1430,
 	}
+
+	// errRotationDisabled is returned when a disrupt disabled the rotation
+	errRotationDisabled = errors.New("RotateFingerprintBuckets is disabled")
 )
 
 type (
@@ -79,7 +86,7 @@ type (
 
 	// accountData contains all data persisted for a single ephemeral account
 	accountData struct {
-		Id          types.SiaPublicKey
+		ID          modules.AccountID
 		Balance     types.Currency
 		LastTxnTime int64
 	}
@@ -281,6 +288,13 @@ func (ap *accountsPersister) callBatchDeleteAccount(indexes []uint32) (deleted [
 
 // callRotateFingerprintBuckets will rotate the fingerprint buckets
 func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
+	if ap.h.dependencies.Disrupt("DisableRotateFingerprintBuckets") {
+		return errRotationDisabled
+	}
+
+	// Get blockheight before acquiring fingerprint manager lock.
+	bh := ap.h.BlockHeight()
+
 	fm := ap.staticFingerprintManager
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
@@ -291,7 +305,7 @@ func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
 	}
 
 	// Calculate new filenames for the fingerprint buckets
-	currFilename, nextFilename := fingerprintsFilenames(ap.h.blockHeight)
+	currFilename, nextFilename := fingerprintsFilenames(bh)
 
 	// Reopen files
 	fm.currentPath = filepath.Join(ap.h.persistDir, currFilename)
@@ -576,10 +590,8 @@ func (fm *fingerprintManager) syncAndClose() error {
 // accountData transforms the account into an accountData struct which will
 // contain all data we persist to disk
 func (a *account) accountData() *accountData {
-	spk := types.SiaPublicKey{}
-	spk.LoadString(string(a.id))
 	return &accountData{
-		Id:          spk,
+		ID:          a.id,
 		Balance:     a.balance,
 		LastTxnTime: a.lastTxnTime,
 	}
@@ -589,7 +601,7 @@ func (a *account) accountData() *accountData {
 // keep in memory
 func (a *accountData) account(index uint32) *account {
 	return &account{
-		id:                 modules.AccountID(a.Id.String()),
+		id:                 a.ID,
 		balance:            a.Balance,
 		lastTxnTime:        a.LastTxnTime,
 		index:              index,

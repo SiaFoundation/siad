@@ -9,9 +9,11 @@ import (
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -24,6 +26,10 @@ var (
 	errNilHDB    = errors.New("cannot create contractor with nil HostDB")
 	errNilTpool  = errors.New("cannot create contractor with nil transaction pool")
 	errNilWallet = errors.New("cannot create contractor with nil wallet")
+
+	errHostNotFound         = errors.New("host not found")
+	errContractNotFound     = errors.New("contract not found")
+	errRefundAccountInvalid = errors.New("invalid refund account")
 
 	// COMPATv1.0.4-lts
 	// metricsContractID identifies a special contract that contains aggregate
@@ -67,12 +73,16 @@ type Contractor struct {
 	// is unlocked.
 	recentRecoveryChange modules.ConsensusChangeID
 
-	downloaders         map[types.FileContractID]*hostDownloader
-	editors             map[types.FileContractID]*hostEditor
-	sessions            map[types.FileContractID]*hostSession
-	numFailedRenews     map[types.FileContractID]types.BlockHeight
+	downloaders     map[types.FileContractID]*hostDownloader
+	editors         map[types.FileContractID]*hostEditor
+	sessions        map[types.FileContractID]*hostSession
+	numFailedRenews map[types.FileContractID]types.BlockHeight
+	renewing        map[types.FileContractID]bool // prevent revising during renewal
+
+	// pubKeysToContractID is a map of host pubkeys to the latest contract ID
+	// that is formed with the host. The contract also has to have an end height
+	// in the future
 	pubKeysToContractID map[string]types.FileContractID
-	renewing            map[types.FileContractID]bool // prevent revising during renewal
 
 	// renewedFrom links the new contract's ID to the old contract's ID
 	// renewedTo links the old contract's ID to the new contract's ID
@@ -188,6 +198,80 @@ func (c *Contractor) CurrentPeriod() types.BlockHeight {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.currentPeriod
+}
+
+// ProvidePayment fulfills the PaymentProvider interface. It uses the given
+// stream and necessary payment details to perform payment for an RPC call.
+func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
+	// verify we do not specify a refund account on the fund account RPC
+	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
+		return errRefundAccountInvalid
+	}
+
+	// find a contract for the given host
+	contract, exists := c.ContractByPublicKey(host)
+	if !exists {
+		return errContractNotFound
+	}
+
+	// acquire a safe contract
+	sc, exists := c.staticContracts.Acquire(contract.ID)
+	if !exists {
+		return errContractNotFound
+	}
+	defer c.staticContracts.Return(sc)
+
+	// create a new revision
+	current := sc.LastRevision()
+	rev, err := current.PaymentRevision(amount)
+	if err != nil {
+		return errors.AddContext(err, "Failed to create a payment revision")
+	}
+
+	// create transaction containing the revision
+	signedTxn := rev.ToTransaction()
+	sig := sc.Sign(signedTxn.SigHash(0, blockHeight))
+	signedTxn.TransactionSignatures[0].Signature = sig[:]
+
+	// record the payment intent
+	walTxn, err := sc.RecordPaymentIntent(rev, amount, rpc)
+	if err != nil {
+		return errors.AddContext(err, "Failed to record payment intent")
+	}
+
+	// send PaymentRequest
+	err = modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByContract})
+	if err != nil {
+		return err
+	}
+
+	// send PayByContractRequest
+	err = modules.RPCWrite(stream, newPayByContractRequest(rev, sig, refundAccount))
+	if err != nil {
+		return err
+	}
+
+	// receive PayByContractResponse
+	var payByResponse modules.PayByContractResponse
+	if err := modules.RPCRead(stream, &payByResponse); err != nil {
+		return err
+	}
+
+	// verify the host's signature
+	hash := crypto.HashAll(rev)
+	hpk := sc.Metadata().HostPublicKey
+	err = crypto.VerifyHash(hash, hpk.ToPublicKey(), payByResponse.Signature)
+	if err != nil {
+		return errors.New("could not verify host's signature")
+	}
+
+	// commit payment intent
+	err = sc.CommitPaymentIntent(walTxn, signedTxn, amount, rpc)
+	if err != nil {
+		return errors.AddContext(err, "Failed to commit unknown spending intent")
+	}
+
+	return nil
 }
 
 // RateLimits sets the bandwidth limits for connections created by the
@@ -339,7 +423,6 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 		oldContracts:         make(map[types.FileContractID]modules.RenterContract),
 		doubleSpentContracts: make(map[types.FileContractID]types.BlockHeight),
 		recoverableContracts: make(map[types.FileContractID]modules.RecoverableContract),
-		pubKeysToContractID:  make(map[string]types.FileContractID),
 		renewing:             make(map[types.FileContractID]bool),
 		renewedFrom:          make(map[types.FileContractID]types.FileContractID),
 		renewedTo:            make(map[types.FileContractID]types.FileContractID),
@@ -363,13 +446,8 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 		return nil, err
 	}
 
-	// Initialize the contractIDToPubKey map
-	for _, contract := range c.oldContracts {
-		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
-	}
-	for _, contract := range c.staticContracts.ViewAll() {
-		c.pubKeysToContractID[contract.HostPublicKey.String()] = contract.ID
-	}
+	// Update the pubkeyToContractID map
+	c.managedUpdatePubKeyToContractIDMap()
 
 	// Unsubscribe from the consensus set upon shutdown.
 	c.tg.OnStop(func() {
@@ -506,4 +584,24 @@ func (c *Contractor) managedSynced() bool {
 	default:
 	}
 	return false
+}
+
+// newPayByContractRequest is a helper function that takes a revision,
+// signature and refund account and creates a PayByContractRequest object.
+func newPayByContractRequest(rev types.FileContractRevision, sig crypto.Signature, refundAccount modules.AccountID) modules.PayByContractRequest {
+	req := modules.PayByContractRequest{
+		ContractID:           rev.ID(),
+		NewRevisionNumber:    rev.NewRevisionNumber,
+		NewValidProofValues:  make([]types.Currency, len(rev.NewValidProofOutputs)),
+		NewMissedProofValues: make([]types.Currency, len(rev.NewMissedProofOutputs)),
+		RefundAccount:        refundAccount,
+		Signature:            sig[:],
+	}
+	for i, o := range rev.NewValidProofOutputs {
+		req.NewValidProofValues[i] = o.Value
+	}
+	for i, o := range rev.NewMissedProofOutputs {
+		req.NewMissedProofValues[i] = o.Value
+	}
+	return req
 }

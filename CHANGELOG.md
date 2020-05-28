@@ -10,15 +10,106 @@ Version History
 
 Latest:
 
-## Apr 2, 2020
-### v1.4.7
+## May 11, 2020:
+### v1.4.8
 **Key Updates**
-- Add `--dry-run` parameter to Skynet upload
-- Set ratio for `MinBaseRPCPrice` and `MinSectorAccessPrice` with   `MinDownloadBandwidthPrice`
+- Enable FundEphemeralAccountRPC on the host
+- Enable UpdatePriceTableRPC on the host
+- Add `startheight` and `endheight` flags for `siac wallet transactions`
+  pagination
+- Add progress bars to Skynet uploads. Those can be disabled by passing the
+  `--silent` flag.
+- Add the Execute Program RPC to the host
+- Added Skykey API endpoints and siac commands.
+- Add /skynet/portals API endpoints.
+- Add MinBaseRPCPrice and MinSectorAccessPrice to `siac host -v`
+- Add `basePriceAdjustment` to the host score to check for `BaseRPCPrice` and
+  `SectorAccessPrice` price violations.
+- Add support for unpinning directories from Skynet.
+- Add support for unpinning multiple files in a single command.
+- Change payment processing to always use ephemeral accounts, even for contract
+  payments
+- Increase renew alert severity in 2nd half of renew window
+- Prioritize remote repairs
+- Add SIAD_DATA_DIR environment variable which tells `siad` where to store the
+  siad-specific data. This complements the SIA_DATA_DIR variable which tells
+  `siad` where to store general Sia data, such as the API password,
+  configuration, etc.
+- Update the `siac renter` summaries to use the `root` flags for the API calls
+- Add `root` flag to `renter/rename` so that all file in the filesystem can be
+  renamed
+- Allow for `wallet/verifypassword` endpoint to accept the primary seed as well
+  as a password
+- Add `/renter/workers` API endpoint to get the current status of the workers.
+  This pulls it out of the log files as well. 
+- Add `siac renter workers` command to siac
+- Add valid and missed proof outputs to StorageObligation for `/host/contracts` 
 
 **Bugs Fixed**
-- Don't delete hosts the renter has a contract with from hostdb 
-- Initiate a hostdb rescan on startup if a host the renter has a contract with isn't in the host tree 
+- Fix decode bug for the rpcResponse object
+- Fix bug in rotation of fingerprint buckets
++ fix hostdb log being incorrectly named
+- Refactor the environment variables into the `build` package to address bug
+  where `siac` and `siad` could be using different API Passwords.
+- Fix bug in converting siafile to skyfile and enable testing.
+- Fixed bug in bubble code that would overwrite the `siadir` metadata with old
+  metadata
+- Fixed the output of `siac skynet ls` not counting subdirectories.
+- Fix a bug in `parsePercentages` and added randomized testing
+- Fixed bug where backups where not being repaired
+- The `AggregateNumSubDirs` count was fixed as it was always 0. This is a piece
+  of metadata keeping track of the number of all subdirs of a directory, counted
+  recursively.
+- Address missed locations of API error returns for handling of Modules not
+  running
++ add missing local ranges to IsLocal function
++ workers now more consistently use the most recent contract
++ improved performance logging in repair.log, especially in debug mode
++ general upload performance improvements (minor)
+- Fixed bug in `siac renter -v` where the health summary wasn't considering
+  `OnDisk` when deciding if the file was recoverable
+- Fix panic condition in Renter's `uploadheap` due to change in chunk's stuck
+  status
+- renewed contracts must be marked as not good for upload and not good for renew
+
+**Other**
+- Add 'AccountFunding' to the Host's financial metrics
+- Support multiple changelog items in one changelog file.
+- Add updating changelog tail to changelog generator.
+- Generate 2 patch level and 1 minor level upcoming changelog directories.
+- Fixed checking number of contracts in testContractInterrupted test.
+- Move generate-changelog.sh script to changelog directory.
+- Generate changelog from any file extension (.md is not needed)
+- Fix permission issues for Windows runner, do not perform linting during
+  Windows tests.
+- Move filenames to ignore in changelog generator to `.changelogignore` file
+- Created `Merge Request.md` to document the merge request standards and
+  process.
+- Remove backslash check in SiaPath validation, add `\` to list of accepted
+  characters
+- `siac skynet upload` with the `--dry-run` flag will now print more clear
+  messages to emphasize that no files are actually uploaded.
+- Move `scanCheckInterval` to be a build variable for the `hostdb`
+- Skynet portals and blacklist persistence errors have been made more clear and
+  now include the persist file locations.
+- add some performance stats for upload and download speeds to /skynet/stats
+- set the password and user agent automatically in client.New
+- Publish test logs also for regular pipelines (not only for nightly pipelines).
+- Setup Windows runner for nightly test executions.
+
+## Apr 2, 2020:
+### v1.4.7
+**Key Updates**
+- Split up contract files into a .header and .roots file. Causes contract
+  insertion to be ACID and fixes a rare panic when loading the contractset.
+- Add `--dry-run` parameter to Skynet upload
+- Set ratio for `MinBaseRPCPrice` and `MinSectorAccessPrice` with
+  `MinDownloadBandwidthPrice`
+
+**Bugs Fixed**
+- Don't delete hosts the renter has a contract with from hostdb
+- Initiate a hostdb rescan on startup if a host the renter has a contract with
+  isn't in the host tree
 - Increase max host downtime in hostbd from 10 days to 20 days.
 - Remove `build.Critical` and update to a metadata update
 
@@ -28,35 +119,37 @@ Latest:
 - Add whitespace lint to catch extraneous whitespace and newlines.
 - Expand `SiaPath` unit testing to address more edge cases.
 
-
-## Mar 25, 2020
+## Mar 25, 2020:
 ### v1.4.6
 **Bugs Fixed**
 - Fix panic when metadata of skyfile upload exceeds modules.SectorSize
 - Fix curl example for `/skynet/skyfile/` post
 
-
-## Mar 24, 2020
+## Mar 24, 2020:
 ### v1.4.5
 **Key Updates**
 - Alerts returned by /daemon/alerts route are sorted by severity
-- Add `--fee-included` parameter to `siac wallet send siacoins` that allows    sending an exact wallet balance with the fees included.
+- Add `--fee-included` parameter to `siac wallet send siacoins` that allows
+   sending an exact wallet balance with the fees included.
 - Extend `siac hostdb view` to include all the fields returned from the API.
 - `siac renter delete` now accepts a list of files.
 - add pause and resume uploads to siac
 - Extended `siac renter` to include number of passive and disabled contracts
 - Add contract data to `siac renter`
-- Add getters and setter to `FileContract` and `FileContractRevision` types to prevent index-out-of-bounds panics after a `RenewAndClear`.
+- Add getters and setter to `FileContract` and `FileContractRevision` types to
+  prevent index-out-of-bounds panics after a `RenewAndClear`.
 
 **Bugs Fixed**
-- Fixed file health output of `siac renter -v` not adding to 100% by adding   parsePercentage function.
+- Fixed file health output of `siac renter -v` not adding to 100% by adding
+  parsePercentage function.
 - Fix `unlock of unlocked mutex` panic in the download destination writer.
 - Fix potential channel double closed panic in DownloadByRootProject 
 - Fix divide by zero panic in `renterFileHealthSummary` for `siac renter -v`
 - Fix negative currency panic in `siac renter contracts view`
 
 **Other**
-- Add timeout parameter to Skylink pin route - Also apply timeout when fetching the individual chunks
+- Add timeout parameter to Skylink pin route
+- Also apply timeout when fetching the individual chunks
 - Add SiaMux stream handler to the host
 - Fix TestAccountExpiry NDF
 - Add benchmark test for bubble metadata
@@ -65,7 +158,6 @@ Latest:
 - Updated `Resources.md` with links to filled out README files
 - Add version information to the stats endpoint
 - Extract environment variables to constants and add to API docs.
-
 
 ## Mar 17, 2020:
 ### v1.4.4

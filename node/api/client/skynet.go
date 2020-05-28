@@ -16,6 +16,17 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+// RenterSkyfileGet wraps RenterFileRootGet to query a skyfile.
+func (c *Client) RenterSkyfileGet(siaPath modules.SiaPath, root bool) (rf api.RenterFile, err error) {
+	if !root {
+		siaPath, err = modules.SkynetFolder.Join(siaPath.String())
+		if err != nil {
+			return
+		}
+	}
+	return c.RenterFileRootGet(siaPath)
+}
+
 // SkynetSkylinkGet uses the /skynet/skylink endpoint to download a skylink
 // file.
 func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, modules.SkyfileMetadata, error) {
@@ -171,6 +182,15 @@ func (c *Client) SkynetSkyfilePost(params modules.SkyfileUploadParameters) (stri
 	rootStr := fmt.Sprintf("%t", params.Root)
 	values.Set("root", rootStr)
 
+	// Encode SkykeyName or SkykeyID.
+	if params.SkykeyName != "" {
+		values.Set("skykeyname", params.SkykeyName)
+	}
+	hasSkykeyID := params.SkykeyID != skykey.SkykeyID{}
+	if hasSkykeyID {
+		values.Set("skykeyid", params.SkykeyID.ToString())
+	}
+
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", params.SiaPath.String(), values.Encode())
 	_, resp, err := c.postRawResponse(query, params.Reader)
@@ -310,6 +330,26 @@ func (c *Client) SkynetBlacklistPost(additions, removals []string) (err error) {
 	return
 }
 
+// SkynetPortalsGet requests the /skynet/portals Get endpoint.
+func (c *Client) SkynetPortalsGet() (portals api.SkynetPortalsGET, err error) {
+	err = c.get("/skynet/portals", &portals)
+	return
+}
+
+// SkynetPortalsPost requests the /skynet/portals Post endpoint.
+func (c *Client) SkynetPortalsPost(additions []modules.SkynetPortal, removals []modules.NetAddress) (err error) {
+	spp := api.SkynetPortalsPOST{
+		Add:    additions,
+		Remove: removals,
+	}
+	data, err := json.Marshal(spp)
+	if err != nil {
+		return err
+	}
+	err = c.post("/skynet/portals", string(data), nil)
+	return
+}
+
 // SkynetStatsGet requests the /skynet/stats Get endpoint
 func (c *Client) SkynetStatsGet() (stats api.SkynetStatsGET, err error) {
 	err = c.get("/skynet/stats", &stats)
@@ -394,4 +434,22 @@ func (c *Client) SkykeyAddKeyPost(sk skykey.Skykey) error {
 	}
 
 	return nil
+}
+
+// SkykeySkykeysGet requests the /skynet/skykeys GET endpoint.
+func (c *Client) SkykeySkykeysGet() ([]skykey.Skykey, error) {
+	var skykeysGet api.SkykeysGET
+	err := c.get("/skynet/skykeys", &skykeysGet)
+	if err != nil {
+		return nil, errors.AddContext(err, "allskykeys GET request failed")
+	}
+
+	res := make([]skykey.Skykey, len(skykeysGet.Skykeys))
+	for i, skString := range skykeysGet.Skykeys {
+		err = res[i].FromString(skString)
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to decode skykey string")
+		}
+	}
+	return res, nil
 }

@@ -16,19 +16,9 @@ type instructionHasSector struct {
 	merkleRootOffset uint64
 }
 
-// NewHasSectorInstruction creates a modules.Instruction from arguments.
-func NewHasSectorInstruction(merkleRootOffset uint64) modules.Instruction {
-	i := modules.Instruction{
-		Specifier: modules.SpecifierHasSector,
-		Args:      make([]byte, modules.RPCIHasSectorLen),
-	}
-	binary.LittleEndian.PutUint64(i.Args[:8], merkleRootOffset)
-	return i
-}
-
 // staticDecodeHasSectorInstruction creates a new 'HasSector' instruction from
 // the provided generic instruction.
-func (p *Program) staticDecodeHasSectorInstruction(instruction modules.Instruction) (instruction, error) {
+func (p *program) staticDecodeHasSectorInstruction(instruction modules.Instruction) (instruction, error) {
 	// Check specifier.
 	if instruction.Specifier != modules.SpecifierHasSector {
 		return nil, fmt.Errorf("expected specifier %v but got %v",
@@ -57,9 +47,9 @@ func (i *instructionHasSector) Collateral() types.Currency {
 }
 
 // Cost returns the cost of executing this instruction.
-func (i *instructionHasSector) Cost() (types.Currency, types.Currency, error) {
-	cost, refund := modules.MDMHasSectorCost(i.staticState.priceTable)
-	return cost, refund, nil
+func (i *instructionHasSector) Cost() (executionCost, refund types.Currency, err error) {
+	executionCost, refund = modules.MDMHasSectorCost(i.staticState.priceTable)
+	return
 }
 
 // Memory returns the memory allocated by this instruction beyond the end of its
@@ -77,7 +67,7 @@ func (i *instructionHasSector) Execute(prevOutput output) output {
 	}
 
 	// Fetch the requested information.
-	hasSector := i.staticState.sectors.hasSector(sectorRoot)
+	hasSector := i.staticState.host.HasSector(sectorRoot)
 
 	// Return the output.
 	out := []byte{0}
@@ -90,11 +80,6 @@ func (i *instructionHasSector) Execute(prevOutput output) output {
 		NewMerkleRoot: prevOutput.NewMerkleRoot, // root stays the same
 		Output:        out,
 	}
-}
-
-// ReadOnly for the 'HasSector' instruction is 'true'.
-func (i *instructionHasSector) ReadOnly() bool {
-	return true
 }
 
 // Time returns the execution time of an 'HasSector' instruction.

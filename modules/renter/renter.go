@@ -26,6 +26,7 @@ package renter
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -42,6 +43,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetblacklist"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetportals"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/skykey"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
@@ -106,6 +108,8 @@ type hostContractor interface {
 	// billing period.
 	PeriodSpending() (modules.ContractorSpending, error)
 
+	modules.PaymentProvider
+
 	// OldContracts returns the oldContracts of the renter's hostContractor.
 	OldContracts() []modules.RenterContract
 
@@ -164,14 +168,9 @@ type renterFuseManager interface {
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
-	// Alert management.
-	staticAlerter *modules.GenericAlerter
-
-	// File management.
-	staticFileSystem *filesystem.FileSystem
-
 	// Skynet Management
 	staticSkynetBlacklist *skynetblacklist.SkynetBlacklist
+	staticSkynetPortals   *skynetportals.SkynetPortals
 
 	// Download management. The heap has a separate mutex because it is always
 	// accessed in isolation.
@@ -218,6 +217,9 @@ type Renter struct {
 	memoryManager         *memoryManager
 	mu                    *siasync.RWMutex
 	repairLog             *persist.Logger
+	staticAccountManager  *accountManager
+	staticAlerter         *modules.GenericAlerter
+	staticFileSystem      *filesystem.FileSystem
 	staticFuseManager     renterFuseManager
 	staticSkykeyManager   *skykey.SkykeyManager
 	staticStreamBufferSet *streamBufferSet
@@ -235,7 +237,7 @@ func (r *Renter) Close() error {
 		return nil
 	}
 
-	return errors.Compose(r.tg.Stop(), r.hostDB.Close(), r.hostContractor.Close())
+	return errors.Compose(r.tg.Stop(), r.hostDB.Close(), r.hostContractor.Close(), r.staticSkynetBlacklist.Close(), r.staticSkynetPortals.Close())
 }
 
 // PriceEstimation estimates the cost in siacoins of performing various storage
@@ -850,6 +852,16 @@ func (r *Renter) SkykeyIDByName(name string) (skykey.SkykeyID, error) {
 	return r.staticSkykeyManager.IDByName(name)
 }
 
+// Skykeys returns a slice containing each Skykey being stored by the renter.
+func (r *Renter) Skykeys() ([]skykey.Skykey, error) {
+	if err := r.tg.Add(); err != nil {
+		return nil, err
+	}
+	defer r.tg.Done()
+
+	return r.staticSkykeyManager.Skykeys(), nil
+}
+
 // Enforce that Renter satisfies the modules.Renter interface.
 var _ modules.Renter = (*Renter)(nil)
 
@@ -916,6 +928,30 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		tpool:                 tpool,
 	}
 	close(r.uploadHeap.pauseChan)
+
+	// Initialize the loggers so that they are available for the rest of the the
+	// components start up.
+	var err error
+	r.log, err = persist.NewFileLogger(filepath.Join(r.persistDir, logFile))
+	if err != nil {
+		return nil, err
+	}
+	if err := r.tg.AfterStop(r.log.Close); err != nil {
+		return nil, err
+	}
+	r.repairLog, err = persist.NewFileLogger(filepath.Join(r.persistDir, repairLogFile))
+	if err != nil {
+		return nil, err
+	}
+	if err := r.tg.AfterStop(r.repairLog.Close); err != nil {
+		return nil, err
+	}
+
+	// Initialize some of the components.
+	err = r.newAccountManager()
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to create account manager")
+	}
 	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
 	r.staticFuseManager = newFuseManager(r)
 	r.stuckStack = callNewStuckStack()
@@ -927,11 +963,19 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 	r.staticSkynetBlacklist = sb
 
+	// Add SkynetPortals
+	sp, err := skynetportals.New(r.persistDir)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to create new skynet portal list")
+	}
+	r.staticSkynetPortals = sp
+
 	// Load all saved data.
 	err = r.managedInitPersist()
 	if err != nil {
 		return nil, err
 	}
+
 	// After persist is initialized, push the root directory onto the directory
 	// heap for the repair process.
 	r.managedPushUnexploredDirectory(modules.RootSiaPath())
@@ -940,7 +984,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// Create the skykey manager.
 	// In testing, keep the skykeys with the rest of the renter data.
-	skykeyManDir := build.DefaultSkynetDir()
+	skykeyManDir := build.SkynetDir()
 	if build.Release == "testing" {
 		skykeyManDir = persistDir
 	}

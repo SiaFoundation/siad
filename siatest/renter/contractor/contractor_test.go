@@ -981,13 +981,13 @@ func TestRenterContractRecovery(t *testing.T) {
 	}
 
 	// Copy the siafile to the new location.
-	oldPath := filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, lf.FileName()+modules.SiaFileExtension)
+	oldPath := filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.UserFolder.String(), lf.FileName()+modules.SiaFileExtension)
 	siaFile, err := ioutil.ReadFile(oldPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	newRenterDir := filepath.Join(testDir, "renter")
-	newPath := filepath.Join(newRenterDir, modules.RenterDir, modules.FileSystemRoot, modules.HomeFolderRoot, modules.UserRoot, lf.FileName()+modules.SiaFileExtension)
+	newPath := filepath.Join(newRenterDir, modules.RenterDir, modules.FileSystemRoot, modules.UserFolder.String(), lf.FileName()+modules.SiaFileExtension)
 	if err := os.MkdirAll(filepath.Dir(newPath), persist.DefaultDiskPermissionsTest); err != nil {
 		t.Fatal(err)
 	}
@@ -1670,6 +1670,12 @@ func TestContractorChurnLimiter(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
 	miner := tg.Miners()[0]
 
 	maxPeriodChurn := uint64(modules.SectorSize)
@@ -2187,10 +2193,10 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 
 	// Check for alert
 	expectedAlert := modules.Alert{
+		Severity: modules.SeverityCritical,
 		Cause:    "Renew failure due to dependency",
 		Msg:      contractor.AlertMSGFailedContractRenewal,
 		Module:   "contractor",
-		Severity: modules.SeverityError,
 	}
 	m := tg.Miners()[0]
 	numTries := 0
@@ -2216,7 +2222,7 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 		return errors.New("alert is not registered")
 	})
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	// Disable the Dependency
@@ -2322,6 +2328,9 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+
+	// Trigger the renew alert with a lower alert level by causing renewal
+	// failures with only one host.
 }
 
 // TestExtendPeriod probes the case around extending the period after contracts
@@ -2387,8 +2396,287 @@ func TestExtendPeriod(t *testing.T) {
 
 	// Confirm the previously active contracts are now marked as expired and
 	// were replaced with new active contracts
+	tries := 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if tries%10 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				return err
+			}
+		}
+		tries++
 		return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
+	})
+	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
+		t.Fatal(err)
+	}
+}
+
+// TestFreshSettingsForRenew tests that the contractor uses the freshest
+// settings for renewal.
+func TestFreshSettingsForRenew(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:   1,
+		Renters: 0,
+		Miners:  1,
+	}
+	testDir := contractorTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add a renter with a  toggle-able dependency for using stale host settings
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	defaultSettingsDep := &dependencies.DependencyDefaultRenewSettings{}
+	renterParams.ContractorDeps = defaultSettingsDep
+	_, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := tg.Renters()[0]
+
+	// Waiting for nodes to sync
+	if err = tg.Sync(); err != nil {
+		t.Fatal(err)
+	}
+
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		rc, err := r.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) == 0 {
+			return errors.New("No Active Contracts")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defaultSettingsDep.Enable()
+
+	// Increase the host prices.
+	h := tg.Hosts()[0]
+	hg, err := h.HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	downloadPrice := hg.InternalSettings.MinDownloadBandwidthPrice
+	err = h.HostModifySettingPost(client.HostParamMinDownloadBandwidthPrice, downloadPrice.Mul64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	basePrice := hg.ExternalSettings.BaseRPCPrice
+	err = h.HostModifySettingPost(client.HostParamMinBaseRPCPrice, basePrice.Mul64(5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	storagePrice := hg.ExternalSettings.StoragePrice
+	err = h.HostModifySettingPost(client.HostParamMinStoragePrice, storagePrice.Mul64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// save the contract end height
+	rc, err := r.RenterContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rc.ActiveContracts) == 0 {
+		t.Fatal("No active contracts")
+	}
+	endHeight := rc.ActiveContracts[0].EndHeight
+
+	// Mine blocks to force contract renewal
+	if err = siatest.RenewContractsByRenewWindow(r, tg); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine until the contract is expired to confirm that we couldn't renew it.
+	cg, err := r.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocksToMine := endHeight - cg.Height - 1
+	m := tg.Miners()[0]
+	for i := 0; i < int(blocksToMine); i++ {
+		if err = m.MineBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Check that we haven't renewed.
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(r, 0, 0, 0, 1, 0, 0)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Now disable the contract and wait to re-form the contracts.
+	defaultSettingsDep.Disable()
+	numTries := 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if numTries%5 == 0 {
+			if err = m.MineBlock(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		numTries += 1
+		rc, err := r.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) == 0 {
+			return errors.New("No Active Contracts")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine blocks to force contract renewal
+	if err = siatest.RenewContractsByRenewWindow(r, tg); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that we have renewed.
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(r, 1, 0, 0, 0, 2, 0)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRenewAlertWarningLevel checks that a small amount of renewals triggers a
+// non-critical alert. TestFailedContractRenewalAlert already tests the critical
+// alert.
+func TestRenewAlertWarningLevel(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:   1,
+		Renters: 0,
+		Miners:  1,
+	}
+	testDir := contractorTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add a renter with a  toggle-able dependency for using stale host settings
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	defaultSettingsDep := &dependencies.DependencyDefaultRenewSettings{}
+	renterParams.ContractorDeps = defaultSettingsDep
+	_, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := tg.Renters()[0]
+
+	// Waiting for nodes to sync
+	if err = tg.Sync(); err != nil {
+		t.Fatal(err)
+	}
+
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		rc, err := r.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rc.ActiveContracts) != len(tg.Hosts()) {
+			return errors.New("No Active Contracts")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defaultSettingsDep.Enable()
+
+	hosts := tg.Hosts()
+	h := hosts[0]
+	// Increase one of the host's prices.
+	hg, err := h.HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	downloadPrice := hg.InternalSettings.MinDownloadBandwidthPrice
+	err = h.HostModifySettingPost(client.HostParamMinDownloadBandwidthPrice, downloadPrice.Mul64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	basePrice := hg.ExternalSettings.BaseRPCPrice
+	err = h.HostModifySettingPost(client.HostParamMinBaseRPCPrice, basePrice.Mul64(5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	storagePrice := hg.ExternalSettings.StoragePrice
+	err = h.HostModifySettingPost(client.HostParamMinStoragePrice, storagePrice.Mul64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine blocks to force contract renewal
+	err = siatest.RenewContractsByRenewWindow(r, tg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check for alert
+	expectedAlert := modules.Alert{
+		Severity: modules.SeverityError,
+		Cause:    "rejected for high paying renter valid output",
+		Msg:      contractor.AlertMSGFailedContractRenewal,
+		Module:   "contractor",
+	}
+	m := tg.Miners()[0]
+	numTries := 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		numTries++
+		if numTries%10 == 0 {
+			err = m.MineBlock()
+			if err != nil {
+				return err
+			}
+		}
+		// Since this alert cause can be multiple composed errors it can not use
+		// the IsAlertRegistered helper method
+		dag, err := r.DaemonAlertsGet()
+		if err != nil {
+			return err
+		}
+		for _, alert := range dag.Alerts {
+			if alert.EqualsWithErrorCause(expectedAlert, expectedAlert.Cause) {
+				return nil
+			}
+		}
+		return errors.New("alert is not registered")
 	})
 	if err != nil {
 		t.Fatal(err)

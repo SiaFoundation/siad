@@ -132,8 +132,11 @@ func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error)
 
 	// Check if the SiaMuxAddress is set, if not we want to set it to use a
 	// random port in testing
-	if nodeParams.SiaMuxAddress == "" {
-		nodeParams.SiaMuxAddress = "localhost:0"
+	if nodeParams.SiaMuxTCPAddress == "" {
+		nodeParams.SiaMuxTCPAddress = "localhost:0"
+	}
+	if nodeParams.SiaMuxWSAddress == "" {
+		nodeParams.SiaMuxWSAddress = "localhost:0"
 	}
 
 	// Create server
@@ -151,9 +154,12 @@ func newCleanNode(nodeParams node.NodeParams, asyncSync bool) (*TestNode, error)
 	}
 
 	// Create client
-	c := client.New(s.APIAddress())
-	c.UserAgent = userAgent
-	c.Password = password
+	opts := client.Options{
+		Address:   s.APIAddress(),
+		Password:  password,
+		UserAgent: userAgent,
+	}
+	c := client.New(opts)
 
 	// Create TestNode
 	tn := &TestNode{

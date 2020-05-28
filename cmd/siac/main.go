@@ -2,15 +2,13 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	"math"
 	"os"
 	"reflect"
-	"strings"
 
 	"github.com/spf13/cobra"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/cmd"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -34,12 +32,15 @@ var (
 	renterListVerbose         bool   // Show additional info about uploaded files.
 	renterListRecursive       bool   // List files of folder recursively.
 	renterListRoot            bool   // List path start from root instead of the user homedir.
+	renterRenameRoot          bool   // Rename files relative to root instead of the user homedir.
 	renterShowHistory         bool   // Show download history in addition to download queue.
 	renterVerbose             bool   // Show additional info about the renter
 	siaDir                    string // Path to sia data dir
 	skykeyCipherType          string // CipherType used to create a Skykey.
 	skykeyName                string // Name used to identify a Skykey.
+	skykeyShowPrivateKeys     bool   // Set to true to show private key data.
 	skykeyID                  string // ID used to identify a Skykey.
+	skykeyRenameAs            string // Optional parameter to rename a Skykey while adding it.
 	skynetBlacklistRemove     bool   // Remove a skylink from the Skynet Blacklist.
 	skynetUnpinRoot           bool   // Use root as the base instead of the Skynet folder.
 	skynetDownloadPortal      string // Portal to use when trying to download a skylink.
@@ -47,8 +48,11 @@ var (
 	skynetLsRoot              bool   // Use root as the base instead of the Skynet folder.
 	skynetUploadRoot          bool   // Use root as the base instead of the Skynet folder.
 	skynetUploadDryRun        bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
+	skynetUploadSilent        bool   // Don't report progress while uploading
 	statusVerbose             bool   // Display additional siac information
 	walletRawTxn              bool   // Encode/decode transactions in base64-encoded binary.
+	walletStartHeight         uint64 // Start height for transaction search.
+	walletEndHeight           uint64 // End height for transaction search.
 	walletTxnFeeIncluded      bool   // include the fee in the balance being sent
 
 	dataPieces   string // the number of data pieces a files should be uploaded with
@@ -73,9 +77,8 @@ var (
 
 var (
 	// Globals.
-	rootCmd           *cobra.Command // Root command cobra object, used by bash completion cmd.
-	httpClient        client.Client
-	numCriticalAlerts int
+	rootCmd    *cobra.Command // Root command cobra object, used by bash completion cmd.
+	httpClient client.Client
 )
 
 // Exit codes.
@@ -260,7 +263,7 @@ func main() {
 		renterDownloadsCmd, renterExportCmd, renterFilesDeleteCmd, renterFilesDownloadCmd,
 		renterFilesListCmd, renterFilesRenameCmd, renterFilesUnstuckCmd, renterFilesUploadCmd,
 		renterFuseCmd, renterPricesCmd, renterRatelimitCmd, renterSetAllowanceCmd,
-		renterSetLocalPathCmd, renterTriggerContractRecoveryScanCmd, renterUploadsCmd)
+		renterSetLocalPathCmd, renterTriggerContractRecoveryScanCmd, renterUploadsCmd, renterWorkersCmd)
 
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
 	renterContractsCmd.AddCommand(renterContractsViewCmd)
@@ -278,6 +281,7 @@ func main() {
 	renterFilesUploadCmd.Flags().StringVar(&dataPieces, "data-pieces", "", "the number of data pieces a files should be uploaded with")
 	renterFilesUploadCmd.Flags().StringVar(&parityPieces, "parity-pieces", "", "the number of parity pieces a files should be uploaded with")
 	renterExportCmd.AddCommand(renterExportContractTxnsCmd)
+	renterFilesRenameCmd.Flags().BoolVar(&renterRenameRoot, "root", false, "Rename files relative to root instead of the user homedir")
 
 	renterSetAllowanceCmd.Flags().StringVar(&allowanceFunds, "amount", "", "amount of money in allowance, specified in currency units")
 	renterSetAllowanceCmd.Flags().StringVar(&allowancePeriod, "period", "", "period of allowance in blocks (b), hours (h), days (d) or weeks (w)")
@@ -302,6 +306,9 @@ func main() {
 	skynetCmd.AddCommand(skynetBlacklistCmd, skynetConvertCmd, skynetDownloadCmd, skynetLsCmd, skynetPinCmd, skynetUnpinCmd, skynetUploadCmd)
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadDryRun, "dry-run", false, "Perform a dry-run of the upload, returning the skylink without actually uploading the file")
+	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSilent, "silent", "s", false, "Don't report progress while uploading")
+	skynetUploadCmd.Flags().StringVar(&skykeyName, "skykeyname", "", "Specify the skykey to be used by name.")
+	skynetUploadCmd.Flags().StringVar(&skykeyID, "skykeyid", "", "Specify the skykey to be used by its key identifier.")
 	skynetUnpinCmd.Flags().BoolVar(&skynetUnpinRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetDownloadCmd.Flags().StringVar(&skynetDownloadPortal, "portal", "", "Use a Skynet portal to complete the download")
 	skynetLsCmd.Flags().BoolVarP(&skynetLsRecursive, "recursive", "R", false, "Recursively list skyfiles and folders")
@@ -309,10 +316,12 @@ func main() {
 	skynetBlacklistCmd.Flags().BoolVar(&skynetBlacklistRemove, "remove", false, "Remove the skylink from the blacklist")
 
 	root.AddCommand(skykeyCmd)
-	skykeyCmd.AddCommand(skykeyCreateCmd, skykeyAddCmd, skykeyGetCmd, skykeyGetIDCmd)
+	skykeyCmd.AddCommand(skykeyCreateCmd, skykeyAddCmd, skykeyGetCmd, skykeyGetIDCmd, skykeyListCmd)
+	skykeyAddCmd.Flags().StringVar(&skykeyRenameAs, "rename-as", "", "The new name for the skykey being added")
 	skykeyCreateCmd.Flags().StringVar(&skykeyCipherType, "cipher-type", "XChaCha20", "The cipher type of the skykey")
 	skykeyGetCmd.Flags().StringVar(&skykeyName, "name", "", "The name of the skykey")
 	skykeyGetCmd.Flags().StringVar(&skykeyID, "id", "", "The base-64 encoded skykey ID")
+	skykeyListCmd.Flags().BoolVar(&skykeyShowPrivateKeys, "show-priv-keys", false, "Show private key data.")
 
 	root.AddCommand(updateCmd)
 	updateCmd.AddCommand(updateCheckCmd)
@@ -340,6 +349,8 @@ func main() {
 	walletUnlockCmd.Flags().BoolVarP(&initPassword, "password", "p", false, "Display interactive password prompt even if SIA_WALLET_PASSWORD is set")
 	walletBroadcastCmd.Flags().BoolVarP(&walletRawTxn, "raw", "", false, "Decode transaction as base64 instead of JSON")
 	walletSignCmd.Flags().BoolVarP(&walletRawTxn, "raw", "", false, "Encode signed transaction as base64 instead of JSON")
+	walletTransactionsCmd.Flags().Uint64Var(&walletStartHeight, "startheight", 0, " Height of the block where transaction history should begin.")
+	walletTransactionsCmd.Flags().Uint64Var(&walletEndHeight, "endheight", math.MaxUint64, " Height of the block where transaction history should end.")
 
 	// initialize client
 	root.Flags().BoolVarP(&statusVerbose, "verbose", "v", false, "Display additional siac information")
@@ -348,57 +359,29 @@ func main() {
 	root.PersistentFlags().StringVarP(&siaDir, "sia-directory", "d", "", "location of the sia directory")
 	root.PersistentFlags().StringVarP(&httpClient.UserAgent, "useragent", "", "Sia-Agent", "the useragent used by siac to connect to the daemon's API")
 
-	// Check if the api password environment variable is set.
-	apiPassword := os.Getenv(cmd.SiaAPIPassword)
-	if apiPassword != "" {
-		httpClient.Password = apiPassword
-		fmt.Println("Using SIA_API_PASSWORD environment variable")
+	// Check if the API Password is set
+	if httpClient.Password == "" {
+		// No password passed in, fetch the API Password
+		pw, err := build.APIPassword()
+		if err != nil {
+			fmt.Println("Exiting: Error getting API Password:", err)
+			os.Exit(exitCodeGeneral)
+		}
+		httpClient.Password = pw
 	}
 
-	// If siaDir is not set, use the environment variable provided.
+	// Check if the siaDir is set.
 	if siaDir == "" {
-		siaDir = os.Getenv(cmd.SiaDataDir)
-		if siaDir != "" {
-			fmt.Println("Using SIA_DATA_DIR environment variable")
-		} else {
-			siaDir = build.DefaultSiaDir()
-		}
+		// No siaDir passed in, fetch the siaDir
+		siaDir = build.SiaDir()
 	}
-
-	// If the API password wasn't set we try to read it from the file. This must
-	// be done only *after* we parse the sia-directory flag, which is why we do
-	// it inside OnInitialize.
-	cobra.OnInitialize(func() {
-		if httpClient.Password == "" {
-			pw, err := ioutil.ReadFile(build.APIPasswordFile(siaDir))
-			if err != nil {
-				fmt.Println("Could not read API password file:", err)
-				httpClient.Password = ""
-			} else {
-				httpClient.Password = strings.TrimSpace(string(pw))
-			}
-		}
-	})
 
 	// Check for Critical Alerts
 	alerts, err := httpClient.DaemonAlertsGet()
-	if err == nil {
-		for _, a := range alerts.Alerts {
-			if a.Severity != modules.SeverityCritical {
-				continue
-			}
-			numCriticalAlerts++
-			fmt.Printf(`------------------
-  Module:   %s
-  Severity: %s
-  Message:  %s
-  Cause:    %s
-`, a.Module, a.Severity.String(), a.Msg, a.Cause)
-		}
-		if numCriticalAlerts > 0 {
-			fmt.Println("------------------")
-			fmt.Printf("\n  The above %v critical alerts should be resolved ASAP\n\n", numCriticalAlerts)
-		}
+	if err == nil && len(alerts.CriticalAlerts) > 0 {
+		printAlerts(alerts.CriticalAlerts, modules.SeverityCritical)
+		fmt.Println("------------------")
+		fmt.Printf("\n  The above %v critical alerts should be resolved ASAP\n\n", len(alerts.CriticalAlerts))
 	}
 
 	// run
