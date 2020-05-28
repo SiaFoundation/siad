@@ -382,6 +382,7 @@ func (h *Host) managedUpdatePriceTable() {
 		Expiry: time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
 
 		// TODO: hardcoded cost should be updated to use a better value.
+		AccountBalanceCost:   types.NewCurrency64(1),
 		FundAccountCost:      types.NewCurrency64(1),
 		UpdatePriceTableCost: types.NewCurrency64(1),
 

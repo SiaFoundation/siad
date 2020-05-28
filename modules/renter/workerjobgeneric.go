@@ -7,6 +7,15 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+var (
+	// ErrJobDiscarded is returned by a job if worker conditions have resulted
+	// in the worker being able to run this type of job. Perhaps another job of
+	// the same type failed recently, or some prerequisite like an ephemeral
+	// account refill is not being met. The error may or may not be extended to
+	// provide a reason.
+	ErrJobDiscarded = errors.New("job is being discarded")
+)
+
 type (
 	// jobGeneric implements the basic functionality for a job.
 	jobGeneric struct {
@@ -42,6 +51,10 @@ type (
 		// callExecute will run the actual job.
 		callExecute()
 
+		// callExpectedBandwidth will return the amount of bandwidth that a job
+		// expects to consume.
+		callExpectedBandwidth() (upload uint64, download uint64)
+
 		// staticCanceled returns true if the job has been canceled, false
 		// otherwise.
 		staticCanceled() bool
@@ -49,6 +62,10 @@ type (
 
 	// workerJobQueue defines an interface to create a worker job queue.
 	workerJobQueue interface {
+		// callDiscardAll will discard all of the jobs in the queue using the
+		// provided error.
+		callDiscardAll(error)
+
 		// callReportFailure should be called on the queue every time that a job
 		// failes, and include the error associated with the failure.
 		callReportFailure(error)
@@ -103,6 +120,13 @@ func (jq *jobGenericQueue) callAdd(j workerJob) bool {
 	return true
 }
 
+// callDiscardAll will discard all jobs in the queue using the provided error.
+func (jq *jobGenericQueue) callDiscardAll(err error) {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	jq.discardAll(err)
+}
+
 // callKill will kill the queue, discarding all jobs and ensuring no more jobs
 // can be added.
 func (jq *jobGenericQueue) callKill() {
@@ -142,7 +166,7 @@ func (jq *jobGenericQueue) callReportFailure(err error) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
-	err = errors.AddContext(err, "discarding all jobs and going on cooldown")
+	err = errors.AddContext(err, "discarding all jobs in this queue and going on cooldown")
 	jq.discardAll(err)
 	jq.cooldownUntil = cooldownUntil(jq.consecutiveFailures)
 	jq.consecutiveFailures++

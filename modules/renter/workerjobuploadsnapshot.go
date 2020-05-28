@@ -97,13 +97,14 @@ func checkUploadSnapshotGouging(allowance modules.Allowance, hostSettings module
 // channel.
 func (j *jobUploadSnapshot) callDiscard(err error) {
 	resp := &jobUploadSnapshotResponse{
-		staticErr: errors.AddContext(err, "job is being discarded"),
+		staticErr: errors.Extend(err, ErrJobDiscarded),
 	}
-	j.staticQueue.staticWorker().renter.tg.Launch(func() {
+	w := j.staticQueue.staticWorker()
+	w.renter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- resp:
 		case <-j.staticCancelChan:
-		case <-j.staticQueue.staticWorker().renter.tg.StopChan():
+		case <-w.renter.tg.StopChan():
 		}
 	})
 }
@@ -173,6 +174,14 @@ func (j *jobUploadSnapshot) callExecute() {
 		err = errors.AddContext(err, "uploading a snapshot to a host failed")
 		return
 	}
+}
+
+// callExpectedBandwidth returns the amount of bandwidth this job is expected to
+// consume.
+func (j *jobUploadSnapshot) callExpectedBandwidth() (ul, dl uint64) {
+	// Estimate 50kb in overhead for upload and download, and then 4 MiB
+	// necessary to send the actual full sector payload.
+	return 50e3 + 1<<22, 50e3
 }
 
 // initJobUploadSnapshotQueue will initialize the upload snapshot job queue for
