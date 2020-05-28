@@ -8,9 +8,8 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
-
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -22,6 +21,10 @@ var (
 	// execution and couldn't finish.
 	ErrInterrupted = errors.New("execution of program was interrupted")
 )
+
+// FnFinalize is the type of a function returned by ExecuteProgram to finalize
+// the changes made by the program.
+type FnFinalize func(StorageObligation) error
 
 // programState contains some fields needed for the execution of instructions.
 // The program's state is captured when the program is created and remains the
@@ -72,6 +75,7 @@ func outputFromError(err error, collateral, cost, refund types.Currency) Output 
 		output: output{
 			Error: err,
 		},
+
 		ExecutionCost:        cost,
 		AdditionalCollateral: collateral,
 		PotentialRefund:      refund,
@@ -97,7 +101,7 @@ func decodeInstruction(p *program, i modules.Instruction) (instruction, error) {
 
 // ExecuteProgram initializes a new program from a set of instructions and a
 // reader which can be used to fetch the program's data and executes it.
-func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p modules.Program, budget *modules.RPCBudget, collateralBudget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (func(so StorageObligation) error, <-chan Output, error) {
+func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p modules.Program, budget *modules.RPCBudget, collateralBudget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (FnFinalize, <-chan Output, error) {
 	// Sanity check program length.
 	if len(p) == 0 {
 		return nil, nil, ErrEmptyProgram
@@ -117,9 +121,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 		staticData:             openProgramData(data, programDataLen),
 		tg:                     &mdm.tg,
 	}
-
 	// Convert the instructions.
-	var err error
 	for _, i := range p {
 		instruction, err := decodeInstruction(program, i)
 		if err != nil {
@@ -128,7 +130,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 		program.instructions = append(program.instructions, instruction)
 	}
 	// Increment the execution cost of the program.
-	err = program.addCost(modules.MDMInitCost(pt, program.staticData.Len(), uint64(len(program.instructions))))
+	err := program.addCost(modules.MDMInitCost(pt, program.staticData.Len(), uint64(len(program.instructions))))
 	if err != nil {
 		return nil, nil, errors.Compose(err, program.staticData.Close())
 	}

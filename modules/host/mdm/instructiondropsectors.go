@@ -2,7 +2,6 @@ package mdm
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -16,19 +15,6 @@ type instructionDropSectors struct {
 	commonInstruction
 
 	numSectorsOffset uint64
-}
-
-// NewDropSectorsInstruction creates a modules.Instruction from arguments.
-func NewDropSectorsInstruction(numSectorsOffset uint64, merkleProof bool) modules.Instruction {
-	i := modules.Instruction{
-		Specifier: modules.SpecifierDropSectors,
-		Args:      make([]byte, modules.RPCIDropSectorsLen),
-	}
-	binary.LittleEndian.PutUint64(i.Args[:8], numSectorsOffset)
-	if merkleProof {
-		i.Args[8] = 1
-	}
-	return i
 }
 
 // staticDecodeDropSectorsInstruction creates a new 'DropSectors' instruction from the
@@ -63,7 +49,7 @@ func (i *instructionDropSectors) Execute(prevOutput output) output {
 	// Fetch the data.
 	numSectorsDropped, err := i.staticData.Uint64(i.numSectorsOffset)
 	if err != nil {
-		return errOutput(errors.New("bad input: numSectorsOffset"))
+		return errOutput(fmt.Errorf("bad input: numSectorsOffset: %v", err))
 	}
 
 	// Verify input.
@@ -115,13 +101,14 @@ func (i *instructionDropSectors) Collateral() types.Currency {
 }
 
 // Cost returns the Cost of the DropSectors instruction.
-func (i *instructionDropSectors) Cost() (types.Currency, types.Currency, error) {
+func (i *instructionDropSectors) Cost() (executionCost, refund types.Currency, err error) {
 	numSectorsDropped, err := i.staticData.Uint64(i.numSectorsOffset)
 	if err != nil {
-		return types.Currency{}, types.Currency{}, errors.New("bad input: numSectorsOffset")
+		err = fmt.Errorf("bad input: numSectorsOffset: %v", err)
+		return
 	}
-	cost, refund := modules.MDMDropSectorsCost(i.staticState.priceTable, numSectorsDropped)
-	return cost, refund, nil
+	executionCost, refund = modules.MDMDropSectorsCost(i.staticState.priceTable, numSectorsDropped)
+	return
 }
 
 // Memory returns the memory allocated by the 'DropSectors' instruction beyond

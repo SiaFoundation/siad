@@ -19,10 +19,12 @@ type (
 		Specifier InstructionSpecifier
 		Args      []byte
 	}
-	// Program specifies a generic program used as input to `mdm.ExecuteProram`.
-	Program []Instruction
 	// InstructionSpecifier specifies the type of the instruction.
 	InstructionSpecifier types.Specifier
+	// Program specifies a generic program used as input to `mdm.ExecuteProram`.
+	Program []Instruction
+	// ProgramData contains the raw byte data for the program.
+	ProgramData []byte
 )
 
 const (
