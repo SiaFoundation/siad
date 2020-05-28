@@ -228,15 +228,14 @@ func (w *worker) staticUpdatePriceTable() {
 // effectively disabling the worker.
 func checkPriceTableGouging(pt modules.RPCPriceTable, limit mux.BandwidthLimit, allowance modules.Allowance) error {
 	// Check whether the update price table cost is too high
-	dlbwc := pt.DownloadBandwidthCost.Mul64(limit.Downloaded())
-	ulbwc := pt.UploadBandwidthCost.Mul64(limit.Uploaded())
-	if pt.UpdatePriceTableCost.Cmp(dlbwc.Add(ulbwc).Mul64(2)) > 0 {
-		return fmt.Errorf("update price table cost %v is considered too high, it is more than twice the cost of bandwidth %v", pt.UpdatePriceTableCost, dlbwc.Add(ulbwc))
+	bwc := modules.MDMBandwidthCost(pt, limit.Uploaded(), limit.Downloaded())
+	if pt.UpdatePriceTableCost.Cmp(bwc.Mul64(2)) > 0 {
+		return fmt.Errorf("update price table cost %v is considered too high, it is more than twice the cost of bandwidth %v", pt.UpdatePriceTableCost, bwc)
 	}
 
 	// Check whether the fund account cost is too high
-	if pt.FundAccountCost.Cmp(dlbwc.Add(ulbwc).Mul64(10)) > 0 {
-		return fmt.Errorf("fund account cost %v is considered too high, it is more than ten times the cost of bandwidth %v", pt.FundAccountCost, dlbwc.Add(ulbwc))
+	if pt.FundAccountCost.Cmp(bwc.Mul64(10)) > 0 {
+		return fmt.Errorf("fund account cost %v is considered too high, it is more than ten times the cost of bandwidth %v", pt.FundAccountCost, bwc)
 	}
 
 	// Check whether the download bandwidth price is too high.
@@ -257,9 +256,10 @@ func checkPriceTableGouging(pt modules.RPCPriceTable, limit mux.BandwidthLimit, 
 	}
 
 	// Check that the prices in the price table make sense in the context of the
-	// renter's overall allowance. We do this by calculating the cost of
-	// performing the same action repeatedly until a fraction of the desired
-	// total resource consumption established by the allowance has been reached.
+	// renter's overall allowance with regards to downloads. We do this by
+	// calculating the cost of performing the same action repeatedly until a
+	// fraction of the desired total resource consumption established by the
+	// allowance has been reached.
 
 	// Expected Download Costs
 
@@ -275,13 +275,13 @@ func checkPriceTableGouging(pt modules.RPCPriceTable, limit mux.BandwidthLimit, 
 	jrs := new(jobReadSector)
 	jrs.staticLength = modules.SectorSize
 	ulbw, dlbw := jrs.callExpectedBandwidth()
-	bwc := modules.MDMBandwidthCost(pt, ulbw, dlbw)
+	bwc = modules.MDMBandwidthCost(pt, ulbw, dlbw)
 	costPerJob := cost.Add(bwc)
 
 	totalCost := costPerJob.Mul64(minNumJobs)
 	reducedCost := totalCost.Div64(downloadGougingFractionDenom)
 	if reducedCost.Cmp(allowance.Funds) > 0 {
-		errStr := fmt.Sprintf("combined read sector of host yields %v, which is more than the renter is willing to pay for downloads: %v - price gouging protection enabled", reducedCost, allowance.Funds)
+		errStr := fmt.Sprintf("combined read sector pricing of host yields %v, which is more than the renter is willing to pay for downloads: %v - price gouging protection enabled", reducedCost, allowance.Funds)
 		return errors.New(errStr)
 	}
 
