@@ -108,6 +108,8 @@ type hostContractor interface {
 	// billing period.
 	PeriodSpending() (modules.ContractorSpending, error)
 
+	modules.PaymentProvider
+
 	// OldContracts returns the oldContracts of the renter's hostContractor.
 	OldContracts() []modules.RenterContract
 
@@ -848,6 +850,16 @@ func (r *Renter) SkykeyIDByName(name string) (skykey.SkykeyID, error) {
 	}
 	defer r.tg.Done()
 	return r.staticSkykeyManager.IDByName(name)
+}
+
+// Skykeys returns a slice containing each Skykey being stored by the renter.
+func (r *Renter) Skykeys() ([]skykey.Skykey, error) {
+	if err := r.tg.Add(); err != nil {
+		return nil, err
+	}
+	defer r.tg.Done()
+
+	return r.staticSkykeyManager.Skykeys(), nil
 }
 
 // Enforce that Renter satisfies the modules.Renter interface.

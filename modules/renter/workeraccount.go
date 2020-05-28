@@ -165,6 +165,14 @@ func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
 	}
 }
 
+// managedOnCooldown returns true if the account is on cooldown and therefore
+// unlikely to receive additional funding in the near future.
+func (a *account) managedOnCooldown() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.cooldownUntil.After(time.Now())
+}
+
 // managedTrackDeposit keeps track of pending deposits by adding the given
 // amount to the 'pendingDeposits' field.
 func (a *account) managedTrackDeposit(amount types.Currency) {
@@ -204,12 +212,10 @@ func (w *worker) managedAccountNeedsRefill() bool {
 	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
 		return false
 	}
-	/* - will be enabled when more of the worker code is in place.
 	// Check if the price table is valid.
 	if !w.staticPriceTable().staticValid() {
 		return false
 	}
-	*/
 
 	// Check if there is a cooldown in place, and check if the balance is low
 	// enough to justify a refill.
@@ -229,8 +235,7 @@ func (w *worker) managedAccountNeedsRefill() bool {
 	return true
 }
 
-/* - will be enabled once more of the worker code is in place.
-// managedTryRefillAccount will check if the account needs to be refilled
+// managedRefillAccount will refill the account if it needs to be refilled
 func (w *worker) managedRefillAccount() {
 	// the account balance dropped to below half the balance target, refill
 	balance := w.staticAccount.managedAvailableBalance()
@@ -320,6 +325,22 @@ func (w *worker) managedRefillAccount() {
 	var resp modules.FundAccountResponse
 	err = modules.RPCRead(stream, &resp)
 	err = errors.AddContext(err, "could not read the account response")
+
+	// TODO: We need to parse the response and check for an error, such as
+	// MaxBalanceExceeded. In the specific case of MaxBalanceExceeded, we need
+	// to do a balance inquiry and check that the balance is actually high
+	// enough.
+	//
+	// If we are stuck, and the host won't let us get to a good balance level,
+	// we need to go on cooldown, this worker is no good. That will happen as
+	// long as we return an error.
+	//
+	// If we are not stuck, and we have enough balance, we can set the error to
+	// nil (to prevent entering cooldown) even though it technically failed,
+	// because the failure does not indicate a problem.
+
+	// Wake the worker so that any jobs potentially blocking on getting more
+	// money in the account can be activated.
+	w.staticWake()
 	return
 }
-*/

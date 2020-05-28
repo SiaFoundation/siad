@@ -344,40 +344,45 @@ func rentercmd() {
 // renterFileHealthSummary prints out a summary of the status of all the files
 // in the renter to track the progress of the files
 func renterFileHealthSummary(dirs []directoryInfo) {
-	percentages, err := filePercentageBreakdown(dirs)
+	percentages, numStuck, err := fileHealthBreakdown(dirs)
 	if err != nil {
 		die(err)
 	}
 
 	percentages = parsePercentages(percentages)
 
-	fmt.Printf(`File Health Summary:
-  %% At 100%%:            %v%%
-  %% Between 75%% - 100%%: %v%%
-  %% Between 50%% - 75%%:  %v%%
-  %% Between 25%% - 50%%:  %v%%
-  %% Between 0%% - 25%%:   %v%%
-  %% Unrecoverable:      %v%%
-`, percentages[0], percentages[1], percentages[2], percentages[3], percentages[4], percentages[5])
+	fmt.Println("File Health Summary")
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "  %% At 100%%\t%v%%\n", percentages[0])
+	fmt.Fprintf(w, "  %% Between 75%% - 100%%\t%v%%\n", percentages[1])
+	fmt.Fprintf(w, "  %% Between 50%% - 75%%\t%v%%\n", percentages[2])
+	fmt.Fprintf(w, "  %% Between 25%% - 50%%\t%v%%\n", percentages[3])
+	fmt.Fprintf(w, "  %% Between 0%% - 25%%\t%v%%\n", percentages[4])
+	fmt.Fprintf(w, "  %% Unrecoverable\t%v%%\n", percentages[5])
+	fmt.Fprintf(w, "  Number of Stuck Files\t%v\n", numStuck)
+	w.Flush()
 }
 
-// filePercentageBreakdown returns a percentage breakdown of the renter's files'
-// healths
-func filePercentageBreakdown(dirs []directoryInfo) ([]float64, error) {
+// fileHealthBreakdown returns a percentage breakdown of the renter's files'
+// healths and the number of stuck files
+func fileHealthBreakdown(dirs []directoryInfo) ([]float64, int, error) {
 	// Check for nil input
 	if len(dirs) == 0 {
-		return nil, errors.New("No Directories Found")
+		return nil, 0, errors.New("No Directories Found")
 	}
 
-	// Check for no files uploaded
-	total := float64(dirs[0].dir.AggregateNumFiles)
-	if total == 0 {
-		return nil, errors.New("No Files Uploaded")
-	}
-
-	var fullHealth, greater75, greater50, greater25, greater0, unrecoverable float64
+	// Note: we are manually counting the number of files here since the
+	// aggregate fields in the directory could be incorrect due to delays in the
+	// health loop. This is OK since we have to iterate over all the files
+	// anyways.
+	var total, fullHealth, greater75, greater50, greater25, greater0, unrecoverable float64
+	var numStuck int
 	for _, dir := range dirs {
 		for _, file := range dir.files {
+			total++
+			if file.Stuck {
+				numStuck++
+			}
 			switch {
 			case file.MaxHealthPercent == 100:
 				fullHealth++
@@ -395,6 +400,11 @@ func filePercentageBreakdown(dirs []directoryInfo) ([]float64, error) {
 		}
 	}
 
+	// Check for no files uploaded
+	if total == 0 {
+		return nil, 0, errors.New("No Files Uploaded")
+	}
+
 	fullHealth = 100 * fullHealth / total
 	greater75 = 100 * greater75 / total
 	greater50 = 100 * greater50 / total
@@ -402,7 +412,7 @@ func filePercentageBreakdown(dirs []directoryInfo) ([]float64, error) {
 	greater0 = 100 * greater0 / total
 	unrecoverable = 100 * unrecoverable / total
 
-	return []float64{fullHealth, greater75, greater50, greater25, greater0, unrecoverable}, nil
+	return []float64{fullHealth, greater75, greater50, greater25, greater0, unrecoverable}, numStuck, nil
 }
 
 // renterFilesAndContractSummary prints out a summary of what the renter is
@@ -2593,11 +2603,16 @@ func writeWorkers(workers []modules.WorkerStatus) {
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 	contractInfo := "Contract ID\tHost PubKey\tGood For Renew\tGood For Upload"
 	downloadInfo := "\tDownload On Cooldown\tDownload Queue\tDownload Terminated"
-	uploadInfo := "\tUpload Error\tUpload Cooldown Time\tUpload On Cooldown\tUpload Queue\tUpload Terminated"
+	uploadInfo := "\tLast Upload Error\tUpload Cooldown Time\tUpload On Cooldown\tUpload Queue\tUpload Terminated"
 	eaInfo := "\tAvailable Balance\tBalance Targe\tFund Account Queue"
 	jobInfo := "\tBackup Queue\tDownload By Root Queue"
 	fmt.Fprintln(w, "  \n"+contractInfo+downloadInfo+uploadInfo+eaInfo+jobInfo)
 	for _, worker := range workers {
+		// Sanitize output
+		var uploadCoolDownTime time.Duration
+		if worker.UploadCoolDownTime > 0 {
+			uploadCoolDownTime = worker.UploadCoolDownTime
+		}
 		// Contract Info
 		fmt.Fprintf(w, "  %v\t%v\t%v\t%v",
 			worker.ContractID,
@@ -2614,7 +2629,7 @@ func writeWorkers(workers []modules.WorkerStatus) {
 		// Upload Info
 		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v",
 			worker.UploadCoolDownError,
-			worker.UploadCoolDownTime,
+			uploadCoolDownTime,
 			worker.UploadOnCoolDown,
 			worker.UploadQueueSize,
 			worker.UploadTerminated)

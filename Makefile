@@ -6,6 +6,8 @@ GIT_DIRTY=$(shell git diff-index --quiet HEAD -- || echo "✗-")
 ldflags= -X gitlab.com/NebulousLabs/Sia/build.GitRevision=${GIT_DIRTY}${GIT_REVISION} \
 -X "gitlab.com/NebulousLabs/Sia/build.BuildTime=${BUILD_TIME}"
 
+racevars= history_size=3 halt_on_error=1 atexit_sleep_ms=2000
+
 # all will build and install release binaries
 all: release
 
@@ -139,19 +141,19 @@ staticcheck:
 debug:
 	go install -tags='debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 debug-race:
-	go install -race -tags='debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
+	GORACE='$(racevars)' go install -race -tags='debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 
 # dev builds and installs developer binaries. This will also install the utils.
 dev:
 	go install -tags='dev debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 dev-race:
-	go install -race -tags='dev debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
+	GORACE='$(racevars)' go install -race -tags='dev debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 
 # release builds and installs release binaries.
 release:
 	go install -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
 release-race:
-	go install -race -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
+	GORACE='$(racevars)' go install -race -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
 release-util:
 	go install -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs) $(util-pkgs)
 
@@ -175,10 +177,10 @@ endif
 test:
 	go test -short -tags='debug testing netgo' -timeout=5s $(pkgs) -run=$(run) -count=$(count)
 test-v:
-	go test -race -v -short -tags='debug testing netgo' -timeout=15s $(pkgs) -run=$(run) -count=$(count)
+	GORACE='$(racevars)' go test -race -v -short -tags='debug testing netgo' -timeout=15s $(pkgs) -run=$(run) -count=$(count)
 test-long: clean fmt vet lint-ci
 	@mkdir -p cover
-	go test --coverprofile='./cover/cover.out' -v -race -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
+	go test --coverprofile='./cover/cover.out' -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
 
 test-vlong: clean fmt vet lint-ci
 ifneq ("$(OS)","Windows_NT")
@@ -188,7 +190,7 @@ else
 # Windows
 	MD cover
 endif
-	go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
+	GORACE='$(racevars)' go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
 
 test-cpu:
 	go test -v -tags='testing debug netgo' -timeout=500s -cpuprofile cpu.prof $(pkgs) -run=$(run) -count=$(count)
