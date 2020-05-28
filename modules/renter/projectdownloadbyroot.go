@@ -151,7 +151,6 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		close(cancelChan)
 	}()
 
-
 	// Get the full list of workers and create a channel to receive all of the
 	// results from the workers. The channel is buffered with one slot per
 	// worker, so that the workers do not have to block when returning the
