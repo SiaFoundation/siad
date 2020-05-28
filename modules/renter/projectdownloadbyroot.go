@@ -52,11 +52,6 @@ type projectDownloadByRootManager struct {
 // project manager. It takes a length so that it knows which bucket to put the
 // data in.
 func (m *projectDownloadByRootManager) managedRecordProjectTime(length uint64, timeElapsed time.Duration) {
-	var bucket uint64
-	var recentAvg time.Duration
-	var totalAvg time.Duration
-	var totalRequests uint64
-
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if length <= 1<<16 {
@@ -66,10 +61,6 @@ func (m *projectDownloadByRootManager) managedRecordProjectTime(length uint64, t
 		m.decayedRequests64k *= projectDownloadByRootPerformanceDecay
 		m.decayedTime64k += float64(timeElapsed)
 		m.decayedRequests64k++
-		bucket = 1 << 16
-		recentAvg = time.Duration(m.decayedTime64k / m.decayedRequests64k)
-		totalAvg = m.totalTime64k / time.Duration(m.totalRequests64k)
-		totalRequests = m.totalRequests64k
 	} else if length <= 1<<20 {
 		m.totalTime1m += timeElapsed
 		m.totalRequests1m++
@@ -77,10 +68,6 @@ func (m *projectDownloadByRootManager) managedRecordProjectTime(length uint64, t
 		m.decayedRequests1m *= projectDownloadByRootPerformanceDecay
 		m.decayedTime1m += float64(timeElapsed)
 		m.decayedRequests1m++
-		bucket = 1 << 20
-		recentAvg = time.Duration(m.decayedTime1m / m.decayedRequests1m)
-		totalAvg = m.totalTime1m / time.Duration(m.totalRequests1m)
-		totalRequests = m.totalRequests1m
 	} else {
 		m.totalTime4m += timeElapsed
 		m.totalRequests4m++
@@ -88,10 +75,6 @@ func (m *projectDownloadByRootManager) managedRecordProjectTime(length uint64, t
 		m.decayedRequests4m *= projectDownloadByRootPerformanceDecay
 		m.decayedTime4m += float64(timeElapsed)
 		m.decayedRequests4m++
-		bucket = 1 << 22
-		recentAvg = time.Duration(m.decayedTime4m / m.decayedRequests4m)
-		totalAvg = m.totalTime4m / time.Duration(m.totalRequests4m)
-		totalRequests = m.totalRequests4m
 	}
 }
 
