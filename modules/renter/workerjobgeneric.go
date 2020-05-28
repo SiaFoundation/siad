@@ -7,6 +7,15 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+var (
+	// ErrJobDiscarded is returned by a job if worker conditions have resulted
+	// in the worker being able to run this type of job. Perhaps another job of
+	// the same type failed recently, or some prerequisite like an ephemeral
+	// account refill is not being met. The error may or may not be extended to
+	// provide a reason.
+	ErrJobDiscarded = errors.New("job is being discarded")
+)
+
 type (
 	// jobGeneric implements the basic functionality for a job.
 	jobGeneric struct {
@@ -157,7 +166,7 @@ func (jq *jobGenericQueue) callReportFailure(err error) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
-	err = errors.AddContext(err, "discarding all jobs and going on cooldown")
+	err = errors.AddContext(err, "discarding all jobs in this queue and going on cooldown")
 	jq.discardAll(err)
 	jq.cooldownUntil = cooldownUntil(jq.consecutiveFailures)
 	jq.consecutiveFailures++

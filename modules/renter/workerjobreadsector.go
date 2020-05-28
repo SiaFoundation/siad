@@ -5,6 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -63,7 +64,7 @@ func (j *jobReadSector) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
 	w.renter.tg.Launch(func() {
 		response := &jobReadSectorResponse{
-			staticErr: errors.AddContext(err, "job being discarded"),
+			staticErr: errors.Extend(err, ErrJobDiscarded),
 		}
 		select {
 		case j.staticResponseChan <- response:
@@ -161,10 +162,7 @@ func (j *jobReadSector) managedReadSector() ([]byte, error) {
 	cost = cost.Add(bandwidthCost)
 
 	// exeucte it
-	//
-	// TODO: for this program we don't actually need the file contract - v149
-	// only.
-	responses, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, cost)
+	responses, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
 	if err != nil {
 		return nil, err
 	}

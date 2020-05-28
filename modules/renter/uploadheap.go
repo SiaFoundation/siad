@@ -9,7 +9,6 @@ package renter
 import (
 	"container/heap"
 	"fmt"
-	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -603,6 +602,10 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		repairable := chunk.health <= 1 || chunk.onDisk
 		needsRepair := chunk.health >= RepairThreshold
 
+		if r.deps.Disrupt("AddUnrepairableChunks") && needsRepair {
+			incompleteChunks = append(incompleteChunks, chunk)
+			continue
+		}
 		// Add chunk to list of incompleteChunks if it is incomplete and
 		// repairable or if we are targeting stuck chunks
 		if needsRepair && (repairable || target == targetStuckChunks) {
@@ -764,144 +767,135 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 		return
 	}
 
-	// Loop through the whole set of files and get a list of chunks and build a
-	// temporary heap
-	var unfinishedChunkHeap uploadChunkHeap
-	var worstIgnoredHealth float64
-	var worstHealthRemote bool
-	dirHeapHealth, dirHeapRemote := r.directoryHeap.managedPeekHealth()
+	// Loop through the set of files, building a temporary heap of chunks that
+	// need repairs. A temporary heap is used because we do not know in advance
+	// how bad the health of the worst chunks are, and we don't want to add any
+	// chunks to the full chunk heap unless we are sure they are the worst
+	// chunks.
+	//
+	// The temporary heap uses a staging technique where it stores up to twice
+	// the total number of chunks that it needs, and then it prunes itself by
+	// popping out the worst chunks, deleting the less bad chunks, and then
+	// re-adding the worst chunks again.
+	//
+	// When determining whether or not to skip a chunk in this directory, we
+	// consider the worst health of any chunk in the next directory, as well as
+	// the worst health of any chunk we have skipped so far.
+	//
+	// To prevent an infinite loop, we need to track the worst health of
+	// currently skipped chunks and the worst health of the next directory
+	// separately, so that if we skip only chunks that have better health than
+	// the next directory, when we re-add this directory to the directory heap,
+	// it gets added behind the next directory, ensuring progress is made.
+	var tempChunkHeap uploadChunkHeap
+	nextDirHealth, nextDirRemote := r.directoryHeap.managedPeekHealth()
+	wh := worstIgnoredHealth{
+		nextDirHealth: nextDirHealth,
+		nextDirRemote: nextDirRemote,
+
+		target: target,
+	}
+	// Loop through all the files and build the temporary heap.
 	for _, file := range files {
-		// For normal repairs check if file is a worse health than the directory
-		// heap or if the directory heap is tracking remote files and the file
-		// is not remote
+		// If this file has better health than other files that we have ignored,
+		// this file can be skipped. This only counts for unstuck chunks, if we
+		// are adding stuck files, we ignore health as a consideration.
 		fileMetadata := file.Metadata()
 		fileHealth := fileMetadata.CachedHealth
 		_, err := os.Stat(fileMetadata.LocalPath)
 		remoteFile := fileMetadata.LocalPath == "" || err != nil
-		if (fileHealth < dirHeapHealth || !remoteFile && dirHeapRemote) && target == targetUnstuckChunks {
-			// Track the health
-			if !remoteFile && worstHealthRemote {
-				// Nothing to do as we are tracking the health of at least one
-				// remote file
-				continue
-			}
-			if remoteFile && !worstHealthRemote {
-				// If the file is remote and we haven't been tracking the health
-				// of any remote files then we want to track the health of this
-				// file and set the worstHealthRemote to true
-				worstHealthRemote = true
-				worstIgnoredHealth = fileHealth
-				continue
-			}
-			// Update the worstIgnoredHealth
-			worstIgnoredHealth = math.Max(worstIgnoredHealth, fileHealth)
+		if wh.canSkip(fileHealth, remoteFile) {
+			wh.updateWorstIgnoredHealth(fileHealth, remoteFile)
 			continue
 		}
 
-		// Build unfinished chunks from file and add them to the temp heap if
-		// they are a worse health than the directory heap
+		// Build unfinished chunks from file and add them to the temp heap.
 		unfinishedUploadChunks := r.managedBuildUnfinishedChunks(file, hosts, target, offline, goodForRenew)
 		for i := 0; i < len(unfinishedUploadChunks); i++ {
 			chunk := unfinishedUploadChunks[i]
-			// Check to see the chunk is already in the upload heap
+			// Skip adding this chunk if it is already in the upload heap.
 			if r.uploadHeap.managedExists(chunk.id) {
-				// Close the file entry
+				// Close the file entry before skipping the chunk.
 				err := chunk.fileEntry.Close()
 				if err != nil {
 					r.log.Println("Error closing file entry:", err)
 				}
-				// Since the chunk is already in the heap we do not need to
-				// track the health of the chunk
+				// The chunk is already in the heap, so it does not count as
+				// being ignored even though technically we are skipping it. Do
+				// not update the worst health vars based on this chunk.
 				continue
 			}
-
-			// For normal repairs check if chunk has a worse health than the
-			// directory heap
-			if chunk.health < dirHeapHealth && target == targetUnstuckChunks {
-				// Track the health
-				if chunk.onDisk && worstHealthRemote {
-					// Nothing to do as we are tracking the health of at least one
-					// remote chunk
-				} else if !chunk.onDisk && !worstHealthRemote {
-					// If the chunk is remote and we haven't been tracking the health
-					// of any remote chunks then we want to track the health of this
-					// chunk and set the worstHealthRemote to true
-					worstHealthRemote = true
-					worstIgnoredHealth = chunk.health
-				} else {
-					// Update the worstIgnoredHealth
-					worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
-				}
-
-				// Close the file entry
+			if wh.canSkip(chunk.health, chunk.onDisk) {
+				// Close the file entry before skipping the chunk.
 				err := chunk.fileEntry.Close()
 				if err != nil {
 					r.log.Println("Error closing file entry:", err)
 				}
+
+				wh.updateWorstIgnoredHealth(chunk.health, chunk.onDisk)
 				continue
 			}
-
 			// Add chunk to temp heap
-			heap.Push(&unfinishedChunkHeap, chunk)
+			heap.Push(&tempChunkHeap, chunk)
 
 			// Check if temp heap is growing too large. We want to restrict it
 			// to twice the size of the max upload heap size. This restriction
 			// should be applied to all repairs to prevent excessive memory
 			// usage.
-			if len(unfinishedChunkHeap) < maxUploadHeapChunks*2 {
+			//
+			// By restricting to twice the size of the normal upload heap, we
+			// can guarantee that if this directory is 100% full of chunks that
+			// have worse health than the current directory heap, we will still
+			// keep all of them.
+			if len(tempChunkHeap) < maxUploadHeapChunks*2 {
 				continue
 			}
 
-			// Pop of the worst half of the heap
+			// Pruning has begun. Pruning happens by popping the worst chunks
+			// off of the heap (enough to fully fill the upload heap), and then
+			// resetting the heap, and then pushing all of the worst chunks back
+			// onto the heap. Effectively this clears the heap from having
+			// chunks that will never be put into the full heap because the
+			// health is too poor.
 			var chunksToKeep []*unfinishedUploadChunk
-			for len(unfinishedChunkHeap) > maxUploadHeapChunks {
-				chunksToKeep = append(chunksToKeep, heap.Pop(&unfinishedChunkHeap).(*unfinishedUploadChunk))
+			for len(tempChunkHeap) > maxUploadHeapChunks {
+				chunksToKeep = append(chunksToKeep, heap.Pop(&tempChunkHeap).(*unfinishedUploadChunk))
 			}
 
-			// Check health of next chunk
-			chunk = heap.Pop(&unfinishedChunkHeap).(*unfinishedUploadChunk)
-			if chunk.onDisk && worstHealthRemote {
-				// Nothing to do as we are tracking the health of at least one
-				// remote chunk
-			} else if !chunk.onDisk && !worstHealthRemote {
-				// If the chunk is remote and we haven't been tracking the health
-				// of any remote chunks then we want to track the health of this
-				// chunk and set the worstHealthRemote to true
-				worstHealthRemote = true
-				worstIgnoredHealth = chunk.health
-			} else {
-				// Update the worstIgnoredHealth
-				worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
-			}
-
-			// Close the file entry
+			// Grab the health of the worst chunk that we are going to ignore.
+			// Then update the worstIgnoredHealth to reflect this ignored chunk.
+			chunk = heap.Pop(&tempChunkHeap).(*unfinishedUploadChunk)
+			// Close the file entry, since this chunk is popped, the reset of
+			// the heap won't catch this chunk.
 			err := chunk.fileEntry.Close()
 			if err != nil {
 				r.log.Println("Error closing file entry:", err)
 			}
+			wh.updateWorstIgnoredHealth(chunk.health, chunk.onDisk)
 
-			// Reset temp heap to release memory
-			err = unfinishedChunkHeap.reset()
+			// Reset the temp heap to throw out all of the chunks that we don't
+			// care about.
+			err = tempChunkHeap.reset()
 			if err != nil {
 				r.log.Println("WARN: error resetting the temporary upload heap:", err)
 			}
-
-			// Add worst chunks back to heap
+			// Add all of the bad chunks we saved from earlier back into the
+			// temp heap.
 			for _, chunk := range chunksToKeep {
-				heap.Push(&unfinishedChunkHeap, chunk)
+				heap.Push(&tempChunkHeap, chunk)
 			}
-
-			// Make sure chunksToKeep is zeroed out in memory
+			// Clean up the chunksToKeep memory, this improves garbage
+			// collection.
 			chunksToKeep = []*unfinishedUploadChunk{}
 		}
 	}
 
-	// We now have a temporary heap of the worst chunks in the directory that
-	// are also worse than any other chunk in the directory heap. Now we try and
-	// add as many chunks as we can to the uploadHeap
-	for len(unfinishedChunkHeap) > 0 && (r.uploadHeap.managedLen() < maxUploadHeapChunks || target == targetBackupChunks) {
-		// Add chunk to the uploadHeap
-		chunk := heap.Pop(&unfinishedChunkHeap).(*unfinishedUploadChunk)
+	// We now have a temporary heap of the worst chunks in the directory. Move
+	// the chunks from the temporary heap to the upload heap until either there
+	// are no more temporary chunks or until the upload heap is full.
+	for len(tempChunkHeap) > 0 && (r.uploadHeap.managedLen() < maxUploadHeapChunks || target == targetBackupChunks) {
+		// Add this chunk to the upload heap.
+		chunk := heap.Pop(&tempChunkHeap).(*unfinishedUploadChunk)
 		if !r.uploadHeap.managedPush(chunk) {
 			// We don't track the health of this chunk since the only reason it
 			// wouldn't be added to the heap is if it is already in the heap or
@@ -913,34 +907,22 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 		}
 	}
 
-	// Check if there are still chunks left in the temp heap. If so check the
-	// health of the next chunk
-	if len(unfinishedChunkHeap) > 0 {
-		chunk := heap.Pop(&unfinishedChunkHeap).(*unfinishedUploadChunk)
-		if chunk.onDisk && worstHealthRemote {
-			// Nothing to do as we are tracking the health of at least one
-			// remote chunk
-		} else if !chunk.onDisk && !worstHealthRemote {
-			// If the chunk is remote and we haven't been tracking the health
-			// of any remote chunks then we want to track the health of this
-			// chunk and set the worstHealthRemote to true
-			worstHealthRemote = true
-			worstIgnoredHealth = chunk.health
-		} else {
-			// Update the worstIgnoredHealth
-			worstIgnoredHealth = math.Max(worstIgnoredHealth, chunk.health)
-		}
-
-		// Close the file entry
+	// If there are any chunks left in the temporary heap, these chunks are
+	// going to be ignored. Set the worst ignored values based on the worst of
+	// the chunks being ignored here.
+	if len(tempChunkHeap) > 0 {
+		chunk := heap.Pop(&tempChunkHeap).(*unfinishedUploadChunk)
+		// Close the file entry since it's no longer in the temp heap and
+		// therefore will not be caught by the call to reset().
 		err := chunk.fileEntry.Close()
 		if err != nil {
 			r.log.Println("Error closing file entry:", err)
 		}
+		wh.updateWorstIgnoredHealth(chunk.health, chunk.onDisk)
 	}
-
-	// We are done with the temporary heap so reset it to help release the
-	// memory
-	err := unfinishedChunkHeap.reset()
+	// We are done with the temporary heap, reset it so the resources are closed
+	// and the memory is released.
+	err := tempChunkHeap.reset()
 	if err != nil {
 		r.log.Println("WARN: error resetting the temporary upload heap:", err)
 	}
@@ -950,11 +932,20 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	if target == targetBackupChunks {
 		return
 	}
-
-	// Check if we should add the directory back to the directory heap
-	if worstIgnoredHealth < RepairThreshold {
+	// If the worst ignored health is below the repair threshold, there is no
+	// need to re-add the directory to the directory heap.
+	if wh.health < RepairThreshold {
 		return
 	}
+
+	// There are chunks in this directory which need to be repaired, but got
+	// excluded from the upload heap. This directory should be added back into
+	// the directory heap with a health that matches the worst health of any
+	// chunk that got ignored.
+	//
+	// This means that the directory may be added with a health that doesn't
+	// match its actual health, this is okay because the goal is to make sure
+	// that the upload heap is making progress.
 
 	// All files submitted are from the same directory so use the first one to
 	// get the directory siapath
@@ -964,31 +955,34 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 		return
 	}
 
-	// Since directory is being added back as explored we only need to set the
-	// health as that is what will be used for sorting in the directory heap.
+	// The directory will be added back as 'explored', under the assumption that
+	// only explored directories are having their chunks added to the upload
+	// heap.
 	//
-	// The aggregate health is set to 'worstIgnoredHealth' as well. In the event
-	// that the directory gets added as unexplored because another copy of the
-	// unexplored directory exists on the directory heap, we need to make sure
-	// that the worst known health is represented in the aggregate value.
+	// The health of the directory is set equal to the worst health of any chunk
+	// that got ignored. This is because that is what the health of the
+	// directory will be after all the repairs we just queued are completed.
+	//
+	// The aggregate health needs to be set as well, because the directory may
+	// already exist on the directory heap in an unexplored state, as it may
+	// have been added by another thread. When the directory is added under that
+	// race condition, the worst healths of all the directories will be used. We
+	// want to ensure that we don't shadow worse healths in subdirs.
 	d := &directory{
-		aggregateHealth: worstIgnoredHealth,
-		health:          worstIgnoredHealth,
+		aggregateHealth: wh.health,
 		explored:        true,
+		health:          wh.health,
 		staticSiaPath:   dirSiaPath,
 	}
-	// Update the RemoteHealths as well if we were tracking the health of remote
-	// files and chunks
-	if worstHealthRemote {
-		d.aggregateRemoteHealth = worstIgnoredHealth
-		d.remoteHealth = worstIgnoredHealth
+	// The remote health values should only be set if the worst health of any
+	// ignored chunk was a remote health chunk.
+	if wh.remote {
+		d.aggregateRemoteHealth = wh.health
+		d.remoteHealth = wh.health
 	}
-
-	// Add the directory to the heap. If there is a conflict because the
-	// directory is already in the heap (for example, added by another thread or
-	// process), then the worst of the values between this dir and the one
-	// that's already in the dir will be used, to ensure that the repair loop
-	// will prioritize all bad value files.
+	// Push the directory back onto the directory heap so that when the current
+	// upload heap is drained, the ignored chunks in this dir will be
+	// reconsidered.
 	r.directoryHeap.managedPush(d)
 }
 

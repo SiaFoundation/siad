@@ -57,7 +57,7 @@ func (j *jobHasSector) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
 	w.renter.tg.Launch(func() {
 		response := &jobHasSectorResponse{
-			staticErr: errors.AddContext(err, "job is being discarded"),
+			staticErr: errors.Extend(err, ErrJobDiscarded),
 		}
 		select {
 		case j.staticResponseChan <- response:

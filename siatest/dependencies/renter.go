@@ -40,6 +40,17 @@ func (d *DependencyDisableRepairAndHealthLoops) Disrupt(s string) bool {
 	return s == "DisableRepairAndHealthLoops"
 }
 
+// DependencyAddUnrepairableChunks will have the repair loop always add chunks
+// to the upload heap even if they are unrepairable
+type DependencyAddUnrepairableChunks struct {
+	modules.ProductionDependencies
+}
+
+// Disrupt will prevent the repair and health loops from running
+func (d *DependencyAddUnrepairableChunks) Disrupt(s string) bool {
+	return s == "DisableRepairAndHealthLoops" || s == "AddUnrepairableChunks"
+}
+
 // DependencyFailUploadStreamFromReader prevents SiaFileEntries in the upload code
 // from being closed.
 type DependencyFailUploadStreamFromReader struct {
