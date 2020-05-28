@@ -97,7 +97,7 @@ func checkUploadSnapshotGouging(allowance modules.Allowance, hostSettings module
 // channel.
 func (j *jobUploadSnapshot) callDiscard(err error) {
 	resp := &jobUploadSnapshotResponse{
-		staticErr: errors.AddContext(err, "job is being discarded"),
+		staticErr: errors.Extend(err, ErrJobDiscarded),
 	}
 	w := j.staticQueue.staticWorker()
 	w.renter.tg.Launch(func() {
