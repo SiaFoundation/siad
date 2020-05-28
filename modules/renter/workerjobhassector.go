@@ -166,7 +166,7 @@ func (jq *jobHasSectorQueue) callAverageJobTime() time.Duration {
 func (w *worker) initJobHasSectorQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobHasSectorQueue != nil {
-		w.renter.log.Critical("incorret call on newJobHasSectorQueue")
+		w.renter.log.Critical("incorret call on initJobHasSectorQueue")
 		return
 	}
 

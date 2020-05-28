@@ -135,7 +135,7 @@ func (j *jobReadSector) callExecute() {
 	jq.mu.Unlock()
 }
 
-// programReadSectorBandwidth returns the bandwidth that gets consumed by a
+// callExpectedBandwidth returns the bandwidth that gets consumed by a
 // ReadSector program.
 //
 // TODO: These values are overly conservative, once we've got the protocol more
@@ -208,7 +208,7 @@ func (jq *jobReadSectorQueue) callAverageJobTime(length uint64) time.Duration {
 func (w *worker) initJobReadSectorQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobReadSectorQueue != nil {
-		w.renter.log.Critical("incorret call on newJobReadSectorQueue")
+		w.renter.log.Critical("incorret call on initJobReadSectorQueue")
 	}
 	w.staticJobReadSectorQueue = &jobReadSectorQueue{
 		jobGenericQueue: newJobGenericQueue(w),
