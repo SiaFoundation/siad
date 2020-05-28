@@ -67,7 +67,7 @@ func skykeycmd(cmd *cobra.Command, args []string) {
 
 // skykeycreatecmd is a wrapper for skykeyCreate used to handle skykey creation.
 func skykeycreatecmd(name string) {
-	skykeyStr, err := skykeyCreate(httpClient, name)
+	skykeyStr, err := skykeyCreate(httpClient, name, skykeyCipherType)
 	if err != nil {
 		die(errors.AddContext(err, "Failed to create new skykey"))
 	}
@@ -75,10 +75,9 @@ func skykeycreatecmd(name string) {
 }
 
 // skykeyCreate creates a new Skykey with the given name and cipher type
-// as set by flag.
-func skykeyCreate(c client.Client, name string) (string, error) {
+func skykeyCreate(c client.Client, name, ct string) (string, error) {
 	var cipherType crypto.CipherType
-	err := cipherType.FromString(skykeyCipherType)
+	err := cipherType.FromString(ct)
 	if err != nil {
 		return "", errors.AddContext(err, "Could not decode cipher-type")
 	}
