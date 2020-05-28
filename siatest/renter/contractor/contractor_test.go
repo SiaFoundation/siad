@@ -1804,6 +1804,9 @@ func TestContractorChurnLimiter(t *testing.T) {
 		if err := miner.MineBlock(); err != nil {
 			t.Fatal(err)
 		}
+		// Sleep for a second to allow anything in the background such as
+		// renewals a chance to go through.
+		time.Sleep(time.Second)
 	}
 
 	// Turn on the renter dependency to simulate more churn. This forces the
@@ -1814,7 +1817,7 @@ func TestContractorChurnLimiter(t *testing.T) {
 	// Check that 1 of the hosts was churned, but that the churn limiter prevented
 	// the other bad scoring hosts from getting churned, because the period limit
 	// was reached.
-	err = build.Retry(50, 500*time.Millisecond, func() error {
+	err = build.Retry(20, 1000*time.Millisecond, func() error {
 		// Mine blocks to increase remainingChurnBudget.
 		if err := miner.MineBlock(); err != nil {
 			t.Fatal(err)
