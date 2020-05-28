@@ -4953,7 +4953,7 @@ responses](#standard-responses).
 curl -A "Sia-Agent"  -u "":<apipassword> --data "localhost:9980/skynet/skykeys"
 ```
 
-Returns a list of all Skykeys as base64-encoded strings.
+Returns a list of all Skykeys.
 
 ### JSON Response
 
@@ -4980,8 +4980,8 @@ Returns a list of all Skykeys as base64-encoded strings.
 }
 ```
 
-**skykeys** | []string  
-array of base-64 encoded skykeys
+**skykeys** | []skykeys
+array of 
 
 
 
@@ -5022,7 +5022,7 @@ curl -A "Sia-Agent"  -u "":<apipassword> --data "name=key_to_the_castle" "localh
 curl -A "Sia-Agent"  -u "":<apipassword> --data "id=gi5z8cf5NWbcvPBaBn0DFQ==" "localhost:9980/skynet/skykey"
 ```
 
-Returns the base-64 encoded skykey stored under that name, or with that ID.
+Returns the base-64 encoded skykey along with its name and ID.
 
 
 ### Path Parameters
@@ -5048,6 +5048,12 @@ base-64 encoded ID of the skykey being queried
 
 **skykey** | string  
 base-64 encoded skykey
+
+**name** | string  
+name of the skykey
+
+**id** | string  
+base-64 encoded skykey ID
 
 
 **UNSTABLE - subject to change in v1.4.9**

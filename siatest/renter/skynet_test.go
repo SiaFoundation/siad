@@ -2178,6 +2178,9 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(skykeysGet.Skykeys) != len(skykeySet) {
+		t.Fatalf("Got %d skykeys, expected %d", len(skykeysGet.Skykeys), len(skykeySet))
+	}
 	for _, skGet := range skykeysGet.Skykeys {
 		if _, ok := skykeySet[skGet.Skykey]; !ok {
 			t.Fatal("skykey not in test set")
