@@ -24,7 +24,7 @@ func TestSkykeyCommands(t *testing.T) {
 		{name: "TestDuplicateSkykeyAdd", test: testDuplicateSkykeyAdd},
 		{name: "TestChangeKeyEntropyKeepName", test: testChangeKeyEntropyKeepName},
 		{name: "TestAddKeyTwice", test: testAddKeyTwice},
-		//{name: "TestInvalidCipherType", test: testInvalidCipherType},
+		{name: "TestInvalidSkykeyType", test: testInvalidSkykeyType},
 		{name: "TestSkykeyGet", test: testSkykeyGet},
 		{name: "TestSkykeyGetUsingNameAndID", test: testSkykeyGetUsingNameAndID},
 		{name: "TestSkykeyGetUsingNoNameAndNoID", test: testSkykeyGetUsingNoNameAndNoID},
@@ -94,16 +94,13 @@ func testAddKeyTwice(t *testing.T, c client.Client) {
 	}
 }
 
-/* TODO
-// testInvalidCipherType tests that invalid cipher types are caught.
-func testInvalidCipherType(t *testing.T, c client.Client) {
-	invalidSkykeyCipherType := "InvalidCipherType"
-	_, err := skykeyCreate(c, "createkey2", invalidSkykeyCipherType)
-	if !errors.Contains(err, crypto.ErrInvalidCipherType) {
-		t.Fatal("Expected error when creating key with invalid ciphertype")
+// testInvalidSkykeyType tests that invalid cipher types are caught.
+func testInvalidSkykeyType(t *testing.T, c client.Client) {
+	_, err := skykeyCreate(c, "createkey2", skykey.TypeInvalid)
+	if !strings.Contains(err.Error(), skykey.ErrInvalidSkykeyType.Error()) {
+		t.Fatal("Expected error when creating key with invalid skykeytpe", err)
 	}
 }
-*/
 
 // testSkykeyGet tests skykeyGet with known key should not return any errors.
 func testSkykeyGet(t *testing.T, c client.Client) {

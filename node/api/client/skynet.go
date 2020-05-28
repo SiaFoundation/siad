@@ -402,6 +402,7 @@ func (c *Client) SkykeyCreateKeyPost(name string, skType skykey.SkykeyType) (sky
 	// Set the url values.
 	values := url.Values{}
 	values.Set("name", name)
+	values.Set("type", skType.ToString())
 
 	var skykeyGet api.SkykeyGET
 	err := c.post("/skynet/createskykey", values.Encode(), &skykeyGet)

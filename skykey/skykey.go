@@ -54,6 +54,9 @@ var (
 	errUnmarshalDataErr               = errors.New("Unable to unmarshal Skykey data")
 	errCannotMarshalTypeInvalidSkykey = errors.New("Cannot marshal or unmarshal Skykey of TypeInvalid type")
 	errInvalidEntropyLength           = errors.New("Invalid skykey entropy length")
+
+	// ErrInvalidSkykeyType is returned when an invalid SkykeyType is being used.
+	ErrInvalidSkykeyType = errors.New("Invalid skykey type")
 )
 
 // SkykeyID is the identifier of a skykey.
@@ -71,12 +74,33 @@ type Skykey struct {
 
 // compatSkykeyV148 is the original skykey format. It is defined here for
 // compatibility purposes. It should only be used to convert keys of the old
-// format to the new format. It was used to store skykeys in Sia v1.4.8 and
-// earlier.
+// format to the new format.
 type compatSkykeyV148 struct {
 	name       string
 	ciphertype crypto.CipherType
 	entropy    []byte
+}
+
+// ToString returns the string representation of the ciphertype.
+func (t SkykeyType) ToString() string {
+	switch t {
+	case TypePublicID:
+		return "public-id"
+
+	default:
+		return "invalid"
+	}
+}
+
+// FromString reads a SkykeyType from a string.
+func (t *SkykeyType) FromString(s string) error {
+	switch s {
+	case "public-id":
+		*t = TypePublicID
+	default:
+		return ErrInvalidSkykeyType
+	}
+	return nil
 }
 
 // unmarshalSia decodes the Skykey into the reader.

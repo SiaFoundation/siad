@@ -616,3 +616,31 @@ func TestSkykeyMarshalling(t *testing.T) {
 		}
 	}
 }
+
+// TestSkykeyTypeStrings tests FromString and ToString methods for SkykeyTypes
+func TestSkykeyTypeStrings(t *testing.T) {
+	publicIDString := TypePublicID.ToString()
+	if publicIDString != "public-id" {
+		t.Fatal("Incorrect skykeytype name", publicIDString)
+	}
+
+	var st SkykeyType
+	err := st.FromString(publicIDString)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st != TypePublicID {
+		t.Fatal("Wrong SkykeyType", st)
+	}
+
+	invalidTypeString := TypeInvalid.ToString()
+	if invalidTypeString != "invalid" {
+		t.Fatal("Incorrect skykeytype name", invalidTypeString)
+	}
+
+	var invalidSt SkykeyType
+	err = invalidSt.FromString(invalidTypeString)
+	if err != ErrInvalidSkykeyType {
+		t.Fatal(err)
+	}
+}

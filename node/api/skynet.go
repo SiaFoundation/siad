@@ -993,15 +993,28 @@ func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, ps ht
 // skykeyCreateKeyHandlerPost handles the API call to create a skykey using the renter's
 // skykey manager.
 func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	// Parse skykey name and ciphertype
+	// Parse skykey name and type
 	name := req.FormValue("name")
+	skykeyTypeString := req.FormValue("type")
 
 	if name == "" {
 		WriteError(w, Error{"you must specify the name the skykey"}, http.StatusInternalServerError)
 		return
 	}
 
-	sk, err := api.renter.CreateSkykey(name, skykey.TypePublicID)
+	if skykeyTypeString == "" {
+		WriteError(w, Error{"you must specify the type of the skykey"}, http.StatusInternalServerError)
+		return
+	}
+
+	var skykeyType skykey.SkykeyType
+	err := skykeyType.FromString(skykeyTypeString)
+	if err != nil {
+		WriteError(w, Error{"failed to decode skykey type" + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	sk, err := api.renter.CreateSkykey(name, skykeyType)
 	if err != nil {
 		WriteError(w, Error{"failed to create skykey" + err.Error()}, http.StatusInternalServerError)
 		return
