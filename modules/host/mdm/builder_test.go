@@ -78,6 +78,13 @@ func (tb *testProgramBuilder) AddHasSectorInstruction(merkleRoot crypto.Hash) {
 	tb.staticValues.AddHasSectorInstruction()
 }
 
+// AddReadOffsetInstruction adds a readoffset instruction to the builder,
+// keeping track of running values.
+func (tb *testProgramBuilder) AddReadOffsetInstruction(length, offset uint64, merkleProof bool) {
+	tb.staticPB.AddReadOffsetInstruction(length, offset, merkleProof)
+	tb.staticValues.AddReadOffsetInstruction(length)
+}
+
 // AddReadSectorInstruction adds a readsector instruction to the builder,
 // keeping track of running values.
 func (tb *testProgramBuilder) AddReadSectorInstruction(length, offset uint64, merkleRoot crypto.Hash, merkleProof bool) {

@@ -53,6 +53,9 @@ const (
 	// instruction.
 	MDMTimeInitSingleInstruction = 1
 
+	// MDMTimeReadOffset is the time for executing a 'ReadOffset' instruction.
+	MDMTimeReadOffset = 1000
+
 	// MDMTimeReadSector is the time for executing a 'ReadSector' instruction.
 	MDMTimeReadSector = 1000
 

@@ -51,8 +51,8 @@ func (p *program) staticDecodeReadSectorInstruction(instruction modules.Instruct
 	}, nil
 }
 
-// managedExecuteReadSector executes the 'ReadSector' instruction.
-func managedExecuteReadSector(previousOutput output, ps *programState, length, offset uint64, sectorRoot crypto.Hash, merkleProof bool) output {
+// executeReadSector executes the 'ReadSector' instruction.
+func executeReadSector(previousOutput output, ps *programState, length, offset uint64, sectorRoot crypto.Hash, merkleProof bool) output {
 	// Validate the request.
 	var err error
 	switch {
@@ -105,7 +105,7 @@ func (i *instructionReadSector) Execute(previousOutput output) output {
 	if err != nil {
 		return errOutput(err)
 	}
-	return managedExecuteReadSector(previousOutput, i.staticState, length, offset, sectorRoot, i.staticMerkleProof)
+	return executeReadSector(previousOutput, i.staticState, length, offset, sectorRoot, i.staticMerkleProof)
 }
 
 // Collateral is zero for the ReadSector instruction.

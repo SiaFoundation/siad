@@ -48,7 +48,7 @@ func randomSectorMap(roots []crypto.Hash) map[crypto.Hash][]byte {
 	return rootMap
 }
 
-// TestTranslateOffsetToRoot tests the sectors translateOffsetToRoot method.
+// TestTranslateOffsetToRoot tests the sectors translateOffset method.
 func TestTranslateOffsetToRoot(t *testing.T) {
 	// Initialize the sectors.
 	numSectorRoots := 2
@@ -60,26 +60,29 @@ func TestTranslateOffsetToRoot(t *testing.T) {
 	root1 := sectorRoots[1]
 
 	// Helper method for assertion.
-	assert := func(offset uint64, expectedHash crypto.Hash) {
-		hash, err := s.translateOffsetToRoot(offset)
+	assert := func(offset, expectedRelOffset uint64, expectedHash crypto.Hash) {
+		relOff, hash, err := s.translateOffset(offset)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if hash != expectedHash {
 			t.Fatal("hash doesn't match expected hash")
 		}
+		if relOff != expectedRelOffset {
+			t.Fatalf("relOff was %v but should be %v", relOff, expectedRelOffset)
+		}
 	}
 
 	// Test valid cases.
-	assert(0, root0)
-	assert(1, root0)
-	assert(modules.SectorSize-1, root0)
-	assert(modules.SectorSize, root1)
-	assert(modules.SectorSize+1, root1)
-	assert(2*modules.SectorSize-1, root1)
+	assert(0, 0, root0)
+	assert(1, 1, root0)
+	assert(modules.SectorSize-1, modules.SectorSize-1, root0)
+	assert(modules.SectorSize, 0, root1)
+	assert(modules.SectorSize+1, 1, root1)
+	assert(2*modules.SectorSize-1, modules.SectorSize-1, root1)
 
 	// Test out-of-bounds
-	_, err := s.translateOffsetToRoot(2 * modules.SectorSize)
+	_, _, err := s.translateOffset(2 * modules.SectorSize)
 	if err == nil {
 		t.Fatal("expected err but got nil")
 	}

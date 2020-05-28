@@ -26,9 +26,9 @@ func (p *program) staticDecodeReadOffsetInstruction(instruction modules.Instruct
 			modules.SpecifierReadOffset, instruction.Specifier)
 	}
 	// Check args.
-	if len(instruction.Args) != modules.RPCIReadSectorLen {
+	if len(instruction.Args) != modules.RPCIReadOffsetLen {
 		return nil, fmt.Errorf("expected instruction to have len %v but was %v",
-			modules.RPCIReadSectorLen, len(instruction.Args))
+			modules.RPCIReadOffsetLen, len(instruction.Args))
 	}
 	// Read args.
 	offsetOffset := binary.LittleEndian.Uint64(instruction.Args[0:8])
@@ -56,11 +56,11 @@ func (i *instructionReadOffset) Execute(previousOutput output) output {
 		return errOutput(err)
 	}
 	// Translate the offset to a root.
-	sectorRoot, err := i.staticState.sectors.translateOffsetToRoot(offset)
+	relOffset, sectorRoot, err := i.staticState.sectors.translateOffset(offset)
 	if err != nil {
 		return errOutput(err)
 	}
-	return managedExecuteReadSector(previousOutput, i.staticState, length, offset, sectorRoot, i.staticMerkleProof)
+	return executeReadSector(previousOutput, i.staticState, length, relOffset, sectorRoot, i.staticMerkleProof)
 }
 
 // Collateral is zero for the ReadSector instruction.

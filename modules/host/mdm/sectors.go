@@ -91,14 +91,15 @@ func (s *sectors) hasSector(sectorRoot crypto.Hash) bool {
 
 // readOffset reads the sector data which corresponds to a given offset within
 // the contract.
-func (s *sectors) translateOffsetToRoot(offset uint64) (crypto.Hash, error) {
+func (s *sectors) translateOffset(offset uint64) (uint64, crypto.Hash, error) {
 	// Compute the sector offset.
 	secOff := offset / modules.SectorSize
+	relOff := offset % modules.SectorSize
 	// Check for out of bounds.
 	if uint64(len(s.merkleRoots)) <= secOff {
-		return crypto.Hash{}, fmt.Errorf("readOffset: secOff out of bounds %v >= %v", len(s.merkleRoots), secOff)
+		return 0, crypto.Hash{}, fmt.Errorf("readOffset: secOff out of bounds %v >= %v", len(s.merkleRoots), secOff)
 	}
-	return s.merkleRoots[secOff], nil
+	return relOff, s.merkleRoots[secOff], nil
 }
 
 // readSector reads data from the given root, returning the entire sector.
