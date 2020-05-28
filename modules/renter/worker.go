@@ -79,6 +79,8 @@ type (
 		// Job queues for the worker.
 		staticFetchBackupsJobQueue   fetchBackupsJobQueue
 		staticJobQueueDownloadByRoot jobQueueDownloadByRoot
+		staticJobHasSectorQueue      *jobHasSectorQueue
+		staticJobReadSectorQueue     *jobReadSectorQueue
 		staticJobUploadSnapshotQueue *jobUploadSnapshotQueue
 
 		// Upload variables.
@@ -196,8 +198,10 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		wakeChan: make(chan struct{}, 1),
 		renter:   r,
 	}
-	w.initJobUploadSnapshotQueue()
 	w.newPriceTable()
+	w.initJobHasSectorQueue()
+	w.initJobReadSectorQueue()
+	w.initJobUploadSnapshotQueue()
 	// Get the worker cache set up before returning the worker. This prevents a
 	// race condition in some tests.
 	if !w.staticTryUpdateCache() {
