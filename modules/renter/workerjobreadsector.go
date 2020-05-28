@@ -134,7 +134,7 @@ func (j *jobReadSector) callExecute() {
 	jq.mu.Unlock()
 }
 
-// programReadSectorBandwidth returns the bandwidth that gets consumed by a
+// callExpectedBandwidth returns the bandwidth that gets consumed by a
 // ReadSector program.
 //
 // TODO: These values are overly conservative, once we've got the protocol more
