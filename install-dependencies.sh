@@ -14,7 +14,7 @@ if ! [ -x "$(command -v codespell)" ]; then
   pip3 install codespell
 fi
 
-if ! [ -x "$(command -v analysis)" ]; then
-  echo "Installing analysis..."
-  go get gitlab.com/NebulousLabs/analysis
+if ! [ -x "$(command -v analyze)" ]; then
+  echo "Installing analyze..."
+  go get gitlab.com/NebulousLabs/analyze
 fi

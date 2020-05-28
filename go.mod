@@ -15,7 +15,6 @@ require (
 	github.com/spf13/cobra v1.0.0
 	github.com/vbauerster/mpb/v5 v5.0.3
 	github.com/xtaci/smux v1.3.3
-	gitlab.com/NebulousLabs/analysis v0.0.0-20200519132308-7b400288863c // indirect
 	gitlab.com/NebulousLabs/bolt v1.4.0
 	gitlab.com/NebulousLabs/demotemutex v0.0.0-20151003192217-235395f71c40
 	gitlab.com/NebulousLabs/entropy-mnemonics v0.0.0-20181018051301-7532f67e3500
@@ -29,8 +28,8 @@ require (
 	gitlab.com/NebulousLabs/threadgroup v0.0.0-20200518123758-b458460120c6
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190814160017-69f300e9bcb8
 	golang.org/x/crypto v0.0.0-20200423211502-4bdfaf469ed5
+	golang.org/x/net v0.0.0-20200226121028-0de0cce0169b // indirect
 	golang.org/x/sys v0.0.0-20200420163511-1957bb5e6d1f // indirect
-	golang.org/x/tools v0.0.0-20200515220128-d3bf790afa53
 )
 
 replace github.com/xtaci/smux => ./vendor/github.com/xtaci/smux
