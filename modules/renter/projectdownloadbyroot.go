@@ -215,7 +215,9 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 	useBestWorkerTimer := time.AfterFunc(pm.managedAverageProjectTime(length)/2, func() {
 		close(useBestWorkerChan)
 	})
-	// Clean up the timer.
+	// Clean up the timer. AfterFunc doesn't require draining the timer, you
+	// just call Stop. The return value only exists to indicate whether or not
+	// the function ran, which we don't care about.
 	defer func() {
 		useBestWorkerTimer.Stop()
 	}()
