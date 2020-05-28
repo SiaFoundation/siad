@@ -95,7 +95,7 @@ func (m *projectDownloadByRootManager) managedRecordProjectTime(length uint64, t
 	fmt.Printf("Bucket %v has had recent performance %v, and historic performance %v over %v requests\n", bucket, recentAvg, totalAvg, totalRequests)
 }
 
-// mangedAverageProjectTime will return the average download time that prjects
+// managedAverageProjectTime will return the average download time that projects
 // have had for the given length.
 func (m *projectDownloadByRootManager) managedAverageProjectTime(length uint64) time.Duration {
 	var avg time.Duration
