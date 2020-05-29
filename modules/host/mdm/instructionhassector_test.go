@@ -5,6 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestInstructionHasSector tests executing a program with a single
@@ -26,9 +27,9 @@ func TestInstructionHasSector(t *testing.T) {
 	}
 
 	// Build the program.
-	duration := types.BlockHeight(0)
+	duration := types.BlockHeight(fastrand.Uint64n(5))
 	pt := newTestPriceTable()
-	tb := newTestProgramBuilder(pt)
+	tb := newTestProgramBuilder(pt, duration)
 	tb.AddHasSectorInstruction(sectorRoot)
 
 	ics := so.ContractSize()

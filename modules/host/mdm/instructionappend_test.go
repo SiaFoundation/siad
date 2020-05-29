@@ -6,6 +6,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestInstructionSingleAppend tests executing a program with a single
@@ -18,10 +19,10 @@ func TestInstructionSingleAppend(t *testing.T) {
 	// Create a program to append a full sector to a storage obligation.
 	appendData1 := randomSectorData()
 	appendDataRoot1 := crypto.MerkleRoot(appendData1)
-	duration := types.BlockHeight(2)
 	pt := newTestPriceTable()
-	tb := newTestProgramBuilder(pt)
-	tb.AddAppendInstruction(appendData1, duration, true)
+	duration := types.BlockHeight(fastrand.Uint64n(5))
+	tb := newTestProgramBuilder(pt, duration)
+	tb.AddAppendInstruction(appendData1, true)
 
 	// Execute it.
 	so := newTestStorageObligation(true)
@@ -69,8 +70,8 @@ func TestInstructionSingleAppend(t *testing.T) {
 	appendData2 := randomSectorData() // new random data
 	appendDataRoot2 := crypto.MerkleRoot(appendData2)
 	duration = types.BlockHeight(1)
-	tb = newTestProgramBuilder(pt)
-	tb.AddAppendInstruction(appendData2, duration, true)
+	tb = newTestProgramBuilder(pt, duration)
+	tb.AddAppendInstruction(appendData2, true)
 	ics := so.ContractSize()
 
 	// Expected outputs

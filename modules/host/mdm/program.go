@@ -31,7 +31,6 @@ type FnFinalize func(StorageObligation) error
 // same during the execution of the program.
 type programState struct {
 	// host related fields
-	blockHeight             types.BlockHeight
 	host                    Host
 	staticRemainingDuration types.BlockHeight
 
@@ -111,7 +110,6 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 	program := &program{
 		outputChan: make(chan Output),
 		staticProgramState: &programState{
-			blockHeight:             mdm.host.BlockHeight(),
 			staticRemainingDuration: duration,
 			host:                    mdm.host,
 			priceTable:              pt,

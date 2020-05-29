@@ -249,8 +249,8 @@ func putStorageObligation(tx *bolt.Tx, so storageObligation) error {
 // program. This can be extended in the future to support other use cases.
 type StorageObligationSnapshot struct {
 	staticContractSize        uint64
-	staticExpirationHeight    types.BlockHeight
 	staticMerkleRoot          crypto.Hash
+	staticProofDeadline       types.BlockHeight
 	staticRemainingCollateral types.Currency
 	staticSectorRoots         []crypto.Hash
 }
@@ -260,8 +260,8 @@ type StorageObligationSnapshot struct {
 func ZeroStorageObligationSnapshot() StorageObligationSnapshot {
 	return StorageObligationSnapshot{
 		staticContractSize:        0,
-		staticExpirationHeight:    types.BlockHeight(0),
 		staticMerkleRoot:          crypto.Hash{},
+		staticProofDeadline:       types.BlockHeight(0),
 		staticRemainingCollateral: types.ZeroCurrency,
 		staticSectorRoots:         []crypto.Hash{},
 	}
@@ -273,9 +273,9 @@ func (sos StorageObligationSnapshot) ContractSize() uint64 {
 	return sos.staticContractSize
 }
 
-// Expiration returns the expiration height of the underlying contract.
-func (sos StorageObligationSnapshot) Expiration() types.BlockHeight {
-	return sos.staticExpirationHeight
+// ProofDeadline returns the proof deadline of the underlying contract.
+func (sos StorageObligationSnapshot) ProofDeadline() types.BlockHeight {
+	return sos.staticProofDeadline
 }
 
 // MerkleRoot returns the merkle root, which is static and is the value of the

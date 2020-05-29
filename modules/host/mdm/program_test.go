@@ -18,7 +18,7 @@ func TestNewEmptyProgram(t *testing.T) {
 	mdm := New(newTestHost())
 	// Shouldn't be able to execute empty program.
 	pt := newTestPriceTable()
-	duration := types.BlockHeight(0)
+	duration := types.BlockHeight(fastrand.Uint64n(5))
 	budget := modules.NewBudget(modules.MDMInitCost(pt, 0, 0))
 	_, _, err := mdm.ExecuteProgram(context.Background(), pt, []modules.Instruction{}, budget, types.ZeroCurrency, newTestStorageObligation(true), duration, 0, bytes.NewReader([]byte{}))
 	if !errors.Contains(err, ErrEmptyProgram) {
@@ -31,8 +31,8 @@ func TestNewProgramLowInitBudget(t *testing.T) {
 	// Create MDM
 	mdm := New(newTestHost())
 	pt := newTestPriceTable()
-	duration := types.BlockHeight(0)
-	pb := newTestProgramBuilder(pt)
+	duration := types.BlockHeight(fastrand.Uint64n(5))
+	pb := newTestProgramBuilder(pt, duration)
 	pb.AddHasSectorInstruction(crypto.Hash{})
 	program, data := pb.Program()
 	// Execute the program.
@@ -51,7 +51,8 @@ func TestNewProgramLowBudget(t *testing.T) {
 	defer mdm.Stop()
 	// Create instruction.
 	pt := newTestPriceTable()
-	pb := newTestProgramBuilder(pt)
+	duration := types.BlockHeight(fastrand.Uint64n(5))
+	pb := newTestProgramBuilder(pt, duration)
 	pb.AddReadSectorInstruction(modules.SectorSize, 0, crypto.Hash{}, true)
 	program, data := pb.Program()
 	values := pb.Cost()
@@ -60,7 +61,6 @@ func TestNewProgramLowBudget(t *testing.T) {
 	// Execute the program with enough money to init the mdm but not enough
 	// money to execute the first instruction.
 	cost := modules.MDMInitCost(pt, dataLen, 1)
-	duration := types.BlockHeight(0)
 	budget := modules.NewBudget(cost)
 	finalizeFn, outputs, err := mdm.ExecuteProgram(context.Background(), pt, program, budget, collateral, newTestStorageObligation(true), duration, dataLen, bytes.NewReader(data))
 	if err != nil {
@@ -98,10 +98,10 @@ func TestNewProgramLowCollateralBudget(t *testing.T) {
 	defer mdm.Stop()
 	// Create instruction.
 	sectorData := fastrand.Bytes(int(modules.SectorSize))
-	duration := types.BlockHeight(0)
+	duration := types.BlockHeight(fastrand.Uint64n(5))
 	pt := newTestPriceTable()
-	pb := newTestProgramBuilder(pt)
-	pb.AddAppendInstruction(sectorData, duration, false)
+	pb := newTestProgramBuilder(pt, duration)
+	pb.AddAppendInstruction(sectorData, false)
 	program, data := pb.Program()
 	budget := pb.Cost().Budget(true)
 	// Execute the program with no collateral budget.

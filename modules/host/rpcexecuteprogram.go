@@ -92,7 +92,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	collateralBudget := sos.UnallocatedCollateral()
 
 	// Get the remaining contract duration.
-	duration := sos.Expiration() - h.BlockHeight()
+	duration := sos.ProofDeadline() - h.BlockHeight()
 
 	// Get a context that can be used to interrupt the program.
 	ctx, cancel := context.WithCancel(context.Background())

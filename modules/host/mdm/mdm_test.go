@@ -125,7 +125,6 @@ func newTestPriceTable() *modules.RPCPriceTable {
 		UpdatePriceTableCost: types.NewCurrency64(1),
 		InitBaseCost:         types.NewCurrency64(1),
 		MemoryTimeCost:       types.NewCurrency64(1),
-		StoreLengthCost:      types.NewCurrency64(1),
 		CollateralCost:       types.NewCurrency64(1),
 
 		// Instruction costs
@@ -134,6 +133,7 @@ func newTestPriceTable() *modules.RPCPriceTable {
 		HasSectorBaseCost:   types.NewCurrency64(1),
 		ReadBaseCost:        types.NewCurrency64(1),
 		ReadLengthCost:      types.NewCurrency64(1),
+		StoreLengthCost:     types.NewCurrency64(1),
 		WriteBaseCost:       types.NewCurrency64(1),
 		WriteLengthCost:     types.NewCurrency64(1),
 		WriteStoreCost:      types.NewCurrency64(1),

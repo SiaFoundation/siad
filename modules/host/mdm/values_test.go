@@ -25,8 +25,9 @@ type (
 		numInstructions   *int
 		programDataLength *int
 
-		readonly bool
-		staticPT *modules.RPCPriceTable
+		readonly       bool
+		staticDuration types.BlockHeight
+		staticPT       *modules.RPCPriceTable
 
 		history []TestValues
 	}
@@ -34,9 +35,10 @@ type (
 
 // NewTestValues creates a new instance of the TestValues with a given price
 // table to compute the costs with.
-func NewTestValues(pt *modules.RPCPriceTable) TestValues {
+func NewTestValues(pt *modules.RPCPriceTable, duration types.BlockHeight) TestValues {
 	return TestValues{
 		readonly:          true,
+		staticDuration:    duration,
 		staticPT:          pt,
 		memory:            modules.MDMInitMemory(),
 		numInstructions:   new(int),
@@ -45,10 +47,10 @@ func NewTestValues(pt *modules.RPCPriceTable) TestValues {
 }
 
 // AddAppendInstruction adds the cost of an append instruction to the object.
-func (v *TestValues) AddAppendInstruction(data []byte, duration types.BlockHeight) {
+func (v *TestValues) AddAppendInstruction(data []byte) {
 	memory := modules.MDMAppendMemory()
 	collateral := modules.MDMAppendCollateral(v.staticPT)
-	cost, refund := modules.MDMAppendCost(v.staticPT, duration)
+	cost, refund := modules.MDMAppendCost(v.staticPT, v.staticDuration)
 	time := uint64(modules.MDMTimeAppend)
 	newData := len(data)
 	readonly := false
