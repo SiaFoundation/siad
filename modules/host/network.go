@@ -370,7 +370,10 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 		if h.dependencies.Disrupt("DisableStreamClose") {
 			return
 		}
-		stream.Close()
+		err := stream.Close()
+		if err != nil {
+			h.log.Println("ERROR: failed to close stream:", err)
+		}
 	}()
 
 	err := h.tg.Add()
