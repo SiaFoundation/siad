@@ -672,7 +672,7 @@ func (p *renterHostPair) managedAccountBalance(payByFC bool, fundAmt types.Curre
 			return types.ZeroCurrency, err
 		}
 	} else {
-		_, err = p.managedPayByEphemeralAccount(stream, fundAmt)
+		err = p.managedPayByEphemeralAccount(stream, fundAmt)
 		if err != nil {
 			return types.ZeroCurrency, err
 		}
