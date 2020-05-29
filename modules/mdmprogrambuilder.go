@@ -92,6 +92,26 @@ func (pb *ProgramBuilder) AddHasSectorInstruction(merkleRoot crypto.Hash) {
 	pb.addInstruction(collateral, cost, refund, memory, time)
 }
 
+// AddReadOffsetInstruction adds a ReadOffset instruction to the program.
+func (pb *ProgramBuilder) AddReadOffsetInstruction(length, offset uint64, merkleProof bool) {
+	// Compute the argument offsets.
+	lengthOffset := uint64(pb.programData.Len())
+	offsetOffset := lengthOffset + 8
+	// Extend the programData.
+	binary.Write(pb.programData, binary.LittleEndian, length)
+	binary.Write(pb.programData, binary.LittleEndian, offset)
+	// Create the instruction.
+	i := NewReadOffsetInstruction(lengthOffset, offsetOffset, merkleProof)
+	// Append instruction
+	pb.program = append(pb.program, i)
+	// Update cost, collateral and memory usage.
+	collateral := MDMReadCollateral()
+	cost, refund := MDMReadCost(pb.staticPT, length)
+	memory := MDMReadMemory()
+	time := uint64(MDMTimeReadOffset)
+	pb.addInstruction(collateral, cost, refund, memory, time)
+}
+
 // AddReadSectorInstruction adds a ReadSector instruction to the program.
 func (pb *ProgramBuilder) AddReadSectorInstruction(length, offset uint64, merkleRoot crypto.Hash, merkleProof bool) {
 	// Compute the argument offsets.
@@ -182,6 +202,20 @@ func NewHasSectorInstruction(merkleRootOffset uint64) Instruction {
 		Args:      make([]byte, RPCIHasSectorLen),
 	}
 	binary.LittleEndian.PutUint64(i.Args[:8], merkleRootOffset)
+	return i
+}
+
+// NewReadOffsetInstruction creates a modules.Instruction from arguments.
+func NewReadOffsetInstruction(lengthOffset, offsetOffset uint64, merkleProof bool) Instruction {
+	i := Instruction{
+		Specifier: SpecifierReadOffset,
+		Args:      make([]byte, RPCIReadOffsetLen),
+	}
+	binary.LittleEndian.PutUint64(i.Args[:8], offsetOffset)
+	binary.LittleEndian.PutUint64(i.Args[8:16], lengthOffset)
+	if merkleProof {
+		i.Args[16] = 1
+	}
 	return i
 }
 
