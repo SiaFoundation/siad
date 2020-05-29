@@ -61,7 +61,7 @@ func executeReadSector(previousOutput output, ps *programState, length, offset u
 	case length == 0:
 		err = errors.New("length cannot be zero")
 	case merkleProof && (offset%crypto.SegmentSize != 0 || length%crypto.SegmentSize != 0):
-		err = errors.New("offset and length must be multiples of SegmentSize when requesting a Merkle proof")
+		err = fmt.Errorf("offset (%v) and length (%v) must be multiples of SegmentSize (%v) when requesting a Merkle proof", offset, length, crypto.SegmentSize)
 	}
 	if err != nil {
 		return errOutput(err)

@@ -63,13 +63,16 @@ func TestTranslateOffsetToRoot(t *testing.T) {
 	assert := func(offset, expectedRelOffset uint64, expectedHash crypto.Hash) {
 		relOff, hash, err := s.translateOffset(offset)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			return
 		}
 		if hash != expectedHash {
-			t.Fatal("hash doesn't match expected hash")
+			t.Errorf("hash doesn't match expected hash")
+			return
 		}
 		if relOff != expectedRelOffset {
-			t.Fatalf("relOff was %v but should be %v", relOff, expectedRelOffset)
+			t.Errorf("relOff was %v but should be %v", relOff, expectedRelOffset)
+			return
 		}
 	}
 

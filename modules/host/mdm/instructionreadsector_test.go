@@ -5,6 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestInstructionReadSector tests executing a program with a single
@@ -46,8 +47,11 @@ func TestInstructionReadSector(t *testing.T) {
 	sectorData := outputs[0].Output
 
 	// Create a program to read half a sector from the host.
-	offset := modules.SectorSize / 2
-	length := offset
+	offset := modules.SectorSize / 2                     // start in the middle
+	length := fastrand.Uint64n(modules.SectorSize/2) + 1 // up to half a sector
+	if mod := length % crypto.SegmentSize; mod != 0 {    // must be multiple of segmentsize
+		length -= mod
+	}
 
 	// Use a builder to build the program.
 	tb = newTestProgramBuilder(pt)
@@ -63,7 +67,7 @@ func TestInstructionReadSector(t *testing.T) {
 	proofStart := int(offset) / crypto.SegmentSize
 	proofEnd := int(offset+length) / crypto.SegmentSize
 	proof := crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
-	outputData = sectorData[modules.SectorSize/2:]
+	outputData = sectorData[offset:][:length]
 	err = outputs[0].assert(ics, imr, proof, outputData)
 	if err != nil {
 		t.Fatal(err)

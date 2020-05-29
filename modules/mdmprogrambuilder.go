@@ -108,7 +108,7 @@ func (pb *ProgramBuilder) AddReadOffsetInstruction(length, offset uint64, merkle
 	collateral := MDMReadCollateral()
 	cost, refund := MDMReadCost(pb.staticPT, length)
 	memory := MDMReadMemory()
-	time := uint64(MDMTimeReadSector)
+	time := uint64(MDMTimeReadOffset)
 	pb.addInstruction(collateral, cost, refund, memory, time)
 }
 
