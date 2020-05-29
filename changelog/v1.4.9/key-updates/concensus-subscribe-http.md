@@ -1,0 +1,1 @@
+- Add new `/consensus/subscribe/:id` endpoint to allow subscribing to consensus change events
