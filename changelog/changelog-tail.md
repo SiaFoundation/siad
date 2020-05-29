@@ -36,7 +36,7 @@
 **Bugs Fixed**
 - Fix decode bug for the rpcResponse object
 - Fix bug in rotation of fingerprint buckets
-+ fix hostdb log being incorrectly named
+- fix hostdb log being incorrectly named
 - Refactor the environment variables into the `build` package to address bug
   where `siac` and `siad` could be using different API Passwords.
 - Fix bug in converting siafile to skyfile and enable testing.
@@ -50,10 +50,10 @@
   recursively.
 - Address missed locations of API error returns for handling of Modules not
   running
-+ add missing local ranges to IsLocal function
-+ workers now more consistently use the most recent contract
-+ improved performance logging in repair.log, especially in debug mode
-+ general upload performance improvements (minor)
+- add missing local ranges to IsLocal function
+- workers now more consistently use the most recent contract
+- improved performance logging in repair.log, especially in debug mode
+- general upload performance improvements (minor)
 - Fixed bug in `siac renter -v` where the health summary wasn't considering
   `OnDisk` when deciding if the file was recoverable
 - Fix panic condition in Renter's `uploadheap` due to change in chunk's stuck
@@ -102,7 +102,7 @@
 - Remove `build.Critical` and update to a metadata update
 
 **Other**
- - Add PaymentProcessor interface (host-side)
+- Add PaymentProcessor interface (host-side)
 - Move golangci-lint to `make lint` and remove `make lint-all`.
 - Add whitespace lint to catch extraneous whitespace and newlines.
 - Expand `SiaPath` unit testing to address more edge cases.
