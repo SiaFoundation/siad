@@ -81,23 +81,26 @@ func (pd *programData) threadedFetchData() {
 		}
 	}
 	for remainingData > 0 {
+		pd.mu.Lock()
 		select {
 		case <-pd.cancel:
+			pd.mu.Unlock()
 			quit(errors.New("stop called"))
 			return
 		default:
 		}
+		pd.mu.Unlock()
 		// Adjust the length of the packet according to the remaining data.
 		d := packet[:]
 		if remainingData <= int64(cap(d)) {
 			d = d[:remainingData]
 		}
+		pd.mu.Lock()
 		n, err := pd.r.Read(d)
 		if err != nil {
 			quit(err)
 			return
 		}
-		pd.mu.Lock()
 		remainingData -= int64(n)
 		pd.data = append(pd.data, packet[:n]...)
 
@@ -195,7 +198,9 @@ func (pd *programData) Len() uint64 {
 
 // Close will stop the background thread and wait for it to return.
 func (pd *programData) Close() error {
+	pd.mu.Lock()
 	close(pd.cancel)
+	pd.mu.Unlock()
 	pd.wg.Wait()
 	return nil
 }
