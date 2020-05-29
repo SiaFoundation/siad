@@ -66,8 +66,14 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 		ProgramDataLength: uint64(len(data)),
 	}
 
+	// use the host's blockheight if we are not synced yet
+	bh := cache.staticBlockHeight
+	if !cache.staticSynced {
+		bh = pt.HostBlockHeight
+	}
+
 	// provide payment
-	err = w.staticAccount.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, cache.staticBlockHeight)
+	err = w.staticAccount.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, bh)
 	if err != nil {
 		return
 	}
