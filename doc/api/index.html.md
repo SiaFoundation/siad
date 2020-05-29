@@ -4971,7 +4971,7 @@ responses](#standard-responses).
 curl -A "Sia-Agent"  -u "":<apipassword> --data "localhost:9980/skynet/skykeys"
 ```
 
-Returns a list of all Skykeys as base64-encoded strings.
+Returns a list of all Skykeys.
 
 ### JSON Response
 
@@ -4980,15 +4980,26 @@ Returns a list of all Skykeys as base64-encoded strings.
 ```go
 {
   "skykeys": [
-    "AAAAAAABoZWxsbwAAAAAAAAAEOAAAAAAAAAAYGZOQDcDQOoF9HHDBy8-l9bFyIjquzWlCg_9Efh96SfV2WN2S6eiroehM09rXAWtmfSZ0fDvRqg==",
-    "BwAAAAAAAABrZXRjaHVwAAAAAAAAAAQ4AAAAAAAAAM2K5y0IVBSV-_1vCPlNM9v_qBsqg00-oc9s84i-uK4Xja91mXQd3uJEsO50aL-f3cAso_sdgHrR",
-    "QAAAAAAAABoaS1naXRsYWIAAAAAAAAABDgAAAAAAAAAQnaoHcZy8QQhbiVYqowzbzKL03eSiItFNX0czcgMsaJ4sku_ij0KzreZtF_nzwt6qPv9EX6BR7E="
-  ]
+  {
+    "skykey": "skykey:AUI0eAOXWXHwW6KOLyI5O1OYduVvHxAA8qUR_fJ8Kluasb-ykPlHBEjDczrL21hmjhH0zAoQ3-Qq?name=testskykey1"
+    "name": "testskykey1"
+    "id": "ai5z8cf5NWbcvPBaBn0DFQ=="
+  },
+  {
+    "skykey": "skykey:AUqG0aQmgzCIlse2JxFLBGHCriZNz20IEKQu81XxYsak3rzmuVbZ2P6ZqeJHIlN5bjPqEmC67U8E?name=testskykey2"
+    "name": "testskykey2"
+    "id": "bi5z8cf5NWbcvPBaBn0DFQ=="
+  },
+  {
+    "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey3"
+    "name": "testskykey3"
+    "id": "ci5z8cf5NWbcvPBaBn0DFQ=="
+  }
 }
 ```
 
-**skykeys** | []string  
-array of base-64 encoded skykeys
+**skykeys** | []skykeys
+array of 
 
 
 
@@ -5012,7 +5023,7 @@ desired name of the skykey
 
 ```go
 {
-  "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+  "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey"
 }
 ```
 
@@ -5029,7 +5040,7 @@ curl -A "Sia-Agent"  -u "":<apipassword> --data "name=key_to_the_castle" "localh
 curl -A "Sia-Agent"  -u "":<apipassword> --data "id=gi5z8cf5NWbcvPBaBn0DFQ==" "localhost:9980/skynet/skykey"
 ```
 
-Returns the base-64 encoded skykey stored under that name, or with that ID.
+Returns the base-64 encoded skykey along with its name and ID.
 
 
 ### Path Parameters
@@ -5047,12 +5058,20 @@ base-64 encoded ID of the skykey being queried
 
 ```go
 {
-  "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+  "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey"
+  "name": "testskykey"
+  "id": "gi5z8cf5NWbcvPBaBn0DFQ=="
 }
 ```
 
 **skykey** | string  
 base-64 encoded skykey
+
+**name** | string  
+name of the skykey
+
+**id** | string  
+base-64 encoded skykey ID
 
 
 **UNSTABLE - subject to change in v1.4.9**
