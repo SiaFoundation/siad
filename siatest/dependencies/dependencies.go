@@ -9,19 +9,20 @@ import (
 )
 
 type (
-	// DependencyLowFundsFormationFail will cause contract formation to fail due to
-	// low funds in the allowance.
+	// DependencyLowFundsFormationFail will cause contract formation to fail due
+	// to low funds in the allowance.
 	DependencyLowFundsFormationFail struct {
 		modules.ProductionDependencies
 	}
-	// DependencyLowFundsRenewalFail will cause contract renewal to fail due to low
-	// funds in the allowance.
+
+	// DependencyLowFundsRenewalFail will cause contract renewal to fail due to
+	// low funds in the allowance.
 	DependencyLowFundsRenewalFail struct {
 		modules.ProductionDependencies
 	}
 
-	// DependencyLowFundsRefreshFail will cause contract renewal to fail due to low
-	// funds in the allowance.
+	// DependencyLowFundsRefreshFail will cause contract renewal to fail due to
+	// low funds in the allowance.
 	DependencyLowFundsRefreshFail struct {
 		modules.ProductionDependencies
 	}
@@ -32,14 +33,19 @@ type (
 		modules.ProductionDependencies
 	}
 
-	// DependencyDisableContractRecovery prevents recoverable contracts from being
-	// recovered in threadedContractMaintenance.
+	// DependencyDisableStreamClose prevents the stream from being closed.
+	DependencyDisableStreamClose struct {
+		modules.ProductionDependencies
+	}
+
+	// DependencyDisableContractRecovery prevents recoverable contracts from
+	// being recovered in threadedContractMaintenance.
 	DependencyDisableContractRecovery struct {
 		modules.ProductionDependencies
 	}
 
-	// DependencyDisableRecoveryStatusReset prevents the fields scanInProgress and
-	// atomicRecoveryScanHeight from being reset after the scan is done.
+	// DependencyDisableRecoveryStatusReset prevents the fields scanInProgress
+	// and atomicRecoveryScanHeight from being reset after the scan is done.
 	DependencyDisableRecoveryStatusReset struct {
 		modules.ProductionDependencies
 	}
@@ -208,6 +214,11 @@ func (d *DependencyBlockResumeJobDownloadUntilTimeout) Disrupt(s string) bool {
 // Disrupt returns true if the correct string is provided.
 func (d *DependencyDisableAsyncStartup) Disrupt(s string) bool {
 	return s == "BlockAsyncStartup"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyDisableStreamClose) Disrupt(s string) bool {
+	return s == "DisableStreamClose"
 }
 
 // Disrupt returns true if the correct string is provided.
