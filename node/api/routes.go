@@ -35,6 +35,7 @@ func (api *API) buildHTTPRoutes() {
 	if api.cs != nil {
 		router.GET("/consensus", api.consensusHandler)
 		router.GET("/consensus/blocks", api.consensusBlocksHandler)
+		router.GET("/consensus/subscribe/:id", api.consensusSubscribeHandler)
 		router.POST("/consensus/validate/transactionset", api.consensusValidateTransactionsetHandler)
 	}
 

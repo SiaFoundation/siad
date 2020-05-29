@@ -398,6 +398,24 @@ Block timestamp
 **transactions** | ConsensusBlocksGetTxn  
 Transactions contained within the block
 
+## /consensus/subscribe/:id [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/consensus/subscribe/0000000000000000000000000000000000000000000000000000000000000000"
+```
+
+Streams a series of consensus changes, starting from the provided change ID.
+
+### Path Parameters
+### REQUIRED
+**id** | string
+The consensus change ID to subscribe from.
+
+### Response
+
+A concatenation of Sia-encoded (binary) modules.ConsensusChange objects.
+
 ## /consensus/validate/transactionset [POST]
 > curl example  
 
