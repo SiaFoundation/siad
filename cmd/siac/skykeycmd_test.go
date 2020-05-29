@@ -5,10 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/skykey"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestSkykeyCommands tests the basic functionality of the siac skykey commands
@@ -26,7 +24,7 @@ func TestSkykeyCommands(t *testing.T) {
 		{name: "TestDuplicateSkykeyAdd", test: testDuplicateSkykeyAdd},
 		{name: "TestChangeKeyEntropyKeepName", test: testChangeKeyEntropyKeepName},
 		{name: "TestAddKeyTwice", test: testAddKeyTwice},
-		{name: "TestInvalidCipherType", test: testInvalidCipherType},
+		{name: "TestInvalidSkykeyType", test: testInvalidSkykeyType},
 		{name: "TestSkykeyGet", test: testSkykeyGet},
 		{name: "TestSkykeyGetUsingNameAndID", test: testSkykeyGetUsingNameAndID},
 		{name: "TestSkykeyGetUsingNoNameAndNoID", test: testSkykeyGetUsingNoNameAndNoID},
@@ -45,13 +43,13 @@ func TestSkykeyCommands(t *testing.T) {
 // testDuplicateSkykeyAdd tests that adding with duplicate Skykey will return
 // duplicate name error.
 func testDuplicateSkykeyAdd(t *testing.T, c client.Client) {
-	skykeyString := "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
-	err := skykeyAdd(c, skykeyString)
+	testSkykeyString := "skykey:Aa71WcCoKFwVGAVotJh3USAslb8dotVJp2VZRRSAG2QhYRbuTbQhjDolIJ1nOlQ-rWYK29_1xee5?name=test_key1"
+	err := skykeyAdd(c, testSkykeyString)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = skykeyAdd(c, skykeyString)
+	err = skykeyAdd(c, testSkykeyString)
 	if !strings.Contains(err.Error(), skykey.ErrSkykeyWithIDAlreadyExists.Error()) {
 		t.Fatal("Expected duplicate name error but got", err)
 	}
@@ -62,7 +60,7 @@ func testDuplicateSkykeyAdd(t *testing.T, c client.Client) {
 func testChangeKeyEntropyKeepName(t *testing.T, c client.Client) {
 	// Change the key entropy, but keep the same name.
 	var sk skykey.Skykey
-	skykeyString := "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+	skykeyString := "skykey:Aa71WcCoKFwVGAVotJh3USAslb8dotVJp2VZRRSAG2QhYRbuTbQhjDolIJ1nOlQ-rWYK29_1xee5?name=test_key1"
 	err := sk.FromString(skykeyString)
 	if err != nil {
 		t.Fatal(err)
@@ -86,34 +84,34 @@ func testChangeKeyEntropyKeepName(t *testing.T, c client.Client) {
 func testAddKeyTwice(t *testing.T, c client.Client) {
 	// Check that adding same key twice returns an error.
 	keyName := "createkey1"
-	skykeyCipherType := "XChaCha20"
-	_, err := skykeyCreate(c, keyName, skykeyCipherType)
+	_, err := skykeyCreate(c, keyName, skykey.TypePublicID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = skykeyCreate(c, keyName, skykeyCipherType)
+	_, err = skykeyCreate(c, keyName, skykey.TypePublicID)
 	if !strings.Contains(err.Error(), skykey.ErrSkykeyWithNameAlreadyExists.Error()) {
 		t.Fatal("Expected error when creating key with same name")
 	}
 }
 
-// testInvalidCipherType tests that invalid cipher types are caught.
-func testInvalidCipherType(t *testing.T, c client.Client) {
-	invalidSkykeyCipherType := "InvalidCipherType"
-	_, err := skykeyCreate(c, "createkey2", invalidSkykeyCipherType)
-	if !errors.Contains(err, crypto.ErrInvalidCipherType) {
-		t.Fatal("Expected error when creating key with invalid ciphertype")
+// testInvalidSkykeyType tests that invalid cipher types are caught.
+func testInvalidSkykeyType(t *testing.T, c client.Client) {
+	_, err := skykeyCreate(c, "createkey2", skykey.TypeInvalid)
+	if !strings.Contains(err.Error(), skykey.ErrInvalidSkykeyType.Error()) {
+		t.Fatal("Expected error when creating key with invalid skykeytpe", err)
 	}
 }
 
 // testSkykeyGet tests skykeyGet with known key should not return any errors.
 func testSkykeyGet(t *testing.T, c client.Client) {
 	keyName := "createkey testSkykeyGet"
-	skykeyCipherType := "XChaCha20"
-	newSkykey, err := skykeyCreate(c, keyName, skykeyCipherType)
+	newSkykey, err := skykeyCreate(c, keyName, skykey.TypePublicID)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Test skykeyGet
+	// known key should have no errors.
 	getKeyStr, err := skykeyGet(c, keyName, "")
 	if err != nil {
 		t.Fatal(err)
@@ -220,7 +218,6 @@ func testSkykeyListKeysAdditionalKeys(t *testing.T, c client.Client) {
 	keyStrings := make([]string, nKeys)
 	keyNames := make([]string, nKeys)
 	keyIDs := make([]string, nKeys)
-	skykeyCipherType := "XChaCha20"
 
 	initSkykeyData(t, c, keyStrings, keyNames, keyIDs)
 
@@ -228,7 +225,7 @@ func testSkykeyListKeysAdditionalKeys(t *testing.T, c client.Client) {
 	for i := 0; i < nExtraKeys; i++ {
 		nextName := fmt.Sprintf("extrakey-%d", i)
 		keyNames = append(keyNames, nextName)
-		nextSkStr, err := skykeyCreate(c, nextName, skykeyCipherType)
+		nextSkStr, err := skykeyCreate(c, nextName, skykey.TypePublicID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -325,7 +322,7 @@ func testSkykeyListKeysAdditionalKeysDoesntShowPrivateKeys(t *testing.T, c clien
 func initSkykeyData(t *testing.T, c client.Client, keyStrings, keyNames, keyIDs []string) {
 	keyName1 := "createkey1"
 	keyName2 := "createkey testSkykeyGet"
-	testSkykeyString := "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+	testSkykeyString := "skykey:Aa71WcCoKFwVGAVotJh3USAslb8dotVJp2VZRRSAG2QhYRbuTbQhjDolIJ1nOlQ-rWYK29_1xee5?name=test_key1"
 
 	getKeyStr1, err := skykeyGet(c, keyName1, "")
 	if err != nil {
