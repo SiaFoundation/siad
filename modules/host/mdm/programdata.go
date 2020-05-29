@@ -97,11 +97,13 @@ func (pd *programData) threadedFetchData() {
 		}
 		pd.mu.Lock()
 		n, err := pd.r.Read(d)
+		pd.mu.Unlock()
 		if err != nil {
 			quit(err)
 			return
 		}
 		remainingData -= int64(n)
+		pd.mu.Lock()
 		pd.data = append(pd.data, packet[:n]...)
 
 		// Sort the request and unlock the ones that are ready to be unlocked.
