@@ -61,7 +61,6 @@ func TestCreateLoadBackup(t *testing.T) {
 		t.Fatal("Failed to upload a file for testing: ", err)
 	}
 	dirMDPath := filepath.Join(r.Dir, modules.RenterDir, modules.FileSystemRoot, modules.UserFolder.String(), "subDir", modules.SiaDirExtension)
-	fmt.Printf("dir: %v\n", dirMDPath)
 	if _, err := os.Stat(dirMDPath); os.IsNotExist(err) {
 		t.Fatalf(".siadir file at %v doesn't exist", dirMDPath)
 	}

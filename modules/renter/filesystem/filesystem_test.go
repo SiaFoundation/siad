@@ -37,6 +37,19 @@ func newTestFileSystemWithFile(name string) (*FileNode, *FileSystem, error) {
 	return sf, fs, err
 }
 
+// newTestFileSystemWithDir creates a new FileSystem and SiaDir and makes sure
+// that they are linked
+func newTestFileSystemWithDir(name string) (*DirNode, *FileSystem, error) {
+	dir := testDir(name)
+	fs := newTestFileSystem(dir)
+	sp := modules.RandomSiaPath()
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != nil {
+		panic(err) // Reflect behavior of newTestFileSystemWithFile.
+	}
+	sf, err := fs.OpenSiaDir(sp)
+	return sf, fs, err
+}
+
 // testDir creates a testing directory for a filesystem test.
 func testDir(name string) string {
 	dir := build.TempDir(name, filepath.Join("filesystem"))
@@ -1212,7 +1225,7 @@ func TestRenameFileInMemory(t *testing.T) {
 	}
 	t.Parallel()
 
-	// Create SiaFileSet with SiaFile and corresponding combined siafile.
+	// Create FileSystem with corresponding siafile.
 	entry, sfs, err := newTestFileSystemWithFile(t.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -1220,13 +1233,13 @@ func TestRenameFileInMemory(t *testing.T) {
 	siaPath := sfs.FileSiaPath(entry)
 	exists, _ := sfs.FileExists(siaPath)
 	if !exists {
-		t.Fatal("No SiaFileSetEntry found")
+		t.Fatal("No SiaFile found")
 	}
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Confirm there are 1 file in memory
+	// Confirm there is 1 file in memory.
 	if len(sfs.files) != 1 {
 		t.Fatal("Expected 1 file in memory, got:", len(sfs.files))
 	}
@@ -1238,13 +1251,13 @@ func TestRenameFileInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm that renter still only has 2 files in memory
+	// Confirm that renter still only has 1 file in memory.
 	if len(sfs.files) != 1 {
 		t.Fatal("Expected 1 file in memory, got:", len(sfs.files))
 	}
 	_, err = os.Stat(entry.SiaFilePath())
 	if err != nil {
-		println("err2", err.Error())
+		t.Fatal(err)
 	}
 	// Rename second instance
 	newSiaPath := modules.RandomSiaPath()
@@ -1258,13 +1271,19 @@ func TestRenameFileInMemory(t *testing.T) {
 		t.Fatal("Expected 1 file in memory, got:", len(sfs.files))
 	}
 	// Close instance of renamed file
-	entry2.Close()
+	err = entry2.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Confirm there are still only 1 file in memory
 	if len(sfs.files) != 1 {
 		t.Fatal("Expected 1 file in memory, got:", len(sfs.files))
 	}
 	// Close other instance of second file
-	entry.Close()
+	err = entry.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Confirm there is no file in memory
 	if len(sfs.files) != 0 {
 		t.Fatal("Expected 0 files in memory, got:", len(sfs.files))
@@ -1279,7 +1298,7 @@ func TestDeleteFileInMemory(t *testing.T) {
 	}
 	t.Parallel()
 
-	// Create SiaFileSet with SiaFile
+	// Create FileSystem with SiaFile
 	entry, sfs, err := newTestFileSystemWithFile(t.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -1309,16 +1328,19 @@ func TestDeleteFileInMemory(t *testing.T) {
 	if len(sfs.files) != 1 {
 		t.Fatal("Expected 1 file in memory, got:", len(sfs.files))
 	}
-	// delete and close instance of file
+	// Delete and close instance of file.
 	if err := sfs.DeleteFile(siaPath); err != nil {
 		t.Fatal(err)
 	}
-	entry2.Close()
-	// There should be no file in the set after deleting it.
+	err = entry2.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// There should be no file in the filesystem after deleting it.
 	if len(sfs.files) != 0 {
 		t.Fatal("Expected 0 files in memory, got:", len(sfs.files))
 	}
-	// confirm other instance is still in memory by calling methods on it
+	// Confirm other instance is still in memory by calling methods on it.
 	if !entry.Deleted() {
 		t.Fatal("Expected file to be deleted")
 	}
@@ -1326,7 +1348,10 @@ func TestDeleteFileInMemory(t *testing.T) {
 	// Confirm closing out remaining files removes all files from memory
 	//
 	// Close last instance of the first file
-	entry.Close()
+	err = entry.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Confirm renter has one file in memory
 	if len(sfs.files) != 0 {
 		t.Fatal("Expected 0 file in memory, got:", len(sfs.files))
@@ -1655,6 +1680,192 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 	}
 }
 
+// TestRenameDirInMemory confirms that threads that have access to a dir
+// will continue to have access to the dir even it another thread renames it
+func TestRenameDirInMemory(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create FileSystem with corresponding siadir.
+	entry, fs, err := newTestFileSystemWithDir(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath := fs.DirSiaPath(entry)
+	exists, _ := fs.DirExists(siaPath)
+	if !exists {
+		t.Fatal("No SiaDir found")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm there are 1 dir in memory
+	if len(fs.directories) != 1 {
+		t.Fatal("Expected 1 dir in memory, got:", len(fs.directories))
+	}
+
+	// Test renaming an instance of a dir
+	//
+	// Access dir with another instance
+	entry2, err := fs.OpenSiaDir(siaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Confirm that renter still only has 1 dir in memory
+	if len(fs.directories) != 1 {
+		t.Fatal("Expected 1 dir in memory, got:", len(fs.directories))
+	}
+	path, err := entry.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Rename second instance
+	newSiaPath := modules.RandomSiaPath()
+	err = fs.RenameDir(siaPath, newSiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Confirm the other instance is still in memory.
+	deleted, err := entry.Deleted()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted {
+		t.Fatal("Expected file to not be deleted")
+	}
+
+	// Create a new dir at the same path.
+	err = fs.NewSiaDir(siaPath, modules.DefaultDirPerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Confirm the other instance is still in memory.
+	deleted, err = entry.Deleted()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted {
+		t.Fatal("Expected file to not be deleted")
+	}
+
+	// Confirm there are still only 1 dir in memory as renaming doesn't add
+	// the new name to memory
+	if len(fs.directories) != 1 {
+		t.Fatal("Expected 1 dir in memory, got:", len(fs.directories))
+	}
+	// Close instance of renamed dir
+	err = entry2.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Confirm there are still only 1 dir in memory
+	if len(fs.directories) != 1 {
+		t.Fatal("Expected 1 dir in memory, got:", len(fs.directories))
+	}
+	// Close other instance of second dir
+	err = entry.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Confirm there is no dir in memory
+	if len(fs.directories) != 0 {
+		t.Fatal("Expected 0 dirs in memory, got:", len(fs.directories))
+	}
+}
+
+// TestDeleteDirInMemory confirms that threads that have access to a dir
+// will continue to have access to the dir even it another thread deletes it
+func TestDeleteDirInMemory(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create FileSystem with corresponding siadir.
+	entry, fs, err := newTestFileSystemWithDir(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath := fs.DirSiaPath(entry)
+	exists, _ := fs.DirExists(siaPath)
+	if !exists {
+		t.Fatal("No SiaDirSetEntry found")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Confirm there is 1 dir in memory
+	if len(fs.directories) != 1 {
+		t.Fatal("Expected 1 dir in memory, got:", len(fs.directories))
+	}
+
+	// Test deleting an instance of a dir
+	//
+	// Access the dir again
+	entry2, err := fs.OpenSiaDir(siaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Confirm there is still only has 1 dir in memory
+	if len(fs.directories) != 1 {
+		t.Fatal("Expected 1 dir in memory, got:", len(fs.directories))
+	}
+	// Delete and close instance of dir.
+	if err := fs.DeleteDir(siaPath); err != nil {
+		t.Fatal(err)
+	}
+	err = entry2.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// There should be no dir in the filesystem after deleting it.
+	if len(fs.directories) != 0 {
+		t.Fatal("Expected 0 dirs in memory, got:", len(fs.directories))
+	}
+	// Confirm other instance is still in memory by calling methods on it.
+	deleted, err := entry.Deleted()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !deleted {
+		t.Fatal("Expected file to be deleted")
+	}
+
+	// Create a new dir at the same path.
+	err = fs.NewSiaDir(siaPath, modules.DefaultDirPerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Confirm the other instance is still in memory.
+	deleted, err = entry.Deleted()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !deleted {
+		t.Fatal("Expected file to be deleted")
+	}
+
+	// Confirm closing out remaining dirs removes all dirs from memory
+	//
+	// Close last instance of the first dir
+	err = entry.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Confirm renter has one dir in memory
+	if len(fs.directories) != 0 {
+		t.Fatal("Expected 0 dir in memory, got:", len(fs.directories))
+	}
+}
+
 // TestLazySiaDir tests that siaDir correctly reads and sets the lazySiaDir
 // field.
 func TestLazySiaDir(t *testing.T) {
@@ -1749,7 +1960,7 @@ func TestFailedOpenFileFolder(t *testing.T) {
 		t.Fatal("Expected 0 files and folders but got", len(fs.files), len(fs.directories))
 	}
 	// Open "foo" as a file.
-	_, err = fs.OpenSiaDir(foo)
+	_, err = fs.OpenSiaFile(foo)
 	if err != ErrNotExist {
 		t.Fatal("err should be ErrNotExist but was", err)
 	}
@@ -1765,17 +1976,42 @@ func TestFileDirConflict(t *testing.T) {
 		t.SkipNow()
 	}
 
+	testFileDirConflict(t, false)
+	testFileDirConflict(t, true)
+}
+
+// testFileDirConflict runs a subtest for TestFileDirConflict. When `open` is
+// true we first open the already existing file/dir before trying to produce
+// `ErrExist` and delete it.
+func testFileDirConflict(t *testing.T, open bool) {
 	// Prepare a filesystem.
-	root := filepath.Join(testDir(t.Name()), "fs-root")
-	os.RemoveAll(root)
+	root := filepath.Join(testDir(t.Name()), fmt.Sprintf("open-%v", open), "fs-root")
+	err := os.RemoveAll(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	fs := newTestFileSystem(root)
 
 	// Create a file.
 	filepath := newSiaPath("dir1/file1")
 	fs.addTestSiaFile(filepath)
 
+	if open {
+		// Open the file. This shouldn't affect later checks.
+		node, err := fs.OpenSiaFile(filepath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			err := node.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
+	}
+
 	// Make sure we can't create another file with the same name.
-	err := fs.addTestSiaFileWithErr(filepath)
+	err = fs.addTestSiaFileWithErr(filepath)
 	if !errors.Contains(err, ErrExists) {
 		t.Fatalf("Expected err %v, got %v", ErrExists, err)
 	}
@@ -1807,11 +2043,25 @@ func TestFileDirConflict(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Make sure we can't create another dir with the same name as the first
+	if open {
+		// Open the dir. This shouldn't affect later checks.
+		node, err := fs.OpenSiaDir(dirpath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			err := node.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
+	}
+
+	// Make sure we CAN create another dir with the same name as the first
 	// dir.
 	err = fs.NewSiaDir(dirpath, modules.DefaultDirPerm)
-	if !errors.Contains(err, ErrExists) {
-		t.Fatalf("Expected err %v, got %v", ErrExists, err)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Make sure we can't rename a dir to the same name as the first file.
@@ -1820,11 +2070,11 @@ func TestFileDirConflict(t *testing.T) {
 		t.Fatalf("Expected err %v, got %v", ErrExists, err)
 	}
 
-	// Make sure we (still) can't create another dir with the same name as the
-	// first dir.
+	// Make sure we still CAN create another dir with the same name as the first
+	// dir.
 	err = fs.NewSiaDir(dirpath, modules.DefaultDirPerm)
-	if !errors.Contains(err, ErrExists) {
-		t.Fatalf("Expected err %v, got %v", ErrExists, err)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Make sure we can't create a file with the same name as the dir.

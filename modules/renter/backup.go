@@ -371,7 +371,6 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 			if err != nil {
 				return errors.AddContext(err, "could not get directory")
 			}
-			fmt.Printf("siapath: %v\n", siaPath)
 			err := r.staticFileSystem.NewSiaDir(siaPath, modules.DefaultDirPerm)
 			if errors.Contains(err, filesystem.ErrExists) {
 				// .siadir exists already
@@ -380,7 +379,6 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 				// unexpected error
 				return errors.AddContext(err, fmt.Sprintf("could not create dir at  %v", siaPath))
 			}
-			fmt.Printf("siapath: %v\n", siaPath)
 			// Update the metadata.
 			dirEntry, err := r.staticFileSystem.OpenSiaDir(siaPath)
 			if err != nil {
@@ -390,7 +388,6 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 				dirEntry.Close()
 				return errors.AddContext(err, "could not update metadata")
 			}
-			fmt.Printf("3 siapath: %v\n", siaPath)
 			// Metadata was updated so add to list of directories to be updated
 			err = dirsToUpdate.callAdd(siaPath)
 			if err != nil {
