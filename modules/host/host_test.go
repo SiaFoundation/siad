@@ -33,7 +33,7 @@ const (
 	// table is valid for at least as long as the buffer period when we consider
 	// it valid. This ensures a call to `managedFetchPriceTable` does not return
 	// a price table that expires the next second.
-	priceTableExpiryBuffer = 3 * time.Second
+	priceTableExpiryBuffer = 15 * time.Second
 )
 
 // A hostTester is the helper object for host testing, including helper modules

@@ -110,7 +110,7 @@ var (
 	rpcPriceGuaranteePeriod = build.Select(build.Var{
 		Standard: 10 * time.Minute,
 		Dev:      5 * time.Minute,
-		Testing:  15 * time.Second,
+		Testing:  1 * time.Minute,
 	}).(time.Duration)
 
 	// pruneExpiredRPCPriceTableFrequency is the frequency at which the host
