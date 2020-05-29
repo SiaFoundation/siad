@@ -13,16 +13,6 @@ package renter
 // The worker has an ephemeral account on the host. It can use this account to
 // pay for downloads and uploads. In order to ensure the account's balance does
 // not run out, it maintains a balance target by refilling it when necessary.
-//
-// TODO: A single session should be added to the worker that gets maintained
-// within the work loop. All jobs performed by the worker will use the worker's
-// single session.
-//
-// TODO: The upload and download code needs to be moved into properly separated
-// subsystems.
-//
-// TODO: Need to write testing around the kill functions in the worker, to clean
-// up any queued jobs after a worker has been killed.
 
 import (
 	"sync"
@@ -40,68 +30,85 @@ const (
 	minAsyncVersion = "1.4.9"
 )
 
-// A worker listens for work on a certain host.
-//
-// The mutex of the worker only protects the 'unprocessedChunks' and the
-// 'standbyChunks' fields of the worker. The rest of the fields are only
-// interacted with exclusively by the primary worker thread, and only one of
-// those ever exists at a time.
-//
-// The workers have a concept of 'cooldown' for uploads and downloads. If a
-// download or upload operation fails, the assumption is that future attempts
-// are also likely to fail, because whatever condition resulted in the failure
-// will still be present until some time has passed. Without any cooldowns,
-// uploading and downloading with flaky hosts in the worker sets has
-// substantially reduced overall performance and throughput.
-type worker struct {
-	// atomicCache contains a pointer to the latest cache in the worker.
-	// Atomics are used to minimze lock contention on the worker object.
-	atomicCache                   unsafe.Pointer // points to a workerCache object
-	atomicPriceTable              unsafe.Pointer // points to a workerPriceTable object
-	atomicPriceTableUpdateRunning uint64         // used for a sanity check
-
-	// The host pub key also serves as an id for the worker, as there is only
-	// one worker per host.
-	staticHostPubKey     types.SiaPublicKey
-	staticHostPubKeyStr  string
-	staticHostMuxAddress string
-
-	// Download variables related to queuing work. They have a separate mutex to
-	// minimize lock contention.
-	downloadChunks              []*unfinishedDownloadChunk // Yet unprocessed work items.
-	downloadMu                  sync.Mutex
-	downloadTerminated          bool      // Has downloading been terminated for this worker?
-	downloadConsecutiveFailures int       // How many failures in a row?
-	downloadRecentFailure       time.Time // How recent was the last failure?
-
-	// Job queues for the worker.
-	staticFetchBackupsJobQueue   fetchBackupsJobQueue
-	staticJobQueueDownloadByRoot jobQueueDownloadByRoot
-
-	// Upload variables.
-	unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
-	uploadConsecutiveFailures int                      // How many times in a row uploading has failed.
-	uploadRecentFailure       time.Time                // How recent was the last failure?
-	uploadRecentFailureErr    error                    // What was the reason for the last failure?
-	uploadTerminated          bool                     // Have we stopped uploading?
-
-	// The staticAccount represent the renter's ephemeral account on the host.
-	// It keeps track of the available balance in the account, the worker has a
-	// refill mechanism that keeps the account balance filled up until the
-	// staticBalanceTarget.
-	staticAccount       *account
-	staticBalanceTarget types.Currency
-
-	// Utilities.
+const (
+	// These variables define the total amount of data that a worker is willing
+	// to queue at once when performing async tasks. If the worker has more data
+	// queued in its async queue than this, it will stop launching jobs so that
+	// the jobs it does launch have more breathing room to complete.
 	//
-	// The mutex is only needed when interacting with 'downloadChunks' and
-	// 'unprocessedChunks', as everything else is only accessed from the single
-	// master thread.
-	killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
-	mu       sync.Mutex
-	renter   *Renter
-	wakeChan chan struct{} // Worker will check queues if given a wake signal.
-}
+	// The worker may adjust these values dynamically as it starts to run and
+	// determines how much stuff it can do simultaneously before its jobs start
+	// to have significant latency impact.
+	initialConcurrentAsyncReadData  = 10e6
+	initialConcurrentAsyncWriteData = 10e6
+)
+
+type (
+	// A worker listens for work on a certain host.
+	//
+	// The mutex of the worker only protects the 'unprocessedChunks' and the
+	// 'standbyChunks' fields of the worker. The rest of the fields are only
+	// interacted with exclusively by the primary worker thread, and only one of
+	// those ever exists at a time.
+	//
+	// The workers have a concept of 'cooldown' for the jobs it performs. If a
+	// job fails, the assumption is that future attempts are also likely to
+	// fail, because whatever condition resulted in the failure will still be
+	// present until some time has passed.
+	worker struct {
+		// atomicCache contains a pointer to the latest cache in the worker.
+		// Atomics are used to minimze lock contention on the worker object.
+		atomicCache                   unsafe.Pointer // points to a workerCache object
+		atomicPriceTable              unsafe.Pointer // points to a workerPriceTable object
+		atomicPriceTableUpdateRunning uint64         // used for a sanity check
+
+		// The host pub key also serves as an id for the worker, as there is only
+		// one worker per host.
+		staticHostPubKey     types.SiaPublicKey
+		staticHostPubKeyStr  string
+		staticHostMuxAddress string
+
+		// Download variables related to queuing work. They have a separate mutex to
+		// minimize lock contention.
+		downloadChunks              []*unfinishedDownloadChunk // Yet unprocessed work items.
+		downloadMu                  sync.Mutex
+		downloadTerminated          bool      // Has downloading been terminated for this worker?
+		downloadConsecutiveFailures int       // How many failures in a row?
+		downloadRecentFailure       time.Time // How recent was the last failure?
+
+		// Job queues for the worker.
+		staticFetchBackupsJobQueue   fetchBackupsJobQueue
+		staticJobQueueDownloadByRoot jobQueueDownloadByRoot
+		staticJobHasSectorQueue      *jobHasSectorQueue
+		staticJobReadSectorQueue     *jobReadSectorQueue
+		staticJobUploadSnapshotQueue *jobUploadSnapshotQueue
+
+		// Upload variables.
+		unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
+		uploadConsecutiveFailures int                      // How many times in a row uploading has failed.
+		uploadRecentFailure       time.Time                // How recent was the last failure?
+		uploadRecentFailureErr    error                    // What was the reason for the last failure?
+		uploadTerminated          bool                     // Have we stopped uploading?
+
+		// The staticAccount represent the renter's ephemeral account on the host.
+		// It keeps track of the available balance in the account, the worker has a
+		// refill mechanism that keeps the account balance filled up until the
+		// staticBalanceTarget.
+		staticAccount       *account
+		staticBalanceTarget types.Currency
+
+		// The loop state contains information about the worker loop. It is
+		// mostly atomic variables that the worker uses to ratelimit the
+		// launching of async jobs.
+		staticLoopState workerLoopState
+
+		// Utilities.
+		killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
+		mu       sync.Mutex
+		renter   *Renter
+		wakeChan chan struct{} // Worker will check queues if given a wake signal.
+	}
+)
 
 // status returns the status of the worker.
 func (w *worker) status() modules.WorkerStatus {
@@ -118,6 +125,8 @@ func (w *worker) status() modules.WorkerStatus {
 		w.staticAccount.managedAvailableBalance()
 	}
 
+	// Update the worker cache before returning a status.
+	w.staticTryUpdateCache()
 	cache := w.staticCache()
 	return modules.WorkerStatus{
 		// Contract Information
@@ -147,33 +156,58 @@ func (w *worker) status() modules.WorkerStatus {
 	}
 }
 
-// managedBlockUntilReady will block until the worker has internet connectivity.
-// 'false' will be returned if a kill signal is received or if the renter is
-// shut down before internet connectivity is restored. 'true' will be returned
-// if internet connectivity is successfully restored.
-func (w *worker) managedBlockUntilReady() bool {
-	// Check if the worker has received a kill signal, or if the renter has
-	// received a stop signal.
-	select {
-	case <-w.renter.tg.StopChan():
-		return false
-	case <-w.killChan:
-		return false
-	default:
+// newWorker will create and return a worker that is ready to receive jobs.
+func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
+	host, ok, err := r.hostDB.Host(hostPubKey)
+	if err != nil {
+		return nil, errors.AddContext(err, "could not find host entry")
+	}
+	if !ok {
+		return nil, errors.New("host does not exist")
 	}
 
-	// Check internet connectivity. If the worker does not have internet
-	// connectivity, block until connectivity is restored.
-	for !w.renter.g.Online() {
-		select {
-		case <-w.renter.tg.StopChan():
-			return false
-		case <-w.killChan:
-			return false
-		case <-time.After(offlineCheckFrequency):
-		}
+	// open the account
+	account, err := r.staticAccountManager.managedOpenAccount(hostPubKey)
+	if err != nil {
+		return nil, errors.AddContext(err, "could not open account")
 	}
-	return true
+
+	// set the balance target to 1SC
+	//
+	// TODO: check that the balance target  makes sense in function of the
+	// amount of MDM programs it can run with that amount of money
+	balanceTarget := types.SiacoinPrecision
+
+	w := &worker{
+		staticHostPubKey:     hostPubKey,
+		staticHostPubKeyStr:  hostPubKey.String(),
+		staticHostMuxAddress: host.HostExternalSettings.SiaMuxAddress(),
+
+		staticAccount:       account,
+		staticBalanceTarget: balanceTarget,
+
+		// Initialize the read and write limits for the async worker tasks.
+		// These may be updated in real time as the worker collects metrics
+		// about itself.
+		staticLoopState: workerLoopState{
+			atomicReadDataLimit:  initialConcurrentAsyncReadData,
+			atomicWriteDataLimit: initialConcurrentAsyncWriteData,
+		},
+
+		killChan: make(chan struct{}),
+		wakeChan: make(chan struct{}, 1),
+		renter:   r,
+	}
+	w.newPriceTable()
+	w.initJobHasSectorQueue()
+	w.initJobReadSectorQueue()
+	w.initJobUploadSnapshotQueue()
+	// Get the worker cache set up before returning the worker. This prevents a
+	// race condition in some tests.
+	if !w.staticTryUpdateCache() {
+		return nil, errors.New("unable to build cache for worker")
+	}
+	return w, nil
 }
 
 // staticKilled is a convenience function to determine if a worker has been
@@ -187,141 +221,11 @@ func (w *worker) staticKilled() bool {
 	}
 }
 
-// staticWake needs to be called any time that a job queued.
+// staticWake will wake the worker from sleeping. This should be called any time
+// that a job is queued or a job completes.
 func (w *worker) staticWake() {
 	select {
 	case w.wakeChan <- struct{}{}:
 	default:
 	}
-}
-
-// threadedWorkLoop continually checks if work has been issued to a worker. The
-// work loop checks for different types of work in a specific order, forming a
-// priority queue for the various types of work. It is possible for continuous
-// requests for one type of work to drown out a worker's ability to perform
-// other types of work.
-//
-// If no work is found, the worker will sleep until woken up. Because each
-// iteration is stateless, it may be possible to reduce the goroutine count in
-// Sia by spinning down the worker / expiring the thread when there is no work,
-// and then checking if the thread exists and creating a new one if not when
-// alerting / waking the worker. This will not interrupt any connections that
-// the worker has because the worker object will be kept in memory via the
-// worker map.
-func (w *worker) threadedWorkLoop() {
-	// Ensure that all queued jobs are gracefully cleaned up when the worker is
-	// shut down.
-	//
-	// TODO: Need to write testing around these kill functions and ensure they
-	// are executing correctly.
-	defer w.managedKillUploading()
-	defer w.managedKillDownloading()
-	defer w.managedKillFetchBackupsJobs()
-	defer w.managedKillJobsDownloadByRoot()
-
-	// Primary work loop. There are several types of jobs that the worker can
-	// perform, and they are attempted with a specific priority. If any type of
-	// work is attempted, the loop resets to check for higher priority work
-	// again. This means that a stream of higher priority tasks can starve a
-	// building set of lower priority tasks.
-	//
-	// 'workAttempted' indicates that there was a job to perform, and that a
-	// nontrivial amount of time was spent attempting to perform the job. The
-	// job may or may not have been successful, that is irrelevant.
-	for {
-		// There are certain conditions under which the worker should either
-		// block or exit. This function will block until those conditions are
-		// met, returning 'true' when the worker can proceed and 'false' if the
-		// worker should exit.
-		if !w.managedBlockUntilReady() {
-			return
-		}
-
-		// Check if the cache needs to be updated.
-		if !w.staticTryUpdateCache() {
-			w.renter.log.Printf("worker %v is being killed because the cache could not be updated", w.staticHostPubKeyStr)
-			return
-		}
-
-		// Perform any job to fetch the list of backups from the host.
-		workAttempted := w.managedPerformFetchBackupsJob()
-		if workAttempted {
-			continue
-		}
-		// Perform any job to fetch data by its sector root. This is given
-		// priority because it is only used by viewnodes, which are service
-		// operators that need to have good performance for their customers.
-		workAttempted = w.managedLaunchJobDownloadByRoot()
-		if workAttempted {
-			continue
-		}
-		// Perform any job to help download a chunk.
-		workAttempted = w.managedPerformDownloadChunkJob()
-		if workAttempted {
-			continue
-		}
-		// Perform any job to help upload a chunk.
-		workAttempted = w.managedPerformUploadChunkJob()
-		if workAttempted {
-			continue
-		}
-
-		// Block until:
-		//    + New work has been submitted
-		//    + The worker is killed
-		//    + The renter is stopped
-		select {
-		case <-w.wakeChan:
-			continue
-		case <-w.killChan:
-			return
-		case <-w.renter.tg.StopChan():
-			return
-		}
-	}
-}
-
-// newWorker will create and return a worker that is ready to receive jobs.
-func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
-	host, ok, err := r.hostDB.Host(hostPubKey)
-	if err != nil {
-		return nil, errors.AddContext(err, "could not find host entry")
-	}
-	if !ok {
-		return nil, errors.New("host does not exist")
-	}
-
-	// TODO: use the host's external settings settings to calc. an appropriate
-	// balance target
-
-	// TODO: enable the account refiller by setting a balance target greater
-	// than the zero currency
-
-	// TODO: (TL;DR mock causes infinite loop if target is not set to zero) the
-	// target is set to zero because as long as FundEphemeralAccount is mocked,
-	// setting a target larger than zero would create an endless refill loop,
-	// just because there is nothing holding back consecutive refill jobs from
-	// being enqueued (which wakes the workerloop and so on). This is due to
-	// pendingFunds not increasing, which causes the AvailableBalance to remain
-	// the same, which causes a fund account job to be scheduled on every
-	// iteration.
-	balanceTarget := types.ZeroCurrency
-
-	w := &worker{
-		staticHostPubKey:     hostPubKey,
-		staticHostPubKeyStr:  hostPubKey.String(),
-		staticHostMuxAddress: host.HostExternalSettings.SiaMuxAddress(),
-
-		staticBalanceTarget: balanceTarget,
-
-		killChan: make(chan struct{}),
-		wakeChan: make(chan struct{}, 1),
-		renter:   r,
-	}
-	// Get the worker cache set up before returning the worker. This prevents a
-	// race condition in some tests.
-	if !w.staticTryUpdateCache() {
-		return nil, errors.New("unable to build cache for worker")
-	}
-	return w, nil
 }

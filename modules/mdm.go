@@ -19,10 +19,12 @@ type (
 		Specifier InstructionSpecifier
 		Args      []byte
 	}
-	// Program specifies a generic program used as input to `mdm.ExecuteProram`.
-	Program []Instruction
 	// InstructionSpecifier specifies the type of the instruction.
 	InstructionSpecifier types.Specifier
+	// Program specifies a generic program used as input to `mdm.ExecuteProram`.
+	Program []Instruction
+	// ProgramData contains the raw byte data for the program.
+	ProgramData []byte
 )
 
 const (
@@ -221,6 +223,14 @@ func MDMHasSectorMemory() uint64 {
 // MDMReadMemory returns the additional memory consumption of a 'Read' instruction.
 func MDMReadMemory() uint64 {
 	return 0 // 'Read' doesn't hold on to any memory beyond the lifetime of the instruction.
+}
+
+// MDMBandwidthCost computes the total bandwidth cost given a price table and
+// used up- and download bandwidth.
+func MDMBandwidthCost(pt RPCPriceTable, uploadBandwidth, downloadBandwidth uint64) types.Currency {
+	uploadCost := pt.UploadBandwidthCost.Mul64(uploadBandwidth)
+	downloadCost := pt.DownloadBandwidthCost.Mul64(downloadBandwidth)
+	return uploadCost.Add(downloadCost)
 }
 
 // MDMMemoryCost computes the memory cost given a price table, memory and time.

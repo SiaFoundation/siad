@@ -403,6 +403,8 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	}
 
 	switch rpcID {
+	case modules.RPCAccountBalance:
+		err = h.managedRPCAccountBalance(stream)
 	case modules.RPCExecuteProgram:
 		err = h.managedRPCExecuteProgram(stream)
 	case modules.RPCUpdatePriceTable:

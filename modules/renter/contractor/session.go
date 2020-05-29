@@ -185,7 +185,7 @@ func (hs *hostSession) Replace(data []byte, sectorIndex uint64, trim bool) (cryp
 
 	_, sectorRoot, err := hs.session.Replace(data, sectorIndex, trim)
 	if err != nil {
-		return crypto.Hash{}, err
+		return crypto.Hash{}, errors.AddContext(err, "unable to perform replace operation in session")
 	}
 	return sectorRoot, nil
 }

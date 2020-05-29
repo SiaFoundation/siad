@@ -25,6 +25,10 @@ type RPCPriceTable struct {
 	// from the host.
 	UpdatePriceTableCost types.Currency `json:"updatepricetablecost"`
 
+	// AccountBalanceCost refers to the cost of fetching the balance of an
+	// ephemeral account.
+	AccountBalanceCost types.Currency `json:"accountbalancecost"`
+
 	// FundAccountCost refers to the cost of funding an ephemeral account on the
 	// host.
 	FundAccountCost types.Currency `json:"fundaccountcost"`
@@ -67,6 +71,9 @@ type RPCPriceTable struct {
 }
 
 var (
+	// RPCAccountBalance specifier
+	RPCAccountBalance = types.NewSpecifier("AccountBalance")
+
 	// RPCUpdatePriceTable specifier
 	RPCUpdatePriceTable = types.NewSpecifier("UpdatePriceTable")
 
@@ -78,6 +85,18 @@ var (
 )
 
 type (
+	// AccountBalanceRequest specifies the account for which to retrieve the
+	// balance.
+	AccountBalanceRequest struct {
+		Account AccountID
+	}
+
+	// AccountBalanceResponse contains the balance of the previously specified
+	// account.
+	AccountBalanceResponse struct {
+		Balance types.Currency
+	}
+
 	// FundAccountRequest specifies the ephemeral account id that gets funded.
 	FundAccountRequest struct {
 		Account AccountID
