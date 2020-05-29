@@ -42,7 +42,7 @@ const (
 	// reveal its skykey ID when encrypting Skyfiles. Instead, it marks the skykey
 	// used for encryption by storing an encrypted identifier that can only be
 	// successfully decrypted with the correct skykey.
-	// TODO: add along with skyfile implementation TypePrivateID = SkykeyType(0x02)
+	TypePrivateID = SkykeyType(0x02)
 )
 
 var (
@@ -86,7 +86,8 @@ func (t SkykeyType) ToString() string {
 	switch t {
 	case TypePublicID:
 		return "public-id"
-
+	case TypePrivateID:
+		return "private-id"
 	default:
 		return "invalid"
 	}
@@ -97,6 +98,8 @@ func (t *SkykeyType) FromString(s string) error {
 	switch s {
 	case "public-id":
 		*t = TypePublicID
+	case "private-id":
+		*t = TypePrivateID
 	default:
 		return ErrInvalidSkykeyType
 	}
@@ -181,7 +184,7 @@ func (sk *Skykey) unmarshalAndConvertFromOldFormat(r io.Reader) error {
 // CipherType returns the crypto.CipherType used by this Skykey.
 func (t SkykeyType) CipherType() crypto.CipherType {
 	switch t {
-	case TypePublicID:
+	case TypePublicID, TypePrivateID:
 		return crypto.TypeXChaCha20
 	default:
 		return crypto.TypeInvalid
@@ -201,7 +204,7 @@ func (sk *Skykey) unmarshalDataOnly(r io.Reader) error {
 
 	var entropyLen int
 	switch sk.Type {
-	case TypePublicID:
+	case TypePublicID, TypePrivateID:
 		entropyLen = chacha.KeySize + chacha.XNonceSize
 	case TypeInvalid:
 		return errCannotMarshalTypeInvalidSkykey
@@ -239,7 +242,7 @@ func (sk Skykey) marshalDataOnly(w io.Writer) error {
 
 	var entropyLen int
 	switch sk.Type {
-	case TypePublicID:
+	case TypePublicID, TypePrivateID:
 		entropyLen = chacha.KeySize + chacha.XNonceSize
 	case TypeInvalid:
 		return errCannotMarshalTypeInvalidSkykey
@@ -335,7 +338,7 @@ func (sk Skykey) ID() (keyID SkykeyID) {
 	switch sk.Type {
 	// Ignore the nonce for this type because the nonce is different for each
 	// file-specific subkey.
-	case TypePublicID:
+	case TypePublicID, TypePrivateID:
 		entropy = sk.Entropy[:chacha.KeySize]
 
 	default:
@@ -438,7 +441,7 @@ func (sk *Skykey) IsValid() error {
 	}
 
 	switch sk.Type {
-	case TypePublicID:
+	case TypePublicID, TypePrivateID:
 		if len(sk.Entropy) != chacha.KeySize+chacha.XNonceSize {
 			return errInvalidEntropyLength
 		}

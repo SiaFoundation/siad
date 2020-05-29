@@ -97,7 +97,7 @@ func (cw countingWriter) BytesWritten() uint64 {
 // skykeys with the given type.
 func (sm *SkykeyManager) SupportsSkykeyType(skykeyType SkykeyType) bool {
 	switch skykeyType {
-	case TypePublicID:
+	case TypePublicID, TypePrivateID:
 		return true
 	default:
 		return false

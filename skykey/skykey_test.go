@@ -643,4 +643,17 @@ func TestSkykeyTypeStrings(t *testing.T) {
 	if err != ErrInvalidSkykeyType {
 		t.Fatal(err)
 	}
+
+	privateIDString := TypePrivateID.ToString()
+	if privateIDString != "private-id" {
+		t.Fatal("Incorrect skykeytype name", privateIDString)
+	}
+
+	err = st.FromString(privateIDString)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st != TypePrivateID {
+		t.Fatal("Wrong SkykeyType", st)
+	}
 }
