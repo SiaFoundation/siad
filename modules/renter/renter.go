@@ -203,6 +203,11 @@ type Renter struct {
 	bubbleUpdates   map[string]bubbleStatus
 	bubbleUpdatesMu sync.Mutex
 
+	// Stateful variables related to projects the worker can launch. Typically
+	// projects manage all of their own state, but for example they may track
+	// metrics across running the project multiple times.
+	staticProjectDownloadByRootManager *projectDownloadByRootManager
+
 	// Utilities.
 	cs                    modules.ConsensusSet
 	deps                  modules.Dependencies
@@ -427,13 +432,6 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	r.mu.Unlock(id)
 
 	return est, allowance, nil
-}
-
-// managedRPCClient returns an RPC client for the host with given key
-func (r *Renter) managedRPCClient(host types.SiaPublicKey) (RPCClient, error) {
-	id := r.mu.Lock()
-	defer r.mu.Unlock(id)
-	return &MockRPCClient{}, nil
 }
 
 // managedContractUtilityMaps returns a set of maps that contain contract
@@ -913,6 +911,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),
 
+		staticProjectDownloadByRootManager: new(projectDownloadByRootManager),
+
 		cs:                    cs,
 		deps:                  deps,
 		g:                     g,
@@ -928,8 +928,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 	close(r.uploadHeap.pauseChan)
 
-	// Initialize the loggers so that they are available for the rest of the the
-	// components start up.
+	// Initialize the loggers so that they are available for the components as
+	// the components start up.
 	var err error
 	r.log, err = persist.NewFileLogger(filepath.Join(r.persistDir, logFile))
 	if err != nil {
