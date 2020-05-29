@@ -444,8 +444,8 @@ func (c *Client) SkykeySkykeysGet() ([]skykey.Skykey, error) {
 	}
 
 	res := make([]skykey.Skykey, len(skykeysGet.Skykeys))
-	for i, skString := range skykeysGet.Skykeys {
-		err = res[i].FromString(skString)
+	for i, skGET := range skykeysGet.Skykeys {
+		err = res[i].FromString(skGET.Skykey)
 		if err != nil {
 			return nil, errors.AddContext(err, "failed to decode skykey string")
 		}
