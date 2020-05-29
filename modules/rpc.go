@@ -21,6 +21,10 @@ type RPCPriceTable struct {
 	// MDMCostTable is valid.
 	Expiry int64 `json:"expiry"`
 
+	// HostBlockHeight is the block height of the host. This allows the renter
+	// to create valid withdrawal messages in case it is not synced yet.
+	HostBlockHeight types.BlockHeight `json:"hostblockheight"`
+
 	// UpdatePriceTableCost refers to the cost of fetching a new price table
 	// from the host.
 	UpdatePriceTableCost types.Currency `json:"updatepricetablecost"`

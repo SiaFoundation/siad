@@ -20,6 +20,7 @@ import (
 func TestPriceTableMarshaling(t *testing.T) {
 	pt := modules.RPCPriceTable{
 		Expiry:               time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
+		HostBlockHeight:      types.BlockHeight(fastrand.Intn(1e3)),
 		UpdatePriceTableCost: types.SiacoinPrecision,
 		InitBaseCost:         types.SiacoinPrecision.Mul64(1e2),
 		MemoryTimeCost:       types.SiacoinPrecision.Mul64(1e3),
@@ -215,6 +216,16 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	// ensure its expiry is in the future
 	if pt.Expiry <= time.Now().Unix() {
 		t.Fatal("Expected price table expiry to be in the future")
+	}
+
+	// ensure it contains the host's block height
+	if pt.HostBlockHeight != ht.host.BlockHeight() {
+		t.Fatal("Expected host blockheight to be set on the price table")
+	}
+	// ensure it's not zero to be certain the blockheight is set and it's not
+	// just the initial value
+	if pt.HostBlockHeight == 0 {
+		t.Fatal("Expected host blockheight to be not 0")
 	}
 
 	// expect failure if the payment revision does not cover the RPC cost
