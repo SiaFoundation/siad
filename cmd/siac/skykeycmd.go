@@ -24,8 +24,8 @@ var (
 	skykeyCreateCmd = &cobra.Command{
 		Use:   "create [name]",
 		Short: "Create a skykey with the given name.",
-		Long: `Create a skykey  with the given name. The --cipher-type flag can be
-		used to specify the cipher type. Its default is XChaCha20.`,
+		Long: `Create a skykey  with the given name. The --type flag can be
+		used to specify the skykey type. Its default is private-id.`,
 		Run: wrap(skykeycreatecmd),
 	}
 
@@ -66,7 +66,7 @@ func skykeycmd(cmd *cobra.Command, args []string) {
 
 // skykeycreatecmd is a wrapper for skykeyCreate used to handle skykey creation.
 func skykeycreatecmd(name string) {
-	skykeyStr, err := skykeyCreate(httpClient, name, skykey.TypePublicID)
+	skykeyStr, err := skykeyCreate(httpClient, name, skykeyType)
 	if err != nil {
 		die(errors.AddContext(err, "Failed to create new skykey"))
 	}
@@ -74,8 +74,14 @@ func skykeycreatecmd(name string) {
 }
 
 // skykeyCreate creates a new Skykey with the given name and cipher type
-func skykeyCreate(c client.Client, name string, skykeyType skykey.SkykeyType) (string, error) {
-	sk, err := c.SkykeyCreateKeyPost(name, skykeyType)
+func skykeyCreate(c client.Client, name string, skykeyTypeString string) (string, error) {
+	var st skykey.SkykeyType
+	err := st.FromString(skykeyTypeString)
+	if err != nil {
+		return "", errors.AddContext(err, "Unable to decode skykey type")
+	}
+
+	sk, err := c.SkykeyCreateKeyPost(name, st)
 	if err != nil {
 		return "", errors.AddContext(err, "Could not create skykey")
 	}
@@ -188,9 +194,9 @@ func skykeyListKeys(c client.Client, showPrivateKeys bool) (string, error) {
 
 	// Print a title row.
 	if showPrivateKeys {
-		fmt.Fprintf(w, "ID\tName\tFull Skykey\n")
+		fmt.Fprintf(w, "ID\tName\tType\tFull Skykey\n")
 	} else {
-		fmt.Fprintf(w, "ID\tName\n")
+		fmt.Fprintf(w, "ID\tName\tType\n")
 	}
 
 	if err = w.Flush(); err != nil {
@@ -205,14 +211,14 @@ func skykeyListKeys(c client.Client, showPrivateKeys bool) (string, error) {
 	for _, sk := range skykeys {
 		idStr := sk.ID().ToString()
 		if !showPrivateKeys {
-			fmt.Fprintf(w, "%s\t%s\n", idStr, sk.Name)
+			fmt.Fprintf(w, "%s\t%s\t%s\n", idStr, sk.Name, sk.Type.ToString())
 			continue
 		}
 		skStr, err := sk.ToString()
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\n", idStr, sk.Name, skStr)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", idStr, sk.Name, sk.Type.ToString(), skStr)
 	}
 
 	if err = w.Flush(); err != nil {
