@@ -90,32 +90,35 @@ func (c *Client) ConsensusSetSubscribe(subscriber modules.ConsensusSetSubscriber
 			close(cancelMux)
 		}
 	}()
-	go func() {
-		// poll until caught up
-		for caughtUp := false; !caughtUp; {
+
+	// helper function: poll repeatedly until we're caught up
+	catchUp := func() error {
+		for {
 			newID, err := c.ConsensusSubscribeSingle(subscriber, ccid, cancelMux)
 			if err != nil {
-				ch <- err
-				return
+				return err
+			} else if newID == ccid {
+				return nil // done
 			}
-			caughtUp = newID == ccid
 			ccid = newID
 		}
-		// caught up successfully
-		ch <- nil
-		// request every half-block-interval indefinitely
+	}
+
+	go func() {
+		// initial sync
+		ch <- catchUp()
+
+		// re-sync every half-block-interval, indefinitely
 		for {
 			select {
 			case <-time.After(time.Duration(types.BlockFrequency) * time.Second / 2):
 			case <-unsub:
 				return
 			}
-			newID, err := c.ConsensusSubscribeSingle(subscriber, ccid, cancelMux)
-			if err != nil {
+			if err := catchUp(); err != nil {
 				ch <- err
 				return
 			}
-			ccid = newID
 		}
 	}()
 	return ch, func() { close(unsub) }
