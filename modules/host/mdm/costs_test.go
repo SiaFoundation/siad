@@ -1,7 +1,6 @@
 package mdm
 
 import (
-	"math"
 	"testing"
 	"time"
 
@@ -22,58 +21,9 @@ func newTestWriteStorePriceTable() *modules.RPCPriceTable {
 	return pt
 }
 
-// TestCostForAppendProgram calculates the cost for a program which appends 1
-// TiB of data.
-//
-// NOTE: We use a modified cost function for Append which returns the cost for
-// production-sized sectors, as sectors in testing are only 4 KiB.
-func TestCostForAppendProgram(t *testing.T) {
-	pt := newTestWriteStorePriceTable()
-
-	// Define helper variables.
-	tib := uint64(1e12)
-
-	// Initialize starting values.
-	numInstructions := uint64(math.Ceil(float64(tib) / float64(modules.SectorSizeStandard)))
-	runningCost := modules.MDMInitCost(pt, tib, numInstructions)
-	runningRefund := types.ZeroCurrency
-	runningCollateral := types.ZeroCurrency
-	runningMemory := modules.MDMInitMemory()
-	runningSize := uint64(0)
-
-	// Simulate running a program to append 1 TiB of data.
-	for runningSize < tib {
-		cost, refund := appendTrueCost(pt)
-		collateral := modules.MDMAppendCollateral(pt)
-		memory := modules.SectorSizeStandard // override MDMAppendMemory()
-		time := uint64(modules.MDMTimeAppend)
-		runningCost, runningRefund, runningCollateral, runningMemory = updateRunningCosts(pt, runningCost, runningRefund, runningCollateral, runningMemory, cost, refund, collateral, memory, time)
-		runningSize += modules.SectorSizeStandard
-	}
-	runningCost = runningCost.Add(modules.MDMMemoryCost(pt, runningMemory, modules.MDMTimeCommit))
-
-	expectedCost := modules.DefaultStoragePrice.Mul(modules.BytesPerTerabyte)
-	if !aboutEquals(expectedCost, runningCost) {
-		t.Errorf("expected cost for appending 1 TiB to be %v, got cost %v", expectedCost.HumanString(), runningCost.HumanString())
-	}
-
-	// The expected refund is equal to the expected cost because we are testing
-	// the cost of storage. When we refund an append, we give back only the full
-	// cost of storage.
-	expectedRefund := expectedCost
-	if !aboutEquals(expectedRefund, runningRefund) {
-		t.Errorf("expected refund for appending 1 TiB to be %v, got refund %v", expectedRefund.HumanString(), runningRefund.HumanString())
-	}
-
-	expectedMemory := runningSize + modules.MDMInitMemory() // 1 TiB + 1 MiB
-	if expectedMemory != runningMemory {
-		t.Errorf("expected memory for appending 1 TiB to be %v, got %v", expectedMemory, runningMemory)
-	}
-}
-
 // appendTrueCost returns the true, production cost of an append. This is
-// necessary because in tests the sector size is only 4 KiB and the append cost
-// is misleading.
+// necessary because in tests the sector size is only 4 KiB which leads to
+// misleading costs.
 func appendTrueCost(pt *modules.RPCPriceTable) (types.Currency, types.Currency) {
 	writeCost := pt.WriteLengthCost.Mul64(modules.SectorSizeStandard).Add(pt.WriteBaseCost)
 	storeCost := pt.WriteStoreCost.Mul64(modules.SectorSizeStandard) // potential refund

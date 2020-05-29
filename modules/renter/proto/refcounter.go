@@ -25,7 +25,7 @@ var (
 	ErrInvalidSectorNumber = errors.New("invalid sector given - it does not exist")
 
 	// ErrInvalidVersion is returned when the version of the file we are trying to
-	// read does not match the current RefCounterHeaderSize
+	// read does not match the current refCounterHeaderSize
 	ErrInvalidVersion = errors.New("invalid file version")
 
 	// ErrInvalidUpdateInstruction is returned when trying to parse a WAL update
@@ -44,37 +44,37 @@ var (
 	// be created after a delete
 	ErrUpdateAfterDelete = errors.New("updates cannot be created after a deletion")
 
-	// RefCounterVersion defines the latest version of the RefCounter
-	RefCounterVersion = [8]byte{1}
+	// refCounterVersion defines the latest version of the refCounter
+	refCounterVersion = [8]byte{1}
 
-	// UpdateNameDelete is the name of an idempotent update that deletes a file
+	// updateNameRCDelete is the name of an idempotent update that deletes a file
 	// from the disk.
-	UpdateNameDelete = "RC_DELETE"
+	updateNameRCDelete = "RC_DELETE"
 
-	// UpdateNameTruncate is the name of an idempotent update that truncates a
+	// updateNameRCTruncate is the name of an idempotent update that truncates a
 	// refcounter file by a number of sectors.
-	UpdateNameTruncate = "RC_TRUNCATE"
+	updateNameRCTruncate = "RC_TRUNCATE"
 
-	// UpdateNameWriteAt is the name of an idempotent update that writes a
+	// updateNameRCWriteAt is the name of an idempotent update that writes a
 	// value to a position in the file.
-	UpdateNameWriteAt = "RC_WRITE_AT"
+	updateNameRCWriteAt = "RC_WRITE_AT"
 )
 
 const (
-	// RefCounterHeaderSize is the size of the header in bytes
-	RefCounterHeaderSize = 8
+	// refCounterHeaderSize is the size of the header in bytes
+	refCounterHeaderSize = 8
 )
 
 type (
-	// RefCounter keeps track of how many references to each sector exist.
+	// refCounter keeps track of how many references to each sector exist.
 	//
 	// Once the number of references drops to zero we consider the sector as
 	// garbage. We move the sector to end of the data and set the
 	// GarbageCollectionOffset to point to it. We can either reuse it to store
 	// new data or drop it from the contract at the end of the current period
 	// and before the contract renewal.
-	RefCounter struct {
-		RefCounterHeader
+	refCounter struct {
+		refCounterHeader
 
 		filepath   string // where the refcounter is persisted on disk
 		numSectors uint64 // used for sanity checks before we attempt mutation operations
@@ -87,8 +87,8 @@ type (
 		refCounterUpdateControl
 	}
 
-	// RefCounterHeader contains metadata about the reference counter file
-	RefCounterHeader struct {
+	// refCounterHeader contains metadata about the reference counter file
+	refCounterHeader struct {
 		Version [8]byte
 	}
 
@@ -116,7 +116,7 @@ type (
 )
 
 // loadRefCounter loads a refcounter from disk
-func loadRefCounter(path string, wal *writeaheadlog.WAL) (*RefCounter, error) {
+func loadRefCounter(path string, wal *writeaheadlog.WAL) (*refCounter, error) {
 	// Open the file and start loading the data.
 	f, err := os.Open(path)
 	if err != nil {
@@ -124,24 +124,24 @@ func loadRefCounter(path string, wal *writeaheadlog.WAL) (*RefCounter, error) {
 	}
 	defer f.Close()
 
-	var header RefCounterHeader
-	headerBytes := make([]byte, RefCounterHeaderSize)
+	var header refCounterHeader
+	headerBytes := make([]byte, refCounterHeaderSize)
 	if _, err = f.ReadAt(headerBytes, 0); err != nil {
 		return nil, errors.AddContext(err, "unable to read from file")
 	}
 	if err = deserializeHeader(headerBytes, &header); err != nil {
 		return nil, errors.AddContext(err, "unable to load refcounter header")
 	}
-	if header.Version != RefCounterVersion {
-		return nil, errors.AddContext(ErrInvalidVersion, fmt.Sprintf("expected version %d, got version %d", RefCounterVersion, header.Version))
+	if header.Version != refCounterVersion {
+		return nil, errors.AddContext(ErrInvalidVersion, fmt.Sprintf("expected version %d, got version %d", refCounterVersion, header.Version))
 	}
 	fi, err := os.Stat(path)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to read file stats")
 	}
-	numSectors := uint64((fi.Size() - RefCounterHeaderSize) / 2)
-	return &RefCounter{
-		RefCounterHeader: header,
+	numSectors := uint64((fi.Size() - refCounterHeaderSize) / 2)
+	return &refCounter{
+		refCounterHeader: header,
 		filepath:         path,
 		numSectors:       numSectors,
 		staticWal:        wal,
@@ -154,9 +154,9 @@ func loadRefCounter(path string, wal *writeaheadlog.WAL) (*RefCounter, error) {
 
 // newCustomRefCounter creates a new sector reference counter file to accompany
 // a contract file and allows setting custom dependencies
-func newCustomRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL, deps modules.Dependencies) (*RefCounter, error) {
-	h := RefCounterHeader{
-		Version: RefCounterVersion,
+func newCustomRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL, deps modules.Dependencies) (*refCounter, error) {
+	h := refCounterHeader{
+		Version: refCounterVersion,
 	}
 	updateHeader := writeaheadlog.WriteAtUpdate(path, 0, serializeHeader(h))
 
@@ -164,11 +164,11 @@ func newCustomRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL, dep
 	for i := uint64(0); i < numSec; i++ {
 		binary.LittleEndian.PutUint16(b[i*2:i*2+2], 1)
 	}
-	updateCounters := writeaheadlog.WriteAtUpdate(path, RefCounterHeaderSize, b)
+	updateCounters := writeaheadlog.WriteAtUpdate(path, refCounterHeaderSize, b)
 
 	err := wal.CreateAndApplyTransaction(writeaheadlog.ApplyUpdates, updateHeader, updateCounters)
-	return &RefCounter{
-		RefCounterHeader: h,
+	return &refCounter{
+		refCounterHeader: h,
 		filepath:         path,
 		numSectors:       numSec,
 		staticWal:        wal,
@@ -181,13 +181,13 @@ func newCustomRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL, dep
 
 // newRefCounter creates a new sector reference counter file to accompany
 // a contract file
-func newRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (*RefCounter, error) {
+func newRefCounter(path string, numSec uint64, wal *writeaheadlog.WAL) (*refCounter, error) {
 	return newCustomRefCounter(path, numSec, wal, modules.ProdDependencies)
 }
 
 // callAppend appends one counter to the end of the refcounter file and
 // initializes it with `1`
-func (rc *RefCounter) callAppend() (writeaheadlog.Update, error) {
+func (rc *refCounter) callAppend() (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
@@ -202,7 +202,7 @@ func (rc *RefCounter) callAppend() (writeaheadlog.Update, error) {
 }
 
 // callCount returns the number of references to the given sector
-func (rc *RefCounter) callCount(secIdx uint64) (uint16, error) {
+func (rc *refCounter) callCount(secIdx uint64) (uint16, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	return rc.readCount(secIdx)
@@ -210,7 +210,7 @@ func (rc *RefCounter) callCount(secIdx uint64) (uint16, error) {
 
 // callCreateAndApplyTransaction is a helper method that creates a writeaheadlog
 // transaction and applies it.
-func (rc *RefCounter) callCreateAndApplyTransaction(updates ...writeaheadlog.Update) error {
+func (rc *refCounter) callCreateAndApplyTransaction(updates ...writeaheadlog.Update) error {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	// We allow the creation of the file here because of the case where we got
@@ -258,14 +258,14 @@ func (rc *RefCounter) callCreateAndApplyTransaction(updates ...writeaheadlog.Upd
 	if err != nil {
 		return errors.AddContext(err, "failed to read from disk after updates")
 	}
-	rc.numSectors = uint64((fi.Size() - RefCounterHeaderSize) / 2)
+	rc.numSectors = uint64((fi.Size() - refCounterHeaderSize) / 2)
 	return nil
 }
 
 // callDecrement decrements the reference counter of a given sector. The sector
 // is specified by its sequential number (secIdx).
 // Returns the updated number of references or an error.
-func (rc *RefCounter) callDecrement(secIdx uint64) (writeaheadlog.Update, error) {
+func (rc *refCounter) callDecrement(secIdx uint64) (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
@@ -290,7 +290,7 @@ func (rc *RefCounter) callDecrement(secIdx uint64) (writeaheadlog.Update, error)
 }
 
 // callDeleteRefCounter deletes the counter's file from disk
-func (rc *RefCounter) callDeleteRefCounter() (writeaheadlog.Update, error) {
+func (rc *refCounter) callDeleteRefCounter() (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
@@ -305,7 +305,7 @@ func (rc *RefCounter) callDeleteRefCounter() (writeaheadlog.Update, error) {
 }
 
 // callDropSectors removes the last numSec sector counts from the refcounter file
-func (rc *RefCounter) callDropSectors(numSec uint64) (writeaheadlog.Update, error) {
+func (rc *refCounter) callDropSectors(numSec uint64) (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
@@ -324,7 +324,7 @@ func (rc *RefCounter) callDropSectors(numSec uint64) (writeaheadlog.Update, erro
 // callIncrement increments the reference counter of a given sector. The sector
 // is specified by its sequential number (secIdx).
 // Returns the updated number of references or an error.
-func (rc *RefCounter) callIncrement(secIdx uint64) (writeaheadlog.Update, error) {
+func (rc *refCounter) callIncrement(secIdx uint64) (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
@@ -350,7 +350,7 @@ func (rc *RefCounter) callIncrement(secIdx uint64) (writeaheadlog.Update, error)
 
 // callSetCount sets the value of the reference counter of a given sector. The
 // sector is specified by its sequential number (secIdx).
-func (rc *RefCounter) callSetCount(secIdx uint64, c uint16) (writeaheadlog.Update, error) {
+func (rc *refCounter) callSetCount(secIdx uint64, c uint16) (writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
@@ -371,13 +371,13 @@ func (rc *RefCounter) callSetCount(secIdx uint64, c uint16) (writeaheadlog.Updat
 // allowed to perform updates on this refcounter file. This lock is released by
 // calling callUpdateApplied after calling callCreateAndApplyTransaction in
 // order to apply the updates.
-func (rc *RefCounter) callStartUpdate() error {
+func (rc *refCounter) callStartUpdate() error {
 	rc.muUpdate.Lock()
 	return rc.managedStartUpdate()
 }
 
 // callSwap swaps the two sectors at the given indices
-func (rc *RefCounter) callSwap(firstIdx, secondIdx uint64) ([]writeaheadlog.Update, error) {
+func (rc *refCounter) callSwap(firstIdx, secondIdx uint64) ([]writeaheadlog.Update, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if !rc.isUpdateInProgress {
@@ -407,7 +407,7 @@ func (rc *RefCounter) callSwap(firstIdx, secondIdx uint64) ([]writeaheadlog.Upda
 
 // callUpdateApplied cleans up temporary data and releases the update lock, thus
 // allowing other actors to acquire it in order to update the refcounter.
-func (rc *RefCounter) callUpdateApplied() error {
+func (rc *refCounter) callUpdateApplied() error {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 
@@ -427,7 +427,7 @@ func (rc *RefCounter) callUpdateApplied() error {
 
 // managedStartUpdate does everything callStartUpdate needs, aside from acquiring a
 // lock
-func (rc *RefCounter) managedStartUpdate() error {
+func (rc *refCounter) managedStartUpdate() error {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 	if rc.isDeleted {
@@ -440,7 +440,7 @@ func (rc *RefCounter) managedStartUpdate() error {
 
 // readCount reads the given sector count either from disk (if there are no
 // pending updates) or from the in-memory cache (if there are).
-func (rc *RefCounter) readCount(secIdx uint64) (uint16, error) {
+func (rc *refCounter) readCount(secIdx uint64) (uint16, error) {
 	// check if the secIdx is a valid sector index based on the number of
 	// sectors in the file
 	if secIdx >= rc.numSectors {
@@ -468,11 +468,11 @@ func (rc *RefCounter) readCount(secIdx uint64) (uint16, error) {
 func applyUpdates(f modules.File, updates ...writeaheadlog.Update) (err error) {
 	for _, update := range updates {
 		switch update.Name {
-		case UpdateNameDelete:
+		case updateNameRCDelete:
 			err = applyDeleteUpdate(update)
-		case UpdateNameTruncate:
+		case updateNameRCTruncate:
 			err = applyTruncateUpdate(f, update)
-		case UpdateNameWriteAt:
+		case updateNameRCWriteAt:
 			err = applyWriteAtUpdate(f, update)
 		default:
 			err = fmt.Errorf("unknown update type: %v", update.Name)
@@ -488,14 +488,14 @@ func applyUpdates(f modules.File, updates ...writeaheadlog.Update) (err error) {
 // for deleting a given refcounter file.
 func createDeleteUpdate(path string) writeaheadlog.Update {
 	return writeaheadlog.Update{
-		Name:         UpdateNameDelete,
+		Name:         updateNameRCDelete,
 		Instructions: []byte(path),
 	}
 }
 
 // applyDeleteUpdate parses and applies a Delete update.
 func applyDeleteUpdate(update writeaheadlog.Update) error {
-	if update.Name != UpdateNameDelete {
+	if update.Name != updateNameRCDelete {
 		return fmt.Errorf("applyDeleteUpdate called on update of type %v", update.Name)
 	}
 	// Remove the file and ignore the NotExist error
@@ -512,14 +512,14 @@ func createTruncateUpdate(path string, newNumSec uint64) writeaheadlog.Update {
 	binary.LittleEndian.PutUint64(b[:8], newNumSec)
 	copy(b[8:8+len(path)], path)
 	return writeaheadlog.Update{
-		Name:         UpdateNameTruncate,
+		Name:         updateNameRCTruncate,
 		Instructions: b,
 	}
 }
 
 // applyTruncateUpdate parses and applies a Truncate update.
 func applyTruncateUpdate(f modules.File, u writeaheadlog.Update) error {
-	if u.Name != UpdateNameTruncate {
+	if u.Name != updateNameRCTruncate {
 		return fmt.Errorf("applyAppendTruncate called on update of type %v", u.Name)
 	}
 	// Decode update.
@@ -528,7 +528,7 @@ func applyTruncateUpdate(f modules.File, u writeaheadlog.Update) error {
 		return err
 	}
 	// Truncate the file to the needed size.
-	return f.Truncate(RefCounterHeaderSize + int64(newNumSec)*2)
+	return f.Truncate(refCounterHeaderSize + int64(newNumSec)*2)
 }
 
 // createWriteAtUpdate is a helper function which creates a writeaheadlog
@@ -539,14 +539,14 @@ func createWriteAtUpdate(path string, secIdx uint64, value uint16) writeaheadlog
 	binary.LittleEndian.PutUint16(b[8:10], value)
 	copy(b[10:10+len(path)], path)
 	return writeaheadlog.Update{
-		Name:         UpdateNameWriteAt,
+		Name:         updateNameRCWriteAt,
 		Instructions: b,
 	}
 }
 
 // applyWriteAtUpdate parses and applies a WriteAt update.
 func applyWriteAtUpdate(f modules.File, u writeaheadlog.Update) error {
-	if u.Name != UpdateNameWriteAt {
+	if u.Name != updateNameRCWriteAt {
 		return fmt.Errorf("applyAppendWriteAt called on update of type %v", u.Name)
 	}
 	// Decode update.
@@ -563,8 +563,8 @@ func applyWriteAtUpdate(f modules.File, u writeaheadlog.Update) error {
 }
 
 // deserializeHeader deserializes a header from []byte
-func deserializeHeader(b []byte, h *RefCounterHeader) error {
-	if uint64(len(b)) < RefCounterHeaderSize {
+func deserializeHeader(b []byte, h *refCounterHeader) error {
+	if uint64(len(b)) < refCounterHeaderSize {
 		return ErrInvalidHeaderData
 	}
 	copy(h.Version[:], b[:8])
@@ -573,7 +573,7 @@ func deserializeHeader(b []byte, h *RefCounterHeader) error {
 
 // offset calculates the byte offset of the sector counter in the file on disk
 func offset(secIdx uint64) uint64 {
-	return RefCounterHeaderSize + secIdx*2
+	return refCounterHeaderSize + secIdx*2
 }
 
 // readTruncateUpdate decodes a Truncate update
@@ -600,8 +600,8 @@ func readWriteAtUpdate(u writeaheadlog.Update) (path string, secIdx uint64, valu
 }
 
 // serializeHeader serializes a header to []byte
-func serializeHeader(h RefCounterHeader) []byte {
-	b := make([]byte, RefCounterHeaderSize)
+func serializeHeader(h refCounterHeader) []byte {
+	b := make([]byte, refCounterHeaderSize)
 	copy(b[:8], h.Version[:])
 	return b
 }

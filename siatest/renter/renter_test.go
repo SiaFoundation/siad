@@ -3225,22 +3225,32 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Get the transaction which are related to the renter since we started the
-	// renter.
-	txns, err := r.WalletTransactionsGet(0, ^types.BlockHeight(0))
+	var fcTxns []modules.ProcessedTransaction
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Get the transaction which are related to the renter since we started
+		// the renter.
+		txns, err := r.WalletTransactionsGet(0, ^types.BlockHeight(0))
+		if err != nil {
+			return err
+		}
+
+		// Filter out transactions without file contracts.
+		fcTxns = make([]modules.ProcessedTransaction, 0)
+		for _, txn := range txns.ConfirmedTransactions {
+			if len(txn.Transaction.FileContracts) > 0 {
+				fcTxns = append(fcTxns, txn)
+			}
+		}
+
+		// There should be twice as many transactions with contracts as there
+		// are hosts.
+		if len(fcTxns) != 2*len(tg.Hosts()) {
+			return fmt.Errorf("Expected %v txns but got %v", 2*len(tg.Hosts()), len(fcTxns))
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	// Filter out transactions without file contracts.
-	var fcTxns []modules.ProcessedTransaction
-	for _, txn := range txns.ConfirmedTransactions {
-		if len(txn.Transaction.FileContracts) > 0 {
-			fcTxns = append(fcTxns, txn)
-		}
-	}
-	// There should be twice as many transactions with contracts as there are hosts.
-	if len(fcTxns) != 2*len(tg.Hosts()) {
-		t.Fatalf("Expected %v txns but got %v", 2*len(tg.Hosts()), len(fcTxns))
 	}
 
 	// Get the wallet seed of the renter.
@@ -4658,8 +4668,8 @@ func TestWorkerStatus(t *testing.T) {
 		if !worker.AvailableBalance.IsZero() {
 			t.Error("Expected available balance to be zero but was", worker.AvailableBalance.HumanString())
 		}
-		if !worker.BalanceTarget.IsZero() {
-			t.Error("Expected balance target to be 0SC but was", worker.BalanceTarget.HumanString())
+		if !worker.BalanceTarget.Equals(types.SiacoinPrecision) {
+			t.Error("Expected balance target to be 1SC but was", worker.BalanceTarget.HumanString())
 		}
 
 		// Job Queues
