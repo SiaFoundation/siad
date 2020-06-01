@@ -7,6 +7,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -27,7 +28,7 @@ func TestSkyfileBaseSectorEncryption(t *testing.T) {
 
 	// Create the 2 test skykeys.
 	keyName1 := t.Name() + "1"
-	sk1, err := r.CreateSkykey(keyName1, crypto.TypeXChaCha20)
+	sk1, err := r.CreateSkykey(keyName1, skykey.TypePublicID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +105,7 @@ func TestSkyfileBaseSectorEncryption(t *testing.T) {
 	// Create a entirely different skykey and sanity check that it produces
 	// different ciphertexts.
 	keyName2 := t.Name() + "2"
-	sk2, err := r.CreateSkykey(keyName2, crypto.TypeXChaCha20)
+	sk2, err := r.CreateSkykey(keyName2, skykey.TypePublicID)
 	if err != nil {
 		t.Fatal(err)
 	}

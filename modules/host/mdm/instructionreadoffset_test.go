@@ -9,15 +9,16 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestInstructionReadSector tests executing a program with a single
-// ReadSectorInstruction.
-func TestInstructionReadSector(t *testing.T) {
+// TestInstructionReadOffset tests executing a program with a single
+// ReadOffsetInstruction.
+func TestInstructionReadOffset(t *testing.T) {
 	host := newTestHost()
 	mdm := New(host)
 	defer mdm.Stop()
 
 	// Prepare a priceTable.
 	pt := newTestPriceTable()
+	duration := types.BlockHeight(fastrand.Uint64n(5))
 	// Prepare storage obligation.
 	so := newTestStorageObligation(true)
 	so.sectorRoots = randomSectorRoots(initialContractSectors)
@@ -26,11 +27,10 @@ func TestInstructionReadSector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	duration := types.BlockHeight(fastrand.Uint64n(5))
 	// Use a builder to build the program.
 	readLen := modules.SectorSize
 	tb := newTestProgramBuilder(pt, duration)
-	tb.AddReadSectorInstruction(readLen, 0, so.sectorRoots[0], true)
+	tb.AddReadOffsetInstruction(readLen, 0, true)
 
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
@@ -57,7 +57,7 @@ func TestInstructionReadSector(t *testing.T) {
 
 	// Use a builder to build the program.
 	tb = newTestProgramBuilder(pt, duration)
-	tb.AddReadSectorInstruction(length, offset, so.sectorRoots[0], true)
+	tb.AddReadOffsetInstruction(length, offset, true)
 
 	// Execute it.
 	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, duration, false)
@@ -74,40 +74,4 @@ func TestInstructionReadSector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-}
-
-// TestInstructionReadOutsideSector tests reading a sector from outside the
-// storage obligation.
-func TestInstructionReadOutsideSector(t *testing.T) {
-	host := newTestHost()
-	mdm := New(host)
-	defer mdm.Stop()
-
-	// Add a sector root to the host but not to the SO.
-	sectorRoot := randomSectorRoots(1)[0]
-	sectorData, err := host.ReadSector(sectorRoot)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Create a program to read a full sector from the host.
-	pt := newTestPriceTable()
-	duration := types.BlockHeight(fastrand.Uint64n(5))
-	readLen := modules.SectorSize
-
-	// Execute it.
-	so := newTestStorageObligation(true)
-	// Use a builder to build the program.
-	tb := newTestProgramBuilder(pt, duration)
-	tb.AddReadSectorInstruction(readLen, 0, sectorRoot, true)
-	imr := crypto.Hash{}
-
-	// Execute it.
-	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, duration, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Check output.
-	outputs[0].assert(0, imr, []crypto.Hash{}, sectorData)
 }

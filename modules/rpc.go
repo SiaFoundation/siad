@@ -21,6 +21,10 @@ type RPCPriceTable struct {
 	// MDMCostTable is valid.
 	Expiry int64 `json:"expiry"`
 
+	// HostBlockHeight is the block height of the host. This allows the renter
+	// to create valid withdrawal messages in case it is not synced yet.
+	HostBlockHeight types.BlockHeight `json:"hostblockheight"`
+
 	// UpdatePriceTableCost refers to the cost of fetching a new price table
 	// from the host.
 	UpdatePriceTableCost types.Currency `json:"updatepricetablecost"`
@@ -108,6 +112,7 @@ type (
 	// FundAccountResponse contains the signature. This signature is a
 	// signed receipt, and can be used as proof of funding.
 	FundAccountResponse struct {
+		Balance   types.Currency
 		Receipt   Receipt
 		Signature crypto.Signature
 	}
@@ -140,6 +145,11 @@ type (
 	RPCUpdatePriceTableResponse struct {
 		PriceTableJSON []byte
 	}
+
+	// RPCTrackedPriceTableResponse is an empty response sent by the host to
+	// signal it has received payment for the price table and has tracked it,
+	// thus considering it valid.
+	RPCTrackedPriceTableResponse struct{}
 
 	// rpcResponse is a helper type for encoding and decoding RPC response
 	// messages.

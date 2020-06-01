@@ -270,6 +270,16 @@ func (d *Decoder) Read(p []byte) (int, error) {
 	return n, d.err
 }
 
+// ReadByte implements the io.ByteReader interface.
+func (d *Decoder) ReadByte() (byte, error) {
+	if d.err != nil {
+		return 0, d.err
+	}
+	p := make([]byte, 1)
+	_, d.err = io.ReadFull(d.r, p)
+	return p[0], d.err
+}
+
 // ReadFull is shorthand for io.ReadFull(d, p).
 func (d *Decoder) ReadFull(p []byte) {
 	if d.err != nil {
@@ -345,7 +355,11 @@ func (d *Decoder) Decode(v interface{}) (err error) {
 	// note that this allows us to skip boundary checks during decoding
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("could not decode type %s: %v", pval.Elem().Type().String(), r)
+			if re, ok := r.(error); ok {
+				err = fmt.Errorf("could not decode type %s: %w", pval.Elem().Type().String(), re)
+			} else {
+				err = fmt.Errorf("could not decode type %s: %v", pval.Elem().Type().String(), r)
+			}
 		}
 	}()
 

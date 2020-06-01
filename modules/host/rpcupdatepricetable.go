@@ -32,6 +32,10 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	// rpcPriceGuaranteePeriod
 	pt.Expiry = time.Now().Add(rpcPriceGuaranteePeriod).Unix()
 
+	// set the host's current blockheight, this allows the renter to create
+	// valid withdrawal messages in case it is not synced yet
+	pt.HostBlockHeight = h.BlockHeight()
+
 	// json encode the price table
 	ptBytes, err := json.Marshal(pt)
 	if err != nil {
@@ -64,8 +68,12 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	}
 
 	// after payment has been received, track the price table in the host's list
-	// of price tables
+	// of price tables and signal the renter we consider the price table valid
 	h.staticPriceTables.managedTrack(&pt)
+	var tracked modules.RPCTrackedPriceTableResponse
+	if err = modules.RPCWrite(stream, tracked); err != nil {
+		return errors.AddContext(err, "Failed to signal renter we tracked the price table")
+	}
 
 	// refund the money we didn't use.
 	refund := payment.Amount().Sub(pt.UpdatePriceTableCost)

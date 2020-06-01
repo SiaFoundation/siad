@@ -80,6 +80,18 @@ func (v *TestValues) AddHasSectorInstruction() {
 	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly)
 }
 
+// AddReadOffsetInstruction adds a readoffset instruction to the builder,
+// keeping track of running values.
+func (v *TestValues) AddReadOffsetInstruction(length uint64) {
+	collateral := modules.MDMReadCollateral()
+	cost, refund := modules.MDMReadCost(v.staticPT, length)
+	memory := modules.MDMReadMemory()
+	time := uint64(modules.MDMTimeReadOffset)
+	newData := 8 + 8
+	readonly := true
+	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly)
+}
+
 // AddReadSectorInstruction adds a readsector instruction to the builder,
 // keeping track of running values.
 func (v *TestValues) AddReadSectorInstruction(length uint64) {

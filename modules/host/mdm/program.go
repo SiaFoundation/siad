@@ -94,6 +94,8 @@ func decodeInstruction(p *program, i modules.Instruction) (instruction, error) {
 		return p.staticDecodeHasSectorInstruction(i)
 	case modules.SpecifierReadSector:
 		return p.staticDecodeReadSectorInstruction(i)
+	case modules.SpecifierReadOffset:
+		return p.staticDecodeReadOffsetInstruction(i)
 	default:
 		return nil, fmt.Errorf("unknown instruction specifier: %v", i.Specifier)
 	}
@@ -101,11 +103,18 @@ func decodeInstruction(p *program, i modules.Instruction) (instruction, error) {
 
 // ExecuteProgram initializes a new program from a set of instructions and a
 // reader which can be used to fetch the program's data and executes it.
-func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p modules.Program, budget *modules.RPCBudget, collateralBudget types.Currency, sos StorageObligationSnapshot, duration types.BlockHeight, programDataLen uint64, data io.Reader) (FnFinalize, <-chan Output, error) {
+func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p modules.Program, budget *modules.RPCBudget, collateralBudget types.Currency, sos StorageObligationSnapshot, duration types.BlockHeight, programDataLen uint64, data io.Reader) (_ FnFinalize, _ <-chan Output, err error) {
 	// Sanity check program length.
 	if len(p) == 0 {
 		return nil, nil, ErrEmptyProgram
 	}
+	// Derive a new context to use and close it on error.
+	ctx, cancel := context.WithCancel(ctx)
+	defer func() {
+		if err != nil {
+			cancel()
+		}
+	}()
 	// Build program.
 	program := &program{
 		outputChan: make(chan Output),
@@ -130,7 +139,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 		program.instructions = append(program.instructions, instruction)
 	}
 	// Increment the execution cost of the program.
-	err := program.addCost(modules.MDMInitCost(pt, program.staticData.Len(), uint64(len(program.instructions))))
+	err = program.addCost(modules.MDMInitCost(pt, program.staticData.Len(), uint64(len(program.instructions))))
 	if err != nil {
 		return nil, nil, errors.Compose(err, program.staticData.Close())
 	}
@@ -139,6 +148,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 		return nil, nil, errors.Compose(err, program.staticData.Close())
 	}
 	go func() {
+		defer cancel()
 		defer program.staticData.Close()
 		defer program.tg.Done()
 		defer close(program.outputChan)

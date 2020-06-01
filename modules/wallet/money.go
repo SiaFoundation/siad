@@ -205,12 +205,12 @@ func (w *Wallet) managedSendSiacoins(amount, fee types.Currency, dest types.Unlo
 // outputs. The transaction is submitted to the transaction pool and is also
 // returned.
 func (w *Wallet) SendSiacoinsMulti(outputs []types.SiacoinOutput) (txns []types.Transaction, err error) {
-	w.log.Println("Beginning call to SendSiacoinsMulti")
 	if err := w.tg.Add(); err != nil {
 		err = modules.ErrWalletShutdown
 		return nil, err
 	}
 	defer w.tg.Done()
+	w.log.Println("Beginning call to SendSiacoinsMulti")
 
 	// Check if consensus is synced
 	if !w.cs.Synced() || w.deps.Disrupt("UnsyncedConsensus") {

@@ -27,8 +27,8 @@ func TestInstructionHasSector(t *testing.T) {
 	}
 
 	// Build the program.
-	duration := types.BlockHeight(fastrand.Uint64n(5))
 	pt := newTestPriceTable()
+	duration := types.BlockHeight(fastrand.Uint64n(5))
 	tb := newTestProgramBuilder(pt, duration)
 	tb.AddHasSectorInstruction(sectorRoot)
 
