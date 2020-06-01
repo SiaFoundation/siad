@@ -48,7 +48,6 @@ func TestNewProgramLowInitBudget(t *testing.T) {
 func TestNewProgramLowBudget(t *testing.T) {
 	// Create MDM
 	mdm := New(newTestHost())
-	defer mdm.Stop()
 	// Create instruction.
 	pt := newTestPriceTable()
 	duration := types.BlockHeight(fastrand.Uint64n(5))
@@ -95,7 +94,6 @@ func TestNewProgramLowCollateralBudget(t *testing.T) {
 	host := newTestHost()
 	// Create MDM
 	mdm := New(host)
-	defer mdm.Stop()
 	// Create instruction.
 	sectorData := fastrand.Bytes(int(modules.SectorSize))
 	duration := types.BlockHeight(fastrand.Uint64n(5))
