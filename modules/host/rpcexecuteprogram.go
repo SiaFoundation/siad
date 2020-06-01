@@ -68,7 +68,8 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}
 
 	// Extract the arguments.
-	fcid, program, dataLength := epr.FileContractID, epr.Program, epr.ProgramDataLength
+	fcid, instructions, dataLength := epr.FileContractID, epr.Program, epr.ProgramDataLength
+	program := modules.Program(instructions)
 
 	// If the program isn't readonly we need to acquire a lock on the storage
 	// obligation.

@@ -1,13 +1,11 @@
 package mdm
 
 import (
-	"bytes"
-	"context"
-	"reflect"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestInstructionReadSector tests executing a program with a single
@@ -22,123 +20,57 @@ func TestInstructionReadSector(t *testing.T) {
 	// Prepare storage obligation.
 	so := newTestStorageObligation(true)
 	so.sectorRoots = randomSectorRoots(initialContractSectors)
+	root := so.sectorRoots[0]
+	outputData, err := host.ReadSector(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Use a builder to build the program.
 	readLen := modules.SectorSize
-	pb := modules.NewProgramBuilder(pt)
-	pb.AddReadSectorInstruction(readLen, 0, so.sectorRoots[0], true)
-	instructions, programData := pb.Program()
-	cost, refund, collateral := pb.Cost(true)
-	r := bytes.NewReader(programData)
-	dataLen := uint64(len(programData))
+	tb := newTestProgramBuilder(pt)
+	tb.AddReadSectorInstruction(readLen, 0, so.sectorRoots[0], true)
 
-	// Execute it.
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
-	budget := modules.NewBudget(cost)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, budget, collateral, so, dataLen, r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// There should be one output since there was one instruction.
-	numOutputs := 0
-	var sectorData []byte
-	for output := range outputs {
-		if err := output.Error; err != nil {
-			t.Fatal(err)
-		}
-		if output.NewSize != ics {
-			t.Fatalf("expected contract size to stay the same: %v != %v", ics, output.NewSize)
-		}
-		if output.NewMerkleRoot != imr {
-			t.Fatalf("expected merkle root to stay the same: %v != %v", imr, output.NewMerkleRoot)
-		}
-		if len(output.Proof) != 0 {
-			t.Fatalf("expected proof length to be %v but was %v", 0, len(output.Proof))
-		}
-		if uint64(len(output.Output)) != modules.SectorSize {
-			t.Fatalf("expected returned data to have length %v but was %v", modules.SectorSize, len(output.Output))
-		}
-		if !output.ExecutionCost.Equals(cost) {
-			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
-		}
-		if !budget.Remaining().Equals(cost.Sub(output.ExecutionCost)) {
-			t.Fatalf("budget should be equal to the initial budget minus the execution cost: %v != %v",
-				budget.Remaining().HumanString(), cost.Sub(output.ExecutionCost).HumanString())
-		}
-		if !output.AdditionalCollateral.Equals(collateral) {
-			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())
-		}
-		if !output.PotentialRefund.Equals(refund) {
-			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())
-		}
-		sectorData = output.Output
-		numOutputs++
-	}
-	if numOutputs != 1 {
-		t.Fatalf("numOutputs was %v but should be %v", numOutputs, 1)
-	}
-	// No need to finalize the program since this program is readonly.
-	if finalize != nil {
-		t.Fatal("finalize callback should be nil for readonly program")
-	}
-	// Create a program to read half a sector from the host.
-	offset := modules.SectorSize / 2
-	length := offset
-	// Use a builder to build the program.
-	pb = modules.NewProgramBuilder(pt)
-	pb.AddReadSectorInstruction(length, offset, so.sectorRoots[0], true)
-	instructions, programData = pb.Program()
-	cost, refund, collateral = pb.Cost(true)
-	r = bytes.NewReader(programData)
-	dataLen = uint64(len(programData))
+
 	// Execute it.
-	budget = modules.NewBudget(cost)
-	finalize, outputs, err = mdm.ExecuteProgram(context.Background(), pt, instructions, budget, collateral, so, dataLen, r)
+	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// There should be one output since there was one instructions.
-	numOutputs = 0
-	for output := range outputs {
-		if err := output.Error; err != nil {
-			t.Fatal(err)
-		}
-		if output.NewSize != ics {
-			t.Fatalf("expected contract size to stay the same: %v != %v", ics, output.NewSize)
-		}
-		if output.NewMerkleRoot != imr {
-			t.Fatalf("expected merkle root to stay the same: %v != %v", imr, output.NewMerkleRoot)
-		}
-		proofStart := int(offset) / crypto.SegmentSize
-		proofEnd := int(offset+length) / crypto.SegmentSize
-		proof := crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
-		if !reflect.DeepEqual(proof, output.Proof) {
-			t.Fatal("proof doesn't match expected proof")
-		}
-		if !bytes.Equal(output.Output, sectorData[modules.SectorSize/2:]) {
-			t.Fatal("output should match the second half of the sector data")
-		}
-		if !output.ExecutionCost.Equals(cost) {
-			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
-		}
-		if !budget.Remaining().Equals(cost.Sub(output.ExecutionCost)) {
-			t.Fatalf("budget should be equal to the initial budget minus the execution cost: %v != %v",
-				budget.Remaining().HumanString(), cost.Sub(output.ExecutionCost).HumanString())
-		}
-		if !output.AdditionalCollateral.Equals(collateral) {
-			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())
-		}
-		if !output.PotentialRefund.Equals(refund) {
-			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())
-		}
-		numOutputs++
+
+	// Assert the output.
+	err = outputs[0].assert(ics, imr, []crypto.Hash{}, outputData)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if numOutputs != 1 {
-		t.Fatalf("numOutputs was %v but should be %v", numOutputs, 1)
+	sectorData := outputs[0].Output
+
+	// Create a program to read half a sector from the host.
+	offset := modules.SectorSize / 2                     // start in the middle
+	length := fastrand.Uint64n(modules.SectorSize/2) + 1 // up to half a sector
+	if mod := length % crypto.SegmentSize; mod != 0 {    // must be multiple of segmentsize
+		length -= mod
 	}
-	// No need to finalize the program since an this program is readonly.
-	if finalize != nil {
-		t.Fatal("finalize callback should be nil for readonly program")
+
+	// Use a builder to build the program.
+	tb = newTestProgramBuilder(pt)
+	tb.AddReadSectorInstruction(length, offset, so.sectorRoots[0], true)
+
+	// Execute it.
+	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Assert the output.
+	proofStart := int(offset) / crypto.SegmentSize
+	proofEnd := int(offset+length) / crypto.SegmentSize
+	proof := crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
+	outputData = sectorData[offset:][:length]
+	err = outputs[0].assert(ics, imr, proof, outputData)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -163,58 +95,16 @@ func TestInstructionReadOutsideSector(t *testing.T) {
 	// Execute it.
 	so := newTestStorageObligation(true)
 	// Use a builder to build the program.
-	pb := modules.NewProgramBuilder(pt)
-	pb.AddReadSectorInstruction(readLen, 0, sectorRoot, true)
-	instructions, programData := pb.Program()
-	cost, refund, collateral := pb.Cost(true)
-	r := bytes.NewReader(programData)
-	dataLen := uint64(len(programData))
+	tb := newTestProgramBuilder(pt)
+	tb.AddReadSectorInstruction(readLen, 0, sectorRoot, true)
+	imr := crypto.Hash{}
+
 	// Execute it.
-	budget := modules.NewBudget(cost)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, budget, collateral, so, dataLen, r)
+	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// There should be one output since there was one instruction.
-	numOutputs := 0
-	imr := crypto.Hash{}
-	for output := range outputs {
-		if err := output.Error; err != nil {
-			t.Fatal(err)
-		}
-		if output.NewSize != 0 {
-			t.Fatalf("expected contract size to stay the same: %v != %v", 0, output.NewSize)
-		}
-		if output.NewMerkleRoot != imr {
-			t.Fatalf("expected merkle root to stay the same: %v != %v", imr, output.NewMerkleRoot)
-		}
-		if len(output.Proof) != 0 {
-			t.Fatalf("expected proof length to be %v but was %v", 0, len(output.Proof))
-		}
-		if !bytes.Equal(output.Output, sectorData) {
-			t.Fatal("output data doesn't match")
-		}
-		if !output.ExecutionCost.Equals(cost) {
-			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
-		}
-		if !budget.Remaining().Equals(cost.Sub(output.ExecutionCost)) {
-			t.Fatalf("budget should be equal to the initial budget minus the execution cost: %v != %v",
-				budget.Remaining().HumanString(), cost.Sub(output.ExecutionCost).HumanString())
-		}
-		if !output.AdditionalCollateral.Equals(collateral) {
-			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())
-		}
-		if !output.PotentialRefund.Equals(refund) {
-			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())
-		}
-		sectorData = output.Output
-		numOutputs++
-	}
-	if numOutputs != 1 {
-		t.Fatalf("numOutputs was %v but should be %v", numOutputs, 1)
-	}
-	// No need to finalize the program since this program is readonly.
-	if finalize != nil {
-		t.Fatal("finalize callback should be nil for readonly program")
-	}
+
+	// Check output.
+	outputs[0].assert(0, imr, []crypto.Hash{}, sectorData)
 }

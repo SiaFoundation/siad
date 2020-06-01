@@ -18,6 +18,7 @@ responsibilities:
  - [FeeManager Subsystem](#feemanager-subsystem)
  - [Persistence Subsystem](#persistence-subsystem)
  - [Process Fee Subsystem](#process-fee-subsystem)
+ - [Watchdog Subsystem](#watchdog-subsystem)
 
 ### FeeManager Subsystem
 **Key Files**
@@ -26,6 +27,11 @@ responsibilities:
 The FeeManager subsystem handles the creation and shutdown of the FeeManager.
 Additionally this subsystem handles  providing information about the
 FeeManager's state, such as the current fees being managed.
+
+The FeeManager subsystem has a main `FeeManager` type as well as a
+`feeManagerCommon` type. The `feeManagerCommon` type is a share struct between
+the other subsystems and contains references to the other subsystems as well as
+the common dependencies.
 
 **Exports**
   - `New` creates a new FeeManager with default dependencies
@@ -44,7 +50,7 @@ FeeManager's state, such as the current fees being managed.
   - The persist subsystem's `callPersistFeeCancelation` method is called from
     `CancelFee` to remove the fee from the FeeManager and persist the change on
     disk
-  - The persist subsystem's `callPersistNewFee` method is called from `SetFee`
+  - The persist subsystem's `callPersistNewFee` method is called from `AddFee`
     to add the fee to the FeeManager and persist the change on disk
 
 ### Persistence Subsystem
@@ -64,8 +70,9 @@ is solely responsible for handling the concurrent requests to sync the persist
 file and update the persist file header.
 
 **Inbound Complexities**
-  - `callInitPersist` initializes the persistence by creating or loading a
-    persist file and initializing the logger
+  - The feemanager subsystem's `NewCustomFeeManager` calls `callInitPersist` to
+    initialize the persistence by creating or loading a persist file and
+    initializing the logger
   - The feemanager subsystem's `CancelFee` method calls
     `callPersistFeeCancelation` to remove a fee from the FeeManager and persists
     the change on disk
@@ -73,14 +80,23 @@ file and update the persist file header.
     a fee to the FeeManager and persists the change on disk
   - The process fees subsystem's `threadedProcessFess` method calls
     `callPersistFeeUpdate` to persist a change to a Fee's `PayoutHeight` on disk
+  - The process fees subsystem's `createdAndPersistTransaction` method calls
+    `callPersistTxnCreated` to persist the link between feeUIDs and the
+    transaction ID
 
 ### Process Fees Subsystem
 **Key Files**
 - [processfees.go](./processfees.go)
 
 The process fees subsystem handles processing fees for each payout period and
-ensuring that the `PayoutHeight`'s are updated.
+ensuring that the `PayoutHeight`'s are updated. Fees are processed by creating a
+transaction and then submitting the transaction to the watchdog.
 
 **Outbound Complexities**
  - The persist subsystem's `callPersistFeeUpdate` method is called from
-   `threadedProcessFees`
+   `threadedProcessFees` to update the PayoutHeight for a fee
+ - The persist subsystem's `callPersistTxnCreated`method is call from
+   `createdAndPersistTransaction` to link FeeUIDs and a TxnID
+
+### Watchdog Subsystem
+TODO

@@ -3,7 +3,6 @@ package host
 import (
 	"container/heap"
 	"encoding/json"
-	"io"
 	"reflect"
 	"strings"
 	"testing"
@@ -11,6 +10,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -20,6 +20,7 @@ import (
 func TestPriceTableMarshaling(t *testing.T) {
 	pt := modules.RPCPriceTable{
 		Expiry:               time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
+		HostBlockHeight:      types.BlockHeight(fastrand.Intn(1e3)),
 		UpdatePriceTableCost: types.SiacoinPrecision,
 		InitBaseCost:         types.SiacoinPrecision.Mul64(1e2),
 		MemoryTimeCost:       types.SiacoinPrecision.Mul64(1e3),
@@ -137,12 +138,6 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		err := pair.Close()
-		if err != nil {
-			t.Error(err)
-		}
-	}()
 	ht := pair.staticHT
 
 	// renter-side logic
@@ -181,9 +176,10 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 			return nil, err
 		}
 
-		// expect clean stream close
-		err = modules.RPCRead(stream, struct{}{})
-		if !errors.Contains(err, io.ErrClosedPipe) {
+		// await tracked response
+		var tracked modules.RPCTrackedPriceTableResponse
+		err = modules.RPCRead(stream, &tracked)
+		if err != nil {
 			return nil, err
 		}
 		return &pt, nil
@@ -217,6 +213,16 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		t.Fatal("Expected price table expiry to be in the future")
 	}
 
+	// ensure it contains the host's block height
+	if pt.HostBlockHeight != ht.host.BlockHeight() {
+		t.Fatal("Expected host blockheight to be set on the price table")
+	}
+	// ensure it's not zero to be certain the blockheight is set and it's not
+	// just the initial value
+	if pt.HostBlockHeight == 0 {
+		t.Fatal("Expected host blockheight to be not 0")
+	}
+
 	// expect failure if the payment revision does not cover the RPC cost
 	rev, sig, err = pair.managedPaymentRevision(types.ZeroCurrency)
 	if err != nil {
@@ -225,5 +231,36 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	_, err = runWithRequest(newPayByContractRequest(rev, sig, aid))
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientPaymentForRPC.Error()) {
 		t.Fatalf("Expected error '%v', instead error was '%v'", modules.ErrInsufficientPaymentForRPC, err)
+	}
+
+	// close the pair and recreate one with a custom dependency
+	err = pair.Close()
+	if err != nil {
+		t.Error(err)
+	}
+
+	// create a new renter host pair but now with a dependency that prevents the
+	// stream from closing
+	deps := &dependencies.DependencyDisableStreamClose{}
+	pair, err = newCustomRenterHostPair(t.Name(), deps)
+	defer func() {
+		err := pair.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+	ht = pair.staticHT
+
+	// verify the RPC does not block if the host does not close the stream on
+	// his side
+	current = ht.host.staticPriceTables.managedCurrent()
+	rev, sig, err = pair.managedPaymentRevision(current.UpdatePriceTableCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = runWithRequest(newPayByContractRequest(rev, sig, aid))
+	if err != nil {
+		t.Fatal(err)
 	}
 }

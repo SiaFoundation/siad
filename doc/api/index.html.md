@@ -398,6 +398,24 @@ Block timestamp
 **transactions** | ConsensusBlocksGetTxn  
 Transactions contained within the block
 
+## /consensus/subscribe/:id [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/consensus/subscribe/0000000000000000000000000000000000000000000000000000000000000000"
+```
+
+Streams a series of consensus changes, starting from the provided change ID.
+
+### Path Parameters
+### REQUIRED
+**id** | string
+The consensus change ID to subscribe from.
+
+### Response
+
+A concatenation of Sia-encoded (binary) modules.ConsensusChange objects.
+
 ## /consensus/validate/transactionset [POST]
 > curl example  
 
@@ -4445,7 +4463,6 @@ returns the the status of all the workers in the renter's workerpool.
       
       "availablebalance":    "0", // hastings
       "balancetarget":       "0", // hastings
-      "fundaccountjobqueuesize": 0,   // int
       
       "backupjobqueuesize":       0, // int
       "downloadrootjobqueuesize": 0  // int
@@ -4518,9 +4535,6 @@ The worker's Ephemeral Account available balance
 
 **balancetarget** | hastings  
 The worker's Ephemeral Account target balance
-
-**fundaccountjobqueuesize** | int  
-The size of the worker's Ephemeral Account fund account job queue
 
 **backupjobqueuesize** | int  
 The size of the worker's backup job queue
@@ -4950,6 +4964,44 @@ base-64 encoded skykey
 standard success or error response. See [standard
 responses](#standard-responses).
 
+## /skynet/skykeys [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent"  -u "":<apipassword> --data "localhost:9980/skynet/skykeys"
+```
+
+Returns a list of all Skykeys.
+
+### JSON Response
+
+> JSON Response Example
+
+```go
+{
+  "skykeys": [
+  {
+    "skykey": "skykey:AUI0eAOXWXHwW6KOLyI5O1OYduVvHxAA8qUR_fJ8Kluasb-ykPlHBEjDczrL21hmjhH0zAoQ3-Qq?name=testskykey1"
+    "name": "testskykey1"
+    "id": "ai5z8cf5NWbcvPBaBn0DFQ=="
+  },
+  {
+    "skykey": "skykey:AUqG0aQmgzCIlse2JxFLBGHCriZNz20IEKQu81XxYsak3rzmuVbZ2P6ZqeJHIlN5bjPqEmC67U8E?name=testskykey2"
+    "name": "testskykey2"
+    "id": "bi5z8cf5NWbcvPBaBn0DFQ=="
+  },
+  {
+    "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey3"
+    "name": "testskykey3"
+    "id": "ci5z8cf5NWbcvPBaBn0DFQ=="
+  }
+}
+```
+
+**skykeys** | []skykeys
+array of 
+
+
 
 **UNSTABLE - subject to change in v1.4.9**
 ## /skynet/createskykey [POST]
@@ -4971,7 +5023,7 @@ desired name of the skykey
 
 ```go
 {
-  "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+  "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey"
 }
 ```
 
@@ -4988,7 +5040,7 @@ curl -A "Sia-Agent"  -u "":<apipassword> --data "name=key_to_the_castle" "localh
 curl -A "Sia-Agent"  -u "":<apipassword> --data "id=gi5z8cf5NWbcvPBaBn0DFQ==" "localhost:9980/skynet/skykey"
 ```
 
-Returns the base-64 encoded skykey stored under that name, or with that ID.
+Returns the base-64 encoded skykey along with its name and ID.
 
 
 ### Path Parameters
@@ -5006,12 +5058,20 @@ base-64 encoded ID of the skykey being queried
 
 ```go
 {
-  "skykey": "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+  "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey"
+  "name": "testskykey"
+  "id": "gi5z8cf5NWbcvPBaBn0DFQ=="
 }
 ```
 
 **skykey** | string  
 base-64 encoded skykey
+
+**name** | string  
+name of the skykey
+
+**id** | string  
+base-64 encoded skykey ID
 
 
 **UNSTABLE - subject to change in v1.4.9**
@@ -6015,7 +6075,7 @@ ID of the transaction being requested.
 **transaction**  
 Raw transaction. The rest of the fields in the response are determined from this
 raw transaction. It is left undocumented here as the processed transaction (the
-rest of the fields in this object) are usually what is desired.  
+rest of the fields in this object) are usually what is desired.
 
 See types.Transaction in
 https://gitlab.com/NebulousLabs/Sia/blob/master/types/transactions.go  

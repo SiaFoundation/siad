@@ -969,8 +969,8 @@ type Renter interface {
 	// AddSkykey adds the skykey to the renter's skykey manager.
 	AddSkykey(skykey.Skykey) error
 
-	// CreateSkykey creates a new Skykey with the given name and ciphertype.
-	CreateSkykey(string, crypto.CipherType) (skykey.Skykey, error)
+	// CreateSkykey creates a new Skykey with the given name and SkykeyType.
+	CreateSkykey(string, skykey.SkykeyType) (skykey.Skykey, error)
 
 	// SkykeyByName gets the Skykey with the given name from the renter's skykey
 	// manager if it exists.
@@ -983,6 +983,9 @@ type Renter interface {
 	// SkykeyIDByName gets the SkykeyID of the key with the given name if it
 	// exists.
 	SkykeyIDByName(string) (skykey.SkykeyID, error)
+
+	// Skykeys returns a slice containing each Skykey being stored by the renter.
+	Skykeys() ([]skykey.Skykey, error)
 
 	// CreateSkylinkFromSiafile will create a skylink from a siafile. This will
 	// result in some uploading - the base sector skyfile needs to be uploaded

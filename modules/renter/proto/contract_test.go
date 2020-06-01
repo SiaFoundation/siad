@@ -425,7 +425,7 @@ func TestContractRecordAndCommitPaymentIntent(t *testing.T) {
 	// TODO: extend this test when we add the spending metrics to the header
 }
 
-// TestContractRefCounter checks if RefCounter behaves as expected when called
+// TestContractRefCounter checks if refCounter behaves as expected when called
 // from Contract
 func TestContractRefCounter(t *testing.T) {
 	if testing.Short() {
@@ -459,18 +459,18 @@ func TestContractRefCounter(t *testing.T) {
 	sc := cs.mustAcquire(t, c.ID)
 	// verify that the refcounter exists and has the correct size
 	if sc.staticRC == nil {
-		t.Fatal("RefCounter was not created with the contract.")
+		t.Fatal("refCounter was not created with the contract.")
 	}
 	if sc.staticRC.numSectors != uint64(sc.merkleRoots.numMerkleRoots) {
-		t.Fatalf("RefCounter has wrong number of sectors. Expected %d, found %d", uint64(sc.merkleRoots.numMerkleRoots), sc.staticRC.numSectors)
+		t.Fatalf("refCounter has wrong number of sectors. Expected %d, found %d", uint64(sc.merkleRoots.numMerkleRoots), sc.staticRC.numSectors)
 	}
 	fi, err := os.Stat(sc.staticRC.filepath)
 	if err != nil {
 		t.Fatal("Failed to read refcounter file from disk:", err)
 	}
-	rcFileSize := RefCounterHeaderSize + int64(sc.merkleRoots.numMerkleRoots)*2
+	rcFileSize := refCounterHeaderSize + int64(sc.merkleRoots.numMerkleRoots)*2
 	if fi.Size() != rcFileSize {
-		t.Fatalf("RefCounter file on disk has wrong size. Expected %d, got %d", rcFileSize, fi.Size())
+		t.Fatalf("refCounter file on disk has wrong size. Expected %d, got %d", rcFileSize, fi.Size())
 	}
 
 	// upload a new sector
@@ -517,14 +517,14 @@ func TestContractRefCounter(t *testing.T) {
 	}
 	// verify that the refcounter increased with 1, as expected
 	if sc.staticRC.numSectors != uint64(sc.merkleRoots.numMerkleRoots) {
-		t.Fatalf("RefCounter has wrong number of sectors. Expected %d, found %d", uint64(sc.merkleRoots.numMerkleRoots), sc.staticRC.numSectors)
+		t.Fatalf("refCounter has wrong number of sectors. Expected %d, found %d", uint64(sc.merkleRoots.numMerkleRoots), sc.staticRC.numSectors)
 	}
 	fi, err = os.Stat(sc.staticRC.filepath)
 	if err != nil {
 		t.Fatal("Failed to read refcounter file from disk:", err)
 	}
-	rcFileSize = RefCounterHeaderSize + int64(sc.merkleRoots.numMerkleRoots)*2
+	rcFileSize = refCounterHeaderSize + int64(sc.merkleRoots.numMerkleRoots)*2
 	if fi.Size() != rcFileSize {
-		t.Fatalf("RefCounter file on disk has wrong size. Expected %d, got %d", rcFileSize, fi.Size())
+		t.Fatalf("refCounter file on disk has wrong size. Expected %d, got %d", rcFileSize, fi.Size())
 	}
 }

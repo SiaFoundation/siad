@@ -37,7 +37,6 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -203,6 +202,11 @@ type Renter struct {
 	// properly reflected throughout the filesystem.
 	bubbleUpdates   map[string]bubbleStatus
 	bubbleUpdatesMu sync.Mutex
+
+	// Stateful variables related to projects the worker can launch. Typically
+	// projects manage all of their own state, but for example they may track
+	// metrics across running the project multiple times.
+	staticProjectDownloadByRootManager *projectDownloadByRootManager
 
 	// Utilities.
 	cs                    modules.ConsensusSet
@@ -428,13 +432,6 @@ func (r *Renter) PriceEstimation(allowance modules.Allowance) (modules.RenterPri
 	r.mu.Unlock(id)
 
 	return est, allowance, nil
-}
-
-// managedRPCClient returns an RPC client for the host with given key
-func (r *Renter) managedRPCClient(host types.SiaPublicKey) (RPCClient, error) {
-	id := r.mu.Lock()
-	defer r.mu.Unlock(id)
-	return &MockRPCClient{}, nil
 }
 
 // managedContractUtilityMaps returns a set of maps that contain contract
@@ -824,12 +821,12 @@ func (r *Renter) SkykeyByName(name string) (skykey.Skykey, error) {
 }
 
 // CreateSkykey creates a new Skykey with the given name and ciphertype.
-func (r *Renter) CreateSkykey(name string, ct crypto.CipherType) (skykey.Skykey, error) {
+func (r *Renter) CreateSkykey(name string, skType skykey.SkykeyType) (skykey.Skykey, error) {
 	if err := r.tg.Add(); err != nil {
 		return skykey.Skykey{}, err
 	}
 	defer r.tg.Done()
-	return r.staticSkykeyManager.CreateKey(name, ct)
+	return r.staticSkykeyManager.CreateKey(name, skType)
 }
 
 // SkykeyByID gets the Skykey with the given ID from the renter's skykey
@@ -850,6 +847,16 @@ func (r *Renter) SkykeyIDByName(name string) (skykey.SkykeyID, error) {
 	}
 	defer r.tg.Done()
 	return r.staticSkykeyManager.IDByName(name)
+}
+
+// Skykeys returns a slice containing each Skykey being stored by the renter.
+func (r *Renter) Skykeys() ([]skykey.Skykey, error) {
+	if err := r.tg.Add(); err != nil {
+		return nil, err
+	}
+	defer r.tg.Done()
+
+	return r.staticSkykeyManager.Skykeys(), nil
 }
 
 // Enforce that Renter satisfies the modules.Renter interface.
@@ -904,6 +911,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),
 
+		staticProjectDownloadByRootManager: new(projectDownloadByRootManager),
+
 		cs:                    cs,
 		deps:                  deps,
 		g:                     g,
@@ -919,8 +928,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 	close(r.uploadHeap.pauseChan)
 
-	// Initialize the loggers so that they are available for the rest of the the
-	// components start up.
+	// Initialize the loggers so that they are available for the components as
+	// the components start up.
 	var err error
 	r.log, err = persist.NewFileLogger(filepath.Join(r.persistDir, logFile))
 	if err != nil {

@@ -43,17 +43,9 @@ func (h *Host) staticPayByEphemeralAccount(stream siamux.Stream) (modules.Paymen
 		return nil, errors.AddContext(err, "Could not read PayByEphemeralAccountRequest")
 	}
 
-	// get the current account balance.
-	accountBalance := h.staticAccountManager.callAccountBalance(req.Message.Account)
-
 	// process the request
 	if err := h.staticAccountManager.callWithdraw(&req.Message, req.Signature, req.Priority); err != nil {
 		return nil, errors.AddContext(err, "Withdraw failed")
-	}
-
-	// send the response
-	if err := modules.RPCWrite(stream, modules.PayByEphemeralAccountResponse{Balance: accountBalance}); err != nil {
-		return nil, errors.AddContext(err, "Could not send PayByEphemeralAccountResponse")
 	}
 
 	// Payment done through EAs don't move collateral
@@ -87,7 +79,10 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 	}
 
 	// get the current blockheight
-	bh := h.BlockHeight()
+	h.mu.RLock()
+	bh := h.blockHeight
+	sk := h.secretKey
+	h.mu.RUnlock()
 
 	// extract the proposed revision
 	currentRevision, err := so.recentRevision()
@@ -104,13 +99,10 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 
 	// sign the revision
 	renterSignature := signatureFromRequest(currentRevision, pbcr)
-	txn, err := createRevisionSignature(paymentRevision, renterSignature, h.secretKey, h.blockHeight)
+	txn, err := createRevisionSignature(paymentRevision, renterSignature, sk, bh)
 	if err != nil {
 		return nil, errors.AddContext(err, "Could not create revision signature")
 	}
-
-	// get account balance before adding funds.
-	accBalance := h.staticAccountManager.callAccountBalance(accountID)
 
 	// extract the payment output & update the storage obligation with the
 	// host's signature
@@ -129,7 +121,6 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 	var sig crypto.Signature
 	copy(sig[:], txn.HostSignature().Signature[:])
 	err = modules.RPCWrite(stream, modules.PayByContractResponse{
-		Balance:   accBalance,
 		Signature: sig,
 	})
 	if err != nil {
@@ -188,7 +179,7 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 
 	// sign the revision
 	renterSignature := signatureFromRequest(currentRevision, pbcr)
-	txn, err := createRevisionSignature(paymentRevision, renterSignature, h.secretKey, h.blockHeight)
+	txn, err := createRevisionSignature(paymentRevision, renterSignature, h.secretKey, bh)
 	if err != nil {
 		return types.ZeroCurrency, errors.AddContext(err, "Could not create revision signature")
 	}
