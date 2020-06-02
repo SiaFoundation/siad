@@ -44,6 +44,9 @@ type (
 		// The actual price table.
 		staticPriceTable modules.RPCPriceTable
 
+		// The time at which the price table expires.
+		staticExpiryTime time.Time
+
 		// The next time that the worker should try to update the price table.
 		staticUpdateTime time.Time
 
@@ -97,7 +100,7 @@ func (w *worker) staticSetPriceTable(pt *workerPriceTable) {
 // before the current time, and the price table expiry defaults to the zero
 // time.
 func (wpt *workerPriceTable) staticValid() bool {
-	return wpt.staticPriceTable.Expiry > time.Now().Unix()
+	return time.Now().After(wpt.staticExpiryTime)
 }
 
 // managedUpdatePriceTable performs the UpdatePriceTableRPC on the host.
@@ -142,6 +145,7 @@ func (w *worker) staticUpdatePriceTable() {
 			// table, need to make a new one.
 			pt := &workerPriceTable{
 				staticPriceTable:          currentPT.staticPriceTable,
+				staticExpiryTime:          currentPT.staticExpiryTime,
 				staticUpdateTime:          cooldownUntil(currentPT.staticConsecutiveFailures),
 				staticConsecutiveFailures: currentPT.staticConsecutiveFailures + 1,
 				staticRecentErr:           err,
@@ -213,6 +217,7 @@ func (w *worker) staticUpdatePriceTable() {
 	// previously the devs like to be able to see what it was.
 	wpt := &workerPriceTable{
 		staticPriceTable:          pt,
+		staticExpiryTime:          time.Now().Add(pt.Validity),
 		staticUpdateTime:          time.Now().Add(updateTimeInterval),
 		staticConsecutiveFailures: 0,
 		staticRecentErr:           currentPT.staticRecentErr,
