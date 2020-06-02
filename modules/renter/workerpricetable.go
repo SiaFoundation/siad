@@ -17,9 +17,6 @@ var (
 	// the host's prices. This is a temporary variable and will be replaced when
 	// we add a duration to the host's price table. For now it's just half of
 	// the rpcPriceGuaranteePeriod set on the host
-	//
-	// TODO: Need to switch to setting the price table update based on the host
-	// timeout instead.
 	updateTimeInterval = build.Select(build.Var{
 		Standard: 5 * time.Minute,
 		Dev:      3 * time.Minute,
