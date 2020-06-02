@@ -470,19 +470,25 @@ func TestFileContractUnspentOutputs(t *testing.T) {
 	// wallet should report the unspent output (the storage proof is missed
 	// because we did not upload any data to the contract -- the host has no
 	// incentive to submit a proof)
-	outputID := contract.ID.StorageProofOutputID(types.ProofMissed, 0)
-	wug, err := renter.WalletUnspentGet()
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		outputID := contract.ID.StorageProofOutputID(types.ProofMissed, 0)
+		wug, err := renter.WalletUnspentGet()
+		if err != nil {
+			return err
+		}
+		var found bool
+		for _, o := range wug.Outputs {
+			if types.SiacoinOutputID(o.ID) == outputID {
+				found = true
+			}
+		}
+		if !found {
+			return errors.New("wallet's spendable outputs did not contain file contract output")
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	var found bool
-	for _, o := range wug.Outputs {
-		if types.SiacoinOutputID(o.ID) == outputID {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("wallet's spendable outputs did not contain file contract output")
 	}
 }
 
