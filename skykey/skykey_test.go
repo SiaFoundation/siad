@@ -108,7 +108,7 @@ func TestSkykeyManager(t *testing.T) {
 	var randomID SkykeyID
 	fastrand.Read(randomID[:])
 	_, err = keyMan.KeyByID(randomID)
-	if err != errNoSkykeysWithThatID {
+	if err != ErrNoSkykeysWithThatID {
 		t.Fatal(err)
 	}
 
