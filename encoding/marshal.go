@@ -355,7 +355,11 @@ func (d *Decoder) Decode(v interface{}) (err error) {
 	// note that this allows us to skip boundary checks during decoding
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("could not decode type %s: %v", pval.Elem().Type().String(), r)
+			if re, ok := r.(error); ok {
+				err = fmt.Errorf("could not decode type %s: %w", pval.Elem().Type().String(), re)
+			} else {
+				err = fmt.Errorf("could not decode type %s: %v", pval.Elem().Type().String(), r)
+			}
 		}
 	}()
 

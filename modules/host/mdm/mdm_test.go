@@ -211,6 +211,9 @@ func (mdm *MDM) ExecuteProgramWithBuilderManualFinalize(tb *testProgramBuilder, 
 // asserted using the TestValues type or they will be asserted implicitly when
 // using ExecuteProgramWithBuilder.
 func (o Output) assert(newSize uint64, newMerkleRoot crypto.Hash, proof []crypto.Hash, output []byte) error {
+	if o.Error != nil {
+		return fmt.Errorf("output contained error: %v", o.Error)
+	}
 	if o.NewSize != newSize {
 		return fmt.Errorf("expected newSize %v but got %v", newSize, o.NewSize)
 	}

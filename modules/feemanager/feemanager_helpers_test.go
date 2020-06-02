@@ -28,8 +28,13 @@ func addRandomFee(fm *FeeManager) (modules.FeeUID, error) {
 // addRandomFees will add a random number of fees to the FeeManager, always at
 // least 1.
 func addRandomFees(fm *FeeManager) ([]modules.FeeUID, error) {
+	return addRandomFeesN(fm, fastrand.Intn(5)+1)
+}
+
+// addRandomFeesN will add N number of fees to the FeeManager
+func addRandomFeesN(fm *FeeManager, n int) ([]modules.FeeUID, error) {
 	var uids []modules.FeeUID
-	for i := 0; i < fastrand.Intn(5)+1; i++ {
+	for i := 0; i < n; i++ {
 		uid, err := addRandomFee(fm)
 		if err != nil {
 			return nil, err

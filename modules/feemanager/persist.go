@@ -221,6 +221,47 @@ func (ps *persistSubsystem) callPersistNewFee(fee modules.AppFee) error {
 	return ps.managedAppendEntry(entry)
 }
 
+// callPersistTransaction will persist a transaction to the persist file.
+func (ps *persistSubsystem) callPersistTransaction(txn types.Transaction) error {
+	entrys, err := createTransactionEntrys(txn)
+	if err != nil {
+		return errors.AddContext(err, "unable to create transaction entries")
+	}
+	return ps.managedAppendEntrys(entrys)
+}
+
+// callPersistTxnCreated will persist a transaction created entry to the persist
+// file.
+func (ps *persistSubsystem) callPersistTxnCreated(feeUIDs []modules.FeeUID, txnID types.TransactionID) error {
+	entrys, err := createTxnCreatedEntrys(feeUIDs, txnID)
+	if err != nil {
+		return errors.AddContext(err, "unable to create transaction created entrys")
+	}
+	return ps.managedAppendEntrys(entrys)
+}
+
+// managedAppendEntriy will take a slice of new encoded entries and append them
+// to the persist file.
+func (ps *persistSubsystem) managedAppendEntrys(entrys [][persistEntrySize]byte) error {
+	var entriesBytes []byte
+	for _, entry := range entrys {
+		entriesBytes = append(entriesBytes, entry[:]...)
+	}
+	ps.mu.Lock()
+	_, err := ps.persistFile.WriteAt(entriesBytes, int64(ps.latestOffset))
+	if err == nil {
+		// Only update the total size if the append happened without issues.
+		ps.latestOffset += uint64(persistEntrySize * len(entrys))
+	}
+	ps.mu.Unlock()
+	if err != nil {
+		return errors.AddContext(err, "unable to append entries")
+	}
+	// Ensure that the new update is synced and the header of the persist file
+	// gets updated accordingly.
+	return ps.staticSyncCoordinator.managedSyncPersist()
+}
+
 // managedAppendEntry will take a new encoded entry and append it to the persist
 // file.
 func (ps *persistSubsystem) managedAppendEntry(entry [persistEntrySize]byte) error {

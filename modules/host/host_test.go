@@ -750,17 +750,18 @@ func (p *renterHostPair) managedUpdatePriceTable(payByFC bool) error {
 		}
 	}
 
+	// read the tracked response
+	var tracked modules.RPCTrackedPriceTableResponse
+	err = modules.RPCRead(stream, &tracked)
+	if err != nil {
+		return err
+	}
+
 	// update the price table
 	p.mu.Lock()
 	p.pt = &pt
 	p.ptExpiry = time.Now().Add(pt.Validity)
 	p.mu.Unlock()
-
-	// expect clean stream close
-	err = modules.RPCRead(stream, struct{}{})
-	if !errors.Contains(err, io.ErrClosedPipe) {
-		return err
-	}
 
 	return nil
 }
