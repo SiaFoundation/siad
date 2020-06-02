@@ -116,7 +116,7 @@ func (w *worker) managedKill() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	select{
+	select {
 	case <-w.killChan:
 		return
 	default:
