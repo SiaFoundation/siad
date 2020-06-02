@@ -117,7 +117,9 @@ func (wp *workerPool) callUpdate() {
 		_, exists := contractMap[id]
 		if !exists {
 			delete(wp.workers, id)
-			close(worker.killChan)
+			// Kill the worker in a goroutine. This avoids locking issues, as
+			// wp.mu is currently locked.
+			go worker.managedKill()
 		}
 	}
 }
@@ -167,7 +169,9 @@ func (r *Renter) newWorkerPool() *workerPool {
 	wp.renter.tg.OnStop(func() error {
 		wp.mu.RLock()
 		for _, w := range wp.workers {
-			close(w.killChan)
+			// Kill the worker in a goroutine. This avoids locking issues, as
+			// wp.mu is currently read locked.
+			go w.managedKill()
 		}
 		wp.mu.RUnlock()
 		return nil
