@@ -101,13 +101,13 @@ func (i *instructionDropSectors) Collateral() types.Currency {
 }
 
 // Cost returns the Cost of the DropSectors instruction.
-func (i *instructionDropSectors) Cost() (executionCost, refund types.Currency, err error) {
+func (i *instructionDropSectors) Cost() (executionCost, storage types.Currency, err error) {
 	numSectorsDropped, err := i.staticData.Uint64(i.numSectorsOffset)
 	if err != nil {
 		err = fmt.Errorf("bad input: numSectorsOffset: %v", err)
 		return
 	}
-	executionCost, refund = modules.MDMDropSectorsCost(i.staticState.priceTable, numSectorsDropped)
+	executionCost, storage = modules.MDMDropSectorsCost(i.staticState.priceTable, numSectorsDropped)
 	return
 }
 

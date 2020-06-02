@@ -18,10 +18,10 @@ type (
 		programData *bytes.Buffer
 
 		// Cost related fields.
-		executionCost    types.Currency
-		potentialRefund  types.Currency
-		riskedCollateral types.Currency
-		usedMemory       uint64
+		executionCost     types.Currency
+		additionalStorage types.Currency
+		riskedCollateral  types.Currency
+		usedMemory        uint64
 	}
 )
 
@@ -106,10 +106,10 @@ func (pb *ProgramBuilder) AddReadOffsetInstruction(length, offset uint64, merkle
 	pb.program = append(pb.program, i)
 	// Update cost, collateral and memory usage.
 	collateral := MDMReadCollateral()
-	cost, refund := MDMReadCost(pb.staticPT, length)
+	cost, storage := MDMReadCost(pb.staticPT, length)
 	memory := MDMReadMemory()
 	time := uint64(MDMTimeReadOffset)
-	pb.addInstruction(collateral, cost, refund, memory, time)
+	pb.addInstruction(collateral, cost, storage, memory, time)
 }
 
 // AddReadSectorInstruction adds a ReadSector instruction to the program.
@@ -128,15 +128,15 @@ func (pb *ProgramBuilder) AddReadSectorInstruction(length, offset uint64, merkle
 	pb.program = append(pb.program, i)
 	// Update cost, collateral and memory usage.
 	collateral := MDMReadCollateral()
-	cost, refund := MDMReadCost(pb.staticPT, length)
+	cost, storage := MDMReadCost(pb.staticPT, length)
 	memory := MDMReadMemory()
 	time := uint64(MDMTimeReadSector)
-	pb.addInstruction(collateral, cost, refund, memory, time)
+	pb.addInstruction(collateral, cost, storage, memory, time)
 }
 
 // Cost returns the current cost of the program being built by the builder. If
 // 'finalized' is 'true', the memory cost of finalizing the program is included.
-func (pb *ProgramBuilder) Cost(finalized bool) (cost, refund, collateral types.Currency) {
+func (pb *ProgramBuilder) Cost(finalized bool) (cost, storage, collateral types.Currency) {
 	// Calculate the init cost.
 	cost = MDMInitCost(pb.staticPT, uint64(pb.programData.Len()), uint64(len(pb.program)))
 
@@ -147,7 +147,7 @@ func (pb *ProgramBuilder) Cost(finalized bool) (cost, refund, collateral types.C
 	if !pb.readonly && finalized {
 		cost = cost.Add(MDMMemoryCost(pb.staticPT, pb.usedMemory, MDMTimeCommit))
 	}
-	return cost, pb.potentialRefund, pb.riskedCollateral
+	return cost, pb.additionalStorage, pb.riskedCollateral
 }
 
 // Program returns the built program and programData.
@@ -157,16 +157,16 @@ func (pb *ProgramBuilder) Program() (Program, ProgramData) {
 
 // addInstruction adds the collateral, cost, refund and memory cost of an
 // instruction to the builder's state.
-func (pb *ProgramBuilder) addInstruction(collateral, cost, refund types.Currency, memory, time uint64) {
+func (pb *ProgramBuilder) addInstruction(collateral, cost, storage types.Currency, memory, time uint64) {
 	// Update collateral
 	pb.riskedCollateral = pb.riskedCollateral.Add(collateral)
 	// Update memory and memory cost.
 	pb.usedMemory += memory
 	memoryCost := MDMMemoryCost(pb.staticPT, pb.usedMemory, time)
 	pb.executionCost = pb.executionCost.Add(memoryCost)
-	// Update execution cost and refund.
+	// Update execution cost and storage.
 	pb.executionCost = pb.executionCost.Add(cost)
-	pb.potentialRefund = pb.potentialRefund.Add(refund)
+	pb.additionalStorage = pb.additionalStorage.Add(storage)
 }
 
 // NewAppendInstruction creates an Instruction from arguments.

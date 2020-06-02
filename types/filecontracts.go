@@ -299,6 +299,11 @@ func (fcr FileContractRevision) MissedRenterOutput() SiacoinOutput {
 	return fcr.NewMissedProofOutputs[0]
 }
 
+// MissedRenterPayout gets the value of the renter's missed proof output.
+func (fcr FileContractRevision) MissedRenterPayout() Currency {
+	return fcr.MissedRenterOutput().Value
+}
+
 // MissedHostOutput gets the host's missed proof output.
 func (fcr FileContractRevision) MissedHostOutput() SiacoinOutput {
 	return fcr.NewMissedProofOutputs[1]
@@ -315,6 +320,15 @@ func (fcr FileContractRevision) MissedVoidOutput() (SiacoinOutput, error) {
 		return SiacoinOutput{}, ErrMissingVoidOutput
 	}
 	return fcr.NewMissedProofOutputs[2], nil
+}
+
+// MissedVoidPayout gets the void's missed proof output's value.
+func (fcr FileContractRevision) MissedVoidPayout() (Currency, error) {
+	sco, err := fcr.MissedVoidOutput()
+	if err != nil {
+		return Currency{}, err
+	}
+	return sco.Value, nil
 }
 
 // StorageProofOutputID returns the ID of an output created by a file

@@ -126,7 +126,8 @@ type (
 		ProgramDataLength uint64
 	}
 
-	// RPCExecuteProgramResponse todo missing docstring
+	// RPCExecuteProgramResponse is the response sent by the host for each
+	// executed MDMProgram instruction.
 	RPCExecuteProgramResponse struct {
 		AdditionalCollateral types.Currency
 		OutputLength         uint64
@@ -135,7 +136,22 @@ type (
 		Proof                []crypto.Hash
 		Error                error
 		TotalCost            types.Currency
-		PotentialRefund      types.Currency
+		StorageCost          types.Currency
+	}
+
+	// RPCExecuteProgramRevisionSigningRequest is the request sent by the renter
+	// for updating a contract when executing a write MDM program.
+	RPCExecuteProgramRevisionSigningRequest struct {
+		RenterSig            []byte
+		NewRevisionNumber    uint64
+		NewValidProofValues  []types.Currency
+		NewMissedProofValues []types.Currency
+	}
+
+	// RPCExecuteProgramRevisionSigningResponse is the response from the host,
+	// containing the host signature for the new revision.
+	RPCExecuteProgramRevisionSigningResponse struct {
+		HostSig []byte
 	}
 
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table
@@ -170,7 +186,7 @@ func (epr RPCExecuteProgramResponse) MarshalSia(w io.Writer) error {
 	_ = ec.Encode(epr.Proof)
 	_ = ec.Encode(errStr)
 	_ = ec.Encode(epr.TotalCost)
-	_ = ec.Encode(epr.PotentialRefund)
+	_ = ec.Encode(epr.StorageCost)
 	return ec.Err()
 }
 
@@ -185,7 +201,7 @@ func (epr *RPCExecuteProgramResponse) UnmarshalSia(r io.Reader) error {
 	_ = dc.Decode(&epr.Proof)
 	_ = dc.Decode(&errStr)
 	_ = dc.Decode(&epr.TotalCost)
-	_ = dc.Decode(&epr.PotentialRefund)
+	_ = dc.Decode(&epr.StorageCost)
 	if errStr != "" {
 		epr.Error = errors.New(errStr)
 	}

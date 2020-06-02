@@ -156,9 +156,9 @@ func (v *TestValues) AssertOutput(output Output) error {
 		return fmt.Errorf("execution costs don't match: %v != %v",
 			cost.HumanString(), output.ExecutionCost.HumanString())
 	}
-	if !output.PotentialRefund.Equals(refund) {
+	if !output.AdditionalStorageCost.Equals(refund) {
 		return fmt.Errorf("refund doesn't match: %v != %v",
-			refund.HumanString(), output.PotentialRefund.HumanString())
+			refund.HumanString(), output.AdditionalStorageCost.HumanString())
 	}
 	if !output.AdditionalCollateral.Equals(collateral) {
 		return fmt.Errorf("collateral doesn't match: %v != %v",

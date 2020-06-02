@@ -69,12 +69,12 @@ func (i *instructionReadOffset) Collateral() types.Currency {
 }
 
 // Cost returns the cost of a ReadSector instruction.
-func (i *instructionReadOffset) Cost() (executionCost, refund types.Currency, err error) {
+func (i *instructionReadOffset) Cost() (executionCost, storage types.Currency, err error) {
 	length, err := i.staticData.Uint64(i.lengthOffset)
 	if err != nil {
 		return
 	}
-	executionCost, refund = modules.MDMReadCost(i.staticState.priceTable, length)
+	executionCost, storage = modules.MDMReadCost(i.staticState.priceTable, length)
 	return
 }
 

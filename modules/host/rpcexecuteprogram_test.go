@@ -128,7 +128,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	pb := modules.NewProgramBuilder(pt)
 	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
 	program, data := pb.Program()
-	programCost, refund, collateral := pb.Cost(true)
+	programCost, storageCost, collateral := pb.Cost(true)
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
@@ -195,8 +195,8 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	if !resp.AdditionalCollateral.Equals(collateral) {
 		t.Fatalf("collateral doesnt't match expected collateral: %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
 	}
-	if !resp.PotentialRefund.Equals(refund) {
-		t.Fatalf("refund doesn't match expected refund: %v != %v", resp.PotentialRefund.HumanString(), refund.HumanString())
+	if !resp.StorageCost.Equals(storageCost) {
+		t.Fatalf("storage cost doesn't match expected storage cost: %v != %v", resp.StorageCost.HumanString(), storageCost.HumanString())
 	}
 	if uint64(len(resp.Output)) != modules.SectorSize {
 		t.Fatalf("expected returned data to have length %v but was %v", modules.SectorSize, len(resp.Output))
@@ -349,8 +349,8 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	if !resp.AdditionalCollateral.Equals(collateral) {
 		t.Fatalf("collateral doesnt't match expected collateral: %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
 	}
-	if !resp.PotentialRefund.Equals(refund) {
-		t.Fatalf("refund doesn't match expected refund: %v != %v", resp.PotentialRefund.HumanString(), refund.HumanString())
+	if !resp.StorageCost.Equals(refund) {
+		t.Fatalf("storage cost doesn't match expected storage cost: %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
 	}
 	if uint64(len(resp.Output)) != length {
 		t.Fatalf("expected returned data to have length %v but was %v", length, len(resp.Output))
@@ -482,8 +482,8 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	if !resp.TotalCost.Equals(programCost) {
 		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
 	}
-	if !resp.PotentialRefund.Equals(refund) {
-		t.Fatalf("wrong PotentialRefund %v != %v", resp.PotentialRefund.HumanString(), refund.HumanString())
+	if !resp.StorageCost.Equals(refund) {
+		t.Fatalf("wrong StorageCost %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
 	}
 	// Make sure the right amount of money remains on the EA.
 	am := rhp.staticHT.host.staticAccountManager
