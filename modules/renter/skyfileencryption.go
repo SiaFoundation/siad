@@ -157,7 +157,7 @@ func encryptBaseSectorWithSkykey(baseSector []byte, plaintextLayout skyfileLayou
 	var encryptedLayout skyfileLayout
 	encryptedLayout.decode(baseSector)
 	encryptedLayout.version = plaintextLayout.version
-	encryptedLayout.cipherType = baseSectorKey.CipherType
+	encryptedLayout.cipherType = baseSectorKey.CipherType()
 
 	// Finally: add the key ID and nonce to the base sector in plaintext.
 	keyID := sk.ID()

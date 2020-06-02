@@ -19,10 +19,18 @@ type (
 		Specifier InstructionSpecifier
 		Args      []byte
 	}
-	// Program specifies a generic program used as input to `mdm.ExecuteProram`.
-	Program []Instruction
 	// InstructionSpecifier specifies the type of the instruction.
 	InstructionSpecifier types.Specifier
+	// Program specifies a generic program used as input to `mdm.ExecuteProram`.
+	Program []Instruction
+	// ProgramData contains the raw byte data for the program.
+	ProgramData []byte
+)
+
+const (
+	// MDMCancellationTokenLen is the length of a program's cancellation token
+	// in bytes.
+	MDMCancellationTokenLen = 16
 )
 
 const (
@@ -51,6 +59,9 @@ const (
 	// instruction.
 	MDMTimeInitSingleInstruction = 1
 
+	// MDMTimeReadOffset is the time for executing a 'ReadOffset' instruction.
+	MDMTimeReadOffset = 1000
+
 	// MDMTimeReadSector is the time for executing a 'ReadSector' instruction.
 	MDMTimeReadSector = 1000
 
@@ -72,6 +83,10 @@ const (
 	// RPCIReadSectorLen is the expected length of the 'Args' of a ReadSector
 	// instruction.
 	RPCIReadSectorLen = 25
+
+	// RPCIReadOffsetLen is the expected length of the 'Args' of a ReadOffset
+	// instruction.
+	RPCIReadOffsetLen = 17
 )
 
 var (
@@ -93,6 +108,9 @@ var (
 
 	// SpecifierHasSector is the specifier for the HasSector instruction.
 	SpecifierHasSector = InstructionSpecifier{'H', 'a', 's', 'S', 'e', 'c', 't', 'o', 'r'}
+
+	// SpecifierReadOffset is the specifier for the ReadOffset instruction.
+	SpecifierReadOffset = InstructionSpecifier{'R', 'e', 'a', 'd', 'O', 'f', 'f', 's', 'e', 't'}
 
 	// SpecifierReadSector is the specifier for the ReadSector instruction.
 	SpecifierReadSector = InstructionSpecifier{'R', 'e', 'a', 'd', 'S', 'e', 'c', 't', 'o', 'r'}
@@ -276,6 +294,7 @@ func (p Program) ReadOnly() bool {
 			return false
 		case SpecifierHasSector:
 		case SpecifierReadSector:
+		case SpecifierReadOffset:
 		default:
 			build.Critical("ReadOnly: unknown instruction")
 		}
@@ -294,6 +313,7 @@ func (p Program) RequiresSnapshot() bool {
 			return true
 		case SpecifierHasSector:
 		case SpecifierReadSector:
+		case SpecifierReadOffset:
 		default:
 			build.Critical("RequiresSnapshot: unknown instruction")
 		}

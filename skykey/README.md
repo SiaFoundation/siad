@@ -19,6 +19,36 @@ once again.
 A `Skykey` is a key associated with a name to be used in Skynet to share
 encrypted files. Each key has a name and a unique identifier.
 
+The `Skykey` format is one byte called the `SkykeyType` followed by rest of the
+data associated with that key.
+
+## Types
+
+`TypeInvalid` represents an unusable, invalid key.
+
+`TypePublicID` represents a skykey that uses the XChaCha20 cipher schemes and is
+currently used for encrypting skyfiles. In skyfile encryption the key ID is
+revealed in plaintext, therefore its name is `TypePublicID` Implicitly, this
+specifies the entropy length as the length of a key and nonce in that scheme.
+Its byte representation is 1 type byte and 56 entropy bytes.
+
+## Encoding
+
+`Skykeys` are meant to be shared using the string format which is a URI encoding
+with the optional `skykey:"` scheme and an optional `name` parameter including
+the skykey name. The key data (type and entropy) is stored as the base64-encoded
+path.
+
+Some examples of valid encodings below:
+- (No URI scheme and no name): `AT7-P751d_SEBhXvbOQTfswB62n2mqMe0Q89cQ911KGeuTIV2ci6GjG3Aj5CuVZUDS6hkG7pHXXZ`
+- (No name): `skykey:AT7-P751d_SEBhXvbOQTfswB62n2mqMe0Q89cQ911KGeuTIV2ci6GjG3Aj5CuVZUDS6hkG7pHXXZ`
+- (No URI scheme): `AT7-P751d_SEBhXvbOQTfswB62n2mqMe0Q89cQ911KGeuTIV2ci6GjG3Aj5CuVZUDS6hkG7pHXXZ?name=ExampleKey`
+- (Includes URI scheme and name): `skykey:AT7-P751d_SEBhXvbOQTfswB62n2mqMe0Q89cQ911KGeuTIV2ci6GjG3Aj5CuVZUDS6hkG7pHXXZ?name=ExampleKey`
+
+It is recommended that users include the URI scheme for maximum clarity, but the
+`FromString` method will be accept any strings of the above forms.
+
+
 ## Usage
 
 Skykeys are primarily used for encrypting skyfiles. Currently all skykeys are used with the 

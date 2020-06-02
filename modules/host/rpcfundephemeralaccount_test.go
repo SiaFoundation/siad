@@ -129,6 +129,11 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 			t.Fatalf("Unexpected account balance, expected %v but received %v", prevBalance.Add(funding).HumanString(), currBalance.HumanString())
 		}
 
+		// verify the host responded with the correct new balance.
+		if !currBalance.Equals(fundResponse.Balance) {
+			t.Fatalf("Unexpected returned account balance, expected %v but received %v", fundResponse.Balance, currBalance.HumanString())
+		}
+
 		// verify the funding get added to the host's financial metrics
 		currPotAccFunding := ht.host.FinancialMetrics().PotentialAccountFunding
 		if !currPotAccFunding.Equals(prevPotAccFunding.Add(funding)) {

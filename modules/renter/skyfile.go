@@ -550,7 +550,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParamete
 		if err != nil {
 			return modules.Skylink{}, errors.AddContext(err, "unable to get skykey cipherkey")
 		}
-		fup.CipherType = lup.FileSpecificSkykey.CipherType
+		fup.CipherType = lup.FileSpecificSkykey.CipherType()
 	}
 
 	var fileNode *filesystem.FileNode
@@ -822,7 +822,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 		if err != nil {
 			return errors.AddContext(err, "Error getting fanout CipherKey")
 		}
-		fup.CipherType = fanoutSkykey.CipherType
+		fup.CipherType = fanoutSkykey.CipherType()
 
 		// These fields aren't used yet, but we'll set them anyway to mimic behavior in
 		// upload/download code for consistency.

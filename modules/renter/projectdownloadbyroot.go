@@ -1,358 +1,393 @@
 package renter
 
-// projectdownloadbyroot.go creates a worker project to fetch the data of an
-// underlying sector root.
-
 import (
 	"fmt"
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/threadgroup"
+)
+
+const (
+	// projectDownloadByRootPerformanceDecay defines the amount of decay that is
+	// applied to the exponential weigted average used to compute the
+	// performance of the download by root projects that have run recently.
+	projectDownloadByRootPerformanceDecay = 0.9
 )
 
 var (
-	// ErrRootNotFound is returned if all workers were unable to recover the
-	// root
-	ErrRootNotFound = errors.New("workers were unable to recover the data by sector root - all workers failed")
-
-	// ErrProjectTimedOut is returned when the project timed out
-	ErrProjectTimedOut = errors.New("project timed out")
-
 	// sectorLookupToDownloadRatio is an arbitrary ratio that resembles the
 	// amount of lookups vs downloads. It is used in price gouging checks.
 	sectorLookupToDownloadRatio = 64
 )
 
-// jobDownloadByRoot contains all of the information necessary to execute a
-// perform download job.
-type jobDownloadByRoot struct {
-	// jobDownloadByRoot exists as two phases. The first is a startup phase,
-	// which determines whether or not the host is capable of executing the job.
-	// The second is the fetching phase, where the worker actually fetches data
-	// from the remote host.
-	//
-	// If staticStartupCompleted is set to false, it means the job is in phase
-	// one, and if startupCompleted is set to true, it means the job is in phase
-	// two.
-	staticProject          *projectDownloadByRoot
-	staticStartupCompleted bool
-}
-
-// projectDownloadByRoot is a project to download a piece of data knowing
-// nothing more than the sector root. If the root's location on the network
-// cannot easily be found by looking up a cache, the project will have every
-// single worker check its respective host for the root, and then will
-// coordinate fetching the root among the workers that have the root.
-type projectDownloadByRoot struct {
-	// Information about the data that is being retrieved.
-	staticRoot   crypto.Hash
-	staticLength uint64
-	staticOffset uint64
-
-	// rootFound is a bool indicating that data has been discovered on the
-	// network and is actively being fetched. If rootFound is set to true, any
-	// new workers that discover they have the root in question will go on
-	// standby.
-	//
-	// workersRegistered is the list of workers that are actively working on
-	// either figuring out whether their host has the data, or are working on
-	// actually fetching the data. This map should be empty only if there are no
-	// workers at the moment that are actively tasked with work. A worker that
-	// is woken from standby needs to be placed back into the list of registered
-	// workers when it is removed from standby.
-	//
-	// workersStandby is the list of workers that have completed checking
-	// whether or not the root is available on their host and have discovered
-	// that the root is available, but then the worker did not start fetching
-	// the data. Workers will typically end up on standby if they see that other
-	// workers are actively fetching data. The standby workers get activated if
-	// the other workers fetching data experience errors.
-	rootFound         bool
-	workersRegistered map[string]struct{}
-	workersStandby    []*worker
-
-	// Project output. Once the project has been completed, completeChan will be
-	// closed. The data and error fields contain the final output for the
-	// project.
-	data         []byte
-	err          error
-	completeChan chan struct{}
-
-	staticDeps modules.Dependencies
-	tg         *threadgroup.ThreadGroup
-	mu         sync.Mutex
-}
-
-// callPerformJobDownloadByRoot will perform a download by root job.
-func (jdbr *jobDownloadByRoot) callPerformJobDownloadByRoot(w *worker) {
-	// The job is broken into two phases, startup and resume. A bool in the
-	// worker indicates which phase needs to be run.
-	if jdbr.staticStartupCompleted {
-		jdbr.staticProject.managedResumeJobDownloadByRoot(w)
-	} else {
-		jdbr.staticProject.managedStartJobDownloadByRoot(w)
-	}
-}
-
-// managedRemoveWorker will remove a worker from the project. This is typically
-// called after a worker has finished its job, successfully or unsuccessfully.
-func (pdbr *projectDownloadByRoot) managedRemoveWorker(w *worker) {
-	pdbr.mu.Lock()
-	defer pdbr.mu.Unlock()
-
-	// Delete the worker from the list of registered workers.
-	delete(pdbr.workersRegistered, w.staticHostPubKeyStr)
-
-	// Delete every instance of the worker in the list of standby workers. The
-	// worker should only be in the list once, but we check the whole list
-	// anyway.
-	totalRemoved := 0
-	for i := 0; i < len(pdbr.workersStandby); i++ {
-		if pdbr.workersStandby[i] == w {
-			pdbr.workersStandby = append(pdbr.workersStandby[:i], pdbr.workersStandby[i+1:]...)
-			i-- // Since the array has been shifted, adjust the iterator to ensure every item is visited.
-			totalRemoved++
-		}
-	}
-	if totalRemoved > 1 {
-		w.renter.log.Critical("one worker appeared in the standby list multiple times")
-	}
-
-	// Check whether the pdbr is already completed. If so, nothing else needs to
-	// be done.
-	if pdbr.staticComplete() {
-		return
-	}
-
-	// Sector download is not yet complete. Check whether this is the last
-	// worker in the pdbr, requiring a shutdown / failure to be sent.
-	if len(pdbr.workersRegistered) == 0 {
-		// Sanity check - a worker should only go on standby if there are
-		// registered workers actively trying to download the data. If those
-		// workers fail and remove themselves, they should wake a standby worker
-		// before removing themselves from the project, meaning that there
-		// should never be a case where the list of registered workers is empty
-		// but the list of standby workers is not empty.
-		if len(pdbr.workersStandby) != 0 {
-			w.renter.log.Critical("pdbr has standby workers but no registered workers:", len(pdbr.workersStandby))
-		}
-		pdbr.markComplete(ErrRootNotFound)
-	}
-}
-
-// managedResumeJobDownloadByRoot is called after a worker has confirmed that a
-// root exists on a host, and after the worker has gained the imperative to
-// fetch the data from the host.
-func (pdbr *projectDownloadByRoot) managedResumeJobDownloadByRoot(w *worker) {
-	data, err := w.Download(pdbr.staticRoot, pdbr.staticOffset, pdbr.staticLength)
-	if err != nil {
-		w.renter.log.Debugln("worker failed a projectDownloadByRoot job:", err)
-		pdbr.managedWakeStandbyWorker()
-		pdbr.managedRemoveWorker(w)
-		return
-	}
-	// Block if necessary.
-	pdbr.staticDeps.Disrupt("BlockUntilTimeout")
-
-	// Set the data and perform cleanup.
-	pdbr.mu.Lock()
-	pdbr.data = data
-	pdbr.markComplete(nil)
-	pdbr.mu.Unlock()
-}
-
-// managedStartJobDownloadByRoot will execute the first stage of downloading
-// data by merkle root for a worker. The first stage consists of determining
-// whether or not the worker's host has the merkle root in question.
-func (pdbr *projectDownloadByRoot) managedStartJobDownloadByRoot(w *worker) {
-	// Check if the project is already completed, do no more work if so.
-	if pdbr.staticComplete() {
-		pdbr.managedRemoveWorker(w)
-		return
-	}
-
-	// Download a single byte to see if the root is available.
-	_, err := w.Download(pdbr.staticRoot, 0, 1)
-	if err != nil {
-		w.renter.log.Debugln("worker failed a download by root job:", err)
-		pdbr.managedRemoveWorker(w)
-		return
-	}
-
-	// The host has the root. Check in with the project and see if the root
-	// needs to be fetched. If 'rootFound' is set to false, it means that
-	// nobody is actively fetching the root.
-	pdbr.mu.Lock()
-	if pdbr.rootFound {
-		pdbr.workersStandby = append(pdbr.workersStandby, w)
-		pdbr.mu.Unlock()
-		return
-	}
-	pdbr.rootFound = true
-	pdbr.mu.Unlock()
-
-	// Have the worker attempt the full download.
-	pdbr.managedResumeJobDownloadByRoot(w)
-	return
-}
-
-// managedWakeStandbyWorker is called when a worker that was performing actual
-// download work has failed and needs to be replaced. If there are any standby
-// workers, one of the standby workers will assume its place.
+// projectDownloadByRootManager tracks metrics across multiple runs of
+// DownloadByRoot projects, and is used by the projects to set expectations for
+// performance.
 //
-// managedWakeStandbyWorker assumes that rootFound is currently set to true,
-// because it will be called by a worker that failed and had set rootFound to
-// true.
-func (pdbr *projectDownloadByRoot) managedWakeStandbyWorker() {
-	// If there are no workers on standby, set rootFound to false, indicating
-	// that no workers are actively fetching the piece; any worker that finds
-	// the piece should immediately start fetching it.
-	pdbr.mu.Lock()
-	if len(pdbr.workersStandby) == 0 {
-		pdbr.rootFound = false
-		pdbr.mu.Unlock()
-		return
-	}
-	// There is a standby worker that has found the piece previously, pop it off
-	// of the array.
-	newWorker := pdbr.workersStandby[0]
-	pdbr.workersStandby = pdbr.workersStandby[1:]
-	pdbr.mu.Unlock()
+// We put downloads into 3 different buckets for performance because the
+// performance characterstics are very different depending on which bucket you
+// are in.
+type projectDownloadByRootManager struct {
+	// Aggregate values for download by root projects. These are typically used
+	// for research purposes, as opposed to being used in real time.
+	totalTime64k     time.Duration
+	totalTime1m      time.Duration
+	totalTime4m      time.Duration
+	totalRequests64k uint64
+	totalRequests1m  uint64
+	totalRequests4m  uint64
 
-	// Schedule a job with the worker to resume the download. Can't download
-	// directly because any work that is being performed needs to go through the
-	// worker so that the worker can actively control how the connection is
-	// used.
-	jdbr := jobDownloadByRoot{
-		staticProject:          pdbr,
-		staticStartupCompleted: true,
-	}
-	newWorker.callQueueJobDownloadByRoot(jdbr)
+	// Decayed values track the recent performance of jobs in each bucket. These
+	// values are generally used to help select workers when scheduling work,
+	// because they are more responsive to changing network conditions.
+	decayedTime64k     float64
+	decayedTime1m      float64
+	decayedTime4m      float64
+	decayedRequests64k float64
+	decayedRequests1m  float64
+	decayedRequests4m  float64
+
+	mu sync.Mutex
 }
 
-// markComplete marks the project as done and assigns the provided error to
-// pdbr.err.
-func (pdbr *projectDownloadByRoot) markComplete(err error) {
-	if pdbr.staticComplete() {
-		return
-	}
-	pdbr.err = err
-	close(pdbr.completeChan)
-}
-
-// threadedHandleTimeout sets a timeout on the project. If the root is not found
-// before the timeout expires, the project is finished. A zero timeout is
-// ignored.
-func (pdbr *projectDownloadByRoot) threadedHandleTimeout(timeout time.Duration) {
-	if timeout <= 0 {
-		return
-	}
-	if err := pdbr.tg.Add(); err != nil {
-		return
-	}
-	defer pdbr.tg.Done()
-
-	// Block until the timeout has expired or the project has completed,
-	// whichever comes first
-	select {
-	case <-pdbr.tg.StopChan():
-		return
-	case <-pdbr.completeChan:
-		return
-	case <-time.After(timeout):
-	}
-	// Project timed out. Trigger waiting depenencies.
-	pdbr.staticDeps.Disrupt("ResumeOnTimeout")
-
-	pdbr.managedTriggerTimeout(timeout)
-}
-
-// managedTriggerTimeout handles a timeout. It will close out the completeChan
-// and set the appropriate error.
-func (pdbr *projectDownloadByRoot) managedTriggerTimeout(t time.Duration) {
-	pdbr.mu.Lock()
-	defer pdbr.mu.Unlock()
-	err := errors.Compose(ErrRootNotFound, errors.AddContext(ErrProjectTimedOut, fmt.Sprintf("timed out after %vs", t.Seconds())))
-	pdbr.markComplete(err)
-}
-
-// staticComplete is a helper function to check if the project has already
-// completed. Workers use this method to determine whether to abort early.
-func (pdbr *projectDownloadByRoot) staticComplete() bool {
-	select {
-	case <-pdbr.completeChan:
-		return true
-	default:
-		return false
+// managedRecordProjectTime adds a download to the historic values of the
+// project manager. It takes a length so that it knows which bucket to put the
+// data in.
+func (m *projectDownloadByRootManager) managedRecordProjectTime(length uint64, timeElapsed time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if length <= 1<<16 {
+		m.totalTime64k += timeElapsed
+		m.totalRequests64k++
+		m.decayedTime64k *= projectDownloadByRootPerformanceDecay
+		m.decayedRequests64k *= projectDownloadByRootPerformanceDecay
+		m.decayedTime64k += float64(timeElapsed)
+		m.decayedRequests64k++
+	} else if length <= 1<<20 {
+		m.totalTime1m += timeElapsed
+		m.totalRequests1m++
+		m.decayedTime1m *= projectDownloadByRootPerformanceDecay
+		m.decayedRequests1m *= projectDownloadByRootPerformanceDecay
+		m.decayedTime1m += float64(timeElapsed)
+		m.decayedRequests1m++
+	} else {
+		m.totalTime4m += timeElapsed
+		m.totalRequests4m++
+		m.decayedTime4m *= projectDownloadByRootPerformanceDecay
+		m.decayedRequests4m *= projectDownloadByRootPerformanceDecay
+		m.decayedTime4m += float64(timeElapsed)
+		m.decayedRequests4m++
 	}
 }
 
-// DownloadByRoot will spin up a project to locate a root and then download that
-// root.
-func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
-	// Create the download by root project.
-	pdbr := &projectDownloadByRoot{
-		staticRoot:   root,
-		staticLength: length,
-		staticOffset: offset,
+// managedAverageProjectTime will return the average download time that projects
+// have had for the given length.
+func (m *projectDownloadByRootManager) managedAverageProjectTime(length uint64) time.Duration {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-		workersRegistered: make(map[string]struct{}),
-
-		completeChan: make(chan struct{}),
-
-		staticDeps: r.deps,
-		tg:         &r.tg,
+	var avg time.Duration
+	if length <= 1<<16 {
+		avg = time.Duration(m.decayedTime64k / m.decayedRequests64k)
+	} else if length <= 1<<20 {
+		avg = time.Duration(m.decayedTime1m / m.decayedRequests1m)
+	} else {
+		avg = time.Duration(m.decayedTime4m / m.decayedRequests4m)
 	}
+	return avg
+}
 
-	// Apply the timeout to the project. A timeout of 0 will be ignored.
+// managedDownloadByRoot will fetch data using the merkle root of that data.
+// Unlike the exported version of this function, this function does not request
+// memory from the memory manager.
+func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
+	// Convenience variable.
+	pm := r.staticProjectDownloadByRootManager
+	// Track the total duration of the project.
+	start := time.Now()
+
+	// Potentially force a timeout via a disrupt for testing.
 	if r.deps.Disrupt("timeoutProjectDownloadByRoot") {
-		pdbr.managedTriggerTimeout(timeout)
-		return nil, pdbr.err
+		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 	}
-	go pdbr.threadedHandleTimeout(timeout)
 
-	// Give the project to every worker. The list of workers needs to be fetched
-	// first, and then the job can be queued because cleanup of the project
-	// assumes that no more workers will be added to the project once the first
-	// worker has begun work.
+	// Create a channel to time out the project. Use a nil channel if the
+	// timeout is zero, so that the timeout never fires.
+	var timeoutChan <-chan time.Time
+	if timeout > 0 {
+		timer := time.NewTimer(timeout)
+		timeoutChan = timer.C
+
+		// Defer a function to clean up the timer so nothing else in the
+		// function needs to worry about it.
+		defer func() {
+			if !timer.Stop() {
+				<-timer.C
+			}
+		}()
+	}
+
+	// Create a channel to signal to workers when the job has been completed.
+	// This will cause any workers who have not yet started the job to ignore it
+	// instead of doing duplicate work.
+	cancelChan := make(chan struct{})
+	defer func() {
+		// Automatically cancel the work when the function exits.
+		close(cancelChan)
+	}()
+
+	// Get the full list of workers and create a channel to receive all of the
+	// results from the workers. The channel is buffered with one slot per
+	// worker, so that the workers do not have to block when returning the
+	// result of the job, even if this thread is not listening.
 	workers := r.staticWorkerPool.callWorkers()
+	staticResponseChan := make(chan *jobHasSectorResponse, len(workers))
+
+	// Filter out all workers that do not support the new protocol. It has been
+	// determined that hosts who do not support the async protocol are not worth
+	// supporting in the new download by root code - it'll remove pretty much
+	// all of the performance advantages. Skynet is being forced to fully
+	// migrate to the async protocol.
+	numAsyncWorkers := 0
+	for _, worker := range workers {
+		cache := worker.staticCache()
+		if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
+			continue
+		}
+
+		// check the worker's pricetable for price gouging for both has and read
+		// sector jobs
+		pt := worker.staticPriceTable().staticPriceTable
+		if err := errors.Compose(checkHasSectorJobGouging(pt, cache.staticRenterAllowance), checkReadSectorJobGouging(pt, cache.staticRenterAllowance)); err != nil {
+			r.log.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
+			continue
+		}
+
+		jhs := &jobHasSector{
+			staticSector:       root,
+			staticResponseChan: staticResponseChan,
+
+			jobGeneric: &jobGeneric{
+				staticCancelChan: cancelChan,
+
+				staticQueue: worker.staticJobHasSectorQueue,
+			},
+		}
+		if !worker.staticJobHasSectorQueue.callAdd(jhs) {
+			// This will filter out any workers that are on cooldown or
+			// otherwise can't participate in the project.
+			continue
+		}
+		workers[numAsyncWorkers] = worker
+		numAsyncWorkers++
+	}
+	workers = workers[:numAsyncWorkers]
+	// If there are no workers remaining, fail early.
 	if len(workers) == 0 {
 		return nil, errors.New("cannot perform DownloadByRoot, no workers in worker pool")
 	}
-	for _, w := range workers {
-		pdbr.workersRegistered[w.staticHostPubKeyStr] = struct{}{}
-	}
-	// Queue the jobs in the workers.
-	jdbr := jobDownloadByRoot{
-		staticProject:          pdbr,
-		staticStartupCompleted: false,
-	}
-	for _, w := range workers {
-		w.callQueueJobDownloadByRoot(jdbr)
+
+	// Create a timer that is used to determine when the project should stop
+	// looking for a better worker, and instead go use the best worker it has
+	// found so far.
+	//
+	// Currently, we track the recent historical performance of projects using
+	// an exponential weighted average. Workers also track their recent
+	// performance using an exponential weighted average. Using these two
+	// values, we can determine whether using a worker is likely to result in
+	// better than historic average performance.
+	//
+	// If a worker does look like it can be used to achieve better than average
+	// performance, we will use that worker immediately. Otherwise, we will wait
+	// for a better worker to appear.
+	//
+	// After we have spent half of the whole historic time waiting for better
+	// workers to appear, we give up and use the best worker that we have found
+	// so far.
+	useBestWorkerChan := make(chan struct{})
+	useBestWorkerTimer := time.AfterFunc(pm.managedAverageProjectTime(length)/2, func() {
+		close(useBestWorkerChan)
+	})
+	// Clean up the timer. AfterFunc doesn't require draining the timer, you
+	// just call Stop. The return value only exists to indicate whether or not
+	// the function ran, which we don't care about.
+	defer func() {
+		useBestWorkerTimer.Stop()
+	}()
+
+	// Run a loop to receive responses from the workers as they figure out
+	// whether or not they have the sector we are looking for. The loop needs to
+	// run until we have tried every worker, which means that the number of
+	// responses must be equal to the number of workers, and the length of the
+	// usable workers map must be 0.
+	//
+	// The usable workers map is a map from the iteration that we found the
+	// worker to the worker. We use a map because it makes it easy to see the
+	// length, is simple enough to implement, and iterating over a whole map
+	// with 30 or so elements in it is not too costly. It is also easy to delete
+	// elements from a map as workers fail.
+	responses := 0
+	usableWorkers := make(map[int]*worker)
+	useBestWorker := false
+	for responses < len(workers) || len(usableWorkers) > 0 {
+		// Check for the timeout. This is done separately to ensure the timeout
+		// has priority.
+		select {
+		case <-timeoutChan:
+			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+		default:
+		}
+
+		var resp *jobHasSectorResponse
+		if len(usableWorkers) > 0 && responses < numAsyncWorkers {
+			// There are usable workers, and there are also workers that have
+			// not reported back yet. Because we have usable workers, we want to
+			// listen on the useBestWorkerChan.
+			select {
+			case <-useBestWorkerChan:
+				useBestWorker = true
+			case resp = <-staticResponseChan:
+				responses++
+			case <-timeoutChan:
+				return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+			}
+		} else if len(usableWorkers) == 0 {
+			// There are no usable workers, which means there's no point
+			// listening on the useBestWorkerChan.
+			select {
+			case resp = <-staticResponseChan:
+				responses++
+			case <-timeoutChan:
+				return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+			}
+		} else {
+			// All workers have responded, which means we should now use the
+			// best worker that we have to attempt the download. No need to wait
+			// for a signal.
+			useBestWorker = true
+		}
+
+		// If we received a response from a worker that is not useful for
+		// completing the project, go back to blocking. This check is ignored if
+		// we are supposed to use the best worker.
+		if (resp == nil || resp.staticErr != nil || !resp.staticAvailable) && !useBestWorker {
+			continue
+		}
+
+		// If there was a positive response, add this worker to the set of
+		// usable workers. Check whether or not this worker is expected to
+		// finish better than the average project time. If so, set a flag so
+		// that the download continues even if we aren't yet ready to use the
+		// best known worker.
+		goodEnough := false
+		if resp != nil && resp.staticErr == nil && resp.staticAvailable {
+			w := resp.staticWorker
+			jq := w.staticJobReadSectorQueue
+			usableWorkers[responses] = w
+			goodEnough = time.Since(start)+jq.callAverageJobTime(length) < pm.managedAverageProjectTime(length)
+		}
+
+		// Determine whether to move forward with the download or wait for more
+		// workers. If the useBestWorker flag is set, we will move forward with
+		// the download. If the most recent worker has an average job time that
+		// would expect us to complete this job faster than usual, we can move
+		// forward with that worker.
+		//
+		// This conditional is  set up as an inverse so that we can continue
+		// rather than putting all of the logic inside a big if block.
+		if !useBestWorker && !goodEnough {
+			continue
+		}
+		// If there are no usable workers, continue.
+		if len(usableWorkers) == 0 {
+			continue
+		}
+
+		// Scan through the set of workers to find the best worker.
+		var bestWorkerIndex int
+		var bestWorker *worker
+		var bestWorkerTime time.Duration
+		for i, w := range usableWorkers {
+			wTime := w.staticJobReadSectorQueue.callAverageJobTime(length)
+			if bestWorkerTime == 0 || wTime < bestWorkerTime {
+				bestWorkerTime = wTime
+				bestWorkerIndex = i
+				bestWorker = w
+			}
+		}
+		// Delete this worker from the set of usable workers, because if this
+		// download fails, the worker shouldn't be used again.
+		delete(usableWorkers, bestWorkerIndex)
+
+		// Queue the job to download the sector root.
+		readSectorRespChan := make(chan *jobReadSectorResponse)
+		jrs := &jobReadSector{
+			staticResponseChan: readSectorRespChan,
+
+			staticLength: length,
+			staticOffset: offset,
+			staticSector: root,
+
+			jobGeneric: &jobGeneric{
+				staticCancelChan: cancelChan,
+
+				staticQueue: bestWorker.staticJobReadSectorQueue,
+			},
+		}
+		if !bestWorker.staticJobReadSectorQueue.callAdd(jrs) {
+			continue
+		}
+
+		// Wait for a response from the worker.
+		//
+		// TODO: This worker is currently a single point of failure, if the
+		// worker takes longer to respond than the lookup timeout, the project
+		// will fail even though there are potentially more workers to be using.
+		// I think the best way to fix this is to swich to the multi-worker
+		// paradigm, where we use multiple workers to fetch a single sector
+		// root.
+		var readSectorResp *jobReadSectorResponse
+		select {
+		case readSectorResp = <-readSectorRespChan:
+		case <-timeoutChan:
+			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+		}
+
+		// If the read sector job was not successful, move on to the next
+		// worker.
+		if readSectorResp == nil || readSectorResp.staticErr != nil {
+			continue
+		}
+
+		// We got a good response! Record the total project time and return the
+		// data.
+		pm.managedRecordProjectTime(length, time.Since(start))
+		return readSectorResp.staticData, nil
 	}
 
-	// Block until the project has completed.
-	select {
-	case <-pdbr.tg.StopChan():
-	case <-pdbr.completeChan:
-	}
+	// All workers have failed.
+	return nil, ErrRootNotFound
+}
 
-	// Fetch the error and the data. Then nil out the data in the pdbr so that
-	// other workers who haven't finished and are holding a reference to the
-	// pdbr aren't keeping a reference to this heavy object.
-	pdbr.mu.Lock()
-	err := pdbr.err
-	data := pdbr.data
-	pdbr.data = nil
-	pdbr.mu.Unlock()
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to fetch sector root from the network")
+// DownloadByRoot will fetch data using the merkle root of that data. This uses
+// all of the async worker primitives to improve speed and throughput.
+func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
+	// Block until there is memory available, and then ensure the memory gets
+	// returned.
+	if !r.memoryManager.Request(length, true) {
+		return nil, errors.New("renter shut down before memory could be allocated for the project")
 	}
-	return data, nil
+	defer r.memoryManager.Return(length)
+	data, err := r.managedDownloadByRoot(root, offset, length, timeout)
+	if errors.Contains(err, ErrProjectTimedOut) {
+		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
+	}
+	return data, err
 }
 
 // checkReadSectorJobGouging verifies the cost of executing a read sector job is

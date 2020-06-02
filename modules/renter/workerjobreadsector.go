@@ -90,9 +90,6 @@ func (j *jobReadSector) callExecute() {
 	}
 	w := j.staticQueue.staticWorker()
 	w.renter.tg.Launch(func() {
-		// We don't listen on the tg stopChan because it is assumed that the
-		// project which issued the job will close job.canceled when the tg
-		// stops.
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCancelChan:
@@ -135,7 +132,7 @@ func (j *jobReadSector) callExecute() {
 	jq.mu.Unlock()
 }
 
-// programReadSectorBandwidth returns the bandwidth that gets consumed by a
+// callExpectedBandwidth returns the bandwidth that gets consumed by a
 // ReadSector program.
 //
 // TODO: These values are overly conservative, once we've got the protocol more
@@ -165,7 +162,7 @@ func (j *jobReadSector) managedReadSector() ([]byte, error) {
 		return nil, err
 	}
 
-	// return the response
+	// Pull the sector data from the response.
 	var sectorData []byte
 	for _, resp := range responses {
 		if resp.Error != nil {
@@ -173,6 +170,10 @@ func (j *jobReadSector) managedReadSector() ([]byte, error) {
 		}
 		sectorData = resp.Output
 		break
+	}
+	// Check that we received the amount of data that we were expecting.
+	if uint64(len(sectorData)) != j.staticLength {
+		return nil, errors.New("worker returned the wrong amount of data")
 	}
 	return sectorData, nil
 }
@@ -202,7 +203,7 @@ func (jq *jobReadSectorQueue) callAverageJobTime(length uint64) time.Duration {
 func (w *worker) initJobReadSectorQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobReadSectorQueue != nil {
-		w.renter.log.Critical("incorret call on newJobReadSectorQueue")
+		w.renter.log.Critical("incorret call on initJobReadSectorQueue")
 	}
 	w.staticJobReadSectorQueue = &jobReadSectorQueue{
 		jobGenericQueue: newJobGenericQueue(w),

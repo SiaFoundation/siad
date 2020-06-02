@@ -3,8 +3,6 @@ package renter
 import (
 	"encoding/json"
 	"fmt"
-	"io"
-	"strings"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -202,16 +200,12 @@ func (w *worker) staticUpdatePriceTable() {
 	}
 
 	// The price table will not become valid until the host has received and
-	// confirmed our payment. The only way for us to know that the payment has
-	// been confirmed is to do a read, and we expect that the host has closed
-	// the stream.
-	//
-	// TODO: Since this part is necessary for synchrony reasons, we should make
-	// it an explicit part of the protocol and have the host send an actual
-	// response.
-	expectedReadErr := modules.RPCRead(stream, struct{}{})
-	if expectedReadErr == nil || !strings.Contains(expectedReadErr.Error(), io.ErrClosedPipe.Error()) {
-		w.renter.log.Println("ERROR: expected io.ErrClosedPipe, instead received err:", expectedReadErr)
+	// confirmed our payment. The host will signal this by sending an empty
+	// response object we need to read.
+	var tracked modules.RPCTrackedPriceTableResponse
+	err = modules.RPCRead(stream, &tracked)
+	if err != nil {
+		return
 	}
 
 	// Update the price table. We preserve the recent error even though there

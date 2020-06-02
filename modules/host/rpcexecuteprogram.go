@@ -68,7 +68,8 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}
 
 	// Extract the arguments.
-	fcid, program, dataLength := epr.FileContractID, epr.Program, epr.ProgramDataLength
+	fcid, instructions, dataLength := epr.FileContractID, epr.Program, epr.ProgramDataLength
+	program := modules.Program(instructions)
 
 	// If the program isn't readonly we need to acquire a lock on the storage
 	// obligation.
@@ -105,6 +106,17 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, budget, collateralBudget, sos, dataLength, stream)
 	if err != nil {
 		return errors.AddContext(err, "Failed to start execution of the program")
+	}
+
+	// Return 16 bytes of data as a placeholder for a future cancellation token.
+	// NOTE: We write this to a buffer to save one call to `Write`. In the
+	// future we might reconsider this once we actually implement cancellation
+	// since this means the token is only returned after the first instruction
+	// is done executing.
+	buffer := bytes.NewBuffer(nil)
+	_, err = buffer.Write(make([]byte, modules.MDMCancellationTokenLen))
+	if err != nil {
+		return errors.AddContext(err, "Failed to write cancellation token")
 	}
 
 	// Handle outputs.
@@ -147,9 +159,6 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		// Remember that the execution wasn't successful.
 		executionFailed = output.Error != nil
 
-		// Create a buffer
-		buffer := bytes.NewBuffer(nil)
-
 		// Send the response to the peer.
 		err = modules.RPCWrite(buffer, resp)
 		if err != nil {
@@ -174,7 +183,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		}
 
 		// Write contents of the buffer
-		_, err = stream.Write(buffer.Bytes())
+		_, err = buffer.WriteTo(stream)
 		if err != nil {
 			return errors.AddContext(err, "failed to send data to peer")
 		}

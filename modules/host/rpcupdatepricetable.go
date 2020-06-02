@@ -32,6 +32,10 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	// rpcPriceGuaranteePeriod
 	pt.Expiry = time.Now().Add(rpcPriceGuaranteePeriod).Unix()
 
+	// set the host's current blockheight, this allows the renter to create
+	// valid withdrawal messages in case it is not synced yet
+	pt.HostBlockHeight = h.BlockHeight()
+
 	// json encode the price table
 	ptBytes, err := json.Marshal(pt)
 	if err != nil {
@@ -49,11 +53,12 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	// stream if it does not agree with pricing. The price table has not yet
 	// been added to the map, which means that the renter has to pay for it in
 	// order for it to became active and accepted by the host.
-
 	payment, err := h.ProcessPayment(stream)
 	if err != nil {
 		return errors.AddContext(err, "Failed to process payment")
 	}
+
+	// Check payment.
 	if payment.Amount().Cmp(pt.UpdatePriceTableCost) < 0 {
 		return modules.ErrInsufficientPaymentForRPC
 	}
@@ -63,8 +68,12 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	}
 
 	// after payment has been received, track the price table in the host's list
-	// of price tables
+	// of price tables and signal the renter we consider the price table valid
 	h.staticPriceTables.managedTrack(&pt)
+	var tracked modules.RPCTrackedPriceTableResponse
+	if err = modules.RPCWrite(stream, tracked); err != nil {
+		return errors.AddContext(err, "Failed to signal renter we tracked the price table")
+	}
 
 	// refund the money we didn't use.
 	refund := payment.Amount().Sub(pt.UpdatePriceTableCost)

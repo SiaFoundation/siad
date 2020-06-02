@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
@@ -67,7 +66,7 @@ func skykeycmd(cmd *cobra.Command, args []string) {
 
 // skykeycreatecmd is a wrapper for skykeyCreate used to handle skykey creation.
 func skykeycreatecmd(name string) {
-	skykeyStr, err := skykeyCreate(httpClient, name)
+	skykeyStr, err := skykeyCreate(httpClient, name, skykey.TypePublicID)
 	if err != nil {
 		die(errors.AddContext(err, "Failed to create new skykey"))
 	}
@@ -75,15 +74,8 @@ func skykeycreatecmd(name string) {
 }
 
 // skykeyCreate creates a new Skykey with the given name and cipher type
-// as set by flag.
-func skykeyCreate(c client.Client, name string) (string, error) {
-	var cipherType crypto.CipherType
-	err := cipherType.FromString(skykeyCipherType)
-	if err != nil {
-		return "", errors.AddContext(err, "Could not decode cipher-type")
-	}
-
-	sk, err := c.SkykeyCreateKeyPost(name, cipherType)
+func skykeyCreate(c client.Client, name string, skykeyType skykey.SkykeyType) (string, error) {
+	sk, err := c.SkykeyCreateKeyPost(name, skykeyType)
 	if err != nil {
 		return "", errors.AddContext(err, "Could not create skykey")
 	}
@@ -153,7 +145,6 @@ func skykeyGet(c client.Client, name, id string) (string, error) {
 		if err != nil {
 			return "", errors.AddContext(err, "Could not decode skykey ID")
 		}
-
 		sk, err = c.SkykeyGetByID(skykeyID)
 	}
 
