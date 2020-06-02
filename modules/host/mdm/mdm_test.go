@@ -54,6 +54,8 @@ func newTestStorageObligation(locked bool) *TestStorageObligation {
 
 // BlockHeight returns an incremented blockheight every time it's called.
 func (h *TestHost) BlockHeight() types.BlockHeight {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.blockHeight++
 	return h.blockHeight
 }
@@ -61,7 +63,9 @@ func (h *TestHost) BlockHeight() types.BlockHeight {
 // HasSector indicates whether the host stores a sector with a given root or
 // not.
 func (h *TestHost) HasSector(sectorRoot crypto.Hash) bool {
+	h.mu.Lock()
 	_, exists := h.sectors[sectorRoot]
+	h.mu.Unlock()
 	return exists
 }
 
