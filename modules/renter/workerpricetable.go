@@ -10,10 +10,8 @@ import (
 	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
 var (
@@ -29,6 +27,13 @@ var (
 		Dev:      3 * time.Minute,
 		Testing:  7 * time.Second,
 	}).(time.Duration)
+
+	// updatePriceTableGougingPercentageThreshold is the percentage threshold,
+	// in relation to the allowance, at which we consider the cost of updating
+	// the price table to be too expensive. E.g. the cost of updating the price
+	// table over the total allowance period should never exceed .1% of the
+	// total allowance.
+	updatePriceTableGougingPercentageThreshold = 1e-1
 
 	// errPriceTableGouging is returned when price gouging is detected
 	errPriceTableGouging = errors.New("price table rejected due to price gouging")
@@ -183,7 +188,7 @@ func (w *worker) staticUpdatePriceTable() {
 	}
 
 	// check for gouging before paying
-	err = checkPriceTableGouging(pt, stream.Limit(), w.staticCache().staticRenterAllowance)
+	err = checkUpdatePriceTableGouging(pt, w.staticCache().staticRenterAllowance)
 	if err != nil {
 		err = errors.Compose(err, errors.AddContext(errPriceTableGouging, fmt.Sprintf("host %v", w.staticHostPubKeyStr)))
 		w.renter.log.Println("ERROR: ", err)
@@ -221,98 +226,29 @@ func (w *worker) staticUpdatePriceTable() {
 	w.staticSetPriceTable(wpt)
 }
 
-// checkPriceTableGouging looks at the proposed price table by the host and
-// determines whether or not his prices are reasonable. If the renter decides
-// its prices are unreasonable, it will reject the price table and this worker
-// will be put into cooldown until prices come down to a reasonable level,
-// effectively disabling the worker.
-func checkPriceTableGouging(pt modules.RPCPriceTable, limit mux.BandwidthLimit, allowance modules.Allowance) error {
-	// Check whether the update price table cost is too high
-	bwc := modules.MDMBandwidthCost(pt, limit.Uploaded(), limit.Downloaded())
-	if pt.UpdatePriceTableCost.Cmp(bwc.Mul64(2)) > 0 {
-		return fmt.Errorf("update price table cost %v is considered too high, it is more than twice the cost of bandwidth %v", pt.UpdatePriceTableCost, bwc)
-	}
-
-	// Check whether the fund account cost is too high
-	if pt.FundAccountCost.Cmp(bwc.Mul64(10)) > 0 {
-		return fmt.Errorf("fund account cost %v is considered too high, it is more than ten times the cost of bandwidth %v", pt.FundAccountCost, bwc)
-	}
-
-	// Check whether the download bandwidth price is too high.
-	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
-		return fmt.Errorf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", pt.DownloadBandwidthCost, allowance.MaxDownloadBandwidthPrice)
-	}
-
-	// Check whether the upload bandwidth price is too high.
-	if !allowance.MaxUploadBandwidthPrice.IsZero() && allowance.MaxUploadBandwidthPrice.Cmp(pt.UploadBandwidthCost) < 0 {
-		return fmt.Errorf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", pt.UploadBandwidthCost, allowance.MaxUploadBandwidthPrice)
-	}
-
-	// If there is no allowance, general price gouging checks have to be
-	// disabled, because there is no baseline for understanding what might count
-	// as price gouging.
+// checkUpdatePriceTableGouging verifies the cost of updating the price table is
+// reasonable, if deemed unreasonable we will reject it and this worker will be
+// put into cooldown.
+func checkUpdatePriceTableGouging(pt modules.RPCPriceTable, allowance modules.Allowance) error {
+	// If there is no allowance, price gouging checks have to be disabled,
+	// because there is no baseline for understanding what might count as price
+	// gouging.
 	if allowance.Funds.IsZero() {
 		return nil
 	}
 
-	// Check that the prices in the price table make sense in the context of the
-	// renter's overall allowance with regards to downloads. We do this by
-	// calculating the cost of performing the same action repeatedly until a
-	// fraction of the desired total resource consumption established by the
-	// allowance has been reached.
+	// In order to decide whether or not the update price table cost is too
+	// expensive, we first calculate how many times we'll need to update the
+	// price table over the entire allowance period
+	durationInS := pt.Expiry - time.Now().Unix()
+	periodInS := int64(allowance.Period) * 10 * 60 // times 10m blocks
+	numUpdates := periodInS / durationInS
 
-	// Expected Download Costs
-
-	// we start by calculating the minimum amount of read sector jobs necessary
-	// to download the expected download amount
-	minNumJobs := allowance.ExpectedDownload / modules.SectorSize
-
-	// calculate the expected cost of a single job
-	pb := modules.NewProgramBuilder(&pt)
-	pb.AddReadSectorInstruction(modules.SectorSize, 0, crypto.Hash{}, true)
-	cost, _, _ := pb.Cost(true)
-
-	jrs := new(jobReadSector)
-	jrs.staticLength = modules.SectorSize
-	ulbw, dlbw := jrs.callExpectedBandwidth()
-	bwc = modules.MDMBandwidthCost(pt, ulbw, dlbw)
-	costPerJob := cost.Add(bwc)
-
-	totalCost := costPerJob.Mul64(minNumJobs)
-	reducedCost := totalCost.Div64(downloadGougingFractionDenom)
-	if reducedCost.Cmp(allowance.Funds) > 0 {
-		errStr := fmt.Sprintf("combined read sector pricing of host yields %v, which is more than the renter is willing to pay for downloads: %v - price gouging protection enabled", reducedCost, allowance.Funds)
-		return errors.New(errStr)
-	}
-
-	if allowance.PaymentContractInitialFunding.IsZero() {
-		return nil
-	}
-
-	// When PaymentContractInitialFunding is higher than zero, we are dealing
-	// with a Skynet portal and have to gouge sector lookups prices.
-
-	// we start by estimating the amount of has sector jobs, we do this in a
-	// similar way as we did with the expected download cost, however now we use
-	// segment sizes. This is completely arbitrary but tries to reflect the
-	// amount of lookups vs the amount of downloads.
-	minNumJobs = allowance.ExpectedDownload / crypto.SegmentSize
-
-	// calculate the expected cost of a single job
-	pb = modules.NewProgramBuilder(&pt)
-	pb.AddHasSectorInstruction(crypto.Hash{})
-	cost, _, _ = pb.Cost(true)
-
-	jhs := new(jobHasSector)
-	ulbw, dlbw = jhs.callExpectedBandwidth()
-	bwc = modules.MDMBandwidthCost(pt, ulbw, dlbw)
-	costPerJob = cost.Add(bwc)
-
-	totalCost = costPerJob.Mul64(minNumJobs)
-	reducedCost = totalCost.Div64(downloadGougingFractionDenom)
-	if reducedCost.Cmp(allowance.Funds) > 0 {
-		errStr := fmt.Sprintf("combined has sector pricing of host yields %v, which is more than the renter is willing to pay for sector lookups: %v - price gouging protection enabled", reducedCost, allowance.Funds)
-		return errors.New(errStr)
+	// The cost of updating is considered too expensive if the total cost is
+	// above a certain % of the allowance.
+	totalUpdateCost := pt.UpdatePriceTableCost.Mul64(uint64(numUpdates))
+	if totalUpdateCost.Cmp(allowance.Funds.MulFloat(updatePriceTableGougingPercentageThreshold)) > 0 {
+		return fmt.Errorf("update price table cost %v is considered too high, the total cost over the entire duration of the allowance periods exceeds %v%% of the allowance", pt.UpdatePriceTableCost, updatePriceTableGougingPercentageThreshold)
 	}
 
 	return nil

@@ -141,9 +141,7 @@ func (j *jobReadSector) callExecute() {
 // TODO: These values are overly conservative, once we've got the protocol more
 // optimized we can bring these down.
 func (j *jobReadSector) callExpectedBandwidth() (ul, dl uint64) {
-	ul = 1 << 15                                      // 32 KiB
-	dl = uint64(float64(j.staticLength)*1.01) + 1<<14 // (readSize * 1.01 + 16 KiB)
-	return
+	return readSectorJobExpectedBandwidth(j.staticLength)
 }
 
 // managedReadSector returns the sector data for given root.
@@ -209,4 +207,14 @@ func (w *worker) initJobReadSectorQueue() {
 	w.staticJobReadSectorQueue = &jobReadSectorQueue{
 		jobGenericQueue: newJobGenericQueue(w),
 	}
+}
+
+// readSectorJobExpectedBandwidth is a helper function that returns the expected
+// bandwidth consumption of a read sector job. This helper function takes a
+// length parameter and is used to get the expected bandwidth without having to
+// instantiate a job.
+func readSectorJobExpectedBandwidth(length uint64) (ul, dl uint64) {
+	ul = 1 << 15                              // 32 KiB
+	dl = uint64(float64(length)*1.01) + 1<<14 // (readSize * 1.01 + 16 KiB)
+	return
 }

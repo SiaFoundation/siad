@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -19,6 +20,15 @@ import (
 // height at time of creation, this period makes up the WithdrawalMessage's
 // expiry height.
 const withdrawalValidityPeriod = 6
+
+var (
+	// fundAccountGougingPercentageThreshold is the percentage threshold, in
+	// relation to the allowance, at which we consider the cost of funding an
+	// account to be too expensive. E.g. the cost of funding the account as many
+	// times as necessary to spend the total allowance should never exceed .1%
+	// of the total allowance.
+	fundAccountGougingPercentageThreshold = 1e-1
+)
 
 type (
 	// account represents a renter's ephemeral account on a host.
@@ -275,6 +285,12 @@ func (w *worker) managedRefillAccount() {
 		})
 	}()
 
+	// check the current price table for gouging errors
+	err = checkFundAccountGouging(w.staticPriceTable().staticPriceTable, w.staticCache().staticRenterAllowance, w.staticBalanceTarget)
+	if err != nil {
+		return
+	}
+
 	// create a new stream
 	var stream siamux.Stream
 	stream, err = w.staticNewStream()
@@ -343,4 +359,34 @@ func (w *worker) managedRefillAccount() {
 	// money in the account can be activated.
 	w.staticWake()
 	return
+}
+
+// checkFundAccountGouging verifies the cost of funding an ephemeral account on
+// the host is reasonable, if deemed unreasonable we will block the refill and
+// the worker will eventually be put into cooldown.
+func checkFundAccountGouging(pt modules.RPCPriceTable, allowance modules.Allowance, targetBalance types.Currency) error {
+	// If there is no allowance, price gouging checks have to be disabled,
+	// because there is no baseline for understanding what might count as price
+	// gouging.
+	if allowance.Funds.IsZero() {
+		return nil
+	}
+
+	// In order to decide whether or not the fund account cost is too expensive,
+	// we first calculate how many times we can refill the account, taking into
+	// account the refill amount and the cost to effectively fund the account.
+	costOfRefill := targetBalance.Add(pt.FundAccountCost)
+	numRefills, err := allowance.Funds.RoundDown(costOfRefill).Div(costOfRefill).Uint64()
+	if err != nil {
+		return errors.AddContext(err, "unable to check fund account gouging, could not calculate the amount of refills")
+	}
+
+	// The cost of funding is considered too expensive if the total cost is
+	// above a certain % of the allowance.
+	totalFundAccountCost := pt.FundAccountCost.Mul64(numRefills)
+	if totalFundAccountCost.Cmp(allowance.Funds.MulFloat(fundAccountGougingPercentageThreshold)) > 0 {
+		return fmt.Errorf("fund account cost %v is considered too high, the total cost of refilling the account to spend the total allowance exceeds %v%% of the allowance", pt.FundAccountCost, fundAccountGougingPercentageThreshold)
+	}
+
+	return nil
 }

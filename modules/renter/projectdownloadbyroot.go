@@ -21,6 +21,10 @@ var (
 
 	// ErrProjectTimedOut is returned when the project timed out
 	ErrProjectTimedOut = errors.New("project timed out")
+
+	// sectorLookupToDownloadRatio is an arbitrary ratio that resembles the
+	// amount of lookups vs downloads. It is used in price gouging checks.
+	sectorLookupToDownloadRatio = 64
 )
 
 // jobDownloadByRoot contains all of the information necessary to execute a
@@ -349,4 +353,100 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 		return nil, errors.AddContext(err, "unable to fetch sector root from the network")
 	}
 	return data, nil
+}
+
+// checkReadSectorJobGouging verifies the cost of executing a read sector job is
+// reasonable in relation to the user's allowance and the amount of data he
+// intends to download
+func checkReadSectorJobGouging(pt modules.RPCPriceTable, allowance modules.Allowance) error {
+	// Check whether the download bandwidth price is too high.
+	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
+		return fmt.Errorf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", pt.DownloadBandwidthCost, allowance.MaxDownloadBandwidthPrice)
+	}
+
+	// Check whether the upload bandwidth price is too high.
+	if !allowance.MaxUploadBandwidthPrice.IsZero() && allowance.MaxUploadBandwidthPrice.Cmp(pt.UploadBandwidthCost) < 0 {
+		return fmt.Errorf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", pt.UploadBandwidthCost, allowance.MaxUploadBandwidthPrice)
+	}
+
+	// If there is no allowance, price gouging checks have to be disabled,
+	// because there is no baseline for understanding what might count as price
+	// gouging.
+	if allowance.Funds.IsZero() {
+		return nil
+	}
+
+	// Calculate the expected cost of a single job
+	pb := modules.NewProgramBuilder(&pt)
+	pb.AddReadSectorInstruction(modules.SectorSize, 0, crypto.Hash{}, true)
+	programCost, _, _ := pb.Cost(true)
+
+	ulbw, dlbw := readSectorJobExpectedBandwidth(modules.SectorSize)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulbw, dlbw)
+	costPerJob := programCost.Add(bandwidthCost)
+
+	// In order to decide whether or not the cost of performing a read sector
+	// job is too expensive, we first calculate how many jobs we have to execute
+	// download the expected download amount using single sector reads.
+	numReads := allowance.ExpectedDownload / modules.SectorSize
+
+	// The cost of downloading is considered too expensive if the allowance is
+	// insufficient to cover a fraction of the expense to download the amount of
+	// data the user intends to download
+	totalCost := costPerJob.Mul64(numReads)
+	reducedCost := totalCost.Div64(downloadGougingFractionDenom)
+	if reducedCost.Cmp(allowance.Funds) > 0 {
+		errStr := fmt.Sprintf("combined read sector pricing of host yields %v, which is more than the renter is willing to pay for downloads: %v - price gouging protection enabled", reducedCost, allowance.Funds)
+		return errors.New(errStr)
+	}
+
+	return nil
+}
+
+// checkHasSectorJobGouging verifies the cost of executing a has sector job is
+// reasonable in relation to the user's allowance and the amount of data he
+// intends to download
+func checkHasSectorJobGouging(pt modules.RPCPriceTable, allowance modules.Allowance) error {
+	// Check whether the download bandwidth price is too high.
+	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
+		return fmt.Errorf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", pt.DownloadBandwidthCost, allowance.MaxDownloadBandwidthPrice)
+	}
+
+	// Check whether the upload bandwidth price is too high.
+	if !allowance.MaxUploadBandwidthPrice.IsZero() && allowance.MaxUploadBandwidthPrice.Cmp(pt.UploadBandwidthCost) < 0 {
+		return fmt.Errorf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", pt.UploadBandwidthCost, allowance.MaxUploadBandwidthPrice)
+	}
+
+	// If there is no allowance, price gouging checks have to be disabled,
+	// because there is no baseline for understanding what might count as price
+	// gouging.
+	if allowance.Funds.IsZero() {
+		return nil
+	}
+
+	// Calculate the expected cost of a single job
+	pb := modules.NewProgramBuilder(&pt)
+	pb.AddHasSectorInstruction(crypto.Hash{})
+	programCost, _, _ := pb.Cost(true)
+
+	ulbw, dlbw := hasSectorJobExpectedBandwidth()
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulbw, dlbw)
+	costPerJob := programCost.Add(bandwidthCost)
+
+	// In order to decide whether or not the cost of performing a has sector job
+	// is too expensive, we calculate how many jobs we have to execute to
+	// download the ExpectedDownload amount if all of the lookups result in a
+	// download.
+	numLookups := allowance.ExpectedDownload / modules.SectorSize
+
+	// We multiply this amount by an arbitrary amount to reflect that there are
+	// usually more lookups than actual downloads
+	totalCost := costPerJob.Mul64(numLookups).Mul64(uint64(sectorLookupToDownloadRatio))
+	reducedCost := totalCost.Div64(downloadGougingFractionDenom)
+	if reducedCost.Cmp(allowance.Funds) > 0 {
+		errStr := fmt.Sprintf("combined has sector pricing of host yields %v, which is more than the renter is willing to pay for sector lookups: %v - price gouging protection enabled", reducedCost, allowance.Funds)
+		return errors.New(errStr)
+	}
+
+	return nil
 }
