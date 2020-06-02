@@ -244,7 +244,7 @@ func checkUpdatePriceTableGouging(pt modules.RPCPriceTable, allowance modules.Al
 	// above a certain % of the allowance.
 	totalUpdateCost := pt.UpdatePriceTableCost.Mul64(uint64(numUpdates))
 	if totalUpdateCost.Cmp(allowance.Funds.MulFloat(updatePriceTableGougingPercentageThreshold)) > 0 {
-		return fmt.Errorf("update price table cost %v is considered too high, the total cost over the entire duration of the allowance periods exceeds %v%% of the allowance", pt.UpdatePriceTableCost, updatePriceTableGougingPercentageThreshold)
+		return fmt.Errorf("update price table cost %v is considered too high, the total cost over the entire duration of the allowance periods exceeds %v%% of the allowance - price gouging protection enabled", pt.UpdatePriceTableCost, updatePriceTableGougingPercentageThreshold)
 	}
 
 	return nil

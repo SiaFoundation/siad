@@ -396,12 +396,12 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 func checkReadSectorJobGouging(pt modules.RPCPriceTable, allowance modules.Allowance) error {
 	// Check whether the download bandwidth price is too high.
 	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
-		return fmt.Errorf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", pt.DownloadBandwidthCost, allowance.MaxDownloadBandwidthPrice)
+		return fmt.Errorf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.DownloadBandwidthCost, allowance.MaxDownloadBandwidthPrice)
 	}
 
 	// Check whether the upload bandwidth price is too high.
 	if !allowance.MaxUploadBandwidthPrice.IsZero() && allowance.MaxUploadBandwidthPrice.Cmp(pt.UploadBandwidthCost) < 0 {
-		return fmt.Errorf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", pt.UploadBandwidthCost, allowance.MaxUploadBandwidthPrice)
+		return fmt.Errorf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.UploadBandwidthCost, allowance.MaxUploadBandwidthPrice)
 	}
 
 	// If there is no allowance, price gouging checks have to be disabled,
@@ -444,12 +444,12 @@ func checkReadSectorJobGouging(pt modules.RPCPriceTable, allowance modules.Allow
 func checkHasSectorJobGouging(pt modules.RPCPriceTable, allowance modules.Allowance) error {
 	// Check whether the download bandwidth price is too high.
 	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
-		return fmt.Errorf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", pt.DownloadBandwidthCost, allowance.MaxDownloadBandwidthPrice)
+		return fmt.Errorf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.DownloadBandwidthCost, allowance.MaxDownloadBandwidthPrice)
 	}
 
 	// Check whether the upload bandwidth price is too high.
 	if !allowance.MaxUploadBandwidthPrice.IsZero() && allowance.MaxUploadBandwidthPrice.Cmp(pt.UploadBandwidthCost) < 0 {
-		return fmt.Errorf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", pt.UploadBandwidthCost, allowance.MaxUploadBandwidthPrice)
+		return fmt.Errorf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.UploadBandwidthCost, allowance.MaxUploadBandwidthPrice)
 	}
 
 	// If there is no allowance, price gouging checks have to be disabled,

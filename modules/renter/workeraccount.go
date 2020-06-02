@@ -385,7 +385,7 @@ func checkFundAccountGouging(pt modules.RPCPriceTable, allowance modules.Allowan
 	// above a certain % of the allowance.
 	totalFundAccountCost := pt.FundAccountCost.Mul64(numRefills)
 	if totalFundAccountCost.Cmp(allowance.Funds.MulFloat(fundAccountGougingPercentageThreshold)) > 0 {
-		return fmt.Errorf("fund account cost %v is considered too high, the total cost of refilling the account to spend the total allowance exceeds %v%% of the allowance", pt.FundAccountCost, fundAccountGougingPercentageThreshold)
+		return fmt.Errorf("fund account cost %v is considered too high, the total cost of refilling the account to spend the total allowance exceeds %v%% of the allowance - price gouging protection enabled", pt.FundAccountCost, fundAccountGougingPercentageThreshold)
 	}
 
 	return nil
