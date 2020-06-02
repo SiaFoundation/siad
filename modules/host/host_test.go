@@ -443,6 +443,13 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 		return nil, limit, err
 	}
 
+	// Read the cancellation token.
+	ct := make([]byte, modules.MDMCancellationTokenLen)
+	_, err = io.ReadFull(stream, ct)
+	if err != nil {
+		return nil, limit, err
+	}
+
 	// Read the responses.
 	responses := make([]executeProgramResponse, len(epr.Program))
 	for i := range epr.Program {

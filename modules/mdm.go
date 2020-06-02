@@ -28,6 +28,12 @@ type (
 )
 
 const (
+	// MDMCancellationTokenLen is the length of a program's cancellation token
+	// in bytes.
+	MDMCancellationTokenLen = 16
+)
+
+const (
 	// MDMTimeAppend is the time for executing an 'Append' instruction.
 	MDMTimeAppend = 10000
 
