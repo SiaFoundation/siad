@@ -375,7 +375,11 @@ func checkFundAccountGouging(pt modules.RPCPriceTable, allowance modules.Allowan
 	// In order to decide whether or not the fund account cost is too expensive,
 	// we first calculate how many times we can refill the account, taking into
 	// account the refill amount and the cost to effectively fund the account.
-	costOfRefill := targetBalance.Add(pt.FundAccountCost)
+	//
+	// Note: we divide the target balance by two because more often than not the
+	// refill happens the moment we drop below half of the target, this means
+	// that we actually refill half the target amount most of the time.
+	costOfRefill := targetBalance.Div64(2).Add(pt.FundAccountCost)
 	numRefills, err := allowance.Funds.RoundDown(costOfRefill).Div(costOfRefill).Uint64()
 	if err != nil {
 		return errors.AddContext(err, "unable to check fund account gouging, could not calculate the amount of refills")
