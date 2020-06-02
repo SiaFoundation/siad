@@ -237,10 +237,10 @@ func checkUpdatePriceTableGouging(pt modules.RPCPriceTable, allowance modules.Al
 	}
 
 	// In order to decide whether or not the update price table cost is too
-	// expensive, we first calculate how many times we'll need to update the
-	// price table over the entire allowance period
-	durationInS := pt.Expiry - time.Now().Unix()
-	periodInS := int64(allowance.Period) * 10 * 60 // times 10m blocks
+	// expensive, we first have to calculate how many times we'll need to update
+	// the price table over the entire allowance period
+	durationInS := int64(pt.Validity.Seconds())
+	periodInS := int64(allowance.Period) * 10 * 60 // period times 10m blocks
 	numUpdates := periodInS / durationInS
 
 	// The cost of updating is considered too expensive if the total cost is
