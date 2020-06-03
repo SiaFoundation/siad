@@ -236,7 +236,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 		t.Fatal(err)
 	}
 	numRevisions := len(so.RevisionTransactionSet)
-	so.RevisionTransactionSet[numRevisions-1].FileContractRevisions[0].SetMissedHostPayout(collateral)
+	so.RevisionTransactionSet[numRevisions-1].FileContractRevisions[0].SetMissedVoidPayout(collateral)
 	ht.host.managedLockStorageObligation(so.id())
 	err = ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, make(map[crypto.Hash][]byte))
 	if err != nil {
@@ -246,19 +246,19 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 
 	// create a revision and move some collateral
 	rev, _, err = pair.managedPaymentRevision(funding.Add(pt.FundAccountCost))
-	rev.SetMissedHostPayout(rev.MissedHostOutput().Value.Sub(collateral))
 	voidOutput, err := rev.MissedVoidOutput()
 	if err != nil {
 		t.Fatal(err)
 	}
+	rev.SetMissedHostPayout(rev.MissedHostOutput().Value.Sub(collateral))
 	err = rev.SetMissedVoidPayout(voidOutput.Value.Add(collateral))
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, _, err = runWithRequest(newPayByContractRequest(rev, pair.managedSign(rev), refundAccount))
 
-	if err == nil || !strings.Contains(err.Error(), "host not expecting to post any collateral") {
-		t.Fatalf("Expected error '%v', instead error was '%v'", "host not expecting to post any collateral", err)
+	if err == nil || !strings.Contains(err.Error(), ErrLowHostMissedOutput.Error()) {
+		t.Fatalf("Expected error ErrLowHostMissedOutput, instead error was '%v'", err)
 	}
 
 	// undo host collateral update
@@ -266,7 +266,7 @@ func TestFundEphemeralAccountRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	so.RevisionTransactionSet[numRevisions-1].FileContractRevisions[0].SetMissedHostPayout(types.ZeroCurrency)
+	so.RevisionTransactionSet[numRevisions-1].FileContractRevisions[0].SetMissedVoidPayout(types.ZeroCurrency)
 	ht.host.managedLockStorageObligation(so.id())
 	err = ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, make(map[crypto.Hash][]byte))
 	if err != nil {

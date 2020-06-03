@@ -237,6 +237,9 @@ func (w *worker) managedAccountNeedsRefill() bool {
 
 // managedRefillAccount will refill the account if it needs to be refilled
 func (w *worker) managedRefillAccount() {
+	if w.renter.deps.Disrupt("DisableFunding") {
+		return // don't refill account
+	}
 	// the account balance dropped to below half the balance target, refill
 	balance := w.staticAccount.managedAvailableBalance()
 	amount := w.staticBalanceTarget.Sub(balance)

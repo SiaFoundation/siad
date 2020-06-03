@@ -132,6 +132,10 @@ var (
 	// ErrUnknownModification is returned if the host receives a modification
 	// action from the renter that it does not understand.
 	ErrUnknownModification = ErrorCommunication("renter is attempting an action that the host does not understand")
+
+	// ErrVoidPayoutChanged is returned if the void payout changed even though
+	// it wasn't expected to.
+	ErrVoidPayoutChanged = ErrorCommunication("void payout shouldn't change")
 )
 
 // finalizeContractArgs are the arguments passed into managedFinalizeContract.

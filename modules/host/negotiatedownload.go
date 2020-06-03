@@ -204,6 +204,11 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 		s := fmt.Sprintf("expected exactly %v to be transferred to the host, but %v was transferred: ", fromRenter, toHost)
 		return errors.AddContext(ErrLowHostValidOutput, s)
 	}
+	// The amount of money moved to the missing host output should match the
+	// money moved to the valid output.
+	if !paymentRevision.MissedHostPayout().Equals(existingRevision.MissedHostPayout().Add(toHost)) {
+		return ErrLowHostMissedOutput
+	}
 
 	// If the renter's valid proof output is larger than the renter's missed
 	// proof output, the renter has incentive to see the host fail. Make sure
@@ -213,10 +218,9 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 	}
 
 	// Check that the host is not going to be posting collateral.
-	if paymentRevision.MissedHostOutput().Value.Cmp(existingRevision.MissedHostOutput().Value) < 0 {
-		collateral := existingRevision.MissedHostOutput().Value.Sub(paymentRevision.MissedHostOutput().Value)
-		s := fmt.Sprintf("host not expecting to post any collateral, but contract has host posting %v collateral", collateral)
-		return errors.AddContext(ErrLowHostMissedOutput, s)
+	if !existingVoidOutput.Value.Equals(paymentVoidOutput.Value) {
+		s := fmt.Sprintf("void payout wasn't expected to change")
+		return errors.AddContext(ErrVoidPayoutChanged, s)
 	}
 
 	// Check that the revision count has increased.
@@ -245,9 +249,6 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 	}
 	if paymentRevision.NewUnlockHash != existingRevision.NewUnlockHash {
 		return ErrBadUnlockHash
-	}
-	if !paymentRevision.MissedHostOutput().Value.Equals(existingRevision.MissedHostOutput().Value) {
-		return ErrLowHostMissedOutput
 	}
 	return nil
 }
