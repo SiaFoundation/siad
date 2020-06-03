@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -17,9 +18,9 @@ type RPCPriceTable struct {
 	// UID is a specifier that uniquely identifies this price table
 	UID UniqueID `json:"uid"`
 
-	// Expiry is a unix timestamp that specifies the time until which the
-	// MDMCostTable is valid.
-	Expiry int64 `json:"expiry"`
+	// Validity is a duration that specifies how long the host guarantees these
+	// prices for and are thus considered valid.
+	Validity time.Duration `json:"validity"`
 
 	// HostBlockHeight is the block height of the host. This allows the renter
 	// to create valid withdrawal messages in case it is not synced yet.

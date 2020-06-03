@@ -575,9 +575,8 @@ func TestWalletSend(t *testing.T) {
 
 	// Create a testgroup
 	groupParams := siatest.GroupParams{
-		Hosts:   0,
-		Renters: 2,
-		Miners:  1,
+		Hosts:  0,
+		Miners: 1,
 	}
 	tg, err := siatest.NewGroupFromTemplate(walletTestDir(t.Name()), groupParams)
 	if err != nil {
@@ -588,6 +587,14 @@ func TestWalletSend(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
+
+	// Add 2 renters.
+	rp := node.RenterTemplate
+	rp.RenterDeps = &dependencies.DependencyPreventEARefill{}
+	_, err = tg.AddNodeN(rp, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	renters := tg.Renters()
 	renter1, renter2 := renters[0], renters[1]
