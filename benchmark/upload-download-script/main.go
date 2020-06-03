@@ -45,9 +45,15 @@ func main() {
 	filesDir := filepath.Join(workDir, "files")                           // path to directory where created files will be stored
 	downloadsDir := filepath.Join(workDir, "downloads")                   // path to the directory where downloaded files will be stored
 
+	//xxx for dev
+	size = 200e6
+	chunk = 200e3
+	remainingData = size * 3
+
 	// File upload variables
 	var dataPieces, parityPieces uint64 = 10, 20
-	redundancy := (dataPieces + parityPieces) / dataPieces
+	// redundancy := (dataPieces + parityPieces) / dataPieces
+	redundancy := 2.5
 
 	// Initializing logs
 	os.MkdirAll(workDir, os.ModePerm)
@@ -70,36 +76,6 @@ func main() {
 		err = client.RenterPostAllowance(modules.DefaultAllowance)
 		check(err)
 	}
-
-	/*
-		// Checking for n Contracts
-		_, err = fmt.Fprintf(w, "*********************************************.\n")
-		check(err)
-		_, err = fmt.Fprintf(w, "CREATING CONTRACTS.\n\n")
-		check(err)
-		w.Flush()
-
-		// Get number of hosts in allowance
-		rg, err = client.RenterGet()
-		contracts := int(rg.Settings.Allowance.Hosts)
-
-		start := time.Now()
-		for {
-			rc, e := client.RenterContractsGet()
-			check(e)
-			if len(rc.ActiveContracts) >= contracts {
-				elapse := time.Now().Sub(start)
-				_, err = fmt.Fprintf(w, "It took %s to create %d contracts.\n", elapse, contracts)
-				check(err)
-				w.Flush()
-				break
-			}
-			time.Sleep(1 * time.Second)
-		}
-		_, err = fmt.Fprintf(w, "*********************************************.\n")
-		check(err)
-		w.Flush()
-	*/
 
 	// Waiting for upload ready
 	_, err = fmt.Fprintf(w, "*********************************************.\n")
@@ -283,7 +259,7 @@ func upload(c *client.Client, path string, dataPieces, parityPieces uint64, w *b
 
 // checkRedundancy pings the files API endpoint to see if a file has been fully
 // uploaded
-func checkRedundancy(client *client.Client, wg *sync.WaitGroup, c chan struct{}, r uint64, w *bufio.Writer, dir string) {
+func checkRedundancy(client *client.Client, wg *sync.WaitGroup, c chan struct{}, r float64, w *bufio.Writer, dir string) {
 	for {
 		uploadMapLock.Lock()
 		select {
@@ -300,7 +276,7 @@ func checkRedundancy(client *client.Client, wg *sync.WaitGroup, c chan struct{},
 		rf, err := client.RenterFilesGet(false)
 		check(err)
 		for _, fi := range rf.Files {
-			if _, ok := uploadMap[fi.SiaPath.Path]; ok && fi.Redundancy >= float64(r) {
+			if _, ok := uploadMap[fi.SiaPath.Path]; ok && fi.Redundancy >= r {
 				// Deleting local copy of file
 				filename := filepath.Base(fi.SiaPath.Path)
 				path := filepath.Join(dir, filename)
