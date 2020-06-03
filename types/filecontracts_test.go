@@ -1,7 +1,6 @@
 package types
 
 import (
-	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -91,14 +90,6 @@ func TestPaymentRevision(t *testing.T) {
 	}
 	_, err = rev.PaymentRevision(NewCurrency64(100))
 	if err != nil {
-		t.Fatalf("Unexpected error '%v'", err)
-	}
-
-	// expect error if void output is missing
-	rev = mock(100, 100)
-	rev.NewMissedProofOutputs = append([]SiacoinOutput{}, rev.NewMissedProofOutputs[0], rev.NewMissedProofOutputs[1])
-	_, err = rev.PaymentRevision(NewCurrency64(100))
-	if err == nil || !strings.Contains(err.Error(), "failed to get missed void output") {
 		t.Fatalf("Unexpected error '%v'", err)
 	}
 
