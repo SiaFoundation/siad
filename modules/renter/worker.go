@@ -27,7 +27,7 @@ import (
 
 const (
 	// minAsyncVersion defines the minimum version that is supported
-	minAsyncVersion = "1.4.9"
+	minAsyncVersion = "1.4.10"
 )
 
 const (
