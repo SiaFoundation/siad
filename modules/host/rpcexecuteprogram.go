@@ -105,12 +105,8 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}
 
 	// Return 16 bytes of data as a placeholder for a future cancellation token.
-	// NOTE: We write this to a buffer to save one call to `Write`. In the
-	// future we might reconsider this once we actually implement cancellation
-	// since this means the token is only returned after the first instruction
-	// is done executing.
-	buffer := bytes.NewBuffer(nil)
-	_, err = buffer.Write(make([]byte, modules.MDMCancellationTokenLen))
+	var ct modules.MDMCancellationToken
+	err = modules.RPCWrite(stream, ct)
 	if err != nil {
 		return errors.AddContext(err, "Failed to write cancellation token")
 	}
@@ -154,6 +150,9 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		programRefund = resp.PotentialRefund
 		// Remember that the execution wasn't successful.
 		executionFailed = output.Error != nil
+
+		// Create a buffer
+		buffer := bytes.NewBuffer(nil)
 
 		// Send the response to the peer.
 		err = modules.RPCWrite(buffer, resp)

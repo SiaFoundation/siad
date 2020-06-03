@@ -93,16 +93,10 @@ func (wp *workerPool) callUpdate() {
 		wp.workers[id] = w
 
 		// Start the work loop in a separate goroutine
-		go func() {
-			// We have to call tg.Add inside of the goroutine because we are
-			// holding the workerpool's mutex lock and it's not permitted to
-			// call tg.Add while holding a lock.
-			if err := wp.renter.tg.Add(); err != nil {
-				return
-			}
-			defer wp.renter.tg.Done()
-			w.threadedWorkLoop()
-		}()
+		err = wp.renter.tg.Launch(w.threadedWorkLoop)
+		if err != nil {
+			return
+		}
 	}
 
 	// Remove a worker for any worker that is not in the set of new contracts.
@@ -117,7 +111,9 @@ func (wp *workerPool) callUpdate() {
 		_, exists := contractMap[id]
 		if !exists {
 			delete(wp.workers, id)
-			close(worker.killChan)
+			// Kill the worker in a goroutine. This avoids locking issues, as
+			// wp.mu is currently locked.
+			go worker.managedKill()
 		}
 	}
 }
@@ -167,7 +163,9 @@ func (r *Renter) newWorkerPool() *workerPool {
 	wp.renter.tg.OnStop(func() error {
 		wp.mu.RLock()
 		for _, w := range wp.workers {
-			close(w.killChan)
+			// Kill the worker in a goroutine. This avoids locking issues, as
+			// wp.mu is currently read locked.
+			go w.managedKill()
 		}
 		wp.mu.RUnlock()
 		return nil
