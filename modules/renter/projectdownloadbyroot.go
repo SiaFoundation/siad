@@ -160,10 +160,10 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 			continue
 		}
 
-		// check the worker's pricetable for price gouging for both has and read
-		// sector jobs
+		// check for price gouging
 		pt := worker.staticPriceTable().staticPriceTable
-		if err := errors.Compose(checkHasSectorJobGouging(pt, cache.staticRenterAllowance), checkReadSectorJobGouging(pt, cache.staticRenterAllowance)); err != nil {
+		err := checkPDBRGouging(pt, cache.staticRenterAllowance)
+		if err != nil {
 			r.log.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
 			continue
 		}
