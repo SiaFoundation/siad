@@ -108,5 +108,4 @@ func TestPDBRGouging(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "combined PDBR pricing of host yields") {
 		t.Fatalf("expected PDBR price gouging error, instead error was '%v'", err)
 	}
-
 }
