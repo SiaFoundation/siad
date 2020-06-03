@@ -72,6 +72,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
 		{Name: "TestSkynetEncryption", Test: testSkynetEncryption},
 		{Name: "TestSkynetEncryptionLargeFile", Test: testSkynetEncryptionLargeFile},
+		{Name: "TestSkynetDefaultPath", Test: testSkynetDefaultPath},
 	}
 
 	// Run tests
@@ -2440,4 +2441,96 @@ func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup) {
 	if pinnedFile.File.Skylinks[0] != skylink {
 		t.Fatal("skylink mismatch")
 	}
+}
+
+// testSkynetDefaultPath test whether defaultPath metadata parameter works
+// correctly
+func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+	ffc := "File1Contents"
+
+	// TEST: Upload a multi-file skyfile that contains index.html but doesn't
+	// specify default path. `metadata.DefaultPath` should be "index.html".
+	content, metadata, err := uploadFileWithDefaultPath(r, "index.html", ffc, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(content, []byte(ffc)) {
+		t.Logf("content %s\n\n", string(content))
+		t.Fatalf("Expected defaultPath to be 'index.html', instead got %s", metadata.DefaultPath)
+	}
+
+	// TEST: Upload a multi-file skyfile that contains index.js and specifies
+	// "index.js" as default path. `metadata.DefaultPath` should be "index.js".
+	content, metadata, err = uploadFileWithDefaultPath(r, "index.js", ffc, "index.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(content, []byte(ffc)) {
+		t.Logf("content %s\n\n", string(content))
+		t.Fatalf("Expected defaultPath to be 'index.js', instead got %s", metadata.DefaultPath)
+	}
+
+	// TEST: Upload a multi-file skyfile that does NOT index.html and doesn't
+	// specify default path. `metadata.DefaultPath` should be "".
+	// This should fail.
+	_, _, err = uploadFileWithDefaultPath(r, "file1", ffc, "")
+	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
+		t.Fatalf("Expected error 'format must be specified', got %+v", err)
+	}
+}
+
+// uploadFileWithDefaultPath generates and uploads a multipart upload that
+// contains several files. It then downloads the file and returns its metadata.
+func uploadFileWithDefaultPath(r *siatest.TestNode, firstFileName, firstFileContent, defaultPath string) (content []byte, fileMetadata modules.SkyfileMetadata, err error) {
+	var offset uint64
+
+	// create a multipart upload with index.html
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+	subfiles := make(modules.SkyfileSubfiles)
+
+	// add a file at root level
+	data := []byte(firstFileContent)
+	subfile := addMultipartFile(writer, data, "files[]", firstFileName, 0600, &offset)
+	subfiles[subfile.Filename] = subfile
+
+	// add a nested file
+	data = []byte("File2Contents")
+	subfile = addMultipartFile(writer, data, "files[]", "nested/"+firstFileName, 0640, &offset)
+	subfiles[subfile.Filename] = subfile
+
+	if err = writer.Close(); err != nil {
+		return
+	}
+	reader := bytes.NewReader(body.Bytes())
+
+	// Call the upload skyfile client call.
+	uploadSiaPath, err := modules.NewSiaPath("TestDefaultPathFolderUpload/" + firstFileName)
+	if err != nil {
+		return
+	}
+
+	sup := modules.SkyfileMultipartUploadParameters{
+		SiaPath:             uploadSiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		Reader:              reader,
+		ContentType:         writer.FormDataContentType(),
+		Filename:            firstFileName,
+		DefaultPath:         defaultPath,
+	}
+
+	skylink, _, err := r.SkynetSkyfileMultiPartPost(sup)
+	if err != nil {
+		return
+	}
+
+	// Try to download the file behind the skylink.
+	content, fileMetadata, err = r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		return
+	}
+	return
 }

@@ -15,7 +15,7 @@ import (
 const (
 	// MetadataDefaultPath specifies the multipart form header key that holds
 	// the default path.
-	MetadataDefaultPath = "settings_defaultPath"
+	MetadataDefaultPath = "defaultpath"
 )
 
 // SkyfileMetadata is all of the metadata that gets placed into the first 4096
@@ -235,6 +235,10 @@ type SkyfileMultipartUploadParameters struct {
 
 	// Filename indicates the filename of the skyfile.
 	Filename string `json:"filename"`
+
+	// DefaultPath indicates the default file to be opened when opening skyfiles
+	// that contain directories.
+	DefaultPath string `json:"defaultpath"`
 
 	// ContentType indicates the media type of the data supplied by the reader.
 	ContentType string `json:"contenttype"`

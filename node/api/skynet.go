@@ -301,8 +301,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	defer streamer.Close()
 
-	// Get the redirect limitations. If there are none and we hit the root,
-	// we'll redirect to the default path.
+	// Get the redirect limitations.
 	redirectStr := queryForm.Get("redirect")
 	allowRedirect := redirectStr == "" // default to allowing redirects
 	if !allowRedirect {
@@ -312,13 +311,16 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			return
 		}
 	}
+	// We don't allow redirects if we don't have a valid default path or we have
+	// a single file.
+	allowRedirect = allowRedirect && metadata.DefaultPath != "" && len(metadata.Subfiles) > 1
 
 	// If path is different from the root, limit the streamer and return the
 	// appropriate subset of the metadata. This is done by wrapping the streamer
 	// so it only returns the files defined in the subset of the metadata.
 	if path != "/" || allowRedirect {
 		if path == "/" {
-			path = metadata.DefaultPath
+			path = "/" + metadata.DefaultPath
 		}
 		var dir bool
 		var offset, size uint64
@@ -966,9 +968,13 @@ func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, i
 
 	// Get the default path.
 	defaultPath := "index.html"
-	val, ok := req.MultipartForm.Value[modules.MetadataDefaultPath]
-	if ok && len(val) > 0 {
-		defaultPath = val[0]
+	val := req.FormValue(modules.MetadataDefaultPath)
+	if len(val) > 0 {
+		defaultPath = val
+	}
+	// Check if the defaultPath exists.
+	if _, ok := subfiles[defaultPath]; !ok {
+		defaultPath = ""
 	}
 
 	return subfiles, io.MultiReader(readers...), defaultPath, nil
