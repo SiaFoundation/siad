@@ -477,7 +477,10 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 	// If the program was not readonly, the host expects a signed revision.
 	if !epr.Program.ReadOnly() {
 		lastOutput := responses[len(responses)-1]
-		p.managedFinalizeWriteProgram(stream, lastOutput, p.staticHT.host.BlockHeight())
+		err = p.managedFinalizeWriteProgram(stream, lastOutput, p.staticHT.host.BlockHeight())
+		if err != nil {
+			return nil, limit, err
+		}
 	}
 
 	// The next read should return io.EOF since the host closes the connection

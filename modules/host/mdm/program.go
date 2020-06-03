@@ -213,8 +213,8 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.additionalStorageCost)
 		}
 		memoryCost := modules.MDMMemoryCost(p.staticProgramState.priceTable, p.usedMemory, time)
-		// Get the instruction cost and refund.
-		instructionCost, refund, err := i.Cost()
+		// Get the instruction cost and storageCost.
+		instructionCost, storageCost, err := i.Cost()
 		if err != nil {
 			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.additionalStorageCost)
 			return err
@@ -227,7 +227,7 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 			return err
 		}
 		// Add the instruction's potential refund to the total.
-		p.additionalStorageCost = p.additionalStorageCost.Add(refund)
+		p.additionalStorageCost = p.additionalStorageCost.Add(storageCost)
 		// Execute next instruction.
 		output = i.Execute(output)
 		p.outputChan <- Output{

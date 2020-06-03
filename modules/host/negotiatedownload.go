@@ -212,11 +212,10 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 		return errors.AddContext(ErrHighRenterMissedOutput, "renter has incentive to see host fail")
 	}
 
-	// Check that the host is not going to be posting collateral.
-	if paymentRevision.MissedHostOutput().Value.Cmp(existingRevision.MissedHostOutput().Value) < 0 {
-		collateral := existingRevision.MissedHostOutput().Value.Sub(paymentRevision.MissedHostOutput().Value)
-		s := fmt.Sprintf("host not expecting to post any collateral, but contract has host posting %v collateral", collateral)
-		return errors.AddContext(ErrLowHostMissedOutput, s)
+	// Check that no collateral was posted.
+	if !existingVoidOutput.Value.Equals(paymentVoidOutput.Value) {
+		s := fmt.Sprintf("void payout wasn't expected to change")
+		return errors.AddContext(ErrVoidOutputChanged, s)
 	}
 
 	// Check that the revision count has increased.
@@ -246,7 +245,7 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 	if paymentRevision.NewUnlockHash != existingRevision.NewUnlockHash {
 		return ErrBadUnlockHash
 	}
-	if !paymentRevision.MissedHostOutput().Value.Equals(existingRevision.MissedHostOutput().Value) {
+	if !paymentRevision.MissedHostPayout().Equals(existingRevision.MissedHostPayout().Add(toHost)) {
 		return ErrLowHostMissedOutput
 	}
 	return nil

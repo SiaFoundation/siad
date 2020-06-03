@@ -49,7 +49,7 @@ func (h *Host) staticPayByEphemeralAccount(stream siamux.Stream) (modules.Paymen
 	}
 
 	// Payment done through EAs don't move collateral
-	return newPaymentDetails(req.Message.Account, req.Message.Amount, types.ZeroCurrency), nil
+	return newPaymentDetails(req.Message.Account, req.Message.Amount), nil
 }
 
 // managedPayByContract processes a PayByContractRequest coming in over the
@@ -92,7 +92,7 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 	paymentRevision := revisionFromRequest(currentRevision, pbcr)
 
 	// verify the payment revision
-	amount, collateral, err := verifyPayByContractRevision(currentRevision, paymentRevision, bh)
+	amount, err := verifyPayByContractRevision(currentRevision, paymentRevision, bh)
 	if err != nil {
 		return nil, errors.AddContext(err, "Invalid payment revision")
 	}
@@ -127,7 +127,7 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 		return nil, errors.AddContext(err, "Could not send PayByContractResponse")
 	}
 
-	return newPaymentDetails(accountID, amount, collateral), nil
+	return newPaymentDetails(accountID, amount), nil
 }
 
 // managedFundAccount processes a PayByContractRequest coming in over the given
@@ -169,12 +169,9 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 	paymentRevision := revisionFromRequest(currentRevision, pbcr)
 
 	// verify the payment revision
-	amount, collateral, err := verifyPayByContractRevision(currentRevision, paymentRevision, bh)
+	amount, err := verifyPayByContractRevision(currentRevision, paymentRevision, bh)
 	if err != nil {
 		return types.ZeroCurrency, errors.AddContext(err, "Invalid payment revision")
-	}
-	if !collateral.IsZero() {
-		return types.ZeroCurrency, errors.AddContext(err, "Invalid payment revision, collateral was not zero")
 	}
 
 	// sign the revision
@@ -274,31 +271,28 @@ func signatureFromRequest(recent types.FileContractRevision, pbcr modules.PayByC
 // verifyPayByContractRevision verifies the given payment revision and returns
 // the amount that was transferred, the collateral that was moved and a
 // potential error.
-func verifyPayByContractRevision(current, payment types.FileContractRevision, blockHeight types.BlockHeight) (amount, collateral types.Currency, err error) {
+func verifyPayByContractRevision(current, payment types.FileContractRevision, blockHeight types.BlockHeight) (amount types.Currency, err error) {
 	if err = verifyPaymentRevision(current, payment, blockHeight, types.ZeroCurrency); err != nil {
 		return
 	}
 
 	// Note that we can safely subtract the values of the outputs seeing as verifyPaymentRevision will have checked for potential underflows
 	amount = payment.ValidHostPayout().Sub(current.ValidHostPayout())
-	collateral = current.MissedHostOutput().Value.Sub(payment.MissedHostOutput().Value)
 	return
 }
 
 // payment details is a helper struct that implements the PaymentDetails
 // interface.
 type paymentDetails struct {
-	account         modules.AccountID
-	amount          types.Currency
-	addedCollateral types.Currency
+	account modules.AccountID
+	amount  types.Currency
 }
 
 // newPaymentDetails returns a new paymentDetails object using the given values
-func newPaymentDetails(account modules.AccountID, amountPaid, addedCollateral types.Currency) *paymentDetails {
+func newPaymentDetails(account modules.AccountID, amountPaid types.Currency) *paymentDetails {
 	return &paymentDetails{
-		account:         account,
-		amount:          amountPaid,
-		addedCollateral: addedCollateral,
+		account: account,
+		amount:  amountPaid,
 	}
 }
 
@@ -308,7 +302,3 @@ func (pd *paymentDetails) AccountID() modules.AccountID { return pd.account }
 
 // Amount returns how much money the host received.
 func (pd *paymentDetails) Amount() types.Currency { return pd.amount }
-
-// AddedCollatoral returns the amount of collateral that moved from the host to
-// the void output.
-func (pd *paymentDetails) AddedCollateral() types.Currency { return pd.addedCollateral }

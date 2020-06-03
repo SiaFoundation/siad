@@ -4,6 +4,8 @@ package types
 // contracts.
 
 import (
+	"fmt"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -142,16 +144,9 @@ func (fcr FileContractRevision) PaymentRevision(amount Currency) (FileContractRe
 	rev.SetValidRenterPayout(fcr.ValidRenterPayout().Sub(amount))
 	rev.SetValidHostPayout(fcr.ValidHostPayout().Add(amount))
 
-	// move missed payout from renter to void
-	rev.SetMissedRenterPayout(fcr.MissedRenterOutput().Value.Sub(amount))
-	voidOutput, err := fcr.MissedVoidOutput()
-	if err != nil {
-		return FileContractRevision{}, errors.AddContext(err, "failed to get missed void output")
-	}
-	err = rev.SetMissedVoidPayout(voidOutput.Value.Add(amount))
-	if err != nil {
-		return FileContractRevision{}, errors.AddContext(err, "failed to set missed void output")
-	}
+	// move missed payout from renter to host.
+	rev.SetMissedRenterPayout(fcr.MissedRenterPayout().Sub(amount))
+	rev.SetMissedHostPayout(fcr.MissedHostPayout().Add(amount))
 
 	// increment revision number
 	rev.NewRevisionNumber++
@@ -173,7 +168,7 @@ func (fcr FileContractRevision) ExecuteProgramRevision(revisionNumber uint64, tr
 
 	// sanity check transfer.
 	if newRevision.MissedHostPayout().Cmp(transfer) < 0 {
-		return FileContractRevision{}, errors.New("transfer exceeds missed host payout")
+		return FileContractRevision{}, fmt.Errorf("transfer %v exceeds missed host payout %v", transfer, newRevision.MissedHostPayout())
 	}
 	// move money from the host.
 	newRevision.SetMissedHostPayout(newRevision.MissedHostPayout().Sub(transfer))

@@ -73,7 +73,6 @@ type PaymentProvider interface {
 type PaymentDetails interface {
 	AccountID() AccountID
 	Amount() types.Currency
-	AddedCollateral() types.Currency
 }
 
 // Payment identifiers

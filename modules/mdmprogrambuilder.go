@@ -3,6 +3,7 @@ package modules
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -37,7 +38,10 @@ func NewProgramBuilder(pt *RPCPriceTable) *ProgramBuilder {
 }
 
 // AddAppendInstruction adds an Append instruction to the program.
-func (pb *ProgramBuilder) AddAppendInstruction(data []byte, merkleProof bool) {
+func (pb *ProgramBuilder) AddAppendInstruction(data []byte, merkleProof bool) error {
+	if uint64(len(data)) != SectorSize {
+		return fmt.Errorf("expected appended data to have size %v but was %v", SectorSize, len(data))
+	}
 	// Compute the argument offsets.
 	dataOffset := uint64(pb.programData.Len())
 	// Extend the programData.
@@ -53,6 +57,7 @@ func (pb *ProgramBuilder) AddAppendInstruction(data []byte, merkleProof bool) {
 	time := uint64(MDMTimeAppend)
 	pb.addInstruction(collateral, cost, refund, memory, time)
 	pb.readonly = false
+	return nil
 }
 
 // AddDropSectorsInstruction adds a DropSectors instruction to the program.

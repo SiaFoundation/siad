@@ -772,3 +772,123 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 		t.Fatalf("Expected ErrBadUnlockHash but received '%v'", err)
 	}
 }
+
+// TestAppendProgram tests the managedRPCExecuteProgram with a valid 'Append'
+// program.
+func TestExecuteAppendProgram(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a blank host tester
+	rhp, err := newRenterHostPair(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := rhp.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// Prepare data to upload.
+	data := fastrand.Bytes(int(modules.SectorSize))
+	sectorRoot := crypto.MerkleRoot(data)
+
+	// create the 'Append' program.
+	pt := rhp.managedPriceTable()
+	pb := modules.NewProgramBuilder(pt)
+	err = pb.AddAppendInstruction(data, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, data := pb.Program()
+	programCost, storageCost, collateral := pb.Cost(true)
+
+	// prepare the request.
+	epr := modules.RPCExecuteProgramRequest{
+		FileContractID:    rhp.staticFCID,
+		Program:           program,
+		ProgramDataLength: uint64(len(data)),
+	}
+
+	// fund an account.
+	his := rhp.staticHT.host.managedInternalSettings()
+	maxBalance := his.MaxEphemeralAccountBalance
+	fundingAmt := maxBalance.Add(pt.FundAccountCost)
+	_, err = rhp.managedFundEphemeralAccount(fundingAmt, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compute expected bandwidth cost. These hardcoded values were chosen after
+	// running this test with a high budget and measuring the used bandwidth for
+	// this particular program on the "renter" side. This way we can test that
+	// the bandwidth measured by the renter is large enough to be accepted by
+	// the host.
+	expectedDownload := uint64(4380) // download
+	expectedUpload := uint64(14600)  // upload
+	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
+	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
+	bandwidthCost := downloadCost.Add(uploadCost)
+	cost := programCost.Add(bandwidthCost)
+
+	// execute program.
+	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true)
+	if err != nil {
+		t.Log("cost", cost.HumanString())
+		t.Log("expected ea balance", rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
+		t.Fatal(err)
+	}
+
+	// Log the bandwidth used by this RPC.
+	t.Logf("Used bandwidth (append sector program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+
+	// there should only be a single response.
+	if len(resps) != 1 {
+		t.Fatalf("expected 1 response but got %v", len(resps))
+	}
+	resp := resps[0]
+
+	// check response.
+	if resp.Error != nil {
+		t.Fatal(resp.Error)
+	}
+	// programs that don't require a snapshot return a 0 contract size.
+	if resp.NewSize != modules.SectorSize {
+		t.Fatalf("expected contract size to stay the same: %v != %v", modules.SectorSize, resp.NewSize)
+	}
+	// programs that don't require a snapshot return a zero hash.
+	if resp.NewMerkleRoot != sectorRoot {
+		t.Fatalf("expected merkle root to stay the same: %v != %v", sectorRoot, resp.NewMerkleRoot)
+	}
+	if len(resp.Proof) != 0 {
+		t.Fatalf("expected proof length to be %v but was %v", 0, len(resp.Proof))
+	}
+
+	if !resp.AdditionalCollateral.Equals(collateral) {
+		t.Fatalf("collateral doesnt't match expected collateral: %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
+	}
+	if !resp.StorageCost.Equals(storageCost) {
+		t.Fatalf("storage cost doesn't match expected storage cost: %v != %v", resp.StorageCost.HumanString(), storageCost.HumanString())
+	}
+	if uint64(len(resp.Output)) != 0 {
+		t.Fatalf("expected returned data to have length %v but was %v", 0, len(resp.Output))
+	}
+
+	// verify the cost
+	if !resp.TotalCost.Equals(programCost) {
+		t.Log("storage", storageCost.HumanString())
+		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
+	}
+
+	// verify the EA balance
+	am := rhp.staticHT.host.staticAccountManager
+	expectedBalance := maxBalance.Sub(cost)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
