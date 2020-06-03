@@ -211,6 +211,9 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	// TODO: check that the balance target  makes sense in function of the
 	// amount of MDM programs it can run with that amount of money
 	balanceTarget := types.SiacoinPrecision
+	if r.deps.Disrupt("DisableFunding") {
+		balanceTarget = types.ZeroCurrency
+	}
 
 	w := &worker{
 		staticHostPubKey:     hostPubKey,

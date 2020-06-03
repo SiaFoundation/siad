@@ -3,7 +3,6 @@ package host
 import (
 	"container/heap"
 	"encoding/json"
-	"fmt"
 	"sync"
 	"time"
 
@@ -132,10 +131,6 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	// Check payment.
 	if payment.Amount().Cmp(pt.UpdatePriceTableCost) < 0 {
 		return modules.ErrInsufficientPaymentForRPC
-	}
-	// Don't expect any added collateral.
-	if !payment.AddedCollateral().IsZero() {
-		return fmt.Errorf("no collateral should be moved but got %v", payment.AddedCollateral().HumanString())
 	}
 
 	// after payment has been received, track the price table in the host's list
