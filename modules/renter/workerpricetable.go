@@ -13,16 +13,6 @@ import (
 )
 
 var (
-	// updateTimeInterval defines the amount of time after which we'll update
-	// the host's prices. This is a temporary variable and will be replaced when
-	// we add a duration to the host's price table. For now it's just half of
-	// the rpcPriceGuaranteePeriod set on the host
-	updateTimeInterval = build.Select(build.Var{
-		Standard: 5 * time.Minute,
-		Dev:      3 * time.Minute,
-		Testing:  7 * time.Second,
-	}).(time.Duration)
-
 	// updatePriceTableGougingPercentageThreshold is the percentage threshold,
 	// in relation to the allowance, at which we consider the cost of updating
 	// the price table to be too expensive. E.g. the cost of updating the price
@@ -97,7 +87,7 @@ func (w *worker) staticSetPriceTable(pt *workerPriceTable) {
 // before the current time, and the price table expiry defaults to the zero
 // time.
 func (wpt *workerPriceTable) staticValid() bool {
-	return time.Now().After(wpt.staticExpiryTime)
+	return time.Now().Before(wpt.staticExpiryTime)
 }
 
 // managedUpdatePriceTable performs the UpdatePriceTableRPC on the host.
@@ -209,13 +199,21 @@ func (w *worker) staticUpdatePriceTable() {
 		return
 	}
 
+	// Calculate the expiry time and set the update time to be half of the
+	// expiry window to ensure we update the PT before it expires
+	now := time.Now()
+	expiryTime := now.Add(pt.Validity)
+	expiryHalfTimeInS := (expiryTime.Unix() - now.Unix()) / 2
+	expiryHalfTime := time.Duration(expiryHalfTimeInS) * time.Second
+	newUpdateTime := time.Now().Add(expiryHalfTime)
+
 	// Update the price table. We preserve the recent error even though there
 	// has not been an error for debugging purposes, if there has been an error
 	// previously the devs like to be able to see what it was.
 	wpt := &workerPriceTable{
 		staticPriceTable:          pt,
-		staticExpiryTime:          time.Now().Add(pt.Validity),
-		staticUpdateTime:          time.Now().Add(updateTimeInterval),
+		staticExpiryTime:          expiryTime,
+		staticUpdateTime:          newUpdateTime,
 		staticConsecutiveFailures: 0,
 		staticRecentErr:           currentPT.staticRecentErr,
 	}

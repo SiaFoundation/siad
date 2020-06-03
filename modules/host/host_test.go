@@ -444,8 +444,8 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 	}
 
 	// Read the cancellation token.
-	ct := make([]byte, modules.MDMCancellationTokenLen)
-	_, err = io.ReadFull(stream, ct)
+	var ct modules.MDMCancellationToken
+	err = modules.RPCRead(stream, &ct)
 	if err != nil {
 		return nil, limit, err
 	}
