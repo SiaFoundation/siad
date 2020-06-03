@@ -5,7 +5,7 @@ set -e
 
 # config
 
-generate_till_version=v1.4.8
+generate_till_version=v1.4.9
 changelog_md=../CHANGELOG.md
 changelog_files_dir=.
 changelog_ignore=.changelogignore
