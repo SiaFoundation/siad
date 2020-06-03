@@ -312,7 +312,9 @@ func TestHostContracts(t *testing.T) {
 		t.Fatal("expected host to have no contracts")
 	}
 
-	if _, err := tg.AddNodes(node.RenterTemplate); err != nil {
+	r := node.RenterTemplate
+	r.RenterDeps = &dependencies.DependencyPreventEARefill{}
+	if _, err := tg.AddNodes(r); err != nil {
 		t.Fatal(err)
 	}
 
