@@ -290,7 +290,7 @@ func TestFundAccountGouging(t *testing.T) {
 	}
 
 	// verify gouging case, in order to do so we have to set the fund account
-	// cost to an unreasonable amount, empirically we found 75mSC to be such a
+	// cost to an unreasonable amount, empirically we found 75mS to be such a
 	// value for the given parameters (1000SC funds and TB of 1SC)
 	pt = newDefaultPriceTable()
 	pt.FundAccountCost = types.SiacoinPrecision.MulFloat(0.075)
