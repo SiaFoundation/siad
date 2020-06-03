@@ -1,1 +1,0 @@
-- fix call to expensive operation in tight loop

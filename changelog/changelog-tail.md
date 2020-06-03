@@ -1,3 +1,30 @@
+## May 29, 2020:
+### v1.4.9
+**Key Updates**
+- Add `FeeManager` to siad to allow for applications to charge a fee
+- Add start time for the API server for siad uptime
+- Add new `/consensus/subscribe/:id` endpoint to allow subscribing to consensus
+  change events
+- Add /skykeys endpoint and `siac skykey ls` command
+- Updated skykey encoding and format
+
+**Bugs Fixed**
+- fix call to expensive operation in tight loop
+- fix an infinite loop which would block uploads from progressing
+
+**Other**
+- Optimize bandwidth consumption for RPC write calls
+- Extend `/daemon/alerts` with `criticalalerts`, `erroralerts` and
+  `warningalerts` fields along with `alerts`.
+- Update skykey siac functions to accept httpClient and remove global httpClient
+  reference from siac testing
+- Skykeycmd test broken down to subtests.
+- Create siac testing helpers.
+- Add engineering guidelines to /doc
+- Introduce PaymentProvider interface on the renter.
+- Skynet persistence subsystems into shared system.
+- Update Cobra from v0.0.5 to v1.0.0.
+
 ## May 11, 2020:
 ### v1.4.8
 **Key Updates**
