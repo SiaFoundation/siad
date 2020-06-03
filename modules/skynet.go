@@ -12,15 +12,22 @@ import (
 	"gitlab.com/NebulousLabs/Sia/skykey"
 )
 
+const (
+	// MetadataDefaultPath specifies the multipart form header key that holds
+	// the default path.
+	MetadataDefaultPath = "settings_defaultPath"
+)
+
 // SkyfileMetadata is all of the metadata that gets placed into the first 4096
 // bytes of the skyfile, and is used to set the metadata of the file when
 // writing back to disk. The data is json-encoded when it is placed into the
 // leading bytes of the skyfile, meaning that this struct can be extended
 // without breaking compatibility.
 type SkyfileMetadata struct {
-	Mode     os.FileMode     `json:"mode,omitempty"`
-	Filename string          `json:"filename,omitempty"`
-	Subfiles SkyfileSubfiles `json:"subfiles,omitempty"`
+	Mode        os.FileMode     `json:"mode,omitempty"`
+	Filename    string          `json:"filename,omitempty"`
+	Subfiles    SkyfileSubfiles `json:"subfiles,omitempty"`
+	DefaultPath string          `json:"defaultpath,omitempty"` // defaults to `index.hml`
 }
 
 // SkyfileSubfiles contains the subfiles of a skyfile, indexed by their

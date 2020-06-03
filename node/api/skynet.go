@@ -301,10 +301,25 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	defer streamer.Close()
 
+	// Get the redirect limitations. If there are none and we hit the root,
+	// we'll redirect to the default path.
+	redirectStr := queryForm.Get("redirect")
+	allowRedirect := redirectStr == "" // default to allowing redirects
+	if !allowRedirect {
+		allowRedirect, err = strconv.ParseBool(redirectStr)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("invalid 'redirect' value: %s, allowed values are `true` and `false`", redirectStr)}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	// If path is different from the root, limit the streamer and return the
 	// appropriate subset of the metadata. This is done by wrapping the streamer
 	// so it only returns the files defined in the subset of the metadata.
-	if path != "/" {
+	if path != "/" || allowRedirect {
+		if path == "/" {
+			path = metadata.DefaultPath
+		}
 		var dir bool
 		var offset, size uint64
 		metadata, dir, offset, size = metadata.ForPath(path)
@@ -322,7 +337,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			return
 		}
 	} else {
-		if len(metadata.Subfiles) > 1 && format == "" {
+		if len(metadata.Subfiles) > 1 && format == "" && !allowRedirect {
 			WriteError(w, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest)
 			return
 		}
@@ -333,16 +348,18 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if format == modules.SkyfileFormatTar {
 		w.Header().Set("content-type", "application/x-tar")
 		err = serveTar(w, metadata, streamer)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
+		}
 		return
 	} else if format == modules.SkyfileFormatTarGz {
 		w.Header().Set("content-type", "application/x-gtar ")
 		gzw := gzip.NewWriter(w)
 		err = serveTar(gzw, metadata, streamer)
 		err = errors.Compose(err, gzw.Close())
-		return
-	}
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -633,7 +650,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 	// Build the Skyfile metadata from the request
 	if strings.HasPrefix(mediaType, "multipart/form-data") {
-		subfiles, reader, err := skyfileParseMultiPartRequest(req)
+		subfiles, reader, defaultPath, err := skyfileParseMultiPartRequest(req)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed parsing multipart request: %v", err)}, http.StatusBadRequest)
 			return
@@ -650,8 +667,9 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 		lup.Reader = reader
 		lup.FileMetadata = modules.SkyfileMetadata{
-			Filename: filename,
-			Subfiles: subfiles,
+			Filename:    filename,
+			Subfiles:    subfiles,
+			DefaultPath: defaultPath,
 		}
 	} else {
 		// Parse out the filemode
@@ -891,19 +909,19 @@ func parseTimeout(queryForm url.Values) (time.Duration, error) {
 // skyfileParseMultiPartRequest parses the given request and returns the
 // subfiles found in the multipart request body, alongside with an io.Reader
 // containing all of the files.
-func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, io.Reader, error) {
+func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, io.Reader, string, error) {
 	subfiles := make(modules.SkyfileSubfiles)
 
 	// Parse the multipart form
 	err := req.ParseMultipartForm(32 << 20) // 32MB max memory
 	if err != nil {
-		return subfiles, nil, errors.AddContext(err, "failed parsing multipart form")
+		return subfiles, nil, "", errors.AddContext(err, "failed parsing multipart form")
 	}
 
 	// Parse out all of the multipart file headers
 	mpfHeaders := append(req.MultipartForm.File["file"], req.MultipartForm.File["files[]"]...)
 	if len(mpfHeaders) == 0 {
-		return subfiles, nil, errors.New("could not find multipart file")
+		return subfiles, nil, "", errors.New("could not find multipart file")
 	}
 
 	// If there are multiple, treat the entire upload as one with all separate
@@ -913,7 +931,7 @@ func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, i
 	for i, fh := range mpfHeaders {
 		f, err := fh.Open()
 		if err != nil {
-			return subfiles, nil, errors.AddContext(err, "could not open multipart file")
+			return subfiles, nil, "", errors.AddContext(err, "could not open multipart file")
 		}
 		readers[i] = f
 
@@ -923,14 +941,14 @@ func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, i
 		if modeStr != "" {
 			_, err := fmt.Sscanf(modeStr, "%o", &mode)
 			if err != nil {
-				return subfiles, nil, errors.AddContext(err, "failed to parse file mode")
+				return subfiles, nil, "", errors.AddContext(err, "failed to parse file mode")
 			}
 		}
 
 		// parse filename from multipart
 		filename := fh.Filename
 		if filename == "" {
-			return subfiles, nil, errors.New("no filename provided")
+			return subfiles, nil, "", errors.New("no filename provided")
 		}
 
 		// parse content type from multipart header
@@ -945,7 +963,15 @@ func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, i
 		}
 		offset += uint64(fh.Size)
 	}
-	return subfiles, io.MultiReader(readers...), nil
+
+	// Get the default path.
+	defaultPath := "index.html"
+	val, ok := req.MultipartForm.Value[modules.MetadataDefaultPath]
+	if ok && len(val) > 0 {
+		defaultPath = val[0]
+	}
+
+	return subfiles, io.MultiReader(readers...), defaultPath, nil
 }
 
 // skykeyHandlerGET handles the API call to get a Skykey and its ID using its
