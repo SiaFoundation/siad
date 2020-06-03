@@ -26,8 +26,8 @@ type (
 	// ProgramData contains the raw byte data for the program.
 	ProgramData []byte
 
-	// MDMCancellationTokenLen is a token that can be used to request
-	// cancellation of a program
+	// MDMCancellationToken is a token that can be used to request cancellation
+	// of a program
 	MDMCancellationToken [MDMCancellationTokenLen]byte
 )
 
