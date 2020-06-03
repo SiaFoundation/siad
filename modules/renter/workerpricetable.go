@@ -28,7 +28,7 @@ var (
 	// the price table to be too expensive. E.g. the cost of updating the price
 	// table over the total allowance period should never exceed .1% of the
 	// total allowance.
-	updatePriceTableGougingPercentageThreshold = 1e-1
+	updatePriceTableGougingPercentageThreshold = .1
 
 	// errPriceTableGouging is returned when price gouging is detected
 	errPriceTableGouging = errors.New("price table rejected due to price gouging")

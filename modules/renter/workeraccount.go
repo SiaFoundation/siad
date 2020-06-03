@@ -27,7 +27,7 @@ var (
 	// account to be too expensive. E.g. the cost of funding the account as many
 	// times as necessary to spend the total allowance should never exceed .1%
 	// of the total allowance.
-	fundAccountGougingPercentageThreshold = 1e-1
+	fundAccountGougingPercentageThreshold = .1
 )
 
 type (
