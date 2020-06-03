@@ -132,6 +132,29 @@ var (
 	// ErrUnknownModification is returned if the host receives a modification
 	// action from the renter that it does not understand.
 	ErrUnknownModification = ErrorCommunication("renter is attempting an action that the host does not understand")
+
+	// ErrValidHostOutputChanged is returned when the host's valid payout
+	// address changed even though it shouldn't.
+	ErrValidHostOutputChanged = ErrorCommunication("valid host payout address changed")
+
+	// ErrMissedHostOutputChanged is returne when the host's missed payout
+	// address changed even though it shouldn't.
+	ErrMissedHostOutputChanged = ErrorCommunication("missed host payout address changed")
+
+	// ErrVoidOutputChanged is returned if the void output address changed.
+	ErrVoidOutputChanged = ErrorCommunication("lost collateral address was changed")
+
+	// ErrValidRenterPayoutChanged is returned if the renter's valid payout
+	// changed even though it shouldn't.
+	ErrValidRenterPayoutChanged = ErrorCommunication("valid renter payout changed")
+
+	// ErrMissedRenterPayoutChanged is returned ifi the renter's missed payout
+	// changed even though it shouldn't.
+	ErrMissedRenterPayoutChanged = ErrorCommunication("valid renter payout changed")
+
+	// ErrValidHostPayoutChanged is returned if the host's valid payout changed
+	// even though it shouldn't.
+	ErrValidHostPayoutChanged = ErrorCommunication("valid host payout changed")
 )
 
 // finalizeContractArgs are the arguments passed into managedFinalizeContract.

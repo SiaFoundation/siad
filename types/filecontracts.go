@@ -158,6 +158,37 @@ func (fcr FileContractRevision) PaymentRevision(amount Currency) (FileContractRe
 	return rev, nil
 }
 
+// ExecuteProgramRevision creates an ExecuteProgramRevision from a given current
+// revision.
+func (fcr FileContractRevision) ExecuteProgramRevision(revisionNumber uint64, newValidProofValues, newMissedProofValues []Currency, newRoot crypto.Hash, newSize uint64) (FileContractRevision, error) {
+	if len(newValidProofValues) != len(fcr.NewValidProofOutputs) {
+		return FileContractRevision{}, errors.New("NewValidProofValues length mismatch")
+	}
+	if len(newMissedProofValues) != len(fcr.NewMissedProofOutputs) {
+		return FileContractRevision{}, errors.New("NewMissedProofValues length mismatch")
+	}
+	newRevision := fcr
+	newRevision.NewFileMerkleRoot = newRoot
+	newRevision.NewFileSize = newSize
+	newRevision.NewRevisionNumber = revisionNumber
+	newRevision.NewValidProofOutputs = make([]SiacoinOutput, len(fcr.NewValidProofOutputs))
+	for i := range newRevision.NewValidProofOutputs {
+		newRevision.NewValidProofOutputs[i] = SiacoinOutput{
+			Value:      newValidProofValues[i],
+			UnlockHash: fcr.NewValidProofOutputs[i].UnlockHash,
+		}
+	}
+	newRevision.NewMissedProofOutputs = make([]SiacoinOutput, len(fcr.NewMissedProofOutputs))
+	for i := range newRevision.NewMissedProofOutputs {
+		newRevision.NewMissedProofOutputs[i] = SiacoinOutput{
+			Value:      newMissedProofValues[i],
+			UnlockHash: fcr.NewMissedProofOutputs[i].UnlockHash,
+		}
+	}
+	// Set the new contract root and size.
+	return newRevision, nil
+}
+
 // ToTransaction wraps the revision in a Transaction. Note that the
 // PublicKeyIndex is hardcoded at 0 as the renter key is always first, see
 // formContract

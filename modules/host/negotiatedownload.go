@@ -180,7 +180,7 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 		return err
 	}
 	if paymentVoidOutput.UnlockHash != existingVoidOutput.UnlockHash {
-		return errors.New("lost collateral address was changed")
+		return ErrVoidOutputChanged
 	}
 
 	// Determine the amount that was transferred from the renter.

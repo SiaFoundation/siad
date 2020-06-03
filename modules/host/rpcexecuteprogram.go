@@ -260,26 +260,10 @@ func (h *Host) managedFinalizeWriteProgram(stream io.ReadWriter, fcid types.File
 	if err != nil {
 		return errors.AddContext(err, "failed to get current revision")
 	}
-	newRevision := currentRevision
-	newRevision.NewRevisionNumber = req.NewRevisionNumber
-	newRevision.NewValidProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewValidProofOutputs))
-	for i := range newRevision.NewValidProofOutputs {
-		newRevision.NewValidProofOutputs[i] = types.SiacoinOutput{
-			Value:      req.NewValidProofValues[i],
-			UnlockHash: currentRevision.NewValidProofOutputs[i].UnlockHash,
-		}
+	newRevision, err := currentRevision.ExecuteProgramRevision(req.NewRevisionNumber, req.NewMissedProofValues, req.NewMissedProofValues, lastOutput.NewMerkleRoot, lastOutput.NewSize)
+	if err != nil {
+		return errors.AddContext(err, "failed to get current revision")
 	}
-	newRevision.NewMissedProofOutputs = make([]types.SiacoinOutput, len(currentRevision.NewMissedProofOutputs))
-	for i := range newRevision.NewMissedProofOutputs {
-		newRevision.NewMissedProofOutputs[i] = types.SiacoinOutput{
-			Value:      req.NewMissedProofValues[i],
-			UnlockHash: currentRevision.NewMissedProofOutputs[i].UnlockHash,
-		}
-	}
-
-	// Set the new contract root and size.
-	newRevision.NewFileMerkleRoot = lastOutput.NewMerkleRoot
-	newRevision.NewFileSize = lastOutput.NewSize
 
 	// The host is expected to move the additional storage cost and collateral
 	// from the missed output to the missed void output.
@@ -337,11 +321,12 @@ func verifyExecuteProgramRevision(currentRevision, newRevision types.FileContrac
 
 	// Host payout addresses shouldn't change
 	if newRevision.ValidHostOutput().UnlockHash != currentRevision.ValidHostOutput().UnlockHash {
-		return errors.New("host payout address changed")
+		return ErrValidHostOutputChanged
 	}
 	if newRevision.MissedHostOutput().UnlockHash != currentRevision.MissedHostOutput().UnlockHash {
-		return errors.New("host payout address changed")
+		return ErrMissedHostOutputChanged
 	}
+
 	// Make sure the lost collateral still goes to the void
 	missedVoidOutput, err1 := newRevision.MissedVoidOutput()
 	existingVoidOutput, err2 := currentRevision.MissedVoidOutput()
@@ -349,25 +334,25 @@ func verifyExecuteProgramRevision(currentRevision, newRevision types.FileContrac
 		return err
 	}
 	if missedVoidOutput.UnlockHash != existingVoidOutput.UnlockHash {
-		return errors.New("lost collateral address was changed")
+		return ErrVoidOutputChanged
 	}
 
 	// Renter payouts shouldn't change.
 	if !currentRevision.ValidRenterPayout().Equals(newRevision.ValidRenterPayout()) {
-		return errors.New("validRenterPayout shouldn't change")
+		return ErrValidRenterPayoutChanged
 	}
 	if !currentRevision.MissedRenterPayout().Equals(newRevision.MissedRenterPayout()) {
-		return errors.New("missedRenterPayout shouldn't change")
+		return ErrMissedRenterPayoutChanged
 	}
 	// Valid host payout shouldn't change.
 	if !currentRevision.ValidHostPayout().Equals(newRevision.ValidHostPayout()) {
-		return errors.New("validHostPayout shouldn't change")
+		return ErrValidHostPayoutChanged
 	}
 
 	// Determine how much money was moved from the host's missed output to the void.
-	fromHost := newRevision.MissedHostPayout().Sub(currentRevision.MissedHostPayout())
+	fromHost := currentRevision.MissedHostPayout().Sub(newRevision.MissedHostPayout())
 	if fromHost.Cmp(maxTransfer) > 0 {
-		return errors.AddContext(ErrHighRenterValidOutput, "more money than expected moved from host")
+		return errors.AddContext(ErrLowHostMissedOutput, "more money than expected moved from host")
 	}
 
 	// The money subtracted from the host should match the money added to the void.

@@ -12,6 +12,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -564,4 +565,219 @@ func verifyBalance(am *accountManager, id modules.AccountID, expected types.Curr
 		}
 		return nil
 	})
+}
+
+// TestVerifyExecuteProgramRevision is a unit test covering
+// verifyExecuteProgramRevision.
+func TestVerifyExecuteProgramRevision(t *testing.T) {
+	t.Parallel()
+
+	// create a current revision and a payment revision
+	height := types.BlockHeight(0)
+	curr := types.FileContractRevision{
+		NewValidProofOutputs: []types.SiacoinOutput{
+			{Value: types.NewCurrency64(100)}, // renter
+			{Value: types.NewCurrency64(50)},  // host
+		},
+		NewMissedProofOutputs: []types.SiacoinOutput{
+			{Value: types.NewCurrency64(100)}, // renter
+			{Value: types.NewCurrency64(50)},  // host
+			{Value: types.ZeroCurrency},       // void
+		},
+		NewWindowStart:    types.BlockHeight(revisionSubmissionBuffer) + 1,
+		NewFileSize:       fastrand.Uint64n(1000) * modules.SectorSize,
+		NewRevisionNumber: fastrand.Uint64n(1000),
+	}
+
+	// deepCopy is a helper function that makes a deep copy of a revision
+	deepCopy := func(rev types.FileContractRevision) (revCopy types.FileContractRevision) {
+		rBytes := encoding.Marshal(rev)
+		err := encoding.Unmarshal(rBytes, &revCopy)
+		if err != nil {
+			panic(err)
+		}
+		return
+	}
+
+	// create a valid revision as a baseline for the test.
+	newFileSize := curr.NewFileSize + modules.SectorSize
+	newRevisionNumber := curr.NewRevisionNumber + 1
+	transferred := types.NewCurrency64(20)
+	validPayouts := []types.Currency{
+		curr.NewValidProofOutputs[0].Value,
+		curr.NewValidProofOutputs[1].Value,
+	}
+	missedPayouts := []types.Currency{
+		curr.NewMissedProofOutputs[0].Value,
+		curr.NewMissedProofOutputs[1].Value.Sub(transferred),
+		curr.NewMissedProofOutputs[2].Value.Add(transferred),
+	}
+	newRoot := crypto.Hash{}
+	fastrand.Read(newRoot[:])
+	validRevision, err := curr.ExecuteProgramRevision(newRevisionNumber, validPayouts, missedPayouts, newRoot, newFileSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify a properly created payment revision is accepted
+	err = verifyExecuteProgramRevision(curr, validRevision, height, transferred, newFileSize, newRoot)
+	if err != nil {
+		t.Fatal("Unexpected error when verifying revision, ", err)
+	}
+
+	// expect ErrBadContractOutputCounts
+	badOutputs := []types.SiacoinOutput{validRevision.NewMissedProofOutputs[0]}
+	badRevision := deepCopy(validRevision)
+	badRevision.NewMissedProofOutputs = badOutputs
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if err != ErrBadContractOutputCounts {
+		t.Fatalf("Expected ErrBadContractOutputCounts but received '%v'", err)
+	}
+
+	// same but for missed outputs
+	badOutputs = []types.SiacoinOutput{validRevision.NewMissedProofOutputs[0]}
+	badRevision = deepCopy(validRevision)
+	badRevision.NewMissedProofOutputs = badOutputs
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if err != ErrBadContractOutputCounts {
+		t.Fatalf("Expected ErrBadContractOutputCounts but received '%v'", err)
+	}
+
+	// expect ErrLateRevision
+	badCurr := deepCopy(curr)
+	badCurr.NewWindowStart = curr.NewWindowStart - 1
+	err = verifyExecuteProgramRevision(badCurr, validRevision, height, transferred, newFileSize, newRoot)
+	if err != ErrLateRevision {
+		t.Fatalf("Expected ErrLateRevision but received '%v'", err)
+	}
+
+	// expect host payout address changed
+	hash := crypto.HashBytes([]byte("random"))
+	badRevision = deepCopy(validRevision)
+	badRevision.NewValidProofOutputs[1].UnlockHash = types.UnlockHash(hash)
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if err == nil || !strings.Contains(err.Error(), "host payout address changed") {
+		t.Fatalf("Expected host payout error but received '%v'", err)
+	}
+
+	// expect host payout address changed
+	badRevision = deepCopy(validRevision)
+	badRevision.NewMissedProofOutputs[1].UnlockHash = types.UnlockHash(hash)
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if err == nil || !strings.Contains(err.Error(), "host payout address changed") {
+		t.Fatalf("Expected host payout error but received '%v'", err)
+	}
+
+	// expect lost collateral address changed
+	badRevision = deepCopy(validRevision)
+	badRevision.NewMissedProofOutputs[2].UnlockHash = types.UnlockHash(hash)
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if err != ErrVoidOutputChanged {
+		t.Fatalf("Expected lost collaterall error but received '%v'", err)
+	}
+
+	// renter valid payout changed.
+	badRevision = deepCopy(validRevision)
+	badRevision.NewValidProofOutputs[0].Value = badRevision.NewValidProofOutputs[0].Value.Add64(1)
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if err != ErrValidRenterPayoutChanged {
+		t.Fatalf("Expected ErrValidRenterPayoutChanged error but received '%v'", err)
+	}
+
+	// renter missed payout changed.
+	badRevision = deepCopy(validRevision)
+	badRevision.NewValidProofOutputs[0].Value = badRevision.NewValidProofOutputs[0].Value.Add64(1)
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if err != ErrMissedRenterPayoutChanged {
+		t.Fatalf("Expected ErrMissedRenterPayoutChanged error but received '%v'", err)
+	}
+
+	// host valid payout changed.
+	badRevision = deepCopy(validRevision)
+	badRevision.NewValidProofOutputs[1].Value = badRevision.NewValidProofOutputs[1].Value.Add64(1)
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if !errors.Contains(err, ErrValidHostPayoutChanged) {
+		t.Fatalf("Expected ErrValidHostPayoutChanged error but received '%v'", err)
+	}
+
+	// expect an error saying too much money was transferred
+	badRevision = deepCopy(validRevision)
+	badRevision.NewMissedProofOutputs[1].Value = badRevision.NewMissedProofOutputs[1].Value.Sub64(1)
+	badRevision.NewMissedProofOutputs[2].Value = badRevision.NewMissedProofOutputs[2].Value.Add64(1)
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if !errors.Contains(err, ErrLowHostMissedOutput) {
+		t.Fatalf("Expected '%v' but received '%v'", ErrLowHostMissedOutput.Error(), err)
+	}
+
+	// expect ErrHighRenterMissedOutput
+	badRevision = deepCopy(validRevision)
+	badRevision.SetMissedRenterPayout(validRevision.MissedRenterOutput().Value.Sub64(1))
+	err = verifyExecuteProgramRevision(badRevision, badRevision, height, transferred, newFileSize, newRoot)
+	if err == nil || !strings.Contains(err.Error(), string(ErrHighRenterMissedOutput)) {
+		t.Fatalf("Expected '%v' but received '%v'", string(ErrHighRenterMissedOutput), err)
+	}
+
+	// expect ErrBadRevisionNumber
+	badRevision = deepCopy(validRevision)
+	badRevision.NewRevisionNumber--
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if err != ErrBadRevisionNumber {
+		t.Fatalf("Expected ErrBadRevisionNumber but received '%v'", err)
+	}
+
+	// expect ErrBadParentID
+	badRevision = deepCopy(validRevision)
+	badRevision.ParentID = types.FileContractID(hash)
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if err != ErrBadParentID {
+		t.Fatalf("Expected ErrBadParentID but received '%v'", err)
+	}
+
+	// expect ErrBadUnlockConditions
+	badRevision = deepCopy(validRevision)
+	badRevision.UnlockConditions.Timelock = validRevision.UnlockConditions.Timelock + 1
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if err != ErrBadUnlockConditions {
+		t.Fatalf("Expected ErrBadUnlockConditions but received '%v'", err)
+	}
+
+	// expect ErrBadFileSize
+	badRevision = deepCopy(validRevision)
+	badRevision.NewFileSize = validRevision.NewFileSize + 1
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if err != ErrBadFileSize {
+		t.Fatalf("Expected ErrBadFileSize but received '%v'", err)
+	}
+
+	// expect ErrBadFileMerkleRoot
+	badRevision = deepCopy(validRevision)
+	badRevision.NewFileMerkleRoot = hash
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if err != ErrBadFileMerkleRoot {
+		t.Fatalf("Expected ErrBadFileMerkleRoot but received '%v'", err)
+	}
+
+	// expect ErrBadWindowStart
+	badRevision = deepCopy(validRevision)
+	badRevision.NewWindowStart = curr.NewWindowStart + 1
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if err != ErrBadWindowStart {
+		t.Fatalf("Expected ErrBadWindowStart but received '%v'", err)
+	}
+
+	// expect ErrBadWindowEnd
+	badRevision = deepCopy(validRevision)
+	badRevision.NewWindowEnd = curr.NewWindowEnd - 1
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if err != ErrBadWindowEnd {
+		t.Fatalf("Expected ErrBadWindowEnd but received '%v'", err)
+	}
+
+	// expect ErrBadUnlockHash
+	badRevision = deepCopy(validRevision)
+	badRevision.NewUnlockHash = types.UnlockHash(hash)
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if err != ErrBadUnlockHash {
+		t.Fatalf("Expected ErrBadUnlockHash but received '%v'", err)
+	}
 }
