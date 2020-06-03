@@ -339,7 +339,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			return
 		}
 	} else {
-		if len(metadata.Subfiles) > 1 && format == "" && !allowRedirect {
+		if len(metadata.Subfiles) > 1 && format == "" {
 			WriteError(w, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest)
 			return
 		}
