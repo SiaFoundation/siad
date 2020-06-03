@@ -1,3 +1,8 @@
+## Jun 3, 2020:
+### v1.4.10
+**Other**
+- Add Skykey Name and ID to skykey GET responses
+
 ## May 29, 2020:
 ### v1.4.9
 **Key Updates**
