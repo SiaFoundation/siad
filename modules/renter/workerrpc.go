@@ -85,7 +85,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 
 	// read the cancellation token.
-	ct := make([]byte, modules.MDMCancellationTokenLen)
+	var ct modules.MDMCancellationToken
 	err = modules.RPCRead(stream, &ct)
 	if err != nil {
 		return
