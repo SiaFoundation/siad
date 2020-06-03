@@ -352,9 +352,6 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	if !payment.Amount().Equals(amount) {
 		t.Fatalf("Unexpected amount paid, expected %v actual %v", amountStr, payment.Amount().HumanString())
 	}
-	if !payment.AddedCollateral().IsZero() {
-		t.Fatalf("Unexpected collateral added, expected 0H actual %v", payment.AddedCollateral())
-	}
 
 	// prepare a set of payouts that do not deduct payment from the renter
 	validPayouts, missedPayouts := updated.payouts()

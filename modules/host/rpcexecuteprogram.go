@@ -55,10 +55,6 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			}
 		}()
 	}()
-	// Don't expect any added collateral.
-	if !pd.AddedCollateral().IsZero() {
-		return fmt.Errorf("no collateral should be moved but got %v", pd.AddedCollateral().HumanString())
-	}
 
 	// Read request
 	var epr modules.RPCExecuteProgramRequest
