@@ -3,7 +3,6 @@ package host
 import (
 	"container/heap"
 	"encoding/json"
-	"io"
 	"reflect"
 	"strings"
 	"testing"
@@ -11,6 +10,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -19,7 +19,8 @@ import (
 // TestPriceTableMarshaling tests a PriceTable can be marshaled and unmarshaled
 func TestPriceTableMarshaling(t *testing.T) {
 	pt := modules.RPCPriceTable{
-		Expiry:               time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
+		Validity:             rpcPriceGuaranteePeriod,
+		HostBlockHeight:      types.BlockHeight(fastrand.Intn(1e3)),
 		UpdatePriceTableCost: types.SiacoinPrecision,
 		InitBaseCost:         types.SiacoinPrecision.Mul64(1e2),
 		MemoryTimeCost:       types.SiacoinPrecision.Mul64(1e3),
@@ -51,30 +52,44 @@ func TestPriceTableMinHeap(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
-	pth := priceTableHeap{heap: make([]*modules.RPCPriceTable, 0)}
+	pth := priceTableHeap{heap: make([]*hostRPCPriceTable, 0)}
 
-	// add 4 price tables (out of order) that expire somewhere in the future
-	pt1 := modules.RPCPriceTable{Expiry: now.Add(9 * time.Minute).Unix()}
-	pt2 := modules.RPCPriceTable{Expiry: now.Add(-3 * time.Minute).Unix()}
-	pt3 := modules.RPCPriceTable{Expiry: now.Add(-6 * time.Minute).Unix()}
-	pt4 := modules.RPCPriceTable{Expiry: now.Add(-1 * time.Minute).Unix()}
+	pt1 := hostRPCPriceTable{
+		modules.RPCPriceTable{Validity: rpcPriceGuaranteePeriod},
+		now.Add(-rpcPriceGuaranteePeriod),
+	}
 	pth.Push(&pt1)
+
+	pt2 := hostRPCPriceTable{
+		modules.RPCPriceTable{Validity: rpcPriceGuaranteePeriod},
+		now,
+	}
 	pth.Push(&pt2)
+
+	pt3 := hostRPCPriceTable{
+		modules.RPCPriceTable{Validity: rpcPriceGuaranteePeriod},
+		now.Add(-3 * rpcPriceGuaranteePeriod),
+	}
 	pth.Push(&pt3)
+
+	pt4 := hostRPCPriceTable{
+		modules.RPCPriceTable{Validity: rpcPriceGuaranteePeriod},
+		now.Add(-2 * rpcPriceGuaranteePeriod),
+	}
 	pth.Push(&pt4)
 
-	// verify it considers 3 to be expired if we pass it a threshold 7' from now
+	// verify it expires 3 of them
 	expired := pth.PopExpired()
 	if len(expired) != 3 {
-		t.Fatalf("Expected 3 price tables to be expired, yet managedExpired returned %d price tables", len(expired))
+		t.Fatalf("Unexpected amount of price tables expired, expected %v, received %d", 3, len(expired))
 	}
 
 	// verify 'pop' returns the last remaining price table
 	pth.mu.Lock()
-	expectedPt1 := heap.Pop(&pth.heap)
+	expectedPt2 := heap.Pop(&pth.heap)
 	pth.mu.Unlock()
-	if expectedPt1 != &pt1 {
-		t.Fatal("Expected the last price table to be equal to pt1, which is the price table with the highest expiry")
+	if expectedPt2 != &pt2 {
+		t.Fatal("Expected the last price table to be equal to pt2, which is the price table with the highest expiry")
 	}
 }
 
@@ -110,8 +125,7 @@ func TestPruneExpiredPriceTables(t *testing.T) {
 		t.Fatal("Expected the testing price table to be tracked but isn't")
 	}
 
-	// sleep for the duration of the expiry frequency, seeing as that is greater
-	// than the price guarantee period, it is the worst case
+	// retry until the price table expired and got pruned
 	err = build.Retry(10, pruneExpiredRPCPriceTableFrequency, func() error {
 		_, exists := ht.host.staticPriceTables.managedGet(pt.UID)
 		if exists {
@@ -137,12 +151,6 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		err := pair.Close()
-		if err != nil {
-			t.Error(err)
-		}
-	}()
 	ht := pair.staticHT
 
 	// renter-side logic
@@ -181,9 +189,10 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 			return nil, err
 		}
 
-		// expect clean stream close
-		err = modules.RPCRead(stream, struct{}{})
-		if !errors.Contains(err, io.ErrClosedPipe) {
+		// await tracked response
+		var tracked modules.RPCTrackedPriceTableResponse
+		err = modules.RPCRead(stream, &tracked)
+		if err != nil {
 			return nil, err
 		}
 		return &pt, nil
@@ -212,9 +221,19 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	if !tracked {
 		t.Fatalf("Expected price table with.UID %v to be tracked after successful update", pt.UID)
 	}
-	// ensure its expiry is in the future
-	if pt.Expiry <= time.Now().Unix() {
-		t.Fatal("Expected price table expiry to be in the future")
+	// ensure its validity is positive and different from zero
+	if pt.Validity.Seconds() <= 0 {
+		t.Fatal("Expected price table validity to be positive and non zero")
+	}
+
+	// ensure it contains the host's block height
+	if pt.HostBlockHeight != ht.host.BlockHeight() {
+		t.Fatal("Expected host blockheight to be set on the price table")
+	}
+	// ensure it's not zero to be certain the blockheight is set and it's not
+	// just the initial value
+	if pt.HostBlockHeight == 0 {
+		t.Fatal("Expected host blockheight to be not 0")
 	}
 
 	// expect failure if the payment revision does not cover the RPC cost
@@ -225,5 +244,36 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	_, err = runWithRequest(newPayByContractRequest(rev, sig, aid))
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientPaymentForRPC.Error()) {
 		t.Fatalf("Expected error '%v', instead error was '%v'", modules.ErrInsufficientPaymentForRPC, err)
+	}
+
+	// close the pair and recreate one with a custom dependency
+	err = pair.Close()
+	if err != nil {
+		t.Error(err)
+	}
+
+	// create a new renter host pair but now with a dependency that prevents the
+	// stream from closing
+	deps := &dependencies.DependencyDisableStreamClose{}
+	pair, err = newCustomRenterHostPair(t.Name(), deps)
+	defer func() {
+		err := pair.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+	ht = pair.staticHT
+
+	// verify the RPC does not block if the host does not close the stream on
+	// his side
+	current = ht.host.staticPriceTables.managedCurrent()
+	rev, sig, err = pair.managedPaymentRevision(current.UpdatePriceTableCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = runWithRequest(newPayByContractRequest(rev, sig, aid))
+	if err != nil {
+		t.Fatal(err)
 	}
 }

@@ -2,8 +2,6 @@ package renter
 
 import (
 	"encoding/json"
-	"io"
-	"strings"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -12,25 +10,15 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
-// updateTimeInterval defines the amount of time after which we'll update the
-// host's prices. This is a temporary variable and will be replaced when we add
-// a duration to the host's price table. For now it's just half of the
-// rpcPriceGuaranteePeriod set on the host
-//
-// TODO: Need to switch to setting the price table update based on the host
-// timeout instead.
-var updateTimeInterval = build.Select(build.Var{
-	Standard: 5 * time.Minute,
-	Dev:      3 * time.Minute,
-	Testing:  7 * time.Second,
-}).(time.Duration)
-
 type (
 	// workerPriceTable contains a price table and some information related to
 	// retrieving the next update.
 	workerPriceTable struct {
 		// The actual price table.
 		staticPriceTable modules.RPCPriceTable
+
+		// The time at which the price table expires.
+		staticExpiryTime time.Time
 
 		// The next time that the worker should try to update the price table.
 		staticUpdateTime time.Time
@@ -85,7 +73,7 @@ func (w *worker) staticSetPriceTable(pt *workerPriceTable) {
 // before the current time, and the price table expiry defaults to the zero
 // time.
 func (wpt *workerPriceTable) staticValid() bool {
-	return wpt.staticPriceTable.Expiry > time.Now().Unix()
+	return time.Now().Before(wpt.staticExpiryTime)
 }
 
 // managedUpdatePriceTable performs the UpdatePriceTableRPC on the host.
@@ -130,6 +118,7 @@ func (w *worker) staticUpdatePriceTable() {
 			// table, need to make a new one.
 			pt := &workerPriceTable{
 				staticPriceTable:          currentPT.staticPriceTable,
+				staticExpiryTime:          currentPT.staticExpiryTime,
 				staticUpdateTime:          cooldownUntil(currentPT.staticConsecutiveFailures),
 				staticConsecutiveFailures: currentPT.staticConsecutiveFailures + 1,
 				staticRecentErr:           err,
@@ -187,24 +176,29 @@ func (w *worker) staticUpdatePriceTable() {
 	}
 
 	// The price table will not become valid until the host has received and
-	// confirmed our payment. The only way for us to know that the payment has
-	// been confirmed is to do a read, and we expect that the host has closed
-	// the stream.
-	//
-	// TODO: Since this part is necessary for synchrony reasons, we should make
-	// it an explicit part of the protocol and have the host send an actual
-	// response.
-	expectedReadErr := modules.RPCRead(stream, struct{}{})
-	if expectedReadErr == nil || !strings.Contains(expectedReadErr.Error(), io.ErrClosedPipe.Error()) {
-		w.renter.log.Println("ERROR: expected io.ErrClosedPipe, instead received err:", expectedReadErr)
+	// confirmed our payment. The host will signal this by sending an empty
+	// response object we need to read.
+	var tracked modules.RPCTrackedPriceTableResponse
+	err = modules.RPCRead(stream, &tracked)
+	if err != nil {
+		return
 	}
+
+	// Calculate the expiry time and set the update time to be half of the
+	// expiry window to ensure we update the PT before it expires
+	now := time.Now()
+	expiryTime := now.Add(pt.Validity)
+	expiryHalfTimeInS := (expiryTime.Unix() - now.Unix()) / 2
+	expiryHalfTime := time.Duration(expiryHalfTimeInS) * time.Second
+	newUpdateTime := time.Now().Add(expiryHalfTime)
 
 	// Update the price table. We preserve the recent error even though there
 	// has not been an error for debugging purposes, if there has been an error
 	// previously the devs like to be able to see what it was.
 	wpt := &workerPriceTable{
 		staticPriceTable:          pt,
-		staticUpdateTime:          time.Now().Add(updateTimeInterval),
+		staticExpiryTime:          expiryTime,
+		staticUpdateTime:          newUpdateTime,
 		staticConsecutiveFailures: 0,
 		staticRecentErr:           currentPT.staticRecentErr,
 	}

@@ -1,9 +1,13 @@
 package consensus
 
 import (
+	"context"
+	"errors"
 	"reflect"
+	"sync"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -195,5 +199,87 @@ func TestConsensusBlocksIDGet(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+type testSubscriber struct {
+	height types.BlockHeight
+	ccid   modules.ConsensusChangeID
+	mu     sync.Mutex
+}
+
+func (ts *testSubscriber) ProcessConsensusChange(cc modules.ConsensusChange) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	ts.height += types.BlockHeight(len(cc.AppliedBlocks))
+	ts.height -= types.BlockHeight(len(cc.RevertedBlocks))
+	ts.ccid = cc.ID
+}
+
+// TestConsensusSubscribe tests the /consensus/subscribe endpoint
+func TestConsensusSubscribe(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Create a testgroup
+	groupParams := siatest.GroupParams{
+		Miners: 1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(consensusTestDir(t.Name()), groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	testNode := tg.Miners()[0]
+
+	// subscribe via api, but cancel immediately
+	s := &testSubscriber{height: ^types.BlockHeight(0)}
+	cancel := make(chan struct{})
+	close(cancel)
+	errCh, _ := testNode.ConsensusSetSubscribe(s, modules.ConsensusChangeBeginning, cancel)
+	if err := <-errCh; errors.Is(err, context.Canceled) {
+		t.Fatal("expected context.Canceled, got", err)
+	}
+	// subscribe again without cancelling
+	errCh, unsubscribe := testNode.ConsensusSetSubscribe(s, modules.ConsensusChangeBeginning, nil)
+	if err := <-errCh; err != nil {
+		t.Fatal(err)
+	}
+
+	// subscriber should be synced with miner
+	cg, err := testNode.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.height != cg.Height {
+		t.Fatal("subscriber not synced", s.height, cg.Height)
+	}
+
+	// unsubscribe and mine more blocks; subscriber should not see them
+	unsubscribe()
+	for i := 0; i < 5; i++ {
+		testNode.MineBlock()
+	}
+	cg, err = testNode.ConsensusGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.height == cg.Height {
+		t.Fatal("subscriber was not unsubscribed", s.height, cg.Height)
+	}
+
+	// resubscribe from most recent ccid; should resync
+	errCh, unsubscribe = testNode.ConsensusSetSubscribe(s, s.ccid, nil)
+	if err := <-errCh; err != nil {
+		t.Fatal(err)
+	}
+	defer unsubscribe()
+	if s.height != cg.Height {
+		t.Fatal("subscriber not synced", s.height, cg.Height)
 	}
 }

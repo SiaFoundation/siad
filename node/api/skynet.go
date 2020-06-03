@@ -101,6 +101,12 @@ type (
 	// SkykeyGET contains a base64 encoded Skykey.
 	SkykeyGET struct {
 		Skykey string `json:"skykey"` // base64 encoded Skykey
+		Name   string `json:"name"`
+		ID     string `json:"id"` // base64 encoded Skykey ID
+	}
+	// SkykeysGET contains a slice of Skykeys.
+	SkykeysGET struct {
+		Skykeys []SkykeyGET `json:"skykeys"`
 	}
 )
 
@@ -983,34 +989,36 @@ func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, ps ht
 	}
 	WriteJSON(w, SkykeyGET{
 		Skykey: skString,
+		Name:   sk.Name,
+		ID:     sk.ID().ToString(),
 	})
 }
 
 // skykeyCreateKeyHandlerPost handles the API call to create a skykey using the renter's
 // skykey manager.
 func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	// Parse skykey name and ciphertype
+	// Parse skykey name and type
 	name := req.FormValue("name")
-	ctString := req.FormValue("ciphertype")
+	skykeyTypeString := req.FormValue("type")
 
 	if name == "" {
 		WriteError(w, Error{"you must specify the name the skykey"}, http.StatusInternalServerError)
 		return
 	}
 
-	if ctString == "" {
-		WriteError(w, Error{"you must specify the desited ciphertype for the skykey"}, http.StatusInternalServerError)
+	if skykeyTypeString == "" {
+		WriteError(w, Error{"you must specify the type of the skykey"}, http.StatusInternalServerError)
 		return
 	}
 
-	var ct crypto.CipherType
-	err := ct.FromString(ctString)
+	var skykeyType skykey.SkykeyType
+	err := skykeyType.FromString(skykeyTypeString)
 	if err != nil {
-		WriteError(w, Error{"failed to decode ciphertype" + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"failed to decode skykey type" + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
-	sk, err := api.renter.CreateSkykey(name, ct)
+	sk, err := api.renter.CreateSkykey(name, skykeyType)
 	if err != nil {
 		WriteError(w, Error{"failed to create skykey" + err.Error()}, http.StatusInternalServerError)
 		return
@@ -1051,4 +1059,30 @@ func (api *API) skykeyAddKeyHandlerPOST(w http.ResponseWriter, req *http.Request
 	}
 
 	WriteSuccess(w)
+}
+
+// skykeysHandlerGET handles the API call to get all of the renter's skykeys.
+func (api *API) skykeysHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	skykeys, err := api.renter.Skykeys()
+	if err != nil {
+		WriteError(w, Error{"Unable to get skykeys: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	res := SkykeysGET{
+		Skykeys: make([]SkykeyGET, len(skykeys)),
+	}
+	for i, sk := range skykeys {
+		skStr, err := sk.ToString()
+		if err != nil {
+			WriteError(w, Error{"failed to write skykey string: " + err.Error()}, http.StatusInternalServerError)
+			return
+		}
+		res.Skykeys[i] = SkykeyGET{
+			Skykey: skStr,
+			Name:   sk.Name,
+			ID:     sk.ID().ToString(),
+		}
+	}
+	WriteJSON(w, res)
 }

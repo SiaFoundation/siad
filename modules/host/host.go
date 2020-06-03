@@ -64,7 +64,6 @@ package host
 // TODO: update_test.go has commented out tests.
 
 import (
-	"container/heap"
 	"errors"
 	"fmt"
 	"net"
@@ -111,7 +110,7 @@ var (
 	rpcPriceGuaranteePeriod = build.Select(build.Var{
 		Standard: 10 * time.Minute,
 		Dev:      5 * time.Minute,
-		Testing:  15 * time.Second,
+		Testing:  1 * time.Minute,
 	}).(time.Duration)
 
 	// pruneExpiredRPCPriceTableFrequency is the frequency at which the host
@@ -209,7 +208,7 @@ type Host struct {
 // 'guaranteed' map.
 type hostPrices struct {
 	current       modules.RPCPriceTable
-	guaranteed    map[modules.UniqueID]*modules.RPCPriceTable
+	guaranteed    map[modules.UniqueID]*hostRPCPriceTable
 	staticMinHeap priceTableHeap
 	mu            sync.RWMutex
 }
@@ -222,7 +221,7 @@ func (hp *hostPrices) managedCurrent() modules.RPCPriceTable {
 }
 
 // managedGet returns the price table with given uid
-func (hp *hostPrices) managedGet(uid modules.UniqueID) (pt *modules.RPCPriceTable, found bool) {
+func (hp *hostPrices) managedGet(uid modules.UniqueID) (pt *hostRPCPriceTable, found bool) {
 	hp.mu.RLock()
 	defer hp.mu.RUnlock()
 	pt, found = hp.guaranteed[uid]
@@ -240,7 +239,7 @@ func (hp *hostPrices) managedSetCurrent(pt modules.RPCPriceTable) {
 // managedTrack adds the given price table to the 'guaranteed' map, that holds
 // all of the price tables the host has recently guaranteed to renters. It will
 // also add it to the heap which facilates efficient pruning of that map.
-func (hp *hostPrices) managedTrack(pt *modules.RPCPriceTable) {
+func (hp *hostPrices) managedTrack(pt *hostRPCPriceTable) {
 	hp.mu.Lock()
 	hp.guaranteed[pt.UID] = pt
 	hp.mu.Unlock()
@@ -275,61 +274,6 @@ func (hp *hostPrices) managedPruneExpired() {
 type lockedObligation struct {
 	mu siasync.TryMutex
 	n  uint
-}
-
-// priceTableHeap is a helper type that contains a min heap of rpc price tables,
-// sorted on their expiry. The heap is guarded by its own mutex and allows for
-// peeking at the min expiry.
-type priceTableHeap struct {
-	heap rpcPriceTableHeap
-	mu   sync.Mutex
-}
-
-// PopExpired returns the UIDs for all rpc price tables that have expired
-func (pth *priceTableHeap) PopExpired() (expired []modules.UniqueID) {
-	pth.mu.Lock()
-	defer pth.mu.Unlock()
-
-	now := time.Now().Unix()
-	for {
-		if pth.heap.Len() == 0 {
-			return
-		}
-
-		pt := heap.Pop(&pth.heap)
-		if now < pt.(*modules.RPCPriceTable).Expiry {
-			heap.Push(&pth.heap, pt)
-			break
-		}
-		expired = append(expired, pt.(*modules.RPCPriceTable).UID)
-	}
-	return
-}
-
-// Push will add a price table to the heap.
-func (pth *priceTableHeap) Push(pt *modules.RPCPriceTable) {
-	pth.mu.Lock()
-	defer pth.mu.Unlock()
-	heap.Push(&pth.heap, pt)
-}
-
-// rpcPriceTableHeap is a min heap of rpc price tables
-type rpcPriceTableHeap []*modules.RPCPriceTable
-
-// Implementation of heap.Interface for rpcPriceTableHeap.
-func (pth rpcPriceTableHeap) Len() int           { return len(pth) }
-func (pth rpcPriceTableHeap) Less(i, j int) bool { return pth[i].Expiry < pth[j].Expiry }
-func (pth rpcPriceTableHeap) Swap(i, j int)      { pth[i], pth[j] = pth[j], pth[i] }
-func (pth *rpcPriceTableHeap) Push(x interface{}) {
-	pt := x.(*modules.RPCPriceTable)
-	*pth = append(*pth, pt)
-}
-func (pth *rpcPriceTableHeap) Pop() interface{} {
-	old := *pth
-	n := len(old)
-	pt := old[n-1]
-	*pth = old[0 : n-1]
-	return pt
 }
 
 // checkUnlockHash will check that the host has an unlock hash. If the host
@@ -376,12 +320,11 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 // managedUpdatePriceTable will recalculate the RPC costs and update the host's
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
-	// create a new RPC price table and set the expiry
+	// create a new RPC price table
 	es := h.managedExternalSettings()
 	priceTable := modules.RPCPriceTable{
-		Expiry: time.Now().Add(rpcPriceGuaranteePeriod).Unix(),
-
 		// TODO: hardcoded cost should be updated to use a better value.
+		AccountBalanceCost:   types.NewCurrency64(1),
 		FundAccountCost:      types.NewCurrency64(1),
 		UpdatePriceTableCost: types.NewCurrency64(1),
 
@@ -458,9 +401,9 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		dependencies:             dependencies,
 		lockedStorageObligations: make(map[types.FileContractID]*lockedObligation),
 		staticPriceTables: &hostPrices{
-			guaranteed: make(map[modules.UniqueID]*modules.RPCPriceTable),
+			guaranteed: make(map[modules.UniqueID]*hostRPCPriceTable),
 			staticMinHeap: priceTableHeap{
-				heap: make([]*modules.RPCPriceTable, 0),
+				heap: make([]*hostRPCPriceTable, 0),
 			},
 		},
 		persistDir: persistDir,

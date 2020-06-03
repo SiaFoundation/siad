@@ -550,6 +550,13 @@ func TestPayment(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// await the track response
+	var tracked modules.RPCTrackedPriceTableResponse
+	err = modules.RPCRead(stream, &tracked)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// verify the contract was updated
 	contract, _ = c.ContractByPublicKey(hpk)
 	remaining := contract.RenterFunds
