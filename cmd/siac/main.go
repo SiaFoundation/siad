@@ -123,9 +123,9 @@ func die(args ...interface{}) {
 	os.Exit(exitCodeGeneral)
 }
 
-// die prints its arguments to stderr, in production exits the program with the
-// default error code, during tests it continues so that tests can check
-// printed errors
+// dieOrContinue prints its arguments to stderr, in production exits the
+// program with the default error code, during tests it continues so that tests
+// can check printed errors
 func dieOrContinue(args ...interface{}) {
 	fmt.Fprintln(os.Stderr, args...)
 
