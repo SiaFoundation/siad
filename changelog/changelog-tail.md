@@ -1,5 +1,8 @@
 ## Jun 3, 2020:
 ### v1.4.10
+**Bugs Fixed**
+- fixed issue where workers would freeze for a bit after a new block appeared
+
 **Other**
 - Add Skykey Name and ID to skykey GET responses
 
