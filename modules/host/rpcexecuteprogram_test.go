@@ -793,6 +793,20 @@ func TestExecuteAppendProgram(t *testing.T) {
 		}
 	}()
 
+	// helper to get current revision
+	revNum := func() uint64 {
+		// Get the latest revision. It should be the updated one.
+		updated, err := rhp.staticHT.host.managedGetStorageObligation(rhp.staticFCID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		recent, err := updated.recentRevision()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return recent.NewRevisionNumber
+	}
+
 	// Prepare data to upload.
 	data := fastrand.Bytes(int(modules.SectorSize))
 	sectorRoot := crypto.MerkleRoot(data)
@@ -806,6 +820,7 @@ func TestExecuteAppendProgram(t *testing.T) {
 	}
 	program, data := pb.Program()
 	programCost, storageCost, collateral := pb.Cost(true)
+	totalCost, _, _ := pb.Cost(false)
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
@@ -835,12 +850,19 @@ func TestExecuteAppendProgram(t *testing.T) {
 	bandwidthCost := downloadCost.Add(uploadCost)
 	cost := programCost.Add(bandwidthCost)
 
+	// check contract revision number before executing the program.
+	revNumBefore := revNum()
+
 	// execute program.
 	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true)
 	if err != nil {
-		t.Log("cost", cost.HumanString())
-		t.Log("expected ea balance", rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
 		t.Fatal(err)
+	}
+
+	// the revision number should have increased by 1.
+	revNumAfter := revNum()
+	if revNumAfter != revNumBefore+1 {
+		t.Errorf("revision number wasn't incremented by 1 %v %v", revNumBefore, revNumAfter)
 	}
 
 	// Log the bandwidth used by this RPC.
@@ -879,7 +901,7 @@ func TestExecuteAppendProgram(t *testing.T) {
 	}
 
 	// verify the cost
-	if !resp.TotalCost.Equals(programCost) {
+	if !resp.TotalCost.Equals(totalCost) {
 		t.Log("storage", storageCost.HumanString())
 		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
 	}

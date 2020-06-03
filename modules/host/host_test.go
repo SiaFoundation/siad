@@ -689,7 +689,7 @@ func (p *renterHostPair) managedFinalizeWriteProgram(stream siamux.Stream, lastO
 	}
 	rs := types.TransactionSignature{
 		ParentID:       crypto.Hash(newRevision.ParentID),
-		PublicKeyIndex: 1,
+		PublicKeyIndex: 0,
 		CoveredFields: types.CoveredFields{
 			FileContractRevisions: []uint64{0},
 		},
@@ -702,19 +702,6 @@ func (p *renterHostPair) managedFinalizeWriteProgram(stream siamux.Stream, lastO
 	err = modules.VerifyFileContractRevisionTransactionSignatures(newRevision, txn.TransactionSignatures, bh)
 	if err != nil {
 		return errors.AddContext(err, "signature verification failed")
-	}
-
-	// Get the latest revision. It should be the updated one.
-	updated, err = p.staticHT.host.managedGetStorageObligation(p.staticFCID)
-	if err != nil {
-		return err
-	}
-	recent, err = updated.recentRevision()
-	if err != nil {
-		return err
-	}
-	if recent.NewRevisionNumber != newRevision.NewRevisionNumber {
-		return errors.New("host didn't successfully commit new revision")
 	}
 	return nil
 }
