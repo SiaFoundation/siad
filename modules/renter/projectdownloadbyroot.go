@@ -430,10 +430,10 @@ func checkPDBRGouging(pt modules.RPCPriceTable, allowance modules.Allowance) err
 	// Calculate the cost of a read sector job, we use StreamDownloadSize as an
 	// average download size here which is 64 KiB.
 	pb = modules.NewProgramBuilder(&pt)
-	pb.AddReadSectorInstruction(modules.SectorSize, 0, crypto.Hash{}, true)
+	pb.AddReadSectorInstruction(modules.StreamDownloadSize, 0, crypto.Hash{}, true)
 	programCost, _, _ = pb.Cost(true)
 
-	ulbw, dlbw = readSectorJobExpectedBandwidth(modules.SectorSize)
+	ulbw, dlbw = readSectorJobExpectedBandwidth(modules.StreamDownloadSize)
 	bandwidthCost = modules.MDMBandwidthCost(pt, ulbw, dlbw)
 	costReadSectorJob := programCost.Add(bandwidthCost)
 
