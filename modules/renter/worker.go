@@ -239,5 +239,8 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	// Get the worker cache set up before returning the worker. This prevents a
 	// race condition in some tests.
 	w.managedUpdateCache()
+	if w.staticCache() == nil {
+		return nil, errors.New("unable to build a cache for the worker")
+	}
 	return w, nil
 }
