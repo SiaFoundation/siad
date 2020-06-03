@@ -12,7 +12,7 @@ func TestRootSiacCmd(t *testing.T) {
 	if !build.VLONG {
 		t.SkipNow()
 	}
-	
+
 	// define test constants: regular expressions to check siac output
 	begin := "^"
 	nl := `
