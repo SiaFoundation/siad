@@ -9,6 +9,10 @@ import (
 // TestRootSiacCmd tests root siac command for expected outputs. The test
 // requires siad running at port 9980 and no service running at port 5555.
 func TestRootSiacCmd(t *testing.T) {
+	if !build.VLONG {
+		t.SkipNow()
+	}
+	
 	// define test constants: regular expressions to check siac output
 	begin := "^"
 	nl := `

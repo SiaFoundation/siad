@@ -1,0 +1,1 @@
+- Add root siac Cobra command test with subtests.
