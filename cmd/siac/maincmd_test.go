@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -13,24 +14,41 @@ func TestRootSiacCmd(t *testing.T) {
 		t.SkipNow()
 	}
 
+	// Create a test node for this test group
+	groupDir := siacTestDir(t.Name())
+	n, err := newTestNode(groupDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := n.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	t.Log("siad api address:", n.APIAddress())
+
 	// define test constants: regular expressions to check siac output
 	begin := "^"
 	nl := `
 ` // platform agnostic new line
 	end := "$"
 
+	IPv6addr := n.Address
+	IPv4Addr := strings.Replace(n.Address, "[::]", "localhost", 1)
+
 	rootCmdOutPattern := `Consensus:
   Synced: (No|Yes)
   Height: [\d]+
 
 Wallet:
-  Status: (Locked|Unlocked)
+(  Status: Locked|  Status:          unlocked
+  Siacoin Balance: [\d]+(\.[\d]*|) (SC|KS|MS))
 
 Renter:
   Files:               [\d]+
-  Total Stored:        [\d]+.[\d]+ (kB|MB|GB|TB)
-  Total Contract Data: [\d]+.[\d]+ (kB|MB|GB|TB)
-  Min Redundancy:      [\d]+.[\d]{2}
+  Total Stored:        [\d]+(\.[\d]+|) ( B|kB|MB|GB|TB)
+  Total Contract Data: [\d]+(\.[\d]+|) ( B|kB|MB|GB|TB)
+  Min Redundancy:      ([\d]+.[\d]{2}|-)
   Active Contracts:    [\d]+
   Passive Contracts:   [\d]+
   Disabled Contracts:  [\d]+`
@@ -72,22 +90,35 @@ Use ".*siac(\.test|) \[command\] --help" for more information about a command\.`
 
 	// define subtests
 	subTests := []cobraCmdSubTest{
+		// Can't test siad on default address (port) when test node has dynamically allocated port
+		// {
+		// 	name:               "TestRootCmd",
+		// 	test:               testGenericCobraCmd,
+		// 	cmd:                []string{},
+		// 	expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
+		// },
 		{
-			name:               "TestRootCmd",
+			name:               "TestRootCmdWithShortAddressFlagIPv6",
 			test:               testGenericCobraCmd,
-			cmd:                []string{},
+			cmd:                []string{"-a", IPv6addr},
 			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
 		},
 		{
-			name:               "TestRootCmdWithShortAddressFlag",
+			name:               "TestRootCmdWithShortAddressFlagIPv4",
 			test:               testGenericCobraCmd,
-			cmd:                []string{"-a", "localhost:9980"},
+			cmd:                []string{"-a", IPv4Addr},
 			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
 		},
 		{
-			name:               "TestRootCmdWithLongAddressFlag",
+			name:               "TestRootCmdWithLongAddressFlagIPv6",
 			test:               testGenericCobraCmd,
-			cmd:                []string{"--addr", "localhost:9980"},
+			cmd:                []string{"--addr", IPv6addr},
+			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
+		},
+		{
+			name:               "TestRootCmdWithLongAddressFlagIPv4",
+			test:               testGenericCobraCmd,
+			cmd:                []string{"--addr", IPv4Addr},
 			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
 		},
 		{
@@ -111,7 +142,7 @@ Use ".*siac(\.test|) \[command\] --help" for more information about a command\.`
 	}
 
 	// run tests
-	err := runCobraCmdSubTests(t, subTests)
+	err = runCobraCmdSubTests(t, subTests)
 	if err != nil {
 		t.Fatal(err)
 	}
