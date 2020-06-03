@@ -79,6 +79,7 @@ var (
 	// Globals.
 	rootCmd    *cobra.Command // Root command cobra object, used by bash completion cmd.
 	httpClient client.Client
+	cmdTesting = false // false: production usage, true: execution of command tests
 )
 
 // Exit codes.
@@ -122,6 +123,18 @@ func die(args ...interface{}) {
 	os.Exit(exitCodeGeneral)
 }
 
+// die prints its arguments to stderr, in production exits the program with the
+// default error code, during tests it continues so that tests can check
+// printed errors
+func dieOrContinue(args ...interface{}) {
+	fmt.Fprintln(os.Stderr, args...)
+
+	// in production usage exit
+	if !cmdTesting {
+		os.Exit(exitCodeGeneral)
+	}
+}
+
 // statuscmd is the handler for the command `siac`
 // prints basic information about Sia.
 func statuscmd() {
@@ -134,7 +147,8 @@ func statuscmd() {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("Consensus:\n  Status: %s\n\n", moduleNotReadyStatus)
 	} else if err != nil {
-		die("Could not get consensus status:", err)
+		dieOrContinue("Could not get consensus status:", err)
+		return
 	} else {
 		fmt.Printf(`Consensus:
   Synced: %v
@@ -149,7 +163,8 @@ func statuscmd() {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("Wallet:\n  Status: %s\n\n", moduleNotReadyStatus)
 	} else if err != nil {
-		die("Could not get wallet status:", err)
+		dieOrContinue("Could not get wallet status:", err)
+		return
 	} else if walletStatus.Unlocked {
 		fmt.Printf(`Wallet:
   Status:          unlocked
@@ -167,7 +182,8 @@ func statuscmd() {
 	fmt.Printf(`Renter:`)
 	err = renterFilesAndContractSummary()
 	if err != nil {
-		die(err)
+		dieOrContinue(err)
+		return
 	}
 
 	if !statusVerbose {
@@ -177,7 +193,8 @@ func statuscmd() {
 	// Global Daemon Rate Limits
 	dg, err := httpClient.DaemonSettingsGet()
 	if err != nil {
-		die("Could not get daemon:", err)
+		dieOrContinue("Could not get daemon:", err)
+		return
 	}
 	fmt.Printf(`
 Global `)
@@ -186,7 +203,8 @@ Global `)
 	// Gateway Rate Limits
 	gg, err := httpClient.GatewayGet()
 	if err != nil {
-		die("Could not get gateway:", err)
+		dieOrContinue("Could not get gateway:", err)
+		return
 	}
 	fmt.Printf(`
 Gateway `)
@@ -195,7 +213,8 @@ Gateway `)
 	// Renter Rate Limits
 	rg, err := httpClient.RenterGet()
 	if err != nil {
-		die("Error getting renter:", err)
+		dieOrContinue("Error getting renter:", err)
+		return
 	}
 	fmt.Printf(`
 Renter `)
@@ -224,6 +243,41 @@ func rateLimitSummary(download, upload int64) {
 }
 
 func main() {
+	// initialize commands
+	initCmds()
+
+	// initialize client
+	initClient()
+
+	// set API password if it was not set
+	setAPIPasswordIfNotSet()
+
+	// Check if the siaDir is set.
+	if siaDir == "" {
+		// No siaDir passed in, fetch the siaDir
+		siaDir = build.SiaDir()
+	}
+
+	// Check for Critical Alerts
+	alerts, err := httpClient.DaemonAlertsGet()
+	if err == nil && len(alerts.CriticalAlerts) > 0 {
+		printAlerts(alerts.CriticalAlerts, modules.SeverityCritical)
+		fmt.Println("------------------")
+		fmt.Printf("\n  The above %v critical alerts should be resolved ASAP\n\n", len(alerts.CriticalAlerts))
+	}
+
+	// run
+	if err := rootCmd.Execute(); err != nil {
+		// Since no commands return errors (all commands set Command.Run instead of
+		// Command.RunE), Command.Execute() should only return an error on an
+		// invalid command or flag. Therefore Command.Usage() was called (assuming
+		// Command.SilenceUsage is false) and we should exit with exitCodeUsage.
+		os.Exit(exitCodeUsage)
+	}
+}
+
+// initCmds initializes root command and its subcommands
+func initCmds() {
 	root := &cobra.Command{
 		Use:   os.Args[0],
 		Short: "Sia Client v" + build.Version,
@@ -351,14 +405,19 @@ func main() {
 	walletSignCmd.Flags().BoolVarP(&walletRawTxn, "raw", "", false, "Encode signed transaction as base64 instead of JSON")
 	walletTransactionsCmd.Flags().Uint64Var(&walletStartHeight, "startheight", 0, " Height of the block where transaction history should begin.")
 	walletTransactionsCmd.Flags().Uint64Var(&walletEndHeight, "endheight", math.MaxUint64, " Height of the block where transaction history should end.")
+}
 
-	// initialize client
-	root.Flags().BoolVarP(&statusVerbose, "verbose", "v", false, "Display additional siac information")
-	root.PersistentFlags().StringVarP(&httpClient.Address, "addr", "a", "localhost:9980", "which host/port to communicate with (i.e. the host/port siad is listening on)")
-	root.PersistentFlags().StringVarP(&httpClient.Password, "apipassword", "", "", "the password for the API's http authentication")
-	root.PersistentFlags().StringVarP(&siaDir, "sia-directory", "d", "", "location of the sia directory")
-	root.PersistentFlags().StringVarP(&httpClient.UserAgent, "useragent", "", "Sia-Agent", "the useragent used by siac to connect to the daemon's API")
+// initClient initializes client cmd flags and default values
+func initClient() {
+	rootCmd.Flags().BoolVarP(&statusVerbose, "verbose", "v", false, "Display additional siac information")
+	rootCmd.PersistentFlags().StringVarP(&httpClient.Address, "addr", "a", "localhost:9980", "which host/port to communicate with (i.e. the host/port siad is listening on)")
+	rootCmd.PersistentFlags().StringVarP(&httpClient.Password, "apipassword", "", "", "the password for the API's http authentication")
+	rootCmd.PersistentFlags().StringVarP(&siaDir, "sia-directory", "d", "", "location of the sia directory")
+	rootCmd.PersistentFlags().StringVarP(&httpClient.UserAgent, "useragent", "", "Sia-Agent", "the useragent used by siac to connect to the daemon's API")
+}
 
+// setAPIPasswordIfNotSet sets API password if it was not set
+func setAPIPasswordIfNotSet() {
 	// Check if the API Password is set
 	if httpClient.Password == "" {
 		// No password passed in, fetch the API Password
@@ -368,28 +427,5 @@ func main() {
 			os.Exit(exitCodeGeneral)
 		}
 		httpClient.Password = pw
-	}
-
-	// Check if the siaDir is set.
-	if siaDir == "" {
-		// No siaDir passed in, fetch the siaDir
-		siaDir = build.SiaDir()
-	}
-
-	// Check for Critical Alerts
-	alerts, err := httpClient.DaemonAlertsGet()
-	if err == nil && len(alerts.CriticalAlerts) > 0 {
-		printAlerts(alerts.CriticalAlerts, modules.SeverityCritical)
-		fmt.Println("------------------")
-		fmt.Printf("\n  The above %v critical alerts should be resolved ASAP\n\n", len(alerts.CriticalAlerts))
-	}
-
-	// run
-	if err := root.Execute(); err != nil {
-		// Since no commands return errors (all commands set Command.Run instead of
-		// Command.RunE), Command.Execute() should only return an error on an
-		// invalid command or flag. Therefore Command.Usage() was called (assuming
-		// Command.SilenceUsage is false) and we should exit with exitCodeUsage.
-		os.Exit(exitCodeUsage)
 	}
 }
