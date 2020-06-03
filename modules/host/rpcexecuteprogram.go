@@ -109,8 +109,8 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}
 
 	// Return 16 bytes of data as a placeholder for a future cancellation token.
-	token := make([]byte, modules.MDMCancellationTokenLen)
-	err = modules.RPCWrite(stream, token)
+	ct := make([]byte, modules.MDMCancellationTokenLen)
+	err = modules.RPCWrite(stream, ct)
 	if err != nil {
 		return errors.AddContext(err, "Failed to write cancellation token")
 	}
