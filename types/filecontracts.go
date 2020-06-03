@@ -4,8 +4,6 @@ package types
 // contracts.
 
 import (
-	"fmt"
-
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -29,6 +27,10 @@ var (
 	// ErrMissingVoidOutput is the error returned when the void output of a
 	// contract or revision is accessed that no longer has one.
 	ErrMissingVoidOutput = errors.New("void output is missing")
+
+	// ErrRevisionNotIncremented is returned if the revision number wasn't
+	// incremented when creating a new revision.
+	ErrRevisionNotIncremented = errors.New("revision number was not incremented")
 )
 
 type (
@@ -166,9 +168,14 @@ func (fcr FileContractRevision) ExecuteProgramRevision(revisionNumber uint64, tr
 	newRevision.NewFileSize = newSize
 	newRevision.NewRevisionNumber = revisionNumber
 
+	// sanity check revision number.
+	if fcr.NewRevisionNumber >= revisionNumber {
+		return FileContractRevision{}, ErrRevisionNotIncremented
+	}
+
 	// sanity check transfer.
 	if newRevision.MissedHostPayout().Cmp(transfer) < 0 {
-		return FileContractRevision{}, fmt.Errorf("transfer %v exceeds missed host payout %v", transfer, newRevision.MissedHostPayout())
+		return FileContractRevision{}, ErrRevisionCostTooHigh
 	}
 	// move money from the host.
 	newRevision.SetMissedHostPayout(newRevision.MissedHostPayout().Sub(transfer))

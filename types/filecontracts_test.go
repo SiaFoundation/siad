@@ -1,8 +1,11 @@
 package types
 
 import (
+	"reflect"
+	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -116,5 +119,87 @@ func TestPaymentRevision(t *testing.T) {
 	}
 	if !pmvo.Value.Equals(emvo.Value.Add(amount)) {
 		t.Fatal("Unexpected payout moved from renter to void")
+	}
+}
+
+// TestExecuteProgramRevision probes the ExecuteProgramRevision function
+func TestExecuteProgramRevision(t *testing.T) {
+	mock := func(renterFunds, missedHostPayout uint64) FileContractRevision {
+		return FileContractRevision{
+			NewValidProofOutputs: []SiacoinOutput{
+				{Value: NewCurrency64(renterFunds)},
+				{Value: ZeroCurrency},
+			},
+			NewMissedProofOutputs: []SiacoinOutput{
+				{Value: NewCurrency64(renterFunds)},
+				{Value: NewCurrency64(missedHostPayout)},
+				{Value: ZeroCurrency},
+			},
+			NewRevisionNumber: 1,
+		}
+	}
+
+	// expect no error if amount is less than or equal to the renter funds
+	rev := mock(100, 50)
+	_, err := rev.ExecuteProgramRevision(2, NewCurrency64(49), crypto.Hash{}, 0)
+	if err != nil {
+		t.Fatalf("Unexpected error '%v'", err)
+	}
+	_, err = rev.ExecuteProgramRevision(2, NewCurrency64(50), crypto.Hash{}, 0)
+	if err != nil {
+		t.Fatalf("Unexpected error '%v'", err)
+	}
+
+	// expect an error if the revision number didn't increase.
+	rev = mock(100, 50)
+	_, err = rev.ExecuteProgramRevision(0, NewCurrency64(49), crypto.Hash{}, 0)
+	if err != ErrRevisionNotIncremented {
+		t.Fatal("expected ErrRevisionNotIncremented but got", err)
+	}
+	_, err = rev.ExecuteProgramRevision(1, NewCurrency64(49), crypto.Hash{}, 0)
+	if err != ErrRevisionNotIncremented {
+		t.Fatal("expected ErrRevisionNotIncremented but got", err)
+	}
+
+	// expect an error if we transfer more than the the host's missed output.
+	rev = mock(100, 50)
+	_, err = rev.ExecuteProgramRevision(2, rev.MissedHostPayout().Add64(1), crypto.Hash{}, 0)
+	if !errors.Contains(err, ErrRevisionCostTooHigh) {
+		t.Fatalf("Expected error '%v' but received '%v'  ", ErrRevisionCostTooHigh, err)
+	}
+
+	// expect an error if the void output is missing.
+	rev = mock(100, 50)
+	rev.NewMissedProofOutputs = rev.NewMissedProofOutputs[:2]
+	_, err = rev.ExecuteProgramRevision(2, NewCurrency64(50), crypto.Hash{}, 0)
+	if !strings.Contains(err.Error(), "failed to get void payout") {
+		t.Fatalf("expected failure due to missing void payout but got %v", err)
+	}
+
+	// verify funds moved to the appropriate outputs
+	rev = mock(100, 50)
+	transfer := NewCurrency64(50)
+	revision, err := rev.ExecuteProgramRevision(2, transfer, crypto.Hash{}, 0)
+	if err != nil {
+		t.Fatalf("Unexpected error '%v'", err)
+	}
+	// Valid outputs should stay the same.
+	if !reflect.DeepEqual(rev.NewValidProofOutputs, revision.NewValidProofOutputs) {
+		t.Fatal("valid outputs changed")
+	}
+	// Missed renter output should stay the same.
+	if !rev.MissedRenterPayout().Equals(revision.MissedRenterPayout()) {
+		t.Fatal("missed renter payout changed")
+	}
+	// Check money moved from host.
+	fromHost := rev.MissedHostPayout().Sub(revision.MissedHostPayout())
+	if !fromHost.Equals(transfer) {
+		t.Fatal("money moved to void doesn't match transfer")
+	}
+	// Check money moved to void.
+	newVoid, _ := revision.MissedVoidPayout()
+	oldVoid, _ := rev.MissedVoidPayout()
+	if !newVoid.Sub(oldVoid).Equals(transfer) {
+		t.Fatal("money moved to void doesn't match transfer")
 	}
 }
