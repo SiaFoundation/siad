@@ -160,31 +160,34 @@ func (fcr FileContractRevision) PaymentRevision(amount Currency) (FileContractRe
 
 // ExecuteProgramRevision creates an ExecuteProgramRevision from a given current
 // revision.
-func (fcr FileContractRevision) ExecuteProgramRevision(revisionNumber uint64, newValidProofValues, newMissedProofValues []Currency, newRoot crypto.Hash, newSize uint64) (FileContractRevision, error) {
-	if len(newValidProofValues) != len(fcr.NewValidProofOutputs) {
-		return FileContractRevision{}, errors.New("NewValidProofValues length mismatch")
-	}
-	if len(newMissedProofValues) != len(fcr.NewMissedProofOutputs) {
-		return FileContractRevision{}, errors.New("NewMissedProofValues length mismatch")
-	}
+func (fcr FileContractRevision) ExecuteProgramRevision(revisionNumber uint64, transfer Currency, newRoot crypto.Hash, newSize uint64) (FileContractRevision, error) {
 	newRevision := fcr
+
+	// need to manually copy slice memory
+	newRevision.NewValidProofOutputs = append([]SiacoinOutput{}, fcr.NewValidProofOutputs...)
+	newRevision.NewMissedProofOutputs = append([]SiacoinOutput{}, fcr.NewMissedProofOutputs...)
+
 	newRevision.NewFileMerkleRoot = newRoot
 	newRevision.NewFileSize = newSize
 	newRevision.NewRevisionNumber = revisionNumber
-	newRevision.NewValidProofOutputs = make([]SiacoinOutput, len(fcr.NewValidProofOutputs))
-	for i := range newRevision.NewValidProofOutputs {
-		newRevision.NewValidProofOutputs[i] = SiacoinOutput{
-			Value:      newValidProofValues[i],
-			UnlockHash: fcr.NewValidProofOutputs[i].UnlockHash,
-		}
+
+	// sanity check transfer.
+	if newRevision.MissedHostPayout().Cmp(transfer) < 0 {
+		return FileContractRevision{}, errors.New("transfer exceeds missed host payout")
 	}
-	newRevision.NewMissedProofOutputs = make([]SiacoinOutput, len(fcr.NewMissedProofOutputs))
-	for i := range newRevision.NewMissedProofOutputs {
-		newRevision.NewMissedProofOutputs[i] = SiacoinOutput{
-			Value:      newMissedProofValues[i],
-			UnlockHash: fcr.NewMissedProofOutputs[i].UnlockHash,
-		}
+	// move money from the host.
+	newRevision.SetMissedHostPayout(newRevision.MissedHostPayout().Sub(transfer))
+
+	// move money into void.
+	voidPayout, err := newRevision.MissedVoidPayout()
+	if err != nil {
+		return FileContractRevision{}, errors.AddContext(err, "failed to get void payout")
 	}
+	err = newRevision.SetMissedVoidPayout(voidPayout.Add(transfer))
+	if err != nil {
+		return FileContractRevision{}, errors.AddContext(err, "failed to set void payout")
+	}
+
 	// Set the new contract root and size.
 	return newRevision, nil
 }

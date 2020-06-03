@@ -603,18 +603,9 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	newFileSize := curr.NewFileSize + modules.SectorSize
 	newRevisionNumber := curr.NewRevisionNumber + 1
 	transferred := types.NewCurrency64(20)
-	validPayouts := []types.Currency{
-		curr.NewValidProofOutputs[0].Value,
-		curr.NewValidProofOutputs[1].Value,
-	}
-	missedPayouts := []types.Currency{
-		curr.NewMissedProofOutputs[0].Value,
-		curr.NewMissedProofOutputs[1].Value.Sub(transferred),
-		curr.NewMissedProofOutputs[2].Value.Add(transferred),
-	}
 	newRoot := crypto.Hash{}
 	fastrand.Read(newRoot[:])
-	validRevision, err := curr.ExecuteProgramRevision(newRevisionNumber, validPayouts, missedPayouts, newRoot, newFileSize)
+	validRevision, err := curr.ExecuteProgramRevision(newRevisionNumber, transferred, newRoot, newFileSize)
 	if err != nil {
 		t.Fatal(err)
 	}

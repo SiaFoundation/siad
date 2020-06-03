@@ -260,8 +260,9 @@ type renterHostPair struct {
 	staticRenterMux  *siamux.SiaMux
 	staticHT         *hostTester
 
-	pt *modules.RPCPriceTable
-	mu sync.Mutex
+	mdmMu sync.RWMutex
+	mu    sync.Mutex
+	pt    *modules.RPCPriceTable
 }
 
 // newRenterHostPair creates a new host tester and returns a renter host pair,
@@ -379,6 +380,16 @@ type executeProgramResponse struct {
 // instruction won't result in an error. Instead the returned responses need to
 // be inspected for that depending on the testcase.
 func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency, updatePriceTable bool) ([]executeProgramResponse, mux.BandwidthLimit, error) {
+	// Only allow a single write program or multiple read programs to run in
+	// parallel. A production worker will have better locking than this but
+	// since we just mock the renter this is used for unit testing the host.
+	if epr.Program.ReadOnly() {
+		p.mdmMu.RLock()
+		defer p.mdmMu.RUnlock()
+	} else {
+		p.mdmMu.Lock()
+		defer p.mdmMu.Unlock()
+	}
 	var err error
 
 	pt := p.managedPriceTable()
@@ -461,6 +472,12 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 		if responses[i].Error != nil {
 			return responses, limit, nil
 		}
+	}
+
+	// If the program was not readonly, the host expects a signed revision.
+	if !epr.Program.ReadOnly() {
+		lastOutput := responses[len(responses)-1]
+		p.managedFinalizeWriteProgram(stream, lastOutput, p.staticHT.host.BlockHeight())
 	}
 
 	// The next read should return io.EOF since the host closes the connection
@@ -602,6 +619,99 @@ func (p *renterHostPair) managedPayByEphemeralAccount(stream siamux.Stream, amou
 	err = modules.RPCWrite(stream, pbear)
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+// managedFinalizeWriteProgram finalizes a write program by conducting an
+// additional handshake which signs a new revision.
+func (p *renterHostPair) managedFinalizeWriteProgram(stream siamux.Stream, lastOutput executeProgramResponse, bh types.BlockHeight) error {
+	// Get the latest revision.
+	updated, err := p.staticHT.host.managedGetStorageObligation(p.staticFCID)
+	if err != nil {
+		return err
+	}
+	recent, err := updated.recentRevision()
+	if err != nil {
+		return err
+	}
+
+	// Construct the new revision.
+	transfer := lastOutput.AdditionalCollateral.Add(lastOutput.StorageCost)
+	newRevision, err := recent.ExecuteProgramRevision(recent.NewRevisionNumber+1, transfer, lastOutput.NewMerkleRoot, lastOutput.NewSize)
+	if err != nil {
+		return err
+	}
+	newValidProofValues := make([]types.Currency, len(newRevision.NewValidProofOutputs))
+	for i := range newRevision.NewValidProofOutputs {
+		newValidProofValues[i] = newRevision.NewValidProofOutputs[i].Value
+	}
+	newMissedProofValues := make([]types.Currency, len(newRevision.NewMissedProofOutputs))
+	for i := range newRevision.NewMissedProofOutputs {
+		newMissedProofValues[i] = newRevision.NewMissedProofOutputs[i].Value
+	}
+
+	// Sign revision.
+	renterSig := p.managedSign(newRevision)
+
+	// Prepare the request.
+	req := modules.RPCExecuteProgramRevisionSigningRequest{
+		RenterSig:            renterSig[:],
+		NewRevisionNumber:    newRevision.NewRevisionNumber,
+		NewValidProofValues:  newValidProofValues,
+		NewMissedProofValues: newMissedProofValues,
+	}
+
+	// Send request.
+	err = modules.RPCWrite(stream, req)
+	if err != nil {
+		return err
+	}
+
+	// Receive response.
+	var resp modules.RPCExecuteProgramRevisionSigningResponse
+	err = modules.RPCRead(stream, &resp)
+	if err != nil {
+		return err
+	}
+
+	// check host signature
+	hs := types.TransactionSignature{
+		ParentID:       crypto.Hash(newRevision.ParentID),
+		PublicKeyIndex: 1,
+		CoveredFields: types.CoveredFields{
+			FileContractRevisions: []uint64{0},
+		},
+		Signature: resp.HostSig,
+	}
+	rs := types.TransactionSignature{
+		ParentID:       crypto.Hash(newRevision.ParentID),
+		PublicKeyIndex: 1,
+		CoveredFields: types.CoveredFields{
+			FileContractRevisions: []uint64{0},
+		},
+		Signature: req.RenterSig,
+	}
+	txn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{newRevision},
+		TransactionSignatures: []types.TransactionSignature{rs, hs},
+	}
+	err = modules.VerifyFileContractRevisionTransactionSignatures(newRevision, txn.TransactionSignatures, bh)
+	if err != nil {
+		return errors.AddContext(err, "signature verification failed")
+	}
+
+	// Get the latest revision. It should be the updated one.
+	updated, err = p.staticHT.host.managedGetStorageObligation(p.staticFCID)
+	if err != nil {
+		return err
+	}
+	recent, err = updated.recentRevision()
+	if err != nil {
+		return err
+	}
+	if recent.NewRevisionNumber != newRevision.NewRevisionNumber {
+		return errors.New("host didn't successfully commit new revision")
 	}
 	return nil
 }

@@ -260,7 +260,8 @@ func (h *Host) managedFinalizeWriteProgram(stream io.ReadWriter, fcid types.File
 	if err != nil {
 		return errors.AddContext(err, "failed to get current revision")
 	}
-	newRevision, err := currentRevision.ExecuteProgramRevision(req.NewRevisionNumber, req.NewMissedProofValues, req.NewMissedProofValues, lastOutput.NewMerkleRoot, lastOutput.NewSize)
+	transfer := lastOutput.AdditionalCollateral.Add(lastOutput.AdditionalStorageCost)
+	newRevision, err := currentRevision.ExecuteProgramRevision(req.NewRevisionNumber, transfer, lastOutput.NewMerkleRoot, lastOutput.NewSize)
 	if err != nil {
 		return errors.AddContext(err, "failed to get current revision")
 	}
