@@ -70,8 +70,10 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestRegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
 		{Name: "TestRenameSiaPath", Test: testRenameSiaPath},
 		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
-		{Name: "TestSkynetEncryption", Test: testSkynetEncryption},
-		{Name: "TestSkynetEncryptionLargeFile", Test: testSkynetEncryptionLargeFile},
+		{Name: "TestSkynetEncryptionPublicID", Test: testSkynetEncryptionWithType(skykey.TypePublicID)},
+		{Name: "TestSkynetEncryptionPrivateID", Test: testSkynetEncryptionWithType(skykey.TypePrivateID)},
+		{Name: "TestSkynetEncryptionLargeFilePublicID", Test: testSkynetEncryptionLargeFileWithType(skykey.TypePublicID)},
+		{Name: "TestSkynetEncryptionLargeFilePrivateID", Test: testSkynetEncryptionLargeFileWithType(skykey.TypePrivateID)},
 	}
 
 	// Run tests
@@ -1995,7 +1997,7 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Expected 0 skykeys")
 	}
 
-	sk, err := r.SkykeyCreateKeyPost("testkey1", skykey.TypePublicID)
+	sk, err := r.SkykeyCreateKeyPost("testkey1", skykey.TypePrivateID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2083,7 +2085,7 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	// Create a bunch of skykeys and check that they all get returned.
 	nKeys := 10
 	for i := 0; i < nKeys; i++ {
-		nextSk, err := r.SkykeyCreateKeyPost(fmt.Sprintf("anotherkey-%d", i), skykey.TypePublicID)
+		nextSk, err := r.SkykeyCreateKeyPost(fmt.Sprintf("anotherkey-%d", i), skykey.TypePrivateID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2242,18 +2244,26 @@ func testRenameSiaPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// testSkynetEncryptionWithType returns the encryption test with the given
+// skykeyType set.
+func testSkynetEncryptionWithType(skykeyType skykey.SkykeyType) func(t *testing.T, tg *siatest.TestGroup) {
+	return func(t *testing.T, tg *siatest.TestGroup) {
+		testSkynetEncryption(t, tg, skykeyType)
+	}
+}
+
 // testSkynetEncryption tests the uploading and pinning of small skyfiles using
-// encryption.
-func testSkynetEncryption(t *testing.T, tg *siatest.TestGroup) {
+// encryption with the given skykeyType.
+func testSkynetEncryption(t *testing.T, tg *siatest.TestGroup, skykeyType skykey.SkykeyType) {
 	r := tg.Renters()[0]
-	encKeyName := "encryption-test-key"
+	encKeyName := "encryption-test-key-" + skykeyType.ToString()
 
 	// Create some data to upload as a skyfile.
 	data := fastrand.Bytes(100 + siatest.Fuzz())
 	// Need it to be a reader.
 	reader := bytes.NewReader(data)
 	// Call the upload skyfile client call.
-	filename := "testEncryptSmall"
+	filename := "testEncryptSmall-" + skykeyType.ToString()
 	uploadSiaPath, err := modules.NewSiaPath(filename)
 	if err != nil {
 		t.Fatal(err)
@@ -2280,7 +2290,7 @@ func testSkynetEncryption(t *testing.T, tg *siatest.TestGroup) {
 	// Note we must create a new reader in the params!
 	sup.Reader = bytes.NewReader(data)
 
-	_, err = r.SkykeyCreateKeyPost(encKeyName, skykey.TypePublicID)
+	_, err = r.SkykeyCreateKeyPost(encKeyName, skykeyType)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2314,7 +2324,7 @@ func testSkynetEncryption(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Pin the encrypted Skyfile.
-	pinSiaPath, err := modules.NewSiaPath("testSmallEncryptedPinPath")
+	pinSiaPath, err := modules.NewSiaPath("testSmallEncryptedPinPath" + skykeyType.ToString())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2346,18 +2356,26 @@ func testSkynetEncryption(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// testSkynetEncryptionLargeFileWithType returns the large-file encryption test with the given
+// skykeyType.
+func testSkynetEncryptionLargeFileWithType(skykeyType skykey.SkykeyType) func(t *testing.T, tg *siatest.TestGroup) {
+	return func(t *testing.T, tg *siatest.TestGroup) {
+		testSkynetEncryptionLargeFile(t, tg, skykeyType)
+	}
+}
+
 // testSkynetEncryption tests the uploading and pinning of large skyfiles using
 // encryption.
-func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup) {
+func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup, skykeyType skykey.SkykeyType) {
 	r := tg.Renters()[0]
-	encKeyName := "large-file-encryption-test-key"
+	encKeyName := "large-file-encryption-test-key-" + skykeyType.ToString()
 
 	// Create some data to upload as a skyfile.
 	data := fastrand.Bytes(5 * int(modules.SectorSize))
 	// Need it to be a reader.
 	reader := bytes.NewReader(data)
 	// Call the upload skyfile client call.
-	filename := "testEncryptLarge"
+	filename := "testEncryptLarge-" + skykeyType.ToString()
 	uploadSiaPath, err := modules.NewSiaPath(filename)
 	if err != nil {
 		t.Fatal(err)
@@ -2375,7 +2393,7 @@ func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup) {
 		SkykeyName: encKeyName,
 	}
 
-	_, err = r.SkykeyCreateKeyPost(encKeyName, skykey.TypePublicID)
+	_, err = r.SkykeyCreateKeyPost(encKeyName, skykeyType)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2410,7 +2428,7 @@ func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup) {
 	t.Log(skylink)
 
 	// Pin the encrypted Skyfile.
-	pinSiaPath, err := modules.NewSiaPath("testEncryptedPinPath")
+	pinSiaPath, err := modules.NewSiaPath("testEncryptedPinPath" + skykeyType.ToString())
 	if err != nil {
 		t.Fatal(err)
 	}
