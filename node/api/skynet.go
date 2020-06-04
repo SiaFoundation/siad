@@ -303,25 +303,26 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// Get the redirect limitations.
 	redirectStr := queryForm.Get("redirect")
-	allowRedirect := redirectStr == "" // default to allowing redirects
-	if !allowRedirect {
+	allowRedirect := true
+	if redirectStr != "" {
 		allowRedirect, err = strconv.ParseBool(redirectStr)
 		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("invalid 'redirect' value: %s, allowed values are `true` and `false`", redirectStr)}, http.StatusBadRequest)
+			WriteError(w, Error{fmt.Sprintf("unable to parse 'redirect' parameter: %v", err)}, http.StatusBadRequest)
 			return
 		}
 	}
 	// We don't allow redirects if we don't have a valid default path or we have
 	// a single file.
 	allowRedirect = allowRedirect && metadata.DefaultPath != "" && len(metadata.Subfiles) > 1
+	// Redirect, if possible.
+	if path == "/" && allowRedirect {
+		path = metadata.DefaultPath
+	}
 
 	// If path is different from the root, limit the streamer and return the
 	// appropriate subset of the metadata. This is done by wrapping the streamer
 	// so it only returns the files defined in the subset of the metadata.
-	if path != "/" || allowRedirect {
-		if path == "/" {
-			path = "/" + metadata.DefaultPath
-		}
+	if path != "/" {
 		var dir bool
 		var offset, size uint64
 		metadata, dir, offset, size = metadata.ForPath(path)
@@ -651,8 +652,8 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Build the Skyfile metadata from the request
-	if strings.HasPrefix(mediaType, "multipart/form-data") {
-		subfiles, reader, defaultPath, err := skyfileParseMultiPartRequest(req)
+	if isMultipartRequest(mediaType) {
+		subfiles, reader, err := skyfileParseMultiPartRequest(req)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed parsing multipart request: %v", err)}, http.StatusBadRequest)
 			return
@@ -665,6 +666,13 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 				filename = sf.Filename
 				break
 			}
+		}
+
+		// Get the default path.
+		defaultPath, err := getDefaultPath(queryForm, subfiles)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
 		}
 
 		lup.Reader = reader
@@ -911,19 +919,19 @@ func parseTimeout(queryForm url.Values) (time.Duration, error) {
 // skyfileParseMultiPartRequest parses the given request and returns the
 // subfiles found in the multipart request body, alongside with an io.Reader
 // containing all of the files.
-func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, io.Reader, string, error) {
+func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, io.Reader, error) {
 	subfiles := make(modules.SkyfileSubfiles)
 
 	// Parse the multipart form
 	err := req.ParseMultipartForm(32 << 20) // 32MB max memory
 	if err != nil {
-		return subfiles, nil, "", errors.AddContext(err, "failed parsing multipart form")
+		return subfiles, nil, errors.AddContext(err, "failed parsing multipart form")
 	}
 
 	// Parse out all of the multipart file headers
 	mpfHeaders := append(req.MultipartForm.File["file"], req.MultipartForm.File["files[]"]...)
 	if len(mpfHeaders) == 0 {
-		return subfiles, nil, "", errors.New("could not find multipart file")
+		return subfiles, nil, errors.New("could not find multipart file")
 	}
 
 	// If there are multiple, treat the entire upload as one with all separate
@@ -933,7 +941,7 @@ func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, i
 	for i, fh := range mpfHeaders {
 		f, err := fh.Open()
 		if err != nil {
-			return subfiles, nil, "", errors.AddContext(err, "could not open multipart file")
+			return subfiles, nil, errors.AddContext(err, "could not open multipart file")
 		}
 		readers[i] = f
 
@@ -943,19 +951,18 @@ func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, i
 		if modeStr != "" {
 			_, err := fmt.Sscanf(modeStr, "%o", &mode)
 			if err != nil {
-				return subfiles, nil, "", errors.AddContext(err, "failed to parse file mode")
+				return subfiles, nil, errors.AddContext(err, "failed to parse file mode")
 			}
 		}
 
 		// parse filename from multipart
 		filename := fh.Filename
 		if filename == "" {
-			return subfiles, nil, "", errors.New("no filename provided")
+			return subfiles, nil, errors.New("no filename provided")
 		}
 
 		// parse content type from multipart header
 		contentType := fh.Header.Get("Content-Type")
-
 		subfiles[fh.Filename] = modules.SkyfileSubfileMetadata{
 			FileMode:    mode,
 			Filename:    filename,
@@ -966,23 +973,12 @@ func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, i
 		offset += uint64(fh.Size)
 	}
 
-	// Get the default path.
-	defaultPath := "index.html"
-	val := req.FormValue(modules.MetadataDefaultPath)
-	if len(val) > 0 {
-		defaultPath = val
-	}
-	// Check if the defaultPath exists.
-	if _, ok := subfiles[defaultPath]; !ok {
-		defaultPath = ""
-	}
-
-	return subfiles, io.MultiReader(readers...), defaultPath, nil
+	return subfiles, io.MultiReader(readers...), nil
 }
 
 // skykeyHandlerGET handles the API call to get a Skykey and its ID using its
 // name or ID.
-func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse Skykey id and name.
 	name := req.FormValue("name")
 	idString := req.FormValue("id")
@@ -1028,7 +1024,7 @@ func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, ps ht
 
 // skykeyCreateKeyHandlerPost handles the API call to create a skykey using the renter's
 // skykey manager.
-func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse skykey name and type
 	name := req.FormValue("name")
 	skykeyTypeString := req.FormValue("type")
@@ -1069,7 +1065,7 @@ func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Requ
 
 // skykeyAddKeyHandlerPost handles the API call to add a skykey to the renter's
 // skykey manager.
-func (api *API) skykeyAddKeyHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skykeyAddKeyHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse skykey.
 	skString := req.FormValue("skykey")
 	if skString == "" {
@@ -1094,7 +1090,7 @@ func (api *API) skykeyAddKeyHandlerPOST(w http.ResponseWriter, req *http.Request
 }
 
 // skykeysHandlerGET handles the API call to get all of the renter's skykeys.
-func (api *API) skykeysHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	skykeys, err := api.renter.Skykeys()
 	if err != nil {
 		WriteError(w, Error{"Unable to get skykeys: " + err.Error()}, http.StatusInternalServerError)
@@ -1117,4 +1113,28 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, req *http.Request, ps h
 		}
 	}
 	WriteJSON(w, res)
+}
+
+// getDefaultPath extracts the defaultPath from the request or returns a default.
+func getDefaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (string, error) {
+	defaultPath := queryForm.Get(modules.SkyfileDefaultPath)
+	if defaultPath != "" {
+		if !strings.HasPrefix(defaultPath, "/") {
+			defaultPath = "/" + defaultPath
+		}
+		// Check if the defaultPath exists. Omit the leading slash because
+		// the filenames in `subfiles` won't have it.
+		if _, ok := subfiles[defaultPath[1:]]; !ok {
+			return "", Error{fmt.Sprintf("invalid defaultpath provided - no such path: %s", defaultPath)}
+		}
+	} else if _, ok := subfiles["index.html"]; ok {
+		defaultPath = "/index.html"
+	}
+	return defaultPath, nil
+}
+
+// isMultipartRequest is a helper method that checks if the given media type
+// matches that of a multipart form.
+func isMultipartRequest(mediaType string) bool {
+	return strings.HasPrefix(mediaType, "multipart/form-data")
 }

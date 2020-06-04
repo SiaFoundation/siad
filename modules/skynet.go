@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	// MetadataDefaultPath specifies the multipart form header key that holds
-	// the default path.
-	MetadataDefaultPath = "defaultpath"
+	// SkyfileDefaultPath specifies the multipart form header key that
+	// holds the default path.
+	SkyfileDefaultPath = "defaultpath"
 )
 
 // SkyfileMetadata is all of the metadata that gets placed into the first 4096
@@ -27,7 +27,7 @@ type SkyfileMetadata struct {
 	Mode        os.FileMode     `json:"mode,omitempty"`
 	Filename    string          `json:"filename,omitempty"`
 	Subfiles    SkyfileSubfiles `json:"subfiles,omitempty"`
-	DefaultPath string          `json:"defaultpath,omitempty"` // defaults to `index.hml`
+	DefaultPath string          `json:"defaultpath,omitempty"` // defaults to `index.html`
 }
 
 // SkyfileSubfiles contains the subfiles of a skyfile, indexed by their

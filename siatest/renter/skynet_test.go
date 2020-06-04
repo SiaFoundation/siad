@@ -2447,90 +2447,97 @@ func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup) {
 // correctly
 func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
-	ffc := "File1Contents"
+	fc1 := "File1Contents"
+	fc2 := "File2Contents"
 
-	// TEST: Upload a multi-file skyfile that contains index.html but doesn't
-	// specify default path. `metadata.DefaultPath` should be "index.html".
-	content, metadata, err := uploadFileWithDefaultPath(r, "index.html", ffc, "")
+	// TEST: Contains index.html but doesn't specify default path.
+	// It should return the content of index.html.
+	filename := "index.html_empty"
+	files := make(map[string][]byte)
+	files["index.html"] = []byte(fc1)
+	files["about.html"] = []byte(fc2)
+	content, _, err := uploadNewMultiPartSkyfileBlocking(r, filename, files, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(content, []byte(ffc)) {
-		t.Logf("content %s\n\n", string(content))
-		t.Fatalf("Expected defaultPath to be 'index.html', instead got %s", metadata.DefaultPath)
+	if !bytes.Equal(content, files["index.html"]) {
+		t.Fatalf("Expected to get content '%s', instead got '%s'", files["index.html"], string(content))
 	}
 
-	// TEST: Upload a multi-file skyfile that contains index.js and specifies
-	// "index.js" as default path. `metadata.DefaultPath` should be "index.js".
-	content, metadata, err = uploadFileWithDefaultPath(r, "index.js", ffc, "index.js")
+	// TEST: Contains index.html but specifies a different default path.
+	// Contains index.js and specifies "index.js" as default path.
+	// It should return the content of index.js.
+	filename = "index.html_index.js"
+	files = make(map[string][]byte)
+	files["index.html"] = []byte(fc1)
+	files["index.js"] = []byte(fc2)
+	content, _, err = uploadNewMultiPartSkyfileBlocking(r, filename, files, "index.js")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(content, []byte(ffc)) {
-		t.Logf("content %s\n\n", string(content))
-		t.Fatalf("Expected defaultPath to be 'index.js', instead got %s", metadata.DefaultPath)
+	if !bytes.Equal(content, files["index.js"]) {
+		t.Fatalf("Expected to get content '%s', instead got '%s'", files["index.js"], string(content))
 	}
 
-	// TEST: Upload a multi-file skyfile that does NOT index.html and doesn't
-	// specify default path. `metadata.DefaultPath` should be "".
-	// This should fail.
-	_, _, err = uploadFileWithDefaultPath(r, "file1", ffc, "")
+	// TEST: Contains index.html but specifies a different INVALID default path.
+	// This should fail on upload with "invalid defaultpath provided".
+	filename = "index.html_invalid"
+	files = make(map[string][]byte)
+	files["index.html"] = []byte(fc1)
+	files["about.html"] = []byte(fc2)
+	_, _, err = uploadNewMultiPartSkyfileBlocking(r, filename, files, "invalid.js")
+	if err == nil || !strings.Contains(err.Error(), "invalid defaultpath provided") {
+		t.Fatalf("Expected error 'invalid defaultpath provided', got '%+v'", err)
+	}
+
+	// TEST: Does not contain "index.html".
+	// Contains index.js and specifies "index.js" as default path.
+	// It should return the content of index.js.
+	filename = "index.js_index.js"
+	files = make(map[string][]byte)
+	files["index.js"] = []byte(fc1)
+	files["about.html"] = []byte(fc2)
+	content, _, err = uploadNewMultiPartSkyfileBlocking(r, filename, files, "index.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(content, files["index.js"]) {
+		t.Fatalf("Expected to get content '%s', instead got '%s'", files["index.js"], string(content))
+	}
+
+	// TEST: Does not contain index.html and specifies an INVALID default path.
+	// This should fail on upload with "invalid defaultpath provided".
+	filename = "index.js_invalid"
+	files = make(map[string][]byte)
+	files["index.js"] = []byte(fc1)
+	files["about.html"] = []byte(fc2)
+	_, _, err = uploadNewMultiPartSkyfileBlocking(r, filename, files, "invalid.js")
+	if err == nil || !strings.Contains(err.Error(), "invalid defaultpath provided") {
+		t.Fatalf("Expected error 'invalid defaultpath provided', got '%+v'", err)
+	}
+
+	// TEST: Does not contain index.html and doesn't specify default path.
+	// This should fail on download with "format must be specified".
+	filename = "index.js_empty"
+	files = make(map[string][]byte)
+	files["index.js"] = []byte(fc1)
+	files["about.html"] = []byte(fc2)
+	_, _, err = uploadNewMultiPartSkyfileBlocking(r, filename, files, "")
 	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
-		t.Fatalf("Expected error 'format must be specified', got %+v", err)
+		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
 	}
-}
 
-// uploadFileWithDefaultPath generates and uploads a multipart upload that
-// contains several files. It then downloads the file and returns its metadata.
-func uploadFileWithDefaultPath(r *siatest.TestNode, firstFileName, firstFileContent, defaultPath string) (content []byte, fileMetadata modules.SkyfileMetadata, err error) {
-	var offset uint64
-
-	// create a multipart upload with index.html
-	body := new(bytes.Buffer)
-	writer := multipart.NewWriter(body)
-	subfiles := make(modules.SkyfileSubfiles)
-
-	// add a file at root level
-	data := []byte(firstFileContent)
-	subfile := addMultipartFile(writer, data, "files[]", firstFileName, 0600, &offset)
-	subfiles[subfile.Filename] = subfile
-
-	// add a nested file
-	data = []byte("File2Contents")
-	subfile = addMultipartFile(writer, data, "files[]", "nested/"+firstFileName, 0640, &offset)
-	subfiles[subfile.Filename] = subfile
-
-	if err = writer.Close(); err != nil {
-		return
-	}
-	reader := bytes.NewReader(body.Bytes())
-
-	// Call the upload skyfile client call.
-	uploadSiaPath, err := modules.NewSiaPath("TestDefaultPathFolderUpload/" + firstFileName)
+	// TEST: Does not contain "index.html".
+	// Contains a single file and doesn't specify a default path.
+	// It should return the content of index.js.
+	filename = "index.js"
+	files = make(map[string][]byte)
+	files["index.js"] = []byte(fc1)
+	content, _, err = uploadNewMultiPartSkyfileBlocking(r, filename, files, "")
 	if err != nil {
-		return
+		t.Fatal(err)
 	}
-
-	sup := modules.SkyfileMultipartUploadParameters{
-		SiaPath:             uploadSiaPath,
-		Force:               false,
-		Root:                false,
-		BaseChunkRedundancy: 2,
-		Reader:              reader,
-		ContentType:         writer.FormDataContentType(),
-		Filename:            firstFileName,
-		DefaultPath:         defaultPath,
+	if !bytes.Equal(content, files["index.js"]) {
+		t.Fatalf("Expected to get content '%s', instead got '%s'", files["index.js"], string(content))
 	}
-
-	skylink, _, err := r.SkynetSkyfileMultiPartPost(sup)
-	if err != nil {
-		return
-	}
-
-	// Try to download the file behind the skylink.
-	content, fileMetadata, err = r.SkynetSkylinkGet(skylink)
-	if err != nil {
-		return
-	}
-	return
 }
