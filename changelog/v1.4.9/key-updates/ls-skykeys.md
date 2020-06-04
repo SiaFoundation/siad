@@ -1,1 +1,0 @@
-- Add /skykeys endpoint and `siac skykey ls` command

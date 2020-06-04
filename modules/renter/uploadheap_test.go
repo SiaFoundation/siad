@@ -467,8 +467,11 @@ func TestAddRemoteChunksToHeap(t *testing.T) {
 		if strings.Contains(name, "localFile") {
 			up.Source = source
 		}
-		// Create the siafile and open it
-		err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), modules.SectorSize, persist.DefaultDiskPermissionsTest, false)
+		// Create the siafile and open it. Filesize is small as the files need
+		// to each only have one chunk. This is because there are 4 files and
+		// the uploadHeap size for testing is 5. If there are more than 5 chunks
+		// total the test will fail and not hit the intended test case.
+		err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest, false)
 		if err != nil {
 			t.Fatal(err)
 		}

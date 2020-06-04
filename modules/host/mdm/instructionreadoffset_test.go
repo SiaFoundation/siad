@@ -8,9 +8,9 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestInstructionReadSector tests executing a program with a single
-// ReadSectorInstruction.
-func TestInstructionReadSector(t *testing.T) {
+// TestInstructionReadOffset tests executing a program with a single
+// ReadOffsetInstruction.
+func TestInstructionReadOffset(t *testing.T) {
 	host := newTestHost()
 	mdm := New(host)
 	defer mdm.Stop()
@@ -28,7 +28,7 @@ func TestInstructionReadSector(t *testing.T) {
 	// Use a builder to build the program.
 	readLen := modules.SectorSize
 	tb := newTestProgramBuilder(pt)
-	tb.AddReadSectorInstruction(readLen, 0, so.sectorRoots[0], true)
+	tb.AddReadOffsetInstruction(readLen, 0, true)
 
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
@@ -52,10 +52,13 @@ func TestInstructionReadSector(t *testing.T) {
 	if mod := length % crypto.SegmentSize; mod != 0 {    // must be multiple of segmentsize
 		length -= mod
 	}
+	if length == 0 {
+		length = crypto.SegmentSize
+	}
 
 	// Use a builder to build the program.
 	tb = newTestProgramBuilder(pt)
-	tb.AddReadSectorInstruction(length, offset, so.sectorRoots[0], true)
+	tb.AddReadOffsetInstruction(length, offset, true)
 
 	// Execute it.
 	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, false)
@@ -72,39 +75,4 @@ func TestInstructionReadSector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-}
-
-// TestInstructionReadOutsideSector tests reading a sector from outside the
-// storage obligation.
-func TestInstructionReadOutsideSector(t *testing.T) {
-	host := newTestHost()
-	mdm := New(host)
-	defer mdm.Stop()
-
-	// Add a sector root to the host but not to the SO.
-	sectorRoot := randomSectorRoots(1)[0]
-	sectorData, err := host.ReadSector(sectorRoot)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Create a program to read a full sector from the host.
-	pt := newTestPriceTable()
-	readLen := modules.SectorSize
-
-	// Execute it.
-	so := newTestStorageObligation(true)
-	// Use a builder to build the program.
-	tb := newTestProgramBuilder(pt)
-	tb.AddReadSectorInstruction(readLen, 0, sectorRoot, true)
-	imr := crypto.Hash{}
-
-	// Execute it.
-	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Check output.
-	outputs[0].assert(0, imr, []crypto.Hash{}, sectorData)
 }

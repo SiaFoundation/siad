@@ -54,6 +54,8 @@ func newTestStorageObligation(locked bool) *TestStorageObligation {
 
 // BlockHeight returns an incremented blockheight every time it's called.
 func (h *TestHost) BlockHeight() types.BlockHeight {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.blockHeight++
 	return h.blockHeight
 }
@@ -61,7 +63,9 @@ func (h *TestHost) BlockHeight() types.BlockHeight {
 // HasSector indicates whether the host stores a sector with a given root or
 // not.
 func (h *TestHost) HasSector(sectorRoot crypto.Hash) bool {
+	h.mu.Lock()
 	_, exists := h.sectors[sectorRoot]
+	h.mu.Unlock()
 	return exists
 }
 
@@ -121,7 +125,8 @@ func (so *TestStorageObligation) Update(sectorRoots []crypto.Hash, sectorsRemove
 // for every operation/rpc.
 func newTestPriceTable() *modules.RPCPriceTable {
 	return &modules.RPCPriceTable{
-		Expiry:               time.Now().Add(time.Minute).Unix(),
+		Validity: time.Minute,
+
 		UpdatePriceTableCost: types.NewCurrency64(1),
 		InitBaseCost:         types.NewCurrency64(1),
 		MemoryTimeCost:       types.NewCurrency64(1),
@@ -210,6 +215,9 @@ func (mdm *MDM) ExecuteProgramWithBuilderManualFinalize(tb *testProgramBuilder, 
 // asserted using the TestValues type or they will be asserted implicitly when
 // using ExecuteProgramWithBuilder.
 func (o Output) assert(newSize uint64, newMerkleRoot crypto.Hash, proof []crypto.Hash, output []byte) error {
+	if o.Error != nil {
+		return fmt.Errorf("output contained error: %v", o.Error)
+	}
 	if o.NewSize != newSize {
 		return fmt.Errorf("expected newSize %v but got %v", newSize, o.NewSize)
 	}
