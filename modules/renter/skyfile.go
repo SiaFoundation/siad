@@ -42,6 +42,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -731,8 +732,9 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
 	// This will fail if we don't have the decryption key.
+	var fileSpecificSkykey skykey.Skykey
 	if isEncryptedBaseSector(baseSector) {
-		err = r.decryptBaseSector(baseSector)
+		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
 		if err != nil {
 			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "Unable to decrypt skyfile base sector")
 		}
@@ -752,7 +754,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 	}
 
 	// There is a fanout, create a fanout streamer and return that.
-	fs, err := r.newFanoutStreamer(link, layout, fanoutBytes, timeout)
+	fs, err := r.newFanoutStreamer(link, layout, fanoutBytes, timeout, fileSpecificSkykey)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
 	}
@@ -780,9 +782,10 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	}
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
+	var fileSpecificSkykey skykey.Skykey
 	encrypted := isEncryptedBaseSector(baseSector)
 	if encrypted {
-		err = r.decryptBaseSector(baseSector)
+		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
 		if err != nil {
 			return errors.AddContext(err, "Unable to decrypt skyfile base sector")
 		}
@@ -804,10 +807,6 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 
 	// Re-encrypt the baseSector for upload and add the fanout key to the fup.
 	if encrypted {
-		fileSpecificSkykey, err := r.deriveFileSpecificKey(&layout)
-		if err != nil {
-			return errors.AddContext(err, "Unable to derive file-specific Skykey")
-		}
 		err = encryptBaseSectorWithSkykey(baseSector, layout, fileSpecificSkykey)
 		if err != nil {
 			return errors.AddContext(err, "Error re-encrypting base sector")
@@ -853,7 +852,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	}
 
 	// Create the fanout streamer that will download the file.
-	streamer, err := r.newFanoutStreamer(skylink, layout, fanoutBytes, timeout)
+	streamer, err := r.newFanoutStreamer(skylink, layout, fanoutBytes, timeout, fileSpecificSkykey)
 	if err != nil {
 		return errors.AddContext(err, "Failed to create fanout streamer for large skyfile pin")
 	}

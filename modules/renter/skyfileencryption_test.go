@@ -130,19 +130,19 @@ func TestSkyfileBaseSectorEncryption(t *testing.T) {
 
 	// Now decrypt all the base sectors. They should all be equal to the original
 	// now.
-	err = r.decryptBaseSector(bsCopy1)
+	sk, err := r.decryptBaseSector(bsCopy1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = r.decryptBaseSector(bsCopy2)
+	_, err = r.decryptBaseSector(bsCopy2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = r.decryptBaseSector(bsCopy3)
+	_, err = r.decryptBaseSector(bsCopy3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = r.decryptBaseSector(otherBSCopy)
+	_, err = r.decryptBaseSector(otherBSCopy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestSkyfileBaseSectorEncryption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fanoutKey, err := r.deriveFanoutKey(&layoutForFanout)
+	fanoutKey, err := r.deriveFanoutKey(&layoutForFanout, sk)
 	if err != nil {
 		t.Fatal(err)
 	}
