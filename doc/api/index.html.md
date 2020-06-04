@@ -532,7 +532,7 @@ Returns the some of the constants that the Sia daemon uses.
   
   "allowance":  // allowance
     {
-      "funds":"55000000000000000000000000000",  // currency
+      "funds":"250000000000000000000000000000",  // currency
       "hosts":50,                       // uint64
       "period":12096,                   // blockheight
       "renewwindow":4032,               // blockheight

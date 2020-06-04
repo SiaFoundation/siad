@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"crypto/cipher"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -337,7 +338,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 		if err == io.EOF {
 			break
 		} else if err != nil {
-			return err
+			return errors.AddContext(err, "could not get next entry in the tar archive")
 		}
 		dst := filepath.Join(r.staticFileSystem.DirPath(modules.UserFolder), header.Name)
 
@@ -345,49 +346,53 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 		info := header.FileInfo()
 		if info.IsDir() {
 			if err = os.MkdirAll(dst, info.Mode()); err != nil {
-				return err
+				return errors.AddContext(err, fmt.Sprintf("could not make directory %v", dst))
 			}
 			continue
 		}
 		// Load the new file in memory.
 		b, err := ioutil.ReadAll(tr)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "could not load the new file in memory")
 		}
 		if name := filepath.Base(info.Name()); name == modules.SiaDirExtension {
 			// Load the file as a .siadir
 			var md siadir.Metadata
 			err = json.Unmarshal(b, &md)
 			if err != nil {
-				return err
+				return errors.AddContext(err, "could not unmarshal")
 			}
 			// Try creating a new SiaDir.
 			var siaPath modules.SiaPath
 			if err := siaPath.LoadSysPath(r.staticFileSystem.DirPath(modules.UserFolder), dst); err != nil {
-				return err
+				return errors.AddContext(err, "could not load system path")
 			}
 			siaPath, err = siaPath.Dir()
 			if err != nil {
-				return err
+				return errors.AddContext(err, "could not get directory")
 			}
 			err := r.staticFileSystem.NewSiaDir(siaPath, modules.DefaultDirPerm)
-			if err == filesystem.ErrExists {
+			if errors.Contains(err, filesystem.ErrExists) {
 				// .siadir exists already
 				continue
 			} else if err != nil {
-				return err // unexpected error
+				// unexpected error
+				return errors.AddContext(err, fmt.Sprintf("could not create dir at  %v", siaPath))
 			}
 			// Update the metadata.
 			dirEntry, err := r.staticFileSystem.OpenSiaDir(siaPath)
 			if err != nil {
-				return err
+				return errors.AddContext(err, fmt.Sprintf("could not open dir at %v", siaPath))
 			}
 			if err := dirEntry.UpdateMetadata(md); err != nil {
 				dirEntry.Close()
-				return err
+				return errors.AddContext(err, "could not update metadata")
 			}
 			// Metadata was updated so add to list of directories to be updated
-			dirsToUpdate.callAdd(siaPath)
+			err = dirsToUpdate.callAdd(siaPath)
+			if err != nil {
+				return errors.AddContext(err, fmt.Sprintf("could not add directory %v to the list of directories to be updated", siaPath))
+			}
 			// Close Directory
 			dirEntry.Close()
 		} else if filepath.Ext(info.Name()) == modules.SiaFileExtension {
@@ -395,15 +400,18 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 			reader := bytes.NewReader(b)
 			siaPath, err := modules.UserFolder.Join(strings.TrimSuffix(header.Name, modules.SiaFileExtension))
 			if err != nil {
-				return err
+				return errors.AddContext(err, "could not join folders")
 			}
 			err = r.staticFileSystem.AddSiaFileFromReader(reader, siaPath)
 			if err != nil {
-				return err
+				return errors.AddContext(err, "could not add siafile from reader")
 			}
 			// Add directory that siafile resides in to the list of directories
 			// to be updated
-			dirsToUpdate.callAdd(siaPath)
+			err = dirsToUpdate.callAdd(siaPath)
+			if err != nil {
+				return errors.AddContext(err, fmt.Sprintf("could not add directory %v to the list of directories to be updated", siaPath))
+			}
 		}
 	}
 	return nil

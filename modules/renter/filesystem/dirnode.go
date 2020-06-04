@@ -72,6 +72,17 @@ func (n *DirNode) Delete() error {
 	return sd.Delete()
 }
 
+// Deleted is a wrapper for SiaDir.Deleted.
+func (n *DirNode) Deleted() (bool, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	sd, err := n.siaDir()
+	if err != nil {
+		return false, err
+	}
+	return sd.Deleted(), nil
+}
+
 // Dir will return a child dir of this directory if it exists.
 func (n *DirNode) Dir(name string) (*DirNode, error) {
 	n.mu.Lock()
@@ -654,7 +665,10 @@ func (n *DirNode) managedNewSiaFile(fileName string, source string, ec modules.E
 	return errors.AddContext(err, "NewSiaFile: failed to create file")
 }
 
-// managedNewSiaDir creates the SiaDir with the given dirName as its child.
+// managedNewSiaDir creates the SiaDir with the given dirName as its child. We
+// try to create the SiaDir if it exists in memory but not on disk, as it may
+// have just been deleted. We also do not return an error if the SiaDir exists
+// in memory and on disk already, which may be due to a race.
 func (n *DirNode) managedNewSiaDir(dirName string, rootPath string, mode os.FileMode) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()

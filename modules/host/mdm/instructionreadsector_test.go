@@ -5,6 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -25,16 +26,17 @@ func TestInstructionReadSector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	duration := types.BlockHeight(fastrand.Uint64n(5))
 	// Use a builder to build the program.
 	readLen := modules.SectorSize
-	tb := newTestProgramBuilder(pt)
+	tb := newTestProgramBuilder(pt, duration)
 	tb.AddReadSectorInstruction(readLen, 0, so.sectorRoots[0], true)
 
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
 
 	// Execute it.
-	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, false)
+	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, duration, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,11 +56,11 @@ func TestInstructionReadSector(t *testing.T) {
 	}
 
 	// Use a builder to build the program.
-	tb = newTestProgramBuilder(pt)
+	tb = newTestProgramBuilder(pt, duration)
 	tb.AddReadSectorInstruction(length, offset, so.sectorRoots[0], true)
 
 	// Execute it.
-	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, false)
+	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, duration, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,17 +92,18 @@ func TestInstructionReadOutsideSector(t *testing.T) {
 
 	// Create a program to read a full sector from the host.
 	pt := newTestPriceTable()
+	duration := types.BlockHeight(fastrand.Uint64n(5))
 	readLen := modules.SectorSize
 
 	// Execute it.
 	so := newTestStorageObligation(true)
 	// Use a builder to build the program.
-	tb := newTestProgramBuilder(pt)
+	tb := newTestProgramBuilder(pt, duration)
 	tb.AddReadSectorInstruction(readLen, 0, sectorRoot, true)
 	imr := crypto.Hash{}
 
 	// Execute it.
-	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, false)
+	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, duration, false)
 	if err != nil {
 		t.Fatal(err)
 	}
