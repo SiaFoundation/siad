@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -69,7 +70,8 @@ func siacTestDir(testName string) string {
 // when subtests need command to run and expected output
 type cobraCmdSubTest struct {
 	name               string
-	test               func(*testing.T, []string, string)
+	test               func(*testing.T, *cobra.Command, []string, string)
+	root               *cobra.Command
 	cmd                []string
 	expectedOutPattern string
 }
@@ -77,13 +79,10 @@ type cobraCmdSubTest struct {
 // runCobraCmdSubTests is a helper function to run siac Cobra command subtests
 // when subtests need command to run and expected output
 func runCobraCmdSubTests(t *testing.T, tests []cobraCmdSubTest) error {
-	// init commands for testing
-	initCobraCmdsForTests()
-
 	// Run subtests
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.test(t, test.cmd, test.expectedOutPattern)
+			test.test(t, test.root, test.cmd, test.expectedOutPattern)
 		})
 	}
 	return nil
@@ -91,7 +90,7 @@ func runCobraCmdSubTests(t *testing.T, tests []cobraCmdSubTest) error {
 
 // testGenericCobraCmd is a helper function to test siac cobra commands
 // specified in cmds for expected output regex pattern
-func testGenericCobraCmd(t *testing.T, cmds []string, expOutPattern string) {
+func testGenericCobraCmd(t *testing.T, root *cobra.Command, cmds []string, expOutPattern string) {
 	// catch stdout and stderr
 	c, err := startCatchingStdoutStderr()
 	if err != nil {
@@ -99,7 +98,7 @@ func testGenericCobraCmd(t *testing.T, cmds []string, expOutPattern string) {
 	}
 
 	// execute command
-	cobraOutput, _ := executeCobraCommand(rootCmd, cmds...)
+	cobraOutput, _ := executeCobraCommand(root, cmds...)
 
 	// stop catching stdout/stderr, get catched outputs
 	siaOutput, err := c.stopCatchingStout()
@@ -122,8 +121,32 @@ func testGenericCobraCmd(t *testing.T, cmds []string, expOutPattern string) {
 		t.Fatal("There was no output")
 	}
 
-	validPattern := regexp.MustCompile(expOutPattern)
-	if !validPattern.MatchString(output) {
+	// check regex pattern by increasing rows so it is easier to spot the regex
+	// match issues, do not split on regex pattern rows with open regex groups
+	regexErr := false
+	regexRows := strings.Split(expOutPattern, "\n")
+	offsetFromLastOKRow := 0
+	for i := 0; i < len(regexRows); i++ {
+		// test only first i+1 rows from regex pattern
+		expSubPattern := strings.Join(regexRows[0:i+1], "\n")
+		// do not split on open regex group "("
+		openRegexGroups := strings.Count(expSubPattern, "(") - strings.Count(expSubPattern, `\(`)
+		closedRegexGroups := strings.Count(expSubPattern, ")") - strings.Count(expSubPattern, `\)`)
+		if openRegexGroups != closedRegexGroups {
+			offsetFromLastOKRow++
+			continue
+		}
+		validPattern := regexp.MustCompile(expSubPattern)
+		if !validPattern.MatchString(output) {
+			t.Log("Regex pattern didn't match between rows (1-based):", i+1-offsetFromLastOKRow, "-", i+1)
+			t.Logf("Regex pattern part that didn't match:\n%s", strings.Join(regexRows[i-offsetFromLastOKRow:i+1], "\n"))
+			regexErr = true
+			break
+		}
+		offsetFromLastOKRow = 0
+	}
+
+	if regexErr {
 		t.Log("----- Expected patern: -----")
 		t.Log(expOutPattern)
 
@@ -137,14 +160,17 @@ func testGenericCobraCmd(t *testing.T, cmds []string, expOutPattern string) {
 	}
 }
 
-// initCobraCmdsForTests initializes siac cobra commands for testing
-func initCobraCmdsForTests() {
-	if cmdTesting {
-		return
-	}
-	initCmds()
-	initClient()
-	cmdTesting = true
+// initForCobraCmdsTests creates and initializes a new instance of siac Cobra
+// command
+func getRootCmdForCobraCmdsTests(t *testing.T, dir string) *cobra.Command {
+	// create new instance of siac cobra command
+	root := initCmds()
+
+	// initialize a siac cobra command
+	verbose := false
+	initClient(root, &verbose, &httpClient, &dir)
+
+	return root
 }
 
 // executeCobraCommand is a pass-through function to execute siac cobra command

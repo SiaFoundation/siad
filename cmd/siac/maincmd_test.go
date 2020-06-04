@@ -25,16 +25,19 @@ func TestRootSiacCmd(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	t.Log("siad api address:", n.APIAddress())
+	t.Log("siad API address:", n.APIAddress())
 
-	// define test constants: regular expressions to check siac output
+	root := getRootCmdForCobraCmdsTests(t, groupDir)
+
+	// define test constants:
+	// regular expressions to check siac output
 	begin := "^"
 	nl := `
 ` // platform agnostic new line
 	end := "$"
 
 	IPv6addr := n.Address
-	IPv4Addr := strings.Replace(n.Address, "[::]", "localhost", 1)
+	IPv4Addr := strings.ReplaceAll(n.Address, "[::]", "localhost")
 
 	rootCmdOutPattern := `Consensus:
   Synced: (No|Yes)
@@ -85,7 +88,7 @@ Flags:
 
 Use ".*siac(\.test|) \[command\] --help" for more information about a command\.`
 
-	siaClientVersionPattern := "Sia Client v" + build.Version
+	siaClientVersionPattern := "Sia Client v" + strings.ReplaceAll(build.Version, ".", `\.`)
 	connectionRefusedPattern := `Could not get consensus status: \[failed to get reader response; GET request failed; Get http://localhost:5555/consensus: dial tcp \[::1\]:5555: connect: connection refused\]`
 
 	// define subtests
@@ -100,42 +103,49 @@ Use ".*siac(\.test|) \[command\] --help" for more information about a command\.`
 		{
 			name:               "TestRootCmdWithShortAddressFlagIPv6",
 			test:               testGenericCobraCmd,
+			root:               root,
 			cmd:                []string{"-a", IPv6addr},
 			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithShortAddressFlagIPv4",
 			test:               testGenericCobraCmd,
+			root:               root,
 			cmd:                []string{"-a", IPv4Addr},
 			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithLongAddressFlagIPv6",
 			test:               testGenericCobraCmd,
+			root:               root,
 			cmd:                []string{"--addr", IPv6addr},
 			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithLongAddressFlagIPv4",
 			test:               testGenericCobraCmd,
+			root:               root,
 			cmd:                []string{"--addr", IPv4Addr},
 			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithInvalidFlag",
 			test:               testGenericCobraCmd,
+			root:               root,
 			cmd:                []string{"-x"},
 			expectedOutPattern: begin + "Error: unknown shorthand flag: 'x' in -x" + nl + rootCmdUsagePattern + nl + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithInvalidAddress",
 			test:               testGenericCobraCmd,
+			root:               root,
 			cmd:                []string{"-a", "localhost:5555"},
 			expectedOutPattern: begin + connectionRefusedPattern + nl + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithHelpFlag",
 			test:               testGenericCobraCmd,
+			root:               root,
 			cmd:                []string{"-h"},
 			expectedOutPattern: begin + siaClientVersionPattern + nl + nl + rootCmdUsagePattern + nl + end,
 		},

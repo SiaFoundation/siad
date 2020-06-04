@@ -79,7 +79,6 @@ var (
 	// Globals.
 	rootCmd    *cobra.Command // Root command cobra object, used by bash completion cmd.
 	httpClient client.Client
-	cmdTesting = false // false: production usage, true: execution of command tests
 )
 
 // Exit codes.
@@ -116,21 +115,14 @@ func wrap(fn interface{}) func(*cobra.Command, []string) {
 	}
 }
 
-// die prints its arguments to stderr, then exits the program with the default
-// error code.
-func die(args ...interface{}) {
-	fmt.Fprintln(os.Stderr, args...)
-	os.Exit(exitCodeGeneral)
-}
-
-// dieOrContinue prints its arguments to stderr, in production exits the
+// die prints its arguments to stderr, in production exits the
 // program with the default error code, during tests it continues so that tests
 // can check printed errors
-func dieOrContinue(args ...interface{}) {
+func die(args ...interface{}) {
 	fmt.Fprintln(os.Stderr, args...)
 
 	// in production usage exit
-	if !cmdTesting {
+	if build.Release != "testing" {
 		os.Exit(exitCodeGeneral)
 	}
 }
@@ -147,7 +139,7 @@ func statuscmd() {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("Consensus:\n  Status: %s\n\n", moduleNotReadyStatus)
 	} else if err != nil {
-		dieOrContinue("Could not get consensus status:", err)
+		die("Could not get consensus status:", err)
 		return
 	} else {
 		fmt.Printf(`Consensus:
@@ -163,7 +155,7 @@ func statuscmd() {
 		// Assume module is not loaded if status command is not recognized.
 		fmt.Printf("Wallet:\n  Status: %s\n\n", moduleNotReadyStatus)
 	} else if err != nil {
-		dieOrContinue("Could not get wallet status:", err)
+		die("Could not get wallet status:", err)
 		return
 	} else if walletStatus.Unlocked {
 		fmt.Printf(`Wallet:
@@ -182,7 +174,7 @@ func statuscmd() {
 	fmt.Printf(`Renter:`)
 	err = renterFilesAndContractSummary()
 	if err != nil {
-		dieOrContinue(err)
+		die(err)
 		return
 	}
 
@@ -193,7 +185,7 @@ func statuscmd() {
 	// Global Daemon Rate Limits
 	dg, err := httpClient.DaemonSettingsGet()
 	if err != nil {
-		dieOrContinue("Could not get daemon:", err)
+		die("Could not get daemon:", err)
 		return
 	}
 	fmt.Printf(`
@@ -203,7 +195,7 @@ Global `)
 	// Gateway Rate Limits
 	gg, err := httpClient.GatewayGet()
 	if err != nil {
-		dieOrContinue("Could not get gateway:", err)
+		die("Could not get gateway:", err)
 		return
 	}
 	fmt.Printf(`
@@ -213,7 +205,7 @@ Gateway `)
 	// Renter Rate Limits
 	rg, err := httpClient.RenterGet()
 	if err != nil {
-		dieOrContinue("Error getting renter:", err)
+		die("Error getting renter:", err)
 		return
 	}
 	fmt.Printf(`
@@ -244,10 +236,10 @@ func rateLimitSummary(download, upload int64) {
 
 func main() {
 	// initialize commands
-	initCmds()
+	rootCmd = initCmds()
 
 	// initialize client
-	initClient()
+	initClient(rootCmd, &statusVerbose, &httpClient, &siaDir)
 
 	// set API password if it was not set
 	setAPIPasswordIfNotSet()
@@ -277,7 +269,7 @@ func main() {
 }
 
 // initCmds initializes root command and its subcommands
-func initCmds() {
+func initCmds() *cobra.Command {
 	root := &cobra.Command{
 		Use:   os.Args[0],
 		Short: "Sia Client v" + build.Version,
@@ -286,8 +278,6 @@ func initCmds() {
 	}
 
 	// create command tree (alphabetized by root command)
-	rootCmd = root
-
 	root.AddCommand(consensusCmd)
 	consensusCmd.Flags().BoolVarP(&consensusCmdVerbose, "verbose", "v", false, "Display full consensus information")
 
@@ -405,15 +395,17 @@ func initCmds() {
 	walletSignCmd.Flags().BoolVarP(&walletRawTxn, "raw", "", false, "Encode signed transaction as base64 instead of JSON")
 	walletTransactionsCmd.Flags().Uint64Var(&walletStartHeight, "startheight", 0, " Height of the block where transaction history should begin.")
 	walletTransactionsCmd.Flags().Uint64Var(&walletEndHeight, "endheight", math.MaxUint64, " Height of the block where transaction history should end.")
+
+	return root
 }
 
 // initClient initializes client cmd flags and default values
-func initClient() {
-	rootCmd.Flags().BoolVarP(&statusVerbose, "verbose", "v", false, "Display additional siac information")
-	rootCmd.PersistentFlags().StringVarP(&httpClient.Address, "addr", "a", "localhost:9980", "which host/port to communicate with (i.e. the host/port siad is listening on)")
-	rootCmd.PersistentFlags().StringVarP(&httpClient.Password, "apipassword", "", "", "the password for the API's http authentication")
-	rootCmd.PersistentFlags().StringVarP(&siaDir, "sia-directory", "d", "", "location of the sia directory")
-	rootCmd.PersistentFlags().StringVarP(&httpClient.UserAgent, "useragent", "", "Sia-Agent", "the useragent used by siac to connect to the daemon's API")
+func initClient(root *cobra.Command, verbose *bool, client *client.Client, siaDir *string) {
+	root.Flags().BoolVarP(verbose, "verbose", "v", false, "Display additional siac information")
+	root.PersistentFlags().StringVarP(&client.Address, "addr", "a", "localhost:9980", "which host/port to communicate with (i.e. the host/port siad is listening on)")
+	root.PersistentFlags().StringVarP(&client.Password, "apipassword", "", "", "the password for the API's http authentication")
+	root.PersistentFlags().StringVarP(siaDir, "sia-directory", "d", "", "location of the sia directory")
+	root.PersistentFlags().StringVarP(&client.UserAgent, "useragent", "", "Sia-Agent", "the useragent used by siac to connect to the daemon's API")
 }
 
 // setAPIPasswordIfNotSet sets API password if it was not set
