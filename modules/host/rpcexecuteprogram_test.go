@@ -850,7 +850,7 @@ func TestExecuteAppendProgram(t *testing.T) {
 	// this particular program on the "renter" side. This way we can test that
 	// the bandwidth measured by the renter is large enough to be accepted by
 	// the host.
-	expectedDownload := uint64(4380) // download
+	expectedDownload := uint64(5840) // download
 	expectedUpload := uint64(14600)  // upload
 	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
