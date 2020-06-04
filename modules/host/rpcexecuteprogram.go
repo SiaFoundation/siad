@@ -90,6 +90,10 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	// Get the remaining unallocated collateral.
 	collateralBudget := sos.UnallocatedCollateral()
 
+	// Get the remaining contract duration.
+	bh := h.BlockHeight()
+	duration := sos.ProofDeadline() - bh
+
 	// Get a context that can be used to interrupt the program.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -101,11 +105,8 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		}
 	}()
 
-	// Get some host fields..
-	bh := h.BlockHeight()
-
 	// Execute the program.
-	finalize, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, budget, collateralBudget, sos, dataLength, stream)
+	finalize, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, budget, collateralBudget, sos, duration, dataLength, stream)
 	if err != nil {
 		return errors.AddContext(err, "Failed to start execution of the program")
 	}

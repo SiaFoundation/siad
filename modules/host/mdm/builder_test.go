@@ -5,6 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // testProgramBuilder is a helper used for constructing test programs and
@@ -22,13 +23,13 @@ type testProgramBuilder struct {
 }
 
 // newTestProgramBuilder creates a new testBuilder.
-func newTestProgramBuilder(pt *modules.RPCPriceTable) *testProgramBuilder {
+func newTestProgramBuilder(pt *modules.RPCPriceTable, duration types.BlockHeight) *testProgramBuilder {
 	return &testProgramBuilder{
 		readonly: true,
 		staticPT: pt,
 
-		staticPB:     modules.NewProgramBuilder(pt),
-		staticValues: NewTestValues(pt),
+		staticPB:     modules.NewProgramBuilder(pt, duration),
+		staticValues: NewTestValues(pt, duration),
 	}
 }
 

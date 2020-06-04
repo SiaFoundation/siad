@@ -121,7 +121,7 @@ func (j *jobHasSector) managedHasSector() (bool, error) {
 	w := j.staticQueue.staticWorker()
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
-	pb := modules.NewProgramBuilder(&pt)
+	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since HasSector doesn't depend on it.
 	pb.AddHasSectorInstruction(j.staticSector)
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)

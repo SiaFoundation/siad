@@ -159,9 +159,12 @@ func RPCIReadSector(rootOff, offsetOff, lengthOff uint64, merkleProof bool) Inst
 }
 
 // MDMAppendCost is the cost of executing an 'Append' instruction.
-func MDMAppendCost(pt *RPCPriceTable) (types.Currency, types.Currency) {
+func MDMAppendCost(pt *RPCPriceTable, duration types.BlockHeight) (types.Currency, types.Currency) {
+	// Cost of storing for the duration.
+	storeLengthCost := pt.StoreLengthCost.Mul64(SectorSize).Mul64(uint64(duration))
 	writeCost := pt.WriteLengthCost.Mul64(SectorSize).Add(pt.WriteBaseCost)
-	storeCost := pt.WriteStoreCost.Mul64(SectorSize) // potential refund
+	// Potential refund.
+	storeCost := pt.WriteStoreCost.Mul64(SectorSize).Add(storeLengthCost)
 	return writeCost.Add(storeCost), storeCost
 }
 

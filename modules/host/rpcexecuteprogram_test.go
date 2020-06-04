@@ -68,7 +68,7 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 
 	// create the 'ReadSector' program.
 	pt := rhp.managedPriceTable()
-	pb := modules.NewProgramBuilder(pt)
+	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since ReadSector doesn't depend on duration.
 	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
 	program, data := pb.Program()
 
@@ -126,7 +126,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 
 	// create the 'ReadSector' program.
 	pt := rhp.managedPriceTable()
-	pb := modules.NewProgramBuilder(pt)
+	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since ReadSector doesn't depend on duration.
 	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
 	program, data := pb.Program()
 	programCost, storageCost, collateral := pb.Cost(true)
@@ -293,7 +293,7 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 
 	// create the 'ReadSector' program.
 	pt := rhp.managedPriceTable()
-	pb := modules.NewProgramBuilder(pt)
+	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since ReadSector doesn't depend on duration.
 	pb.AddReadSectorInstruction(length, offset, sectorRoot, true)
 	program, data := pb.Program()
 	programCost, refund, collateral := pb.Cost(true)
@@ -415,7 +415,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 
 	// Create the 'HasSector' program.
 	pt := rhp.managedPriceTable()
-	pb := modules.NewProgramBuilder(pt)
+	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since HasSector doesn't depend on duration.
 	pb.AddHasSectorInstruction(sectorRoot)
 	program, data := pb.Program()
 	programCost, refund, collateral := pb.Cost(true)
@@ -793,7 +793,7 @@ func TestExecuteAppendProgram(t *testing.T) {
 		}
 	}()
 
-	// helper to get current revision
+	// helper to get current revision's number.
 	revNum := func() uint64 {
 		// Get the latest revision. It should be the updated one.
 		updated, err := rhp.staticHT.host.managedGetStorageObligation(rhp.staticFCID)
@@ -811,9 +811,16 @@ func TestExecuteAppendProgram(t *testing.T) {
 	data := fastrand.Bytes(int(modules.SectorSize))
 	sectorRoot := crypto.MerkleRoot(data)
 
+	// Get the remaining contract duration.
+	so, err := rhp.staticHT.host.managedGetStorageObligation(rhp.staticFCID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	duration := so.proofDeadline() - rhp.staticHT.host.BlockHeight()
+
 	// create the 'Append' program.
 	pt := rhp.managedPriceTable()
-	pb := modules.NewProgramBuilder(pt)
+	pb := modules.NewProgramBuilder(pt, duration)
 	err = pb.AddAppendInstruction(data, true)
 	if err != nil {
 		t.Fatal(err)

@@ -339,6 +339,7 @@ func (h *Host) managedUpdatePriceTable() {
 		WriteBaseCost:       types.NewCurrency64(1),
 		WriteLengthCost:     types.NewCurrency64(1),
 		WriteStoreCost:      types.NewCurrency64(1),
+		StoreLengthCost:     types.NewCurrency64(1),
 
 		// Bandwidth related fields.
 		DownloadBandwidthCost: es.DownloadBandwidthPrice,

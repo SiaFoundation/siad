@@ -13,7 +13,9 @@ type (
 	// ProgramBuilder is a helper type to easily create programs and compute
 	// their cost.
 	ProgramBuilder struct {
-		staticPT    *RPCPriceTable
+		staticDuration types.BlockHeight
+		staticPT       *RPCPriceTable
+
 		readonly    bool
 		program     Program
 		programData *bytes.Buffer
@@ -27,12 +29,13 @@ type (
 )
 
 // NewProgramBuilder creates an empty program builder.
-func NewProgramBuilder(pt *RPCPriceTable) *ProgramBuilder {
+func NewProgramBuilder(pt *RPCPriceTable, duration types.BlockHeight) *ProgramBuilder {
 	pb := &ProgramBuilder{
-		programData: new(bytes.Buffer),
-		readonly:    true, // every program starts readonly
-		staticPT:    pt,
-		usedMemory:  MDMInitMemory(),
+		programData:    new(bytes.Buffer),
+		readonly:       true, // every program starts readonly
+		staticDuration: duration,
+		staticPT:       pt,
+		usedMemory:     MDMInitMemory(),
 	}
 	return pb
 }
@@ -52,7 +55,7 @@ func (pb *ProgramBuilder) AddAppendInstruction(data []byte, merkleProof bool) er
 	pb.program = append(pb.program, i)
 	// Update cost, collateral and memory usage.
 	collateral := MDMAppendCollateral(pb.staticPT)
-	cost, refund := MDMAppendCost(pb.staticPT)
+	cost, refund := MDMAppendCost(pb.staticPT, pb.staticDuration)
 	memory := MDMAppendMemory()
 	time := uint64(MDMTimeAppend)
 	pb.addInstruction(collateral, cost, refund, memory, time)

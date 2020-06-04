@@ -241,7 +241,7 @@ func newTestReadSectorProgram(pt *modules.RPCPriceTable, root crypto.Hash, full 
 		length = uint64(crypto.SegmentSize) * (fastrand.Uint64n(5) + 1)
 	}
 
-	pb := modules.NewProgramBuilder(pt)
+	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since ReadSector doesn't depend on duration
 	pb.AddReadSectorInstruction(length, offset, root, true)
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
@@ -257,7 +257,7 @@ func newTestReadSectorProgram(pt *modules.RPCPriceTable, root crypto.Hash, full 
 // on the host and returns a program that returns whether or not the host has
 // this sector.
 func newTestHasSectorProgram(pt *modules.RPCPriceTable, root crypto.Hash) testMDMProgram {
-	pb := modules.NewProgramBuilder(pt)
+	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since HasSector doesn't depend on duration
 	pb.AddHasSectorInstruction(root)
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
