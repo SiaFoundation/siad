@@ -43,6 +43,7 @@ func main() {
 	workDir := filepath.Join(home, "nebulous/sia-upload-download-script") // script's working directory
 	filesDir := filepath.Join(workDir, "files")                           // path to directory where created files will be stored
 	downloadsDir := filepath.Join(workDir, "downloads")                   // path to the directory where downloaded files will be stored
+	siaDir := "upload-download-script"                                 // folder in Sia to upload files to
 
 	//xxx for dev
 	remainingData = size * 3
@@ -101,9 +102,9 @@ func main() {
 		if len(uploadMap) < 1 {
 			file = "Randfile" + strconv.Itoa(i) + "_" + strconv.Itoa(int(size/1e9)) + "GB" + strconv.FormatInt(time.Now().Unix(), 10)
 			path := filepath.Join(filesDir, file)
-			createFile(path, int(size), int(chunk), w)
+			createFile(path, int(size), w)
 
-			upload(client, path, w)
+			upload(client, siaDir, path, w)
 
 			remainingData = remainingData - size
 			i++
@@ -138,7 +139,8 @@ func main() {
 	// TODO - this will be updated to trying to download files as soon as they are
 	// available. Will need a map to track which files have been downloaded to
 	// ensure we hit all the files by the end of the test
-	os.MkdirAll(downloadsDir, os.ModePerm)
+	fullDownloadsDir := filepath.Join(downloadsDir, siaDir)
+	os.MkdirAll(fullDownloadsDir, os.ModePerm)
 	for _, fi := range rf.Files {
 		// calling download not async so it will be blocking
 		downloadFile(client, fi.SiaPath, downloadsDir, w)
@@ -192,7 +194,7 @@ func createFile(path string, size int, w *bufio.Writer) {
 	data := fastrand.Bytes(size)
 
 	// Write data to file.  and Flush writes to stable storage.
-	_, err := f.Write(data)
+	_, err = f.Write(data)
 	check(err)
 	f.Sync()
 }
@@ -208,13 +210,12 @@ func deleteLocalFile(path string, w *bufio.Writer) {
 }
 
 // Upload uses the node to upload the file.
-func upload(c *client.Client, path string, w *bufio.Writer) {
+func upload(c *client.Client, siaFolder string,path string, w *bufio.Writer) {
 	// Get absolute file path for RenterUploadPost
 	abs, err := filepath.Abs(path)
 	check(err)
 
 	// Submit upload
-	siaFolder := "upload-download-script"
 	siaPath, err := modules.NewSiaPath(filepath.Join(siaFolder, filepath.Base(path)))
 	check(err)
 	err = c.RenterUploadDefaultPost(abs, siaPath)
