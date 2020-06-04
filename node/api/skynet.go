@@ -1123,17 +1123,21 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 func getDefaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (string, error) {
 	defaultPath := queryForm.Get(modules.SkyfileDefaultPath)
 	if defaultPath == "" {
-		defaultPath = DefaultSkynetDefaultPath
-	}
-	// Make sure the default path starts with a /.
-	if !strings.HasPrefix(defaultPath, "/") {
-		defaultPath = "/" + defaultPath
+		// No default path specified, check if there is an `index.html` file.
+		_, exists := subfiles[strings.TrimPrefix(DefaultSkynetDefaultPath, "/")]
+		if exists {
+			return DefaultSkynetDefaultPath, nil
+		}
+		// No `index.html`, so we can't have a default path
+		return "", nil
 	}
 	// Check if the defaultPath exists. Omit the leading slash because
 	// the filenames in `subfiles` won't have it.
-	_, exists := subfiles[strings.TrimPrefix(defaultPath, "/")]
-	if !exists {
-		return "", fmt.Errorf("default path %v doesn't exist", defaultPath)
+	if _, ok := subfiles[strings.TrimPrefix(defaultPath, "/")]; !ok {
+		return "", Error{fmt.Sprintf("invalid defaultpath provided - no such path: %s", defaultPath)}
+	}
+	if !strings.HasPrefix(defaultPath, "/") {
+		defaultPath = "/" + defaultPath
 	}
 	return defaultPath, nil
 }
