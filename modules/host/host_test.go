@@ -626,7 +626,7 @@ func (p *renterHostPair) managedPaymentRevision(amount types.Currency) (types.Fi
 		return types.FileContractRevision{}, crypto.Signature{}, err
 	}
 
-	rev, err := recent.PaymentRevision(amount)
+	rev, err := recent.EAPaymentRevision(amount)
 	if err != nil {
 		return types.FileContractRevision{}, crypto.Signature{}, err
 	}
