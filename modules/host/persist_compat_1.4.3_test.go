@@ -90,11 +90,11 @@ func TestV120HostUpgrade(t *testing.T) {
 	// verify the upgrade properly decorated the ephemeral account related
 	// settings onto the persistence object
 	his := host.InternalSettings()
-	if his.EphemeralAccountExpiry != defaultEphemeralAccountExpiry {
+	if his.EphemeralAccountExpiry != modules.DefaultEphemeralAccountExpiry {
 		t.Fatal("EphemeralAccountExpiry not properly decorated on the persistence object after upgrade")
 	}
 
-	if !his.MaxEphemeralAccountBalance.Equals(defaultMaxEphemeralAccountBalance) {
+	if !his.MaxEphemeralAccountBalance.Equals(modules.DefaultMaxEphemeralAccountBalance) {
 		t.Fatal("MaxEphemeralAccountBalance not properly decorated on the persistence object after upgrade")
 	}
 

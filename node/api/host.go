@@ -329,6 +329,9 @@ func (api *API) hostEstimateScoreGET(w http.ResponseWriter, req *http.Request, _
 		StoragePrice:           settings.MinStoragePrice,
 		UploadBandwidthPrice:   settings.MinUploadBandwidthPrice,
 
+		EphemeralAccountExpiry:     settings.EphemeralAccountExpiry,
+		MaxEphemeralAccountBalance: settings.MaxEphemeralAccountBalance,
+
 		Version: build.Version,
 	}
 	entry := modules.HostDBEntry{}

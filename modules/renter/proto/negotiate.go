@@ -85,8 +85,10 @@ func verifySettings(conn net.Conn, host modules.HostDBEntry) (modules.HostDBEntr
 		RevisionNumber:         recvSettings.RevisionNumber,
 		Version:                recvSettings.Version,
 		// New fields are set to zero.
-		BaseRPCPrice:      types.ZeroCurrency,
-		SectorAccessPrice: types.ZeroCurrency,
+		BaseRPCPrice:               types.ZeroCurrency,
+		SectorAccessPrice:          types.ZeroCurrency,
+		EphemeralAccountExpiry:     0,
+		MaxEphemeralAccountBalance: types.ZeroCurrency,
 	}
 	return host, nil
 }

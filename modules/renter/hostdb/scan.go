@@ -519,8 +519,10 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 			RevisionNumber:         oldSettings.RevisionNumber,
 			Version:                oldSettings.Version,
 			// New fields are set to zero.
-			BaseRPCPrice:      types.ZeroCurrency,
-			SectorAccessPrice: types.ZeroCurrency,
+			BaseRPCPrice:               types.ZeroCurrency,
+			SectorAccessPrice:          types.ZeroCurrency,
+			EphemeralAccountExpiry:     0,
+			MaxEphemeralAccountBalance: types.ZeroCurrency,
 		}
 		return nil
 	}()

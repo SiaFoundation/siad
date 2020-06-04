@@ -122,6 +122,15 @@ var (
 	// download bandwidth is expected to be plentiful but also in-demand.
 	DefaultDownloadBandwidthPrice = types.SiacoinPrecision.Mul64(25).Div(BytesPerTerabyte) // 25 SC / TB
 
+	// DefaultEphemeralAccountExpiry defines the default maximum amount of
+	// time an ephemeral account can be inactive before it expires and gets
+	// deleted.
+	DefaultEphemeralAccountExpiry = uint64(604800) // 1 week
+
+	// DefaultMaxEphemeralAccountBalance defines the default maximum amount of
+	// money that the host will allow to deposit into a single ephemeral account
+	DefaultMaxEphemeralAccountBalance = types.SiacoinPrecision
+
 	// DefaultSectorAccessPrice defines the default price of a sector access. It
 	// is roughly equal to the cost of downloading 64 KiB.
 	DefaultSectorAccessPrice = types.SiacoinPrecision.Mul64(2).Div64(1e6) // 2 uS
@@ -491,6 +500,9 @@ func DefaultHostExternalSettings() HostExternalSettings {
 		SectorAccessPrice:      DefaultSectorAccessPrice,
 		StoragePrice:           DefaultStoragePrice,
 		UploadBandwidthPrice:   DefaultUploadBandwidthPrice,
+
+		EphemeralAccountExpiry:     DefaultEphemeralAccountExpiry,
+		MaxEphemeralAccountBalance: DefaultMaxEphemeralAccountBalance,
 
 		Version: build.Version,
 	}

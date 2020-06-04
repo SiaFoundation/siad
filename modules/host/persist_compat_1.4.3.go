@@ -25,8 +25,8 @@ func (h *Host) upgradeFromV120ToV143() error {
 	}
 
 	// Add the ephemeral account defaults
-	p.Settings.EphemeralAccountExpiry = defaultEphemeralAccountExpiry
-	p.Settings.MaxEphemeralAccountBalance = defaultMaxEphemeralAccountBalance
+	p.Settings.EphemeralAccountExpiry = modules.DefaultEphemeralAccountExpiry
+	p.Settings.MaxEphemeralAccountBalance = modules.DefaultMaxEphemeralAccountBalance
 	p.Settings.MaxEphemeralAccountRisk = defaultMaxEphemeralAccountRisk
 
 	// Load it on the host
