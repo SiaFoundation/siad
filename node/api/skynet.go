@@ -27,6 +27,10 @@ import (
 )
 
 const (
+	// DefaultSkynetDefaultPath is the defaultPath value we use when the user
+	// hasn't provided any and `index.html` exists in the skyfile.
+	DefaultSkynetDefaultPath = "/index.html"
+
 	// DefaultSkynetRequestTimeout is the default request timeout for routes
 	// that have a timeout query string parameter. If the request can not be
 	// resolved within the given amount of time, it times out. This is used for
@@ -1118,17 +1122,18 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 // getDefaultPath extracts the defaultPath from the request or returns a default.
 func getDefaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (string, error) {
 	defaultPath := queryForm.Get(modules.SkyfileDefaultPath)
-	if defaultPath != "" {
-		if !strings.HasPrefix(defaultPath, "/") {
-			defaultPath = "/" + defaultPath
-		}
-		// Check if the defaultPath exists. Omit the leading slash because
-		// the filenames in `subfiles` won't have it.
-		if _, ok := subfiles[defaultPath[1:]]; !ok {
-			return "", Error{fmt.Sprintf("invalid defaultpath provided - no such path: %s", defaultPath)}
-		}
-	} else if _, ok := subfiles["index.html"]; ok {
-		defaultPath = "/index.html"
+	if defaultPath == "" {
+		defaultPath = DefaultSkynetDefaultPath
+	}
+	// Make sure the default path starts with a /.
+	if !strings.HasPrefix(defaultPath, "/") {
+		defaultPath = "/" + defaultPath
+	}
+	// Check if the defaultPath exists. Omit the leading slash because
+	// the filenames in `subfiles` won't have it.
+	_, exists := subfiles[strings.TrimPrefix(defaultPath, "/")]
+	if !exists {
+		return "", fmt.Errorf("default path %v doesn't exist", defaultPath)
 	}
 	return defaultPath, nil
 }
