@@ -272,7 +272,7 @@ func signatureFromRequest(recent types.FileContractRevision, pbcr modules.PayByC
 // the amount that was transferred, the collateral that was moved and a
 // potential error.
 func verifyPayByContractRevision(current, payment types.FileContractRevision, blockHeight types.BlockHeight) (amount types.Currency, err error) {
-	if err = verifyPaymentRevision(current, payment, blockHeight, types.ZeroCurrency); err != nil {
+	if err = verifyEAPaymentRevision(current, payment, blockHeight, types.ZeroCurrency); err != nil {
 		return
 	}
 

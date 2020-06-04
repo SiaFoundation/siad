@@ -151,10 +151,10 @@ func (h *Host) managedDownloadIteration(conn net.Conn, so *storageObligation) er
 	return nil
 }
 
-// verifyPaymentRevision verifies that the revision being provided to pay for
+// verifyEAPaymentRevision verifies that the revision being provided to pay for
 // the data has transferred the expected amount of money from the renter to the
 // host.
-func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractRevision, blockHeight types.BlockHeight, expectedTransfer types.Currency) error {
+func verifyEAPaymentRevision(existingRevision, paymentRevision types.FileContractRevision, blockHeight types.BlockHeight, expectedTransfer types.Currency) error {
 	// Check that the revision is well-formed.
 	if len(paymentRevision.NewValidProofOutputs) != 2 || len(paymentRevision.NewMissedProofOutputs) != 3 {
 		return ErrBadContractOutputCounts
@@ -249,6 +249,107 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 	}
 	if paymentRevision.NewUnlockHash != existingRevision.NewUnlockHash {
 		return ErrBadUnlockHash
+	}
+	return nil
+}
+
+// verifyPaymentRevision verifies that the revision being provided to pay for
+// the data has transferred the expected amount of money from the renter to the
+// host.
+func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractRevision, blockHeight types.BlockHeight, expectedTransfer types.Currency) error {
+	// Check that the revision is well-formed.
+	if len(paymentRevision.NewValidProofOutputs) != 2 || len(paymentRevision.NewMissedProofOutputs) != 3 {
+		return ErrBadContractOutputCounts
+	}
+
+	// Check that the time to finalize and submit the file contract revision
+	// has not already passed.
+	if existingRevision.NewWindowStart-revisionSubmissionBuffer <= blockHeight {
+		return ErrLateRevision
+	}
+
+	// Host payout addresses shouldn't change
+	if paymentRevision.ValidHostOutput().UnlockHash != existingRevision.ValidHostOutput().UnlockHash {
+		return errors.New("host payout address changed")
+	}
+	if paymentRevision.MissedHostOutput().UnlockHash != existingRevision.MissedHostOutput().UnlockHash {
+		return errors.New("host payout address changed")
+	}
+	// Make sure the lost collateral still goes to the void
+	paymentVoidOutput, err1 := paymentRevision.MissedVoidOutput()
+	existingVoidOutput, err2 := existingRevision.MissedVoidOutput()
+	if err := errors.Compose(err1, err2); err != nil {
+		return err
+	}
+	if paymentVoidOutput.UnlockHash != existingVoidOutput.UnlockHash {
+		return errors.New("lost collateral address was changed")
+	}
+
+	// Determine the amount that was transferred from the renter.
+	if paymentRevision.ValidRenterPayout().Cmp(existingRevision.ValidRenterPayout()) > 0 {
+		return errors.AddContext(ErrHighRenterValidOutput, "renter increased its valid proof output")
+	}
+	fromRenter := existingRevision.ValidRenterPayout().Sub(paymentRevision.ValidRenterPayout())
+	// Verify that enough money was transferred.
+	if fromRenter.Cmp(expectedTransfer) < 0 {
+		s := fmt.Sprintf("expected at least %v to be exchanged, but %v was exchanged: ", expectedTransfer, fromRenter)
+		return errors.AddContext(ErrHighRenterValidOutput, s)
+	}
+
+	// Determine the amount of money that was transferred to the host.
+	if existingRevision.ValidHostPayout().Cmp(paymentRevision.ValidHostPayout()) > 0 {
+		return errors.AddContext(ErrLowHostValidOutput, "host valid proof output was decreased")
+	}
+	toHost := paymentRevision.ValidHostPayout().Sub(existingRevision.ValidHostPayout())
+	// Verify that enough money was transferred.
+	if !toHost.Equals(fromRenter) {
+		s := fmt.Sprintf("expected exactly %v to be transferred to the host, but %v was transferred: ", fromRenter, toHost)
+		return errors.AddContext(ErrLowHostValidOutput, s)
+	}
+
+	// If the renter's valid proof output is larger than the renter's missed
+	// proof output, the renter has incentive to see the host fail. Make sure
+	// that this incentive is not present.
+	if paymentRevision.ValidRenterPayout().Cmp(paymentRevision.MissedRenterOutput().Value) > 0 {
+		return errors.AddContext(ErrHighRenterMissedOutput, "renter has incentive to see host fail")
+	}
+
+	// Check that the host is not going to be posting collateral.
+	if paymentRevision.MissedHostOutput().Value.Cmp(existingRevision.MissedHostOutput().Value) < 0 {
+		collateral := existingRevision.MissedHostOutput().Value.Sub(paymentRevision.MissedHostOutput().Value)
+		s := fmt.Sprintf("host not expecting to post any collateral, but contract has host posting %v collateral", collateral)
+		return errors.AddContext(ErrLowHostMissedOutput, s)
+	}
+
+	// Check that the revision count has increased.
+	if paymentRevision.NewRevisionNumber <= existingRevision.NewRevisionNumber {
+		return ErrBadRevisionNumber
+	}
+
+	// Check that all of the non-volatile fields are the same.
+	if paymentRevision.ParentID != existingRevision.ParentID {
+		return ErrBadParentID
+	}
+	if paymentRevision.UnlockConditions.UnlockHash() != existingRevision.UnlockConditions.UnlockHash() {
+		return ErrBadUnlockConditions
+	}
+	if paymentRevision.NewFileSize != existingRevision.NewFileSize {
+		return ErrBadFileSize
+	}
+	if paymentRevision.NewFileMerkleRoot != existingRevision.NewFileMerkleRoot {
+		return ErrBadFileMerkleRoot
+	}
+	if paymentRevision.NewWindowStart != existingRevision.NewWindowStart {
+		return ErrBadWindowStart
+	}
+	if paymentRevision.NewWindowEnd != existingRevision.NewWindowEnd {
+		return ErrBadWindowEnd
+	}
+	if paymentRevision.NewUnlockHash != existingRevision.NewUnlockHash {
+		return ErrBadUnlockHash
+	}
+	if !paymentRevision.MissedHostOutput().Value.Equals(existingRevision.MissedHostOutput().Value) {
+		return ErrLowHostMissedOutput
 	}
 	return nil
 }
