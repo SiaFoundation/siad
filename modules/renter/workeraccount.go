@@ -237,6 +237,9 @@ func (w *worker) managedAccountNeedsRefill() bool {
 
 // managedRefillAccount will refill the account if it needs to be refilled
 func (w *worker) managedRefillAccount() {
+	if w.renter.deps.Disrupt("DisableFunding") {
+		return // don't refill account
+	}
 	// the account balance dropped to below half the balance target, refill
 	balance := w.staticAccount.managedAvailableBalance()
 	amount := w.staticBalanceTarget.Sub(balance)
@@ -245,7 +248,7 @@ func (w *worker) managedRefillAccount() {
 	// is an interactive protocol with another machine, we are never sure of the
 	// exact moment that the deposit has reached our account. Instead, we track
 	// the deposit as a "maybe" until we know for sure that the deposit has
-	// either reached the remove machine or failed.
+	// either reached the remote machine or failed.
 	//
 	// At the same time that we track the deposit, we defer a function to check
 	// the error on the deposit

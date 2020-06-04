@@ -410,7 +410,16 @@ Streams a series of consensus changes, starting from the provided change ID.
 ### Path Parameters
 ### REQUIRED
 **id** | string
-The consensus change ID to subscribe from.
+The consensus change ID to subscribe from. There are two sentinel values:
+to subscribe from the genesis block use:
+```
+0000000000000000000000000000000000000000000000000000000000000000
+```
+To skip all existing blocks and subscribe only to subsequent changes, use:
+```
+0100000000000000000000000000000000000000000000000000000000000000
+```
+In addition, each consensus change contains its own ID.
 
 ### Response
 
@@ -523,7 +532,7 @@ Returns the some of the constants that the Sia daemon uses.
   
   "allowance":  // allowance
     {
-      "funds":"55000000000000000000000000000",  // currency
+      "funds":"250000000000000000000000000000",  // currency
       "hosts":50,                       // uint64
       "period":12096,                   // blockheight
       "renewwindow":4032,               // blockheight

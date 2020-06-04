@@ -204,6 +204,11 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 		s := fmt.Sprintf("expected exactly %v to be transferred to the host, but %v was transferred: ", fromRenter, toHost)
 		return errors.AddContext(ErrLowHostValidOutput, s)
 	}
+	// The amount of money moved to the missing host output should match the
+	// money moved to the valid output.
+	if !paymentRevision.MissedHostPayout().Equals(existingRevision.MissedHostPayout().Add(toHost)) {
+		return ErrLowHostMissedOutput
+	}
 
 	// If the renter's valid proof output is larger than the renter's missed
 	// proof output, the renter has incentive to see the host fail. Make sure
@@ -244,9 +249,6 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 	}
 	if paymentRevision.NewUnlockHash != existingRevision.NewUnlockHash {
 		return ErrBadUnlockHash
-	}
-	if !paymentRevision.MissedHostPayout().Equals(existingRevision.MissedHostPayout().Add(toHost)) {
-		return ErrLowHostMissedOutput
 	}
 	return nil
 }

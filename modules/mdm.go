@@ -25,6 +25,10 @@ type (
 	Program []Instruction
 	// ProgramData contains the raw byte data for the program.
 	ProgramData []byte
+
+	// MDMCancellationToken is a token that can be used to request cancellation
+	// of a program
+	MDMCancellationToken [MDMCancellationTokenLen]byte
 )
 
 const (

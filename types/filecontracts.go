@@ -146,9 +146,9 @@ func (fcr FileContractRevision) PaymentRevision(amount Currency) (FileContractRe
 	rev.SetValidRenterPayout(fcr.ValidRenterPayout().Sub(amount))
 	rev.SetValidHostPayout(fcr.ValidHostPayout().Add(amount))
 
-	// move missed payout from renter to host.
-	rev.SetMissedRenterPayout(fcr.MissedRenterPayout().Sub(amount))
-	rev.SetMissedHostPayout(fcr.MissedHostPayout().Add(amount))
+	// move missed payout from renter to host
+	rev.SetMissedRenterPayout(fcr.MissedRenterOutput().Value.Sub(amount))
+	rev.SetMissedHostPayout(rev.MissedHostPayout().Add(amount))
 
 	// increment revision number
 	rev.NewRevisionNumber++

@@ -109,6 +109,9 @@ func TestPaymentRevision(t *testing.T) {
 	if !payment.ValidHostPayout().Sub(existing.ValidHostPayout()).Equals(amount) {
 		t.Fatal("Unexpected payout moved from renter to host")
 	}
+	if !payment.MissedHostPayout().Sub(existing.MissedHostPayout()).Equals(amount) {
+		t.Fatal("Unexpected payout moved from renter to host")
+	}
 	if !payment.MissedRenterOutput().Value.Equals(existing.MissedRenterOutput().Value.Sub(amount)) {
 		t.Fatal("Unexpected payout moved from renter to void")
 	}
@@ -117,7 +120,7 @@ func TestPaymentRevision(t *testing.T) {
 	if err := errors.Compose(err1, err2); err != nil {
 		t.Fatal(err)
 	}
-	if !pmvo.Value.Equals(emvo.Value.Add(amount)) {
+	if !pmvo.Value.Equals(emvo.Value) {
 		t.Fatal("Unexpected payout moved from renter to void")
 	}
 }

@@ -229,8 +229,8 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	}
 
 	// expect ErrLowHostMissedOutput
-	badPayment = deepCopy(payment)
-	badPayment.SetMissedHostPayout(badPayment.MissedHostPayout().Add64(1))
+	badCurr = deepCopy(curr)
+	badCurr.SetMissedHostPayout(payment.MissedHostPayout().Add64(1))
 	err = verifyPaymentRevision(badCurr, payment, height, amount)
 	if err != ErrLowHostMissedOutput {
 		t.Fatalf("Expected ErrLowHostMissedOutput but received '%v'", err)

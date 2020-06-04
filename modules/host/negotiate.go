@@ -155,6 +155,10 @@ var (
 	// ErrValidHostPayoutChanged is returned if the host's valid payout changed
 	// even though it shouldn't.
 	ErrValidHostPayoutChanged = ErrorCommunication("valid host payout changed")
+
+	// ErrVoidPayoutChanged is returned if the void payout changed even though
+	// it wasn't expected to.
+	ErrVoidPayoutChanged = ErrorCommunication("void payout shouldn't change")
 )
 
 // finalizeContractArgs are the arguments passed into managedFinalizeContract.

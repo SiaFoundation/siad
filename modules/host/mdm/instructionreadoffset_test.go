@@ -52,6 +52,9 @@ func TestInstructionReadOffset(t *testing.T) {
 	if mod := length % crypto.SegmentSize; mod != 0 {    // must be multiple of segmentsize
 		length -= mod
 	}
+	if length == 0 {
+		length = crypto.SegmentSize
+	}
 
 	// Use a builder to build the program.
 	tb = newTestProgramBuilder(pt)

@@ -292,12 +292,7 @@ func (w *worker) threadedWorkLoop() {
 		if !w.managedBlockUntilReady() {
 			return
 		}
-
-		// Update the cache for the worker if needed.
-		if !w.staticTryUpdateCache() {
-			w.renter.log.Printf("worker %v is being killed because the cache could not be updated", w.staticHostPubKeyStr)
-			return
-		}
+		w.staticTryUpdateCache()
 
 		// Attempt to launch a serial job. If there is already a job running,
 		// this will no-op. If no job is running, a goroutine will be spun up
