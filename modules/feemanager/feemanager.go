@@ -2,6 +2,7 @@ package feemanager
 
 import (
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,11 +22,8 @@ import (
 var (
 	// Nil dependency errors.
 	errNilCS     = errors.New("cannot create FeeManager with nil consensus set")
+	errNilDeps   = errors.New("cannot create FeeManager with nil dependencies")
 	errNilWallet = errors.New("cannot create FeeManager with nil wallet")
-
-	// nebAddress is the nebulous address that is used to send Nebulous its cut
-	// of the application fees.
-	nebAddress = [32]byte{14, 56, 201, 152, 87, 64, 139, 125, 38, 4, 161, 206, 32, 198, 119, 108, 158, 66, 177, 5, 178, 222, 155, 12, 209, 231, 91, 170, 213, 236, 57, 197}
 
 	// Enforce that FeeManager satisfies the modules.FeeManager interface.
 	_ modules.FeeManager = (*FeeManager)(nil)
@@ -85,6 +83,9 @@ func NewCustomFeeManager(cs modules.ConsensusSet, w modules.Wallet, persistDir s
 	if cs == nil {
 		return nil, errNilCS
 	}
+	if deps == nil {
+		return nil, errNilDeps
+	}
 	if w == nil {
 		return nil, errNilWallet
 	}
@@ -137,10 +138,16 @@ func NewCustomFeeManager(cs modules.ConsensusSet, w modules.Wallet, persistDir s
 		return nil, errors.AddContext(err, "unable to initialize the FeeManager's persistence")
 	}
 
-	// Launch background thread to process fees
+	// Launch background thread to process fees.
 	go fm.threadedProcessFees()
 
 	return fm, nil
+}
+
+// feeNotFoundError returns the ErrFeeNotFound error composed with an error
+// including the fee's UID
+func feeNotFoundError(feeUID modules.FeeUID) error {
+	return errors.Compose(ErrFeeNotFound, fmt.Errorf("feeUID %v", feeUID))
 }
 
 // uniqueID creates a random unique FeeUID.
@@ -179,17 +186,17 @@ func (fm *FeeManager) AddFee(address types.UnlockHash, amount types.Currency, ap
 		FeeUID:             uniqueID(),
 	}
 
-	// Add the fee. Don't need to check for existence because we just generated
-	// a unique ID.
-	fm.mu.Lock()
-	fm.fees[fee.FeeUID] = &fee
-	fm.mu.Unlock()
-
 	// Persist the fee.
 	err := ps.callPersistNewFee(fee)
 	if err != nil {
 		return "", errors.AddContext(err, "unable to persist the new fee")
 	}
+
+	// Add the fee once the persist event was successful. Don't need to check
+	// for existence because we just generated a unique ID.
+	fm.mu.Lock()
+	fm.fees[fee.FeeUID] = &fee
+	fm.mu.Unlock()
 	return fee.FeeUID, nil
 }
 
@@ -201,18 +208,36 @@ func (fm *FeeManager) CancelFee(feeUID modules.FeeUID) error {
 	}
 	defer fm.staticCommon.staticTG.Done()
 
-	// Erase the fee from memory.
+	// Check if the fee can be canceled
 	fm.mu.Lock()
-	_, exists := fm.fees[feeUID]
+	fee, exists := fm.fees[feeUID]
 	if !exists {
 		fm.mu.Unlock()
-		return ErrFeeNotFound
+		return feeNotFoundError(feeUID)
 	}
+	if fee.PaymentCompleted {
+		fm.mu.Unlock()
+		return errors.New("Cannot cancel a fee if the payment has already been completed")
+	}
+	if fee.TransactionCreated {
+		fm.mu.Unlock()
+		return errors.New("Cannot cancel a fee if the transaction has already been created")
+	}
+
+	// Erase the fee from memory.
 	delete(fm.fees, feeUID)
 	fm.mu.Unlock()
 
 	// Mark a cancellation of the fee on disk.
-	return fm.staticCommon.staticPersist.callPersistFeeCancelation(feeUID)
+	err := fm.staticCommon.staticPersist.callPersistFeeCancelation(feeUID)
+	if err != nil {
+		// Revert in memory change due to error with fee cancelation persistence
+		fm.mu.Lock()
+		fm.fees[feeUID] = fee
+		fm.mu.Unlock()
+		return errors.AddContext(err, "unable to persist fee cancelation")
+	}
+	return nil
 }
 
 // Close closes the FeeManager

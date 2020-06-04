@@ -17,19 +17,6 @@ type instructionAppend struct {
 	dataOffset uint64
 }
 
-// NewAppendInstruction creates a modules.Instruction from arguments.
-func NewAppendInstruction(dataOffset uint64, merkleProof bool) modules.Instruction {
-	i := modules.Instruction{
-		Specifier: modules.SpecifierAppend,
-		Args:      make([]byte, modules.RPCIAppendLen),
-	}
-	binary.LittleEndian.PutUint64(i.Args[:8], dataOffset)
-	if merkleProof {
-		i.Args[8] = 1
-	}
-	return i
-}
-
 // staticDecodeAppendInstruction creates a new 'Append' instruction from the
 // provided generic instruction.
 func (p *program) staticDecodeAppendInstruction(instruction modules.Instruction) (instruction, error) {
@@ -94,10 +81,11 @@ func (i *instructionAppend) Collateral() types.Currency {
 	return modules.MDMAppendCollateral(i.staticState.priceTable)
 }
 
-// Cost returns the Cost of this append instruction.
-func (i *instructionAppend) Cost() (types.Currency, types.Currency, error) {
-	cost, refund := modules.MDMAppendCost(i.staticState.priceTable)
-	return cost, refund, nil
+// Cost returns the Cost of this `Append` instruction.
+func (i *instructionAppend) Cost() (executionCost, refund types.Currency, err error) {
+	duration := i.staticState.staticRemainingDuration
+	executionCost, refund = modules.MDMAppendCost(i.staticState.priceTable, duration)
+	return
 }
 
 // Memory returns the memory allocated by the 'Append' instruction beyond the

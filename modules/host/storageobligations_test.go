@@ -107,6 +107,7 @@ func TestStorageObligationSnapshot(t *testing.T) {
 	}
 	sectorRoot, sectorData := randSector()
 	so.SectorRoots = []crypto.Hash{sectorRoot}
+	proofDeadline := so.proofDeadline()
 	validPayouts, missedPayouts := so.payouts()
 	so.RevisionTransactionSet = []types.Transaction{{
 		FileContractRevisions: []types.FileContractRevision{{
@@ -117,7 +118,7 @@ func TestStorageObligationSnapshot(t *testing.T) {
 			NewFileSize:           uint64(len(sectorData)),
 			NewFileMerkleRoot:     sectorRoot,
 			NewWindowStart:        so.expiration(),
-			NewWindowEnd:          so.proofDeadline(),
+			NewWindowEnd:          proofDeadline,
 			NewValidProofOutputs:  validPayouts,
 			NewMissedProofOutputs: missedPayouts,
 			NewUnlockHash:         types.UnlockConditions{}.UnlockHash(),
@@ -142,6 +143,9 @@ func TestStorageObligationSnapshot(t *testing.T) {
 	}
 	if snapshot.MerkleRoot() != sectorRoot {
 		t.Fatalf("Unexpected merkle root, expected %v but received %v", sectorRoot, snapshot.MerkleRoot())
+	}
+	if uint64(snapshot.ProofDeadline()) != uint64(proofDeadline) {
+		t.Fatalf("Unexpected proof deadline, expected %v but received %v", proofDeadline, snapshot.ProofDeadline())
 	}
 	if len(snapshot.SectorRoots()) != 1 {
 		t.Fatal("Unexpected number of sector roots")

@@ -44,7 +44,7 @@ func (r *Renter) managedDownloadSnapshotTable(session contractor.Session) ([]sna
 			// snapshots / has not been prepared for snapshots yet.
 			return nil, nil
 		}
-		return nil, err
+		return nil, errors.AddContext(err, "unable to perform a download by index on this contract")
 	}
 	// decrypt the table
 	c, _ := crypto.NewSiaKey(crypto.TypeThreefish, secret[:])
@@ -60,7 +60,7 @@ func (r *Renter) managedDownloadSnapshotTable(session contractor.Session) ([]sna
 
 	var entryTable []snapshotEntry
 	if err := encoding.Unmarshal(encTable[16:], &entryTable); err != nil {
-		return nil, err
+		return nil, errors.AddContext(err, "error unmarshaling the entry table")
 	}
 	return entryTable, nil
 }

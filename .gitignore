@@ -3,6 +3,7 @@
 *.swo
 
 # build artifacts
+analyze
 artifacts
 cover
 fullcover
@@ -18,6 +19,7 @@ doc/whitepaper.pdf
 sia.iml
 
 # VSCode debug files
+.vscode
 debug.test
 
 # OSX auto-generated file

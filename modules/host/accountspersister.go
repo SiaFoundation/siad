@@ -292,6 +292,9 @@ func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
 		return errRotationDisabled
 	}
 
+	// Get blockheight before acquiring fingerprint manager lock.
+	bh := ap.h.BlockHeight()
+
 	fm := ap.staticFingerprintManager
 	fm.mu.Lock()
 	defer fm.mu.Unlock()
@@ -302,7 +305,7 @@ func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
 	}
 
 	// Calculate new filenames for the fingerprint buckets
-	currFilename, nextFilename := fingerprintsFilenames(ap.h.blockHeight)
+	currFilename, nextFilename := fingerprintsFilenames(bh)
 
 	// Reopen files
 	fm.currentPath = filepath.Join(ap.h.persistDir, currFilename)

@@ -142,16 +142,9 @@ func (fcr FileContractRevision) PaymentRevision(amount Currency) (FileContractRe
 	rev.SetValidRenterPayout(fcr.ValidRenterPayout().Sub(amount))
 	rev.SetValidHostPayout(fcr.ValidHostPayout().Add(amount))
 
-	// move missed payout from renter to void
+	// move missed payout from renter to host
 	rev.SetMissedRenterPayout(fcr.MissedRenterOutput().Value.Sub(amount))
-	voidOutput, err := fcr.MissedVoidOutput()
-	if err != nil {
-		return FileContractRevision{}, errors.AddContext(err, "failed to get missed void output")
-	}
-	err = rev.SetMissedVoidPayout(voidOutput.Value.Add(amount))
-	if err != nil {
-		return FileContractRevision{}, errors.AddContext(err, "failed to set missed void output")
-	}
+	rev.SetMissedHostPayout(rev.MissedHostPayout().Add(amount))
 
 	// increment revision number
 	rev.NewRevisionNumber++

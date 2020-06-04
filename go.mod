@@ -12,7 +12,7 @@ require (
 	github.com/klauspost/cpuid v1.2.2 // indirect
 	github.com/klauspost/reedsolomon v1.9.3
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/spf13/cobra v0.0.5
+	github.com/spf13/cobra v1.0.0
 	github.com/vbauerster/mpb/v5 v5.0.3
 	github.com/xtaci/smux v1.3.3
 	gitlab.com/NebulousLabs/bolt v1.4.0
@@ -24,12 +24,13 @@ require (
 	gitlab.com/NebulousLabs/merkletree v0.0.0-20200118113624-07fbf710afc4
 	gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a
 	gitlab.com/NebulousLabs/ratelimit v0.0.0-20191111145210-66b93e150b27
-	gitlab.com/NebulousLabs/siamux v0.0.0-20200515151423-3f0b6e54abec
-	gitlab.com/NebulousLabs/threadgroup v0.0.0-20200513153928-67f056f80aa0
+	gitlab.com/NebulousLabs/siamux v0.0.0-20200529161118-72d7f2cfd76d
+	gitlab.com/NebulousLabs/threadgroup v0.0.0-20200527092543-afa01960408c
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190814160017-69f300e9bcb8
 	golang.org/x/crypto v0.0.0-20200423211502-4bdfaf469ed5
+	golang.org/x/lint v0.0.0-20200302205851-738671d3881b // indirect
+	golang.org/x/net v0.0.0-20200226121028-0de0cce0169b // indirect
 	golang.org/x/sys v0.0.0-20200420163511-1957bb5e6d1f // indirect
-	golang.org/x/tools v0.0.0-20200130002326-2f3ba24bd6e7
 )
 
 replace github.com/xtaci/smux => ./vendor/github.com/xtaci/smux

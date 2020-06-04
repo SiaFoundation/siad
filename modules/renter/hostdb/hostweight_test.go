@@ -302,11 +302,14 @@ func TestHostWeightCollateralDifferences(t *testing.T) {
 
 	entry := DefaultHostDBEntry
 	entry2 := DefaultHostDBEntry
-	entry2.Collateral = types.NewCurrency64(500).Mul(types.SiacoinPrecision)
+	entry2.Collateral = entry.Collateral.Mul64(2)
+	entry2.MaxCollateral = entry.MaxCollateral.Mul64(2)
 
 	w1 := hdb.weightFunc(entry).Score()
 	w2 := hdb.weightFunc(entry2).Score()
 	if w1.Cmp(w2) <= 0 {
+		t.Log("w1:", w1)
+		t.Log("w2:", w2)
 		t.Error("Larger collateral should have more weight")
 	}
 }

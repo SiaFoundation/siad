@@ -1,11 +1,11 @@
 package mdm
 
 import (
-	"bytes"
-	"context"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestInstructionHasSector tests executing a program with a single
@@ -28,57 +28,22 @@ func TestInstructionHasSector(t *testing.T) {
 
 	// Build the program.
 	pt := newTestPriceTable()
-	pb := modules.NewProgramBuilder(pt)
-	pb.AddHasSectorInstruction(sectorRoot)
-	instructions, programData := pb.Program()
-	cost, refund, collateral := pb.Cost(true)
-	dataLen := uint64(len(programData))
+	duration := types.BlockHeight(fastrand.Uint64n(5))
+	tb := newTestProgramBuilder(pt, duration)
+	tb.AddHasSectorInstruction(sectorRoot)
+
+	ics := so.ContractSize()
+	imr := so.MerkleRoot()
+
 	// Execute it.
-	budget := modules.NewBudget(cost)
-	finalize, outputs, err := mdm.ExecuteProgram(context.Background(), pt, instructions, budget, collateral, so, dataLen, bytes.NewReader(programData))
+	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, duration, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Check outputs.
-	numOutputs := 0
-	for output := range outputs {
-		if err := output.Error; err != nil {
-			t.Fatal(err)
-		}
-		if output.NewSize != so.ContractSize() {
-			t.Fatalf("expected contract size to stay the same: %v != %v", so.ContractSize(), output.NewSize)
-		}
-		if output.NewMerkleRoot != so.MerkleRoot() {
-			t.Fatalf("expected merkle root to stay the same: %v != %v", so.MerkleRoot(), output.NewMerkleRoot)
-		}
-		// Verify proof was created correctly.
-		if len(output.Proof) != 0 {
-			t.Fatalf("expected proof to have len %v but was %v", 0, len(output.Proof))
-		}
-		if !bytes.Equal(output.Output, []byte{1}) {
-			t.Fatalf("expected returned value to be [1] for 'true' but was %v", output.Output)
-		}
-		if !output.ExecutionCost.Equals(cost) {
-			t.Fatalf("execution cost doesn't match expected execution cost: %v != %v", output.ExecutionCost.HumanString(), cost.HumanString())
-		}
-		if !budget.Remaining().Equals(cost.Sub(output.ExecutionCost)) {
-			t.Fatalf("budget should be equal to the initial budget minus the execution cost: %v != %v",
-				budget.Remaining().HumanString(), cost.Sub(output.ExecutionCost).HumanString())
-		}
-		if !output.AdditionalCollateral.Equals(collateral) {
-			t.Fatalf("collateral doesnt't match expected collateral: %v != %v", output.AdditionalCollateral.HumanString(), collateral.HumanString())
-		}
-		if !output.PotentialRefund.Equals(refund) {
-			t.Fatalf("refund doesn't match expected refund: %v != %v", output.PotentialRefund.HumanString(), refund.HumanString())
-		}
-		numOutputs++
-	}
-	// There should be one output since there was one instruction.
-	if numOutputs != 1 {
-		t.Fatalf("numOutputs was %v but should be %v", numOutputs, 1)
-	}
-	// No need to finalize the program since this program is readonly.
-	if finalize != nil {
-		t.Fatal("finalize callback should be nil for readonly program")
+
+	// Assert output.
+	err = outputs[0].assert(ics, imr, []crypto.Hash{}, []byte{1})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

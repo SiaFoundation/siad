@@ -1,3 +1,38 @@
+## Jun 3, 2020:
+### v1.4.10
+**Bugs Fixed**
+- fixed issue where workers would freeze for a bit after a new block appeared
+
+**Other**
+- Add Skykey Name and ID to skykey GET responses
+
+## May 29, 2020:
+### v1.4.9
+**Key Updates**
+- Add `FeeManager` to siad to allow for applications to charge a fee
+- Add start time for the API server for siad uptime
+- Add new `/consensus/subscribe/:id` endpoint to allow subscribing to consensus
+  change events
+- Add /skykeys endpoint and `siac skykey ls` command
+- Updated skykey encoding and format
+
+**Bugs Fixed**
+- fix call to expensive operation in tight loop
+- fix an infinite loop which would block uploads from progressing
+
+**Other**
+- Optimize bandwidth consumption for RPC write calls
+- Extend `/daemon/alerts` with `criticalalerts`, `erroralerts` and
+  `warningalerts` fields along with `alerts`.
+- Update skykey siac functions to accept httpClient and remove global httpClient
+  reference from siac testing
+- Skykeycmd test broken down to subtests.
+- Create siac testing helpers.
+- Add engineering guidelines to /doc
+- Introduce PaymentProvider interface on the renter.
+- Skynet persistence subsystems into shared system.
+- Update Cobra from v0.0.5 to v1.0.0.
+
 ## May 11, 2020:
 ### v1.4.8
 **Key Updates**
@@ -36,7 +71,7 @@
 **Bugs Fixed**
 - Fix decode bug for the rpcResponse object
 - Fix bug in rotation of fingerprint buckets
-+ fix hostdb log being incorrectly named
+- fix hostdb log being incorrectly named
 - Refactor the environment variables into the `build` package to address bug
   where `siac` and `siad` could be using different API Passwords.
 - Fix bug in converting siafile to skyfile and enable testing.
@@ -50,10 +85,10 @@
   recursively.
 - Address missed locations of API error returns for handling of Modules not
   running
-+ add missing local ranges to IsLocal function
-+ workers now more consistently use the most recent contract
-+ improved performance logging in repair.log, especially in debug mode
-+ general upload performance improvements (minor)
+- add missing local ranges to IsLocal function
+- workers now more consistently use the most recent contract
+- improved performance logging in repair.log, especially in debug mode
+- general upload performance improvements (minor)
 - Fixed bug in `siac renter -v` where the health summary wasn't considering
   `OnDisk` when deciding if the file was recoverable
 - Fix panic condition in Renter's `uploadheap` due to change in chunk's stuck
@@ -102,7 +137,7 @@
 - Remove `build.Critical` and update to a metadata update
 
 **Other**
- - Add PaymentProcessor interface (host-side)
+- Add PaymentProcessor interface (host-side)
 - Move golangci-lint to `make lint` and remove `make lint-all`.
 - Add whitespace lint to catch extraneous whitespace and newlines.
 - Expand `SiaPath` unit testing to address more edge cases.

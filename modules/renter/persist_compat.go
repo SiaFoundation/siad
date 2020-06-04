@@ -2,6 +2,7 @@ package renter
 
 import (
 	"compress/gzip"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -408,7 +409,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		// be returned here
 		entry, err := r.v137FileToSiaFile(f, repairPath, oldContracts)
 		if err != nil {
-			return nil, errors.AddContext(err, "unable to transform old file to new file")
+			return nil, errors.AddContext(err, fmt.Sprintf("unable to transform old file %v to new file", repairPath))
 		}
 		if entry.NumChunks() < 1 {
 			return nil, errors.AddContext(err, "new file has invalid number of chunks")

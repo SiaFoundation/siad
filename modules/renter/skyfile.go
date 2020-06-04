@@ -432,7 +432,7 @@ func (r *Renter) UpdateSkynetBlacklist(additions, removals []modules.Skylink) er
 		return err
 	}
 	defer r.tg.Done()
-	return r.staticSkynetBlacklist.UpdateSkynetBlacklist(additions, removals)
+	return r.staticSkynetBlacklist.UpdateBlacklist(additions, removals)
 }
 
 // Portals returns the list of known skynet portals.
@@ -452,7 +452,7 @@ func (r *Renter) UpdateSkynetPortals(additions []modules.SkynetPortal, removals 
 		return err
 	}
 	defer r.tg.Done()
-	return r.staticSkynetPortals.UpdateSkynetPortals(additions, removals)
+	return r.staticSkynetPortals.UpdatePortals(additions, removals)
 }
 
 // uploadSkyfileReadLeadingChunk will read the leading chunk of a skyfile. If
@@ -550,7 +550,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParamete
 		if err != nil {
 			return modules.Skylink{}, errors.AddContext(err, "unable to get skykey cipherkey")
 		}
-		fup.CipherType = lup.FileSpecificSkykey.CipherType
+		fup.CipherType = lup.FileSpecificSkykey.CipherType()
 	}
 
 	var fileNode *filesystem.FileNode
@@ -822,7 +822,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 		if err != nil {
 			return errors.AddContext(err, "Error getting fanout CipherKey")
 		}
-		fup.CipherType = fanoutSkykey.CipherType
+		fup.CipherType = fanoutSkykey.CipherType()
 
 		// These fields aren't used yet, but we'll set them anyway to mimic behavior in
 		// upload/download code for consistency.
