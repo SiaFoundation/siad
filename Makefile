@@ -100,6 +100,10 @@ dependencies:
 fmt:
 	gofmt -s -l -w $(pkgs)
 
+# tidy calls go mod tidy.
+tidy:
+	go mod tidy -v
+
 # vet calls go vet on all packages.
 # NOTE: go vet requires packages to be built in order to obtain type info.
 vet:
@@ -110,9 +114,10 @@ vet:
 markdown-spellcheck:
 	git ls-files "*.md" :\!:"vendor/**" | xargs codespell --check-filenames
 
-# lint runs golangci-lint (which includes golint, a spellcheck of the codebase,
-# and other linters), the custom analyzers, and also a markdown spellchecker.
-lint: markdown-spellcheck lint-analyze
+# lint runs go mod tidy, golangci-lint (which includes golint, a spellcheck of
+# the codebase, and other linters), the custom analyzers, and also a markdown
+# spellchecker.
+lint: tidy markdown-spellcheck lint-analyze
 	golangci-lint run -c .golangci.yml
 
 # lint-ci runs golint.
