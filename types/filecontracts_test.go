@@ -40,8 +40,8 @@ func TestTax(t *testing.T) {
 	}
 }
 
-// TestPaymentRevision probes the PaymentRevision function
-func TestPaymentRevision(t *testing.T) {
+// TestEAPaymentRevision probes the EAPaymentRevision function
+func TestEAPaymentRevision(t *testing.T) {
 	mock := func(renterFunds, hostCollateral uint64) FileContractRevision {
 		return FileContractRevision{
 			NewValidProofOutputs: []SiacoinOutput{
@@ -58,18 +58,18 @@ func TestPaymentRevision(t *testing.T) {
 
 	// expect no error if amount is less than or equal to the renter funds
 	rev := mock(100, 0)
-	_, err := rev.PaymentRevision(NewCurrency64(99))
+	_, err := rev.EAPaymentRevision(NewCurrency64(99))
 	if err != nil {
 		t.Fatalf("Unexpected error '%v'", err)
 	}
-	_, err = rev.PaymentRevision(NewCurrency64(100))
+	_, err = rev.EAPaymentRevision(NewCurrency64(100))
 	if err != nil {
 		t.Fatalf("Unexpected error '%v'", err)
 	}
 
 	// expect ErrRevisionCostTooHigh
 	rev = mock(100, 0)
-	_, err = rev.PaymentRevision(NewCurrency64(100 + 1))
+	_, err = rev.EAPaymentRevision(NewCurrency64(100 + 1))
 	if !errors.Contains(err, ErrRevisionCostTooHigh) {
 		t.Fatalf("Expected error '%v' but received '%v'  ", ErrRevisionCostTooHigh, err)
 	}
@@ -77,18 +77,18 @@ func TestPaymentRevision(t *testing.T) {
 	// expect ErrRevisionCostTooHigh
 	rev = mock(100, 0)
 	rev.SetMissedRenterPayout(NewCurrency64(99))
-	_, err = rev.PaymentRevision(NewCurrency64(100))
+	_, err = rev.EAPaymentRevision(NewCurrency64(100))
 	if !errors.Contains(err, ErrRevisionCostTooHigh) {
 		t.Fatalf("Expected error '%v' but received '%v'  ", ErrRevisionCostTooHigh, err)
 	}
 
 	// expect no error if amount is less than or equal to the host collateral
 	rev = mock(100, 100)
-	_, err = rev.PaymentRevision(NewCurrency64(99))
+	_, err = rev.EAPaymentRevision(NewCurrency64(99))
 	if err != nil {
 		t.Fatalf("Unexpected error '%v'", err)
 	}
-	_, err = rev.PaymentRevision(NewCurrency64(100))
+	_, err = rev.EAPaymentRevision(NewCurrency64(100))
 	if err != nil {
 		t.Fatalf("Unexpected error '%v'", err)
 	}
@@ -96,7 +96,7 @@ func TestPaymentRevision(t *testing.T) {
 	// verify funds moved to the appropriate outputs
 	existing := mock(100, 0)
 	amount := NewCurrency64(99)
-	payment, err := existing.PaymentRevision(amount)
+	payment, err := existing.EAPaymentRevision(amount)
 	if err != nil {
 		t.Fatalf("Unexpected error '%v'", err)
 	}

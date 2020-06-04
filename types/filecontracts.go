@@ -122,8 +122,43 @@ func (fcr FileContractRevision) HostPublicKey() SiaPublicKey {
 }
 
 // PaymentRevision returns a copy of the revision with incremented revision
-// number where the given amount has moved from renter to the host.
+// number where the given amount has moved from the renter to the host (for
+// valid outputs) and from renter to the void (for missed outputs).
 func (fcr FileContractRevision) PaymentRevision(amount Currency) (FileContractRevision, error) {
+	rev := fcr
+
+	// need to manually copy slice memory
+	rev.NewValidProofOutputs = append([]SiacoinOutput{}, fcr.NewValidProofOutputs...)
+	rev.NewMissedProofOutputs = append([]SiacoinOutput{}, fcr.NewMissedProofOutputs...)
+
+	// Check that there are enough funds to pay this cost.
+	if fcr.ValidRenterPayout().Cmp(amount) < 0 {
+		return FileContractRevision{}, errors.AddContext(ErrRevisionCostTooHigh, "valid proof output smaller than cost")
+	}
+	if fcr.MissedRenterOutput().Value.Cmp(amount) < 0 {
+		return FileContractRevision{}, errors.AddContext(ErrRevisionCostTooHigh, "missed proof output smaller than cost")
+	}
+
+	// move valid payout from renter to host
+	rev.SetValidRenterPayout(fcr.ValidRenterPayout().Sub(amount))
+	rev.SetValidHostPayout(fcr.ValidHostPayout().Add(amount))
+
+	// move missed payout from renter to void
+	rev.SetMissedRenterPayout(fcr.MissedRenterOutput().Value.Sub(amount))
+	void, err := fcr.MissedVoidOutput()
+	if err != nil {
+		return FileContractRevision{}, err
+	}
+	rev.SetMissedVoidPayout(void.Value.Add(amount))
+
+	// increment revision number
+	rev.NewRevisionNumber++
+	return rev, nil
+}
+
+// EAPaymentRevision returns a copy of the revision with incremented revision
+// number where the given amount has moved from renter to the host.
+func (fcr FileContractRevision) EAPaymentRevision(amount Currency) (FileContractRevision, error) {
 	rev := fcr
 
 	// need to manually copy slice memory
