@@ -43,7 +43,7 @@ func main() {
 	workDir := filepath.Join(home, "nebulous/sia-upload-download-script") // script's working directory
 	filesDir := filepath.Join(workDir, "files")                           // path to directory where created files will be stored
 	downloadsDir := filepath.Join(workDir, "downloads")                   // path to the directory where downloaded files will be stored
-	siaDir := "upload-download-script"                                 // folder in Sia to upload files to
+	siaDir := "upload-download-script"                                    // folder in Sia to upload files to
 
 	//xxx for dev
 	remainingData = size * 3
@@ -210,7 +210,7 @@ func deleteLocalFile(path string, w *bufio.Writer) {
 }
 
 // Upload uses the node to upload the file.
-func upload(c *client.Client, siaFolder string,path string, w *bufio.Writer) {
+func upload(c *client.Client, siaFolder string, path string, w *bufio.Writer) {
 	// Get absolute file path for RenterUploadPost
 	abs, err := filepath.Abs(path)
 	check(err)
