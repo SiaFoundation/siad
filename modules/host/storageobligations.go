@@ -212,6 +212,7 @@ func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (Sto
 	return StorageObligationSnapshot{
 		staticContractSize:        so.fileSize(),
 		staticMerkleRoot:          so.merkleRoot(),
+		staticProofDeadline:       so.proofDeadline(),
 		staticRemainingCollateral: rev.MissedHostPayout(),
 		staticSectorRoots:         so.SectorRoots,
 	}, nil
@@ -250,6 +251,7 @@ func putStorageObligation(tx *bolt.Tx, so storageObligation) error {
 type StorageObligationSnapshot struct {
 	staticContractSize        uint64
 	staticMerkleRoot          crypto.Hash
+	staticProofDeadline       types.BlockHeight
 	staticRemainingCollateral types.Currency
 	staticSectorRoots         []crypto.Hash
 }
@@ -260,6 +262,7 @@ func ZeroStorageObligationSnapshot() StorageObligationSnapshot {
 	return StorageObligationSnapshot{
 		staticContractSize:        0,
 		staticMerkleRoot:          crypto.Hash{},
+		staticProofDeadline:       types.BlockHeight(0),
 		staticRemainingCollateral: types.ZeroCurrency,
 		staticSectorRoots:         []crypto.Hash{},
 	}
@@ -269,6 +272,11 @@ func ZeroStorageObligationSnapshot() StorageObligationSnapshot {
 // is the value of the contract size at the time the snapshot was taken.
 func (sos StorageObligationSnapshot) ContractSize() uint64 {
 	return sos.staticContractSize
+}
+
+// ProofDeadline returns the proof deadline of the underlying contract.
+func (sos StorageObligationSnapshot) ProofDeadline() types.BlockHeight {
+	return sos.staticProofDeadline
 }
 
 // MerkleRoot returns the merkle root, which is static and is the value of the
