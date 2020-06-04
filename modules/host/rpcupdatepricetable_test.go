@@ -158,13 +158,13 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 		}
 	}()
 
-	t.Run("happy flow", func(t *testing.T) {
+	t.Run("Basic", func(t *testing.T) {
 		testUpdatePriceTableBasic(t, rhp)
 	})
-	t.Run("insufficient payment", func(t *testing.T) {
+	t.Run("InsufficientPayment", func(t *testing.T) {
 		testUpdatePriceTableInsufficientPayment(t, rhp)
 	})
-	t.Run("host no stream close", func(t *testing.T) {
+	t.Run("HostNoStreamClose", func(t *testing.T) {
 		testUpdatePriceTableHostNoStreamClose(t, rhp)
 	})
 }
