@@ -248,7 +248,7 @@ func (w *worker) managedRefillAccount() {
 	// is an interactive protocol with another machine, we are never sure of the
 	// exact moment that the deposit has reached our account. Instead, we track
 	// the deposit as a "maybe" until we know for sure that the deposit has
-	// either reached the remove machine or failed.
+	// either reached the remote machine or failed.
 	//
 	// At the same time that we track the deposit, we defer a function to check
 	// the error on the deposit
