@@ -50,9 +50,6 @@ type RPCPriceTable struct {
 	// by the memory consumption of the program.
 	MemoryTimeCost types.Currency `json:"memorytimecost"`
 
-	// StoreLengthCost is the cost per byte per block for storage.
-	StoreLengthCost types.Currency `json:"storelengthcost"`
-
 	// CollateralCost is the amount of money per byte the host is promising to
 	// lock away as collateral when adding new data to a contract.
 	CollateralCost types.Currency `json:"collateralcost"`
@@ -73,9 +70,9 @@ type RPCPriceTable struct {
 	ReadLengthCost types.Currency `json:"readlengthcost"`
 
 	// Cost values specific to the Write instruction.
-	WriteBaseCost   types.Currency `json:"writebasecost"`
-	WriteLengthCost types.Currency `json:"writelengthcost"`
-	WriteStoreCost  types.Currency `json:"writestorecost"`
+	WriteBaseCost   types.Currency `json:"writebasecost"`   // per write
+	WriteLengthCost types.Currency `json:"writelengthcost"` // per byte written
+	WriteStoreCost  types.Currency `json:"writestorecost"`  // per byte / block of additional storage
 }
 
 var (

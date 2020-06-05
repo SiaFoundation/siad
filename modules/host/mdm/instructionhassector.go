@@ -47,8 +47,8 @@ func (i *instructionHasSector) Collateral() types.Currency {
 }
 
 // Cost returns the cost of executing this instruction.
-func (i *instructionHasSector) Cost() (executionCost, storage types.Currency, err error) {
-	executionCost, storage = modules.MDMHasSectorCost(i.staticState.priceTable)
+func (i *instructionHasSector) Cost() (executionCost, _ types.Currency, err error) {
+	executionCost = modules.MDMHasSectorCost(i.staticState.priceTable)
 	return
 }
 

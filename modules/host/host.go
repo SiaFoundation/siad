@@ -330,16 +330,21 @@ func (h *Host) managedUpdatePriceTable() {
 
 		// TODO: hardcoded MDM costs should be updated to use better values.
 		HasSectorBaseCost:   types.NewCurrency64(1),
-		InitBaseCost:        types.NewCurrency64(1),
 		MemoryTimeCost:      types.NewCurrency64(1),
-		ReadBaseCost:        types.NewCurrency64(1),
-		ReadLengthCost:      types.NewCurrency64(1),
 		DropSectorsBaseCost: types.NewCurrency64(1),
 		DropSectorsUnitCost: types.NewCurrency64(1),
-		WriteBaseCost:       types.NewCurrency64(1),
-		WriteLengthCost:     types.NewCurrency64(1),
-		WriteStoreCost:      types.NewCurrency64(1),
-		StoreLengthCost:     types.NewCurrency64(1),
+
+		// Read related costs.
+		ReadBaseCost:   es.SectorAccessPrice,
+		ReadLengthCost: types.NewCurrency64(1),
+
+		// Write related costs.
+		WriteBaseCost:   types.NewCurrency64(1),
+		WriteLengthCost: types.NewCurrency64(1),
+		WriteStoreCost:  es.StoragePrice,
+
+		// Init costs.
+		InitBaseCost: es.BaseRPCPrice,
 
 		// Bandwidth related fields.
 		DownloadBandwidthCost: es.DownloadBandwidthPrice,

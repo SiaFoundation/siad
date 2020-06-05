@@ -75,10 +75,10 @@ func (pb *ProgramBuilder) AddDropSectorsInstruction(numSectors uint64, merklePro
 	pb.program = append(pb.program, i)
 	// Update cost, collateral and memory usage.
 	collateral := MDMDropSectorsCollateral()
-	cost, refund := MDMDropSectorsCost(pb.staticPT, numSectors)
+	cost := MDMDropSectorsCost(pb.staticPT, numSectors)
 	memory := MDMDropSectorsMemory()
 	time := MDMDropSectorsTime(numSectors)
-	pb.addInstruction(collateral, cost, refund, memory, time)
+	pb.addInstruction(collateral, cost, types.ZeroCurrency, memory, time)
 	pb.readonly = false
 }
 
@@ -94,10 +94,10 @@ func (pb *ProgramBuilder) AddHasSectorInstruction(merkleRoot crypto.Hash) {
 	pb.program = append(pb.program, i)
 	// Update cost, collateral and memory usage.
 	collateral := MDMHasSectorCollateral()
-	cost, refund := MDMHasSectorCost(pb.staticPT)
+	cost := MDMHasSectorCost(pb.staticPT)
 	memory := MDMHasSectorMemory()
 	time := uint64(MDMTimeHasSector)
-	pb.addInstruction(collateral, cost, refund, memory, time)
+	pb.addInstruction(collateral, cost, types.ZeroCurrency, memory, time)
 }
 
 // AddReadOffsetInstruction adds a ReadOffset instruction to the program.
@@ -114,10 +114,10 @@ func (pb *ProgramBuilder) AddReadOffsetInstruction(length, offset uint64, merkle
 	pb.program = append(pb.program, i)
 	// Update cost, collateral and memory usage.
 	collateral := MDMReadCollateral()
-	cost, storage := MDMReadCost(pb.staticPT, length)
+	cost := MDMReadCost(pb.staticPT, length)
 	memory := MDMReadMemory()
 	time := uint64(MDMTimeReadOffset)
-	pb.addInstruction(collateral, cost, storage, memory, time)
+	pb.addInstruction(collateral, cost, types.ZeroCurrency, memory, time)
 }
 
 // AddReadSectorInstruction adds a ReadSector instruction to the program.
@@ -136,10 +136,10 @@ func (pb *ProgramBuilder) AddReadSectorInstruction(length, offset uint64, merkle
 	pb.program = append(pb.program, i)
 	// Update cost, collateral and memory usage.
 	collateral := MDMReadCollateral()
-	cost, storage := MDMReadCost(pb.staticPT, length)
+	cost := MDMReadCost(pb.staticPT, length)
 	memory := MDMReadMemory()
 	time := uint64(MDMTimeReadSector)
-	pb.addInstruction(collateral, cost, storage, memory, time)
+	pb.addInstruction(collateral, cost, types.ZeroCurrency, memory, time)
 }
 
 // Cost returns the current cost of the program being built by the builder. If
