@@ -176,9 +176,9 @@ func average(times []time.Duration) time.Duration {
 // is an error
 func check(e error) {
 	if e != nil {
-		_, file, line, _ := runtime.Caller(0)
-		fmt.Printf("%s:%d failed check(err)\n", filepath.Base(file), line)
-		fmt.Println(e)
+		_, file, line, _ := runtime.Caller(1)
+		fmt.Fprintf(os.Stderr, "%s:%d failed check(err)\n", filepath.Base(file), line)
+		fmt.Fprintln(os.Stderr, e)
 		os.Exit(1)
 	}
 }
