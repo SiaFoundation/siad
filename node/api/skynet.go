@@ -299,7 +299,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
 		return
-	} else if err != nil {
+	}
+	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
@@ -1120,6 +1121,8 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 }
 
 // getDefaultPath extracts the defaultPath from the request or returns a default.
+// It will never return a directory because empty directories are omitted on
+// upload, so the only entities in `subfiles` will be files.
 func getDefaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (string, error) {
 	defaultPath := queryForm.Get(modules.SkyfileDefaultPath)
 	if defaultPath == "" {

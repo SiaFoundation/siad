@@ -637,12 +637,12 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 	// add a file at root level
 	data := []byte("File1Contents")
-	subfile := addMultipartFile(writer, data, "files[]", "file1", 0600, &offset)
+	subfile := siatest.AddMultipartFile(writer, data, "files[]", "file1", 0600, &offset)
 	subfiles[subfile.Filename] = subfile
 
 	// add a nested file
 	data = []byte("File2Contents")
-	subfile = addMultipartFile(writer, data, "files[]", "nested/file2", 0640, &offset)
+	subfile = siatest.AddMultipartFile(writer, data, "files[]", "nested/file2", 0640, &offset)
 	subfiles[subfile.Filename] = subfile
 
 	err = writer.Close()
@@ -708,12 +708,12 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 	// add a small file at root level
 	smallData := []byte("File1Contents")
-	subfile = addMultipartFile(writer, smallData, "files[]", "smallfile1.txt", 0600, &offset)
+	subfile = siatest.AddMultipartFile(writer, smallData, "files[]", "smallfile1.txt", 0600, &offset)
 	subfiles[subfile.Filename] = subfile
 
 	// add a large nested file
 	largeData := fastrand.Bytes(2 * int(modules.SectorSize))
-	subfile = addMultipartFile(writer, largeData, "files[]", "nested/largefile2.txt", 0644, &offset)
+	subfile = siatest.AddMultipartFile(writer, largeData, "files[]", "nested/largefile2.txt", 0644, &offset)
 	subfiles[subfile.Filename] = subfile
 
 	err = writer.Close()
@@ -906,7 +906,7 @@ func testSkynetNoFilename(t *testing.T, tg *siatest.TestGroup) {
 	writer := multipart.NewWriter(body)
 	data = []byte("File1Contents")
 	nofilename := ""
-	subfile := addMultipartFile(writer, data, "files[]", nofilename, 0600, nil)
+	subfile := siatest.AddMultipartFile(writer, data, "files[]", nofilename, 0600, nil)
 	err = writer.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -946,7 +946,7 @@ func testSkynetNoFilename(t *testing.T, tg *siatest.TestGroup) {
 	body = new(bytes.Buffer)
 	writer = multipart.NewWriter(body)
 
-	subfile = addMultipartFile(writer, []byte("File1Contents"), "files[]", "testNoFilenameMultipart", 0600, nil)
+	subfile = siatest.AddMultipartFile(writer, []byte("File1Contents"), "files[]", "testNoFilenameMultipart", 0600, nil)
 	err = writer.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -986,9 +986,9 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 	filePath1 := "/a/5.f4f8b583.chunk.js"
 	filePath2 := "/a/5.f4f.chunk.js.map"
 	filePath3 := "/b/file3.txt"
-	addMultipartFile(writer, dataFile1, "files[]", filePath1, 0600, nil)
-	addMultipartFile(writer, dataFile2, "files[]", filePath2, 0600, nil)
-	addMultipartFile(writer, dataFile3, "files[]", filePath3, 0640, nil)
+	siatest.AddMultipartFile(writer, dataFile1, "files[]", filePath1, 0600, nil)
+	siatest.AddMultipartFile(writer, dataFile2, "files[]", filePath2, 0600, nil)
+	siatest.AddMultipartFile(writer, dataFile3, "files[]", filePath3, 0640, nil)
 
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
@@ -2456,7 +2456,11 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	files := make(map[string][]byte)
 	files["index.html"] = []byte(fc1)
 	files["about.html"] = []byte(fc2)
-	content, _, err := uploadNewMultiPartSkyfileBlocking(r, filename, files, "")
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(filename, files, "", false)
+	if err != nil {
+		t.Fatal("Failed to upload multipart file.", err)
+	}
+	content, _, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2471,7 +2475,11 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	files = make(map[string][]byte)
 	files["index.html"] = []byte(fc1)
 	files["index.js"] = []byte(fc2)
-	content, _, err = uploadNewMultiPartSkyfileBlocking(r, filename, files, "index.js")
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "index.js", false)
+	if err != nil {
+		t.Fatal("Failed to upload multipart file.", err)
+	}
+	content, _, err = r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2485,7 +2493,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	files = make(map[string][]byte)
 	files["index.html"] = []byte(fc1)
 	files["about.html"] = []byte(fc2)
-	_, _, err = uploadNewMultiPartSkyfileBlocking(r, filename, files, "invalid.js")
+	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "invalid.js", false)
 	if err == nil || !strings.Contains(err.Error(), "invalid defaultpath provided") {
 		t.Fatalf("Expected error 'invalid defaultpath provided', got '%+v'", err)
 	}
@@ -2497,7 +2505,11 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	files = make(map[string][]byte)
 	files["index.js"] = []byte(fc1)
 	files["about.html"] = []byte(fc2)
-	content, _, err = uploadNewMultiPartSkyfileBlocking(r, filename, files, "index.js")
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "index.js", false)
+	if err != nil {
+		t.Fatal("Failed to upload multipart file.", err)
+	}
+	content, _, err = r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2511,7 +2523,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	files = make(map[string][]byte)
 	files["index.js"] = []byte(fc1)
 	files["about.html"] = []byte(fc2)
-	_, _, err = uploadNewMultiPartSkyfileBlocking(r, filename, files, "invalid.js")
+	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "invalid.js", false)
 	if err == nil || !strings.Contains(err.Error(), "invalid defaultpath provided") {
 		t.Fatalf("Expected error 'invalid defaultpath provided', got '%+v'", err)
 	}
@@ -2522,7 +2534,11 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	files = make(map[string][]byte)
 	files["index.js"] = []byte(fc1)
 	files["about.html"] = []byte(fc2)
-	_, _, err = uploadNewMultiPartSkyfileBlocking(r, filename, files, "")
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "", false)
+	if err != nil {
+		t.Fatal("Failed to upload multipart file.", err)
+	}
+	content, _, err = r.SkynetSkylinkGet(skylink)
 	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
 		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
 	}
@@ -2533,7 +2549,11 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	filename = "index.js"
 	files = make(map[string][]byte)
 	files["index.js"] = []byte(fc1)
-	content, _, err = uploadNewMultiPartSkyfileBlocking(r, filename, files, "")
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "", false)
+	if err != nil {
+		t.Fatal("Failed to upload multipart file.", err)
+	}
+	content, _, err = r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}

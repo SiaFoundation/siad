@@ -41,8 +41,9 @@ type SkyfileSubfiles map[string]SkyfileSubfileMetadata
 // will start at offset 0, relative to the path.
 func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, uint64) {
 	metadata := SkyfileMetadata{
-		Filename: path,
-		Subfiles: make(SkyfileSubfiles),
+		Filename:    path,
+		Subfiles:    make(SkyfileSubfiles),
+		DefaultPath: sm.DefaultPath,
 	}
 
 	dir := false
@@ -60,11 +61,10 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	}
 
 	// If we have not found an exact match, look for directories.
-	// This means we can safely ensire a trailing slash.
+	// This means we can safely ensure a trailing slash.
 	if len(metadata.Subfiles) == 0 {
 		dir = true
-
-		if strings.HasSuffix(path, "/") {
+		if !strings.HasSuffix(path, "/") {
 			path = fmt.Sprintf("%s/", path)
 		}
 		for _, sf := range sm.Subfiles {
