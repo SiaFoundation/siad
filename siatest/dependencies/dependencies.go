@@ -117,6 +117,12 @@ type (
 		modules.ProductionDependencies
 	}
 
+	// DependencySlowRotateFingerprintBuckets will insert a sleep during the
+	// rotation of the fingerprint buckets on disk.
+	DependencySlowRotateFingerprintBuckets struct {
+		modules.ProductionDependencies
+	}
+
 	// DependencyDefaultRenewSettings causes the contractor to use default settings
 	// when renewing a contract.
 	DependencyDefaultRenewSettings struct {
@@ -260,9 +266,14 @@ func (d *DependencyInterruptAccountSaveOnShutdown) Disrupt(s string) bool {
 	return s == "InterruptAccountSaveOnShutdown"
 }
 
-// Disrupt causes contract renewal to not clear the contents of a contract.
+// Disrupt returns true if the correct string is provided.
 func (d *DependencyDisableRotateFingerprintBuckets) Disrupt(s string) bool {
 	return s == "DisableRotateFingerprintBuckets"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencySlowRotateFingerprintBuckets) Disrupt(s string) bool {
+	return s == "SlowRotateFingerprintBuckets"
 }
 
 // Disrupt returns true if the correct string is provided and if the flag was

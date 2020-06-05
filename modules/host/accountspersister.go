@@ -5,8 +5,11 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -291,6 +294,9 @@ func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
 	if ap.h.dependencies.Disrupt("DisableRotateFingerprintBuckets") {
 		return errRotationDisabled
 	}
+	if ap.h.dependencies.Disrupt("SlowRotateFingerprintBuckets") {
+		time.Sleep(5 * time.Second)
+	}
 
 	// Get blockheight before acquiring fingerprint manager lock.
 	bh := ap.h.BlockHeight()
@@ -300,8 +306,14 @@ func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
 	defer fm.mu.Unlock()
 
 	// Close the current fingerprint files, this syncs the files before closing
-	if err = fm.syncAndClose(); err != nil {
-		return errors.AddContext(err, "could not close fingerprint files")
+	err = fm.syncAndClose()
+	if err != nil {
+		// note that we do not prevent this error from reopening the fingerprint
+		// buckets, if we were to return here chances are the host is in a
+		// deadlock situation where his withdrawals would be permanently
+		// deactived, which would be a devastating event for a host, instead we
+		// log the critical
+		ap.h.log.Critical(fmt.Sprintf("could not close fingerprint files, err: %v", err))
 	}
 
 	// Calculate new filenames for the fingerprint buckets
@@ -550,15 +562,19 @@ func (fm *fingerprintManager) threadedRemoveOldFingerprintBuckets() {
 	}
 	defer fm.h.tg.Done()
 
-	// Grab some variables
+	// Grab the current path
 	fm.mu.Lock()
 	current := fm.currentPath
-	next := fm.nextPath
 	fm.mu.Unlock()
 
+	// Create a function that decides whether or not to remove a fingerprint
+	// bucket, we can safely remove it if it's max is below the current min
+	// bucket range. This way we are sure to remove only old files, even after
+	// releasing the lock.
+	min, _ := bucketRangeFromFingerprintsFilename(filepath.Base(current))
 	isOld := func(name string) bool {
-		path := filepath.Join(fm.h.persistDir, name)
-		return strings.HasPrefix(name, "fingerprintsbucket") && path != current && path != next
+		_, max := bucketRangeFromFingerprintsFilename(name)
+		return max < min
 	}
 
 	// Read directory
@@ -570,7 +586,7 @@ func (fm *fingerprintManager) threadedRemoveOldFingerprintBuckets() {
 
 	// Iterate over directory
 	for _, fi := range fileinfos {
-		if isOld(fi.Name()) {
+		if isFingerprintBucket(fi.Name()) && isOld(fi.Name()) {
 			err := os.Remove(filepath.Join(fm.h.persistDir, fi.Name()))
 			if err != nil {
 				fm.h.log.Fatal("Failed to remove old fingerprint buckets", err)
@@ -639,6 +655,47 @@ func fingerprintsFilenames(currentBlockHeight types.BlockHeight) (current, next 
 	min += bucketBlockRange
 	max += bucketBlockRange
 	next = fmt.Sprintf("fingerprintsbucket_%v-%v.db", min, max)
+	return
+}
+
+// isFingerprintBucket is a helper function that returns true if the given
+// filename adheres to the fingerprint bucket filename format
+func isFingerprintBucket(filename string) bool {
+	return regexp.MustCompile(`^fingerprintsbucket_\d+-\d+.db$`).MatchString(filename)
+}
+
+// bucketRangeFromFingerprintsFilename is a helper function that takes a
+// fingerprint filename and parses the bucket range from it.
+func bucketRangeFromFingerprintsFilename(filename string) (min, max types.BlockHeight) {
+	if !isFingerprintBucket(filename) {
+		build.Critical(fmt.Sprintf("Unexpected fingerprints filename format '%s'", filename))
+		return
+	}
+
+	// parse the min and max blockheight
+	filename = strings.TrimPrefix(filename, "fingerprintsbucket_")
+	filename = strings.TrimSuffix(filename, ".db")
+	blocks := strings.Split(filename, "-")
+	if len(blocks) != 2 {
+		build.Critical("Unexpected fingerprints filename format", filename)
+		return
+	}
+
+	// parse min
+	minAsInt, err := strconv.Atoi(blocks[0])
+	if err != nil {
+		build.Critical("Unexpected fingerprints filename format", filename)
+		return
+	}
+	min = types.BlockHeight(minAsInt)
+
+	// parse max
+	maxAsInt, err := strconv.Atoi(blocks[1])
+	if err != nil {
+		build.Critical("Unexpected fingerprints filename format", filename)
+		return
+	}
+	max = types.BlockHeight(maxAsInt)
 	return
 }
 
