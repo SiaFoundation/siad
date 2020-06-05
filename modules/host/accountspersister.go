@@ -569,8 +569,9 @@ func (fm *fingerprintManager) threadedRemoveOldFingerprintBuckets() {
 
 	// Create a function that decides whether or not to remove a fingerprint
 	// bucket, we can safely remove it if it's max is below the current min
-	// bucket range. This way we are sure to remove only old files, even after
-	// releasing the lock.
+	// bucket range. This way we are sure to remove only old bucket files. This
+	// is important because there might be new files opened on disk after
+	// releasting the lock, we would not want to remove the current buckets.
 	min, _ := bucketRangeFromFingerprintsFilename(filepath.Base(current))
 	isOld := func(name string) bool {
 		_, max := bucketRangeFromFingerprintsFilename(name)
@@ -675,15 +676,13 @@ func bucketRangeFromFingerprintsFilename(filename string) (min, max types.BlockH
 	// parse the min and max blockheight
 	filename = strings.TrimPrefix(filename, "fingerprintsbucket_")
 	filename = strings.TrimSuffix(filename, ".db")
-	blocks := strings.Split(filename, "-")
-	if len(blocks) != 2 {
-		build.Critical("Unexpected fingerprints filename format", filename)
-		return
-	}
+	blocks := strings.SplitN(filename, "-", 2)
 
 	// parse min
 	minAsInt, err := strconv.Atoi(blocks[0])
 	if err != nil {
+		// we could ignore the error here due to `isFingerprintBucket` but
+		// better to be safe than sorry
 		build.Critical("Unexpected fingerprints filename format", filename)
 		return
 	}
@@ -692,6 +691,8 @@ func bucketRangeFromFingerprintsFilename(filename string) (min, max types.BlockH
 	// parse max
 	maxAsInt, err := strconv.Atoi(blocks[1])
 	if err != nil {
+		// we could ignore the error here due to `isFingerprintBucket` but
+		// better to be safe than sorry
 		build.Critical("Unexpected fingerprints filename format", filename)
 		return
 	}
