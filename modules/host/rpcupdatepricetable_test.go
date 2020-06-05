@@ -213,7 +213,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 
 	// verify happy flow
 	current := ht.host.staticPriceTables.managedCurrent()
-	rev, sig, err := pair.managedPaymentRevision(current.UpdatePriceTableCost)
+	rev, sig, err := pair.managedEAFundRevision(current.UpdatePriceTableCost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	}
 
 	// expect failure if the payment revision does not cover the RPC cost
-	rev, sig, err = pair.managedPaymentRevision(types.ZeroCurrency)
+	rev, sig, err = pair.managedEAFundRevision(types.ZeroCurrency)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	// verify the RPC does not block if the host does not close the stream on
 	// his side
 	current = ht.host.staticPriceTables.managedCurrent()
-	rev, sig, err = pair.managedPaymentRevision(current.UpdatePriceTableCost)
+	rev, sig, err = pair.managedEAFundRevision(current.UpdatePriceTableCost)
 	if err != nil {
 		t.Fatal(err)
 	}
