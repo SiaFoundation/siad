@@ -22,8 +22,8 @@ var (
 	invalidSpecifier = types.NewSpecifier("Invalid")
 )
 
-// TestVerifyEAPaymentRevision is a unit test covering verifyEAPaymentRevision
-func TestVerifyEAPaymentRevision(t *testing.T) {
+// TestVerifyEAFundRevision is a unit test covering verifyEAPaymentRevision
+func TestVerifyEAFundRevision(t *testing.T) {
 	t.Parallel()
 
 	// create a current revision and a payment revision
@@ -41,7 +41,7 @@ func TestVerifyEAPaymentRevision(t *testing.T) {
 		},
 		NewWindowStart: types.BlockHeight(revisionSubmissionBuffer) + 1,
 	}
-	payment, err := curr.EAPaymentRevision(amount)
+	payment, err := curr.EAFundRevision(amount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -360,7 +360,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	missedPayouts[1].Value = missedPayouts[1].Value.Add(amount)
 
 	// overwrite the correct payouts with the faulty payouts
-	rev, err = recent.EAPaymentRevision(amount)
+	rev, err = recent.EAFundRevision(amount)
 	if err != nil {
 		t.Fatal(err)
 	}

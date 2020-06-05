@@ -1,6 +1,7 @@
 package types
 
 import (
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -58,18 +59,18 @@ func TestEAPaymentRevision(t *testing.T) {
 
 	// expect no error if amount is less than or equal to the renter funds
 	rev := mock(100, 0)
-	_, err := rev.EAPaymentRevision(NewCurrency64(99))
+	_, err := rev.EAFundRevision(NewCurrency64(99))
 	if err != nil {
 		t.Fatalf("Unexpected error '%v'", err)
 	}
-	_, err = rev.EAPaymentRevision(NewCurrency64(100))
+	_, err = rev.EAFundRevision(NewCurrency64(100))
 	if err != nil {
 		t.Fatalf("Unexpected error '%v'", err)
 	}
 
 	// expect ErrRevisionCostTooHigh
 	rev = mock(100, 0)
-	_, err = rev.EAPaymentRevision(NewCurrency64(100 + 1))
+	_, err = rev.EAFundRevision(NewCurrency64(100 + 1))
 	if !errors.Contains(err, ErrRevisionCostTooHigh) {
 		t.Fatalf("Expected error '%v' but received '%v'  ", ErrRevisionCostTooHigh, err)
 	}
@@ -77,18 +78,18 @@ func TestEAPaymentRevision(t *testing.T) {
 	// expect ErrRevisionCostTooHigh
 	rev = mock(100, 0)
 	rev.SetMissedRenterPayout(NewCurrency64(99))
-	_, err = rev.EAPaymentRevision(NewCurrency64(100))
+	_, err = rev.EAFundRevision(NewCurrency64(100))
 	if !errors.Contains(err, ErrRevisionCostTooHigh) {
 		t.Fatalf("Expected error '%v' but received '%v'  ", ErrRevisionCostTooHigh, err)
 	}
 
 	// expect no error if amount is less than or equal to the host collateral
 	rev = mock(100, 100)
-	_, err = rev.EAPaymentRevision(NewCurrency64(99))
+	_, err = rev.EAFundRevision(NewCurrency64(99))
 	if err != nil {
 		t.Fatalf("Unexpected error '%v'", err)
 	}
-	_, err = rev.EAPaymentRevision(NewCurrency64(100))
+	_, err = rev.EAFundRevision(NewCurrency64(100))
 	if err != nil {
 		t.Fatalf("Unexpected error '%v'", err)
 	}
@@ -96,7 +97,7 @@ func TestEAPaymentRevision(t *testing.T) {
 	// verify funds moved to the appropriate outputs
 	existing := mock(100, 0)
 	amount := NewCurrency64(99)
-	payment, err := existing.EAPaymentRevision(amount)
+	payment, err := existing.EAFundRevision(amount)
 	if err != nil {
 		t.Fatalf("Unexpected error '%v'", err)
 	}
@@ -118,6 +119,93 @@ func TestEAPaymentRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !pmvo.Value.Equals(emvo.Value) {
+		t.Fatal("Unexpected payout moved from renter to void")
+	}
+}
+
+// TestPaymentRevision probes the PaymentRevision function
+func TestPaymentRevision(t *testing.T) {
+	mock := func(renterFunds, hostCollateral uint64) FileContractRevision {
+		return FileContractRevision{
+			NewValidProofOutputs: []SiacoinOutput{
+				{Value: NewCurrency64(renterFunds)},
+				{Value: ZeroCurrency},
+			},
+			NewMissedProofOutputs: []SiacoinOutput{
+				{Value: NewCurrency64(renterFunds)},
+				{Value: NewCurrency64(hostCollateral)},
+				{Value: ZeroCurrency},
+			},
+		}
+	}
+
+	// expect no error if amount is less than or equal to the renter funds
+	rev := mock(100, 0)
+	_, err := rev.PaymentRevision(NewCurrency64(99))
+	if err != nil {
+		t.Fatalf("Unexpected error '%v'", err)
+	}
+	_, err = rev.PaymentRevision(NewCurrency64(100))
+	if err != nil {
+		t.Fatalf("Unexpected error '%v'", err)
+	}
+
+	// expect ErrRevisionCostTooHigh
+	rev = mock(100, 0)
+	_, err = rev.PaymentRevision(NewCurrency64(100 + 1))
+	if !errors.Contains(err, ErrRevisionCostTooHigh) {
+		t.Fatalf("Expected error '%v' but received '%v'  ", ErrRevisionCostTooHigh, err)
+	}
+
+	// expect ErrRevisionCostTooHigh
+	rev = mock(100, 0)
+	rev.SetMissedRenterPayout(NewCurrency64(99))
+	_, err = rev.PaymentRevision(NewCurrency64(100))
+	if !errors.Contains(err, ErrRevisionCostTooHigh) {
+		t.Fatalf("Expected error '%v' but received '%v'  ", ErrRevisionCostTooHigh, err)
+	}
+
+	// expect no error if amount is less than or equal to the host collateral
+	rev = mock(100, 100)
+	_, err = rev.PaymentRevision(NewCurrency64(99))
+	if err != nil {
+		t.Fatalf("Unexpected error '%v'", err)
+	}
+	_, err = rev.PaymentRevision(NewCurrency64(100))
+	if err != nil {
+		t.Fatalf("Unexpected error '%v'", err)
+	}
+
+	// expect error if void output is missing
+	rev = mock(100, 100)
+	rev.NewMissedProofOutputs = append([]SiacoinOutput{}, rev.NewMissedProofOutputs[0], rev.NewMissedProofOutputs[1])
+	_, err = rev.PaymentRevision(NewCurrency64(100))
+	if err == nil || !strings.Contains(err.Error(), "failed to get missed void output") {
+		t.Fatalf("Unexpected error '%v'", err)
+	}
+
+	// verify funds moved to the appropriate outputs
+	existing := mock(100, 0)
+	amount := NewCurrency64(99)
+	payment, err := existing.PaymentRevision(amount)
+	if err != nil {
+		t.Fatalf("Unexpected error '%v'", err)
+	}
+	if !existing.ValidRenterPayout().Sub(payment.ValidRenterPayout()).Equals(amount) {
+		t.Fatal("Unexpected payout moved from renter to host")
+	}
+	if !payment.ValidHostPayout().Sub(existing.ValidHostPayout()).Equals(amount) {
+		t.Fatal("Unexpected payout moved from renter to host")
+	}
+	if !payment.MissedRenterOutput().Value.Equals(existing.MissedRenterOutput().Value.Sub(amount)) {
+		t.Fatal("Unexpected payout moved from renter to void")
+	}
+	pmvo, err1 := payment.MissedVoidOutput()
+	emvo, err2 := existing.MissedVoidOutput()
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal(err)
+	}
+	if !pmvo.Value.Equals(emvo.Value.Add(amount)) {
 		t.Fatal("Unexpected payout moved from renter to void")
 	}
 }

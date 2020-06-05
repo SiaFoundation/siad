@@ -156,9 +156,9 @@ func (fcr FileContractRevision) PaymentRevision(amount Currency) (FileContractRe
 	return rev, nil
 }
 
-// EAPaymentRevision returns a copy of the revision with incremented revision
+// EAFundRevision returns a copy of the revision with incremented revision
 // number where the given amount has moved from renter to the host.
-func (fcr FileContractRevision) EAPaymentRevision(amount Currency) (FileContractRevision, error) {
+func (fcr FileContractRevision) EAFundRevision(amount Currency) (FileContractRevision, error) {
 	rev := fcr
 
 	// need to manually copy slice memory
