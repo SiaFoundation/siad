@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/crypto/blake2b"
 
-	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 const (
