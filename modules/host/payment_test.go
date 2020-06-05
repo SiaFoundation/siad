@@ -273,7 +273,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 	amountStr := amount.HumanString()
 
 	// prepare an updated revision that pays the host
-	rev, sig, err := pair.managedPaymentRevision(amount)
+	rev, sig, err := pair.managedEAFundRevision(amount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,7 +383,7 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 
 	// Run the code again. This time since we funded the account, the
 	// payByResponse would report the funded amount instead of 0.
-	rev, sig, err = pair.managedPaymentRevision(amount)
+	rev, sig, err = pair.managedEAFundRevision(amount)
 	if err != nil {
 		t.Fatal(err)
 	}

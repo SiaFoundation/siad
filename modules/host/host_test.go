@@ -567,7 +567,7 @@ func (p *renterHostPair) managedNewStream() siamux.Stream {
 // returned response.
 func (p *renterHostPair) managedPayByContract(stream siamux.Stream, amount types.Currency, refundAccount modules.AccountID) error {
 	// create the revision.
-	revision, sig, err := p.managedPaymentRevision(amount)
+	revision, sig, err := p.managedEAFundRevision(amount)
 	if err != nil {
 		return err
 	}
@@ -612,10 +612,10 @@ func (p *renterHostPair) managedPayByEphemeralAccount(stream siamux.Stream, amou
 	return nil
 }
 
-// managedPaymentRevision returns a new revision that transfer the given amount
+// managedEAFundRevision returns a new revision that transfer the given amount
 // to the host. Returns the payment revision together with a signature signed by
 // the pair's renter.
-func (p *renterHostPair) managedPaymentRevision(amount types.Currency) (types.FileContractRevision, crypto.Signature, error) {
+func (p *renterHostPair) managedEAFundRevision(amount types.Currency) (types.FileContractRevision, crypto.Signature, error) {
 	updated, err := p.staticHT.host.managedGetStorageObligation(p.staticFCID)
 	if err != nil {
 		return types.FileContractRevision{}, crypto.Signature{}, err
