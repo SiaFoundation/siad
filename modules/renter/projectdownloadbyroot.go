@@ -361,6 +361,8 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 // DownloadByRoot will fetch data using the merkle root of that data. This uses
 // all of the async worker primitives to improve speed and throughput.
 func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
+	return r.DownloadByRootLegacy(root, offset, length, timeout)
+
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
 	if !r.memoryManager.Request(length, true) {
