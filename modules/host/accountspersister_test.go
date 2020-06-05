@@ -431,7 +431,10 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 	// verify the host has removed the bucket
 	_, err = os.Stat(filepath.Join(ht.host.persistDir, futureFPName))
 	if err == nil {
-		curr, nxt := fingerprintsFilenames(ht.host.BlockHeight())
+		curr, next := fingerprintsFilenames(ht.host.BlockHeight())
+		t.Log("bucket:", futureFPName)
+		t.Log("curr:", curr)
+		t.Log("next:", next)
 		t.Fatal("Expected future bucket to be removed from disk")
 	}
 }
