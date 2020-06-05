@@ -1670,6 +1670,12 @@ func TestContractorChurnLimiter(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
 	miner := tg.Miners()[0]
 
 	maxPeriodChurn := uint64(modules.SectorSize)
@@ -1798,6 +1804,8 @@ func TestContractorChurnLimiter(t *testing.T) {
 		if err := miner.MineBlock(); err != nil {
 			t.Fatal(err)
 		}
+		// Sleep for a bit to allow things like contract renewals to go through.
+		time.Sleep(time.Millisecond * 250)
 	}
 
 	// Turn on the renter dependency to simulate more churn. This forces the
@@ -1808,7 +1816,7 @@ func TestContractorChurnLimiter(t *testing.T) {
 	// Check that 1 of the hosts was churned, but that the churn limiter prevented
 	// the other bad scoring hosts from getting churned, because the period limit
 	// was reached.
-	err = build.Retry(50, 500*time.Millisecond, func() error {
+	err = build.Retry(50, 250*time.Millisecond, func() error {
 		// Mine blocks to increase remainingChurnBudget.
 		if err := miner.MineBlock(); err != nil {
 			t.Fatal(err)

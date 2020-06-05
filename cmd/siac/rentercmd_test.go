@@ -16,16 +16,16 @@ func TestFilePercentageBreakdown(t *testing.T) {
 	//
 	// Test with empty slice
 	var dirs []directoryInfo
-	filePercentageBreakdown(dirs)
+	fileHealthBreakdown(dirs)
 	// Test with empty struct
 	dirs = append(dirs, directoryInfo{})
-	filePercentageBreakdown(dirs)
+	fileHealthBreakdown(dirs)
 
 	// Test basic directory info
 	dir := modules.DirectoryInfo{AggregateNumFiles: 7}
 	f1 := modules.FileInfo{MaxHealthPercent: 100}
 	f2 := modules.FileInfo{MaxHealthPercent: 80}
-	f3 := modules.FileInfo{MaxHealthPercent: 60}
+	f3 := modules.FileInfo{MaxHealthPercent: 60, Stuck: true}
 	f4 := modules.FileInfo{MaxHealthPercent: 30}
 	f5 := modules.FileInfo{MaxHealthPercent: 10}
 	f6 := modules.FileInfo{MaxHealthPercent: 0, OnDisk: true}
@@ -35,7 +35,7 @@ func TestFilePercentageBreakdown(t *testing.T) {
 		dir:   dir,
 		files: files,
 	}
-	percentages, err := filePercentageBreakdown(dirs)
+	percentages, numStuck, err := fileHealthBreakdown(dirs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,6 +49,9 @@ func TestFilePercentageBreakdown(t *testing.T) {
 	}
 
 	// Check values
+	if numStuck != 1 {
+		t.Errorf("Expected 1 stuck file but got %v", numStuck)
+	}
 	expected := float64(100) * float64(1) / float64(7)
 	if err := checkValue(expected, percentages[0]); err != nil {
 		t.Log("Full Health")

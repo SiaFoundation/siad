@@ -1,6 +1,6 @@
 package crypto
 
-// hash.go supplies a few geneeral hashing functions, using the hashing
+// hash.go supplies a few general hashing functions, using the hashing
 // algorithm blake2b. Because changing the hashing algorithm for Sia has much
 // stronger implications than changing any of the other algorithms, blake2b is
 // the only supported algorithm. Sia is not really flexible enough to support
@@ -89,7 +89,7 @@ func (h *Hash) LoadString(s string) error {
 	return nil
 }
 
-// MarshalJSON marshales a hash as a hex string.
+// MarshalJSON marshals a hash as a hex string.
 func (h Hash) MarshalJSON() ([]byte, error) {
 	return json.Marshal(h.String())
 }

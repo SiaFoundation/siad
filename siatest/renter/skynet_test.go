@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -796,11 +795,11 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 
 	// get the stats
 	stats, err := r.SkynetStatsGet()
-
-	// verify it contains the node's version information
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// verify it contains the node's version information
 	expected := build.Version
 	if build.ReleaseTag != "" {
 		expected += "-" + build.ReleaseTag
@@ -810,6 +809,11 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if stats.VersionInfo.GitRevision != build.GitRevision {
 		t.Fatalf("Unexpected git revision return, expected '%v', actual '%v'", build.GitRevision, stats.VersionInfo.GitRevision)
+	}
+
+	// Uptime should be non zero
+	if stats.Uptime == 0 {
+		t.Error("Uptime is zero")
 	}
 
 	// create two test files with sizes below and above the sector size
@@ -1981,9 +1985,34 @@ func testSkynetLargeMetadata(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	sk, err := r.SkykeyCreateKeyPost("testkey1", crypto.TypeXChaCha20)
+	// The renter should be initialized with 0 skykeys.
+	skykeys, err := r.SkykeySkykeysGet()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(skykeys) != 0 {
+		t.Log(skykeys)
+		t.Fatal("Expected 0 skykeys")
+	}
+
+	sk, err := r.SkykeyCreateKeyPost("testkey1", skykey.TypePublicID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that the newly created skykey shows up.
+	skykeys, err = r.SkykeySkykeysGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skykeys) != 1 {
+		t.Log(skykeys)
+		t.Fatal("Expected 1 skykey")
+	}
+	if skykeys[0].ID() != sk.ID() || skykeys[0].Name != sk.Name {
+		t.Log(skykeys[0])
+		t.Log(sk)
+		t.Fatal("Expected same skykey")
 	}
 
 	// Adding the same key should return an error.
@@ -1993,7 +2022,7 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Create a testkey from a hard-coded skykey string.
-	testSkykeyString := "BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a"
+	testSkykeyString := "skykey:AbAc7Uz4NxBrVIzR2lY-LsVs3VWsuCA0D01jxYjaHdRwrfVUuo8DutiGD7OF1B1b3P1olWPXZO1X?name=hardcodedtestkey"
 	var testSkykey skykey.Skykey
 	err = testSkykey.FromString(testSkykeyString)
 	if err != nil {
@@ -2046,6 +2075,47 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Expected same Skykey string")
 	}
 
+	// Create a set with the strings of every skykey in the test.
+	skykeySet := make(map[string]struct{})
+	skykeySet[testSkykeyString] = struct{}{}
+	skykeySet[sk2Str] = struct{}{}
+
+	// Create a bunch of skykeys and check that they all get returned.
+	nKeys := 10
+	for i := 0; i < nKeys; i++ {
+		nextSk, err := r.SkykeyCreateKeyPost(fmt.Sprintf("anotherkey-%d", i), skykey.TypePublicID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		nextSkStr, err := nextSk.ToString()
+		if err != nil {
+			t.Fatal(err)
+		}
+		skykeySet[nextSkStr] = struct{}{}
+	}
+
+	// Check that the expected number of keys was created.
+	skykeys, err = r.SkykeySkykeysGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skykeys) != nKeys+2 {
+		t.Log(len(skykeys), nKeys+2)
+		t.Fatal("Wrong number of keys")
+	}
+
+	// Check that getting all the keys returns all the keys we just created.
+	for _, skFromList := range skykeys {
+		skStrFromList, err := skFromList.ToString()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := skykeySet[skStrFromList]; !ok {
+			t.Log(skStrFromList, skykeys)
+			t.Fatal("Didn't find key")
+		}
+	}
+
 	// Test misuse of the /skynet/skykey endpoint using an UnsafeClient.
 	uc := client.NewUnsafeClient(r.Client)
 
@@ -2076,6 +2146,57 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if skykeyGet.Skykey != sk2Str {
 		t.Fatal("Expected same result from  unsafe client")
+	}
+
+	// Use the unsafe client to check the Name and ID parameters are set in the
+	// GET response.
+	values = url.Values{}
+	values.Set("name", testSkykey.Name)
+	getQuery := fmt.Sprintf("/skynet/skykey?%s", values.Encode())
+
+	skykeyGet = api.SkykeyGET{}
+	err = uc.Get(getQuery, &skykeyGet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skykeyGet.Name != testSkykey.Name {
+		t.Log(skykeyGet)
+		t.Fatal("Wrong skykey name")
+	}
+	if skykeyGet.ID != testSkykey.ID().ToString() {
+		t.Log(skykeyGet)
+		t.Fatal("Wrong skykey ID")
+	}
+	if skykeyGet.Skykey != testSkykeyString {
+		t.Log(skykeyGet)
+		t.Fatal("Wrong skykey string")
+	}
+
+	// Check the Name and ID params from the /skynet/skykeys GET response.
+	var skykeysGet api.SkykeysGET
+	err = uc.Get("/skynet/skykeys", &skykeysGet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skykeysGet.Skykeys) != len(skykeySet) {
+		t.Fatalf("Got %d skykeys, expected %d", len(skykeysGet.Skykeys), len(skykeySet))
+	}
+	for _, skGet := range skykeysGet.Skykeys {
+		if _, ok := skykeySet[skGet.Skykey]; !ok {
+			t.Fatal("skykey not in test set")
+		}
+
+		var nextSk skykey.Skykey
+		err = nextSk.FromString(skGet.Skykey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if nextSk.Name != skGet.Name {
+			t.Fatal("Wrong skykey name")
+		}
+		if nextSk.ID().ToString() != skGet.ID {
+			t.Fatal("Wrong skykey name")
+		}
 	}
 }
 
@@ -2159,7 +2280,7 @@ func testSkynetEncryption(t *testing.T, tg *siatest.TestGroup) {
 	// Note we must create a new reader in the params!
 	sup.Reader = bytes.NewReader(data)
 
-	_, err = r.SkykeyCreateKeyPost(encKeyName, crypto.TypeXChaCha20)
+	_, err = r.SkykeyCreateKeyPost(encKeyName, skykey.TypePublicID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2254,7 +2375,7 @@ func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup) {
 		SkykeyName: encKeyName,
 	}
 
-	_, err = r.SkykeyCreateKeyPost(encKeyName, crypto.TypeXChaCha20)
+	_, err = r.SkykeyCreateKeyPost(encKeyName, skykey.TypePublicID)
 	if err != nil {
 		t.Fatal(err)
 	}

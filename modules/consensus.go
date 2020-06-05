@@ -2,8 +2,10 @@ package modules
 
 import (
 	"errors"
+	"io"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -266,6 +268,41 @@ func (cc ConsensusChange) Append(cc2 ConsensusChange) ConsensusChange {
 		SiafundOutputDiffs:        append(cc.SiafundOutputDiffs, cc2.SiafundOutputDiffs...),
 		DelayedSiacoinOutputDiffs: append(cc.DelayedSiacoinOutputDiffs, cc2.DelayedSiacoinOutputDiffs...),
 	}
+}
+
+// MarshalSia implements encoding.SiaMarshaler.
+func (cc ConsensusChange) MarshalSia(w io.Writer) error {
+	return encoding.NewEncoder(w).EncodeAll(
+		cc.ID,
+		cc.RevertedBlocks,
+		cc.AppliedBlocks,
+		cc.SiacoinOutputDiffs,
+		cc.FileContractDiffs,
+		cc.SiafundOutputDiffs,
+		cc.DelayedSiacoinOutputDiffs,
+		cc.SiafundPoolDiffs,
+		cc.ChildTarget,
+		cc.MinimumValidChildTimestamp,
+		cc.Synced,
+	)
+}
+
+// UnmarshalSia implements encoding.SiaUnmarshaler.
+func (cc *ConsensusChange) UnmarshalSia(r io.Reader) error {
+	const maxSize = 100e6 // consensus changes can be arbitrarily large
+	return encoding.NewDecoder(r, maxSize).DecodeAll(
+		&cc.ID,
+		&cc.RevertedBlocks,
+		&cc.AppliedBlocks,
+		&cc.SiacoinOutputDiffs,
+		&cc.FileContractDiffs,
+		&cc.SiafundOutputDiffs,
+		&cc.DelayedSiacoinOutputDiffs,
+		&cc.SiafundPoolDiffs,
+		&cc.ChildTarget,
+		&cc.MinimumValidChildTimestamp,
+		&cc.Synced,
+	)
 }
 
 // String returns the ConsensusChangeID as a string.

@@ -6,6 +6,8 @@ GIT_DIRTY=$(shell git diff-index --quiet HEAD -- || echo "✗-")
 ldflags= -X gitlab.com/NebulousLabs/Sia/build.GitRevision=${GIT_DIRTY}${GIT_REVISION} \
 -X "gitlab.com/NebulousLabs/Sia/build.BuildTime=${BUILD_TIME}"
 
+racevars= history_size=3 halt_on_error=1 atexit_sleep_ms=2000
+
 # all will build and install release binaries
 all: release
 
@@ -78,8 +80,9 @@ pkgs = ./build \
 release-pkgs = ./cmd/siac ./cmd/siad
 
 # lockcheckpkgs are the packages that are checked for locking violations.
-lockcheckpkgs = ./modules/renter/hostdb \
-	./persist
+lockcheckpkgs = \
+	./modules/host/mdm \
+	./modules/renter/hostdb \
 
 # run determines which tests run when running any variation of 'make test'.
 run = .
@@ -98,6 +101,10 @@ dependencies:
 fmt:
 	gofmt -s -l -w $(pkgs)
 
+# tidy calls go mod tidy.
+tidy:
+	go mod tidy -v
+
 # vet calls go vet on all packages.
 # NOTE: go vet requires packages to be built in order to obtain type info.
 vet:
@@ -108,9 +115,10 @@ vet:
 markdown-spellcheck:
 	git ls-files "*.md" :\!:"vendor/**" | xargs codespell --check-filenames
 
-# lint runs golangci-lint (which includes golint, a spellcheck of the codebase,
-# and other linters), the custom analyzers, and also a markdown spellchecker.
-lint: markdown-spellcheck lint-analysis
+# lint runs go mod tidy, golangci-lint (which includes golint, a spellcheck of
+# the codebase, and other linters), the custom analyzers, and also a markdown
+# spellchecker.
+lint: tidy markdown-spellcheck lint-analyze
 	golangci-lint run -c .golangci.yml
 
 # lint-ci runs golint.
@@ -122,10 +130,10 @@ ifneq ("$(OS)","Windows_NT")
 	golint -min_confidence=1.0 -set_exit_status $(pkgs)
 endif
 
-# lint-analysis runs the custom analyzers.
-lint-analysis:
-	go run ./analysis/cmd/analyze.go -lockcheck=false -- $(pkgs)
-	go run ./analysis/cmd/analyze.go -lockcheck -- $(lockcheckpkgs)
+# lint-analyze runs the custom analyzers.
+lint-analyze:
+	analyze -lockcheck=false -- $(pkgs)
+	analyze -lockcheck -- $(lockcheckpkgs)
 
 # spellcheck checks for misspelled words in comments or strings.
 spellcheck: markdown-spellcheck
@@ -140,19 +148,19 @@ staticcheck:
 debug:
 	go install -tags='debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 debug-race:
-	go install -race -tags='debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
+	GORACE='$(racevars)' go install -race -tags='debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 
 # dev builds and installs developer binaries. This will also install the utils.
 dev:
 	go install -tags='dev debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 dev-race:
-	go install -race -tags='dev debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
+	GORACE='$(racevars)' go install -race -tags='dev debug profile netgo' -ldflags='$(ldflags)' $(pkgs)
 
 # release builds and installs release binaries.
 release:
 	go install -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
 release-race:
-	go install -race -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
+	GORACE='$(racevars)' go install -race -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs)
 release-util:
 	go install -tags='netgo' -ldflags='-s -w $(ldflags)' $(release-pkgs) $(util-pkgs)
 
@@ -176,10 +184,10 @@ endif
 test:
 	go test -short -tags='debug testing netgo' -timeout=5s $(pkgs) -run=$(run) -count=$(count)
 test-v:
-	go test -race -v -short -tags='debug testing netgo' -timeout=15s $(pkgs) -run=$(run) -count=$(count)
+	GORACE='$(racevars)' go test -race -v -short -tags='debug testing netgo' -timeout=15s $(pkgs) -run=$(run) -count=$(count)
 test-long: clean fmt vet lint-ci
 	@mkdir -p cover
-	go test --coverprofile='./cover/cover.out' -v -race -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
+	go test --coverprofile='./cover/cover.out' -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
 
 test-vlong: clean fmt vet lint-ci
 ifneq ("$(OS)","Windows_NT")
@@ -189,7 +197,7 @@ else
 # Windows
 	MD cover
 endif
-	go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
+	GORACE='$(racevars)' go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
 
 test-cpu:
 	go test -v -tags='testing debug netgo' -timeout=500s -cpuprofile cpu.prof $(pkgs) -run=$(run) -count=$(count)
