@@ -28,7 +28,6 @@ require (
 	gitlab.com/NebulousLabs/threadgroup v0.0.0-20200527092543-afa01960408c
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20190814160017-69f300e9bcb8
 	golang.org/x/crypto v0.0.0-20200423211502-4bdfaf469ed5
-	golang.org/x/lint v0.0.0-20200302205851-738671d3881b // indirect
 	golang.org/x/net v0.0.0-20200226121028-0de0cce0169b // indirect
 	golang.org/x/sys v0.0.0-20200420163511-1957bb5e6d1f // indirect
 )
