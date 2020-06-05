@@ -315,6 +315,10 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("unable to parse 'redirect' parameter: %v", err)}, http.StatusBadRequest)
 			return
 		}
+		if !allowRedirect && len(metadata.Subfiles) == 1 {
+			WriteError(w, Error{"'redirect=false' is not allowed for skyfiles with a single file in them"}, http.StatusBadRequest)
+			return
+		}
 	}
 	// We don't allow redirects if we don't have a valid default path or we have
 	// a single file.
