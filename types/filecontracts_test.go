@@ -41,8 +41,8 @@ func TestTax(t *testing.T) {
 	}
 }
 
-// TestEAPaymentRevision probes the EAPaymentRevision function
-func TestEAPaymentRevision(t *testing.T) {
+// TestEAFundRevision probes the EAFundRevision function
+func TestEAFundRevision(t *testing.T) {
 	mock := func(renterFunds, hostCollateral uint64) FileContractRevision {
 		return FileContractRevision{
 			NewValidProofOutputs: []SiacoinOutput{
@@ -180,7 +180,7 @@ func TestPaymentRevision(t *testing.T) {
 	rev = mock(100, 100)
 	rev.NewMissedProofOutputs = append([]SiacoinOutput{}, rev.NewMissedProofOutputs[0], rev.NewMissedProofOutputs[1])
 	_, err = rev.PaymentRevision(NewCurrency64(100))
-	if err == nil || !strings.Contains(err.Error(), "failed to get missed void output") {
+	if err == nil || !strings.Contains(err.Error(), "void output is missing") {
 		t.Fatalf("Unexpected error '%v'", err)
 	}
 

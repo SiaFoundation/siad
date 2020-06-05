@@ -268,10 +268,10 @@ func signatureFromRequest(recent types.FileContractRevision, pbcr modules.PayByC
 	}
 }
 
-// verifyEAPaymentRevision verifies that the revision being provided to pay for
+// verifyEAFundRevision verifies that the revision being provided to pay for
 // the data has transferred the expected amount of money from the renter to the
 // host.
-func verifyEAPaymentRevision(existingRevision, paymentRevision types.FileContractRevision, blockHeight types.BlockHeight, expectedTransfer types.Currency) error {
+func verifyEAFundRevision(existingRevision, paymentRevision types.FileContractRevision, blockHeight types.BlockHeight, expectedTransfer types.Currency) error {
 	// Check that the revision is well-formed.
 	if len(paymentRevision.NewValidProofOutputs) != 2 || len(paymentRevision.NewMissedProofOutputs) != 3 {
 		return ErrBadContractOutputCounts
@@ -374,7 +374,7 @@ func verifyEAPaymentRevision(existingRevision, paymentRevision types.FileContrac
 // the amount that was transferred, the collateral that was moved and a
 // potential error.
 func verifyPayByContractRevision(current, payment types.FileContractRevision, blockHeight types.BlockHeight) (amount types.Currency, err error) {
-	if err = verifyEAPaymentRevision(current, payment, blockHeight, types.ZeroCurrency); err != nil {
+	if err = verifyEAFundRevision(current, payment, blockHeight, types.ZeroCurrency); err != nil {
 		return
 	}
 

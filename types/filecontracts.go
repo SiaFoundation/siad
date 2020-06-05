@@ -159,8 +159,8 @@ func (fcr FileContractRevision) PaymentRevision(amount Currency) (FileContractRe
 // EAFundRevision returns a copy of the revision with incremented revision
 // number where the given amount has moved from renter to the host. This is
 // similar to PaymentRevision but instead of moving the missed renter payout to
-// the void it is moved to the host. That's because we the money used to fund an
-// EA should always go to the host. A contract might only be used for
+// the void it is moved to the host. That's because the money used to fund an EA
+// should always go to the host. A contract might only be used for
 // downloading/uploading so the merkle root might never change. Which means a
 // storage proof can't be submitted by the host. Once the contract is used for
 // uploading using the MDM, a separate revision will be created to move the
