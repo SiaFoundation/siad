@@ -47,7 +47,10 @@ func NewSiaMux(siaMuxDir, siaDir, tcpaddress, wsaddress string) (*siamux.SiaMux,
 	if err != nil {
 		return nil, err
 	}
-	logger := persist.NewLogger(file)
+	logger, err := persist.NewLogger(file)
+	if err != nil {
+		return nil, err
+	}
 
 	// create a siamux, if the host's persistence file is at v120 we want to
 	// recycle the host's key pair to use in the siamux
