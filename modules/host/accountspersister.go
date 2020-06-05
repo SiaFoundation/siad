@@ -311,8 +311,8 @@ func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
 		// note that we do not prevent this error from reopening the fingerprint
 		// buckets, if we were to return here chances are the host is in a
 		// deadlock situation where his withdrawals would be permanently
-		// deactived, which would be a devastating event for a host, instead we
-		// log the critical
+		// deactivated, which would be a devastating event for a host, instead
+		// we log the critical
 		ap.h.log.Critical(fmt.Sprintf("could not close fingerprint files, err: %v", err))
 	}
 
