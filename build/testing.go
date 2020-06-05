@@ -3,12 +3,13 @@ package build
 import (
 	"archive/tar"
 	"compress/gzip"
-	"errors"
 	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
+
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -21,7 +22,8 @@ var (
 // testing directory.
 func TempDir(dirs ...string) string {
 	path := filepath.Join(SiaTestingDir, filepath.Join(dirs...))
-	os.RemoveAll(path) // remove old test data
+	// remove old test data
+	_ = os.RemoveAll(path) // ignore error instead of panicking in production
 	return path
 }
 
@@ -32,7 +34,7 @@ func CopyFile(source, dest string) (err error) {
 		return
 	}
 	defer func() {
-		err = sf.Close()
+		err = errors.Compose(err, sf.Close())
 	}()
 
 	df, err := os.Create(dest)
@@ -40,7 +42,7 @@ func CopyFile(source, dest string) (err error) {
 		return
 	}
 	defer func() {
-		err = df.Close()
+		err = errors.Compose(err, df.Close())
 	}()
 
 	_, err = io.Copy(df, sf)
@@ -93,12 +95,16 @@ func ExtractTarGz(filename, dir string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		err = errors.Compose(err, file.Close())
+	}()
 	z, err := gzip.NewReader(file)
 	if err != nil {
 		return err
 	}
-	defer z.Close()
+	defer func() {
+		err = errors.Compose(err, z.Close())
+	}()
 	t := tar.NewReader(z)
 
 	// Create the output directory if it does not exist.
@@ -129,8 +135,10 @@ func ExtractTarGz(filename, dir string) error {
 			if err != nil {
 				return err
 			}
+			defer func() {
+				err = errors.Compose(err, tf.Close())
+			}()
 			_, err = io.Copy(tf, t)
-			tf.Close()
 			if err != nil {
 				return err
 			}
