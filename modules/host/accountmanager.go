@@ -125,12 +125,6 @@ type (
 		// not fully synced, or when it goes out of sync.
 		withdrawalsInactive bool
 
-		// rotatingFingerprintsOnDisk indicates whether the account manager is
-		// in the process of rotating the fingerprint buckets on disk, we use
-		// this to ensure concurrent calls to `callConsensusChanged` that
-		// trigger a rotation don't cause the ongoing rotation to fail
-		rotatingFingerprintsOnDisk bool
-
 		mu sync.Mutex
 		h  *Host
 	}
@@ -435,26 +429,10 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange, oldHe
 		return
 	}
 
-	// If the host is rotating fingerprints on disk already, we do not want to
-	// trigger the rotation again in rapid succession. This should never happen,
-	// which is why this is a critical event.
-	//
-	// Note that we will also manually unset this flag to ensure the host never
-	// finds itself in a deadlock type situation where this flag prevents the
-	// rotation from occurring in perpetuity. Such an event is devastating to
-	// the host as withdrawals would be deactivated.
-	if am.rotatingFingerprintsOnDisk {
-		am.rotatingFingerprintsOnDisk = false
-		am.h.log.Critical("ERROR: `callConsensusChanged` called twice in extremely rapid succession, this should never happen and bears investigation")
-		return
-	}
-
 	// Rotate fingerprint buckets on disk
-	am.rotatingFingerprintsOnDisk = true
 	am.mu.Unlock()
 	errRotate := am.staticAccountsPersister.callRotateFingerprintBuckets()
 	am.mu.Lock()
-	am.rotatingFingerprintsOnDisk = false
 
 	// Rotate in memory only if the on-disk rotation succeeded
 	if errRotate == nil {

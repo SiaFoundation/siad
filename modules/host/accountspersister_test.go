@@ -432,42 +432,8 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 	_, err = os.Stat(filepath.Join(ht.host.persistDir, futureFPName))
 	if err == nil {
 		curr, nxt := fingerprintsFilenames(ht.host.BlockHeight())
-		t.Log(curr)
-		t.Log(nxt)
-		t.Log(futureFPName)
 		t.Fatal("Expected future bucket to be removed from disk")
 	}
-
-	// close the host and reopen it with a dependency that causes slow rotation
-	// of the fingerprint buckets on disk
-	err = ht.host.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = reopenCustomHost(ht, new(dependencies.DependencySlowRotateFingerprintBuckets))
-	if err != nil {
-		t.Fatal(err)
-	}
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				err := fmt.Errorf("%v", r)
-				if err == nil || !strings.Contains(err.Error(), "`callConsensusChanged` called twice in extremely rapid succession") {
-					t.Error("Expected build.Critical")
-					t.Log(r)
-				}
-			}
-		}()
-		// mine blocks - this should trigger `callConsensusChanged` in rapid
-		// succession, rotation should be prevented by the `rotatingFingerprints`
-		// flag on the account manager
-		for i := 0; i < bucketBlockRange; i++ {
-			_, err = ht.miner.AddBlock()
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-	}()
 }
 
 // TestBucketRangeFromFingerprintsFilename is a small unit test to verify the
@@ -506,7 +472,6 @@ func TestBucketRangeFromFingerprintsFilename(t *testing.T) {
 		func() {
 			defer assertCritical()
 			bucketRangeFromFingerprintsFilename(invalidFilename)
-			t.Log("toch valid", invalidFilename)
 		}()
 	}
 }

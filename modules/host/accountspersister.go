@@ -7,9 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
 	"sync"
-	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -294,9 +292,6 @@ func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
 	if ap.h.dependencies.Disrupt("DisableRotateFingerprintBuckets") {
 		return errRotationDisabled
 	}
-	if ap.h.dependencies.Disrupt("SlowRotateFingerprintBuckets") {
-		time.Sleep(5 * time.Second)
-	}
 
 	// Get blockheight before acquiring fingerprint manager lock.
 	bh := ap.h.BlockHeight()
@@ -340,10 +335,13 @@ func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
 
 // callClose will cleanly shutdown the account persister's open file handles
 func (ap *accountsPersister) callClose() error {
-	return errors.Compose(
-		ap.staticFingerprintManager.syncAndClose(),
-		syncAndClose(ap.accounts),
-	)
+	ap.staticFingerprintManager.mu.Lock()
+	err1 := ap.staticFingerprintManager.syncAndClose()
+	ap.staticFingerprintManager.mu.Unlock()
+	ap.mu.Lock()
+	err2 := syncAndClose(ap.accounts)
+	ap.mu.Unlock()
+	return errors.Compose(err1, err2)
 }
 
 // managedLockIndex grabs a lock on an (account) index.
@@ -674,12 +672,11 @@ func bucketRangeFromFingerprintsFilename(filename string) (min, max types.BlockH
 	}
 
 	// parse the min and max blockheight
-	filename = strings.TrimPrefix(filename, "fingerprintsbucket_")
-	filename = strings.TrimSuffix(filename, ".db")
-	blocks := strings.SplitN(filename, "-", 2)
+	re := regexp.MustCompile(`^fingerprintsbucket_(\d+)-(\d+).db$`)
+	match := re.FindStringSubmatch(filename)
 
 	// parse min
-	minAsInt, err := strconv.Atoi(blocks[0])
+	minAsInt, err := strconv.Atoi(match[1])
 	if err != nil {
 		// we could ignore the error here due to `isFingerprintBucket` but
 		// better to be safe than sorry
@@ -689,7 +686,7 @@ func bucketRangeFromFingerprintsFilename(filename string) (min, max types.BlockH
 	min = types.BlockHeight(minAsInt)
 
 	// parse max
-	maxAsInt, err := strconv.Atoi(blocks[1])
+	maxAsInt, err := strconv.Atoi(match[2])
 	if err != nil {
 		// we could ignore the error here due to `isFingerprintBucket` but
 		// better to be safe than sorry
