@@ -108,10 +108,11 @@ func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, f
 	return
 }
 
-// UploadNewMultipartSkyfileBlocking attempts to upload a skyfile of given size.
-// After it has successfully performed the upload, it will verify the file can
-// be downloaded using its Skylink. Returns the skylink, the parameters used for
-// the upload and potentially an error.
+// UploadNewMultipartSkyfileBlocking uploads a multipart skyfile that
+// contains several files. After it has successfully performed the upload, it
+// will verify the file can be downloaded using its Skylink. Returns the
+// skylink, the parameters used for the upload and potentially an error.
+// The `files` argument is a map of filepath->fileContent.
 func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files map[string][]byte, defaultPath string, force bool) (skylink string, sup modules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
 	// create the siapath
 	skyfilePath, err := modules.NewSiaPath(filename)
