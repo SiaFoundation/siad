@@ -26,24 +26,25 @@ func TempDir(dirs ...string) string {
 }
 
 // CopyFile copies a file from a source to a destination.
-func CopyFile(source, dest string) error {
+func CopyFile(source, dest string) (err error) {
 	sf, err := os.Open(source)
 	if err != nil {
-		return err
+		return
 	}
-	defer sf.Close()
+	defer func() {
+		err = sf.Close()
+	}()
 
 	df, err := os.Create(dest)
 	if err != nil {
-		return err
+		return
 	}
-	defer df.Close()
+	defer func() {
+		err = df.Close()
+	}()
 
 	_, err = io.Copy(df, sf)
-	if err != nil {
-		return err
-	}
-	return nil
+	return
 }
 
 // CopyDir copies a directory and all of its contents to the destination

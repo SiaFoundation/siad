@@ -21,7 +21,8 @@ cpkg = ./modules/renter
 
 # pkgs changes which packages the makefile calls operate on. run changes which
 # tests are run during testing.
-pkgs = ./build \
+pkgs = \
+	./build \
 	./cmd/sia-node-scanner \
 	./cmd/siac \
 	./cmd/siad \
@@ -80,7 +81,9 @@ pkgs = ./build \
 release-pkgs = ./cmd/siac ./cmd/siad
 
 # lockcheckpkgs are the packages that are checked for locking violations.
-lockcheckpkgs = ./modules/host/mdm \
+lockcheckpkgs = \
+	./cmd/siac \
+	./modules/host/mdm \
 	./modules/renter/hostdb
 
 # run determines which tests run when running any variation of 'make test'.
