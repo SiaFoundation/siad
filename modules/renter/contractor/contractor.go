@@ -223,7 +223,7 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 
 	// create a new revision
 	current := sc.LastRevision()
-	rev, err := current.PaymentRevision(amount)
+	rev, err := current.EAFundRevision(amount)
 	if err != nil {
 		return errors.AddContext(err, "Failed to create a payment revision")
 	}

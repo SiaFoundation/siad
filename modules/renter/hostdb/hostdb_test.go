@@ -39,9 +39,13 @@ type hdbTester struct {
 // bareHostDB returns a HostDB with its fields initialized, but without any
 // dependencies or scanning threads. It is only intended for use in unit tests.
 func bareHostDB() *HostDB {
+	logger, err := persist.NewLogger(ioutil.Discard)
+	if err != nil {
+		panic(err)
+	}
 	hdb := &HostDB{
 		allowance:      modules.DefaultAllowance,
-		staticLog:      persist.NewLogger(ioutil.Discard),
+		staticLog:      logger,
 		knownContracts: make(map[string]contractInfo),
 	}
 	hdb.weightFunc = hdb.managedCalculateHostWeightFn(hdb.allowance)
