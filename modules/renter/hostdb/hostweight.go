@@ -387,40 +387,43 @@ func versionAdjustments(entry modules.HostDBEntry) float64 {
 	// we give the current version a very tiny penalty is so that the test suite
 	// complains if we forget to update this file when we bump the version next
 	// time. The value compared against must be higher than the current version.
-	if build.VersionCmp(entry.Version, "1.4.11") < 0 {
+	if build.VersionCmp(entry.Version, "1.4.12") < 0 {
 		base = base * 0.99999 // Safety value to make sure we update the version penalties every time we update the host.
 	}
 
 	// This needs to be "less than the current version" - anything less than the current version should get a penalty.
-	if build.VersionCmp(entry.Version, "1.4.10") < 0 {
+	if build.VersionCmp(entry.Version, "1.4.11") < 0 {
 		base = base * 0.99 // Slight penalty against slightly out of date hosts.
 	}
-	if build.VersionCmp(entry.Version, "1.4.9") < 0 {
+	if build.VersionCmp(entry.Version, "1.4.10") < 0 {
 		base = base * 0.98 // Slight penalty against slightly out of date hosts.
 	}
-	if build.VersionCmp(entry.Version, "1.4.8") < 0 {
+	if build.VersionCmp(entry.Version, "1.4.9") < 0 {
 		base = base * 0.96 // Slight penalty against slightly out of date hosts.
 	}
-	if build.VersionCmp(entry.Version, "1.4.7") < 0 {
+	if build.VersionCmp(entry.Version, "1.4.8") < 0 {
 		base = base * 0.94 // Slight penalty against slightly out of date hosts.
 	}
-	if build.VersionCmp(entry.Version, "1.4.6") < 0 {
+	if build.VersionCmp(entry.Version, "1.4.7") < 0 {
 		base = base * 0.93 // Slight penalty against slightly out of date hosts.
 	}
-	if build.VersionCmp(entry.Version, "1.4.5") < 0 {
+	if build.VersionCmp(entry.Version, "1.4.6") < 0 {
 		base = base * 0.92 // Slight penalty against slightly out of date hosts.
 	}
-	if build.VersionCmp(entry.Version, "1.4.4") < 0 {
+	if build.VersionCmp(entry.Version, "1.4.5") < 0 {
 		base = base * 0.91 // Slight penalty against slightly out of date hosts.
 	}
-	if build.VersionCmp(entry.Version, "1.4.3.1") < 0 {
+	if build.VersionCmp(entry.Version, "1.4.4") < 0 {
 		base = base * 0.90 // Slight penalty against slightly out of date hosts.
 	}
+	if build.VersionCmp(entry.Version, "1.4.3.1") < 0 {
+		base = base * 0.89 // Slight penalty against slightly out of date hosts.
+	}
 	if build.VersionCmp(entry.Version, "1.4.3") < 0 {
-		base = base * 0.87 // Slight penalty against slightly out of date hosts.
+		base = base * 0.86 // Slight penalty against slightly out of date hosts.
 	}
 	if build.VersionCmp(entry.Version, "1.4.2.1") < 0 {
-		base = base * 0.83 // Slight penalty against slightly out of date hosts.
+		base = base * 0.82 // Slight penalty against slightly out of date hosts.
 	}
 
 	// Penalty for hosts that are below version v1.4.1.2 because there were
