@@ -569,7 +569,7 @@ func (fm *fingerprintManager) threadedRemoveOldFingerprintBuckets() {
 	// bucket, we can safely remove it if it's max is below the current min
 	// bucket range. This way we are sure to remove only old bucket files. This
 	// is important because there might be new files opened on disk after
-	// releasting the lock, we would not want to remove the current buckets.
+	// releasing the lock, we would not want to remove the current buckets.
 	min, _ := bucketRangeFromFingerprintsFilename(filepath.Base(current))
 	isOld := func(name string) bool {
 		_, max := bucketRangeFromFingerprintsFilename(name)
