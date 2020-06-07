@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -98,7 +99,12 @@ func (m *projectDownloadByRootManager) managedAverageProjectTime(length uint64) 
 // managedDownloadByRoot will fetch data using the merkle root of that data.
 // Unlike the exported version of this function, this function does not request
 // memory from the memory manager.
-func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
+func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, ctx context.Context) ([]byte, error) {
+	// Create a context that dies when the function ends, this will cancel all
+	// of the worker jobs that get created by this function.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	// Convenience variable.
 	pm := r.staticProjectDownloadByRootManager
 	// Track the total duration of the project.
@@ -108,31 +114,6 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 	if r.deps.Disrupt("timeoutProjectDownloadByRoot") {
 		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 	}
-
-	// Create a channel to time out the project. Use a nil channel if the
-	// timeout is zero, so that the timeout never fires.
-	var timeoutChan <-chan time.Time
-	if timeout > 0 {
-		timer := time.NewTimer(timeout)
-		timeoutChan = timer.C
-
-		// Defer a function to clean up the timer so nothing else in the
-		// function needs to worry about it.
-		defer func() {
-			if !timer.Stop() {
-				<-timer.C
-			}
-		}()
-	}
-
-	// Create a channel to signal to workers when the job has been completed.
-	// This will cause any workers who have not yet started the job to ignore it
-	// instead of doing duplicate work.
-	cancelChan := make(chan struct{})
-	defer func() {
-		// Automatically cancel the work when the function exits.
-		close(cancelChan)
-	}()
 
 	// Get the full list of workers and create a channel to receive all of the
 	// results from the workers. The channel is buffered with one slot per
@@ -157,7 +138,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 			staticResponseChan: staticResponseChan,
 
 			jobGeneric: &jobGeneric{
-				staticCancelChan: cancelChan,
+				staticCancelChan: ctx.Done(),
 
 				staticQueue: worker.staticJobHasSectorQueue,
 			},
@@ -222,7 +203,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		// Check for the timeout. This is done separately to ensure the timeout
 		// has priority.
 		select {
-		case <-timeoutChan:
+		case <-ctx.Done():
 			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 		default:
 		}
@@ -237,7 +218,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 				useBestWorker = true
 			case resp = <-staticResponseChan:
 				responses++
-			case <-timeoutChan:
+			case <-ctx.Done():
 				return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 			}
 		} else if len(usableWorkers) == 0 {
@@ -246,7 +227,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 			select {
 			case resp = <-staticResponseChan:
 				responses++
-			case <-timeoutChan:
+			case <-ctx.Done():
 				return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 			}
 		} else {
@@ -318,7 +299,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 			staticSector: root,
 
 			jobGeneric: &jobGeneric{
-				staticCancelChan: cancelChan,
+				staticCancelChan: ctx.Done(),
 
 				staticQueue: bestWorker.staticJobReadSectorQueue,
 			},
@@ -338,7 +319,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 		var readSectorResp *jobReadSectorResponse
 		select {
 		case readSectorResp = <-readSectorRespChan:
-		case <-timeoutChan:
+		case <-ctx.Done():
 			return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 		}
 
@@ -367,7 +348,19 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 		return nil, errors.New("renter shut down before memory could be allocated for the project")
 	}
 	defer r.memoryManager.Return(length)
-	data, err := r.managedDownloadByRoot(root, offset, length, timeout)
+
+	// Create a context. If the timeout is greater than zero, have the context
+	// expire when the timeout triggers.
+	//
+	// TODO: have DownloadByRoot accept a context.
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	}
+	defer cancel()
+
+	data, err := r.managedDownloadByRoot(root, offset, length, ctx)
 	if errors.Contains(err, ErrProjectTimedOut) {
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
 	}
