@@ -37,6 +37,8 @@ func (p *program) staticDecodeReadSectorInstruction(instruction modules.Instruct
 	rootOffset := binary.LittleEndian.Uint64(instruction.Args[:8])
 	offsetOffset := binary.LittleEndian.Uint64(instruction.Args[8:16])
 	lengthOffset := binary.LittleEndian.Uint64(instruction.Args[16:24])
+
+	// Return instruction.
 	return &instructionReadSector{
 		commonInstruction: commonInstruction{
 			staticData:        p.staticData,
@@ -49,7 +51,46 @@ func (p *program) staticDecodeReadSectorInstruction(instruction modules.Instruct
 	}, nil
 }
 
-// Execute executes the 'Read' instruction.
+// executeReadSector executes the 'ReadSector' instruction.
+func executeReadSector(previousOutput output, ps *programState, length, offset uint64, sectorRoot crypto.Hash, merkleProof bool) output {
+	// Validate the request.
+	var err error
+	switch {
+	case offset+length > modules.SectorSize:
+		err = fmt.Errorf("request is out of bounds %v + %v = %v > %v", offset, length, offset+length, modules.SectorSize)
+	case length == 0:
+		err = errors.New("length cannot be zero")
+	case merkleProof && (offset%crypto.SegmentSize != 0 || length%crypto.SegmentSize != 0):
+		err = fmt.Errorf("offset (%v) and length (%v) must be multiples of SegmentSize (%v) when requesting a Merkle proof", offset, length, crypto.SegmentSize)
+	}
+	if err != nil {
+		return errOutput(err)
+	}
+
+	sectorData, err := ps.sectors.readSector(ps.host, sectorRoot)
+	if err != nil {
+		return errOutput(err)
+	}
+	readData := sectorData[offset : offset+length]
+
+	// Construct the Merkle proof, if requested.
+	var proof []crypto.Hash
+	if merkleProof {
+		proofStart := int(offset) / crypto.SegmentSize
+		proofEnd := int(offset+length) / crypto.SegmentSize
+		proof = crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
+	}
+
+	// Return the output.
+	return output{
+		NewSize:       previousOutput.NewSize,       // size stays the same
+		NewMerkleRoot: previousOutput.NewMerkleRoot, // root stays the same
+		Output:        readData,
+		Proof:         proof,
+	}
+}
+
+// Execute executes the 'ReadSector' instruction.
 func (i *instructionReadSector) Execute(previousOutput output) output {
 	// Fetch the operands.
 	length, err := i.staticData.Uint64(i.lengthOffset)
@@ -64,43 +105,7 @@ func (i *instructionReadSector) Execute(previousOutput output) output {
 	if err != nil {
 		return errOutput(err)
 	}
-
-	// Validate the request.
-	switch {
-	case offset+length > modules.SectorSize:
-		err = fmt.Errorf("request is out of bounds %v + %v = %v > %v", offset, length, offset+length, modules.SectorSize)
-	case length == 0:
-		err = errors.New("length cannot be zero")
-	case i.staticMerkleProof && (offset%crypto.SegmentSize != 0 || length%crypto.SegmentSize != 0):
-		err = errors.New("offset and length must be multiples of SegmentSize when requesting a Merkle proof")
-	}
-	if err != nil {
-		return errOutput(err)
-	}
-
-	ps := i.staticState
-
-	sectorData, err := ps.sectors.readSector(ps.host, sectorRoot)
-	if err != nil {
-		return errOutput(err)
-	}
-	readData := sectorData[offset : offset+length]
-
-	// Construct the Merkle proof, if requested.
-	var proof []crypto.Hash
-	if i.staticMerkleProof {
-		proofStart := int(offset) / crypto.SegmentSize
-		proofEnd := int(offset+length) / crypto.SegmentSize
-		proof = crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
-	}
-
-	// Return the output.
-	return output{
-		NewSize:       previousOutput.NewSize,       // size stays the same
-		NewMerkleRoot: previousOutput.NewMerkleRoot, // root stays the same
-		Output:        readData,
-		Proof:         proof,
-	}
+	return executeReadSector(previousOutput, i.staticState, length, offset, sectorRoot, i.staticMerkleProof)
 }
 
 // Collateral is zero for the ReadSector instruction.

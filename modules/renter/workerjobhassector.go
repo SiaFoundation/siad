@@ -82,9 +82,6 @@ func (j *jobHasSector) callExecute() {
 		staticWorker: w,
 	}
 	w.renter.tg.Launch(func() {
-		// We don't listen on the tg stopChan because it is assumed that the
-		// project which issued the job will close job.canceled when the tg
-		// stops.
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCancelChan:
@@ -166,7 +163,7 @@ func (jq *jobHasSectorQueue) callAverageJobTime() time.Duration {
 func (w *worker) initJobHasSectorQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobHasSectorQueue != nil {
-		w.renter.log.Critical("incorret call on newJobHasSectorQueue")
+		w.renter.log.Critical("incorret call on initJobHasSectorQueue")
 		return
 	}
 

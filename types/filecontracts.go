@@ -122,7 +122,8 @@ func (fcr FileContractRevision) HostPublicKey() SiaPublicKey {
 }
 
 // PaymentRevision returns a copy of the revision with incremented revision
-// number where the given amount has moved from renter to the host.
+// number where the given amount has moved from the renter to the host (for
+// valid outputs) and from renter to the void (for missed outputs).
 func (fcr FileContractRevision) PaymentRevision(amount Currency) (FileContractRevision, error) {
 	rev := fcr
 
@@ -144,14 +145,48 @@ func (fcr FileContractRevision) PaymentRevision(amount Currency) (FileContractRe
 
 	// move missed payout from renter to void
 	rev.SetMissedRenterPayout(fcr.MissedRenterOutput().Value.Sub(amount))
-	voidOutput, err := fcr.MissedVoidOutput()
+	void, err := fcr.MissedVoidOutput()
 	if err != nil {
-		return FileContractRevision{}, errors.AddContext(err, "failed to get missed void output")
+		return FileContractRevision{}, err
 	}
-	err = rev.SetMissedVoidPayout(voidOutput.Value.Add(amount))
-	if err != nil {
-		return FileContractRevision{}, errors.AddContext(err, "failed to set missed void output")
+	rev.SetMissedVoidPayout(void.Value.Add(amount))
+
+	// increment revision number
+	rev.NewRevisionNumber++
+	return rev, nil
+}
+
+// EAFundRevision returns a copy of the revision with incremented revision
+// number where the given amount has moved from renter to the host. This is
+// similar to PaymentRevision but instead of moving the missed renter payout to
+// the void it is moved to the host. That's because the money used to fund an EA
+// should always go to the host. A contract might only be used for
+// downloading/uploading so the merkle root might never change. Which means a
+// storage proof can't be submitted by the host. Once the contract is used for
+// uploading using the MDM, a separate revision will be created to move the
+// money from the missed host output to the void.
+func (fcr FileContractRevision) EAFundRevision(amount Currency) (FileContractRevision, error) {
+	rev := fcr
+
+	// need to manually copy slice memory
+	rev.NewValidProofOutputs = append([]SiacoinOutput{}, fcr.NewValidProofOutputs...)
+	rev.NewMissedProofOutputs = append([]SiacoinOutput{}, fcr.NewMissedProofOutputs...)
+
+	// Check that there are enough funds to pay this cost.
+	if fcr.ValidRenterPayout().Cmp(amount) < 0 {
+		return FileContractRevision{}, errors.AddContext(ErrRevisionCostTooHigh, "valid proof output smaller than cost")
 	}
+	if fcr.MissedRenterOutput().Value.Cmp(amount) < 0 {
+		return FileContractRevision{}, errors.AddContext(ErrRevisionCostTooHigh, "missed proof output smaller than cost")
+	}
+
+	// move valid payout from renter to host
+	rev.SetValidRenterPayout(fcr.ValidRenterPayout().Sub(amount))
+	rev.SetValidHostPayout(fcr.ValidHostPayout().Add(amount))
+
+	// move missed payout from renter to host
+	rev.SetMissedRenterPayout(fcr.MissedRenterOutput().Value.Sub(amount))
+	rev.SetMissedHostPayout(rev.MissedHostPayout().Add(amount))
 
 	// increment revision number
 	rev.NewRevisionNumber++

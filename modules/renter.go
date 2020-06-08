@@ -19,7 +19,7 @@ var (
 	// DefaultAllowance is the set of default allowance settings that will be
 	// used when allowances are not set or not fully set
 	DefaultAllowance = Allowance{
-		Funds:       types.SiacoinPrecision.Mul64(500),
+		Funds:       types.SiacoinPrecision.Mul64(2500),
 		Hosts:       uint64(PriceEstimationScope),
 		Period:      3 * types.BlocksPerMonth,
 		RenewWindow: types.BlocksPerMonth,
@@ -969,8 +969,8 @@ type Renter interface {
 	// AddSkykey adds the skykey to the renter's skykey manager.
 	AddSkykey(skykey.Skykey) error
 
-	// CreateSkykey creates a new Skykey with the given name and ciphertype.
-	CreateSkykey(string, crypto.CipherType) (skykey.Skykey, error)
+	// CreateSkykey creates a new Skykey with the given name and SkykeyType.
+	CreateSkykey(string, skykey.SkykeyType) (skykey.Skykey, error)
 
 	// SkykeyByName gets the Skykey with the given name from the renter's skykey
 	// manager if it exists.

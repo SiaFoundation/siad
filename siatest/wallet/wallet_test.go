@@ -470,19 +470,25 @@ func TestFileContractUnspentOutputs(t *testing.T) {
 	// wallet should report the unspent output (the storage proof is missed
 	// because we did not upload any data to the contract -- the host has no
 	// incentive to submit a proof)
-	outputID := contract.ID.StorageProofOutputID(types.ProofMissed, 0)
-	wug, err := renter.WalletUnspentGet()
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		outputID := contract.ID.StorageProofOutputID(types.ProofMissed, 0)
+		wug, err := renter.WalletUnspentGet()
+		if err != nil {
+			return err
+		}
+		var found bool
+		for _, o := range wug.Outputs {
+			if types.SiacoinOutputID(o.ID) == outputID {
+				found = true
+			}
+		}
+		if !found {
+			return errors.New("wallet's spendable outputs did not contain file contract output")
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	var found bool
-	for _, o := range wug.Outputs {
-		if types.SiacoinOutputID(o.ID) == outputID {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("wallet's spendable outputs did not contain file contract output")
 	}
 }
 
@@ -569,9 +575,8 @@ func TestWalletSend(t *testing.T) {
 
 	// Create a testgroup
 	groupParams := siatest.GroupParams{
-		Hosts:   0,
-		Renters: 2,
-		Miners:  1,
+		Hosts:  0,
+		Miners: 1,
 	}
 	tg, err := siatest.NewGroupFromTemplate(walletTestDir(t.Name()), groupParams)
 	if err != nil {
@@ -582,6 +587,14 @@ func TestWalletSend(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
+
+	// Add 2 renters.
+	rp := node.RenterTemplate
+	rp.RenterDeps = &dependencies.DependencyPreventEARefill{}
+	_, err = tg.AddNodeN(rp, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	renters := tg.Renters()
 	renter1, renter2 := renters[0], renters[1]

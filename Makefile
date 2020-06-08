@@ -80,7 +80,9 @@ pkgs = ./build \
 release-pkgs = ./cmd/siac ./cmd/siad
 
 # lockcheckpkgs are the packages that are checked for locking violations.
-lockcheckpkgs = ./modules/renter/hostdb
+lockcheckpkgs = \
+	./modules/host/mdm \
+	./modules/renter/hostdb \
 
 # run determines which tests run when running any variation of 'make test'.
 run = .
@@ -99,6 +101,10 @@ dependencies:
 fmt:
 	gofmt -s -l -w $(pkgs)
 
+# tidy calls go mod tidy.
+tidy:
+	go mod tidy -v
+
 # vet calls go vet on all packages.
 # NOTE: go vet requires packages to be built in order to obtain type info.
 vet:
@@ -109,9 +115,10 @@ vet:
 markdown-spellcheck:
 	git ls-files "*.md" :\!:"vendor/**" | xargs codespell --check-filenames
 
-# lint runs golangci-lint (which includes golint, a spellcheck of the codebase,
-# and other linters), the custom analyzers, and also a markdown spellchecker.
-lint: markdown-spellcheck lint-analysis
+# lint runs go mod tidy, golangci-lint (which includes golint, a spellcheck of
+# the codebase, and other linters), the custom analyzers, and also a markdown
+# spellchecker.
+lint: tidy markdown-spellcheck lint-analyze
 	golangci-lint run -c .golangci.yml
 
 # lint-ci runs golint.
@@ -123,10 +130,10 @@ ifneq ("$(OS)","Windows_NT")
 	golint -min_confidence=1.0 -set_exit_status $(pkgs)
 endif
 
-# lint-analysis runs the custom analyzers.
-lint-analysis:
-	go run ./analysis/cmd/analyze.go -lockcheck=false -- $(pkgs)
-	go run ./analysis/cmd/analyze.go -lockcheck -- $(lockcheckpkgs)
+# lint-analyze runs the custom analyzers.
+lint-analyze:
+	analyze -lockcheck=false -- $(pkgs)
+	analyze -lockcheck -- $(lockcheckpkgs)
 
 # spellcheck checks for misspelled words in comments or strings.
 spellcheck: markdown-spellcheck

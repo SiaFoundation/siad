@@ -52,8 +52,10 @@ func newTestStorageObligation(locked bool) *TestStorageObligation {
 	}
 }
 
-// BlockHeight returns an incremented blockheight every time it's called.
+// BlockHeight returns an incremented blockheight.
 func (h *TestHost) BlockHeight() types.BlockHeight {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.blockHeight++
 	return h.blockHeight
 }
@@ -61,7 +63,9 @@ func (h *TestHost) BlockHeight() types.BlockHeight {
 // HasSector indicates whether the host stores a sector with a given root or
 // not.
 func (h *TestHost) HasSector(sectorRoot crypto.Hash) bool {
+	h.mu.Lock()
 	_, exists := h.sectors[sectorRoot]
+	h.mu.Unlock()
 	return exists
 }
 
@@ -121,7 +125,8 @@ func (so *TestStorageObligation) Update(sectorRoots []crypto.Hash, sectorsRemove
 // for every operation/rpc.
 func newTestPriceTable() *modules.RPCPriceTable {
 	return &modules.RPCPriceTable{
-		Expiry:               time.Now().Add(time.Minute).Unix(),
+		Validity: time.Minute,
+
 		UpdatePriceTableCost: types.NewCurrency64(1),
 		InitBaseCost:         types.NewCurrency64(1),
 		MemoryTimeCost:       types.NewCurrency64(1),
@@ -133,6 +138,7 @@ func newTestPriceTable() *modules.RPCPriceTable {
 		HasSectorBaseCost:   types.NewCurrency64(1),
 		ReadBaseCost:        types.NewCurrency64(1),
 		ReadLengthCost:      types.NewCurrency64(1),
+		StoreLengthCost:     types.NewCurrency64(1),
 		WriteBaseCost:       types.NewCurrency64(1),
 		WriteLengthCost:     types.NewCurrency64(1),
 		WriteStoreCost:      types.NewCurrency64(1),
@@ -158,9 +164,9 @@ func TestNew(t *testing.T) {
 // ExecuteProgramWithBuilder is a convenience wrapper around mdm.ExecuteProgram.
 // It runs the program constructed by tb with the storage obligation so. It will
 // also return the outputs as a slice for convenience.
-func (mdm *MDM) ExecuteProgramWithBuilder(tb *testProgramBuilder, so *TestStorageObligation, finalized bool) ([]Output, error) {
+func (mdm *MDM) ExecuteProgramWithBuilder(tb *testProgramBuilder, so *TestStorageObligation, duration types.BlockHeight, finalized bool) ([]Output, error) {
 	// Execute the program.
-	finalize, budget, outputs, err := mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, finalized)
+	finalize, budget, outputs, err := mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, duration, finalized)
 	if err != nil {
 		return nil, err
 	}
@@ -183,13 +189,13 @@ func (mdm *MDM) ExecuteProgramWithBuilder(tb *testProgramBuilder, so *TestStorag
 // mdm.ExecuteProgram. It runs the program constructed by tb with the storage
 // obligation so. It will also return the outputs as a slice for convenience.
 // Finalization needs to be done manually after running the program.
-func (mdm *MDM) ExecuteProgramWithBuilderManualFinalize(tb *testProgramBuilder, so *TestStorageObligation, finalized bool) (FnFinalize, *modules.RPCBudget, []Output, error) {
+func (mdm *MDM) ExecuteProgramWithBuilderManualFinalize(tb *testProgramBuilder, so *TestStorageObligation, duration types.BlockHeight, finalized bool) (FnFinalize, *modules.RPCBudget, []Output, error) {
 	ctx := context.Background()
 	program, programData := tb.Program()
 	values := tb.Cost()
 	_, _, collateral := values.Cost()
 	budget := values.Budget(finalized)
-	finalize, outputChan, err := mdm.ExecuteProgram(ctx, tb.staticPT, program, budget, collateral, so, uint64(len(programData)), bytes.NewReader(programData))
+	finalize, outputChan, err := mdm.ExecuteProgram(ctx, tb.staticPT, program, budget, collateral, so, duration, uint64(len(programData)), bytes.NewReader(programData))
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -210,6 +216,9 @@ func (mdm *MDM) ExecuteProgramWithBuilderManualFinalize(tb *testProgramBuilder, 
 // asserted using the TestValues type or they will be asserted implicitly when
 // using ExecuteProgramWithBuilder.
 func (o Output) assert(newSize uint64, newMerkleRoot crypto.Hash, proof []crypto.Hash, output []byte) error {
+	if o.Error != nil {
+		return fmt.Errorf("output contained error: %v", o.Error)
+	}
 	if o.NewSize != newSize {
 		return fmt.Errorf("expected newSize %v but got %v", newSize, o.NewSize)
 	}

@@ -55,10 +55,6 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			}
 		}()
 	}()
-	// Don't expect any added collateral.
-	if !pd.AddedCollateral().IsZero() {
-		return fmt.Errorf("no collateral should be moved but got %v", pd.AddedCollateral().HumanString())
-	}
 
 	// Read request
 	var epr modules.RPCExecuteProgramRequest
@@ -91,6 +87,9 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	// Get the remaining unallocated collateral.
 	collateralBudget := sos.UnallocatedCollateral()
 
+	// Get the remaining contract duration.
+	duration := sos.ProofDeadline() - h.BlockHeight()
+
 	// Get a context that can be used to interrupt the program.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -103,9 +102,16 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	}()
 
 	// Execute the program.
-	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, budget, collateralBudget, sos, dataLength, stream)
+	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, budget, collateralBudget, sos, duration, dataLength, stream)
 	if err != nil {
 		return errors.AddContext(err, "Failed to start execution of the program")
+	}
+
+	// Return 16 bytes of data as a placeholder for a future cancellation token.
+	var ct modules.MDMCancellationToken
+	err = modules.RPCWrite(stream, ct)
+	if err != nil {
+		return errors.AddContext(err, "Failed to write cancellation token")
 	}
 
 	// Handle outputs.
@@ -175,7 +181,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		}
 
 		// Write contents of the buffer
-		_, err = stream.Write(buffer.Bytes())
+		_, err = buffer.WriteTo(stream)
 		if err != nil {
 			return errors.AddContext(err, "failed to send data to peer")
 		}
