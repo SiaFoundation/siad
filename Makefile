@@ -84,7 +84,7 @@ release-pkgs = ./cmd/siac ./cmd/siad
 lockcheckpkgs = \
 	./cmd/siac \
 	./modules/host/mdm \
-	./modules/renter/hostdb
+	./modules/renter/hostdb \
 
 # run determines which tests run when running any variation of 'make test'.
 run = .
