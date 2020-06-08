@@ -3,6 +3,7 @@
 **Bugs Fixed**
 - Fixed bug where a Sia dir could be created with the same path as an already
 existing Sia dir and no error was returned.
+- Fixed bug that prevented downloading from old hosts
 
 **Other**
 - persist/log.go has been extracted and is now a simple wrapper around the new
