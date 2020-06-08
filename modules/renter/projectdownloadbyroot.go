@@ -351,12 +351,12 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 
 	// Create a context. If the timeout is greater than zero, have the context
 	// expire when the timeout triggers.
-	//
-	// TODO: have DownloadByRoot accept a context.
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
+	var ctx context.Context
+	var cancel context.CancelFunc
 	if timeout > 0 {
-		ctx, cancel = context.WithTimeout(ctx, timeout)
+		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
+	} else {
+		ctx, cancel = context.WithCancel(r.tg.StopCtx())
 	}
 	defer cancel()
 
