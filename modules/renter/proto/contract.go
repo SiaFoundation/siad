@@ -167,6 +167,28 @@ func (c *SafeContract) CommitPaymentIntent(t *writeaheadlog.Transaction, signedT
 	if err := t.SignalUpdatesApplied(); err != nil {
 		return err
 	}
+	return c.clearUnappliedTxns()
+}
+
+// clearUnappliedTxns marks all unapplied transactions as completed without
+// applying them.
+func (c *SafeContract) clearUnappliedTxns() error {
+	for len(c.unappliedTxns) > 0 {
+		// Fetch next txn.
+		txn := c.unappliedTxns[0]
+
+		// Mark it as applied.
+		err := txn.SignalUpdatesApplied()
+		if err != nil {
+			return err
+		}
+
+		// Remove it from the contract. In case we crash, we at least won't
+		// start at the beginning again.
+		c.unappliedTxns = c.unappliedTxns[1:]
+	}
+
+	// Set the slice to nil to free memory.
 	c.unappliedTxns = nil
 	return nil
 }
@@ -466,7 +488,9 @@ func (c *SafeContract) managedCommitAppend(t *writeaheadlog.Transaction, signedT
 	if err = t.SignalUpdatesApplied(); err != nil {
 		return err
 	}
-	c.unappliedTxns = nil
+	if err := c.clearUnappliedTxns(); err != nil {
+		return errors.AddContext(err, "failed to clear unapplied txns")
+	}
 	return nil
 }
 
@@ -514,7 +538,9 @@ func (c *SafeContract) managedCommitDownload(t *writeaheadlog.Transaction, signe
 	if err := t.SignalUpdatesApplied(); err != nil {
 		return err
 	}
-	c.unappliedTxns = nil
+	if err := c.clearUnappliedTxns(); err != nil {
+		return errors.AddContext(err, "failed to clear unapplied txns")
+	}
 	return nil
 }
 
@@ -562,7 +588,9 @@ func (c *SafeContract) managedCommitClearContract(t *writeaheadlog.Transaction, 
 	if err := t.SignalUpdatesApplied(); err != nil {
 		return err
 	}
-	c.unappliedTxns = nil
+	if err := c.clearUnappliedTxns(); err != nil {
+		return errors.AddContext(err, "failed to clear unapplied txns")
+	}
 	return nil
 }
 
@@ -682,12 +710,9 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 					return err
 				}
 				// drop all unapplied transactions
-				for _, t := range c.unappliedTxns {
-					if err := t.SignalUpdatesApplied(); err != nil {
-						return err
-					}
+				if err := c.clearUnappliedTxns(); err != nil {
+					return errors.AddContext(err, "failed to clear unapplied txns")
 				}
-				c.unappliedTxns = nil
 				return nil
 			}
 		}
@@ -702,12 +727,9 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	c.header.Transaction.FileContractRevisions[0] = rev
 	c.header.Transaction.TransactionSignatures = sigs
 	// Drop the WAL transactions, since they can't conceivably help us.
-	for _, t := range c.unappliedTxns {
-		if err := t.SignalUpdatesApplied(); err != nil {
-			return err
-		}
+	if err := c.clearUnappliedTxns(); err != nil {
+		return errors.AddContext(err, "failed to clear unapplied txns")
 	}
-	c.unappliedTxns = nil
 	return nil
 }
 
