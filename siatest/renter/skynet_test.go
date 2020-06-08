@@ -2197,7 +2197,10 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 			t.Fatal("Wrong skykey name")
 		}
 		if nextSk.ID().ToString() != skGet.ID {
-			t.Fatal("Wrong skykey name")
+			t.Fatal("Wrong skykey id")
+		}
+		if nextSk.Type.ToString() != skGet.Type {
+			t.Fatal("Wrong skykey type")
 		}
 	}
 }
