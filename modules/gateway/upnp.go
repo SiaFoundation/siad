@@ -182,8 +182,9 @@ func (g *Gateway) managedForwardPort(port string) error {
 	}
 
 	// Establish port-clearing at shutdown.
-	g.threads.AfterStop(func() {
+	g.threads.AfterStop(func() error {
 		g.managedClearPort(port)
+		return nil
 	})
 	return nil
 }
