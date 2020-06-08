@@ -47,7 +47,7 @@ Subtests `expectedOutPattern` field contains expected regex pattern string to te
 
 ## Error Logging
 
-There are 5 error log items:
+There are 5 error log items from `testGenericSiacCmd()` in `cmd/siac/helpers_test.go`:
 
 * Regex pattern didn't match between row x, and row y
 * Regex pattern part that didn't match
