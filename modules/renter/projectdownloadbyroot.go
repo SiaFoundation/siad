@@ -99,7 +99,7 @@ func (m *projectDownloadByRootManager) managedAverageProjectTime(length uint64) 
 // managedDownloadByRoot will fetch data using the merkle root of that data.
 // Unlike the exported version of this function, this function does not request
 // memory from the memory manager.
-func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, ctx context.Context) ([]byte, error) {
+func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64) ([]byte, error) {
 	// Create a context that dies when the function ends, this will cancel all
 	// of the worker jobs that get created by this function.
 	ctx, cancel := context.WithCancel(ctx)
@@ -343,16 +343,14 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 
 	// Create a context. If the timeout is greater than zero, have the context
 	// expire when the timeout triggers.
-	var ctx context.Context
-	var cancel context.CancelFunc
+	ctx := r.tg.StopCtx()
 	if timeout > 0 {
+		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
-	} else {
-		ctx, cancel = context.WithCancel(r.tg.StopCtx())
+		defer cancel()
 	}
-	defer cancel()
 
-	data, err := r.managedDownloadByRoot(root, offset, length, ctx)
+	data, err := r.managedDownloadByRoot(ctx, root, offset, length)
 	if errors.Contains(err, ErrProjectTimedOut) {
 		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
 	}
