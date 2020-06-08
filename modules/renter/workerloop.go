@@ -271,13 +271,10 @@ func (w *worker) threadedWorkLoop() {
 		// blocking update to ensure nothing else runs until the price table is
 		// available.
 		w.staticUpdatePriceTable()
-		// TODO: Do a balance query on the host right here. Even if we had a clean
-		// shutdown and know the exact balance, we should still be asking the host
-		// what our balance is, because we don't want the host to be able to
-		// distinguish between the times that we know our balance and the times that
-		// we don't. Checking right at startup also allows us to give a quick
-		// honesty check on the host.
-		//
+
+		// Perform a balance check on the host.
+		w.managedCheckAccountBalance()
+
 		// This update is done as a blocking update to ensure nothing else runs
 		// until the account has filled.
 		w.managedRefillAccount()
