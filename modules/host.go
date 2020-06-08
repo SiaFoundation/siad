@@ -147,6 +147,16 @@ var (
 	// the data, meaning that the host serves to profit from accepting the
 	// data.
 	DefaultUploadBandwidthPrice = types.SiacoinPrecision.Mul64(1).Div(BytesPerTerabyte) // 1 SC / TB
+
+	// CompatV1412DefaultEphemeralAccountExpiry defines the default account
+	// expiry used up until v1.4.12. This constant is added to ensure changing
+	// the default does not break legacy checks.
+	CompatV1412DefaultEphemeralAccountExpiry = uint64(604800) // 1 week
+
+	// CompatV1412DefaultMaxEphemeralAccountBalance defines the default maximum
+	// ephemeral account balance used up until v1.4.12. This constant is added
+	// to ensure changing the default does not break legacy checks.
+	CompatV1412DefaultMaxEphemeralAccountBalance = types.SiacoinPrecision
 )
 
 var (

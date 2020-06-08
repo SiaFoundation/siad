@@ -463,8 +463,8 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 			// penalized by renters running the latest software.
 			if build.VersionCmp(settings.Version, "1.4.8") >= 0 &&
 				build.VersionCmp(settings.Version, "1.4.12") < 0 {
-				settings.EphemeralAccountExpiry = modules.DefaultEphemeralAccountExpiry
-				settings.MaxEphemeralAccountBalance = modules.DefaultMaxEphemeralAccountBalance
+				settings.EphemeralAccountExpiry = modules.CompatV1412DefaultEphemeralAccountExpiry
+				settings.MaxEphemeralAccountBalance = modules.CompatV1412DefaultMaxEphemeralAccountBalance
 			}
 
 			return nil
