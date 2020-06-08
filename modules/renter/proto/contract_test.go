@@ -30,16 +30,7 @@ func (d *dependencyInterruptContractInsertion) Disrupt(s string) bool {
 // TestContractUncommittedTxn tests that if a contract revision is left in an
 // uncommitted state, either version of the contract can be recovered.
 func TestContractUncommittedTxn(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-	// create contract set with one contract
-	dir := build.TempDir(filepath.Join("proto", t.Name()))
-	cs, err := NewContractSet(dir, modules.ProdDependencies)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// initial header every subtests starts out with.
 	initialHeader := contractHeader{
 		Transaction: types.Transaction{
 			FileContractRevisions: []types.FileContractRevision{{
@@ -51,6 +42,96 @@ func TestContractUncommittedTxn(t *testing.T) {
 			}},
 		},
 	}
+
+	// Test RecordAppendIntent.
+	t.Run("RecordAppendIntent", func(t *testing.T) {
+		updateFunc := func(sc *SafeContract) (*unappliedWalTxn, []crypto.Hash, contractHeader, error) {
+			revisedHeader := contractHeader{
+				Transaction: types.Transaction{
+					FileContractRevisions: []types.FileContractRevision{{
+						NewRevisionNumber:    2,
+						NewValidProofOutputs: []types.SiacoinOutput{{}, {}},
+						UnlockConditions: types.UnlockConditions{
+							PublicKeys: []types.SiaPublicKey{{}, {}},
+						},
+					}},
+				},
+				StorageSpending: types.NewCurrency64(7),
+				UploadSpending:  types.NewCurrency64(17),
+			}
+			revisedRoots := []crypto.Hash{{1}, {2}}
+			fcr := revisedHeader.Transaction.FileContractRevisions[0]
+			newRoot := revisedRoots[1]
+			storageCost := revisedHeader.StorageSpending.Sub(initialHeader.StorageSpending)
+			bandwidthCost := revisedHeader.UploadSpending.Sub(initialHeader.UploadSpending)
+			txn, err := sc.managedRecordAppendIntent(fcr, newRoot, storageCost, bandwidthCost)
+			return txn, revisedRoots, revisedHeader, err
+		}
+		testContractUncomittedTxn(t, initialHeader, updateFunc)
+	})
+	// Test RecordDownloadIntent.
+	t.Run("RecordDownloadIntent", func(t *testing.T) {
+		updateFunc := func(sc *SafeContract) (*unappliedWalTxn, []crypto.Hash, contractHeader, error) {
+			revisedHeader := contractHeader{
+				Transaction: types.Transaction{
+					FileContractRevisions: []types.FileContractRevision{{
+						NewRevisionNumber:    2,
+						NewValidProofOutputs: []types.SiacoinOutput{{}, {}},
+						UnlockConditions: types.UnlockConditions{
+							PublicKeys: []types.SiaPublicKey{{}, {}},
+						},
+					}},
+				},
+				StorageSpending:  types.ZeroCurrency,
+				DownloadSpending: types.NewCurrency64(17),
+			}
+			revisedRoots := []crypto.Hash{{1}}
+			fcr := revisedHeader.Transaction.FileContractRevisions[0]
+			bandwidthCost := revisedHeader.DownloadSpending.Sub(initialHeader.DownloadSpending)
+			txn, err := sc.managedRecordDownloadIntent(fcr, bandwidthCost)
+			return txn, revisedRoots, revisedHeader, err
+		}
+		testContractUncomittedTxn(t, initialHeader, updateFunc)
+	})
+	// Test RecordClearContractIntent.
+	t.Run("RecordClearContractIntent", func(t *testing.T) {
+		updateFunc := func(sc *SafeContract) (*unappliedWalTxn, []crypto.Hash, contractHeader, error) {
+			revisedHeader := contractHeader{
+				Transaction: types.Transaction{
+					FileContractRevisions: []types.FileContractRevision{{
+						NewRevisionNumber:    2,
+						NewValidProofOutputs: []types.SiacoinOutput{{}, {}},
+						UnlockConditions: types.UnlockConditions{
+							PublicKeys: []types.SiaPublicKey{{}, {}},
+						},
+					}},
+				},
+				StorageSpending: types.ZeroCurrency,
+				UploadSpending:  types.NewCurrency64(17),
+			}
+			revisedRoots := []crypto.Hash{{1}}
+			fcr := revisedHeader.Transaction.FileContractRevisions[0]
+			bandwidthCost := revisedHeader.UploadSpending.Sub(initialHeader.UploadSpending)
+			txn, err := sc.managedRecordClearContractIntent(fcr, bandwidthCost)
+			return txn, revisedRoots, revisedHeader, err
+		}
+		testContractUncomittedTxn(t, initialHeader, updateFunc)
+	})
+}
+
+// testContractUncommittedTxn tests that if a contract revision is left in an
+// uncommitted state, either version of the contract can be recovered.
+func testContractUncomittedTxn(t *testing.T, initialHeader contractHeader, updateFunc func(*SafeContract) (*unappliedWalTxn, []crypto.Hash, contractHeader, error)) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// create contract set with one contract
+	dir := build.TempDir(filepath.Join("proto", t.Name()))
+	cs, err := NewContractSet(dir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
 	initialRoots := []crypto.Hash{{1}}
 	c, err := cs.managedInsertContract(initialHeader, initialRoots)
 	if err != nil {
@@ -59,25 +140,7 @@ func TestContractUncommittedTxn(t *testing.T) {
 
 	// apply an update to the contract, but don't commit it
 	sc := cs.mustAcquire(t, c.ID)
-	revisedHeader := contractHeader{
-		Transaction: types.Transaction{
-			FileContractRevisions: []types.FileContractRevision{{
-				NewRevisionNumber:    2,
-				NewValidProofOutputs: []types.SiacoinOutput{{}, {}},
-				UnlockConditions: types.UnlockConditions{
-					PublicKeys: []types.SiaPublicKey{{}, {}},
-				},
-			}},
-		},
-		StorageSpending: types.NewCurrency64(7),
-		UploadSpending:  types.NewCurrency64(17),
-	}
-	revisedRoots := []crypto.Hash{{1}, {2}}
-	fcr := revisedHeader.Transaction.FileContractRevisions[0]
-	newRoot := revisedRoots[1]
-	storageCost := revisedHeader.StorageSpending.Sub(initialHeader.StorageSpending)
-	bandwidthCost := revisedHeader.UploadSpending.Sub(initialHeader.UploadSpending)
-	walTxn, err := sc.managedRecordAppendIntent(fcr, newRoot, storageCost, bandwidthCost)
+	walTxn, revisedRoots, revisedHeader, err := updateFunc(sc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +201,20 @@ func TestContractUncommittedTxn(t *testing.T) {
 	if !bytes.Equal(encoding.Marshal(sc.header), encoding.Marshal(revisedHeader)) {
 		t.Fatal("contractHeader should match revised contractHeader", sc.header, revisedHeader)
 	} else if !reflect.DeepEqual(merkleRoots, revisedRoots) {
-		t.Fatal("Merkle roots should match revised Merkle roots")
+		t.Fatal("Merkle roots should match revised Merkle roots", merkleRoots, revisedRoots)
+	}
+	// close and reopen the contract set.
+	if err := cs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the uncommitted transaction should be gone.
+	sc = cs.mustAcquire(t, c.ID)
+	if len(sc.unappliedTxns) != 0 {
+		t.Fatal("expected 0 unappliedTxn, got", len(sc.unappliedTxns))
 	}
 }
 
