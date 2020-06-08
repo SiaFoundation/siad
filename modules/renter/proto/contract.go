@@ -128,7 +128,7 @@ type unappliedWalTxn struct {
 	*writeaheadlog.Transaction
 }
 
-// newUNappliedWalTxn wraps a `writeaheadlog.Transaction` in an unappliedWalTxn.
+// newUnappliedWalTxn wraps a `writeaheadlog.Transaction` in an unappliedWalTxn.
 func newUnappliedWalTxn(t *writeaheadlog.Transaction) *unappliedWalTxn {
 	return &unappliedWalTxn{
 		Transaction: t,
