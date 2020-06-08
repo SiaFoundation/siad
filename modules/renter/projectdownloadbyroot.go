@@ -174,16 +174,8 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 	// After we have spent half of the whole historic time waiting for better
 	// workers to appear, we give up and use the best worker that we have found
 	// so far.
-	useBestWorkerChan := make(chan struct{})
-	useBestWorkerTimer := time.AfterFunc(pm.managedAverageProjectTime(length)/2, func() {
-		close(useBestWorkerChan)
-	})
-	// Clean up the timer. AfterFunc doesn't require draining the timer, you
-	// just call Stop. The return value only exists to indicate whether or not
-	// the function ran, which we don't care about.
-	defer func() {
-		useBestWorkerTimer.Stop()
-	}()
+	useBestWorkerCtx, useBestWorkerCancel := context.WithTimeout(ctx, pm.managedAverageProjectTime(length)/2)
+	defer useBestWorkerCancel()
 
 	// Run a loop to receive responses from the workers as they figure out
 	// whether or not they have the sector we are looking for. The loop needs to
@@ -214,7 +206,7 @@ func (r *Renter) managedDownloadByRoot(root crypto.Hash, offset, length uint64, 
 			// not reported back yet. Because we have usable workers, we want to
 			// listen on the useBestWorkerChan.
 			select {
-			case <-useBestWorkerChan:
+			case <-useBestWorkerCtx.Done():
 				useBestWorker = true
 			case resp = <-staticResponseChan:
 				responses++
