@@ -257,6 +257,9 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 		return err
 	}
 
+	// TODO: Check for revision mismatch and recover by applying the contract
+	// unapplied transactions and trying again.
+
 	// verify the host's signature
 	hash := crypto.HashAll(rev)
 	hpk := sc.Metadata().HostPublicKey
