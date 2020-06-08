@@ -37,7 +37,7 @@ func NewProgramBuilder(pt *RPCPriceTable) *ProgramBuilder {
 }
 
 // AddAppendInstruction adds an Append instruction to the program.
-func (pb *ProgramBuilder) AddAppendInstruction(data []byte, merkleProof bool) {
+func (pb *ProgramBuilder) AddAppendInstruction(data []byte, duration types.BlockHeight, merkleProof bool) {
 	// Compute the argument offsets.
 	dataOffset := uint64(pb.programData.Len())
 	// Extend the programData.
@@ -48,7 +48,7 @@ func (pb *ProgramBuilder) AddAppendInstruction(data []byte, merkleProof bool) {
 	pb.program = append(pb.program, i)
 	// Update cost, collateral and memory usage.
 	collateral := MDMAppendCollateral(pb.staticPT)
-	cost, refund := MDMAppendCost(pb.staticPT)
+	cost, refund := MDMAppendCost(pb.staticPT, duration)
 	memory := MDMAppendMemory()
 	time := uint64(MDMTimeAppend)
 	pb.addInstruction(collateral, cost, refund, memory, time)

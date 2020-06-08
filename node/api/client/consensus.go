@@ -53,17 +53,18 @@ func (c *Client) ConsensusSubscribeSingle(subscriber modules.ConsensusSetSubscri
 		return ccid, readAPIError(resp.Body)
 	}
 
-	dec := encoding.NewDecoder(resp.Body, 100e6) // consensus changes can be arbitrarily large
 	for {
 		select {
 		case <-cancel:
 			return ccid, context.Canceled
 		default:
 		}
+		dec := encoding.NewDecoder(resp.Body, 100e6) // consensus changes can be arbitrarily large
 		var cc modules.ConsensusChange
 		if err := dec.Decode(&cc); errors.Is(err, io.EOF) {
 			return ccid, nil
 		} else if err != nil {
+			resp.Body.Close()
 			return ccid, err
 		}
 		subscriber.ProcessConsensusChange(cc)

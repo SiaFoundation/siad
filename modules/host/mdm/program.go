@@ -31,8 +31,8 @@ type FnFinalize func(StorageObligation) error
 // same during the execution of the program.
 type programState struct {
 	// host related fields
-	blockHeight types.BlockHeight
-	host        Host
+	host                    Host
+	staticRemainingDuration types.BlockHeight
 
 	// program cache
 	sectors sectors
@@ -103,7 +103,7 @@ func decodeInstruction(p *program, i modules.Instruction) (instruction, error) {
 
 // ExecuteProgram initializes a new program from a set of instructions and a
 // reader which can be used to fetch the program's data and executes it.
-func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p modules.Program, budget *modules.RPCBudget, collateralBudget types.Currency, sos StorageObligationSnapshot, programDataLen uint64, data io.Reader) (_ FnFinalize, _ <-chan Output, err error) {
+func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p modules.Program, budget *modules.RPCBudget, collateralBudget types.Currency, sos StorageObligationSnapshot, duration types.BlockHeight, programDataLen uint64, data io.Reader) (_ FnFinalize, _ <-chan Output, err error) {
 	// Sanity check program length.
 	if len(p) == 0 {
 		return nil, nil, ErrEmptyProgram
@@ -119,10 +119,10 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 	program := &program{
 		outputChan: make(chan Output),
 		staticProgramState: &programState{
-			blockHeight: mdm.host.BlockHeight(),
-			host:        mdm.host,
-			priceTable:  pt,
-			sectors:     newSectors(sos.SectorRoots()),
+			staticRemainingDuration: duration,
+			host:                    mdm.host,
+			priceTable:              pt,
+			sectors:                 newSectors(sos.SectorRoots()),
 		},
 		staticBudget:           budget,
 		usedMemory:             modules.MDMInitMemory(),

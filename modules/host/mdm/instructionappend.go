@@ -83,7 +83,8 @@ func (i *instructionAppend) Collateral() types.Currency {
 
 // Cost returns the Cost of this `Append` instruction.
 func (i *instructionAppend) Cost() (executionCost, refund types.Currency, err error) {
-	executionCost, refund = modules.MDMAppendCost(i.staticState.priceTable)
+	duration := i.staticState.staticRemainingDuration
+	executionCost, refund = modules.MDMAppendCost(i.staticState.priceTable, duration)
 	return
 }
 

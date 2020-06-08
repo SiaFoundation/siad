@@ -57,7 +57,7 @@ type (
 	// present until some time has passed.
 	worker struct {
 		// atomicCache contains a pointer to the latest cache in the worker.
-		// Atomics are used to minimze lock contention on the worker object.
+		// Atomics are used to minimize lock contention on the worker object.
 		atomicCache                   unsafe.Pointer // points to a workerCache object
 		atomicCacheUpdating           uint64         // ensures only one cache update happens at a time
 		atomicPriceTable              unsafe.Pointer // points to a workerPriceTable object

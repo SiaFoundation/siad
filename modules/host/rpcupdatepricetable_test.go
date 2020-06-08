@@ -27,6 +27,7 @@ func TestPriceTableMarshaling(t *testing.T) {
 		ReadBaseCost:         types.SiacoinPrecision.Mul64(1e4),
 		ReadLengthCost:       types.SiacoinPrecision.Mul64(1e5),
 		HasSectorBaseCost:    types.SiacoinPrecision.Mul64(1e6),
+		StoreLengthCost:      types.SiacoinPrecision.Mul64(1e7),
 	}
 	fastrand.Read(pt.UID[:])
 
@@ -174,7 +175,7 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 func testUpdatePriceTableBasic(t *testing.T, rhp *renterHostPair) {
 	// create a payment revision
 	current := rhp.staticHT.host.staticPriceTables.managedCurrent()
-	rev, sig, err := rhp.managedPaymentRevision(current.UpdatePriceTableCost)
+	rev, sig, err := rhp.managedEAFundRevision(current.UpdatePriceTableCost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +212,7 @@ func testUpdatePriceTableBasic(t *testing.T, rhp *renterHostPair) {
 // supplied through the payment revision did not cover the RPC cost
 func testUpdatePriceTableInsufficientPayment(t *testing.T, rhp *renterHostPair) {
 	// create a payment revision
-	rev, sig, err := rhp.managedPaymentRevision(types.ZeroCurrency)
+	rev, sig, err := rhp.managedEAFundRevision(types.ZeroCurrency)
 	if err != nil {
 		t.Fatal(err)
 	}
