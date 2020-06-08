@@ -147,7 +147,7 @@ func testGenericSiacCmd(t *testing.T, root *cobra.Command, cmds []string, expOut
 	}
 
 	if regexErr {
-		t.Log("----- Expected output patern: -----")
+		t.Log("----- Expected output pattern: -----")
 		t.Log(expOutPattern)
 
 		t.Log("----- Actual Cobra output: -----")

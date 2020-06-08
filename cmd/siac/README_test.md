@@ -51,7 +51,7 @@ There are 5 error log items:
 
 * Regex pattern didn't match between row x, and row y
 * Regex pattern part that didn't match
-* ----- Expected output patern: -----
+* ----- Expected output pattern: -----
 * ----- Actual Cobra output: -----
 * ----- Actual Sia output: -----
 
