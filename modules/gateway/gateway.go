@@ -100,6 +100,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/ratelimit"
+	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -107,8 +108,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	connmonitor "gitlab.com/NebulousLabs/monitor"
-
-	siasync "gitlab.com/NebulousLabs/Sia/sync"
 )
 
 var errNoPeers = errors.New("no peers")
@@ -147,14 +146,14 @@ type Gateway struct {
 	blacklist map[string]struct{}
 	nodes     map[modules.NetAddress]*node
 	peers     map[modules.NetAddress]*peer
-	peerTG    siasync.ThreadGroup
+	peerTG    threadgroup.ThreadGroup
 
 	// Utilities.
 	log           *persist.Logger
 	mu            sync.RWMutex
 	persist       persistence
 	persistDir    string
-	threads       siasync.ThreadGroup
+	threads       threadgroup.ThreadGroup
 	staticAlerter *modules.GenericAlerter
 	staticDeps    modules.Dependencies
 
