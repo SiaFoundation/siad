@@ -66,31 +66,31 @@ func siacTestDir(testName string) string {
 	return path
 }
 
-// cobraCmdSubTest is a helper struct for running siac Cobra commands subtests
+// siacCmdSubTest is a helper struct for running siac Cobra commands subtests
 // when subtests need command to run and expected output
-type cobraCmdSubTest struct {
+type siacCmdSubTest struct {
 	name               string
 	test               func(*testing.T, *cobra.Command, []string, string)
-	root               *cobra.Command
-	cmd                []string
+	cmd                *cobra.Command
+	cmdStrs            []string
 	expectedOutPattern string
 }
 
-// runCobraCmdSubTests is a helper function to run siac Cobra command subtests
+// runSiacCmdSubTests is a helper function to run siac Cobra command subtests
 // when subtests need command to run and expected output
-func runCobraCmdSubTests(t *testing.T, tests []cobraCmdSubTest) error {
+func runSiacCmdSubTests(t *testing.T, tests []siacCmdSubTest) error {
 	// Run subtests
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.test(t, test.root, test.cmd, test.expectedOutPattern)
+			test.test(t, test.cmd, test.cmdStrs, test.expectedOutPattern)
 		})
 	}
 	return nil
 }
 
-// testGenericCobraCmd is a helper function to test siac cobra commands
+// testGenericSiacCmd is a helper function to test siac cobra commands
 // specified in cmds for expected output regex pattern
-func testGenericCobraCmd(t *testing.T, root *cobra.Command, cmds []string, expOutPattern string) {
+func testGenericSiacCmd(t *testing.T, root *cobra.Command, cmds []string, expOutPattern string) {
 	// catch stdout and stderr
 	c, err := startCatchingStdoutStderr()
 	if err != nil {
@@ -98,7 +98,7 @@ func testGenericCobraCmd(t *testing.T, root *cobra.Command, cmds []string, expOu
 	}
 
 	// execute command
-	cobraOutput, _ := executeCobraCommand(root, cmds...)
+	cobraOutput, _ := executeSiacCommand(root, cmds...)
 
 	// stop catching stdout/stderr, get catched outputs
 	siaOutput, err := c.stopCatchingStout()
@@ -138,7 +138,7 @@ func testGenericCobraCmd(t *testing.T, root *cobra.Command, cmds []string, expOu
 		}
 		validPattern := regexp.MustCompile(expSubPattern)
 		if !validPattern.MatchString(output) {
-			t.Log("Regex pattern didn't match between rows (1-based):", i+1-offsetFromLastOKRow, "-", i+1)
+			t.Logf("Regex pattern didn't match between row %v, and row %v", i+1-offsetFromLastOKRow, i+1)
 			t.Logf("Regex pattern part that didn't match:\n%s", strings.Join(regexRows[i-offsetFromLastOKRow:i+1], "\n"))
 			regexErr = true
 			break
@@ -147,22 +147,22 @@ func testGenericCobraCmd(t *testing.T, root *cobra.Command, cmds []string, expOu
 	}
 
 	if regexErr {
-		t.Log("----- Expected patern: -----")
+		t.Log("----- Expected output patern: -----")
 		t.Log(expOutPattern)
 
-		t.Log("----- Cobra output: -----")
+		t.Log("----- Actual Cobra output: -----")
 		t.Log(cobraOutput)
 
-		t.Log("----- Sia output: -----")
+		t.Log("----- Actual Sia output: -----")
 		t.Log(siaOutput)
 
 		t.Fatal()
 	}
 }
 
-// initForCobraCmdsTests creates and initializes a new instance of siac Cobra
+// getRootCmdForSiacCmdsTests creates and initializes a new instance of siac Cobra
 // command
-func getRootCmdForCobraCmdsTests(t *testing.T, dir string) *cobra.Command {
+func getRootCmdForSiacCmdsTests(t *testing.T, dir string) *cobra.Command {
 	// create new instance of siac cobra command
 	root := initCmds()
 
@@ -173,14 +173,14 @@ func getRootCmdForCobraCmdsTests(t *testing.T, dir string) *cobra.Command {
 	return root
 }
 
-// executeCobraCommand is a pass-through function to execute siac cobra command
-func executeCobraCommand(root *cobra.Command, args ...string) (output string, err error) {
-	_, output, err = executeCobraCommandC(root, args...)
+// executeSiacCommand is a pass-through function to execute siac cobra command
+func executeSiacCommand(root *cobra.Command, args ...string) (output string, err error) {
+	_, output, err = executeSiacCommandC(root, args...)
 	return output, err
 }
 
-// executeCobraCommandC executes cobra command
-func executeCobraCommandC(root *cobra.Command, args ...string) (c *cobra.Command, output string, err error) {
+// executeSiacCommandC executes cobra command
+func executeSiacCommandC(root *cobra.Command, args ...string) (c *cobra.Command, output string, err error) {
 	buf := new(bytes.Buffer)
 	root.SetOut(buf)
 	root.SetErr(buf)
