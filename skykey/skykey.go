@@ -52,10 +52,13 @@ var (
 	skyfileEncryptionIDSpecifier  = types.NewSpecifier("SkyfileEncID")
 	skyfileEncryptionIDDerivation = types.NewSpecifier("PrivateIDNonce")
 
-	errUnsupportedSkykeyType          = errors.New("Unsupported Skykey type")
-	errUnmarshalDataErr               = errors.New("Unable to unmarshal Skykey data")
-	errCannotMarshalTypeInvalidSkykey = errors.New("Cannot marshal or unmarshal Skykey of TypeInvalid type")
-	errInvalidEntropyLength           = errors.New("Invalid skykey entropy length")
+	errUnsupportedSkykeyType            = errors.New("Unsupported Skykey type")
+	errUnmarshalDataErr                 = errors.New("Unable to unmarshal Skykey data")
+	errCannotMarshalTypeInvalidSkykey   = errors.New("Cannot marshal or unmarshal Skykey of TypeInvalid type")
+	errInvalidEntropyLength             = errors.New("Invalid skykey entropy length")
+	errSkykeyTypeDoesNotSupportFunction = errors.New("Operation not supported by this SkykeyType")
+
+	errInvalidIDorNonceLength = errors.New("Invalid length for encryptionID or nonce in MatchesSkyfileEncryptionID")
 
 	// ErrInvalidSkykeyType is returned when an invalid SkykeyType is being used.
 	ErrInvalidSkykeyType = errors.New("Invalid skykey type")
@@ -428,6 +431,9 @@ func (sk *Skykey) SubkeyWithNonce(nonce []byte) (Skykey, error) {
 // PrivateID encrypted files.
 // NOTE: This method MUST only be called using a FileSpecificSkykey.
 func (sk *Skykey) GenerateSkyfileEncryptionID() ([SkykeyIDLen]byte, error) {
+	if sk.Type != TypePrivateID {
+		return [SkykeyIDLen]byte{}, errSkykeyTypeDoesNotSupportFunction
+	}
 	if SkykeyIDLen != types.SpecifierLen {
 		build.Critical("SkykeyID and Specifier expected to have same size")
 	}
@@ -456,6 +462,9 @@ func (sk *Skykey) GenerateSkyfileEncryptionID() ([SkykeyIDLen]byte, error) {
 // MatchesSkyfileEncryptionID returns true if and only if the skykey was the one
 // used with these nonce to create the encryptionID.
 func (sk *Skykey) MatchesSkyfileEncryptionID(encryptionID, nonce []byte) (bool, error) {
+	if len(encryptionID) != SkykeyIDLen || len(nonce) != chacha.XNonceSize {
+		return false, errInvalidIDorNonceLength
+	}
 	// This only applies to TypePrivateID keys.
 	if sk.Type != TypePrivateID {
 		return false, nil
