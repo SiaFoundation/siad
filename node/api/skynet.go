@@ -364,7 +364,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
 		}
 		return
-	} else if format == modules.SkyfileFormatTarGz {
+	}
+	if format == modules.SkyfileFormatTarGz {
 		w.Header().Set("content-type", "application/x-gtar ")
 		gzw := gzip.NewWriter(w)
 		err = serveTar(gzw, metadata, streamer)
@@ -1128,7 +1129,7 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 // It will never return a directory because empty directories are omitted on
 // upload, so the only entities in `subfiles` will be files.
 func getDefaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (string, error) {
-	defaultPath := queryForm.Get(modules.SkyfileDefaultPath)
+	defaultPath := queryForm.Get(modules.SkyfileDefaultPathParamName)
 	if defaultPath == "" {
 		// No default path specified, check if there is an `index.html` file.
 		_, exists := subfiles[strings.TrimPrefix(DefaultSkynetDefaultPath, "/")]

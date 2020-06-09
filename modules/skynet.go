@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	// SkyfileDefaultPath specifies the name of the form parameter that holds
+	// SkyfileDefaultPathParamName specifies the name of the form parameter that holds
 	// the default path.
-	SkyfileDefaultPath = "defaultpath"
+	SkyfileDefaultPathParamName = "defaultpath"
 )
 
 // SkyfileMetadata is all of the metadata that gets placed into the first 4096
