@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	// SkyfileDefaultPath specifies the multipart form header key that
-	// holds the default path.
+	// SkyfileDefaultPath specifies the name of the form parameter that holds
+	// the default path.
 	SkyfileDefaultPath = "defaultpath"
 )
 
