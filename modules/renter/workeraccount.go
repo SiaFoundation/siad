@@ -183,7 +183,7 @@ func (a *account) managedResetBalance(balance types.Currency) {
 	a.balance = balance
 	a.pendingDeposits = types.ZeroCurrency
 	a.pendingWithdrawals = types.ZeroCurrency
-	a.negativeBalance = balance
+	a.negativeBalance = types.ZeroCurrency
 }
 
 // managedTrackDeposit keeps track of pending deposits by adding the given
