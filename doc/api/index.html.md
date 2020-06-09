@@ -4802,7 +4802,7 @@ active. This field is mutually exclusive with uploading streaming.
 The path to the default file to be used to represent this skyfile in case it
 contains multiple files (e.g. skapps, photo collections, etc.). If provided, the
 path must exist. If not provided, it will default to `index.html` if a file with
-that name exist within the skyfile.
+that name exists within the skyfile.
 
 **filename** | string  
 The name of the file. This name will be encoded into the skyfile metadata, and
