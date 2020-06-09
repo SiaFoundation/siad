@@ -198,7 +198,7 @@ func hostcmd() {
 	} else if hg.WorkingStatus == "not working" && hg.ConnectabilityStatus == "connectable" {
 		connectabilityString = "Nobody is connecting to host. Try re-announcing."
 	} else if hg.WorkingStatus == "checking" || hg.ConnectabilityStatus == "checking" {
-		connectabilityString = "Host is checking status (takes a few minues)."
+		connectabilityString = "Host is checking status (takes a few minutes)."
 	} else {
 		connectabilityString = "Host is not connectable (re-checks every few minutes)."
 	}
