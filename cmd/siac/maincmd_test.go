@@ -10,9 +10,10 @@ import (
 // TestRootSiacCmd tests root siac command for expected outputs. The test
 // runs its own node and requires no service running at port 5555.
 func TestRootSiacCmd(t *testing.T) {
-	if !build.VLONG {
+	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	// Create a test node for this test group
 	groupDir := siacTestDir(t.Name())
@@ -25,9 +26,8 @@ func TestRootSiacCmd(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	t.Log("siad API address:", n.APIAddress())
 
-	root := getRootCmdForSiacCmdsTests(t, groupDir)
+	root := getRootCmdForSiacCmdsTests(groupDir)
 
 	// define test constants:
 	// regular expressions to check siac output
@@ -91,15 +91,10 @@ Use ".*siac(\.test|) \[command\] --help" for more information about a command\.`
 	siaClientVersionPattern := "Sia Client v" + strings.ReplaceAll(build.Version, ".", `\.`)
 	connectionRefusedPattern := `Could not get consensus status: \[failed to get reader response; GET request failed; Get http://localhost:5555/consensus: dial tcp \[::1\]:5555: connect: connection refused\]`
 
-	// define subtests
+	// Define subtests
+	// We can't test siad on default address (port) when test node has
+	// dynamically allocated port, we have to use node address.
 	subTests := []siacCmdSubTest{
-		// Can't test siad on default address (port) when test node has dynamically allocated port
-		// {
-		// 	name:               "TestRootCmd",
-		// 	test:               testGenericCobraCmd,
-		// 	cmd:                []string{},
-		// 	expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
-		// },
 		{
 			name:               "TestRootCmdWithShortAddressFlagIPv6",
 			test:               testGenericSiacCmd,

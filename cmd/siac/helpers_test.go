@@ -92,7 +92,7 @@ func runSiacCmdSubTests(t *testing.T, tests []siacCmdSubTest) error {
 // specified in cmds for expected output regex pattern
 func testGenericSiacCmd(t *testing.T, root *cobra.Command, cmds []string, expOutPattern string) {
 	// catch stdout and stderr
-	c, err := startCatchingStdoutStderr()
+	c, err := newOutputCatcher()
 	if err != nil {
 		t.Fatal("Error starting catching stdout/stderr", err)
 	}
@@ -101,7 +101,7 @@ func testGenericSiacCmd(t *testing.T, root *cobra.Command, cmds []string, expOut
 	cobraOutput, _ := executeSiacCommand(root, cmds...)
 
 	// stop catching stdout/stderr, get catched outputs
-	siaOutput, err := c.stopCatchingStout()
+	siaOutput, err := c.stop()
 	if err != nil {
 		t.Fatal("Error stopping catching stdout/stderr", err)
 	}
@@ -162,12 +162,12 @@ func testGenericSiacCmd(t *testing.T, root *cobra.Command, cmds []string, expOut
 
 // getRootCmdForSiacCmdsTests creates and initializes a new instance of siac Cobra
 // command
-func getRootCmdForSiacCmdsTests(t *testing.T, dir string) *cobra.Command {
+func getRootCmdForSiacCmdsTests(dir string) *cobra.Command {
 	// create new instance of siac cobra command
 	root := initCmds()
 
 	// initialize a siac cobra command
-	verbose := false
+	verbose := true
 	initClient(root, &verbose, &httpClient, &dir)
 
 	return root
@@ -201,7 +201,7 @@ type outputCatcher struct {
 }
 
 // startCatchingStdoutStderr starts catching stdout and stderr in tests
-func startCatchingStdoutStderr() (outputCatcher, error) {
+func newOutputCatcher() (outputCatcher, error) {
 	// redirect stdout, stderr
 	origStdout := os.Stdout
 	origStderr := os.Stderr
@@ -230,9 +230,9 @@ func startCatchingStdoutStderr() (outputCatcher, error) {
 	return c, nil
 }
 
-// stopCatchingStout stops catching stdout and stderr, catched output is
+// stop stops catching stdout and stderr, catched output is
 // returned
-func (c outputCatcher) stopCatchingStout() (string, error) {
+func (c outputCatcher) stop() (string, error) {
 	// stop Stdout
 	err := c.outW.Close()
 	if err != nil {
