@@ -337,7 +337,7 @@ func (w *worker) managedRefillAccount() {
 		// the host.
 		//
 		// if strings.Contains(err.Error(), "balance exceeded") {
-		// 	balance, err = w.staticAccountBalance()
+		// 	balance, err = w.staticHostAccountBalance()
 		// 	if err == nil {
 		// 		w.staticAccount.managedResetBalance(balance)
 		// 	} else {
@@ -379,13 +379,13 @@ func (w *worker) managedRefillAccount() {
 	return
 }
 
-// managedCheckAccountBalance is executed  before the worker loop and corrects
-// the account balance in case of an unclean renter shutdown. It does so by
-// performing the AccountBalanceRPC and resetting the account to the balance
-// communicated by the host. This only happens if our account balance is zero,
-// which indicates an unclean shutdown.
-func (w *worker) managedCheckAccountBalance() {
-	balance, err := w.staticAccountBalance()
+// managedSyncAccountBalanceToHost is executed  before the worker loop and
+// corrects the account balance in case of an unclean renter shutdown. It does
+// so by performing the AccountBalanceRPC and resetting the account to the
+// balance communicated by the host. This only happens if our account balance is
+// zero, which indicates an unclean shutdown.
+func (w *worker) managedSyncAccountBalanceToHost() {
+	balance, err := w.staticHostAccountBalance()
 	if err != nil {
 		w.renter.log.Printf("ERROR: failed to check account balance on host %v failed, err: %v\n", w.staticHostPubKeyStr, err)
 		return
@@ -402,8 +402,8 @@ func (w *worker) managedCheckAccountBalance() {
 	// accordingly. Perform this check at startup and periodically.
 }
 
-// staticAccountBalance performs the AccountBalanceRPC on the host
-func (w *worker) staticAccountBalance() (types.Currency, error) {
+// staticHostAccountBalance performs the AccountBalanceRPC on the host
+func (w *worker) staticHostAccountBalance() (types.Currency, error) {
 	// Sanity check - only one account balance check should be running at a
 	// time.
 	if !atomic.CompareAndSwapUint64(&w.atomicAccountBalanceCheckRunning, 0, 1) {

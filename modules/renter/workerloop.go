@@ -272,8 +272,10 @@ func (w *worker) threadedWorkLoop() {
 		// available.
 		w.staticUpdatePriceTable()
 
-		// Perform a balance check on the host.
-		w.managedCheckAccountBalance()
+		// Perform a balance check on the host and sync it to his version if
+		// necessary. This avoids running into MaxBalanceExceeded errors upon
+		// refill after an unclean shutdown.
+		w.managedSyncAccountBalanceToHost()
 
 		// This update is done as a blocking update to ensure nothing else runs
 		// until the account has filled.
