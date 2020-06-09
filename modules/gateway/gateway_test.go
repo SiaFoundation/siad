@@ -13,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
+	"gitlab.com/NebulousLabs/threadgroup"
 )
 
 // newTestingGateway returns a gateway ready to use in a testing environment.
@@ -72,10 +73,10 @@ func TestExportedMethodsErrAfterClose(t *testing.T) {
 	if err := g.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.Close(); err != siasync.ErrStopped {
+	if err := g.Close(); err != threadgroup.ErrStopped {
 		t.Fatalf("expected %q, got %q", siasync.ErrStopped, err)
 	}
-	if err := g.Connect("localhost:1234"); err != siasync.ErrStopped {
+	if err := g.Connect("localhost:1234"); err != threadgroup.ErrStopped {
 		t.Fatalf("expected %q, got %q", siasync.ErrStopped, err)
 	}
 }
