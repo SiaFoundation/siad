@@ -1,8 +1,10 @@
 package host
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -340,6 +342,18 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 	numBlocks := bucketBlockRange + fastrand.Intn(bucketBlockRange)
 	err = unsyncHost(ht.host, ht.miner, numBlocks)
 
+	// manually put some fingerprint buckets with blockheights into the future,
+	// we want to verify the host only removes buckets which it knows are old
+	ap := ht.host.staticAccountManager.staticAccountsPersister
+	currentBlockHeight := ht.host.BlockHeight()
+	_, futureFPName := fingerprintsFilenames(currentBlockHeight + bucketBlockRange)
+	fp, err := ap.openFingerprintBucket(filepath.Join(ht.host.persistDir, futureFPName))
+	defer func() {
+		if err := fp.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
 	// reopen the host
 	err = reopenHost(ht)
 	if err != nil {
@@ -355,10 +369,17 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 		t.Fatal("Expected withdrawals to be active")
 	}
 
-	// verify the host has cleaned up the old bocket
+	// verify the host has cleaned up the old bucket
 	curr, _ := fingerprintsFilenames(oldBlockHeight)
 	if _, err = os.Stat(filepath.Join(ht.host.persistDir, curr)); err == nil {
 		t.Fatal("Expected old current bucket to be removed from disk")
+	}
+
+	// verify the host has not removed the bucket with blockheights in the
+	// future
+	_, err = os.Stat(filepath.Join(ht.host.persistDir, futureFPName))
+	if err != nil {
+		t.Fatal("Expected future bucket to be on disk")
 	}
 
 	// close the host and make sure it's out of sync by mining some blocks
@@ -396,6 +417,65 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 	}
 	if ht.host.staticAccountManager.withdrawalsInactive {
 		t.Fatal("Expected withdrawals to be active")
+	}
+
+	// mine more blocks until we know the future bucket is now not in the
+	// current bucket range, and should thus be removed
+	for i := 0; i < bucketBlockRange*2; i++ {
+		_, err = ht.miner.AddBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// verify the host has removed the bucket
+	_, err = os.Stat(filepath.Join(ht.host.persistDir, futureFPName))
+	if err == nil {
+		curr, next := fingerprintsFilenames(ht.host.BlockHeight())
+		t.Log("bucket:", futureFPName)
+		t.Log("curr:", curr)
+		t.Log("next:", next)
+		t.Fatal("Expected future bucket to be removed from disk")
+	}
+}
+
+// TestBucketRangeFromFingerprintsFilename is a small unit test to verify the
+// bucketRangeFromFingerprintsFilename helper function
+func TestBucketRangeFromFingerprintsFilename(t *testing.T) {
+	t.Parallel()
+
+	// verify basic case
+	min, max := bucketRangeFromFingerprintsFilename("fingerprintsbucket_261960-261979.db")
+	if min != types.BlockHeight(261960) {
+		t.Fatal("Unexpected min bucket range")
+	}
+	if max != types.BlockHeight(261979) {
+		t.Fatal("Unexpected max bucket range")
+	}
+
+	// verify critical for unexpected filename format
+	assertCritical := func() {
+		if r := recover(); r != nil {
+			if !strings.Contains(fmt.Sprintf("%v", r), "Unexpected fingerprints filename format") {
+				t.Error("Expected build.Critical")
+				t.Log(r)
+			}
+		}
+	}
+	for _, invalidFilename := range []string{
+		"renter/fingerprintsbucket_261960-261979.db",
+		"fingerprintsbucket__261960-261979.db",
+		"fingerprintsbucket_261960--261979.db",
+		"fingerprintsbucket261960-261979.db",
+		"fingerprintsbucket_261960261979.db",
+		"fingerprintsbucket_261960-261979",
+		"fingerprintsbuckket_261960-261979.db",
+		"fingerprintsbucket_261960-261979.db.",
+	} {
+		func() {
+			defer assertCritical()
+			bucketRangeFromFingerprintsFilename(invalidFilename)
+		}()
 	}
 }
 
