@@ -290,7 +290,7 @@ and flags must be built and initialized. This is done by
 
 ## Subtests
 
-Subtests are defined using `siacCmdSubTest` struct, tha struct has 5 fields:
+Subtests are defined using `siacCmdSubTest` struct, this struct has 5 fields:
 
 ### name
 
