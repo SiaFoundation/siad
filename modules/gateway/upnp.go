@@ -47,7 +47,7 @@ func myExternalIP() (string, error) {
 // discovering the address failed or if it is invalid, an error is returned.
 func (g *Gateway) managedLearnHostname(cancel <-chan struct{}) (net.IP, error) {
 	// create ctx to cancel upnp discovery during shutdown
-	ctx, ctxCancel := context.WithTimeout(context.Background(), timeoutIPDiscovery)
+	ctx, ctxCancel := context.WithTimeout(g.threads.StopCtx(), timeoutIPDiscovery)
 	defer ctxCancel()
 	go func() {
 		select {
@@ -157,7 +157,7 @@ func (g *Gateway) managedForwardPort(port string) error {
 	}
 
 	// Create a context to stop UPnP discovery in case of a shutdown.
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(g.threads.StopCtx())
 	defer cancel()
 	go func() {
 		select {
@@ -182,8 +182,9 @@ func (g *Gateway) managedForwardPort(port string) error {
 	}
 
 	// Establish port-clearing at shutdown.
-	g.threads.AfterStop(func() {
+	g.threads.AfterStop(func() error {
 		g.managedClearPort(port)
+		return nil
 	})
 	return nil
 }
@@ -194,7 +195,7 @@ func (g *Gateway) managedClearPort(port string) {
 		return
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(g.threads.StopCtx())
 	defer cancel()
 	go func() {
 		select {
