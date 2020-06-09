@@ -100,6 +100,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/ratelimit"
+	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -107,8 +108,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	connmonitor "gitlab.com/NebulousLabs/monitor"
-
-	siasync "gitlab.com/NebulousLabs/Sia/sync"
 )
 
 var errNoPeers = errors.New("no peers")
@@ -147,14 +146,14 @@ type Gateway struct {
 	blacklist map[string]struct{}
 	nodes     map[modules.NetAddress]*node
 	peers     map[modules.NetAddress]*peer
-	peerTG    siasync.ThreadGroup
+	peerTG    threadgroup.ThreadGroup
 
 	// Utilities.
 	log           *persist.Logger
 	mu            sync.RWMutex
 	persist       persistence
 	persistDir    string
-	threads       siasync.ThreadGroup
+	threads       threadgroup.ThreadGroup
 	staticAlerter *modules.GenericAlerter
 	staticDeps    modules.Dependencies
 
@@ -390,22 +389,26 @@ func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modul
 		return nil, err
 	}
 	// Establish the closing of the logger.
-	g.threads.AfterStop(func() {
+	g.threads.AfterStop(func() error {
 		if err := g.log.Close(); err != nil {
 			// The logger may or may not be working here, so use a println
 			// instead.
 			fmt.Println("Failed to close the gateway logger:", err)
+			return err
 		}
+		return nil
 	})
 	g.log.Println("INFO: gateway created, started logging")
 
 	// Establish that the peerTG must complete shutdown before the primary
 	// thread group completes shutdown.
-	g.threads.OnStop(func() {
+	g.threads.OnStop(func() error {
 		err = g.peerTG.Stop()
 		if err != nil {
 			g.log.Println("ERROR: peerTG experienced errors while shutting down:", err)
+			return err
 		}
+		return nil
 	})
 
 	// Register RPCs.
@@ -413,10 +416,11 @@ func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modul
 	g.RegisterRPC("DiscoverIP", g.discoverPeerIP)
 	g.RegisterConnectCall("ShareNodes", g.requestNodes)
 	// Establish the de-registration of the RPCs.
-	g.threads.OnStop(func() {
+	g.threads.OnStop(func() error {
 		g.UnregisterRPC("ShareNodes")
 		g.UnregisterRPC("DiscoverIP")
 		g.UnregisterConnectCall("ShareNodes")
+		return nil
 	})
 
 	// Load the old node list and gateway persistence. If it doesn't exist, no
@@ -435,15 +439,18 @@ func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modul
 	// Spawn the thread to periodically save the gateway.
 	go g.threadedSaveLoop()
 	// Make sure that the gateway saves after shutdown.
-	g.threads.AfterStop(func() {
+	g.threads.AfterStop(func() error {
 		g.mu.Lock()
+		defer g.mu.Unlock()
 		if err := g.saveSync(); err != nil {
 			g.log.Println("ERROR: Unable to save gateway:", err)
+			return err
 		}
 		if err := g.saveSyncNodes(); err != nil {
 			g.log.Println("ERROR: Unable to save gateway nodes:", err)
+			return err
 		}
-		g.mu.Unlock()
+		return nil
 	})
 
 	// Add the bootstrap peers to the node list.
@@ -464,12 +471,13 @@ func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modul
 		return nil, errors.AddContext(err, context)
 	}
 	// Automatically close the listener when g.threads.Stop() is called.
-	g.threads.OnStop(func() {
+	g.threads.OnStop(func() error {
 		err := g.listener.Close()
 		if err != nil {
 			g.log.Println("WARN: closing the listener failed:", err)
 		}
 		<-permanentListenClosedChan
+		return err
 	})
 	// Set the address and port of the gateway.
 	host, port, err := net.SplitHostPort(g.listener.Addr().String())
@@ -493,22 +501,25 @@ func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modul
 
 	// Spawn the peer manager and provide tools for ensuring clean shutdown.
 	peerManagerClosedChan := make(chan struct{})
-	g.threads.OnStop(func() {
+	g.threads.OnStop(func() error {
 		<-peerManagerClosedChan
+		return nil
 	})
 	go g.permanentPeerManager(peerManagerClosedChan)
 
 	// Spawn the node manager and provide tools for ensuring clean shutdown.
 	nodeManagerClosedChan := make(chan struct{})
-	g.threads.OnStop(func() {
+	g.threads.OnStop(func() error {
 		<-nodeManagerClosedChan
+		return nil
 	})
 	go g.permanentNodeManager(nodeManagerClosedChan)
 
 	// Spawn the node purger and provide tools for ensuring clean shutdown.
 	nodePurgerClosedChan := make(chan struct{})
-	g.threads.OnStop(func() {
+	g.threads.OnStop(func() error {
 		<-nodePurgerClosedChan
+		return nil
 	})
 	go g.permanentNodePurger(nodePurgerClosedChan)
 
