@@ -28,7 +28,7 @@ import (
 
 const (
 	// DefaultSkynetDefaultPath is the defaultPath value we use when the user
-	// hasn't provided any and `index.html` exists in the skyfile.
+	// hasn't specified one and `index.html` exists in the skyfile.
 	DefaultSkynetDefaultPath = "/index.html"
 
 	// DefaultSkynetRequestTimeout is the default request timeout for routes
