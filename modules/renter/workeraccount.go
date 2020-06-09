@@ -330,22 +330,6 @@ func (w *worker) managedRefillAccount() {
 	// provide payment
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, w.staticCache().staticBlockHeight)
 	if err != nil {
-		// TODO temporarily disabled awaiting full fix in !4181
-		//
-		// If the host returned ErrMaxBalanceExceeded, perform a balance check
-		// and correct our version of the balance to the balance communicated by
-		// the host.
-		//
-		// if strings.Contains(err.Error(), "balance exceeded") {
-		// 	balance, err = w.staticHostAccountBalance()
-		// 	if err == nil {
-		// 		w.staticAccount.managedResetBalance(balance)
-		// 	} else {
-		// 		err = errors.AddContext(err, "could not fetch the account balance from the host")
-		// 	}
-		// } else {
-		// 	err = errors.AddContext(err, "could not provide payment for the account")
-		// }
 		err = errors.AddContext(err, "could not provide payment for the account")
 		return
 	}
