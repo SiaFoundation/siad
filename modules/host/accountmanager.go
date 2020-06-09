@@ -438,7 +438,7 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange, oldHe
 	if errRotate == nil {
 		am.fingerprints.rotate()
 	} else if errRotate != errRotationDisabled {
-		am.h.log.Critical("ERROR: Could not rotate fingerprints on disk, withdrawals have been deactived", errRotate)
+		am.h.log.Critical("ERROR: Could not rotate fingerprints on disk, withdrawals have been deactivated", errRotate)
 	}
 
 	// Disable withdrawals on failed rotation

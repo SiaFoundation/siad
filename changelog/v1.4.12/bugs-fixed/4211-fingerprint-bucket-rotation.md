@@ -1,0 +1,1 @@
+- fixed bug in rotation of fingerprint buckets
