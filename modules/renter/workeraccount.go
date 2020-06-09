@@ -435,15 +435,15 @@ func (w *worker) staticHostAccountBalance() (types.Currency, error) {
 		return types.ZeroCurrency, err
 	}
 
-	// prepare the request.
-	abr := modules.AccountBalanceRequest{Account: w.staticAccount.staticID}
-	err = modules.RPCWrite(stream, abr)
+	// provide payment
+	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCAccountBalance, pt.AccountBalanceCost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
 	if err != nil {
 		return types.ZeroCurrency, err
 	}
 
-	// provide payment
-	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCAccountBalance, pt.AccountBalanceCost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
+	// prepare the request.
+	abr := modules.AccountBalanceRequest{Account: w.staticAccount.staticID}
+	err = modules.RPCWrite(stream, abr)
 	if err != nil {
 		return types.ZeroCurrency, err
 	}
