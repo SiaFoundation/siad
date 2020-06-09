@@ -724,7 +724,7 @@ func TestStreams(t *testing.T) {
 	}
 }
 
-// TestRevisionFromRequest tests revisionFromRequest valid flow and its error
+// TestRevisionFromRequest tests revisionFromRequest valid flow and some edge
 // cases.
 func TestRevisionFromRequest(t *testing.T) {
 	recent := types.FileContractRevision{
@@ -751,10 +751,7 @@ func TestRevisionFromRequest(t *testing.T) {
 	}
 
 	// valid case
-	rev, err := revisionFromRequest(recent, pbcr)
-	if err != nil {
-		t.Fatal(err)
-	}
+	rev := revisionFromRequest(recent, pbcr)
 	if !rev.NewValidProofOutputs[0].Value.Equals(types.SiacoinPrecision.Mul64(10)) {
 		t.Fatal("valid output 0 doesn't match")
 	}
@@ -771,7 +768,7 @@ func TestRevisionFromRequest(t *testing.T) {
 		t.Fatal("missed output 2 doesn't match")
 	}
 
-	// wrong number of valid outputs.
+	// too few valid outputs
 	pbcr = modules.PayByContractRequest{
 		NewValidProofValues: []types.Currency{
 			types.SiacoinPrecision.Mul64(10),
@@ -782,12 +779,24 @@ func TestRevisionFromRequest(t *testing.T) {
 			types.SiacoinPrecision.Mul64(100000),
 		},
 	}
-	_, err = revisionFromRequest(recent, pbcr)
-	if !errors.Contains(err, ErrBadContractOutputCounts) {
-		t.Fatal("err should be ErrBadContractOutputCounts", err)
-	}
+	_ = revisionFromRequest(recent, pbcr)
 
-	// wrong number of missed outputs.
+	// too many valid outputs
+	pbcr = modules.PayByContractRequest{
+		NewValidProofValues: []types.Currency{
+			types.SiacoinPrecision.Mul64(10),
+			types.SiacoinPrecision.Mul64(10),
+			types.SiacoinPrecision.Mul64(10),
+		},
+		NewMissedProofValues: []types.Currency{
+			types.SiacoinPrecision.Mul64(1000),
+			types.SiacoinPrecision.Mul64(10000),
+			types.SiacoinPrecision.Mul64(100000),
+		},
+	}
+	_ = revisionFromRequest(recent, pbcr)
+
+	// too few missed outputs.
 	pbcr = modules.PayByContractRequest{
 		NewValidProofValues: []types.Currency{
 			types.SiacoinPrecision.Mul64(10),
@@ -798,8 +807,20 @@ func TestRevisionFromRequest(t *testing.T) {
 			types.SiacoinPrecision.Mul64(100000),
 		},
 	}
-	_, err = revisionFromRequest(recent, pbcr)
-	if !errors.Contains(err, ErrBadContractOutputCounts) {
-		t.Fatal("err should be ErrBadContractOutputCounts", err)
+	_ = revisionFromRequest(recent, pbcr)
+
+	// too many missed outputs.
+	pbcr = modules.PayByContractRequest{
+		NewValidProofValues: []types.Currency{
+			types.SiacoinPrecision.Mul64(10),
+			types.SiacoinPrecision.Mul64(100),
+		},
+		NewMissedProofValues: []types.Currency{
+			types.SiacoinPrecision.Mul64(10000),
+			types.SiacoinPrecision.Mul64(100000),
+			types.SiacoinPrecision.Mul64(100000),
+			types.SiacoinPrecision.Mul64(100000),
+		},
 	}
+	_ = revisionFromRequest(recent, pbcr)
 }

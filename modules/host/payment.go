@@ -89,10 +89,7 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 	if err != nil {
 		return nil, errors.AddContext(err, "Could not find the most recent revision")
 	}
-	paymentRevision, err := revisionFromRequest(currentRevision, pbcr)
-	if err != nil {
-		return nil, errors.AddContext(err, "Could not get revision from request")
-	}
+	paymentRevision := revisionFromRequest(currentRevision, pbcr)
 
 	// verify the payment revision
 	amount, err := verifyPayByContractRevision(currentRevision, paymentRevision, bh)
@@ -169,10 +166,7 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 	if err != nil {
 		return types.ZeroCurrency, errors.AddContext(err, "Could not get the latest revision")
 	}
-	paymentRevision, err := revisionFromRequest(currentRevision, pbcr)
-	if err != nil {
-		return types.ZeroCurrency, errors.AddContext(err, "Could not get revision from request")
-	}
+	paymentRevision := revisionFromRequest(currentRevision, pbcr)
 
 	// verify the payment revision
 	amount, err := verifyPayByContractRevision(currentRevision, paymentRevision, bh)
@@ -239,16 +233,15 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 // revisionFromRequest is a helper function that creates a copy of the recent
 // revision and decorates it with the suggested revision values which are
 // provided through the PayByContractRequest object.
-func revisionFromRequest(recent types.FileContractRevision, pbcr modules.PayByContractRequest) (types.FileContractRevision, error) {
-	if len(recent.NewValidProofOutputs) != len(pbcr.NewValidProofValues) ||
-		len(recent.NewMissedProofOutputs) != len(pbcr.NewMissedProofValues) {
-		return types.FileContractRevision{}, ErrBadContractOutputCounts
-	}
+func revisionFromRequest(recent types.FileContractRevision, pbcr modules.PayByContractRequest) types.FileContractRevision {
 	rev := recent
 
 	rev.NewRevisionNumber = pbcr.NewRevisionNumber
 	rev.NewValidProofOutputs = make([]types.SiacoinOutput, len(pbcr.NewValidProofValues))
 	for i, v := range pbcr.NewValidProofValues {
+		if i >= len(recent.NewValidProofOutputs) {
+			break
+		}
 		rev.NewValidProofOutputs[i] = types.SiacoinOutput{
 			Value:      v,
 			UnlockHash: recent.NewValidProofOutputs[i].UnlockHash,
@@ -257,13 +250,16 @@ func revisionFromRequest(recent types.FileContractRevision, pbcr modules.PayByCo
 
 	rev.NewMissedProofOutputs = make([]types.SiacoinOutput, len(pbcr.NewMissedProofValues))
 	for i, v := range pbcr.NewMissedProofValues {
+		if i >= len(recent.NewMissedProofOutputs) {
+			break
+		}
 		rev.NewMissedProofOutputs[i] = types.SiacoinOutput{
 			Value:      v,
 			UnlockHash: recent.NewMissedProofOutputs[i].UnlockHash,
 		}
 	}
 
-	return rev, nil
+	return rev
 }
 
 // signatureFromRequest is a helper function that creates a copy of the recent
