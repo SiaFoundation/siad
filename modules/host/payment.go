@@ -89,7 +89,10 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 	if err != nil {
 		return nil, errors.AddContext(err, "Could not find the most recent revision")
 	}
-	paymentRevision := revisionFromRequest(currentRevision, pbcr)
+	paymentRevision, err := revisionFromRequest(currentRevision, pbcr)
+	if err != nil {
+		return nil, errors.AddContext(err, "Could not get revision from request")
+	}
 
 	// verify the payment revision
 	amount, err := verifyPayByContractRevision(currentRevision, paymentRevision, bh)
@@ -166,7 +169,10 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 	if err != nil {
 		return types.ZeroCurrency, errors.AddContext(err, "Could not get the latest revision")
 	}
-	paymentRevision := revisionFromRequest(currentRevision, pbcr)
+	paymentRevision, err := revisionFromRequest(currentRevision, pbcr)
+	if err != nil {
+		return types.ZeroCurrency, errors.AddContext(err, "Could not get revision from request")
+	}
 
 	// verify the payment revision
 	amount, err := verifyPayByContractRevision(currentRevision, paymentRevision, bh)
@@ -233,7 +239,11 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 // revisionFromRequest is a helper function that creates a copy of the recent
 // revision and decorates it with the suggested revision values which are
 // provided through the PayByContractRequest object.
-func revisionFromRequest(recent types.FileContractRevision, pbcr modules.PayByContractRequest) types.FileContractRevision {
+func revisionFromRequest(recent types.FileContractRevision, pbcr modules.PayByContractRequest) (types.FileContractRevision, error) {
+	if len(recent.NewValidProofOutputs) != len(pbcr.NewValidProofValues) ||
+		len(recent.NewMissedProofOutputs) != len(pbcr.NewMissedProofValues) {
+		return types.FileContractRevision{}, ErrBadContractOutputCounts
+	}
 	rev := recent
 
 	rev.NewRevisionNumber = pbcr.NewRevisionNumber
@@ -253,7 +263,7 @@ func revisionFromRequest(recent types.FileContractRevision, pbcr modules.PayByCo
 		}
 	}
 
-	return rev
+	return rev, nil
 }
 
 // signatureFromRequest is a helper function that creates a copy of the recent
