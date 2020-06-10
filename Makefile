@@ -29,7 +29,6 @@ pkgs = \
 	./cmd/skynet-benchmark \
 	./compatibility \
 	./crypto \
-	./encoding \
 	./modules \
 	./modules/consensus \
 	./modules/explorer \
