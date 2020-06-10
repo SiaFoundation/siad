@@ -35,7 +35,7 @@ Its byte representation is 1 type byte and 56 entropy bytes.
 `TypePrivateID` represents a skykey that uses the XChaCha20 cipher schemes and
 is can be used for encrypting skyfiles.  Implicitly, this specifies the entropy
 length as the length of a key and nonce in that scheme.  Its byte representation
-is 1 type byte and 56 entropy bytes. When used or skyfile encryption, the key ID
+is 1 type byte and 56 entropy bytes. When used for skyfile encryption, the key ID
 is never revealed. Instead the Skykey is used to derive a file-specific key,
 which is then used to encrypt a known identifier. This means that without
 knowledge of the Skykey, you cannot tell which Skykeys were used for which

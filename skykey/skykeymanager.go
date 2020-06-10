@@ -49,7 +49,7 @@ var (
 
 	// ErrNoSkykeysWithThatID indicates that the skykey manager doesn't have a key
 	// with that ID.
-	ErrNoSkykeysWithThatID   = errors.New("No Skykey is assocated with that ID")
+	ErrNoSkykeysWithThatID   = errors.New("No Skykey is associated with that ID")
 	errNoSkykeysWithThatName = errors.New("No Skykey with that name")
 	errSkykeyNameToolong     = errors.New("Skykey name exceeds max length")
 

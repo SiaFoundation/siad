@@ -5011,7 +5011,8 @@ Returns a list of all Skykeys.
 ```
 
 **skykeys** | []skykeys
-array of 
+Array of skykeys. See the documentation for /skynet/skykey for more detailed
+information.
 
 
 
@@ -5080,7 +5081,7 @@ base-64 encoded ID of the skykey being queried
   "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey"
   "name": "testskykey"
   "id": "gi5z8cf5NWbcvPBaBn0DFQ=="
-  "type": "public-id"
+  "type": "private-id"
 }
 ```
 

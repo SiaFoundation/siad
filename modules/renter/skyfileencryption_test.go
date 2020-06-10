@@ -13,23 +13,31 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestSkyfileBaseSectorEncryption
+// TestSkyfileBaseSectorEncryption runs base sector encryption tests with every
+// supported SkykeyType.
 func TestSkyfileBaseSectorEncryption(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	rt, err := newRenterTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := rt.renter
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	testBaseSectorEncryptionWithType(t, r, skykey.TypePublicID)
 	testBaseSectorEncryptionWithType(t, r, skykey.TypePrivateID)
 }
 
+// testBaseSectorEncryptionWithType tests base sector encryption and decryption
+// with multiple Skykeys of the specified type.
 func testBaseSectorEncryptionWithType(t *testing.T, r *Renter, skykeyType skykey.SkykeyType) {
 	// Create the 2 test skykeys, with different types
 	keyName1 := t.Name() + "1" + skykeyType.ToString()
@@ -275,6 +283,7 @@ func TestBaseSectorKeyID(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	rt, err := newRenterTester(t.Name())
 	if err != nil {

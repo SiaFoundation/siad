@@ -50,7 +50,7 @@ var (
 	// ID.
 	SkykeySpecifier               = types.NewSpecifier("Skykey")
 	skyfileEncryptionIDSpecifier  = types.NewSpecifier("SkyfileEncID")
-	skyfileEncryptionIDDerivation = types.NewSpecifier("PrivateIDNonce")
+	skyfileEncryptionIDDerivation = types.NewSpecifier("SFEncIDDerivPath")
 
 	errUnsupportedSkykeyType            = errors.New("Unsupported Skykey type")
 	errUnmarshalDataErr                 = errors.New("Unable to unmarshal Skykey data")
@@ -460,7 +460,7 @@ func (sk *Skykey) GenerateSkyfileEncryptionID() ([SkykeyIDLen]byte, error) {
 }
 
 // MatchesSkyfileEncryptionID returns true if and only if the skykey was the one
-// used with these nonce to create the encryptionID.
+// used with this nonce to create the encryptionID.
 func (sk *Skykey) MatchesSkyfileEncryptionID(encryptionID, nonce []byte) (bool, error) {
 	if len(encryptionID) != SkykeyIDLen || len(nonce) != chacha.XNonceSize {
 		return false, errInvalidIDorNonceLength

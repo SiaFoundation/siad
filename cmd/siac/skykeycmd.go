@@ -74,7 +74,7 @@ func skykeycreatecmd(name string) {
 }
 
 // skykeyCreate creates a new Skykey with the given name and cipher type
-func skykeyCreate(c client.Client, name string, skykeyTypeString string) (string, error) {
+func skykeyCreate(c client.Client, name, skykeyTypeString string) (string, error) {
 	var st skykey.SkykeyType
 	err := st.FromString(skykeyTypeString)
 	if err != nil {

@@ -59,6 +59,9 @@ const (
 	// SkyfileVersion establishes the current version for creating skyfiles.
 	// The skyfile versions are different from the siafile versions.
 	SkyfileVersion = 1
+
+	// layoutKeyDataSize is the size of the key-data field in a skyfileLayout.
+	layoutKeyDataSize = 64
 )
 
 var (
@@ -90,7 +93,7 @@ type skyfileLayout struct {
 	fanoutDataPieces   uint8
 	fanoutParityPieces uint8
 	cipherType         crypto.CipherType
-	keyData            [64]byte // keyData is incompatible with ciphers that need keys larger than 64 bytes
+	keyData            [layoutKeyDataSize]byte // keyData is incompatible with ciphers that need keys larger than 64 bytes
 }
 
 // encode will return a []byte that has compactly encoded all of the layout

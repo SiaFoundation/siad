@@ -72,9 +72,14 @@ func (r *Renter) decryptBaseSector(baseSector []byte) (skykey.Skykey, error) {
 	var sl skyfileLayout
 	sl.decode(baseSector)
 
-	// Get the nonce and use it to
-	nonce := make([]byte, chacha.XNonceSize)                                            // TODO: unexport chacah
-	copy(nonce[:], sl.keyData[skykey.SkykeyIDLen:skykey.SkykeyIDLen+chacha.XNonceSize]) //TODO unexport
+	if !isEncryptedLayout(sl) {
+		build.Critical("Expected layout to be marked as encrypted!")
+	}
+
+	// Get the nonce to be used for getting private-id skykeys, and for deriving the
+	// file-specific skykey.
+	nonce := make([]byte, chacha.XNonceSize)
+	copy(nonce[:], sl.keyData[skykey.SkykeyIDLen:skykey.SkykeyIDLen+chacha.XNonceSize])
 
 	// Grab the key ID from the layout.
 	var keyID skykey.SkykeyID
@@ -176,6 +181,7 @@ func encryptBaseSectorWithSkykey(baseSector []byte, plaintextLayout skyfileLayou
 		copy(encryptedLayout.keyData[:skykey.SkykeyIDLen], encryptedIdentifier[:])
 
 	default:
+		build.Critical("No encryption implemented for this skykey type")
 		return errors.AddContext(errors.New("No encryption implemented for skykey type"), string(sk.Type))
 	}
 
