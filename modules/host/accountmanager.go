@@ -838,7 +838,7 @@ func (am *accountManager) unblockWithdrawals(allowance types.Currency, bh types.
 func (am *accountManager) threadedPruneExpiredAccounts() {
 	for {
 		his := am.h.managedInternalSettings()
-		accountExpiryTimeout := int64(his.EphemeralAccountExpiry)
+		accountExpiryTimeout := int64(his.EphemeralAccountExpiry.Seconds())
 
 		func() {
 			// A timeout of zero means the host never wants to expire accounts.

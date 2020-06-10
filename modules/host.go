@@ -48,7 +48,6 @@ const (
 	// long-term entities, and because we want to have a set of hosts that
 	// support 6 month contracts when Sia leaves beta.
 	DefaultMaxDuration = 144 * 30 * 6 // 6 months.
-
 )
 
 var (
@@ -125,7 +124,7 @@ var (
 	// DefaultEphemeralAccountExpiry defines the default maximum amount of
 	// time an ephemeral account can be inactive before it expires and gets
 	// deleted.
-	DefaultEphemeralAccountExpiry = uint64(604800) // 1 week
+	DefaultEphemeralAccountExpiry = time.Minute * 60 * 24 * 7 // 1 week
 
 	// DefaultMaxEphemeralAccountBalance defines the default maximum amount of
 	// money that the host will allow to deposit into a single ephemeral account
@@ -151,7 +150,7 @@ var (
 	// CompatV1412DefaultEphemeralAccountExpiry defines the default account
 	// expiry used up until v1.4.12. This constant is added to ensure changing
 	// the default does not break legacy checks.
-	CompatV1412DefaultEphemeralAccountExpiry = uint64(604800) // 1 week
+	CompatV1412DefaultEphemeralAccountExpiry = time.Minute * 60 * 24 * 7 // 1 week
 
 	// CompatV1412DefaultMaxEphemeralAccountBalance defines the default maximum
 	// ephemeral account balance used up until v1.4.12. This constant is added
@@ -271,7 +270,7 @@ type (
 		MinStoragePrice           types.Currency `json:"minstorageprice"`
 		MinUploadBandwidthPrice   types.Currency `json:"minuploadbandwidthprice"`
 
-		EphemeralAccountExpiry     uint64         `json:"ephemeralaccountexpiry"`
+		EphemeralAccountExpiry     time.Duration  `json:"ephemeralaccountexpiry"`
 		MaxEphemeralAccountBalance types.Currency `json:"maxephemeralaccountbalance"`
 		MaxEphemeralAccountRisk    types.Currency `json:"maxephemeralaccountrisk"`
 	}

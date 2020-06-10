@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host"
@@ -408,7 +409,7 @@ func TestHostExternalSettingsEphemeralAccountFields(t *testing.T) {
 	}
 
 	// modify them
-	updatedExpiry := modules.DefaultEphemeralAccountExpiry * 2
+	updatedExpiry := int64(modules.DefaultEphemeralAccountExpiry.Seconds()) + 1
 	err = host.HostModifySettingPost(client.HostParamEphemeralAccountExpiry, updatedExpiry)
 	if err != nil {
 		t.Fatal(err)
@@ -424,7 +425,8 @@ func TestHostExternalSettingsEphemeralAccountFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if hg.ExternalSettings.EphemeralAccountExpiry != updatedExpiry {
+	expectedExpiry := time.Duration(updatedExpiry) * time.Second
+	if hg.ExternalSettings.EphemeralAccountExpiry != expectedExpiry {
 		t.Fatalf("Expected EphemeralAccountExpiry to be set, and to equal the updated value, instead it was %v", hg.ExternalSettings.EphemeralAccountExpiry)
 	}
 	if !hg.ExternalSettings.MaxEphemeralAccountBalance.Equals(updatedMaxBalance) {

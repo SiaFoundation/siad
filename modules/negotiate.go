@@ -326,7 +326,7 @@ type (
 		//
 		// MaxEphemeralAccountBalance is the maximum amount of money the host
 		// allows to be deposited into a single ephemeral account.
-		EphemeralAccountExpiry     uint64         `json:"ephemeralaccountexpiry"`
+		EphemeralAccountExpiry     time.Duration  `json:"ephemeralaccountexpiry"`
 		MaxEphemeralAccountBalance types.Currency `json:"maxephemeralaccountbalance"`
 
 		// Because the host has a public key, and settings are signed, and

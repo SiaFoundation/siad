@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/julienschmidt/httprouter"
 
@@ -258,7 +259,7 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 		if err != nil {
 			return modules.HostInternalSettings{}, err
 		}
-		settings.EphemeralAccountExpiry = x
+		settings.EphemeralAccountExpiry = time.Duration(x) * time.Second
 	}
 	if req.FormValue("maxephemeralaccountbalance") != "" {
 		var x types.Currency
