@@ -112,9 +112,8 @@ vet:
 markdown-spellcheck:
 	git ls-files "*.md" :\!:"vendor/**" | xargs codespell --check-filenames
 
-# lint runs golangci-lint (which includes golint, a spellcheck of
-# the codebase, and other linters), the custom analyzers, and also a markdown
-# spellchecker.
+# lint runs golangci-lint (which includes golint, a spellcheck of the codebase,
+# and other linters), the custom analyzers, and also a markdown spellchecker.
 lint: markdown-spellcheck lint-analyze
 	golangci-lint run -c .golangci.yml
 
