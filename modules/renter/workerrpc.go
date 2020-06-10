@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"bytes"
 	"io"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -46,15 +47,24 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 		}
 	}()
 
+	// prepare a buffer so we can optimize our writes
+	buffer := bytes.NewBuffer(nil)
+
 	// write the specifier
-	err = modules.RPCWrite(stream, modules.RPCExecuteProgram)
+	err = modules.RPCWrite(buffer, modules.RPCExecuteProgram)
 	if err != nil {
 		return
 	}
 
 	// send price table uid
 	pt := w.staticPriceTable().staticPriceTable
-	err = modules.RPCWrite(stream, pt.UID)
+	err = modules.RPCWrite(buffer, pt.UID)
+	if err != nil {
+		return
+	}
+
+	// write contents of the buffer to the stream
+	_, err = stream.Write(buffer.Bytes())
 	if err != nil {
 		return
 	}
@@ -73,13 +83,20 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 
 	// send the execute program request.
-	err = modules.RPCWrite(stream, epr)
+	buffer = bytes.NewBuffer(nil)
+	err = modules.RPCWrite(buffer, epr)
 	if err != nil {
 		return
 	}
 
 	// send the programData.
-	_, err = stream.Write(data)
+	_, err = buffer.Write(data)
+	if err != nil {
+		return
+	}
+
+	// write contents of the buffer to the stream
+	_, err = stream.Write(buffer.Bytes())
 	if err != nil {
 		return
 	}

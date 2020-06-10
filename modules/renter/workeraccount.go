@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"bytes"
 	"sync"
 	"time"
 
@@ -292,8 +293,11 @@ func (w *worker) managedRefillAccount() {
 		}
 	}()
 
+	// prepare a buffer so we can optimize our writes
+	buffer := bytes.NewBuffer(nil)
+
 	// write the specifier
-	err = modules.RPCWrite(stream, modules.RPCFundAccount)
+	err = modules.RPCWrite(buffer, modules.RPCFundAccount)
 	if err != nil {
 		err = errors.AddContext(err, "could not write fund account specifier")
 		return
@@ -301,16 +305,23 @@ func (w *worker) managedRefillAccount() {
 
 	// send price table uid
 	pt := w.staticPriceTable().staticPriceTable
-	err = modules.RPCWrite(stream, pt.UID)
+	err = modules.RPCWrite(buffer, pt.UID)
 	if err != nil {
 		err = errors.AddContext(err, "could not write price table uid")
 		return
 	}
 
 	// send fund account request
-	err = modules.RPCWrite(stream, modules.FundAccountRequest{Account: w.staticAccount.staticID})
+	err = modules.RPCWrite(buffer, modules.FundAccountRequest{Account: w.staticAccount.staticID})
 	if err != nil {
 		err = errors.AddContext(err, "could not write the fund account request")
+		return
+	}
+
+	// write contents of the buffer to the stream
+	_, err = stream.Write(buffer.Bytes())
+	if err != nil {
+		err = errors.AddContext(err, "could not write the buffer contents")
 		return
 	}
 
