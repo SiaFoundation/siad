@@ -198,10 +198,9 @@ func (cs *ContractSet) NewDownloader(host modules.HostDBEntry, id types.FileCont
 		return nil, errors.AddContext(err, "failed to initiate revision loop")
 	}
 	// if we succeeded, we can safely discard the unappliedTxns
-	for _, txn := range sc.unappliedTxns {
-		txn.SignalUpdatesApplied()
+	if err := sc.clearUnappliedTxns(); err != nil {
+		return nil, errors.AddContext(err, "failed to clear unapplied txns")
 	}
-	sc.unappliedTxns = nil
 
 	// the host is now ready to accept revisions
 	return &Downloader{
