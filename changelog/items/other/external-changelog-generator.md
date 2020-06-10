@@ -1,1 +1,0 @@
-- Use external changelog generator v1.0.1.

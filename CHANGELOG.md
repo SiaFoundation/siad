@@ -10,6 +10,18 @@ Version History
 
 Latest:
 
+## Jun 5, 2020:
+### v1.4.11
+**Bugs Fixed**
+- Fixed bug where a Sia dir could be created with the same path as an already
+existing Sia dir and no error was returned.
+- Fixed bug that prevented downloading from old hosts
+
+**Other**
+- persist/log.go has been extracted and is now a simple wrapper around the new
+log repo.
+- Use external changelog generator v1.0.1.
+
 ## Jun 3, 2020:
 ### v1.4.10
 **Bugs Fixed**

@@ -48,12 +48,11 @@ func TestInstructionReadSector(t *testing.T) {
 	}
 	sectorData := outputs[0].Output
 
-	// Create a program to read half a sector from the host.
-	offset := modules.SectorSize / 2                     // start in the middle
-	length := fastrand.Uint64n(modules.SectorSize/2) + 1 // up to half a sector
-	if mod := length % crypto.SegmentSize; mod != 0 {    // must be multiple of segmentsize
-		length -= mod
-	}
+	// Create a program to read up to half a sector from the host.
+	offset := modules.SectorSize / 2 // start in the middle
+	// Read up to half a sector.
+	numSegments := fastrand.Uint64n(modules.SectorSize/2/crypto.SegmentSize) + 1
+	length := numSegments * crypto.SegmentSize
 
 	// Use a builder to build the program.
 	tb = newTestProgramBuilder(pt, duration)
