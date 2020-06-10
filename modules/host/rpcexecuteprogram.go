@@ -181,7 +181,8 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 
 		// Disrupt if the delay write dependency is set
 		if h.dependencies.Disrupt("MDMProgramOutputDelayWrite") {
-			// adds a write delay
+			// add a write delay
+			time.Sleep(modules.MDMProgramWriteResponseTime * 2)
 		}
 
 		// Write contents of the buffer
