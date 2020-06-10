@@ -368,6 +368,10 @@ func (w *worker) managedRefillAccount() {
 // so by performing the AccountBalanceRPC and resetting the account to the
 // balance communicated by the host. This only happens if our account balance is
 // zero, which indicates an unclean shutdown.
+//
+// NOTE: it is important this function is only used when the worker has no
+// in-progress jobs, both serial and async, to ensure the account balance sync
+// does not leave the account in an undesired state.
 func (w *worker) managedSyncAccountBalanceToHost() {
 	balance, err := w.staticHostAccountBalance()
 	if err != nil {
@@ -375,9 +379,9 @@ func (w *worker) managedSyncAccountBalanceToHost() {
 		return
 	}
 
-	// if our account balance is zero, indicating an unclean shutdown, reset the
-	// account's balance to the balance communicated by the host
-	if w.staticAccount.managedAvailableBalance().IsZero() {
+	// If our account balance is lower than the balance indicated by the host,
+	// we want to sync our balance by resetting it.
+	if w.staticAccount.managedAvailableBalance().Cmp(balance) < 0 {
 		w.staticAccount.managedResetBalance(balance)
 	}
 
