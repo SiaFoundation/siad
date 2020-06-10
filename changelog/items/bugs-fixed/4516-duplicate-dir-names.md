@@ -1,1 +1,0 @@
-- Fixed bug where a Sia dir could be created with the same path as an already existing Sia dir and no error was returned.
