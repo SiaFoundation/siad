@@ -1126,8 +1126,7 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 }
 
 // getDefaultPath extracts the defaultPath from the request or returns a default.
-// It will never return a directory because empty directories are omitted on
-// upload, so the only entities in `subfiles` will be files.
+// It will never return a directory because `subfiles` contains only files.
 func getDefaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (string, error) {
 	defaultPath := queryForm.Get(modules.SkyfileDefaultPathParamName)
 	if defaultPath == "" {
