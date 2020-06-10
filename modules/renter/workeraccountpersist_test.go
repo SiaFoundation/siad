@@ -98,21 +98,8 @@ func TestAccountUncleanShutdown(t *testing.T) {
 	}()
 	r := rt.renter
 
-	// create a number accounts and keep track of their (minimum possible)
-	// balance, which is the number that gets persisted
-	balances := make(map[string]types.Currency)
+	// create a number accounts
 	accounts := openRandomTestAccountsOnRenter(r)
-	for _, account := range accounts {
-		account.mu.Lock()
-		account.balance = types.NewCurrency64(fastrand.Uint64n(1e3))
-		account.negativeBalance = types.NewCurrency64(fastrand.Uint64n(1e2))
-		account.pendingDeposits = types.NewCurrency64(fastrand.Uint64n(1e2))
-		account.pendingWithdrawals = types.NewCurrency64(fastrand.Uint64n(1e2))
-
-		accountKey := account.staticHostKey.String()
-		balances[accountKey] = account.minimumPossibleBalance()
-		account.mu.Unlock()
-	}
 
 	// close the renter and reload it with a dependency that interrupts the
 	// accounts save on shutdown
@@ -132,11 +119,9 @@ func TestAccountUncleanShutdown(t *testing.T) {
 			t.Fatal("Unexpected reloaded account ID")
 		}
 
-		accountKey := account.staticHostKey.String()
-		expectedBalance := balances[accountKey]
-		if !reloaded.balance.Equals(expectedBalance) {
+		if !reloaded.balance.Equals(account.managedMinimumPossibleBalance()) {
 			t.Log(reloaded.balance)
-			t.Log(expectedBalance)
+			t.Log(account.managedMinimumPossibleBalance())
 			t.Fatal("Unexpected account balance after reload")
 		}
 	}

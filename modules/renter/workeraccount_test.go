@@ -281,6 +281,12 @@ func openRandomTestAccountsOnRenter(r *Renter) []*account {
 			// TODO: Have this function return an error.
 			panic(err)
 		}
+
+		// give it a random balance state
+		account.balance = types.NewCurrency64(fastrand.Uint64n(1e3))
+		account.negativeBalance = types.NewCurrency64(fastrand.Uint64n(1e2))
+		account.pendingDeposits = types.NewCurrency64(fastrand.Uint64n(1e2))
+		account.pendingWithdrawals = types.NewCurrency64(fastrand.Uint64n(1e2))
 		accounts = append(accounts, account)
 	}
 	return accounts

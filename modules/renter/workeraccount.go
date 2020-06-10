@@ -120,9 +120,16 @@ func (a *account) managedAvailableBalance() types.Currency {
 	return a.availableBalance()
 }
 
+// managedMinimumPossibleBalance returns the min amount of money that this
+// account is expected to contain after the renter has shut down.
+func (a *account) managedMinimumPossibleBalance() types.Currency {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.minimumPossibleBalance()
+}
+
 // minimumPossibleBalance returns the min amount of money that this account is
-// expected to contain. This is the balance that gets persisted when the renter
-// is shut down.
+// expected to contain after the renter has shut down.
 func (a *account) minimumPossibleBalance() types.Currency {
 	// subtract the negative balance
 	balance := a.balance
@@ -389,8 +396,8 @@ func (w *worker) managedRefillAccount() {
 // zero, which indicates an unclean shutdown.
 //
 // NOTE: it is important this function is only used when the worker has no
-// in-progress jobs, both serial and async, to ensure the account balance sync
-// does not leave the account in an undesired state.
+// in-progress jobs, neither serial nor async, to ensure the account balance
+// sync does not leave the account in an undesired state.
 func (w *worker) managedSyncAccountBalanceToHost() {
 	balance, err := w.staticHostAccountBalance()
 	if err != nil {
