@@ -567,7 +567,7 @@ func (fm *fingerprintManager) threadedRemoveOldFingerprintBuckets() {
 
 	// Get the min blockheight of the bucket range, although it should never be
 	// the case we sanity check the current path is a valid bucket path.
-	bucket, min, _ := isFingerprintBucket(filepath.Base(current))
+	min, _, bucket := isFingerprintBucket(filepath.Base(current))
 	if !bucket {
 		build.Critical("The current fingerprint bucket path is not considered a valid")
 	}
@@ -578,7 +578,7 @@ func (fm *fingerprintManager) threadedRemoveOldFingerprintBuckets() {
 	// is important because there might be new files opened on disk after
 	// releasing the lock, we would not want to remove the current buckets.
 	isOldBucket := func(name string) bool {
-		bucket, _, max := isFingerprintBucket(name)
+		_, max, bucket := isFingerprintBucket(name)
 		return bucket && max < min
 	}
 
@@ -666,12 +666,12 @@ func fingerprintsFilenames(currentBlockHeight types.BlockHeight) (current, next 
 // isFingerprintBucket is a helper function that takes a filename and returns
 // whether or not this is a fingerprint bucket. If it is, it also returns the
 // bucket's range as a min and max blockheight.
-func isFingerprintBucket(filename string) (bool, types.BlockHeight, types.BlockHeight) {
+func isFingerprintBucket(filename string) (types.BlockHeight, types.BlockHeight, bool) {
 	// match the filename
 	re := regexp.MustCompile(`^fingerprintsbucket_(\d+)-(\d+).db$`)
 	match := re.FindStringSubmatch(filename)
 	if len(match) != 3 {
-		return false, 0, 0
+		return 0,0,false
 	}
 
 	// parse range - note we can safely ignore the error here due to our regex
@@ -681,10 +681,10 @@ func isFingerprintBucket(filename string) (bool, types.BlockHeight, types.BlockH
 	// sanity check the range makes sense
 	if min >= max {
 		build.Critical(fmt.Sprintf("Bucket file found with range where min is not smaller than max height, %s", filename))
-		return false, 0, 0
+		return 0,0,false
 	}
 
-	return true, types.BlockHeight(min), types.BlockHeight(max)
+	return types.BlockHeight(min), types.BlockHeight(max), true
 }
 
 // syncAndClose will sync and close the given file

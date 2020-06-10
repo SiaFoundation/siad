@@ -444,7 +444,7 @@ func TestIsFingerPrintBucket(t *testing.T) {
 	t.Parallel()
 
 	// verify basic case
-	bucket, min, max := isFingerprintBucket("fingerprintsbucket_261960-261979.db")
+	min, max, bucket := isFingerprintBucket("fingerprintsbucket_261960-261979.db")
 	if !bucket {
 		t.Fatal("Unexpected value for 'bucket'", bucket)
 	}
@@ -466,7 +466,7 @@ func TestIsFingerPrintBucket(t *testing.T) {
 		"fingerprintsbuckket_261960-261979.db",
 		"fingerprintsbucket_261960-261979.db.",
 	} {
-		bucket, _, _ := isFingerprintBucket(invalidFilename)
+		_, _, bucket := isFingerprintBucket(invalidFilename)
 		if bucket {
 			t.Fatal("Unexpected value")
 		}
