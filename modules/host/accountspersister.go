@@ -570,10 +570,10 @@ func (fm *fingerprintManager) threadedRemoveOldFingerprintBuckets() {
 	// bucket range. This way we are sure to remove only old bucket files. This
 	// is important because there might be new files opened on disk after
 	// releasing the lock, we would not want to remove the current buckets.
-	min, _ := bucketRangeFromFingerprintsFilename(filepath.Base(current))
-	isOld := func(name string) bool {
-		_, max := bucketRangeFromFingerprintsFilename(name)
-		return max < min
+	_, min, _ := isFingerprintBucket(filepath.Base(current))
+	isOldBucket := func(name string) bool {
+		bucket, _, max := isFingerprintBucket(filepath.Base(current))
+		return bucket && max < min
 	}
 
 	// Read directory
@@ -585,7 +585,7 @@ func (fm *fingerprintManager) threadedRemoveOldFingerprintBuckets() {
 
 	// Iterate over directory
 	for _, fi := range fileinfos {
-		if isFingerprintBucket(fi.Name()) && isOld(fi.Name()) {
+		if isOldBucket(fi.Name()) {
 			err := os.Remove(filepath.Join(fm.h.persistDir, fi.Name()))
 			if err != nil {
 				fm.h.log.Fatal("Failed to remove old fingerprint buckets", err)
@@ -657,43 +657,27 @@ func fingerprintsFilenames(currentBlockHeight types.BlockHeight) (current, next 
 	return
 }
 
-// isFingerprintBucket is a helper function that returns true if the given
-// filename adheres to the fingerprint bucket filename format
-func isFingerprintBucket(filename string) bool {
-	return regexp.MustCompile(`^fingerprintsbucket_\d+-\d+.db$`).MatchString(filename)
-}
-
-// bucketRangeFromFingerprintsFilename is a helper function that takes a
-// fingerprint filename and parses the bucket range from it.
-func bucketRangeFromFingerprintsFilename(filename string) (min, max types.BlockHeight) {
-	if !isFingerprintBucket(filename) {
-		build.Critical(fmt.Sprintf("Unexpected fingerprints filename format '%s'", filename))
-		return
-	}
-
-	// parse the min and max blockheight
+// isFingerprintBucket is a helper function that takes a filename and returns
+// whether or not this is a fingerprint bucket. If it is, it also returns the
+// bucket's range as a min and max blockheight.
+func isFingerprintBucket(filename string) (bucket bool, min, max types.BlockHeight) {
+	// match the filename
 	re := regexp.MustCompile(`^fingerprintsbucket_(\d+)-(\d+).db$`)
 	match := re.FindStringSubmatch(filename)
-
-	// parse min
-	minAsInt, err := strconv.Atoi(match[1])
-	if err != nil {
-		// we could ignore the error here due to `isFingerprintBucket` but
-		// better to be safe than sorry
-		build.Critical("Unexpected fingerprints filename format", filename)
+	if match == nil {
+		bucket = false
 		return
 	}
+
+	// parse min - note we can safely ignore the error here due to our regex
+	minAsInt, _ := strconv.Atoi(match[1])
 	min = types.BlockHeight(minAsInt)
 
-	// parse max
-	maxAsInt, err := strconv.Atoi(match[2])
-	if err != nil {
-		// we could ignore the error here due to `isFingerprintBucket` but
-		// better to be safe than sorry
-		build.Critical("Unexpected fingerprints filename format", filename)
-		return
-	}
+	// parse max - note we can safely ignore the error here due to our regex
+	maxAsInt, _ := strconv.Atoi(match[2])
 	max = types.BlockHeight(maxAsInt)
+
+	bucket = min < max
 	return
 }
 

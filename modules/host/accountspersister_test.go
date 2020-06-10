@@ -1,10 +1,8 @@
 package host
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -439,13 +437,15 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 	}
 }
 
-// TestBucketRangeFromFingerprintsFilename is a small unit test to verify the
-// bucketRangeFromFingerprintsFilename helper function
-func TestBucketRangeFromFingerprintsFilename(t *testing.T) {
+// TestIsFingerPrintBucket unit tests the `isFingerprintBucket` helper function
+func TestIsFingerPrintBucket(t *testing.T) {
 	t.Parallel()
 
 	// verify basic case
-	min, max := bucketRangeFromFingerprintsFilename("fingerprintsbucket_261960-261979.db")
+	bucket, min, max := isFingerprintBucket("fingerprintsbucket_261960-261979.db")
+	if !bucket {
+		t.Fatal("Unexpected value for 'bucket'", bucket)
+	}
 	if min != types.BlockHeight(261960) {
 		t.Fatal("Unexpected min bucket range")
 	}
@@ -453,15 +453,7 @@ func TestBucketRangeFromFingerprintsFilename(t *testing.T) {
 		t.Fatal("Unexpected max bucket range")
 	}
 
-	// verify critical for unexpected filename format
-	assertCritical := func() {
-		if r := recover(); r != nil {
-			if !strings.Contains(fmt.Sprintf("%v", r), "Unexpected fingerprints filename format") {
-				t.Error("Expected build.Critical")
-				t.Log(r)
-			}
-		}
-	}
+	// verify invalid cases
 	for _, invalidFilename := range []string{
 		"renter/fingerprintsbucket_261960-261979.db",
 		"fingerprintsbucket__261960-261979.db",
@@ -471,11 +463,12 @@ func TestBucketRangeFromFingerprintsFilename(t *testing.T) {
 		"fingerprintsbucket_261960-261979",
 		"fingerprintsbuckket_261960-261979.db",
 		"fingerprintsbucket_261960-261979.db.",
+		"fingerprintsbucket_261979-261960.db",
 	} {
-		func() {
-			defer assertCritical()
-			bucketRangeFromFingerprintsFilename(invalidFilename)
-		}()
+		bucket, _, _ := isFingerprintBucket(invalidFilename)
+		if bucket {
+			t.Fatal("Unexpected value")
+		}
 	}
 }
 
