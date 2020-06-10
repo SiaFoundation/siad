@@ -182,7 +182,6 @@ func check(e error) {
 	printLog(msg)
 	printLog(e)
 	os.Exit(1)
-
 }
 
 // printLog logs message to stdout and to the given writer
