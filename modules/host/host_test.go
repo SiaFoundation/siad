@@ -28,6 +28,14 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+const (
+	// priceTableExpiryBuffer defines a buffer period that ensures the price
+	// table is valid for at least as long as the buffer period when we consider
+	// it valid. This ensures a call to `managedFetchPriceTable` does not return
+	// a price table that expires the next second.
+	priceTableExpiryBuffer = 15 * time.Second
+)
+
 // A hostTester is the helper object for host testing, including helper modules
 // and methods for controlling synchronization.
 type (
@@ -260,7 +268,9 @@ type renterHostPair struct {
 	staticRenterMux  *siamux.SiaMux
 	staticHT         *hostTester
 
-	pt *modules.RPCPriceTable
+	pt       *modules.RPCPriceTable
+	ptExpiry time.Time // keep track of when the price table is set to expire
+
 	mu sync.Mutex
 }
 
@@ -433,6 +443,13 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 		return nil, limit, err
 	}
 
+	// Read the cancellation token.
+	var ct modules.MDMCancellationToken
+	err = modules.RPCRead(stream, &ct)
+	if err != nil {
+		return nil, limit, err
+	}
+
 	// Read the responses.
 	responses := make([]executeProgramResponse, len(epr.Program))
 	for i := range epr.Program {
@@ -468,20 +485,16 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 // managedFetchPriceTable returns the latest price table, if that price table is
 // expired it will fetch a new one from the host.
 func (p *renterHostPair) managedFetchPriceTable() (*modules.RPCPriceTable, error) {
-	// fetch a new pricetable if it's about to expire, rather than the second it
-	// expires. This ensures calls performed immediately after
-	// `managedFetchPriceTable` is called are set to succeed.
-	var expiryBuffer int64 = 3
+	p.mu.Lock()
+	expired := time.Now().Add(priceTableExpiryBuffer).After(p.ptExpiry)
+	p.mu.Unlock()
 
-	pt := p.managedPriceTable()
-	if pt.Expiry <= time.Now().Unix()+expiryBuffer {
-		err := p.managedUpdatePriceTable(true)
-		if err != nil {
+	if expired {
+		if err := p.managedUpdatePriceTable(true); err != nil {
 			return nil, err
 		}
-		return p.managedPriceTable(), nil
 	}
-	return pt, nil
+	return p.managedPriceTable(), nil
 }
 
 // managedFundEphemeralAccount will deposit the given amount in the pair's
@@ -554,7 +567,7 @@ func (p *renterHostPair) managedNewStream() siamux.Stream {
 // returned response.
 func (p *renterHostPair) managedPayByContract(stream siamux.Stream, amount types.Currency, refundAccount modules.AccountID) error {
 	// create the revision.
-	revision, sig, err := p.managedPaymentRevision(amount)
+	revision, sig, err := p.managedEAFundRevision(amount)
 	if err != nil {
 		return err
 	}
@@ -599,10 +612,10 @@ func (p *renterHostPair) managedPayByEphemeralAccount(stream siamux.Stream, amou
 	return nil
 }
 
-// managedPaymentRevision returns a new revision that transfer the given amount
+// managedEAFundRevision returns a new revision that transfer the given amount
 // to the host. Returns the payment revision together with a signature signed by
 // the pair's renter.
-func (p *renterHostPair) managedPaymentRevision(amount types.Currency) (types.FileContractRevision, crypto.Signature, error) {
+func (p *renterHostPair) managedEAFundRevision(amount types.Currency) (types.FileContractRevision, crypto.Signature, error) {
 	updated, err := p.staticHT.host.managedGetStorageObligation(p.staticFCID)
 	if err != nil {
 		return types.FileContractRevision{}, crypto.Signature{}, err
@@ -613,7 +626,7 @@ func (p *renterHostPair) managedPaymentRevision(amount types.Currency) (types.Fi
 		return types.FileContractRevision{}, crypto.Signature{}, err
 	}
 
-	rev, err := recent.PaymentRevision(amount)
+	rev, err := recent.EAFundRevision(amount)
 	if err != nil {
 		return types.FileContractRevision{}, crypto.Signature{}, err
 	}
@@ -672,7 +685,7 @@ func (p *renterHostPair) managedAccountBalance(payByFC bool, fundAmt types.Curre
 			return types.ZeroCurrency, err
 		}
 	} else {
-		_, err = p.managedPayByEphemeralAccount(stream, fundAmt)
+		err = p.managedPayByEphemeralAccount(stream, fundAmt)
 		if err != nil {
 			return types.ZeroCurrency, err
 		}
@@ -754,6 +767,7 @@ func (p *renterHostPair) managedUpdatePriceTable(payByFC bool) error {
 	// update the price table
 	p.mu.Lock()
 	p.pt = &pt
+	p.ptExpiry = time.Now().Add(pt.Validity)
 	p.mu.Unlock()
 
 	return nil
@@ -784,9 +798,6 @@ func TestHostInitialization(t *testing.T) {
 	defer ht.host.staticPriceTables.mu.RUnlock()
 	if reflect.DeepEqual(ht.host.staticPriceTables.current, modules.RPCPriceTable{}) {
 		t.Fatal("RPC price table wasn't initialized")
-	}
-	if ht.host.staticPriceTables.current.Expiry == 0 {
-		t.Fatal("RPC price table was not properly initialised")
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/encoding"
@@ -17,9 +18,9 @@ type RPCPriceTable struct {
 	// UID is a specifier that uniquely identifies this price table
 	UID UniqueID `json:"uid"`
 
-	// Expiry is a unix timestamp that specifies the time until which the
-	// MDMCostTable is valid.
-	Expiry int64 `json:"expiry"`
+	// Validity is a duration that specifies how long the host guarantees these
+	// prices for and are thus considered valid.
+	Validity time.Duration `json:"validity"`
 
 	// HostBlockHeight is the block height of the host. This allows the renter
 	// to create valid withdrawal messages in case it is not synced yet.
@@ -48,6 +49,9 @@ type RPCPriceTable struct {
 	// MemoryTimeCost is the amount of cost per byte per time that is incurred
 	// by the memory consumption of the program.
 	MemoryTimeCost types.Currency `json:"memorytimecost"`
+
+	// StoreLengthCost is the cost per byte per block for storage.
+	StoreLengthCost types.Currency `json:"storelengthcost"`
 
 	// CollateralCost is the amount of money per byte the host is promising to
 	// lock away as collateral when adding new data to a contract.

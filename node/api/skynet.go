@@ -101,10 +101,12 @@ type (
 	// SkykeyGET contains a base64 encoded Skykey.
 	SkykeyGET struct {
 		Skykey string `json:"skykey"` // base64 encoded Skykey
+		Name   string `json:"name"`
+		ID     string `json:"id"` // base64 encoded Skykey ID
 	}
 	// SkykeysGET contains a slice of Skykeys.
 	SkykeysGET struct {
-		Skykeys []string `json:"skykeys"`
+		Skykeys []SkykeyGET `json:"skykeys"`
 	}
 )
 
@@ -987,6 +989,8 @@ func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, ps ht
 	}
 	WriteJSON(w, SkykeyGET{
 		Skykey: skString,
+		Name:   sk.Name,
+		ID:     sk.ID().ToString(),
 	})
 }
 
@@ -1066,13 +1070,18 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, req *http.Request, ps h
 	}
 
 	res := SkykeysGET{
-		Skykeys: make([]string, len(skykeys)),
+		Skykeys: make([]SkykeyGET, len(skykeys)),
 	}
 	for i, sk := range skykeys {
-		res.Skykeys[i], err = sk.ToString()
+		skStr, err := sk.ToString()
 		if err != nil {
 			WriteError(w, Error{"failed to write skykey string: " + err.Error()}, http.StatusInternalServerError)
 			return
+		}
+		res.Skykeys[i] = SkykeyGET{
+			Skykey: skStr,
+			Name:   sk.Name,
+			ID:     sk.ID().ToString(),
 		}
 	}
 	WriteJSON(w, res)

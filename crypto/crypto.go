@@ -60,9 +60,9 @@ type (
 
 		// DecryptBytesInPlace decrypts the given ciphertext and returns the
 		// plaintext. It will reuse the memory of the ciphertext which means
-		// that it's not save to use it after calling DecryptBytesInPlace. The
+		// that it's not safe to use it after calling DecryptBytesInPlace. The
 		// uint64 is the blockIndex at which the ciphertext is supposed to
-		// start. e.g. if the Ciphertext starts at offset 64 and Threefish is
+		// start. e.g. if the ciphertext starts at offset 64 and Threefish is
 		// used which has a BlockSize of 64 bytes, then the index would be 1.
 		DecryptBytesInPlace(Ciphertext, uint64) ([]byte, error)
 

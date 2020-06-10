@@ -90,6 +90,13 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 		return
 	}
 
+	// read the cancellation token.
+	var ct modules.MDMCancellationToken
+	err = modules.RPCRead(stream, &ct)
+	if err != nil {
+		return
+	}
+
 	// read the responses.
 	responses = make([]programResponse, len(epr.Program))
 	for i := range responses {

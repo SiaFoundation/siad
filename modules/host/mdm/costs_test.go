@@ -11,10 +11,12 @@ import (
 // newTestWriteStorePriceTable returns a custom price table for the cost tests.
 func newTestWriteStorePriceTable() *modules.RPCPriceTable {
 	pt := &modules.RPCPriceTable{}
-	pt.Expiry = time.Now().Add(time.Minute).Unix()
+	pt.Validity = time.Minute
+
 	pt.WriteBaseCost = types.ZeroCurrency
 	pt.WriteLengthCost = types.ZeroCurrency
 	pt.WriteStoreCost = modules.DefaultStoragePrice
+	pt.StoreLengthCost = types.ZeroCurrency
 	pt.DownloadBandwidthCost = types.ZeroCurrency
 	pt.UploadBandwidthCost = types.ZeroCurrency
 	return pt

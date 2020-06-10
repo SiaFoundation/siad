@@ -49,7 +49,7 @@ func (h *Host) staticPayByEphemeralAccount(stream siamux.Stream) (modules.Paymen
 	}
 
 	// Payment done through EAs don't move collateral
-	return newPaymentDetails(req.Message.Account, req.Message.Amount, types.ZeroCurrency), nil
+	return newPaymentDetails(req.Message.Account, req.Message.Amount), nil
 }
 
 // managedPayByContract processes a PayByContractRequest coming in over the
@@ -92,7 +92,7 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 	paymentRevision := revisionFromRequest(currentRevision, pbcr)
 
 	// verify the payment revision
-	amount, collateral, err := verifyPayByContractRevision(currentRevision, paymentRevision, bh)
+	amount, err := verifyPayByContractRevision(currentRevision, paymentRevision, bh)
 	if err != nil {
 		return nil, errors.AddContext(err, "Invalid payment revision")
 	}
@@ -127,7 +127,7 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 		return nil, errors.AddContext(err, "Could not send PayByContractResponse")
 	}
 
-	return newPaymentDetails(accountID, amount, collateral), nil
+	return newPaymentDetails(accountID, amount), nil
 }
 
 // managedFundAccount processes a PayByContractRequest coming in over the given
@@ -169,12 +169,9 @@ func (h *Host) managedFundAccount(stream siamux.Stream, request modules.FundAcco
 	paymentRevision := revisionFromRequest(currentRevision, pbcr)
 
 	// verify the payment revision
-	amount, collateral, err := verifyPayByContractRevision(currentRevision, paymentRevision, bh)
+	amount, err := verifyPayByContractRevision(currentRevision, paymentRevision, bh)
 	if err != nil {
 		return types.ZeroCurrency, errors.AddContext(err, "Invalid payment revision")
-	}
-	if !collateral.IsZero() {
-		return types.ZeroCurrency, errors.AddContext(err, "Invalid payment revision, collateral was not zero")
 	}
 
 	// sign the revision
@@ -242,6 +239,9 @@ func revisionFromRequest(recent types.FileContractRevision, pbcr modules.PayByCo
 	rev.NewRevisionNumber = pbcr.NewRevisionNumber
 	rev.NewValidProofOutputs = make([]types.SiacoinOutput, len(pbcr.NewValidProofValues))
 	for i, v := range pbcr.NewValidProofValues {
+		if i >= len(recent.NewValidProofOutputs) {
+			break
+		}
 		rev.NewValidProofOutputs[i] = types.SiacoinOutput{
 			Value:      v,
 			UnlockHash: recent.NewValidProofOutputs[i].UnlockHash,
@@ -250,6 +250,9 @@ func revisionFromRequest(recent types.FileContractRevision, pbcr modules.PayByCo
 
 	rev.NewMissedProofOutputs = make([]types.SiacoinOutput, len(pbcr.NewMissedProofValues))
 	for i, v := range pbcr.NewMissedProofValues {
+		if i >= len(recent.NewMissedProofOutputs) {
+			break
+		}
 		rev.NewMissedProofOutputs[i] = types.SiacoinOutput{
 			Value:      v,
 			UnlockHash: recent.NewMissedProofOutputs[i].UnlockHash,
@@ -271,34 +274,133 @@ func signatureFromRequest(recent types.FileContractRevision, pbcr modules.PayByC
 	}
 }
 
+// verifyEAFundRevision verifies that the revision being provided to pay for
+// the data has transferred the expected amount of money from the renter to the
+// host.
+func verifyEAFundRevision(existingRevision, paymentRevision types.FileContractRevision, blockHeight types.BlockHeight, expectedTransfer types.Currency) error {
+	// Check that the revision is well-formed.
+	if len(paymentRevision.NewValidProofOutputs) != 2 || len(paymentRevision.NewMissedProofOutputs) != 3 {
+		return ErrBadContractOutputCounts
+	}
+
+	// Check that the time to finalize and submit the file contract revision
+	// has not already passed.
+	if existingRevision.NewWindowStart-revisionSubmissionBuffer <= blockHeight {
+		return ErrLateRevision
+	}
+
+	// Host payout addresses shouldn't change
+	if paymentRevision.ValidHostOutput().UnlockHash != existingRevision.ValidHostOutput().UnlockHash {
+		return errors.New("host payout address changed")
+	}
+	if paymentRevision.MissedHostOutput().UnlockHash != existingRevision.MissedHostOutput().UnlockHash {
+		return errors.New("host payout address changed")
+	}
+	// Make sure the lost collateral still goes to the void
+	paymentVoidOutput, err1 := paymentRevision.MissedVoidOutput()
+	existingVoidOutput, err2 := existingRevision.MissedVoidOutput()
+	if err := errors.Compose(err1, err2); err != nil {
+		return err
+	}
+	if paymentVoidOutput.UnlockHash != existingVoidOutput.UnlockHash {
+		return errors.New("lost collateral address was changed")
+	}
+
+	// Determine the amount that was transferred from the renter.
+	if paymentRevision.ValidRenterPayout().Cmp(existingRevision.ValidRenterPayout()) > 0 {
+		return errors.AddContext(ErrHighRenterValidOutput, "renter increased its valid proof output")
+	}
+	fromRenter := existingRevision.ValidRenterPayout().Sub(paymentRevision.ValidRenterPayout())
+	// Verify that enough money was transferred.
+	if fromRenter.Cmp(expectedTransfer) < 0 {
+		s := fmt.Sprintf("expected at least %v to be exchanged, but %v was exchanged: ", expectedTransfer, fromRenter)
+		return errors.AddContext(ErrHighRenterValidOutput, s)
+	}
+
+	// Determine the amount of money that was transferred to the host.
+	if existingRevision.ValidHostPayout().Cmp(paymentRevision.ValidHostPayout()) > 0 {
+		return errors.AddContext(ErrLowHostValidOutput, "host valid proof output was decreased")
+	}
+	toHost := paymentRevision.ValidHostPayout().Sub(existingRevision.ValidHostPayout())
+	// Verify that enough money was transferred.
+	if !toHost.Equals(fromRenter) {
+		s := fmt.Sprintf("expected exactly %v to be transferred to the host, but %v was transferred: ", fromRenter, toHost)
+		return errors.AddContext(ErrLowHostValidOutput, s)
+	}
+	// The amount of money moved to the missing host output should match the
+	// money moved to the valid output.
+	if !paymentRevision.MissedHostPayout().Equals(existingRevision.MissedHostPayout().Add(toHost)) {
+		return ErrLowHostMissedOutput
+	}
+
+	// If the renter's valid proof output is larger than the renter's missed
+	// proof output, the renter has incentive to see the host fail. Make sure
+	// that this incentive is not present.
+	if paymentRevision.ValidRenterPayout().Cmp(paymentRevision.MissedRenterOutput().Value) > 0 {
+		return errors.AddContext(ErrHighRenterMissedOutput, "renter has incentive to see host fail")
+	}
+
+	// Check that the host is not going to be posting collateral.
+	if !existingVoidOutput.Value.Equals(paymentVoidOutput.Value) {
+		s := fmt.Sprintf("void payout wasn't expected to change")
+		return errors.AddContext(ErrVoidPayoutChanged, s)
+	}
+
+	// Check that the revision count has increased.
+	if paymentRevision.NewRevisionNumber <= existingRevision.NewRevisionNumber {
+		return ErrBadRevisionNumber
+	}
+
+	// Check that all of the non-volatile fields are the same.
+	if paymentRevision.ParentID != existingRevision.ParentID {
+		return ErrBadParentID
+	}
+	if paymentRevision.UnlockConditions.UnlockHash() != existingRevision.UnlockConditions.UnlockHash() {
+		return ErrBadUnlockConditions
+	}
+	if paymentRevision.NewFileSize != existingRevision.NewFileSize {
+		return ErrBadFileSize
+	}
+	if paymentRevision.NewFileMerkleRoot != existingRevision.NewFileMerkleRoot {
+		return ErrBadFileMerkleRoot
+	}
+	if paymentRevision.NewWindowStart != existingRevision.NewWindowStart {
+		return ErrBadWindowStart
+	}
+	if paymentRevision.NewWindowEnd != existingRevision.NewWindowEnd {
+		return ErrBadWindowEnd
+	}
+	if paymentRevision.NewUnlockHash != existingRevision.NewUnlockHash {
+		return ErrBadUnlockHash
+	}
+	return nil
+}
+
 // verifyPayByContractRevision verifies the given payment revision and returns
 // the amount that was transferred, the collateral that was moved and a
 // potential error.
-func verifyPayByContractRevision(current, payment types.FileContractRevision, blockHeight types.BlockHeight) (amount, collateral types.Currency, err error) {
-	if err = verifyPaymentRevision(current, payment, blockHeight, types.ZeroCurrency); err != nil {
+func verifyPayByContractRevision(current, payment types.FileContractRevision, blockHeight types.BlockHeight) (amount types.Currency, err error) {
+	if err = verifyEAFundRevision(current, payment, blockHeight, types.ZeroCurrency); err != nil {
 		return
 	}
 
 	// Note that we can safely subtract the values of the outputs seeing as verifyPaymentRevision will have checked for potential underflows
 	amount = payment.ValidHostPayout().Sub(current.ValidHostPayout())
-	collateral = current.MissedHostOutput().Value.Sub(payment.MissedHostOutput().Value)
 	return
 }
 
 // payment details is a helper struct that implements the PaymentDetails
 // interface.
 type paymentDetails struct {
-	account         modules.AccountID
-	amount          types.Currency
-	addedCollateral types.Currency
+	account modules.AccountID
+	amount  types.Currency
 }
 
 // newPaymentDetails returns a new paymentDetails object using the given values
-func newPaymentDetails(account modules.AccountID, amountPaid, addedCollateral types.Currency) *paymentDetails {
+func newPaymentDetails(account modules.AccountID, amountPaid types.Currency) *paymentDetails {
 	return &paymentDetails{
-		account:         account,
-		amount:          amountPaid,
-		addedCollateral: addedCollateral,
+		account: account,
+		amount:  amountPaid,
 	}
 }
 
@@ -308,7 +410,3 @@ func (pd *paymentDetails) AccountID() modules.AccountID { return pd.account }
 
 // Amount returns how much money the host received.
 func (pd *paymentDetails) Amount() types.Currency { return pd.amount }
-
-// AddedCollatoral returns the amount of collateral that moved from the host to
-// the void output.
-func (pd *paymentDetails) AddedCollateral() types.Currency { return pd.addedCollateral }

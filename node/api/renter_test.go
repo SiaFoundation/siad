@@ -836,6 +836,7 @@ func TestRenterHandlerRename(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
+
 	st, err := createServerTester(t.Name())
 	if err != nil {
 		t.Fatal(err)

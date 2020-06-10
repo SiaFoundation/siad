@@ -223,7 +223,7 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 
 	// create a new revision
 	current := sc.LastRevision()
-	rev, err := current.PaymentRevision(amount)
+	rev, err := current.EAFundRevision(amount)
 	if err != nil {
 		return errors.AddContext(err, "Failed to create a payment revision")
 	}
@@ -256,6 +256,9 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 	if err := modules.RPCRead(stream, &payByResponse); err != nil {
 		return err
 	}
+
+	// TODO: Check for revision mismatch and recover by applying the contract
+	// unapplied transactions and trying again.
 
 	// verify the host's signature
 	hash := crypto.HashAll(rev)
