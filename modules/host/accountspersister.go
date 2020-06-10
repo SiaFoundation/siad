@@ -572,7 +572,7 @@ func (fm *fingerprintManager) threadedRemoveOldFingerprintBuckets() {
 	// releasing the lock, we would not want to remove the current buckets.
 	_, min, _ := isFingerprintBucket(filepath.Base(current))
 	isOldBucket := func(name string) bool {
-		bucket, _, max := isFingerprintBucket(filepath.Base(current))
+		bucket, _, max := isFingerprintBucket(name)
 		return bucket && max < min
 	}
 
