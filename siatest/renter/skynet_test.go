@@ -2449,6 +2449,8 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 	fc1 := "File1Contents"
 	fc2 := "File2Contents"
+	paramsNoRedirect := make(map[string]string)
+	paramsNoRedirect["redirect"] = "false"
 
 	// TEST: Contains index.html but doesn't specify default path.
 	// It should return the content of index.html.
@@ -2516,6 +2518,12 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	if !bytes.Equal(content, files["index.js"]) {
 		t.Fatalf("Expected to get content '%s', instead got '%s'", files["index.js"], string(content))
 	}
+	// Test passing `redirect=false` to multi-file Skyfile with default path.
+	// This should result in an error with message "format must be specified".
+	content, _, err = r.SkynetSkylinkGetWithParameters(skylink, paramsNoRedirect)
+	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
+		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
+	}
 
 	// TEST: Does not contain index.html and specifies an INVALID default path.
 	// This should fail on upload with "invalid defaultpath provided".
@@ -2559,5 +2567,12 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if !bytes.Equal(content, files["index.js"]) {
 		t.Fatalf("Expected to get content '%s', instead got '%s'", files["index.js"], string(content))
+	}
+	// Test passing `redirect=false` to single-file Skyfile.
+	// This should result in an error with message "not allowed for skyfiles
+	// with a single file in them".
+	content, _, err = r.SkynetSkylinkGetWithParameters(skylink, paramsNoRedirect)
+	if err == nil || !strings.Contains(err.Error(), "not allowed for skyfiles with a single file in them") {
+		t.Fatalf("Expected error `not allowed for skyfiles with a single file in them`, got '%+v'", err)
 	}
 }
