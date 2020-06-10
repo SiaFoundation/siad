@@ -1,8 +1,9 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
+	"io"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -15,285 +16,423 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// Map for tracking file uploads
-var uploadMap = make(map[modules.SiaPath]time.Time)
-var uploadMapLock sync.Mutex
-var uploadSpeeds, downloadSpeeds []time.Duration
+// Config
+const (
+	// Directories and log
+	workDirPart      = "nebulous/sia-upload-download-script" // Working directory under user home
+	uploadsDirPart   = "uploads"                             // Uploads in working directory
+	downloadsDirPart = "downloads"                           // Downloads in working directory
+	logFilename      = "files.log"                           // Log filename in working directory
+	siaDir           = "upload-download-script"              // Sia directory to upload files to
 
-// main overview
-//
-// The purpose of this function is to the sia network by uploading a large
-// number of files and data. This functions uses the client package to access
-// the API and ushers a number of timed tests
+	// Uploads and downloads
+	nFiles              = 50    // Number of files to upload
+	fileSize            = 200e6 // File size of a file to be uploaded in bytes
+	maxConcurrUploads   = 10    // Max number of files to be concurrently uploaded
+	maxConcurrDownloads = 10    // Max number of files to be concurrently downloaded
+	nTotalDownloads     = 500   // Total number of file downloads. There will be nFiles, a single file can be downloaded x-times
+
+	// siad
+	siadPort      = 9980 // Port of siad node
+	minRedundancy = 2.0  // Minimum redundancy to consider a file uploaded
+)
+
+var (
+	w       = io.Writer(os.Stdout) // Multi writer to stdout and to file after initialization
+	workDir string                 // Working directory
+	upDir   string                 // Uploads working directory
+	downDir string                 // Downloads working directory
+	logPath string                 // Path to log file
+
+	c *client.Client = &client.Client{} // Sia client for uploads and downloads
+
+	wg sync.WaitGroup // Wait group to wait for all goroutines to finish
+
+	upChan   = make(chan struct{}, maxConcurrUploads)   // Channel with a buffer to limit number of max concurrent uploads
+	downChan = make(chan struct{}, maxConcurrDownloads) // Channel with a buffer to limit number of max concurrent downloads
+
+	createTimes   []time.Duration // Slice of file creation durations
+	uploadTimes   []time.Duration // Slice of file upload durations
+	downloadTimes []time.Duration // Slice of file download durations
+)
+
+// files is a map of files with its data
+type files struct {
+	m   map[string]fileData
+	mux sync.Mutex
+}
+
+// fileData stores download data for a specific file
+type fileData struct {
+	downloading bool
+	nDownloads  int
+}
+
+// This script concurrently uploads and then downloads files. Before execution
+// be sure to have enough storage for concurrent upload and download files.
 func main() {
-	// Create client with default options
-	opts, err := client.DefaultOptions()
-	check(err)
-	opts.Address = "localhost:9980"
-	client := client.New(opts)
-
-	var wg sync.WaitGroup
-	c := make(chan struct{})
-
-	// File Creation variables
-	size := 200e6                                                         // 200MB
-	remainingData := size * 50                                            // 50 is number of files to be uploaded to get 10GB
-	var file string                                                       // initializing file variable
-	home, err := os.UserHomeDir()                                         // user home dir
-	workDir := filepath.Join(home, "nebulous/sia-upload-download-script") // script's working directory
-	filesDir := filepath.Join(workDir, "files")                           // path to directory where created files will be stored
-	downloadsDir := filepath.Join(workDir, "downloads")                   // path to the directory where downloaded files will be stored
-	siaDir := "upload-download-script"                                    // folder in Sia to upload files to
-
-	//xxx for dev
-	remainingData = size * 3
-
-	// Initializing logs
-	os.MkdirAll(workDir, os.ModePerm)
-	logFilename := "files.log"
-	f, err := os.Create(filepath.Join(workDir, logFilename))
-	check(err)
-	defer f.Close()
-	w := bufio.NewWriter(f)
-
-	// Setting default allowance is allowance is not set
-	_, err = fmt.Fprintln(w, "== CHECKING ALLOWANCE")
-	check(err)
-	rg, err := client.RenterGet()
-	if !rg.Settings.Allowance.Active() {
-		_, err = fmt.Fprintln(w, "== SETTING DEFAULT ALLOWANCE")
-		check(err)
-		err = client.RenterPostAllowance(modules.DefaultAllowance)
-		check(err)
+	var files = files{
+		m: make(map[string]fileData),
 	}
 
-	// Waiting for upload ready
-	_, err = fmt.Fprintln(w, "== WAITING READY TO UPLOAD")
+	// Init, create, clean dirs
+	initDirs()
+
+	// Init log to file
+	f := initLog()
+	defer f.Close()
+
+	// Log dirs, files
+	printLog("Working   dir was set to:", workDir)
+	printLog("Uploads   dir was set to:", upDir)
+	printLog("Downloads dir was set to:", downDir)
+	printLog("Logs are stored in:      ", logPath)
+	printLog()
+
+	// Print overview
+	totalData := formatFileSize(nFiles*int(fileSize), " ")
+	fileSizeStr := formatFileSize(fileSize, " ")
+	msg := fmt.Sprintf("Upload total of %s data in %d files per %s files", totalData, nFiles, fileSizeStr)
+	printLog(msg)
+
+	totalData = formatFileSize(nTotalDownloads*int(fileSize), " ")
+	msg = fmt.Sprintf("Download total of %s data in %d downloads per %s files", totalData, nTotalDownloads, fileSizeStr)
+	printLog(msg)
+	printLog()
+
+	// Init download and upload clients
+	printLog("=== Init client")
+	initClient(siadPort)
+
+	// Set allowance
+	printLog("=== Checking allowance")
+	setAllowance()
+
+	// Wait for renter to be upload ready
+	printLog("=== Wait for renter to be ready to upload")
+	waitForRenterIsUploadReady()
+
+	// Upload files
+	printLog("=== Upload files concurrently")
+	for i := 0; i < nFiles; i++ {
+		wg.Add(1)
+		go createAndUploadFile(&files, i)
+	}
+
+	// Wait for all uploads to finish to avoid "not enough workers" error
+	wg.Wait()
+
+	// Download files
+	printLog("=== Download files concurrently")
+	for i := 0; i < nTotalDownloads; i++ {
+		wg.Add(1)
+		go downloadFile(&files, i)
+	}
+
+	// Wait for all downloads finish
+	wg.Wait()
+	printLog("=== Done")
+}
+
+// initDirs sets working, uploads and downloads directory paths from config
+// and cleans (deletes and creates) them
+func initDirs() {
+	home, err := os.UserHomeDir()
 	check(err)
-	w.Flush()
+
+	// Set dir paths
+	workDir = filepath.Join(home, workDirPart)
+	upDir = filepath.Join(workDir, uploadsDirPart)
+	downDir = filepath.Join(workDir, downloadsDirPart)
+
+	// Delete dirs
+	err = os.RemoveAll(upDir)
+	check(err)
+	err = os.RemoveAll(downDir)
+	check(err)
+
+	// Create dirs
+	err = os.MkdirAll(upDir, os.ModePerm)
+	check(err)
+	err = os.MkdirAll(downDir, os.ModePerm)
+	check(err)
+}
+
+// initLog initializes logging to the file
+func initLog() *os.File {
+	logPath = filepath.Join(workDir, logFilename)
+	f, err := os.Create(logPath)
+	check(err)
+	w = io.MultiWriter(os.Stdout, f)
+	return f
+}
+
+// check logs error to our print log
+func check(e error) {
+	// No error
+	if e == nil {
+		return
+	}
+
+	// Get error location in the file
+	_, file, line, _ := runtime.Caller(1)
+
+	// Log error
+	msg := fmt.Sprintf("%s:%d failed check(err)\n", filepath.Base(file), line)
+	printLog(msg)
+	printLog(e)
+	os.Exit(1)
+
+}
+
+// printLog logs message to stdout and to the given writer
+func printLog(ss ...interface{}) {
+	msg := fmt.Sprint(ss...)
+	_, err := fmt.Fprintln(w, msg)
+	if err != nil {
+		fmt.Println("Error writing to log:", err)
+	}
+}
+
+// createAndUploadFile creates a local file and uploads it to Sia
+func createAndUploadFile(files *files, i int) {
+	// Occupy one spot in the uploads channel buffer to limit concurrent uploads
+	upChan <- struct{}{}
+
+	// Create a local file to upload
+	f := createFile(files, i)
+
+	// Upload a file to Sia
+	uploadFile(files, f, i)
+
+	// Delete local file
+	filePath := filepath.Join(upDir, f)
+	deleteLocalFile(filePath)
+
+	// Free one spot in the uploads channel buffer
+	_ = <-upChan
+
+	wg.Done()
+}
+
+// createFile creates a file in the upload directory with te given size in bytes
+func createFile(files *files, i int) string {
+	start := time.Now()
+
+	// Preapare file name parts
+	fileIndex := fmt.Sprintf("%03d", i)
+	sizeStr := formatFileSize(fileSize, "")
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+
+	// Create filename and full path
+	filename := "Randfile" + fileIndex + "_" + sizeStr + "_" + timestamp
+	path := filepath.Join(upDir, filename)
+
+	// Log
+	msg := fmt.Sprintf("File #%03d, creating file: %s", i, filename)
+	printLog(msg)
+
+	// Open file for appending
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	check(err)
+	defer f.Close()
+
+	// Append to file per parts (avoids out of memory error on large files)
+	remaining := int(fileSize)
+	for {
+		n := int(1e6)
+		if remaining == 0 {
+			break
+		} else if remaining < n {
+			n = remaining
+			remaining = 0
+		} else {
+			remaining -= n
+		}
+
+		// Create data string for file (fastrand)
+		data := fastrand.Bytes(n)
+
+		// Write data to file and Flush writes to stable storage
+		_, err = f.Write(data)
+		check(err)
+		f.Sync()
+	}
+
+	// Log duration
+	elapsed := time.Now().Sub(start)
+	msg = fmt.Sprintf("File #%03d, created file: %s in: %s", i, filename, elapsed)
+	printLog(msg)
+
+	createTimes = append(createTimes, elapsed)
+
+	return filename
+}
+
+// uploadFile uploads a file to Sia and adds a file to files map
+func uploadFile(filesMap *files, filename string, i int) {
+	start := time.Now()
+
+	// Log
+	msg := fmt.Sprintf("File #%03d, uploading file: %s", i, filename)
+	printLog(msg)
+
+	// Upload file to Sia
+	siaPath, err := modules.NewSiaPath(filepath.Join(siaDir, filename))
+	check(err)
+	localPath := filepath.Join(upDir, filename)
+	err = c.RenterUploadDefaultPost(localPath, siaPath)
+	check(err)
+
+	// Wait for file upload finished
+	for {
+		f, err := c.RenterFileGet(siaPath)
+		check(err)
+
+		if f.File.Redundancy >= minRedundancy {
+			break
+		}
+
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	filesMap.mux.Lock()
+	defer filesMap.mux.Unlock()
+	fd := fileData{}
+	filesMap.m[filename] = fd
+
+	// Log duration
+	elapsed := time.Now().Sub(start)
+	msg = fmt.Sprintf("File #%03d, uploaded file: %s in: %s", i, filename, elapsed)
+	printLog(msg)
+
+	uploadTimes = append(uploadTimes, elapsed)
+}
+
+// deleteLocalFile deletes a local file, in case of error exits execution via
+// check()
+func deleteLocalFile(filepath string) {
+	printLog("Deleting a local file: ", filepath)
+	err := os.Remove(filepath)
+	check(err)
+}
+
+// downloadFile downloads a file from Sia
+func downloadFile(files *files, iDownload int) {
+	// Occupy one spot in the downloads channel buffer to limit concurrent uploads
+	downChan <- struct{}{}
+
+	start := time.Now()
+
+	// Select a file not yet downloading to be sure to download each file at
+	// least once
+	var filename string
+	files.mux.Lock()
+	for fn, fd := range files.m {
+		if fd.downloading {
+			continue
+		}
+		filename = fn
+	}
+
+	// Select random file if all files are already downloading
+	if filename == "" {
+		rand.Seed(time.Now().UnixNano())
+		fi := rand.Intn(len(files.m))
+		i := 0
+		for fn := range files.m {
+			if i == fi {
+				filename = fn
+				break
+			}
+			i++
+		}
+	}
+	files.mux.Unlock()
+
+	msg := fmt.Sprintf("Download #%03d, downloading file: %s", iDownload, filename)
+	printLog(msg)
+
+	// Download file
+	// Use unique local filename because one file can be downloaded concurrently multiple times
+	localFilename := filename + fmt.Sprintf("_#%03d", iDownload)
+	localPath := filepath.Join(downDir, localFilename)
+	siaPath, err := modules.NewSiaPath(filepath.Join(siaDir, filename))
+	check(err)
+	_, err = c.RenterDownloadFullGet(siaPath, localPath, false)
+	check(err)
+
+	// Delete downloaded file
+	deleteLocalFile(localPath)
+
+	// Update files map
+	files.mux.Lock()
+	nDownloads := files.m[filename].nDownloads
+	fd := fileData{
+		downloading: true,
+		nDownloads:  nDownloads + 1,
+	}
+	files.m[filename] = fd
+	files.mux.Unlock()
+
+	// Log duration
+	elapsed := time.Now().Sub(start)
+	msg = fmt.Sprintf("Download #%02d, downloaded file %s in %s", iDownload, filename, elapsed)
+	printLog(msg)
+
+	downloadTimes = append(downloadTimes, elapsed)
+
+	// Free one spot in the downloads channel buffer
+	_ = <-downChan
+
+	wg.Done()
+}
+
+// formatFileSize format int value to filesize string
+func formatFileSize(size int, separator string) string {
+	if size > 1e12 {
+		return strconv.Itoa(int(size)/1e12) + separator + "TB"
+	} else if size > 1e9 {
+		return strconv.Itoa(int(size)/1e9) + separator + "GB"
+	} else if size > 1e6 {
+		return strconv.Itoa(int(size)/1e6) + separator + "MB"
+	} else if size > 1e3 {
+		return strconv.Itoa(int(size)/1e3) + separator + "kB"
+	} else {
+		return strconv.Itoa(size) + separator + "B"
+	}
+}
+
+// initClient initializes a Sia http client
+func initClient(port int) {
+	opts, err := client.DefaultOptions()
+	check(err)
+	opts.Address = "localhost:" + strconv.Itoa(port)
+	c = client.New(opts)
+}
+
+// setAllowance sets default allowance if no allowance is set
+func setAllowance() {
+	rg, err := c.RenterGet()
+	if !rg.Settings.Allowance.Active() {
+		printLog("=== Setting default allowance")
+		err = c.RenterPostAllowance(modules.DefaultAllowance)
+		check(err)
+	}
+}
+
+// waitForRenterIsUploadReady waits till renter is ready to upload
+func waitForRenterIsUploadReady() {
 	start := time.Now()
 	for {
-		rur, e := client.RenterUploadReadyDefaultGet()
-		check(e)
+		rur, err := c.RenterUploadReadyDefaultGet()
+		check(err)
 		if rur.Ready {
 			break
 		}
 		time.Sleep(1 * time.Second)
 	}
-	elapse := time.Now().Sub(start)
-	_, err = fmt.Fprintf(w, "It took %s for renter to be ready to upload.\n", elapse)
-	check(err)
-	w.Flush()
-
-	// Starting Tracking thread
-	wg.Add(1)
-	os.MkdirAll(filesDir, os.ModePerm)
-	go threadedDeleteLocalFiles(client, &wg, c, w, filesDir)
-
-	// Repeating file creation, upload, and deletion cycle
-	// TODO - move this to a threaded function so that we can be downloading in
-	// parallel
-	_, err = fmt.Fprintf(w, "Attempting to upload %6.2fGB of data in %2.0f %6.2fMB files.\n", remainingData/1e9, remainingData/size, size/1e6)
-	check(err)
-	w.Flush()
-	i := 0
-	for remainingData > 0 {
-		// Only uploading one file at a time to get accurate upload speeds
-		if len(uploadMap) < 1 {
-			file = "Randfile" + strconv.Itoa(i) + "_" + strconv.Itoa(int(size/1e9)) + "GB" + strconv.FormatInt(time.Now().Unix(), 10)
-			path := filepath.Join(filesDir, file)
-			createFile(path, int(size), w)
-
-			upload(client, siaDir, path, w)
-
-			remainingData = remainingData - size
-			i++
-		}
-
-		// Uploading is the bottleneck, delaying this for loop as it does not impact the metrics we are looking at
-		time.Sleep(10 * time.Second)
-	}
-
-	close(c)
-	w.Flush()
-	wg.Wait()
-
-	_, err = fmt.Fprintln(w, "== UPLOADS COMPLETE")
-	check(err)
-	avgUploadSpeed := average(uploadSpeeds)
-
-	_, err = fmt.Fprintf(w, "The average time to upload a %6.2fMB file was %s for an average upload speed of %fMB/s\n", size/1e6, avgUploadSpeed, size/float64(avgUploadSpeed)*1e3)
-	check(err)
-	// End of code that should be included in threaded upload function
-
-	// Call download files
-	// TODO - move to threaded download loop
-	_, err = fmt.Fprintln(w, "== BEGINNING DOWNLOADS")
-	check(err)
-	w.Flush()
-
-	// Get all files
-	rf, err := client.RenterFilesGet(false)
-	check(err)
-
-	// TODO - this will be updated to trying to download files as soon as they are
-	// available. Will need a map to track which files have been downloaded to
-	// ensure we hit all the files by the end of the test
-	fullDownloadsDir := filepath.Join(downloadsDir, siaDir)
-	os.MkdirAll(fullDownloadsDir, os.ModePerm)
-	for _, fi := range rf.Files {
-		// calling download not async so it will be blocking
-		downloadFile(client, fi.SiaPath, downloadsDir, w)
-
-		// delete downloaded file
-		filename := filepath.Base(fi.SiaPath.Path)
-		path := filepath.Join(downloadsDir, filename)
-		deleteLocalFile(path, w)
-	}
-
-	_, err = fmt.Fprintln(w, "== DOWNLOADS COMPLETE")
-	check(err)
-	avgDownloadSpeed := average(downloadSpeeds)
-	_, err = fmt.Fprintf(w, "The average time to download a %6.2fMB file was %s for an average download speed of %fMB/s\n", size/1e6, avgDownloadSpeed, size/float64(avgDownloadSpeed)*1e3)
-	check(err)
-	w.Flush()
-}
-
-// average calculates the average duration for a set of time durations
-func average(times []time.Duration) time.Duration {
-	if len(times) == 0 {
-		panic("no times submitted to average function")
-	}
-
-	var total time.Duration
-	for _, t := range times {
-		total += t
-	}
-	return total / time.Duration(len(times))
-}
-
-// check logs an error the log file and then causes the program to exit if there
-// is an error
-func check(e error) {
-	if e != nil {
-		_, file, line, _ := runtime.Caller(1)
-		fmt.Fprintf(os.Stderr, "%s:%d failed check(err)\n", filepath.Base(file), line)
-		fmt.Fprintln(os.Stderr, e)
-		os.Exit(1)
-	}
-}
-
-// createFile creates a local file on disk
-func createFile(path string, size int, w *bufio.Writer) {
-	// Open a file for writing.
-	f, err := os.Create(path)
-	check(err)
-	defer f.Close()
-
-	// create data for file (fastrand)
-	data := fastrand.Bytes(size)
-
-	// Write data to file.  and Flush writes to stable storage.
-	_, err = f.Write(data)
-	check(err)
-	f.Sync()
-}
-
-// deleteLocalFile deletes a local file on disk
-func deleteLocalFile(path string, w *bufio.Writer) {
-	err := os.RemoveAll(path)
-	check(err)
-	_, file, line, _ := runtime.Caller(0)
-	_, err = fmt.Fprintf(w, "%s:%d %s deleted.\n", filepath.Base(file), line, path)
-	check(err)
-	w.Flush()
-}
-
-// Upload uses the node to upload the file.
-func upload(c *client.Client, siaFolder string, path string, w *bufio.Writer) {
-	// Get absolute file path for RenterUploadPost
-	abs, err := filepath.Abs(path)
-	check(err)
-
-	// Submit upload
-	siaPath, err := modules.NewSiaPath(filepath.Join(siaFolder, filepath.Base(path)))
-	check(err)
-	err = c.RenterUploadDefaultPost(abs, siaPath)
-	check(err)
-
-	// Add to uploadMap
-	uploadMapLock.Lock()
-	uploadMap[siaPath] = time.Now()
-	uploadMapLock.Unlock()
-}
-
-// threadedDeleteLocalFiles pings the files API endpoint and removes the local
-// file from disk if a file has been fully uploaded
-func threadedDeleteLocalFiles(client *client.Client, wg *sync.WaitGroup, c chan struct{}, w *bufio.Writer, dir string) {
-	for {
-		uploadMapLock.Lock()
-		uploadMapLen := len(uploadMap)
-		uploadMapLock.Unlock()
-		select {
-		case <-c:
-			// stop
-			// TODO - this seems like it will unnecessarily block the program from
-			// stopping
-			if uploadMapLen == 0 {
-				wg.Done()
-				return
-			}
-		default:
-			// continue
-		}
-
-		rf, err := client.RenterFilesGet(false)
-		check(err)
-		uploadMapLock.Lock()
-		for _, fi := range rf.Files {
-			_, ok := uploadMap[fi.SiaPath]
-			if !ok || fi.MaxHealthPercent != 100 {
-				continue
-			}
-
-			// Deleting local copy of file
-			filename := filepath.Base(fi.SiaPath.Path)
-			path := filepath.Join(dir, filename)
-			deleteLocalFile(path, w)
-
-			// Max redundancy reached, calucalating elapsed time
-			elapse := time.Now().Sub(uploadMap[fi.SiaPath])
-			uploadSpeeds = append(uploadSpeeds, elapse)
-
-			// logging result
-			_, err := fmt.Fprintf(w, "File: %s uploaded in: %s\n", filepath.Base(fi.SiaPath.Path), elapse)
-			check(err)
-			w.Flush()
-
-			// Remove from map
-			delete(uploadMap, fi.SiaPath)
-		}
-		uploadMapLock.Unlock()
-		time.Sleep(1 * time.Second)
-	}
-}
-
-// downloadFile uses the download API endpoint to download a file from the Sia
-// network
-func downloadFile(c *client.Client, siaPath modules.SiaPath, destination string, w *bufio.Writer) {
-	abs, err := filepath.Abs(filepath.Join(destination, siaPath.Path))
-	check(err)
-
-	start := time.Now()
-
-	_, err = c.RenterDownloadFullGet(siaPath, abs, false)
-	check(err)
-
-	elapse := time.Now().Sub(start)
-	downloadSpeeds = append(downloadSpeeds, elapse)
-
-	// logging result
-	_, err = fmt.Fprintf(w, "File: %s downloaded in: %s\n", filepath.Base(siaPath.Path), elapse)
-	check(err)
-	w.Flush()
+	elapsed := time.Now().Sub(start)
+	msg := fmt.Sprintf("It took %s for renter to be ready to upload.\n", elapsed)
+	printLog(msg)
 }
