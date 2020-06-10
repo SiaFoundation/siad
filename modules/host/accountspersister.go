@@ -565,12 +565,18 @@ func (fm *fingerprintManager) threadedRemoveOldFingerprintBuckets() {
 	current := fm.currentPath
 	fm.mu.Unlock()
 
+	// Get the min blockheight of the bucket range, although it should never be
+	// the case we sanity check the current path is a valid bucket path.
+	bucket, min, _ := isFingerprintBucket(filepath.Base(current))
+	if !bucket {
+		build.Critical("The current fingerprint bucket path is not considered a valid")
+	}
+
 	// Create a function that decides whether or not to remove a fingerprint
 	// bucket, we can safely remove it if it's max is below the current min
 	// bucket range. This way we are sure to remove only old bucket files. This
 	// is important because there might be new files opened on disk after
 	// releasing the lock, we would not want to remove the current buckets.
-	_, min, _ := isFingerprintBucket(filepath.Base(current))
 	isOldBucket := func(name string) bool {
 		bucket, _, max := isFingerprintBucket(name)
 		return bucket && max < min
@@ -660,25 +666,25 @@ func fingerprintsFilenames(currentBlockHeight types.BlockHeight) (current, next 
 // isFingerprintBucket is a helper function that takes a filename and returns
 // whether or not this is a fingerprint bucket. If it is, it also returns the
 // bucket's range as a min and max blockheight.
-func isFingerprintBucket(filename string) (bucket bool, min, max types.BlockHeight) {
+func isFingerprintBucket(filename string) (bool, types.BlockHeight, types.BlockHeight) {
 	// match the filename
 	re := regexp.MustCompile(`^fingerprintsbucket_(\d+)-(\d+).db$`)
 	match := re.FindStringSubmatch(filename)
-	if match == nil {
-		bucket = false
-		return
+	if len(match) != 3 {
+		return false, 0, 0
 	}
 
-	// parse min - note we can safely ignore the error here due to our regex
-	minAsInt, _ := strconv.Atoi(match[1])
-	min = types.BlockHeight(minAsInt)
+	// parse range - note we can safely ignore the error here due to our regex
+	min, _ := strconv.Atoi(match[1])
+	max, _ := strconv.Atoi(match[2])
 
-	// parse max - note we can safely ignore the error here due to our regex
-	maxAsInt, _ := strconv.Atoi(match[2])
-	max = types.BlockHeight(maxAsInt)
+	// sanity check the range makes sense
+	if min >= max {
+		build.Critical(fmt.Sprintf("Bucket file found with range where min is not smaller than max height, %s", filename))
+		return false, 0, 0
+	}
 
-	bucket = min < max
-	return
+	return true, types.BlockHeight(min), types.BlockHeight(max)
 }
 
 // syncAndClose will sync and close the given file

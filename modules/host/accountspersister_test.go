@@ -1,8 +1,10 @@
 package host
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -463,13 +465,21 @@ func TestIsFingerPrintBucket(t *testing.T) {
 		"fingerprintsbucket_261960-261979",
 		"fingerprintsbuckket_261960-261979.db",
 		"fingerprintsbucket_261960-261979.db.",
-		"fingerprintsbucket_261979-261960.db",
 	} {
 		bucket, _, _ := isFingerprintBucket(invalidFilename)
 		if bucket {
 			t.Fatal("Unexpected value")
 		}
 	}
+
+	// verify critical case
+	defer func() {
+		r := recover()
+		if !strings.Contains(fmt.Sprintf("%v", r), "file found with range where min is not smaller than max height") {
+			t.Fatal("Expected build.Critical", r)
+		}
+	}()
+	bucket, _, _ = isFingerprintBucket("fingerprintsbucket_261979-261960.db")
 }
 
 // reloadHost will close the given host and reload it on the given host tester
