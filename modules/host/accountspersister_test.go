@@ -479,7 +479,7 @@ func TestIsFingerPrintBucket(t *testing.T) {
 			t.Fatal("Expected build.Critical", r)
 		}
 	}()
-	bucket, _, _ = isFingerprintBucket("fingerprintsbucket_261979-261960.db")
+	isFingerprintBucket("fingerprintsbucket_261979-261960.db")
 }
 
 // reloadHost will close the given host and reload it on the given host tester
