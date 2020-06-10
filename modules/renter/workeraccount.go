@@ -120,6 +120,25 @@ func (a *account) managedAvailableBalance() types.Currency {
 	return a.availableBalance()
 }
 
+// minimumPossibleBalance returns the min amount of money that this account is
+// expected to contain. This is the balance that gets persisted when the renter
+// is shut down.
+func (a *account) minimumPossibleBalance() types.Currency {
+	// subtract the negative balance
+	balance := a.balance
+	if balance.Cmp(a.negativeBalance) <= 0 {
+		return types.ZeroCurrency
+	}
+	balance = balance.Sub(a.negativeBalance)
+
+	// subtract all pending withdrawals
+	if balance.Cmp(a.pendingWithdrawals) <= 0 {
+		return types.ZeroCurrency
+	}
+	balance = balance.Sub(a.pendingWithdrawals)
+	return balance
+}
+
 // managedCommitDeposit commits a pending deposit, either after success or
 // failure. Depending on the outcome the given amount will be added to the
 // balance or not. If the pending delta is zero, and we altered the account
