@@ -279,7 +279,9 @@ func (w *worker) threadedWorkLoop() {
 
 		// This update is done as a blocking update to ensure nothing else runs
 		// until the account has filled.
-		w.managedRefillAccount()
+		if w.managedAccountNeedsRefill() {
+			w.managedRefillAccount()
+		}
 	}
 
 	// The worker will continuously perform jobs in a loop.

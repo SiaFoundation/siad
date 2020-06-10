@@ -155,11 +155,6 @@ func (w *worker) status() modules.WorkerStatus {
 		uploadCoolDownErr = w.uploadRecentFailureErr.Error()
 	}
 
-	var accountBalance types.Currency
-	if w.staticAccount != nil {
-		w.staticAccount.managedAvailableBalance()
-	}
-
 	// Update the worker cache before returning a status.
 	w.staticTryUpdateCache()
 	cache := w.staticCache()
@@ -182,7 +177,7 @@ func (w *worker) status() modules.WorkerStatus {
 		UploadTerminated:    w.uploadTerminated,
 
 		// Ephemeral Account information
-		AvailableBalance: accountBalance,
+		AvailableBalance: w.staticAccount.managedAvailableBalance(),
 		BalanceTarget:    w.staticBalanceTarget,
 
 		// Job Queues

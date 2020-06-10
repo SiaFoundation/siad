@@ -292,6 +292,13 @@ func newFingerprintMap() *fingerprintMap {
 
 // callDeposit calls managedDeposit with refund set to 'false'.
 func (am *accountManager) callDeposit(id modules.AccountID, amount types.Currency, syncChan chan struct{}) error {
+	// disrupt if the 'fuzzyDeposit' dependency is set, this dependency will
+	// alter the deposit amount without the renter being aware of it, used to
+	// test the balance sync after unclean shutdown
+	if am.h.dependencies.Disrupt("fuzzyDeposit") {
+		amount = amount.Sub(types.SiacoinPrecision.Div64(10))
+	}
+
 	return am.managedDeposit(id, amount, false, syncChan)
 }
 
