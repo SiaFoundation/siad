@@ -569,7 +569,7 @@ func (fm *fingerprintManager) threadedRemoveOldFingerprintBuckets() {
 	// the case we sanity check the current path is a valid bucket path.
 	min, _, bucket := isFingerprintBucket(filepath.Base(current))
 	if !bucket {
-		build.Critical("The current fingerprint bucket path is not considered a valid")
+		build.Critical("The current fingerprint bucket path is considered invalid")
 	}
 
 	// Create a function that decides whether or not to remove a fingerprint
