@@ -4993,22 +4993,26 @@ Returns a list of all Skykeys.
     "skykey": "skykey:AUI0eAOXWXHwW6KOLyI5O1OYduVvHxAA8qUR_fJ8Kluasb-ykPlHBEjDczrL21hmjhH0zAoQ3-Qq?name=testskykey1"
     "name": "testskykey1"
     "id": "ai5z8cf5NWbcvPBaBn0DFQ=="
+    "type": "private-id"
   },
   {
     "skykey": "skykey:AUqG0aQmgzCIlse2JxFLBGHCriZNz20IEKQu81XxYsak3rzmuVbZ2P6ZqeJHIlN5bjPqEmC67U8E?name=testskykey2"
     "name": "testskykey2"
     "id": "bi5z8cf5NWbcvPBaBn0DFQ=="
+    "type": "private-id"
   },
   {
     "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey3"
     "name": "testskykey3"
     "id": "ci5z8cf5NWbcvPBaBn0DFQ=="
+    "type": "public-id"
   }
 }
 ```
 
 **skykeys** | []skykeys
-array of 
+Array of skykeys. See the documentation for /skynet/skykey for more detailed
+information.
 
 
 
@@ -5017,7 +5021,7 @@ array of
 > curl example
 
 ```go
-curl -A "Sia-Agent"  -u "":<apipassword> --data "name=key_to_the_castle" "localhost:9980/skynet/createskykey"
+curl -A "Sia-Agent"  -u "":<apipassword> --data "name=key_to_the_castle&type=private-id" "localhost:9980/skynet/createskykey"
 ```
 
 Returns a new skykey created and stored under that name.
@@ -5026,6 +5030,13 @@ Returns a new skykey created and stored under that name.
 ### REQUIRED
 **name** | string  
 desired name of the skykey
+
+**type** | string  
+desired type of the skykey. The two supported types are "public-id" and
+"private-id". Users should use "private-id" skykeys unless they have a specific
+reason to use "public-id" skykeys which reveal skykey IDs and show which
+skyfiles are encrypted with the same skykey.
+
 
 ### JSON Response
 > JSON Response Example
@@ -5070,6 +5081,7 @@ base-64 encoded ID of the skykey being queried
   "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey"
   "name": "testskykey"
   "id": "gi5z8cf5NWbcvPBaBn0DFQ=="
+  "type": "private-id"
 }
 ```
 
@@ -5082,6 +5094,9 @@ name of the skykey
 **id** | string  
 base-64 encoded skykey ID
 
+**type** | string  
+human-readable skykey type. See the documentation for /skynet/createskykey for
+type information.
 
 **UNSTABLE - subject to change in v1.4.9**
 ## /skynet/skykeyid [GET]
