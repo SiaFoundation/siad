@@ -278,7 +278,6 @@ func TestRenterFour(t *testing.T) {
 		{Name: "TestPauseAndResumeRepairAndUploads", Test: testPauseAndResumeRepairAndUploads},
 		{Name: "TestDownloadServedFromDisk", Test: testDownloadServedFromDisk},
 		{Name: "TestDirMode", Test: testDirMode},
-		{Name: "TestWorkerSyncBalanceWithHost", Test: testWorkerSyncBalanceWithHost},
 		{Name: "TestEscapeSiaPath", Test: testEscapeSiaPath}, // Runs last because it uploads many files
 	}
 
@@ -4683,11 +4682,28 @@ func TestWorkerStatus(t *testing.T) {
 	}
 }
 
-// testWorkerSyncBalanceWithHost verifies the renter will sync its
+// TestWorkerSyncBalanceWithHost verifies the renter will sync its
 // account balance with the host's account balance after it experienced an
 // unclean shutdown.
-func testWorkerSyncBalanceWithHost(t *testing.T, tg *siatest.TestGroup) {
+//
+// Note: this test purposefully uses its own testgroup to avoid NDFs
+func TestWorkerSyncBalanceWithHost(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a testgroup without a renter and with only 3 hosts
+	groupParams := siatest.GroupParams{
+		Hosts:  3,
+		Miners: 1,
+	}
 	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer tg.Close()
 
 	// add a renter with a dependency that simulates an unclean shutdown by
 	// preventing accounts to be saved
@@ -4715,15 +4731,6 @@ func testWorkerSyncBalanceWithHost(t *testing.T, tg *siatest.TestGroup) {
 		h = nodes[0]
 	}
 
-	defer func() {
-		if err := errors.Compose(
-			tg.RemoveNode(r),
-			tg.RemoveNode(h),
-		); err != nil {
-			t.Error(err)
-		}
-	}()
-
 	// grab the hostkey
 	hpk, err := h.HostPublicKey()
 	if err != nil {
@@ -4745,7 +4752,7 @@ func testWorkerSyncBalanceWithHost(t *testing.T, tg *siatest.TestGroup) {
 	// ephemeral account, remember this balance value as the renter's version of
 	// the balance
 	var renterBalance types.Currency
-	err = build.Retry(600, 100*time.Millisecond, func() error {
+	err = build.Retry(100, 100*time.Millisecond, func() error {
 		rwg, err := r.RenterWorkersGet()
 		if err != nil {
 			return err
