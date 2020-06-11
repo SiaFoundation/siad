@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -323,6 +326,43 @@ func TestAccountMinExpectedBalance(t *testing.T) {
 	a.pendingWithdrawals = oneCurrency
 	if !a.minExpectedBalance().Equals(oneCurrency) {
 		t.Fatal("unexpected min expected balance")
+	}
+}
+
+// TestHostAccountBalance verifies the functionality of staticHostAccountBalance
+// that performs the account balance RPC on the host
+func TestHostAccountBalance(t *testing.T) {
+	wt, err := newWorkerTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := wt.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	w := wt.worker
+
+	// check the balance in a retry to allow the worker to run through it's
+	// setup, e.g. updating PT, checking balance and refilling. Note we use min
+	// expected balance to ensure we're not counting pending deposits
+	if err = build.Retry(100, 100*time.Millisecond, func() error {
+		if !w.staticAccount.managedMinExpectedBalance().Equals(w.staticBalanceTarget) {
+			return errors.New("worker account not funded")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// fetch the host account balance and assert it's correct
+	balance, err := w.staticHostAccountBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !balance.Equals(w.staticBalanceTarget) {
+		t.Fatal(err)
 	}
 }
 
