@@ -671,7 +671,7 @@ func isFingerprintBucket(filename string) (types.BlockHeight, types.BlockHeight,
 	re := regexp.MustCompile(`^fingerprintsbucket_(\d+)-(\d+).db$`)
 	match := re.FindStringSubmatch(filename)
 	if len(match) != 3 {
-		return 0,0,false
+		return 0, 0, false
 	}
 
 	// parse range - note we can safely ignore the error here due to our regex
@@ -681,7 +681,7 @@ func isFingerprintBucket(filename string) (types.BlockHeight, types.BlockHeight,
 	// sanity check the range makes sense
 	if min >= max {
 		build.Critical(fmt.Sprintf("Bucket file found with range where min is not smaller than max height, %s", filename))
-		return 0,0,false
+		return 0, 0, false
 	}
 
 	return types.BlockHeight(min), types.BlockHeight(max), true
