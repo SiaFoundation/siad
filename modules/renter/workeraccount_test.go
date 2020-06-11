@@ -295,6 +295,37 @@ func TestAccountResetBalance(t *testing.T) {
 	}
 }
 
+// TestAccountMinExpectedBalance is a small unit test that verifies the
+// functionality of the min expected balance function.
+func TestAccountMinExpectedBalance(t *testing.T) {
+	t.Parallel()
+
+	oneCurrency := types.NewCurrency64(1)
+
+	a := new(account)
+	a.balance = oneCurrency
+	a.negativeBalance = oneCurrency
+	if !a.minExpectedBalance().Equals(types.ZeroCurrency) {
+		t.Fatal("unexpected min expected balance")
+	}
+
+	a = new(account)
+	a.balance = oneCurrency.Mul64(2)
+	a.negativeBalance = oneCurrency
+	a.pendingWithdrawals = oneCurrency
+	if !a.minExpectedBalance().Equals(types.ZeroCurrency) {
+		t.Fatal("unexpected min expected balance")
+	}
+
+	a = new(account)
+	a.balance = oneCurrency.Mul64(3)
+	a.negativeBalance = oneCurrency
+	a.pendingWithdrawals = oneCurrency
+	if !a.minExpectedBalance().Equals(oneCurrency) {
+		t.Fatal("unexpected min expected balance")
+	}
+}
+
 // openRandomTestAccountsOnRenter is a helper function that creates a random
 // number of accounts by calling 'managedOpenAccount' on the given renter
 func openRandomTestAccountsOnRenter(r *Renter) []*account {

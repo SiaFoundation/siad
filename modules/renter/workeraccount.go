@@ -125,12 +125,12 @@ func (a *account) managedAvailableBalance() types.Currency {
 func (a *account) managedMinExpectedBalance() types.Currency {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.minimumPossibleBalance()
+	return a.minExpectedBalance()
 }
 
-// minimumPossibleBalance returns the min amount of money that this account is
+// minExpectedBalance returns the min amount of money that this account is
 // expected to contain after the renter has shut down.
-func (a *account) minimumPossibleBalance() types.Currency {
+func (a *account) minExpectedBalance() types.Currency {
 	// subtract the negative balance
 	balance := a.balance
 	if balance.Cmp(a.negativeBalance) <= 0 {
