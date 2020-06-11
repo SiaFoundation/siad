@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"log"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -22,7 +23,7 @@ const (
 	workDirPart      = "nebulous/sia-upload-download-script" // Working directory under user home
 	uploadsDirPart   = "uploads"                             // Uploads in working directory
 	downloadsDirPart = "downloads"                           // Downloads in working directory
-	logFilename      = "files.log"                           // Log filename in working directory
+	logFilename      = "upload-download-script.log"          // Log filename in working directory
 	siaDir           = "upload-download-script"              // Sia directory to upload files to
 
 	// Uploads and downloads
@@ -38,20 +39,18 @@ const (
 )
 
 var (
-	w       = io.Writer(os.Stdout) // Multi writer to stdout and to file after initialization
-	workDir string                 // Working directory
-	upDir   string                 // Uploads working directory
-	downDir string                 // Downloads working directory
-	logPath string                 // Path to log file
+	workDir string // Working directory
+	upDir   string // Uploads working directory
+	downDir string // Downloads working directory
+	logPath string // Path to log file
 
-	c *client.Client = &client.Client{} // Sia client for uploads and downloads
+	c *client.Client // Sia client for uploads and downloads
 
 	wg sync.WaitGroup // Wait group to wait for all goroutines to finish
 
 	upChan   = make(chan struct{}, maxConcurrUploads)   // Channel with a buffer to limit number of max concurrent uploads
 	downChan = make(chan struct{}, maxConcurrDownloads) // Channel with a buffer to limit number of max concurrent downloads
 
-	createTimes   []time.Duration // Slice of file creation durations
 	uploadTimes   []time.Duration // Slice of file upload durations
 	downloadTimes []time.Duration // Slice of file download durations
 )
@@ -83,37 +82,36 @@ func main() {
 	defer f.Close()
 
 	// Log dirs, files
-	printLog("Working   dir was set to:", workDir)
-	printLog("Uploads   dir was set to:", upDir)
-	printLog("Downloads dir was set to:", downDir)
-	printLog("Logs are stored in:      ", logPath)
-	printLog()
+	log.Println("=== Starting upload/download script")
+	log.Println("Working   dir was set to:", workDir)
+	log.Println("Uploads   dir was set to:", upDir)
+	log.Println("Downloads dir was set to:", downDir)
+	log.Println("Logs are stored in:      ", logPath)
+	log.Println()
 
 	// Print overview
 	totalData := formatFileSize(nFiles*int(fileSize), " ")
 	fileSizeStr := formatFileSize(fileSize, " ")
-	msg := fmt.Sprintf("Upload total of %s data in %d files per %s files", totalData, nFiles, fileSizeStr)
-	printLog(msg)
+	log.Printf("Upload total of %s data in %d files per %s files\n", totalData, nFiles, fileSizeStr)
 
 	totalData = formatFileSize(nTotalDownloads*int(fileSize), " ")
-	msg = fmt.Sprintf("Download total of %s data in %d downloads per %s files", totalData, nTotalDownloads, fileSizeStr)
-	printLog(msg)
-	printLog()
+	log.Printf("Download total of %s data in %d downloads per %s files\n", totalData, nTotalDownloads, fileSizeStr)
+	log.Println()
 
 	// Init download and upload clients
-	printLog("=== Init client")
+	log.Println("=== Init client")
 	initClient(siadPort)
 
 	// Set allowance
-	printLog("=== Checking allowance")
+	log.Println("=== Checking allowance")
 	setAllowance()
 
 	// Wait for renter to be upload ready
-	printLog("=== Wait for renter to be ready to upload")
+	log.Println("=== Wait for renter to be ready to upload")
 	waitForRenterIsUploadReady()
 
 	// Upload files
-	printLog("=== Upload files concurrently")
+	log.Println("=== Upload files concurrently")
 	for i := 0; i < nFiles; i++ {
 		wg.Add(1)
 		go createAndUploadFile(&files, i)
@@ -123,7 +121,7 @@ func main() {
 	wg.Wait()
 
 	// Download files
-	printLog("=== Download files concurrently")
+	log.Println("=== Download files concurrently")
 	for i := 0; i < nTotalDownloads; i++ {
 		wg.Add(1)
 		go downloadFile(&files, i)
@@ -131,7 +129,7 @@ func main() {
 
 	// Wait for all downloads finish
 	wg.Wait()
-	printLog("=== Done")
+	log.Println("=== Done")
 }
 
 // initDirs sets working, uploads and downloads directory paths from config
@@ -161,10 +159,15 @@ func initDirs() {
 // initLog initializes logging to the file
 func initLog() *os.File {
 	logPath = filepath.Join(workDir, logFilename)
-	f, err := os.Create(logPath)
-	check(err)
-	w = io.MultiWriter(os.Stdout, f)
-	return f
+	file, err := os.Create(logPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	mw := io.MultiWriter(os.Stdout, file)
+	log.SetOutput(mw)
+
+	return file
 }
 
 // check logs error to our print log
@@ -178,19 +181,7 @@ func check(e error) {
 	_, file, line, _ := runtime.Caller(1)
 
 	// Log error
-	msg := fmt.Sprintf("%s:%d failed check(err)\n", filepath.Base(file), line)
-	printLog(msg)
-	printLog(e)
-	os.Exit(1)
-}
-
-// printLog logs message to stdout and to the given writer
-func printLog(ss ...interface{}) {
-	msg := fmt.Sprint(ss...)
-	_, err := fmt.Fprintln(w, msg)
-	if err != nil {
-		fmt.Println("Error writing to log:", err)
-	}
+	log.Fatalf("%s:%d failed check(err)\n", filepath.Base(file), line)
 }
 
 // createAndUploadFile creates a local file and uploads it to Sia
@@ -228,8 +219,7 @@ func createFile(files *files, i int) string {
 	path := filepath.Join(upDir, filename)
 
 	// Log
-	msg := fmt.Sprintf("File #%03d, creating file: %s", i, filename)
-	printLog(msg)
+	log.Printf("File #%03d, creating file: %s\n", i, filename)
 
 	// Open file for appending
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -260,10 +250,7 @@ func createFile(files *files, i int) string {
 
 	// Log duration
 	elapsed := time.Now().Sub(start)
-	msg = fmt.Sprintf("File #%03d, created file: %s in: %s", i, filename, elapsed)
-	printLog(msg)
-
-	createTimes = append(createTimes, elapsed)
+	log.Printf("File #%03d, created file: %s in: %s\n", i, filename, elapsed)
 
 	return filename
 }
@@ -273,8 +260,7 @@ func uploadFile(filesMap *files, filename string, i int) {
 	start := time.Now()
 
 	// Log
-	msg := fmt.Sprintf("File #%03d, uploading file: %s", i, filename)
-	printLog(msg)
+	log.Printf("File #%03d, uploading file: %s\n", i, filename)
 
 	// Upload file to Sia
 	siaPath, err := modules.NewSiaPath(filepath.Join(siaDir, filename))
@@ -302,16 +288,14 @@ func uploadFile(filesMap *files, filename string, i int) {
 
 	// Log duration
 	elapsed := time.Now().Sub(start)
-	msg = fmt.Sprintf("File #%03d, uploaded file: %s in: %s", i, filename, elapsed)
-	printLog(msg)
-
+	log.Printf("File #%03d, uploaded file: %s in: %s\n", i, filename, elapsed)
 	uploadTimes = append(uploadTimes, elapsed)
 }
 
 // deleteLocalFile deletes a local file, in case of error exits execution via
 // check()
 func deleteLocalFile(filepath string) {
-	printLog("Deleting a local file: ", filepath)
+	log.Println("Deleting a local file:", filepath)
 	err := os.Remove(filepath)
 	check(err)
 }
@@ -349,8 +333,7 @@ func downloadFile(files *files, iDownload int) {
 	}
 	files.mux.Unlock()
 
-	msg := fmt.Sprintf("Download #%03d, downloading file: %s", iDownload, filename)
-	printLog(msg)
+	log.Printf("Download #%03d, downloading file: %s\n", iDownload, filename)
 
 	// Download file
 	// Use unique local filename because one file can be downloaded concurrently multiple times
@@ -376,9 +359,7 @@ func downloadFile(files *files, iDownload int) {
 
 	// Log duration
 	elapsed := time.Now().Sub(start)
-	msg = fmt.Sprintf("Download #%02d, downloaded file %s in %s", iDownload, filename, elapsed)
-	printLog(msg)
-
+	log.Printf("Download #%02d, downloaded file %s in %s", iDownload, filename, elapsed)
 	downloadTimes = append(downloadTimes, elapsed)
 
 	// Free one spot in the downloads channel buffer
@@ -414,7 +395,7 @@ func initClient(port int) {
 func setAllowance() {
 	rg, err := c.RenterGet()
 	if !rg.Settings.Allowance.Active() {
-		printLog("=== Setting default allowance")
+		log.Println("=== Setting default allowance")
 		err = c.RenterPostAllowance(modules.DefaultAllowance)
 		check(err)
 	}
@@ -432,6 +413,5 @@ func waitForRenterIsUploadReady() {
 		time.Sleep(1 * time.Second)
 	}
 	elapsed := time.Now().Sub(start)
-	msg := fmt.Sprintf("It took %s for renter to be ready to upload.\n", elapsed)
-	printLog(msg)
+	log.Printf("It took %s for renter to be ready to upload.\n", elapsed)
 }
