@@ -407,7 +407,7 @@ func (w *worker) managedSyncAccountBalanceToHost() {
 		w.staticAccount.pendingWithdrawals.IsZero()
 	w.staticAccount.mu.Unlock()
 	if !deltasAreZero {
-		build.Critical("managedSyncAccountBalanceToHost is called on a worker with in-progress jobs")
+		build.Critical("managedSyncAccountBalanceToHost is called on a worker with an account that has non-zero deltas, indicating in-progress jobs")
 	}
 
 	balance, err := w.staticHostAccountBalance()
