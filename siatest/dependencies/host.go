@@ -47,16 +47,16 @@ func (d *HostExpireEphemeralAccounts) Disrupt(s string) bool {
 	return s == "expireEphemeralAccounts"
 }
 
-// HostFuzzyDeposit is a dependency injection for the host that will make the
-// deposit amount fuzzy. This allows us to verify the renter has synced its
-// account balance with the host's balance after an unclean shutdown.
-type HostFuzzyDeposit struct {
+// HostLowerDeposit is a dependency injection for the host that will make the
+// deposit amount substantially lower. This allows us to verify the renter has
+// synced its account balance with the host's balance after an unclean shutdown.
+type HostLowerDeposit struct {
 	modules.ProductionDependencies
 }
 
 // Disrupt returns true if the correct string is provided.
-func (d *HostFuzzyDeposit) Disrupt(s string) bool {
-	return s == "fuzzyDeposit"
+func (d *HostLowerDeposit) Disrupt(s string) bool {
+	return s == "lowerDeposit"
 }
 
 // NewDependencyHostDiskTrouble creates a new dependency that disrupts storage

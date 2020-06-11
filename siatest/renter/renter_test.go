@@ -4699,7 +4699,7 @@ func testWorkerSyncBalanceWithHost(t *testing.T, tg *siatest.TestGroup) {
 	// as only then we can ensure the unclean shutdown took place and we synced
 	// to the host balance
 	hostParams := node.Host(filepath.Join(testDir, "host"))
-	hostParams.HostDeps = &dependencies.HostFuzzyDeposit{}
+	hostParams.HostDeps = &dependencies.HostLowerDeposit{}
 	nodes, err := tg.AddNodes(renterParams, hostParams)
 	if err != nil {
 		t.Fatal(err)
@@ -4788,10 +4788,10 @@ func testWorkerSyncBalanceWithHost(t *testing.T, tg *siatest.TestGroup) {
 
 	// safety check to avoid panic on sub later
 	if w.AvailableBalance.Cmp(renterBalance) >= 0 {
-		t.Fatal("Expected the synced balance to be lower, as the 'fuzzy deposit' dependency should have deposited less", w.AvailableBalance, renterBalance)
+		t.Fatal("Expected the synced balance to be lower, as the 'lower deposit' dependency should have deposited less", w.AvailableBalance, renterBalance)
 	}
-	fuzzy := types.SiacoinPrecision.Div64(10)
-	if renterBalance.Sub(w.AvailableBalance).Cmp(fuzzy) < 0 {
-		t.Fatalf("Expected the synced balance to be at least %v lower than the renter balance, as thats the amount we subtracted from the deposit amount, instead synced balance was %v and renter balance was %v", fuzzy, w.AvailableBalance, renterBalance)
+	delta := types.SiacoinPrecision.Div64(10)
+	if renterBalance.Sub(w.AvailableBalance).Cmp(delta) < 0 {
+		t.Fatalf("Expected the synced balance to be at least %v lower than the renter balance, as thats the amount we subtracted from the deposit amount, instead synced balance was %v and renter balance was %v", delta, w.AvailableBalance, renterBalance)
 	}
 }
