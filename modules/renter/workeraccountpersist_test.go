@@ -119,9 +119,9 @@ func TestAccountUncleanShutdown(t *testing.T) {
 			t.Fatal("Unexpected reloaded account ID")
 		}
 
-		if !reloaded.balance.Equals(account.managedMinimumPossibleBalance()) {
+		if !reloaded.balance.Equals(account.managedMinExpectedBalance()) {
 			t.Log(reloaded.balance)
-			t.Log(account.managedMinimumPossibleBalance())
+			t.Log(account.managedMinExpectedBalance())
 			t.Fatal("Unexpected account balance after reload")
 		}
 	}

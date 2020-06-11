@@ -120,9 +120,9 @@ func (a *account) managedAvailableBalance() types.Currency {
 	return a.availableBalance()
 }
 
-// managedMinimumPossibleBalance returns the min amount of money that this
+// managedMinExpectedBalance returns the min amount of money that this
 // account is expected to contain after the renter has shut down.
-func (a *account) managedMinimumPossibleBalance() types.Currency {
+func (a *account) managedMinExpectedBalance() types.Currency {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.minimumPossibleBalance()
@@ -399,6 +399,17 @@ func (w *worker) managedRefillAccount() {
 // in-progress jobs, neither serial nor async, to ensure the account balance
 // sync does not leave the account in an undesired state.
 func (w *worker) managedSyncAccountBalanceToHost() {
+	// Sanity check the account's deltas are zero, indicating there are no
+	// in-progress jobs
+	w.staticAccount.mu.Lock()
+	deltasAreZero := w.staticAccount.negativeBalance.IsZero() &&
+		w.staticAccount.pendingDeposits.IsZero() &&
+		w.staticAccount.pendingWithdrawals.IsZero()
+	w.staticAccount.mu.Unlock()
+	if !deltasAreZero {
+		build.Critical("managedSyncAccountBalanceToHost is called on a worker with in-progress jobs")
+	}
+
 	balance, err := w.staticHostAccountBalance()
 	if err != nil {
 		w.renter.log.Printf("ERROR: failed to check account balance on host %v failed, err: %v\n", w.staticHostPubKeyStr, err)
