@@ -267,6 +267,34 @@ func TestAccountClosed(t *testing.T) {
 	}
 }
 
+// TestAccountResetBalance is a small unit test that verifies the functionality
+// of the reset balance function.
+func TestAccountResetBalance(t *testing.T) {
+	t.Parallel()
+
+	oneCurrency := types.NewCurrency64(1)
+
+	a := new(account)
+	a.balance = types.ZeroCurrency
+	a.negativeBalance = oneCurrency
+	a.pendingDeposits = oneCurrency
+	a.pendingWithdrawals = oneCurrency
+	a.managedResetBalance(oneCurrency)
+
+	if !a.balance.Equals(oneCurrency) {
+		t.Fatal("unexpected balance after reset", a.balance)
+	}
+	if !a.negativeBalance.IsZero() {
+		t.Fatal("unexpected negative balance after reset", a.negativeBalance)
+	}
+	if !a.pendingDeposits.IsZero() {
+		t.Fatal("unexpected pending deposits after reset", a.pendingDeposits)
+	}
+	if !a.pendingWithdrawals.IsZero() {
+		t.Fatal("unexpected pending withdrawals after reset", a.pendingWithdrawals)
+	}
+}
+
 // openRandomTestAccountsOnRenter is a helper function that creates a random
 // number of accounts by calling 'managedOpenAccount' on the given renter
 func openRandomTestAccountsOnRenter(r *Renter) []*account {
