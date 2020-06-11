@@ -366,6 +366,36 @@ func TestHostAccountBalance(t *testing.T) {
 	}
 }
 
+// TestSyncAccountBalanceToHostCritical is a small unit test that verifies the
+// sync can not be called when the account delta is not zero
+func TestSyncAccountBalanceToHostCritical(t *testing.T) {
+	wt, err := newWorkerTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := wt.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	w := wt.worker
+
+	// track a deposit to simulate an ongoing fund
+	w.staticAccount.managedTrackDeposit(w.staticBalanceTarget)
+
+	// trigger the account balance sync and expect it to panic
+	defer func() {
+		r := recover()
+		if r == nil || !strings.Contains(fmt.Sprintf("%v", r), "managedSyncAccountBalanceToHost is called on a worker with an account that has non-zero deltas") {
+			t.Error("Expected build.Critical")
+			t.Log(r)
+
+		}
+	}()
+	w.managedSyncAccountBalanceToHost()
+}
+
 // openRandomTestAccountsOnRenter is a helper function that creates a random
 // number of accounts by calling 'managedOpenAccount' on the given renter
 func openRandomTestAccountsOnRenter(r *Renter) []*account {
