@@ -1127,8 +1127,8 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 
 // getDefaultPath extracts the defaultPath from the request or returns a default.
 // It will never return a directory because `subfiles` contains only files.
-func getDefaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (string, error) {
-	defaultPath := queryForm.Get(modules.SkyfileDefaultPathParamName)
+func getDefaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaultPath string, err error) {
+	defaultPath = queryForm.Get(modules.SkyfileDefaultPathParamName)
 	// ensure the defaultPath always has a leading slash
 	defer func() {
 		if defaultPath != "" && !strings.HasPrefix(defaultPath, "/") {
