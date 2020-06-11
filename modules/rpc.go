@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 // RPCPriceTable contains the cost of executing a RPC on a host. Each host can

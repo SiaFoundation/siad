@@ -239,6 +239,9 @@ func revisionFromRequest(recent types.FileContractRevision, pbcr modules.PayByCo
 	rev.NewRevisionNumber = pbcr.NewRevisionNumber
 	rev.NewValidProofOutputs = make([]types.SiacoinOutput, len(pbcr.NewValidProofValues))
 	for i, v := range pbcr.NewValidProofValues {
+		if i >= len(recent.NewValidProofOutputs) {
+			break
+		}
 		rev.NewValidProofOutputs[i] = types.SiacoinOutput{
 			Value:      v,
 			UnlockHash: recent.NewValidProofOutputs[i].UnlockHash,
@@ -247,6 +250,9 @@ func revisionFromRequest(recent types.FileContractRevision, pbcr modules.PayByCo
 
 	rev.NewMissedProofOutputs = make([]types.SiacoinOutput, len(pbcr.NewMissedProofValues))
 	for i, v := range pbcr.NewMissedProofValues {
+		if i >= len(recent.NewMissedProofOutputs) {
+			break
+		}
 		rev.NewMissedProofOutputs[i] = types.SiacoinOutput{
 			Value:      v,
 			UnlockHash: recent.NewMissedProofOutputs[i].UnlockHash,

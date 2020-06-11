@@ -4,9 +4,9 @@ import (
 	"encoding/base64"
 	"net/url"
 
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 // TransactionPoolFeeGet uses the /tpool/fee endpoint to get a fee estimation.

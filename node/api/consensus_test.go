@@ -6,9 +6,9 @@ import (
 	"io"
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 // TestConsensusGet probes the GET call to /consensus.
