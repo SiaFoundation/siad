@@ -35,6 +35,7 @@ Renter:
 
 Full Descriptions
 -----------------
+TODO - alphabetize this file
 
 #### Wallet tasks
 
@@ -95,6 +96,14 @@ wallet. These can be used to regenerate the wallet
 * `siac wallet addseed` prompts the user for his encryption password,
 as well as a new secret seed. The wallet will then incorporate this
 seed into itself. This can be used for wallet recovery and merging.
+
+#### FeeManager Tasks
+
+* `siac feemanager` prints info about the feemanager such as pending fees and
+  the next fee payout height.
+
+* `siac feemanager cancel <feeUID>` cancels a pending fee. If a transaction has
+  already been created the fee cannot be cancelled.
 
 #### Host tasks
 * `host config [setting] [value]`

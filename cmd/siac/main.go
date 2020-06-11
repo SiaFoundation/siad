@@ -16,9 +16,11 @@ import (
 )
 
 var (
+	// TODO - re-alphabetize this list of flags, break out by module
 	// Flags.
 	dictionaryLanguage        string // dictionary for seed utils
 	uploadedsizeUtilVerbose   bool   // display additional info for "utils upload-size"
+	feeManagerVerbose         bool   // display additoinal info for the FeeManager
 	hostContractOutputType    string // output type for host contracts
 	hostVerbose               bool   // display additional host info
 	hostFolderRemoveForce     bool   // force folder remove
@@ -236,6 +238,13 @@ func main() {
 
 	root.AddCommand(consensusCmd)
 	consensusCmd.Flags().BoolVarP(&consensusCmdVerbose, "verbose", "v", false, "Display full consensus information")
+
+	// Add feemanager commands
+	root.AddCommand(feeManagerCmd)
+	feeManagerCmd.AddCommand(feeManagerCancelFeeCmd)
+
+	// Add flags to FeeManager commands
+	feeManagerCmd.Flags().BoolVarP(&feeManagerVerbose, "verbose", "v", false, "Show additional FeeManager info such as paid fees")
 
 	root.AddCommand(gatewayCmd)
 	gatewayCmd.AddCommand(gatewayAddressCmd, gatewayBandwidthCmd, gatewayBlacklistCmd, gatewayConnectCmd, gatewayDisconnectCmd, gatewayListCmd, gatewayRatelimitCmd)
