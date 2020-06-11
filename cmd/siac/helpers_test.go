@@ -16,11 +16,122 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+// outputCatcher is a helper struct enabling to catch stdout and stderr during
+// tests
+type outputCatcher struct {
+	origStdout *os.File
+	origStderr *os.File
+	outW       *os.File
+	outC       chan string
+}
+
+// siacCmdSubTest is a helper struct for running siac Cobra commands subtests
+// when subtests need command to run and expected output
+type siacCmdSubTest struct {
+	name               string
+	test               func(*testing.T, *cobra.Command, []string, string)
+	cmd                *cobra.Command
+	cmdStrs            []string
+	expectedOutPattern string
+}
+
 // subTest is a helper struct for running subtests when tests can use the same
 // test http client
 type subTest struct {
 	name string
 	test func(*testing.T, client.Client)
+}
+
+// escapeRegexChars takes string and escapes all special regex characters
+func escapeRegexChars(s string) string {
+	res := s
+	chars := `\+*?^$.[]{}()|/`
+	for _, c := range chars {
+		res = strings.ReplaceAll(res, string(c), `\`+string(c))
+	}
+	return res
+}
+
+// executeSiacCommand is a pass-through function to execute siac cobra command
+func executeSiacCommand(root *cobra.Command, args ...string) (output string, err error) {
+	_, output, err = executeSiacCommandC(root, args...)
+	return output, err
+}
+
+// executeSiacCommandC executes cobra command
+func executeSiacCommandC(root *cobra.Command, args ...string) (c *cobra.Command, output string, err error) {
+	buf := new(bytes.Buffer)
+	root.SetOut(buf)
+	root.SetErr(buf)
+	root.SetArgs(args)
+
+	c, err = root.ExecuteC()
+
+	return c, buf.String(), err
+}
+
+// getRootCmdForSiacCmdsTests creates and initializes a new instance of siac Cobra
+// command
+func getRootCmdForSiacCmdsTests(dir string) *cobra.Command {
+	// create new instance of siac cobra command
+	root := initCmds()
+
+	// initialize a siac cobra command
+	verbose := false
+	initClient(root, &verbose, &httpClient, &dir)
+
+	return root
+}
+
+// startCatchingStdoutStderr starts catching stdout and stderr in tests
+func newOutputCatcher() (outputCatcher, error) {
+	// redirect stdout, stderr
+	origStdout := os.Stdout
+	origStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		return outputCatcher{}, errors.New("Error opening pipe")
+	}
+	os.Stdout = w
+	os.Stderr = w
+
+	// capture redirected output
+	outC := make(chan string)
+	go func() {
+		var b bytes.Buffer
+		io.Copy(&b, r)
+		outC <- b.String()
+	}()
+
+	c := outputCatcher{
+		origStdout: origStdout,
+		origStderr: origStderr,
+		outW:       w,
+		outC:       outC,
+	}
+
+	return c, nil
+}
+
+// newTestNode creates a new Sia node for a test
+func newTestNode(dir string) (*siatest.TestNode, error) {
+	n, err := siatest.NewNode(node.AllModules(dir))
+	if err != nil {
+		return nil, errors.AddContext(err, "Error creating a new test node")
+	}
+	return n, nil
+}
+
+// runSiacCmdSubTests is a helper function to run siac Cobra command subtests
+// when subtests need command to run and expected output
+func runSiacCmdSubTests(t *testing.T, tests []siacCmdSubTest) error {
+	// Run subtests
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.test(t, test.cmd, test.cmdStrs, test.expectedOutPattern)
+		})
+	}
+	return nil
 }
 
 // runSubTests is a helper function to run the subtests when tests can use the
@@ -45,15 +156,6 @@ func runSubTests(t *testing.T, directory string, tests []subTest) error {
 	return nil
 }
 
-// newTestNode creates a new Sia node for a test
-func newTestNode(dir string) (*siatest.TestNode, error) {
-	n, err := siatest.NewNode(node.AllModules(dir))
-	if err != nil {
-		return nil, errors.AddContext(err, "Error creating a new test node")
-	}
-	return n, nil
-}
-
 // siacTestDir creates a temporary Sia testing directory for a cmd/siac test,
 // removing any files or directories that previously existed at that location.
 // This should only every be called once per test. Otherwise it will delete the
@@ -64,28 +166,6 @@ func siacTestDir(testName string) string {
 		panic(err)
 	}
 	return path
-}
-
-// siacCmdSubTest is a helper struct for running siac Cobra commands subtests
-// when subtests need command to run and expected output
-type siacCmdSubTest struct {
-	name               string
-	test               func(*testing.T, *cobra.Command, []string, string)
-	cmd                *cobra.Command
-	cmdStrs            []string
-	expectedOutPattern string
-}
-
-// runSiacCmdSubTests is a helper function to run siac Cobra command subtests
-// when subtests need command to run and expected output
-func runSiacCmdSubTests(t *testing.T, tests []siacCmdSubTest) error {
-	// Run subtests
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			test.test(t, test.cmd, test.cmdStrs, test.expectedOutPattern)
-		})
-	}
-	return nil
 }
 
 // testGenericSiacCmd is a helper function to test siac cobra commands
@@ -158,76 +238,6 @@ func testGenericSiacCmd(t *testing.T, root *cobra.Command, cmds []string, expOut
 
 		t.Fatal()
 	}
-}
-
-// getRootCmdForSiacCmdsTests creates and initializes a new instance of siac Cobra
-// command
-func getRootCmdForSiacCmdsTests(dir string) *cobra.Command {
-	// create new instance of siac cobra command
-	root := initCmds()
-
-	// initialize a siac cobra command
-	verbose := true
-	initClient(root, &verbose, &httpClient, &dir)
-
-	return root
-}
-
-// executeSiacCommand is a pass-through function to execute siac cobra command
-func executeSiacCommand(root *cobra.Command, args ...string) (output string, err error) {
-	_, output, err = executeSiacCommandC(root, args...)
-	return output, err
-}
-
-// executeSiacCommandC executes cobra command
-func executeSiacCommandC(root *cobra.Command, args ...string) (c *cobra.Command, output string, err error) {
-	buf := new(bytes.Buffer)
-	root.SetOut(buf)
-	root.SetErr(buf)
-	root.SetArgs(args)
-
-	c, err = root.ExecuteC()
-
-	return c, buf.String(), err
-}
-
-// outputCatcher is a helper struct enabling to catch stdout and stderr during
-// tests
-type outputCatcher struct {
-	origStdout *os.File
-	origStderr *os.File
-	outW       *os.File
-	outC       chan string
-}
-
-// startCatchingStdoutStderr starts catching stdout and stderr in tests
-func newOutputCatcher() (outputCatcher, error) {
-	// redirect stdout, stderr
-	origStdout := os.Stdout
-	origStderr := os.Stderr
-	r, w, err := os.Pipe()
-	if err != nil {
-		return outputCatcher{}, errors.New("Error opening pipe")
-	}
-	os.Stdout = w
-	os.Stderr = w
-
-	// capture redirected output
-	outC := make(chan string)
-	go func() {
-		var b bytes.Buffer
-		io.Copy(&b, r)
-		outC <- b.String()
-	}()
-
-	c := outputCatcher{
-		origStdout: origStdout,
-		origStderr: origStderr,
-		outW:       w,
-		outC:       outC,
-	}
-
-	return c, nil
 }
 
 // stop stops catching stdout and stderr, catched output is
