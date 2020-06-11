@@ -420,7 +420,7 @@ func TestRootSiacCmd(t *testing.T) {
             test:               testGenericSiacCmd,
             cmd:                root,
             cmdStrs:            []string{"-a", IPv6addr},
-            expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
+            expectedOutPattern: regexPatternConstantX,
         },
         ...
     }

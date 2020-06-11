@@ -63,12 +63,8 @@ Renter:
   Passive Contracts:   [\d]+
   Disabled Contracts:  [\d]+`
 
-	rootCmdPattern := begin + rootCmdOutPattern + nl + nl + end
-	invalidFlagPattern := begin + "Error: unknown shorthand flag: 'x' in -x" + nl + rootCmdUsagePattern + nl + end
 	connectionRefusedPattern := `Could not get consensus status: \[failed to get reader response; GET request failed; Get http://localhost:5555/consensus: dial tcp \[::1\]:5555: connect: connection refused\]`
-	invalidAddressPattern := begin + connectionRefusedPattern + nl + nl + end
 	siaClientVersionPattern := "Sia Client v" + strings.ReplaceAll(build.Version, ".", `\.`)
-	rootCmdHelpPattern := begin + siaClientVersionPattern + nl + nl + rootCmdUsagePattern + end
 
 	// Define subtests
 	// We can't test siad on default address (port) when test node has
@@ -79,56 +75,56 @@ Renter:
 			test:               testGenericSiacCmd,
 			cmd:                root,
 			cmdStrs:            []string{"-a", IPv6addr},
-			expectedOutPattern: rootCmdPattern,
+			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithShortAddressFlagIPv4",
 			test:               testGenericSiacCmd,
 			cmd:                root,
 			cmdStrs:            []string{"-a", IPv4Addr},
-			expectedOutPattern: rootCmdPattern,
+			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithLongAddressFlagIPv6",
 			test:               testGenericSiacCmd,
 			cmd:                root,
 			cmdStrs:            []string{"--addr", IPv6addr},
-			expectedOutPattern: rootCmdPattern,
+			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithLongAddressFlagIPv4",
 			test:               testGenericSiacCmd,
 			cmd:                root,
 			cmdStrs:            []string{"--addr", IPv4Addr},
-			expectedOutPattern: rootCmdPattern,
+			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithVerboseFlag",
 			test:               testGenericSiacCmd,
 			cmd:                root,
 			cmdStrs:            []string{"--addr", IPv4Addr, "-v"},
-			expectedOutPattern: rootCmdPattern,
+			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithInvalidFlag",
 			test:               testGenericSiacCmd,
 			cmd:                root,
 			cmdStrs:            []string{"-x"},
-			expectedOutPattern: invalidFlagPattern,
+			expectedOutPattern: begin + "Error: unknown shorthand flag: 'x' in -x" + nl + rootCmdUsagePattern + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithInvalidAddress",
 			test:               testGenericSiacCmd,
 			cmd:                root,
 			cmdStrs:            []string{"-a", "localhost:5555"},
-			expectedOutPattern: invalidAddressPattern,
+			expectedOutPattern: begin + connectionRefusedPattern + nl + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithHelpFlag",
 			test:               testGenericSiacCmd,
 			cmd:                root,
 			cmdStrs:            []string{"-h"},
-			expectedOutPattern: rootCmdHelpPattern,
+			expectedOutPattern: begin + siaClientVersionPattern + nl + nl + rootCmdUsagePattern + end,
 		},
 	}
 
