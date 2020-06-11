@@ -9,7 +9,7 @@ import (
 )
 
 // contractEndHeight returns the height at which the Contractor's contracts
-// end. If there are no contracts, it returns zero.
+// end.
 func (c *Contractor) contractEndHeight() types.BlockHeight {
 	return c.currentPeriod + c.allowance.Period + c.allowance.RenewWindow
 }

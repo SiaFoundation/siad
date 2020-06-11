@@ -9,8 +9,7 @@ import (
 )
 
 var (
-	errAllowanceNotSynced  = errors.New("you must be synced to set an allowance")
-	errAllowanceWindowSize = errors.New("renew window must be less than period")
+	errAllowanceNotSynced = errors.New("you must be synced to set an allowance")
 
 	// ErrAllowanceZeroFunds is returned if the allowance funds are being set to
 	// zero when not cancelling the allowance
@@ -75,8 +74,6 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 		return ErrAllowanceZeroPeriod
 	} else if a.RenewWindow == 0 {
 		return ErrAllowanceZeroWindow
-	} else if a.RenewWindow >= a.Period {
-		return errAllowanceWindowSize
 	} else if a.ExpectedStorage == 0 {
 		return ErrAllowanceZeroExpectedStorage
 	} else if a.ExpectedUpload == 0 {
@@ -93,15 +90,25 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 
 	c.log.Println("INFO: setting allowance to", a)
 	c.mu.Lock()
-	// set the current period to the blockheight if the existing allowance is
-	// empty. the current period is set in the past by the renew window to make sure
-	// the first period aligns with the first period contracts in the same way
-	// that future periods align with contracts
-	// Also remember that we might have to unlock our contracts if the
-	// allowance was set to the empty allowance before.
+	// Set the current period if the existing allowance is empty.
+	//
+	// If the renew window is less than the period the current period is set in
+	// the past by the renew window to make sure the first period aligns with the
+	// first period contracts in the same way that future periods align with
+	// contracts
+	//
+	// If the renew window is greater than or equal to the period we set the
+	// current period to the current block height to avoid having the next period
+	// in the past as well.
+	//
+	// Also remember that we might have to unlock our contracts if the allowance
+	// was set to the empty allowance before.
 	unlockContracts := false
 	if reflect.DeepEqual(c.allowance, modules.Allowance{}) {
-		c.currentPeriod = c.blockHeight - a.RenewWindow
+		c.currentPeriod = c.blockHeight
+		if a.Period > a.RenewWindow {
+			c.currentPeriod -= a.RenewWindow
+		}
 		unlockContracts = true
 	}
 	c.allowance = a
