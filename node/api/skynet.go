@@ -343,7 +343,10 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			return
 		}
 	} else {
-		// We don't need a format to be specified for single files.
+		// We don't need a format to be specified for single files. Instead, we
+		// directly serve their content, unless that is explicitly disabled by
+		// passing the `redirect=false` parameter. This is legacy behaviour that
+		// we are continuing to support.
 		formatRequired := len(metadata.Subfiles) != 0
 		// We need a format to be specified when accessing the `/` of skyfiles
 		// that either have more than one file or do not allow redirects.
@@ -1175,19 +1178,19 @@ func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaul
 		if exists {
 			return DefaultSkynetDefaultPath, nil
 		}
-		// For single file directories preserve the behaviour of redirecting to
-		// the only file.
+		// For single file directories we want to redirect to the only file.
 		if len(subfiles) == 1 {
 			for _, f := range subfiles {
 				return f.Filename, nil
 			}
 		}
-		// No `index.html`, so we can't have a default path
+		// No `index.html` in a multi-file directory, so we can't have a
+		// default path.
 		return "", nil
 	}
 	// Check if the defaultPath exists. Omit the leading slash because
 	// the filenames in `subfiles` won't have it.
-	if _, ok := subfiles[strings.TrimPrefix(defaultPath, "/")]; !ok {
+	if _, exists = subfiles[strings.TrimPrefix(defaultPath, "/")]; !exists {
 		return "", errors.AddContext(ErrInvalidDefaultPath, fmt.Sprintf("no such path: %s", defaultPath))
 	}
 	return defaultPath, nil
