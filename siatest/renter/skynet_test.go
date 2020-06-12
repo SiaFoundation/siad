@@ -73,6 +73,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetEncryption", Test: testSkynetEncryption},
 		{Name: "TestSkynetEncryptionLargeFile", Test: testSkynetEncryptionLargeFile},
 		{Name: "TestSkynetDefaultPath", Test: testSkynetDefaultPath},
+		{Name: "TestSkynetSingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
 	}
 
 	// Run tests
@@ -2443,7 +2444,7 @@ func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testSkynetDefaultPath test whether defaultPath metadata parameter works
+// testSkynetDefaultPath tests whether defaultPath metadata parameter works
 // correctly
 func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
@@ -2607,5 +2608,27 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	_, _, err = r.SkynetSkylinkGetWithParameters(skylink, paramsNoRedirect)
 	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
 		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
+	}
+}
+
+// testSkynetSingleFileNoSubfiles ensures that a single file uploaded as a
+// skyfile will not have `subfiles` defined in its metadata. This is required by
+// the `defaultPath` and `redirect` logic.
+func testSkynetSingleFileNoSubfiles(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	skylink, sup, _, err := r.UploadNewSkyfileBlocking("file.name", modules.SectorSize, false)
+	if err != nil {
+		t.Fatal("Failed to upload a single file.", err)
+	}
+	if sup.FileMetadata.Subfiles != nil {
+		t.Fatal("Expected empty subfiles on upload, got", sup.FileMetadata.Subfiles)
+	}
+	_, metadata, err := r.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Subfiles != nil {
+		t.Fatal("Expected empty subfiles on download, got", sup.FileMetadata.Subfiles)
 	}
 }

@@ -343,9 +343,12 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			return
 		}
 	} else {
+		// We don't need a format to be specified for single files.
+		formatRequired := len(metadata.Subfiles) != 0
 		// We need a format to be specified when accessing the `/` of skyfiles
 		// that either have more than one file or do not allow redirects.
-		if format == "" && (len(metadata.Subfiles) > 1 || !allowRedirect) {
+		formatRequired = formatRequired && (len(metadata.Subfiles) > 1 || !allowRedirect)
+		if formatRequired && format == "" {
 			WriteError(w, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest)
 			return
 		}
