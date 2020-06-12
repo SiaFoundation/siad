@@ -138,19 +138,19 @@ var (
 	ErrValidHostOutputChanged = ErrorCommunication("valid host payout address changed")
 
 	// ErrMissedHostOutputChanged is returne when the host's missed payout
-	// address changed even though it shouldn't.
-	ErrMissedHostOutputChanged = ErrorCommunication("missed host payout address changed")
+	// changed even though it shouldn't.
+	ErrMissedHostOutputChanged = ErrorCommunication("missed host payout changed")
 
-	// ErrVoidOutputChanged is returned if the void output address changed.
-	ErrVoidOutputChanged = ErrorCommunication("lost collateral address was changed")
+	// ErrVoidAddressChanged is returned if the void output address changed.
+	ErrVoidAddressChanged = ErrorCommunication("lost collateral address was changed")
 
 	// ErrValidRenterPayoutChanged is returned if the renter's valid payout
 	// changed even though it shouldn't.
 	ErrValidRenterPayoutChanged = ErrorCommunication("valid renter payout changed")
 
-	// ErrMissedRenterPayoutChanged is returned ifi the renter's missed payout
+	// ErrMissedRenterPayoutChanged is returned if the renter's missed payout
 	// changed even though it shouldn't.
-	ErrMissedRenterPayoutChanged = ErrorCommunication("valid renter payout changed")
+	ErrMissedRenterPayoutChanged = ErrorCommunication("missed renter payout changed")
 
 	// ErrValidHostPayoutChanged is returned if the host's valid payout changed
 	// even though it shouldn't.

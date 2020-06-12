@@ -122,7 +122,7 @@ func TestRPCConcurrentCalls(t *testing.T) {
 					}
 
 					// execute it and handle the error
-					_, _, err := pair.managedExecuteProgram(epr, p.data, cost, false)
+					_, _, err := pair.managedExecuteProgram(epr, p.data, cost, false, true)
 					if err != nil {
 						recoverChan <- err
 					} else {

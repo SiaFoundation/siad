@@ -197,8 +197,12 @@ func (fcr FileContractRevision) EAFundRevision(amount Currency) (FileContractRev
 	return rev, nil
 }
 
-// ExecuteProgramRevision creates an ExecuteProgramRevision from a given current
-// revision.
+// ExecuteProgramRevision creates a new ExecuteProgramRevision based off of an
+// existing revision. Since the MDM program is already paid for using EAs and EA
+// funded money is moved to the host's valid and missed output but not the void,
+// this revision moves a certain amount of that money from the missed host
+// output to the void for collateral and per-block storage cost in case the host
+// can't provide a storage proof.
 func (fcr FileContractRevision) ExecuteProgramRevision(revisionNumber uint64, transfer Currency, newRoot crypto.Hash, newSize uint64) (FileContractRevision, error) {
 	newRevision := fcr
 
@@ -206,6 +210,7 @@ func (fcr FileContractRevision) ExecuteProgramRevision(revisionNumber uint64, tr
 	newRevision.NewValidProofOutputs = append([]SiacoinOutput{}, fcr.NewValidProofOutputs...)
 	newRevision.NewMissedProofOutputs = append([]SiacoinOutput{}, fcr.NewMissedProofOutputs...)
 
+	// Set the new contract root, revision number and size.
 	newRevision.NewFileMerkleRoot = newRoot
 	newRevision.NewFileSize = newSize
 	newRevision.NewRevisionNumber = revisionNumber
@@ -232,7 +237,6 @@ func (fcr FileContractRevision) ExecuteProgramRevision(revisionNumber uint64, tr
 		return FileContractRevision{}, errors.AddContext(err, "failed to set void payout")
 	}
 
-	// Set the new contract root and size.
 	return newRevision, nil
 }
 

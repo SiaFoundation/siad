@@ -180,7 +180,7 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 		return err
 	}
 	if paymentVoidOutput.UnlockHash != existingVoidOutput.UnlockHash {
-		return ErrVoidOutputChanged
+		return ErrVoidAddressChanged
 	}
 
 	// Determine the amount that was transferred from the renter.

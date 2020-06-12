@@ -268,10 +268,11 @@ type renterHostPair struct {
 	staticRenterMux  *siamux.SiaMux
 	staticHT         *hostTester
 
-	mdmMu    sync.RWMutex
-	mu       sync.Mutex
 	pt       *modules.RPCPriceTable
 	ptExpiry time.Time // keep track of when the price table is set to expire
+
+	mdmMu sync.RWMutex
+	mu    sync.Mutex
 }
 
 // newRenterHostPair creates a new host tester and returns a renter host pair,
@@ -388,7 +389,7 @@ type executeProgramResponse struct {
 // and returns the responses received by the host. A failure to execute an
 // instruction won't result in an error. Instead the returned responses need to
 // be inspected for that depending on the testcase.
-func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency, updatePriceTable bool) ([]executeProgramResponse, mux.BandwidthLimit, error) {
+func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency, updatePriceTable, finalize bool) ([]executeProgramResponse, mux.BandwidthLimit, error) {
 	// Only allow a single write program or multiple read programs to run in
 	// parallel. A production worker will have better locking than this but
 	// since we just mock the renter this is used for unit testing the host.
@@ -484,7 +485,7 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 	}
 
 	// If the program was not readonly, the host expects a signed revision.
-	if !epr.Program.ReadOnly() {
+	if !epr.Program.ReadOnly() && finalize {
 		lastOutput := responses[len(responses)-1]
 		err = p.managedFinalizeWriteProgram(stream, lastOutput, p.staticHT.host.BlockHeight())
 		if err != nil {
@@ -492,11 +493,15 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 		}
 	}
 
-	// The next read should return io.EOF since the host closes the connection
-	// after the RPC is done.
-	err = modules.RPCRead(stream, struct{}{})
-	if !errors.Contains(err, io.ErrClosedPipe) {
-		return nil, limit, err
+	// when we purposefully don't finalize, we can't wait for the host to close
+	// the stream.
+	if finalize {
+		// The next read should return io.EOF since the host closes the connection
+		// after the RPC is done.
+		err = modules.RPCRead(stream, struct{}{})
+		if !errors.Contains(err, io.ErrClosedPipe) {
+			return nil, limit, err
+		}
 	}
 	return responses, limit, nil
 }
@@ -673,14 +678,14 @@ func (p *renterHostPair) managedFinalizeWriteProgram(stream siamux.Stream, lastO
 	// Send request.
 	err = modules.RPCWrite(stream, req)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "managedFinalizeWriteProgram: RPCWrite failed")
 	}
 
 	// Receive response.
 	var resp modules.RPCExecuteProgramRevisionSigningResponse
 	err = modules.RPCRead(stream, &resp)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "managedFinalizeWriteProgram: RPCRead failed")
 	}
 
 	// check host signature
@@ -738,6 +743,22 @@ func (p *renterHostPair) managedPriceTable() *modules.RPCPriceTable {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.pt
+}
+
+// managedRecentHostRevision returns the most recent revision the host has
+// stored for the pair's contract.
+func (p *renterHostPair) managedRecentHostRevision() (types.FileContractRevision, error) {
+	so, err := p.managedStorageObligation()
+	if err != nil {
+		return types.FileContractRevision{}, err
+	}
+	return so.recentRevision()
+}
+
+// managedStorageObligation returns the host's storage obligation for the pairs
+// contract.
+func (p *renterHostPair) managedStorageObligation() (storageObligation, error) {
+	return p.staticHT.host.managedGetStorageObligation(p.staticFCID)
 }
 
 // managedSign returns the renter's signature of the given revision

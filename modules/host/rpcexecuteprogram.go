@@ -259,7 +259,7 @@ func (h *Host) managedFinalizeWriteProgram(stream io.ReadWriter, fcid types.File
 	transfer := lastOutput.AdditionalCollateral.Add(lastOutput.AdditionalStorageCost)
 	newRevision, err := currentRevision.ExecuteProgramRevision(req.NewRevisionNumber, transfer, lastOutput.NewMerkleRoot, lastOutput.NewSize)
 	if err != nil {
-		return errors.AddContext(err, "failed to get current revision")
+		return errors.AddContext(err, "failed to construct execute program revision")
 	}
 
 	// The host is expected to move the additional storage cost and collateral
@@ -305,6 +305,11 @@ func (h *Host) managedFinalizeWriteProgram(stream io.ReadWriter, fcid types.File
 // verifyExecuteProgramRevision verifies that the new revision is sane in
 // relation to the old one.
 func verifyExecuteProgramRevision(currentRevision, newRevision types.FileContractRevision, blockHeight types.BlockHeight, maxTransfer types.Currency, newFileSize uint64, newRoot crypto.Hash) error {
+	// Check that the revision count has increased.
+	if newRevision.NewRevisionNumber <= currentRevision.NewRevisionNumber {
+		return ErrBadRevisionNumber
+	}
+
 	// Check that the revision is well-formed.
 	if len(newRevision.NewValidProofOutputs) != 2 || len(newRevision.NewMissedProofOutputs) != 3 {
 		return ErrBadContractOutputCounts
@@ -331,7 +336,7 @@ func verifyExecuteProgramRevision(currentRevision, newRevision types.FileContrac
 		return err
 	}
 	if missedVoidOutput.UnlockHash != existingVoidOutput.UnlockHash {
-		return ErrVoidOutputChanged
+		return ErrVoidAddressChanged
 	}
 
 	// Renter payouts shouldn't change.
@@ -347,6 +352,9 @@ func verifyExecuteProgramRevision(currentRevision, newRevision types.FileContrac
 	}
 
 	// Determine how much money was moved from the host's missed output to the void.
+	if newRevision.MissedHostPayout().Cmp(currentRevision.MissedHostPayout()) > 0 {
+		return errors.AddContext(ErrLowHostMissedOutput, "host missed proof output was decreased")
+	}
 	fromHost := currentRevision.MissedHostPayout().Sub(newRevision.MissedHostPayout())
 	if fromHost.Cmp(maxTransfer) > 0 {
 		return errors.AddContext(ErrLowHostMissedOutput, "more money than expected moved from host")
@@ -358,8 +366,7 @@ func verifyExecuteProgramRevision(currentRevision, newRevision types.FileContrac
 	if err := errors.Compose(errOld, errNew); err != nil {
 		return errors.AddContext(err, "failed to get missed void payouts")
 	}
-	toVoid := mvoNew.Sub(mvoOld)
-	if !toVoid.Equals(fromHost) {
+	if !mvoOld.Add(fromHost).Equals(mvoNew) {
 		return errors.New("fromHost doesn't match toVoid")
 	}
 
@@ -368,11 +375,6 @@ func verifyExecuteProgramRevision(currentRevision, newRevision types.FileContrac
 	// that this incentive is not present.
 	if newRevision.ValidRenterPayout().Cmp(newRevision.MissedRenterOutput().Value) > 0 {
 		return errors.AddContext(ErrHighRenterMissedOutput, "renter has incentive to see host fail")
-	}
-
-	// Check that the revision count has increased.
-	if newRevision.NewRevisionNumber <= currentRevision.NewRevisionNumber {
-		return ErrBadRevisionNumber
 	}
 
 	// The filesize should be updated.

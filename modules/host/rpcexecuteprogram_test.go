@@ -81,7 +81,7 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 
 	// execute program.
 	budget := types.NewCurrency64(math.MaxUint64)
-	_, _, err = rhp.managedExecuteProgram(epr, data, budget, false)
+	_, _, err = rhp.managedExecuteProgram(epr, data, budget, false, true)
 	if !errors.Contains(err, io.ErrClosedPipe) {
 		t.Fatal("Expected managedExecuteProgram to fail with an ErrClosedPipe, instead err was", err)
 	}
@@ -160,7 +160,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	cost := programCost.Add(bandwidthCost)
 
 	// execute program.
-	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true)
+	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
 	if err != nil {
 		t.Log("cost", cost.HumanString())
 		t.Log("expected ea balance", rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
@@ -223,7 +223,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	// cost, we expect this to return ErrInsufficientBandwidthBudget
 	program, data = pb.Program()
 	cost = cost.Sub64(1)
-	_, limit, err = rhp.managedExecuteProgram(epr, data, cost, true)
+	_, limit, err = rhp.managedExecuteProgram(epr, data, cost, true, true)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientBandwidthBudget.Error()) {
 		t.Fatalf("expected ExecuteProgram to fail due to insufficient bandwidth budget: %v", err)
 	}
@@ -325,7 +325,7 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	cost := programCost.Add(bandwidthCost)
 
 	// execute program.
-	resps, bandwidth, err := rhp.managedExecuteProgram(epr, data, cost, true)
+	resps, bandwidth, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
 	if err != nil {
 		t.Log("cost", cost.HumanString())
 		t.Log("expected ea balance", rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
@@ -448,7 +448,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 
 	// Execute program.
 	cost := programCost.Add(bandwidthCost)
-	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true)
+	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -497,7 +497,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	// Execute program again. This time pay for 1 less byte of bandwidth. This should fail.
 	program, data = pb.Program()
 	cost = programCost.Add(bandwidthCost.Sub64(1))
-	_, limit, err = rhp.managedExecuteProgram(epr, data, cost, true)
+	_, limit, err = rhp.managedExecuteProgram(epr, data, cost, true, true)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientBandwidthBudget.Error()) {
 		t.Fatalf("expected ExecuteProgram to fail due to insufficient bandwidth budget: %v", err)
 	}
@@ -663,7 +663,7 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	badRevision = deepCopy(validRevision)
 	badRevision.NewMissedProofOutputs[2].UnlockHash = types.UnlockHash(hash)
 	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
-	if err != ErrVoidOutputChanged {
+	if err != ErrVoidAddressChanged {
 		t.Fatalf("Expected lost collaterall error but received '%v'", err)
 	}
 
@@ -691,6 +691,16 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 		t.Fatalf("Expected ErrValidHostPayoutChanged error but received '%v'", err)
 	}
 
+	// expect ErrLowHostMissedOutput
+	badCurr = deepCopy(curr)
+	currOut := curr.MissedHostOutput()
+	currOut.Value = currOut.Value.Add64(1)
+	badCurr.NewMissedProofOutputs[1] = currOut
+	err = verifyExecuteProgramRevision(badCurr, validRevision, height, transferred, newFileSize, newRoot)
+	if err == nil || !strings.Contains(err.Error(), string(ErrLowHostMissedOutput)) {
+		t.Fatalf("Expected '%v' but received '%v'", string(ErrLowHostMissedOutput), err)
+	}
+
 	// expect an error saying too much money was transferred
 	badRevision = deepCopy(validRevision)
 	badRevision.NewMissedProofOutputs[1].Value = badRevision.NewMissedProofOutputs[1].Value.Sub64(1)
@@ -701,9 +711,11 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	}
 
 	// expect ErrHighRenterMissedOutput
-	badRevision = deepCopy(validRevision)
-	badRevision.SetMissedRenterPayout(validRevision.MissedRenterOutput().Value.Sub64(1))
-	err = verifyExecuteProgramRevision(badRevision, badRevision, height, transferred, newFileSize, newRoot)
+	badCurr = deepCopy(curr)
+	badCurr.SetMissedRenterPayout(badCurr.MissedRenterPayout().Sub64(1))
+	badRevision = deepCopy(badCurr)
+	badRevision.NewRevisionNumber++
+	err = verifyExecuteProgramRevision(badCurr, badRevision, height, transferred, newFileSize, newRoot)
 	if err == nil || !strings.Contains(err.Error(), string(ErrHighRenterMissedOutput)) {
 		t.Fatalf("Expected '%v' but received '%v'", string(ErrHighRenterMissedOutput), err)
 	}
@@ -773,15 +785,15 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	}
 }
 
-// TestAppendProgram tests the managedRPCExecuteProgram with a valid 'Append'
-// program.
+// TestExecuteAppendProgram tests the managedRPCExecuteProgram with a valid
+// 'Append' program.
 func TestExecuteAppendProgram(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
 
-	// create a blank host tester
+	// create a testing pair.
 	rhp, err := newRenterHostPair(t.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -795,12 +807,7 @@ func TestExecuteAppendProgram(t *testing.T) {
 
 	// helper to get current revision's number.
 	revNum := func() uint64 {
-		// Get the latest revision. It should be the updated one.
-		updated, err := rhp.staticHT.host.managedGetStorageObligation(rhp.staticFCID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		recent, err := updated.recentRevision()
+		recent, err := rhp.managedRecentHostRevision()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -861,7 +868,7 @@ func TestExecuteAppendProgram(t *testing.T) {
 	revNumBefore := revNum()
 
 	// execute program.
-	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true)
+	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -909,13 +916,37 @@ func TestExecuteAppendProgram(t *testing.T) {
 
 	// verify the cost
 	if !resp.TotalCost.Equals(totalCost) {
-		t.Log("storage", storageCost.HumanString())
 		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
 	}
 
 	// verify the EA balance
 	am := rhp.staticHT.host.staticAccountManager
 	expectedBalance := maxBalance.Sub(cost)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// execute program but this time without finalizing it to check for the
+	// refund.
+	programCost, _, _ = pb.Cost(false)
+	expectedDownload = uint64(5840) // download
+	expectedUpload = uint64(4380)   // upload
+	downloadCost = pt.DownloadBandwidthCost.Mul64(expectedDownload)
+	uploadCost = pt.UploadBandwidthCost.Mul64(expectedUpload)
+	bandwidthCost = downloadCost.Add(uploadCost)
+	cost = programCost.Add(bandwidthCost)
+
+	resps, limit, err = rhp.managedExecuteProgram(epr, data, cost, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Log the bandwidth used by this RPC.
+	t.Logf("Used bandwidth (append sector program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+
+	// verify the EA balance
+	expectedBalance = expectedBalance.Sub(cost)
 	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
 	if err != nil {
 		t.Fatal(err)
