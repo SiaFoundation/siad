@@ -1129,24 +1129,22 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 
 // allowRedirect decides whether a redirect will be allowed for this skyfile.
 func allowRedirect(queryForm url.Values, metadata modules.SkyfileMetadata) (bool, error) {
-	allowRedirect := true
 	// Do not allow redirect for skyfiles which are not directories.
 	if metadata.Subfiles == nil || len(metadata.Subfiles) == 0 {
-		allowRedirect = false
+		return false, nil
 	}
 	// Do not allow redirect if the default path is empty.
-	allowRedirect = allowRedirect && metadata.DefaultPath != ""
+	if metadata.DefaultPath == "" {
+		return false, nil
+	}
 	// Check what the user requested.
-	if allowRedirect {
-		redirectStr := queryForm.Get("redirect")
-		if redirectStr == "" {
-			return true, nil
-		}
-		var err error
-		allowRedirect, err = strconv.ParseBool(redirectStr)
-		if err != nil {
-			return false, Error{fmt.Sprintf("unable to parse 'redirect' parameter: %v", err)}
-		}
+	redirectStr := queryForm.Get("redirect")
+	if redirectStr == "" {
+		return true, nil
+	}
+	allowRedirect, err := strconv.ParseBool(redirectStr)
+	if err != nil {
+		return false, Error{fmt.Sprintf("unable to parse 'redirect' parameter: %v", err)}
 	}
 	return allowRedirect, nil
 }
