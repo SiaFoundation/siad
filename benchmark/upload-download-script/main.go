@@ -53,12 +53,16 @@ var (
 
 	uploadTimes   []time.Duration // Slice of file upload durations
 	downloadTimes []time.Duration // Slice of file download durations
+
+	filesMap = files{
+		m: make(map[string]fileData),
+	}
 )
 
 // files is a map of files with its data
 type files struct {
-	m   map[string]fileData
-	mux sync.Mutex
+	m  map[string]fileData
+	mu sync.Mutex
 }
 
 // fileData stores download data for a specific file
@@ -70,10 +74,6 @@ type fileData struct {
 // This script concurrently uploads and then downloads files. Before execution
 // be sure to have enough storage for concurrent upload and download files.
 func main() {
-	var files = files{
-		m: make(map[string]fileData),
-	}
-
 	// Init, create, clean dirs
 	initDirs()
 
@@ -110,11 +110,21 @@ func main() {
 	log.Println("=== Wait for renter to be ready to upload")
 	waitForRenterIsUploadReady()
 
+	// Init filesMap
+	log.Println("=== Init list of files to upload/download")
+	initFilesMap()
+
 	// Upload files
 	log.Println("=== Upload files concurrently")
-	for i := 0; i < nFiles; i++ {
+	// xxx
+	// for i := 0; i < nFiles; i++ {
+	// 	wg.Add(1)
+	// 	go XXXcreateAndUploadFile(i)
+	// }
+	for i := 0; i < maxConcurrUploads; i++ {
+		timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 		wg.Add(1)
-		go createAndUploadFile(&files, i)
+		go threadedCreateAndUploadFiles(i, timestamp)
 	}
 
 	// Wait for all uploads to finish to avoid "not enough workers" error
@@ -124,7 +134,7 @@ func main() {
 	log.Println("=== Download files concurrently")
 	for i := 0; i < nTotalDownloads; i++ {
 		wg.Add(1)
-		go downloadFile(&files, i)
+		go downloadFile(i)
 	}
 
 	// Wait for all downloads finish
@@ -156,6 +166,23 @@ func initDirs() {
 	check(err)
 }
 
+// initFilesMap initializes a map of files to be created, uploaded and
+// downloaded
+func initFilesMap() {
+	// Preapare file name parts
+	sizeStr := formatFileSize(fileSize, "")
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+
+	for i := 0; i < nFiles; i++ {
+		fileIndex := fmt.Sprintf("%03d", i)
+
+		// Create filename and full path
+		filename := "Randfile" + fileIndex + "_" + sizeStr + "_" + timestamp
+		fd := fileData{}
+		filesMap.m[filename] = fd
+	}
+}
+
 // initLog initializes logging to the file
 func initLog() *os.File {
 	logPath = filepath.Join(workDir, logFilename)
@@ -181,23 +208,24 @@ func check(e error) {
 	_, file, line, _ := runtime.Caller(1)
 
 	// Log error
-	log.Fatalf("%s:%d failed check(err)\n", filepath.Base(file), line)
+	log.Printf("%s:%d failed check(err)\n", filepath.Base(file), line)
+	log.Fatalln(e)
 }
 
 // createAndUploadFile creates a local file and uploads it to Sia
-func createAndUploadFile(files *files, i int) {
+func XXXcreateAndUploadFile(i int) {
 	// Occupy one spot in the uploads channel buffer to limit concurrent uploads
 	upChan <- struct{}{}
 
 	// Create a local file to upload
-	f := createFile(files, i)
+	f := XXXcreateFile(i)
 
 	// Upload a file to Sia
-	uploadFile(files, f, i)
+	XXXuploadFile(f, i)
 
 	// Delete local file
 	filePath := filepath.Join(upDir, f)
-	deleteLocalFile(filePath)
+	XXXdeleteLocalFile(filePath)
 
 	// Free one spot in the uploads channel buffer
 	_ = <-upChan
@@ -206,7 +234,7 @@ func createAndUploadFile(files *files, i int) {
 }
 
 // createFile creates a file in the upload directory with te given size in bytes
-func createFile(files *files, i int) string {
+func XXXcreateFile(i int) string {
 	start := time.Now()
 
 	// Preapare file name parts
@@ -256,7 +284,7 @@ func createFile(files *files, i int) string {
 }
 
 // uploadFile uploads a file to Sia and adds a file to files map
-func uploadFile(filesMap *files, filename string, i int) {
+func XXXuploadFile(filename string, i int) {
 	start := time.Now()
 
 	// Log
@@ -281,8 +309,8 @@ func uploadFile(filesMap *files, filename string, i int) {
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	filesMap.mux.Lock()
-	defer filesMap.mux.Unlock()
+	filesMap.mu.Lock()
+	defer filesMap.mu.Unlock()
 	fd := fileData{}
 	filesMap.m[filename] = fd
 
@@ -294,14 +322,14 @@ func uploadFile(filesMap *files, filename string, i int) {
 
 // deleteLocalFile deletes a local file, in case of error exits execution via
 // check()
-func deleteLocalFile(filepath string) {
+func XXXdeleteLocalFile(filepath string) {
 	log.Println("Deleting a local file:", filepath)
 	err := os.Remove(filepath)
 	check(err)
 }
 
 // downloadFile downloads a file from Sia
-func downloadFile(files *files, iDownload int) {
+func downloadFile(iDownload int) {
 	// Occupy one spot in the downloads channel buffer to limit concurrent uploads
 	downChan <- struct{}{}
 
@@ -310,8 +338,8 @@ func downloadFile(files *files, iDownload int) {
 	// Select a file not yet downloading to be sure to download each file at
 	// least once
 	var filename string
-	files.mux.Lock()
-	for fn, fd := range files.m {
+	filesMap.mu.Lock()
+	for fn, fd := range filesMap.m {
 		if fd.downloading {
 			continue
 		}
@@ -321,9 +349,9 @@ func downloadFile(files *files, iDownload int) {
 	// Select random file if all files are already downloading
 	if filename == "" {
 		rand.Seed(time.Now().UnixNano())
-		fi := rand.Intn(len(files.m))
+		fi := rand.Intn(len(filesMap.m))
 		i := 0
-		for fn := range files.m {
+		for fn := range filesMap.m {
 			if i == fi {
 				filename = fn
 				break
@@ -331,7 +359,7 @@ func downloadFile(files *files, iDownload int) {
 			i++
 		}
 	}
-	files.mux.Unlock()
+	filesMap.mu.Unlock()
 
 	log.Printf("Download #%03d, downloading file: %s\n", iDownload, filename)
 
@@ -345,17 +373,17 @@ func downloadFile(files *files, iDownload int) {
 	check(err)
 
 	// Delete downloaded file
-	deleteLocalFile(localPath)
+	XXXdeleteLocalFile(localPath)
 
 	// Update files map
-	files.mux.Lock()
-	nDownloads := files.m[filename].nDownloads
+	filesMap.mu.Lock()
+	nDownloads := filesMap.m[filename].nDownloads
 	fd := fileData{
 		downloading: true,
 		nDownloads:  nDownloads + 1,
 	}
-	files.m[filename] = fd
-	files.mux.Unlock()
+	filesMap.m[filename] = fd
+	filesMap.mu.Unlock()
 
 	// Log duration
 	elapsed := time.Now().Sub(start)
@@ -414,4 +442,105 @@ func waitForRenterIsUploadReady() {
 	}
 	elapsed := time.Now().Sub(start)
 	log.Printf("It took %s for renter to be ready to upload.\n", elapsed)
+}
+
+// threadedCreateAndUploadFiles is a worker that creates and uploads files
+func threadedCreateAndUploadFiles(workerIndex int, timestamp string) {
+	// Check if there are some files to be uploaded
+	filesMap.mu.Lock()
+	n := len(filesMap.m)
+	if n == nFiles {
+		// No more files, finish
+		log.Printf("Upload worker #%d finished", workerIndex)
+		filesMap.mu.Unlock()
+		return
+	}
+
+	// Create filename
+	fileIndex := fmt.Sprintf("%03d", n)
+	sizeStr := formatFileSize(fileSize, "")
+	filename := "Randfile" + fileIndex + "_" + sizeStr + "_" + timestamp
+
+	// Update files map with file to be created
+	filesMap.m[filename] = fileData{}
+	filesMap.mu.Unlock()
+
+	// Create a local file
+	createFile(n, filename)
+}
+
+// createFile creates a file in the upload directory with te given size
+func createFile(fileIndex int, filename string) {
+	start := time.Now()
+
+	log.Printf("File #%03d, creating file: %s\n", fileIndex, filename)
+
+	// Open file for appending
+	path := filepath.Join(upDir, filename)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	check(err)
+	defer f.Close()
+
+	// Append to file per parts (avoids out of memory error on large files when
+	// created concurrently)
+	remaining := int(fileSize)
+	for {
+		n := int(1e6)
+		if remaining == 0 {
+			break
+		} else if remaining < n {
+			n = remaining
+			remaining = 0
+		} else {
+			remaining -= n
+		}
+
+		// Create data string for file (fastrand)
+		data := fastrand.Bytes(n)
+
+		// Write data to file and Flush writes to stable storage
+		_, err = f.Write(data)
+		check(err)
+		f.Sync()
+	}
+
+	// Log duration
+	elapsed := time.Now().Sub(start)
+	log.Printf("File #%03d, created file: %s in: %s\n", fileIndex, filename, elapsed)
+}
+
+//xxx
+func uploadFile(fileIndex int, filename string) {
+	start := time.Now()
+
+	log.Printf("File #%03d, uploading file: %s\n", fileIndex, filename)
+
+	// Upload file to Sia
+	siaPath, err := modules.NewSiaPath(filepath.Join(siaDir, filename))
+	check(err)
+	localPath := filepath.Join(upDir, filename)
+	err = c.RenterUploadDefaultPost(localPath, siaPath)
+	check(err)
+
+	// Wait for file upload finished
+	for {
+		f, err := c.RenterFileGet(siaPath)
+		check(err)
+
+		if f.File.Redundancy >= minRedundancy {
+			break
+		}
+
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	filesMap.mu.Lock()
+	defer filesMap.mu.Unlock()
+	fd := fileData{}
+	filesMap.m[filename] = fd
+
+	// Log duration
+	elapsed := time.Now().Sub(start)
+	log.Printf("File #%03d, uploaded file: %s in: %s\n", fileIndex, filename, elapsed)
+	uploadTimes = append(uploadTimes, elapsed)
 }
