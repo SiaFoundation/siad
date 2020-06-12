@@ -41,13 +41,21 @@ func (c *Client) SkynetSkylinkGetWithTimeout(skylink string, timeout int) ([]byt
 	if timeout >= 0 {
 		params["timeout"] = fmt.Sprintf("%d", timeout)
 	}
-	return c.SkynetSkylinkGetWithParameters(skylink, params)
+	return c.skynetSkylinkGetWithParameters(skylink, params)
 }
 
-// SkynetSkylinkGetWithParameters uses the /skynet/skylink endpoint to download
+// SkynetSkylinkGetWithRedirect uses the /skynet/skylink endpoint to download a
+// skylink file, specifying whether redirecting is allowed or not.
+func (c *Client) SkynetSkylinkGetWithRedirect(skylink string, allowRedirect bool) ([]byte, modules.SkyfileMetadata, error) {
+	params := make(map[string]string)
+	params["redirect"] = fmt.Sprintf("%t", allowRedirect)
+	return c.skynetSkylinkGetWithParameters(skylink, params)
+}
+
+// skynetSkylinkGetWithParameters uses the /skynet/skylink endpoint to download
 // a skylink file, specifying the given parameters.
 // The caller of this function is responsible for validating the parameters!
-func (c *Client) SkynetSkylinkGetWithParameters(skylink string, params map[string]string) ([]byte, modules.SkyfileMetadata, error) {
+func (c *Client) skynetSkylinkGetWithParameters(skylink string, params map[string]string) ([]byte, modules.SkyfileMetadata, error) {
 	values := url.Values{}
 	for k, v := range params {
 		values.Set(k, v)

@@ -2450,8 +2450,6 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 	fc1 := "File1Contents"
 	fc2 := "File2Contents"
-	paramsNoRedirect := make(map[string]string)
-	paramsNoRedirect["redirect"] = "false"
 	emptyPath := ""
 	indexJs := "index.js"
 	invalidPath := "invalid.js"
@@ -2539,7 +2537,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Test passing `redirect=false` to multi-file Skyfile with default path.
 	// This should result in an error with message "format must be specified".
-	_, _, err = r.SkynetSkylinkGetWithParameters(skylink, paramsNoRedirect)
+	_, _, err = r.SkynetSkylinkGetWithRedirect(skylink, false)
 	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
 		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
 	}
@@ -2605,7 +2603,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	// Test passing `redirect=false` to single-file Skyfile.
 	// This should behave just like any other skydirectory and fail on download
 	// with "format must be specified".
-	_, _, err = r.SkynetSkylinkGetWithParameters(skylink, paramsNoRedirect)
+	_, _, err = r.SkynetSkylinkGetWithRedirect(skylink, false)
 	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
 		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
 	}
