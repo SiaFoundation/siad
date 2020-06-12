@@ -238,7 +238,7 @@ type SkyfileMultipartUploadParameters struct {
 
 	// DefaultPath indicates the default file to be opened when opening skyfiles
 	// that contain directories.
-	DefaultPath string `json:"defaultpath"`
+	DefaultPath *string `json:"defaultpath,omitempty"`
 
 	// ContentType indicates the media type of the data supplied by the reader.
 	ContentType string `json:"contenttype"`

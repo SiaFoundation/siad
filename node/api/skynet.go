@@ -45,6 +45,12 @@ const (
 	MaxSkynetRequestTimeout = 15 * 60 // in seconds
 )
 
+var (
+	// ErrInvalidDefaultPath is returned when the specified default path is not
+	// valid, e.g. the file it points to does not exist.
+	ErrInvalidDefaultPath = errors.New("invalid default path provided")
+)
+
 type (
 	// SkynetSkyfileHandlerPOST is the response that the api returns after the
 	// /skynet/ POST endpoint has been used.
@@ -307,27 +313,15 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	defer streamer.Close()
 
 	// Get the redirect limitations.
-	redirectStr := queryForm.Get("redirect")
-	allowRedirect := true
-	if redirectStr != "" {
-		allowRedirect, err = strconv.ParseBool(redirectStr)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("unable to parse 'redirect' parameter: %v", err)}, http.StatusBadRequest)
-			return
-		}
-		if !allowRedirect && len(metadata.Subfiles) == 1 {
-			WriteError(w, Error{"'redirect=false' is not allowed for skyfiles with a single file in them"}, http.StatusBadRequest)
-			return
-		}
+	allowRedirect, err := allowRedirect(queryForm, metadata)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
-	// We don't allow redirects if we don't have a valid default path or we have
-	// a single file.
-	allowRedirect = allowRedirect && metadata.DefaultPath != "" && len(metadata.Subfiles) > 1
 	// Redirect, if possible.
-	if path == "/" && allowRedirect {
+	if allowRedirect && path == "/" {
 		path = metadata.DefaultPath
 	}
-
 	// If path is different from the root, limit the streamer and return the
 	// appropriate subset of the metadata. This is done by wrapping the streamer
 	// so it only returns the files defined in the subset of the metadata.
@@ -349,7 +343,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			return
 		}
 	} else {
-		if len(metadata.Subfiles) > 1 && format == "" {
+		// We need a format to be specified when accessing the `/` of skyfiles
+		// that either have more than one file or do not allow redirects.
+		if format == "" && (len(metadata.Subfiles) > 1 || !allowRedirect) {
 			WriteError(w, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest)
 			return
 		}
@@ -679,7 +675,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 
 		// Get the default path.
-		defaultPath, err := getDefaultPath(queryForm, subfiles)
+		defaultPath, err := defaultPath(queryForm, subfiles)
 		if err != nil {
 			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 			return
@@ -1125,9 +1121,43 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 	WriteJSON(w, res)
 }
 
-// getDefaultPath extracts the defaultPath from the request or returns a default.
+// allowRedirect decides whether a redirect will be allowed for this skyfile.
+func allowRedirect(queryForm url.Values, metadata modules.SkyfileMetadata) (bool, error) {
+	allowRedirect := true
+	// Do not allow redirect for skyfiles which are not directories.
+	if metadata.Subfiles == nil || len(metadata.Subfiles) == 0 {
+		allowRedirect = false
+	}
+	// Do not allow redirect if the default path is empty.
+	allowRedirect = allowRedirect && metadata.DefaultPath != ""
+	// Check what the user requested.
+	if allowRedirect {
+		redirectStr := queryForm.Get("redirect")
+		if redirectStr == "" {
+			return true, nil
+		}
+		var err error
+		allowRedirect, err = strconv.ParseBool(redirectStr)
+		if err != nil {
+			return false, Error{fmt.Sprintf("unable to parse 'redirect' parameter: %v", err)}
+		}
+	}
+	return allowRedirect, nil
+}
+
+// defaultPath extracts the defaultPath from the request or returns a default.
 // It will never return a directory because `subfiles` contains only files.
-func getDefaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaultPath string, err error) {
+func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaultPath string, err error) {
+	// Check for explicitly specified empty default path, meaning that user
+	// doesn't want redirects for this skydirectory.
+	queryFormMap := map[string][]string(queryForm)
+	defaultPathArr, exists := queryFormMap[modules.SkyfileDefaultPathParamName]
+	if exists && len(defaultPathArr) > 0 && defaultPathArr[0] == "" {
+		// The user specifically disabled the default path for this skydirectory
+		// by specifying an empty string.
+		return "", nil
+	}
+
 	defaultPath = queryForm.Get(modules.SkyfileDefaultPathParamName)
 	// ensure the defaultPath always has a leading slash
 	defer func() {
@@ -1142,13 +1172,20 @@ func getDefaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (def
 		if exists {
 			return DefaultSkynetDefaultPath, nil
 		}
+		// For single file directories preserve the behaviour of redirecting to
+		// the only file.
+		if len(subfiles) == 1 {
+			for _, f := range subfiles {
+				return f.Filename, nil
+			}
+		}
 		// No `index.html`, so we can't have a default path
 		return "", nil
 	}
 	// Check if the defaultPath exists. Omit the leading slash because
 	// the filenames in `subfiles` won't have it.
 	if _, ok := subfiles[strings.TrimPrefix(defaultPath, "/")]; !ok {
-		return "", Error{fmt.Sprintf("invalid defaultpath provided - no such path: %s", defaultPath)}
+		return "", errors.AddContext(ErrInvalidDefaultPath, fmt.Sprintf("no such path: %s", defaultPath))
 	}
 	return defaultPath, nil
 }

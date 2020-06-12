@@ -2451,14 +2451,17 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	fc2 := "File2Contents"
 	paramsNoRedirect := make(map[string]string)
 	paramsNoRedirect["redirect"] = "false"
+	emptyPath := ""
+	indexJs := "index.js"
+	invalidPath := "invalid.js"
 
-	// TEST: Contains index.html but doesn't specify default path.
+	// TEST: Contains index.html but doesn't specify a default path.
 	// It should return the content of index.html.
-	filename := "index.html_empty"
+	filename := "index.html_nil"
 	files := make(map[string][]byte)
 	files["index.html"] = []byte(fc1)
 	files["about.html"] = []byte(fc2)
-	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(filename, files, "", false)
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(filename, files, nil, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -2470,6 +2473,21 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatalf("Expected to get content '%s', instead got '%s'", files["index.html"], string(content))
 	}
 
+	// TEST: Contains index.html but specifies an empty default path.
+	// It should return an error on downloading.
+	filename = "index.html_empty"
+	files = make(map[string][]byte)
+	files["index.html"] = []byte(fc1)
+	files["about.html"] = []byte(fc2)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, &emptyPath, false)
+	if err != nil {
+		t.Fatal("Failed to upload multipart file.", err)
+	}
+	_, _, err = r.SkynetSkylinkGet(skylink)
+	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
+		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
+	}
+
 	// TEST: Contains index.html but specifies a different default path.
 	// Contains index.js and specifies "index.js" as default path.
 	// It should return the content of index.js.
@@ -2477,7 +2495,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	files = make(map[string][]byte)
 	files["index.html"] = []byte(fc1)
 	files["index.js"] = []byte(fc2)
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "index.js", false)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, &indexJs, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -2490,14 +2508,14 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// TEST: Contains index.html but specifies a different INVALID default path.
-	// This should fail on upload with "invalid defaultpath provided".
+	// This should fail on upload with "invalid default path provided".
 	filename = "index.html_invalid"
 	files = make(map[string][]byte)
 	files["index.html"] = []byte(fc1)
 	files["about.html"] = []byte(fc2)
-	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "invalid.js", false)
-	if err == nil || !strings.Contains(err.Error(), "invalid defaultpath provided") {
-		t.Fatalf("Expected error 'invalid defaultpath provided', got '%+v'", err)
+	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, &invalidPath, false)
+	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidDefaultPath.Error()) {
+		t.Fatalf("Expected error 'invalid default path provided', got '%+v'", err)
 	}
 
 	// TEST: Does not contain "index.html".
@@ -2507,7 +2525,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	files = make(map[string][]byte)
 	files["index.js"] = []byte(fc1)
 	files["about.html"] = []byte(fc2)
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "index.js", false)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, &indexJs, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -2520,33 +2538,48 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Test passing `redirect=false` to multi-file Skyfile with default path.
 	// This should result in an error with message "format must be specified".
-	content, _, err = r.SkynetSkylinkGetWithParameters(skylink, paramsNoRedirect)
+	_, _, err = r.SkynetSkylinkGetWithParameters(skylink, paramsNoRedirect)
 	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
 		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
 	}
 
 	// TEST: Does not contain index.html and specifies an INVALID default path.
-	// This should fail on upload with "invalid defaultpath provided".
+	// This should fail on upload with "invalid default path provided".
 	filename = "index.js_invalid"
 	files = make(map[string][]byte)
 	files["index.js"] = []byte(fc1)
 	files["about.html"] = []byte(fc2)
-	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "invalid.js", false)
-	if err == nil || !strings.Contains(err.Error(), "invalid defaultpath provided") {
-		t.Fatalf("Expected error 'invalid defaultpath provided', got '%+v'", err)
+	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, &invalidPath, false)
+	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidDefaultPath.Error()) {
+		t.Fatalf("Expected error 'invalid default path provided', got '%+v'", err)
 	}
 
 	// TEST: Does not contain index.html and doesn't specify default path.
 	// This should fail on download with "format must be specified".
-	filename = "index.js_empty"
+	filename = "index.js_nil"
 	files = make(map[string][]byte)
 	files["index.js"] = []byte(fc1)
 	files["about.html"] = []byte(fc2)
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "", false)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, nil, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
-	content, _, err = r.SkynetSkylinkGet(skylink)
+	_, _, err = r.SkynetSkylinkGet(skylink)
+	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
+		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
+	}
+
+	// TEST: Does not contain "index.html".
+	// Contains a single file and specifies an empty default path
+	// It should return an error on download.
+	filename = "index.js_empty"
+	files = make(map[string][]byte)
+	files["index.js"] = []byte(fc1)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, &emptyPath, false)
+	if err != nil {
+		t.Fatal("Failed to upload multipart file.", err)
+	}
+	_, _, err = r.SkynetSkylinkGet(skylink)
 	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
 		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
 	}
@@ -2557,7 +2590,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	filename = "index.js"
 	files = make(map[string][]byte)
 	files["index.js"] = []byte(fc1)
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "", false)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, nil, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -2569,10 +2602,10 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatalf("Expected to get content '%s', instead got '%s'", files["index.js"], string(content))
 	}
 	// Test passing `redirect=false` to single-file Skyfile.
-	// This should result in an error with message "not allowed for skyfiles
-	// with a single file in them".
-	content, _, err = r.SkynetSkylinkGetWithParameters(skylink, paramsNoRedirect)
-	if err == nil || !strings.Contains(err.Error(), "not allowed for skyfiles with a single file in them") {
-		t.Fatalf("Expected error `not allowed for skyfiles with a single file in them`, got '%+v'", err)
+	// This should behave just like any other skydirectory and fail on download
+	// with "format must be specified".
+	_, _, err = r.SkynetSkylinkGetWithParameters(skylink, paramsNoRedirect)
+	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
+		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
 	}
 }
