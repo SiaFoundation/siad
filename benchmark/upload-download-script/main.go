@@ -27,11 +27,11 @@ const (
 	siaDir           = "upload-download-script"              // Sia directory to upload files to
 
 	// Uploads and downloads
-	nFiles              = 3     // Number of files to upload
-	fileSize            = 200e3 // File size of a file to be uploaded in bytes
+	nFiles              = 50    // Number of files to upload
+	fileSize            = 200e6 // File size of a file to be uploaded in bytes
 	maxConcurrUploads   = 10    // Max number of files to be concurrently uploaded
 	maxConcurrDownloads = 10    // Max number of files to be concurrently downloaded
-	nTotalDownloads     = 10    // Total number of file downloads. There will be nFiles, a single file can be downloaded x-times
+	nTotalDownloads     = 500   // Total number of file downloads. There will be nFiles, a single file can be downloaded x-times
 
 	// siad
 	siadPort      = 9980 // Port of siad node
