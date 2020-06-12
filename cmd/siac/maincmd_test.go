@@ -48,20 +48,32 @@ func TestRootSiacCmd(t *testing.T) {
 
 	rootCmdOutPattern := `Consensus:
   Synced: (No|Yes)
-  Height: [\d]+
+  Height: \d+
 
 Wallet:
 (  Status: Locked|  Status:          unlocked
-  Siacoin Balance: [\d]+(\.[\d]*|) (SC|KS|MS))
+  Siacoin Balance: \d+(\.\d*|) (SC|KS|MS))
 
 Renter:
-  Files:               [\d]+
-  Total Stored:        [\d]+(\.[\d]+|) ( B|kB|MB|GB|TB)
-  Total Contract Data: [\d]+(\.[\d]+|) ( B|kB|MB|GB|TB)
-  Min Redundancy:      ([\d]+.[\d]{2}|-)
-  Active Contracts:    [\d]+
-  Passive Contracts:   [\d]+
-  Disabled Contracts:  [\d]+`
+  Files:               \d+
+  Total Stored:        \d+(\.\d+|) ( B|kB|MB|GB|TB)
+  Total Contract Data: \d+(\.\d+|) ( B|kB|MB|GB|TB)
+  Min Redundancy:      (\d+.\d{2}|-)
+  Active Contracts:    \d+
+  Passive Contracts:   \d+
+  Disabled Contracts:  \d+`
+
+	rootCmdVerbosePartPattern := `Global Rate limits: 
+  Download Speed: (no limit|\d+(\.\d+)? (B/s|KB/s|MB/s|GB/s|TB/s))
+  Upload Speed:   (no limit|\d+(\.\d+)? (B/s|KB/s|MB/s|GB/s|TB/s))
+
+Gateway Rate limits: 
+  Download Speed: (no limit|\d+(\.\d+)? (B/s|KB/s|MB/s|GB/s|TB/s))
+  Upload Speed:   (no limit|\d+(\.\d+)? (B/s|KB/s|MB/s|GB/s|TB/s))
+
+Renter Rate limits: 
+  Download Speed: (no limit|\d+(\.\d+)? (B/s|KB/s|MB/s|GB/s|TB/s))
+  Upload Speed:   (no limit|\d+(\.\d+)? (B/s|KB/s|MB/s|GB/s|TB/s))`
 
 	connectionRefusedPattern := `Could not get consensus status: \[failed to get reader response; GET request failed; Get http://localhost:5555/consensus: dial tcp \[::1\]:5555: connect: connection refused\]`
 	siaClientVersionPattern := "Sia Client v" + strings.ReplaceAll(build.Version, ".", `\.`)
@@ -103,7 +115,7 @@ Renter:
 			test:               testGenericSiacCmd,
 			cmd:                root,
 			cmdStrs:            []string{"--addr", IPv4Addr, "-v"},
-			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + end,
+			expectedOutPattern: begin + rootCmdOutPattern + nl + nl + rootCmdVerbosePartPattern + nl + nl + end,
 		},
 		{
 			name:               "TestRootCmdWithInvalidFlag",
