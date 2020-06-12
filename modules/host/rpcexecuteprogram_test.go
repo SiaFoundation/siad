@@ -655,7 +655,7 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	badRevision = deepCopy(validRevision)
 	badRevision.NewMissedProofOutputs[1].UnlockHash = types.UnlockHash(hash)
 	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
-	if err == nil || !strings.Contains(err.Error(), "host payout address changed") {
+	if err == nil || !strings.Contains(err.Error(), "host payout changed") {
 		t.Fatalf("Expected host payout error but received '%v'", err)
 	}
 
@@ -677,7 +677,7 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 
 	// renter missed payout changed.
 	badRevision = deepCopy(validRevision)
-	badRevision.NewValidProofOutputs[0].Value = badRevision.NewValidProofOutputs[0].Value.Add64(1)
+	badRevision.NewMissedProofOutputs[0].Value = badRevision.NewMissedProofOutputs[0].Value.Add64(1)
 	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
 	if err != ErrMissedRenterPayoutChanged {
 		t.Fatalf("Expected ErrMissedRenterPayoutChanged error but received '%v'", err)
