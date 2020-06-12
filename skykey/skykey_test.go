@@ -108,7 +108,7 @@ func TestSkykeyManager(t *testing.T) {
 	var randomID SkykeyID
 	fastrand.Read(randomID[:])
 	_, err = keyMan.KeyByID(randomID)
-	if err != errNoSkykeysWithThatID {
+	if err != ErrNoSkykeysWithThatID {
 		t.Fatal(err)
 	}
 
@@ -641,6 +641,133 @@ func TestSkykeyTypeStrings(t *testing.T) {
 	var invalidSt SkykeyType
 	err = invalidSt.FromString(invalidTypeString)
 	if err != ErrInvalidSkykeyType {
+		t.Fatal(err)
+	}
+
+	privateIDString := TypePrivateID.ToString()
+	if privateIDString != "private-id" {
+		t.Fatal("Incorrect skykeytype name", privateIDString)
+	}
+
+	err = st.FromString(privateIDString)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st != TypePrivateID {
+		t.Fatal("Wrong SkykeyType", st)
+	}
+}
+
+// TestSkyfileEncryptionIDs tests the generation and verification of skyfile
+// encryption IDs.
+func TestSkyfileEncryptionIDs(t *testing.T) {
+	// Create a key manager.
+	persistDir := build.TempDir("skykey", t.Name())
+	keyMan, err := NewSkykeyManager(persistDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pubSkykey, err := keyMan.CreateKey("public_id"+t.Name(), TypePublicID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubFsKey, err := pubSkykey.GenerateFileSpecificSubkey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// We should not be able to generate encryption IDs with a TypePublicID key.
+	_, err = pubFsKey.GenerateSkyfileEncryptionID()
+	if !errors.Contains(err, errSkykeyTypeDoesNotSupportFunction) {
+		t.Fatal(err)
+	}
+
+	// Create a private-id skykey.
+	privSkykey, err := keyMan.CreateKey("private_id"+t.Name(), TypePrivateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that different file-specific keys make different encryption IDs.
+	nEncIDs := 10
+	encIDSet := make(map[[SkykeyIDLen]byte]struct{})
+	encIDs := make([][SkykeyIDLen]byte, nEncIDs)
+	nonces := make([][]byte, nEncIDs)
+	for i := 0; i < nEncIDs; i++ {
+		nextFsKey, err := privSkykey.GenerateFileSpecificSubkey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		encID, err := nextFsKey.GenerateSkyfileEncryptionID()
+		if _, ok := encIDSet[encID]; ok {
+			t.Log(i, encID)
+			t.Fatal("Found encID in set of existing encIDs!")
+		}
+		encIDSet[encID] = struct{}{}
+
+		// Save the nonce and encID in slice for next part of test.
+		nonces[i] = nextFsKey.Nonce()
+		encIDs[i] = encID
+	}
+
+	// Create more private-id skykey to make sure that they don't match any
+	// encID/nonce pair.
+	nPrivIDKeys := 10
+	privIDKeys := make([]Skykey, nPrivIDKeys)
+	privIDKeys[0] = privSkykey
+	for i := 0; i < nPrivIDKeys-1; i++ {
+		privIDKeys[i+1], err = keyMan.CreateKey("private_id"+t.Name()+string(i+1), TypePrivateID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Test MatchesSkyfileEncryptionID. Unrelated encID/nonce pairs should never
+	// match. Unrelated keys should also not show a match.
+	for i, nonce := range nonces {
+		for j, encID := range encIDs {
+			// TypePublicID keys should never produce a match.
+			matches, err := pubSkykey.MatchesSkyfileEncryptionID(encID[:], nonce)
+			if matches {
+				t.Fatal("public-id Skykey matches encryption ID")
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Unrelated private-id keys should never match.
+			for i := 1; i < nPrivIDKeys; i++ {
+				matches, err := privIDKeys[i].MatchesSkyfileEncryptionID(encID[:], nonce)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if matches {
+					t.Fatal("wrong  Skykey matches encryption ID")
+				}
+			}
+
+			// The original private-id skykey should match only when i == j.
+			matches, err = privIDKeys[0].MatchesSkyfileEncryptionID(encID[:], nonce)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if matches != (i == j) {
+				t.Fatalf("Bad encID, nonce pair matched, or correct pair did not match, i: %d, j: %d", i, j)
+			}
+		}
+	}
+
+	// Invalid id/nonce lengths should fail.
+	_, err = privIDKeys[0].MatchesSkyfileEncryptionID(encIDs[0][:SkykeyIDLen-1], nonces[0])
+	if !errors.Contains(err, errInvalidIDorNonceLength) {
+		t.Fatal(err)
+	}
+	_, err = privIDKeys[0].MatchesSkyfileEncryptionID(encIDs[0][:], nonces[0][:chacha.XNonceSize-1])
+	if !errors.Contains(err, errInvalidIDorNonceLength) {
+		t.Fatal(err)
+	}
+	_, err = privIDKeys[0].MatchesSkyfileEncryptionID(encIDs[0][:SkykeyIDLen-1], nonces[0][:chacha.XNonceSize-1])
+	if !errors.Contains(err, errInvalidIDorNonceLength) {
 		t.Fatal(err)
 	}
 }

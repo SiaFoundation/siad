@@ -16,9 +16,11 @@ import (
 )
 
 var (
+	// TODO - re-alphabetize this list of flags, break out by module
 	// Flags.
 	dictionaryLanguage        string // dictionary for seed utils
 	uploadedsizeUtilVerbose   bool   // display additional info for "utils upload-size"
+	feeManagerVerbose         bool   // display additoinal info for the FeeManager
 	hostContractOutputType    string // output type for host contracts
 	hostVerbose               bool   // display additional host info
 	hostFolderRemoveForce     bool   // force folder remove
@@ -37,6 +39,7 @@ var (
 	renterVerbose             bool   // Show additional info about the renter
 	siaDir                    string // Path to sia data dir
 	skykeyName                string // Name used to identify a Skykey.
+	skykeyType                string // Type used to create a new Skykey.
 	skykeyShowPrivateKeys     bool   // Set to true to show private key data.
 	skykeyID                  string // ID used to identify a Skykey.
 	skykeyRenameAs            string // Optional parameter to rename a Skykey while adding it.
@@ -236,6 +239,13 @@ func main() {
 	root.AddCommand(consensusCmd)
 	consensusCmd.Flags().BoolVarP(&consensusCmdVerbose, "verbose", "v", false, "Display full consensus information")
 
+	// Add feemanager commands
+	root.AddCommand(feeManagerCmd)
+	feeManagerCmd.AddCommand(feeManagerCancelFeeCmd)
+
+	// Add flags to FeeManager commands
+	feeManagerCmd.Flags().BoolVarP(&feeManagerVerbose, "verbose", "v", false, "Show additional FeeManager info such as paid fees")
+
 	root.AddCommand(gatewayCmd)
 	gatewayCmd.AddCommand(gatewayAddressCmd, gatewayBandwidthCmd, gatewayBlacklistCmd, gatewayConnectCmd, gatewayDisconnectCmd, gatewayListCmd, gatewayRatelimitCmd)
 	gatewayBlacklistCmd.AddCommand(gatewayBlacklistAppendCmd, gatewayBlacklistClearCmd, gatewayBlacklistRemoveCmd, gatewayBlacklistSetCmd)
@@ -317,6 +327,7 @@ func main() {
 	root.AddCommand(skykeyCmd)
 	skykeyCmd.AddCommand(skykeyCreateCmd, skykeyAddCmd, skykeyGetCmd, skykeyGetIDCmd, skykeyListCmd)
 	skykeyAddCmd.Flags().StringVar(&skykeyRenameAs, "rename-as", "", "The new name for the skykey being added")
+	skykeyCreateCmd.Flags().StringVar(&skykeyType, "type", "", "The type of the skykey")
 	skykeyGetCmd.Flags().StringVar(&skykeyName, "name", "", "The name of the skykey")
 	skykeyGetCmd.Flags().StringVar(&skykeyID, "id", "", "The base-64 encoded skykey ID")
 	skykeyListCmd.Flags().BoolVar(&skykeyShowPrivateKeys, "show-priv-keys", false, "Show private key data.")

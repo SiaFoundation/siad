@@ -42,18 +42,23 @@ const (
 	// reveal its skykey ID when encrypting Skyfiles. Instead, it marks the skykey
 	// used for encryption by storing an encrypted identifier that can only be
 	// successfully decrypted with the correct skykey.
-	// TODO: add along with skyfile implementation TypePrivateID = SkykeyType(0x02)
+	TypePrivateID = SkykeyType(0x02)
 )
 
 var (
 	// SkykeySpecifier is used as a prefix when hashing Skykeys to compute their
 	// ID.
-	SkykeySpecifier = types.NewSpecifier("Skykey")
+	SkykeySpecifier               = types.NewSpecifier("Skykey")
+	skyfileEncryptionIDSpecifier  = types.NewSpecifier("SkyfileEncID")
+	skyfileEncryptionIDDerivation = types.NewSpecifier("SFEncIDDerivPath")
 
-	errUnsupportedSkykeyType          = errors.New("Unsupported Skykey type")
-	errUnmarshalDataErr               = errors.New("Unable to unmarshal Skykey data")
-	errCannotMarshalTypeInvalidSkykey = errors.New("Cannot marshal or unmarshal Skykey of TypeInvalid type")
-	errInvalidEntropyLength           = errors.New("Invalid skykey entropy length")
+	errUnsupportedSkykeyType            = errors.New("Unsupported Skykey type")
+	errUnmarshalDataErr                 = errors.New("Unable to unmarshal Skykey data")
+	errCannotMarshalTypeInvalidSkykey   = errors.New("Cannot marshal or unmarshal Skykey of TypeInvalid type")
+	errInvalidEntropyLength             = errors.New("Invalid skykey entropy length")
+	errSkykeyTypeDoesNotSupportFunction = errors.New("Operation not supported by this SkykeyType")
+
+	errInvalidIDorNonceLength = errors.New("Invalid length for encryptionID or nonce in MatchesSkyfileEncryptionID")
 
 	// ErrInvalidSkykeyType is returned when an invalid SkykeyType is being used.
 	ErrInvalidSkykeyType = errors.New("Invalid skykey type")
@@ -86,7 +91,8 @@ func (t SkykeyType) ToString() string {
 	switch t {
 	case TypePublicID:
 		return "public-id"
-
+	case TypePrivateID:
+		return "private-id"
 	default:
 		return "invalid"
 	}
@@ -97,6 +103,8 @@ func (t *SkykeyType) FromString(s string) error {
 	switch s {
 	case "public-id":
 		*t = TypePublicID
+	case "private-id":
+		*t = TypePrivateID
 	default:
 		return ErrInvalidSkykeyType
 	}
@@ -181,7 +189,7 @@ func (sk *Skykey) unmarshalAndConvertFromOldFormat(r io.Reader) error {
 // CipherType returns the crypto.CipherType used by this Skykey.
 func (t SkykeyType) CipherType() crypto.CipherType {
 	switch t {
-	case TypePublicID:
+	case TypePublicID, TypePrivateID:
 		return crypto.TypeXChaCha20
 	default:
 		return crypto.TypeInvalid
@@ -201,7 +209,7 @@ func (sk *Skykey) unmarshalDataOnly(r io.Reader) error {
 
 	var entropyLen int
 	switch sk.Type {
-	case TypePublicID:
+	case TypePublicID, TypePrivateID:
 		entropyLen = chacha.KeySize + chacha.XNonceSize
 	case TypeInvalid:
 		return errCannotMarshalTypeInvalidSkykey
@@ -239,7 +247,7 @@ func (sk Skykey) marshalDataOnly(w io.Writer) error {
 
 	var entropyLen int
 	switch sk.Type {
-	case TypePublicID:
+	case TypePublicID, TypePrivateID:
 		entropyLen = chacha.KeySize + chacha.XNonceSize
 	case TypeInvalid:
 		return errCannotMarshalTypeInvalidSkykey
@@ -335,7 +343,7 @@ func (sk Skykey) ID() (keyID SkykeyID) {
 	switch sk.Type {
 	// Ignore the nonce for this type because the nonce is different for each
 	// file-specific subkey.
-	case TypePublicID:
+	case TypePublicID, TypePrivateID:
 		entropy = sk.Entropy[:chacha.KeySize]
 
 	default:
@@ -419,6 +427,74 @@ func (sk *Skykey) SubkeyWithNonce(nonce []byte) (Skykey, error) {
 	return subkey, nil
 }
 
+// GenerateSkyfileEncryptionID creates an encrypted identifier that is used for
+// PrivateID encrypted files.
+// NOTE: This method MUST only be called using a FileSpecificSkykey.
+func (sk *Skykey) GenerateSkyfileEncryptionID() ([SkykeyIDLen]byte, error) {
+	if sk.Type != TypePrivateID {
+		return [SkykeyIDLen]byte{}, errSkykeyTypeDoesNotSupportFunction
+	}
+	if SkykeyIDLen != types.SpecifierLen {
+		build.Critical("SkykeyID and Specifier expected to have same size")
+	}
+
+	encIDSkykey, err := sk.DeriveSubkey(skyfileEncryptionIDDerivation[:])
+	if err != nil {
+		return [SkykeyIDLen]byte{}, err
+	}
+
+	// Get a CipherKey to encrypt the encryption specifer.
+	ck, err := encIDSkykey.CipherKey()
+	if err != nil {
+		return [SkykeyIDLen]byte{}, err
+	}
+
+	// Encrypt the specifier.
+	var skyfileID [SkykeyIDLen]byte
+	copy(skyfileID[:], skyfileEncryptionIDSpecifier[:])
+	_, err = ck.DecryptBytesInPlace(skyfileID[:], 0)
+	if err != nil {
+		return [SkykeyIDLen]byte{}, err
+	}
+	return skyfileID, nil
+}
+
+// MatchesSkyfileEncryptionID returns true if and only if the skykey was the one
+// used with this nonce to create the encryptionID.
+func (sk *Skykey) MatchesSkyfileEncryptionID(encryptionID, nonce []byte) (bool, error) {
+	if len(encryptionID) != SkykeyIDLen || len(nonce) != chacha.XNonceSize {
+		return false, errInvalidIDorNonceLength
+	}
+	// This only applies to TypePrivateID keys.
+	if sk.Type != TypePrivateID {
+		return false, nil
+	}
+
+	// Create the subkey for the encryption ID.
+	fileSkykey, err := sk.SubkeyWithNonce(nonce)
+	if err != nil {
+		return false, err
+	}
+	encIDSkykey, err := fileSkykey.DeriveSubkey(skyfileEncryptionIDDerivation[:])
+	if err != nil {
+		return false, err
+	}
+
+	// Decrypt the identifier and check that it.
+	ck, err := encIDSkykey.CipherKey()
+	if err != nil {
+		return false, err
+	}
+	plaintextBytes, err := ck.DecryptBytes(encryptionID[:])
+	if err != nil {
+		return false, err
+	}
+	if bytes.Equal(plaintextBytes, skyfileEncryptionIDSpecifier[:]) {
+		return true, nil
+	}
+	return false, nil
+}
+
 // CipherKey returns the crypto.CipherKey equivalent of this Skykey.
 func (sk *Skykey) CipherKey() (crypto.CipherKey, error) {
 	return crypto.NewSiaKey(sk.CipherType(), sk.Entropy)
@@ -438,7 +514,7 @@ func (sk *Skykey) IsValid() error {
 	}
 
 	switch sk.Type {
-	case TypePublicID:
+	case TypePublicID, TypePrivateID:
 		if len(sk.Entropy) != chacha.KeySize+chacha.XNonceSize {
 			return errInvalidEntropyLength
 		}

@@ -2684,3 +2684,91 @@ func TestRenewAlertWarningLevel(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestLargeRenewWindow tests that contracts form and renew as expected when the
+// renew window is larger than the period
+func TestLargeRenewWindow(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create Group
+	groupParams := siatest.GroupParams{
+		Hosts:  1,
+		Miners: 1,
+	}
+	groupDir := contractorTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create and Add Renter
+	renterParams := node.Renter(filepath.Join(groupDir, "renter"))
+	renterParams.SkipSetAllowance = true
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
+
+	// Set the Allowance
+	allowance := siatest.DefaultAllowance
+	allowance.Period = 10
+	allowance.RenewWindow = 20
+	allowance.Hosts = 1
+	err = renter.RenterPostAllowance(allowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check current and next period
+	rg, err := renter.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bh, err := renter.BlockHeight()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rg.CurrentPeriod != bh {
+		t.Errorf("Expected CurrentPeriod to be %v but was %v", bh, rg.CurrentPeriod)
+	}
+	if rg.NextPeriod != bh+allowance.Period {
+		t.Errorf("Expected NextPeriod to be %v but was %v", bh+allowance.Period, rg.NextPeriod)
+	}
+	originalNextPeriod := rg.NextPeriod
+
+	// Wait for contracts
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(renter, 1, 0, 0, 0, 0, 0)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Renew Contracts
+	err = siatest.RenewContractsByRenewWindow(renter, tg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(renter, 1, 0, 0, 0, 1, 0)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check current and next period
+	rg, err = renter.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rg.CurrentPeriod != originalNextPeriod {
+		t.Errorf("Expected CurrentPeriod to be %v but was %v", originalNextPeriod, rg.CurrentPeriod)
+	}
+	if rg.NextPeriod != originalNextPeriod+allowance.Period {
+		t.Errorf("Expected NextPeriod to be %v but was %v", originalNextPeriod+allowance.Period, rg.NextPeriod)
+	}
+}

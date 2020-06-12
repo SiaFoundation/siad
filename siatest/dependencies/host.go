@@ -41,10 +41,28 @@ type HostExpireEphemeralAccounts struct {
 	modules.ProductionDependencies
 }
 
+// HostMDMProgramDelayedWrite is a dependency injection for the host that will
+// ensure the response of an instruction is written after the set latency.
+type HostMDMProgramDelayedWrite struct {
+	modules.ProductionDependencies
+}
+
 // Disrupt will interpret a signal from the host and tell the host to force
 // expire all ephemeral accounts on the next prune cycle
 func (d *HostExpireEphemeralAccounts) Disrupt(s string) bool {
 	return s == "expireEphemeralAccounts"
+}
+
+// HostLowerDeposit is a dependency injection for the host that will make the
+// deposit amount substantially lower. This allows us to verify the renter has
+// synced its account balance with the host's balance after an unclean shutdown.
+type HostLowerDeposit struct {
+	modules.ProductionDependencies
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *HostLowerDeposit) Disrupt(s string) bool {
+	return s == "lowerDeposit"
 }
 
 // NewDependencyHostDiskTrouble creates a new dependency that disrupts storage
@@ -60,9 +78,7 @@ func NewHostMaxEphemeralAccountRiskReached(duration time.Duration) modules.Depen
 	return newDependencyAddLatency("errMaxRiskReached", duration)
 }
 
-// NewHostMDMProgramWriteDelay is a dependency injection for the host
-// that will ensure the response of a program instruction is written after the
-// set latency.
-func NewHostMDMProgramWriteDelay(duration time.Duration) modules.Dependencies {
-	return newDependencyAddLatency("MDMProgramOutputDelayWrite", duration)
+// Disrupt returns true if the correct string is provided.
+func (d *HostMDMProgramDelayedWrite) Disrupt(s string) bool {
+	return s == "MDMProgramOutputDelayWrite"
 }

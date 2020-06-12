@@ -439,13 +439,15 @@ func TestFingerprintBucketsRotate(t *testing.T) {
 	}
 }
 
-// TestBucketRangeFromFingerprintsFilename is a small unit test to verify the
-// bucketRangeFromFingerprintsFilename helper function
-func TestBucketRangeFromFingerprintsFilename(t *testing.T) {
+// TestIsFingerPrintBucket unit tests the `isFingerprintBucket` helper function
+func TestIsFingerPrintBucket(t *testing.T) {
 	t.Parallel()
 
 	// verify basic case
-	min, max := bucketRangeFromFingerprintsFilename("fingerprintsbucket_261960-261979.db")
+	min, max, bucket := isFingerprintBucket("fingerprintsbucket_261960-261979.db")
+	if !bucket {
+		t.Fatal("Unexpected value for 'bucket'", bucket)
+	}
 	if min != types.BlockHeight(261960) {
 		t.Fatal("Unexpected min bucket range")
 	}
@@ -453,15 +455,7 @@ func TestBucketRangeFromFingerprintsFilename(t *testing.T) {
 		t.Fatal("Unexpected max bucket range")
 	}
 
-	// verify critical for unexpected filename format
-	assertCritical := func() {
-		if r := recover(); r != nil {
-			if !strings.Contains(fmt.Sprintf("%v", r), "Unexpected fingerprints filename format") {
-				t.Error("Expected build.Critical")
-				t.Log(r)
-			}
-		}
-	}
+	// verify invalid cases
 	for _, invalidFilename := range []string{
 		"renter/fingerprintsbucket_261960-261979.db",
 		"fingerprintsbucket__261960-261979.db",
@@ -472,11 +466,20 @@ func TestBucketRangeFromFingerprintsFilename(t *testing.T) {
 		"fingerprintsbuckket_261960-261979.db",
 		"fingerprintsbucket_261960-261979.db.",
 	} {
-		func() {
-			defer assertCritical()
-			bucketRangeFromFingerprintsFilename(invalidFilename)
-		}()
+		_, _, bucket := isFingerprintBucket(invalidFilename)
+		if bucket {
+			t.Fatal("Unexpected value")
+		}
 	}
+
+	// verify critical case
+	defer func() {
+		r := recover()
+		if !strings.Contains(fmt.Sprintf("%v", r), "file found with range where min is not smaller than max height") {
+			t.Fatal("Expected build.Critical", r)
+		}
+	}()
+	isFingerprintBucket("fingerprintsbucket_261979-261960.db")
 }
 
 // reloadHost will close the given host and reload it on the given host tester

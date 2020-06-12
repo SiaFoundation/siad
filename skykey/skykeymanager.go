@@ -47,8 +47,10 @@ var (
 	// already being stored.
 	ErrSkykeyWithIDAlreadyExists = errors.New("Skykey ID already exists.")
 
+	// ErrNoSkykeysWithThatID indicates that the skykey manager doesn't have a key
+	// with that ID.
+	ErrNoSkykeysWithThatID   = errors.New("No Skykey is associated with that ID")
 	errNoSkykeysWithThatName = errors.New("No Skykey with that name")
-	errNoSkykeysWithThatID   = errors.New("No Skykey is assocated with that ID")
 	errSkykeyNameToolong     = errors.New("Skykey name exceeds max length")
 
 	// SkykeyPersistFilename is the name of the skykey persistence file.
@@ -97,7 +99,7 @@ func (cw countingWriter) BytesWritten() uint64 {
 // skykeys with the given type.
 func (sm *SkykeyManager) SupportsSkykeyType(skykeyType SkykeyType) bool {
 	switch skykeyType {
-	case TypePublicID:
+	case TypePublicID, TypePrivateID:
 		return true
 	default:
 		return false
@@ -176,7 +178,7 @@ func (sm *SkykeyManager) KeyByName(name string) (Skykey, error) {
 
 	key, ok := sm.keysByID[id]
 	if !ok {
-		return Skykey{}, errNoSkykeysWithThatID
+		return Skykey{}, ErrNoSkykeysWithThatID
 	}
 
 	return key, nil
@@ -189,7 +191,7 @@ func (sm *SkykeyManager) KeyByID(id SkykeyID) (Skykey, error) {
 
 	key, ok := sm.keysByID[id]
 	if !ok {
-		return Skykey{}, errNoSkykeysWithThatID
+		return Skykey{}, ErrNoSkykeysWithThatID
 	}
 	return key, nil
 }
