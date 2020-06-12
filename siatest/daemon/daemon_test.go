@@ -252,3 +252,58 @@ func TestAlertFields(t *testing.T) {
 		t.Fatal("number of warning alerts is not 4")
 	}
 }
+
+// TestDaemonConfig verifies that the config values returned from the Settings
+// endpoint contains sane values
+func TestDaemonConfig(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	testDir := daemonTestDir(t.Name())
+
+	// Create a new server
+	testNode, err := siatest.NewCleanNode(node.AllModules(testDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := testNode.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Get the Settings.
+	dsg, err := testNode.DaemonSettingsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// All the Modules should be set to true expect the Explorer
+	if !dsg.Modules.Consensus {
+		t.Error("Consensus should be set as true")
+	}
+	if dsg.Modules.Explorer {
+		t.Error("Explorer should be set as false")
+	}
+	if !dsg.Modules.FeeManager {
+		t.Error("FeeManager should be set as true")
+	}
+	if !dsg.Modules.Gateway {
+		t.Error("Gateway should be set as true")
+	}
+	if !dsg.Modules.Host {
+		t.Error("Host should be set as true")
+	}
+	if !dsg.Modules.Miner {
+		t.Error("Miner should be set as true")
+	}
+	if !dsg.Modules.Renter {
+		t.Error("Renter should be set as true")
+	}
+	if !dsg.Modules.TransactionPool {
+		t.Error("TransactionPool should be set as true")
+	}
+	if !dsg.Modules.Wallet {
+		t.Error("Wallet should be set as true")
+	}
+}
