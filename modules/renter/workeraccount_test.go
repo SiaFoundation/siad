@@ -332,6 +332,11 @@ func TestAccountMinExpectedBalance(t *testing.T) {
 // TestHostAccountBalance verifies the functionality of staticHostAccountBalance
 // that performs the account balance RPC on the host
 func TestHostAccountBalance(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	wt, err := newWorkerTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -369,6 +374,11 @@ func TestHostAccountBalance(t *testing.T) {
 // TestSyncAccountBalanceToHostCritical is a small unit test that verifies the
 // sync can not be called when the account delta is not zero
 func TestSyncAccountBalanceToHostCritical(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	wt, err := newWorkerTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -381,6 +391,18 @@ func TestSyncAccountBalanceToHostCritical(t *testing.T) {
 	}()
 	w := wt.worker
 
+	// check the balance in a retry to allow the worker to run through it's
+	// setup, e.g. updating PT, checking balance and refilling. Note we use min
+	// expected balance to ensure we're not counting pending deposits
+	if err = build.Retry(100, 100*time.Millisecond, func() error {
+		if !w.staticAccount.managedMinExpectedBalance().Equals(w.staticBalanceTarget) {
+			return errors.New("worker account not funded")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
 	// track a deposit to simulate an ongoing fund
 	w.staticAccount.managedTrackDeposit(w.staticBalanceTarget)
 
@@ -390,9 +412,9 @@ func TestSyncAccountBalanceToHostCritical(t *testing.T) {
 		if r == nil || !strings.Contains(fmt.Sprintf("%v", r), "managedSyncAccountBalanceToHost is called on a worker with an account that has non-zero deltas") {
 			t.Error("Expected build.Critical")
 			t.Log(r)
-
 		}
 	}()
+
 	w.managedSyncAccountBalanceToHost()
 }
 
