@@ -1139,6 +1139,7 @@ func allowRedirect(queryForm url.Values, metadata modules.SkyfileMetadata) (bool
 	}
 	// Check what the user requested.
 	redirectStr := queryForm.Get("redirect")
+	// If the user didn't specify anything we default to allowing redirects.
 	if redirectStr == "" {
 		return true, nil
 	}
