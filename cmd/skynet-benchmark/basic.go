@@ -104,6 +104,7 @@ func basicCheck() {
 		fmt.Println("Error:", err)
 		return
 	}
+	fmt.Println()
 
 	// 4 mb.
 	//
