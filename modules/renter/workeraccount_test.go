@@ -390,7 +390,6 @@ func TestSyncAccountBalanceToHostCritical(t *testing.T) {
 		if r == nil || !strings.Contains(fmt.Sprintf("%v", r), "managedSyncAccountBalanceToHost is called on a worker with an account that has non-zero deltas") {
 			t.Error("Expected build.Critical")
 			t.Log(r)
-
 		}
 	}()
 	w.managedSyncAccountBalanceToHost()
