@@ -21,13 +21,13 @@ const (
 
 func basicULDL(fileSize uint64) error {
 	// Create the filename.
-	name := strconv.Itoa(int(fileSize)/1e3)
+	name := strconv.Itoa(int(fileSize) / 1e3)
 
 	baseSiaPath, err := modules.NewSiaPath(testSiaDirBasic)
 	if err != nil {
 		return errors.AddContext(err, "error creating base sia path")
 	}
-	sp, err := baseSiaPath.Join(name+"kb")
+	sp, err := baseSiaPath.Join(name + "kb")
 	if err != nil {
 		return errors.AddContext(err, "error creating full sia path")
 	}
@@ -40,7 +40,7 @@ func basicULDL(fileSize uint64) error {
 		Force:   true, // This will overwrite other files in the dir.
 
 		FileMetadata: modules.SkyfileMetadata{
-			Filename: name+"kb.rand",
+			Filename: name + "kb.rand",
 			Mode:     modules.DefaultFilePerm,
 		},
 
@@ -48,7 +48,7 @@ func basicULDL(fileSize uint64) error {
 	}
 
 	// Upload the file.
-	fmt.Println("\t"+name+"kb Upload:")
+	fmt.Println("\t" + name + "kb Upload:")
 	start := time.Now()
 	skylink, _, err := c.SkynetSkyfilePost(sup)
 	if err != nil {
@@ -63,7 +63,7 @@ func basicULDL(fileSize uint64) error {
 	time.Sleep(time.Second * 30)
 
 	// Download the file.
-	fmt.Println("\t"+name+"kb Download:")
+	fmt.Println("\t" + name + "kb Download:")
 	start = time.Now()
 	reader, err := c.SkynetSkylinkReaderGet(skylink)
 	if err != nil {
