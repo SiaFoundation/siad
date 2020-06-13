@@ -17,7 +17,13 @@ import (
 // memory manager is initialized with a base amount of memory and it will allow
 // up to that much memory to be requested simultaneously. Beyond that, it will
 // block on calls to 'managedGetMemory' until enough memory has been returned to
-// allow the request.
+// allow the request. High priority memory will be unblocked first, otherwise
+// memory will be unblocked in a FIFO.
+//
+// The memory manager will put aside 'priorityReserve' memory for high priority
+// requests. Lower priority requests will not be able to use this memory. This
+// allows high priority requests in low volume to experience zero wait time even
+// if there are a high volume of low priority requests.
 //
 // If a request is made that exceeds the base memory, the memory manager will
 // block until all memory is available, and then grant the request, blocking all
@@ -31,14 +37,22 @@ import (
 // been shown in production to significantly reduce the amount of RES that siad
 // consumes, without a significant hit to performance.
 type memoryManager struct {
-	available    uint64
-	base         uint64
+	available       uint64 // Total memory remaining.
+	base            uint64 // Initial memory.
+	memSinceGC      uint64 // Counts allocations to trigger a manual GC.
+	priorityReserve uint64 // Memory set aside for priority requests.
+	underflow       uint64 // Large requests cause underflow.
+
 	fifo         []*memoryRequest
-	memSinceGC   uint64
-	mu           sync.Mutex
 	priorityFifo []*memoryRequest
-	stop         <-chan struct{}
-	underflow    uint64
+
+	// The blocking channel receives a message (sent in a non-blocking way)
+	// every time a request blocks for more memory. This is used in testing to
+	// ensure that requests which are made in goroutines can be received in a
+	// deterministic order.
+	blocking chan struct{}
+	mu       sync.Mutex
+	stop     <-chan struct{}
 }
 
 // memoryRequest is a single thread that is blocked while waiting for memory.
@@ -47,12 +61,37 @@ type memoryRequest struct {
 	done   chan struct{}
 }
 
+// tryPriority will try to get an amount of memory
+func (mm *memoryManager) tryPriority(amount uint64) bool {
+	if mm.available >= amount {
+		// There is enough memory, decrement the memory and return.
+		mm.available -= amount
+		return true
+	} else if mm.available == mm.base {
+		// The amount of memory being requested is greater than the amount of
+		// memory available, but no memory is currently in use. Set the amount
+		// of memory available to zero and return.
+		//
+		// The effect is that all of the memory is allocated to this one
+		// request, allowing the request to succeed even though there is
+		// technically not enough total memory available for the request.
+		mm.available = 0
+		mm.underflow = amount - mm.base
+		return true
+	}
+	return false
+}
+
 // try will try to get the amount of memory requested from the manger, returning
 // true if the attempt is successful, and false if the attempt is not.  In the
 // event that the attempt is successful, the internal state of the memory
 // manager will be updated to reflect the granted request.
-func (mm *memoryManager) try(amount uint64) bool {
-	if mm.available >= amount {
+func (mm *memoryManager) try(amount uint64, priority bool) bool {
+	if priority {
+		return mm.tryPriority(amount)
+	}
+
+	if mm.available >= (amount + mm.priorityReserve) {
 		// There is enough memory, decrement the memory and return.
 		mm.available -= amount
 		return true
@@ -77,7 +116,8 @@ func (mm *memoryManager) try(amount uint64) bool {
 func (mm *memoryManager) Request(amount uint64, priority bool) bool {
 	// Try to request the memory.
 	mm.mu.Lock()
-	if len(mm.fifo) == 0 && mm.try(amount) {
+	shouldTry := len(mm.priorityFifo) == 0 && (priority == memoryPriorityHigh || len(mm.fifo) == 0)
+	if shouldTry && mm.try(amount, priority) {
 		mm.mu.Unlock()
 		return true
 	}
@@ -93,6 +133,12 @@ func (mm *memoryManager) Request(amount uint64, priority bool) bool {
 		mm.fifo = append(mm.fifo, myRequest)
 	}
 	mm.mu.Unlock()
+
+	// Send a note that a thread is now blocking.
+	select {
+	case mm.blocking <- struct{}{}:
+	default:
+	}
 
 	// Block until memory is available or until shutdown. The thread that closes
 	// the 'available' channel will also handle updating the memoryManager
@@ -143,7 +189,7 @@ func (mm *memoryManager) Return(amount uint64) {
 
 	// Release as many of the priority threads blocking in the fifo as possible.
 	for len(mm.priorityFifo) > 0 {
-		if !mm.try(mm.priorityFifo[0].amount) {
+		if !mm.try(mm.priorityFifo[0].amount, memoryPriorityHigh) {
 			// There is not enough memory to grant the next request, meaning no
 			// future requests should be checked either.
 			return
@@ -156,7 +202,7 @@ func (mm *memoryManager) Return(amount uint64) {
 
 	// Release as many of the threads blocking in the fifo as possible.
 	for len(mm.fifo) > 0 {
-		if !mm.try(mm.fifo[0].amount) {
+		if !mm.try(mm.fifo[0].amount, memoryPriorityLow) {
 			// There is not enough memory to grant the next request, meaning no
 			// future requests should be checked either.
 			return
@@ -169,10 +215,13 @@ func (mm *memoryManager) Return(amount uint64) {
 }
 
 // newMemoryManager will create a memoryManager and return it.
-func newMemoryManager(baseMemory uint64, stopChan <-chan struct{}) *memoryManager {
+func newMemoryManager(baseMemory uint64, priorityMemory uint64, stopChan <-chan struct{}) *memoryManager {
 	return &memoryManager{
-		available: baseMemory,
-		base:      baseMemory,
-		stop:      stopChan,
+		available:       baseMemory,
+		base:            baseMemory,
+		priorityReserve: priorityMemory,
+
+		blocking: make(chan struct{}, 1),
+		stop:     stopChan,
 	}
 }

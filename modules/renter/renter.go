@@ -951,7 +951,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create account manager")
 	}
-	r.memoryManager = newMemoryManager(defaultMemory, r.tg.StopChan())
+	r.memoryManager = newMemoryManager(defaultMemory, defaultPriorityMemory, r.tg.StopChan())
 	r.staticFuseManager = newFuseManager(r)
 	r.stuckStack = callNewStuckStack()
 
