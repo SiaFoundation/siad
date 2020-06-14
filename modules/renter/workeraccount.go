@@ -38,9 +38,9 @@ var (
 	// workers. This number should be larger than the expected amount of time a
 	// worker will be frozen multiplied by the total number of workers.
 	accountSyncRandWaitMilliseconds = build.Select(build.Var{
-		Dev:      1e3 * 60,          // 1 minute
-		Standard: 3 * 1e3 * 60 * 60, // 3 hours
-		Testing:  1e3 * 15,          // 15 seconds - needs to be long even in testing
+		Dev:      int(1e3 * 60),          // 1 minute
+		Standard: int(3 * 1e3 * 60 * 60), // 3 hours
+		Testing:  int(1e3 * 15),          // 15 seconds - needs to be long even in testing
 	}).(int)
 
 	// accountSyncMinWaitTime defines the minimum amount of time that a worker
