@@ -1,0 +1,1 @@
+- Add 'siac' commands for the FeeManager
