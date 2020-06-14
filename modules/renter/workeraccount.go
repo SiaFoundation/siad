@@ -36,7 +36,7 @@ var (
 	// that are added to the wait time. Randomness is used to ensure that
 	// workers are not all syncing at the same time - the sync operation freezes
 	// workers. This number should be larger than the expected amount of time a
-	// worker will be frozen multipled by the total number of workers.
+	// worker will be frozen multiplied by the total number of workers.
 	accountSyncRandWaitMilliseconds = build.Select(build.Var{
 		Dev:      1e3 * 60,          // 1 minute
 		Standard: 3 * 1e3 * 60 * 60, // 3 hours
