@@ -497,6 +497,12 @@ func (w *worker) managedSyncAccountBalanceToHost() {
 // managedNeedsToSyncAccountToHost returns true if the renter needs to sync the
 // account to the host.
 func (w *worker) managedNeedsToSyncAccountToHost() bool {
+	// There is no need to sync the account to the host if the worker does not
+	// support RHP3.
+	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
+		return false
+	}
+
 	w.staticAccount.mu.Lock()
 	defer w.staticAccount.mu.Unlock()
 	return w.staticAccount.syncAt.Before(time.Now())
