@@ -295,6 +295,12 @@ func (w *worker) threadedWorkLoop() {
 		}
 		w.staticTryUpdateCache()
 
+		// If the worker needs to sync the account balance, perform a sync
+		// operation. This should be attempted before launching any jobs.
+		if w.managedNeedsToSyncAccountToHost() {
+			w.managedSyncAccountBalanceToHost()
+		}
+
 		// Attempt to launch a serial job. If there is already a job running,
 		// this will no-op. If no job is running, a goroutine will be spun up
 		// to run a job, this call is non-blocking.

@@ -21,6 +21,39 @@ import (
 // expiry height.
 const withdrawalValidityPeriod = 6
 
+var (
+	// accountIdleCheckFrequency establishes how frequently the sync function
+	// should check whether the worker is idle. A relatively high frequency is
+	// okay, because this function only runs while the worker is frozen and
+	// expecting to perform an expensive sync operation.
+	accountIdleCheckFrequency = build.Select(build.Var{
+		Dev:      time.Second * 4,
+		Standard: time.Second * 5,
+		Testing:  time.Second * 3,
+	}).(time.Duration)
+
+	// accountSyncRandWaitMilliseconds defines the number of random milliseconds
+	// that are added to the wait time. Randomness is used to ensure that
+	// workers are not all syncing at the same time - the sync operation freezes
+	// workers. This number should be larger than the expected amount of time a
+	// worker will be frozen multipled by the total number of workers.
+	accountSyncRandWaitMilliseconds = build.Select(build.Var{
+		Dev:      1e3 * 60,          // 1 minute
+		Standard: 3 * 1e3 * 60 * 60, // 3 hours
+		Testing:  1e3 * 15,          // 15 seconds - needs to be long even in testing
+	}).(int)
+
+	// accountSyncMinWaitTime defines the minimum amount of time that a worker
+	// will wait between performing sync checks. This should be a large number,
+	// on the order of the amount of time a worker is expected to be frozen
+	// multiplied by the total number of workers.
+	accountSyncMinWaitTime = build.Select(build.Var{
+		Dev:      time.Minute,
+		Standard: 60 * time.Minute, // 1 hour
+		Testing:  10 * time.Second, // needs to be long even in testing
+	}).(time.Duration)
+)
+
 type (
 	// account represents a renter's ephemeral account on a host.
 	account struct {
@@ -41,6 +74,10 @@ type (
 		consecutiveFailures uint64
 		cooldownUntil       time.Time
 		recentErr           error
+
+		// syncAt defines what time the renter should be syncing the account to
+		// the host.
+		syncAt time.Time
 
 		// Variables to manage a race condition around account creation, where
 		// the account must be available in the data structure before it has
@@ -397,8 +434,27 @@ func (w *worker) managedRefillAccount() {
 //
 // NOTE: it is important this function is only used when the worker has no
 // in-progress jobs, neither serial nor async, to ensure the account balance
-// sync does not leave the account in an undesired state.
+// sync does not leave the account in an undesired state. The worker should not
+// be launching new jobs while this function is running.
 func (w *worker) managedSyncAccountBalanceToHost() {
+	// Spin/block until the worker has no jobs in motion. This should only be
+	// called from the primary loop of the worker, meaning that no new jobs will
+	// be created while we spin.
+	isIdle := func() bool {
+		sls := w.staticLoopState
+		a := atomic.LoadUint64(&sls.atomicSerialJobRunning) != 0
+		b := atomic.LoadUint64(&sls.atomicReadDataOutstanding) != 0
+		c := atomic.LoadUint64(&sls.atomicWriteDataOutstanding) != 0
+		return !a && !b && !c
+	}
+	start := time.Now()
+	for !isIdle() {
+		if time.Since(start) > time.Minute*40 {
+			w.renter.log.Critical("worker has taken more than 40 minutes to go idle")
+		}
+		w.renter.tg.Sleep(accountIdleCheckFrequency)
+	}
+
 	// Sanity check the account's deltas are zero, indicating there are no
 	// in-progress jobs
 	w.staticAccount.mu.Lock()
@@ -422,9 +478,28 @@ func (w *worker) managedSyncAccountBalanceToHost() {
 		w.staticAccount.managedResetBalance(balance)
 	}
 
+	// Determine how long to wait before attempting to sync again, and then
+	// update the syncAt time. There is significant randomness in the waiting
+	// because syncing with the host requires freezing up the worker. We do not
+	// want to freeze up a large number of workers at once, nor do we want to
+	// freeze them frequently.
+	waitTime := time.Duration(fastrand.Intn(accountSyncRandWaitMilliseconds)) * time.Millisecond
+	waitTime += accountSyncMinWaitTime
+	w.staticAccount.mu.Lock()
+	w.staticAccount.syncAt = time.Now().Add(waitTime)
+	w.staticAccount.mu.Unlock()
+
 	// TODO perform a thorough balance comparison to decide whether the drift in
 	// the account balance is warranted. If not the host needs to be penalized
 	// accordingly. Perform this check at startup and periodically.
+}
+
+// managedNeedsToSyncAccountToHost returns true if the renter needs to sync the
+// account to the host.
+func (w *worker) managedNeedsToSyncAccountToHost() bool {
+	w.staticAccount.mu.Lock()
+	defer w.staticAccount.mu.Unlock()
+	return w.staticAccount.syncAt.Before(time.Now())
 }
 
 // staticHostAccountBalance performs the AccountBalanceRPC on the host
