@@ -11,6 +11,7 @@ import (
 	"sort"
 	"time"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -18,7 +19,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/encoding"
 )
 
 var (
@@ -26,7 +26,7 @@ var (
 	// between scans in order for a new scan to be accepted into the hostdb as
 	// part of the scan history.
 	scanTimeElapsedRequirement = build.Select(build.Var{
-		Standard: 60 * time.Minute,
+		Standard: 6 * time.Minute,
 		Dev:      2 * time.Minute,
 		Testing:  500 * time.Millisecond,
 	}).(time.Duration)
@@ -388,9 +388,9 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 	}
 
 	// Update historic interactions of entry if necessary
-	hdb.mu.RLock()
+	hdb.mu.Lock()
 	updateHostHistoricInteractions(&entry, hdb.blockHeight)
-	hdb.mu.RUnlock()
+	hdb.mu.Unlock()
 
 	var settings modules.HostExternalSettings
 	var latency time.Duration
@@ -453,7 +453,27 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 			if err := s.ReadResponse(&resp, maxSettingsLen); err != nil {
 				return err
 			}
-			return json.Unmarshal(resp.Settings, &settings)
+			err = json.Unmarshal(resp.Settings, &settings)
+			if err != nil {
+				return err
+			}
+
+			// Try opening a connection to the siamux.
+			//
+			// TODO: Should also check that the websocket port is open and
+			// reachable.
+			stream, err := hdb.staticMux.NewStream(modules.HostSiaMuxSubscriberName, settings.SiaMuxAddress(), modules.SiaPKToMuxPK(entry.PublicKey))
+			if err != nil {
+				fmt.Printf("%v could not open stream: %v\n", entry.PublicKey, err)
+				return err
+			}
+			err = stream.Close()
+			if err != nil {
+				fmt.Printf("%v could not close stream: %v\n", entry.PublicKey, err)
+				return err
+			}
+			fmt.Printf("%v was successful in using stream: %v\n", entry.PublicKey, err)
+			return nil
 		}()
 		if tryNewProtoErr == nil {
 			return nil
@@ -522,6 +542,23 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 			BaseRPCPrice:      types.ZeroCurrency,
 			SectorAccessPrice: types.ZeroCurrency,
 		}
+
+		// Try opening a connection to the siamux.
+		//
+		// TODO: Should also check that the websocket port is open and
+		// reachable.
+		stream, err := hdb.staticMux.NewStream(modules.HostSiaMuxSubscriberName, settings.SiaMuxAddress(), modules.SiaPKToMuxPK(entry.PublicKey))
+		if err != nil {
+			fmt.Printf("%v could not open stream: %v\n", entry.PublicKey, err)
+			return err
+		}
+		err = stream.Close()
+		if err != nil {
+			fmt.Printf("%v could not close stream: %v\n", entry.PublicKey, err)
+			return err
+		}
+		fmt.Printf("%v was successful in using stream: %v\n", entry.PublicKey, err)
+
 		return nil
 	}()
 	if err != nil {

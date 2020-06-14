@@ -275,7 +275,7 @@ func newRenterTesterWithDependency(name string, deps modules.Dependencies) (*ren
 
 // newRenterWithDependency creates a Renter with custom dependency
 func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, mux *siamux.SiaMux, persistDir string, deps modules.Dependencies) (*Renter, error) {
-	hdb, errChan := hostdb.NewCustomHostDB(g, cs, tpool, persistDir, deps)
+	hdb, errChan := hostdb.NewCustomHostDB(g, cs, tpool, mux, persistDir, deps)
 	if err := <-errChan; err != nil {
 		return nil, err
 	}

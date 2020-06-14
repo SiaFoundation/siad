@@ -1066,7 +1066,7 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 // New returns an initialized renter.
 func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, mux *siamux.SiaMux, persistDir string) (*Renter, <-chan error) {
 	errChan := make(chan error, 1)
-	hdb, errChanHDB := hostdb.New(g, cs, tpool, persistDir)
+	hdb, errChanHDB := hostdb.New(g, cs, tpool, mux, persistDir)
 	if err := modules.PeekErr(errChanHDB); err != nil {
 		errChan <- err
 		return nil, errChan

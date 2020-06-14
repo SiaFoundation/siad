@@ -114,7 +114,12 @@ func newTestingContractor(testdir string, g modules.Gateway, cs modules.Consensu
 	if err != nil {
 		return nil, nil, err
 	}
-	hdb, errChan := hostdb.New(g, cs, tp, filepath.Join(testdir, "hostdb"))
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	if err != nil {
+		return nil, nil, err
+	}
+	hdb, errChan := hostdb.New(g, cs, tp, mux, filepath.Join(testdir, "hostdb"))
 	if err := <-errChan; err != nil {
 		return nil, nil, err
 	}
@@ -124,7 +129,7 @@ func newTestingContractor(testdir string, g modules.Gateway, cs modules.Consensu
 		return nil, nil, err
 	}
 	cf := func() error {
-		return errors.Compose(contractor.Close(), hdb.Close(), walletCF())
+		return errors.Compose(contractor.Close(), hdb.Close(), mux.Close(), walletCF())
 	}
 	return contractor, cf, <-errChan
 }

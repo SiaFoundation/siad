@@ -508,7 +508,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		printfRelease("(%d/%d) Loading renter...\n", i, numModules)
 
 		// HostDB
-		hdb, errChanHDB := hostdb.NewCustomHostDB(g, cs, tp, persistDir, hostDBDeps)
+		hdb, errChanHDB := hostdb.NewCustomHostDB(g, cs, tp, mux, persistDir, hostDBDeps)
 		if err := modules.PeekErr(errChanHDB); err != nil {
 			c <- err
 			close(c)

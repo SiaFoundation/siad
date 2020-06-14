@@ -205,7 +205,7 @@ func assembleServerTesterWithDeps(key crypto.CipherKey, testdir string, gDeps, c
 		return nil, err
 	}
 	renterPersistDir := filepath.Join(testdir, modules.RenterDir)
-	hdb, errChan := hostdb.NewCustomHostDB(g, cs, tp, renterPersistDir, hdbDeps)
+	hdb, errChan := hostdb.NewCustomHostDB(g, cs, tp, mux, renterPersistDir, hdbDeps)
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
