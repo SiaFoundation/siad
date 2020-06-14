@@ -54,7 +54,7 @@ func (c *Client) Get(resource string, obj interface{}) error {
 		res.Body.Close()
 	}()
 
-	if res.StatusCode == http.StatusNotFound {
+	if res.StatusCode == StatusModuleNotLoaded {
 		return errors.AddContext(ErrAPICallNotRecognized, "unable to perform GET on "+resource)
 	}
 
@@ -99,7 +99,7 @@ func (c *Client) Post(resource string, data string, obj interface{}) error {
 		res.Body.Close()
 	}()
 
-	if res.StatusCode == http.StatusNotFound {
+	if res.StatusCode == StatusModuleNotLoaded {
 		return errors.AddContext(ErrAPICallNotRecognized, "unable to perform POST on "+resource)
 	}
 

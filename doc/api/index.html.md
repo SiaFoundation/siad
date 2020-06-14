@@ -100,6 +100,11 @@ may specify other 2xx status codes on success.
 The standard error response indicating the request failed for any reason, is a
 4xx or 5xx HTTP status code with an error JSON object describing the error.
 
+### Module Not Loaded
+
+A module that is not reachable due to not being loaded by siad will return
+the custom status code `490 ModuleNotLoaded`.
+
 # Authentication
 > Example POST curl call with Authentication
 
