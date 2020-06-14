@@ -97,7 +97,7 @@ func basicCheck() {
 
 	// 1 mb.
 	//
-	// Sleep for 10 seconds to clear out the preceeding download.
+	// Sleep for 10 seconds to clear out the preceding download.
 	time.Sleep(time.Second * 10)
 	err = basicULDL(1e6)
 	if err != nil {
