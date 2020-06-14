@@ -6,7 +6,7 @@ import (
 
 // TestMemoryManager checks that the memory management is working correctly.
 func TestMemoryManager(t *testing.T) {
-	// Mimic the default paramaters.
+	// Mimic the default parameters.
 	stopChan := make(chan struct{})
 	mm := newMemoryManager(100, 25, stopChan)
 
