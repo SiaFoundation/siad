@@ -3190,9 +3190,9 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 	}
 	bh := cg.Height
 
-	// Mine blocks until we reach the endheight
+	// Mine blocks until we reach the renew window.
 	m := tg.Miners()[0]
-	for i := 0; i < int(eh-bh); i++ {
+	for i := 0; i < int(eh-siatest.DefaultAllowance.RenewWindow-bh); i++ {
 		if err := m.MineBlock(); err != nil {
 			t.Fatal(err)
 		}

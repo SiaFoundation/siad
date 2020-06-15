@@ -2384,7 +2384,7 @@ func TestExtendPeriod(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Mine blocks until after the previous end height
+	// Mine blocks until after the previous renew window start.
 	cg, err := renter.ConsensusGet()
 	if err != nil {
 		t.Fatal(err)
