@@ -58,7 +58,10 @@ func feemanagercmd() {
 	fmt.Fprintf(w, "  Next FeePayoutHeight:\t%v\n", fmg.PayoutHeight)
 	fmt.Fprintf(w, "  Number Pending Fees:\t%v\n", len(pendingFees.PendingFees))
 	fmt.Fprintf(w, "  Total Amount Pending:\t%v\n", pendingTotal.HumanString())
-	w.Flush()
+	err = w.Flush()
+	if err != nil {
+		die(err)
+	}
 
 	// Print Pending Fees
 	if len(pendingFees.PendingFees) == 0 {
@@ -70,10 +73,13 @@ func feemanagercmd() {
 	for _, feeInfo := range fees {
 		for _, fee := range feeInfo.fees {
 			fmt.Fprintf(w, "  %v\t%v\t%v\t%v\t%v\t%v\n",
-				fee.AppUID, fee.FeeUID, fee.Amount, fee.Recurring, fee.PayoutHeight, fee.TransactionCreated)
+				fee.AppUID, fee.FeeUID, fee.Amount.HumanString(), fee.Recurring, fee.PayoutHeight, fee.TransactionCreated)
 		}
 	}
-	w.Flush()
+	err = w.Flush()
+	if err != nil {
+		die(err)
+	}
 
 	// Check if verbose output was requested
 	if !feeManagerVerbose {
@@ -100,10 +106,13 @@ func feemanagercmd() {
 	for _, feeInfo := range fees {
 		for _, fee := range feeInfo.fees {
 			fmt.Fprintf(w, "  %v\t%v\t%v\t%v\n",
-				fee.AppUID, fee.FeeUID, fee.Amount, fee.PayoutHeight)
+				fee.AppUID, fee.FeeUID, fee.Amount.HumanString(), fee.PayoutHeight)
 		}
 	}
-	w.Flush()
+	err = w.Flush()
+	if err != nil {
+		die(err)
+	}
 }
 
 // feemanagercancelfeecmd cancels a fee
@@ -143,35 +152,20 @@ func parseFees(fees []modules.AppFee) ([]feeInfo, types.Currency) {
 	var feeInfos []feeInfo
 	for _, fi := range appToFeesMap {
 		// Sort to slice of fees for each AppUID
-		sort.Sort(byAmount(fi.fees))
+		sort.Slice(fi.fees, func(i, j int) bool {
+			cmp := fi.fees[i].Amount.Cmp(fi.fees[j].Amount)
+			if cmp == 0 {
+				return fi.fees[i].PayoutHeight > fi.fees[j].PayoutHeight
+			}
+			return cmp > 0
+		})
 		feeInfos = append(feeInfos, fi)
 	}
 
 	// Sort Slice and return
-	sort.Sort(byTotalAmount(feeInfos))
+	sort.Slice(feeInfos, func(i, j int) bool {
+		cmp := feeInfos[i].totalAmount.Cmp(feeInfos[j].totalAmount)
+		return cmp > 0
+	})
 	return feeInfos, totalAmount
-}
-
-// byAmount is an implementation of a sort interface to sort the Fees by amount
-type byAmount []modules.AppFee
-
-func (s byAmount) Len() int      { return len(s) }
-func (s byAmount) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
-func (s byAmount) Less(i, j int) bool {
-	cmp := s[i].Amount.Cmp(s[j].Amount)
-	if cmp == 0 {
-		return s[i].PayoutHeight > s[j].PayoutHeight
-	}
-	return cmp > 0
-}
-
-// byTotalAmount is an implementation of a sort interface to sort the feeInfo by
-// totalAmount
-type byTotalAmount []feeInfo
-
-func (s byTotalAmount) Len() int      { return len(s) }
-func (s byTotalAmount) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
-func (s byTotalAmount) Less(i, j int) bool {
-	cmp := s[i].totalAmount.Cmp(s[j].totalAmount)
-	return cmp > 0
 }
