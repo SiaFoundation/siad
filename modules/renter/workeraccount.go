@@ -157,6 +157,20 @@ func (a *account) managedAvailableBalance() types.Currency {
 	return a.availableBalance()
 }
 
+// managedMaxExpectedBalance returns the max amount of money that this
+// account is expected to contain after the renter has shut down.
+func (a *account) managedMaxExpectedBalance() types.Currency {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.maxExpectedBalance()
+}
+
+// maxExpectedBalance returns the max amount of money that this account is
+// expected to contain after the renter has shut down.
+func (a *account) maxExpectedBalance() types.Currency {
+	return a.balance.Add(a.pendingDeposits)
+}
+
 // managedMinExpectedBalance returns the min amount of money that this
 // account is expected to contain after the renter has shut down.
 func (a *account) managedMinExpectedBalance() types.Currency {
@@ -320,8 +334,10 @@ func (w *worker) managedRefillAccount() {
 	if w.renter.deps.Disrupt("DisableFunding") {
 		return // don't refill account
 	}
-	// the account balance dropped to below half the balance target, refill
-	balance := w.staticAccount.managedAvailableBalance()
+	// The account balance dropped to below half the balance target, refill. Use
+	// the max expected balance when refilling to avoid exceeding any host
+	// maximums.
+	balance := w.staticAccount.managedMaxExpectedBalance()
 	amount := w.staticBalanceTarget.Sub(balance)
 
 	// We track that there is a deposit in progress. Because filling an account
@@ -396,6 +412,14 @@ func (w *worker) managedRefillAccount() {
 
 	// provide payment
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, w.staticCache().staticBlockHeight)
+	if err != nil && strings.Contains(err.Error(), "balance exceeded") {
+		// The host reporting that the balance has been exceeded suggests that
+		// the host believes that we have more money than we believe that we
+		// have.
+		w.staticAccount.mu.Lock()
+		w.staticAccount.syncAt = 0
+		w.staticAccount.mu.Unlock()
+	}
 	if err != nil {
 		err = errors.AddContext(err, "could not provide payment for the account")
 		return
