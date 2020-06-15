@@ -721,7 +721,9 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	}
 
 	// expect ErrBadRevisionNumber
+	badOutputs = []types.SiacoinOutput{validRevision.NewMissedProofOutputs[0]}
 	badRevision = deepCopy(validRevision)
+	badRevision.NewMissedProofOutputs = badOutputs
 	badRevision.NewRevisionNumber--
 	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
 	if err != ErrBadRevisionNumber {
