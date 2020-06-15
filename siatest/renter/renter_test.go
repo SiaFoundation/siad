@@ -3143,13 +3143,22 @@ func TestSetFileTrackingPath(t *testing.T) {
 	}
 }
 
+func TestTmp(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	for t.Run("TestRenterFileContractIdentifier", TestRenterFileContractIdentifier) {
+
+	}
+}
+
 // TestRenterFileContractIdentifier checks that the file contract's identifier
 // is set correctly when forming a contract and after renewing it.
 func TestRenterFileContractIdentifier(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	//t.Parallel()
 
 	// Create a testgroup, creating without renter so the renter's
 	// contract transactions can easily be obtained.
@@ -3191,18 +3200,21 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 	bh := cg.Height
 
 	// Mine blocks until we reach the renew window.
+	renewWindow := siatest.DefaultAllowance.RenewWindow
 	m := tg.Miners()[0]
-	for i := 0; i < int(eh-siatest.DefaultAllowance.RenewWindow-bh); i++ {
+	for i := 0; i < int(eh-renewWindow-bh); i++ {
 		if err := m.MineBlock(); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Confirm that the contracts got renewed.
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		// Mine a block.
-		if err := m.MineBlock(); err != nil {
-			t.Fatal(err)
+	tries := 0
+	err = build.Retry(int(renewWindow)*10, 100*time.Millisecond, func() error {
+		if tries%10 == 0 {
+			if err := m.MineBlock(); err != nil {
+				return err
+			}
 		}
 		// Get the contracts from the renter.
 		rcg, err := r.RenterExpiredContractsGet()
