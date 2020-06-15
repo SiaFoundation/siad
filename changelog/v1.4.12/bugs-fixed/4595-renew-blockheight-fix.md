@@ -1,0 +1,1 @@
+- fixed a bug where the renter would start to renew contract too soon and blame the host for the failed renewal causing host churn
