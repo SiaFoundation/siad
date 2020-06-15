@@ -2390,7 +2390,7 @@ func TestExtendPeriod(t *testing.T) {
 		t.Fatal(err)
 	}
 	miner := tg.Miners()[0]
-	for i := 0; i <= int(endheight-cg.Height); i++ {
+	for i := 0; i <= int(endheight-allowance.RenewWindow-cg.Height); i++ {
 		if err := miner.MineBlock(); err != nil {
 			t.Fatal(err)
 		}
@@ -2399,7 +2399,7 @@ func TestExtendPeriod(t *testing.T) {
 	// Confirm the previously active contracts are now marked as expired and
 	// were replaced with new active contracts
 	tries := 0
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(int(allowance.RenewWindow)*10, 100*time.Millisecond, func() error {
 		if tries%10 == 0 {
 			if err := miner.MineBlock(); err != nil {
 				return err

@@ -42,7 +42,6 @@ type (
 		id         types.FileContractID
 		amount     types.Currency
 		hostPubKey types.SiaPublicKey
-		endHeight  types.BlockHeight
 	}
 )
 
@@ -1035,7 +1034,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		// calculate a spending for the contract that is proportional to how
 		// much money was spend on the contract throughout this billing cycle
 		// (which is now ending).
-		if blockHeight > contract.EndHeight && !c.staticDeps.Disrupt("disableRenew") {
+		if blockHeight+allowance.RenewWindow >= contract.EndHeight && !c.staticDeps.Disrupt("disableRenew") {
 			renewAmount, err := c.managedEstimateRenewFundingRequirements(contract, blockHeight, allowance)
 			if err != nil {
 				c.log.Debugln("Contract skipped because there was an error estimating renew funding requirements", renewAmount, err)
@@ -1045,7 +1044,6 @@ func (c *Contractor) threadedContractMaintenance() {
 				id:         contract.ID,
 				amount:     renewAmount,
 				hostPubKey: contract.HostPublicKey,
-				endHeight:  contract.EndHeight,
 			})
 			c.log.Debugln("Contract has been added to the renew set for being past the renew height")
 			continue
@@ -1080,7 +1078,6 @@ func (c *Contractor) threadedContractMaintenance() {
 				id:         contract.ID,
 				amount:     contract.TotalCost.Mul64(2),
 				hostPubKey: contract.HostPublicKey,
-				endHeight:  contract.EndHeight,
 			})
 			c.log.Debugln("Contract identified as needing to be added to refresh set", contract.RenterFunds, sectorPrice.Mul64(3), percentRemaining, MinContractFundRenewalThreshold)
 		} else {
