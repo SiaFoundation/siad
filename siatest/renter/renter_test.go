@@ -3239,6 +3239,11 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 
 	var fcTxns []modules.ProcessedTransaction
 	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if tries%10 == 0 {
+			if err := m.MineBlock(); err != nil {
+				return err
+			}
+		}
 		// Get the transaction which are related to the renter since we started
 		// the renter.
 		txns, err := r.WalletTransactionsGet(0, ^types.BlockHeight(0))
