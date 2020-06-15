@@ -134,7 +134,9 @@ func (mm *memoryManager) Request(amount uint64, priority bool) bool {
 	}
 	mm.mu.Unlock()
 
-	// Send a note that a thread is now blocking.
+	// Send a note that a thread is now blocking. This is only used in testing,
+	// to ensure that the test can have multiple threads blocking for memory
+	// which block in a determinstic order.
 	select {
 	case mm.blocking <- struct{}{}:
 	default:
