@@ -14,6 +14,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
+	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -27,15 +28,16 @@ const (
 	siaDir           = "upload-download-script"              // Sia directory to upload files to
 
 	// Uploads and downloads
-	nFiles              = 50    // Number of files to upload
-	fileSize            = 200e6 // File size of a file to be uploaded in bytes
+	nFiles              = 3     // Number of files to upload
+	fileSize            = 200e3 // File size of a file to be uploaded in bytes
 	maxConcurrUploads   = 10    // Max number of files to be concurrently uploaded
 	maxConcurrDownloads = 10    // Max number of files to be concurrently downloaded
-	nTotalDownloads     = 500   // Total number of file downloads. There will be nFiles, a single file can be downloaded x-times
+	nTotalDownloads     = 5     // Total number of file downloads. There will be nFiles, a single file can be downloaded x-times
 
 	// siad
 	siadPort      = 9980 // Port of siad node
 	minRedundancy = 2.0  // Minimum redundancy to consider a file uploaded
+	useTestGroup  = true // Whether to use a test group (true) or Sia network (false)
 )
 
 // file status enum
@@ -104,9 +106,20 @@ func main() {
 	log.Printf("Download total of %s data in %d downloads per %s files\n", totalData, nTotalDownloads, fileSizeStr)
 	log.Println()
 
+	// Init test group
+	if useTestGroup {
+		log.Println("== Init test group")
+		tg := initTestGroup()
+		defer func() {
+			if err := tg.Close(); err != nil {
+				check(err)
+			}
+		}()
+	}
+
 	// Init download and upload clients
 	log.Println("=== Init client")
-	initClient(siadPort)
+	initClient()
 
 	// Set allowance
 	log.Println("=== Check/set allowance")
@@ -323,10 +336,10 @@ func getRandomFileByStatus(fs fileStatus) (string, bool) {
 }
 
 // initClient initializes a Sia http client
-func initClient(port int) {
+func initClient() {
 	opts, err := client.DefaultOptions()
 	check(err)
-	opts.Address = "localhost:" + strconv.Itoa(port)
+	opts.Address = "localhost:" + strconv.Itoa(siadPort)
 	c = client.New(opts)
 }
 
@@ -379,6 +392,28 @@ func initLog() *os.File {
 	log.SetOutput(mw)
 
 	return file
+}
+
+//xxx
+func initTestGroup() *siatest.TestGroup {
+	// Create a test group
+	groupDir := filepath.Join(workDir, "test-group")
+	groupParams := siatest.GroupParams{
+		Hosts:   5,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	check(err)
+
+	// Set siad renter port
+	r := tg.Renters()[0]
+	address := r.Address
+	log.Println("xxx", address)
+
+	os.Exit(2)
+
+	return tg
 }
 
 // setAllowance sets default allowance if no allowance is set
