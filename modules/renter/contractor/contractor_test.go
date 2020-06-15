@@ -131,6 +131,7 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	// create a siamux
 	testdir := build.TempDir("contractor", t.Name())
@@ -205,10 +206,16 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	if err != ErrAllowanceZeroWindow {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroWindow, err)
 	}
+	// There should not be any errors related to RenewWindow size
+	a.RenewWindow = 30
+	err = c.SetAllowance(a)
+	if err != ErrAllowanceZeroExpectedStorage {
+		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedStorage, err)
+	}
 	a.RenewWindow = 20
 	err = c.SetAllowance(a)
-	if err != errAllowanceWindowSize {
-		t.Errorf("expected %q, got %q", errAllowanceWindowSize, err)
+	if err != ErrAllowanceZeroExpectedStorage {
+		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedStorage, err)
 	}
 	a.RenewWindow = 10
 	err = c.SetAllowance(a)

@@ -6,7 +6,7 @@ import (
 	"gitlab.com/NebulousLabs/merkletree/merkletree-blake"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 const (

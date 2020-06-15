@@ -12,10 +12,10 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -41,8 +41,7 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 	t.Parallel()
 
 	// create a blank host tester
-	delay := modules.MDMProgramWriteResponseTime * 2
-	deps := dependencies.NewHostMDMProgramWriteDelay(delay)
+	deps := &dependencies.HostMDMProgramDelayedWrite{}
 	rhp, err := newCustomRenterHostPair(t.Name(), deps)
 	if err != nil {
 		t.Fatal(err)

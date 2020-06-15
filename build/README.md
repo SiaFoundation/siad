@@ -9,6 +9,7 @@ The build package contains high level helper functions.
  - [errors](#errors)
  - [release](#release)
  - [testing](#testing)
+ - [url](#url)
  - [var](#var)
  - [version](#version)
  - [vlong](#vlong)
@@ -55,6 +56,13 @@ TODO...
 
 ## Testing
 TODO...
+
+## URL
+### Key Files
+ - [url.go](./url.go)
+
+The URL subsystem is responsible for providing information about Sia URLs that
+are in use.
 
 ## Var
 TODO...
