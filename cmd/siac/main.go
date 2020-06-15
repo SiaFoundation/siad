@@ -16,50 +16,21 @@ import (
 )
 
 var (
-	// TODO - re-alphabetize this list of flags, break out by module
-	// Flags.
-	dictionaryLanguage        string // dictionary for seed utils
-	uploadedsizeUtilVerbose   bool   // display additional info for "utils upload-size"
-	feeManagerVerbose         bool   // display additoinal info for the FeeManager
-	hostContractOutputType    string // output type for host contracts
-	hostVerbose               bool   // display additional host info
-	hostFolderRemoveForce     bool   // force folder remove
-	initForce                 bool   // destroy and re-encrypt the wallet on init if it already exists
-	initPassword              bool   // supply a custom password when creating a wallet
-	renterAllContracts        bool   // Show all active and expired contracts
-	renterDeleteRoot          bool   // Delete path start from root instead of the user homedir.
-	renterDownloadAsync       bool   // Downloads files asynchronously
-	renterDownloadRecursive   bool   // Downloads folders recursively.
-	renterFuseMountAllowOther bool   // Mount fuse with 'AllowOther' set to true.
-	renterListVerbose         bool   // Show additional info about uploaded files.
-	renterListRecursive       bool   // List files of folder recursively.
-	renterListRoot            bool   // List path start from root instead of the user homedir.
-	renterRenameRoot          bool   // Rename files relative to root instead of the user homedir.
-	renterShowHistory         bool   // Show download history in addition to download queue.
-	renterVerbose             bool   // Show additional info about the renter
-	siaDir                    string // Path to sia data dir
-	skykeyName                string // Name used to identify a Skykey.
-	skykeyType                string // Type used to create a new Skykey.
-	skykeyShowPrivateKeys     bool   // Set to true to show private key data.
-	skykeyID                  string // ID used to identify a Skykey.
-	skykeyRenameAs            string // Optional parameter to rename a Skykey while adding it.
-	skynetBlacklistRemove     bool   // Remove a skylink from the Skynet Blacklist.
-	skynetUnpinRoot           bool   // Use root as the base instead of the Skynet folder.
-	skynetDownloadPortal      string // Portal to use when trying to download a skylink.
-	skynetLsRecursive         bool   // List files of folder recursively.
-	skynetLsRoot              bool   // Use root as the base instead of the Skynet folder.
-	skynetUploadRoot          bool   // Use root as the base instead of the Skynet folder.
-	skynetUploadDryRun        bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
-	skynetUploadSilent        bool   // Don't report progress while uploading
-	statusVerbose             bool   // Display additional siac information
-	walletRawTxn              bool   // Encode/decode transactions in base64-encoded binary.
-	walletStartHeight         uint64 // Start height for transaction search.
-	walletEndHeight           uint64 // End height for transaction search.
-	walletTxnFeeIncluded      bool   // include the fee in the balance being sent
+	// General Flags
+	siaDir        string // Path to sia data dir
+	statusVerbose bool   // Display additional siac information
 
-	dataPieces   string // the number of data pieces a files should be uploaded with
-	parityPieces string // the number of parity pieces a files should be uploaded with
+	// Module Specific Flags
+	//
+	// FeeManager Flags
+	feeManagerVerbose bool // display additoinal info for the FeeManager
 
+	// Host Flags
+	hostContractOutputType string // output type for host contracts
+	hostVerbose            bool   // display additional host info
+	hostFolderRemoveForce  bool   // force folder remove
+
+	// Renter Flags
 	allowanceFunds                         string // amount of money to be used within a period
 	allowancePeriod                        string // length of period
 	allowanceHosts                         string // number of hosts to form contracts with
@@ -75,6 +46,49 @@ var (
 	allowanceMaxSectorAccessPrice          string // max allowed price to access a sector on a host
 	allowanceMaxStoragePrice               string // max allowed price to store data on a host
 	allowanceMaxUploadBandwidthPrice       string // max allowed price to upload data to a host
+	dataPieces                             string // the number of data pieces a files should be uploaded with
+	parityPieces                           string // the number of parity pieces a files should be uploaded with
+	renterAllContracts                     bool   // Show all active and expired contracts
+	renterDeleteRoot                       bool   // Delete path start from root instead of the user homedir.
+	renterDownloadAsync                    bool   // Downloads files asynchronously
+	renterDownloadRecursive                bool   // Downloads folders recursively.
+	renterFuseMountAllowOther              bool   // Mount fuse with 'AllowOther' set to true.
+	renterListVerbose                      bool   // Show additional info about uploaded files.
+	renterListRecursive                    bool   // List files of folder recursively.
+	renterListRoot                         bool   // List path start from root instead of the user homedir.
+	renterRenameRoot                       bool   // Rename files relative to root instead of the user homedir.
+	renterShowHistory                      bool   // Show download history in addition to download queue.
+	renterVerbose                          bool   // Show additional info about the renter
+
+	// Skykey Flags
+	skykeyName            string // Name used to identify a Skykey.
+	skykeyType            string // Type used to create a new Skykey.
+	skykeyShowPrivateKeys bool   // Set to true to show private key data.
+	skykeyID              string // ID used to identify a Skykey.
+	skykeyRenameAs        string // Optional parameter to rename a Skykey while adding it.
+
+	// Skynet Flags
+	skynetBlacklistRemove bool   // Remove a skylink from the Skynet Blacklist.
+	skynetUnpinRoot       bool   // Use root as the base instead of the Skynet folder.
+	skynetDownloadPortal  string // Portal to use when trying to download a skylink.
+	skynetLsRecursive     bool   // List files of folder recursively.
+	skynetLsRoot          bool   // Use root as the base instead of the Skynet folder.
+	skynetUploadRoot      bool   // Use root as the base instead of the Skynet folder.
+	skynetUploadDryRun    bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
+	skynetUploadSilent    bool   // Don't report progress while uploading
+
+	// Utils Flags
+	dictionaryLanguage      string // dictionary for seed utils
+	uploadedsizeUtilVerbose bool   // display additional info for "utils upload-size"
+
+	// Wallet Flags
+	initForce            bool   // destroy and re-encrypt the wallet on init if it already exists
+	initPassword         bool   // supply a custom password when creating a wallet
+	walletRawTxn         bool   // Encode/decode transactions in base64-encoded binary.
+	walletStartHeight    uint64 // Start height for transaction search.
+	walletEndHeight      uint64 // End height for transaction search.
+	walletTxnFeeIncluded bool   // include the fee in the balance being sent
+
 )
 
 var (
