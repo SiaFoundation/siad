@@ -2694,7 +2694,7 @@ func renterworkersptcmd() {
 	// collect some overal account stats
 	var wocd, wnpt uint64
 	for _, worker := range rw.Workers {
-		if worker.AccountStatus.OnCoolDown {
+		if worker.PriceTableStatus.OnCoolDown {
 			wocd++
 		}
 		if !worker.PriceTableStatus.Active {
