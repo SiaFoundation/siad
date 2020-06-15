@@ -90,7 +90,7 @@ func RandomSuffix() string {
 	return str[:20]
 }
 
-// UID returns a hexadecimal encoding string that can be used as an unique ID.
+// UID returns a hexadecimal encoded string that can be used as an unique ID.
 func UID() string {
 	return hex.EncodeToString(fastrand.Bytes(randomBytes))
 }
