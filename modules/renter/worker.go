@@ -145,8 +145,11 @@ func (w *worker) staticWake() {
 	}
 }
 
-// status returns the status of the worker.
-func (w *worker) status() modules.WorkerStatus {
+// callStatus returns the status of the worker.
+func (w *worker) callStatus() modules.WorkerStatus {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
 	downloadOnCoolDown := w.onDownloadCooldown()
 	uploadOnCoolDown, uploadCoolDownTime := w.onUploadCooldown()
 
@@ -176,13 +179,22 @@ func (w *worker) status() modules.WorkerStatus {
 		UploadQueueSize:     len(w.unprocessedChunks),
 		UploadTerminated:    w.uploadTerminated,
 
-		// Ephemeral Account information
-		AvailableBalance: w.staticAccount.managedAvailableBalance(),
-		BalanceTarget:    w.staticBalanceTarget,
-
 		// Job Queues
 		BackupJobQueueSize:       w.staticFetchBackupsJobQueue.managedLen(),
 		DownloadRootJobQueueSize: w.staticJobQueueDownloadByRoot.managedLen(),
+
+		// Account Information
+		AccountBalanceTarget: w.staticBalanceTarget,
+		AccountStatus:        w.staticAccount.managedStatus(),
+
+		// Price Table Information
+		PriceTableStatus: w.staticPriceTableStatus(),
+
+		// ReadSector Job Information
+		ReadSectorJobsStatus: w.callReadSectorJobStatus(),
+
+		// HasSector Job Information
+		HasSectorJobsStatus: w.callHasSectorJobStatus(),
 	}
 }
 

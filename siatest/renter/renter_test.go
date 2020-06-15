@@ -4665,11 +4665,11 @@ func TestWorkerStatus(t *testing.T) {
 		}
 
 		// Ephemeral Account cheks
-		if !worker.AvailableBalance.IsZero() {
-			t.Error("Expected available balance to be zero but was", worker.AvailableBalance.HumanString())
+		if !worker.AccountStatus.AvailableBalance.IsZero() {
+			t.Error("Expected available balance to be zero but was", worker.AccountStatus.AvailableBalance.HumanString())
 		}
-		if !worker.BalanceTarget.Equals(types.SiacoinPrecision) {
-			t.Error("Expected balance target to be 1SC but was", worker.BalanceTarget.HumanString())
+		if !worker.AccountBalanceTarget.Equals(types.SiacoinPrecision) {
+			t.Error("Expected balance target to be 1SC but was", worker.AccountBalanceTarget.HumanString())
 		}
 
 		// Job Queues
@@ -4761,10 +4761,10 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 		if !found {
 			return errors.New("worker not in worker pool yet")
 		}
-		if w.AvailableBalance.IsZero() {
+		if w.AccountStatus.AvailableBalance.IsZero() {
 			return errors.New("expected worker to have a funded account, instead its balance is still 0")
 		}
-		renterBalance = w.AvailableBalance
+		renterBalance = w.AccountStatus.AvailableBalance
 		return nil
 	})
 	if err != nil {
@@ -4789,16 +4789,16 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	if !found {
 		t.Fatal("Expected worker to be found")
 	}
-	if w.AvailableBalance.IsZero() {
+	if w.AccountStatus.AvailableBalance.IsZero() {
 		t.Fatal("Expected the renter to have synced its balance to the host's version of the balance")
 	}
 
 	// safety check to avoid panic on sub later
-	if w.AvailableBalance.Cmp(renterBalance) >= 0 {
-		t.Fatal("Expected the synced balance to be lower, as the 'lower deposit' dependency should have deposited less", w.AvailableBalance, renterBalance)
+	if w.AccountStatus.AvailableBalance.Cmp(renterBalance) >= 0 {
+		t.Fatal("Expected the synced balance to be lower, as the 'lower deposit' dependency should have deposited less", w.AccountStatus.AvailableBalance, renterBalance)
 	}
 	delta := types.SiacoinPrecision.Div64(10)
-	if renterBalance.Sub(w.AvailableBalance).Cmp(delta) < 0 {
-		t.Fatalf("Expected the synced balance to be at least %v lower than the renter balance, as thats the amount we subtracted from the deposit amount, instead synced balance was %v and renter balance was %v", delta, w.AvailableBalance, renterBalance)
+	if renterBalance.Sub(w.AccountStatus.AvailableBalance).Cmp(delta) < 0 {
+		t.Fatalf("Expected the synced balance to be at least %v lower than the renter balance, as thats the amount we subtracted from the deposit amount, instead synced balance was %v and renter balance was %v", delta, w.AccountStatus.AvailableBalance, renterBalance)
 	}
 }

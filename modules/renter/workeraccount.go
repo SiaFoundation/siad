@@ -41,6 +41,7 @@ type (
 		consecutiveFailures uint64
 		cooldownUntil       time.Time
 		recentErr           error
+		recentErrTime       time.Time
 
 		// Variables to manage a race condition around account creation, where
 		// the account must be available in the data structure before it has
@@ -212,6 +213,31 @@ func (a *account) managedResetBalance(balance types.Currency) {
 	a.negativeBalance = types.ZeroCurrency
 }
 
+// managedStatus returns the status of the account
+func (a *account) managedStatus() modules.WorkerAccountStatus {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	var recentErrStr string
+	if a.recentErr != nil {
+		recentErrStr = a.recentErr.Error()
+	}
+
+	return modules.WorkerAccountStatus{
+		AvailableBalance: a.availableBalance(),
+		NegativeBalance:  a.negativeBalance,
+
+		Funded: !a.availableBalance().IsZero(),
+
+		OnCoolDown:          a.cooldownUntil.After(time.Now()),
+		OnCoolDownUntil:     a.cooldownUntil,
+		ConsecutiveFailures: a.consecutiveFailures,
+
+		RecentErr:     recentErrStr,
+		RecentErrTime: a.recentErrTime,
+	}
+}
+
 // managedTrackDeposit keeps track of pending deposits by adding the given
 // amount to the 'pendingDeposits' field.
 func (a *account) managedTrackDeposit(amount types.Currency) {
@@ -308,6 +334,7 @@ func (w *worker) managedRefillAccount() {
 		w.staticAccount.cooldownUntil = cd
 		w.staticAccount.consecutiveFailures++
 		w.staticAccount.recentErr = err
+		w.staticAccount.recentErrTime = time.Now()
 		w.staticAccount.mu.Unlock()
 
 		// Have the threadgroup wake the worker when the account comes off of

@@ -756,12 +756,80 @@ type (
 		UploadTerminated    bool          `json:"uploadterminated"`
 
 		// Ephemeral Account information
-		AvailableBalance types.Currency `json:"availablebalance"`
-		BalanceTarget    types.Currency `json:"balancetarget"`
+		AccountBalanceTarget types.Currency      `json:"balancetarget"`
+		AccountStatus        WorkerAccountStatus `json:"accountstatus"`
+
+		// PriceTable information
+		PriceTableStatus WorkerPriceTableStatus `json:"pricetablestatus"`
 
 		// Job Queues
 		BackupJobQueueSize       int `json:"backupjobqueuesize"`
 		DownloadRootJobQueueSize int `json:"downloadrootjobqueuesize"`
+
+		// ReadSector Job Information
+		ReadSectorJobsStatus WorkerReadSectorJobsStatus `json:"readsectorjobsstatus"`
+
+		// HasSector Job Information
+		HasSectorJobsStatus WorkerHasSectorJobsStatus `json:"hassectorjobsstatus"`
+	}
+
+	// WorkerAccountStatus contains detailed information about the account
+	WorkerAccountStatus struct {
+		AvailableBalance types.Currency `json:"availablebalance"`
+		NegativeBalance  types.Currency `json:"negativebalance"`
+
+		Funded bool `json:"funded"`
+
+		OnCoolDown          bool      `json:"oncooldown"`
+		OnCoolDownUntil     time.Time `json:"oncooldownuntil"`
+		ConsecutiveFailures uint64    `json:"consecutivefailures"`
+
+		RecentErr     string    `json:"recenterr"`
+		RecentErrTime time.Time `json:"recenterrtime"`
+	}
+
+	// WorkerPriceTableStatus contains detailed information about the price
+	// table
+	WorkerPriceTableStatus struct {
+		ExpiryTime time.Time `json:"expirytime"`
+		UpdateTime time.Time `json:"updatetime"`
+
+		Active bool `json:"active"`
+
+		OnCoolDown          bool      `json:"oncooldown"`
+		OnCoolDownUntil     time.Time `json:"oncooldownuntil"`
+		ConsecutiveFailures uint64    `json:"consecutivefailures"`
+
+		RecentErr     string    `json:"recenterr"`
+		RecentErrTime time.Time `json:"recenterrtime"`
+	}
+
+	// WorkerReadSectorJobsStatus contains detailed information about the read
+	// sector jobs
+	WorkerReadSectorJobsStatus struct {
+		AvgJobTime64k uint64 `json:"avgjobtime64k"` // in ms
+		AvgJobTime1m  uint64 `json:"avgjobtime1m"`  // in ms
+		AvgJobTime4m  uint64 `json:"avgjobtime4m"`  // in ms
+
+		ConsecutiveFailures uint64 `json:"consecutivefailures"`
+
+		JobQueueSize uint64 `json:"jobqueuesize"`
+
+		RecentErr     string    `json:"recenterr"`
+		RecentErrTime time.Time `json:"recenterrtime"`
+	}
+
+	// WorkerHasSectorJobsStatus contains detailed information about the has
+	// sector jobs
+	WorkerHasSectorJobsStatus struct {
+		AvgJobTime uint64 `json:"avgjobtime"` // in ms
+
+		ConsecutiveFailures uint64 `json:"consecutivefailures"`
+
+		JobQueueSize uint64 `json:"jobqueuesize"`
+
+		RecentErr     string    `json:"recenterr"`
+		RecentErrTime time.Time `json:"recenterrtime"`
 	}
 )
 

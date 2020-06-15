@@ -52,6 +52,30 @@ type (
 
 // TODO: Gouging
 
+// callHasSectorJobStatus returns the status of the has sector job queue
+func (w *worker) callHasSectorJobStatus() modules.WorkerHasSectorJobsStatus {
+	hsq := w.staticJobHasSectorQueue
+	status := hsq.callStatus()
+
+	var recentErrStr string
+	if status.recentErr != nil {
+		recentErrStr = status.recentErr.Error()
+	}
+
+	var avgJobTimeInMs uint64 = 0
+	if d := hsq.callAverageJobTime(); d > 0 {
+		avgJobTimeInMs = uint64(d.Milliseconds())
+	}
+
+	return modules.WorkerHasSectorJobsStatus{
+		AvgJobTime:          avgJobTimeInMs,
+		ConsecutiveFailures: status.consecutiveFailures,
+		JobQueueSize:        status.size,
+		RecentErr:           recentErrStr,
+		RecentErrTime:       status.recentErrTime,
+	}
+}
+
 // callDiscard will discard a job, sending the provided error.
 func (j *jobHasSector) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()

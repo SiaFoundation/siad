@@ -59,6 +59,34 @@ type (
 
 // TODO: Gouging
 
+// callReadSectorJobStatus returns the status of the read sector job queue
+func (w *worker) callReadSectorJobStatus() modules.WorkerReadSectorJobsStatus {
+	rsq := w.staticJobReadSectorQueue
+	status := rsq.callStatus()
+
+	var recentErrString string
+	if status.recentErr != nil {
+		recentErrString = status.recentErr.Error()
+	}
+
+	avgJobTimeInMs := func(l uint64) uint64 {
+		if d := rsq.callAverageJobTime(l); d > 0 {
+			return uint64(d.Milliseconds())
+		}
+		return 0
+	}
+
+	return modules.WorkerReadSectorJobsStatus{
+		AvgJobTime64k:       avgJobTimeInMs(1 << 16),
+		AvgJobTime1m:        avgJobTimeInMs(1 << 20),
+		AvgJobTime4m:        avgJobTimeInMs(1 << 22),
+		ConsecutiveFailures: status.consecutiveFailures,
+		JobQueueSize:        status.size,
+		RecentErr:           recentErrString,
+		RecentErrTime:       status.recentErrTime,
+	}
+}
+
 // callDiscard will discard a job, forwarding the error to the caller.
 func (j *jobReadSector) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
