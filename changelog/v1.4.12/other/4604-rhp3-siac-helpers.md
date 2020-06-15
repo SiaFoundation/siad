@@ -1,0 +1,4 @@
+- Add `siac renter workers ea` command to siac
+- Add `siac renter workers pt` command to siac
+- Add `siac renter workers rs` command to siac
+- Add `siac renter workers hs` command to siac
