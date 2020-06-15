@@ -307,7 +307,7 @@ func (w *worker) managedAccountNeedsRefill() bool {
 		return false
 	}
 	refillAt := w.staticBalanceTarget.Div64(2)
-	if balance.Cmp(refillAt) < 0 {
+	if balance.Cmp(refillAt) >= 0 {
 		return false
 	}
 
