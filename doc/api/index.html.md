@@ -4485,11 +4485,53 @@ returns the the status of all the workers in the renter's workerpool.
       "uploadqueuesize":     0,                    // int
       "uploadterminated":    false,                // boolean
       
-      "availablebalance":    "0", // hastings
       "balancetarget":       "0", // hastings
       
       "backupjobqueuesize":       0, // int
       "downloadrootjobqueuesize": 0  // int
+
+      "backupjobqueuesize": 0,        // int
+      "downloadrootjobqueuesize": 0,  // int
+
+      "accountstatus": {
+        "availablebalance": "1000000000000000000000000", // hasting
+        "negativebalance": "0",                          // hasting
+        "funded": true,                                  // boolean
+        "oncooldown": false,                             // boolean
+        "oncooldownuntil": "0001-01-01T00:00:00Z",       // time
+        "consecutivefailures": 0,                        // int
+        "recenterr": "",                                 // string
+        "recenterrtime": "0001-01-01T00:00:00Z"          // time
+      },
+
+      "pricetablestatus": {
+        "expirytime": "2020-06-15T16:17:01.040481+02:00", // time
+        "updatetime": "2020-06-15T16:12:01.040481+02:00", // time
+        "active": true,                                   // boolean
+        "oncooldown": false,                              // boolean
+        "oncooldownuntil": "0001-01-01T00:00:00Z",        // time
+        "consecutivefailures": 0,                         // int
+        "recenterr": "",                                  // string
+        "recenterrtime": "0001-01-01T00:00:00Z"           // time
+      },
+
+      "readsectorjobsstatus": {
+        "avgjobtime64k": 0,                               // int
+        "avgjobtime1m": 0,                                // int
+        "avgjobtime4m": 0,                                // int
+        "consecutivefailures": 0,                         // int
+        "jobqueuesize": 0,                                // int
+        "recenterr": "",                                  // string
+        "recenterrtime": "0001-01-01T00:00:00Z"           // time
+      },
+
+      "hassectorjobsstatus": {
+        "avgjobtime": 0,                                  // int
+        "consecutivefailures": 0,                         // int
+        "jobqueuesize": 0,                                // int
+        "recenterr": "",                                  // string
+        "recenterrtime": "0001-01-01T00:00:00Z"           // time
+      }
     }
   ]
 }

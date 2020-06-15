@@ -4664,10 +4664,7 @@ func TestWorkerStatus(t *testing.T) {
 			t.Error("Worker should not be marked as UploadTerminated")
 		}
 
-		// Ephemeral Account cheks
-		if !worker.AccountStatus.AvailableBalance.IsZero() {
-			t.Error("Expected available balance to be zero but was", worker.AccountStatus.AvailableBalance.HumanString())
-		}
+		// Account checks
 		if !worker.AccountBalanceTarget.Equals(types.SiacoinPrecision) {
 			t.Error("Expected balance target to be 1SC but was", worker.AccountBalanceTarget.HumanString())
 		}
@@ -4678,6 +4675,50 @@ func TestWorkerStatus(t *testing.T) {
 		}
 		if worker.DownloadRootJobQueueSize != 0 {
 			t.Error("Expected download by root queue to be empty but was", worker.DownloadRootJobQueueSize)
+		}
+
+		// AccountStatus checks
+		if !worker.AccountStatus.AvailableBalance.IsZero() {
+			t.Error("Expected available balance to be zero but was", worker.AccountStatus.AvailableBalance.HumanString())
+		}
+		if !worker.AccountStatus.NegativeBalance.IsZero() {
+			t.Error("Expected negative balance to be zero but was", worker.AccountStatus.NegativeBalance.HumanString())
+		}
+		if worker.AccountStatus.OnCoolDown {
+			t.Error("Worker account should not be on cool down")
+		}
+		if worker.AccountStatus.RecentErr != "" {
+			t.Error("Expected recent err to be nil but was", worker.AccountStatus.RecentErr)
+		}
+
+		// PriceTableStatus checks
+		if worker.PriceTableStatus.RecentErr != "" {
+			t.Error("Expected recent err to be nil but was", worker.PriceTableStatus.RecentErr)
+		}
+		if worker.PriceTableStatus.OnCoolDown {
+			t.Error("Worker price table should not be on cool down")
+		}
+
+		// ReadSectorJobStatus checks
+		if worker.ReadSectorJobsStatus.RecentErr != "" {
+			t.Error("Expected recent err to be nil but was", worker.ReadSectorJobsStatus.RecentErr)
+		}
+		if worker.ReadSectorJobsStatus.JobQueueSize != 0 {
+			t.Error("Expected job queue size to be 0 but was", worker.ReadSectorJobsStatus.JobQueueSize)
+		}
+		if worker.ReadSectorJobsStatus.ConsecutiveFailures != 0 {
+			t.Error("Expected consecutive failures to be 0 but was", worker.ReadSectorJobsStatus.ConsecutiveFailures)
+		}
+
+		// HasSectorJobStatus checks
+		if worker.HasSectorJobsStatus.RecentErr != "" {
+			t.Error("Expected recent err to be nil but was", worker.HasSectorJobsStatus.RecentErr)
+		}
+		if worker.HasSectorJobsStatus.JobQueueSize != 0 {
+			t.Error("Expected job queue size to be 0 but was", worker.HasSectorJobsStatus.JobQueueSize)
+		}
+		if worker.HasSectorJobsStatus.ConsecutiveFailures != 0 {
+			t.Error("Expected consecutive failures to be 0 but was", worker.HasSectorJobsStatus.ConsecutiveFailures)
 		}
 	}
 }
