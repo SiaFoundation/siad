@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -417,7 +418,7 @@ func (w *worker) managedRefillAccount() {
 		// the host believes that we have more money than we believe that we
 		// have.
 		w.staticAccount.mu.Lock()
-		w.staticAccount.syncAt = 0
+		w.staticAccount.syncAt = time.Time{}
 		w.staticAccount.mu.Unlock()
 	}
 	if err != nil {
