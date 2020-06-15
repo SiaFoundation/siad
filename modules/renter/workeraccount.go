@@ -293,7 +293,7 @@ func (w *worker) managedAccountNeedsRefill() bool {
 		return false
 	}
 	// Check if the account is synced.
-	if w.managedNeedToSyncAccountToHost() {
+	if w.managedNeedsToSyncAccountToHost() {
 		return false
 	}
 
