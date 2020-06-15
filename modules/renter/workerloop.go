@@ -295,6 +295,13 @@ func (w *worker) threadedWorkLoop() {
 		}
 		w.staticTryUpdateCache()
 
+		// Try and fix a revision number mismatch if the flag is set. This will
+		// be the case if other processes errored out with an error indicating a
+		// mismatch.
+		if w.staticSuspectRevisionNumberMismatch() {
+			w.managedTryFixRevisionNumberMismatch()
+		}
+
 		// Attempt to launch a serial job. If there is already a job running,
 		// this will no-op. If no job is running, a goroutine will be spun up
 		// to run a job, this call is non-blocking.
