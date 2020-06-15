@@ -849,6 +849,8 @@ func (cs *ContractSet) NewRawSession(host modules.HostDBEntry, currentHeight typ
 
 // managedNewSession initiates the RPC loop with a host and returns a Session.
 func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight types.BlockHeight, hdb hostDB, cancel <-chan struct{}) (_ *Session, err error) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
 	// Increase Successful/Failed interactions accordingly
 	defer func() {
 		if err != nil {

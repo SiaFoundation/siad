@@ -84,6 +84,7 @@ lockcheckpkgs = \
 	./cmd/siac \
 	./modules/host/mdm \
 	./modules/renter/hostdb \
+	./modules/renter/proto \
 
 # run determines which tests run when running any variation of 'make test'.
 run = .

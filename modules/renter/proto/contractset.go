@@ -59,15 +59,14 @@ func (cs *ContractSet) Acquire(id types.FileContractID) (*SafeContract, bool) {
 // Delete is a no-op.
 func (cs *ContractSet) Delete(c *SafeContract) {
 	cs.mu.Lock()
+	defer cs.mu.Unlock()
 	_, ok := cs.contracts[c.header.ID()]
 	if !ok {
-		cs.mu.Unlock()
 		build.Critical("Delete called on already deleted contract")
 		return
 	}
 	delete(cs.contracts, c.header.ID())
 	delete(cs.pubKeys, c.header.HostPublicKey().String())
-	cs.mu.Unlock()
 	c.revisionMu.Unlock()
 	// delete contract file
 	headerPath := filepath.Join(cs.dir, c.header.ID().String()+contractHeaderExtension)
@@ -130,13 +129,17 @@ func (cs *ContractSet) Return(c *SafeContract) {
 // RateLimits sets the bandwidth limits for connections created by the
 // contractSet.
 func (cs *ContractSet) RateLimits() (readBPS int64, writeBPS int64, packetSize uint64) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
 	return cs.rl.Limits()
 }
 
 // SetRateLimits sets the bandwidth limits for connections created by the
 // contractSet.
 func (cs *ContractSet) SetRateLimits(readBPS int64, writeBPS int64, packetSize uint64) {
+	cs.mu.Lock()
 	cs.rl.SetLimits(readBPS, writeBPS, packetSize)
+	cs.mu.Unlock()
 }
 
 // View returns a copy of the contract with the specified host key. The
@@ -167,6 +170,8 @@ func (cs *ContractSet) ViewAll() []modules.RenterContract {
 
 // Close closes all contracts in a contract set, this means rendering it unusable for I/O
 func (cs *ContractSet) Close() error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
 	for _, c := range cs.contracts {
 		c.headerFile.Close()
 	}
@@ -284,6 +289,9 @@ func v131RC2RenameWAL(dir string) error {
 // managedV146SplitContractHeaderAndRoots goes through all the legacy contracts
 // in a directory and splits the file up into a header and roots file.
 func (cs *ContractSet) managedV146SplitContractHeaderAndRoots(dir string) error {
+	cs.mu.Lock()
+	csDir := cs.dir
+	cs.mu.Unlock()
 	// Load the contract files.
 	fis, err := ioutil.ReadDir(dir)
 	if err != nil {
@@ -296,7 +304,7 @@ func (cs *ContractSet) managedV146SplitContractHeaderAndRoots(dir string) error 
 		if filepath.Ext(filename) != v146ContractExtension {
 			continue
 		}
-		path := filepath.Join(cs.dir, filename)
+		path := filepath.Join(csDir, filename)
 		f, err := os.Open(path)
 		if err != nil {
 			return err

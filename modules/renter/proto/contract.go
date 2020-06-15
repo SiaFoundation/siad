@@ -229,6 +229,8 @@ func (c *SafeContract) clearUnappliedTxns() error {
 
 // LastRevision returns the most recent revision
 func (c *SafeContract) LastRevision() types.FileContractRevision {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.header.LastRevision()
 }
 
@@ -283,6 +285,8 @@ func (c *SafeContract) RecordPaymentIntent(rev types.FileContractRevision, amoun
 
 // Sign will sign the given hash using the safecontract's secret key
 func (c *SafeContract) Sign(hash crypto.Hash) crypto.Signature {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return crypto.SignHash(hash, c.header.SecretKey)
 }
 
@@ -774,7 +778,9 @@ func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Ha
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
+	cs.mu.Lock()
 	txn, err := cs.wal.NewTransaction([]writeaheadlog.Update{insertUpdate})
+	cs.mu.Unlock()
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
@@ -797,6 +803,8 @@ func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Ha
 // a set. This will overwrite existing contracts of the same name to make sure
 // the update is idempotent.
 func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Update) (modules.RenterContract, error) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
 	// Sanity check update.
 	if update.Name != updateNameInsertContract {
 		return modules.RenterContract{}, fmt.Errorf("can't call managedApplyInsertContractUpdate on update of type '%v'", update.Name)
@@ -861,10 +869,8 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 		staticRC:    rc,
 	}
 	// Compatv144 fix missing void output.
-	cs.mu.Lock()
 	cs.contracts[sc.header.ID()] = sc
 	cs.pubKeys[h.HostPublicKey().String()] = sc.header.ID()
-	cs.mu.Unlock()
 	return sc.Metadata(), nil
 }
 

@@ -193,6 +193,8 @@ func (cs *ContractSet) NewDownloader(host modules.HostDBEntry, id types.FileCont
 		}
 	}()
 
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
 	conn, closeChan, err := initiateRevisionLoop(host, sc, modules.RPCDownload, cancel, cs.rl)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to initiate revision loop")
