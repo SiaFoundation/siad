@@ -374,13 +374,13 @@ func (ht *HostTree) SelectRandom(n int, blacklist, addressBlacklist []types.SiaP
 
 // all returns all of the hosts in the host tree, sorted by weight.
 func (ht *HostTree) all() []modules.HostDBEntry {
-	var he []hostEntry
+	he := make([]hostEntry, 0, len(ht.hosts))
 	for _, node := range ht.hosts {
 		he = append(he, *node.entry)
 	}
 	sort.Sort(byWeight(he))
 
-	var entries []modules.HostDBEntry
+	entries := make([]modules.HostDBEntry, 0, len(he))
 	for _, entry := range he {
 		entries = append(entries, entry.HostDBEntry)
 	}

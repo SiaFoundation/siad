@@ -153,9 +153,11 @@ func TestVerifyPaymentRevision(t *testing.T) {
 		t.Fatalf("Expected '%v' but received '%v'", string(ErrLowHostMissedOutput), err)
 	}
 
-	// expect ErrBadRevisionNumber
+	// expect ErrBadRevisionNumber even if outputs don't match.
+	badOutputs = []types.SiacoinOutput{payment.NewMissedProofOutputs[0]}
 	badPayment = deepCopy(payment)
-	badPayment.NewRevisionNumber -= 1
+	badPayment.NewMissedProofOutputs = badOutputs
+	badPayment.NewRevisionNumber--
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
 	if err != ErrBadRevisionNumber {
 		t.Fatalf("Expected ErrBadRevisionNumber but received '%v'", err)
