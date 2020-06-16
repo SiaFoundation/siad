@@ -22,19 +22,19 @@ import (
 // Config
 const (
 	// Directories and log
-	workDirPart      = "nebulous/sia-upload-download-script" // Working directory under user home
+	workDirPart      = "nebulous/sia-upload-download-benchmark" // Working directory under user home
 	uploadsDirPart   = "uploads"                             // Uploads in working directory
 	downloadsDirPart = "downloads"                           // Downloads in working directory
 	testGroupDirPart = "test-group"
-	logFilename      = "upload-download-script.log" // Log filename in working directory
-	siaDir           = "upload-download-script"     // Sia directory to upload files to
+	logFilename      = "upload-download-benchmark.log" // Log filename in working directory
+	siaDir           = "upload-download-benchmark"     // Sia directory to upload files to
 
 	// Uploads and downloads
-	nFiles              = 10    // Number of files to upload
-	fileSize            = 200e3 // File size of a file to be uploaded in bytes
-	maxConcurrUploads   = 10    // Max number of files to be concurrently uploaded
-	maxConcurrDownloads = 10    // Max number of files to be concurrently downloaded
-	nTotalDownloads     = 500   // Total number of file downloads. There will be nFiles, a single file can be downloaded x-times
+	nFiles              = 50  // Number of files to upload
+	fileSize            = 0   // File size of a file to be uploaded in bytes, use 0 to use default testing sector size
+	maxConcurrUploads   = 10  // Max number of files to be concurrently uploaded
+	maxConcurrDownloads = 10  // Max number of files to be concurrently downloaded
+	nTotalDownloads     = 500 // Total number of file downloads. There will be nFiles, a single file can be downloaded x-times
 
 	// siad
 	siadPort      = "9980" // Port of siad node (if not using a test group)
@@ -57,6 +57,8 @@ var (
 	testGroupDir string // Test group working directory
 	logPath      string // Path to log file
 
+	actualFileSize int // Actual file size to be used
+
 	c  *client.Client     // Sia client for uploads and downloads
 	tg *siatest.TestGroup // Test group (if used)
 
@@ -67,6 +69,9 @@ var (
 
 	uploadTimes   []time.Duration // Slice of file upload durations
 	downloadTimes []time.Duration // Slice of file download durations
+
+	uploadTimesMu   sync.Mutex // Upload durations mutex
+	downloadTimesMu sync.Mutex // Download durations mutex
 
 	filesMap = files{
 		m: make(map[string]fileStatus),
@@ -93,8 +98,11 @@ func TestSiaUploadsDownloads(t *testing.T) {
 	f := initLog()
 	defer f.Close()
 
+	// Init actual file size
+	initFileSize()
+
 	// Log dirs, files
-	log.Println("=== Starting upload/download script")
+	log.Println("=== Starting upload/download benchmark")
 	log.Println("Working   dir was set to:", workDir)
 	log.Println("Uploads   dir was set to:", upDir)
 	log.Println("Downloads dir was set to:", downDir)
@@ -102,11 +110,11 @@ func TestSiaUploadsDownloads(t *testing.T) {
 	log.Println()
 
 	// Print overview
-	totalData := formatFileSize(nFiles*int(fileSize), " ")
-	fileSizeStr := formatFileSize(fileSize, " ")
+	totalData := formatFileSize(nFiles*int(actualFileSize), " ")
+	fileSizeStr := formatFileSize(actualFileSize, " ")
 	log.Printf("Upload total of %s data in %d files per %s\n", totalData, nFiles, fileSizeStr)
 
-	totalData = formatFileSize(nTotalDownloads*int(fileSize), " ")
+	totalData = formatFileSize(nTotalDownloads*int(actualFileSize), " ")
 	log.Printf("Download total of %s data in %d downloads per %s\n", totalData, nTotalDownloads, fileSizeStr)
 	log.Println()
 
@@ -145,7 +153,8 @@ func TestSiaUploadsDownloads(t *testing.T) {
 		go threadedCreateAndUploadFiles(i, timestamp)
 	}
 
-	// xxx
+	// Wait for uploads to finish. When we start massively downloading while
+	// uploads are in progress, uploads halt, because they have lower priority
 	wg.Wait()
 
 	// Download files with
@@ -158,8 +167,8 @@ func TestSiaUploadsDownloads(t *testing.T) {
 	// Wait for all downloads finish
 	wg.Wait()
 
-	// Delete upload and download directories
-	log.Println("=== Delete upload and download directories")
+	// Delete upload, download (and test group) directories
+	log.Println("=== Delete upload, download (and test group) directories")
 	cleanUpDirs()
 
 	// Log durations
@@ -187,7 +196,7 @@ func averageDuration(durations []time.Duration) time.Duration {
 // averageSpeed calculates average file upload/download speed
 func averageSpeed(durations []time.Duration) string {
 	averageDuration := averageDuration(durations)
-	averageSpeedFloat := float64(fileSize) / float64(averageDuration/time.Second)
+	averageSpeedFloat := float64(actualFileSize) / float64(averageDuration) * float64(time.Second)
 	averageSpeedString := formatFileSizeFloat(averageSpeedFloat, " ") + "/s"
 	return averageSpeedString
 }
@@ -234,7 +243,7 @@ func createFile(filename string) {
 
 	// Append to file per parts (avoids out of memory error on large files when
 	// created concurrently)
-	remaining := int(fileSize)
+	remaining := int(actualFileSize)
 	for {
 		n := int(1e6)
 		if remaining == 0 {
@@ -392,7 +401,7 @@ func initDirs() {
 // downloaded
 func initFilesMap() {
 	// Preapare file name parts
-	sizeStr := formatFileSize(fileSize, "")
+	sizeStr := formatFileSize(actualFileSize, "")
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 
 	for i := 0; i < nFiles; i++ {
@@ -401,6 +410,16 @@ func initFilesMap() {
 		// Create filename and full path
 		filename := "Randfile" + fileIndex + "_" + sizeStr + "_" + timestamp
 		filesMap.m[filename] = initialized
+	}
+}
+
+// initFileSize initilaizes actual filesize to the given filesize or to default
+// sector size if filesize is set to 0
+func initFileSize() {
+	if fileSize == 0 {
+		actualFileSize = int(modules.SectorSize)
+	} else {
+		actualFileSize = fileSize
 	}
 }
 
@@ -428,7 +447,6 @@ func initTestGroup() *siatest.TestGroup {
 		Miners:  1,
 	}
 	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
-	log.Println("xxx pass:", tg.Renters()[0].Password)
 	check(err)
 	return tg
 }
@@ -482,8 +500,9 @@ func threadedDownloadFiles(workerIndex int) {
 		// Check if there are files to be downloaded
 		// Each file should be downloaded at least once
 		filesMap.mu.Lock()
-		if getFileCountByStatus(downloading) == nFiles {
-			// All files are downloaded or being downloaded, finish
+		if getFileCountByStatus(downloading) == nFiles && filesMap.downloadsCount >= nTotalDownloads {
+			// All files are downloaded or being downloaded and we have reached
+			// target download count,finish
 			filesMap.mu.Unlock()
 			break
 		}
@@ -527,7 +546,9 @@ func threadedDownloadFiles(workerIndex int) {
 		// Log duration
 		elapsed := time.Now().Sub(start)
 		log.Printf("Download #%02d, downloaded file %s in %s", downloadIndex, filename, elapsed)
+		downloadTimesMu.Lock()
 		downloadTimes = append(downloadTimes, elapsed)
+		downloadTimesMu.Unlock()
 
 		// Delete downloaded file
 		deleteLocalFile(localPath)
@@ -564,7 +585,9 @@ func uploadFile(filename string) {
 	// Log duration
 	elapsed := time.Now().Sub(start)
 	log.Printf("Uploaded file: %s in: %s\n", filename, elapsed)
+	uploadTimesMu.Lock()
 	uploadTimes = append(uploadTimes, elapsed)
+	uploadTimesMu.Unlock()
 }
 
 // waitForRenterIsUploadReady waits till renter is ready to upload
