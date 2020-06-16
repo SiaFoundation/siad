@@ -1865,13 +1865,22 @@ func testRedundancyReporting(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+func TestTmp(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	for t.Run("TestRenewFailing", TestRenewFailing) {
+
+	}
+}
+
 // TestRenewFailing checks if a contract gets marked as !goodForRenew after
 // failing multiple times in a row.
 func TestRenewFailing(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	//	t.Parallel()
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
@@ -1946,20 +1955,25 @@ func TestRenewFailing(t *testing.T) {
 		blockHeight++
 	}
 
-	// there should be no inactive contracts, only active contracts.
-	rcg, err = renter.RenterInactiveContractsGet()
+	// There should be no inactive contracts, only active contracts. Do this in
+	// a retry since the contractor might need some time to catch up with all
+	// the blocks being mined so rapidly.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		rcg, err = renter.RenterInactiveContractsGet()
+		if err != nil {
+			return err
+		}
+		if len(rcg.ActiveContracts) != len(tg.Hosts()) {
+			return fmt.Errorf("renter had %v contracts but should have %v",
+				len(rcg.ActiveContracts), len(tg.Hosts()))
+		}
+		if len(rcg.InactiveContracts) != 0 {
+			return fmt.Errorf("Renter should have 0 inactive contracts but has %v", len(rcg.InactiveContracts))
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	if len(rcg.ActiveContracts) != len(tg.Hosts()) {
-		for i, c := range rcg.ActiveContracts {
-			fmt.Println(i, c.HostPublicKey)
-		}
-		t.Fatalf("renter had %v contracts but should have %v",
-			len(rcg.ActiveContracts), len(tg.Hosts()))
-	}
-	if len(rcg.InactiveContracts) != 0 {
-		t.Fatal("Renter should have 0 inactive contracts but has", len(rcg.InactiveContracts))
 	}
 
 	// mine enough blocks to reach the second half of the renew window.
