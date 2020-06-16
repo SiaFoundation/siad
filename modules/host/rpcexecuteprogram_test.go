@@ -40,8 +40,7 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 	t.Parallel()
 
 	// create a blank host tester
-	delay := modules.MDMProgramWriteResponseTime * 2
-	deps := dependencies.NewHostMDMProgramWriteDelay(delay)
+	deps := &dependencies.HostMDMProgramDelayedWrite{}
 	rhp, err := newCustomRenterHostPair(t.Name(), deps)
 	if err != nil {
 		t.Fatal(err)

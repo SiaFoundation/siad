@@ -102,7 +102,8 @@ type (
 	SkykeyGET struct {
 		Skykey string `json:"skykey"` // base64 encoded Skykey
 		Name   string `json:"name"`
-		ID     string `json:"id"` // base64 encoded Skykey ID
+		ID     string `json:"id"`   // base64 encoded Skykey ID
+		Type   string `json:"type"` // human-readable Skykey Type
 	}
 	// SkykeysGET contains a slice of Skykeys.
 	SkykeysGET struct {
@@ -991,6 +992,7 @@ func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, ps ht
 		Skykey: skString,
 		Name:   sk.Name,
 		ID:     sk.ID().ToString(),
+		Type:   sk.Type.ToString(),
 	})
 }
 
@@ -1082,6 +1084,7 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, req *http.Request, ps h
 			Skykey: skStr,
 			Name:   sk.Name,
 			ID:     sk.ID().ToString(),
+			Type:   sk.Type.ToString(),
 		}
 	}
 	WriteJSON(w, res)

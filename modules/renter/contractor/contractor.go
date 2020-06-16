@@ -242,19 +242,19 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 	// send PaymentRequest
 	err = modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByContract})
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to write payment request to host")
 	}
 
 	// send PayByContractRequest
 	err = modules.RPCWrite(stream, newPayByContractRequest(rev, sig, refundAccount))
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to write the pay by contract request")
 	}
 
 	// receive PayByContractResponse
 	var payByResponse modules.PayByContractResponse
 	if err := modules.RPCRead(stream, &payByResponse); err != nil {
-		return err
+		return errors.AddContext(err, "unable to read the pay by contract response")
 	}
 
 	// TODO: Check for revision mismatch and recover by applying the contract

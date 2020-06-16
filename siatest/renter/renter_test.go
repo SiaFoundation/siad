@@ -4681,3 +4681,124 @@ func TestWorkerStatus(t *testing.T) {
 		}
 	}
 }
+
+// TestWorkerSyncBalanceWithHost verifies the renter will sync its
+// account balance with the host's account balance after it experienced an
+// unclean shutdown.
+//
+// Note: this test purposefully uses its own testgroup to avoid NDFs
+func TestWorkerSyncBalanceWithHost(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a testgroup without a renter and with only 3 hosts
+	groupParams := siatest.GroupParams{
+		Hosts:  3,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer tg.Close()
+
+	// add a renter with a dependency that simulates an unclean shutdown by
+	// preventing accounts to be saved
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.RenterDeps = &dependencies.DependencyInterruptAccountSaveOnShutdown{}
+
+	// add a host with a dependency that alters the deposit amount, in a way not
+	// noticeable to the renter until he asks for his balance, this is necessary
+	// as only then we can ensure the unclean shutdown took place and we synced
+	// to the host balance
+	hostParams := node.Host(filepath.Join(testDir, "host"))
+	hostParams.HostDeps = &dependencies.HostLowerDeposit{}
+	nodes, err := tg.AddNodes(renterParams, hostParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// grab the nodes we just added
+	var r, h *siatest.TestNode
+	if strings.HasSuffix(nodes[0].Dir, "renter") {
+		r = nodes[0]
+		h = nodes[1]
+	} else {
+		r = nodes[1]
+		h = nodes[0]
+	}
+
+	// grab the hostkey
+	hpk, err := h.HostPublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create a function that filters worker statuses to return the status of
+	// our custom host
+	worker := func(w []modules.WorkerStatus) (modules.WorkerStatus, bool) {
+		for _, worker := range w {
+			if worker.HostPubKey.Equals(hpk) {
+				return worker, true
+			}
+		}
+		return modules.WorkerStatus{}, false
+	}
+
+	// allow some time for the worker to be added to the worker pool and fund
+	// ephemeral account, remember this balance value as the renter's version of
+	// the balance
+	var renterBalance types.Currency
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		rwg, err := r.RenterWorkersGet()
+		if err != nil {
+			return err
+		}
+		w, found := worker(rwg.Workers)
+		if !found {
+			return errors.New("worker not in worker pool yet")
+		}
+		if w.AvailableBalance.IsZero() {
+			return errors.New("expected worker to have a funded account, instead its balance is still 0")
+		}
+		renterBalance = w.AvailableBalance
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// restart the renter
+	err = tg.RestartNode(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// get the worker status
+	rwg, err := r.RenterWorkersGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// grab the balance of the worker, this should have been synced to use the
+	// host's version of the balance
+	w, found := worker(rwg.Workers)
+	if !found {
+		t.Fatal("Expected worker to be found")
+	}
+	if w.AvailableBalance.IsZero() {
+		t.Fatal("Expected the renter to have synced its balance to the host's version of the balance")
+	}
+
+	// safety check to avoid panic on sub later
+	if w.AvailableBalance.Cmp(renterBalance) >= 0 {
+		t.Fatal("Expected the synced balance to be lower, as the 'lower deposit' dependency should have deposited less", w.AvailableBalance, renterBalance)
+	}
+	delta := types.SiacoinPrecision.Div64(10)
+	if renterBalance.Sub(w.AvailableBalance).Cmp(delta) < 0 {
+		t.Fatalf("Expected the synced balance to be at least %v lower than the renter balance, as thats the amount we subtracted from the deposit amount, instead synced balance was %v and renter balance was %v", delta, w.AvailableBalance, renterBalance)
+	}
+}
