@@ -23,7 +23,7 @@ var (
 	// Module Specific Flags
 	//
 	// FeeManager Flags
-	feeManagerVerbose bool // display additoinal info for the FeeManager
+	feeManagerVerbose bool // display additional info for the FeeManager
 
 	// Host Flags
 	hostContractOutputType string // output type for host contracts
@@ -46,17 +46,17 @@ var (
 	allowanceMaxSectorAccessPrice          string // max allowed price to access a sector on a host
 	allowanceMaxStoragePrice               string // max allowed price to store data on a host
 	allowanceMaxUploadBandwidthPrice       string // max allowed price to upload data to a host
-	dataPieces                             string // the number of data pieces a files should be uploaded with
-	parityPieces                           string // the number of parity pieces a files should be uploaded with
+	dataPieces                             string // the number of data pieces a file should be uploaded with
+	parityPieces                           string // the number of parity pieces a file should be uploaded with
 	renterAllContracts                     bool   // Show all active and expired contracts
-	renterDeleteRoot                       bool   // Delete path start from root instead of the user homedir.
+	renterDeleteRoot                       bool   // Delete path start from root instead of the UserFoler.
 	renterDownloadAsync                    bool   // Downloads files asynchronously
 	renterDownloadRecursive                bool   // Downloads folders recursively.
 	renterFuseMountAllowOther              bool   // Mount fuse with 'AllowOther' set to true.
 	renterListVerbose                      bool   // Show additional info about uploaded files.
 	renterListRecursive                    bool   // List files of folder recursively.
-	renterListRoot                         bool   // List path start from root instead of the user homedir.
-	renterRenameRoot                       bool   // Rename files relative to root instead of the user homedir.
+	renterListRoot                         bool   // List path start from root instead of the UserFoler.
+	renterRenameRoot                       bool   // Rename files relative to root instead of the UserFoler.
 	renterShowHistory                      bool   // Show download history in addition to download queue.
 	renterVerbose                          bool   // Show additional info about the renter
 
