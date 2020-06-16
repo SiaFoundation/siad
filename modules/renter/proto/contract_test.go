@@ -220,7 +220,7 @@ func testContractUncomittedTxn(t *testing.T, initialHeader contractHeader, updat
 }
 
 // TestContractIncompleteWrite tests that if the merkle root section has the wrong
-// length due to an incomplete write, it is truncated and the wal transactions
+// length due to an incomplete write, it is truncated and the staticWal transactions
 // are applied.
 func TestContractIncompleteWrite(t *testing.T) {
 	if testing.Short() {
@@ -607,7 +607,7 @@ func TestContractRefCounter(t *testing.T) {
 }
 
 // TestContractRecordCommitDownloadIntent tests recording and committing
-// downloads and makes sure they use the wal correctly.
+// downloads and makes sure they use the staticWal correctly.
 func TestContractRecordCommitDownloadIntent(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -721,7 +721,7 @@ func TestContractRecordCommitDownloadIntent(t *testing.T) {
 }
 
 // TestContractRecordCommitAppendIntent tests recording and committing
-// downloads and makes sure they use the wal correctly.
+// downloads and makes sure they use the staticWal correctly.
 func TestContractRecordCommitAppendIntent(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -838,7 +838,7 @@ func TestContractRecordCommitAppendIntent(t *testing.T) {
 }
 
 // TestContractRecordCommitRenewAndClearIntent tests recording and committing
-// downloads and makes sure they use the wal correctly.
+// downloads and makes sure they use the staticWal correctly.
 func TestContractRecordCommitRenewAndClearIntent(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()

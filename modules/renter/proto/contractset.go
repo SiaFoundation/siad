@@ -22,31 +22,31 @@ import (
 // purpose is to serialize modifications to individual contracts, as well as
 // to provide operations on the set as a whole.
 type ContractSet struct {
-	contracts map[types.FileContractID]*SafeContract
-	pubKeys   map[string]types.FileContractID
-	deps      modules.Dependencies
-	dir       string
-	mu        sync.Mutex
-	rl        *ratelimit.RateLimit
-	wal       *writeaheadlog.WAL
+	contracts  map[types.FileContractID]*SafeContract
+	pubKeys    map[string]types.FileContractID
+	staticDeps modules.Dependencies
+	staticDir  string
+	staticMu   sync.Mutex
+	staticRL   *ratelimit.RateLimit
+	staticWal  *writeaheadlog.WAL
 }
 
 // Acquire looks up the contract for the specified host key and locks it before
 // returning it. If the contract is not present in the set, Acquire returns
 // false and a zero-valued RenterContract.
 func (cs *ContractSet) Acquire(id types.FileContractID) (*SafeContract, bool) {
-	cs.mu.Lock()
+	cs.staticMu.Lock()
 	safeContract, ok := cs.contracts[id]
-	cs.mu.Unlock()
+	cs.staticMu.Unlock()
 	if !ok {
 		return nil, false
 	}
 	safeContract.revisionMu.Lock()
 	// We need to check if the contract is still in the map or if it has been
 	// deleted in the meantime.
-	cs.mu.Lock()
+	cs.staticMu.Lock()
 	_, ok = cs.contracts[id]
-	cs.mu.Unlock()
+	cs.staticMu.Unlock()
 	if !ok {
 		safeContract.revisionMu.Unlock()
 		return nil, false
@@ -58,20 +58,21 @@ func (cs *ContractSet) Acquire(id types.FileContractID) (*SafeContract, bool) {
 // previously acquired by Acquire. If the contract is not present in the set,
 // Delete is a no-op.
 func (cs *ContractSet) Delete(c *SafeContract) {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
+	cs.staticMu.Lock()
 	_, ok := cs.contracts[c.header.ID()]
 	if !ok {
+		cs.staticMu.Unlock()
 		build.Critical("Delete called on already deleted contract")
 		return
 	}
 	delete(cs.contracts, c.header.ID())
 	delete(cs.pubKeys, c.header.HostPublicKey().String())
+	cs.staticMu.Unlock()
 	c.revisionMu.Unlock()
 	// delete contract file
-	headerPath := filepath.Join(cs.dir, c.header.ID().String()+contractHeaderExtension)
-	rootsPath := filepath.Join(cs.dir, c.header.ID().String()+contractRootsExtension)
-	err := errors.Compose(c.headerFile.Close(), os.Remove(headerPath), os.Remove(rootsPath))
+	headerPath := filepath.Join(cs.staticDir, c.header.ID().String()+contractHeaderExtension)
+	rootsPath := filepath.Join(cs.staticDir, c.header.ID().String()+contractRootsExtension)
+	err := errors.Compose(c.staticHeaderFile.Close(), os.Remove(headerPath), os.Remove(rootsPath))
 	if err != nil {
 		build.Critical("Failed to delete SafeContract from disk:", err)
 	}
@@ -80,8 +81,8 @@ func (cs *ContractSet) Delete(c *SafeContract) {
 // IDs returns the fcid of each contract with in the set. The contracts are not
 // locked.
 func (cs *ContractSet) IDs() []types.FileContractID {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
+	cs.staticMu.Lock()
+	defer cs.staticMu.Unlock()
 	pks := make([]types.FileContractID, 0, len(cs.contracts))
 	for fcid := range cs.contracts {
 		pks = append(pks, fcid)
@@ -107,8 +108,8 @@ func (cs *ContractSet) InsertContract(rc modules.RecoverableContract, revTxn typ
 
 // Len returns the number of contracts in the set.
 func (cs *ContractSet) Len() int {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
+	cs.staticMu.Lock()
+	defer cs.staticMu.Unlock()
 	return len(cs.contracts)
 }
 
@@ -116,30 +117,26 @@ func (cs *ContractSet) Len() int {
 // must have been previously acquired by Acquire. If the contract is not
 // present in the set, Return panics.
 func (cs *ContractSet) Return(c *SafeContract) {
-	cs.mu.Lock()
+	cs.staticMu.Lock()
 	_, ok := cs.contracts[c.header.ID()]
 	if !ok {
-		cs.mu.Unlock()
+		cs.staticMu.Unlock()
 		build.Critical("no contract with that key")
 	}
-	cs.mu.Unlock()
+	cs.staticMu.Unlock()
 	c.revisionMu.Unlock()
 }
 
 // RateLimits sets the bandwidth limits for connections created by the
 // contractSet.
 func (cs *ContractSet) RateLimits() (readBPS int64, writeBPS int64, packetSize uint64) {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-	return cs.rl.Limits()
+	return cs.staticRL.Limits()
 }
 
 // SetRateLimits sets the bandwidth limits for connections created by the
 // contractSet.
 func (cs *ContractSet) SetRateLimits(readBPS int64, writeBPS int64, packetSize uint64) {
-	cs.mu.Lock()
-	cs.rl.SetLimits(readBPS, writeBPS, packetSize)
-	cs.mu.Unlock()
+	cs.staticRL.SetLimits(readBPS, writeBPS, packetSize)
 }
 
 // View returns a copy of the contract with the specified host key. The
@@ -147,8 +144,8 @@ func (cs *ContractSet) SetRateLimits(readBPS int64, writeBPS int64, packetSize u
 // to nil for safety reasons. If the contract is not present in the set, View
 // returns false and a zero-valued RenterContract.
 func (cs *ContractSet) View(id types.FileContractID) (modules.RenterContract, bool) {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
+	cs.staticMu.Lock()
+	defer cs.staticMu.Unlock()
 	safeContract, ok := cs.contracts[id]
 	if !ok {
 		return modules.RenterContract{}, false
@@ -159,8 +156,8 @@ func (cs *ContractSet) View(id types.FileContractID) (modules.RenterContract, bo
 // ViewAll returns the metadata of each contract in the set. The contracts are
 // not locked.
 func (cs *ContractSet) ViewAll() []modules.RenterContract {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
+	cs.staticMu.Lock()
+	defer cs.staticMu.Unlock()
 	contracts := make([]modules.RenterContract, 0, len(cs.contracts))
 	for _, safeContract := range cs.contracts {
 		contracts = append(contracts, safeContract.Metadata())
@@ -170,17 +167,15 @@ func (cs *ContractSet) ViewAll() []modules.RenterContract {
 
 // Close closes all contracts in a contract set, this means rendering it unusable for I/O
 func (cs *ContractSet) Close() error {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
 	for _, c := range cs.contracts {
-		c.headerFile.Close()
+		c.staticHeaderFile.Close()
 	}
-	_, err := cs.wal.CloseIncomplete()
+	_, err := cs.staticWal.CloseIncomplete()
 	return err
 }
 
 // NewContractSet returns a ContractSet storing its contracts in the specified
-// dir.
+// staticDir.
 func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
@@ -200,12 +195,12 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 	// Load the WAL. Any recovered updates will be applied after loading
 	// contracts.
 	//
-	// COMPATv1.3.1RC2 Rename old wals to have the 'wal' extension if new file
+	// COMPATv1.3.1RC2 Rename old wals to have the 'staticWal' extension if new file
 	// doesn't exist.
 	if err := v131RC2RenameWAL(dir); err != nil {
 		return nil, err
 	}
-	walTxns, wal, err := writeaheadlog.New(filepath.Join(dir, "contractset.wal"))
+	walTxns, wal, err := writeaheadlog.New(filepath.Join(dir, "contractset.staticWal"))
 	if err != nil {
 		return nil, err
 	}
@@ -214,12 +209,12 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 		contracts: make(map[types.FileContractID]*SafeContract),
 		pubKeys:   make(map[string]types.FileContractID),
 
-		deps: deps,
-		dir:  dir,
-		wal:  wal,
+		staticDeps: deps,
+		staticDir:  dir,
+		staticWal:  wal,
 	}
 	// Set the initial rate limit to 'unlimited' bandwidth with 4kib packets.
-	cs.rl = ratelimit.NewRateLimit(0, 0, 0)
+	cs.staticRL = ratelimit.NewRateLimit(0, 0, 0)
 
 	// Before loading the contract files apply the updates which were meant to
 	// create new contracts and filter them out.
@@ -272,15 +267,15 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 	return cs, nil
 }
 
-// v131RC2RenameWAL renames an existing old wal file from contractset.log to
-// contractset.wal
+// v131RC2RenameWAL renames an existing old staticWal file from contractset.log to
+// contractset.staticWal
 func v131RC2RenameWAL(dir string) error {
 	oldPath := filepath.Join(dir, "contractset.log")
-	newPath := filepath.Join(dir, "contractset.wal")
+	newPath := filepath.Join(dir, "contractset.staticWal")
 	_, errOld := os.Stat(oldPath)
 	_, errNew := os.Stat(newPath)
 	if !os.IsNotExist(errOld) && os.IsNotExist(errNew) {
-		return build.ExtendErr("failed to rename contractset.log to contractset.wal",
+		return build.ExtendErr("failed to rename contractset.log to contractset.staticWal",
 			os.Rename(oldPath, newPath))
 	}
 	return nil
@@ -289,9 +284,6 @@ func v131RC2RenameWAL(dir string) error {
 // managedV146SplitContractHeaderAndRoots goes through all the legacy contracts
 // in a directory and splits the file up into a header and roots file.
 func (cs *ContractSet) managedV146SplitContractHeaderAndRoots(dir string) error {
-	cs.mu.Lock()
-	csDir := cs.dir
-	cs.mu.Unlock()
 	// Load the contract files.
 	fis, err := ioutil.ReadDir(dir)
 	if err != nil {
@@ -304,7 +296,7 @@ func (cs *ContractSet) managedV146SplitContractHeaderAndRoots(dir string) error 
 		if filepath.Ext(filename) != v146ContractExtension {
 			continue
 		}
-		path := filepath.Join(csDir, filename)
+		path := filepath.Join(cs.staticDir, filename)
 		f, err := os.Open(path)
 		if err != nil {
 			return err

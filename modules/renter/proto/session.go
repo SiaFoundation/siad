@@ -849,8 +849,6 @@ func (cs *ContractSet) NewRawSession(host modules.HostDBEntry, currentHeight typ
 
 // managedNewSession initiates the RPC loop with a host and returns a Session.
 func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight types.BlockHeight, hdb hostDB, cancel <-chan struct{}) (_ *Session, err error) {
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
 	// Increase Successful/Failed interactions accordingly
 	defer func() {
 		if err != nil {
@@ -868,7 +866,7 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 	if err != nil {
 		return nil, errors.AddContext(err, "unsuccessful dial when creating a new session")
 	}
-	conn := ratelimit.NewRLConn(c, cs.rl, cancel)
+	conn := ratelimit.NewRLConn(c, cs.staticRL, cancel)
 
 	closeChan := make(chan struct{})
 	go func() {
@@ -894,7 +892,7 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 		closeChan:   closeChan,
 		conn:        conn,
 		contractSet: cs,
-		deps:        cs.deps,
+		deps:        cs.staticDeps,
 		hdb:         hdb,
 		height:      currentHeight,
 		host:        host,

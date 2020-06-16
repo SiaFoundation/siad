@@ -165,7 +165,7 @@ func TestCompatV146SplitContracts(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	// get the dir of the contractset.
+	// get the staticDir of the contractset.
 	testDir := build.TempDir(t.Name())
 	if err := os.MkdirAll(testDir, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
@@ -186,7 +186,7 @@ func TestCompatV146SplitContracts(t *testing.T) {
 		},
 	}
 	initialRoot := crypto.Hash{1}
-	// Place the legacy contract in the dir.
+	// Place the legacy contract in the staticDir.
 	pathNoExt := filepath.Join(testDir, id.String())
 	legacyPath := pathNoExt + v146ContractExtension
 	file, err := os.Create(legacyPath)
@@ -272,7 +272,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Prepare the insertion of the invalid contract.
-	txn, err := cs.wal.NewTransaction([]writeaheadlog.Update{invalidUpdate})
+	txn, err := cs.staticWal.NewTransaction([]writeaheadlog.Update{invalidUpdate})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +296,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	}
 	// Prepare the insertion of 2 valid contracts within a single txn. This
 	// should be ignored at startup.
-	txn, err = cs.wal.NewTransaction([]writeaheadlog.Update{validUpdate, validUpdate})
+	txn, err = cs.staticWal.NewTransaction([]writeaheadlog.Update{validUpdate, validUpdate})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,8 +320,8 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 		t.Fatal("shouldn't be able to acquire the contract")
 	}
 	// Prepare the insertion of a valid contract by writing the change to the
-	// wal but not applying it.
-	txn, err = cs.wal.NewTransaction([]writeaheadlog.Update{validUpdate})
+	// staticWal but not applying it.
+	txn, err = cs.staticWal.NewTransaction([]writeaheadlog.Update{validUpdate})
 	if err != nil {
 		t.Fatal(err)
 	}

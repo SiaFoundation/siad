@@ -205,9 +205,7 @@ func (cs *ContractSet) NewEditor(host modules.HostDBEntry, id types.FileContract
 		}
 	}()
 
-	cs.mu.Lock()
-	defer cs.mu.Unlock()
-	conn, closeChan, err := initiateRevisionLoop(host, sc, modules.RPCReviseContract, cancel, cs.rl)
+	conn, closeChan, err := initiateRevisionLoop(host, sc, modules.RPCReviseContract, cancel, cs.staticRL)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to initiate revision loop")
 	}
@@ -224,7 +222,7 @@ func (cs *ContractSet) NewEditor(host modules.HostDBEntry, id types.FileContract
 		contractSet: cs,
 		conn:        conn,
 		closeChan:   closeChan,
-		deps:        cs.deps,
+		deps:        cs.staticDeps,
 
 		height: currentHeight,
 	}, nil

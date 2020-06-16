@@ -954,7 +954,7 @@ func TestRefCounterNumSectorsUnderflow(t *testing.T) {
 
 // newTestWal is a helper method to create a WAL for testing.
 func newTestWAL() (*writeaheadlog.WAL, string) {
-	// Create the wal.
+	// Create the staticWal.
 	wd := filepath.Join(os.TempDir(), "rc-wals")
 	if err := os.MkdirAll(wd, modules.DefaultDirPerm); err != nil {
 		panic(err)

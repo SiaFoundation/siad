@@ -227,7 +227,7 @@ func (rc *refCounter) callCreateAndApplyTransaction(updates ...writeaheadlog.Upd
 	// Create the writeaheadlog transaction.
 	txn, err := rc.staticWal.NewTransaction(updates)
 	if err != nil {
-		return errors.AddContext(err, "failed to create wal txn")
+		return errors.AddContext(err, "failed to create staticWal txn")
 	}
 	// No extra setup is required. Signal that it is done.
 	if err := <-txn.SignalSetupComplete(); err != nil {
