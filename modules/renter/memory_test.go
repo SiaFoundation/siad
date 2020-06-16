@@ -287,4 +287,126 @@ func TestMemoryManager(t *testing.T) {
 	if mm.available != mm.base {
 		t.Error("test did not reset properly")
 	}
+
+	// Test out the starvation detector. Request a continuout stream of high
+	// priority memory that should starve out the low priority memory. The
+	// starvation detector should make sure that eventually, the low priority
+	// memory is able to make progress.
+	if !mm.Request(100, memoryPriorityHigh) {
+		t.Error("could not get memory through")
+	}
+	// Add 3 low priority requests each for 10 memory. All 3 should be unblocked
+	// by the starvation detector at the same time.
+	memoryCompleted10 := make(chan struct{})
+	go func() {
+		if !mm.Request(10, memoryPriorityLow) {
+			t.Error("unable to get memory")
+		}
+		close(memoryCompleted10)
+	}()
+	<-mm.blocking
+	memoryCompleted11 := make(chan struct{})
+	go func() {
+		if !mm.Request(10, memoryPriorityLow) {
+			t.Error("unable to get memory")
+		}
+		close(memoryCompleted11)
+	}()
+	<-mm.blocking
+	memoryCompleted12 := make(chan struct{})
+	go func() {
+		if !mm.Request(10, memoryPriorityLow) {
+			t.Error("unable to get memory")
+		}
+		close(memoryCompleted12)
+	}()
+	<-mm.blocking
+	// Add another low priority request, this should be unblocked by the
+	// starvation detector much later than the previous 3.
+	memoryCompleted13 := make(chan struct{})
+	go func() {
+		if !mm.Request(30, memoryPriorityLow) {
+			t.Error("unable to get memory")
+		}
+		close(memoryCompleted13)
+	}()
+	<-mm.blocking // wait until the goroutine is in the fifo.
+
+	// Add high priority requests and release previous high priority items.
+	// These should all unblock as soon as memory is returned.
+	for i := 0; i < 4; i++ {
+		memoryCompletedL := make(chan struct{})
+		go func() {
+			if !mm.Request(100, memoryPriorityHigh) {
+				t.Error("unable to get memory")
+			}
+			close(memoryCompletedL)
+		}()
+		<-mm.blocking // wait until the goroutine is in the fifo.
+		mm.Return(100)
+		<-memoryCompletedL
+	}
+
+	// Add a high priority request. The next time memory is returned, the first
+	// set of low priority items should go through.
+	memoryCompleted14 := make(chan struct{})
+	go func() {
+		if !mm.Request(100, memoryPriorityHigh) {
+			t.Error("unable to get memory")
+		}
+		close(memoryCompleted14)
+	}()
+	<-mm.blocking // wait until the goroutine is in the fifo.
+	mm.Return(100)
+	// First set of low priority requests should have gone through.
+	<-memoryCompleted10
+	<-memoryCompleted11
+	<-memoryCompleted12
+	// Second set should not have gone through.
+	select {
+	case <-memoryCompleted13:
+		t.Error("memory should not have been released")
+	default:
+	}
+	mm.Return(30)
+	<-memoryCompleted14
+
+	// Add high priority requests and release previous high priority items.
+	// These should all unblock as soon as memory is returned.
+	for i := 0; i < 3; i++ {
+		memoryCompletedL := make(chan struct{})
+		go func() {
+			if !mm.Request(100, memoryPriorityHigh) {
+				t.Error("unable to get memory")
+			}
+			close(memoryCompletedL)
+		}()
+		<-mm.blocking // wait until the goroutine is in the fifo.
+		mm.Return(100)
+		<-memoryCompletedL
+
+		// Second set should not have gone through still.
+		select {
+		case <-memoryCompleted13:
+			t.Error("memory should not have been released")
+		default:
+		}
+	}
+	memoryCompleted15 := make(chan struct{})
+	go func() {
+		if !mm.Request(100, memoryPriorityHigh) {
+			t.Error("unable to get memory")
+		}
+		close(memoryCompleted15)
+	}()
+	<-mm.blocking // wait until the goroutine is in the fifo.
+	mm.Return(100)
+	// Second set of low priority requests should have gone through.
+	<-memoryCompleted13
+	mm.Return(30)
+	<-memoryCompleted15
+	mm.Return(100)
+	if mm.available != mm.base {
+		t.Error("test did not reset properly")
+	}
 }

@@ -42,12 +42,17 @@ import (
 // will prefer to keep the memory footprint as close as possible to the
 // initialized size rather than continue to allow high priority requests to go
 // through when more than all of the memory has been used up.
+//
+// Note that there is a limited starvation prevention mechanism in place. If a
+// large number of high priority requests are coming through, at a small ratio
+// the lower priority requests will be bumped in priority.
 type memoryManager struct {
-	available       uint64 // Total memory remaining.
-	base            uint64 // Initial memory.
-	memSinceGC      uint64 // Counts allocations to trigger a manual GC.
-	priorityReserve uint64 // Memory set aside for priority requests.
-	underflow       uint64 // Large requests cause underflow.
+	available           uint64 // Total memory remaining.
+	base                uint64 // Initial memory.
+	memSinceGC          uint64 // Counts allocations to trigger a manual GC.
+	memSinceLowPriority uint64 // Counts allocations to bump low priority requests.
+	priorityReserve     uint64 // Memory set aside for priority requests.
+	underflow           uint64 // Large requests cause underflow.
 
 	fifo         []*memoryRequest
 	priorityFifo []*memoryRequest
@@ -65,6 +70,26 @@ type memoryManager struct {
 type memoryRequest struct {
 	amount uint64
 	done   chan struct{}
+}
+
+// handleStarvation will check the starvation tracker and bump some low priority
+// memory items if needed.
+func (mm *memoryManager) handleStarvation() {
+	// Unless there has been a long starvation period, do not bump any low
+	// priority tasks.
+	if mm.memSinceLowPriority < mm.base*4 {
+		return
+	}
+
+	// Bump a limited number of low priority items into the high priority queue.
+	totalBumped := uint64(0)
+	for totalBumped < mm.base/4 && len(mm.fifo) > 0 {
+		totalBumped += mm.fifo[0].amount
+		mm.priorityFifo = append(mm.priorityFifo, mm.fifo[0])
+		mm.fifo = mm.fifo[1:]
+	}
+	// Reset the starvation tracker.
+	mm.memSinceLowPriority = 0
 }
 
 // try will try to get the amount of memory requested from the manger, returning
@@ -85,6 +110,13 @@ func (mm *memoryManager) try(amount uint64, priority bool) bool {
 	if mm.available >= (amount+mm.priorityReserve) || (priority && mm.available >= amount) {
 		// There is enough memory, decrement the memory and return.
 		mm.available -= amount
+
+		// Update the starvation tracker.
+		if priority {
+			mm.memSinceLowPriority += amount
+		} else {
+			mm.memSinceLowPriority = 0
+		}
 		return true
 	} else if mm.available == mm.base {
 		// The amount of memory being requested is greater than the amount of
@@ -95,6 +127,13 @@ func (mm *memoryManager) try(amount uint64, priority bool) bool {
 		} else {
 			mm.available = 0
 			mm.underflow = amount - mm.base
+		}
+
+		// Update the starvation tracker.
+		if priority {
+			mm.memSinceLowPriority += amount
+		} else {
+			mm.memSinceLowPriority = 0
 		}
 		return true
 	}
@@ -184,6 +223,11 @@ func (mm *memoryManager) Return(amount uint64) {
 
 	// Release as many of the priority threads blocking in the fifo as possible.
 	for len(mm.priorityFifo) > 0 {
+		// Check whether the starvation tracker thinks that low priority
+		// requests should be bumped to the high priority queue. This is done to
+		// prevent the high priority requests from fully starving the low
+		// priority requests.
+		mm.handleStarvation()
 		if !mm.try(mm.priorityFifo[0].amount, memoryPriorityHigh) {
 			// There is not enough memory to grant the next request, meaning no
 			// future requests should be checked either.
