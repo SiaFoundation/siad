@@ -159,6 +159,13 @@ func (a *account) availableBalance() types.Currency {
 	return types.ZeroCurrency
 }
 
+// callNeedsToSync returns whether or not the account needs to sync to the host.
+func (a *account) callNeedsToSync() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.syncAt.Before(time.Now())
+}
+
 // callSetSyncAt will update the syncAt time for the account.
 func (a *account) callSetSyncAt(newSyncAt time.Time) {
 	a.mu.Lock()
@@ -555,10 +562,7 @@ func (w *worker) managedNeedsToSyncAccountToHost() bool {
 	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
 		return false
 	}
-
-	w.staticAccount.mu.Lock()
-	defer w.staticAccount.mu.Unlock()
-	return w.staticAccount.syncAt.Before(time.Now())
+	return w.staticAccount.callNeedsToSync()
 }
 
 // staticHostAccountBalance performs the AccountBalanceRPC on the host
