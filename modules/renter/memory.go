@@ -66,6 +66,16 @@ type memoryRequest struct {
 // event that the attempt is successful, the internal state of the memory
 // manager will be updated to reflect the granted request.
 func (mm *memoryManager) try(amount uint64, priority bool) bool {
+	// If there is enough memory available, then the request can be granted. For
+	// non-priority memory, we compare the amount available to the amount being
+	// requested plus the priority reserve to ensure that the total amount of
+	// memory left is more than the priority reserve when the requested amount
+	// is subtracted. For priority memory, we only check that the amount
+	// requested is less than the total amount available.
+	//
+	// If the request is larger than the total amount of memory that the memory
+	// manager is allowed to pass out, then the request will be granted only if
+	// all of the memory is available.
 	if mm.available >= (amount+mm.priorityReserve) || (priority && mm.available >= amount) {
 		// There is enough memory, decrement the memory and return.
 		mm.available -= amount

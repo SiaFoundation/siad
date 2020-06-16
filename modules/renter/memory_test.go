@@ -132,8 +132,7 @@ func TestMemoryManager(t *testing.T) {
 	mm.Return(4)  // 10
 	mm.Return(64) // 74
 
-	// Sleep to let the returns go through. None of the memory requests should
-	// be able to complete.
+	// None of the memory requests should be able to complete.
 	select {
 	case <-memoryCompleted3:
 		t.Error("memory should not complete")
