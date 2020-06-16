@@ -112,9 +112,11 @@ func (mm *memoryManager) Request(amount uint64, priority bool) bool {
 	// Send a note that a thread is now blocking. This is only used in testing,
 	// to ensure that the test can have multiple threads blocking for memory
 	// which block in a determinstic order.
-	select {
-	case mm.blocking <- struct{}{}:
-	default:
+	if build.Release == "testing" {
+		select {
+		case mm.blocking <- struct{}{}:
+		default:
+		}
 	}
 
 	// Block until memory is available or until shutdown. The thread that closes
@@ -138,7 +140,7 @@ func (mm *memoryManager) Return(amount uint64) {
 	// runtime.GC(). If enough memory has been returned, call runtime.GC()
 	// manually and reset the counter.
 	mm.memSinceGC += amount
-	if mm.memSinceGC > defaultMemory {
+	if mm.memSinceGC > memoryDefault {
 		runtime.GC()
 		debug.FreeOSMemory()
 		mm.memSinceGC = 0
