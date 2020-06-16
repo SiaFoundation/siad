@@ -1425,14 +1425,21 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 	if err := renter.RenterPostAllowance(allowance); err != nil {
 		t.Fatal(err)
 	}
-	// Mine a few blocks so the formation transaction can be confirmed.
-	for i := 0; i < 5; i++ {
-		if err := goodMiner.MineBlock(); err != nil {
-			t.Fatal(err)
-		}
+
+	// Wait until contract was formed.
+	err = build.Retry(100, 500*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(renter, 1, 0, 0, 0, 0, 0)
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	// Check that the renter has formed a contract and that it's confirmed.
+	// Mine a block to get the contract confirmed.
+	if err := goodMiner.MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that the contract is found and archived now.
 	err = build.Retry(100, 500*time.Millisecond, func() error {
 		rc, err := renter.RenterContractsGet()
 		if err != nil {
@@ -1498,7 +1505,6 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	// Start and connect the miner to the renter, and mine the reorg.
 	err = reorgMiner.StartNode()
 	if err != nil {
