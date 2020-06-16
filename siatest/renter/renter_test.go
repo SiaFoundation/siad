@@ -1865,22 +1865,13 @@ func testRedundancyReporting(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-func TestTmp(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	for t.Run("TestRenewFailing", TestRenewFailing) {
-
-	}
-}
-
 // TestRenewFailing checks if a contract gets marked as !goodForRenew after
 // failing multiple times in a row.
 func TestRenewFailing(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	//	t.Parallel()
+	t.Parallel()
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{

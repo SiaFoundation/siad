@@ -278,10 +278,6 @@ func (g *Gateway) acceptPeer(p *peer) {
 		return
 	}
 
-	if build.Release == "testing" {
-		fmt.Println("maximum number of peers reached", len(g.peers), fullyConnectedThreshold)
-	}
-
 	// Select a peer to kick. Outbound peers and local peers are not
 	// available to be kicked.
 	var addrs []modules.NetAddress
