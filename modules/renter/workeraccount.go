@@ -496,7 +496,7 @@ func (w *worker) managedRefillAccount() {
 func (w *worker) managedSyncAccountBalanceToHost() {
 	// Spin/block until the worker has no jobs in motion. This should only be
 	// called from the primary loop of the worker, meaning that no new jobs will
-	// be created while we spin.
+	// be launched while we spin.
 	isIdle := func() bool {
 		sls := w.staticLoopState
 		a := atomic.LoadUint64(&sls.atomicSerialJobRunning) != 0
