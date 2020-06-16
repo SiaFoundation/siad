@@ -234,13 +234,22 @@ func newTestWAL() (*writeaheadlog.WAL, string) {
 	return wal, walFilePath
 }
 
+func TestTmp(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	for t.Run("TestNewFile", TestNewFile) {
+
+	}
+}
+
 // TestNewFile tests that a new file has the correct contents and size and that
 // loading it from disk also works.
 func TestNewFile(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	t.Parallel()
+	//t.Parallel()
 
 	// Create a siafile without a partial chunk.
 	siaFilePath, _, source, rc, sk, fileSize, numChunks, fileMode := newTestFileParams(1, false)
