@@ -61,41 +61,16 @@ type memoryRequest struct {
 	done   chan struct{}
 }
 
-// tryPriority will try to get an amount of memory
-func (mm *memoryManager) tryPriority(amount uint64) bool {
-	if mm.available >= amount {
-		// There is enough memory, decrement the memory and return.
-		mm.available -= amount
-		return true
-	} else if mm.available == mm.base {
-		// The amount of memory being requested is greater than the amount of
-		// memory available, but no memory is currently in use. Set the amount
-		// of memory available to zero and return.
-		//
-		// The effect is that all of the memory is allocated to this one
-		// request, allowing the request to succeed even though there is
-		// technically not enough total memory available for the request.
-		mm.available = 0
-		mm.underflow = amount - mm.base
-		return true
-	}
-	return false
-}
-
 // try will try to get the amount of memory requested from the manger, returning
 // true if the attempt is successful, and false if the attempt is not.  In the
 // event that the attempt is successful, the internal state of the memory
 // manager will be updated to reflect the granted request.
 func (mm *memoryManager) try(amount uint64, priority bool) bool {
-	if priority {
-		return mm.tryPriority(amount)
-	}
-
-	if mm.available >= (amount + mm.priorityReserve) {
+	if mm.available >= (amount+mm.priorityReserve) || (priority && mm.available >= amount) {
 		// There is enough memory, decrement the memory and return.
 		mm.available -= amount
 		return true
-	} else if mm.available == mm.base {
+	} else if mm.available == mm.base && amount >= mm.available {
 		// The amount of memory being requested is greater than the amount of
 		// memory available, but no memory is currently in use. Set the amount
 		// of memory available to zero and return.
