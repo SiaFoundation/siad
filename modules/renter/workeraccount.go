@@ -193,7 +193,10 @@ func (a *account) managedMaxExpectedBalance() types.Currency {
 // maxExpectedBalance returns the max amount of money that this account is
 // expected to contain after the renter has shut down.
 func (a *account) maxExpectedBalance() types.Currency {
-	return a.balance.Add(a.pendingDeposits)
+	// NOTE: negativeBalance will never be larger than the sum of the pending
+	// deposits. If that does happen, this will build.Critical which indicates
+	// that something is incorrect within the worker's internal accounting.
+	return a.balance.Add(a.pendingDeposits).Sub(a.negativeBalance)
 }
 
 // managedMinExpectedBalance returns the min amount of money that this
