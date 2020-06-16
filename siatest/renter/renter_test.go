@@ -3143,22 +3143,13 @@ func TestSetFileTrackingPath(t *testing.T) {
 	}
 }
 
-func TestTmp(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	for t.Run("TestRenterFileContractIdentifier", TestRenterFileContractIdentifier) {
-
-	}
-}
-
 // TestRenterFileContractIdentifier checks that the file contract's identifier
 // is set correctly when forming a contract and after renewing it.
 func TestRenterFileContractIdentifier(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	//t.Parallel()
+	t.Parallel()
 
 	// Create a testgroup, creating without renter so the renter's
 	// contract transactions can easily be obtained.
