@@ -2397,9 +2397,21 @@ func TestExtendPeriod(t *testing.T) {
 	}
 
 	// We have reached the renew window. Slowly mine through it and confirm the
-	// previously active contracts are now marked as expired and were replaced
-	// with new active contracts
+	// previously active contracts are now marked as disabled.
 	err = build.Retry(int(allowance.RenewWindow), time.Second, func() error {
+		if err := miner.MineBlock(); err != nil {
+			return err
+		}
+		return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, len(tg.Hosts()), 0, 0)
+	})
+	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
+		t.Fatal(err)
+	}
+
+	// Mine blocks until after the renew window. The disabled contracts should
+	// become expired.
+	err = build.Retry(2*int(allowance.RenewWindow), 100*time.Millisecond, func() error {
 		if err := miner.MineBlock(); err != nil {
 			return err
 		}
