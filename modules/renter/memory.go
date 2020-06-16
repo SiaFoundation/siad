@@ -80,7 +80,7 @@ func (mm *memoryManager) try(amount uint64, priority bool) bool {
 		// There is enough memory, decrement the memory and return.
 		mm.available -= amount
 		return true
-	} else if mm.available == mm.base && amount >= mm.available {
+	} else if mm.available == mm.base {
 		// The amount of memory being requested is greater than the amount of
 		// memory available, but no memory is currently in use. Set the amount
 		// of memory available to zero and return.

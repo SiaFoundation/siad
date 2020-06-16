@@ -253,4 +253,7 @@ func TestMemoryManager(t *testing.T) {
 	mm.Return(36)
 	<-memoryCompleted8
 	mm.Return(250)
+	if mm.available != mm.base {
+		t.Error("test did not reset properly")
+	}
 }
