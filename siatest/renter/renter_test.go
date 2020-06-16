@@ -1902,19 +1902,9 @@ func TestRenewFailing(t *testing.T) {
 
 	// All the contracts of the renter should be goodForRenew. So there should
 	// be no inactive contracts, only active contracts
-	rcg, err := renter.RenterInactiveContractsGet()
+	err = siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, 0, 0)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if len(rcg.ActiveContracts) != len(tg.Hosts()) {
-		for i, c := range rcg.ActiveContracts {
-			fmt.Println(i, c.HostPublicKey)
-		}
-		t.Fatalf("renter had %v contracts but should have %v",
-			len(rcg.ActiveContracts), len(tg.Hosts()))
-	}
-	if len(rcg.InactiveContracts) != 0 {
-		t.Fatal("Renter should have 0 inactive contracts but has", len(rcg.InactiveContracts))
 	}
 
 	// Create a map of the hosts in the group.
@@ -1927,6 +1917,11 @@ func TestRenewFailing(t *testing.T) {
 		hostMap[pk.String()] = host
 	}
 	// Lock the wallet of one of the used hosts to make the renew fail.
+	rcg, err := renter.RenterAllContractsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	var lockedHostPK types.SiaPublicKey
 	for _, c := range rcg.ActiveContracts {
 		if host, used := hostMap[c.HostPublicKey.String()]; used {
@@ -1948,17 +1943,18 @@ func TestRenewFailing(t *testing.T) {
 	}
 	miner := tg.Miners()[0]
 	blockHeight := cg.Height
-	for blockHeight+rg.Settings.Allowance.RenewWindow < rcg.ActiveContracts[0].EndHeight {
+	renewWindow := rg.Settings.Allowance.RenewWindow
+	for blockHeight+renewWindow+1 < rcg.ActiveContracts[0].EndHeight {
 		if err := miner.MineBlock(); err != nil {
 			t.Fatal(err)
 		}
 		blockHeight++
 	}
 
-	// There should be no inactive contracts, only active contracts. Do this in
-	// a retry since the contractor might need some time to catch up with all
-	// the blocks being mined so rapidly.
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	// There should be no inactive contracts, only active contracts since we are
+	// 1 block before the renewWindow. Do this in a retry to give the contractor
+	// some time to catch up.
+	err = build.Retry(int(renewWindow/2), time.Second, func() error {
 		rcg, err = renter.RenterInactiveContractsGet()
 		if err != nil {
 			return err
@@ -1970,14 +1966,14 @@ func TestRenewFailing(t *testing.T) {
 		if len(rcg.InactiveContracts) != 0 {
 			return fmt.Errorf("Renter should have 0 inactive contracts but has %v", len(rcg.InactiveContracts))
 		}
-		return nil
+		return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, 0, 0)
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// mine enough blocks to reach the second half of the renew window.
-	for ; blockHeight+rg.Settings.Allowance.RenewWindow/2 < rcg.ActiveContracts[0].EndHeight; blockHeight++ {
+	for ; blockHeight+rg.Settings.Allowance.RenewWindow/2+1 < rcg.ActiveContracts[0].EndHeight; blockHeight++ {
 		if err := miner.MineBlock(); err != nil {
 			t.Fatal(err)
 		}
@@ -1989,7 +1985,7 @@ func TestRenewFailing(t *testing.T) {
 	// means we should have number of hosts - 1 active contracts, number of
 	// hosts - 1 renewed contracts, and one of the disabled contract which will
 	// be the host that has the locked wallet
-	err = build.Retry(int(rcg.ActiveContracts[0].EndHeight-blockHeight), 1*time.Second, func() error {
+	err = build.Retry(int(rcg.ActiveContracts[0].EndHeight-blockHeight), time.Second, func() error {
 		if err := miner.MineBlock(); err != nil {
 			return err
 		}
@@ -1999,20 +1995,11 @@ func TestRenewFailing(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		rce, err := renter.RenterExpiredContractsGet()
+		// Assert number of contracts.
+		err = siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts())-1, 0, 0, 1, len(tg.Hosts())-1, 0)
 		if err != nil {
 			return err
 		}
-		if len(rc.ActiveContracts) != len(tg.Hosts())-1 {
-			return fmt.Errorf("Expected %v active contracts, got %v", len(tg.Hosts())-1, len(rc.ActiveContracts))
-		}
-		if len(rc.DisabledContracts) != 1 {
-			return fmt.Errorf("Expected %v disabled contracts, got %v", 1, len(rc.DisabledContracts))
-		}
-		if len(rce.ExpiredContracts) != len(tg.Hosts())-1 {
-			return fmt.Errorf("Expected %v expired contracts, got %v", len(tg.Hosts())-1, len(rce.ExpiredContracts))
-		}
-
 		// If the host is the host in the disabled contract, then the test has
 		// passed.
 		if !rc.DisabledContracts[0].HostPublicKey.Equals(lockedHostPK) {
