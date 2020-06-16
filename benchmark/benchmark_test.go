@@ -23,8 +23,8 @@ import (
 const (
 	// Directories and log
 	workDirPart      = "nebulous/sia-upload-download-benchmark" // Working directory under user home
-	uploadsDirPart   = "uploads"                             // Uploads in working directory
-	downloadsDirPart = "downloads"                           // Downloads in working directory
+	uploadsDirPart   = "uploads"                                // Uploads in working directory
+	downloadsDirPart = "downloads"                              // Downloads in working directory
 	testGroupDirPart = "test-group"
 	logFilename      = "upload-download-benchmark.log" // Log filename in working directory
 	siaDir           = "upload-download-benchmark"     // Sia directory to upload files to
