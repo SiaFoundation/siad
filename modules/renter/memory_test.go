@@ -334,7 +334,7 @@ func TestMemoryManager(t *testing.T) {
 
 	// Add high priority requests and release previous high priority items.
 	// These should all unblock as soon as memory is returned.
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 3; i++ {
 		memoryCompletedL := make(chan struct{})
 		go func() {
 			if !mm.Request(100, memoryPriorityHigh) {

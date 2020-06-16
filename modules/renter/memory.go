@@ -13,6 +13,26 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 )
 
+const (
+	// memoryPriorityStarvationMultiple controls the amount of memory that needs
+	// to be granted consecutively to high priority tasks before a low priority
+	// task will be bumped into the high priority queue. For example, take a
+	// multiple of 4 and a base memory of 1 GB. If 4 GB of memory is granted to
+	// high priority tasks in a row, then this will trigger some of the low
+	// priority tasks in the low priority queue to be bumped into the high
+	// priority queue, ensuring that all tasks get access to memory even if
+	// there is a continuous stream of high priority tasks.
+	memoryPriorityStarvationMultiple = 4
+
+	// memoryPriorityStarvationDivisor controls how many low priority items get
+	// bumped into the high priority queue when starvation protection is
+	// triggered. For example, take a divsor of 4 and a base memory of 1 GB.
+	// When starvation is triggered, low priority items will be moved into the
+	// high priority queue until a total of 250 MB or more of low priority items
+	// have been added to the high priority queue.
+	memoryPriorityStarvationDivisor = 4
+)
+
 // memoryManager can handle requests for memory and returns of memory. The
 // memory manager is initialized with a base amount of memory and it will allow
 // up to that much memory to be requested simultaneously. Beyond that, it will
@@ -80,13 +100,13 @@ type memoryRequest struct {
 func (mm *memoryManager) handleStarvation() {
 	// Unless there has been a long starvation period, do not bump any low
 	// priority tasks.
-	if mm.memSinceLowPriority < mm.base*4 {
+	if mm.memSinceLowPriority < mm.base*memoryPriorityStarvationMultiple {
 		return
 	}
 
 	// Bump a limited number of low priority items into the high priority queue.
 	totalBumped := uint64(0)
-	for totalBumped < mm.base/4 && len(mm.fifo) > 0 {
+	for totalBumped < mm.base/memoryPriorityStarvationDivisor && len(mm.fifo) > 0 {
 		totalBumped += mm.fifo[0].amount
 		mm.priorityFifo = append(mm.priorityFifo, mm.fifo[0])
 		mm.fifo = mm.fifo[1:]
@@ -99,7 +119,15 @@ func (mm *memoryManager) handleStarvation() {
 // true if the attempt is successful, and false if the attempt is not.  In the
 // event that the attempt is successful, the internal state of the memory
 // manager will be updated to reflect the granted request.
-func (mm *memoryManager) try(amount uint64, priority bool) bool {
+func (mm *memoryManager) try(amount uint64, priority bool) (success bool) {
+	// Defer a function to check whether a low priority memory request has been
+	// granted. If so, reset the starvation tracker.
+	defer func() {
+		if success && !priority {
+			mm.memSinceLowPriority = 0
+		}
+	}()
+
 	// If there is enough memory available, then the request can be granted. For
 	// non-priority memory, we compare the amount available to the amount being
 	// requested plus the priority reserve to ensure that the total amount of
@@ -113,30 +141,18 @@ func (mm *memoryManager) try(amount uint64, priority bool) bool {
 	if mm.available >= (amount+mm.priorityReserve) || (priority && mm.available >= amount) {
 		// There is enough memory, decrement the memory and return.
 		mm.available -= amount
-
-		// Update the starvation tracker.
-		if priority {
-			mm.memSinceLowPriority += amount
-		} else {
-			mm.memSinceLowPriority = 0
-		}
 		return true
 	} else if mm.available == mm.base {
 		// The amount of memory being requested is greater than the amount of
 		// memory available, but no memory is currently in use. Note that edge
-		// cases around the priority memory limit need to be respected.
+		// cases around the priority memory limit need to be respected - if this
+		// is a low priority request it may not consume the entire set of
+		// available memory.
 		if amount <= mm.available {
 			mm.available -= amount
 		} else {
 			mm.available = 0
 			mm.underflow = amount - mm.base
-		}
-
-		// Update the starvation tracker.
-		if priority {
-			mm.memSinceLowPriority += amount
-		} else {
-			mm.memSinceLowPriority = 0
 		}
 		return true
 	}
@@ -147,9 +163,18 @@ func (mm *memoryManager) try(amount uint64, priority bool) bool {
 // memory has been acquired. If 'false' is returned, it means that the renter
 // shut down before the memory could be allocated.
 func (mm *memoryManager) Request(amount uint64, priority bool) bool {
+	// If this is a priority request and the low priority fifo is not empty,
+	// increment the starvation tracker, because either this request will be
+	// granted or this request will be put in the queue to fire ahead of any low
+	// priority request currently in the queue.
+	if priority && len(mm.fifo) != 0 {
+		mm.memSinceLowPriority += amount
+		mm.handleStarvation()
+	}
+
 	// Try to request the memory.
 	mm.mu.Lock()
-	shouldTry := len(mm.priorityFifo) == 0 && (priority == memoryPriorityHigh || len(mm.fifo) == 0)
+	shouldTry := len(mm.priorityFifo) == 0 && (priority || len(mm.fifo) == 0)
 	if shouldTry && mm.try(amount, priority) {
 		mm.mu.Unlock()
 		return true
@@ -230,7 +255,6 @@ func (mm *memoryManager) Return(amount uint64) {
 		// requests should be bumped to the high priority queue. This is done to
 		// prevent the high priority requests from fully starving the low
 		// priority requests.
-		mm.handleStarvation()
 		if !mm.try(mm.priorityFifo[0].amount, memoryPriorityHigh) {
 			// There is not enough memory to grant the next request, meaning no
 			// future requests should be checked either.
