@@ -1989,12 +1989,7 @@ func TestRenewFailing(t *testing.T) {
 		if err := miner.MineBlock(); err != nil {
 			return err
 		}
-
 		// contract should be !goodForRenew now.
-		rc, err := renter.RenterDisabledContractsGet()
-		if err != nil {
-			return err
-		}
 		// Assert number of contracts.
 		err = siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts())-1, 0, 0, 1, len(tg.Hosts())-1, 0)
 		if err != nil {
@@ -2002,6 +1997,10 @@ func TestRenewFailing(t *testing.T) {
 		}
 		// If the host is the host in the disabled contract, then the test has
 		// passed.
+		rc, err := renter.RenterDisabledContractsGet()
+		if err != nil {
+			return err
+		}
 		if !rc.DisabledContracts[0].HostPublicKey.Equals(lockedHostPK) {
 			return errors.New("Disbled contract host not the locked host")
 		}
