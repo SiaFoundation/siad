@@ -3213,36 +3213,20 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 		}
 	}
 
-	// Confirm that the contracts got renewed.
-	tries := 0
-	err = build.Retry(int(renewWindow)*10, 100*time.Millisecond, func() error {
-		if tries%10 == 0 {
-			if err := m.MineBlock(); err != nil {
-				return err
-			}
+	// We have reached the renew window. Slowly mine through it and check the
+	// contracts.
+	err = build.Retry(int(renewWindow), time.Second, func() error {
+		if err := m.MineBlock(); err != nil {
+			return err
 		}
-		// Get the contracts from the renter.
-		rcg, err := r.RenterExpiredContractsGet()
-		if err != nil {
-			t.Fatal(err)
-		}
-		// We should have one contract for each host.
-		if len(rcg.ActiveContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("expected %v active contracts but got %v",
-				len(tg.Hosts()), rcg.ActiveContracts)
-		}
-		// We should have one expired contract for each host.
-		if len(rcg.ExpiredContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("expected %v expired contracts but got %v",
-				len(tg.Hosts()), len(rcg.ExpiredContracts))
-		}
-		return nil
+		return siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var fcTxns []modules.ProcessedTransaction
+	tries := 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		if tries%10 == 0 {
 			if err := m.MineBlock(); err != nil {

@@ -2390,22 +2390,19 @@ func TestExtendPeriod(t *testing.T) {
 		t.Fatal(err)
 	}
 	miner := tg.Miners()[0]
-	for i := 0; i <= int(endheight-allowance.RenewWindow-cg.Height); i++ {
+	for i := 0; i < int(endheight-allowance.RenewWindow-cg.Height); i++ {
 		if err := miner.MineBlock(); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	// Confirm the previously active contracts are now marked as expired and
-	// were replaced with new active contracts
-	tries := 0
-	err = build.Retry(int(allowance.RenewWindow)*10, 100*time.Millisecond, func() error {
-		if tries%10 == 0 {
-			if err := miner.MineBlock(); err != nil {
-				return err
-			}
+	// We have reached the renew window. Slowly mine through it and confirm the
+	// previously active contracts are now marked as expired and were replaced
+	// with new active contracts
+	err = build.Retry(int(allowance.RenewWindow), time.Second, func() error {
+		if err := miner.MineBlock(); err != nil {
+			return err
 		}
-		tries++
 		return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
 	})
 	if err != nil {
