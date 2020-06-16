@@ -72,8 +72,11 @@ type memoryRequest struct {
 	done   chan struct{}
 }
 
-// handleStarvation will check the starvation tracker and bump some low priority
-// memory items if needed.
+// handleStarvation will check whether high priority items have spent a
+// significant amount of time blocking low priority items. If low priority items
+// have not had a turn in a while, handleStarvation will bump a couple of low
+// priority items into the high priority queue, to ensure that all tasks
+// eventually get memory.
 func (mm *memoryManager) handleStarvation() {
 	// Unless there has been a long starvation period, do not bump any low
 	// priority tasks.
