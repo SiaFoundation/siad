@@ -2,6 +2,7 @@ package renter
 
 import (
 	"compress/gzip"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -12,12 +13,12 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 // v137Persistence is the persistence struct of a renter that doesn't use the
@@ -408,7 +409,7 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 		// be returned here
 		entry, err := r.v137FileToSiaFile(f, repairPath, oldContracts)
 		if err != nil {
-			return nil, errors.AddContext(err, "unable to transform old file to new file")
+			return nil, errors.AddContext(err, fmt.Sprintf("unable to transform old file %v to new file", repairPath))
 		}
 		if entry.NumChunks() < 1 {
 			return nil, errors.AddContext(err, "new file has invalid number of chunks")

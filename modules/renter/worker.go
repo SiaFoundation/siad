@@ -27,7 +27,7 @@ import (
 
 const (
 	// minAsyncVersion defines the minimum version that is supported
-	minAsyncVersion = "1.4.9"
+	minAsyncVersion = "1.4.10"
 )
 
 const (
@@ -57,11 +57,12 @@ type (
 	// present until some time has passed.
 	worker struct {
 		// atomicCache contains a pointer to the latest cache in the worker.
-		// Atomics are used to minimze lock contention on the worker object.
-		atomicCache                   unsafe.Pointer // points to a workerCache object
-		atomicCacheUpdating           uint64         // ensures only one cache update happens at a time
-		atomicPriceTable              unsafe.Pointer // points to a workerPriceTable object
-		atomicPriceTableUpdateRunning uint64         // used for a sanity check
+		// Atomics are used to minimize lock contention on the worker object.
+		atomicCache                      unsafe.Pointer // points to a workerCache object
+		atomicCacheUpdating              uint64         // ensures only one cache update happens at a time
+		atomicPriceTable                 unsafe.Pointer // points to a workerPriceTable object
+		atomicPriceTableUpdateRunning    uint64         // used for a sanity check
+		atomicAccountBalanceCheckRunning uint64         // used for a sanity check
 
 		// The host pub key also serves as an id for the worker, as there is only
 		// one worker per host.
@@ -154,11 +155,6 @@ func (w *worker) status() modules.WorkerStatus {
 		uploadCoolDownErr = w.uploadRecentFailureErr.Error()
 	}
 
-	var accountBalance types.Currency
-	if w.staticAccount != nil {
-		w.staticAccount.managedAvailableBalance()
-	}
-
 	// Update the worker cache before returning a status.
 	w.staticTryUpdateCache()
 	cache := w.staticCache()
@@ -181,7 +177,7 @@ func (w *worker) status() modules.WorkerStatus {
 		UploadTerminated:    w.uploadTerminated,
 
 		// Ephemeral Account information
-		AvailableBalance: accountBalance,
+		AvailableBalance: w.staticAccount.managedAvailableBalance(),
 		BalanceTarget:    w.staticBalanceTarget,
 
 		// Job Queues

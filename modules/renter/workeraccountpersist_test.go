@@ -100,11 +100,6 @@ func TestAccountUncleanShutdown(t *testing.T) {
 
 	// create a number accounts
 	accounts := openRandomTestAccountsOnRenter(r)
-	for _, account := range accounts {
-		account.mu.Lock()
-		account.balance = types.NewCurrency64(fastrand.Uint64n(1e3))
-		account.mu.Unlock()
-	}
 
 	// close the renter and reload it with a dependency that interrupts the
 	// accounts save on shutdown
@@ -123,9 +118,10 @@ func TestAccountUncleanShutdown(t *testing.T) {
 		if !reloaded.staticID.SPK().Equals(account.staticID.SPK()) {
 			t.Fatal("Unexpected reloaded account ID")
 		}
-		if !reloaded.balance.Equals(account.balance) {
+
+		if !reloaded.balance.Equals(account.managedMinExpectedBalance()) {
 			t.Log(reloaded.balance)
-			t.Log(account.balance)
+			t.Log(account.managedMinExpectedBalance())
 			t.Fatal("Unexpected account balance after reload")
 		}
 	}

@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 // BenchmarkStandaloneValid times how long it takes to verify a single

@@ -87,6 +87,9 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	// Get the remaining unallocated collateral.
 	collateralBudget := sos.UnallocatedCollateral()
 
+	// Get the remaining contract duration.
+	duration := sos.ProofDeadline() - h.BlockHeight()
+
 	// Get a context that can be used to interrupt the program.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -98,8 +101,12 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		}
 	}()
 
+	// Cancel the context on shutdown. The host's tg doesn't have a `StopCtx` so
+	// we need to do it this way.
+	h.tg.OnStop(cancel)
+
 	// Execute the program.
-	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, budget, collateralBudget, sos, dataLength, stream)
+	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, budget, collateralBudget, sos, duration, dataLength, stream)
 	if err != nil {
 		return errors.AddContext(err, "Failed to start execution of the program")
 	}
@@ -174,7 +181,8 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 
 		// Disrupt if the delay write dependency is set
 		if h.dependencies.Disrupt("MDMProgramOutputDelayWrite") {
-			// adds a write delay
+			// add a write delay
+			time.Sleep(modules.MDMProgramWriteResponseTime * 2)
 		}
 
 		// Write contents of the buffer

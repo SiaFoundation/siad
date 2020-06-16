@@ -14,10 +14,10 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 // managedDownloadSnapshotTable will fetch the snapshot table from the host.

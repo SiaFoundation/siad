@@ -16,7 +16,6 @@ variables:
     ./cmd/skynet-benchmark
     ./compatibility
     ./crypto
-    ./encoding
     ./modules
     ./modules/consensus
     ./modules/explorer
@@ -196,7 +195,7 @@ package-tests:
     key: package-cache
     paths:
       - .cache
-  script: 
+  script:
     - make test-long run=. pkgs="$package_pkgs"
 siatest-tests:
   <<: *default_test_params

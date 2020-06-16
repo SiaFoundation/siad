@@ -130,6 +130,13 @@ type (
 		SiacoinPrecision types.Currency `json:"siacoinprecision"`
 	}
 
+	// DaemonSettingsGet contains information about global daemon settings.
+	DaemonSettingsGet struct {
+		MaxDownloadSpeed int64         `json:"maxdownloadspeed"`
+		MaxUploadSpeed   int64         `json:"maxuploadspeed"`
+		Modules          configModules `json:"modules"`
+	}
+
 	// DaemonVersion holds the version information for siad
 	DaemonVersion struct {
 		Version     string `json:"version"`
@@ -445,17 +452,15 @@ func (api *API) daemonStopHandler(w http.ResponseWriter, _ *http.Request, _ http
 	}
 }
 
-// DaemonSettingsGet contains information about global daemon settings.
-type DaemonSettingsGet struct {
-	MaxDownloadSpeed int64 `json:"maxdownloadspeed"`
-	MaxUploadSpeed   int64 `json:"maxuploadspeed"`
-}
-
 // daemonSettingsHandlerGET handles the API call asking for the daemon's
 // settings.
 func (api *API) daemonSettingsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	gmds, gmus, _ := modules.GlobalRateLimits.Limits()
-	WriteJSON(w, DaemonSettingsGet{gmds, gmus})
+	WriteJSON(w, DaemonSettingsGet{
+		MaxDownloadSpeed: gmds,
+		MaxUploadSpeed:   gmus,
+		Modules:          api.staticConfigModules,
+	})
 }
 
 // daemonSettingsHandlerPOST handles the API call changing daemon specific

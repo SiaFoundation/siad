@@ -1,1 +1,0 @@
-- Add Skykey Name and ID to skykey GET responses

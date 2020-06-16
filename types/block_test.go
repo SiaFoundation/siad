@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 // TestCalculateCoinbase probes the CalculateCoinbase function. The test code

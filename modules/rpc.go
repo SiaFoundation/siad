@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 // RPCPriceTable contains the cost of executing a RPC on a host. Each host can
@@ -49,6 +49,9 @@ type RPCPriceTable struct {
 	// MemoryTimeCost is the amount of cost per byte per time that is incurred
 	// by the memory consumption of the program.
 	MemoryTimeCost types.Currency `json:"memorytimecost"`
+
+	// StoreLengthCost is the cost per byte per block for storage.
+	StoreLengthCost types.Currency `json:"storelengthcost"`
 
 	// CollateralCost is the amount of money per byte the host is promising to
 	// lock away as collateral when adding new data to a contract.

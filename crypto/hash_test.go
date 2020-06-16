@@ -47,13 +47,13 @@ func TestHashing(t *testing.T) {
 		to,
 	)
 	if h1 == emptyHash {
-		t.Error("HashObject returned the zero hash!")
+		t.Error("HashAll returned the zero hash!")
 	}
 
 	// Call HashBytes on a random byte slice.
 	h2 := HashBytes(fastrand.Bytes(435))
 	if h2 == emptyHash {
-		t.Error("HashObject returned the zero hash!")
+		t.Error("HashBytes returned the zero hash!")
 	}
 }
 

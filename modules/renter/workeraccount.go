@@ -2,6 +2,7 @@ package renter
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -119,6 +120,32 @@ func (a *account) managedAvailableBalance() types.Currency {
 	return a.availableBalance()
 }
 
+// managedMinExpectedBalance returns the min amount of money that this
+// account is expected to contain after the renter has shut down.
+func (a *account) managedMinExpectedBalance() types.Currency {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.minExpectedBalance()
+}
+
+// minExpectedBalance returns the min amount of money that this account is
+// expected to contain after the renter has shut down.
+func (a *account) minExpectedBalance() types.Currency {
+	// subtract the negative balance
+	balance := a.balance
+	if balance.Cmp(a.negativeBalance) <= 0 {
+		return types.ZeroCurrency
+	}
+	balance = balance.Sub(a.negativeBalance)
+
+	// subtract all pending withdrawals
+	if balance.Cmp(a.pendingWithdrawals) <= 0 {
+		return types.ZeroCurrency
+	}
+	balance = balance.Sub(a.pendingWithdrawals)
+	return balance
+}
+
 // managedCommitDeposit commits a pending deposit, either after success or
 // failure. Depending on the outcome the given amount will be added to the
 // balance or not. If the pending delta is zero, and we altered the account
@@ -171,6 +198,18 @@ func (a *account) managedOnCooldown() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.cooldownUntil.After(time.Now())
+}
+
+// managedResetBalance sets the given balance and resets the account's balance
+// delta state variables. This happens when we have performanced a balance
+// inquiry on the host and we decide to trust his version of the balance.
+func (a *account) managedResetBalance(balance types.Currency) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.balance = balance
+	a.pendingDeposits = types.ZeroCurrency
+	a.pendingWithdrawals = types.ZeroCurrency
+	a.negativeBalance = types.ZeroCurrency
 }
 
 // managedTrackDeposit keeps track of pending deposits by adding the given
@@ -248,7 +287,7 @@ func (w *worker) managedRefillAccount() {
 	// is an interactive protocol with another machine, we are never sure of the
 	// exact moment that the deposit has reached our account. Instead, we track
 	// the deposit as a "maybe" until we know for sure that the deposit has
-	// either reached the remove machine or failed.
+	// either reached the remote machine or failed.
 	//
 	// At the same time that we track the deposit, we defer a function to check
 	// the error on the deposit
@@ -327,7 +366,9 @@ func (w *worker) managedRefillAccount() {
 	// response.
 	var resp modules.FundAccountResponse
 	err = modules.RPCRead(stream, &resp)
-	err = errors.AddContext(err, "could not read the account response")
+	if err != nil {
+		err = errors.AddContext(err, "could not read the account response")
+	}
 
 	// TODO: We need to parse the response and check for an error, such as
 	// MaxBalanceExceeded. In the specific case of MaxBalanceExceeded, we need
@@ -346,4 +387,97 @@ func (w *worker) managedRefillAccount() {
 	// money in the account can be activated.
 	w.staticWake()
 	return
+}
+
+// managedSyncAccountBalanceToHost is executed  before the worker loop and
+// corrects the account balance in case of an unclean renter shutdown. It does
+// so by performing the AccountBalanceRPC and resetting the account to the
+// balance communicated by the host. This only happens if our account balance is
+// zero, which indicates an unclean shutdown.
+//
+// NOTE: it is important this function is only used when the worker has no
+// in-progress jobs, neither serial nor async, to ensure the account balance
+// sync does not leave the account in an undesired state.
+func (w *worker) managedSyncAccountBalanceToHost() {
+	// Sanity check the account's deltas are zero, indicating there are no
+	// in-progress jobs
+	w.staticAccount.mu.Lock()
+	deltasAreZero := w.staticAccount.negativeBalance.IsZero() &&
+		w.staticAccount.pendingDeposits.IsZero() &&
+		w.staticAccount.pendingWithdrawals.IsZero()
+	w.staticAccount.mu.Unlock()
+	if !deltasAreZero {
+		build.Critical("managedSyncAccountBalanceToHost is called on a worker with an account that has non-zero deltas, indicating in-progress jobs")
+	}
+
+	balance, err := w.staticHostAccountBalance()
+	if err != nil {
+		w.renter.log.Printf("ERROR: failed to check account balance on host %v failed, err: %v\n", w.staticHostPubKeyStr, err)
+		return
+	}
+
+	// If our account balance is lower than the balance indicated by the host,
+	// we want to sync our balance by resetting it.
+	if w.staticAccount.managedAvailableBalance().Cmp(balance) < 0 {
+		w.staticAccount.managedResetBalance(balance)
+	}
+
+	// TODO perform a thorough balance comparison to decide whether the drift in
+	// the account balance is warranted. If not the host needs to be penalized
+	// accordingly. Perform this check at startup and periodically.
+}
+
+// staticHostAccountBalance performs the AccountBalanceRPC on the host
+func (w *worker) staticHostAccountBalance() (types.Currency, error) {
+	// Sanity check - only one account balance check should be running at a
+	// time.
+	if !atomic.CompareAndSwapUint64(&w.atomicAccountBalanceCheckRunning, 0, 1) {
+		w.renter.log.Critical("account balance is being checked in two threads concurrently")
+	}
+	defer atomic.StoreUint64(&w.atomicAccountBalanceCheckRunning, 0)
+
+	// Get a stream.
+	stream, err := w.staticNewStream()
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+	defer func() {
+		if err := stream.Close(); err != nil {
+			w.renter.log.Println("ERROR: failed to close stream", err)
+		}
+	}()
+
+	// write the specifier
+	err = modules.RPCWrite(stream, modules.RPCAccountBalance)
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+
+	// send price table uid
+	pt := w.staticPriceTable().staticPriceTable
+	err = modules.RPCWrite(stream, pt.UID)
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+
+	// provide payment
+	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCAccountBalance, pt.AccountBalanceCost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+
+	// prepare the request.
+	abr := modules.AccountBalanceRequest{Account: w.staticAccount.staticID}
+	err = modules.RPCWrite(stream, abr)
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+
+	// read the response
+	var resp modules.AccountBalanceResponse
+	err = modules.RPCRead(stream, &resp)
+	if err != nil {
+		return types.ZeroCurrency, err
+	}
+	return resp.Balance, nil
 }
