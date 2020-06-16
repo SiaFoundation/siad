@@ -135,7 +135,7 @@ func newUnappliedWalTxn(t *writeaheadlog.Transaction) *unappliedWalTxn {
 	}
 }
 
-// SignalUpdatesApplied calls `SignalUpdatesApplied` on the wrapped staticWal. It will
+// SignalUpdatesApplied calls `SignalUpdatesApplied` on the wrapped wal. It will
 // do so only once.
 func (t *unappliedWalTxn) SignalUpdatesApplied() error {
 	t.once.Do(func() {
@@ -144,7 +144,7 @@ func (t *unappliedWalTxn) SignalUpdatesApplied() error {
 	return t.err
 }
 
-// newWalTxn creates a new staticWal transaction and automatically wraps it in an
+// newWalTxn creates a new wal transaction and automatically wraps it in an
 // unappliedWalTxn.
 func (c *SafeContract) newWalTxn(updates []writeaheadlog.Update) (*unappliedWalTxn, error) {
 	wtxn, err := c.staticWal.NewTransaction(updates)
@@ -174,8 +174,8 @@ type SafeContract struct {
 
 	// revisionMu serializes revisions to the contract. It is acquired by
 	// (ContractSet).Acquire and released by (ContractSet).Return. When holding
-	// revisionMu, it is still necessary to lock staticMu when modifying fields of the
-	// SafeContract.
+	// revisionMu, it is still necessary to lock staticMu when modifying fields
+	// of the SafeContract.
 	revisionMu sync.Mutex
 }
 
@@ -286,8 +286,6 @@ func (c *SafeContract) RecordPaymentIntent(rev types.FileContractRevision, amoun
 
 // Sign will sign the given hash using the safecontract's secret key
 func (c *SafeContract) Sign(hash crypto.Hash) crypto.Signature {
-	//c.staticMu.Lock()
-	//defer c.staticMu.Unlock()
 	return crypto.SignHash(hash, c.header.SecretKey)
 }
 
@@ -299,7 +297,7 @@ func (c *SafeContract) UpdateUtility(utility modules.ContractUtility) error {
 	newHeader := c.header
 	newHeader.Utility = utility
 
-	// Record the intent to change the header in the staticWal.
+	// Record the intent to change the header in the wal.
 	t, err := c.newWalTxn([]writeaheadlog.Update{
 		c.makeUpdateSetHeader(newHeader),
 	})
@@ -941,13 +939,13 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountF
 		case updateNameSetHeader:
 			var u updateSetHeader
 			if err := unmarshalHeader(update.Instructions, &u); err != nil {
-				return errors.AddContext(err, "unable to unmarshal the contract header during staticWal txn recovery")
+				return errors.AddContext(err, "unable to unmarshal the contract header during wal txn recovery")
 			}
 			id = u.ID
 		case updateNameSetRoot:
 			var u updateSetRoot
 			if err := encoding.Unmarshal(update.Instructions, &u); err != nil {
-				return errors.AddContext(err, "unable to unmarshal the update root set during staticWal txn recovery")
+				return errors.AddContext(err, "unable to unmarshal the update root set during wal txn recovery")
 			}
 			id = u.ID
 		}
@@ -976,10 +974,10 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountF
 		staticRC:         rc,
 	}
 
-	// apply the staticWal txns if necessary.
+	// apply the wal txns if necessary.
 	if applyTxns {
 		if err := sc.managedCommitTxns(); err != nil {
-			return errors.AddContext(err, "unable to commit the staticWal transactions during contractset recovery")
+			return errors.AddContext(err, "unable to commit the wal transactions during contractset recovery")
 		}
 	}
 	cs.contracts[sc.header.ID()] = sc
