@@ -36,6 +36,12 @@ import (
 // runtime.GC() and follow that up with a call to debug.FreeOSMemory(). This has
 // been shown in production to significantly reduce the amount of RES that siad
 // consumes, without a significant hit to performance.
+//
+// Note that if a large low priority request comes in, it is possible for that
+// large request to block higher priority requests because the memory manager
+// will prefer to keep the memory footprint as close as possible to the
+// initialized size rather than continue to allow high priority requests to go
+// through when more than all of the memory has been used up.
 type memoryManager struct {
 	available       uint64 // Total memory remaining.
 	base            uint64 // Initial memory.
@@ -82,14 +88,14 @@ func (mm *memoryManager) try(amount uint64, priority bool) bool {
 		return true
 	} else if mm.available == mm.base {
 		// The amount of memory being requested is greater than the amount of
-		// memory available, but no memory is currently in use. Set the amount
-		// of memory available to zero and return.
-		//
-		// The effect is that all of the memory is allocated to this one
-		// request, allowing the request to succeed even though there is
-		// technically not enough total memory available for the request.
-		mm.available = 0
-		mm.underflow = amount - mm.base
+		// memory available, but no memory is currently in use. Note that edge
+		// cases around the priority memory limit need to be respected.
+		if amount <= mm.available {
+			mm.available -= amount
+		} else {
+			mm.available = 0
+			mm.underflow = amount - mm.base
+		}
 		return true
 	}
 	return false

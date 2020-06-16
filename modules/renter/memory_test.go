@@ -256,4 +256,35 @@ func TestMemoryManager(t *testing.T) {
 	if mm.available != mm.base {
 		t.Error("test did not reset properly")
 	}
+
+	// Handle an edge case around awkwardly sized low priority memory requests.
+	// The low priority request will go through.
+	if !mm.Request(85, memoryPriorityLow) {
+		t.Error("could not get memory")
+	}
+	memoryCompleted9 := make(chan struct{})
+	go func() {
+		if !mm.Request(20, memoryPriorityHigh) {
+			t.Error("unable to get memory")
+		}
+		close(memoryCompleted9)
+	}()
+	<-mm.blocking // wait until the goroutine is in the fifo.
+
+	// The high priority request should not have been granted even though there
+	// is enough high priority memory available, because the low priority
+	// request was large enough to eat into the high priority memory.
+	select {
+	case <-memoryCompleted9:
+		t.Error("memory request should not have gone through")
+	default:
+	}
+	mm.Return(5)
+	// Now that a small amount  of memory has been returned, the high priority
+	// request should be able to complete.
+	<-memoryCompleted9
+	mm.Return(100)
+	if mm.available != mm.base {
+		t.Error("test did not reset properly")
+	}
 }
