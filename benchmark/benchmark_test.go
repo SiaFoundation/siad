@@ -1,4 +1,4 @@
-package main
+package benchmark
 
 import (
 	"fmt"
@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -24,20 +25,21 @@ const (
 	workDirPart      = "nebulous/sia-upload-download-script" // Working directory under user home
 	uploadsDirPart   = "uploads"                             // Uploads in working directory
 	downloadsDirPart = "downloads"                           // Downloads in working directory
-	logFilename      = "upload-download-script.log"          // Log filename in working directory
-	siaDir           = "upload-download-script"              // Sia directory to upload files to
+	testGroupDirPart = "test-group"
+	logFilename      = "upload-download-script.log" // Log filename in working directory
+	siaDir           = "upload-download-script"     // Sia directory to upload files to
 
 	// Uploads and downloads
-	nFiles              = 3     // Number of files to upload
+	nFiles              = 10    // Number of files to upload
 	fileSize            = 200e3 // File size of a file to be uploaded in bytes
 	maxConcurrUploads   = 10    // Max number of files to be concurrently uploaded
 	maxConcurrDownloads = 10    // Max number of files to be concurrently downloaded
-	nTotalDownloads     = 5     // Total number of file downloads. There will be nFiles, a single file can be downloaded x-times
+	nTotalDownloads     = 500   // Total number of file downloads. There will be nFiles, a single file can be downloaded x-times
 
 	// siad
-	siadPort      = 9980 // Port of siad node
-	minRedundancy = 2.0  // Minimum redundancy to consider a file uploaded
-	useTestGroup  = true // Whether to use a test group (true) or Sia network (false)
+	siadPort      = "9980" // Port of siad node (if not using a test group)
+	minRedundancy = 2.0    // Minimum redundancy to consider a file uploaded
+	useTestGroup  = true   // Whether to use a test group (true) or Sia network (false)
 )
 
 // file status enum
@@ -49,12 +51,14 @@ const (
 )
 
 var (
-	workDir string // Working directory
-	upDir   string // Uploads working directory
-	downDir string // Downloads working directory
-	logPath string // Path to log file
+	workDir      string // Working directory
+	upDir        string // Uploads working directory
+	downDir      string // Downloads working directory
+	testGroupDir string // Test group working directory
+	logPath      string // Path to log file
 
-	c *client.Client // Sia client for uploads and downloads
+	c  *client.Client     // Sia client for uploads and downloads
+	tg *siatest.TestGroup // Test group (if used)
 
 	wg sync.WaitGroup // Wait group to wait for all goroutines to finish
 
@@ -79,9 +83,9 @@ type files struct {
 // fileStatus is a type to represent a current status of a file
 type fileStatus int
 
-// This script concurrently uploads and then downloads files. Before execution
+// TestSiaUploadsDownloads concurrently uploads and then downloads files. Before execution
 // be sure to have enough storage for concurrent upload and download files.
-func main() {
+func TestSiaUploadsDownloads(t *testing.T) {
 	// Init, create, clean dirs
 	initDirs()
 
@@ -100,16 +104,16 @@ func main() {
 	// Print overview
 	totalData := formatFileSize(nFiles*int(fileSize), " ")
 	fileSizeStr := formatFileSize(fileSize, " ")
-	log.Printf("Upload total of %s data in %d files per %s files\n", totalData, nFiles, fileSizeStr)
+	log.Printf("Upload total of %s data in %d files per %s\n", totalData, nFiles, fileSizeStr)
 
 	totalData = formatFileSize(nTotalDownloads*int(fileSize), " ")
-	log.Printf("Download total of %s data in %d downloads per %s files\n", totalData, nTotalDownloads, fileSizeStr)
+	log.Printf("Download total of %s data in %d downloads per %s\n", totalData, nTotalDownloads, fileSizeStr)
 	log.Println()
 
 	// Init test group
 	if useTestGroup {
-		log.Println("== Init test group")
-		tg := initTestGroup()
+		log.Println("=== Init test group")
+		tg = initTestGroup()
 		defer func() {
 			if err := tg.Close(); err != nil {
 				check(err)
@@ -140,6 +144,9 @@ func main() {
 		wg.Add(1)
 		go threadedCreateAndUploadFiles(i, timestamp)
 	}
+
+	// xxx
+	wg.Wait()
 
 	// Download files with
 	log.Println("=== Download files concurrently")
@@ -207,6 +214,10 @@ func cleanUpDirs() {
 	check(err)
 	err = os.RemoveAll(downDir)
 	check(err)
+	if _, err := os.Stat(testGroupDir); err == nil {
+		err = os.RemoveAll(testGroupDir)
+		check(err)
+	}
 }
 
 // createFile creates a file in the upload directory with te given size
@@ -337,9 +348,15 @@ func getRandomFileByStatus(fs fileStatus) (string, bool) {
 
 // initClient initializes a Sia http client
 func initClient() {
+	if useTestGroup {
+		c = &tg.Renters()[0].Client
+		log.Println("Renter address:", tg.Renters()[0].APIAddress())
+		return
+	}
+
 	opts, err := client.DefaultOptions()
 	check(err)
-	opts.Address = "localhost:" + strconv.Itoa(siadPort)
+	opts.Address = "localhost:" + siadPort
 	c = client.New(opts)
 }
 
@@ -353,6 +370,9 @@ func initDirs() {
 	workDir = filepath.Join(home, workDirPart)
 	upDir = filepath.Join(workDir, uploadsDirPart)
 	downDir = filepath.Join(workDir, downloadsDirPart)
+	if useTestGroup {
+		testGroupDir = filepath.Join(workDir, testGroupDirPart)
+	}
 
 	// Delete dirs
 	cleanUpDirs()
@@ -362,6 +382,10 @@ func initDirs() {
 	check(err)
 	err = os.MkdirAll(downDir, os.ModePerm)
 	check(err)
+	if useTestGroup {
+		err = os.MkdirAll(testGroupDir, os.ModePerm)
+		check(err)
+	}
 }
 
 // initFilesMap initializes a map of files to be created, uploaded and
@@ -394,7 +418,7 @@ func initLog() *os.File {
 	return file
 }
 
-//xxx
+// initTestGroup initializes test group
 func initTestGroup() *siatest.TestGroup {
 	// Create a test group
 	groupDir := filepath.Join(workDir, "test-group")
@@ -404,15 +428,8 @@ func initTestGroup() *siatest.TestGroup {
 		Miners:  1,
 	}
 	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	log.Println("xxx pass:", tg.Renters()[0].Password)
 	check(err)
-
-	// Set siad renter port
-	r := tg.Renters()[0]
-	address := r.Address
-	log.Println("xxx", address)
-
-	os.Exit(2)
-
 	return tg
 }
 
@@ -434,9 +451,8 @@ func threadedCreateAndUploadFiles(workerIndex int, timestamp string) {
 		filename, ok := getFirstFileByStatus(initialized)
 		if !ok {
 			// No more files, finish
-			log.Printf("Upload worker #%d finished", workerIndex)
 			filesMap.mu.Unlock()
-			return
+			break
 		}
 		filesMap.m[filename] = uploading
 		filesMap.mu.Unlock()
@@ -455,9 +471,9 @@ func threadedCreateAndUploadFiles(workerIndex int, timestamp string) {
 		filesMap.mu.Lock()
 		filesMap.m[filename] = uploaded
 		filesMap.mu.Unlock()
-
-		wg.Done()
 	}
+	log.Printf("Upload worker #%d finished", workerIndex)
+	wg.Done()
 }
 
 // threadedDownloadFiles is a worker that downloads files
@@ -469,7 +485,7 @@ func threadedDownloadFiles(workerIndex int) {
 		if getFileCountByStatus(downloading) == nFiles {
 			// All files are downloaded or being downloaded, finish
 			filesMap.mu.Unlock()
-			return
+			break
 		}
 
 		// Select a file to download
@@ -486,6 +502,7 @@ func threadedDownloadFiles(workerIndex int) {
 		}
 		if !ok {
 			// There is no uploaded file yet, has to wait
+			filesMap.mu.Unlock()
 			time.Sleep(1 * time.Second)
 			continue
 		}
@@ -514,9 +531,9 @@ func threadedDownloadFiles(workerIndex int) {
 
 		// Delete downloaded file
 		deleteLocalFile(localPath)
-
-		wg.Done()
 	}
+	log.Printf("Upload worker #%d finished", workerIndex)
+	wg.Done()
 }
 
 // uploadFile uploads file to Sia
