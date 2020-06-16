@@ -74,7 +74,7 @@ func parseRootsFromData(b []byte) ([]crypto.Hash, error) {
 // loadExistingMerkleRoots reads creates a merkleRoots object from existing
 // merkle roots. If the file has an unexpected length, we truncate it and
 // return a boolean to indicate that the last write was incomplete and that the
-// unapplied staticWal transactions should be applied after loading the roots.
+// unapplied wal transactions should be applied after loading the roots.
 func loadExistingMerkleRoots(file *os.File) (*merkleRoots, bool, error) {
 	return loadExistingMerkleRootsFromSection(newFileSection(file, 0, remainingFile))
 }
@@ -82,7 +82,7 @@ func loadExistingMerkleRoots(file *os.File) (*merkleRoots, bool, error) {
 // loadExistingMerkleRootsFromSection reads creates a merkleRoots object from
 // existing merkle roots. If the file has an unexpected length, we truncate it
 // and return a boolean to indicate that the last write was incomplete and that
-// the unapplied staticWal transactions should be applied after loading the roots.
+// the unapplied wal transactions should be applied after loading the roots.
 func loadExistingMerkleRootsFromSection(file *fileSection) (*merkleRoots, bool, error) {
 	mr := &merkleRoots{
 		rootsFile: file,

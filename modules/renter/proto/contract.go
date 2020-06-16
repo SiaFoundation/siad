@@ -147,7 +147,7 @@ func (t *unappliedWalTxn) SignalUpdatesApplied() error {
 // newWalTxn creates a new staticWal transaction and automatically wraps it in an
 // unappliedWalTxn.
 func (c *SafeContract) newWalTxn(updates []writeaheadlog.Update) (*unappliedWalTxn, error) {
-	wtxn, err := c.wal.NewTransaction(updates)
+	wtxn, err := c.staticWal.NewTransaction(updates)
 	if err != nil {
 		return nil, err
 	}
@@ -167,8 +167,8 @@ type SafeContract struct {
 	unappliedTxns []*unappliedWalTxn
 
 	staticHeaderFile *os.File
-	wal              *writeaheadlog.WAL
-	mu               sync.Mutex
+	staticWal        *writeaheadlog.WAL
+	staticMu         sync.Mutex
 
 	staticRC *refCounter
 
@@ -182,8 +182,8 @@ type SafeContract struct {
 // CommitPaymentIntent will commit the intent to pay a host for an rpc by
 // committing the signed txn in the contract's header.
 func (c *SafeContract) CommitPaymentIntent(t *unappliedWalTxn, signedTxn types.Transaction, amount types.Currency, rpc types.Specifier) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.staticMu.Lock()
+	defer c.staticMu.Unlock()
 
 	// construct new header
 	newHeader := c.header
@@ -229,16 +229,16 @@ func (c *SafeContract) clearUnappliedTxns() error {
 
 // LastRevision returns the most recent revision
 func (c *SafeContract) LastRevision() types.FileContractRevision {
-	c.mu.Lock()
+	c.staticMu.Lock()
 	h := c.header
-	c.mu.Unlock()
+	c.staticMu.Unlock()
 	return h.LastRevision()
 }
 
 // Metadata returns the metadata of a renter contract
 func (c *SafeContract) Metadata() modules.RenterContract {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.staticMu.Lock()
+	defer c.staticMu.Unlock()
 	h := c.header
 	return modules.RenterContract{
 		ID:               h.ID(),
@@ -261,8 +261,8 @@ func (c *SafeContract) Metadata() modules.RenterContract {
 // RecordPaymentIntent will records the changes we are about to make to the
 // revision in order to pay a host for an RPC.
 func (c *SafeContract) RecordPaymentIntent(rev types.FileContractRevision, amount types.Currency, rpc types.Specifier) (*unappliedWalTxn, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.staticMu.Lock()
+	defer c.staticMu.Unlock()
 
 	newHeader := c.header
 	newHeader.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
@@ -286,15 +286,15 @@ func (c *SafeContract) RecordPaymentIntent(rev types.FileContractRevision, amoun
 
 // Sign will sign the given hash using the safecontract's secret key
 func (c *SafeContract) Sign(hash crypto.Hash) crypto.Signature {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	//c.staticMu.Lock()
+	//defer c.staticMu.Unlock()
 	return crypto.SignHash(hash, c.header.SecretKey)
 }
 
 // UpdateUtility updates the utility field of a contract.
 func (c *SafeContract) UpdateUtility(utility modules.ContractUtility) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.staticMu.Lock()
+	defer c.staticMu.Unlock()
 	// Construct new header
 	newHeader := c.header
 	newHeader.Utility = utility
@@ -327,8 +327,8 @@ func (c *SafeContract) UpdateUtility(utility modules.ContractUtility) error {
 
 // Utility returns the contract utility for the contract.
 func (c *SafeContract) Utility() modules.ContractUtility {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.staticMu.Lock()
+	defer c.staticMu.Unlock()
 	return c.header.Utility
 }
 
@@ -446,8 +446,8 @@ func (c *SafeContract) applySetRoot(root crypto.Hash, index int) error {
 // managedRecordAppendIntent creates a WAL update that adds a new sector to the
 // contract and queues this update for application.
 func (c *SafeContract) managedRecordAppendIntent(rev types.FileContractRevision, root crypto.Hash, storageCost, bandwidthCost types.Currency) (*unappliedWalTxn, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.staticMu.Lock()
+	defer c.staticMu.Unlock()
 	// construct new header
 	// NOTE: this header will not include the host signature
 	newHeader := c.header
@@ -482,8 +482,8 @@ func (c *SafeContract) managedRecordAppendIntent(rev types.FileContractRevision,
 // instead applies a new one based on the provided signedTxn. This is necessary
 // if we run into a desync of contract revisions between renter and host.
 func (c *SafeContract) managedCommitAppend(t *unappliedWalTxn, signedTxn types.Transaction, storageCost, bandwidthCost types.Currency) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.staticMu.Lock()
+	defer c.staticMu.Unlock()
 	// construct new header
 	newHeader := c.header
 	newHeader.Transaction = signedTxn
@@ -536,8 +536,8 @@ func (c *SafeContract) managedCommitAppend(t *unappliedWalTxn, signedTxn types.T
 // managedRecordDownloadIntent creates a WAL update that updates the header with
 // the new download costs.
 func (c *SafeContract) managedRecordDownloadIntent(rev types.FileContractRevision, bandwidthCost types.Currency) (*unappliedWalTxn, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.staticMu.Lock()
+	defer c.staticMu.Unlock()
 	// construct new header
 	// NOTE: this header will not include the host signature
 	newHeader := c.header
@@ -561,8 +561,8 @@ func (c *SafeContract) managedRecordDownloadIntent(rev types.FileContractRevisio
 // managedCommitDownload *ignores* all updates in the given transaction and
 // instead applies the provided signedTxn. See managedCommitAppend.
 func (c *SafeContract) managedCommitDownload(t *unappliedWalTxn, signedTxn types.Transaction, bandwidthCost types.Currency) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.staticMu.Lock()
+	defer c.staticMu.Unlock()
 	// construct new header
 	newHeader := c.header
 	newHeader.Transaction = signedTxn
@@ -586,8 +586,8 @@ func (c *SafeContract) managedCommitDownload(t *unappliedWalTxn, signedTxn types
 // managedRecordClearContractIntent records the changes we are about to make to
 // the revision in the WAL of the contract.
 func (c *SafeContract) managedRecordClearContractIntent(rev types.FileContractRevision, bandwidthCost types.Currency) (*unappliedWalTxn, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.staticMu.Lock()
+	defer c.staticMu.Unlock()
 	// construct new header
 	// NOTE: this header will not include the host signature
 	newHeader := c.header
@@ -611,8 +611,8 @@ func (c *SafeContract) managedRecordClearContractIntent(rev types.FileContractRe
 // managedCommitClearContract commits the changes we made to the revision when
 // clearing a contract to the WAL of the contract.
 func (c *SafeContract) managedCommitClearContract(t *unappliedWalTxn, signedTxn types.Transaction, bandwidthCost types.Currency) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.staticMu.Lock()
+	defer c.staticMu.Unlock()
 	// construct new header
 	newHeader := c.header
 	newHeader.Transaction = signedTxn
@@ -636,8 +636,8 @@ func (c *SafeContract) managedCommitClearContract(t *unappliedWalTxn, signedTxn 
 // managedCommitTxns commits the unapplied transactions to the contract file and marks
 // the transactions as applied.
 func (c *SafeContract) managedCommitTxns() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.staticMu.Lock()
+	defer c.staticMu.Unlock()
 	// We need a way of finding out whether we need to close the refcounter's
 	// update session here. This will only be necessary if there are refcounter
 	// updates in the queue. We don't want to close the session in other cases
@@ -691,8 +691,8 @@ func (c *SafeContract) managedCommitTxns() error {
 // still do not match, and the host's revision is ahead of the renter's,
 // managedSyncRevision uses the host's revision.
 func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs []types.TransactionSignature) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.staticMu.Lock()
+	defer c.staticMu.Unlock()
 
 	// Our current revision should always be signed. If it isn't, we have no
 	// choice but to accept the host's revision.
@@ -862,7 +862,7 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 		header:           h,
 		merkleRoots:      merkleRoots,
 		staticHeaderFile: headerFile,
-		wal:              cs.staticWal,
+		staticWal:        cs.staticWal,
 		staticRC:         rc,
 	}
 	// Compatv144 fix missing void output.
@@ -972,7 +972,7 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountF
 		merkleRoots:      merkleRoots,
 		unappliedTxns:    unappliedTxns,
 		staticHeaderFile: headerFile,
-		wal:              cs.staticWal,
+		staticWal:        cs.staticWal,
 		staticRC:         rc,
 	}
 

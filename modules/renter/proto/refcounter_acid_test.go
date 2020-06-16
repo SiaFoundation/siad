@@ -119,13 +119,13 @@ OUTER:
 			// the time has run out, finish the test
 			break OUTER
 		default:
-			// there is still time, load the staticWal from disk and re-run the test
+			// there is still time, load the wal from disk and re-run the test
 			rcFromDisk, err := reloadRefCounter(rcFilePath, walPath, fdd, track, testTimeoutChan)
 			if errors.Contains(err, errTestTimeout) {
 				break OUTER
 			}
 			if err != nil {
-				t.Fatal("Failed to reload staticWal from disk:", err)
+				t.Fatal("Failed to reload wal from disk:", err)
 			}
 			// we only assign it when there is no error because we need the
 			// latest reference for the sanity check we do against the tracker
@@ -139,7 +139,7 @@ OUTER:
 	for {
 		wal, err = loadWal(rcFilePath, walPath, fdd)
 		if errors.Contains(err, dependencies.ErrDiskFault) {
-			// Disk has failed, all future attempts to load the staticWal will fail so
+			// Disk has failed, all future attempts to load the wal will fail so
 			// we need to reset the dependency and try again
 			fdd.Reset()
 			atomic.AddUint64(&track.atomicNumRecoveries, 1)
@@ -166,12 +166,12 @@ OUTER:
 	t.Logf("Inner loop %v iterations without failures\n", track.atomicNumSuccessfulIterations)
 }
 
-// loadWal reads the staticWal from disk and applies all outstanding transactions
+// loadWal reads the wal from disk and applies all outstanding transactions
 func loadWal(rcFilePath string, walPath string, fdd *dependencies.DependencyFaultyDisk) (*writeaheadlog.WAL, error) {
-	// load the staticWal from disk
+	// load the wal from disk
 	txns, newWal, err := writeaheadlog.New(walPath)
 	if err != nil {
-		return nil, errors.AddContext(err, "failed to load staticWal from disk")
+		return nil, errors.AddContext(err, "failed to load wal from disk")
 	}
 	f, err := fdd.OpenFile(rcFilePath, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
@@ -372,7 +372,7 @@ func reloadRefCounter(rcFilePath, walPath string, fdd *dependencies.DependencyFa
 		if tries%10 == 0 {
 			fdd.Reset()
 		}
-		// Reload the staticWal from disk and apply unfinished txns
+		// Reload the wal from disk and apply unfinished txns
 		newWal, err := loadWal(rcFilePath, walPath, fdd)
 		if errors.Contains(err, dependencies.ErrDiskFault) {
 			atomic.AddUint64(&tr.atomicNumRecoveries, 1)
