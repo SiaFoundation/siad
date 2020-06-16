@@ -3171,20 +3171,28 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Get the endheight of the contracts.
+	// Get the heights of the contracts.
+	sh := rcg.ActiveContracts[0].StartHeight
 	eh := rcg.ActiveContracts[0].EndHeight
 
 	// Get the blockheight.
-	cg, err := tg.Hosts()[0].ConsensusGet()
+	cg, err := r.ConsensusGet()
 	if err != nil {
 		t.Fatal(err)
 	}
 	bh := cg.Height
 
+	// Get the allowance
+	rg, err := r.RenterGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowance := rg.Settings.Allowance
+	renewWindow := allowance.RenewWindow
+
 	// Mine blocks until we reach the renew window.
-	renewWindow := siatest.DefaultAllowance.RenewWindow
 	m := tg.Miners()[0]
-	for i := 0; i < int(eh-renewWindow-bh); i++ {
+	for ; bh < types.BlockHeight(eh-renewWindow); bh++ {
 		if err := m.MineBlock(); err != nil {
 			t.Fatal(err)
 		}
@@ -3196,6 +3204,18 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 		if err := m.MineBlock(); err != nil {
 			return err
 		}
+		// Get the allowance. The period might have changed.
+		rg, err = r.RenterGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		allowance = rg.Settings.Allowance
+
+		if sh < rg.CurrentPeriod {
+			// Contracts are expired right away
+			return siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
+		}
+		// Contracts are just disabled
 		return siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, len(tg.Hosts()), 0, 0)
 	})
 	if err != nil {
