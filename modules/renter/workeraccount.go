@@ -53,6 +53,16 @@ var (
 		Standard: 60 * time.Minute, // 1 hour
 		Testing:  10 * time.Second, // needs to be long even in testing
 	}).(time.Duration)
+
+	// accountIdleMaxWait defines the max amount of time that the worker will
+	// wait to reach an idle state before firing a build.Critical and giving up
+	// on becoming idle. Generally this will indicate that somewhere in the
+	// worker code there is a job that is not timing out correctly.
+	accountIdleMaxWait = build.Select(build.Var{
+		Dev:      10 * time.Minute,
+		Standard: 40 * time.Minute,
+		Testing:  20 * time.Second, // needs to be long even in testing
+	}).(time.Duration)
 )
 
 type (
@@ -147,6 +157,13 @@ func (a *account) availableBalance() types.Currency {
 		return total.Sub(a.pendingWithdrawals)
 	}
 	return types.ZeroCurrency
+}
+
+// callSetSyncAt will update the syncAt time for the account.
+func (a *account) callSetSyncAt(newSyncAt time.Time) {
+	a.mu.Lock()
+	a.syncAt = newSyncAt
+	a.mu.Unlock()
 }
 
 // managedAvailableBalance returns the amount of money that is available to
@@ -478,11 +495,20 @@ func (w *worker) managedSyncAccountBalanceToHost() {
 	}
 	start := time.Now()
 	for !isIdle() {
-		if time.Since(start) > time.Minute*40 {
+		if time.Since(start) > accountIdleMaxWait {
 			w.renter.log.Critical("worker has taken more than 40 minutes to go idle")
 		}
 		w.renter.tg.Sleep(accountIdleCheckFrequency)
 	}
+	// Do a check to ensure that the worker is still idle after the function is
+	// complete. This should help to catch any situation where the worker is
+	// spinning up new jobs, even though it is not supposed to be spinning up
+	// newe jobs while it is performing the sync operation.
+	defer func() {
+		if !isIdle() {
+			w.renter.log.Critical("worker appears to be spinning up new jobs during managedSyncAccountBalanceToHost")
+		}
+	}()
 
 	// Sanity check the account's deltas are zero, indicating there are no
 	// in-progress jobs
@@ -514,9 +540,7 @@ func (w *worker) managedSyncAccountBalanceToHost() {
 	// freeze them frequently.
 	waitTime := time.Duration(fastrand.Intn(accountSyncRandWaitMilliseconds)) * time.Millisecond
 	waitTime += accountSyncMinWaitTime
-	w.staticAccount.mu.Lock()
-	w.staticAccount.syncAt = time.Now().Add(waitTime)
-	w.staticAccount.mu.Unlock()
+	w.staticAccount.callSetSyncAt(time.Now().Add(waitTime))
 
 	// TODO perform a thorough balance comparison to decide whether the drift in
 	// the account balance is warranted. If not the host needs to be penalized
