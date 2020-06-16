@@ -167,19 +167,17 @@ func (mm *memoryManager) Request(amount uint64, priority bool) bool {
 	// increment the starvation tracker, because either this request will be
 	// granted or this request will be put in the queue to fire ahead of any low
 	// priority request currently in the queue.
+	mm.mu.Lock()
 	if priority && len(mm.fifo) != 0 {
 		mm.memSinceLowPriority += amount
 		mm.handleStarvation()
 	}
-
 	// Try to request the memory.
-	mm.mu.Lock()
 	shouldTry := len(mm.priorityFifo) == 0 && (priority || len(mm.fifo) == 0)
 	if shouldTry && mm.try(amount, priority) {
 		mm.mu.Unlock()
 		return true
 	}
-
 	// There is not enough memory available for this request, join the fifo.
 	myRequest := &memoryRequest{
 		amount: amount,

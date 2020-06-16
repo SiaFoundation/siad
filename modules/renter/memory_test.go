@@ -1,7 +1,11 @@
 package renter
 
 import (
+	"sync"
 	"testing"
+	"time"
+
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestMemoryManager checks that the memory management is working correctly.
@@ -409,4 +413,81 @@ func TestMemoryManager(t *testing.T) {
 	if mm.available != mm.base {
 		t.Error("test did not reset properly")
 	}
+}
+
+// TestMemoryManager checks that the memory management is working correctly.
+func TestMemoryManagerConcurrent(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// Mimic the default parameters.
+	stopChan := make(chan struct{})
+	mm := newMemoryManager(100, 25, stopChan)
+
+	// Spin up a bunch of threads to all request and release memory at the same
+	// time.
+	doMemory := func() {
+		for {
+			// Check if the thread has been killed.
+			select {
+			case <-stopChan:
+				return
+			default:
+			}
+
+			// Randomly request some amount of memory. Sometimes there will be
+			// overdrafts.
+			memNeeded := uint64(fastrand.Intn(110) + 1)
+			// Randomly set the priority of this memory.
+			priority := false
+			if fastrand.Intn(2) == 0 {
+				priority = true
+			}
+
+			// Perform the request.
+			if !mm.Request(memNeeded, priority) {
+				select {
+				case <-stopChan:
+					return
+				default:
+					t.Error("request failed even though the mm hasn't been shut down")
+				}
+				return
+			}
+
+			// Sit on the memory for some random (low) number of microseconds.
+			sleepTime := time.Microsecond * time.Duration(fastrand.Intn(1e3))
+			time.Sleep(sleepTime)
+
+			// Randomly decide whether to return all of the memory at once.
+			if fastrand.Intn(2) == 0 {
+				mm.Return(memNeeded)
+				continue
+			}
+			// Return random smaller amounts of memory.
+			for memNeeded > 0 {
+				returnAmt := uint64(fastrand.Intn(int(memNeeded))) + 1
+				memNeeded -= returnAmt
+				mm.Return(uint64(returnAmt))
+			}
+		}
+	}
+
+	// Spin up 20 threads to compete for memory.
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			doMemory()
+			wg.Done()
+		}()
+	}
+
+	// Sleep for 10 seconds to let the threads do their thing.
+	time.Sleep(time.Second * 10)
+
+	// Close out the memory and wait for all the threads to die.
+	close(stopChan)
+	wg.Wait()
 }
