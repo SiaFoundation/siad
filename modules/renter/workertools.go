@@ -103,16 +103,23 @@ func (w *worker) managedTryFixRevisionNumberMismatch() {
 	// the revision if necessary.
 	session, err := w.renter.hostContractor.Session(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
-		w.renter.log.Printf("could not fix revision number mismatch, could not retrieve a session with host %v, err: %v", w.staticHostPubKeyStr, err)
+		w.renter.log.Printf("could not fix revision number mismatch, could not retrieve a session with host %v, err: %v\n", w.staticHostPubKeyStr, err)
 		return
 	}
 
 	// Immediately close the session.
 	err = session.Close()
 	if err != nil {
-		w.renter.log.Printf("could not close session with host %v, err: %v", w.staticHostPubKeyStr, err)
+		w.renter.log.Printf("could not close session with host %v, err: %v\n", w.staticHostPubKeyStr, err)
 		return
 	}
+
+	// Log that we have attempted to fix a revision number mismatch on this
+	// host, note that this is temporary will be removed once we confirm these
+	// revision number syncs have affect.
+	//
+	// TODO: remove after verifying these fixes have an effect
+	w.renter.log.Printf("%v revision resync triggered\n", w.staticHostPubKeyStr)
 }
 
 // staticSetSuspectRevisionNumberMismatch sets the
