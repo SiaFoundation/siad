@@ -1,42 +1,80 @@
 package main
 
 import (
+	"fmt"
+	"reflect"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestParseFees tests the parseFees function to ensure expected return values
 func TestParseFees(t *testing.T) {
-	// Create fees
+	// Create AppUIDs
 	cheapApp := modules.AppUID("cheapApp")
 	expensiveApp := modules.AppUID("expensiveApp")
-	fees := []modules.AppFee{
+
+	// Create FeeUIDs
+	feeUID1 := modules.FeeUID("fee1")
+	feeUID2 := modules.FeeUID("fee2")
+	feeUID3 := modules.FeeUID("fee3")
+	feeUID4 := modules.FeeUID("fee4")
+
+	// Create Fee Amounts
+	feeAmount1 := types.NewCurrency64(fastrand.Uint64n(1000))
+	feeAmount2 := feeAmount1.Add(types.NewCurrency64(fastrand.Uint64n(1000)))
+	feeAmount3 := feeAmount2.Add(types.NewCurrency64(fastrand.Uint64n(1000)))
+
+	// Create Fees
+	cheapFee1 := modules.AppFee{
+		Amount: feeAmount1,
+		AppUID: cheapApp,
+		FeeUID: feeUID1,
+	}
+	cheapFee2 := modules.AppFee{
+		Amount: feeAmount2,
+		AppUID: cheapApp,
+		FeeUID: feeUID2,
+	}
+	expensiveFee1 := modules.AppFee{
+		Amount: feeAmount1,
+		AppUID: expensiveApp,
+		FeeUID: feeUID1,
+	}
+	expensiveFee2 := modules.AppFee{
+		Amount:       feeAmount2,
+		AppUID:       expensiveApp,
+		FeeUID:       feeUID2,
+		PayoutHeight: 100,
+	}
+	expensiveFee3 := modules.AppFee{
+		Amount: feeAmount2,
+		AppUID: expensiveApp,
+		FeeUID: feeUID3,
+	}
+	expensiveFee4 := modules.AppFee{
+		Amount: feeAmount3,
+		AppUID: expensiveApp,
+		FeeUID: feeUID4,
+	}
+
+	// Created unsorted list
+	fees := []modules.AppFee{cheapFee1, cheapFee2, expensiveFee1, expensiveFee2, expensiveFee3, expensiveFee4}
+	// Created expected sorted list
+	expectedOrder := []feeInfo{
 		{
-			Amount: types.NewCurrency64(200),
-			AppUID: cheapApp,
+			appUID:      expensiveApp,
+			fees:        []modules.AppFee{expensiveFee4, expensiveFee3, expensiveFee2, expensiveFee1},
+			totalAmount: feeAmount1.Add(feeAmount2.Add(feeAmount2.Add(feeAmount3))),
 		},
 		{
-			Amount: types.NewCurrency64(100),
-			AppUID: cheapApp,
-		},
-		{
-			Amount: types.NewCurrency64(100),
-			AppUID: expensiveApp,
-		},
-		{
-			Amount:       types.NewCurrency64(200),
-			AppUID:       expensiveApp,
-			PayoutHeight: 100,
-		},
-		{
-			Amount: types.NewCurrency64(200),
-			AppUID: expensiveApp,
-		},
-		{
-			Amount: types.NewCurrency64(300),
-			AppUID: expensiveApp,
+
+			appUID:      cheapApp,
+			fees:        []modules.AppFee{cheapFee2, cheapFee1},
+			totalAmount: feeAmount1.Add(feeAmount2),
 		},
 	}
 
@@ -44,47 +82,17 @@ func TestParseFees(t *testing.T) {
 	parsedFees, totalAmount := parseFees(fees)
 
 	// Check the total
-	var sumTotal types.Currency
-	for _, fee := range fees {
-		sumTotal = sumTotal.Add(fee.Amount)
-	}
-	if totalAmount.Cmp(sumTotal) != 0 {
-		t.Errorf("Expected total to be %v but was %v", sumTotal, totalAmount)
+	expectedTotal := expectedOrder[0].totalAmount.Add(expectedOrder[1].totalAmount)
+	if totalAmount.Cmp(expectedTotal) != 0 {
+		t.Errorf("Expected total to be %v but was %v", expectedTotal.HumanString(), totalAmount.HumanString())
 	}
 
 	// Check the sorting of the fees
-	for i := 0; i < len(parsedFees); i++ {
-		switch i {
-		case 0:
-			if parsedFees[i].appUID != expensiveApp {
-				t.Errorf("FeeInfos not sorted, expected AppUID of %v but got %v", expensiveApp, parsedFees[i].appUID)
-			}
-		case 1:
-			if parsedFees[i].appUID != cheapApp {
-				t.Errorf("FeeInfos not sorted, expected AppUID of %v but got %v", cheapApp, parsedFees[i].appUID)
-			}
-		default:
-			t.Errorf("Expected 2 fee infos but got %v", len(parsedFees))
-		}
-
-		pfFees := parsedFees[i].fees
-		prevAmount := pfFees[0].Amount
-		appFeeTotal := prevAmount
-		for j := 1; j < len(pfFees); j++ {
-			currentAmount := pfFees[j].Amount
-			if prevAmount.Cmp(currentAmount) < 0 {
-				t.Log("prevAmount", prevAmount)
-				t.Log("current amount", currentAmount)
-				t.Error("Fees not sorted by amount")
-			}
-			if prevAmount.Cmp(currentAmount) == 0 && pfFees[j].PayoutHeight > pfFees[j-1].PayoutHeight {
-				t.Errorf("Fees not sorted by PayoutHeight when Amounts are equal; Current %v Previous %v", pfFees[j].PayoutHeight, pfFees[j-1].PayoutHeight)
-			}
-			prevAmount = currentAmount
-			appFeeTotal = appFeeTotal.Add(currentAmount)
-		}
-		if parsedFees[i].totalAmount.Cmp(appFeeTotal) != 0 {
-			t.Errorf("Expected total to be %v but was %v", appFeeTotal, parsedFees[i].totalAmount)
-		}
+	if !reflect.DeepEqual(parsedFees, expectedOrder) {
+		fmt.Println("Expected Order:")
+		siatest.PrintJSON(expectedOrder)
+		fmt.Println("Parsed Order:")
+		siatest.PrintJSON(parsedFees)
+		t.Fatal("Fees not sorted as expected")
 	}
 }

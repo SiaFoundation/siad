@@ -148,22 +148,25 @@ func parseFees(fees []modules.AppFee) ([]feeInfo, types.Currency) {
 		appToFeesMap[fee.AppUID] = fi
 	}
 
-	// Covert map to slice for sorting
+	// Convert the map to a slice and sort
 	var feeInfos []feeInfo
 	for _, fi := range appToFeesMap {
-		// Sort to slice of fees for each AppUID
-		sort.Slice(fi.fees, func(i, j int) bool {
+		// Sort the slice of fees for each AppUID in descending order by the Amount.
+		// If the Amount for two fees is the same then sort by PayoutHeight so that
+		// the fees are ordered by when they would be charged.
+		sort.SliceStable(fi.fees, func(i, j int) bool {
 			cmp := fi.fees[i].Amount.Cmp(fi.fees[j].Amount)
 			if cmp == 0 {
-				return fi.fees[i].PayoutHeight > fi.fees[j].PayoutHeight
+				return fi.fees[i].PayoutHeight < fi.fees[j].PayoutHeight
 			}
 			return cmp > 0
 		})
 		feeInfos = append(feeInfos, fi)
 	}
 
-	// Sort Slice and return
-	sort.Slice(feeInfos, func(i, j int) bool {
+	// Sort the slice of feeInfos by the total amount is descending order and
+	// return
+	sort.SliceStable(feeInfos, func(i, j int) bool {
 		cmp := feeInfos[i].totalAmount.Cmp(feeInfos[j].totalAmount)
 		return cmp > 0
 	})
