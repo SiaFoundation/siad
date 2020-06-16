@@ -96,6 +96,9 @@ func (w *worker) managedTryFixRevisionNumberMismatch() {
 	// Make sure to unset the flag.
 	defer atomic.StoreUint64(&w.atomicSuspectRevisionNumberMismatch, 0)
 
+	// TODO: add an endpoint to RHP3 to get the host's revision number, rather
+	// than having to initialize a session to accomplish this
+
 	// Initiate a session, this performs a handshake with the host and syncs up
 	// the revision if necessary.
 	session, err := w.renter.hostContractor.Session(w.staticHostPubKey, w.renter.tg.StopChan())
