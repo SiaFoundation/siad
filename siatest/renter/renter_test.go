@@ -3219,9 +3219,23 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 		if err := m.MineBlock(); err != nil {
 			return err
 		}
+		return siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, len(tg.Hosts()), 0, 0)
+	})
+	if err != nil {
+		r.PrintDebugInfo(t, true, true, true)
+		t.Fatal(err)
+	}
+
+	// Mine blocks until after the renew window. The disabled contracts should
+	// become expired.
+	err = build.Retry(2*int(renewWindow), 100*time.Millisecond, func() error {
+		if err := m.MineBlock(); err != nil {
+			return err
+		}
 		return siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
 	})
 	if err != nil {
+		r.PrintDebugInfo(t, true, true, true)
 		t.Fatal(err)
 	}
 
