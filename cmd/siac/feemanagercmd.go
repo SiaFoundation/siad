@@ -28,10 +28,12 @@ var (
 )
 
 // feeInfo is a helper struct for gathering some information about the fees
+//
+// NOTE: fields are exported so that json.MarshalIndent can be used
 type feeInfo struct {
-	appUID      modules.AppUID
-	fees        []modules.AppFee
-	totalAmount types.Currency
+	AppUID      modules.AppUID
+	Fees        []modules.AppFee
+	TotalAmount types.Currency
 }
 
 // feemanagercmd prints out the basic information about the FeeManager and lists
@@ -71,7 +73,7 @@ func feemanagercmd() {
 	fmt.Fprintln(w, "\nPending Fees:")
 	fmt.Fprintln(w, "  AppUID\tFeeUID\tAmount\tRecurring\tPayout Height\tTxn Created")
 	for _, feeInfo := range fees {
-		for _, fee := range feeInfo.fees {
+		for _, fee := range feeInfo.Fees {
 			fmt.Fprintf(w, "  %v\t%v\t%v\t%v\t%v\t%v\n",
 				fee.AppUID, fee.FeeUID, fee.Amount.HumanString(), fee.Recurring, fee.PayoutHeight, fee.TransactionCreated)
 		}
@@ -104,7 +106,7 @@ func feemanagercmd() {
 	fmt.Fprintf(w, "  Total Amount Paid:\t%v\n", paidTotal.HumanString())
 	fmt.Fprintln(w, "  AppUID\tFeeUID\tAmount\tPayout Height")
 	for _, feeInfo := range fees {
-		for _, fee := range feeInfo.fees {
+		for _, fee := range feeInfo.Fees {
 			fmt.Fprintf(w, "  %v\t%v\t%v\t%v\n",
 				fee.AppUID, fee.FeeUID, fee.Amount.HumanString(), fee.PayoutHeight)
 		}
@@ -136,13 +138,13 @@ func parseFees(fees []modules.AppFee) ([]feeInfo, types.Currency) {
 		// Grab the entry from the map or create it
 		fi, ok := appToFeesMap[fee.AppUID]
 		if !ok {
-			fi = feeInfo{appUID: fee.AppUID}
+			fi = feeInfo{AppUID: fee.AppUID}
 		}
 
 		// Update the totalAmount and the entry information
 		totalAmount = totalAmount.Add(fee.Amount)
-		fi.totalAmount = fi.totalAmount.Add(fee.Amount)
-		fi.fees = append(fi.fees, fee)
+		fi.TotalAmount = fi.TotalAmount.Add(fee.Amount)
+		fi.Fees = append(fi.Fees, fee)
 
 		// Update Map
 		appToFeesMap[fee.AppUID] = fi
@@ -152,22 +154,23 @@ func parseFees(fees []modules.AppFee) ([]feeInfo, types.Currency) {
 	var feeInfos []feeInfo
 	for _, fi := range appToFeesMap {
 		// Sort the slice of fees for each AppUID in descending order by the Amount.
-		// If the Amount for two fees is the same then sort by PayoutHeight so that
-		// the fees are ordered by when they would be charged.
-		sort.SliceStable(fi.fees, func(i, j int) bool {
-			cmp := fi.fees[i].Amount.Cmp(fi.fees[j].Amount)
+		// If the Amount for two fees is the same then sort by PayoutHeight in
+		// ascending order so that the fees are ordered by when they would be
+		// charged.
+		sort.SliceStable(fi.Fees, func(i, j int) bool {
+			cmp := fi.Fees[i].Amount.Cmp(fi.Fees[j].Amount)
 			if cmp == 0 {
-				return fi.fees[i].PayoutHeight < fi.fees[j].PayoutHeight
+				return fi.Fees[i].PayoutHeight < fi.Fees[j].PayoutHeight
 			}
 			return cmp > 0
 		})
 		feeInfos = append(feeInfos, fi)
 	}
 
-	// Sort the slice of feeInfos by the total amount is descending order and
+	// Sort the slice of feeInfos by the total amount in descending order and
 	// return
 	sort.SliceStable(feeInfos, func(i, j int) bool {
-		cmp := feeInfos[i].totalAmount.Cmp(feeInfos[j].totalAmount)
+		cmp := feeInfos[i].TotalAmount.Cmp(feeInfos[j].TotalAmount)
 		return cmp > 0
 	})
 	return feeInfos, totalAmount

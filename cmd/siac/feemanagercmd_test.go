@@ -61,20 +61,20 @@ func TestParseFees(t *testing.T) {
 		FeeUID: feeUID4,
 	}
 
-	// Created unsorted list
+	// Create unsorted list
 	fees := []modules.AppFee{cheapFee1, cheapFee2, expensiveFee1, expensiveFee2, expensiveFee3, expensiveFee4}
-	// Created expected sorted list
+	// Create expected sorted list
 	expectedOrder := []feeInfo{
 		{
-			appUID:      expensiveApp,
-			fees:        []modules.AppFee{expensiveFee4, expensiveFee3, expensiveFee2, expensiveFee1},
-			totalAmount: feeAmount1.Add(feeAmount2.Add(feeAmount2.Add(feeAmount3))),
+			AppUID:      expensiveApp,
+			Fees:        []modules.AppFee{expensiveFee4, expensiveFee3, expensiveFee2, expensiveFee1},
+			TotalAmount: feeAmount1.Add(feeAmount2.Add(feeAmount2.Add(feeAmount3))),
 		},
 		{
 
-			appUID:      cheapApp,
-			fees:        []modules.AppFee{cheapFee2, cheapFee1},
-			totalAmount: feeAmount1.Add(feeAmount2),
+			AppUID:      cheapApp,
+			Fees:        []modules.AppFee{cheapFee2, cheapFee1},
+			TotalAmount: feeAmount1.Add(feeAmount2),
 		},
 	}
 
@@ -82,7 +82,7 @@ func TestParseFees(t *testing.T) {
 	parsedFees, totalAmount := parseFees(fees)
 
 	// Check the total
-	expectedTotal := expectedOrder[0].totalAmount.Add(expectedOrder[1].totalAmount)
+	expectedTotal := expectedOrder[0].TotalAmount.Add(expectedOrder[1].TotalAmount)
 	if totalAmount.Cmp(expectedTotal) != 0 {
 		t.Errorf("Expected total to be %v but was %v", expectedTotal.HumanString(), totalAmount.HumanString())
 	}
