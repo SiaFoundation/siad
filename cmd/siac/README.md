@@ -278,19 +278,30 @@ func TestGroup() {
 
 ## Test Inputs
 
-Some of the siac tests do not require running instance of siad, such as testing
-unknown siac subcommand or unknown command/subcommand flag, because these error
-cases are handled by Cobra library itself, but most of the siac tests require
-running instance of siad to execute the tests against. This siad instance can
-be created using `newTestNode()` in the test group.
+The most of the siac tests require running instance of `siad` to execute the
+tests against. A new instance of `siad` can be created using `newTestNode`.
+Note that some of the `siac` tests don't require running an instance of `siad`.
+This is the case when we're testing unknown `siac` subcommand or an unknown
+command/subcommand flag for example, because these error cases are handled by
+Cobra library itself.
 
-Before testing siac Cobra command(s), siac Cobra command with its subcommans
+Before testing siac Cobra command(s), siac Cobra command with its subcommands
 and flags must be built and initialized. This is done by
 `getRootCmdForSiacCmdsTests()` helper function.
 
 ## Subtests
 
-Subtests are defined using `siacCmdSubTest` struct, this struct has 5 fields:
+Subtests are defined using `siacCmdSubTest` struct:
+
+```
+type siacCmdSubTest struct {
+	name               string
+	test               siacCmdTestFn
+	cmd                *cobra.Command
+	cmdStrs            []string
+	expectedOutPattern string
+}
+```
 
 ### name
 

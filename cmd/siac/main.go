@@ -114,15 +114,18 @@ func wrap(fn interface{}) func(*cobra.Command, []string) {
 	}
 }
 
-// die prints its arguments to stderr, in production exits the
-// program with the default error code, during tests it continues so that tests
-// can check printed errors
+// die prints its arguments to stderr, in production exits the program with the
+// default error code, during tests it passes panic so that tests can catch the
+// panic and check printed errors
 func die(args ...interface{}) {
 	fmt.Fprintln(os.Stderr, args...)
 
-	// in production usage exit
 	if build.Release != "testing" {
+		// In production exit
 		os.Exit(exitCodeGeneral)
+	} else {
+		// In testing pass panic that can be catched and the test can continue
+		panic(errors.New("Die panic for testing"))
 	}
 }
 
@@ -139,7 +142,6 @@ func statuscmd() {
 		fmt.Printf("Consensus:\n  Status: %s\n\n", moduleNotReadyStatus)
 	} else if err != nil {
 		die("Could not get consensus status:", err)
-		return
 	} else {
 		fmt.Printf(`Consensus:
   Synced: %v
@@ -155,7 +157,6 @@ func statuscmd() {
 		fmt.Printf("Wallet:\n  Status: %s\n\n", moduleNotReadyStatus)
 	} else if err != nil {
 		die("Could not get wallet status:", err)
-		return
 	} else if walletStatus.Unlocked {
 		fmt.Printf(`Wallet:
   Status:          unlocked
@@ -174,7 +175,6 @@ func statuscmd() {
 	err = renterFilesAndContractSummary()
 	if err != nil {
 		die(err)
-		return
 	}
 
 	if !statusVerbose {
@@ -185,7 +185,6 @@ func statuscmd() {
 	dg, err := httpClient.DaemonSettingsGet()
 	if err != nil {
 		die("Could not get daemon:", err)
-		return
 	}
 	fmt.Printf(`
 Global `)
@@ -195,7 +194,6 @@ Global `)
 	gg, err := httpClient.GatewayGet()
 	if err != nil {
 		die("Could not get gateway:", err)
-		return
 	}
 	fmt.Printf(`
 Gateway `)
@@ -205,7 +203,6 @@ Gateway `)
 	rg, err := httpClient.RenterGet()
 	if err != nil {
 		die("Error getting renter:", err)
-		return
 	}
 	fmt.Printf(`
 Renter `)

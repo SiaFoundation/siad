@@ -29,11 +29,14 @@ type outputCatcher struct {
 // when subtests need command to run and expected output
 type siacCmdSubTest struct {
 	name               string
-	test               func(*testing.T, *cobra.Command, []string, string)
+	test               siacCmdTestFn
 	cmd                *cobra.Command
 	cmdStrs            []string
 	expectedOutPattern string
 }
+
+// siacCmdTestFn is a type of function to pass to siacCmdSubTest
+type siacCmdTestFn func(*testing.T, *cobra.Command, []string, string)
 
 // subTest is a helper struct for running subtests when tests can use the same
 // test http client
@@ -54,6 +57,16 @@ func escapeRegexChars(s string) string {
 
 // executeSiacCommand is a pass-through function to execute siac cobra command
 func executeSiacCommand(root *cobra.Command, args ...string) (output string, err error) {
+	// Recover from expected die() panic, rethrow any not expected panic
+	defer func() {
+		if rec := recover(); rec != nil {
+			// We are recovering from panic
+			if err, ok := rec.(error); !ok || err.Error() != errors.New("Die panic for testing").Error() {
+				// This is not our expected die() panic, rethrow panic
+				panic(rec)
+			}
+		}
+	}()
 	_, output, err = executeSiacCommandC(root, args...)
 	return output, err
 }
@@ -82,7 +95,7 @@ func getRootCmdForSiacCmdsTests(dir string) *cobra.Command {
 	return root
 }
 
-// startCatchingStdoutStderr starts catching stdout and stderr in tests
+// newOutputCatcher starts catching stdout and stderr in tests
 func newOutputCatcher() (outputCatcher, error) {
 	// redirect stdout, stderr
 	origStdout := os.Stdout
