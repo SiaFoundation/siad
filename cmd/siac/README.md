@@ -254,9 +254,6 @@ generate command line commands (and subcommands) interface. In
 using `initCmds()`, siac/siad node instance specific flags of siac commands are
 initialized using `initClient(...)`.
 
-Each siac Cobra command handler must be prepared for testing. For details see
-[below](#preparation-of-command-handler-for-cobra-Output-tests).
-
 ## Test Group Structure
 
 Pseudo code example of a test group:
@@ -440,17 +437,3 @@ func TestRootSiacCmd(t *testing.T) {
     ...
 }
 ```
-
-## Preparation of Command Handler for Cobra Output Tests
-
-Originally when a siac command handler (e.g. `statuscmd` in `cmd/siac/main.go`
-for root siac command or `rentercmd` in `cmd/siac/rentercmd.go` for
-`siac renter` subcommand) encounteres error case, the `die()` function is
-called from the command handler, error is logged to Stderr and siac exits using
-`os.Exit()`. Checking of errors (command line output) in tests is not possible.
-
-Thus `die` function have been updated for testing and during testing it doesn't
-exits, but returns. We then have to update the tested command handler (e.g.
-`statuscmd` is done already) to `return` from command handler after each `die`
-call. This allows the tests to continue, and to capture and check expected
-errors.
