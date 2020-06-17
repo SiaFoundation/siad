@@ -25,6 +25,10 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 	if _, exists := subMeta.Subfiles[fullFilePath]; !exists {
 		t.Fatal(`Expected to find a file by its directory, even when followed by a "/".`)
 	}
+	subMeta, _, _, _ = fullMeta.ForPath("foo/")
+	if _, exists := subMeta.Subfiles[fullFilePath]; !exists {
+		t.Fatal(`Expected to find a file by its directory, even when followed by a "/".`)
+	}
 	// Find files by their directory, even if it's missing its leading slash.
 	// This is a regression test.
 	subMeta, _, _, _ = fullMeta.ForPath("foo")
