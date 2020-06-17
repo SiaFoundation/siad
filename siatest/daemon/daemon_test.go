@@ -324,7 +324,7 @@ func TestDaemonConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// All the Modules should be set to true expect the Explorer
+	// All the Modules should be set to false except the Gateway
 	if dsg.Modules.Consensus {
 		t.Error("Consensus should be set as false")
 	}
