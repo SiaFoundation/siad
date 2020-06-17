@@ -866,10 +866,10 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 		staticRC:         rc,
 	}
 	// Compatv144 fix missing void output.
-	cs.staticMu.Lock()
+	cs.mu.Lock()
 	cs.contracts[sc.header.ID()] = sc
 	cs.pubKeys[h.HostPublicKey().String()] = sc.header.ID()
-	cs.staticMu.Unlock()
+	cs.mu.Unlock()
 	return sc.Metadata(), nil
 }
 

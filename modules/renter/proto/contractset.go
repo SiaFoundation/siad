@@ -26,7 +26,7 @@ type ContractSet struct {
 	pubKeys    map[string]types.FileContractID
 	staticDeps modules.Dependencies
 	staticDir  string
-	staticMu   sync.Mutex
+	mu         sync.Mutex
 	staticRL   *ratelimit.RateLimit
 	staticWal  *writeaheadlog.WAL
 }
@@ -35,18 +35,18 @@ type ContractSet struct {
 // returning it. If the contract is not present in the set, Acquire returns
 // false and a zero-valued RenterContract.
 func (cs *ContractSet) Acquire(id types.FileContractID) (*SafeContract, bool) {
-	cs.staticMu.Lock()
+	cs.mu.Lock()
 	safeContract, ok := cs.contracts[id]
-	cs.staticMu.Unlock()
+	cs.mu.Unlock()
 	if !ok {
 		return nil, false
 	}
 	safeContract.revisionMu.Lock()
 	// We need to check if the contract is still in the map or if it has been
 	// deleted in the meantime.
-	cs.staticMu.Lock()
+	cs.mu.Lock()
 	_, ok = cs.contracts[id]
-	cs.staticMu.Unlock()
+	cs.mu.Unlock()
 	if !ok {
 		safeContract.revisionMu.Unlock()
 		return nil, false
@@ -58,16 +58,16 @@ func (cs *ContractSet) Acquire(id types.FileContractID) (*SafeContract, bool) {
 // previously acquired by Acquire. If the contract is not present in the set,
 // Delete is a no-op.
 func (cs *ContractSet) Delete(c *SafeContract) {
-	cs.staticMu.Lock()
+	cs.mu.Lock()
 	_, ok := cs.contracts[c.header.ID()]
 	if !ok {
-		cs.staticMu.Unlock()
+		cs.mu.Unlock()
 		build.Critical("Delete called on already deleted contract")
 		return
 	}
 	delete(cs.contracts, c.header.ID())
 	delete(cs.pubKeys, c.header.HostPublicKey().String())
-	cs.staticMu.Unlock()
+	cs.mu.Unlock()
 	c.revisionMu.Unlock()
 	// delete contract file
 	headerPath := filepath.Join(cs.staticDir, c.header.ID().String()+contractHeaderExtension)
@@ -81,8 +81,8 @@ func (cs *ContractSet) Delete(c *SafeContract) {
 // IDs returns the fcid of each contract with in the set. The contracts are not
 // locked.
 func (cs *ContractSet) IDs() []types.FileContractID {
-	cs.staticMu.Lock()
-	defer cs.staticMu.Unlock()
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
 	pks := make([]types.FileContractID, 0, len(cs.contracts))
 	for fcid := range cs.contracts {
 		pks = append(pks, fcid)
@@ -108,8 +108,8 @@ func (cs *ContractSet) InsertContract(rc modules.RecoverableContract, revTxn typ
 
 // Len returns the number of contracts in the set.
 func (cs *ContractSet) Len() int {
-	cs.staticMu.Lock()
-	defer cs.staticMu.Unlock()
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
 	return len(cs.contracts)
 }
 
@@ -117,13 +117,13 @@ func (cs *ContractSet) Len() int {
 // must have been previously acquired by Acquire. If the contract is not
 // present in the set, Return panics.
 func (cs *ContractSet) Return(c *SafeContract) {
-	cs.staticMu.Lock()
+	cs.mu.Lock()
 	_, ok := cs.contracts[c.header.ID()]
 	if !ok {
-		cs.staticMu.Unlock()
+		cs.mu.Unlock()
 		build.Critical("no contract with that key")
 	}
-	cs.staticMu.Unlock()
+	cs.mu.Unlock()
 	c.revisionMu.Unlock()
 }
 
@@ -144,8 +144,8 @@ func (cs *ContractSet) SetRateLimits(readBPS int64, writeBPS int64, packetSize u
 // to nil for safety reasons. If the contract is not present in the set, View
 // returns false and a zero-valued RenterContract.
 func (cs *ContractSet) View(id types.FileContractID) (modules.RenterContract, bool) {
-	cs.staticMu.Lock()
-	defer cs.staticMu.Unlock()
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
 	safeContract, ok := cs.contracts[id]
 	if !ok {
 		return modules.RenterContract{}, false
@@ -156,8 +156,8 @@ func (cs *ContractSet) View(id types.FileContractID) (modules.RenterContract, bo
 // ViewAll returns the metadata of each contract in the set. The contracts are
 // not locked.
 func (cs *ContractSet) ViewAll() []modules.RenterContract {
-	cs.staticMu.Lock()
-	defer cs.staticMu.Unlock()
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
 	contracts := make([]modules.RenterContract, 0, len(cs.contracts))
 	for _, safeContract := range cs.contracts {
 		contracts = append(contracts, safeContract.Metadata())
