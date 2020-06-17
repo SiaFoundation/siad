@@ -2381,6 +2381,7 @@ func TestExtendPeriod(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	startheight := rc.Contracts[0].StartHeight
 	endheight := rc.Contracts[0].EndHeight
 
 	// Increase the allowance so that the endheights are well within period
@@ -2407,6 +2408,16 @@ func TestExtendPeriod(t *testing.T) {
 	err = build.Retry(int(allowance.RenewWindow), time.Second, func() error {
 		if err := miner.MineBlock(); err != nil {
 			return err
+		}
+		rg, err := renter.RenterGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		allowance = rg.Settings.Allowance
+
+		if startheight < rg.CurrentPeriod {
+			// Contracts are expired right away
+			return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
 		}
 		return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, len(tg.Hosts()), 0, 0)
 	})
