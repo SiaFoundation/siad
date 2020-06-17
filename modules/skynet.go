@@ -33,6 +33,10 @@ type SkyfileSubfiles map[string]SkyfileSubfileMetadata
 // given path, so if a directory is requested, the subfiles in that directory
 // will start at offset 0, relative to the path.
 func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, uint64) {
+	// All paths must be absolute.
+	if !strings.HasPrefix(path, "/") {
+		path = fmt.Sprintf("/%s", path)
+	}
 	metadata := SkyfileMetadata{
 		Filename: path,
 		Subfiles: make(SkyfileSubfiles),
