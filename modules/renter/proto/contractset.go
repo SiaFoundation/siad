@@ -167,6 +167,8 @@ func (cs *ContractSet) ViewAll() []modules.RenterContract {
 
 // Close closes all contracts in a contract set, this means rendering it unusable for I/O
 func (cs *ContractSet) Close() error {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
 	for _, c := range cs.contracts {
 		c.staticHeaderFile.Close()
 	}
