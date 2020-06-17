@@ -61,7 +61,7 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	if len(metadata.Subfiles) == 0 {
 		dir = true
 
-		if strings.HasSuffix(path, "/") {
+		if !strings.HasSuffix(path, "/") {
 			path = fmt.Sprintf("%s/", path)
 		}
 		for _, sf := range sm.Subfiles {
