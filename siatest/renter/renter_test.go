@@ -3244,6 +3244,7 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 				return err
 			}
 		}
+		tries++
 		// Get the transaction which are related to the renter since we started
 		// the renter.
 		txns, err := r.WalletTransactionsGet(0, ^types.BlockHeight(0))
