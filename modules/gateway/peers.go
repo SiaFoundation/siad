@@ -289,7 +289,7 @@ func (g *Gateway) acceptPeer(p *peer) {
 
 		// Prefer kicking a peer with the same hostname.
 		if addr.Host() == p.NetAddress.Host() {
-			preferredAddrs = []modules.NetAddress{addr}
+			preferredAddrs = append(preferredAddrs, addr)
 			continue
 		}
 		addrs = append(addrs, addr)
