@@ -52,8 +52,28 @@ func TestRevisionNumberSync(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// if we reach this point we have verified the attempted revision fix took
-	// place and was successful
+	// now sleep until we have updated the price table
+	time.Sleep(time.Until(w.staticPriceTable().staticUpdateTime))
+	time.Sleep(3 * time.Second)
+
+	// verify the host returned an error caused by a revision mismatch
+	if !errCausedByRevisionMismatch(w.staticPriceTable().staticRecentErr) {
+		t.Fatal("Expected host to have returned an error caused by revision mismatch")
+	}
+
+	// wait until we have a valid pricetable
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if !w.staticPriceTable().staticValid() {
+			return errors.New("price table not updated yet")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// if we reach this point we have verified that the host returns a revision
+	// mismatch error and that we can successfully recover from it
 }
 
 // TestSuspectRevisionNumberMismatchFlag is a small unit test that verifes the

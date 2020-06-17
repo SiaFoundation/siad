@@ -299,7 +299,6 @@ func (w *worker) threadedWorkLoop() {
 		if !w.managedBlockUntilReady() {
 			return
 		}
-		w.staticTryUpdateCache()
 
 		// Try and fix a revision number mismatch if the flag is set. This will
 		// be the case if other processes errored out with an error indicating a
@@ -307,6 +306,11 @@ func (w *worker) threadedWorkLoop() {
 		if w.staticSuspectRevisionNumberMismatch() {
 			w.managedTryFixRevisionNumberMismatch()
 		}
+
+		// Update the worker cache object, note that we do this after trying to
+		// sync the revision as that might influence the contract, which is used
+		// to build the cache object.
+		w.staticTryUpdateCache()
 
 		// Attempt to launch a serial job. If there is already a job running,
 		// this will no-op. If no job is running, a goroutine will be spun up
