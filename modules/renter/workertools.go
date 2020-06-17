@@ -115,11 +115,7 @@ func (w *worker) managedTryFixRevisionNumberMismatch() {
 		return
 	}
 
-	// Log that we have attempted to fix a revision number mismatch on this
-	// host, note that this is temporary will be removed once we confirm these
-	// revision number syncs have affect.
-	//
-	// TODO: remove after verifying these fixes have an effect
+	// Log that we have attempted to fix a revision number mismatch.
 	w.renter.log.Printf("%v revision resync triggered\n", w.staticHostPubKeyStr)
 }
 
