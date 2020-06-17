@@ -838,7 +838,7 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 		return nil, errors.AddContext(err, "unable to get a session lock")
 	}
 
-	// Resynchronize if necessary
+	// Resynchronize
 	syncAttempted, err := sc.managedSyncRevision(rev, sigs)
 	if logger != nil && syncAttempted {
 		logger.Printf("%v revision resync attempted, success: %v, err: %v\n", host.PublicKey.String(), err == nil, err)

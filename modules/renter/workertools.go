@@ -50,7 +50,8 @@ func errCausedByRevisionMismatch(err error) bool {
 	return err != nil &&
 		(strings.Contains(err.Error(), "bad revision number") ||
 			strings.Contains(err.Error(), "unexpected number of outputs") ||
-			strings.Contains(err.Error(), "high paying renter valid output"))
+			strings.Contains(err.Error(), "high paying renter valid output") ||
+			strings.Contains(err.Error(), "low paying host missed output"))
 }
 
 // Download will fetch data from a host, first checking any price protections
