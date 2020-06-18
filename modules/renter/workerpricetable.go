@@ -2,6 +2,7 @@ package renter
 
 import (
 	"encoding/json"
+	"fmt"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -10,6 +11,15 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 
 	"gitlab.com/NebulousLabs/errors"
+)
+
+const (
+	// priceTableHostBlockHeightLeeWay is the amount of leeway we will allow
+	// in the host's blockheight field on the price table. If the host sends us
+	// a block height that's lower than ours by more than the leeway, we will
+	// reject that price table. In the future we might penalize te host for
+	// this, but for the time being we do not.
+	priceTableHostBlockHeightLeeWay = 3
 )
 
 type (
@@ -175,8 +185,18 @@ func (w *worker) staticUpdatePriceTable() {
 	// unreasonable levels. If the host did, the renter will reject the price
 	// table and effectively disable the worker.
 
+	// If the host's blockheight is lower than ours, we verify that it's within
+	// an acceptable range. We do this because we use the host's height if we
+	// are not synced yet and we would not want to blindly accept any height as
+	// the host might cheat us into paying more for storage
+	cache := w.staticCache()
+	if cache.staticBlockHeight >= priceTableHostBlockHeightLeeWay && pt.HostBlockHeight < cache.staticBlockHeight-priceTableHostBlockHeightLeeWay {
+		err = fmt.Errorf("host blockheight is considered too far off our own blockheight, host height: %v our height: %v", pt.HostBlockHeight, cache.staticBlockHeight)
+		return
+	}
+
 	// provide payment
-	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
+	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, w.staticAccount.staticID, cache.staticBlockHeight)
 	if err != nil {
 		err = errors.AddContext(err, "unable to provide payment")
 		return
