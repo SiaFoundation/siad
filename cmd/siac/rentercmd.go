@@ -281,7 +281,7 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 
 	renterWorkersPriceTableCmd = &cobra.Command{
 		Use:   "pt",
-		Short: "Viedw the worker's price table",
+		Short: "View the worker's price table",
 		Long:  "View detailed information of the worker's price table",
 		Run:   wrap(renterworkersptcmd),
 	}
