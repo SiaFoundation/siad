@@ -2,5 +2,5 @@
 
 package build
 
-// Release refers to the standard release mode
+// Release refers to the standard release mode.
 const Release = "standard"

@@ -2,6 +2,7 @@ package proto
 
 import (
 	"bytes"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -10,9 +11,9 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -30,16 +31,7 @@ func (d *dependencyInterruptContractInsertion) Disrupt(s string) bool {
 // TestContractUncommittedTxn tests that if a contract revision is left in an
 // uncommitted state, either version of the contract can be recovered.
 func TestContractUncommittedTxn(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-	// create contract set with one contract
-	dir := build.TempDir(filepath.Join("proto", t.Name()))
-	cs, err := NewContractSet(dir, modules.ProdDependencies)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// initial header every subtests starts out with.
 	initialHeader := contractHeader{
 		Transaction: types.Transaction{
 			FileContractRevisions: []types.FileContractRevision{{
@@ -51,6 +43,96 @@ func TestContractUncommittedTxn(t *testing.T) {
 			}},
 		},
 	}
+
+	// Test RecordAppendIntent.
+	t.Run("RecordAppendIntent", func(t *testing.T) {
+		updateFunc := func(sc *SafeContract) (*unappliedWalTxn, []crypto.Hash, contractHeader, error) {
+			revisedHeader := contractHeader{
+				Transaction: types.Transaction{
+					FileContractRevisions: []types.FileContractRevision{{
+						NewRevisionNumber:    2,
+						NewValidProofOutputs: []types.SiacoinOutput{{}, {}},
+						UnlockConditions: types.UnlockConditions{
+							PublicKeys: []types.SiaPublicKey{{}, {}},
+						},
+					}},
+				},
+				StorageSpending: types.NewCurrency64(7),
+				UploadSpending:  types.NewCurrency64(17),
+			}
+			revisedRoots := []crypto.Hash{{1}, {2}}
+			fcr := revisedHeader.Transaction.FileContractRevisions[0]
+			newRoot := revisedRoots[1]
+			storageCost := revisedHeader.StorageSpending.Sub(initialHeader.StorageSpending)
+			bandwidthCost := revisedHeader.UploadSpending.Sub(initialHeader.UploadSpending)
+			txn, err := sc.managedRecordAppendIntent(fcr, newRoot, storageCost, bandwidthCost)
+			return txn, revisedRoots, revisedHeader, err
+		}
+		testContractUncomittedTxn(t, initialHeader, updateFunc)
+	})
+	// Test RecordDownloadIntent.
+	t.Run("RecordDownloadIntent", func(t *testing.T) {
+		updateFunc := func(sc *SafeContract) (*unappliedWalTxn, []crypto.Hash, contractHeader, error) {
+			revisedHeader := contractHeader{
+				Transaction: types.Transaction{
+					FileContractRevisions: []types.FileContractRevision{{
+						NewRevisionNumber:    2,
+						NewValidProofOutputs: []types.SiacoinOutput{{}, {}},
+						UnlockConditions: types.UnlockConditions{
+							PublicKeys: []types.SiaPublicKey{{}, {}},
+						},
+					}},
+				},
+				StorageSpending:  types.ZeroCurrency,
+				DownloadSpending: types.NewCurrency64(17),
+			}
+			revisedRoots := []crypto.Hash{{1}}
+			fcr := revisedHeader.Transaction.FileContractRevisions[0]
+			bandwidthCost := revisedHeader.DownloadSpending.Sub(initialHeader.DownloadSpending)
+			txn, err := sc.managedRecordDownloadIntent(fcr, bandwidthCost)
+			return txn, revisedRoots, revisedHeader, err
+		}
+		testContractUncomittedTxn(t, initialHeader, updateFunc)
+	})
+	// Test RecordClearContractIntent.
+	t.Run("RecordClearContractIntent", func(t *testing.T) {
+		updateFunc := func(sc *SafeContract) (*unappliedWalTxn, []crypto.Hash, contractHeader, error) {
+			revisedHeader := contractHeader{
+				Transaction: types.Transaction{
+					FileContractRevisions: []types.FileContractRevision{{
+						NewRevisionNumber:    2,
+						NewValidProofOutputs: []types.SiacoinOutput{{}, {}},
+						UnlockConditions: types.UnlockConditions{
+							PublicKeys: []types.SiaPublicKey{{}, {}},
+						},
+					}},
+				},
+				StorageSpending: types.ZeroCurrency,
+				UploadSpending:  types.NewCurrency64(17),
+			}
+			revisedRoots := []crypto.Hash{{1}}
+			fcr := revisedHeader.Transaction.FileContractRevisions[0]
+			bandwidthCost := revisedHeader.UploadSpending.Sub(initialHeader.UploadSpending)
+			txn, err := sc.managedRecordClearContractIntent(fcr, bandwidthCost)
+			return txn, revisedRoots, revisedHeader, err
+		}
+		testContractUncomittedTxn(t, initialHeader, updateFunc)
+	})
+}
+
+// testContractUncommittedTxn tests that if a contract revision is left in an
+// uncommitted state, either version of the contract can be recovered.
+func testContractUncomittedTxn(t *testing.T, initialHeader contractHeader, updateFunc func(*SafeContract) (*unappliedWalTxn, []crypto.Hash, contractHeader, error)) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// create contract set with one contract
+	dir := build.TempDir(filepath.Join("proto", t.Name()))
+	cs, err := NewContractSet(dir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
 	initialRoots := []crypto.Hash{{1}}
 	c, err := cs.managedInsertContract(initialHeader, initialRoots)
 	if err != nil {
@@ -59,25 +141,7 @@ func TestContractUncommittedTxn(t *testing.T) {
 
 	// apply an update to the contract, but don't commit it
 	sc := cs.mustAcquire(t, c.ID)
-	revisedHeader := contractHeader{
-		Transaction: types.Transaction{
-			FileContractRevisions: []types.FileContractRevision{{
-				NewRevisionNumber:    2,
-				NewValidProofOutputs: []types.SiacoinOutput{{}, {}},
-				UnlockConditions: types.UnlockConditions{
-					PublicKeys: []types.SiaPublicKey{{}, {}},
-				},
-			}},
-		},
-		StorageSpending: types.NewCurrency64(7),
-		UploadSpending:  types.NewCurrency64(17),
-	}
-	revisedRoots := []crypto.Hash{{1}, {2}}
-	fcr := revisedHeader.Transaction.FileContractRevisions[0]
-	newRoot := revisedRoots[1]
-	storageCost := revisedHeader.StorageSpending.Sub(initialHeader.StorageSpending)
-	bandwidthCost := revisedHeader.UploadSpending.Sub(initialHeader.UploadSpending)
-	walTxn, err := sc.managedRecordAppendIntent(fcr, newRoot, storageCost, bandwidthCost)
+	walTxn, revisedRoots, revisedHeader, err := updateFunc(sc)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +202,20 @@ func TestContractUncommittedTxn(t *testing.T) {
 	if !bytes.Equal(encoding.Marshal(sc.header), encoding.Marshal(revisedHeader)) {
 		t.Fatal("contractHeader should match revised contractHeader", sc.header, revisedHeader)
 	} else if !reflect.DeepEqual(merkleRoots, revisedRoots) {
-		t.Fatal("Merkle roots should match revised Merkle roots")
+		t.Fatal("Merkle roots should match revised Merkle roots", merkleRoots, revisedRoots)
+	}
+	// close and reopen the contract set.
+	if err := cs.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// the uncommitted transaction should be gone.
+	sc = cs.mustAcquire(t, c.ID)
+	if len(sc.unappliedTxns) != 0 {
+		t.Fatal("expected 0 unappliedTxn, got", len(sc.unappliedTxns))
 	}
 }
 
@@ -526,5 +603,356 @@ func TestContractRefCounter(t *testing.T) {
 	rcFileSize = refCounterHeaderSize + int64(sc.merkleRoots.numMerkleRoots)*2
 	if fi.Size() != rcFileSize {
 		t.Fatalf("refCounter file on disk has wrong size. Expected %d, got %d", rcFileSize, fi.Size())
+	}
+}
+
+// TestContractRecordCommitDownloadIntent tests recording and committing
+// downloads and makes sure they use the wal correctly.
+func TestContractRecordCommitDownloadIntent(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	blockHeight := types.BlockHeight(fastrand.Intn(100))
+
+	// create contract set
+	dir := build.TempDir(filepath.Join("proto", t.Name()))
+	cs, err := NewContractSet(dir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// add a contract
+	initialHeader := contractHeader{
+		Transaction: types.Transaction{
+			FileContractRevisions: []types.FileContractRevision{{
+				NewRevisionNumber: 1,
+				NewValidProofOutputs: []types.SiacoinOutput{
+					{Value: types.SiacoinPrecision},
+					{Value: types.ZeroCurrency},
+				},
+				NewMissedProofOutputs: []types.SiacoinOutput{
+					{Value: types.SiacoinPrecision},
+					{Value: types.ZeroCurrency},
+					{Value: types.ZeroCurrency},
+				},
+				UnlockConditions: types.UnlockConditions{
+					PublicKeys: []types.SiaPublicKey{{}, {}},
+				},
+			}},
+		},
+	}
+	initialRoots := []crypto.Hash{{1}}
+	contract, err := cs.managedInsertContract(initialHeader, initialRoots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc := cs.mustAcquire(t, contract.ID)
+
+	// create a download revision
+	curr := sc.LastRevision()
+	amount := types.NewCurrency64(fastrand.Uint64n(100))
+	rev, err := newDownloadRevision(curr, amount)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// record the download intent
+	walTxn, err := sc.managedRecordDownloadIntent(rev, amount)
+	if err != nil {
+		t.Fatal("Failed to record payment intent")
+	}
+	if len(sc.unappliedTxns) != 1 {
+		t.Fatalf("expected %v unapplied txns but got %v", 1, len(sc.unappliedTxns))
+	}
+
+	// create transaction containing the revision
+	signedTxn := rev.ToTransaction()
+	sig := sc.Sign(signedTxn.SigHash(0, blockHeight))
+	signedTxn.TransactionSignatures[0].Signature = sig[:]
+
+	// don't commit the download. Instead simulate a crash by reloading the
+	// contract set.
+	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc = cs.mustAcquire(t, contract.ID)
+
+	if sc.LastRevision().NewRevisionNumber != curr.NewRevisionNumber {
+		t.Fatal("Unexpected revision number after reloading the contract set")
+	}
+	if len(sc.unappliedTxns) != 1 {
+		t.Fatalf("expected %v unapplied txns but got %v", 0, len(sc.unappliedTxns))
+	}
+
+	// start a new download
+	walTxn, err = sc.managedRecordDownloadIntent(rev, amount)
+	if err != nil {
+		t.Fatal("Failed to record payment intent")
+	}
+	if len(sc.unappliedTxns) != 2 {
+		t.Fatalf("expected %v unapplied txns but got %v", 2, len(sc.unappliedTxns))
+	}
+
+	// commit the download. This should remove all unapplied txns.
+	err = sc.managedCommitDownload(walTxn, signedTxn, amount)
+	if err != nil {
+		t.Fatal("Failed to commit payment intent")
+	}
+	if len(sc.unappliedTxns) != 0 {
+		t.Fatalf("expected %v unapplied txns but got %v", 0, len(sc.unappliedTxns))
+	}
+
+	// restart again. We still expect 0 unapplied txns.
+	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc = cs.mustAcquire(t, contract.ID)
+
+	if sc.LastRevision().NewRevisionNumber != rev.NewRevisionNumber {
+		t.Fatal("Unexpected revision number after reloading the contract set")
+	}
+	if len(sc.unappliedTxns) != 0 {
+		t.Fatalf("expected %v unapplied txns but got %v", 0, len(sc.unappliedTxns))
+	}
+}
+
+// TestContractRecordCommitAppendIntent tests recording and committing
+// downloads and makes sure they use the wal correctly.
+func TestContractRecordCommitAppendIntent(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	blockHeight := types.BlockHeight(fastrand.Intn(100))
+
+	// create contract set
+	dir := build.TempDir(filepath.Join("proto", t.Name()))
+	cs, err := NewContractSet(dir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// add a contract
+	initialHeader := contractHeader{
+		Transaction: types.Transaction{
+			FileContractRevisions: []types.FileContractRevision{{
+				NewRevisionNumber: 1,
+				NewValidProofOutputs: []types.SiacoinOutput{
+					{Value: types.SiacoinPrecision},
+					{Value: types.SiacoinPrecision},
+				},
+				NewMissedProofOutputs: []types.SiacoinOutput{
+					{Value: types.SiacoinPrecision},
+					{Value: types.SiacoinPrecision},
+					{Value: types.ZeroCurrency},
+				},
+				UnlockConditions: types.UnlockConditions{
+					PublicKeys: []types.SiaPublicKey{{}, {}},
+				},
+			}},
+		},
+	}
+	initialRoots := []crypto.Hash{{1}}
+	contract, err := cs.managedInsertContract(initialHeader, initialRoots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc := cs.mustAcquire(t, contract.ID)
+
+	// create a append revision
+	curr := sc.LastRevision()
+	bandwidth := types.NewCurrency64(fastrand.Uint64n(100))
+	collateral := types.NewCurrency64(fastrand.Uint64n(100))
+	storage := types.NewCurrency64(fastrand.Uint64n(100))
+	newRoot := crypto.Hash{1}
+	rev, err := newUploadRevision(curr, newRoot, bandwidth.Add(storage), collateral)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// record the append intent
+	walTxn, err := sc.managedRecordAppendIntent(rev, newRoot, storage, bandwidth)
+	if err != nil {
+		t.Fatal("Failed to record payment intent")
+	}
+	if len(sc.unappliedTxns) != 1 {
+		t.Fatalf("expected %v unapplied txns but got %v", 1, len(sc.unappliedTxns))
+	}
+
+	// create transaction containing the revision
+	signedTxn := rev.ToTransaction()
+	sig := sc.Sign(signedTxn.SigHash(0, blockHeight))
+	signedTxn.TransactionSignatures[0].Signature = sig[:]
+
+	// don't commit the download. Instead simulate a crash by reloading the
+	// contract set.
+	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc = cs.mustAcquire(t, contract.ID)
+
+	if sc.LastRevision().NewRevisionNumber != curr.NewRevisionNumber {
+		t.Fatal("Unexpected revision number after reloading the contract set")
+	}
+	if len(sc.unappliedTxns) != 1 {
+		t.Fatalf("expected %v unapplied txns but got %v", 0, len(sc.unappliedTxns))
+	}
+
+	// start a new append
+	walTxn, err = sc.managedRecordAppendIntent(rev, newRoot, storage, bandwidth)
+	if err != nil {
+		t.Fatal("Failed to record payment intent")
+	}
+	if len(sc.unappliedTxns) != 2 {
+		t.Fatalf("expected %v unapplied txns but got %v", 2, len(sc.unappliedTxns))
+	}
+
+	// commit the append. This should remove all unapplied txns.
+	err = sc.managedCommitAppend(walTxn, signedTxn, storage, bandwidth)
+	if err != nil {
+		t.Fatal("Failed to commit payment intent")
+	}
+	if len(sc.unappliedTxns) != 0 {
+		t.Fatalf("expected %v unapplied txns but got %v", 0, len(sc.unappliedTxns))
+	}
+
+	// restart again. We still expect 0 unapplied txns.
+	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc = cs.mustAcquire(t, contract.ID)
+
+	if sc.LastRevision().NewRevisionNumber != rev.NewRevisionNumber {
+		t.Fatal("Unexpected revision number after reloading the contract set")
+	}
+	if len(sc.unappliedTxns) != 0 {
+		t.Fatalf("expected %v unapplied txns but got %v", 0, len(sc.unappliedTxns))
+	}
+}
+
+// TestContractRecordCommitRenewAndClearIntent tests recording and committing
+// downloads and makes sure they use the wal correctly.
+func TestContractRecordCommitRenewAndClearIntent(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	blockHeight := types.BlockHeight(fastrand.Intn(100))
+
+	// create contract set
+	dir := build.TempDir(filepath.Join("proto", t.Name()))
+	cs, err := NewContractSet(dir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// add a contract
+	initialHeader := contractHeader{
+		Transaction: types.Transaction{
+			FileContractRevisions: []types.FileContractRevision{{
+				NewRevisionNumber: 1,
+				NewValidProofOutputs: []types.SiacoinOutput{
+					{Value: types.SiacoinPrecision},
+					{Value: types.ZeroCurrency},
+				},
+				NewMissedProofOutputs: []types.SiacoinOutput{
+					{Value: types.SiacoinPrecision},
+					{Value: types.ZeroCurrency},
+					{Value: types.ZeroCurrency},
+				},
+				UnlockConditions: types.UnlockConditions{
+					PublicKeys: []types.SiaPublicKey{{}, {}},
+				},
+			}},
+		},
+	}
+	initialRoots := []crypto.Hash{{1}}
+	contract, err := cs.managedInsertContract(initialHeader, initialRoots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc := cs.mustAcquire(t, contract.ID)
+
+	// create a renew revision. It's the same as a payment revision with small
+	// differences.
+	bandwidth := types.NewCurrency64(fastrand.Uint64n(100))
+	curr := sc.LastRevision()
+	rev, err := curr.PaymentRevision(bandwidth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev.NewFileSize = 0
+	rev.NewFileSize = 0
+	rev.NewFileMerkleRoot = crypto.Hash{}
+	rev.NewRevisionNumber = math.MaxUint64
+	rev.NewMissedProofOutputs = rev.NewValidProofOutputs
+
+	// record the clear contract intent
+	walTxn, err := sc.managedRecordClearContractIntent(rev, bandwidth)
+	if err != nil {
+		t.Fatal("Failed to record payment intent")
+	}
+	if len(sc.unappliedTxns) != 1 {
+		t.Fatalf("expected %v unapplied txns but got %v", 1, len(sc.unappliedTxns))
+	}
+
+	// create transaction containing the revision
+	signedTxn := rev.ToTransaction()
+	sig := sc.Sign(signedTxn.SigHash(0, blockHeight))
+	signedTxn.TransactionSignatures[0].Signature = sig[:]
+
+	// don't commit the download. Instead simulate a crash by reloading the
+	// contract set.
+	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc = cs.mustAcquire(t, contract.ID)
+
+	if sc.LastRevision().NewRevisionNumber != curr.NewRevisionNumber {
+		t.Fatal("Unexpected revision number after reloading the contract set")
+	}
+	if len(sc.unappliedTxns) != 1 {
+		t.Fatalf("expected %v unapplied txns but got %v", 0, len(sc.unappliedTxns))
+	}
+
+	// start a new download
+	walTxn, err = sc.managedRecordClearContractIntent(rev, bandwidth)
+	if err != nil {
+		t.Fatal("Failed to record payment intent")
+	}
+	if len(sc.unappliedTxns) != 2 {
+		t.Fatalf("expected %v unapplied txns but got %v", 2, len(sc.unappliedTxns))
+	}
+
+	// commit the download. This should remove all unapplied txns.
+	err = sc.managedCommitClearContract(walTxn, signedTxn, bandwidth)
+	if err != nil {
+		t.Fatal("Failed to commit payment intent")
+	}
+	if len(sc.unappliedTxns) != 0 {
+		t.Fatalf("expected %v unapplied txns but got %v", 0, len(sc.unappliedTxns))
+	}
+
+	// restart again. We still expect 0 unapplied txns.
+	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc = cs.mustAcquire(t, contract.ID)
+
+	if sc.LastRevision().NewRevisionNumber != rev.NewRevisionNumber {
+		t.Fatal("Unexpected revision number after reloading the contract set")
+	}
+	if len(sc.unappliedTxns) != 0 {
+		t.Fatalf("expected %v unapplied txns but got %v", 0, len(sc.unappliedTxns))
 	}
 }

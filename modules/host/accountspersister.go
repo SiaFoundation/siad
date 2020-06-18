@@ -5,17 +5,18 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
+	"regexp"
+	"strconv"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 const (
@@ -300,8 +301,14 @@ func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
 	defer fm.mu.Unlock()
 
 	// Close the current fingerprint files, this syncs the files before closing
-	if err = fm.syncAndClose(); err != nil {
-		return errors.AddContext(err, "could not close fingerprint files")
+	err = fm.syncAndClose()
+	if err != nil {
+		// note that we do not prevent this error from reopening the fingerprint
+		// buckets, if we were to return here chances are the host is in a
+		// deadlock situation where his withdrawals would be permanently
+		// deactivated, which would be a devastating event for a host, instead
+		// we log the critical
+		ap.h.log.Critical(fmt.Sprintf("could not close fingerprint files, err: %v", err))
 	}
 
 	// Calculate new filenames for the fingerprint buckets
@@ -328,10 +335,13 @@ func (ap *accountsPersister) callRotateFingerprintBuckets() (err error) {
 
 // callClose will cleanly shutdown the account persister's open file handles
 func (ap *accountsPersister) callClose() error {
-	return errors.Compose(
-		ap.staticFingerprintManager.syncAndClose(),
-		syncAndClose(ap.accounts),
-	)
+	ap.staticFingerprintManager.mu.Lock()
+	err1 := ap.staticFingerprintManager.syncAndClose()
+	ap.staticFingerprintManager.mu.Unlock()
+	ap.mu.Lock()
+	err2 := syncAndClose(ap.accounts)
+	ap.mu.Unlock()
+	return errors.Compose(err1, err2)
 }
 
 // managedLockIndex grabs a lock on an (account) index.
@@ -550,15 +560,26 @@ func (fm *fingerprintManager) threadedRemoveOldFingerprintBuckets() {
 	}
 	defer fm.h.tg.Done()
 
-	// Grab some variables
+	// Grab the current path
 	fm.mu.Lock()
 	current := fm.currentPath
-	next := fm.nextPath
 	fm.mu.Unlock()
 
-	isOld := func(name string) bool {
-		path := filepath.Join(fm.h.persistDir, name)
-		return strings.HasPrefix(name, "fingerprintsbucket") && path != current && path != next
+	// Get the min blockheight of the bucket range, although it should never be
+	// the case we sanity check the current path is a valid bucket path.
+	min, _, bucket := isFingerprintBucket(filepath.Base(current))
+	if !bucket {
+		build.Critical("The current fingerprint bucket path is considered invalid")
+	}
+
+	// Create a function that decides whether or not to remove a fingerprint
+	// bucket, we can safely remove it if it's max is below the current min
+	// bucket range. This way we are sure to remove only old bucket files. This
+	// is important because there might be new files opened on disk after
+	// releasing the lock, we would not want to remove the current buckets.
+	isOldBucket := func(name string) bool {
+		_, max, bucket := isFingerprintBucket(name)
+		return bucket && max < min
 	}
 
 	// Read directory
@@ -570,7 +591,7 @@ func (fm *fingerprintManager) threadedRemoveOldFingerprintBuckets() {
 
 	// Iterate over directory
 	for _, fi := range fileinfos {
-		if isOld(fi.Name()) {
+		if isOldBucket(fi.Name()) {
 			err := os.Remove(filepath.Join(fm.h.persistDir, fi.Name()))
 			if err != nil {
 				fm.h.log.Fatal("Failed to remove old fingerprint buckets", err)
@@ -640,6 +661,30 @@ func fingerprintsFilenames(currentBlockHeight types.BlockHeight) (current, next 
 	max += bucketBlockRange
 	next = fmt.Sprintf("fingerprintsbucket_%v-%v.db", min, max)
 	return
+}
+
+// isFingerprintBucket is a helper function that takes a filename and returns
+// whether or not this is a fingerprint bucket. If it is, it also returns the
+// bucket's range as a min and max blockheight.
+func isFingerprintBucket(filename string) (types.BlockHeight, types.BlockHeight, bool) {
+	// match the filename
+	re := regexp.MustCompile(`^fingerprintsbucket_(\d+)-(\d+).db$`)
+	match := re.FindStringSubmatch(filename)
+	if len(match) != 3 {
+		return 0, 0, false
+	}
+
+	// parse range - note we can safely ignore the error here due to our regex
+	min, _ := strconv.Atoi(match[1])
+	max, _ := strconv.Atoi(match[2])
+
+	// sanity check the range makes sense
+	if min >= max {
+		build.Critical(fmt.Sprintf("Bucket file found with range where min is not smaller than max height, %s", filename))
+		return 0, 0, false
+	}
+
+	return types.BlockHeight(min), types.BlockHeight(max), true
 }
 
 // syncAndClose will sync and close the given file

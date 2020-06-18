@@ -101,6 +101,10 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		}
 	}()
 
+	// Cancel the context on shutdown. The host's tg doesn't have a `StopCtx` so
+	// we need to do it this way.
+	h.tg.OnStop(cancel)
+
 	// Execute the program.
 	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, budget, collateralBudget, sos, duration, dataLength, stream)
 	if err != nil {
@@ -177,7 +181,8 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 
 		// Disrupt if the delay write dependency is set
 		if h.dependencies.Disrupt("MDMProgramOutputDelayWrite") {
-			// adds a write delay
+			// add a write delay
+			time.Sleep(modules.MDMProgramWriteResponseTime * 2)
 		}
 
 		// Write contents of the buffer

@@ -1,4 +1,6 @@
-FROM golang@sha256:f6cefbdd25f9a66ec7dcef1ee5deb417882b9db9629a724af8a332fe54e3f7b3
+FROM golang@sha256:1e9c36b3fd7d7f9ab95835fb1ed898293ec0917e44c7e7d2766b4a2d9aa43da6
+# golang:1.14.4-buster
+
 ARG branch
 ARG version
 

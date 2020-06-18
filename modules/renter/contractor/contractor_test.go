@@ -131,6 +131,7 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	// create a siamux
 	testdir := build.TempDir("contractor", t.Name())
@@ -205,10 +206,16 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	if err != ErrAllowanceZeroWindow {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroWindow, err)
 	}
+	// There should not be any errors related to RenewWindow size
+	a.RenewWindow = 30
+	err = c.SetAllowance(a)
+	if err != ErrAllowanceZeroExpectedStorage {
+		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedStorage, err)
+	}
 	a.RenewWindow = 20
 	err = c.SetAllowance(a)
-	if err != errAllowanceWindowSize {
-		t.Errorf("expected %q, got %q", errAllowanceWindowSize, err)
+	if err != ErrAllowanceZeroExpectedStorage {
+		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedStorage, err)
 	}
 	a.RenewWindow = 10
 	err = c.SetAllowance(a)
@@ -342,7 +349,7 @@ func TestHostMaxDuration(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Let host settings permeate
-	err = build.Retry(50, 100*time.Millisecond, func() error {
+	err = build.Retry(1000, 100*time.Millisecond, func() error {
 		host, _, err := c.hdb.Host(h.PublicKey())
 		if err != nil {
 			return err

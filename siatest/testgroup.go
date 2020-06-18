@@ -401,6 +401,10 @@ func synchronizationCheck(nodes map[*TestNode]struct{}) error {
 			if err != nil {
 				return err
 			}
+			ngg, err := n.GatewayGet()
+			if err != nil {
+				return err
+			}
 			// If the CurrentBlock's match we are done.
 			if lcg.CurrentBlock == ncg.CurrentBlock {
 				return nil
@@ -408,7 +412,7 @@ func synchronizationCheck(nodes map[*TestNode]struct{}) error {
 			// If the miner's height is greater than the node's we need to
 			// wait a bit longer for them to sync.
 			if lcg.Height != ncg.Height {
-				return fmt.Errorf("blockHeight doesn't match, %v vs %v", lcg.Height, ncg.Height)
+				return fmt.Errorf("blockHeight doesn't match, %v vs %v (%v peers)", lcg.Height, ncg.Height, len(ngg.Peers))
 			}
 			// If the miner's height is smaller than the node's we need a
 			// bit longer for them to sync.

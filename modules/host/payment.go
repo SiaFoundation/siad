@@ -239,6 +239,9 @@ func revisionFromRequest(recent types.FileContractRevision, pbcr modules.PayByCo
 	rev.NewRevisionNumber = pbcr.NewRevisionNumber
 	rev.NewValidProofOutputs = make([]types.SiacoinOutput, len(pbcr.NewValidProofValues))
 	for i, v := range pbcr.NewValidProofValues {
+		if i >= len(recent.NewValidProofOutputs) {
+			break
+		}
 		rev.NewValidProofOutputs[i] = types.SiacoinOutput{
 			Value:      v,
 			UnlockHash: recent.NewValidProofOutputs[i].UnlockHash,
@@ -247,6 +250,9 @@ func revisionFromRequest(recent types.FileContractRevision, pbcr modules.PayByCo
 
 	rev.NewMissedProofOutputs = make([]types.SiacoinOutput, len(pbcr.NewMissedProofValues))
 	for i, v := range pbcr.NewMissedProofValues {
+		if i >= len(recent.NewMissedProofOutputs) {
+			break
+		}
 		rev.NewMissedProofOutputs[i] = types.SiacoinOutput{
 			Value:      v,
 			UnlockHash: recent.NewMissedProofOutputs[i].UnlockHash,
@@ -272,6 +278,11 @@ func signatureFromRequest(recent types.FileContractRevision, pbcr modules.PayByC
 // the data has transferred the expected amount of money from the renter to the
 // host.
 func verifyEAFundRevision(existingRevision, paymentRevision types.FileContractRevision, blockHeight types.BlockHeight, expectedTransfer types.Currency) error {
+	// Check that the revision count has increased.
+	if paymentRevision.NewRevisionNumber <= existingRevision.NewRevisionNumber {
+		return ErrBadRevisionNumber
+	}
+
 	// Check that the revision is well-formed.
 	if len(paymentRevision.NewValidProofOutputs) != 2 || len(paymentRevision.NewMissedProofOutputs) != 3 {
 		return ErrBadContractOutputCounts
@@ -338,11 +349,6 @@ func verifyEAFundRevision(existingRevision, paymentRevision types.FileContractRe
 	if !existingVoidOutput.Value.Equals(paymentVoidOutput.Value) {
 		s := fmt.Sprintf("void payout wasn't expected to change")
 		return errors.AddContext(ErrVoidPayoutChanged, s)
-	}
-
-	// Check that the revision count has increased.
-	if paymentRevision.NewRevisionNumber <= existingRevision.NewRevisionNumber {
-		return ErrBadRevisionNumber
 	}
 
 	// Check that all of the non-volatile fields are the same.

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -11,6 +12,13 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
+
+// StatusModuleNotLoaded is a custom http code to indicate that a module wasn't
+// loaded by the Daemon and can therefore not be reached. It is used instead of
+// the previous status code 404 to make a clear distinction between a module not
+// being loaded and a resource which would usually be provided a module not
+// being found.
+const StatusModuleNotLoaded = 490
 
 // ErrAPICallNotRecognized is returned by API client calls made to modules that
 // are not yet loaded.
@@ -92,31 +100,48 @@ func HttpPOSTAuthenticated(url string, data string, password string) (resp *http
 	return http.DefaultClient.Do(req)
 }
 
-// API encapsulates a collection of modules and implements a http.Handler
-// to access their methods.
-type API struct {
-	cs         modules.ConsensusSet
-	explorer   modules.Explorer
-	feemanager modules.FeeManager
-	gateway    modules.Gateway
-	host       modules.Host
-	miner      modules.Miner
-	renter     modules.Renter
-	tpool      modules.TransactionPool
-	wallet     modules.Wallet
+type (
+	// API encapsulates a collection of modules and implements a http.Handler
+	// to access their methods.
+	API struct {
+		cs                  modules.ConsensusSet
+		explorer            modules.Explorer
+		feemanager          modules.FeeManager
+		gateway             modules.Gateway
+		host                modules.Host
+		miner               modules.Miner
+		renter              modules.Renter
+		tpool               modules.TransactionPool
+		wallet              modules.Wallet
+		staticConfigModules configModules
 
-	downloadMu sync.Mutex
-	downloads  map[modules.DownloadID]func()
-	router     http.Handler
-	routerMu   sync.RWMutex
+		downloadMu sync.Mutex
+		downloads  map[modules.DownloadID]func()
+		router     http.Handler
+		routerMu   sync.RWMutex
 
-	requiredUserAgent string
-	requiredPassword  string
-	Shutdown          func() error
-	siadConfig        *modules.SiadConfig
+		requiredUserAgent string
+		requiredPassword  string
+		Shutdown          func() error
+		siadConfig        *modules.SiadConfig
 
-	staticStartTime time.Time
-}
+		staticStartTime time.Time
+	}
+
+	// configModules contains booleans that indicate if a module was part of the
+	// configuration when the API was created
+	configModules struct {
+		Consensus       bool `json:"consensus"`
+		Explorer        bool `json:"explorer"`
+		FeeManager      bool `json:"feemanager"`
+		Gateway         bool `json:"gateway"`
+		Host            bool `json:"host"`
+		Miner           bool `json:"miner"`
+		Renter          bool `json:"renter"`
+		TransactionPool bool `json:"transactionpool"`
+		Wallet          bool `json:"wallet"`
+	}
+)
 
 // api.ServeHTTP implements the http.Handler interface.
 func (api *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -136,6 +161,17 @@ func (api *API) SetModules(cs modules.ConsensusSet, e modules.Explorer, fm modul
 	api.renter = r
 	api.tpool = tp
 	api.wallet = w
+	api.staticConfigModules = configModules{
+		Consensus:       api.cs != nil,
+		Explorer:        api.explorer != nil,
+		FeeManager:      api.feemanager != nil,
+		Gateway:         api.gateway != nil,
+		Host:            api.host != nil,
+		Miner:           api.miner != nil,
+		Renter:          api.renter != nil,
+		TransactionPool: api.tpool != nil,
+		Wallet:          api.wallet != nil,
+	}
 	api.buildHTTPRoutes()
 }
 
@@ -174,7 +210,8 @@ func New(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword str
 
 // UnrecognizedCallHandler handles calls to unknown pages (404).
 func UnrecognizedCallHandler(w http.ResponseWriter, req *http.Request) {
-	WriteError(w, Error{"404 - Refer to API.md"}, http.StatusNotFound)
+	errStr := fmt.Sprintf("%d - Refer to API.md", StatusModuleNotLoaded)
+	WriteError(w, Error{errStr}, StatusModuleNotLoaded)
 }
 
 // WriteError an error to the API caller.

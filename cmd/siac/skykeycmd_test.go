@@ -84,11 +84,11 @@ func testChangeKeyEntropyKeepName(t *testing.T, c client.Client) {
 func testAddKeyTwice(t *testing.T, c client.Client) {
 	// Check that adding same key twice returns an error.
 	keyName := "createkey1"
-	_, err := skykeyCreate(c, keyName, skykey.TypePublicID)
+	_, err := skykeyCreate(c, keyName, skykey.TypePublicID.ToString())
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = skykeyCreate(c, keyName, skykey.TypePublicID)
+	_, err = skykeyCreate(c, keyName, skykey.TypePublicID.ToString())
 	if !strings.Contains(err.Error(), skykey.ErrSkykeyWithNameAlreadyExists.Error()) {
 		t.Fatal("Expected error when creating key with same name")
 	}
@@ -96,7 +96,7 @@ func testAddKeyTwice(t *testing.T, c client.Client) {
 
 // testInvalidSkykeyType tests that invalid cipher types are caught.
 func testInvalidSkykeyType(t *testing.T, c client.Client) {
-	_, err := skykeyCreate(c, "createkey2", skykey.TypeInvalid)
+	_, err := skykeyCreate(c, "createkey2", skykey.TypeInvalid.ToString())
 	if !strings.Contains(err.Error(), skykey.ErrInvalidSkykeyType.Error()) {
 		t.Fatal("Expected error when creating key with invalid skykeytpe", err)
 	}
@@ -105,7 +105,7 @@ func testInvalidSkykeyType(t *testing.T, c client.Client) {
 // testSkykeyGet tests skykeyGet with known key should not return any errors.
 func testSkykeyGet(t *testing.T, c client.Client) {
 	keyName := "createkey testSkykeyGet"
-	newSkykey, err := skykeyCreate(c, keyName, skykey.TypePublicID)
+	newSkykey, err := skykeyCreate(c, keyName, skykey.TypePublicID.ToString())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,18 +214,29 @@ func testSkykeyListKeysDoesntShowPrivateKeys(t *testing.T, c client.Client) {
 func testSkykeyListKeysAdditionalKeys(t *testing.T, c client.Client) {
 	nExtraKeys := 10
 	nKeys := 3 + nExtraKeys
-	nExtraLines := 3
 	keyStrings := make([]string, nKeys)
 	keyNames := make([]string, nKeys)
 	keyIDs := make([]string, nKeys)
 
 	initSkykeyData(t, c, keyStrings, keyNames, keyIDs)
 
+	// Count the number of public/private keys we create.
+	expectedNumPublic := nKeys - nExtraKeys // initial keys are public
+	expectedNumPrivate := 0
+
 	// Add extra keys
 	for i := 0; i < nExtraKeys; i++ {
+		skykeyType := skykey.TypePrivateID
+		if i%2 == 0 {
+			skykeyType = skykey.TypePublicID
+			expectedNumPublic += 1
+		} else {
+			expectedNumPrivate += 1
+		}
+
 		nextName := fmt.Sprintf("extrakey-%d", i)
 		keyNames = append(keyNames, nextName)
-		nextSkStr, err := skykeyCreate(c, nextName, skykey.TypePublicID)
+		nextSkStr, err := skykeyCreate(c, nextName, skykeyType.ToString())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -257,9 +268,17 @@ func testSkykeyListKeysAdditionalKeys(t *testing.T, c client.Client) {
 			t.Fatal("Missing key!", i)
 		}
 	}
-	keyList := strings.Split(keyListString, "\n")
-	if len(keyList) != nKeys+nExtraLines {
-		t.Fatal("Unpected number of lines/keys", len(keyList))
+
+	// Check that the expected number of public/private keys were created.
+	numPublic := strings.Count(keyListString, skykey.TypePublicID.ToString())
+	numPrivate := strings.Count(keyListString, skykey.TypePrivateID.ToString())
+	if numPublic != expectedNumPublic {
+		t.Log(keyListString)
+		t.Fatalf("Expected %d %s keys got %d instead", numPublic, skykey.TypePublicID.ToString(), expectedNumPublic)
+	}
+	if numPrivate != expectedNumPrivate {
+		t.Log(keyListString)
+		t.Fatalf("Expected %d %s keys got %d instead", numPrivate, skykey.TypePrivateID.ToString(), expectedNumPrivate)
 	}
 }
 
