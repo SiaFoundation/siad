@@ -1,0 +1,1 @@
+- fix issue where priority tasks could wait for low priority tasks to complete
