@@ -508,6 +508,7 @@ func (w *worker) managedSyncAccountBalanceToHost() {
 	for !isIdle() {
 		if time.Since(start) > accountIdleMaxWait {
 			w.renter.log.Critical("worker has taken more than 40 minutes to go idle")
+			return
 		}
 		w.renter.tg.Sleep(accountIdleCheckFrequency)
 	}
