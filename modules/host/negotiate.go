@@ -139,7 +139,7 @@ var (
 
 	// ErrMissedHostOutputAddressChanged is returned when the host's missed
 	// payout address changed even though it shouldn't.
-	ErrMissedHostOutputAddressChanged = ErrorCommunication("missed host payout address changed")
+	ErrMissedHostOutputAddressChanged = ErrorCommunication("missed host output address changed")
 
 	// ErrVoidAddressChanged is returned if the void output address changed.
 	ErrVoidAddressChanged = ErrorCommunication("lost collateral address was changed")
