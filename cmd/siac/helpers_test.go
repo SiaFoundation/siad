@@ -61,7 +61,7 @@ func executeSiacCommand(root *cobra.Command, args ...string) (output string, err
 	defer func() {
 		if rec := recover(); rec != nil {
 			// We are recovering from panic
-			if err, ok := rec.(error); !ok || err.Error() != errors.New("Die panic for testing").Error() {
+			if err, ok := rec.(error); !ok || err.Error() != errors.New("die panic for testing").Error() {
 				// This is not our expected die() panic, rethrow panic
 				panic(rec)
 			}

@@ -120,13 +120,12 @@ func wrap(fn interface{}) func(*cobra.Command, []string) {
 func die(args ...interface{}) {
 	fmt.Fprintln(os.Stderr, args...)
 
-	if build.Release != "testing" {
-		// In production exit
-		os.Exit(exitCodeGeneral)
-	} else {
+	if build.Release == "testing" {
 		// In testing pass panic that can be catched and the test can continue
-		panic(errors.New("Die panic for testing"))
+		panic(errors.New("die panic for testing"))
 	}
+	// In production exit
+	os.Exit(exitCodeGeneral)
 }
 
 // statuscmd is the handler for the command `siac`
