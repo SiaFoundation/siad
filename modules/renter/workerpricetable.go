@@ -131,6 +131,7 @@ func (w *worker) staticUpdatePriceTable() {
 			// signal it by setting the flag.
 			if errCausedByRevisionMismatch(err) {
 				w.staticSetSuspectRevisionNumberMismatch()
+				w.staticWake()
 			}
 		}
 	}()
