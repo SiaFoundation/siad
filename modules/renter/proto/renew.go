@@ -154,7 +154,7 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	rev, sigs, err := s.Lock(contract.ID(), contract.SecretKey)
 	if err != nil {
 		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
-	} else if _, err := oldContract.managedSyncRevision(rev, sigs); err != nil {
+	} else if err := oldContract.managedSyncRevision(rev, sigs); err != nil {
 		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 
@@ -422,7 +422,7 @@ func (cs *ContractSet) newRenewAndClear(oldContract *SafeContract, params Contra
 	rev, sigs, err := s.Lock(contract.ID(), contract.SecretKey)
 	if err != nil {
 		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
-	} else if _, err := oldContract.managedSyncRevision(rev, sigs); err != nil {
+	} else if err := oldContract.managedSyncRevision(rev, sigs); err != nil {
 		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 

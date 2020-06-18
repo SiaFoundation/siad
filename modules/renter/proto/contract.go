@@ -229,6 +229,8 @@ func (c *SafeContract) clearUnappliedTxns() error {
 
 // LastRevision returns the most recent revision
 func (c *SafeContract) LastRevision() types.FileContractRevision {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.header.LastRevision()
 }
 
@@ -686,7 +688,7 @@ func (c *SafeContract) managedCommitTxns() error {
 // still do not match, and the host's revision is ahead of the renter's,
 // managedSyncRevision uses the host's revision. Alongside a possible error this
 // function returns a boolean that indicates whether a resync was attempted.
-func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs []types.TransactionSignature) (bool, error) {
+func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs []types.TransactionSignature) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -695,7 +697,7 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	if len(c.header.Transaction.TransactionSignatures) == 0 {
 		c.header.Transaction.FileContractRevisions[0] = rev
 		c.header.Transaction.TransactionSignatures = sigs
-		return true, nil
+		return nil
 	}
 
 	ourRev := c.header.LastRevision()
@@ -708,7 +710,7 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 		// consistent, we blindly overwrite our revision with the host's.
 		c.header.Transaction.FileContractRevisions[0] = rev
 		c.header.Transaction.TransactionSignatures = sigs
-		return false, nil
+		return nil
 	}
 
 	// The host should never report a lower revision number than ours. If they
@@ -717,7 +719,7 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	// ill intent, this would mean that they failed to commit one or more
 	// revisions to durable storage, which reflects very poorly on them.
 	if rev.NewRevisionNumber < ourRev.NewRevisionNumber {
-		return false, &revisionNumberMismatchError{ourRev.NewRevisionNumber, rev.NewRevisionNumber}
+		return &revisionNumberMismatchError{ourRev.NewRevisionNumber, rev.NewRevisionNumber}
 	}
 
 	// At this point, we know that either the host's revision number is above
@@ -728,7 +730,7 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 			if update.Name == updateNameSetHeader {
 				var u updateSetHeader
 				if err := unmarshalHeader(update.Instructions, &u); err != nil {
-					return false, err
+					return err
 				}
 				unappliedRev := u.Header.LastRevision()
 				if unappliedRev.NewRevisionNumber != rev.NewRevisionNumber || unappliedRev.NewFileMerkleRoot != rev.NewFileMerkleRoot {
@@ -741,16 +743,16 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 				// the header.
 				u.Header.Transaction.TransactionSignatures = sigs
 				if err := c.applySetHeader(u.Header); err != nil {
-					return true, err
+					return err
 				}
 				if err := c.headerFile.Sync(); err != nil {
-					return true, err
+					return err
 				}
 				// drop all unapplied transactions
 				if err := c.clearUnappliedTxns(); err != nil {
-					return true, errors.AddContext(err, "failed to clear unapplied txns")
+					return errors.AddContext(err, "failed to clear unapplied txns")
 				}
-				return true, nil
+				return nil
 			}
 		}
 	}
@@ -766,9 +768,9 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 
 	// Drop the WAL transactions, since they can't conceivably help us.
 	if err := c.clearUnappliedTxns(); err != nil {
-		return true, errors.AddContext(err, "failed to clear unapplied txns")
+		return errors.AddContext(err, "failed to clear unapplied txns")
 	}
-	return true, nil
+	return nil
 }
 
 // managedInsertContract inserts a contract into the set in an ACID fashion

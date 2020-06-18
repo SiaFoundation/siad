@@ -839,14 +839,14 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 	}
 
 	// Resynchronize
-	syncAttempted, err := sc.managedSyncRevision(rev, sigs)
-	if syncAttempted {
-		logger.Printf("%v revision resync attempted, success: %v, err: %v\n", host.PublicKey.String(), err == nil, err)
-	}
+	err = sc.managedSyncRevision(rev, sigs)
 	if err != nil {
-		s.Close()
+		logger.Printf("%v revision resync failed, err: %v\n", host.PublicKey.String(), err)
+		err = errors.Compose(err, s.Close())
 		return nil, errors.AddContext(err, "unable to sync revisions when creating session")
 	}
+	logger.Printf("%v revision resync attempted, succeeded: %v\n", host.PublicKey.String(), sc.LastRevision().NewRevisionNumber == rev.NewRevisionNumber)
+
 	return s, nil
 }
 
