@@ -27,7 +27,7 @@ import (
 
 const (
 	// minAsyncVersion defines the minimum version that is supported
-	minAsyncVersion = "1.4.9"
+	minAsyncVersion = "1.4.10"
 )
 
 const (
@@ -57,10 +57,12 @@ type (
 	// present until some time has passed.
 	worker struct {
 		// atomicCache contains a pointer to the latest cache in the worker.
-		// Atomics are used to minimze lock contention on the worker object.
-		atomicCache                   unsafe.Pointer // points to a workerCache object
-		atomicPriceTable              unsafe.Pointer // points to a workerPriceTable object
-		atomicPriceTableUpdateRunning uint64         // used for a sanity check
+		// Atomics are used to minimize lock contention on the worker object.
+		atomicCache                      unsafe.Pointer // points to a workerCache object
+		atomicCacheUpdating              uint64         // ensures only one cache update happens at a time
+		atomicPriceTable                 unsafe.Pointer // points to a workerPriceTable object
+		atomicPriceTableUpdateRunning    uint64         // used for a sanity check
+		atomicAccountBalanceCheckRunning uint64         // used for a sanity check
 
 		// The host pub key also serves as an id for the worker, as there is only
 		// one worker per host.
@@ -110,6 +112,39 @@ type (
 	}
 )
 
+// managedKill will kill the worker.
+func (w *worker) managedKill() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	select {
+	case <-w.killChan:
+		return
+	default:
+		close(w.killChan)
+	}
+}
+
+// staticKilled is a convenience function to determine if a worker has been
+// killed or not.
+func (w *worker) staticKilled() bool {
+	select {
+	case <-w.killChan:
+		return true
+	default:
+		return false
+	}
+}
+
+// staticWake will wake the worker from sleeping. This should be called any time
+// that a job is queued or a job completes.
+func (w *worker) staticWake() {
+	select {
+	case w.wakeChan <- struct{}{}:
+	default:
+	}
+}
+
 // status returns the status of the worker.
 func (w *worker) status() modules.WorkerStatus {
 	downloadOnCoolDown := w.onDownloadCooldown()
@@ -118,11 +153,6 @@ func (w *worker) status() modules.WorkerStatus {
 	var uploadCoolDownErr string
 	if w.uploadRecentFailureErr != nil {
 		uploadCoolDownErr = w.uploadRecentFailureErr.Error()
-	}
-
-	var accountBalance types.Currency
-	if w.staticAccount != nil {
-		w.staticAccount.managedAvailableBalance()
 	}
 
 	// Update the worker cache before returning a status.
@@ -147,7 +177,7 @@ func (w *worker) status() modules.WorkerStatus {
 		UploadTerminated:    w.uploadTerminated,
 
 		// Ephemeral Account information
-		AvailableBalance: accountBalance,
+		AvailableBalance: w.staticAccount.managedAvailableBalance(),
 		BalanceTarget:    w.staticBalanceTarget,
 
 		// Job Queues
@@ -177,6 +207,9 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	// TODO: check that the balance target  makes sense in function of the
 	// amount of MDM programs it can run with that amount of money
 	balanceTarget := types.SiacoinPrecision
+	if r.deps.Disrupt("DisableFunding") {
+		balanceTarget = types.ZeroCurrency
+	}
 
 	w := &worker{
 		staticHostPubKey:     hostPubKey,
@@ -204,28 +237,9 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	w.initJobUploadSnapshotQueue()
 	// Get the worker cache set up before returning the worker. This prevents a
 	// race condition in some tests.
-	if !w.staticTryUpdateCache() {
-		return nil, errors.New("unable to build cache for worker")
+	w.managedUpdateCache()
+	if w.staticCache() == nil {
+		return nil, errors.New("unable to build a cache for the worker")
 	}
 	return w, nil
-}
-
-// staticKilled is a convenience function to determine if a worker has been
-// killed or not.
-func (w *worker) staticKilled() bool {
-	select {
-	case <-w.killChan:
-		return true
-	default:
-		return false
-	}
-}
-
-// staticWake will wake the worker from sleeping. This should be called any time
-// that a job is queued or a job completes.
-func (w *worker) staticWake() {
-	select {
-	case w.wakeChan <- struct{}{}:
-	default:
-	}
 }

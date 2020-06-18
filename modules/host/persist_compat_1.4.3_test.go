@@ -45,7 +45,11 @@ func TestV120HostUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	smux, err := siamux.New("localhost:0", "localhost:0", persist.NewLogger(logFile), persistDir)
+	logger, err := persist.NewLogger(logFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	smux, err := siamux.New("localhost:0", "localhost:0", logger.Logger, persistDir)
 	if err != nil {
 		t.Fatal(err)
 	}

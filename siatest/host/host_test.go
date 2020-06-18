@@ -330,6 +330,10 @@ func TestHostContracts(t *testing.T) {
 		t.Fatal("contract should have 0 datasize")
 	}
 
+	if hc.Contracts[0].RevisionNumber != 1 {
+		t.Fatal("contract should have 1 revision")
+	}
+
 	prevValidPayout := hc.Contracts[0].ValidProofOutputs[1].Value
 	prevMissPayout := hc.Contracts[0].MissedProofOutputs[1].Value
 	_, _, err = renterNode.UploadNewFileBlocking(4096, 1, 1, true)
@@ -346,8 +350,11 @@ func TestHostContracts(t *testing.T) {
 		t.Fatal("contract should have 1 sector uploaded")
 	}
 
-	if hc.Contracts[0].RevisionNumber != 2+uint64(gp.Hosts) {
-		t.Fatal("contract should have 1 revision from upload, and 1 revision per host from funding an ephemeral account")
+	// to avoid an NDF we do not compare the RevisionNumber to an exact number
+	// because that is not deterministic due to the new RHP3 protocol, which
+	// uses the contract to fund EAs do balance checks and so forth
+	if hc.Contracts[0].RevisionNumber == 1 {
+		t.Fatal("contract should have received more revisions from the upload", hc.Contracts[0].RevisionNumber)
 	}
 
 	if hc.Contracts[0].PotentialAccountFunding.IsZero() {
@@ -366,8 +373,8 @@ func TestHostContracts(t *testing.T) {
 		t.Fatal("valid payout should be greater than old valid payout")
 	}
 
-	if hc.Contracts[0].MissedProofOutputs[1].Value.Cmp(prevMissPayout) != -1 {
-		t.Fatal("missed payout should be less than old missed payout")
+	if cmp := hc.Contracts[0].MissedProofOutputs[1].Value.Cmp(prevMissPayout); cmp != 1 {
+		t.Fatal("missed payout should be more than old missed payout", cmp)
 	}
 }
 

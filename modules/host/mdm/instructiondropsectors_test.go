@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -38,7 +39,8 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	// Construct the program.
 
 	pt := newTestPriceTable()
-	tb := newTestProgramBuilder(pt)
+	duration := types.BlockHeight(fastrand.Uint64n(5))
+	tb := newTestProgramBuilder(pt, duration)
 
 	sectorData1 := fastrand.Bytes(int(modules.SectorSize))
 	tb.AddAppendInstruction(sectorData1, false)
@@ -100,7 +102,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 
 	// Execute the program.
 	so := newTestStorageObligation(true)
-	finalizeFn, budget, outputs, err := mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, true)
+	finalizeFn, budget, outputs, err := mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, duration, true)
 	if err != nil {
 		t.Fatal(err)
 	}

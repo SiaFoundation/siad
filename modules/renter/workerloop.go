@@ -271,16 +271,17 @@ func (w *worker) threadedWorkLoop() {
 		// blocking update to ensure nothing else runs until the price table is
 		// available.
 		w.staticUpdatePriceTable()
-		// TODO: Do a balance query on the host right here. Even if we had a clean
-		// shutdown and know the exact balance, we should still be asking the host
-		// what our balance is, because we don't want the host to be able to
-		// distinguish between the times that we know our balance and the times that
-		// we don't. Checking right at startup also allows us to give a quick
-		// honesty check on the host.
-		//
+
+		// Perform a balance check on the host and sync it to his version if
+		// necessary. This avoids running into MaxBalanceExceeded errors upon
+		// refill after an unclean shutdown.
+		w.managedSyncAccountBalanceToHost()
+
 		// This update is done as a blocking update to ensure nothing else runs
 		// until the account has filled.
-		w.managedRefillAccount()
+		if w.managedAccountNeedsRefill() {
+			w.managedRefillAccount()
+		}
 	}
 
 	// The worker will continuously perform jobs in a loop.
@@ -292,12 +293,7 @@ func (w *worker) threadedWorkLoop() {
 		if !w.managedBlockUntilReady() {
 			return
 		}
-
-		// Update the cache for the worker if needed.
-		if !w.staticTryUpdateCache() {
-			w.renter.log.Printf("worker %v is being killed because the cache could not be updated", w.staticHostPubKeyStr)
-			return
-		}
+		w.staticTryUpdateCache()
 
 		// Attempt to launch a serial job. If there is already a job running,
 		// this will no-op. If no job is running, a goroutine will be spun up

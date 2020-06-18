@@ -8,7 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 	"golang.org/x/crypto/ed25519"
 
-	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 const (

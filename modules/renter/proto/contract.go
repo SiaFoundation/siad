@@ -14,9 +14,9 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 const (
@@ -120,6 +120,40 @@ func (h *contractHeader) EndHeight() types.BlockHeight {
 	return h.LastRevision().EndHeight()
 }
 
+// unappliedWalTxn is a wrapper around writeaheadlog.Transaction that guarantees
+// we only call `SignalUpdatesApplied` once.
+type unappliedWalTxn struct {
+	err  error
+	once sync.Once
+	*writeaheadlog.Transaction
+}
+
+// newUnappliedWalTxn wraps a `writeaheadlog.Transaction` in an unappliedWalTxn.
+func newUnappliedWalTxn(t *writeaheadlog.Transaction) *unappliedWalTxn {
+	return &unappliedWalTxn{
+		Transaction: t,
+	}
+}
+
+// SignalUpdatesApplied calls `SignalUpdatesApplied` on the wrapped wal. It will
+// do so only once.
+func (t *unappliedWalTxn) SignalUpdatesApplied() error {
+	t.once.Do(func() {
+		t.err = t.Transaction.SignalUpdatesApplied()
+	})
+	return t.err
+}
+
+// newWalTxn creates a new wal transaction and automatically wraps it in an
+// unappliedWalTxn.
+func (c *SafeContract) newWalTxn(updates []writeaheadlog.Update) (*unappliedWalTxn, error) {
+	wtxn, err := c.wal.NewTransaction(updates)
+	if err != nil {
+		return nil, err
+	}
+	return newUnappliedWalTxn(wtxn), nil
+}
+
 // A SafeContract contains the most recent revision transaction negotiated
 // with a host, and the secret key used to sign it.
 type SafeContract struct {
@@ -130,7 +164,7 @@ type SafeContract struct {
 
 	// unappliedTxns are the transactions that were written to the WAL but not
 	// applied to the contract file.
-	unappliedTxns []*writeaheadlog.Transaction
+	unappliedTxns []*unappliedWalTxn
 
 	headerFile *os.File
 	wal        *writeaheadlog.WAL
@@ -147,7 +181,7 @@ type SafeContract struct {
 
 // CommitPaymentIntent will commit the intent to pay a host for an rpc by
 // committing the signed txn in the contract's header.
-func (c *SafeContract) CommitPaymentIntent(t *writeaheadlog.Transaction, signedTxn types.Transaction, amount types.Currency, rpc types.Specifier) error {
+func (c *SafeContract) CommitPaymentIntent(t *unappliedWalTxn, signedTxn types.Transaction, amount types.Currency, rpc types.Specifier) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -167,6 +201,28 @@ func (c *SafeContract) CommitPaymentIntent(t *writeaheadlog.Transaction, signedT
 	if err := t.SignalUpdatesApplied(); err != nil {
 		return err
 	}
+	return c.clearUnappliedTxns()
+}
+
+// clearUnappliedTxns marks all unapplied transactions as completed without
+// applying them.
+func (c *SafeContract) clearUnappliedTxns() error {
+	for len(c.unappliedTxns) > 0 {
+		// Fetch next txn.
+		txn := c.unappliedTxns[0]
+
+		// Mark it as applied.
+		err := txn.SignalUpdatesApplied()
+		if err != nil {
+			return err
+		}
+
+		// Remove it from the contract. In case we crash, we at least won't
+		// start at the beginning again.
+		c.unappliedTxns = c.unappliedTxns[1:]
+	}
+
+	// Set the slice to nil to free memory.
 	c.unappliedTxns = nil
 	return nil
 }
@@ -201,7 +257,7 @@ func (c *SafeContract) Metadata() modules.RenterContract {
 
 // RecordPaymentIntent will records the changes we are about to make to the
 // revision in order to pay a host for an RPC.
-func (c *SafeContract) RecordPaymentIntent(rev types.FileContractRevision, amount types.Currency, rpc types.Specifier) (*writeaheadlog.Transaction, error) {
+func (c *SafeContract) RecordPaymentIntent(rev types.FileContractRevision, amount types.Currency, rpc types.Specifier) (*unappliedWalTxn, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -212,7 +268,7 @@ func (c *SafeContract) RecordPaymentIntent(rev types.FileContractRevision, amoun
 	// TODO update contract header to support 'FundAccountSpending' or
 	// 'UnknownSpending', depending on the RPC
 
-	t, err := c.wal.NewTransaction([]writeaheadlog.Update{
+	t, err := c.newWalTxn([]writeaheadlog.Update{
 		c.makeUpdateSetHeader(newHeader),
 	})
 	if err != nil {
@@ -239,7 +295,7 @@ func (c *SafeContract) UpdateUtility(utility modules.ContractUtility) error {
 	newHeader.Utility = utility
 
 	// Record the intent to change the header in the wal.
-	t, err := c.wal.NewTransaction([]writeaheadlog.Update{
+	t, err := c.newWalTxn([]writeaheadlog.Update{
 		c.makeUpdateSetHeader(newHeader),
 	})
 	if err != nil {
@@ -384,7 +440,7 @@ func (c *SafeContract) applySetRoot(root crypto.Hash, index int) error {
 
 // managedRecordAppendIntent creates a WAL update that adds a new sector to the
 // contract and queues this update for application.
-func (c *SafeContract) managedRecordAppendIntent(rev types.FileContractRevision, root crypto.Hash, storageCost, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
+func (c *SafeContract) managedRecordAppendIntent(rev types.FileContractRevision, root crypto.Hash, storageCost, bandwidthCost types.Currency) (*unappliedWalTxn, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// construct new header
@@ -406,7 +462,7 @@ func (c *SafeContract) managedRecordAppendIntent(rev types.FileContractRevision,
 		}
 		updates = append(updates, rcUpdate)
 	}
-	t, err := c.wal.NewTransaction(updates)
+	t, err := c.newWalTxn(updates)
 	if err != nil {
 		return nil, err
 	}
@@ -420,7 +476,7 @@ func (c *SafeContract) managedRecordAppendIntent(rev types.FileContractRevision,
 // managedCommitAppend ignores the header update in the given transaction and
 // instead applies a new one based on the provided signedTxn. This is necessary
 // if we run into a desync of contract revisions between renter and host.
-func (c *SafeContract) managedCommitAppend(t *writeaheadlog.Transaction, signedTxn types.Transaction, storageCost, bandwidthCost types.Currency) error {
+func (c *SafeContract) managedCommitAppend(t *unappliedWalTxn, signedTxn types.Transaction, storageCost, bandwidthCost types.Currency) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// construct new header
@@ -466,13 +522,15 @@ func (c *SafeContract) managedCommitAppend(t *writeaheadlog.Transaction, signedT
 	if err = t.SignalUpdatesApplied(); err != nil {
 		return err
 	}
-	c.unappliedTxns = nil
+	if err := c.clearUnappliedTxns(); err != nil {
+		return errors.AddContext(err, "failed to clear unapplied txns")
+	}
 	return nil
 }
 
 // managedRecordDownloadIntent creates a WAL update that updates the header with
 // the new download costs.
-func (c *SafeContract) managedRecordDownloadIntent(rev types.FileContractRevision, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
+func (c *SafeContract) managedRecordDownloadIntent(rev types.FileContractRevision, bandwidthCost types.Currency) (*unappliedWalTxn, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// construct new header
@@ -482,7 +540,7 @@ func (c *SafeContract) managedRecordDownloadIntent(rev types.FileContractRevisio
 	newHeader.Transaction.TransactionSignatures = nil
 	newHeader.DownloadSpending = newHeader.DownloadSpending.Add(bandwidthCost)
 
-	t, err := c.wal.NewTransaction([]writeaheadlog.Update{
+	t, err := c.newWalTxn([]writeaheadlog.Update{
 		c.makeUpdateSetHeader(newHeader),
 	})
 	if err != nil {
@@ -497,7 +555,7 @@ func (c *SafeContract) managedRecordDownloadIntent(rev types.FileContractRevisio
 
 // managedCommitDownload *ignores* all updates in the given transaction and
 // instead applies the provided signedTxn. See managedCommitAppend.
-func (c *SafeContract) managedCommitDownload(t *writeaheadlog.Transaction, signedTxn types.Transaction, bandwidthCost types.Currency) error {
+func (c *SafeContract) managedCommitDownload(t *unappliedWalTxn, signedTxn types.Transaction, bandwidthCost types.Currency) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// construct new header
@@ -514,13 +572,15 @@ func (c *SafeContract) managedCommitDownload(t *writeaheadlog.Transaction, signe
 	if err := t.SignalUpdatesApplied(); err != nil {
 		return err
 	}
-	c.unappliedTxns = nil
+	if err := c.clearUnappliedTxns(); err != nil {
+		return errors.AddContext(err, "failed to clear unapplied txns")
+	}
 	return nil
 }
 
 // managedRecordClearContractIntent records the changes we are about to make to
 // the revision in the WAL of the contract.
-func (c *SafeContract) managedRecordClearContractIntent(rev types.FileContractRevision, bandwidthCost types.Currency) (*writeaheadlog.Transaction, error) {
+func (c *SafeContract) managedRecordClearContractIntent(rev types.FileContractRevision, bandwidthCost types.Currency) (*unappliedWalTxn, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// construct new header
@@ -530,7 +590,7 @@ func (c *SafeContract) managedRecordClearContractIntent(rev types.FileContractRe
 	newHeader.Transaction.TransactionSignatures = nil
 	newHeader.UploadSpending = newHeader.UploadSpending.Add(bandwidthCost)
 
-	t, err := c.wal.NewTransaction([]writeaheadlog.Update{
+	t, err := c.newWalTxn([]writeaheadlog.Update{
 		c.makeUpdateSetHeader(newHeader),
 	})
 	if err != nil {
@@ -545,7 +605,7 @@ func (c *SafeContract) managedRecordClearContractIntent(rev types.FileContractRe
 
 // managedCommitClearContract commits the changes we made to the revision when
 // clearing a contract to the WAL of the contract.
-func (c *SafeContract) managedCommitClearContract(t *writeaheadlog.Transaction, signedTxn types.Transaction, bandwidthCost types.Currency) error {
+func (c *SafeContract) managedCommitClearContract(t *unappliedWalTxn, signedTxn types.Transaction, bandwidthCost types.Currency) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	// construct new header
@@ -562,7 +622,9 @@ func (c *SafeContract) managedCommitClearContract(t *writeaheadlog.Transaction, 
 	if err := t.SignalUpdatesApplied(); err != nil {
 		return err
 	}
-	c.unappliedTxns = nil
+	if err := c.clearUnappliedTxns(); err != nil {
+		return errors.AddContext(err, "failed to clear unapplied txns")
+	}
 	return nil
 }
 
@@ -682,12 +744,9 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 					return err
 				}
 				// drop all unapplied transactions
-				for _, t := range c.unappliedTxns {
-					if err := t.SignalUpdatesApplied(); err != nil {
-						return err
-					}
+				if err := c.clearUnappliedTxns(); err != nil {
+					return errors.AddContext(err, "failed to clear unapplied txns")
 				}
-				c.unappliedTxns = nil
 				return nil
 			}
 		}
@@ -702,12 +761,9 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	c.header.Transaction.FileContractRevisions[0] = rev
 	c.header.Transaction.TransactionSignatures = sigs
 	// Drop the WAL transactions, since they can't conceivably help us.
-	for _, t := range c.unappliedTxns {
-		if err := t.SignalUpdatesApplied(); err != nil {
-			return err
-		}
+	if err := c.clearUnappliedTxns(); err != nil {
+		return errors.AddContext(err, "failed to clear unapplied txns")
 	}
-	c.unappliedTxns = nil
 	return nil
 }
 
@@ -868,7 +924,7 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountF
 		return errors.AddContext(err, "unable to load the merkle roots of the contract")
 	}
 	// add relevant unapplied transactions
-	var unappliedTxns []*writeaheadlog.Transaction
+	var unappliedTxns []*unappliedWalTxn
 	for _, t := range walTxns {
 		// NOTE: we assume here that if any of the updates apply to the
 		// contract, the whole transaction applies to the contract.
@@ -891,7 +947,7 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountF
 			id = u.ID
 		}
 		if id == header.ID() {
-			unappliedTxns = append(unappliedTxns, t)
+			unappliedTxns = append(unappliedTxns, newUnappliedWalTxn(t))
 		}
 	}
 	var rc *refCounter

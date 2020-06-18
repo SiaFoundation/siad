@@ -9,6 +9,10 @@ import (
 )
 
 type (
+	// DependencyPreventEARefill prevents EAs from being refilled automatically.
+	DependencyPreventEARefill struct {
+		modules.ProductionDependencies
+	}
 	// DependencyLowFundsFormationFail will cause contract formation to fail due
 	// to low funds in the allowance.
 	DependencyLowFundsFormationFail struct {
@@ -200,6 +204,11 @@ func newDependencyInterruptAfterNCalls(str string, n int) *DependencyInterruptAf
 }
 
 // Disrupt returns true if the correct string is provided.
+func (d *DependencyPreventEARefill) Disrupt(s string) bool {
+	return s == "DisableFunding"
+}
+
+// Disrupt returns true if the correct string is provided.
 func (d *DependencyBlockResumeJobDownloadUntilTimeout) Disrupt(s string) bool {
 	if s == "BlockUntilTimeout" {
 		<-d.c
@@ -251,7 +260,7 @@ func (d *DependencyInterruptAccountSaveOnShutdown) Disrupt(s string) bool {
 	return s == "InterruptAccountSaveOnShutdown"
 }
 
-// Disrupt causes contract renewal to not clear the contents of a contract.
+// Disrupt returns true if the correct string is provided.
 func (d *DependencyDisableRotateFingerprintBuckets) Disrupt(s string) bool {
 	return s == "DisableRotateFingerprintBuckets"
 }

@@ -5,6 +5,8 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestInstructionSingleAppend tests executing a program with a single
@@ -18,12 +20,13 @@ func TestInstructionSingleAppend(t *testing.T) {
 	appendData1 := randomSectorData()
 	appendDataRoot1 := crypto.MerkleRoot(appendData1)
 	pt := newTestPriceTable()
-	tb := newTestProgramBuilder(pt)
+	duration := types.BlockHeight(fastrand.Uint64n(5))
+	tb := newTestProgramBuilder(pt, duration)
 	tb.AddAppendInstruction(appendData1, true)
 
 	// Execute it.
 	so := newTestStorageObligation(true)
-	finalizeFn, budget, outputs, err := mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, true)
+	finalizeFn, budget, outputs, err := mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, duration, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +69,8 @@ func TestInstructionSingleAppend(t *testing.T) {
 	// Execute same program again to append another sector.
 	appendData2 := randomSectorData() // new random data
 	appendDataRoot2 := crypto.MerkleRoot(appendData2)
-	tb = newTestProgramBuilder(pt)
+	duration = types.BlockHeight(1)
+	tb = newTestProgramBuilder(pt, duration)
 	tb.AddAppendInstruction(appendData2, true)
 	ics := so.ContractSize()
 
@@ -78,7 +82,7 @@ func TestInstructionSingleAppend(t *testing.T) {
 	}
 
 	// Execute it.
-	finalizeFn, budget, outputs, err = mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, true)
+	finalizeFn, budget, outputs, err = mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, duration, true)
 	if err != nil {
 		t.Fatal(err)
 	}

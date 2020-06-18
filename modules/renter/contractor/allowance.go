@@ -9,8 +9,7 @@ import (
 )
 
 var (
-	errAllowanceNotSynced  = errors.New("you must be synced to set an allowance")
-	errAllowanceWindowSize = errors.New("renew window must be less than period")
+	errAllowanceNotSynced = errors.New("you must be synced to set an allowance")
 
 	// ErrAllowanceZeroFunds is returned if the allowance funds are being set to
 	// zero when not cancelling the allowance
@@ -75,8 +74,6 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 		return ErrAllowanceZeroPeriod
 	} else if a.RenewWindow == 0 {
 		return ErrAllowanceZeroWindow
-	} else if a.RenewWindow >= a.Period {
-		return errAllowanceWindowSize
 	} else if a.ExpectedStorage == 0 {
 		return ErrAllowanceZeroExpectedStorage
 	} else if a.ExpectedUpload == 0 {
@@ -90,18 +87,33 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 	} else if !c.cs.Synced() {
 		return errAllowanceNotSynced
 	}
-
 	c.log.Println("INFO: setting allowance to", a)
+
+	// Set the current period if the existing allowance is empty.
+	//
+	// When setting the current period we want to ensure that it aligns with the
+	// start and endheights of the contracts as we would expect. To do this we
+	// have to consider the following. First, that the current period value is
+	// incremented by the allowance period, and second, that the total length of
+	// a contract is the period + renew window. This means the that contracts are
+	// always overlapping periods, and we want that overlap to be the renew
+	// window. In order to create this overlap we set the current period as such.
+	//
+	// If the renew window is less than the period the current period is set in
+	// the past by the renew window.
+	//
+	// If the renew window is greater than or equal to the period we set the
+	// current period to the current block height.
+	//
+	// Also remember that we might have to unlock our contracts if the allowance
+	// was set to the empty allowance before.
 	c.mu.Lock()
-	// set the current period to the blockheight if the existing allowance is
-	// empty. the current period is set in the past by the renew window to make sure
-	// the first period aligns with the first period contracts in the same way
-	// that future periods align with contracts
-	// Also remember that we might have to unlock our contracts if the
-	// allowance was set to the empty allowance before.
 	unlockContracts := false
 	if reflect.DeepEqual(c.allowance, modules.Allowance{}) {
-		c.currentPeriod = c.blockHeight - a.RenewWindow
+		c.currentPeriod = c.blockHeight
+		if a.Period > a.RenewWindow {
+			c.currentPeriod -= a.RenewWindow
+		}
 		unlockContracts = true
 	}
 	c.allowance = a

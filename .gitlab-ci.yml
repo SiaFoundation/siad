@@ -16,7 +16,6 @@ variables:
     ./cmd/skynet-benchmark
     ./compatibility
     ./crypto
-    ./encoding
     ./modules
     ./modules/consensus
     ./modules/explorer
@@ -62,7 +61,7 @@ variables:
 default: &default_params
   ## Run tests with most recent golang version to take advantage of any perf
   ## improvements.
-  image: golang:1.13.8
+  image: golang:latest
   before_script:
     - mkdir -p .cache/gocache
     - export PATH=$PATH:$CI_PROJECT_DIR/.cache/bin/
@@ -196,7 +195,7 @@ package-tests:
     key: package-cache
     paths:
       - .cache
-  script: 
+  script:
     - make test-long run=. pkgs="$package_pkgs"
 siatest-tests:
   <<: *default_test_params
