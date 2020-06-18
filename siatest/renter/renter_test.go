@@ -4692,11 +4692,11 @@ func TestWorkerStatus(t *testing.T) {
 		}
 
 		// PriceTableStatus checks
-		if worker.PriceTableStatus.RecentErr != "" {
-			t.Error("Expected recent err to be nil but was", worker.PriceTableStatus.RecentErr)
-		}
 		if worker.PriceTableStatus.OnCoolDown {
 			t.Error("Worker price table should not be on cool down")
+		}
+		if worker.PriceTableStatus.RecentErr != "" {
+			t.Error("Expected recent err to be nil but was", worker.PriceTableStatus.RecentErr)
 		}
 
 		// ReadSectorJobStatus checks

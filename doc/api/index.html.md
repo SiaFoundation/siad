@@ -4608,6 +4608,18 @@ The size of the worker's backup job queue
 **downloadrootjobqueuesize** | int  
 The size of the worker's download by root job queue
 
+**accountstatus** | object
+Detailed information about the worker's ephemeral account status
+
+**pricetablestatus** | object
+Detailed information about the worker's price table status
+
+**readsectorjobsstatus** | object
+Details of the worker's read sector jobs queue
+
+**hassectorjobsstatus** | object
+Details of the worker's has sector jobs queue
+
 # Skynet
 
 ## /skynet/blacklist [GET]

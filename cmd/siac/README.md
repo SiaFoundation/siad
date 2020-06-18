@@ -31,6 +31,11 @@ Renter:
 * `siac renter ls` list all renter files and subdirectories
 * `siac renter upload [filepath] [nickname]` upload a file
 * `siac renter download [nickname] [filepath]` download a file
+* `siac renter workers` show worker status
+* `siac renter workers ea` show worker account status
+* `siac renter workers pt` show worker price table status
+* `siac renter workers rs` show worker read sector jobs status
+* `siac renter workers hs` show worker has sector jobs status
 
 
 Full Descriptions
@@ -177,6 +182,27 @@ if you have multiple downloads happening simultaneously.
 
 * `siac renter allowance` views the current allowance, which controls how much
   money is spent on file contracts.
+
+* `siac renter workers` shows a detailed overview of all workers. It shows
+  information about its account, contract and download and upload status.
+
+* `siac renter workers ea` shows a detailed overview of the worker's ephemeral
+  account status, such as balance information, whether its on cooldown or not
+  and potentially its most recent error.
+
+* `siac renter workers pt` shows a detailed overview of the worker's price table
+  status, such as when it was updated, when it expires, whether its on cooldown
+  or not and potentially its most recent error.
+
+* `siac renter workers rs` shows information about the read sector jobs queue.
+  How many jobs are in the queue and their average completion time. In case
+  there was an error it will also display the most recent error and when it
+  occurred.
+
+* `siac renter workers hs` shows information about the has sector jobs queue.
+  How many jobs are in the queue and their average completion time. In case
+  there was an error it will also display the most recent error and when it
+  occurred.
 
 #### Skynet tasks
 * `siac skynet upload [source filepath] [destination siapath]`
