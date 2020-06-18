@@ -226,7 +226,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		}
 	}
 	//	else {
-	//		// TODO: finalize spending for readonly programs once the MR is ready.
+	//		// TODO: finalize spending for readonly programs once the MR is ready. (#4236)
 	//	}
 
 	// The program was finalized and we don't want to refund the programRefund
@@ -282,7 +282,7 @@ func (h *Host) managedFinalizeWriteProgram(stream io.ReadWriter, fcid types.File
 		ParentID:       crypto.Hash(newRevision.ParentID),
 		CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
 		PublicKeyIndex: 0,
-		Signature:      req.RenterSig,
+		Signature:      req.Signature,
 	}
 	txn, err := createRevisionSignature(newRevision, renterSig, sk, bh)
 	if err != nil {
@@ -296,7 +296,7 @@ func (h *Host) managedFinalizeWriteProgram(stream io.ReadWriter, fcid types.File
 
 	// Send the response to the renter.
 	resp := modules.RPCExecuteProgramRevisionSigningResponse{
-		HostSig: txn.TransactionSignatures[1].Signature,
+		Signature: txn.TransactionSignatures[1].Signature,
 	}
 	err = modules.RPCWrite(stream, resp)
 	if err != nil {
@@ -328,10 +328,10 @@ func verifyExecuteProgramRevision(currentRevision, newRevision types.FileContrac
 
 	// Host payout addresses shouldn't change
 	if newRevision.ValidHostOutput().UnlockHash != currentRevision.ValidHostOutput().UnlockHash {
-		return ErrValidHostOutputChanged
+		return ErrValidHostOutputAddressChanged
 	}
 	if newRevision.MissedHostOutput().UnlockHash != currentRevision.MissedHostOutput().UnlockHash {
-		return ErrMissedHostOutputChanged
+		return ErrMissedHostOutputAddressChanged
 	}
 
 	// Make sure the lost collateral still goes to the void

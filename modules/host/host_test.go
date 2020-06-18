@@ -495,13 +495,15 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 
 	// when we purposefully don't finalize, we can't wait for the host to close
 	// the stream.
-	if finalize {
-		// The next read should return io.EOF since the host closes the connection
-		// after the RPC is done.
-		err = modules.RPCRead(stream, struct{}{})
-		if !errors.Contains(err, io.ErrClosedPipe) {
-			return nil, limit, err
-		}
+	if !finalize {
+		return responses, limit, nil
+	}
+
+	// The next read should return io.EOF since the host closes the connection
+	// after the RPC is done.
+	err = modules.RPCRead(stream, struct{}{})
+	if !errors.Contains(err, io.ErrClosedPipe) {
+		return nil, limit, err
 	}
 	return responses, limit, nil
 }
@@ -669,7 +671,7 @@ func (p *renterHostPair) managedFinalizeWriteProgram(stream siamux.Stream, lastO
 
 	// Prepare the request.
 	req := modules.RPCExecuteProgramRevisionSigningRequest{
-		RenterSig:            renterSig[:],
+		Signature:            renterSig[:],
 		NewRevisionNumber:    newRevision.NewRevisionNumber,
 		NewValidProofValues:  newValidProofValues,
 		NewMissedProofValues: newMissedProofValues,
@@ -695,7 +697,7 @@ func (p *renterHostPair) managedFinalizeWriteProgram(stream siamux.Stream, lastO
 		CoveredFields: types.CoveredFields{
 			FileContractRevisions: []uint64{0},
 		},
-		Signature: resp.HostSig,
+		Signature: resp.Signature,
 	}
 	rs := types.TransactionSignature{
 		ParentID:       crypto.Hash(newRevision.ParentID),
@@ -703,7 +705,7 @@ func (p *renterHostPair) managedFinalizeWriteProgram(stream siamux.Stream, lastO
 		CoveredFields: types.CoveredFields{
 			FileContractRevisions: []uint64{0},
 		},
-		Signature: req.RenterSig,
+		Signature: req.Signature,
 	}
 	txn := types.Transaction{
 		FileContractRevisions: []types.FileContractRevision{newRevision},

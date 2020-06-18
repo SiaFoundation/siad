@@ -143,7 +143,7 @@ type (
 	// RPCExecuteProgramRevisionSigningRequest is the request sent by the renter
 	// for updating a contract when executing a write MDM program.
 	RPCExecuteProgramRevisionSigningRequest struct {
-		RenterSig            []byte
+		Signature            []byte
 		NewRevisionNumber    uint64
 		NewValidProofValues  []types.Currency
 		NewMissedProofValues []types.Currency
@@ -152,7 +152,7 @@ type (
 	// RPCExecuteProgramRevisionSigningResponse is the response from the host,
 	// containing the host signature for the new revision.
 	RPCExecuteProgramRevisionSigningResponse struct {
-		HostSig []byte
+		Signature []byte
 	}
 
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table

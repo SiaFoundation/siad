@@ -133,13 +133,13 @@ var (
 	// action from the renter that it does not understand.
 	ErrUnknownModification = ErrorCommunication("renter is attempting an action that the host does not understand")
 
-	// ErrValidHostOutputChanged is returned when the host's valid payout
+	// ErrValidHostOutputAddressChanged is returned when the host's valid output
 	// address changed even though it shouldn't.
-	ErrValidHostOutputChanged = ErrorCommunication("valid host payout address changed")
+	ErrValidHostOutputAddressChanged = ErrorCommunication("valid host output address changed")
 
-	// ErrMissedHostOutputChanged is returne when the host's missed payout
-	// changed even though it shouldn't.
-	ErrMissedHostOutputChanged = ErrorCommunication("missed host payout changed")
+	// ErrMissedHostOutputAddressChanged is returned when the host's missed
+	// payout address changed even though it shouldn't.
+	ErrMissedHostOutputAddressChanged = ErrorCommunication("missed host payout address changed")
 
 	// ErrVoidAddressChanged is returned if the void output address changed.
 	ErrVoidAddressChanged = ErrorCommunication("lost collateral address was changed")
