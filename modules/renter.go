@@ -756,7 +756,7 @@ type (
 		UploadTerminated    bool          `json:"uploadterminated"`
 
 		// Ephemeral Account information
-		AccountBalanceTarget types.Currency      `json:"balancetarget"`
+		AccountBalanceTarget types.Currency      `json:"accountbalancetarget"`
 		AccountStatus        WorkerAccountStatus `json:"accountstatus"`
 
 		// PriceTable information
