@@ -154,7 +154,7 @@ func (w *watchdog) callAllowanceUpdated(a modules.Allowance) {
 func (w *watchdog) callMonitorContract(args monitorContractArgs) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.contractor.log.Debugln("callMonitorContract", args.fcID)
+	w.contractor.log.Debugf("callMonitorContract for contract: %v at height %v (Watchdog height: %v)", args.fcID, args.blockHeight, w.blockHeight)
 
 	if _, ok := w.contracts[args.fcID]; ok {
 		w.contractor.log.Println("watchdog asked to watch contract it already knowns: ", args.fcID)
@@ -366,6 +366,7 @@ func removeTxnFromSet(txn types.Transaction, txnSet []types.Transaction) ([]type
 func (w *watchdog) managedScanAppliedBlock(block types.Block) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.contractor.log.Debugln("Watchdog scanning reverted block at height: ", w.blockHeight)
 
 	for _, txn := range block.Transactions {
 		for i := range txn.FileContracts {
@@ -485,9 +486,9 @@ func (w *watchdog) findDependencySpends(txn types.Transaction) {
 // of monitored contracts and also for the creation of any new dependencies for
 // monitored formation transaction sets.
 func (w *watchdog) managedScanRevertedBlock(block types.Block) {
-	w.contractor.log.Debugln("processing reverted block at height: ", w.blockHeight)
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.contractor.log.Debugln("Watchdog scanning reverted block at height: ", w.blockHeight)
 
 	outputsCreatedInBlock := make(map[types.SiacoinOutputID]*types.Transaction)
 	for i := 0; i < len(block.Transactions); i++ {
