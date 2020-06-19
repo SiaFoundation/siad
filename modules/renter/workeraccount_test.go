@@ -436,7 +436,7 @@ func TestSyncAccountBalanceToHostCritical(t *testing.T) {
 		}
 	}()
 
-	w.managedSyncAccountBalanceToHost()
+	w.externSyncAccountBalanceToHost()
 }
 
 // openRandomTestAccountsOnRenter is a helper function that creates a random

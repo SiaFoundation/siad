@@ -483,7 +483,7 @@ func (w *worker) managedRefillAccount() {
 	return
 }
 
-// managedSyncAccountBalanceToHost is executed  before the worker loop and
+// externSyncAccountBalanceToHost is executed before the worker loop and
 // corrects the account balance in case of an unclean renter shutdown. It does
 // so by performing the AccountBalanceRPC and resetting the account to the
 // balance communicated by the host. This only happens if our account balance is
@@ -492,17 +492,20 @@ func (w *worker) managedRefillAccount() {
 // NOTE: it is important this function is only used when the worker has no
 // in-progress jobs, neither serial nor async, to ensure the account balance
 // sync does not leave the account in an undesired state. The worker should not
-// be launching new jobs while this function is running.
-func (w *worker) managedSyncAccountBalanceToHost() {
+// be launching new jobs while this function is running. To achieve this, we
+// ensure that this thread is only run from the priamry work loop, which is also
+// the only thread that is allowed to launch jobs. As long as this function is
+// only called by that thread, and no other thread launches jobs, this function
+// is threadsafe.
+func (w *worker) externSyncAccountBalanceToHost() {
 	// Spin/block until the worker has no jobs in motion. This should only be
 	// called from the primary loop of the worker, meaning that no new jobs will
 	// be launched while we spin.
 	isIdle := func() bool {
 		sls := w.staticLoopState
-		a := atomic.LoadUint64(&sls.atomicSerialJobRunning) != 0
-		b := atomic.LoadUint64(&sls.atomicReadDataOutstanding) != 0
-		c := atomic.LoadUint64(&sls.atomicWriteDataOutstanding) != 0
-		return !a && !b && !c
+		a := atomic.LoadUint64(&sls.atomicSerialJobRunning) == 0
+		b := atomic.LoadUint64(&sls.atomicAsyncJobsRunning) == 0
+		return a && b
 	}
 	start := time.Now()
 	for !isIdle() {
