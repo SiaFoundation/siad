@@ -278,6 +278,11 @@ func signatureFromRequest(recent types.FileContractRevision, pbcr modules.PayByC
 // the data has transferred the expected amount of money from the renter to the
 // host.
 func verifyEAFundRevision(existingRevision, paymentRevision types.FileContractRevision, blockHeight types.BlockHeight, expectedTransfer types.Currency) error {
+	// Check that the revision count has increased.
+	if paymentRevision.NewRevisionNumber <= existingRevision.NewRevisionNumber {
+		return ErrBadRevisionNumber
+	}
+
 	// Check that the revision is well-formed.
 	if len(paymentRevision.NewValidProofOutputs) != 2 || len(paymentRevision.NewMissedProofOutputs) != 3 {
 		return ErrBadContractOutputCounts
@@ -344,11 +349,6 @@ func verifyEAFundRevision(existingRevision, paymentRevision types.FileContractRe
 	if !existingVoidOutput.Value.Equals(paymentVoidOutput.Value) {
 		s := fmt.Sprintf("void payout wasn't expected to change")
 		return errors.AddContext(ErrVoidPayoutChanged, s)
-	}
-
-	// Check that the revision count has increased.
-	if paymentRevision.NewRevisionNumber <= existingRevision.NewRevisionNumber {
-		return ErrBadRevisionNumber
 	}
 
 	// Check that all of the non-volatile fields are the same.

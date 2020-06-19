@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -11,6 +12,13 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
+
+// StatusModuleNotLoaded is a custom http code to indicate that a module wasn't
+// loaded by the Daemon and can therefore not be reached. It is used instead of
+// the previous status code 404 to make a clear distinction between a module not
+// being loaded and a resource which would usually be provided a module not
+// being found.
+const StatusModuleNotLoaded = 490
 
 // ErrAPICallNotRecognized is returned by API client calls made to modules that
 // are not yet loaded.
@@ -202,7 +210,8 @@ func New(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword str
 
 // UnrecognizedCallHandler handles calls to unknown pages (404).
 func UnrecognizedCallHandler(w http.ResponseWriter, req *http.Request) {
-	WriteError(w, Error{"404 - Refer to API.md"}, http.StatusNotFound)
+	errStr := fmt.Sprintf("%d - Refer to API.md", StatusModuleNotLoaded)
+	WriteError(w, Error{errStr}, StatusModuleNotLoaded)
 }
 
 // WriteError an error to the API caller.

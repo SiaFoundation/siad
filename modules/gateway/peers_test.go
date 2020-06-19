@@ -128,6 +128,68 @@ func TestAcceptPeer(t *testing.T) {
 	}
 }
 
+// TestAcceptPeerSameHost tests that acceptPeer will prefer kicking duplicate
+// hosts.
+func TestAcceptPeerSameHost(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	g := newTestingGateway(t)
+	defer g.Close()
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	// Add only unkickable peers.
+	port := 0
+	duplicatePeer := func() *peer {
+		addr := modules.NetAddress(fmt.Sprintf("1.2.3.4:%d", port))
+		port++
+		return &peer{
+			Peer: modules.Peer{
+				NetAddress: addr,
+				Inbound:    true,
+			},
+			sess: newClientStream(new(dummyConn), build.Version),
+		}
+	}
+
+	// Add duplicate peers until the gateway is full.
+	for i := 0; i < fullyConnectedThreshold; i++ {
+		g.acceptPeer(duplicatePeer())
+	}
+
+	// Check peers length
+	if len(g.peers) != fullyConnectedThreshold {
+		t.Fatal("unexpted number of peers")
+	}
+
+	// Add a unique peer.
+	g.acceptPeer(&peer{
+		Peer: modules.Peer{
+			NetAddress: "9.9.9.9:9999",
+			Inbound:    true,
+		},
+		sess: newClientStream(new(dummyConn), build.Version),
+	})
+
+	// The unique peer should exist.
+	if _, exists := g.peers["9.9.9.9:9999"]; !exists {
+		t.Fatal("unique peer doesn't exist")
+	}
+
+	// Nuke gateway with incoming connections from the same peer.
+	for i := 0; i < fullyConnectedThreshold*10; i++ {
+		g.acceptPeer(duplicatePeer())
+	}
+
+	// The unique peer should still exist.
+	if _, exists := g.peers["9.9.9.9:9999"]; !exists {
+		t.Fatal("unique peer doesn't exist")
+	}
+}
+
 // TestRandomInbountPeer checks that randomOutboundPeer returns the correct
 // peer.
 func TestRandomOutboundPeer(t *testing.T) {

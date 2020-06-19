@@ -8,6 +8,8 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+
+	"gitlab.com/NebulousLabs/errors"
 )
 
 type (
@@ -157,6 +159,7 @@ func (w *worker) staticUpdatePriceTable() {
 	// Get a stream.
 	stream, err := w.staticNewStream()
 	if err != nil {
+		err = errors.AddContext(err, "unable to create new stream")
 		return
 	}
 	defer func() {
@@ -172,6 +175,7 @@ func (w *worker) staticUpdatePriceTable() {
 	// write the specifier
 	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
+		err = errors.AddContext(err, "unable to write price table specifier")
 		return
 	}
 
@@ -179,6 +183,7 @@ func (w *worker) staticUpdatePriceTable() {
 	var uptr modules.RPCUpdatePriceTableResponse
 	err = modules.RPCRead(stream, &uptr)
 	if err != nil {
+		err = errors.AddContext(err, "unable to read price table response")
 		return
 	}
 
@@ -186,6 +191,7 @@ func (w *worker) staticUpdatePriceTable() {
 	var pt modules.RPCPriceTable
 	err = json.Unmarshal(uptr.PriceTableJSON, &pt)
 	if err != nil {
+		err = errors.AddContext(err, "unable to unmarshal price table")
 		return
 	}
 
@@ -199,6 +205,7 @@ func (w *worker) staticUpdatePriceTable() {
 	// provide payment
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
 	if err != nil {
+		err = errors.AddContext(err, "unable to provide payment")
 		return
 	}
 
@@ -208,6 +215,7 @@ func (w *worker) staticUpdatePriceTable() {
 	var tracked modules.RPCTrackedPriceTableResponse
 	err = modules.RPCRead(stream, &tracked)
 	if err != nil {
+		err = errors.AddContext(err, "unable to read tracked response")
 		return
 	}
 

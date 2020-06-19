@@ -208,7 +208,7 @@ func addChunksOfDifferentHealth(r *Renter, numChunks int, priority, fileRecently
 			},
 			stuck:                  stuck,
 			fileRecentlySuccessful: fileRecentlySuccessful,
-			priority:               priority,
+			staticPriority:         priority,
 			health:                 float64(i),
 			onDisk:                 !remote,
 			availableChan:          make(chan struct{}),
@@ -275,9 +275,9 @@ func TestUploadHeap(t *testing.T) {
 	//  - Last 2 chunks should be unstuck
 	chunk1 := rt.renter.uploadHeap.managedPop()
 	chunk2 := rt.renter.uploadHeap.managedPop()
-	if !chunk1.priority || !chunk2.priority {
+	if !chunk1.staticPriority || !chunk2.staticPriority {
 		t.Fatalf("Expected chunks to be priority, got priority %v and %v",
-			chunk1.priority, chunk2.priority)
+			chunk1.staticPriority, chunk2.staticPriority)
 	}
 	if chunk1.health < chunk2.health {
 		t.Fatalf("expected top chunk to have worst health, chunk1: %v, chunk2: %v",
