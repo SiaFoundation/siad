@@ -411,11 +411,10 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 	})
 	for i := range contracts {
 		err := func() error {
-			host, err := r.hostContractor.Session(contracts[i].HostPublicKey, r.tg.StopChan())
+			host, err := r.staticWorkerPool.callWorker(contracts[i].HostPublicKey)
 			if err != nil {
 				return err
 			}
-			defer host.Close()
 			entryTable, err := r.managedDownloadSnapshotTable(host)
 			if err != nil {
 				return err
@@ -434,7 +433,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 			// download the entry
 			dotSia = nil
 			for _, root := range entry.DataSectors {
-				data, err := host.Download(root, 0, uint32(modules.SectorSize))
+				data, err := host.ReadSector(r.tg.StopCtx(), root, 0, modules.SectorSize)
 				if err != nil {
 					return err
 				}
@@ -660,12 +659,13 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		// Synchronize the host.
 		r.log.Debugln("Synchronizing snapshots on host", c.HostPublicKey)
 		err = func() error {
-			// Download the host's entry table.
-			host, err := r.hostContractor.Session(c.HostPublicKey, r.tg.StopChan())
+			// Get the right worker for the host.
+			host, err := r.staticWorkerPool.callWorker(c.HostPublicKey)
 			if err != nil {
 				return err
 			}
-			defer host.Close()
+
+			// Download the snapshot table.
 			entryTable, err := r.managedDownloadSnapshotTable(host)
 			if err != nil {
 				return err
@@ -692,6 +692,12 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				}
 			}
 
+			// TODO: move this to RHP3 as well.
+			session, err := r.hostContractor.Session(c.HostPublicKey, r.tg.StopChan())
+			if err != nil {
+				return errors.AddContext(err, "failed to get session for upload")
+			}
+
 			// Upload any snapshots that the host is missing.
 			//
 			// TODO: instead of returning immediately upon encountering an
@@ -703,7 +709,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 					// TODO: if snapshot can't be found on any host, delete it
 					return err
 				}
-				if err := r.managedUploadSnapshotHost(ub, dotSia, host); err != nil {
+				if err := r.managedUploadSnapshotHost(ub, dotSia, session); err != nil {
 					return err
 				}
 				r.log.Printf("Replicated missing snapshot %q to host %v", ub.Name, c.HostPublicKey)

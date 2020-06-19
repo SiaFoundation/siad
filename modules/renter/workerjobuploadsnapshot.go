@@ -240,7 +240,7 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 	}
 
 	// download the current entry table
-	entryTable, err := r.managedDownloadSnapshotTable(host)
+	entryTable, err := r.managedDownloadSnapshotTableRHP2(host)
 	if err != nil {
 		return errors.AddContext(err, "could not download the snapshot table")
 	}
