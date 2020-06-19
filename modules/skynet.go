@@ -1,7 +1,6 @@
 package modules
 
 import (
-	"fmt"
 	"io"
 	"math"
 	"os"
@@ -34,9 +33,7 @@ type SkyfileSubfiles map[string]SkyfileSubfileMetadata
 // will start at offset 0, relative to the path.
 func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, uint64) {
 	// All paths must be absolute.
-	if !strings.HasPrefix(path, "/") {
-		path = fmt.Sprintf("/%s", path)
-	}
+	path = ensurePrefix(path, "/")
 	metadata := SkyfileMetadata{
 		Filename: path,
 		Subfiles: make(SkyfileSubfiles),
@@ -46,10 +43,7 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 
 	// Try to find an exact match
 	for _, sf := range sm.Subfiles {
-		filename := sf.Filename
-		if !strings.HasPrefix(filename, "/") {
-			filename = fmt.Sprintf("/%s", filename)
-		}
+		filename := ensurePrefix(sf.Filename, "/")
 		if filename == path {
 			metadata.Subfiles[sf.Filename] = sf
 			break
@@ -57,18 +51,12 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	}
 
 	// If we have not found an exact match, look for directories.
-	// This means we can safely ensire a trailing slash.
+	// This means we can safely ensure a trailing slash.
 	if len(metadata.Subfiles) == 0 {
 		dir = true
-
-		if !strings.HasSuffix(path, "/") {
-			path = fmt.Sprintf("%s/", path)
-		}
+		path = ensureSuffix(path, "/")
 		for _, sf := range sm.Subfiles {
-			filename := sf.Filename
-			if !strings.HasPrefix(filename, "/") {
-				filename = fmt.Sprintf("/%s", filename)
-			}
+			filename := ensurePrefix(sf.Filename, "/")
 			if strings.HasPrefix(filename, path) {
 				metadata.Subfiles[sf.Filename] = sf
 			}
