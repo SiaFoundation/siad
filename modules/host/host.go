@@ -344,9 +344,6 @@ func (h *Host) threadedPruneExpiredPriceTables() {
 // updatePriceTable will recalculate the RPC costs and update the host's
 // price table accordingly.
 func (h *Host) updatePriceTable() {
-	// fetch the fee estimates
-	minRecommended, maxRecommended := h.tpool.FeeEstimation()
-
 	// create a new RPC price table
 	priceTable := modules.RPCPriceTable{
 		// TODO: hardcoded cost should be updated to use a better value.
@@ -365,12 +362,7 @@ func (h *Host) updatePriceTable() {
 		// Bandwidth related fields.
 		DownloadBandwidthCost: h.settings.MinDownloadBandwidthPrice,
 		UploadBandwidthCost:   h.settings.MinUploadBandwidthPrice,
-
-		// TxnFee estimates.
-		TxnFeeMinRecommended: minRecommended,
-		TxnFeeMaxRecommended: maxRecommended,
 	}
-
 	// update the pricetable
 	h.staticPriceTables.managedSetCurrent(priceTable)
 }

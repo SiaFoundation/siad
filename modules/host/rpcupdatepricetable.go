@@ -102,6 +102,11 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	pt := h.staticPriceTables.managedCurrent()
 	fastrand.Read(pt.UID[:])
 
+	// set the transaction fee estimates
+	minRecommended, maxRecommended := h.tpool.FeeEstimation()
+	pt.TxnFeeMinRecommended = minRecommended
+	pt.TxnFeeMaxRecommended = maxRecommended
+
 	// set the validity to signal how long these prices are guaranteed for
 	pt.Validity = rpcPriceGuaranteePeriod
 
@@ -109,15 +114,15 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	// valid withdrawal messages in case it is not synced yet
 	pt.HostBlockHeight = h.BlockHeight()
 
+	// sanity check the price table has a UID
+	if bytes.Equal(pt.UID[:], make([]byte, types.SpecifierLen)) {
+		build.Critical("PriceTable does not have a UID set")
+	}
+
 	// json encode the price table
 	ptBytes, err := json.Marshal(pt)
 	if err != nil {
 		return errors.AddContext(err, "Failed to JSON encode the price table")
-	}
-
-	// sanity check the price table has a UID
-	if bytes.Equal(pt.UID[:], make([]byte, types.SpecifierLen)) {
-		build.Critical("PriceTable does not have a UID set")
 	}
 
 	// send it to the renter
