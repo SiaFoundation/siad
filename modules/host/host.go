@@ -79,7 +79,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 	connmonitor "gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/siamux"
 )
@@ -317,35 +316,6 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 	return h.settings
 }
 
-// managedUpdatePriceTable will recalculate the RPC costs and update the host's
-// price table accordingly.
-func (h *Host) managedUpdatePriceTable() {
-	// create a new RPC price table
-	es := h.managedExternalSettings()
-	priceTable := modules.RPCPriceTable{
-		// TODO: hardcoded cost should be updated to use a better value.
-		AccountBalanceCost:   types.NewCurrency64(1),
-		FundAccountCost:      types.NewCurrency64(1),
-		UpdatePriceTableCost: types.NewCurrency64(1),
-
-		// TODO: hardcoded MDM costs should be updated to use better values.
-		HasSectorBaseCost: types.NewCurrency64(1),
-		InitBaseCost:      types.NewCurrency64(1),
-		MemoryTimeCost:    types.NewCurrency64(1),
-		ReadBaseCost:      types.NewCurrency64(1),
-		ReadLengthCost:    types.NewCurrency64(1),
-		StoreLengthCost:   types.NewCurrency64(1),
-
-		// Bandwidth related fields.
-		DownloadBandwidthCost: es.DownloadBandwidthPrice,
-		UploadBandwidthCost:   es.UploadBandwidthPrice,
-	}
-	fastrand.Read(priceTable.UID[:])
-
-	// update the pricetable
-	h.staticPriceTables.managedSetCurrent(priceTable)
-}
-
 // threadedPruneExpiredPriceTables will expire price tables which have an expiry
 // in the past.
 //
@@ -369,6 +339,40 @@ func (h *Host) threadedPruneExpiredPriceTables() {
 			continue
 		}
 	}
+}
+
+// updatePriceTable will recalculate the RPC costs and update the host's
+// price table accordingly.
+func (h *Host) updatePriceTable() {
+	// fetch the fee estimates
+	minRecommended, maxRecommended := h.tpool.FeeEstimation()
+
+	// create a new RPC price table
+	priceTable := modules.RPCPriceTable{
+		// TODO: hardcoded cost should be updated to use a better value.
+		AccountBalanceCost:   types.NewCurrency64(1),
+		FundAccountCost:      types.NewCurrency64(1),
+		UpdatePriceTableCost: types.NewCurrency64(1),
+
+		// TODO: hardcoded MDM costs should be updated to use better values.
+		HasSectorBaseCost: types.NewCurrency64(1),
+		InitBaseCost:      types.NewCurrency64(1),
+		MemoryTimeCost:    types.NewCurrency64(1),
+		ReadBaseCost:      types.NewCurrency64(1),
+		ReadLengthCost:    types.NewCurrency64(1),
+		StoreLengthCost:   types.NewCurrency64(1),
+
+		// Bandwidth related fields.
+		DownloadBandwidthCost: h.settings.MinDownloadBandwidthPrice,
+		UploadBandwidthCost:   h.settings.MinUploadBandwidthPrice,
+
+		// TxnFee estimates.
+		TxnFeeMinRecommended: minRecommended,
+		TxnFeeMaxRecommended: maxRecommended,
+	}
+
+	// update the pricetable
+	h.staticPriceTables.managedSetCurrent(priceTable)
 }
 
 // newHost returns an initialized Host, taking a set of dependencies as input.
@@ -502,7 +506,9 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 	}
 
 	// Initialize the RPC price table
-	h.managedUpdatePriceTable()
+	h.mu.Lock()
+	h.updatePriceTable()
+	h.mu.Unlock()
 
 	// Ensure the expired RPC tables get pruned as to not leak memory
 	go h.threadedPruneExpiredPriceTables()
@@ -624,6 +630,12 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 	// another blockchain announcement.
 	if h.settings.NetAddress != settings.NetAddress && settings.NetAddress != h.autoAddress {
 		h.announced = false
+	}
+
+	// Check if the download or upload bandwidth costs changed. If it has, the
+	// host has to update its price table.
+	if !h.settings.MinDownloadBandwidthPrice.Equals(settings.MinDownloadBandwidthPrice) || !h.settings.MinUploadBandwidthPrice.Equals(settings.MinUploadBandwidthPrice) {
+		h.updatePriceTable()
 	}
 
 	h.settings = settings

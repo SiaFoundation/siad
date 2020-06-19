@@ -28,6 +28,8 @@ func TestPriceTableMarshaling(t *testing.T) {
 		ReadLengthCost:       types.SiacoinPrecision.Mul64(1e5),
 		HasSectorBaseCost:    types.SiacoinPrecision.Mul64(1e6),
 		StoreLengthCost:      types.SiacoinPrecision.Mul64(1e7),
+		TxnFeeMinRecommended: types.SiacoinPrecision.Mul64(1e8),
+		TxnFeeMaxRecommended: types.SiacoinPrecision.Mul64(1e9),
 	}
 	fastrand.Read(pt.UID[:])
 
@@ -205,6 +207,14 @@ func testUpdatePriceTableBasic(t *testing.T, rhp *renterHostPair) {
 	// just the initial value
 	if pt.HostBlockHeight == 0 {
 		t.Fatal("Expected host blockheight to be not 0")
+	}
+
+	// ensure it has the txn fee estimates
+	if pt.TxnFeeMinRecommended.IsZero() {
+		t.Fatal("Expected TxnFeeMinRecommended to be set on the price table")
+	}
+	if pt.TxnFeeMaxRecommended.IsZero() {
+		t.Fatal("Expected TxnFeeMaxRecommended to be set on the price table")
 	}
 }
 

@@ -76,6 +76,10 @@ type RPCPriceTable struct {
 	WriteBaseCost   types.Currency `json:"writebasecost"`
 	WriteLengthCost types.Currency `json:"writelengthcost"`
 	WriteStoreCost  types.Currency `json:"writestorecost"`
+
+	// TxnFee estimations.
+	TxnFeeMinRecommended types.Currency `json:"txnfeeminrecommended"`
+	TxnFeeMaxRecommended types.Currency `json:"txnfeemaxrecommended"`
 }
 
 var (

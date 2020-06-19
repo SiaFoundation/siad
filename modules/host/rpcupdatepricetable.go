@@ -1,12 +1,15 @@
 package host
 
 import (
+	"bytes"
 	"container/heap"
 	"encoding/json"
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
@@ -110,6 +113,11 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	ptBytes, err := json.Marshal(pt)
 	if err != nil {
 		return errors.AddContext(err, "Failed to JSON encode the price table")
+	}
+
+	// sanity check the price table has a UID
+	if bytes.Equal(pt.UID[:], make([]byte, types.SpecifierLen)) {
+		build.Critical("PriceTable does not have a UID set")
 	}
 
 	// send it to the renter
