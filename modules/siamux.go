@@ -56,9 +56,9 @@ func NewSiaMux(siaMuxDir, siaDir, tcpaddress, wsaddress string) (*siamux.SiaMux,
 	// recycle the host's key pair to use in the siamux
 	pubKey, privKey, compat := compatLoadKeysFromHost(siaDir)
 	if compat {
-		return siamux.CompatV1421NewWithKeyPair(tcpaddress, wsaddress, logger, siaMuxDir, privKey, pubKey)
+		return siamux.CompatV1421NewWithKeyPair(tcpaddress, wsaddress, logger.Logger, siaMuxDir, privKey, pubKey)
 	}
-	return siamux.New(tcpaddress, wsaddress, logger, siaMuxDir)
+	return siamux.New(tcpaddress, wsaddress, logger.Logger, siaMuxDir)
 }
 
 // NewHostStream is a helper function that opens a stream on the given mux  to

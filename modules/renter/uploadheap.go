@@ -79,11 +79,11 @@ func (uch uploadChunkHeap) Less(i, j int) bool {
 	// Check for Priority chunks
 	//
 	// If only chunk i is high priority, return true to prioritize it.
-	if uch[i].priority && !uch[j].priority {
+	if uch[i].staticPriority && !uch[j].staticPriority {
 		return true
 	}
 	// If only chunk j is high priority, return false to prioritize it.
-	if !uch[i].priority && uch[j].priority {
+	if !uch[i].staticPriority && uch[j].staticPriority {
 		return false
 	}
 
@@ -419,10 +419,10 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 			index:   chunkIndex,
 		},
 
-		length:   entry.ChunkSize(),
-		offset:   int64(chunkIndex * entry.ChunkSize()),
-		onDisk:   onDisk,
-		priority: priority,
+		length:         entry.ChunkSize(),
+		offset:         int64(chunkIndex * entry.ChunkSize()),
+		onDisk:         onDisk,
+		staticPriority: priority,
 
 		staticIndex:   chunkIndex,
 		staticSiaPath: entryCopy.SiaFilePath(),
@@ -575,7 +575,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		}
 
 		// Create unfinishedUploadChunk
-		chunk, err := r.managedBuildUnfinishedChunk(entry, uint64(index), hosts, pks, false, offline, goodForRenew)
+		chunk, err := r.managedBuildUnfinishedChunk(entry, uint64(index), hosts, pks, memoryPriorityLow, offline, goodForRenew)
 		if err != nil {
 			r.log.Debugln("Error when building an unfinished chunk:", err)
 			continue
@@ -1113,7 +1113,7 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[s
 	// Grab the next chunk, loop until we have enough memory, update the amount
 	// of memory available, and then spin up a thread to asynchronously handle
 	// the rest of the chunk tasks.
-	if !r.memoryManager.Request(uuc.memoryNeeded, memoryPriorityLow) {
+	if !r.memoryManager.Request(uuc.memoryNeeded, uuc.staticPriority) {
 		return errors.New("couldn't request memory")
 	}
 	// Fetch the chunk in a separate goroutine, as it can take a long time and

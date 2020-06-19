@@ -1,0 +1,1 @@
+- Add `configModules` to the API so that the siad modules can be return in `/daemon/settings [GET]`

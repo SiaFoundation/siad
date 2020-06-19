@@ -93,6 +93,9 @@ func (h *Host) externalSettings() modules.HostExternalSettings {
 		StoragePrice:           h.settings.MinStoragePrice,
 		UploadBandwidthPrice:   h.settings.MinUploadBandwidthPrice,
 
+		EphemeralAccountExpiry:     h.settings.EphemeralAccountExpiry,
+		MaxEphemeralAccountBalance: h.settings.MaxEphemeralAccountBalance,
+
 		RevisionNumber: h.revisionNumber,
 		Version:        build.Version,
 

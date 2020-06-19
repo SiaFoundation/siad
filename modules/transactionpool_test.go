@@ -3,8 +3,8 @@ package modules
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 // TestConsensusConflict checks that the consensus conflict type is correctly

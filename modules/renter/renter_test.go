@@ -287,6 +287,42 @@ func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet 
 	return renter, <-errChan
 }
 
+// TestRenterCanAccessEphemeralAccountHostSettings verifies that the renter has
+// access to the host's external settings and that they include the new
+// ephemeral account setting fields.
+func TestRenterCanAccessEphemeralAccountHostSettings(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	// Add a host to the test group
+	h, err := rt.addHost(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hostEntry, found, err := rt.renter.hostDB.Host(h.PublicKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("Expected the newly added host to be found in the hostDB")
+	}
+
+	if hostEntry.EphemeralAccountExpiry != modules.DefaultEphemeralAccountExpiry {
+		t.Fatal("Unexpected account expiry")
+	}
+
+	if !hostEntry.MaxEphemeralAccountBalance.Equals(modules.DefaultMaxEphemeralAccountBalance) {
+		t.Fatal("Unexpected max account balance")
+	}
+}
+
 // TestRenterPricesDivideByZero verifies that the Price Estimation catches
 // divide by zero errors.
 func TestRenterPricesDivideByZero(t *testing.T) {

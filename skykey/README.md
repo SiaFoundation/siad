@@ -32,6 +32,19 @@ revealed in plaintext, therefore its name is `TypePublicID` Implicitly, this
 specifies the entropy length as the length of a key and nonce in that scheme.
 Its byte representation is 1 type byte and 56 entropy bytes.
 
+`TypePrivateID` represents a skykey that uses the XChaCha20 cipher schemes and
+is can be used for encrypting skyfiles.  Implicitly, this specifies the entropy
+length as the length of a key and nonce in that scheme.  Its byte representation
+is 1 type byte and 56 entropy bytes. When used for skyfile encryption, the key ID
+is never revealed. Instead the Skykey is used to derive a file-specific key,
+which is then used to encrypt a known identifier. This means that without
+knowledge of the Skykey, you cannot tell which Skykeys were used for which
+skyfile and cannot even group together skyfiles encrypted with the same
+`TypePrivateID` Skykey. If you do have the Skykey, you can verify that fact by
+decrypting the identifier and checking against the known plaintext.
+
+
+
 ## Encoding
 
 `Skykeys` are meant to be shared using the string format which is a URI encoding

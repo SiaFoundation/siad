@@ -338,7 +338,7 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create mux logger")
 	}
-	renterMux, err := siamux.New("127.0.0.1:0", "127.0.0.1:0", muxLogger, renterMuxDir)
+	renterMux, err := siamux.New("127.0.0.1:0", "127.0.0.1:0", muxLogger.Logger, renterMuxDir)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create renter mux")
 	}
@@ -938,10 +938,10 @@ func TestSetAndGetInternalSettings(t *testing.T) {
 	if !settings.MinUploadBandwidthPrice.Equals(modules.DefaultUploadBandwidthPrice) {
 		t.Error("settings retrieval did not return default value")
 	}
-	if settings.EphemeralAccountExpiry != (defaultEphemeralAccountExpiry) {
+	if settings.EphemeralAccountExpiry != (modules.DefaultEphemeralAccountExpiry) {
 		t.Error("settings retrieval did not return default value")
 	}
-	if !settings.MaxEphemeralAccountBalance.Equals(defaultMaxEphemeralAccountBalance) {
+	if !settings.MaxEphemeralAccountBalance.Equals(modules.DefaultMaxEphemeralAccountBalance) {
 		t.Error("settings retrieval did not return default value")
 	}
 	if !settings.MaxEphemeralAccountRisk.Equals(defaultMaxEphemeralAccountRisk) {

@@ -71,8 +71,8 @@ func (h *Host) establishDefaults() error {
 		MinStoragePrice:           modules.DefaultStoragePrice,
 		MinUploadBandwidthPrice:   modules.DefaultUploadBandwidthPrice,
 
-		EphemeralAccountExpiry:     defaultEphemeralAccountExpiry,
-		MaxEphemeralAccountBalance: defaultMaxEphemeralAccountBalance,
+		EphemeralAccountExpiry:     modules.DefaultEphemeralAccountExpiry,
+		MaxEphemeralAccountBalance: modules.DefaultMaxEphemeralAccountBalance,
 		MaxEphemeralAccountRisk:    defaultMaxEphemeralAccountRisk,
 	}
 

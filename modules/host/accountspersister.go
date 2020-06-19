@@ -13,10 +13,10 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 const (
@@ -565,15 +565,21 @@ func (fm *fingerprintManager) threadedRemoveOldFingerprintBuckets() {
 	current := fm.currentPath
 	fm.mu.Unlock()
 
+	// Get the min blockheight of the bucket range, although it should never be
+	// the case we sanity check the current path is a valid bucket path.
+	min, _, bucket := isFingerprintBucket(filepath.Base(current))
+	if !bucket {
+		build.Critical("The current fingerprint bucket path is considered invalid")
+	}
+
 	// Create a function that decides whether or not to remove a fingerprint
 	// bucket, we can safely remove it if it's max is below the current min
 	// bucket range. This way we are sure to remove only old bucket files. This
 	// is important because there might be new files opened on disk after
 	// releasing the lock, we would not want to remove the current buckets.
-	min, _ := bucketRangeFromFingerprintsFilename(filepath.Base(current))
-	isOld := func(name string) bool {
-		_, max := bucketRangeFromFingerprintsFilename(name)
-		return max < min
+	isOldBucket := func(name string) bool {
+		_, max, bucket := isFingerprintBucket(name)
+		return bucket && max < min
 	}
 
 	// Read directory
@@ -585,7 +591,7 @@ func (fm *fingerprintManager) threadedRemoveOldFingerprintBuckets() {
 
 	// Iterate over directory
 	for _, fi := range fileinfos {
-		if isFingerprintBucket(fi.Name()) && isOld(fi.Name()) {
+		if isOldBucket(fi.Name()) {
 			err := os.Remove(filepath.Join(fm.h.persistDir, fi.Name()))
 			if err != nil {
 				fm.h.log.Fatal("Failed to remove old fingerprint buckets", err)
@@ -657,44 +663,28 @@ func fingerprintsFilenames(currentBlockHeight types.BlockHeight) (current, next 
 	return
 }
 
-// isFingerprintBucket is a helper function that returns true if the given
-// filename adheres to the fingerprint bucket filename format
-func isFingerprintBucket(filename string) bool {
-	return regexp.MustCompile(`^fingerprintsbucket_\d+-\d+.db$`).MatchString(filename)
-}
-
-// bucketRangeFromFingerprintsFilename is a helper function that takes a
-// fingerprint filename and parses the bucket range from it.
-func bucketRangeFromFingerprintsFilename(filename string) (min, max types.BlockHeight) {
-	if !isFingerprintBucket(filename) {
-		build.Critical(fmt.Sprintf("Unexpected fingerprints filename format '%s'", filename))
-		return
-	}
-
-	// parse the min and max blockheight
+// isFingerprintBucket is a helper function that takes a filename and returns
+// whether or not this is a fingerprint bucket. If it is, it also returns the
+// bucket's range as a min and max blockheight.
+func isFingerprintBucket(filename string) (types.BlockHeight, types.BlockHeight, bool) {
+	// match the filename
 	re := regexp.MustCompile(`^fingerprintsbucket_(\d+)-(\d+).db$`)
 	match := re.FindStringSubmatch(filename)
-
-	// parse min
-	minAsInt, err := strconv.Atoi(match[1])
-	if err != nil {
-		// we could ignore the error here due to `isFingerprintBucket` but
-		// better to be safe than sorry
-		build.Critical("Unexpected fingerprints filename format", filename)
-		return
+	if len(match) != 3 {
+		return 0, 0, false
 	}
-	min = types.BlockHeight(minAsInt)
 
-	// parse max
-	maxAsInt, err := strconv.Atoi(match[2])
-	if err != nil {
-		// we could ignore the error here due to `isFingerprintBucket` but
-		// better to be safe than sorry
-		build.Critical("Unexpected fingerprints filename format", filename)
-		return
+	// parse range - note we can safely ignore the error here due to our regex
+	min, _ := strconv.Atoi(match[1])
+	max, _ := strconv.Atoi(match[2])
+
+	// sanity check the range makes sense
+	if min >= max {
+		build.Critical(fmt.Sprintf("Bucket file found with range where min is not smaller than max height, %s", filename))
+		return 0, 0, false
 	}
-	max = types.BlockHeight(maxAsInt)
-	return
+
+	return types.BlockHeight(min), types.BlockHeight(max), true
 }
 
 // syncAndClose will sync and close the given file

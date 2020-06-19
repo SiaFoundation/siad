@@ -1,1 +1,0 @@
-- persist/log.go has been extracted and is now a simple wrapper around the new log repo.
