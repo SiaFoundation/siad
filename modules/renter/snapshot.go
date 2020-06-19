@@ -2,6 +2,7 @@ package renter
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -319,24 +320,20 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 	}
 
 	// Cap the total amount of time that we wait for results.
-	maxWait := time.NewTimer(maxSnapshotUploadTime)
-	defer func() {
-		if !maxWait.Stop() {
-			<-maxWait.C
-		}
-	}()
+	maxWait, cancel := context.WithTimeout(r.tg.StopCtx(), maxSnapshotUploadTime)
+	defer cancel()
 
 	// Iteratively grab the responses from the workers.
 	responses := 0
 	successes := 0
+
+LOOP:
 	for responses < queued {
 		var resp *jobUploadSnapshotResponse
 		select {
 		case resp = <-responseChan:
-		case <-maxWait.C:
-			break
-		case <-r.tg.StopChan():
-			return errors.New("renter is shutting down")
+		case <-maxWait.Done():
+			break LOOP
 		}
 		responses++
 
@@ -355,6 +352,13 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 			continue
 		}
 		successes++
+	}
+
+	// Check for shutdown.
+	select {
+	case <-r.tg.StopChan():
+		return errors.New("renter is shutting down")
+	default:
 	}
 
 	// Check if there were too few successes to count this as a successful
