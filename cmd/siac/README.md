@@ -185,13 +185,10 @@ have the nickname be the same as the filename.
   there was an error it will also display the most recent error and when it
   occurred.
 
-#### Skynet tasks
-* `siac skynet upload [source filepath] [destination siapath]`
-  uploads a file or directory to Skynet. A skylink will be produced for each
-  file. The link can be shared and used to retrieve the file. The file(s) that
-  get uploaded will be pinned to this Sia node, meaning that this node will pay
-  for storage and repairs until the file(s) are manually deleted. If the
-  `silent` flag is provided, `siac` will not output progress bars during upload.
+### Skykey tasks
+TODO - Fill in
+
+### Skynet tasks
 
 * `siac skynet blacklist [skylink]` will add or remove a skylink from the
   Renter's Skynet Blacklist
