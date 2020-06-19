@@ -9,9 +9,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// TestRevisionNumberSync is a unit test that verifies if the revision number
-// fix is attempted and whether it properly resync the revision.
-func TestRevisionNumberSync(t *testing.T) {
+// TestRevisionSync is a unit test that verifies if the revision number fix is
+// attempted and whether it properly resync the revision.
+func TestRevisionSync(t *testing.T) {
 	t.Parallel()
 	if testing.Short() {
 		t.SkipNow()
@@ -76,10 +76,9 @@ func TestRevisionNumberSync(t *testing.T) {
 	// mismatch error and that we can successfully recover from it
 }
 
-// TestSuspectRevisionNumberMismatchFlag is a small unit test that verifes the
-// methods involved in setting and unsetting the SuspectRevisionNumberMismatch
-// flag.
-func TestSuspectRevisionNumberMismatchFlag(t *testing.T) {
+// TestSuspectRevisionMismatchFlag is a small unit test that verifes the methods
+// involved in setting and unsetting the SuspectRevisionMismatch flag.
+func TestSuspectRevisionMismatchFlag(t *testing.T) {
 	t.Parallel()
 	if testing.Short() {
 		t.SkipNow()
@@ -97,20 +96,20 @@ func TestSuspectRevisionNumberMismatchFlag(t *testing.T) {
 	}()
 
 	// check whether flag is unset
-	if wt.staticSuspectRevisionNumberMismatch() {
+	if wt.staticSuspectRevisionMismatch() {
 		t.Fatal("Unexpected outcome")
 	}
 
 	// set the flag and verify that it's set
-	wt.staticSetSuspectRevisionNumberMismatch()
-	if !wt.staticSuspectRevisionNumberMismatch() {
+	wt.staticSetSuspectRevisionMismatch()
+	if !wt.staticSuspectRevisionMismatch() {
 		t.Fatal("Unexpected outcome")
 	}
 
 	// trigger the method that tries to fix the mismatch and verify it properly
 	// unsets the flag
-	wt.managedTryFixRevisionNumberMismatch()
-	if wt.staticSuspectRevisionNumberMismatch() {
+	wt.externTryFixRevisionMismatch()
+	if wt.staticSuspectRevisionMismatch() {
 		t.Fatal("Unexpected outcome")
 	}
 }

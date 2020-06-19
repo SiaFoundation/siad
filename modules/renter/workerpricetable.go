@@ -130,7 +130,7 @@ func (w *worker) staticUpdatePriceTable() {
 			// If the error could be caused by a revision number mismatch,
 			// signal it by setting the flag.
 			if errCausedByRevisionMismatch(err) {
-				w.staticSetSuspectRevisionNumberMismatch()
+				w.staticSetSuspectRevisionMismatch()
 				w.staticWake()
 			}
 		}
