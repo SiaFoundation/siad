@@ -17,7 +17,7 @@ const (
 	// priceTableHostBlockHeightLeeWay is the amount of leeway we will allow
 	// in the host's blockheight field on the price table. If the host sends us
 	// a block height that's lower than ours by more than the leeway, we will
-	// reject that price table. In the future we might penalize te host for
+	// reject that price table. In the future we might penalize the host for
 	// this, but for the time being we do not.
 	priceTableHostBlockHeightLeeWay = 3
 )
