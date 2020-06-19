@@ -2662,7 +2662,7 @@ func renterworkerseacmd() {
 	// print header
 	hostInfo := "Host PubKey"
 	accountInfo := "\tFunded\tAvailBal\tNegBal\tBalTarget"
-	queueInfo := "\tOnCoolDown\tCoolDownUntil\tConsecFail\tError\tErrorAt"
+	queueInfo := "\tOnCoolDown\tCoolDownUntil\tConsecFail\tErrorAt\tError"
 	header := hostInfo + accountInfo + queueInfo
 	fmt.Fprintln(w, "\nWorker Accounts Detail  \n\n"+header)
 
@@ -2685,8 +2685,8 @@ func renterworkerseacmd() {
 			as.OnCoolDown,
 			sanitizeTime(as.OnCoolDownUntil, as.OnCoolDown),
 			as.ConsecutiveFailures,
-			sanitizeErr(as.RecentErr),
-			sanitizeTime(as.RecentErrTime, as.RecentErr != ""))
+			sanitizeTime(as.RecentErrTime, as.RecentErr != ""),
+			sanitizeErr(as.RecentErr))
 	}
 }
 
@@ -2726,7 +2726,7 @@ func renterworkersptcmd() {
 	// print header
 	hostInfo := "Host PubKey"
 	priceTableInfo := "\tActive\tExpiry\tUpdate"
-	queueInfo := "\tOnCoolDown\tCoolDownUntil\tConsecFail\tError\tErrorAt"
+	queueInfo := "\tOnCoolDown\tCoolDownUntil\tConsecFail\tErrorAt\tError"
 	header := hostInfo + priceTableInfo + queueInfo
 	fmt.Fprintln(w, "\nWorker Price Tables Detail  \n\n"+header)
 
@@ -2748,8 +2748,8 @@ func renterworkersptcmd() {
 			pts.OnCoolDown,
 			sanitizeTime(pts.OnCoolDownUntil, pts.OnCoolDown),
 			pts.ConsecutiveFailures,
-			sanitizeErr(pts.RecentErr),
-			sanitizeTime(pts.RecentErrTime, pts.RecentErr != ""))
+			sanitizeTime(pts.RecentErrTime, pts.RecentErr != ""),
+			sanitizeErr(pts.RecentErr))
 	}
 }
 
@@ -2771,7 +2771,7 @@ func renterworkersrscmd() {
 
 	// print header
 	hostInfo := "Host PubKey"
-	queueInfo := "\tJobs\tAvgJobTime64k (ms)\tAvgJobTime1m (ms)\tAvgJobTime4m (ms)\tConsecFail\tError\tErrorAt"
+	queueInfo := "\tJobs\tAvgJobTime64k (ms)\tAvgJobTime1m (ms)\tAvgJobTime4m (ms)\tConsecFail\tErrorAt\tError"
 	header := hostInfo + queueInfo
 	fmt.Fprintln(w, "\nWorker Read Sector Jobs  \n\n"+header)
 
@@ -2789,8 +2789,8 @@ func renterworkersrscmd() {
 			rsjs.AvgJobTime1m,
 			rsjs.AvgJobTime4m,
 			rsjs.ConsecutiveFailures,
-			sanitizeErr(rsjs.RecentErr),
-			sanitizeTime(rsjs.RecentErrTime, rsjs.RecentErr != ""))
+			sanitizeTime(rsjs.RecentErrTime, rsjs.RecentErr != ""),
+			sanitizeErr(rsjs.RecentErr))
 	}
 }
 
@@ -2812,7 +2812,7 @@ func renterworkershscmd() {
 
 	// print header
 	hostInfo := "Host PubKey"
-	queueInfo := "\tJobs\tAvgJobTime (ms)\tConsecFail\tError\tErrorAt"
+	queueInfo := "\tJobs\tAvgJobTime (ms)\tConsecFail\tErrorAt\tError"
 	header := hostInfo + queueInfo
 	fmt.Fprintln(w, "\nWorker Has Sector Jobs  \n\n"+header)
 
@@ -2828,8 +2828,8 @@ func renterworkershscmd() {
 			hsjs.JobQueueSize,
 			hsjs.AvgJobTime,
 			hsjs.ConsecutiveFailures,
-			sanitizeErr(hsjs.RecentErr),
-			sanitizeTime(hsjs.RecentErrTime, hsjs.RecentErr != ""))
+			sanitizeTime(hsjs.RecentErrTime, hsjs.RecentErr != ""),
+			sanitizeErr(hsjs.RecentErr))
 	}
 }
 

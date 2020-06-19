@@ -51,28 +51,6 @@ func (w *worker) staticNeedsPriceTableUpdate() bool {
 	return time.Now().After(w.staticPriceTable().staticUpdateTime)
 }
 
-// staticPriceTableStatus returns the status of the worker's price table
-func (w *worker) staticPriceTableStatus() modules.WorkerPriceTableStatus {
-	pt := w.staticPriceTable()
-
-	var recentErrStr string
-	if pt.staticRecentErr != nil {
-		recentErrStr = pt.staticRecentErr.Error()
-	}
-
-	return modules.WorkerPriceTableStatus{
-		ExpiryTime: pt.staticExpiryTime,
-		UpdateTime: pt.staticUpdateTime,
-
-		Active: time.Now().Before(pt.staticExpiryTime),
-
-		ConsecutiveFailures: pt.staticConsecutiveFailures,
-
-		RecentErr:     recentErrStr,
-		RecentErrTime: pt.staticRecentErrTime,
-	}
-}
-
 // newPriceTable will initialize a price table for the worker.
 func (w *worker) newPriceTable() {
 	if w.staticPriceTable() != nil {
