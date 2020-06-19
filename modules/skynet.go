@@ -11,15 +11,22 @@ import (
 	"gitlab.com/NebulousLabs/Sia/skykey"
 )
 
+const (
+	// SkyfileDefaultPathParamName specifies the name of the form parameter that holds
+	// the default path.
+	SkyfileDefaultPathParamName = "defaultpath"
+)
+
 // SkyfileMetadata is all of the metadata that gets placed into the first 4096
 // bytes of the skyfile, and is used to set the metadata of the file when
 // writing back to disk. The data is json-encoded when it is placed into the
 // leading bytes of the skyfile, meaning that this struct can be extended
 // without breaking compatibility.
 type SkyfileMetadata struct {
-	Mode     os.FileMode     `json:"mode,omitempty"`
-	Filename string          `json:"filename,omitempty"`
-	Subfiles SkyfileSubfiles `json:"subfiles,omitempty"`
+	Mode        os.FileMode     `json:"mode,omitempty"`
+	Filename    string          `json:"filename,omitempty"`
+	Subfiles    SkyfileSubfiles `json:"subfiles,omitempty"`
+	DefaultPath string          `json:"defaultpath,omitempty"` // defaults to `index.html`
 }
 
 // SkyfileSubfiles contains the subfiles of a skyfile, indexed by their
@@ -35,8 +42,9 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	// All paths must be absolute.
 	path = ensurePrefix(path, "/")
 	metadata := SkyfileMetadata{
-		Filename: path,
-		Subfiles: make(SkyfileSubfiles),
+		Filename:    path,
+		Subfiles:    make(SkyfileSubfiles),
+		DefaultPath: sm.DefaultPath,
 	}
 
 	// Try to find an exact match
@@ -222,6 +230,10 @@ type SkyfileMultipartUploadParameters struct {
 
 	// Filename indicates the filename of the skyfile.
 	Filename string `json:"filename"`
+
+	// DefaultPath indicates the default file to be opened when opening skyfiles
+	// that contain directories.
+	DefaultPath *string `json:"defaultpath,omitempty"`
 
 	// ContentType indicates the media type of the data supplied by the reader.
 	ContentType string `json:"contenttype"`
