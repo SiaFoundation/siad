@@ -80,20 +80,30 @@ func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, 
 	msg := newWithdrawalMessage(a.staticID, amount, blockHeight)
 	sig := crypto.SignHash(crypto.HashObject(msg), a.staticSecretKey)
 
+	// prepare a buffer so we can optimize our writes
+	buffer := bytes.NewBuffer(nil)
+
 	// send PaymentRequest
-	err := modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
+	err := modules.RPCWrite(buffer, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
 	if err != nil {
 		return err
 	}
 
 	// send PayByEphemeralAccountRequest
-	err = modules.RPCWrite(stream, modules.PayByEphemeralAccountRequest{
+	err = modules.RPCWrite(buffer, modules.PayByEphemeralAccountRequest{
 		Message:   msg,
 		Signature: sig,
 	})
 	if err != nil {
 		return err
 	}
+
+	// write contents of the buffer to the stream
+	_, err = stream.Write(buffer.Bytes())
+	if err != nil {
+		return errors.AddContext(err, "could not write the buffer contents to the stream")
+	}
+
 	return nil
 }
 

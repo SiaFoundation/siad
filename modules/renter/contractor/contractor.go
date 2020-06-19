@@ -1,6 +1,7 @@
 package contractor
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -239,16 +240,25 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 		return errors.AddContext(err, "Failed to record payment intent")
 	}
 
+	// prepare a buffer so we can optimize our writes
+	buffer := bytes.NewBuffer(nil)
+
 	// send PaymentRequest
-	err = modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByContract})
+	err = modules.RPCWrite(buffer, modules.PaymentRequest{Type: modules.PayByContract})
 	if err != nil {
 		return errors.AddContext(err, "unable to write payment request to host")
 	}
 
 	// send PayByContractRequest
-	err = modules.RPCWrite(stream, newPayByContractRequest(rev, sig, refundAccount))
+	err = modules.RPCWrite(buffer, newPayByContractRequest(rev, sig, refundAccount))
 	if err != nil {
 		return errors.AddContext(err, "unable to write the pay by contract request")
+	}
+
+	// write contents of the buffer to the stream
+	_, err = stream.Write(buffer.Bytes())
+	if err != nil {
+		return errors.AddContext(err, "could not write the buffer contents")
 	}
 
 	// receive PayByContractResponse
