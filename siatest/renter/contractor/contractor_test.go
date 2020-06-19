@@ -1425,14 +1425,21 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 	if err := renter.RenterPostAllowance(allowance); err != nil {
 		t.Fatal(err)
 	}
-	// Mine a few blocks so the formation transaction can be confirmed.
-	for i := 0; i < 5; i++ {
-		if err := goodMiner.MineBlock(); err != nil {
-			t.Fatal(err)
-		}
+
+	// Wait until contract was formed.
+	err = build.Retry(100, 500*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(renter, 1, 0, 0, 0, 0, 0)
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	// Check that the renter has formed a contract and that it's confirmed.
+	// Mine a block to get the contract confirmed.
+	if err := goodMiner.MineBlock(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that the contract is found and archived now.
 	err = build.Retry(100, 500*time.Millisecond, func() error {
 		rc, err := renter.RenterContractsGet()
 		if err != nil {
@@ -1498,7 +1505,6 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	// Start and connect the miner to the renter, and mine the reorg.
 	err = reorgMiner.StartNode()
 	if err != nil {
@@ -2375,6 +2381,7 @@ func TestExtendPeriod(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	startheight := rc.Contracts[0].StartHeight
 	endheight := rc.Contracts[0].EndHeight
 
 	// Increase the allowance so that the endheights are well within period
@@ -2384,28 +2391,47 @@ func TestExtendPeriod(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Mine blocks until after the previous end height
+	// Mine blocks until after the previous renew window start.
 	cg, err := renter.ConsensusGet()
 	if err != nil {
 		t.Fatal(err)
 	}
 	miner := tg.Miners()[0]
-	for i := 0; i <= int(endheight-cg.Height); i++ {
+	for i := 0; i < int(endheight-allowance.RenewWindow-cg.Height); i++ {
 		if err := miner.MineBlock(); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	// Confirm the previously active contracts are now marked as expired and
-	// were replaced with new active contracts
-	tries := 0
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		if tries%10 == 0 {
-			if err := miner.MineBlock(); err != nil {
-				return err
-			}
+	// We have reached the renew window. Slowly mine through it and confirm the
+	// previously active contracts are now marked as disabled.
+	err = build.Retry(int(allowance.RenewWindow), time.Second, func() error {
+		if err := miner.MineBlock(); err != nil {
+			return err
 		}
-		tries++
+		rg, err := renter.RenterGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		allowance = rg.Settings.Allowance
+
+		if startheight < rg.CurrentPeriod {
+			// Contracts are expired right away
+			return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
+		}
+		return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, len(tg.Hosts()), 0, 0)
+	})
+	if err != nil {
+		renter.PrintDebugInfo(t, true, true, true)
+		t.Fatal(err)
+	}
+
+	// Mine blocks until after the renew window. The disabled contracts should
+	// become expired.
+	err = build.Retry(2*int(allowance.RenewWindow), 100*time.Millisecond, func() error {
+		if err := miner.MineBlock(); err != nil {
+			return err
+		}
 		return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
 	})
 	if err != nil {

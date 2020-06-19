@@ -35,11 +35,30 @@ func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, modules.SkyfileMetada
 // SkynetSkylinkGetWithTimeout uses the /skynet/skylink endpoint to download a
 // skylink file, specifying the given timeout.
 func (c *Client) SkynetSkylinkGetWithTimeout(skylink string, timeout int) ([]byte, modules.SkyfileMetadata, error) {
-	values := url.Values{}
+	params := make(map[string]string)
 	// Only set the timeout if it's valid. Seeing as 0 is a valid timeout,
 	// callers need to pass -1 to ignore it.
 	if timeout >= 0 {
-		values.Set("timeout", fmt.Sprintf("%d", timeout))
+		params["timeout"] = fmt.Sprintf("%d", timeout)
+	}
+	return c.skynetSkylinkGetWithParameters(skylink, params)
+}
+
+// SkynetSkylinkGetWithRedirect uses the /skynet/skylink endpoint to download a
+// skylink file, specifying whether redirecting is allowed or not.
+func (c *Client) SkynetSkylinkGetWithRedirect(skylink string, allowRedirect bool) ([]byte, modules.SkyfileMetadata, error) {
+	params := make(map[string]string)
+	params["redirect"] = fmt.Sprintf("%t", allowRedirect)
+	return c.skynetSkylinkGetWithParameters(skylink, params)
+}
+
+// skynetSkylinkGetWithParameters uses the /skynet/skylink endpoint to download
+// a skylink file, specifying the given parameters.
+// The caller of this function is responsible for validating the parameters!
+func (c *Client) skynetSkylinkGetWithParameters(skylink string, params map[string]string) ([]byte, modules.SkyfileMetadata, error) {
+	values := url.Values{}
+	for k, v := range params {
+		values.Set(k, v)
 	}
 
 	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
@@ -251,6 +270,9 @@ func (c *Client) SkynetSkyfileMultiPartPost(params modules.SkyfileMultipartUploa
 	// Set the url values.
 	values := url.Values{}
 	values.Set("filename", params.Filename)
+	if params.DefaultPath != nil {
+		values.Set(modules.SkyfileDefaultPathParamName, *params.DefaultPath)
+	}
 	forceStr := fmt.Sprintf("%t", params.Force)
 	values.Set("force", forceStr)
 	redundancyStr := fmt.Sprintf("%v", params.BaseChunkRedundancy)

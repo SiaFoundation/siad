@@ -349,7 +349,7 @@ func TestHostMaxDuration(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Let host settings permeate
-	err = build.Retry(50, 100*time.Millisecond, func() error {
+	err = build.Retry(1000, 100*time.Millisecond, func() error {
 		host, _, err := c.hdb.Host(h.PublicKey())
 		if err != nil {
 			return err
