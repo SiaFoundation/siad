@@ -1,13 +1,8 @@
 package renter
 
 import (
-	"fmt"
 	"strings"
 	"sync/atomic"
-
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // errCausedByRevisionMismatch returns true if (we suspect) the given error is
