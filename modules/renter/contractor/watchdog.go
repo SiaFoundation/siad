@@ -205,12 +205,16 @@ func (w *watchdog) callMonitorContract(args monitorContractArgs) error {
 // watchdog's state with all information relevant to monitored contracts.
 func (w *watchdog) callScanConsensusChange(cc modules.ConsensusChange) {
 	for _, block := range cc.RevertedBlocks {
-		w.blockHeight--
+		if block.ID() != types.GenesisID {
+			w.blockHeight--
+		}
 		w.managedScanRevertedBlock(block)
 	}
 
 	for _, block := range cc.AppliedBlocks {
-		w.blockHeight++
+		if block.ID() != types.GenesisID {
+			w.blockHeight++
+		}
 		w.managedScanAppliedBlock(block)
 	}
 }
