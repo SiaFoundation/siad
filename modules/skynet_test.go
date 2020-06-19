@@ -71,12 +71,9 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 	}
 
 	// Expect no files found on nonexistent path.
-	subMeta, isDir, offset, size = fullMeta.ForPath("/nonexistent")
+	subMeta, _, offset, size = fullMeta.ForPath("/nonexistent")
 	if len(subMeta.Subfiles) > 0 {
 		t.Fatal("Expected to not find any files on nonexistent path but found", len(subMeta.Subfiles))
-	}
-	if !isDir {
-		t.Fatal("Expected to find a dir, got a file.")
 	}
 	if offset != 0 {
 		t.Fatalf("Expected offset %d, got %d", 0, offset)
