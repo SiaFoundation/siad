@@ -14,7 +14,7 @@ func ensurePrefix(str, prefix string) string {
 	return fmt.Sprintf("%s%s", prefix, str)
 }
 
-// ensureSuffix checks if `str` ends with `prefix` and adds it if that's not
+// ensureSuffix checks if `str` ends with `suffix` and adds it if that's not
 // the case.
 func ensureSuffix(str, suffix string) string {
 	if strings.HasSuffix(str, suffix) {
