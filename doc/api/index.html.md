@@ -4743,11 +4743,21 @@ the file as though it is an attachment instead of rendering it.
 **format** | string  
 If 'format' is set, the skylink can point to a directory and it will return the
 data inside that directory. Format will decide the format in which it is
-returned. Currently we only support 'concat', which will return the concatenated
-data of all subfiles in that directory.
+returned. Currently, we support the following values: 'concat' will return the 
+concatenated data of all subfiles in that directory, 'tar' will return a tar 
+archive of all subfiles in that directory, and 'targz' will return gzipped tar 
+archive of all subfiles in that directory.
+
+**redirect** | bool
+If 'redirect' is omitted or set to true, the provided skylink points to a 
+directory, no format was specified, and no explicit path was provided (e.g. 
+`folder/file.txt` from the example above) then the user's browser will be 
+redirected to the default path associated with this skyfile, if one exists.  
+If 'redirect' is set to false and the same conditions apply, an error will be 
+returned because there is no default action for this case.
 
 **timeout** | int  
-If 'timeout' is set, the download will fail if the Skyfile can not be retrieved 
+If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved 
 before it expires. Note that this timeout does not cover the actual download 
 time, but rather covers the TTFB. Timeout is specified in seconds, a timeout 
 value of 0 will be ignored. If no timeout is given, the default will be used,
@@ -4818,6 +4828,12 @@ skyfile will be created. Both the new skyfile and the existing siafile are
 required to be maintained on the network in order for the skylink to remain
 active. This field is mutually exclusive with uploading streaming.
 
+**defaultpath** string  
+The path to the default file to be used to represent this skyfile in case it
+contains multiple files (e.g. skapps, photo collections, etc.). If provided, the
+path must exist. If not provided, it will default to `index.html` if a file with
+that name exists within the skyfile.
+
 **filename** | string  
 The name of the file. This name will be encoded into the skyfile metadata, and
 will be a part of the skylink. If the name changes, the skylink will change as
@@ -4844,14 +4860,12 @@ this field is not set, the siapath will be interpreted as relative to
 'var/skynet'.
 
 
-**UNSTABLE - subject to change in v1.4.9**
 **skykeyname** | string  
 The name of the skykey that will be used to encrypt this skyfile. Only the
 name or the ID of the skykey should be specified.
 
 **OR**
 
-**UNSTABLE - subject to change in v1.4.9**
 **skykeyid** | string  
 The ID of the skykey that will be used to encrypt this skyfile. Only the
 name or the ID of the skykey should be specified.
@@ -4973,7 +4987,6 @@ The performance stats fields are not protected by a compatibility promise, and
 may change over time.
 
 
-**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/addskykey [POST]
 > curl example
 
@@ -5036,7 +5049,6 @@ information.
 
 
 
-**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/createskykey [POST]
 > curl example
 
@@ -5071,7 +5083,6 @@ skyfiles are encrypted with the same skykey.
 base-64 encoded skykey
 
 
-**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/skykey [GET]
 > curl example
 
@@ -5118,7 +5129,6 @@ base-64 encoded skykey ID
 human-readable skykey type. See the documentation for /skynet/createskykey for
 type information.
 
-**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/skykeyid [GET]
 > curl example
 

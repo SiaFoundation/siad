@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host"
@@ -375,6 +376,68 @@ func TestHostContracts(t *testing.T) {
 
 	if cmp := hc.Contracts[0].MissedProofOutputs[1].Value.Cmp(prevMissPayout); cmp != 1 {
 		t.Fatal("missed payout should be more than old missed payout", cmp)
+	}
+}
+
+// TestHostExternalSettingsEphemeralAccountFields confirms the host's external
+// settings contain both ephemeral account fields and they are initialized to
+// their defaults. It will also check if both fields can be updated and whether
+// or not those updates take effect properly.
+func TestHostExternalSettingsEphemeralAccountFields(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create Host
+	testDir := hostTestDir(t.Name())
+	hostParams := node.Host(testDir)
+	host, err := siatest.NewCleanNode(hostParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := host.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	hg, err := host.HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify settings exist and are set to their defaults
+	if hg.ExternalSettings.EphemeralAccountExpiry != modules.DefaultEphemeralAccountExpiry {
+		t.Fatalf("Expected EphemeralAccountExpiry to be set, and to equal the default, instead it was %v", hg.ExternalSettings.EphemeralAccountExpiry)
+	}
+	if !hg.ExternalSettings.MaxEphemeralAccountBalance.Equals(modules.DefaultMaxEphemeralAccountBalance) {
+		t.Fatalf("Expected MaxEphemeralAccountBalance to be set, and to equal the default, instead it was %v", hg.ExternalSettings.MaxEphemeralAccountBalance)
+	}
+
+	// modify them
+	updatedExpiry := int64(modules.DefaultEphemeralAccountExpiry.Seconds()) + 1
+	err = host.HostModifySettingPost(client.HostParamEphemeralAccountExpiry, updatedExpiry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedMaxBalance := modules.DefaultMaxEphemeralAccountBalance.Mul64(2)
+	err = host.HostModifySettingPost(client.HostParamMaxEphemeralAccountBalance, updatedMaxBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify settings were updated
+	hg, err = host.HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedExpiry := time.Duration(updatedExpiry) * time.Second
+	if hg.ExternalSettings.EphemeralAccountExpiry != expectedExpiry {
+		t.Fatalf("Expected EphemeralAccountExpiry to be set, and to equal the updated value, instead it was %v", hg.ExternalSettings.EphemeralAccountExpiry)
+	}
+	if !hg.ExternalSettings.MaxEphemeralAccountBalance.Equals(updatedMaxBalance) {
+		t.Fatalf("Expected MaxEphemeralAccountBalance to be set, and to equal the updated value, instead it was %v", hg.ExternalSettings.MaxEphemeralAccountBalance)
 	}
 }
 

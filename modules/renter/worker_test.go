@@ -80,6 +80,11 @@ func (wt *workerTester) Close() error {
 
 // TestNewWorkerTester creates a new worker
 func TestNewWorkerTester(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	wt, err := newWorkerTester(t.Name())
 	if err != nil {
 		t.Fatal(err)

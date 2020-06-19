@@ -316,6 +316,8 @@ func TestNewFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(readMD, md) {
+		t.Log(string(readMD))
+		t.Log(string(md))
 		t.Fatal("metadata doesn't equal on-disk metadata")
 	}
 	// Compare the pubKeyTable to the on-disk pubKeyTable.
