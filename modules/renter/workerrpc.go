@@ -66,16 +66,9 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 		ProgramDataLength: uint64(len(data)),
 	}
 
-	// use the host's blockheight if we are not synced yet
-	bh := cache.staticBlockHeight
-	if !cache.staticSynced {
-		if bh >= priceTableHostBlockHeightLeeWay && pt.HostBlockHeight < bh-priceTableHostBlockHeightLeeWay {
-			build.Critical("The host's blockheight is significantly lower than our block height. This should have been caught when updating the price table, this is not allowed as the host might cheat us into paying more for storage by communicating a lower block height")
-		}
-		bh = pt.HostBlockHeight
-	}
-
-	// provide payment
+	// provide payment, note that we use the host's block height if we are
+	// making ephemeral account payments
+	bh := pt.HostBlockHeight
 	err = w.staticAccount.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, bh)
 	if err != nil {
 		return

@@ -185,14 +185,27 @@ func (w *worker) staticUpdatePriceTable() {
 	// unreasonable levels. If the host did, the renter will reject the price
 	// table and effectively disable the worker.
 
-	// If the host's blockheight is lower than ours, we verify that it's within
-	// an acceptable range. We do this because we use the host's height if we
-	// are not synced yet and we would not want to blindly accept any height as
-	// the host might cheat us into paying more for storage
+	// Before we pay for the price table we validate the host's block height,
+	// this is necessary because we use the host's block height when making
+	// payments by ephemeral account.
 	cache := w.staticCache()
-	if cache.staticBlockHeight >= priceTableHostBlockHeightLeeWay && pt.HostBlockHeight < cache.staticBlockHeight-priceTableHostBlockHeightLeeWay {
-		err = fmt.Errorf("host blockheight is considered too far off our own blockheight, host height: %v our height: %v", pt.HostBlockHeight, cache.staticBlockHeight)
-		return
+	rbh := cache.staticBlockHeight
+	hbh := pt.HostBlockHeight
+	if !cache.staticSynced {
+		// If we are not synced, we only assert that the host blockheight is
+		// equal or greater than ours.
+		if hbh < rbh {
+			err = fmt.Errorf("host blockheight is considered too low, host height: %v renter height: %v", hbh, rbh)
+			return
+		}
+	} else if rbh >= priceTableHostBlockHeightLeeWay {
+		// If we are synced (and if we've passed the underflow check), we assert
+		// the host's block height is within a certain leeway from our own block
+		// height.
+		if hbh < rbh-priceTableHostBlockHeightLeeWay || hbh > rbh+priceTableHostBlockHeightLeeWay {
+			err = fmt.Errorf("host blockheight is considered too far off, host height: %v renter height: %v", hbh, rbh)
+			return
+		}
 	}
 
 	// provide payment

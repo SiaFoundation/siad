@@ -67,6 +67,9 @@ func (w *worker) managedUpdateCache() {
 		return
 	}
 
+	// Grab the current cache object.
+	current := w.staticCache()
+
 	// Create the cache object.
 	newCache := &workerCache{
 		staticBlockHeight:     w.renter.cs.Height(),
@@ -81,6 +84,19 @@ func (w *worker) managedUpdateCache() {
 	// Atomically store the cache object in the worker.
 	ptr := unsafe.Pointer(newCache)
 	atomic.StorePointer(&w.atomicCache, ptr)
+
+	// If the renter goes from being unsynced to being synced, we want to
+	// validate the host blockheight on the price table object and take
+	// appropriate actions when we find it is not within an acceptable margin.
+	if !current.staticSynced && newCache.staticSynced {
+		rbh := newCache.staticBlockHeight
+		hbh := w.staticPriceTable().staticPriceTable.HostBlockHeight
+		if rbh >= priceTableHostBlockHeightLeeWay {
+			if hbh < rbh-priceTableHostBlockHeightLeeWay || hbh > rbh+priceTableHostBlockHeightLeeWay {
+				// TODO penalize host for lying? or invalidate the pt?
+			}
+		}
+	}
 
 	// Wake the worker when the cache needs to be updated again. Note that we
 	// need to signal the cache update is complete before waking the worker,
