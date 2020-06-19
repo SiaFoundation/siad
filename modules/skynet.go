@@ -39,8 +39,6 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 		Subfiles: make(SkyfileSubfiles),
 	}
 
-	dir := false
-
 	// Try to find an exact match
 	for _, sf := range sm.Subfiles {
 		filename := ensurePrefix(sf.Filename, "/")
@@ -50,6 +48,7 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 		}
 	}
 
+	var dir bool
 	// If we have not found an exact match, look for directories.
 	// This means we can safely ensure a trailing slash.
 	if len(metadata.Subfiles) == 0 {
@@ -94,9 +93,12 @@ func (sm SkyfileMetadata) size() uint64 {
 	return total
 }
 
-// offset returns the smallest offset of the subfile with the smallest offset.
+// offset returns the offset of the subfile with the smallest offset.
 func (sm SkyfileMetadata) offset() uint64 {
 	var min uint64 = math.MaxUint64
+	if len(sm.Subfiles) == 0 {
+		min = 0
+	}
 	for _, sf := range sm.Subfiles {
 		if sf.Offset < min {
 			min = sf.Offset
