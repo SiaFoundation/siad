@@ -164,6 +164,9 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	t.Run("Basic", func(t *testing.T) {
 		testUpdatePriceTableBasic(t, rhp)
 	})
+	t.Run("AfterSettingsUpdate", func(t *testing.T) {
+		testUpdatePriceTableAfterSettingsUpdate(t, rhp)
+	})
 	t.Run("InsufficientPayment", func(t *testing.T) {
 		testUpdatePriceTableInsufficientPayment(t, rhp)
 	})
@@ -215,6 +218,43 @@ func testUpdatePriceTableBasic(t *testing.T, rhp *renterHostPair) {
 	}
 	if pt.TxnFeeMaxRecommended.IsZero() {
 		t.Fatal("Expected TxnFeeMaxRecommended to be set on the price table")
+	}
+}
+
+// testUpdatePriceTableAfterSettingsUpdate verifies the price table is updated
+// after the host updates its internal settings
+func testUpdatePriceTableAfterSettingsUpdate(t *testing.T, rhp *renterHostPair) {
+	// ensure the price table has valid upload and download bandwidth costs
+	pt := rhp.staticHT.host.staticPriceTables.managedCurrent()
+	if pt.DownloadBandwidthCost.IsZero() {
+		t.Fatal("Expected DownloadBandwidthCost to be non zero")
+	}
+	if pt.UploadBandwidthCost.IsZero() {
+		t.Fatal("Expected DownloadBandwidthCost to be non zero")
+	}
+
+	// update the host's internal settings
+	his := rhp.staticHT.host.InternalSettings()
+	his.MinDownloadBandwidthPrice = types.ZeroCurrency
+	his.MinUploadBandwidthPrice = types.ZeroCurrency
+	err := rhp.staticHT.host.SetInternalSettings(his)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// trigger a price table update
+	err = rhp.managedUpdatePriceTable(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ensure the pricetable reflects our changes
+	pt = rhp.staticHT.host.staticPriceTables.managedCurrent()
+	if !pt.DownloadBandwidthCost.IsZero() {
+		t.Error("Expected DownloadBandwidthCost to be zero")
+	}
+	if !pt.UploadBandwidthCost.IsZero() {
+		t.Error("Expected UploadBandwidthCost to be zero")
 	}
 }
 

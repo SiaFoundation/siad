@@ -634,12 +634,20 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 
 	// Check if the download or upload bandwidth costs changed. If it has, the
 	// host has to update its price table.
+	var bandwidthCostsChanged bool
 	if !h.settings.MinDownloadBandwidthPrice.Equals(settings.MinDownloadBandwidthPrice) || !h.settings.MinUploadBandwidthPrice.Equals(settings.MinUploadBandwidthPrice) {
-		h.updatePriceTable()
+		bandwidthCostsChanged = true
 	}
 
 	h.settings = settings
 	h.revisionNumber++
+
+	// If bandwidth costs changed we want to update the host's price table, note
+	// we have to do this after we've updated the host's settings object for the
+	// changes to take effect.
+	if bandwidthCostsChanged {
+		h.updatePriceTable()
+	}
 
 	// The locked storage collateral was altered, we potentially want to
 	// unregister the insufficient collateral budget alert
