@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"testing"
@@ -82,13 +81,4 @@ func TestNewWorkerTester(t *testing.T) {
 	if err := wt.Close(); err != nil {
 		t.Fatal(err)
 	}
-}
-
-// ToJSON is a helper function that wraps the jsonMarshalIndent function
-func ToJSON(a interface{}) string {
-	json, err := json.MarshalIndent(a, "", "  ")
-	if err != nil {
-		panic(err)
-	}
-	return string(json)
 }

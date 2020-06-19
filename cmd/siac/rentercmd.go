@@ -274,7 +274,7 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 
 	renterWorkersAccountsCmd = &cobra.Command{
 		Use:   "ea",
-		Short: "View the worker's ephemeral accounts",
+		Short: "View the worker's ephemeral account",
 		Long:  "View detailed information of the worker's ephemeral account",
 		Run:   wrap(renterworkerseacmd),
 	}

@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync/atomic"
 	"testing"
@@ -126,11 +127,6 @@ func TestWorkerPriceTableStatus(t *testing.T) {
 		t.Fatal("Unexpected price table status", ToJSON(status))
 	}
 
-	// to avoid sleeping until `UpdateTime` we manually overwrite it on the PT
-	wpt := w.staticPriceTable()
-	wpt.staticUpdateTime = time.Now()
-	w.staticSetPriceTable(wpt)
-
 	// close the host to ensure the update PT call fails
 	err = wt.host.Close()
 	if err != nil {
@@ -138,18 +134,28 @@ func TestWorkerPriceTableStatus(t *testing.T) {
 	}
 	hostClosed = true
 
-	// trigger an update
-	w.staticUpdatePriceTable()
+	// trigger an update - to avoid sleeping until `UpdateTime` we manually
+	// overwrite it on the PT and call wake
+	wpt := w.staticPriceTable()
+	wpt.staticUpdateTime = time.Now()
+	w.staticSetPriceTable(wpt)
+	w.staticWake()
 
 	// fetch the worker's pricetable status
-	status = w.staticPriceTableStatus()
-	if !(status.Active == true &&
-		status.OnCoolDown == true &&
-		status.OnCoolDownUntil != time.Time{} &&
-		status.ConsecutiveFailures == 1 &&
-		status.RecentErr != "" &&
-		status.RecentErrTime != time.Time{}) {
-		t.Fatal("Unexpected price table status", ToJSON(status))
+	if err := build.Retry(100, 100*time.Millisecond, func() error {
+		status = w.staticPriceTableStatus()
+		if !(status.Active == true &&
+			status.OnCoolDown == true &&
+			status.OnCoolDownUntil != time.Time{} &&
+			status.ConsecutiveFailures == 1 &&
+			status.RecentErr != "" &&
+			status.RecentErrTime != time.Time{}) {
+			return fmt.Errorf("Unexpected pricetable status %v", ToJSON(status))
+		}
+		return nil
+
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -396,4 +402,13 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// ToJSON is a helper function that wraps the jsonMarshalIndent function
+func ToJSON(a interface{}) string {
+	json, err := json.MarshalIndent(a, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	return string(json)
 }
