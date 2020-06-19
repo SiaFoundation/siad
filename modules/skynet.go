@@ -103,10 +103,10 @@ func (sm SkyfileMetadata) size() uint64 {
 
 // offset returns the offset of the subfile with the smallest offset.
 func (sm SkyfileMetadata) offset() uint64 {
-	var min uint64 = math.MaxUint64
 	if len(sm.Subfiles) == 0 {
-		min = 0
+		return 0
 	}
+	var min uint64 = math.MaxUint64
 	for _, sf := range sm.Subfiles {
 		if sf.Offset < min {
 			min = sf.Offset
