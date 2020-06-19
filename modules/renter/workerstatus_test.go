@@ -153,7 +153,6 @@ func TestWorkerPriceTableStatus(t *testing.T) {
 			return fmt.Errorf("Unexpected pricetable status %v", ToJSON(status))
 		}
 		return nil
-
 	}); err != nil {
 		t.Fatal(err)
 	}
