@@ -456,6 +456,16 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 			return json.Unmarshal(resp.Settings, &settings)
 		}()
 		if tryNewProtoErr == nil {
+			// If the host's version is lower than v1.4.12, which is the version
+			// at which the following fields were added to the host's external
+			// settings, we set these values to their original defaults to
+			// ensure these hosts are not penalized by renters running the
+			// latest software.
+			if build.VersionCmp(settings.Version, "1.4.12") < 0 {
+				settings.EphemeralAccountExpiry = modules.CompatV1412DefaultEphemeralAccountExpiry
+				settings.MaxEphemeralAccountBalance = modules.CompatV1412DefaultMaxEphemeralAccountBalance
+			}
+
 			return nil
 		}
 
