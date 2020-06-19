@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/julienschmidt/httprouter"
 
@@ -258,7 +259,7 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 		if err != nil {
 			return modules.HostInternalSettings{}, err
 		}
-		settings.EphemeralAccountExpiry = x
+		settings.EphemeralAccountExpiry = time.Duration(x) * time.Second
 	}
 	if req.FormValue("maxephemeralaccountbalance") != "" {
 		var x types.Currency
@@ -328,6 +329,9 @@ func (api *API) hostEstimateScoreGET(w http.ResponseWriter, req *http.Request, _
 		DownloadBandwidthPrice: settings.MinDownloadBandwidthPrice,
 		StoragePrice:           settings.MinStoragePrice,
 		UploadBandwidthPrice:   settings.MinUploadBandwidthPrice,
+
+		EphemeralAccountExpiry:     settings.EphemeralAccountExpiry,
+		MaxEphemeralAccountBalance: settings.MaxEphemeralAccountBalance,
 
 		Version: build.Version,
 	}
