@@ -60,8 +60,8 @@ var (
 	c  *client.Client     // Sia client for uploads and downloads
 	tg *siatest.TestGroup // Test group (if used)
 
-	uploadsWG   sync.WaitGroup // Wait group to wait for all upload goroutines to finish
-	downloadsWG sync.WaitGroup // Wait group to wait for all download goroutines to finish
+	uploadWG   sync.WaitGroup // Wait group to wait for all upload goroutines to finish
+	downloadWG sync.WaitGroup // Wait group to wait for all download goroutines to finish
 
 	uploadTimes   []time.Duration // Slice of file upload durations
 	downloadTimes []time.Duration // Slice of file download durations
@@ -142,24 +142,23 @@ func TestSiaUploadsDownloads(t *testing.T) {
 	// Upload files
 	log.Println("=== Upload files concurrently")
 	for i := 0; i < maxConcurrUploads; i++ {
-		timestamp := strconv.FormatInt(time.Now().Unix(), 10)
-		uploadsWG.Add(1)
-		go threadedCreateAndUploadFiles(i, timestamp)
+		uploadWG.Add(1)
+		go threadedCreateAndUploadFiles(i)
 	}
 
 	// Wait for uploads to finish. When we start massively downloading while
 	// uploads are in progress, uploads halt, because they have lower priority
-	uploadsWG.Wait()
+	uploadWG.Wait()
 
 	// Download files with
 	log.Println("=== Download files concurrently")
 	for i := 0; i < maxConcurrDownloads; i++ {
-		downloadsWG.Add(1)
+		downloadWG.Add(1)
 		go threadedDownloadFiles(i)
 	}
 
 	// Wait for all downloads finish
-	downloadsWG.Wait()
+	downloadWG.Wait()
 
 	// Delete upload, download (and test group) directories
 	log.Println("=== Delete upload, download (and test group) directories")
@@ -257,8 +256,9 @@ func createFile(filename string) {
 		// Write data to file and Flush writes to stable storage
 		_, err = f.Write(data)
 		check(err)
-		f.Sync()
 	}
+	err = f.Sync()
+	check(err)
 
 	// Log duration
 	elapsed := time.Now().Sub(start)
@@ -454,6 +454,7 @@ func initTestGroup() *siatest.TestGroup {
 // setAllowance sets default allowance if no allowance is set
 func setAllowance() {
 	rg, err := c.RenterGet()
+	check(err)
 	if !rg.Settings.Allowance.Active() {
 		log.Println("=== Setting default allowance")
 		err = c.RenterPostAllowance(modules.DefaultAllowance)
@@ -462,7 +463,7 @@ func setAllowance() {
 }
 
 // threadedCreateAndUploadFiles is a worker that creates and uploads files
-func threadedCreateAndUploadFiles(workerIndex int, timestamp string) {
+func threadedCreateAndUploadFiles(workerIndex int) {
 	for {
 		// Check if there are some files to be uploaded
 		filesMap.mu.Lock()
@@ -491,7 +492,7 @@ func threadedCreateAndUploadFiles(workerIndex int, timestamp string) {
 		filesMap.mu.Unlock()
 	}
 	log.Printf("Upload worker #%d finished", workerIndex)
-	uploadsWG.Done()
+	uploadWG.Done()
 }
 
 // threadedDownloadFiles is a worker that downloads files
@@ -554,7 +555,7 @@ func threadedDownloadFiles(workerIndex int) {
 		deleteLocalFile(localPath)
 	}
 	log.Printf("Upload worker #%d finished", workerIndex)
-	downloadsWG.Done()
+	downloadWG.Done()
 }
 
 // uploadFile uploads file to Sia
