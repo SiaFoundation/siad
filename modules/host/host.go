@@ -598,16 +598,11 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 	}
 	defer h.tg.Done()
 
-	// If the user updates the internal settings in a way that influences the
-	// host's price table, we have to defer a call to update the price table to
-	// ensure it reflects those changes.
-	var shouldUpdatePriceTable bool
 	h.mu.Lock()
-	defer func() {
-		if shouldUpdatePriceTable {
-			h.managedUpdatePriceTable()
-		}
-	}()
+	// By updating the internal settings the user might influence the host's
+	// price table, we defer a call to update the price table to ensure it
+	// reflects the updated settings.
+	defer h.managedUpdatePriceTable()
 	defer h.mu.Unlock()
 
 	// The host should not be accepting file contracts if it does not have an
@@ -631,12 +626,6 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 	// another blockchain announcement.
 	if h.settings.NetAddress != settings.NetAddress && settings.NetAddress != h.autoAddress {
 		h.announced = false
-	}
-
-	// Check if the download or upload bandwidth costs changed. If it has, the
-	// host has to update its price table.
-	if !h.settings.MinDownloadBandwidthPrice.Equals(settings.MinDownloadBandwidthPrice) || !h.settings.MinUploadBandwidthPrice.Equals(settings.MinUploadBandwidthPrice) {
-		shouldUpdatePriceTable = true
 	}
 
 	h.settings = settings

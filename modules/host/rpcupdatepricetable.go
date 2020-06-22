@@ -114,11 +114,6 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	// valid withdrawal messages in case it is not synced yet
 	pt.HostBlockHeight = h.BlockHeight()
 
-	// sanity check the price table has a UID
-	if bytes.Equal(pt.UID[:], make([]byte, types.SpecifierLen)) {
-		build.Critical("PriceTable does not have a UID set")
-	}
-
 	// json encode the price table
 	ptBytes, err := json.Marshal(pt)
 	if err != nil {
