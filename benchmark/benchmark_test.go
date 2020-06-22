@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -37,9 +36,8 @@ const (
 	nTotalDownloads     = 500 // Total number of file downloads. There will be nFiles, a single file can be downloaded x-times
 
 	// siad
-	siadPort      = "9980" // Port of siad node (if not using a test group)
-	minRedundancy = 2.0    // Minimum redundancy to consider a file uploaded
-	useTestGroup  = true   // Whether to use a test group (true) or Sia network (false)
+	siadPort     = "9980" // Port of siad node (if not using a test group)
+	useTestGroup = true   // Whether to use a test group (true) or Sia network (false)
 )
 
 // file status enum
@@ -62,10 +60,8 @@ var (
 	c  *client.Client     // Sia client for uploads and downloads
 	tg *siatest.TestGroup // Test group (if used)
 
-	wg sync.WaitGroup // Wait group to wait for all goroutines to finish
-
-	upChan   = make(chan struct{}, maxConcurrUploads)   // Channel with a buffer to limit number of max concurrent uploads
-	downChan = make(chan struct{}, maxConcurrDownloads) // Channel with a buffer to limit number of max concurrent downloads
+	uploadsWG   sync.WaitGroup // Wait group to wait for all upload goroutines to finish
+	downloadsWG sync.WaitGroup // Wait group to wait for all download goroutines to finish
 
 	uploadTimes   []time.Duration // Slice of file upload durations
 	downloadTimes []time.Duration // Slice of file download durations
@@ -73,9 +69,7 @@ var (
 	uploadTimesMu   sync.Mutex // Upload durations mutex
 	downloadTimesMu sync.Mutex // Download durations mutex
 
-	filesMap = files{
-		m: make(map[string]fileStatus),
-	}
+	filesMap = files{}
 )
 
 // files is a map of files with its data
@@ -149,23 +143,23 @@ func TestSiaUploadsDownloads(t *testing.T) {
 	log.Println("=== Upload files concurrently")
 	for i := 0; i < maxConcurrUploads; i++ {
 		timestamp := strconv.FormatInt(time.Now().Unix(), 10)
-		wg.Add(1)
+		uploadsWG.Add(1)
 		go threadedCreateAndUploadFiles(i, timestamp)
 	}
 
 	// Wait for uploads to finish. When we start massively downloading while
 	// uploads are in progress, uploads halt, because they have lower priority
-	wg.Wait()
+	uploadsWG.Wait()
 
 	// Download files with
 	log.Println("=== Download files concurrently")
 	for i := 0; i < maxConcurrDownloads; i++ {
-		wg.Add(1)
+		downloadsWG.Add(1)
 		go threadedDownloadFiles(i)
 	}
 
 	// Wait for all downloads finish
-	wg.Wait()
+	downloadsWG.Wait()
 
 	// Delete upload, download (and test group) directories
 	log.Println("=== Delete upload, download (and test group) directories")
@@ -173,32 +167,34 @@ func TestSiaUploadsDownloads(t *testing.T) {
 
 	// Log durations
 	log.Printf("Filesize was %s", fileSizeStr)
-	log.Printf("Average upload time was %v", averageDuration(uploadTimes))
-	log.Printf("Average upload speed was %v", averageSpeed(uploadTimes))
-	log.Printf("Average download time was %v", averageDuration(downloadTimes))
-	log.Printf("Average download speed was %v", averageSpeed(downloadTimes))
+	averageDuration, averageSpeed := averages(uploadTimes)
+	log.Printf("Average upload time was %v", averageDuration)
+	log.Printf("Average upload speed was %v", averageSpeed)
+	averageDuration, averageSpeed = averages(downloadTimes)
+	log.Printf("Average download time was %v", averageDuration)
+	log.Printf("Average download speed was %v", averageSpeed)
 	log.Println("=== Done")
 }
 
-// averageDuration calculates average duration from a slice of durations
-func averageDuration(durations []time.Duration) time.Duration {
+// averages calculates average duration and average file upload/download speed
+// from a slice of durations
+func averages(durations []time.Duration) (time.Duration, string) {
 	if len(durations) == 0 {
 		log.Fatal("There are no durations logged")
 	}
 
+	// Calculate average duration
 	var sum time.Duration
 	for _, d := range durations {
 		sum += d
 	}
-	return sum / time.Duration(len(durations))
-}
+	averageDuration := sum / time.Duration(len(durations))
 
-// averageSpeed calculates average file upload/download speed
-func averageSpeed(durations []time.Duration) string {
-	averageDuration := averageDuration(durations)
+	// Calculate and format average speed
 	averageSpeedFloat := float64(actualFileSize) / float64(averageDuration) * float64(time.Second)
 	averageSpeedString := formatFileSizeFloat(averageSpeedFloat, " ") + "/s"
-	return averageSpeedString
+
+	return averageDuration, averageSpeedString
 }
 
 // check logs error to our print log
@@ -279,30 +275,32 @@ func deleteLocalFile(filepath string) {
 
 // formatFileSize formats int value to filesize string
 func formatFileSize(size int, separator string) string {
-	if size > 1e12 {
+	switch {
+	case size > 1e12:
 		return strconv.Itoa(int(size)/1e12) + separator + "TB"
-	} else if size > 1e9 {
+	case size > 1e9:
 		return strconv.Itoa(int(size)/1e9) + separator + "GB"
-	} else if size > 1e6 {
+	case size > 1e6:
 		return strconv.Itoa(int(size)/1e6) + separator + "MB"
-	} else if size > 1e3 {
+	case size > 1e3:
 		return strconv.Itoa(int(size)/1e3) + separator + "kB"
-	} else {
+	default:
 		return strconv.Itoa(size) + separator + "B"
 	}
 }
 
 // formatFileSizeFloat formats float64 value to filesize string
 func formatFileSizeFloat(size float64, separator string) string {
-	if size > 1e12 {
+	switch {
+	case size > 1e12:
 		return fmt.Sprintf("%.2f%s%s", size/1e12, separator, "TB")
-	} else if size > 1e9 {
+	case size > 1e9:
 		return fmt.Sprintf("%.2f%s%s", size/1e9, separator, "GB")
-	} else if size > 1e6 {
+	case size > 1e6:
 		return fmt.Sprintf("%.2f%s%s", size/1e6, separator, "MB")
-	} else if size > 1e3 {
+	case size > 1e3:
 		return fmt.Sprintf("%.2f%s%s", size/1e3, separator, "kB")
-	} else {
+	default:
 		return fmt.Sprintf("%.2f%s%s", size, separator, "B")
 	}
 }
@@ -339,8 +337,7 @@ func getRandomFileByStatus(fs fileStatus) (string, bool) {
 		return "", false
 	}
 
-	rand.Seed(time.Now().UnixNano())
-	randomIndex := rand.Intn(n)
+	randomIndex := fastrand.Intn(n)
 
 	i := 0
 	for filename, status := range filesMap.m {
@@ -387,12 +384,12 @@ func initDirs() {
 	cleanUpDirs()
 
 	// Create dirs
-	err = os.MkdirAll(upDir, os.ModePerm)
+	err = os.MkdirAll(upDir, modules.DefaultDirPerm)
 	check(err)
-	err = os.MkdirAll(downDir, os.ModePerm)
+	err = os.MkdirAll(downDir, modules.DefaultDirPerm)
 	check(err)
 	if useTestGroup {
-		err = os.MkdirAll(testGroupDir, os.ModePerm)
+		err = os.MkdirAll(testGroupDir, modules.DefaultDirPerm)
 		check(err)
 	}
 }
@@ -400,7 +397,10 @@ func initDirs() {
 // initFilesMap initializes a map of files to be created, uploaded and
 // downloaded
 func initFilesMap() {
-	// Preapare file name parts
+	// Init map
+	filesMap.m = make(map[string]fileStatus)
+
+	// Prepare file name parts
 	sizeStr := formatFileSize(actualFileSize, "")
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 
@@ -491,7 +491,7 @@ func threadedCreateAndUploadFiles(workerIndex int, timestamp string) {
 		filesMap.mu.Unlock()
 	}
 	log.Printf("Upload worker #%d finished", workerIndex)
-	wg.Done()
+	uploadsWG.Done()
 }
 
 // threadedDownloadFiles is a worker that downloads files
@@ -525,8 +525,8 @@ func threadedDownloadFiles(workerIndex int) {
 			time.Sleep(1 * time.Second)
 			continue
 		}
-		downloadIndex := filesMap.downloadsCount
 		filesMap.downloadsCount++
+		downloadIndex := filesMap.downloadsCount
 		filesMap.mu.Unlock()
 
 		// Download file
@@ -554,7 +554,7 @@ func threadedDownloadFiles(workerIndex int) {
 		deleteLocalFile(localPath)
 	}
 	log.Printf("Upload worker #%d finished", workerIndex)
-	wg.Done()
+	downloadsWG.Done()
 }
 
 // uploadFile uploads file to Sia
@@ -575,7 +575,7 @@ func uploadFile(filename string) {
 		f, err := c.RenterFileGet(siaPath)
 		check(err)
 
-		if f.File.Redundancy >= minRedundancy {
+		if f.File.MaxHealthPercent == 100 {
 			break
 		}
 

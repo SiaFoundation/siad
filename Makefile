@@ -23,6 +23,7 @@ cpkg = ./modules/renter
 # tests are run during testing.
 pkgs = \
 	./build \
+	./benchmark \
 	./cmd/sia-node-scanner \
 	./cmd/siac \
 	./cmd/siad \
