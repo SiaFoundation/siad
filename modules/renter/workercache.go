@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -87,15 +88,28 @@ func (w *worker) managedUpdateCache() {
 
 	// If the renter goes from being unsynced to being synced, we want to
 	// validate the host blockheight on the price table object and take
-	// appropriate actions when we find it is not within an acceptable margin.
+	// appropriate actions when we find the host is unsynced.
+	var hostUnsynced bool
 	if !current.staticSynced && newCache.staticSynced {
 		rbh := newCache.staticBlockHeight
 		hbh := w.staticPriceTable().staticPriceTable.HostBlockHeight
 		if rbh >= priceTableHostBlockHeightLeeWay {
 			if hbh < rbh-priceTableHostBlockHeightLeeWay || hbh > rbh+priceTableHostBlockHeightLeeWay {
-				// TODO penalize host for lying? or invalidate the pt?
+				w.mu.Lock()
+				w.cooldownUntil = cooldownUntil(w.consecutiveFailures)
+				w.consecutiveFailures++
+				w.recentErr = fmt.Errorf("worker for host %v is being put on cooldown because the host is unsynced, renter height: %v host height: %v", w.staticHostPubKeyStr, rbh, hbh)
+				w.recentErrTime = time.Now()
+				w.renter.log.Println(w.recentErr)
+				w.mu.Unlock()
+				hostUnsynced = true
 			}
 		}
+	}
+	if !hostUnsynced {
+		w.mu.Lock()
+		w.consecutiveFailures = 0
+		w.mu.Unlock()
 	}
 
 	// Wake the worker when the cache needs to be updated again. Note that we
