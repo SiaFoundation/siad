@@ -93,7 +93,7 @@ func (w *worker) managedUpdateCache() {
 	if !current.staticSynced && newCache.staticSynced {
 		rbh := newCache.staticBlockHeight
 		hbh := w.staticPriceTable().staticPriceTable.HostBlockHeight
-		if rbh >= priceTableHostBlockHeightLeeWay {
+		if rbh >= priceTableHostBlockHeightLeeWay { // underflow check
 			if hbh < rbh-priceTableHostBlockHeightLeeWay || hbh > rbh+priceTableHostBlockHeightLeeWay {
 				w.mu.Lock()
 				w.cooldownUntil = cooldownUntil(w.consecutiveFailures)
