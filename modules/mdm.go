@@ -321,6 +321,7 @@ func (p Program) RequiresSnapshot() bool {
 		case SpecifierHasSector:
 		case SpecifierReadSector:
 		case SpecifierReadOffset:
+			return true
 		default:
 			build.Critical("RequiresSnapshot: unknown instruction")
 		}
