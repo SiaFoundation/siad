@@ -493,7 +493,7 @@ func (w *worker) managedRefillAccount() {
 // in-progress jobs, neither serial nor async, to ensure the account balance
 // sync does not leave the account in an undesired state. The worker should not
 // be launching new jobs while this function is running. To achieve this, we
-// ensure that this thread is only run from the priamry work loop, which is also
+// ensure that this thread is only run from the primary work loop, which is also
 // the only thread that is allowed to launch jobs. As long as this function is
 // only called by that thread, and no other thread launches jobs, this function
 // is threadsafe.
