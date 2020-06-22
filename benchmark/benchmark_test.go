@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
@@ -85,6 +86,10 @@ type fileStatus int
 // TestSiaUploadsDownloads concurrently uploads and then downloads files. Before execution
 // be sure to have enough storage for concurrent upload and download files.
 func TestSiaUploadsDownloads(t *testing.T) {
+	if !build.VLONG {
+		t.SkipNow()
+	}
+
 	// Init, create, clean dirs
 	initDirs()
 
