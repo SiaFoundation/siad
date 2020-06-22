@@ -83,7 +83,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	if program.RequiresSnapshot() {
 		sos, err = h.managedGetStorageObligationSnapshot(fcid)
 		if err != nil {
-			return errors.AddContext(err, "Failed to get storage obligation snapshot")
+			return errors.AddContext(err, fmt.Sprintf("Failed to get storage obligation snapshot for contract %v", fcid))
 		}
 	}
 

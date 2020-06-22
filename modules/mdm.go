@@ -304,7 +304,9 @@ func (p Program) ReadOnly() bool {
 	return true
 }
 
-// RequiresSnapshot returns true if the program
+// RequiresSnapshot returns true if an instruction requires access to the sector
+// roots of a filecontract and therefore requires the host to load a snapshot
+// from disk to provide that information.
 func (p Program) RequiresSnapshot() bool {
 	// Only certain read programs require a snapshot.
 	for _, instruction := range p {
@@ -316,6 +318,7 @@ func (p Program) RequiresSnapshot() bool {
 		case SpecifierHasSector:
 		case SpecifierReadSector:
 		case SpecifierReadOffset:
+			return true
 		default:
 			build.Critical("RequiresSnapshot: unknown instruction")
 		}
