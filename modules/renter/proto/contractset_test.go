@@ -20,9 +20,9 @@ import (
 	"gitlab.com/NebulousLabs/encoding"
 )
 
-// mustAcquire is a convenience function for acquiring contracts that are
+// managedMustAcquire is a convenience function for acquiring contracts that are
 // known to be in the set.
-func (cs *ContractSet) mustAcquire(t *testing.T, id types.FileContractID) *SafeContract {
+func (cs *ContractSet) managedMustAcquire(t *testing.T, id types.FileContractID) *SafeContract {
 	t.Helper()
 	c, ok := cs.Acquire(id)
 	if !ok {
@@ -75,7 +75,7 @@ func TestContractSet(t *testing.T) {
 	}
 
 	// uncontested acquire/release
-	c1 := cs.mustAcquire(t, id1)
+	c1 := cs.managedMustAcquire(t, id1)
 	cs.Return(c1)
 
 	// 100 concurrent serialized mutations
@@ -84,30 +84,30 @@ func TestContractSet(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			c1 := cs.mustAcquire(t, id1)
+			c1 := cs.managedMustAcquire(t, id1)
 			c1.header.Transaction.FileContractRevisions[0].NewRevisionNumber++
 			time.Sleep(time.Duration(fastrand.Intn(100)))
 			cs.Return(c1)
 		}()
 	}
 	wg.Wait()
-	c1 = cs.mustAcquire(t, id1)
+	c1 = cs.managedMustAcquire(t, id1)
 	cs.Return(c1)
 	if c1.header.LastRevision().NewRevisionNumber != 100 {
 		t.Fatal("expected exactly 100 increments, got", c1.header.LastRevision().NewRevisionNumber)
 	}
 
 	// a blocked acquire shouldn't prevent a return
-	c1 = cs.mustAcquire(t, id1)
+	c1 = cs.managedMustAcquire(t, id1)
 	go func() {
 		time.Sleep(time.Millisecond)
 		cs.Return(c1)
 	}()
-	c1 = cs.mustAcquire(t, id1)
+	c1 = cs.managedMustAcquire(t, id1)
 	cs.Return(c1)
 
 	// delete and reinsert id2
-	c2 := cs.mustAcquire(t, id2)
+	c2 := cs.managedMustAcquire(t, id2)
 	cs.Delete(c2)
 	roots, err := c2.merkleRoots.merkleRoots()
 	if err != nil {
@@ -121,8 +121,8 @@ func TestContractSet(t *testing.T) {
 		func() { cs.IDs() },
 		func() { cs.View(id1); cs.View(id2) },
 		func() { cs.ViewAll() },
-		func() { cs.Return(cs.mustAcquire(t, id1)) },
-		func() { cs.Return(cs.mustAcquire(t, id2)) },
+		func() { cs.Return(cs.managedMustAcquire(t, id1)) },
+		func() { cs.Return(cs.managedMustAcquire(t, id2)) },
 		func() {
 			header3 := contractHeader{
 				Transaction: types.Transaction{
@@ -140,7 +140,7 @@ func TestContractSet(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			c3 := cs.mustAcquire(t, id3)
+			c3 := cs.managedMustAcquire(t, id3)
 			cs.Delete(c3)
 		},
 	}
@@ -272,7 +272,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Prepare the insertion of the invalid contract.
-	txn, err := cs.wal.NewTransaction([]writeaheadlog.Update{invalidUpdate})
+	txn, err := cs.staticWal.NewTransaction([]writeaheadlog.Update{invalidUpdate})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +296,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	}
 	// Prepare the insertion of 2 valid contracts within a single txn. This
 	// should be ignored at startup.
-	txn, err = cs.wal.NewTransaction([]writeaheadlog.Update{validUpdate, validUpdate})
+	txn, err = cs.staticWal.NewTransaction([]writeaheadlog.Update{validUpdate, validUpdate})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +321,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	}
 	// Prepare the insertion of a valid contract by writing the change to the
 	// wal but not applying it.
-	txn, err = cs.wal.NewTransaction([]writeaheadlog.Update{validUpdate})
+	txn, err = cs.staticWal.NewTransaction([]writeaheadlog.Update{validUpdate})
 	if err != nil {
 		t.Fatal(err)
 	}
