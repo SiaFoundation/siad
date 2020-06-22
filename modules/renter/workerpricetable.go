@@ -214,6 +214,7 @@ func (w *worker) staticUpdatePriceTable() {
 		staticUpdateTime:          newUpdateTime,
 		staticConsecutiveFailures: 0,
 		staticRecentErr:           currentPT.staticRecentErr,
+		staticRecentErrTime:       currentPT.staticRecentErrTime,
 	}
 	w.staticSetPriceTable(wpt)
 }
