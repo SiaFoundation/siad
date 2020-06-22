@@ -54,8 +54,6 @@ type (
 	}
 )
 
-// TODO: Gouging
-
 // callDiscard will discard a job, forwarding the error to the caller.
 func (j *jobRead) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
@@ -71,7 +69,9 @@ func (j *jobRead) callDiscard(err error) {
 	})
 }
 
-// callExecute will execute the job.
+// managedFinishExecute will execute code that is shared by multiple read jobs
+// after execution. It updates the performance metrics, records whether the
+// execution was successful and returns the response.
 func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTime time.Duration) {
 	w := j.staticQueue.staticWorker()
 
@@ -160,7 +160,7 @@ func (j *jobRead) managedRead(w *worker, program modules.Program, programData []
 	return sectorData, nil
 }
 
-// callAverageJobTime will return the recent perforamcne of the worker
+// callAverageJobTime will return the recent performance of the worker
 // attempting to complete read sector jobs. The call distinguishes based on the
 // size of the job, breaking the jobs into 3 categories: less than 64kb, less
 // than 1mb, and up to a full sector in size.

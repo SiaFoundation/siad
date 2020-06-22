@@ -9,7 +9,7 @@ import (
 )
 
 type (
-	// jobReadOffset contains information about a hasSector query.
+	// jobReadOffset contains information about a ReadOffset job.
 	jobReadOffset struct {
 		jobRead
 
@@ -43,7 +43,8 @@ func (j *jobReadOffset) managedReadOffset() ([]byte, error) {
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
-	return j.jobRead.managedRead(w, program, programData, cost)
+	data, err := j.jobRead.managedRead(w, program, programData, cost)
+	return data, errors.AddContext(err, "jobReadOffset: failed to execute managedRead")
 }
 
 // ReadOffset is a helper method to run a ReadOffset job on a worker.

@@ -278,8 +278,8 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 	return nil
 }
 
-// UploadSnapshotHost is a helper method to run a UploadSnapshot job on a worker.
-func (w *worker) UploadSnapshotHost(ctx context.Context, meta modules.UploadedBackup, dotSia []byte) error {
+// UploadSnapshot is a helper method to run a UploadSnapshot job on a worker.
+func (w *worker) UploadSnapshot(ctx context.Context, meta modules.UploadedBackup, dotSia []byte) error {
 	uploadSnapshotRespChan := make(chan *jobUploadSnapshotResponse)
 	jus := &jobUploadSnapshot{
 		staticMetadata:    meta,

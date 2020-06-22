@@ -411,11 +411,11 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 	})
 	for i := range contracts {
 		err := func() error {
-			host, err := r.staticWorkerPool.callWorker(contracts[i].HostPublicKey)
+			w, err := r.staticWorkerPool.callWorker(contracts[i].HostPublicKey)
 			if err != nil {
 				return err
 			}
-			entryTable, err := r.managedDownloadSnapshotTable(host)
+			entryTable, err := r.managedDownloadSnapshotTable(w)
 			if err != nil {
 				return err
 			}
@@ -433,7 +433,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 			// download the entry
 			dotSia = nil
 			for _, root := range entry.DataSectors {
-				data, err := host.ReadSector(r.tg.StopCtx(), root, 0, modules.SectorSize)
+				data, err := w.ReadSector(r.tg.StopCtx(), root, 0, modules.SectorSize)
 				if err != nil {
 					return err
 				}
@@ -660,13 +660,13 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		r.log.Debugln("Synchronizing snapshots on host", c.HostPublicKey)
 		err = func() error {
 			// Get the right worker for the host.
-			host, err := r.staticWorkerPool.callWorker(c.HostPublicKey)
+			w, err := r.staticWorkerPool.callWorker(c.HostPublicKey)
 			if err != nil {
 				return err
 			}
 
 			// Download the snapshot table.
-			entryTable, err := r.managedDownloadSnapshotTable(host)
+			entryTable, err := r.managedDownloadSnapshotTable(w)
 			if err != nil {
 				return err
 			}
@@ -703,7 +703,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 					// TODO: if snapshot can't be found on any host, delete it
 					return err
 				}
-				if err := host.UploadSnapshotHost(r.tg.StopCtx(), ub, dotSia); err != nil {
+				if err := w.UploadSnapshot(r.tg.StopCtx(), ub, dotSia); err != nil {
 					return err
 				}
 				r.log.Printf("Replicated missing snapshot %q to host %v", ub.Name, c.HostPublicKey)
