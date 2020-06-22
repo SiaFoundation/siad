@@ -413,7 +413,7 @@ func initFilesMap() {
 	}
 }
 
-// initFileSize initilaizes actual filesize to the given filesize or to default
+// initFileSize initializes actual filesize to the given filesize or to default
 // sector size if filesize is set to 0
 func initFileSize() {
 	if fileSize == 0 {
