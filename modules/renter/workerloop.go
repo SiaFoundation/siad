@@ -16,7 +16,7 @@ type (
 		// variables can only be incremented in the primary work loop of the
 		// worker, because there are blocking conditions within the primary work
 		// loop that need to know only one thread is running at a time, and
-		// safety is derived from knowing that know new threads are launching
+		// safety is derived from knowing that no new threads are launching
 		// while we are waiting for all existing threads to finish.
 		//
 		// These values can be decremented in a goroutine.
