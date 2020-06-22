@@ -75,7 +75,7 @@ Renter Rate limits:
   Download Speed: (no limit|\d+(\.\d+)? (B/s|KB/s|MB/s|GB/s|TB/s))
   Upload Speed:   (no limit|\d+(\.\d+)? (B/s|KB/s|MB/s|GB/s|TB/s))`
 
-	connectionRefusedPattern := `Could not get consensus status: \[failed to get reader response; GET request failed; Get http://localhost:5555/consensus: dial tcp \[::1\]:5555: connect: connection refused\]`
+	connectionRefusedPattern := `Could not get consensus status: \[failed to get reader response; GET request failed; Get "?http://localhost:5555/consensus"?: dial tcp \[::1\]:5555: connect: connection refused\]`
 	siaClientVersionPattern := "Sia Client v" + strings.ReplaceAll(build.Version, ".", `\.`)
 
 	// Define subtests
