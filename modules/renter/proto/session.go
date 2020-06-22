@@ -123,9 +123,11 @@ func (s *Session) Settings() (modules.HostExternalSettings, error) {
 	if err := s.call(modules.RPCLoopSettings, nil, &resp, modules.RPCMinLen); err != nil {
 		return modules.HostExternalSettings{}, err
 	}
-	if err := json.Unmarshal(resp.Settings, &s.host.HostExternalSettings); err != nil {
+	var hes modules.HostExternalSettings
+	if err := json.Unmarshal(resp.Settings, &hes); err != nil {
 		return modules.HostExternalSettings{}, err
 	}
+	s.host.HostExternalSettings = hes
 	return s.host.HostExternalSettings, nil
 }
 

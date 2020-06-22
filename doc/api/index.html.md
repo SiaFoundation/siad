@@ -4958,7 +4958,7 @@ Version is the siad version the node is running.
 **gitrevision** | string  
 Gitrevision refers to the commit hash used to build said.
 
-**performancestats** | object - api.SkynetPerforamnceStats  
+**performancestats** | object - api.SkynetPerformanceStats  
 PerformanceStats is an object that contains a breakdown of performance metrics
 for the skynet endpoints. Things are broken down into containers based on the
 type of action performed. For example, there is a container for downloads less
