@@ -692,12 +692,6 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				}
 			}
 
-			// TODO: move this to RHP3 as well.
-			session, err := r.hostContractor.Session(c.HostPublicKey, r.tg.StopChan())
-			if err != nil {
-				return errors.AddContext(err, "failed to get session for upload")
-			}
-
 			// Upload any snapshots that the host is missing.
 			//
 			// TODO: instead of returning immediately upon encountering an
@@ -709,7 +703,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 					// TODO: if snapshot can't be found on any host, delete it
 					return err
 				}
-				if err := r.managedUploadSnapshotHost(ub, dotSia, session); err != nil {
+				if err := host.UploadSnapshotHost(r.tg.StopCtx(), ub, dotSia); err != nil {
 					return err
 				}
 				r.log.Printf("Replicated missing snapshot %q to host %v", ub.Name, c.HostPublicKey)
