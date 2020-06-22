@@ -48,7 +48,6 @@ const (
 	// long-term entities, and because we want to have a set of hosts that
 	// support 6 month contracts when Sia leaves beta.
 	DefaultMaxDuration = 144 * 30 * 6 // 6 months.
-
 )
 
 var (
@@ -122,6 +121,15 @@ var (
 	// download bandwidth is expected to be plentiful but also in-demand.
 	DefaultDownloadBandwidthPrice = types.SiacoinPrecision.Mul64(25).Div(BytesPerTerabyte) // 25 SC / TB
 
+	// DefaultEphemeralAccountExpiry defines the default maximum amount of
+	// time an ephemeral account can be inactive before it expires and gets
+	// deleted.
+	DefaultEphemeralAccountExpiry = time.Minute * 60 * 24 * 7 // 1 week
+
+	// DefaultMaxEphemeralAccountBalance defines the default maximum amount of
+	// money that the host will allow to deposit into a single ephemeral account
+	DefaultMaxEphemeralAccountBalance = types.SiacoinPrecision
+
 	// DefaultSectorAccessPrice defines the default price of a sector access. It
 	// is roughly equal to the cost of downloading 64 KiB.
 	DefaultSectorAccessPrice = types.SiacoinPrecision.Mul64(2).Div64(1e6) // 2 uS
@@ -138,6 +146,16 @@ var (
 	// the data, meaning that the host serves to profit from accepting the
 	// data.
 	DefaultUploadBandwidthPrice = types.SiacoinPrecision.Mul64(1).Div(BytesPerTerabyte) // 1 SC / TB
+
+	// CompatV1412DefaultEphemeralAccountExpiry defines the default account
+	// expiry used up until v1.4.12. This constant is added to ensure changing
+	// the default does not break legacy checks.
+	CompatV1412DefaultEphemeralAccountExpiry = time.Minute * 60 * 24 * 7 // 1 week
+
+	// CompatV1412DefaultMaxEphemeralAccountBalance defines the default maximum
+	// ephemeral account balance used up until v1.4.12. This constant is added
+	// to ensure changing the default does not break legacy checks.
+	CompatV1412DefaultMaxEphemeralAccountBalance = types.SiacoinPrecision
 )
 
 var (
@@ -252,7 +270,7 @@ type (
 		MinStoragePrice           types.Currency `json:"minstorageprice"`
 		MinUploadBandwidthPrice   types.Currency `json:"minuploadbandwidthprice"`
 
-		EphemeralAccountExpiry     uint64         `json:"ephemeralaccountexpiry"`
+		EphemeralAccountExpiry     time.Duration  `json:"ephemeralaccountexpiry"`
 		MaxEphemeralAccountBalance types.Currency `json:"maxephemeralaccountbalance"`
 		MaxEphemeralAccountRisk    types.Currency `json:"maxephemeralaccountrisk"`
 	}
@@ -491,6 +509,9 @@ func DefaultHostExternalSettings() HostExternalSettings {
 		SectorAccessPrice:      DefaultSectorAccessPrice,
 		StoragePrice:           DefaultStoragePrice,
 		UploadBandwidthPrice:   DefaultUploadBandwidthPrice,
+
+		EphemeralAccountExpiry:     DefaultEphemeralAccountExpiry,
+		MaxEphemeralAccountBalance: DefaultMaxEphemeralAccountBalance,
 
 		Version: build.Version,
 	}
