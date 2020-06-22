@@ -16,9 +16,9 @@ const (
 	// updatePriceTableGougingPercentageThreshold is the percentage threshold,
 	// in relation to the allowance, at which we consider the cost of updating
 	// the price table to be too expensive. E.g. the cost of updating the price
-	// table over the total allowance period should never exceed .1% of the
-	// total allowance.
-	updatePriceTableGougingPercentageThreshold = .1
+	// table over the total allowance period should never exceed 1% of the total
+	// allowance.
+	updatePriceTableGougingPercentageThreshold = .01
 )
 
 var (

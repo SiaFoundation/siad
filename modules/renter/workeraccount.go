@@ -26,9 +26,9 @@ var (
 	// fundAccountGougingPercentageThreshold is the percentage threshold, in
 	// relation to the allowance, at which we consider the cost of funding an
 	// account to be too expensive. E.g. the cost of funding the account as many
-	// times as necessary to spend the total allowance should never exceed .1%
-	// of the total allowance.
-	fundAccountGougingPercentageThreshold = .1
+	// times as necessary to spend the total allowance should never exceed 1% of
+	// the total allowance.
+	fundAccountGougingPercentageThreshold = .01
 )
 
 type (
@@ -517,7 +517,7 @@ func checkFundAccountGouging(pt modules.RPCPriceTable, allowance modules.Allowan
 	// refill happens the moment we drop below half of the target, this means
 	// that we actually refill half the target amount most of the time.
 	costOfRefill := targetBalance.Div64(2).Add(pt.FundAccountCost)
-	numRefills, err := allowance.Funds.RoundDown(costOfRefill).Div(costOfRefill).Uint64()
+	numRefills, err := allowance.Funds.Div(costOfRefill).Uint64()
 	if err != nil {
 		return errors.AddContext(err, "unable to check fund account gouging, could not calculate the amount of refills")
 	}
