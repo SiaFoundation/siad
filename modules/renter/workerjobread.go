@@ -21,7 +21,7 @@ const (
 )
 
 type (
-	// jobRead contains information about a hasSector query.
+	// jobRead contains information about a Read query.
 	jobRead struct {
 		staticLength uint64
 
@@ -30,9 +30,9 @@ type (
 		*jobGeneric
 	}
 
-	// jobReadQueue is a list of hasSector queries that have been assigned
-	// to the worker. The queue also tracks performance metrics, which can then
-	// be used by projects to optimize job scheduling between workers.
+	// jobReadQueue is a list of Read queries that have been assigned to the
+	// worker. The queue also tracks performance metrics, which can then be used
+	// by projects to optimize job scheduling between workers.
 	jobReadQueue struct {
 		// These float64s are converted time.Duration values. They are float64
 		// to get better precision on the exponential decay which gets applied

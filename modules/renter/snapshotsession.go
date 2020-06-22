@@ -21,7 +21,6 @@ import (
 )
 
 // managedDownloadSnapshotTable will fetch the snapshot table from the host.
-// TODO: get rid of this
 func (r *Renter) managedDownloadSnapshotTableRHP2(session contractor.Session) ([]snapshotEntry, error) {
 	// Get the wallet seed.
 	ws, _, err := r.w.PrimarySeed()
