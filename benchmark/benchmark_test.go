@@ -511,7 +511,7 @@ func threadedDownloadFiles(workerIndex int) {
 		// Download a file, that has not yet been downloaded
 		filename, ok := getFirstFileByStatus(uploaded)
 		if ok {
-			// We have file not yet downoaded to be downloaded, update status
+			// We have file not yet downloaded to be downloaded, update status
 			filesMap.m[filename] = downloading
 		} else {
 			// There is no file, that is uploaded and has not been downloaded yet
