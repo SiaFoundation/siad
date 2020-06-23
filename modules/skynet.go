@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -252,4 +253,22 @@ type SkyfilePinParameters struct {
 type SkynetPortal struct {
 	Address NetAddress `json:"address"` // the IP or domain name of the portal. Must be a valid network address
 	Public  bool       `json:"public"`  // indicates whether the portal can be accessed publicly or not
+}
+
+// ensurePrefix checks if `str` starts with `prefix` and adds it if that's not
+// the case.
+func ensurePrefix(str, prefix string) string {
+	if strings.HasPrefix(str, prefix) {
+		return str
+	}
+	return fmt.Sprintf("%s%s", prefix, str)
+}
+
+// ensureSuffix checks if `str` ends with `suffix` and adds it if that's not
+// the case.
+func ensureSuffix(str, suffix string) string {
+	if strings.HasSuffix(str, suffix) {
+		return str
+	}
+	return fmt.Sprintf("%s%s", str, suffix)
 }
