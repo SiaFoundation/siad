@@ -315,8 +315,8 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	// this particular program on the "renter" side. This way we can test that
 	// the bandwidth measured by the renter is large enough to be accepted by
 	// the host.
-	expectedDownload := uint64(10220)
-	expectedUpload := uint64(18980)
+	expectedDownload := uint64(4380)
+	expectedUpload := uint64(10220)
 	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
 	bandwidthCost := downloadCost.Add(uploadCost)
@@ -492,7 +492,8 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Execute program again. This time pay for 1 less byte of bandwidth. This should fail.
+	// Execute program again. This time pay for 1 less byte of bandwidth. This
+	// should fail.
 	program, data = pb.Program()
 	cost = programCost.Add(bandwidthCost.Sub64(1))
 	_, limit, err = rhp.managedExecuteProgram(epr, data, cost, true)
