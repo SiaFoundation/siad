@@ -63,8 +63,8 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 		return
 	}
 
-	// write contents of the buffer to the stream
-	_, err = stream.Write(buffer.Bytes())
+	// provide payment
+	err = w.staticAccount.ProvidePayment(buffer, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, cache.staticBlockHeight)
 	if err != nil {
 		return
 	}
@@ -76,14 +76,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 		ProgramDataLength: uint64(len(data)),
 	}
 
-	// provide payment
-	err = w.staticAccount.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, cost, w.staticAccount.staticID, cache.staticBlockHeight)
-	if err != nil {
-		return
-	}
-
 	// send the execute program request.
-	buffer = bytes.NewBuffer(nil)
 	err = modules.RPCWrite(buffer, epr)
 	if err != nil {
 		return
