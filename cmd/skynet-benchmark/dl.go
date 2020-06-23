@@ -173,21 +173,21 @@ func downloadFileSet(dir modules.SiaPath, fileSize int, threads uint64) error {
 			// Figure out the siapath of the dir.
 			siaPath, err := dir.Join(strconv.Itoa(i))
 			if err != nil {
-				fmt.Println("Dir error:", err)
+				fmt.Printf("Dir error on %v: %v", i, err)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
 			// Figure out the skylink for the file.
 			rf, err := c.RenterFileRootGet(siaPath)
 			if err != nil {
-				fmt.Println("Error getting file info:", err)
+				fmt.Printf("Error getting file info on %v: %v", i, err)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
 			// Get a reader / stream for the download.
 			reader, err := c.SkynetSkylinkReaderGet(rf.File.Skylinks[0])
 			if err != nil {
-				fmt.Println("Error getting skylink reader:", err)
+				fmt.Printf("Error getting skylink reader on %v: %v", i, err)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
@@ -196,12 +196,12 @@ func downloadFileSet(dir modules.SiaPath, fileSize int, threads uint64) error {
 			// not the data.
 			data, err := ioutil.ReadAll(reader)
 			if err != nil {
-				fmt.Printf("Error performing download, only got %v bytes: %v\n", len(data), err)
+				fmt.Printf("Error performing download on %v, only got %v bytes: %v\n", i, len(data), err)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
 			if len(data) != fileSize {
-				fmt.Printf("Error performing download, got %v bytes when expecting %v\n", len(data), fileSize)
+				fmt.Printf("Error performing download on %v, got %v bytes when expecting %v\n", i, len(data), fileSize)
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
