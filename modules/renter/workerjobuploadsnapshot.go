@@ -2,6 +2,7 @@ package renter
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"sort"
 
@@ -240,7 +241,7 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 	}
 
 	// download the current entry table
-	entryTable, err := r.managedDownloadSnapshotTable(host)
+	entryTable, err := r.managedDownloadSnapshotTableRHP2(host)
 	if err != nil {
 		return errors.AddContext(err, "could not download the snapshot table")
 	}
@@ -275,4 +276,27 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 		return errors.AddContext(err, "could not perform sector replace for the snapshot")
 	}
 	return nil
+}
+
+// UploadSnapshot is a helper method to run a UploadSnapshot job on a worker.
+func (w *worker) UploadSnapshot(ctx context.Context, meta modules.UploadedBackup, dotSia []byte) error {
+	uploadSnapshotRespChan := make(chan *jobUploadSnapshotResponse)
+	jus := &jobUploadSnapshot{
+		staticMetadata:    meta,
+		staticSiaFileData: dotSia,
+	}
+
+	// Add the job to the queue.
+	if !w.staticJobUploadSnapshotQueue.callAdd(jus) {
+		return errors.New("worker unavailable")
+	}
+
+	// Wait for the response.
+	var resp *jobUploadSnapshotResponse
+	select {
+	case <-ctx.Done():
+		return errors.New("UploadSnapshot interrupted")
+	case resp = <-uploadSnapshotRespChan:
+	}
+	return resp.staticErr
 }

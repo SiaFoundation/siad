@@ -4,39 +4,37 @@ import (
 	"context"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
 
 type (
-	// jobReadSector contains information about a hasSector query.
-	jobReadSector struct {
+	// jobReadOffset contains information about a ReadOffset job.
+	jobReadOffset struct {
 		jobRead
 
 		staticOffset uint64
-		staticSector crypto.Hash
 	}
 )
 
-// callExecute executes the jobReadSector.
-func (j *jobReadSector) callExecute() {
+// callExecute executes the jobReadOffset.
+func (j *jobReadOffset) callExecute() {
 	// Track how long the job takes.
 	start := time.Now()
-	data, err := j.managedReadSector()
+	data, err := j.managedReadOffset()
 	jobTime := time.Since(start)
 
 	// Finish the execution.
 	j.jobRead.managedFinishExecute(data, err, jobTime)
 }
 
-// managedReadSector returns the sector data for given root.
-func (j *jobReadSector) managedReadSector() ([]byte, error) {
+// managedReadOffset returns the sector data for given root.
+func (j *jobReadOffset) managedReadOffset() ([]byte, error) {
 	// create the program
 	w := j.staticQueue.staticWorker()
 	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt)
-	pb.AddReadSectorInstruction(j.staticLength, j.staticOffset, j.staticSector, true)
+	pb.AddReadOffsetInstruction(j.staticLength, j.staticOffset, true)
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
 
@@ -46,15 +44,15 @@ func (j *jobReadSector) managedReadSector() ([]byte, error) {
 	cost = cost.Add(bandwidthCost)
 
 	data, err := j.jobRead.managedRead(w, program, programData, cost)
-	return data, errors.AddContext(err, "jobReadSector: failed to execute managedRead")
+	return data, errors.AddContext(err, "jobReadOffset: failed to execute managedRead")
 }
 
-// ReadSector is a helper method to run a ReadSector job on a worker.
-func (w *worker) ReadSector(ctx context.Context, root crypto.Hash, offset, length uint64) ([]byte, error) {
-	readSectorRespChan := make(chan *jobReadResponse)
-	jro := &jobReadSector{
+// ReadOffset is a helper method to run a ReadOffset job on a worker.
+func (w *worker) ReadOffset(ctx context.Context, offset, length uint64) ([]byte, error) {
+	readOffsetRespChan := make(chan *jobReadResponse)
+	jro := &jobReadOffset{
 		jobRead: jobRead{
-			staticResponseChan: readSectorRespChan,
+			staticResponseChan: readOffsetRespChan,
 			staticLength:       length,
 			jobGeneric: &jobGeneric{
 				staticCancelChan: ctx.Done(),
@@ -63,7 +61,6 @@ func (w *worker) ReadSector(ctx context.Context, root crypto.Hash, offset, lengt
 			},
 		},
 		staticOffset: offset,
-		staticSector: root,
 	}
 
 	// Add the job to the queue.
@@ -76,7 +73,7 @@ func (w *worker) ReadSector(ctx context.Context, root crypto.Hash, offset, lengt
 	select {
 	case <-ctx.Done():
 		return nil, errors.New("Read interrupted")
-	case resp = <-readSectorRespChan:
+	case resp = <-readOffsetRespChan:
 	}
 	return resp.staticData, resp.staticErr
 }

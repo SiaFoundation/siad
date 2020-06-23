@@ -165,7 +165,9 @@ func TestVerifyEAFundRevision(t *testing.T) {
 	}
 
 	// expect ErrBadRevisionNumber
+	badOutputs = []types.SiacoinOutput{payment.NewMissedProofOutputs[0]}
 	badPayment = deepCopy(payment)
+	badPayment.NewMissedProofOutputs = badOutputs
 	badPayment.NewRevisionNumber--
 	err = verifyEAFundRevision(curr, badPayment, height, amount)
 	if err != ErrBadRevisionNumber {

@@ -321,6 +321,14 @@ type (
 		StoragePrice           types.Currency `json:"storageprice"`
 		UploadBandwidthPrice   types.Currency `json:"uploadbandwidthprice"`
 
+		// EphemeralAccountExpiry is the amount of time an account can be
+		// inactive before the host considers it expired.
+		//
+		// MaxEphemeralAccountBalance is the maximum amount of money the host
+		// allows to be deposited into a single ephemeral account.
+		EphemeralAccountExpiry     time.Duration  `json:"ephemeralaccountexpiry"`
+		MaxEphemeralAccountBalance types.Currency `json:"maxephemeralaccountbalance"`
+
 		// Because the host has a public key, and settings are signed, and
 		// because settings may be MITM'd, settings need a revision number so
 		// that a renter can compare multiple sets of settings and determine

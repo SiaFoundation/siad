@@ -24,12 +24,12 @@ func (cs *ContractSet) Renew(oldContract *SafeContract, params ContractParams, t
 	}
 	// Choose the appropriate protocol depending on the host version.
 	if build.VersionCmp(params.Host.Version, "1.4.4") >= 0 {
-		return cs.newRenewAndClear(oldContract, params, txnBuilder, tpool, hdb, cancel)
+		return cs.managedNewRenewAndClear(oldContract, params, txnBuilder, tpool, hdb, cancel)
 	}
-	return cs.newRenew(oldContract, params, txnBuilder, tpool, hdb, cancel)
+	return cs.managedNewRenew(oldContract, params, txnBuilder, tpool, hdb, cancel)
 }
 
-func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, formationTxnSet []types.Transaction, sweepTxn types.Transaction, sweepParents []types.Transaction, err error) {
+func (cs *ContractSet) managedNewRenew(oldContract *SafeContract, params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, formationTxnSet []types.Transaction, sweepTxn types.Transaction, sweepParents []types.Transaction, err error) {
 	// for convenience
 	contract := oldContract.header
 
@@ -293,10 +293,10 @@ func (cs *ContractSet) newRenew(oldContract *SafeContract, params ContractParams
 	return meta, txnSet, sweepTxn, sweepParents, nil
 }
 
-// newRenewAndClear uses the new RPC to renew a contract, creating a new
+// managedNewRenewAndClear uses the new RPC to renew a contract, creating a new
 // contract that is identical to the old one, and then clears the old one to be
 // empty.
-func (cs *ContractSet) newRenewAndClear(oldContract *SafeContract, params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, formationTxnSet []types.Transaction, sweepTxn types.Transaction, sweepParents []types.Transaction, err error) {
+func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB, cancel <-chan struct{}) (rc modules.RenterContract, formationTxnSet []types.Transaction, sweepTxn types.Transaction, sweepParents []types.Transaction, err error) {
 	// for convenience
 	contract := oldContract.header
 
