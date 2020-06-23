@@ -18,6 +18,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/siamux"
 )
 
 // Create a closeFn type that allows helpers which need to be closed to return
@@ -478,6 +479,15 @@ func TestPayment(t *testing.T) {
 	}
 	t.Parallel()
 
+	// newStream is a helper to get a ready-to-use stream that is connected to a
+	// host.
+	newStream := func(mux *siamux.SiaMux, h modules.Host) (siamux.Stream, error) {
+		hes := h.ExternalSettings()
+		muxAddress := fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
+		muxPK := modules.SiaPKToMuxPK(h.PublicKey())
+		return mux.NewStream(modules.HostSiaMuxSubscriberName, muxAddress, muxPK)
+	}
+
 	// create a siamux
 	testdir := build.TempDir("contractor", t.Name())
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
@@ -528,7 +538,7 @@ func TestPayment(t *testing.T) {
 	initial := contract.RenterFunds
 
 	// write the rpc id
-	stream, err := modules.NewHostStream(mux, h)
+	stream, err := newStream(mux, h)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -573,7 +583,7 @@ func TestPayment(t *testing.T) {
 	}
 
 	// write the rpc id
-	stream, err = modules.NewHostStream(mux, h)
+	stream, err = newStream(mux, h)
 	if err != nil {
 		t.Fatal(err)
 	}
