@@ -69,12 +69,12 @@ func testExecuteProgramUsedBandwidthHasSector(t *testing.T, wt *workerTester) {
 	}
 
 	// ensure bandwidth is as we expected
-	expectedDownload := uint64(4380)
+	expectedDownload := uint64(2920)
 	if limit.Downloaded() != expectedDownload {
 		t.Errorf("Expected HasSector program to consume %v download bandwidth, instead it consumed %v", expectedDownload, limit.Downloaded())
 	}
 
-	expectedUpload := uint64(2920)
+	expectedUpload := uint64(1460)
 	if limit.Uploaded() != expectedUpload {
 		t.Errorf("Expected HasSector program to consume %v upload bandwidth, instead it consumed %v", expectedUpload, limit.Uploaded())
 	}
@@ -112,12 +112,12 @@ func testExecuteProgramUsedBandwidthReadSector(t *testing.T, wt *workerTester) {
 	}
 
 	// ensure bandwidth is as we expected
-	expectedDownload := uint64(7300)
+	expectedDownload := uint64(5840)
 	if limit.Downloaded() != expectedDownload {
 		t.Errorf("Expected ReadSector program to consume %v download bandwidth, instead it consumed %v", expectedDownload, limit.Downloaded())
 	}
 
-	expectedUpload := uint64(2920)
+	expectedUpload := uint64(1460)
 	if limit.Uploaded() != expectedUpload {
 		t.Errorf("Expected ReadSector program to consume %v upload bandwidth, instead it consumed %v", expectedUpload, limit.Uploaded())
 	}
