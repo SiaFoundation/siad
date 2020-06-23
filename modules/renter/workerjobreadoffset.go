@@ -43,7 +43,8 @@ func (j *jobReadOffset) managedReadOffset() ([]byte, error) {
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
-	data, err := j.jobRead.managedRead(w, program, programData, cost)
+	// TODO: figure out how to verify proof against contract root.
+	data, _, err := j.jobRead.managedRead(w, program, programData, cost)
 	return data, errors.AddContext(err, "jobReadOffset: failed to execute managedRead")
 }
 
