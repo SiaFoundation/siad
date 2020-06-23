@@ -7,6 +7,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/siamux/mux"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/siamux"
@@ -20,7 +21,7 @@ type programResponse struct {
 }
 
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
-func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, err error) {
+func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
 	// check host version
 	cache := w.staticCache()
 	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
@@ -46,6 +47,9 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 			w.renter.log.Println("ERROR: failed to close stream", err)
 		}
 	}()
+
+	// set the stream's limit
+	limit = stream.Limit()
 
 	// prepare a buffer so we can optimize our writes
 	buffer := bytes.NewBuffer(nil)
