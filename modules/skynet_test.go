@@ -18,6 +18,7 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 			filePath5: SkyfileSubfileMetadata{Filename: filePath5, Offset: 5, Len: 5},
 		},
 	}
+	emptyMeta := SkyfileMetadata{}
 
 	// Find an exact match.
 	subMeta, isDir, offset, size := fullMeta.ForPath(filePath1)
@@ -98,5 +99,14 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 	subMeta, _, _, _ = fullMeta.ForPath("foo")
 	if _, exists := subMeta.Subfiles[filePath1]; !exists {
 		t.Fatal(`Expected to find a file by its directory, even when it's missing its leading "/".`)
+	}
+
+	// Try to find a file in an empty metadata struct.
+	subMeta, _, offset, _ = emptyMeta.ForPath("foo")
+	if len(subMeta.Subfiles) != 0 {
+		t.Fatal(`Expected to not find any files, found`, len(subMeta.Subfiles))
+	}
+	if offset != 0 {
+		t.Fatal(`Expected offset to be zero, got`, offset)
 	}
 }
