@@ -48,7 +48,6 @@ func (w *worker) externTryFixRevisionMismatch() {
 
 	// Log that we have attempted to fix a revision number mismatch.
 	w.renter.log.Printf("%v revision resync triggered\n", w.staticHostPubKeyStr)
-
 }
 
 // staticSetSuspectRevisionMismatch sets the atomicSuspectRevisionMismatch flag.
