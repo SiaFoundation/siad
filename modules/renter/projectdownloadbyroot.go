@@ -244,7 +244,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		goodEnough := false
 		if resp != nil && resp.staticErr == nil && resp.staticAvailable {
 			w := resp.staticWorker
-			jq := w.staticJobReadSectorQueue
+			jq := w.staticJobReadQueue
 			usableWorkers[responses] = w
 			goodEnough = time.Since(start)+jq.callAverageJobTime(length) < pm.managedAverageProjectTime(length)
 		}
@@ -270,7 +270,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		var bestWorker *worker
 		var bestWorkerTime time.Duration
 		for i, w := range usableWorkers {
-			wTime := w.staticJobReadSectorQueue.callAverageJobTime(length)
+			wTime := w.staticJobReadQueue.callAverageJobTime(length)
 			if bestWorkerTime == 0 || wTime < bestWorkerTime {
 				bestWorkerTime = wTime
 				bestWorkerIndex = i
@@ -282,21 +282,21 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		delete(usableWorkers, bestWorkerIndex)
 
 		// Queue the job to download the sector root.
-		readSectorRespChan := make(chan *jobReadSectorResponse)
+		readSectorRespChan := make(chan *jobReadResponse)
 		jrs := &jobReadSector{
-			staticResponseChan: readSectorRespChan,
+			jobRead: jobRead{
+				staticResponseChan: readSectorRespChan,
+				staticLength:       length,
+				jobGeneric: &jobGeneric{
+					staticCancelChan: ctx.Done(),
 
-			staticLength: length,
+					staticQueue: bestWorker.staticJobReadQueue,
+				},
+			},
 			staticOffset: offset,
 			staticSector: root,
-
-			jobGeneric: &jobGeneric{
-				staticCancelChan: ctx.Done(),
-
-				staticQueue: bestWorker.staticJobReadSectorQueue,
-			},
 		}
-		if !bestWorker.staticJobReadSectorQueue.callAdd(jrs) {
+		if !bestWorker.staticJobReadQueue.callAdd(jrs) {
 			continue
 		}
 
@@ -308,7 +308,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		// I think the best way to fix this is to swich to the multi-worker
 		// paradigm, where we use multiple workers to fetch a single sector
 		// root.
-		var readSectorResp *jobReadSectorResponse
+		var readSectorResp *jobReadResponse
 		select {
 		case readSectorResp = <-readSectorRespChan:
 		case <-ctx.Done():

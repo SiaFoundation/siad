@@ -123,9 +123,11 @@ func (s *Session) Settings() (modules.HostExternalSettings, error) {
 	if err := s.call(modules.RPCLoopSettings, nil, &resp, modules.RPCMinLen); err != nil {
 		return modules.HostExternalSettings{}, err
 	}
-	if err := json.Unmarshal(resp.Settings, &s.host.HostExternalSettings); err != nil {
+	var hes modules.HostExternalSettings
+	if err := json.Unmarshal(resp.Settings, &hes); err != nil {
 		return modules.HostExternalSettings{}, err
 	}
+	s.host.HostExternalSettings = hes
 	return s.host.HostExternalSettings, nil
 }
 
@@ -866,7 +868,7 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 	if err != nil {
 		return nil, errors.AddContext(err, "unsuccessful dial when creating a new session")
 	}
-	conn := ratelimit.NewRLConn(c, cs.rl, cancel)
+	conn := ratelimit.NewRLConn(c, cs.staticRL, cancel)
 
 	closeChan := make(chan struct{})
 	go func() {
@@ -892,7 +894,7 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 		closeChan:   closeChan,
 		conn:        conn,
 		contractSet: cs,
-		deps:        cs.deps,
+		deps:        cs.staticDeps,
 		hdb:         hdb,
 		height:      currentHeight,
 		host:        host,
