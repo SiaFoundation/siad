@@ -2,6 +2,7 @@ package host
 
 import (
 	"math/rand"
+	"reflect"
 	"testing"
 
 	"fmt"
@@ -156,7 +157,9 @@ func TestStorageObligationSnapshot(t *testing.T) {
 	if !snapshot.UnallocatedCollateral().Equals(fcr.MissedHostPayout()) {
 		t.Fatalf("Unexpected unallocated collateral, expected %v but was %v", fcr.MissedHostPayout().HumanString(), snapshot.UnallocatedCollateral().HumanString())
 	}
-
+	if !reflect.DeepEqual(snapshot.staticRecentRevision, fcr) {
+		t.Fatal("Revisions don't match")
+	}
 	// Update the SO with new data
 	sectorRoot2, sectorData := randSector()
 	ht.host.managedLockStorageObligation(so.id())

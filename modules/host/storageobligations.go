@@ -213,6 +213,7 @@ func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (Sto
 		staticContractSize:        so.fileSize(),
 		staticMerkleRoot:          so.merkleRoot(),
 		staticProofDeadline:       so.proofDeadline(),
+		staticRecentRevision:      rev,
 		staticRemainingCollateral: rev.MissedHostPayout(),
 		staticSectorRoots:         so.SectorRoots,
 	}, nil
@@ -252,6 +253,7 @@ type StorageObligationSnapshot struct {
 	staticContractSize        uint64
 	staticMerkleRoot          crypto.Hash
 	staticProofDeadline       types.BlockHeight
+	staticRecentRevision      types.FileContractRevision
 	staticRemainingCollateral types.Currency
 	staticSectorRoots         []crypto.Hash
 }

@@ -715,9 +715,76 @@ func (p *renterHostPair) managedAccountBalance(payByFC bool, fundAmt types.Curre
 	return abr.Balance, nil
 }
 
+// managedLatestRevision performs a RPCLatestRevision to get the latest revision
+// for the contract with fcid from the host.
+func (p *renterHostPair) managedLatestRevision(payByFC bool, fundAmt types.Currency, fundAcc modules.AccountID, fcid types.FileContractID) (types.FileContractRevision, error) {
+	stream := p.managedNewStream()
+	defer stream.Close()
+
+	// Fetch the price table.
+	pt, err := p.managedFetchPriceTable()
+	if err != nil {
+		return types.FileContractRevision{}, err
+	}
+
+	// initiate the RPC
+	err = modules.RPCWrite(stream, modules.RPCLatestRevision)
+	if err != nil {
+		return types.FileContractRevision{}, err
+	}
+
+	// Write the pricetable uid.
+	err = modules.RPCWrite(stream, pt.UID)
+	if err != nil {
+		return types.FileContractRevision{}, err
+	}
+
+	// provide payment
+	if payByFC {
+		err = p.managedPayByContract(stream, fundAmt, fundAcc)
+		if err != nil {
+			return types.FileContractRevision{}, err
+		}
+	} else {
+		err = p.managedPayByEphemeralAccount(stream, fundAmt)
+		if err != nil {
+			return types.FileContractRevision{}, err
+		}
+	}
+
+	// send the request.
+	err = modules.RPCWrite(stream, modules.RPCLatestRevisionRequest{
+		FileContractID: fcid,
+	})
+	if err != nil {
+		return types.FileContractRevision{}, err
+	}
+
+	// read the response.
+	var lrr modules.RPCLatestRevisionResponse
+	err = modules.RPCRead(stream, &lrr)
+	if err != nil {
+		return types.FileContractRevision{}, err
+	}
+
+	// expect clean stream close
+	err = modules.RPCRead(stream, struct{}{})
+	if !errors.Contains(err, io.ErrClosedPipe) {
+		return types.FileContractRevision{}, err
+	}
+
+	return lrr.Revision, nil
+}
+
 // AccountBalance returns the account balance of the renter's EA on the host.
 func (p *renterHostPair) AccountBalance(payByFC bool) (types.Currency, error) {
 	return p.managedAccountBalance(payByFC, p.pt.AccountBalanceCost, p.staticAccountID, p.staticAccountID)
+}
+
+// LatestRevision performs a RPCLatestRevision to get the latest revision for
+// the contract from the host.
+func (p *renterHostPair) LatestRevision(payByFC bool) (types.FileContractRevision, error) {
+	return p.managedLatestRevision(payByFC, p.pt.LatestRevisionCost, p.staticAccountID, p.staticFCID)
 }
 
 // UpdatePriceTable runs the UpdatePriceTableRPC on the host and sets the price
