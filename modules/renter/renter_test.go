@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -179,7 +180,8 @@ func newRenterTester(name string) (*renterTester, error) {
 		return nil, err
 	}
 
-	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(testdir, modules.RenterDir))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, rl, filepath.Join(testdir, modules.RenterDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
@@ -279,11 +281,12 @@ func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet 
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	hc, errChan := contractor.New(cs, wallet, tpool, hdb, persistDir)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	hc, errChan := contractor.New(cs, wallet, tpool, hdb, rl, persistDir)
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	renter, errChan := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, persistDir, deps)
+	renter, errChan := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, persistDir, rl, deps)
 	return renter, <-errChan
 }
 

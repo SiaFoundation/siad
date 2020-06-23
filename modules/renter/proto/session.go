@@ -866,7 +866,7 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 	if err != nil {
 		return nil, errors.AddContext(err, "unsuccessful dial when creating a new session")
 	}
-	conn := ratelimit.NewRLConn(c, cs.rl, cancel)
+	conn := ratelimit.NewRLConn(c, cs.staticRL, cancel)
 
 	closeChan := make(chan struct{})
 	go func() {

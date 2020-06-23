@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/ratelimit"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -42,7 +43,8 @@ func TestSession(t *testing.T) {
 
 	// manually grab a renter contract
 	renter := tg.Renters()[0]
-	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), new(modules.ProductionDependencies))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +176,8 @@ func TestHostLockTimeout(t *testing.T) {
 
 	// manually grab a renter contract
 	renter := tg.Renters()[0]
-	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), new(modules.ProductionDependencies))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +227,7 @@ func TestHostLockTimeout(t *testing.T) {
 	go func() {
 		// NOTE: the ContractSet uses a local mutex to serialize RPCs, so this
 		// test requires a separate ContractSet.
-		cs2, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), new(modules.ProductionDependencies))
+		cs2, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
 		if err != nil {
 			errCh <- err
 			return
@@ -282,7 +285,8 @@ func TestHostBaseRPCPrice(t *testing.T) {
 
 	// manually grab a renter contract
 	renter := tg.Renters()[0]
-	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), new(modules.ProductionDependencies))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -347,7 +351,8 @@ func TestMultiRead(t *testing.T) {
 
 	// manually grab a renter contract
 	renter := tg.Renters()[0]
-	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), new(modules.ProductionDependencies))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
 	if err != nil {
 		t.Fatal(err)
 	}

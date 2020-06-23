@@ -20,6 +20,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
+	"gitlab.com/NebulousLabs/ratelimit"
 )
 
 // TestHostDBHostsActiveHandler checks the behavior of the call to
@@ -311,7 +312,8 @@ func assembleHostPort(key crypto.CipherKey, hostHostname string, testdir string)
 	if err != nil {
 		return nil, err
 	}
-	r, errChan := renter.New(g, cs, w, tp, mux, filepath.Join(testdir, modules.RenterDir))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	r, errChan := renter.New(g, cs, w, tp, mux, rl, filepath.Join(testdir, modules.RenterDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}

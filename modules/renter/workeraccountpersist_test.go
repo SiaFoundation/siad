@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/ratelimit"
 )
 
 // newRandomAccountPersistence is a helper function that returns an
@@ -200,7 +201,8 @@ func TestAccountCorrupted(t *testing.T) {
 
 	// reopen the renter
 	persistDir := filepath.Join(rt.dir, modules.RenterDir)
-	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, persistDir)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	r, errChan := New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, rl, persistDir)
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}

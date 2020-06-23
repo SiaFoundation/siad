@@ -2,6 +2,7 @@ package contractor
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,7 +10,7 @@ import (
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -202,7 +203,7 @@ func (c *Contractor) CurrentPeriod() types.BlockHeight {
 
 // ProvidePayment fulfills the PaymentProvider interface. It uses the given
 // stream and necessary payment details to perform payment for an RPC call.
-func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
+func (c *Contractor) ProvidePayment(stream net.Conn, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
 	// verify we do not specify a refund account on the fund account RPC
 	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
 		return errRefundAccountInvalid
@@ -277,12 +278,6 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 	return nil
 }
 
-// RateLimits sets the bandwidth limits for connections created by the
-// contractSet.
-func (c *Contractor) RateLimits() (readBPW int64, writeBPS int64, packetSize uint64) {
-	return c.staticContracts.RateLimits()
-}
-
 // RecoveryScanStatus returns a bool indicating if a scan for recoverable
 // contracts is in progress and if it is, the current progress of the scan.
 func (c *Contractor) RecoveryScanStatus() (bool, types.BlockHeight) {
@@ -332,12 +327,6 @@ func (c *Contractor) RefreshedContract(fcid types.FileContractID) bool {
 	return newContract.EndHeight == contract.EndHeight
 }
 
-// SetRateLimits sets the bandwidth limits for connections created by the
-// contractSet.
-func (c *Contractor) SetRateLimits(readBPS int64, writeBPS int64, packetSize uint64) {
-	c.staticContracts.SetRateLimits(readBPS, writeBPS, packetSize)
-}
-
 // Synced returns a channel that is closed when the contractor is synced with
 // the peer-to-peer network.
 func (c *Contractor) Synced() <-chan struct{} {
@@ -352,7 +341,7 @@ func (c *Contractor) Close() error {
 }
 
 // New returns a new Contractor.
-func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, hdb modules.HostDB, persistDir string) (*Contractor, <-chan error) {
+func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, hdb modules.HostDB, rl *ratelimit.RateLimit, persistDir string) (*Contractor, <-chan error) {
 	errChan := make(chan error, 1)
 	defer close(errChan)
 	// Check for nil inputs.
@@ -381,13 +370,13 @@ func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.Transacti
 
 	// Convert the old persist file(s), if necessary. This must occur before
 	// loading the contract set.
-	if err := convertPersist(persistDir); err != nil {
+	if err := convertPersist(persistDir, rl); err != nil {
 		errChan <- err
 		return nil, errChan
 	}
 
 	// Create the contract set.
-	contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), modules.ProdDependencies)
+	contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), rl, modules.ProdDependencies)
 	if err != nil {
 		errChan <- err
 		return nil, errChan

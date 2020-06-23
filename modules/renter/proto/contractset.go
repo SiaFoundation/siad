@@ -27,7 +27,7 @@ type ContractSet struct {
 	deps      modules.Dependencies
 	dir       string
 	mu        sync.Mutex
-	rl        *ratelimit.RateLimit
+	staticRL  *ratelimit.RateLimit
 	wal       *writeaheadlog.WAL
 }
 
@@ -127,18 +127,6 @@ func (cs *ContractSet) Return(c *SafeContract) {
 	c.revisionMu.Unlock()
 }
 
-// RateLimits sets the bandwidth limits for connections created by the
-// contractSet.
-func (cs *ContractSet) RateLimits() (readBPS int64, writeBPS int64, packetSize uint64) {
-	return cs.rl.Limits()
-}
-
-// SetRateLimits sets the bandwidth limits for connections created by the
-// contractSet.
-func (cs *ContractSet) SetRateLimits(readBPS int64, writeBPS int64, packetSize uint64) {
-	cs.rl.SetLimits(readBPS, writeBPS, packetSize)
-}
-
 // View returns a copy of the contract with the specified host key. The
 // contracts is not locked. Certain fields, including the MerkleRoots, are set
 // to nil for safety reasons. If the contract is not present in the set, View
@@ -176,7 +164,7 @@ func (cs *ContractSet) Close() error {
 
 // NewContractSet returns a ContractSet storing its contracts in the specified
 // dir.
-func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error) {
+func NewContractSet(dir string, rl *ratelimit.RateLimit, deps modules.Dependencies) (*ContractSet, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
@@ -209,12 +197,11 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 		contracts: make(map[types.FileContractID]*SafeContract),
 		pubKeys:   make(map[string]types.FileContractID),
 
-		deps: deps,
-		dir:  dir,
-		wal:  wal,
+		deps:     deps,
+		dir:      dir,
+		staticRL: rl,
+		wal:      wal,
 	}
-	// Set the initial rate limit to 'unlimited' bandwidth with 4kib packets.
-	cs.rl = ratelimit.NewRateLimit(0, 0, 0)
 
 	// Before loading the contract files apply the updates which were meant to
 	// create new contracts and filter them out.
