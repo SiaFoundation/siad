@@ -79,6 +79,7 @@ func TestJobSerialExecution(t *testing.T) {
 	w := new(worker)
 	w.renter = new(Renter)
 	w.renter.deps = d
+	w.staticLoopState = new(workerLoopState)
 	d.staticWorker = w
 
 	// Initialize a worker cache & snapshot queue
