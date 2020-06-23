@@ -209,7 +209,7 @@ func (cs *ContractSet) NewDownloader(host modules.HostDBEntry, id types.FileCont
 		host:        host,
 		conn:        conn,
 		closeChan:   closeChan,
-		deps:        cs.deps,
+		deps:        cs.staticDeps,
 		hdb:         hdb,
 
 		height: currentHeight,

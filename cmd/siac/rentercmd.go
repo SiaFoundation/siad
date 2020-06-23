@@ -2017,7 +2017,7 @@ func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 				progressStr += fmt.Sprint(progressLine)
 			}
 		}
-		print(progressStr)
+		fmt.Print(progressStr)
 		progressStr = clearStr
 	}
 	// This code is unreachable, but the compiler requires this to be here.
