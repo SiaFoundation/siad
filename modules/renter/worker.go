@@ -102,7 +102,7 @@ type (
 		// The loop state contains information about the worker loop. It is
 		// mostly atomic variables that the worker uses to ratelimit the
 		// launching of async jobs.
-		staticLoopState workerLoopState
+		staticLoopState *workerLoopState
 
 		// Utilities.
 		killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
@@ -222,7 +222,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		// Initialize the read and write limits for the async worker tasks.
 		// These may be updated in real time as the worker collects metrics
 		// about itself.
-		staticLoopState: workerLoopState{
+		staticLoopState: &workerLoopState{
 			atomicReadDataLimit:  initialConcurrentAsyncReadData,
 			atomicWriteDataLimit: initialConcurrentAsyncWriteData,
 		},
