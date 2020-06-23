@@ -45,8 +45,18 @@ func (j *jobReadSector) managedReadSector() ([]byte, error) {
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
-	data, err := j.jobRead.managedRead(w, program, programData, cost)
-	return data, errors.AddContext(err, "jobReadSector: failed to execute managedRead")
+	data, proof, err := j.jobRead.managedRead(w, program, programData, cost)
+	if err != nil {
+		return nil, errors.AddContext(err, "jobReadSector: failed to execute managedRead")
+	}
+
+	// verify proof
+	proofStart := int(j.staticOffset) / crypto.SegmentSize
+	proofEnd := int(j.staticOffset+j.staticLength) / crypto.SegmentSize
+	if !crypto.VerifyRangeProof(data, proof, proofStart, proofEnd, j.staticSector) {
+		return nil, errors.New("proof verification failed")
+	}
+	return data, nil
 }
 
 // ReadSector is a helper method to run a ReadSector job on a worker.

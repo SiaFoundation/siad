@@ -261,12 +261,6 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	}()
 	ht := rhp.staticHT
 
-	// get a snapshot of the SO before running the program.
-	sos, err := ht.host.managedGetStorageObligationSnapshot(rhp.staticFCID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// create a random sector
 	sectorData := fastrand.Bytes(int(modules.SectorSize))
 	sectorRoot := crypto.MerkleRoot(sectorData)
@@ -298,7 +292,7 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
-		FileContractID:    rhp.staticFCID, // TODO: leave this empty since it's not required for a readonly program.
+		FileContractID:    types.FileContractID{},
 		Program:           program,
 		ProgramDataLength: uint64(len(data)),
 	}
@@ -339,11 +333,12 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	if resp.Error != nil {
 		t.Fatal(resp.Error)
 	}
-	if resp.NewSize != sos.staticContractSize {
-		t.Fatalf("expected contract size to stay the same: %v != %v", sos.staticContractSize, resp.NewSize)
+	if resp.NewSize != 0 {
+		t.Fatalf("expected contract size to stay the same: %v != %v", 0, resp.NewSize)
 	}
-	if resp.NewMerkleRoot != sos.staticMerkleRoot {
-		t.Fatalf("expected merkle root to stay the same: %v != %v", sos.staticMerkleRoot, resp.NewMerkleRoot)
+	zeroRoot := crypto.Hash{}
+	if resp.NewMerkleRoot != zeroRoot {
+		t.Fatalf("expected merkle root to stay the same: %v != %v", zeroRoot, resp.NewMerkleRoot)
 	}
 	if !resp.AdditionalCollateral.Equals(collateral) {
 		t.Fatalf("collateral doesnt't match expected collateral: %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
@@ -420,7 +415,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 
 	// Prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
-		FileContractID:    rhp.staticFCID, // TODO: leave this empty since it's not required for a readonly program.
+		FileContractID:    rhp.staticFCID,
 		Program:           program,
 		ProgramDataLength: uint64(len(data)),
 	}
@@ -563,4 +558,139 @@ func verifyBalance(am *accountManager, id modules.AccountID, expected types.Curr
 		}
 		return nil
 	})
+}
+
+// TestExecuteReadOffsetProgram tests the managedRPCExecuteProgram with a valid
+// 'ReadOffset' program that only reads from a sector.
+func TestExecuteReadOffsetProgram(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a blank host tester
+	rhp, err := newRenterHostPair(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := rhp.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+	ht := rhp.staticHT
+
+	// get a snapshot of the SO before running the program.
+	sos, err := ht.host.managedGetStorageObligationSnapshot(rhp.staticFCID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create a random sector
+	sectorData := fastrand.Bytes(int(modules.SectorSize))
+	sectorRoot := crypto.MerkleRoot(sectorData)
+	// modify the host's storage obligation to add the sector
+	so, err := ht.host.managedGetStorageObligation(rhp.staticFCID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	so.SectorRoots = []crypto.Hash{sectorRoot}
+	ht.host.managedLockStorageObligation(rhp.staticFCID)
+	err = ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, map[crypto.Hash][]byte{sectorRoot: sectorData})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ht.host.managedUnlockStorageObligation(rhp.staticFCID)
+
+	// select a random number of segments to read at random offset
+	numSegments := fastrand.Uint64n(5) + 1
+	totalSegments := modules.SectorSize / crypto.SegmentSize
+	offset := fastrand.Uint64n(totalSegments-numSegments+1) * crypto.SegmentSize
+	length := numSegments * crypto.SegmentSize
+
+	// create the 'ReadOffset' program.
+	pt := rhp.managedPriceTable()
+	pb := modules.NewProgramBuilder(pt)
+	pb.AddReadOffsetInstruction(length, offset, true)
+	program, data := pb.Program()
+	programCost, refund, collateral := pb.Cost(true)
+
+	// prepare the request.
+	epr := modules.RPCExecuteProgramRequest{
+		FileContractID:    rhp.staticFCID,
+		Program:           program,
+		ProgramDataLength: uint64(len(data)),
+	}
+
+	// fund an account.
+	fundingAmt := rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance.Add(pt.FundAccountCost)
+	_, err = rhp.managedFundEphemeralAccount(fundingAmt, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compute expected bandwidth cost. These hardcoded values were chosen after
+	// running this test with a high budget and measuring the used bandwidth for
+	// this particular program on the "renter" side. This way we can test that
+	// the bandwidth measured by the renter is large enough to be accepted by
+	// the host.
+	expectedDownload := uint64(10220)
+	expectedUpload := uint64(18980)
+	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
+	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
+	bandwidthCost := downloadCost.Add(uploadCost)
+	cost := programCost.Add(bandwidthCost)
+
+	// execute program.
+	resps, bandwidth, err := rhp.managedExecuteProgram(epr, data, cost, true)
+	if err != nil {
+		t.Log("cost", cost.HumanString())
+		t.Log("expected ea balance", rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
+		t.Fatal(err)
+	}
+	// there should only be a single response.
+	if len(resps) != 1 {
+		t.Fatalf("expected 1 response but got %v", len(resps))
+	}
+	resp := resps[0]
+
+	// check response.
+	if resp.Error != nil {
+		t.Fatal(resp.Error)
+	}
+	if resp.NewSize != sos.staticContractSize {
+		t.Fatalf("expected contract size to stay the same: %v != %v", sos.staticContractSize, resp.NewSize)
+	}
+	if resp.NewMerkleRoot != sos.staticMerkleRoot {
+		t.Fatalf("expected merkle root to stay the same: %v != %v", sos.staticMerkleRoot, resp.NewMerkleRoot)
+	}
+	if !resp.AdditionalCollateral.Equals(collateral) {
+		t.Fatalf("collateral doesnt't match expected collateral: %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
+	}
+	if !resp.PotentialRefund.Equals(refund) {
+		t.Fatalf("refund doesn't match expected refund: %v != %v", resp.PotentialRefund.HumanString(), refund.HumanString())
+	}
+	if uint64(len(resp.Output)) != length {
+		t.Fatalf("expected returned data to have length %v but was %v", length, len(resp.Output))
+	}
+
+	if !bytes.Equal(sectorData[offset:offset+length], resp.Output) {
+		t.Fatal("Unexpected data")
+	}
+
+	// verify the proof
+	proofStart := int(offset) / crypto.SegmentSize
+	proofEnd := int(offset+length) / crypto.SegmentSize
+	proof := crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
+	if !reflect.DeepEqual(proof, resp.Proof) {
+		t.Fatal("proof doesn't match expected proof")
+	}
+
+	// verify the cost
+	if !resp.TotalCost.Equals(programCost) {
+		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
+	}
+
+	t.Logf("Used bandwidth (read partial sector program): %v down, %v up", bandwidth.Downloaded(), bandwidth.Uploaded())
 }

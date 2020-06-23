@@ -3,6 +3,7 @@ package renter
 import (
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 
@@ -137,27 +138,29 @@ func (j *jobRead) callExpectedBandwidth() (ul, dl uint64) {
 }
 
 // managedRead returns the sector data for the given read program.
-func (j *jobRead) managedRead(w *worker, program modules.Program, programData []byte, cost types.Currency) ([]byte, error) {
+func (j *jobRead) managedRead(w *worker, program modules.Program, programData []byte, cost types.Currency) ([]byte, []crypto.Hash, error) {
 	// execute it
 	responses, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, cost)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Pull the sector data from the response.
 	var sectorData []byte
+	var proof []crypto.Hash
 	for _, resp := range responses {
 		if resp.Error != nil {
-			return nil, resp.Error
+			return nil, nil, resp.Error
 		}
+		proof = resp.Proof
 		sectorData = resp.Output
 		break
 	}
 	// Check that we received the amount of data that we were expecting.
 	if uint64(len(sectorData)) != j.staticLength {
-		return nil, errors.New("worker returned the wrong amount of data")
+		return nil, nil, errors.New("worker returned the wrong amount of data")
 	}
-	return sectorData, nil
+	return sectorData, proof, nil
 }
 
 // callAverageJobTime will return the recent performance of the worker
