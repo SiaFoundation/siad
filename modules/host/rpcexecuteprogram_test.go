@@ -151,7 +151,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	// the bandwidth measured by the renter is large enough to be accepted by
 	// the host.
 	expectedDownload := uint64(7300) // download
-	expectedUpload := uint64(10220)  // upload
+	expectedUpload := uint64(2920)   // upload
 	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
 	bandwidthCost := downloadCost.Add(uploadCost)
@@ -316,7 +316,7 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	// the bandwidth measured by the renter is large enough to be accepted by
 	// the host.
 	expectedDownload := uint64(4380)
-	expectedUpload := uint64(10220)
+	expectedUpload := uint64(2920)
 	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
 	bandwidthCost := downloadCost.Add(uploadCost)
@@ -439,7 +439,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	// the bandwidth measured by the renter is large enough to be accepted by
 	// the host.
 	expectedDownload := uint64(4380) // download
-	expectedUpload := uint64(10220)  // upload
+	expectedUpload := uint64(2920)   // upload
 	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
 	bandwidthCost := downloadCost.Add(uploadCost)
