@@ -29,6 +29,7 @@ type (
 		staticContractID      types.FileContractID
 		staticContractUtility modules.ContractUtility
 		staticHostVersion     string
+		staticRenterAllowance modules.Allowance
 		staticSynced          bool
 
 		staticLastUpdate time.Time
@@ -73,6 +74,7 @@ func (w *worker) managedUpdateCache() {
 		staticContractID:      renterContract.ID,
 		staticContractUtility: renterContract.Utility,
 		staticHostVersion:     host.Version,
+		staticRenterAllowance: w.renter.hostContractor.Allowance(),
 		staticSynced:          w.renter.cs.Synced(),
 
 		staticLastUpdate: time.Now(),

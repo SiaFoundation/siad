@@ -270,6 +270,39 @@ func TestAccountClosed(t *testing.T) {
 	}
 }
 
+// TestFundAccountGouging checks that `checkFundAccountGouging` is correctly
+// detecting price gouging from a host.
+func TestFundAccountGouging(t *testing.T) {
+	t.Parallel()
+
+	// allowance contains only the fields necessary to test the price gouging
+	allowance := modules.Allowance{
+		Funds: types.SiacoinPrecision.Mul64(1e3),
+	}
+
+	// set the target balance to 1SC, this is necessary because this decides how
+	// frequently we refill the account, which is a required piece of knowledge
+	// in order to estimate the total cost of refilling
+	targetBalance := types.SiacoinPrecision
+
+	// verify happy case
+	pt := newDefaultPriceTable()
+	err := checkFundAccountGouging(pt, allowance, targetBalance)
+	if err != nil {
+		t.Fatal("unexpected price gouging failure")
+	}
+
+	// verify gouging case, in order to do so we have to set the fund account
+	// cost to an unreasonable amount, empirically we found 75mS to be such a
+	// value for the given parameters (1000SC funds and TB of 1SC)
+	pt = newDefaultPriceTable()
+	pt.FundAccountCost = types.SiacoinPrecision.MulFloat(0.075)
+	err = checkFundAccountGouging(pt, allowance, targetBalance)
+	if err == nil || !strings.Contains(err.Error(), "fund account cost") {
+		t.Fatalf("expected fund account cost gouging error, instead error was '%v'", err)
+	}
+}
+
 // TestAccountResetBalance is a small unit test that verifies the functionality
 // of the reset balance function.
 func TestAccountResetBalance(t *testing.T) {
