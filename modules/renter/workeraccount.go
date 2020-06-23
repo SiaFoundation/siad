@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"io"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -67,7 +68,7 @@ type (
 // ProvidePayment takes a stream and various payment details and handles the
 // payment by sending and processing payment request and response objects.
 // Returns an error in case of failure.
-func (a *account) ProvidePayment(stream net.Conn, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
+func (a *account) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
 	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
 		return errors.New("Refund account is expected to be the zero account when funding an ephemeral account")
 	}

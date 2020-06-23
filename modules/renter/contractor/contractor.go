@@ -2,7 +2,7 @@ package contractor
 
 import (
 	"fmt"
-	"net"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -203,7 +203,7 @@ func (c *Contractor) CurrentPeriod() types.BlockHeight {
 
 // ProvidePayment fulfills the PaymentProvider interface. It uses the given
 // stream and necessary payment details to perform payment for an RPC call.
-func (c *Contractor) ProvidePayment(stream net.Conn, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
+func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
 	// verify we do not specify a refund account on the fund account RPC
 	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
 		return errRefundAccountInvalid
