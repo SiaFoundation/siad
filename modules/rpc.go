@@ -41,7 +41,7 @@ type RPCPriceTable struct {
 	// LatestRevisionCost refers to the cost of asking the host for the latest
 	// revision of a contract.
 	// TODO: should this be free?
-	LatestRevisionCost types.Currency `json:"latestrevision"`
+	LatestRevisionCost types.Currency `json:"latestrevisioncost"`
 
 	// MDM related costs
 	//
