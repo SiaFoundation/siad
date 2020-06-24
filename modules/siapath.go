@@ -182,7 +182,7 @@ func (sp *SiaPath) LoadSysPath(dir, path string) error {
 	return sp.LoadString(path)
 }
 
-// MarshalJSON marshales a SiaPath as a string.
+// MarshalJSON marshals a SiaPath as a string.
 func (sp SiaPath) MarshalJSON() ([]byte, error) {
 	return json.Marshal(sp.String())
 }

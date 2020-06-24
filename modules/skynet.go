@@ -40,38 +40,31 @@ type SkyfileSubfiles map[string]SkyfileSubfileMetadata
 // given path, so if a directory is requested, the subfiles in that directory
 // will start at offset 0, relative to the path.
 func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, uint64) {
+	// All paths must be absolute.
+	path = ensurePrefix(path, "/")
 	metadata := SkyfileMetadata{
 		Filename:    path,
 		Subfiles:    make(SkyfileSubfiles),
 		DefaultPath: sm.DefaultPath,
 	}
 
-	dir := false
-
 	// Try to find an exact match
 	for _, sf := range sm.Subfiles {
-		filename := sf.Filename
-		if !strings.HasPrefix(filename, "/") {
-			filename = fmt.Sprintf("/%s", filename)
-		}
+		filename := ensurePrefix(sf.Filename, "/")
 		if filename == path {
 			metadata.Subfiles[sf.Filename] = sf
 			break
 		}
 	}
 
+	var dir bool
 	// If we have not found an exact match, look for directories.
 	// This means we can safely ensure a trailing slash.
 	if len(metadata.Subfiles) == 0 {
 		dir = true
-		if !strings.HasSuffix(path, "/") {
-			path = fmt.Sprintf("%s/", path)
-		}
+		path = ensureSuffix(path, "/")
 		for _, sf := range sm.Subfiles {
-			filename := sf.Filename
-			if !strings.HasPrefix(filename, "/") {
-				filename = fmt.Sprintf("/%s", filename)
-			}
+			filename := ensurePrefix(sf.Filename, "/")
 			if strings.HasPrefix(filename, path) {
 				metadata.Subfiles[sf.Filename] = sf
 			}
@@ -109,8 +102,11 @@ func (sm SkyfileMetadata) size() uint64 {
 	return total
 }
 
-// offset returns the smallest offset of the subfile with the smallest offset.
+// offset returns the offset of the subfile with the smallest offset.
 func (sm SkyfileMetadata) offset() uint64 {
+	if len(sm.Subfiles) == 0 {
+		return 0
+	}
 	var min uint64 = math.MaxUint64
 	for _, sf := range sm.Subfiles {
 		if sf.Offset < min {
@@ -257,4 +253,22 @@ type SkyfilePinParameters struct {
 type SkynetPortal struct {
 	Address NetAddress `json:"address"` // the IP or domain name of the portal. Must be a valid network address
 	Public  bool       `json:"public"`  // indicates whether the portal can be accessed publicly or not
+}
+
+// ensurePrefix checks if `str` starts with `prefix` and adds it if that's not
+// the case.
+func ensurePrefix(str, prefix string) string {
+	if strings.HasPrefix(str, prefix) {
+		return str
+	}
+	return fmt.Sprintf("%s%s", prefix, str)
+}
+
+// ensureSuffix checks if `str` ends with `suffix` and adds it if that's not
+// the case.
+func ensureSuffix(str, suffix string) string {
+	if strings.HasSuffix(str, suffix) {
+		return str
+	}
+	return fmt.Sprintf("%s%s", str, suffix)
 }

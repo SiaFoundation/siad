@@ -147,7 +147,7 @@ func (t *unappliedWalTxn) SignalUpdatesApplied() error {
 // newWalTxn creates a new wal transaction and automatically wraps it in an
 // unappliedWalTxn.
 func (c *SafeContract) newWalTxn(updates []writeaheadlog.Update) (*unappliedWalTxn, error) {
-	wtxn, err := c.wal.NewTransaction(updates)
+	wtxn, err := c.staticWal.NewTransaction(updates)
 	if err != nil {
 		return nil, err
 	}
@@ -166,16 +166,16 @@ type SafeContract struct {
 	// applied to the contract file.
 	unappliedTxns []*unappliedWalTxn
 
-	headerFile *os.File
-	wal        *writeaheadlog.WAL
-	mu         sync.Mutex
+	staticHeaderFile *os.File
+	staticWal        *writeaheadlog.WAL
+	mu               sync.Mutex
 
 	staticRC *refCounter
 
 	// revisionMu serializes revisions to the contract. It is acquired by
 	// (ContractSet).Acquire and released by (ContractSet).Return. When holding
-	// revisionMu, it is still necessary to lock mu when modifying fields of the
-	// SafeContract.
+	// revisionMu, it is still necessary to lock mu when modifying fields
+	// of the SafeContract.
 	revisionMu sync.Mutex
 }
 
@@ -195,7 +195,7 @@ func (c *SafeContract) CommitPaymentIntent(t *unappliedWalTxn, signedTxn types.T
 	if err := c.applySetHeader(newHeader); err != nil {
 		return err
 	}
-	if err := c.headerFile.Sync(); err != nil {
+	if err := c.staticHeaderFile.Sync(); err != nil {
 		return err
 	}
 	if err := t.SignalUpdatesApplied(); err != nil {
@@ -229,7 +229,10 @@ func (c *SafeContract) clearUnappliedTxns() error {
 
 // LastRevision returns the most recent revision
 func (c *SafeContract) LastRevision() types.FileContractRevision {
-	return c.header.LastRevision()
+	c.mu.Lock()
+	h := c.header
+	c.mu.Unlock()
+	return h.LastRevision()
 }
 
 // Metadata returns the metadata of a renter contract
@@ -283,6 +286,8 @@ func (c *SafeContract) RecordPaymentIntent(rev types.FileContractRevision, amoun
 
 // Sign will sign the given hash using the safecontract's secret key
 func (c *SafeContract) Sign(hash crypto.Hash) crypto.Signature {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return crypto.SignHash(hash, c.header.SecretKey)
 }
 
@@ -310,7 +315,7 @@ func (c *SafeContract) UpdateUtility(utility modules.ContractUtility) error {
 		return err
 	}
 	// Sync the change to disk.
-	if err := c.headerFile.Sync(); err != nil {
+	if err := c.staticHeaderFile.Sync(); err != nil {
 		return err
 	}
 	// Signal that the update has been applied.
@@ -415,7 +420,7 @@ func (c *SafeContract) applySetHeader(h contractHeader) error {
 		// read the existing header on disk, to make sure we aren't overwriting
 		// it with an older revision
 		var oldHeader contractHeader
-		headerBytes, err := ioutil.ReadAll(c.headerFile)
+		headerBytes, err := ioutil.ReadAll(c.staticHeaderFile)
 		if err == nil {
 			if err := encoding.Unmarshal(headerBytes, &oldHeader); err == nil {
 				if oldHeader.LastRevision().NewRevisionNumber > h.LastRevision().NewRevisionNumber {
@@ -425,7 +430,7 @@ func (c *SafeContract) applySetHeader(h contractHeader) error {
 		}
 	}
 	headerBytes := encoding.Marshal(h)
-	if _, err := c.headerFile.WriteAt(headerBytes, 0); err != nil {
+	if _, err := c.staticHeaderFile.WriteAt(headerBytes, 0); err != nil {
 		return err
 	}
 	c.header = h
@@ -516,7 +521,7 @@ func (c *SafeContract) managedCommitAppend(t *unappliedWalTxn, signedTxn types.T
 		}
 	}
 
-	if err = c.headerFile.Sync(); err != nil {
+	if err = c.staticHeaderFile.Sync(); err != nil {
 		return err
 	}
 	if err = t.SignalUpdatesApplied(); err != nil {
@@ -566,7 +571,7 @@ func (c *SafeContract) managedCommitDownload(t *unappliedWalTxn, signedTxn types
 	if err := c.applySetHeader(newHeader); err != nil {
 		return err
 	}
-	if err := c.headerFile.Sync(); err != nil {
+	if err := c.staticHeaderFile.Sync(); err != nil {
 		return err
 	}
 	if err := t.SignalUpdatesApplied(); err != nil {
@@ -616,7 +621,7 @@ func (c *SafeContract) managedCommitClearContract(t *unappliedWalTxn, signedTxn 
 	if err := c.applySetHeader(newHeader); err != nil {
 		return err
 	}
-	if err := c.headerFile.Sync(); err != nil {
+	if err := c.staticHeaderFile.Sync(); err != nil {
 		return err
 	}
 	if err := t.SignalUpdatesApplied(); err != nil {
@@ -664,7 +669,7 @@ func (c *SafeContract) managedCommitTxns() error {
 				rcUpdatesApplied = true
 			}
 		}
-		if err := c.headerFile.Sync(); err != nil {
+		if err := c.staticHeaderFile.Sync(); err != nil {
 			return err
 		}
 		if err := t.SignalUpdatesApplied(); err != nil {
@@ -684,7 +689,8 @@ func (c *SafeContract) managedCommitTxns() error {
 // recent revision; if it does not, managedSyncRevision attempts to synchronize
 // with rev by committing any uncommitted WAL transactions. If the revisions
 // still do not match, and the host's revision is ahead of the renter's,
-// managedSyncRevision uses the host's revision.
+// managedSyncRevision uses the host's revision. Alongside a possible error this
+// function returns a boolean that indicates whether a resync was attempted.
 func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs []types.TransactionSignature) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -699,7 +705,8 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 
 	ourRev := c.header.LastRevision()
 
-	// If the revision number and Merkle root match, we don't need to do anything.
+	// If the revision number and Merkle root match, we don't need to do
+	// anything.
 	if rev.NewRevisionNumber == ourRev.NewRevisionNumber && rev.NewFileMerkleRoot == ourRev.NewFileMerkleRoot {
 		// If any other fields mismatch, it must be our fault, since we signed
 		// the revision reported by the host. So, to ensure things are
@@ -732,6 +739,7 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 				if unappliedRev.NewRevisionNumber != rev.NewRevisionNumber || unappliedRev.NewFileMerkleRoot != rev.NewFileMerkleRoot {
 					continue
 				}
+
 				// found a matching header, but it still won't have the host's
 				// signatures, since those aren't added until the transaction is
 				// committed. Add the signatures supplied by the host and commit
@@ -740,7 +748,7 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 				if err := c.applySetHeader(u.Header); err != nil {
 					return err
 				}
-				if err := c.headerFile.Sync(); err != nil {
+				if err := c.staticHeaderFile.Sync(); err != nil {
 					return err
 				}
 				// drop all unapplied transactions
@@ -760,6 +768,7 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	// will be incorrect.
 	c.header.Transaction.FileContractRevisions[0] = rev
 	c.header.Transaction.TransactionSignatures = sigs
+
 	// Drop the WAL transactions, since they can't conceivably help us.
 	if err := c.clearUnappliedTxns(); err != nil {
 		return errors.AddContext(err, "failed to clear unapplied txns")
@@ -774,7 +783,7 @@ func (cs *ContractSet) managedInsertContract(h contractHeader, roots []crypto.Ha
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
-	txn, err := cs.wal.NewTransaction([]writeaheadlog.Update{insertUpdate})
+	txn, err := cs.staticWal.NewTransaction([]writeaheadlog.Update{insertUpdate})
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
@@ -812,9 +821,9 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 	if err := h.validate(); err != nil {
 		return modules.RenterContract{}, err
 	}
-	headerFilePath := filepath.Join(cs.dir, h.ID().String()+contractHeaderExtension)
-	rootsFilePath := filepath.Join(cs.dir, h.ID().String()+contractRootsExtension)
-	rcFilePath := filepath.Join(cs.dir, h.ID().String()+refCounterExtension)
+	headerFilePath := filepath.Join(cs.staticDir, h.ID().String()+contractHeaderExtension)
+	rootsFilePath := filepath.Join(cs.staticDir, h.ID().String()+contractRootsExtension)
+	rcFilePath := filepath.Join(cs.staticDir, h.ID().String()+refCounterExtension)
 	// create the files.
 	headerFile, err := os.OpenFile(headerFilePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, modules.DefaultFilePerm)
 	if err != nil {
@@ -829,7 +838,7 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 		return modules.RenterContract{}, err
 	}
 	// Interrupt if necessary.
-	if cs.deps.Disrupt("InterruptContractInsertion") {
+	if cs.staticDeps.Disrupt("InterruptContractInsertion") {
 		return modules.RenterContract{}, errors.New("interrupted")
 	}
 	// write roots
@@ -848,17 +857,17 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 	}
 	var rc *refCounter
 	if build.Release == "testing" {
-		rc, err = newRefCounter(rcFilePath, uint64(len(roots)), cs.wal)
+		rc, err = newRefCounter(rcFilePath, uint64(len(roots)), cs.staticWal)
 		if err != nil {
 			return modules.RenterContract{}, errors.AddContext(err, "failed to create a refcounter")
 		}
 	}
 	sc := &SafeContract{
-		header:      h,
-		merkleRoots: merkleRoots,
-		headerFile:  headerFile,
-		wal:         cs.wal,
-		staticRC:    rc,
+		header:           h,
+		merkleRoots:      merkleRoots,
+		staticHeaderFile: headerFile,
+		staticWal:        cs.staticWal,
+		staticRC:         rc,
 	}
 	// Compatv144 fix missing void output.
 	cs.mu.Lock()
@@ -953,9 +962,9 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountF
 	var rc *refCounter
 	if build.Release == "testing" {
 		// load the reference counter or create a new one if it doesn't exist
-		rc, err = loadRefCounter(refCountFileName, cs.wal)
+		rc, err = loadRefCounter(refCountFileName, cs.staticWal)
 		if errors.Contains(err, ErrRefCounterNotExist) {
-			rc, err = newRefCounter(refCountFileName, uint64(merkleRoots.numMerkleRoots), cs.wal)
+			rc, err = newRefCounter(refCountFileName, uint64(merkleRoots.numMerkleRoots), cs.staticWal)
 		}
 		if err != nil {
 			return errors.AddContext(err, "failed to load or create a refcounter")
@@ -963,12 +972,12 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountF
 	}
 	// add to set
 	sc := &SafeContract{
-		header:        header,
-		merkleRoots:   merkleRoots,
-		unappliedTxns: unappliedTxns,
-		headerFile:    headerFile,
-		wal:           cs.wal,
-		staticRC:      rc,
+		header:           header,
+		merkleRoots:      merkleRoots,
+		unappliedTxns:    unappliedTxns,
+		staticHeaderFile: headerFile,
+		staticWal:        cs.staticWal,
+		staticRC:         rc,
 	}
 
 	// apply the wal txns if necessary.

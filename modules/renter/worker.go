@@ -55,22 +55,21 @@ type (
 	// fail, because whatever condition resulted in the failure will still be
 	// present until some time has passed.
 	worker struct {
-		// atomicCache contains a pointer to the latest cache in the worker.
 		// Atomics are used to minimize lock contention on the worker object.
+		atomicAccountBalanceCheckRunning uint64         // used for a sanity check
 		atomicCache                      unsafe.Pointer // points to a workerCache object
 		atomicCacheUpdating              uint64         // ensures only one cache update happens at a time
 		atomicPriceTable                 unsafe.Pointer // points to a workerPriceTable object
 		atomicPriceTableUpdateRunning    uint64         // used for a sanity check
-		atomicAccountBalanceCheckRunning uint64         // used for a sanity check
 
-		// The host pub key also serves as an id for the worker, as there is only
-		// one worker per host.
+		// The host pub key also serves as an id for the worker, as there is
+		// only one worker per host.
 		staticHostPubKey     types.SiaPublicKey
 		staticHostPubKeyStr  string
 		staticHostMuxAddress string
 
-		// Download variables related to queuing work. They have a separate mutex to
-		// minimize lock contention.
+		// Download variables related to queuing work. They have a separate
+		// mutex to minimize lock contention.
 		downloadChunks              []*unfinishedDownloadChunk // Yet unprocessed work items.
 		downloadMu                  sync.Mutex
 		downloadTerminated          bool      // Has downloading been terminated for this worker?
@@ -81,7 +80,7 @@ type (
 		staticFetchBackupsJobQueue   fetchBackupsJobQueue
 		staticJobQueueDownloadByRoot jobQueueDownloadByRoot
 		staticJobHasSectorQueue      *jobHasSectorQueue
-		staticJobReadSectorQueue     *jobReadSectorQueue
+		staticJobReadQueue           *jobReadQueue
 		staticJobUploadSnapshotQueue *jobUploadSnapshotQueue
 
 		// Upload variables.
@@ -91,10 +90,10 @@ type (
 		uploadRecentFailureErr    error                    // What was the reason for the last failure?
 		uploadTerminated          bool                     // Have we stopped uploading?
 
-		// The staticAccount represent the renter's ephemeral account on the host.
-		// It keeps track of the available balance in the account, the worker has a
-		// refill mechanism that keeps the account balance filled up until the
-		// staticBalanceTarget.
+		// The staticAccount represent the renter's ephemeral account on the
+		// host. It keeps track of the available balance in the account, the
+		// worker has a refill mechanism that keeps the account balance filled
+		// up until the staticBalanceTarget.
 		staticAccount       *account
 		staticBalanceTarget types.Currency
 
@@ -191,7 +190,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	}
 	w.newPriceTable()
 	w.initJobHasSectorQueue()
-	w.initJobReadSectorQueue()
+	w.initJobReadQueue()
 	w.initJobUploadSnapshotQueue()
 	// Get the worker cache set up before returning the worker. This prevents a
 	// race condition in some tests.

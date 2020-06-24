@@ -1,6 +1,9 @@
 package renter
 
 import (
+	"bytes"
+	"fmt"
+	"io"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,6 +23,15 @@ import (
 // height at time of creation, this period makes up the WithdrawalMessage's
 // expiry height.
 const withdrawalValidityPeriod = 6
+
+var (
+	// fundAccountGougingPercentageThreshold is the percentage threshold, in
+	// relation to the allowance, at which we consider the cost of funding an
+	// account to be too expensive. E.g. the cost of funding the account as many
+	// times as necessary to spend the total allowance should never exceed 1% of
+	// the total allowance.
+	fundAccountGougingPercentageThreshold = .01
+)
 
 type (
 	// account represents a renter's ephemeral account on a host.
@@ -68,7 +80,11 @@ type (
 // ProvidePayment takes a stream and various payment details and handles the
 // payment by sending and processing payment request and response objects.
 // Returns an error in case of failure.
-func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
+//
+// Note that this implementation does not 'Read' from the stream. This allows
+// the caller to pass in a buffer if he so pleases in order to optimise the
+// amount of writes on the actual stream.
+func (a *account) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
 	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
 		return errors.New("Refund account is expected to be the zero account when funding an ephemeral account")
 	}
@@ -94,6 +110,7 @@ func (a *account) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, 
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -337,12 +354,25 @@ func (w *worker) managedRefillAccount() {
 		w.staticAccount.recentErrTime = time.Now()
 		w.staticAccount.mu.Unlock()
 
+		// If the error could be caused by a revision number mismatch,
+		// signal it by setting the flag.
+		if errCausedByRevisionMismatch(err) {
+			w.staticSetSuspectRevisionMismatch()
+			w.staticWake()
+		}
+
 		// Have the threadgroup wake the worker when the account comes off of
 		// cooldown.
 		w.renter.tg.AfterFunc(cd.Sub(time.Now()), func() {
 			w.staticWake()
 		})
 	}()
+
+	// check the current price table for gouging errors
+	err = checkFundAccountGouging(w.staticPriceTable().staticPriceTable, w.staticCache().staticRenterAllowance, w.staticBalanceTarget)
+	if err != nil {
+		return
+	}
 
 	// create a new stream
 	var stream siamux.Stream
@@ -358,8 +388,11 @@ func (w *worker) managedRefillAccount() {
 		}
 	}()
 
+	// prepare a buffer so we can optimize our writes
+	buffer := bytes.NewBuffer(nil)
+
 	// write the specifier
-	err = modules.RPCWrite(stream, modules.RPCFundAccount)
+	err = modules.RPCWrite(buffer, modules.RPCFundAccount)
 	if err != nil {
 		err = errors.AddContext(err, "could not write fund account specifier")
 		return
@@ -367,16 +400,23 @@ func (w *worker) managedRefillAccount() {
 
 	// send price table uid
 	pt := w.staticPriceTable().staticPriceTable
-	err = modules.RPCWrite(stream, pt.UID)
+	err = modules.RPCWrite(buffer, pt.UID)
 	if err != nil {
 		err = errors.AddContext(err, "could not write price table uid")
 		return
 	}
 
 	// send fund account request
-	err = modules.RPCWrite(stream, modules.FundAccountRequest{Account: w.staticAccount.staticID})
+	err = modules.RPCWrite(buffer, modules.FundAccountRequest{Account: w.staticAccount.staticID})
 	if err != nil {
 		err = errors.AddContext(err, "could not write the fund account request")
+		return
+	}
+
+	// write contents of the buffer to the stream
+	_, err = stream.Write(buffer.Bytes())
+	if err != nil {
+		err = errors.AddContext(err, "could not write the buffer contents")
 		return
 	}
 
@@ -490,6 +530,12 @@ func (w *worker) staticHostAccountBalance() (types.Currency, error) {
 	// provide payment
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCAccountBalance, pt.AccountBalanceCost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
 	if err != nil {
+		// If the error could be caused by a revision number mismatch,
+		// signal it by setting the flag.
+		if errCausedByRevisionMismatch(err) {
+			w.staticSetSuspectRevisionMismatch()
+			w.staticWake()
+		}
 		return types.ZeroCurrency, err
 	}
 
@@ -507,4 +553,38 @@ func (w *worker) staticHostAccountBalance() (types.Currency, error) {
 		return types.ZeroCurrency, err
 	}
 	return resp.Balance, nil
+}
+
+// checkFundAccountGouging verifies the cost of funding an ephemeral account on
+// the host is reasonable, if deemed unreasonable we will block the refill and
+// the worker will eventually be put into cooldown.
+func checkFundAccountGouging(pt modules.RPCPriceTable, allowance modules.Allowance, targetBalance types.Currency) error {
+	// If there is no allowance, price gouging checks have to be disabled,
+	// because there is no baseline for understanding what might count as price
+	// gouging.
+	if allowance.Funds.IsZero() {
+		return nil
+	}
+
+	// In order to decide whether or not the fund account cost is too expensive,
+	// we first calculate how many times we can refill the account, taking into
+	// account the refill amount and the cost to effectively fund the account.
+	//
+	// Note: we divide the target balance by two because more often than not the
+	// refill happens the moment we drop below half of the target, this means
+	// that we actually refill half the target amount most of the time.
+	costOfRefill := targetBalance.Div64(2).Add(pt.FundAccountCost)
+	numRefills, err := allowance.Funds.Div(costOfRefill).Uint64()
+	if err != nil {
+		return errors.AddContext(err, "unable to check fund account gouging, could not calculate the amount of refills")
+	}
+
+	// The cost of funding is considered too expensive if the total cost is
+	// above a certain % of the allowance.
+	totalFundAccountCost := pt.FundAccountCost.Mul64(numRefills)
+	if totalFundAccountCost.Cmp(allowance.Funds.MulFloat(fundAccountGougingPercentageThreshold)) > 0 {
+		return fmt.Errorf("fund account cost %v is considered too high, the total cost of refilling the account to spend the total allowance exceeds %v%% of the allowance - price gouging protection enabled", pt.FundAccountCost, fundAccountGougingPercentageThreshold)
+	}
+
+	return nil
 }

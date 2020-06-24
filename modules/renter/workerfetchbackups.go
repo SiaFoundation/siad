@@ -155,6 +155,7 @@ func (w *worker) managedPerformFetchBackupsJob() {
 	w.staticFetchBackupsJobQueue.mu.Unlock()
 
 	// Fetch a session to use in retrieving the backups.
+	// TODO: move this to RHP3
 	session, err := w.renter.hostContractor.Session(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
 		result := fetchBackupsJobResult{
