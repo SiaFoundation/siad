@@ -79,7 +79,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 	connmonitor "gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/siamux"
 )
@@ -321,7 +320,7 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
 	// create a new RPC price table
-	es := h.managedExternalSettings()
+	his := h.managedInternalSettings()
 	priceTable := modules.RPCPriceTable{
 		// TODO: hardcoded cost should be updated to use a better value.
 		AccountBalanceCost:   types.NewCurrency64(1),
@@ -337,17 +336,15 @@ func (h *Host) managedUpdatePriceTable() {
 		StoreLengthCost:   types.NewCurrency64(1),
 
 		// Bandwidth related fields.
-		DownloadBandwidthCost: es.DownloadBandwidthPrice,
-		UploadBandwidthCost:   es.UploadBandwidthPrice,
+		DownloadBandwidthCost: his.MinDownloadBandwidthPrice,
+		UploadBandwidthCost:   his.MinUploadBandwidthPrice,
 
 		// LatestRevisionCost is set to a reasonable base + the estimated
 		// bandwidth cost of downloading a filecontract. This isn't perfect but
 		// at least scales a bit as the host updates their download bandwidth
 		// prices.
-		LatestRevisionCost: modules.DefaultBaseRPCPrice.Add(es.DownloadBandwidthPrice.Mul64(modules.EstimatedFileContractTransactionSetSize)),
+		LatestRevisionCost: modules.DefaultBaseRPCPrice.Add(his.MinDownloadBandwidthPrice.Mul64(modules.EstimatedFileContractTransactionSetSize)),
 	}
-	fastrand.Read(priceTable.UID[:])
-
 	// update the pricetable
 	h.staticPriceTables.managedSetCurrent(priceTable)
 }
@@ -606,7 +603,12 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 		return err
 	}
 	defer h.tg.Done()
+
 	h.mu.Lock()
+	// By updating the internal settings the user might influence the host's
+	// price table, we defer a call to update the price table to ensure it
+	// reflects the updated settings.
+	defer h.managedUpdatePriceTable()
 	defer h.mu.Unlock()
 
 	// The host should not be accepting file contracts if it does not have an
