@@ -140,6 +140,13 @@ func (w *worker) staticUpdatePriceTable() {
 				staticRecentErr:           err,
 			}
 			w.staticSetPriceTable(pt)
+
+			// If the error could be caused by a revision number mismatch,
+			// signal it by setting the flag.
+			if errCausedByRevisionMismatch(err) {
+				w.staticSetSuspectRevisionMismatch()
+				w.staticWake()
+			}
 		}
 	}()
 

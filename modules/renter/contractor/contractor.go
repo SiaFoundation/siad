@@ -290,9 +290,11 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKe
 	}
 
 	// commit payment intent
-	err = sc.CommitPaymentIntent(walTxn, signedTxn, amount, rpc)
-	if err != nil {
-		return errors.AddContext(err, "Failed to commit unknown spending intent")
+	if !c.staticDeps.Disrupt("DisableCommitPaymentIntent") {
+		err = sc.CommitPaymentIntent(walTxn, signedTxn, amount, rpc)
+		if err != nil {
+			return errors.AddContext(err, "Failed to commit unknown spending intent")
+		}
 	}
 
 	return nil
