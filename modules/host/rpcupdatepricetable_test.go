@@ -28,6 +28,8 @@ func TestPriceTableMarshaling(t *testing.T) {
 		ReadLengthCost:       types.SiacoinPrecision.Mul64(1e5),
 		HasSectorBaseCost:    types.SiacoinPrecision.Mul64(1e6),
 		StoreLengthCost:      types.SiacoinPrecision.Mul64(1e7),
+		TxnFeeMinRecommended: types.SiacoinPrecision.Mul64(1e8),
+		TxnFeeMaxRecommended: types.SiacoinPrecision.Mul64(1e9),
 	}
 	fastrand.Read(pt.UID[:])
 
@@ -162,6 +164,9 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	t.Run("Basic", func(t *testing.T) {
 		testUpdatePriceTableBasic(t, rhp)
 	})
+	t.Run("AfterSettingsUpdate", func(t *testing.T) {
+		testUpdatePriceTableAfterSettingsUpdate(t, rhp)
+	})
 	t.Run("InsufficientPayment", func(t *testing.T) {
 		testUpdatePriceTableInsufficientPayment(t, rhp)
 	})
@@ -205,6 +210,51 @@ func testUpdatePriceTableBasic(t *testing.T, rhp *renterHostPair) {
 	// just the initial value
 	if pt.HostBlockHeight == 0 {
 		t.Fatal("Expected host blockheight to be not 0")
+	}
+
+	// ensure it has the txn fee estimates
+	if pt.TxnFeeMinRecommended.IsZero() {
+		t.Fatal("Expected TxnFeeMinRecommended to be set on the price table")
+	}
+	if pt.TxnFeeMaxRecommended.IsZero() {
+		t.Fatal("Expected TxnFeeMaxRecommended to be set on the price table")
+	}
+}
+
+// testUpdatePriceTableAfterSettingsUpdate verifies the price table is updated
+// after the host updates its internal settings
+func testUpdatePriceTableAfterSettingsUpdate(t *testing.T, rhp *renterHostPair) {
+	// ensure the price table has valid upload and download bandwidth costs
+	pt := rhp.staticHT.host.staticPriceTables.managedCurrent()
+	if pt.DownloadBandwidthCost.IsZero() {
+		t.Fatal("Expected DownloadBandwidthCost to be non zero")
+	}
+	if pt.UploadBandwidthCost.IsZero() {
+		t.Fatal("Expected DownloadBandwidthCost to be non zero")
+	}
+
+	// update the host's internal settings
+	his := rhp.staticHT.host.InternalSettings()
+	his.MinDownloadBandwidthPrice = types.ZeroCurrency
+	his.MinUploadBandwidthPrice = types.ZeroCurrency
+	err := rhp.staticHT.host.SetInternalSettings(his)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// trigger a price table update
+	err = rhp.managedUpdatePriceTable(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ensure the pricetable reflects our changes
+	pt = rhp.staticHT.host.staticPriceTables.managedCurrent()
+	if !pt.DownloadBandwidthCost.IsZero() {
+		t.Error("Expected DownloadBandwidthCost to be zero")
+	}
+	if !pt.UploadBandwidthCost.IsZero() {
+		t.Error("Expected UploadBandwidthCost to be zero")
 	}
 }
 
