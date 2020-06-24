@@ -137,7 +137,7 @@ func (j *jobHasSector) managedHasSector() (bool, error) {
 	// was only one response?
 	var hasSector bool
 	var responses []programResponse
-	responses, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
+	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
 	if err != nil {
 		return false, errors.AddContext(err, "Unable to execute program")
 	}
