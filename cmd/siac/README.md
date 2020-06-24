@@ -165,15 +165,15 @@ you will use to refer to that file in the network. For example, it is common to
 have the nickname be the same as the filename.
 
 * `siac renter workers` shows a detailed overview of all workers. It shows
-  information about its account, contract and download and upload status.
+  information about their accounts, contract and download and upload status.
 
-* `siac renter workers ea` shows a detailed overview of the worker's ephemeral
-  account status, such as balance information, whether its on cooldown or not
-  and potentially its most recent error.
+* `siac renter workers ea` shows a detailed overview of the workers' ephemeral
+  account statuses, such as balance information, whether its on cooldown or not
+  and potentially the most recent error.
 
-* `siac renter workers pt` shows a detailed overview of the worker's price table
-  status, such as when it was updated, when it expires, whether its on cooldown
-  or not and potentially its most recent error.
+* `siac renter workers pt` shows a detailed overview of the workers's price table
+  statuses, such as when it was updated, when it expires, whether its on cooldown
+  or not and potentially the most recent error.
 
 * `siac renter workers rs` shows information about the read sector jobs queue.
   How many jobs are in the queue and their average completion time. In case

@@ -274,29 +274,29 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 
 	renterWorkersAccountsCmd = &cobra.Command{
 		Use:   "ea",
-		Short: "View the worker's ephemeral account",
-		Long:  "View detailed information of the worker's ephemeral account",
+		Short: "View the workers' ephemeral account",
+		Long:  "View detailed information of the workers' ephemeral account",
 		Run:   wrap(renterworkerseacmd),
 	}
 
 	renterWorkersPriceTableCmd = &cobra.Command{
 		Use:   "pt",
-		Short: "View the worker's price table",
-		Long:  "View detailed information of the worker's price table",
+		Short: "View the workers's price table",
+		Long:  "View detailed information of the workers' price table",
 		Run:   wrap(renterworkersptcmd),
 	}
 
 	renterWorkersReadSectorJobsCmd = &cobra.Command{
 		Use:   "rs",
-		Short: "View the worker's read sector jobs",
-		Long:  "View detailed information of the worker's read sector jobs",
+		Short: "View the workers' read sector jobs",
+		Long:  "View detailed information of the workers' read sector jobs",
 		Run:   wrap(renterworkersrscmd),
 	}
 
 	renterWorkersHasSectorJobSCmd = &cobra.Command{
 		Use:   "hs",
-		Short: "View the worker's has sector jobs",
-		Long:  "View detailed information of the worker's has sector jobs",
+		Short: "View the workers' has sector jobs",
+		Long:  "View detailed information of the workers' has sector jobs",
 		Run:   wrap(renterworkershscmd),
 	}
 )
