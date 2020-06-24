@@ -82,7 +82,7 @@ type (
 		staticFetchBackupsJobQueue   fetchBackupsJobQueue
 		staticJobQueueDownloadByRoot jobQueueDownloadByRoot
 		staticJobHasSectorQueue      *jobHasSectorQueue
-		staticJobReadSectorQueue     *jobReadSectorQueue
+		staticJobReadQueue           *jobReadQueue
 		staticJobUploadSnapshotQueue *jobUploadSnapshotQueue
 
 		// Upload variables.
@@ -137,7 +137,7 @@ func (w *worker) managedKill() {
 func (w *worker) managedOnCooldown() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.cooldownUntil.After(time.Now())
+	return time.Now().Before(w.cooldownUntil)
 }
 
 // staticKilled is a convenience function to determine if a worker has been
@@ -248,7 +248,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	}
 	w.newPriceTable()
 	w.initJobHasSectorQueue()
-	w.initJobReadSectorQueue()
+	w.initJobReadQueue()
 	w.initJobUploadSnapshotQueue()
 	// Get the worker cache set up before returning the worker. This prevents a
 	// race condition in some tests.

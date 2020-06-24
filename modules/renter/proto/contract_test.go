@@ -140,7 +140,7 @@ func testContractUncomittedTxn(t *testing.T, initialHeader contractHeader, updat
 	}
 
 	// apply an update to the contract, but don't commit it
-	sc := cs.mustAcquire(t, c.ID)
+	sc := cs.managedMustAcquire(t, c.ID)
 	walTxn, revisedRoots, revisedHeader, err := updateFunc(sc)
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +168,7 @@ func testContractUncomittedTxn(t *testing.T, initialHeader contractHeader, updat
 		t.Fatal(err)
 	}
 	// the uncommitted transaction should be stored in the contract
-	sc = cs.mustAcquire(t, c.ID)
+	sc = cs.managedMustAcquire(t, c.ID)
 	if len(sc.unappliedTxns) != 1 {
 		t.Fatal("expected 1 unappliedTxn, got", len(sc.unappliedTxns))
 	} else if !bytes.Equal(sc.unappliedTxns[0].Updates[0].Instructions, walTxn.Updates[0].Instructions) {
@@ -213,7 +213,7 @@ func testContractUncomittedTxn(t *testing.T, initialHeader contractHeader, updat
 		t.Fatal(err)
 	}
 	// the uncommitted transaction should be gone.
-	sc = cs.mustAcquire(t, c.ID)
+	sc = cs.managedMustAcquire(t, c.ID)
 	if len(sc.unappliedTxns) != 0 {
 		t.Fatal("expected 0 unappliedTxn, got", len(sc.unappliedTxns))
 	}
@@ -251,7 +251,7 @@ func TestContractIncompleteWrite(t *testing.T) {
 	}
 
 	// apply an update to the contract, but don't commit it
-	sc := cs.mustAcquire(t, c.ID)
+	sc := cs.managedMustAcquire(t, c.ID)
 	revisedHeader := contractHeader{
 		Transaction: types.Transaction{
 			FileContractRevisions: []types.FileContractRevision{{
@@ -313,7 +313,7 @@ func TestContractIncompleteWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	// the uncommitted txn should be gone.
-	sc = cs.mustAcquire(t, c.ID)
+	sc = cs.managedMustAcquire(t, c.ID)
 	if len(sc.unappliedTxns) != 0 {
 		t.Fatal("expected 0 unappliedTxn, got", len(sc.unappliedTxns))
 	}
@@ -461,7 +461,7 @@ func TestContractRecordAndCommitPaymentIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc := cs.mustAcquire(t, contract.ID)
+	sc := cs.managedMustAcquire(t, contract.ID)
 
 	// create a payment revision
 	curr := sc.LastRevision()
@@ -493,7 +493,7 @@ func TestContractRecordAndCommitPaymentIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc = cs.mustAcquire(t, contract.ID)
+	sc = cs.managedMustAcquire(t, contract.ID)
 
 	if sc.LastRevision().NewRevisionNumber != rev.NewRevisionNumber {
 		t.Fatal("Unexpected revision number after reloading the contract set")
@@ -533,7 +533,7 @@ func TestContractRefCounter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc := cs.mustAcquire(t, c.ID)
+	sc := cs.managedMustAcquire(t, c.ID)
 	// verify that the refcounter exists and has the correct size
 	if sc.staticRC == nil {
 		t.Fatal("refCounter was not created with the contract.")
@@ -648,7 +648,7 @@ func TestContractRecordCommitDownloadIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc := cs.mustAcquire(t, contract.ID)
+	sc := cs.managedMustAcquire(t, contract.ID)
 
 	// create a download revision
 	curr := sc.LastRevision()
@@ -678,7 +678,7 @@ func TestContractRecordCommitDownloadIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc = cs.mustAcquire(t, contract.ID)
+	sc = cs.managedMustAcquire(t, contract.ID)
 
 	if sc.LastRevision().NewRevisionNumber != curr.NewRevisionNumber {
 		t.Fatal("Unexpected revision number after reloading the contract set")
@@ -710,7 +710,7 @@ func TestContractRecordCommitDownloadIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc = cs.mustAcquire(t, contract.ID)
+	sc = cs.managedMustAcquire(t, contract.ID)
 
 	if sc.LastRevision().NewRevisionNumber != rev.NewRevisionNumber {
 		t.Fatal("Unexpected revision number after reloading the contract set")
@@ -762,7 +762,7 @@ func TestContractRecordCommitAppendIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc := cs.mustAcquire(t, contract.ID)
+	sc := cs.managedMustAcquire(t, contract.ID)
 
 	// create a append revision
 	curr := sc.LastRevision()
@@ -795,7 +795,7 @@ func TestContractRecordCommitAppendIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc = cs.mustAcquire(t, contract.ID)
+	sc = cs.managedMustAcquire(t, contract.ID)
 
 	if sc.LastRevision().NewRevisionNumber != curr.NewRevisionNumber {
 		t.Fatal("Unexpected revision number after reloading the contract set")
@@ -827,7 +827,7 @@ func TestContractRecordCommitAppendIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc = cs.mustAcquire(t, contract.ID)
+	sc = cs.managedMustAcquire(t, contract.ID)
 
 	if sc.LastRevision().NewRevisionNumber != rev.NewRevisionNumber {
 		t.Fatal("Unexpected revision number after reloading the contract set")
@@ -879,7 +879,7 @@ func TestContractRecordCommitRenewAndClearIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc := cs.mustAcquire(t, contract.ID)
+	sc := cs.managedMustAcquire(t, contract.ID)
 
 	// create a renew revision. It's the same as a payment revision with small
 	// differences.
@@ -915,7 +915,7 @@ func TestContractRecordCommitRenewAndClearIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc = cs.mustAcquire(t, contract.ID)
+	sc = cs.managedMustAcquire(t, contract.ID)
 
 	if sc.LastRevision().NewRevisionNumber != curr.NewRevisionNumber {
 		t.Fatal("Unexpected revision number after reloading the contract set")
@@ -947,7 +947,7 @@ func TestContractRecordCommitRenewAndClearIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc = cs.mustAcquire(t, contract.ID)
+	sc = cs.managedMustAcquire(t, contract.ID)
 
 	if sc.LastRevision().NewRevisionNumber != rev.NewRevisionNumber {
 		t.Fatal("Unexpected revision number after reloading the contract set")

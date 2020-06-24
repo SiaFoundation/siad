@@ -261,16 +261,11 @@ func TestDaemonConfig(t *testing.T) {
 	}
 	testDir := daemonTestDir(t.Name())
 
-	// Create a new server
+	// Create a new server with all Modules loaded
 	testNode, err := siatest.NewCleanNode(node.AllModules(testDir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := testNode.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
 
 	// Get the Settings.
 	dsg, err := testNode.DaemonSettingsGet()
@@ -305,5 +300,56 @@ func TestDaemonConfig(t *testing.T) {
 	}
 	if !dsg.Modules.Wallet {
 		t.Error("Wallet should be set as true")
+	}
+
+	// Close server
+	if err := testNode.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a new server with only the Gateway
+	testNode, err = siatest.NewCleanNode(node.Gateway(testDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := testNode.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Get the Settings.
+	dsg, err = testNode.DaemonSettingsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// All the Modules should be set to false except the Gateway
+	if dsg.Modules.Consensus {
+		t.Error("Consensus should be set as false")
+	}
+	if dsg.Modules.Explorer {
+		t.Error("Explorer should be set as false")
+	}
+	if dsg.Modules.FeeManager {
+		t.Error("FeeManager should be set as false")
+	}
+	if !dsg.Modules.Gateway {
+		t.Error("Gateway should be set as true")
+	}
+	if dsg.Modules.Host {
+		t.Error("Host should be set as false")
+	}
+	if dsg.Modules.Miner {
+		t.Error("Miner should be set as false")
+	}
+	if dsg.Modules.Renter {
+		t.Error("Renter should be set as false")
+	}
+	if dsg.Modules.TransactionPool {
+		t.Error("TransactionPool should be set as false")
+	}
+	if dsg.Modules.Wallet {
+		t.Error("Wallet should be set as false")
 	}
 }

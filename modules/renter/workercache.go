@@ -30,6 +30,7 @@ type (
 		staticContractID      types.FileContractID
 		staticContractUtility modules.ContractUtility
 		staticHostVersion     string
+		staticRenterAllowance modules.Allowance
 		staticSynced          bool
 
 		staticLastUpdate time.Time
@@ -77,6 +78,7 @@ func (w *worker) managedUpdateCache() {
 		staticContractID:      renterContract.ID,
 		staticContractUtility: renterContract.Utility,
 		staticHostVersion:     host.Version,
+		staticRenterAllowance: w.renter.hostContractor.Allowance(),
 		staticSynced:          w.renter.cs.Synced(),
 
 		staticLastUpdate: time.Now(),
@@ -90,20 +92,18 @@ func (w *worker) managedUpdateCache() {
 	// validate the host blockheight on the price table object and take
 	// appropriate actions when we find the host is unsynced.
 	var hostUnsynced bool
-	if !current.staticSynced && newCache.staticSynced {
+	if current != nil && !current.staticSynced && newCache.staticSynced {
 		rbh := newCache.staticBlockHeight
 		hbh := w.staticPriceTable().staticPriceTable.HostBlockHeight
-		if rbh >= priceTableHostBlockHeightLeeWay { // underflow check
-			if hbh < rbh-priceTableHostBlockHeightLeeWay || hbh > rbh+priceTableHostBlockHeightLeeWay {
-				w.mu.Lock()
-				w.cooldownUntil = cooldownUntil(w.consecutiveFailures)
-				w.consecutiveFailures++
-				w.recentErr = fmt.Errorf("worker for host %v is being put on cooldown because the host is unsynced, renter height: %v host height: %v", w.staticHostPubKeyStr, rbh, hbh)
-				w.recentErrTime = time.Now()
-				w.renter.log.Println(w.recentErr)
-				w.mu.Unlock()
-				hostUnsynced = true
-			}
+		if !hostBlockHeightWithinTolerance(newCache.staticSynced, rbh, hbh) {
+			w.mu.Lock()
+			w.cooldownUntil = cooldownUntil(w.consecutiveFailures)
+			w.consecutiveFailures++
+			w.recentErr = fmt.Errorf("worker for host %v is being put on cooldown because the host is unsynced, renter height: %v host height: %v", w.staticHostPubKeyStr, rbh, hbh)
+			w.recentErrTime = time.Now()
+			w.renter.log.Println(w.recentErr)
+			w.mu.Unlock()
+			hostUnsynced = true
 		}
 	}
 	if !hostUnsynced {

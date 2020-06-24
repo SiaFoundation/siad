@@ -359,11 +359,11 @@ func (w *Wallet) rescanMessage(done chan struct{}) {
 		w.mu.Lock()
 		height, _ := dbGetConsensusHeight(w.dbTx)
 		w.mu.Unlock()
-		print("\rWallet: scanned to height ", height, "...")
+		fmt.Printf("\rWallet: scanned to height %d...", height)
 
 		select {
 		case <-done:
-			println("\nDone!")
+			fmt.Println("\nDone!")
 			return
 		case <-time.After(3 * time.Second):
 		}

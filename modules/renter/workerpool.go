@@ -70,6 +70,10 @@ func (wp *workerPool) callUpdate() {
 	contractSlice := wp.renter.hostContractor.Contracts()
 	contractMap := make(map[string]modules.RenterContract, len(contractSlice))
 	for _, contract := range contractSlice {
+		if contract.Utility.BadContract {
+			// Do not create workers for bad contracts.
+			continue
+		}
 		contractMap[contract.HostPublicKey.String()] = contract
 	}
 

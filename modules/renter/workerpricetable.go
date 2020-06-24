@@ -9,17 +9,34 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
 const (
-	// priceTableHostBlockHeightLeeWay is the amount of leeway we will allow
-	// in the host's blockheight field on the price table. If the host sends us
-	// a block height that's lower than ours by more than the leeway, we will
-	// reject that price table. In the future we might penalize the host for
-	// this, but for the time being we do not.
+	// priceTableHostBlockHeightLeeWay is the amount of leeway we will allow in
+	// the host's blockheight field on the price table. If we are synced we
+	// expect the host to be at most 'priceTableHostBlockHeightLeeWay' blocks
+	// higher or lower than our own block height, if we are not synced we expect
+	// the host's block height to be higher or equal.
 	priceTableHostBlockHeightLeeWay = 3
+
+	// updatePriceTableGougingPercentageThreshold is the percentage threshold,
+	// in relation to the allowance, at which we consider the cost of updating
+	// the price table to be too expensive. E.g. the cost of updating the price
+	// table over the total allowance period should never exceed 1% of the total
+	// allowance.
+	updatePriceTableGougingPercentageThreshold = .01
+)
+
+var (
+	// errPriceTableGouging is returned when price gouging is detected
+	errPriceTableGouging = errors.New("price table rejected due to price gouging")
+
+	// errHostBlockHeightNotWithinTolerance is returned when the block height
+	// returned by the host is not within a certain tolerance, the
+	// priceTableHostBlockHeightLeeWay,  of our own block height.
+	errHostBlockHeightNotWithinTolerance = errors.New("host blockheight is not within tolerance, host is unsynced")
 )
 
 type (
@@ -178,34 +195,21 @@ func (w *worker) staticUpdatePriceTable() {
 		return
 	}
 
-	// TODO: Check for gouging before paying. The cost of the price table RPC
-	// should be very little more (less than 2x) than the cost of the bandwidth.
-	//
-	// Also check that the host didn't suddenly bump some other price to
-	// unreasonable levels. If the host did, the renter will reject the price
-	// table and effectively disable the worker.
+	// check for gouging before paying
+	err = checkUpdatePriceTableGouging(pt, w.staticCache().staticRenterAllowance)
+	if err != nil {
+		err = errors.Compose(err, errors.AddContext(errPriceTableGouging, fmt.Sprintf("host %v", w.staticHostPubKeyStr)))
+		w.renter.log.Println("ERROR: ", err)
+		return
+	}
 
 	// Before we pay for the price table we validate the host's block height,
 	// this is necessary because we use the host's block height when making
 	// payments by ephemeral account.
 	cache := w.staticCache()
-	rbh := cache.staticBlockHeight
-	hbh := pt.HostBlockHeight
-	if !cache.staticSynced {
-		// If we are not synced, we only assert that the host blockheight is
-		// equal or greater than ours.
-		if hbh < rbh {
-			err = fmt.Errorf("host blockheight is considered too low, host height: %v renter height: %v", hbh, rbh)
-			return
-		}
-	} else if rbh >= priceTableHostBlockHeightLeeWay {
-		// If we are synced (and if we've passed the underflow check), we assert
-		// the host's block height is within a certain leeway from our own block
-		// height.
-		if hbh < rbh-priceTableHostBlockHeightLeeWay || hbh > rbh+priceTableHostBlockHeightLeeWay {
-			err = fmt.Errorf("host blockheight is considered too far off, host height: %v renter height: %v", hbh, rbh)
-			return
-		}
+	if !hostBlockHeightWithinTolerance(cache.staticSynced, cache.staticBlockHeight, pt.HostBlockHeight) {
+		err = errors.AddContext(errHostBlockHeightNotWithinTolerance, fmt.Sprintf("renter height: %v synced: %v, host height: %v", cache.staticBlockHeight, cache.staticSynced, pt.HostBlockHeight))
+		return
 	}
 
 	// provide payment
@@ -244,4 +248,51 @@ func (w *worker) staticUpdatePriceTable() {
 		staticRecentErr:           currentPT.staticRecentErr,
 	}
 	w.staticSetPriceTable(wpt)
+}
+
+// checkUpdatePriceTableGouging verifies the cost of updating the price table is
+// reasonable, if deemed unreasonable we will reject it and this worker will be
+// put into cooldown.
+func checkUpdatePriceTableGouging(pt modules.RPCPriceTable, allowance modules.Allowance) error {
+	// If there is no allowance, price gouging checks have to be disabled,
+	// because there is no baseline for understanding what might count as price
+	// gouging.
+	if allowance.Funds.IsZero() {
+		return nil
+	}
+
+	// In order to decide whether or not the update price table cost is too
+	// expensive, we first have to calculate how many times we'll need to update
+	// the price table over the entire allowance period
+	durationInS := int64(pt.Validity.Seconds())
+	periodInS := int64(allowance.Period) * 10 * 60 // period times 10m blocks
+	numUpdates := periodInS / durationInS
+
+	// The cost of updating is considered too expensive if the total cost is
+	// above a certain % of the allowance.
+	totalUpdateCost := pt.UpdatePriceTableCost.Mul64(uint64(numUpdates))
+	if totalUpdateCost.Cmp(allowance.Funds.MulFloat(updatePriceTableGougingPercentageThreshold)) > 0 {
+		return fmt.Errorf("update price table cost %v is considered too high, the total cost over the entire duration of the allowance periods exceeds %v%% of the allowance - price gouging protection enabled", pt.UpdatePriceTableCost, updatePriceTableGougingPercentageThreshold)
+	}
+
+	return nil
+}
+
+// hostBlockHeightWithinTolerance verfies whether the given host blockheight is
+// within a certain leeway from the given renter block height.
+func hostBlockHeightWithinTolerance(synced bool, renterBlockHeight, hostBlockHeight types.BlockHeight) bool {
+	if !synced {
+		// If we are not synced, we only assert that the host blockheight is
+		// equal or greater than ours.
+		if hostBlockHeight < renterBlockHeight {
+			return false
+		}
+	} else {
+		// If we are synced, we assert the host's block height is within a
+		// certain leeway from our own block height.
+		if hostBlockHeight+priceTableHostBlockHeightLeeWay < renterBlockHeight || hostBlockHeight > renterBlockHeight+priceTableHostBlockHeightLeeWay {
+			return false
+		}
+	}
+	return true
 }

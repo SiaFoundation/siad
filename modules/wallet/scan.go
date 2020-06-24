@@ -140,9 +140,9 @@ func (s *seedScanner) ProcessConsensusChange(cc modules.ConsensusChange) {
 	// Adjust the scanned height and print the scan progress.
 	s.scannedHeight += types.BlockHeight(len(cc.AppliedBlocks) - len(cc.RevertedBlocks))
 	if !cc.Synced {
-		print("\rWallet: scanned to height ", s.scannedHeight, "...")
+		fmt.Printf("\rWallet: scanned to height %d...", s.scannedHeight)
 	} else {
-		println("\nDone!")
+		fmt.Println("\nDone!")
 	}
 }
 
