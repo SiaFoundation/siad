@@ -412,6 +412,13 @@ func (w *worker) managedRefillAccount() {
 		w.staticAccount.recentErr = err
 		w.staticAccount.mu.Unlock()
 
+		// If the error could be caused by a revision number mismatch,
+		// signal it by setting the flag.
+		if errCausedByRevisionMismatch(err) {
+			w.staticSetSuspectRevisionMismatch()
+			w.staticWake()
+		}
+
 		// Have the threadgroup wake the worker when the account comes off of
 		// cooldown.
 		w.renter.tg.AfterFunc(cd.Sub(time.Now()), func() {
@@ -642,6 +649,12 @@ func (w *worker) staticHostAccountBalance() (types.Currency, error) {
 	// provide payment
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCAccountBalance, pt.AccountBalanceCost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
 	if err != nil {
+		// If the error could be caused by a revision number mismatch,
+		// signal it by setting the flag.
+		if errCausedByRevisionMismatch(err) {
+			w.staticSetSuspectRevisionMismatch()
+			w.staticWake()
+		}
 		return types.ZeroCurrency, err
 	}
 

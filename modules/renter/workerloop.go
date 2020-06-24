@@ -20,8 +20,13 @@ type (
 		// while we are waiting for all existing threads to finish.
 		//
 		// These values can be decremented in a goroutine.
-		atomicSerialJobRunning uint64
 		atomicAsyncJobsRunning uint64
+		atomicSerialJobRunning uint64
+
+		// atomicSuspectRevisionMismatch indicates that the worker encountered
+		// some error where it believes that it needs to resync its contract
+		// with the host.
+		atomicSuspectRevisionMismatch uint64
 
 		// Variables to track the total amount of async data outstanding. This
 		// indicates the total amount of data that we expect to use from async
@@ -276,6 +281,12 @@ func (w *worker) threadedWorkLoop() {
 	defer w.staticJobUploadSnapshotQueue.callKill()
 
 	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) >= 0 {
+		// Ensure the renter's revision number of the underlying file contract
+		// is in sync with the host's revision number. This check must happen at
+		// the top as consecutive checks make use of the file contract for
+		// payment.
+		w.externTryFixRevisionMismatch()
+
 		// The worker cannot execute any async tasks unless the price table of
 		// the host is known, the balance of the worker account is known, and
 		// the account has sufficient funds in it. This update is done as a
@@ -304,6 +315,17 @@ func (w *worker) threadedWorkLoop() {
 		if !w.managedBlockUntilReady() {
 			return
 		}
+
+		// Try and fix a revision number mismatch if the flag is set. This will
+		// be the case if other processes errored out with an error indicating a
+		// mismatch.
+		if w.staticSuspectRevisionMismatch() {
+			w.externTryFixRevisionMismatch()
+		}
+
+		// Update the worker cache object, note that we do this after trying to
+		// sync the revision as that might influence the contract, which is used
+		// to build the cache object.
 		w.staticTryUpdateCache()
 
 		// If the worker needs to sync the account balance, perform a sync

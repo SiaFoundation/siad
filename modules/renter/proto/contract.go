@@ -689,7 +689,8 @@ func (c *SafeContract) managedCommitTxns() error {
 // recent revision; if it does not, managedSyncRevision attempts to synchronize
 // with rev by committing any uncommitted WAL transactions. If the revisions
 // still do not match, and the host's revision is ahead of the renter's,
-// managedSyncRevision uses the host's revision.
+// managedSyncRevision uses the host's revision. Alongside a possible error this
+// function returns a boolean that indicates whether a resync was attempted.
 func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs []types.TransactionSignature) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -704,7 +705,8 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 
 	ourRev := c.header.LastRevision()
 
-	// If the revision number and Merkle root match, we don't need to do anything.
+	// If the revision number and Merkle root match, we don't need to do
+	// anything.
 	if rev.NewRevisionNumber == ourRev.NewRevisionNumber && rev.NewFileMerkleRoot == ourRev.NewFileMerkleRoot {
 		// If any other fields mismatch, it must be our fault, since we signed
 		// the revision reported by the host. So, to ensure things are
@@ -737,6 +739,7 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 				if unappliedRev.NewRevisionNumber != rev.NewRevisionNumber || unappliedRev.NewFileMerkleRoot != rev.NewFileMerkleRoot {
 					continue
 				}
+
 				// found a matching header, but it still won't have the host's
 				// signatures, since those aren't added until the transaction is
 				// committed. Add the signatures supplied by the host and commit
@@ -765,6 +768,7 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	// will be incorrect.
 	c.header.Transaction.FileContractRevisions[0] = rev
 	c.header.Transaction.TransactionSignatures = sigs
+
 	// Drop the WAL transactions, since they can't conceivably help us.
 	if err := c.clearUnappliedTxns(); err != nil {
 		return errors.AddContext(err, "failed to clear unapplied txns")
