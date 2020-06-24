@@ -126,6 +126,12 @@ type (
 	}
 )
 
+// NewDependencyCorruptMDMOutput returns a dependency that can be used to
+// manually corrupt the MDM output returned by hosts.
+func NewDependencyCorruptMDMOutput() *DependencyInterruptOnceOnKeyword {
+	return newDependencyInterruptOnceOnKeyword("CorruptMDMOutput")
+}
+
 // NewDependencyBlockResumeJobDownloadUntilTimeout blocks in
 // managedResumeJobDownloadByRoot until the timeout for the download project is
 // reached.

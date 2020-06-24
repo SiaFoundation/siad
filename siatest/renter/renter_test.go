@@ -4820,3 +4820,64 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 		t.Fatalf("Expected the synced balance to be at least %v lower than the renter balance, as thats the amount we subtracted from the deposit amount, instead synced balance was %v and renter balance was %v", delta, w.AvailableBalance, renterBalance)
 	}
 }
+
+// TestReadOffsetOutputCorrupted verifies that the merkle proof check on the
+// ReadSector MDM instruction works as expected.
+func TestReadOffsetOutputCorrupted(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a testgroup without a renter and with only 3 hosts
+	groupParams := siatest.GroupParams{
+		Miners:  1,
+		Renters: 1,
+	}
+
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer tg.Close()
+
+	// add a host that corrupts downloads.
+	deps1 := dependencies.NewDependencyCorruptMDMOutput()
+	deps2 := dependencies.NewDependencyCorruptMDMOutput()
+	hostParams1 := node.Host(filepath.Join(testDir, "host1"))
+	hostParams2 := node.Host(filepath.Join(testDir, "host2"))
+	hostParams1.HostDeps = deps1
+	hostParams2.HostDeps = deps2
+	_, err = tg.AddNodes(hostParams1, hostParams2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload a file.
+	renter := tg.Renters()[0]
+	skylink, _, _, err := renter.UploadNewSkyfileBlocking("test", 100, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the file.
+	_, _, err = renter.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Enable the dependencies and download again.
+	deps1.Fail()
+	deps2.Fail()
+	_, _, err = renter.SkynetSkylinkGet(skylink)
+	if err == nil || !strings.Contains(err.Error(), "all workers failed") {
+		t.Fatal(err)
+	}
+
+	// Download one more time. It should work again.
+	_, _, err = renter.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+}

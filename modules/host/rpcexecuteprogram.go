@@ -10,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 )
 
@@ -165,6 +166,11 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		err = modules.RPCWrite(buffer, resp)
 		if err != nil {
 			return errors.AddContext(err, "failed to send output to peer")
+		}
+
+		if h.dependencies.Disrupt("CorruptMDMOutput") {
+			// Replace output with same amount of random data.
+			fastrand.Read(output.Output)
 		}
 
 		// Write output.
