@@ -14,7 +14,7 @@ func (h *Host) managedRPCLatestRevision(stream siamux.Stream) error {
 	// read the price table
 	pt, err := h.staticReadPriceTableID(stream)
 	if err != nil {
-		return errors.AddContext(err, "Failed to read price table")
+		return errors.AddContext(err, "failed to read price table")
 	}
 
 	// Process payment.
@@ -39,13 +39,13 @@ func (h *Host) managedRPCLatestRevision(stream siamux.Stream) error {
 	var lrr modules.RPCLatestRevisionRequest
 	err = modules.RPCRead(stream, &lrr)
 	if err != nil {
-		return errors.AddContext(err, "Failed to read LatestRevisionRequest")
+		return errors.AddContext(err, "failed to read LatestRevisionRequest")
 	}
 
 	// Read storage obligation.
 	so, err := h.managedGetStorageObligationSnapshot(lrr.FileContractID)
 	if err != nil {
-		return errors.AddContext(err, fmt.Sprintf("Failed to get storage obligation for contract with id %v", lrr.FileContractID))
+		return errors.AddContext(err, fmt.Sprintf("failed to get storage obligation for contract with id %v", lrr.FileContractID))
 	}
 
 	// Send response.
@@ -53,7 +53,7 @@ func (h *Host) managedRPCLatestRevision(stream siamux.Stream) error {
 		Revision: so.staticRecentRevision,
 	})
 	if err != nil {
-		return errors.AddContext(err, "Failed to send LatestRevisionResponse")
+		return errors.AddContext(err, "failed to send LatestRevisionResponse")
 	}
 	return nil
 }

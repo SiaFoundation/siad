@@ -210,12 +210,11 @@ func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (Sto
 		return StorageObligationSnapshot{}, err
 	}
 	return StorageObligationSnapshot{
-		staticContractSize:        so.fileSize(),
-		staticMerkleRoot:          so.merkleRoot(),
-		staticProofDeadline:       so.proofDeadline(),
-		staticRecentRevision:      rev,
-		staticRemainingCollateral: rev.MissedHostPayout(),
-		staticSectorRoots:         so.SectorRoots,
+		staticContractSize:   so.fileSize(),
+		staticMerkleRoot:     so.merkleRoot(),
+		staticProofDeadline:  so.proofDeadline(),
+		staticRecentRevision: rev,
+		staticSectorRoots:    so.SectorRoots,
 	}, nil
 }
 
@@ -250,23 +249,21 @@ func putStorageObligation(tx *bolt.Tx, so storageObligation) error {
 // snapshot only contains the properties required by the MDM to execute a
 // program. This can be extended in the future to support other use cases.
 type StorageObligationSnapshot struct {
-	staticContractSize        uint64
-	staticMerkleRoot          crypto.Hash
-	staticProofDeadline       types.BlockHeight
-	staticRecentRevision      types.FileContractRevision
-	staticRemainingCollateral types.Currency
-	staticSectorRoots         []crypto.Hash
+	staticContractSize   uint64
+	staticMerkleRoot     crypto.Hash
+	staticProofDeadline  types.BlockHeight
+	staticRecentRevision types.FileContractRevision
+	staticSectorRoots    []crypto.Hash
 }
 
 // ZeroStorageObligationSnapshot returns the storage obligation snapshot of an
 // empty contract. All fields are set to the defaults.
 func ZeroStorageObligationSnapshot() StorageObligationSnapshot {
 	return StorageObligationSnapshot{
-		staticContractSize:        0,
-		staticMerkleRoot:          crypto.Hash{},
-		staticProofDeadline:       types.BlockHeight(0),
-		staticRemainingCollateral: types.ZeroCurrency,
-		staticSectorRoots:         []crypto.Hash{},
+		staticContractSize:  0,
+		staticMerkleRoot:    crypto.Hash{},
+		staticProofDeadline: types.BlockHeight(0),
+		staticSectorRoots:   []crypto.Hash{},
 	}
 }
 
@@ -297,7 +294,7 @@ func (sos StorageObligationSnapshot) SectorRoots() []crypto.Hash {
 // that hasn't been allocated yet. This means it is not yet moved to the void in
 // case of a missed storage proof.
 func (sos StorageObligationSnapshot) UnallocatedCollateral() types.Currency {
-	return sos.staticRemainingCollateral
+	return sos.staticRecentRevision.MissedHostPayout()
 }
 
 // Update will take a list of sector changes and update the database to account

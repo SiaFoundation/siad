@@ -157,7 +157,7 @@ func (h *Host) staticReadPriceTableID(stream siamux.Stream) (*modules.RPCPriceTa
 	var uid modules.UniqueID
 	err := modules.RPCRead(stream, &uid)
 	if err != nil {
-		return nil, errors.AddContext(err, "Failed to read price table UID")
+		return nil, errors.AddContext(err, "failed to read price table UID")
 	}
 
 	// check if we know the uid, if we do return it
