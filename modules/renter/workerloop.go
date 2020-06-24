@@ -12,9 +12,21 @@ import (
 type (
 	// workerLoopState tracks the state of the worker loop.
 	workerLoopState struct {
-		// Variable to ensure only one serial job is running at a time.
-		atomicSerialJobRunning        uint64
-		atomicSuspectRevisionMismatch uint64 // used for fixing revision number mismatches
+		// Variables to count the number of jobs running. Note that these
+		// variables can only be incremented in the primary work loop of the
+		// worker, because there are blocking conditions within the primary work
+		// loop that need to know only one thread is running at a time, and
+		// safety is derived from knowing that no new threads are launching
+		// while we are waiting for all existing threads to finish.
+		//
+		// These values can be decremented in a goroutine.
+		atomicAsyncJobsRunning uint64
+		atomicSerialJobRunning uint64
+
+		// atomicSuspectRevisionMismatch indicates that the worker encountered
+		// some error where it believes that it needs to resync its contract
+		// with the host.
+		atomicSuspectRevisionMismatch uint64
 
 		// Variables to track the total amount of async data outstanding. This
 		// indicates the total amount of data that we expect to use from async
@@ -134,16 +146,19 @@ func (w *worker) externTryLaunchSerialJob() {
 // to retrieve a job and launch it. The bandwidth consumption will be updated as
 // the job starts and finishes.
 func (w *worker) externLaunchAsyncJob(job workerJob) bool {
-	// Add the resource requirements to the worker loop state.
+	// Add the resource requirements to the worker loop state. Also add this
+	// thread to the number of jobs running.
 	uploadBandwidth, downloadBandwidth := job.callExpectedBandwidth()
 	atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, downloadBandwidth)
 	atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, uploadBandwidth)
+	atomic.AddUint64(&w.staticLoopState.atomicAsyncJobsRunning, 1)
 	fn := func() {
 		job.callExecute()
 		// Subtract the outstanding data now that the job is complete. Atomic
 		// subtraction works by adding and using some bit tricks.
 		atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, -downloadBandwidth)
 		atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, -uploadBandwidth)
+		atomic.AddUint64(&w.staticLoopState.atomicAsyncJobsRunning, ^uint64(0)) // subtract 1
 		// Wake the worker to run any additional async jobs that may have been
 		// blocked / ignored because there was not enough bandwidth available.
 		w.staticWake()
@@ -282,7 +297,7 @@ func (w *worker) threadedWorkLoop() {
 		// Perform a balance check on the host and sync it to his version if
 		// necessary. This avoids running into MaxBalanceExceeded errors upon
 		// refill after an unclean shutdown.
-		w.managedSyncAccountBalanceToHost()
+		w.externSyncAccountBalanceToHost()
 
 		// This update is done as a blocking update to ensure nothing else runs
 		// until the account has filled.
@@ -312,6 +327,12 @@ func (w *worker) threadedWorkLoop() {
 		// sync the revision as that might influence the contract, which is used
 		// to build the cache object.
 		w.staticTryUpdateCache()
+
+		// If the worker needs to sync the account balance, perform a sync
+		// operation. This should be attempted before launching any jobs.
+		if w.managedNeedsToSyncAccountToHost() {
+			w.externSyncAccountBalanceToHost()
+		}
 
 		// Attempt to launch a serial job. If there is already a job running,
 		// this will no-op. If no job is running, a goroutine will be spun up

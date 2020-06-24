@@ -331,9 +331,9 @@ func TestAccountResetBalance(t *testing.T) {
 	}
 }
 
-// TestAccountMinExpectedBalance is a small unit test that verifies the
-// functionality of the min expected balance function.
-func TestAccountMinExpectedBalance(t *testing.T) {
+// TestAccountMinAndMaxExpectedBalance is a small unit test that verifies the
+// functionality of the min and max expected balance functions.
+func TestAccountMinAndMaxExpectedBalance(t *testing.T) {
 	t.Parallel()
 
 	oneCurrency := types.NewCurrency64(1)
@@ -344,6 +344,9 @@ func TestAccountMinExpectedBalance(t *testing.T) {
 	if !a.minExpectedBalance().Equals(types.ZeroCurrency) {
 		t.Fatal("unexpected min expected balance")
 	}
+	if !a.maxExpectedBalance().Equals(types.ZeroCurrency) {
+		t.Fatal("unexpected min expected balance")
+	}
 
 	a = new(account)
 	a.balance = oneCurrency.Mul64(2)
@@ -352,12 +355,30 @@ func TestAccountMinExpectedBalance(t *testing.T) {
 	if !a.minExpectedBalance().Equals(types.ZeroCurrency) {
 		t.Fatal("unexpected min expected balance")
 	}
+	if !a.maxExpectedBalance().Equals(oneCurrency) {
+		t.Fatal("unexpected min expected balance")
+	}
 
 	a = new(account)
 	a.balance = oneCurrency.Mul64(3)
 	a.negativeBalance = oneCurrency
 	a.pendingWithdrawals = oneCurrency
 	if !a.minExpectedBalance().Equals(oneCurrency) {
+		t.Fatal("unexpected min expected balance")
+	}
+	if !a.maxExpectedBalance().Equals(oneCurrency.Mul64(2)) {
+		t.Fatal("unexpected min expected balance")
+	}
+
+	a = new(account)
+	a.balance = oneCurrency.Mul64(3)
+	a.negativeBalance = oneCurrency
+	a.pendingWithdrawals = oneCurrency
+	a.pendingDeposits = oneCurrency
+	if !a.minExpectedBalance().Equals(oneCurrency) {
+		t.Fatal("unexpected min expected balance")
+	}
+	if !a.maxExpectedBalance().Equals(oneCurrency.Mul64(3)) {
 		t.Fatal("unexpected min expected balance")
 	}
 }
@@ -448,7 +469,7 @@ func TestSyncAccountBalanceToHostCritical(t *testing.T) {
 		}
 	}()
 
-	w.managedSyncAccountBalanceToHost()
+	w.externSyncAccountBalanceToHost()
 }
 
 // openRandomTestAccountsOnRenter is a helper function that creates a random
