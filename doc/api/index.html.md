@@ -4447,7 +4447,10 @@ siapath to test.
 standard success or error response, a successful response means a valid siapath.
 See [standard responses](#standard-responses).
 
-## /renter/wokers [GET]
+## /renter/workers [GET] 
+
+**UNSTABLE - subject to change**
+
 > curl example
 
 ```go
