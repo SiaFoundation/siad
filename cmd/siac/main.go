@@ -131,10 +131,17 @@ func wrap(fn interface{}) func(*cobra.Command, []string) {
 	}
 }
 
-// die prints its arguments to stderr, then exits the program with the default
-// error code.
+// die prints its arguments to stderr, in production exits the program with the
+// default error code, during tests it passes panic so that tests can catch the
+// panic and check printed errors
 func die(args ...interface{}) {
 	fmt.Fprintln(os.Stderr, args...)
+
+	if build.Release == "testing" {
+		// In testing pass panic that can be catched and the test can continue
+		panic(errors.New("die panic for testing"))
+	}
+	// In production exit
 	os.Exit(exitCodeGeneral)
 }
 
@@ -240,6 +247,41 @@ func rateLimitSummary(download, upload int64) {
 }
 
 func main() {
+	// initialize commands
+	rootCmd = initCmds()
+
+	// initialize client
+	initClient(rootCmd, &statusVerbose, &httpClient, &siaDir)
+
+	// set API password if it was not set
+	setAPIPasswordIfNotSet()
+
+	// Check if the siaDir is set.
+	if siaDir == "" {
+		// No siaDir passed in, fetch the siaDir
+		siaDir = build.SiaDir()
+	}
+
+	// Check for Critical Alerts
+	alerts, err := httpClient.DaemonAlertsGet()
+	if err == nil && len(alerts.CriticalAlerts) > 0 {
+		printAlerts(alerts.CriticalAlerts, modules.SeverityCritical)
+		fmt.Println("------------------")
+		fmt.Printf("\n  The above %v critical alerts should be resolved ASAP\n\n", len(alerts.CriticalAlerts))
+	}
+
+	// run
+	if err := rootCmd.Execute(); err != nil {
+		// Since no commands return errors (all commands set Command.Run instead of
+		// Command.RunE), Command.Execute() should only return an error on an
+		// invalid command or flag. Therefore Command.Usage() was called (assuming
+		// Command.SilenceUsage is false) and we should exit with exitCodeUsage.
+		os.Exit(exitCodeUsage)
+	}
+}
+
+// initCmds initializes root command and its subcommands
+func initCmds() *cobra.Command {
 	root := &cobra.Command{
 		Use:   os.Args[0],
 		Short: "Sia Client v" + build.Version,
@@ -248,8 +290,6 @@ func main() {
 	}
 
 	// create command tree (alphabetized by root command)
-	rootCmd = root
-
 	root.AddCommand(consensusCmd)
 	consensusCmd.Flags().BoolVarP(&consensusCmdVerbose, "verbose", "v", false, "Display full consensus information")
 
@@ -375,13 +415,20 @@ func main() {
 	walletTransactionsCmd.Flags().Uint64Var(&walletStartHeight, "startheight", 0, " Height of the block where transaction history should begin.")
 	walletTransactionsCmd.Flags().Uint64Var(&walletEndHeight, "endheight", math.MaxUint64, " Height of the block where transaction history should end.")
 
-	// initialize client
-	root.Flags().BoolVarP(&statusVerbose, "verbose", "v", false, "Display additional siac information")
-	root.PersistentFlags().StringVarP(&httpClient.Address, "addr", "a", "localhost:9980", "which host/port to communicate with (i.e. the host/port siad is listening on)")
-	root.PersistentFlags().StringVarP(&httpClient.Password, "apipassword", "", "", "the password for the API's http authentication")
-	root.PersistentFlags().StringVarP(&siaDir, "sia-directory", "d", "", "location of the sia directory")
-	root.PersistentFlags().StringVarP(&httpClient.UserAgent, "useragent", "", "Sia-Agent", "the useragent used by siac to connect to the daemon's API")
+	return root
+}
 
+// initClient initializes client cmd flags and default values
+func initClient(root *cobra.Command, verbose *bool, client *client.Client, siaDir *string) {
+	root.Flags().BoolVarP(verbose, "verbose", "v", false, "Display additional siac information")
+	root.PersistentFlags().StringVarP(&client.Address, "addr", "a", "localhost:9980", "which host/port to communicate with (i.e. the host/port siad is listening on)")
+	root.PersistentFlags().StringVarP(&client.Password, "apipassword", "", "", "the password for the API's http authentication")
+	root.PersistentFlags().StringVarP(siaDir, "sia-directory", "d", "", "location of the sia directory")
+	root.PersistentFlags().StringVarP(&client.UserAgent, "useragent", "", "Sia-Agent", "the useragent used by siac to connect to the daemon's API")
+}
+
+// setAPIPasswordIfNotSet sets API password if it was not set
+func setAPIPasswordIfNotSet() {
 	// Check if the API Password is set
 	if httpClient.Password == "" {
 		// No password passed in, fetch the API Password
@@ -391,28 +438,5 @@ func main() {
 			os.Exit(exitCodeGeneral)
 		}
 		httpClient.Password = pw
-	}
-
-	// Check if the siaDir is set.
-	if siaDir == "" {
-		// No siaDir passed in, fetch the siaDir
-		siaDir = build.SiaDir()
-	}
-
-	// Check for Critical Alerts
-	alerts, err := httpClient.DaemonAlertsGet()
-	if err == nil && len(alerts.CriticalAlerts) > 0 {
-		printAlerts(alerts.CriticalAlerts, modules.SeverityCritical)
-		fmt.Println("------------------")
-		fmt.Printf("\n  The above %v critical alerts should be resolved ASAP\n\n", len(alerts.CriticalAlerts))
-	}
-
-	// run
-	if err := root.Execute(); err != nil {
-		// Since no commands return errors (all commands set Command.Run instead of
-		// Command.RunE), Command.Execute() should only return an error on an
-		// invalid command or flag. Therefore Command.Usage() was called (assuming
-		// Command.SilenceUsage is false) and we should exit with exitCodeUsage.
-		os.Exit(exitCodeUsage)
 	}
 }
