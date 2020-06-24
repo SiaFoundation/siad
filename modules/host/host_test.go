@@ -1,6 +1,7 @@
 package host
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"os"
@@ -399,6 +400,46 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 		}
 	}
 
+	// create a buffer to optimise our writes
+	buffer := bytes.NewBuffer(nil)
+
+	// Write the specifier.
+	err = modules.RPCWrite(buffer, modules.RPCExecuteProgram)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Write the pricetable uid.
+	err = modules.RPCWrite(buffer, pt.UID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Send the payment request.
+	err = modules.RPCWrite(buffer, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Send the payment details.
+	pbear := newPayByEphemeralAccountRequest(p.staticAccountID, p.staticHT.host.BlockHeight()+6, budget, p.staticAccountKey)
+	err = modules.RPCWrite(buffer, pbear)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Send the execute program request.
+	err = modules.RPCWrite(buffer, epr)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Send the programData.
+	_, err = buffer.Write(programData)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	// create stream
 	stream := p.managedNewStream()
 	defer stream.Close()
@@ -406,39 +447,8 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 	// Get the limit to track bandwidth.
 	limit := stream.Limit()
 
-	// Write the specifier.
-	err = modules.RPCWrite(stream, modules.RPCExecuteProgram)
-	if err != nil {
-		return nil, limit, err
-	}
-
-	// Write the pricetable uid.
-	err = modules.RPCWrite(stream, pt.UID)
-	if err != nil {
-		return nil, limit, err
-	}
-
-	// Send the payment request.
-	err = modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByEphemeralAccount})
-	if err != nil {
-		return nil, limit, err
-	}
-
-	// Send the payment details.
-	pbear := newPayByEphemeralAccountRequest(p.staticAccountID, p.staticHT.host.BlockHeight()+6, budget, p.staticAccountKey)
-	err = modules.RPCWrite(stream, pbear)
-	if err != nil {
-		return nil, limit, err
-	}
-
-	// Send the execute program request.
-	err = modules.RPCWrite(stream, epr)
-	if err != nil {
-		return nil, limit, err
-	}
-
-	// Send the programData.
-	_, err = stream.Write(programData)
+	// write contents of the buffer to the stream
+	_, err = stream.Write(buffer.Bytes())
 	if err != nil {
 		return nil, limit, err
 	}

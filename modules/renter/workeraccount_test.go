@@ -270,6 +270,39 @@ func TestAccountClosed(t *testing.T) {
 	}
 }
 
+// TestFundAccountGouging checks that `checkFundAccountGouging` is correctly
+// detecting price gouging from a host.
+func TestFundAccountGouging(t *testing.T) {
+	t.Parallel()
+
+	// allowance contains only the fields necessary to test the price gouging
+	allowance := modules.Allowance{
+		Funds: types.SiacoinPrecision.Mul64(1e3),
+	}
+
+	// set the target balance to 1SC, this is necessary because this decides how
+	// frequently we refill the account, which is a required piece of knowledge
+	// in order to estimate the total cost of refilling
+	targetBalance := types.SiacoinPrecision
+
+	// verify happy case
+	pt := newDefaultPriceTable()
+	err := checkFundAccountGouging(pt, allowance, targetBalance)
+	if err != nil {
+		t.Fatal("unexpected price gouging failure")
+	}
+
+	// verify gouging case, in order to do so we have to set the fund account
+	// cost to an unreasonable amount, empirically we found 75mS to be such a
+	// value for the given parameters (1000SC funds and TB of 1SC)
+	pt = newDefaultPriceTable()
+	pt.FundAccountCost = types.SiacoinPrecision.MulFloat(0.075)
+	err = checkFundAccountGouging(pt, allowance, targetBalance)
+	if err == nil || !strings.Contains(err.Error(), "fund account cost") {
+		t.Fatalf("expected fund account cost gouging error, instead error was '%v'", err)
+	}
+}
+
 // TestAccountResetBalance is a small unit test that verifies the functionality
 // of the reset balance function.
 func TestAccountResetBalance(t *testing.T) {
@@ -298,9 +331,9 @@ func TestAccountResetBalance(t *testing.T) {
 	}
 }
 
-// TestAccountMinExpectedBalance is a small unit test that verifies the
-// functionality of the min expected balance function.
-func TestAccountMinExpectedBalance(t *testing.T) {
+// TestAccountMinAndMaxExpectedBalance is a small unit test that verifies the
+// functionality of the min and max expected balance functions.
+func TestAccountMinAndMaxExpectedBalance(t *testing.T) {
 	t.Parallel()
 
 	oneCurrency := types.NewCurrency64(1)
@@ -311,6 +344,9 @@ func TestAccountMinExpectedBalance(t *testing.T) {
 	if !a.minExpectedBalance().Equals(types.ZeroCurrency) {
 		t.Fatal("unexpected min expected balance")
 	}
+	if !a.maxExpectedBalance().Equals(types.ZeroCurrency) {
+		t.Fatal("unexpected min expected balance")
+	}
 
 	a = new(account)
 	a.balance = oneCurrency.Mul64(2)
@@ -319,12 +355,30 @@ func TestAccountMinExpectedBalance(t *testing.T) {
 	if !a.minExpectedBalance().Equals(types.ZeroCurrency) {
 		t.Fatal("unexpected min expected balance")
 	}
+	if !a.maxExpectedBalance().Equals(oneCurrency) {
+		t.Fatal("unexpected min expected balance")
+	}
 
 	a = new(account)
 	a.balance = oneCurrency.Mul64(3)
 	a.negativeBalance = oneCurrency
 	a.pendingWithdrawals = oneCurrency
 	if !a.minExpectedBalance().Equals(oneCurrency) {
+		t.Fatal("unexpected min expected balance")
+	}
+	if !a.maxExpectedBalance().Equals(oneCurrency.Mul64(2)) {
+		t.Fatal("unexpected min expected balance")
+	}
+
+	a = new(account)
+	a.balance = oneCurrency.Mul64(3)
+	a.negativeBalance = oneCurrency
+	a.pendingWithdrawals = oneCurrency
+	a.pendingDeposits = oneCurrency
+	if !a.minExpectedBalance().Equals(oneCurrency) {
+		t.Fatal("unexpected min expected balance")
+	}
+	if !a.maxExpectedBalance().Equals(oneCurrency.Mul64(3)) {
 		t.Fatal("unexpected min expected balance")
 	}
 }
@@ -415,7 +469,7 @@ func TestSyncAccountBalanceToHostCritical(t *testing.T) {
 		}
 	}()
 
-	w.managedSyncAccountBalanceToHost()
+	w.externSyncAccountBalanceToHost()
 }
 
 // openRandomTestAccountsOnRenter is a helper function that creates a random
