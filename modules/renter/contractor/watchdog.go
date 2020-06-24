@@ -370,7 +370,7 @@ func removeTxnFromSet(txn types.Transaction, txnSet []types.Transaction) ([]type
 func (w *watchdog) managedScanAppliedBlock(block types.Block) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.contractor.log.Debugln("Watchdog scanning reverted block at height: ", w.blockHeight)
+	w.contractor.log.Debugln("Watchdog scanning applied block at height: ", w.blockHeight)
 
 	for _, txn := range block.Transactions {
 		for i := range txn.FileContracts {
