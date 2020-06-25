@@ -528,9 +528,6 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 			UploadBandwidthPrice:   oldSettings.UploadBandwidthPrice,
 			RevisionNumber:         oldSettings.RevisionNumber,
 			Version:                oldSettings.Version,
-			// New fields are set to zero.
-			BaseRPCPrice:      types.ZeroCurrency,
-			SectorAccessPrice: types.ZeroCurrency,
 		}
 		return nil
 	}()
