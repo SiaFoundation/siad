@@ -636,8 +636,8 @@ func TestExecuteReadOffsetProgram(t *testing.T) {
 	// this particular program on the "renter" side. This way we can test that
 	// the bandwidth measured by the renter is large enough to be accepted by
 	// the host.
-	expectedDownload := uint64(10220)
-	expectedUpload := uint64(18980)
+	expectedDownload := uint64(2920)
+	expectedUpload := uint64(1460)
 	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
 	bandwidthCost := downloadCost.Add(uploadCost)
@@ -693,5 +693,5 @@ func TestExecuteReadOffsetProgram(t *testing.T) {
 		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
 	}
 
-	t.Logf("Used bandwidth (read partial sector program): %v down, %v up", bandwidth.Downloaded(), bandwidth.Uploaded())
+	t.Logf("Used bandwidth (read offset program): %v down, %v up", bandwidth.Downloaded(), bandwidth.Uploaded())
 }

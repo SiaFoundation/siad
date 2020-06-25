@@ -3,6 +3,7 @@ package renter
 import (
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -137,12 +138,18 @@ func (j *jobRead) callExpectedBandwidth() (ul, dl uint64) {
 	return
 }
 
-// managedRead returns the sector data for the given read program.
+// managedRead returns the sector data for the given read program and the merkle
+// proof.
 func (j *jobRead) managedRead(w *worker, program modules.Program, programData []byte, cost types.Currency) ([]byte, []crypto.Hash, error) {
 	// execute it
 	responses, _, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, cost)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// Sanity check number of responses.
+	if len(responses) != 1 {
+		build.Critical("managedExecuteProgram should only return a single response")
 	}
 
 	// Pull the sector data from the response.

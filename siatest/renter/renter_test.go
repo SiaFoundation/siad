@@ -4829,7 +4829,7 @@ func TestReadOffsetOutputCorrupted(t *testing.T) {
 	}
 	t.Parallel()
 
-	// create a testgroup without a renter and with only 3 hosts
+	// create a testgroup with a renter and miner.
 	groupParams := siatest.GroupParams{
 		Miners:  1,
 		Renters: 1,
