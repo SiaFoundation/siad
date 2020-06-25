@@ -19,6 +19,10 @@ const (
 	// table over the total allowance period should never exceed 1% of the total
 	// allowance.
 	updatePriceTableGougingPercentageThreshold = .01
+
+	// minAcceptedPriceTableValidity is the minimum price table validity
+	// the renter will accept.
+	minAcceptedPriceTableValidity = 5 * time.Second
 )
 
 var (
@@ -244,6 +248,11 @@ func checkUpdatePriceTableGouging(pt modules.RPCPriceTable, allowance modules.Al
 	// gouging.
 	if allowance.Funds.IsZero() {
 		return nil
+	}
+
+	// Verify the validity is reasonable
+	if pt.Validity < minAcceptedPriceTableValidity {
+		return fmt.Errorf("update price table validity %v is considered too low, the minimum accepted validity is %v - price gouging protection enabled", pt.Validity, minAcceptedPriceTableValidity)
 	}
 
 	// In order to decide whether or not the update price table cost is too
