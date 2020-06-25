@@ -48,6 +48,10 @@ type (
 		// staticRecentErr specifies the most recent error that the worker's
 		// price table update has failed with.
 		staticRecentErr error
+
+		// staticRecentErrTime specifies the time at which the most recent
+		// occurred
+		staticRecentErrTime time.Time
 	}
 )
 
@@ -138,6 +142,7 @@ func (w *worker) staticUpdatePriceTable() {
 				staticUpdateTime:          cooldownUntil(currentPT.staticConsecutiveFailures),
 				staticConsecutiveFailures: currentPT.staticConsecutiveFailures + 1,
 				staticRecentErr:           err,
+				staticRecentErrTime:       time.Now(),
 			}
 			w.staticSetPriceTable(pt)
 
@@ -231,6 +236,7 @@ func (w *worker) staticUpdatePriceTable() {
 		staticUpdateTime:          newUpdateTime,
 		staticConsecutiveFailures: 0,
 		staticRecentErr:           currentPT.staticRecentErr,
+		staticRecentErrTime:       currentPT.staticRecentErrTime,
 	}
 	w.staticSetPriceTable(wpt)
 }
