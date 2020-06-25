@@ -52,7 +52,10 @@ func TestAccountSave(t *testing.T) {
 	}
 
 	// create a number of test accounts and reload the renter
-	accounts := openRandomTestAccountsOnRenter(r)
+	accounts, err := openRandomTestAccountsOnRenter(r)
+	if err != nil {
+		t.Fatal(err)
+	}
 	r, err = rt.reloadRenter(r)
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +102,10 @@ func TestAccountUncleanShutdown(t *testing.T) {
 	r := rt.renter
 
 	// create a number accounts
-	accounts := openRandomTestAccountsOnRenter(r)
+	accounts, err := openRandomTestAccountsOnRenter(r)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// close the renter and reload it with a dependency that interrupts the
 	// accounts save on shutdown
@@ -169,7 +175,10 @@ func TestAccountCorrupted(t *testing.T) {
 	r := rt.renter
 
 	// create a number accounts
-	accounts := openRandomTestAccountsOnRenter(r)
+	accounts, err := openRandomTestAccountsOnRenter(r)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// select a random account of which we'll corrupt data on disk
 	var corrupted *account
