@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -70,7 +71,7 @@ var (
 	uploadTimesMu   sync.Mutex // Upload durations mutex
 	downloadTimesMu sync.Mutex // Download durations mutex
 
-	filesMap = files{}
+	filesMap *files = nil
 )
 
 // files is a map of files with its data
@@ -102,18 +103,18 @@ func TestSiaUploadsDownloads(t *testing.T) {
 
 	// Log dirs, files
 	log.Println("=== Starting upload/download benchmark")
-	log.Println("Working   dir was set to:", workDir)
-	log.Println("Uploads   dir was set to:", upDir)
+	log.Println("Working dir was set to:  ", workDir)
+	log.Println("Uploads dir was set to:  ", upDir)
 	log.Println("Downloads dir was set to:", downDir)
 	log.Println("Logs are stored in:      ", logPath)
 	log.Println()
 
 	// Print overview
-	totalData := formatFileSize(nFiles*int(actualFileSize), " ")
-	fileSizeStr := formatFileSize(actualFileSize, " ")
+	totalData := modules.FilesizeUnits(uint64(nFiles * actualFileSize))
+	fileSizeStr := modules.FilesizeUnits(uint64(actualFileSize))
 	log.Printf("Upload total of %s data in %d files per %s\n", totalData, nFiles, fileSizeStr)
 
-	totalData = formatFileSize(nTotalDownloads*int(actualFileSize), " ")
+	totalData = modules.FilesizeUnits(uint64(nTotalDownloads * actualFileSize))
 	log.Printf("Download total of %s data in %d downloads per %s\n", totalData, nTotalDownloads, fileSizeStr)
 	log.Println()
 
@@ -196,7 +197,7 @@ func averages(durations []time.Duration) (time.Duration, string) {
 
 	// Calculate and format average speed
 	averageSpeedFloat := float64(actualFileSize) / float64(averageDuration) * float64(time.Second)
-	averageSpeedString := formatFileSizeFloat(averageSpeedFloat, " ") + "/s"
+	averageSpeedString := modules.FilesizeUnits(uint64(averageSpeedFloat)) + "/s"
 
 	return averageDuration, averageSpeedString
 }
@@ -223,45 +224,24 @@ func cleanUpDirs() {
 	check(err)
 	err = os.RemoveAll(downDir)
 	check(err)
-	if _, err := os.Stat(testGroupDir); err == nil {
-		err = os.RemoveAll(testGroupDir)
-		check(err)
-	}
+	err = os.RemoveAll(testGroupDir)
+	check(err)
 }
 
-// createFile creates a file in the upload directory with te given size
+// createFile creates a file in the upload directory with the given size
 func createFile(filename string) {
 	start := time.Now()
 
 	log.Printf("Creating file: %s\n", filename)
 
-	// Open file for appending
+	// Create file
 	path := filepath.Join(upDir, filename)
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.Create(path)
 	check(err)
 	defer f.Close()
 
-	// Append to file per parts (avoids out of memory error on large files when
-	// created concurrently)
-	remaining := int(actualFileSize)
-	for {
-		n := int(1e6)
-		if remaining == 0 {
-			break
-		} else if remaining < n {
-			n = remaining
-			remaining = 0
-		} else {
-			remaining -= n
-		}
-
-		// Create data string for file (fastrand)
-		data := fastrand.Bytes(n)
-
-		// Write data to file and Flush writes to stable storage
-		_, err = f.Write(data)
-		check(err)
-	}
+	_, err = io.CopyN(f, fastrand.Reader, int64(actualFileSize))
+	check(err)
 	err = f.Sync()
 	check(err)
 
@@ -276,38 +256,6 @@ func deleteLocalFile(filepath string) {
 	log.Println("Deleting a local file:", filepath)
 	err := os.Remove(filepath)
 	check(err)
-}
-
-// formatFileSize formats int value to filesize string
-func formatFileSize(size int, separator string) string {
-	switch {
-	case size > 1e12:
-		return strconv.Itoa(int(size)/1e12) + separator + "TB"
-	case size > 1e9:
-		return strconv.Itoa(int(size)/1e9) + separator + "GB"
-	case size > 1e6:
-		return strconv.Itoa(int(size)/1e6) + separator + "MB"
-	case size > 1e3:
-		return strconv.Itoa(int(size)/1e3) + separator + "kB"
-	default:
-		return strconv.Itoa(size) + separator + "B"
-	}
-}
-
-// formatFileSizeFloat formats float64 value to filesize string
-func formatFileSizeFloat(size float64, separator string) string {
-	switch {
-	case size > 1e12:
-		return fmt.Sprintf("%.2f%s%s", size/1e12, separator, "TB")
-	case size > 1e9:
-		return fmt.Sprintf("%.2f%s%s", size/1e9, separator, "GB")
-	case size > 1e6:
-		return fmt.Sprintf("%.2f%s%s", size/1e6, separator, "MB")
-	case size > 1e3:
-		return fmt.Sprintf("%.2f%s%s", size/1e3, separator, "kB")
-	default:
-		return fmt.Sprintf("%.2f%s%s", size, separator, "B")
-	}
 }
 
 // getFileCountByStatus returns count of files with given status
@@ -403,10 +351,11 @@ func initDirs() {
 // downloaded
 func initFilesMap() {
 	// Init map
+	filesMap = &files{}
 	filesMap.m = make(map[string]fileStatus)
 
 	// Prepare file name parts
-	sizeStr := formatFileSize(actualFileSize, "")
+	sizeStr := modules.FilesizeUnits(uint64(actualFileSize))
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 
 	for i := 0; i < nFiles; i++ {
@@ -414,6 +363,7 @@ func initFilesMap() {
 
 		// Create filename and full path
 		filename := "Randfile" + fileIndex + "_" + sizeStr + "_" + timestamp
+		filename = strings.ReplaceAll(filename, " ", "")
 		filesMap.m[filename] = initialized
 	}
 }
