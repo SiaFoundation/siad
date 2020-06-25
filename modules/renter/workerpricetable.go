@@ -19,15 +19,19 @@ const (
 	// table over the total allowance period should never exceed 1% of the total
 	// allowance.
 	updatePriceTableGougingPercentageThreshold = .01
-
-	// minAcceptedPriceTableValidity is the minimum price table validity
-	// the renter will accept.
-	minAcceptedPriceTableValidity = 5 * time.Second
 )
 
 var (
 	// errPriceTableGouging is returned when price gouging is detected
 	errPriceTableGouging = errors.New("price table rejected due to price gouging")
+
+	// minAcceptedPriceTableValidity is the minimum price table validity
+	// the renter will accept.
+	minAcceptedPriceTableValidity = build.Select(build.Var{
+		Standard: 5 * time.Minute,
+		Dev:      1 * time.Minute,
+		Testing:  10 * time.Second,
+	}).(time.Duration)
 )
 
 type (
