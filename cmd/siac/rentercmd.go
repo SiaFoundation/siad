@@ -286,18 +286,18 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 		Run:   wrap(renterworkersptcmd),
 	}
 
-	renterWorkersReadSectorJobsCmd = &cobra.Command{
-		Use:   "rs",
-		Short: "View the workers' read sector jobs",
-		Long:  "View detailed information of the workers' read sector jobs",
-		Run:   wrap(renterworkersrscmd),
+	renterWorkersReadJobsCmd = &cobra.Command{
+		Use:   "rj",
+		Short: "View the workers' read jobs",
+		Long:  "View detailed information of the workers' read jobs",
+		Run:   wrap(renterworkersrjcmd),
 	}
 
 	renterWorkersHasSectorJobSCmd = &cobra.Command{
-		Use:   "hs",
+		Use:   "hsj",
 		Short: "View the workers' has sector jobs",
 		Long:  "View detailed information of the workers' has sector jobs",
-		Run:   wrap(renterworkershscmd),
+		Run:   wrap(renterworkershsjcmd),
 	}
 )
 
@@ -2753,9 +2753,9 @@ func renterworkersptcmd() {
 	}
 }
 
-// renterworkersrscmd is the handler for the command `siac renter workers rs`. It
-// lists the status of the read sector job queue for every worker.
-func renterworkersrscmd() {
+// renterworkersrjcmd is the handler for the command `siac renter workers rj`.
+// It lists the status of the read job queue for every worker.
+func renterworkersrjcmd() {
 	rw, err := httpClient.RenterWorkersGet()
 	if err != nil {
 		die("Could not get worker statuses:", err)
@@ -2773,30 +2773,30 @@ func renterworkersrscmd() {
 	hostInfo := "Host PubKey"
 	queueInfo := "\tJobs\tAvgJobTime64k (ms)\tAvgJobTime1m (ms)\tAvgJobTime4m (ms)\tConsecFail\tErrorAt\tError"
 	header := hostInfo + queueInfo
-	fmt.Fprintln(w, "\nWorker Read Sector Jobs  \n\n"+header)
+	fmt.Fprintln(w, "\nWorker Read Jobs  \n\n"+header)
 
 	// print rows
 	for _, worker := range rw.Workers {
-		rsjs := worker.ReadSectorJobsStatus
+		rjs := worker.ReadJobsStatus
 
 		// Host Info
 		fmt.Fprintf(w, "%v", worker.HostPubKey.String())
 
-		// ReadSector Jobs Info
+		// ReadJobs Info
 		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\t%v\t%v\n",
-			rsjs.JobQueueSize,
-			rsjs.AvgJobTime64k,
-			rsjs.AvgJobTime1m,
-			rsjs.AvgJobTime4m,
-			rsjs.ConsecutiveFailures,
-			sanitizeTime(rsjs.RecentErrTime, rsjs.RecentErr != ""),
-			sanitizeErr(rsjs.RecentErr))
+			rjs.JobQueueSize,
+			rjs.AvgJobTime64k,
+			rjs.AvgJobTime1m,
+			rjs.AvgJobTime4m,
+			rjs.ConsecutiveFailures,
+			sanitizeTime(rjs.RecentErrTime, rjs.RecentErr != ""),
+			sanitizeErr(rjs.RecentErr))
 	}
 }
 
-// renterworkershscmd is the handler for the command `siac renter workers hs`.
+// renterworkershsjcmd is the handler for the command `siac renter workers hs`.
 // It lists the status of the has sector job queue for every worker.
-func renterworkershscmd() {
+func renterworkershsjcmd() {
 	rw, err := httpClient.RenterWorkersGet()
 	if err != nil {
 		die("Could not get worker statuses:", err)

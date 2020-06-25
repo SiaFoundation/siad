@@ -766,8 +766,8 @@ type (
 		BackupJobQueueSize       int `json:"backupjobqueuesize"`
 		DownloadRootJobQueueSize int `json:"downloadrootjobqueuesize"`
 
-		// ReadSector Job Information
-		ReadSectorJobsStatus WorkerReadSectorJobsStatus `json:"readsectorjobsstatus"`
+		// Read Jobs Information
+		ReadJobsStatus WorkerReadJobsStatus `json:"readjobsstatus"`
 
 		// HasSector Job Information
 		HasSectorJobsStatus WorkerHasSectorJobsStatus `json:"hassectorjobsstatus"`
@@ -804,9 +804,8 @@ type (
 		RecentErrTime time.Time `json:"recenterrtime"`
 	}
 
-	// WorkerReadSectorJobsStatus contains detailed information about the read
-	// sector jobs
-	WorkerReadSectorJobsStatus struct {
+	// WorkerReadJobsStatus contains detailed information about the read jobs
+	WorkerReadJobsStatus struct {
 		AvgJobTime64k uint64 `json:"avgjobtime64k"` // in ms
 		AvgJobTime1m  uint64 `json:"avgjobtime1m"`  // in ms
 		AvgJobTime4m  uint64 `json:"avgjobtime4m"`  // in ms

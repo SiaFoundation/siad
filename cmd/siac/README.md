@@ -33,8 +33,8 @@ Renter:
 * `siac renter workers` show worker status
 * `siac renter workers ea` show worker account status
 * `siac renter workers pt` show worker price table status
-* `siac renter workers rs` show worker read sector jobs status
-* `siac renter workers hs` show worker has sector jobs status
+* `siac renter workers rj` show worker read jobs status
+* `siac renter workers hsj` show worker has sector jobs status
 
 
 Full Descriptions
@@ -175,12 +175,11 @@ have the nickname be the same as the filename.
   statuses, such as when it was updated, when it expires, whether its on cooldown
   or not and potentially the most recent error.
 
-* `siac renter workers rs` shows information about the read sector jobs queue.
-  How many jobs are in the queue and their average completion time. In case
-  there was an error it will also display the most recent error and when it
-  occurred.
+* `siac renter workers rj` shows information about the read jobs queue. How many
+  jobs are in the queue and their average completion time. In case there was an
+  error it will also display the most recent error and when it occurred.
 
-* `siac renter workers hs` shows information about the has sector jobs queue.
+* `siac renter workers hsj` shows information about the has sector jobs queue.
   How many jobs are in the queue and their average completion time. In case
   there was an error it will also display the most recent error and when it
   occurred.

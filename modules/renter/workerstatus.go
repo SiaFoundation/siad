@@ -51,8 +51,8 @@ func (w *worker) callStatus() modules.WorkerStatus {
 		// Price Table Information
 		PriceTableStatus: w.staticPriceTableStatus(),
 
-		// ReadSector Job Information
-		ReadSectorJobsStatus: w.callReadSectorJobStatus(),
+		// Read Job Information
+		ReadJobsStatus: w.callReadJobStatus(),
 
 		// HasSector Job Information
 		HasSectorJobsStatus: w.callHasSectorJobStatus(),
@@ -91,10 +91,10 @@ func (w *worker) staticPriceTableStatus() modules.WorkerPriceTableStatus {
 	}
 }
 
-// callReadSectorJobStatus returns the status of the read sector job queue
-func (w *worker) callReadSectorJobStatus() modules.WorkerReadSectorJobsStatus {
-	rsq := w.staticJobReadSectorQueue
-	status := rsq.callStatus()
+// callReadJobStatus returns the status of the read job queue
+func (w *worker) callReadJobStatus() modules.WorkerReadJobsStatus {
+	jrq := w.staticJobReadQueue
+	status := jrq.callStatus()
 
 	var recentErrString string
 	if status.recentErr != nil {
@@ -102,13 +102,13 @@ func (w *worker) callReadSectorJobStatus() modules.WorkerReadSectorJobsStatus {
 	}
 
 	avgJobTimeInMs := func(l uint64) uint64 {
-		if d := rsq.callAverageJobTime(l); d > 0 {
+		if d := jrq.callAverageJobTime(l); d > 0 {
 			return uint64(d.Milliseconds())
 		}
 		return 0
 	}
 
-	return modules.WorkerReadSectorJobsStatus{
+	return modules.WorkerReadJobsStatus{
 		AvgJobTime64k:       avgJobTimeInMs(1 << 16),
 		AvgJobTime1m:        avgJobTimeInMs(1 << 20),
 		AvgJobTime4m:        avgJobTimeInMs(1 << 22),

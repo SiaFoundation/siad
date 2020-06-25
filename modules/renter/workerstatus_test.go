@@ -158,9 +158,9 @@ func TestWorkerPriceTableStatus(t *testing.T) {
 	}
 }
 
-// TestWorkerReadSectorJobStatus is a small unit test that verifies the output
-// of the `callReadSectorJobStatus` method on the worker.
-func TestWorkerReadSectorJobStatus(t *testing.T) {
+// TestWorkerReadJobStatus is a small unit test that verifies the output of the
+// `callReadJobStatus` method on the worker.
+func TestWorkerReadJobStatus(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -195,8 +195,8 @@ func TestWorkerReadSectorJobStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// fetch the worker's read sector jobs status and verify its output
-	status := w.callReadSectorJobStatus()
+	// fetch the worker's read jobs status and verify its output
+	status := w.callReadJobStatus()
 	if !(status.AvgJobTime64k == 0 &&
 		status.AvgJobTime1m == 0 &&
 		status.AvgJobTime4m == 0 &&
@@ -204,7 +204,7 @@ func TestWorkerReadSectorJobStatus(t *testing.T) {
 		status.JobQueueSize == 0 &&
 		status.RecentErr == "" &&
 		status.RecentErrTime == time.Time{}) {
-		t.Fatal("Unexpected read sector job status", ToJSON(status))
+		t.Fatal("Unexpected read job status", ToJSON(status))
 	}
 
 	// prevent the worker from doing any work by manipulating its read limit
@@ -214,26 +214,28 @@ func TestWorkerReadSectorJobStatus(t *testing.T) {
 
 	// add the job to the worker
 	cc := make(chan struct{})
-	rc := make(chan *jobReadSectorResponse)
+	rc := make(chan *jobReadResponse)
 
 	jhs := &jobReadSector{
-		staticResponseChan: rc,
-		staticLength:       modules.SectorSize,
-		staticOffset:       0,
-		staticSector:       sectorRoot,
-		jobGeneric: &jobGeneric{
-			staticCancelChan: cc,
-			staticQueue:      w.staticJobReadSectorQueue,
+		jobRead: jobRead{
+			staticResponseChan: rc,
+			staticLength:       modules.SectorSize,
+			jobGeneric: &jobGeneric{
+				staticCancelChan: cc,
+				staticQueue:      w.staticJobReadQueue,
+			},
 		},
+		staticOffset: 0,
+		staticSector: sectorRoot,
 	}
-	if !w.staticJobReadSectorQueue.callAdd(jhs) {
+	if !w.staticJobReadQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")
 	}
 
-	// fetch the worker's read sector job status again and verify its output
-	status = w.callReadSectorJobStatus()
+	// fetch the worker's read job status again and verify its output
+	status = w.callReadJobStatus()
 	if status.JobQueueSize != 1 {
-		t.Fatal("Unexpected read sector job status", ToJSON(status))
+		t.Fatal("Unexpected read job status", ToJSON(status))
 	}
 
 	// restore the read limit
@@ -242,9 +244,9 @@ func TestWorkerReadSectorJobStatus(t *testing.T) {
 	// verify the status in a build.Retry to allow the worker some time to
 	// process the job
 	if err := build.Retry(100, 100*time.Millisecond, func() error {
-		status = w.callReadSectorJobStatus()
+		status = w.callReadJobStatus()
 		if status.AvgJobTime64k == 0 {
-			return fmt.Errorf("Unexpected read sector job status %v", ToJSON(status))
+			return fmt.Errorf("Unexpected read job status %v", ToJSON(status))
 		}
 		return nil
 	}); err != nil {
@@ -253,27 +255,29 @@ func TestWorkerReadSectorJobStatus(t *testing.T) {
 
 	// add another job to the worker
 	jhs = &jobReadSector{
-		staticResponseChan: rc,
-		staticLength:       modules.SectorSize,
-		staticOffset:       0,
-		staticSector:       crypto.Hash{},
-		jobGeneric: &jobGeneric{
-			staticCancelChan: cc,
-			staticQueue:      w.staticJobReadSectorQueue,
+		jobRead: jobRead{
+			staticResponseChan: rc,
+			staticLength:       modules.SectorSize,
+			jobGeneric: &jobGeneric{
+				staticCancelChan: cc,
+				staticQueue:      w.staticJobReadQueue,
+			},
 		},
+		staticOffset: 0,
+		staticSector: crypto.Hash{},
 	}
-	if !w.staticJobReadSectorQueue.callAdd(jhs) {
+	if !w.staticJobReadQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")
 	}
 
 	// verify the status in a build.Retry to allow the worker some time to
 	// process the job
 	if err := build.Retry(100, 100*time.Millisecond, func() error {
-		status = w.callReadSectorJobStatus()
+		status = w.callReadJobStatus()
 		if !(status.ConsecutiveFailures == 1 &&
 			status.RecentErr != "" &&
 			status.RecentErrTime != time.Time{}) {
-			return fmt.Errorf("Unexpected read sector job status %v", ToJSON(status))
+			return fmt.Errorf("Unexpected read job status %v", ToJSON(status))
 		}
 		return nil
 	}); err != nil {

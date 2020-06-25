@@ -4717,15 +4717,15 @@ func TestWorkerStatus(t *testing.T) {
 			t.Error("Expected recent err to be nil but was", worker.PriceTableStatus.RecentErr)
 		}
 
-		// ReadSectorJobStatus checks
-		if worker.ReadSectorJobsStatus.RecentErr != "" {
-			t.Error("Expected recent err to be nil but was", worker.ReadSectorJobsStatus.RecentErr)
+		// ReadJobsStatus checks
+		if worker.ReadJobsStatus.RecentErr != "" {
+			t.Error("Expected recent err to be nil but was", worker.ReadJobsStatus.RecentErr)
 		}
-		if worker.ReadSectorJobsStatus.JobQueueSize != 0 {
-			t.Error("Expected job queue size to be 0 but was", worker.ReadSectorJobsStatus.JobQueueSize)
+		if worker.ReadJobsStatus.JobQueueSize != 0 {
+			t.Error("Expected job queue size to be 0 but was", worker.ReadJobsStatus.JobQueueSize)
 		}
-		if worker.ReadSectorJobsStatus.ConsecutiveFailures != 0 {
-			t.Error("Expected consecutive failures to be 0 but was", worker.ReadSectorJobsStatus.ConsecutiveFailures)
+		if worker.ReadJobsStatus.ConsecutiveFailures != 0 {
+			t.Error("Expected consecutive failures to be 0 but was", worker.ReadJobsStatus.ConsecutiveFailures)
 		}
 
 		// HasSectorJobStatus checks

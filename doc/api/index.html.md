@@ -4523,7 +4523,7 @@ returns the the status of all the workers in the renter's workerpool.
         "recenterrtime": "0001-01-01T00:00:00Z"           // time
       },
 
-      "readsectorjobsstatus": {
+      "readjobsstatus": {
         "avgjobtime64k": 0,                               // int
         "avgjobtime1m": 0,                                // int
         "avgjobtime4m": 0,                                // int
@@ -4617,16 +4617,16 @@ The size of the worker's backup job queue
 The size of the worker's download by root job queue
 
 **accountstatus** | object
-Detailed information about the worker's ephemeral account status
+Detailed information about the workers' ephemeral account status
 
 **pricetablestatus** | object
-Detailed information about the worker's price table status
+Detailed information about the workers' price table status
 
-**readsectorjobsstatus** | object
-Details of the worker's read sector jobs queue
+**readjobsstatus** | object
+Details of the workers' read jobs queue
 
 **hassectorjobsstatus** | object
-Details of the worker's has sector jobs queue
+Details of the workers' has sector jobs queue
 
 # Skynet
 
