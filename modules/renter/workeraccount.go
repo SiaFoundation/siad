@@ -567,15 +567,9 @@ func (w *worker) externSyncAccountBalanceToHost() {
 	// Sanity check the account's deltas are zero, indicating there are no
 	// in-progress jobs
 	w.staticAccount.mu.Lock()
-	deltasAreZero :=
-		w.staticAccount.pendingDeposits.IsZero() &&
-			w.staticAccount.pendingWithdrawals.IsZero()
+	deltasAreZero := w.staticAccount.pendingDeposits.IsZero() && w.staticAccount.pendingWithdrawals.IsZero()
 	w.staticAccount.mu.Unlock()
 	if !deltasAreZero {
-		w.staticAccount.mu.Lock()
-		fmt.Println(w.staticAccount.pendingWithdrawals)
-		fmt.Println(w.staticAccount.pendingDeposits)
-		w.staticAccount.mu.Unlock()
 		build.Critical("managedSyncAccountBalanceToHost is called on a worker with an account that has non-zero deltas, indicating in-progress jobs")
 	}
 
