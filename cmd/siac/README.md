@@ -30,6 +30,11 @@ Renter:
 * `siac renter ls` list all renter files and subdirectories
 * `siac renter upload [filepath] [nickname]` upload a file
 * `siac renter download [nickname] [filepath]` download a file
+* `siac renter workers` show worker status
+* `siac renter workers ea` show worker account status
+* `siac renter workers pt` show worker price table status
+* `siac renter workers rj` show worker read jobs status
+* `siac renter workers hsj` show worker has sector jobs status
 
 
 Full Descriptions
@@ -158,6 +163,26 @@ corresponding field flag, for example '--amount 500SC'.
   `filename` is the path to the file you want to upload, and nickname is what
 you will use to refer to that file in the network. For example, it is common to
 have the nickname be the same as the filename.
+
+* `siac renter workers` shows a detailed overview of all workers. It shows
+  information about their accounts, contract and download and upload status.
+
+* `siac renter workers ea` shows a detailed overview of the workers' ephemeral
+  account statuses, such as balance information, whether its on cooldown or not
+  and potentially the most recent error.
+
+* `siac renter workers pt` shows a detailed overview of the workers's price table
+  statuses, such as when it was updated, when it expires, whether its on cooldown
+  or not and potentially the most recent error.
+
+* `siac renter workers rj` shows information about the read jobs queue. How many
+  jobs are in the queue and their average completion time. In case there was an
+  error it will also display the most recent error and when it occurred.
+
+* `siac renter workers hsj` shows information about the has sector jobs queue.
+  How many jobs are in the queue and their average completion time. In case
+  there was an error it will also display the most recent error and when it
+  occurred.
 
 ### Skykey tasks
 TODO - Fill in

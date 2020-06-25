@@ -171,7 +171,7 @@ func (j *jobRead) managedRead(w *worker, program modules.Program, programData []
 }
 
 // callAverageJobTime will return the recent performance of the worker
-// attempting to complete read sector jobs. The call distinguishes based on the
+// attempting to complete read jobs. The call distinguishes based on the
 // size of the job, breaking the jobs into 3 categories: less than 64kb, less
 // than 1mb, and up to a full sector in size.
 //

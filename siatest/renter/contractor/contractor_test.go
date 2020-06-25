@@ -1760,7 +1760,7 @@ func TestContractorChurnLimiter(t *testing.T) {
 	hostPubKey := hostInfo.PublicKey
 
 	// Shutdown a host to cause churn.
-	err = hosts[0].StopNode()
+	err = tg.RemoveNode(hosts[0])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1787,11 +1787,11 @@ func TestContractorChurnLimiter(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if len(rc.ActiveContracts) != len(tg.Hosts())-1 {
-			return fmt.Errorf("expected %v active contracts but got %v", len(tg.Hosts()), len(rc.ActiveContracts))
+		if len(rc.ActiveContracts) != len(hosts)-1 {
+			return fmt.Errorf("expected %v active contracts but got %v", len(hosts)-1, len(rc.ActiveContracts))
 		}
 		if len(rc.DisabledContracts) != 1 {
-			return fmt.Errorf("expected %v disabled contracts but got %v", len(tg.Hosts())-1, len(rc.DisabledContracts))
+			return fmt.Errorf("expected %v disabled contracts but got %v", len(hosts)-1, len(rc.DisabledContracts))
 		}
 		churnedHostKey := rc.DisabledContracts[0].HostPublicKey
 		if !churnedHostKey.Equals(hostPubKey) {
