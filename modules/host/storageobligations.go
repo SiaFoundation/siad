@@ -264,6 +264,10 @@ func ZeroStorageObligationSnapshot() StorageObligationSnapshot {
 		staticMerkleRoot:    crypto.Hash{},
 		staticProofDeadline: types.BlockHeight(0),
 		staticSectorRoots:   []crypto.Hash{},
+		staticRecentRevision: types.FileContractRevision{
+			NewValidProofOutputs:  make([]types.SiacoinOutput, 2),
+			NewMissedProofOutputs: make([]types.SiacoinOutput, 3),
+		},
 	}
 }
 
