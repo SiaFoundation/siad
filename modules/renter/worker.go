@@ -19,7 +19,6 @@ import (
 	"time"
 	"unsafe"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -141,47 +140,6 @@ func (w *worker) staticWake() {
 	select {
 	case w.wakeChan <- struct{}{}:
 	default:
-	}
-}
-
-// status returns the status of the worker.
-func (w *worker) status() modules.WorkerStatus {
-	downloadOnCoolDown := w.onDownloadCooldown()
-	uploadOnCoolDown, uploadCoolDownTime := w.onUploadCooldown()
-
-	var uploadCoolDownErr string
-	if w.uploadRecentFailureErr != nil {
-		uploadCoolDownErr = w.uploadRecentFailureErr.Error()
-	}
-
-	// Update the worker cache before returning a status.
-	w.staticTryUpdateCache()
-	cache := w.staticCache()
-	return modules.WorkerStatus{
-		// Contract Information
-		ContractID:      cache.staticContractID,
-		ContractUtility: cache.staticContractUtility,
-		HostPubKey:      w.staticHostPubKey,
-
-		// Download information
-		DownloadOnCoolDown: downloadOnCoolDown,
-		DownloadQueueSize:  len(w.downloadChunks),
-		DownloadTerminated: w.downloadTerminated,
-
-		// Upload information
-		UploadCoolDownError: uploadCoolDownErr,
-		UploadCoolDownTime:  uploadCoolDownTime,
-		UploadOnCoolDown:    uploadOnCoolDown,
-		UploadQueueSize:     len(w.unprocessedChunks),
-		UploadTerminated:    w.uploadTerminated,
-
-		// Ephemeral Account information
-		AvailableBalance: w.staticAccount.managedAvailableBalance(),
-		BalanceTarget:    w.staticBalanceTarget,
-
-		// Job Queues
-		BackupJobQueueSize:       w.staticFetchBackupsJobQueue.managedLen(),
-		DownloadRootJobQueueSize: w.staticJobQueueDownloadByRoot.managedLen(),
 	}
 }
 

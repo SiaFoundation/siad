@@ -1754,12 +1754,6 @@ func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
 	} else if !strings.Contains(err.Error(), "no workers") {
 		t.Errorf("Expected error containing 'no workers' but got %v", err)
 	}
-
-	// Remove the renter from test group so other subtests don't use it and fail
-	// unexpectedly.
-	if err = tg.RemoveNode(r); err != nil {
-		t.Fatal(err)
-	}
 }
 
 // testSkynetDryRunUpload verifies the --dry-run flag when uploading a Skyfile.

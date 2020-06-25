@@ -84,9 +84,6 @@ func verifySettings(conn net.Conn, host modules.HostDBEntry) (modules.HostDBEntr
 		UploadBandwidthPrice:   recvSettings.UploadBandwidthPrice,
 		RevisionNumber:         recvSettings.RevisionNumber,
 		Version:                recvSettings.Version,
-		// New fields are set to zero.
-		BaseRPCPrice:      types.ZeroCurrency,
-		SectorAccessPrice: types.ZeroCurrency,
 	}
 	return host, nil
 }
