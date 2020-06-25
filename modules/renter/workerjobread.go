@@ -140,7 +140,7 @@ func (j *jobRead) callExpectedBandwidth() (ul, dl uint64) {
 // managedRead returns the sector data for the given read program.
 func (j *jobRead) managedRead(w *worker, program modules.Program, programData []byte, cost types.Currency) ([]byte, []crypto.Hash, error) {
 	// execute it
-	responses, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, cost)
+	responses, _, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, cost)
 	if err != nil {
 		return nil, nil, err
 	}

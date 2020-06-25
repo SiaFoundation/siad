@@ -21,8 +21,14 @@ type workerTester struct {
 
 // newWorkerTester creates a new worker for testing.
 func newWorkerTester(name string) (*workerTester, error) {
+	return newWorkerTesterCustomDependency(name, &modules.ProductionDependencies{})
+}
+
+// newWorkerTesterCustomDependency creates a new worker for testing with a
+// custom depency.
+func newWorkerTesterCustomDependency(name string, deps modules.Dependencies) (*workerTester, error) {
 	// Create the renter.
-	rt, err := newRenterTester(filepath.Join(name, "renter"))
+	rt, err := newRenterTesterWithDependency(filepath.Join(name, "renter"), deps)
 	if err != nil {
 		return nil, err
 	}
