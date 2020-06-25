@@ -209,6 +209,16 @@ func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
 	}
 }
 
+// managedIncrementCooldown puts the account on cooldown, incrementing the
+// consecutive failures and registers the given error as most recent error.
+func (a *account) managedIncrementCooldown(err error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.cooldownUntil = cooldownUntil(a.consecutiveFailures)
+	a.consecutiveFailures++
+	a.recentErr = err
+}
+
 // managedOnCooldown returns true if the account is on cooldown and therefore
 // unlikely to receive additional funding in the near future.
 func (a *account) managedOnCooldown() bool {
@@ -320,15 +330,13 @@ func (w *worker) managedRefillAccount() {
 		}
 
 		// If the error is not nil, increment the cooldown.
-		w.staticAccount.mu.Lock()
-		cd := cooldownUntil(w.staticAccount.consecutiveFailures)
-		w.staticAccount.cooldownUntil = cd
-		w.staticAccount.consecutiveFailures++
-		w.staticAccount.recentErr = err
-		w.staticAccount.mu.Unlock()
+		w.staticAccount.managedIncrementCooldown(err)
 
 		// Have the threadgroup wake the worker when the account comes off of
 		// cooldown.
+		w.staticAccount.mu.Lock()
+		cd := w.staticAccount.cooldownUntil
+		w.staticAccount.mu.Unlock()
 		w.renter.tg.AfterFunc(cd.Sub(time.Now()), func() {
 			w.staticWake()
 		})

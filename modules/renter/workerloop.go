@@ -228,10 +228,8 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 // if internet connectivity is successfully restored.
 func (w *worker) managedBlockUntilReady() bool {
 	// Check internet connectivity. If the worker does not have internet
-	// connectivity, block until connectivity is restored. We also block if the
-	// worker is in a general state of cooldown, which happens if the host is
-	// unsynced.
-	for !w.renter.g.Online() || w.managedOnCooldown() {
+	// connectivity, block until connectivity is restored.
+	for !w.renter.g.Online() {
 		select {
 		case <-w.renter.tg.StopChan():
 			return false

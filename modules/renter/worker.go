@@ -104,12 +104,6 @@ type (
 		// launching of async jobs.
 		staticLoopState workerLoopState
 
-		// Error handling and cooldown tracking.
-		consecutiveFailures uint64
-		cooldownUntil       time.Time
-		recentErr           error
-		recentErrTime       time.Time
-
 		// Utilities.
 		killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
 		mu       sync.Mutex
@@ -129,15 +123,6 @@ func (w *worker) managedKill() {
 	default:
 		close(w.killChan)
 	}
-}
-
-// managedOnCooldown returns true if the worker is on cooldown. This general
-// state of worker cooldown only happens when the renter finds the host to be
-// unsynced.
-func (w *worker) managedOnCooldown() bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return time.Now().Before(w.cooldownUntil)
 }
 
 // staticKilled is a convenience function to determine if a worker has been
