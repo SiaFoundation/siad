@@ -150,7 +150,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	// this particular program on the "renter" side. This way we can test that
 	// the bandwidth measured by the renter is large enough to be accepted by
 	// the host.
-	expectedDownload := uint64(5840) // download
+	expectedDownload := uint64(4380) // download
 	expectedUpload := uint64(1460)   // upload
 	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
@@ -309,7 +309,7 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	// this particular program on the "renter" side. This way we can test that
 	// the bandwidth measured by the renter is large enough to be accepted by
 	// the host.
-	expectedDownload := uint64(2920)
+	expectedDownload := uint64(1460)
 	expectedUpload := uint64(1460)
 	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
@@ -433,7 +433,7 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	// this particular program on the "renter" side. This way we can test that
 	// the bandwidth measured by the renter is large enough to be accepted by
 	// the host.
-	expectedDownload := uint64(2920) // download
+	expectedDownload := uint64(1460) // download
 	expectedUpload := uint64(1460)   // upload
 	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
@@ -636,7 +636,7 @@ func TestExecuteReadOffsetProgram(t *testing.T) {
 	// this particular program on the "renter" side. This way we can test that
 	// the bandwidth measured by the renter is large enough to be accepted by
 	// the host.
-	expectedDownload := uint64(2920)
+	expectedDownload := uint64(1460)
 	expectedUpload := uint64(1460)
 	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)

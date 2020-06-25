@@ -112,9 +112,24 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		return errors.AddContext(err, "Failed to start execution of the program")
 	}
 
+	// Create a buffer
+	buffer := bytes.NewBuffer(nil)
+
+	// Flush the buffer. Upon success this should be a no-op. If we return early
+	// this will make sure that the cancellation token and anything else in the
+	// buffer are written to disk.
+	defer func() {
+		if buffer.Len() > 0 {
+			_, err = buffer.WriteTo(stream)
+			if err != nil {
+				h.log.Print("failed to flush buffer", err)
+			}
+		}
+	}()
+
 	// Return 16 bytes of data as a placeholder for a future cancellation token.
 	var ct modules.MDMCancellationToken
-	err = modules.RPCWrite(stream, ct)
+	err = modules.RPCWrite(buffer, ct)
 	if err != nil {
 		return errors.AddContext(err, "Failed to write cancellation token")
 	}
@@ -159,9 +174,6 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		// Remember that the execution wasn't successful.
 		executionFailed = output.Error != nil
 
-		// Create a buffer
-		buffer := bytes.NewBuffer(nil)
-
 		// Send the response to the peer.
 		err = modules.RPCWrite(buffer, resp)
 		if err != nil {
@@ -197,6 +209,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			return errors.AddContext(err, "failed to send data to peer")
 		}
 	}
+
 	// Sanity check that we received at least 1 output.
 	if numOutputs == 0 {
 		err := errors.New("program returned 0 outputs - should never happen")
