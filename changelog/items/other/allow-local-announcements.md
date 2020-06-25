@@ -1,1 +1,1 @@
-- Allow host announcements with local network IP on dev builds.
+- Allow host netAddress and announcements with local network IP on dev builds.
