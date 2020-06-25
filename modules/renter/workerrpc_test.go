@@ -16,6 +16,11 @@ import (
 
 // TestUseHostBlockHeight verifies we use the host's blockheight.
 func TestUseHostBlockHeight(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// create a new worker tester
 	wt, err := newWorkerTester(t.Name())
 	if err != nil {
