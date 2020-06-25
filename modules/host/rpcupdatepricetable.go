@@ -94,7 +94,7 @@ func (pth *rpcPriceTableHeap) Pop() interface{} {
 // managedRPCUpdatePriceTable returns a copy of the host's current rpc price
 // table. These prices are valid for the duration of the
 // rpcPriceGuaranteePeriod, which is defined by the price table's Expiry
-func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
+func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) (err error) {
 	// copy the host's price table and give it a random UID
 	pt := h.staticPriceTables.managedCurrent()
 	fastrand.Read(pt.UID[:])
@@ -138,19 +138,18 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 		return modules.ErrInsufficientPaymentForRPC
 	}
 
+	// refund the money we didn't use.
+	defer func() {
+		refund := payment.Amount().Sub(pt.UpdatePriceTableCost)
+		err = errors.Compose(err, h.staticAccountManager.callRefund(payment.AccountID(), refund))
+	}()
+
 	// after payment has been received, track the price table in the host's list
 	// of price tables and signal the renter we consider the price table valid
 	h.staticPriceTables.managedTrack(&hostRPCPriceTable{pt, time.Now()})
 	var tracked modules.RPCTrackedPriceTableResponse
 	if err = modules.RPCWrite(stream, tracked); err != nil {
 		return errors.AddContext(err, "Failed to signal renter we tracked the price table")
-	}
-
-	// refund the money we didn't use.
-	refund := payment.Amount().Sub(pt.UpdatePriceTableCost)
-	err = h.staticAccountManager.callRefund(payment.AccountID(), refund)
-	if err != nil {
-		return errors.AddContext(err, "failed to refund client")
 	}
 	return nil
 }
