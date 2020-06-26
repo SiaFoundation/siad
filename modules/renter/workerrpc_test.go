@@ -102,6 +102,11 @@ func TestUseHostBlockHeight(t *testing.T) {
 // TestExecuteProgramUsedBandwidth verifies the bandwidth used by executing
 // various MDM programs on the host
 func TestExecuteProgramUsedBandwidth(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// create a new worker tester
 	wt, err := newWorkerTester(t.Name())
 	if err != nil {

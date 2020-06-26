@@ -440,16 +440,12 @@ func (api *API) daemonStopHandler(w http.ResponseWriter, _ *http.Request, _ http
 	// can't write after we stop the server, so lie a bit.
 	WriteSuccess(w)
 
-	// need to flush the response before shutting down the server
-	f, ok := w.(http.Flusher)
-	if !ok {
-		panic("Server does not support flushing")
-	}
-	f.Flush()
-
-	if err := api.Shutdown(); err != nil {
-		build.Critical(err)
-	}
+	// Shutdown in a separate goroutine to prevent a deadlock.
+	go func() {
+		if err := api.Shutdown(); err != nil {
+			build.Critical(err)
+		}
+	}()
 }
 
 // daemonSettingsHandlerGET handles the API call asking for the daemon's

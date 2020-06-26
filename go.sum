@@ -156,6 +156,8 @@ gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213 h1:owERlK
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213/go.mod h1:vIutAvl7lmJqLVYTCBY5WDdJomP+V74At8LCeEYoH8w=
 gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20200602160622-fa13ea29f677 h1:ECDZi3ND8AHVWTLCpDzqKjc3miQ++t60CWsIU8zRjrk=
 gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20200602160622-fa13ea29f677/go.mod h1:SxigdS5Q1ui+OMgGAXt1E/Fg3RB6PvKXMov2O3gvIzs=
+gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20200618142844-c59a90f49130 h1:0hiQX3a4rmdu/duDhrRxl80zYHZoJDkSbTEFwSlAc74=
+gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20200618142844-c59a90f49130/go.mod h1:SxigdS5Q1ui+OMgGAXt1E/Fg3RB6PvKXMov2O3gvIzs=
 go.etcd.io/bbolt v1.3.2/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=
 go.uber.org/atomic v1.4.0/go.mod h1:gD2HeocX3+yG+ygLZcrzQJaqmWj9AIm7n08wl/qW/PE=
 go.uber.org/multierr v1.1.0/go.mod h1:wR5kodmAFQ0UK8QlbwjlSNy0Z68gJhDJUG5sjR94q/0=

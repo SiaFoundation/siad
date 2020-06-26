@@ -36,6 +36,7 @@ type (
 		cooldownUntil       time.Time
 		consecutiveFailures uint64
 		recentErr           error
+		recentErrTime       time.Time
 
 		staticWorkerObj *worker // name conflict with staticWorker method
 		mu              sync.Mutex
@@ -67,15 +68,27 @@ type (
 		callDiscardAll(error)
 
 		// callReportFailure should be called on the queue every time that a job
-		// failes, and include the error associated with the failure.
+		// fails, and include the error associated with the failure.
 		callReportFailure(error)
 
 		// callReportSuccess should be called on the queue every time that a job
 		// succeeds.
 		callReportSuccess()
 
+		// callStatus returns the status of the queue
+		callStatus() workerJobQueueStatus
+
 		// staticWorker will return the worker of the job queue.
 		staticWorker() *worker
+	}
+
+	// workerJobQueueStatus is a struct that reflects the status of the queue
+	workerJobQueueStatus struct {
+		size                uint64
+		cooldownUntil       time.Time
+		consecutiveFailures uint64
+		recentErr           error
+		recentErrTime       time.Time
 	}
 )
 
@@ -171,6 +184,7 @@ func (jq *jobGenericQueue) callReportFailure(err error) {
 	jq.cooldownUntil = cooldownUntil(jq.consecutiveFailures)
 	jq.consecutiveFailures++
 	jq.recentErr = err
+	jq.recentErrTime = time.Now()
 }
 
 // callReportSuccess lets the job queue know that there was a successsful job.
@@ -182,6 +196,19 @@ func (jq *jobGenericQueue) callReportSuccess() {
 	jq.mu.Lock()
 	jq.consecutiveFailures = 0
 	jq.mu.Unlock()
+}
+
+// callStatus returns the queue status
+func (jq *jobGenericQueue) callStatus() workerJobQueueStatus {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	return workerJobQueueStatus{
+		size:                uint64(len(jq.jobs)),
+		cooldownUntil:       jq.cooldownUntil,
+		consecutiveFailures: jq.consecutiveFailures,
+		recentErr:           jq.recentErr,
+		recentErrTime:       jq.recentErrTime,
+	}
 }
 
 // discardAll will drop all jobs from the queue.
