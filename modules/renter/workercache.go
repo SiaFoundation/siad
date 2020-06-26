@@ -98,6 +98,7 @@ func (w *worker) managedUpdateCache() {
 			err := fmt.Errorf("worker for host %v is being put on cooldown because the host is unsynced, renter height: %v host height: %v", w.staticHostPubKeyStr, rbh, hbh)
 			w.renter.log.Println(err)
 			w.staticAccount.managedIncrementCooldown(err)
+			w.managedIncrementUploadCooldown(err)
 		}
 	}
 
