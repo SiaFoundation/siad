@@ -441,6 +441,10 @@ func (w *Wallet) Reset() error {
 	w.mu.Lock()
 	subscribed := w.subscribed
 	for subscribed {
+		// Set the wallet to not unsubscribed. This might change as soon as we
+		// release the lock.
+		w.subscribed = false
+
 		// Unlock the wallet since we are not allowed to hold the lock while
 		// calling out to other modules.
 		w.mu.Unlock()
@@ -454,13 +458,6 @@ func (w *Wallet) Reset() error {
 		subscribed = w.subscribed
 	}
 	defer w.mu.Unlock()
-
-	// If the wallet was subscribed to the consensus and tpool then unsubscribe
-	if w.subscribed {
-		w.cs.Unsubscribe(w)
-		w.tpool.Unsubscribe(w)
-		w.subscribed = false
-	}
 
 	err := dbReset(w.dbTx)
 	if err != nil {
