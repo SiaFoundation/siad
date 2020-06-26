@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -43,9 +44,35 @@ func (j *jobReadOffset) managedReadOffset() ([]byte, error) {
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
-	// TODO: figure out how to verify proof against contract root.
-	data, _, err := j.jobRead.managedRead(w, program, programData, cost)
-	return data, errors.AddContext(err, "jobReadOffset: failed to execute managedRead")
+	// Read response.
+	out, err := j.jobRead.managedRead(w, program, programData, cost)
+	if err != nil {
+		return nil, errors.AddContext(err, "jobReadOffset: failed to execute managedRead")
+	}
+	numSectors := int(out.NewSize / modules.SectorSize)
+
+	// Verify proof.
+	var ok bool
+	secIdx := int(j.staticOffset / modules.SectorSize)
+	if j.staticLength == modules.SectorSize {
+		root := crypto.MerkleRoot(out.Output)
+		ok = crypto.VerifySectorRangeProof([]crypto.Hash{root}, out.Proof, secIdx, secIdx+1, out.NewMerkleRoot)
+	} else {
+		sectorProofSize := crypto.ProofSize(numSectors, secIdx, secIdx+1)
+		if sectorProofSize >= len(out.Proof) {
+			return nil, errors.New("returned proof has invalid size")
+		}
+		sectorProof := out.Proof[:sectorProofSize]
+		mixedProof := out.Proof[sectorProofSize:]
+		numSegments := out.NewSize / crypto.SegmentSize
+		proofStart := int(j.staticOffset) / crypto.SegmentSize
+		proofEnd := int(j.staticOffset+j.staticLength) / crypto.SegmentSize
+		ok = crypto.VerifyMixedRangeProof(sectorProof, out.Output, mixedProof, out.NewMerkleRoot, numSegments, int(modules.SectorSize), proofStart, proofEnd)
+	}
+	if !ok {
+		return nil, errors.New("verifying proof failed")
+	}
+	return out.Output, nil
 }
 
 // ReadOffset is a helper method to run a ReadOffset job on a worker.

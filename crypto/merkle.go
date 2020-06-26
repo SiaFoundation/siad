@@ -2,6 +2,7 @@ package crypto
 
 import (
 	"bytes"
+	"math/bits"
 
 	"gitlab.com/NebulousLabs/merkletree/merkletree-blake"
 
@@ -313,4 +314,13 @@ func VerifyDiffProof(ranges []ProofRange, numLeaves uint64, proofHashes, leafHas
 	}
 	ok, _ := merkletree.VerifyDiffProof(leafBytes, numLeaves, ranges, proofBytes, [32]byte(root))
 	return ok
+}
+
+// ProofSize returns the size of a Merkle proof for the leaf range [start, end)
+// within a tree containing n leaves.
+func ProofSize(n, start, end int) int {
+	leftHashes := bits.OnesCount(uint(start))
+	pathMask := 1<<uint(bits.Len(uint((end-1)^(n-1)))) - 1
+	rightHashes := bits.OnesCount(^uint(end-1) & uint(pathMask))
+	return leftHashes + rightHashes
 }

@@ -45,10 +45,12 @@ func (j *jobReadSector) managedReadSector() ([]byte, error) {
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
-	data, proof, err := j.jobRead.managedRead(w, program, programData, cost)
+	out, err := j.jobRead.managedRead(w, program, programData, cost)
 	if err != nil {
 		return nil, errors.AddContext(err, "jobReadSector: failed to execute managedRead")
 	}
+	data := out.Output
+	proof := out.Proof
 
 	// verify proof
 	proofStart := int(j.staticOffset) / crypto.SegmentSize
