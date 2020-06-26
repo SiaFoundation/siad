@@ -1,8 +1,6 @@
 package renter
 
 import (
-	"fmt"
-	"runtime"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -92,26 +90,12 @@ func (w *worker) managedUpdateCache() {
 	// If the renter goes from being unsynced to being synced, we want to
 	// validate the host blockheight on the price table object and take
 	// appropriate actions when we find the host is unsynced.
-	var hostUnsyncedErr error
 	if current != nil && !current.staticSynced && newCache.staticSynced {
 		rbh := newCache.staticBlockHeight
 		hbh := w.staticPriceTable().staticPriceTable.HostBlockHeight
 		if !hostBlockHeightWithinTolerance(newCache.staticSynced, rbh, hbh) {
-			hostUnsyncedErr = fmt.Errorf("worker for host %v is being put on cooldown because the host is unsynced, renter height: %v host height: %v", w.staticHostPubKeyStr, rbh, hbh)
-			w.renter.log.Println(hostUnsyncedErr)
+			// TODO put the host on cooldown
 		}
-	}
-
-	// If the host is unsynced we put the worker on a cooldown. We do this for
-	// all worker systems affected by the host's blockheight.
-	if hostUnsyncedErr != nil {
-		w.staticAccount.managedIncrementCooldown(hostUnsyncedErr)
-		w.managedIncrementUploadCooldown(hostUnsyncedErr)
-		for !atomic.CompareAndSwapUint64(&w.atomicPriceTableUpdateRunning, 0, 1) {
-			runtime.Gosched()
-		}
-		w.staticIncrementPriceTableCooldown(w.staticPriceTable(), hostUnsyncedErr)
-		atomic.StoreUint64(&w.atomicPriceTableUpdateRunning, 0)
 	}
 
 	// Wake the worker when the cache needs to be updated again. Note that we
