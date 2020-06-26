@@ -205,6 +205,8 @@ func MerkleSectorRangeProof(roots []Hash, start, end int) []Hash {
 	return proofHashes
 }
 
+// MerkleMixedRangeProof creates a merkle range proof using both sector hashes
+// and segments.
 func MerkleMixedRangeProof(sectorRoots []Hash, segments []byte, numLeaves uint64, sectorSize int, start, end int) []Hash {
 	sectorHashes := make([][32]byte, len(sectorRoots))
 	for i := range sectorHashes {
@@ -230,6 +232,9 @@ func MerkleMixedRangeProof(sectorRoots []Hash, segments []byte, numLeaves uint64
 	return proofHashes
 }
 
+// VerifyMixedRangeProof verifies a mixed proof given the node hashes,
+// downloaded segments, the proof, contract root, number of segments in the
+// contract, sectorSize, a start and an end for the downloaded range.
 func VerifyMixedRangeProof(sectorRoots []Hash, segments []byte, proof []Hash, root Hash, numLeaves uint64, sectorSize int, start, end int) bool {
 	sectorHashes := make([][32]byte, len(sectorRoots))
 	for i := range sectorHashes {

@@ -117,7 +117,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 
 	// Flush the buffer. Upon success this should be a no-op. If we return early
 	// this will make sure that the cancellation token and anything else in the
-	// buffer are written to disk.
+	// buffer are written to the stream.
 	defer func() {
 		if buffer.Len() > 0 {
 			_, err = buffer.WriteTo(stream)
