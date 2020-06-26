@@ -522,6 +522,9 @@ func (w *worker) managedRefillAccount() {
 		// the host believes that we have more money than we believe that we
 		// have.
 		if !w.renter.deps.Disrupt("DisableCriticalOnMaxBalance") {
+			// Log a critical as this is very unlikely to happen due to the
+			// order of events in the worker loop, seeing as we just synced our
+			// account balance with the host if that was necessary
 			w.renter.log.Critical("worker account refill failed with a max balance - are the host max balance settings lower than the threshold balance?")
 		}
 		w.staticAccount.mu.Lock()
