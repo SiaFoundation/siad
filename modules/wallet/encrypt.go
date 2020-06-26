@@ -435,7 +435,24 @@ func (w *Wallet) Reset() error {
 		return err
 	}
 	defer w.tg.Done()
+
+	// Need to unsubscribe in a loop since we have to release the mutex when
+	// unsubscribing.
 	w.mu.Lock()
+	subscribed := w.subscribed
+	for subscribed {
+		// Unlock the wallet since we are not allowed to hold the lock while
+		// calling out to other modules.
+		w.mu.Unlock()
+
+		// Unsubscribe the wallet.
+		w.cs.Unsubscribe(w)
+		w.tpool.Unsubscribe(w)
+		w.mu.Lock()
+
+		// update subscribed now that we have the lock again.
+		subscribed = w.subscribed
+	}
 	defer w.mu.Unlock()
 
 	// If the wallet was subscribed to the consensus and tpool then unsubscribe
