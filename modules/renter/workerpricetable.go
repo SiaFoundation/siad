@@ -82,6 +82,22 @@ func (w *worker) newPriceTable() {
 	w.staticSetPriceTable(new(workerPriceTable))
 }
 
+// staticIncrementPriceTableCooldown increments the consecutive failures and
+// registers the given error as most recent error, putting the price table on
+// cooldown.
+func (w *worker) staticIncrementPriceTableCooldown(currentPT *workerPriceTable, err error) {
+	// Because of race conditions, can't modify the existing price table, need
+	// to make a new one.
+	pt := &workerPriceTable{
+		staticPriceTable:          currentPT.staticPriceTable,
+		staticExpiryTime:          currentPT.staticExpiryTime,
+		staticUpdateTime:          cooldownUntil(currentPT.staticConsecutiveFailures),
+		staticConsecutiveFailures: currentPT.staticConsecutiveFailures + 1,
+		staticRecentErr:           err,
+	}
+	w.staticSetPriceTable(pt)
+}
+
 // staticPriceTable will return the most recent price table for the worker's
 // host.
 func (w *worker) staticPriceTable() *workerPriceTable {
@@ -143,16 +159,7 @@ func (w *worker) staticUpdatePriceTable() {
 	currentPT := w.staticPriceTable()
 	defer func() {
 		if err != nil {
-			// Because of race conditions, can't modify the existing price
-			// table, need to make a new one.
-			pt := &workerPriceTable{
-				staticPriceTable:          currentPT.staticPriceTable,
-				staticExpiryTime:          currentPT.staticExpiryTime,
-				staticUpdateTime:          cooldownUntil(currentPT.staticConsecutiveFailures),
-				staticConsecutiveFailures: currentPT.staticConsecutiveFailures + 1,
-				staticRecentErr:           err,
-			}
-			w.staticSetPriceTable(pt)
+			w.staticIncrementPriceTableCooldown(currentPT, err)
 		}
 	}()
 

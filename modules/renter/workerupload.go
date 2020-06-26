@@ -140,8 +140,9 @@ func (w *worker) managedHasUploadJob() bool {
 	return len(w.unprocessedChunks) > 0
 }
 
-// managedIncrementUploadCooldown puts the uploads on cooldown, incrementing the
-// consecutive failures and registers the given error as most recent error.
+// managedIncrementUploadCooldown increments the consecutive failures and
+// registers the given error as most recent error, putting the upload on
+// cooldown.
 func (w *worker) managedIncrementUploadCooldown(err error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()

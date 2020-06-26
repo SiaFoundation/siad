@@ -209,8 +209,8 @@ func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
 	}
 }
 
-// managedIncrementCooldown puts the account on cooldown, incrementing the
-// consecutive failures and registers the given error as most recent error.
+// managedIncrementCooldown increments the consecutive failures and registers
+// the given error as most recent error, putting the account on cooldown.
 func (a *account) managedIncrementCooldown(err error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
