@@ -73,35 +73,7 @@ func checkUploadGouging(allowance modules.Allowance, hostSettings modules.HostEx
 	return nil
 }
 
-// callQueueUploadChunk will take a chunk and add it to the worker's repair
-// stack.
-func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) bool {
-	// Check that the worker is allowed to be uploading before grabbing the
-	// worker lock.
-	cache := w.staticCache()
-	uc.mu.Lock()
-	_, candidateHost := uc.unusedHosts[w.staticHostPubKeyStr]
-	uc.mu.Unlock()
-	goodForUpload := cache.staticContractUtility.GoodForUpload
-	w.mu.Lock()
-	onCooldown, _ := w.onUploadCooldown()
-	uploadTerminated := w.uploadTerminated
-	if !goodForUpload || uploadTerminated || onCooldown || !candidateHost {
-		// The worker should not be uploading, remove the chunk.
-		w.mu.Unlock()
-		w.managedDropChunk(uc)
-		return false
-	}
-	w.unprocessedChunks = append(w.unprocessedChunks, uc)
-	w.mu.Unlock()
-
-	// Send a signal informing the work thread that there is work.
-	w.staticWake()
-	return true
-}
-
-// managedDropChunk will remove a worker from the responsibility of tracking a
-// chunk.
+// managedDropChunk will remove a worker from the responsibility of tracking a chunk.
 //
 // This function is managed instead of static because it is against convention
 // to be calling functions on other objects (in this case, the renter) while
@@ -132,25 +104,6 @@ func (w *worker) managedDropUploadChunks() {
 	}
 }
 
-// managedHasUploadJob returns true if there is upload work available for the
-// worker.
-func (w *worker) managedHasUploadJob() bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return len(w.unprocessedChunks) > 0
-}
-
-// managedIncrementUploadCooldown increments the consecutive failures and
-// registers the given error as most recent error, putting the upload on
-// cooldown.
-func (w *worker) managedIncrementUploadCooldown(err error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.uploadRecentFailure = time.Now()
-	w.uploadRecentFailureErr = err
-	w.uploadConsecutiveFailures++
-}
-
 // managedKillUploading will disable all uploading for the worker.
 func (w *worker) managedKillUploading() {
 	// Mark the worker as disabled so that incoming chunks are rejected.
@@ -160,6 +113,41 @@ func (w *worker) managedKillUploading() {
 
 	// After the worker is marked as disabled, clear out all of the chunks.
 	w.managedDropUploadChunks()
+}
+
+// callQueueUploadChunk will take a chunk and add it to the worker's repair
+// stack.
+func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) bool {
+	// Check that the worker is allowed to be uploading before grabbing the
+	// worker lock.
+	cache := w.staticCache()
+	uc.mu.Lock()
+	_, candidateHost := uc.unusedHosts[w.staticHostPubKeyStr]
+	uc.mu.Unlock()
+	goodForUpload := cache.staticContractUtility.GoodForUpload
+	w.mu.Lock()
+	onCooldown, _ := w.onUploadCooldown()
+	uploadTerminated := w.uploadTerminated
+	if !goodForUpload || uploadTerminated || onCooldown || !candidateHost {
+		// The worker should not be uploading, remove the chunk.
+		w.mu.Unlock()
+		w.managedDropChunk(uc)
+		return false
+	}
+	w.unprocessedChunks = append(w.unprocessedChunks, uc)
+	w.mu.Unlock()
+
+	// Send a signal informing the work thread that there is work.
+	w.staticWake()
+	return true
+}
+
+// managedHasUploadJob returns true if there is upload work available for the
+// worker.
+func (w *worker) managedHasUploadJob() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return len(w.unprocessedChunks) > 0
 }
 
 // managedPerformUploadChunkJob will perform some upload work.
@@ -255,6 +243,16 @@ func (w *worker) managedPerformUploadChunkJob() {
 	w.renter.managedCleanUpUploadChunk(uc)
 }
 
+// onUploadCooldown returns true if the worker is on cooldown from failed
+// uploads and the amount of cooldown time remaining for the worker.
+func (w *worker) onUploadCooldown() (bool, time.Duration) {
+	requiredCooldown := uploadFailureCooldown
+	for i := 0; i < w.uploadConsecutiveFailures && i < maxConsecutivePenalty; i++ {
+		requiredCooldown *= 2
+	}
+	return time.Now().Before(w.uploadRecentFailure.Add(requiredCooldown)), w.uploadRecentFailure.Add(requiredCooldown).Sub(time.Now())
+}
+
 // managedProcessUploadChunk will process a chunk from the worker chunk queue.
 func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk *unfinishedUploadChunk, pieceIndex uint64) {
 	// Determine the usability value of this worker.
@@ -317,8 +315,10 @@ func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint6
 	// Mark the failure in the worker if the gateway says we are online. It's
 	// not the worker's fault if we are offline.
 	if w.renter.g.Online() && !errors.Contains(failureErr, siafile.ErrDeleted) {
-		w.managedIncrementUploadCooldown(failureErr)
 		w.mu.Lock()
+		w.uploadRecentFailure = time.Now()
+		w.uploadRecentFailureErr = failureErr
+		w.uploadConsecutiveFailures++
 		failures := w.uploadConsecutiveFailures
 		w.mu.Unlock()
 		w.renter.repairLog.Debugf("Worker upload failed. Worker: %v, Consecutive Failures: %v, Chunk: %v of %s, Error: %v", w.staticHostPubKey, failures, uc.staticIndex, uc.staticSiaPath, failureErr)
@@ -337,14 +337,4 @@ func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint6
 
 	// Because the worker is now on cooldown, drop all remaining chunks.
 	w.managedDropUploadChunks()
-}
-
-// onUploadCooldown returns true if the worker is on cooldown from failed
-// uploads and the amount of cooldown time remaining for the worker.
-func (w *worker) onUploadCooldown() (bool, time.Duration) {
-	requiredCooldown := uploadFailureCooldown
-	for i := 0; i < w.uploadConsecutiveFailures && i < maxConsecutivePenalty; i++ {
-		requiredCooldown *= 2
-	}
-	return time.Now().Before(w.uploadRecentFailure.Add(requiredCooldown)), w.uploadRecentFailure.Add(requiredCooldown).Sub(time.Now())
 }
