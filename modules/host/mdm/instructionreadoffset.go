@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -56,11 +57,33 @@ func (i *instructionReadOffset) Execute(previousOutput output) output {
 		return errOutput(err)
 	}
 	// Translate the offset to a root.
-	relOffset, sectorRoot, err := i.staticState.sectors.translateOffset(offset)
+	relOffset, secIdx, err := i.staticState.sectors.translateOffset(offset)
 	if err != nil {
 		return errOutput(err)
 	}
-	return executeReadSector(previousOutput, i.staticState, length, relOffset, sectorRoot, i.staticMerkleProof)
+	sectorRoot := i.staticState.sectors.merkleRoots[secIdx]
+	// Execute it like a ReadSector instruction.
+	output, fullSec := executeReadSector(previousOutput, i.staticState, length, relOffset, sectorRoot, i.staticMerkleProof)
+	if !i.staticMerkleProof || output.Error != nil {
+		return output
+	}
+
+	// Extend the proof.
+	sectorProof := crypto.MerkleSectorRangeProof(i.staticState.sectors.merkleRoots, int(secIdx), int(secIdx+1))
+
+	// If the segmentProof is empty, a full sector was downloaded. Then the
+	// sectorProof is enough and we are done.
+	if len(output.Proof) == 0 {
+		output.Proof = sectorProof
+		return output
+	}
+
+	// Otherwise we need to create a mixed range proof.
+	proofStart := int(offset) / crypto.SegmentSize
+	proofEnd := int(offset+length) / crypto.SegmentSize
+	fcSize := uint64(len(i.staticState.sectors.merkleRoots)) * modules.SectorSize
+	output.Proof = crypto.MerkleMixedRangeProof(sectorProof, fullSec, fcSize/crypto.SegmentSize, int(modules.SectorSize), proofStart, proofEnd)
+	return output
 }
 
 // Collateral is zero for the ReadSector instruction.

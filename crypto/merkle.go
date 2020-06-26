@@ -205,6 +205,64 @@ func MerkleSectorRangeProof(roots []Hash, start, end int) []Hash {
 	return proofHashes
 }
 
+func MerkleMixedRangeProof(sectorRoots []Hash, segments []byte, numLeaves uint64, sectorSize int, start, end int) []Hash {
+	sectorHashes := make([][32]byte, len(sectorRoots))
+	for i := range sectorHashes {
+		sectorHashes[i] = [32]byte(sectorRoots[i])
+	}
+	ranges := []merkletree.LeafRange{
+		{
+			Start: uint64(start),
+			End:   uint64(end),
+		},
+	}
+	segmentReader := bytes.NewReader(segments)
+	segmentsPerSector := sectorSize / SegmentSize
+	msh := merkletree.NewMixedSubtreeHasher(sectorHashes, segmentReader, segmentsPerSector, SegmentSize)
+	proof, err := merkletree.BuildDiffProof(ranges, msh, numLeaves)
+	if err != nil {
+		build.Critical("BuildRangeProof failed", err)
+	}
+	proofHashes := make([]Hash, len(proof))
+	for i := range proofHashes {
+		proofHashes[i] = Hash(proof[i])
+	}
+	return proofHashes
+}
+
+func VerifyMixedRangeProof(sectorRoots []Hash, segments []byte, proof []Hash, root Hash, numLeaves uint64, sectorSize int, start, end int) bool {
+	sectorHashes := make([][32]byte, len(sectorRoots))
+	for i := range sectorHashes {
+		sectorHashes[i] = [32]byte(sectorRoots[i])
+	}
+	proofBytes := make([][32]byte, len(proof))
+	for i := range proof {
+		proofBytes[i] = [32]byte(proof[i])
+	}
+	segmentReader := bytes.NewReader(segments)
+	segmentsPerSector := sectorSize / SegmentSize
+
+	ranges := []merkletree.LeafRange{
+		{
+			Start: uint64(start),
+			End:   uint64(end),
+		},
+	}
+
+	// The proof, modified hashes, and the new root are sent to the verifier.
+	msh := merkletree.NewMixedSubtreeHasher(sectorHashes, segmentReader, segmentsPerSector, SegmentSize)
+	compressed, err := merkletree.CompressLeafHashes(ranges, msh)
+	if err != nil {
+		return false
+	}
+	for _, c := range compressed {
+		var h Hash
+		copy(h[:], c[:])
+	}
+	ok, _ := merkletree.VerifyDiffProof(compressed, numLeaves, ranges, proofBytes, root)
+	return ok
+}
+
 // VerifySectorRangeProof verifies a proof produced by MerkleSectorRangeProof.
 func VerifySectorRangeProof(roots []Hash, proof []Hash, start, end int, root Hash) bool {
 	leafHashes := make([][32]byte, len(roots))

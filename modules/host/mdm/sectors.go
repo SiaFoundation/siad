@@ -91,15 +91,15 @@ func (s *sectors) hasSector(sectorRoot crypto.Hash) bool {
 
 // translateOffset translates an offset within a filecontract into a relative
 // offset within a sector and the sector root.
-func (s *sectors) translateOffset(offset uint64) (uint64, crypto.Hash, error) {
+func (s *sectors) translateOffset(offset uint64) (uint64, uint64, error) {
 	// Compute the sector offset.
 	secOff := offset / modules.SectorSize
 	relOff := offset % modules.SectorSize
 	// Check for out of bounds.
 	if uint64(len(s.merkleRoots)) <= secOff {
-		return 0, crypto.Hash{}, fmt.Errorf("translateOffset: secOff out of bounds %v >= %v", len(s.merkleRoots), secOff)
+		return 0, 0, fmt.Errorf("translateOffset: secOff out of bounds %v >= %v", len(s.merkleRoots), secOff)
 	}
-	return relOff, s.merkleRoots[secOff], nil
+	return relOff, secOff, nil
 }
 
 // readSector reads data from the given root, returning the entire sector.

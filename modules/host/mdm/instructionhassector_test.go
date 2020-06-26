@@ -16,7 +16,7 @@ func TestInstructionHasSector(t *testing.T) {
 	defer mdm.Stop()
 
 	// Create a program to check for a sector on the host.
-	so := newTestStorageObligation(true)
+	so := host.newTestStorageObligation(true)
 	so.sectorRoots = randomSectorRoots(1)
 
 	// Add sector to the host.

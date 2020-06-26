@@ -30,6 +30,7 @@ type (
 	// TestStorageObligation is a dummy storage obligation for testing which
 	// satisfies the StorageObligation interface.
 	TestStorageObligation struct {
+		host        *TestHost
 		sectorMap   map[crypto.Hash][]byte
 		sectorRoots []crypto.Hash
 	}
@@ -46,8 +47,9 @@ func newCustomTestHost(generateSectors bool) *TestHost {
 	}
 }
 
-func newTestStorageObligation(locked bool) *TestStorageObligation {
+func (h *TestHost) newTestStorageObligation(locked bool) *TestStorageObligation {
 	return &TestStorageObligation{
+		host:      h,
 		sectorMap: make(map[crypto.Hash][]byte),
 	}
 }
@@ -83,6 +85,15 @@ func (h *TestHost) ReadSector(sectorRoot crypto.Hash) ([]byte, error) {
 		return nil, errSectorNotFound
 	}
 	return data, nil
+}
+
+// AddRandomSector adds a random sector to the obligation and corresponding
+// host.
+func (so *TestStorageObligation) AddRandomSector() {
+	data := fastrand.Bytes(int(modules.SectorSize))
+	root := crypto.MerkleRoot(data)
+	so.host.sectors[root] = data
+	so.sectorRoots = append(so.sectorRoots, root)
 }
 
 // ContractSize implements the StorageObligation interface.
@@ -225,11 +236,11 @@ func (o Output) assert(newSize uint64, newMerkleRoot crypto.Hash, proof []crypto
 	if o.NewMerkleRoot != newMerkleRoot {
 		return fmt.Errorf("expected newMerkleRoot %v but got %v", newSize, o.NewMerkleRoot)
 	}
-	if len(o.Proof)+len(proof) != 0 && !reflect.DeepEqual(o.Proof, proof) {
-		return fmt.Errorf("expected proof %v but got %v", proof, o.Proof)
-	}
 	if !bytes.Equal(o.Output, output) {
 		return fmt.Errorf("expected o %v but got %v", o, o.Output)
+	}
+	if len(o.Proof)+len(proof) != 0 && !reflect.DeepEqual(o.Proof, proof) {
+		return fmt.Errorf("expected proof %v but got %v", proof, o.Proof)
 	}
 	return nil
 }

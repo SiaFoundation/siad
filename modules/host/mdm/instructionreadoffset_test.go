@@ -20,17 +20,18 @@ func TestInstructionReadOffset(t *testing.T) {
 	pt := newTestPriceTable()
 	duration := types.BlockHeight(fastrand.Uint64n(5))
 	// Prepare storage obligation.
-	so := newTestStorageObligation(true)
-	so.sectorRoots = randomSectorRoots(initialContractSectors)
-	root := so.sectorRoots[0]
+	so := host.newTestStorageObligation(true)
+	for i := 0; i < 3; i++ {
+		so.AddRandomSector()
+	}
+	root := so.sectorRoots[1] // middle sector
 	outputData, err := host.ReadSector(root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Use a builder to build the program.
-	readLen := modules.SectorSize
 	tb := newTestProgramBuilder(pt, duration)
-	tb.AddReadOffsetInstruction(readLen, 0, true)
+	tb.AddReadOffsetInstruction(modules.SectorSize, modules.SectorSize, true)
 
 	ics := so.ContractSize()
 	imr := so.MerkleRoot()
@@ -41,17 +42,28 @@ func TestInstructionReadOffset(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Compute the expected proof. It's a regular range proof since we proof the
+	// whole sector.
+	expectedProof := crypto.MerkleSectorRangeProof(so.sectorRoots, int(1), int(2))
+
 	// Assert the output.
-	err = outputs[0].assert(ics, imr, []crypto.Hash{}, outputData)
+	err = outputs[0].assert(ics, imr, expectedProof, outputData)
 	if err != nil {
 		t.Fatal(err)
 	}
 	sectorData := outputs[0].Output
 
+	// Verify the proof.
+	ok := crypto.VerifySectorRangeProof([]crypto.Hash{root}, outputs[0].Proof, 1, 2, outputs[0].NewMerkleRoot)
+	if !ok {
+		t.Fatal("failed to verify proof")
+	}
+
 	// Create a program to read up to half a sector from the host.
-	offset := modules.SectorSize / 2 // start in the middle
-	// Read up to half a sector.
-	numSegments := fastrand.Uint64n(modules.SectorSize/2/crypto.SegmentSize) + 1
+	offset := modules.SectorSize + modules.SectorSize/2 // start in the middle of the middle sector
+	relOffset := modules.SectorSize / 2
+	// Read half a sector.
+	numSegments := modules.SectorSize / 2 / crypto.SegmentSize
 	length := numSegments * crypto.SegmentSize
 
 	// Use a builder to build the program.
@@ -67,10 +79,19 @@ func TestInstructionReadOffset(t *testing.T) {
 	// Assert the output.
 	proofStart := int(offset) / crypto.SegmentSize
 	proofEnd := int(offset+length) / crypto.SegmentSize
-	proof := crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
-	outputData = sectorData[offset:][:length]
-	err = outputs[0].assert(ics, imr, proof, outputData)
+	fcSize := uint64(len(so.sectorRoots)) * modules.SectorSize
+	sectorProof := expectedProof
+	expectedProof = crypto.MerkleMixedRangeProof(sectorProof, sectorData, fcSize/crypto.SegmentSize, int(modules.SectorSize), proofStart, proofEnd)
+	outputData = sectorData[relOffset:][:length]
+	err = outputs[0].assert(ics, imr, expectedProof, outputData)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Verify proof.
+	// TODO: instead of using sectorProof, use the returned proof.
+	ok = crypto.VerifyMixedRangeProof(sectorProof, outputs[0].Output, outputs[0].Proof, outputs[0].NewMerkleRoot, fcSize/crypto.SegmentSize, int(modules.SectorSize), proofStart, proofEnd)
+	if !ok {
+		t.Fatal("failed to verify mixed range proof")
 	}
 }

@@ -52,7 +52,7 @@ func (p *program) staticDecodeReadSectorInstruction(instruction modules.Instruct
 }
 
 // executeReadSector executes the 'ReadSector' instruction.
-func executeReadSector(previousOutput output, ps *programState, length, offset uint64, sectorRoot crypto.Hash, merkleProof bool) output {
+func executeReadSector(previousOutput output, ps *programState, length, offset uint64, sectorRoot crypto.Hash, merkleProof bool) (output, []byte) {
 	// Validate the request.
 	var err error
 	switch {
@@ -64,12 +64,12 @@ func executeReadSector(previousOutput output, ps *programState, length, offset u
 		err = fmt.Errorf("offset (%v) and length (%v) must be multiples of SegmentSize (%v) when requesting a Merkle proof", offset, length, crypto.SegmentSize)
 	}
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), nil
 	}
 
 	sectorData, err := ps.sectors.readSector(ps.host, sectorRoot)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), nil
 	}
 	readData := sectorData[offset : offset+length]
 
@@ -87,7 +87,7 @@ func executeReadSector(previousOutput output, ps *programState, length, offset u
 		NewMerkleRoot: previousOutput.NewMerkleRoot, // root stays the same
 		Output:        readData,
 		Proof:         proof,
-	}
+	}, sectorData
 }
 
 // Execute executes the 'ReadSector' instruction.
@@ -105,7 +105,8 @@ func (i *instructionReadSector) Execute(previousOutput output) output {
 	if err != nil {
 		return errOutput(err)
 	}
-	return executeReadSector(previousOutput, i.staticState, length, offset, sectorRoot, i.staticMerkleProof)
+	output, _ := executeReadSector(previousOutput, i.staticState, length, offset, sectorRoot, i.staticMerkleProof)
+	return output
 }
 
 // Collateral is zero for the ReadSector instruction.
