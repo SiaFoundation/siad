@@ -1127,17 +1127,23 @@ func testPriceTablesUpdated(t *testing.T, tg *siatest.TestGroup) {
 			return err
 		}
 
+		var ws *modules.WorkerStatus
 		for _, worker := range rwg.Workers {
 			if worker.HostPubKey.Equals(host) {
-				if worker.PriceTableStatus.Active {
-					ut = worker.PriceTableStatus.UpdateTime
-					et = worker.PriceTableStatus.ExpiryTime
-					return nil
-				}
-				return errors.New("worker has no valid price table")
+				ws = &worker
 			}
 		}
-		return errors.New("worker not found")
+		if ws == nil {
+			return errors.New("worker not found")
+		}
+
+		if !ws.PriceTableStatus.Active {
+			return errors.New("worker has no valid price table")
+		}
+
+		ut = ws.PriceTableStatus.UpdateTime
+		et = ws.PriceTableStatus.ExpiryTime
+		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1157,16 +1163,21 @@ func testPriceTablesUpdated(t *testing.T, tg *siatest.TestGroup) {
 			return err
 		}
 
+		var ws *modules.WorkerStatus
 		for _, worker := range rwg.Workers {
 			if worker.HostPubKey.Equals(host) {
-				if worker.PriceTableStatus.UpdateTime.After(ut) && worker.PriceTableStatus.ExpiryTime.After(et) {
-					return nil
-				}
-				return errors.New("updatedTime and expiryTime have not been updated yet, indicating the price table has not been renewed")
+				ws = &worker
 			}
 		}
+		if ws == nil {
+			return errors.New("worker not found")
+		}
 
-		return errors.New("worker not found")
+		if !(ws.PriceTableStatus.UpdateTime.After(ut) && ws.PriceTableStatus.ExpiryTime.After(et)) {
+			return errors.New("updatedTime and expiryTime have not been updated yet, indicating the price table has not been renewed")
+		}
+
+		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
