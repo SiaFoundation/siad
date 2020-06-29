@@ -918,6 +918,7 @@ func (am *accountManager) staticWaitForWithdrawalResult(commitResultChan chan er
 	case err := <-commitResultChan:
 		return err
 	case <-time.After(blockedWithdrawalTimeout):
+		build.Critical("timed out")
 		return ErrBalanceInsufficient
 	case <-am.h.tg.StopChan():
 		return ErrWithdrawalCancelled
