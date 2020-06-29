@@ -32,12 +32,13 @@ const (
 	siaDir           = "upload-download-benchmark"     // Sia directory to upload files to
 
 	// Uploads and downloads
-	nFiles              = 50                // Number of files to upload
-	fileSize            = 0                 // File size of a file to be uploaded in bytes, use 0 to use default testing sector size
-	maxConcurrUploads   = 10                // Max number of files to be concurrently uploaded
-	maxConcurrDownloads = 10                // Max number of files to be concurrently downloaded
-	nTotalDownloads     = 500               // Total number of file downloads. There will be nFiles, a single file can be downloaded x-times
-	uploadTimeout       = 120 * time.Second // Timeout in seconds to upload file
+	nFiles              = 50               // Number of files to upload
+	fileSize            = 0                // File size of a file to be uploaded in bytes, use 0 to use default testing sector size
+	maxConcurrUploads   = 10               // Max number of files to be concurrently uploaded
+	maxConcurrDownloads = 10               // Max number of files to be concurrently downloaded
+	nTotalDownloads     = 500              // Total number of file downloads. There will be nFiles, a single file can be downloaded x-times
+	renterReadyTimeout  = 10 * time.Second // Timeout in seconds for renter to become upload ready
+	uploadTimeout       = 60 * time.Second // Timeout in seconds to upload a file
 
 	// siad
 	siadPort     = "9980" // Port of siad node (if not using a test group)
@@ -402,7 +403,6 @@ func threadedCreateAndUploadFiles(timestamp string, workerIndex int) {
 
 		// Update files to be downloaded
 		createdNotDownloadedFiles.managedAddFile(filename)
-
 	}
 	log.Printf("Upload worker #%d finished", workerIndex)
 	uploadWG.Done()
@@ -497,14 +497,22 @@ func uploadFile(filename string) {
 // waitForRenterIsUploadReady waits till renter is ready to upload
 func waitForRenterIsUploadReady() {
 	start := time.Now()
-	for {
+
+	// Wait for renter upload ready
+	waitTime := time.Second
+	tries := int(renterReadyTimeout / waitTime)
+	err := build.Retry(tries, waitTime, func() error {
 		rur, err := c.RenterUploadReadyDefaultGet()
-		check(err)
-		if rur.Ready {
-			break
+		if err != nil {
+			return err
 		}
-		time.Sleep(1 * time.Second)
-	}
+		if !rur.Ready {
+			return errors.New("renter is not upload ready")
+		}
+		return nil
+	})
+	check(err)
+
 	elapsed := time.Since(start)
 	log.Printf("It took %s for renter to be ready to upload.\n", elapsed)
 }
