@@ -170,8 +170,8 @@ func TestSkykeyManager(t *testing.T) {
 
 	// Check that AddKey works properly by re-adding all the keys from the first
 	// 2 key managers into a new one.
-	persistDir = build.TempDir(t.Name(), "add-only-keyman")
-	addKeyMan, err := NewSkykeyManager(persistDir)
+	newPersistDir := build.TempDir(t.Name(), "add-only-keyman")
+	addKeyMan, err := NewSkykeyManager(newPersistDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -770,4 +770,140 @@ func TestSkyfileEncryptionIDs(t *testing.T) {
 	if !errors.Contains(err, errInvalidIDorNonceLength) {
 		t.Fatal(err)
 	}
+}
+
+func TestSkykeyDelete(t *testing.T) {
+	// Create a key manager.
+	persistDir := build.TempDir("skykey", t.Name())
+	keyMan, err := NewSkykeyManager(persistDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add several keys and delete them all.
+	keys := make([]Skykey, 0)
+	for i := 0; i < 5; i++ {
+		sk, err := keyMan.CreateKey("keys-to-delete"+string(i), TypePrivateID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keys = append(keys, sk)
+	}
+	for _, key := range keys {
+		err = keyMan.DeleteKeyByID(key.ID())
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Check that keyMan doesn't recognize them anymore.
+	for _, key := range keys {
+		_, err = keyMan.KeyByID(key.ID())
+		if !errors.Contains(err, ErrNoSkykeysWithThatID) {
+			t.Fatal(err)
+		}
+	}
+
+	// checkForExpectedKeys checks that the keys in expectedKeySet are the only
+	// ones stored by keyMan, and also checks that a new keyManager loaded from
+	// the same persist also stores only this exact set of skykeys.
+	checkForExpectedKeys := func(expectedKeySet map[SkykeyID]struct{}) {
+		allSkykeys := keyMan.Skykeys()
+		if len(allSkykeys) != len(expectedKeySet) {
+			t.Fatalf("Expected %d keys, got %d", len(expectedKeySet), len(allSkykeys))
+		}
+		for _, sk := range allSkykeys {
+			_, ok := expectedKeySet[sk.ID()]
+			if !ok {
+				t.Fatal("Did not find key in expected key set")
+			}
+		}
+
+		freshKeyMan, err := NewSkykeyManager(persistDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		loadedSkykeys := freshKeyMan.Skykeys()
+		if len(loadedSkykeys) != len(expectedKeySet) {
+			t.Fatalf("Fresh load: Expected %d keys, got %d", len(expectedKeySet), len(loadedSkykeys))
+		}
+
+		for _, sk := range loadedSkykeys {
+			_, ok := expectedKeySet[sk.ID()]
+			if !ok {
+				t.Fatal("Fresh load: Did not find key in expected key set")
+			}
+		}
+	}
+
+	// There should be no keys remaining.
+	checkForExpectedKeys(make(map[SkykeyID]struct{}))
+
+	// Add a bunch of keys again.
+	expectedKeySet := make(map[SkykeyID]struct{})
+	nKeys := 10
+	keys = make([]Skykey, 0)
+	for i := 0; i < nKeys; i++ {
+		sk, err := keyMan.CreateKey("key"+string(i), TypePrivateID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keys = append(keys, sk)
+		expectedKeySet[sk.ID()] = struct{}{}
+	}
+	checkForExpectedKeys(expectedKeySet)
+
+	// Delete the first key.
+	err = keyMan.DeleteKeyByID(keys[0].ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(expectedKeySet, keys[0].ID())
+
+	// Check keyManager deletion.
+	checkForExpectedKeys(expectedKeySet)
+
+	// Delete a middle key and do the same checks.
+	midIdx := nKeys / 2
+	err = keyMan.DeleteKeyByID(keys[midIdx].ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(expectedKeySet, keys[midIdx].ID())
+	checkForExpectedKeys(expectedKeySet)
+
+	// Delete the last key and do the same checks.
+	endIdx := nKeys - 1
+	err = keyMan.DeleteKeyByID(keys[endIdx].ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(expectedKeySet, keys[endIdx].ID())
+	checkForExpectedKeys(expectedKeySet)
+
+	// Add a few more keys.
+	for i := 0; i < nKeys; i++ {
+		sk, err := keyMan.CreateKey("extra-key"+string(i), TypePrivateID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectedKeySet[sk.ID()] = struct{}{}
+	}
+	checkForExpectedKeys(expectedKeySet)
+
+	// Sanity check on DeleteKeyByName by deleting some of the new keys.
+	for i := 0; i < len(expectedKeySet)/2; i += 2 {
+		sk, err := keyMan.KeyByName("extra-key" + string(i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = keyMan.DeleteKeyByName(sk.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		delete(expectedKeySet, sk.ID())
+	}
+	checkForExpectedKeys(expectedKeySet)
 }
