@@ -192,7 +192,7 @@ func testAccountMinAndMaxExpectedBalance(t *testing.T) {
 	}
 }
 
-// TestAccountResetBalance is a small unit test that verifies the functionality
+// testAccountResetBalance is a small unit test that verifies the functionality
 // of the reset balance function.
 func testAccountResetBalance(t *testing.T) {
 	t.Parallel()
@@ -411,7 +411,8 @@ func TestWorkerAccountCoolDown(t *testing.T) {
 		t.Fatal("Account should not be on cooldown")
 	}
 
-	// set a negative balance, trickin the worker into thinking it has to refill
+	// set a negative balance, tricking the worker into thinking it has to
+	// refill
 	w.staticAccount.mu.Lock()
 	w.staticAccount.negativeBalance = w.staticAccount.balance
 	w.staticAccount.mu.Unlock()
@@ -471,8 +472,9 @@ func TestWorkerAccountCoolDown(t *testing.T) {
 	// check if 'consecutiveFailures' has been reset to 0
 	if err := build.Retry(100, 100*time.Millisecond, func() error {
 		w.staticAccount.mu.Lock()
-		defer w.staticAccount.mu.Unlock()
-		if w.staticAccount.consecutiveFailures != 0 {
+		cf := w.staticAccount.consecutiveFailures
+		w.staticAccount.mu.Unlock()
+		if cf != 0 {
 			return errors.New("consecutive failures not reset")
 		}
 		return nil
