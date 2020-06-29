@@ -405,10 +405,6 @@ func (am *accountManager) callWithdraw(msg *modules.WithdrawalMessage, sig crypt
 		return errors.AddContext(err, "Withdraw failed")
 	}
 
-	if am.currentRisk.Cmp(maxRisk) > 0 {
-		fmt.Println("current risk exceeds max risk", am.currentRisk.HumanString(), maxRisk.HumanString())
-	}
-
 	// Wait for the withdrawal to be committed.
 	return errors.AddContext(am.staticWaitForWithdrawalResult(commitResultChan), "Withdraw failed")
 }
@@ -553,6 +549,11 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 	}
 
 	am.commitWithdrawal(acc, amount, blockHeight, commitResultChan)
+
+	if am.currentRisk.Cmp(maxRisk) > 0 {
+		fmt.Println("current risk will exceeds max risk", am.currentRisk.HumanString(), maxRisk.HumanString())
+	}
+
 	return nil
 }
 

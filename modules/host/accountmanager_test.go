@@ -788,9 +788,7 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 		msgs[w], sigs[w] = prepareWithdrawal(accountID, withdrawalSize, am.h.blockHeight, sk)
 	}
 
-	var ndfMu sync.Mutex
-	var totalWithdrawn types.Currency
-	mapping := make(map[int]int)
+	var atomicFailedAtIndex uint64
 
 	// Run the withdrawals in separate threads (ensure that withdrawals do not
 	// exceed numDeposits * depositAmount)
@@ -804,33 +802,19 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 				if wErr := callWithdraw(am, msgs[i], sigs[i]); wErr != nil {
 					atomic.AddUint64(&atomicWithdrawalErrs, 1)
 					t.Log(wErr)
-					t.Log("acc balance", getAccountBalance(am, accountID).HumanString())
-					continue
+					t.Log("acc balance at failure", getAccountBalance(am, accountID).HumanString())
+					atomic.StoreUint64(&atomicFailedAtIndex, uint64(i))
 				}
-
-				ndfMu.Lock()
-				mapping[i] = i
-				totalWithdrawn = totalWithdrawn.Add(msgs[i].Amount)
-				ndfMu.Unlock()
 			}
 		}(th)
 	}
 	wg.Wait()
 
-	for w := 0; w < int(withdrawals); w++ {
-		_, exists := mapping[w]
-		if !exists {
-			t.Errorf("Withdrawal #%v not executed, num withdrawals executed", len(mapping))
-		}
-	}
-	t.Log("Successfully withdrawn", totalWithdrawn.HumanString())
-	t.Log("Num withdrawals", len(mapping))
-	t.Log("Remaining acc balance", getAccountBalance(am, accountID).HumanString())
-
 	// Verify all withdrawals were successful
 	withdrawalErrors := atomic.LoadUint64(&atomicWithdrawalErrs)
 	if withdrawalErrors != 0 {
-		t.Fatal("Unexpected error during withdrawals")
+		failedAt := atomic.LoadUint64(&atomicFailedAtIndex)
+		t.Fatalf("Unexpected error during withdrawals at index %v, balance %v", failedAt, getAccountBalance(am, accountID).HumanString())
 	}
 
 	// Verify we've drained the account completely
