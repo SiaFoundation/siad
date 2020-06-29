@@ -306,10 +306,9 @@ func (w *Wallet) managedBlockingUnlock(masterKey crypto.CipherKey) (modules.Cons
 func (w *Wallet) managedAsyncUnlock(lastChange modules.ConsensusChangeID) error {
 	// Subscribe to the consensus set if this is the first unlock for the
 	// wallet object.
-	w.mu.RLock()
-	subscribed := w.subscribed
-	w.mu.RUnlock()
-	if !subscribed {
+	w.subscribedMu.Lock()
+	defer w.subscribedMu.Unlock()
+	if !w.subscribed {
 		// Subscription can take a while, so spawn a goroutine to print the
 		// wallet height every few seconds. (If subscription completes
 		// quickly, nothing will be printed.)
@@ -335,9 +334,7 @@ func (w *Wallet) managedAsyncUnlock(lastChange modules.ConsensusChangeID) error 
 		}
 		w.tpool.TransactionPoolSubscribe(w)
 	}
-	w.mu.Lock()
 	w.subscribed = true
-	w.mu.Unlock()
 	return nil
 }
 
@@ -436,27 +433,16 @@ func (w *Wallet) Reset() error {
 	}
 	defer w.tg.Done()
 
-	// Need to unsubscribe in a loop since we have to release the mutex when
-	// unsubscribing.
-	w.mu.Lock()
-	subscribed := w.subscribed
-	for subscribed {
-		// Set the wallet to not unsubscribed. This might change as soon as we
-		// release the lock.
-		w.subscribed = false
-
-		// Unlock the wallet since we are not allowed to hold the lock while
-		// calling out to other modules.
-		w.mu.Unlock()
-
-		// Unsubscribe the wallet.
+	// Unsubscribe if we are currently subscribed.
+	w.subscribedMu.Lock()
+	if w.subscribed {
 		w.cs.Unsubscribe(w)
 		w.tpool.Unsubscribe(w)
-		w.mu.Lock()
-
-		// update subscribed now that we have the lock again.
-		subscribed = w.subscribed
+		w.subscribed = false
 	}
+	w.subscribedMu.Unlock()
+
+	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	err := dbReset(w.dbTx)
