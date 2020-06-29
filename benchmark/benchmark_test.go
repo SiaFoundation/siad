@@ -509,7 +509,7 @@ func threadedDownloadFiles(workerIndex int) {
 		// Delete downloaded file
 		deleteLocalFile(localPath)
 	}
-	log.Printf("Upload worker #%d finished", workerIndex)
+	log.Printf("Download worker #%d finished", workerIndex)
 	downloadWG.Done()
 }
 
