@@ -514,6 +514,7 @@ func getAccountBalance(am *accountManager, id modules.AccountID) types.Currency 
 
 	acc, exists := am.accounts[id]
 	if !exists {
+		build.Critical("Could not find account")
 		return types.ZeroCurrency
 	}
 
