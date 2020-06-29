@@ -402,7 +402,7 @@ func checkPDBRGouging(pt modules.RPCPriceTable, allowance modules.Allowance) err
 	// intends to download does not exceed its allowance.
 
 	// Calculate the cost of a has sector job
-	pb := modules.NewProgramBuilder(&pt)
+	pb := modules.NewProgramBuilder(&pt, 0)
 	pb.AddHasSectorInstruction(crypto.Hash{})
 	programCost, _, _ := pb.Cost(true)
 
@@ -412,7 +412,7 @@ func checkPDBRGouging(pt modules.RPCPriceTable, allowance modules.Allowance) err
 
 	// Calculate the cost of a read sector job, we use StreamDownloadSize as an
 	// average download size here which is 64 KiB.
-	pb = modules.NewProgramBuilder(&pt)
+	pb = modules.NewProgramBuilder(&pt, 0)
 	pb.AddReadSectorInstruction(modules.StreamDownloadSize, 0, crypto.Hash{}, true)
 	programCost, _, _ = pb.Cost(true)
 

@@ -160,11 +160,10 @@ func RPCIReadSector(rootOff, offsetOff, lengthOff uint64, merkleProof bool) Inst
 
 // MDMAppendCost is the cost of executing an 'Append' instruction.
 func MDMAppendCost(pt *RPCPriceTable, duration types.BlockHeight) (types.Currency, types.Currency) {
+	// Cost for writing the Data.
+	writeCost := MDMWriteCost(pt, SectorSize)
 	// Cost of storing for the duration.
-	storeLengthCost := pt.StoreLengthCost.Mul64(SectorSize).Mul64(uint64(duration))
-	writeCost := pt.WriteLengthCost.Mul64(SectorSize).Add(pt.WriteBaseCost)
-	// Potential refund.
-	storeCost := pt.WriteStoreCost.Mul64(SectorSize).Add(storeLengthCost)
+	storeCost := pt.WriteStoreCost.Mul64(SectorSize).Mul64(uint64(duration))
 	return writeCost.Add(storeCost), storeCost
 }
 
@@ -175,10 +174,9 @@ func MDMCopyCost(pt RPCPriceTable, contractSize uint64) types.Currency {
 
 // MDMDropSectorsCost is the cost of executing a 'DropSectors' instruction for a
 // certain number of dropped sectors.
-func MDMDropSectorsCost(pt *RPCPriceTable, numSectorsDropped uint64) (types.Currency, types.Currency) {
+func MDMDropSectorsCost(pt *RPCPriceTable, numSectorsDropped uint64) types.Currency {
 	cost := pt.DropSectorsUnitCost.Mul64(numSectorsDropped).Add(pt.DropSectorsBaseCost)
-	refund := types.ZeroCurrency
-	return cost, refund
+	return cost
 }
 
 // MDMInitCost is the cost of instantiating the MDM.
@@ -188,25 +186,22 @@ func MDMInitCost(pt *RPCPriceTable, programLen, numInstructions uint64) types.Cu
 }
 
 // MDMHasSectorCost is the cost of executing a 'HasSector' instruction.
-func MDMHasSectorCost(pt *RPCPriceTable) (types.Currency, types.Currency) {
+func MDMHasSectorCost(pt *RPCPriceTable) types.Currency {
 	cost := pt.HasSectorBaseCost
-	refund := types.ZeroCurrency // no refund
-	return cost, refund
+	return cost
 }
 
 // MDMReadCost is the cost of executing a 'Read' instruction. It is defined as:
 // 'readBaseCost' + 'readLengthCost' * `readLength`
-func MDMReadCost(pt *RPCPriceTable, readLength uint64) (types.Currency, types.Currency) {
+func MDMReadCost(pt *RPCPriceTable, readLength uint64) types.Currency {
 	cost := pt.ReadLengthCost.Mul64(readLength).Add(pt.ReadBaseCost)
-	refund := types.ZeroCurrency // no refund
-	return cost, refund
+	return cost
 }
 
 // MDMWriteCost is the cost of executing a 'Write' instruction of a certain length.
-func MDMWriteCost(pt *RPCPriceTable, writeLength uint64) (types.Currency, types.Currency) {
+func MDMWriteCost(pt *RPCPriceTable, writeLength uint64) types.Currency {
 	writeCost := pt.WriteLengthCost.Mul64(writeLength).Add(pt.WriteBaseCost)
-	storeCost := types.ZeroCurrency // no refund since we overwrite existing storage
-	return writeCost, storeCost
+	return writeCost
 }
 
 // MDMSwapCost is the cost of executing a 'Swap' instruction.
