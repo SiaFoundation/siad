@@ -25,12 +25,13 @@ type (
 	// must be static because this object is saved and loaded using
 	// atomic.Pointer.
 	workerCache struct {
-		staticBlockHeight     types.BlockHeight
-		staticContractID      types.FileContractID
-		staticContractUtility modules.ContractUtility
-		staticHostVersion     string
-		staticRenterAllowance modules.Allowance
-		staticSynced          bool
+		staticBlockHeight      types.BlockHeight
+		staticContractID       types.FileContractID
+		staticContractUtility  modules.ContractUtility
+		staticHostHeightUsable bool
+		staticHostVersion      string
+		staticRenterAllowance  modules.Allowance
+		staticSynced           bool
 
 		staticLastUpdate time.Time
 	}
@@ -73,31 +74,32 @@ func (w *worker) managedUpdateCache() {
 
 	// Create the cache object.
 	newCache := &workerCache{
-		staticBlockHeight:     w.renter.cs.Height(),
-		staticContractID:      renterContract.ID,
-		staticContractUtility: renterContract.Utility,
-		staticHostVersion:     host.Version,
-		staticRenterAllowance: w.renter.hostContractor.Allowance(),
-		staticSynced:          w.renter.cs.Synced(),
+		staticBlockHeight:      w.renter.cs.Height(),
+		staticContractID:       renterContract.ID,
+		staticContractUtility:  renterContract.Utility,
+		staticHostHeightUsable: true,
+		staticHostVersion:      host.Version,
+		staticRenterAllowance:  w.renter.hostContractor.Allowance(),
+		staticSynced:           w.renter.cs.Synced(),
 
 		staticLastUpdate: time.Now(),
+	}
+
+	// If the renter goes from being unsynced to being synced, and we find the
+	// host to be unsynced (according to our standards), we mark it unusable on
+	// the worker cache object. Mechanisms that rely on the host height can then
+	// consult the cache object before using it.
+	if current != nil && !current.staticSynced && newCache.staticSynced {
+		rbh := newCache.staticBlockHeight
+		hbh := w.staticPriceTable().staticPriceTable.HostBlockHeight
+		if !hostBlockHeightWithinTolerance(newCache.staticSynced, rbh, hbh) {
+			newCache.staticHostHeightUsable = false
+		}
 	}
 
 	// Atomically store the cache object in the worker.
 	ptr := unsafe.Pointer(newCache)
 	atomic.StorePointer(&w.atomicCache, ptr)
-
-	// If the renter goes from being unsynced to being synced, we want to
-	// validate the host blockheight on the price table object and take
-	// appropriate actions when we find the host is unsynced.
-	if current != nil && !current.staticSynced && newCache.staticSynced {
-		rbh := newCache.staticBlockHeight
-		hbh := w.staticPriceTable().staticPriceTable.HostBlockHeight
-		if !hostBlockHeightWithinTolerance(newCache.staticSynced, rbh, hbh) {
-			// TODO add `hostHeightUsable` to the worker cache object so the
-			// various cool down mechanism can use it in their cool downs
-		}
-	}
 
 	// Wake the worker when the cache needs to be updated again. Note that we
 	// need to signal the cache update is complete before waking the worker,
