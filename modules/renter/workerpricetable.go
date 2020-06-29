@@ -2,14 +2,28 @@ package renter
 
 import (
 	"encoding/json"
+	"fmt"
 	"sync/atomic"
 	"time"
 	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-
 	"gitlab.com/NebulousLabs/errors"
+)
+
+const (
+	// updatePriceTableGougingPercentageThreshold is the percentage threshold,
+	// in relation to the allowance, at which we consider the cost of updating
+	// the price table to be too expensive. E.g. the cost of updating the price
+	// table over the total allowance period should never exceed 1% of the total
+	// allowance.
+	updatePriceTableGougingPercentageThreshold = .01
+)
+
+var (
+	// errPriceTableGouging is returned when price gouging is detected
+	errPriceTableGouging = errors.New("price table rejected due to price gouging")
 )
 
 type (
@@ -34,6 +48,10 @@ type (
 		// staticRecentErr specifies the most recent error that the worker's
 		// price table update has failed with.
 		staticRecentErr error
+
+		// staticRecentErrTime specifies the time at which the most recent
+		// occurred
+		staticRecentErrTime time.Time
 	}
 )
 
@@ -124,8 +142,16 @@ func (w *worker) staticUpdatePriceTable() {
 				staticUpdateTime:          cooldownUntil(currentPT.staticConsecutiveFailures),
 				staticConsecutiveFailures: currentPT.staticConsecutiveFailures + 1,
 				staticRecentErr:           err,
+				staticRecentErrTime:       time.Now(),
 			}
 			w.staticSetPriceTable(pt)
+
+			// If the error could be caused by a revision number mismatch,
+			// signal it by setting the flag.
+			if errCausedByRevisionMismatch(err) {
+				w.staticSetSuspectRevisionMismatch()
+				w.staticWake()
+			}
 		}
 	}()
 
@@ -168,12 +194,13 @@ func (w *worker) staticUpdatePriceTable() {
 		return
 	}
 
-	// TODO: Check for gouging before paying. The cost of the price table RPC
-	// should be very little more (less than 2x) than the cost of the bandwidth.
-	//
-	// Also check that the host didn't suddenly bump some other price to
-	// unreasonable levels. If the host did, the renter will reject the price
-	// table and effectively disable the worker.
+	// check for gouging before paying
+	err = checkUpdatePriceTableGouging(pt, w.staticCache().staticRenterAllowance)
+	if err != nil {
+		err = errors.Compose(err, errors.AddContext(errPriceTableGouging, fmt.Sprintf("host %v", w.staticHostPubKeyStr)))
+		w.renter.log.Println("ERROR: ", err)
+		return
+	}
 
 	// provide payment
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
@@ -209,6 +236,35 @@ func (w *worker) staticUpdatePriceTable() {
 		staticUpdateTime:          newUpdateTime,
 		staticConsecutiveFailures: 0,
 		staticRecentErr:           currentPT.staticRecentErr,
+		staticRecentErrTime:       currentPT.staticRecentErrTime,
 	}
 	w.staticSetPriceTable(wpt)
+}
+
+// checkUpdatePriceTableGouging verifies the cost of updating the price table is
+// reasonable, if deemed unreasonable we will reject it and this worker will be
+// put into cooldown.
+func checkUpdatePriceTableGouging(pt modules.RPCPriceTable, allowance modules.Allowance) error {
+	// If there is no allowance, price gouging checks have to be disabled,
+	// because there is no baseline for understanding what might count as price
+	// gouging.
+	if allowance.Funds.IsZero() {
+		return nil
+	}
+
+	// In order to decide whether or not the update price table cost is too
+	// expensive, we first have to calculate how many times we'll need to update
+	// the price table over the entire allowance period
+	durationInS := int64(pt.Validity.Seconds())
+	periodInS := int64(allowance.Period) * 10 * 60 // period times 10m blocks
+	numUpdates := periodInS / durationInS
+
+	// The cost of updating is considered too expensive if the total cost is
+	// above a certain % of the allowance.
+	totalUpdateCost := pt.UpdatePriceTableCost.Mul64(uint64(numUpdates))
+	if totalUpdateCost.Cmp(allowance.Funds.MulFloat(updatePriceTableGougingPercentageThreshold)) > 0 {
+		return fmt.Errorf("update price table cost %v is considered too high, the total cost over the entire duration of the allowance periods exceeds %v%% of the allowance - price gouging protection enabled", pt.UpdatePriceTableCost, updatePriceTableGougingPercentageThreshold)
+	}
+
+	return nil
 }

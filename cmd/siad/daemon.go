@@ -240,6 +240,9 @@ func startDaemon(config Config) (err error) {
 		build.Critical(err)
 	}
 
+	// Wait for server to complete shutdown.
+	srv.WaitClose()
+
 	return nil
 }
 

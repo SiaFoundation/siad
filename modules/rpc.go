@@ -73,6 +73,10 @@ type RPCPriceTable struct {
 	WriteBaseCost   types.Currency `json:"writebasecost"`   // per write
 	WriteLengthCost types.Currency `json:"writelengthcost"` // per byte written
 	WriteStoreCost  types.Currency `json:"writestorecost"`  // per byte / block of additional storage
+
+	// TxnFee estimations.
+	TxnFeeMinRecommended types.Currency `json:"txnfeeminrecommended"`
+	TxnFeeMaxRecommended types.Currency `json:"txnfeemaxrecommended"`
 }
 
 var (

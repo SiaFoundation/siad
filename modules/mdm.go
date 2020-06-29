@@ -295,8 +295,8 @@ func (p Program) ReadOnly() bool {
 		case SpecifierDropSectors:
 			return false
 		case SpecifierHasSector:
-		case SpecifierReadSector:
 		case SpecifierReadOffset:
+		case SpecifierReadSector:
 		default:
 			build.Critical("ReadOnly: unknown instruction")
 		}
@@ -316,9 +316,9 @@ func (p Program) RequiresSnapshot() bool {
 		case SpecifierDropSectors:
 			return true
 		case SpecifierHasSector:
-		case SpecifierReadSector:
 		case SpecifierReadOffset:
 			return true
+		case SpecifierReadSector:
 		default:
 			build.Critical("RequiresSnapshot: unknown instruction")
 		}
