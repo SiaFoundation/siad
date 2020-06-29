@@ -917,11 +917,17 @@ func (am *accountManager) staticWaitForDepositResult(pr *persistResult) error {
 // staticWaitForWithdrawalResult will block until it receives a message on the
 // given result channel, or until it either times out or receives a stop signal.
 func (am *accountManager) staticWaitForWithdrawalResult(commitResultChan chan error) error {
+	now := time.Now()
 	select {
 	case err := <-commitResultChan:
 		return err
 	case <-time.After(blockedWithdrawalTimeout):
-		build.Critical("timed out")
+		select {
+		case <-commitResultChan:
+			build.Critical("timed out, commit result closed", time.Since(now))
+		case <-time.After(10 * time.Second):
+			build.Critical("timed out, for real!", time.Since(now))
+		}
 		return ErrBalanceInsufficient
 	case <-am.h.tg.StopChan():
 		return ErrWithdrawalCancelled
