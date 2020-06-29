@@ -1,6 +1,7 @@
 package benchmark
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -31,23 +32,16 @@ const (
 	siaDir           = "upload-download-benchmark"     // Sia directory to upload files to
 
 	// Uploads and downloads
-	nFiles              = 50  // Number of files to upload
-	fileSize            = 0   // File size of a file to be uploaded in bytes, use 0 to use default testing sector size
-	maxConcurrUploads   = 10  // Max number of files to be concurrently uploaded
-	maxConcurrDownloads = 10  // Max number of files to be concurrently downloaded
-	nTotalDownloads     = 500 // Total number of file downloads. There will be nFiles, a single file can be downloaded x-times
+	nFiles              = 50                // Number of files to upload
+	fileSize            = 0                 // File size of a file to be uploaded in bytes, use 0 to use default testing sector size
+	maxConcurrUploads   = 10                // Max number of files to be concurrently uploaded
+	maxConcurrDownloads = 10                // Max number of files to be concurrently downloaded
+	nTotalDownloads     = 500               // Total number of file downloads. There will be nFiles, a single file can be downloaded x-times
+	uploadTimeout       = 120 * time.Second // Timeout in seconds to upload file
 
 	// siad
 	siadPort     = "9980" // Port of siad node (if not using a test group)
 	useTestGroup = true   // Whether to use a test group (true) or Sia network (false)
-)
-
-// file status enum
-const (
-	initialized fileStatus = iota
-	uploading
-	uploaded
-	downloading
 )
 
 var (
@@ -65,20 +59,26 @@ var (
 	uploadWG   sync.WaitGroup // Wait group to wait for all upload goroutines to finish
 	downloadWG sync.WaitGroup // Wait group to wait for all download goroutines to finish
 
+	// List of files that were uploaded, but not yet downloaded, a file started
+	// to be downloaded is removed from the list, count represents total
+	// number of files uploaded
+	createdNotDownloadedFiles files
+
+	// List of files that were started to be downloaded, count represents total
+	// number of downloads, a file can be downloaded multiple times
+	downloadingFiles files
+
 	uploadTimes   []time.Duration // Slice of file upload durations
 	downloadTimes []time.Duration // Slice of file download durations
 
 	uploadTimesMu   sync.Mutex // Upload durations mutex
 	downloadTimesMu sync.Mutex // Download durations mutex
-
-	filesMap *files = nil
 )
 
-// files is a map of files with its data
 type files struct {
-	m              map[string]fileStatus
-	downloadsCount int
-	mu             sync.Mutex
+	s     []string
+	count int
+	mu    sync.Mutex
 }
 
 // fileStatus is a type to represent a current status of a file
@@ -123,6 +123,9 @@ func TestSiaUploadsDownloads(t *testing.T) {
 		log.Println("=== Init test group")
 		tg = initTestGroup()
 		defer func() {
+			if tg == nil {
+				return
+			}
 			if err := tg.Close(); err != nil {
 				check(err)
 			}
@@ -141,19 +144,19 @@ func TestSiaUploadsDownloads(t *testing.T) {
 	log.Println("=== Wait for renter to be ready to upload")
 	waitForRenterIsUploadReady()
 
-	// Init files map with files to be uploaded
-	log.Println("=== Init files map")
-	initFilesMap()
-
 	// Upload files
 	log.Println("=== Upload files concurrently")
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 	for i := 0; i < maxConcurrUploads; i++ {
 		uploadWG.Add(1)
-		go threadedCreateAndUploadFiles(i)
+		go threadedCreateAndUploadFiles(timestamp, i)
 	}
 
 	// Wait for uploads to finish. When we start massively downloading while
 	// uploads are in progress, uploads halt, because they have lower priority
+	// TODO: https://gitlab.com/NebulousLabs/Sia/-/issues/4242
+	// Once RHP is fully functioning, do not wait for all uploads finished,
+	// download concurrently with uploads
 	uploadWG.Wait()
 
 	// Download files with
@@ -165,6 +168,15 @@ func TestSiaUploadsDownloads(t *testing.T) {
 
 	// Wait for all downloads finish
 	downloadWG.Wait()
+
+	// Stop test group
+	if useTestGroup {
+		log.Println("=== Stop test group")
+		if err := tg.Close(); err != nil {
+			check(err)
+		}
+		tg = nil
+	}
 
 	// Delete upload, download (and test group) directories
 	log.Println("=== Delete upload, download (and test group) directories")
@@ -217,6 +229,21 @@ func check(e error) {
 	log.Fatalln(e)
 }
 
+// checkMaxHealthReached checks sia file health and returns nil when 100%
+// health is reached
+func checkMaxHealthReached(c *client.Client, siaPath modules.SiaPath) error {
+	f, err := c.RenterFileGet(siaPath)
+	if err != nil {
+		return err
+	}
+
+	if f.File.MaxHealthPercent != 100 {
+		return errors.New("sia file max health did not not reach 100%")
+	}
+
+	return nil
+}
+
 // cleanUpDirs deletes upload and download directories
 func cleanUpDirs() {
 	// Delete dirs
@@ -246,7 +273,7 @@ func createFile(filename string) {
 	check(err)
 
 	// Log duration
-	elapsed := time.Now().Sub(start)
+	elapsed := time.Since(start)
 	log.Printf("Created file: %s in: %s\n", filename, elapsed)
 }
 
@@ -256,53 +283,6 @@ func deleteLocalFile(filepath string) {
 	log.Println("Deleting a local file:", filepath)
 	err := os.Remove(filepath)
 	check(err)
-}
-
-// getFileCountByStatus returns count of files with given status
-func getFileCountByStatus(fs fileStatus) int {
-	n := 0
-	for _, status := range filesMap.m {
-		if status == fs {
-			n++
-		}
-	}
-	return n
-}
-
-// getFirstFileByStatus returns the first file with the given status and ok
-// flag if found or not
-func getFirstFileByStatus(fs fileStatus) (string, bool) {
-	for filename, status := range filesMap.m {
-		if status == fs {
-			return filename, true
-		}
-	}
-
-	return "", false
-}
-
-// getRandomFileByStatus returns random file with the given status and ok flag
-// if found or not
-func getRandomFileByStatus(fs fileStatus) (string, bool) {
-	n := getFileCountByStatus(fs)
-	if n == 0 {
-		// No file found
-		return "", false
-	}
-
-	randomIndex := fastrand.Intn(n)
-
-	i := 0
-	for filename, status := range filesMap.m {
-		if status != fs {
-			continue
-		}
-		if i == randomIndex {
-			return filename, true
-		}
-		i++
-	}
-	return "", false
 }
 
 // initClient initializes a Sia http client
@@ -344,27 +324,6 @@ func initDirs() {
 	if useTestGroup {
 		err = os.MkdirAll(testGroupDir, modules.DefaultDirPerm)
 		check(err)
-	}
-}
-
-// initFilesMap initializes a map of files to be created, uploaded and
-// downloaded
-func initFilesMap() {
-	// Init map
-	filesMap = &files{}
-	filesMap.m = make(map[string]fileStatus)
-
-	// Prepare file name parts
-	sizeStr := modules.FilesizeUnits(uint64(actualFileSize))
-	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
-
-	for i := 0; i < nFiles; i++ {
-		fileIndex := fmt.Sprintf("%03d", i)
-
-		// Create filename and full path
-		filename := "Randfile" + fileIndex + "_" + sizeStr + "_" + timestamp
-		filename = strings.ReplaceAll(filename, " ", "")
-		filesMap.m[filename] = initialized
 	}
 }
 
@@ -418,18 +377,18 @@ func setAllowance() {
 }
 
 // threadedCreateAndUploadFiles is a worker that creates and uploads files
-func threadedCreateAndUploadFiles(workerIndex int) {
+func threadedCreateAndUploadFiles(timestamp string, workerIndex int) {
 	for {
-		// Check if there are some files to be uploaded
-		filesMap.mu.Lock()
-		filename, ok := getFirstFileByStatus(initialized)
+		// Create filename
+		fileIndex, ok := createdNotDownloadedFiles.managedIncCountLimit(nFiles)
 		if !ok {
-			// No more files, finish
-			filesMap.mu.Unlock()
+			// No more files to create and upload, finish
 			break
 		}
-		filesMap.m[filename] = uploading
-		filesMap.mu.Unlock()
+		fileIndexStr := fmt.Sprintf("%03d", fileIndex)
+		sizeStr := modules.FilesizeUnits(uint64(actualFileSize))
+		filename := "Randfile" + fileIndexStr + "_" + sizeStr + "_" + timestamp
+		filename = strings.ReplaceAll(filename, " ", "")
 
 		// Create a local file
 		createFile(filename)
@@ -437,14 +396,13 @@ func threadedCreateAndUploadFiles(workerIndex int) {
 		// Upload the file file to Sia
 		uploadFile(filename)
 
-		// Delete uploaded file
+		// Delete the uploaded file
 		path := filepath.Join(upDir, filename)
 		deleteLocalFile(path)
 
-		// Update file status
-		filesMap.mu.Lock()
-		filesMap.m[filename] = uploaded
-		filesMap.mu.Unlock()
+		// Update files to be downloaded
+		createdNotDownloadedFiles.managedAddFile(filename)
+
 	}
 	log.Printf("Upload worker #%d finished", workerIndex)
 	uploadWG.Done()
@@ -455,37 +413,31 @@ func threadedDownloadFiles(workerIndex int) {
 	for {
 		// Check if there are files to be downloaded
 		// Each file should be downloaded at least once
-		filesMap.mu.Lock()
-		if getFileCountByStatus(downloading) == nFiles && filesMap.downloadsCount >= nTotalDownloads {
+		count, length := createdNotDownloadedFiles.managedCountLen()
+		allFilesDownloading := count == nFiles && length == 0
+		downloadCountReached := downloadingFiles.managedCount() >= nTotalDownloads
+		if allFilesDownloading && downloadCountReached {
 			// All files are downloaded or being downloaded and we have reached
-			// target download count,finish
-			filesMap.mu.Unlock()
+			// target download count, finish
 			break
 		}
 
 		// Select a file to download
 		// Download a file, that has not yet been downloaded
-		filename, ok := getFirstFileByStatus(uploaded)
-		if ok {
-			// We have file not yet downloaded to be downloaded, update status
-			filesMap.m[filename] = downloading
-		} else {
-			// There is no file, that is uploaded and has not been downloaded yet
-			// Download a random file that is already downloaded or is being
-			// downloaded
-			filename, ok = getRandomFileByStatus(downloading)
+		filename, ok := createdNotDownloadedFiles.managedRemoveFirstFile()
+		if !ok {
+			// Fallback to using a file that's already downloading
+			filename, ok = downloadingFiles.managedRandomFile()
 		}
 		if !ok {
 			// There is no uploaded file yet, has to wait
-			filesMap.mu.Unlock()
-			time.Sleep(1 * time.Second)
+			time.Sleep(time.Second)
 			continue
 		}
-		filesMap.downloadsCount++
-		downloadIndex := filesMap.downloadsCount
-		filesMap.mu.Unlock()
 
-		// Download file
+		// Dowload file
+		downloadIndex := downloadingFiles.managedIncCount()
+		downloadingFiles.managedAddFile(filename)
 		log.Printf("Download #%03d, downloading file: %s\n", downloadIndex, filename)
 
 		// Use unique local filename because one file can be downloaded concurrently multiple times
@@ -500,7 +452,7 @@ func threadedDownloadFiles(workerIndex int) {
 		check(err)
 
 		// Log duration
-		elapsed := time.Now().Sub(start)
+		elapsed := time.Since(start)
 		log.Printf("Download #%02d, downloaded file %s in %s", downloadIndex, filename, elapsed)
 		downloadTimesMu.Lock()
 		downloadTimes = append(downloadTimes, elapsed)
@@ -527,19 +479,15 @@ func uploadFile(filename string) {
 	check(err)
 
 	// Wait for file upload finished
-	for {
-		f, err := c.RenterFileGet(siaPath)
-		check(err)
-
-		if f.File.MaxHealthPercent == 100 {
-			break
-		}
-
-		time.Sleep(500 * time.Millisecond)
-	}
+	waitTimeMilis := 500 * time.Millisecond
+	tries := int(uploadTimeout * 1000 / waitTimeMilis)
+	err = build.Retry(tries, waitTimeMilis, func() error {
+		return checkMaxHealthReached(c, siaPath)
+	})
+	check(err)
 
 	// Log duration
-	elapsed := time.Now().Sub(start)
+	elapsed := time.Since(start)
 	log.Printf("Uploaded file: %s in: %s\n", filename, elapsed)
 	uploadTimesMu.Lock()
 	uploadTimes = append(uploadTimes, elapsed)
@@ -557,6 +505,78 @@ func waitForRenterIsUploadReady() {
 		}
 		time.Sleep(1 * time.Second)
 	}
-	elapsed := time.Now().Sub(start)
+	elapsed := time.Since(start)
 	log.Printf("It took %s for renter to be ready to upload.\n", elapsed)
+}
+
+// managedAddFile adds filename to the slice of files
+func (f *files) managedAddFile(filename string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, file := range f.s {
+		if file == filename {
+			// File with this name already exists
+			return
+		}
+	}
+	f.s = append(f.s, filename)
+}
+
+// managedCount gets count
+func (f *files) managedCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.count
+}
+
+// managedIncCount increases count and return new already increased count
+func (f *files) managedIncCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.count++
+	return f.count
+}
+
+// managedIncCountLimit increases count upto a given limit, return new already
+// increased count and ok = true if limit count has not yet been reached,
+// returns existing count and ok = false if the count has already been reached
+func (f *files) managedIncCountLimit(limit int) (count int, ok bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.count >= limit {
+		return f.count, false
+	}
+	f.count++
+	return f.count, true
+}
+
+// managedCountLen returns count and length of files slice
+func (f *files) managedCountLen() (count, length int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.count, len(f.s)
+}
+
+// managedRandomFile gets a random filename from the files slice
+func (f *files) managedRandomFile() (filename string, ok bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.s) == 0 {
+		return "", false
+	}
+	n := len(f.s)
+	return f.s[fastrand.Intn(n)], true
+}
+
+// managedRemoveFirstFile returns and removes first filename from the files
+// slice, if files slice is empty, returns empty string and ok = false
+func (f *files) managedRemoveFirstFile() (filename string, ok bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.s) == 0 {
+		return "", false
+	}
+	filename = f.s[0]
+	f.s = f.s[1:]
+	return filename, true
 }
