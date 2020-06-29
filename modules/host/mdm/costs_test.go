@@ -16,7 +16,6 @@ func newTestWriteStorePriceTable() *modules.RPCPriceTable {
 	pt.WriteBaseCost = types.ZeroCurrency
 	pt.WriteLengthCost = types.ZeroCurrency
 	pt.WriteStoreCost = modules.DefaultStoragePrice
-	pt.StoreLengthCost = types.ZeroCurrency
 	pt.DownloadBandwidthCost = types.ZeroCurrency
 	pt.UploadBandwidthCost = types.ZeroCurrency
 	return pt

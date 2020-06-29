@@ -35,7 +35,7 @@ func (j *jobReadSector) managedReadSector() ([]byte, error) {
 	// create the program
 	w := j.staticQueue.staticWorker()
 	pt := w.staticPriceTable().staticPriceTable
-	pb := modules.NewProgramBuilder(&pt)
+	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since ReadSector doesn't depend on it.
 	pb.AddReadSectorInstruction(j.staticLength, j.staticOffset, j.staticSector, true)
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
