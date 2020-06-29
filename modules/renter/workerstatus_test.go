@@ -24,7 +24,7 @@ func TestWorkerAccountStatus(t *testing.T) {
 	}
 	t.Parallel()
 
-	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableCriticalOnMaxBalance{})
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableCriticalOnMaxBalance{}, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
