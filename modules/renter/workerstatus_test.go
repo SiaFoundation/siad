@@ -10,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -23,7 +24,7 @@ func TestWorkerAccountStatus(t *testing.T) {
 	}
 	t.Parallel()
 
-	wt, err := newWorkerTester(t.Name())
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableCriticalOnMaxBalance{})
 	if err != nil {
 		t.Fatal(err)
 	}
