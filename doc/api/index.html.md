@@ -5140,6 +5140,31 @@ skyfiles are encrypted with the same skykey.
 base-64 encoded skykey
 
 
+## /skynet/deleteskykey [POST]
+> curl example
+
+```go
+curl -A "Sia-Agent"  -u "":<apipassword> --data "name=key_to_the_castle" "localhost:9980/skynet/deleteskykey"
+```
+
+Deletes the skykey with that name or ID.
+
+### Path Parameters
+### REQUIRED
+**name** | string  
+name of the skykey being queried
+
+or
+
+**id** | string  
+base-64 encoded ID of the skykey being queried
+
+
+### Response
+standard success or error response, a successful response means a valid siapath.
+See [standard responses](#standard-responses).
+
+
 ## /skynet/skykey [GET]
 > curl example
 
