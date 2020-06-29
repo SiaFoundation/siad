@@ -1,7 +1,6 @@
 package host
 
 import (
-	"fmt"
 	"math"
 	"math/bits"
 	"sync"
@@ -65,7 +64,7 @@ var (
 	blockedWithdrawalTimeout = build.Select(build.Var{
 		Standard: 15 * time.Minute,
 		Dev:      5 * time.Minute,
-		Testing:  1 * time.Second,
+		Testing:  15 * time.Second,
 	}).(time.Duration)
 )
 
@@ -506,7 +505,6 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 	// Check if withdrawals are inactive. This will be the case when the host is
 	// not synced yet. Until that is not the case, we do not allow trading.
 	if am.withdrawalsInactive {
-		build.Critical("WITHDRAWAL INACTIVE")
 		return modules.ErrWithdrawalsInactive
 	}
 
@@ -515,7 +513,6 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 	// fingerprint on disk.
 	exists := am.fingerprints.has(fp)
 	if exists {
-		build.Critical("WITHDRAWAL SPENT")
 		return ErrWithdrawalSpent
 	}
 	am.fingerprints.add(fp, expiry, blockHeight)
@@ -523,12 +520,10 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 	// Open the account, create if it does not exist yet
 	acc, err := am.openAccount(id)
 	if err != nil {
-		build.Critical("FAILED TO OPEN ACCOUNT")
 		return errors.AddContext(err, "failed to open account for withdrawal")
 	}
 	// If the account balance is insufficient, block the withdrawal.
 	if acc.withdrawalExceedsBalance(amount) {
-		build.Critical("EXCEEDING BALANCE")
 		acc.blockedWithdrawals.Push(blockedWithdrawal{
 			withdrawal:   msg,
 			priority:     priority,
@@ -539,7 +534,6 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 
 	// Block this withdrawal if maxRisk is exceeded
 	if am.currentRisk.Cmp(maxRisk) > 0 || len(am.blockedWithdrawals) > 0 {
-		build.Critical("EXCEEDING RISK")
 		if am.h.dependencies.Disrupt("errMaxRiskReached") {
 			return errMaxRiskReached // only for testing purposes
 		}
@@ -552,11 +546,6 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 	}
 
 	am.commitWithdrawal(acc, amount, blockHeight, commitResultChan)
-
-	if am.currentRisk.Cmp(maxRisk) > 0 {
-		fmt.Println("current risk will exceeds max risk", am.currentRisk.HumanString(), maxRisk.HumanString())
-	}
-
 	return nil
 }
 
@@ -917,19 +906,19 @@ func (am *accountManager) staticWaitForDepositResult(pr *persistResult) error {
 // staticWaitForWithdrawalResult will block until it receives a message on the
 // given result channel, or until it either times out or receives a stop signal.
 func (am *accountManager) staticWaitForWithdrawalResult(commitResultChan chan error) error {
-	now := time.Now()
+	t := time.NewTimer(blockedWithdrawalTimeout)
 	select {
 	case err := <-commitResultChan:
-		return err
-	case <-time.After(blockedWithdrawalTimeout):
-		select {
-		case <-commitResultChan:
-			build.Critical("timed out, commit result closed", time.Since(now))
-		case <-time.After(10 * time.Second):
-			build.Critical("timed out, for real!", time.Since(now))
+		if !t.Stop() {
+			<-t.C
 		}
+		return err
+	case <-t.C:
 		return ErrBalanceInsufficient
 	case <-am.h.tg.StopChan():
+		if !t.Stop() {
+			<-t.C
+		}
 		return ErrWithdrawalCancelled
 	}
 }

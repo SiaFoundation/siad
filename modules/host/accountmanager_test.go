@@ -768,11 +768,11 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 	// Grab some settings
 	his := ht.host.InternalSettings()
 	maxBalance := his.MaxEphemeralAccountBalance
+	withdrawalSize := maxBalance.Div64(10000)
 
 	// Note: withdrawals needs to be a multiple of threads for this test to pass
-	withdrawals := uint64(10000)
-	withdrawalSize := maxBalance.Div64(withdrawals)
-	threads := uint64(100)
+	withdrawals := 10000
+	threads := 100
 
 	// Prepare an account and fund it
 	sk, accountID := prepareAccount()
@@ -788,22 +788,18 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 		msgs[w], sigs[w] = prepareWithdrawal(accountID, withdrawalSize, am.h.blockHeight, sk)
 	}
 
-	var atomicFailedAtIndex uint64
-
 	// Run the withdrawals in separate threads (ensure that withdrawals do not
 	// exceed numDeposits * depositAmount)
 	var wg sync.WaitGroup
 	var atomicWithdrawalErrs uint64
-	for th := uint64(0); th < threads; th++ {
+	for th := 0; th < threads; th++ {
 		wg.Add(1)
-		go func(thread uint64) {
+		go func(thread int) {
 			defer wg.Done()
 			for i := thread * (withdrawals / threads); i < (thread+1)*(withdrawals/threads); i++ {
 				if wErr := callWithdraw(am, msgs[i], sigs[i]); wErr != nil {
 					atomic.AddUint64(&atomicWithdrawalErrs, 1)
 					t.Log(wErr)
-					t.Log("acc balance failed at index", i, getAccountBalance(am, accountID).HumanString())
-					atomic.StoreUint64(&atomicFailedAtIndex, uint64(i))
 				}
 			}
 		}(th)
@@ -813,8 +809,7 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 	// Verify all withdrawals were successful
 	withdrawalErrors := atomic.LoadUint64(&atomicWithdrawalErrs)
 	if withdrawalErrors != 0 {
-		failedAt := atomic.LoadUint64(&atomicFailedAtIndex)
-		t.Fatalf("Unexpected error during withdrawals at index %v, balance %v", failedAt, getAccountBalance(am, accountID).HumanString())
+		t.Fatal("Unexpected error during withdrawals")
 	}
 
 	// Verify we've drained the account completely
