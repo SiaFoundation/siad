@@ -1036,6 +1036,43 @@ func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, _ htt
 	})
 }
 
+// skykeyDeleteHandlerGET handles the API call to delete a Skykey using its name
+// or ID.
+func (api *API) skykeyDeleteHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse Skykey id and name.
+	name := req.FormValue("name")
+	idString := req.FormValue("id")
+
+	if idString == "" && name == "" {
+		WriteError(w, Error{"you must specify the name or ID of the skykey"}, http.StatusInternalServerError)
+		return
+	}
+	if idString != "" && name != "" {
+		WriteError(w, Error{"you must specify either the name or ID of the skykey, not both"}, http.StatusInternalServerError)
+		return
+	}
+
+	var err error
+	if name != "" {
+		err = api.renter.DeleteSkykeyByName(name)
+	} else if idString != "" {
+		var id skykey.SkykeyID
+		err = id.FromString(idString)
+		if err != nil {
+			WriteError(w, Error{"error unmarshalling skykey ID" + err.Error()}, http.StatusInternalServerError)
+			return
+		}
+		err = api.renter.DeleteSkykeyByID(id)
+	}
+
+	if err != nil {
+		WriteError(w, Error{"failed to delete skykey: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	WriteSuccess(w)
+}
+
 // skykeyCreateKeyHandlerPost handles the API call to create a skykey using the renter's
 // skykey manager.
 func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
