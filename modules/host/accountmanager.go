@@ -529,7 +529,7 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 	}
 	// If the account balance is insufficient, block the withdrawal.
 	if acc.withdrawalExceedsBalance(amount) {
-		panic("EXCEEDING BALANCE")
+		build.Critical("EXCEEDING BALANCE")
 		acc.blockedWithdrawals.Push(blockedWithdrawal{
 			withdrawal:   msg,
 			priority:     priority,
@@ -540,7 +540,7 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 
 	// Block this withdrawal if maxRisk is exceeded
 	if am.currentRisk.Cmp(maxRisk) > 0 || len(am.blockedWithdrawals) > 0 {
-		panic("EXCEEDING RISK")
+		build.Critical("EXCEEDING RISK")
 		if am.h.dependencies.Disrupt("errMaxRiskReached") {
 			return errMaxRiskReached // only for testing purposes
 		}
