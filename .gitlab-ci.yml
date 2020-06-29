@@ -187,7 +187,7 @@ legacy-tests:
     paths:
       - .cache
   script:
-    - make test-long run=. pkgs="$legacy_pkgs"
+    - make test-long run="TestAccountWithdrawalMultiple" pkgs="./modules/host" count=250
 
 package-tests:
   <<: *default_test_params
@@ -196,7 +196,7 @@ package-tests:
     paths:
       - .cache
   script:
-    - make test-long run=. pkgs="$package_pkgs"
+    - make test-long run="TestAccountWithdrawalMultiple" pkgs="./modules/host" count=250
 siatest-tests:
   <<: *default_test_params
   cache:
@@ -204,7 +204,7 @@ siatest-tests:
     paths:
       - .cache
   script:
-    - make test-long run=. pkgs="$siatest_pkgs"
+    - make test-long run="TestAccountWithdrawalMultiple" pkgs="./modules/host" count=250
 
 siatest-renter-tests:
   <<: *default_test_params

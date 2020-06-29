@@ -788,6 +788,9 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 		msgs[w], sigs[w] = prepareWithdrawal(accountID, withdrawalSize, am.h.blockHeight, sk)
 	}
 
+	var mappingMu sync.Mutex
+	mapping := make(map[int]int)
+
 	// Run the withdrawals in separate threads (ensure that withdrawals do not
 	// exceed numDeposits * depositAmount)
 	var wg sync.WaitGroup
@@ -797,6 +800,9 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 		go func(thread int) {
 			defer wg.Done()
 			for i := thread * (withdrawals / threads); i < (thread+1)*(withdrawals/threads); i++ {
+				mappingMu.Lock()
+				mapping[i] = i
+				mappingMu.Unlock()
 				if wErr := callWithdraw(am, msgs[i], sigs[i]); wErr != nil {
 					atomic.AddUint64(&atomicWithdrawalErrs, 1)
 					t.Log(wErr)
@@ -805,6 +811,13 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 		}(th)
 	}
 	wg.Wait()
+
+	for w := 0; w < int(withdrawals); w++ {
+		_, exists := mapping[w]
+		if !exists {
+			t.Fatalf("Withdrawal #%v not executed, num withdrawals executed", len(mapping))
+		}
+	}
 
 	// Verify all withdrawals were successful
 	withdrawalErrors := atomic.LoadUint64(&atomicWithdrawalErrs)
