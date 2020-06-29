@@ -171,3 +171,34 @@ func TestOddDataSize(t *testing.T) {
 		}
 	}
 }
+
+// TestProofSize bruteforces all possible range proofs for 1 sector contracts up
+// to 32 sector contracts and compares the length of those proofs to the
+// expected size returned by ProofSize.
+func TestProofSize(t *testing.T) {
+	// Helper to create n random sector roots.
+	sectorRoots := func(n int) []Hash {
+		roots := make([]Hash, n)
+		for i := range roots {
+			fastrand.Read(roots[i][:])
+		}
+		return roots
+	}
+	// Run the test for contracts of sizes 1 to 32. This covers the relevant
+	// edge cases of 1-leaf tree, 2-leaf tree, odd-leaf tree and even-leaf tree
+	// for multiple tree heights.
+	for numSectors := 1; numSectors <= 32; numSectors++ {
+		sectorRoots := sectorRoots(numSectors)
+
+		// Test every proof range [start, end)
+		for start := 0; start < numSectors; start++ {
+			for end := start + 1; end <= numSectors; end++ {
+				proof := MerkleSectorRangeProof(sectorRoots, start, end)
+				expectedProofSize := ProofSize(numSectors, start, end)
+				if len(proof) != expectedProofSize {
+					t.Fatalf("expected proof size %v but got %v", expectedProofSize, len(proof))
+				}
+			}
+		}
+	}
+}

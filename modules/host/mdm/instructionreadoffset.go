@@ -62,6 +62,7 @@ func (i *instructionReadOffset) Execute(previousOutput output) output {
 		return errOutput(err)
 	}
 	sectorRoot := i.staticState.sectors.merkleRoots[secIdx]
+
 	// Execute it like a ReadSector instruction.
 	output, fullSec := executeReadSector(previousOutput, i.staticState, length, relOffset, sectorRoot, i.staticMerkleProof)
 	if !i.staticMerkleProof || output.Error != nil {

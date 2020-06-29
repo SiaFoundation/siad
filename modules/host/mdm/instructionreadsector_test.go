@@ -20,9 +20,7 @@ func TestInstructionReadSector(t *testing.T) {
 	pt := newTestPriceTable()
 	// Prepare storage obligation.
 	so := host.newTestStorageObligation(true)
-	for i := 0; i < initialContractSectors; i++ {
-		so.AddRandomSector()
-	}
+	so.AddRandomSectors(initialContractSectors)
 	root := so.sectorRoots[0]
 	outputData, err := host.ReadSector(root)
 	if err != nil {

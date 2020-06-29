@@ -96,6 +96,14 @@ func (so *TestStorageObligation) AddRandomSector() {
 	so.sectorRoots = append(so.sectorRoots, root)
 }
 
+// AddRandomSectors adds n random sectors to the obligation and corresponding
+// host.
+func (so *TestStorageObligation) AddRandomSectors(n int) {
+	for i := 0; i < n; i++ {
+		so.AddRandomSector()
+	}
+}
+
 // ContractSize implements the StorageObligation interface.
 func (so *TestStorageObligation) ContractSize() uint64 {
 	return uint64(len(so.sectorRoots)) * modules.SectorSize

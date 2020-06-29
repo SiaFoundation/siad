@@ -21,9 +21,7 @@ func TestInstructionReadOffset(t *testing.T) {
 	duration := types.BlockHeight(fastrand.Uint64n(5))
 	// Prepare storage obligation.
 	so := host.newTestStorageObligation(true)
-	for i := 0; i < 3; i++ {
-		so.AddRandomSector()
-	}
+	so.AddRandomSectors(3)
 	root := so.sectorRoots[1] // middle sector
 	outputData, err := host.ReadSector(root)
 	if err != nil {

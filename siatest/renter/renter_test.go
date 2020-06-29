@@ -4862,9 +4862,9 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	}
 }
 
-// TestReadOffsetOutputCorrupted verifies that the merkle proof check on the
+// TestReadSectorOutputCorrupted verifies that the merkle proof check on the
 // ReadSector MDM instruction works as expected.
-func TestReadOffsetOutputCorrupted(t *testing.T) {
+func TestReadSectorOutputCorrupted(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
