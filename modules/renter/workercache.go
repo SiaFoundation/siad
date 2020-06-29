@@ -94,7 +94,8 @@ func (w *worker) managedUpdateCache() {
 		rbh := newCache.staticBlockHeight
 		hbh := w.staticPriceTable().staticPriceTable.HostBlockHeight
 		if !hostBlockHeightWithinTolerance(newCache.staticSynced, rbh, hbh) {
-			// TODO put the host on cooldown
+			// TODO add `hostHeightUsable` to the worker cache object so the
+			// various cool down mechanism can use it in their cool downs
 		}
 	}
 
