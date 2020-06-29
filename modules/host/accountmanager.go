@@ -65,7 +65,7 @@ var (
 	blockedWithdrawalTimeout = build.Select(build.Var{
 		Standard: 15 * time.Minute,
 		Dev:      5 * time.Minute,
-		Testing:  2 * time.Second,
+		Testing:  1 * time.Second,
 	}).(time.Duration)
 )
 
@@ -405,6 +405,10 @@ func (am *accountManager) callWithdraw(msg *modules.WithdrawalMessage, sig crypt
 		return errors.AddContext(err, "Withdraw failed")
 	}
 
+	if am.currentRisk.Cmp(maxRisk) > 0 {
+		fmt.Println("current risk exceeds max risk", am.currentRisk.HumanString(), maxRisk.HumanString())
+	}
+
 	// Wait for the withdrawal to be committed.
 	return errors.AddContext(am.staticWaitForWithdrawalResult(commitResultChan), "Withdraw failed")
 }
@@ -525,7 +529,7 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 	}
 	// If the account balance is insufficient, block the withdrawal.
 	if acc.withdrawalExceedsBalance(amount) {
-		fmt.Println("EXCEEDING BALANCE")
+		panic("EXCEEDING BALANCE")
 		acc.blockedWithdrawals.Push(blockedWithdrawal{
 			withdrawal:   msg,
 			priority:     priority,
@@ -536,7 +540,7 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 
 	// Block this withdrawal if maxRisk is exceeded
 	if am.currentRisk.Cmp(maxRisk) > 0 || len(am.blockedWithdrawals) > 0 {
-		fmt.Println("EXCEEDING RISK")
+		panic("EXCEEDING RISK")
 		if am.h.dependencies.Disrupt("errMaxRiskReached") {
 			return errMaxRiskReached // only for testing purposes
 		}

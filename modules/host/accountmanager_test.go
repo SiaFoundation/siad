@@ -768,11 +768,11 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 	// Grab some settings
 	his := ht.host.InternalSettings()
 	maxBalance := his.MaxEphemeralAccountBalance
-	withdrawalSize := maxBalance.Div64(1000)
+	withdrawalSize := maxBalance.Div64(10000)
 
 	// Note: withdrawals needs to be a multiple of threads for this test to pass
-	withdrawals := 1000
-	threads := 10
+	withdrawals := 10000
+	threads := 100
 
 	// Prepare an account and fund it
 	sk, accountID := prepareAccount()
