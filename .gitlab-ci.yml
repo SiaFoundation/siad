@@ -215,7 +215,7 @@ siatest-renter-tests:
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-long run=. pkgs="$siatest_renter_pkgs"
+    - make test-long run="TestAccountWithdrawalMultiple" pkgs="./modules/host" count=250
 
 siatest-renter-sub-tests:
   <<: *default_test_params
@@ -226,7 +226,7 @@ siatest-renter-sub-tests:
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-long run=. pkgs="$siatest_renter_sub_pkgs"
+    - make test-long run="TestAccountWithdrawalMultiple" pkgs="./modules/host" count=250
 
 legacy-tests-nightly:
   <<: *default_nightly_params

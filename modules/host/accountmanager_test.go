@@ -768,11 +768,11 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 	// Grab some settings
 	his := ht.host.InternalSettings()
 	maxBalance := his.MaxEphemeralAccountBalance
-	withdrawalSize := maxBalance.Div64(10000)
+	withdrawalSize := maxBalance.Div64(1000)
 
 	// Note: withdrawals needs to be a multiple of threads for this test to pass
-	withdrawals := 10000
-	threads := 100
+	withdrawals := 1000
+	threads := 10
 
 	// Prepare an account and fund it
 	sk, accountID := prepareAccount()
@@ -804,6 +804,7 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 				if wErr := callWithdraw(am, msgs[i], sigs[i]); wErr != nil {
 					atomic.AddUint64(&atomicWithdrawalErrs, 1)
 					t.Log(wErr)
+					t.Log("acc balance", getAccountBalance(am, accountID).HumanString())
 					continue
 				}
 
@@ -824,6 +825,7 @@ func TestAccountWithdrawalMultiple(t *testing.T) {
 	}
 	t.Log("Successfully withdrawn", totalWithdrawn.HumanString())
 	t.Log("Num withdrawals", len(mapping))
+	t.Log("Remaining acc balance", getAccountBalance(am, accountID).HumanString())
 
 	// Verify all withdrawals were successful
 	withdrawalErrors := atomic.LoadUint64(&atomicWithdrawalErrs)

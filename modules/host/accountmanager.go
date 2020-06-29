@@ -1,6 +1,7 @@
 package host
 
 import (
+	"fmt"
 	"math"
 	"math/bits"
 	"sync"
@@ -524,6 +525,7 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 	}
 	// If the account balance is insufficient, block the withdrawal.
 	if acc.withdrawalExceedsBalance(amount) {
+		fmt.Println("EXCEEDING BALANCE")
 		acc.blockedWithdrawals.Push(blockedWithdrawal{
 			withdrawal:   msg,
 			priority:     priority,
@@ -534,6 +536,7 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 
 	// Block this withdrawal if maxRisk is exceeded
 	if am.currentRisk.Cmp(maxRisk) > 0 || len(am.blockedWithdrawals) > 0 {
+		fmt.Println("EXCEEDING RISK")
 		if am.h.dependencies.Disrupt("errMaxRiskReached") {
 			return errMaxRiskReached // only for testing purposes
 		}
@@ -1074,7 +1077,7 @@ func (a *account) depositExceedsMaxBalance(deposit, maxBalance types.Currency) b
 // withdrawalExceedsBalance returns true if withdrawal is larger than the
 // account balance.
 func (a *account) withdrawalExceedsBalance(withdrawal types.Currency) bool {
-	return a.balance.Cmp(withdrawal) < 0
+	return withdrawal.Cmp(a.balance) > 0
 }
 
 // sendResult will send the given result to the result channels that are waiting
