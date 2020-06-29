@@ -506,6 +506,7 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 	// Check if withdrawals are inactive. This will be the case when the host is
 	// not synced yet. Until that is not the case, we do not allow trading.
 	if am.withdrawalsInactive {
+		build.Critical("WITHDRAWAL INACTIVE")
 		return modules.ErrWithdrawalsInactive
 	}
 
@@ -514,6 +515,7 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 	// fingerprint on disk.
 	exists := am.fingerprints.has(fp)
 	if exists {
+		build.Critical("WITHDRAWAL SPENT")
 		return ErrWithdrawalSpent
 	}
 	am.fingerprints.add(fp, expiry, blockHeight)
@@ -521,6 +523,7 @@ func (am *accountManager) managedWithdraw(msg *modules.WithdrawalMessage, fp cry
 	// Open the account, create if it does not exist yet
 	acc, err := am.openAccount(id)
 	if err != nil {
+		build.Critical("FAILED TO OPEN ACCOUNT")
 		return errors.AddContext(err, "failed to open account for withdrawal")
 	}
 	// If the account balance is insufficient, block the withdrawal.

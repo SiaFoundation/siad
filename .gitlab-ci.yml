@@ -187,7 +187,7 @@ legacy-tests:
     paths:
       - .cache
   script:
-    - make test-long run="TestAccountWithdrawalMultiple" pkgs="./modules/host" count=250
+    - make test-long run="TestAccountWithdrawalMultiple" pkgs="./modules/host" count=200
 
 package-tests:
   <<: *default_test_params
@@ -196,7 +196,7 @@ package-tests:
     paths:
       - .cache
   script:
-    - make test-long run="TestAccountWithdrawalMultiple" pkgs="./modules/host" count=250
+    - make test-long run="TestAccountWithdrawalMultiple" pkgs="./modules/host" count=200
 siatest-tests:
   <<: *default_test_params
   cache:
@@ -204,7 +204,7 @@ siatest-tests:
     paths:
       - .cache
   script:
-    - make test-long run="TestAccountWithdrawalMultiple" pkgs="./modules/host" count=250
+    - make test-long run="TestAccountWithdrawalMultiple" pkgs="./modules/host" count=200
 
 siatest-renter-tests:
   <<: *default_test_params
@@ -215,7 +215,7 @@ siatest-renter-tests:
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-long run="TestAccountWithdrawalMultiple" pkgs="./modules/host" count=250
+    - make test-long run="TestAccountWithdrawalMultiple" pkgs="./modules/host" count=200
 
 siatest-renter-sub-tests:
   <<: *default_test_params
@@ -226,7 +226,7 @@ siatest-renter-sub-tests:
   script:
     - apt-get update
     - apt-get install -y fuse
-    - make test-long run="TestAccountWithdrawalMultiple" pkgs="./modules/host" count=250
+    - make test-long run="TestAccountWithdrawalMultiple" pkgs="./modules/host" count=200
 
 legacy-tests-nightly:
   <<: *default_nightly_params
