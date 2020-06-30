@@ -30,12 +30,15 @@ import (
 type Server struct {
 	api               *api.API
 	apiServer         *http.Server
-	done              chan struct{}
 	listener          net.Listener
 	node              *node.Node
 	requiredUserAgent string
-	serveErr          error
 	Dir               string
+
+	serveChan chan struct{}
+	serveErr  error
+
+	closeChan chan struct{}
 
 	closeMu sync.Mutex
 }
@@ -54,12 +57,13 @@ func (srv *Server) serve() error {
 
 // Close closes the Server's listener, causing the HTTP server to shut down.
 func (srv *Server) Close() error {
+	defer close(srv.closeChan)
 	srv.closeMu.Lock()
 	defer srv.closeMu.Unlock()
 	// Stop accepting API requests.
 	err := srv.apiServer.Shutdown(context.Background())
 	// Wait for serve() to return and capture its error.
-	<-srv.done
+	<-srv.serveChan
 	if srv.serveErr != http.ErrServerClosed {
 		err = errors.Compose(err, srv.serveErr)
 	}
@@ -68,6 +72,11 @@ func (srv *Server) Close() error {
 		err = errors.Compose(err, srv.node.Close())
 	}
 	return errors.AddContext(err, "error while closing server")
+}
+
+// WaitClose blocks until the server is done shutting down.
+func (srv *Server) WaitClose() {
+	<-srv.closeChan
 }
 
 // APIAddress returns the underlying node's api address
@@ -112,7 +121,7 @@ func (srv *Server) RenterSettings() (modules.RenterSettings, error) {
 func (srv *Server) ServeErr() <-chan error {
 	c := make(chan error)
 	go func() {
-		<-srv.done
+		<-srv.serveChan
 		close(c)
 	}()
 	return c
@@ -189,7 +198,8 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 				// the API is kept open with no activity before closing.
 				IdleTimeout: time.Minute * 5,
 			},
-			done:              make(chan struct{}),
+			closeChan:         make(chan struct{}),
+			serveChan:         make(chan struct{}),
 			listener:          listener,
 			requiredUserAgent: requiredUserAgent,
 			Dir:               nodeParams.Dir,
@@ -202,7 +212,7 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 		// finished.
 		go func() {
 			srv.serveErr = srv.serve()
-			close(srv.done)
+			close(srv.serveChan)
 		}()
 
 		// Create the Sia node for the server after the server was started.
@@ -218,11 +228,12 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 		srv.closeMu.Lock()
 		defer srv.closeMu.Unlock()
 		select {
-		case <-srv.done:
+		case <-srv.serveChan:
 			// Server was shut down. Close node and exit.
 			return srv, n.Close()
 		default:
 		}
+
 		// Server wasn't shut down. Add node and replace modules.
 		srv.node = n
 		api.SetModules(n.ConsensusSet, n.Explorer, n.FeeManager, n.Gateway, n.Host, n.Miner, n.Renter, n.TransactionPool, n.Wallet)

@@ -1,6 +1,7 @@
 package contractor
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -203,6 +204,10 @@ func (c *Contractor) CurrentPeriod() types.BlockHeight {
 
 // ProvidePayment fulfills the PaymentProvider interface. It uses the given
 // stream and necessary payment details to perform payment for an RPC call.
+//
+// Note that this implementation performs a `Read` on the stream object.
+// Therefor you should not be passing in a buffer here to optimise writes. This
+// function however does optimise its writes as much as possible.
 func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
 	// verify we do not specify a refund account on the fund account RPC
 	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
@@ -240,16 +245,25 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKe
 		return errors.AddContext(err, "Failed to record payment intent")
 	}
 
+	// prepare a buffer so we can optimize our writes
+	buffer := bytes.NewBuffer(nil)
+
 	// send PaymentRequest
-	err = modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByContract})
+	err = modules.RPCWrite(buffer, modules.PaymentRequest{Type: modules.PayByContract})
 	if err != nil {
 		return errors.AddContext(err, "unable to write payment request to host")
 	}
 
 	// send PayByContractRequest
-	err = modules.RPCWrite(stream, newPayByContractRequest(rev, sig, refundAccount))
+	err = modules.RPCWrite(buffer, newPayByContractRequest(rev, sig, refundAccount))
 	if err != nil {
 		return errors.AddContext(err, "unable to write the pay by contract request")
+	}
+
+	// write contents of the buffer to the stream
+	_, err = stream.Write(buffer.Bytes())
+	if err != nil {
+		return errors.AddContext(err, "could not write the buffer contents")
 	}
 
 	// receive PayByContractResponse
@@ -277,9 +291,11 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKe
 	}
 
 	// commit payment intent
-	err = sc.CommitPaymentIntent(walTxn, signedTxn, amount, rpc)
-	if err != nil {
-		return errors.AddContext(err, "Failed to commit unknown spending intent")
+	if !c.staticDeps.Disrupt("DisableCommitPaymentIntent") {
+		err = sc.CommitPaymentIntent(walTxn, signedTxn, amount, rpc)
+		if err != nil {
+			return errors.AddContext(err, "Failed to commit unknown spending intent")
+		}
 	}
 
 	return nil

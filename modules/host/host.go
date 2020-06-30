@@ -79,7 +79,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
 	connmonitor "gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/siamux"
 )
@@ -321,7 +320,7 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
 	// create a new RPC price table
-	es := h.managedExternalSettings()
+	hes := h.managedExternalSettings()
 	priceTable := modules.RPCPriceTable{
 		// TODO: hardcoded cost should be updated to use a better value.
 		AccountBalanceCost:   types.NewCurrency64(1),
@@ -329,19 +328,27 @@ func (h *Host) managedUpdatePriceTable() {
 		UpdatePriceTableCost: types.NewCurrency64(1),
 
 		// TODO: hardcoded MDM costs should be updated to use better values.
-		HasSectorBaseCost: types.NewCurrency64(1),
-		InitBaseCost:      types.NewCurrency64(1),
-		MemoryTimeCost:    types.NewCurrency64(1),
-		ReadBaseCost:      types.NewCurrency64(1),
-		ReadLengthCost:    types.NewCurrency64(1),
-		StoreLengthCost:   types.NewCurrency64(1),
+		HasSectorBaseCost:   types.NewCurrency64(1),
+		MemoryTimeCost:      types.NewCurrency64(1),
+		DropSectorsBaseCost: types.NewCurrency64(1),
+		DropSectorsUnitCost: types.NewCurrency64(1),
+
+		// Read related costs.
+		ReadBaseCost:   hes.SectorAccessPrice,
+		ReadLengthCost: types.NewCurrency64(1),
+
+		// Write related costs.
+		WriteBaseCost:   types.NewCurrency64(1),
+		WriteLengthCost: types.NewCurrency64(1),
+		WriteStoreCost:  hes.StoragePrice,
+
+		// Init costs.
+		InitBaseCost: hes.BaseRPCPrice,
 
 		// Bandwidth related fields.
-		DownloadBandwidthCost: es.DownloadBandwidthPrice,
-		UploadBandwidthCost:   es.UploadBandwidthPrice,
+		DownloadBandwidthCost: hes.DownloadBandwidthPrice,
+		UploadBandwidthCost:   hes.UploadBandwidthPrice,
 	}
-	fastrand.Read(priceTable.UID[:])
-
 	// update the pricetable
 	h.staticPriceTables.managedSetCurrent(priceTable)
 }
@@ -600,7 +607,12 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 		return err
 	}
 	defer h.tg.Done()
+
 	h.mu.Lock()
+	// By updating the internal settings the user might influence the host's
+	// price table, we defer a call to update the price table to ensure it
+	// reflects the updated settings.
+	defer h.managedUpdatePriceTable()
 	defer h.mu.Unlock()
 
 	// The host should not be accepting file contracts if it does not have an

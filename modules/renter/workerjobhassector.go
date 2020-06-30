@@ -113,7 +113,7 @@ func (j *jobHasSector) callExecute() {
 // TODO: These values are overly conservative, once we've got the protocol more
 // optimized we can bring these down.
 func (j *jobHasSector) callExpectedBandwidth() (ul, dl uint64) {
-	return 20e3, 20e3
+	return hasSectorJobExpectedBandwidth()
 }
 
 // managedHasSector returns whether or not the host has a sector with given root
@@ -121,7 +121,7 @@ func (j *jobHasSector) managedHasSector() (bool, error) {
 	w := j.staticQueue.staticWorker()
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
-	pb := modules.NewProgramBuilder(&pt)
+	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since HasSector doesn't depend on it.
 	pb.AddHasSectorInstruction(j.staticSector)
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
@@ -137,7 +137,7 @@ func (j *jobHasSector) managedHasSector() (bool, error) {
 	// was only one response?
 	var hasSector bool
 	var responses []programResponse
-	responses, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
+	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
 	if err != nil {
 		return false, errors.AddContext(err, "Unable to execute program")
 	}
@@ -170,4 +170,13 @@ func (w *worker) initJobHasSectorQueue() {
 	w.staticJobHasSectorQueue = &jobHasSectorQueue{
 		jobGenericQueue: newJobGenericQueue(w),
 	}
+}
+
+// hasSectorJobExpectedBandwidth is a helper function that returns the expected
+// bandwidth consumption of a has sector job. This helper function enables
+// getting at the expected bandwidth without having to instantiate a job.
+func hasSectorJobExpectedBandwidth() (ul, dl uint64) {
+	ul = 20e3
+	dl = 20e3
+	return
 }

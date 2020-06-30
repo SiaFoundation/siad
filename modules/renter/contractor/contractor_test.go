@@ -1,6 +1,7 @@
 package contractor
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -574,24 +575,33 @@ func TestPayment(t *testing.T) {
 		t.Fatalf("Expected renter contract to reflect the payment, the renter funds should be %v but were %v", expected.HumanString(), remaining.HumanString())
 	}
 
+	// prepare a buffer so we can optimize our writes
+	buffer := bytes.NewBuffer(nil)
+
 	// write the rpc id
 	stream, err = modules.NewHostStream(mux, h)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = modules.RPCWrite(stream, modules.RPCFundAccount)
+	err = modules.RPCWrite(buffer, modules.RPCFundAccount)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// write the price table uid
-	err = modules.RPCWrite(stream, pt.UID)
+	err = modules.RPCWrite(buffer, pt.UID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// send fund account request (re-use the refund account)
-	err = modules.RPCWrite(stream, modules.FundAccountRequest{Account: aid})
+	err = modules.RPCWrite(buffer, modules.FundAccountRequest{Account: aid})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// write contents of the buffer to the stream
+	_, err = stream.Write(buffer.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}

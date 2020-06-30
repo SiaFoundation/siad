@@ -21,6 +21,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -282,7 +283,17 @@ func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet 
 		return nil, err
 	}
 	rl := ratelimit.NewRateLimit(0, 0, 0)
-	hc, errChan := contractor.New(cs, wallet, tpool, hdb, rl, persistDir)
+	contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), rl, modules.ProdDependencies)
+	if err != nil {
+		return nil, err
+	}
+
+	logger, err := persist.NewFileLogger(filepath.Join(persistDir, "contractor.log"))
+	if err != nil {
+		return nil, err
+	}
+
+	hc, errChan := contractor.NewCustomContractor(cs, wallet, tpool, hdb, persistDir, contractSet, logger, deps)
 	if err := <-errChan; err != nil {
 		return nil, err
 	}

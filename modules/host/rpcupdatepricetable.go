@@ -99,6 +99,11 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	pt := h.staticPriceTables.managedCurrent()
 	fastrand.Read(pt.UID[:])
 
+	// set the transaction fee estimates
+	minRecommended, maxRecommended := h.tpool.FeeEstimation()
+	pt.TxnFeeMinRecommended = minRecommended
+	pt.TxnFeeMaxRecommended = maxRecommended
+
 	// set the validity to signal how long these prices are guaranteed for
 	pt.Validity = rpcPriceGuaranteePeriod
 

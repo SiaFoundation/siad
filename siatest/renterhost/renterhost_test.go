@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/log"
 	"gitlab.com/NebulousLabs/ratelimit"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -60,7 +61,7 @@ func TestSession(t *testing.T) {
 	}
 
 	// begin the RPC session
-	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, log.DiscardLogger, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +145,7 @@ func TestSession(t *testing.T) {
 	}
 	hhg.Entry.HostDBEntry.NetAddress = hg.ExternalSettings.NetAddress
 	// initiate session
-	s, err = cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	s, err = cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, log.DiscardLogger, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,14 +194,14 @@ func TestHostLockTimeout(t *testing.T) {
 	}
 
 	// Begin an RPC session. This will lock the contract.
-	s1, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	s1, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, log.DiscardLogger, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Attempt to begin a separate RPC session. This will block while waiting
 	// to acquire the contract lock, and eventually fail.
-	_, err = cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	_, err = cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, log.DiscardLogger, nil)
 	if err == nil || !strings.Contains(err.Error(), "contract is locked by another party") {
 		t.Fatal("expected contract lock error, got", err)
 	}
@@ -212,7 +213,7 @@ func TestHostLockTimeout(t *testing.T) {
 			panic(err) // can't call t.Fatal from goroutine
 		}
 	})
-	s2, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	s2, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, log.DiscardLogger, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +234,7 @@ func TestHostLockTimeout(t *testing.T) {
 			return
 		}
 		defer cs2.Close()
-		s1, err = cs2.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+		s1, err = cs2.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, log.DiscardLogger, nil)
 		if err != nil {
 			errCh <- err
 			return
@@ -302,7 +303,7 @@ func TestHostBaseRPCPrice(t *testing.T) {
 	}
 
 	// Begin an RPC session.
-	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, log.DiscardLogger, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +369,7 @@ func TestMultiRead(t *testing.T) {
 	}
 
 	// begin the RPC session
-	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, log.DiscardLogger, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

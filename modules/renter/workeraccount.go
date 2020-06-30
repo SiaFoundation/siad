@@ -1,8 +1,11 @@
 package renter
 
 import (
+	"bytes"
+	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,11 +19,63 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// withdrawalValidityPeriod defines the period (in blocks) a withdrawal message
-// remains spendable after it has been created. Together with the current block
-// height at time of creation, this period makes up the WithdrawalMessage's
-// expiry height.
-const withdrawalValidityPeriod = 6
+const (
+	// withdrawalValidityPeriod defines the period (in blocks) a withdrawal message
+	// remains spendable after it has been created. Together with the current block
+	// height at time of creation, this period makes up the WithdrawalMessage's
+	// expiry height.
+	withdrawalValidityPeriod = 6
+
+	// fundAccountGougingPercentageThreshold is the percentage threshold, in
+	// relation to the allowance, at which we consider the cost of funding an
+	// account to be too expensive. E.g. the cost of funding the account as many
+	// times as necessary to spend the total allowance should never exceed 1% of
+	// the total allowance.
+	fundAccountGougingPercentageThreshold = .01
+)
+
+var (
+	// accountIdleCheckFrequency establishes how frequently the sync function
+	// should check whether the worker is idle. A relatively high frequency is
+	// okay, because this function only runs while the worker is frozen and
+	// expecting to perform an expensive sync operation.
+	accountIdleCheckFrequency = build.Select(build.Var{
+		Dev:      time.Second * 4,
+		Standard: time.Second * 5,
+		Testing:  time.Second * 3,
+	}).(time.Duration)
+
+	// accountSyncRandWaitMilliseconds defines the number of random milliseconds
+	// that are added to the wait time. Randomness is used to ensure that
+	// workers are not all syncing at the same time - the sync operation freezes
+	// workers. This number should be larger than the expected amount of time a
+	// worker will be frozen multiplied by the total number of workers.
+	accountSyncRandWaitMilliseconds = build.Select(build.Var{
+		Dev:      int(1e3 * 60),          // 1 minute
+		Standard: int(3 * 1e3 * 60 * 60), // 3 hours
+		Testing:  int(1e3 * 15),          // 15 seconds - needs to be long even in testing
+	}).(int)
+
+	// accountSyncMinWaitTime defines the minimum amount of time that a worker
+	// will wait between performing sync checks. This should be a large number,
+	// on the order of the amount of time a worker is expected to be frozen
+	// multiplied by the total number of workers.
+	accountSyncMinWaitTime = build.Select(build.Var{
+		Dev:      time.Minute,
+		Standard: 60 * time.Minute, // 1 hour
+		Testing:  10 * time.Second, // needs to be long even in testing
+	}).(time.Duration)
+
+	// accountIdleMaxWait defines the max amount of time that the worker will
+	// wait to reach an idle state before firing a build.Critical and giving up
+	// on becoming idle. Generally this will indicate that somewhere in the
+	// worker code there is a job that is not timing out correctly.
+	accountIdleMaxWait = build.Select(build.Var{
+		Dev:      10 * time.Minute,
+		Standard: 40 * time.Minute,
+		Testing:  20 * time.Second, // needs to be long even in testing
+	}).(time.Duration)
+)
 
 type (
 	// account represents a renter's ephemeral account on a host.
@@ -42,6 +97,11 @@ type (
 		consecutiveFailures uint64
 		cooldownUntil       time.Time
 		recentErr           error
+		recentErrTime       time.Time
+
+		// syncAt defines what time the renter should be syncing the account to
+		// the host.
+		syncAt time.Time
 
 		// Variables to manage a race condition around account creation, where
 		// the account must be available in the data structure before it has
@@ -68,6 +128,10 @@ type (
 // ProvidePayment takes a stream and various payment details and handles the
 // payment by sending and processing payment request and response objects.
 // Returns an error in case of failure.
+//
+// Note that this implementation does not 'Read' from the stream. This allows
+// the caller to pass in a buffer if he so pleases in order to optimise the
+// amount of writes on the actual stream.
 func (a *account) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
 	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
 		return errors.New("Refund account is expected to be the zero account when funding an ephemeral account")
@@ -94,6 +158,7 @@ func (a *account) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKey, 
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -112,6 +177,20 @@ func (a *account) availableBalance() types.Currency {
 	return types.ZeroCurrency
 }
 
+// callNeedsToSync returns whether or not the account needs to sync to the host.
+func (a *account) callNeedsToSync() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.syncAt.Before(time.Now())
+}
+
+// callSetSyncAt will update the syncAt time for the account.
+func (a *account) callSetSyncAt(newSyncAt time.Time) {
+	a.mu.Lock()
+	a.syncAt = newSyncAt
+	a.mu.Unlock()
+}
+
 // managedAvailableBalance returns the amount of money that is available to
 // spend. It is calculated by taking into account pending spends and pending
 // funds.
@@ -119,6 +198,23 @@ func (a *account) managedAvailableBalance() types.Currency {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.availableBalance()
+}
+
+// managedMaxExpectedBalance returns the max amount of money that this
+// account is expected to contain after the renter has shut down.
+func (a *account) managedMaxExpectedBalance() types.Currency {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.maxExpectedBalance()
+}
+
+// maxExpectedBalance returns the max amount of money that this account is
+// expected to contain after the renter has shut down.
+func (a *account) maxExpectedBalance() types.Currency {
+	// NOTE: negativeBalance will never be larger than the sum of the pending
+	// deposits. If that does happen, this will build.Critical which indicates
+	// that something is incorrect within the worker's internal accounting.
+	return a.balance.Add(a.pendingDeposits).Sub(a.negativeBalance)
 }
 
 // managedMinExpectedBalance returns the min amount of money that this
@@ -213,6 +309,31 @@ func (a *account) managedResetBalance(balance types.Currency) {
 	a.negativeBalance = types.ZeroCurrency
 }
 
+// managedStatus returns the status of the account
+func (a *account) managedStatus() modules.WorkerAccountStatus {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	var recentErrStr string
+	if a.recentErr != nil {
+		recentErrStr = a.recentErr.Error()
+	}
+
+	return modules.WorkerAccountStatus{
+		AvailableBalance: a.availableBalance(),
+		NegativeBalance:  a.negativeBalance,
+
+		Funded: !a.availableBalance().IsZero(),
+
+		OnCoolDown:          a.cooldownUntil.After(time.Now()),
+		OnCoolDownUntil:     a.cooldownUntil,
+		ConsecutiveFailures: a.consecutiveFailures,
+
+		RecentErr:     recentErrStr,
+		RecentErrTime: a.recentErrTime,
+	}
+}
+
 // managedTrackDeposit keeps track of pending deposits by adding the given
 // amount to the 'pendingDeposits' field.
 func (a *account) managedTrackDeposit(amount types.Currency) {
@@ -256,6 +377,10 @@ func (w *worker) managedAccountNeedsRefill() bool {
 	if !w.staticPriceTable().staticValid() {
 		return false
 	}
+	// Check if the account is synced.
+	if w.managedNeedsToSyncAccountToHost() {
+		return false
+	}
 
 	// Check if there is a cooldown in place, and check if the balance is low
 	// enough to justify a refill.
@@ -280,8 +405,10 @@ func (w *worker) managedRefillAccount() {
 	if w.renter.deps.Disrupt("DisableFunding") {
 		return // don't refill account
 	}
-	// the account balance dropped to below half the balance target, refill
-	balance := w.staticAccount.managedAvailableBalance()
+	// The account balance dropped to below half the balance target, refill. Use
+	// the max expected balance when refilling to avoid exceeding any host
+	// maximums.
+	balance := w.staticAccount.managedMaxExpectedBalance()
 	amount := w.staticBalanceTarget.Sub(balance)
 
 	// We track that there is a deposit in progress. Because filling an account
@@ -309,7 +436,15 @@ func (w *worker) managedRefillAccount() {
 		w.staticAccount.cooldownUntil = cd
 		w.staticAccount.consecutiveFailures++
 		w.staticAccount.recentErr = err
+		w.staticAccount.recentErrTime = time.Now()
 		w.staticAccount.mu.Unlock()
+
+		// If the error could be caused by a revision number mismatch,
+		// signal it by setting the flag.
+		if errCausedByRevisionMismatch(err) {
+			w.staticSetSuspectRevisionMismatch()
+			w.staticWake()
+		}
 
 		// Have the threadgroup wake the worker when the account comes off of
 		// cooldown.
@@ -317,6 +452,12 @@ func (w *worker) managedRefillAccount() {
 			w.staticWake()
 		})
 	}()
+
+	// check the current price table for gouging errors
+	err = checkFundAccountGouging(w.staticPriceTable().staticPriceTable, w.staticCache().staticRenterAllowance, w.staticBalanceTarget)
+	if err != nil {
+		return
+	}
 
 	// create a new stream
 	var stream net.Conn
@@ -332,8 +473,11 @@ func (w *worker) managedRefillAccount() {
 		}
 	}()
 
+	// prepare a buffer so we can optimize our writes
+	buffer := bytes.NewBuffer(nil)
+
 	// write the specifier
-	err = modules.RPCWrite(stream, modules.RPCFundAccount)
+	err = modules.RPCWrite(buffer, modules.RPCFundAccount)
 	if err != nil {
 		err = errors.AddContext(err, "could not write fund account specifier")
 		return
@@ -341,21 +485,42 @@ func (w *worker) managedRefillAccount() {
 
 	// send price table uid
 	pt := w.staticPriceTable().staticPriceTable
-	err = modules.RPCWrite(stream, pt.UID)
+	err = modules.RPCWrite(buffer, pt.UID)
 	if err != nil {
 		err = errors.AddContext(err, "could not write price table uid")
 		return
 	}
 
 	// send fund account request
-	err = modules.RPCWrite(stream, modules.FundAccountRequest{Account: w.staticAccount.staticID})
+	err = modules.RPCWrite(buffer, modules.FundAccountRequest{Account: w.staticAccount.staticID})
 	if err != nil {
 		err = errors.AddContext(err, "could not write the fund account request")
 		return
 	}
 
+	// write contents of the buffer to the stream
+	_, err = stream.Write(buffer.Bytes())
+	if err != nil {
+		err = errors.AddContext(err, "could not write the buffer contents")
+		return
+	}
+
 	// provide payment
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCFundAccount, amount.Add(pt.FundAccountCost), modules.ZeroAccountID, w.staticCache().staticBlockHeight)
+	if err != nil && strings.Contains(err.Error(), "balance exceeded") {
+		// The host reporting that the balance has been exceeded suggests that
+		// the host believes that we have more money than we believe that we
+		// have.
+		if !w.renter.deps.Disrupt("DisableCriticalOnMaxBalance") {
+			// Log a critical as this is very unlikely to happen due to the
+			// order of events in the worker loop, seeing as we just synced our
+			// account balance with the host if that was necessary
+			w.renter.log.Critical("worker account refill failed with a max balance - are the host max balance settings lower than the threshold balance?")
+		}
+		w.staticAccount.mu.Lock()
+		w.staticAccount.syncAt = time.Time{}
+		w.staticAccount.mu.Unlock()
+	}
 	if err != nil {
 		err = errors.AddContext(err, "could not provide payment for the account")
 		return
@@ -390,7 +555,7 @@ func (w *worker) managedRefillAccount() {
 	return
 }
 
-// managedSyncAccountBalanceToHost is executed  before the worker loop and
+// externSyncAccountBalanceToHost is executed before the worker loop and
 // corrects the account balance in case of an unclean renter shutdown. It does
 // so by performing the AccountBalanceRPC and resetting the account to the
 // balance communicated by the host. This only happens if our account balance is
@@ -398,8 +563,40 @@ func (w *worker) managedRefillAccount() {
 //
 // NOTE: it is important this function is only used when the worker has no
 // in-progress jobs, neither serial nor async, to ensure the account balance
-// sync does not leave the account in an undesired state.
-func (w *worker) managedSyncAccountBalanceToHost() {
+// sync does not leave the account in an undesired state. The worker should not
+// be launching new jobs while this function is running. To achieve this, we
+// ensure that this thread is only run from the primary work loop, which is also
+// the only thread that is allowed to launch jobs. As long as this function is
+// only called by that thread, and no other thread launches jobs, this function
+// is threadsafe.
+func (w *worker) externSyncAccountBalanceToHost() {
+	// Spin/block until the worker has no jobs in motion. This should only be
+	// called from the primary loop of the worker, meaning that no new jobs will
+	// be launched while we spin.
+	isIdle := func() bool {
+		sls := w.staticLoopState
+		a := atomic.LoadUint64(&sls.atomicSerialJobRunning) == 0
+		b := atomic.LoadUint64(&sls.atomicAsyncJobsRunning) == 0
+		return a && b
+	}
+	start := time.Now()
+	for !isIdle() {
+		if time.Since(start) > accountIdleMaxWait {
+			w.renter.log.Critical("worker has taken more than 40 minutes to go idle")
+			return
+		}
+		w.renter.tg.Sleep(accountIdleCheckFrequency)
+	}
+	// Do a check to ensure that the worker is still idle after the function is
+	// complete. This should help to catch any situation where the worker is
+	// spinning up new jobs, even though it is not supposed to be spinning up
+	// newe jobs while it is performing the sync operation.
+	defer func() {
+		if !isIdle() {
+			w.renter.log.Critical("worker appears to be spinning up new jobs during managedSyncAccountBalanceToHost")
+		}
+	}()
+
 	// Sanity check the account's deltas are zero, indicating there are no
 	// in-progress jobs
 	w.staticAccount.mu.Lock()
@@ -423,9 +620,29 @@ func (w *worker) managedSyncAccountBalanceToHost() {
 		w.staticAccount.managedResetBalance(balance)
 	}
 
+	// Determine how long to wait before attempting to sync again, and then
+	// update the syncAt time. There is significant randomness in the waiting
+	// because syncing with the host requires freezing up the worker. We do not
+	// want to freeze up a large number of workers at once, nor do we want to
+	// freeze them frequently.
+	waitTime := time.Duration(fastrand.Intn(accountSyncRandWaitMilliseconds)) * time.Millisecond
+	waitTime += accountSyncMinWaitTime
+	w.staticAccount.callSetSyncAt(time.Now().Add(waitTime))
+
 	// TODO perform a thorough balance comparison to decide whether the drift in
 	// the account balance is warranted. If not the host needs to be penalized
 	// accordingly. Perform this check at startup and periodically.
+}
+
+// managedNeedsToSyncAccountToHost returns true if the renter needs to sync the
+// account to the host.
+func (w *worker) managedNeedsToSyncAccountToHost() bool {
+	// There is no need to sync the account to the host if the worker does not
+	// support RHP3.
+	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
+		return false
+	}
+	return w.staticAccount.callNeedsToSync()
 }
 
 // staticHostAccountBalance performs the AccountBalanceRPC on the host
@@ -464,6 +681,12 @@ func (w *worker) staticHostAccountBalance() (types.Currency, error) {
 	// provide payment
 	err = w.renter.hostContractor.ProvidePayment(stream, w.staticHostPubKey, modules.RPCAccountBalance, pt.AccountBalanceCost, w.staticAccount.staticID, w.staticCache().staticBlockHeight)
 	if err != nil {
+		// If the error could be caused by a revision number mismatch,
+		// signal it by setting the flag.
+		if errCausedByRevisionMismatch(err) {
+			w.staticSetSuspectRevisionMismatch()
+			w.staticWake()
+		}
 		return types.ZeroCurrency, err
 	}
 
@@ -481,4 +704,38 @@ func (w *worker) staticHostAccountBalance() (types.Currency, error) {
 		return types.ZeroCurrency, err
 	}
 	return resp.Balance, nil
+}
+
+// checkFundAccountGouging verifies the cost of funding an ephemeral account on
+// the host is reasonable, if deemed unreasonable we will block the refill and
+// the worker will eventually be put into cooldown.
+func checkFundAccountGouging(pt modules.RPCPriceTable, allowance modules.Allowance, targetBalance types.Currency) error {
+	// If there is no allowance, price gouging checks have to be disabled,
+	// because there is no baseline for understanding what might count as price
+	// gouging.
+	if allowance.Funds.IsZero() {
+		return nil
+	}
+
+	// In order to decide whether or not the fund account cost is too expensive,
+	// we first calculate how many times we can refill the account, taking into
+	// account the refill amount and the cost to effectively fund the account.
+	//
+	// Note: we divide the target balance by two because more often than not the
+	// refill happens the moment we drop below half of the target, this means
+	// that we actually refill half the target amount most of the time.
+	costOfRefill := targetBalance.Div64(2).Add(pt.FundAccountCost)
+	numRefills, err := allowance.Funds.Div(costOfRefill).Uint64()
+	if err != nil {
+		return errors.AddContext(err, "unable to check fund account gouging, could not calculate the amount of refills")
+	}
+
+	// The cost of funding is considered too expensive if the total cost is
+	// above a certain % of the allowance.
+	totalFundAccountCost := pt.FundAccountCost.Mul64(numRefills)
+	if totalFundAccountCost.Cmp(allowance.Funds.MulFloat(fundAccountGougingPercentageThreshold)) > 0 {
+		return fmt.Errorf("fund account cost %v is considered too high, the total cost of refilling the account to spend the total allowance exceeds %v%% of the allowance - price gouging protection enabled", pt.FundAccountCost, fundAccountGougingPercentageThreshold)
+	}
+
+	return nil
 }

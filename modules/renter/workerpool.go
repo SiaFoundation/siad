@@ -44,9 +44,7 @@ func (wp *workerPool) callStatus() modules.WorkerPoolStatus {
 	workers := wp.callWorkers()
 	for _, w := range workers {
 		// Get the status of the worker.
-		w.mu.Lock()
-		status := w.status()
-		w.mu.Unlock()
+		status := w.callStatus()
 		if status.DownloadOnCoolDown {
 			totalDownloadCoolDown++
 		}

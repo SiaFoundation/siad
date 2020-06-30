@@ -11,9 +11,8 @@ import (
 // testProgramBuilder is a helper used for constructing test programs and
 // implicitly testing the modules.MDMProgramBuilder.
 type testProgramBuilder struct {
-	readonly       bool
-	staticDuration types.BlockHeight
-	staticPT       *modules.RPCPriceTable
+	readonly bool
+	staticPT *modules.RPCPriceTable
 
 	// staticPB is an instance of the production program builder.
 	staticPB *modules.ProgramBuilder
@@ -26,11 +25,10 @@ type testProgramBuilder struct {
 // newTestProgramBuilder creates a new testBuilder.
 func newTestProgramBuilder(pt *modules.RPCPriceTable, duration types.BlockHeight) *testProgramBuilder {
 	return &testProgramBuilder{
-		readonly:       true,
-		staticDuration: duration,
-		staticPT:       pt,
+		readonly: true,
+		staticPT: pt,
 
-		staticPB:     modules.NewProgramBuilder(pt),
+		staticPB:     modules.NewProgramBuilder(pt, duration),
 		staticValues: NewTestValues(pt, duration),
 	}
 }
@@ -64,7 +62,7 @@ func (tb *testProgramBuilder) Cost() TestValues {
 // AddAppendInstruction adds an append instruction to the builder, keeping
 // track of running values.
 func (tb *testProgramBuilder) AddAppendInstruction(data []byte, merkleProof bool) {
-	tb.staticPB.AddAppendInstruction(data, tb.staticDuration, merkleProof)
+	tb.staticPB.AddAppendInstruction(data, merkleProof)
 	tb.staticValues.AddAppendInstruction(data)
 }
 

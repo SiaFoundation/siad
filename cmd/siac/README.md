@@ -30,6 +30,11 @@ Renter:
 * `siac renter ls` list all renter files and subdirectories
 * `siac renter upload [filepath] [nickname]` upload a file
 * `siac renter download [nickname] [filepath]` download a file
+* `siac renter workers` show worker status
+* `siac renter workers ea` show worker account status
+* `siac renter workers pt` show worker price table status
+* `siac renter workers rj` show worker read jobs status
+* `siac renter workers hsj` show worker has sector jobs status
 
 
 Full Descriptions
@@ -159,6 +164,26 @@ corresponding field flag, for example '--amount 500SC'.
 you will use to refer to that file in the network. For example, it is common to
 have the nickname be the same as the filename.
 
+* `siac renter workers` shows a detailed overview of all workers. It shows
+  information about their accounts, contract and download and upload status.
+
+* `siac renter workers ea` shows a detailed overview of the workers' ephemeral
+  account statuses, such as balance information, whether its on cooldown or not
+  and potentially the most recent error.
+
+* `siac renter workers pt` shows a detailed overview of the workers's price table
+  statuses, such as when it was updated, when it expires, whether its on cooldown
+  or not and potentially the most recent error.
+
+* `siac renter workers rj` shows information about the read jobs queue. How many
+  jobs are in the queue and their average completion time. In case there was an
+  error it will also display the most recent error and when it occurred.
+
+* `siac renter workers hsj` shows information about the has sector jobs queue.
+  How many jobs are in the queue and their average completion time. In case
+  there was an error it will also display the most recent error and when it
+  occurred.
+
 ### Skykey tasks
 TODO - Fill in
 
@@ -258,3 +283,197 @@ siacoin address.
   wallet, supplied by the `init` command. The wallet must be initialized and
 unlocked before any actions can take place.
 
+Siac Command Output Testing
+===========================
+
+New type of testing siac command line commands is now available from go tests.
+
+Siac is using [Cobra](https://github.com/spf13/cobra) golang library to
+generate command line commands (and subcommands) interface. In
+`cmd/siac/main.go` file root siac Cobra command with all subcommands is created
+using `initCmds()`, siac/siad node instance specific flags of siac commands are
+initialized using `initClient(...)`.
+
+## Test Group Structure
+
+Pseudo code example of a test group:
+
+```
+func TestGroup() {
+    // Create test inputs
+    create test node
+    init Cobra command with subcommands and flags
+    create regex pattern constants
+
+    // Create subtests
+    define subtests
+
+    // Execute subtests
+    run subtests
+}
+```
+
+## Test Inputs
+
+The most of the siac tests require running instance of `siad` to execute the
+tests against. A new instance of `siad` can be created using `newTestNode`.
+Note that some of the `siac` tests don't require running an instance of `siad`.
+This is the case when we're testing unknown `siac` subcommand or an unknown
+command/subcommand flag for example, because these error cases are handled by
+Cobra library itself.
+
+Before testing siac Cobra command(s), siac Cobra command with its subcommands
+and flags must be built and initialized. This is done by
+`getRootCmdForSiacCmdsTests()` helper function.
+
+## Subtests
+
+Subtests are defined using `siacCmdSubTest` struct:
+
+```
+type siacCmdSubTest struct {
+	name               string
+	test               siacCmdTestFn
+	cmd                *cobra.Command
+	cmdStrs            []string
+	expectedOutPattern string
+}
+```
+
+### name
+
+`name` is the name of a subtest to appear in report.
+
+### test
+
+`test` is a subtest helper function that executes subtest.
+
+### cmd
+
+`cmd` is an initialized root Cobra command with all subcommands and flags.
+
+### cmdStrs
+
+`cmdStrs` is a list of string values you would normally enter to the command
+line, but without leading `siac` and each space between command, subcommand(s),
+flag(s) or parameter(s) starting a new string in a list.
+
+Examples:
+
+|CLI command|cmdStrs|
+|---|---|
+|./siac|cmdStrs: []string{},|
+|./siac -h|cmdStrs: []string{"-h"},|
+|./siac --address localhost:5555|cmdStrs: []string{"--address", "localhost:5555"},|
+|./siac renter --address localhost:5555|cmdStrs: []string{"renter", "--address", "localhost:5555"},|
+
+### expectedOutPattern
+
+`expectedOutPattern` is expected regex pattern string to test actual output
+against. It can be a multiline string to test complete output from beginning
+(starting with `^`) till end (ending with `$`) or just a smaller pattern
+testing multiple lines, a single line or just a part of a line in the complete
+output.
+
+Note that each siac command handler has to be prepared for these tests, for
+more information see [below](#preparation-of-command-handler-for-cobra-Output-tests).
+
+## Errors
+
+In case of failure in the executed subtest, error log output from
+`testGenericSiacCmd()` in `cmd/siac/helpers_test.go` will include the following 5 items:
+
+* Regex pattern didn't match between row x, and row y
+* Regex pattern part that didn't match
+* ----- Expected output pattern: -----
+* ----- Actual Cobra output: -----
+* ----- Actual Sia output: -----
+
+Error log example with 5 above items (part `...` of the message is cut):
+
+```
+=== RUN   TestRootSiacCmd
+=== RUN   TestRootSiacCmd/TestRootCmdWithShortAddressFlagIPv6
+--- FAIL: TestRootSiacCmd (2.18s)
+    maincmd_test.go:28: siad API address: [::]:35103
+    --- FAIL: TestRootSiacCmd/TestRootCmdWithShortAddressFlagIPv6 (0.02s)
+        helpers_test.go:141: Regex pattern didn't match between row 5, and row 5
+        helpers_test.go:142: Regex pattern part that didn't match:
+            Wallet XXX:
+        helpers_test.go:150: ----- Expected output pattern: -----
+        helpers_test.go:151: ^Consensus:
+              Synced: (No|Yes)
+              Height: [\d]+
+            
+            Wallet XXX:
+            (  Status: Locked|  Status:          unlocked
+              Siacoin Balance: [\d]+(\.[\d]*|) (SC|KS|MS))
+            ...
+            $
+        helpers_test.go:153: ----- Actual Cobra output: -----
+        helpers_test.go:154: 
+        helpers_test.go:156: ----- Actual Sia output: -----
+        helpers_test.go:157: Consensus:
+              Synced: Yes
+              Height: 14
+            
+            Wallet:
+              Status:          unlocked
+              Siacoin Balance: 3.3 MS
+            ...
+        helpers_test.go:159: 
+FAIL
+coverage: 5.3% of statements
+FAIL	gitlab.com/NebulousLabs/Sia/cmd/siac	2.242s
+FAIL
+```
+
+Expected output regex pattern can have multiple lines and because spotting
+errors in complex regex pattern matching can be difficult `testGenericSiacCmd`
+tests in a for loop at first only the first line of the regex pattern, then
+first 2 lines of the regex pattern, adding one more line each iteration. If
+there is a regex pattern match error, it prints the line number of the regex
+that didn't match. E.g. there is a 20 line of expected regex pattern, it passed
+to test first 11 lines of regex but fails to match when first 12 lines are
+matched against, it prints that it failed to match line 12 of regex pattern and
+prints the content of 12th line.
+
+Then it prints the complete expected regex pattern and actual Cobra output and
+actual siac output. There are two actual outputs, because unknown subcommands,
+unknown flags and command/subcommand help requests are handled by Cobra
+library, while the rest is the output written to stdout by siac command
+handlers.
+
+## Examples
+
+First examples of siac Cobra command tests are tests located in
+`cmd/siac/maincmd_test.go` file in `TestRootSiacCmd` test group, helpers for
+these tests are located in `cmd/siac/helpers_test.go` file.
+
+Simplified example code:
+
+```
+func TestRootSiacCmd(t *testing.T) {
+    ...
+    n, err := newTestNode(groupDir)
+    ...
+
+    root := getRootCmdForSiacCmdsTests(t, groupDir)
+    ...
+    regexPatternConstantX := "..."
+    ...
+    subTests := []siacCmdSubTest{
+        {
+            name:               "TestRootCmdWithShortAddressFlagIPv6",
+            test:               testGenericSiacCmd,
+            cmd:                root,
+            cmdStrs:            []string{"-a", IPv6addr},
+            expectedOutPattern: regexPatternConstantX,
+        },
+        ...
+    }
+
+    err = runSiacCmdSubTests(t, subTests)
+    ...
+}
+```

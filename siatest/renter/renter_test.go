@@ -59,6 +59,7 @@ func TestRenterOne(t *testing.T) {
 		{Name: "TestDownloadAfterLegacyRenewAndClear", Test: testDownloadAfterLegacyRenewAndClear},
 		{Name: "TestDirectories", Test: testDirectories},
 		{Name: "TestAlertsSorted", Test: testAlertsSorted},
+		{Name: "TestPriceTablesUpdated", Test: testPriceTablesUpdated},
 	}
 
 	// Run tests
@@ -1096,6 +1097,90 @@ func TestLocalRepairCorrupted(t *testing.T) {
 	}
 	if file.Available {
 		t.Fatal("file should not be available when its only source of repair data is corrupt")
+	}
+}
+
+// testPriceTablesUpdated verfies the workers' price tables are updated and stay
+// recent with the host
+func testPriceTablesUpdated(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Get the worker status
+	rwg, err := r.RenterWorkersGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get a random worker
+	var host types.SiaPublicKey
+	for _, worker := range rwg.Workers {
+		host = worker.HostPubKey
+		break
+	}
+
+	// Wait until that worker has been able to update its price table, when that
+	// is the case we save its current update and expiry time.
+	var ut, et time.Time
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		rwg, err := r.RenterWorkersGet()
+		if err != nil {
+			return err
+		}
+
+		var ws *modules.WorkerStatus
+		for _, worker := range rwg.Workers {
+			if worker.HostPubKey.Equals(host) {
+				ws = &worker
+			}
+		}
+		if ws == nil {
+			return errors.New("worker not found")
+		}
+
+		if !ws.PriceTableStatus.Active {
+			return errors.New("worker has no valid price table")
+		}
+
+		ut = ws.PriceTableStatus.UpdateTime
+		et = ws.PriceTableStatus.ExpiryTime
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait until after the price table is set to update, note we don't gain
+	// anything by waiting for this inside the build.Retry as we know when it
+	// won't trigger before the update time.
+	time.Sleep(time.Until(ut))
+
+	// Verify in a retry that the price table's updateTime and expiryTime have
+	// been set to new dates in the future, indicating a successful price table
+	// update.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		rwg, err := r.RenterWorkersGet()
+		if err != nil {
+			return err
+		}
+
+		var ws *modules.WorkerStatus
+		for _, worker := range rwg.Workers {
+			if worker.HostPubKey.Equals(host) {
+				ws = &worker
+			}
+		}
+		if ws == nil {
+			return errors.New("worker not found")
+		}
+
+		if !(ws.PriceTableStatus.UpdateTime.After(ut) && ws.PriceTableStatus.ExpiryTime.After(et)) {
+			return errors.New("updatedTime and expiryTime have not been updated yet, indicating the price table has not been renewed")
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -4682,12 +4767,9 @@ func TestWorkerStatus(t *testing.T) {
 			t.Error("Worker should not be marked as UploadTerminated")
 		}
 
-		// Ephemeral Account cheks
-		if !worker.AvailableBalance.IsZero() {
-			t.Error("Expected available balance to be zero but was", worker.AvailableBalance.HumanString())
-		}
-		if !worker.BalanceTarget.Equals(types.SiacoinPrecision) {
-			t.Error("Expected balance target to be 1SC but was", worker.BalanceTarget.HumanString())
+		// Account checks
+		if !worker.AccountBalanceTarget.Equals(types.SiacoinPrecision) {
+			t.Error("Expected balance target to be 1SC but was", worker.AccountBalanceTarget.HumanString())
 		}
 
 		// Job Queues
@@ -4696,6 +4778,50 @@ func TestWorkerStatus(t *testing.T) {
 		}
 		if worker.DownloadRootJobQueueSize != 0 {
 			t.Error("Expected download by root queue to be empty but was", worker.DownloadRootJobQueueSize)
+		}
+
+		// AccountStatus checks
+		if !worker.AccountStatus.AvailableBalance.IsZero() {
+			t.Error("Expected available balance to be zero but was", worker.AccountStatus.AvailableBalance.HumanString())
+		}
+		if !worker.AccountStatus.NegativeBalance.IsZero() {
+			t.Error("Expected negative balance to be zero but was", worker.AccountStatus.NegativeBalance.HumanString())
+		}
+		if worker.AccountStatus.OnCoolDown {
+			t.Error("Worker account should not be on cool down")
+		}
+		if worker.AccountStatus.RecentErr != "" {
+			t.Error("Expected recent err to be nil but was", worker.AccountStatus.RecentErr)
+		}
+
+		// PriceTableStatus checks
+		if worker.PriceTableStatus.OnCoolDown {
+			t.Error("Worker price table should not be on cool down")
+		}
+		if worker.PriceTableStatus.RecentErr != "" {
+			t.Error("Expected recent err to be nil but was", worker.PriceTableStatus.RecentErr)
+		}
+
+		// ReadJobsStatus checks
+		if worker.ReadJobsStatus.RecentErr != "" {
+			t.Error("Expected recent err to be nil but was", worker.ReadJobsStatus.RecentErr)
+		}
+		if worker.ReadJobsStatus.JobQueueSize != 0 {
+			t.Error("Expected job queue size to be 0 but was", worker.ReadJobsStatus.JobQueueSize)
+		}
+		if worker.ReadJobsStatus.ConsecutiveFailures != 0 {
+			t.Error("Expected consecutive failures to be 0 but was", worker.ReadJobsStatus.ConsecutiveFailures)
+		}
+
+		// HasSectorJobStatus checks
+		if worker.HasSectorJobsStatus.RecentErr != "" {
+			t.Error("Expected recent err to be nil but was", worker.HasSectorJobsStatus.RecentErr)
+		}
+		if worker.HasSectorJobsStatus.JobQueueSize != 0 {
+			t.Error("Expected job queue size to be 0 but was", worker.HasSectorJobsStatus.JobQueueSize)
+		}
+		if worker.HasSectorJobsStatus.ConsecutiveFailures != 0 {
+			t.Error("Expected consecutive failures to be 0 but was", worker.HasSectorJobsStatus.ConsecutiveFailures)
 		}
 	}
 }
@@ -4779,10 +4905,10 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 		if !found {
 			return errors.New("worker not in worker pool yet")
 		}
-		if w.AvailableBalance.IsZero() {
+		if w.AccountStatus.AvailableBalance.IsZero() {
 			return errors.New("expected worker to have a funded account, instead its balance is still 0")
 		}
-		renterBalance = w.AvailableBalance
+		renterBalance = w.AccountStatus.AvailableBalance
 		return nil
 	})
 	if err != nil {
@@ -4807,16 +4933,16 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	if !found {
 		t.Fatal("Expected worker to be found")
 	}
-	if w.AvailableBalance.IsZero() {
+	if w.AccountStatus.AvailableBalance.IsZero() {
 		t.Fatal("Expected the renter to have synced its balance to the host's version of the balance")
 	}
 
 	// safety check to avoid panic on sub later
-	if w.AvailableBalance.Cmp(renterBalance) >= 0 {
-		t.Fatal("Expected the synced balance to be lower, as the 'lower deposit' dependency should have deposited less", w.AvailableBalance, renterBalance)
+	if w.AccountStatus.AvailableBalance.Cmp(renterBalance) >= 0 {
+		t.Fatal("Expected the synced balance to be lower, as the 'lower deposit' dependency should have deposited less", w.AccountStatus.AvailableBalance, renterBalance)
 	}
 	delta := types.SiacoinPrecision.Div64(10)
-	if renterBalance.Sub(w.AvailableBalance).Cmp(delta) < 0 {
-		t.Fatalf("Expected the synced balance to be at least %v lower than the renter balance, as thats the amount we subtracted from the deposit amount, instead synced balance was %v and renter balance was %v", delta, w.AvailableBalance, renterBalance)
+	if renterBalance.Sub(w.AccountStatus.AvailableBalance).Cmp(delta) < 0 {
+		t.Fatalf("Expected the synced balance to be at least %v lower than the renter balance, as thats the amount we subtracted from the deposit amount, instead synced balance was %v and renter balance was %v", delta, w.AccountStatus.AvailableBalance, renterBalance)
 	}
 }

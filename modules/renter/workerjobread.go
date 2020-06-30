@@ -139,7 +139,7 @@ func (j *jobRead) callExpectedBandwidth() (ul, dl uint64) {
 // managedRead returns the sector data for the given read program.
 func (j *jobRead) managedRead(w *worker, program modules.Program, programData []byte, cost types.Currency) ([]byte, error) {
 	// execute it
-	responses, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, cost)
+	responses, _, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, cost)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +161,7 @@ func (j *jobRead) managedRead(w *worker, program modules.Program, programData []
 }
 
 // callAverageJobTime will return the recent performance of the worker
-// attempting to complete read sector jobs. The call distinguishes based on the
+// attempting to complete read jobs. The call distinguishes based on the
 // size of the job, breaking the jobs into 3 categories: less than 64kb, less
 // than 1mb, and up to a full sector in size.
 //
