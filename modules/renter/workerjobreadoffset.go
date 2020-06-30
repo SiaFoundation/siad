@@ -51,16 +51,9 @@ func (j *jobReadOffset) managedReadOffset() ([]byte, error) {
 	}
 
 	// Verify proof.
-	var ok bool
-	secIdx := int(j.staticOffset / modules.SectorSize)
-	if j.staticLength == modules.SectorSize {
-		root := crypto.MerkleRoot(out.Output)
-		ok = crypto.VerifySectorRangeProof([]crypto.Hash{root}, out.Proof, secIdx, secIdx+1, out.NewMerkleRoot)
-	} else {
-		proofStart := int(j.staticOffset) / crypto.SegmentSize
-		proofEnd := int(j.staticOffset+j.staticLength) / crypto.SegmentSize
-		ok = crypto.VerifyMixedRangeProof(out.Output, out.Proof, out.NewMerkleRoot, proofStart, proofEnd)
-	}
+	proofStart := int(j.staticOffset) / crypto.SegmentSize
+	proofEnd := int(j.staticOffset+j.staticLength) / crypto.SegmentSize
+	ok := crypto.VerifyMixedRangeProof(out.Output, out.Proof, out.NewMerkleRoot, proofStart, proofEnd)
 	if !ok {
 		return nil, errors.New("verifying proof failed")
 	}
