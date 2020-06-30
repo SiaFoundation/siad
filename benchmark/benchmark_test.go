@@ -17,6 +17,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -24,12 +25,12 @@ import (
 // Config
 const (
 	// Directories and log
-	workDirPart      = "nebulous/sia-upload-download-benchmark" // Working directory under user home
-	uploadsDirPart   = "uploads"                                // Uploads in working directory
-	downloadsDirPart = "downloads"                              // Downloads in working directory
+	uploadsDirPart   = "uploads"   // Uploads in working directory
+	downloadsDirPart = "downloads" // Downloads in working directory
 	testGroupDirPart = "test-group"
 	logFilename      = "upload-download-benchmark.log" // Log filename in working directory
 	siaDir           = "upload-download-benchmark"     // Sia directory to upload files to
+	keepLog          = false                           // Keep log after benchmark is finished
 
 	// Uploads and downloads
 	nFiles              = 50               // Number of files to upload
@@ -62,7 +63,7 @@ var (
 
 	// List of files that were uploaded, but not yet downloaded, a file started
 	// to be downloaded is removed from the list, count represents total
-	// number of files uploaded
+	// number of files uploaded even when they were removed from the list
 	createdNotDownloadedFiles files
 
 	// List of files that were started to be downloaded, count represents total
@@ -76,14 +77,14 @@ var (
 	downloadTimesMu sync.Mutex // Download durations mutex
 )
 
+// files struct contains a slice of filenames with count field. Count usage is
+// described in variables createdNotDownloadedFiles and downloadingFiles that
+// use files struct
 type files struct {
-	s     []string
-	count int
-	mu    sync.Mutex
+	filenames []string
+	count     int
+	mu        sync.Mutex
 }
-
-// fileStatus is a type to represent a current status of a file
-type fileStatus int
 
 // TestSiaUploadsDownloads concurrently uploads and then downloads files. Before execution
 // be sure to have enough storage for concurrent upload and download files.
@@ -93,7 +94,7 @@ func TestSiaUploadsDownloads(t *testing.T) {
 	}
 
 	// Init, create, clean dirs
-	initDirs()
+	initDirs(t)
 
 	// Init log to file
 	f := initLog()
@@ -215,6 +216,17 @@ func averages(durations []time.Duration) (time.Duration, string) {
 	return averageDuration, averageSpeedString
 }
 
+// benchmarkTestDir creates a temporary Sia testing directory for a benchmark
+// test, removing any files or directories that previously existed at that
+// location. This should only every be called once per test. Otherwise it will
+// delete the directory again.
+func benchmarkTestDir(testName string) string {
+	path := siatest.TestDir("benchmark", testName)
+	err := os.MkdirAll(path, persist.DefaultDiskPermissionsTest)
+	check(err)
+	return path
+}
+
 // check logs error to our print log
 func check(e error) {
 	// No error
@@ -247,7 +259,14 @@ func checkMaxHealthReached(c *client.Client, siaPath modules.SiaPath) error {
 
 // cleanUpDirs deletes upload and download directories
 func cleanUpDirs() {
-	// Delete dirs
+	// Delete all dirs incl. log file
+	if !keepLog {
+		err := os.RemoveAll(workDir)
+		check(err)
+		return
+	}
+
+	// Delete working dirs, but keep log file
 	err := os.RemoveAll(upDir)
 	check(err)
 	err = os.RemoveAll(downDir)
@@ -302,23 +321,17 @@ func initClient() {
 
 // initDirs sets working, uploads and downloads directory paths from config
 // and cleans (deletes and creates) them
-func initDirs() {
-	home, err := os.UserHomeDir()
-	check(err)
-
+func initDirs(t *testing.T) {
 	// Set dir paths
-	workDir = filepath.Join(home, workDirPart)
+	workDir = benchmarkTestDir(t.Name())
 	upDir = filepath.Join(workDir, uploadsDirPart)
 	downDir = filepath.Join(workDir, downloadsDirPart)
 	if useTestGroup {
 		testGroupDir = filepath.Join(workDir, testGroupDirPart)
 	}
 
-	// Delete dirs
-	cleanUpDirs()
-
 	// Create dirs
-	err = os.MkdirAll(upDir, modules.DefaultDirPerm)
+	err := os.MkdirAll(upDir, modules.DefaultDirPerm)
 	check(err)
 	err = os.MkdirAll(downDir, modules.DefaultDirPerm)
 	check(err)
@@ -521,13 +534,13 @@ func waitForRenterIsUploadReady() {
 func (f *files) managedAddFile(filename string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	for _, file := range f.s {
+	for _, file := range f.filenames {
 		if file == filename {
 			// File with this name already exists
 			return
 		}
 	}
-	f.s = append(f.s, filename)
+	f.filenames = append(f.filenames, filename)
 }
 
 // managedCount gets count
@@ -562,18 +575,18 @@ func (f *files) managedIncCountLimit(limit int) (count int, ok bool) {
 func (f *files) managedCountLen() (count, length int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.count, len(f.s)
+	return f.count, len(f.filenames)
 }
 
 // managedRandomFile gets a random filename from the files slice
 func (f *files) managedRandomFile() (filename string, ok bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if len(f.s) == 0 {
+	if len(f.filenames) == 0 {
 		return "", false
 	}
-	n := len(f.s)
-	return f.s[fastrand.Intn(n)], true
+	n := len(f.filenames)
+	return f.filenames[fastrand.Intn(n)], true
 }
 
 // managedRemoveFirstFile returns and removes first filename from the files
@@ -581,10 +594,10 @@ func (f *files) managedRandomFile() (filename string, ok bool) {
 func (f *files) managedRemoveFirstFile() (filename string, ok bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if len(f.s) == 0 {
+	if len(f.filenames) == 0 {
 		return "", false
 	}
-	filename = f.s[0]
-	f.s = f.s[1:]
+	filename = f.filenames[0]
+	f.filenames = f.filenames[1:]
 	return filename, true
 }
