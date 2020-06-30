@@ -25,13 +25,12 @@ type (
 	// must be static because this object is saved and loaded using
 	// atomic.Pointer.
 	workerCache struct {
-		staticBlockHeight      types.BlockHeight
-		staticContractID       types.FileContractID
-		staticContractUtility  modules.ContractUtility
-		staticHostHeightUsable bool
-		staticHostVersion      string
-		staticRenterAllowance  modules.Allowance
-		staticSynced           bool
+		staticBlockHeight     types.BlockHeight
+		staticContractID      types.FileContractID
+		staticContractUtility modules.ContractUtility
+		staticHostVersion     string
+		staticRenterAllowance modules.Allowance
+		staticSynced          bool
 
 		staticLastUpdate time.Time
 	}
@@ -69,32 +68,16 @@ func (w *worker) managedUpdateCache() {
 		return
 	}
 
-	// Grab the current cache object.
-	current := w.staticCache()
-
 	// Create the cache object.
 	newCache := &workerCache{
-		staticBlockHeight:      w.renter.cs.Height(),
-		staticContractID:       renterContract.ID,
-		staticContractUtility:  renterContract.Utility,
-		staticHostHeightUsable: true,
-		staticHostVersion:      host.Version,
-		staticRenterAllowance:  w.renter.hostContractor.Allowance(),
-		staticSynced:           w.renter.cs.Synced(),
+		staticBlockHeight:     w.renter.cs.Height(),
+		staticContractID:      renterContract.ID,
+		staticContractUtility: renterContract.Utility,
+		staticHostVersion:     host.Version,
+		staticRenterAllowance: w.renter.hostContractor.Allowance(),
+		staticSynced:          w.renter.cs.Synced(),
 
 		staticLastUpdate: time.Now(),
-	}
-
-	// If the renter goes from being unsynced to being synced, and we find the
-	// host to be unsynced (according to our standards), we mark it unusable on
-	// the worker cache object. Mechanisms that rely on the host height can then
-	// consult the cache object before using it.
-	if current != nil && !current.staticSynced && newCache.staticSynced {
-		rbh := newCache.staticBlockHeight
-		hbh := w.staticPriceTable().staticPriceTable.HostBlockHeight
-		if !hostBlockHeightWithinTolerance(newCache.staticSynced, rbh, hbh) {
-			newCache.staticHostHeightUsable = false
-		}
 	}
 
 	// Atomically store the cache object in the worker.
