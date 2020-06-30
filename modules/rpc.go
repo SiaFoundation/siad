@@ -50,9 +50,6 @@ type RPCPriceTable struct {
 	// by the memory consumption of the program.
 	MemoryTimeCost types.Currency `json:"memorytimecost"`
 
-	// StoreLengthCost is the cost per byte per block for storage.
-	StoreLengthCost types.Currency `json:"storelengthcost"`
-
 	// CollateralCost is the amount of money per byte the host is promising to
 	// lock away as collateral when adding new data to a contract.
 	CollateralCost types.Currency `json:"collateralcost"`
@@ -73,9 +70,9 @@ type RPCPriceTable struct {
 	ReadLengthCost types.Currency `json:"readlengthcost"`
 
 	// Cost values specific to the Write instruction.
-	WriteBaseCost   types.Currency `json:"writebasecost"`
-	WriteLengthCost types.Currency `json:"writelengthcost"`
-	WriteStoreCost  types.Currency `json:"writestorecost"`
+	WriteBaseCost   types.Currency `json:"writebasecost"`   // per write
+	WriteLengthCost types.Currency `json:"writelengthcost"` // per byte written
+	WriteStoreCost  types.Currency `json:"writestorecost"`  // per byte / block of additional storage
 
 	// TxnFee estimations.
 	TxnFeeMinRecommended types.Currency `json:"txnfeeminrecommended"`
@@ -134,7 +131,8 @@ type (
 		ProgramDataLength uint64
 	}
 
-	// RPCExecuteProgramResponse todo missing docstring
+	// RPCExecuteProgramResponse is the response sent by the host for each
+	// executed MDMProgram instruction.
 	RPCExecuteProgramResponse struct {
 		AdditionalCollateral types.Currency
 		OutputLength         uint64
@@ -143,7 +141,22 @@ type (
 		Proof                []crypto.Hash
 		Error                error
 		TotalCost            types.Currency
-		PotentialRefund      types.Currency
+		StorageCost          types.Currency
+	}
+
+	// RPCExecuteProgramRevisionSigningRequest is the request sent by the renter
+	// for updating a contract when executing a write MDM program.
+	RPCExecuteProgramRevisionSigningRequest struct {
+		Signature            []byte
+		NewRevisionNumber    uint64
+		NewValidProofValues  []types.Currency
+		NewMissedProofValues []types.Currency
+	}
+
+	// RPCExecuteProgramRevisionSigningResponse is the response from the host,
+	// containing the host signature for the new revision.
+	RPCExecuteProgramRevisionSigningResponse struct {
+		Signature []byte
 	}
 
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table
@@ -178,7 +191,7 @@ func (epr RPCExecuteProgramResponse) MarshalSia(w io.Writer) error {
 	_ = ec.Encode(epr.Proof)
 	_ = ec.Encode(errStr)
 	_ = ec.Encode(epr.TotalCost)
-	_ = ec.Encode(epr.PotentialRefund)
+	_ = ec.Encode(epr.StorageCost)
 	return ec.Err()
 }
 
@@ -193,7 +206,7 @@ func (epr *RPCExecuteProgramResponse) UnmarshalSia(r io.Reader) error {
 	_ = dc.Decode(&epr.Proof)
 	_ = dc.Decode(&errStr)
 	_ = dc.Decode(&epr.TotalCost)
-	_ = dc.Decode(&epr.PotentialRefund)
+	_ = dc.Decode(&epr.StorageCost)
 	if errStr != "" {
 		epr.Error = errors.New(errStr)
 	}

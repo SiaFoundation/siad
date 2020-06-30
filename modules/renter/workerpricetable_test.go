@@ -109,6 +109,19 @@ func TestUpdatePriceTableGouging(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "update price table cost") {
 		t.Fatalf("expected update price table cost gouging error, instead error was '%v'", err)
 	}
+
+	// verify unacceptable validity case
+	pt = newDefaultPriceTable()
+	pt.Validity = 0
+	err = checkUpdatePriceTableGouging(pt, allowance)
+	if err == nil || !strings.Contains(err.Error(), "update price table validity") {
+		t.Fatalf("expected update price table validity gouging error, instead error was '%v'", err)
+	}
+	pt.Validity = minAcceptedPriceTableValidity
+	err = checkUpdatePriceTableGouging(pt, allowance)
+	if err != nil {
+		t.Fatalf("unexpected update price table validity gouging error: %v", err)
+	}
 }
 
 // TestHostBlockHeightWithinTolerance is a unit test that covers the logic

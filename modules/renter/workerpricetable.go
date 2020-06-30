@@ -37,6 +37,14 @@ var (
 	// returned by the host is not within a certain tolerance, the
 	// priceTableHostBlockHeightLeeWay,  of our own block height.
 	errHostBlockHeightNotWithinTolerance = errors.New("host blockheight is not within tolerance, host is unsynced")
+
+	// minAcceptedPriceTableValidity is the minimum price table validity
+	// the renter will accept.
+	minAcceptedPriceTableValidity = build.Select(build.Var{
+		Standard: 5 * time.Minute,
+		Dev:      1 * time.Minute,
+		Testing:  10 * time.Second,
+	}).(time.Duration)
 )
 
 type (
@@ -210,6 +218,7 @@ func (w *worker) staticUpdatePriceTable() {
 	// check for gouging before paying
 	err = checkUpdatePriceTableGouging(pt, w.staticCache().staticRenterAllowance)
 	if err != nil {
+
 		err = errors.Compose(err, errors.AddContext(errPriceTableGouging, fmt.Sprintf("host %v", w.staticHostPubKeyStr)))
 		w.renter.log.Println("ERROR: ", err)
 		return
@@ -272,6 +281,11 @@ func checkUpdatePriceTableGouging(pt modules.RPCPriceTable, allowance modules.Al
 	// gouging.
 	if allowance.Funds.IsZero() {
 		return nil
+	}
+
+	// Verify the validity is reasonable
+	if pt.Validity < minAcceptedPriceTableValidity {
+		return fmt.Errorf("update price table validity %v is considered too low, the minimum accepted validity is %v", pt.Validity, minAcceptedPriceTableValidity)
 	}
 
 	// In order to decide whether or not the update price table cost is too
