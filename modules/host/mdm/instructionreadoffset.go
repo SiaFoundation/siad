@@ -82,9 +82,8 @@ func (i *instructionReadOffset) Execute(previousOutput output) output {
 	// Otherwise we need to create a mixed range proof.
 	proofStart := int(offset) / crypto.SegmentSize
 	proofEnd := int(offset+length) / crypto.SegmentSize
-	fcSize := uint64(len(i.staticState.sectors.merkleRoots)) * modules.SectorSize
-	mixedProof := crypto.MerkleMixedRangeProof(sectorProof, fullSec, fcSize/crypto.SegmentSize, int(modules.SectorSize), proofStart, proofEnd)
-	output.Proof = append(sectorProof, mixedProof...)
+	mixedProof := crypto.MerkleMixedRangeProof(sectorProof, fullSec, int(modules.SectorSize), proofStart, proofEnd)
+	output.Proof = mixedProof
 	return output
 }
 

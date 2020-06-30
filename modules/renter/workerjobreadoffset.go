@@ -49,7 +49,6 @@ func (j *jobReadOffset) managedReadOffset() ([]byte, error) {
 	if err != nil {
 		return nil, errors.AddContext(err, "jobReadOffset: failed to execute managedRead")
 	}
-	numSectors := int(out.NewSize / modules.SectorSize)
 
 	// Verify proof.
 	var ok bool
@@ -58,16 +57,9 @@ func (j *jobReadOffset) managedReadOffset() ([]byte, error) {
 		root := crypto.MerkleRoot(out.Output)
 		ok = crypto.VerifySectorRangeProof([]crypto.Hash{root}, out.Proof, secIdx, secIdx+1, out.NewMerkleRoot)
 	} else {
-		sectorProofSize := crypto.ProofSize(numSectors, secIdx, secIdx+1)
-		if sectorProofSize >= len(out.Proof) {
-			return nil, errors.New("returned proof has invalid size")
-		}
-		sectorProof := out.Proof[:sectorProofSize]
-		mixedProof := out.Proof[sectorProofSize:]
-		numSegments := out.NewSize / crypto.SegmentSize
 		proofStart := int(j.staticOffset) / crypto.SegmentSize
 		proofEnd := int(j.staticOffset+j.staticLength) / crypto.SegmentSize
-		ok = crypto.VerifyMixedRangeProof(sectorProof, out.Output, mixedProof, out.NewMerkleRoot, numSegments, int(modules.SectorSize), proofStart, proofEnd)
+		ok = crypto.VerifyMixedRangeProof(out.Output, out.Proof, out.NewMerkleRoot, proofStart, proofEnd)
 	}
 	if !ok {
 		return nil, errors.New("verifying proof failed")

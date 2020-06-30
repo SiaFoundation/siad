@@ -77,10 +77,8 @@ func TestInstructionReadOffset(t *testing.T) {
 	// Assert the output.
 	proofStart := int(offset) / crypto.SegmentSize
 	proofEnd := int(offset+length) / crypto.SegmentSize
-	fcSize := uint64(len(so.sectorRoots)) * modules.SectorSize
 	sectorProof := expectedProof
-	mixedProof := crypto.MerkleMixedRangeProof(sectorProof, sectorData, fcSize/crypto.SegmentSize, int(modules.SectorSize), proofStart, proofEnd)
-	expectedProof = append(sectorProof, mixedProof...)
+	expectedProof = crypto.MerkleMixedRangeProof(sectorProof, sectorData, int(modules.SectorSize), proofStart, proofEnd)
 	outputData = sectorData[relOffset:][:length]
 	err = outputs[0].assert(ics, imr, expectedProof, outputData)
 	if err != nil {
@@ -88,11 +86,7 @@ func TestInstructionReadOffset(t *testing.T) {
 	}
 
 	// Verify proof.
-	sectorIndex := int(offset / modules.SectorSize)
-	sectorProofSize := crypto.ProofSize(len(so.sectorRoots), sectorIndex, sectorIndex+1)
-	sectorProofReturned := outputs[0].Proof[:sectorProofSize]
-	mixedProofReturned := outputs[0].Proof[sectorProofSize:]
-	ok = crypto.VerifyMixedRangeProof(sectorProofReturned, outputs[0].Output, mixedProofReturned, outputs[0].NewMerkleRoot, fcSize/crypto.SegmentSize, int(modules.SectorSize), proofStart, proofEnd)
+	ok = crypto.VerifyMixedRangeProof(outputs[0].Output, outputs[0].Proof, outputs[0].NewMerkleRoot, proofStart, proofEnd)
 	if !ok {
 		t.Fatal("failed to verify mixed range proof")
 	}

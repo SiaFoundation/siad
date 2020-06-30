@@ -2,7 +2,6 @@ package crypto
 
 import (
 	"bytes"
-	"math/bits"
 
 	"gitlab.com/NebulousLabs/merkletree/merkletree-blake"
 
@@ -208,7 +207,7 @@ func MerkleSectorRangeProof(roots []Hash, start, end int) []Hash {
 
 // MerkleMixedRangeProof creates a merkle range proof using both sector hashes
 // and segments.
-func MerkleMixedRangeProof(sectorRoots []Hash, segments []byte, numLeaves uint64, sectorSize int, start, end int) []Hash {
+func MerkleMixedRangeProof(sectorRoots []Hash, segmentData []byte, sectorSize int, start, end int) []Hash {
 	sectorHashes := make([][32]byte, len(sectorRoots))
 	for i := range sectorHashes {
 		sectorHashes[i] = [32]byte(sectorRoots[i])
@@ -219,10 +218,10 @@ func MerkleMixedRangeProof(sectorRoots []Hash, segments []byte, numLeaves uint64
 			End:   uint64(end),
 		},
 	}
-	segmentReader := bytes.NewReader(segments)
+	segmentReader := bytes.NewReader(segmentData)
 	segmentsPerSector := sectorSize / SegmentSize
 	msh := merkletree.NewMixedSubtreeHasher(sectorHashes, segmentReader, segmentsPerSector, SegmentSize)
-	proof, err := merkletree.BuildDiffProof(ranges, msh, numLeaves)
+	proof, err := merkletree.BuildMultiRangeProof(ranges, msh)
 	if err != nil {
 		build.Critical("BuildRangeProof failed", err)
 	}
@@ -236,17 +235,12 @@ func MerkleMixedRangeProof(sectorRoots []Hash, segments []byte, numLeaves uint64
 // VerifyMixedRangeProof verifies a mixed proof given the node hashes,
 // downloaded segments, the proof, contract root, number of segments in the
 // contract, sectorSize, a start and an end for the downloaded range.
-func VerifyMixedRangeProof(sectorRoots []Hash, segments []byte, proof []Hash, root Hash, numLeaves uint64, sectorSize int, start, end int) bool {
-	sectorHashes := make([][32]byte, len(sectorRoots))
-	for i := range sectorHashes {
-		sectorHashes[i] = [32]byte(sectorRoots[i])
-	}
+func VerifyMixedRangeProof(segmentData []byte, proof []Hash, root Hash, start, end int) bool {
 	proofBytes := make([][32]byte, len(proof))
 	for i := range proof {
 		proofBytes[i] = [32]byte(proof[i])
 	}
-	segmentReader := bytes.NewReader(segments)
-	segmentsPerSector := sectorSize / SegmentSize
+	segmentReader := bytes.NewReader(segmentData)
 
 	ranges := []merkletree.LeafRange{
 		{
@@ -255,17 +249,8 @@ func VerifyMixedRangeProof(sectorRoots []Hash, segments []byte, proof []Hash, ro
 		},
 	}
 
-	// The proof, modified hashes, and the new root are sent to the verifier.
-	msh := merkletree.NewMixedSubtreeHasher(sectorHashes, segmentReader, segmentsPerSector, SegmentSize)
-	compressed, err := merkletree.CompressLeafHashes(ranges, msh)
-	if err != nil {
-		return false
-	}
-	for _, c := range compressed {
-		var h Hash
-		copy(h[:], c[:])
-	}
-	ok, _ := merkletree.VerifyDiffProof(compressed, numLeaves, ranges, proofBytes, root)
+	lh := merkletree.NewReaderLeafHasher(segmentReader, SegmentSize)
+	ok, _ := merkletree.VerifyMultiRangeProof(lh, ranges, proofBytes, root)
 	return ok
 }
 
@@ -314,13 +299,4 @@ func VerifyDiffProof(ranges []ProofRange, numLeaves uint64, proofHashes, leafHas
 	}
 	ok, _ := merkletree.VerifyDiffProof(leafBytes, numLeaves, ranges, proofBytes, [32]byte(root))
 	return ok
-}
-
-// ProofSize returns the size of a Merkle proof for the leaf range [start, end)
-// within a tree containing n leaves.
-func ProofSize(n, start, end int) int {
-	leftHashes := bits.OnesCount(uint(start))
-	pathMask := 1<<uint(bits.Len(uint((end-1)^(n-1)))) - 1
-	rightHashes := bits.OnesCount(^uint(end-1) & uint(pathMask))
-	return leftHashes + rightHashes
 }
