@@ -77,7 +77,7 @@ func TestUseHostBlockHeight(t *testing.T) {
 		t.Fatal("Unexpected error", err)
 	}
 
-	// rever the corruption to assert success
+	// revert the corruption to assert success
 	wpt = w.staticPriceTable()
 	err = encoding.Unmarshal(encoding.Marshal(wpt.staticPriceTable), &pt)
 	if err != nil {
