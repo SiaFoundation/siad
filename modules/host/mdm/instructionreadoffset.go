@@ -63,27 +63,29 @@ func (i *instructionReadOffset) Execute(previousOutput output) output {
 	}
 	sectorRoot := i.staticState.sectors.merkleRoots[secIdx]
 
-	// Execute it like a ReadSector instruction.
-	output, fullSec := executeReadSector(previousOutput, i.staticState, length, relOffset, sectorRoot, i.staticMerkleProof)
+	// Execute it like a ReadSector instruction but without a proof since we
+	// will add that manually later.
+	output, fullSec := executeReadSector(previousOutput, i.staticState, length, relOffset, sectorRoot, false)
 	if !i.staticMerkleProof || output.Error != nil {
 		return output
 	}
 
-	// Extend the proof.
-	sectorProof := crypto.MerkleSectorRangeProof(i.staticState.sectors.merkleRoots, int(secIdx), int(secIdx+1))
-
-	// If the segmentProof is empty, a full sector was downloaded. Then the
-	// sectorProof is enough and we are done.
-	if len(output.Proof) == 0 {
-		output.Proof = sectorProof
-		return output
-	}
-
-	// Otherwise we need to create a mixed range proof.
+	// Compute the proof range.
 	proofStart := int(offset) / crypto.SegmentSize
 	proofEnd := int(offset+length) / crypto.SegmentSize
-	mixedProof := crypto.MerkleMixedRangeProof(sectorProof, fullSec, int(modules.SectorSize), proofStart, proofEnd)
-	output.Proof = mixedProof
+
+	// Create the proof.
+	if length == modules.SectorSize {
+		// If a full sector was downloaded, we don't need to pass in the data
+		// but instead pass in all roots.
+		sectorHashes := i.staticState.sectors.merkleRoots
+		output.Proof = crypto.MerkleMixedRangeProof(sectorHashes, nil, int(modules.SectorSize), proofStart, proofEnd)
+	} else {
+		// If a partial sector was downloaded, we pass in all sector roots
+		// except for the partial one and pass in the data as well.
+		sectorHashes := append(i.staticState.sectors.merkleRoots[:secIdx], i.staticState.sectors.merkleRoots[secIdx+1:]...)
+		output.Proof = crypto.MerkleMixedRangeProof(sectorHashes, fullSec, int(modules.SectorSize), proofStart, proofEnd)
+	}
 	return output
 }
 

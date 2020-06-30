@@ -90,7 +90,7 @@ func (s *sectors) hasSector(sectorRoot crypto.Hash) bool {
 }
 
 // translateOffset translates an offset within a filecontract into a relative
-// offset within a sector and the sector root.
+// offset within a sector and the sector's index within the contract.
 func (s *sectors) translateOffset(offset uint64) (uint64, uint64, error) {
 	// Compute the sector offset.
 	secOff := offset / modules.SectorSize
