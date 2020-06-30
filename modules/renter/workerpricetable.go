@@ -218,7 +218,6 @@ func (w *worker) staticUpdatePriceTable() {
 	// check for gouging before paying
 	err = checkUpdatePriceTableGouging(pt, w.staticCache().staticRenterAllowance)
 	if err != nil {
-
 		err = errors.Compose(err, errors.AddContext(errPriceTableGouging, fmt.Sprintf("host %v", w.staticHostPubKeyStr)))
 		w.renter.log.Println("ERROR: ", err)
 		return
