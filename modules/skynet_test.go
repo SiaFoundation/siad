@@ -49,6 +49,13 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 	if offset != 1 {
 		t.Fatalf("Expected offset %d, got %d", 1, offset)
 	}
+	if subMeta.Subfiles[filePath1].Offset != 0 {
+		t.Fatalf("Expected offset %d, got %d", 0, subMeta.Subfiles[filePath1].Offset)
+	}
+	if subMeta.Subfiles[filePath2].Offset != 1 {
+		t.Fatalf("Expected offset %d, got %d", 1, subMeta.Subfiles[filePath2].Offset)
+	}
+
 	if size != 3 {
 		t.Fatalf("Expected size %d, got %d", 3, size)
 	}
@@ -66,6 +73,12 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 	}
 	if offset != 4 {
 		t.Fatalf("Expected offset %d, got %d", 4, offset)
+	}
+	if subMeta.Subfiles[filePath4].Offset != 0 {
+		t.Fatalf("Expected offset %d, got %d", 0, subMeta.Subfiles[filePath4].Offset)
+	}
+	if subMeta.Subfiles[filePath5].Offset != 1 {
+		t.Fatalf("Expected offset %d, got %d", 1, subMeta.Subfiles[filePath5].Offset)
 	}
 	if size != 9 {
 		t.Fatalf("Expected size %d, got %d", 9, size)
