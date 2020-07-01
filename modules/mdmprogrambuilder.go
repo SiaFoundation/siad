@@ -142,6 +142,22 @@ func (pb *ProgramBuilder) AddReadSectorInstruction(length, offset uint64, merkle
 	pb.addInstruction(collateral, cost, types.ZeroCurrency, memory, time)
 }
 
+// AddRevisionInstruction adds a Revision instruction to the program.
+func (pb *ProgramBuilder) AddRevisionInstruction() {
+	// Compute the argument offsets.
+	merkleRootOffset := uint64(pb.programData.Len())
+	// Create the instruction.
+	i := NewRevisionInstruction(merkleRootOffset)
+	// Append instruction
+	pb.program = append(pb.program, i)
+	// Update cost, collateral and memory usage.
+	collateral := MDMRevisionCollateral()
+	cost := MDMRevisionCost(pb.staticPT)
+	memory := MDMRevisionMemory()
+	time := uint64(MDMTimeRevision)
+	pb.addInstruction(collateral, cost, types.ZeroCurrency, memory, time)
+}
+
 // Cost returns the current cost of the program being built by the builder. If
 // 'finalized' is 'true', the memory cost of finalizing the program is included.
 func (pb *ProgramBuilder) Cost(finalized bool) (cost, storage, collateral types.Currency) {
@@ -240,4 +256,12 @@ func NewReadSectorInstruction(lengthOffset, offsetOffset, merkleRootOffset uint6
 		i.Args[24] = 1
 	}
 	return i
+}
+
+// NewRevisionInstruction creates a modules.Instruction from arguments.
+func NewRevisionInstruction(merkleRootOffset uint64) Instruction {
+	return Instruction{
+		Specifier: SpecifierRevision,
+		Args:      nil,
+	}
 }

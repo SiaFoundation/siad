@@ -1,0 +1,71 @@
+package mdm
+
+import (
+	"fmt"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
+)
+
+// instructionRevision returns the FileContractRevision returned by this MDM
+// program.
+type instructionRevision struct {
+	commonInstruction
+}
+
+// staticDecodeRevisionInstruction creates a new 'Revision' instruction from
+// the provided generic instruction.
+func (p *program) staticDecodeRevisionInstruction(instruction modules.Instruction) (instruction, error) {
+	// Check specifier.
+	if instruction.Specifier != modules.SpecifierRevision {
+		return nil, fmt.Errorf("expected specifier %v but got %v",
+			modules.SpecifierRevision, instruction.Specifier)
+	}
+	// Check args.
+	if len(instruction.Args) != modules.RPCIHasSectorLen {
+		return nil, fmt.Errorf("expected instruction to have len %v but was %v",
+			modules.RPCIHasSectorLen, len(instruction.Args))
+	}
+	return &instructionHasSector{
+		commonInstruction: commonInstruction{
+			staticData:        p.staticData,
+			staticMerkleProof: false,
+			staticState:       p.staticProgramState,
+		},
+	}, nil
+}
+
+// Collateral is zero for the HasSector instruction.
+func (i *instructionRevision) Collateral() types.Currency {
+	return modules.MDMRevisionCollateral()
+}
+
+// Cost returns the cost of executing this instruction.
+func (i *instructionRevision) Cost() (executionCost, _ types.Currency, err error) {
+	executionCost = modules.MDMRevisionCost(i.staticState.priceTable)
+	return
+}
+
+// Memory returns the memory allocated by this instruction beyond the end of its
+// lifetime.
+func (i *instructionRevision) Memory() uint64 {
+	return modules.MDMRevisionMemory()
+}
+
+// Execute executes the 'HasSector' instruction.
+func (i *instructionRevision) Execute(prevOutput output) output {
+	// Fetch the requested information.
+	rev := i.staticState.staticRevision
+
+	return output{
+		NewSize:       prevOutput.NewSize,       // size stays the same
+		NewMerkleRoot: prevOutput.NewMerkleRoot, // root stays the same
+		Output:        encoding.Marshal(rev),
+	}
+}
+
+// Time returns the execution time of an 'HasSector' instruction.
+func (i *instructionRevision) Time() (uint64, error) {
+	return modules.MDMTimeRevision, nil
+}

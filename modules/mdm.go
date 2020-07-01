@@ -69,6 +69,9 @@ const (
 	// MDMTimeReadSector is the time for executing a 'ReadSector' instruction.
 	MDMTimeReadSector = 1000
 
+	// MDMTimeRevision is the time for executing a 'Revision' instruction.
+	MDMTimeRevision = 1
+
 	// MDMTimeWriteSector is the time for executing a 'WriteSector' instruction.
 	MDMTimeWriteSector = 10000
 
@@ -91,6 +94,10 @@ const (
 	// RPCIReadOffsetLen is the expected length of the 'Args' of a ReadOffset
 	// instruction.
 	RPCIReadOffsetLen = 17
+
+	// RPCIRevisionLen is the expected length of the 'Args' of a Revision
+	// instruction.
+	RPCIRevisionLen = 0
 )
 
 var (
@@ -118,6 +125,9 @@ var (
 
 	// SpecifierReadSector is the specifier for the ReadSector instruction.
 	SpecifierReadSector = InstructionSpecifier{'R', 'e', 'a', 'd', 'S', 'e', 'c', 't', 'o', 'r'}
+
+	// SpecifierRevision is the specifier for the Revision instruction.
+	SpecifierRevision = InstructionSpecifier{'R', 'e', 'v', 'i', 's', 'i', 'o', 'n'}
 
 	// ErrInsufficientBandwidthBudget is returned when bandwidth can no longer
 	// be paid for with the provided budget.
@@ -198,6 +208,12 @@ func MDMReadCost(pt *RPCPriceTable, readLength uint64) types.Currency {
 	return cost
 }
 
+// MDMRevisionCost is the cost of executing a 'Revision' instruction.
+func MDMRevisionCost(pt *RPCPriceTable) types.Currency {
+	cost := pt.RevisionBaseCost
+	return cost
+}
+
 // MDMWriteCost is the cost of executing a 'Write' instruction of a certain length.
 func MDMWriteCost(pt *RPCPriceTable, writeLength uint64) types.Currency {
 	writeCost := pt.WriteLengthCost.Mul64(writeLength).Add(pt.WriteBaseCost)
@@ -243,6 +259,12 @@ func MDMReadMemory() uint64 {
 	return 0 // 'Read' doesn't hold on to any memory beyond the lifetime of the instruction.
 }
 
+// MDMRevisionMemory returns the additional memory consumption of a 'Revision'
+// instruction.
+func MDMRevisionMemory() uint64 {
+	return 0 // 'Revision' doesn't hold on to any memory beyond the lifetime of the instruction.
+}
+
 // MDMBandwidthCost computes the total bandwidth cost given a price table and
 // used up- and download bandwidth.
 func MDMBandwidthCost(pt RPCPriceTable, uploadBandwidth, downloadBandwidth uint64) types.Currency {
@@ -286,6 +308,12 @@ func MDMReadCollateral() types.Currency {
 	return types.ZeroCurrency
 }
 
+// MDMRevisionCollateral returns the additional collateral a 'Revision'
+// instruction requires the host to put up.
+func MDMRevisionCollateral() types.Currency {
+	return types.ZeroCurrency
+}
+
 // ReadOnly returns true if the program consists of no write instructions.
 func (p Program) ReadOnly() bool {
 	for _, instruction := range p {
@@ -297,6 +325,7 @@ func (p Program) ReadOnly() bool {
 		case SpecifierHasSector:
 		case SpecifierReadOffset:
 		case SpecifierReadSector:
+		case SpecifierRevision:
 		default:
 			build.Critical("ReadOnly: unknown instruction")
 		}
@@ -319,6 +348,8 @@ func (p Program) RequiresSnapshot() bool {
 		case SpecifierReadOffset:
 			return true
 		case SpecifierReadSector:
+		case SpecifierRevision:
+			return true
 		default:
 			build.Critical("RequiresSnapshot: unknown instruction")
 		}

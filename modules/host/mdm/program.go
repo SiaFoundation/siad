@@ -32,6 +32,7 @@ type FnFinalize func(StorageObligation) error
 type programState struct {
 	// host related fields
 	host                    Host
+	staticRevision          types.FileContractRevision
 	staticRemainingDuration types.BlockHeight
 
 	// program cache
@@ -123,6 +124,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 			host:                    mdm.host,
 			priceTable:              pt,
 			sectors:                 newSectors(sos.SectorRoots()),
+			staticRevision:          sos.RecentRevision(),
 		},
 		staticBudget:           budget,
 		usedMemory:             modules.MDMInitMemory(),
