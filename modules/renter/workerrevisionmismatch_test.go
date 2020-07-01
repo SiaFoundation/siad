@@ -54,11 +54,16 @@ func TestRevisionSync(t *testing.T) {
 
 	// now sleep until we have updated the price table
 	time.Sleep(time.Until(w.staticPriceTable().staticUpdateTime))
-	time.Sleep(3 * time.Second)
 
 	// verify the host returned an error caused by a revision mismatch
-	if !errCausedByRevisionMismatch(w.staticPriceTable().staticRecentErr) {
-		t.Fatal("Expected host to have returned an error caused by revision mismatch")
+	err = build.Retry(300, 100*time.Millisecond, func() error {
+		if !errCausedByRevisionMismatch(w.staticPriceTable().staticRecentErr) {
+			return errors.New("Expected host to have returned an error caused by revision mismatch")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// wait until we have a valid pricetable

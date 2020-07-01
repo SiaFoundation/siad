@@ -320,7 +320,7 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
 	// create a new RPC price table
-	his := h.managedInternalSettings()
+	hes := h.managedExternalSettings()
 	priceTable := modules.RPCPriceTable{
 		// TODO: hardcoded cost should be updated to use a better value.
 		AccountBalanceCost:   types.NewCurrency64(1),
@@ -328,22 +328,32 @@ func (h *Host) managedUpdatePriceTable() {
 		UpdatePriceTableCost: types.NewCurrency64(1),
 
 		// TODO: hardcoded MDM costs should be updated to use better values.
-		HasSectorBaseCost: types.NewCurrency64(1),
-		InitBaseCost:      types.NewCurrency64(1),
-		MemoryTimeCost:    types.NewCurrency64(1),
-		ReadBaseCost:      types.NewCurrency64(1),
-		ReadLengthCost:    types.NewCurrency64(1),
-		StoreLengthCost:   types.NewCurrency64(1),
+		HasSectorBaseCost:   types.NewCurrency64(1),
+		MemoryTimeCost:      types.NewCurrency64(1),
+		DropSectorsBaseCost: types.NewCurrency64(1),
+		DropSectorsUnitCost: types.NewCurrency64(1),
 
-		// Bandwidth related fields.
-		DownloadBandwidthCost: his.MinDownloadBandwidthPrice,
-		UploadBandwidthCost:   his.MinUploadBandwidthPrice,
+		// Read related costs.
+		ReadBaseCost:   hes.SectorAccessPrice,
+		ReadLengthCost: types.NewCurrency64(1),
+
+		// Write related costs.
+		WriteBaseCost:   types.NewCurrency64(1),
+		WriteLengthCost: types.NewCurrency64(1),
+		WriteStoreCost:  hes.StoragePrice,
+
+		// Init costs.
+		InitBaseCost: hes.BaseRPCPrice,
 
 		// LatestRevisionCost is set to a reasonable base + the estimated
 		// bandwidth cost of downloading a filecontract. This isn't perfect but
 		// at least scales a bit as the host updates their download bandwidth
 		// prices.
-		LatestRevisionCost: modules.DefaultBaseRPCPrice.Add(his.MinDownloadBandwidthPrice.Mul64(modules.EstimatedFileContractTransactionSetSize)),
+		LatestRevisionCost: modules.DefaultBaseRPCPrice.Add(hes.DownloadBandwidthPrice.Mul64(modules.EstimatedFileContractTransactionSetSize)),
+
+		// Bandwidth related fields.
+		DownloadBandwidthCost: hes.DownloadBandwidthPrice,
+		UploadBandwidthCost:   hes.UploadBandwidthPrice,
 	}
 	// update the pricetable
 	h.staticPriceTables.managedSetCurrent(priceTable)

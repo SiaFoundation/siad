@@ -37,6 +37,12 @@ type (
 		modules.ProductionDependencies
 	}
 
+	// DependencyDisableCriticalOnMaxBalance prevents a build.Critical to be
+	// thrown when we encounter a `MaxBalanceExceeded` error on the host
+	DependencyDisableCriticalOnMaxBalance struct {
+		modules.ProductionDependencies
+	}
+
 	// DependencyDisableStreamClose prevents the stream from being closed.
 	DependencyDisableStreamClose struct {
 		modules.ProductionDependencies
@@ -244,6 +250,11 @@ func (d *DependencyBlockResumeJobDownloadUntilTimeout) Disrupt(s string) bool {
 		return true
 	}
 	return false
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyDisableCriticalOnMaxBalance) Disrupt(s string) bool {
+	return s == "DisableCriticalOnMaxBalance"
 }
 
 // Disrupt returns true if the correct string is provided.

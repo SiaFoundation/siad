@@ -15,6 +15,11 @@ import (
 // TestExecuteProgramUsedBandwidth verifies the bandwidth used by executing
 // various MDM programs on the host
 func TestExecuteProgramUsedBandwidth(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// create a new worker tester
 	wt, err := newWorkerTester(t.Name())
 	if err != nil {
@@ -54,7 +59,7 @@ func testExecuteProgramUsedBandwidthHasSector(t *testing.T, wt *workerTester) {
 
 	// create a dummy program
 	pt := wt.staticPriceTable().staticPriceTable
-	pb := modules.NewProgramBuilder(&pt)
+	pb := modules.NewProgramBuilder(&pt, 0)
 	pb.AddHasSectorInstruction(crypto.Hash{})
 	p, data := pb.Program()
 	cost, _, _ := pb.Cost(true)
@@ -97,7 +102,7 @@ func testExecuteProgramUsedBandwidthReadSector(t *testing.T, wt *workerTester) {
 
 	// create a dummy program
 	pt := wt.staticPriceTable().staticPriceTable
-	pb := modules.NewProgramBuilder(&pt)
+	pb := modules.NewProgramBuilder(&pt, 0)
 	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
 	p, data := pb.Program()
 	cost, _, _ := pb.Cost(true)
