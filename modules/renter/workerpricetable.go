@@ -24,6 +24,14 @@ const (
 var (
 	// errPriceTableGouging is returned when price gouging is detected
 	errPriceTableGouging = errors.New("price table rejected due to price gouging")
+
+	// minAcceptedPriceTableValidity is the minimum price table validity
+	// the renter will accept.
+	minAcceptedPriceTableValidity = build.Select(build.Var{
+		Standard: 5 * time.Minute,
+		Dev:      1 * time.Minute,
+		Testing:  10 * time.Second,
+	}).(time.Duration)
 )
 
 type (
@@ -250,6 +258,11 @@ func checkUpdatePriceTableGouging(pt modules.RPCPriceTable, allowance modules.Al
 	// gouging.
 	if allowance.Funds.IsZero() {
 		return nil
+	}
+
+	// Verify the validity is reasonable
+	if pt.Validity < minAcceptedPriceTableValidity {
+		return fmt.Errorf("update price table validity %v is considered too low, the minimum accepted validity is %v", pt.Validity, minAcceptedPriceTableValidity)
 	}
 
 	// In order to decide whether or not the update price table cost is too

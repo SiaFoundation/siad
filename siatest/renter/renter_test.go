@@ -59,6 +59,7 @@ func TestRenterOne(t *testing.T) {
 		{Name: "TestDownloadAfterLegacyRenewAndClear", Test: testDownloadAfterLegacyRenewAndClear},
 		{Name: "TestDirectories", Test: testDirectories},
 		{Name: "TestAlertsSorted", Test: testAlertsSorted},
+		{Name: "TestPriceTablesUpdated", Test: testPriceTablesUpdated},
 	}
 
 	// Run tests
@@ -1096,6 +1097,90 @@ func TestLocalRepairCorrupted(t *testing.T) {
 	}
 	if file.Available {
 		t.Fatal("file should not be available when its only source of repair data is corrupt")
+	}
+}
+
+// testPriceTablesUpdated verfies the workers' price tables are updated and stay
+// recent with the host
+func testPriceTablesUpdated(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Get the worker status
+	rwg, err := r.RenterWorkersGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get a random worker
+	var host types.SiaPublicKey
+	for _, worker := range rwg.Workers {
+		host = worker.HostPubKey
+		break
+	}
+
+	// Wait until that worker has been able to update its price table, when that
+	// is the case we save its current update and expiry time.
+	var ut, et time.Time
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		rwg, err := r.RenterWorkersGet()
+		if err != nil {
+			return err
+		}
+
+		var ws *modules.WorkerStatus
+		for _, worker := range rwg.Workers {
+			if worker.HostPubKey.Equals(host) {
+				ws = &worker
+			}
+		}
+		if ws == nil {
+			return errors.New("worker not found")
+		}
+
+		if !ws.PriceTableStatus.Active {
+			return errors.New("worker has no valid price table")
+		}
+
+		ut = ws.PriceTableStatus.UpdateTime
+		et = ws.PriceTableStatus.ExpiryTime
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait until after the price table is set to update, note we don't gain
+	// anything by waiting for this inside the build.Retry as we know when it
+	// won't trigger before the update time.
+	time.Sleep(time.Until(ut))
+
+	// Verify in a retry that the price table's updateTime and expiryTime have
+	// been set to new dates in the future, indicating a successful price table
+	// update.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		rwg, err := r.RenterWorkersGet()
+		if err != nil {
+			return err
+		}
+
+		var ws *modules.WorkerStatus
+		for _, worker := range rwg.Workers {
+			if worker.HostPubKey.Equals(host) {
+				ws = &worker
+			}
+		}
+		if ws == nil {
+			return errors.New("worker not found")
+		}
+
+		if !(ws.PriceTableStatus.UpdateTime.After(ut) && ws.PriceTableStatus.ExpiryTime.After(et)) {
+			return errors.New("updatedTime and expiryTime have not been updated yet, indicating the price table has not been renewed")
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
