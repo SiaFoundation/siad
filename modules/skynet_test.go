@@ -37,8 +37,8 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 
 	// Find files by their directory.
 	subMeta, isDir, offset, size = fullMeta.ForPath("/foo")
-	_, exists1 := subMeta.Subfiles[filePath1]
-	_, exists2 := subMeta.Subfiles[filePath2]
+	subfile1, exists1 := subMeta.Subfiles[filePath1]
+	subfile2, exists2 := subMeta.Subfiles[filePath2]
 	// Expect to find files 1 and 2 and nothing else.
 	if !(exists1 && exists2 && len(subMeta.Subfiles) == 2) {
 		t.Fatal("Expected to find two files by their directory.")
@@ -49,11 +49,11 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 	if offset != 1 {
 		t.Fatalf("Expected offset %d, got %d", 1, offset)
 	}
-	if subMeta.Subfiles[filePath1].Offset != 0 {
-		t.Fatalf("Expected offset %d, got %d", 0, subMeta.Subfiles[filePath1].Offset)
+	if subfile1.Offset != 0 {
+		t.Fatalf("Expected offset %d, got %d", 0, subfile1.Offset)
 	}
-	if subMeta.Subfiles[filePath2].Offset != 1 {
-		t.Fatalf("Expected offset %d, got %d", 1, subMeta.Subfiles[filePath2].Offset)
+	if subfile2.Offset != 1 {
+		t.Fatalf("Expected offset %d, got %d", 1, subfile2.Offset)
 	}
 
 	if size != 3 {
@@ -62,8 +62,8 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 
 	// Find files in the given directory and its subdirectories.
 	subMeta, isDir, offset, size = fullMeta.ForPath("/bar")
-	_, exists4 := subMeta.Subfiles[filePath4]
-	_, exists5 := subMeta.Subfiles[filePath5]
+	subfile4, exists4 := subMeta.Subfiles[filePath4]
+	subfile5, exists5 := subMeta.Subfiles[filePath5]
 	// Expect to find files 1 and 2 and nothing else.
 	if !(exists4 && exists5 && len(subMeta.Subfiles) == 2) {
 		t.Fatal("Expected to find two files by their directory.")
@@ -74,11 +74,11 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 	if offset != 4 {
 		t.Fatalf("Expected offset %d, got %d", 4, offset)
 	}
-	if subMeta.Subfiles[filePath4].Offset != 0 {
-		t.Fatalf("Expected offset %d, got %d", 0, subMeta.Subfiles[filePath4].Offset)
+	if subfile4.Offset != 0 {
+		t.Fatalf("Expected offset %d, got %d", 0, subfile4.Offset)
 	}
-	if subMeta.Subfiles[filePath5].Offset != 1 {
-		t.Fatalf("Expected offset %d, got %d", 1, subMeta.Subfiles[filePath5].Offset)
+	if subfile5.Offset != 1 {
+		t.Fatalf("Expected offset %d, got %d", 1, subfile5.Offset)
 	}
 	if size != 9 {
 		t.Fatalf("Expected size %d, got %d", 9, size)
