@@ -47,9 +47,13 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 		Subfiles:    make(SkyfileSubfiles),
 		DefaultPath: sm.DefaultPath,
 	}
-	// Check for an exact match.
-	if sf, exists := sm.Subfiles[path]; exists {
-		metadata.Subfiles[path] = sf
+	// Try to find an exact match
+	for _, sf := range sm.Subfiles {
+		filename := ensurePrefix(sf.Filename, "/")
+		if filename == path {
+			metadata.Subfiles[sf.Filename] = sf
+			break
+		}
 	}
 	// If there is no exact match look for directories.
 	// This means we can safely ensure a trailing slash.
