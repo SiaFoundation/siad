@@ -288,6 +288,12 @@ func (sos StorageObligationSnapshot) MerkleRoot() crypto.Hash {
 	return sos.staticMerkleRoot
 }
 
+// RecentRevision returns the recent revision at the time the snapshot was
+// taken.
+func (sos StorageObligationSnapshot) RecentRevision() types.FileContractRevision {
+	return sos.staticRecentRevision
+}
+
 // SectorRoots returns a static list of the sector roots present at the time the
 // snapshot was taken.
 func (sos StorageObligationSnapshot) SectorRoots() []crypto.Hash {

@@ -18,7 +18,7 @@ func TestInstructionRevision(t *testing.T) {
 	defer mdm.Stop()
 
 	// Create a program to check for a sector on the host.
-	so := newTestStorageObligation(true)
+	so := host.newTestStorageObligation(true)
 	so.sectorRoots = randomSectorRoots(1)
 
 	// Add sector to the host.
@@ -48,7 +48,7 @@ func TestInstructionRevision(t *testing.T) {
 
 	// Assert output.
 	expectedOutput := encoding.Marshal(rev)
-	err = outputs[0].assert(ics, imr, []crypto.Hash{}, rev)
+	err = outputs[0].assert(ics, imr, []crypto.Hash{}, expectedOutput)
 	if err != nil {
 		t.Fatal(err)
 	}

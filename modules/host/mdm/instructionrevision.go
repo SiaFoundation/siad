@@ -23,11 +23,11 @@ func (p *program) staticDecodeRevisionInstruction(instruction modules.Instructio
 			modules.SpecifierRevision, instruction.Specifier)
 	}
 	// Check args.
-	if len(instruction.Args) != modules.RPCIHasSectorLen {
+	if len(instruction.Args) != modules.RPCIRevisionLen {
 		return nil, fmt.Errorf("expected instruction to have len %v but was %v",
-			modules.RPCIHasSectorLen, len(instruction.Args))
+			modules.RPCIRevisionLen, len(instruction.Args))
 	}
-	return &instructionHasSector{
+	return &instructionRevision{
 		commonInstruction: commonInstruction{
 			staticData:        p.staticData,
 			staticMerkleProof: false,
