@@ -22,6 +22,7 @@ cpkg = ./modules/renter
 # pkgs changes which packages the makefile calls operate on. run changes which
 # tests are run during testing.
 pkgs = \
+	./benchmark \
 	./build \
 	./cmd/sia-node-scanner \
 	./cmd/siac \
@@ -81,6 +82,7 @@ release-pkgs = ./cmd/siac ./cmd/siad
 
 # lockcheckpkgs are the packages that are checked for locking violations.
 lockcheckpkgs = \
+	./benchmark \
 	./cmd/siac \
 	./modules/host/mdm \
 	./modules/renter/hostdb \

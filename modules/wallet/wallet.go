@@ -55,8 +55,13 @@ type Wallet struct {
 	// wallet.
 	encrypted   bool
 	unlocked    bool
-	subscribed  bool
 	primarySeed modules.Seed
+
+	// Fields that handle the subscriptions to the cs and tpool. subscribedMu
+	// needs to be locked when subscribed is accessed and while calling the
+	// subscribing methods on the tpool and consensusset.
+	subscribedMu sync.Mutex
+	subscribed   bool
 
 	// The wallet's dependencies.
 	cs    modules.ConsensusSet
