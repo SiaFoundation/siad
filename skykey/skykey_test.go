@@ -2,6 +2,9 @@ package skykey
 
 import (
 	"bytes"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -907,4 +910,85 @@ func TestSkykeyDelete(t *testing.T) {
 		delete(expectedKeySet, sk.ID())
 	}
 	checkForExpectedKeys(expectedKeySet)
+}
+
+// TestSkykeyDelete tests the Delete methods for the skykey manager, starting
+// with a file containing skykeys created using the older format.
+func TestSkykeyDeleteCompat(t *testing.T) {
+	// Create a persist dir.
+	persistDir := build.TempDir("skykey", t.Name())
+	err := os.MkdirAll(persistDir, defaultDirPerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// copy the testdata file over to it.
+	persistFileName := filepath.Join(persistDir, SkykeyPersistFilename)
+	persistFile, err := os.Create(persistFileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer persistFile.Close()
+
+	testDataFileName := filepath.Join("testdata", "v144_and_v149_skykeys.dat")
+	testDataFile, err := os.Open(testDataFileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer testDataFile.Close()
+	_, err = io.Copy(persistFile, testDataFile)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a key manager.
+	keyMan, err := NewSkykeyManager(persistDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nKeys := 8
+	keys := keyMan.Skykeys()
+	if len(keys) != nKeys {
+		t.Fatalf("Expected %d keys got %d", nKeys, len(keys))
+	}
+
+	// Delete all the keys.
+	for i, sk := range keys {
+		err = keyMan.DeleteKeyByName(sk.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(keyMan.Skykeys()) != nKeys-(i+1) {
+			t.Fatalf("Expected %d keys got %d", len(keyMan.Skykeys()), nKeys-(i+1))
+		}
+	}
+
+	// Sanity check: create a new key and check for it.
+	sk, err := keyMan.CreateKey("sanity-check", TypePrivateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys = keyMan.Skykeys()
+	if len(keys) != 1 {
+		t.Fatal("Expected 1 key", keys)
+	}
+	if !keys[0].equals(sk) {
+		t.Fatal("keys don't match")
+	}
+
+	// Sanity check: check that the new key is loaded from a fresh persist.
+	freshKeyMan, err := NewSkykeyManager(persistDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loadedSkykeys := freshKeyMan.Skykeys()
+	if len(loadedSkykeys) != 1 {
+		t.Fatal("Expected 1 key", keys)
+	}
+	if !loadedSkykeys[0].equals(sk) {
+		t.Fatal("keys don't match")
+	}
 }
