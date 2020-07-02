@@ -70,10 +70,10 @@ func (w *watchdog) callApplyTxnConfirmed(txnID types.TransactionID) {
 	tt, ok := w.txns[txnID]
 	if !ok {
 		// If the transaction is no longer in the watchdog then return. Since
-		// Transaction Confirmed events and can span multiple persist entries
-		// this will happen but is OK. The first entry will clear the
-		// transaction from the watchdog and the FeeManager persist will handle
-		// the fee updates for any subsequent entries
+		// Transaction Confirmed events can span multiple persist entries this will
+		// happen but is OK. The first entry will clear the transaction from the
+		// watchdog and the FeeManager persist will handle the fee updates for any
+		// subsequent entries
 		return
 	}
 

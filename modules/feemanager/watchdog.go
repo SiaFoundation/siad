@@ -16,19 +16,19 @@ var (
 	// monitored by the watchdog
 	errTxnExists = errors.New("transaction already exists in the watchdog")
 
-	// errTxnNotExists is the error returned if a transaction is not being
+	// errTxnNotFound is the error returned if a transaction is not being
 	// monitored by the watchdog
-	errTxnNotExists = errors.New("transaction does not exists in the watchdog")
+	errTxnNotFound = errors.New("transaction not found in the watchdog")
 
 	// recreateTransactionInterval is how long the watchdog will wait before it
-	// will try and recreate the the transaction
+	// will try and recreate the transaction
 	recreateTransactionInterval = build.Select(build.Var{
 		Standard: time.Hour * 24,
 		Dev:      time.Hour,
 		Testing:  time.Second,
 	}).(time.Duration)
 
-	// transactionCheckInterval is how ofter the watchdog will check the
+	// transactionCheckInterval is how often the watchdog will check the
 	// transactions
 	transactionCheckInterval = build.Select(build.Var{
 		Standard: time.Minute * 10,
@@ -73,7 +73,7 @@ type (
 )
 
 // callFeeTracked returns whether or not the fee is being tracked by the
-// watchdog and the transaction ID is it associated with
+// watchdog and the transaction ID it is associated with
 func (w *watchdog) callFeeTracked(feeUID modules.FeeUID) (types.TransactionID, bool) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -155,7 +155,7 @@ func (fm *FeeManager) callDropTransaction(txnID types.TransactionID) error {
 	tt, ok := w.txns[txnID]
 	w.mu.Unlock()
 	if !ok {
-		return errTxnNotExists
+		return errTxnNotFound
 	}
 	return fm.managedDropTransaction(tt)
 }
@@ -178,11 +178,11 @@ func (fm *FeeManager) managedConfirmTransaction(tt trackedTransaction) error {
 	for _, feeUID := range tt.feeUIDs {
 		fee, ok := fm.fees[feeUID]
 		if !ok {
-			// Fees should not be able to be cancelled once then
-			// they are being tracked by the watchdog.
+			// Fees should not be able to be cancelled once they are being tracked by
+			// the watchdog.
 			build.Critical(errors.AddContext(feeNotFoundError(feeUID), "fee not found after watchdog dropped transaction"))
-			// Fine to continue in production as the fee is no
-			// longer in memory it will not create another issue.
+			// Fine to continue in production as the fee is no longer in memory it
+			// will not create another issue.
 			continue
 		}
 		fee.PaymentCompleted = true
@@ -214,11 +214,11 @@ func (fm *FeeManager) managedDropTransaction(tt trackedTransaction) error {
 	for _, feeUID := range tt.feeUIDs {
 		fee, ok := fm.fees[feeUID]
 		if !ok {
-			// Fees should not be able to be cancelled once then
-			// they are being tracked by the watchdog.
+			// Fees should not be able to be cancelled once they are being tracked by
+			// the watchdog.
 			build.Critical(errors.AddContext(feeNotFoundError(feeUID), "fee not found after watchdog dropped transaction"))
-			// Fine to continue in production as the fee is no
-			// longer in memory it will not create another issue.
+			// Fine to continue in production as the fee is no longer in memory it
+			// will not create another issue.
 			continue
 		}
 		fee.TransactionCreated = false
@@ -244,11 +244,11 @@ func (fm *FeeManager) threadedCheckTransactions() {
 	}
 	defer fc.staticTG.Done()
 
-	// Make sure we are synced before checking for transactions
-	fm.blockUntilSynced()
-
 	// Check for Transactions in a loop
 	for {
+		// Make sure we are synced before checking for transactions
+		fm.blockUntilSynced()
+
 		trackedTxns := w.managedTrackedTxns()
 		for _, tt := range trackedTxns {
 			// Since this loop submits persistence events and there could be a large

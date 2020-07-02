@@ -292,7 +292,7 @@ func TestFeeManagerProcessFee(t *testing.T) {
 			return err
 		}
 		if len(fmpending.PendingFees) != 0 {
-			return fmt.Errorf("FeeManager Still has pending fees %v", fmpending)
+			return fmt.Errorf("FeeManager still has pending fees %v", fmpending)
 		}
 		fmpaid, err := fm.FeeManagerPaidFeesGet()
 		if err != nil {

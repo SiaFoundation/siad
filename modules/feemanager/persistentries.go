@@ -206,7 +206,7 @@ func createTransactionEntrys(txn types.Transaction) (rets [][persistEntrySize]by
 }
 
 // createTxnConfirmedEntrys will take a list of feeUIDs and a transaction ID and
-// // create persist entrys for when a transaction was confirmed.
+// create persist entrys for when a transaction was confirmed.
 func createTxnConfirmedEntrys(feeUIDs []modules.FeeUID, txnID types.TransactionID) ([][persistEntrySize]byte, error) {
 	return createTransactionFeeUIDEntrys(feeUIDs, txnID, entryTypeTransactionConfirmed)
 }
@@ -218,7 +218,7 @@ func createTxnCreatedEntrys(feeUIDs []modules.FeeUID, txnID types.TransactionID)
 }
 
 // createTxnDroppedEntrys will take a list of feeUIDs and a transaction ID and
-// // create persist entrys for when a transaction was dropped.
+// create persist entrys for when a transaction was dropped.
 func createTxnDroppedEntrys(feeUIDs []modules.FeeUID, txnID types.TransactionID) ([][persistEntrySize]byte, error) {
 	return createTransactionFeeUIDEntrys(feeUIDs, txnID, entryTypeTransactionDropped)
 }
@@ -245,7 +245,7 @@ func createTransactionFeeUIDEntrys(feeUIDs []modules.FeeUID, txnID types.Transac
 			continue
 		}
 
-		// Create the txn created entry.
+		// Create the transaction and FeeUIDs entry.
 		etc := entryTransactionAndFeeUIDs{
 			NumFeeUIDs: numFeeUIDs,
 			Timestamp:  timeStamp,
@@ -253,7 +253,7 @@ func createTransactionFeeUIDEntrys(feeUIDs []modules.FeeUID, txnID types.Transac
 		}
 		copy(etc.FeeUIDsBytes[:], feeUIDsBytes)
 
-		// Marshal the transaction created entry
+		// Marshal the transaction and FeeUIDs entry
 		payload := encoding.Marshal(etc)
 		if len(payload) > persistEntryPayloadSize {
 			build.Critical("an encoded payload is too big", len(payload))
@@ -463,6 +463,9 @@ func (fm *FeeManager) applyEntryTxnDropped(payload [persistEntryPayloadSize]byte
 			build.Critical(err)
 			return err
 		}
+		// Make sure the fee reflects that the transaction was dropped by setting
+		// TransactionCreated to false. This will ensure that a new transaction is
+		// created.
 		fee.TransactionCreated = false
 		feeUIDs[i] = feeUID
 	}

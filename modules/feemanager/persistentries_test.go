@@ -99,7 +99,7 @@ func checkApplyAddEntry(fm *FeeManager, fee modules.AppFee) error {
 // checkApplyCancelEntry is a helper for creating and applying a CancelFeeEntry
 // to the FeeManager and checking the result.
 func checkApplyCancelEntry(fm *FeeManager, feeUID modules.FeeUID) error {
-	// createCancelFeeEntry
+	// call createCancelFeeEntry
 	pe := createCancelFeeEntry(feeUID)
 
 	// Call applyEntry

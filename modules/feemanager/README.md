@@ -45,7 +45,7 @@ the common dependencies.
 
 **Outbound Complexities**
   - The persist subsystem's `callInitPersist` method is called from
-    `NewCustomeFeeManager` to initialize the persistence files and/or load the
+    `NewCustomFeeManager` to initialize the persistence files and/or load the
     persistence from disk
   - The persist subsystem's `callPersistFeeCancelation` method is called from
     `CancelFee` to remove the fee from the FeeManager and persist the change on
@@ -128,9 +128,9 @@ transaction and then submitting the transaction to the watchdog.
 The watchdog subsystem handles tracking the transactions created for Fees and
 marking them as paid once the transactions are confirmed. The watchdog will
 continue to rebroadcast the transaction until the transaction is confirmed. If
-then transaction is not confirmed within an acceptable time period, the watchdog
-will assume the transaction will not be successful and drop it and marked the
-fees as not having a transaction created. Once a transaction is confirmed the
+the transaction is not confirmed within an acceptable time period, the watchdog
+will assume the transaction will not be successful and drop it and mark the fees
+as not having a transaction created. Once a transaction is confirmed the
 watchdog updates the fees' `PaymentComplete` flag.
 
 **Inbound Complexities**
