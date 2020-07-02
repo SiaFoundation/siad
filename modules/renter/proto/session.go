@@ -847,7 +847,7 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 		err = errors.Compose(err, s.Close())
 		return nil, errors.AddContext(err, "unable to sync revisions when creating session")
 	}
-	logger.Printf("%v revision resync attempted, succeeded: %v\n", host.PublicKey.String(), sc.LastRevision().NewRevisionNumber == rev.NewRevisionNumber)
+	logger.Debugf("%v revision resync attempted, succeeded: %v\n", host.PublicKey.String(), sc.LastRevision().NewRevisionNumber == rev.NewRevisionNumber)
 
 	return s, nil
 }
