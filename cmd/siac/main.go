@@ -27,54 +27,59 @@ var (
 
 	// Host Flags
 	hostContractOutputType string // output type for host contracts
-	hostVerbose            bool   // display additional host info
 	hostFolderRemoveForce  bool   // force folder remove
+	hostVerbose            bool   // display additional host info
 
 	// Renter Flags
-	allowanceFunds                         string // amount of money to be used within a period
-	allowancePeriod                        string // length of period
-	allowanceHosts                         string // number of hosts to form contracts with
-	allowanceRenewWindow                   string // renew window of allowance
+	dataPieces                string // the number of data pieces a file should be uploaded with
+	parityPieces              string // the number of parity pieces a file should be uploaded with
+	renterAllContracts        bool   // Show all active and expired contracts
+	renterDeleteRoot          bool   // Delete path start from root instead of the UserFoler.
+	renterDownloadAsync       bool   // Downloads files asynchronously
+	renterDownloadRecursive   bool   // Downloads folders recursively.
+	renterFuseMountAllowOther bool   // Mount fuse with 'AllowOther' set to true.
+	renterListRecursive       bool   // List files of folder recursively.
+	renterListRoot            bool   // List path start from root instead of the UserFoler.
+	renterListVerbose         bool   // Show additional info about uploaded files.
+	renterRenameRoot          bool   // Rename files relative to root instead of the UserFoler.
+	renterShowHistory         bool   // Show download history in addition to download queue.
+	renterVerbose             bool   // Show additional info about the renter
+
+	// Renter Allowance Flags
+	allowanceFunds       string // amount of money to be used within a period
+	allowanceHosts       string // number of hosts to form contracts with
+	allowancePeriod      string // length of period
+	allowanceRenewWindow string // renew window of allowance
+
 	allowancePaymentContractInitialFunding string // initial price to pay to create a payment contract
-	allowanceExpectedStorage               string // expected storage stored on hosts before redundancy
-	allowanceExpectedUpload                string // expected data uploaded within period
-	allowanceExpectedDownload              string // expected data downloaded within period
-	allowanceExpectedRedundancy            string // expected redundancy of most uploaded files
-	allowanceMaxRPCPrice                   string // maximum allowed base price for RPCs
-	allowanceMaxContractPrice              string // maximum allowed price to form a contract
-	allowanceMaxDownloadBandwidthPrice     string // max allowed price to download data from a host
-	allowanceMaxSectorAccessPrice          string // max allowed price to access a sector on a host
-	allowanceMaxStoragePrice               string // max allowed price to store data on a host
-	allowanceMaxUploadBandwidthPrice       string // max allowed price to upload data to a host
-	dataPieces                             string // the number of data pieces a file should be uploaded with
-	parityPieces                           string // the number of parity pieces a file should be uploaded with
-	renterAllContracts                     bool   // Show all active and expired contracts
-	renterDeleteRoot                       bool   // Delete path start from root instead of the UserFoler.
-	renterDownloadAsync                    bool   // Downloads files asynchronously
-	renterDownloadRecursive                bool   // Downloads folders recursively.
-	renterFuseMountAllowOther              bool   // Mount fuse with 'AllowOther' set to true.
-	renterListVerbose                      bool   // Show additional info about uploaded files.
-	renterListRecursive                    bool   // List files of folder recursively.
-	renterListRoot                         bool   // List path start from root instead of the UserFoler.
-	renterRenameRoot                       bool   // Rename files relative to root instead of the UserFoler.
-	renterShowHistory                      bool   // Show download history in addition to download queue.
-	renterVerbose                          bool   // Show additional info about the renter
+
+	allowanceExpectedDownload   string // expected data downloaded within period
+	allowanceExpectedRedundancy string // expected redundancy of most uploaded files
+	allowanceExpectedStorage    string // expected storage stored on hosts before redundancy
+	allowanceExpectedUpload     string // expected data uploaded within period
+
+	allowanceMaxContractPrice          string // maximum allowed price to form a contract
+	allowanceMaxDownloadBandwidthPrice string // max allowed price to download data from a host
+	allowanceMaxRPCPrice               string // maximum allowed base price for RPCs
+	allowanceMaxSectorAccessPrice      string // max allowed price to access a sector on a host
+	allowanceMaxStoragePrice           string // max allowed price to store data on a host
+	allowanceMaxUploadBandwidthPrice   string // max allowed price to upload data to a host
 
 	// Skykey Flags
-	skykeyName            string // Name used to identify a Skykey.
-	skykeyType            string // Type used to create a new Skykey.
-	skykeyShowPrivateKeys bool   // Set to true to show private key data.
 	skykeyID              string // ID used to identify a Skykey.
+	skykeyName            string // Name used to identify a Skykey.
 	skykeyRenameAs        string // Optional parameter to rename a Skykey while adding it.
+	skykeyShowPrivateKeys bool   // Set to true to show private key data.
+	skykeyType            string // Type used to create a new Skykey.
 
 	// Skynet Flags
 	skynetBlacklistRemove bool   // Remove a skylink from the Skynet Blacklist.
-	skynetUnpinRoot       bool   // Use root as the base instead of the Skynet folder.
 	skynetDownloadPortal  string // Portal to use when trying to download a skylink.
 	skynetLsRecursive     bool   // List files of folder recursively.
 	skynetLsRoot          bool   // Use root as the base instead of the Skynet folder.
-	skynetUploadRoot      bool   // Use root as the base instead of the Skynet folder.
+	skynetUnpinRoot       bool   // Use root as the base instead of the Skynet folder.
 	skynetUploadDryRun    bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
+	skynetUploadRoot      bool   // Use root as the base instead of the Skynet folder.
 	skynetUploadSilent    bool   // Don't report progress while uploading
 
 	// Utils Flags
@@ -88,7 +93,6 @@ var (
 	walletStartHeight    uint64 // Start height for transaction search.
 	walletEndHeight      uint64 // End height for transaction search.
 	walletTxnFeeIncluded bool   // include the fee in the balance being sent
-
 )
 
 var (
