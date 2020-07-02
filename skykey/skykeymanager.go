@@ -157,19 +157,26 @@ func (sm *SkykeyManager) AddKey(sk Skykey) error {
 // DeleteKeyByName deletes the skykey with the given name.
 func (sm *SkykeyManager) DeleteKeyByName(name string) error {
 	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
 	id, ok := sm.idsByName[name]
-	sm.mu.Unlock()
 	if !ok {
 		return errNoSkykeysWithThatName
 	}
-	return sm.DeleteKeyByID(id)
+
+	return sm.deleteKeyByID(id)
 }
 
 // DeleteKeyByID deletes the skykey with the given ID.
 func (sm *SkykeyManager) DeleteKeyByID(id SkykeyID) error {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
+	return sm.deleteKeyByID(id)
+}
 
+// deleteKeyByID deletes the skykey with the given ID, it must be called while
+// holding the sm.mu lock.
+func (sm *SkykeyManager) deleteKeyByID(id SkykeyID) error {
 	key, ok := sm.keysByID[id]
 	if !ok {
 		return ErrNoSkykeysWithThatID

@@ -772,6 +772,7 @@ func TestSkyfileEncryptionIDs(t *testing.T) {
 	}
 }
 
+// TestSkykeyDelete tests the Delete methods for the skykey manager.
 func TestSkykeyDelete(t *testing.T) {
 	// Create a key manager.
 	persistDir := build.TempDir("skykey", t.Name())

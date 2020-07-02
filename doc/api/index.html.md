@@ -5152,16 +5152,17 @@ Deletes the skykey with that name or ID.
 ### Path Parameters
 ### REQUIRED
 **name** | string  
-name of the skykey being queried
+name of the skykey being deleted
 
 or
 
 **id** | string  
-base-64 encoded ID of the skykey being queried
+base-64 encoded ID of the skykey being deleted
 
 
 ### Response
-standard success or error response, a successful response means a valid siapath.
+standard success or error response, a successful response means the skykey was
+deleted.
 See [standard responses](#standard-responses).
 
 

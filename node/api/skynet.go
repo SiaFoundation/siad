@@ -1044,11 +1044,11 @@ func (api *API) skykeyDeleteHandlerPOST(w http.ResponseWriter, req *http.Request
 	idString := req.FormValue("id")
 
 	if idString == "" && name == "" {
-		WriteError(w, Error{"you must specify the name or ID of the skykey"}, http.StatusInternalServerError)
+		WriteError(w, Error{"you must specify the name or ID of the skykey"}, http.StatusBadRequest)
 		return
 	}
 	if idString != "" && name != "" {
-		WriteError(w, Error{"you must specify either the name or ID of the skykey, not both"}, http.StatusInternalServerError)
+		WriteError(w, Error{"you must specify either the name or ID of the skykey, not both"}, http.StatusBadRequest)
 		return
 	}
 
@@ -1059,7 +1059,7 @@ func (api *API) skykeyDeleteHandlerPOST(w http.ResponseWriter, req *http.Request
 		var id skykey.SkykeyID
 		err = id.FromString(idString)
 		if err != nil {
-			WriteError(w, Error{"error unmarshalling skykey ID" + err.Error()}, http.StatusInternalServerError)
+			WriteError(w, Error{"Invalid skykey ID" + err.Error()}, http.StatusBadRequest)
 			return
 		}
 		err = api.renter.DeleteSkykeyByID(id)

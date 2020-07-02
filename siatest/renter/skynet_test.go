@@ -2234,7 +2234,7 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatalf("Expected %d keys, got %d", nKeys-nToDelete, len(skykeys))
 	}
 
-	// Sanity check:  Make sure deleted keys are still around.
+	// Sanity check: Make sure deleted keys are not still around.
 	for _, sk := range skykeys {
 		if _, ok := deletedKeys[sk.ID()]; ok {
 			t.Fatal("Found a key that should have been deleted")
