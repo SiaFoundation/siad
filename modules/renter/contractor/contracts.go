@@ -159,6 +159,7 @@ func (c *Contractor) MarkContractBad(id types.FileContractID) error {
 	if !exists {
 		return errors.New("contract not found")
 	}
+	defer c.staticContracts.Return(sc)
 	return c.managedMarkContractBad(sc)
 }
 
