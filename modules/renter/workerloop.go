@@ -48,12 +48,6 @@ func (wls *workerLoopState) staticSerialJobRunning() bool {
 	return atomic.LoadUint64(&wls.atomicSerialJobRunning) == 1
 }
 
-// staticFinishSerialJob will update the worker loop state to indicate that a
-// serial job has completed.
-func (wls *workerLoopState) staticFinishSerialJob() {
-	atomic.StoreUint64(&wls.atomicSerialJobRunning, 0)
-}
-
 // externLaunchSerialJob will launch a serial job for the worker, ensuring that
 // exclusivity is handled correctly.
 //
