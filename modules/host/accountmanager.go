@@ -1,6 +1,7 @@
 package host
 
 import (
+	"context"
 	"math"
 	"math/bits"
 	"sync"
@@ -906,19 +907,15 @@ func (am *accountManager) staticWaitForDepositResult(pr *persistResult) error {
 // staticWaitForWithdrawalResult will block until it receives a message on the
 // given result channel, or until it either times out or receives a stop signal.
 func (am *accountManager) staticWaitForWithdrawalResult(commitResultChan chan error) error {
-	t := time.NewTimer(blockedWithdrawalTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), blockedWithdrawalTimeout)
+	defer cancel()
+
 	select {
 	case err := <-commitResultChan:
-		if !t.Stop() {
-			<-t.C
-		}
 		return err
-	case <-t.C:
+	case <-ctx.Done():
 		return ErrBalanceInsufficient
 	case <-am.h.tg.StopChan():
-		if !t.Stop() {
-			<-t.C
-		}
 		return ErrWithdrawalCancelled
 	}
 }
