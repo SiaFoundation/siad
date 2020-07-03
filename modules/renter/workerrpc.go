@@ -3,12 +3,12 @@ package renter
 import (
 	"bytes"
 	"io"
-	"net"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/ratelimit"
+	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/siamux/mux"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -37,8 +37,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}()
 
 	// create a new stream
-	var stream net.Conn
-	stream, err = w.staticNewStream()
+	stream, err := w.staticNewStream()
 	if err != nil {
 		err = errors.AddContext(err, "Unable to create a new stream")
 		return
@@ -48,6 +47,9 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 			w.renter.log.Println("ERROR: failed to close stream", err)
 		}
 	}()
+
+	// set the limit return var.
+	limit = stream.Limit()
 
 	// prepare a buffer so we can optimize our writes
 	buffer := bytes.NewBuffer(nil)
@@ -128,7 +130,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 }
 
 // staticNewStream returns a new stream to the worker's host
-func (w *worker) staticNewStream() (net.Conn, error) {
+func (w *worker) staticNewStream() (siamux.Stream, error) {
 	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
 		w.renter.log.Critical("calling staticNewStream on a host that doesn't support the new protocol")
 		return nil, errors.New("host doesn't support this")
@@ -137,5 +139,5 @@ func (w *worker) staticNewStream() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ratelimit.NewRLConn(stream, w.renter.rl, w.renter.tg.StopChan()), nil
+	return ratelimit.NewRLStream(stream, w.renter.rl, w.renter.tg.StopChan()), nil
 }

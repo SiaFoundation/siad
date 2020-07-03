@@ -25,7 +25,7 @@ require (
 	gitlab.com/NebulousLabs/log v0.0.0-20200529173103-40b250c2d92c
 	gitlab.com/NebulousLabs/merkletree v0.0.0-20200118113624-07fbf710afc4
 	gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a
-	gitlab.com/NebulousLabs/ratelimit v0.0.0-20191111145210-66b93e150b27
+	gitlab.com/NebulousLabs/ratelimit v0.0.0-20200703092634-24a64284c0ec
 	gitlab.com/NebulousLabs/siamux v0.0.0-20200623161015-0bacd26badc4
 	gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20200618142844-c59a90f49130
