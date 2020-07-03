@@ -1492,6 +1492,77 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Upload a normal siafile with 1-of-N redundancy
+	convertData := fastrand.Bytes(int(size))
+	reader := bytes.NewReader(convertData)
+	siafileSiaPath, err := modules.NewSiaPath("siafileSiaPath")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = r.RenterUploadStreamPost(reader, siafileSiaPath, 1, 2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Convert to a skyfile
+	convertUP := modules.SkyfileUploadParameters{
+		SiaPath: siafileSiaPath,
+	}
+	convertSkylink, err := r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Blacklist the skylink
+	add = []string{convertSkylink}
+	remove = []string{}
+	err = r.SkynetBlacklistPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sbg, err = r.SkynetBlacklistGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sbg.Blacklist) != 1 {
+		t.Fatalf("Incorrect number of blacklisted merkleroots, expected %v got %v", 1, len(sbg.Blacklist))
+	}
+
+	// Confirm skyfile download returns blacklisted error
+	_, _, err = r.SkynetSkylinkGet(convertSkylink)
+	if err == nil || !strings.Contains(err.Error(), renter.ErrSkylinkBlacklisted.Error()) {
+		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlacklisted, err)
+	}
+
+	// Try and convert to skylink again, should fail. Set the Force Flag to true
+	// to avoid error for file already existing
+	convertUP.Force = true
+	_, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
+	if err == nil || !strings.Contains(err.Error(), renter.ErrSkylinkBlacklisted.Error()) {
+		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlacklisted, err)
+	}
+
+	// remove from blacklist
+	add = []string{}
+	remove = []string{convertSkylink}
+	err = r.SkynetBlacklistPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sbg, err = r.SkynetBlacklistGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sbg.Blacklist) != 0 {
+		t.Fatalf("Incorrect number of blacklisted merkleroots, expected %v got %v", 0, len(sbg.Blacklist))
+	}
+
+	// Convert should succeed
+	_, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // testSkynetPortals tests the skynet portals module.
