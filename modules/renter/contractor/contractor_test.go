@@ -64,6 +64,15 @@ func newModules(testdir string) (modules.ConsensusSet, modules.Wallet, modules.T
 	return cs, w, tp, hdb, cf, nil
 }
 
+// newStream is a helper to get a ready-to-use stream that is connected to a
+// host.
+func newStream(mux *siamux.SiaMux, h modules.Host) (siamux.Stream, error) {
+	hes := h.ExternalSettings()
+	muxAddress := fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
+	muxPK := modules.SiaPKToMuxPK(h.PublicKey())
+	return mux.NewStream(modules.HostSiaMuxSubscriberName, muxAddress, muxPK)
+}
+
 // TestNew tests the New function.
 func TestNew(t *testing.T) {
 	if testing.Short() {
@@ -805,11 +814,12 @@ func TestPaymentMissingStorageObligation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// write the rpc id
-	stream, err := modules.NewHostStream(mux, h)
+	// get a stream
+	stream, err := newStream(mux, h)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// write the rpc id
 	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		t.Fatal(err)
