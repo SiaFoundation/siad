@@ -25,7 +25,7 @@ func TestInstructionSingleAppend(t *testing.T) {
 	tb.AddAppendInstruction(appendData1, true)
 
 	// Execute it.
-	so := newTestStorageObligation(true)
+	so := host.newTestStorageObligation(true)
 	finalizeFn, budget, outputs, err := mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, duration, true)
 	if err != nil {
 		t.Fatal(err)

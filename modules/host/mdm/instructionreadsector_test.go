@@ -19,8 +19,8 @@ func TestInstructionReadSector(t *testing.T) {
 	// Prepare a priceTable.
 	pt := newTestPriceTable()
 	// Prepare storage obligation.
-	so := newTestStorageObligation(true)
-	so.sectorRoots = randomSectorRoots(initialContractSectors)
+	so := host.newTestStorageObligation(true)
+	so.AddRandomSectors(initialContractSectors)
 	root := so.sectorRoots[0]
 	outputData, err := host.ReadSector(root)
 	if err != nil {
@@ -56,7 +56,7 @@ func TestInstructionReadSector(t *testing.T) {
 
 	// Use a builder to build the program.
 	tb = newTestProgramBuilder(pt, duration)
-	tb.AddReadSectorInstruction(length, offset, so.sectorRoots[0], true)
+	tb.AddReadSectorInstruction(length, offset, root, true)
 
 	// Execute it.
 	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, duration, false)
@@ -72,6 +72,12 @@ func TestInstructionReadSector(t *testing.T) {
 	err = outputs[0].assert(ics, imr, proof, outputData)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Verify proof.
+	ok := crypto.VerifyRangeProof(outputs[0].Output, outputs[0].Proof, proofStart, proofEnd, root)
+	if !ok {
+		t.Fatal("failed to verify proof")
 	}
 }
 
@@ -95,7 +101,7 @@ func TestInstructionReadOutsideSector(t *testing.T) {
 	readLen := modules.SectorSize
 
 	// Execute it.
-	so := newTestStorageObligation(true)
+	so := host.newTestStorageObligation(true)
 	// Use a builder to build the program.
 	tb := newTestProgramBuilder(pt, duration)
 	tb.AddReadSectorInstruction(readLen, 0, sectorRoot, true)

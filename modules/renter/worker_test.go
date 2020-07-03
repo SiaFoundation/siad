@@ -1,14 +1,19 @@
 package renter
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // workerTester is a helper type which contains a renter, host and worker that
@@ -21,14 +26,14 @@ type workerTester struct {
 
 // newWorkerTester creates a new worker for testing.
 func newWorkerTester(name string) (*workerTester, error) {
-	return newWorkerTesterCustomDependency(name, &modules.ProductionDependencies{})
+	return newWorkerTesterCustomDependency(name, modules.ProdDependencies, modules.ProdDependencies)
 }
 
 // newWorkerTesterCustomDependency creates a new worker for testing with a
 // custom depency.
-func newWorkerTesterCustomDependency(name string, deps modules.Dependencies) (*workerTester, error) {
+func newWorkerTesterCustomDependency(name string, renterDeps modules.Dependencies, hostDeps modules.Dependencies) (*workerTester, error) {
 	// Create the renter.
-	rt, err := newRenterTesterWithDependency(filepath.Join(name, "renter"), deps)
+	rt, err := newRenterTesterWithDependency(filepath.Join(name, "renter"), renterDeps)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +45,7 @@ func newWorkerTesterCustomDependency(name string, deps modules.Dependencies) (*w
 	}
 
 	// Add a host.
-	host, err := rt.addHost(filepath.Join(name, "host"))
+	host, err := rt.addCustomHost(filepath.Join(name, "host"), hostDeps)
 	if err != nil {
 		return nil, err
 	}
@@ -90,6 +95,72 @@ func TestNewWorkerTester(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := wt.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestReadOffsetCorruptProof tests that ReadOffset jobs correctly verify the
+// merkle proof returned by the host and reject data that doesn't match said
+// proof.
+func TestReadOffsetCorruptedProof(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	deps := dependencies.NewDependencyCorruptMDMOutput()
+	wt, err := newWorkerTesterCustomDependency(t.Name(), modules.ProdDependencies, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	backup := modules.UploadedBackup{
+		Name:           "foo",
+		CreationDate:   types.CurrentTimestamp(),
+		Size:           10,
+		UploadProgress: 0,
+	}
+
+	// Upload a snapshot to fill the first sector of the contract.
+	err = wt.UploadSnapshot(context.Background(), backup, fastrand.Bytes(int(backup.Size)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the first sector partially and then fully since both actions
+	// require different proofs.
+	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize/2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Do it again but this time corrupt the output to make sure the proof
+	// doesn't match.
+	deps.Fail()
+	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize/2)
+	if err == nil || !strings.Contains(err.Error(), "verifying proof failed") {
+		t.Fatal(err)
+	}
+
+	// Retry since the worker might be on a cooldown.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		deps.Fail()
+		_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize)
+		if err == nil || !strings.Contains(err.Error(), "verifying proof failed") {
+			return fmt.Errorf("unexpected error %v", err)
+		}
+		return nil
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 }
