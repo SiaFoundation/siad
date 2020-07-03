@@ -3,6 +3,7 @@ package renter
 import (
 	"bytes"
 	"io"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -13,6 +14,20 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 )
+
+// defaultNewStreamTimeout is a default timeout for creating a new stream.
+var defaultNewStreamTimeout = build.Select(build.Var{
+	Standard: 5 * time.Minute,
+	Testing:  10 * time.Second,
+	Dev:      time.Minute,
+}).(time.Duration)
+
+// defaultRPCDeadline is a default timeout for executing an RPC.
+var defaultRPCDeadline = build.Select(build.Var{
+	Standard: 5 * time.Minute,
+	Testing:  10 * time.Second,
+	Dev:      time.Minute,
+}).(time.Duration)
 
 // programResponse is a helper struct that wraps the RPCExecuteProgramResponse
 // alongside the data output
@@ -135,9 +150,17 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 		w.renter.log.Critical("calling staticNewStream on a host that doesn't support the new protocol")
 		return nil, errors.New("host doesn't support this")
 	}
-	stream, err := w.renter.staticMux.NewStream(modules.HostSiaMuxSubscriberName, w.staticHostMuxAddress, modules.SiaPKToMuxPK(w.staticHostPubKey))
+
+	// Create a stream with a reasonable dial up timeout.
+	stream, err := w.renter.staticMux.NewStreamTimeout(modules.HostSiaMuxSubscriberName, w.staticHostMuxAddress, defaultNewStreamTimeout, modules.SiaPKToMuxPK(w.staticHostPubKey))
 	if err != nil {
 		return nil, err
 	}
+	// Set deadline on the stream.
+	err = stream.SetDeadline(time.Now().Add(defaultRPCDeadline))
+	if err != nil {
+		return nil, err
+	}
+	// Wrap the stream in a ratelimit.
 	return ratelimit.NewRLStream(stream, w.renter.rl, w.renter.tg.StopChan()), nil
 }

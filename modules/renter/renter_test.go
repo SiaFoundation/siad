@@ -55,7 +55,7 @@ func (rt *renterTester) Close() error {
 }
 
 // addHost adds a host to the test group so that it appears in the host db
-func (rt *renterTester) addHost(name string) (modules.Host, error) {
+func (rt *renterTester) addCustomHost(name string, deps modules.Dependencies) (modules.Host, error) {
 	testdir := build.TempDir("renter", name)
 
 	// create a siamux for this particular host
@@ -65,7 +65,7 @@ func (rt *renterTester) addHost(name string) (modules.Host, error) {
 		return nil, err
 	}
 
-	h, err := host.New(rt.cs, rt.gateway, rt.tpool, rt.wallet, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
+	h, err := host.NewCustomHost(deps, rt.cs, rt.gateway, rt.tpool, rt.wallet, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, err
 	}
@@ -118,6 +118,11 @@ func (rt *renterTester) addHost(name string) (modules.Host, error) {
 	}
 
 	return h, nil
+}
+
+// addHost adds a host to the test group so that it appears in the host db
+func (rt *renterTester) addHost(name string) (modules.Host, error) {
+	return rt.addCustomHost(name, modules.ProdDependencies)
 }
 
 // addRenter adds a renter to the renter tester and then make sure there is

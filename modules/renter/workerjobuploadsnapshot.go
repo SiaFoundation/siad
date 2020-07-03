@@ -282,9 +282,11 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 func (w *worker) UploadSnapshot(ctx context.Context, meta modules.UploadedBackup, dotSia []byte) error {
 	uploadSnapshotRespChan := make(chan *jobUploadSnapshotResponse)
 	jus := &jobUploadSnapshot{
-		staticMetadata:    meta,
-		staticSiaFileData: dotSia,
-		jobGeneric:        newJobGeneric(w.staticJobUploadSnapshotQueue, ctx.Done()),
+		staticMetadata:     meta,
+		staticSiaFileData:  dotSia,
+		staticResponseChan: uploadSnapshotRespChan,
+
+		jobGeneric: newJobGeneric(w.staticJobUploadSnapshotQueue, ctx.Done()),
 	}
 
 	// Add the job to the queue.

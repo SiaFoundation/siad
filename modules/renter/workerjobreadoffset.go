@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -43,8 +44,20 @@ func (j *jobReadOffset) managedReadOffset() ([]byte, error) {
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
-	data, err := j.jobRead.managedRead(w, program, programData, cost)
-	return data, errors.AddContext(err, "jobReadOffset: failed to execute managedRead")
+	// Read response.
+	out, err := j.jobRead.managedRead(w, program, programData, cost)
+	if err != nil {
+		return nil, errors.AddContext(err, "jobReadOffset: failed to execute managedRead")
+	}
+
+	// Verify proof.
+	proofStart := int(j.staticOffset) / crypto.SegmentSize
+	proofEnd := int(j.staticOffset+j.staticLength) / crypto.SegmentSize
+	ok := crypto.VerifyMixedRangeProof(out.Output, out.Proof, out.NewMerkleRoot, proofStart, proofEnd)
+	if !ok {
+		return nil, errors.New("verifying proof failed")
+	}
+	return out.Output, nil
 }
 
 // ReadOffset is a helper method to run a ReadOffset job on a worker.

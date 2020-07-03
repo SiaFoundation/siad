@@ -72,6 +72,11 @@ func (h *Host) managedPayByContract(stream siamux.Stream) (modules.PaymentDetail
 	h.managedLockStorageObligation(fcid)
 	defer h.managedUnlockStorageObligation(fcid)
 
+	// simulate a missing obligation.
+	if h.dependencies.Disrupt("StorageObligationNotFound") {
+		return nil, errors.AddContext(errNoStorageObligation, "Could not fetch storage obligation")
+	}
+
 	// get the storage obligation
 	so, err := h.managedGetStorageObligation(fcid)
 	if err != nil {

@@ -13,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 )
 
@@ -21,7 +22,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	// read the price table
 	pt, err := h.staticReadPriceTableID(stream)
 	if err != nil {
-		return errors.AddContext(err, "Failed to read price table")
+		return errors.AddContext(err, "failed to read price table")
 	}
 
 	// Process payment.
@@ -83,7 +84,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	if program.RequiresSnapshot() {
 		sos, err = h.managedGetStorageObligationSnapshot(fcid)
 		if err != nil {
-			return errors.AddContext(err, fmt.Sprintf("Failed to get storage obligation snapshot for contract %v", fcid))
+			return errors.AddContext(err, fmt.Sprintf("failed to get storage obligation snapshot for contract %v", fcid))
 		}
 	}
 
@@ -115,9 +116,24 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		return errors.AddContext(err, "Failed to start execution of the program")
 	}
 
+	// Create a buffer
+	buffer := bytes.NewBuffer(nil)
+
+	// Flush the buffer. Upon success this should be a no-op. If we return early
+	// this will make sure that the cancellation token and anything else in the
+	// buffer are written to the stream.
+	defer func() {
+		if buffer.Len() > 0 {
+			_, err = buffer.WriteTo(stream)
+			if err != nil {
+				h.log.Print("failed to flush buffer", err)
+			}
+		}
+	}()
+
 	// Return 16 bytes of data as a placeholder for a future cancellation token.
 	var ct modules.MDMCancellationToken
-	err = modules.RPCWrite(stream, ct)
+	err = modules.RPCWrite(buffer, ct)
 	if err != nil {
 		return errors.AddContext(err, "Failed to write cancellation token")
 	}
@@ -165,13 +181,15 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 		// Remember that the execution wasn't successful.
 		executionFailed = output.Error != nil
 
-		// Create a buffer
-		buffer := bytes.NewBuffer(nil)
-
 		// Send the response to the peer.
 		err = modules.RPCWrite(buffer, resp)
 		if err != nil {
 			return errors.AddContext(err, "failed to send output to peer")
+		}
+
+		if h.dependencies.Disrupt("CorruptMDMOutput") {
+			// Replace output with same amount of random data.
+			fastrand.Read(output.Output)
 		}
 
 		// Write output.
@@ -198,6 +216,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			return errors.AddContext(err, "failed to send data to peer")
 		}
 	}
+
 	// Sanity check that we received at least 1 output.
 	if numOutputs == 0 {
 		err := errors.New("program returned 0 outputs - should never happen")

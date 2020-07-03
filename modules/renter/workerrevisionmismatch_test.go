@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -18,7 +19,7 @@ func TestRevisionSync(t *testing.T) {
 	}
 
 	deps := dependencies.NewDependencyDisableCommitPaymentIntent()
-	wt, err := newWorkerTesterCustomDependency(t.Name(), deps)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), deps, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
