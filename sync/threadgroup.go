@@ -121,32 +121,28 @@ func (tg *ThreadGroup) Flush() error {
 // reaches zero, then will call all of the 'AfterStop' functions in reverse
 // order. After Stop is called, most actions will return ErrStopped.
 func (tg *ThreadGroup) Stop() error {
-	// Establish that Stop has been called.
-	tg.bmu.Lock()
-	defer tg.bmu.Unlock()
-
 	if tg.isStopped() {
 		return ErrStopped
 	}
+	tg.bmu.Lock()
 	close(tg.stopChan)
+	tg.bmu.Unlock()
 
 	tg.mu.Lock()
+	tg.mu.Unlock()
+
 	for i := len(tg.onStopFns) - 1; i >= 0; i-- {
 		tg.onStopFns[i]()
 	}
-	tg.onStopFns = nil
-	tg.mu.Unlock()
 
 	tg.wg.Wait()
 
 	// After waiting for all resources to release the thread group, iterate
 	// through the stop functions and call them in reverse oreder.
-	tg.mu.Lock()
 	for i := len(tg.afterStopFns) - 1; i >= 0; i-- {
 		tg.afterStopFns[i]()
 	}
 	tg.afterStopFns = nil
-	tg.mu.Unlock()
 	return nil
 }
 
