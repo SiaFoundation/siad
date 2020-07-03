@@ -270,7 +270,7 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKe
 	if err := modules.RPCRead(stream, &payByResponse); err != nil {
 		if strings.Contains(err.Error(), "storage obligation not found") {
 			c.log.Printf("Marking contract %v as bad because host %v did not recognize it: %v", contract.ID, host, err)
-			mbcErr := c.MarkContractBad(contract.ID)
+			mbcErr := c.managedMarkContractBad(sc)
 			if mbcErr != nil {
 				c.log.Printf("Unable to mark contract %v on host %v as bad: %v", contract.ID, host, mbcErr)
 			}

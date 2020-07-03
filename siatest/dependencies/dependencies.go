@@ -9,10 +9,17 @@ import (
 )
 
 type (
+	// DependencyStorageObligationNotFound will cause the host to return that it
+	// wasn't able to find a storage obligation in managedPayByContract.
+	DependencyStorageObligationNotFound struct {
+		modules.ProductionDependencies
+	}
+
 	// DependencyPreventEARefill prevents EAs from being refilled automatically.
 	DependencyPreventEARefill struct {
 		modules.ProductionDependencies
 	}
+
 	// DependencyLowFundsFormationFail will cause contract formation to fail due
 	// to low funds in the allowance.
 	DependencyLowFundsFormationFail struct {
@@ -233,6 +240,11 @@ func newDependencyInterruptCountOccurrences(str string) *DependencyInterruptCoun
 	return &DependencyInterruptCountOccurrences{
 		str: str,
 	}
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyStorageObligationNotFound) Disrupt(s string) bool {
+	return s == "StorageObligationNotFound"
 }
 
 // Disrupt returns true if the correct string is provided.
