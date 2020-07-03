@@ -43,6 +43,12 @@ const (
 	// used for encryption by storing an encrypted identifier that can only be
 	// successfully decrypted with the correct skykey.
 	TypePrivateID = SkykeyType(0x02)
+
+	// typeDeletedSkykey is used internally to mark a key as deleted in the skykey
+	// manager. It is different from TypeInvalid because TypeInvalid can be used
+	// to catch other kinds of errors, i.e. accidentally using a Skykey{} with
+	// unset fields will cause an invalid-related error.
+	typeDeletedSkykey = SkykeyType(0xFF)
 )
 
 var (
@@ -213,6 +219,8 @@ func (sk *Skykey) unmarshalDataOnly(r io.Reader) error {
 		entropyLen = chacha.KeySize + chacha.XNonceSize
 	case TypeInvalid:
 		return errCannotMarshalTypeInvalidSkykey
+	case typeDeletedSkykey:
+		entropyLen = int(d.NextUint64())
 	default:
 		return errUnsupportedSkykeyType
 	}
@@ -231,9 +239,13 @@ func (sk *Skykey) unmarshalSia(r io.Reader) error {
 	if err != nil {
 		return errors.Compose(errUnmarshalDataErr, err)
 	}
+
+	if sk.Type == typeDeletedSkykey {
+		return nil
+	}
+
 	d := encoding.NewDecoder(r, encoding.DefaultAllocLimit)
 	d.Decode(&sk.Name)
-
 	if err := d.Err(); err != nil {
 		return err
 	}
