@@ -127,8 +127,11 @@ func newTestPriceTable() *modules.RPCPriceTable {
 	return &modules.RPCPriceTable{
 		Validity: time.Minute,
 
+		AccountBalanceCost:   types.NewCurrency64(1),
+		FundAccountCost:      types.NewCurrency64(1),
 		UpdatePriceTableCost: types.NewCurrency64(1),
 		InitBaseCost:         types.NewCurrency64(1),
+		LatestRevisionCost:   types.NewCurrency64(1),
 		MemoryTimeCost:       types.NewCurrency64(1),
 		CollateralCost:       types.NewCurrency64(1),
 

@@ -389,6 +389,8 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 		err = h.managedRPCUpdatePriceTable(stream)
 	case modules.RPCFundAccount:
 		err = h.managedRPCFundEphemeralAccount(stream)
+	case modules.RPCLatestRevision:
+		err = h.managedRPCLatestRevision(stream)
 	default:
 		h.log.Debugf("WARN: incoming stream %v requested unknown RPC \"%v\"", stream.RemoteAddr().String(), rpcID)
 		err = errors.New(fmt.Sprintf("Unrecognized RPC id %v", rpcID))
