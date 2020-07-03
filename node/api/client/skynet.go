@@ -419,6 +419,21 @@ func (c *Client) SkykeyGetByID(id skykey.SkykeyID) (skykey.Skykey, error) {
 	return sk, nil
 }
 
+// SkykeyDeleteByIDPost requests the /skynet/deleteskykey POST endpoint using the key ID.
+func (c *Client) SkykeyDeleteByIDPost(id skykey.SkykeyID) error {
+	values := url.Values{}
+	values.Set("id", id.ToString())
+	return c.post("/skynet/deleteskykey", values.Encode(), nil)
+}
+
+// SkykeyDeleteByNamePost requests the /skynet/deleteskykey POST endpoint using
+// the key name.
+func (c *Client) SkykeyDeleteByNamePost(name string) error {
+	values := url.Values{}
+	values.Set("name", name)
+	return c.post("/skynet/deleteskykey", values.Encode(), nil)
+}
+
 // SkykeyCreateKeyPost requests the /skynet/createskykey POST endpoint.
 func (c *Client) SkykeyCreateKeyPost(name string, skType skykey.SkykeyType) (skykey.Skykey, error) {
 	// Set the url values.

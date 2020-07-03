@@ -47,7 +47,6 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 		Subfiles:    make(SkyfileSubfiles),
 		DefaultPath: sm.DefaultPath,
 	}
-
 	// Try to find an exact match
 	for _, sf := range sm.Subfiles {
 		filename := ensurePrefix(sf.Filename, "/")
@@ -56,10 +55,9 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 			break
 		}
 	}
-
-	var dir bool
-	// If we have not found an exact match, look for directories.
+	// If there is no exact match look for directories.
 	// This means we can safely ensure a trailing slash.
+	var dir bool
 	if len(metadata.Subfiles) == 0 {
 		dir = true
 		path = ensureSuffix(path, "/")
@@ -70,7 +68,6 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 			}
 		}
 	}
-
 	offset := metadata.offset()
 	if offset > 0 {
 		for _, sf := range metadata.Subfiles {

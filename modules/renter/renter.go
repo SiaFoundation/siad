@@ -806,6 +806,26 @@ func (r *Renter) AddSkykey(sk skykey.Skykey) error {
 	return r.staticSkykeyManager.AddKey(sk)
 }
 
+// DeleteSkykeyByName deletes the Skykey with the given name from the renter's skykey
+// manager if it exists.
+func (r *Renter) DeleteSkykeyByName(name string) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
+	return r.staticSkykeyManager.DeleteKeyByName(name)
+}
+
+// DeleteSkykeyByID deletes the Skykey with the given ID from the renter's skykey
+// manager if it exists.
+func (r *Renter) DeleteSkykeyByID(id skykey.SkykeyID) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
+	return r.staticSkykeyManager.DeleteKeyByID(id)
+}
+
 // SkykeyByName gets the Skykey with the given name from the renter's skykey
 // manager if it exists.
 func (r *Renter) SkykeyByName(name string) (skykey.Skykey, error) {
