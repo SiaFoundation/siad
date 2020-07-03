@@ -502,12 +502,6 @@ func TestPayment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = build.Retry(50, 100*time.Millisecond, func() error {
-		if len(c.Contracts()) == 0 {
-			return errors.New("no contract created")
-		}
-		return nil
-	})
 
 	// create a refund account
 	aid, _ := modules.NewAccountID()
@@ -782,12 +776,6 @@ func TestPaymentMissingStorageObligation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = build.Retry(50, 100*time.Millisecond, func() error {
-		if len(c.Contracts()) == 0 {
-			return errors.New("no contract created")
-		}
-		return nil
-	})
 
 	// create a refund account
 	aid, _ := modules.NewAccountID()
