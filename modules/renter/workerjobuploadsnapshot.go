@@ -284,6 +284,7 @@ func (w *worker) UploadSnapshot(ctx context.Context, meta modules.UploadedBackup
 	jus := &jobUploadSnapshot{
 		staticMetadata:    meta,
 		staticSiaFileData: dotSia,
+		jobGeneric:        newJobGeneric(w.staticJobUploadSnapshotQueue, ctx.Done()),
 	}
 
 	// Add the job to the queue.

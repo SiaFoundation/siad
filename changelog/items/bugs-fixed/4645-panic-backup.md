@@ -1,0 +1,1 @@
+- Fix panic in backup code due to not using `newJobGeneric`

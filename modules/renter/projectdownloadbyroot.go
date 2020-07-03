@@ -152,12 +152,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		jhs := &jobHasSector{
 			staticSector:       root,
 			staticResponseChan: staticResponseChan,
-
-			jobGeneric: &jobGeneric{
-				staticCancelChan: ctx.Done(),
-
-				staticQueue: worker.staticJobHasSectorQueue,
-			},
+			jobGeneric:         newJobGeneric(worker.staticJobHasSectorQueue, ctx.Done()),
 		}
 		if !worker.staticJobHasSectorQueue.callAdd(jhs) {
 			// This will filter out any workers that are on cooldown or
@@ -303,11 +298,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 			jobRead: jobRead{
 				staticResponseChan: readSectorRespChan,
 				staticLength:       length,
-				jobGeneric: &jobGeneric{
-					staticCancelChan: ctx.Done(),
-
-					staticQueue: bestWorker.staticJobReadQueue,
-				},
+				jobGeneric:         newJobGeneric(bestWorker.staticJobReadQueue, ctx.Done()),
 			},
 			staticOffset: offset,
 			staticSector: root,
