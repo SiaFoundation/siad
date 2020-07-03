@@ -2199,6 +2199,47 @@ func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
 			t.Fatal("Wrong skykey type")
 		}
 	}
+
+	// Test deletion endpoints by deleting half of the keys.
+	skykeys, err = r.SkykeySkykeysGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	deletedKeys := make(map[skykey.SkykeyID]struct{})
+	nKeys = len(skykeys)
+	nToDelete := nKeys / 2
+	for i, sk := range skykeys {
+		if i >= nToDelete {
+			break
+		}
+
+		if i%2 == 0 {
+			err = r.SkykeyDeleteByNamePost(sk.Name)
+		} else {
+			err = r.SkykeyDeleteByIDPost(sk.ID())
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		deletedKeys[sk.ID()] = struct{}{}
+	}
+
+	// Check that the skykeys were deleted.
+	skykeys, err = r.SkykeySkykeysGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(skykeys) != nKeys-nToDelete {
+		t.Fatalf("Expected %d keys, got %d", nKeys-nToDelete, len(skykeys))
+	}
+
+	// Sanity check: Make sure deleted keys are not still around.
+	for _, sk := range skykeys {
+		if _, ok := deletedKeys[sk.ID()]; ok {
+			t.Fatal("Found a key that should have been deleted")
+		}
+	}
 }
 
 // testRenameSiaPath verifies that the siapath to the skyfile can be renamed.
