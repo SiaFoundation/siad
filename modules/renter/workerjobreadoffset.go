@@ -67,11 +67,7 @@ func (w *worker) ReadOffset(ctx context.Context, offset, length uint64) ([]byte,
 		jobRead: jobRead{
 			staticResponseChan: readOffsetRespChan,
 			staticLength:       length,
-			jobGeneric: &jobGeneric{
-				staticCancelChan: ctx.Done(),
-
-				staticQueue: w.staticJobReadQueue,
-			},
+			jobGeneric:         newJobGeneric(w.staticJobReadQueue, ctx.Done()),
 		},
 		staticOffset: offset,
 	}
