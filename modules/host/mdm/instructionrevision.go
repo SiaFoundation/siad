@@ -36,7 +36,7 @@ func (p *program) staticDecodeRevisionInstruction(instruction modules.Instructio
 	}, nil
 }
 
-// Collateral is zero for the HasSector instruction.
+// Collateral is zero for the Revision instruction.
 func (i *instructionRevision) Collateral() types.Currency {
 	return modules.MDMRevisionCollateral()
 }
@@ -53,7 +53,7 @@ func (i *instructionRevision) Memory() uint64 {
 	return modules.MDMRevisionMemory()
 }
 
-// Execute executes the 'HasSector' instruction.
+// Execute executes the 'Revision' instruction.
 func (i *instructionRevision) Execute(prevOutput output) output {
 	// Fetch the requested information.
 	rev := i.staticState.staticRevision
@@ -65,7 +65,7 @@ func (i *instructionRevision) Execute(prevOutput output) output {
 	}
 }
 
-// Time returns the execution time of an 'HasSector' instruction.
+// Time returns the execution time of a 'Revision' instruction.
 func (i *instructionRevision) Time() (uint64, error) {
 	return modules.MDMTimeRevision, nil
 }

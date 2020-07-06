@@ -17,7 +17,6 @@ func TestInstructionRevision(t *testing.T) {
 	mdm := New(host)
 	defer mdm.Stop()
 
-	// Create a program to check for a sector on the host.
 	so := host.newTestStorageObligation(true)
 	so.sectorRoots = randomSectorRoots(1)
 
@@ -28,17 +27,20 @@ func TestInstructionRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Get revision.
+	// Get revision, contract size and root.
 	rev := so.RecentRevision()
+	ics := rev.NewFileSize
+	imr := rev.NewFileMerkleRoot
+	var zmr crypto.Hash
+	if ics == 0 || imr == zmr {
+		t.Fatal("ics and/or were not initialized")
+	}
 
 	// Build the program.
 	pt := newTestPriceTable()
 	duration := types.BlockHeight(fastrand.Uint64n(5))
 	tb := newTestProgramBuilder(pt, duration)
 	tb.AddRevisionInstruction()
-
-	ics := so.ContractSize()
-	imr := so.MerkleRoot()
 
 	// Execute it.
 	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, duration, false)
