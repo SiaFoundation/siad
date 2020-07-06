@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -374,8 +375,9 @@ func (api *API) renterBackupsCreateHandlerPOST(w http.ResponseWriter, req *http.
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	defer os.RemoveAll(tmpDir)
-	backupPath := filepath.Join(tmpDir, name)
+	randomSuffix := hex.EncodeToString(fastrand.Bytes(16))
+	backupPath := filepath.Join(tmpDir, fmt.Sprintf("%v-%v", name, randomSuffix))
+	defer os.RemoveAll(backupPath)
 
 	// Get the wallet seed.
 	ws, _, err := api.wallet.PrimarySeed()
