@@ -266,6 +266,9 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 		if err != nil {
 			// If there is an error just continue as we shouldn't prevent the
 			// conversion due to bad old skylinks
+			//
+			// Log the error for debugging purposes
+			r.log.Printf("WARN: previous skylink for siafile %v could not be loaded from string; potentially corrupt skylink: %v", fileNode.SiaFilePath(), skylinkstr)
 			continue
 		}
 		// Check if skylink is blacklisted

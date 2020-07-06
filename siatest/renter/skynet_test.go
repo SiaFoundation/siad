@@ -1514,6 +1514,20 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
+	// Confirm there is a siafile and a skyfile
+	_, err = r.RenterFileGet(siafileSiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skyfilePath, err := modules.SkynetFolder.Join(siafileSiaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.RenterFileRootGet(skyfilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Blacklist the skylink
 	add = []string{convertSkylink}
 	remove = []string{}
@@ -1530,6 +1544,8 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Confirm skyfile download returns blacklisted error
+	//
+	// NOTE: Calling DownloadSkylink doesn't attempt to delete any underlying file
 	_, _, err = r.SkynetSkylinkGet(convertSkylink)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrSkylinkBlacklisted.Error()) {
 		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlacklisted, err)
@@ -1541,6 +1557,16 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	_, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrSkylinkBlacklisted.Error()) {
 		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlacklisted, err)
+	}
+
+	// This should delete the skyfile but not the siafile
+	_, err = r.RenterFileGet(siafileSiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.RenterFileRootGet(skyfilePath)
+	if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+		t.Fatalf("Expected error %v but got %v", filesystem.ErrNotExist, err)
 	}
 
 	// remove from blacklist
@@ -1560,6 +1586,10 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 
 	// Convert should succeed
 	_, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.RenterFileRootGet(skyfilePath)
 	if err != nil {
 		t.Fatal(err)
 	}
