@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"encoding/json"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -414,8 +415,10 @@ func TestRenterPricesVolatility(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(initial, after) {
-		t.Log(initial)
-		t.Log(after)
+		initialJSON, _ := json.MarshalIndent(initial, "", "\t")
+		afterJSON, _ := json.MarshalIndent(initial, "", "\t")
+		t.Log("Initial:", string(initialJSON))
+		t.Log("After:", string(afterJSON))
 		t.Fatal("expected renter price estimation to be constant")
 	}
 }
