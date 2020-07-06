@@ -5069,5 +5069,4 @@ func TestRenterPricesVolatility(t *testing.T) {
 		t.Log("After:", string(afterJSON))
 		t.Fatal("expected renter price estimation to be constant")
 	}
-
 }
