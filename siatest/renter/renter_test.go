@@ -28,6 +28,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
@@ -5005,5 +5006,67 @@ func TestReadSectorOutputCorrupted(t *testing.T) {
 	_, _, err = renter.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestRenterPricesVolatility verifies that the renter caches its price
+// estimation, and subsequent calls result in non-volatile results.
+func TestRenterPricesVolatility(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a testgroup with PriceEstimationScope hosts.
+	groupParams := siatest.GroupParams{
+		Miners:  1,
+		Hosts:   modules.PriceEstimationScope,
+		Renters: 1,
+	}
+
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer tg.Close()
+
+	renter := tg.Renters()[0]
+	host := tg.Hosts()[0]
+
+	// Get initial estimate.
+	allowance := modules.Allowance{}
+	rpg, err := renter.RenterPricesGet(allowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial := rpg.RenterPriceEstimation
+
+	// Changing the contract price should be enough to trigger a change
+	// if the hosts are not cached.
+	hg, err := host.HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mcp := hg.InternalSettings.MinContractPrice
+	err = host.HostModifySettingPost(client.HostParamMinContractPrice, mcp.Mul64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the estimate again.
+	rpg, err = renter.RenterPricesGet(allowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after := rpg.RenterPriceEstimation
+
+	// Initial and After should be the same.
+	if !reflect.DeepEqual(initial, after) {
+		initialJSON, _ := json.MarshalIndent(initial, "", "\t")
+		afterJSON, _ := json.MarshalIndent(after, "", "\t")
+		t.Log("Initial:", string(initialJSON))
+		t.Log("After:", string(afterJSON))
+		t.Fatal("expected renter price estimation to be constant")
 	}
 }
