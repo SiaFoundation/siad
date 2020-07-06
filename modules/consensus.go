@@ -218,10 +218,6 @@ type (
 		// blockchain.
 		CurrentBlock() types.Block
 
-		// Flush will cause the consensus set to finish all in-progress
-		// routines.
-		Flush() error
-
 		// Height returns the current height of consensus.
 		Height() types.BlockHeight
 
