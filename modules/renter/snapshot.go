@@ -415,7 +415,14 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 			if err != nil {
 				return err
 			}
-			entryTable, err := r.managedDownloadSnapshotTable(w)
+			// TODO: Remove this when enough hosts have upgraded to fixed
+			// ReadOffset.
+			session, err := r.hostContractor.Session(w.staticHostPubKey, r.tg.StopChan())
+			if err != nil {
+				return err
+			}
+			defer session.Close()
+			entryTable, err := r.managedDownloadSnapshotTableRHP2(session)
 			if err != nil {
 				return err
 			}
@@ -665,8 +672,16 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				return err
 			}
 
+			// TODO: Remove this when enough hosts have upgraded to fixed
+			// ReadOffset.
+			session, err := r.hostContractor.Session(w.staticHostPubKey, r.tg.StopChan())
+			if err != nil {
+				return err
+			}
+			defer session.Close()
+
 			// Download the snapshot table.
-			entryTable, err := r.managedDownloadSnapshotTable(w)
+			entryTable, err := r.managedDownloadSnapshotTableRHP2(session)
 			if err != nil {
 				return err
 			}
