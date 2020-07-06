@@ -84,7 +84,7 @@ func TestThreadGroupStop(t *testing.T) {
 	var stopCalls []int
 
 	// isStopped should return false
-	if tg.isStopped() {
+	if tg.staticIsStopped() {
 		t.Error("isStopped returns true on unstopped ThreadGroup")
 	}
 	// The cannel provided by StopChan should be open.
@@ -136,7 +136,7 @@ func TestThreadGroupStop(t *testing.T) {
 		t.Fatal(err)
 	}
 	// isStopped should return true.
-	if !tg.isStopped() {
+	if !tg.staticIsStopped() {
 		t.Error("isStopped returns false on stopped ThreadGroup")
 	}
 	// The cannel provided by StopChan should be closed.
@@ -233,7 +233,7 @@ func TestThreadGroupOnce(t *testing.T) {
 	}
 
 	tg = new(ThreadGroup)
-	tg.isStopped()
+	tg.staticIsStopped()
 	if tg.stopChan == nil {
 		t.Error("stopChan should have been initialized by isStopped")
 	}

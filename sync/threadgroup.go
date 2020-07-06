@@ -37,8 +37,9 @@ func (tg *ThreadGroup) init() {
 	tg.stopChan = make(chan struct{})
 }
 
-// isStopped will return true if Stop() has been called on the thread group.
-func (tg *ThreadGroup) isStopped() bool {
+// staticIsStopped will return true if Stop() has been called on the thread
+// group.
+func (tg *ThreadGroup) staticIsStopped() bool {
 	tg.once.Do(tg.init)
 	select {
 	case <-tg.stopChan:
@@ -53,7 +54,7 @@ func (tg *ThreadGroup) Add() error {
 	tg.bmu.Lock()
 	defer tg.bmu.Unlock()
 
-	if tg.isStopped() {
+	if tg.staticIsStopped() {
 		return ErrStopped
 	}
 	tg.wg.Add(1)
@@ -73,7 +74,7 @@ func (tg *ThreadGroup) AfterStop(fn func()) {
 	tg.mu.Lock()
 	defer tg.mu.Unlock()
 
-	if tg.isStopped() {
+	if tg.staticIsStopped() {
 		fn()
 		return
 	}
@@ -90,7 +91,7 @@ func (tg *ThreadGroup) OnStop(fn func()) {
 	tg.mu.Lock()
 	defer tg.mu.Unlock()
 
-	if tg.isStopped() {
+	if tg.staticIsStopped() {
 		fn()
 		return
 	}
@@ -109,7 +110,7 @@ func (tg *ThreadGroup) Flush() error {
 	tg.bmu.Lock()
 	defer tg.bmu.Unlock()
 
-	if tg.isStopped() {
+	if tg.staticIsStopped() {
 		return ErrStopped
 	}
 	tg.wg.Wait()
@@ -121,13 +122,16 @@ func (tg *ThreadGroup) Flush() error {
 // reaches zero, then will call all of the 'AfterStop' functions in reverse
 // order. After Stop is called, most actions will return ErrStopped.
 func (tg *ThreadGroup) Stop() error {
-	if tg.isStopped() {
+	if tg.staticIsStopped() {
 		return ErrStopped
 	}
 	tg.bmu.Lock()
 	close(tg.stopChan)
 	tg.bmu.Unlock()
 
+	// Flush any function that made it past isStopped and might be trying to do
+	// something under the mu lock. Any calls to OnStop or AfterStop after this
+	// will fail, because isStopped will cut them short.
 	tg.mu.Lock()
 	tg.mu.Unlock()
 
@@ -135,6 +139,7 @@ func (tg *ThreadGroup) Stop() error {
 		tg.onStopFns[i]()
 	}
 
+	// Wait for all running processes to signal completion.
 	tg.wg.Wait()
 
 	// After waiting for all resources to release the thread group, iterate
