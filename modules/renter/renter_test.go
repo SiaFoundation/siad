@@ -416,7 +416,7 @@ func TestRenterPricesVolatility(t *testing.T) {
 	}
 	if !reflect.DeepEqual(initial, after) {
 		initialJSON, _ := json.MarshalIndent(initial, "", "\t")
-		afterJSON, _ := json.MarshalIndent(initial, "", "\t")
+		afterJSON, _ := json.MarshalIndent(after, "", "\t")
 		t.Log("Initial:", string(initialJSON))
 		t.Log("After:", string(afterJSON))
 		t.Fatal("expected renter price estimation to be constant")

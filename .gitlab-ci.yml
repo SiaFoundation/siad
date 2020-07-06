@@ -167,7 +167,7 @@ lint:
     - ./bin/golangci-lint run -c .golangci.yml ./...
     - make lint-analyze
     - make markdown-spellcheck
-    - make test
+    - make test-long pkgs=./modules/renter run=TestRenterPricesVolatility count=100
 
 build:
   stage: lint
@@ -178,7 +178,7 @@ build:
     paths:
       - $CI_PROJECT_DIR/artifacts
   script:
-    - ./check-builds.sh
+    - make test-long pkgs=./modules/renter run=TestRenterPricesVolatility count=100
 
 legacy-tests:
   <<: *default_test_params
