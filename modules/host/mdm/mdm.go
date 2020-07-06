@@ -20,6 +20,9 @@ type StorageObligationSnapshot interface {
 	ContractSize() uint64
 	// MerkleRoot returns the filecontract's current root.
 	MerkleRoot() crypto.Hash
+	// RecentRevision returns the recent revision at the time the snapshot was
+	// taken.
+	RecentRevision() types.FileContractRevision
 	// SectorRoots returns the roots of the storage obligation.
 	SectorRoots() []crypto.Hash
 }

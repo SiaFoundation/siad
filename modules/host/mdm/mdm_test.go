@@ -117,6 +117,14 @@ func (so *TestStorageObligation) MerkleRoot() crypto.Hash {
 	return cachedMerkleRoot(so.sectorRoots)
 }
 
+// RecentRevision implements the StorageObligation interface.
+func (so *TestStorageObligation) RecentRevision() types.FileContractRevision {
+	return types.FileContractRevision{
+		NewFileMerkleRoot: so.MerkleRoot(),
+		NewFileSize:       so.ContractSize(),
+	}
+}
+
 // SectorRoots implements the StorageObligation interface.
 func (so *TestStorageObligation) SectorRoots() []crypto.Hash {
 	return so.sectorRoots

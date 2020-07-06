@@ -32,6 +32,7 @@ type FnFinalize func(StorageObligation) error
 type programState struct {
 	// host related fields
 	host                    Host
+	staticRevision          types.FileContractRevision
 	staticRemainingDuration types.BlockHeight
 
 	// program cache
@@ -96,6 +97,8 @@ func decodeInstruction(p *program, i modules.Instruction) (instruction, error) {
 		return p.staticDecodeReadSectorInstruction(i)
 	case modules.SpecifierReadOffset:
 		return p.staticDecodeReadOffsetInstruction(i)
+	case modules.SpecifierRevision:
+		return p.staticDecodeRevisionInstruction(i)
 	default:
 		return nil, fmt.Errorf("unknown instruction specifier: %v", i.Specifier)
 	}
@@ -123,6 +126,7 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 			host:                    mdm.host,
 			priceTable:              pt,
 			sectors:                 newSectors(sos.SectorRoots()),
+			staticRevision:          sos.RecentRevision(),
 		},
 		staticBudget:           budget,
 		usedMemory:             modules.MDMInitMemory(),

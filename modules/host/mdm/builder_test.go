@@ -93,6 +93,13 @@ func (tb *testProgramBuilder) AddReadSectorInstruction(length, offset uint64, me
 	tb.staticValues.AddReadSectorInstruction(length)
 }
 
+// AddRevisionInstruction adds a revision instruction to the builder, keeping
+// track of running values.
+func (tb *testProgramBuilder) AddRevisionInstruction() {
+	tb.staticPB.AddRevisionInstruction()
+	tb.staticValues.AddRevisionInstruction()
+}
+
 // Program returns the built program.
 func (tb *testProgramBuilder) Program() (modules.Program, modules.ProgramData) {
 	return tb.staticPB.Program()
