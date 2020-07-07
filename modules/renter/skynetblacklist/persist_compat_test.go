@@ -32,6 +32,7 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer f.Close()
 	bytes, err := ioutil.ReadAll(f)
 	if err != nil {
 		t.Fatal(err)
@@ -40,12 +41,13 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer pf.Close()
 	_, err = pf.Write(bytes)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Verify that loading the persistence file with the older version works
+	// Verify that loading the older persist file works
 	aop, reader, err := persist.NewAppendOnlyPersist(testdir, persistFile, metadataHeader, metadataVersionv143)
 	if err != nil {
 		t.Fatal(err)
@@ -55,6 +57,9 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 	merkleroots, err := unmarshalObjects(reader)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(merkleroots) == 0 {
+		t.Fatal("no merkleroots in old versioned persist file")
 	}
 
 	// Close the original AOP

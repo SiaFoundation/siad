@@ -17,7 +17,7 @@ var metadataVersionv143 = types.NewSpecifier("v1.4.3\n")
 // that the hash of the merkleroot is now persisted instead of the merkleroot
 // itself.
 func convertPersistVersionFromv143Tov150(persistDir string) error {
-	// Open the v143 pesistence file
+	// Open the v143 pesist file
 	aopv143, readerv143, err := persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersionv143)
 	if err != nil {
 		return errors.AddContext(err, "unable to open v143 persistence")
@@ -50,25 +50,27 @@ func convertPersistVersionFromv143Tov150(persistDir string) error {
 	// Initialize new persistence
 	aopv150, _, err := persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
 	if err != nil {
-		errContext := errors.New("unable to initialize v150 persistence file")
-		// Revert partial conversion by renaming the v143 back to the original name
+		errContext := errors.New("unable to initialize v150 persist file")
+		// Revert partial conversion by renaming the v143 persist file back to the
+		// original name
 		return errors.Compose(err, errContext, aopv143.Rename(v143FileName))
 	}
 	defer aopv150.Close()
 
-	// Write the hashses to the persistence file
+	// Write the hashes to the persist file
 	_, err = aopv150.Write(buf.Bytes())
 	if err != nil {
-		errContext := errors.New("unable to write to v150 persistence file")
-		// Revert partial conversion by removing the v150 file and renaming the v143
-		// back to the original name
+		errContext := errors.New("unable to write to v150 persist file")
+		// Revert partial conversion by removing the v150 persist file and renaming
+		// the v143 persist file back to the original name
 		return errors.Compose(err, errContext, aopv150.Remove(), aopv143.Rename(v143FileName))
 	}
 
-	// Remove the old persistence so that we can overwrite it with a new file
+	// Remove the old persistence now that we have successfully writing to the new
+	// persist file
 	err = aopv143.Remove()
 	if err != nil {
-		return errors.AddContext(err, "unable to remove the old persistence file from disk")
+		return errors.AddContext(err, "unable to remove the old persist file from disk")
 	}
 
 	return nil

@@ -28,7 +28,7 @@ var (
 	metadataHeader = types.NewSpecifier("SkynetBlacklist\n")
 
 	// metadataVersion is the version of the persistence file
-	metadataVersion = types.NewSpecifier("v1.5.0\n")
+	metadataVersion = persist.MetadataVersionv150
 )
 
 type (
@@ -44,7 +44,7 @@ type (
 	}
 
 	// persistEntry contains a hash and whether it should be listed as being in
-	// the persistence file.
+	// the current blacklist.
 	persistEntry struct {
 		Hash   crypto.Hash
 		Listed bool

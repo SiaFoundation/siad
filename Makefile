@@ -87,6 +87,7 @@ lockcheckpkgs = \
 	./modules/host/mdm \
 	./modules/renter/hostdb \
 	./modules/renter/proto \
+	./modules/renter/skynetblacklist \
 
 # run determines which tests run when running any variation of 'make test'.
 run = .
