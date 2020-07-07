@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -24,6 +23,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -375,7 +375,7 @@ func (api *API) renterBackupsCreateHandlerPOST(w http.ResponseWriter, req *http.
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	randomSuffix := hex.EncodeToString(fastrand.Bytes(16))
+	randomSuffix := persist.RandomSuffix()
 	backupPath := filepath.Join(tmpDir, fmt.Sprintf("%v-%v", name, randomSuffix))
 	defer os.RemoveAll(backupPath)
 
