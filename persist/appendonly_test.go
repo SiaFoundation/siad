@@ -304,3 +304,76 @@ func TestMarshalMetadata(t *testing.T) {
 		t.Fatalf("Expected %v got %v", ErrWrongHeader, err)
 	}
 }
+
+// TestAppendOnlyPersistRenameAndRemove test the Rename and Remove methods of the AOP
+func TestAppendOnlyPersistRenameAndRemove(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a new AppendOnlyPersist.
+	testdir := build.TempDir("appendonlypersist", t.Name())
+	filename := "test"
+	aop, _, err := NewAppendOnlyPersist(testdir, filename, testHeader, testVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test Rename.
+	originalFilePath := filepath.Join(testdir, filename)
+	newFilePath := filepath.Join(testdir, "newfile")
+	err = aop.Rename(newFilePath)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// StaticPath should be updated
+	if aop.staticPath != newFilePath {
+		t.Errorf("Expected staticPath to be %v but was %v", newFilePath, aop.staticPath)
+	}
+
+	// No file should exist at the original location
+	_, err = os.Stat(originalFilePath)
+	if !os.IsNotExist(err) {
+		t.Error("Expected IsNotExists error but got:", err)
+	}
+
+	// Test Remove
+	err = aop.Remove()
+	if err != nil {
+		t.Error(err)
+	}
+
+	// No file should exist at the new location
+	_, err = os.Stat(newFilePath)
+	if !os.IsNotExist(err) {
+		t.Error("Expected IsNotExists error but got:", err)
+	}
+	if !aop.deleted {
+		t.Error("AOP is not marked as deleted in memory")
+	}
+
+	// Verify functions perform as expected when the object is marked as deleted in
+	// memory
+	_ = aop.FilePath()      // No errors return, verify no panics
+	_ = aop.PersistLength() // No errors return, verify no panics
+	err = aop.Remove()
+	if err != errDeleted {
+		t.Errorf("Expected err %v but got %v", errDeleted, err)
+	}
+	err = aop.Rename("")
+	if err != errDeleted {
+		t.Errorf("Expected err %v but got %v", errDeleted, err)
+	}
+	_, err = aop.Write([]byte{})
+	if err != errDeleted {
+		t.Errorf("Expected err %v but got %v", errDeleted, err)
+	}
+
+	// Should still be able to close the aop
+	err = aop.Close()
+	if err != nil {
+		t.Error(err)
+	}
+}

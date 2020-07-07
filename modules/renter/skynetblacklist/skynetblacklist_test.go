@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/encoding"
@@ -52,8 +53,8 @@ func TestPersist(t *testing.T) {
 	}
 
 	// There should be no skylinks in the blacklist
-	if len(pl.merkleRoots) != 0 {
-		t.Fatal("Expected blacklist to be empty but found:", len(pl.merkleRoots))
+	if len(pl.hashes) != 0 {
+		t.Fatal("Expected blacklist to be empty but found:", len(pl.hashes))
 	}
 
 	// Update blacklist
@@ -67,8 +68,8 @@ func TestPersist(t *testing.T) {
 
 	// Blacklist should be empty because we added and then removed the same
 	// skylink
-	if len(pl.merkleRoots) != 0 {
-		t.Fatal("Expected blacklist to be empty but found:", len(pl.merkleRoots))
+	if len(pl.hashes) != 0 {
+		t.Fatal("Expected blacklist to be empty but found:", len(pl.hashes))
 	}
 
 	// Verify that the correct number of links were persisted to verify no links
@@ -84,10 +85,11 @@ func TestPersist(t *testing.T) {
 	}
 
 	// There should be 1 element in the blacklist now
-	if len(pl.merkleRoots) != 1 {
-		t.Fatal("Expected 1 element in the blacklist but found:", len(pl.merkleRoots))
+	if len(pl.hashes) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(pl.hashes))
 	}
-	_, ok := pl.merkleRoots[skylink.MerkleRoot()]
+	hash := crypto.HashObject(skylink.MerkleRoot())
+	_, ok := pl.hashes[hash]
 	if !ok {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
@@ -106,10 +108,10 @@ func TestPersist(t *testing.T) {
 	}
 
 	// There should be 1 element in the blacklist
-	if len(pl2.merkleRoots) != 1 {
-		t.Fatal("Expected 1 element in the blacklist but found:", len(pl2.merkleRoots))
+	if len(pl2.hashes) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(pl2.hashes))
 	}
-	_, ok = pl2.merkleRoots[skylink.MerkleRoot()]
+	_, ok = pl2.hashes[hash]
 	if !ok {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
@@ -121,10 +123,10 @@ func TestPersist(t *testing.T) {
 	}
 
 	// There should still only be 1 element in the blacklist
-	if len(pl2.merkleRoots) != 1 {
-		t.Fatal("Expected 1 element in the blacklist but found:", len(pl2.merkleRoots))
+	if len(pl2.hashes) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(pl2.hashes))
 	}
-	_, ok = pl2.merkleRoots[skylink.MerkleRoot()]
+	_, ok = pl2.hashes[hash]
 	if !ok {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
@@ -143,10 +145,10 @@ func TestPersist(t *testing.T) {
 	}
 
 	// There should be 1 element in the blacklist
-	if len(pl3.merkleRoots) != 1 {
-		t.Fatal("Expected 1 element in the blacklist but found:", len(pl3.merkleRoots))
+	if len(pl3.hashes) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(pl3.hashes))
 	}
-	_, ok = pl3.merkleRoots[skylink.MerkleRoot()]
+	_, ok = pl3.hashes[hash]
 	if !ok {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
@@ -172,8 +174,8 @@ func TestPersistCorruption(t *testing.T) {
 	}
 
 	// There should be no skylinks in the blacklist
-	if len(pl.merkleRoots) != 0 {
-		t.Fatal("Expected blacklist to be empty but found:", len(pl.merkleRoots))
+	if len(pl.hashes) != 0 {
+		t.Fatal("Expected blacklist to be empty but found:", len(pl.hashes))
 	}
 
 	// Append a bunch of random data to the end of the blacklist file to test
@@ -224,8 +226,8 @@ func TestPersistCorruption(t *testing.T) {
 
 	// Blacklist should be empty because we added and then removed the same
 	// skylink
-	if len(pl.merkleRoots) != 0 {
-		t.Fatal("Expected blacklist to be empty but found:", len(pl.merkleRoots))
+	if len(pl.hashes) != 0 {
+		t.Fatal("Expected blacklist to be empty but found:", len(pl.hashes))
 	}
 
 	// Add the skylink again
@@ -235,10 +237,11 @@ func TestPersistCorruption(t *testing.T) {
 	}
 
 	// There should be 1 element in the blacklist now
-	if len(pl.merkleRoots) != 1 {
-		t.Fatal("Expected 1 element in the blacklist but found:", len(pl.merkleRoots))
+	if len(pl.hashes) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(pl.hashes))
 	}
-	_, ok := pl.merkleRoots[skylink.MerkleRoot()]
+	hash := crypto.HashObject(skylink.MerkleRoot())
+	_, ok := pl.hashes[hash]
 	if !ok {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
@@ -251,10 +254,10 @@ func TestPersistCorruption(t *testing.T) {
 	}
 
 	// There should be 1 element in the blacklist
-	if len(pl2.merkleRoots) != 1 {
-		t.Fatal("Expected 1 element in the blacklist but found:", len(pl2.merkleRoots))
+	if len(pl2.hashes) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(pl2.hashes))
 	}
-	_, ok = pl2.merkleRoots[skylink.MerkleRoot()]
+	_, ok = pl2.hashes[hash]
 	if !ok {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
@@ -266,10 +269,10 @@ func TestPersistCorruption(t *testing.T) {
 	}
 
 	// There should still only be 1 element in the blacklist
-	if len(pl2.merkleRoots) != 1 {
-		t.Fatal("Expected 1 element in the blacklist but found:", len(pl2.merkleRoots))
+	if len(pl2.hashes) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(pl2.hashes))
 	}
-	_, ok = pl2.merkleRoots[skylink.MerkleRoot()]
+	_, ok = pl2.hashes[hash]
 	if !ok {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
@@ -282,10 +285,10 @@ func TestPersistCorruption(t *testing.T) {
 	}
 
 	// There should be 1 element in the blacklist
-	if len(pl3.merkleRoots) != 1 {
-		t.Fatal("Expected 1 element in the blacklist but found:", len(pl3.merkleRoots))
+	if len(pl3.hashes) != 1 {
+		t.Fatal("Expected 1 element in the blacklist but found:", len(pl3.hashes))
 	}
-	_, ok = pl3.merkleRoots[skylink.MerkleRoot()]
+	_, ok = pl3.hashes[hash]
 	if !ok {
 		t.Fatalf("Expected merkleroot %v to be listed in blacklist", skylink.MerkleRoot())
 	}
@@ -335,8 +338,8 @@ func TestMarshalSia(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if merkleRoot != ll.MerkleRoot {
-		t.Fatalf("MerkleRoots don't match, expected %v, got %v", merkleRoot, ll.MerkleRoot)
+	if merkleRoot != ll.Hash {
+		t.Fatalf("MerkleRoots don't match, expected %v, got %v", merkleRoot, ll.Hash)
 	}
 	if ll.Listed {
 		t.Fatal("expected persisted link to not be blacklisted")
@@ -345,8 +348,8 @@ func TestMarshalSia(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if merkleRoot != ll.MerkleRoot {
-		t.Fatalf("MerkleRoots don't match, expected %v, got %v", merkleRoot, ll.MerkleRoot)
+	if merkleRoot != ll.Hash {
+		t.Fatalf("MerkleRoots don't match, expected %v, got %v", merkleRoot, ll.Hash)
 	}
 	if !ll.Listed {
 		t.Fatal("expected persisted link to be blacklisted")

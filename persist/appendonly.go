@@ -32,6 +32,10 @@ var (
 	ErrWrongHeader = errors.New("wrong header")
 	// ErrWrongVersion is the wrong version error.
 	ErrWrongVersion = errors.New("wrong version")
+
+	// errDeleted is the error returned if the AOP object is deleted and a caller
+	// is trying to perform an action that cannot be executed on a deleted object.
+	errDeleted = errors.New("AppendOnlyPersist object is deleted")
 )
 
 type (
@@ -41,6 +45,7 @@ type (
 		staticPath string
 		staticF    *os.File
 
+		deleted  bool
 		metadata appendOnlyPersistMetadata
 
 		mu sync.Mutex
@@ -89,11 +94,51 @@ func (aop *AppendOnlyPersist) PersistLength() uint64 {
 	return aop.metadata.Length
 }
 
+// Remove removes the persist file from disk
+func (aop *AppendOnlyPersist) Remove() error {
+	aop.mu.Lock()
+	defer aop.mu.Unlock()
+	// Check if the object was deleted by another thread
+	if aop.deleted {
+		return errDeleted
+	}
+	// Remove the file from disk
+	err := os.Remove(aop.staticPath)
+	if err != nil {
+		return err
+	}
+	// Mark the object as deleted in memory
+	aop.deleted = true
+	return nil
+}
+
+// Rename removes the persist file from disk
+func (aop *AppendOnlyPersist) Rename(newPath string) error {
+	aop.mu.Lock()
+	defer aop.mu.Unlock()
+	// Check if the object was deleted by another thread
+	if aop.deleted {
+		return errDeleted
+	}
+	// Rename the file on disk
+	err := os.Rename(aop.staticPath, newPath)
+	if err != nil {
+		return err
+	}
+	// Update the staticPath
+	aop.staticPath = newPath
+	return nil
+}
+
 // Write implements the io.Writer interface. It updates the persist file,
 // appending the changes to the persist file on disk.
 func (aop *AppendOnlyPersist) Write(b []byte) (int, error) {
 	aop.mu.Lock()
 	defer aop.mu.Unlock()
+	// Check if the object was deleted by another thread
+	if aop.deleted {
+		return 0, errDeleted
+	}
 
 	filepath := aop.FilePath()
 	// Truncate the file to remove any corrupted data that may have been added.

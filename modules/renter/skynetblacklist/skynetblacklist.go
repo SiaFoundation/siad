@@ -28,7 +28,7 @@ var (
 	metadataHeader = types.NewSpecifier("SkynetBlacklist\n")
 
 	// metadataVersion is the version of the persistence file
-	metadataVersion = types.NewSpecifier("v1.4.3\n")
+	metadataVersion = types.NewSpecifier("v1.5.0\n")
 )
 
 type (
@@ -37,17 +37,17 @@ type (
 	SkynetBlacklist struct {
 		staticAop *persist.AppendOnlyPersist
 
-		// merkleRoots is a set of blacklisted links.
-		merkleRoots map[crypto.Hash]struct{}
+		// hashes is a set of blacklisted links.
+		hashes map[crypto.Hash]struct{}
 
 		mu sync.Mutex
 	}
 
-	// persistEntry contains a Skynet blacklist link and whether it should be
-	// listed as being in the persistence file.
+	// persistEntry contains a hash and whether it should be listed as being in
+	// the persistence file.
 	persistEntry struct {
-		MerkleRoot crypto.Hash
-		Listed     bool
+		Hash   crypto.Hash
+		Listed bool
 	}
 )
 
@@ -55,6 +55,15 @@ type (
 func New(persistDir string) (*SkynetBlacklist, error) {
 	// Initialize the persistence of the blacklist.
 	aop, reader, err := persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
+	if errors.Contains(err, persist.ErrWrongVersion) {
+		// Try and convert the persistence from v143 to v150
+		err = convertPersistVersionFromv143Tov150(persistDir)
+		if err != nil {
+			return nil, errors.AddContext(err, "unable to convert persistence from v143 to v150")
+		}
+		// Try and initialize the persistence again
+		aop, reader, err = persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
+	}
 	if err != nil {
 		return nil, errors.AddContext(err, fmt.Sprintf("unable to initialize the skynet blacklist persistence at '%v'", aop.FilePath()))
 	}
@@ -62,11 +71,11 @@ func New(persistDir string) (*SkynetBlacklist, error) {
 	sb := &SkynetBlacklist{
 		staticAop: aop,
 	}
-	blacklist, err := unmarshalObjects(reader)
+	hashes, err := unmarshalObjects(reader)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to unmarshal persist objects")
 	}
-	sb.merkleRoots = blacklist
+	sb.hashes = hashes
 
 	return sb, nil
 }
@@ -77,8 +86,8 @@ func (sb *SkynetBlacklist) Blacklist() []crypto.Hash {
 	defer sb.mu.Unlock()
 
 	var blacklist []crypto.Hash
-	for mr := range sb.merkleRoots {
-		blacklist = append(blacklist, mr)
+	for hash := range sb.hashes {
+		blacklist = append(blacklist, hash)
 	}
 	return blacklist
 }
@@ -92,8 +101,8 @@ func (sb *SkynetBlacklist) Close() error {
 func (sb *SkynetBlacklist) IsBlacklisted(skylink modules.Skylink) bool {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
-
-	_, ok := sb.merkleRoots[skylink.MerkleRoot()]
+	hash := crypto.HashObject(skylink.MerkleRoot())
+	_, ok := sb.hashes[hash]
 	return ok
 }
 
@@ -120,22 +129,22 @@ func (sb *SkynetBlacklist) marshalObjects(additions, removals []modules.Skylink)
 	listed := true
 	for _, skylink := range additions {
 		// Add skylink merkleroot to map
-		mr := skylink.MerkleRoot()
-		sb.merkleRoots[mr] = struct{}{}
+		hash := crypto.HashObject(skylink.MerkleRoot())
+		sb.hashes[hash] = struct{}{}
 
 		// Marshal the update
-		pe := persistEntry{mr, listed}
+		pe := persistEntry{hash, listed}
 		bytes := encoding.Marshal(pe)
 		buf.Write(bytes)
 	}
 	listed = false
 	for _, skylink := range removals {
 		// Remove skylink merkleroot from map
-		mr := skylink.MerkleRoot()
-		delete(sb.merkleRoots, mr)
+		hash := crypto.HashObject(skylink.MerkleRoot())
+		delete(sb.hashes, hash)
 
 		// Marshal the update
-		pe := persistEntry{mr, listed}
+		pe := persistEntry{hash, listed}
 		bytes := encoding.Marshal(pe)
 		buf.Write(bytes)
 	}
@@ -165,10 +174,10 @@ func unmarshalObjects(reader io.Reader) (map[crypto.Hash]struct{}, error) {
 		offset += persistSize
 
 		if !pe.Listed {
-			delete(blacklist, pe.MerkleRoot)
+			delete(blacklist, pe.Hash)
 			continue
 		}
-		blacklist[pe.MerkleRoot] = struct{}{}
+		blacklist[pe.Hash] = struct{}{}
 	}
 	return blacklist, nil
 }
