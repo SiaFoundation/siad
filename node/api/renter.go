@@ -376,7 +376,7 @@ func (api *API) renterBackupsCreateHandlerPOST(w http.ResponseWriter, req *http.
 		return
 	}
 	randomSuffix := persist.RandomSuffix()
-	backupPath := filepath.Join(tmpDir, fmt.Sprintf("%v-%v", name, randomSuffix))
+	backupPath := filepath.Join(tmpDir, fmt.Sprintf("%v-%v.bak", name, randomSuffix))
 	defer os.RemoveAll(backupPath)
 
 	// Get the wallet seed.
