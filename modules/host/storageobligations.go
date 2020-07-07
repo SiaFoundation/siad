@@ -303,6 +303,7 @@ func (sos StorageObligationSnapshot) RecentRevision() types.FileContractRevision
 	return sos.staticRevisionTxn.FileContractRevisions[0]
 }
 
+// RevisionTxn returns the txn containing the filecontract revision.
 func (sos StorageObligationSnapshot) RevisionTxn() types.Transaction {
 	return sos.staticRevisionTxn
 }

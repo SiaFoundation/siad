@@ -153,6 +153,8 @@ func (cs *ContractSet) View(id types.FileContractID) (modules.RenterContract, bo
 	return safeContract.Metadata(), true
 }
 
+// PublicKey returns the public key capable of verifying the renter's signature
+// on a contract.
 func (cs *ContractSet) PublicKey(id types.FileContractID) (crypto.PublicKey, bool) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()

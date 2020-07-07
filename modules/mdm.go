@@ -144,6 +144,8 @@ var (
 )
 
 type (
+	// MDMInstructionRevisionResponse is the format of the MDM's revision
+	// instruction's output.
 	MDMInstructionRevisionResponse struct {
 		Revision  types.FileContractRevision
 		RenterSig types.TransactionSignature

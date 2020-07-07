@@ -106,6 +106,8 @@ func (c *Contractor) Allowance() modules.Allowance {
 	return c.allowance
 }
 
+// ContractPublicKey returns the public key capable of verifying the renter's
+// signature on a contract.
 func (c *Contractor) ContractPublicKey(pk types.SiaPublicKey) (crypto.PublicKey, bool) {
 	c.mu.RLock()
 	id, ok := c.pubKeysToContractID[pk.String()]

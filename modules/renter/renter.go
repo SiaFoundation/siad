@@ -85,6 +85,8 @@ type hostContractor interface {
 	// ContractByPublicKey returns the contract associated with the host key.
 	ContractByPublicKey(types.SiaPublicKey) (modules.RenterContract, bool)
 
+	// ContractPublicKey returns the public key capable of verifying the renter's
+	// signature on a contract.
 	ContractPublicKey(pk types.SiaPublicKey) (crypto.PublicKey, bool)
 
 	// ChurnStatus returns contract churn stats for the current period.
