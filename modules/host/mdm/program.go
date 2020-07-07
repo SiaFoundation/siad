@@ -33,7 +33,6 @@ type programState struct {
 	// host related fields
 	host                    Host
 	staticRevisionTxn       types.Transaction
-	staticFCTxn             types.Transaction
 	staticRemainingDuration types.BlockHeight
 
 	// program cache
@@ -126,7 +125,6 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 			host:                    mdm.host,
 			priceTable:              pt,
 			sectors:                 newSectors(sos.SectorRoots()),
-			staticFCTxn:             sos.ContractTxn(),
 			staticRevisionTxn:       sos.RevisionTxn(),
 		},
 		staticBudget:           budget,

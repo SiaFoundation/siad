@@ -35,8 +35,7 @@ type (
 		sectorRoots []crypto.Hash
 
 		// contract related fields.
-		scoid types.SiacoinOutputID
-		sk    crypto.SecretKey
+		sk crypto.SecretKey
 	}
 )
 
@@ -53,13 +52,10 @@ func newCustomTestHost(generateSectors bool) *TestHost {
 
 func (h *TestHost) newTestStorageObligation(locked bool) *TestStorageObligation {
 	sk, _ := crypto.GenerateKeyPair()
-	var scoid types.SiacoinOutputID
-	fastrand.Read(scoid[:])
 	return &TestStorageObligation{
 		host:      h,
 		sectorMap: make(map[crypto.Hash][]byte),
 		sk:        sk,
-		scoid:     scoid,
 	}
 }
 
@@ -131,17 +127,6 @@ func (so *TestStorageObligation) RecentRevision() types.FileContractRevision {
 	return types.FileContractRevision{
 		NewFileMerkleRoot: so.MerkleRoot(),
 		NewFileSize:       so.ContractSize(),
-	}
-}
-
-func (so *TestStorageObligation) ContractTxn() types.Transaction {
-	return types.Transaction{
-		FileContracts: []types.FileContract{},
-		SiacoinInputs: []types.SiacoinInput{
-			{
-				ParentID: so.scoid,
-			},
-		},
 	}
 }
 

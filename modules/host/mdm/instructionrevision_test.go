@@ -51,9 +51,8 @@ func TestInstructionRevision(t *testing.T) {
 
 	// Assert output.
 	expectedOutput := encoding.Marshal(modules.MDMInstructionRevisionResponse{
-		Revision:        so.RecentRevision(),
-		RenterSig:       so.RevisionTxn().TransactionSignatures[0],
-		SiacoinOutputID: so.scoid,
+		Revision:  so.RecentRevision(),
+		RenterSig: so.RevisionTxn().TransactionSignatures[0],
 	})
 	err = outputs[0].assert(ics, imr, []crypto.Hash{}, expectedOutput)
 	if err != nil {

@@ -212,14 +212,12 @@ func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (Sto
 		return StorageObligationSnapshot{}, errors.New("revision txnset is empty")
 	}
 
-	fcTxn := so.OriginTransactionSet[len(so.OriginTransactionSet)-1]
 	revTxn := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1]
 
 	return StorageObligationSnapshot{
 		staticContractSize:  so.fileSize(),
 		staticMerkleRoot:    so.merkleRoot(),
 		staticProofDeadline: so.proofDeadline(),
-		staticFCTxn:         fcTxn,
 		staticRevisionTxn:   revTxn,
 		staticSectorRoots:   so.SectorRoots,
 	}, nil
@@ -260,7 +258,6 @@ type StorageObligationSnapshot struct {
 	staticMerkleRoot    crypto.Hash
 	staticProofDeadline types.BlockHeight
 	staticRevisionTxn   types.Transaction
-	staticFCTxn         types.Transaction
 	staticSectorRoots   []crypto.Hash
 }
 
@@ -277,14 +274,6 @@ func ZeroStorageObligationSnapshot() StorageObligationSnapshot {
 				{
 					NewValidProofOutputs:  make([]types.SiacoinOutput, 2),
 					NewMissedProofOutputs: make([]types.SiacoinOutput, 3),
-				},
-			},
-		},
-		staticFCTxn: types.Transaction{
-			FileContracts: []types.FileContract{
-				{
-					ValidProofOutputs:  make([]types.SiacoinOutput, 2),
-					MissedProofOutputs: make([]types.SiacoinOutput, 3),
 				},
 			},
 		},
@@ -312,10 +301,6 @@ func (sos StorageObligationSnapshot) MerkleRoot() crypto.Hash {
 // taken.
 func (sos StorageObligationSnapshot) RecentRevision() types.FileContractRevision {
 	return sos.staticRevisionTxn.FileContractRevisions[0]
-}
-
-func (sos StorageObligationSnapshot) ContractTxn() types.Transaction {
-	return sos.staticFCTxn
 }
 
 func (sos StorageObligationSnapshot) RevisionTxn() types.Transaction {

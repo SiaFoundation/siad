@@ -145,9 +145,8 @@ var (
 
 type (
 	MDMInstructionRevisionResponse struct {
-		Revision        types.FileContractRevision
-		RenterSig       types.TransactionSignature
-		SiacoinOutputID types.SiacoinOutputID
+		Revision  types.FileContractRevision
+		RenterSig types.TransactionSignature
 	}
 )
 
