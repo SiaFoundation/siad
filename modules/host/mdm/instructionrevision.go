@@ -56,12 +56,19 @@ func (i *instructionRevision) Memory() uint64 {
 // Execute executes the 'Revision' instruction.
 func (i *instructionRevision) Execute(prevOutput output) output {
 	// Fetch the requested information.
-	rev := i.staticState.staticRevision
+	revTxn := i.staticState.staticRevisionTxn
+	fcTxn := i.staticState.staticFCTxn
+	rev := revTxn.FileContractRevisions[0]
+	renterSig := revTxn.TransactionSignatures[0]
 
 	return output{
 		NewSize:       prevOutput.NewSize,       // size stays the same
 		NewMerkleRoot: prevOutput.NewMerkleRoot, // root stays the same
-		Output:        encoding.Marshal(rev),
+		Output: encoding.Marshal(modules.MDMInstructionRevisionResponse{
+			Revision:        rev,
+			RenterSig:       renterSig,
+			SiacoinOutputID: fcTxn.SiacoinInputs[0].ParentID,
+		}),
 	}
 }
 

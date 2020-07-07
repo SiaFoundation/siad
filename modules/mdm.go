@@ -143,6 +143,14 @@ var (
 	ErrMDMInsufficientCollateralBudget = errors.New("remaining collateral budget is insufficient")
 )
 
+type (
+	MDMInstructionRevisionResponse struct {
+		Revision        types.FileContractRevision
+		RenterSig       types.TransactionSignature
+		SiacoinOutputID types.SiacoinOutputID
+	}
+)
+
 // RPCHasSectorInstruction creates an Instruction from arguments.
 func RPCHasSectorInstruction(merkleRootOffset uint64) Instruction {
 	i := Instruction{
