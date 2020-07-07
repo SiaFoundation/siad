@@ -10,6 +10,40 @@ Version History
 
 Latest:
 
+## Jul 6, 2020:
+### v1.5.0
+**Key Updates**
+- add support for write MDM programs to host
+- Added `defaultpath` - a new optional path parameter when creating Skylinks. It
+  determines which is the default file to open in a multi-file skyfile.
+- Add `configModules` to the API so that the siad modules can be return in
+  `/daemon/settings [GET]`
+- Allow the renew window to be larger than the period
+- Add Skykey delete methods to API.
+- Add 'siac' commands for the FeeManager
+- Add `TypePrivateID` Skykeys with skyfile encryption support
+
+**Bugs Fixed**
+- fixed bug in rotation of fingerprint buckets
+- fix issue where priority tasks could wait for low priority tasks to complete
+- Fix panic in backup code due to not using `newJobGeneric`
+
+**Other**
+- Add `EphemeralAccountExpiry` and `MaxEphemeralAccountBalance` to the Host's
+  ExternalSettings
+- Add testing infrastructure to validate the output of siac commands.
+- Add root siac Cobra command test with subtests.
+- Optimise writes when we execute an MDM program on the host to lower overall
+  (upload) bandwidth consumption.
+- Change status returned when module is not loaded from 404 to 490
+- Add `siac renter workers ea` command to siac
+- Add `siac renter workers pt` command to siac
+- Add `siac renter workers rj` command to siac
+- Add `siac renter workers hsj` command to siac
+- Allow host netAddress and announcements with local network IP on dev builds.
+- Add default timeouts to opening a stream on the mux
+- Update to bolt version with upstream fixes. This enables builds with Go 1.14.
+
 ## Jun 5, 2020:
 ### v1.4.11
 **Bugs Fixed**
