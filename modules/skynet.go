@@ -116,7 +116,8 @@ func (sm SkyfileMetadata) offset() uint64 {
 // SkyfileSubfileMetadata is all of the metadata that belongs to a subfile in a
 // skyfile. Most importantly it contains the offset at which the subfile is
 // written and its length. Its filename can potentially include a '/' character
-// as nested files and directories are allowed within a single Skyfile
+// as nested files and directories are allowed within a single Skyfile, but it
+// is not allowed to contain ./, ../, be empty, or start with a forward slash.
 type SkyfileSubfileMetadata struct {
 	FileMode    os.FileMode `json:"mode,omitempty,siamismatch"` // different json name for compat reasons
 	Filename    string      `json:"filename,omitempty"`

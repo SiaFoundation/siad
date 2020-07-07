@@ -263,30 +263,36 @@ func (sp *SiaPath) FromSysPath(siaFilePath, dir string) (err error) {
 	return
 }
 
-// Validate checks that a Siapath is a legal filename. ../ is disallowed to
-// prevent directory traversal, and paths must not begin with / or be empty.
+// Validate checks that a Siapath is a legal filename using ValidatePathString.
 func (sp SiaPath) Validate(isRoot bool) error {
-	if sp.Path == "" && !isRoot {
+	return ValidatePathString(sp.Path, isRoot)
+}
+
+// ValidatePathString validates a Siapath given a string. ../ and ./ are
+// disallowed to prevent directory traversal, and paths must not begin with / or
+// be empty.
+func ValidatePathString(path string, isRoot bool) error {
+	if path == "" && !isRoot {
 		return ErrEmptySiaPath
 	}
-	if sp.Path == ".." {
+	if path == ".." {
 		return errors.New("siapath cannot be '..'")
 	}
-	if sp.Path == "." {
+	if path == "." {
 		return errors.New("siapath cannot be '.'")
 	}
 	// check prefix
-	if strings.HasPrefix(sp.Path, "/") {
+	if strings.HasPrefix(path, "/") {
 		return errors.New("siapath cannot begin with /")
 	}
-	if strings.HasPrefix(sp.Path, "../") {
+	if strings.HasPrefix(path, "../") {
 		return errors.New("siapath cannot begin with ../")
 	}
-	if strings.HasPrefix(sp.Path, "./") {
+	if strings.HasPrefix(path, "./") {
 		return errors.New("siapath connot begin with ./")
 	}
 	var prevElem string
-	for _, pathElem := range strings.Split(sp.Path, "/") {
+	for _, pathElem := range strings.Split(path, "/") {
 		if pathElem == "." || pathElem == ".." {
 			return errors.New("siapath cannot contain . or .. elements")
 		}
@@ -300,7 +306,7 @@ func (sp SiaPath) Validate(isRoot bool) error {
 	}
 
 	// Final check for a valid utf8
-	if !utf8.ValidString(sp.Path) {
+	if !utf8.ValidString(path) {
 		return errors.New("SiaPath is not a valid utf8 path")
 	}
 
