@@ -125,6 +125,11 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 		return errors.New("name is too long")
 	}
 
+	// Check if snapshot already exists.
+	if r.managedSnapshotExists(name) {
+		return fmt.Errorf("snapshot with name '%s' already exists", name)
+	}
+
 	// Open the backup for uploading.
 	backup, err := os.Open(src)
 	if err != nil {
@@ -157,7 +162,7 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 	}
 	// Begin uploading the backup. When the upload finishes, the backup .sia
 	// file will be uploaded by r.threadedSynchronizeSnapshots and then deleted.
-	fileNode, err := r.callUploadStreamFromReader(up, backup, true)
+	fileNode, err := r.callUploadStreamFromReader(up, backup)
 	if err != nil {
 		return errors.AddContext(err, "failed to upload backup")
 	}
@@ -242,6 +247,19 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	defer s.Close()
 	_, err = io.Copy(dstFile, s)
 	return err
+}
+
+// managedSnapshotExists returns true if a snapshot with a given name already
+// exists.
+func (r *Renter) managedSnapshotExists(name string) bool {
+	id := r.mu.Lock()
+	defer r.mu.Unlock(id)
+	for _, ub := range r.persist.UploadedBackups {
+		if ub.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // managedSaveSnapshot saves snapshot metadata to disk.

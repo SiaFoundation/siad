@@ -355,6 +355,10 @@ func TestRemoteBackup(t *testing.T) {
 	if err := createSnapshot("foo"); err != nil {
 		t.Fatal(err)
 	}
+	// Create a snapshot with the same name again. This should fail.
+	if err := createSnapshot("foo"); err == nil {
+		t.Fatal("creating a snapshot with the same name should fail")
+	}
 	// Delete the file locally.
 	if err := lf.Delete(); err != nil {
 		t.Fatal(err)

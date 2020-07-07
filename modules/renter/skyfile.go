@@ -362,7 +362,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 // upload.
 func (r *Renter) managedCreateFileNodeFromReader(up modules.FileUploadParams, reader io.Reader) (*filesystem.FileNode, error) {
 	// Check the upload params first.
-	fileNode, err := r.managedInitUploadStream(up, false)
+	fileNode, err := r.managedInitUploadStream(up)
 	if err != nil {
 		return nil, err
 	}
@@ -568,7 +568,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParamete
 		}
 	} else {
 		// Upload the file using a streamer.
-		fileNode, err = r.callUploadStreamFromReader(fup, fileReader, false)
+		fileNode, err = r.callUploadStreamFromReader(fup, fileReader)
 		if err != nil {
 			return modules.Skylink{}, errors.AddContext(err, "unable to upload large skyfile")
 		}
@@ -606,7 +606,7 @@ func (r *Renter) managedUploadBaseSector(lup modules.SkyfileUploadParameters, ba
 	// Perform the actual upload. This will require turning the base sector into
 	// a reader.
 	baseSectorReader := bytes.NewReader(baseSector)
-	fileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader, false)
+	fileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader)
 	if err != nil {
 		return errors.AddContext(err, "failed to stream upload small skyfile")
 	}
@@ -861,7 +861,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	}
 
 	// Upload directly from the fanout download streamer.
-	fileNode, err := r.callUploadStreamFromReader(fup, streamer, false)
+	fileNode, err := r.callUploadStreamFromReader(fup, streamer)
 	if err != nil {
 		return errors.AddContext(err, "unable to upload large skyfile")
 	}
