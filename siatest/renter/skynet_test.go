@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -1399,8 +1400,9 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	if len(sbg.Blacklist) != 1 {
 		t.Fatalf("Incorrect number of blacklisted merkleroots, expected %v got %v", 1, len(sbg.Blacklist))
 	}
-	if sbg.Blacklist[0] != sshp.MerkleRoot {
-		t.Fatalf("Merkleroots don't match, expected %v got %v", sshp.MerkleRoot, sbg.Blacklist[0])
+	hash := crypto.HashObject(sshp.MerkleRoot)
+	if sbg.Blacklist[0] != hash {
+		t.Fatalf("Hashes don't match, expected %v got %v", hash, sbg.Blacklist[0])
 	}
 
 	// Try to download the file behind the skylink, this should fail because of
