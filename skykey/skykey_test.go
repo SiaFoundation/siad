@@ -608,7 +608,7 @@ func TestSkykeyMarshalling(t *testing.T) {
 	// Try unmarshalling larger random byte slices.
 	for i := 0; i < 10; i++ {
 		buf.Reset()
-		buf.Write(fastrand.Bytes(100 * (1 + fastrand.Intn(20))))
+		buf.Write(fastrand.Bytes(100 * fastrand.Intn(20)))
 		sk = Skykey{}
 
 		err = sk.unmarshalSia(&buf)

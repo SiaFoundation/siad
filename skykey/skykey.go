@@ -26,6 +26,13 @@ const (
 
 	// MaxKeyNameLen is the maximum length of a skykey's name.
 	MaxKeyNameLen = 128
+
+	// maxEntropyLen is used in unmarshalDataOnly as a cap for the entropy. It
+	// should only ever go up between releases. The cap prevents over-allocating
+	// when reading the length of a deleted skykey.
+	// It must be at most MaxKeyNameLen plus the max entropy size for any
+	// cipher-type.
+	maxEntropyLen = 256
 )
 
 // Define SkykeyTypes. Constants stated explicitly (instead of
@@ -213,14 +220,18 @@ func (sk *Skykey) unmarshalDataOnly(r io.Reader) error {
 	typeByte, _ := d.ReadByte()
 	sk.Type = SkykeyType(typeByte)
 
-	var entropyLen int
+	var entropyLen uint64
 	switch sk.Type {
 	case TypePublicID, TypePrivateID:
 		entropyLen = chacha.KeySize + chacha.XNonceSize
 	case TypeInvalid:
 		return errCannotMarshalTypeInvalidSkykey
 	case typeDeletedSkykey:
-		entropyLen = int(d.NextUint64())
+		entropyLen = d.NextUint64()
+		// Avoid panicking due to overallocation.
+		if entropyLen > maxEntropyLen {
+			return errInvalidEntropyLength
+		}
 	default:
 		return errUnsupportedSkykeyType
 	}
