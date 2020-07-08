@@ -12,6 +12,48 @@ import (
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 )
 
+func computeConsensusChangeDiffs(pb *processedBlock, apply bool) modules.ConsensusChangeDiffs {
+	if apply {
+		return modules.ConsensusChangeDiffs{
+			SiacoinOutputDiffs:        pb.SiacoinOutputDiffs,
+			FileContractDiffs:         pb.FileContractDiffs,
+			SiafundOutputDiffs:        pb.SiafundOutputDiffs,
+			DelayedSiacoinOutputDiffs: pb.DelayedSiacoinOutputDiffs,
+			SiafundPoolDiffs:          pb.SiafundPoolDiffs,
+		}
+	}
+	// The order of the diffs needs to be flipped and the direction of the
+	// diffs also needs to be flipped.
+	cd := modules.ConsensusChangeDiffs{
+		SiacoinOutputDiffs:        make([]modules.SiacoinOutputDiff, len(pb.SiacoinOutputDiffs)),
+		FileContractDiffs:         make([]modules.FileContractDiff, len(pb.FileContractDiffs)),
+		SiafundOutputDiffs:        make([]modules.SiafundOutputDiff, len(pb.SiafundOutputDiffs)),
+		DelayedSiacoinOutputDiffs: make([]modules.DelayedSiacoinOutputDiff, len(pb.DelayedSiacoinOutputDiffs)),
+		SiafundPoolDiffs:          make([]modules.SiafundPoolDiff, len(pb.SiafundPoolDiffs)),
+	}
+	for i, d := range pb.SiacoinOutputDiffs {
+		d.Direction = !d.Direction
+		cd.SiacoinOutputDiffs[len(cd.SiacoinOutputDiffs)-i-1] = d
+	}
+	for i, d := range pb.FileContractDiffs {
+		d.Direction = !d.Direction
+		cd.FileContractDiffs[len(cd.FileContractDiffs)-i-1] = d
+	}
+	for i, d := range pb.SiafundOutputDiffs {
+		d.Direction = !d.Direction
+		cd.SiafundOutputDiffs[len(cd.SiafundOutputDiffs)-i-1] = d
+	}
+	for i, d := range pb.DelayedSiacoinOutputDiffs {
+		d.Direction = !d.Direction
+		cd.DelayedSiacoinOutputDiffs[len(cd.DelayedSiacoinOutputDiffs)-i-1] = d
+	}
+	for i, d := range pb.SiafundPoolDiffs {
+		d.Direction = !d.Direction
+		cd.SiafundPoolDiffs[len(cd.SiafundPoolDiffs)-i-1] = d
+	}
+	return cd
+}
+
 // computeConsensusChange computes the consensus change from the change entry
 // at index 'i' in the change log. If i is out of bounds, an error is returned.
 func (cs *ConsensusSet) computeConsensusChange(tx *bolt.Tx, ce changeEntry) (modules.ConsensusChange, error) {
@@ -24,35 +66,14 @@ func (cs *ConsensusSet) computeConsensusChange(tx *bolt.Tx, ce changeEntry) (mod
 			cs.log.Critical("getBlockMap failed in computeConsensusChange:", err)
 			return modules.ConsensusChange{}, err
 		}
-
-		// Because the direction is 'revert', the order of the diffs needs to
-		// be flipped and the direction of the diffs also needs to be flipped.
 		cc.RevertedBlocks = append(cc.RevertedBlocks, revertedBlock.Block)
-		for i := len(revertedBlock.SiacoinOutputDiffs) - 1; i >= 0; i-- {
-			scod := revertedBlock.SiacoinOutputDiffs[i]
-			scod.Direction = !scod.Direction
-			cc.SiacoinOutputDiffs = append(cc.SiacoinOutputDiffs, scod)
-		}
-		for i := len(revertedBlock.FileContractDiffs) - 1; i >= 0; i-- {
-			fcd := revertedBlock.FileContractDiffs[i]
-			fcd.Direction = !fcd.Direction
-			cc.FileContractDiffs = append(cc.FileContractDiffs, fcd)
-		}
-		for i := len(revertedBlock.SiafundOutputDiffs) - 1; i >= 0; i-- {
-			sfod := revertedBlock.SiafundOutputDiffs[i]
-			sfod.Direction = !sfod.Direction
-			cc.SiafundOutputDiffs = append(cc.SiafundOutputDiffs, sfod)
-		}
-		for i := len(revertedBlock.DelayedSiacoinOutputDiffs) - 1; i >= 0; i-- {
-			dscod := revertedBlock.DelayedSiacoinOutputDiffs[i]
-			dscod.Direction = !dscod.Direction
-			cc.DelayedSiacoinOutputDiffs = append(cc.DelayedSiacoinOutputDiffs, dscod)
-		}
-		for i := len(revertedBlock.SiafundPoolDiffs) - 1; i >= 0; i-- {
-			sfpd := revertedBlock.SiafundPoolDiffs[i]
-			sfpd.Direction = modules.DiffRevert
-			cc.SiafundPoolDiffs = append(cc.SiafundPoolDiffs, sfpd)
-		}
+		diffs := computeConsensusChangeDiffs(revertedBlock, false)
+		cc.RevertedDiffs = append(cc.RevertedDiffs, diffs)
+		cc.SiacoinOutputDiffs = append(cc.SiacoinOutputDiffs, diffs.SiacoinOutputDiffs...)
+		cc.FileContractDiffs = append(cc.FileContractDiffs, diffs.FileContractDiffs...)
+		cc.SiafundOutputDiffs = append(cc.SiafundOutputDiffs, diffs.SiafundOutputDiffs...)
+		cc.DelayedSiacoinOutputDiffs = append(cc.DelayedSiacoinOutputDiffs, diffs.DelayedSiacoinOutputDiffs...)
+		cc.SiafundPoolDiffs = append(cc.SiafundPoolDiffs, diffs.SiafundPoolDiffs...)
 	}
 	for _, appliedBlockID := range ce.AppliedBlocks {
 		appliedBlock, err := getBlockMap(tx, appliedBlockID)
@@ -60,23 +81,14 @@ func (cs *ConsensusSet) computeConsensusChange(tx *bolt.Tx, ce changeEntry) (mod
 			cs.log.Critical("getBlockMap failed in computeConsensusChange:", err)
 			return modules.ConsensusChange{}, err
 		}
-
 		cc.AppliedBlocks = append(cc.AppliedBlocks, appliedBlock.Block)
-		for _, scod := range appliedBlock.SiacoinOutputDiffs {
-			cc.SiacoinOutputDiffs = append(cc.SiacoinOutputDiffs, scod)
-		}
-		for _, fcd := range appliedBlock.FileContractDiffs {
-			cc.FileContractDiffs = append(cc.FileContractDiffs, fcd)
-		}
-		for _, sfod := range appliedBlock.SiafundOutputDiffs {
-			cc.SiafundOutputDiffs = append(cc.SiafundOutputDiffs, sfod)
-		}
-		for _, dscod := range appliedBlock.DelayedSiacoinOutputDiffs {
-			cc.DelayedSiacoinOutputDiffs = append(cc.DelayedSiacoinOutputDiffs, dscod)
-		}
-		for _, sfpd := range appliedBlock.SiafundPoolDiffs {
-			cc.SiafundPoolDiffs = append(cc.SiafundPoolDiffs, sfpd)
-		}
+		diffs := computeConsensusChangeDiffs(appliedBlock, true)
+		cc.AppliedDiffs = append(cc.AppliedDiffs, diffs)
+		cc.SiacoinOutputDiffs = append(cc.SiacoinOutputDiffs, diffs.SiacoinOutputDiffs...)
+		cc.FileContractDiffs = append(cc.FileContractDiffs, diffs.FileContractDiffs...)
+		cc.SiafundOutputDiffs = append(cc.SiafundOutputDiffs, diffs.SiafundOutputDiffs...)
+		cc.DelayedSiacoinOutputDiffs = append(cc.DelayedSiacoinOutputDiffs, diffs.DelayedSiacoinOutputDiffs...)
+		cc.SiafundPoolDiffs = append(cc.SiafundPoolDiffs, diffs.SiafundPoolDiffs...)
 	}
 
 	// Grab the child target and the minimum valid child timestamp.

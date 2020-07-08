@@ -72,6 +72,15 @@ type (
 		ProcessConsensusChange(ConsensusChange)
 	}
 
+	// ConsensusChangeDiffs is a collection of diffs caused by a single block.
+	ConsensusChangeDiffs struct {
+		SiacoinOutputDiffs        []SiacoinOutputDiff
+		FileContractDiffs         []FileContractDiff
+		SiafundOutputDiffs        []SiafundOutputDiff
+		DelayedSiacoinOutputDiffs []DelayedSiacoinOutputDiff
+		SiafundPoolDiffs          []SiafundPoolDiff
+	}
+
 	// A ConsensusChange enumerates a set of changes that occurred to the consensus set.
 	ConsensusChange struct {
 		// ID is a unique id for the consensus change derived from the reverted
@@ -90,28 +99,17 @@ type (
 		// applied.
 		AppliedBlocks []types.Block
 
-		// SiacoinOutputDiffs contains the set of siacoin diffs that were applied
-		// to the consensus set in the recent change. The direction for the set of
-		// diffs is 'DiffApply'.
-		SiacoinOutputDiffs []SiacoinOutputDiff
+		// RevertedDiffs is the set of diffs caused by reverted blocks. Each
+		// element corresponds to a block in RevertedBlocks.
+		RevertedDiffs []ConsensusChangeDiffs
 
-		// FileContractDiffs contains the set of file contract diffs that were
-		// applied to the consensus set in the recent change. The direction for the
-		// set of diffs is 'DiffApply'.
-		FileContractDiffs []FileContractDiff
+		// AppliedDiffs is the set of diffs caused by applied blocks. Each
+		// element corresponds to a block in AppliedBlocks.
+		AppliedDiffs []ConsensusChangeDiffs
 
-		// SiafundOutputDiffs contains the set of siafund diffs that were applied
-		// to the consensus set in the recent change. The direction for the set of
-		// diffs is 'DiffApply'.
-		SiafundOutputDiffs []SiafundOutputDiff
-
-		// DelayedSiacoinOutputDiffs contains the set of delayed siacoin output
-		// diffs that were applied to the consensus set in the recent change.
-		DelayedSiacoinOutputDiffs []DelayedSiacoinOutputDiff
-
-		// SiafundPoolDiffs are the siafund pool diffs that were applied to the
-		// consensus set in the recent change.
-		SiafundPoolDiffs []SiafundPoolDiff
+		// ConsensusChangeDiffs is the concatenation of all RevertedDiffs and
+		// AppliedDiffs.
+		ConsensusChangeDiffs
 
 		// ChildTarget defines the target of any block that would be the child
 		// of the block most recently appended to the consensus set.
