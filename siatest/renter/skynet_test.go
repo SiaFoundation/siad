@@ -873,11 +873,14 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 	reader := bytes.NewReader(data)
 
 	filenames := []string{
+		"",
 		"../test",
 		"./test",
 		"/test",
+		"foo//bar",
 		"test/./test",
 		"test/../test",
+		"/test//foo/../bar/",
 	}
 
 	for _, filename := range filenames {
@@ -904,13 +907,6 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 		if err == nil || !strings.Contains(err.Error(), modules.ErrInvalidPathString.Error()) {
 			t.Log("Error:", err)
 			t.Fatal("Expected SkynetSkyfilePost to fail due to invalid filename")
-		}
-
-		sup.FileMetadata.Filename = "testInvalidFilename-" + persist.RandomSuffix()
-		_, _, err = r.SkynetSkyfilePost(sup)
-		if err != nil {
-			t.Log("Error:", err)
-			t.Fatal("Expected SkynetSkyfilePost to succeed if valid filename is provided")
 		}
 
 		// Do the same for a multipart upload
@@ -960,35 +956,63 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 				t.Fatal("Expected SkynetSkyfileMultiPartPost to fail due to invalid filename")
 			}
 		}
+	}
 
-		// recreate the reader
-		body = new(bytes.Buffer)
-		writer = multipart.NewWriter(body)
+	// These cases should succeed.
 
-		subfile = siatest.AddMultipartFile(writer, []byte("File1Contents"), "files[]", "testInvalidFilenameMultipart", 0600, nil)
-		err = writer.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-		reader = bytes.NewReader(body.Bytes())
+	uploadSiaPath, err := modules.NewSiaPath("testInvalidFilename")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:             uploadSiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: "testInvalidFilename",
+			Mode:     0640, // Intentionally does not match any defaults.
+		},
 
-		subfiles = make(modules.SkyfileSubfiles)
-		subfiles[subfile.Filename] = subfile
-		mup = modules.SkyfileMultipartUploadParameters{
-			SiaPath:             uploadSiaPath,
-			Force:               false,
-			Root:                false,
-			BaseChunkRedundancy: 2,
-			Reader:              reader,
-			ContentType:         writer.FormDataContentType(),
-			Filename:            "testInvalidFilenameMultipart-" + persist.RandomSuffix(),
-		}
+		Reader: reader,
+	}
+	_, _, err = r.SkynetSkyfilePost(sup)
+	if err != nil {
+		t.Log("Error:", err)
+		t.Fatal("Expected SkynetSkyfilePost to succeed if valid filename is provided")
+	}
 
-		_, _, err = r.SkynetSkyfileMultiPartPost(mup)
-		if err != nil {
-			t.Log("Error:", err)
-			t.Fatal("Expected SkynetSkyfileMultiPartPost to succeed if filename is provided")
-		}
+	// recreate the reader
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+
+	subfile := siatest.AddMultipartFile(writer, []byte("File1Contents"), "files[]", "testInvalidFilenameMultipart", 0600, nil)
+	err = writer.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader = bytes.NewReader(body.Bytes())
+
+	subfiles := make(modules.SkyfileSubfiles)
+	subfiles[subfile.Filename] = subfile
+	uploadSiaPath, err = modules.NewSiaPath("testInvalidFilenameMultipart")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mup := modules.SkyfileMultipartUploadParameters{
+		SiaPath:             uploadSiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		Reader:              reader,
+		ContentType:         writer.FormDataContentType(),
+		Filename:            "testInvalidFilenameMultipart",
+	}
+
+	_, _, err = r.SkynetSkyfileMultiPartPost(mup)
+	if err != nil {
+		t.Log("Error:", err)
+		t.Fatal("Expected SkynetSkyfileMultiPartPost to succeed if filename is provided")
 	}
 }
 
