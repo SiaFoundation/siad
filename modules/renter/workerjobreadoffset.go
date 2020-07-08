@@ -6,7 +6,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -62,28 +61,34 @@ func (j *jobReadOffset) managedReadOffset() ([]byte, error) {
 		return nil, errors.New("jobReadOffset: failed to get public key for contract")
 	}
 
-	// Verify revision signatures.
-	var rev modules.MDMInstructionRevisionResponse
-	err = encoding.Unmarshal(revResponse.Output, &rev)
+	// Unmarshal the revision response.
+	var revResp modules.MDMInstructionRevisionResponse
+	err = encoding.Unmarshal(revResponse.Output, &revResp)
 	if err != nil {
 		return nil, errors.AddContext(err, "jobReadOffset: failed to unmarshal revision")
 	}
-	revisionTxn := types.Transaction{
-		FileContractRevisions: []types.FileContractRevision{rev.Revision},
-		TransactionSignatures: []types.TransactionSignature{rev.RenterSig},
+	// Check that the revision txn contains the right number of signatures
+	revisionTxn := revResp.RevisionTxn
+	if len(revisionTxn.TransactionSignatures) != 2 {
+		return nil, errors.New("jobReadOffset: invalid number of signatures on txn")
 	}
+	// Check that the revision txn contains the right number of revisions.
+	if len(revisionTxn.FileContractRevisions) != 1 {
+		return nil, errors.New("jobReadOffset: invalid number of revisions in txn")
+	}
+	rev := revResp.RevisionTxn.FileContractRevisions[0]
+	// Verify the signatures.
 	var signature crypto.Signature
-	copy(signature[:], rev.RenterSig.Signature)
+	copy(signature[:], revisionTxn.RenterSignature().Signature)
 	hash := revisionTxn.SigHash(0, bh) // this should be the start height but this works too
 	err = crypto.VerifyHash(hash, cpk, signature)
 	if err != nil {
 		return nil, errors.AddContext(err, "jobReadOffset: failed to verify signature on revision")
 	}
-
 	// Verify proof.
 	proofStart := int(j.staticOffset) / crypto.SegmentSize
 	proofEnd := int(j.staticOffset+j.staticLength) / crypto.SegmentSize
-	ok = crypto.VerifyMixedRangeProof(downloadResponse.Output, downloadResponse.Proof, rev.Revision.NewFileMerkleRoot, proofStart, proofEnd)
+	ok = crypto.VerifyMixedRangeProof(downloadResponse.Output, downloadResponse.Proof, rev.NewFileMerkleRoot, proofStart, proofEnd)
 	if !ok {
 		return nil, errors.New("verifying proof failed")
 	}

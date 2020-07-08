@@ -57,15 +57,12 @@ func (i *instructionRevision) Memory() uint64 {
 func (i *instructionRevision) Execute(prevOutput output) output {
 	// Fetch the requested information.
 	revTxn := i.staticState.staticRevisionTxn
-	rev := revTxn.FileContractRevisions[0]
-	renterSig := revTxn.TransactionSignatures[0]
 
 	return output{
 		NewSize:       prevOutput.NewSize,       // size stays the same
 		NewMerkleRoot: prevOutput.NewMerkleRoot, // root stays the same
 		Output: encoding.Marshal(modules.MDMInstructionRevisionResponse{
-			Revision:  rev,
-			RenterSig: renterSig,
+			RevisionTxn: revTxn,
 		}),
 	}
 }

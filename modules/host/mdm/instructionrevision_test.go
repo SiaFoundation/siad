@@ -51,8 +51,7 @@ func TestInstructionRevision(t *testing.T) {
 
 	// Assert output.
 	expectedOutput := encoding.Marshal(modules.MDMInstructionRevisionResponse{
-		Revision:  so.RecentRevision(),
-		RenterSig: so.RevisionTxn().TransactionSignatures[0],
+		RevisionTxn: so.RevisionTxn(),
 	})
 	err = outputs[0].assert(ics, imr, []crypto.Hash{}, expectedOutput)
 	if err != nil {
@@ -65,12 +64,9 @@ func TestInstructionRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	revisionTxn := types.Transaction{
-		FileContractRevisions: []types.FileContractRevision{response.Revision},
-		TransactionSignatures: []types.TransactionSignature{response.RenterSig},
-	}
+	revisionTxn := response.RevisionTxn
 	var signature crypto.Signature
-	copy(signature[:], response.RenterSig.Signature)
+	copy(signature[:], revisionTxn.RenterSignature().Signature)
 	hash := revisionTxn.SigHash(0, host.BlockHeight()) // this should be the start height but this works too
 	err = crypto.VerifyHash(hash, so.sk.PublicKey(), signature)
 	if err != nil {
