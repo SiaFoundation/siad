@@ -251,21 +251,6 @@ type (
 	}
 )
 
-// Append takes to ConsensusChange objects and adds all of their diffs together.
-//
-// NOTE: It is possible for diffs to overlap or be inconsistent. This function
-// should only be used with consecutive or disjoint consensus change objects.
-func (cc ConsensusChange) Append(cc2 ConsensusChange) ConsensusChange {
-	return ConsensusChange{
-		RevertedBlocks:            append(cc.RevertedBlocks, cc2.RevertedBlocks...),
-		AppliedBlocks:             append(cc.AppliedBlocks, cc2.AppliedBlocks...),
-		SiacoinOutputDiffs:        append(cc.SiacoinOutputDiffs, cc2.SiacoinOutputDiffs...),
-		FileContractDiffs:         append(cc.FileContractDiffs, cc2.FileContractDiffs...),
-		SiafundOutputDiffs:        append(cc.SiafundOutputDiffs, cc2.SiafundOutputDiffs...),
-		DelayedSiacoinOutputDiffs: append(cc.DelayedSiacoinOutputDiffs, cc2.DelayedSiacoinOutputDiffs...),
-	}
-}
-
 // MarshalSia implements encoding.SiaMarshaler.
 func (cc ConsensusChange) MarshalSia(w io.Writer) error {
 	return encoding.NewEncoder(w).EncodeAll(
