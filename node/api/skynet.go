@@ -749,12 +749,8 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// streaming upload.
 	if convertPathStr == "" {
 		// Ensure we have a valid filename.
-		if lup.FileMetadata.Filename == "" {
-			WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
-			return
-		}
 		if err = modules.ValidatePathString(lup.FileMetadata.Filename, false); err != nil {
-			WriteError(w, Error{"invalid filename provided"}, http.StatusBadRequest)
+			WriteError(w, Error{fmt.Sprintf("invalid filename provided: %v", err)}, http.StatusBadRequest)
 			return
 		}
 
@@ -765,12 +761,8 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 					WriteError(w, Error{"subfile name did not match metadata filename"}, http.StatusBadRequest)
 					return
 				}
-				if subfile == "" {
-					WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
-					return
-				}
 				if err = modules.ValidatePathString(subfile, false); err != nil {
-					WriteError(w, Error{"invalid filename provided"}, http.StatusBadRequest)
+					WriteError(w, Error{fmt.Sprintf("invalid filename provided: %v", err)}, http.StatusBadRequest)
 					return
 				}
 			}
