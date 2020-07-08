@@ -2,6 +2,7 @@ package renter
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"encoding/hex"
@@ -204,6 +205,33 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	err = skylinkReader.Close()
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Try to download the file using the ReaderGet method with the zip
+	// formatter.
+	skylinkReader, err = r.SkynetSkylinkZipReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := readZipArchive(skylinkReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = skylinkReader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the contents
+	if len(files) != 1 {
+		t.Fatal("Unexpected amount of files")
+	}
+	dataFile1Received, exists = files[filename]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filename)
+	}
+	if !bytes.Equal(dataFile1Received, data) {
+		t.Fatal("file data doesn't match expected content")
 	}
 
 	// Try to download the file using the ReaderGet method with the tar
@@ -975,6 +1003,275 @@ func testSkynetNoFilename(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// testSkynetSubDirDownload verifies downloading data in different formats
+func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+	dataFile1 := []byte("file1.txt")
+	dataFile2 := []byte("file2.txt")
+	dataFile3 := []byte("file3.txt")
+	filePath1 := "/a/5.f4f8b583.chunk.js"
+	filePath2 := "/a/5.f4f.chunk.js.map"
+	filePath3 := "/b/file3.txt"
+	siatest.AddMultipartFile(writer, dataFile1, "files[]", filePath1, 0600, nil)
+	siatest.AddMultipartFile(writer, dataFile2, "files[]", filePath2, 0600, nil)
+	siatest.AddMultipartFile(writer, dataFile3, "files[]", filePath3, 0640, nil)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	uploadSiaPath, err := modules.NewSiaPath("testSkynetDownloadFormats")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reader := bytes.NewReader(body.Bytes())
+	mup := modules.SkyfileMultipartUploadParameters{
+		SiaPath:             uploadSiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		Reader:              reader,
+		ContentType:         writer.FormDataContentType(),
+		Filename:            "testSkynetSubfileDownload",
+	}
+
+	skylink, _, err := r.SkynetSkyfileMultiPartPost(mup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// download the data specifying the 'concat' format
+	allData, _, err := r.SkynetSkylinkConcatGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := append(dataFile1, dataFile2...)
+	expected = append(expected, dataFile3...)
+	if !bytes.Equal(expected, allData) {
+		t.Log("expected:", expected)
+		t.Log("actual:", allData)
+		t.Fatal("Unexpected data for dir A")
+	}
+
+	// now specify the zip format
+	skyfileReader, err := r.SkynetSkylinkZipReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// read the zip archive
+	files, err := readZipArchive(skyfileReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = skyfileReader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the contents
+	dataFile1Received, exists := files[filePath1]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath1)
+	}
+	if !bytes.Equal(dataFile1Received, dataFile1) {
+		t.Fatal("file data doesn't match expected content")
+	}
+	dataFile2Received, exists := files[filePath2]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath2)
+	}
+	if !bytes.Equal(dataFile2Received, dataFile2) {
+		t.Fatal("file data doesn't match expected content")
+	}
+	dataFile3Received, exists := files[filePath3]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath3)
+	}
+	if !bytes.Equal(dataFile3Received, dataFile3) {
+		t.Log(dataFile3Received)
+		t.Log(dataFile3)
+		t.Fatal("file data doesn't match expected content")
+	}
+
+	// now specify the tar format
+	skyfileReader, err = r.SkynetSkylinkTarReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// read the tar archive
+	files, err = readTarArchive(skyfileReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = skyfileReader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the contents
+	dataFile1Received, exists = files[filePath1]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath1)
+	}
+	if !bytes.Equal(dataFile1Received, dataFile1) {
+		t.Fatal("file data doesn't match expected content")
+	}
+	dataFile2Received, exists = files[filePath2]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath2)
+	}
+	if !bytes.Equal(dataFile2Received, dataFile2) {
+		t.Fatal("file data doesn't match expected content")
+	}
+	dataFile3Received, exists = files[filePath3]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath3)
+	}
+	if !bytes.Equal(dataFile3Received, dataFile3) {
+		t.Log(dataFile3Received)
+		t.Log(dataFile3)
+		t.Fatal("file data doesn't match expected content")
+	}
+
+	// now specify the targz format
+	skyfileReader, err = r.SkynetSkylinkTarGzReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gzr, err := gzip.NewReader(skyfileReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err = readTarArchive(gzr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = errors.Compose(skyfileReader.Close(), gzr.Close())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the contents
+	dataFile1Received, exists = files[filePath1]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath1)
+	}
+	if !bytes.Equal(dataFile1Received, dataFile1) {
+		t.Fatal("file data doesn't match expected content")
+	}
+	dataFile2Received, exists = files[filePath2]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath2)
+	}
+	if !bytes.Equal(dataFile2Received, dataFile2) {
+		t.Fatal("file data doesn't match expected content")
+	}
+	dataFile3Received, exists = files[filePath3]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath3)
+	}
+	if !bytes.Equal(dataFile3Received, dataFile3) {
+		t.Log(dataFile3Received)
+		t.Log(dataFile3)
+		t.Fatal("file data doesn't match expected content")
+	}
+
+	// get all data for path "a" using the concat format
+	dataDirA, _, err := r.SkynetSkylinkConcatGet(fmt.Sprintf("%s/a", skylink))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected = append(dataFile1, dataFile2...)
+	if !bytes.Equal(expected, dataDirA) {
+		t.Log("expected:", expected)
+		t.Log("actual:", dataDirA)
+		t.Fatal("Unexpected data for dir A")
+	}
+
+	// now specify the tar format
+	skyfileReader, err = r.SkynetSkylinkTarReaderGet(fmt.Sprintf("%s/a", skylink))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// read the tar archive
+	files, err = readTarArchive(skyfileReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = skyfileReader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the contents
+	dataFile1Received, exists = files[filePath1]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath1)
+	}
+	if !bytes.Equal(dataFile1Received, dataFile1) {
+		t.Fatal("file data doesn't match expected content")
+	}
+	dataFile2Received, exists = files[filePath2]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath2)
+	}
+	if !bytes.Equal(dataFile2Received, dataFile2) {
+		t.Fatal("file data doesn't match expected content")
+	}
+	if len(files) != 2 {
+		t.Fatal("unexpected amount of files")
+	}
+
+	// now specify the targz format
+	skyfileReader, err = r.SkynetSkylinkTarGzReaderGet(fmt.Sprintf("%s/a", skylink))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gzr, err = gzip.NewReader(skyfileReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err = readTarArchive(gzr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = errors.Compose(skyfileReader.Close(), gzr.Close())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the contents
+	dataFile1Received, exists = files[filePath1]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath1)
+	}
+	if !bytes.Equal(dataFile1Received, dataFile1) {
+		t.Fatal("file data doesn't match expected content")
+	}
+	dataFile2Received, exists = files[filePath2]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath2)
+	}
+	if !bytes.Equal(dataFile2Received, dataFile2) {
+		t.Fatal("file data doesn't match expected content")
+	}
+	if len(files) != 2 {
+		t.Fatal("unexpected amount of files")
+	}
+
+	// now specify the zip format
+	skyfileReader, err = r.SkynetSkylinkZipReaderGet(fmt.Sprintf("%s/a", skylink))
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // testSkynetSubDirDownload verifies downloading data from a skyfile using a
 // path to download single subfiles or subdirectories
 func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
@@ -1018,238 +1315,6 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// get all data without specifying format, since the file contains multiple
-	// subfiles, this should fail
-	_, _, err = r.SkynetSkylinkGet(skylink)
-	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
-		t.Fatal("Expected download to fail because we are downloading a directory and format was not provided, err:", err)
-	}
-
-	// now specify a correct format
-	allData, _, err := r.SkynetSkylinkConcatGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	expected := append(dataFile1, dataFile2...)
-	expected = append(expected, dataFile3...)
-	if !bytes.Equal(expected, allData) {
-		t.Log("expected:", expected)
-		t.Log("actual:", allData)
-		t.Fatal("Unexpected data for dir A")
-	}
-
-	// now specify the tar format
-	skyfileReader, err := r.SkynetSkylinkTarReaderGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tr := tar.NewReader(skyfileReader)
-	header, err := tr.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if header.Name != filePath1 {
-		t.Fatalf("expected filepath %v but was %v", filePath1, header.Name)
-	}
-	data, err := ioutil.ReadAll(tr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(data, dataFile1) {
-		t.Fatal("file doesn't match expected content")
-	}
-	header, err = tr.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if header.Name != filePath2 {
-		t.Fatalf("expected filepath %v but was %v", filePath2, header.Name)
-	}
-	data, err = ioutil.ReadAll(tr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(data, dataFile2) {
-		t.Fatal("file doesn't match expected content")
-	}
-	header, err = tr.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if header.Name != filePath3 {
-		t.Fatalf("expected filepath %v but was %v", filePath3, header.Name)
-	}
-	data, err = ioutil.ReadAll(tr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(data, dataFile3) {
-		t.Fatal("file doesn't match expected content")
-	}
-	_, err = tr.Next()
-	if err != io.EOF {
-		t.Fatal("expected io.EOF got", err)
-	}
-	skyfileReader.Close()
-
-	// now specify the targz format
-	skyfileReader, err = r.SkynetSkylinkTarGzReaderGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	gzr, err := gzip.NewReader(skyfileReader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer gzr.Close()
-	tr = tar.NewReader(gzr)
-	header, err = tr.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if header.Name != filePath1 {
-		t.Fatalf("expected filepath %v but was %v", filePath1, header.Name)
-	}
-	data, err = ioutil.ReadAll(tr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(data, dataFile1) {
-		t.Fatal("file doesn't match expected content")
-	}
-	header, err = tr.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if header.Name != filePath2 {
-		t.Fatalf("expected filepath %v but was %v", filePath2, header.Name)
-	}
-	data, err = ioutil.ReadAll(tr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(data, dataFile2) {
-		t.Fatal("file doesn't match expected content")
-	}
-	header, err = tr.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if header.Name != filePath3 {
-		t.Fatalf("expected filepath %v but was %v", filePath3, header.Name)
-	}
-	data, err = ioutil.ReadAll(tr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(data, dataFile3) {
-		t.Fatal("file doesn't match expected content")
-	}
-	_, err = tr.Next()
-	if err != io.EOF {
-		t.Fatal("expected io.EOF got", err)
-	}
-	gzr.Close()
-	skyfileReader.Close()
-
-	// get all data for path "a" using the concat format
-	dataDirA, _, err := r.SkynetSkylinkConcatGet(fmt.Sprintf("%s/a", skylink))
-	if err != nil {
-		t.Fatal(err)
-	}
-	expected = append(dataFile1, dataFile2...)
-	if !bytes.Equal(expected, dataDirA) {
-		t.Log("expected:", expected)
-		t.Log("actual:", dataDirA)
-		t.Fatal("Unexpected data for dir A")
-	}
-
-	// now specify the tar format
-	skyfileReader, err = r.SkynetSkylinkTarReaderGet(fmt.Sprintf("%s/a", skylink))
-	if err != nil {
-		t.Fatal(err)
-	}
-	tr = tar.NewReader(skyfileReader)
-	header, err = tr.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if header.Name != filePath1 {
-		t.Fatalf("expected filepath %v but was %v", filePath1, header.Name)
-	}
-	data, err = ioutil.ReadAll(tr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(data, dataFile1) {
-		t.Fatal("file doesn't match expected content")
-	}
-	header, err = tr.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if header.Name != filePath2 {
-		t.Fatalf("expected filepath %v but was %v", filePath2, header.Name)
-	}
-	data, err = ioutil.ReadAll(tr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(data, dataFile2) {
-		t.Fatal("file doesn't match expected content")
-	}
-	_, err = tr.Next()
-	if err != io.EOF {
-		t.Fatal("expected io.EOF got", err)
-	}
-	skyfileReader.Close()
-
-	// now specify the targz format
-	skyfileReader, err = r.SkynetSkylinkTarGzReaderGet(fmt.Sprintf("%s/a", skylink))
-	if err != nil {
-		t.Fatal(err)
-	}
-	gzr, err = gzip.NewReader(skyfileReader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer gzr.Close()
-	tr = tar.NewReader(gzr)
-	header, err = tr.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if header.Name != filePath1 {
-		t.Fatalf("expected filepath %v but was %v", filePath1, header.Name)
-	}
-	data, err = ioutil.ReadAll(tr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(data, dataFile1) {
-		t.Fatal("file doesn't match expected content")
-	}
-	header, err = tr.Next()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if header.Name != filePath2 {
-		t.Fatalf("expected filepath %v but was %v", filePath2, header.Name)
-	}
-	data, err = ioutil.ReadAll(tr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(data, dataFile2) {
-		t.Fatal("file doesn't match expected content")
-	}
-	_, err = tr.Next()
-	if err != io.EOF {
-		t.Fatal("expected io.EOF got", err)
-	}
-	gzr.Close()
-	skyfileReader.Close()
-
 	// get all data for path "b"
 	dataDirB, metadataDirB, err := r.SkynetSkylinkConcatGet(fmt.Sprintf("%s/b", skylink))
 	if err != nil {
@@ -1292,12 +1357,6 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 		t.Log("expected:", dataFile2)
 		t.Log("actual:", downloadFile2)
 		t.Fatal("Unexpected data for file 2")
-	}
-
-	// verify we get a 400 if we don't supply the format parameter
-	_, _, err = r.SkynetSkylinkGet(fmt.Sprintf("%s/b", skylink))
-	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
-		t.Fatal("Expected download to fail because we are downloading a directory and format was not provided, err:", err)
 	}
 
 	// verify we get a 400 if we supply an unsupported format parameter
@@ -2786,4 +2845,72 @@ func testSkynetSingleFileNoSubfiles(t *testing.T, tg *siatest.TestGroup) {
 	if metadata.Subfiles != nil {
 		t.Fatal("Expected empty subfiles on download, got", sup.FileMetadata.Subfiles)
 	}
+}
+
+// fileMap is a helper type that maps filenames onto the raw file data
+type fileMap map[string][]byte
+
+// readTarArchive is a helper function that takes a reader containing a tar
+// archive and returns an fileMap, which is a small helper struct that maps the
+// filename to the data.
+func readTarArchive(r io.Reader) (fileMap, error) {
+	a := make(fileMap)
+	tr := tar.NewReader(r)
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		data, err := ioutil.ReadAll(tr)
+		if err != nil {
+			return nil, err
+		}
+		a[header.Name] = data
+	}
+	return a, nil
+}
+
+// readZipArchive is a helper function that takes a reader containing a zip
+// archive and returns an fileMap, which is a small helper struct that maps the
+// filename to the data.
+func readZipArchive(r io.Reader) (fileMap, error) {
+	a := make(fileMap)
+
+	// copy all data to a buffer (this is necessary because the zipreader
+	// expects a `ReaderAt`)
+	buff := bytes.NewBuffer([]byte{})
+	size, err := io.Copy(buff, r)
+	if err != nil {
+		return nil, err
+	}
+	reader := bytes.NewReader(buff.Bytes())
+	zr, err := zip.NewReader(reader, size)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, f := range zr.File {
+		rc, err := f.Open()
+		if err != nil {
+			return nil, err
+		}
+
+		data, err := ioutil.ReadAll(rc)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		err = rc.Close()
+		if err != nil {
+			return nil, err
+		}
+		a[f.FileHeader.Name] = data
+	}
+	return a, nil
 }
