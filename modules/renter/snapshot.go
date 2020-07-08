@@ -13,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -127,7 +128,8 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 
 	// Check if snapshot already exists.
 	if r.managedSnapshotExists(name) {
-		return fmt.Errorf("snapshot with name '%s' already exists", name)
+		s := fmt.Sprintf("snapshot with name '%s' already exists", name)
+		return errors.AddContext(filesystem.ErrExists, s)
 	}
 
 	// Open the backup for uploading.
