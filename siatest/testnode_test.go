@@ -58,9 +58,9 @@ func TestNextNodeAddress(t *testing.T) {
 	}
 }
 
-// TestNodeBlacklistConnections probes the functionality of connecting nodes and
-// blacklisting nodes to confirm nodes connect as intended
-func TestNodeBlacklistConnections(t *testing.T) {
+// TestNodeBlocklistConnections probes the functionality of connecting nodes and
+// blocklisting nodes to confirm nodes connect as intended
+func TestNodeBlocklistConnections(t *testing.T) {
 	// Skip if testing short or running on mac
 	if testing.Short() || runtime.GOOS == "darwin" {
 		t.SkipNow()
@@ -84,8 +84,8 @@ func TestNodeBlacklistConnections(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Have the host Blacklist the renter, confirm they are no longer peers
-	err = host.GatewaySetBlacklistPost([]string{renter.GatewayAddress().Host()})
+	// Have the host Blocklist the renter, confirm they are no longer peers
+	err = host.GatewaySetBlocklistPost([]string{renter.GatewayAddress().Host()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestNodeBlacklistConnections(t *testing.T) {
 
 	// Add another renter to the group that has the same address as the original
 	// renter. This renter should not connect to the host since the host had
-	// disconnected and blacklisted the original renter
+	// disconnected and blocklisted the original renter
 	renterParams = node.Renter(filepath.Join(testDir, "renterTwo"))
 	renterParams.RPCAddress = renter.GatewayAddress().Host() + ":0"
 	renterTwo, err := NewCleanNode(renterParams)
@@ -143,9 +143,9 @@ func TestNodeBlacklistConnections(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Reset the Host blacklist, now renterTwo should be able to connect to the
+	// Reset the Host blocklist, now renterTwo should be able to connect to the
 	// host
-	err = host.GatewaySetBlacklistPost([]string{})
+	err = host.GatewaySetBlocklistPost([]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
