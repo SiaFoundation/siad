@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -54,6 +55,14 @@ type (
 		LatestSyncedOffset uint64
 	}
 
+	// partialTransactions contains information about a transaction that is
+	// partially loaded from disk
+	partialTransactions struct {
+		finalIndex int
+		txnBytes   []byte
+		txnID      types.TransactionID
+	}
+
 	// persistSubsystem contains the state for the persistence of the fee
 	// manager.
 	//
@@ -67,6 +76,9 @@ type (
 
 		// persistFile is the file handle of the file where data is written to.
 		persistFile *os.File
+
+		// partialTxns is a map used to help load transactions from disk
+		partialTxns map[types.TransactionID]partialTransactions
 
 		// Utilities
 		staticCommon          *feeManagerCommon
@@ -200,7 +212,19 @@ func (fm *FeeManager) callInitPersist() error {
 			return errors.AddContext(err, "parsing a persist entry failed")
 		}
 	}
+
+	// Clear the partial transaction map from the persistSubsystem to free any
+	// remaining memory
+	ps.callClearPartialTxnMap()
 	return nil
+}
+
+// callClearPartialTxnMap will clear the partial transaction map
+func (ps *persistSubsystem) callClearPartialTxnMap() {
+	if len(ps.partialTxns) != 0 {
+		build.Critical("partial transaction map not empty after loading persistence")
+	}
+	ps.partialTxns = nil
 }
 
 // callPersistFeeCancellation will write a fee cancellation to the persist file.
@@ -225,7 +249,7 @@ func (ps *persistSubsystem) callPersistNewFee(fee modules.AppFee) error {
 func (ps *persistSubsystem) callPersistTransaction(txn types.Transaction) error {
 	entrys, err := createTransactionEntrys(txn)
 	if err != nil {
-		return errors.AddContext(err, "unable to create transaction entrys")
+		return errors.AddContext(err, "unable to create transaction entries")
 	}
 	return ps.managedAppendEntrys(entrys)
 }
@@ -235,7 +259,7 @@ func (ps *persistSubsystem) callPersistTransaction(txn types.Transaction) error 
 func (ps *persistSubsystem) callPersistTxnConfirmed(feeUIDs []modules.FeeUID, txnID types.TransactionID) error {
 	entrys, err := createTxnConfirmedEntrys(feeUIDs, txnID)
 	if err != nil {
-		return errors.AddContext(err, "unable to create transaction confirmed entrys")
+		return errors.AddContext(err, "unable to create transaction confirmed entries")
 	}
 	return ps.managedAppendEntrys(entrys)
 }
@@ -245,7 +269,7 @@ func (ps *persistSubsystem) callPersistTxnConfirmed(feeUIDs []modules.FeeUID, tx
 func (ps *persistSubsystem) callPersistTxnCreated(feeUIDs []modules.FeeUID, txnID types.TransactionID) error {
 	entrys, err := createTxnCreatedEntrys(feeUIDs, txnID)
 	if err != nil {
-		return errors.AddContext(err, "unable to create transaction created entrys")
+		return errors.AddContext(err, "unable to create transaction created entries")
 	}
 	return ps.managedAppendEntrys(entrys)
 }
@@ -255,7 +279,7 @@ func (ps *persistSubsystem) callPersistTxnCreated(feeUIDs []modules.FeeUID, txnI
 func (ps *persistSubsystem) callPersistTxnDropped(feeUIDs []modules.FeeUID, txnID types.TransactionID) error {
 	entrys, err := createTxnDroppedEntrys(feeUIDs, txnID)
 	if err != nil {
-		return errors.AddContext(err, "unable to create transaction dropped entrys")
+		return errors.AddContext(err, "unable to create transaction dropped entries")
 	}
 	return ps.managedAppendEntrys(entrys)
 }

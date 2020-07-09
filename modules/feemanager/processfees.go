@@ -65,11 +65,10 @@ func (fm *FeeManager) createdAndPersistTransaction(feeUIDs []modules.FeeUID, out
 	fm.staticCommon.staticWatchdog.callMonitorTransaction(feeUIDs, txn)
 
 	// Handle the transaction if there is an error with persistence
-	defer func() error {
+	defer func() {
 		if err != nil {
-			return errors.Compose(err, fm.callDropTransaction(txnID))
+			err = errors.Compose(err, fm.callDropTransaction(txnID))
 		}
-		return nil
 	}()
 
 	// Persist the transaction

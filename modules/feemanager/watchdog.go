@@ -20,38 +20,22 @@ var (
 	// monitored by the watchdog
 	errTxnNotFound = errors.New("transaction not found in the watchdog")
 
-	// recreateTransactionInterval is how long the watchdog will wait before it
-	// will try and recreate the transaction
-	recreateTransactionInterval = build.Select(build.Var{
-		Standard: time.Hour * 24,
-		Dev:      time.Hour,
-		Testing:  time.Second,
-	}).(time.Duration)
-
 	// transactionCheckInterval is how often the watchdog will check the
 	// transactions
 	transactionCheckInterval = build.Select(build.Var{
 		Standard: time.Minute * 10,
 		Dev:      time.Minute,
-		Testing:  time.Second,
+		Testing:  time.Second * 3,
 	}).(time.Duration)
 )
 
 type (
-	// partialTransactions contains information about a transaction that is
-	// partially loaded from disk
-	partialTransactions struct {
-		finalIndex int
-		txnBytes   []byte
-		txnID      types.TransactionID
-	}
 
 	// trackedTransaction contains information about a transaction that the
 	// watchdog is tracking
 	trackedTransaction struct {
-		createTime time.Time
-		feeUIDs    []modules.FeeUID
-		txn        types.Transaction
+		feeUIDs []modules.FeeUID
+		txn     types.Transaction
 	}
 
 	// watchdog monitors transactions for the FeeManager to ensure that
@@ -59,9 +43,6 @@ type (
 	watchdog struct {
 		// feeUIDToTxnID maps fee UIDs to transaction IDs
 		feeUIDToTxnID map[modules.FeeUID]types.TransactionID
-
-		// partialTxns is a map used to help load transactions from disk
-		partialTxns map[types.TransactionID]partialTransactions
 
 		// Transactions that the watchdog is monitoring
 		txns map[types.TransactionID]trackedTransaction
@@ -71,6 +52,44 @@ type (
 		mu           sync.Mutex
 	}
 )
+
+// addFeesToTransaction adds a list of feeUIDs to a trackedTransaction and
+// updates the watchdog
+func (w *watchdog) addFeesToTransaction(feeUIDs []modules.FeeUID, tt trackedTransaction) error {
+	txnID := tt.txn.ID()
+	for _, feeUID := range feeUIDs {
+		tt.feeUIDs = append(tt.feeUIDs, feeUID)
+		w.feeUIDToTxnID[feeUID] = txnID
+	}
+	w.txns[txnID] = tt
+
+	return nil
+}
+
+// callAddFeesToTransaction adds a list of feeUIDs to a trackedTransaction and
+// updates the watchdog
+func (w *watchdog) callAddFeesToTransaction(feeUIDs []modules.FeeUID, txnID types.TransactionID) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	tt, ok := w.txns[txnID]
+	if !ok {
+		return errTxnNotFound
+	}
+	return w.addFeesToTransaction(feeUIDs, tt)
+}
+
+// callClearTransaction clears a transaction from the watchdog
+func (w *watchdog) callClearTransaction(txnID types.TransactionID) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	tt, ok := w.txns[txnID]
+	if !ok {
+		return errTxnNotFound
+	}
+
+	w.clearTransaction(tt)
+	return nil
+}
 
 // callFeeTracked returns whether or not the fee is being tracked by the
 // watchdog and the transaction ID it is associated with
@@ -83,7 +102,7 @@ func (w *watchdog) callFeeTracked(feeUID modules.FeeUID) (types.TransactionID, b
 
 // callMonitorTransaction adds a transaction to the watchdog to monitor with the
 // associated fees.
-func (w *watchdog) callMonitorTransaction(feeUIDs []modules.FeeUID, txn types.Transaction) {
+func (w *watchdog) callMonitorTransaction(feeUIDs []modules.FeeUID, txn types.Transaction) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -94,20 +113,26 @@ func (w *watchdog) callMonitorTransaction(feeUIDs []modules.FeeUID, txn types.Tr
 	if ok {
 		// This is a developer error, we should only be calling this method
 		// after creating a new transaction
-		build.Critical(errors.AddContext(errTxnExists, txnID.String()))
+		err := errors.AddContext(errTxnExists, txnID.String())
+		build.Critical(err)
+		return err
 	}
 
+	// Initialize the trackedTransaction
+	tt := trackedTransaction{
+		txn: txn,
+	}
 	// Add transaction to the watchdog
-	w.txns[txnID] = trackedTransaction{
-		feeUIDs:    feeUIDs,
-		createTime: time.Now(),
-		txn:        txn,
-	}
+	return w.addFeesToTransaction(feeUIDs, tt)
+}
 
-	// Add Fees to watchdog
-	for _, feeUID := range feeUIDs {
-		w.feeUIDToTxnID[feeUID] = txnID
-	}
+// callTransactionTracked returns whether or not the transaction is being tracked by the
+// watchdog
+func (w *watchdog) callTransactionTracked(txnID types.TransactionID) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	_, ok := w.txns[txnID]
+	return ok
 }
 
 // clearTransaction clears a transaction from the watchdog
@@ -200,8 +225,6 @@ func (fm *FeeManager) managedDropTransaction(tt trackedTransaction) error {
 	w := fm.staticCommon.staticWatchdog
 	txnID := tt.txn.ID()
 
-	// TODO - sweep the transaction to invalidate it
-
 	// Persist the drop event
 	err := p.callPersistTxnDropped(tt.feeUIDs, txnID)
 	if err != nil {
@@ -230,9 +253,9 @@ func (fm *FeeManager) managedDropTransaction(tt trackedTransaction) error {
 	return nil
 }
 
-// threadedCheckTransactions checks the transactions that the watchdog is
+// threadedMonitorTransactions checks the transactions that the watchdog is
 // monitoring in a loop to see when they are confirmed in the wallet
-func (fm *FeeManager) threadedCheckTransactions() {
+func (fm *FeeManager) threadedMonitorTransactions() {
 	// Define shorter name helpers
 	fc := fm.staticCommon
 	w := fm.staticCommon.staticWatchdog
@@ -287,20 +310,6 @@ func (fm *FeeManager) threadedCheckTransactions() {
 					fc.staticLog.Println("WARN: unable to mark transaction as confirmed:", err)
 				}
 				continue
-			}
-
-			// Transaction is still unconfirmed, check if it is time to drop
-			// the transaction
-			if time.Since(tt.createTime) < recreateTransactionInterval {
-				continue
-			}
-
-			// Assume the transaction won't ever go through and drop the
-			// transaction
-			fc.staticLog.Debugln("Watchdog is dropping transaction", txnID)
-			err = fm.managedDropTransaction(tt)
-			if err != nil {
-				fc.staticLog.Println("WARN: error dropping transaction:", err)
 			}
 		}
 

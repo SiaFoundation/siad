@@ -91,17 +91,18 @@ file and update the persist file header.
     `callPersistTxnDropped` to persist that the transaction was dropped
 
 **Outbound Complexities**
- - The watchdog subsystems's `callApplyTransaction` is called from
-   `applyEntryTransaction` to apply a persisted transaction to the watchdog
- - The watchdog subsystems's `callApplyTxnConfirmed` is called from
-   `applyEntryTxnConfirmed` to apply a persisted transaction confirmed entry to
-   the watchdog 
- - The watchdog subsystems's `callApplyTxnCreated` is called from
-   `applyEntryTxnCreated` to apply a persisted transaction created entry to the
+ - The watchdog subsystems's `callTransactionTracked` is called from
+   `applyEntryTransaction` to check if a transaction is already in the watchdog
+ - The watchdog subsystems's `callMonitorTransaction` is called from
+   `applyEntryTransaction` to add a transaction to the watchdog
+ - The watchdog subsystems's `callClearTransaction` is called from
+   `applyEntryTxnConfirmed` to clear a transaction from the watchdog
+ - The watchdog subsystems's `callAddFeesToTransaction` is called from
+   `applyEntryTxnCreated` to add fees to a transaction being monitored by the
    watchdog
- - The watchdog subsystems's `callApplyTxnDropped` is called from
-   `applyEntryTxnDropped` to apply a persisted transaction dropped entry to the
-   watchdog
+ - The watchdog subsystems's `callDropTransaction` is called from
+   `applyEntryTxnDropped` to remove a transaction from the watchdog
+
 
 ### Process Fees Subsystem
 **Key Files**
@@ -127,27 +128,26 @@ transaction and then submitting the transaction to the watchdog.
 
 The watchdog subsystem handles tracking the transactions created for Fees and
 marking them as paid once the transactions are confirmed. The watchdog will
-continue to rebroadcast the transaction until the transaction is confirmed. If
-the transaction is not confirmed within an acceptable time period, the watchdog
-will assume the transaction will not be successful and drop it and mark the fees
-as not having a transaction created. Once a transaction is confirmed the
-watchdog updates the fees' `PaymentComplete` flag.
+continue to rebroadcast the transaction until the transaction is confirmed.
+Once a transaction is confirmed the watchdog updates the fees' `PaymentComplete`
+flag.
 
 **Inbound Complexities**
  - The process fees subsystem's `createdAndPersistTransaction` calls
    `callMonitorTransaction` to add a transaction for the watchdog to monitor
  - The persistence subsystem's `applyEntryTransaction` calls
-   `callApplyTransaction` to add a persisted transaction to the watchdog
+   `callTransactionTracked` to check if a transaction is already in the watchdog
+ - The persistence subsystem's `applyEntryTransaction` calls
+   `callMonitorTransaction` to add a transaction to the watchdog
  - The persistence subsystem's `applyEntryTxnConfirmed` calls
-   `callApplyTxnConfirmed` to mark a transaction that the watchdog is monitoring
-   as confirmed
+   `callClearTransaction` to clear a transaction from the watchdog
  - The persistence subsystem's `applyEntryTxnCreated` calls
-   `callApplyTxnCreated` to add fees to the watchdog that are associated with
-   the transaction that was created 
+   `callAddFeesToTransaction` to add fees to a transaction being monitored by
+   the watchdog 
  - The persistence subsystem's `applyEntryTxnDropped` calls
-   `callApplyTxnDropped` to drop a transaction from the watchdog 
- - The feemanager subsystem's `CancelFee` method calls `callFeeTracked` as a
-   check to see if a fee can be canceled
+   `callDropTransaction` to remove a transaction from the watchdog 
+ - The feemanager subsystem's `CancelFee` method calls `callFeeTracked` as
+   a check to see if a fee can be canceled
 
 **Outbound Complexities**
   - The persist subsystem's `callPersistTxnConfirmed` method is called by

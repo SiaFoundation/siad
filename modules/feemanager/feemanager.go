@@ -118,9 +118,10 @@ func NewCustomFeeManager(cs modules.ConsensusSet, tp modules.TransactionPool, w 
 	}
 	// Create the persist subsystem.
 	ps := &persistSubsystem{
-		staticPersistDir: persistDir,
+		partialTxns: make(map[types.TransactionID]partialTransactions),
 
-		staticCommon: common,
+		staticCommon:     common,
+		staticPersistDir: persistDir,
 	}
 	common.staticPersist = ps
 	// Create the sync coordinator
@@ -131,7 +132,6 @@ func NewCustomFeeManager(cs modules.ConsensusSet, tp modules.TransactionPool, w 
 	// Create the watchdog
 	wd := &watchdog{
 		feeUIDToTxnID: make(map[modules.FeeUID]types.TransactionID),
-		partialTxns:   make(map[types.TransactionID]partialTransactions),
 		txns:          make(map[types.TransactionID]trackedTransaction),
 		staticCommon:  common,
 	}
@@ -155,7 +155,7 @@ func NewCustomFeeManager(cs modules.ConsensusSet, tp modules.TransactionPool, w 
 
 	// Launch background threads
 	go fm.threadedProcessFees()
-	go fm.threadedCheckTransactions()
+	go fm.threadedMonitorTransactions()
 
 	return fm, nil
 }

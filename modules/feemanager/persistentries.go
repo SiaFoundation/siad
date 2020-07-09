@@ -367,7 +367,36 @@ func (fm *FeeManager) applyEntryTransaction(payload [persistEntryPayloadSize]byt
 	if err != nil {
 		return errors.AddContext(err, "could not unmarshal transaction entry payload")
 	}
-	return fm.staticCommon.staticWatchdog.callApplyTransaction(et)
+
+	// Define shorter named helpers
+	w := fm.staticCommon.staticWatchdog
+	ps := fm.staticCommon.staticPersist
+
+	// Check to see if the transaction is already being monitored by the
+	// watchdog
+	tracked := w.callTransactionTracked(et.TxnID)
+	if tracked {
+		err := errors.AddContext(errTxnExists, et.TxnID.String())
+		build.Critical(err)
+		return err
+	}
+
+	// Build the transaction
+	txn, complete, err := ps.managedBuidlTransaction(et)
+	if err != nil {
+		return errors.AddContext(err, "unable to build partial transaction")
+	}
+
+	if !complete {
+		return nil
+	}
+
+	// Add Transaction to Watchdog
+	err = w.callMonitorTransaction(nil, txn)
+	if err != nil {
+		return errors.AddContext(err, "unable to add transaction to the watchdog")
+	}
+	return nil
 }
 
 // applyEntryTxnConfirmed will apply a transaction confirmed entry to the fee
@@ -399,8 +428,15 @@ func (fm *FeeManager) applyEntryTxnConfirmed(payload [persistEntryPayloadSize]by
 		feeUIDs[i] = feeUID
 	}
 
-	// Apply the Transaction Confirmed event to the Watchdog
-	fm.staticCommon.staticWatchdog.callApplyTxnConfirmed(etf.TxnID)
+	// Clear the transaction from the watchdog
+	fm.staticCommon.staticWatchdog.callClearTransaction(etf.TxnID)
+	if err != nil && err != errTxnNotFound {
+		// Return an error only if the error is not errTxnNotFound. This is because
+		// Transaction Confirmed events can span multiple persist entries and so the
+		// first persist entry will clear the transaction and the rest will be
+		// no-ops.
+		return errors.AddContext(err, "unable to drop transaction from the watchdog")
+	}
 	return nil
 }
 
@@ -433,8 +469,9 @@ func (fm *FeeManager) applyEntryTxnCreated(payload [persistEntryPayloadSize]byte
 		feeUIDs[i] = feeUID
 	}
 
-	// Apply the Transaction Created event to the Watchdog
-	fm.staticCommon.staticWatchdog.callApplyTxnCreated(feeUIDs, etf.TxnID)
+	// Apply the Transaction Created event to the Watchdog by adding the fees to
+	// the transaction
+	fm.staticCommon.staticWatchdog.callAddFeesToTransaction(feeUIDs, etf.TxnID)
 	return nil
 }
 
@@ -470,8 +507,15 @@ func (fm *FeeManager) applyEntryTxnDropped(payload [persistEntryPayloadSize]byte
 		feeUIDs[i] = feeUID
 	}
 
-	// Apply the Transaction Created event to the Watchdog
-	fm.staticCommon.staticWatchdog.callApplyTxnDropped(etf.TxnID)
+	// Drop the transaction from  the Watchdog
+	err = fm.callDropTransaction(etf.TxnID)
+	if err != nil && err != errTxnNotFound {
+		// Return an error only if the error is not errTxnNotFound. This is because
+		// Transaction Dropped events can span multiple persist entries and so the
+		// first persist entry will clear the transaction and the rest will be
+		// no-ops.
+		return errors.AddContext(err, "unable to drop transaction from the watchdog")
+	}
 	return nil
 }
 
@@ -488,4 +532,38 @@ func (fm *FeeManager) applyEntryUpdateFee(payload [persistEntryPayloadSize]byte)
 	}
 	fee.PayoutHeight = euf.PayoutHeight
 	return nil
+}
+
+// managedBuidlTransaction builds a transaction from an entryTransaction.  Once
+// a full transaction has been created it is unmarshalled and returned
+func (ps *persistSubsystem) managedBuidlTransaction(et entryTransaction) (types.Transaction, bool, error) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+
+	// Start building partial transaction
+	pTxn, ok := ps.partialTxns[et.TxnID]
+	if !ok {
+		pTxn = partialTransactions{
+			finalIndex: et.FinalIndex,
+			txnID:      et.TxnID,
+		}
+	}
+	pTxn.txnBytes = append(pTxn.txnBytes, et.TxnBytes[:]...)
+
+	// Check if we have built the full transaction
+	if et.Index != pTxn.finalIndex {
+		// We don't have a full transaction yet
+		ps.partialTxns[et.TxnID] = pTxn
+		return types.Transaction{}, false, nil
+	}
+
+	// We have all the bytes of the transaction, unmarshal it, remove it from the
+	// map and return the transaction
+	var txn types.Transaction
+	err := txn.UnmarshalSia(bytes.NewBuffer(pTxn.txnBytes))
+	if err != nil {
+		return types.Transaction{}, false, errors.AddContext(err, "unable to unmarshal transaction")
+	}
+	delete(ps.partialTxns, et.TxnID)
+	return txn, true, nil
 }
