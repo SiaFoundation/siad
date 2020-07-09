@@ -2617,7 +2617,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	files := make(map[string][]byte)
 	files["index.html"] = []byte(fc1)
 	files["about.html"] = []byte(fc2)
-	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(filename, files, nil, false)
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(filename, files, emptyPath, true, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -2635,7 +2635,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	files = make(map[string][]byte)
 	files["index.html"] = []byte(fc1)
 	files["about.html"] = []byte(fc2)
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, &emptyPath, false)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, emptyPath, false, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -2651,7 +2651,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	files = make(map[string][]byte)
 	files["index.html"] = []byte(fc1)
 	files["index.js"] = []byte(fc2)
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, &indexJs, false)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, indexJs, false, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -2669,7 +2669,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	files = make(map[string][]byte)
 	files["index.html"] = []byte(fc1)
 	files["about.html"] = []byte(fc2)
-	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, &invalidPath, false)
+	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, invalidPath, false, false)
 	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidDefaultPath.Error()) {
 		t.Fatalf("Expected error 'invalid default path provided', got '%+v'", err)
 	}
@@ -2681,7 +2681,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	files = make(map[string][]byte)
 	files["index.js"] = []byte(fc1)
 	files["about.html"] = []byte(fc2)
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, &indexJs, false)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, indexJs, false, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -2705,7 +2705,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	files = make(map[string][]byte)
 	files["index.js"] = []byte(fc1)
 	files["about.html"] = []byte(fc2)
-	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, &invalidPath, false)
+	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, invalidPath, false, false)
 	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidDefaultPath.Error()) {
 		t.Fatalf("Expected error 'invalid default path provided', got '%+v'", err)
 	}
@@ -2716,7 +2716,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	files = make(map[string][]byte)
 	files["index.js"] = []byte(fc1)
 	files["about.html"] = []byte(fc2)
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, nil, false)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, emptyPath, true, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -2731,7 +2731,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	filename = "index.js_empty"
 	files = make(map[string][]byte)
 	files["index.js"] = []byte(fc1)
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, &emptyPath, false)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, emptyPath, false, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -2746,7 +2746,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	filename = "index.js"
 	files = make(map[string][]byte)
 	files["index.js"] = []byte(fc1)
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, nil, false)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, emptyPath, true, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}

@@ -314,7 +314,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	defer streamer.Close()
 
 	// Get the redirect limitations.
-	allowRedirect, err := allowRedirect(queryForm, metadata)
+	allowRedirect, err := useDefaultPath(queryForm, metadata)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -1167,14 +1167,15 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 	WriteJSON(w, res)
 }
 
-// allowRedirect decides whether a redirect will be allowed for this skyfile.
-func allowRedirect(queryForm url.Values, metadata modules.SkyfileMetadata) (bool, error) {
-	// Do not allow redirect for skyfiles which are not directories.
+// useDefaultPath decides whether a request to the root of this skyfile will
+// result in its metadata.DefaultPath being used or not.
+func useDefaultPath(queryForm url.Values, metadata modules.SkyfileMetadata) (bool, error) {
+	// Do not use default path for skyfiles which are not directories.
 	if metadata.Subfiles == nil || len(metadata.Subfiles) == 0 {
 		return false, nil
 	}
-	// Do not allow redirect if the default path is empty.
-	if metadata.DefaultPath == "" {
+	// Do not allow redirect if explicitly forbidden in the metadata.
+	if metadata.NoDefaultPath {
 		return false, nil
 	}
 	// Check what the user requested.
