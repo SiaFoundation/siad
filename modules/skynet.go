@@ -13,9 +13,11 @@ import (
 )
 
 const (
-	// SkyfileDefaultPathParamName specifies the name of the form parameter that holds
-	// the default path.
-	SkyfileDefaultPathParamName   = "defaultpath"
+	// SkyfileDefaultPathParamName specifies the name of the form parameter that
+	// holds the default path.
+	SkyfileDefaultPathParamName = "defaultpath"
+	// SkyfileNoDefaultPathParamName specifies the name of the form parameter
+	// that holds the noDefaultPath flag.
 	SkyfileNoDefaultPathParamName = "nodefaultpath"
 )
 

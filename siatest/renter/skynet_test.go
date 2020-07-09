@@ -75,6 +75,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetEncryptionLargeFilePublicID", Test: testSkynetEncryptionLargeFileWithType(skykey.TypePublicID)},
 		{Name: "TestSkynetEncryptionLargeFilePrivateID", Test: testSkynetEncryptionLargeFileWithType(skykey.TypePrivateID)},
 		{Name: "TestSkynetDefaultPath", Test: testSkynetDefaultPath},
+		{Name: "TestSkynetDefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
 		{Name: "TestSkynetSingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
 	}
 
@@ -2763,6 +2764,251 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	_, _, err = r.SkynetSkylinkGetWithRedirect(skylink, false)
 	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
 		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
+	}
+}
+
+// testSkynetDefaultPath_TableTest tests all combinations of inputs in relation
+// to default path.
+func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	fc1 := []byte("File1Contents")
+	fc2 := []byte("File2Contents. This one is longer.")
+
+	singleFile := map[string][]byte{
+		"about.html": fc1,
+	}
+	singleDir := map[string][]byte{
+		"dir/about.html": fc1,
+	}
+	multiHasIndex := map[string][]byte{
+		"index.html": fc1,
+		"about.html": fc2,
+	}
+	multiNoIndex := map[string][]byte{
+		"hello.html": fc1,
+		"about.html": fc2,
+	}
+
+	tests := []struct {
+		name                   string
+		files                  map[string][]byte
+		noDefaultPath          bool
+		defaultPath            string
+		expectedContent        []byte
+		expectedErrStrDownload string
+		expectedErrStrUpload   string
+	}{
+		{
+			// Single files without redirect.
+			// Should serve the content anyway.
+			name:                 "single_nodef_empty",
+			files:                singleFile,
+			noDefaultPath:        true,
+			defaultPath:          "",
+			expectedContent:      nil,
+			expectedErrStrUpload: "nodefaultpath cannot be used on single files uploads",
+		},
+		{
+			// Single files with default, empty default path.
+			// Should serve the content anyway.
+			name:                   "single_def_empty",
+			files:                  singleFile,
+			noDefaultPath:          false,
+			defaultPath:            "",
+			expectedContent:        fc1,
+			expectedErrStrDownload: "",
+		},
+		{
+			// Single files with default, bad default path.
+			// Should serve the content anyway.
+			name:                 "single_def_bad",
+			files:                singleFile,
+			noDefaultPath:        false,
+			defaultPath:          "bad.html",
+			expectedContent:      nil,
+			expectedErrStrUpload: "invalid default path provided",
+		},
+
+		{
+			// Single dir no default, empty default path.
+			// Should serve the content anyway.
+			name:                   "singledir_nodef_empty",
+			files:                  singleDir,
+			noDefaultPath:          true,
+			defaultPath:            "",
+			expectedContent:        nil,                            // TODO
+			expectedErrStrDownload: "format must be specified",     // TODO
+			expectedErrStrUpload:   "invalid use of nodefaultpath", // TODO
+		},
+		{
+			// Single dir default, empty default path.
+			// Should serve the content anyway.
+			name:                   "singledir_def_empty",
+			files:                  singleDir,
+			noDefaultPath:          false,
+			defaultPath:            "",
+			expectedContent:        fc1,
+			expectedErrStrDownload: "",
+		},
+		{
+			// Single dir default, bad default path.
+			// Should serve the content anyway.
+			name:                 "singledir_def_bad",
+			files:                singleDir,
+			noDefaultPath:        false,
+			defaultPath:          "bad.html",
+			expectedContent:      fc1,
+			expectedErrStrUpload: "invalid default path provided",
+		},
+
+		{
+			// Multi dir with index, no default, empty default path.
+			// Error on download - format required.
+			name:                   "multi_idx_nodef_empty",
+			files:                  multiHasIndex,
+			noDefaultPath:          true,
+			defaultPath:            "",
+			expectedContent:        nil,
+			expectedErrStrDownload: "format must be specified",
+		},
+		{
+			// Multi dir with index, no default, correct default path.
+			// Error on download - format required.
+			name:                   "multi_idx_nodef_correct",
+			files:                  multiHasIndex,
+			noDefaultPath:          true,
+			defaultPath:            "index.html",
+			expectedContent:        nil,
+			expectedErrStrDownload: "format must be specified",
+		},
+		{
+			// Multi dir with index, no default, bad default path.
+			// Error on download - format required.
+			name:                   "multi_idx_nodef_bad",
+			files:                  multiHasIndex,
+			noDefaultPath:          true,
+			defaultPath:            "bad.html",
+			expectedContent:        nil,
+			expectedErrStrDownload: "format must be specified",
+		},
+		{
+			// Multi dir with index, default, empty default path.
+			// Should serve the content.
+			name:                   "multi_idx_def_empty",
+			files:                  multiHasIndex,
+			noDefaultPath:          false,
+			defaultPath:            "",
+			expectedContent:        fc1,
+			expectedErrStrDownload: "",
+		},
+		{
+			// Multi dir with index, default, correct default path.
+			// Should serve the content.
+			name:                   "multi_idx_def_correct",
+			files:                  multiHasIndex,
+			noDefaultPath:          false,
+			defaultPath:            "index.html",
+			expectedContent:        fc1,
+			expectedErrStrDownload: "",
+		},
+		{
+			// Multi dir with index, default, bad default path.
+			// Error on download - format required.
+			name:                 "multi_idx_def_bad",
+			files:                multiHasIndex,
+			noDefaultPath:        false,
+			defaultPath:          "bad.html",
+			expectedContent:      nil,
+			expectedErrStrUpload: "invalid default path provided",
+		},
+
+		{
+			// Multi dir with no index, no default, empty default path.
+			// Error on download - format required.
+			name:                   "multi_noidx_nodef_empty",
+			files:                  multiNoIndex,
+			noDefaultPath:          true,
+			defaultPath:            "",
+			expectedContent:        nil,
+			expectedErrStrDownload: "format must be specified",
+		},
+		{
+			// Multi dir with no index, no default, correct default path.
+			// Error on download - format required.
+			name:                   "multi_noidx_nodef_correct",
+			files:                  multiNoIndex,
+			noDefaultPath:          true,
+			defaultPath:            "hello.html",
+			expectedContent:        nil,
+			expectedErrStrDownload: "format must be specified",
+		},
+		{
+			// Multi dir with index, no default, bad default path.
+			// Error on download - format required.
+			name:                   "multi_noidx_nodef_bad",
+			files:                  multiNoIndex,
+			noDefaultPath:          true,
+			defaultPath:            "bad.html",
+			expectedContent:        nil,
+			expectedErrStrDownload: "format must be specified",
+		},
+		{
+			// Multi dir with no index, default, empty default path.
+			// Error on download - format required.
+			name:                   "multi_noidx_def_empty",
+			files:                  multiNoIndex,
+			noDefaultPath:          false,
+			defaultPath:            "",
+			expectedContent:        fc1,
+			expectedErrStrDownload: "format must be specified",
+		},
+		{
+			// Multi dir with no index, default, correct default path.
+			// Should serve the content.
+			name:                   "multi_noidx_def_correct",
+			files:                  multiNoIndex,
+			noDefaultPath:          false,
+			defaultPath:            "hello.html",
+			expectedContent:        fc1,
+			expectedErrStrDownload: "",
+		},
+		{
+			// Multi dir with no index, default, bad default path.
+			// Error on download - format required.
+			name:                 "multi_noidx_def_bad",
+			files:                multiNoIndex,
+			noDefaultPath:        false,
+			defaultPath:          "bad.html",
+			expectedContent:      nil,
+			expectedErrStrUpload: "invalid default path provided",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(tt.name, tt.files, tt.defaultPath, tt.noDefaultPath, false)
+			if err == nil && tt.expectedErrStrUpload != "" {
+				t.Fatalf("Expected error '%s', got <nil>", tt.expectedErrStrUpload)
+			}
+			if err != nil && (tt.expectedErrStrUpload == "" || !strings.Contains(err.Error(), tt.expectedErrStrUpload)) {
+				t.Fatalf("Expected error '%s', got '%s'", tt.expectedErrStrUpload, err.Error())
+			}
+			if tt.expectedErrStrUpload != "" {
+				return
+			}
+			content, _, err := r.SkynetSkylinkGet(skylink)
+			if err == nil && tt.expectedErrStrDownload != "" {
+				t.Fatalf("Expected error '%s', got <nil>", tt.expectedErrStrDownload)
+			}
+			if err != nil && (tt.expectedErrStrDownload == "" || !strings.Contains(err.Error(), tt.expectedErrStrDownload)) {
+				t.Fatalf("Expected error '%s', got '%s'", tt.expectedErrStrDownload, err.Error())
+			}
+			if tt.expectedErrStrDownload == "" && !bytes.Equal(content, tt.expectedContent) {
+				t.Logf(err.Error())
+				t.Fatalf("Content mismatch! Expected %d bytes, got %d bytes.", len(tt.expectedContent), len(content))
+			}
+		})
 	}
 }
 

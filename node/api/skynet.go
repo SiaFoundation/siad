@@ -49,6 +49,9 @@ var (
 	// ErrInvalidDefaultPath is returned when the specified default path is not
 	// valid, e.g. the file it points to does not exist.
 	ErrInvalidDefaultPath = errors.New("invalid default path provided")
+	// ErrInvalidNoDefaultPath is returned when the nodefaultpath parameter is
+	// used incorrectly.
+	ErrInvalidNoDefaultPath = errors.New("invalid use of nodefaultpath")
 )
 
 type (
@@ -1206,7 +1209,10 @@ func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaul
 	noDefPathStr := queryForm.Get(modules.SkyfileNoDefaultPathParamName)
 	noDefPath, err := strconv.ParseBool(noDefPathStr)
 	if err != nil {
-		return "", errors.AddContext(ErrInvalidDefaultPath, fmt.Sprintf("invalid nodefaultpath value: %s", noDefPathStr))
+		return "", errors.AddContext(ErrInvalidNoDefaultPath, fmt.Sprintf("invalid nodefaultpath value: %s", noDefPathStr))
+	}
+	if noDefPath && len(subfiles) == 1 {
+		return "", errors.AddContext(ErrInvalidNoDefaultPath, "nodefaultpath cannot be used on single files uploads")
 	}
 	if noDefPath {
 		// The user specifically disabled the default path for this skydirectory.
