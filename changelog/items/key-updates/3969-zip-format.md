@@ -1,0 +1,1 @@
+- Add `zip` download format and set it as default format.
