@@ -1203,21 +1203,20 @@ func useDefaultPath(queryForm url.Values, metadata modules.SkyfileMetadata) (boo
 // defaultPath extracts the defaultPath from the request or returns a default.
 // It will never return a directory because `subfiles` contains only files.
 func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaultPath string, err error) {
-	// Check for explicitly specified empty default path, meaning that user
-	// doesn't want redirects for this skydirectory.
-	queryFormMap := map[string][]string(queryForm)
-	defaultPathArr, exists := queryFormMap[modules.SkyfileDefaultPathParamName]
-	if exists && len(defaultPathArr) > 0 && defaultPathArr[0] == "" {
-		// The user specifically disabled the default path for this skydirectory
-		// by specifying an empty string.
+	noDefPathStr := queryForm.Get(modules.SkyfileNoDefaultPathParamName)
+	noDefPath, err := strconv.ParseBool(noDefPathStr)
+	if err != nil {
+		return "", errors.AddContext(ErrInvalidDefaultPath, fmt.Sprintf("invalid nodefaultpath value: %s", noDefPathStr))
+	}
+	if noDefPath {
+		// The user specifically disabled the default path for this skydirectory.
 		return "", nil
 	}
-
 	defaultPath = queryForm.Get(modules.SkyfileDefaultPathParamName)
 	// ensure the defaultPath always has a leading slash
 	defer func() {
-		if defaultPath != "" && !strings.HasPrefix(defaultPath, "/") {
-			defaultPath = "/" + defaultPath
+		if defaultPath != "" {
+			defaultPath = modules.EnsurePrefix(defaultPath, "/")
 		}
 	}()
 
@@ -1239,7 +1238,7 @@ func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaul
 	}
 	// Check if the defaultPath exists. Omit the leading slash because
 	// the filenames in `subfiles` won't have it.
-	if _, exists = subfiles[strings.TrimPrefix(defaultPath, "/")]; !exists {
+	if _, exists := subfiles[strings.TrimPrefix(defaultPath, "/")]; !exists {
 		return "", errors.AddContext(ErrInvalidDefaultPath, fmt.Sprintf("no such path: %s", defaultPath))
 	}
 	return defaultPath, nil

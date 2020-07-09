@@ -15,7 +15,8 @@ import (
 const (
 	// SkyfileDefaultPathParamName specifies the name of the form parameter that holds
 	// the default path.
-	SkyfileDefaultPathParamName = "defaultpath"
+	SkyfileDefaultPathParamName   = "defaultpath"
+	SkyfileNoDefaultPathParamName = "nodefaultpath"
 )
 
 // SkyfileMetadata is all of the metadata that gets placed into the first 4096
@@ -42,7 +43,7 @@ type SkyfileSubfiles map[string]SkyfileSubfileMetadata
 // will start at offset 0, relative to the path.
 func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, uint64) {
 	// All paths must be absolute.
-	path = ensurePrefix(path, "/")
+	path = EnsurePrefix(path, "/")
 	metadata := SkyfileMetadata{
 		Filename:    path,
 		Subfiles:    make(SkyfileSubfiles),
@@ -50,7 +51,7 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	}
 	// Try to find an exact match
 	for _, sf := range sm.Subfiles {
-		filename := ensurePrefix(sf.Filename, "/")
+		filename := EnsurePrefix(sf.Filename, "/")
 		if filename == path {
 			metadata.Subfiles[sf.Filename] = sf
 			break
@@ -61,9 +62,9 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	var dir bool
 	if len(metadata.Subfiles) == 0 {
 		dir = true
-		path = ensureSuffix(path, "/")
+		path = EnsureSuffix(path, "/")
 		for _, sf := range sm.Subfiles {
-			filename := ensurePrefix(sf.Filename, "/")
+			filename := EnsurePrefix(sf.Filename, "/")
 			if strings.HasPrefix(filename, path) {
 				metadata.Subfiles[sf.Filename] = sf
 			}
@@ -257,18 +258,18 @@ type SkynetPortal struct {
 	Public  bool       `json:"public"`  // indicates whether the portal can be accessed publicly or not
 }
 
-// ensurePrefix checks if `str` starts with `prefix` and adds it if that's not
+// EnsurePrefix checks if `str` starts with `prefix` and adds it if that's not
 // the case.
-func ensurePrefix(str, prefix string) string {
+func EnsurePrefix(str, prefix string) string {
 	if strings.HasPrefix(str, prefix) {
 		return str
 	}
 	return fmt.Sprintf("%s%s", prefix, str)
 }
 
-// ensureSuffix checks if `str` ends with `suffix` and adds it if that's not
+// EnsureSuffix checks if `str` ends with `suffix` and adds it if that's not
 // the case.
-func ensureSuffix(str, suffix string) string {
+func EnsureSuffix(str, suffix string) string {
 	if strings.HasSuffix(str, suffix) {
 		return str
 	}
