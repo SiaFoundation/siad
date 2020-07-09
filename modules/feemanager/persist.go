@@ -215,16 +215,8 @@ func (fm *FeeManager) callInitPersist() error {
 
 	// Clear the partial transaction map from the persistSubsystem to free any
 	// remaining memory
-	ps.callClearPartialTxnMap()
+	ps.managedClearPartialTxnMap()
 	return nil
-}
-
-// callClearPartialTxnMap will clear the partial transaction map
-func (ps *persistSubsystem) callClearPartialTxnMap() {
-	if len(ps.partialTxns) != 0 {
-		build.Critical("partial transaction map not empty after loading persistence")
-	}
-	ps.partialTxns = nil
 }
 
 // callPersistFeeCancellation will write a fee cancellation to the persist file.
@@ -324,6 +316,16 @@ func (ps *persistSubsystem) managedAppendEntry(entry [persistEntrySize]byte) err
 	// Ensure that the new update is synced and the header of the persist file
 	// gets updated accordingly.
 	return ps.staticSyncCoordinator.managedSyncPersist()
+}
+
+// managedClearPartialTxnMap will clear the partial transaction map
+func (ps *persistSubsystem) managedClearPartialTxnMap() {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	if len(ps.partialTxns) != 0 {
+		build.Critical("partial transaction map not empty after loading persistence")
+	}
+	ps.partialTxns = nil
 }
 
 // newPersist is called if there is no existing persist file.

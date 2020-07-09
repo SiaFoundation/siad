@@ -386,7 +386,6 @@ func (fm *FeeManager) applyEntryTransaction(payload [persistEntryPayloadSize]byt
 	if err != nil {
 		return errors.AddContext(err, "unable to build partial transaction")
 	}
-
 	if !complete {
 		return nil
 	}
