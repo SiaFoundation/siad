@@ -86,14 +86,19 @@ func checkApplyAddEntry(fm *FeeManager, fee modules.AppFee) error {
 	pe := createAddFeeEntry(fee)
 
 	// Call applyEntry
+	fm.mu.Lock()
 	err := fm.applyEntry(pe[:])
+	fm.mu.Unlock()
 	if err != nil {
 		return err
 	}
 
 	// Should see the one entry
-	if len(fm.fees) != 1 {
-		return fmt.Errorf("Expected 1 fee in FeeManager, found %v", len(fm.fees))
+	fm.mu.Lock()
+	numFess := len(fm.fees)
+	fm.mu.Unlock()
+	if numFess != 1 {
+		return fmt.Errorf("Expected 1 fee in FeeManager, found %v", numFess)
 	}
 	return nil
 }
@@ -105,14 +110,19 @@ func checkApplyCancelEntry(fm *FeeManager, feeUID modules.FeeUID) error {
 	pe := createCancelFeeEntry(feeUID)
 
 	// Call applyEntry
+	fm.mu.Lock()
 	err := fm.applyEntry(pe[:])
+	fm.mu.Unlock()
 	if err != nil {
 		return err
 	}
 
 	// Should see no entries
-	if len(fm.fees) != 0 {
-		return fmt.Errorf("Expected 0 fees in FeeManager, found %v", len(fm.fees))
+	fm.mu.Lock()
+	numFess := len(fm.fees)
+	fm.mu.Unlock()
+	if numFess != 0 {
+		return fmt.Errorf("Expected 0 fees in FeeManager, found %v", numFess)
 	}
 	return nil
 }
@@ -124,17 +134,24 @@ func checkApplyUpdateEntry(fm *FeeManager, feeUID modules.FeeUID) error {
 	// Set the payoutheight and reapply
 	payoutHeight := types.BlockHeight(fastrand.Uint64n(100))
 	pe := createUpdateFeeEntry(feeUID, payoutHeight)
+	fm.mu.Lock()
 	err := fm.applyEntry(pe[:])
+	fm.mu.Unlock()
 	if err != nil {
 		return err
 	}
 
 	// There should still just be the one entry and the payout height should be
 	// updated
-	if len(fm.fees) != 1 {
-		return fmt.Errorf("Expected 1 fee in FeeManager, found %v", len(fm.fees))
+	fm.mu.Lock()
+	numFess := len(fm.fees)
+	fm.mu.Unlock()
+	if numFess != 1 {
+		return fmt.Errorf("Expected 1 fee in FeeManager, found %v", numFess)
 	}
+	fm.mu.Lock()
 	mapFee, ok := fm.fees[feeUID]
+	fm.mu.Unlock()
 	if !ok {
 		return errors.New("Fee not found in map")
 	}
@@ -251,13 +268,17 @@ func checkApplyTxnCreatedEntry(fm *FeeManager, feeUID modules.FeeUID, txnID type
 	pe := pes[0]
 
 	// Call applyEntry
+	fm.mu.Lock()
 	err := fm.applyEntry(pe[:])
+	fm.mu.Unlock()
 	if err != nil {
 		return err
 	}
 
 	// Fee in FeeManager map should show that the transaction was created
+	fm.mu.Lock()
 	mapFee, ok := fm.fees[feeUID]
+	fm.mu.Unlock()
 	if !ok {
 		return errors.New("Fee not found in map")
 	}
@@ -270,7 +291,9 @@ func checkApplyTxnCreatedEntry(fm *FeeManager, feeUID modules.FeeUID, txnID type
 	if len(w.txns) != 1 {
 		return fmt.Errorf("Expected %v entry in ID map but got %v", 1, len(w.txns))
 	}
+	w.mu.Lock()
 	tt, ok := w.txns[txnID]
+	w.mu.Unlock()
 	if !ok {
 		return errors.New("transaction not found in watchdog ID map")
 	}
@@ -293,7 +316,9 @@ func checkApplyTransactionEntry(fm *FeeManager, txn types.Transaction) error {
 
 	// Call applyEntry
 	for _, pe := range pes {
+		fm.mu.Lock()
 		err := fm.applyEntry(pe[:])
+		fm.mu.Unlock()
 		if err != nil {
 			return err
 		}
@@ -301,11 +326,16 @@ func checkApplyTransactionEntry(fm *FeeManager, txn types.Transaction) error {
 
 	// Transaction should be in the watchdog
 	w := fm.staticCommon.staticWatchdog
+	w.mu.Lock()
 	numTxns := len(w.txns)
+	w.mu.Unlock()
 	if numTxns != 1 {
 		return fmt.Errorf("Expected %v txns but got %v", 1, numTxns)
 	}
-	if _, ok := w.txns[txn.ID()]; !ok {
+	w.mu.Lock()
+	_, ok := w.txns[txn.ID()]
+	w.mu.Unlock()
+	if !ok {
 		return errors.New("transaction not found in watchdog")
 	}
 	return nil
@@ -324,14 +354,20 @@ func checkApplyTxnConfirmedEntry(fm *FeeManager, feeUIDs []modules.FeeUID, txnID
 
 	// Call applyEntry
 	for _, pe := range pes {
+		fm.mu.Lock()
 		err := fm.applyEntry(pe[:])
+		fm.mu.Unlock()
 		if err != nil {
 			return err
 		}
 	}
 
 	// Watchdog should have empty maps now
-	if len(w.txns) != 0 || len(w.feeUIDToTxnID) != 0 {
+	w.mu.Lock()
+	lenFess := len(w.feeUIDToTxnID)
+	numTxns := len(w.txns)
+	w.mu.Unlock()
+	if lenFess != 0 || numTxns != 0 {
 		return errors.New("watchdog still has transactions")
 	}
 	return nil
@@ -350,14 +386,20 @@ func checkApplyTxnDroppedEntry(fm *FeeManager, feeUIDs []modules.FeeUID, txnID t
 
 	// Call applyEntry
 	for _, pe := range pes {
+		fm.mu.Lock()
 		err := fm.applyEntry(pe[:])
+		fm.mu.Unlock()
 		if err != nil {
 			return errors.AddContext(err, "unable to apply entry")
 		}
 	}
 
 	// Watchdog should have empty maps now
-	if len(w.txns) != 0 || len(w.feeUIDToTxnID) != 0 {
+	w.mu.Lock()
+	lenFess := len(w.feeUIDToTxnID)
+	numTxns := len(w.txns)
+	w.mu.Unlock()
+	if lenFess != 0 || numTxns != 0 {
 		return errors.New("watchdog still has transactions")
 	}
 	return nil
