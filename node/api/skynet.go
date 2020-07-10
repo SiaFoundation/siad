@@ -374,10 +374,18 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	defer streamer.Close()
 
+	// Encode the metadata
+	encMetadata, err := json.Marshal(metadata)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+
 	// If requested, serve the content as a tar archive or compressed tar
 	// archive.
 	if format == modules.SkyfileFormatTar {
-		w.Header().Set("content-type", "application/x-tar")
+		w.Header().Set("Content-Type", "application/x-tar")
+		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 		err = serveTar(w, metadata, streamer)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
@@ -385,20 +393,14 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 	if format == modules.SkyfileFormatTarGz {
-		w.Header().Set("content-type", "application/x-gtar ")
+		w.Header().Set("Content-Type", "application/x-gtar ")
+		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 		gzw := gzip.NewWriter(w)
 		err = serveTar(gzw, metadata, streamer)
 		err = errors.Compose(err, gzw.Close())
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
 		}
-		return
-	}
-
-	// Encode the metadata
-	encMetadata, err := json.Marshal(metadata)
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
 		return
 	}
 
