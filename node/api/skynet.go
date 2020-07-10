@@ -260,18 +260,15 @@ func (api *API) skynetSkylinkData(skylink modules.Skylink, path string, format m
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, Error{err.Error()}, http.StatusBadRequest
 	}
+
 	var useFullMeta bool
-	if useDefPath && path == "/" {
+	if useDefPath && path == "/" && format == modules.SkyfileFormatNotSpecified {
 		// When serving data using the default path we still want to serve the
 		// full metadata of the skyfile, so clients will have a full view of it
 		// without making a second request just to figure out if there are more
 		// files in it.
 		useFullMeta = true
 		path = metadata.DefaultPath
-	}
-	// If a format ws specified we want to always return the full metadata.
-	if format != modules.SkyfileFormatNotSpecified {
-		useFullMeta = true
 	}
 
 	if path != "/" {
@@ -282,6 +279,7 @@ func (api *API) skynetSkylinkData(skylink modules.Skylink, path string, format m
 		if len(subMeta.Subfiles) == 0 {
 			return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound
 		}
+
 		if !useFullMeta {
 			metadata = subMeta
 		}
@@ -389,6 +387,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 		err = serveTar(w, metadata, streamer)
 		if err != nil {
+			fmt.Println("UHOH", err)
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
 		}
 		return

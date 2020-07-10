@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"io"
 	"io/ioutil"
 	"os"
@@ -62,6 +63,7 @@ func testDownloadSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 
 	// verify downloads
 	verifyDownloadRaw(t, r, skylink, data, sup.FileMetadata)
+	verifyDownloadDirectory(t, r, skylink, data, sup.FileMetadata)
 	verifyDownloadAsArchive(t, r, skylink, fileMap{"SingleFileRegular": data}, sup.FileMetadata)
 }
 
@@ -145,6 +147,7 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 
 	// verify downloads
 	verifyDownloadRaw(t, r, skylink, files[0].Data, expectedMetadata)
+	verifyDownloadDirectory(t, r, skylink, append(files[0].Data, files[1].Data...), expectedMetadata)
 	verifyDownloadAsArchive(t, r, skylink, fileMapFromFiles(files), expectedMetadata)
 
 	// upload the same files but with a different default path
@@ -294,6 +297,7 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 		},
 		DefaultPath: "/index.html",
 	}
+
 	verifyDownloadDirectory(t, r, skylink+"/assets/images", append(files[0].Data, files[1].Data...), expectedMetadata)
 	verifyDownloadAsArchive(t, r, skylink+"/assets/images",
 		fileMapFromFiles(files[:2]), expectedMetadata)
@@ -392,8 +396,6 @@ func verifyDownloadRaw(t *testing.T, r *siatest.TestNode, skylink string, expect
 		t.Log("expected:", expectedMetadata)
 		t.Log("actual  :", metadata)
 	}
-
-	verifyDownloadDirectory(t, r, skylink, expectedData, expectedMetadata)
 }
 
 // verifyDownloadRaw is a helper function that downloads the content for the
@@ -423,7 +425,6 @@ func verifyDownloadDirectory(t *testing.T, r *siatest.TestNode, skylink string, 
 // will download the file using all of the archive formats we support, verifying
 // the contents of the archive for every type.
 func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, expectedFiles fileMap, expectedMetadata modules.SkyfileMetadata) {
-	return
 	// tar
 	header, reader, err := r.SkynetSkylinkTarReaderGet(skylink)
 	if err != nil {
@@ -448,7 +449,17 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		t.Log(ct)
 		t.Error("Unexpected 'Content-Type' header")
 	}
-	md := header.Get("Skynet-File-Metadata")
+
+	var md modules.SkyfileMetadata
+	mdStr := header.Get("Skynet-File-Metadata")
+	if mdStr != "" {
+		err = json.Unmarshal([]byte(mdStr), &md)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+	}
+
 	if !reflect.DeepEqual(md, expectedMetadata) {
 		t.Error("Unexpected metadata")
 		t.Log("expected:", expectedMetadata)
@@ -482,7 +493,15 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		t.Log(ct)
 		t.Error("Unexpected 'Content-Type' header")
 	}
-	md = header.Get("Skynet-File-Metadata")
+
+	mdStr = header.Get("Skynet-File-Metadata")
+	if mdStr != "" {
+		err = json.Unmarshal([]byte(mdStr), &md)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+	}
 	if !reflect.DeepEqual(md, expectedMetadata) {
 		t.Error("Unexpected metadata")
 		t.Log("expected:", expectedMetadata)
