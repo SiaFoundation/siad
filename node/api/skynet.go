@@ -256,12 +256,12 @@ func (api *API) skynetSkylinkData(skylink modules.Skylink, path string, format m
 	}
 
 	// Get the default path limitations.
-	allowDefaultPath, err := useDefaultPath(queryForm, metadata)
+	useDefPath, err := useDefaultPath(queryForm, metadata)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, Error{err.Error()}, http.StatusBadRequest
 	}
 	var useFullMeta bool
-	if allowDefaultPath && path == "/" {
+	if useDefPath && path == "/" {
 		// When serving data using the default path we still want to serve the
 		// full metadata of the skyfile, so clients will have a full view of it
 		// without making a second request just to figure out if there are more
@@ -296,7 +296,7 @@ func (api *API) skynetSkylinkData(skylink modules.Skylink, path string, format m
 		formatRequired := len(metadata.Subfiles) != 0
 		// We need a format to be specified when accessing the `/` of skyfiles
 		// that either have more than one file or do not allow redirects.
-		formatRequired = formatRequired && (len(metadata.Subfiles) > 1 || !allowDefaultPath)
+		formatRequired = formatRequired && (len(metadata.Subfiles) > 1 || !useDefPath)
 		if formatRequired && format == "" {
 			return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest
 		}

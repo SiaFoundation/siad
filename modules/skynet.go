@@ -238,7 +238,9 @@ type SkyfileMultipartUploadParameters struct {
 	DefaultPath string `json:"defaultpath,omitempty"`
 	// NoDefaultPath is a flag that indicates that the DefaultPath should not be
 	// used. If the skyfile contains multiple files and is accessed at its root
-	// without a format an error will be returned.
+	// without a format an error will be returned. We need it here in order to
+	// ensure legacy skylinks that don't have `DefaultPath` will keep working
+	// the way they did when they were created.
 	NoDefaultPath bool `json:"nodefaultpath,omitempty"`
 
 	// ContentType indicates the media type of the data supplied by the reader.
