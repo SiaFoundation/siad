@@ -269,6 +269,10 @@ func (api *API) skynetSkylinkData(skylink modules.Skylink, path string, format m
 		useFullMeta = true
 		path = metadata.DefaultPath
 	}
+	// If a format ws specified we want to always return the full metadata.
+	if format != modules.SkyfileFormatNotSpecified {
+		useFullMeta = true
+	}
 
 	if path != "/" {
 		// If path is different from the root, limit the streamer and return the
@@ -297,7 +301,7 @@ func (api *API) skynetSkylinkData(skylink modules.Skylink, path string, format m
 		// We need a format to be specified when accessing the `/` of skyfiles
 		// that either have more than one file or do not allow redirects.
 		formatRequired = formatRequired && (len(metadata.Subfiles) > 1 || !useDefPath)
-		if formatRequired && format == "" {
+		if formatRequired && format == modules.SkyfileFormatNotSpecified {
 			return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest
 		}
 	}
