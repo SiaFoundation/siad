@@ -44,6 +44,13 @@ func (c *Client) SkynetSkylinkGetWithTimeout(skylink string, timeout int) ([]byt
 	return c.skynetSkylinkGetWithParameters(skylink, params)
 }
 
+// SkynetSkylinkGetWithFormat uses the /skynet/skylink endpoint to download a
+// skylink file, specifying the given timeout.
+func (c *Client) SkynetSkylinkGetWithFormat(skylink string, format string) ([]byte, modules.SkyfileMetadata, error) {
+	params := map[string]string{"format": format}
+	return c.skynetSkylinkGetWithParameters(skylink, params)
+}
+
 // SkynetSkylinkGetWithRedirect uses the /skynet/skylink endpoint to download a
 // skylink file, specifying whether redirecting is allowed or not.
 func (c *Client) SkynetSkylinkGetWithRedirect(skylink string, allowRedirect bool) ([]byte, modules.SkyfileMetadata, error) {
