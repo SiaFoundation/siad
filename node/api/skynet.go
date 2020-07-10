@@ -256,13 +256,13 @@ func (api *API) skynetSkylinkData(skylink modules.Skylink, path string, format m
 	}
 
 	// Get the default path limitations.
-	useDefPath, err := useDefaultPath(queryForm, metadata)
+	useDefPath, err := useDefaultPath(queryForm, format, path, metadata)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, Error{err.Error()}, http.StatusBadRequest
 	}
 
 	var useFullMeta bool
-	if useDefPath && path == "/" && format == modules.SkyfileFormatNotSpecified {
+	if useDefPath {
 		// When serving data using the default path we still want to serve the
 		// full metadata of the skyfile, so clients will have a full view of it
 		// without making a second request just to figure out if there are more
@@ -387,7 +387,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 		err = serveTar(w, metadata, streamer)
 		if err != nil {
-			fmt.Println("UHOH", err)
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
 		}
 		return
@@ -1187,7 +1186,15 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 
 // useDefaultPath decides whether a request to the root of this skyfile will
 // result in its metadata.DefaultPath being used or not.
-func useDefaultPath(queryForm url.Values, metadata modules.SkyfileMetadata) (bool, error) {
+func useDefaultPath(queryForm url.Values, format modules.SkyfileFormat, path string, metadata modules.SkyfileMetadata) (bool, error) {
+	// Do not use default path when the user specified a path.
+	if path != "/" {
+		return false, nil
+	}
+	// Do not use default path when format is specified.
+	if format != modules.SkyfileFormatNotSpecified {
+		return false, nil
+	}
 	// Do not use default path for skyfiles which are not directories.
 	if metadata.Subfiles == nil || len(metadata.Subfiles) == 0 {
 		return false, nil

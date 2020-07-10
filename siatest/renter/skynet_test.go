@@ -53,31 +53,31 @@ func TestSkynet(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
-		// {Name: "TestSkynetBasic", Test: testSkynetBasic},
-		// {Name: "TestConvertSiaFile", Test: testConvertSiaFile},
-		// {Name: "TestSkynetSkykey", Test: testSkynetSkykey},
-		// {Name: "TestSkynetLargeMetadata", Test: testSkynetLargeMetadata},
-		// {Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
-		// {Name: "TestSkynetNoFilename", Test: testSkynetNoFilename},
+		{Name: "TestSkynetBasic", Test: testSkynetBasic},
+		{Name: "TestConvertSiaFile", Test: testConvertSiaFile},
+		{Name: "TestSkynetSkykey", Test: testSkynetSkykey},
+		{Name: "TestSkynetLargeMetadata", Test: testSkynetLargeMetadata},
+		{Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
+		{Name: "TestSkynetNoFilename", Test: testSkynetNoFilename},
 		{Name: "TestSkynetSubDirDownload", Test: testSkynetSubDirDownload},
-		// {Name: "TestSkynetDisableForce", Test: testSkynetDisableForce},
-		// {Name: "TestSkynetBlacklist", Test: testSkynetBlacklist},
-		// {Name: "TestSkynetPortals", Test: testSkynetPortals},
-		// {Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
-		// {Name: "TestSkynetStats", Test: testSkynetStats},
-		// {Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
-		// {Name: "TestSkynetDryRunUpload", Test: testSkynetDryRunUpload},
-		// {Name: "TestRegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
-		// {Name: "TestRenameSiaPath", Test: testRenameSiaPath},
-		// {Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
-		// {Name: "TestSkynetEncryptionPublicID", Test: testSkynetEncryptionWithType(skykey.TypePublicID)},
-		// {Name: "TestSkynetEncryptionPrivateID", Test: testSkynetEncryptionWithType(skykey.TypePrivateID)},
-		// {Name: "TestSkynetEncryptionLargeFilePublicID", Test: testSkynetEncryptionLargeFileWithType(skykey.TypePublicID)},
-		// {Name: "TestSkynetEncryptionLargeFilePrivateID", Test: testSkynetEncryptionLargeFileWithType(skykey.TypePrivateID)},
-		// {Name: "TestSkynetDefaultPath", Test: testSkynetDefaultPath},
-		// {Name: "TestSkynetDefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
-		// {Name: "TestSkynetSingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
-		// {Name: "TestArchiveMetadata", Test: testArchiveMetadata},
+		{Name: "TestSkynetDisableForce", Test: testSkynetDisableForce},
+		{Name: "TestSkynetBlacklist", Test: testSkynetBlacklist},
+		{Name: "TestSkynetPortals", Test: testSkynetPortals},
+		{Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
+		{Name: "TestSkynetStats", Test: testSkynetStats},
+		{Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
+		{Name: "TestSkynetDryRunUpload", Test: testSkynetDryRunUpload},
+		{Name: "TestRegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
+		{Name: "TestRenameSiaPath", Test: testRenameSiaPath},
+		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
+		{Name: "TestSkynetEncryptionPublicID", Test: testSkynetEncryptionWithType(skykey.TypePublicID)},
+		{Name: "TestSkynetEncryptionPrivateID", Test: testSkynetEncryptionWithType(skykey.TypePrivateID)},
+		{Name: "TestSkynetEncryptionLargeFilePublicID", Test: testSkynetEncryptionLargeFileWithType(skykey.TypePublicID)},
+		{Name: "TestSkynetEncryptionLargeFilePrivateID", Test: testSkynetEncryptionLargeFileWithType(skykey.TypePrivateID)},
+		{Name: "TestSkynetDefaultPath", Test: testSkynetDefaultPath},
+		{Name: "TestSkynetDefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
+		{Name: "TestSkynetSingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
+		{Name: "TestArchiveMetadata", Test: testArchiveMetadata},
 	}
 
 	// Run tests
@@ -2725,18 +2725,14 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 
 	// TEST: Does not contain "index.html".
 	// Contains a single file and specifies an empty default path
-	// It should return an error on download.
+	// It should return an error on upload.
 	filename = "index.js_empty"
 	files = []siatest.TestFile{
 		{Name: "index.js", Data: []byte(fc1)},
 	}
 	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, emptyPath, true, false)
-	if err != nil {
-		t.Fatal("Failed to upload multipart file.", err)
-	}
-	_, _, err = r.SkynetSkylinkGet(skylink)
-	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
-		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
+	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidNoDefaultPath.Error()) {
+		t.Fatalf("Expected error '%v', got '%+v'", api.ErrInvalidNoDefaultPath, err)
 	}
 
 	// TEST: Does not contain "index.html".
@@ -3013,7 +3009,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetSingleFileNoSubfiles(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	skylink, sup, _, err := r.UploadNewSkyfileBlocking("file.name", modules.SectorSize, false)
+	skylink, sup, _, err := r.UploadNewSkyfileBlocking("testSkynetSingleFileNoSubfiles", modules.SectorSize, false)
 	if err != nil {
 		t.Fatal("Failed to upload a single file.", err)
 	}
@@ -3034,7 +3030,7 @@ func testSkynetSingleFileNoSubfiles(t *testing.T, tg *siatest.TestGroup) {
 func testArchiveMetadata(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	skylink, sup, _, err := r.UploadNewSkyfileBlocking("file.name", modules.SectorSize, false)
+	skylink, sup, _, err := r.UploadNewSkyfileBlocking("testArchiveMetadata", modules.SectorSize, false)
 	if err != nil {
 		t.Fatal("Failed to upload a single file.", err)
 	}

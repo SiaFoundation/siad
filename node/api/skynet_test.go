@@ -104,7 +104,7 @@ func TestRedirectParameter(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res, err := useDefaultPath(tt.queryForm, tt.metadata)
+			res, err := useDefaultPath(tt.queryForm, modules.SkyfileFormatNotSpecified, "/", tt.metadata)
 			if (tt.expectedErrMsg == "" && err != nil) ||
 				(tt.expectedErrMsg != "" && err == nil) ||
 				(tt.expectedErrMsg != "" && err != nil && !strings.Contains(err.Error(), tt.expectedErrMsg)) {
