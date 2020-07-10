@@ -1004,7 +1004,7 @@ func testSkynetNoFilename(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testSkynetSubDirDownload verifies downloading data in different formats
+// testSkynetDownloadFormats verifies downloading data in different formats
 func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
