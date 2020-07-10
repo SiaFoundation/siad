@@ -1207,9 +1207,12 @@ func useDefaultPath(queryForm url.Values, metadata modules.SkyfileMetadata) (boo
 // It will never return a directory because `subfiles` contains only files.
 func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaultPath string, err error) {
 	noDefPathStr := queryForm.Get(modules.SkyfileNoDefaultPathParamName)
-	noDefPath, err := strconv.ParseBool(noDefPathStr)
-	if err != nil {
-		return "", errors.AddContext(ErrInvalidNoDefaultPath, fmt.Sprintf("invalid nodefaultpath value: %s", noDefPathStr))
+	var noDefPath bool
+	if len(noDefPathStr) > 0 {
+		noDefPath, err = strconv.ParseBool(noDefPathStr)
+		if err != nil {
+			return "", errors.AddContext(ErrInvalidNoDefaultPath, fmt.Sprintf("invalid nodefaultpath value: %s", noDefPathStr))
+		}
 	}
 	if noDefPath && len(subfiles) <= 1 {
 		return "", errors.AddContext(ErrInvalidNoDefaultPath, "nodefaultpath cannot be used on single files uploads")
@@ -1234,8 +1237,8 @@ func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaul
 		}
 		// For single file directories we want to redirect to the only file.
 		if len(subfiles) == 1 {
-			for _, f := range subfiles {
-				return f.Filename, nil
+			for filename := range subfiles {
+				return filename, nil
 			}
 		}
 		// No `index.html` in a multi-file directory, so we can't have a
