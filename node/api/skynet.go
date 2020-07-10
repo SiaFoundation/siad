@@ -302,6 +302,7 @@ func (api *API) skynetSkylinkData(skylink modules.Skylink, path string, format m
 		// that either have more than one file or do not allow redirects.
 		formatRequired = formatRequired && (len(metadata.Subfiles) > 1 || !useDefPath)
 		if formatRequired && format == modules.SkyfileFormatNotSpecified {
+			fmt.Println(metadata)
 			return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest
 		}
 	}
@@ -1189,7 +1190,7 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 // result in its metadata.DefaultPath being used or not.
 func useDefaultPath(queryForm url.Values, metadata modules.SkyfileMetadata) (bool, error) {
 	// Do not use default path for skyfiles which are not directories.
-	if metadata.Subfiles == nil || len(metadata.Subfiles) <= 1 {
+	if metadata.Subfiles == nil || len(metadata.Subfiles) == 0 {
 		return false, nil
 	}
 	// Do not allow redirect if explicitly forbidden in the metadata.

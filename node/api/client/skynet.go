@@ -144,22 +144,22 @@ func (c *Client) SkynetSkylinkConcatReaderGet(skylink string) (io.ReadCloser, er
 
 // SkynetSkylinkTarReaderGet uses the /skynet/skylink endpoint to fetch a
 // reader of the file data with the 'tar' format specified.
-func (c *Client) SkynetSkylinkTarReaderGet(skylink string) (io.ReadCloser, error) {
+func (c *Client) SkynetSkylinkTarReaderGet(skylink string) (http.Header, io.ReadCloser, error) {
 	values := url.Values{}
 	values.Set("format", string(modules.SkyfileFormatTar))
 	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
-	_, reader, err := c.getReaderResponse(getQuery)
-	return reader, errors.AddContext(err, "unable to fetch skylink data")
+	header, reader, err := c.getReaderResponse(getQuery)
+	return header, reader, errors.AddContext(err, "unable to fetch skylink data")
 }
 
 // SkynetSkylinkTarGzReaderGet uses the /skynet/skylink endpoint to fetch a
 // reader of the file data with the 'targz' format specified.
-func (c *Client) SkynetSkylinkTarGzReaderGet(skylink string) (io.ReadCloser, error) {
+func (c *Client) SkynetSkylinkTarGzReaderGet(skylink string) (http.Header, io.ReadCloser, error) {
 	values := url.Values{}
 	values.Set("format", string(modules.SkyfileFormatTarGz))
 	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
-	_, reader, err := c.getReaderResponse(getQuery)
-	return reader, errors.AddContext(err, "unable to fetch skylink data")
+	header, reader, err := c.getReaderResponse(getQuery)
+	return header, reader, errors.AddContext(err, "unable to fetch skylink data")
 }
 
 // SkynetSkylinkPinPost uses the /skynet/pin endpoint to pin the file at the
