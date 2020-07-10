@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 // RPCPriceTable contains the cost of executing a RPC on a host. Each host can
@@ -38,6 +38,11 @@ type RPCPriceTable struct {
 	// host.
 	FundAccountCost types.Currency `json:"fundaccountcost"`
 
+	// LatestRevisionCost refers to the cost of asking the host for the latest
+	// revision of a contract.
+	// TODO: should this be free?
+	LatestRevisionCost types.Currency `json:"latestrevisioncost"`
+
 	// MDM related costs
 	//
 	// InitBaseCost is the amount of cost that is incurred when an MDM program
@@ -49,9 +54,6 @@ type RPCPriceTable struct {
 	// MemoryTimeCost is the amount of cost per byte per time that is incurred
 	// by the memory consumption of the program.
 	MemoryTimeCost types.Currency `json:"memorytimecost"`
-
-	// StoreLengthCost is the cost per byte per block for storage.
-	StoreLengthCost types.Currency `json:"storelengthcost"`
 
 	// CollateralCost is the amount of money per byte the host is promising to
 	// lock away as collateral when adding new data to a contract.
@@ -72,10 +74,17 @@ type RPCPriceTable struct {
 	ReadBaseCost   types.Currency `json:"readbasecost"`
 	ReadLengthCost types.Currency `json:"readlengthcost"`
 
+	// Cost values specific to the Revision command.
+	RevisionBaseCost types.Currency `json:"revisionbasecost"`
+
 	// Cost values specific to the Write instruction.
-	WriteBaseCost   types.Currency `json:"writebasecost"`
-	WriteLengthCost types.Currency `json:"writelengthcost"`
-	WriteStoreCost  types.Currency `json:"writestorecost"`
+	WriteBaseCost   types.Currency `json:"writebasecost"`   // per write
+	WriteLengthCost types.Currency `json:"writelengthcost"` // per byte written
+	WriteStoreCost  types.Currency `json:"writestorecost"`  // per byte / block of additional storage
+
+	// TxnFee estimations.
+	TxnFeeMinRecommended types.Currency `json:"txnfeeminrecommended"`
+	TxnFeeMaxRecommended types.Currency `json:"txnfeemaxrecommended"`
 }
 
 var (
@@ -90,6 +99,9 @@ var (
 
 	// RPCFundAccount specifier
 	RPCFundAccount = types.NewSpecifier("FundAccount")
+
+	// RPCLatestRevision specifier
+	RPCLatestRevision = types.NewSpecifier("LatestRevision")
 )
 
 type (
@@ -130,7 +142,8 @@ type (
 		ProgramDataLength uint64
 	}
 
-	// RPCExecuteProgramResponse todo missing docstring
+	// RPCExecuteProgramResponse is the response sent by the host for each
+	// executed MDMProgram instruction.
 	RPCExecuteProgramResponse struct {
 		AdditionalCollateral types.Currency
 		OutputLength         uint64
@@ -139,7 +152,34 @@ type (
 		Proof                []crypto.Hash
 		Error                error
 		TotalCost            types.Currency
-		PotentialRefund      types.Currency
+		StorageCost          types.Currency
+	}
+
+	// RPCExecuteProgramRevisionSigningRequest is the request sent by the renter
+	// for updating a contract when executing a write MDM program.
+	RPCExecuteProgramRevisionSigningRequest struct {
+		Signature            []byte
+		NewRevisionNumber    uint64
+		NewValidProofValues  []types.Currency
+		NewMissedProofValues []types.Currency
+	}
+
+	// RPCExecuteProgramRevisionSigningResponse is the response from the host,
+	// containing the host signature for the new revision.
+	RPCExecuteProgramRevisionSigningResponse struct {
+		Signature []byte
+	}
+
+	// RPCLatestRevisionRequest contains the id of the contract for which to
+	// retrieve the latest revision.
+	RPCLatestRevisionRequest struct {
+		FileContractID types.FileContractID
+	}
+
+	// RPCLatestRevisionResponse contains the latest file contract revision
+	// signed by both host and renter.
+	RPCLatestRevisionResponse struct {
+		Revision types.FileContractRevision
 	}
 
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table
@@ -174,7 +214,7 @@ func (epr RPCExecuteProgramResponse) MarshalSia(w io.Writer) error {
 	_ = ec.Encode(epr.Proof)
 	_ = ec.Encode(errStr)
 	_ = ec.Encode(epr.TotalCost)
-	_ = ec.Encode(epr.PotentialRefund)
+	_ = ec.Encode(epr.StorageCost)
 	return ec.Err()
 }
 
@@ -189,7 +229,7 @@ func (epr *RPCExecuteProgramResponse) UnmarshalSia(r io.Reader) error {
 	_ = dc.Decode(&epr.Proof)
 	_ = dc.Decode(&errStr)
 	_ = dc.Decode(&epr.TotalCost)
-	_ = dc.Decode(&epr.PotentialRefund)
+	_ = dc.Decode(&epr.StorageCost)
 	if errStr != "" {
 		epr.Error = errors.New(errStr)
 	}

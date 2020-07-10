@@ -70,7 +70,7 @@ func TestHostObligationAcceptingContracts(t *testing.T) {
 		return nil
 	})
 	if err != nil {
-		t.Fatal("allowance setting failed")
+		t.Fatalf("allowance setting failed: %v", err)
 	}
 
 	filesize := int(1024)
@@ -1116,7 +1116,7 @@ func TestRenterRenew(t *testing.T) {
 		t.Fatal("contract was not renewed:", rc.Contracts[0])
 	}
 	if rc.ExpiredContracts[0].Size != 0 {
-		t.Fatalf("contract size after renewal should be 0 but was %v", rc.Contracts[0].Size)
+		t.Fatalf("contract size after renewal should be 0 but was %v", rc.ExpiredContracts[0].Size)
 	}
 
 	// Try downloading the file.

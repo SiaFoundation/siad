@@ -79,6 +79,7 @@ func TestJobSerialExecution(t *testing.T) {
 	w := new(worker)
 	w.renter = new(Renter)
 	w.renter.deps = d
+	w.staticLoopState = new(workerLoopState)
 	d.staticWorker = w
 
 	// Initialize a worker cache & snapshot queue
@@ -187,6 +188,7 @@ func TestJobAsync(t *testing.T) {
 	}
 	w.renter = new(Renter)
 	w.renter.deps = d
+	w.staticLoopState = new(workerLoopState)
 	w.staticLoopState.atomicReadDataLimit = 10e6
 	w.staticLoopState.atomicWriteDataLimit = 10e6
 

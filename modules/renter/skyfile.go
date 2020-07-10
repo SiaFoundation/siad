@@ -42,6 +42,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -58,6 +59,9 @@ const (
 	// SkyfileVersion establishes the current version for creating skyfiles.
 	// The skyfile versions are different from the siafile versions.
 	SkyfileVersion = 1
+
+	// layoutKeyDataSize is the size of the key-data field in a skyfileLayout.
+	layoutKeyDataSize = 64
 )
 
 var (
@@ -89,7 +93,7 @@ type skyfileLayout struct {
 	fanoutDataPieces   uint8
 	fanoutParityPieces uint8
 	cipherType         crypto.CipherType
-	keyData            [64]byte // keyData is incompatible with ciphers that need keys larger than 64 bytes
+	keyData            [layoutKeyDataSize]byte // keyData is incompatible with ciphers that need keys larger than 64 bytes
 }
 
 // encode will return a []byte that has compactly encoded all of the layout
@@ -253,6 +257,27 @@ func (r *Renter) CreateSkylinkFromSiafile(lup modules.SkyfileUploadParameters, s
 // its own name, which allows the file to be renamed concurrently without
 // causing any race conditions.
 func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParameters, metadataBytes []byte, fileNode *filesystem.FileNode, filename string) (modules.Skylink, error) {
+	// First check if any of the skylinks associated with the siafile are
+	// blacklisted
+	skylinkstrs := fileNode.Metadata().Skylinks
+	for _, skylinkstr := range skylinkstrs {
+		var skylink modules.Skylink
+		err := skylink.LoadString(skylinkstr)
+		if err != nil {
+			// If there is an error just continue as we shouldn't prevent the
+			// conversion due to bad old skylinks
+			//
+			// Log the error for debugging purposes
+			r.log.Printf("WARN: previous skylink for siafile %v could not be loaded from string; potentially corrupt skylink: %v", fileNode.SiaFilePath(), skylinkstr)
+			continue
+		}
+		// Check if skylink is blacklisted
+		if r.staticSkynetBlacklist.IsBlacklisted(skylink) {
+			// Skylink is blacklisted, return error and try and delete file
+			return modules.Skylink{}, errors.Compose(ErrSkylinkBlacklisted, r.DeleteFile(lup.SiaPath))
+		}
+	}
+
 	// Check that the encryption key and erasure code is compatible with the
 	// skyfile format. This is intentionally done before any heavy computation
 	// to catch early errors.
@@ -331,7 +356,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 		return skylink, nil
 	}
 
-	// Check if skylink is blacklisted
+	// Check if the new skylink is blacklisted
 	if r.staticSkynetBlacklist.IsBlacklisted(skylink) {
 		// Skylink is blacklisted, return error and try and delete file
 		return modules.Skylink{}, errors.Compose(ErrSkylinkBlacklisted, r.DeleteFile(lup.SiaPath))
@@ -731,8 +756,9 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
 	// This will fail if we don't have the decryption key.
+	var fileSpecificSkykey skykey.Skykey
 	if isEncryptedBaseSector(baseSector) {
-		err = r.decryptBaseSector(baseSector)
+		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
 		if err != nil {
 			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "Unable to decrypt skyfile base sector")
 		}
@@ -752,7 +778,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 	}
 
 	// There is a fanout, create a fanout streamer and return that.
-	fs, err := r.newFanoutStreamer(link, layout, fanoutBytes, timeout)
+	fs, err := r.newFanoutStreamer(link, layout, fanoutBytes, timeout, fileSpecificSkykey)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
 	}
@@ -780,9 +806,10 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	}
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
+	var fileSpecificSkykey skykey.Skykey
 	encrypted := isEncryptedBaseSector(baseSector)
 	if encrypted {
-		err = r.decryptBaseSector(baseSector)
+		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
 		if err != nil {
 			return errors.AddContext(err, "Unable to decrypt skyfile base sector")
 		}
@@ -804,10 +831,6 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 
 	// Re-encrypt the baseSector for upload and add the fanout key to the fup.
 	if encrypted {
-		fileSpecificSkykey, err := r.deriveFileSpecificKey(&layout)
-		if err != nil {
-			return errors.AddContext(err, "Unable to derive file-specific Skykey")
-		}
 		err = encryptBaseSectorWithSkykey(baseSector, layout, fileSpecificSkykey)
 		if err != nil {
 			return errors.AddContext(err, "Error re-encrypting base sector")
@@ -853,7 +876,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	}
 
 	// Create the fanout streamer that will download the file.
-	streamer, err := r.newFanoutStreamer(skylink, layout, fanoutBytes, timeout)
+	streamer, err := r.newFanoutStreamer(skylink, layout, fanoutBytes, timeout, fileSpecificSkykey)
 	if err != nil {
 		return errors.AddContext(err, "Failed to create fanout streamer for large skyfile pin")
 	}

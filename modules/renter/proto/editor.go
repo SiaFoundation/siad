@@ -10,9 +10,9 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 // cachedMerkleRoot calculates the root of a set of existing Merkle roots.
@@ -205,15 +205,14 @@ func (cs *ContractSet) NewEditor(host modules.HostDBEntry, id types.FileContract
 		}
 	}()
 
-	conn, closeChan, err := initiateRevisionLoop(host, sc, modules.RPCReviseContract, cancel, cs.rl)
+	conn, closeChan, err := initiateRevisionLoop(host, sc, modules.RPCReviseContract, cancel, cs.staticRL)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to initiate revision loop")
 	}
 	// if we succeeded, we can safely discard the unappliedTxns
-	for _, txn := range sc.unappliedTxns {
-		txn.SignalUpdatesApplied()
+	if err := sc.clearUnappliedTxns(); err != nil {
+		return nil, errors.AddContext(err, "failed to clear unapplied txns")
 	}
-	sc.unappliedTxns = nil
 
 	// the host is now ready to accept revisions
 	return &Editor{
@@ -223,7 +222,7 @@ func (cs *ContractSet) NewEditor(host modules.HostDBEntry, id types.FileContract
 		contractSet: cs,
 		conn:        conn,
 		closeChan:   closeChan,
-		deps:        cs.deps,
+		deps:        cs.staticDeps,
 
 		height: currentHeight,
 	}, nil

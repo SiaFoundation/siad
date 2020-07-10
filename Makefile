@@ -22,6 +22,7 @@ cpkg = ./modules/renter
 # pkgs changes which packages the makefile calls operate on. run changes which
 # tests are run during testing.
 pkgs = \
+	./benchmark \
 	./build \
 	./cmd/sia-node-scanner \
 	./cmd/siac \
@@ -29,7 +30,6 @@ pkgs = \
 	./cmd/skynet-benchmark \
 	./compatibility \
 	./crypto \
-	./encoding \
 	./modules \
 	./modules/consensus \
 	./modules/explorer \
@@ -82,9 +82,11 @@ release-pkgs = ./cmd/siac ./cmd/siad
 
 # lockcheckpkgs are the packages that are checked for locking violations.
 lockcheckpkgs = \
+	./benchmark \
 	./cmd/siac \
 	./modules/host/mdm \
 	./modules/renter/hostdb \
+	./modules/renter/proto \
 
 # run determines which tests run when running any variation of 'make test'.
 run = .
@@ -103,10 +105,6 @@ dependencies:
 fmt:
 	gofmt -s -l -w $(pkgs)
 
-# tidy calls go mod tidy.
-tidy:
-	go mod tidy -v
-
 # vet calls go vet on all packages.
 # NOTE: go vet requires packages to be built in order to obtain type info.
 vet:
@@ -117,10 +115,9 @@ vet:
 markdown-spellcheck:
 	git ls-files "*.md" :\!:"vendor/**" | xargs codespell --check-filenames
 
-# lint runs go mod tidy, golangci-lint (which includes golint, a spellcheck of
-# the codebase, and other linters), the custom analyzers, and also a markdown
-# spellchecker.
-lint: tidy markdown-spellcheck lint-analyze
+# lint runs golangci-lint (which includes golint, a spellcheck of the codebase,
+# and other linters), the custom analyzers, and also a markdown spellchecker.
+lint: markdown-spellcheck lint-analyze
 	golangci-lint run -c .golangci.yml
 
 # lint-ci runs golint.
@@ -189,7 +186,7 @@ test-v:
 	GORACE='$(racevars)' go test -race -v -short -tags='debug testing netgo' -timeout=15s $(pkgs) -run=$(run) -count=$(count)
 test-long: clean fmt vet lint-ci
 	@mkdir -p cover
-	go test --coverprofile='./cover/cover.out' -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
+	go test -race --coverprofile='./cover/cover.out' -v -failfast -tags='testing debug netgo' -timeout=3600s $(pkgs) -run=$(run) -count=$(count)
 
 test-vlong: clean fmt vet lint-ci
 ifneq ("$(OS)","Windows_NT")

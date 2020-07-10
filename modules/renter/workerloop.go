@@ -12,8 +12,21 @@ import (
 type (
 	// workerLoopState tracks the state of the worker loop.
 	workerLoopState struct {
-		// Variable to ensure only one serial job is running at a time.
+		// Variables to count the number of jobs running. Note that these
+		// variables can only be incremented in the primary work loop of the
+		// worker, because there are blocking conditions within the primary work
+		// loop that need to know only one thread is running at a time, and
+		// safety is derived from knowing that no new threads are launching
+		// while we are waiting for all existing threads to finish.
+		//
+		// These values can be decremented in a goroutine.
+		atomicAsyncJobsRunning uint64
 		atomicSerialJobRunning uint64
+
+		// atomicSuspectRevisionMismatch indicates that the worker encountered
+		// some error where it believes that it needs to resync its contract
+		// with the host.
+		atomicSuspectRevisionMismatch uint64
 
 		// Variables to track the total amount of async data outstanding. This
 		// indicates the total amount of data that we expect to use from async
@@ -33,12 +46,6 @@ type (
 // for the worker.
 func (wls *workerLoopState) staticSerialJobRunning() bool {
 	return atomic.LoadUint64(&wls.atomicSerialJobRunning) == 1
-}
-
-// staticFinishSerialJob will update the worker loop state to indicate that a
-// serial job has completed.
-func (wls *workerLoopState) staticFinishSerialJob() {
-	atomic.StoreUint64(&wls.atomicSerialJobRunning, 0)
 }
 
 // externLaunchSerialJob will launch a serial job for the worker, ensuring that
@@ -133,16 +140,19 @@ func (w *worker) externTryLaunchSerialJob() {
 // to retrieve a job and launch it. The bandwidth consumption will be updated as
 // the job starts and finishes.
 func (w *worker) externLaunchAsyncJob(job workerJob) bool {
-	// Add the resource requirements to the worker loop state.
+	// Add the resource requirements to the worker loop state. Also add this
+	// thread to the number of jobs running.
 	uploadBandwidth, downloadBandwidth := job.callExpectedBandwidth()
 	atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, downloadBandwidth)
 	atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, uploadBandwidth)
+	atomic.AddUint64(&w.staticLoopState.atomicAsyncJobsRunning, 1)
 	fn := func() {
 		job.callExecute()
 		// Subtract the outstanding data now that the job is complete. Atomic
 		// subtraction works by adding and using some bit tricks.
 		atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, -downloadBandwidth)
 		atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, -uploadBandwidth)
+		atomic.AddUint64(&w.staticLoopState.atomicAsyncJobsRunning, ^uint64(0)) // subtract 1
 		// Wake the worker to run any additional async jobs that may have been
 		// blocked / ignored because there was not enough bandwidth available.
 		w.staticWake()
@@ -214,7 +224,7 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		w.externLaunchAsyncJob(job)
 		return true
 	}
-	job = w.staticJobReadSectorQueue.callNext()
+	job = w.staticJobReadQueue.callNext()
 	if job != nil {
 		w.externLaunchAsyncJob(job)
 		return true
@@ -245,7 +255,7 @@ func (w *worker) managedBlockUntilReady() bool {
 // worker has not met sufficient conditions to retain async jobs.
 func (w *worker) managedDiscardAsyncJobs(err error) {
 	w.staticJobHasSectorQueue.callDiscardAll(err)
-	w.staticJobReadSectorQueue.callDiscardAll(err)
+	w.staticJobReadQueue.callDiscardAll(err)
 }
 
 // threadedWorkLoop is a perpetual loop run by the worker that accepts new jobs
@@ -261,26 +271,33 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillJobsDownloadByRoot()
 	defer w.managedKillJobsDownloadByRoot()
 	defer w.staticJobHasSectorQueue.callKill()
-	defer w.staticJobReadSectorQueue.callKill()
+	defer w.staticJobReadQueue.callKill()
 	defer w.staticJobUploadSnapshotQueue.callKill()
 
 	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) >= 0 {
+		// Ensure the renter's revision number of the underlying file contract
+		// is in sync with the host's revision number. This check must happen at
+		// the top as consecutive checks make use of the file contract for
+		// payment.
+		w.externTryFixRevisionMismatch()
+
 		// The worker cannot execute any async tasks unless the price table of
 		// the host is known, the balance of the worker account is known, and
 		// the account has sufficient funds in it. This update is done as a
 		// blocking update to ensure nothing else runs until the price table is
 		// available.
 		w.staticUpdatePriceTable()
-		// TODO: Do a balance query on the host right here. Even if we had a clean
-		// shutdown and know the exact balance, we should still be asking the host
-		// what our balance is, because we don't want the host to be able to
-		// distinguish between the times that we know our balance and the times that
-		// we don't. Checking right at startup also allows us to give a quick
-		// honesty check on the host.
-		//
+
+		// Perform a balance check on the host and sync it to his version if
+		// necessary. This avoids running into MaxBalanceExceeded errors upon
+		// refill after an unclean shutdown.
+		w.externSyncAccountBalanceToHost()
+
 		// This update is done as a blocking update to ensure nothing else runs
 		// until the account has filled.
-		w.managedRefillAccount()
+		if w.managedAccountNeedsRefill() {
+			w.managedRefillAccount()
+		}
 	}
 
 	// The worker will continuously perform jobs in a loop.
@@ -292,7 +309,24 @@ func (w *worker) threadedWorkLoop() {
 		if !w.managedBlockUntilReady() {
 			return
 		}
+
+		// Try and fix a revision number mismatch if the flag is set. This will
+		// be the case if other processes errored out with an error indicating a
+		// mismatch.
+		if w.staticSuspectRevisionMismatch() {
+			w.externTryFixRevisionMismatch()
+		}
+
+		// Update the worker cache object, note that we do this after trying to
+		// sync the revision as that might influence the contract, which is used
+		// to build the cache object.
 		w.staticTryUpdateCache()
+
+		// If the worker needs to sync the account balance, perform a sync
+		// operation. This should be attempted before launching any jobs.
+		if w.managedNeedsToSyncAccountToHost() {
+			w.externSyncAccountBalanceToHost()
+		}
 
 		// Attempt to launch a serial job. If there is already a job running,
 		// this will no-op. If no job is running, a goroutine will be spun up

@@ -27,6 +27,10 @@ import (
 )
 
 const (
+	// DefaultSkynetDefaultPath is the defaultPath value we use when the user
+	// hasn't specified one and `index.html` exists in the skyfile.
+	DefaultSkynetDefaultPath = "index.html"
+
 	// DefaultSkynetRequestTimeout is the default request timeout for routes
 	// that have a timeout query string parameter. If the request can not be
 	// resolved within the given amount of time, it times out. This is used for
@@ -39,6 +43,12 @@ const (
 	// could cause a go-routine leak by creating a bunch of requests with very
 	// high timeouts.
 	MaxSkynetRequestTimeout = 15 * 60 // in seconds
+)
+
+var (
+	// ErrInvalidDefaultPath is returned when the specified default path is not
+	// valid, e.g. the file it points to does not exist.
+	ErrInvalidDefaultPath = errors.New("invalid default path provided")
 )
 
 type (
@@ -102,7 +112,8 @@ type (
 	SkykeyGET struct {
 		Skykey string `json:"skykey"` // base64 encoded Skykey
 		Name   string `json:"name"`
-		ID     string `json:"id"` // base64 encoded Skykey ID
+		ID     string `json:"id"`   // base64 encoded Skykey ID
+		Type   string `json:"type"` // human-readable Skykey Type
 	}
 	// SkykeysGET contains a slice of Skykeys.
 	SkykeysGET struct {
@@ -295,12 +306,23 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
 		return
-	} else if err != nil {
+	}
+	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
 	defer streamer.Close()
 
+	// Get the redirect limitations.
+	allowRedirect, err := allowRedirect(queryForm, metadata)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+	// Redirect, if possible.
+	if allowRedirect && path == "/" {
+		path = metadata.DefaultPath
+	}
 	// If path is different from the root, limit the streamer and return the
 	// appropriate subset of the metadata. This is done by wrapping the streamer
 	// so it only returns the files defined in the subset of the metadata.
@@ -322,7 +344,15 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			return
 		}
 	} else {
-		if len(metadata.Subfiles) > 1 && format == "" {
+		// We don't need a format to be specified for single files. Instead, we
+		// directly serve their content, unless that is explicitly disabled by
+		// passing the `redirect=false` parameter. This is legacy behaviour that
+		// we are continuing to support.
+		formatRequired := len(metadata.Subfiles) != 0
+		// We need a format to be specified when accessing the `/` of skyfiles
+		// that either have more than one file or do not allow redirects.
+		formatRequired = formatRequired && (len(metadata.Subfiles) > 1 || !allowRedirect)
+		if formatRequired && format == "" {
 			WriteError(w, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest)
 			return
 		}
@@ -333,16 +363,19 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if format == modules.SkyfileFormatTar {
 		w.Header().Set("content-type", "application/x-tar")
 		err = serveTar(w, metadata, streamer)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
+		}
 		return
-	} else if format == modules.SkyfileFormatTarGz {
+	}
+	if format == modules.SkyfileFormatTarGz {
 		w.Header().Set("content-type", "application/x-gtar ")
 		gzw := gzip.NewWriter(w)
 		err = serveTar(gzw, metadata, streamer)
 		err = errors.Compose(err, gzw.Close())
-		return
-	}
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -632,7 +665,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 
 	// Build the Skyfile metadata from the request
-	if strings.HasPrefix(mediaType, "multipart/form-data") {
+	if isMultipartRequest(mediaType) {
 		subfiles, reader, err := skyfileParseMultiPartRequest(req)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed parsing multipart request: %v", err)}, http.StatusBadRequest)
@@ -648,10 +681,18 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			}
 		}
 
+		// Get the default path.
+		defaultPath, err := defaultPath(queryForm, subfiles)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
+
 		lup.Reader = reader
 		lup.FileMetadata = modules.SkyfileMetadata{
-			Filename: filename,
-			Subfiles: subfiles,
+			Filename:    filename,
+			Subfiles:    subfiles,
+			DefaultPath: defaultPath,
 		}
 	} else {
 		// Parse out the filemode
@@ -935,7 +976,6 @@ func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, i
 
 		// parse content type from multipart header
 		contentType := fh.Header.Get("Content-Type")
-
 		subfiles[fh.Filename] = modules.SkyfileSubfileMetadata{
 			FileMode:    mode,
 			Filename:    filename,
@@ -945,12 +985,13 @@ func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, i
 		}
 		offset += uint64(fh.Size)
 	}
+
 	return subfiles, io.MultiReader(readers...), nil
 }
 
 // skykeyHandlerGET handles the API call to get a Skykey and its ID using its
 // name or ID.
-func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse Skykey id and name.
 	name := req.FormValue("name")
 	idString := req.FormValue("id")
@@ -991,12 +1032,50 @@ func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, ps ht
 		Skykey: skString,
 		Name:   sk.Name,
 		ID:     sk.ID().ToString(),
+		Type:   sk.Type.ToString(),
 	})
+}
+
+// skykeyDeleteHandlerGET handles the API call to delete a Skykey using its name
+// or ID.
+func (api *API) skykeyDeleteHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse Skykey id and name.
+	name := req.FormValue("name")
+	idString := req.FormValue("id")
+
+	if idString == "" && name == "" {
+		WriteError(w, Error{"you must specify the name or ID of the skykey"}, http.StatusBadRequest)
+		return
+	}
+	if idString != "" && name != "" {
+		WriteError(w, Error{"you must specify either the name or ID of the skykey, not both"}, http.StatusBadRequest)
+		return
+	}
+
+	var err error
+	if name != "" {
+		err = api.renter.DeleteSkykeyByName(name)
+	} else if idString != "" {
+		var id skykey.SkykeyID
+		err = id.FromString(idString)
+		if err != nil {
+			WriteError(w, Error{"Invalid skykey ID" + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		err = api.renter.DeleteSkykeyByID(id)
+	}
+
+	if err != nil {
+		WriteError(w, Error{"failed to delete skykey: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	WriteSuccess(w)
 }
 
 // skykeyCreateKeyHandlerPost handles the API call to create a skykey using the renter's
 // skykey manager.
-func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse skykey name and type
 	name := req.FormValue("name")
 	skykeyTypeString := req.FormValue("type")
@@ -1037,7 +1116,7 @@ func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Requ
 
 // skykeyAddKeyHandlerPost handles the API call to add a skykey to the renter's
 // skykey manager.
-func (api *API) skykeyAddKeyHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skykeyAddKeyHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse skykey.
 	skString := req.FormValue("skykey")
 	if skString == "" {
@@ -1062,7 +1141,7 @@ func (api *API) skykeyAddKeyHandlerPOST(w http.ResponseWriter, req *http.Request
 }
 
 // skykeysHandlerGET handles the API call to get all of the renter's skykeys.
-func (api *API) skykeysHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	skykeys, err := api.renter.Skykeys()
 	if err != nil {
 		WriteError(w, Error{"Unable to get skykeys: " + err.Error()}, http.StatusInternalServerError)
@@ -1082,7 +1161,82 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, req *http.Request, ps h
 			Skykey: skStr,
 			Name:   sk.Name,
 			ID:     sk.ID().ToString(),
+			Type:   sk.Type.ToString(),
 		}
 	}
 	WriteJSON(w, res)
+}
+
+// allowRedirect decides whether a redirect will be allowed for this skyfile.
+func allowRedirect(queryForm url.Values, metadata modules.SkyfileMetadata) (bool, error) {
+	// Do not allow redirect for skyfiles which are not directories.
+	if metadata.Subfiles == nil || len(metadata.Subfiles) == 0 {
+		return false, nil
+	}
+	// Do not allow redirect if the default path is empty.
+	if metadata.DefaultPath == "" {
+		return false, nil
+	}
+	// Check what the user requested.
+	redirectStr := queryForm.Get("redirect")
+	// If the user didn't specify anything we default to allowing redirects.
+	if redirectStr == "" {
+		return true, nil
+	}
+	allowRedirect, err := strconv.ParseBool(redirectStr)
+	if err != nil {
+		return false, Error{fmt.Sprintf("unable to parse 'redirect' parameter: %v", err)}
+	}
+	return allowRedirect, nil
+}
+
+// defaultPath extracts the defaultPath from the request or returns a default.
+// It will never return a directory because `subfiles` contains only files.
+func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaultPath string, err error) {
+	// Check for explicitly specified empty default path, meaning that user
+	// doesn't want redirects for this skydirectory.
+	queryFormMap := map[string][]string(queryForm)
+	defaultPathArr, exists := queryFormMap[modules.SkyfileDefaultPathParamName]
+	if exists && len(defaultPathArr) > 0 && defaultPathArr[0] == "" {
+		// The user specifically disabled the default path for this skydirectory
+		// by specifying an empty string.
+		return "", nil
+	}
+
+	defaultPath = queryForm.Get(modules.SkyfileDefaultPathParamName)
+	// ensure the defaultPath always has a leading slash
+	defer func() {
+		if defaultPath != "" && !strings.HasPrefix(defaultPath, "/") {
+			defaultPath = "/" + defaultPath
+		}
+	}()
+
+	if defaultPath == "" {
+		// No default path specified, check if there is an `index.html` file.
+		_, exists := subfiles[DefaultSkynetDefaultPath]
+		if exists {
+			return DefaultSkynetDefaultPath, nil
+		}
+		// For single file directories we want to redirect to the only file.
+		if len(subfiles) == 1 {
+			for _, f := range subfiles {
+				return f.Filename, nil
+			}
+		}
+		// No `index.html` in a multi-file directory, so we can't have a
+		// default path.
+		return "", nil
+	}
+	// Check if the defaultPath exists. Omit the leading slash because
+	// the filenames in `subfiles` won't have it.
+	if _, exists = subfiles[strings.TrimPrefix(defaultPath, "/")]; !exists {
+		return "", errors.AddContext(ErrInvalidDefaultPath, fmt.Sprintf("no such path: %s", defaultPath))
+	}
+	return defaultPath, nil
+}
+
+// isMultipartRequest is a helper method that checks if the given media type
+// matches that of a multipart form.
+func isMultipartRequest(mediaType string) bool {
+	return strings.HasPrefix(mediaType, "multipart/form-data")
 }

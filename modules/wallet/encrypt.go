@@ -12,9 +12,9 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 var (
@@ -306,10 +306,9 @@ func (w *Wallet) managedBlockingUnlock(masterKey crypto.CipherKey) (modules.Cons
 func (w *Wallet) managedAsyncUnlock(lastChange modules.ConsensusChangeID) error {
 	// Subscribe to the consensus set if this is the first unlock for the
 	// wallet object.
-	w.mu.RLock()
-	subscribed := w.subscribed
-	w.mu.RUnlock()
-	if !subscribed {
+	w.subscribedMu.Lock()
+	defer w.subscribedMu.Unlock()
+	if !w.subscribed {
 		// Subscription can take a while, so spawn a goroutine to print the
 		// wallet height every few seconds. (If subscription completes
 		// quickly, nothing will be printed.)
@@ -335,9 +334,7 @@ func (w *Wallet) managedAsyncUnlock(lastChange modules.ConsensusChangeID) error 
 		}
 		w.tpool.TransactionPoolSubscribe(w)
 	}
-	w.mu.Lock()
 	w.subscribed = true
-	w.mu.Unlock()
 	return nil
 }
 
@@ -359,11 +356,11 @@ func (w *Wallet) rescanMessage(done chan struct{}) {
 		w.mu.Lock()
 		height, _ := dbGetConsensusHeight(w.dbTx)
 		w.mu.Unlock()
-		print("\rWallet: scanned to height ", height, "...")
+		fmt.Printf("\rWallet: scanned to height %d...", height)
 
 		select {
 		case <-done:
-			println("\nDone!")
+			fmt.Println("\nDone!")
 			return
 		case <-time.After(3 * time.Second):
 		}
@@ -435,15 +432,18 @@ func (w *Wallet) Reset() error {
 		return err
 	}
 	defer w.tg.Done()
-	w.mu.Lock()
-	defer w.mu.Unlock()
 
-	// If the wallet was subscribed to the consensus and tpool then unsubscribe
+	// Unsubscribe if we are currently subscribed.
+	w.subscribedMu.Lock()
 	if w.subscribed {
 		w.cs.Unsubscribe(w)
 		w.tpool.Unsubscribe(w)
 		w.subscribed = false
 	}
+	w.subscribedMu.Unlock()
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
 
 	err := dbReset(w.dbTx)
 	if err != nil {

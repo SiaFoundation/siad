@@ -2,6 +2,9 @@ package skykey
 
 import (
 	"bytes"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -12,7 +15,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 // TestSkykeyManager tests the basic functionality of the skykeyManager.
@@ -108,7 +111,7 @@ func TestSkykeyManager(t *testing.T) {
 	var randomID SkykeyID
 	fastrand.Read(randomID[:])
 	_, err = keyMan.KeyByID(randomID)
-	if err != errNoSkykeysWithThatID {
+	if err != ErrNoSkykeysWithThatID {
 		t.Fatal(err)
 	}
 
@@ -170,8 +173,8 @@ func TestSkykeyManager(t *testing.T) {
 
 	// Check that AddKey works properly by re-adding all the keys from the first
 	// 2 key managers into a new one.
-	persistDir = build.TempDir(t.Name(), "add-only-keyman")
-	addKeyMan, err := NewSkykeyManager(persistDir)
+	newPersistDir := build.TempDir(t.Name(), "add-only-keyman")
+	addKeyMan, err := NewSkykeyManager(newPersistDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -642,5 +645,350 @@ func TestSkykeyTypeStrings(t *testing.T) {
 	err = invalidSt.FromString(invalidTypeString)
 	if err != ErrInvalidSkykeyType {
 		t.Fatal(err)
+	}
+
+	privateIDString := TypePrivateID.ToString()
+	if privateIDString != "private-id" {
+		t.Fatal("Incorrect skykeytype name", privateIDString)
+	}
+
+	err = st.FromString(privateIDString)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st != TypePrivateID {
+		t.Fatal("Wrong SkykeyType", st)
+	}
+}
+
+// TestSkyfileEncryptionIDs tests the generation and verification of skyfile
+// encryption IDs.
+func TestSkyfileEncryptionIDs(t *testing.T) {
+	// Create a key manager.
+	persistDir := build.TempDir("skykey", t.Name())
+	keyMan, err := NewSkykeyManager(persistDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pubSkykey, err := keyMan.CreateKey("public_id"+t.Name(), TypePublicID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubFsKey, err := pubSkykey.GenerateFileSpecificSubkey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// We should not be able to generate encryption IDs with a TypePublicID key.
+	_, err = pubFsKey.GenerateSkyfileEncryptionID()
+	if !errors.Contains(err, errSkykeyTypeDoesNotSupportFunction) {
+		t.Fatal(err)
+	}
+
+	// Create a private-id skykey.
+	privSkykey, err := keyMan.CreateKey("private_id"+t.Name(), TypePrivateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that different file-specific keys make different encryption IDs.
+	nEncIDs := 10
+	encIDSet := make(map[[SkykeyIDLen]byte]struct{})
+	encIDs := make([][SkykeyIDLen]byte, nEncIDs)
+	nonces := make([][]byte, nEncIDs)
+	for i := 0; i < nEncIDs; i++ {
+		nextFsKey, err := privSkykey.GenerateFileSpecificSubkey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		encID, err := nextFsKey.GenerateSkyfileEncryptionID()
+		if _, ok := encIDSet[encID]; ok {
+			t.Log(i, encID)
+			t.Fatal("Found encID in set of existing encIDs!")
+		}
+		encIDSet[encID] = struct{}{}
+
+		// Save the nonce and encID in slice for next part of test.
+		nonces[i] = nextFsKey.Nonce()
+		encIDs[i] = encID
+	}
+
+	// Create more private-id skykey to make sure that they don't match any
+	// encID/nonce pair.
+	nPrivIDKeys := 10
+	privIDKeys := make([]Skykey, nPrivIDKeys)
+	privIDKeys[0] = privSkykey
+	for i := 0; i < nPrivIDKeys-1; i++ {
+		privIDKeys[i+1], err = keyMan.CreateKey("private_id"+t.Name()+string(i+1), TypePrivateID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Test MatchesSkyfileEncryptionID. Unrelated encID/nonce pairs should never
+	// match. Unrelated keys should also not show a match.
+	for i, nonce := range nonces {
+		for j, encID := range encIDs {
+			// TypePublicID keys should never produce a match.
+			matches, err := pubSkykey.MatchesSkyfileEncryptionID(encID[:], nonce)
+			if matches {
+				t.Fatal("public-id Skykey matches encryption ID")
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Unrelated private-id keys should never match.
+			for i := 1; i < nPrivIDKeys; i++ {
+				matches, err := privIDKeys[i].MatchesSkyfileEncryptionID(encID[:], nonce)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if matches {
+					t.Fatal("wrong  Skykey matches encryption ID")
+				}
+			}
+
+			// The original private-id skykey should match only when i == j.
+			matches, err = privIDKeys[0].MatchesSkyfileEncryptionID(encID[:], nonce)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if matches != (i == j) {
+				t.Fatalf("Bad encID, nonce pair matched, or correct pair did not match, i: %d, j: %d", i, j)
+			}
+		}
+	}
+
+	// Invalid id/nonce lengths should fail.
+	_, err = privIDKeys[0].MatchesSkyfileEncryptionID(encIDs[0][:SkykeyIDLen-1], nonces[0])
+	if !errors.Contains(err, errInvalidIDorNonceLength) {
+		t.Fatal(err)
+	}
+	_, err = privIDKeys[0].MatchesSkyfileEncryptionID(encIDs[0][:], nonces[0][:chacha.XNonceSize-1])
+	if !errors.Contains(err, errInvalidIDorNonceLength) {
+		t.Fatal(err)
+	}
+	_, err = privIDKeys[0].MatchesSkyfileEncryptionID(encIDs[0][:SkykeyIDLen-1], nonces[0][:chacha.XNonceSize-1])
+	if !errors.Contains(err, errInvalidIDorNonceLength) {
+		t.Fatal(err)
+	}
+}
+
+// TestSkykeyDelete tests the Delete methods for the skykey manager.
+func TestSkykeyDelete(t *testing.T) {
+	// Create a key manager.
+	persistDir := build.TempDir("skykey", t.Name())
+	keyMan, err := NewSkykeyManager(persistDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add several keys and delete them all.
+	keys := make([]Skykey, 0)
+	for i := 0; i < 5; i++ {
+		sk, err := keyMan.CreateKey("keys-to-delete"+string(i), TypePrivateID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keys = append(keys, sk)
+	}
+	for _, key := range keys {
+		err = keyMan.DeleteKeyByID(key.ID())
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Check that keyMan doesn't recognize them anymore.
+	for _, key := range keys {
+		_, err = keyMan.KeyByID(key.ID())
+		if !errors.Contains(err, ErrNoSkykeysWithThatID) {
+			t.Fatal(err)
+		}
+	}
+
+	// checkForExpectedKeys checks that the keys in expectedKeySet are the only
+	// ones stored by keyMan, and also checks that a new keyManager loaded from
+	// the same persist also stores only this exact set of skykeys.
+	checkForExpectedKeys := func(expectedKeySet map[SkykeyID]struct{}) {
+		allSkykeys := keyMan.Skykeys()
+		if len(allSkykeys) != len(expectedKeySet) {
+			t.Fatalf("Expected %d keys, got %d", len(expectedKeySet), len(allSkykeys))
+		}
+		for _, sk := range allSkykeys {
+			_, ok := expectedKeySet[sk.ID()]
+			if !ok {
+				t.Fatal("Did not find key in expected key set")
+			}
+		}
+
+		freshKeyMan, err := NewSkykeyManager(persistDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		loadedSkykeys := freshKeyMan.Skykeys()
+		if len(loadedSkykeys) != len(expectedKeySet) {
+			t.Fatalf("Fresh load: Expected %d keys, got %d", len(expectedKeySet), len(loadedSkykeys))
+		}
+
+		for _, sk := range loadedSkykeys {
+			_, ok := expectedKeySet[sk.ID()]
+			if !ok {
+				t.Fatal("Fresh load: Did not find key in expected key set")
+			}
+		}
+	}
+
+	// There should be no keys remaining.
+	checkForExpectedKeys(make(map[SkykeyID]struct{}))
+
+	// Add a bunch of keys again.
+	expectedKeySet := make(map[SkykeyID]struct{})
+	nKeys := 10
+	keys = make([]Skykey, 0)
+	for i := 0; i < nKeys; i++ {
+		sk, err := keyMan.CreateKey("key"+string(i), TypePrivateID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keys = append(keys, sk)
+		expectedKeySet[sk.ID()] = struct{}{}
+	}
+	checkForExpectedKeys(expectedKeySet)
+
+	// Delete the first key.
+	err = keyMan.DeleteKeyByID(keys[0].ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(expectedKeySet, keys[0].ID())
+
+	// Check keyManager deletion.
+	checkForExpectedKeys(expectedKeySet)
+
+	// Delete a middle key and do the same checks.
+	midIdx := nKeys / 2
+	err = keyMan.DeleteKeyByID(keys[midIdx].ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(expectedKeySet, keys[midIdx].ID())
+	checkForExpectedKeys(expectedKeySet)
+
+	// Delete the last key and do the same checks.
+	endIdx := nKeys - 1
+	err = keyMan.DeleteKeyByID(keys[endIdx].ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(expectedKeySet, keys[endIdx].ID())
+	checkForExpectedKeys(expectedKeySet)
+
+	// Add a few more keys.
+	for i := 0; i < nKeys; i++ {
+		sk, err := keyMan.CreateKey("extra-key"+string(i), TypePrivateID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectedKeySet[sk.ID()] = struct{}{}
+	}
+	checkForExpectedKeys(expectedKeySet)
+
+	// Sanity check on DeleteKeyByName by deleting some of the new keys.
+	for i := 0; i < len(expectedKeySet)/2; i += 2 {
+		sk, err := keyMan.KeyByName("extra-key" + string(i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = keyMan.DeleteKeyByName(sk.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		delete(expectedKeySet, sk.ID())
+	}
+	checkForExpectedKeys(expectedKeySet)
+}
+
+// TestSkykeyDelete tests the Delete methods for the skykey manager, starting
+// with a file containing skykeys created using the older format.
+func TestSkykeyDeleteCompat(t *testing.T) {
+	// Create a persist dir.
+	persistDir := build.TempDir("skykey", t.Name())
+	err := os.MkdirAll(persistDir, defaultDirPerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// copy the testdata file over to it.
+	persistFileName := filepath.Join(persistDir, SkykeyPersistFilename)
+	persistFile, err := os.Create(persistFileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer persistFile.Close()
+
+	testDataFileName := filepath.Join("testdata", "v144_and_v149_skykeys.dat")
+	testDataFile, err := os.Open(testDataFileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer testDataFile.Close()
+	_, err = io.Copy(persistFile, testDataFile)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a key manager.
+	keyMan, err := NewSkykeyManager(persistDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nKeys := 8
+	keys := keyMan.Skykeys()
+	if len(keys) != nKeys {
+		t.Fatalf("Expected %d keys got %d", nKeys, len(keys))
+	}
+
+	// Delete all the keys.
+	for i, sk := range keys {
+		err = keyMan.DeleteKeyByName(sk.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(keyMan.Skykeys()) != nKeys-(i+1) {
+			t.Fatalf("Expected %d keys got %d", len(keyMan.Skykeys()), nKeys-(i+1))
+		}
+	}
+
+	// Sanity check: create a new key and check for it.
+	sk, err := keyMan.CreateKey("sanity-check", TypePrivateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys = keyMan.Skykeys()
+	if len(keys) != 1 {
+		t.Fatal("Expected 1 key", keys)
+	}
+	if !keys[0].equals(sk) {
+		t.Fatal("keys don't match")
+	}
+
+	// Sanity check: check that the new key is loaded from a fresh persist.
+	freshKeyMan, err := NewSkykeyManager(persistDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loadedSkykeys := freshKeyMan.Skykeys()
+	if len(loadedSkykeys) != 1 {
+		t.Fatal("Expected 1 key", keys)
+	}
+	if !loadedSkykeys[0].equals(sk) {
+		t.Fatal("keys don't match")
 	}
 }

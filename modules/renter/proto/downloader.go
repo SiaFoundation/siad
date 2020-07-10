@@ -9,9 +9,9 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 // A Downloader retrieves sectors by calling the download RPC on a host.
@@ -193,15 +193,14 @@ func (cs *ContractSet) NewDownloader(host modules.HostDBEntry, id types.FileCont
 		}
 	}()
 
-	conn, closeChan, err := initiateRevisionLoop(host, sc, modules.RPCDownload, cancel, cs.rl)
+	conn, closeChan, err := initiateRevisionLoop(host, sc, modules.RPCDownload, cancel, cs.staticRL)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to initiate revision loop")
 	}
 	// if we succeeded, we can safely discard the unappliedTxns
-	for _, txn := range sc.unappliedTxns {
-		txn.SignalUpdatesApplied()
+	if err := sc.clearUnappliedTxns(); err != nil {
+		return nil, errors.AddContext(err, "failed to clear unapplied txns")
 	}
-	sc.unappliedTxns = nil
 
 	// the host is now ready to accept revisions
 	return &Downloader{
@@ -210,7 +209,7 @@ func (cs *ContractSet) NewDownloader(host modules.HostDBEntry, id types.FileCont
 		host:        host,
 		conn:        conn,
 		closeChan:   closeChan,
-		deps:        cs.deps,
+		deps:        cs.staticDeps,
 		hdb:         hdb,
 
 		height: currentHeight,

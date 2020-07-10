@@ -15,8 +15,8 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 const (
@@ -320,6 +320,14 @@ type (
 		SectorAccessPrice      types.Currency `json:"sectoraccessprice"`
 		StoragePrice           types.Currency `json:"storageprice"`
 		UploadBandwidthPrice   types.Currency `json:"uploadbandwidthprice"`
+
+		// EphemeralAccountExpiry is the amount of time an account can be
+		// inactive before the host considers it expired.
+		//
+		// MaxEphemeralAccountBalance is the maximum amount of money the host
+		// allows to be deposited into a single ephemeral account.
+		EphemeralAccountExpiry     time.Duration  `json:"ephemeralaccountexpiry"`
+		MaxEphemeralAccountBalance types.Currency `json:"maxephemeralaccountbalance"`
 
 		// Because the host has a public key, and settings are signed, and
 		// because settings may be MITM'd, settings need a revision number so

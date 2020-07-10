@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/log"
 	"gitlab.com/NebulousLabs/ratelimit"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -123,9 +124,11 @@ func (s *Session) Settings() (modules.HostExternalSettings, error) {
 	if err := s.call(modules.RPCLoopSettings, nil, &resp, modules.RPCMinLen); err != nil {
 		return modules.HostExternalSettings{}, err
 	}
-	if err := json.Unmarshal(resp.Settings, &s.host.HostExternalSettings); err != nil {
+	var hes modules.HostExternalSettings
+	if err := json.Unmarshal(resp.Settings, &hes); err != nil {
 		return modules.HostExternalSettings{}, err
 	}
+	s.host.HostExternalSettings = hes
 	return s.host.HostExternalSettings, nil
 }
 
@@ -820,7 +823,7 @@ func (s *Session) Close() error {
 }
 
 // NewSession initiates the RPC loop with a host and returns a Session.
-func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContractID, currentHeight types.BlockHeight, hdb hostDB, cancel <-chan struct{}) (_ *Session, err error) {
+func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContractID, currentHeight types.BlockHeight, hdb hostDB, logger *log.Logger, cancel <-chan struct{}) (_ *Session, err error) {
 	sc, ok := cs.Acquire(id)
 	if !ok {
 		return nil, errors.New("could not locate contract to create session")
@@ -830,15 +833,22 @@ func (cs *ContractSet) NewSession(host modules.HostDBEntry, id types.FileContrac
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create a new session with the host")
 	}
-	// Lock the contract and resynchronize if necessary
+	// Lock the contract
 	rev, sigs, err := s.Lock(id, sc.header.SecretKey)
 	if err != nil {
 		s.Close()
 		return nil, errors.AddContext(err, "unable to get a session lock")
-	} else if err := sc.managedSyncRevision(rev, sigs); err != nil {
-		s.Close()
+	}
+
+	// Resynchronize
+	err = sc.managedSyncRevision(rev, sigs)
+	if err != nil {
+		logger.Printf("%v revision resync failed, err: %v\n", host.PublicKey.String(), err)
+		err = errors.Compose(err, s.Close())
 		return nil, errors.AddContext(err, "unable to sync revisions when creating session")
 	}
+	logger.Debugf("%v revision resync attempted, succeeded: %v\n", host.PublicKey.String(), sc.LastRevision().NewRevisionNumber == rev.NewRevisionNumber)
+
 	return s, nil
 }
 
@@ -866,7 +876,7 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 	if err != nil {
 		return nil, errors.AddContext(err, "unsuccessful dial when creating a new session")
 	}
-	conn := ratelimit.NewRLConn(c, cs.rl, cancel)
+	conn := ratelimit.NewRLConn(c, cs.staticRL, cancel)
 
 	closeChan := make(chan struct{})
 	go func() {
@@ -892,7 +902,7 @@ func (cs *ContractSet) managedNewSession(host modules.HostDBEntry, currentHeight
 		closeChan:   closeChan,
 		conn:        conn,
 		contractSet: cs,
-		deps:        cs.deps,
+		deps:        cs.staticDeps,
 		hdb:         hdb,
 		height:      currentHeight,
 		host:        host,

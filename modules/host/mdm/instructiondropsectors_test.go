@@ -101,7 +101,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	}
 
 	// Execute the program.
-	so := newTestStorageObligation(true)
+	so := host.newTestStorageObligation(true)
 	finalizeFn, budget, outputs, err := mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, duration, true)
 	if err != nil {
 		t.Fatal(err)

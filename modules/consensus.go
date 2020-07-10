@@ -5,8 +5,8 @@ import (
 	"io"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 const (
@@ -217,10 +217,6 @@ type (
 		// CurrentBlock returns the latest block in the heaviest known
 		// blockchain.
 		CurrentBlock() types.Block
-
-		// Flush will cause the consensus set to finish all in-progress
-		// routines.
-		Flush() error
 
 		// Height returns the current height of consensus.
 		Height() types.BlockHeight

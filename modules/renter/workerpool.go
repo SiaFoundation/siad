@@ -44,9 +44,7 @@ func (wp *workerPool) callStatus() modules.WorkerPoolStatus {
 	workers := wp.callWorkers()
 	for _, w := range workers {
 		// Get the status of the worker.
-		w.mu.Lock()
-		status := w.status()
-		w.mu.Unlock()
+		status := w.callStatus()
 		if status.DownloadOnCoolDown {
 			totalDownloadCoolDown++
 		}
@@ -70,6 +68,10 @@ func (wp *workerPool) callUpdate() {
 	contractSlice := wp.renter.hostContractor.Contracts()
 	contractMap := make(map[string]modules.RenterContract, len(contractSlice))
 	for _, contract := range contractSlice {
+		if contract.Utility.BadContract {
+			// Do not create workers for bad contracts.
+			continue
+		}
 		contractMap[contract.HostPublicKey.String()] = contract
 	}
 

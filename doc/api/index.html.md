@@ -100,6 +100,11 @@ may specify other 2xx status codes on success.
 The standard error response indicating the request failed for any reason, is a
 4xx or 5xx HTTP status code with an error JSON object describing the error.
 
+### Module Not Loaded
+
+A module that is not reachable due to not being loaded by siad will return
+the custom status code `490 ModuleNotLoaded`.
+
 # Authentication
 > Example POST curl call with Authentication
 
@@ -650,7 +655,19 @@ Returns the settings for the daemon
 ```go
 {
   "maxdownloadspeed": 0,  // bytes per second
-  "maxuploadspeed": 0     // bytes per second
+  "maxuploadspeed":   0,  // bytes per second
+  "modules": { 
+    "consensus":       true,  // bool
+    "explorer":        false, // bool
+    "feemanager":      true,  // bool
+    "gateway":         true,  // bool
+    "host":            true,  // bool
+    "miner":           true,  // bool
+    "renter":          true,  // bool
+    "transactionpool": true,  // bool
+    "wallet":          true   // bool
+
+  } 
 }
 ```
 
@@ -661,6 +678,9 @@ limit set.
 **maxuploadspeed** | bytes per second  
 Is the maximum upload speed that the daemon can reach. 0 means there is no limit
 set.
+
+**modules** | struct  
+Is a list of the siad modules with a bool indicating if the module was launched.
 
 ## /daemon/settings [POST]
 > curl example  
@@ -4427,7 +4447,10 @@ siapath to test.
 standard success or error response, a successful response means a valid siapath.
 See [standard responses](#standard-responses).
 
-## /renter/wokers [GET]
+## /renter/workers [GET] 
+
+**UNSTABLE - subject to change**
+
 > curl example
 
 ```go
@@ -4470,11 +4493,53 @@ returns the the status of all the workers in the renter's workerpool.
       "uploadqueuesize":     0,                    // int
       "uploadterminated":    false,                // boolean
       
-      "availablebalance":    "0", // hastings
       "balancetarget":       "0", // hastings
       
       "backupjobqueuesize":       0, // int
       "downloadrootjobqueuesize": 0  // int
+
+      "backupjobqueuesize": 0,        // int
+      "downloadrootjobqueuesize": 0,  // int
+
+      "accountstatus": {
+        "availablebalance": "1000000000000000000000000", // hasting
+        "negativebalance": "0",                          // hasting
+        "funded": true,                                  // boolean
+        "oncooldown": false,                             // boolean
+        "oncooldownuntil": "0001-01-01T00:00:00Z",       // time
+        "consecutivefailures": 0,                        // int
+        "recenterr": "",                                 // string
+        "recenterrtime": "0001-01-01T00:00:00Z"          // time
+      },
+
+      "pricetablestatus": {
+        "expirytime": "2020-06-15T16:17:01.040481+02:00", // time
+        "updatetime": "2020-06-15T16:12:01.040481+02:00", // time
+        "active": true,                                   // boolean
+        "oncooldown": false,                              // boolean
+        "oncooldownuntil": "0001-01-01T00:00:00Z",        // time
+        "consecutivefailures": 0,                         // int
+        "recenterr": "",                                  // string
+        "recenterrtime": "0001-01-01T00:00:00Z"           // time
+      },
+
+      "readjobsstatus": {
+        "avgjobtime64k": 0,                               // int
+        "avgjobtime1m": 0,                                // int
+        "avgjobtime4m": 0,                                // int
+        "consecutivefailures": 0,                         // int
+        "jobqueuesize": 0,                                // int
+        "recenterr": "",                                  // string
+        "recenterrtime": "0001-01-01T00:00:00Z"           // time
+      },
+
+      "hassectorjobsstatus": {
+        "avgjobtime": 0,                                  // int
+        "consecutivefailures": 0,                         // int
+        "jobqueuesize": 0,                                // int
+        "recenterr": "",                                  // string
+        "recenterrtime": "0001-01-01T00:00:00Z"           // time
+      }
     }
   ]
 }
@@ -4550,6 +4615,18 @@ The size of the worker's backup job queue
 
 **downloadrootjobqueuesize** | int  
 The size of the worker's download by root job queue
+
+**accountstatus** | object
+Detailed information about the workers' ephemeral account status
+
+**pricetablestatus** | object
+Detailed information about the workers' price table status
+
+**readjobsstatus** | object
+Details of the workers' read jobs queue
+
+**hassectorjobsstatus** | object
+Details of the workers' has sector jobs queue
 
 # Skynet
 
@@ -4723,11 +4800,21 @@ the file as though it is an attachment instead of rendering it.
 **format** | string  
 If 'format' is set, the skylink can point to a directory and it will return the
 data inside that directory. Format will decide the format in which it is
-returned. Currently we only support 'concat', which will return the concatenated
-data of all subfiles in that directory.
+returned. Currently, we support the following values: 'concat' will return the 
+concatenated data of all subfiles in that directory, 'tar' will return a tar 
+archive of all subfiles in that directory, and 'targz' will return gzipped tar 
+archive of all subfiles in that directory.
+
+**redirect** | bool
+If 'redirect' is omitted or set to true, the provided skylink points to a 
+directory, no format was specified, and no explicit path was provided (e.g. 
+`folder/file.txt` from the example above) then the user's browser will be 
+redirected to the default path associated with this skyfile, if one exists.  
+If 'redirect' is set to false and the same conditions apply, an error will be 
+returned because there is no default action for this case.
 
 **timeout** | int  
-If 'timeout' is set, the download will fail if the Skyfile can not be retrieved 
+If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved 
 before it expires. Note that this timeout does not cover the actual download 
 time, but rather covers the TTFB. Timeout is specified in seconds, a timeout 
 value of 0 will be ignored. If no timeout is given, the default will be used,
@@ -4798,6 +4885,12 @@ skyfile will be created. Both the new skyfile and the existing siafile are
 required to be maintained on the network in order for the skylink to remain
 active. This field is mutually exclusive with uploading streaming.
 
+**defaultpath** string  
+The path to the default file to be used to represent this skyfile in case it
+contains multiple files (e.g. skapps, photo collections, etc.). If provided, the
+path must exist. If not provided, it will default to `index.html` if a file with
+that name exists within the skyfile.
+
 **filename** | string  
 The name of the file. This name will be encoded into the skyfile metadata, and
 will be a part of the skylink. If the name changes, the skylink will change as
@@ -4824,14 +4917,12 @@ this field is not set, the siapath will be interpreted as relative to
 'var/skynet'.
 
 
-**UNSTABLE - subject to change in v1.4.9**
 **skykeyname** | string  
 The name of the skykey that will be used to encrypt this skyfile. Only the
 name or the ID of the skykey should be specified.
 
 **OR**
 
-**UNSTABLE - subject to change in v1.4.9**
 **skykeyid** | string  
 The ID of the skykey that will be used to encrypt this skyfile. Only the
 name or the ID of the skykey should be specified.
@@ -4924,7 +5015,7 @@ Version is the siad version the node is running.
 **gitrevision** | string  
 Gitrevision refers to the commit hash used to build said.
 
-**performancestats** | object - api.SkynetPerforamnceStats  
+**performancestats** | object - api.SkynetPerformanceStats  
 PerformanceStats is an object that contains a breakdown of performance metrics
 for the skynet endpoints. Things are broken down into containers based on the
 type of action performed. For example, there is a container for downloads less
@@ -4953,7 +5044,6 @@ The performance stats fields are not protected by a compatibility promise, and
 may change over time.
 
 
-**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/addskykey [POST]
 > curl example
 
@@ -4993,31 +5083,34 @@ Returns a list of all Skykeys.
     "skykey": "skykey:AUI0eAOXWXHwW6KOLyI5O1OYduVvHxAA8qUR_fJ8Kluasb-ykPlHBEjDczrL21hmjhH0zAoQ3-Qq?name=testskykey1"
     "name": "testskykey1"
     "id": "ai5z8cf5NWbcvPBaBn0DFQ=="
+    "type": "private-id"
   },
   {
     "skykey": "skykey:AUqG0aQmgzCIlse2JxFLBGHCriZNz20IEKQu81XxYsak3rzmuVbZ2P6ZqeJHIlN5bjPqEmC67U8E?name=testskykey2"
     "name": "testskykey2"
     "id": "bi5z8cf5NWbcvPBaBn0DFQ=="
+    "type": "private-id"
   },
   {
     "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey3"
     "name": "testskykey3"
     "id": "ci5z8cf5NWbcvPBaBn0DFQ=="
+    "type": "public-id"
   }
 }
 ```
 
 **skykeys** | []skykeys
-array of 
+Array of skykeys. See the documentation for /skynet/skykey for more detailed
+information.
 
 
 
-**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/createskykey [POST]
 > curl example
 
 ```go
-curl -A "Sia-Agent"  -u "":<apipassword> --data "name=key_to_the_castle" "localhost:9980/skynet/createskykey"
+curl -A "Sia-Agent"  -u "":<apipassword> --data "name=key_to_the_castle&type=private-id" "localhost:9980/skynet/createskykey"
 ```
 
 Returns a new skykey created and stored under that name.
@@ -5026,6 +5119,13 @@ Returns a new skykey created and stored under that name.
 ### REQUIRED
 **name** | string  
 desired name of the skykey
+
+**type** | string  
+desired type of the skykey. The two supported types are "public-id" and
+"private-id". Users should use "private-id" skykeys unless they have a specific
+reason to use "public-id" skykeys which reveal skykey IDs and show which
+skyfiles are encrypted with the same skykey.
+
 
 ### JSON Response
 > JSON Response Example
@@ -5040,7 +5140,32 @@ desired name of the skykey
 base-64 encoded skykey
 
 
-**UNSTABLE - subject to change in v1.4.9**
+## /skynet/deleteskykey [POST]
+> curl example
+
+```go
+curl -A "Sia-Agent"  -u "":<apipassword> --data "name=key_to_the_castle" "localhost:9980/skynet/deleteskykey"
+```
+
+Deletes the skykey with that name or ID.
+
+### Path Parameters
+### REQUIRED
+**name** | string  
+name of the skykey being deleted
+
+or
+
+**id** | string  
+base-64 encoded ID of the skykey being deleted
+
+
+### Response
+standard success or error response, a successful response means the skykey was
+deleted.
+See [standard responses](#standard-responses).
+
+
 ## /skynet/skykey [GET]
 > curl example
 
@@ -5070,6 +5195,7 @@ base-64 encoded ID of the skykey being queried
   "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey"
   "name": "testskykey"
   "id": "gi5z8cf5NWbcvPBaBn0DFQ=="
+  "type": "private-id"
 }
 ```
 
@@ -5082,8 +5208,10 @@ name of the skykey
 **id** | string  
 base-64 encoded skykey ID
 
+**type** | string  
+human-readable skykey type. See the documentation for /skynet/createskykey for
+type information.
 
-**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/skykeyid [GET]
 > curl example
 

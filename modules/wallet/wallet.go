@@ -13,11 +13,11 @@ import (
 	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 const (
@@ -55,8 +55,13 @@ type Wallet struct {
 	// wallet.
 	encrypted   bool
 	unlocked    bool
-	subscribed  bool
 	primarySeed modules.Seed
+
+	// Fields that handle the subscriptions to the cs and tpool. subscribedMu
+	// needs to be locked when subscribed is accessed and while calling the
+	// subscribing methods on the tpool and consensusset.
+	subscribedMu sync.Mutex
+	subscribed   bool
 
 	// The wallet's dependencies.
 	cs    modules.ConsensusSet

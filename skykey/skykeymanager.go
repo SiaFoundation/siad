@@ -12,8 +12,8 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 const (
@@ -47,8 +47,10 @@ var (
 	// already being stored.
 	ErrSkykeyWithIDAlreadyExists = errors.New("Skykey ID already exists.")
 
+	// ErrNoSkykeysWithThatID indicates that the skykey manager doesn't have a key
+	// with that ID.
+	ErrNoSkykeysWithThatID   = errors.New("No Skykey is associated with that ID")
 	errNoSkykeysWithThatName = errors.New("No Skykey with that name")
-	errNoSkykeysWithThatID   = errors.New("No Skykey is assocated with that ID")
 	errSkykeyNameToolong     = errors.New("Skykey name exceeds max length")
 
 	// SkykeyPersistFilename is the name of the skykey persistence file.
@@ -97,7 +99,7 @@ func (cw countingWriter) BytesWritten() uint64 {
 // skykeys with the given type.
 func (sm *SkykeyManager) SupportsSkykeyType(skykeyType SkykeyType) bool {
 	switch skykeyType {
-	case TypePublicID:
+	case TypePublicID, TypePrivateID:
 		return true
 	default:
 		return false
@@ -152,6 +154,77 @@ func (sm *SkykeyManager) AddKey(sk Skykey) error {
 	return sm.saveKey(sk)
 }
 
+// DeleteKeyByName deletes the skykey with the given name.
+func (sm *SkykeyManager) DeleteKeyByName(name string) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	id, ok := sm.idsByName[name]
+	if !ok {
+		return errNoSkykeysWithThatName
+	}
+
+	return sm.deleteKeyByID(id)
+}
+
+// DeleteKeyByID deletes the skykey with the given ID.
+func (sm *SkykeyManager) DeleteKeyByID(id SkykeyID) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	return sm.deleteKeyByID(id)
+}
+
+// deleteKeyByID deletes the skykey with the given ID, it must be called while
+// holding the sm.mu lock.
+func (sm *SkykeyManager) deleteKeyByID(id SkykeyID) error {
+	key, ok := sm.keysByID[id]
+	if !ok {
+		return ErrNoSkykeysWithThatID
+	}
+
+	file, err := os.OpenFile(sm.staticPersistFile, os.O_RDWR, defaultFilePerm)
+	if err != nil {
+		return errors.AddContext(err, "Unable to open SkykeyManager persist file")
+	}
+	defer file.Close()
+
+	_, err = file.Seek(int64(headerLen), io.SeekStart)
+	if err != nil {
+		return err
+	}
+
+	foundSkykey := false
+	startOffset := int(headerLen)
+	endOffset := -1
+
+	for startOffset < int(sm.fileLen) {
+		sk, nextOffset, err := loadSkykey(file, startOffset)
+		if err != nil {
+			return errors.AddContext(err, "Error loading Skykeys during DeleteKeyByID")
+		}
+
+		endOffset = nextOffset
+		if sk.Type != typeDeletedSkykey && sk.ID() == id {
+			foundSkykey = true
+			break
+		}
+		startOffset = nextOffset
+	}
+
+	if !foundSkykey {
+		return errors.New("Didn't find Skykey with that ID on disk")
+	}
+
+	err = markSkykeyDeleted(file, startOffset, endOffset)
+	if err != nil {
+		return errors.AddContext(err, "Unable to mark key as deleted")
+	}
+
+	delete(sm.keysByID, id)
+	delete(sm.idsByName, key.Name)
+	return nil
+}
+
 // IDByName returns the ID associated with the given key name.
 func (sm *SkykeyManager) IDByName(name string) (SkykeyID, error) {
 	sm.mu.Lock()
@@ -176,7 +249,7 @@ func (sm *SkykeyManager) KeyByName(name string) (Skykey, error) {
 
 	key, ok := sm.keysByID[id]
 	if !ok {
-		return Skykey{}, errNoSkykeysWithThatID
+		return Skykey{}, ErrNoSkykeysWithThatID
 	}
 
 	return key, nil
@@ -189,7 +262,7 @@ func (sm *SkykeyManager) KeyByID(id SkykeyID) (Skykey, error) {
 
 	key, ok := sm.keysByID[id]
 	if !ok {
-		return Skykey{}, errNoSkykeysWithThatID
+		return Skykey{}, ErrNoSkykeysWithThatID
 	}
 	return key, nil
 }
@@ -291,6 +364,64 @@ func (sm *SkykeyManager) saveHeader(file *os.File) error {
 	return file.Sync()
 }
 
+// marshalDeletedSkykey writes a deleted skykey of a given size to the writer.
+func marshalDeletedSkykey(w io.Writer, size int) error {
+	e := encoding.NewEncoder(w)
+	e.WriteByte(byte(typeDeletedSkykey))
+	e.WriteUint64(uint64(size))
+	e.Write(make([]byte, size))
+	return e.Err()
+}
+
+// markSkykeyDeleted writes a typeDeletedSkykey to the file between startOffset
+// and endOffset (inclusive).
+func markSkykeyDeleted(file *os.File, startOffset, endOffset int) error {
+	size := endOffset - startOffset - 8 - 1
+
+	// Seek back to the beginning of this key.
+	_, err := file.Seek(int64(startOffset), io.SeekStart)
+	if err != nil {
+		return err
+	}
+
+	writer := newCountingWriter(file)
+	err = marshalDeletedSkykey(writer, size)
+	if err != nil {
+		return err
+	}
+	return file.Sync()
+}
+
+// loadSkykey loads a skykey from the file starting at the offset n. It returns
+// the skykey and the offset to the first byte after the skykey.
+func loadSkykey(file *os.File, n int) (Skykey, int, error) {
+	var sk Skykey
+	err := sk.unmarshalSia(file)
+
+	// Try unmarshaling with the old format and converting if the error could be
+	// a data-related error.
+	if err != nil {
+		// Seek back to the beginning of this key.
+		_, seekErr := file.Seek(int64(n), io.SeekStart)
+		if seekErr != nil {
+			return sk, 0, errors.Compose(err, seekErr)
+		}
+
+		oldFormatUnmarshalErr := sk.unmarshalAndConvertFromOldFormat(file)
+		if oldFormatUnmarshalErr != nil {
+			err = errors.Compose(err, oldFormatUnmarshalErr)
+			return sk, 0, errors.AddContext(err, "Error unmarshaling Skykey")
+		}
+	}
+
+	// Get and return current offset in file.
+	currOffset, err := file.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return sk, 0, errors.AddContext(err, "Error getting skykey file offset")
+	}
+	return sk, int(currOffset), nil
+}
+
 // load initializes the SkykeyManager with the data stored in the skykey file if
 // it exists. If it does not exist, it initializes that file with the default
 // header values.
@@ -327,34 +458,16 @@ func (sm *SkykeyManager) load() error {
 	// Read all the skykeys up to the length set in the header.
 	n := headerLen
 	for n < int(sm.fileLen) {
-		var sk Skykey
-		err = sk.unmarshalSia(file)
-
-		// Try unmarshaling with the old format and converting if the error could be
-		// a data-related error.
+		sk, currOffset, err := loadSkykey(file, n)
 		if err != nil {
-			// Seek back to the beginning of this key.
-			_, seekErr := file.Seek(int64(n), io.SeekStart)
-			if seekErr != nil {
-				return errors.Compose(err, seekErr)
-			}
-
-			oldFormatUnmarshalErr := sk.unmarshalAndConvertFromOldFormat(file)
-			if oldFormatUnmarshalErr != nil {
-				err = errors.Compose(err, oldFormatUnmarshalErr)
-				return errors.AddContext(err, "Error unmarshaling Skykey")
-			}
+			return errors.AddContext(err, "Error loading skykey")
 		}
+		n = currOffset
 
-		// Store the skykey.
-		sm.idsByName[sk.Name] = sk.ID()
-		sm.keysByID[sk.ID()] = sk
-
-		// Set n to current offset in file.
-		currOffset, err := file.Seek(0, io.SeekCurrent)
-		n = int(currOffset)
-		if err != nil {
-			return errors.AddContext(err, "Error getting skykey file offset")
+		// Store the skykey, if it's not a deleted key.
+		if sk.Type != typeDeletedSkykey {
+			sm.idsByName[sk.Name] = sk.ID()
+			sm.keysByID[sk.ID()] = sk
 		}
 	}
 

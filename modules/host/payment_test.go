@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/encoding"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
@@ -165,7 +165,9 @@ func TestVerifyEAFundRevision(t *testing.T) {
 	}
 
 	// expect ErrBadRevisionNumber
+	badOutputs = []types.SiacoinOutput{payment.NewMissedProofOutputs[0]}
 	badPayment = deepCopy(payment)
+	badPayment.NewMissedProofOutputs = badOutputs
 	badPayment.NewRevisionNumber--
 	err = verifyEAFundRevision(curr, badPayment, height, amount)
 	if err != ErrBadRevisionNumber {
