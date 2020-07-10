@@ -2801,7 +2801,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 	}{
 		{
 			// Single files without redirect.
-			// Should serve the content anyway.
+			// Error on upload: nodefaultpath not applicable to single files.
 			name:                 "single_nodef_empty",
 			files:                singleFile,
 			noDefaultPath:        true,
@@ -2821,7 +2821,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		},
 		{
 			// Single files with default, bad default path.
-			// Should serve the content anyway.
+			// Error on upload: invalid default path
 			name:                 "single_def_bad",
 			files:                singleFile,
 			noDefaultPath:        false,
@@ -2832,14 +2832,13 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 
 		{
 			// Single dir no default, empty default path.
-			// Should serve the content anyway.
-			name:                   "singledir_nodef_empty",
-			files:                  singleDir,
-			noDefaultPath:          true,
-			defaultPath:            "",
-			expectedContent:        nil,                            // TODO
-			expectedErrStrDownload: "format must be specified",     // TODO
-			expectedErrStrUpload:   "invalid use of nodefaultpath", // TODO
+			// Error on upload: invalid use of nodefaultpath.
+			name:                 "singledir_nodef_empty",
+			files:                singleDir,
+			noDefaultPath:        true,
+			defaultPath:          "",
+			expectedContent:      nil,
+			expectedErrStrUpload: "invalid use of nodefaultpath",
 		},
 		{
 			// Single dir default, empty default path.
@@ -2853,7 +2852,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		},
 		{
 			// Single dir default, bad default path.
-			// Should serve the content anyway.
+			// Error on upload: invalid default path.
 			name:                 "singledir_def_bad",
 			files:                singleDir,
 			noDefaultPath:        false,
@@ -2864,7 +2863,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 
 		{
 			// Multi dir with index, no default, empty default path.
-			// Error on download - format required.
+			// Error on download: format required.
 			name:                   "multi_idx_nodef_empty",
 			files:                  multiHasIndex,
 			noDefaultPath:          true,
@@ -2874,7 +2873,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		},
 		{
 			// Multi dir with index, no default, correct default path.
-			// Error on download - format required.
+			// Error on download: format required.
 			name:                   "multi_idx_nodef_correct",
 			files:                  multiHasIndex,
 			noDefaultPath:          true,
@@ -2884,7 +2883,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		},
 		{
 			// Multi dir with index, no default, bad default path.
-			// Error on download - format required.
+			// Error on download: format required.
 			name:                   "multi_idx_nodef_bad",
 			files:                  multiHasIndex,
 			noDefaultPath:          true,
@@ -2914,7 +2913,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		},
 		{
 			// Multi dir with index, default, bad default path.
-			// Error on download - format required.
+			// Error on upload: invalid default path.
 			name:                 "multi_idx_def_bad",
 			files:                multiHasIndex,
 			noDefaultPath:        false,
@@ -2925,7 +2924,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 
 		{
 			// Multi dir with no index, no default, empty default path.
-			// Error on download - format required.
+			// Error on download: format required.
 			name:                   "multi_noidx_nodef_empty",
 			files:                  multiNoIndex,
 			noDefaultPath:          true,
@@ -2935,7 +2934,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		},
 		{
 			// Multi dir with no index, no default, correct default path.
-			// Error on download - format required.
+			// Error on download: format required.
 			name:                   "multi_noidx_nodef_correct",
 			files:                  multiNoIndex,
 			noDefaultPath:          true,
@@ -2945,7 +2944,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		},
 		{
 			// Multi dir with index, no default, bad default path.
-			// Error on download - format required.
+			// Error on download: format required.
 			name:                   "multi_noidx_nodef_bad",
 			files:                  multiNoIndex,
 			noDefaultPath:          true,
@@ -2955,7 +2954,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		},
 		{
 			// Multi dir with no index, default, empty default path.
-			// Error on download - format required.
+			// Error on download: format required.
 			name:                   "multi_noidx_def_empty",
 			files:                  multiNoIndex,
 			noDefaultPath:          false,
@@ -2975,7 +2974,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		},
 		{
 			// Multi dir with no index, default, bad default path.
-			// Error on download - format required.
+			// Error on upload: invalid default path.
 			name:                 "multi_noidx_def_bad",
 			files:                multiNoIndex,
 			noDefaultPath:        false,
