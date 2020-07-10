@@ -5051,7 +5051,7 @@ may change over time.
 curl -A "Sia-Agent"  -u "":<apipassword> --data "skykey=BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a" "localhost:9980/skynet/addskykey"
 ```
 
-Stores the given skykey with the renter's skykey manager.
+Stores the given skykey with the skykey manager.
 
 ### Path Parameters
 ### REQUIRED
