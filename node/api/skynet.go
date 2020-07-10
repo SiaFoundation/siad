@@ -514,7 +514,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 
 	// Notify the caller force has been disabled
 	if !allowForce && force {
-		WriteError(w, Error{"'force' has been disabled on this node" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"'force' has been disabled on this node: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 
@@ -1059,7 +1059,7 @@ func (api *API) skykeyDeleteHandlerPOST(w http.ResponseWriter, req *http.Request
 		var id skykey.SkykeyID
 		err = id.FromString(idString)
 		if err != nil {
-			WriteError(w, Error{"Invalid skykey ID" + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"Invalid skykey ID: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 		err = api.renter.DeleteSkykeyByID(id)
@@ -1093,19 +1093,19 @@ func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Requ
 	var skykeyType skykey.SkykeyType
 	err := skykeyType.FromString(skykeyTypeString)
 	if err != nil {
-		WriteError(w, Error{"failed to decode skykey type" + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"failed to decode skykey type: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
 	sk, err := api.renter.CreateSkykey(name, skykeyType)
 	if err != nil {
-		WriteError(w, Error{"failed to create skykey" + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"failed to create skykey: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
 	keyString, err := sk.ToString()
 	if err != nil {
-		WriteError(w, Error{"failed to decode skykey" + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"failed to decode skykey: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
@@ -1127,13 +1127,13 @@ func (api *API) skykeyAddKeyHandlerPOST(w http.ResponseWriter, req *http.Request
 	var sk skykey.Skykey
 	err := sk.FromString(skString)
 	if err != nil {
-		WriteError(w, Error{"failed to decode skykey" + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"failed to decode skykey: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
 	err = api.renter.AddSkykey(sk)
 	if err != nil {
-		WriteError(w, Error{"failed to add skykey" + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"failed to add skykey: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
