@@ -1183,7 +1183,7 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 // result in its metadata.DefaultPath being used or not.
 func useDefaultPath(queryForm url.Values, metadata modules.SkyfileMetadata) (bool, error) {
 	// Do not use default path for skyfiles which are not directories.
-	if metadata.Subfiles == nil || len(metadata.Subfiles) == 0 {
+	if metadata.Subfiles == nil || len(metadata.Subfiles) <= 1 {
 		return false, nil
 	}
 	// Do not allow redirect if explicitly forbidden in the metadata.
@@ -1211,7 +1211,7 @@ func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaul
 	if err != nil {
 		return "", errors.AddContext(ErrInvalidNoDefaultPath, fmt.Sprintf("invalid nodefaultpath value: %s", noDefPathStr))
 	}
-	if noDefPath && len(subfiles) == 1 {
+	if noDefPath && len(subfiles) <= 1 {
 		return "", errors.AddContext(ErrInvalidNoDefaultPath, "nodefaultpath cannot be used on single files uploads")
 	}
 	if noDefPath {

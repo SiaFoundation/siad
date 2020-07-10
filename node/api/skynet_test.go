@@ -10,11 +10,14 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
-// TestAllowRedirect ensures defaultPath functions correctly.
-func TestAllowRedirect(t *testing.T) {
+// TestRedirectParameter ensures the `redirect` parameter functions correctly.
+func TestRedirectParameter(t *testing.T) {
 	subfilesMulti := modules.SkyfileSubfiles{
 		"about.html": modules.SkyfileSubfileMetadata{},
 		"hello.html": modules.SkyfileSubfileMetadata{},
+	}
+	subfilesSingle := modules.SkyfileSubfiles{
+		"about.html": modules.SkyfileSubfileMetadata{},
 	}
 	tests := []struct {
 		name           string
@@ -31,9 +34,39 @@ func TestAllowRedirect(t *testing.T) {
 			expectedErrMsg: "",
 		},
 		{
-			name:           "not allowed for empty (but present) default path",
-			queryForm:      url.Values{"defaultpath": []string{""}},
-			metadata:       modules.SkyfileMetadata{Subfiles: subfilesMulti},
+			name:           "not allowed for single file directories",
+			queryForm:      nil,
+			metadata:       modules.SkyfileMetadata{Subfiles: subfilesSingle},
+			expectedResult: false,
+			expectedErrMsg: "",
+		},
+		{
+			name:      "not allowed for empty default path and nodefaultpath=true",
+			queryForm: url.Values{"defaultpath": []string{""}},
+			metadata: modules.SkyfileMetadata{
+				Subfiles:      subfilesMulti,
+				NoDefaultPath: true,
+			},
+			expectedResult: false,
+			expectedErrMsg: "",
+		},
+		{
+			name:      "not allowed for valid default path and nodefaultpath=true",
+			queryForm: url.Values{"defaultpath": []string{"about.html"}},
+			metadata: modules.SkyfileMetadata{
+				Subfiles:      subfilesMulti,
+				NoDefaultPath: true,
+			},
+			expectedResult: false,
+			expectedErrMsg: "",
+		},
+		{
+			name:      "not allowed for `redirect=false` parameter",
+			queryForm: url.Values{"redirect": []string{"false"}},
+			metadata: modules.SkyfileMetadata{
+				Subfiles:    subfilesMulti,
+				DefaultPath: "about.html",
+			},
 			expectedResult: false,
 			expectedErrMsg: "",
 		},
@@ -42,7 +75,7 @@ func TestAllowRedirect(t *testing.T) {
 			queryForm: url.Values{},
 			metadata: modules.SkyfileMetadata{
 				Subfiles:    subfilesMulti,
-				DefaultPath: "non_empty",
+				DefaultPath: "about.html",
 			},
 			expectedResult: true,
 			expectedErrMsg: "",
@@ -52,19 +85,9 @@ func TestAllowRedirect(t *testing.T) {
 			queryForm: url.Values{"redirect": []string{"true"}},
 			metadata: modules.SkyfileMetadata{
 				Subfiles:    subfilesMulti,
-				DefaultPath: "non_empty",
+				DefaultPath: "non_about.html",
 			},
 			expectedResult: true,
-			expectedErrMsg: "",
-		},
-		{
-			name:      "not allowed for `redirect=false` parameter",
-			queryForm: url.Values{"redirect": []string{"false"}},
-			metadata: modules.SkyfileMetadata{
-				Subfiles:    subfilesMulti,
-				DefaultPath: "non_empty",
-			},
-			expectedResult: false,
 			expectedErrMsg: "",
 		},
 		{
