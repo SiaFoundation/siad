@@ -255,33 +255,29 @@ func (api *API) skynetSkylinkData(skylink modules.Skylink, path string, format m
 		return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError
 	}
 
-	// Get the default path limitations.
-	useDefPath, err := useDefaultPath(queryForm, format, path, metadata)
-	if err != nil {
-		return modules.SkyfileMetadata{}, nil, Error{err.Error()}, http.StatusBadRequest
-	}
+	var dir, defaultpath bool
+	var offset, size uint64
 
-	var useFullMeta bool
-	if useDefPath {
-		// When serving data using the default path we still want to serve the
-		// full metadata of the skyfile, so clients will have a full view of it
-		// without making a second request just to figure out if there are more
-		// files in it.
-		useFullMeta = true
-		path = metadata.DefaultPath
-	}
-
-	if path != "/" {
-		// If path is different from the root, limit the streamer and return the
-		// appropriate subset of the metadata. This is done by wrapping the streamer
-		// so it only returns the files defined in the subset of the metadata.
-		subMeta, dir, offset, size := metadata.ForPath(path)
-		if len(subMeta.Subfiles) == 0 {
-			return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound
+	// Serve the contents of the file at the default path if one is set. Note
+	// that we return the metadata for the entire Skylink when we serve the
+	// contents of the file at the default path.
+	if path == "/" &&
+		metadata.DefaultPath != "" &&
+		metadata.NoDefaultPath == false &&
+		format == modules.SkyfileFormatNotSpecified {
+		defaultpath = true
+		_, _, offset, size := metadata.ForPath(metadata.DefaultPath)
+		streamer, err = NewLimitStreamer(streamer, offset, size)
+		if err != nil {
+			return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError
 		}
+	}
 
-		if !useFullMeta {
-			metadata = subMeta
+	// Serve the contents of the skyfile at path if one is set
+	if path != "/" {
+		metadata, dir, offset, size = metadata.ForPath(path)
+		if len(metadata.Subfiles) == 0 {
+			return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound
 		}
 		if dir && format == modules.SkyfileFormatNotSpecified {
 			return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("failed to download contents for path: %v, format must be specified", path)}, http.StatusBadRequest
@@ -290,20 +286,15 @@ func (api *API) skynetSkylinkData(skylink modules.Skylink, path string, format m
 		if err != nil {
 			return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError
 		}
-	} else {
-		// We don't need a format to be specified for single files. Instead, we
-		// directly serve their content, unless that is explicitly disabled by
-		// passing the `redirect=false` parameter. This is legacy behaviour that
-		// we are continuing to support.
-		formatRequired := len(metadata.Subfiles) != 0
-		// We need a format to be specified when accessing the `/` of skyfiles
-		// that either have more than one file or do not allow redirects.
-		formatRequired = formatRequired && (len(metadata.Subfiles) > 1 || !useDefPath)
-		if formatRequired && format == modules.SkyfileFormatNotSpecified {
-			fmt.Println(metadata)
-			return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest
-		}
 	}
+
+	// If we are serving more than one file, and the format is not specified,
+	// return an error indicating a format needs to be specified when
+	// downloading a directory.
+	if len(metadata.Subfiles) > 1 && format == modules.SkyfileFormatNotSpecified && defaultpath == false {
+		return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest
+	}
+
 	return metadata, streamer, Error{}, http.StatusOK
 }
 
