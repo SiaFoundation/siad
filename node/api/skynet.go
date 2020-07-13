@@ -349,15 +349,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			return
 		}
 	} else {
-		// We don't need a format to be specified for single files. Instead, we
-		// directly serve their content, unless that is explicitly disabled by
-		// passing the `redirect=false` parameter. This is legacy behaviour that
-		// we are continuing to support.
-		formatRequired := len(metadata.Subfiles) != 0
-		// We need a format to be specified when accessing the `/` of skyfiles
-		// that either have more than one file or do not allow redirects.
-		formatRequired = formatRequired && (len(metadata.Subfiles) > 1 || !allowRedirect)
-		if formatRequired && format == modules.SkyfileFormatNotSpecified {
+		// Default to downloading the contents as a zip archive if we are
+		// downloading a directory and the user has not specified a format.
+		if len(metadata.Subfiles) > 1 && format == modules.SkyfileFormatNotSpecified {
 			format = modules.SkyfileFormatZip
 		}
 	}
