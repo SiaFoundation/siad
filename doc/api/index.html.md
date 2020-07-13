@@ -4894,7 +4894,8 @@ that name exists within the skyfile.
 **filename** | string  
 The name of the file. This name will be encoded into the skyfile metadata, and
 will be a part of the skylink. If the name changes, the skylink will change as
-well.
+well. The name must be non-empty, may not include any path traversal strings
+("./", "../"), and may not begin with a forward-slash character.
 
 **dryrun** | bool  
 If dryrun is set to true, the request will return the Skylink of the file

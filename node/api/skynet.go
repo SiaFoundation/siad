@@ -740,7 +740,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// Check for a convertpath input
 	convertPathStr := queryForm.Get("convertpath")
 	if convertPathStr != "" && lup.FileMetadata.Filename != "" {
-		WriteError(w, Error{fmt.Sprintf("cannot set both a convertpath and a filename")}, http.StatusBadRequest)
+		WriteError(w, Error{"cannot set both a convertpath and a filename"}, http.StatusBadRequest)
 		return
 	}
 
@@ -748,10 +748,24 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// convert path is provided, assume that the req.Body will be used as a
 	// streaming upload.
 	if convertPathStr == "" {
-		// Ensure we have a filename
-		if lup.FileMetadata.Filename == "" {
-			WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
+		// Ensure we have a valid filename.
+		if err = modules.ValidatePathString(lup.FileMetadata.Filename, false); err != nil {
+			WriteError(w, Error{fmt.Sprintf("invalid filename provided: %v", err)}, http.StatusBadRequest)
 			return
+		}
+
+		// Check filenames of subfiles.
+		if lup.FileMetadata.Subfiles != nil {
+			for subfile, metadata := range lup.FileMetadata.Subfiles {
+				if subfile != metadata.Filename {
+					WriteError(w, Error{"subfile name did not match metadata filename"}, http.StatusBadRequest)
+					return
+				}
+				if err = modules.ValidatePathString(subfile, false); err != nil {
+					WriteError(w, Error{fmt.Sprintf("invalid filename provided: %v", err)}, http.StatusBadRequest)
+					return
+				}
+			}
 		}
 
 		skylink, err := api.renter.UploadSkyfile(lup)
@@ -1120,7 +1134,7 @@ func (api *API) skykeyAddKeyHandlerPOST(w http.ResponseWriter, req *http.Request
 	// Parse skykey.
 	skString := req.FormValue("skykey")
 	if skString == "" {
-		WriteError(w, Error{"you must specify the name the Skykey"}, http.StatusInternalServerError)
+		WriteError(w, Error{"you must specify the name of the skykey"}, http.StatusInternalServerError)
 		return
 	}
 
