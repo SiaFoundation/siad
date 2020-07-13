@@ -27,11 +27,16 @@ const (
 // leading bytes of the skyfile, meaning that this struct can be extended
 // without breaking compatibility.
 type SkyfileMetadata struct {
-	Mode          os.FileMode     `json:"mode,omitempty"`
-	Filename      string          `json:"filename,omitempty"`
-	Subfiles      SkyfileSubfiles `json:"subfiles,omitempty"`
-	DefaultPath   string          `json:"defaultpath,omitempty"` // defaults to `index.html`
-	NoDefaultPath bool            `json:"nodefaultpath,omitempty"`
+	Mode        os.FileMode     `json:"mode,omitempty"`
+	Filename    string          `json:"filename,omitempty"`
+	Subfiles    SkyfileSubfiles `json:"subfiles,omitempty"`
+	DefaultPath string          `json:"defaultpath,omitempty"` // defaults to `index.html`
+	// NoDefaultPath is a flag that indicates that the DefaultPath should not be
+	// used. If the skyfile contains multiple files and is accessed at its root
+	// without a format an error will be returned. We need it here in order to
+	// ensure legacy skylinks that don't have `DefaultPath` will keep working
+	// the way they did when they were created.
+	NoDefaultPath bool `json:"nodefaultpath,omitempty"`
 }
 
 // SkyfileSubfiles contains the subfiles of a skyfile, indexed by their
