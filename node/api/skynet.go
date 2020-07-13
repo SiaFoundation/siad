@@ -258,6 +258,22 @@ func (api *API) skynetSkylinkData(skylink modules.Skylink, path string, format m
 	var dir, defaultpath bool
 	var offset, size uint64
 
+	// The following handles the legacy case where we returned the contents of
+	// the file if the Skylink consists of a single file directory. We know the
+	// Skylink is an old Skylink if `NoDefaultPath` has not been explicitly set
+	// to "true" in this case. If it is false, and if we only have a single file
+	// we default to it here manually by overwriting the DefaultPath.
+	if path == "/" &&
+		metadata.DefaultPath == "" &&
+		metadata.NoDefaultPath == false &&
+		format == modules.SkyfileFormatNotSpecified &&
+		len(metadata.Subfiles) == 1 {
+		for path := range metadata.Subfiles {
+			metadata.DefaultPath = path
+			break
+		}
+	}
+
 	// Serve the contents of the file at the default path if one is set. Note
 	// that we return the metadata for the entire Skylink when we serve the
 	// contents of the file at the default path.
