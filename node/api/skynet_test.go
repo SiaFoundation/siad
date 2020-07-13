@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/url"
-	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/errors"

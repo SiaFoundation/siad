@@ -1175,38 +1175,6 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 	WriteJSON(w, res)
 }
 
-// useDefaultPath decides whether a request to the root of this skyfile will
-// result in its metadata.DefaultPath being used or not.
-func useDefaultPath(queryForm url.Values, format modules.SkyfileFormat, path string, metadata modules.SkyfileMetadata) (bool, error) {
-	// Do not use default path when the user specified a path.
-	if path != "/" {
-		return false, nil
-	}
-	// Do not use default path when format is specified.
-	if format != modules.SkyfileFormatNotSpecified {
-		return false, nil
-	}
-	// Do not use default path for skyfiles which are not directories.
-	if metadata.Subfiles == nil || len(metadata.Subfiles) == 0 {
-		return false, nil
-	}
-	// Do not allow redirect if explicitly forbidden in the metadata.
-	if metadata.NoDefaultPath {
-		return false, nil
-	}
-	// Check what the user requested.
-	redirectStr := queryForm.Get("redirect")
-	// If the user didn't specify anything we default to allowing redirects.
-	if redirectStr == "" {
-		return true, nil
-	}
-	allowRedirect, err := strconv.ParseBool(redirectStr)
-	if err != nil {
-		return false, Error{fmt.Sprintf("unable to parse 'redirect' parameter: %v", err)}
-	}
-	return allowRedirect, nil
-}
-
 // defaultPath extracts the defaultPath from the request or returns a default.
 // It will never return a directory because `subfiles` contains only files.
 func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaultPath string, err error) {
