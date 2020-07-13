@@ -506,14 +506,14 @@ func (fm *FeeManager) applyEntryTxnDropped(payload [persistEntryPayloadSize]byte
 		feeUIDs[i] = feeUID
 	}
 
-	// Drop the transaction from  the Watchdog
-	err = fm.callDropTransaction(etf.TxnID)
+	// Clear the transaction from  the Watchdog
+	err = fm.staticCommon.staticWatchdog.callClearTransaction(etf.TxnID)
 	if err != nil && err != errTxnNotFound {
 		// Return an error only if the error is not errTxnNotFound. This is because
 		// Transaction Dropped events can span multiple persist entries and so the
 		// first persist entry will clear the transaction and the rest will be
 		// no-ops.
-		return errors.AddContext(err, "unable to drop transaction from the watchdog")
+		return errors.AddContext(err, "unable to clear transaction from the watchdog")
 	}
 	return nil
 }
