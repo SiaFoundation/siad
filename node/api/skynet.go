@@ -277,11 +277,13 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// Parse the format.
 	format := modules.SkyfileFormat(strings.ToLower(queryForm.Get("format")))
-	if format != modules.SkyfileFormatNotSpecified &&
-		format != modules.SkyfileFormatTar &&
-		format != modules.SkyfileFormatConcat &&
-		format != modules.SkyfileFormatTarGz &&
-		format != modules.SkyfileFormatZip {
+	switch format {
+	case modules.SkyfileFormatNotSpecified:
+	case modules.SkyfileFormatTar:
+	case modules.SkyfileFormatTarGz:
+	case modules.SkyfileFormatConcat:
+	case modules.SkyfileFormatZip:
+	default:
 		WriteError(w, Error{"unable to parse 'format' parameter, allowed values are: 'concat', 'tar', 'targz' and 'zip'"}, http.StatusBadRequest)
 		return
 	}
@@ -366,7 +368,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		w.Header().Set("content-type", "application/x-tar")
 		err = serveTar(w, metadata, streamer)
 		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar archive: %v", err)}, http.StatusInternalServerError)
 		}
 		return
 	}
@@ -376,7 +378,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		err = serveTar(gzw, metadata, streamer)
 		err = errors.Compose(err, gzw.Close())
 		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar gz archive: %v", err)}, http.StatusInternalServerError)
 		}
 		return
 	}
@@ -384,7 +386,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		w.Header().Set("content-type", "application/zip")
 		err = serveZip(w, metadata, streamer)
 		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as zip archive: %v", err)}, http.StatusInternalServerError)
 		}
 		return
 	}
@@ -942,11 +944,11 @@ func serveZip(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Stream
 		// the start.
 		length, err := streamer.Seek(0, io.SeekEnd)
 		if err != nil {
-			return errors.AddContext(err, "serveTar: failed to seek to end of skyfile")
+			return errors.AddContext(err, "serveZip: failed to seek to end of skyfile")
 		}
 		_, err = streamer.Seek(0, io.SeekStart)
 		if err != nil {
-			return errors.AddContext(err, "serveTar: failed to seek to start of skyfile")
+			return errors.AddContext(err, "serveZip: failed to seek to start of skyfile")
 		}
 		// Construct the SkyfileSubfileMetadata.
 		files = append(files, modules.SkyfileSubfileMetadata{
