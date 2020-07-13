@@ -51,14 +51,6 @@ func (c *Client) SkynetSkylinkGetWithFormat(skylink string, format string) ([]by
 	return c.skynetSkylinkGetWithParameters(skylink, params)
 }
 
-// SkynetSkylinkGetWithRedirect uses the /skynet/skylink endpoint to download a
-// skylink file, specifying whether redirecting is allowed or not.
-func (c *Client) SkynetSkylinkGetWithRedirect(skylink string, allowRedirect bool) ([]byte, modules.SkyfileMetadata, error) {
-	params := make(map[string]string)
-	params["redirect"] = fmt.Sprintf("%t", allowRedirect)
-	return c.skynetSkylinkGetWithParameters(skylink, params)
-}
-
 // skynetSkylinkGetWithParameters uses the /skynet/skylink endpoint to download
 // a skylink file, specifying the given parameters.
 // The caller of this function is responsible for validating the parameters!

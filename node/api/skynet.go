@@ -1207,7 +1207,7 @@ func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaul
 		if exists {
 			return DefaultSkynetDefaultPath, nil
 		}
-		// For single file directories we want to redirect to the only file.
+		// For single file directories we want to serve the only file.
 		if len(subfiles) == 1 {
 			for filename := range subfiles {
 				return filename, nil

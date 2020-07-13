@@ -2696,12 +2696,6 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	if !bytes.Equal(content, files[0].Data) {
 		t.Fatalf("Expected to get content '%s', instead got '%s'", files[0].Data, string(content))
 	}
-	// Test passing `redirect=false` to multi-file Skyfile with default path.
-	// This should result in an error with message "format must be specified".
-	_, _, err = r.SkynetSkylinkGetWithRedirect(skylink, false)
-	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
-		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
-	}
 
 	// TEST: Does not contain index.html and specifies an INVALID default path.
 	// This should fail on upload with "invalid default path provided".
@@ -2750,13 +2744,6 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	if !bytes.Equal(content, files[0].Data) {
 		t.Fatalf("Expected to get content '%s', instead got '%s'", files[0].Data, string(content))
 	}
-	// Test passing `redirect=false` to single-file Skyfile.
-	// This should behave just like any other skydirectory and fail on download
-	// with "format must be specified".
-	_, _, err = r.SkynetSkylinkGetWithRedirect(skylink, false)
-	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
-		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
-	}
 }
 
 // testSkynetDefaultPath_TableTest tests all combinations of inputs in relation
@@ -2792,7 +2779,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		expectedErrStrUpload   string
 	}{
 		{
-			// Single files without redirect.
+			// Single files without default path.
 			// Error on upload: nodefaultpath not applicable to single files.
 			name:                 "single_nodef_empty",
 			files:                singleFile,
@@ -3005,7 +2992,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 
 // testSkynetSingleFileNoSubfiles ensures that a single file uploaded as a
 // skyfile will not have `subfiles` defined in its metadata. This is required by
-// the `defaultPath` and `redirect` logic.
+// the `defaultPath` logic.
 func testSkynetSingleFileNoSubfiles(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 

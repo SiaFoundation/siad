@@ -58,7 +58,7 @@ func (tn *TestNode) UploadNewSkyfileWithDataBlocking(filename string, filedata [
 		return
 	}
 
-	// create random data and wrap it in a reader
+	// wrap the data in a reader
 	reader := bytes.NewReader(filedata)
 	sup = modules.SkyfileUploadParameters{
 		SiaPath:             skyfilePath,

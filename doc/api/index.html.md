@@ -4805,14 +4805,6 @@ concatenated data of all subfiles in that directory, 'tar' will return a tar
 archive of all subfiles in that directory, and 'targz' will return gzipped tar 
 archive of all subfiles in that directory.
 
-**redirect** | bool
-If 'redirect' is omitted or set to true, the provided skylink points to a 
-directory, no format was specified, and no explicit path was provided (e.g. 
-`folder/file.txt` from the example above) then the user's browser will be 
-redirected to the default path associated with this skyfile, if one exists.  
-If 'redirect' is set to false and the same conditions apply, an error will be 
-returned because there is no default action for this case.
-
 **timeout** | int  
 If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved 
 before it expires. Note that this timeout does not cover the actual download 
