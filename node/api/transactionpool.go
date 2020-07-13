@@ -65,7 +65,7 @@ func (api *API) tpoolFeeHandlerGET(w http.ResponseWriter, req *http.Request, ps 
 func (api *API) tpoolRawHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	txid, err := decodeTransactionID(ps.ByName("id"))
 	if err != nil {
-		WriteError(w, Error{"error decoding transaction id:" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"error decoding transaction id: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	txn, parents, exists := api.tpool.Transaction(txid)
@@ -95,7 +95,7 @@ func (api *API) tpoolRawHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 			rawParents = []byte(req.FormValue("parents"))
 		}
 		if err := encoding.Unmarshal(rawParents, &parents); err != nil {
-			WriteError(w, Error{"error decoding parents:" + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"error decoding parents: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}
@@ -105,7 +105,7 @@ func (api *API) tpoolRawHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 			rawTransaction = []byte(req.FormValue("transaction"))
 		}
 		if err := encoding.Unmarshal(rawTransaction, &txn); err != nil {
-			WriteError(w, Error{"error decoding transaction:" + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"error decoding transaction: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}
@@ -115,7 +115,7 @@ func (api *API) tpoolRawHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 	api.tpool.Broadcast(txnSet)
 	err := api.tpool.AcceptTransactionSet(txnSet)
 	if err != nil && err != modules.ErrDuplicateTransactionSet {
-		WriteError(w, Error{"error accepting transaction set:" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"error accepting transaction set: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteSuccess(w)
@@ -126,12 +126,12 @@ func (api *API) tpoolRawHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 func (api *API) tpoolConfirmedGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	txid, err := decodeTransactionID(ps.ByName("id"))
 	if err != nil {
-		WriteError(w, Error{"error decoding transaction id:" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"error decoding transaction id: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	confirmed, err := api.tpool.TransactionConfirmed(txid)
 	if err != nil {
-		WriteError(w, Error{"error fetching transaction status:" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"error fetching transaction status: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteJSON(w, TpoolConfirmedGET{
