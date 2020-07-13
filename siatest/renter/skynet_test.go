@@ -1342,9 +1342,9 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 	dataFile1 := []byte("file1.txt")
 	dataFile2 := []byte("file2.txt")
 	dataFile3 := []byte("file3.txt")
-	filePath1 := "/a/5.f4f8b583.chunk.js"
-	filePath2 := "/a/5.f4f.chunk.js.map"
-	filePath3 := "/b/file3.txt"
+	filePath1 := "a/5.f4f8b583.chunk.js"
+	filePath2 := "a/5.f4f.chunk.js.map"
+	filePath3 := "b/file3.txt"
 	siatest.AddMultipartFile(writer, dataFile1, "files[]", filePath1, 0600, nil)
 	siatest.AddMultipartFile(writer, dataFile2, "files[]", filePath2, 0600, nil)
 	siatest.AddMultipartFile(writer, dataFile3, "files[]", filePath3, 0640, nil)
@@ -1414,7 +1414,7 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 	if metadata.Filename != "/b" {
 		t.Fatal("Unexpected filename", metadata.Filename)
 	}
-	mdF3, ok := metadata.Subfiles["/b/file3.txt"]
+	mdF3, ok := metadata.Subfiles["b/file3.txt"]
 	if !ok {
 		t.Fatal("Expected subfile metadata of file3 to be present")
 	}
