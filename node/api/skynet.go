@@ -269,7 +269,7 @@ func (api *API) skynetSkylinkData(skylink modules.Skylink, path string, format m
 		format == modules.SkyfileFormatNotSpecified &&
 		len(metadata.Subfiles) == 1 {
 		for path := range metadata.Subfiles {
-			metadata.DefaultPath = path
+			metadata.DefaultPath = modules.EnsurePrefix(path, "/")
 			break
 		}
 	}
