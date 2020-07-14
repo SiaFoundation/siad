@@ -115,7 +115,7 @@ func (api *API) hostHandlerGET(w http.ResponseWriter, req *http.Request, _ httpr
 func (api *API) hostBandwidthHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	sent, receive, startTime, err := api.host.BandwidthCounters()
 	if err != nil {
-		WriteError(w, Error{"failed to get hosts's bandwidth usage " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"failed to get hosts's bandwidth usage: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteJSON(w, GatewayBandwidthGET{
