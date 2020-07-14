@@ -444,38 +444,23 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 		defer close(connCloseChan)
 		conn.SetDeadline(time.Now().Add(hostScanDeadline))
 
-		// Assume that the host supports the new protocol, and request its
-		// settings. If we are talking to an old host, they will not recognize
-		// the request and will close the connection.
-		tryNewProtoErr := func() error {
-			s, _, err := modules.NewRenterSession(conn, pubKey)
-			if err != nil {
-				return err
-			}
-			defer s.WriteRequest(modules.RPCLoopExit, nil) // make sure we close cleanly
-			if err := s.WriteRequest(modules.RPCLoopSettings, nil); err != nil {
-				return err
-			}
-			var resp modules.LoopSettingsResponse
-			if err := s.ReadResponse(&resp, maxSettingsLen); err != nil {
-				return err
-			}
-			err = json.Unmarshal(resp.Settings, &settings)
-			if err != nil {
-				return err
-			}
-
-			// Try opening a connection to the siamux.
-			err = hdb.staticMux.Ping(modules.HostSiaMuxSubscriberName, settings.SiaMuxAddress(), siamuxPingTimeout, modules.SiaPKToMuxPK(entry.PublicKey))
-			if err != nil {
-				hdb.staticLog.Debugf("%v could not open stream: %v\n", entry.PublicKey, err)
-				return err
-			}
-			hdb.staticLog.Debugf("%v was successful in using stream: %v\n", entry.PublicKey, err)
-			return nil
-		}()
-		if tryNewProtoErr != nil {
-			return errors.AddContext(tryNewProtoErr, "host does not appear to be correctly supporting RHP3")
+		// Try to talk to the host using RHP2. If the host does not respond to
+		// the RHP2 request, consider the scan a failure.
+		s, _, err := modules.NewRenterSession(conn, pubKey)
+		if err != nil {
+			return errors.AddContext(err, "could not open RHP2 session")
+		}
+		defer s.WriteRequest(modules.RPCLoopExit, nil) // make sure we close cleanly
+		if err := s.WriteRequest(modules.RPCLoopSettings, nil); err != nil {
+			return errors.AddContext(err, "count not write the loop settings request in the RHP2 check")
+		}
+		var resp modules.LoopSettingsResponse
+		if err := s.ReadResponse(&resp, maxSettingsLen); err != nil {
+			return errors.AddContext(err, "could not read the settings response")
+		}
+		err = json.Unmarshal(resp.Settings, &settings)
+		if err != nil {
+			return errors.AddContext(err, "could not unmarshal the settings response")
 		}
 		// If the host's version is lower than v1.4.12, which is the version
 		// at which the following fields were added to the host's external
@@ -485,6 +470,14 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 		if build.VersionCmp(settings.Version, "1.4.12") < 0 {
 			settings.EphemeralAccountExpiry = modules.CompatV1412DefaultEphemeralAccountExpiry
 			settings.MaxEphemeralAccountBalance = modules.CompatV1412DefaultMaxEphemeralAccountBalance
+		}
+
+		// Try opening a connection to the siamux, this is a very lightweight
+		// way of checking that RHP3 is supported.
+		err = hdb.staticMux.Ping(modules.HostSiaMuxSubscriberName, settings.SiaMuxAddress(), siamuxPingTimeout, modules.SiaPKToMuxPK(entry.PublicKey))
+		if err != nil {
+			hdb.staticLog.Debugf("%v siamux ping not successful: %v\n", entry.PublicKey, err)
+			return err
 		}
 
 		return nil
