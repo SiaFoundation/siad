@@ -130,6 +130,8 @@ func (so *TestStorageObligation) RecentRevision() types.FileContractRevision {
 	}
 }
 
+// RevisionTxn returns the revision transaction for the obligation including a
+// renter sig.
 func (so *TestStorageObligation) RevisionTxn() types.Transaction {
 	revTxn := types.Transaction{
 		FileContractRevisions: []types.FileContractRevision{
