@@ -1,6 +1,10 @@
 package modules
 
-import "testing"
+import (
+	"encoding/json"
+	"fmt"
+	"testing"
+)
 
 // TestSkyfileMetadata_ForPath tests the behaviour of the ForPath method.
 func TestSkyfileMetadata_ForPath(t *testing.T) {
@@ -121,5 +125,75 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 	}
 	if offset != 0 {
 		t.Fatal(`Expected offset to be zero, got`, offset)
+	}
+}
+
+// TestSkyfileMetadata_UnmarshalJSON tests the behaviour of UnmarshalJSON.
+func TestSkyfileMetadata_UnmarshalJSON(t *testing.T) {
+	t.Parallel()
+
+	fn := "img.jpg"
+	ofn := "other.jpg"
+	tests := []struct {
+		name        string
+		metastring  string
+		filename    string
+		numfiles    int
+		defaultPath string
+	}{
+		{
+			name:        "single file",
+			metastring:  fmt.Sprintf(`{"filename":"%s"}`, fn),
+			filename:    fn,
+			numfiles:    0,
+			defaultPath: "",
+		},
+		{
+			name:        "single file multipart",
+			metastring:  fmt.Sprintf(`{"filename":"%s","subfiles":{"%s":{"filename":"%s","contenttype":"image/jpeg","len":190709}}}`, fn, fn, fn),
+			filename:    fn,
+			numfiles:    1,
+			defaultPath: EnsurePrefix(fn, "/"),
+		},
+		{
+			name:        "multi file default path set",
+			metastring:  fmt.Sprintf(`{"filename":"%s","subfiles":{"%s":{"filename":"%s","contenttype":"image/jpeg","len":190709},"%s":{"filename":"%s","contenttype":"image/jpeg","len":190709}},"defaultpath":"/%s"}`, fn, fn, fn, ofn, ofn, fn),
+			filename:    fn,
+			numfiles:    2,
+			defaultPath: EnsurePrefix(fn, "/"),
+		},
+		{
+			name:        "multi file default path set empty",
+			metastring:  fmt.Sprintf(`{"filename":"%s","subfiles":{"%s":{"filename":"%s","contenttype":"image/jpeg","len":190709},"%s":{"filename":"%s","contenttype":"image/jpeg","len":190709}},"defaultpath":""}`, fn, fn, fn, ofn, ofn),
+			filename:    fn,
+			numfiles:    2,
+			defaultPath: "",
+		},
+		{
+			name:        "multi file default path not set",
+			metastring:  fmt.Sprintf(`{"filename":"%s","subfiles":{"%s":{"filename":"%s","contenttype":"image/jpeg","len":190709},"%s":{"filename":"%s","contenttype":"image/jpeg","len":190709}},"defaultpath":""}`, fn, fn, fn, ofn, ofn),
+			filename:    fn,
+			numfiles:    2,
+			defaultPath: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var sm SkyfileMetadata
+			err := json.Unmarshal([]byte(tt.metastring), &sm)
+			if err != nil {
+				t.Fatal("Failed to unmarshal:", err)
+			}
+			if sm.Filename != tt.filename {
+				t.Fatalf("Bad filename, expected '%s', got '%s'.", tt.filename, sm.Filename)
+			}
+			if len(sm.Subfiles) != tt.numfiles {
+				t.Fatalf("Bad number of subfiles, expected %d, got %d.", tt.numfiles, len(sm.Subfiles))
+			}
+			if sm.DefaultPath != tt.defaultPath {
+				t.Fatalf("Bad default path, expected '%s', got '%s'.", tt.defaultPath, sm.DefaultPath)
+			}
+		})
 	}
 }

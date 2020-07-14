@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -30,7 +31,7 @@ type SkyfileMetadata struct {
 	Mode        os.FileMode     `json:"mode,omitempty"`
 	Filename    string          `json:"filename,omitempty"`
 	Subfiles    SkyfileSubfiles `json:"subfiles,omitempty"`
-	DefaultPath string          `json:"defaultpath,omitempty"` // defaults to `index.html`
+	DefaultPath string          `json:"defaultpath"` // defaults to `index.html`
 	// NoDefaultPath is a flag that indicates that the DefaultPath should not be
 	// used. If the skyfile contains multiple files and is accessed at its root
 	// without a format an error will be returned. We need it here in order to
@@ -38,6 +39,9 @@ type SkyfileMetadata struct {
 	// the way they did when they were created.
 	NoDefaultPath bool `json:"nodefaultpath,omitempty"`
 }
+
+// skyfileMetadataJSON is a helper type
+type skyfileMetadataJSON SkyfileMetadata
 
 // SkyfileSubfiles contains the subfiles of a skyfile, indexed by their
 // filename.
@@ -97,6 +101,39 @@ func (sm SkyfileMetadata) ContentType() string {
 		}
 	}
 	return ""
+}
+
+// MarshalJSON marshal a SkyfileMetadata into a byte slice.
+func (sm SkyfileMetadata) MarshalJSON() ([]byte, error) {
+	return json.Marshal(sm)
+}
+
+// UnmarshalJSON unmarshals a byte slice into a SkyfileMetadata while handling
+// some special cases, e.g. DefaultPath field being empty vs not set.
+func (sm *SkyfileMetadata) UnmarshalJSON(b []byte) error {
+	var m skyfileMetadataJSON
+	if err := json.Unmarshal(b, &m); err != nil {
+		return err
+	}
+	sm.Mode = m.Mode
+	sm.Filename = m.Filename
+	sm.Subfiles = m.Subfiles
+	sm.DefaultPath = m.DefaultPath
+
+	// Handle the special case of `defaultpath` not being set.
+	if !strings.Contains(string(b), fmt.Sprintf("\"%s\"", SkyfileDefaultPathParamName)) {
+		// If this is a single file we want to set the default path to the only
+		// file in order to support the legacy case in which this field is
+		// missing. We only need to do that for multipart file, i.e. files that
+		// have subfiles.
+		if len(sm.Subfiles) == 1 {
+			for filename := range sm.Subfiles {
+				sm.DefaultPath = EnsurePrefix(filename, "/")
+				break
+			}
+		}
+	}
+	return nil
 }
 
 // size returns the total size, which is the sum of the length of all subfiles.
