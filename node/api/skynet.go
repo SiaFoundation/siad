@@ -225,75 +225,6 @@ func (api *API) skynetPortalsHandlerPOST(w http.ResponseWriter, req *http.Reques
 	WriteSuccess(w)
 }
 
-// skynetSkylinkData is a helper method that decides what part of the skylink's
-// data to serve to the user.
-func (api *API) skynetSkylinkData(skylink modules.Skylink, path string, format modules.SkyfileFormat, queryForm url.Values) (modules.SkyfileMetadata, modules.Streamer, Error, int) {
-	// Parse the timeout.
-	timeout := DefaultSkynetRequestTimeout
-	timeoutStr := queryForm.Get("timeout")
-	if timeoutStr != "" {
-		timeoutInt, err := strconv.Atoi(timeoutStr)
-		if err != nil {
-			return modules.SkyfileMetadata{}, nil, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest
-		}
-
-		if timeoutInt > MaxSkynetRequestTimeout {
-			return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout)}, http.StatusBadRequest
-		}
-		timeout = time.Duration(timeoutInt) * time.Second
-	}
-
-	// Fetch the skyfile's metadata and a streamer to download the file
-	metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout)
-	if errors.Contains(err, renter.ErrRootNotFound) {
-		return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound
-	}
-	if err != nil {
-		return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError
-	}
-
-	var dir, defaultPath bool
-	var offset, size uint64
-
-	// Serve the contents of the file at the default path if one is set. Note
-	// that we return the metadata for the entire Skylink when we serve the
-	// contents of the file at the default path.
-	if path == "/" &&
-		metadata.DefaultPath != "" &&
-		format == modules.SkyfileFormatNotSpecified {
-		defaultPath = true
-		_, _, offset, size := metadata.ForPath(metadata.DefaultPath)
-		streamer, err = NewLimitStreamer(streamer, offset, size)
-		if err != nil {
-			return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError
-		}
-	}
-
-	// Serve the contents of the skyfile at path if one is set
-	if path != "/" {
-		metadata, dir, offset, size = metadata.ForPath(path)
-		if len(metadata.Subfiles) == 0 {
-			return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound
-		}
-		if dir && format == modules.SkyfileFormatNotSpecified {
-			return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("failed to download contents for path: %v, format must be specified", path)}, http.StatusBadRequest
-		}
-		streamer, err = NewLimitStreamer(streamer, offset, size)
-		if err != nil {
-			return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError
-		}
-	}
-
-	// If we are serving more than one file, and the format is not specified,
-	// return an error indicating a format needs to be specified when
-	// downloading a directory.
-	if len(metadata.Subfiles) > 1 && format == modules.SkyfileFormatNotSpecified && defaultPath == false {
-		return modules.SkyfileMetadata{}, nil, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest
-	}
-
-	return metadata, streamer, Error{}, http.StatusOK
-}
-
 // skynetSkylinkHandlerGET accepts a skylink as input and will stream the data
 // from the skylink out of the response body as output.
 func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
@@ -353,12 +284,78 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	metadata, streamer, respErr, respCode := api.skynetSkylinkData(skylink, path, format, queryForm)
-	if respCode != http.StatusOK {
-		WriteError(w, respErr, respCode)
+	// Parse the timeout.
+	timeout := DefaultSkynetRequestTimeout
+	timeoutStr := queryForm.Get("timeout")
+	if timeoutStr != "" {
+		timeoutInt, err := strconv.Atoi(timeoutStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+
+		if timeoutInt > MaxSkynetRequestTimeout {
+			WriteError(w, Error{fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout)}, http.StatusBadRequest)
+			return
+		}
+		timeout = time.Duration(timeoutInt) * time.Second
+	}
+
+	// Fetch the skyfile's metadata and a streamer to download the file
+	metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout)
+	if errors.Contains(err, renter.ErrRootNotFound) {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
 	defer streamer.Close()
+
+	var dir, defaultPath bool
+	var offset, size uint64
+
+	// Serve the contents of the file at the default path if one is set. Note
+	// that we return the metadata for the entire Skylink when we serve the
+	// contents of the file at the default path.
+	if path == "/" &&
+		metadata.DefaultPath != "" &&
+		format == modules.SkyfileFormatNotSpecified {
+		defaultPath = true
+		_, _, offset, size := metadata.ForPath(metadata.DefaultPath)
+		streamer, err = NewLimitStreamer(streamer, offset, size)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Serve the contents of the skyfile at path if one is set
+	if path != "/" {
+		metadata, dir, offset, size = metadata.ForPath(path)
+		if len(metadata.Subfiles) == 0 {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
+			return
+		}
+		if dir && format == modules.SkyfileFormatNotSpecified {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, format must be specified", path)}, http.StatusBadRequest)
+			return
+		}
+		streamer, err = NewLimitStreamer(streamer, offset, size)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// If we are serving more than one file, and the format is not specified,
+	// return an error indicating a format needs to be specified when
+	// downloading a directory.
+	if len(metadata.Subfiles) > 1 && format == modules.SkyfileFormatNotSpecified && defaultPath == false {
+		WriteError(w, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest)
+		return
+	}
 
 	// Encode the metadata
 	encMetadata, err := json.Marshal(metadata)

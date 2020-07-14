@@ -433,12 +433,11 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 	// tar
 	header, reader, err := r.SkynetSkylinkTarReaderGet(skylink)
 	if err != nil {
-		t.Error(err)
-		return
+		t.Fatal(err)
 	}
 	files, err := readTarArchive(reader)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 	err = reader.Close()
 	if err != nil {
@@ -451,8 +450,9 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 	}
 	ct := header.Get("Content-type")
 	if ct != "application/x-tar" {
-		t.Log(ct)
 		t.Error("Unexpected 'Content-Type' header")
+		t.Log("expected: application/x-tar")
+		t.Log("actual  :", ct)
 	}
 
 	var md modules.SkyfileMetadata
@@ -460,8 +460,7 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 	if mdStr != "" {
 		err = json.Unmarshal([]byte(mdStr), &md)
 		if err != nil {
-			t.Error(err)
-			return
+			t.Fatal(err)
 		}
 	}
 
@@ -474,15 +473,15 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 	// tar gz
 	header, reader, err = r.SkynetSkylinkTarGzReaderGet(skylink)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 	gzr, err := gzip.NewReader(reader)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 	files, err = readTarArchive(gzr)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 	err = errors.Compose(reader.Close(), gzr.Close())
 	if err != nil {
@@ -495,8 +494,9 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 	}
 	ct = header.Get("Content-type")
 	if ct != "application/x-gtar" {
-		t.Log(ct)
 		t.Error("Unexpected 'Content-Type' header")
+		t.Log("expected: application/x-tar")
+		t.Log("actual  :", ct)
 	}
 
 	mdStr = header.Get("Skynet-File-Metadata")
