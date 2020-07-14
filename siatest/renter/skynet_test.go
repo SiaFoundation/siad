@@ -2895,11 +2895,10 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		{
 			// Multi dir with no index, correct default path.
 			// OK
-			name:                   "multi_noidx_correct",
-			files:                  multiNoIndex,
-			defaultPath:            &hello,
-			expectedContent:        nil,
-			expectedErrStrDownload: "format must be specified",
+			name:            "multi_noidx_correct",
+			files:           multiNoIndex,
+			defaultPath:     &hello,
+			expectedContent: fc1,
 		},
 		{
 			// Multi dir with no index, no default path.

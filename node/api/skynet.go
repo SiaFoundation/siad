@@ -313,8 +313,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	defer streamer.Close()
 
-	var dir, defaultPath bool
-	var offset, size uint64
+	var subfile bool
 
 	// Serve the contents of the file at the default path if one is set. Note
 	// that we return the metadata for the entire Skylink when we serve the
@@ -322,9 +321,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if path == "/" &&
 		metadata.DefaultPath != "" &&
 		format == modules.SkyfileFormatNotSpecified {
-		defaultPath = true
 		_, _, offset, size := metadata.ForPath(metadata.DefaultPath)
 		streamer, err = NewLimitStreamer(streamer, offset, size)
+		subfile = true
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
@@ -333,26 +332,26 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// Serve the contents of the skyfile at path if one is set
 	if path != "/" {
-		metadata, dir, offset, size = metadata.ForPath(path)
-		if len(metadata.Subfiles) == 0 {
+		metadataForPath, file, offset, size := metadata.ForPath(path)
+		if len(metadataForPath.Subfiles) == 0 {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
 			return
 		}
-		if dir && format == modules.SkyfileFormatNotSpecified {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, format must be specified", path)}, http.StatusBadRequest)
-			return
-		}
+
 		streamer, err = NewLimitStreamer(streamer, offset, size)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
 		}
+
+		metadata = metadataForPath
+		subfile = file
 	}
 
-	// If we are serving more than one file, and the format is not specified,
-	// return an error indicating a format needs to be specified when
-	// downloading a directory.
-	if len(metadata.Subfiles) > 1 && format == modules.SkyfileFormatNotSpecified && defaultPath == false {
+	// If we are serving more than one file, and the format is not
+	// specified, return an error indicating a format needs to be specified
+	// when downloading a directory.
+	if !subfile && metadata.Directory() && format == modules.SkyfileFormatNotSpecified {
 		WriteError(w, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest)
 		return
 	}

@@ -51,23 +51,21 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 		Subfiles:    make(SkyfileSubfiles),
 		DefaultPath: sm.DefaultPath,
 	}
+
 	// Try to find an exact match
+	var file bool
 	for _, sf := range sm.Subfiles {
-		filename := EnsurePrefix(sf.Filename, "/")
-		if filename == path {
+		if EnsurePrefix(sf.Filename, "/") == path {
+			file = true
 			metadata.Subfiles[sf.Filename] = sf
 			break
 		}
 	}
+
 	// If there is no exact match look for directories.
-	// This means we can safely ensure a trailing slash.
-	var dir bool
 	if len(metadata.Subfiles) == 0 {
-		dir = true
-		path = EnsureSuffix(path, "/")
 		for _, sf := range sm.Subfiles {
-			filename := EnsurePrefix(sf.Filename, "/")
-			if strings.HasPrefix(filename, path) {
+			if strings.HasPrefix(EnsurePrefix(sf.Filename, "/"), path) {
 				metadata.Subfiles[sf.Filename] = sf
 			}
 		}
@@ -79,7 +77,7 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 			metadata.Subfiles[sf.Filename] = sf
 		}
 	}
-	return metadata, dir, offset, metadata.size()
+	return metadata, file, offset, metadata.size()
 }
 
 // ContentType returns the Content Type of the data. We only return a
@@ -92,6 +90,24 @@ func (sm SkyfileMetadata) ContentType() string {
 		}
 	}
 	return ""
+}
+
+// Directory returns true if the SkyfileMetadata represents a directory.
+func (sm SkyfileMetadata) Directory() bool {
+	if len(sm.Subfiles) > 1 {
+		return true
+	}
+	if len(sm.Subfiles) == 1 {
+		var name string
+		for _, sf := range sm.Subfiles {
+			name = sf.Filename
+			break
+		}
+		if sm.Filename != name {
+			return true
+		}
+	}
+	return false
 }
 
 // UnmarshalJSON unmarshals a byte slice into a SkyfileMetadata while handling
