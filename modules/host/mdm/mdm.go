@@ -23,6 +23,8 @@ type StorageObligationSnapshot interface {
 	// RecentRevision returns the recent revision at the time the snapshot was
 	// taken.
 	RecentRevision() types.FileContractRevision
+	// RevisionTxn returns the recent revision txn of the so.
+	RevisionTxn() types.Transaction
 	// SectorRoots returns the roots of the storage obligation.
 	SectorRoots() []crypto.Hash
 }

@@ -205,16 +205,21 @@ func (h *Host) managedGetStorageObligationSnapshot(id types.FileContractID) (Sto
 		return StorageObligationSnapshot{}, err
 	}
 
-	rev, err := so.recentRevision()
-	if err != nil {
-		return StorageObligationSnapshot{}, err
+	if len(so.OriginTransactionSet) == 0 {
+		return StorageObligationSnapshot{}, errors.New("origin txnset is empty")
 	}
+	if len(so.RevisionTransactionSet) == 0 {
+		return StorageObligationSnapshot{}, errors.New("revision txnset is empty")
+	}
+
+	revTxn := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1]
+
 	return StorageObligationSnapshot{
-		staticContractSize:   so.fileSize(),
-		staticMerkleRoot:     so.merkleRoot(),
-		staticProofDeadline:  so.proofDeadline(),
-		staticRecentRevision: rev,
-		staticSectorRoots:    so.SectorRoots,
+		staticContractSize:  so.fileSize(),
+		staticMerkleRoot:    so.merkleRoot(),
+		staticProofDeadline: so.proofDeadline(),
+		staticRevisionTxn:   revTxn,
+		staticSectorRoots:   so.SectorRoots,
 	}, nil
 }
 
@@ -249,11 +254,11 @@ func putStorageObligation(tx *bolt.Tx, so storageObligation) error {
 // snapshot only contains the properties required by the MDM to execute a
 // program. This can be extended in the future to support other use cases.
 type StorageObligationSnapshot struct {
-	staticContractSize   uint64
-	staticMerkleRoot     crypto.Hash
-	staticProofDeadline  types.BlockHeight
-	staticRecentRevision types.FileContractRevision
-	staticSectorRoots    []crypto.Hash
+	staticContractSize  uint64
+	staticMerkleRoot    crypto.Hash
+	staticProofDeadline types.BlockHeight
+	staticRevisionTxn   types.Transaction
+	staticSectorRoots   []crypto.Hash
 }
 
 // ZeroStorageObligationSnapshot returns the storage obligation snapshot of an
@@ -264,9 +269,13 @@ func ZeroStorageObligationSnapshot() StorageObligationSnapshot {
 		staticMerkleRoot:    crypto.Hash{},
 		staticProofDeadline: types.BlockHeight(0),
 		staticSectorRoots:   []crypto.Hash{},
-		staticRecentRevision: types.FileContractRevision{
-			NewValidProofOutputs:  make([]types.SiacoinOutput, 2),
-			NewMissedProofOutputs: make([]types.SiacoinOutput, 3),
+		staticRevisionTxn: types.Transaction{
+			FileContractRevisions: []types.FileContractRevision{
+				{
+					NewValidProofOutputs:  make([]types.SiacoinOutput, 2),
+					NewMissedProofOutputs: make([]types.SiacoinOutput, 3),
+				},
+			},
 		},
 	}
 }
@@ -291,7 +300,12 @@ func (sos StorageObligationSnapshot) MerkleRoot() crypto.Hash {
 // RecentRevision returns the recent revision at the time the snapshot was
 // taken.
 func (sos StorageObligationSnapshot) RecentRevision() types.FileContractRevision {
-	return sos.staticRecentRevision
+	return sos.staticRevisionTxn.FileContractRevisions[0]
+}
+
+// RevisionTxn returns the txn containing the filecontract revision.
+func (sos StorageObligationSnapshot) RevisionTxn() types.Transaction {
+	return sos.staticRevisionTxn
 }
 
 // SectorRoots returns a static list of the sector roots present at the time the
@@ -304,7 +318,7 @@ func (sos StorageObligationSnapshot) SectorRoots() []crypto.Hash {
 // that hasn't been allocated yet. This means it is not yet moved to the void in
 // case of a missed storage proof.
 func (sos StorageObligationSnapshot) UnallocatedCollateral() types.Currency {
-	return sos.staticRecentRevision.MissedHostPayout()
+	return sos.RecentRevision().MissedHostPayout()
 }
 
 // Update will take a list of sector changes and update the database to account

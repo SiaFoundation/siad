@@ -187,7 +187,9 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			return errors.AddContext(err, "failed to send output to peer")
 		}
 
-		if h.dependencies.Disrupt("CorruptMDMOutput") {
+		instructionSpecifier := program[numOutputs-1].Specifier
+		readInstruction := instructionSpecifier == modules.SpecifierReadOffset || instructionSpecifier == modules.SpecifierReadSector
+		if readInstruction && h.dependencies.Disrupt("CorruptMDMOutput") {
 			// Replace output with same amount of random data.
 			fastrand.Read(output.Output)
 		}

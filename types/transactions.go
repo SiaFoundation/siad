@@ -215,6 +215,11 @@ func (t Transaction) HostSignature() TransactionSignature {
 	return t.TransactionSignatures[1]
 }
 
+// RenterSignature returns the host's transaction signature
+func (t Transaction) RenterSignature() TransactionSignature {
+	return t.TransactionSignatures[0]
+}
+
 // SiaClaimOutputID returns the ID of the SiacoinOutput that is created when
 // the siafund output is spent. The ID is the hash the SiafundOutputID.
 func (id SiafundOutputID) SiaClaimOutputID() SiacoinOutputID {

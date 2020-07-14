@@ -106,6 +106,18 @@ func (c *Contractor) Allowance() modules.Allowance {
 	return c.allowance
 }
 
+// ContractPublicKey returns the public key capable of verifying the renter's
+// signature on a contract.
+func (c *Contractor) ContractPublicKey(pk types.SiaPublicKey) (crypto.PublicKey, bool) {
+	c.mu.RLock()
+	id, ok := c.pubKeysToContractID[pk.String()]
+	c.mu.RUnlock()
+	if !ok {
+		return crypto.PublicKey{}, false
+	}
+	return c.staticContracts.PublicKey(id)
+}
+
 // InitRecoveryScan starts scanning the whole blockchain for recoverable
 // contracts within a separate thread.
 func (c *Contractor) InitRecoveryScan() (err error) {

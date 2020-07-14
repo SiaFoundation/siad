@@ -178,6 +178,7 @@ type (
 
 	// RPCLatestRevisionResponse contains the latest file contract revision
 	// signed by both host and renter.
+	// TODO: might need to update this to match MDMInstructionRevisionResponse?
 	RPCLatestRevisionResponse struct {
 		Revision types.FileContractRevision
 	}

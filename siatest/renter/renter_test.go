@@ -5002,8 +5002,12 @@ func TestReadSectorOutputCorrupted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Download one more time. It should work again.
-	_, _, err = renter.SkynetSkylinkGet(skylink)
+	// Download one more time. It should work again. Do it in a loop since the
+	// workers might be on a cooldown.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		_, _, err = renter.SkynetSkylinkGet(skylink)
+		return err
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
