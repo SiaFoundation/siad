@@ -17,9 +17,6 @@ const (
 	// SkyfileDefaultPathParamName specifies the name of the form parameter that
 	// holds the default path.
 	SkyfileDefaultPathParamName = "defaultpath"
-	// SkyfileNoDefaultPathParamName specifies the name of the form parameter
-	// that holds the noDefaultPath flag.
-	SkyfileNoDefaultPathParamName = "nodefaultpath"
 )
 
 // SkyfileMetadata is all of the metadata that gets placed into the first 4096
@@ -32,12 +29,6 @@ type SkyfileMetadata struct {
 	Filename    string          `json:"filename,omitempty"`
 	Subfiles    SkyfileSubfiles `json:"subfiles,omitempty"`
 	DefaultPath string          `json:"defaultpath"` // defaults to `index.html`
-	// NoDefaultPath is a flag that indicates that the DefaultPath should not be
-	// used. If the skyfile contains multiple files and is accessed at its root
-	// without a format an error will be returned. We need it here in order to
-	// ensure legacy skylinks that don't have `DefaultPath` will keep working
-	// the way they did when they were created.
-	NoDefaultPath bool `json:"nodefaultpath,omitempty"`
 }
 
 // skyfileMetadataJSON is a helper type
@@ -101,11 +92,6 @@ func (sm SkyfileMetadata) ContentType() string {
 		}
 	}
 	return ""
-}
-
-// MarshalJSON marshal a SkyfileMetadata into a byte slice.
-func (sm SkyfileMetadata) MarshalJSON() ([]byte, error) {
-	return json.Marshal(sm)
 }
 
 // UnmarshalJSON unmarshals a byte slice into a SkyfileMetadata while handling
@@ -276,14 +262,9 @@ type SkyfileMultipartUploadParameters struct {
 	Filename string `json:"filename"`
 
 	// DefaultPath indicates the default file to be opened when opening skyfiles
-	// that contain directories.
-	DefaultPath string `json:"defaultpath,omitempty"`
-	// NoDefaultPath is a flag that indicates that the DefaultPath should not be
-	// used. If the skyfile contains multiple files and is accessed at its root
-	// without a format an error will be returned. We need it here in order to
-	// ensure legacy skylinks that don't have `DefaultPath` will keep working
-	// the way they did when they were created.
-	NoDefaultPath bool `json:"nodefaultpath,omitempty"`
+	// that contain directories. If set to empty string no file will be opened
+	// by default.
+	DefaultPath *string `json:"defaultpath,omitempty"`
 
 	// ContentType indicates the media type of the data supplied by the reader.
 	ContentType string `json:"contenttype"`

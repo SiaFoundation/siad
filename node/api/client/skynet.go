@@ -269,8 +269,9 @@ func (c *Client) SkynetSkyfileMultiPartPost(params modules.SkyfileMultipartUploa
 	// Set the url values.
 	values := url.Values{}
 	values.Set("filename", params.Filename)
-	values.Set(modules.SkyfileDefaultPathParamName, params.DefaultPath)
-	values.Set(modules.SkyfileNoDefaultPathParamName, strconv.FormatBool(params.NoDefaultPath))
+	if params.DefaultPath != nil {
+		values.Set(modules.SkyfileDefaultPathParamName, *params.DefaultPath)
+	}
 	forceStr := fmt.Sprintf("%t", params.Force)
 	values.Set("force", forceStr)
 	redundancyStr := fmt.Sprintf("%v", params.BaseChunkRedundancy)
