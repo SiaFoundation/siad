@@ -193,7 +193,7 @@ func (cs *ContractSet) NewDownloader(host modules.HostDBEntry, id types.FileCont
 		}
 	}()
 
-	conn, closeChan, err := initiateRevisionLoop(host, sc, modules.RPCDownload, cancel, cs.rl)
+	conn, closeChan, err := initiateRevisionLoop(host, sc, modules.RPCDownload, cancel, cs.staticRL)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to initiate revision loop")
 	}
@@ -209,7 +209,7 @@ func (cs *ContractSet) NewDownloader(host modules.HostDBEntry, id types.FileCont
 		host:        host,
 		conn:        conn,
 		closeChan:   closeChan,
-		deps:        cs.deps,
+		deps:        cs.staticDeps,
 		hdb:         hdb,
 
 		height: currentHeight,

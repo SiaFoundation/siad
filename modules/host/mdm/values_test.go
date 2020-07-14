@@ -61,47 +61,59 @@ func (v *TestValues) AddAppendInstruction(data []byte) {
 // object.
 func (v *TestValues) AddDropSectorsInstruction(numSectors uint64) {
 	collateral := modules.MDMDropSectorsCollateral()
-	cost, refund := modules.MDMDropSectorsCost(v.staticPT, numSectors)
+	cost := modules.MDMDropSectorsCost(v.staticPT, numSectors)
 	memory := modules.MDMDropSectorsMemory()
 	time := modules.MDMDropSectorsTime(numSectors)
 	newData := 8
 	readonly := false
-	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly)
+	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, newData, readonly)
 }
 
-// AddHasSectorInstruction adds a hassector instruction to the builder, keeping track of running values.
+// AddHasSectorInstruction adds a hassector instruction to the builder, keeping
+// track of running values.
 func (v *TestValues) AddHasSectorInstruction() {
 	collateral := modules.MDMHasSectorCollateral()
-	cost, refund := modules.MDMHasSectorCost(v.staticPT)
+	cost := modules.MDMHasSectorCost(v.staticPT)
 	memory := modules.MDMHasSectorMemory()
 	time := uint64(modules.MDMTimeHasSector)
 	newData := crypto.HashSize
 	readonly := true
-	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly)
+	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, newData, readonly)
 }
 
 // AddReadOffsetInstruction adds a readoffset instruction to the builder,
 // keeping track of running values.
 func (v *TestValues) AddReadOffsetInstruction(length uint64) {
 	collateral := modules.MDMReadCollateral()
-	cost, refund := modules.MDMReadCost(v.staticPT, length)
+	cost := modules.MDMReadCost(v.staticPT, length)
 	memory := modules.MDMReadMemory()
 	time := uint64(modules.MDMTimeReadOffset)
 	newData := 8 + 8
 	readonly := true
-	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly)
+	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, newData, readonly)
 }
 
 // AddReadSectorInstruction adds a readsector instruction to the builder,
 // keeping track of running values.
 func (v *TestValues) AddReadSectorInstruction(length uint64) {
 	collateral := modules.MDMReadCollateral()
-	cost, refund := modules.MDMReadCost(v.staticPT, length)
+	cost := modules.MDMReadCost(v.staticPT, length)
 	memory := modules.MDMReadMemory()
 	time := uint64(modules.MDMTimeReadSector)
 	newData := 8 + 8 + crypto.HashSize
 	readonly := true
-	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly)
+	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, newData, readonly)
+}
+
+// AddRevisionInstruction adds a revision instruction to the builder, keeping
+// track of running values.
+func (v *TestValues) AddRevisionInstruction() {
+	collateral := modules.MDMRevisionCollateral()
+	cost := modules.MDMRevisionCost(v.staticPT)
+	memory := modules.MDMRevisionMemory()
+	time := uint64(modules.MDMTimeRevision)
+	readonly := true
+	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, 0, readonly)
 }
 
 // Cost returns the current cost of the program which would result . If
@@ -158,9 +170,9 @@ func (v *TestValues) AssertOutput(output Output) error {
 		return fmt.Errorf("execution costs don't match: %v != %v",
 			cost.HumanString(), output.ExecutionCost.HumanString())
 	}
-	if !output.PotentialRefund.Equals(refund) {
+	if !output.AdditionalStorageCost.Equals(refund) {
 		return fmt.Errorf("refund doesn't match: %v != %v",
-			refund.HumanString(), output.PotentialRefund.HumanString())
+			refund.HumanString(), output.AdditionalStorageCost.HumanString())
 	}
 	if !output.AdditionalCollateral.Equals(collateral) {
 		return fmt.Errorf("collateral doesn't match: %v != %v",

@@ -4,12 +4,16 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 )
 
@@ -18,7 +22,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	// read the price table
 	pt, err := h.staticReadPriceTableID(stream)
 	if err != nil {
-		return errors.AddContext(err, "Failed to read price table")
+		return errors.AddContext(err, "failed to read price table")
 	}
 
 	// Process payment.
@@ -80,7 +84,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	if program.RequiresSnapshot() {
 		sos, err = h.managedGetStorageObligationSnapshot(fcid)
 		if err != nil {
-			return errors.AddContext(err, "Failed to get storage obligation snapshot")
+			return errors.AddContext(err, fmt.Sprintf("failed to get storage obligation snapshot for contract %v", fcid))
 		}
 	}
 
@@ -88,7 +92,8 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	collateralBudget := sos.UnallocatedCollateral()
 
 	// Get the remaining contract duration.
-	duration := sos.ProofDeadline() - h.BlockHeight()
+	bh := h.BlockHeight()
+	duration := sos.ProofDeadline() - bh
 
 	// Get a context that can be used to interrupt the program.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -106,14 +111,29 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	h.tg.OnStop(cancel)
 
 	// Execute the program.
-	_, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, budget, collateralBudget, sos, duration, dataLength, stream)
+	finalize, outputs, err := h.staticMDM.ExecuteProgram(ctx, pt, program, budget, collateralBudget, sos, duration, dataLength, stream)
 	if err != nil {
 		return errors.AddContext(err, "Failed to start execution of the program")
 	}
 
+	// Create a buffer
+	buffer := bytes.NewBuffer(nil)
+
+	// Flush the buffer. Upon success this should be a no-op. If we return early
+	// this will make sure that the cancellation token and anything else in the
+	// buffer are written to the stream.
+	defer func() {
+		if buffer.Len() > 0 {
+			_, err = buffer.WriteTo(stream)
+			if err != nil {
+				h.log.Print("failed to flush buffer", err)
+			}
+		}
+	}()
+
 	// Return 16 bytes of data as a placeholder for a future cancellation token.
 	var ct modules.MDMCancellationToken
-	err = modules.RPCWrite(stream, ct)
+	err = modules.RPCWrite(buffer, ct)
 	if err != nil {
 		return errors.AddContext(err, "Failed to write cancellation token")
 	}
@@ -121,7 +141,8 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 	// Handle outputs.
 	executionFailed := false
 	numOutputs := 0
-	for output := range outputs {
+	var output mdm.Output
+	for output = range outputs {
 		// Remember number of returned outputs.
 		numOutputs++
 		// Sanity check if one of the instructions already failed. This
@@ -144,27 +165,31 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			NewMerkleRoot:        output.NewMerkleRoot,
 			NewSize:              output.NewSize,
 			OutputLength:         uint64(len(output.Output)),
-			PotentialRefund:      output.PotentialRefund,
+			StorageCost:          output.AdditionalStorageCost,
 			Proof:                output.Proof,
 			TotalCost:            output.ExecutionCost,
 		}
 		// Update cost and refund.
-		if output.ExecutionCost.Cmp(output.PotentialRefund) < 0 {
-			err = errors.New("executionCost can never be smaller than the refund")
+		if output.ExecutionCost.Cmp(output.AdditionalStorageCost) < 0 {
+			err = errors.New("executionCost can never be smaller than the storage cost")
 			build.Critical(err)
 			return err
 		}
-		programRefund = resp.PotentialRefund
+		// The additional storage cost is refunded if the program is not
+		// committed.
+		programRefund = resp.StorageCost
 		// Remember that the execution wasn't successful.
 		executionFailed = output.Error != nil
-
-		// Create a buffer
-		buffer := bytes.NewBuffer(nil)
 
 		// Send the response to the peer.
 		err = modules.RPCWrite(buffer, resp)
 		if err != nil {
 			return errors.AddContext(err, "failed to send output to peer")
+		}
+
+		if h.dependencies.Disrupt("CorruptMDMOutput") {
+			// Replace output with same amount of random data.
+			fastrand.Read(output.Output)
 		}
 
 		// Write output.
@@ -191,6 +216,7 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			return errors.AddContext(err, "failed to send data to peer")
 		}
 	}
+
 	// Sanity check that we received at least 1 output.
 	if numOutputs == 0 {
 		err := errors.New("program returned 0 outputs - should never happen")
@@ -213,26 +239,193 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 
 	// Call finalize if the program is not readonly.
 	if !readonly {
-		// TODO: The program was not readonly which means the merkle root
-		// changed. Sign a new revision with the correct root.
-		// TODO: The revision needs to update the collateral if necessary.
-		// TODO: The revision needs to update the storage payment.
-		//
-		//		so, err := h.managedGetStorageObligation(fcid)
-		//		if err != nil {
-		//			return errors.AddContext(err, "Failed to get storage obligation for finalizing the program")
-		//		}
-		//		err = finalize(so)
-		//		if err != nil {
-		//			return errors.AddContext(err, "Failed to finalize the program")
-		//		}
-		return errors.New("only readonly programs are supported right now")
+		err := h.managedFinalizeWriteProgram(stream, fcid, finalize, output, bh)
+		if err != nil {
+			return errors.AddContext(err, "failed to finalize write program")
+		}
 	}
 	//	else {
-	//		// TODO: finalize spending for readonly programs once the MR is ready.
+	//		// TODO: finalize spending for readonly programs once the MR is ready. (#4236)
 	//	}
+
 	// The program was finalized and we don't want to refund the programRefund
 	// anymore.
 	programRefund = types.ZeroCurrency
+	return nil
+}
+
+// managedFinalizeWriteProgram conducts the additional steps required to
+// finalize a write program. The blockheight is passed in to make sure we are
+// using the same as when we ran the MDMD.
+func (h *Host) managedFinalizeWriteProgram(stream io.ReadWriter, fcid types.FileContractID, finalize mdm.FnFinalize, lastOutput mdm.Output, bh types.BlockHeight) error {
+	h.mu.Lock()
+	sk := h.secretKey
+	h.mu.Unlock()
+
+	// Get the storage obligation with write access.
+	so, err := h.managedGetStorageObligation(fcid)
+	if err != nil {
+		return errors.AddContext(err, "Failed to get storage obligation for finalizing the program")
+	}
+
+	// Get the new revision from the renter.
+	var req modules.RPCExecuteProgramRevisionSigningRequest
+	err = modules.RPCRead(stream, &req)
+	if err != nil {
+		return errors.AddContext(err, "failed to get new revision from renter")
+	}
+
+	// Construct the new revision.
+	currentRevision, err := so.recentRevision()
+	if err != nil {
+		return errors.AddContext(err, "failed to get current revision")
+	}
+	transfer := lastOutput.AdditionalCollateral.Add(lastOutput.AdditionalStorageCost)
+	newRevision, err := currentRevision.ExecuteProgramRevision(req.NewRevisionNumber, transfer, lastOutput.NewMerkleRoot, lastOutput.NewSize)
+	if err != nil {
+		return errors.AddContext(err, "failed to construct execute program revision")
+	}
+
+	// The host is expected to move the additional storage cost and collateral
+	// from the missed output to the missed void output.
+	maxTransfer := lastOutput.AdditionalCollateral.Add(lastOutput.AdditionalStorageCost)
+
+	// Verify the revision.
+	err = verifyExecuteProgramRevision(currentRevision, newRevision, bh, maxTransfer, lastOutput.NewSize, lastOutput.NewMerkleRoot)
+	if err != nil {
+		return errors.AddContext(err, "revision verification failed")
+	}
+
+	// Sign the revision.
+	renterSig := types.TransactionSignature{
+		ParentID:       crypto.Hash(newRevision.ParentID),
+		CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+		PublicKeyIndex: 0,
+		Signature:      req.Signature,
+	}
+	txn, err := createRevisionSignature(newRevision, renterSig, sk, bh)
+	if err != nil {
+		return errors.AddContext(err, "failed to create signature")
+	}
+
+	// Update the storage obligation revision. No need to call
+	// `managedModifyStorageObligation since that will be done by the
+	// finalize(so) function.
+	so.RevisionTransactionSet = []types.Transaction{txn}
+
+	// Send the response to the renter.
+	resp := modules.RPCExecuteProgramRevisionSigningResponse{
+		Signature: txn.TransactionSignatures[1].Signature,
+	}
+	err = modules.RPCWrite(stream, resp)
+	if err != nil {
+		return errors.AddContext(err, "failed to send signature to renter")
+	}
+
+	// Finalize the program.
+	return errors.AddContext(finalize(so), "program finalizer failed")
+}
+
+// verifyExecuteProgramRevision verifies that the new revision is sane in
+// relation to the old one.
+func verifyExecuteProgramRevision(currentRevision, newRevision types.FileContractRevision, blockHeight types.BlockHeight, maxTransfer types.Currency, newFileSize uint64, newRoot crypto.Hash) error {
+	// Check that the revision count has increased.
+	if newRevision.NewRevisionNumber <= currentRevision.NewRevisionNumber {
+		return ErrBadRevisionNumber
+	}
+
+	// Check that the revision is well-formed.
+	if len(newRevision.NewValidProofOutputs) != 2 || len(newRevision.NewMissedProofOutputs) != 3 {
+		return ErrBadContractOutputCounts
+	}
+
+	// Check that the time to finalize and submit the file contract revision
+	// has not already passed.
+	if currentRevision.NewWindowStart-revisionSubmissionBuffer <= blockHeight {
+		return ErrLateRevision
+	}
+
+	// Host payout addresses shouldn't change
+	if newRevision.ValidHostOutput().UnlockHash != currentRevision.ValidHostOutput().UnlockHash {
+		return ErrValidHostOutputAddressChanged
+	}
+	if newRevision.MissedHostOutput().UnlockHash != currentRevision.MissedHostOutput().UnlockHash {
+		return ErrMissedHostOutputAddressChanged
+	}
+
+	// Make sure the lost collateral still goes to the void
+	missedVoidOutput, err1 := newRevision.MissedVoidOutput()
+	existingVoidOutput, err2 := currentRevision.MissedVoidOutput()
+	if err := errors.Compose(err1, err2); err != nil {
+		return err
+	}
+	if missedVoidOutput.UnlockHash != existingVoidOutput.UnlockHash {
+		return ErrVoidAddressChanged
+	}
+
+	// Renter payouts shouldn't change.
+	if !currentRevision.ValidRenterPayout().Equals(newRevision.ValidRenterPayout()) {
+		return ErrValidRenterPayoutChanged
+	}
+	if !currentRevision.MissedRenterPayout().Equals(newRevision.MissedRenterPayout()) {
+		return ErrMissedRenterPayoutChanged
+	}
+	// Valid host payout shouldn't change.
+	if !currentRevision.ValidHostPayout().Equals(newRevision.ValidHostPayout()) {
+		return ErrValidHostPayoutChanged
+	}
+
+	// Determine how much money was moved from the host's missed output to the void.
+	if newRevision.MissedHostPayout().Cmp(currentRevision.MissedHostPayout()) > 0 {
+		return errors.AddContext(ErrLowHostMissedOutput, "host missed proof output was decreased")
+	}
+	fromHost := currentRevision.MissedHostPayout().Sub(newRevision.MissedHostPayout())
+	if fromHost.Cmp(maxTransfer) > 0 {
+		return errors.AddContext(ErrLowHostMissedOutput, "more money than expected moved from host")
+	}
+
+	// The money subtracted from the host should match the money added to the void.
+	mvoOld, errOld := currentRevision.MissedVoidPayout()
+	mvoNew, errNew := newRevision.MissedVoidPayout()
+	if err := errors.Compose(errOld, errNew); err != nil {
+		return errors.AddContext(err, "failed to get missed void payouts")
+	}
+	if !mvoOld.Add(fromHost).Equals(mvoNew) {
+		return errors.New("fromHost doesn't match toVoid")
+	}
+
+	// If the renter's valid proof output is larger than the renter's missed
+	// proof output, the renter has incentive to see the host fail. Make sure
+	// that this incentive is not present.
+	if newRevision.ValidRenterPayout().Cmp(newRevision.MissedRenterOutput().Value) > 0 {
+		return errors.AddContext(ErrHighRenterMissedOutput, "renter has incentive to see host fail")
+	}
+
+	// The filesize should be updated.
+	if newRevision.NewFileSize != newFileSize {
+		return ErrBadFileSize
+	}
+
+	// The merkle root should be updated.
+	if newRevision.NewFileMerkleRoot != newRoot {
+		return ErrBadFileMerkleRoot
+	}
+
+	// Check that all of the non-volatile fields are the same.
+	if newRevision.ParentID != currentRevision.ParentID {
+		return ErrBadParentID
+	}
+	if newRevision.UnlockConditions.UnlockHash() != currentRevision.UnlockConditions.UnlockHash() {
+		return ErrBadUnlockConditions
+	}
+	if newRevision.NewWindowStart != currentRevision.NewWindowStart {
+		return ErrBadWindowStart
+	}
+	if newRevision.NewWindowEnd != currentRevision.NewWindowEnd {
+		return ErrBadWindowEnd
+	}
+	if newRevision.NewUnlockHash != currentRevision.NewUnlockHash {
+		return ErrBadUnlockHash
+	}
 	return nil
 }

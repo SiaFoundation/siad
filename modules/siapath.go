@@ -3,12 +3,12 @@ package modules
 import (
 	"encoding/base32"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -17,8 +17,12 @@ import (
 // the SiaPath type to ensure consistent handling across OS.
 
 var (
-	// ErrEmptySiaPath is an error when SiaPath is empty
-	ErrEmptySiaPath = errors.New("SiaPath must be a nonempty string")
+	// ErrEmptyPath is an error when a path is empty
+	ErrEmptyPath = errors.New("path must be a nonempty string")
+	// ErrInvalidSiaPath is the error for an invalid SiaPath
+	ErrInvalidSiaPath = errors.New("invalid SiaPath")
+	// ErrInvalidPathString is the error for an invalid path
+	ErrInvalidPathString = errors.New("invalid path string")
 
 	// SiaDirExtension is the extension for siadir metadata files on disk
 	SiaDirExtension = ".siadir"
@@ -182,7 +186,7 @@ func (sp *SiaPath) LoadSysPath(dir, path string) error {
 	return sp.LoadString(path)
 }
 
-// MarshalJSON marshales a SiaPath as a string.
+// MarshalJSON marshals a SiaPath as a string.
 func (sp SiaPath) MarshalJSON() ([]byte, error) {
 	return json.Marshal(sp.String())
 }
@@ -263,45 +267,61 @@ func (sp *SiaPath) FromSysPath(siaFilePath, dir string) (err error) {
 	return
 }
 
-// Validate checks that a Siapath is a legal filename. ../ is disallowed to
-// prevent directory traversal, and paths must not begin with / or be empty.
+// Validate checks that a Siapath is a legal filename.
 func (sp SiaPath) Validate(isRoot bool) error {
-	if sp.Path == "" && !isRoot {
-		return ErrEmptySiaPath
+	if err := validatePath(sp.Path, isRoot); err != nil {
+		return errors.Extend(err, ErrInvalidSiaPath)
 	}
-	if sp.Path == ".." {
-		return errors.New("siapath cannot be '..'")
+	return nil
+}
+
+// ValidatePathString validates a path given a string.
+func ValidatePathString(path string, isRoot bool) error {
+	if err := validatePath(path, isRoot); err != nil {
+		return errors.Extend(err, ErrInvalidPathString)
 	}
-	if sp.Path == "." {
-		return errors.New("siapath cannot be '.'")
+	return nil
+}
+
+// validatePath validates a path. ../ and ./ are disallowed to prevent directory
+// traversal, and paths must not begin with / or be empty.
+func validatePath(path string, isRoot bool) error {
+	if path == "" && !isRoot {
+		return ErrEmptyPath
+	}
+	if path == ".." {
+		return errors.New("path cannot be '..'")
+	}
+	if path == "." {
+		return errors.New("path cannot be '.'")
 	}
 	// check prefix
-	if strings.HasPrefix(sp.Path, "/") {
-		return errors.New("siapath cannot begin with /")
+	if strings.HasPrefix(path, "/") {
+		return errors.New("path cannot begin with /")
 	}
-	if strings.HasPrefix(sp.Path, "../") {
-		return errors.New("siapath cannot begin with ../")
+	if strings.HasPrefix(path, "../") {
+		return errors.New("path cannot begin with ../")
 	}
-	if strings.HasPrefix(sp.Path, "./") {
-		return errors.New("siapath connot begin with ./")
+	if strings.HasPrefix(path, "./") {
+		return errors.New("path connot begin with ./")
 	}
 	var prevElem string
-	for _, pathElem := range strings.Split(sp.Path, "/") {
+	for _, pathElem := range strings.Split(path, "/") {
 		if pathElem == "." || pathElem == ".." {
-			return errors.New("siapath cannot contain . or .. elements")
+			return errors.New("path cannot contain . or .. elements")
 		}
 		if prevElem != "" && pathElem == "" {
-			return ErrEmptySiaPath
+			return ErrEmptyPath
 		}
 		if prevElem == "/" || pathElem == "/" {
-			return errors.New("siapath cannot contain //")
+			return errors.New("path cannot contain //")
 		}
 		prevElem = pathElem
 	}
 
 	// Final check for a valid utf8
-	if !utf8.ValidString(sp.Path) {
-		return errors.New("SiaPath is not a valid utf8 path")
+	if !utf8.ValidString(path) {
+		return errors.New("path is not a valid utf8 path")
 	}
 
 	return nil

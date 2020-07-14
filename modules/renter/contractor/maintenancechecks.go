@@ -268,6 +268,10 @@ func (c *Contractor) sufficientFundsCheck(contract modules.RenterContract, host 
 // the contract state.
 func (c *Contractor) outOfStorageCheck(contract modules.RenterContract, blockHeight types.BlockHeight) (modules.ContractUtility, bool) {
 	u := contract.Utility
+	// If LastOOSErr has never been set, return false.
+	if u.LastOOSErr == 0 {
+		return u, false
+	}
 	// Contract should not be used for uploading if the host is out of storage.
 	if blockHeight-u.LastOOSErr <= oosRetryInterval {
 		if u.GoodForUpload {

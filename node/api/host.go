@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/julienschmidt/httprouter"
 
@@ -114,7 +115,7 @@ func (api *API) hostHandlerGET(w http.ResponseWriter, req *http.Request, _ httpr
 func (api *API) hostBandwidthHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	sent, receive, startTime, err := api.host.BandwidthCounters()
 	if err != nil {
-		WriteError(w, Error{"failed to get hosts's bandwidth usage " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"failed to get hosts's bandwidth usage: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteJSON(w, GatewayBandwidthGET{
@@ -258,7 +259,7 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 		if err != nil {
 			return modules.HostInternalSettings{}, err
 		}
-		settings.EphemeralAccountExpiry = x
+		settings.EphemeralAccountExpiry = time.Duration(x) * time.Second
 	}
 	if req.FormValue("maxephemeralaccountbalance") != "" {
 		var x types.Currency
@@ -328,6 +329,9 @@ func (api *API) hostEstimateScoreGET(w http.ResponseWriter, req *http.Request, _
 		DownloadBandwidthPrice: settings.MinDownloadBandwidthPrice,
 		StoragePrice:           settings.MinStoragePrice,
 		UploadBandwidthPrice:   settings.MinUploadBandwidthPrice,
+
+		EphemeralAccountExpiry:     settings.EphemeralAccountExpiry,
+		MaxEphemeralAccountBalance: settings.MaxEphemeralAccountBalance,
 
 		Version: build.Version,
 	}

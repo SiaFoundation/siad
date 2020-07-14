@@ -69,15 +69,19 @@ var (
 
 // Default memory usage parameters.
 var (
-	// defaultMemory establishes the default amount of memory that the renter
+	// memoryDefault establishes the default amount of memory that the renter
 	// will use when performing uploads and downloads. The mapping is currently
 	// not perfect due to GC overhead and other places where we don't count all
 	// of the memory usage accurately.
-	defaultMemory = build.Select(build.Var{
+	memoryDefault = build.Select(build.Var{
 		Dev:      uint64(1 << 28), // 256 MiB
 		Standard: uint64(1 << 30), // 1 GiB
 		Testing:  uint64(1 << 17), // 128 KiB - 4 KiB sector size, need to test memory exhaustion
 	}).(uint64)
+
+	// defaultPriorityMemory is the amount of memory that is held in reserve
+	// explicitly for priority actions such as download streaming.
+	memoryPriorityDefault = memoryDefault / 4
 
 	// initialStreamerCacheSize defines the cache size that each streamer will
 	// start using when it is created. A lower initial cache size will mean that

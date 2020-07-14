@@ -1004,7 +1004,7 @@ func TestAccountIndexRecycling(t *testing.T) {
 		t.Fatal(err)
 	}
 	hIS := ht.host.InternalSettings()
-	hIS.EphemeralAccountExpiry = 2
+	hIS.EphemeralAccountExpiry = 2 * time.Second
 	err = ht.host.SetInternalSettings(hIS)
 	if err != nil {
 		t.Fatal(err)

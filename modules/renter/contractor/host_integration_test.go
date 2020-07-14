@@ -67,8 +67,8 @@ func newTestingWallet(testdir string, cs modules.ConsensusSet, tp modules.Transa
 	return w, cf, nil
 }
 
-// newTestingHost is a helper function that creates a ready-to-use host.
-func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool, mux *siamux.SiaMux) (modules.Host, closeFn, error) {
+// newCustomTestingHost is a helper function that creates a ready-to-use host.
+func newCustomTestingHost(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool, mux *siamux.SiaMux, deps modules.Dependencies) (modules.Host, closeFn, error) {
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		return nil, nil, err
@@ -77,7 +77,7 @@ func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.Transact
 	if err != nil {
 		return nil, nil, err
 	}
-	h, err := host.NewCustomHost(modules.ProdDependencies, cs, g, tp, w, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
+	h, err := host.NewCustomHost(deps, cs, g, tp, w, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -105,6 +105,11 @@ func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.Transact
 		return errors.Compose(h.Close(), walletCF(), g.Close())
 	}
 	return h, cf, nil
+}
+
+// newTestingHost is a helper function that creates a ready-to-use host.
+func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool, mux *siamux.SiaMux) (modules.Host, closeFn, error) {
+	return newCustomTestingHost(testdir, cs, tp, mux, modules.ProdDependencies)
 }
 
 // newTestingContractor is a helper function that creates a ready-to-use
@@ -146,12 +151,12 @@ func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, 
 		return nil, nil, nil, nil, err
 	}
 
-	return newCustomTestingTrio(name, mux)
+	return newCustomTestingTrio(name, mux, modules.ProdDependencies)
 }
 
 // newCustomTestingTrio creates a Host, Contractor, and TestMiner that can be
 // used for testing host/renter interactions. It allows to pass a custom siamux.
-func newCustomTestingTrio(name string, mux *siamux.SiaMux) (modules.Host, *Contractor, modules.TestMiner, closeFn, error) {
+func newCustomTestingTrio(name string, mux *siamux.SiaMux, hdeps modules.Dependencies) (modules.Host, *Contractor, modules.TestMiner, closeFn, error) {
 	testdir := build.TempDir("contractor", name)
 
 	// create miner
@@ -192,7 +197,7 @@ func newCustomTestingTrio(name string, mux *siamux.SiaMux) (modules.Host, *Contr
 	}
 
 	// create host and contractor, using same consensus set and gateway
-	h, hostCF, err := newTestingHost(filepath.Join(testdir, "Host"), cs, tp, mux)
+	h, hostCF, err := newCustomTestingHost(filepath.Join(testdir, "Host"), cs, tp, mux, hdeps)
 	if err != nil {
 		return nil, nil, nil, nil, build.ExtendErr("error creating testing host", err)
 	}

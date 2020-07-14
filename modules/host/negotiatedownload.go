@@ -155,6 +155,11 @@ func (h *Host) managedDownloadIteration(conn net.Conn, so *storageObligation) er
 // the data has transferred the expected amount of money from the renter to the
 // host.
 func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractRevision, blockHeight types.BlockHeight, expectedTransfer types.Currency) error {
+	// Check that the revision count has increased.
+	if paymentRevision.NewRevisionNumber <= existingRevision.NewRevisionNumber {
+		return ErrBadRevisionNumber
+	}
+
 	// Check that the revision is well-formed.
 	if len(paymentRevision.NewValidProofOutputs) != 2 || len(paymentRevision.NewMissedProofOutputs) != 3 {
 		return ErrBadContractOutputCounts
@@ -180,7 +185,7 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 		return err
 	}
 	if paymentVoidOutput.UnlockHash != existingVoidOutput.UnlockHash {
-		return errors.New("lost collateral address was changed")
+		return ErrVoidAddressChanged
 	}
 
 	// Determine the amount that was transferred from the renter.
@@ -217,11 +222,6 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 		collateral := existingRevision.MissedHostOutput().Value.Sub(paymentRevision.MissedHostOutput().Value)
 		s := fmt.Sprintf("host not expecting to post any collateral, but contract has host posting %v collateral", collateral)
 		return errors.AddContext(ErrLowHostMissedOutput, s)
-	}
-
-	// Check that the revision count has increased.
-	if paymentRevision.NewRevisionNumber <= existingRevision.NewRevisionNumber {
-		return ErrBadRevisionNumber
 	}
 
 	// Check that all of the non-volatile fields are the same.

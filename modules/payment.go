@@ -65,7 +65,7 @@ type PaymentProvider interface {
 	// ProvidePayment takes a stream and various payment details and handles the
 	// payment by sending and processing payment request and response objects.
 	// Returns an error in case of failure.
-	ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount AccountID, blockHeight types.BlockHeight) error
+	ProvidePayment(stream io.ReadWriter, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount AccountID, blockHeight types.BlockHeight) error
 }
 
 // PaymentDetails is an interface that defines method that give more information

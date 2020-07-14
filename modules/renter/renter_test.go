@@ -4,7 +4,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
 	"time"
 
@@ -20,6 +19,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -53,7 +53,7 @@ func (rt *renterTester) Close() error {
 }
 
 // addHost adds a host to the test group so that it appears in the host db
-func (rt *renterTester) addHost(name string) (modules.Host, error) {
+func (rt *renterTester) addCustomHost(name string, deps modules.Dependencies) (modules.Host, error) {
 	testdir := build.TempDir("renter", name)
 
 	// create a siamux for this particular host
@@ -63,7 +63,7 @@ func (rt *renterTester) addHost(name string) (modules.Host, error) {
 		return nil, err
 	}
 
-	h, err := host.New(rt.cs, rt.gateway, rt.tpool, rt.wallet, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
+	h, err := host.NewCustomHost(deps, rt.cs, rt.gateway, rt.tpool, rt.wallet, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, err
 	}
@@ -116,6 +116,11 @@ func (rt *renterTester) addHost(name string) (modules.Host, error) {
 	}
 
 	return h, nil
+}
+
+// addHost adds a host to the test group so that it appears in the host db
+func (rt *renterTester) addHost(name string) (modules.Host, error) {
+	return rt.addCustomHost(name, modules.ProdDependencies)
 }
 
 // addRenter adds a renter to the renter tester and then make sure there is
@@ -279,12 +284,59 @@ func newRenterWithDependency(g modules.Gateway, cs modules.ConsensusSet, wallet 
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	hc, errChan := contractor.New(cs, wallet, tpool, hdb, persistDir)
+
+	contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), modules.ProdDependencies)
+	if err != nil {
+		return nil, err
+	}
+
+	logger, err := persist.NewFileLogger(filepath.Join(persistDir, "contractor.log"))
+	if err != nil {
+		return nil, err
+	}
+
+	hc, errChan := contractor.NewCustomContractor(cs, wallet, tpool, hdb, persistDir, contractSet, logger, deps)
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
 	renter, errChan := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, persistDir, deps)
 	return renter, <-errChan
+}
+
+// TestRenterCanAccessEphemeralAccountHostSettings verifies that the renter has
+// access to the host's external settings and that they include the new
+// ephemeral account setting fields.
+func TestRenterCanAccessEphemeralAccountHostSettings(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	// Add a host to the test group
+	h, err := rt.addHost(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hostEntry, found, err := rt.renter.hostDB.Host(h.PublicKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("Expected the newly added host to be found in the hostDB")
+	}
+
+	if hostEntry.EphemeralAccountExpiry != modules.DefaultEphemeralAccountExpiry {
+		t.Fatal("Unexpected account expiry")
+	}
+
+	if !hostEntry.MaxEphemeralAccountBalance.Equals(modules.DefaultMaxEphemeralAccountBalance) {
+		t.Fatal("Unexpected max account balance")
+	}
 }
 
 // TestRenterPricesDivideByZero verifies that the Price Estimation catches
@@ -316,53 +368,5 @@ func TestRenterPricesDivideByZero(t *testing.T) {
 	_, _, err = rt.renter.PriceEstimation(modules.Allowance{})
 	if err != nil {
 		t.Fatal(err)
-	}
-}
-
-// TestRenterPricesVolatility verifies that the renter caches its price
-// estimation, and subsequent calls result in non-volatile results.
-func TestRenterPricesVolatility(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	rt, err := newRenterTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Close()
-
-	// Add 4 host entries in the database with different public keys.
-	hosts := []modules.Host{}
-	for len(hosts) < modules.PriceEstimationScope {
-		// Add a host to the test group
-		h, err := rt.addHost(t.Name())
-		if err != nil {
-			t.Fatal(err)
-		}
-		hosts = append(hosts, h)
-	}
-	allowance := modules.Allowance{}
-	initial, _, err := rt.renter.PriceEstimation(allowance)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Changing the contract price should be enough to trigger a change
-	// if the hosts are not cached.
-	h := hosts[0]
-	settings := h.InternalSettings()
-	settings.MinContractPrice = settings.MinContractPrice.Mul64(2)
-	err = h.SetInternalSettings(settings)
-	if err != nil {
-		t.Fatal(err)
-	}
-	after, _, err := rt.renter.PriceEstimation(allowance)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(initial, after) {
-		t.Log(initial)
-		t.Log(after)
-		t.Fatal("expected renter price estimation to be constant")
 	}
 }
