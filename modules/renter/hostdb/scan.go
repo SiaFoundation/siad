@@ -11,11 +11,10 @@ import (
 	"sort"
 	"time"
 
-	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb/hosttree"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -29,6 +28,14 @@ var (
 		Standard: 60 * time.Minute,
 		Dev:      2 * time.Minute,
 		Testing:  500 * time.Millisecond,
+	}).(time.Duration)
+
+	// siamuxPingTimeout is the timeout that is given to the Ping function when
+	// checking if a host can talk via siamux.
+	siamuxPingTimeout = build.Select(build.Var{
+		Standard: 5 * time.Minute,
+		Dev:      30 * time.Second,
+		Testing:  3 * time.Second,
 	}).(time.Duration)
 )
 
@@ -459,112 +466,26 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 			}
 
 			// Try opening a connection to the siamux.
-			//
-			// TODO: Should also check that the websocket port is open and
-			// reachable.
-			stream, err := hdb.staticMux.NewStream(modules.HostSiaMuxSubscriberName, settings.SiaMuxAddress(), modules.SiaPKToMuxPK(entry.PublicKey))
+			err = hdb.staticMux.Ping(modules.HostSiaMuxSubscriberName, settings.SiaMuxAddress(), siamuxPingTimeout, modules.SiaPKToMuxPK(entry.PublicKey))
 			if err != nil {
-				fmt.Printf("%v could not open stream: %v\n", entry.PublicKey, err)
+				hdb.staticLog.Debugf("%v could not open stream: %v\n", entry.PublicKey, err)
 				return err
 			}
-			err = stream.Close()
-			if err != nil {
-				fmt.Printf("%v could not close stream: %v\n", entry.PublicKey, err)
-				return err
-			}
-			fmt.Printf("%v was successful in using stream: %v\n", entry.PublicKey, err)
+			hdb.staticLog.Debugf("%v was successful in using stream: %v\n", entry.PublicKey, err)
 			return nil
 		}()
-		if tryNewProtoErr == nil {
-			// If the host's version is lower than v1.4.12, which is the version
-			// at which the following fields were added to the host's external
-			// settings, we set these values to their original defaults to
-			// ensure these hosts are not penalized by renters running the
-			// latest software.
-			if build.VersionCmp(settings.Version, "1.4.12") < 0 {
-				settings.EphemeralAccountExpiry = modules.CompatV1412DefaultEphemeralAccountExpiry
-				settings.MaxEphemeralAccountBalance = modules.CompatV1412DefaultMaxEphemeralAccountBalance
-			}
-
-			return nil
+		if tryNewProtoErr != nil {
+			return errors.AddContext(tryNewProtoErr, "host does not appear to be correctly supporting RHP3")
 		}
-
-		// Failed to get settings with the new protocol; fall back to the old
-		// protocol, filling in the missing fields with default values.
-		//
-		// Close current connection
-		conn.Close()
-
-		// Start new connection. We cannot assign this to the first connection
-		// as it creates a Data Race and conflicts with the deferred channel
-		// closing. Additionally, we can't assign the result of Dial to conn,
-		// because if the Dial fails and conn is nil, then the deferred call to
-		// Close will segfault.
-		conn2, err := dialer.Dial("tcp", string(netAddr))
-		if err != nil {
-			return err
+		// If the host's version is lower than v1.4.12, which is the version
+		// at which the following fields were added to the host's external
+		// settings, we set these values to their original defaults to
+		// ensure these hosts are not penalized by renters running the
+		// latest software.
+		if build.VersionCmp(settings.Version, "1.4.12") < 0 {
+			settings.EphemeralAccountExpiry = modules.CompatV1412DefaultEphemeralAccountExpiry
+			settings.MaxEphemeralAccountBalance = modules.CompatV1412DefaultMaxEphemeralAccountBalance
 		}
-		// Create go routine that will close this second channel if the hostdb
-		// shuts down or when this method returns as signalled by closing the
-		// connCloseChan2 channel
-		connCloseChan2 := make(chan struct{})
-		go func() {
-			select {
-			case <-hdb.tg.StopChan():
-			case <-connCloseChan2:
-			}
-			conn2.Close()
-		}()
-		defer close(connCloseChan2)
-		conn2.SetDeadline(time.Now().Add(hostScanDeadline))
-
-		err = encoding.WriteObject(conn2, modules.RPCSettings)
-		if err != nil {
-			return err
-		}
-		var pubkey crypto.PublicKey
-		copy(pubkey[:], pubKey.Key)
-		var oldSettings modules.HostOldExternalSettings
-		err = crypto.ReadSignedObject(conn2, &oldSettings, maxSettingsLen, pubkey)
-		if err != nil {
-			return err
-		}
-		settings = modules.HostExternalSettings{
-			AcceptingContracts:     oldSettings.AcceptingContracts,
-			MaxDownloadBatchSize:   oldSettings.MaxDownloadBatchSize,
-			MaxDuration:            oldSettings.MaxDuration,
-			MaxReviseBatchSize:     oldSettings.MaxReviseBatchSize,
-			NetAddress:             oldSettings.NetAddress,
-			RemainingStorage:       oldSettings.RemainingStorage,
-			SectorSize:             oldSettings.SectorSize,
-			TotalStorage:           oldSettings.TotalStorage,
-			UnlockHash:             oldSettings.UnlockHash,
-			WindowSize:             oldSettings.WindowSize,
-			Collateral:             oldSettings.Collateral,
-			MaxCollateral:          oldSettings.MaxCollateral,
-			ContractPrice:          oldSettings.ContractPrice,
-			DownloadBandwidthPrice: oldSettings.DownloadBandwidthPrice,
-			StoragePrice:           oldSettings.StoragePrice,
-			UploadBandwidthPrice:   oldSettings.UploadBandwidthPrice,
-			RevisionNumber:         oldSettings.RevisionNumber,
-			Version:                oldSettings.Version,
-		}
-
-		// Try opening a connection to the siamux.
-		//
-		// TODO: Should also check that the websocket port is open and
-		// reachable.
-		stream, err := hdb.staticMux.NewStream(modules.HostSiaMuxSubscriberName, settings.SiaMuxAddress(), modules.SiaPKToMuxPK(entry.PublicKey))
-		if err != nil {
-			fmt.Printf("%v could not open stream: %v\n", entry.PublicKey, err)
-			return err
-		}
-		err = stream.Close()
-		if err != nil {
-			fmt.Printf("%v could not close stream: %v\n", entry.PublicKey, err)
-			return err
-		}
-		fmt.Printf("%v was successful in using stream: %v\n", entry.PublicKey, err)
 
 		return nil
 	}()
