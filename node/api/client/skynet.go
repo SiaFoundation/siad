@@ -44,13 +44,6 @@ func (c *Client) SkynetSkylinkGetWithTimeout(skylink string, timeout int) ([]byt
 	return c.skynetSkylinkGetWithParameters(skylink, params)
 }
 
-// SkynetSkylinkGetWithFormat uses the /skynet/skylink endpoint to download a
-// skylink file, specifying the given timeout.
-func (c *Client) SkynetSkylinkGetWithFormat(skylink string, format string) ([]byte, modules.SkyfileMetadata, error) {
-	params := map[string]string{"format": format}
-	return c.skynetSkylinkGetWithParameters(skylink, params)
-}
-
 // skynetSkylinkGetWithParameters uses the /skynet/skylink endpoint to download
 // a skylink file, specifying the given parameters.
 // The caller of this function is responsible for validating the parameters!

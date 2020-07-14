@@ -77,7 +77,6 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetDefaultPath", Test: testSkynetDefaultPath},
 		{Name: "TestSkynetDefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
 		{Name: "TestSkynetSingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
-		{Name: "TestArchiveMetadata", Test: testArchiveMetadata},
 		{Name: "TestSkynetDownloadFormats", Test: testSkynetDownloadFormats},
 	}
 
@@ -3138,34 +3137,3 @@ func testSkynetSingleFileNoSubfiles(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testArchiveMetadata ensures that downloading a skyfile as an archive will
-// result in the same metadata as a direct download.
-func testArchiveMetadata(t *testing.T, tg *siatest.TestGroup) {
-	r := tg.Renters()[0]
-
-	skylink, sup, _, err := r.UploadNewSkyfileBlocking("testArchiveMetadata", modules.SectorSize, false)
-	if err != nil {
-		t.Fatal("Failed to upload a single file.", err)
-	}
-	if sup.FileMetadata.Subfiles != nil {
-		t.Fatal("Expected empty subfiles on upload, got", sup.FileMetadata.Subfiles)
-	}
-	_, metadata, err := r.SkynetSkylinkGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, metaTarGz, err := r.SkynetSkylinkGetWithFormat(skylink, "targz")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if metadata.Filename != metaTarGz.Filename || len(metadata.Subfiles) != len(metaTarGz.Subfiles) {
-		t.Fatalf("Metadata mismatch, expected %+v, got %+v\n", metadata, metaTarGz)
-	}
-	_, metaTar, err := r.SkynetSkylinkGetWithFormat(skylink, "tar")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if metadata.Filename != metaTar.Filename || len(metadata.Subfiles) != len(metaTar.Subfiles) {
-		t.Fatalf("Metadata mismatch, expected %+v, got %+v\n", metadata, metaTar)
-	}
-}
