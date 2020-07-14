@@ -475,7 +475,6 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 		// way of checking that RHP3 is supported.
 		err = hdb.staticMux.Ping(modules.HostSiaMuxSubscriberName, siamuxAddr, timeout, modules.SiaPKToMuxPK(entry.PublicKey))
 		if err != nil {
-			fmt.Println("The siamux ping failed:", err)
 			hdb.staticLog.Debugf("%v siamux ping not successful: %v\n", entry.PublicKey, err)
 			return err
 		}
