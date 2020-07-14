@@ -26,7 +26,7 @@ var (
 	// between scans in order for a new scan to be accepted into the hostdb as
 	// part of the scan history.
 	scanTimeElapsedRequirement = build.Select(build.Var{
-		Standard: 6 * time.Minute,
+		Standard: 60 * time.Minute,
 		Dev:      2 * time.Minute,
 		Testing:  500 * time.Millisecond,
 	}).(time.Duration)
