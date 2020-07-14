@@ -4,7 +4,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
 	"time"
 
@@ -54,7 +53,7 @@ func (rt *renterTester) Close() error {
 }
 
 // addHost adds a host to the test group so that it appears in the host db
-func (rt *renterTester) addHost(name string) (modules.Host, error) {
+func (rt *renterTester) addCustomHost(name string, deps modules.Dependencies) (modules.Host, error) {
 	testdir := build.TempDir("renter", name)
 
 	// create a siamux for this particular host
@@ -64,7 +63,7 @@ func (rt *renterTester) addHost(name string) (modules.Host, error) {
 		return nil, err
 	}
 
-	h, err := host.New(rt.cs, rt.gateway, rt.tpool, rt.wallet, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
+	h, err := host.NewCustomHost(deps, rt.cs, rt.gateway, rt.tpool, rt.wallet, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, err
 	}
@@ -117,6 +116,11 @@ func (rt *renterTester) addHost(name string) (modules.Host, error) {
 	}
 
 	return h, nil
+}
+
+// addHost adds a host to the test group so that it appears in the host db
+func (rt *renterTester) addHost(name string) (modules.Host, error) {
+	return rt.addCustomHost(name, modules.ProdDependencies)
 }
 
 // addRenter adds a renter to the renter tester and then make sure there is
@@ -364,53 +368,5 @@ func TestRenterPricesDivideByZero(t *testing.T) {
 	_, _, err = rt.renter.PriceEstimation(modules.Allowance{})
 	if err != nil {
 		t.Fatal(err)
-	}
-}
-
-// TestRenterPricesVolatility verifies that the renter caches its price
-// estimation, and subsequent calls result in non-volatile results.
-func TestRenterPricesVolatility(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	rt, err := newRenterTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rt.Close()
-
-	// Add 4 host entries in the database with different public keys.
-	hosts := []modules.Host{}
-	for len(hosts) < modules.PriceEstimationScope {
-		// Add a host to the test group
-		h, err := rt.addHost(t.Name())
-		if err != nil {
-			t.Fatal(err)
-		}
-		hosts = append(hosts, h)
-	}
-	allowance := modules.Allowance{}
-	initial, _, err := rt.renter.PriceEstimation(allowance)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Changing the contract price should be enough to trigger a change
-	// if the hosts are not cached.
-	h := hosts[0]
-	settings := h.InternalSettings()
-	settings.MinContractPrice = settings.MinContractPrice.Mul64(2)
-	err = h.SetInternalSettings(settings)
-	if err != nil {
-		t.Fatal(err)
-	}
-	after, _, err := rt.renter.PriceEstimation(allowance)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(initial, after) {
-		t.Log(initial)
-		t.Log(after)
-		t.Fatal("expected renter price estimation to be constant")
 	}
 }

@@ -69,7 +69,8 @@ func (v *TestValues) AddDropSectorsInstruction(numSectors uint64) {
 	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, newData, readonly)
 }
 
-// AddHasSectorInstruction adds a hassector instruction to the builder, keeping track of running values.
+// AddHasSectorInstruction adds a hassector instruction to the builder, keeping
+// track of running values.
 func (v *TestValues) AddHasSectorInstruction() {
 	collateral := modules.MDMHasSectorCollateral()
 	cost := modules.MDMHasSectorCost(v.staticPT)
@@ -102,6 +103,17 @@ func (v *TestValues) AddReadSectorInstruction(length uint64) {
 	newData := 8 + 8 + crypto.HashSize
 	readonly := true
 	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, newData, readonly)
+}
+
+// AddRevisionInstruction adds a revision instruction to the builder, keeping
+// track of running values.
+func (v *TestValues) AddRevisionInstruction() {
+	collateral := modules.MDMRevisionCollateral()
+	cost := modules.MDMRevisionCost(v.staticPT)
+	memory := modules.MDMRevisionMemory()
+	time := uint64(modules.MDMTimeRevision)
+	readonly := true
+	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, 0, readonly)
 }
 
 // Cost returns the current cost of the program which would result . If

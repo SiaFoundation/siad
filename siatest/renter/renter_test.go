@@ -28,6 +28,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
@@ -4944,5 +4945,128 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	delta := types.SiacoinPrecision.Div64(10)
 	if renterBalance.Sub(w.AccountStatus.AvailableBalance).Cmp(delta) < 0 {
 		t.Fatalf("Expected the synced balance to be at least %v lower than the renter balance, as thats the amount we subtracted from the deposit amount, instead synced balance was %v and renter balance was %v", delta, w.AccountStatus.AvailableBalance, renterBalance)
+	}
+}
+
+// TestReadSectorOutputCorrupted verifies that the merkle proof check on the
+// ReadSector MDM instruction works as expected.
+func TestReadSectorOutputCorrupted(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a testgroup with a renter and miner.
+	groupParams := siatest.GroupParams{
+		Miners:  1,
+		Renters: 1,
+	}
+
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer tg.Close()
+
+	// add a host that corrupts downloads.
+	deps1 := dependencies.NewDependencyCorruptMDMOutput()
+	deps2 := dependencies.NewDependencyCorruptMDMOutput()
+	hostParams1 := node.Host(filepath.Join(testDir, "host1"))
+	hostParams2 := node.Host(filepath.Join(testDir, "host2"))
+	hostParams1.HostDeps = deps1
+	hostParams2.HostDeps = deps2
+	_, err = tg.AddNodes(hostParams1, hostParams2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload a file.
+	renter := tg.Renters()[0]
+	skylink, _, _, err := renter.UploadNewSkyfileBlocking("test", 100, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the file.
+	_, _, err = renter.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Enable the dependencies and download again.
+	deps1.Fail()
+	deps2.Fail()
+	_, _, err = renter.SkynetSkylinkGet(skylink)
+	if err == nil || !strings.Contains(err.Error(), "all workers failed") {
+		t.Fatal(err)
+	}
+
+	// Download one more time. It should work again.
+	_, _, err = renter.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRenterPricesVolatility verifies that the renter caches its price
+// estimation, and subsequent calls result in non-volatile results.
+func TestRenterPricesVolatility(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a testgroup with PriceEstimationScope hosts.
+	groupParams := siatest.GroupParams{
+		Miners:  1,
+		Hosts:   modules.PriceEstimationScope,
+		Renters: 1,
+	}
+
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer tg.Close()
+
+	renter := tg.Renters()[0]
+	host := tg.Hosts()[0]
+
+	// Get initial estimate.
+	allowance := modules.Allowance{}
+	rpg, err := renter.RenterPricesGet(allowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial := rpg.RenterPriceEstimation
+
+	// Changing the contract price should be enough to trigger a change
+	// if the hosts are not cached.
+	hg, err := host.HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mcp := hg.InternalSettings.MinContractPrice
+	err = host.HostModifySettingPost(client.HostParamMinContractPrice, mcp.Mul64(2))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the estimate again.
+	rpg, err = renter.RenterPricesGet(allowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after := rpg.RenterPriceEstimation
+
+	// Initial and After should be the same.
+	if !reflect.DeepEqual(initial, after) {
+		initialJSON, _ := json.MarshalIndent(initial, "", "\t")
+		afterJSON, _ := json.MarshalIndent(after, "", "\t")
+		t.Log("Initial:", string(initialJSON))
+		t.Log("After:", string(afterJSON))
+		t.Fatal("expected renter price estimation to be constant")
 	}
 }

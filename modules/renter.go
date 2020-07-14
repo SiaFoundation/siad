@@ -1039,6 +1039,14 @@ type Renter interface {
 	// CreateSkykey creates a new Skykey with the given name and SkykeyType.
 	CreateSkykey(string, skykey.SkykeyType) (skykey.Skykey, error)
 
+	// DeleteSkykeyByID deletes the Skykey with the given name from the renter's skykey
+	// manager if it exists.
+	DeleteSkykeyByID(skykey.SkykeyID) error
+
+	// DeleteSkykeyByName deletes the Skykey with the given name from the renter's skykey
+	// manager if it exists.
+	DeleteSkykeyByName(string) error
+
 	// SkykeyByName gets the Skykey with the given name from the renter's skykey
 	// manager if it exists.
 	SkykeyByName(string) (skykey.Skykey, error)

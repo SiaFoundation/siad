@@ -30,6 +30,7 @@ type (
 	// TestStorageObligation is a dummy storage obligation for testing which
 	// satisfies the StorageObligation interface.
 	TestStorageObligation struct {
+		host        *TestHost
 		sectorMap   map[crypto.Hash][]byte
 		sectorRoots []crypto.Hash
 	}
@@ -46,8 +47,9 @@ func newCustomTestHost(generateSectors bool) *TestHost {
 	}
 }
 
-func newTestStorageObligation(locked bool) *TestStorageObligation {
+func (h *TestHost) newTestStorageObligation(locked bool) *TestStorageObligation {
 	return &TestStorageObligation{
+		host:      h,
 		sectorMap: make(map[crypto.Hash][]byte),
 	}
 }
@@ -85,6 +87,23 @@ func (h *TestHost) ReadSector(sectorRoot crypto.Hash) ([]byte, error) {
 	return data, nil
 }
 
+// AddRandomSector adds a random sector to the obligation and corresponding
+// host.
+func (so *TestStorageObligation) AddRandomSector() {
+	data := fastrand.Bytes(int(modules.SectorSize))
+	root := crypto.MerkleRoot(data)
+	so.host.sectors[root] = data
+	so.sectorRoots = append(so.sectorRoots, root)
+}
+
+// AddRandomSectors adds n random sectors to the obligation and corresponding
+// host.
+func (so *TestStorageObligation) AddRandomSectors(n int) {
+	for i := 0; i < n; i++ {
+		so.AddRandomSector()
+	}
+}
+
 // ContractSize implements the StorageObligation interface.
 func (so *TestStorageObligation) ContractSize() uint64 {
 	return uint64(len(so.sectorRoots)) * modules.SectorSize
@@ -96,6 +115,14 @@ func (so *TestStorageObligation) MerkleRoot() crypto.Hash {
 		return crypto.Hash{}
 	}
 	return cachedMerkleRoot(so.sectorRoots)
+}
+
+// RecentRevision implements the StorageObligation interface.
+func (so *TestStorageObligation) RecentRevision() types.FileContractRevision {
+	return types.FileContractRevision{
+		NewFileMerkleRoot: so.MerkleRoot(),
+		NewFileSize:       so.ContractSize(),
+	}
 }
 
 // SectorRoots implements the StorageObligation interface.
@@ -127,8 +154,11 @@ func newTestPriceTable() *modules.RPCPriceTable {
 	return &modules.RPCPriceTable{
 		Validity: time.Minute,
 
+		AccountBalanceCost:   types.NewCurrency64(1),
+		FundAccountCost:      types.NewCurrency64(1),
 		UpdatePriceTableCost: types.NewCurrency64(1),
 		InitBaseCost:         types.NewCurrency64(1),
+		LatestRevisionCost:   types.NewCurrency64(1),
 		MemoryTimeCost:       types.NewCurrency64(1),
 		CollateralCost:       types.NewCurrency64(1),
 
@@ -224,11 +254,11 @@ func (o Output) assert(newSize uint64, newMerkleRoot crypto.Hash, proof []crypto
 	if o.NewMerkleRoot != newMerkleRoot {
 		return fmt.Errorf("expected newMerkleRoot %v but got %v", newSize, o.NewMerkleRoot)
 	}
-	if len(o.Proof)+len(proof) != 0 && !reflect.DeepEqual(o.Proof, proof) {
-		return fmt.Errorf("expected proof %v but got %v", proof, o.Proof)
-	}
 	if !bytes.Equal(o.Output, output) {
 		return fmt.Errorf("expected o %v but got %v", o, o.Output)
+	}
+	if len(o.Proof)+len(proof) != 0 && !reflect.DeepEqual(o.Proof, proof) {
+		return fmt.Errorf("expected proof %v but got %v", proof, o.Proof)
 	}
 	return nil
 }

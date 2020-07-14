@@ -152,12 +152,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		jhs := &jobHasSector{
 			staticSector:       root,
 			staticResponseChan: staticResponseChan,
-
-			jobGeneric: &jobGeneric{
-				staticCancelChan: ctx.Done(),
-
-				staticQueue: worker.staticJobHasSectorQueue,
-			},
+			jobGeneric:         newJobGeneric(worker.staticJobHasSectorQueue, ctx.Done()),
 		}
 		if !worker.staticJobHasSectorQueue.callAdd(jhs) {
 			// This will filter out any workers that are on cooldown or
@@ -303,11 +298,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 			jobRead: jobRead{
 				staticResponseChan: readSectorRespChan,
 				staticLength:       length,
-				jobGeneric: &jobGeneric{
-					staticCancelChan: ctx.Done(),
-
-					staticQueue: bestWorker.staticJobReadQueue,
-				},
+				jobGeneric:         newJobGeneric(bestWorker.staticJobReadQueue, ctx.Done()),
 			},
 			staticOffset: offset,
 			staticSector: root,
@@ -375,7 +366,7 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 
 // checkPDBRGouging verifies the cost of executing the jobs performed by the
 // PDBR are reasonable in relation to the user's allowance and the amount of
-// data he intends to download
+// data they intend to download
 func checkPDBRGouging(pt modules.RPCPriceTable, allowance modules.Allowance) error {
 	// Check whether the download bandwidth price is too high.
 	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
@@ -424,8 +415,8 @@ func checkPDBRGouging(pt modules.RPCPriceTable, allowance modules.Allowance) err
 	costProject := costReadSectorJob.Add(costHasSectorJob.Mul64(uint64(sectorLookupToDownloadRatio)))
 
 	// Now that we have the cost of each job, and we estimate a sector lookup to
-	// download ratio of 16, all we need is calculate the number of projects
-	// necesstaryo download the expected download amount.
+	// download ratio of 16, all we need to do is calculate the number of
+	// projects necessary to download the expected download amount.
 	numProjects := allowance.ExpectedDownload / modules.StreamDownloadSize
 
 	// The cost of downloading is considered too expensive if the allowance is

@@ -38,6 +38,11 @@ type RPCPriceTable struct {
 	// host.
 	FundAccountCost types.Currency `json:"fundaccountcost"`
 
+	// LatestRevisionCost refers to the cost of asking the host for the latest
+	// revision of a contract.
+	// TODO: should this be free?
+	LatestRevisionCost types.Currency `json:"latestrevisioncost"`
+
 	// MDM related costs
 	//
 	// InitBaseCost is the amount of cost that is incurred when an MDM program
@@ -69,6 +74,9 @@ type RPCPriceTable struct {
 	ReadBaseCost   types.Currency `json:"readbasecost"`
 	ReadLengthCost types.Currency `json:"readlengthcost"`
 
+	// Cost values specific to the Revision command.
+	RevisionBaseCost types.Currency `json:"revisionbasecost"`
+
 	// Cost values specific to the Write instruction.
 	WriteBaseCost   types.Currency `json:"writebasecost"`   // per write
 	WriteLengthCost types.Currency `json:"writelengthcost"` // per byte written
@@ -91,6 +99,9 @@ var (
 
 	// RPCFundAccount specifier
 	RPCFundAccount = types.NewSpecifier("FundAccount")
+
+	// RPCLatestRevision specifier
+	RPCLatestRevision = types.NewSpecifier("LatestRevision")
 )
 
 type (
@@ -157,6 +168,18 @@ type (
 	// containing the host signature for the new revision.
 	RPCExecuteProgramRevisionSigningResponse struct {
 		Signature []byte
+	}
+
+	// RPCLatestRevisionRequest contains the id of the contract for which to
+	// retrieve the latest revision.
+	RPCLatestRevisionRequest struct {
+		FileContractID types.FileContractID
+	}
+
+	// RPCLatestRevisionResponse contains the latest file contract revision
+	// signed by both host and renter.
+	RPCLatestRevisionResponse struct {
+		Revision types.FileContractRevision
 	}
 
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table

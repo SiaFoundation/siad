@@ -18,6 +18,10 @@ launched on the local machine with `siad -a :9000`.
 Common tasks
 ------------
 * `siac consensus` view block height
+* `siac stop` sends the stop signal to siad to safely terminate. This has the
+  same effect as C^c on the terminal.
+* `siac update` checks the server for updates.
+* `siac version` displays the version string of siac.
 
 Wallet:
 * `siac wallet init [-p]` initialize a wallet
@@ -36,7 +40,6 @@ Renter:
 * `siac renter workers rj` show worker read jobs status
 * `siac renter workers hsj` show worker has sector jobs status
 
-
 Full Descriptions
 -----------------
 
@@ -48,7 +51,7 @@ Full Descriptions
 ### Daemon tasks
 
 * `siac stop` sends the stop signal to siad to safely terminate. This has the
-  same affect as C^c on the terminal.
+  same effect as C^c on the terminal.
 
 * `siac update` checks the server for updates.
 
@@ -121,7 +124,7 @@ Alternatively, you can manually adjust these parameters inside the
 
 ### HostDB tasks
 
-* `siac hostdb -v` prints a list of all the know active hosts on the network.
+* `siac hostdb -v` prints a list of all the known active hosts on the network.
 
 ### Miner tasks
 

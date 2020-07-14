@@ -45,8 +45,20 @@ func (j *jobReadSector) managedReadSector() ([]byte, error) {
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
-	data, err := j.jobRead.managedRead(w, program, programData, cost)
-	return data, errors.AddContext(err, "jobReadSector: failed to execute managedRead")
+	out, err := j.jobRead.managedRead(w, program, programData, cost)
+	if err != nil {
+		return nil, errors.AddContext(err, "jobReadSector: failed to execute managedRead")
+	}
+	data := out.Output
+	proof := out.Proof
+
+	// verify proof
+	proofStart := int(j.staticOffset) / crypto.SegmentSize
+	proofEnd := int(j.staticOffset+j.staticLength) / crypto.SegmentSize
+	if !crypto.VerifyRangeProof(data, proof, proofStart, proofEnd, j.staticSector) {
+		return nil, errors.New("proof verification failed")
+	}
+	return data, nil
 }
 
 // ReadSector is a helper method to run a ReadSector job on a worker.
@@ -56,11 +68,7 @@ func (w *worker) ReadSector(ctx context.Context, root crypto.Hash, offset, lengt
 		jobRead: jobRead{
 			staticResponseChan: readSectorRespChan,
 			staticLength:       length,
-			jobGeneric: &jobGeneric{
-				staticCancelChan: ctx.Done(),
-
-				staticQueue: w.staticJobReadQueue,
-			},
+			jobGeneric:         newJobGeneric(w.staticJobReadQueue, ctx.Done()),
 		},
 		staticOffset: offset,
 		staticSector: root,

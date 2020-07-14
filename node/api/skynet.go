@@ -514,7 +514,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 
 	// Notify the caller force has been disabled
 	if !allowForce && force {
-		WriteError(w, Error{"'force' has been disabled on this node" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"'force' has been disabled on this node: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 
@@ -740,7 +740,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// Check for a convertpath input
 	convertPathStr := queryForm.Get("convertpath")
 	if convertPathStr != "" && lup.FileMetadata.Filename != "" {
-		WriteError(w, Error{fmt.Sprintf("cannot set both a convertpath and a filename")}, http.StatusBadRequest)
+		WriteError(w, Error{"cannot set both a convertpath and a filename"}, http.StatusBadRequest)
 		return
 	}
 
@@ -748,10 +748,24 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// convert path is provided, assume that the req.Body will be used as a
 	// streaming upload.
 	if convertPathStr == "" {
-		// Ensure we have a filename
-		if lup.FileMetadata.Filename == "" {
-			WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
+		// Ensure we have a valid filename.
+		if err = modules.ValidatePathString(lup.FileMetadata.Filename, false); err != nil {
+			WriteError(w, Error{fmt.Sprintf("invalid filename provided: %v", err)}, http.StatusBadRequest)
 			return
+		}
+
+		// Check filenames of subfiles.
+		if lup.FileMetadata.Subfiles != nil {
+			for subfile, metadata := range lup.FileMetadata.Subfiles {
+				if subfile != metadata.Filename {
+					WriteError(w, Error{"subfile name did not match metadata filename"}, http.StatusBadRequest)
+					return
+				}
+				if err = modules.ValidatePathString(subfile, false); err != nil {
+					WriteError(w, Error{fmt.Sprintf("invalid filename provided: %v", err)}, http.StatusBadRequest)
+					return
+				}
+			}
 		}
 
 		skylink, err := api.renter.UploadSkyfile(lup)
@@ -1036,6 +1050,43 @@ func (api *API) skykeyHandlerGET(w http.ResponseWriter, req *http.Request, _ htt
 	})
 }
 
+// skykeyDeleteHandlerGET handles the API call to delete a Skykey using its name
+// or ID.
+func (api *API) skykeyDeleteHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse Skykey id and name.
+	name := req.FormValue("name")
+	idString := req.FormValue("id")
+
+	if idString == "" && name == "" {
+		WriteError(w, Error{"you must specify the name or ID of the skykey"}, http.StatusBadRequest)
+		return
+	}
+	if idString != "" && name != "" {
+		WriteError(w, Error{"you must specify either the name or ID of the skykey, not both"}, http.StatusBadRequest)
+		return
+	}
+
+	var err error
+	if name != "" {
+		err = api.renter.DeleteSkykeyByName(name)
+	} else if idString != "" {
+		var id skykey.SkykeyID
+		err = id.FromString(idString)
+		if err != nil {
+			WriteError(w, Error{"Invalid skykey ID: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		err = api.renter.DeleteSkykeyByID(id)
+	}
+
+	if err != nil {
+		WriteError(w, Error{"failed to delete skykey: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	WriteSuccess(w)
+}
+
 // skykeyCreateKeyHandlerPost handles the API call to create a skykey using the renter's
 // skykey manager.
 func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
@@ -1056,19 +1107,19 @@ func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Requ
 	var skykeyType skykey.SkykeyType
 	err := skykeyType.FromString(skykeyTypeString)
 	if err != nil {
-		WriteError(w, Error{"failed to decode skykey type" + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"failed to decode skykey type: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
 	sk, err := api.renter.CreateSkykey(name, skykeyType)
 	if err != nil {
-		WriteError(w, Error{"failed to create skykey" + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"failed to create skykey: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
 	keyString, err := sk.ToString()
 	if err != nil {
-		WriteError(w, Error{"failed to decode skykey" + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"failed to decode skykey: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
@@ -1083,20 +1134,20 @@ func (api *API) skykeyAddKeyHandlerPOST(w http.ResponseWriter, req *http.Request
 	// Parse skykey.
 	skString := req.FormValue("skykey")
 	if skString == "" {
-		WriteError(w, Error{"you must specify the name the Skykey"}, http.StatusInternalServerError)
+		WriteError(w, Error{"you must specify the name of the skykey"}, http.StatusInternalServerError)
 		return
 	}
 
 	var sk skykey.Skykey
 	err := sk.FromString(skString)
 	if err != nil {
-		WriteError(w, Error{"failed to decode skykey" + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"failed to decode skykey: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
 	err = api.renter.AddSkykey(sk)
 	if err != nil {
-		WriteError(w, Error{"failed to add skykey" + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"failed to add skykey: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 

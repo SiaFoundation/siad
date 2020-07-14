@@ -204,18 +204,20 @@ func (w *watchdog) callMonitorContract(args monitorContractArgs) error {
 // callScanConsensusChange scans applied and reverted blocks, updating the
 // watchdog's state with all information relevant to monitored contracts.
 func (w *watchdog) callScanConsensusChange(cc modules.ConsensusChange) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	for _, block := range cc.RevertedBlocks {
 		if block.ID() != types.GenesisID {
 			w.blockHeight--
 		}
-		w.managedScanRevertedBlock(block)
+		w.scanRevertedBlock(block)
 	}
 
 	for _, block := range cc.AppliedBlocks {
 		if block.ID() != types.GenesisID {
 			w.blockHeight++
 		}
-		w.managedScanAppliedBlock(block)
+		w.scanAppliedBlock(block)
 	}
 }
 
@@ -363,13 +365,11 @@ func removeTxnFromSet(txn types.Transaction, txnSet []types.Transaction) ([]type
 	return nil, errTxnNotInSet
 }
 
-// managedScanAppliedBlock updates the watchdog's state with data from a newly
+// scanAppliedBlock updates the watchdog's state with data from a newly
 // connected block. It checks for contracts, revisions, and proofs of monitored
 // contracts and also for double-spends of any outputs which monitored contracts
 // depend on.
-func (w *watchdog) managedScanAppliedBlock(block types.Block) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+func (w *watchdog) scanAppliedBlock(block types.Block) {
 	w.contractor.log.Debugln("Watchdog scanning applied block at height: ", w.blockHeight)
 
 	for _, txn := range block.Transactions {
@@ -485,13 +485,11 @@ func (w *watchdog) findDependencySpends(txn types.Transaction) {
 	}
 }
 
-// managedScanRevertedBlock updates the watchdog's state with data from a newly
+// scanRevertedBlock updates the watchdog's state with data from a newly
 // reverted block. It checks for the removal of contracts, revisions, and proofs
 // of monitored contracts and also for the creation of any new dependencies for
 // monitored formation transaction sets.
-func (w *watchdog) managedScanRevertedBlock(block types.Block) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+func (w *watchdog) scanRevertedBlock(block types.Block) {
 	w.contractor.log.Debugln("Watchdog scanning reverted block at height: ", w.blockHeight)
 
 	outputsCreatedInBlock := make(map[types.SiacoinOutputID]*types.Transaction)

@@ -345,6 +345,12 @@ func (h *Host) managedUpdatePriceTable() {
 		// Init costs.
 		InitBaseCost: hes.BaseRPCPrice,
 
+		// LatestRevisionCost is set to a reasonable base + the estimated
+		// bandwidth cost of downloading a filecontract. This isn't perfect but
+		// at least scales a bit as the host updates their download bandwidth
+		// prices.
+		LatestRevisionCost: modules.DefaultBaseRPCPrice.Add(hes.DownloadBandwidthPrice.Mul64(modules.EstimatedFileContractTransactionSetSize)),
+
 		// Bandwidth related fields.
 		DownloadBandwidthCost: hes.DownloadBandwidthPrice,
 		UploadBandwidthCost:   hes.UploadBandwidthPrice,
