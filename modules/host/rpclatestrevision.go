@@ -49,7 +49,7 @@ func (h *Host) managedRPCLatestRevision(stream siamux.Stream) (err error) {
 
 	// Send response.
 	err = modules.RPCWrite(stream, modules.RPCLatestRevisionResponse{
-		Revision: so.staticRecentRevision,
+		Revision: so.RecentRevision(),
 	})
 	if err != nil {
 		return errors.AddContext(err, "failed to send LatestRevisionResponse")

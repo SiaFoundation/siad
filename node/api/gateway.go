@@ -90,7 +90,7 @@ func (api *API) gatewayHandlerPOST(w http.ResponseWriter, req *http.Request, _ h
 func (api *API) gatewayBandwidthHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	upload, download, startTime, err := api.gateway.BandwidthCounters()
 	if err != nil {
-		WriteError(w, Error{"failed to get gateway's bandwidth usage " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"failed to get gateway's bandwidth usage: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteJSON(w, GatewayBandwidthGET{

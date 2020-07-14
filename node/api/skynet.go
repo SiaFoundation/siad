@@ -2,6 +2,7 @@ package api
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
@@ -276,11 +277,14 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// Parse the format.
 	format := modules.SkyfileFormat(strings.ToLower(queryForm.Get("format")))
-	if format != modules.SkyfileFormatNotSpecified &&
-		format != modules.SkyfileFormatTar &&
-		format != modules.SkyfileFormatConcat &&
-		format != modules.SkyfileFormatTarGz {
-		WriteError(w, Error{"unable to parse 'format' parameter, allowed values are: 'concat', 'tar' and 'targz'"}, http.StatusBadRequest)
+	switch format {
+	case modules.SkyfileFormatNotSpecified:
+	case modules.SkyfileFormatTar:
+	case modules.SkyfileFormatTarGz:
+	case modules.SkyfileFormatConcat:
+	case modules.SkyfileFormatZip:
+	default:
+		WriteError(w, Error{"unable to parse 'format' parameter, allowed values are: 'concat', 'tar', 'targz' and 'zip'"}, http.StatusBadRequest)
 		return
 	}
 
@@ -337,7 +341,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
 			return
 		}
-
 		streamer, err = NewLimitStreamer(streamer, offset, size)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
@@ -349,11 +352,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// If we are serving more than one file, and the format is not
-	// specified, return an error indicating a format needs to be specified
-	// when downloading a directory.
+	// specified, default to downloading it as a zip archive.
 	if !subfile && metadata.Directory() && format == modules.SkyfileFormatNotSpecified {
-		WriteError(w, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest)
-		return
+		format = modules.SkyfileFormatZip
 	}
 
 	// Encode the metadata
@@ -363,14 +364,14 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	// If requested, serve the content as a tar archive or compressed tar
-	// archive.
+	// If requested, serve the content as a tar archive, compressed tar
+	// archive or zip archive.
 	if format == modules.SkyfileFormatTar {
 		w.Header().Set("Content-Type", "application/x-tar")
 		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 		err = serveTar(w, metadata, streamer)
 		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar archive: %v", err)}, http.StatusInternalServerError)
 		}
 		return
 	}
@@ -381,7 +382,16 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		err = serveTar(gzw, metadata, streamer)
 		err = errors.Compose(err, gzw.Close())
 		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar gz archive: %v", err)}, http.StatusInternalServerError)
+		}
+		return
+	}
+	if format == modules.SkyfileFormatZip {
+		w.Header().Set("content-type", "application/zip")
+		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+		err = serveZip(w, metadata, streamer)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as zip archive: %v", err)}, http.StatusInternalServerError)
 		}
 		return
 	}
@@ -514,7 +524,7 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 
 	// Notify the caller force has been disabled
 	if !allowForce && force {
-		WriteError(w, Error{"'force' has been disabled on this node" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"'force' has been disabled on this node: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 
@@ -740,7 +750,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// Check for a convertpath input
 	convertPathStr := queryForm.Get("convertpath")
 	if convertPathStr != "" && lup.FileMetadata.Filename != "" {
-		WriteError(w, Error{fmt.Sprintf("cannot set both a convertpath and a filename")}, http.StatusBadRequest)
+		WriteError(w, Error{"cannot set both a convertpath and a filename"}, http.StatusBadRequest)
 		return
 	}
 
@@ -748,10 +758,24 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// convert path is provided, assume that the req.Body will be used as a
 	// streaming upload.
 	if convertPathStr == "" {
-		// Ensure we have a filename
-		if lup.FileMetadata.Filename == "" {
-			WriteError(w, Error{"no filename provided"}, http.StatusBadRequest)
+		// Ensure we have a valid filename.
+		if err = modules.ValidatePathString(lup.FileMetadata.Filename, false); err != nil {
+			WriteError(w, Error{fmt.Sprintf("invalid filename provided: %v", err)}, http.StatusBadRequest)
 			return
+		}
+
+		// Check filenames of subfiles.
+		if lup.FileMetadata.Subfiles != nil {
+			for subfile, metadata := range lup.FileMetadata.Subfiles {
+				if subfile != metadata.Filename {
+					WriteError(w, Error{"subfile name did not match metadata filename"}, http.StatusBadRequest)
+					return
+				}
+				if err = modules.ValidatePathString(subfile, false); err != nil {
+					WriteError(w, Error{fmt.Sprintf("invalid filename provided: %v", err)}, http.StatusBadRequest)
+					return
+				}
+			}
 		}
 
 		skylink, err := api.renter.UploadSkyfile(lup)
@@ -911,6 +935,57 @@ func serveTar(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Stream
 	return tw.Close()
 }
 
+// serveZip serves skyfiles as a zip by reading them from r and writing the
+// archive to dst.
+func serveZip(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Streamer) error {
+	zw := zip.NewWriter(dst)
+
+	// Get the files to zip.
+	var files []modules.SkyfileSubfileMetadata
+	for _, file := range md.Subfiles {
+		files = append(files, file)
+	}
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Offset < files[j].Offset
+	})
+
+	// If there are no files, it's a single file download. Manually construct a
+	// SkyfileSubfileMetadata from the SkyfileMetadata.
+	if len(files) == 0 {
+		// Fetch the length of the file by seeking to the end and then back to
+		// the start.
+		length, err := streamer.Seek(0, io.SeekEnd)
+		if err != nil {
+			return errors.AddContext(err, "serveZip: failed to seek to end of skyfile")
+		}
+		_, err = streamer.Seek(0, io.SeekStart)
+		if err != nil {
+			return errors.AddContext(err, "serveZip: failed to seek to start of skyfile")
+		}
+		// Construct the SkyfileSubfileMetadata.
+		files = append(files, modules.SkyfileSubfileMetadata{
+			FileMode: md.Mode,
+			Filename: md.Filename,
+			Offset:   0,
+			Len:      uint64(length),
+		})
+	}
+
+	for _, file := range files {
+		f, err := zw.Create(file.Filename)
+		if err != nil {
+			return errors.AddContext(err, "serveZip: failed to add the file to the zip")
+		}
+
+		// Write file content.
+		_, err = io.CopyN(f, streamer, int64(file.Len))
+		if err != nil {
+			return errors.AddContext(err, "serveZip: failed to write file contents to the zip")
+		}
+	}
+	return zw.Close()
+}
+
 // parseTimeout tries to parse the timeout from the query string and validate
 // it. If not present, it will default to DefaultSkynetRequestTimeout.
 func parseTimeout(queryForm url.Values) (time.Duration, error) {
@@ -1059,7 +1134,7 @@ func (api *API) skykeyDeleteHandlerPOST(w http.ResponseWriter, req *http.Request
 		var id skykey.SkykeyID
 		err = id.FromString(idString)
 		if err != nil {
-			WriteError(w, Error{"Invalid skykey ID" + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"Invalid skykey ID: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 		err = api.renter.DeleteSkykeyByID(id)
@@ -1093,19 +1168,19 @@ func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Requ
 	var skykeyType skykey.SkykeyType
 	err := skykeyType.FromString(skykeyTypeString)
 	if err != nil {
-		WriteError(w, Error{"failed to decode skykey type" + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"failed to decode skykey type: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
 	sk, err := api.renter.CreateSkykey(name, skykeyType)
 	if err != nil {
-		WriteError(w, Error{"failed to create skykey" + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"failed to create skykey: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
 	keyString, err := sk.ToString()
 	if err != nil {
-		WriteError(w, Error{"failed to decode skykey" + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"failed to decode skykey: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
@@ -1120,20 +1195,20 @@ func (api *API) skykeyAddKeyHandlerPOST(w http.ResponseWriter, req *http.Request
 	// Parse skykey.
 	skString := req.FormValue("skykey")
 	if skString == "" {
-		WriteError(w, Error{"you must specify the name the Skykey"}, http.StatusInternalServerError)
+		WriteError(w, Error{"you must specify the name of the skykey"}, http.StatusInternalServerError)
 		return
 	}
 
 	var sk skykey.Skykey
 	err := sk.FromString(skString)
 	if err != nil {
-		WriteError(w, Error{"failed to decode skykey" + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"failed to decode skykey: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
 	err = api.renter.AddSkykey(sk)
 	if err != nil {
-		WriteError(w, Error{"failed to add skykey" + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"failed to add skykey: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 

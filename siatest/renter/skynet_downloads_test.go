@@ -1,13 +1,10 @@
 package renter
 
 import (
-	"archive/tar"
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"strings"
@@ -414,9 +411,6 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// fileMap is a helper type that maps filenames onto the raw file data
-type fileMap map[string][]byte
-
 // fileMapFromFiles is a helper that converts a list of test files to a file map
 func fileMapFromFiles(tfs []siatest.TestFile) fileMap {
 	fm := make(fileMap)
@@ -473,12 +467,13 @@ func verifyDownloadDirectory(t *testing.T, r *siatest.TestNode, skylink string, 
 // will download the file using all of the archive formats we support, verifying
 // the contents of the archive for every type.
 func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, expectedFiles fileMap, expectedMetadata modules.SkyfileMetadata) error {
-	// tar
-	header, reader, err := r.SkynetSkylinkTarReaderGet(skylink)
+	// zip
+	header, reader, err := r.SkynetSkylinkZipReaderGet(skylink)
 	if err != nil {
 		return err
 	}
-	files, err := readTarArchive(reader)
+
+	files, err := readZipArchive(reader)
 	if err != nil {
 		return err
 	}
@@ -492,12 +487,49 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		return errors.New("Unexpected files")
 	}
 	ct := header.Get("Content-type")
-	if ct != "application/x-tar" {
-		return fmt.Errorf("Unexpected 'Content-Type' header, expected 'application/x-tar' actual '%v'", ct)
+	if ct != "application/zip" {
+		return fmt.Errorf("Unexpected 'Content-Type' header, expected 'application/zip' actual '%v'", ct)
 	}
 
 	var md modules.SkyfileMetadata
 	mdStr := header.Get("Skynet-File-Metadata")
+	if mdStr != "" {
+		err = json.Unmarshal([]byte(mdStr), &md)
+		if err != nil {
+			return errors.AddContext(err, "could not unmarshal metadata")
+		}
+	}
+
+	if !reflect.DeepEqual(md, expectedMetadata) {
+		t.Log("expected:", expectedMetadata)
+		t.Log("actual  :", md)
+		return errors.New("Unexpected metadata")
+	}
+
+	// tar
+	header, reader, err = r.SkynetSkylinkTarReaderGet(skylink)
+	if err != nil {
+		return err
+	}
+	files, err = readTarArchive(reader)
+	if err != nil {
+		return err
+	}
+	err = reader.Close()
+	if err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(files, expectedFiles) {
+		t.Log("expected:", expectedFiles)
+		t.Log("actual  :", files)
+		return errors.New("Unexpected files")
+	}
+	ct = header.Get("Content-type")
+	if ct != "application/x-tar" {
+		return fmt.Errorf("Unexpected 'Content-Type' header, expected 'application/x-tar' actual '%v'", ct)
+	}
+
+	mdStr = header.Get("Skynet-File-Metadata")
 	if mdStr != "" {
 		err = json.Unmarshal([]byte(mdStr), &md)
 		if err != nil {
@@ -550,28 +582,6 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		t.Log("actual  :", md)
 		return errors.New("Unexpected metadata")
 	}
-	return nil
-}
 
-// readTarArchive is a helper function that takes a reader containing a tar
-// archive and returns an fileMap, which is a small helper struct that maps the
-// filename to the data.
-func readTarArchive(r io.Reader) (fileMap, error) {
-	a := make(fileMap)
-	tr := tar.NewReader(r)
-	for {
-		header, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		data, err := ioutil.ReadAll(tr)
-		if err != nil {
-			return nil, err
-		}
-		a[header.Name] = data
-	}
-	return a, nil
+	return nil
 }

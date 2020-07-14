@@ -154,6 +154,16 @@ func (c *Client) SkynetSkylinkTarGzReaderGet(skylink string) (http.Header, io.Re
 	return header, reader, errors.AddContext(err, "unable to fetch skylink data")
 }
 
+// SkynetSkylinkZipReaderGet uses the /skynet/skylink endpoint to fetch a
+// reader of the file data with the 'zip' format specified.
+func (c *Client) SkynetSkylinkZipReaderGet(skylink string) (http.Header, io.ReadCloser, error) {
+	values := url.Values{}
+	values.Set("format", string(modules.SkyfileFormatZip))
+	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
+	header, reader, err := c.getReaderResponse(getQuery)
+	return header, reader, errors.AddContext(err, "unable to fetch skylink data")
+}
+
 // SkynetSkylinkPinPost uses the /skynet/pin endpoint to pin the file at the
 // given skylink.
 func (c *Client) SkynetSkylinkPinPost(skylink string, params modules.SkyfilePinParameters) error {

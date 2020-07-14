@@ -4800,10 +4800,12 @@ the file as though it is an attachment instead of rendering it.
 **format** | string  
 If 'format' is set, the skylink can point to a directory and it will return the
 data inside that directory. Format will decide the format in which it is
-returned. Currently, we support the following values: 'concat' will return the 
-concatenated data of all subfiles in that directory, 'tar' will return a tar 
-archive of all subfiles in that directory, and 'targz' will return gzipped tar 
-archive of all subfiles in that directory.
+returned. Currently, we support the following values: 'concat' will return the
+concatenated data of all subfiles in that directory, 'zip' will return a zip
+archive, 'tar' will return a tar archive of all subfiles in that directory, and
+'targz' will return a gzipped tar archive of all subfiles in that directory. If
+the format is not specified, and the skylink points at a directory, we default
+to the zip format and the contents will be downloaded as a zip archive.
 
 **timeout** | int  
 If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved 
@@ -4886,7 +4888,8 @@ that name exists within the skyfile.
 **filename** | string  
 The name of the file. This name will be encoded into the skyfile metadata, and
 will be a part of the skylink. If the name changes, the skylink will change as
-well.
+well. The name must be non-empty, may not include any path traversal strings
+("./", "../"), and may not begin with a forward-slash character.
 
 **dryrun** | bool  
 If dryrun is set to true, the request will return the Skylink of the file
