@@ -121,23 +121,27 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 
 	// read the responses.
-	responses = make([]programResponse, len(epr.Program))
-	for i := range responses {
-		err = modules.RPCRead(stream, &responses[i])
+	responses = make([]programResponse, 0, len(epr.Program))
+	for i := 0; i < len(epr.Program); i++ {
+		var response programResponse
+		err = modules.RPCRead(stream, &response)
 		if err != nil {
 			return
 		}
 
 		// Read the output data.
-		outputLen := responses[i].OutputLength
-		responses[i].Output = make([]byte, outputLen)
-		_, err = io.ReadFull(stream, responses[i].Output)
+		outputLen := response.OutputLength
+		response.Output = make([]byte, outputLen)
+		_, err = io.ReadFull(stream, response.Output)
 		if err != nil {
 			return
 		}
 
+		// We received a valid response. Append it.
+		responses = append(responses, response)
+
 		// If the response contains an error we are done.
-		if responses[i].Error != nil {
+		if response.Error != nil {
 			break
 		}
 	}

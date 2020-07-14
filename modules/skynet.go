@@ -169,6 +169,8 @@ var (
 	SkyfileFormatTar = SkyfileFormat("tar")
 	// SkyfileFormatTarGz returns the skyfiles as a .tar.gz.
 	SkyfileFormatTarGz = SkyfileFormat("targz")
+	// SkyfileFormatZip returns the skyfiles as a .zip.
+	SkyfileFormatZip = SkyfileFormat("zip")
 )
 
 // SkyfileUploadParameters establishes the parameters such as the intra-root
