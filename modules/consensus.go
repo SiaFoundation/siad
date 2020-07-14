@@ -255,11 +255,8 @@ func (cc ConsensusChange) MarshalSia(w io.Writer) error {
 		cc.ID,
 		cc.RevertedBlocks,
 		cc.AppliedBlocks,
-		cc.SiacoinOutputDiffs,
-		cc.FileContractDiffs,
-		cc.SiafundOutputDiffs,
-		cc.DelayedSiacoinOutputDiffs,
-		cc.SiafundPoolDiffs,
+		cc.RevertedDiffs,
+		cc.AppliedDiffs,
 		cc.ChildTarget,
 		cc.MinimumValidChildTimestamp,
 		cc.Synced,
@@ -269,19 +266,35 @@ func (cc ConsensusChange) MarshalSia(w io.Writer) error {
 // UnmarshalSia implements encoding.SiaUnmarshaler.
 func (cc *ConsensusChange) UnmarshalSia(r io.Reader) error {
 	const maxSize = 100e6 // consensus changes can be arbitrarily large
-	return encoding.NewDecoder(r, maxSize).DecodeAll(
+	err := encoding.NewDecoder(r, maxSize).DecodeAll(
 		&cc.ID,
 		&cc.RevertedBlocks,
 		&cc.AppliedBlocks,
-		&cc.SiacoinOutputDiffs,
-		&cc.FileContractDiffs,
-		&cc.SiafundOutputDiffs,
-		&cc.DelayedSiacoinOutputDiffs,
-		&cc.SiafundPoolDiffs,
+		&cc.RevertedDiffs,
+		&cc.AppliedDiffs,
 		&cc.ChildTarget,
 		&cc.MinimumValidChildTimestamp,
 		&cc.Synced,
 	)
+	if err != nil {
+		return err
+	}
+	// reconstruct diffs
+	for _, diff := range cc.RevertedDiffs {
+		cc.SiacoinOutputDiffs = append(cc.SiacoinOutputDiffs, diff.SiacoinOutputDiffs...)
+		cc.FileContractDiffs = append(cc.FileContractDiffs, diff.FileContractDiffs...)
+		cc.SiafundOutputDiffs = append(cc.SiafundOutputDiffs, diff.SiafundOutputDiffs...)
+		cc.DelayedSiacoinOutputDiffs = append(cc.DelayedSiacoinOutputDiffs, diff.DelayedSiacoinOutputDiffs...)
+		cc.SiafundPoolDiffs = append(cc.SiafundPoolDiffs, diff.SiafundPoolDiffs...)
+	}
+	for _, diff := range cc.AppliedDiffs {
+		cc.SiacoinOutputDiffs = append(cc.SiacoinOutputDiffs, diff.SiacoinOutputDiffs...)
+		cc.FileContractDiffs = append(cc.FileContractDiffs, diff.FileContractDiffs...)
+		cc.SiafundOutputDiffs = append(cc.SiafundOutputDiffs, diff.SiafundOutputDiffs...)
+		cc.DelayedSiacoinOutputDiffs = append(cc.DelayedSiacoinOutputDiffs, diff.DelayedSiacoinOutputDiffs...)
+		cc.SiafundPoolDiffs = append(cc.SiafundPoolDiffs, diff.SiafundPoolDiffs...)
+	}
+	return nil
 }
 
 // String returns the ConsensusChangeID as a string.
