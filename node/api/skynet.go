@@ -2,6 +2,7 @@ package api
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
@@ -276,11 +277,14 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// Parse the format.
 	format := modules.SkyfileFormat(strings.ToLower(queryForm.Get("format")))
-	if format != modules.SkyfileFormatNotSpecified &&
-		format != modules.SkyfileFormatTar &&
-		format != modules.SkyfileFormatConcat &&
-		format != modules.SkyfileFormatTarGz {
-		WriteError(w, Error{"unable to parse 'format' parameter, allowed values are: 'concat', 'tar' and 'targz'"}, http.StatusBadRequest)
+	switch format {
+	case modules.SkyfileFormatNotSpecified:
+	case modules.SkyfileFormatTar:
+	case modules.SkyfileFormatTarGz:
+	case modules.SkyfileFormatConcat:
+	case modules.SkyfileFormatZip:
+	default:
+		WriteError(w, Error{"unable to parse 'format' parameter, allowed values are: 'concat', 'tar', 'targz' and 'zip'"}, http.StatusBadRequest)
 		return
 	}
 
@@ -319,10 +323,12 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
+
 	// Redirect, if possible.
 	if allowRedirect && path == "/" {
 		path = metadata.DefaultPath
 	}
+
 	// If path is different from the root, limit the streamer and return the
 	// appropriate subset of the metadata. This is done by wrapping the streamer
 	// so it only returns the files defined in the subset of the metadata.
@@ -335,8 +341,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			return
 		}
 		if dir && format == modules.SkyfileFormatNotSpecified {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, format must be specified", path)}, http.StatusBadRequest)
-			return
+			format = modules.SkyfileFormatZip
 		}
 		streamer, err = NewLimitStreamer(streamer, offset, size)
 		if err != nil {
@@ -344,37 +349,38 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			return
 		}
 	} else {
-		// We don't need a format to be specified for single files. Instead, we
-		// directly serve their content, unless that is explicitly disabled by
-		// passing the `redirect=false` parameter. This is legacy behaviour that
-		// we are continuing to support.
-		formatRequired := len(metadata.Subfiles) != 0
-		// We need a format to be specified when accessing the `/` of skyfiles
-		// that either have more than one file or do not allow redirects.
-		formatRequired = formatRequired && (len(metadata.Subfiles) > 1 || !allowRedirect)
-		if formatRequired && format == "" {
-			WriteError(w, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest)
-			return
+		// Default to downloading the contents as a zip archive if we are
+		// downloading a directory and the user has not specified a format.
+		if len(metadata.Subfiles) > 1 && format == modules.SkyfileFormatNotSpecified {
+			format = modules.SkyfileFormatZip
 		}
 	}
 
-	// If requested, serve the content as a tar archive or compressed tar
-	// archive.
+	// If requested, serve the content as a tar archive, compressed tar
+	// archive or zip archive.
 	if format == modules.SkyfileFormatTar {
 		w.Header().Set("content-type", "application/x-tar")
 		err = serveTar(w, metadata, streamer)
 		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar archive: %v", err)}, http.StatusInternalServerError)
 		}
 		return
 	}
 	if format == modules.SkyfileFormatTarGz {
-		w.Header().Set("content-type", "application/x-gtar ")
+		w.Header().Set("content-type", "application/x-gtar")
 		gzw := gzip.NewWriter(w)
 		err = serveTar(gzw, metadata, streamer)
 		err = errors.Compose(err, gzw.Close())
 		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar gz archive: %v", err)}, http.StatusInternalServerError)
+		}
+		return
+	}
+	if format == modules.SkyfileFormatZip {
+		w.Header().Set("content-type", "application/zip")
+		err = serveZip(w, metadata, streamer)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as zip archive: %v", err)}, http.StatusInternalServerError)
 		}
 		return
 	}
@@ -923,6 +929,57 @@ func serveTar(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Stream
 		}
 	}
 	return tw.Close()
+}
+
+// serveZip serves skyfiles as a zip by reading them from r and writing the
+// archive to dst.
+func serveZip(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Streamer) error {
+	zw := zip.NewWriter(dst)
+
+	// Get the files to zip.
+	var files []modules.SkyfileSubfileMetadata
+	for _, file := range md.Subfiles {
+		files = append(files, file)
+	}
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Offset < files[j].Offset
+	})
+
+	// If there are no files, it's a single file download. Manually construct a
+	// SkyfileSubfileMetadata from the SkyfileMetadata.
+	if len(files) == 0 {
+		// Fetch the length of the file by seeking to the end and then back to
+		// the start.
+		length, err := streamer.Seek(0, io.SeekEnd)
+		if err != nil {
+			return errors.AddContext(err, "serveZip: failed to seek to end of skyfile")
+		}
+		_, err = streamer.Seek(0, io.SeekStart)
+		if err != nil {
+			return errors.AddContext(err, "serveZip: failed to seek to start of skyfile")
+		}
+		// Construct the SkyfileSubfileMetadata.
+		files = append(files, modules.SkyfileSubfileMetadata{
+			FileMode: md.Mode,
+			Filename: md.Filename,
+			Offset:   0,
+			Len:      uint64(length),
+		})
+	}
+
+	for _, file := range files {
+		f, err := zw.Create(file.Filename)
+		if err != nil {
+			return errors.AddContext(err, "serveZip: failed to add the file to the zip")
+		}
+
+		// Write file content.
+		_, err = io.CopyN(f, streamer, int64(file.Len))
+		if err != nil {
+			return errors.AddContext(err, "serveZip: failed to write file contents to the zip")
+		}
+	}
+	return zw.Close()
 }
 
 // parseTimeout tries to parse the timeout from the query string and validate

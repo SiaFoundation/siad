@@ -4800,10 +4800,12 @@ the file as though it is an attachment instead of rendering it.
 **format** | string  
 If 'format' is set, the skylink can point to a directory and it will return the
 data inside that directory. Format will decide the format in which it is
-returned. Currently, we support the following values: 'concat' will return the 
-concatenated data of all subfiles in that directory, 'tar' will return a tar 
-archive of all subfiles in that directory, and 'targz' will return gzipped tar 
-archive of all subfiles in that directory.
+returned. Currently, we support the following values: 'concat' will return the
+concatenated data of all subfiles in that directory, 'zip' will return a zip
+archive, 'tar' will return a tar archive of all subfiles in that directory, and
+'targz' will return a gzipped tar archive of all subfiles in that directory. If
+the format is not specified, and the skylink points at a directory, we default
+to the zip format and the contents will be downloaded as a zip archive.
 
 **redirect** | bool
 If 'redirect' is omitted or set to true, the provided skylink points to a 
