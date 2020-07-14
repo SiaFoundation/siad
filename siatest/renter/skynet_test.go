@@ -3136,4 +3136,3 @@ func testSkynetSingleFileNoSubfiles(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Expected empty subfiles on download, got", sup.FileMetadata.Subfiles)
 	}
 }
-
