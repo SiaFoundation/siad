@@ -29,14 +29,6 @@ var (
 		Dev:      2 * time.Minute,
 		Testing:  500 * time.Millisecond,
 	}).(time.Duration)
-
-	// siamuxPingTimeout is the timeout that is given to the Ping function when
-	// checking if a host can talk via siamux.
-	siamuxPingTimeout = build.Select(build.Var{
-		Standard: 5 * time.Minute,
-		Dev:      30 * time.Second,
-		Testing:  3 * time.Second,
-	}).(time.Duration)
 )
 
 // equalIPNets checks if two slices of IP subnets contain the same subnets.
@@ -472,10 +464,18 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 			settings.MaxEphemeralAccountBalance = modules.CompatV1412DefaultMaxEphemeralAccountBalance
 		}
 
+		// Need to apply the custom resolver to the siamux address.
+		siamuxAddr := settings.SiaMuxAddress()
+		if hdb.staticDeps.Disrupt("customResolver") {
+			port := modules.NetAddress(siamuxAddr).Port()
+			siamuxAddr = fmt.Sprintf("127.0.0.1:%s", port)
+		}
+
 		// Try opening a connection to the siamux, this is a very lightweight
 		// way of checking that RHP3 is supported.
-		err = hdb.staticMux.Ping(modules.HostSiaMuxSubscriberName, settings.SiaMuxAddress(), siamuxPingTimeout, modules.SiaPKToMuxPK(entry.PublicKey))
+		err = hdb.staticMux.Ping(modules.HostSiaMuxSubscriberName, siamuxAddr, timeout, modules.SiaPKToMuxPK(entry.PublicKey))
 		if err != nil {
+			fmt.Println("The siamux ping failed:", err)
 			hdb.staticLog.Debugf("%v siamux ping not successful: %v\n", entry.PublicKey, err)
 			return err
 		}
