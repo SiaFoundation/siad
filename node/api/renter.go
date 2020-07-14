@@ -23,6 +23,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -374,8 +375,9 @@ func (api *API) renterBackupsCreateHandlerPOST(w http.ResponseWriter, req *http.
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	defer os.RemoveAll(tmpDir)
-	backupPath := filepath.Join(tmpDir, name)
+	randomSuffix := persist.RandomSuffix()
+	backupPath := filepath.Join(tmpDir, fmt.Sprintf("%v-%v.bak", name, randomSuffix))
+	defer os.RemoveAll(backupPath)
 
 	// Get the wallet seed.
 	ws, _, err := api.wallet.PrimarySeed()
