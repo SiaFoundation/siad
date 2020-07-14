@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"io"
 	"io/ioutil"
+
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // fileMap is a helper type that maps filenames onto the raw file data
@@ -54,12 +56,21 @@ func readZipArchive(r io.Reader) (fileMap, error) {
 	}
 
 	for _, f := range zr.File {
-		rc, err := f.Open()
-		if err != nil {
-			return nil, err
-		}
+		data, err := func() (data []byte, err error) {
+			var rc io.ReadCloser
+			rc, err = f.Open()
+			if err != nil {
+				return
+			}
 
-		data, err := ioutil.ReadAll(rc)
+			defer func() {
+				err = errors.Compose(err, rc.Close())
+			}()
+
+			data, err = ioutil.ReadAll(rc)
+			return
+		}()
+
 		if err == io.EOF {
 			break
 		}
@@ -67,10 +78,6 @@ func readZipArchive(r io.Reader) (fileMap, error) {
 			return nil, err
 		}
 
-		err = rc.Close()
-		if err != nil {
-			return nil, err
-		}
 		a[f.FileHeader.Name] = data
 	}
 	return a, nil
