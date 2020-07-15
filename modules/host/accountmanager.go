@@ -64,7 +64,7 @@ var (
 	blockedWithdrawalTimeout = build.Select(build.Var{
 		Standard: 15 * time.Minute,
 		Dev:      5 * time.Minute,
-		Testing:  15 * time.Second,
+		Testing:  5 * time.Second,
 	}).(time.Duration)
 )
 
@@ -382,6 +382,7 @@ func (am *accountManager) managedDeposit(id modules.AccountID, amount types.Curr
 // withdrawals get processed in the event they are blocked due to insufficient
 // funds.
 func (am *accountManager) callWithdraw(msg *modules.WithdrawalMessage, sig crypto.Signature, priority int64) error {
+	println("callWithdraw")
 	// Gather some variables
 	his := am.h.managedInternalSettings()
 	bh := am.h.BlockHeight()
