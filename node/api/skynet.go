@@ -353,7 +353,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// If we are serving more than one file, and the format is not
 	// specified, default to downloading it as a zip archive.
-	if !subfile && metadata.Directory() && format == modules.SkyfileFormatNotSpecified {
+	if !subfile && metadata.IsDirectory() && format == modules.SkyfileFormatNotSpecified {
 		format = modules.SkyfileFormatZip
 	}
 
@@ -1254,6 +1254,9 @@ func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaul
 	// doesn't want redirects for this skydirectory.
 	queryFormMap := map[string][]string(queryForm)
 	defaultPathArr, exists := queryFormMap[modules.SkyfileDefaultPathParamName]
+	if exists && len(subfiles) == 0 {
+		return "", errors.AddContext(ErrInvalidDefaultPath, "DefaultPath is not applicable to skyfiles without subfiles.")
+	}
 	if exists && len(defaultPathArr) > 0 && defaultPathArr[0] == "" {
 		// The user specifically disabled the default path for this skydirectory
 		// by specifying an empty string.

@@ -24,11 +24,17 @@ const (
 // writing back to disk. The data is json-encoded when it is placed into the
 // leading bytes of the skyfile, meaning that this struct can be extended
 // without breaking compatibility.
+//
+// NOTE: This type has a custom JSON unmarshaller which handles the special
+// cases for `defaultpath`.
 type SkyfileMetadata struct {
-	Mode        os.FileMode     `json:"mode,omitempty"`
-	Filename    string          `json:"filename,omitempty"`
-	Subfiles    SkyfileSubfiles `json:"subfiles,omitempty"`
-	DefaultPath string          `json:"defaultpath"` // defaults to `index.html`
+	Mode     os.FileMode     `json:"mode,omitempty"`
+	Filename string          `json:"filename,omitempty"`
+	Subfiles SkyfileSubfiles `json:"subfiles,omitempty"`
+	// DefaultPath must not have `omitempty` because both it's empty value and
+	// the fact that it's missing carry information. Old skyfiles will not have
+	// this field and need to be treated differently.
+	DefaultPath string `json:"defaultpath"` // defaults to `index.html`
 }
 
 // skyfileMetadataJSON is a helper type
@@ -92,8 +98,8 @@ func (sm SkyfileMetadata) ContentType() string {
 	return ""
 }
 
-// Directory returns true if the SkyfileMetadata represents a directory.
-func (sm SkyfileMetadata) Directory() bool {
+// IsDirectory returns true if the SkyfileMetadata represents a directory.
+func (sm SkyfileMetadata) IsDirectory() bool {
 	if len(sm.Subfiles) > 1 {
 		return true
 	}
@@ -123,7 +129,7 @@ func (sm *SkyfileMetadata) UnmarshalJSON(b []byte) error {
 	sm.DefaultPath = m.DefaultPath
 
 	// Handle the special case of `defaultpath` not being set.
-	if !strings.Contains(string(b), fmt.Sprintf("\"%s\"", SkyfileDefaultPathParamName)) {
+	if !strings.Contains(string(b), "\"defaultpath\":\"") {
 		// If this is a single file we want to set the default path to the only
 		// file in order to support the legacy case in which this field is
 		// missing. We only need to do that for multipart file, i.e. files that

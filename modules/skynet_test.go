@@ -134,6 +134,7 @@ func TestSkyfileMetadata_UnmarshalJSON(t *testing.T) {
 
 	fn := "img.jpg"
 	ofn := "other.jpg"
+	subdirfn := "subdir/file.jpg"
 	tests := []struct {
 		name        string
 		metastring  string
@@ -163,6 +164,13 @@ func TestSkyfileMetadata_UnmarshalJSON(t *testing.T) {
 			defaultPath: EnsurePrefix(fn, "/"),
 		},
 		{
+			name:        "multi file default path set to file in a subdir",
+			metastring:  fmt.Sprintf(`{"filename":"%s","subfiles":{"%s":{"filename":"%s","contenttype":"image/jpeg","len":190709},"%s":{"filename":"%s","contenttype":"image/jpeg","len":190709}},"defaultpath":"/%s"}`, fn, fn, fn, subdirfn, subdirfn, subdirfn),
+			filename:    fn,
+			numfiles:    2,
+			defaultPath: EnsurePrefix(subdirfn, "/"),
+		},
+		{
 			name:        "multi file default path set empty",
 			metastring:  fmt.Sprintf(`{"filename":"%s","subfiles":{"%s":{"filename":"%s","contenttype":"image/jpeg","len":190709},"%s":{"filename":"%s","contenttype":"image/jpeg","len":190709}},"defaultpath":""}`, fn, fn, fn, ofn, ofn),
 			filename:    fn,
@@ -171,10 +179,20 @@ func TestSkyfileMetadata_UnmarshalJSON(t *testing.T) {
 		},
 		{
 			name:        "multi file default path not set",
-			metastring:  fmt.Sprintf(`{"filename":"%s","subfiles":{"%s":{"filename":"%s","contenttype":"image/jpeg","len":190709},"%s":{"filename":"%s","contenttype":"image/jpeg","len":190709}},"defaultpath":""}`, fn, fn, fn, ofn, ofn),
+			metastring:  fmt.Sprintf(`{"filename":"%s","subfiles":{"%s":{"filename":"%s","contenttype":"image/jpeg","len":190709},"%s":{"filename":"%s","contenttype":"image/jpeg","len":190709}}}`, fn, fn, fn, ofn, ofn),
 			filename:    fn,
 			numfiles:    2,
 			defaultPath: "",
+		},
+		{
+			// This test aims to ensure that when unmarshalling the metadata we
+			// will not mistakenly interpret the file named `defaultpath` as a
+			// `defaultpath` entry in the metadata.
+			name:        "special case subfile named defaultpath",
+			metastring:  `{"filename":"defaultpath","subfiles":{"defaultpath":{"filename":"defaultpath","contenttype":"image/jpeg","len":190709}}}`,
+			filename:    "defaultpath",
+			numfiles:    1,
+			defaultPath: "/defaultpath",
 		},
 	}
 

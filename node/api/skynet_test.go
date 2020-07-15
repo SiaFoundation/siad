@@ -30,7 +30,7 @@ func TestDefaultPath(t *testing.T) {
 			queryForm:   url.Values{modules.SkyfileDefaultPathParamName: []string{""}},
 			subfiles:    nil,
 			defaultPath: "",
-			err:         nil,
+			err:         ErrInvalidDefaultPath,
 		},
 		{
 			name:        "single file not multipart set",
