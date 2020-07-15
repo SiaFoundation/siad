@@ -14,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	modWallet "gitlab.com/NebulousLabs/Sia/modules/wallet" // name conflicts with type
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/ratelimit"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -85,7 +86,8 @@ func newContractorTester(name string) (*contractorTester, closeFn, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	c, errChan := New(cs, w, tp, hdb, filepath.Join(testdir, modules.RenterDir))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	c, errChan := New(cs, w, tp, hdb, rl, filepath.Join(testdir, modules.RenterDir))
 	if err := <-errChan; err != nil {
 		return nil, nil, err
 	}

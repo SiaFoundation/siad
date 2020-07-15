@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,7 +17,6 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 const (
@@ -294,7 +294,7 @@ func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
 func (a *account) managedOnCooldown() bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return a.cooldownUntil.After(time.Now())
+	return time.Now().Before(a.cooldownUntil)
 }
 
 // managedResetBalance sets the given balance and resets the account's balance
@@ -307,6 +307,15 @@ func (a *account) managedResetBalance(balance types.Currency) {
 	a.pendingDeposits = types.ZeroCurrency
 	a.pendingWithdrawals = types.ZeroCurrency
 	a.negativeBalance = types.ZeroCurrency
+}
+
+// managedResetCoolDown sets consecutive failures to 0 and clears the
+// cooldownUntil field on the account
+func (a *account) managedResetCoolDown() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.consecutiveFailures = 0
+	a.cooldownUntil = time.Time{}
 }
 
 // managedStatus returns the status of the account
@@ -427,6 +436,7 @@ func (w *worker) managedRefillAccount() {
 		// account.
 		w.staticAccount.managedCommitDeposit(amount, err == nil)
 		if err == nil {
+			w.staticAccount.managedResetCoolDown()
 			return
 		}
 
@@ -460,7 +470,7 @@ func (w *worker) managedRefillAccount() {
 	}
 
 	// create a new stream
-	var stream siamux.Stream
+	var stream net.Conn
 	stream, err = w.staticNewStream()
 	if err != nil {
 		err = errors.AddContext(err, "Unable to create a new stream")
@@ -536,19 +546,6 @@ func (w *worker) managedRefillAccount() {
 		err = errors.AddContext(err, "could not read the account response")
 	}
 
-	// TODO: We need to parse the response and check for an error, such as
-	// MaxBalanceExceeded. In the specific case of MaxBalanceExceeded, we need
-	// to do a balance inquiry and check that the balance is actually high
-	// enough.
-	//
-	// If we are stuck, and the host won't let us get to a good balance level,
-	// we need to go on cooldown, this worker is no good. That will happen as
-	// long as we return an error.
-	//
-	// If we are not stuck, and we have enough balance, we can set the error to
-	// nil (to prevent entering cooldown) even though it technically failed,
-	// because the failure does not indicate a problem.
-
 	// Wake the worker so that any jobs potentially blocking on getting more
 	// money in the account can be activated.
 	w.staticWake()
@@ -600,9 +597,7 @@ func (w *worker) externSyncAccountBalanceToHost() {
 	// Sanity check the account's deltas are zero, indicating there are no
 	// in-progress jobs
 	w.staticAccount.mu.Lock()
-	deltasAreZero := w.staticAccount.negativeBalance.IsZero() &&
-		w.staticAccount.pendingDeposits.IsZero() &&
-		w.staticAccount.pendingWithdrawals.IsZero()
+	deltasAreZero := w.staticAccount.pendingDeposits.IsZero() && w.staticAccount.pendingWithdrawals.IsZero()
 	w.staticAccount.mu.Unlock()
 	if !deltasAreZero {
 		build.Critical("managedSyncAccountBalanceToHost is called on a worker with an account that has non-zero deltas, indicating in-progress jobs")

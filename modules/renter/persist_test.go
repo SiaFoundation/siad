@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/ratelimit"
 )
 
 // testingFileParams generates the ErasureCoder and a random name for a testing
@@ -101,7 +102,8 @@ func TestRenterSaveLoad(t *testing.T) {
 
 	// load should now load the files into memory.
 	var errChan <-chan error
-	rt.renter, errChan = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(rt.dir, modules.RenterDir))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	rt.renter, errChan = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, rl, filepath.Join(rt.dir, modules.RenterDir))
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +184,8 @@ func TestRenterPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	var errChan <-chan error
-	rt.renter, errChan = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, filepath.Join(rt.dir, modules.RenterDir))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	rt.renter, errChan = New(rt.gateway, rt.cs, rt.wallet, rt.tpool, rt.mux, rl, filepath.Join(rt.dir, modules.RenterDir))
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}

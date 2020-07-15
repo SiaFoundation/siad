@@ -22,6 +22,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
 )
 
@@ -93,36 +94,37 @@ func TestNew(t *testing.T) {
 	defer tryClose(closeFn, t)
 
 	// Sane values.
-	_, errChan := New(cs, w, tpool, hdb, dir)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	_, errChan := New(cs, w, tpool, hdb, rl, dir)
 	if err := <-errChan; err != nil {
 		t.Fatalf("expected nil, got %v", err)
 	}
 
 	// Nil consensus set.
-	_, errChan = New(nil, w, tpool, hdb, dir)
+	_, errChan = New(nil, w, tpool, hdb, rl, dir)
 	if err := <-errChan; err != errNilCS {
 		t.Fatalf("expected %v, got %v", errNilCS, err)
 	}
 
 	// Nil wallet.
-	_, errChan = New(cs, nil, tpool, hdb, dir)
+	_, errChan = New(cs, nil, tpool, hdb, rl, dir)
 	if err := <-errChan; err != errNilWallet {
 		t.Fatalf("expected %v, got %v", errNilWallet, err)
 	}
 
 	// Nil transaction pool.
-	_, errChan = New(cs, w, nil, hdb, dir)
+	_, errChan = New(cs, w, nil, hdb, rl, dir)
 	if err := <-errChan; err != errNilTpool {
 		t.Fatalf("expected %v, got %v", errNilTpool, err)
 	}
 	// Nil hostdb.
-	_, errChan = New(cs, w, tpool, nil, dir)
+	_, errChan = New(cs, w, tpool, nil, rl, dir)
 	if err := <-errChan; err != errNilHDB {
 		t.Fatalf("expected %v, got %v", errNilHDB, err)
 	}
 
 	// Bad persistDir.
-	_, errChan = New(cs, w, tpool, hdb, "")
+	_, errChan = New(cs, w, tpool, hdb, rl, "")
 	if err := <-errChan; !os.IsNotExist(err) {
 		t.Fatalf("expected invalid directory, got %v", err)
 	}
