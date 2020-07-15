@@ -31,10 +31,16 @@ type SkyfileMetadata struct {
 	Mode     os.FileMode     `json:"mode,omitempty"`
 	Filename string          `json:"filename,omitempty"`
 	Subfiles SkyfileSubfiles `json:"subfiles,omitempty"`
-	// DefaultPath must not have `omitempty` because both it's empty value and
-	// the fact that it's missing carry information. Old skyfiles will not have
-	// this field and need to be treated differently.
-	DefaultPath string `json:"defaultpath"` // defaults to `index.html`
+
+	// DefaultPath indicates what content to serve if the user has not specified
+	// a path, and the user is not trying to download the Skylink as an archive.
+	// It defaults to 'index.html' on upload if not specified and if a file with
+	// that name is present in the upload.
+	//
+	// NOTE: do not `omitempty`, if we were to omit empty default paths, this
+	// metadata would be treated as a legacy metadata JSON. Setting the default
+	// path to an empty string means an explicit do-not-default.
+	DefaultPath string `json:"defaultpath"`
 }
 
 // skyfileMetadataJSON is a helper type
