@@ -57,8 +57,15 @@ func TestPDBRGouging(t *testing.T) {
 	// to fulfil the expected download exceeds the allowance
 
 	// we do this by maxing out the upload and bandwidth costs and setting all
-	// default cost components to 250 pS
-
+	// default cost components to 250 pS, note that this value is arbitrary,
+	// setting those costs at 250 pS simply proved to push the price per PDBR
+	// just over the allowed limit.
+	//
+	// Cost breakdown:
+	// - cost per PDBR 266.4 mS
+	// - total cost to fulfil expected download 4.365 KS
+	// - reduced cost after applying downloadGougingFractionDenom: 1.091 KS
+	// - exceeding the allowance of 1 KS, which is what we are after
 	pt.UploadBandwidthCost = allowance.MaxUploadBandwidthPrice
 	pt.DownloadBandwidthCost = allowance.MaxDownloadBandwidthPrice
 	pS := types.SiacoinPrecision.MulFloat(1e-12)

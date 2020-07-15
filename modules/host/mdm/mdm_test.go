@@ -33,6 +33,9 @@ type (
 		host        *TestHost
 		sectorMap   map[crypto.Hash][]byte
 		sectorRoots []crypto.Hash
+
+		// contract related fields.
+		sk crypto.SecretKey
 	}
 )
 
@@ -48,9 +51,11 @@ func newCustomTestHost(generateSectors bool) *TestHost {
 }
 
 func (h *TestHost) newTestStorageObligation(locked bool) *TestStorageObligation {
+	sk, _ := crypto.GenerateKeyPair()
 	return &TestStorageObligation{
 		host:      h,
 		sectorMap: make(map[crypto.Hash][]byte),
+		sk:        sk,
 	}
 }
 
@@ -115,6 +120,37 @@ func (so *TestStorageObligation) MerkleRoot() crypto.Hash {
 		return crypto.Hash{}
 	}
 	return cachedMerkleRoot(so.sectorRoots)
+}
+
+// RecentRevision implements the StorageObligation interface.
+func (so *TestStorageObligation) RecentRevision() types.FileContractRevision {
+	return types.FileContractRevision{
+		NewFileMerkleRoot: so.MerkleRoot(),
+		NewFileSize:       so.ContractSize(),
+	}
+}
+
+// RevisionTxn returns the revision transaction for the obligation including a
+// renter sig.
+func (so *TestStorageObligation) RevisionTxn() types.Transaction {
+	revTxn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{
+			so.RecentRevision(),
+		},
+		TransactionSignatures: []types.TransactionSignature{
+			{
+				ParentID:       crypto.Hash(types.FileContractID{}),
+				PublicKeyIndex: 0,
+				CoveredFields: types.CoveredFields{
+					FileContractRevisions: []uint64{0},
+				},
+			},
+		},
+	}
+	hash := revTxn.SigHash(0, so.host.BlockHeight())
+	sig := crypto.SignHash(hash, so.sk)
+	revTxn.TransactionSignatures[0].Signature = sig[:]
+	return revTxn
 }
 
 // SectorRoots implements the StorageObligation interface.

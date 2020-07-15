@@ -22,16 +22,17 @@ require (
 	gitlab.com/NebulousLabs/errors v0.0.0-20171229012116-7ead97ef90b8
 	gitlab.com/NebulousLabs/fastrand v0.0.0-20181126182046-603482d69e40
 	gitlab.com/NebulousLabs/go-upnp v0.0.0-20181011194642-3a71999ed0d3
-	gitlab.com/NebulousLabs/log v0.0.0-20200529173103-40b250c2d92c
+	gitlab.com/NebulousLabs/log v0.0.0-20200604091839-0ba4a941cdc2
 	gitlab.com/NebulousLabs/merkletree v0.0.0-20200118113624-07fbf710afc4
 	gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a
 	gitlab.com/NebulousLabs/ratelimit v0.0.0-20200703092634-24a64284c0ec
-	gitlab.com/NebulousLabs/siamux v0.0.0-20200623161015-0bacd26badc4
+	gitlab.com/NebulousLabs/siamux v0.0.0-20200708162823-03d67a69db00
 	gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20200618142844-c59a90f49130
-	golang.org/x/crypto v0.0.0-20200510223506-06a226fb4e37
-	golang.org/x/net v0.0.0-20200226121028-0de0cce0169b // indirect
-	golang.org/x/sys v0.0.0-20200420163511-1957bb5e6d1f // indirect
+	golang.org/x/crypto v0.0.0-20200709230013-948cd5f35899
+	golang.org/x/net v0.0.0-20200707034311-ab3426394381 // indirect
+	golang.org/x/sys v0.0.0-20200625212154-ddb9806d33ae // indirect
+	golang.org/x/text v0.3.3 // indirect
 )
 
 replace github.com/xtaci/smux => ./vendor/github.com/xtaci/smux

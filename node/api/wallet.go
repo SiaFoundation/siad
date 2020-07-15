@@ -610,17 +610,17 @@ func (api *API) walletTransactionHandler(w http.ResponseWriter, req *http.Reques
 	jsonID := "\"" + ps.ByName("id") + "\""
 	err := id.UnmarshalJSON([]byte(jsonID))
 	if err != nil {
-		WriteError(w, Error{"error when calling /wallet/transaction/id:" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"error when calling /wallet/transaction/id: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 
 	txn, ok, err := api.wallet.Transaction(id)
 	if err != nil {
-		WriteError(w, Error{"error when calling /wallet/transaction/id:" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"error when calling /wallet/transaction/id: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	if !ok {
-		WriteError(w, Error{"error when calling /wallet/transaction/:id  :  transaction not found"}, http.StatusBadRequest)
+		WriteError(w, Error{"error when calling /wallet/transaction/id  :  transaction not found"}, http.StatusBadRequest)
 		return
 	}
 	WriteJSON(w, WalletTransactionGETid{

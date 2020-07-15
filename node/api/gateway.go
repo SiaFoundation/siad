@@ -29,16 +29,17 @@ type (
 		StartTime time.Time `json:"starttime"`
 	}
 
-	// GatewayBlacklistPOST contains the information needed to set the Blacklist
+	// GatewayBlocklistPOST contains the information needed to set the Blocklist
 	// of the gateway
-	GatewayBlacklistPOST struct {
+	GatewayBlocklistPOST struct {
 		Action    string   `json:"action"`
 		Addresses []string `json:"addresses"`
 	}
 
-	// GatewayBlacklistGET contains the Blacklist of the gateway
-	GatewayBlacklistGET struct {
-		Blacklist []string `json:"blacklist"`
+	// GatewayBlocklistGET contains the Blocklist of the gateway
+	GatewayBlocklistGET struct {
+		Blacklist []string `json:"blacklist"` // deprecated, kept for backwards compatibility
+		Blocklist []string `json:"blocklist"`
 	}
 )
 
@@ -90,7 +91,7 @@ func (api *API) gatewayHandlerPOST(w http.ResponseWriter, req *http.Request, _ h
 func (api *API) gatewayBandwidthHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	upload, download, startTime, err := api.gateway.BandwidthCounters()
 	if err != nil {
-		WriteError(w, Error{"failed to get gateway's bandwidth usage " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"failed to get gateway's bandwidth usage: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteJSON(w, GatewayBandwidthGET{
@@ -124,28 +125,29 @@ func (api *API) gatewayDisconnectHandler(w http.ResponseWriter, req *http.Reques
 	WriteSuccess(w)
 }
 
-// gatewayBlacklistHandlerGET handles the API call to get the gateway's
-// blacklist
-func (api *API) gatewayBlacklistHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	// Get Blacklist
-	blacklist, err := api.gateway.Blacklist()
+// gatewayBlocklistHandlerGET handles the API call to get the gateway's
+// blocklist
+func (api *API) gatewayBlocklistHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	// Get Blocklist
+	blocklist, err := api.gateway.Blocklist()
 	if err != nil {
-		WriteError(w, Error{"unable to get blacklist mode: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"unable to get blocklist mode: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	WriteJSON(w, GatewayBlacklistGET{
-		Blacklist: blacklist,
+	WriteJSON(w, GatewayBlocklistGET{
+		Blacklist: blocklist, // Returned for backwards compatibility
+		Blocklist: blocklist,
 	})
 }
 
-// gatewayBlacklistHandlerPOST handles the API call to modify the gateway's
-// blacklist
+// gatewayBlocklistHandlerPOST handles the API call to modify the gateway's
+// blocklist
 //
 // Addresses will be passed in as an array of strings, comma separated net
 // addresses
-func (api *API) gatewayBlacklistHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) gatewayBlocklistHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse parameters
-	var params GatewayBlacklistPOST
+	var params GatewayBlocklistPOST
 	err := json.NewDecoder(req.Body).Decode(&params)
 	if err != nil {
 		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
@@ -159,9 +161,9 @@ func (api *API) gatewayBlacklistHandlerPOST(w http.ResponseWriter, req *http.Req
 			WriteError(w, Error{"no addresses submitted to append or remove"}, http.StatusBadRequest)
 			return
 		}
-		// Add addresses to Blacklist
-		if err := api.gateway.AddToBlacklist(params.Addresses); err != nil {
-			WriteError(w, Error{"failed to add addresses to the blacklist: " + err.Error()}, http.StatusBadRequest)
+		// Add addresses to Blocklist
+		if err := api.gateway.AddToBlocklist(params.Addresses); err != nil {
+			WriteError(w, Error{"failed to add addresses to the blocklist: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	case "remove":
@@ -170,15 +172,15 @@ func (api *API) gatewayBlacklistHandlerPOST(w http.ResponseWriter, req *http.Req
 			WriteError(w, Error{"no addresses submitted to append or remove"}, http.StatusBadRequest)
 			return
 		}
-		// Remove addresses from the Blacklist
-		if err := api.gateway.RemoveFromBlacklist(params.Addresses); err != nil {
-			WriteError(w, Error{"failed to remove addresses from the blacklist: " + err.Error()}, http.StatusBadRequest)
+		// Remove addresses from the Blocklist
+		if err := api.gateway.RemoveFromBlocklist(params.Addresses); err != nil {
+			WriteError(w, Error{"failed to remove addresses from the blocklist: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	case "set":
-		// Set Blacklist
-		if err := api.gateway.SetBlacklist(params.Addresses); err != nil {
-			WriteError(w, Error{"failed to set the blacklist: " + err.Error()}, http.StatusBadRequest)
+		// Set Blocklist
+		if err := api.gateway.SetBlocklist(params.Addresses); err != nil {
+			WriteError(w, Error{"failed to set the blocklist: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	default:

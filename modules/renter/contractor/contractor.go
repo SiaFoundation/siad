@@ -2,7 +2,6 @@ package contractor
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -50,7 +49,7 @@ type Contractor struct {
 	persistDir    string
 	staticAlerter *modules.GenericAlerter
 	staticDeps    modules.Dependencies
-	tg            siasync.ThreadGroup
+	tg            threadgroup.ThreadGroup
 	tpool         modules.TransactionPool
 	wallet        modules.Wallet
 
@@ -106,6 +105,18 @@ func (c *Contractor) Allowance() modules.Allowance {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.allowance
+}
+
+// ContractPublicKey returns the public key capable of verifying the renter's
+// signature on a contract.
+func (c *Contractor) ContractPublicKey(pk types.SiaPublicKey) (crypto.PublicKey, bool) {
+	c.mu.RLock()
+	id, ok := c.pubKeysToContractID[pk.String()]
+	c.mu.RUnlock()
+	if !ok {
+		return crypto.PublicKey{}, false
+	}
+	return c.staticContracts.PublicKey(id)
 }
 
 // InitRecoveryScan starts scanning the whole blockchain for recoverable
@@ -446,17 +457,21 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 	c.staticWatchdog = newWatchdog(c)
 
 	// Close the contract set and logger upon shutdown.
-	c.tg.AfterStop(func() {
+	err := c.tg.AfterStop(func() error {
 		if err := c.staticContracts.Close(); err != nil {
-			c.log.Println("Failed to close contract set:", err)
+			return errors.AddContext(err, "failed to close contract set")
 		}
 		if err := c.log.Close(); err != nil {
-			fmt.Println("Failed to close the contractor logger:", err)
+			return errors.AddContext(err, "failed to close the contractor logger")
 		}
+		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	// Load the prior persistence structures.
-	err := c.load()
+	err = c.load()
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
@@ -465,9 +480,13 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 	c.managedUpdatePubKeyToContractIDMap()
 
 	// Unsubscribe from the consensus set upon shutdown.
-	c.tg.OnStop(func() {
+	err = c.tg.OnStop(func() error {
 		cs.Unsubscribe(c)
+		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	// We may have upgraded persist or resubscribed. Save now so that we don't
 	// lose our work.

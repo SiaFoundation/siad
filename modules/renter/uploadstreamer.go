@@ -108,7 +108,7 @@ func (ss *StreamShard) Read(b []byte) (int, error) {
 		}
 		b[0] = ss.peek[0]
 		b = b[1:]
-		ss.n += 1
+		ss.n++
 		ss.peek = ss.peek[:0]
 		peekBytes++
 	}
@@ -127,7 +127,7 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 	defer r.tg.Done()
 
 	// Perform the upload, close the filenode, and return.
-	fileNode, err := r.callUploadStreamFromReader(up, reader, false)
+	fileNode, err := r.callUploadStreamFromReader(up, reader)
 	if err != nil {
 		return errors.AddContext(err, "unable to stream an upload from a reader")
 	}
@@ -136,7 +136,7 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 
 // managedInitUploadStream verifies the upload parameters and prepares an empty
 // SiaFile for the upload.
-func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup bool) (*filesystem.FileNode, error) {
+func (r *Renter) managedInitUploadStream(up modules.FileUploadParams) (*filesystem.FileNode, error) {
 	siaPath, ec, force, repair, cipherType := up.SiaPath, up.ErasureCode, up.Force, up.Repair, up.CipherType
 	// Check if ec was set. If not use defaults.
 	var err error
@@ -204,9 +204,9 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup boo
 // the Sia network, this will happen faster than the entire upload is complete -
 // the streamer may continue uploading in the background after returning while
 // it is boosting redundancy.
-func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader io.Reader, backup bool) (fileNode *filesystem.FileNode, err error) {
+func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader io.Reader) (fileNode *filesystem.FileNode, err error) {
 	// Check the upload params first.
-	fileNode, err = r.managedInitUploadStream(up, backup)
+	fileNode, err = r.managedInitUploadStream(up)
 	if err != nil {
 		return nil, err
 	}

@@ -139,30 +139,39 @@ func (j *jobRead) callExpectedBandwidth() (ul, dl uint64) {
 
 // managedRead returns the sector data for the given read program and the merkle
 // proof.
-func (j *jobRead) managedRead(w *worker, program modules.Program, programData []byte, cost types.Currency) (programResponse, error) {
+func (j *jobRead) managedRead(w *worker, program modules.Program, programData []byte, cost types.Currency) ([]programResponse, error) {
 	// execute it
 	responses, _, err := w.managedExecuteProgram(program, programData, w.staticCache().staticContractID, cost)
 	if err != nil {
-		return programResponse{}, err
+		return []programResponse{}, err
 	}
 
 	// Sanity check number of responses.
-	if len(responses) != 1 {
-		build.Critical("managedExecuteProgram should only return a single response")
+	if len(responses) > len(program) {
+		build.Critical("managedExecuteProgram should return at most len(program) instructions")
+	}
+	if len(responses) == 0 {
+		build.Critical("managedExecuteProgram should at least return one instruction when err == nil")
+	}
+	// If the number of responses doesn't match, the last response should
+	// contain an error message.
+	if len(responses) != len(program) {
+		err := responses[len(responses)-1].Error
+		return []programResponse{}, errors.AddContext(err, "managedRead: program execution was interrupted")
 	}
 
-	// Pull the sector data from the response.
-	response := responses[0]
+	// The last instruction is the actual download.
+	response := responses[len(responses)-1]
 	if response.Error != nil {
-		return programResponse{}, response.Error
+		return []programResponse{}, response.Error
 	}
 	sectorData := response.Output
 
 	// Check that we received the amount of data that we were expecting.
 	if uint64(len(sectorData)) != j.staticLength {
-		return programResponse{}, errors.New("worker returned the wrong amount of data")
+		return []programResponse{}, errors.New("worker returned the wrong amount of data")
 	}
-	return response, nil
+	return responses, nil
 }
 
 // callAverageJobTime will return the recent performance of the worker

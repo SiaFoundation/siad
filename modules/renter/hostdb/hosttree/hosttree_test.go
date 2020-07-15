@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -173,7 +173,7 @@ func TestHostTreeParallel(t *testing.T) {
 
 	// spin up 100 goroutines all randomly inserting, removing, modifying, and
 	// fetching nodes from the tree.
-	var tg siasync.ThreadGroup
+	var tg threadgroup.ThreadGroup
 	nthreads := 100
 	nelements := 0
 	var mu sync.Mutex
