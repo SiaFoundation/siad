@@ -382,7 +382,14 @@ func testAccountCriticalOnDoubleSave(t *testing.T, closedRenter *Renter) {
 
 // TestWorkerAccountCoolDown verifies the functionality of the account cooldown
 func TestWorkerAccountCoolDown(t *testing.T) {
-	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableCriticalOnMaxBalance{})
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	hostDeps := modules.ProdDependencies
+	renterDeps := &dependencies.DependencyDisableCriticalOnMaxBalance{}
+	wt, err := newWorkerTesterCustomDependency(t.Name(), renterDeps, hostDeps)
 	if err != nil {
 		t.Fatal(err)
 	}
