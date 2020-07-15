@@ -4881,9 +4881,14 @@ active. This field is mutually exclusive with uploading streaming.
 
 **defaultpath** string  
 The path to the default file to be used to represent this skyfile in case it
-contains multiple files (e.g. skapps, photo collections, etc.). If provided, the
-path must exist. If not provided, it will default to `index.html` if a file with
-that name exists within the skyfile.
+contains multiple files (e.g. skapps, photo collections, etc.). This means that 
+when the skyfile is requested without a specific subfile specified, the content 
+of the subfile at the default path will be served. If provided, the path must 
+exist or be an empty string. The empty string value disables the functionality, 
+meaning that if a user requests the skyfile without specifying a concrete 
+subfile, no content will be automatically served but the skyfile will be 
+downloaded as a zip. If not provided, the default path will default to 
+`index.html` if a file with that name exists within the skyfile.
 
 **filename** | string  
 The name of the file. This name will be encoded into the skyfile metadata, and
