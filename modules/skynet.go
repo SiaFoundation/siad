@@ -173,6 +173,13 @@ var (
 	SkyfileFormatZip = SkyfileFormat("zip")
 )
 
+// IsArchive returns true if the format is an archive.
+func (sf SkyfileFormat) IsArchive() bool {
+	return sf == SkyfileFormatTar ||
+		sf == SkyfileFormatTarGz ||
+		sf == SkyfileFormatZip
+}
+
 // SkyfileUploadParameters establishes the parameters such as the intra-root
 // erasure coding.
 type SkyfileUploadParameters struct {
