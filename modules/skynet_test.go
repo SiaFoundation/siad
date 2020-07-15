@@ -25,11 +25,11 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 	emptyMeta := SkyfileMetadata{}
 
 	// Find an exact match.
-	subMeta, isDir, offset, size := fullMeta.ForPath(filePath1)
+	subMeta, isSubFile, offset, size := fullMeta.ForPath(filePath1)
 	if _, exists := subMeta.Subfiles[filePath1]; !exists {
 		t.Fatal("Expected to find a file by its full path and name.")
 	}
-	if isDir {
+	if !isSubFile {
 		t.Fatal("Expected to find a file, got a dir.")
 	}
 	if offset != 1 {
@@ -40,14 +40,14 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 	}
 
 	// Find files by their directory.
-	subMeta, isDir, offset, size = fullMeta.ForPath("/foo")
+	subMeta, isSubFile, offset, size = fullMeta.ForPath("/foo")
 	subfile1, exists1 := subMeta.Subfiles[filePath1]
 	subfile2, exists2 := subMeta.Subfiles[filePath2]
 	// Expect to find files 1 and 2 and nothing else.
 	if !(exists1 && exists2 && len(subMeta.Subfiles) == 2) {
 		t.Fatal("Expected to find two files by their directory.")
 	}
-	if !isDir {
+	if isSubFile {
 		t.Fatal("Expected to find a dir, got a file.")
 	}
 	if offset != 1 {
@@ -65,14 +65,14 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 	}
 
 	// Find files in the given directory and its subdirectories.
-	subMeta, isDir, offset, size = fullMeta.ForPath("/bar")
+	subMeta, isSubFile, offset, size = fullMeta.ForPath("/bar")
 	subfile4, exists4 := subMeta.Subfiles[filePath4]
 	subfile5, exists5 := subMeta.Subfiles[filePath5]
 	// Expect to find files 1 and 2 and nothing else.
 	if !(exists4 && exists5 && len(subMeta.Subfiles) == 2) {
 		t.Fatal("Expected to find two files by their directory.")
 	}
-	if !isDir {
+	if isSubFile {
 		t.Fatal("Expected to find a dir, got a file.")
 	}
 	if offset != 4 {
