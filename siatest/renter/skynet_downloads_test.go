@@ -60,9 +60,18 @@ func testDownloadSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// verify downloads
-	verifyDownloadRaw(t, r, skylink, data, sup.FileMetadata)
-	verifyDownloadDirectory(t, r, skylink, data, sup.FileMetadata)
-	verifyDownloadAsArchive(t, r, skylink, fileMap{"SingleFileRegular": data}, sup.FileMetadata)
+	err = verifyDownloadRaw(t, r, skylink, data, sup.FileMetadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = verifyDownloadDirectory(t, r, skylink, data, sup.FileMetadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = verifyDownloadAsArchive(t, r, skylink, fileMap{"SingleFileRegular": data}, sup.FileMetadata)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // testDownloadSingleFileMultiPart tests the download of a single skyfile,
