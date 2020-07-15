@@ -32,6 +32,7 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/threadgroup"
 	"gitlab.com/NebulousLabs/writeaheadlog"
@@ -144,14 +145,6 @@ type hostContractor interface {
 	// RefreshedContract checks if the contract was previously refreshed
 	RefreshedContract(fcid types.FileContractID) bool
 
-	// RateLimits Gets the bandwidth limits for connections created by the
-	// contractor and its submodules.
-	RateLimits() (readBPS int64, writeBPS int64, packetSize uint64)
-
-	// SetRateLimits sets the bandwidth limits for connections created by the
-	// contractor and its submodules.
-	SetRateLimits(int64, int64, uint64)
-
 	// Synced returns a channel that is closed when the contractor is fully
 	// synced with the peer-to-peer network.
 	Synced() <-chan struct{}
@@ -212,6 +205,9 @@ type Renter struct {
 	// projects manage all of their own state, but for example they may track
 	// metrics across running the project multiple times.
 	staticProjectDownloadByRootManager *projectDownloadByRootManager
+
+	// The renter's bandwidth ratelimit.
+	rl *ratelimit.RateLimit
 
 	// Utilities.
 	cs                    modules.ConsensusSet
@@ -530,10 +526,10 @@ func (r *Renter) setBandwidthLimits(downloadSpeed int64, uploadSpeed int64) erro
 
 	// Check for sentinel "no limits" value.
 	if downloadSpeed == 0 && uploadSpeed == 0 {
-		r.hostContractor.SetRateLimits(0, 0, 0)
+		r.rl.SetLimits(0, 0, 0)
 	} else {
 		// Set the rate limits according to the provided values.
-		r.hostContractor.SetRateLimits(downloadSpeed, uploadSpeed, 4*4096)
+		r.rl.SetLimits(downloadSpeed, uploadSpeed, 4*4096)
 	}
 	return nil
 }
@@ -758,7 +754,7 @@ func (r *Renter) Settings() (modules.RenterSettings, error) {
 		return modules.RenterSettings{}, err
 	}
 	defer r.tg.Done()
-	download, upload, _ := r.hostContractor.RateLimits()
+	download, upload, _ := r.rl.Limits()
 	enabled, err := r.hostDB.IPViolationsCheck()
 	if err != nil {
 		return modules.RenterSettings{}, errors.AddContext(err, "error getting IPViolationsCheck:")
@@ -888,7 +884,7 @@ func (r *Renter) Skykeys() ([]skykey.Skykey, error) {
 var _ modules.Renter = (*Renter)(nil)
 
 // renterBlockingStartup handles the blocking portion of NewCustomRenter.
-func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb modules.HostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, persistDir string, deps modules.Dependencies) (*Renter, error) {
+func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb modules.HostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, persistDir string, rl *ratelimit.RateLimit, deps modules.Dependencies) (*Renter, error) {
 	if g == nil {
 		return nil, errNilGateway
 	}
@@ -945,6 +941,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		hostDB:                hdb,
 		hostContractor:        hc,
 		persistDir:            persistDir,
+		rl:                    rl,
 		staticAlerter:         modules.NewAlerter("renter"),
 		staticStreamBufferSet: newStreamBufferSet(),
 		staticMux:             mux,
@@ -1062,11 +1059,11 @@ func renterAsyncStartup(r *Renter, cs modules.ConsensusSet) error {
 }
 
 // NewCustomRenter initializes a renter and returns it.
-func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb modules.HostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, persistDir string, deps modules.Dependencies) (*Renter, <-chan error) {
+func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.TransactionPool, hdb modules.HostDB, w modules.Wallet, hc hostContractor, mux *siamux.SiaMux, persistDir string, rl *ratelimit.RateLimit, deps modules.Dependencies) (*Renter, <-chan error) {
 	errChan := make(chan error, 1)
 
 	// Blocking startup.
-	r, err := renterBlockingStartup(g, cs, tpool, hdb, w, hc, mux, persistDir, deps)
+	r, err := renterBlockingStartup(g, cs, tpool, hdb, w, hc, mux, persistDir, rl, deps)
 	if err != nil {
 		errChan <- err
 		return nil, errChan
@@ -1089,19 +1086,19 @@ func NewCustomRenter(g modules.Gateway, cs modules.ConsensusSet, tpool modules.T
 }
 
 // New returns an initialized renter.
-func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, mux *siamux.SiaMux, persistDir string) (*Renter, <-chan error) {
+func New(g modules.Gateway, cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, mux *siamux.SiaMux, rl *ratelimit.RateLimit, persistDir string) (*Renter, <-chan error) {
 	errChan := make(chan error, 1)
 	hdb, errChanHDB := hostdb.New(g, cs, tpool, persistDir)
 	if err := modules.PeekErr(errChanHDB); err != nil {
 		errChan <- err
 		return nil, errChan
 	}
-	hc, errChanContractor := contractor.New(cs, wallet, tpool, hdb, persistDir)
+	hc, errChanContractor := contractor.New(cs, wallet, tpool, hdb, rl, persistDir)
 	if err := modules.PeekErr(errChanContractor); err != nil {
 		errChan <- err
 		return nil, errChan
 	}
-	renter, errChanRenter := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, persistDir, modules.ProdDependencies)
+	renter, errChanRenter := NewCustomRenter(g, cs, tpool, hdb, wallet, hc, mux, persistDir, rl, modules.ProdDependencies)
 	if err := modules.PeekErr(errChanRenter); err != nil {
 		errChan <- err
 		return nil, errChan
