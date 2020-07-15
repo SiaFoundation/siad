@@ -58,17 +58,17 @@ func (c *Client) GatewayRateLimitPost(downloadSpeed, uploadSpeed int64) (err err
 	return
 }
 
-// GatewayBlacklistGet uses the /gateway/blacklist endpoint to request the
-// Gateway's blacklist
-func (c *Client) GatewayBlacklistGet() (gbg api.GatewayBlacklistGET, err error) {
-	err = c.get("/gateway/blacklist", &gbg)
+// GatewayBlocklistGet uses the /gateway/blocklist endpoint to request the
+// Gateway's blocklist
+func (c *Client) GatewayBlocklistGet() (gbg api.GatewayBlocklistGET, err error) {
+	err = c.get("/gateway/blocklist", &gbg)
 	return
 }
 
-// GatewayAppendBlacklistPost uses the /gateway/blacklist endpoint to append
-// addresses to the Gateway's blacklist
-func (c *Client) GatewayAppendBlacklistPost(addresses []string) (err error) {
-	gbp := api.GatewayBlacklistPOST{
+// GatewayAppendBlocklistPost uses the /gateway/blocklist endpoint to append
+// addresses to the Gateway's blocklist
+func (c *Client) GatewayAppendBlocklistPost(addresses []string) (err error) {
+	gbp := api.GatewayBlocklistPOST{
 		Action:    "append",
 		Addresses: addresses,
 	}
@@ -76,14 +76,14 @@ func (c *Client) GatewayAppendBlacklistPost(addresses []string) (err error) {
 	if err != nil {
 		return err
 	}
-	err = c.post("/gateway/blacklist", string(data), nil)
+	err = c.post("/gateway/blocklist", string(data), nil)
 	return
 }
 
-// GatewayRemoveBlacklistPost uses the /gateway/blacklist endpoint to remove
-// addresses from the Gateway's blacklist
-func (c *Client) GatewayRemoveBlacklistPost(addresses []string) (err error) {
-	gbp := api.GatewayBlacklistPOST{
+// GatewayRemoveBlocklistPost uses the /gateway/blocklist endpoint to remove
+// addresses from the Gateway's blocklist
+func (c *Client) GatewayRemoveBlocklistPost(addresses []string) (err error) {
+	gbp := api.GatewayBlocklistPOST{
 		Action:    "remove",
 		Addresses: addresses,
 	}
@@ -91,14 +91,14 @@ func (c *Client) GatewayRemoveBlacklistPost(addresses []string) (err error) {
 	if err != nil {
 		return err
 	}
-	err = c.post("/gateway/blacklist", string(data), nil)
+	err = c.post("/gateway/blocklist", string(data), nil)
 	return
 }
 
-// GatewaySetBlacklistPost uses the /gateway/blacklist endpoint to set the
-// Gateway's blacklist
-func (c *Client) GatewaySetBlacklistPost(addresses []string) (err error) {
-	gbp := api.GatewayBlacklistPOST{
+// GatewaySetBlocklistPost uses the /gateway/blocklist endpoint to set the
+// Gateway's blocklist
+func (c *Client) GatewaySetBlocklistPost(addresses []string) (err error) {
+	gbp := api.GatewayBlocklistPOST{
 		Action:    "set",
 		Addresses: addresses,
 	}
@@ -106,6 +106,6 @@ func (c *Client) GatewaySetBlacklistPost(addresses []string) (err error) {
 	if err != nil {
 		return err
 	}
-	err = c.post("/gateway/blacklist", string(data), nil)
+	err = c.post("/gateway/blocklist", string(data), nil)
 	return
 }

@@ -126,7 +126,7 @@ type Gateway struct {
 	handlers map[rpcID]modules.RPCFunc
 	initRPCs map[string]modules.RPCFunc
 
-	// blacklist are peers that the gateway shouldn't connect to
+	// blocklist are peers that the gateway shouldn't connect to
 	//
 	// nodes is the set of all known nodes (i.e. potential peers).
 	//
@@ -143,7 +143,7 @@ type Gateway struct {
 	// and would block any threads.Flush() calls. So a second threadgroup is
 	// added which handles clean-shutdown for the peers, without blocking
 	// threads.Flush() calls.
-	blacklist map[string]struct{}
+	blocklist map[string]struct{}
 	nodes     map[modules.NetAddress]*node
 	peers     map[modules.NetAddress]*peer
 	peerTG    threadgroup.ThreadGroup
@@ -163,9 +163,9 @@ type Gateway struct {
 
 type gatewayID [8]byte
 
-// addToBlacklist adds addresses to the Gateway's blacklist
-func (g *Gateway) addToBlacklist(addresses []string) error {
-	// Add addresses to the blacklist and disconnect from them
+// addToBlocklist adds addresses to the Gateway's blocklist
+func (g *Gateway) addToBlocklist(addresses []string) error {
+	// Add addresses to the blocklist and disconnect from them
 	var err error
 	for _, addr := range addresses {
 		// Check Gateway peer map for address
@@ -187,8 +187,8 @@ func (g *Gateway) addToBlacklist(addresses []string) error {
 			}
 		}
 
-		// Add address to the blacklist
-		g.blacklist[addr] = struct{}{}
+		// Add address to the blocklist
+		g.blocklist[addr] = struct{}{}
 	}
 	return errors.Compose(err, g.saveSync())
 }
@@ -228,15 +228,15 @@ func (g *Gateway) Address() modules.NetAddress {
 	return g.myAddr
 }
 
-// AddToBlacklist adds addresses to the Gateway's blacklist
-func (g *Gateway) AddToBlacklist(addresses []string) error {
+// AddToBlocklist adds addresses to the Gateway's blocklist
+func (g *Gateway) AddToBlocklist(addresses []string) error {
 	if err := g.threads.Add(); err != nil {
 		return err
 	}
 	defer g.threads.Done()
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return g.addToBlacklist(addresses)
+	return g.addToBlocklist(addresses)
 }
 
 // BandwidthCounters returns the Gateway's upload and download bandwidth
@@ -250,8 +250,8 @@ func (g *Gateway) BandwidthCounters() (uint64, uint64, time.Time, error) {
 	return writeBytes, readBytes, startTime, nil
 }
 
-// Blacklist returns the Gateway's blacklist
-func (g *Gateway) Blacklist() ([]string, error) {
+// Blocklist returns the Gateway's blocklist
+func (g *Gateway) Blocklist() ([]string, error) {
 	if err := g.threads.Add(); err != nil {
 		return nil, err
 	}
@@ -259,11 +259,11 @@ func (g *Gateway) Blacklist() ([]string, error) {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 
-	var blacklist []string
-	for addr := range g.blacklist {
-		blacklist = append(blacklist, addr)
+	var blocklist []string
+	for addr := range g.blocklist {
+		blocklist = append(blocklist, addr)
 	}
-	return blacklist, nil
+	return blocklist, nil
 }
 
 // Close saves the state of the Gateway and stops its listener process.
@@ -301,8 +301,8 @@ func (g *Gateway) RateLimits() (int64, int64) {
 	return g.persist.MaxDownloadSpeed, g.persist.MaxUploadSpeed
 }
 
-// RemoveFromBlacklist removes addresses from the Gateway's blacklist
-func (g *Gateway) RemoveFromBlacklist(addresses []string) error {
+// RemoveFromBlocklist removes addresses from the Gateway's blocklist
+func (g *Gateway) RemoveFromBlocklist(addresses []string) error {
 	if err := g.threads.Add(); err != nil {
 		return err
 	}
@@ -310,15 +310,15 @@ func (g *Gateway) RemoveFromBlacklist(addresses []string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	// Remove addresses from the blacklist
+	// Remove addresses from the blocklist
 	for _, addr := range addresses {
-		delete(g.blacklist, addr)
+		delete(g.blocklist, addr)
 	}
 	return g.saveSync()
 }
 
-// SetBlacklist sets the blacklist of the gateway
-func (g *Gateway) SetBlacklist(addresses []string) error {
+// SetBlocklist sets the blocklist of the gateway
+func (g *Gateway) SetBlocklist(addresses []string) error {
 	if err := g.threads.Add(); err != nil {
 		return err
 	}
@@ -326,17 +326,17 @@ func (g *Gateway) SetBlacklist(addresses []string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	// Reset the gateway blacklist since we are replacing the list with the new
+	// Reset the gateway blocklist since we are replacing the list with the new
 	// list of peers
-	g.blacklist = make(map[string]struct{})
+	g.blocklist = make(map[string]struct{})
 
 	// If the length of addresses is 0 we are done, save and return
 	if len(addresses) == 0 {
 		return g.saveSync()
 	}
 
-	// Add addresses to the blacklist and disconnect from them
-	return g.addToBlacklist(addresses)
+	// Add addresses to the blocklist and disconnect from them
+	return g.addToBlocklist(addresses)
 }
 
 // SetRateLimits changes the rate limits for the peer-connections of the
@@ -371,7 +371,7 @@ func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modul
 		handlers: make(map[rpcID]modules.RPCFunc),
 		initRPCs: make(map[string]modules.RPCFunc),
 
-		blacklist: make(map[string]struct{}),
+		blocklist: make(map[string]struct{}),
 		nodes:     make(map[modules.NetAddress]*node),
 		peers:     make(map[modules.NetAddress]*peer),
 

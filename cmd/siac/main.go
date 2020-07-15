@@ -305,8 +305,8 @@ func initCmds() *cobra.Command {
 	feeManagerCmd.Flags().BoolVarP(&feeManagerVerbose, "verbose", "v", false, "Show additional FeeManager info such as paid fees")
 
 	root.AddCommand(gatewayCmd)
-	gatewayCmd.AddCommand(gatewayAddressCmd, gatewayBandwidthCmd, gatewayBlacklistCmd, gatewayConnectCmd, gatewayDisconnectCmd, gatewayListCmd, gatewayRatelimitCmd)
-	gatewayBlacklistCmd.AddCommand(gatewayBlacklistAppendCmd, gatewayBlacklistClearCmd, gatewayBlacklistRemoveCmd, gatewayBlacklistSetCmd)
+	gatewayCmd.AddCommand(gatewayAddressCmd, gatewayBandwidthCmd, gatewayBlocklistCmd, gatewayConnectCmd, gatewayDisconnectCmd, gatewayListCmd, gatewayRatelimitCmd)
+	gatewayBlocklistCmd.AddCommand(gatewayBlocklistAppendCmd, gatewayBlocklistClearCmd, gatewayBlocklistRemoveCmd, gatewayBlocklistSetCmd)
 
 	root.AddCommand(hostCmd)
 	hostCmd.AddCommand(hostAnnounceCmd, hostConfigCmd, hostContractCmd, hostFolderCmd, hostSectorCmd)
