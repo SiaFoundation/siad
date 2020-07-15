@@ -89,6 +89,19 @@ func (s *sectors) hasSector(sectorRoot crypto.Hash) bool {
 	return false
 }
 
+// swapSectors swaps the sectors at idx1 and idx2 and returns the new merkle
+// root.
+func (s *sectors) swapSectors(idx1, idx2 uint64) (crypto.Hash, error) {
+	if idx1 >= uint64(len(s.merkleRoots)) {
+		return crypto.Hash{}, fmt.Errorf("idx1: %v >= %v", idx1, len(s.merkleRoots))
+	}
+	if idx2 >= uint64(len(s.merkleRoots)) {
+		return crypto.Hash{}, fmt.Errorf("idx2: %v >= %v", idx2, len(s.merkleRoots))
+	}
+	s.merkleRoots[idx1], s.merkleRoots[idx2] = s.merkleRoots[idx2], s.merkleRoots[idx1]
+	return cachedMerkleRoot(s.merkleRoots), nil
+}
+
 // translateOffset translates an offset within a filecontract into a relative
 // offset within a sector and the sector's index within the contract.
 func (s *sectors) translateOffset(offset uint64) (uint64, uint64, error) {
