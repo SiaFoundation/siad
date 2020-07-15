@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -104,6 +105,18 @@ func (c *Contractor) Allowance() modules.Allowance {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.allowance
+}
+
+// ContractPublicKey returns the public key capable of verifying the renter's
+// signature on a contract.
+func (c *Contractor) ContractPublicKey(pk types.SiaPublicKey) (crypto.PublicKey, bool) {
+	c.mu.RLock()
+	id, ok := c.pubKeysToContractID[pk.String()]
+	c.mu.RUnlock()
+	if !ok {
+		return crypto.PublicKey{}, false
+	}
+	return c.staticContracts.PublicKey(id)
 }
 
 // InitRecoveryScan starts scanning the whole blockchain for recoverable
@@ -299,12 +312,6 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKe
 	return nil
 }
 
-// RateLimits sets the bandwidth limits for connections created by the
-// contractSet.
-func (c *Contractor) RateLimits() (readBPW int64, writeBPS int64, packetSize uint64) {
-	return c.staticContracts.RateLimits()
-}
-
 // RecoveryScanStatus returns a bool indicating if a scan for recoverable
 // contracts is in progress and if it is, the current progress of the scan.
 func (c *Contractor) RecoveryScanStatus() (bool, types.BlockHeight) {
@@ -354,12 +361,6 @@ func (c *Contractor) RefreshedContract(fcid types.FileContractID) bool {
 	return newContract.EndHeight == contract.EndHeight
 }
 
-// SetRateLimits sets the bandwidth limits for connections created by the
-// contractSet.
-func (c *Contractor) SetRateLimits(readBPS int64, writeBPS int64, packetSize uint64) {
-	c.staticContracts.SetRateLimits(readBPS, writeBPS, packetSize)
-}
-
 // Synced returns a channel that is closed when the contractor is synced with
 // the peer-to-peer network.
 func (c *Contractor) Synced() <-chan struct{} {
@@ -374,7 +375,7 @@ func (c *Contractor) Close() error {
 }
 
 // New returns a new Contractor.
-func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, hdb modules.HostDB, persistDir string) (*Contractor, <-chan error) {
+func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, hdb modules.HostDB, rl *ratelimit.RateLimit, persistDir string) (*Contractor, <-chan error) {
 	errChan := make(chan error, 1)
 	defer close(errChan)
 	// Check for nil inputs.
@@ -403,13 +404,13 @@ func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.Transacti
 
 	// Convert the old persist file(s), if necessary. This must occur before
 	// loading the contract set.
-	if err := convertPersist(persistDir); err != nil {
+	if err := convertPersist(persistDir, rl); err != nil {
 		errChan <- err
 		return nil, errChan
 	}
 
 	// Create the contract set.
-	contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), modules.ProdDependencies)
+	contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), rl, modules.ProdDependencies)
 	if err != nil {
 		errChan <- err
 		return nil, errChan

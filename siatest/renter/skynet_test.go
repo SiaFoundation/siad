@@ -58,7 +58,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetSkykey", Test: testSkynetSkykey},
 		{Name: "TestSkynetLargeMetadata", Test: testSkynetLargeMetadata},
 		{Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
-		{Name: "TestSkynetNoFilename", Test: testSkynetNoFilename},
+		{Name: "TestSkynetInvalidFilename", Test: testSkynetInvalidFilename},
 		{Name: "TestSkynetSubDirDownload", Test: testSkynetSubDirDownload},
 		{Name: "TestSkynetDisableForce", Test: testSkynetDisableForce},
 		{Name: "TestSkynetBlacklist", Test: testSkynetBlacklist},
@@ -76,6 +76,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetEncryptionLargeFilePrivateID", Test: testSkynetEncryptionLargeFileWithType(skykey.TypePrivateID)},
 		{Name: "TestSkynetDefaultPath", Test: testSkynetDefaultPath},
 		{Name: "TestSkynetSingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
+		{Name: "TestSkynetDownloadFormats", Test: testSkynetDownloadFormats},
 	}
 
 	// Run tests
@@ -204,6 +205,33 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	err = skylinkReader.Close()
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Try to download the file using the ReaderGet method with the zip
+	// formatter.
+	skylinkReader, err = r.SkynetSkylinkZipReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := readZipArchive(skylinkReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = skylinkReader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the contents
+	if len(files) != 1 {
+		t.Fatal("Unexpected amount of files")
+	}
+	dataFile1Received, exists := files[filename]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filename)
+	}
+	if !bytes.Equal(dataFile1Received, data) {
+		t.Fatal("file data doesn't match expected content")
 	}
 
 	// Try to download the file using the ReaderGet method with the tar
@@ -862,68 +890,143 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// TestSkynetNoFilename verifies that posting a Skyfile without providing a
-// filename fails.
-func testSkynetNoFilename(t *testing.T, tg *siatest.TestGroup) {
+// TestSkynetInvalidFilename verifies that posting a Skyfile with invalid
+// filenames such as empty filenames, names containing ./ or ../ or names
+// starting with a forward-slash fails.
+func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Create some data to upload as a skyfile.
 	data := fastrand.Bytes(100 + siatest.Fuzz())
 	reader := bytes.NewReader(data)
 
-	// Call the upload skyfile client call.
-	uploadSiaPath, err := modules.NewSiaPath("testNoFilename")
+	filenames := []string{
+		"",
+		"../test",
+		"./test",
+		"/test",
+		"foo//bar",
+		"test/./test",
+		"test/../test",
+		"/test//foo/../bar/",
+	}
+
+	for _, filename := range filenames {
+		uploadSiaPath, err := modules.NewSiaPath("testInvalidFilename" + persist.RandomSuffix())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		sup := modules.SkyfileUploadParameters{
+			SiaPath:             uploadSiaPath,
+			Force:               false,
+			Root:                false,
+			BaseChunkRedundancy: 2,
+			FileMetadata: modules.SkyfileMetadata{
+				Filename: filename,
+				Mode:     0640, // Intentionally does not match any defaults.
+			},
+
+			Reader: reader,
+		}
+
+		// Try posting the skyfile with an invalid filename
+		_, _, err = r.SkynetSkyfilePost(sup)
+		if err == nil || !strings.Contains(err.Error(), modules.ErrInvalidPathString.Error()) {
+			t.Log("Error:", err)
+			t.Fatal("Expected SkynetSkyfilePost to fail due to invalid filename")
+		}
+
+		// Do the same for a multipart upload
+		body := new(bytes.Buffer)
+		writer := multipart.NewWriter(body)
+		data = []byte("File1Contents")
+		subfile := siatest.AddMultipartFile(writer, data, "files[]", filename, 0600, nil)
+		err = writer.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		reader = bytes.NewReader(body.Bytes())
+
+		// Call the upload skyfile client call.
+		uploadSiaPath, err = modules.NewSiaPath("testInvalidFilenameMultipart" + persist.RandomSuffix())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		subfiles := make(modules.SkyfileSubfiles)
+		subfiles[subfile.Filename] = subfile
+		mup := modules.SkyfileMultipartUploadParameters{
+			SiaPath:             uploadSiaPath,
+			Force:               false,
+			Root:                false,
+			BaseChunkRedundancy: 2,
+			Reader:              reader,
+			ContentType:         writer.FormDataContentType(),
+			Filename:            "testInvalidFilenameMultipart",
+		}
+
+		_, _, err = r.SkynetSkyfileMultiPartPost(mup)
+		if filename == "" {
+			// NOTE: we have to check for a different error message here. This
+			// is due to the fact that the http library uses the filename when
+			// parsing the multipart form request. Not providing a filename,
+			// makes it interpret the file as a form value, which leads to the
+			// file not being found, opposed to erroring on the filename not
+			// being set.
+			if err == nil || !strings.Contains(err.Error(), "could not find multipart file") {
+				t.Log("Error:", err)
+				t.Fatal("Expected SkynetSkyfileMultiPartPost to fail due to lack of a filename")
+			}
+		} else {
+			if err == nil || !strings.Contains(err.Error(), modules.ErrInvalidPathString.Error()) {
+				t.Log("Error:", err)
+				t.Fatal("Expected SkynetSkyfileMultiPartPost to fail due to invalid filename")
+			}
+		}
+	}
+
+	// These cases should succeed.
+
+	uploadSiaPath, err := modules.NewSiaPath("testInvalidFilename")
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	sup := modules.SkyfileUploadParameters{
 		SiaPath:             uploadSiaPath,
 		Force:               false,
 		Root:                false,
 		BaseChunkRedundancy: 2,
 		FileMetadata: modules.SkyfileMetadata{
-			Filename: "",   // Intentionally leave empty to trigger failure.
+			Filename: "testInvalidFilename",
 			Mode:     0640, // Intentionally does not match any defaults.
 		},
 
 		Reader: reader,
 	}
-
-	// Try posting the skyfile without providing a filename
-	_, _, err = r.SkynetSkyfilePost(sup)
-	if err == nil || !strings.Contains(err.Error(), "no filename provided") {
-		t.Log("Error:", err)
-		t.Fatal("Expected SkynetSkyfilePost to fail due to lack of a filename")
-	}
-
-	sup.FileMetadata.Filename = "testNoFilename"
 	_, _, err = r.SkynetSkyfilePost(sup)
 	if err != nil {
 		t.Log("Error:", err)
-		t.Fatal("Expected SkynetSkyfilePost to succeed if filename is provided")
+		t.Fatal("Expected SkynetSkyfilePost to succeed if valid filename is provided")
 	}
 
-	// Do the same for a multipart upload
+	// recreate the reader
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
-	data = []byte("File1Contents")
-	nofilename := ""
-	subfile := siatest.AddMultipartFile(writer, data, "files[]", nofilename, 0600, nil)
+
+	subfile := siatest.AddMultipartFile(writer, []byte("File1Contents"), "files[]", "testInvalidFilenameMultipart", 0600, nil)
 	err = writer.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
 	reader = bytes.NewReader(body.Bytes())
 
-	// Call the upload skyfile client call.
-	uploadSiaPath, err = modules.NewSiaPath("testNoFilenameMultipart")
+	subfiles := make(modules.SkyfileSubfiles)
+	subfiles[subfile.Filename] = subfile
+	uploadSiaPath, err = modules.NewSiaPath("testInvalidFilenameMultipart")
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	subfiles := make(modules.SkyfileSubfiles)
-	subfiles[subfile.Filename] = subfile
 	mup := modules.SkyfileMultipartUploadParameters{
 		SiaPath:             uploadSiaPath,
 		Force:               false,
@@ -931,41 +1034,7 @@ func testSkynetNoFilename(t *testing.T, tg *siatest.TestGroup) {
 		BaseChunkRedundancy: 2,
 		Reader:              reader,
 		ContentType:         writer.FormDataContentType(),
-		Filename:            "testNoFilenameMultipart",
-	}
-
-	// Note: we have to check for a different error message here. This is due to
-	// the fact that the http library uses the filename when parsing the
-	// multipart form request. Not providing a filename, makes it interpret the
-	// file as a form value, which leads to the file not being find, opposed to
-	// erroring on the filename not being set.
-	_, _, err = r.SkynetSkyfileMultiPartPost(mup)
-	if err == nil || !strings.Contains(err.Error(), "could not find multipart file") {
-		t.Log("Error:", err)
-		t.Fatal("Expected SkynetSkyfilePost to fail due to lack of a filename")
-	}
-
-	// recreate the reader
-	body = new(bytes.Buffer)
-	writer = multipart.NewWriter(body)
-
-	subfile = siatest.AddMultipartFile(writer, []byte("File1Contents"), "files[]", "testNoFilenameMultipart", 0600, nil)
-	err = writer.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	reader = bytes.NewReader(body.Bytes())
-
-	subfiles = make(modules.SkyfileSubfiles)
-	subfiles[subfile.Filename] = subfile
-	mup = modules.SkyfileMultipartUploadParameters{
-		SiaPath:             uploadSiaPath,
-		Force:               false,
-		Root:                false,
-		BaseChunkRedundancy: 2,
-		Reader:              reader,
-		ContentType:         writer.FormDataContentType(),
-		Filename:            "testNoFilenameMultipart",
+		Filename:            "testInvalidFilenameMultipart",
 	}
 
 	_, _, err = r.SkynetSkyfileMultiPartPost(mup)
@@ -975,34 +1044,31 @@ func testSkynetNoFilename(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testSkynetSubDirDownload verifies downloading data from a skyfile using a
-// path to download single subfiles or subdirectories
-func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
+// testSkynetDownloadFormats verifies downloading data in different formats
+func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
-
 	dataFile1 := []byte("file1.txt")
 	dataFile2 := []byte("file2.txt")
 	dataFile3 := []byte("file3.txt")
-	filePath1 := "/a/5.f4f8b583.chunk.js"
-	filePath2 := "/a/5.f4f.chunk.js.map"
-	filePath3 := "/b/file3.txt"
+	filePath1 := "a/5.f4f8b583.chunk.js"
+	filePath2 := "a/5.f4f.chunk.js.map"
+	filePath3 := "b/file3.txt"
 	siatest.AddMultipartFile(writer, dataFile1, "files[]", filePath1, 0600, nil)
 	siatest.AddMultipartFile(writer, dataFile2, "files[]", filePath2, 0600, nil)
 	siatest.AddMultipartFile(writer, dataFile3, "files[]", filePath3, 0640, nil)
-
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	reader := bytes.NewReader(body.Bytes())
 
-	uploadSiaPath, err := modules.NewSiaPath("testSkynetSubfileDownload")
+	uploadSiaPath, err := modules.NewSiaPath("testSkynetDownloadFormats")
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	reader := bytes.NewReader(body.Bytes())
 	mup := modules.SkyfileMultipartUploadParameters{
 		SiaPath:             uploadSiaPath,
 		Force:               false,
@@ -1018,14 +1084,7 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// get all data without specifying format, since the file contains multiple
-	// subfiles, this should fail
-	_, _, err = r.SkynetSkylinkGet(skylink)
-	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
-		t.Fatal("Expected download to fail because we are downloading a directory and format was not provided, err:", err)
-	}
-
-	// now specify a correct format
+	// download the data specifying the 'concat' format
 	allData, _, err := r.SkynetSkylinkConcatGet(skylink)
 	if err != nil {
 		t.Fatal(err)
@@ -1038,59 +1097,87 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Unexpected data for dir A")
 	}
 
+	// now specify the zip format
+	skyfileReader, err := r.SkynetSkylinkZipReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// read the zip archive
+	files, err := readZipArchive(skyfileReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = skyfileReader.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the contents
+	dataFile1Received, exists := files[filePath1]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath1)
+	}
+	if !bytes.Equal(dataFile1Received, dataFile1) {
+		t.Fatal("file data doesn't match expected content")
+	}
+	dataFile2Received, exists := files[filePath2]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath2)
+	}
+	if !bytes.Equal(dataFile2Received, dataFile2) {
+		t.Fatal("file data doesn't match expected content")
+	}
+	dataFile3Received, exists := files[filePath3]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath3)
+	}
+	if !bytes.Equal(dataFile3Received, dataFile3) {
+		t.Log(dataFile3Received)
+		t.Log(dataFile3)
+		t.Fatal("file data doesn't match expected content")
+	}
+
 	// now specify the tar format
-	skyfileReader, err := r.SkynetSkylinkTarReaderGet(skylink)
+	skyfileReader, err = r.SkynetSkylinkTarReaderGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tr := tar.NewReader(skyfileReader)
-	header, err := tr.Next()
+
+	// read the tar archive
+	files, err = readTarArchive(skyfileReader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if header.Name != filePath1 {
-		t.Fatalf("expected filepath %v but was %v", filePath1, header.Name)
-	}
-	data, err := ioutil.ReadAll(tr)
+	err = skyfileReader.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(data, dataFile1) {
-		t.Fatal("file doesn't match expected content")
+
+	// verify the contents
+	dataFile1Received, exists = files[filePath1]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath1)
 	}
-	header, err = tr.Next()
-	if err != nil {
-		t.Fatal(err)
+	if !bytes.Equal(dataFile1Received, dataFile1) {
+		t.Fatal("file data doesn't match expected content")
 	}
-	if header.Name != filePath2 {
-		t.Fatalf("expected filepath %v but was %v", filePath2, header.Name)
+	dataFile2Received, exists = files[filePath2]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath2)
 	}
-	data, err = ioutil.ReadAll(tr)
-	if err != nil {
-		t.Fatal(err)
+	if !bytes.Equal(dataFile2Received, dataFile2) {
+		t.Fatal("file data doesn't match expected content")
 	}
-	if !bytes.Equal(data, dataFile2) {
-		t.Fatal("file doesn't match expected content")
+	dataFile3Received, exists = files[filePath3]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath3)
 	}
-	header, err = tr.Next()
-	if err != nil {
-		t.Fatal(err)
+	if !bytes.Equal(dataFile3Received, dataFile3) {
+		t.Log(dataFile3Received)
+		t.Log(dataFile3)
+		t.Fatal("file data doesn't match expected content")
 	}
-	if header.Name != filePath3 {
-		t.Fatalf("expected filepath %v but was %v", filePath3, header.Name)
-	}
-	data, err = ioutil.ReadAll(tr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(data, dataFile3) {
-		t.Fatal("file doesn't match expected content")
-	}
-	_, err = tr.Next()
-	if err != io.EOF {
-		t.Fatal("expected io.EOF got", err)
-	}
-	skyfileReader.Close()
 
 	// now specify the targz format
 	skyfileReader, err = r.SkynetSkylinkTarGzReaderGet(skylink)
@@ -1101,56 +1188,39 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer gzr.Close()
-	tr = tar.NewReader(gzr)
-	header, err = tr.Next()
+	files, err = readTarArchive(gzr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if header.Name != filePath1 {
-		t.Fatalf("expected filepath %v but was %v", filePath1, header.Name)
-	}
-	data, err = ioutil.ReadAll(tr)
+	err = errors.Compose(skyfileReader.Close(), gzr.Close())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(data, dataFile1) {
-		t.Fatal("file doesn't match expected content")
+
+	// verify the contents
+	dataFile1Received, exists = files[filePath1]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath1)
 	}
-	header, err = tr.Next()
-	if err != nil {
-		t.Fatal(err)
+	if !bytes.Equal(dataFile1Received, dataFile1) {
+		t.Fatal("file data doesn't match expected content")
 	}
-	if header.Name != filePath2 {
-		t.Fatalf("expected filepath %v but was %v", filePath2, header.Name)
+	dataFile2Received, exists = files[filePath2]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath2)
 	}
-	data, err = ioutil.ReadAll(tr)
-	if err != nil {
-		t.Fatal(err)
+	if !bytes.Equal(dataFile2Received, dataFile2) {
+		t.Fatal("file data doesn't match expected content")
 	}
-	if !bytes.Equal(data, dataFile2) {
-		t.Fatal("file doesn't match expected content")
+	dataFile3Received, exists = files[filePath3]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath3)
 	}
-	header, err = tr.Next()
-	if err != nil {
-		t.Fatal(err)
+	if !bytes.Equal(dataFile3Received, dataFile3) {
+		t.Log(dataFile3Received)
+		t.Log(dataFile3)
+		t.Fatal("file data doesn't match expected content")
 	}
-	if header.Name != filePath3 {
-		t.Fatalf("expected filepath %v but was %v", filePath3, header.Name)
-	}
-	data, err = ioutil.ReadAll(tr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(data, dataFile3) {
-		t.Fatal("file doesn't match expected content")
-	}
-	_, err = tr.Next()
-	if err != io.EOF {
-		t.Fatal("expected io.EOF got", err)
-	}
-	gzr.Close()
-	skyfileReader.Close()
 
 	// get all data for path "a" using the concat format
 	dataDirA, _, err := r.SkynetSkylinkConcatGet(fmt.Sprintf("%s/a", skylink))
@@ -1169,40 +1239,35 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tr = tar.NewReader(skyfileReader)
-	header, err = tr.Next()
+
+	// read the tar archive
+	files, err = readTarArchive(skyfileReader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if header.Name != filePath1 {
-		t.Fatalf("expected filepath %v but was %v", filePath1, header.Name)
-	}
-	data, err = ioutil.ReadAll(tr)
+	err = skyfileReader.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(data, dataFile1) {
-		t.Fatal("file doesn't match expected content")
+
+	// verify the contents
+	dataFile1Received, exists = files[filePath1]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath1)
 	}
-	header, err = tr.Next()
-	if err != nil {
-		t.Fatal(err)
+	if !bytes.Equal(dataFile1Received, dataFile1) {
+		t.Fatal("file data doesn't match expected content")
 	}
-	if header.Name != filePath2 {
-		t.Fatalf("expected filepath %v but was %v", filePath2, header.Name)
+	dataFile2Received, exists = files[filePath2]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath2)
 	}
-	data, err = ioutil.ReadAll(tr)
-	if err != nil {
-		t.Fatal(err)
+	if !bytes.Equal(dataFile2Received, dataFile2) {
+		t.Fatal("file data doesn't match expected content")
 	}
-	if !bytes.Equal(data, dataFile2) {
-		t.Fatal("file doesn't match expected content")
+	if len(files) != 2 {
+		t.Fatal("unexpected amount of files")
 	}
-	_, err = tr.Next()
-	if err != io.EOF {
-		t.Fatal("expected io.EOF got", err)
-	}
-	skyfileReader.Close()
 
 	// now specify the targz format
 	skyfileReader, err = r.SkynetSkylinkTarGzReaderGet(fmt.Sprintf("%s/a", skylink))
@@ -1213,66 +1278,149 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer gzr.Close()
-	tr = tar.NewReader(gzr)
-	header, err = tr.Next()
+	files, err = readTarArchive(gzr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if header.Name != filePath1 {
-		t.Fatalf("expected filepath %v but was %v", filePath1, header.Name)
-	}
-	data, err = ioutil.ReadAll(tr)
+	err = errors.Compose(skyfileReader.Close(), gzr.Close())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(data, dataFile1) {
-		t.Fatal("file doesn't match expected content")
+
+	// verify the contents
+	dataFile1Received, exists = files[filePath1]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath1)
 	}
-	header, err = tr.Next()
+	if !bytes.Equal(dataFile1Received, dataFile1) {
+		t.Fatal("file data doesn't match expected content")
+	}
+	dataFile2Received, exists = files[filePath2]
+	if !exists {
+		t.Fatalf("file at path '%v' not present in zip", filePath2)
+	}
+	if !bytes.Equal(dataFile2Received, dataFile2) {
+		t.Fatal("file data doesn't match expected content")
+	}
+	if len(files) != 2 {
+		t.Fatal("unexpected amount of files")
+	}
+
+	// now specify the zip format
+	skyfileReader, err = r.SkynetSkylinkZipReaderGet(fmt.Sprintf("%s/a", skylink))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if header.Name != filePath2 {
-		t.Fatalf("expected filepath %v but was %v", filePath2, header.Name)
+
+	// verify we get a 400 if we supply an unsupported format parameter
+	_, _, err = r.SkynetSkylinkGet(fmt.Sprintf("%s/b?format=raw", skylink))
+	if err == nil || !strings.Contains(err.Error(), "unable to parse 'format'") {
+		t.Fatal("Expected download to fail because we are downloading a directory and an invalid format was provided, err:", err)
 	}
-	data, err = ioutil.ReadAll(tr)
+
+	// verify we default to the `zip` format if it is a directory and we have
+	// not specified it (use a HEAD call as that returns the response headers)
+	_, header, err := r.SkynetSkylinkHead(skylink, 0)
+	if err != nil {
+		t.Fatal("unexpected error")
+	}
+	ct := header.Get("Content-Type")
+	if ct != "application/zip" {
+		t.Fatal("unexpected content type: ", ct)
+	}
+}
+
+// testSkynetSubDirDownload verifies downloading data from a skyfile using a
+// path to download single subfiles or subdirectories
+func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
+
+	dataFile1 := []byte("file1.txt")
+	dataFile2 := []byte("file2.txt")
+	dataFile3 := []byte("file3.txt")
+	filePath1 := "a/5.f4f8b583.chunk.js"
+	filePath2 := "a/5.f4f.chunk.js.map"
+	filePath3 := "b/file3.txt"
+	siatest.AddMultipartFile(writer, dataFile1, "files[]", filePath1, 0600, nil)
+	siatest.AddMultipartFile(writer, dataFile2, "files[]", filePath2, 0600, nil)
+	siatest.AddMultipartFile(writer, dataFile3, "files[]", filePath3, 0640, nil)
+
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reader := bytes.NewReader(body.Bytes())
+
+	name := "testSkynetSubfileDownload"
+	uploadSiaPath, err := modules.NewSiaPath(name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(data, dataFile2) {
-		t.Fatal("file doesn't match expected content")
+
+	mup := modules.SkyfileMultipartUploadParameters{
+		SiaPath:             uploadSiaPath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: 2,
+		Reader:              reader,
+		ContentType:         writer.FormDataContentType(),
+		Filename:            name,
 	}
-	_, err = tr.Next()
-	if err != io.EOF {
-		t.Fatal("expected io.EOF got", err)
+
+	skylink, _, err := r.SkynetSkyfileMultiPartPost(mup)
+	if err != nil {
+		t.Fatal(err)
 	}
-	gzr.Close()
-	skyfileReader.Close()
+
+	// get all the data
+	data, metadata, err := r.SkynetSkylinkConcatGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Filename != name {
+		t.Fatal("Unexpected filename")
+	}
+	expected := append(dataFile1, dataFile2...)
+	expected = append(expected, dataFile3...)
+	if !bytes.Equal(data, expected) {
+		t.Fatal("Unexpected data")
+	}
+
+	// get all data for path "a"
+	data, metadata, err = r.SkynetSkylinkConcatGet(fmt.Sprintf("%s/a", skylink))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Filename != "/a" {
+		t.Fatal("Unexpected filename", metadata.Filename)
+	}
+	expected = append(dataFile1, dataFile2...)
+	if !bytes.Equal(data, expected) {
+		t.Fatal("Unexpected data")
+	}
 
 	// get all data for path "b"
-	dataDirB, metadataDirB, err := r.SkynetSkylinkConcatGet(fmt.Sprintf("%s/b", skylink))
+	data, metadata, err = r.SkynetSkylinkConcatGet(fmt.Sprintf("%s/b", skylink))
 	if err != nil {
 		t.Fatal(err)
 	}
 	expected = dataFile3
-	if !bytes.Equal(expected, dataDirB) {
-		t.Log("expected:", expected)
-		t.Log("actual:", dataDirB)
-		t.Fatal("Unexpected data for dir B")
+	if !bytes.Equal(expected, data) {
+		t.Fatal("Unexpected data")
 	}
-
-	if metadataDirB.Filename != "/b" {
-		t.Fatal("Expected filename of subdir to be equal to the path")
+	if metadata.Filename != "/b" {
+		t.Fatal("Unexpected filename", metadata.Filename)
 	}
-	mdF3, ok := metadataDirB.Subfiles["/b/file3.txt"]
+	mdF3, ok := metadata.Subfiles["b/file3.txt"]
 	if !ok {
 		t.Fatal("Expected subfile metadata of file3 to be present")
 	}
 
 	mdF3Expected := modules.SkyfileSubfileMetadata{
 		FileMode:    os.FileMode(0640),
-		Filename:    "/b/file3.txt",
+		Filename:    "b/file3.txt",
 		ContentType: "application/octet-stream",
 		Offset:      0,
 		Len:         uint64(len(dataFile3)),
@@ -1292,18 +1440,6 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 		t.Log("expected:", dataFile2)
 		t.Log("actual:", downloadFile2)
 		t.Fatal("Unexpected data for file 2")
-	}
-
-	// verify we get a 400 if we don't supply the format parameter
-	_, _, err = r.SkynetSkylinkGet(fmt.Sprintf("%s/b", skylink))
-	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
-		t.Fatal("Expected download to fail because we are downloading a directory and format was not provided, err:", err)
-	}
-
-	// verify we get a 400 if we supply an unsupported format parameter
-	_, _, err = r.SkynetSkylinkGet(fmt.Sprintf("%s/b?format=raw", skylink))
-	if err == nil || !strings.Contains(err.Error(), "unable to parse 'format'") {
-		t.Fatal("Expected download to fail because we are downloading a directory and an invalid format was provided, err:", err)
 	}
 }
 
@@ -2566,7 +2702,6 @@ func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup, skykeyTy
 	if metadata.Filename != filename {
 		t.Error("bad filename")
 	}
-	t.Log(skylink)
 
 	// Pin the encrypted Skyfile.
 	pinSiaPath, err := modules.NewSiaPath("testEncryptedPinPath" + skykeyType.ToString())
@@ -2607,7 +2742,6 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 	fc1 := "File1Contents"
 	fc2 := "File2Contents"
-	emptyPath := ""
 	indexJs := "index.js"
 	invalidPath := "invalid.js"
 
@@ -2627,21 +2761,6 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if !bytes.Equal(content, files["index.html"]) {
 		t.Fatalf("Expected to get content '%s', instead got '%s'", files["index.html"], string(content))
-	}
-
-	// TEST: Contains index.html but specifies an empty default path.
-	// It should return an error on downloading.
-	filename = "index.html_empty"
-	files = make(map[string][]byte)
-	files["index.html"] = []byte(fc1)
-	files["about.html"] = []byte(fc2)
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, &emptyPath, false)
-	if err != nil {
-		t.Fatal("Failed to upload multipart file.", err)
-	}
-	_, _, err = r.SkynetSkylinkGet(skylink)
-	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
-		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
 	}
 
 	// TEST: Contains index.html but specifies a different default path.
@@ -2692,12 +2811,6 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	if !bytes.Equal(content, files["index.js"]) {
 		t.Fatalf("Expected to get content '%s', instead got '%s'", files["index.js"], string(content))
 	}
-	// Test passing `redirect=false` to multi-file Skyfile with default path.
-	// This should result in an error with message "format must be specified".
-	_, _, err = r.SkynetSkylinkGetWithRedirect(skylink, false)
-	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
-		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
-	}
 
 	// TEST: Does not contain index.html and specifies an INVALID default path.
 	// This should fail on upload with "invalid default path provided".
@@ -2708,36 +2821,6 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, &invalidPath, false)
 	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidDefaultPath.Error()) {
 		t.Fatalf("Expected error 'invalid default path provided', got '%+v'", err)
-	}
-
-	// TEST: Does not contain index.html and doesn't specify default path.
-	// This should fail on download with "format must be specified".
-	filename = "index.js_nil"
-	files = make(map[string][]byte)
-	files["index.js"] = []byte(fc1)
-	files["about.html"] = []byte(fc2)
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, nil, false)
-	if err != nil {
-		t.Fatal("Failed to upload multipart file.", err)
-	}
-	_, _, err = r.SkynetSkylinkGet(skylink)
-	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
-		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
-	}
-
-	// TEST: Does not contain "index.html".
-	// Contains a single file and specifies an empty default path
-	// It should return an error on download.
-	filename = "index.js_empty"
-	files = make(map[string][]byte)
-	files["index.js"] = []byte(fc1)
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, &emptyPath, false)
-	if err != nil {
-		t.Fatal("Failed to upload multipart file.", err)
-	}
-	_, _, err = r.SkynetSkylinkGet(skylink)
-	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
-		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
 	}
 
 	// TEST: Does not contain "index.html".
@@ -2756,13 +2839,6 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if !bytes.Equal(content, files["index.js"]) {
 		t.Fatalf("Expected to get content '%s', instead got '%s'", files["index.js"], string(content))
-	}
-	// Test passing `redirect=false` to single-file Skyfile.
-	// This should behave just like any other skydirectory and fail on download
-	// with "format must be specified".
-	_, _, err = r.SkynetSkylinkGetWithRedirect(skylink, false)
-	if err == nil || !strings.Contains(err.Error(), "format must be specified") {
-		t.Fatalf("Expected error 'format must be specified', got '%+v'", err)
 	}
 }
 

@@ -58,7 +58,7 @@ func testLatestRevisionBasic(t *testing.T, rhp *renterHostPair) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rev := so.staticRecentRevision
+	rev := so.RecentRevision()
 
 	// fetch the revision and pay for it by EA.
 	recentRev, err := rhp.LatestRevision(false)

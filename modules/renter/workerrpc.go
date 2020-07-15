@@ -8,10 +8,11 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/ratelimit"
+	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/siamux/mux"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 // defaultNewStreamTimeout is a default timeout for creating a new stream.
@@ -51,8 +52,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}()
 
 	// create a new stream
-	var stream siamux.Stream
-	stream, err = w.staticNewStream()
+	stream, err := w.staticNewStream()
 	if err != nil {
 		err = errors.AddContext(err, "Unable to create a new stream")
 		return
@@ -63,7 +63,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 		}
 	}()
 
-	// set the stream's limit
+	// set the limit return var.
 	limit = stream.Limit()
 
 	// prepare a buffer so we can optimize our writes
@@ -121,23 +121,27 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}
 
 	// read the responses.
-	responses = make([]programResponse, len(epr.Program))
-	for i := range responses {
-		err = modules.RPCRead(stream, &responses[i])
+	responses = make([]programResponse, 0, len(epr.Program))
+	for i := 0; i < len(epr.Program); i++ {
+		var response programResponse
+		err = modules.RPCRead(stream, &response)
 		if err != nil {
 			return
 		}
 
 		// Read the output data.
-		outputLen := responses[i].OutputLength
-		responses[i].Output = make([]byte, outputLen)
-		_, err = io.ReadFull(stream, responses[i].Output)
+		outputLen := response.OutputLength
+		response.Output = make([]byte, outputLen)
+		_, err = io.ReadFull(stream, response.Output)
 		if err != nil {
 			return
 		}
 
+		// We received a valid response. Append it.
+		responses = append(responses, response)
+
 		// If the response contains an error we are done.
-		if responses[i].Error != nil {
+		if response.Error != nil {
 			break
 		}
 	}
@@ -156,7 +160,11 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	// Set the deadline.
-	return stream, stream.SetDeadline(time.Now().Add(defaultRPCDeadline))
+	// Set deadline on the stream.
+	err = stream.SetDeadline(time.Now().Add(defaultRPCDeadline))
+	if err != nil {
+		return nil, err
+	}
+	// Wrap the stream in a ratelimit.
+	return ratelimit.NewRLStream(stream, w.renter.rl, w.renter.tg.StopChan()), nil
 }

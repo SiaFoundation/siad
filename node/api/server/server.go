@@ -188,7 +188,7 @@ func NewAsync(APIaddr string, requiredUserAgent string, requiredPassword string,
 				// ReadTimeout defines the maximum amount of time allowed to fully read
 				// the request body. This timeout is applied to every handler in the
 				// server.
-				ReadTimeout: time.Minute * 60,
+				ReadTimeout: time.Minute * 360,
 
 				// ReadHeaderTimeout defines the amount of time allowed to fully read the
 				// request headers.

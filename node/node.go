@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -515,7 +516,8 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 			return nil, c
 		}
 		// ContractSet
-		contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), contractSetDeps)
+		renterRateLimit := ratelimit.NewRateLimit(0, 0, 0)
+		contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), renterRateLimit, contractSetDeps)
 		if err != nil {
 			c <- err
 			close(c)
@@ -534,7 +536,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 			close(c)
 			return nil, c
 		}
-		renter, errChanRenter := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, mux, persistDir, renterDeps)
+		renter, errChanRenter := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, mux, persistDir, renterRateLimit, renterDeps)
 		if err := modules.PeekErr(errChanRenter); err != nil {
 			c <- err
 			close(c)

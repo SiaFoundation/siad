@@ -127,18 +127,6 @@ func (cs *ContractSet) Return(c *SafeContract) {
 	c.revisionMu.Unlock()
 }
 
-// RateLimits sets the bandwidth limits for connections created by the
-// contractSet.
-func (cs *ContractSet) RateLimits() (readBPS int64, writeBPS int64, packetSize uint64) {
-	return cs.staticRL.Limits()
-}
-
-// SetRateLimits sets the bandwidth limits for connections created by the
-// contractSet.
-func (cs *ContractSet) SetRateLimits(readBPS int64, writeBPS int64, packetSize uint64) {
-	cs.staticRL.SetLimits(readBPS, writeBPS, packetSize)
-}
-
 // View returns a copy of the contract with the specified host key. The
 // contracts is not locked. Certain fields, including the MerkleRoots, are set
 // to nil for safety reasons. If the contract is not present in the set, View
@@ -151,6 +139,18 @@ func (cs *ContractSet) View(id types.FileContractID) (modules.RenterContract, bo
 		return modules.RenterContract{}, false
 	}
 	return safeContract.Metadata(), true
+}
+
+// PublicKey returns the public key capable of verifying the renter's signature
+// on a contract.
+func (cs *ContractSet) PublicKey(id types.FileContractID) (crypto.PublicKey, bool) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	safeContract, ok := cs.contracts[id]
+	if !ok {
+		return crypto.PublicKey{}, false
+	}
+	return safeContract.header.SecretKey.PublicKey(), true
 }
 
 // ViewAll returns the metadata of each contract in the set. The contracts are
@@ -178,7 +178,7 @@ func (cs *ContractSet) Close() error {
 
 // NewContractSet returns a ContractSet storing its contracts in the specified
 // dir.
-func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error) {
+func NewContractSet(dir string, rl *ratelimit.RateLimit, deps modules.Dependencies) (*ContractSet, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
@@ -213,6 +213,7 @@ func NewContractSet(dir string, deps modules.Dependencies) (*ContractSet, error)
 
 		staticDeps: deps,
 		staticDir:  dir,
+		staticRL:   rl,
 		staticWal:  wal,
 	}
 	// Set the initial rate limit to 'unlimited' bandwidth with 4kib packets.

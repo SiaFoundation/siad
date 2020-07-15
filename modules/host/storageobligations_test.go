@@ -157,7 +157,7 @@ func TestStorageObligationSnapshot(t *testing.T) {
 	if !snapshot.UnallocatedCollateral().Equals(fcr.MissedHostPayout()) {
 		t.Fatalf("Unexpected unallocated collateral, expected %v but was %v", fcr.MissedHostPayout().HumanString(), snapshot.UnallocatedCollateral().HumanString())
 	}
-	if !reflect.DeepEqual(snapshot.staticRecentRevision, fcr) {
+	if !reflect.DeepEqual(snapshot.RecentRevision(), fcr) {
 		t.Fatal("Revisions don't match")
 	}
 	// Update the SO with new data

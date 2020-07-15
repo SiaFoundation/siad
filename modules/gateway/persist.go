@@ -15,25 +15,15 @@ const (
 	// logFile is the name of the log file.
 	logFile = modules.GatewayDir + ".log"
 
-	// nodesFile is the name of the file that contains all seen nodes.
-	nodesFile = "nodes.json"
-
 	// persistFilename is the filename to be used when persisting gateway information to a JSON file
 	persistFilename = "gateway.json"
 )
-
-// nodePersistMetadata contains the header and version strings that identify the
-// node persist file.
-var nodePersistMetadata = persist.Metadata{
-	Header:  "Sia Node List",
-	Version: "1.3.0",
-}
 
 // persistMetadata contains the header and version strings that identify the
 // gateway persist file.
 var persistMetadata = persist.Metadata{
 	Header:  "Gateway Persistence",
-	Version: "1.3.5",
+	Version: "1.5.0",
 }
 
 type (
@@ -45,8 +35,8 @@ type (
 		MaxDownloadSpeed int64
 		MaxUploadSpeed   int64
 
-		// blacklisted IPs
-		Blacklist []string
+		// blocklisted IPs
+		Blocklist []string
 	}
 )
 
@@ -64,7 +54,7 @@ func (g *Gateway) load() error {
 	var nodes []*node
 	var v130 bool
 	err := persist.LoadJSON(nodePersistMetadata, &nodes, filepath.Join(g.persistDir, nodesFile))
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		// COMPATv1.3.0
 		compatErr := g.loadv033persist()
 		if compatErr != nil {
@@ -88,12 +78,21 @@ func (g *Gateway) load() error {
 		// There is no gateway.json, nothing to load.
 		return nil
 	}
+	if errors.Contains(err, persist.ErrBadVersion) {
+		// Try update the version of the metadata
+		err = g.convertPersistv135Tov150()
+		if err != nil {
+			return errors.AddContext(err, "failed to convert persistence from v134 to v150")
+		}
+		// Load the new persistence
+		err = persist.LoadJSON(persistMetadata, &g.persist, filepath.Join(g.persistDir, persistFilename))
+	}
 	if err != nil {
 		return errors.AddContext(err, "failed to load gateway persistence")
 	}
-	// create map from blacklist
-	for _, ip := range g.persist.Blacklist {
-		g.blacklist[ip] = struct{}{}
+	// create map from blocklist
+	for _, ip := range g.persist.Blocklist {
+		g.blocklist[ip] = struct{}{}
 	}
 	return nil
 }
@@ -101,9 +100,9 @@ func (g *Gateway) load() error {
 // saveSync stores the Gateway's persistent data on disk, and then syncs to
 // disk to minimize the possibility of data loss.
 func (g *Gateway) saveSync() error {
-	g.persist.Blacklist = make([]string, 0, len(g.blacklist))
-	for ip := range g.blacklist {
-		g.persist.Blacklist = append(g.persist.Blacklist, ip)
+	g.persist.Blocklist = make([]string, 0, len(g.blocklist))
+	for ip := range g.blocklist {
+		g.persist.Blocklist = append(g.persist.Blocklist, ip)
 	}
 	return persist.SaveJSON(persistMetadata, g.persist, filepath.Join(g.persistDir, persistFilename))
 }

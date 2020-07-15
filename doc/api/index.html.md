@@ -1163,21 +1163,21 @@ Example IPV6 address: [123::456]:789
 standard success or error response. See [standard
 responses](#standard-responses).
 
-## /gateway/blacklist [GET]
+## /gateway/blocklist [GET]
 > curl example  
 
 ```go
-curl -A "Sia-Agent" "localhost:9980/gateway/blacklist"
+curl -A "Sia-Agent" "localhost:9980/gateway/blocklist"
 ```
 
-fetches the list of blacklisted addresses.
+fetches the list of blocklisted addresses.
 
 ### JSON Response
 > JSON Response Example
 
 ```go
 {
-  "blacklist":
+  "blocklist":
     [
     "123.123.123.123",  // string
     "123.123.123.123",  // string
@@ -1185,35 +1185,35 @@ fetches the list of blacklisted addresses.
     ],
 }
 ```
-**blacklist** | string  
-blacklist is a list of blacklisted address
+**blocklist** | string  
+blocklist is a list of blocklisted address
 
-## /gateway/blacklist [POST]
+## /gateway/blocklist [POST]
 > curl example  
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"append","addresses":["123.123.123.123","123.123.123.123","123.123.123.123"]}' "localhost:9980/gateway/blacklist"
+curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"append","addresses":["123.123.123.123","123.123.123.123","123.123.123.123"]}' "localhost:9980/gateway/blocklist"
 ```
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"set","addresses":[]}' "localhost:9980/gateway/blacklist"
+curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"set","addresses":[]}' "localhost:9980/gateway/blocklist"
 ```
 
-performs actions on the Gateway's blacklist. There are three `actions` that can
+performs actions on the Gateway's blocklist. There are three `actions` that can
 be performed. `append` and `remove` are used for appending or removing addresses
-from the Gateway's blacklist. `set` is used to define all the addresses in the
-blacklist. If a list of addresses is provided with `set`, that list of addresses
-will become the Gateway's blacklist, replacing any blacklist that was currently
-in place. To clear the Gateway's blacklist, submit an empty list with `set`.
+from the Gateway's blocklist. `set` is used to define all the addresses in the
+blocklist. If a list of addresses is provided with `set`, that list of addresses
+will become the Gateway's blocklist, replacing any blocklist that was currently
+in place. To clear the Gateway's blocklist, submit an empty list with `set`.
 
 ### Path Parameters
 ### REQUIRED
 **action** | string  
-this is the action to be performed on the blacklist. Allowed inputs are
+this is the action to be performed on the blocklist. Allowed inputs are
 `append`, `remove`, and `set`.
 
 **addresses** | string  
 this is a comma separated list of addresses that are to be appended to or
-removed from the blacklist. If the action is `append` or `remove` this field is
+removed from the blocklist. If the action is `append` or `remove` this field is
 required.
 
 ### Response
@@ -4800,10 +4800,12 @@ the file as though it is an attachment instead of rendering it.
 **format** | string  
 If 'format' is set, the skylink can point to a directory and it will return the
 data inside that directory. Format will decide the format in which it is
-returned. Currently, we support the following values: 'concat' will return the 
-concatenated data of all subfiles in that directory, 'tar' will return a tar 
-archive of all subfiles in that directory, and 'targz' will return gzipped tar 
-archive of all subfiles in that directory.
+returned. Currently, we support the following values: 'concat' will return the
+concatenated data of all subfiles in that directory, 'zip' will return a zip
+archive, 'tar' will return a tar archive of all subfiles in that directory, and
+'targz' will return a gzipped tar archive of all subfiles in that directory. If
+the format is not specified, and the skylink points at a directory, we default
+to the zip format and the contents will be downloaded as a zip archive.
 
 **redirect** | bool
 If 'redirect' is omitted or set to true, the provided skylink points to a 
@@ -4894,7 +4896,8 @@ that name exists within the skyfile.
 **filename** | string  
 The name of the file. This name will be encoded into the skyfile metadata, and
 will be a part of the skylink. If the name changes, the skylink will change as
-well.
+well. The name must be non-empty, may not include any path traversal strings
+("./", "../"), and may not begin with a forward-slash character.
 
 **dryrun** | bool  
 If dryrun is set to true, the request will return the Skylink of the file
