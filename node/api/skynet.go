@@ -1182,6 +1182,9 @@ func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Requ
 
 	WriteJSON(w, SkykeyGET{
 		Skykey: keyString,
+		Name:   name,
+		ID:     sk.ID().ToString(),
+		Type:   skykeyTypeString,
 	})
 }
 

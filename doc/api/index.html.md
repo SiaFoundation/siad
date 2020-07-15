@@ -5054,7 +5054,7 @@ may change over time.
 curl -A "Sia-Agent"  -u "":<apipassword> --data "skykey=BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a" "localhost:9980/skynet/addskykey"
 ```
 
-Stores the given skykey with the renter's skykey manager.
+Stores the given skykey with the skykey manager.
 
 ### Path Parameters
 ### REQUIRED
@@ -5083,21 +5083,21 @@ Returns a list of all Skykeys.
 {
   "skykeys": [
   {
-    "skykey": "skykey:AUI0eAOXWXHwW6KOLyI5O1OYduVvHxAA8qUR_fJ8Kluasb-ykPlHBEjDczrL21hmjhH0zAoQ3-Qq?name=testskykey1"
-    "name": "testskykey1"
-    "id": "ai5z8cf5NWbcvPBaBn0DFQ=="
+    "skykey": "skykey:AUI0eAOXWXHwW6KOLyI5O1OYduVvHxAA8qUR_fJ8Kluasb-ykPlHBEjDczrL21hmjhH0zAoQ3-Qq?name=testskykey1",
+    "name": "testskykey1",
+    "id": "ai5z8cf5NWbcvPBaBn0DFQ==",
     "type": "private-id"
   },
   {
-    "skykey": "skykey:AUqG0aQmgzCIlse2JxFLBGHCriZNz20IEKQu81XxYsak3rzmuVbZ2P6ZqeJHIlN5bjPqEmC67U8E?name=testskykey2"
-    "name": "testskykey2"
-    "id": "bi5z8cf5NWbcvPBaBn0DFQ=="
+    "skykey": "skykey:AUqG0aQmgzCIlse2JxFLBGHCriZNz20IEKQu81XxYsak3rzmuVbZ2P6ZqeJHIlN5bjPqEmC67U8E?name=testskykey2",
+    "name": "testskykey2",
+    "id": "bi5z8cf5NWbcvPBaBn0DFQ==",
     "type": "private-id"
   },
   {
-    "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey3"
-    "name": "testskykey3"
-    "id": "ci5z8cf5NWbcvPBaBn0DFQ=="
+    "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey3",
+    "name": "testskykey3",
+    "id": "ci5z8cf5NWbcvPBaBn0DFQ==",
     "type": "public-id"
   }
 }
@@ -5135,12 +5135,15 @@ skyfiles are encrypted with the same skykey.
 
 ```go
 {
-  "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey"
+  "skykey": "skykey:AUI0eAOXWXHwW6KOLyI5O1OYduVvHxAA8qUR_fJ8Kluasb-ykPlHBEjDczrL21hmjhH0zAoQ3-Qq?name=testskykey1",
+  "name": "key_to_the_castle",
+  "id": "ai5z8cf5NWbcvPBaBn0DFQ==",
+  "type": "private-id"
 }
 ```
 
 **skykey** | string  
-base-64 encoded skykey
+Skykey. See the documentation for /skynet/skykey for more detailed information.
 
 
 ## /skynet/deleteskykey [POST]
@@ -5195,9 +5198,9 @@ base-64 encoded ID of the skykey being queried
 
 ```go
 {
-  "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey"
-  "name": "testskykey"
-  "id": "gi5z8cf5NWbcvPBaBn0DFQ=="
+  "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey",
+  "name": "testskykey",
+  "id": "gi5z8cf5NWbcvPBaBn0DFQ==",
   "type": "private-id"
 }
 ```
@@ -5214,34 +5217,6 @@ base-64 encoded skykey ID
 **type** | string  
 human-readable skykey type. See the documentation for /skynet/createskykey for
 type information.
-
-## /skynet/skykeyid [GET]
-> curl example
-
-```go
-curl -A "Sia-Agent"  -u "":<apipassword> --data "name=key_to_the_castle" "localhost:9980/skynet/skykeyid"
-```
-
-Returns the base-64 encoded ID of the skykey stored under that name.
-
-### Path Parameters
-### REQUIRED
-**name** | string  
-name of the skykey being queried
-
-
-### JSON Response
-> JSON Response Example
- 
-```go
-{
-  "skykeyid": "gi5z8cf5NWbcvPBaBn0DFQ=="
-}
-```
-
-**skykeyid** | string  
-base-64 encoded skykey ID
-
 
 
 # Transaction Pool
