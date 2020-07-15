@@ -65,10 +65,10 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	}
 
 	// Try to find an exact match
-	var file bool
+	var isFile bool
 	for _, sf := range sm.Subfiles {
 		if EnsurePrefix(sf.Filename, "/") == path {
-			file = true
+			isFile = true
 			metadata.Subfiles[sf.Filename] = sf
 			break
 		}
@@ -89,7 +89,7 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 			metadata.Subfiles[sf.Filename] = sf
 		}
 	}
-	return metadata, file, offset, metadata.size()
+	return metadata, isFile, offset, metadata.size()
 }
 
 // ContentType returns the Content Type of the data. We only return a

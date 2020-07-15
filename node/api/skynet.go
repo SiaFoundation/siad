@@ -317,7 +317,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	defer streamer.Close()
 
-	var subfile bool
+	var isSubfile bool
 
 	// Serve the contents of the file at the default path if one is set. Note
 	// that we return the metadata for the entire Skylink when we serve the
@@ -327,7 +327,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		format == modules.SkyfileFormatNotSpecified {
 		_, _, offset, size := metadata.ForPath(metadata.DefaultPath)
 		streamer, err = NewLimitStreamer(streamer, offset, size)
-		subfile = true
+		isSubfile = true
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
@@ -348,12 +348,12 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 
 		metadata = metadataForPath
-		subfile = file
+		isSubfile = file
 	}
 
 	// If we are serving more than one file, and the format is not
 	// specified, default to downloading it as a zip archive.
-	if !subfile && metadata.IsDirectory() && format == modules.SkyfileFormatNotSpecified {
+	if !isSubfile && metadata.IsDirectory() && format == modules.SkyfileFormatNotSpecified {
 		format = modules.SkyfileFormatZip
 	}
 
