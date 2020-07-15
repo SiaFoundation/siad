@@ -19,6 +19,10 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// TODO: Re-enable this test after switching the scan over to fetching the price
+// table.
+
+/*
 // TestSiamuxRequired checks that the hostdb will count a host as offline if the
 // host is not running siamux.
 func TestSiamuxRequired(t *testing.T) {
@@ -81,6 +85,7 @@ func TestSiamuxRequired(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+*/
 
 // TestInitialScanComplete tests if the initialScanComplete field is set
 // correctly.
