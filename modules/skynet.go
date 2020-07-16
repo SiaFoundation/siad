@@ -173,6 +173,20 @@ var (
 	SkyfileFormatZip = SkyfileFormat("zip")
 )
 
+// Extension returns the extension for the format
+func (sf SkyfileFormat) Extension() string {
+	switch sf {
+	case SkyfileFormatZip:
+		return ".zip"
+	case SkyfileFormatTar:
+		return ".tar"
+	case SkyfileFormatTarGz:
+		return ".tar.gz"
+	default:
+		return ""
+	}
+}
+
 // IsArchive returns true if the format is an archive.
 func (sf SkyfileFormat) IsArchive() bool {
 	return sf == SkyfileFormatTar ||

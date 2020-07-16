@@ -51,10 +51,13 @@ func testDownloadContentDisposition(t *testing.T, tg *siatest.TestGroup) {
 		return nil
 	}
 
-	// define both values for the 'Content-Disposition' header
+	// define all possible values for the 'Content-Disposition' header
 	name := "TestContentDisposition"
 	inline := fmt.Sprintf("inline; filename=\"%v\"", name)
 	attachment := fmt.Sprintf("attachment; filename=\"%v\"", name)
+	attachmentZip := fmt.Sprintf("attachment; filename=\"%v.zip\"", name)
+	attachmentTar := fmt.Sprintf("attachment; filename=\"%v.tar\"", name)
+	attachmentTarGz := fmt.Sprintf("attachment; filename=\"%v.tar.gz\"", name)
 
 	params := make(map[string]string)
 	var header http.Header
@@ -100,7 +103,7 @@ func testDownloadContentDisposition(t *testing.T, tg *siatest.TestGroup) {
 	// 'format=zip'
 	params["format"] = string(modules.SkyfileFormatZip)
 	_, header, err = r.SkynetSkylinkHeadWithParameters(skylink, params)
-	err = errors.Compose(err, verifyCDHeader(header, attachment))
+	err = errors.Compose(err, verifyCDHeader(header, attachmentZip))
 	if err != nil {
 		t.Fatal(errors.AddContext(err, "format=zip"))
 	}
@@ -108,7 +111,7 @@ func testDownloadContentDisposition(t *testing.T, tg *siatest.TestGroup) {
 	// 'format=tar'
 	params["format"] = string(modules.SkyfileFormatTar)
 	_, header, err = r.SkynetSkylinkHeadWithParameters(skylink, params)
-	err = errors.Compose(err, verifyCDHeader(header, attachment))
+	err = errors.Compose(err, verifyCDHeader(header, attachmentTar))
 	if err != nil {
 		t.Fatal(errors.AddContext(err, "format=tar"))
 	}
@@ -116,7 +119,7 @@ func testDownloadContentDisposition(t *testing.T, tg *siatest.TestGroup) {
 	// 'format=targz'
 	params["format"] = string(modules.SkyfileFormatTarGz)
 	_, header, err = r.SkynetSkylinkHeadWithParameters(skylink, params)
-	err = errors.Compose(err, verifyCDHeader(header, attachment))
+	err = errors.Compose(err, verifyCDHeader(header, attachmentTarGz))
 	if err != nil {
 		t.Fatal(errors.AddContext(err, "format=targz"))
 	}

@@ -360,8 +360,10 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// format is an archive, set the disposition-type to attachment, otherwise
 	// we inline it.
 	var cdh string
-	if attachment || format.IsArchive() {
+	if attachment {
 		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(filepath.Base(metadata.Filename)))
+	} else if format.IsArchive() {
+		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(filepath.Base(metadata.Filename)+format.Extension()))
 	} else {
 		cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(filepath.Base(metadata.Filename)))
 	}
