@@ -75,29 +75,40 @@ func (i *instructionSwapSector) Execute(prevOutput output) output {
 	oldSector1 := newRoots[offset2]
 	oldSector2 := newRoots[offset1]
 
-	// Construct proof if necessary.
-	var proof []crypto.Hash
-	var data []byte
-	if i.staticMerkleProof {
-		// Create the first range.
-		var ranges []crypto.ProofRange
-		var oldLeafHashes []crypto.Hash
-		ranges = append(ranges, crypto.ProofRange{
-			Start: offset1,
-			End:   offset1 + 1,
-		})
-		oldLeafHashes = append(oldLeafHashes, oldSector1)
-		// We only need the second range if the offsets aren't equal.
-		if offset1 != offset2 {
-			ranges = append(ranges, crypto.ProofRange{
-				Start: offset2,
-				End:   offset2 + 1,
-			})
-			oldLeafHashes = append(oldLeafHashes, oldSector2)
+	// If no proof was requested we are done.
+	if !i.staticMerkleProof {
+		return output{
+			NewSize:       prevOutput.NewSize,
+			NewMerkleRoot: newMerkleRoot,
 		}
-		proof = crypto.MerkleDiffProof(ranges, uint64(len(newRoots)), nil, ps.sectors.merkleRoots)
-		data = encoding.Marshal(oldLeafHashes)
 	}
+
+	// Create the first range and remember the original leaf hash for that
+	// range.
+	var ranges []crypto.ProofRange
+	var oldLeafHashes []crypto.Hash
+	ranges = append(ranges, crypto.ProofRange{
+		Start: offset1,
+		End:   offset1 + 1,
+	})
+	oldLeafHashes = append(oldLeafHashes, oldSector1)
+
+	// We only need the second range if the offsets aren't equal. Also remember
+	// the leaf hash for that range.
+	if offset1 != offset2 {
+		ranges = append(ranges, crypto.ProofRange{
+			Start: offset2,
+			End:   offset2 + 1,
+		})
+		oldLeafHashes = append(oldLeafHashes, oldSector2)
+	}
+
+	// Create the proof and return the old leaf hashes of the modified sectors
+	// as the data since the data is unused anyway. The renter needs the
+	// original sector hashes to verify the proof agains the old contract merkle
+	// root and will then swap them and verify against the new root.
+	proof := crypto.MerkleDiffProof(ranges, uint64(len(newRoots)), nil, ps.sectors.merkleRoots)
+	data := encoding.Marshal(oldLeafHashes)
 
 	return output{
 		NewSize:       prevOutput.NewSize,

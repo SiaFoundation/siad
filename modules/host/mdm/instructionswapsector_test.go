@@ -92,6 +92,11 @@ func testInstructionSwapSectorBasic(t *testing.T, mdm *MDM, numSectors uint64, p
 	newRoots[i], newRoots[j] = newRoots[j], newRoots[i]
 	nmr := cachedMerkleRoot(newRoots)
 
+	// Make sure the new merkle root doesn't match the old one.
+	if nmr == imr {
+		t.Fatal("nmr shouldn't match imr")
+	}
+
 	// Assert the output.
 	err = outputs[0].assert(ics, nmr, expectedProof, expectedOutput)
 	if err != nil {
@@ -157,10 +162,6 @@ func testInstructionSwapSectorSameIndex(t *testing.T, mdm *MDM, numSectors uint6
 			End:   i + 1,
 		},
 	}
-	// Sort the ranges.
-	sort.Slice(ranges, func(i, j int) bool {
-		return ranges[i].Start < ranges[j].Start
-	})
 	expectedProof := crypto.MerkleDiffProof(ranges, uint64(len(oldRoots)), nil, oldRoots)
 	oldLeafHashes := []crypto.Hash{oldRoots[ranges[0].Start]}
 	expectedOutput := encoding.Marshal(oldLeafHashes)

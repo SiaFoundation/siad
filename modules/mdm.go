@@ -288,7 +288,7 @@ func MDMRevisionMemory() uint64 {
 	return 0 // 'Revision' doesn't hold on to any memory beyond the lifetime of the instruction.
 }
 
-// MDMSwapSectorMemory return the additional memory consumption of a
+// MDMSwapSectorMemory returns the additional memory consumption of a
 // 'SwapSector' instruction.
 func MDMSwapSectorMemory() uint64 {
 	return 0 // 'SwapSector' doesn't hold on to any memory beyond the lifetime of the instruction.
