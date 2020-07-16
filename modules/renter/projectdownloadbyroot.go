@@ -239,17 +239,17 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		// Since the program only contained a single instruction, the first
 		// element of the slice (if available) is what we're looking for.
 		var available bool
-		if resp.staticErr == nil && len(resp.staticAvailables) == 0 {
+		successfulResponse := resp != nil && resp.staticErr == nil
+		if successfulResponse && len(resp.staticAvailables) == 0 {
 			build.Critical("A successful job should not have a zero length response")
-			available = false
 		} else {
-			available = resp.staticErr == nil && resp.staticAvailables[0]
+			available = successfulResponse && resp.staticAvailables[0]
 		}
 
 		// If we received a response from a worker that is not useful for
 		// completing the project, go back to blocking. This check is ignored if
 		// we are supposed to use the best worker.
-		if (resp == nil || resp.staticErr != nil || !available) && !useBestWorker {
+		if !available && !useBestWorker {
 			continue
 		}
 
@@ -259,7 +259,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		// that the download continues even if we aren't yet ready to use the
 		// best known worker.
 		goodEnough := false
-		if resp != nil && resp.staticErr == nil && available {
+		if available {
 			w := resp.staticWorker
 			jq := w.staticJobReadQueue
 			usableWorkers[responses] = w
