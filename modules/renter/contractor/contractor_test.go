@@ -20,6 +20,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
+
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
@@ -38,31 +39,36 @@ func tryClose(cf closeFn, t *testing.T) {
 }
 
 // newModules initializes the modules needed to test creating a new contractor
-func newModules(testdir string) (modules.ConsensusSet, modules.Wallet, modules.TransactionPool, modules.HostDB, closeFn, error) {
+func newModules(testdir string) (modules.ConsensusSet, modules.Wallet, modules.TransactionPool, *siamux.SiaMux, modules.HostDB, closeFn, error) {
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
-		return nil, nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, nil, err
 	}
 	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
 	if err := <-errChan; err != nil {
-		return nil, nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, nil, err
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
 	if err != nil {
-		return nil, nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, nil, err
 	}
 	w, err := wallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
 	if err != nil {
-		return nil, nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, nil, err
 	}
-	hdb, errChanHDB := hostdb.New(g, cs, tp, testdir)
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, err
+	}
+	hdb, errChanHDB := hostdb.New(g, cs, tp, mux, testdir)
 	if err := <-errChanHDB; err != nil {
-		return nil, nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, nil, err
 	}
 	cf := func() error {
-		return errors.Compose(hdb.Close(), w.Close(), tp.Close(), cs.Close(), g.Close())
+		return errors.Compose(hdb.Close(), mux.Close(), w.Close(), tp.Close(), cs.Close(), g.Close())
 	}
-	return cs, w, tp, hdb, cf, nil
+	return cs, w, tp, mux, hdb, cf, nil
 }
 
 // newStream is a helper to get a ready-to-use stream that is connected to a
@@ -81,7 +87,7 @@ func TestNew(t *testing.T) {
 	}
 	// Create the modules.
 	dir := build.TempDir("contractor", t.Name())
-	cs, w, tpool, hdb, closeFn, err := newModules(dir)
+	cs, w, tpool, _, hdb, closeFn, err := newModules(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
