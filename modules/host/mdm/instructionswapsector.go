@@ -105,8 +105,8 @@ func (i *instructionSwapSector) Execute(prevOutput output) output {
 
 	// Create the proof and return the old leaf hashes of the modified sectors
 	// as the data since the data is unused anyway. The renter needs the
-	// original sector hashes to verify the proof agains the old contract merkle
-	// root and will then swap them and verify against the new root.
+	// original sector hashes to verify the proof against the old contract
+	// merkle root and will then swap them and verify against the new root.
 	proof := crypto.MerkleDiffProof(ranges, uint64(len(newRoots)), nil, ps.sectors.merkleRoots)
 	data := encoding.Marshal(oldLeafHashes)
 
