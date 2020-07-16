@@ -241,14 +241,16 @@ func (h *Host) initNetworking(address string) (err error) {
 	go h.threadedListen(threadedListenerClosedChan)
 
 	// Create a listener for the SiaMux.
-	err = h.staticMux.NewListener(modules.HostSiaMuxSubscriberName, h.threadedHandleStream)
-	if err != nil {
-		return errors.AddContext(err, "Failed to subscribe to the SiaMux")
+	if !h.dependencies.Disrupt("DisableHostSiamux") {
+		err = h.staticMux.NewListener(modules.HostSiaMuxSubscriberName, h.threadedHandleStream)
+		if err != nil {
+			return errors.AddContext(err, "Failed to subscribe to the SiaMux")
+		}
+		// Close the listener when h.tg.OnStop is called.
+		h.tg.OnStop(func() {
+			h.staticMux.CloseListener(modules.HostSiaMuxSubscriberName)
+		})
 	}
-	// Close the listener when h.tg.OnStop is called.
-	h.tg.OnStop(func() {
-		h.staticMux.CloseListener(modules.HostSiaMuxSubscriberName)
-	})
 
 	return nil
 }

@@ -9,6 +9,10 @@ import (
 )
 
 type (
+	// DependencyDisableHostSiamux will disable siamux in the host.
+	DependencyDisableHostSiamux struct {
+		modules.ProductionDependencies
+	}
 	// DependencyStorageObligationNotFound will cause the host to return that it
 	// wasn't able to find a storage obligation in managedPayByContract.
 	DependencyStorageObligationNotFound struct {
@@ -278,6 +282,11 @@ func (d *DependencyDisableCriticalOnMaxBalance) Disrupt(s string) bool {
 // Disrupt returns true if the correct string is provided.
 func (d *DependencyDisableAsyncStartup) Disrupt(s string) bool {
 	return s == "BlockAsyncStartup"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyDisableHostSiamux) Disrupt(s string) bool {
+	return s == "DisableHostSiamux"
 }
 
 // Disrupt returns true if the correct string is provided.
