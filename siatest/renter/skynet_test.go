@@ -1320,7 +1320,7 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 
 	// verify we default to the `zip` format if it is a directory and we have
 	// not specified it (use a HEAD call as that returns the response headers)
-	_, header, err := r.SkynetSkylinkHead(skylink, 0)
+	_, header, err := r.SkynetSkylinkHead(skylink)
 	if err != nil {
 		t.Fatal("unexpected error")
 	}
@@ -1896,7 +1896,7 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	status, header, err := r.SkynetSkylinkHead(skylink, 0)
+	status, header, err := r.SkynetSkylinkHead(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1949,13 +1949,15 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Perform a HEAD request with a timeout that exceeds the max timeout
-	status, _, _ = r.SkynetSkylinkHead(skylink, api.MaxSkynetRequestTimeout+1)
+	params := make(map[string]string)
+	params["timeout"] = fmt.Sprintf("%d", api.MaxSkynetRequestTimeout+1)
+	status, _, _ = r.SkynetSkylinkHeadWithParameters(skylink, params)
 	if status != http.StatusBadRequest {
 		t.Fatalf("Expected StatusBadRequest for a request with a timeout that exceeds the MaxSkynetRequestTimeout, instead received %v", status)
 	}
 
 	// Perform a HEAD request for a skylink that does not exist
-	status, header, err = r.SkynetSkylinkHead(skylink[:len(skylink)-3]+"abc", 0)
+	status, header, err = r.SkynetSkylinkHead(skylink[:len(skylink)-3] + "abc")
 	if status != http.StatusNotFound {
 		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
 	}
@@ -2042,7 +2044,7 @@ func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 		}
 
 		// verify the skylink can't be found after a dry run
-		status, _, _ := r.SkynetSkylinkHead(skylinkDry, 0)
+		status, _, _ := r.SkynetSkylinkHead(skylinkDry)
 		if status != http.StatusNotFound {
 			t.Fatal(fmt.Errorf("Expected 404 not found when trying to fetch a skylink retrieved from a dry run, instead received status %d", status))
 		}
@@ -2139,7 +2141,9 @@ func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
 	defer tg.RemoveNode(r)
 
 	// Verify timeout on head request
-	status, _, err := r.SkynetSkylinkHead(skylink, 1)
+	params := make(map[string]string)
+	params["timeout"] = "1"
+	status, _, err := r.SkynetSkylinkHeadWithParameters(skylink, params)
 	if status != http.StatusNotFound {
 		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
 	}

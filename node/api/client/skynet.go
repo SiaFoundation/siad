@@ -81,8 +81,21 @@ func (c *Client) skynetSkylinkGetWithParameters(skylink string, params map[strin
 // SkynetSkylinkHead uses the /skynet/skylink endpoint to get the headers that
 // are returned if the skyfile were to be requested using the SkynetSkylinkGet
 // method.
-func (c *Client) SkynetSkylinkHead(skylink string, timeout int) (int, http.Header, error) {
-	getQuery := fmt.Sprintf("/skynet/skylink/%s?timeout=%d", skylink, timeout)
+func (c *Client) SkynetSkylinkHead(skylink string) (int, http.Header, error) {
+	return c.SkynetSkylinkHeadWithParameters(skylink, map[string]string{})
+}
+
+// SkynetSkylinkHeadWithParameters uses the /skynet/skylink endpoint to get the
+// headers that are returned if the skyfile were to be requested using the
+// SkynetSkylinkGet method. It allows to pass any query string parameter through
+// the params.
+func (c *Client) SkynetSkylinkHeadWithParameters(skylink string, params map[string]string) (int, http.Header, error) {
+	values := url.Values{}
+	for k, v := range params {
+		values.Set(k, v)
+	}
+
+	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
 	return c.head(getQuery)
 }
 
