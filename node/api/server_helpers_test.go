@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -205,7 +206,7 @@ func assembleServerTesterWithDeps(key crypto.CipherKey, testdir string, gDeps, c
 		return nil, err
 	}
 	renterPersistDir := filepath.Join(testdir, modules.RenterDir)
-	hdb, errChan := hostdb.NewCustomHostDB(g, cs, tp, renterPersistDir, hdbDeps)
+	hdb, errChan := hostdb.NewCustomHostDB(g, cs, tp, mux, renterPersistDir, hdbDeps)
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
@@ -213,7 +214,8 @@ func assembleServerTesterWithDeps(key crypto.CipherKey, testdir string, gDeps, c
 	if err != nil {
 		return nil, err
 	}
-	contractSet, err := proto.NewContractSet(filepath.Join(renterPersistDir, "contracts"), csDeps)
+	renterRateLimit := ratelimit.NewRateLimit(0, 0, 0)
+	contractSet, err := proto.NewContractSet(filepath.Join(renterPersistDir, "contracts"), renterRateLimit, csDeps)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +223,7 @@ func assembleServerTesterWithDeps(key crypto.CipherKey, testdir string, gDeps, c
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
-	r, errChan := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, mux, renterPersistDir, rDeps)
+	r, errChan := renter.NewCustomRenter(g, cs, tp, hdb, w, hc, mux, renterPersistDir, renterRateLimit, rDeps)
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
@@ -318,7 +320,8 @@ func assembleAuthenticatedServerTester(requiredPassword string, key crypto.Ciphe
 	if err != nil {
 		return nil, err
 	}
-	r, errChan := renter.New(g, cs, w, tp, mux, filepath.Join(testdir, modules.RenterDir))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	r, errChan := renter.New(g, cs, w, tp, mux, rl, filepath.Join(testdir, modules.RenterDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}

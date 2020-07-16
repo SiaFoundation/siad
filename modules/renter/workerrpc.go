@@ -8,10 +8,11 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/ratelimit"
+	"gitlab.com/NebulousLabs/siamux"
 	"gitlab.com/NebulousLabs/siamux/mux"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/siamux"
 )
 
 // defaultNewStreamTimeout is a default timeout for creating a new stream.
@@ -51,8 +52,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	}()
 
 	// create a new stream
-	var stream siamux.Stream
-	stream, err = w.staticNewStream()
+	stream, err := w.staticNewStream()
 	if err != nil {
 		err = errors.AddContext(err, "Unable to create a new stream")
 		return
@@ -63,7 +63,7 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 		}
 	}()
 
-	// set the stream's limit
+	// set the limit return var.
 	limit = stream.Limit()
 
 	// prepare a buffer so we can optimize our writes
@@ -160,7 +160,11 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	// Set the deadline.
-	return stream, stream.SetDeadline(time.Now().Add(defaultRPCDeadline))
+	// Set deadline on the stream.
+	err = stream.SetDeadline(time.Now().Add(defaultRPCDeadline))
+	if err != nil {
+		return nil, err
+	}
+	// Wrap the stream in a ratelimit.
+	return ratelimit.NewRLStream(stream, w.renter.rl, w.renter.tg.StopChan()), nil
 }

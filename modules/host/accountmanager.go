@@ -1,6 +1,7 @@
 package host
 
 import (
+	"context"
 	"math"
 	"math/bits"
 	"sync"
@@ -906,10 +907,13 @@ func (am *accountManager) staticWaitForDepositResult(pr *persistResult) error {
 // staticWaitForWithdrawalResult will block until it receives a message on the
 // given result channel, or until it either times out or receives a stop signal.
 func (am *accountManager) staticWaitForWithdrawalResult(commitResultChan chan error) error {
+	ctx, cancel := context.WithTimeout(context.Background(), blockedWithdrawalTimeout)
+	defer cancel()
+
 	select {
 	case err := <-commitResultChan:
 		return err
-	case <-time.After(blockedWithdrawalTimeout):
+	case <-ctx.Done():
 		return ErrBalanceInsufficient
 	case <-am.h.tg.StopChan():
 		return ErrWithdrawalCancelled
@@ -1074,7 +1078,7 @@ func (a *account) depositExceedsMaxBalance(deposit, maxBalance types.Currency) b
 // withdrawalExceedsBalance returns true if withdrawal is larger than the
 // account balance.
 func (a *account) withdrawalExceedsBalance(withdrawal types.Currency) bool {
-	return a.balance.Cmp(withdrawal) < 0
+	return withdrawal.Cmp(a.balance) > 0
 }
 
 // sendResult will send the given result to the result channels that are waiting

@@ -2,6 +2,7 @@ package api
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
@@ -276,11 +277,14 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// Parse the format.
 	format := modules.SkyfileFormat(strings.ToLower(queryForm.Get("format")))
-	if format != modules.SkyfileFormatNotSpecified &&
-		format != modules.SkyfileFormatTar &&
-		format != modules.SkyfileFormatConcat &&
-		format != modules.SkyfileFormatTarGz {
-		WriteError(w, Error{"unable to parse 'format' parameter, allowed values are: 'concat', 'tar' and 'targz'"}, http.StatusBadRequest)
+	switch format {
+	case modules.SkyfileFormatNotSpecified:
+	case modules.SkyfileFormatTar:
+	case modules.SkyfileFormatTarGz:
+	case modules.SkyfileFormatConcat:
+	case modules.SkyfileFormatZip:
+	default:
+		WriteError(w, Error{"unable to parse 'format' parameter, allowed values are: 'concat', 'tar', 'targz' and 'zip'"}, http.StatusBadRequest)
 		return
 	}
 
@@ -313,29 +317,36 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	defer streamer.Close()
 
-	// Get the redirect limitations.
-	allowRedirect, err := allowRedirect(queryForm, metadata)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
+	var isSubfile bool
+
+	// Handle the legacy case
+	if metadata.DefaultPath == "" && !metadata.DisableDefaultPath && len(metadata.Subfiles) == 1 {
+		for filename := range metadata.Subfiles {
+			metadata.DefaultPath = modules.EnsurePrefix(filename, "/")
+			break
+		}
 	}
-	// Redirect, if possible.
-	if allowRedirect && path == "/" {
-		path = metadata.DefaultPath
-	}
-	// If path is different from the root, limit the streamer and return the
-	// appropriate subset of the metadata. This is done by wrapping the streamer
-	// so it only returns the files defined in the subset of the metadata.
-	if path != "/" {
-		var dir bool
-		var offset, size uint64
-		metadata, dir, offset, size = metadata.ForPath(path)
-		if len(metadata.Subfiles) == 0 {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
+
+	// Serve the contents of the file at the default path if one is set. Note
+	// that we return the metadata for the entire Skylink when we serve the
+	// contents of the file at the default path.
+	if path == "/" &&
+		metadata.DefaultPath != "" &&
+		format == modules.SkyfileFormatNotSpecified {
+		_, _, offset, size := metadata.ForPath(metadata.DefaultPath)
+		streamer, err = NewLimitStreamer(streamer, offset, size)
+		isSubfile = true
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
 		}
-		if dir && format == modules.SkyfileFormatNotSpecified {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, format must be specified", path)}, http.StatusBadRequest)
+	}
+
+	// Serve the contents of the skyfile at path if one is set
+	if path != "/" {
+		metadataForPath, file, offset, size := metadata.ForPath(path)
+		if len(metadataForPath.Subfiles) == 0 {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v", path)}, http.StatusNotFound)
 			return
 		}
 		streamer, err = NewLimitStreamer(streamer, offset, size)
@@ -343,46 +354,53 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
 		}
-	} else {
-		// We don't need a format to be specified for single files. Instead, we
-		// directly serve their content, unless that is explicitly disabled by
-		// passing the `redirect=false` parameter. This is legacy behaviour that
-		// we are continuing to support.
-		formatRequired := len(metadata.Subfiles) != 0
-		// We need a format to be specified when accessing the `/` of skyfiles
-		// that either have more than one file or do not allow redirects.
-		formatRequired = formatRequired && (len(metadata.Subfiles) > 1 || !allowRedirect)
-		if formatRequired && format == "" {
-			WriteError(w, Error{fmt.Sprintf("failed to download directory for path: %v, format must be specified", path)}, http.StatusBadRequest)
-			return
-		}
+
+		metadata = metadataForPath
+		isSubfile = file
 	}
 
-	// If requested, serve the content as a tar archive or compressed tar
-	// archive.
-	if format == modules.SkyfileFormatTar {
-		w.Header().Set("content-type", "application/x-tar")
-		err = serveTar(w, metadata, streamer)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
-		}
-		return
-	}
-	if format == modules.SkyfileFormatTarGz {
-		w.Header().Set("content-type", "application/x-gtar ")
-		gzw := gzip.NewWriter(w)
-		err = serveTar(gzw, metadata, streamer)
-		err = errors.Compose(err, gzw.Close())
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as archive: %v", err)}, http.StatusInternalServerError)
-		}
-		return
+	// If we are serving more than one file, and the format is not
+	// specified, default to downloading it as a zip archive.
+	if !isSubfile && metadata.IsDirectory() && format == modules.SkyfileFormatNotSpecified {
+		format = modules.SkyfileFormatZip
 	}
 
 	// Encode the metadata
 	encMetadata, err := json.Marshal(metadata)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+
+	// If requested, serve the content as a tar archive, compressed tar
+	// archive or zip archive.
+	if format == modules.SkyfileFormatTar {
+		w.Header().Set("Content-Type", "application/x-tar")
+		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+		err = serveTar(w, metadata, streamer)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar archive: %v", err)}, http.StatusInternalServerError)
+		}
+		return
+	}
+	if format == modules.SkyfileFormatTarGz {
+		w.Header().Set("Content-Type", "application/x-gtar ")
+		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+		gzw := gzip.NewWriter(w)
+		err = serveTar(gzw, metadata, streamer)
+		err = errors.Compose(err, gzw.Close())
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar gz archive: %v", err)}, http.StatusInternalServerError)
+		}
+		return
+	}
+	if format == modules.SkyfileFormatZip {
+		w.Header().Set("content-type", "application/zip")
+		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+		err = serveZip(w, metadata, streamer)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as zip archive: %v", err)}, http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -682,7 +700,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 
 		// Get the default path.
-		defaultPath, err := defaultPath(queryForm, subfiles)
+		defaultPath, disableDefPath, err := defaultPath(queryForm, subfiles)
 		if err != nil {
 			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 			return
@@ -690,9 +708,10 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 		lup.Reader = reader
 		lup.FileMetadata = modules.SkyfileMetadata{
-			Filename:    filename,
-			Subfiles:    subfiles,
-			DefaultPath: defaultPath,
+			Filename:           filename,
+			Subfiles:           subfiles,
+			DefaultPath:        defaultPath,
+			DisableDefaultPath: disableDefPath,
 		}
 	} else {
 		// Parse out the filemode
@@ -925,6 +944,57 @@ func serveTar(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Stream
 	return tw.Close()
 }
 
+// serveZip serves skyfiles as a zip by reading them from r and writing the
+// archive to dst.
+func serveZip(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Streamer) error {
+	zw := zip.NewWriter(dst)
+
+	// Get the files to zip.
+	var files []modules.SkyfileSubfileMetadata
+	for _, file := range md.Subfiles {
+		files = append(files, file)
+	}
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Offset < files[j].Offset
+	})
+
+	// If there are no files, it's a single file download. Manually construct a
+	// SkyfileSubfileMetadata from the SkyfileMetadata.
+	if len(files) == 0 {
+		// Fetch the length of the file by seeking to the end and then back to
+		// the start.
+		length, err := streamer.Seek(0, io.SeekEnd)
+		if err != nil {
+			return errors.AddContext(err, "serveZip: failed to seek to end of skyfile")
+		}
+		_, err = streamer.Seek(0, io.SeekStart)
+		if err != nil {
+			return errors.AddContext(err, "serveZip: failed to seek to start of skyfile")
+		}
+		// Construct the SkyfileSubfileMetadata.
+		files = append(files, modules.SkyfileSubfileMetadata{
+			FileMode: md.Mode,
+			Filename: md.Filename,
+			Offset:   0,
+			Len:      uint64(length),
+		})
+	}
+
+	for _, file := range files {
+		f, err := zw.Create(file.Filename)
+		if err != nil {
+			return errors.AddContext(err, "serveZip: failed to add the file to the zip")
+		}
+
+		// Write file content.
+		_, err = io.CopyN(f, streamer, int64(file.Len))
+		if err != nil {
+			return errors.AddContext(err, "serveZip: failed to write file contents to the zip")
+		}
+	}
+	return zw.Close()
+}
+
 // parseTimeout tries to parse the timeout from the query string and validate
 // it. If not present, it will default to DefaultSkynetRequestTimeout.
 func parseTimeout(queryForm url.Values) (time.Duration, error) {
@@ -1125,6 +1195,9 @@ func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Requ
 
 	WriteJSON(w, SkykeyGET{
 		Skykey: keyString,
+		Name:   name,
+		ID:     sk.ID().ToString(),
+		Type:   skykeyTypeString,
 	})
 }
 
@@ -1181,72 +1254,53 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 	WriteJSON(w, res)
 }
 
-// allowRedirect decides whether a redirect will be allowed for this skyfile.
-func allowRedirect(queryForm url.Values, metadata modules.SkyfileMetadata) (bool, error) {
-	// Do not allow redirect for skyfiles which are not directories.
-	if metadata.Subfiles == nil || len(metadata.Subfiles) == 0 {
-		return false, nil
-	}
-	// Do not allow redirect if the default path is empty.
-	if metadata.DefaultPath == "" {
-		return false, nil
-	}
-	// Check what the user requested.
-	redirectStr := queryForm.Get("redirect")
-	// If the user didn't specify anything we default to allowing redirects.
-	if redirectStr == "" {
-		return true, nil
-	}
-	allowRedirect, err := strconv.ParseBool(redirectStr)
-	if err != nil {
-		return false, Error{fmt.Sprintf("unable to parse 'redirect' parameter: %v", err)}
-	}
-	return allowRedirect, nil
-}
-
 // defaultPath extracts the defaultPath from the request or returns a default.
 // It will never return a directory because `subfiles` contains only files.
-func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaultPath string, err error) {
-	// Check for explicitly specified empty default path, meaning that user
-	// doesn't want redirects for this skydirectory.
-	queryFormMap := map[string][]string(queryForm)
-	defaultPathArr, exists := queryFormMap[modules.SkyfileDefaultPathParamName]
-	if exists && len(defaultPathArr) > 0 && defaultPathArr[0] == "" {
-		// The user specifically disabled the default path for this skydirectory
-		// by specifying an empty string.
-		return "", nil
-	}
-
-	defaultPath = queryForm.Get(modules.SkyfileDefaultPathParamName)
+func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaultPath string, disableDefaultPath bool, err error) {
 	// ensure the defaultPath always has a leading slash
 	defer func() {
-		if defaultPath != "" && !strings.HasPrefix(defaultPath, "/") {
-			defaultPath = "/" + defaultPath
+		if defaultPath != "" {
+			defaultPath = modules.EnsurePrefix(defaultPath, "/")
 		}
 	}()
-
+	// Parse "disabledefaultpath" param
+	disableDefaultPathStr := queryForm.Get(modules.SkyfileDisableDefaultPathParamName)
+	if disableDefaultPathStr != "" {
+		disableDefaultPath, err = strconv.ParseBool(disableDefaultPathStr)
+		if err != nil {
+			return "", false, fmt.Errorf("unable to parse 'disabledefaultpath' parameter: " + err.Error())
+		}
+	}
+	// Parse "defaultPath" param
+	defaultPath = queryForm.Get(modules.SkyfileDefaultPathParamName)
+	if (disableDefaultPath || defaultPath != "") && len(subfiles) == 0 {
+		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath and DisableDefaultPath are not applicable to skyfiles without subfiles.")
+	}
+	if disableDefaultPath {
+		return "", true, nil
+	}
 	if defaultPath == "" {
 		// No default path specified, check if there is an `index.html` file.
 		_, exists := subfiles[DefaultSkynetDefaultPath]
 		if exists {
-			return DefaultSkynetDefaultPath, nil
+			return DefaultSkynetDefaultPath, false, nil
 		}
-		// For single file directories we want to redirect to the only file.
+		// For single file directories we want to serve the only file.
 		if len(subfiles) == 1 {
-			for _, f := range subfiles {
-				return f.Filename, nil
+			for filename := range subfiles {
+				return filename, false, nil
 			}
 		}
 		// No `index.html` in a multi-file directory, so we can't have a
 		// default path.
-		return "", nil
+		return "", false, nil
 	}
 	// Check if the defaultPath exists. Omit the leading slash because
 	// the filenames in `subfiles` won't have it.
-	if _, exists = subfiles[strings.TrimPrefix(defaultPath, "/")]; !exists {
-		return "", errors.AddContext(ErrInvalidDefaultPath, fmt.Sprintf("no such path: %s", defaultPath))
+	if _, exists := subfiles[strings.TrimPrefix(defaultPath, "/")]; !exists {
+		return "", false, errors.AddContext(ErrInvalidDefaultPath, fmt.Sprintf("no such path: %s", defaultPath))
 	}
-	return defaultPath, nil
+	return defaultPath, false, nil
 }
 
 // isMultipartRequest is a helper method that checks if the given media type

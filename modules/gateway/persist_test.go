@@ -2,14 +2,18 @@ package gateway
 
 import (
 	"bytes"
+	"io/ioutil"
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 )
 
+// TestLoad probes loading a gateway from a persist file
 func TestLoad(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -83,5 +87,48 @@ func TestLoadv033(t *testing.T) {
 	// The log should be empty
 	if buf.Len() != 0 {
 		t.Error("expected empty log, got", buf.String())
+	}
+}
+
+// TestLoadv135 tests that the gateway can load a v135 persist file.
+func TestLoadv135(t *testing.T) {
+	// Create testdir
+	testDir := build.TempDir("gateway", t.Name())
+	err := os.MkdirAll(testDir, persist.DefaultDiskPermissionsTest)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Copy the v135 persist file into the testdir
+	v135PersistFile := filepath.Join("testdata", t.Name(), persistFilename)
+	bytes, err := ioutil.ReadFile(v135PersistFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(filepath.Join(testDir, persistFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.Write(bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Load a gateway from the testdata folder with the v135 persist file
+	g := &Gateway{
+		blocklist:  make(map[string]struct{}),
+		persistDir: testDir,
+	}
+	if err := g.load(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Blocklist should have 1 IP in it
+	if len(g.blocklist) != 1 {
+		t.Fatalf("Expected %v ip in the blocklist but found %v", 1, len(g.blocklist))
 	}
 }

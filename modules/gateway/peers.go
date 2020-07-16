@@ -158,10 +158,10 @@ func (g *Gateway) threadedAcceptConn(conn net.Conn) {
 	g.log.Debugf("INFO: %v wants to connect", addr)
 
 	g.mu.RLock()
-	_, exists := g.blacklist[addr.Host()]
+	_, exists := g.blocklist[addr.Host()]
 	g.mu.RUnlock()
 	if exists {
-		g.log.Debugf("INFO: %v was rejected. (blacklisted)", addr)
+		g.log.Debugf("INFO: %v was rejected. (blocklisted)", addr)
 		conn.Close()
 		return
 	}
@@ -451,8 +451,8 @@ func (g *Gateway) managedConnect(addr modules.NetAddress) error {
 		g.log.Debugln("Unable to connect to", addr, "error:", err)
 		return err
 	}
-	if _, exists := g.blacklist[addr.Host()]; exists {
-		err := errors.New("can't connect to blacklisted address")
+	if _, exists := g.blocklist[addr.Host()]; exists {
+		err := errors.New("can't connect to blocklisted address")
 		g.log.Debugln("Unable to connect to", addr, "error:", err)
 		return err
 	}
@@ -565,14 +565,14 @@ func (g *Gateway) Disconnect(addr modules.NetAddress) error {
 
 // ConnectManual is a wrapper for the Connect function. It is specifically used
 // if a user wants to connect to a node manually. This also removes the node
-// from the blacklist.
+// from the blocklist.
 func (g *Gateway) ConnectManual(addr modules.NetAddress) error {
 	g.log.Debugln("Attempting to Manually Connect to", addr)
 	g.mu.Lock()
 	var err error
-	if _, exists := g.blacklist[addr.Host()]; exists {
-		g.log.Debugln("Removing", addr, "from the blacklist due to Manually trying to Connect")
-		delete(g.blacklist, addr.Host())
+	if _, exists := g.blocklist[addr.Host()]; exists {
+		g.log.Debugln("Removing", addr, "from the blocklist due to Manually trying to Connect")
+		delete(g.blocklist, addr.Host())
 		err = g.saveSync()
 	}
 	g.mu.Unlock()
@@ -581,14 +581,14 @@ func (g *Gateway) ConnectManual(addr modules.NetAddress) error {
 
 // DisconnectManual is a wrapper for the Disconnect function. It is
 // specifically used if a user wants to connect to a node manually. This also
-// adds the node to the blacklist.
+// adds the node to the blocklist.
 func (g *Gateway) DisconnectManual(addr modules.NetAddress) error {
 	g.log.Debugln("Attempting to Manually Disconnect from", addr)
 	err := g.Disconnect(addr)
 	if err == nil {
-		g.log.Debugln("Adding", addr, "to the blacklist because of successful manual disconnect")
+		g.log.Debugln("Adding", addr, "to the blocklist because of successful manual disconnect")
 		g.mu.Lock()
-		g.blacklist[addr.Host()] = struct{}{}
+		g.blocklist[addr.Host()] = struct{}{}
 		err = g.saveSync()
 		g.mu.Unlock()
 	}

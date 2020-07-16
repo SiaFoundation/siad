@@ -11,6 +11,7 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -114,22 +115,27 @@ func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.Transact
 
 // newTestingContractor is a helper function that creates a ready-to-use
 // contractor.
-func newTestingContractor(testdir string, g modules.Gateway, cs modules.ConsensusSet, tp modules.TransactionPool) (*Contractor, closeFn, error) {
+func newTestingContractor(testdir string, g modules.Gateway, cs modules.ConsensusSet, tp modules.TransactionPool, rl *ratelimit.RateLimit) (*Contractor, closeFn, error) {
 	w, walletCF, err := newTestingWallet(testdir, cs, tp)
 	if err != nil {
 		return nil, nil, err
 	}
-	hdb, errChan := hostdb.New(g, cs, tp, filepath.Join(testdir, "hostdb"))
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	if err != nil {
+		return nil, nil, err
+	}
+	hdb, errChan := hostdb.New(g, cs, tp, mux, filepath.Join(testdir, "hostdb"))
 	if err := <-errChan; err != nil {
 		return nil, nil, err
 	}
-	contractor, errChan := New(cs, w, tp, hdb, filepath.Join(testdir, "contractor"))
+	contractor, errChan := New(cs, w, tp, hdb, rl, filepath.Join(testdir, "contractor"))
 	err = <-errChan
 	if err != nil {
 		return nil, nil, err
 	}
 	cf := func() error {
-		return errors.Compose(contractor.Close(), hdb.Close(), walletCF())
+		return errors.Compose(contractor.Close(), hdb.Close(), mux.Close(), walletCF())
 	}
 	return contractor, cf, <-errChan
 }
@@ -196,7 +202,7 @@ func newCustomTestingTrio(name string, mux *siamux.SiaMux, hdeps modules.Depende
 	if err != nil {
 		return nil, nil, nil, nil, build.ExtendErr("error creating testing host", err)
 	}
-	c, contractorCF, err := newTestingContractor(filepath.Join(testdir, "Contractor"), g, cs, tp)
+	c, contractorCF, err := newTestingContractor(filepath.Join(testdir, "Contractor"), g, cs, tp, ratelimit.NewRateLimit(0, 0, 0))
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
