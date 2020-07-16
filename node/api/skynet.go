@@ -356,9 +356,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}
 
-	// Set Content-Disposition header, if 'attachment' is true or if the return
-	// format is an archive, set the disposition-type to attachment, otherwise
-	// we inline it.
+	// Set an appropritate Content-Disposition header
 	var cdh string
 	if attachment {
 		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(filepath.Base(metadata.Filename)))
@@ -367,11 +365,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	} else {
 		cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(filepath.Base(metadata.Filename)))
 	}
+	w.Header().Set("Content-Disposition", cdh)
 
 	// If requested, serve the content as a tar archive, compressed tar
 	// archive or zip archive.
 	if format == modules.SkyfileFormatTar {
-		w.Header().Set("Content-Disposition", cdh)
 		w.Header().Set("Content-Type", "application/x-tar")
 		err = serveTar(w, metadata, streamer)
 		if err != nil {
@@ -380,7 +378,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 	if format == modules.SkyfileFormatTarGz {
-		w.Header().Set("Content-Disposition", cdh)
 		w.Header().Set("Content-Type", "application/x-gtar")
 		gzw := gzip.NewWriter(w)
 		err = serveTar(gzw, metadata, streamer)
@@ -391,7 +388,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 	if format == modules.SkyfileFormatZip {
-		w.Header().Set("Content-Disposition", cdh)
 		w.Header().Set("Content-Type", "application/zip")
 		err = serveZip(w, metadata, streamer)
 		if err != nil {
@@ -444,7 +440,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if metadata.ContentType() != "" {
 		w.Header().Set("Content-Type", metadata.ContentType())
 	}
-	w.Header().Set("Content-Disposition", cdh)
 	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
