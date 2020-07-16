@@ -75,6 +75,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestSkynetEncryptionLargeFilePublicID", Test: testSkynetEncryptionLargeFileWithType(skykey.TypePublicID)},
 		{Name: "TestSkynetEncryptionLargeFilePrivateID", Test: testSkynetEncryptionLargeFileWithType(skykey.TypePrivateID)},
 		{Name: "TestSkynetDefaultPath", Test: testSkynetDefaultPath},
+		{Name: "TestSkynetDefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
 		{Name: "TestSkynetSingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
 		{Name: "TestSkynetDownloadFormats", Test: testSkynetDownloadFormats},
 	}
@@ -209,7 +210,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 
 	// Try to download the file using the ReaderGet method with the zip
 	// formatter.
-	skylinkReader, err = r.SkynetSkylinkZipReaderGet(skylink)
+	_, skylinkReader, err = r.SkynetSkylinkZipReaderGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +237,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 
 	// Try to download the file using the ReaderGet method with the tar
 	// formatter.
-	skylinkReader, err = r.SkynetSkylinkTarReaderGet(skylink)
+	_, skylinkReader, err = r.SkynetSkylinkTarReaderGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +268,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 
 	// Try to download the file using the ReaderGet method with the targz
 	// formatter.
-	skylinkReader, err = r.SkynetSkylinkTarGzReaderGet(skylink)
+	_, skylinkReader, err = r.SkynetSkylinkTarGzReaderGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1098,7 +1099,7 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// now specify the zip format
-	skyfileReader, err := r.SkynetSkylinkZipReaderGet(skylink)
+	_, skyfileReader, err := r.SkynetSkylinkZipReaderGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1139,7 +1140,7 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// now specify the tar format
-	skyfileReader, err = r.SkynetSkylinkTarReaderGet(skylink)
+	_, skyfileReader, err = r.SkynetSkylinkTarReaderGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1180,7 +1181,7 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// now specify the targz format
-	skyfileReader, err = r.SkynetSkylinkTarGzReaderGet(skylink)
+	_, skyfileReader, err = r.SkynetSkylinkTarGzReaderGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1235,7 +1236,7 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// now specify the tar format
-	skyfileReader, err = r.SkynetSkylinkTarReaderGet(fmt.Sprintf("%s/a", skylink))
+	_, skyfileReader, err = r.SkynetSkylinkTarReaderGet(fmt.Sprintf("%s/a", skylink))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1270,7 +1271,7 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// now specify the targz format
-	skyfileReader, err = r.SkynetSkylinkTarGzReaderGet(fmt.Sprintf("%s/a", skylink))
+	_, skyfileReader, err = r.SkynetSkylinkTarGzReaderGet(fmt.Sprintf("%s/a", skylink))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1307,7 +1308,7 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// now specify the zip format
-	skyfileReader, err = r.SkynetSkylinkZipReaderGet(fmt.Sprintf("%s/a", skylink))
+	_, skyfileReader, err = r.SkynetSkylinkZipReaderGet(fmt.Sprintf("%s/a", skylink))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2745,13 +2746,15 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	indexJs := "index.js"
 	invalidPath := "invalid.js"
 
-	// TEST: Contains index.html but doesn't specify a default path.
+	// TEST: Contains index.html but doesn't specify a default path (not disabled).
 	// It should return the content of index.html.
 	filename := "index.html_nil"
-	files := make(map[string][]byte)
-	files["index.html"] = []byte(fc1)
-	files["about.html"] = []byte(fc2)
-	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(filename, files, nil, false)
+
+	files := []siatest.TestFile{
+		{Name: "index.html", Data: []byte(fc1)},
+		{Name: "about.html", Data: []byte(fc2)},
+	}
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(filename, files, "", false, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -2759,18 +2762,35 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(content, files["index.html"]) {
-		t.Fatalf("Expected to get content '%s', instead got '%s'", files["index.html"], string(content))
+	if !bytes.Equal(content, files[0].Data) {
+		t.Fatalf("Expected to get content '%s', instead got '%s'", files[0].Data, string(content))
+	}
+
+	// TEST: Contains index.html but specifies an empty default path (disabled).
+	// It should not return an error and download the file as zip
+	filename = "index.html_empty"
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "", true, false)
+	if err != nil {
+		t.Fatal("Failed to upload multipart file.", err)
+	}
+	_, header, err := r.SkynetSkylinkHead(skylink, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ct := header.Get("Content-Type")
+	if ct != "application/zip" {
+		t.Fatal("expecteed zip archive")
 	}
 
 	// TEST: Contains index.html but specifies a different default path.
 	// Contains index.js and specifies "index.js" as default path.
 	// It should return the content of index.js.
 	filename = "index.html_index.js"
-	files = make(map[string][]byte)
-	files["index.html"] = []byte(fc1)
-	files["index.js"] = []byte(fc2)
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, &indexJs, false)
+	files = []siatest.TestFile{
+		{Name: "index.html", Data: []byte(fc1)},
+		{Name: "index.js", Data: []byte(fc2)},
+	}
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, indexJs, false, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -2778,17 +2798,18 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(content, files["index.js"]) {
-		t.Fatalf("Expected to get content '%s', instead got '%s'", files["index.js"], string(content))
+	if !bytes.Equal(content, files[1].Data) {
+		t.Fatalf("Expected to get content '%s', instead got '%s'", files[1].Data, string(content))
 	}
 
 	// TEST: Contains index.html but specifies a different INVALID default path.
 	// This should fail on upload with "invalid default path provided".
 	filename = "index.html_invalid"
-	files = make(map[string][]byte)
-	files["index.html"] = []byte(fc1)
-	files["about.html"] = []byte(fc2)
-	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, &invalidPath, false)
+	files = []siatest.TestFile{
+		{Name: "index.html", Data: []byte(fc1)},
+		{Name: "about.html", Data: []byte(fc2)},
+	}
+	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, invalidPath, false, false)
 	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidDefaultPath.Error()) {
 		t.Fatalf("Expected error 'invalid default path provided', got '%+v'", err)
 	}
@@ -2797,10 +2818,11 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	// Contains index.js and specifies "index.js" as default path.
 	// It should return the content of index.js.
 	filename = "index.js_index.js"
-	files = make(map[string][]byte)
-	files["index.js"] = []byte(fc1)
-	files["about.html"] = []byte(fc2)
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, &indexJs, false)
+	files = []siatest.TestFile{
+		{Name: "index.js", Data: []byte(fc1)},
+		{Name: "about.html", Data: []byte(fc2)},
+	}
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, indexJs, false, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -2808,28 +2830,59 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(content, files["index.js"]) {
-		t.Fatalf("Expected to get content '%s', instead got '%s'", files["index.js"], string(content))
+	if !bytes.Equal(content, files[0].Data) {
+		t.Fatalf("Expected to get content '%s', instead got '%s'", files[0].Data, string(content))
 	}
 
 	// TEST: Does not contain index.html and specifies an INVALID default path.
 	// This should fail on upload with "invalid default path provided".
 	filename = "index.js_invalid"
-	files = make(map[string][]byte)
-	files["index.js"] = []byte(fc1)
-	files["about.html"] = []byte(fc2)
-	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, &invalidPath, false)
+	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, invalidPath, false, false)
 	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidDefaultPath.Error()) {
 		t.Fatalf("Expected error 'invalid default path provided', got '%+v'", err)
 	}
 
+	// TEST: Does not contain index.html and doesn't specify default path (not disabled).
+	// It should not return an error and download the file as zip
+	filename = "index.js_nil"
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "", false, false)
+	if err != nil {
+		t.Fatal("Failed to upload multipart file.", err)
+	}
+	_, header, err = r.SkynetSkylinkHead(skylink, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ct = header.Get("Content-Type")
+	if ct != "application/zip" {
+		t.Fatal("expecteed zip archive")
+	}
+
 	// TEST: Does not contain "index.html".
-	// Contains a single file and doesn't specify a default path.
+	// Contains a single file and specifies an empty default path (disabled).
+	// It should not return an error and download the file as zip
+	filename = "index.js_empty"
+	files = []siatest.TestFile{
+		{Name: "index.js", Data: []byte(fc1)},
+	}
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "", true, false)
+	if err != nil {
+		t.Fatal("Failed to upload multipart file.", err)
+	}
+	_, header, err = r.SkynetSkylinkHead(skylink, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ct = header.Get("Content-Type")
+	if ct != "application/zip" {
+		t.Fatal("expecteed zip archive")
+	}
+
+	// TEST: Does not contain "index.html".
+	// Contains a single file and doesn't specify a default path (not disabled).
 	// It should return the content of index.js.
 	filename = "index.js"
-	files = make(map[string][]byte)
-	files["index.js"] = []byte(fc1)
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, nil, false)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "", false, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -2837,18 +2890,244 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(content, files["index.js"]) {
-		t.Fatalf("Expected to get content '%s', instead got '%s'", files["index.js"], string(content))
+	if !bytes.Equal(content, files[0].Data) {
+		t.Fatalf("Expected to get content '%s', instead got '%s'", files[0].Data, string(content))
+	}
+}
+
+// testSkynetDefaultPath_TableTest tests all combinations of inputs in relation
+// to default path.
+func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	fc1 := []byte("File1Contents")
+	fc2 := []byte("File2Contents. This one is longer.")
+
+	singleFile := []siatest.TestFile{
+		{Name: "about.html", Data: fc1},
+	}
+	singleDir := []siatest.TestFile{
+		{Name: "dir/about.html", Data: fc1},
+	}
+	multiHasIndex := []siatest.TestFile{
+		{Name: "index.html", Data: fc1},
+		{Name: "about.html", Data: fc2},
+	}
+	multiNoIndex := []siatest.TestFile{
+		{Name: "hello.html", Data: fc1},
+		{Name: "about.html", Data: fc2},
+	}
+
+	about := "/about.html"
+	bad := "/bad.html"
+	index := "/index.html"
+	hello := "/hello.html"
+	dirAbout := "/dir/about.html"
+	tests := []struct {
+		name                   string
+		files                  []siatest.TestFile
+		defaultPath            string
+		disableDefaultPath     bool
+		expectedContent        []byte
+		expectedErrStrDownload string
+		expectedErrStrUpload   string
+		expectedZipArchive     bool
+	}{
+		{
+			// Single files with valid default path.
+			// OK
+			name:            "single_correct",
+			files:           singleFile,
+			defaultPath:     about,
+			expectedContent: fc1,
+		},
+		{
+			// Single files without default path.
+			// OK
+			name:            "single_nil",
+			files:           singleFile,
+			defaultPath:     "",
+			expectedContent: fc1,
+		},
+		{
+			// Single files with default, empty default path (disabled).
+			// Expect a zip archive
+			name:               "single_def_empty",
+			files:              singleFile,
+			defaultPath:        "",
+			disableDefaultPath: true,
+			expectedZipArchive: true,
+		},
+		{
+			// Single files with default, bad default path.
+			// Error on upload: invalid default path
+			name:                 "single_def_bad",
+			files:                singleFile,
+			defaultPath:          bad,
+			expectedContent:      nil,
+			expectedErrStrUpload: "invalid default path provided",
+		},
+
+		{
+			// Single dir with valid default path.
+			// OK
+			name:            "single_dir_correct",
+			files:           singleDir,
+			defaultPath:     dirAbout,
+			expectedContent: fc1,
+		},
+		{
+			// Single dir without default path (not disabled).
+			// OK
+			name:               "single_dir_nil",
+			files:              singleDir,
+			defaultPath:        "",
+			disableDefaultPath: false,
+			expectedContent:    fc1,
+		},
+		{
+			// Single dir with empty default path (disabled).
+			// Expect a zip archive
+			name:               "single_dir_def_empty",
+			files:              singleDir,
+			defaultPath:        "",
+			disableDefaultPath: true,
+			expectedZipArchive: true,
+		},
+		{
+			// Single dir with bad default path.
+			// Error on upload: invalid default path
+			name:                 "single_def_bad",
+			files:                singleDir,
+			defaultPath:          bad,
+			expectedContent:      nil,
+			expectedErrStrUpload: "invalid default path provided",
+		},
+
+		{
+			// Multi dir with index, correct default path.
+			// OK
+			name:            "multi_idx_correct",
+			files:           multiHasIndex,
+			defaultPath:     index,
+			expectedContent: fc1,
+		},
+		{
+			// Multi dir with index, no default path (not disabled).
+			// OK
+			name:               "multi_idx_nil",
+			files:              multiHasIndex,
+			defaultPath:        "",
+			disableDefaultPath: false,
+			expectedContent:    fc1,
+		},
+		{
+			// Multi dir with index, empty default path (disabled).
+			// Expect a zip archive
+			name:               "multi_idx_empty",
+			files:              multiHasIndex,
+			defaultPath:        "",
+			disableDefaultPath: true,
+			expectedZipArchive: true,
+		},
+		{
+			// Multi dir with index, bad default path.
+			// Error on upload: invalid default path.
+			name:                 "multi_idx_bad",
+			files:                multiHasIndex,
+			defaultPath:          bad,
+			expectedContent:      nil,
+			expectedErrStrUpload: "invalid default path provided",
+		},
+
+		{
+			// Multi dir with no index, correct default path.
+			// OK
+			name:            "multi_noidx_correct",
+			files:           multiNoIndex,
+			defaultPath:     hello,
+			expectedContent: fc1,
+		},
+		{
+			// Multi dir with no index, no default path (not disabled).
+			// Expect a zip archive
+			name:               "multi_noidx_nil",
+			files:              multiNoIndex,
+			defaultPath:        "",
+			disableDefaultPath: false,
+			expectedZipArchive: true,
+		},
+		{
+			// Multi dir with no index, empty default path (disabled).
+			// Expect a zip archive
+			name:               "multi_noidx_empty",
+			files:              multiNoIndex,
+			defaultPath:        "",
+			disableDefaultPath: true,
+			expectedZipArchive: true,
+		},
+
+		{
+			// Multi dir with no index, bad default path.
+			// Error on upload: invalid default path.
+			name:                 "multi_noidx_bad",
+			files:                multiNoIndex,
+			defaultPath:          bad,
+			expectedContent:      nil,
+			expectedErrStrUpload: "invalid default path provided",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(tt.name, tt.files, tt.defaultPath, tt.disableDefaultPath, false)
+
+			// verify the returned error
+			if err == nil && tt.expectedErrStrUpload != "" {
+				t.Fatalf("Expected error '%s', got <nil>", tt.expectedErrStrUpload)
+			}
+			if err != nil && (tt.expectedErrStrUpload == "" || !strings.Contains(err.Error(), tt.expectedErrStrUpload)) {
+				t.Fatalf("Expected error '%s', got '%s'", tt.expectedErrStrUpload, err.Error())
+			}
+			if tt.expectedErrStrUpload != "" {
+				return
+			}
+
+			// verify if it returned an archive if we expected it to
+			if tt.expectedZipArchive {
+				_, header, err := r.SkynetSkylinkHead(skylink, 0)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if header.Get("Content-Type") != "application/zip" {
+					t.Fatalf("Expected Content-Type to be 'application/zip', but received '%v'", header.Get("Content-Type"))
+				}
+				return
+			}
+
+			// verify the contents of the skylink
+			content, _, err := r.SkynetSkylinkGet(skylink)
+			if err == nil && tt.expectedErrStrDownload != "" {
+				t.Fatalf("Expected error '%s', got <nil>", tt.expectedErrStrDownload)
+			}
+			if err != nil && (tt.expectedErrStrDownload == "" || !strings.Contains(err.Error(), tt.expectedErrStrDownload)) {
+				t.Fatalf("Expected error '%s', got '%s'", tt.expectedErrStrDownload, err.Error())
+			}
+			if tt.expectedErrStrDownload == "" && !bytes.Equal(content, tt.expectedContent) {
+				t.Logf(err.Error())
+				t.Fatalf("Content mismatch! Expected %d bytes, got %d bytes.", len(tt.expectedContent), len(content))
+			}
+		})
 	}
 }
 
 // testSkynetSingleFileNoSubfiles ensures that a single file uploaded as a
 // skyfile will not have `subfiles` defined in its metadata. This is required by
-// the `defaultPath` and `redirect` logic.
+// the `defaultPath` logic.
 func testSkynetSingleFileNoSubfiles(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	skylink, sup, _, err := r.UploadNewSkyfileBlocking("file.name", modules.SectorSize, false)
+	skylink, sup, _, err := r.UploadNewSkyfileBlocking("testSkynetSingleFileNoSubfiles", modules.SectorSize, false)
 	if err != nil {
 		t.Fatal("Failed to upload a single file.", err)
 	}
