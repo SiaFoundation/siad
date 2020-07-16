@@ -1,6 +1,7 @@
 package skynetblacklist
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -9,6 +10,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestPersistCompatv143Tov150 tests converting the skynet blacklist persistence
@@ -19,74 +22,185 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 	}
 	t.Parallel()
 
-	// Create test directory
 	testdir := testDir(t.Name())
 
-	// Initialize the directory with a v143 persist file
-	err := os.MkdirAll(testdir, modules.DefaultDirPerm)
+	// Test 1: Clean conversion from v143 to v150
+
+	// Create sub test directory
+	subTestDir := filepath.Join(testdir, "CleanConvert")
+	err := os.MkdirAll(subTestDir, modules.DefaultDirPerm)
 	if err != nil {
 		t.Fatal(err)
 	}
-	v143FileName := filepath.Join("..", "..", "..", "compatibility", persistFile+"_v143")
-	f, err := os.Open(v143FileName)
+
+	// Initialize the directory with a v143 persist file
+	err = loadV143CompatPersistFile(subTestDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the persistence
+	err = loadAndVerifyPersistence(subTestDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test 2A: Empty Temp File Exists
+
+	// Create sub test directory
+	subTestDir = filepath.Join(testdir, "EmptyTempFile")
+	err = os.MkdirAll(subTestDir, modules.DefaultDirPerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Initialize the directory with a v143 persist file
+	err = loadV143CompatPersistFile(subTestDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate a crash during the creation a temporary file by creating an empty
+	// temp file
+	f, err := os.Create(filepath.Join(subTestDir, tempPersistFile))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	bytes, err := ioutil.ReadAll(f)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pf, err := os.Create(filepath.Join(testdir, persistFile))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pf.Close()
-	_, err = pf.Write(bytes)
+
+	// Verify the persistence
+	err = loadAndVerifyPersistence(subTestDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Verify that loading the older persist file works
-	aop, reader, err := persist.NewAppendOnlyPersist(testdir, persistFile, metadataHeader, metadataVersionv143)
+	// Test 2B: Temp File Exists with an invalid checksum
+
+	// Create sub test directory
+	subTestDir = filepath.Join(testdir, "InvalidChecksum")
+	err = os.MkdirAll(subTestDir, modules.DefaultDirPerm)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Initialize the directory with a v143 persist file
+	err = loadV143CompatPersistFile(subTestDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate a crash during the creation a temporary file by creating a temp
+	// file with random bytes
+	f, err = os.Create(filepath.Join(subTestDir, tempPersistFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	_, err = f.Write(fastrand.Bytes(100))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the persistence
+	err = loadAndVerifyPersistence(subTestDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test 3: Temp File Exists with a valid checksum
+
+	// Create sub test directory
+	subTestDir = filepath.Join(testdir, "ValidChecksum")
+	err = os.MkdirAll(subTestDir, modules.DefaultDirPerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Initialize the directory with a v143 persist file
+	err = loadV143CompatPersistFile(subTestDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate a crash after creating a temporary file
+	_, err = createTempFileFromPersistFile(subTestDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the persistence
+	err = loadAndVerifyPersistence(subTestDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// loadAndVerifyPersistence loads the persistence and verifies that the
+// conversion from v1.4.3 to v1.5.0 updated the persistence as expected
+func loadAndVerifyPersistence(testDir string) error {
+	// Verify that loading the older persist file works
+	aop, reader, err := persist.NewAppendOnlyPersist(testDir, persistFile, metadataHeader, metadataVersionV143)
+	if err != nil {
+		return err
 	}
 
 	// Grab the merkleroots that were persisted
 	merkleroots, err := unmarshalObjects(reader)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 	if len(merkleroots) == 0 {
-		t.Fatal("no merkleroots in old versioned persist file")
+		return errors.New("no merkleroots in old version's persist file")
 	}
 
 	// Close the original AOP
 	err = aop.Close()
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
 
 	// Create a new SkynetBlacklist, this should convert the persistence
-	pl, err := New(testdir)
+	sb, err := New(testDir)
 	if err != nil {
-		t.Fatal(err)
+		return err
 	}
-	defer pl.Close()
+	defer sb.Close()
 
 	// Verify that the original merkleroots are now the hashes in the blacklist
-	pl.mu.Lock()
-	defer pl.mu.Unlock()
-	if len(merkleroots) != len(pl.hashes) {
-		t.Errorf("Expected %v hashes but got %v", len(merkleroots), len(pl.hashes))
+	sb.mu.Lock()
+	defer sb.mu.Unlock()
+	if len(merkleroots) != len(sb.hashes) {
+		return fmt.Errorf("Expected %v hashes but got %v", len(merkleroots), len(sb.hashes))
 	}
 	for mr := range merkleroots {
 		mrHash := crypto.HashObject(mr)
-		if _, ok := pl.hashes[mrHash]; !ok {
-			t.Log("Original MerkleRoots:", merkleroots)
-			t.Log("Loaded Hashes:", pl.hashes)
-			t.Fatal("MerkleRoot hash not found in list of hashes")
+		if _, ok := sb.hashes[mrHash]; !ok {
+			return fmt.Errorf("Original MerkleRoots: %v \nLoaded Hashes: %v \n MerkleRoot hash not found in list of hashes", merkleroots, sb.hashes)
 		}
 	}
+	return nil
+}
+
+// loadV143CompatPersistFile loads the v1.4.3 persist file into the testDir
+func loadV143CompatPersistFile(testDir string) error {
+	v143FileName := filepath.Join("..", "..", "..", "compatibility", persistFile+"_v143")
+	f, err := os.Open(v143FileName)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	bytes, err := ioutil.ReadAll(f)
+	if err != nil {
+		return err
+	}
+	pf, err := os.Create(filepath.Join(testDir, persistFile))
+	if err != nil {
+		return err
+	}
+	defer pf.Close()
+	_, err = pf.Write(bytes)
+	if err != nil {
+		return err
+	}
+	return nil
 }

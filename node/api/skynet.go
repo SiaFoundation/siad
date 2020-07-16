@@ -65,7 +65,7 @@ type (
 	//
 	// NOTE: With v1.5.0 the return value for the Blacklist changed. Pre v1.5.0
 	// the []crypto.Hash was a slice of MerkleRoots. Post v1.5.0 the []crypto.Hash
-	// was a slice of the Hashes of the MerkleRoots
+	// is a slice of the Hashes of the MerkleRoots
 	SkynetBlacklistGET struct {
 		Blacklist []crypto.Hash `json:"blacklist"`
 	}

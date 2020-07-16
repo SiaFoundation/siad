@@ -37,7 +37,7 @@ type (
 	SkynetBlacklist struct {
 		staticAop *persist.AppendOnlyPersist
 
-		// hashes is a set of blacklisted links.
+		// hashes is a set of hashed blacklisted merkleroots.
 		hashes map[crypto.Hash]struct{}
 
 		mu sync.Mutex
@@ -53,19 +53,10 @@ type (
 
 // New returns an initialized SkynetBlacklist.
 func New(persistDir string) (*SkynetBlacklist, error) {
-	// Initialize the persistence of the blacklist.
-	aop, reader, err := persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
-	if errors.Contains(err, persist.ErrWrongVersion) {
-		// Try and convert the persistence from v143 to v150
-		err = convertPersistVersionFromv143Tov150(persistDir)
-		if err != nil {
-			return nil, errors.AddContext(err, "unable to convert persistence from v143 to v150")
-		}
-		// Try and initialize the persistence again
-		aop, reader, err = persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
-	}
+	// Load the persistence of the blacklist.
+	aop, reader, err := loadPersist(persistDir)
 	if err != nil {
-		return nil, errors.AddContext(err, fmt.Sprintf("unable to initialize the skynet blacklist persistence at '%v'", aop.FilePath()))
+		return nil, errors.AddContext(err, "unable to load the skynet blacklist persistence")
 	}
 
 	sb := &SkynetBlacklist{
@@ -80,7 +71,7 @@ func New(persistDir string) (*SkynetBlacklist, error) {
 	return sb, nil
 }
 
-// Blacklist returns the merkleroots that are blacklisted
+// Blacklist returns the hashes of the merkleroots that are blacklisted
 func (sb *SkynetBlacklist) Blacklist() []crypto.Hash {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
