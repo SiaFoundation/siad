@@ -128,7 +128,7 @@ type TestFile struct {
 // will verify the file can be downloaded using its Skylink. Returns the
 // skylink, the parameters used for the upload and potentially an error.
 // The `files` argument is a map of filepath->fileContent.
-func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files []TestFile, defaultPath *string, force bool) (skylink string, sup modules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
+func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files []TestFile, defaultPath string, disableDefaultPath bool, force bool) (skylink string, sup modules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
 	// create the siapath
 	skyfilePath, err := modules.NewSiaPath(filename)
 	if err != nil {
@@ -161,6 +161,7 @@ func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files []T
 		ContentType:         writer.FormDataContentType(),
 		Filename:            filename,
 		DefaultPath:         defaultPath,
+		DisableDefaultPath:  disableDefaultPath,
 	}
 
 	// upload a skyfile

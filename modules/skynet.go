@@ -1,7 +1,6 @@
 package modules
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -17,6 +16,9 @@ const (
 	// SkyfileDefaultPathParamName specifies the name of the form parameter that
 	// holds the default path.
 	SkyfileDefaultPathParamName = "defaultpath"
+	// SkyfileDisableDefaultPathParamName specifies the name of the form
+	// parameter that holds the disable-default-path flag.
+	SkyfileDisableDefaultPathParamName = "disabledefaultpath"
 )
 
 // SkyfileMetadata is all of the metadata that gets placed into the first 4096
@@ -24,9 +26,6 @@ const (
 // writing back to disk. The data is json-encoded when it is placed into the
 // leading bytes of the skyfile, meaning that this struct can be extended
 // without breaking compatibility.
-//
-// NOTE: This type has a custom JSON unmarshaller which handles the special
-// cases for `defaultpath`.
 type SkyfileMetadata struct {
 	Mode     os.FileMode     `json:"mode,omitempty"`
 	Filename string          `json:"filename,omitempty"`
@@ -41,10 +40,10 @@ type SkyfileMetadata struct {
 	// metadata would be treated as a legacy metadata JSON. Setting the default
 	// path to an empty string means an explicit do-not-default.
 	DefaultPath string `json:"defaultpath"`
+	// DisableDefaultPath prevents the usage of DefaultPath. As a result no
+	// content will be automatically served for the skyfile.
+	DisableDefaultPath bool `json:"disabledefaultpath,omitempty"`
 }
-
-// skyfileMetadataJSON is a helper type
-type skyfileMetadataJSON SkyfileMetadata
 
 // SkyfileSubfiles contains the subfiles of a skyfile, indexed by their
 // filename.
@@ -59,9 +58,8 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	// All paths must be absolute.
 	path = EnsurePrefix(path, "/")
 	metadata := SkyfileMetadata{
-		Filename:    path,
-		Subfiles:    make(SkyfileSubfiles),
-		DefaultPath: sm.DefaultPath,
+		Filename: path,
+		Subfiles: make(SkyfileSubfiles),
 	}
 
 	// Try to find an exact match
@@ -120,34 +118,6 @@ func (sm SkyfileMetadata) IsDirectory() bool {
 		}
 	}
 	return false
-}
-
-// UnmarshalJSON unmarshals a byte slice into a SkyfileMetadata while handling
-// some special cases, e.g. DefaultPath field being empty vs not set.
-func (sm *SkyfileMetadata) UnmarshalJSON(b []byte) error {
-	var m skyfileMetadataJSON
-	if err := json.Unmarshal(b, &m); err != nil {
-		return err
-	}
-	sm.Mode = m.Mode
-	sm.Filename = m.Filename
-	sm.Subfiles = m.Subfiles
-	sm.DefaultPath = m.DefaultPath
-
-	// Handle the special case of `defaultpath` not being set.
-	if !strings.Contains(string(b), "\"defaultpath\":\"") {
-		// If this is a single file we want to set the default path to the only
-		// file in order to support the legacy case in which this field is
-		// missing. We only need to do that for multipart file, i.e. files that
-		// have subfiles.
-		if len(sm.Subfiles) == 1 {
-			for filename := range sm.Subfiles {
-				sm.DefaultPath = EnsurePrefix(filename, "/")
-				break
-			}
-		}
-	}
-	return nil
 }
 
 // size returns the total size, which is the sum of the length of all subfiles.
@@ -295,7 +265,11 @@ type SkyfileMultipartUploadParameters struct {
 	// DefaultPath indicates the default file to be opened when opening skyfiles
 	// that contain directories. If set to empty string no file will be opened
 	// by default.
-	DefaultPath *string `json:"defaultpath,omitempty"`
+	DefaultPath string `json:"defaultpath,omitempty"`
+
+	// DisableDefaultPath prevents the usage of DefaultPath. As a result no
+	// content will be automatically served for the skyfile.
+	DisableDefaultPath bool `json:"disabledefaultpath,omitempty"`
 
 	// ContentType indicates the media type of the data supplied by the reader.
 	ContentType string `json:"contenttype"`

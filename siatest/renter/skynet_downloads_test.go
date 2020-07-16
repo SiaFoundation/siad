@@ -82,7 +82,7 @@ func testDownloadSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 	// upload a single file using multi-part upload
 	data := []byte("contents_file1.png")
 	files := []siatest.TestFile{{Name: "file1.png", Data: data}}
-	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking("SingleFileMultiPart", files, nil, false)
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking("SingleFileMultiPart", files, "", false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,14 +111,13 @@ func testDownloadSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// verify non existing default path
-	noexist := "notexists.png"
-	_, _, _, err = r.UploadNewMultipartSkyfileBlocking("multipartUploadSingle", files, &noexist, false)
+	_, _, _, err = r.UploadNewMultipartSkyfileBlocking("multipartUploadSingle", files, "notexists.png", false, false)
 	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidDefaultPath.Error()) {
 		t.Errorf("Expected '%v' instead error was '%v'", api.ErrInvalidDefaultPath, err)
 	}
 
 	// verify trying to set no default path on single file upload
-	_, _, _, err = r.UploadNewMultipartSkyfileBlocking("multipartUploadSingle", files, nil, false)
+	_, _, _, err = r.UploadNewMultipartSkyfileBlocking("multipartUploadSingle", files, "", false, false)
 	if err != nil {
 		t.Errorf("Expected success, instead error was '%v'", err)
 	}
@@ -133,7 +132,7 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 		{Name: "index.html", Data: []byte("index.html_contents")},
 		{Name: "about.html", Data: []byte("about.html_contents")},
 	}
-	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking("DirectoryBasic", files, nil, false)
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking("DirectoryBasic", files, "", false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +155,8 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 				Offset:      uint64(len(files[0].Data)),
 				Len:         uint64(len(files[1].Data)),
 			}},
-		DefaultPath: "/index.html",
+		DefaultPath:        "/index.html",
+		DisableDefaultPath: false,
 	}
 
 	// verify downloads
@@ -174,8 +174,7 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// upload the same files but with a different default path
-	about := "about.html"
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking("DirectoryBasic", files, &about, true)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking("DirectoryBasic", files, "about.html", false, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,8 +211,7 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// upload the same files but with no default path
-	empty := ""
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking("DirectoryBasic", files, &empty, true)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking("DirectoryBasic", files, "", true, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +235,8 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 				Len:         uint64(len(files[1].Data)),
 			},
 		},
-		// (note that the default path is not set)
+		DefaultPath:        "",
+		DisableDefaultPath: true,
 	}
 
 	// verify downloads
@@ -247,8 +246,7 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// verify some errors on upload
-	noexist := "notexists.html"
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking("DirectoryBasic", files, &noexist, false)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking("DirectoryBasic", files, "notexists.html", false, false)
 	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidDefaultPath.Error()) {
 		t.Errorf("Expected '%v' instead error was '%v'", api.ErrInvalidDefaultPath, err)
 	}
@@ -266,7 +264,7 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 		{Name: "assets/index.html", Data: []byte("assets_index.html_contents")},
 		{Name: "index.html", Data: []byte("index.html_contents")},
 	}
-	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking("DirectoryNested", files, nil, false)
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking("DirectoryNested", files, "", false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +302,8 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 				Len:         uint64(len(files[2].Data)),
 			},
 		},
-		DefaultPath: "/index.html",
+		DefaultPath:        "/index.html",
+		DisableDefaultPath: false,
 	}
 
 	// verify downloads
@@ -336,7 +335,6 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 				Len:         uint64(len(files[1].Data)),
 			},
 		},
-		DefaultPath: "/index.html",
 	}
 
 	err = verifyDownloadDirectory(t, r, skylink+"/assets/images", append(files[0].Data, files[1].Data...), expectedMetadata)
@@ -361,7 +359,6 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 				Len:         uint64(len(files[2].Data)),
 			},
 		},
-		DefaultPath: "/index.html",
 	},
 	)
 	if err != nil {
@@ -375,8 +372,7 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 		{Name: "assets/index.html", Data: []byte("assets_index.html_contents")},
 		{Name: "index.html", Data: []byte("index.html_contents")},
 	}
-	assetsIndex := "assets/index.html"
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking("DirectoryNested", files, &assetsIndex, true)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking("DirectoryNested", files, "assets/index.html", false, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,8 +433,8 @@ func verifyDownloadRaw(t *testing.T, r *siatest.TestNode, skylink string, expect
 		return err
 	}
 	if !bytes.Equal(data, expectedData) {
-		t.Log("expected data: ", expectedData)
-		t.Log("actual   data: ", data)
+		t.Log("expected data: ", string(expectedData))
+		t.Log("actual   data: ", string(data))
 		return errors.New("Unexpected data")
 	}
 	if !reflect.DeepEqual(metadata, expectedMetadata) {

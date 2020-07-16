@@ -692,7 +692,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 
 		// Get the default path.
-		defaultPath, err := defaultPath(queryForm, subfiles)
+		defaultPath, disableDefPath, err := defaultPath(queryForm, subfiles)
 		if err != nil {
 			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 			return
@@ -700,9 +700,10 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 		lup.Reader = reader
 		lup.FileMetadata = modules.SkyfileMetadata{
-			Filename:    filename,
-			Subfiles:    subfiles,
-			DefaultPath: defaultPath,
+			Filename:           filename,
+			Subfiles:           subfiles,
+			DefaultPath:        defaultPath,
+			DisableDefaultPath: disableDefPath,
 		}
 	} else {
 		// Parse out the filemode
@@ -1244,48 +1245,47 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 
 // defaultPath extracts the defaultPath from the request or returns a default.
 // It will never return a directory because `subfiles` contains only files.
-func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaultPath string, err error) {
+func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaultPath string, disableDefaultPath bool, err error) {
 	defer func() {
 		if defaultPath != "" {
 			defaultPath = modules.EnsurePrefix(defaultPath, "/")
 		}
 	}()
-	// Check for explicitly specified empty default path, meaning that user
-	// doesn't want redirects for this skydirectory.
-	queryFormMap := map[string][]string(queryForm)
-	defaultPathArr, exists := queryFormMap[modules.SkyfileDefaultPathParamName]
-	if exists && len(subfiles) == 0 {
-		return "", errors.AddContext(ErrInvalidDefaultPath, "DefaultPath is not applicable to skyfiles without subfiles.")
-	}
-	if exists && len(defaultPathArr) > 0 && defaultPathArr[0] == "" {
-		// The user specifically disabled the default path for this skydirectory
-		// by specifying an empty string.
-		return "", nil
+	disableDefaultPathStr := queryForm.Get(modules.SkyfileDisableDefaultPathParamName)
+	disableDefaultPath, err = strconv.ParseBool(disableDefaultPathStr)
+	if err != nil && disableDefaultPathStr != "" {
+		return "", false, errors.New(fmt.Sprintf("could not parse '%s'", modules.SkyfileDisableDefaultPathParamName))
 	}
 	defaultPath = queryForm.Get(modules.SkyfileDefaultPathParamName)
+	if (disableDefaultPath || defaultPath != "") && len(subfiles) == 0 {
+		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath and DisableDefaultPath are not applicable to skyfiles without subfiles.")
+	}
+	if disableDefaultPath {
+		return "", true, nil
+	}
 	// ensure the defaultPath always has a leading slash
 	if defaultPath == "" {
 		// No default path specified, check if there is an `index.html` file.
 		_, exists := subfiles[DefaultSkynetDefaultPath]
 		if exists {
-			return DefaultSkynetDefaultPath, nil
+			return DefaultSkynetDefaultPath, false, nil
 		}
 		// For single file directories we want to serve the only file.
 		if len(subfiles) == 1 {
 			for filename := range subfiles {
-				return filename, nil
+				return filename, false, nil
 			}
 		}
 		// No `index.html` in a multi-file directory, so we can't have a
 		// default path.
-		return "", nil
+		return "", false, nil
 	}
 	// Check if the defaultPath exists. Omit the leading slash because
 	// the filenames in `subfiles` won't have it.
 	if _, exists := subfiles[strings.TrimPrefix(defaultPath, "/")]; !exists {
-		return "", errors.AddContext(ErrInvalidDefaultPath, fmt.Sprintf("no such path: %s", defaultPath))
+		return "", false, errors.AddContext(ErrInvalidDefaultPath, fmt.Sprintf("no such path: %s", defaultPath))
 	}
-	return defaultPath, nil
+	return defaultPath, false, nil
 }
 
 // isMultipartRequest is a helper method that checks if the given media type
