@@ -319,6 +319,14 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	var isSubfile bool
 
+	// Handle the legacy case
+	if metadata.DefaultPath == "" && !metadata.DisableDefaultPath && len(metadata.Subfiles) == 1 {
+		for filename := range metadata.Subfiles {
+			metadata.DefaultPath = modules.EnsurePrefix(filename, "/")
+			break
+		}
+	}
+
 	// Serve the contents of the file at the default path if one is set. Note
 	// that we return the metadata for the entire Skylink when we serve the
 	// contents of the file at the default path.
@@ -1246,16 +1254,21 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 // defaultPath extracts the defaultPath from the request or returns a default.
 // It will never return a directory because `subfiles` contains only files.
 func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaultPath string, disableDefaultPath bool, err error) {
+	// ensure the defaultPath always has a leading slash
 	defer func() {
 		if defaultPath != "" {
 			defaultPath = modules.EnsurePrefix(defaultPath, "/")
 		}
 	}()
+	// Parse "disabledefaultpath" param
 	disableDefaultPathStr := queryForm.Get(modules.SkyfileDisableDefaultPathParamName)
-	disableDefaultPath, err = strconv.ParseBool(disableDefaultPathStr)
-	if err != nil && disableDefaultPathStr != "" {
-		return "", false, errors.New(fmt.Sprintf("could not parse '%s'", modules.SkyfileDisableDefaultPathParamName))
+	if disableDefaultPathStr != "" {
+		disableDefaultPath, err = strconv.ParseBool(disableDefaultPathStr)
+		if err != nil {
+			return "", false, fmt.Errorf("unable to parse 'disabledefaultpath' parameter: " + err.Error())
+		}
 	}
+	// Parse "defaultPath" param
 	defaultPath = queryForm.Get(modules.SkyfileDefaultPathParamName)
 	if (disableDefaultPath || defaultPath != "") && len(subfiles) == 0 {
 		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath and DisableDefaultPath are not applicable to skyfiles without subfiles.")
@@ -1263,7 +1276,6 @@ func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaul
 	if disableDefaultPath {
 		return "", true, nil
 	}
-	// ensure the defaultPath always has a leading slash
 	if defaultPath == "" {
 		// No default path specified, check if there is an `index.html` file.
 		_, exists := subfiles[DefaultSkynetDefaultPath]

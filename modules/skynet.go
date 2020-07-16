@@ -35,11 +35,7 @@ type SkyfileMetadata struct {
 	// a path, and the user is not trying to download the Skylink as an archive.
 	// It defaults to 'index.html' on upload if not specified and if a file with
 	// that name is present in the upload.
-	//
-	// NOTE: do not `omitempty`, if we were to omit empty default paths, this
-	// metadata would be treated as a legacy metadata JSON. Setting the default
-	// path to an empty string means an explicit do-not-default.
-	DefaultPath string `json:"defaultpath"`
+	DefaultPath string `json:"defaultpath,omitempty"`
 	// DisableDefaultPath prevents the usage of DefaultPath. As a result no
 	// content will be automatically served for the skyfile.
 	DisableDefaultPath bool `json:"disabledefaultpath,omitempty"`

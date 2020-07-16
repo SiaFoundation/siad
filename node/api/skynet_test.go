@@ -28,12 +28,11 @@ func TestDefaultPath(t *testing.T) {
 			err:                nil,
 		},
 		{
-			name:               "single file not multipart empty",
-			queryForm:          url.Values{modules.SkyfileDisableDefaultPathParamName: []string{"true"}},
-			subfiles:           nil,
-			defaultPath:        "",
-			disableDefaultPath: true,
-			err:                ErrInvalidDefaultPath,
+			name:        "single file not multipart empty",
+			queryForm:   url.Values{modules.SkyfileDisableDefaultPathParamName: []string{"true"}},
+			subfiles:    nil,
+			defaultPath: "",
+			err:         ErrInvalidDefaultPath,
 		},
 		{
 			name:        "single file not multipart set",
@@ -129,12 +128,15 @@ func TestDefaultPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dp, _, err := defaultPath(tt.queryForm, tt.subfiles)
+			dp, ddp, err := defaultPath(tt.queryForm, tt.subfiles)
 			if (err != nil || tt.err != nil) && !errors.Contains(err, tt.err) {
 				t.Fatalf("Expected error %v, got %v\n", tt.err, err)
 			}
 			if dp != tt.defaultPath {
 				t.Fatalf("Expected defaultPath '%v', got '%v'\n", tt.defaultPath, dp)
+			}
+			if ddp != tt.disableDefaultPath {
+				t.Fatalf("Expected disableDefaultPath '%v', got '%v'\n", tt.disableDefaultPath, ddp)
 			}
 		})
 	}
