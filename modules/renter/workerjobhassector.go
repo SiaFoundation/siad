@@ -144,8 +144,6 @@ func (j *jobHasSector) managedHasSector() ([]bool, error) {
 
 	// Execute the program and parse the responses.
 	//
-	// TODO: Are we expecting more than one response? Should we check that there
-	// was only one response?
 	hasSectors := make([]bool, 0, len(program))
 	var responses []programResponse
 	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
