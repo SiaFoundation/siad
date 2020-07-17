@@ -199,18 +199,41 @@ func testInstructionSwapSectorOutOfBounds(t *testing.T, mdm *MDM, numSectors uin
 	i := fastrand.Uint64n(numSectors)
 	j := numSectors
 
-	// Randomly swap them.
-	for fastrand.Intn(2) == 0 {
-		i, j = j, i
-	}
-
 	// Use a builder to build the program.
 	tb := newTestProgramBuilder(pt, duration)
 	tb.AddSwapSectorInstruction(i, j, true)
 
 	// Execute it.
 	_, err := mdm.ExecuteProgramWithBuilder(tb, so, duration, true)
-	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("%v >= %v", numSectors, numSectors)) {
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("idx2 out-of-bounds: %v >= %v", numSectors, numSectors)) {
+		t.Fatal("expected execution to fail with out of bounds error", err)
+	}
+
+	// j is random and valid but i is out of bounds.
+	i = numSectors
+	j = fastrand.Uint64n(numSectors)
+
+	// Use a builder to build the program.
+	tb = newTestProgramBuilder(pt, duration)
+	tb.AddSwapSectorInstruction(i, j, true)
+
+	// Execute it.
+	_, err = mdm.ExecuteProgramWithBuilder(tb, so, duration, true)
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("idx2 out-of-bounds: %v >= %v", numSectors, numSectors)) {
+		t.Fatal("expected execution to fail with out of bounds error", err)
+	}
+
+	// both are out of bounds.
+	i = numSectors
+	j = i
+
+	// Use a builder to build the program.
+	tb = newTestProgramBuilder(pt, duration)
+	tb.AddSwapSectorInstruction(i, j, true)
+
+	// Execute it. The error message
+	_, err = mdm.ExecuteProgramWithBuilder(tb, so, duration, true)
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("idx1 out-of-bounds: %v >= %v", numSectors, numSectors)) {
 		t.Fatal("expected execution to fail with out of bounds error", err)
 	}
 }

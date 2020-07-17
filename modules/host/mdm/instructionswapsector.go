@@ -69,12 +69,6 @@ func (i *instructionSwapSector) Execute(prevOutput output) output {
 		return errOutput(err)
 	}
 
-	// Get the swapped sectors. Since they have been swapped, the indices are
-	// reversed.
-	newRoots := i.staticState.sectors.merkleRoots
-	oldSector1 := newRoots[offset2]
-	oldSector2 := newRoots[offset1]
-
 	// If no proof was requested we are done.
 	if !i.staticMerkleProof {
 		return output{
@@ -83,8 +77,14 @@ func (i *instructionSwapSector) Execute(prevOutput output) output {
 		}
 	}
 
-	// Create the first range and remember the original leaf hash for that
-	// range.
+	// Get the swapped sectors. Since they have been swapped, the indices are
+	// reversed.
+	newRoots := i.staticState.sectors.merkleRoots
+	oldSector1 := newRoots[offset2]
+	oldSector2 := newRoots[offset1]
+
+	// Create the first range and remember the original leaf hash for that range
+	// since the leaves of the modified sectors are needed to verify the proof.
 	var ranges []crypto.ProofRange
 	var oldLeafHashes []crypto.Hash
 	ranges = append(ranges, crypto.ProofRange{
