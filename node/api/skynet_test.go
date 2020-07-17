@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/url"
-	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -10,125 +9,118 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
-// TestAllowRedirect ensures defaultPath functions correctly.
-func TestAllowRedirect(t *testing.T) {
-	subfilesMulti := modules.SkyfileSubfiles{
-		"about.html": modules.SkyfileSubfileMetadata{},
-		"hello.html": modules.SkyfileSubfileMetadata{},
-	}
-	tests := []struct {
-		name           string
-		queryForm      url.Values
-		metadata       modules.SkyfileMetadata
-		expectedResult bool
-		expectedErrMsg string
-	}{
-		{
-			name:           "not allowed for single files",
-			queryForm:      nil,
-			metadata:       modules.SkyfileMetadata{},
-			expectedResult: false,
-			expectedErrMsg: "",
-		},
-		{
-			name:           "not allowed for empty (but present) default path",
-			queryForm:      url.Values{"defaultpath": []string{""}},
-			metadata:       modules.SkyfileMetadata{Subfiles: subfilesMulti},
-			expectedResult: false,
-			expectedErrMsg: "",
-		},
-		{
-			name:      "allowed for missing or empty `redirect` parameter",
-			queryForm: url.Values{},
-			metadata: modules.SkyfileMetadata{
-				Subfiles:    subfilesMulti,
-				DefaultPath: "non_empty",
-			},
-			expectedResult: true,
-			expectedErrMsg: "",
-		},
-		{
-			name:      "allowed for `redirect=true` parameter",
-			queryForm: url.Values{"redirect": []string{"true"}},
-			metadata: modules.SkyfileMetadata{
-				Subfiles:    subfilesMulti,
-				DefaultPath: "non_empty",
-			},
-			expectedResult: true,
-			expectedErrMsg: "",
-		},
-		{
-			name:      "not allowed for `redirect=false` parameter",
-			queryForm: url.Values{"redirect": []string{"false"}},
-			metadata: modules.SkyfileMetadata{
-				Subfiles:    subfilesMulti,
-				DefaultPath: "non_empty",
-			},
-			expectedResult: false,
-			expectedErrMsg: "",
-		},
-		{
-			name:      "error on unparsable `redirect` parameter",
-			queryForm: url.Values{"redirect": []string{"un_par_sa_ble!"}},
-			metadata: modules.SkyfileMetadata{
-				Subfiles:    subfilesMulti,
-				DefaultPath: "non_empty",
-			},
-			expectedResult: false,
-			expectedErrMsg: "unable to parse 'redirect' parameter",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			res, err := allowRedirect(tt.queryForm, tt.metadata)
-			if (tt.expectedErrMsg == "" && err != nil) ||
-				(tt.expectedErrMsg != "" && err == nil) ||
-				(tt.expectedErrMsg != "" && err != nil && !strings.Contains(err.Error(), tt.expectedErrMsg)) {
-				t.Fatalf("Expected error message %v, got %v\n", tt.expectedErrMsg, err)
-			}
-			if res != tt.expectedResult {
-				t.Fatalf("Expected result %t, got %t\n", tt.expectedResult, res)
-			}
-		})
-	}
-}
-
 // TestDefaultPath ensures defaultPath functions correctly.
 func TestDefaultPath(t *testing.T) {
 	tests := []struct {
-		name        string
-		queryForm   url.Values
-		subfiles    modules.SkyfileSubfiles
-		defaultPath string
-		err         error
+		name               string
+		queryForm          url.Values
+		subfiles           modules.SkyfileSubfiles
+		defaultPath        string
+		disableDefaultPath bool
+		err                error
 	}{
 		{
-			name:        "explicitly disabled default path",
-			queryForm:   url.Values{modules.SkyfileDefaultPathParamName: []string{""}},
+			name:               "single file not multipart nil",
+			queryForm:          url.Values{},
+			subfiles:           nil,
+			defaultPath:        "",
+			disableDefaultPath: false,
+			err:                nil,
+		},
+		{
+			name:        "single file not multipart empty",
+			queryForm:   url.Values{modules.SkyfileDisableDefaultPathParamName: []string{"true"}},
+			subfiles:    nil,
 			defaultPath: "",
+			err:         ErrInvalidDefaultPath,
 		},
 		{
-			name:        "default path not specified, index.html present",
-			queryForm:   url.Values{},
-			subfiles:    modules.SkyfileSubfiles{"index.html": modules.SkyfileSubfileMetadata{}},
-			defaultPath: "/index.html",
+			name:        "single file not multipart set",
+			queryForm:   url.Values{modules.SkyfileDefaultPathParamName: []string{"about.html"}},
+			subfiles:    nil,
+			defaultPath: "",
+			err:         ErrInvalidDefaultPath,
 		},
+
 		{
-			name:        "default path not specified, index.html NOT present",
+			name:        "single file multipart nil",
 			queryForm:   url.Values{},
 			subfiles:    modules.SkyfileSubfiles{"about.html": modules.SkyfileSubfileMetadata{}},
+			defaultPath: "/about.html",
+			err:         nil,
+		},
+		{
+			name:               "single file multipart empty",
+			queryForm:          url.Values{modules.SkyfileDisableDefaultPathParamName: []string{"true"}},
+			subfiles:           modules.SkyfileSubfiles{"about.html": modules.SkyfileSubfileMetadata{}},
+			defaultPath:        "",
+			disableDefaultPath: true,
+			err:                nil,
+		},
+		{
+			name:        "single file multipart set to only",
+			queryForm:   url.Values{modules.SkyfileDefaultPathParamName: []string{"about.html"}},
+			subfiles:    modules.SkyfileSubfiles{"about.html": modules.SkyfileSubfileMetadata{}},
+			defaultPath: "/about.html",
+			err:         nil,
+		},
+		{
+			name:        "single file multipart set to bad",
+			queryForm:   url.Values{modules.SkyfileDefaultPathParamName: []string{"bad.html"}},
+			subfiles:    modules.SkyfileSubfiles{"about.html": modules.SkyfileSubfileMetadata{}},
 			defaultPath: "",
+			err:         ErrInvalidDefaultPath,
+		},
+
+		{
+			name:      "multi file nil has index.html",
+			queryForm: url.Values{},
+			subfiles: modules.SkyfileSubfiles{
+				"about.html": modules.SkyfileSubfileMetadata{},
+				"index.html": modules.SkyfileSubfileMetadata{},
+			},
+			defaultPath: "/index.html",
+			err:         nil,
 		},
 		{
-			name:        "default path specified, file exists",
-			queryForm:   url.Values{modules.SkyfileDefaultPathParamName: []string{"index.js"}},
-			subfiles:    modules.SkyfileSubfiles{"index.js": modules.SkyfileSubfileMetadata{}},
-			defaultPath: "/index.js",
+			name:      "multi file nil no index.html",
+			queryForm: url.Values{},
+			subfiles: modules.SkyfileSubfiles{
+				"about.html": modules.SkyfileSubfileMetadata{},
+				"hello.html": modules.SkyfileSubfileMetadata{},
+			},
+			defaultPath:        "",
+			disableDefaultPath: false,
+			err:                nil,
 		},
 		{
-			name:        "default path specified, file does not exist",
-			queryForm:   url.Values{modules.SkyfileDefaultPathParamName: []string{"index.js"}},
+			name:      "multi file set to empty",
+			queryForm: url.Values{modules.SkyfileDisableDefaultPathParamName: []string{"true"}},
+			subfiles: modules.SkyfileSubfiles{
+				"about.html": modules.SkyfileSubfileMetadata{},
+				"index.html": modules.SkyfileSubfileMetadata{},
+			},
+			defaultPath:        "",
+			disableDefaultPath: true,
+			err:                nil,
+		},
+		{
+			name:      "multi file set to existing",
+			queryForm: url.Values{modules.SkyfileDefaultPathParamName: []string{"about.html"}},
+			subfiles: modules.SkyfileSubfiles{
+				"about.html": modules.SkyfileSubfileMetadata{},
+				"index.html": modules.SkyfileSubfileMetadata{},
+			},
+			defaultPath: "/about.html",
+			err:         nil,
+		},
+		{
+			name:      "multi file set to not existing",
+			queryForm: url.Values{modules.SkyfileDefaultPathParamName: []string{"noexist.html"}},
+			subfiles: modules.SkyfileSubfiles{
+				"about.html": modules.SkyfileSubfileMetadata{},
+				"index.html": modules.SkyfileSubfileMetadata{},
+			},
 			defaultPath: "",
 			err:         ErrInvalidDefaultPath,
 		},
@@ -136,12 +128,15 @@ func TestDefaultPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dp, err := defaultPath(tt.queryForm, tt.subfiles)
-			if errors.Contains(tt.err, err) {
+			dp, ddp, err := defaultPath(tt.queryForm, tt.subfiles)
+			if (err != nil || tt.err != nil) && !errors.Contains(err, tt.err) {
 				t.Fatalf("Expected error %v, got %v\n", tt.err, err)
 			}
 			if dp != tt.defaultPath {
-				t.Fatalf("Expected defaultPath %v, got %v\n", tt.defaultPath, dp)
+				t.Fatalf("Expected defaultPath '%v', got '%v'\n", tt.defaultPath, dp)
+			}
+			if ddp != tt.disableDefaultPath {
+				t.Fatalf("Expected disableDefaultPath '%v', got '%v'\n", tt.disableDefaultPath, ddp)
 			}
 		})
 	}
