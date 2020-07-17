@@ -406,10 +406,10 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// Set an appropritate Content-Disposition header
 	var cdh string
 	filename := filepath.Base(metadata.Filename)
-	if attachment {
-		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(filename))
-	} else if format.IsArchive() {
+	if format.IsArchive() {
 		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(filename+format.Extension()))
+	} else if attachment {
+		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(filename))
 	} else {
 		cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(filename))
 	}

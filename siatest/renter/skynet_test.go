@@ -1950,9 +1950,7 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Perform a HEAD request with a timeout that exceeds the max timeout
-	params := make(map[string]string)
-	params["timeout"] = fmt.Sprintf("%d", api.MaxSkynetRequestTimeout+1)
-	status, _, _ = r.SkynetSkylinkHeadWithParameters(skylink, params)
+	status, _, _ = r.SkynetSkylinkHeadWithTimeout(skylink, api.MaxSkynetRequestTimeout+1)
 	if status != http.StatusBadRequest {
 		t.Fatalf("Expected StatusBadRequest for a request with a timeout that exceeds the MaxSkynetRequestTimeout, instead received %v", status)
 	}
@@ -2142,9 +2140,7 @@ func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
 	defer tg.RemoveNode(r)
 
 	// Verify timeout on head request
-	params := make(map[string]string)
-	params["timeout"] = "1"
-	status, _, err := r.SkynetSkylinkHeadWithParameters(skylink, params)
+	status, _, err := r.SkynetSkylinkHeadWithTimeout(skylink, 1)
 	if status != http.StatusNotFound {
 		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
 	}

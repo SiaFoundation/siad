@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"reflect"
 	"strings"
@@ -441,7 +442,6 @@ func testDownloadContentDisposition(t *testing.T, tg *siatest.TestGroup) {
 	attachmentTar := fmt.Sprintf("attachment; filename=\"%v.tar\"", name)
 	attachmentTarGz := fmt.Sprintf("attachment; filename=\"%v.tar.gz\"", name)
 
-	params := make(map[string]string)
 	var header http.Header
 
 	// upload a single file
@@ -455,56 +455,56 @@ func testDownloadContentDisposition(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// 'attachment=false'
-	params["attachment"] = fmt.Sprintf("%t", false)
-	_, header, err = r.SkynetSkylinkHeadWithParameters(skylink, params)
+	_, header, err = r.SkynetSkylinkHeadWithAttachment(skylink, false)
 	err = errors.Compose(err, verifyCDHeader(header, inline))
 	if err != nil {
-		t.Fatal(errors.AddContext(err, "attachment=false"))
+		t.Fatal(err)
 	}
 
 	// 'attachment=true'
-	params["attachment"] = fmt.Sprintf("%t", true)
-	_, header, err = r.SkynetSkylinkHeadWithParameters(skylink, params)
+	_, header, err = r.SkynetSkylinkHeadWithAttachment(skylink, true)
 	err = errors.Compose(err, verifyCDHeader(header, attachment))
 	if err != nil {
-		t.Fatal(errors.AddContext(err, "attachment=true"))
+		t.Fatal(err)
 	}
 
-	delete(params, "attachment")
-
 	// 'format=concat'
-	params["format"] = string(modules.SkyfileFormatConcat)
-	_, header, err = r.SkynetSkylinkHeadWithParameters(skylink, params)
+	_, header, err = r.SkynetSkylinkHeadWithFormat(skylink, modules.SkyfileFormatConcat)
 	err = errors.Compose(err, verifyCDHeader(header, inline))
 	if err != nil {
-		t.Fatal(errors.AddContext(err, "format=concat"))
+		t.Fatal(err)
 	}
 
 	// 'format=zip'
-	params["format"] = string(modules.SkyfileFormatZip)
-	_, header, err = r.SkynetSkylinkHeadWithParameters(skylink, params)
+	_, header, err = r.SkynetSkylinkHeadWithFormat(skylink, modules.SkyfileFormatZip)
 	err = errors.Compose(err, verifyCDHeader(header, attachmentZip))
 	if err != nil {
-		t.Fatal(errors.AddContext(err, "format=zip"))
+		t.Fatal(err)
 	}
 
 	// 'format=tar'
-	params["format"] = string(modules.SkyfileFormatTar)
-	_, header, err = r.SkynetSkylinkHeadWithParameters(skylink, params)
+	_, header, err = r.SkynetSkylinkHeadWithFormat(skylink, modules.SkyfileFormatTar)
 	err = errors.Compose(err, verifyCDHeader(header, attachmentTar))
 	if err != nil {
-		t.Fatal(errors.AddContext(err, "format=tar"))
+		t.Fatal(err)
 	}
 
 	// 'format=targz'
-	params["format"] = string(modules.SkyfileFormatTarGz)
-	_, header, err = r.SkynetSkylinkHeadWithParameters(skylink, params)
+	_, header, err = r.SkynetSkylinkHeadWithFormat(skylink, modules.SkyfileFormatTarGz)
 	err = errors.Compose(err, verifyCDHeader(header, attachmentTarGz))
 	if err != nil {
-		t.Fatal(errors.AddContext(err, "format=targz"))
+		t.Fatal(err)
 	}
 
-	delete(params, "format")
+	// if both attachment and format are set, format should take precedence
+	values := url.Values{}
+	values.Set("attachment", fmt.Sprintf("%t", true))
+	values.Set("format", string(modules.SkyfileFormatZip))
+	_, header, err = r.SkynetSkylinkHeadWithParameters(skylink, values)
+	err = errors.Compose(err, verifyCDHeader(header, attachmentZip))
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // fileMapFromFiles is a helper that converts a list of test files to a file map
