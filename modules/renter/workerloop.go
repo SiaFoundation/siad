@@ -61,7 +61,13 @@ func (w *worker) externLaunchSerialJob(job func()) {
 	}
 
 	// Mark that there is now a job running.
-	atomic.StoreUint64(&w.staticLoopState.atomicSerialJobRunning, 1)
+	jobsRunning := atomic.AddUint64(&w.staticLoopState.atomicSerialJobRunning, 1)
+
+	// Sanity check - only one job should be running at this point.
+	if jobsRunning != 1 {
+		w.renter.log.Critical("running a job when another job is already running")
+	}
+
 	fn := func() {
 		// Execute the job in a goroutine.
 		job()
@@ -153,6 +159,7 @@ func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 		atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, -downloadBandwidth)
 		atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, -uploadBandwidth)
 		atomic.AddUint64(&w.staticLoopState.atomicAsyncJobsRunning, ^uint64(0)) // subtract 1
+
 		// Wake the worker to run any additional async jobs that may have been
 		// blocked / ignored because there was not enough bandwidth available.
 		w.staticWake()

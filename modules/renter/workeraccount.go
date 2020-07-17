@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -579,6 +580,13 @@ func (w *worker) externSyncAccountBalanceToHost() {
 	start := time.Now()
 	for !isIdle() {
 		if time.Since(start) > accountIdleMaxWait {
+			// The worker failed to go idle for too long. Print the loop state,
+			// so we know what kind of task is keeping it busy.
+			w.renter.log.Debugf("Worker static loop state: %+v\n", w.staticLoopState)
+			// Get the stacktraces of all running goroutines.
+			buf := make([]byte, 10000)
+			n := runtime.Stack(buf, true)
+			w.renter.log.Debug(string(buf[:n]))
 			w.renter.log.Critical("worker has taken more than 40 minutes to go idle")
 			return
 		}
