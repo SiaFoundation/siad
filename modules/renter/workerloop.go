@@ -164,6 +164,7 @@ func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 		// continue processing jobs.
 		atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, -downloadBandwidth)
 		atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, -uploadBandwidth)
+		atomic.AddUint64(&w.staticLoopState.atomicAsyncJobsRunning, ^uint64(0)) // subtract 1
 		return true
 	}
 	return true
