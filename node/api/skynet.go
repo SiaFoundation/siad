@@ -427,7 +427,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 	if format == modules.SkyfileFormatTarGz {
-		w.Header().Set("Content-Type", "application/x-gtar ")
+		w.Header().Set("Content-Type", "application/x-gzip")
 		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 		gzw := gzip.NewWriter(w)
 		err = serveTar(gzw, metadata, streamer)
