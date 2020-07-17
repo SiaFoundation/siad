@@ -4807,14 +4807,6 @@ archive, 'tar' will return a tar archive of all subfiles in that directory, and
 the format is not specified, and the skylink points at a directory, we default
 to the zip format and the contents will be downloaded as a zip archive.
 
-**redirect** | bool
-If 'redirect' is omitted or set to true, the provided skylink points to a 
-directory, no format was specified, and no explicit path was provided (e.g. 
-`folder/file.txt` from the example above) then the user's browser will be 
-redirected to the default path associated with this skyfile, if one exists.  
-If 'redirect' is set to false and the same conditions apply, an error will be 
-returned because there is no default action for this case.
-
 **timeout** | int  
 If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved 
 before it expires. Note that this timeout does not cover the actual download 
@@ -4888,10 +4880,17 @@ required to be maintained on the network in order for the skylink to remain
 active. This field is mutually exclusive with uploading streaming.
 
 **defaultpath** string  
-The path to the default file to be used to represent this skyfile in case it
-contains multiple files (e.g. skapps, photo collections, etc.). If provided, the
-path must exist. If not provided, it will default to `index.html` if a file with
-that name exists within the skyfile.
+The path to the default file to returned when the skyfile is visited at the root
+path. If the defaultpath parameter is not provided, it will default to
+`index.html` for directories that have that file, or it will default to the only
+file in the directory, if a single file directory is uploaded. This behaviour
+can be disabled using the `disabledefaultpath` parameter.
+
+**disabledefaultpath** bool  
+The 'disabledefaultpath' allows to disable the default path behaviour. If this
+parameter is set to true, there will be no automatic default to `index.html`,
+nor to the single file in directory upload.
+ 
 
 **filename** | string  
 The name of the file. This name will be encoded into the skyfile metadata, and
