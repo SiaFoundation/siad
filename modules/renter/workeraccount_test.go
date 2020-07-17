@@ -452,14 +452,7 @@ func TestWorkerAccountCoolDown(t *testing.T) {
 	// run a couple of has sector jobs to spend money
 	cc := make(chan struct{})
 	rc := make(chan *jobHasSectorResponse)
-	jhs := &jobHasSector{
-		staticSector:       crypto.Hash{},
-		staticResponseChan: rc,
-		jobGeneric: &jobGeneric{
-			staticCancelChan: cc,
-			staticQueue:      w.staticJobHasSectorQueue,
-		},
-	}
+	jhs := w.newJobHasSector(cc, rc, crypto.Hash{})
 	for i := 0; i < 100; i++ {
 		if !w.staticJobHasSectorQueue.callAdd(jhs) {
 			t.Fatal("could not add job to queue")
