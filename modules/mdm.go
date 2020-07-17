@@ -104,7 +104,7 @@ const (
 
 	// RPCISwapSectorLen is the expected length of the 'Args' of an SwapSector
 	// instructon.
-	RPCISwapSectorLen = 17
+	RPCISwapSectorLen = 17 // 2 uint64 offsets + merkle proof flag
 )
 
 var (

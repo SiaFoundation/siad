@@ -41,6 +41,10 @@ func TestInstructionSwapSector(t *testing.T) {
 	t.Run("OutOfBounds", func(t *testing.T) {
 		testInstructionSwapSectorOutOfBounds(t, mdm, uint64(numSectors), pt, duration, so)
 	})
+	// Run case basic case but without requesting a proof.
+	t.Run("NoProof", func(t *testing.T) {
+		testInstructionSwapSectorNoProof(t, mdm, uint64(numSectors), pt, duration, so)
+	})
 }
 
 // testInstructionSwapSectorBasic tests swapping 2 random sectors of a
@@ -235,5 +239,54 @@ func testInstructionSwapSectorOutOfBounds(t *testing.T, mdm *MDM, numSectors uin
 	_, err = mdm.ExecuteProgramWithBuilder(tb, so, duration, true)
 	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("idx1 out-of-bounds: %v >= %v", numSectors, numSectors)) {
 		t.Fatal("expected execution to fail with out of bounds error", err)
+	}
+}
+
+// testInstructionSwapSectorBasic tests swapping 2 random sectors of a
+// filecontract which are not the same.
+func testInstructionSwapSectorNoProof(t *testing.T, mdm *MDM, numSectors uint64, pt *modules.RPCPriceTable, duration types.BlockHeight, so *TestStorageObligation) {
+	// Choose 2 random sectors to swap.
+	i := fastrand.Uint64n(numSectors)
+	j := fastrand.Uint64n(numSectors)
+	for i == j {
+		j = fastrand.Uint64n(numSectors) // just to be safe
+	}
+
+	ics := so.ContractSize()
+	imr := so.MerkleRoot()
+	oldRoots := append([]crypto.Hash{}, so.sectorRoots...)
+
+	// Use a builder to build the program.
+	tb := newTestProgramBuilder(pt, duration)
+	tb.AddSwapSectorInstruction(i, j, false)
+
+	// Execute it.
+	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, duration, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compute the expected new root.
+	newRoots := append([]crypto.Hash{}, oldRoots...)
+	newRoots[i], newRoots[j] = newRoots[j], newRoots[i]
+	nmr := cachedMerkleRoot(newRoots)
+
+	// Make sure the new merkle root doesn't match the old one.
+	if nmr == imr {
+		t.Fatal("nmr shouldn't match imr")
+	}
+
+	// Assert the output.
+	err = outputs[0].assert(ics, nmr, []crypto.Hash{}, []byte{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Make sure the sectors actually got swapped.
+	if so.sectorRoots[i] != newRoots[i] {
+		t.Fatal("sectors not swapped correctly")
+	}
+	if so.sectorRoots[j] != newRoots[j] {
+		t.Fatal("sectors not swapped correctly")
 	}
 }
