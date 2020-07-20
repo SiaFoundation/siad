@@ -73,7 +73,7 @@ var (
 	accountIdleMaxWait = build.Select(build.Var{
 		Dev:      10 * time.Minute,
 		Standard: 40 * time.Minute,
-		Testing:  20 * time.Second, // needs to be long even in testing
+		Testing:  time.Minute, // needs to be long even in testing
 	}).(time.Duration)
 )
 
@@ -579,7 +579,7 @@ func (w *worker) externSyncAccountBalanceToHost() {
 	start := time.Now()
 	for !isIdle() {
 		if time.Since(start) > accountIdleMaxWait {
-			w.renter.log.Critical("worker has taken more than 40 minutes to go idle")
+			w.renter.log.Critical(fmt.Sprintf("worker has taken more than %v minutes to go idle", accountIdleMaxWait.Minutes()))
 			return
 		}
 		awake := w.renter.tg.Sleep(accountIdleCheckFrequency)
