@@ -208,9 +208,9 @@ func New(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword str
 	return api
 }
 
-// UnrecognizedCallHandler handles calls to unknown pages (404).
+// UnrecognizedCallHandler handles calls to disabled modules (490).
 func UnrecognizedCallHandler(w http.ResponseWriter, req *http.Request) {
-	errStr := fmt.Sprintf("%d - Refer to API.md", StatusModuleNotLoaded)
+	errStr := fmt.Sprintf("%d Module disabled - Refer to API.md", StatusModuleNotLoaded)
 	WriteError(w, Error{errStr}, StatusModuleNotLoaded)
 }
 
