@@ -154,6 +154,8 @@ gitlab.com/NebulousLabs/siamux v0.0.0-20200623161015-0bacd26badc4 h1:Vt36UW+4F3r
 gitlab.com/NebulousLabs/siamux v0.0.0-20200623161015-0bacd26badc4/go.mod h1:B0RyynPElUG2Y2CAVIIRriIqR9qht2I+nDisi3gfKn0=
 gitlab.com/NebulousLabs/siamux v0.0.0-20200708162823-03d67a69db00 h1:XJCquZFHApLmMPUh/YsWx5jyMBwwbKl/Ou/Du1qYd+4=
 gitlab.com/NebulousLabs/siamux v0.0.0-20200708162823-03d67a69db00/go.mod h1:B0RyynPElUG2Y2CAVIIRriIqR9qht2I+nDisi3gfKn0=
+gitlab.com/NebulousLabs/siamux v0.0.0-20200720111140-975638c7e488 h1:HFUCpWZE0ci89gjtYu9xXhSp8ynQTnp6WH85ORdpL68=
+gitlab.com/NebulousLabs/siamux v0.0.0-20200720111140-975638c7e488/go.mod h1:B0RyynPElUG2Y2CAVIIRriIqR9qht2I+nDisi3gfKn0=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20200527092543-afa01960408c/go.mod h1:av52iTyGuPtGU+GMcqfGtZu2vxhIjPgrxvIwVYelEvs=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213 h1:owERlKtUEFTPQ897iiqWPOuWBdq7BYqPxDOCgEZnbN4=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213/go.mod h1:vIutAvl7lmJqLVYTCBY5WDdJomP+V74At8LCeEYoH8w=

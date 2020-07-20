@@ -475,12 +475,11 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 
 		// Try opening a connection to the siamux, this is a very lightweight
 		// way of checking that RHP3 is supported.
-		_, err = fetchPriceTable(hdb.staticMux, siamuxAddr, modules.SiaPKToMuxPK(entry.PublicKey))
+		_, err = fetchPriceTable(hdb.staticMux, siamuxAddr, timeout, modules.SiaPKToMuxPK(entry.PublicKey))
 		if err != nil {
 			hdb.staticLog.Debugf("%v siamux ping not successful: %v\n", entry.PublicKey, err)
 			return err
 		}
-
 		return nil
 	}()
 	if err != nil {
@@ -677,8 +676,8 @@ func (hdb *HostDB) threadedScan() {
 // the price table is only useful for scoring the host and can't be used.
 // TODO: this is not safe yet. We need to close the mux afterwards to not keep
 // an open connection to every host we scan.
-func fetchPriceTable(siamux *siamux.SiaMux, addr string, hpk mux.ED25519PublicKey) (*modules.RPCPriceTable, error) {
-	stream, err := siamux.NewStream(modules.HostSiaMuxSubscriberName, addr, hpk)
+func fetchPriceTable(siamux *siamux.SiaMux, addr string, timeout time.Duration, hpk mux.ED25519PublicKey) (*modules.RPCPriceTable, error) {
+	stream, err := siamux.NewEphemeralStream(modules.HostSiaMuxSubscriberName, addr, timeout, hpk)
 	defer stream.Close()
 
 	// initiate the RPC
