@@ -382,6 +382,10 @@ func testAccountCriticalOnDoubleSave(t *testing.T, closedRenter *Renter) {
 
 // TestWorkerAccountCoolDown verifies the functionality of the account cooldown
 func TestWorkerAccountCoolDown(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableCriticalOnMaxBalance{}, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
@@ -394,7 +398,7 @@ func TestWorkerAccountCoolDown(t *testing.T) {
 	}()
 	w := wt.worker
 
-	// check the balance in a retry to allow the worker to run through it's
+	// check the balance in a retry to allow the worker to run through its
 	// setup, e.g. updating PT, checking balance and refilling. Note we use min
 	// expected balance to ensure we're not counting pending deposits
 	if err := build.Retry(100, 100*time.Millisecond, func() error {
