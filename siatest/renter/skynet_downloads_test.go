@@ -662,8 +662,8 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		return errors.New("Unexpected files")
 	}
 	ct = header.Get("Content-type")
-	if ct != "application/x-gzip" {
-		return fmt.Errorf("Unexpected 'Content-Type' header, expected 'application/x-gzip' actual '%v'", ct)
+	if ct != "application/gzip" {
+		return fmt.Errorf("Unexpected 'Content-Type' header, expected 'application/gzip' actual '%v'", ct)
 	}
 
 	mdStr = header.Get("Skynet-File-Metadata")
