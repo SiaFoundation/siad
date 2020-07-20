@@ -333,7 +333,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if path == "/" &&
 		metadata.DefaultPath != "" &&
 		format == modules.SkyfileFormatNotSpecified {
-		_, _, offset, size := metadata.ForPath(metadata.DefaultPath)
+		_, isFile, offset, size := metadata.ForPath(metadata.DefaultPath)
+		if !isFile {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, please specify a specific path or a format in order to download the content", metadata.DefaultPath)}, http.StatusNotFound)
+			return
+		}
 		streamer, err = NewLimitStreamer(streamer, offset, size)
 		isSubfile = true
 		if err != nil {
