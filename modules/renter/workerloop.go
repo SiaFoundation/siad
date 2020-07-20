@@ -55,16 +55,11 @@ func (wls *workerLoopState) staticSerialJobRunning() bool {
 // 'threadedWorkLoop', and it is expected that only one instance of
 // 'threadedWorkLoop' is ever created per-worker.
 func (w *worker) externLaunchSerialJob(job func()) {
-	// Sanity check - no other job should be running at this point.
-	if atomic.LoadUint64(&w.staticLoopState.atomicSerialJobRunning) != 0 {
-		w.renter.log.Critical("running a job when another job is already running")
-	}
-
-	// Mark that there is now a job running.
-	jobsRunning := atomic.AddUint64(&w.staticLoopState.atomicSerialJobRunning, 1)
-
-	// Sanity check - only one job should be running at this point.
-	if jobsRunning != 1 {
+	// Mark that there is now a job running. Only one job may be running at a
+	// time.
+	ok := atomic.CompareAndSwapUint64(&w.staticLoopState.atomicSerialJobRunning, 0, 1)
+	if !ok {
+		// There already is a job running. This is not allowed.
 		w.renter.log.Critical("running a job when another job is already running")
 	}
 
@@ -159,7 +154,6 @@ func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 		atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, -downloadBandwidth)
 		atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, -uploadBandwidth)
 		atomic.AddUint64(&w.staticLoopState.atomicAsyncJobsRunning, ^uint64(0)) // subtract 1
-
 		// Wake the worker to run any additional async jobs that may have been
 		// blocked / ignored because there was not enough bandwidth available.
 		w.staticWake()
