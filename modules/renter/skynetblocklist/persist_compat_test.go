@@ -1,4 +1,4 @@
-package skynetblacklist
+package skynetblocklist
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestPersistCompatv143Tov150 tests converting the skynet blacklist persistence
+// TestPersistCompatv143Tov150 tests converting the skynet blocklist persistence
 // from v143 to v150
 func TestPersistCompatv143Tov150(t *testing.T) {
 	if testing.Short() {
@@ -62,7 +62,7 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 
 	// Simulate a crash during the creation a temporary file by creating an empty
 	// temp file
-	f, err := os.Create(filepath.Join(subTestDir, tempPersistFile))
+	f, err := os.Create(filepath.Join(subTestDir, tempPersistFileName(blacklistPersistFile)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 
 	// Simulate a crash during the creation a temporary file by creating a temp
 	// file with random bytes
-	f, err = os.Create(filepath.Join(subTestDir, tempPersistFile))
+	f, err = os.Create(filepath.Join(subTestDir, tempPersistFileName(blacklistPersistFile)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,15 +145,15 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 // conversion from v1.4.3 to v1.5.0 updated the persistence as expected
 func loadAndVerifyPersistence(testDir string) error {
 	// Verify that loading the older persist file works
-	aop, reader, err := persist.NewAppendOnlyPersist(testDir, persistFile, metadataHeader, metadataVersionV143)
+	aop, reader, err := persist.NewAppendOnlyPersist(testDir, blacklistPersistFile, blacklistMetadataHeader, metadataVersionV143)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to open v143 persist file")
 	}
 
 	// Grab the merkleroots that were persisted
 	merkleroots, err := unmarshalObjects(reader)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to unmarshal merkleroots")
 	}
 	if len(merkleroots) == 0 {
 		return errors.New("no merkleroots in old version's persist file")
@@ -162,35 +162,60 @@ func loadAndVerifyPersistence(testDir string) error {
 	// Close the original AOP
 	err = aop.Close()
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to close v1.4.3 aop")
 	}
 
-	// Create a new SkynetBlacklist, this should convert the persistence
-	sb, err := New(testDir)
+	// Call convertPersistVersionFromv143Tov150, can't call New as that will go to
+	// the latest version of the persistence
+	err = convertPersistVersionFromv143Tov150(testDir)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to convert persistense")
 	}
-	defer sb.Close()
 
-	// Verify that the original merkleroots are now the hashes in the blacklist
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
-	if len(merkleroots) != len(sb.hashes) {
-		return fmt.Errorf("Expected %v hashes but got %v", len(merkleroots), len(sb.hashes))
+	// Load the v1.5.0 persistence
+	aop, reader, err = persist.NewAppendOnlyPersist(testDir, blacklistPersistFile, blacklistMetadataHeader, metadataVersion)
+	if err != nil {
+		return errors.AddContext(err, "unable to open v1.5.0 persistence")
+	}
+	defer aop.Close()
+
+	// Grab the hashes that were persisted
+	hashes, err := unmarshalObjects(reader)
+	if err != nil {
+		return errors.AddContext(err, "unable to unmarshal hashes")
+	}
+	if len(hashes) == 0 {
+		return errors.New("no hashes in new version's persist file")
+	}
+
+	// Verify that the original merkleroots are now the hashes in the blocklist
+	if len(merkleroots) != len(hashes) {
+		return fmt.Errorf("Expected %v hashes but got %v", len(merkleroots), len(hashes))
 	}
 	for mr := range merkleroots {
 		mrHash := crypto.HashObject(mr)
-		if _, ok := sb.hashes[mrHash]; !ok {
-			return fmt.Errorf("Original MerkleRoots: %v \nLoaded Hashes: %v \n MerkleRoot hash not found in list of hashes", merkleroots, sb.hashes)
+		if _, ok := hashes[mrHash]; !ok {
+			return fmt.Errorf("Original MerkleRoots: %v \nLoaded Hashes: %v \n MerkleRoot hash not found in list of hashes", merkleroots, hashes)
 		}
 	}
 	return nil
 }
 
 // loadV143CompatPersistFile loads the v1.4.3 persist file into the testDir
-func loadV143CompatPersistFile(testDir string) (err error) {
-	v143FileName := filepath.Join("..", "..", "..", "compatibility", persistFile+"_v143")
-	f, err := os.Open(v143FileName)
+func loadV143CompatPersistFile(testDir string) error {
+	v143FileName := filepath.Join("..", "..", "..", "compatibility", blacklistPersistFile+"_v143")
+	return copyFileToTestDir(v143FileName, filepath.Join(testDir, blacklistPersistFile))
+}
+
+// loadV150CompatPersistFile loads the v1.5.0 persist file into the testDir
+func loadV150CompatPersistFile(testDir string) error {
+	v150FileName := filepath.Join("..", "..", "..", "compatibility", blacklistPersistFile+"_v150")
+	return copyFileToTestDir(v150FileName, filepath.Join(testDir, blacklistPersistFile))
+}
+
+// copyFileToTestDir copies the file at fromFilePath and writes it at toFilePath
+func copyFileToTestDir(fromFilePath, toFilePath string) error {
+	f, err := os.Open(fromFilePath)
 	if err != nil {
 		return err
 	}
@@ -201,7 +226,7 @@ func loadV143CompatPersistFile(testDir string) (err error) {
 	if err != nil {
 		return err
 	}
-	pf, err := os.Create(filepath.Join(testDir, persistFile))
+	pf, err := os.Create(toFilePath)
 	if err != nil {
 		return err
 	}

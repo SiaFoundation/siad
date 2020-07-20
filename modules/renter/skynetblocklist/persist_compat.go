@@ -1,4 +1,4 @@
-package skynetblacklist
+package skynetblocklist
 
 import (
 	"bytes"
@@ -15,9 +15,18 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-const tempPersistFile string = "skynetblacklist_temp"
+const (
+	blacklistPersistFile string = "skynetblacklist"
+)
 
-var metadataVersionV143 = types.NewSpecifier("v1.4.3\n")
+var (
+	blacklistMetadataHeader = types.NewSpecifier("SkynetBlacklist\n")
+	metadataVersionV143     = types.NewSpecifier("v1.4.3\n")
+)
+
+func tempPersistFileName(persistFileName string) string {
+	return persistFileName + "_temp"
+}
 
 // convertPersistVersionFromv143Tov150 handles the compatibility code for
 // upgrading the persistence from v1.4.3 to v1.5.0. The change in persistence is
@@ -27,13 +36,13 @@ func convertPersistVersionFromv143Tov150(persistDir string) error {
 	// Identify the filepath for the persist file and the temp persist file that
 	// will be created during the conversion of the persistence from v1.4.3 to
 	// v1.5.0
-	persistFilePath := filepath.Join(persistDir, persistFile)
-	tempFilePath := filepath.Join(persistDir, tempPersistFile)
+	persistFilePath := filepath.Join(persistDir, blacklistPersistFile)
+	tempFilePath := filepath.Join(persistDir, tempPersistFileName(blacklistPersistFile))
 
 	// Create a temporary file from v1.4.3 persist file
 	readerv143, err := createTempFileFromPersistFile(persistDir)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to create temp file")
 	}
 
 	// Delete the v1.4.3 persist file
@@ -59,7 +68,7 @@ func convertPersistVersionFromv143Tov150(persistDir string) error {
 	}
 
 	// Initialize new v1.5.0 persistence
-	aopV150, _, err := persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
+	aopV150, _, err := persist.NewAppendOnlyPersist(persistDir, blacklistPersistFile, blacklistMetadataHeader, metadataVersion)
 	if err != nil {
 		return errors.AddContext(err, "unable to initialize v1.5.0 persist file")
 	}
@@ -90,7 +99,7 @@ func createTempFileFromPersistFile(persistDir string) (_ io.Reader, err error) {
 	// persist file existing. In this case we do not want a call to
 	// NewAppendOnlyPersist to create a new persist file resulting in a loss of
 	// the data in the temporary file
-	tempFilePath := filepath.Join(persistDir, tempPersistFile)
+	tempFilePath := filepath.Join(persistDir, tempPersistFileName(blacklistPersistFile))
 	reader, err := loadTempFile(persistDir)
 	if err == nil {
 		// Temporary file is valid, return the reader
@@ -105,7 +114,7 @@ func createTempFileFromPersistFile(persistDir string) (_ io.Reader, err error) {
 	}
 
 	// Open the v1.4.3 persist file
-	aop, reader, err := persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersionV143)
+	aop, reader, err := persist.NewAppendOnlyPersist(persistDir, blacklistPersistFile, blacklistMetadataHeader, metadataVersionV143)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to load v1.4.3 persistence")
 	}
@@ -157,7 +166,7 @@ func createTempFileFromPersistFile(persistDir string) (_ io.Reader, err error) {
 // prefixed. If the checksum is valid a reader will be returned.
 func loadTempFile(persistDir string) (_ io.Reader, err error) {
 	// Open the temporary file
-	tempFilePath := filepath.Join(persistDir, tempPersistFile)
+	tempFilePath := filepath.Join(persistDir, tempPersistFileName(blacklistPersistFile))
 	f, err := os.Open(tempFilePath)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to open temp file")
@@ -198,7 +207,7 @@ func loadPersist(persistDir string) (*persist.AppendOnlyPersist, io.Reader, erro
 	// there is the potential for a temp file to exist but no persist file. In
 	// this case a call to NewAppendOnlyPersist would create a new persist file
 	// and we would lose the information in the temp file.
-	tempFilePath := filepath.Join(persistDir, tempPersistFile)
+	tempFilePath := filepath.Join(persistDir, tempPersistFileName(blacklistPersistFile))
 	_, err := os.Stat(tempFilePath)
 	if !os.IsNotExist(err) {
 		// Temp file exists. Continue persistence update
@@ -221,7 +230,7 @@ func loadPersist(persistDir string) (*persist.AppendOnlyPersist, io.Reader, erro
 		aop, reader, err = persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
 	}
 	if err != nil {
-		return nil, nil, errors.AddContext(err, fmt.Sprintf("unable to initialize the skynet blacklist persistence at '%v'", aop.FilePath()))
+		return nil, nil, errors.AddContext(err, fmt.Sprintf("unable to initialize the skynet blocklist persistence at '%v'", aop.FilePath()))
 	}
 
 	return aop, reader, nil
