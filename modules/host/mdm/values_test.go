@@ -116,6 +116,18 @@ func (v *TestValues) AddRevisionInstruction() {
 	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, 0, readonly)
 }
 
+// AddSwapSectorInstruction adds a revision instruction to the builder, keeping
+// track of running values.
+func (v *TestValues) AddSwapSectorInstruction() {
+	collateral := modules.MDMSwapSectorCollateral()
+	cost := modules.MDMSwapSectorCost(v.staticPT)
+	memory := modules.MDMSwapSectorMemory()
+	time := uint64(modules.MDMTimeSwapSector)
+	newData := 8 + 8
+	readonly := false
+	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, newData, readonly)
+}
+
 // Cost returns the current cost of the program which would result . If
 // 'finalized' is 'true', the memory cost of finalizing the program is included.
 func (v TestValues) Cost() (cost, refund, collateral types.Currency) {
