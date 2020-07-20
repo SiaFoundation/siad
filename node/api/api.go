@@ -13,12 +13,21 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// StatusModuleNotLoaded is a custom http code to indicate that a module wasn't
-// loaded by the Daemon and can therefore not be reached. It is used instead of
-// the previous status code 404 to make a clear distinction between a module not
-// being loaded and a resource which would usually be provided a module not
-// being found.
-const StatusModuleNotLoaded = 490
+const (
+	// StatusModuleNotLoaded is a custom http code to indicate that a module
+	// wasn't loaded by the Daemon and can therefore not be reached. It is used
+	// instead of the previous status code 404 to make a clear distinction
+	// between a module not being loaded or being disabled and a resource which
+	// would usually be provided a module not being found.
+	StatusModuleNotLoaded = 490
+
+	// StatusModuleDisabled is a custom http code to indicate that a module was
+	// disabled by the Daemon and can therefore not be reached. It is used
+	// instead of the previous status code 404 to make a clear distinction
+	// between a module not being loaded or being disabled and a resource which
+	// would usually be provided a module not being found.
+	StatusModuleDisabled = 491
+)
 
 // ErrAPICallNotRecognized is returned by API client calls made to modules that
 // are not yet loaded.
@@ -114,6 +123,7 @@ type (
 		tpool               modules.TransactionPool
 		wallet              modules.Wallet
 		staticConfigModules configModules
+		modulesSet          bool
 
 		downloadMu sync.Mutex
 		downloads  map[modules.DownloadID]func()
@@ -152,6 +162,9 @@ func (api *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // SetModules allows for replacing the modules in the API at runtime.
 func (api *API) SetModules(cs modules.ConsensusSet, e modules.Explorer, fm modules.FeeManager, g modules.Gateway, h modules.Host, m modules.Miner, r modules.Renter, tp modules.TransactionPool, w modules.Wallet) {
+	if api.modulesSet {
+		build.Critical("can't call SetModules more than once")
+	}
 	api.cs = cs
 	api.explorer = e
 	api.feemanager = fm
@@ -172,6 +185,7 @@ func (api *API) SetModules(cs modules.ConsensusSet, e modules.Explorer, fm modul
 		TransactionPool: api.tpool != nil,
 		Wallet:          api.wallet != nil,
 	}
+	api.modulesSet = true
 	api.buildHTTPRoutes()
 }
 
@@ -208,10 +222,16 @@ func New(cfg *modules.SiadConfig, requiredUserAgent string, requiredPassword str
 	return api
 }
 
-// UnrecognizedCallHandler handles calls to disabled modules (490).
-func UnrecognizedCallHandler(w http.ResponseWriter, req *http.Request) {
-	errStr := fmt.Sprintf("%d Module not loaded - Refer to API.md", StatusModuleNotLoaded)
-	WriteError(w, Error{errStr}, StatusModuleNotLoaded)
+// UnrecognizedCallHandler handles calls to disabled/not-loaded modules.
+func (api *API) UnrecognizedCallHandler(w http.ResponseWriter, req *http.Request) {
+	var errStr string
+	if api.modulesSet {
+		errStr = fmt.Sprintf("%d Module disabled - Refer to API.md", StatusModuleDisabled)
+		WriteError(w, Error{errStr}, StatusModuleDisabled)
+	} else {
+		errStr = fmt.Sprintf("%d Module not loaded - Refer to API.md", StatusModuleNotLoaded)
+		WriteError(w, Error{errStr}, StatusModuleNotLoaded)
+	}
 }
 
 // WriteError an error to the API caller.
