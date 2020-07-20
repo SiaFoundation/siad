@@ -15,17 +15,11 @@ import (
 
 const (
 	// StatusModuleNotLoaded is a custom http code to indicate that a module
-	// wasn't loaded by the Daemon and can therefore not be reached. It is used
-	// instead of the previous status code 404 to make a clear distinction
-	// between a module not being loaded or being disabled and a resource which
-	// would usually be provided a module not being found.
+	// wasn't yet loaded by the Daemon and can therefore not be reached.
 	StatusModuleNotLoaded = 490
 
 	// StatusModuleDisabled is a custom http code to indicate that a module was
-	// disabled by the Daemon and can therefore not be reached. It is used
-	// instead of the previous status code 404 to make a clear distinction
-	// between a module not being loaded or being disabled and a resource which
-	// would usually be provided a module not being found.
+	// disabled by the Daemon and can therefore not be reached.
 	StatusModuleDisabled = 491
 )
 
