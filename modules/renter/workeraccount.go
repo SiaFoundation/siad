@@ -584,7 +584,7 @@ func (w *worker) externSyncAccountBalanceToHost() {
 			// so we know what kind of task is keeping it busy.
 			w.renter.log.Printf("Worker static loop state: %+v\n\n", w.staticLoopState)
 			// Get the stack traces of all running goroutines.
-			buf := make([]byte, 10000)
+			buf := make([]byte, 64e6) // 64MB
 			n := runtime.Stack(buf, true)
 			w.renter.log.Println(string(buf[:n]))
 			w.renter.log.Critical("worker has taken more than 40 minutes to go idle")
