@@ -37,6 +37,8 @@ import (
 	"io"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/fixtures"
+
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -734,6 +736,10 @@ func parseSkyfileMetadata(baseSector []byte) (sl skyfileLayout, fanoutBytes []by
 // DownloadSkylink will take a link and turn it into the metadata and data of a
 // download.
 func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (modules.SkyfileMetadata, modules.Streamer, error) {
+	if r.deps.Disrupt("resolveSkylinkToFixture") {
+		return loadSkylinkFixture(link)
+	}
+
 	// Check if link is blacklisted
 	if r.staticSkynetBlacklist.IsBlacklisted(link) {
 		return modules.SkyfileMetadata{}, nil, ErrSkylinkBlacklisted
@@ -980,4 +986,12 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 		deleteErr = errors.Compose(deleteErr, r.DeleteFile(extendedSiaPath))
 	}
 	return modules.Skylink{}, errors.Compose(ErrSkylinkBlacklisted, deleteErr)
+}
+
+func loadSkylinkFixture(skylink modules.Skylink) (modules.SkyfileMetadata, modules.Streamer, error) {
+	sf, ok := fixtures.LoadSkylinkFixture(skylink)
+	if !ok {
+		return modules.SkyfileMetadata{}, nil, errors.New("fixture not found")
+	}
+	return sf.Metadata, sf.Streamer, nil
 }
