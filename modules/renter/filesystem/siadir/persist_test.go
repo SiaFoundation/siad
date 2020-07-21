@@ -348,3 +348,38 @@ func TestManagedCreateAndApplyTransactions(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestCreateAndApplyTransactionPanic verifies that the
+// createAndApplyTransaction helpers panic when the updates can't be applied.
+func TestCreateAndApplyTransactionPanic(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create invalid update that triggers a panic.
+	update := writeaheadlog.Update{
+		Name: "invalid name",
+	}
+
+	// Declare a helper to check for a panic.
+	assertRecover := func() {
+		if r := recover(); r == nil {
+			t.Fatalf("Expected a panic")
+		}
+	}
+
+	// Run the test for both the method and function
+	siadir, err := newTestDir(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	func() {
+		defer assertRecover()
+		_ = siadir.createAndApplyTransaction(update)
+	}()
+	func() {
+		defer assertRecover()
+		_ = CreateAndApplyTransaction(siadir.wal, update)
+	}()
+}
