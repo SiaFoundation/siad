@@ -158,14 +158,8 @@ func stackcmd() {
 		die("Could not get the stack:", err)
 	}
 
-	// Get the filename
-	filename := daemonStackOutputFile
-	if filename == "" {
-		filename = "stack.txt"
-	}
-
 	// Create output file
-	f, err := os.Create(filename)
+	f, err := os.Create(daemonStackOutputFile)
 	if err != nil {
 		die("Unable to create output file:", err)
 	}
@@ -176,7 +170,7 @@ func stackcmd() {
 		die("Unable to write to output file:", err)
 	}
 
-	fmt.Println("Current stack trace written to:", filename)
+	fmt.Println("Current stack trace written to:", daemonStackOutputFile)
 }
 
 // updatecmd is the handler for the command `siac update`.

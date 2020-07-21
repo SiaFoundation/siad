@@ -396,7 +396,7 @@ func initCmds() *cobra.Command {
 
 	// Daemon Commands
 	root.AddCommand(alertsCmd, globalRatelimitCmd, stackCmd, stopCmd, updateCmd, versionCmd)
-	stackCmd.Flags().StringVarP(&daemonStackOutputFile, "filename", "f", "", "Specify the output file for the stack trace")
+	stackCmd.Flags().StringVarP(&daemonStackOutputFile, "filename", "f", "stack.txt", "Specify the output file for the stack trace")
 	updateCmd.AddCommand(updateCheckCmd)
 
 	root.AddCommand(utilsCmd)
