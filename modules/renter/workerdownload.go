@@ -329,6 +329,14 @@ func (w *worker) managedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfi
 	if chunkComplete || chunkFailed || onCooldown || !workerHasPiece || pieceCompleted {
 		udc.mu.Unlock()
 		udc.managedRemoveWorker()
+
+		// Extra check - if a worker is unusable, drop all the queued jobs.
+		//
+		// TODO: This is more of a hack, should probably find a better overall
+		// solution. Should this build.Critical?
+		if onCooldown {
+			w.managedDropDownloadChunks()
+		}
 		return nil
 	}
 	defer udc.mu.Unlock()
