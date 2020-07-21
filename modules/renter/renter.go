@@ -206,6 +206,9 @@ type Renter struct {
 	// metrics across running the project multiple times.
 	staticProjectDownloadByRootManager *projectDownloadByRootManager
 
+	rt map[string]struct{}
+	rtmu sync.Mutex
+
 	// The renter's bandwidth ratelimit.
 	rl *ratelimit.RateLimit
 
@@ -931,6 +934,8 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),
+
+		rt: make(map[string]struct{}),
 
 		staticProjectDownloadByRootManager: new(projectDownloadByRootManager),
 

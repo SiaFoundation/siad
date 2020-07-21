@@ -75,6 +75,7 @@ type (
 		downloadTerminated          bool      // Has downloading been terminated for this worker?
 		downloadConsecutiveFailures int       // How many failures in a row?
 		downloadRecentFailure       time.Time // How recent was the last failure?
+		downloadRecentFailureErr    error     // What was the reason for the last failure?
 
 		// Job queues for the worker.
 		staticFetchBackupsJobQueue   fetchBackupsJobQueue
