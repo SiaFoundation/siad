@@ -245,6 +245,15 @@ func (r *Renter) Close() error {
 	return errors.Compose(r.tg.Stop(), r.hostDB.Close(), r.hostContractor.Close(), r.staticSkynetBlacklist.Close(), r.staticSkynetPortals.Close())
 }
 
+// AvailableMemory returns the current available memory
+func (r *Renter) AvailableMemory() (uint64, uint64, error) {
+	if err := r.tg.Add(); err != nil {
+		return 0, 0, err
+	}
+	available, priority := r.memoryManager.callAvailable()
+	return available, priority, nil
+}
+
 // PriceEstimation estimates the cost in siacoins of performing various storage
 // and data operations.  The estimation will be done using the provided
 // allowance, if an empty allowance is provided then the renter's current

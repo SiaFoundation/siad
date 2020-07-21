@@ -26,7 +26,7 @@ const (
 
 	// memoryPriorityStarvationDivisor controls how many low priority items get
 	// bumped into the high priority queue when starvation protection is
-	// triggered. For example, take a divsor of 4 and a base memory of 1 GB.
+	// triggered. For example, take a divisor of 4 and a base memory of 1 GB.
 	// When starvation is triggered, low priority items will be moved into the
 	// high priority queue until a total of 250 MB or more of low priority items
 	// have been added to the high priority queue.
@@ -276,6 +276,13 @@ func (mm *memoryManager) Return(amount uint64) {
 		close(mm.fifo[0].done)
 		mm.fifo = mm.fifo[1:]
 	}
+}
+
+// callAvailable returns the current status of the memory manager.
+func (mm *memoryManager) callAvailable() (uint64, uint64) {
+	mm.mu.Lock()
+	defer mm.mu.Unlock()
+	return mm.available, mm.priorityReserve
 }
 
 // newMemoryManager will create a memoryManager and return it.

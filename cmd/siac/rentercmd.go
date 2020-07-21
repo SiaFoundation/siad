@@ -359,6 +359,16 @@ func rentercmd() {
 		return
 	}
 
+	// Print out the memory information for the renter
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "\nMemory\n")
+	fmt.Fprintf(w, "  Available Memory\t%v\n", sizeString(rg.AvailableMemory))
+	fmt.Fprintf(w, "  Priority Memory\t%v\n", sizeString(rg.AvailablePriorityMemory))
+	err = w.Flush()
+	if err != nil {
+		die(err)
+	}
+
 	// Print out ratelimit info about the renter
 	fmt.Println()
 	rateLimitSummary(rg.Settings.MaxDownloadSpeed, rg.Settings.MaxUploadSpeed)

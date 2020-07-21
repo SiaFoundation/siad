@@ -84,6 +84,9 @@ type (
 		FinancialMetrics modules.ContractorSpending `json:"financialmetrics"`
 		CurrentPeriod    types.BlockHeight          `json:"currentperiod"`
 		NextPeriod       types.BlockHeight          `json:"nextperiod"`
+
+		AvailableMemory         uint64 `json:"availablememory"`
+		AvailablePriorityMemory uint64 `json:"availableprioritymemory"`
 	}
 
 	// RenterContract represents a contract formed by the renter.
@@ -588,11 +591,19 @@ func (api *API) renterHandlerGET(w http.ResponseWriter, req *http.Request, _ htt
 	}
 	currentPeriod := api.renter.CurrentPeriod()
 	nextPeriod := currentPeriod + settings.Allowance.Period
+	available, priority, err := api.renter.AvailableMemory()
+	if err != nil {
+		WriteError(w, Error{"unable to get renter memory information: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
 	WriteJSON(w, RenterGET{
 		Settings:         settings,
 		FinancialMetrics: spending,
 		CurrentPeriod:    currentPeriod,
 		NextPeriod:       nextPeriod,
+
+		AvailableMemory:         available,
+		AvailablePriorityMemory: priority,
 	})
 }
 

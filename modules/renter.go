@@ -887,6 +887,9 @@ type Renter interface {
 	// began.
 	CurrentPeriod() types.BlockHeight
 
+	// AvailableMemory returns the current available memory
+	AvailableMemory() (uint64, uint64, error)
+
 	// Mount mounts a FUSE filesystem at mountPoint, making the contents of sp
 	// available via the local filesystem.
 	Mount(mountPoint string, sp SiaPath, opts MountOptions) error
