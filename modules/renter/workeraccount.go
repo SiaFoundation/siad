@@ -74,7 +74,7 @@ var (
 	accountIdleMaxWait = build.Select(build.Var{
 		Dev:      10 * time.Minute,
 		Standard: 40 * time.Minute,
-		Testing:  20 * time.Second, // needs to be long even in testing
+		Testing:  time.Minute, // needs to be long even in testing
 	}).(time.Duration)
 )
 
@@ -587,10 +587,13 @@ func (w *worker) externSyncAccountBalanceToHost() {
 			buf := make([]byte, 64e6) // 64MB
 			n := runtime.Stack(buf, true)
 			w.renter.log.Println(string(buf[:n]))
-			w.renter.log.Critical("worker has taken more than 40 minutes to go idle")
+			w.renter.log.Critical(fmt.Sprintf("worker has taken more than %v minutes to go idle", accountIdleMaxWait.Minutes()))
 			return
 		}
-		w.renter.tg.Sleep(accountIdleCheckFrequency)
+		awake := w.renter.tg.Sleep(accountIdleCheckFrequency)
+		if !awake {
+			return
+		}
 	}
 	// Do a check to ensure that the worker is still idle after the function is
 	// complete. This should help to catch any situation where the worker is

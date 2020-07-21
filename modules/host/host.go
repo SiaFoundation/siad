@@ -332,6 +332,7 @@ func (h *Host) managedUpdatePriceTable() {
 		MemoryTimeCost:      types.NewCurrency64(1),
 		DropSectorsBaseCost: types.NewCurrency64(1),
 		DropSectorsUnitCost: types.NewCurrency64(1),
+		SwapSectorCost:      types.NewCurrency64(1),
 
 		// Read related costs.
 		ReadBaseCost:   hes.SectorAccessPrice,
