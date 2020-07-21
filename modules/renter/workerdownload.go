@@ -113,7 +113,7 @@ func (w *worker) managedDownloadFailed(err error) {
 	}
 	w.downloadMu.Lock()
 	w.downloadConsecutiveFailures++
-	w.downlaodRecentFailure = time.Now()
+	w.downloadRecentFailure = time.Now()
 	w.downloadRecentFailureErr = err
 	w.downloadMu.Unlock()
 	w.managedDropDownloadChunks()
