@@ -83,10 +83,21 @@ release-pkgs = ./cmd/siac ./cmd/siad
 # lockcheckpkgs are the packages that are checked for locking violations.
 lockcheckpkgs = \
 	./benchmark \
+	./build \
+	./cmd/sia-node-scanner \
 	./cmd/siac \
+	./cmd/siad \
+	./cmd/skynet-benchmark \
+	./node \
+	./node/api \
+	./node/api/client \
+	./node/api/server \
 	./modules/host/mdm \
 	./modules/renter/hostdb \
 	./modules/renter/proto \
+	./skykey \
+	./types \
+	./types/typesutil
 
 # run determines which tests run when running any variation of 'make test'.
 run = .
