@@ -575,6 +575,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		}
 
 		// Create unfinishedUploadChunk
+		r.repairLog.Println("Pulling an upload off of the heap, starting low priority upload")
 		chunk, err := r.managedBuildUnfinishedChunk(entry, uint64(index), hosts, pks, memoryPriorityLow, offline, goodForRenew)
 		if err != nil {
 			r.log.Debugln("Error when building an unfinished chunk:", err)
