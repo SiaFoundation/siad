@@ -678,6 +678,9 @@ func (hdb *HostDB) threadedScan() {
 // an open connection to every host we scan.
 func fetchPriceTable(siamux *siamux.SiaMux, addr string, timeout time.Duration, hpk mux.ED25519PublicKey) (*modules.RPCPriceTable, error) {
 	stream, err := siamux.NewEphemeralStream(modules.HostSiaMuxSubscriberName, addr, timeout, hpk)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to create ephemeral stream")
+	}
 	defer stream.Close()
 
 	// initiate the RPC
