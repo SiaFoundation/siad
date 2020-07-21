@@ -256,3 +256,63 @@ func TestUpdateMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestSiaDirDelete verifies the SiaDir performs as expected after a delete
+func TestSiaDirDelete(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create new siaDir
+	rootDir, err := newRootDir(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaPath, err := modules.NewSiaPath("deleteddir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	siaDirSysPath := siaPath.SiaDirSysPath(rootDir)
+	wal, _ := newTestWAL()
+	siaDir, err := New(siaDirSysPath, rootDir, modules.DefaultDirPerm, wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Delete the siadir and keep siadir in memory
+	err = siaDir.Delete()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify functions either return or error accordingly
+	//
+	// First set should not error or panic
+	if !siaDir.Deleted() {
+		t.Error("SiaDir metadata should reflect the deletion")
+	}
+	_ = siaDir.MDPath()
+	_ = siaDir.Metadata()
+	_ = siaDir.Path()
+
+	// Second Set should return an error
+	err = siaDir.Rename("")
+	if !errors.Contains(err, ErrDeleted) {
+		t.Error("Rename should return with and error for SiaDir deleted")
+	}
+	err = siaDir.SetPath("")
+	if !errors.Contains(err, ErrDeleted) {
+		t.Error("SetPath should return with and error for SiaDir deleted")
+	}
+	_, err = siaDir.DirReader()
+	if !errors.Contains(err, ErrDeleted) {
+		t.Error("DirReader should return with and error for SiaDir deleted")
+	}
+	siaDir.mu.Lock()
+	err = siaDir.updateMetadata(Metadata{})
+	if !errors.Contains(err, ErrDeleted) {
+		t.Error("updateMetadata should return with and error for SiaDir deleted")
+	}
+	siaDir.mu.Unlock()
+}

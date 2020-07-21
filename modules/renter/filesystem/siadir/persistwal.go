@@ -73,7 +73,7 @@ func readAndApplyMetadataUpdate(deps modules.Dependencies, update writeaheadlog.
 	}
 
 	// Create the folder if it doesn't exist yet.
-	err = os.MkdirAll(filepath.Dir(path), 0700)
+	err = os.MkdirAll(filepath.Dir(path), modules.DefaultDirPerm)
 	if err != nil {
 		return err
 	}

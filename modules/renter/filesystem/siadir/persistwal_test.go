@@ -7,6 +7,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
+// TestReadAndApplyMetadataUpdateMissingDir probes the edge case of a directory
+// not being created on disk due to a crash.
 func TestReadAndApplyMetadataUpdateMissingDir(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
