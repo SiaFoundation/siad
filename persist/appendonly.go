@@ -46,7 +46,7 @@ type (
 		mu sync.Mutex
 	}
 
-	// appendOnlyPersistMetadata contains metadata for the AppendOnly Persist
+	// appendOnlyPersistMetadata contains metadata for the AppendOnlyPersist
 	// file.
 	appendOnlyPersistMetadata struct {
 		Header  types.Specifier
