@@ -6,7 +6,7 @@ GIT_DIRTY=$(shell git diff-index --quiet HEAD -- || echo "✗-")
 ldflags= -X gitlab.com/NebulousLabs/Sia/build.GitRevision=${GIT_DIRTY}${GIT_REVISION} \
 -X "gitlab.com/NebulousLabs/Sia/build.BuildTime=${BUILD_TIME}"
 
-racevars= history_size=7 halt_on_error=1 atexit_sleep_ms=2000
+racevars= history_size=3 halt_on_error=1 atexit_sleep_ms=2000
 
 # all will build and install release binaries
 all: release
