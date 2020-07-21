@@ -150,7 +150,7 @@ func (cs *ContractSet) PublicKey(id types.FileContractID) (crypto.PublicKey, boo
 	if !ok {
 		return crypto.PublicKey{}, false
 	}
-	return safeContract.header.SecretKey.PublicKey(), true
+	return safeContract.PublicKey(), true
 }
 
 // ViewAll returns the metadata of each contract in the set. The contracts are
