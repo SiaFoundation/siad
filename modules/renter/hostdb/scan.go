@@ -673,7 +673,10 @@ func (hdb *HostDB) threadedScan() {
 }
 
 // fetchPriceTable fetches a price table from a host without paying. This means
-// the price table is only useful for scoring the host and can't be used.
+// the price table is only useful for scoring the host and can't be used. This
+// uses an ephemeral stream which is a special type of stream that doesn't leak
+// TCP connections. Otherwise we would end up with one TCP connection for every
+// host in the network after scanning the whole network.
 func fetchPriceTable(siamux *siamux.SiaMux, addr string, timeout time.Duration, hpk mux.ED25519PublicKey) (*modules.RPCPriceTable, error) {
 	stream, err := siamux.NewEphemeralStream(modules.HostSiaMuxSubscriberName, addr, timeout, hpk)
 	if err != nil {
