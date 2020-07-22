@@ -212,6 +212,19 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 	secret := crypto.HashAll(rs, snapshotKeySpecifier)
 	defer fastrand.Read(secret[:])
 
+	// download the current entry table
+	entryTable, err := r.managedDownloadSnapshotTableRHP2(host)
+	if err != nil {
+		return errors.AddContext(err, "could not download the snapshot table")
+	}
+
+	// check if the table already contains the entry.
+	for _, existingEntry := range entryTable {
+		if existingEntry.UID == meta.UID {
+			return nil // host already contains entry
+		}
+	}
+
 	// split the snapshot .sia file into sectors
 	var sectors [][]byte
 	for buf := bytes.NewBuffer(dotSia); buf.Len() > 0; {
@@ -240,11 +253,6 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 		entry.DataSectors[j] = root
 	}
 
-	// download the current entry table
-	entryTable, err := r.managedDownloadSnapshotTableRHP2(host)
-	if err != nil {
-		return errors.AddContext(err, "could not download the snapshot table")
-	}
 	shouldOverwrite := len(entryTable) != 0 // only overwrite if the sector already contained an entryTable
 	entryTable = append(entryTable, entry)
 
