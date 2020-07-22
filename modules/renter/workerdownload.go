@@ -185,6 +185,11 @@ func (w *worker) managedPerformDownloadChunkJob() {
 		udc.managedUnregisterWorker(w)
 		return
 	}
+	// Reset the consecutive failures for the download cooldown.
+	w.downloadMu.Lock()
+	w.downloadConsecutiveFailures = 0
+	w.downloadMu.Unlock()
+
 	// TODO: Instead of adding the whole sector after the download completes,
 	// have the 'd.Sector' call add to this value ongoing as the sector comes
 	// in. Perhaps even include the data from creating the downloader and other
