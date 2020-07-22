@@ -103,7 +103,7 @@ func checkDownloadGouging(allowance modules.Allowance, hostSettings modules.Host
 	return nil
 }
 
-// managedDownloadFailed records an error that caused a downloader to failed,
+// managedDownloadFailed records an error that caused a download to fail,
 // increases the cooldown timer, and then dumps all existing jobs for the
 // worker.
 func (w *worker) managedDownloadFailed(err error) {
