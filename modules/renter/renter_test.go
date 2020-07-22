@@ -54,9 +54,7 @@ func (rt *renterTester) Close() error {
 }
 
 // addHost adds a host to the test group so that it appears in the host db
-func (rt *renterTester) addCustomHost(name string, deps modules.Dependencies) (modules.Host, error) {
-	testdir := build.TempDir("renter", name)
-
+func (rt *renterTester) addCustomHost(testdir string, deps modules.Dependencies) (modules.Host, error) {
 	// create a siamux for this particular host
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
 	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
@@ -121,7 +119,7 @@ func (rt *renterTester) addCustomHost(name string, deps modules.Dependencies) (m
 
 // addHost adds a host to the test group so that it appears in the host db
 func (rt *renterTester) addHost(name string) (modules.Host, error) {
-	return rt.addCustomHost(name, modules.ProdDependencies)
+	return rt.addCustomHost(filepath.Join(rt.dir, name), modules.ProdDependencies)
 }
 
 // addRenter adds a renter to the renter tester and then make sure there is
@@ -319,7 +317,7 @@ func TestRenterCanAccessEphemeralAccountHostSettings(t *testing.T) {
 	defer rt.Close()
 
 	// Add a host to the test group
-	h, err := rt.addHost(t.Name())
+	h, err := rt.addHost(filepath.Join(rt.dir, "host"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -360,7 +358,7 @@ func TestRenterPricesDivideByZero(t *testing.T) {
 	}
 
 	// Add a host to the test group
-	_, err = rt.addHost(t.Name())
+	_, err = rt.addHost(filepath.Join(rt.dir, "host"))
 	if err != nil {
 		t.Fatal(err)
 	}
