@@ -260,7 +260,6 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 		}
 
 		// Start the chunk upload.
-		r.repairLog.Println("Receiving an upload request from the streamer, trying to set high priority upload")
 		offline, goodForRenew, _ := r.managedContractUtilityMaps()
 		uuc, err := r.managedBuildUnfinishedChunk(fileNode, chunkIndex, hosts, pks, memoryPriorityHigh, offline, goodForRenew)
 		if err != nil {

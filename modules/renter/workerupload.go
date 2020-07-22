@@ -274,9 +274,6 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 		w.managedDropChunk(uc)
 
 		// Extra check - if a worker is unusable, drop all the queued chunks.
-		//
-		// TODO: This is more of a hack than a proper fix, should probably find
-		// some other way to achieve this goal. Should this build.Critical?
 		if onCooldown || !goodForUpload {
 			w.managedDropUploadChunks()
 		}

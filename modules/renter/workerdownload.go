@@ -107,8 +107,9 @@ func checkDownloadGouging(allowance modules.Allowance, hostSettings modules.Host
 // increases the cooldown timer, and then dumps all existing jobs for the
 // worker.
 func (w *worker) managedDownloadFailed(err error) {
-	// No penalties if the whole renter is offline.
+	// No penalties if the whole renter is offline. Still drop chunks though.
 	if !w.renter.g.Online() {
+		w.managedDropDownloadChunks()
 		return
 	}
 	w.downloadMu.Lock()
@@ -273,7 +274,8 @@ func (w *worker) callQueueDownloadChunk(udc *unfinishedDownloadChunk) {
 	w.downloadMu.Lock()
 	onCooldown := w.onDownloadCooldown()
 	terminated := w.downloadTerminated
-	if !terminated && !onCooldown {
+	goodWorker := !terminated && !onCooldown
+	if goodWorker {
 		// Accept the chunk and issue a notification to the master thread that
 		// there is a new download.
 		w.downloadChunks = append(w.downloadChunks, udc)
@@ -281,9 +283,9 @@ func (w *worker) callQueueDownloadChunk(udc *unfinishedDownloadChunk) {
 	}
 	w.downloadMu.Unlock()
 
-	// If the worker has terminated, remove it from the udc. This call needs to
+	// If the worker is not usable, remove it from the udc. This call needs to
 	// happen without holding the worker lock.
-	if terminated || onCooldown {
+	if !goodWorker {
 		udc.managedRemoveWorker()
 	}
 }
@@ -331,9 +333,6 @@ func (w *worker) managedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfi
 		udc.managedRemoveWorker()
 
 		// Extra check - if a worker is unusable, drop all the queued jobs.
-		//
-		// TODO: This is more of a hack, should probably find a better overall
-		// solution. Should this build.Critical?
 		if onCooldown {
 			w.managedDropDownloadChunks()
 		}
