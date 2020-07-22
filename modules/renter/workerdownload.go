@@ -330,7 +330,7 @@ func (w *worker) managedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfi
 	// dropped.
 	udc.mu.Lock()
 	chunkComplete := udc.piecesCompleted >= udc.erasureCode.MinPieces() || udc.download.staticComplete()
-	chunkFailed := udc.piecesCompleted+udc.workersRemaining < udc.erasureCode.MinPieces()
+	chunkFailed := udc.piecesCompleted+udc.workersRemaining < udc.erasureCode.MinPieces() || udc.failed
 	pieceData, workerHasPiece := udc.staticChunkMap[w.staticHostPubKey.String()]
 	pieceCompleted := udc.completedPieces[pieceData.index]
 	if chunkComplete || chunkFailed || onCooldown || !workerHasPiece || pieceCompleted {
