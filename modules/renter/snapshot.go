@@ -544,6 +544,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			}
 			continue
 		}
+		r.staticWorkerPool.callUpdate()
 
 		// First, process any snapshot siafiles that may have finished uploading.
 		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
