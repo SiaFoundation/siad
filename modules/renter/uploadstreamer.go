@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -272,21 +273,42 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 
 		// Check if the chunk needs any work or if we can skip it.
 		if uuc.piecesCompleted < uuc.piecesNeeded {
-			// Add the chunk to the upload heap.
-			if !r.uploadHeap.managedPush(uuc) {
-				// The chunk can't be added to the heap. It's probably already being
-				// repaired. Flush the shard and move on to the next one.
+			// Add the chunk to the upload heap's repair map.
+			if !r.uploadHeap.managedPushToRepair(uuc) {
+				// The chunk wasn't added to the repair map meaning it must have already
+				// been in the repair map
 				_, _ = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
 				if err := ss.Close(); err != nil {
 					return nil, err
 				}
+			} else {
+				// Set the chunks popped time to simulate the chunk being popped from the
+				// heap
+				uuc.mu.Lock()
+				uuc.chunkPoppedFromHeapTime = time.Now()
+				uuc.mu.Unlock()
+
+				// Prepare and send the chunk to the workers. This is done in a loop
+				// because the only error returned from managedPrepareNextChunk is due to
+				// insufficient memory. We should continue to try and submit the chunk
+				// until there is memory available.
+				//
+				// NOTE: Should we have a timeout here? Could probably add one to
+				// FileUploadParams. This loop is currently at risk of cycling until the
+				// renter shuts down.
+				for {
+					err = r.managedPrepareNextChunk(uuc)
+					if err == nil {
+						break
+					}
+					select {
+					case <-r.tg.StopChan():
+						return nil, errors.New("interrupted by shutdown")
+					case <-time.After(streamerChunkRetryInterval):
+					}
+				}
 			}
-			// Notify the upload loop.
 			chunks = append(chunks, uuc)
-			select {
-			case r.uploadHeap.newUploads <- struct{}{}:
-			default:
-			}
 		} else {
 			// The chunk doesn't need any work. We still need to read a chunk
 			// from the shard though. Otherwise we will upload the wrong chunk

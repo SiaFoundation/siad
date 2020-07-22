@@ -1,18 +1,22 @@
 package renter
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestBuildUnfinishedChunks probes buildUnfinishedChunks to make sure that the
@@ -860,6 +864,132 @@ func TestChunkSwitchStuckStatus(t *testing.T) {
 	chunk = rt.renter.uploadHeap.managedPop()
 	if chunk != nil {
 		t.Fatal("Expected nil chunk")
+	}
+}
+
+// TestUploadHeapPushToRepair tests the managedPushToRepair method of the uploadheap
+func TestUploadHeapPushToRepair(t *testing.T) {
+	// Create an upload heap
+	uh := uploadHeap{
+		repairingChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
+		stuckHeapChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
+		unstuckHeapChunks: make(map[uploadChunkID]*unfinishedUploadChunk),
+
+		repairNeeded: make(chan struct{}, 1),
+	}
+
+	// Create a chunk
+	chunk := &unfinishedUploadChunk{
+		id: uploadChunkID{
+			fileUID: "unstuckchunk",
+			index:   1,
+		},
+		chunkCreationTime: time.Now(),
+		stuck:             false,
+		availableChan:     make(chan struct{}),
+	}
+
+	// Define helper
+	pushAndVerify := func(chunk *unfinishedUploadChunk) {
+		// Adding chunk should be successful
+		added := uh.managedPushToRepair(chunk)
+		if !added {
+			t.Fatal("chunk should have been pushed to the repair map")
+		}
+		uh.mu.Lock()
+		_, stuckExists := uh.stuckHeapChunks[chunk.id]
+		_, unstuckExists := uh.unstuckHeapChunks[chunk.id]
+		repairChunk, repairExists := uh.repairingChunks[chunk.id]
+		uh.mu.Unlock()
+		if stuckExists || unstuckExists {
+			t.Fatal("chunk should not exist in stuck or unstuck maps")
+		}
+		if !repairExists {
+			t.Fatal("chunk should have been added to repair map")
+		}
+		if !reflect.DeepEqual(repairChunk, chunk) {
+			t.Log("chunk:", chunk)
+			t.Log("repairChunk:", repairChunk)
+			t.Fatal("chunk in repair map not equal to the chunk added")
+		}
+	}
+
+	// Pushing the chunk to the repair map should succeed
+	pushAndVerify(chunk)
+
+	// Pushing again should fail
+	added := uh.managedPushToRepair(chunk)
+	if added {
+		t.Error("chunk should not be able to be added twice")
+	}
+
+	// Delete the chunk from the repair map and add the chunk directly to the
+	// stuck and unstuck maps
+	uh.mu.Lock()
+	delete(uh.repairingChunks, chunk.id)
+	uh.stuckHeapChunks[chunk.id] = chunk
+	uh.unstuckHeapChunks[chunk.id] = chunk
+	uh.mu.Unlock()
+
+	// Pushing the chunk should clear it from both maps and be successful
+	pushAndVerify(chunk)
+
+	// Set the sourceReader for a new chunk with the same id
+	var buf []byte
+	newChunk := &unfinishedUploadChunk{
+		id: uploadChunkID{
+			fileUID: "unstuckchunk",
+			index:   1,
+		},
+		sourceReader:      NewStreamShard(bytes.NewReader(buf), buf),
+		chunkCreationTime: time.Now(),
+		stuck:             false,
+		availableChan:     make(chan struct{}),
+	}
+
+	// Adding new chunk should be false but chunk should eventually appear in the heap
+	added = uh.managedPushToRepair(newChunk)
+	if added {
+		t.Error("push should not have added chunk")
+	}
+
+	// Since the chunks are not being distributed to workers in this test the
+	// chunk should have immediately been re-added to the heap since there was no
+	// wait added to the cancelWG. We do however need to call mark repair as done
+	// so that the chunk is removed from the repair map
+	uh.managedMarkRepairDone(chunk.id)
+
+	// Since the adding happens in a go routine, there might be a slight delay.
+	// Check for the new chunk in the heap
+	err := build.Retry(100, time.Millisecond, func() error {
+		exists := uh.managedExists(newChunk.id)
+		if !exists {
+			return errors.New("newChunk doesn't exists in heap yet")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Since we know that the chunk is not marked as stuck we know it should be in
+	// the unstuck map
+	uh.mu.Lock()
+	unstuckChunk, existsUnstuck := uh.unstuckHeapChunks[newChunk.id]
+	_, existsRepair := uh.repairingChunks[chunk.id]
+	uh.mu.Unlock()
+	if existsRepair {
+		t.Error("Chunk should not be in the repair map")
+	}
+	if !existsUnstuck {
+		t.Error("Chunk should exist in the unstuck map")
+	}
+	if !reflect.DeepEqual(unstuckChunk, newChunk) {
+		//	err := fmt.Errorf("chunk: %v \nunstuckChunk: %v\n", chunk, unstuckChunk)
+		//	return errors.AddContext(err, "chunk in repair map not equal to the chunk added")
+		t.Log("newChunk:", newChunk)
+		t.Log("mapChunk:", unstuckChunk)
+		t.Error("chunks not equal")
 	}
 }
 

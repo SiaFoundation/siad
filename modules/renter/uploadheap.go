@@ -270,6 +270,41 @@ func (uh *uploadHeap) managedPause(duration time.Duration) {
 	}
 }
 
+// managedPushToRepair will try and add a chunk directly to the upload heap's
+// repair map. If the chunk is added directly to the map it will return true
+// otherwise it will return false
+func (uh *uploadHeap) managedPushToRepair(uuc *unfinishedUploadChunk) bool {
+	// Make sure the chunk creation time is set
+	uuc.mu.Lock()
+	if uuc.chunkCreationTime.IsZero() {
+		uuc.chunkCreationTime = time.Now()
+	}
+	uuc.mu.Unlock()
+
+	// Check if chunk is in the repair map
+	uh.mu.Lock()
+	defer uh.mu.Unlock()
+	repairingUUC, existsRepairing := uh.repairingChunks[uuc.id]
+
+	// If it is already in the repair map then return false
+	if existsRepairing {
+		// If the added chunk has a sourceReader and the existing chunk doesn't,
+		// cancel the existing chunk and submit the new chunk to the heap.
+		if uuc.sourceReader != nil && repairingUUC.sourceReader == nil {
+			uh.updateChunk(repairingUUC, uuc)
+		}
+		return false
+	}
+
+	// Make sure the chunk is removed from unstuck and stuck maps
+	delete(uh.unstuckHeapChunks, uuc.id)
+	delete(uh.stuckHeapChunks, uuc.id)
+
+	// Add to the repair map
+	uh.repairingChunks[uuc.id] = uuc
+	return true
+}
+
 // managedPush will try and add a chunk to the upload heap. If the chunk is
 // added it will return true otherwise it will return false
 func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
@@ -289,9 +324,8 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	stuckUUC, existsStuckHeap := uh.stuckHeapChunks[uuc.id]
 	exists := existsUnstuckHeap || existsRepairing || existsStuckHeap
 
-	// If the added chunk has a sourceReader and the existing one doesn't, replace
-	// them.
-	if uuc.sourceReader != nil && exists {
+	// If the chunk already exists see if it needs to be updated
+	if exists {
 		// Get the existing chunk.
 		var existingUUC *unfinishedUploadChunk
 		if existsStuckHeap {
@@ -301,18 +335,13 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 		} else if existsUnstuckHeap {
 			existingUUC = unstuckUUC
 		}
-		// Cancel the chunk.
-		existingUUC.cancelMU.Lock()
-		existingUUC.canceled = true
-		existingUUC.cancelMU.Unlock()
-		// Wait for all workers to finish ongoing work on that chunk and try to push
-		// the new chunk again. This happens in a separate thread to avoid holding the
-		// uploadHeap lock while waiting.
-		go func() {
-			existingUUC.cancelWG.Wait()
-			uh.managedPush(uuc)
-		}()
-		return true // It's not pushed yet but it is guaranteed to be pushed eventually.
+
+		// If the added chunk has a sourceReader and the existing one doesn't,
+		// replace them.
+		if uuc.sourceReader != nil && existingUUC.sourceReader == nil {
+			uh.updateChunk(existingUUC, uuc)
+			return true // It's not pushed yet but it is guaranteed to be pushed eventually.
+		}
 	}
 
 	// Check if the chunk can be added to the heap
@@ -377,6 +406,30 @@ func (uh *uploadHeap) managedResume() {
 	if stopped {
 		close(uh.pauseChan)
 	}
+}
+
+// updateChunk will update the chunk that is in the upload heap by cancelling it
+// and adding the new chunk.
+func (uh *uploadHeap) updateChunk(currentChunk, newChunk *unfinishedUploadChunk) {
+	// Cancel the current chunk.
+	currentChunk.cancelMU.Lock()
+	currentChunk.canceled = true
+	currentChunk.cancelMU.Unlock()
+	fmt.Println("here")
+	// Wait for all workers to finish ongoing work on the current chunk and
+	// try to push the new chunk. This happens in a separate thread to avoid
+	// holding the uploadHeap lock while waiting.
+	go func() {
+		currentChunk.cancelWG.Wait()
+		uh.managedPush(newChunk)
+
+		// Make sure the upload heap knows that a repair is needed from the chunk
+		// being added
+		select {
+		case uh.repairNeeded <- struct{}{}:
+		default:
+		}
+	}()
 }
 
 // PauseRepairsAndUploads pauses the renter's repairs and uploads for a time
@@ -1115,7 +1168,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 // available, fetching the logical data for the chunk (either from the disk or
 // from the network), erasure coding the logical data into the physical data,
 // and then finally passing the work onto the workers.
-func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[string]struct{}) error {
+func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk) error {
 	// Grab the next chunk, loop until we have enough memory, update the amount
 	// of memory available, and then spin up a thread to asynchronously handle
 	// the rest of the chunk tasks.
@@ -1158,7 +1211,7 @@ func (r *Renter) managedRefreshHostsAndWorkers() map[string]struct{} {
 // managedRepairLoop works through the uploadheap repairing chunks. The repair
 // loop will continue until the renter stops, there are no more chunks, or the
 // number of chunks in the uploadheap has dropped below the minUploadHeapSize
-func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
+func (r *Renter) managedRepairLoop() error {
 	// smallRepair indicates whether or not the repair loop should process all
 	// of the chunks in the heap instead of just processing down to the minimum
 	// heap size. We want to process all of the chunks if the rest of the
@@ -1248,7 +1301,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 		nextChunk.mu.Lock()
 		nextChunk.chunkPoppedFromHeapTime = time.Now()
 		nextChunk.mu.Unlock()
-		err := r.managedPrepareNextChunk(nextChunk, hosts)
+		err := r.managedPrepareNextChunk(nextChunk)
 		if err != nil {
 			// An error was return which means the renter was unable to allocate
 			// memory for the repair. Since that is not an issue with the file
@@ -1428,7 +1481,7 @@ func (r *Renter) threadedUploadAndRepair() {
 		if uploadHeapLen > 0 {
 			r.repairLog.Printf("Executing an upload and repair cycle, uploadHeap has %v chunks in it", uploadHeapLen)
 		}
-		err = r.managedRepairLoop(hosts)
+		err = r.managedRepairLoop()
 		if err != nil {
 			// If there was an error with the repair loop sleep for a little bit
 			// and then try again. Here we do not skip to the next iteration as
