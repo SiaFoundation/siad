@@ -56,7 +56,7 @@ func ApplyUpdates(updates ...writeaheadlog.Update) error {
 
 // CreateAndApplyTransaction is a helper method that creates a writeaheadlog
 // transaction and applies it.
-func CreateAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeaheadlog.Update) error {
+func CreateAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeaheadlog.Update) (err error) {
 	// Create the writeaheadlog transaction.
 	txn, err := wal.NewTransaction(updates)
 	if err != nil {
@@ -66,6 +66,13 @@ func CreateAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeaheadlog.
 	if err := <-txn.SignalSetupComplete(); err != nil {
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
+	// Starting at this point the changes to be made are written to the WAL.
+	// This means we need to panic in case applying the updates fails.
+	defer func() {
+		if err != nil {
+			panic(err)
+		}
+	}()
 	// Apply the updates.
 	if err := ApplyUpdates(updates...); err != nil {
 		return errors.AddContext(err, "failed to apply updates")

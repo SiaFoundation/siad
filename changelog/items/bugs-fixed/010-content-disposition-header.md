@@ -1,0 +1,1 @@
+- Set 'Content-Disposition' header for archives.

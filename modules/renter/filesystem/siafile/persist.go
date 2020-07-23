@@ -637,7 +637,7 @@ func (sf *SiaFile) createAndApplyTransaction(updates ...writeaheadlog.Update) (e
 // createAndApplyTransaction is a generic version of the
 // createAndApplyTransaction method of the SiaFile. This will result in 2 fsyncs
 // independent of the number of updates.
-func createAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeaheadlog.Update) error {
+func createAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeaheadlog.Update) (err error) {
 	if len(updates) == 0 {
 		return nil
 	}
@@ -650,6 +650,13 @@ func createAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeaheadlog.
 	if err := <-txn.SignalSetupComplete(); err != nil {
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
+	// Starting at this point the changes to be made are written to the WAL.
+	// This means we need to panic in case applying the updates fails.
+	defer func() {
+		if err != nil {
+			panic(err)
+		}
+	}()
 	// Apply the updates.
 	if err := ApplyUpdates(updates...); err != nil {
 		return errors.AddContext(err, "failed to apply updates")
