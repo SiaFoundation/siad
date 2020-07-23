@@ -4897,7 +4897,7 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	// ephemeral account, remember this balance value as the renter's version of
 	// the balance
 	var renterBalance types.Currency
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(300, 100*time.Millisecond, func() error {
 		rwg, err := r.RenterWorkersGet()
 		if err != nil {
 			return err
