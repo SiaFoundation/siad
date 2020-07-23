@@ -755,6 +755,11 @@ type (
 		UploadQueueSize     int           `json:"uploadqueuesize"`
 		UploadTerminated    bool          `json:"uploadterminated"`
 
+		// RHP3 Cooldown information
+		RHP3OnCooldown            bool      `json:"rhp3oncooldown"`
+		RHP3CooldownRecentErr     string    `json:"rhp3recenterr"`
+		RHP3CooldownRecentErrTime time.Time `json:"rhp3recenterrtime"`
+
 		// Ephemeral Account information
 		AccountBalanceTarget types.Currency      `json:"accountbalancetarget"`
 		AccountStatus        WorkerAccountStatus `json:"accountstatus"`
@@ -780,10 +785,6 @@ type (
 
 		Funded bool `json:"funded"`
 
-		OnCoolDown          bool      `json:"oncooldown"`
-		OnCoolDownUntil     time.Time `json:"oncooldownuntil"`
-		ConsecutiveFailures uint64    `json:"consecutivefailures"`
-
 		RecentErr     string    `json:"recenterr"`
 		RecentErrTime time.Time `json:"recenterrtime"`
 	}
@@ -795,10 +796,6 @@ type (
 		UpdateTime time.Time `json:"updatetime"`
 
 		Active bool `json:"active"`
-
-		OnCoolDown          bool      `json:"oncooldown"`
-		OnCoolDownUntil     time.Time `json:"oncooldownuntil"`
-		ConsecutiveFailures uint64    `json:"consecutivefailures"`
 
 		RecentErr     string    `json:"recenterr"`
 		RecentErrTime time.Time `json:"recenterrtime"`

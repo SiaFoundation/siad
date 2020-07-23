@@ -2637,9 +2637,7 @@ func renterworkerseacmd() {
 	// collect some overal account stats
 	var wocd, nfw uint64
 	for _, worker := range rw.Workers {
-		if worker.AccountStatus.OnCoolDown {
-			wocd++
-		}
+		// TODO (PJ) fix wocd
 		if !worker.AccountStatus.Funded {
 			nfw++
 		}
@@ -2662,8 +2660,8 @@ func renterworkerseacmd() {
 	// print header
 	hostInfo := "Host PubKey"
 	accountInfo := "\tFunded\tAvailBal\tNegBal\tBalTarget"
-	queueInfo := "\tOnCoolDown\tCoolDownUntil\tConsecFail\tErrorAt\tError"
-	header := hostInfo + accountInfo + queueInfo
+	errorInfo := "\tErrorAt\tError"
+	header := hostInfo + accountInfo + errorInfo
 	fmt.Fprintln(w, "\nWorker Accounts Detail  \n\n"+header)
 
 	// print rows
@@ -2680,11 +2678,8 @@ func renterworkerseacmd() {
 			as.NegativeBalance.HumanString(),
 			worker.AccountBalanceTarget.HumanString())
 
-		// Queue Info
-		fmt.Fprintf(w, "\t%t\t%v\t%v\t%v\t%v\n",
-			as.OnCoolDown,
-			sanitizeTime(as.OnCoolDownUntil, as.OnCoolDown),
-			as.ConsecutiveFailures,
+		// Error Info
+		fmt.Fprintf(w, "\t%v\t%v\n",
 			sanitizeTime(as.RecentErrTime, as.RecentErr != ""),
 			sanitizeErr(as.RecentErr))
 	}
@@ -2701,9 +2696,7 @@ func renterworkersptcmd() {
 	// collect some overal account stats
 	var wocd, wnpt uint64
 	for _, worker := range rw.Workers {
-		if worker.PriceTableStatus.OnCoolDown {
-			wocd++
-		}
+		// TODO (PJ) fix wocd
 		if !worker.PriceTableStatus.Active {
 			wnpt++
 		}
@@ -2743,11 +2736,8 @@ func renterworkersptcmd() {
 			sanitizeTime(pts.ExpiryTime, pts.Active),
 			sanitizeTime(pts.UpdateTime, pts.Active))
 
-		// QueueInfo
-		fmt.Fprintf(w, "\t%t\t%v\t%v\t%v\t%v\n",
-			pts.OnCoolDown,
-			sanitizeTime(pts.OnCoolDownUntil, pts.OnCoolDown),
-			pts.ConsecutiveFailures,
+		// Error Info
+		fmt.Fprintf(w, "\t%v\t%v\n",
 			sanitizeTime(pts.RecentErrTime, pts.RecentErr != ""),
 			sanitizeErr(pts.RecentErr))
 	}

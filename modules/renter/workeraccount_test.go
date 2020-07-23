@@ -10,7 +10,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -57,7 +56,6 @@ func TestAccount(t *testing.T) {
 	t.Run("Constants", testAccountConstants)
 	t.Run("MinMaxExpectedBalance", testAccountMinAndMaxExpectedBalance)
 	t.Run("ResetBalance", testAccountResetBalance)
-	t.Run("ResetCoolDown", testAccountResetCoolDown)
 
 	t.Run("Creation", func(t *testing.T) { testAccountCreation(t, rt) })
 	t.Run("Tracking", func(t *testing.T) { testAccountTracking(t, rt) })
@@ -220,27 +218,6 @@ func testAccountResetBalance(t *testing.T) {
 	}
 }
 
-// testAccountResetCoolDown is a small unit test that verifies the functionality
-// of the reset cooldown function.
-func testAccountResetCoolDown(t *testing.T) {
-	t.Parallel()
-
-	a := new(account)
-	a.cooldownUntil = cooldownUntil(a.consecutiveFailures)
-	a.consecutiveFailures++
-	if !a.managedOnCooldown() {
-		t.Fatal("expected account to be on cooldown")
-	}
-
-	a.managedResetCoolDown()
-	if a.consecutiveFailures != 0 {
-		t.Fatal("unexpected consecutive failures after cooldown reset", a.consecutiveFailures)
-	}
-	if a.managedOnCooldown() {
-		t.Error("expected account to not be on cooldown")
-	}
-}
-
 // testAccountCreation verifies newAccount returns a valid account object
 func testAccountCreation(t *testing.T, rt *renterTester) {
 	r := rt.renter
@@ -377,111 +354,6 @@ func testAccountCriticalOnDoubleSave(t *testing.T, closedRenter *Renter) {
 	err := closedRenter.staticAccountManager.managedSaveAndClose()
 	if err == nil {
 		t.Fatal("Expected build.Critical on double save")
-	}
-}
-
-// TestWorkerAccountCoolDown verifies the functionality of the account cooldown
-func TestWorkerAccountCoolDown(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableCriticalOnMaxBalance{}, modules.ProdDependencies)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err := wt.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
-	w := wt.worker
-
-	// check the balance in a retry to allow the worker to run through it's
-	// setup, e.g. updating PT, checking balance and refilling. Note we use min
-	// expected balance to ensure we're not counting pending deposits
-	if err := build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.staticAccount.managedMinExpectedBalance().Equals(w.staticBalanceTarget) {
-			return errors.New("worker account not funded")
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	// verify the account is not on cooldown
-	if w.staticAccount.managedOnCooldown() {
-		t.Fatal("Account should not be on cooldown")
-	}
-
-	// set a negative balance, tricking the worker into thinking it has to
-	// refill
-	w.staticAccount.mu.Lock()
-	w.staticAccount.negativeBalance = w.staticAccount.balance
-	w.staticAccount.mu.Unlock()
-
-	// manually trigger a refill
-	w.managedRefillAccount()
-
-	// verify the account is on cooldown
-	if !w.staticAccount.managedOnCooldown() {
-		t.Fatal("Account should be on cooldown")
-	}
-
-	// verify recent error and consecutive failures are set
-	w.staticAccount.mu.Lock()
-	cf := w.staticAccount.consecutiveFailures
-	re := w.staticAccount.recentErr
-	w.staticAccount.mu.Unlock()
-	if cf == 0 {
-		t.Fatal("Consecutive failures should be larger than zero")
-	}
-	if re == nil {
-		t.Fatal("Recent Error should be set")
-	}
-
-	// the workerloop should have synced the account balance
-	if err := build.Retry(100, 100*time.Millisecond, func() error {
-		w.staticAccount.mu.Lock()
-		defer w.staticAccount.mu.Unlock()
-		if !w.staticAccount.negativeBalance.IsZero() {
-			return errors.New("worker account balance not reset")
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	// run a couple of has sector jobs to spend money
-	cc := make(chan struct{})
-	rc := make(chan *jobHasSectorResponse)
-	jhs := w.newJobHasSector(cc, rc, crypto.Hash{})
-	for i := 0; i < 100; i++ {
-		if !w.staticJobHasSectorQueue.callAdd(jhs) {
-			t.Fatal("could not add job to queue")
-		}
-	}
-
-	// manually trigger a refill
-	w.managedRefillAccount()
-
-	// check if 'consecutiveFailures' has been reset to 0
-	if err := build.Retry(100, 100*time.Millisecond, func() error {
-		w.staticAccount.mu.Lock()
-		cf := w.staticAccount.consecutiveFailures
-		w.staticAccount.mu.Unlock()
-		if cf != 0 {
-			return errors.New("consecutive failures not reset")
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	// verify the account is not on cooldown
-	if w.staticAccount.managedOnCooldown() {
-		t.Fatal("Account should not be on cooldown")
 	}
 }
 

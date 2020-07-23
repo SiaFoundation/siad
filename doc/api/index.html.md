@@ -4501,13 +4501,14 @@ returns the the status of all the workers in the renter's workerpool.
       "backupjobqueuesize": 0,        // int
       "downloadrootjobqueuesize": 0,  // int
 
+      "rhp3oncooldown": false,                      // bool
+      "rhp3recenterr": "",                          // string
+      "rhp3recenterrtime": "0001-01-01T00:00:00Z",  // time
+
       "accountstatus": {
         "availablebalance": "1000000000000000000000000", // hasting
         "negativebalance": "0",                          // hasting
         "funded": true,                                  // boolean
-        "oncooldown": false,                             // boolean
-        "oncooldownuntil": "0001-01-01T00:00:00Z",       // time
-        "consecutivefailures": 0,                        // int
         "recenterr": "",                                 // string
         "recenterrtime": "0001-01-01T00:00:00Z"          // time
       },
@@ -4516,9 +4517,6 @@ returns the the status of all the workers in the renter's workerpool.
         "expirytime": "2020-06-15T16:17:01.040481+02:00", // time
         "updatetime": "2020-06-15T16:12:01.040481+02:00", // time
         "active": true,                                   // boolean
-        "oncooldown": false,                              // boolean
-        "oncooldownuntil": "0001-01-01T00:00:00Z",        // time
-        "consecutivefailures": 0,                         // int
         "recenterr": "",                                  // string
         "recenterrtime": "0001-01-01T00:00:00Z"           // time
       },
@@ -4544,6 +4542,8 @@ returns the the status of all the workers in the renter's workerpool.
   ]
 }
 ```
+
+// TODO (PJ) update the rest of the docs - holding off until RHP3 cooldown is ok
 
 **numworkers** | int  
 Number of workers in the workerpool

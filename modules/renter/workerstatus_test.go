@@ -51,12 +51,14 @@ func TestWorkerAccountStatus(t *testing.T) {
 	status := a.managedStatus()
 	if !(status.Funded == true &&
 		status.AvailableBalance.Equals(w.staticBalanceTarget) &&
-		status.OnCoolDown == false &&
-		status.OnCoolDownUntil == time.Time{} &&
-		status.ConsecutiveFailures == 0 &&
 		status.RecentErr == "" &&
 		status.RecentErrTime == time.Time{}) {
 		t.Fatal("Unexpected account status", ToJSON(status))
+	}
+
+	// ensure the worker's RHP3 system is not on cooldown
+	if w.managedRHP3OnCooldown() {
+		t.Fatal("Unexpected RHP3 cooldown")
 	}
 
 	// nullify the account balance to ensure refilling triggers a max balance
@@ -70,12 +72,14 @@ func TestWorkerAccountStatus(t *testing.T) {
 	status = a.managedStatus()
 	if !(status.Funded == false &&
 		status.AvailableBalance.IsZero() &&
-		status.OnCoolDown == true &&
-		status.OnCoolDownUntil != time.Time{} &&
-		status.ConsecutiveFailures == 1 &&
 		status.RecentErr != "" &&
 		status.RecentErrTime != time.Time{}) {
 		t.Fatal("Unexpected account status", ToJSON(status))
+	}
+
+	// ensure the worker's RHP3 system is on cooldown
+	if !w.managedRHP3OnCooldown() {
+		t.Fatal("Expected RHP3 to have been put on cooldown")
 	}
 }
 
@@ -120,9 +124,6 @@ func TestWorkerPriceTableStatus(t *testing.T) {
 	// fetch the worker's pricetable status and verify its output
 	status := w.staticPriceTableStatus()
 	if !(status.Active == true &&
-		status.OnCoolDown == false &&
-		status.OnCoolDownUntil == time.Time{} &&
-		status.ConsecutiveFailures == 0 &&
 		status.RecentErr == "" &&
 		status.RecentErrTime == time.Time{}) {
 		t.Fatal("Unexpected price table status", ToJSON(status))
@@ -146,9 +147,6 @@ func TestWorkerPriceTableStatus(t *testing.T) {
 	if err := build.Retry(100, 100*time.Millisecond, func() error {
 		status = w.staticPriceTableStatus()
 		if !(status.Active == true &&
-			status.OnCoolDown == true &&
-			status.OnCoolDownUntil != time.Time{} &&
-			status.ConsecutiveFailures == 1 &&
 			status.RecentErr != "" &&
 			status.RecentErrTime != time.Time{}) {
 			return fmt.Errorf("Unexpected pricetable status %v", ToJSON(status))

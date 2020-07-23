@@ -90,6 +90,16 @@ type (
 		uploadRecentFailureErr    error                    // What was the reason for the last failure?
 		uploadTerminated          bool                     // Have we stopped uploading?
 
+		// The worker performs various tasks that involve RHP3 and require some
+		// RHP3 related setup to have taken place. For example, to perform an
+		// async download job the worker needs a valid price table and a funded
+		// ephemeral account. If the worker fails to successfully acquire this
+		// necessary setup, it goes in a cooldown, called the RHP3 cooldown.
+		rhp3ConsecutiveFailures uint64
+		rhp3CooldownUntil       time.Time
+		rhp3RecentErr           error
+		rhp3RecentErrTime       time.Time
+
 		// The staticAccount represent the renter's ephemeral account on the
 		// host. It keeps track of the available balance in the account, the
 		// worker has a refill mechanism that keeps the account balance filled

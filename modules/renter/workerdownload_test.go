@@ -1,13 +1,18 @@
 package renter
 
 import (
+	"bytes"
 	"testing"
+	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -216,5 +221,112 @@ func TestCheckDownloadGouging(t *testing.T) {
 	err = checkDownloadGouging(failAllowance, minHostSettings)
 	if err == nil {
 		t.Fatal("expecting price gouging check to fail")
+	}
+}
+
+// TestRHP2DownloadOnRHP3CoolDown verifies the worker correctly processes
+// download jobs. Note that this are RHP2 downloads, this test will verify in
+// particular that these jobs manage to succeed even if the worker is on (an
+// RHP3 induced) cool down.
+func TestRHP2DownloadOnRHP3CoolDown(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a new worker tester
+	deps := dependencies.NewDependencyInterruptStreamDialUp()
+	wt, err := newWorkerTesterCustomDependency(t.Name(), deps, &modules.ProductionDependencies{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := wt.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	deps.Fail()
+
+	// ensure the worker's RHP3 system has been put on a cool down, this should
+	// be the case as we've initialised the renter with a dependency that rate
+	// limits the stream, triggering a timeout
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if !wt.worker.managedRHP3OnCooldown() {
+			return errors.New("Worker has not been put on RHP3 cool down")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// prepare upload params
+	sp, err := modules.NewSiaPath(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fup, err := fileUploadParamsFromLUP(modules.SkyfileUploadParameters{
+		SiaPath:             sp,
+		DryRun:              false,
+		Force:               false,
+		BaseChunkRedundancy: 2,
+	})
+	fup.CipherType = crypto.TypePlain // don't care about encryption
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// upload some data
+	data := fastrand.Bytes(int(modules.SectorSize))
+	reader := bytes.NewReader(data)
+	err = wt.renter.UploadStreamFromReader(fup, reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// download the data using the legacy (!) download, which is RHP2
+	root := crypto.MerkleRoot(data)
+	downloaded, err := wt.renter.DownloadByRootLegacy(root, 0, modules.SectorSize, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(downloaded, data) {
+		t.Fatal("Downloaded data did not match uploaded data")
+	}
+
+	// grab the cooldown until
+	wt.worker.mu.Lock()
+	cdu := wt.worker.rhp3CooldownUntil
+	wt.worker.mu.Unlock()
+
+	// disable our dep and sleep until the cooldown until time
+	deps.Disable()
+	time.Sleep(time.Until(cdu))
+
+	// wait until the worker is ready
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if wt.worker.managedRHP3OnCooldown() {
+			return errors.New("Worker is still on cooldown")
+		}
+		if !wt.worker.staticPriceTable().staticValid() {
+			return errors.New("Worker does not have a valid PT yet")
+		}
+		if wt.worker.staticAccount.managedNeedsToRefill(wt.worker.staticBalanceTarget.Div64(2)) {
+			return errors.New("Worker does not have a funded EA yet")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// download the data using the RHP3 download method
+	downloaded, err = wt.renter.DownloadByRoot(root, 0, modules.SectorSize, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(downloaded, data) {
+		t.Fatal("Downloaded data did not match uploaded data")
 	}
 }
