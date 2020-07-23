@@ -20,7 +20,7 @@ const (
 type (
 	// jobHasSector contains information about a hasSector query.
 	jobHasSector struct {
-		staticSector crypto.Hash
+		staticSectors []crypto.Hash
 
 		staticResponseChan chan *jobHasSectorResponse // Channel to send a response down
 
@@ -40,8 +40,8 @@ type (
 
 	// jobHasSectorResponse contains the result of a hasSector query.
 	jobHasSectorResponse struct {
-		staticAvailable bool
-		staticErr       error
+		staticAvailables []bool
+		staticErr        error
 
 		// The worker is included in the response so that the caller can listen
 		// on one channel for a bunch of workers and still know which worker
@@ -51,6 +51,15 @@ type (
 )
 
 // TODO: Gouging
+
+// newJobHasSector is a helper method to create a new HasSector job.
+func (w *worker) newJobHasSector(cancel <-chan struct{}, responseChan chan *jobHasSectorResponse, roots ...crypto.Hash) *jobHasSector {
+	return &jobHasSector{
+		staticSectors:      roots,
+		staticResponseChan: responseChan,
+		jobGeneric:         newJobGeneric(w.staticJobHasSectorQueue, cancel),
+	}
+}
 
 // callDiscard will discard a job, sending the provided error.
 func (j *jobHasSector) callDiscard(err error) {
@@ -71,13 +80,13 @@ func (j *jobHasSector) callDiscard(err error) {
 func (j *jobHasSector) callExecute() {
 	start := time.Now()
 	w := j.staticQueue.staticWorker()
-	available, err := j.managedHasSector()
+	availables, err := j.managedHasSector()
 	jobTime := time.Since(start)
 
 	// Send the response.
 	response := &jobHasSectorResponse{
-		staticAvailable: available,
-		staticErr:       err,
+		staticAvailables: availables,
+		staticErr:        err,
 
 		staticWorker: w,
 	}
@@ -117,12 +126,14 @@ func (j *jobHasSector) callExpectedBandwidth() (ul, dl uint64) {
 }
 
 // managedHasSector returns whether or not the host has a sector with given root
-func (j *jobHasSector) managedHasSector() (bool, error) {
+func (j *jobHasSector) managedHasSector() ([]bool, error) {
 	w := j.staticQueue.staticWorker()
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since HasSector doesn't depend on it.
-	pb.AddHasSectorInstruction(j.staticSector)
+	for _, sector := range j.staticSectors {
+		pb.AddHasSectorInstruction(sector)
+	}
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
 
@@ -133,22 +144,23 @@ func (j *jobHasSector) managedHasSector() (bool, error) {
 
 	// Execute the program and parse the responses.
 	//
-	// TODO: Are we expecting more than one response? Should we check that there
-	// was only one response?
-	var hasSector bool
+	hasSectors := make([]bool, 0, len(program))
 	var responses []programResponse
 	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
 	if err != nil {
-		return false, errors.AddContext(err, "Unable to execute program")
+		return nil, errors.AddContext(err, "Unable to execute program")
 	}
 	for _, resp := range responses {
 		if resp.Error != nil {
-			return false, errors.AddContext(resp.Error, "Output error")
+			return nil, errors.AddContext(resp.Error, "Output error")
 		}
-		hasSector = resp.Output[0] == 1
+		hasSectors = append(hasSectors, resp.Output[0] == 1)
 		break
 	}
-	return hasSector, nil
+	if len(responses) != len(program) {
+		return nil, errors.New("received invalid number of responses but no error")
+	}
+	return hasSectors, nil
 }
 
 // callAverageJobTime will return the recent performance of the worker

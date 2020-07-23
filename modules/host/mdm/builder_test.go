@@ -100,6 +100,13 @@ func (tb *testProgramBuilder) AddRevisionInstruction() {
 	tb.staticValues.AddRevisionInstruction()
 }
 
+// AddSwapSectorInstruction adds a SwapSector instruction to the builder,
+// keeping track of running values.
+func (tb *testProgramBuilder) AddSwapSectorInstruction(sector1Idx, sector2Idx uint64, merkleProof bool) {
+	tb.staticPB.AddSwapSectorInstruction(sector1Idx, sector2Idx, merkleProof)
+	tb.staticValues.AddSwapSectorInstruction()
+}
+
 // Program returns the built program.
 func (tb *testProgramBuilder) Program() (modules.Program, modules.ProgramData) {
 	return tb.staticPB.Program()

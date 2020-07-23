@@ -340,14 +340,7 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	// add the job to the worker
 	cc := make(chan struct{})
 	rc := make(chan *jobHasSectorResponse)
-	jhs := &jobHasSector{
-		staticSector:       crypto.Hash{},
-		staticResponseChan: rc,
-		jobGeneric: &jobGeneric{
-			staticCancelChan: cc,
-			staticQueue:      w.staticJobHasSectorQueue,
-		},
-	}
+	jhs := w.newJobHasSector(cc, rc, crypto.Hash{})
 	if !w.staticJobHasSectorQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")
 	}
@@ -381,14 +374,7 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	hostClosed = true
 
 	// add another job to the worker
-	jhs = &jobHasSector{
-		staticSector:       crypto.Hash{},
-		staticResponseChan: rc,
-		jobGeneric: &jobGeneric{
-			staticCancelChan: cc,
-			staticQueue:      w.staticJobHasSectorQueue,
-		},
-	}
+	jhs = w.newJobHasSector(cc, rc, crypto.Hash{})
 	if !w.staticJobHasSectorQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")
 	}
