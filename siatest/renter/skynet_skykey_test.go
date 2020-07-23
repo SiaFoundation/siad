@@ -32,14 +32,14 @@ func TestSkykey(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
-		{Name: "TestAddSkykey", Test: testAddSkykey},
-		{Name: "TestCreateSkykey", Test: testCreateSkykey},
-		{Name: "TestDeleteSkykey", Test: testDeleteSkykey},
-		{Name: "TestSkynetEncryptionPublicID", Test: testSkynetEncryptionWithType(skykey.TypePublicID)},
-		{Name: "TestSkynetEncryptionPrivateID", Test: testSkynetEncryptionWithType(skykey.TypePrivateID)},
-		{Name: "TestSkynetEncryptionLargeFilePublicID", Test: testSkynetEncryptionLargeFileWithType(skykey.TypePublicID)},
-		{Name: "TestSkynetEncryptionLargeFilePrivateID", Test: testSkynetEncryptionLargeFileWithType(skykey.TypePrivateID)},
-		{Name: "TestUnsafeClient", Test: testUnsafeClient},
+		{Name: "AddSkykey", Test: testAddSkykey},
+		{Name: "CreateSkykey", Test: testCreateSkykey},
+		{Name: "DeleteSkykey", Test: testDeleteSkykey},
+		{Name: "EncryptionTypePrivateID", Test: testSkynetEncryptionWithType(skykey.TypePrivateID)},
+		{Name: "EncryptionTypePublicID", Test: testSkynetEncryptionWithType(skykey.TypePublicID)},
+		{Name: "LargeFilePrivateID", Test: testSkynetEncryptionLargeFileWithType(skykey.TypePrivateID)},
+		{Name: "LargeFilePublicID", Test: testSkynetEncryptionLargeFileWithType(skykey.TypePublicID)},
+		{Name: "UnsafeClient", Test: testUnsafeClient},
 	}
 
 	// Run tests
@@ -391,8 +391,6 @@ func testUnsafeClient(t *testing.T, tg *siatest.TestGroup) {
 
 	// Create a set with the strings of every skykey in the test.
 	skykeySet := make(map[string]struct{})
-
-	// Check that the expected number of keys was created.
 	skykeys, err = r.SkykeySkykeysGet()
 	if err != nil {
 		t.Fatal(err)
