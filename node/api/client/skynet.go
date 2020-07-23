@@ -73,8 +73,43 @@ func (c *Client) skynetSkylinkGetWithParameters(skylink string, params map[strin
 // SkynetSkylinkHead uses the /skynet/skylink endpoint to get the headers that
 // are returned if the skyfile were to be requested using the SkynetSkylinkGet
 // method.
-func (c *Client) SkynetSkylinkHead(skylink string, timeout int) (int, http.Header, error) {
-	getQuery := fmt.Sprintf("/skynet/skylink/%s?timeout=%d", skylink, timeout)
+func (c *Client) SkynetSkylinkHead(skylink string) (int, http.Header, error) {
+	return c.SkynetSkylinkHeadWithParameters(skylink, url.Values{})
+}
+
+// SkynetSkylinkHeadWithTimeout uses the /skynet/skylink endpoint to get the
+// headers that are returned if the skyfile were to be requested using the
+// SkynetSkylinkGet method. It allows to pass a timeout parameter for the
+// request.
+func (c *Client) SkynetSkylinkHeadWithTimeout(skylink string, timeout int) (int, http.Header, error) {
+	values := url.Values{}
+	values.Set("timeout", fmt.Sprintf("%d", timeout))
+	return c.SkynetSkylinkHeadWithParameters(skylink, values)
+}
+
+// SkynetSkylinkHeadWithAttachment uses the /skynet/skylink endpoint to get the
+// headers that are returned if the skyfile were to be requested using the
+// SkynetSkylinkGet method. It allows to pass the 'attachment' parameter.
+func (c *Client) SkynetSkylinkHeadWithAttachment(skylink string, attachment bool) (int, http.Header, error) {
+	values := url.Values{}
+	values.Set("attachment", fmt.Sprintf("%t", attachment))
+	return c.SkynetSkylinkHeadWithParameters(skylink, values)
+}
+
+// SkynetSkylinkHeadWithFormat uses the /skynet/skylink endpoint to get the
+// headers that are returned if the skyfile were to be requested using the
+// SkynetSkylinkGet method. It allows to pass the 'format' parameter.
+func (c *Client) SkynetSkylinkHeadWithFormat(skylink string, format modules.SkyfileFormat) (int, http.Header, error) {
+	values := url.Values{}
+	values.Set("format", string(format))
+	return c.SkynetSkylinkHeadWithParameters(skylink, values)
+}
+
+// SkynetSkylinkHeadWithParameters uses the /skynet/skylink endpoint to get the
+// headers that are returned if the skyfile were to be requested using the
+// SkynetSkylinkGet method. The values are encoded in the querystring.
+func (c *Client) SkynetSkylinkHeadWithParameters(skylink string, values url.Values) (int, http.Header, error) {
+	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
 	return c.head(getQuery)
 }
 
