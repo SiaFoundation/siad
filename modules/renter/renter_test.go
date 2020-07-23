@@ -317,7 +317,7 @@ func TestRenterCanAccessEphemeralAccountHostSettings(t *testing.T) {
 	defer rt.Close()
 
 	// Add a host to the test group
-	h, err := rt.addHost(filepath.Join(rt.dir, "host"))
+	h, err := rt.addHost(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,7 +358,7 @@ func TestRenterPricesDivideByZero(t *testing.T) {
 	}
 
 	// Add a host to the test group
-	_, err = rt.addHost(filepath.Join(rt.dir, "host"))
+	_, err = rt.addHost(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
