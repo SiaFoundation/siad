@@ -5,6 +5,8 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 	"reflect"
 	"strings"
@@ -38,6 +40,7 @@ func TestSkynetDownloads(t *testing.T) {
 		{Name: "SingleFileMultiPart", Test: testDownloadSingleFileMultiPart},
 		{Name: "DirectoryBasic", Test: testDownloadDirectoryBasic},
 		{Name: "DirectoryNested", Test: testDownloadDirectoryNested},
+		{Name: "ContentDisposition", Test: testDownloadContentDisposition},
 	}
 
 	// Run tests
@@ -416,6 +419,94 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// testDownloadContentDisposition tests that downloads have the correct
+// 'Content-Disposition' header set when downloading as an attachment or as an
+// archive.
+func testDownloadContentDisposition(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// define a helper function that validates the 'Content-Disposition' header
+	verifyCDHeader := func(header http.Header, value string) error {
+		actual := header.Get("Content-Disposition")
+		if actual != value {
+			return fmt.Errorf("Unexpected 'Content-Disposition' header, '%v' != '%v'", actual, value)
+		}
+		return nil
+	}
+
+	// define all possible values for the 'Content-Disposition' header
+	name := "TestContentDisposition"
+	inline := fmt.Sprintf("inline; filename=\"%v\"", name)
+	attachment := fmt.Sprintf("attachment; filename=\"%v\"", name)
+	attachmentZip := fmt.Sprintf("attachment; filename=\"%v.zip\"", name)
+	attachmentTar := fmt.Sprintf("attachment; filename=\"%v.tar\"", name)
+	attachmentTarGz := fmt.Sprintf("attachment; filename=\"%v.tar.gz\"", name)
+
+	var header http.Header
+
+	// upload a single file
+	skylink, _, _, err := r.UploadNewSkyfileBlocking(name, 100, false)
+
+	// no params
+	_, header, err = r.SkynetSkylinkHead(skylink)
+	err = errors.Compose(err, verifyCDHeader(header, inline))
+	if err != nil {
+		t.Fatal(errors.AddContext(err, "noparams"))
+	}
+
+	// 'attachment=false'
+	_, header, err = r.SkynetSkylinkHeadWithAttachment(skylink, false)
+	err = errors.Compose(err, verifyCDHeader(header, inline))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 'attachment=true'
+	_, header, err = r.SkynetSkylinkHeadWithAttachment(skylink, true)
+	err = errors.Compose(err, verifyCDHeader(header, attachment))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 'format=concat'
+	_, header, err = r.SkynetSkylinkHeadWithFormat(skylink, modules.SkyfileFormatConcat)
+	err = errors.Compose(err, verifyCDHeader(header, inline))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 'format=zip'
+	_, header, err = r.SkynetSkylinkHeadWithFormat(skylink, modules.SkyfileFormatZip)
+	err = errors.Compose(err, verifyCDHeader(header, attachmentZip))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 'format=tar'
+	_, header, err = r.SkynetSkylinkHeadWithFormat(skylink, modules.SkyfileFormatTar)
+	err = errors.Compose(err, verifyCDHeader(header, attachmentTar))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 'format=targz'
+	_, header, err = r.SkynetSkylinkHeadWithFormat(skylink, modules.SkyfileFormatTarGz)
+	err = errors.Compose(err, verifyCDHeader(header, attachmentTarGz))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// if both attachment and format are set, format should take precedence
+	values := url.Values{}
+	values.Set("attachment", fmt.Sprintf("%t", true))
+	values.Set("format", string(modules.SkyfileFormatZip))
+	_, header, err = r.SkynetSkylinkHeadWithParameters(skylink, values)
+	err = errors.Compose(err, verifyCDHeader(header, attachmentZip))
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // fileMapFromFiles is a helper that converts a list of test files to a file map
 func fileMapFromFiles(tfs []siatest.TestFile) fileMap {
 	fm := make(fileMap)
@@ -571,8 +662,8 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		return errors.New("Unexpected files")
 	}
 	ct = header.Get("Content-type")
-	if ct != "application/x-gtar" {
-		return fmt.Errorf("Unexpected 'Content-Type' header, expected 'application/x-gtar' actual '%v'", ct)
+	if ct != "application/gzip" {
+		return fmt.Errorf("Unexpected 'Content-Type' header, expected 'application/gzip' actual '%v'", ct)
 	}
 
 	mdStr = header.Get("Skynet-File-Metadata")

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -1313,7 +1314,7 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 
 	// verify we default to the `zip` format if it is a directory and we have
 	// not specified it (use a HEAD call as that returns the response headers)
-	_, header, err := r.SkynetSkylinkHead(skylink, 0)
+	_, header, err := r.SkynetSkylinkHead(skylink)
 	if err != nil {
 		t.Fatal("unexpected error")
 	}
@@ -1528,8 +1529,9 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	if len(sbg.Blacklist) != 1 {
 		t.Fatalf("Incorrect number of blacklisted merkleroots, expected %v got %v", 1, len(sbg.Blacklist))
 	}
-	if sbg.Blacklist[0] != sshp.MerkleRoot {
-		t.Fatalf("Merkleroots don't match, expected %v got %v", sshp.MerkleRoot, sbg.Blacklist[0])
+	hash := crypto.HashObject(sshp.MerkleRoot)
+	if sbg.Blacklist[0] != hash {
+		t.Fatalf("Hashes don't match, expected %v got %v", hash, sbg.Blacklist[0])
 	}
 
 	// Try to download the file behind the skylink, this should fail because of
@@ -1889,7 +1891,7 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	status, header, err := r.SkynetSkylinkHead(skylink, 0)
+	status, header, err := r.SkynetSkylinkHead(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1942,13 +1944,13 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Perform a HEAD request with a timeout that exceeds the max timeout
-	status, _, _ = r.SkynetSkylinkHead(skylink, api.MaxSkynetRequestTimeout+1)
+	status, _, _ = r.SkynetSkylinkHeadWithTimeout(skylink, api.MaxSkynetRequestTimeout+1)
 	if status != http.StatusBadRequest {
 		t.Fatalf("Expected StatusBadRequest for a request with a timeout that exceeds the MaxSkynetRequestTimeout, instead received %v", status)
 	}
 
 	// Perform a HEAD request for a skylink that does not exist
-	status, header, err = r.SkynetSkylinkHead(skylink[:len(skylink)-3]+"abc", 0)
+	status, header, err = r.SkynetSkylinkHead(skylink[:len(skylink)-3] + "abc")
 	if status != http.StatusNotFound {
 		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
 	}
@@ -2035,7 +2037,7 @@ func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 		}
 
 		// verify the skylink can't be found after a dry run
-		status, _, _ := r.SkynetSkylinkHead(skylinkDry, 0)
+		status, _, _ := r.SkynetSkylinkHead(skylinkDry)
 		if status != http.StatusNotFound {
 			t.Fatal(fmt.Errorf("Expected 404 not found when trying to fetch a skylink retrieved from a dry run, instead received status %d", status))
 		}
@@ -2132,7 +2134,7 @@ func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
 	defer tg.RemoveNode(r)
 
 	// Verify timeout on head request
-	status, _, err := r.SkynetSkylinkHead(skylink, 1)
+	status, _, err := r.SkynetSkylinkHeadWithTimeout(skylink, 1)
 	if status != http.StatusNotFound {
 		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
 	}
@@ -2287,7 +2289,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
-	_, header, err := r.SkynetSkylinkHead(skylink, 0)
+	_, header, err := r.SkynetSkylinkHead(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2363,7 +2365,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
-	_, header, err = r.SkynetSkylinkHead(skylink, 0)
+	_, header, err = r.SkynetSkylinkHead(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2383,7 +2385,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
-	_, header, err = r.SkynetSkylinkHead(skylink, 0)
+	_, header, err = r.SkynetSkylinkHead(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2609,7 +2611,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 
 			// verify if it returned an archive if we expected it to
 			if tt.expectedZipArchive {
-				_, header, err := r.SkynetSkylinkHead(skylink, 0)
+				_, header, err := r.SkynetSkylinkHead(skylink)
 				if err != nil {
 					t.Fatal(err)
 				}

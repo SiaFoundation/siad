@@ -65,7 +65,7 @@ var (
 	blockedWithdrawalTimeout = build.Select(build.Var{
 		Standard: 15 * time.Minute,
 		Dev:      5 * time.Minute,
-		Testing:  15 * time.Second,
+		Testing:  5 * time.Second,
 	}).(time.Duration)
 )
 

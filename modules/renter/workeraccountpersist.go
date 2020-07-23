@@ -26,6 +26,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
@@ -42,7 +43,7 @@ var (
 
 	// Metadata
 	metadataHeader  = types.NewSpecifier("Accounts\n")
-	metadataVersion = types.NewSpecifier("v1.5.0\n")
+	metadataVersion = persist.MetadataVersionv150
 	metadataSize    = 2*types.SpecifierLen + 1 // 1 byte for 'clean' flag
 
 	// Metadata validation errors

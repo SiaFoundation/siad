@@ -196,6 +196,7 @@ func newTestPriceTable() *modules.RPCPriceTable {
 		HasSectorBaseCost:   types.NewCurrency64(1),
 		ReadBaseCost:        types.NewCurrency64(1),
 		ReadLengthCost:      types.NewCurrency64(1),
+		SwapSectorCost:      types.NewCurrency64(1),
 		WriteBaseCost:       types.NewCurrency64(1),
 		WriteLengthCost:     types.NewCurrency64(1),
 		WriteStoreCost:      types.NewCurrency64(1),
@@ -280,10 +281,10 @@ func (o Output) assert(newSize uint64, newMerkleRoot crypto.Hash, proof []crypto
 		return fmt.Errorf("expected newSize %v but got %v", newSize, o.NewSize)
 	}
 	if o.NewMerkleRoot != newMerkleRoot {
-		return fmt.Errorf("expected newMerkleRoot %v but got %v", newSize, o.NewMerkleRoot)
+		return fmt.Errorf("expected newMerkleRoot %v but got %v", newMerkleRoot, o.NewMerkleRoot)
 	}
 	if !bytes.Equal(o.Output, output) {
-		return fmt.Errorf("expected o %v but got %v", o, o.Output)
+		return fmt.Errorf("expected output %v\n but got %v", output, o.Output)
 	}
 	if len(o.Proof)+len(proof) != 0 && !reflect.DeepEqual(o.Proof, proof) {
 		return fmt.Errorf("expected proof %v but got %v", proof, o.Proof)
