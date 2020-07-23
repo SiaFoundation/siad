@@ -437,12 +437,13 @@ func (api *API) daemonStackHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 	stack := make([]byte, modules.StackSize)
 	n := runtime.Stack(stack, true)
 	if n == 0 {
-		WriteError(w, Error{"no stack trace pulled"}, http.StatusBadRequest)
+		WriteError(w, Error{"no stack trace pulled"}, http.StatusInternalServerError)
 		return
 	}
 
+	// Return the n bytes of the stack that were used.
 	WriteJSON(w, DaemonStackGet{
-		Stack: stack,
+		Stack: stack[:n],
 	})
 }
 

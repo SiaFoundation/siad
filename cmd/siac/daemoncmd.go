@@ -157,12 +157,13 @@ func stackcmd() {
 	if err != nil {
 		die("Could not get the stack:", err)
 	}
-
+	fmt.Println(dsg.Stack)
 	// Create output file
 	f, err := os.Create(daemonStackOutputFile)
 	if err != nil {
 		die("Unable to create output file:", err)
 	}
+	defer f.Close()
 
 	// Write stack trace to output file
 	_, err = f.Write(dsg.Stack)
