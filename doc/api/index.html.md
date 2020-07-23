@@ -5148,7 +5148,7 @@ skyfiles are encrypted with the same skykey.
 }
 ```
 
-**skykey** | string  
+**skykey** | skykey  
 Skykey. See the documentation for /skynet/skykey for more detailed information.
 
 
