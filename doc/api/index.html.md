@@ -4658,7 +4658,14 @@ Details of the workers' has sector jobs queue
 curl -A "Sia-Agent" "localhost:9980/skynet/blacklist"
 ```
 
-returns the list of merkleroots that are blacklisted.
+returns the list of hashed merkleroots that are blacklisted. 
+
+NOTE: these are not the same values that were submitted via the POST endpoint.
+This is intentional so that it is harder to find the blocked content.
+	
+NOTE: With v1.5.0 the return value for the Blacklist changed. Pre v1.5.0 the
+[]crypto.Hash was a slice of MerkleRoots. Post v1.5.0 the []crypto.Hash is
+a slice of the Hashes of the MerkleRoots
 
 ### JSON Response
 > JSON Response Example
@@ -4673,7 +4680,7 @@ returns the list of merkleroots that are blacklisted.
 }
 ```
 **blacklist** | Hashes  
-The blacklist is a list of merkle roots, which are hashes, that are blacklisted.
+The blacklist is a list of hashed merkleroots, that are blacklisted.
 
 ## /skynet/blacklist [POST]
 > curl example
@@ -5162,7 +5169,7 @@ skyfiles are encrypted with the same skykey.
 }
 ```
 
-**skykey** | string  
+**skykey** | skykey  
 Skykey. See the documentation for /skynet/skykey for more detailed information.
 
 

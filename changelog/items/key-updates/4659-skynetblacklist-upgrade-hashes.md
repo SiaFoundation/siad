@@ -1,0 +1,1 @@
+- Convert skynetblacklist from merkleroots to hashes of the merkleroots

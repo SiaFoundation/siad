@@ -95,9 +95,10 @@ lockcheckpkgs = \
 	./modules/host/mdm \
 	./modules/renter/hostdb \
 	./modules/renter/proto \
+	./modules/renter/skynetblacklist \
 	./skykey \
 	./types \
-	./types/typesutil
+	./types/typesutil 
 
 # run determines which tests run when running any variation of 'make test'.
 run = .
