@@ -757,8 +757,8 @@ type (
 
 		// RHP3 Cooldown information
 		RHP3OnCooldown            bool      `json:"rhp3oncooldown"`
-		RHP3CooldownRecentErr     string    `json:"rhp3recenterr"`
-		RHP3CooldownRecentErrTime time.Time `json:"rhp3recenterrtime"`
+		RHP3CooldownRecentErr     string    `json:"rhp3cooldownrecenterr"`
+		RHP3CooldownRecentErrTime time.Time `json:"rhp3cooldownrecenterrtime"`
 
 		// Ephemeral Account information
 		AccountBalanceTarget types.Currency      `json:"accountbalancetarget"`
