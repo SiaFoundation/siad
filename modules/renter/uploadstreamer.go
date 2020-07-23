@@ -274,7 +274,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 		// Check if the chunk needs any work or if we can skip it.
 		if uuc.piecesCompleted < uuc.piecesNeeded {
 			// Add the chunk to the upload heap's repair map.
-			if !r.uploadHeap.managedPushToRepair(uuc) {
+			if !r.uploadHeap.managedPush(uuc, true) {
 				// The chunk wasn't added to the repair map meaning it must have already
 				// been in the repair map
 				_, _ = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
@@ -288,24 +288,10 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 				uuc.chunkPoppedFromHeapTime = time.Now()
 				uuc.mu.Unlock()
 
-				// Prepare and send the chunk to the workers. This is done in a loop
-				// because the only error returned from managedPrepareNextChunk is due to
-				// insufficient memory. We should continue to try and submit the chunk
-				// until there is memory available.
-				//
-				// NOTE: Should we have a timeout here? Could probably add one to
-				// FileUploadParams. This loop is currently at risk of cycling until the
-				// renter shuts down.
-				for {
-					err = r.managedPrepareNextChunk(uuc)
-					if err == nil {
-						break
-					}
-					select {
-					case <-r.tg.StopChan():
-						return nil, errors.New("interrupted by shutdown")
-					case <-time.After(streamerChunkRetryInterval):
-					}
+				// Prepare and send the chunk to the workers.
+				err = r.managedPrepareNextChunk(uuc)
+				if err != nil {
+					return nil, errors.AddContext(err, "unable to prepare chunk for workers")
 				}
 			}
 			chunks = append(chunks, uuc)

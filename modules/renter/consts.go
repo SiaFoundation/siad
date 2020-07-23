@@ -240,15 +240,6 @@ var (
 		Testing:  5 * time.Second,
 	}).(time.Duration)
 
-	// streamerChunkRetryInterval indicates how often the upload stream code will
-	// try and send a streamer chunk to the workers if there is an error for
-	// insufficient memory.
-	streamerChunkRetryInterval = build.Select(build.Var{
-		Dev:      time.Second,
-		Standard: time.Second * 5,
-		Testing:  time.Millisecond * 100,
-	}).(time.Duration)
-
 	// stuckLoopErrorSleepDuration indicates how long the stuck loop should
 	// sleep before retrying if there is an error preventing progress.
 	stuckLoopErrorSleepDuration = build.Select(build.Var{

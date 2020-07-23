@@ -217,7 +217,7 @@ func addChunksOfDifferentHealth(r *Renter, numChunks int, priority, fileRecently
 			onDisk:                 !remote,
 			availableChan:          make(chan struct{}),
 		}
-		if !r.uploadHeap.managedPush(chunk) {
+		if !r.uploadHeap.managedPush(chunk, false) {
 			return fmt.Errorf("unable to push chunk: %v", chunk)
 		}
 	}
@@ -639,7 +639,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 			piecesNeeded:    1,
 			availableChan:   make(chan struct{}),
 		}
-		if !rt.renter.uploadHeap.managedPush(chunk) {
+		if !rt.renter.uploadHeap.managedPush(chunk, false) {
 			t.Fatal("Chunk should have been added to heap")
 		}
 		i++
@@ -713,7 +713,7 @@ func TestUploadHeapMaps(t *testing.T) {
 			availableChan:   make(chan struct{}),
 		}
 		// push chunk to heap
-		if !rt.renter.uploadHeap.managedPush(chunk) {
+		if !rt.renter.uploadHeap.managedPush(chunk, false) {
 			t.Fatal("unable to push chunk", chunk)
 		}
 		// Confirm chunk is in the correct map
@@ -755,7 +755,7 @@ func TestUploadHeapMaps(t *testing.T) {
 			t.Fatal("popped chunk not found in repairing map")
 		}
 		// Confirm the chunk cannot be pushed back onto the heap
-		if rt.renter.uploadHeap.managedPush(chunk) {
+		if rt.renter.uploadHeap.managedPush(chunk, false) {
 			t.Fatal("should not have been able to push chunk back onto heap")
 		}
 	}
@@ -832,7 +832,7 @@ func TestChunkSwitchStuckStatus(t *testing.T) {
 		},
 	}
 	// push chunk to heap
-	if !rt.renter.uploadHeap.managedPush(chunk) {
+	if !rt.renter.uploadHeap.managedPush(chunk, false) {
 		t.Fatal("unable to push chunk", chunk)
 	}
 	if rt.renter.uploadHeap.managedLen() != 1 {
@@ -844,7 +844,7 @@ func TestChunkSwitchStuckStatus(t *testing.T) {
 	// Regression check 1: previously this second push call would succeed and
 	// the length of the heap would be 2
 	chunk.stuck = true
-	if rt.renter.uploadHeap.managedPush(chunk) {
+	if rt.renter.uploadHeap.managedPush(chunk, false) {
 		t.Error("should not be able to push chunk again")
 	}
 	if rt.renter.uploadHeap.managedLen() != 1 {
@@ -867,8 +867,9 @@ func TestChunkSwitchStuckStatus(t *testing.T) {
 	}
 }
 
-// TestUploadHeapPushToRepair tests the managedPushToRepair method of the uploadheap
-func TestUploadHeapPushToRepair(t *testing.T) {
+// TestUploadHeapStreamPush the managedPush method with the uploadStream bool
+// set to true
+func TestUploadHeapStreamPush(t *testing.T) {
 	// Create an upload heap
 	uh := uploadHeap{
 		repairingChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
@@ -892,7 +893,7 @@ func TestUploadHeapPushToRepair(t *testing.T) {
 	// Define helper
 	pushAndVerify := func(chunk *unfinishedUploadChunk) {
 		// Adding chunk should be successful
-		added := uh.managedPushToRepair(chunk)
+		added := uh.managedPush(chunk, true)
 		if !added {
 			t.Fatal("chunk should have been pushed to the repair map")
 		}
@@ -918,7 +919,7 @@ func TestUploadHeapPushToRepair(t *testing.T) {
 	pushAndVerify(chunk)
 
 	// Pushing again should fail
-	added := uh.managedPushToRepair(chunk)
+	added := uh.managedPush(chunk, true)
 	if added {
 		t.Error("chunk should not be able to be added twice")
 	}
@@ -948,7 +949,7 @@ func TestUploadHeapPushToRepair(t *testing.T) {
 	}
 
 	// Adding new chunk should be false but chunk should eventually appear in the heap
-	added = uh.managedPushToRepair(newChunk)
+	added = uh.managedPush(newChunk, true)
 	if added {
 		t.Error("push should not have added chunk")
 	}
@@ -985,8 +986,6 @@ func TestUploadHeapPushToRepair(t *testing.T) {
 		t.Error("Chunk should exist in the unstuck map")
 	}
 	if !reflect.DeepEqual(unstuckChunk, newChunk) {
-		//	err := fmt.Errorf("chunk: %v \nunstuckChunk: %v\n", chunk, unstuckChunk)
-		//	return errors.AddContext(err, "chunk in repair map not equal to the chunk added")
 		t.Log("newChunk:", newChunk)
 		t.Log("mapChunk:", unstuckChunk)
 		t.Error("chunks not equal")

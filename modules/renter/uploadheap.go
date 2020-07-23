@@ -270,44 +270,13 @@ func (uh *uploadHeap) managedPause(duration time.Duration) {
 	}
 }
 
-// managedPushToRepair will try and add a chunk directly to the upload heap's
-// repair map. If the chunk is added directly to the map it will return true
-// otherwise it will return false
-func (uh *uploadHeap) managedPushToRepair(uuc *unfinishedUploadChunk) bool {
-	// Make sure the chunk creation time is set
-	uuc.mu.Lock()
-	if uuc.chunkCreationTime.IsZero() {
-		uuc.chunkCreationTime = time.Now()
-	}
-	uuc.mu.Unlock()
-
-	// Check if chunk is in the repair map
-	uh.mu.Lock()
-	defer uh.mu.Unlock()
-	repairingUUC, existsRepairing := uh.repairingChunks[uuc.id]
-
-	// If it is already in the repair map then return false
-	if existsRepairing {
-		// If the added chunk has a sourceReader and the existing chunk doesn't,
-		// cancel the existing chunk and submit the new chunk to the heap.
-		if uuc.sourceReader != nil && repairingUUC.sourceReader == nil {
-			uh.updateChunk(repairingUUC, uuc)
-		}
-		return false
-	}
-
-	// Make sure the chunk is removed from unstuck and stuck maps
-	delete(uh.unstuckHeapChunks, uuc.id)
-	delete(uh.stuckHeapChunks, uuc.id)
-
-	// Add to the repair map
-	uh.repairingChunks[uuc.id] = uuc
-	return true
-}
-
 // managedPush will try and add a chunk to the upload heap. If the chunk is
 // added it will return true otherwise it will return false
-func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
+//
+// If uploadStream is set to true then managedPush will add the chunk directly
+// to the repair map. In this case the caller is then responsible for ensuring
+// the chunk is sent to the workers for repair.
+func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, uploadStream bool) bool {
 	// Grab chunk stuck status
 	uuc.mu.Lock()
 	chunkStuck := uuc.stuck
@@ -328,32 +297,65 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk) bool {
 	if exists {
 		// Get the existing chunk.
 		var existingUUC *unfinishedUploadChunk
-		if existsStuckHeap {
-			existingUUC = stuckUUC
-		} else if existsRepairing {
+
+		// If this is an uploadStream we only care if the chunk is in the repair
+		// map since we will be overwritting the chunk if it is in on of the other
+		// maps
+		if uploadStream && existsRepairing {
 			existingUUC = repairingUUC
-		} else if existsUnstuckHeap {
-			existingUUC = unstuckUUC
+		}
+
+		// If this is !uploadStream then we want to update the chunk regardless of
+		// the state
+		if !uploadStream {
+			if existsStuckHeap {
+				existingUUC = stuckUUC
+			} else if existsRepairing {
+				existingUUC = repairingUUC
+			} else if existsUnstuckHeap {
+				existingUUC = unstuckUUC
+			}
 		}
 
 		// If the added chunk has a sourceReader and the existing one doesn't,
-		// replace them.
-		if uuc.sourceReader != nil && existingUUC.sourceReader == nil {
+		// cancel the existing chunk and submit the new chunk to the heap.
+		if existingUUC != nil && uuc.sourceReader != nil && existingUUC.sourceReader == nil {
+			// Call updateChunk which will handle cancelling the existing chunk and
+			// pushing the new chunk.
 			uh.updateChunk(existingUUC, uuc)
-			return true // It's not pushed yet but it is guaranteed to be pushed eventually.
+
+			// It's not pushed yet but it is guaranteed to be pushed eventually.
+			//
+			// For !uploadStream we return true because the goal is to get the chunk
+			// into the heap and it will get there eventually.
+			//
+			// For uploadStream we return false because the goal is to add the chunk
+			// directly to the repair map. Since the chunk was already in the repair
+			// map and we are only able to update it in the heap we return false.
+			return !uploadStream
 		}
 	}
 
 	// Check if the chunk can be added to the heap
 	canAddStuckChunk := chunkStuck && !exists && len(uh.stuckHeapChunks) < maxStuckChunksInHeap
 	canAddUnstuckChunk := !chunkStuck && !exists
-	if canAddStuckChunk {
+
+	// Add the chunk to the heap
+	if canAddStuckChunk && !uploadStream {
 		uh.stuckHeapChunks[uuc.id] = uuc
 		heap.Push(&uh.heap, uuc)
 		return true
-	} else if canAddUnstuckChunk {
+	} else if canAddUnstuckChunk && !uploadStream {
 		uh.unstuckHeapChunks[uuc.id] = uuc
 		heap.Push(&uh.heap, uuc)
+		return true
+	} else if uploadStream && !existsRepairing {
+		// Make sure the chunk is removed from unstuck and stuck maps
+		delete(uh.unstuckHeapChunks, uuc.id)
+		delete(uh.stuckHeapChunks, uuc.id)
+
+		// Add to the repair map
+		uh.repairingChunks[uuc.id] = uuc
 		return true
 	}
 	return false
@@ -415,13 +417,13 @@ func (uh *uploadHeap) updateChunk(currentChunk, newChunk *unfinishedUploadChunk)
 	currentChunk.cancelMU.Lock()
 	currentChunk.canceled = true
 	currentChunk.cancelMU.Unlock()
-	fmt.Println("here")
+
 	// Wait for all workers to finish ongoing work on the current chunk and
 	// try to push the new chunk. This happens in a separate thread to avoid
 	// holding the uploadHeap lock while waiting.
 	go func() {
 		currentChunk.cancelWG.Wait()
-		uh.managedPush(newChunk)
+		uh.managedPush(newChunk, false)
 
 		// Make sure the upload heap knows that a repair is needed from the chunk
 		// being added
@@ -801,7 +803,7 @@ func (r *Renter) managedBuildAndPushRandomChunk(siaPath modules.SiaPath, hosts m
 	randChunk := unfinishedUploadChunks[randChunkIndex]
 	randChunk.stuckRepair = true
 	var allErrs error
-	if !r.uploadHeap.managedPush(randChunk) {
+	if !r.uploadHeap.managedPush(randChunk, false) {
 		// Chunk wasn't added to the heap. Close the file
 		r.log.Debugln("WARN: stuck chunk", randChunk.id, "wasn't added to heap")
 		randChunk.fileEntry.Close()
@@ -955,7 +957,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	for len(tempChunkHeap) > 0 && (r.uploadHeap.managedLen() < maxUploadHeapChunks || target == targetBackupChunks) {
 		// Add this chunk to the upload heap.
 		chunk := heap.Pop(&tempChunkHeap).(*unfinishedUploadChunk)
-		if !r.uploadHeap.managedPush(chunk) {
+		if !r.uploadHeap.managedPush(chunk, false) {
 			// We don't track the health of this chunk since the only reason it
 			// wouldn't be added to the heap is if it is already in the heap or
 			// is currently being repaired. Close the file.
