@@ -425,6 +425,7 @@ func TestSelectRandomCanceledHost(t *testing.T) {
 		}
 	})
 	renterTemplate.ContractorDeps = renterTemplate.HostDBDeps
+	renterTemplate.ContractSetDeps = renterTemplate.HostDBDeps
 
 	// Create renter.
 	_, err = tg.AddNodes(renterTemplate)
@@ -488,7 +489,7 @@ func TestSelectRandomCanceledHost(t *testing.T) {
 	// The renter should have an active contract with the new host and an
 	// inactive contract with the old host now.
 	numRetries := 0
-	err = build.Retry(100, time.Second, func() error {
+	err = build.Retry(100, 100*time.Millisecond, func() error {
 		if numRetries%10 == 0 {
 			err := tg.Miners()[0].MineBlock()
 			if err != nil {
