@@ -72,6 +72,7 @@ func newDefaultPriceTable() modules.RPCPriceTable {
 		MemoryTimeCost:    oneCurrency,
 		ReadBaseCost:      oneCurrency,
 		ReadLengthCost:    oneCurrency,
+		SwapSectorCost:    oneCurrency,
 
 		DownloadBandwidthCost: hes.DownloadBandwidthPrice,
 		UploadBandwidthCost:   hes.UploadBandwidthPrice,

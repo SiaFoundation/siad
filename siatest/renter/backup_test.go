@@ -581,7 +581,10 @@ func TestRemoteBackup(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(backups.Backups) != 2 {
-			t.Error("Wrong number of backups detected", len(backups.Backups))
+			for i, backup := range backups.Backups {
+				t.Logf("%v: %v", i, backup.Name)
+			}
+			t.Error("Wrong number of backups detected", len(backups.Backups), 2)
 		}
 	}
 

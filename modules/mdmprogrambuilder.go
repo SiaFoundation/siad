@@ -158,6 +158,27 @@ func (pb *ProgramBuilder) AddRevisionInstruction() {
 	pb.addInstruction(collateral, cost, types.ZeroCurrency, memory, time)
 }
 
+// AddSwapSectorInstruction adds a SwapSector instruction to the program.
+func (pb *ProgramBuilder) AddSwapSectorInstruction(sector1Idx, sector2Idx uint64, merkleProof bool) {
+	// Compute the argument offsets.
+	sector1Offset := uint64(pb.programData.Len())
+	sector2Offset := sector1Offset + 8
+	// Extend the programData.
+	binary.Write(pb.programData, binary.LittleEndian, sector1Idx)
+	binary.Write(pb.programData, binary.LittleEndian, sector2Idx)
+	// Create the instruction.
+	i := NewSwapSectorInstruction(sector1Offset, sector2Offset, merkleProof)
+	// Append instruction
+	pb.program = append(pb.program, i)
+	// Update cost, collateral and memory usage.
+	collateral := MDMSwapSectorCollateral()
+	cost := MDMSwapSectorCost(pb.staticPT)
+	memory := MDMSwapSectorMemory()
+	time := uint64(MDMTimeSwapSector)
+	pb.addInstruction(collateral, cost, types.ZeroCurrency, memory, time)
+	pb.readonly = false
+}
+
 // Cost returns the current cost of the program being built by the builder. If
 // 'finalized' is 'true', the memory cost of finalizing the program is included.
 func (pb *ProgramBuilder) Cost(finalized bool) (cost, storage, collateral types.Currency) {
@@ -254,6 +275,20 @@ func NewReadSectorInstruction(lengthOffset, offsetOffset, merkleRootOffset uint6
 	binary.LittleEndian.PutUint64(i.Args[16:24], lengthOffset)
 	if merkleProof {
 		i.Args[24] = 1
+	}
+	return i
+}
+
+// NewSwapSectorInstruction creates a modules.Instruction from arguments.
+func NewSwapSectorInstruction(sector1Offset, sector2Offset uint64, merkleProof bool) Instruction {
+	i := Instruction{
+		Specifier: SpecifierSwapSector,
+		Args:      make([]byte, RPCISwapSectorLen),
+	}
+	binary.LittleEndian.PutUint64(i.Args[:8], sector1Offset)
+	binary.LittleEndian.PutUint64(i.Args[8:16], sector2Offset)
+	if merkleProof {
+		i.Args[16] = 1
 	}
 	return i
 }
