@@ -865,6 +865,21 @@ func (p *renterHostPair) managedLatestRevision(payByFC bool, fundAmt types.Curre
 		return types.FileContractRevision{}, err
 	}
 
+	// send the request.
+	err = modules.RPCWrite(stream, modules.RPCLatestRevisionRequest{
+		FileContractID: fcid,
+	})
+	if err != nil {
+		return types.FileContractRevision{}, err
+	}
+
+	// read the response.
+	var lrr modules.RPCLatestRevisionResponse
+	err = modules.RPCRead(stream, &lrr)
+	if err != nil {
+		return types.FileContractRevision{}, err
+	}
+
 	// Write the pricetable uid.
 	err = modules.RPCWrite(stream, pt.UID)
 	if err != nil {
@@ -882,21 +897,6 @@ func (p *renterHostPair) managedLatestRevision(payByFC bool, fundAmt types.Curre
 		if err != nil {
 			return types.FileContractRevision{}, err
 		}
-	}
-
-	// send the request.
-	err = modules.RPCWrite(stream, modules.RPCLatestRevisionRequest{
-		FileContractID: fcid,
-	})
-	if err != nil {
-		return types.FileContractRevision{}, err
-	}
-
-	// read the response.
-	var lrr modules.RPCLatestRevisionResponse
-	err = modules.RPCRead(stream, &lrr)
-	if err != nil {
-		return types.FileContractRevision{}, err
 	}
 
 	// expect clean stream close
