@@ -616,7 +616,7 @@ func (w *worker) externSyncAccountBalanceToHost() {
 
 	balance, err := w.staticHostAccountBalance()
 	if err != nil {
-		w.renter.log.Printf("ERROR: failed to check account balance on host %v failed, err: %v\n", w.staticHostPubKeyStr, err)
+		w.renter.log.Debugf("ERROR: failed to check account balance on host %v failed, err: %v\n", w.staticHostPubKeyStr, err)
 		return
 	}
 
