@@ -420,6 +420,7 @@ func TestSelectRandomCanceledHost(t *testing.T) {
 		}
 	})
 	renterTemplate.ContractorDeps = renterTemplate.HostDBDeps
+	renterTemplate.ContractSetDeps = renterTemplate.HostDBDeps
 
 	// Create renter.
 	_, err = tg.AddNodes(renterTemplate)
