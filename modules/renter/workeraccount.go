@@ -421,6 +421,7 @@ func (w *worker) externSyncAccountBalanceToHost() {
 
 	balance, err := w.staticHostAccountBalance()
 	if err != nil {
+		w.managedRHP3IncrementCooldown(err)
 		w.renter.log.Printf("ERROR: failed to check account balance on host %v failed, err: %v\n", w.staticHostPubKeyStr, err)
 		return
 	}
