@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -73,7 +74,7 @@ var (
 	accountIdleMaxWait = build.Select(build.Var{
 		Dev:      10 * time.Minute,
 		Standard: 40 * time.Minute,
-		Testing:  20 * time.Second, // needs to be long even in testing
+		Testing:  time.Minute, // needs to be long even in testing
 	}).(time.Duration)
 )
 
@@ -579,7 +580,14 @@ func (w *worker) externSyncAccountBalanceToHost() {
 	start := time.Now()
 	for !isIdle() {
 		if time.Since(start) > accountIdleMaxWait {
-			w.renter.log.Critical("worker has taken more than 40 minutes to go idle")
+			// The worker failed to go idle for too long. Print the loop state,
+			// so we know what kind of task is keeping it busy.
+			w.renter.log.Printf("Worker static loop state: %+v\n\n", w.staticLoopState)
+			// Get the stack traces of all running goroutines.
+			buf := make([]byte, 64e6) // 64MB
+			n := runtime.Stack(buf, true)
+			w.renter.log.Println(string(buf[:n]))
+			w.renter.log.Critical(fmt.Sprintf("worker has taken more than %v minutes to go idle", accountIdleMaxWait.Minutes()))
 			return
 		}
 		awake := w.renter.tg.Sleep(accountIdleCheckFrequency)
@@ -590,7 +598,7 @@ func (w *worker) externSyncAccountBalanceToHost() {
 	// Do a check to ensure that the worker is still idle after the function is
 	// complete. This should help to catch any situation where the worker is
 	// spinning up new jobs, even though it is not supposed to be spinning up
-	// newe jobs while it is performing the sync operation.
+	// new jobs while it is performing the sync operation.
 	defer func() {
 		if !isIdle() {
 			w.renter.log.Critical("worker appears to be spinning up new jobs during managedSyncAccountBalanceToHost")

@@ -272,7 +272,7 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 		// Add Sub directories
 		err := r.managedPushSubDirectories(d)
 		if err != nil {
-			return nil, err
+			return nil, errors.AddContext(err, "unable to push subdirectories")
 		}
 
 		// Add popped directory back to heap with explored now set to true.
@@ -285,12 +285,12 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 func (r *Renter) managedPushSubDirectories(d *directory) error {
 	subDirs, err := r.managedSubDirectories(d.staticSiaPath)
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to get subdirectories")
 	}
 	for _, subDir := range subDirs {
 		err = r.managedPushUnexploredDirectory(subDir)
 		if err != nil {
-			return err
+			return errors.AddContext(err, "unable to push unexplored directory")
 		}
 	}
 	return nil

@@ -199,6 +199,27 @@ var (
 	SkyfileFormatZip = SkyfileFormat("zip")
 )
 
+// Extension returns the extension for the format
+func (sf SkyfileFormat) Extension() string {
+	switch sf {
+	case SkyfileFormatZip:
+		return ".zip"
+	case SkyfileFormatTar:
+		return ".tar"
+	case SkyfileFormatTarGz:
+		return ".tar.gz"
+	default:
+		return ""
+	}
+}
+
+// IsArchive returns true if the format is an archive.
+func (sf SkyfileFormat) IsArchive() bool {
+	return sf == SkyfileFormatTar ||
+		sf == SkyfileFormatTarGz ||
+		sf == SkyfileFormatZip
+}
+
 // SkyfileUploadParameters establishes the parameters such as the intra-root
 // erasure coding.
 type SkyfileUploadParameters struct {
