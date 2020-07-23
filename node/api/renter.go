@@ -85,8 +85,7 @@ type (
 		CurrentPeriod    types.BlockHeight          `json:"currentperiod"`
 		NextPeriod       types.BlockHeight          `json:"nextperiod"`
 
-		AvailableMemory         uint64 `json:"availablememory"`
-		AvailablePriorityMemory uint64 `json:"availableprioritymemory"`
+		MemoryStatus modules.MemoryStatus `json:"memorystatus"`
 	}
 
 	// RenterContract represents a contract formed by the renter.
@@ -591,7 +590,7 @@ func (api *API) renterHandlerGET(w http.ResponseWriter, req *http.Request, _ htt
 	}
 	currentPeriod := api.renter.CurrentPeriod()
 	nextPeriod := currentPeriod + settings.Allowance.Period
-	available, priority, err := api.renter.AvailableMemory()
+	memoryStatus, err := api.renter.MemoryStatus()
 	if err != nil {
 		WriteError(w, Error{"unable to get renter memory information: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -602,8 +601,7 @@ func (api *API) renterHandlerGET(w http.ResponseWriter, req *http.Request, _ htt
 		CurrentPeriod:    currentPeriod,
 		NextPeriod:       nextPeriod,
 
-		AvailableMemory:         available,
-		AvailablePriorityMemory: priority,
+		MemoryStatus: memoryStatus,
 	})
 }
 

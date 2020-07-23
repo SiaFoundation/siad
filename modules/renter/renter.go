@@ -245,13 +245,12 @@ func (r *Renter) Close() error {
 	return errors.Compose(r.tg.Stop(), r.hostDB.Close(), r.hostContractor.Close(), r.staticSkynetBlacklist.Close(), r.staticSkynetPortals.Close())
 }
 
-// AvailableMemory returns the current available memory
-func (r *Renter) AvailableMemory() (uint64, uint64, error) {
+// MemoryStatus returns the current status of the memory manager
+func (r *Renter) MemoryStatus() (modules.MemoryStatus, error) {
 	if err := r.tg.Add(); err != nil {
-		return 0, 0, err
+		return modules.MemoryStatus{}, err
 	}
-	available, priority := r.memoryManager.callAvailable()
-	return available, priority, nil
+	return r.memoryManager.callStatus(), nil
 }
 
 // PriceEstimation estimates the cost in siacoins of performing various storage

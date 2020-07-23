@@ -519,6 +519,18 @@ type HostScoreBreakdown struct {
 	VersionAdjustment          float64 `json:"versionadjustment"`
 }
 
+// MemoryStatus contains information about the status of the memory manager
+type MemoryStatus struct {
+	Available uint64 `json:"available"`
+	Base      uint64 `json:"base"`
+	Requested uint64 `json:"requested"`
+
+	PriorityAvailable uint64 `json:"priorityavailable"`
+	PriorityBase      uint64 `json:"prioritybase"`
+	PriorityRequested uint64 `json:"priorityrequested"`
+	PriorityReserve   uint64 `json:"priorityreserve"`
+}
+
 // MountInfo contains information about a mounted FUSE filesystem.
 type MountInfo struct {
 	MountPoint string  `json:"mountpoint"`
@@ -887,8 +899,8 @@ type Renter interface {
 	// began.
 	CurrentPeriod() types.BlockHeight
 
-	// AvailableMemory returns the current available memory
-	AvailableMemory() (uint64, uint64, error)
+	// MemoryStatus returns the current status of the memory manager
+	MemoryStatus() (MemoryStatus, error)
 
 	// Mount mounts a FUSE filesystem at mountPoint, making the contents of sp
 	// available via the local filesystem.

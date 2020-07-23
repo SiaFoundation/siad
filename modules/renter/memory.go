@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 const (
@@ -103,7 +104,6 @@ func (mm *memoryManager) handleStarvation() {
 	if mm.memSinceLowPriority < mm.base*memoryPriorityStarvationMultiple {
 		return
 	}
-
 	// Bump a limited number of low priority items into the high priority queue.
 	totalBumped := uint64(0)
 	for totalBumped < mm.base/memoryPriorityStarvationDivisor && len(mm.fifo) > 0 {
@@ -279,10 +279,38 @@ func (mm *memoryManager) Return(amount uint64) {
 }
 
 // callAvailable returns the current status of the memory manager.
-func (mm *memoryManager) callAvailable() (uint64, uint64) {
+func (mm *memoryManager) callStatus() modules.MemoryStatus {
 	mm.mu.Lock()
 	defer mm.mu.Unlock()
-	return mm.available, mm.priorityReserve
+	var available, requested, priorityAvailable, priorityRequested uint64
+
+	// Determine available memory and priority memory. All memory is available as
+	// priority memory. If there is more memory available than the amount
+	// reserved for priority memory then there is also regular memory
+	// availability.
+	priorityAvailable = mm.available
+	if mm.available > mm.priorityReserve {
+		available = mm.available - mm.priorityReserve
+	}
+
+	// Calculate how much memory has been requested for each
+	for _, request := range mm.fifo {
+		requested += request.amount
+	}
+	for _, request := range mm.priorityFifo {
+		priorityRequested += request.amount
+	}
+
+	return modules.MemoryStatus{
+		Available: available,
+		Base:      mm.base - mm.priorityReserve,
+		Requested: requested,
+
+		PriorityAvailable: priorityAvailable,
+		PriorityBase:      mm.base,
+		PriorityRequested: priorityRequested,
+		PriorityReserve:   mm.priorityReserve,
+	}
 }
 
 // newMemoryManager will create a memoryManager and return it.
