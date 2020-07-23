@@ -321,7 +321,6 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			suggestedUpdateQueue = append(suggestedUpdateQueue, contractScoreAndUtil{contract, sb.Score, utility})
 		}
 	}
-
 	// Process the suggested updates through the churn limiter.
 	err = c.staticChurnLimiter.managedProcessSuggestedUpdates(suggestedUpdateQueue)
 	if err != nil {

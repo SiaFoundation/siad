@@ -45,7 +45,7 @@ func newWorkerTesterCustomDependency(name string, renterDeps modules.Dependencie
 	}
 
 	// Add a host.
-	host, err := rt.addCustomHost(filepath.Join(name, "host"), hostDeps)
+	host, err := rt.addCustomHost(filepath.Join(rt.dir, "host"), hostDeps)
 	if err != nil {
 		return nil, err
 	}

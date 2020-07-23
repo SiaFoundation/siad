@@ -437,12 +437,17 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 			}
 			// TODO: Remove this when enough hosts have upgraded to fixed
 			// ReadOffset.
-			session, err := r.hostContractor.Session(w.staticHostPubKey, r.tg.StopChan())
-			if err != nil {
-				return err
+			var entryTable []snapshotEntry
+			if build.Release == "standard" {
+				session, err := r.hostContractor.Session(w.staticHostPubKey, r.tg.StopChan())
+				if err != nil {
+					return err
+				}
+				defer session.Close()
+				entryTable, err = r.managedDownloadSnapshotTableRHP2(session)
+			} else {
+				entryTable, err = r.managedDownloadSnapshotTable(w)
 			}
-			defer session.Close()
-			entryTable, err := r.managedDownloadSnapshotTableRHP2(session)
 			if err != nil {
 				return err
 			}
@@ -539,6 +544,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			}
 			continue
 		}
+		r.staticWorkerPool.callUpdate()
 
 		// First, process any snapshot siafiles that may have finished uploading.
 		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
@@ -694,14 +700,17 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 
 			// TODO: Remove this when enough hosts have upgraded to fixed
 			// ReadOffset.
-			session, err := r.hostContractor.Session(w.staticHostPubKey, r.tg.StopChan())
-			if err != nil {
-				return err
+			var entryTable []snapshotEntry
+			if build.Release == "standard" {
+				session, err := r.hostContractor.Session(w.staticHostPubKey, r.tg.StopChan())
+				if err != nil {
+					return err
+				}
+				defer session.Close()
+				entryTable, err = r.managedDownloadSnapshotTableRHP2(session)
+			} else {
+				entryTable, err = r.managedDownloadSnapshotTable(w)
 			}
-			defer session.Close()
-
-			// Download the snapshot table.
-			entryTable, err := r.managedDownloadSnapshotTableRHP2(session)
 			if err != nil {
 				return err
 			}
