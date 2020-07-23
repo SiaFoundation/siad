@@ -69,6 +69,12 @@ var (
 	activeFilesMu sync.Mutex
 )
 
+var (
+	// MetadataVersionv150 is a common metadata version specifier to avoid
+	// types.Specifier conflicts
+	MetadataVersionv150 = types.NewSpecifier("v1.5.0\n")
+)
+
 // Metadata contains the header and version of the data being stored.
 type Metadata struct {
 	Header  string

@@ -240,11 +240,22 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 		entry.DataSectors[j] = root
 	}
 
+	// TODO: this should happen before uploading the pieces. Unfortunately RHP2
+	// won't let us easily do that because host.Upload is going to fail if
+	// called after managedDownloadSnapshotTableRHP2.
 	// download the current entry table
 	entryTable, err := r.managedDownloadSnapshotTableRHP2(host)
 	if err != nil {
 		return errors.AddContext(err, "could not download the snapshot table")
 	}
+
+	// check if the table already contains the entry.
+	for _, existingEntry := range entryTable {
+		if existingEntry.UID == meta.UID {
+			return nil // host already contains entry
+		}
+	}
+
 	shouldOverwrite := len(entryTable) != 0 // only overwrite if the sector already contained an entryTable
 	entryTable = append(entryTable, entry)
 
