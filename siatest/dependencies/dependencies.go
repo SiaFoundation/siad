@@ -225,11 +225,11 @@ func NewDependencyInterruptUploadAfterSendingRevision() *DependencyInterruptOnce
 	return newDependencyInterruptOnceOnKeyword("InterruptUploadAfterSendingRevision")
 }
 
-// NewDependencyInterruptStreamDialUp a dependency that interrupts interaction
-// with a stream by setting a unreasonably low dial-up timeout, causing it to
-// fail.
-func NewDependencyInterruptStreamDialUp() *DependencyInterruptOnceOnKeyword {
-	return newDependencyInterruptOnceOnKeyword("InterruptStreamDialUp")
+// NewDependencyInterruptNewStreamTimeout a dependency that interrupts
+// interaction with a stream by timing out on trying to create a new stream with
+// the host.
+func NewDependencyInterruptNewStreamTimeout() *DependencyInterruptOnceOnKeyword {
+	return newDependencyInterruptOnceOnKeyword("InterruptNewStreamTimeout")
 }
 
 // newDependencyInterruptOnceOnKeyword creates a new

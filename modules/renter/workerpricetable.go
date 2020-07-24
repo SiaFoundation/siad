@@ -65,7 +65,7 @@ func (w *worker) managedNeedsToUpdatePriceTable() bool {
 		return false
 	}
 	// No need to update the price table if the worker's RHP3 is on cooldown.
-	if w.managedRHP3OnCooldown() {
+	if w.managedOnMaintenanceCooldown() {
 		return false
 	}
 
@@ -146,14 +146,14 @@ func (w *worker) staticUpdatePriceTable() {
 	var err error
 	currentPT := w.staticPriceTable()
 	defer func() {
-		// If there was no error, reset the worker's RHP3 cooldown.
+		// If there was no error, reset the worker's maintenance cooldown.
 		if err == nil {
-			w.managedRHP3ResetCooldown()
+			w.managedResetMaintenanceCooldown()
 			return
 		}
 
 		// If the error is not nil, increment the cooldown.
-		cd := w.managedRHP3IncrementCooldown(err)
+		cd := w.managedIncrementMaintenanceCooldown(err)
 
 		// Because of race conditions, can't modify the existing price
 		// table, need to make a new one.

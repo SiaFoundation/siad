@@ -235,7 +235,7 @@ func TestRHP2DownloadOnRHP3CoolDown(t *testing.T) {
 	t.Parallel()
 
 	// create a new worker tester
-	deps := dependencies.NewDependencyInterruptStreamDialUp()
+	deps := dependencies.NewDependencyInterruptNewStreamTimeout()
 	wt, err := newWorkerTesterCustomDependency(t.Name(), deps, &modules.ProductionDependencies{})
 	if err != nil {
 		t.Fatal(err)
@@ -252,7 +252,7 @@ func TestRHP2DownloadOnRHP3CoolDown(t *testing.T) {
 	// be the case as we've initialised the renter with a dependency that rate
 	// limits the stream, triggering a timeout
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		if !wt.worker.managedRHP3OnCooldown() {
+		if !wt.worker.managedOnMaintenanceCooldown() {
 			return errors.New("Worker has not been put on RHP3 cool down")
 		}
 		return nil
@@ -297,7 +297,7 @@ func TestRHP2DownloadOnRHP3CoolDown(t *testing.T) {
 
 	// grab the cooldown until
 	wt.worker.mu.Lock()
-	cdu := wt.worker.rhp3CooldownUntil
+	cdu := wt.worker.maintenanceCooldownUntil
 	wt.worker.mu.Unlock()
 
 	// disable our dep and sleep until the cooldown until time
@@ -306,7 +306,7 @@ func TestRHP2DownloadOnRHP3CoolDown(t *testing.T) {
 
 	// wait until the worker is ready
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		if wt.worker.managedRHP3OnCooldown() {
+		if wt.worker.managedOnMaintenanceCooldown() {
 			return errors.New("Worker is still on cooldown")
 		}
 		if !wt.worker.staticPriceTable().staticValid() {

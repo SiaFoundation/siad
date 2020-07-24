@@ -56,9 +56,9 @@ func TestWorkerAccountStatus(t *testing.T) {
 		t.Fatal("Unexpected account status", ToJSON(status))
 	}
 
-	// ensure the worker's RHP3 system is not on cooldown
-	if w.managedRHP3OnCooldown() {
-		t.Fatal("Unexpected RHP3 cooldown")
+	// ensure the worker is not on maintenance cooldown
+	if w.managedOnMaintenanceCooldown() {
+		t.Fatal("Unexpected maintenance cooldown")
 	}
 
 	// nullify the account balance to ensure refilling triggers a max balance
@@ -78,7 +78,7 @@ func TestWorkerAccountStatus(t *testing.T) {
 	}
 
 	// ensure the worker's RHP3 system is on cooldown
-	if !w.managedRHP3OnCooldown() {
+	if !w.managedOnMaintenanceCooldown() {
 		t.Fatal("Expected RHP3 to have been put on cooldown")
 	}
 }

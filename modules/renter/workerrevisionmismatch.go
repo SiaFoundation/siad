@@ -27,7 +27,7 @@ func errCausedByRevisionMismatch(err error) bool {
 func (w *worker) externTryFixRevisionMismatch() {
 	// Do not attempt to try and fix a revision mismatch if the worker's RHP3
 	// subystem is on cooldown.
-	if w.managedRHP3OnCooldown() {
+	if w.managedOnMaintenanceCooldown() {
 		return
 	}
 
@@ -40,7 +40,7 @@ func (w *worker) externTryFixRevisionMismatch() {
 	// the revision if necessary.
 	session, err := w.renter.hostContractor.Session(w.staticHostPubKey, w.renter.tg.StopChan())
 	if err != nil {
-		w.managedRHP3IncrementCooldown(err)
+		w.managedIncrementMaintenanceCooldown(err)
 		w.renter.log.Printf("could not fix revision number mismatch, could not retrieve a session with host %v, err: %v\n", w.staticHostPubKeyStr, err)
 		return
 	}

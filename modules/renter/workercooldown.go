@@ -43,33 +43,3 @@ func cooldownUntil(consecutiveFailures uint64) time.Time {
 	}
 	return time.Now().Add(randCooldown)
 }
-
-// managedRHP3IncrementCooldown is called if the host has a failed RHP3
-// interaction with the host, it increments the consecutive failures and sets
-// the given error is recent failure.
-func (w *worker) managedRHP3IncrementCooldown(err error) time.Time {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.rhp3CooldownUntil = cooldownUntil(w.rhp3ConsecutiveFailures)
-	w.rhp3ConsecutiveFailures++
-	w.rhp3RecentErr = err
-	w.rhp3RecentErrTime = time.Now()
-	return w.rhp3CooldownUntil
-}
-
-// managedRHP3OnCooldown returns true if the worker's on cooldown for anything
-// that uses RHP3
-func (w *worker) managedRHP3OnCooldown() bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return time.Now().Before(w.rhp3CooldownUntil)
-}
-
-// managedRHP3ResetCooldown resets the worker's cooldown after a successful RHP3
-// interaction with the host
-func (w *worker) managedRHP3ResetCooldown() {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.rhp3ConsecutiveFailures = 0
-	w.rhp3CooldownUntil = time.Time{}
-}

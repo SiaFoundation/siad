@@ -421,7 +421,7 @@ func (w *worker) externSyncAccountBalanceToHost() {
 
 	balance, err := w.staticHostAccountBalance()
 	if err != nil {
-		w.managedRHP3IncrementCooldown(err)
+		w.managedIncrementMaintenanceCooldown(err)
 		w.renter.log.Printf("ERROR: failed to check account balance on host %v failed, err: %v\n", w.staticHostPubKeyStr, err)
 		return
 	}
@@ -455,7 +455,7 @@ func (w *worker) managedNeedsToRefillAccount() bool {
 		return false
 	}
 	// No need to refill the account if the worker's RHP3 is on cooldown.
-	if w.managedRHP3OnCooldown() {
+	if w.managedOnMaintenanceCooldown() {
 		return false
 	}
 	// No need to refill if the price table is not valid, as it would only
@@ -475,7 +475,7 @@ func (w *worker) managedNeedsToSyncAccountBalanceToHost() bool {
 		return false
 	}
 	// No need to sync the account if the worker's RHP3 is on cooldown.
-	if w.managedRHP3OnCooldown() {
+	if w.managedOnMaintenanceCooldown() {
 		return false
 	}
 
@@ -509,12 +509,12 @@ func (w *worker) managedRefillAccount() {
 		// account.
 		w.staticAccount.managedCommitDeposit(amount, err == nil)
 		if err == nil {
-			w.managedRHP3ResetCooldown()
+			w.managedResetMaintenanceCooldown()
 			return
 		}
 
 		// If the error is not nil, increment the cooldown.
-		cd := w.managedRHP3IncrementCooldown(err)
+		cd := w.managedIncrementMaintenanceCooldown(err)
 
 		// Track the error on the account for debugging purposes.
 		w.staticAccount.mu.Lock()

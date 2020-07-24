@@ -2593,11 +2593,12 @@ func renterworkerscmd() {
 
 	// Print Worker Pool Summary
 	fmt.Printf(`Worker Pool Summary
-  Total Workers:                %v
-  Workers On Download Cooldown: %v
-  Workers On Upload Cooldown:   %v
+  Total Workers:                   %v
+  Workers On Download Cooldown:    %v
+  Workers On Upload Cooldown:      %v
+  Workers On Maintenance Cooldown: %v
 
-`, rw.NumWorkers, rw.TotalDownloadCoolDown, rw.TotalUploadCoolDown)
+`, rw.NumWorkers, rw.TotalDownloadCoolDown, rw.TotalMaintenanceCoolDown, rw.TotalUploadCoolDown)
 
 	// Split Workers into GoodForUpload and !GoodForUpload
 	var goodForUpload, notGoodForUpload []modules.WorkerStatus
@@ -2635,9 +2636,8 @@ func renterworkerseacmd() {
 	}
 
 	// collect some overal account stats
-	var wocd, nfw uint64
+	var nfw uint64
 	for _, worker := range rw.Workers {
-		// TODO (PJ) fix wocd
 		if !worker.AccountStatus.Funded {
 			nfw++
 		}
@@ -2654,7 +2654,6 @@ func renterworkerseacmd() {
 
 	// print summary
 	fmt.Fprintf(w, "Total Workers: \t%v\n", rw.NumWorkers)
-	fmt.Fprintf(w, "Workers On Cooldown: \t%v\n", wocd)
 	fmt.Fprintf(w, "Non Funded Workers: \t%v\n", nfw)
 
 	// print header
@@ -2694,9 +2693,8 @@ func renterworkersptcmd() {
 	}
 
 	// collect some overal account stats
-	var wocd, wnpt uint64
+	var wnpt uint64
 	for _, worker := range rw.Workers {
-		// TODO (PJ) fix wocd
 		if !worker.PriceTableStatus.Active {
 			wnpt++
 		}
@@ -2713,7 +2711,6 @@ func renterworkersptcmd() {
 
 	// print summary
 	fmt.Fprintf(w, "Total Workers: \t%v\n", rw.NumWorkers)
-	fmt.Fprintf(w, "Workers On Cooldown: \t%v\n", wocd)
 	fmt.Fprintf(w, "Workers Without Price Table: \t%v\n", wnpt)
 
 	// print header
@@ -2830,9 +2827,10 @@ func writeWorkers(workers []modules.WorkerStatus) {
 	contractInfo := "Contract ID\tHost PubKey\tGood For Renew\tGood For Upload"
 	downloadInfo := "\tDownload On Cooldown\tDownload Queue\tDownload Terminated"
 	uploadInfo := "\tLast Upload Error\tUpload Cooldown Time\tUpload On Cooldown\tUpload Queue\tUpload Terminated"
+	maintenanceInfo := "\tMaintenance On Cooldown\tLast Maintenance Error\tMaintenance Cooldown Time"
 	eaInfo := "\tAvailable Balance\tBalance Targe\tFund Account Queue"
 	jobInfo := "\tBackup Queue\tDownload By Root Queue"
-	fmt.Fprintln(w, "  \n"+contractInfo+downloadInfo+uploadInfo+eaInfo+jobInfo)
+	fmt.Fprintln(w, "  \n"+contractInfo+downloadInfo+uploadInfo+maintenanceInfo+eaInfo+jobInfo)
 	for _, worker := range workers {
 		// Sanitize output
 		var uploadCoolDownTime time.Duration
@@ -2859,6 +2857,12 @@ func writeWorkers(workers []modules.WorkerStatus) {
 			worker.UploadOnCoolDown,
 			worker.UploadQueueSize,
 			worker.UploadTerminated)
+
+		// Maintenance Info
+		fmt.Fprintf(w, "\t%t\t%v\t%v",
+			worker.MaintenanceOnCooldown,
+			worker.MaintenanceCoolDownError,
+			worker.MaintenanceCoolDownTime)
 
 		// EA Info
 		fmt.Fprintf(w, "\t%v\t%v",

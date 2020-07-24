@@ -19,9 +19,13 @@ func (w *worker) callStatus() modules.WorkerStatus {
 		uploadCoolDownErr = w.uploadRecentFailureErr.Error()
 	}
 
-	var rhp3CoolDownErr string
-	if w.rhp3RecentErr != nil {
-		rhp3CoolDownErr = w.rhp3RecentErr.Error()
+	var maintenanceCoolDownErr string
+	if w.maintenanceRecentErr != nil {
+		maintenanceCoolDownErr = w.maintenanceRecentErr.Error()
+	}
+	var maintenaceCoolDownTime time.Duration
+	if w.managedOnMaintenanceCooldown() {
+		maintenaceCoolDownTime = w.maintenanceCooldownUntil.Sub(time.Now())
 	}
 
 	// Update the worker cache before returning a status.
@@ -49,10 +53,10 @@ func (w *worker) callStatus() modules.WorkerStatus {
 		BackupJobQueueSize:       w.staticFetchBackupsJobQueue.managedLen(),
 		DownloadRootJobQueueSize: w.staticJobQueueDownloadByRoot.managedLen(),
 
-		// RHP3 Cooldown Information
-		RHP3OnCooldown:            w.managedRHP3OnCooldown(),
-		RHP3CooldownRecentErr:     rhp3CoolDownErr,
-		RHP3CooldownRecentErrTime: w.rhp3RecentErrTime,
+		// Maintenance Cooldown Information
+		MaintenanceOnCooldown:    w.managedOnMaintenanceCooldown(),
+		MaintenanceCoolDownError: maintenanceCoolDownErr,
+		MaintenanceCoolDownTime:  maintenaceCoolDownTime,
 
 		// Account Information
 		AccountBalanceTarget: w.staticBalanceTarget,
