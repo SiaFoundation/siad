@@ -18,7 +18,7 @@ func (api *API) buildHTTPRoutes() {
 	requiredPassword := api.requiredPassword
 	requiredUserAgent := api.requiredUserAgent
 
-	router.NotFound = http.HandlerFunc(UnrecognizedCallHandler)
+	router.NotFound = http.HandlerFunc(api.UnrecognizedCallHandler)
 	router.RedirectTrailingSlash = false
 
 	// Daemon API Calls
