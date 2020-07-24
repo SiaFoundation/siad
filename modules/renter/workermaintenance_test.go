@@ -187,7 +187,7 @@ func TestRHP2DownloadOnMaintenanceCoolDown(t *testing.T) {
 	}
 
 	// download the data using the RHP3 download method
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(60, time.Second, func() error {
 		actual, err := wt.renter.DownloadByRoot(root, 0, modules.SectorSize, 0)
 		if err != nil {
 			return err
