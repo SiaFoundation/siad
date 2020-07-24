@@ -4853,7 +4853,7 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	// add a renter with a dependency that simulates an unclean shutdown by
 	// preventing accounts to be saved
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
-	renterParams.RenterDeps = &dependencies.DependencyInterruptAccountSaveOnShutdown{}
+	renterParams.RenterDeps = &dependencies.DependencyNoSnapshotSyncInterruptAccountSaveOnShutdown{}
 
 	// add a host with a dependency that alters the deposit amount, in a way not
 	// noticeable to the renter until he asks for his balance, this is necessary
