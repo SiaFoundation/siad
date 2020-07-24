@@ -110,10 +110,12 @@ func (w *worker) managedTrackAccountRefill(err error) time.Time {
 	wms := w.staticMaintenanceState
 	wms.mu.Lock()
 	defer wms.mu.Unlock()
-	if err == nil {
-		wms.accountRefillSucceeded = true
+	wms.accountRefillSucceeded = err == nil
+	if wms.accountRefillSucceeded {
+		println("REF SUCCESS")
 		return wms.tryResetMaintenanceCooldown()
 	}
+	println("REF ERR", err.Error())
 	return wms.incrementMaintenanceCooldown(err)
 }
 
@@ -124,10 +126,11 @@ func (w *worker) managedTrackAccountSync(err error) time.Time {
 	wms := w.staticMaintenanceState
 	wms.mu.Lock()
 	defer wms.mu.Unlock()
-	if err == nil {
-		wms.accountSyncSucceeded = true
+	wms.accountSyncSucceeded = err == nil
+	if wms.accountSyncSucceeded {
 		return wms.tryResetMaintenanceCooldown()
 	}
+	println("SYNC ERR", err.Error())
 	return wms.incrementMaintenanceCooldown(err)
 }
 
@@ -138,10 +141,11 @@ func (w *worker) managedTrackPriceTableUpdate(err error) time.Time {
 	wms := w.staticMaintenanceState
 	wms.mu.Lock()
 	defer wms.mu.Unlock()
-	if err == nil {
-		wms.priceTableUpdateSucceeded = true
+	wms.priceTableUpdateSucceeded = err == nil
+	if wms.priceTableUpdateSucceeded {
 		return wms.tryResetMaintenanceCooldown()
 	}
+	println("PT ERR", err.Error())
 	return wms.incrementMaintenanceCooldown(err)
 }
 
@@ -152,9 +156,10 @@ func (w *worker) managedTrackRevisionMismatchFix(err error) time.Time {
 	wms := w.staticMaintenanceState
 	wms.mu.Lock()
 	defer wms.mu.Unlock()
-	if err == nil {
-		wms.revisionsMismatchFixSucceeded = true
+	wms.revisionsMismatchFixSucceeded = err == nil
+	if wms.revisionsMismatchFixSucceeded {
 		return wms.tryResetMaintenanceCooldown()
 	}
+	println("REV ERR", err.Error())
 	return wms.incrementMaintenanceCooldown(err)
 }

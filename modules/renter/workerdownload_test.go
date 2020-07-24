@@ -236,6 +236,8 @@ func TestRHP2DownloadOnRHP3CoolDown(t *testing.T) {
 
 	// create a new worker tester
 	deps := dependencies.NewDependencyInterruptNewStreamTimeout()
+	deps.Fail()
+
 	wt, err := newWorkerTesterCustomDependency(t.Name(), deps, &modules.ProductionDependencies{})
 	if err != nil {
 		t.Fatal(err)
@@ -246,7 +248,6 @@ func TestRHP2DownloadOnRHP3CoolDown(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	deps.Fail()
 
 	// ensure the worker's RHP3 system has been put on a cool down, this should
 	// be the case as we've initialised the renter with a dependency that rate
@@ -307,27 +308,17 @@ func TestRHP2DownloadOnRHP3CoolDown(t *testing.T) {
 
 	// wait until the worker is ready
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		if wt.worker.managedOnMaintenanceCooldown() {
-			return errors.New("Worker is still on cooldown")
+		// download the data using the RHP3 download method
+		actual, err := wt.renter.DownloadByRoot(root, 0, modules.SectorSize, 0)
+		if err != nil {
+			return errors.AddContext(err, "Download failed")
 		}
-		if !wt.worker.staticPriceTable().staticValid() {
-			return errors.New("Worker does not have a valid PT yet")
-		}
-		if wt.worker.staticAccount.managedNeedsToRefill(wt.worker.staticBalanceTarget.Div64(2)) {
-			return errors.New("Worker does not have a funded EA yet")
+		if !bytes.Equal(actual, data) {
+			return errors.New("Downloaded data did not match uploaded data")
 		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	// download the data using the RHP3 download method
-	downloaded, err = wt.renter.DownloadByRoot(root, 0, modules.SectorSize, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(downloaded, data) {
-		t.Fatal("Downloaded data did not match uploaded data")
 	}
 }
