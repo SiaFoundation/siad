@@ -83,6 +83,16 @@ func (wms *workerMaintenanceState) tryResetMaintenanceCooldown() time.Time {
 	return wms.cooldownUntil
 }
 
+// managedMaintenanceSucceeded is a helper function that returns whether the
+// maintenance state indicates all maintenance tasks succeeded.
+func (w *worker) managedMaintenanceSucceeded() bool {
+	wms := w.staticMaintenanceState
+	wms.mu.Lock()
+	defer wms.mu.Unlock()
+
+	return wms.maintenanceSucceeded()
+}
+
 // managedOnMaintenanceCooldown returns true if the worker's on cooldown due to
 // failures in the worker's (RHP3) maintenance tasks.
 func (w *worker) managedOnMaintenanceCooldown() bool {

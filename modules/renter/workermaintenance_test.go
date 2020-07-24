@@ -31,12 +31,11 @@ func TestWorkerMaintenanceCoolDown(t *testing.T) {
 	}()
 	w := wt.worker
 
-	// check the balance in a retry to allow the worker to run through it's
-	// setup, e.g. updating PT, checking balance and refilling. Note we use min
-	// expected balance to ensure we're not counting pending deposits
+	// wait until the worker is done with its maintenance tasks - this basically
+	// ensures we have a working worker, with valid PT and funded EA
 	if err := build.Retry(100, 100*time.Millisecond, func() error {
-		if !w.staticAccount.managedMinExpectedBalance().Equals(w.staticBalanceTarget) {
-			return errors.New("worker account not funded")
+		if !w.managedMaintenanceSucceeded() {
+			return errors.New("worker not ready with maintenance")
 		}
 		return nil
 	}); err != nil {
