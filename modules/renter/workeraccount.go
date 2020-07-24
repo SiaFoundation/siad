@@ -482,6 +482,11 @@ func (w *worker) managedNeedsToSyncAccountBalanceToHost() bool {
 	if w.managedOnMaintenanceCooldown() {
 		return false
 	}
+	// No need to sync if the price table is not valid, as it would only
+	// result in failure anyway.
+	if !w.staticPriceTable().staticValid() {
+		return false
+	}
 
 	return w.staticAccount.callNeedsToSync()
 }

@@ -293,7 +293,9 @@ func (w *worker) threadedWorkLoop() {
 		// Perform a balance check on the host and sync it to his version if
 		// necessary. This avoids running into MaxBalanceExceeded errors upon
 		// refill after an unclean shutdown.
-		w.externSyncAccountBalanceToHost()
+		if w.staticPriceTable().staticValid() {
+			w.externSyncAccountBalanceToHost()
+		}
 
 		// This update is done as a blocking update to ensure nothing else runs
 		// until the account has filled.
