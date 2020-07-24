@@ -112,10 +112,8 @@ func (w *worker) managedTrackAccountRefill(err error) time.Time {
 	defer wms.mu.Unlock()
 	wms.accountRefillSucceeded = err == nil
 	if wms.accountRefillSucceeded {
-		println("REF SUCCESS")
 		return wms.tryResetMaintenanceCooldown()
 	}
-	println("REF ERR", err.Error())
 	return wms.incrementMaintenanceCooldown(err)
 }
 
@@ -130,7 +128,6 @@ func (w *worker) managedTrackAccountSync(err error) time.Time {
 	if wms.accountSyncSucceeded {
 		return wms.tryResetMaintenanceCooldown()
 	}
-	println("SYNC ERR", err.Error())
 	return wms.incrementMaintenanceCooldown(err)
 }
 
@@ -145,7 +142,6 @@ func (w *worker) managedTrackPriceTableUpdate(err error) time.Time {
 	if wms.priceTableUpdateSucceeded {
 		return wms.tryResetMaintenanceCooldown()
 	}
-	println("PT ERR", err.Error())
 	return wms.incrementMaintenanceCooldown(err)
 }
 
@@ -160,6 +156,5 @@ func (w *worker) managedTrackRevisionMismatchFix(err error) time.Time {
 	if wms.revisionsMismatchFixSucceeded {
 		return wms.tryResetMaintenanceCooldown()
 	}
-	println("REV ERR", err.Error())
 	return wms.incrementMaintenanceCooldown(err)
 }

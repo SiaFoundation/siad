@@ -493,7 +493,6 @@ func (w *worker) managedNeedsToSyncAccountBalanceToHost() bool {
 
 // managedRefillAccount will refill the account if it needs to be refilled
 func (w *worker) managedRefillAccount() {
-	println("REFILL ACCOUNT")
 	if w.renter.deps.Disrupt("DisableFunding") {
 		return // don't refill account
 	}
@@ -514,11 +513,6 @@ func (w *worker) managedRefillAccount() {
 	w.staticAccount.managedTrackDeposit(amount)
 	var err error
 	defer func() {
-		if err != nil {
-			println("refilling err, ", err.Error())
-		} else {
-			println("refilling OK")
-		}
 		// If there was no error, the account should now be full, and will not
 		// need to be refilled until the worker has spent up the funds in the
 		// account.
