@@ -120,3 +120,14 @@ func (d *DependencyHighMinHostScore) ForceHighMinHostScore(force bool) {
 	d.forcingHighMinScore = force
 	d.mu.Unlock()
 }
+
+// DependencySkipPrepareNextChunk skips the managedPrepareNextChunk step when
+// calling managedPushChunkForRepair.
+type DependencySkipPrepareNextChunk struct {
+	modules.ProductionDependencies
+}
+
+// Disrupt forces an immediate timeout for DownloadByRoot projects.
+func (d *DependencySkipPrepareNextChunk) Disrupt(s string) bool {
+	return s == "skipPrepareNextChunk"
+}

@@ -217,7 +217,11 @@ func addChunksOfDifferentHealth(r *Renter, numChunks int, priority, fileRecently
 			onDisk:                 !remote,
 			availableChan:          make(chan struct{}),
 		}
-		if !r.uploadHeap.managedPush(chunk, false) {
+		pushed, err := r.managedPushChunkForRepair(chunk, localChunk)
+		if err != nil {
+			return err
+		}
+		if !pushed {
 			return fmt.Errorf("unable to push chunk: %v", chunk)
 		}
 	}
@@ -639,7 +643,11 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 			piecesNeeded:    1,
 			availableChan:   make(chan struct{}),
 		}
-		if !rt.renter.uploadHeap.managedPush(chunk, false) {
+		pushed, err := rt.renter.managedPushChunkForRepair(chunk, localChunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !pushed {
 			t.Fatal("Chunk should have been added to heap")
 		}
 		i++
@@ -713,7 +721,11 @@ func TestUploadHeapMaps(t *testing.T) {
 			availableChan:   make(chan struct{}),
 		}
 		// push chunk to heap
-		if !rt.renter.uploadHeap.managedPush(chunk, false) {
+		pushed, err := rt.renter.managedPushChunkForRepair(chunk, localChunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !pushed {
 			t.Fatal("unable to push chunk", chunk)
 		}
 		// Confirm chunk is in the correct map
@@ -755,7 +767,11 @@ func TestUploadHeapMaps(t *testing.T) {
 			t.Fatal("popped chunk not found in repairing map")
 		}
 		// Confirm the chunk cannot be pushed back onto the heap
-		if rt.renter.uploadHeap.managedPush(chunk, false) {
+		pushed, err := rt.renter.managedPushChunkForRepair(chunk, localChunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pushed {
 			t.Fatal("should not have been able to push chunk back onto heap")
 		}
 	}
@@ -832,7 +848,11 @@ func TestChunkSwitchStuckStatus(t *testing.T) {
 		},
 	}
 	// push chunk to heap
-	if !rt.renter.uploadHeap.managedPush(chunk, false) {
+	pushed, err := rt.renter.managedPushChunkForRepair(chunk, localChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pushed {
 		t.Fatal("unable to push chunk", chunk)
 	}
 	if rt.renter.uploadHeap.managedLen() != 1 {
@@ -844,7 +864,11 @@ func TestChunkSwitchStuckStatus(t *testing.T) {
 	// Regression check 1: previously this second push call would succeed and
 	// the length of the heap would be 2
 	chunk.stuck = true
-	if rt.renter.uploadHeap.managedPush(chunk, false) {
+	pushed, err = rt.renter.managedPushChunkForRepair(chunk, localChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pushed {
 		t.Error("should not be able to push chunk again")
 	}
 	if rt.renter.uploadHeap.managedLen() != 1 {
@@ -867,17 +891,20 @@ func TestChunkSwitchStuckStatus(t *testing.T) {
 	}
 }
 
-// TestUploadHeapStreamPush the managedPush method with the uploadStream bool
-// set to true
+// TestUploadHeapStreamPush probes the Renter's managedPushChunkForRepair method
+// with the streamChunk type
 func TestUploadHeapStreamPush(t *testing.T) {
-	// Create an upload heap
-	uh := uploadHeap{
-		repairingChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
-		stuckHeapChunks:   make(map[uploadChunkID]*unfinishedUploadChunk),
-		unstuckHeapChunks: make(map[uploadChunkID]*unfinishedUploadChunk),
-
-		repairNeeded: make(chan struct{}, 1),
+	if testing.Short() {
+		t.SkipNow()
 	}
+	t.Parallel()
+
+	// Create renter
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencySkipPrepareNextChunk{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
 
 	// Create a chunk
 	chunk := &unfinishedUploadChunk{
@@ -893,21 +920,28 @@ func TestUploadHeapStreamPush(t *testing.T) {
 	// Define helper
 	pushAndVerify := func(chunk *unfinishedUploadChunk) {
 		// Adding chunk should be successful
-		added := uh.managedPush(chunk, true)
-		if !added {
+		pushed, err := rt.renter.managedPushChunkForRepair(chunk, streamChunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !pushed {
 			t.Fatal("chunk should have been pushed to the repair map")
 		}
-		uh.mu.Lock()
-		_, stuckExists := uh.stuckHeapChunks[chunk.id]
-		_, unstuckExists := uh.unstuckHeapChunks[chunk.id]
-		repairChunk, repairExists := uh.repairingChunks[chunk.id]
-		uh.mu.Unlock()
+
+		// Verify the chunk was added to the heap as expected
+		rt.renter.uploadHeap.mu.Lock()
+		_, stuckExists := rt.renter.uploadHeap.stuckHeapChunks[chunk.id]
+		_, unstuckExists := rt.renter.uploadHeap.unstuckHeapChunks[chunk.id]
+		repairChunk, repairExists := rt.renter.uploadHeap.repairingChunks[chunk.id]
+		rt.renter.uploadHeap.mu.Unlock()
 		if stuckExists || unstuckExists {
 			t.Fatal("chunk should not exist in stuck or unstuck maps")
 		}
 		if !repairExists {
 			t.Fatal("chunk should have been added to repair map")
 		}
+
+		// Verify the chunk in the heap is the chunk pushed
 		if !reflect.DeepEqual(repairChunk, chunk) {
 			t.Log("chunk:", chunk)
 			t.Log("repairChunk:", repairChunk)
@@ -919,18 +953,21 @@ func TestUploadHeapStreamPush(t *testing.T) {
 	pushAndVerify(chunk)
 
 	// Pushing again should fail
-	added := uh.managedPush(chunk, true)
-	if added {
+	pushed, err := rt.renter.managedPushChunkForRepair(chunk, streamChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pushed {
 		t.Error("chunk should not be able to be added twice")
 	}
 
 	// Delete the chunk from the repair map and add the chunk directly to the
 	// stuck and unstuck maps
-	uh.mu.Lock()
-	delete(uh.repairingChunks, chunk.id)
-	uh.stuckHeapChunks[chunk.id] = chunk
-	uh.unstuckHeapChunks[chunk.id] = chunk
-	uh.mu.Unlock()
+	rt.renter.uploadHeap.mu.Lock()
+	delete(rt.renter.uploadHeap.repairingChunks, chunk.id)
+	rt.renter.uploadHeap.stuckHeapChunks[chunk.id] = chunk
+	rt.renter.uploadHeap.unstuckHeapChunks[chunk.id] = chunk
+	rt.renter.uploadHeap.mu.Unlock()
 
 	// Pushing the chunk should clear it from both maps and be successful
 	pushAndVerify(chunk)
@@ -948,47 +985,73 @@ func TestUploadHeapStreamPush(t *testing.T) {
 		availableChan:     make(chan struct{}),
 	}
 
+	// Verify that the chunk in the repair map currently does not have
+	// a sourceReader
+	rt.renter.uploadHeap.mu.Lock()
+	repairChunk, ok := rt.renter.uploadHeap.repairingChunks[chunk.id]
+	rt.renter.uploadHeap.mu.Unlock()
+	if !ok {
+		t.Fatal("chunk not in repair map")
+	}
+	repairChunk.mu.Lock()
+	sr := repairChunk.sourceReader
+	repairChunk.mu.Unlock()
+	if sr != nil {
+		t.Fatal("expected chunk in repair map to have a nil sourceReader")
+	}
+
+	// Since no work is actually being done on the chunks we need to manage the
+	// cancelWG of the chunk in the uploadHeap to avoid NDFs
+	chunk.mu.Lock()
+	chunk.cancelWG.Add(1)
+	chunk.mu.Unlock()
+
 	// Adding new chunk should be false but chunk should eventually appear in the heap
-	added = uh.managedPush(newChunk, true)
-	if added {
+	pushed, err = rt.renter.managedPushChunkForRepair(newChunk, streamChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pushed {
 		t.Error("push should not have added chunk")
 	}
 
-	// Since the chunks are not being distributed to workers in this test the
-	// chunk should have immediately been re-added to the heap since there was no
-	// wait added to the cancelWG. We do however need to call mark repair as done
-	// so that the chunk is removed from the repair map
-	uh.managedMarkRepairDone(chunk.id)
+	// The newChunk should blocked in a go routine because of the current chunk's
+	// cancelWG. Mark the chunk as done to remove it from the repair map and
+	// complete the cancelWG so that the newChunk can be added.
+	rt.renter.uploadHeap.managedMarkRepairDone(chunk.id)
+	chunk.mu.Lock()
+	chunk.cancelWG.Done()
+	chunk.mu.Unlock()
 
 	// Since the adding happens in a go routine, there might be a slight delay.
 	// Check for the new chunk in the heap
-	err := build.Retry(100, time.Millisecond, func() error {
-		exists := uh.managedExists(newChunk.id)
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		exists := rt.renter.uploadHeap.managedExists(newChunk.id)
 		if !exists {
 			return errors.New("newChunk doesn't exists in heap yet")
+		}
+
+		// Verify that the chunk in the repair map now does have
+		// a sourceReader
+		rt.renter.uploadHeap.mu.Lock()
+		repairChunk, ok := rt.renter.uploadHeap.repairingChunks[chunk.id]
+		rt.renter.uploadHeap.mu.Unlock()
+		if !ok {
+			return errors.New("chunk not in repair map")
+		}
+		repairChunk.mu.Lock()
+		sr := repairChunk.sourceReader
+		repairChunk.mu.Unlock()
+		if sr == nil {
+			return errors.New("expected chunk in repair map to have a sourceReader")
+		}
+		if !reflect.DeepEqual(repairChunk, newChunk) {
+			return fmt.Errorf("chunks not equal\nnewChunk: %v\nrepairChunk: %v", newChunk, repairChunk)
 		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	// Since we know that the chunk is not marked as stuck we know it should be in
-	// the unstuck map
-	uh.mu.Lock()
-	unstuckChunk, existsUnstuck := uh.unstuckHeapChunks[newChunk.id]
-	_, existsRepair := uh.repairingChunks[chunk.id]
-	uh.mu.Unlock()
-	if existsRepair {
-		t.Error("Chunk should not be in the repair map")
-	}
-	if !existsUnstuck {
-		t.Error("Chunk should exist in the unstuck map")
-	}
-	if !reflect.DeepEqual(unstuckChunk, newChunk) {
-		t.Log("newChunk:", newChunk)
-		t.Log("mapChunk:", unstuckChunk)
-		t.Error("chunks not equal")
 	}
 }
 

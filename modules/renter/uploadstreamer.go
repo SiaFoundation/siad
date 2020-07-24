@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"sync"
-	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -274,24 +273,16 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 		// Check if the chunk needs any work or if we can skip it.
 		if uuc.piecesCompleted < uuc.piecesNeeded {
 			// Add the chunk to the upload heap's repair map.
-			if !r.uploadHeap.managedPush(uuc, true) {
+			pushed, err := r.managedPushChunkForRepair(uuc, streamChunk)
+			if err != nil {
+				return nil, errors.AddContext(err, "unable to push chunk")
+			}
+			if !pushed {
 				// The chunk wasn't added to the repair map meaning it must have already
 				// been in the repair map
 				_, _ = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
 				if err := ss.Close(); err != nil {
 					return nil, err
-				}
-			} else {
-				// Set the chunks popped time to simulate the chunk being popped from the
-				// heap
-				uuc.mu.Lock()
-				uuc.chunkPoppedFromHeapTime = time.Now()
-				uuc.mu.Unlock()
-
-				// Prepare and send the chunk to the workers.
-				err = r.managedPrepareNextChunk(uuc)
-				if err != nil {
-					return nil, errors.AddContext(err, "unable to prepare chunk for workers")
 				}
 			}
 			chunks = append(chunks, uuc)
