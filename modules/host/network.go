@@ -403,6 +403,7 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 		err = errors.Compose(err, modules.RPCWriteError(stream, err))
 		atomic.AddUint64(&h.atomicErroredCalls, 1)
 		h.managedLogError(err)
+		fmt.Println("host err", rpcID, err)
 	}
 }
 
