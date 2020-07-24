@@ -682,6 +682,27 @@ set.
 **modules** | struct  
 Is a list of the siad modules with a bool indicating if the module was launched.
 
+## /daemon/stack [GET]
+**UNSTABLE**
+> curl example  
+
+```go
+curl -A "Sia-Agent" "localhost:9980/daemon/stack"
+```
+Returns the daemon's current stack trace.
+
+### JSON Response
+> JSON Response Example
+ 
+```go
+{
+  "stack": [1,2,21,1,13,32,14,141,13,2,41,120], // []byte
+}
+```
+
+**stack** | []byte  
+Current stack trace. 
+
 ## /daemon/settings [POST]
 > curl example  
 
@@ -5160,7 +5181,7 @@ skyfiles are encrypted with the same skykey.
 }
 ```
 
-**skykey** | string  
+**skykey** | skykey  
 Skykey. See the documentation for /skynet/skykey for more detailed information.
 
 

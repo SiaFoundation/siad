@@ -36,6 +36,12 @@ func (c *Client) DaemonSettingsGet() (dsg api.DaemonSettingsGet, err error) {
 	return
 }
 
+// DaemonStackGet requests the /daemon/stack api resource.
+func (c *Client) DaemonStackGet() (dsg api.DaemonStackGet, err error) {
+	err = c.get("/daemon/stack", &dsg)
+	return
+}
+
 // DaemonStopGet stops the daemon using the /daemon/stop endpoint.
 func (c *Client) DaemonStopGet() (err error) {
 	err = c.get("/daemon/stop", nil)
