@@ -458,7 +458,7 @@ func (w *worker) managedNeedsToRefillAccount() bool {
 	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
 		return false
 	}
-	// No need to refill the account if the worker's RHP3 is on cooldown.
+	// No need to refill the account if the worker is on maintenance cooldown.
 	if w.managedOnMaintenanceCooldown() {
 		return false
 	}

@@ -248,9 +248,9 @@ func TestRHP2DownloadOnRHP3CoolDown(t *testing.T) {
 		}
 	}()
 
-	// ensure the worker's RHP3 system has been put on a cool down, this should
-	// be the case as we've initialised the renter with a dependency that rate
-	// limits the stream, triggering a timeout
+	// ensure the worker is on maintenance cooldown, this should be the case as
+	// we've initialised the renter with a dependency that times out acuiring a
+	// stream to the host
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		if !wt.worker.managedOnMaintenanceCooldown() {
 			return errors.New("Worker has not been put on RHP3 cool down")
