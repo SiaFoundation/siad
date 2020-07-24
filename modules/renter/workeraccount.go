@@ -510,7 +510,6 @@ func (w *worker) managedRefillAccount() {
 	var err error
 	defer func() {
 		if err != nil {
-
 			println("refilling err, ", err.Error())
 		} else {
 			println("refilling OK")
