@@ -4851,7 +4851,9 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	defer tg.Close()
 
 	// add a renter with a dependency that simulates an unclean shutdown by
-	// preventing accounts to be saved
+	// preventing accounts to be saved and also prevents the snapshot syncing
+	// thread from running. That way we won't experience unexpected withdrawals
+	// or refunds.
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
 	renterParams.RenterDeps = &dependencies.DependencyNoSnapshotSyncInterruptAccountSaveOnShutdown{}
 
