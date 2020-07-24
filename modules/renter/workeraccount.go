@@ -186,8 +186,8 @@ func (a *account) callNeedsToSync() bool {
 // callSetSyncAt will update the syncAt time for the account.
 func (a *account) callSetSyncAt(newSyncAt time.Time) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	a.syncAt = newSyncAt
+	a.mu.Unlock()
 }
 
 // managedAvailableBalance returns the amount of money that is available to
