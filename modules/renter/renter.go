@@ -250,6 +250,7 @@ func (r *Renter) MemoryStatus() (modules.MemoryStatus, error) {
 	if err := r.tg.Add(); err != nil {
 		return modules.MemoryStatus{}, err
 	}
+	defer r.tg.Done()
 	return r.memoryManager.callStatus(), nil
 }
 
