@@ -131,6 +131,13 @@ type (
 		modules.ProductionDependencies
 	}
 
+	// DependencyNoSnapshotSyncInterruptAccountSaveOnShutdown will interrupt the
+	// account save when the renter shuts down and also disable the snapshot
+	// syncing thread.
+	DependencyNoSnapshotSyncInterruptAccountSaveOnShutdown struct {
+		modules.ProductionDependencies
+	}
+
 	// DependencyBlockResumeJobDownloadUntilTimeout blocks in
 	// managedResumeJobDownloadByRoot until the timeout for the download project
 	// is reached.
@@ -250,6 +257,17 @@ func newDependencyInterruptCountOccurrences(str string) *DependencyInterruptCoun
 	return &DependencyInterruptCountOccurrences{
 		str: str,
 	}
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyNoSnapshotSyncInterruptAccountSaveOnShutdown) Disrupt(s string) bool {
+	if s == "InterruptAccountSaveOnShutdown" {
+		return true
+	}
+	if s == "DisableSnapshotSync" {
+		return true
+	}
+	return false
 }
 
 // Disrupt returns true if the correct string is provided.
