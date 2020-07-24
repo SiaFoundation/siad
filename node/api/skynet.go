@@ -249,7 +249,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	path := "/" // default to root
 	splits := strings.SplitN(strLink, "?", 2)
 	splits = strings.SplitN(splits[0], "/", 2)
-	if len(splits) > 1 {
+	hassubpath := len(splits) > 1
+	if hassubpath {
 		path = fmt.Sprintf("/%s", splits[1])
 	}
 
@@ -324,10 +325,19 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	var isSubfile bool
 
 	// Handle the legacy case
-	if metadata.DefaultPath == "" && !metadata.DisableDefaultPath && len(metadata.Subfiles) == 1 {
-		for filename := range metadata.Subfiles {
-			metadata.DefaultPath = modules.EnsurePrefix(filename, "/")
-			break
+	if metadata.DefaultPath == "" && !metadata.DisableDefaultPath {
+		if len(metadata.Subfiles) == 1 {
+			for filename := range metadata.Subfiles {
+				metadata.DefaultPath = modules.EnsurePrefix(filename, "/")
+				break
+			}
+		} else {
+			for filename := range metadata.Subfiles {
+				if modules.EnsurePrefix(filename, "/") == modules.EnsurePrefix(DefaultSkynetDefaultPath, "/") {
+					metadata.DefaultPath = modules.EnsurePrefix(filename, "/")
+					break
+				}
+			}
 		}
 	}
 
@@ -337,6 +347,12 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if path == "/" &&
 		metadata.DefaultPath != "" &&
 		format == modules.SkyfileFormatNotSpecified {
+		if !hassubpath {
+			w.Header().Set("Location", path)
+			w.WriteHeader(http.StatusMovedPermanently)
+			return
+		}
+
 		_, _, offset, size := metadata.ForPath(metadata.DefaultPath)
 		streamer, err = NewLimitStreamer(streamer, offset, size)
 		isSubfile = true
