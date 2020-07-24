@@ -260,36 +260,6 @@ func (w *worker) managedDiscardAsyncJobs(err error) {
 	w.staticJobReadQueue.callDiscardAll(err)
 }
 
-// managedIncrementMaintenanceCooldown is called if the host has a failed
-// interaction with the host's RHP3 protocol, it increments the consecutive
-// failures and sets the given error is recent failure.
-func (w *worker) managedIncrementMaintenanceCooldown(err error) time.Time {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.maintenanceCooldownUntil = cooldownUntil(w.maintenanceConsecutiveFailures)
-	w.maintenanceConsecutiveFailures++
-	w.maintenanceRecentErr = err
-	w.maintenanceRecentErrTime = time.Now()
-	return w.maintenanceCooldownUntil
-}
-
-// managedOnMaintenanceCooldown returns true if the worker's on cooldown due to
-// failures in the worker's (RHP3) maintenance tasks.
-func (w *worker) managedOnMaintenanceCooldown() bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return time.Now().Before(w.maintenanceCooldownUntil)
-}
-
-// managedResetMaintenanceCooldown resets the worker's cooldown after a
-// successful interaction with the host that involved the RHP3 protocol.
-func (w *worker) managedResetMaintenanceCooldown() {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.maintenanceConsecutiveFailures = 0
-	w.maintenanceCooldownUntil = time.Time{}
-}
-
 // threadedWorkLoop is a perpetual loop run by the worker that accepts new jobs
 // and performs them. Work is divided into two types of work, serial work and
 // async work. Serial work requires exclusive access to the worker's contract,

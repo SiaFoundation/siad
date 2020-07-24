@@ -146,14 +146,16 @@ func (w *worker) staticUpdatePriceTable() {
 	var err error
 	currentPT := w.staticPriceTable()
 	defer func() {
-		// If there was no error, reset the worker's maintenance cooldown.
+		// Track the result of the account sync, in case of failure this will
+		// increment the cooldown, in case of success this will try and reset
+		// the cooldown, depending on whether the other maintenance tasks were
+		// completed successfully.
+		cd := w.managedTrackAccountSync(err)
+
+		// If there was no error, return.
 		if err == nil {
-			w.managedResetMaintenanceCooldown()
 			return
 		}
-
-		// If the error is not nil, increment the cooldown.
-		cd := w.managedIncrementMaintenanceCooldown(err)
 
 		// Because of race conditions, can't modify the existing price
 		// table, need to make a new one.

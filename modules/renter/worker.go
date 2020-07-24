@@ -90,17 +90,6 @@ type (
 		uploadRecentFailureErr    error                    // What was the reason for the last failure?
 		uploadTerminated          bool                     // Have we stopped uploading?
 
-		// The worker performs various tasks required for a good working
-		// interaction with the host's RHP3 RPC calls, we call this "(RHP3)
-		// maintenance". For example, to perform an async download job the
-		// worker needs a valid price table and a funded ephemeral account. If
-		// the worker fails to successfully acquire this necessary setup, it
-		// has to be put on a cooldown.
-		maintenanceConsecutiveFailures uint64
-		maintenanceCooldownUntil       time.Time
-		maintenanceRecentErr           error
-		maintenanceRecentErrTime       time.Time
-
 		// The staticAccount represent the renter's ephemeral account on the
 		// host. It keeps track of the available balance in the account, the
 		// worker has a refill mechanism that keeps the account balance filled
@@ -112,6 +101,11 @@ type (
 		// mostly atomic variables that the worker uses to ratelimit the
 		// launching of async jobs.
 		staticLoopState *workerLoopState
+
+		// The maintenance state contains information about the worker's RHP3
+		// related state. It is used to determine whether or not the worker's
+		// maintenance cooldown can be reset.
+		staticMaintenanceState *workerMaintenanceState
 
 		// Utilities.
 		killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
@@ -194,6 +188,8 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 			atomicReadDataLimit:  initialConcurrentAsyncReadData,
 			atomicWriteDataLimit: initialConcurrentAsyncWriteData,
 		},
+
+		staticMaintenanceState: &workerMaintenanceState{},
 
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),

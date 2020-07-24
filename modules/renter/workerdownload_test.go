@@ -296,9 +296,10 @@ func TestRHP2DownloadOnRHP3CoolDown(t *testing.T) {
 	}
 
 	// grab the cooldown until
-	wt.worker.mu.Lock()
-	cdu := wt.worker.maintenanceCooldownUntil
-	wt.worker.mu.Unlock()
+	wms := wt.worker.staticMaintenanceState
+	wms.mu.Lock()
+	cdu := wms.cooldownUntil
+	wms.mu.Unlock()
 
 	// disable our dep and sleep until the cooldown until time
 	deps.Disable()

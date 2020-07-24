@@ -420,8 +420,12 @@ func (w *worker) externSyncAccountBalanceToHost() {
 	}
 
 	balance, err := w.staticHostAccountBalance()
+
+	// Track the outcome of the account sync - this ensures a proper working of
+	// the maintenance cooldown mechanism.
+	w.managedTrackAccountSync(err)
+
 	if err != nil {
-		w.managedIncrementMaintenanceCooldown(err)
 		w.renter.log.Debugf("ERROR: failed to check account balance on host %v failed, err: %v\n", w.staticHostPubKeyStr, err)
 		return
 	}
@@ -508,13 +512,15 @@ func (w *worker) managedRefillAccount() {
 		// need to be refilled until the worker has spent up the funds in the
 		// account.
 		w.staticAccount.managedCommitDeposit(amount, err == nil)
+
+		// Track the outcome of the account refill - this ensures a proper
+		// working of the maintenance cooldown mechanism.
+		cd := w.managedTrackAccountRefill(err)
+
+		// If the error is nil, return.
 		if err == nil {
-			w.managedResetMaintenanceCooldown()
 			return
 		}
-
-		// If the error is not nil, increment the cooldown.
-		cd := w.managedIncrementMaintenanceCooldown(err)
 
 		// Track the error on the account for debugging purposes.
 		w.staticAccount.mu.Lock()
