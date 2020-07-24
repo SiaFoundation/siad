@@ -50,6 +50,8 @@ Full Descriptions
 
 ### Daemon tasks
 
+* `siac stack` writes the current stack trace to an output file.
+
 * `siac stop` sends the stop signal to siad to safely terminate. This has the
   same effect as C^c on the terminal.
 
