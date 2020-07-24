@@ -675,7 +675,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 	// add a nested file
 	data = []byte("File2Contents")
-	subfile = siatest.AddMultipartFile(writer, data, "files[]", "nested/file2", 0640, &offset)
+	subfile = siatest.AddMultipartFile(writer, data, "files[]", "nested/file2.html", 0640, &offset)
 	subfiles[subfile.Filename] = subfile
 
 	err = writer.Close()
@@ -724,7 +724,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Download the second file
-	nestedfile, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/%s", skylink, "nested/file2"))
+	nestedfile, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/%s", skylink, "nested/file2.html"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2781,7 +2781,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 	ct := header.Get("Content-Type")
 	if ct != "application/zip" {
-		t.Fatal("expecteed zip archive")
+		t.Fatal("expected zip archive")
 	}
 
 	// TEST: Contains index.html but specifies a different default path.
@@ -2924,6 +2924,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 	bad := "/bad.html"
 	index := "/index.html"
 	hello := "/hello.html"
+	nonHTML := "/index.js"
 	dirAbout := "/dir/about.html"
 	tests := []struct {
 		name                   string
@@ -3033,6 +3034,15 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 			expectedZipArchive: true,
 		},
 		{
+			// Multi dir with index, non-html default path.
+			// Expect a zip archive
+			name:               "multi_idx_non_html",
+			files:              multiHasIndex,
+			defaultPath:        nonHTML,
+			disableDefaultPath: false,
+			expectedZipArchive: true,
+		},
+		{
 			// Multi dir with index, bad default path.
 			// Error on upload: invalid default path.
 			name:                 "multi_idx_bad",
@@ -3066,6 +3076,15 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 			files:              multiNoIndex,
 			defaultPath:        "",
 			disableDefaultPath: true,
+			expectedZipArchive: true,
+		},
+		{
+			// Multi dir with no index, non-hml default path.
+			// Expect a zip archive
+			name:               "multi_noidx_non_html",
+			files:              multiNoIndex,
+			defaultPath:        nonHTML,
+			disableDefaultPath: false,
 			expectedZipArchive: true,
 		},
 
