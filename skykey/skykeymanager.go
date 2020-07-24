@@ -87,7 +87,7 @@ func newCountingWriter(w io.Writer) *countingWriter {
 	return &countingWriter{w, 0}
 }
 
-// BytesWritten returns the total number of returns the bytes written through
+// BytesWritten returns the total number of bytes written through
 // this writer.
 func (cw countingWriter) BytesWritten() uint64 {
 	return uint64(cw.count)
