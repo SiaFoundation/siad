@@ -2827,7 +2827,7 @@ func writeWorkers(workers []modules.WorkerStatus) {
 	contractInfo := "Contract ID\tHost PubKey\tGood For Renew\tGood For Upload"
 	downloadInfo := "\tDownload On Cooldown\tDownload Queue\tDownload Terminated"
 	uploadInfo := "\tLast Upload Error\tUpload Cooldown Time\tUpload On Cooldown\tUpload Queue\tUpload Terminated"
-	maintenanceInfo := "\tMaintenance On Cooldown\tLast Maintenance Error\tMaintenance Cooldown Time"
+	maintenanceInfo := "\tMaintenance On Cooldown\tMaintenance Cooldown Time\tLast Maintenance Error"
 	eaInfo := "\tAvailable Balance\tBalance Targe\tFund Account Queue"
 	jobInfo := "\tBackup Queue\tDownload By Root Queue"
 	fmt.Fprintln(w, "  \n"+contractInfo+downloadInfo+uploadInfo+maintenanceInfo+eaInfo+jobInfo)
@@ -2861,8 +2861,8 @@ func writeWorkers(workers []modules.WorkerStatus) {
 		// Maintenance Info
 		fmt.Fprintf(w, "\t%t\t%v\t%v",
 			worker.MaintenanceOnCooldown,
-			worker.MaintenanceCoolDownError,
-			worker.MaintenanceCoolDownTime)
+			worker.MaintenanceCoolDownTime,
+			worker.MaintenanceCoolDownError)
 
 		// EA Info
 		fmt.Fprintf(w, "\t%v\t%v",
