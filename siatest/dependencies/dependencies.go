@@ -225,13 +225,6 @@ func NewDependencyInterruptUploadAfterSendingRevision() *DependencyInterruptOnce
 	return newDependencyInterruptOnceOnKeyword("InterruptUploadAfterSendingRevision")
 }
 
-// NewDependencyInterruptNewStreamTimeout a dependency that interrupts
-// interaction with a stream by timing out on trying to create a new stream with
-// the host.
-func NewDependencyInterruptNewStreamTimeout() *DependencyInterruptOnceOnKeyword {
-	return newDependencyInterruptOnceOnKeyword("InterruptNewStreamTimeout")
-}
-
 // newDependencyInterruptOnceOnKeyword creates a new
 // DependencyInterruptOnceOnKeyword from a given disrupt key.
 func newDependencyInterruptOnceOnKeyword(str string) *DependencyInterruptOnceOnKeyword {

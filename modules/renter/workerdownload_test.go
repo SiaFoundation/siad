@@ -236,7 +236,6 @@ func TestRHP2DownloadOnRHP3CoolDown(t *testing.T) {
 
 	// create a new worker tester
 	deps := dependencies.NewDependencyInterruptNewStreamTimeout()
-	deps.Fail()
 
 	wt, err := newWorkerTesterCustomDependency(t.Name(), deps, &modules.ProductionDependencies{})
 	if err != nil {
@@ -296,18 +295,19 @@ func TestRHP2DownloadOnRHP3CoolDown(t *testing.T) {
 		t.Fatal("Downloaded data did not match uploaded data")
 	}
 
-	// grab the cooldown until
-	wms := wt.worker.staticMaintenanceState
-	wms.mu.Lock()
-	cdu := wms.cooldownUntil
-	wms.mu.Unlock()
-
-	// disable our dep and sleep until the cooldown until time
 	deps.Disable()
-	time.Sleep(time.Until(cdu))
 
 	// wait until the worker is ready
 	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// grab the cooldown until
+		wms := wt.worker.staticMaintenanceState
+		wms.mu.Lock()
+		cdu := wms.cooldownUntil
+		wms.mu.Unlock()
+
+		// sleep until the cooldown until time
+		time.Sleep(time.Until(cdu))
+
 		// download the data using the RHP3 download method
 		actual, err := wt.renter.DownloadByRoot(root, 0, modules.SectorSize, 0)
 		if err != nil {
