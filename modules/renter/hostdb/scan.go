@@ -677,8 +677,8 @@ func (hdb *HostDB) threadedScan() {
 // uses an ephemeral stream which is a special type of stream that doesn't leak
 // TCP connections. Otherwise we would end up with one TCP connection for every
 // host in the network after scanning the whole network.
-func fetchPriceTable(siamux *siamux.SiaMux, addr string, timeout time.Duration, hpk mux.ED25519PublicKey) (*modules.RPCPriceTable, error) {
-	stream, err := siamux.NewEphemeralStream(modules.HostSiaMuxSubscriberName, addr, timeout, hpk)
+func fetchPriceTable(siamux *siamux.SiaMux, hostAddr string, timeout time.Duration, hpk mux.ED25519PublicKey) (*modules.RPCPriceTable, error) {
+	stream, err := siamux.NewEphemeralStream(modules.HostSiaMuxSubscriberName, hostAddr, timeout, hpk)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to create ephemeral stream")
 	}
