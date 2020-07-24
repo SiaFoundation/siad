@@ -419,10 +419,9 @@ func (w *worker) externSyncAccountBalanceToHost() {
 		build.Critical("managedSyncAccountBalanceToHost is called on a worker with an account that has non-zero deltas, indicating in-progress jobs")
 	}
 
-	balance, err := w.staticHostAccountBalance()
-
 	// Track the outcome of the account sync - this ensures a proper working of
 	// the maintenance cooldown mechanism.
+	balance, err := w.staticHostAccountBalance()
 	w.managedTrackAccountSync(err)
 
 	if err != nil {
