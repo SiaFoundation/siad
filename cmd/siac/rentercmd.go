@@ -2597,13 +2597,13 @@ func renterworkerscmd() {
 	})
 
 	// Print Worker Pool Summary
-	fmt.Printf(`Worker Pool Summary
-  Total Workers:                   %v
-  Workers On Download Cooldown:    %v
-  Workers On Upload Cooldown:      %v
-  Workers On Maintenance Cooldown: %v
-
-`, rw.NumWorkers, rw.TotalDownloadCoolDown, rw.TotalMaintenanceCoolDown, rw.TotalUploadCoolDown)
+	fmt.Println("Worker Pool Summary")
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "  Total Workers:\t%v\n", rw.NumWorkers)
+	fmt.Fprintf(w, "  Workers On Download Cooldown:\t%v\n", rw.TotalDownloadCoolDown)
+	fmt.Fprintf(w, "  Workers On Upload Cooldown:\t%v\n", rw.TotalUploadCoolDown)
+	fmt.Fprintf(w, "  Workers On Maintenance Cooldown:\t%v\n", rw.TotalMaintenanceCoolDown)
+	w.Flush()
 
 	// Split Workers into GoodForUpload and !GoodForUpload
 	var goodForUpload, notGoodForUpload []modules.WorkerStatus
