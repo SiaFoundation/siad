@@ -2591,6 +2591,11 @@ func renterworkerscmd() {
 		die("Could not get contracts:", err)
 	}
 
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
+
 	// Print Worker Pool Summary
 	fmt.Printf(`Worker Pool Summary
   Total Workers:                   %v
