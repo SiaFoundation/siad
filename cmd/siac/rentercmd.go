@@ -2698,10 +2698,10 @@ func renterworkersptcmd() {
 	}
 
 	// collect some overal account stats
-	var wnpt uint64
+	var workersWithoutPTs uint64
 	for _, worker := range rw.Workers {
 		if !worker.PriceTableStatus.Active {
-			wnpt++
+			workersWithoutPTs++
 		}
 	}
 	fmt.Println("Worker Price Tables Summary")
@@ -2716,7 +2716,7 @@ func renterworkersptcmd() {
 
 	// print summary
 	fmt.Fprintf(w, "Total Workers: \t%v\n", rw.NumWorkers)
-	fmt.Fprintf(w, "Workers Without Price Table: \t%v\n", wnpt)
+	fmt.Fprintf(w, "Workers Without Price Table: \t%v\n", workersWithoutPTs)
 
 	// print header
 	hostInfo := "Host PubKey"
