@@ -19,7 +19,11 @@ func (w *worker) callStatus() modules.WorkerStatus {
 		uploadCoolDownErr = w.uploadRecentFailureErr.Error()
 	}
 
-	maintenanceOnCooldown, maintenanceCoolDownErr, maintenanceCoolDownTime := w.staticMaintenanceState.managedMaintenanceCooldownStatus()
+	maintenanceOnCooldown, maintenanceCoolDownTime, maintenanceCoolDownErr := w.staticMaintenanceState.managedMaintenanceCooldownStatus()
+	var mcdErr string
+	if maintenanceCoolDownErr != nil {
+		mcdErr = maintenanceCoolDownErr.Error()
+	}
 
 	// Update the worker cache before returning a status.
 	w.staticTryUpdateCache()
@@ -48,7 +52,7 @@ func (w *worker) callStatus() modules.WorkerStatus {
 
 		// Maintenance Cooldown Information
 		MaintenanceOnCooldown:    maintenanceOnCooldown,
-		MaintenanceCoolDownError: maintenanceCoolDownErr,
+		MaintenanceCoolDownError: mcdErr,
 		MaintenanceCoolDownTime:  maintenanceCoolDownTime,
 
 		// Account Information

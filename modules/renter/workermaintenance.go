@@ -56,21 +56,17 @@ func (wms *workerMaintenanceState) maintenanceSucceeded() bool {
 // managedMaintenanceCooldownStatus is a helper function that returns
 // information about the maintenance cooldown. It returns whether the worker is
 // on cooldown, the recent error string and the cooldown duration.
-func (wms *workerMaintenanceState) managedMaintenanceCooldownStatus() (bool, string, time.Duration) {
+func (wms *workerMaintenanceState) managedMaintenanceCooldownStatus() (bool, time.Duration, error) {
 	wms.mu.Lock()
 	defer wms.mu.Unlock()
 
-	ocd := time.Now().Before(wms.cooldownUntil)
-	var cdErrStr string
-	if wms.recentErr != nil {
-		cdErrStr = wms.recentErr.Error()
-	}
+	onCooldown := time.Now().Before(wms.cooldownUntil)
 	var cdDuration time.Duration
-	if ocd {
+	if onCooldown {
 		cdDuration = wms.cooldownUntil.Sub(time.Now())
 	}
 
-	return ocd, cdErrStr, cdDuration
+	return onCooldown, cdDuration, wms.recentErr
 }
 
 // managedResetMaintenanceCooldown resets the worker's cooldown after a
@@ -103,10 +99,10 @@ func (w *worker) managedOnMaintenanceCooldown() bool {
 	return time.Now().Before(wms.cooldownUntil)
 }
 
-// managedTrackAccountRefill tracks the outcome of an account refill, this
+// managedTrackAccountRefillErr tracks the outcome of an account refill, this
 // method will increment the cooldown on failure, and attempt a cooldown reset
 // on success. It returns the cooldown until.
-func (w *worker) managedTrackAccountRefill(err error) time.Time {
+func (w *worker) managedTrackAccountRefillErr(err error) time.Time {
 	wms := w.staticMaintenanceState
 	wms.mu.Lock()
 	defer wms.mu.Unlock()
@@ -117,10 +113,10 @@ func (w *worker) managedTrackAccountRefill(err error) time.Time {
 	return wms.incrementMaintenanceCooldown(err)
 }
 
-// managedTrackAccountSync tracks the outcome of an account sync, this method
+// managedTrackAccountSyncErr tracks the outcome of an account sync, this method
 // will increment the cooldown on failure, and attempt a cooldown reset on
 // success. It returns the cooldown until.
-func (w *worker) managedTrackAccountSync(err error) time.Time {
+func (w *worker) managedTrackAccountSyncErr(err error) time.Time {
 	wms := w.staticMaintenanceState
 	wms.mu.Lock()
 	defer wms.mu.Unlock()
@@ -131,10 +127,10 @@ func (w *worker) managedTrackAccountSync(err error) time.Time {
 	return wms.incrementMaintenanceCooldown(err)
 }
 
-// managedTrackPriceTableUpdate tracks the outcome of a price table update, this
-// method will increment the cooldown on failure, and attempt a cooldown reset
-// on success. It returns the cooldown until.
-func (w *worker) managedTrackPriceTableUpdate(err error) time.Time {
+// managedTrackPriceTableUpdateErr tracks the outcome of a price table update,
+// this method will increment the cooldown on failure, and attempt a cooldown
+// reset on success. It returns the cooldown until.
+func (w *worker) managedTrackPriceTableUpdateErr(err error) time.Time {
 	wms := w.staticMaintenanceState
 	wms.mu.Lock()
 	defer wms.mu.Unlock()
@@ -148,7 +144,7 @@ func (w *worker) managedTrackPriceTableUpdate(err error) time.Time {
 // managedTrackRevisionMismatchFix tracks the outcome of an attempted revision
 // mismatch fix, this method will increment the cooldown on failure, and attempt
 // a cooldown reset on success. It returns the cooldown until.
-func (w *worker) managedTrackRevisionMismatchFix(err error) time.Time {
+func (w *worker) managedTrackRevisionMismatchFixErr(err error) time.Time {
 	wms := w.staticMaintenanceState
 	wms.mu.Lock()
 	defer wms.mu.Unlock()

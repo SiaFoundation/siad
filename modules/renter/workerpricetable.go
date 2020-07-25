@@ -150,7 +150,7 @@ func (w *worker) staticUpdatePriceTable() {
 		// will increment the cooldown, in case of success this will try and
 		// reset the cooldown, depending on whether the other maintenance tasks
 		// were completed successfully.
-		cd := w.managedTrackPriceTableUpdate(err)
+		cd := w.managedTrackPriceTableUpdateErr(err)
 
 		// If there was no error, return.
 		if err == nil {

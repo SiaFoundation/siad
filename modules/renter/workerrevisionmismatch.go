@@ -42,7 +42,7 @@ func (w *worker) externTryFixRevisionMismatch() {
 
 	// Track the outcome of the revision mismatch fix - this ensures a proper
 	// working of the maintenance cooldown mechanism.
-	w.managedTrackRevisionMismatchFix(err)
+	w.managedTrackRevisionMismatchFixErr(err)
 
 	if err != nil {
 		w.renter.log.Printf("could not fix revision number mismatch, could not retrieve a session with host %v, err: %v\n", w.staticHostPubKeyStr, err)
