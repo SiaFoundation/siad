@@ -8,12 +8,16 @@ import (
 
 // callStatus returns the status of the worker.
 func (w *worker) callStatus() modules.WorkerStatus {
+	w.downloadMu.Lock()
+	downloadOnCoolDown := w.onDownloadCooldown()
+	downloadTerminated := w.downloadTerminated
+	downloadQueueSize := len(w.downloadChunks)
+	w.downloadMu.Unlock()
+
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	downloadOnCoolDown := w.onDownloadCooldown()
 	uploadOnCoolDown, uploadCoolDownTime := w.onUploadCooldown()
-
 	var uploadCoolDownErr string
 	if w.uploadRecentFailureErr != nil {
 		uploadCoolDownErr = w.uploadRecentFailureErr.Error()
@@ -30,8 +34,8 @@ func (w *worker) callStatus() modules.WorkerStatus {
 
 		// Download information
 		DownloadOnCoolDown: downloadOnCoolDown,
-		DownloadQueueSize:  len(w.downloadChunks),
-		DownloadTerminated: w.downloadTerminated,
+		DownloadQueueSize:  downloadQueueSize,
+		DownloadTerminated: downloadTerminated,
 
 		// Upload information
 		UploadCoolDownError: uploadCoolDownErr,

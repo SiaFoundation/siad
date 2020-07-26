@@ -1187,6 +1187,8 @@ func testPriceTablesUpdated(t *testing.T, tg *siatest.TestGroup) {
 
 // testRemoteRepair tests if a renter correctly repairs a file by
 // downloading it after a host goes offline.
+//
+// This test was extended to also support testing the download cooldowns.
 func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	// Grab the first of the group's renters
 	r := tg.Renters()[0]
@@ -1263,6 +1265,32 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	_, _, err = r.DownloadByStream(remoteFile)
 	if err != nil {
 		t.Error("Failed to download file", err)
+	}
+
+	// Check that the worker is not on cooldown.
+	rwg, err := r.RenterWorkersGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rwg.TotalDownloadCoolDown == 0 {
+		t.Error("there should be workers on download cooldown because we took their hosts offline")
+	}
+	if rwg.NumWorkers-rwg.TotalDownloadCoolDown == 0 {
+		t.Error("there should be hosts that are not on cooldown")
+	}
+	// Some of the workers should eventually come off of cooldown.
+	err = build.Retry(500, 100*time.Millisecond, func() error {
+		rwg, err := r.RenterWorkersGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rwg.TotalDownloadCoolDown != 0 {
+			return errors.New("worker still on cooldown")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Error(err)
 	}
 }
 
