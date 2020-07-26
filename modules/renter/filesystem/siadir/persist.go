@@ -39,6 +39,11 @@ const (
 	updateMetadataName = "SiaDirMetadata"
 )
 
+var (
+	// ErrDeleted is the error returned if the siadir is deleted
+	ErrDeleted = errors.New("siadir is deleted")
+)
+
 // ApplyUpdates  applies a number of writeaheadlog updates to the corresponding
 // SiaDir. This method can apply updates from different SiaDirs and should only
 // be run before the SiaDirs are loaded from disk right after the startup of
@@ -56,7 +61,7 @@ func ApplyUpdates(updates ...writeaheadlog.Update) error {
 
 // CreateAndApplyTransaction is a helper method that creates a writeaheadlog
 // transaction and applies it.
-func CreateAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeaheadlog.Update) error {
+func CreateAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeaheadlog.Update) (err error) {
 	// Create the writeaheadlog transaction.
 	txn, err := wal.NewTransaction(updates)
 	if err != nil {
@@ -66,6 +71,13 @@ func CreateAndApplyTransaction(wal *writeaheadlog.WAL, updates ...writeaheadlog.
 	if err := <-txn.SignalSetupComplete(); err != nil {
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
+	// Starting at this point the changes to be made are written to the WAL.
+	// This means we need to panic in case applying the updates fails.
+	defer func() {
+		if err != nil {
+			panic(err)
+		}
+	}()
 	// Apply the updates.
 	if err := ApplyUpdates(updates...); err != nil {
 		return errors.AddContext(err, "failed to apply updates")
@@ -228,6 +240,7 @@ func callLoadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata
 
 // Rename renames the SiaDir to targetPath.
 func (sd *SiaDir) rename(targetPath string) error {
+	// TODO: os.Rename is not ACID
 	err := os.Rename(sd.path, targetPath)
 	if err != nil {
 		return err
@@ -242,6 +255,13 @@ func (sd *SiaDir) rename(targetPath string) error {
 func (sd *SiaDir) Delete() error {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
+
+	// Check if the SiaDir is already deleted
+	if sd.deleted {
+		return nil
+	}
+
+	// Create and apply the delete update
 	update := sd.createDeleteUpdate()
 	err := sd.createAndApplyTransaction(update)
 	sd.deleted = true
@@ -250,6 +270,10 @@ func (sd *SiaDir) Delete() error {
 
 // saveDir saves the whole SiaDir atomically.
 func (sd *SiaDir) saveDir() error {
+	// Check if Deleted
+	if sd.deleted {
+		return errors.AddContext(ErrDeleted, "cannot save a deleted SiaDir")
+	}
 	metadataUpdate, err := sd.saveMetadataUpdate()
 	if err != nil {
 		return err
@@ -261,14 +285,24 @@ func (sd *SiaDir) saveDir() error {
 func (sd *SiaDir) Rename(targetPath string) error {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
+
+	// Check if Deleted
+	if sd.deleted {
+		return errors.AddContext(ErrDeleted, "cannot rename a deleted SiaDir")
+	}
 	return sd.rename(targetPath)
 }
 
 // SetPath sets the path field of the dir.
-func (sd *SiaDir) SetPath(targetPath string) {
+func (sd *SiaDir) SetPath(targetPath string) error {
 	sd.mu.Lock()
 	defer sd.mu.Unlock()
+	// Check if Deleted
+	if sd.deleted {
+		return errors.AddContext(ErrDeleted, "cannot set the path of a deleted SiaDir")
+	}
 	sd.path = targetPath
+	return nil
 }
 
 // UpdateBubbledMetadata updates the SiaDir Metadata that is bubbled and saves
@@ -302,6 +336,12 @@ func (sd *SiaDir) UpdateMetadata(metadata Metadata) error {
 
 // updateMetadata updates the SiaDir metadata on disk
 func (sd *SiaDir) updateMetadata(metadata Metadata) error {
+	// Check if the directory is deleted
+	if sd.deleted {
+		return errors.AddContext(ErrDeleted, "cannot update the metadata for a deleted directory")
+	}
+
+	// Update metadata
 	sd.metadata.AggregateHealth = metadata.AggregateHealth
 	sd.metadata.AggregateLastHealthCheckTime = metadata.AggregateLastHealthCheckTime
 	sd.metadata.AggregateMinRedundancy = metadata.AggregateMinRedundancy
@@ -335,6 +375,16 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 		sd.metadata
 		%v`, metadata, sd.metadata)
 		build.Critical(str)
+	}
+
+	// Sanity check that siadir is on disk
+	_, err := os.Stat(sd.path)
+	if os.IsNotExist(err) {
+		build.Critical("UpdateMetadata called on a SiaDir that does not exist on disk")
+		err = os.MkdirAll(filepath.Dir(sd.path), modules.DefaultDirPerm)
+		if err != nil {
+			return errors.AddContext(err, "unable to create missing siadir directory on disk")
+		}
 	}
 
 	return sd.saveDir()

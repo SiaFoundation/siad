@@ -146,14 +146,10 @@ gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a h1:fs891phmYZ
 gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a/go.mod h1:QxXtb5hIp2xQkfb+lzBDIqQIGEj22U7AkYCXO3hkhqc=
 gitlab.com/NebulousLabs/persist v0.0.0-20200605115618-007e5e23d877 h1:BGJ+na/hpeAV6WR8Pys9bJM2ynEwKmT6+qgF8pn01fM=
 gitlab.com/NebulousLabs/persist v0.0.0-20200605115618-007e5e23d877/go.mod h1:KT2SgNX75xjMIQdDi3Rf3tcDWsX/D289R65Ss/7lKBg=
-gitlab.com/NebulousLabs/ratelimit v0.0.0-20191111145210-66b93e150b27 h1:G8v2awvHcrvulXibvNpzLx3RlTuX0hB+0AZdl18pl50=
-gitlab.com/NebulousLabs/ratelimit v0.0.0-20191111145210-66b93e150b27/go.mod h1:hvNy5sMP9gGrNQ7kNgb+vWuiPptqTk4W45bQbbT/vmg=
 gitlab.com/NebulousLabs/ratelimit v0.0.0-20200703092634-24a64284c0ec h1:+FlF7OO7h81SPLkx9wpDAnnTbLiTL5izb9gldkbW/MQ=
 gitlab.com/NebulousLabs/ratelimit v0.0.0-20200703092634-24a64284c0ec/go.mod h1:hvNy5sMP9gGrNQ7kNgb+vWuiPptqTk4W45bQbbT/vmg=
-gitlab.com/NebulousLabs/siamux v0.0.0-20200623161015-0bacd26badc4 h1:Vt36UW+4F3rgqQNCccDrpGcoKwGRNBYhVnlIK1Yyx64=
-gitlab.com/NebulousLabs/siamux v0.0.0-20200623161015-0bacd26badc4/go.mod h1:B0RyynPElUG2Y2CAVIIRriIqR9qht2I+nDisi3gfKn0=
-gitlab.com/NebulousLabs/siamux v0.0.0-20200708162823-03d67a69db00 h1:XJCquZFHApLmMPUh/YsWx5jyMBwwbKl/Ou/Du1qYd+4=
-gitlab.com/NebulousLabs/siamux v0.0.0-20200708162823-03d67a69db00/go.mod h1:B0RyynPElUG2Y2CAVIIRriIqR9qht2I+nDisi3gfKn0=
+gitlab.com/NebulousLabs/siamux v0.0.0-20200723083235-f2c35a421446 h1:Vs6RMOAK6EKL/i4CZysNKkev36/ziM18E8GKyKrIeIY=
+gitlab.com/NebulousLabs/siamux v0.0.0-20200723083235-f2c35a421446/go.mod h1:B0RyynPElUG2Y2CAVIIRriIqR9qht2I+nDisi3gfKn0=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20200527092543-afa01960408c/go.mod h1:av52iTyGuPtGU+GMcqfGtZu2vxhIjPgrxvIwVYelEvs=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213 h1:owERlKtUEFTPQ897iiqWPOuWBdq7BYqPxDOCgEZnbN4=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213/go.mod h1:vIutAvl7lmJqLVYTCBY5WDdJomP+V74At8LCeEYoH8w=
@@ -188,8 +184,6 @@ golang.org/x/net v0.0.0-20190311183353-d8887717615a/go.mod h1:t9HGtf8HONx5eT2rtn
 golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3/go.mod h1:t9HGtf8HONx5eT2rtn7q6eTqICYqUVnKs3thJo3Qplg=
 golang.org/x/net v0.0.0-20190522155817-f3200d17e092/go.mod h1:HSz+uSET+XFnRR8LxR5pz3Of3rY3CfYBVs4xY44aLks=
 golang.org/x/net v0.0.0-20190620200207-3b0461eec859/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
-golang.org/x/net v0.0.0-20200226121028-0de0cce0169b h1:0mm1VjtFUOIlE1SbDlwjYaDxZVDP2S5ou6y0gSgXHu8=
-golang.org/x/net v0.0.0-20200226121028-0de0cce0169b/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
 golang.org/x/net v0.0.0-20200707034311-ab3426394381 h1:VXak5I6aEWmAXeQjA+QSZzlgNrpq9mjcfDemuexIKsU=
 golang.org/x/net v0.0.0-20200707034311-ab3426394381/go.mod h1:/O7V0waA8r7cgGh81Ro3o1hOxt32SMVPicZroKQ2sZA=
 golang.org/x/oauth2 v0.0.0-20180821212333-d2e6202438be/go.mod h1:N/0e6XlmueqKjAGxoOufVs8QHGRruUQn6yWY3a++T0U=
@@ -206,8 +200,6 @@ golang.org/x/sys v0.0.0-20190412213103-97732733099d/go.mod h1:h1NjWce9XRLGQEsW7w
 golang.org/x/sys v0.0.0-20200202164722-d101bd2416d5/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20200302150141-5c8b2ff67527/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20200323222414-85ca7c5b95cd/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
-golang.org/x/sys v0.0.0-20200420163511-1957bb5e6d1f h1:gWF768j/LaZugp8dyS4UwsslYCYz9XgFxvlgsn0n9H8=
-golang.org/x/sys v0.0.0-20200420163511-1957bb5e6d1f/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/sys v0.0.0-20200625212154-ddb9806d33ae h1:Ih9Yo4hSPImZOpfGuA4bR/ORKTAbhZo2AbWNRCnevdo=
 golang.org/x/sys v0.0.0-20200625212154-ddb9806d33ae/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 golang.org/x/text v0.3.0 h1:g61tztE5qeGQ89tm6NTjjM9VPIm088od1l6aSorWRWg=
@@ -228,6 +220,7 @@ google.golang.org/grpc v1.19.0/go.mod h1:mqu4LbDTu4XGKhr4mRzUsmM4RtVoemTSY81AxZi
 google.golang.org/grpc v1.21.0/go.mod h1:oYelfM1adQP15Ek0mdvEgi9Df8B9CZIaU1084ijfRaM=
 gopkg.in/alecthomas/kingpin.v2 v2.2.6/go.mod h1:FMv+mEhP44yOT+4EoQTLFTRgOQ1FBLkstjWtayDeSgw=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 h1:qIbj1fsPNlZgppZ+VLlY7N33q108Sa+fhmuc+sWQYwY=
 gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/resty.v1 v1.12.0/go.mod h1:mDo4pnntr5jdWRML875a/NmxYqAlA73dVijT2AXvQQo=
 gopkg.in/yaml.v2 v2.0.0-20170812160011-eb3733d160e7/go.mod h1:JAlM8MvJe8wmxCU4Bli9HhUf9+ttbYbLASfIpnQbh74=

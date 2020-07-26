@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -67,6 +68,12 @@ func readAndApplyMetadataUpdate(deps modules.Dependencies, update writeaheadlog.
 	}
 	// Decode update.
 	data, path, err := readMetadataUpdate(update)
+	if err != nil {
+		return err
+	}
+
+	// Create the folder if it doesn't exist yet.
+	err = os.MkdirAll(filepath.Dir(path), modules.DefaultDirPerm)
 	if err != nil {
 		return err
 	}
@@ -175,7 +182,7 @@ func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
 
 // createAndApplyTransaction is a helper method that creates a writeaheadlog
 // transaction and applies it.
-func (sd *SiaDir) createAndApplyTransaction(updates ...writeaheadlog.Update) error {
+func (sd *SiaDir) createAndApplyTransaction(updates ...writeaheadlog.Update) (err error) {
 	// This should never be called on a deleted directory.
 	if sd.deleted {
 		return errors.New("shouldn't apply updates on deleted directory")
@@ -189,6 +196,13 @@ func (sd *SiaDir) createAndApplyTransaction(updates ...writeaheadlog.Update) err
 	if err := <-txn.SignalSetupComplete(); err != nil {
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
+	// Starting at this point the changes to be made are written to the WAL.
+	// This means we need to panic in case applying the updates fails.
+	defer func() {
+		if err != nil {
+			panic(err)
+		}
+	}()
 	// Apply the updates.
 	if err := sd.applyUpdates(updates...); err != nil {
 		return errors.AddContext(err, "failed to apply updates")

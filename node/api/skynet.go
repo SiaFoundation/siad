@@ -63,6 +63,10 @@ type (
 
 	// SkynetBlacklistGET contains the information queried for the
 	// /skynet/blacklist GET endpoint
+	//
+	// NOTE: With v1.5.0 the return value for the Blacklist changed. Pre v1.5.0
+	// the []crypto.Hash was a slice of MerkleRoots. Post v1.5.0 the []crypto.Hash
+	// is a slice of the Hashes of the MerkleRoots
 	SkynetBlacklistGET struct {
 		Blacklist []crypto.Hash `json:"blacklist"`
 	}
@@ -372,38 +376,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	// If requested, serve the content as a tar archive, compressed tar
-	// archive or zip archive.
-	if format == modules.SkyfileFormatTar {
-		w.Header().Set("Content-Type", "application/x-tar")
-		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
-		err = serveTar(w, metadata, streamer)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar archive: %v", err)}, http.StatusInternalServerError)
-		}
-		return
-	}
-	if format == modules.SkyfileFormatTarGz {
-		w.Header().Set("Content-Type", "application/x-gtar ")
-		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
-		gzw := gzip.NewWriter(w)
-		err = serveTar(gzw, metadata, streamer)
-		err = errors.Compose(err, gzw.Close())
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar gz archive: %v", err)}, http.StatusInternalServerError)
-		}
-		return
-	}
-	if format == modules.SkyfileFormatZip {
-		w.Header().Set("content-type", "application/zip")
-		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
-		err = serveZip(w, metadata, streamer)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as zip archive: %v", err)}, http.StatusInternalServerError)
-		}
-		return
-	}
-
 	// Metadata has been parsed successfully, stop the time here for TTFB.
 	// Metadata was fetched from Skynet itself.
 	skynetPerformanceStatsMu.Lock()
@@ -435,22 +407,56 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
 	}()
 
+	// Set an appropritate Content-Disposition header
+	var cdh string
+	filename := filepath.Base(metadata.Filename)
+	if format.IsArchive() {
+		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(filename+format.Extension()))
+	} else if attachment {
+		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(filename))
+	} else {
+		cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(filename))
+	}
+	w.Header().Set("Content-Disposition", cdh)
+
+	// If requested, serve the content as a tar archive, compressed tar
+	// archive or zip archive.
+	if format == modules.SkyfileFormatTar {
+		w.Header().Set("Content-Type", "application/x-tar")
+		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+		err = serveTar(w, metadata, streamer)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar archive: %v", err)}, http.StatusInternalServerError)
+		}
+		return
+	}
+	if format == modules.SkyfileFormatTarGz {
+		w.Header().Set("Content-Type", "application/gzip")
+		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+		gzw := gzip.NewWriter(w)
+		err = serveTar(gzw, metadata, streamer)
+		err = errors.Compose(err, gzw.Close())
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar gz archive: %v", err)}, http.StatusInternalServerError)
+		}
+		return
+	}
+	if format == modules.SkyfileFormatZip {
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+		err = serveZip(w, metadata, streamer)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as zip archive: %v", err)}, http.StatusInternalServerError)
+		}
+		return
+	}
+
 	// Only set the Content-Type header when the metadata defines one, if we
 	// were to set the header to an empty string, it would prevent the http
 	// library from sniffing the file's content type.
 	if metadata.ContentType() != "" {
 		w.Header().Set("Content-Type", metadata.ContentType())
 	}
-
-	// Set Content-Disposition header, if 'attachment' is true, set the
-	// disposition-type to attachment, otherwise we inline it.
-	var cdh string
-	if attachment {
-		cdh = fmt.Sprintf("attachment; filename=%s", strconv.Quote(filepath.Base(metadata.Filename)))
-	} else {
-		cdh = fmt.Sprintf("inline; filename=%s", strconv.Quote(filepath.Base(metadata.Filename)))
-	}
-	w.Header().Set("Content-Disposition", cdh)
 	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 

@@ -190,6 +190,11 @@ func TestRequiresReadonlyAndSnapshot(t *testing.T) {
 			true,
 			true,
 		},
+		{
+			SpecifierSwapSector,
+			false,
+			true,
+		},
 	}
 
 	for i, test := range tests {

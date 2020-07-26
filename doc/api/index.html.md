@@ -103,7 +103,14 @@ The standard error response indicating the request failed for any reason, is a
 ### Module Not Loaded
 
 A module that is not reachable due to not being loaded by siad will return
-the custom status code `490 ModuleNotLoaded`.
+the custom status code `490 ModuleNotLoaded`. This is only returned during
+startup. Once the startup is complete and the module is still not available,
+ModuleDisabled will be returned.
+
+### Module Disabled
+
+A module that is not reachable due to being disabled, will return the custom
+status code `491 ModuleDisabled`.
 
 # Authentication
 > Example POST curl call with Authentication
@@ -681,6 +688,27 @@ set.
 
 **modules** | struct  
 Is a list of the siad modules with a bool indicating if the module was launched.
+
+## /daemon/stack [GET]
+**UNSTABLE**
+> curl example  
+
+```go
+curl -A "Sia-Agent" "localhost:9980/daemon/stack"
+```
+Returns the daemon's current stack trace.
+
+### JSON Response
+> JSON Response Example
+ 
+```go
+{
+  "stack": [1,2,21,1,13,32,14,141,13,2,41,120], // []byte
+}
+```
+
+**stack** | []byte  
+Current stack trace. 
 
 ## /daemon/settings [POST]
 > curl example  
@@ -4637,7 +4665,14 @@ Details of the workers' has sector jobs queue
 curl -A "Sia-Agent" "localhost:9980/skynet/blacklist"
 ```
 
-returns the list of merkleroots that are blacklisted.
+returns the list of hashed merkleroots that are blacklisted. 
+
+NOTE: these are not the same values that were submitted via the POST endpoint.
+This is intentional so that it is harder to find the blocked content.
+	
+NOTE: With v1.5.0 the return value for the Blacklist changed. Pre v1.5.0 the
+[]crypto.Hash was a slice of MerkleRoots. Post v1.5.0 the []crypto.Hash is
+a slice of the Hashes of the MerkleRoots
 
 ### JSON Response
 > JSON Response Example
@@ -4652,7 +4687,7 @@ returns the list of merkleroots that are blacklisted.
 }
 ```
 **blacklist** | Hashes  
-The blacklist is a list of merkle roots, which are hashes, that are blacklisted.
+The blacklist is a list of hashed merkleroots, that are blacklisted.
 
 ## /skynet/blacklist [POST]
 > curl example
@@ -5141,7 +5176,7 @@ skyfiles are encrypted with the same skykey.
 }
 ```
 
-**skykey** | string  
+**skykey** | skykey  
 Skykey. See the documentation for /skynet/skykey for more detailed information.
 
 

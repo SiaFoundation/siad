@@ -13,6 +13,8 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/NebulousLabs/siamux/mux"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -473,12 +475,11 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 
 		// Try opening a connection to the siamux, this is a very lightweight
 		// way of checking that RHP3 is supported.
-		err = hdb.staticMux.Ping(modules.HostSiaMuxSubscriberName, siamuxAddr, timeout, modules.SiaPKToMuxPK(entry.PublicKey))
+		_, err = fetchPriceTable(hdb.staticMux, siamuxAddr, timeout, modules.SiaPKToMuxPK(entry.PublicKey))
 		if err != nil {
 			hdb.staticLog.Debugf("%v siamux ping not successful: %v\n", entry.PublicKey, err)
 			return err
 		}
-
 		return nil
 	}()
 	if err != nil {
@@ -669,4 +670,38 @@ func (hdb *HostDB) threadedScan() {
 		case <-time.After(sleepTime):
 		}
 	}
+}
+
+// fetchPriceTable fetches a price table from a host without paying. This means
+// the price table is only useful for scoring the host and can't be used. This
+// uses an ephemeral stream which is a special type of stream that doesn't leak
+// TCP connections. Otherwise we would end up with one TCP connection for every
+// host in the network after scanning the whole network.
+func fetchPriceTable(siamux *siamux.SiaMux, hostAddr string, timeout time.Duration, hpk mux.ED25519PublicKey) (*modules.RPCPriceTable, error) {
+	stream, err := siamux.NewEphemeralStream(modules.HostSiaMuxSubscriberName, hostAddr, timeout, hpk)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to create ephemeral stream")
+	}
+	defer stream.Close()
+
+	// initiate the RPC
+	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to write price table RPC specifier")
+	}
+
+	// receive the price table response
+	var update modules.RPCUpdatePriceTableResponse
+	err = modules.RPCRead(stream, &update)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to read price table response")
+	}
+
+	// unmarshal the price table
+	var pt modules.RPCPriceTable
+	err = json.Unmarshal(update.PriceTableJSON, &pt)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to unmarshal price table")
+	}
+	return &pt, nil
 }
