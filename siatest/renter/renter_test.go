@@ -1262,6 +1262,7 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// We should be able to download
+	start := time.Now()
 	_, _, err = r.DownloadByStream(remoteFile)
 	if err != nil {
 		t.Error("Failed to download file", err)
@@ -1282,6 +1283,8 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 			if err != nil {
 				t.Fatal("Failed to download file", err)
 			}
+			t.Log("Performing another download, because no workers are on cooldown:", time.Since(start))
+			t.Log(twg.NumWorkers)
 			return errors.New("there should be workers on download cooldown because we took their hosts offline")
 		}
 		if rwg.NumWorkers-rwg.TotalDownloadCoolDown == 0 {
@@ -1292,7 +1295,7 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Error(err)
 	}
-	// Some of the workers should eventually come off of cooldown.
+	// The workers should eventually come off of cooldown.
 	err = build.Retry(500, 100*time.Millisecond, func() error {
 		rwg, err := r.RenterWorkersGet()
 		if err != nil {
@@ -4830,17 +4833,11 @@ func TestWorkerStatus(t *testing.T) {
 		if !worker.AccountStatus.NegativeBalance.IsZero() {
 			t.Error("Expected negative balance to be zero but was", worker.AccountStatus.NegativeBalance.HumanString())
 		}
-		if worker.AccountStatus.OnCoolDown {
-			t.Error("Worker account should not be on cool down")
-		}
 		if worker.AccountStatus.RecentErr != "" {
 			t.Error("Expected recent err to be nil but was", worker.AccountStatus.RecentErr)
 		}
 
 		// PriceTableStatus checks
-		if worker.PriceTableStatus.OnCoolDown {
-			t.Error("Worker price table should not be on cool down")
-		}
 		if worker.PriceTableStatus.RecentErr != "" {
 			t.Error("Expected recent err to be nil but was", worker.PriceTableStatus.RecentErr)
 		}
