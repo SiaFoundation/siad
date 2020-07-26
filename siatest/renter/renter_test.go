@@ -1268,15 +1268,29 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Check that the worker is not on cooldown.
-	rwg, err := r.RenterWorkersGet()
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		rwg, err := r.RenterWorkersGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rwg.TotalDownloadCoolDown == 0 {
+			// Do the download again to reset any cooldowns. Especially on CI,
+			// the amount of time between DownloadByStream and RenterWorkersGet
+			// can be longer than the base cooldown, but the cooldown eventually
+			// reaches 24 seconds, which should be enough time.
+			_, _, err = r.DownloadByStream(remoteFile)
+			if err != nil {
+				t.Fatal("Failed to download file", err)
+			}
+			return errors.New("there should be workers on download cooldown because we took their hosts offline")
+		}
+		if rwg.NumWorkers-rwg.TotalDownloadCoolDown == 0 {
+			return errors.New("there should be hosts that are not on cooldown")
+		}
+		return nil
+	})
 	if err != nil {
-		t.Fatal(err)
-	}
-	if rwg.TotalDownloadCoolDown == 0 {
-		t.Error("there should be workers on download cooldown because we took their hosts offline")
-	}
-	if rwg.NumWorkers-rwg.TotalDownloadCoolDown == 0 {
-		t.Error("there should be hosts that are not on cooldown")
+		t.Error(err)
 	}
 	// Some of the workers should eventually come off of cooldown.
 	err = build.Retry(500, 100*time.Millisecond, func() error {
