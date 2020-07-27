@@ -1279,12 +1279,12 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 			// the amount of time between DownloadByStream and RenterWorkersGet
 			// can be longer than the base cooldown, but the cooldown eventually
 			// reaches 24 seconds, which should be enough time.
+			t.Log("Performing another download, because no workers are on cooldown:", time.Since(start))
 			_, _, err = r.DownloadByStream(remoteFile)
 			if err != nil {
 				t.Fatal("Failed to download file", err)
 			}
-			t.Log("Performing another download, because no workers are on cooldown:", time.Since(start))
-			t.Log(twg.NumWorkers)
+			t.Log(rwg.NumWorkers, time.Since(start))
 			return errors.New("there should be workers on download cooldown because we took their hosts offline")
 		}
 		if rwg.NumWorkers-rwg.TotalDownloadCoolDown == 0 {
