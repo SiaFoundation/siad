@@ -4,10 +4,14 @@ import (
 	"bytes"
 	"io"
 	"io/ioutil"
+	"sync"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/threadgroup"
 )
 
 // mockDataSource implements a stream buffer data source that can be used to
@@ -15,6 +19,7 @@ import (
 type mockDataSource struct {
 	staticData        []byte
 	staticRequestSize uint64
+	mu                sync.Mutex
 }
 
 // newMockDataSource will return a data source that is ready to use.
@@ -27,6 +32,8 @@ func newMockDataSource(data []byte, requestSize uint64) *mockDataSource {
 
 // DataSize implements streamBufferDataSource
 func (mds *mockDataSource) DataSize() uint64 {
+	mds.mu.Lock()
+	defer mds.mu.Unlock()
 	return uint64(len(mds.staticData))
 }
 
@@ -67,17 +74,23 @@ func (mds *mockDataSource) ReadAt(b []byte, offset int64) (int, error) {
 
 // SilentClose implements streamBufferDataSource.
 func (mds *mockDataSource) SilentClose() {
+	mds.mu.Lock()
 	mds.staticData = nil
+	mds.mu.Unlock()
 }
 
 // TestStreamSmoke checks basic logic on the stream to see that reading and
 // seeking and closing works.
 func TestStreamSmoke(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
 	// Create a usable stream, starting at offset 0.
+	var tg threadgroup.ThreadGroup
 	data := fastrand.Bytes(15999) // 1 byte short of 1000 data sections.
 	dataSectionSize := uint64(16)
 	dataSource := newMockDataSource(data, dataSectionSize)
-	sbs := newStreamBufferSet()
+	sbs := newStreamBufferSet(&tg)
 	stream := sbs.callNewStream(dataSource, 0)
 
 	// Perform the ritual that the http.ResponseWriter performs - seek to front,
@@ -217,18 +230,41 @@ func TestStreamSmoke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	time.Sleep(keepOldBuffersDuration / 3)
+	// Check that the stream hangs around a bit after close.
+	stream.lru.mu.Lock()
+	if len(stream.lru.nodes) == 0 {
+		stream.lru.mu.Unlock()
+		t.Fatal("bad")
+	}
+	if stream.lru.head == nil {
+		stream.lru.mu.Unlock()
+		t.Fatal("bad")
+	}
+	if stream.lru.tail == nil {
+		stream.lru.mu.Unlock()
+		t.Fatal("bad")
+	}
+	stream.lru.mu.Unlock()
+	// Sleep until the stream is cleared.
+	time.Sleep(keepOldBuffersDuration)
 	if dataSource.staticData == nil {
 		t.Fatal("bad")
 	}
+	stream.lru.mu.Lock()
 	if len(stream.lru.nodes) != 0 {
+		stream.lru.mu.Unlock()
 		t.Fatal("bad")
 	}
 	if stream.lru.head != nil {
+		stream.lru.mu.Unlock()
 		t.Fatal("bad")
 	}
 	if stream.lru.tail != nil {
+		stream.lru.mu.Unlock()
 		t.Fatal("bad")
 	}
+	stream.lru.mu.Unlock()
 	if len(sbs.streams) != 1 {
 		t.Fatal("bad")
 	}
@@ -241,22 +277,79 @@ func TestStreamSmoke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Sleep until the stream is cleared.
+	time.Sleep(keepOldBuffersDuration / 3)
+	time.Sleep(keepOldBuffersDuration)
+	dataSource.mu.Lock()
 	if dataSource.staticData != nil {
+		dataSource.mu.Unlock()
 		t.Fatal("bad")
 	}
+	dataSource.mu.Unlock()
+	stream2.lru.mu.Lock()
 	if len(stream2.lru.nodes) != 0 {
+		stream2.lru.mu.Unlock()
 		t.Fatal("bad")
 	}
 	if stream2.lru.head != nil {
+		stream2.lru.mu.Unlock()
 		t.Fatal("bad")
 	}
 	if stream2.lru.tail != nil {
+		stream2.lru.mu.Unlock()
 		t.Fatal("bad")
 	}
+	stream2.lru.mu.Unlock()
 	if len(sbs.streams) != 0 {
 		t.Fatal("bad")
 	}
-	if len(stream.staticStreamBuffer.dataSections) != 0 {
+	if len(stream2.staticStreamBuffer.dataSections) != 0 {
+		t.Fatal("bad")
+	}
+
+	// Check that if the tg is stopped, the stream closes immediately.
+	dataSource3 := newMockDataSource(data, dataSectionSize)
+	stream3 := sbs.callNewStream(dataSource3, 0)
+	bytesRead, err = io.ReadFull(stream3, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = stream3.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tg.Stop()
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(keepOldBuffersDuration / 5)
+	dataSource.mu.Lock()
+	if dataSource.staticData != nil {
+		dataSource.mu.Unlock()
+		t.Fatal("bad")
+	}
+	dataSource.mu.Unlock()
+	stream3.lru.mu.Lock()
+	if len(stream3.lru.nodes) != 0 {
+		stream3.lru.mu.Unlock()
+		t.Fatal("bad")
+	}
+	if stream3.lru.head != nil {
+		stream3.lru.mu.Unlock()
+		t.Fatal("bad")
+	}
+	if stream3.lru.tail != nil {
+		stream3.lru.mu.Unlock()
+		t.Fatal("bad")
+	}
+	stream3.lru.mu.Unlock()
+	sbs.mu.Lock()
+	if len(sbs.streams) != 0 {
+		sbs.mu.Unlock()
+		t.Fatal("bad")
+	}
+	sbs.mu.Unlock()
+	if len(stream3.staticStreamBuffer.dataSections) != 0 {
 		t.Fatal("bad")
 	}
 }
