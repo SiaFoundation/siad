@@ -4788,17 +4788,11 @@ func TestWorkerStatus(t *testing.T) {
 		if !worker.AccountStatus.NegativeBalance.IsZero() {
 			t.Error("Expected negative balance to be zero but was", worker.AccountStatus.NegativeBalance.HumanString())
 		}
-		if worker.AccountStatus.OnCoolDown {
-			t.Error("Worker account should not be on cool down")
-		}
 		if worker.AccountStatus.RecentErr != "" {
 			t.Error("Expected recent err to be nil but was", worker.AccountStatus.RecentErr)
 		}
 
 		// PriceTableStatus checks
-		if worker.PriceTableStatus.OnCoolDown {
-			t.Error("Worker price table should not be on cool down")
-		}
 		if worker.PriceTableStatus.RecentErr != "" {
 			t.Error("Expected recent err to be nil but was", worker.PriceTableStatus.RecentErr)
 		}
@@ -4851,9 +4845,11 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	defer tg.Close()
 
 	// add a renter with a dependency that simulates an unclean shutdown by
-	// preventing accounts to be saved
+	// preventing accounts to be saved and also prevents the snapshot syncing
+	// thread from running. That way we won't experience unexpected withdrawals
+	// or refunds.
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
-	renterParams.RenterDeps = &dependencies.DependencyInterruptAccountSaveOnShutdown{}
+	renterParams.RenterDeps = &dependencies.DependencyNoSnapshotSyncInterruptAccountSaveOnShutdown{}
 
 	// add a host with a dependency that alters the deposit amount, in a way not
 	// noticeable to the renter until he asks for his balance, this is necessary
@@ -4897,7 +4893,7 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	// ephemeral account, remember this balance value as the renter's version of
 	// the balance
 	var renterBalance types.Currency
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(300, 100*time.Millisecond, func() error {
 		rwg, err := r.RenterWorkersGet()
 		if err != nil {
 			return err

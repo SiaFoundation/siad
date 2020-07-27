@@ -22,6 +22,9 @@ var (
 
 	// Module Specific Flags
 	//
+	// Daemon Flags
+	daemonStackOutputFile string // The file that the stack trace will be written to
+
 	// FeeManager Flags
 	feeManagerVerbose bool // display additional info for the FeeManager
 
@@ -391,7 +394,9 @@ func initCmds() *cobra.Command {
 	skykeyGetCmd.Flags().StringVar(&skykeyID, "id", "", "The base-64 encoded skykey ID")
 	skykeyListCmd.Flags().BoolVar(&skykeyShowPrivateKeys, "show-priv-keys", false, "Show private key data.")
 
-	root.AddCommand(updateCmd)
+	// Daemon Commands
+	root.AddCommand(alertsCmd, globalRatelimitCmd, stackCmd, stopCmd, updateCmd, versionCmd)
+	stackCmd.Flags().StringVarP(&daemonStackOutputFile, "filename", "f", "stack.txt", "Specify the output file for the stack trace")
 	updateCmd.AddCommand(updateCheckCmd)
 
 	root.AddCommand(utilsCmd)
@@ -401,8 +406,6 @@ func initCmds() *cobra.Command {
 
 	utilsVerifySeedCmd.Flags().StringVarP(&dictionaryLanguage, "language", "l", "english", "which dictionary you want to use")
 	utilsUploadedsizeCmd.Flags().BoolVarP(&uploadedsizeUtilVerbose, "verbose", "v", false, "Display more information")
-
-	root.AddCommand(alertsCmd, globalRatelimitCmd, stopCmd, versionCmd)
 
 	root.AddCommand(walletCmd)
 	walletCmd.AddCommand(walletAddressCmd, walletAddressesCmd, walletBalanceCmd, walletBroadcastCmd, walletChangepasswordCmd,
