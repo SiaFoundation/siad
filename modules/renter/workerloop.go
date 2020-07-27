@@ -276,6 +276,11 @@ func (w *worker) threadedWorkLoop() {
 	defer w.staticJobReadQueue.callKill()
 	defer w.staticJobUploadSnapshotQueue.callKill()
 
+	// Perform a disrupt for testing.
+	if w.renter.deps.Disrupt("DisableWorkerLoop") {
+		return
+	}
+
 	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) >= 0 {
 		// Ensure the renter's revision number of the underlying file contract
 		// is in sync with the host's revision number. This check must happen at

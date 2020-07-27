@@ -1,9 +1,12 @@
 package renter
 
 import (
+	"math"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -115,4 +118,333 @@ func TestCheckUploadGouging(t *testing.T) {
 	if err == nil {
 		t.Error("expecting price gouging check to fail")
 	}
+}
+
+// TestProcessUploadChunk is a unit test for managedProcessUploadChunk.
+func TestProcessUploadChunk(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// create worker.
+	wt, err := newWorkerTesterCustomDependency(t.Name(), &dependencies.DependencyDisableWorkerLoop{}, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wt.Close()
+
+	// some vars for the test.
+	pieces := 10
+
+	// helper method to create a valid upload chunk.
+	chunk := func() *unfinishedUploadChunk {
+		return &unfinishedUploadChunk{
+			unusedHosts: map[string]struct{}{
+				wt.staticHostPubKey.String(): {},
+			},
+			piecesNeeded:      pieces,
+			piecesCompleted:   0,
+			piecesRegistered:  0,
+			pieceUsage:        make([]bool, pieces),
+			released:          true,
+			workersRemaining:  1,
+			physicalChunkData: make([][]byte, pieces),
+			logicalChunkData:  make([][]byte, pieces),
+			availableChan:     make(chan struct{}),
+			memoryNeeded:      uint64(pieces) * modules.SectorSize,
+		}
+	}
+
+	// valid chunk
+	uuc := chunk()
+	wt.mu.Lock()
+	wt.unprocessedChunks = []*unfinishedUploadChunk{uuc, uuc, uuc}
+	wt.mu.Unlock()
+	uuc.mu.Lock()
+	uuc.pieceUsage[0] = true // mark first piece as used
+	uuc.mu.Unlock()
+	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
+	if nc == nil {
+		t.Error("next chunk shouldn't be nil")
+	}
+	uuc.mu.Lock()
+	if pieceIndex != 1 {
+		t.Error("expected pieceIndex to be 1 since piece 0 is marked as used", pieceIndex)
+	}
+	if uuc.piecesRegistered != 1 {
+		t.Errorf("piecesRegistered %v != %v", uuc.piecesRegistered, 1)
+	}
+	if uuc.workersRemaining != 0 {
+		t.Errorf("workersRemaining %v != %v", uuc.workersRemaining, 0)
+	}
+	if len(uuc.unusedHosts) != 0 {
+		t.Errorf("unusedHosts %v != %v", len(uuc.unusedHosts), 0)
+	}
+	if !uuc.pieceUsage[1] {
+		t.Errorf("expected pieceUsage[1] to be true")
+	}
+	if len(uuc.workersStandby) != 0 {
+		t.Errorf("expected %v standby workers got %v", 0, len(uuc.workersStandby))
+	}
+	if len(wt.unprocessedChunks) != 3 {
+		t.Fatalf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 3)
+	}
+	uuc.mu.Unlock()
+
+	// valid - no help needed
+	uuc = chunk()
+	wt.mu.Lock()
+	wt.unprocessedChunks = []*unfinishedUploadChunk{uuc, uuc, uuc}
+	wt.mu.Unlock()
+	uuc.mu.Lock()
+	uuc.pieceUsage[0] = true // mark first piece as used
+	uuc.piecesRegistered = uuc.piecesNeeded
+	uuc.mu.Unlock()
+	_ = wt.renter.memoryManager.Request(modules.SectorSize*uint64(pieces-1), true)
+	nc, pieceIndex = wt.managedProcessUploadChunk(uuc)
+	if nc != nil {
+		t.Error("next chunk should be nil")
+	}
+	uuc.mu.Lock()
+	if pieceIndex != 0 {
+		t.Error("expected pieceIndex to be 0", pieceIndex)
+	}
+	if uuc.piecesRegistered != uuc.piecesNeeded {
+		t.Errorf("piecesRegistered %v != %v", uuc.piecesRegistered, 1)
+	}
+	if uuc.workersRemaining != 0 {
+		t.Errorf("workersRemaining %v != %v", uuc.workersRemaining, 0)
+	}
+	if len(uuc.unusedHosts) != 1 {
+		t.Errorf("unusedHosts %v != %v", len(uuc.unusedHosts), 1)
+	}
+	for _, pu := range uuc.pieceUsage {
+		// managedCleanUpUploadChunk sets all elements to true
+		if !pu {
+			t.Errorf("expected pu to be true")
+		}
+	}
+	// Standby workers are woken.
+	if len(uuc.workersStandby) != 0 {
+		t.Errorf("expected %v standby workers got %v", 0, len(uuc.workersStandby))
+	}
+	if len(wt.unprocessedChunks) != 3 {
+		t.Fatalf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 3)
+	}
+	uuc.mu.Unlock()
+
+	// invalid - not a candidate
+	uuc = chunk()
+	wt.mu.Lock()
+	wt.unprocessedChunks = []*unfinishedUploadChunk{uuc, uuc, uuc}
+	wt.mu.Unlock()
+	uuc.mu.Lock()
+	uuc.unusedHosts = make(map[string]struct{})
+	uuc.mu.Unlock()
+	_ = wt.renter.memoryManager.Request(modules.SectorSize*uint64(pieces), true)
+	nc, pieceIndex = wt.managedProcessUploadChunk(uuc)
+	if nc != nil {
+		t.Error("next chunk should be nil")
+	}
+	uuc.mu.Lock()
+	if pieceIndex != 0 {
+		t.Error("expected pieceIndex to be 0", pieceIndex)
+	}
+	if uuc.piecesRegistered != 0 {
+		t.Errorf("piecesRegistered %v != %v", uuc.piecesRegistered, 0)
+	}
+	if uuc.workersRemaining != 0 {
+		t.Errorf("workersRemaining %v != %v", uuc.workersRemaining, 0)
+	}
+	if len(uuc.unusedHosts) != 0 {
+		t.Errorf("unusedHosts %v != %v", len(uuc.unusedHosts), 0)
+	}
+	for _, pu := range uuc.pieceUsage {
+		// managedCleanUpUploadChunk sets all elements to true
+		if !pu {
+			t.Errorf("expected pu to be true")
+		}
+	}
+	// Standby workers are woken.
+	if len(uuc.workersStandby) != 0 {
+		t.Errorf("expected %v standby workers got %v", 0, len(uuc.workersStandby))
+	}
+	if len(wt.unprocessedChunks) != 3 {
+		t.Fatalf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 3)
+	}
+	uuc.mu.Unlock()
+
+	// invalid - complete
+	uuc = chunk()
+	wt.mu.Lock()
+	wt.unprocessedChunks = []*unfinishedUploadChunk{uuc, uuc, uuc}
+	wt.mu.Unlock()
+	uuc.mu.Lock()
+	uuc.piecesCompleted = uuc.piecesNeeded
+	uuc.mu.Unlock()
+	_ = wt.renter.memoryManager.Request(modules.SectorSize*uint64(pieces), true)
+	nc, pieceIndex = wt.managedProcessUploadChunk(uuc)
+	if nc != nil {
+		t.Error("next chunk should be nil")
+	}
+	uuc.mu.Lock()
+	if pieceIndex != 0 {
+		t.Error("expected pieceIndex to be 0", pieceIndex)
+	}
+	if uuc.piecesRegistered != 0 {
+		t.Errorf("piecesRegistered %v != %v", uuc.piecesRegistered, 0)
+	}
+	if uuc.workersRemaining != 0 {
+		t.Errorf("workersRemaining %v != %v", uuc.workersRemaining, 0)
+	}
+	if len(uuc.unusedHosts) != 1 {
+		t.Errorf("unusedHosts %v != %v", len(uuc.unusedHosts), 1)
+	}
+	for _, pu := range uuc.pieceUsage {
+		// managedCleanUpUploadChunk sets all elements to true
+		if !pu {
+			t.Errorf("expected pu to be true")
+		}
+	}
+	// Standby workers are woken.
+	if len(uuc.workersStandby) != 0 {
+		t.Errorf("expected %v standby workers got %v", 0, len(uuc.workersStandby))
+	}
+	if len(wt.unprocessedChunks) != 3 {
+		t.Fatalf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 3)
+	}
+	uuc.mu.Unlock()
+
+	// set upload recent failure for cooldown cases.
+	wt.mu.Lock()
+	wt.uploadRecentFailure = time.Now()
+	wt.mu.Unlock()
+
+	// invalid - not a candidate - oncooldown
+	uuc = chunk()
+	wt.mu.Lock()
+	wt.uploadConsecutiveFailures = math.MaxInt32
+	wt.unprocessedChunks = []*unfinishedUploadChunk{uuc, uuc, uuc}
+	wt.mu.Unlock()
+	uuc.mu.Lock()
+	uuc.unusedHosts = make(map[string]struct{})
+	uuc.mu.Unlock()
+	_ = wt.renter.memoryManager.Request(modules.SectorSize*uint64(pieces), true)
+	nc, pieceIndex = wt.managedProcessUploadChunk(uuc)
+	if nc != nil {
+		t.Error("next chunk should be nil")
+	}
+	uuc.mu.Lock()
+	if pieceIndex != 0 {
+		t.Error("expected pieceIndex to be 0", pieceIndex)
+	}
+	if uuc.piecesRegistered != 0 {
+		t.Errorf("piecesRegistered %v != %v", uuc.piecesRegistered, 0)
+	}
+	if uuc.workersRemaining != -3 {
+		t.Errorf("workersRemaining %v != %v", uuc.workersRemaining, 0)
+	}
+	if len(uuc.unusedHosts) != 0 {
+		t.Errorf("unusedHosts %v != %v", len(uuc.unusedHosts), 0)
+	}
+	for _, pu := range uuc.pieceUsage {
+		// managedCleanUpUploadChunk sets all elements to true
+		if !pu {
+			t.Errorf("expected pu to be true")
+		}
+	}
+	// Standby workers are woken.
+	if len(uuc.workersStandby) != 0 {
+		t.Errorf("expected %v standby workers got %v", 0, len(uuc.workersStandby))
+	}
+	if len(wt.unprocessedChunks) != 0 {
+		t.Fatalf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 0)
+	}
+	uuc.mu.Unlock()
+
+	// invalid - completed, oncooldown
+	uuc = chunk()
+	wt.mu.Lock()
+	wt.unprocessedChunks = []*unfinishedUploadChunk{uuc, uuc, uuc}
+	wt.mu.Unlock()
+	uuc.mu.Lock()
+	uuc.piecesCompleted = uuc.piecesNeeded
+	uuc.mu.Unlock()
+	_ = wt.renter.memoryManager.Request(modules.SectorSize*uint64(pieces), true)
+	nc, pieceIndex = wt.managedProcessUploadChunk(uuc)
+	if nc != nil {
+		t.Error("next chunk should be nil")
+	}
+	uuc.mu.Lock()
+	if pieceIndex != 0 {
+		t.Error("expected pieceIndex to be 0", pieceIndex)
+	}
+	if uuc.piecesRegistered != 0 {
+		t.Errorf("piecesRegistered %v != %v", uuc.piecesRegistered, 0)
+	}
+	if uuc.workersRemaining != -3 {
+		t.Errorf("workersRemaining %v != %v", uuc.workersRemaining, 0)
+	}
+	if len(uuc.unusedHosts) != 1 {
+		t.Errorf("unusedHosts %v != %v", len(uuc.unusedHosts), 1)
+	}
+	for _, pu := range uuc.pieceUsage {
+		// managedCleanUpUploadChunk sets all elements to true
+		if !pu {
+			t.Errorf("expected pu to be true")
+		}
+	}
+	// Standby workers are woken.
+	if len(uuc.workersStandby) != 0 {
+		t.Errorf("expected %v standby workers got %v", 0, len(uuc.workersStandby))
+	}
+	if len(wt.unprocessedChunks) != 0 {
+		t.Fatalf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 0)
+	}
+	uuc.mu.Unlock()
+
+	// invalid - !goodForUpload
+	uuc = chunk()
+	wt.mu.Lock()
+	wt.unprocessedChunks = []*unfinishedUploadChunk{uuc, uuc, uuc}
+	wt.mu.Unlock()
+
+	// mark contract as bad
+	err = wt.renter.CancelContract(wt.staticCache().staticContractID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt.managedUpdateCache()
+	_ = wt.renter.memoryManager.Request(modules.SectorSize*uint64(pieces), true)
+	nc, pieceIndex = wt.managedProcessUploadChunk(uuc)
+	if nc != nil {
+		t.Error("next chunk should be nil")
+	}
+	uuc.mu.Lock()
+	if pieceIndex != 0 {
+		t.Error("expected pieceIndex to be 0", pieceIndex)
+	}
+	if uuc.piecesRegistered != 0 {
+		t.Errorf("piecesRegistered %v != %v", uuc.piecesRegistered, 0)
+	}
+	if uuc.workersRemaining != -3 {
+		t.Errorf("workersRemaining %v != %v", uuc.workersRemaining, 0)
+	}
+	if len(uuc.unusedHosts) != 1 {
+		t.Errorf("unusedHosts %v != %v", len(uuc.unusedHosts), 1)
+	}
+	for _, pu := range uuc.pieceUsage {
+		// managedCleanUpUploadChunk sets all elements to true
+		if !pu {
+			t.Errorf("expected pu to be true")
+		}
+	}
+	// Standby workers are woken.
+	if len(uuc.workersStandby) != 0 {
+		t.Errorf("expected %v standby workers got %v", 0, len(uuc.workersStandby))
+	}
+	if len(wt.unprocessedChunks) != 0 {
+		t.Fatalf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 0)
+	}
+	uuc.mu.Unlock()
 }

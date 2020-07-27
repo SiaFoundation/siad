@@ -2,6 +2,7 @@ package renter
 
 import (
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -353,6 +354,10 @@ func TestProcessDownloadChunk(t *testing.T) {
 	if len(wt.downloadChunks) != len(wt.downloadChunks) {
 		t.Fatalf("expected 0 download chunk but got %v", len(wt.downloadChunks))
 	}
+	// set download recent failure for cooldown cases.
+	wt.mu.Lock()
+	wt.downloadRecentFailure = time.Now()
+	wt.mu.Unlock()
 	// Invalid chunk, on cooldown.
 	// download complete
 	wt.downloadChunks = []*unfinishedDownloadChunk{udc, udc, udc}
