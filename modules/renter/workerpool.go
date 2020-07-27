@@ -39,7 +39,7 @@ func (wp *workerPool) callStatus() modules.WorkerPoolStatus {
 
 	// Fetch the list of workers from the worker pool.
 
-	var totalDownloadCoolDown, totalUploadCoolDown int
+	var totalDownloadCoolDown, totalMaintenanceCoolDown, totalUploadCoolDown int
 	var statuss []modules.WorkerStatus // Plural of status is statuss, deal with it.
 	workers := wp.callWorkers()
 	for _, w := range workers {
@@ -48,16 +48,20 @@ func (wp *workerPool) callStatus() modules.WorkerPoolStatus {
 		if status.DownloadOnCoolDown {
 			totalDownloadCoolDown++
 		}
+		if status.MaintenanceOnCooldown {
+			totalMaintenanceCoolDown++
+		}
 		if status.UploadOnCoolDown {
 			totalUploadCoolDown++
 		}
 		statuss = append(statuss, status)
 	}
 	return modules.WorkerPoolStatus{
-		NumWorkers:            len(wp.workers),
-		TotalDownloadCoolDown: totalDownloadCoolDown,
-		TotalUploadCoolDown:   totalUploadCoolDown,
-		Workers:               statuss,
+		NumWorkers:               len(wp.workers),
+		TotalDownloadCoolDown:    totalDownloadCoolDown,
+		TotalMaintenanceCoolDown: totalMaintenanceCoolDown,
+		TotalUploadCoolDown:      totalUploadCoolDown,
+		Workers:                  statuss,
 	}
 }
 

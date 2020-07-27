@@ -1,0 +1,1 @@
+- Add `daemon/stack` endpoint to get the current stack trace.

@@ -106,11 +106,11 @@ func (w *worker) externTryLaunchSerialJob() {
 	// perform. This scheduling allows a flood of jobs earlier in the list to
 	// starve out jobs later in the list. At some point we will probably
 	// revisit this to try and address the starvation issue.
-	if w.staticNeedsPriceTableUpdate() {
+	if w.managedNeedsToUpdatePriceTable() {
 		w.externLaunchSerialJob(w.staticUpdatePriceTable)
 		return
 	}
-	if w.managedAccountNeedsRefill() {
+	if w.managedNeedsToRefillAccount() {
 		w.externLaunchSerialJob(w.managedRefillAccount)
 		return
 	}
@@ -214,8 +214,8 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		return false
 	}
 
-	// If the account is on cooldown, drop all async jobs.
-	if w.staticAccount.managedOnCooldown() {
+	// RHP3 must not be on cooldown to perform async tasks.
+	if w.managedOnMaintenanceCooldown() {
 		w.managedDiscardAsyncJobs(errors.New("the worker account is on cooldown"))
 		return false
 	}
@@ -293,11 +293,13 @@ func (w *worker) threadedWorkLoop() {
 		// Perform a balance check on the host and sync it to his version if
 		// necessary. This avoids running into MaxBalanceExceeded errors upon
 		// refill after an unclean shutdown.
-		w.externSyncAccountBalanceToHost()
+		if w.staticPriceTable().staticValid() {
+			w.externSyncAccountBalanceToHost()
+		}
 
 		// This update is done as a blocking update to ensure nothing else runs
 		// until the account has filled.
-		if w.managedAccountNeedsRefill() {
+		if w.managedNeedsToRefillAccount() {
 			w.managedRefillAccount()
 		}
 	}
@@ -326,7 +328,7 @@ func (w *worker) threadedWorkLoop() {
 
 		// If the worker needs to sync the account balance, perform a sync
 		// operation. This should be attempted before launching any jobs.
-		if w.managedNeedsToSyncAccountToHost() {
+		if w.managedNeedsToSyncAccountBalanceToHost() {
 			w.externSyncAccountBalanceToHost()
 		}
 

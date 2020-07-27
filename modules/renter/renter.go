@@ -1063,7 +1063,9 @@ func renterAsyncStartup(r *Renter, cs modules.ConsensusSet) error {
 		go r.threadedStuckFileLoop()
 	}
 	// Spin up the snapshot synchronization thread.
-	go r.threadedSynchronizeSnapshots()
+	if !r.deps.Disrupt("DisableSnapshotSync") {
+		go r.threadedSynchronizeSnapshots()
+	}
 	return nil
 }
 
