@@ -349,18 +349,12 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		metadata.DefaultPath != "" &&
 		format == modules.SkyfileFormatNotSpecified {
 		if !hasSubPath && (strings.HasSuffix(metadata.DefaultPath, ".html") || strings.HasSuffix(metadata.DefaultPath, ".htm")) {
-			w.Header().Set("Location", metadata.DefaultPath)
+			w.Header().Set("Location", skylink.String()+metadata.DefaultPath)
 			w.WriteHeader(http.StatusMovedPermanently)
 			return
 		}
-
-		_, _, offset, size := metadata.ForPath(metadata.DefaultPath)
-		streamer, err = NewLimitStreamer(streamer, offset, size)
-		isSubfile = true
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
-			return
-		}
+		WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s), please specify a format", metadata.DefaultPath)}, http.StatusBadRequest)
+		return
 	}
 
 	// Serve the contents of the skyfile at path if one is set
