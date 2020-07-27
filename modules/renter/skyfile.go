@@ -35,6 +35,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -494,14 +495,14 @@ func (r *Renter) UpdateSkynetPortals(additions []modules.SkynetPortal, removals 
 // where the fileReader contains all of the data for the file, including the
 // data that uploadSkyfileReadLeadingChunk had to read to figure out whether
 // the file was too large to fit into the leading chunk.
-func uploadSkyfileReadLeadingChunk(lup modules.SkyfileUploadParameters, headerSize uint64) ([]byte, io.Reader, bool, error) {
+func uploadSkyfileReadLeadingChunk(r io.Reader, headerSize uint64) ([]byte, io.Reader, bool, error) {
 	// Check for underflow.
 	if headerSize+1 > modules.SectorSize {
 		return nil, nil, false, ErrMetadataTooBig
 	}
 	// Read data from the reader to fill out the remainder of the first sector.
 	fileBytes := make([]byte, modules.SectorSize-headerSize, modules.SectorSize-headerSize+1) // +1 capacity for the peek byte
-	size, err := io.ReadFull(lup.Reader, fileBytes)
+	size, err := io.ReadFull(r, fileBytes)
 	if err == io.EOF || err == io.ErrUnexpectedEOF {
 		err = nil
 	}
@@ -515,7 +516,7 @@ func uploadSkyfileReadLeadingChunk(lup modules.SkyfileUploadParameters, headerSi
 	// the reader, a small file will be signaled and the data that has been read
 	// will be returned.
 	peek := make([]byte, 1)
-	n, peekErr := io.ReadFull(lup.Reader, peek)
+	n, peekErr := io.ReadFull(r, peek)
 	if peekErr == io.EOF || peekErr == io.ErrUnexpectedEOF {
 		peekErr = nil
 	}
@@ -532,7 +533,7 @@ func uploadSkyfileReadLeadingChunk(lup modules.SkyfileUploadParameters, headerSi
 	// read plus the reader that we read from, effectively creating a new reader
 	// that is identical to the one that was passed in if no data had been read.
 	prependData := append(fileBytes, peek...)
-	fullReader := io.MultiReader(bytes.NewReader(prependData), lup.Reader)
+	fullReader := io.MultiReader(bytes.NewReader(prependData), r)
 	return nil, fullReader, true, nil
 }
 
@@ -540,7 +541,7 @@ func uploadSkyfileReadLeadingChunk(lup modules.SkyfileUploadParameters, headerSi
 // data to a large siafile and upload it to the Sia network using
 // 'callUploadStreamFromReader'. The final skylink is created by calling
 // 'CreateSkylinkFromSiafile' on the resulting siafile.
-func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParameters, metadataBytes []byte, fileReader io.Reader) (modules.Skylink, error) {
+func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParameters, md modules.SkyfileMetadata, fileReader io.Reader) (modules.Skylink, error) {
 	// Create the erasure coder to use when uploading the file. When going
 	// through the 'managedUploadSkyfile' command, a 1-of-N scheme is always
 	// used, where the redundancy of the data as a whole matches the proposed
@@ -609,6 +610,13 @@ func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParamete
 		}
 	}()
 
+	// Complete the metadata by setting the length and marshal it.
+	md.Length = fileNode.Size()
+	metadataBytes, err := skyfileMetadataBytes(lup.FileMetadata)
+	if err != nil {
+		return modules.Skylink{}, errors.AddContext(err, "unable to retrieve skyfile metadata bytes")
+	}
+
 	// Convert the new siafile we just uploaded into a skyfile using the
 	// convert function.
 	return r.managedCreateSkylinkFromFileNode(lup, metadataBytes, fileNode, siaPath.Name())
@@ -641,7 +649,14 @@ func (r *Renter) managedUploadBaseSector(lup modules.SkyfileUploadParameters, ba
 // managedUploadSkyfileSmallFile uploads a file that fits entirely in the
 // leading chunk of a skyfile to the Sia network and returns the skylink that
 // can be used to access the file.
-func (r *Renter) managedUploadSkyfileSmallFile(lup modules.SkyfileUploadParameters, metadataBytes []byte, fileBytes []byte) (modules.Skylink, error) {
+func (r *Renter) managedUploadSkyfileSmallFile(lup modules.SkyfileUploadParameters, md modules.SkyfileMetadata, fileBytes []byte) (modules.Skylink, error) {
+	// Complete the metadata by setting the length and marshal it.
+	md.Length = uint64(len(fileBytes))
+	metadataBytes, err := skyfileMetadataBytes(lup.FileMetadata)
+	if err != nil {
+		return modules.Skylink{}, errors.AddContext(err, "unable to retrieve skyfile metadata bytes")
+	}
+
 	ll := skyfileLayout{
 		version:      SkyfileVersion,
 		filesize:     uint64(len(fileBytes)),
@@ -934,8 +949,12 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 		return modules.Skylink{}, errors.New("need to provide a stream of upload data")
 	}
 
-	// Grab the metadata bytes.
-	metadataBytes, err := skyfileMetadataBytes(lup.FileMetadata)
+	// Create a dummy metadata and marshal it for computing the size of the
+	// header. By using the maximum length, we make sure that we reserve enough
+	// space.
+	dummyMD := lup.FileMetadata
+	dummyMD.Length = math.MaxUint64
+	dummyMDBytes, err := skyfileMetadataBytes(dummyMD)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to retrieve skyfile metadata bytes")
 	}
@@ -946,17 +965,17 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 	// the leading chunk, a separate method will be called to upload the file
 	// separately using upload streaming, and then the siafile conversion
 	// function will be used to generate the final skylink.
-	headerSize := uint64(SkyfileLayoutSize + len(metadataBytes))
-	fileBytes, fileReader, largeFile, err := uploadSkyfileReadLeadingChunk(lup, headerSize)
+	headerSize := uint64(SkyfileLayoutSize + len(dummyMDBytes))
+	fileBytes, fileReader, largeFile, err := uploadSkyfileReadLeadingChunk(lup.Reader, headerSize)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to retrieve leading chunk file bytes")
 	}
 
 	var skylink modules.Skylink
 	if largeFile {
-		skylink, err = r.managedUploadSkyfileLargeFile(lup, metadataBytes, fileReader)
+		skylink, err = r.managedUploadSkyfileLargeFile(lup, lup.FileMetadata, fileReader)
 	} else {
-		skylink, err = r.managedUploadSkyfileSmallFile(lup, metadataBytes, fileBytes)
+		skylink, err = r.managedUploadSkyfileSmallFile(lup, lup.FileMetadata, fileBytes)
 	}
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
