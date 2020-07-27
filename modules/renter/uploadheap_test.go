@@ -868,7 +868,7 @@ func TestChunkSwitchStuckStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !pushed {
+	if pushed {
 		t.Error("should not be able to push chunk again")
 	}
 	if rt.renter.uploadHeap.managedLen() != 1 {
