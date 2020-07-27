@@ -179,6 +179,7 @@ build:
       - $CI_PROJECT_DIR/artifacts
   script:
     - ./check-builds.sh
+    - make test-long pkgs=./siatest/renter run=TestRenterTwo/TestRemoteRepair count=100
 
 legacy-tests:
   <<: *default_test_params
