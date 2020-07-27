@@ -730,10 +730,11 @@ type (
 	// WorkerPoolStatus contains information about the status of the workerPool
 	// and the workers
 	WorkerPoolStatus struct {
-		NumWorkers            int            `json:"numworkers"`
-		TotalDownloadCoolDown int            `json:"totaldownloadcooldown"`
-		TotalUploadCoolDown   int            `json:"totaluploadcooldown"`
-		Workers               []WorkerStatus `json:"workers"`
+		NumWorkers               int            `json:"numworkers"`
+		TotalDownloadCoolDown    int            `json:"totaldownloadcooldown"`
+		TotalMaintenanceCoolDown int            `json:"totalmaintenancecooldown"`
+		TotalUploadCoolDown      int            `json:"totaluploadcooldown"`
+		Workers                  []WorkerStatus `json:"workers"`
 	}
 
 	// WorkerStatus contains information about the status of a worker
@@ -754,6 +755,11 @@ type (
 		UploadOnCoolDown    bool          `json:"uploadoncooldown"`
 		UploadQueueSize     int           `json:"uploadqueuesize"`
 		UploadTerminated    bool          `json:"uploadterminated"`
+
+		// Maintenance Cooldown information
+		MaintenanceOnCooldown    bool          `json:"maintenanceoncooldown"`
+		MaintenanceCoolDownError string        `json:"maintenancecooldownerror"`
+		MaintenanceCoolDownTime  time.Duration `json:"maintenancecooldowntime"`
 
 		// Ephemeral Account information
 		AccountBalanceTarget types.Currency      `json:"accountbalancetarget"`
@@ -780,10 +786,6 @@ type (
 
 		Funded bool `json:"funded"`
 
-		OnCoolDown          bool      `json:"oncooldown"`
-		OnCoolDownUntil     time.Time `json:"oncooldownuntil"`
-		ConsecutiveFailures uint64    `json:"consecutivefailures"`
-
 		RecentErr     string    `json:"recenterr"`
 		RecentErrTime time.Time `json:"recenterrtime"`
 	}
@@ -795,10 +797,6 @@ type (
 		UpdateTime time.Time `json:"updatetime"`
 
 		Active bool `json:"active"`
-
-		OnCoolDown          bool      `json:"oncooldown"`
-		OnCoolDownUntil     time.Time `json:"oncooldownuntil"`
-		ConsecutiveFailures uint64    `json:"consecutivefailures"`
 
 		RecentErr     string    `json:"recenterr"`
 		RecentErrTime time.Time `json:"recenterrtime"`
