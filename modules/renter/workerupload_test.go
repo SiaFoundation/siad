@@ -186,10 +186,12 @@ func TestProcessUploadChunk(t *testing.T) {
 	if len(uuc.workersStandby) != 0 {
 		t.Errorf("expected %v standby workers got %v", 0, len(uuc.workersStandby))
 	}
-	if len(wt.unprocessedChunks) != 3 {
-		t.Fatalf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 3)
-	}
 	uuc.mu.Unlock()
+	wt.mu.Lock()
+	if len(wt.unprocessedChunks) != 3 {
+		t.Errorf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 3)
+	}
+	wt.mu.Unlock()
 
 	// valid - no help needed
 	uuc = chunk()
@@ -228,10 +230,12 @@ func TestProcessUploadChunk(t *testing.T) {
 	if len(uuc.workersStandby) != 0 {
 		t.Errorf("expected %v standby workers got %v", 0, len(uuc.workersStandby))
 	}
-	if len(wt.unprocessedChunks) != 3 {
-		t.Fatalf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 3)
-	}
 	uuc.mu.Unlock()
+	wt.mu.Lock()
+	if len(wt.unprocessedChunks) != 3 {
+		t.Errorf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 3)
+	}
+	wt.mu.Unlock()
 
 	// invalid - not a candidate
 	uuc = chunk()
@@ -269,10 +273,12 @@ func TestProcessUploadChunk(t *testing.T) {
 	if len(uuc.workersStandby) != 0 {
 		t.Errorf("expected %v standby workers got %v", 0, len(uuc.workersStandby))
 	}
-	if len(wt.unprocessedChunks) != 3 {
-		t.Fatalf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 3)
-	}
 	uuc.mu.Unlock()
+	wt.mu.Lock()
+	if len(wt.unprocessedChunks) != 3 {
+		t.Errorf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 3)
+	}
+	wt.mu.Unlock()
 
 	// invalid - complete
 	uuc = chunk()
@@ -310,10 +316,12 @@ func TestProcessUploadChunk(t *testing.T) {
 	if len(uuc.workersStandby) != 0 {
 		t.Errorf("expected %v standby workers got %v", 0, len(uuc.workersStandby))
 	}
-	if len(wt.unprocessedChunks) != 3 {
-		t.Fatalf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 3)
-	}
 	uuc.mu.Unlock()
+	wt.mu.Lock()
+	if len(wt.unprocessedChunks) != 3 {
+		t.Errorf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 3)
+	}
+	wt.mu.Unlock()
 
 	// set upload recent failure for cooldown cases.
 	wt.mu.Lock()
@@ -357,10 +365,12 @@ func TestProcessUploadChunk(t *testing.T) {
 	if len(uuc.workersStandby) != 0 {
 		t.Errorf("expected %v standby workers got %v", 0, len(uuc.workersStandby))
 	}
-	if len(wt.unprocessedChunks) != 0 {
-		t.Fatalf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 0)
-	}
 	uuc.mu.Unlock()
+	wt.mu.Lock()
+	if len(wt.unprocessedChunks) != 0 {
+		t.Errorf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 0)
+	}
+	wt.mu.Unlock()
 
 	// invalid - completed, oncooldown
 	uuc = chunk()
@@ -398,10 +408,12 @@ func TestProcessUploadChunk(t *testing.T) {
 	if len(uuc.workersStandby) != 0 {
 		t.Errorf("expected %v standby workers got %v", 0, len(uuc.workersStandby))
 	}
-	if len(wt.unprocessedChunks) != 0 {
-		t.Fatalf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 0)
-	}
 	uuc.mu.Unlock()
+	wt.mu.Lock()
+	if len(wt.unprocessedChunks) != 0 {
+		t.Errorf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 0)
+	}
+	wt.mu.Unlock()
 
 	// invalid - !goodForUpload
 	uuc = chunk()
@@ -443,8 +455,10 @@ func TestProcessUploadChunk(t *testing.T) {
 	if len(uuc.workersStandby) != 0 {
 		t.Errorf("expected %v standby workers got %v", 0, len(uuc.workersStandby))
 	}
-	if len(wt.unprocessedChunks) != 0 {
-		t.Fatalf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 0)
-	}
 	uuc.mu.Unlock()
+	wt.mu.Lock()
+	if len(wt.unprocessedChunks) != 0 {
+		t.Errorf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 0)
+	}
+	wt.mu.Unlock()
 }
