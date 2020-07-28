@@ -190,7 +190,22 @@ have the nickname be the same as the filename.
   occurred.
 
 ### Skykey tasks
-TODO - Fill in
+* `siac skykey add [skykey base64-encoded skykey]`will add a base64-encoded
+  skykey to the key manager.
+
+* `siac skykey create [name]` will create a skykey  with the given name. The
+  --type flag can be used to specify the skykey type. Its default is private-id.
+
+* `siac skykey delete` will delete the base64-encoded skykey using either its
+  name with --name or id with --id
+
+* `siac skykey get` will get the base64-encoded skykey using either its name
+  with --name or id with --id
+
+* `siac skykey get-id [name]` will get the base64-encoded skykey id by its name
+
+* `siac skykey ls` will list all skykeys. Use with --show-priv-keys to show full
+  encoding with private key also.
 
 ### Skynet tasks
 

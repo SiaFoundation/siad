@@ -9,6 +9,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/skykey"
 )
 
+const testSkykeyString string = "skykey:Aa71WcCoKFwVGAVotJh3USAslb8dotVJp2VZRRSAG2QhYRbuTbQhjDolIJ1nOlQ-rWYK29_1xee5?name=test_key1"
+
 // TestSkykeyCommands tests the basic functionality of the siac skykey commands
 // interface. More detailed testing of the skykey manager is done in the skykey
 // package.
@@ -24,6 +26,7 @@ func TestSkykeyCommands(t *testing.T) {
 		{name: "TestDuplicateSkykeyAdd", test: testDuplicateSkykeyAdd},
 		{name: "TestChangeKeyEntropyKeepName", test: testChangeKeyEntropyKeepName},
 		{name: "TestAddKeyTwice", test: testAddKeyTwice},
+		{name: "TestDelete", test: testDeleteKey},
 		{name: "TestInvalidSkykeyType", test: testInvalidSkykeyType},
 		{name: "TestSkykeyGet", test: testSkykeyGet},
 		{name: "TestSkykeyGetUsingNameAndID", test: testSkykeyGetUsingNameAndID},
@@ -43,7 +46,6 @@ func TestSkykeyCommands(t *testing.T) {
 // testDuplicateSkykeyAdd tests that adding with duplicate Skykey will return
 // duplicate name error.
 func testDuplicateSkykeyAdd(t *testing.T, c client.Client) {
-	testSkykeyString := "skykey:Aa71WcCoKFwVGAVotJh3USAslb8dotVJp2VZRRSAG2QhYRbuTbQhjDolIJ1nOlQ-rWYK29_1xee5?name=test_key1"
 	err := skykeyAdd(c, testSkykeyString)
 	if err != nil {
 		t.Fatal(err)
@@ -60,8 +62,7 @@ func testDuplicateSkykeyAdd(t *testing.T, c client.Client) {
 func testChangeKeyEntropyKeepName(t *testing.T, c client.Client) {
 	// Change the key entropy, but keep the same name.
 	var sk skykey.Skykey
-	skykeyString := "skykey:Aa71WcCoKFwVGAVotJh3USAslb8dotVJp2VZRRSAG2QhYRbuTbQhjDolIJ1nOlQ-rWYK29_1xee5?name=test_key1"
-	err := sk.FromString(skykeyString)
+	err := sk.FromString(testSkykeyString)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,6 +92,40 @@ func testAddKeyTwice(t *testing.T, c client.Client) {
 	_, err = skykeyCreate(c, keyName, skykey.TypePublicID.ToString())
 	if !strings.Contains(err.Error(), skykey.ErrSkykeyWithNameAlreadyExists.Error()) {
 		t.Fatal("Expected error when creating key with same name")
+	}
+}
+
+// testDeleteKey tests deleting a key.
+func testDeleteKey(t *testing.T, c client.Client) {
+	// Create a key.
+	keyName := "keyToDeleteByName"
+	_, err := skykeyCreate(c, keyName, skykey.TypePublicID.ToString())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Delete key by name
+	err = skykeyDelete(c, keyName, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create key again
+	_, err = skykeyCreate(c, keyName, skykey.TypePublicID.ToString())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get ID
+	sk, err := c.SkykeyGetByName(keyName)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Delete key by ID
+	err = skykeyDelete(c, "", sk.ID().ToString())
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -341,7 +376,6 @@ func testSkykeyListKeysAdditionalKeysDoesntShowPrivateKeys(t *testing.T, c clien
 func initSkykeyData(t *testing.T, c client.Client, keyStrings, keyNames, keyIDs []string) {
 	keyName1 := "createkey1"
 	keyName2 := "createkey testSkykeyGet"
-	testSkykeyString := "skykey:Aa71WcCoKFwVGAVotJh3USAslb8dotVJp2VZRRSAG2QhYRbuTbQhjDolIJ1nOlQ-rWYK29_1xee5?name=test_key1"
 
 	getKeyStr1, err := skykeyGet(c, keyName1, "")
 	if err != nil {
