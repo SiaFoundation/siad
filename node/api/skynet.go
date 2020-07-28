@@ -348,11 +348,18 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if path == "/" &&
 		metadata.DefaultPath != "" &&
 		format == modules.SkyfileFormatNotSpecified {
+		// Check if this matches a specific html file and redirect to it.
 		if !hasSubPath && (strings.HasSuffix(metadata.DefaultPath, ".html") || strings.HasSuffix(metadata.DefaultPath, ".htm")) {
-			w.Header().Set("Location", skylink.String()+metadata.DefaultPath)
-			w.WriteHeader(http.StatusMovedPermanently)
-			return
+
+			for _, f := range metadata.Subfiles {
+				if modules.EnsurePrefix(f.Filename, "/") == metadata.DefaultPath {
+					w.Header().Set("Location", skylink.String()+metadata.DefaultPath)
+					w.WriteHeader(http.StatusMovedPermanently)
+					return
+				}
+			}
 		}
+		// Otherwise fail with an error.
 		WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s), please specify a format", metadata.DefaultPath)}, http.StatusBadRequest)
 		return
 	}
@@ -418,7 +425,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
 	}()
 
-	// Set an appropritate Content-Disposition header
+	// Set an appropriate Content-Disposition header
 	var cdh string
 	filename := filepath.Base(metadata.Filename)
 	if format.IsArchive() {
