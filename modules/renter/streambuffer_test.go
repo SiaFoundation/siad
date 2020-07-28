@@ -75,16 +75,16 @@ func (mds *mockDataSource) ReadAt(b []byte, offset int64) (int, error) {
 		panic("bad call to mocked ReadAt")
 	}
 	if uint64(offset+int64(len(b))) > mds.staticDataLen {
-		str := fmt.Sprintf("call to ReadAt is asking for data that exceeds the data size: %v - %v", offset+int64(len(b)), uint64(len(mds.data)))
+		str := fmt.Sprintf("call to ReadAt is asking for data that exceeds the data size: %v - %v", offset+int64(len(b)), mds.staticDataLen)
 		panic(str)
 	}
 	if uint64(offset)%mds.RequestSize() != 0 {
 		panic("bad call to mocked ReadAt")
 	}
-	if uint64(len(b)) > uint64(len(mds.data)) {
+	if uint64(len(b)) > mds.staticDataLen {
 		panic("bad call to mocked ReadAt")
 	}
-	if uint64(len(b)) != mds.RequestSize() && uint64(offset+int64(len(b))) != uint64(len(mds.data)) {
+	if uint64(len(b)) != mds.RequestSize() && uint64(offset+int64(len(b))) != mds.staticDataLen {
 		panic("bad call to mocked ReadAt")
 	}
 	n := copy(b, mds.data[offset:])
