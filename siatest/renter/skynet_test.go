@@ -2912,10 +2912,6 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		{Name: "index.html", Data: fc1},
 		{Name: "about.html", Data: fc2},
 	}
-	multiHasIndexJs := []siatest.TestFile{
-		{Name: "index.js", Data: fc1},
-		{Name: "about.html", Data: fc2},
-	}
 	multiHasIndexIndexJs := []siatest.TestFile{
 		{Name: "index.html", Data: fc1},
 		{Name: "index.js", Data: fc1},
@@ -3041,13 +3037,13 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		},
 		{
 			// Multi dir with index, non-html default path.
-			// Expect a zip archive
-			name:               "multi_idx_non_html",
-			files:              multiHasIndexIndexJs,
-			defaultPath:        nonHTML,
-			disableDefaultPath: false,
-			expectedContent:    multiHasIndexIndexJs[1].Data,
-			expectedZipArchive: false,
+			// Error on download: specify a format.
+			name:                   "multi_idx_non_html",
+			files:                  multiHasIndexIndexJs,
+			defaultPath:            nonHTML,
+			disableDefaultPath:     false,
+			expectedContent:        multiHasIndexIndexJs[1].Data,
+			expectedErrStrDownload: "please specify a format",
 		},
 		{
 			// Multi dir with index, bad default path.
@@ -3083,15 +3079,6 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 			files:              multiNoIndex,
 			defaultPath:        "",
 			disableDefaultPath: true,
-			expectedZipArchive: true,
-		},
-		{
-			// Multi dir with no index, non-html default path.
-			// Expect a zip archive
-			name:               "multi_noidx_non_html",
-			files:              multiHasIndexJs,
-			defaultPath:        nonHTML,
-			disableDefaultPath: false,
 			expectedZipArchive: true,
 		},
 
