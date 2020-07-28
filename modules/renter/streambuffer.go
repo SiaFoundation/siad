@@ -379,8 +379,7 @@ func (s *stream) prepareOffset() {
 	}
 
 	// Keep adding more pieces to the buffer until we have buffered at least
-	// minimumLookahead total data or have reached the end of the stream. This
-	// loop
+	// minimumLookahead total data or have reached the end of the stream.
 	nextIndex++
 	for i := dataSectionSize * 2; i < minimumLookahead && nextIndex*dataSectionSize < dataSize; i += dataSectionSize {
 		s.lru.callUpdate(nextIndex)
