@@ -132,12 +132,8 @@ We redirect (301) to the `defaultPath`.
 
 This is only possible if the skyfile was uploaded via a modified portal.
 
-We return the entire metadata of the skyfile.
-
-TODO: We have a problem here. We expect `ForPath` to return a single file but it
-will return a subset of the skyfile in the same way accessing a skyfile with a 
-path will do it. We need to change the code in order to accommodate/protect 
-against this case. 
+We return an error stating that skyfile has invalid `defaultPath` and
+the client should use a format to download the skyfile. 
 
 #### `defaultPath` is empty
 
