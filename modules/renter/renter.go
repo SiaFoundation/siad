@@ -934,20 +934,20 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 		staticProjectDownloadByRootManager: new(projectDownloadByRootManager),
 
-		cs:                    cs,
-		deps:                  deps,
-		g:                     g,
-		w:                     w,
-		hostDB:                hdb,
-		hostContractor:        hc,
-		persistDir:            persistDir,
-		rl:                    rl,
-		staticAlerter:         modules.NewAlerter("renter"),
-		staticStreamBufferSet: newStreamBufferSet(),
-		staticMux:             mux,
-		mu:                    siasync.New(modules.SafeMutexDelay, 1),
-		tpool:                 tpool,
+		cs:             cs,
+		deps:           deps,
+		g:              g,
+		w:              w,
+		hostDB:         hdb,
+		hostContractor: hc,
+		persistDir:     persistDir,
+		rl:             rl,
+		staticAlerter:  modules.NewAlerter("renter"),
+		staticMux:      mux,
+		mu:             siasync.New(modules.SafeMutexDelay, 1),
+		tpool:          tpool,
 	}
+	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	close(r.uploadHeap.pauseChan)
 
 	// Initialize the loggers so that they are available for the components as
