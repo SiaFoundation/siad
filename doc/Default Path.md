@@ -126,10 +126,7 @@ The content of the skyfile is returned in a zipped form.
 If the file which `defaultPath` matches doesn't end with `.html` or `.htm` we
 return an Error.
 
-We return a subset of the metadata which contains `Filename` which is set to the 
-`defaultPath` value and `Subfiles` which only contains the `defaultPath` file.
-
-We return the content of the `defaultPath` file.
+We redirect (301) to the `defaultPath`.
 
 ##### `defaultPath` doesn't exactly match a file
 
