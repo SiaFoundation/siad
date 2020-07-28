@@ -2,6 +2,7 @@ package renter
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"sync"
@@ -17,7 +18,7 @@ import (
 // mockDataSource implements a stream buffer data source that can be used to
 // test the stream buffer. It's a simple in-memory buffer.
 type mockDataSource struct {
-	staticData        []byte
+	data              []byte
 	staticRequestSize uint64
 	mu                sync.Mutex
 }
@@ -25,7 +26,7 @@ type mockDataSource struct {
 // newMockDataSource will return a data source that is ready to use.
 func newMockDataSource(data []byte, requestSize uint64) *mockDataSource {
 	return &mockDataSource{
-		staticData:        data,
+		data:              data,
 		staticRequestSize: requestSize,
 	}
 }
@@ -34,7 +35,7 @@ func newMockDataSource(data []byte, requestSize uint64) *mockDataSource {
 func (mds *mockDataSource) DataSize() uint64 {
 	mds.mu.Lock()
 	defer mds.mu.Unlock()
-	return uint64(len(mds.staticData))
+	return uint64(len(mds.data))
 }
 
 // ID implements streamBufferDataSource
@@ -49,6 +50,9 @@ func (mds *mockDataSource) RequestSize() uint64 {
 
 // ReadAt implements streamBufferDataSource.
 func (mds *mockDataSource) ReadAt(b []byte, offset int64) (int, error) {
+	mds.mu.Lock()
+	defer mds.mu.Unlock()
+
 	// panic if these error during testing - the error being returned may not
 	// make it all the way back to the test program because of failovers and
 	// such, but this is an incorrect call that should never be made by the
@@ -56,26 +60,27 @@ func (mds *mockDataSource) ReadAt(b []byte, offset int64) (int, error) {
 	if offset < 0 {
 		panic("bad call to mocked ReadAt")
 	}
-	if uint64(offset+int64(len(b))) > mds.DataSize() {
-		panic("call to ReadAt is asking for data that exceeds the data size")
+	if uint64(offset+int64(len(b))) > uint64(len(mds.data)) {
+		str := fmt.Sprintf("call to ReadAt is asking for data that exceeds the data size: %v - %v", offset+int64(len(b)), uint64(len(mds.data)))
+		panic(str)
 	}
 	if uint64(offset)%mds.RequestSize() != 0 {
 		panic("bad call to mocked ReadAt")
 	}
-	if uint64(len(b)) > mds.DataSize() {
+	if uint64(len(b)) > uint64(len(mds.data)) {
 		panic("bad call to mocked ReadAt")
 	}
-	if uint64(len(b)) != mds.RequestSize() && uint64(offset+int64(len(b))) != mds.DataSize() {
+	if uint64(len(b)) != mds.RequestSize() && uint64(offset+int64(len(b))) != uint64(len(mds.data)) {
 		panic("bad call to mocked ReadAt")
 	}
-	n := copy(b, mds.staticData[offset:])
+	n := copy(b, mds.data[offset:])
 	return n, nil
 }
 
 // SilentClose implements streamBufferDataSource.
 func (mds *mockDataSource) SilentClose() {
 	mds.mu.Lock()
-	mds.staticData = nil
+	mds.data = nil
 	mds.mu.Unlock()
 }
 
@@ -248,7 +253,7 @@ func TestStreamSmoke(t *testing.T) {
 	stream.lru.mu.Unlock()
 	// Sleep until the stream is cleared.
 	time.Sleep(keepOldBuffersDuration)
-	if dataSource.staticData == nil {
+	if dataSource.data == nil {
 		t.Fatal("bad")
 	}
 	stream.lru.mu.Lock()
@@ -281,7 +286,7 @@ func TestStreamSmoke(t *testing.T) {
 	time.Sleep(keepOldBuffersDuration / 3)
 	time.Sleep(keepOldBuffersDuration)
 	dataSource.mu.Lock()
-	if dataSource.staticData != nil {
+	if dataSource.data != nil {
 		dataSource.mu.Unlock()
 		t.Fatal("bad")
 	}
@@ -324,7 +329,7 @@ func TestStreamSmoke(t *testing.T) {
 	}
 	time.Sleep(keepOldBuffersDuration / 5)
 	dataSource.mu.Lock()
-	if dataSource.staticData != nil {
+	if dataSource.data != nil {
 		dataSource.mu.Unlock()
 		t.Fatal("bad")
 	}
