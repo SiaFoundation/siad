@@ -18,8 +18,13 @@ import (
 
 // mockDataSource implements a stream buffer data source that can be used to
 // test the stream buffer. It's a simple in-memory buffer.
+//
+// staticDataLen is a separate field so we can have a sanity check on the reads
+// in ReadAt of the mockDataSource without having a race condition if ReadAt is
+// called after the stream is closed.
 type mockDataSource struct {
 	data              []byte
+	staticDataLen     uint64
 	staticRequestSize uint64
 	mu                sync.Mutex
 }
@@ -28,6 +33,7 @@ type mockDataSource struct {
 func newMockDataSource(data []byte, requestSize uint64) *mockDataSource {
 	return &mockDataSource{
 		data:              data,
+		staticDataLen:     uint64(len(data)),
 		staticRequestSize: requestSize,
 	}
 }
@@ -68,7 +74,7 @@ func (mds *mockDataSource) ReadAt(b []byte, offset int64) (int, error) {
 	if offset < 0 {
 		panic("bad call to mocked ReadAt")
 	}
-	if uint64(offset+int64(len(b))) > uint64(len(mds.data)) {
+	if uint64(offset+int64(len(b))) > mds.staticDataLen {
 		str := fmt.Sprintf("call to ReadAt is asking for data that exceeds the data size: %v - %v", offset+int64(len(b)), uint64(len(mds.data)))
 		panic(str)
 	}
