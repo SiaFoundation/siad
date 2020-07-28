@@ -256,7 +256,7 @@ func (r *Renter) CreateSkylinkFromSiafile(lup modules.SkyfileUploadParameters, s
 		Mode:     fileNode.Mode(),
 		Length:   fileNode.Size(),
 	}
-	return r.managedCreateSkylinkFromFileNode(lup, fileNode, siaPath.Name())
+	return r.managedCreateSkylinkFromFileNode(lup, fileNode)
 }
 
 // managedCreateSkylinkFromFileNode creates a skylink from a file node.
@@ -264,7 +264,7 @@ func (r *Renter) CreateSkylinkFromSiafile(lup modules.SkyfileUploadParameters, s
 // The name needs to be passed in explicitly because a file node does not track
 // its own name, which allows the file to be renamed concurrently without
 // causing any race conditions.
-func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParameters, fileNode *filesystem.FileNode, filename string) (modules.Skylink, error) {
+func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParameters, fileNode *filesystem.FileNode) (modules.Skylink, error) {
 	// First check if any of the skylinks associated with the siafile are
 	// blacklisted
 	skylinkstrs := fileNode.Metadata().Skylinks
@@ -615,7 +615,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParamete
 
 	// Convert the new siafile we just uploaded into a skyfile using the
 	// convert function.
-	return r.managedCreateSkylinkFromFileNode(lup, fileNode, siaPath.Name())
+	return r.managedCreateSkylinkFromFileNode(lup, fileNode)
 }
 
 // managedUploadBaseSector will take the raw baseSector bytes and upload them,
