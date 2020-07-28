@@ -510,5 +510,6 @@ func (sbs *streamBufferSet) managedRemoveStream(sb *streamBuffer) {
 
 	// Close out the streamBuffer and its data source.
 	delete(sbs.streams, sb.staticStreamID)
+	println("clsoing out this stream because the streambuffer is not... zero?")
 	sb.staticDataSource.SilentClose()
 }

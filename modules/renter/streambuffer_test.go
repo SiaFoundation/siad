@@ -41,7 +41,9 @@ func (mds *mockDataSource) DataSize() uint64 {
 
 // ID implements streamBufferDataSource
 func (mds *mockDataSource) ID() modules.DataSourceID {
-	return modules.DataSourceID(crypto.HashAll(mds))
+	mds.mu.Lock()
+	defer mds.mu.Unlock()
+	return modules.DataSourceID(crypto.HashObject(mds.data))
 }
 
 // Metadata implements streamBufferDataSource
@@ -123,7 +125,10 @@ func TestStreamSmoke(t *testing.T) {
 	if refs != 2 {
 		t.Fatal("bad")
 	}
-	repeatStream := sbs.callNewStream(dataSource, 0)
+	// Create a second, different data source with the same id and try to use
+	// that.
+	dataSource2 := newMockDataSource(data, dataSectionSize)
+	repeatStream := sbs.callNewStream(dataSource2, 0)
 	sbs.mu.Lock()
 	refs = stream.staticStreamBuffer.externRefCount
 	sbs.mu.Unlock()
@@ -132,11 +137,13 @@ func TestStreamSmoke(t *testing.T) {
 	}
 	repeatStream.Close()
 	streamFromID.Close()
+	time.Sleep(keepOldBuffersDuration)
+	time.Sleep(keepOldBuffersDuration / 3)
 	sbs.mu.Lock()
 	refs = stream.staticStreamBuffer.externRefCount
 	sbs.mu.Unlock()
 	if refs != 1 {
-		t.Fatal("bad - see comment for fix")
+		t.Fatal("bad")
 	}
 
 	// Perform the ritual that the http.ResponseWriter performs - seek to front,
@@ -226,8 +233,8 @@ func TestStreamSmoke(t *testing.T) {
 	// not used. The stream buffer expects that when multiple data sources have
 	// the same ID, they are actually separate objects which need to be closed
 	// individually.
-	dataSource2 := newMockDataSource(data, dataSectionSize)
-	stream2 := sbs.callNewStream(dataSource2, 0)
+	dataSource3 := newMockDataSource(data, dataSectionSize)
+	stream2 := sbs.callNewStream(dataSource3, 0)
 	bytesRead, err = io.ReadFull(stream2, buf)
 	if err != nil {
 		t.Fatal(err)
@@ -354,8 +361,8 @@ func TestStreamSmoke(t *testing.T) {
 	}
 
 	// Check that if the tg is stopped, the stream closes immediately.
-	dataSource3 := newMockDataSource(data, dataSectionSize)
-	stream3 := sbs.callNewStream(dataSource3, 0)
+	dataSource4 := newMockDataSource(data, dataSectionSize)
+	stream3 := sbs.callNewStream(dataSource4, 0)
 	bytesRead, err = io.ReadFull(stream3, buf)
 	if err != nil {
 		t.Fatal(err)
