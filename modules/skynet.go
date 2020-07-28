@@ -84,6 +84,10 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 			metadata.Subfiles[sf.Filename] = sf
 		}
 	}
+	// Set the metadata length by summing up the length of the subfiles.
+	for _, file := range metadata.Subfiles {
+		metadata.Length += file.Len
+	}
 	return metadata, isFile, offset, metadata.size()
 }
 
