@@ -14,10 +14,13 @@ package renter
 import (
 	"io"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/threadgroup"
 )
 
 const (
@@ -51,6 +54,17 @@ var (
 		Standard: uint64(1 << 25), // 32 MiB
 		Testing:  uint64(1 << 8),  // 256 bytes
 	}).(uint64)
+
+	// keepOldBuffersDuration specifies how long a stream buffer will stay in
+	// the buffer set after the final stream is closed. This gives some buffer
+	// time for a new request to the same resource, without having the data
+	// source fully cleared out. This optimization is particularly useful for
+	// certain video players and web applications.
+	keepOldBuffersDuration = build.Select(build.Var{
+		Dev:      time.Second * 15,
+		Standard: time.Second * 60,
+		Testing:  time.Second * 2,
+	}).(time.Duration)
 )
 
 // streamBufferDataSource is an interface that the stream buffer uses to fetch
@@ -151,13 +165,16 @@ type streamBuffer struct {
 type streamBufferSet struct {
 	streams map[streamDataSourceID]*streamBuffer
 
-	mu sync.Mutex
+	staticTG *threadgroup.ThreadGroup
+	mu       sync.Mutex
 }
 
 // newStreamBufferSet initializes and returns a stream buffer set.
-func newStreamBufferSet() *streamBufferSet {
+func newStreamBufferSet(tg *threadgroup.ThreadGroup) *streamBufferSet {
 	return &streamBufferSet{
 		streams: make(map[streamDataSourceID]*streamBuffer),
+
+		staticTG: tg,
 	}
 }
 
@@ -225,14 +242,30 @@ func (ds *dataSection) managedData() ([]byte, error) {
 }
 
 // Close will release all of the resources held by a stream.
+//
+// Before removing the stream, this function will sleep for some time. This is
+// specifically to address the use case where an application may be using the
+// same file or resource continuously, but doing so by repeatedly opening new
+// connections to siad rather than keeping a single stable connection. Some
+// video players do this. On Skynet, most javascript applications do this, as
+// the javascript application does not realize that multiple files within the
+// app are all part of the same resource. This sleep here to delay the release
+// of a resource substantially improves performance in practice, in many cases
+// causing a 4x reduction in response latency.
 func (s *stream) Close() error {
-	// Drop all nodes from the lru.
-	s.lru.callEvictAll()
+	s.staticStreamBuffer.staticStreamBufferSet.staticTG.Launch(func() {
+		// Convenience variables.
+		sb := s.staticStreamBuffer
+		sbs := sb.staticStreamBufferSet
+		// Keep the memory for a while after closing.
+		sbs.staticTG.Sleep(keepOldBuffersDuration)
 
-	// Remove the stream from the streamBuffer.
-	streamBuf := s.staticStreamBuffer
-	streamBufSet := streamBuf.staticStreamBufferSet
-	streamBufSet.managedRemoveStream(streamBuf)
+		// Drop all nodes from the lru.
+		s.lru.callEvictAll()
+
+		// Remove the stream from the streamBuffer.
+		sbs.managedRemoveStream(sb)
+	})
 	return nil
 }
 
