@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -31,8 +33,13 @@ func (mds *mockDataSource) DataSize() uint64 {
 }
 
 // ID implements streamBufferDataSource
-func (mds *mockDataSource) ID() streamDataSourceID {
-	return streamDataSourceID(crypto.HashAll(mds))
+func (mds *mockDataSource) ID() modules.DataSourceID {
+	return modules.DataSourceID(crypto.HashAll(mds))
+}
+
+// Metadata implements streamBufferDataSource
+func (mds *mockDataSource) Metadata() modules.SkyfileMetadata {
+	return modules.SkyfileMetadata{}
 }
 
 // RequestSize implements streamBufferDataSource.
