@@ -196,7 +196,7 @@ func TestProcessUploadChunk(t *testing.T) {
 	// valid - no help needed
 	uuc = chunk()
 	wt.mu.Lock()
-	wt.unprocessedChunks = []*unfinishedUploadChunk{uuc, uuc, uuc}
+	wt.unprocessedChunks = nil
 	wt.mu.Unlock()
 	uuc.mu.Lock()
 	uuc.pieceUsage[0] = true // mark first piece as used
@@ -232,8 +232,8 @@ func TestProcessUploadChunk(t *testing.T) {
 	}
 	uuc.mu.Unlock()
 	wt.mu.Lock()
-	if len(wt.unprocessedChunks) != 3 {
-		t.Errorf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 3)
+	if len(wt.unprocessedChunks) != 0 {
+		t.Errorf("unprocessedChunks %v != %v", len(wt.unprocessedChunks), 0)
 	}
 	wt.mu.Unlock()
 
