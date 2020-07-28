@@ -80,12 +80,50 @@ func (mds *mockDataSource) SilentClose() {
 // TestStreamSmoke checks basic logic on the stream to see that reading and
 // seeking and closing works.
 func TestStreamSmoke(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	// Create a usable stream, starting at offset 0.
 	data := fastrand.Bytes(15999) // 1 byte short of 1000 data sections.
 	dataSectionSize := uint64(16)
 	dataSource := newMockDataSource(data, dataSectionSize)
 	sbs := newStreamBufferSet()
 	stream := sbs.callNewStream(dataSource, 0)
+
+	// Check that there is one reference in the stream buffer.
+	sbs.mu.Lock()
+	refs := stream.staticStreamBuffer.externRefCount
+	sbs.mu.Unlock()
+	if refs != 1 {
+		t.Fatal("bad")
+	}
+	// Create a new stream from an id, check that the ref count goes up.
+	streamFromID, exists := sbs.callNewStreamFromID(dataSource.ID(), 0)
+	if !exists {
+		t.Fatal("bad")
+	}
+	sbs.mu.Lock()
+	refs = stream.staticStreamBuffer.externRefCount
+	sbs.mu.Unlock()
+	if refs != 2 {
+		t.Fatal("bad")
+	}
+	repeatStream := sbs.callNewStream(dataSource, 0)
+	sbs.mu.Lock()
+	refs = stream.staticStreamBuffer.externRefCount
+	sbs.mu.Unlock()
+	if refs != 3 {
+		t.Fatal("bad")
+	}
+	repeatStream.Close()
+	streamFromID.Close()
+	sbs.mu.Lock()
+	refs = stream.staticStreamBuffer.externRefCount
+	sbs.mu.Unlock()
+	if refs != 1 {
+		t.Fatal("bad - see comment for fix")
+	}
 
 	// Perform the ritual that the http.ResponseWriter performs - seek to front,
 	// seek to back, read 512 bytes, seek to front, read a bigger chunk of data.

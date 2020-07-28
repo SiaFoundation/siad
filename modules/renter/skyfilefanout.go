@@ -194,6 +194,7 @@ func (fs *fanoutStreamBufferDataSource) ID() modules.DataSourceID {
 	return fs.staticStreamID
 }
 
+// Metadata returns the metadata of the skylink being fetched.
 func (fs *fanoutStreamBufferDataSource) Metadata() modules.SkyfileMetadata {
 	return fs.staticMetadata
 }
