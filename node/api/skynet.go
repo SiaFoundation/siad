@@ -124,6 +124,10 @@ type (
 	SkykeysGET struct {
 		Skykeys []SkykeyGET `json:"skykeys"`
 	}
+
+	// archiveFunc is a function that serves subfiles from src at to dst and
+	// archives them using a certain algorithm.
+	archiveFunc func(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error
 )
 
 // skynetBlacklistHandlerGET handles the API call to get the list of blacklisted
@@ -424,7 +428,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if format == modules.SkyfileFormatTar {
 		w.Header().Set("Content-Type", "application/x-tar")
 		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
-		err = serveTar(w, metadata, streamer)
+		err = serveArchive(w, streamer, metadata, serveTar)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar archive: %v", err)}, http.StatusInternalServerError)
 		}
@@ -434,7 +438,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		w.Header().Set("Content-Type", "application/gzip")
 		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 		gzw := gzip.NewWriter(w)
-		err = serveTar(gzw, metadata, streamer)
+		err = serveArchive(gzw, streamer, metadata, serveTar)
 		err = errors.Compose(err, gzw.Close())
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar gz archive: %v", err)}, http.StatusInternalServerError)
@@ -444,7 +448,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if format == modules.SkyfileFormatZip {
 		w.Header().Set("Content-Type", "application/zip")
 		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
-		err = serveZip(w, metadata, streamer)
+		err = serveArchive(w, streamer, metadata, serveZip)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as zip archive: %v", err)}, http.StatusInternalServerError)
 		}
@@ -897,10 +901,9 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 	})
 }
 
-// serveTar serves skyfiles as a tar by reading them from r and writing the
-// archive to dst.
-func serveTar(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Streamer) error {
-	tw := tar.NewWriter(dst)
+// serveArchive serves skyfiles as an by reading them from r and writing the
+// archive to dst using the given archiveFunc.
+func serveArchive(dst io.Writer, src io.ReadSeeker, md modules.SkyfileMetadata, archiveFunc archiveFunc) error {
 	// Get the files to tar.
 	var files []modules.SkyfileSubfileMetadata
 	for _, file := range md.Subfiles {
@@ -912,24 +915,37 @@ func serveTar(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Stream
 	// If there are no files, it's a single file download. Manually construct a
 	// SkyfileSubfileMetadata from the SkyfileMetadata.
 	if len(files) == 0 {
-		// Fetch the length of the file by seeking to the end and then back to
-		// the start.
-		length, err := streamer.Seek(0, io.SeekEnd)
-		if err != nil {
-			return errors.AddContext(err, "serveTar: failed to seek to end of skyfile")
-		}
-		_, err = streamer.Seek(0, io.SeekStart)
-		if err != nil {
-			return errors.AddContext(err, "serveTar: failed to seek to start of skyfile")
+		var length uint64
+		if md.Length == 0 {
+			// Fetch the length of the file by seeking to the end and then back to
+			// the start.
+			seekLen, err := src.Seek(0, io.SeekEnd)
+			if err != nil {
+				return errors.AddContext(err, "serveTar: failed to seek to end of skyfile")
+			}
+			_, err = src.Seek(0, io.SeekStart)
+			if err != nil {
+				return errors.AddContext(err, "serveTar: failed to seek to start of skyfile")
+			}
+			length = uint64(seekLen)
+		} else {
+			length = md.Length
 		}
 		// Construct the SkyfileSubfileMetadata.
 		files = append(files, modules.SkyfileSubfileMetadata{
 			FileMode: md.Mode,
 			Filename: md.Filename,
 			Offset:   0,
-			Len:      uint64(length),
+			Len:      length,
 		})
 	}
+	return archiveFunc(dst, src, files)
+}
+
+// serveTar is an archiveFunc that implements serving the files from src to dst
+// as a tar.
+func serveTar(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error {
+	tw := tar.NewWriter(dst)
 	for _, file := range files {
 		// Create header.
 		header, err := tar.FileInfoHeader(file, file.Name())
@@ -943,49 +959,17 @@ func serveTar(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Stream
 			return err
 		}
 		// Write file content.
-		if _, err := io.CopyN(tw, streamer, header.Size); err != nil {
+		if _, err := io.CopyN(tw, src, header.Size); err != nil {
 			return err
 		}
 	}
 	return tw.Close()
 }
 
-// serveZip serves skyfiles as a zip by reading them from r and writing the
-// archive to dst.
-func serveZip(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Streamer) error {
+// serveZip is an archiveFunc that implements serving the files from src to dst
+// as a zip.
+func serveZip(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error {
 	zw := zip.NewWriter(dst)
-
-	// Get the files to zip.
-	var files []modules.SkyfileSubfileMetadata
-	for _, file := range md.Subfiles {
-		files = append(files, file)
-	}
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].Offset < files[j].Offset
-	})
-
-	// If there are no files, it's a single file download. Manually construct a
-	// SkyfileSubfileMetadata from the SkyfileMetadata.
-	if len(files) == 0 {
-		// Fetch the length of the file by seeking to the end and then back to
-		// the start.
-		length, err := streamer.Seek(0, io.SeekEnd)
-		if err != nil {
-			return errors.AddContext(err, "serveZip: failed to seek to end of skyfile")
-		}
-		_, err = streamer.Seek(0, io.SeekStart)
-		if err != nil {
-			return errors.AddContext(err, "serveZip: failed to seek to start of skyfile")
-		}
-		// Construct the SkyfileSubfileMetadata.
-		files = append(files, modules.SkyfileSubfileMetadata{
-			FileMode: md.Mode,
-			Filename: md.Filename,
-			Offset:   0,
-			Len:      uint64(length),
-		})
-	}
-
 	for _, file := range files {
 		f, err := zw.Create(file.Filename)
 		if err != nil {
@@ -993,7 +977,7 @@ func serveZip(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Stream
 		}
 
 		// Write file content.
-		_, err = io.CopyN(f, streamer, int64(file.Len))
+		_, err = io.CopyN(f, src, int64(file.Len))
 		if err != nil {
 			return errors.AddContext(err, "serveZip: failed to write file contents to the zip")
 		}
