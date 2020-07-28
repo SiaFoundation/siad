@@ -82,7 +82,7 @@ func (g *Gateway) load() error {
 		// Try update the version of the metadata
 		err = g.convertPersistv135Tov150()
 		if err != nil {
-			return errors.AddContext(err, "failed to convert persistence from v134 to v150")
+			return errors.AddContext(err, "failed to convert persistence from v135 to v150")
 		}
 		// Load the new persistence
 		err = persist.LoadJSON(persistMetadata, &g.persist, filepath.Join(g.persistDir, persistFilename))

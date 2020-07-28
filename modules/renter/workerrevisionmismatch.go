@@ -25,15 +25,25 @@ func errCausedByRevisionMismatch(err error) bool {
 // NOTE: the 'extern' refers to the fact that this function need to be called
 // from the primary work thread of the worker.
 func (w *worker) externTryFixRevisionMismatch() {
+	// Do not attempt to try and fix a revision mismatch if the worker's RHP3
+	// subystem is on cooldown.
+	if w.managedOnMaintenanceCooldown() {
+		return
+	}
+
 	// Unset the flag indicating mismatch suspicion.
 	atomic.StoreUint64(&w.staticLoopState.atomicSuspectRevisionMismatch, 0)
 
-	// TODO: add an endpoint to RHP3 to get the host's revision number, rather
-	// than having to initialize a session to accomplish this
+	// TODO: use the host's revision endpoint - which uses RHP3
 
 	// Initiate a session, this performs a handshake with the host and syncs up
 	// the revision if necessary.
 	session, err := w.renter.hostContractor.Session(w.staticHostPubKey, w.renter.tg.StopChan())
+
+	// Track the outcome of the revision mismatch fix - this ensures a proper
+	// working of the maintenance cooldown mechanism.
+	w.managedTrackRevisionMismatchFixErr(err)
+
 	if err != nil {
 		w.renter.log.Printf("could not fix revision number mismatch, could not retrieve a session with host %v, err: %v\n", w.staticHostPubKeyStr, err)
 		return
