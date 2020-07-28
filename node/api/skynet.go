@@ -324,9 +324,12 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	var isSubfile bool
 
-	// Handle the legacy case
 	if metadata.DefaultPath == "" && !metadata.DisableDefaultPath {
 		if len(metadata.Subfiles) == 1 {
+			// Handle the legacy case in which the fields `defaultpath` and
+			// `disabledefaultpath` are not defined. If the skyfile has a single
+			// subfile we want to automatically default to it in order to retain
+			// the current behaviour.
 			for filename := range metadata.Subfiles {
 				metadata.DefaultPath = modules.EnsurePrefix(filename, "/")
 				break
@@ -350,7 +353,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		format == modules.SkyfileFormatNotSpecified {
 		// Check if this matches a specific html file and redirect to it.
 		if !hasSubPath && (strings.HasSuffix(metadata.DefaultPath, ".html") || strings.HasSuffix(metadata.DefaultPath, ".htm")) {
-
 			for _, f := range metadata.Subfiles {
 				if modules.EnsurePrefix(f.Filename, "/") == metadata.DefaultPath {
 					w.Header().Set("Location", skylink.String()+metadata.DefaultPath)
