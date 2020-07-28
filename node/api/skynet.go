@@ -917,6 +917,11 @@ func serveArchive(dst io.Writer, src io.ReadSeeker, md modules.SkyfileMetadata, 
 	if len(files) == 0 {
 		var length uint64
 		if md.Length == 0 {
+			// v150Compat a missing length is fine for legacy links but new
+			// links should always have the length set.
+			if build.Release == "testing" {
+				build.Critical("SkyfileMetadata is missing length")
+			}
 			// Fetch the length of the file by seeking to the end and then back to
 			// the start.
 			seekLen, err := src.Seek(0, io.SeekEnd)
