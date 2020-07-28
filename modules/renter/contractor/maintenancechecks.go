@@ -141,6 +141,8 @@ func (c *Contractor) managedCheckHostScore(contract modules.RenterContract, sb m
 // 'needsUpdate' is set to true, other checks which may change those values will
 // be ignored and the contract will remain marked as having no utility.
 func (c *Contractor) managedCriticalUtilityChecks(sc *proto.SafeContract, host modules.HostDBEntry) (modules.ContractUtility, bool) {
+	contract := sc.Metadata()
+
 	c.mu.RLock()
 	blockHeight := c.blockHeight
 	renewWindow := c.allowance.RenewWindow
@@ -149,7 +151,6 @@ func (c *Contractor) managedCriticalUtilityChecks(sc *proto.SafeContract, host m
 	c.mu.RUnlock()
 
 	// A contract that has been renewed should be set to !GFU and !GFR.
-	contract := sc.Metadata()
 	u, needsUpdate := c.renewedCheck(contract.Utility, renewed)
 	if needsUpdate {
 		return u, needsUpdate
