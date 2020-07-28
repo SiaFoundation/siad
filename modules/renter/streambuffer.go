@@ -253,7 +253,7 @@ func (ds *dataSection) managedData() ([]byte, error) {
 // of a resource substantially improves performance in practice, in many cases
 // causing a 4x reduction in response latency.
 func (s *stream) Close() error {
-	go func() {
+	s.staticStreamBuffer.staticStreamBufferSet.staticTG.Launch(func() {
 		// Convenience variables.
 		sb := s.staticStreamBuffer
 		sbs := sb.staticStreamBufferSet
@@ -264,8 +264,8 @@ func (s *stream) Close() error {
 		s.lru.callEvictAll()
 
 		// Remove the stream from the streamBuffer.
-		go sbs.managedRemoveStream(sb)
-	}()
+		sbs.managedRemoveStream(sb)
+	})
 	return nil
 }
 
