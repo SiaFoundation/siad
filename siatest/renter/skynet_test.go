@@ -716,7 +716,12 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	expected := modules.SkyfileMetadata{Filename: uploadSiaPath.String(), Subfiles: subfiles}
+	var length uint64
+	for _, file := range subfiles {
+		length += uint64(file.Len)
+	}
+
+	expected := modules.SkyfileMetadata{Filename: uploadSiaPath.String(), Subfiles: subfiles, Length: length}
 	if !reflect.DeepEqual(expected, fileMetadata) {
 		t.Log("Expected:", expected)
 		t.Log("Actual:", fileMetadata)
