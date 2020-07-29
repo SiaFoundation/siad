@@ -266,6 +266,11 @@ func (w *worker) managedDiscardAsyncJobs(err error) {
 // meaning that only one of these tasks can be performed at a time.  Async work
 // can be performed with high parallelism.
 func (w *worker) threadedWorkLoop() {
+	// Perform a disrupt for testing.
+	if w.renter.deps.Disrupt("DisableWorkerLoop") {
+		return
+	}
+
 	// Upon shutdown, release all jobs.
 	defer w.managedKillUploading()
 	defer w.managedKillDownloading()
@@ -275,11 +280,6 @@ func (w *worker) threadedWorkLoop() {
 	defer w.staticJobHasSectorQueue.callKill()
 	defer w.staticJobReadQueue.callKill()
 	defer w.staticJobUploadSnapshotQueue.callKill()
-
-	// Perform a disrupt for testing.
-	if w.renter.deps.Disrupt("DisableWorkerLoop") {
-		return
-	}
 
 	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) >= 0 {
 		// Ensure the renter's revision number of the underlying file contract

@@ -9,8 +9,9 @@ import (
 )
 
 type (
-	// DependencyDisableWorkerLoop will disable the worker's work loop.
-	DependencyDisableWorkerLoop struct {
+	// DependencyDisableWorker will disable the worker's work loop, the health
+	// loop, the repair loop and the snapshot loop.
+	DependencyDisableWorker struct {
 		modules.ProductionDependencies
 	}
 	// DependencyDisableHostSiamux will disable siamux in the host.
@@ -264,8 +265,17 @@ func newDependencyInterruptCountOccurrences(str string) *DependencyInterruptCoun
 }
 
 // Disrupt returns true if the correct string is provided.
-func (d *DependencyDisableWorkerLoop) Disrupt(s string) bool {
-	return s == "DisableWorkerLoop"
+func (d *DependencyDisableWorker) Disrupt(s string) bool {
+	if s == "DisableWorkerLoop" {
+		return true
+	}
+	if s == "DisableRepairAndHealthLoops" {
+		return true
+	}
+	if s == "DisableSnapshotSync" {
+		return true
+	}
+	return false
 }
 
 // Disrupt returns true if the correct string is provided.

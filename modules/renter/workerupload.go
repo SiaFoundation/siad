@@ -266,7 +266,6 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 	uc.mu.Lock()
 	_, candidateHost := uc.unusedHosts[w.staticHostPubKey.String()]
 	chunkComplete := uc.piecesNeeded <= uc.piecesCompleted
-	needsHelp := uc.piecesNeeded > uc.piecesCompleted+uc.piecesRegistered
 	// If the chunk does not need help from this worker, release the chunk.
 	if chunkComplete || !candidateHost || !goodForUpload || onCooldown {
 		// This worker no longer needs to track this chunk.
@@ -282,6 +281,7 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 
 	// If the worker does not need help, add the worker to the sent of standby
 	// chunks.
+	needsHelp := uc.piecesNeeded > uc.piecesCompleted+uc.piecesRegistered
 	if !needsHelp {
 		uc.workersStandby = append(uc.workersStandby, w)
 		uc.mu.Unlock()
