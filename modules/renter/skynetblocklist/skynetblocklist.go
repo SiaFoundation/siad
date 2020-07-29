@@ -28,7 +28,7 @@ var (
 	metadataHeader = types.NewSpecifier("SkynetBlocklist\n")
 
 	// metadataVersion is the version of the persistence file
-	metadataVersion = persist.MetadataVersionv150
+	metadataVersion = types.NewSpecifier("v1.5.1\n")
 )
 
 type (

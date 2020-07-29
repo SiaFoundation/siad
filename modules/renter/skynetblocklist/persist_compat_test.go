@@ -10,12 +10,33 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestPersistCompatv143Tov150 tests converting the skynet blocklist persistence
-// from v143 to v150
+/* TODO
+*
+* test v150 blacklist to v150 blocklist
+* test v143 blacklist to v150 bloclist
+*
+ */
+
+// TestPersistCompatBlacklistToBlocklist tests converting the v1.5.0 skynet
+// blacklist persistence to the v1.5.1 skynet blocklist persistence
+func TestPersistCompatBlacklistToBlocklist(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	testdir := testDir(t.Name())
+
+	testPersistCompat(t, testdir, blacklistPersistFile, persistFile, blacklistMetadataHeader, metadataHeader, persist.MetadataVersionv150, metadataVersion)
+}
+
+// TestPersistCompatv143Tov150 tests converting the skynet blacklist persistence
+// from v1.4.3 to v1.5.0
 func TestPersistCompatv143Tov150(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -24,7 +45,12 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 
 	testdir := testDir(t.Name())
 
-	// Test 1: Clean conversion from v143 to v150
+	testPersistCompat(t, testdir, blacklistPersistFile, blacklistPersistFile, blacklistMetadataHeader, blacklistMetadataHeader, metadataVersionV143, persist.MetadataVersionv150)
+}
+
+// testPersistCompat tests the persist compat code going between two versions
+func testPersistCompat(t *testing.T, testdir, oldPersistFile, newPersistFile string, oldHeader, newHeader, oldVersion, newVersion types.Specifier) {
+	// Test 1: Clean conversion
 
 	// Create sub test directory
 	subTestDir := filepath.Join(testdir, "CleanConvert")
@@ -33,14 +59,14 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Initialize the directory with a v143 persist file
-	err = loadV143CompatPersistFile(subTestDir)
+	// Initialize the directory with the old version persist file
+	err = loadCompatPersistFile(subTestDir, oldVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify the persistence
-	err = loadAndVerifyPersistence(subTestDir)
+	err = loadAndVerifyPersistence(subTestDir, oldPersistFile, newPersistFile, oldHeader, newHeader, oldVersion, newVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,15 +80,15 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Initialize the directory with a v143 persist file
-	err = loadV143CompatPersistFile(subTestDir)
+	// Initialize the directory with the old version persist file
+	err = loadCompatPersistFile(subTestDir, oldVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Simulate a crash during the creation a temporary file by creating an empty
 	// temp file
-	f, err := os.Create(filepath.Join(subTestDir, tempPersistFileName(blacklistPersistFile)))
+	f, err := os.Create(filepath.Join(subTestDir, tempPersistFileName(oldPersistFile)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +98,7 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 	}
 
 	// Verify the persistence
-	err = loadAndVerifyPersistence(subTestDir)
+	err = loadAndVerifyPersistence(subTestDir, oldPersistFile, newPersistFile, oldHeader, newHeader, oldVersion, newVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,15 +112,15 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Initialize the directory with a v143 persist file
-	err = loadV143CompatPersistFile(subTestDir)
+	// Initialize the directory with the old version persist file
+	err = loadCompatPersistFile(subTestDir, oldVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Simulate a crash during the creation a temporary file by creating a temp
 	// file with random bytes
-	f, err = os.Create(filepath.Join(subTestDir, tempPersistFileName(blacklistPersistFile)))
+	f, err = os.Create(filepath.Join(subTestDir, tempPersistFileName(oldPersistFile)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +134,7 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 	}
 
 	// Verify the persistence
-	err = loadAndVerifyPersistence(subTestDir)
+	err = loadAndVerifyPersistence(subTestDir, oldPersistFile, newPersistFile, oldHeader, newHeader, oldVersion, newVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,83 +148,110 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Initialize the directory with a v143 persist file
-	err = loadV143CompatPersistFile(subTestDir)
+	// Initialize the directory with the old version persist file
+	err = loadCompatPersistFile(subTestDir, oldVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Simulate a crash after creating a temporary file
-	_, err = createTempFileFromPersistFile(subTestDir)
+	_, err = createTempFileFromPersistFile(subTestDir, oldPersistFile, oldHeader, oldVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify the persistence
-	err = loadAndVerifyPersistence(subTestDir)
+	err = loadAndVerifyPersistence(subTestDir, oldPersistFile, newPersistFile, oldHeader, newHeader, oldVersion, newVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
 }
 
 // loadAndVerifyPersistence loads the persistence and verifies that the
-// conversion from v1.4.3 to v1.5.0 updated the persistence as expected
-func loadAndVerifyPersistence(testDir string) error {
+// conversion updated the persistence as expected
+func loadAndVerifyPersistence(testDir, oldPersistFile, newPersistFile string, oldHeader, newHeader, oldVersion, newVersion types.Specifier) error {
 	// Verify that loading the older persist file works
-	aop, reader, err := persist.NewAppendOnlyPersist(testDir, blacklistPersistFile, blacklistMetadataHeader, metadataVersionV143)
+	aop, reader, err := persist.NewAppendOnlyPersist(testDir, oldPersistFile, oldHeader, oldVersion)
 	if err != nil {
-		return errors.AddContext(err, "unable to open v143 persist file")
+		return errors.AddContext(err, "unable to open old persist file")
 	}
 
-	// Grab the merkleroots that were persisted
-	merkleroots, err := unmarshalObjects(reader)
+	// Grab the old persistence
+	oldPersistence, err := unmarshalObjects(reader)
 	if err != nil {
-		return errors.AddContext(err, "unable to unmarshal merkleroots")
+		return errors.AddContext(err, "unable to unmarshal old persistence")
 	}
-	if len(merkleroots) == 0 {
-		return errors.New("no merkleroots in old version's persist file")
+	if len(oldPersistence) == 0 {
+		return errors.New("no data in old version's persist file")
 	}
 
 	// Close the original AOP
 	err = aop.Close()
 	if err != nil {
-		return errors.AddContext(err, "unable to close v1.4.3 aop")
+		return errors.AddContext(err, "unable to close old aop")
 	}
 
-	// Call convertPersistVersionFromv143Tov150, can't call New as that will go to
-	// the latest version of the persistence
-	err = convertPersistVersionFromv143Tov150(testDir)
+	// Convert the persistence based on the old version
+	switch oldVersion {
+	case metadataVersionV143:
+		err = convertPersistVersionFromv143Tov150(testDir)
+	case persist.MetadataVersionv150:
+		err = convertPersistVersionFromv150ToBlocklist(testDir)
+	default:
+		err = errors.New("invalid version")
+	}
 	if err != nil {
-		return errors.AddContext(err, "unable to convert persistense")
+		return errors.AddContext(err, "unable to convert persistence")
 	}
 
-	// Load the v1.5.0 persistence
-	aop, reader, err = persist.NewAppendOnlyPersist(testDir, blacklistPersistFile, blacklistMetadataHeader, metadataVersion)
+	// Load the new persistence
+	aop, reader, err = persist.NewAppendOnlyPersist(testDir, newPersistFile, newHeader, newVersion)
 	if err != nil {
-		return errors.AddContext(err, "unable to open v1.5.0 persistence")
+		return errors.AddContext(err, "unable to open new persistence")
 	}
 	defer aop.Close()
 
-	// Grab the hashes that were persisted
-	hashes, err := unmarshalObjects(reader)
+	// Grab the new persistence
+	newPersistence, err := unmarshalObjects(reader)
 	if err != nil {
-		return errors.AddContext(err, "unable to unmarshal hashes")
+		return errors.AddContext(err, "unable to unmarshal new persistence")
 	}
-	if len(hashes) == 0 {
-		return errors.New("no hashes in new version's persist file")
+	if len(newPersistence) == 0 {
+		return errors.New("no data in new version's persist file")
 	}
 
-	// Verify that the original merkleroots are now the hashes in the blocklist
-	if len(merkleroots) != len(hashes) {
-		return fmt.Errorf("Expected %v hashes but got %v", len(merkleroots), len(hashes))
+	// Verify that the original persistence was properly updated
+	if len(oldPersistence) != len(newPersistence) {
+		return fmt.Errorf("Expected %v hashes but got %v", len(newPersistence), len(oldPersistence))
 	}
-	for mr := range merkleroots {
-		mrHash := crypto.HashObject(mr)
-		if _, ok := hashes[mrHash]; !ok {
-			return fmt.Errorf("Original MerkleRoots: %v \nLoaded Hashes: %v \n MerkleRoot hash not found in list of hashes", merkleroots, hashes)
+	for p := range oldPersistence {
+		var hash crypto.Hash
+		switch oldVersion {
+		case metadataVersionV143:
+			hash = crypto.HashObject(p)
+		case persist.MetadataVersionv150:
+			hash = p
+		default:
+			return errors.New("invalid version")
+		}
+		if _, ok := newPersistence[hash]; !ok {
+			return fmt.Errorf("Original persistence: %v \nLoaded persistence: %v \n Persist hash not found in list of hashes", oldPersistence, newPersistence)
 		}
 	}
 	return nil
+}
+
+// loadCompatPersistFile loads the persist file for the supplied version into
+// the testDir
+func loadCompatPersistFile(testDir string, version types.Specifier) error {
+	switch version {
+	case metadataVersionV143:
+		return loadV143CompatPersistFile(testDir)
+	case persist.MetadataVersionv150:
+		return loadV150CompatPersistFile(testDir)
+	default:
+	}
+	return errors.New("invalid error")
 }
 
 // loadV143CompatPersistFile loads the v1.4.3 persist file into the testDir

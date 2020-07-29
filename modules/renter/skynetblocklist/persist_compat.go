@@ -22,6 +22,8 @@ const (
 var (
 	blacklistMetadataHeader = types.NewSpecifier("SkynetBlacklist\n")
 	metadataVersionV143     = types.NewSpecifier("v1.4.3\n")
+
+	// NOTE: There is a MetadataVersionV150 in the persist package
 )
 
 func tempPersistFileName(persistFileName string) string {
@@ -40,7 +42,7 @@ func convertPersistVersionFromv143Tov150(persistDir string) error {
 	tempFilePath := filepath.Join(persistDir, tempPersistFileName(blacklistPersistFile))
 
 	// Create a temporary file from v1.4.3 persist file
-	readerv143, err := createTempFileFromPersistFile(persistDir)
+	readerv143, err := createTempFileFromPersistFile(persistDir, blacklistPersistFile, blacklistMetadataHeader, metadataVersionV143)
 	if err != nil {
 		return errors.AddContext(err, "unable to create temp file")
 	}
@@ -68,7 +70,7 @@ func convertPersistVersionFromv143Tov150(persistDir string) error {
 	}
 
 	// Initialize new v1.5.0 persistence
-	aopV150, _, err := persist.NewAppendOnlyPersist(persistDir, blacklistPersistFile, blacklistMetadataHeader, metadataVersion)
+	aopV150, _, err := persist.NewAppendOnlyPersist(persistDir, blacklistPersistFile, blacklistMetadataHeader, persist.MetadataVersionv150)
 	if err != nil {
 		return errors.AddContext(err, "unable to initialize v1.5.0 persist file")
 	}
@@ -89,18 +91,66 @@ func convertPersistVersionFromv143Tov150(persistDir string) error {
 	return nil
 }
 
+// convertPersistVersionFromv150ToBlocklist handles the compatibility code for
+// upgrading the persistence from v1.5.0 to blocklist. The change in persistence is
+// in the name of the header and the version.
+func convertPersistVersionFromv150ToBlocklist(persistDir string) error {
+	// Identify the filepath for the persist file and the temp persist file that
+	// will be created during the conversion of the persistence from
+	// v1.5.0 to blocklist
+	persistFilePath := filepath.Join(persistDir, blacklistPersistFile)
+	tempFilePath := filepath.Join(persistDir, tempPersistFileName(blacklistPersistFile))
+
+	// Create a temporary file from v1.5.0 persist file
+	readerv150, err := createTempFileFromPersistFile(persistDir, blacklistPersistFile, blacklistMetadataHeader, persist.MetadataVersionv150)
+	if err != nil {
+		return errors.AddContext(err, "unable to create temp file")
+	}
+
+	// Delete the v1.5.0 persist file
+	err = os.Remove(persistFilePath)
+	if err != nil && !os.IsNotExist(err) {
+		return errors.AddContext(err, "unable to remove v1.5.0 persist file from disk")
+	}
+
+	// Initialize new blocklist persistence
+	aopBlocklist, _, err := persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
+	if err != nil {
+		return errors.AddContext(err, "unable to initialize blocklist persist file")
+	}
+	defer aopBlocklist.Close()
+
+	// Write the persist data to the blocklist persist file
+	data, err := ioutil.ReadAll(readerv150)
+	if err != nil {
+		return errors.AddContext(err, "unable to read data from v150 reader")
+	}
+	_, err = aopBlocklist.Write(data)
+	if err != nil {
+		return errors.AddContext(err, "unable to write to blocklist persist file")
+	}
+
+	// Delete the temporary file
+	err = os.Remove(tempFilePath)
+	if err != nil {
+		return errors.AddContext(err, "unable to remove temp file from disk")
+	}
+
+	return nil
+}
+
 // createTempFileFromPersistFile copies the data from the persist file into
 // a temporary file and returns a reader for the data. This function checks for
 // the existence of a temp file first and will return a reader for the temporary
 // file if the temporary file contains a valid checksum.
-func createTempFileFromPersistFile(persistDir string) (_ io.Reader, err error) {
+func createTempFileFromPersistFile(persistDir, fileName string, header, version types.Specifier) (_ io.Reader, err error) {
 	// Try and load the temporary file first. This is done first because an
 	// unclean shutdown could result in a valid temporary file existing but no
 	// persist file existing. In this case we do not want a call to
 	// NewAppendOnlyPersist to create a new persist file resulting in a loss of
 	// the data in the temporary file
-	tempFilePath := filepath.Join(persistDir, tempPersistFileName(blacklistPersistFile))
-	reader, err := loadTempFile(persistDir)
+	tempFilePath := filepath.Join(persistDir, tempPersistFileName(fileName))
+	reader, err := loadTempFile(tempFilePath)
 	if err == nil {
 		// Temporary file is valid, return the reader
 		return reader, nil
@@ -113,21 +163,21 @@ func createTempFileFromPersistFile(persistDir string) (_ io.Reader, err error) {
 		return nil, err
 	}
 
-	// Open the v1.4.3 persist file
-	aop, reader, err := persist.NewAppendOnlyPersist(persistDir, blacklistPersistFile, blacklistMetadataHeader, metadataVersionV143)
+	// Open the persist file
+	aop, reader, err := persist.NewAppendOnlyPersist(persistDir, fileName, header, version)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to load v1.4.3 persistence")
+		return nil, errors.AddContext(err, "unable to load persistence")
 	}
 	defer aop.Close()
 
 	// Read the persist file
-	v143Data, err := ioutil.ReadAll(reader)
+	data, err := ioutil.ReadAll(reader)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to read v1.4.3 persist file")
+		return nil, errors.AddContext(err, "unable to read persist file")
 	}
 
 	// Create the checksum for the persist file
-	checksum := crypto.HashBytes(v143Data)
+	checksum := crypto.HashBytes(data)
 
 	// Create the temporary file
 	f, err := os.Create(tempFilePath)
@@ -141,15 +191,15 @@ func createTempFileFromPersistFile(persistDir string) (_ io.Reader, err error) {
 	// Write the data to the temp file, leaving space for the checksum at the
 	// beginning of the file
 	offset := int64(len(checksum))
-	_, err = f.WriteAt(v143Data, offset)
+	_, err = f.WriteAt(data, offset)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to write v1.4.3 data to temp file")
+		return nil, errors.AddContext(err, "unable to write persist data to temp file")
 	}
 
 	// Write the checksum to the beginning of the file
 	_, err = f.WriteAt(checksum[:], 0)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to write v1.4.3 checksum to temp file")
+		return nil, errors.AddContext(err, "unable to write persist checksum to temp file")
 	}
 
 	// Sync writes
@@ -159,14 +209,13 @@ func createTempFileFromPersistFile(persistDir string) (_ io.Reader, err error) {
 	}
 
 	// Since the reader has been read, create and return a new reader.
-	return bytes.NewReader(v143Data), nil
+	return bytes.NewReader(data), nil
 }
 
 // loadTempFile will load a temporary file and verifies the checksum that was
 // prefixed. If the checksum is valid a reader will be returned.
-func loadTempFile(persistDir string) (_ io.Reader, err error) {
+func loadTempFile(tempFilePath string) (_ io.Reader, err error) {
 	// Open the temporary file
-	tempFilePath := filepath.Join(persistDir, tempPersistFileName(blacklistPersistFile))
 	f, err := os.Open(tempFilePath)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to open temp file")
