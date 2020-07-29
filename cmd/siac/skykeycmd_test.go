@@ -104,10 +104,25 @@ func testDeleteKey(t *testing.T, c client.Client) {
 		t.Fatal(err)
 	}
 
+	// Get the Key
+	sk, err := c.SkykeyGetByName(keyName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sk.Name != keyName {
+		t.Fatalf("Expected SkyKey name %v but got %v", keyName, sk.Name)
+	}
+
 	// Delete key by name
 	err = skykeyDelete(c, keyName, "")
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Try and get the key again
+	_, err = c.SkykeyGetByName(keyName)
+	if err == nil || !strings.Contains(err.Error(), skykey.ErrNoSkykeysWithThatName.Error()) {
+		t.Fatalf("Expected Error to contain %v and got %v", skykey.ErrNoSkykeysWithThatName, err)
 	}
 
 	// Create key again
@@ -117,7 +132,7 @@ func testDeleteKey(t *testing.T, c client.Client) {
 	}
 
 	// Get ID
-	sk, err := c.SkykeyGetByName(keyName)
+	sk, err = c.SkykeyGetByName(keyName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,6 +141,12 @@ func testDeleteKey(t *testing.T, c client.Client) {
 	err = skykeyDelete(c, "", sk.ID().ToString())
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Try and get the key again
+	_, err = c.SkykeyGetByName(keyName)
+	if err == nil || !strings.Contains(err.Error(), skykey.ErrNoSkykeysWithThatName.Error()) {
+		t.Fatalf("Expected Error to contain %v and got %v", skykey.ErrNoSkykeysWithThatName, err)
 	}
 }
 

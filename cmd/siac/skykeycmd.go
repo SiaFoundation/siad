@@ -154,7 +154,7 @@ func skykeyDelete(c client.Client, name, id string) error {
 		var skykeyID skykey.SkykeyID
 		err = skykeyID.FromString(id)
 		if err != nil {
-			return errors.AddContext(err, "Could not decode skykey ID")
+			return errors.AddContext(err, "could not decode skykey ID")
 		}
 		err = c.SkykeyDeleteByIDPost(skykeyID)
 	}
@@ -272,7 +272,7 @@ func validateNameAndIDUsage(name, id string) error {
 		return errors.New("Must use either the --name or --id flag")
 	}
 	if name != "" && id != "" {
-		return errors.New("Can only one flag: --name or --id flag")
+		return errors.New("Can only use one flag: --name or --id flag")
 	}
 	return nil
 }
