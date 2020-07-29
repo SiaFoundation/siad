@@ -356,7 +356,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			for _, f := range metadata.Subfiles {
 				if modules.EnsurePrefix(f.Filename, "/") == metadata.DefaultPath {
 					w.Header().Set("Location", skylink.String()+metadata.DefaultPath)
-					w.WriteHeader(http.StatusSeeOther)
+					w.WriteHeader(http.StatusTemporaryRedirect)
 					return
 				}
 			}
