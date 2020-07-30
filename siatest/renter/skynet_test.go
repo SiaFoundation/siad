@@ -667,7 +667,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 	// add a nested file
 	data = []byte("File2Contents")
-	subfile = siatest.AddMultipartFile(writer, data, "files[]", "nested/file2", 0640, &offset)
+	subfile = siatest.AddMultipartFile(writer, data, "files[]", "nested/file2.html", 0640, &offset)
 	subfiles[subfile.Filename] = subfile
 
 	err = writer.Close()
@@ -716,7 +716,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Download the second file
-	nestedfile, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/%s", skylink, "nested/file2"))
+	nestedfile, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/%s", skylink, "nested/file2.html"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1596,6 +1596,12 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
+	// Verify that removing the same skylink twice is a noop
+	err = r.SkynetBlacklistPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Verify that the skylink is removed from the Blacklist
 	sbg, err = r.SkynetBlacklistGet()
 	if err != nil {
@@ -1666,6 +1672,13 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Verify that adding the same skylink twice is a noop
+	err = r.SkynetBlacklistPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	sbg, err = r.SkynetBlacklistGet()
 	if err != nil {
 		t.Fatal(err)
@@ -2259,7 +2272,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 	fc1 := "File1Contents"
 	fc2 := "File2Contents"
-	indexJs := "index.js"
+	aboutHtml := "about.html"
 	invalidPath := "invalid.js"
 
 	// TEST: Contains index.html but doesn't specify a default path (not disabled).
@@ -2295,18 +2308,18 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 	ct := header.Get("Content-Type")
 	if ct != "application/zip" {
-		t.Fatal("expecteed zip archive")
+		t.Fatal("expected zip archive")
 	}
 
 	// TEST: Contains index.html but specifies a different default path.
-	// Contains index.js and specifies "index.js" as default path.
-	// It should return the content of index.js.
-	filename = "index.html_index.js"
+	// Contains about.html and specifies "about.html" as default path.
+	// It should return the content of about.html.
+	filename = "index.html_about.html"
 	files = []siatest.TestFile{
 		{Name: "index.html", Data: []byte(fc1)},
-		{Name: "index.js", Data: []byte(fc2)},
+		{Name: "about.html", Data: []byte(fc2)},
 	}
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, indexJs, false, false)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, aboutHtml, false, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -2331,14 +2344,14 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// TEST: Does not contain "index.html".
-	// Contains index.js and specifies "index.js" as default path.
-	// It should return the content of index.js.
-	filename = "index.js_index.js"
+	// Contains about.html and specifies "about.html" as default path.
+	// It should return the content of about.html.
+	filename = "index.js_about.html"
 	files = []siatest.TestFile{
 		{Name: "index.js", Data: []byte(fc1)},
 		{Name: "about.html", Data: []byte(fc2)},
 	}
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, indexJs, false, false)
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, aboutHtml, false, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -2346,8 +2359,8 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(content, files[0].Data) {
-		t.Fatalf("Expected to get content '%s', instead got '%s'", files[0].Data, string(content))
+	if !bytes.Equal(content, files[1].Data) {
+		t.Fatalf("Expected to get content '%s', instead got '%s'", files[1].Data, string(content))
 	}
 
 	// TEST: Does not contain index.html and specifies an INVALID default path.
@@ -2371,7 +2384,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 	ct = header.Get("Content-Type")
 	if ct != "application/zip" {
-		t.Fatal("expecteed zip archive")
+		t.Fatal("expected zip archive")
 	}
 
 	// TEST: Does not contain "index.html".
@@ -2391,23 +2404,20 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 	ct = header.Get("Content-Type")
 	if ct != "application/zip" {
-		t.Fatal("expecteed zip archive")
+		t.Fatal("expected zip archive")
 	}
 
 	// TEST: Does not contain "index.html".
 	// Contains a single file and doesn't specify a default path (not disabled).
-	// It should return the content of index.js.
+	// It should fail with 'format required'.
 	filename = "index.js"
 	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "", false, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
 	content, _, err = r.SkynetSkylinkGet(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(content, files[0].Data) {
-		t.Fatalf("Expected to get content '%s', instead got '%s'", files[0].Data, string(content))
+	if err == nil || !strings.Contains(err.Error(), "please specify a format") {
+		t.Fatalf("Expected error 'please specify a format', got %+v\n", err)
 	}
 }
 
@@ -2429,6 +2439,11 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		{Name: "index.html", Data: fc1},
 		{Name: "about.html", Data: fc2},
 	}
+	multiHasIndexIndexJs := []siatest.TestFile{
+		{Name: "index.html", Data: fc1},
+		{Name: "index.js", Data: fc1},
+		{Name: "about.html", Data: fc2},
+	}
 	multiNoIndex := []siatest.TestFile{
 		{Name: "hello.html", Data: fc1},
 		{Name: "about.html", Data: fc2},
@@ -2438,6 +2453,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 	bad := "/bad.html"
 	index := "/index.html"
 	hello := "/hello.html"
+	nonHTML := "/index.js"
 	dirAbout := "/dir/about.html"
 	tests := []struct {
 		name                   string
@@ -2547,6 +2563,16 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 			expectedZipArchive: true,
 		},
 		{
+			// Multi dir with index, non-html default path.
+			// Error on download: specify a format.
+			name:                   "multi_idx_non_html",
+			files:                  multiHasIndexIndexJs,
+			defaultPath:            nonHTML,
+			disableDefaultPath:     false,
+			expectedContent:        multiHasIndexIndexJs[1].Data,
+			expectedErrStrDownload: "please specify a format",
+		},
+		{
 			// Multi dir with index, bad default path.
 			// Error on upload: invalid default path.
 			name:                 "multi_idx_bad",
@@ -2630,7 +2656,6 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 				t.Fatalf("Expected error '%s', got '%s'", tt.expectedErrStrDownload, err.Error())
 			}
 			if tt.expectedErrStrDownload == "" && !bytes.Equal(content, tt.expectedContent) {
-				t.Logf(err.Error())
 				t.Fatalf("Content mismatch! Expected %d bytes, got %d bytes.", len(tt.expectedContent), len(content))
 			}
 		})

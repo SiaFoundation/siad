@@ -266,6 +266,11 @@ func (w *worker) managedDiscardAsyncJobs(err error) {
 // meaning that only one of these tasks can be performed at a time.  Async work
 // can be performed with high parallelism.
 func (w *worker) threadedWorkLoop() {
+	// Perform a disrupt for testing.
+	if w.renter.deps.Disrupt("DisableWorkerLoop") {
+		return
+	}
+
 	// Upon shutdown, release all jobs.
 	defer w.managedKillUploading()
 	defer w.managedKillDownloading()

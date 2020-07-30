@@ -76,14 +76,13 @@ var (
 	skykeyType            string // Type used to create a new Skykey.
 
 	// Skynet Flags
-	skynetBlacklistRemove bool   // Remove a skylink from the Skynet Blacklist.
-	skynetDownloadPortal  string // Portal to use when trying to download a skylink.
-	skynetLsRecursive     bool   // List files of folder recursively.
-	skynetLsRoot          bool   // Use root as the base instead of the Skynet folder.
-	skynetUnpinRoot       bool   // Use root as the base instead of the Skynet folder.
-	skynetUploadDryRun    bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
-	skynetUploadRoot      bool   // Use root as the base instead of the Skynet folder.
-	skynetUploadSilent    bool   // Don't report progress while uploading
+	skynetDownloadPortal string // Portal to use when trying to download a skylink.
+	skynetLsRecursive    bool   // List files of folder recursively.
+	skynetLsRoot         bool   // Use root as the base instead of the Skynet folder.
+	skynetUnpinRoot      bool   // Use root as the base instead of the Skynet folder.
+	skynetUploadDryRun   bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
+	skynetUploadRoot     bool   // Use root as the base instead of the Skynet folder.
+	skynetUploadSilent   bool   // Don't report progress while uploading
 
 	// Utils Flags
 	dictionaryLanguage      string // dictionary for seed utils
@@ -384,7 +383,7 @@ func initCmds() *cobra.Command {
 	skynetDownloadCmd.Flags().StringVar(&skynetDownloadPortal, "portal", "", "Use a Skynet portal to complete the download")
 	skynetLsCmd.Flags().BoolVarP(&skynetLsRecursive, "recursive", "R", false, "Recursively list skyfiles and folders")
 	skynetLsCmd.Flags().BoolVar(&skynetLsRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
-	skynetBlacklistCmd.Flags().BoolVar(&skynetBlacklistRemove, "remove", false, "Remove the skylink from the blacklist")
+	skynetBlacklistCmd.AddCommand(skynetBlacklistAddCmd, skynetBlacklistRemoveCmd)
 
 	root.AddCommand(skykeyCmd)
 	skykeyCmd.AddCommand(skykeyCreateCmd, skykeyAddCmd, skykeyGetCmd, skykeyGetIDCmd, skykeyListCmd)
