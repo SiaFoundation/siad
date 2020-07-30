@@ -1148,8 +1148,15 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 			return
 		}
 
+		// Get the index of the segment for which to build the proof.
+		segmentIndex, err := h.cs.StorageProofSegment(so.id())
+		if err != nil {
+			h.log.Debugln("Host got an error when fetching a storage proof segment:", err)
+			return
+		}
+
 		// Build StorageProof.
-		sp, ok := h.managedBuildStorageProof(so)
+		sp, ok := h.managedBuildStorageProof(so, segmentIndex)
 		if !ok {
 			return // errors are logged within method
 		}
@@ -1226,19 +1233,12 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 
 // managedBuildStorageProof builds a storage proof for a given storageObligation
 // for the host to submit.
-func (h *Host) managedBuildStorageProof(so storageObligation) (types.StorageProof, bool) {
+func (h *Host) managedBuildStorageProof(so storageObligation, segmentIndex uint64) (types.StorageProof, bool) {
 	// Handle empty contract edgge case.
 	if len(so.SectorRoots) == 0 {
 		return types.StorageProof{
 			ParentID: so.id(),
 		}, true
-	}
-	// Get the index of the segment, and the index of the sector containing
-	// the segment.
-	segmentIndex, err := h.cs.StorageProofSegment(so.id())
-	if err != nil {
-		h.log.Debugln("Host got an error when fetching a storage proof segment:", err)
-		return types.StorageProof{}, false
 	}
 	sectorIndex := segmentIndex / (modules.SectorSize / crypto.SegmentSize)
 	// Pull the corresponding sector into memory.

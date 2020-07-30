@@ -349,3 +349,96 @@ func TestManagedModifyUnlockedStorageObligation(t *testing.T) {
 		t.Fatal("shouldn't be able to modify unlocked so")
 	}
 }
+
+// TestManagedBuildStorageProof is a unit test for the host's
+// managedBuildStorageProof method.
+func TestManagedBuildStorageProof(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	ht, err := newHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ht.Close()
+
+	// Create a storage obligation without data.
+	so, err := ht.newTesterStorageObligation()
+	if err != nil {
+		t.Fatal(err)
+	}
+	proofDeadline := so.proofDeadline()
+	validPayouts, missedPayouts := so.payouts()
+	so.RevisionTransactionSet = []types.Transaction{{
+		FileContractRevisions: []types.FileContractRevision{{
+			ParentID:          so.id(),
+			UnlockConditions:  types.UnlockConditions{},
+			NewRevisionNumber: 1,
+
+			NewFileSize:           0,
+			NewFileMerkleRoot:     crypto.Hash{},
+			NewWindowStart:        so.expiration(),
+			NewWindowEnd:          proofDeadline,
+			NewValidProofOutputs:  validPayouts,
+			NewMissedProofOutputs: missedPayouts,
+			NewUnlockHash:         types.UnlockConditions{}.UnlockHash(),
+		}},
+	}}
+
+	// Insert the SO
+	ht.host.managedLockStorageObligation(so.id())
+	err = ht.host.managedAddStorageObligation(so, false)
+	ht.host.managedUnlockStorageObligation(so.id())
+
+	// Build a proof for the SO.
+	sp, ok := ht.host.managedBuildStorageProof(so, 0)
+	if !ok {
+		t.Fatal("failed to build proof")
+	}
+
+	// Check the proof.
+	if len(sp.HashSet) != 0 {
+		t.Fatal("sp should have empty hashset")
+	}
+	var blank [crypto.SegmentSize]byte
+	if sp.Segment != blank {
+		t.Fatal("sp should have no segment")
+	}
+	if sp.ParentID != so.id() {
+		t.Fatal("parentID wasn't set correctly")
+	}
+
+	// Update the so to have a sector.
+	sectorRoot, sectorData := randSector()
+	so.SectorRoots = []crypto.Hash{sectorRoot}
+
+	sectorsGained := map[crypto.Hash][]byte{
+		sectorRoot: sectorData,
+	}
+	ht.host.managedLockStorageObligation(so.id())
+	err = ht.host.managedModifyStorageObligation(so, nil, sectorsGained)
+	ht.host.managedUnlockStorageObligation(so.id())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Build another proof.
+	segmentIndex := uint64(0)
+	sp, ok = ht.host.managedBuildStorageProof(so, segmentIndex)
+	if !ok {
+		t.Fatal("failed to build proof")
+	}
+
+	// Verify the proof.
+	verified := crypto.VerifySegment(
+		sp.Segment[:crypto.SegmentSize],
+		sp.HashSet,
+		crypto.CalculateLeaves(uint64(len(sectorData))),
+		segmentIndex,
+		sectorRoot,
+	)
+	if !verified {
+		t.Fatal("failed to verify proof")
+	}
+}
