@@ -55,6 +55,7 @@ func testDownloadSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// upload a single file using a stream
+	testName := "SingleFileRegular"
 	size := fastrand.Uint64n(100) + 100
 	data := fastrand.Bytes(int(size))
 	skylink, sup, _, err := r.UploadNewSkyfileWithDataBlocking("SingleFileRegular", data, false)
@@ -67,15 +68,15 @@ func testDownloadSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 	// note: these switch from un-cached to cached downloads partway through. By
 	// passing verification on all pieces of the test, we are confirming that
 	// the caching is correc.t
-	err = verifyDownloadRaw(t, r, skylink, data, sup.FileMetadata)
+	err = verifyDownloadRaw(t, r, skylink, data, sup.FileMetadata, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = verifyDownloadDirectory(t, r, skylink, data, sup.FileMetadata)
+	err = verifyDownloadDirectory(t, r, skylink, data, sup.FileMetadata, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = verifyDownloadAsArchive(t, r, skylink, fileMap{"SingleFileRegular": data}, sup.FileMetadata)
+	err = verifyDownloadAsArchive(t, r, skylink, fileMap{"SingleFileRegular": data}, sup.FileMetadata, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,17 +87,19 @@ func testDownloadSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 func testDownloadSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
+	// TEST: non-html default path - expect an error unless format provided
 	// upload a single file using multi-part upload
+	testName := "SingleFileMultiPart"
 	data := []byte("contents_file1.png")
 	files := []siatest.TestFile{{Name: "file1.png", Data: data}}
-	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking("SingleFileMultiPart", files, "", false, false)
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking("SingleFileMultiPartPNG", files, "", false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// construct the metadata object we expect to be returned
 	expectedMetadata := modules.SkyfileMetadata{
-		Filename: "SingleFileMultiPart",
+		Filename: "SingleFileMultiPartPNG",
 		Subfiles: map[string]modules.SkyfileSubfileMetadata{
 			"file1.png": {
 				FileMode:    os.FileMode(0644),
@@ -108,11 +111,55 @@ func testDownloadSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 		DefaultPath: "/file1.png",
 	}
 	// verify downloads
-	err = verifyDownloadRaw(t, r, skylink, data, expectedMetadata)
+	err = verifyDownloadRaw(t, r, skylink, data, expectedMetadata, testName)
+	if err == nil || !strings.Contains(err.Error(), "please specify a format") {
+		t.Fatalf("Expected error 'please specify a format', got %+v\n", err)
+	}
+	err = verifyDownloadAsArchive(t, r, skylink, fileMapFromFiles(files), expectedMetadata, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = verifyDownloadAsArchive(t, r, skylink, fileMapFromFiles(files), expectedMetadata)
+
+	// TEST: html default path - expect success
+	data = []byte("contents_file1.html")
+	files = []siatest.TestFile{{Name: "file1.html", Data: data}}
+	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking("SingleFileMultiPartHTML", files, "", false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// we expect a subset of the metadata to be returned when we get the
+	// default path file
+	expectedMetadata = modules.SkyfileMetadata{
+		Filename: "/file1.html",
+		Subfiles: map[string]modules.SkyfileSubfileMetadata{
+			"file1.html": {
+				FileMode:    os.FileMode(0644),
+				Filename:    "file1.html",
+				ContentType: "application/octet-stream",
+				Offset:      0,
+				Len:         uint64(len(data)),
+			}},
+	}
+	// verify downloads
+	err = verifyDownloadRaw(t, r, skylink, data, expectedMetadata, testName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// we expect different (the full) metadata returned when we download a zip
+	expectedMetadata = modules.SkyfileMetadata{
+		Filename: "SingleFileMultiPartHTML",
+		Subfiles: map[string]modules.SkyfileSubfileMetadata{
+			"file1.html": {
+				FileMode:    os.FileMode(0644),
+				Filename:    "file1.html",
+				ContentType: "application/octet-stream",
+				Offset:      0,
+				Len:         uint64(len(data)),
+			}},
+		DefaultPath: "/file1.html",
+	}
+	err = verifyDownloadAsArchive(t, r, skylink, fileMapFromFiles(files), expectedMetadata, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +192,19 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// construct the metadata object we expect to be returned
-	expectedMetadata := modules.SkyfileMetadata{
+	expectedMetadataFile := modules.SkyfileMetadata{
+		Filename: "/index.html",
+		Subfiles: map[string]modules.SkyfileSubfileMetadata{
+			"index.html": {
+				FileMode:    os.FileMode(0644),
+				Filename:    "index.html",
+				ContentType: "application/octet-stream",
+				Offset:      0,
+				Len:         uint64(len(files[0].Data)),
+			}},
+		DisableDefaultPath: false,
+	}
+	expectedMetadataDir := modules.SkyfileMetadata{
 		Filename: "DirectoryBasic",
 		Subfiles: map[string]modules.SkyfileSubfileMetadata{
 			"index.html": {
@@ -166,16 +225,18 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 		DisableDefaultPath: false,
 	}
 
+	testName := "BasicDirIndexAboutDefaultIndex"
+
 	// verify downloads
-	err = verifyDownloadRaw(t, r, skylink, files[0].Data, expectedMetadata)
+	err = verifyDownloadRaw(t, r, skylink, files[0].Data, expectedMetadataFile, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = verifyDownloadDirectory(t, r, skylink, append(files[0].Data, files[1].Data...), expectedMetadata)
+	err = verifyDownloadDirectory(t, r, skylink, append(files[0].Data, files[1].Data...), expectedMetadataDir, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = verifyDownloadAsArchive(t, r, skylink, fileMapFromFiles(files), expectedMetadata)
+	err = verifyDownloadAsArchive(t, r, skylink, fileMapFromFiles(files), expectedMetadataDir, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +248,18 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// construct the metadata object we expect to be returned
-	expectedMetadata = modules.SkyfileMetadata{
+	expectedMetadataFile = modules.SkyfileMetadata{
+		Filename: "/about.html",
+		Subfiles: map[string]modules.SkyfileSubfileMetadata{
+			"about.html": {
+				FileMode:    os.FileMode(0644),
+				Filename:    "about.html",
+				ContentType: "application/octet-stream",
+				Offset:      0,
+				Len:         uint64(len(files[1].Data)),
+			}},
+	}
+	expectedMetadataDir = modules.SkyfileMetadata{
 		Filename: "DirectoryBasic",
 		Subfiles: map[string]modules.SkyfileSubfileMetadata{
 			"index.html": {
@@ -204,15 +276,18 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 				Offset:      uint64(len(files[0].Data)),
 				Len:         uint64(len(files[1].Data)),
 			}},
-		DefaultPath: "/about.html",
+		DefaultPath:        "/about.html",
+		DisableDefaultPath: false,
 	}
 
+	testName = "BasicDirAboutDefaultEmpty"
+
 	// verify downloads
-	err = verifyDownloadRaw(t, r, skylink, files[1].Data, expectedMetadata)
+	err = verifyDownloadRaw(t, r, skylink, files[1].Data, expectedMetadataFile, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = verifyDownloadAsArchive(t, r, skylink, fileMapFromFiles(files), expectedMetadata)
+	err = verifyDownloadAsArchive(t, r, skylink, fileMapFromFiles(files), expectedMetadataDir, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,8 +298,10 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
+	testName = "BasicDirIndexAboutDefaultDisabled"
+
 	// construct the metadata object we expect to be returned
-	expectedMetadata = modules.SkyfileMetadata{
+	expectedMetadataDir = modules.SkyfileMetadata{
 		Filename: "DirectoryBasic",
 		Subfiles: map[string]modules.SkyfileSubfileMetadata{
 			"index.html": {
@@ -247,7 +324,7 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// verify downloads
-	err = verifyDownloadDirectory(t, r, skylink, append(files[0].Data, files[1].Data...), expectedMetadata)
+	err = verifyDownloadDirectory(t, r, skylink, append(files[0].Data, files[1].Data...), expectedMetadataDir, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +354,18 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// note that index.html is listed first but is uploaded as the last file
-	expectedMetadata := modules.SkyfileMetadata{
+	expectedMetadataFile := modules.SkyfileMetadata{
+		Filename: "/index.html",
+		Subfiles: map[string]modules.SkyfileSubfileMetadata{
+			"index.html": {
+				FileMode:    os.FileMode(0644),
+				Filename:    "index.html",
+				ContentType: "application/octet-stream",
+				Offset:      0,
+				Len:         uint64(len(files[3].Data)),
+			}},
+	}
+	expectedMetadataDir := modules.SkyfileMetadata{
 		Filename: "DirectoryNested",
 		Subfiles: map[string]modules.SkyfileSubfileMetadata{
 			"index.html": {
@@ -313,18 +401,20 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 		DisableDefaultPath: false,
 	}
 
+	testName := "NestedDirIndexDefaultPathIndex"
+
 	// verify downloads
-	err = verifyDownloadRaw(t, r, skylink, files[3].Data, expectedMetadata)
+	err = verifyDownloadRaw(t, r, skylink, files[3].Data, expectedMetadataFile, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = verifyDownloadAsArchive(t, r, skylink, fileMapFromFiles(files), expectedMetadata)
+	err = verifyDownloadAsArchive(t, r, skylink, fileMapFromFiles(files), expectedMetadataDir, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// verify downloading a subdirectory
-	expectedMetadata = modules.SkyfileMetadata{
+	expectedMetadataDir = modules.SkyfileMetadata{
 		Filename: "/assets/images",
 		Subfiles: map[string]modules.SkyfileSubfileMetadata{
 			"assets/images/file1.png": {
@@ -344,18 +434,18 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 		},
 	}
 
-	err = verifyDownloadDirectory(t, r, skylink+"/assets/images", append(files[0].Data, files[1].Data...), expectedMetadata)
+	testName = "NestedDirNoIndexDefaultPathEmpty"
+
+	err = verifyDownloadDirectory(t, r, skylink+"/assets/images", append(files[0].Data, files[1].Data...), expectedMetadataDir, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = verifyDownloadAsArchive(t, r, skylink+"/assets/images",
-		fileMapFromFiles(files[:2]), expectedMetadata)
+	err = verifyDownloadAsArchive(t, r, skylink+"/assets/images", fileMapFromFiles(files[:2]), expectedMetadataDir, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// verify downloading a nested file
-	err = verifyDownloadRaw(t, r, skylink+"/assets/index.html", files[2].Data, modules.SkyfileMetadata{
+	expectedMetadataFile = modules.SkyfileMetadata{
 		Filename: "/assets/index.html",
 		Subfiles: map[string]modules.SkyfileSubfileMetadata{
 			"assets/index.html": {
@@ -366,8 +456,12 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 				Len:         uint64(len(files[2].Data)),
 			},
 		},
-	},
-	)
+	}
+
+	testName = "NestedDirSingleDefaultPathEmpty"
+
+	// verify downloading a nested file
+	err = verifyDownloadRaw(t, r, skylink+"/assets/index.html", files[2].Data, expectedMetadataFile, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,40 +478,22 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	err = verifyDownloadRaw(t, r, skylink, files[2].Data, modules.SkyfileMetadata{
-		Filename: "DirectoryNested",
+	expectedMetadataFile = modules.SkyfileMetadata{
+		Filename: "/assets/index.html",
 		Subfiles: map[string]modules.SkyfileSubfileMetadata{
-			"index.html": {
-				FileMode:    os.FileMode(0644),
-				Filename:    "index.html",
-				ContentType: "application/octet-stream",
-				Offset:      uint64(len(files[0].Data) + len(files[1].Data) + len(files[2].Data)),
-				Len:         uint64(len(files[3].Data)),
-			},
-			"assets/images/file1.png": {
-				FileMode:    os.FileMode(0644),
-				Filename:    "assets/images/file1.png",
-				ContentType: "application/octet-stream",
-				Offset:      0,
-				Len:         uint64(len(files[0].Data)),
-			},
-			"assets/images/file2.png": {
-				FileMode:    os.FileMode(0644),
-				Filename:    "assets/images/file2.png",
-				ContentType: "application/octet-stream",
-				Offset:      uint64(len(files[0].Data)),
-				Len:         uint64(len(files[1].Data)),
-			},
 			"assets/index.html": {
 				FileMode:    os.FileMode(0644),
 				Filename:    "assets/index.html",
 				ContentType: "application/octet-stream",
-				Offset:      uint64(len(files[0].Data) + len(files[1].Data)),
+				Offset:      0,
 				Len:         uint64(len(files[2].Data)),
 			},
 		},
-		DefaultPath: "/assets/index.html",
-	})
+	}
+
+	testName = "NestedDirIndexAssetsIndexDefaultPathAssetsIndex"
+
+	err = verifyDownloadRaw(t, r, skylink, files[2].Data, expectedMetadataFile, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -522,17 +598,19 @@ func fileMapFromFiles(tfs []siatest.TestFile) fileMap {
 
 // verifyDownloadRaw is a helper function that downloads the content for the
 // given skylink and verifies the response data and response headers.
-func verifyDownloadRaw(t *testing.T, r *siatest.TestNode, skylink string, expectedData []byte, expectedMetadata modules.SkyfileMetadata) error {
+func verifyDownloadRaw(t *testing.T, r *siatest.TestNode, skylink string, expectedData []byte, expectedMetadata modules.SkyfileMetadata, testName string) error {
 	data, metadata, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		return err
 	}
 	if !bytes.Equal(data, expectedData) {
+		t.Log("Test:", testName)
 		t.Log("expected data: ", string(expectedData))
 		t.Log("actual   data: ", string(data))
 		return errors.New("Unexpected data")
 	}
 	if !reflect.DeepEqual(metadata, expectedMetadata) {
+		t.Log("Test:", testName)
 		t.Log("expected metadata: ", expectedMetadata)
 		t.Log("actual   metadata: ", metadata)
 		return errors.New("Unexpected metadata")
@@ -544,17 +622,19 @@ func verifyDownloadRaw(t *testing.T, r *siatest.TestNode, skylink string, expect
 // given skylink and verifies the response data and response headers. It will
 // download the file using the `concat` format to be able to compare the data
 // without it having to be an archive.
-func verifyDownloadDirectory(t *testing.T, r *siatest.TestNode, skylink string, expectedData []byte, expectedMetadata modules.SkyfileMetadata) error {
+func verifyDownloadDirectory(t *testing.T, r *siatest.TestNode, skylink string, expectedData []byte, expectedMetadata modules.SkyfileMetadata, testName string) error {
 	data, metadata, err := r.SkynetSkylinkConcatGet(skylink)
 	if err != nil {
 		return err
 	}
 	if !bytes.Equal(data, expectedData) {
+		t.Log("Test:", testName)
 		t.Log("expected data: ", expectedData)
 		t.Log("actual   data: ", data)
 		return errors.New("Unexpected data")
 	}
 	if !reflect.DeepEqual(metadata, expectedMetadata) {
+		t.Log("Test:", testName)
 		t.Log("expected metadata: ", expectedMetadata)
 		t.Log("actual   metadata: ", metadata)
 		return errors.New("Unexpected metadata")
@@ -566,7 +646,7 @@ func verifyDownloadDirectory(t *testing.T, r *siatest.TestNode, skylink string, 
 // the given skylink and verifies the response data and response headers. It
 // will download the file using all of the archive formats we support, verifying
 // the contents of the archive for every type.
-func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, expectedFiles fileMap, expectedMetadata modules.SkyfileMetadata) error {
+func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, expectedFiles fileMap, expectedMetadata modules.SkyfileMetadata, testName string) error {
 	// zip
 	header, reader, err := r.SkynetSkylinkZipReaderGet(skylink)
 	if err != nil {
@@ -582,6 +662,7 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		return err
 	}
 	if !reflect.DeepEqual(files, expectedFiles) {
+		t.Log("Test:", testName)
 		t.Log("expected:", expectedFiles)
 		t.Log("actual  :", files)
 		return errors.New("Unexpected files")
@@ -601,6 +682,7 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 	}
 
 	if !reflect.DeepEqual(md, expectedMetadata) {
+		t.Log("Test:", testName)
 		t.Log("expected:", expectedMetadata)
 		t.Log("actual  :", md)
 		return errors.New("Unexpected metadata")
@@ -620,6 +702,7 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		return err
 	}
 	if !reflect.DeepEqual(files, expectedFiles) {
+		t.Log("Test:", testName)
 		t.Log("expected:", expectedFiles)
 		t.Log("actual  :", files)
 		return errors.New("Unexpected files")
@@ -638,6 +721,7 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 	}
 
 	if !reflect.DeepEqual(md, expectedMetadata) {
+		t.Log("Test:", testName)
 		t.Log("expected:", expectedMetadata)
 		t.Log("actual  :", md)
 		return errors.New("Unexpected metadata")
@@ -678,6 +762,7 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 		}
 	}
 	if !reflect.DeepEqual(md, expectedMetadata) {
+		t.Log("Test:", testName)
 		t.Log("expected:", expectedMetadata)
 		t.Log("actual  :", md)
 		return errors.New("Unexpected metadata")
