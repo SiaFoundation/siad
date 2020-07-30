@@ -273,7 +273,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 		// Check if the chunk needs any work or if we can skip it.
 		if uuc.piecesCompleted < uuc.piecesNeeded {
 			// Add the chunk to the upload heap's repair map.
-			pushed, err := r.managedPushChunkForRepair(uuc, streamChunk)
+			pushed, err := r.managedPushChunkForRepair(uuc, chunkTypeStreamChunk)
 			if err != nil {
 				return nil, errors.AddContext(err, "unable to push chunk")
 			}

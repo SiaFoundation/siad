@@ -270,7 +270,7 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	corruptB := fastrand.Bytes(len(b))
 	// Try repairing the file with the corrupt data. This should fail.
 	if err := r.RenterUploadStreamRepairPost(bytes.NewReader(corruptB), remoteFile.SiaPath()); err == nil {
-		t.Fatal(err)
+		t.Fatal("Corrupt file repair should fail")
 	}
 	if err := r.WaitForDecreasingRedundancy(remoteFile, 0); err != nil {
 		t.Fatal("Redundancy isn't staying at 0", err)

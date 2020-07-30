@@ -217,7 +217,7 @@ func addChunksOfDifferentHealth(r *Renter, numChunks int, priority, fileRecently
 			onDisk:                 !remote,
 			availableChan:          make(chan struct{}),
 		}
-		pushed, err := r.managedPushChunkForRepair(chunk, localChunk)
+		pushed, err := r.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
 			return err
 		}
@@ -643,7 +643,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 			piecesNeeded:    1,
 			availableChan:   make(chan struct{}),
 		}
-		pushed, err := rt.renter.managedPushChunkForRepair(chunk, localChunk)
+		pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -721,7 +721,7 @@ func TestUploadHeapMaps(t *testing.T) {
 			availableChan:   make(chan struct{}),
 		}
 		// push chunk to heap
-		pushed, err := rt.renter.managedPushChunkForRepair(chunk, localChunk)
+		pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -767,7 +767,7 @@ func TestUploadHeapMaps(t *testing.T) {
 			t.Fatal("popped chunk not found in repairing map")
 		}
 		// Confirm the chunk cannot be pushed back onto the heap
-		pushed, err := rt.renter.managedPushChunkForRepair(chunk, localChunk)
+		pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -848,7 +848,7 @@ func TestChunkSwitchStuckStatus(t *testing.T) {
 		},
 	}
 	// push chunk to heap
-	pushed, err := rt.renter.managedPushChunkForRepair(chunk, localChunk)
+	pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -864,7 +864,7 @@ func TestChunkSwitchStuckStatus(t *testing.T) {
 	// Regression check 1: previously this second push call would succeed and
 	// the length of the heap would be 2
 	chunk.stuck = true
-	pushed, err = rt.renter.managedPushChunkForRepair(chunk, localChunk)
+	pushed, err = rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -920,7 +920,7 @@ func TestUploadHeapStreamPush(t *testing.T) {
 	// Define helper
 	pushAndVerify := func(chunk *unfinishedUploadChunk) {
 		// Adding chunk should be successful
-		pushed, err := rt.renter.managedPushChunkForRepair(chunk, streamChunk)
+		pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeStreamChunk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -953,7 +953,7 @@ func TestUploadHeapStreamPush(t *testing.T) {
 	pushAndVerify(chunk)
 
 	// Pushing again should fail
-	pushed, err := rt.renter.managedPushChunkForRepair(chunk, streamChunk)
+	pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeStreamChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -999,15 +999,15 @@ func TestUploadHeapStreamPush(t *testing.T) {
 	if sr != nil {
 		t.Fatal("expected chunk in repair map to have a nil sourceReader")
 	}
-
-	// Since no work is actually being done on the chunks we need to manage the
-	// cancelWG of the chunk in the uploadHeap to avoid NDFs
-	chunk.mu.Lock()
-	chunk.cancelWG.Add(1)
-	chunk.mu.Unlock()
-
+	/*
+		// Since no work is actually being done on the chunks we need to manage the
+		// cancelWG of the chunk in the uploadHeap to avoid NDFs
+		chunk.mu.Lock()
+		chunk.cancelWG.Add(1)
+		chunk.mu.Unlock()
+	*/
 	// Adding new chunk should be false but chunk should eventually appear in the heap
-	pushed, err = rt.renter.managedPushChunkForRepair(newChunk, streamChunk)
+	pushed, err = rt.renter.managedPushChunkForRepair(newChunk, chunkTypeStreamChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1015,13 +1015,15 @@ func TestUploadHeapStreamPush(t *testing.T) {
 		t.Error("push should not have added chunk")
 	}
 
-	// The newChunk should blocked in a go routine because of the current chunk's
-	// cancelWG. Mark the chunk as done to remove it from the repair map and
-	// complete the cancelWG so that the newChunk can be added.
-	rt.renter.uploadHeap.managedMarkRepairDone(chunk.id)
-	chunk.mu.Lock()
-	chunk.cancelWG.Done()
-	chunk.mu.Unlock()
+	/*
+		// The newChunk should blocked in a go routine because of the current chunk's
+		// cancelWG. Mark the chunk as done to remove it from the repair map and
+		// complete the cancelWG so that the newChunk can be added.
+		rt.renter.uploadHeap.managedMarkRepairDone(chunk.id)
+		chunk.mu.Lock()
+		chunk.cancelWG.Done()
+		chunk.mu.Unlock()
+	*/
 
 	// Since the adding happens in a go routine, there might be a slight delay.
 	// Check for the new chunk in the heap

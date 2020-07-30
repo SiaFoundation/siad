@@ -42,14 +42,14 @@ const (
 type chunkType bool
 
 var (
-	// streamChunk indicates that a chunk is being uploaded or repaired by
-	// a stream.
-	streamChunk chunkType = true
+	// chunkTypeStreamChunk indicates that a chunk is being uploaded or repaired
+	// by a stream.
+	chunkTypeStreamChunk chunkType = true
 
-	// localChunk indicates that a chunk is being uploaded or repaired from
-	// data on disk. That data can either be local to the renter or data on the
-	// hosts.
-	localChunk chunkType = false
+	// chunkTypeLocalChunk indicates that a chunk is being uploaded or repaired
+	// from data on disk. That data can either be local to the renter or data on
+	// the hosts.
+	chunkTypeLocalChunk chunkType = false
 )
 
 var (
@@ -308,8 +308,8 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) bool
 	exists := existsUnstuckHeap || existsRepairing || existsStuckHeap
 
 	// Check if the chunk can be added to the heap
-	canAddStuckChunk := chunkStuck && !exists && len(uh.stuckHeapChunks) < maxStuckChunksInHeap && ct == localChunk
-	canAddUnstuckChunk := !chunkStuck && !exists && ct == localChunk
+	canAddStuckChunk := chunkStuck && !exists && len(uh.stuckHeapChunks) < maxStuckChunksInHeap && ct == chunkTypeLocalChunk
+	canAddUnstuckChunk := !chunkStuck && !exists && ct == chunkTypeLocalChunk
 
 	// Add the chunk to the heap
 	if canAddStuckChunk {
@@ -320,7 +320,7 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) bool
 		uh.unstuckHeapChunks[uuc.id] = uuc
 		heap.Push(&uh.heap, uuc)
 		return true
-	} else if ct == streamChunk && !existsRepairing {
+	} else if ct == chunkTypeStreamChunk && !existsRepairing {
 		// Make sure the chunk is removed from unstuck and stuck maps
 		delete(uh.unstuckHeapChunks, uuc.id)
 		delete(uh.stuckHeapChunks, uuc.id)
@@ -385,7 +385,7 @@ func (uh *uploadHeap) managedResume() {
 // with a chunk id. If a chunk exists in the uploadHeap and needs to be updated
 // to the supplied chunk, the chunk that is currently in the heap will be
 // canceled and then returned.
-func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType) *unfinishedUploadChunk {
+func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType) {
 	// Check to see if the chunk is currently in the heap
 	uh.mu.Lock()
 	unstuckUUC, existsUnstuckHeap := uh.unstuckHeapChunks[uuc.id]
@@ -396,13 +396,13 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 
 	// If the chunk doesn't already exist there is nothing to update
 	if !exists {
-		return nil
+		return
 	}
 
 	// If this is a streamChunk we only care if the chunk is in the repair
 	// map.
-	if ct == streamChunk && !existsRepairing {
-		return nil
+	if ct == chunkTypeStreamChunk && !existsRepairing {
+		return
 	}
 
 	// Get the existing chunk.
@@ -424,9 +424,11 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 		existingUUC.canceled = true
 		existingUUC.cancelMU.Unlock()
 
-		return existingUUC
+		// Wait for all workers to finish ongoing work on the existing chunk and try
+		// to push the new chunk.
+		existingUUC.cancelWG.Wait()
 	}
-	return nil
+	return
 }
 
 // PauseRepairsAndUploads pauses the renter's repairs and uploads for a time
@@ -801,19 +803,19 @@ func (r *Renter) managedBuildAndPushRandomChunk(siaPath modules.SiaPath, hosts m
 	defer func() {
 		// Close the unused unfinishedUploadChunks
 		for _, chunk := range unfinishedUploadChunks {
-			errors.Compose(allErrs, chunk.fileEntry.Close())
+			allErrs = errors.Compose(allErrs, chunk.fileEntry.Close())
 		}
 	}()
 
 	// Push chunk onto the uploadHeap
-	pushed, err := r.managedPushChunkForRepair(randChunk, localChunk)
+	pushed, err := r.managedPushChunkForRepair(randChunk, chunkTypeLocalChunk)
 	if err != nil {
 		return errors.Compose(allErrs, err, randChunk.fileEntry.Close())
 	}
 	if !pushed {
 		// Chunk wasn't added to the heap. Close the file
 		r.log.Debugln("WARN: stuck chunk", randChunk.id, "wasn't added to heap")
-		errors.Compose(allErrs, randChunk.fileEntry.Close())
+		allErrs = errors.Compose(allErrs, randChunk.fileEntry.Close())
 	}
 	return allErrs
 }
@@ -959,7 +961,7 @@ func (r *Renter) callBuildAndPushChunks(files []*filesystem.FileNode, hosts map[
 	for len(tempChunkHeap) > 0 && (r.uploadHeap.managedLen() < maxUploadHeapChunks || target == targetBackupChunks) {
 		// Add this chunk to the upload heap.
 		chunk := heap.Pop(&tempChunkHeap).(*unfinishedUploadChunk)
-		pushed, err := r.managedPushChunkForRepair(chunk, localChunk)
+		pushed, err := r.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
 			r.repairLog.Println("WARN: Error pushing chunk for repair", err)
 			err = chunk.fileEntry.Close()
@@ -1187,41 +1189,13 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 // chunk to the workers.
 func (r *Renter) managedPushChunkForRepair(uuc *unfinishedUploadChunk, ct chunkType) (bool, error) {
 	// Try and update any existing chunk in the heap
-	existingChunk := r.uploadHeap.managedTryUpdate(uuc, ct)
-	if existingChunk != nil {
-		// If an existing chunk is returned it means that we are able to update the
-		// chunk.
-		//
-		// Wait for all workers to finish ongoing work on the existing chunk and try
-		// to push the new chunk. This happens in a separate thread as to not be
-		// blocking the caller.
-		go func() {
-			existingChunk.cancelWG.Wait()
-			pushed, err := r.managedPushChunkForRepair(uuc, ct)
-			if !pushed || err != nil {
-				r.repairLog.Printf("WARN: unable to push chunk for repair after cancelling existing heap chunk: pushed %v, error sending to workers: %v", pushed, err)
-				return
-			}
-
-			// Make sure the upload heap knows that a repair is needed from the chunk
-			// being added
-			select {
-			case r.uploadHeap.repairNeeded <- struct{}{}:
-			default:
-			}
-		}()
-
-		// Even though we are pushing the chunk again in the prior go routine we
-		// should not assume that push will be successful. Therefore since we did
-		// not push the chunk this time return false.
-		return false, nil
-	}
+	r.uploadHeap.managedTryUpdate(uuc, ct)
 
 	// Push the chunk onto the upload heap
 	pushed := r.uploadHeap.managedPush(uuc, ct)
 	// If we were not able to push the chunk, or if the chunkType is localChunk we
 	// return
-	if !pushed || ct == localChunk {
+	if !pushed || ct == chunkTypeLocalChunk {
 		return pushed, nil
 	}
 
