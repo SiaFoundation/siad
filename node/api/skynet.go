@@ -338,7 +338,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			prefixedDefaultSkynetPath := modules.EnsurePrefix(DefaultSkynetDefaultPath, "/")
 			for filename := range metadata.Subfiles {
 				if modules.EnsurePrefix(filename, "/") == prefixedDefaultSkynetPath {
-					metadata.DefaultPath = modules.EnsurePrefix(filename, "/")
+					metadata.DefaultPath = prefixedDefaultSkynetPath
 					break
 				}
 			}
@@ -351,6 +351,10 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if path == "/" &&
 		metadata.DefaultPath != "" &&
 		format == modules.SkyfileFormatNotSpecified {
+		if strings.Count(metadata.DefaultPath, "/") > 1 {
+			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s) which refers to a non-root file, please specify a format", metadata.DefaultPath)}, http.StatusBadRequest)
+			return
+		}
 		// Check if this matches a specific html file and redirect to it.
 		if !hasSubPath && (strings.HasSuffix(metadata.DefaultPath, ".html") || strings.HasSuffix(metadata.DefaultPath, ".htm")) {
 			for _, f := range metadata.Subfiles {
@@ -1328,6 +1332,16 @@ func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaul
 	// the filenames in `subfiles` won't have it.
 	if _, exists := subfiles[strings.TrimPrefix(defaultPath, "/")]; !exists {
 		return "", false, errors.AddContext(ErrInvalidDefaultPath, fmt.Sprintf("no such path: %s", defaultPath))
+	}
+	// Ensure that the defaultPath is an HTML file.
+	if !strings.HasSuffix(defaultPath, ".html") && !strings.HasSuffix(defaultPath, ".htm") {
+		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath must point to an HTML file.")
+	}
+	defaultPath = modules.EnsurePrefix(defaultPath, "/")
+	// Do not allow default path to point to files which are not in the root
+	// directory of the skyfile.
+	if strings.Count(defaultPath, "/") > 1 {
+		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath must point to a file in the root directory of the skyfile.")
 	}
 	return defaultPath, false, nil
 }

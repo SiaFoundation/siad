@@ -3,6 +3,11 @@ Default Path
 
 This document describes the behaviour of the default path for skyfiles.
 
+First of all, some requirements for the `defaultPath` file:
+- it must exist
+- it must be an HTML file
+- it must be in the root directory of the skyfile
+
 # Skyfile types
 
 ## Single file
@@ -65,8 +70,11 @@ In all other cases `defaultPath` is set to the path of the only file in
 
 ### Multi file directory
 
-`disableDefaultPath` works, i.e. its boolean value is set in the metadata. If that value is `true` the `defaultPath` field is set to `""`. This takes precedence 
-over any value of `defaultPath`.
+`disableDefaultPath` works, i.e. its boolean value is set in the metadata. If 
+that value is `true` the `defaultPath` field is set to `""`.
+
+`disableDefaultPath` and `defaultPath` are mutually exclusive and setting both
+to non-zero value results in an error.
 
 If `defaultPath` is set to a path that doesn't match any file in `subfiles`
 that results in Error.
