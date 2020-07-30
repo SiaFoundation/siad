@@ -532,7 +532,13 @@ func TestStorageProofEmptyContract(t *testing.T) {
 
 	// Download a file from the second renter. This should cause the second
 	// renter to spend money on its contracts without increasing their size.
-	_, _, err = renterDownload.SkynetSkylinkGet(skylink)
+	err = build.Retry(100, 100*time.Second, func() error {
+		_, _, err = renterDownload.SkynetSkylinkGet(skylink)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

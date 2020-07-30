@@ -443,18 +443,26 @@ func TestFileContractUnspentOutputs(t *testing.T) {
 	}
 
 	gp := siatest.GroupParams{
-		Hosts:   1,
-		Renters: 1,
-		Miners:  1,
+		Hosts:  1,
+		Miners: 1,
 	}
-	tg, err := siatest.NewGroupFromTemplate(siatest.TestDir(t.Name()), gp)
+	testDir := siatest.TestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, gp)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer tg.Close()
 
+	// Add a custom renter that won't fill EAs or create snashots.
+	p := node.Renter(filepath.Join(testDir, "renter"))
+	p.RenterDeps = &dependencies.DependencyDisableWorker{}
+	nodes, err := tg.AddNodes(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// pick a renter contract
-	renter := tg.Renters()[0]
+	renter := nodes[0]
 	rc, err := renter.RenterContractsGet()
 	if err != nil {
 		t.Fatal(err)
