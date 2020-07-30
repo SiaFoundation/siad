@@ -981,6 +981,8 @@ func TestLocalRepairCorrupted(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
+
 	// Create a group for the subtests
 	gp := siatest.GroupParams{
 		Hosts:   3,
@@ -3180,6 +3182,7 @@ func TestSetFileTrackingPath(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	// Create a testgroup.
 	gp := siatest.GroupParams{

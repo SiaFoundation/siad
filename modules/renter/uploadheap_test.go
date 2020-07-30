@@ -999,31 +999,16 @@ func TestUploadHeapStreamPush(t *testing.T) {
 	if sr != nil {
 		t.Fatal("expected chunk in repair map to have a nil sourceReader")
 	}
-	/*
-		// Since no work is actually being done on the chunks we need to manage the
-		// cancelWG of the chunk in the uploadHeap to avoid NDFs
-		chunk.mu.Lock()
-		chunk.cancelWG.Add(1)
-		chunk.mu.Unlock()
-	*/
-	// Adding new chunk should be false but chunk should eventually appear in the heap
+
+	// Adding new chunk should be true and the chunk in the heap should be
+	// replaced
 	pushed, err = rt.renter.managedPushChunkForRepair(newChunk, chunkTypeStreamChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pushed {
-		t.Error("push should not have added chunk")
+	if !pushed {
+		t.Fatal("push should have updated the chunk")
 	}
-
-	/*
-		// The newChunk should blocked in a go routine because of the current chunk's
-		// cancelWG. Mark the chunk as done to remove it from the repair map and
-		// complete the cancelWG so that the newChunk can be added.
-		rt.renter.uploadHeap.managedMarkRepairDone(chunk.id)
-		chunk.mu.Lock()
-		chunk.cancelWG.Done()
-		chunk.mu.Unlock()
-	*/
 
 	// Since the adding happens in a go routine, there might be a slight delay.
 	// Check for the new chunk in the heap

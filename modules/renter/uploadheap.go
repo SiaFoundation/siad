@@ -427,6 +427,13 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 		// Wait for all workers to finish ongoing work on the existing chunk and try
 		// to push the new chunk.
 		existingUUC.cancelWG.Wait()
+
+		// Mark the repair as done if the chunk is still incomplete to remove the
+		// chunk from the repair map. If the chunk is complete already the normal
+		// chunk cleanup process will clear it from the repair map.
+		if !existingUUC.chunkComplete() {
+			uh.managedMarkRepairDone(existingUUC.id)
+		}
 	}
 	return
 }

@@ -638,6 +638,8 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 	uc.memoryReleased += uint64(memoryReleased)
 	totalMemoryReleased := uc.memoryReleased
+	canceled := uc.canceled
+	workersRemaining := uc.workersRemaining
 	uc.mu.Unlock()
 
 	// If there are pieces available, add the standby workers to collect them.
@@ -665,9 +667,16 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	if memoryReleased > 0 {
 		r.memoryManager.Return(memoryReleased)
 	}
+	// Make sure file is closed for canceled chunks
+	if canceled && workersRemaining == 0 {
+		err := uc.fileEntry.Close()
+		if err != nil {
+			r.log.Println("WARN: unable to close file entry for chunk", uc.fileEntry.SiaFilePath())
+		}
+	}
 	// Sanity check - all memory should be released if the chunk is complete.
 	if chunkComplete && totalMemoryReleased != uc.memoryNeeded {
-		r.log.Critical("No workers remaining, but not all memory released:", uc.workersRemaining, uc.piecesRegistered, uc.memoryReleased, uc.memoryNeeded)
+		r.log.Critical("No workers remaining, but not all memory released:", workersRemaining, uc.piecesRegistered, uc.memoryReleased, uc.memoryNeeded)
 	}
 }
 
