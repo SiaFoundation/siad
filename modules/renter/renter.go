@@ -811,16 +811,6 @@ func (r *Renter) AddSkykey(sk skykey.Skykey) error {
 	return r.staticSkykeyManager.AddKey(sk)
 }
 
-// DeleteSkykeyByName deletes the Skykey with the given name from the renter's skykey
-// manager if it exists.
-func (r *Renter) DeleteSkykeyByName(name string) error {
-	if err := r.tg.Add(); err != nil {
-		return err
-	}
-	defer r.tg.Done()
-	return r.staticSkykeyManager.DeleteKeyByName(name)
-}
-
 // DeleteSkykeyByID deletes the Skykey with the given ID from the renter's skykey
 // manager if it exists.
 func (r *Renter) DeleteSkykeyByID(id skykey.SkykeyID) error {
@@ -829,6 +819,16 @@ func (r *Renter) DeleteSkykeyByID(id skykey.SkykeyID) error {
 	}
 	defer r.tg.Done()
 	return r.staticSkykeyManager.DeleteKeyByID(id)
+}
+
+// DeleteSkykeyByName deletes the Skykey with the given name from the renter's skykey
+// manager if it exists.
+func (r *Renter) DeleteSkykeyByName(name string) error {
+	if err := r.tg.Add(); err != nil {
+		return err
+	}
+	defer r.tg.Done()
+	return r.staticSkykeyManager.DeleteKeyByName(name)
 }
 
 // SkykeyByName gets the Skykey with the given name from the renter's skykey
@@ -934,20 +934,20 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 		staticProjectDownloadByRootManager: new(projectDownloadByRootManager),
 
-		cs:                    cs,
-		deps:                  deps,
-		g:                     g,
-		w:                     w,
-		hostDB:                hdb,
-		hostContractor:        hc,
-		persistDir:            persistDir,
-		rl:                    rl,
-		staticAlerter:         modules.NewAlerter("renter"),
-		staticStreamBufferSet: newStreamBufferSet(),
-		staticMux:             mux,
-		mu:                    siasync.New(modules.SafeMutexDelay, 1),
-		tpool:                 tpool,
+		cs:             cs,
+		deps:           deps,
+		g:              g,
+		w:              w,
+		hostDB:         hdb,
+		hostContractor: hc,
+		persistDir:     persistDir,
+		rl:             rl,
+		staticAlerter:  modules.NewAlerter("renter"),
+		staticMux:      mux,
+		mu:             siasync.New(modules.SafeMutexDelay, 1),
+		tpool:          tpool,
 	}
+	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	close(r.uploadHeap.pauseChan)
 
 	// Initialize the loggers so that they are available for the components as
