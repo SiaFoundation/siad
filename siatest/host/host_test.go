@@ -504,9 +504,8 @@ func TestStorageProofEmptyContract(t *testing.T) {
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
-		Hosts:   2,
-		Miners:  1,
-		Renters: 2,
+		Hosts:  2,
+		Miners: 1,
 	}
 	groupDir := hostTestDir(t.Name())
 
@@ -519,6 +518,14 @@ func TestStorageProofEmptyContract(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
+
+	// Prevent contract renewals to make sure the revision number stays at 1.
+	rt := node.RenterTemplate
+	rt.ContractorDeps = &dependencies.DependencyDisableRenewal{}
+	_, err = tg.AddNodeN(rt, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Fetch the renters.
 	renters := tg.Renters()
@@ -581,7 +588,7 @@ func TestStorageProofEmptyContract(t *testing.T) {
 
 	// Check that the right number of storage obligations were provided.
 	retries := 0
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(100, time.Second, func() error {
 		if retries%10 == 0 {
 			err = tg.Miners()[0].MineBlock()
 			if err != nil {
