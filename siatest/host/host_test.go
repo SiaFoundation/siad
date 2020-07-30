@@ -2,11 +2,13 @@ package host
 
 import (
 	"bytes"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host"
 	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
@@ -15,6 +17,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TestHostGetPubKey confirms that the pubkey is returned through the API
@@ -488,5 +491,129 @@ func TestHostValidPrices(t *testing.T) {
 	err = host.HostModifySettingPost(client.HostParamMinDownloadBandwidthPrice, downloadPrice)
 	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidRPCDownloadRatio.Error()) {
 		t.Fatalf("Expected Error %v but got %v", api.ErrInvalidRPCDownloadRatio, err)
+	}
+}
+
+// TestStorageProofEmptyContract tests that both empty contracts as well as
+// not-empty contracts will result in storage proofs.
+func TestStorageProofEmptyContract(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Miners:  1,
+		Renters: 2,
+	}
+	groupDir := hostTestDir(t.Name())
+
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Fetch the renters.
+	renters := tg.Renters()
+	renterUpload, renterDownload := renters[0], renters[1]
+
+	// Upload a file to skynet from one renter.
+	skylink, _, _, err := renterUpload.UploadNewSkyfileBlocking("test", 100, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download a file from the second renter. This should cause the second
+	// renter to spend money on its contracts without increasing their size.
+	_, _, err = renterDownload.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the storage obligations form the hosts.
+	hosts := tg.Hosts()
+	host1, host2 := hosts[0], hosts[1]
+	cig1, err := host1.HostContractInfoGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cig2, err := host2.HostContractInfoGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be 2 contracts per host.
+	contracts := append(cig1.Contracts, cig2.Contracts...)
+	if len(contracts) != len(hosts)*len(renters) {
+		t.Fatalf("expected %v contracts but got %v", len(hosts)*len(renters), len(contracts))
+	}
+
+	// Mine until the proof deadline that is furthest in the future.
+	var proofDeadline types.BlockHeight
+	for _, so := range contracts {
+		if so.ProofDeadLine > proofDeadline {
+			proofDeadline = so.ProofDeadLine
+		}
+	}
+	bh, err := renterDownload.BlockHeight()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for ; bh <= proofDeadline; bh++ {
+		err = tg.Miners()[0].MineBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Check that the right number of storage obligations were provided.
+	retries := 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if retries%10 == 0 {
+			err = tg.Miners()[0].MineBlock()
+			if err != nil {
+				t.Error(err)
+				return nil
+			}
+		}
+
+		cig1, err = host1.HostContractInfoGet()
+		if err != nil {
+			return err
+		}
+		cig2, err = host2.HostContractInfoGet()
+		if err != nil {
+			return err
+		}
+		proofs := 0
+		emptyContracts := 0
+		for _, contract := range append(cig1.Contracts, cig2.Contracts...) {
+			if contract.ProofConfirmed {
+				proofs++
+				if contract.DataSize == 0 {
+					emptyContracts++
+				}
+			}
+		}
+
+		expectedProofs := len(contracts)
+		expectedEmptyContracts := 2
+		if proofs < expectedProofs {
+			return fmt.Errorf("expected at least %v submitted proofs but got %v", expectedProofs, proofs)
+		}
+		if emptyContracts < expectedEmptyContracts {
+			return fmt.Errorf("expected at least %v submitted empty proofs but got %v", expectedEmptyContracts, emptyContracts)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
