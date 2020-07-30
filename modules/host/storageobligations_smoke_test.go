@@ -69,7 +69,7 @@ func (ht *hostTester) newTesterStorageObligation() (storageObligation, error) {
 	// Fund the file contract with a payout. The payout needs to be big enough
 	// that the expected revenue is larger than the fee that the host may end
 	// up paying.
-	payout := types.SiacoinPrecision.Mul64(1e3)
+	payout := types.SiacoinPrecision.Mul64(1e5)
 	err = builder.FundSiacoins(payout)
 	if err != nil {
 		return storageObligation{}, err
@@ -596,7 +596,7 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 		FileContractRevisions: []types.FileContractRevision{{
 			ParentID:          so.id(),
 			UnlockConditions:  types.UnlockConditions{},
-			NewRevisionNumber: 1,
+			NewRevisionNumber: 2,
 
 			NewFileSize:           uint64(len(sectorData)),
 			NewFileMerkleRoot:     sectorRoot,
@@ -607,6 +607,7 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 			NewUnlockHash:         types.UnlockConditions{}.UnlockHash(),
 		}},
 	}}
+	so.RevisionTransactionSet = revisionSet
 	ht.host.managedLockStorageObligation(so.id())
 	err = ht.host.managedModifyStorageObligation(so, nil, map[crypto.Hash][]byte{sectorRoot: sectorData})
 	if err != nil {
@@ -814,7 +815,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 		FileContractRevisions: []types.FileContractRevision{{
 			ParentID:          so.id(),
 			UnlockConditions:  types.UnlockConditions{},
-			NewRevisionNumber: 1,
+			NewRevisionNumber: 2,
 
 			NewFileSize:           uint64(len(sectorData)),
 			NewFileMerkleRoot:     sectorRoot,
@@ -825,6 +826,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 			NewUnlockHash:         types.UnlockConditions{}.UnlockHash(),
 		}},
 	}}
+	so.RevisionTransactionSet = revisionSet
 	ht.host.managedLockStorageObligation(so.id())
 
 	err = ht.host.managedModifyStorageObligation(so, nil, map[crypto.Hash][]byte{sectorRoot: sectorData})
@@ -863,7 +865,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 		FileContractRevisions: []types.FileContractRevision{{
 			ParentID:          so.id(),
 			UnlockConditions:  types.UnlockConditions{},
-			NewRevisionNumber: 2,
+			NewRevisionNumber: 3,
 
 			NewFileSize:           uint64(len(sectorData) + len(sectorData2)),
 			NewFileMerkleRoot:     combinedRoot,
