@@ -385,57 +385,82 @@ func (uh *uploadHeap) managedResume() {
 // with a chunk id. If a chunk exists in the uploadHeap and needs to be updated
 // to the supplied chunk, the chunk that is currently in the heap will be
 // canceled and then returned.
-func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType) {
+func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType) error {
+	// Validate use of chunkType
+	if (ct == chunkTypeStreamChunk) != (uuc.sourceReader != nil) {
+		err := fmt.Errorf("Invalid chunkType use: streamChunk  %v, chunk has sourceReader reader %v",
+			ct == chunkTypeStreamChunk, uuc.sourceReader != nil)
+		build.Critical(err)
+	}
+
+	// If the new chunk doesn't have a sourceReader there is nothing to do
+	if uuc.sourceReader == nil {
+		return nil
+	}
+
 	// Check to see if the chunk is currently in the heap
 	uh.mu.Lock()
-	unstuckUUC, existsUnstuckHeap := uh.unstuckHeapChunks[uuc.id]
-	repairingUUC, existsRepairing := uh.repairingChunks[uuc.id]
-	stuckUUC, existsStuckHeap := uh.stuckHeapChunks[uuc.id]
-	uh.mu.Unlock()
-	exists := existsUnstuckHeap || existsRepairing || existsStuckHeap
+	unstuckUUC, existsunstuckheap := uh.unstuckHeapChunks[uuc.id]
+	repairingUUC, existsrepairing := uh.repairingChunks[uuc.id]
+	stuckUUC, existsstuckheap := uh.stuckHeapChunks[uuc.id]
+	exists := existsunstuckheap || existsrepairing || existsstuckheap
 
 	// If the chunk doesn't already exist there is nothing to update
 	if !exists {
-		return
+		uh.mu.Unlock()
+		return nil
 	}
 
-	// If this is a streamChunk we only care if the chunk is in the repair
-	// map.
-	if ct == chunkTypeStreamChunk && !existsRepairing {
-		return
-	}
-
-	// Get the existing chunk.
+	// get the existing chunk.
 	var existingUUC *unfinishedUploadChunk
-	if existsStuckHeap {
+	if existsstuckheap {
 		existingUUC = stuckUUC
-	} else if existsRepairing {
+	} else if existsrepairing {
 		existingUUC = repairingUUC
-	} else if existsUnstuckHeap {
+	} else if existsunstuckheap {
 		existingUUC = unstuckUUC
 	}
 
-	// If the added chunk has a sourceReader and the existing one doesn't, cancel
-	// the existing chunk. This is because we want to prioritize using the
-	// sourceReader to repair the chunk.
-	if uuc.sourceReader != nil && existingUUC.sourceReader == nil {
-		// Cancel the existing chunk.
-		existingUUC.cancelMU.Lock()
-		existingUUC.canceled = true
-		existingUUC.cancelMU.Unlock()
-
-		// Wait for all workers to finish ongoing work on the existing chunk and try
-		// to push the new chunk.
-		existingUUC.cancelWG.Wait()
-
-		// Mark the repair as done if the chunk is still incomplete to remove the
-		// chunk from the repair map. If the chunk is complete already the normal
-		// chunk cleanup process will clear it from the repair map.
-		if !existingUUC.chunkComplete() {
-			uh.managedMarkRepairDone(existingUUC.id)
-		}
+	// If the existing chunk already has a sourceReader there is nothing to do
+	if existingUUC.sourceReader != nil {
+		uh.mu.Unlock()
+		return nil
 	}
-	return
+
+	// If the existing chunk is not repairing yet then we can just remove it from
+	// the maps and close the file entry.
+	if !existsrepairing {
+		delete(uh.unstuckHeapChunks, existingUUC.id)
+		delete(uh.stuckHeapChunks, existingUUC.id)
+		uh.mu.Unlock()
+		return existingUUC.fileEntry.Close()
+	}
+	uh.mu.Unlock()
+
+	// At this point we now know that there is an existing chunk in the uploadHeap
+	// that has already been popped of the heap for repair that does not have
+	// a sourceReader. Since we now have a chunk that does have a sourceReader we
+	// want to cancel the repair of the existing chunk in order to prioritize
+	// using the sourcereader to repair the chunk.
+	existingUUC.cancelMU.Lock()
+	existingUUC.canceled = true
+	existingUUC.cancelMU.Unlock()
+
+	// Wait for all workers to finish ongoing work on the existing chunk.
+	existingUUC.cancelWG.Wait()
+
+	// Mark the repair as done to remove the chunk from the repair map if the
+	// chunk is still incomplete or is complete but with 0 completed pieces.
+	// Otherwise the normal chunk cleanup process will clear it from the repair
+	// map.
+	existingUUC.mu.Lock()
+	chunkComplete := existingUUC.chunkComplete()
+	piecesCompleted := existingUUC.piecesCompleted
+	existingUUC.mu.Unlock()
+	if !chunkComplete || (chunkComplete && piecesCompleted == 0) {
+		uh.managedMarkRepairDone(existingUUC.id)
+	}
+	return nil
 }
 
 // PauseRepairsAndUploads pauses the renter's repairs and uploads for a time
@@ -1195,9 +1220,18 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 // pushed onto the uploadHeap. The error return indicates an error sending the
 // chunk to the workers.
 func (r *Renter) managedPushChunkForRepair(uuc *unfinishedUploadChunk, ct chunkType) (bool, error) {
-	// Try and update any existing chunk in the heap
-	r.uploadHeap.managedTryUpdate(uuc, ct)
+	// Validate use of chunkType
+	if (ct == chunkTypeStreamChunk) != (uuc.sourceReader != nil) {
+		err := fmt.Errorf("Invalid chunkType use: streamChunk  %v, chunk has sourceReader reader %v",
+			ct == chunkTypeStreamChunk, uuc.sourceReader != nil)
+		build.Critical(err)
+	}
 
+	// Try and update any existing chunk in the heap
+	err := r.uploadHeap.managedTryUpdate(uuc, ct)
+	if err != nil {
+		return false, errors.AddContext(err, "unable to update chunk in heap")
+	}
 	// Push the chunk onto the upload heap
 	pushed := r.uploadHeap.managedPush(uuc, ct)
 	// If we were not able to push the chunk, or if the chunkType is localChunk we
@@ -1217,7 +1251,7 @@ func (r *Renter) managedPushChunkForRepair(uuc *unfinishedUploadChunk, ct chunkT
 	}
 
 	// Prepare and send the chunk to the workers.
-	err := r.managedPrepareNextChunk(uuc)
+	err = r.managedPrepareNextChunk(uuc)
 	if err != nil {
 		return pushed, errors.AddContext(err, "unable to prepare chunk for workers")
 	}

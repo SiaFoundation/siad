@@ -3,20 +3,19 @@ package renter
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestBuildUnfinishedChunks probes buildUnfinishedChunks to make sure that the
@@ -905,16 +904,23 @@ func TestUploadHeapStreamPush(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer rt.Close()
+	uh := &rt.renter.uploadHeap
 
-	// Create a chunk
-	chunk := &unfinishedUploadChunk{
+	// Create a stream chunk
+	file, err := rt.renter.newRenterTestFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	var buf []byte
+	sr := NewStreamShard(bytes.NewReader(buf), buf)
+	streamChunk := &unfinishedUploadChunk{
 		id: uploadChunkID{
-			fileUID: "unstuckchunk",
+			fileUID: "streamchunk",
 			index:   1,
 		},
-		chunkCreationTime: time.Now(),
-		stuck:             false,
-		availableChan:     make(chan struct{}),
+		fileEntry:    file.Copy(),
+		sourceReader: sr,
 	}
 
 	// Define helper
@@ -929,11 +935,11 @@ func TestUploadHeapStreamPush(t *testing.T) {
 		}
 
 		// Verify the chunk was added to the heap as expected
-		rt.renter.uploadHeap.mu.Lock()
-		_, stuckExists := rt.renter.uploadHeap.stuckHeapChunks[chunk.id]
-		_, unstuckExists := rt.renter.uploadHeap.unstuckHeapChunks[chunk.id]
-		repairChunk, repairExists := rt.renter.uploadHeap.repairingChunks[chunk.id]
-		rt.renter.uploadHeap.mu.Unlock()
+		uh.mu.Lock()
+		_, stuckExists := uh.stuckHeapChunks[chunk.id]
+		_, unstuckExists := uh.unstuckHeapChunks[chunk.id]
+		repairChunk, repairExists := uh.repairingChunks[chunk.id]
+		uh.mu.Unlock()
 		if stuckExists || unstuckExists {
 			t.Fatal("chunk should not exist in stuck or unstuck maps")
 		}
@@ -950,10 +956,10 @@ func TestUploadHeapStreamPush(t *testing.T) {
 	}
 
 	// Pushing the chunk to the repair map should succeed
-	pushAndVerify(chunk)
+	pushAndVerify(streamChunk)
 
 	// Pushing again should fail
-	pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeStreamChunk)
+	pushed, err := rt.renter.managedPushChunkForRepair(streamChunk, chunkTypeStreamChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -961,84 +967,135 @@ func TestUploadHeapStreamPush(t *testing.T) {
 		t.Error("chunk should not be able to be added twice")
 	}
 
-	// Delete the chunk from the repair map and add the chunk directly to the
-	// stuck and unstuck maps
-	rt.renter.uploadHeap.mu.Lock()
-	delete(rt.renter.uploadHeap.repairingChunks, chunk.id)
-	rt.renter.uploadHeap.stuckHeapChunks[chunk.id] = chunk
-	rt.renter.uploadHeap.unstuckHeapChunks[chunk.id] = chunk
-	rt.renter.uploadHeap.mu.Unlock()
+	// Clear the stream chunk from the repair map
+	uh.managedMarkRepairDone(streamChunk.id)
 
-	// Pushing the chunk should clear it from both maps and be successful
-	pushAndVerify(chunk)
-
-	// Set the sourceReader for a new chunk with the same id
-	var buf []byte
-	newChunk := &unfinishedUploadChunk{
-		id: uploadChunkID{
-			fileUID: "unstuckchunk",
-			index:   1,
-		},
-		sourceReader:      NewStreamShard(bytes.NewReader(buf), buf),
-		chunkCreationTime: time.Now(),
-		stuck:             false,
-		availableChan:     make(chan struct{}),
+	// Add a local chunk to the heap
+	localChunk := &unfinishedUploadChunk{
+		id:        streamChunk.id,
+		fileEntry: file.Copy(),
 	}
-
-	// Verify that the chunk in the repair map currently does not have
-	// a sourceReader
-	rt.renter.uploadHeap.mu.Lock()
-	repairChunk, ok := rt.renter.uploadHeap.repairingChunks[chunk.id]
-	rt.renter.uploadHeap.mu.Unlock()
-	if !ok {
-		t.Fatal("chunk not in repair map")
-	}
-	repairChunk.mu.Lock()
-	sr := repairChunk.sourceReader
-	repairChunk.mu.Unlock()
-	if sr != nil {
-		t.Fatal("expected chunk in repair map to have a nil sourceReader")
-	}
-
-	// Adding new chunk should be true and the chunk in the heap should be
-	// replaced
-	pushed, err = rt.renter.managedPushChunkForRepair(newChunk, chunkTypeStreamChunk)
+	pushed, err = rt.renter.managedPushChunkForRepair(localChunk, chunkTypeLocalChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !pushed {
-		t.Fatal("push should have updated the chunk")
+		t.Fatal("local chunk not pushed")
 	}
 
-	// Since the adding happens in a go routine, there might be a slight delay.
-	// Check for the new chunk in the heap
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		exists := rt.renter.uploadHeap.managedExists(newChunk.id)
-		if !exists {
-			return errors.New("newChunk doesn't exists in heap yet")
-		}
+	// Pushing the stream chunk should clear the local chunk from both maps and be
+	// successful
+	pushAndVerify(streamChunk)
 
-		// Verify that the chunk in the repair map now does have
-		// a sourceReader
-		rt.renter.uploadHeap.mu.Lock()
-		repairChunk, ok := rt.renter.uploadHeap.repairingChunks[chunk.id]
-		rt.renter.uploadHeap.mu.Unlock()
-		if !ok {
-			return errors.New("chunk not in repair map")
-		}
-		repairChunk.mu.Lock()
-		sr := repairChunk.sourceReader
-		repairChunk.mu.Unlock()
-		if sr == nil {
-			return errors.New("expected chunk in repair map to have a sourceReader")
-		}
-		if !reflect.DeepEqual(repairChunk, newChunk) {
-			return fmt.Errorf("chunks not equal\nnewChunk: %v\nrepairChunk: %v", newChunk, repairChunk)
-		}
-		return nil
-	})
+	// Clear the stream chunk from the repair map
+	uh.managedMarkRepairDone(streamChunk.id)
+
+	// Add the local chunk directly to the repair map
+	uh.mu.Lock()
+	uh.repairingChunks[localChunk.id] = localChunk
+	uh.mu.Unlock()
+
+	// Pushing the stream chunk should replace the local chunk in the repair map
+	pushAndVerify(streamChunk)
+}
+
+// TestUploadHeapTryUpdate probes the managedTryUpdate method of the uploadHeap.
+func TestUploadHeapTryUpdate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create renter and define shorter named helper for uploadHeap
+	rt, err := newRenterTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
+	}
+	defer rt.renter.Close()
+	uh := &rt.renter.uploadHeap
+
+	// Define test cases
+	var buf []byte
+	sr := NewStreamShard(bytes.NewReader(buf), buf)
+	var tests = []struct {
+		name             string
+		ct               chunkType
+		existsUnstuck    bool // Indicates if there should be an existing chunk in the unstuck map
+		existsStuck      bool // Indicates if there should be an existing chunk in the stuck map
+		existsRepairing  bool // Indicates if there should be an existing chunk in the repair map
+		existingChunkSR  io.ReadCloser
+		newChunkSR       io.ReadCloser
+		existAfterUpdate bool // Indicates if tryUpdate will cancel and remove the chunk from the heap
+		pushAfterUpdate  bool // Indicates if the push to the heap should succeed after tryUpdate
+	}{
+		// Pushing a chunkTypeLocalChunk should always be a no-op regardless of the
+		// start of the chunk in the heap.
+		{"PushLocalChunk_EmptyHeap", chunkTypeLocalChunk, false, false, false, nil, nil, false, true},                // no chunk in heap
+		{"PushLocalChunk_UnstuckChunkNoSRInHeap", chunkTypeLocalChunk, true, false, false, nil, nil, true, false},    // chunk in unstuck map
+		{"PushLocalChunk_UnstuckChunkWithSRInHeap", chunkTypeLocalChunk, true, false, false, sr, nil, true, false},   // chunk in unstuck map with sourceReader
+		{"PushLocalChunk_StuckChunkNoSRInHeap", chunkTypeLocalChunk, false, true, false, nil, nil, true, false},      // chunk in stuck map
+		{"PushLocalChunk_StuckChunkWithSRInHeap", chunkTypeLocalChunk, false, true, false, sr, nil, true, false},     // chunk in stuck map with sourceReader
+		{"PushLocalChunk_RepairingChunkNoSRInHeap", chunkTypeLocalChunk, false, false, true, nil, nil, true, false},  // chunk in repair map
+		{"PushLocalChunk_RepairingChunkWithSRInHeap", chunkTypeLocalChunk, false, false, true, sr, nil, true, false}, // chunk in repair map with sourceReader
+
+		// Pushing a chunkTypeStreamChunk tests
+		{"PushStreamChunk_EmptyHeap", chunkTypeStreamChunk, false, false, false, nil, sr, false, true},                // no chunk in heap
+		{"PushStreamChunk_UnstuckChunkNoSRInHeap", chunkTypeStreamChunk, true, false, false, nil, sr, false, true},    // chunk in unstuck map
+		{"PushStreamChunk_UnstuckChunkWithSRInHeap", chunkTypeStreamChunk, true, false, false, sr, sr, true, true},    // chunk in unstuck map with sourceReader
+		{"PushStreamChunk_StuckChunkNoSRInHeap", chunkTypeStreamChunk, false, true, false, nil, sr, false, true},      // chunk in stuck map
+		{"PushStreamChunk_StuckChunkWithSRInHeap", chunkTypeStreamChunk, false, true, false, sr, sr, true, true},      // chunk in stuck map with sourceReader
+		{"PushStreamChunk_RepairingChunkNoSRInHeap", chunkTypeStreamChunk, false, false, true, nil, sr, false, true},  // chunk in repair map
+		{"PushStreamChunk_RepairingChunkWithSRInHeap", chunkTypeStreamChunk, false, false, true, sr, sr, true, false}, // chunk in repair map with sourceReader
+	}
+
+	// Create a test file for the chunks
+	entry, err := rt.renter.newRenterTestFile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer entry.Close()
+
+	// Run test cases
+	for i, test := range tests {
+		// Initialize chunks and heap based on test parameters
+		existingChunk := &unfinishedUploadChunk{
+			id: uploadChunkID{
+				fileUID: siafile.SiafileUID(test.name),
+				index:   uint64(i),
+			},
+			fileEntry:    entry.Copy(),
+			sourceReader: test.existingChunkSR,
+		}
+		if test.existsUnstuck {
+			uh.unstuckHeapChunks[existingChunk.id] = existingChunk
+		}
+		if test.existsStuck {
+			existingChunk.stuck = true
+			uh.stuckHeapChunks[existingChunk.id] = existingChunk
+		}
+		if test.existsRepairing {
+			uh.repairingChunks[existingChunk.id] = existingChunk
+		}
+		newChunk := &unfinishedUploadChunk{
+			id:           existingChunk.id,
+			sourceReader: test.newChunkSR,
+		}
+
+		// Try and Update the Chunk in the Heap
+		err := uh.managedTryUpdate(newChunk, test.ct)
+		if err != nil {
+			t.Fatalf("Error with TryUpdate for test %v; err: %v", test.name, err)
+		}
+
+		// Check to see if the chunk is still in the heap
+		if test.existAfterUpdate != uh.managedExists(existingChunk.id) {
+			t.Errorf("Chunk should exist after update %v for test %v", test.existAfterUpdate, test.name)
+		}
+
+		// Push the new chunk onto the heap
+		if test.pushAfterUpdate != uh.managedPush(newChunk, test.ct) {
+			t.Errorf("Chunk should have been pushed %v for test %v", test.pushAfterUpdate, test.name)
+		}
 	}
 }
 
