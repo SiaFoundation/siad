@@ -1263,13 +1263,13 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 // defaultPath extracts the defaultPath from the request or returns a default.
 // It will never return a directory because `subfiles` contains only files.
 func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaultPath string, disableDefaultPath bool, err error) {
-	// ensure the defaultPath always has a leading slash
 	defer func() {
+		// Ensure the defaultPath always has a leading slash.
 		if defaultPath != "" {
 			defaultPath = modules.EnsurePrefix(defaultPath, "/")
 		}
 	}()
-	// Parse "disabledefaultpath" param
+	// Parse the "disabledefaultpath" param.
 	disableDefaultPathStr := queryForm.Get(modules.SkyfileDisableDefaultPathParamName)
 	if disableDefaultPathStr != "" {
 		disableDefaultPath, err = strconv.ParseBool(disableDefaultPathStr)
@@ -1277,10 +1277,13 @@ func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaul
 			return "", false, fmt.Errorf("unable to parse 'disabledefaultpath' parameter: " + err.Error())
 		}
 	}
-	// Parse "defaultPath" param
+	// Parse the "defaultPath" param.
 	defaultPath = queryForm.Get(modules.SkyfileDefaultPathParamName)
 	if (disableDefaultPath || defaultPath != "") && len(subfiles) == 0 {
 		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath and DisableDefaultPath are not applicable to skyfiles without subfiles.")
+	}
+	if disableDefaultPath && defaultPath != "" {
+		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath and DisableDefaultPath are mutually exclusive and cannot be set together.")
 	}
 	if disableDefaultPath {
 		return "", true, nil

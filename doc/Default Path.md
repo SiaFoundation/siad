@@ -38,7 +38,11 @@ fields.
 
 `defaultPath` and `disableDefaultPath` are only taken into consideration during
 a multipart upload. A regular `POST` upload results in a single file which does
-not support either. 
+not contain either. 
+
+`defaultPath` and `disableDefaultPath` are mutually exclusive and specifying a 
+`defaultPath` which is not `""` together with `disableDefaultPath` which is 
+`true` results in an error.
 
 ### Single file
 Single files do not support `defaultPath`, so both setting and disabling that 
