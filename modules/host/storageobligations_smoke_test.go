@@ -69,7 +69,7 @@ func (ht *hostTester) newTesterStorageObligation() (storageObligation, error) {
 	// Fund the file contract with a payout. The payout needs to be big enough
 	// that the expected revenue is larger than the fee that the host may end
 	// up paying.
-	payout := types.SiacoinPrecision.Mul64(1e5)
+	payout := types.SiacoinPrecision.Mul64(1e4)
 	err = builder.FundSiacoins(payout)
 	if err != nil {
 		return storageObligation{}, err
