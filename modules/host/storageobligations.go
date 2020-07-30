@@ -33,6 +33,7 @@ package host
 import (
 	"encoding/binary"
 	"encoding/json"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -436,6 +437,28 @@ func (so storageObligation) revisionNumber() uint64 {
 		return so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0].NewRevisionNumber
 	}
 	return so.OriginTransactionSet[len(so.OriginTransactionSet)-1].FileContracts[0].RevisionNumber
+}
+
+// requiresProof is a helper to determine whether the storage obligation
+// requires a proof.
+func (so storageObligation) requiresProof() bool {
+	// No need for a proof if the contract has never been revised.
+	if so.revisionNumber() <= 1 {
+		return false
+	}
+	// No need for a proof if the obligation doesn't have a revision. This
+	// should never happen.
+	rev, err := so.recentRevision()
+	if err != nil {
+		build.Critical("requiresProof:", err)
+		return false
+	}
+	// No need for a proof if the valid outputs match the invalid ones.
+	if reflect.DeepEqual(rev.NewValidProofOutputs, rev.NewMissedProofOutputs) {
+		return false
+	}
+	// Every other case requires a proof.
+	return true
 }
 
 // proofDeadline returns the height by which the storage proof must be
@@ -844,12 +867,11 @@ func (h *Host) removeStorageObligation(so storageObligation, sos storageObligati
 		}
 	}
 	if sos == obligationSucceeded {
-		// Contracts that have never been revised don't submit a storage proof.
-		// The revenue for an unrevised storage obligation should equal the
-		// contract cost of the obligation.
+		// Some contracts don't require a storage proof. The revenue for such a
+		// storage obligation should equal the contract cost of the obligation.
 		revenue := so.ContractCost.Add(so.PotentialStorageRevenue).Add(so.PotentialDownloadRevenue).Add(so.PotentialUploadRevenue)
-		if so.revisionNumber() <= 1 {
-			h.log.Printf("No need to submit a storage proof for an unrevised contract. Revenue is %v.\n", revenue)
+		if !so.requiresProof() {
+			h.log.Printf("No need to submit a storage proof the contract. Revenue is %v.\n", revenue)
 		} else {
 			h.log.Printf("Successfully submitted a storage proof. Revenue is %v.\n", revenue)
 		}
@@ -1125,7 +1147,7 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 		// obligation and not submit a storage proof. The host payout for a
 		// failed unrevised contract includes the contract cost and locked
 		// collateral.
-		if so.revisionNumber() <= 1 {
+		if !so.requiresProof() {
 			h.log.Debugln("storage proof not submitted for unrevised contract, id", so.id())
 			h.mu.Lock()
 			err := h.removeStorageObligation(so, obligationSucceeded)

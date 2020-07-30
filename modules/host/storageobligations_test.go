@@ -442,3 +442,59 @@ func TestManagedBuildStorageProof(t *testing.T) {
 		t.Fatal("failed to verify proof")
 	}
 }
+
+// TestStorageObligationRequiresProof tests the requiresProof method of the
+// storageObligation type.
+func TestStorageObligationRequiresProof(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	ht, err := newHostTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ht.Close()
+
+	// Create a storage obligation without data.
+	so, err := ht.newTesterStorageObligation()
+	if err != nil {
+		t.Fatal(err)
+	}
+	proofDeadline := so.proofDeadline()
+	validPayouts, missedPayouts := so.payouts()
+	so.RevisionTransactionSet = []types.Transaction{{
+		FileContractRevisions: []types.FileContractRevision{{
+			ParentID:          so.id(),
+			UnlockConditions:  types.UnlockConditions{},
+			NewRevisionNumber: 1,
+
+			NewFileSize:           0,
+			NewFileMerkleRoot:     crypto.Hash{},
+			NewWindowStart:        so.expiration(),
+			NewWindowEnd:          proofDeadline,
+			NewValidProofOutputs:  validPayouts,
+			NewMissedProofOutputs: missedPayouts,
+			NewUnlockHash:         types.UnlockConditions{}.UnlockHash(),
+		}},
+	}}
+
+	// Obligation shouldn't require a proof cause it has never been revised.
+	if so.requiresProof() {
+		t.Fatal("obligation shouldn't require proof")
+	}
+
+	// Increment the revision number. Obligation should now require a proof
+	so.RevisionTransactionSet[0].FileContractRevisions[0].NewRevisionNumber++
+	if !so.requiresProof() {
+		t.Fatal("obligation should require a proof")
+	}
+
+	//  Make the outputs match. It should no longer require a proof.
+	rev := so.RevisionTransactionSet[0].FileContractRevisions[0]
+	so.RevisionTransactionSet[0].FileContractRevisions[0].NewValidProofOutputs = rev.NewMissedProofOutputs
+	if so.requiresProof() {
+		t.Fatal("obligation shouldn't require proof")
+	}
+}
