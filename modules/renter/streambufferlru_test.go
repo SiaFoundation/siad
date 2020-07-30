@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/threadgroup"
 )
 
 // TestStreamLRU checks that all of the code that forms the LRU for a
@@ -17,9 +18,10 @@ func TestStreamLRU(t *testing.T) {
 
 	// Create a usable stream, this creates the stream buffer that the LRU talks
 	// to and gives a good opporutnity to probe the LRU.
+	var tg threadgroup.ThreadGroup
 	data := fastrand.Bytes(15999) // 1 byte short of 1000 data sections.
 	dataSource := newMockDataSource(data, 16)
-	sbs := newStreamBufferSet()
+	sbs := newStreamBufferSet(&tg)
 	stream := sbs.callNewStream(dataSource, 0)
 
 	// Extract the LRU from the stream to test it directly.

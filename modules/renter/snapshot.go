@@ -698,6 +698,21 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				return err
 			}
 
+			// Check for out-of-bounds before doing network I/O. This way we
+			// don't put the worker on cooldown when trying to fetch a snapshot
+			// table from an empty contract.
+			contract, found := w.renter.hostContractor.ContractByPublicKey(w.staticHostPubKey)
+			if !found {
+				return errors.New("threadedSynchronizeSnapshots: failed to retrieve contract")
+			}
+			revs := contract.Transaction.FileContractRevisions
+			if len(revs) == 0 {
+				return errors.New("threadedSynchronizeSnapshots: transaction doesn't contain a revision")
+			}
+			if revs[0].NewFileSize == 0 {
+				return errors.New("contract of size 0 doesn't have a snapshot table yet")
+			}
+
 			// TODO: Remove this when enough hosts have upgraded to fixed
 			// ReadOffset.
 			var entryTable []snapshotEntry
