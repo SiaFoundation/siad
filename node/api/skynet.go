@@ -370,7 +370,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 		// Check if the default path matches a specific html file and serve its
 		// content.
-		if !hasSubPath && (strings.HasSuffix(metadata.DefaultPath, ".html") || strings.HasSuffix(metadata.DefaultPath, ".htm")) {
+		if !hasSubPath && (strings.HasSuffix(metadata.DefaultPath, ".html") || strings.HasSuffix(metadata.DefaultPath, ".htm") || len(metadata.Subfiles) == 1) {
 			metadataForPath, file, offset, size := metadata.ForPath(metadata.DefaultPath)
 			if len(metadataForPath.Subfiles) == 0 {
 				WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v", path)}, http.StatusNotFound)
