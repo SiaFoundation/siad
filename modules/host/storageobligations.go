@@ -1190,15 +1190,15 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 			return
 		}
 		_, feeRecommendation := h.tpool.FeeEstimation()
-		if so.value().Cmp(feeRecommendation) < 0 {
+		txnSize := uint64(len(encoding.Marshal(sp)) + 300)
+		requiredFee := feeRecommendation.Mul64(txnSize)
+		if so.value().Cmp(requiredFee) < 0 {
 			// There's no sense submitting the storage proof if the fee is more
 			// than the anticipated revenue.
 			h.log.Debugln("Host not submitting storage proof due to a value that does not sufficiently exceed the fee cost")
 			builder.Drop()
 			return
 		}
-		txnSize := uint64(len(encoding.Marshal(sp)) + 300)
-		requiredFee := feeRecommendation.Mul64(txnSize)
 		err = builder.FundSiacoins(requiredFee)
 		if err != nil {
 			h.log.Println("Host error when funding a storage proof transaction fee:", err)
