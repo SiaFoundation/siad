@@ -745,9 +745,11 @@ type (
 		HostPubKey      types.SiaPublicKey   `json:"hostpubkey"`
 
 		// Download status information
-		DownloadOnCoolDown bool `json:"downloadoncooldown"`
-		DownloadQueueSize  int  `json:"downloadqueuesize"`
-		DownloadTerminated bool `json:"downloadterminated"`
+		DownloadCoolDownError string        `json:"downloadcooldownerror"`
+		DownloadCoolDownTime  time.Duration `json:"downloadcooldowntime"`
+		DownloadOnCoolDown    bool          `json:"downloadoncooldown"`
+		DownloadQueueSize     int           `json:"downloadqueuesize"`
+		DownloadTerminated    bool          `json:"downloadterminated"`
 
 		// Upload status information
 		UploadCoolDownError string        `json:"uploadcooldownerror"`

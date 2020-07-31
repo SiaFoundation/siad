@@ -4512,9 +4512,11 @@ returns the the status of all the workers in the renter's workerpool.
         "key": "BervnaN85yB02PzIA66y/3MfWpsjRIgovCU9/L4d8zQ=" // hash
       },
       
-      "downloadoncooldown": false, // boolean
-      "downloadqueuesize":  0,     // int
-      "downloadterminated": false, // boolean
+      "downloadcooldownerror": "",                   // string
+      "downloadcooldowntime":  -9223372036854775808, // time.Duration
+      "downloadoncooldown":    false,                // boolean
+      "downloadqueuesize":     0,                    // int
+      "downloadterminated":    false,                // boolean
       
       "uploadcooldownerror": "",                   // string
       "uploadcooldowntime":  -9223372036854775808, // time.Duration
@@ -4610,6 +4612,12 @@ The worker's contract's utility is locked
 
 **hostpublickey** | SiaPublicKey  
 Public key of the host that the file contract is formed with.  
+
+**downloadcooldownerror** | error  
+The error reason for the worker being on download cooldown
+
+**downloadcooldowntime** | time.Duration  
+How long the worker is on download cooldown
 
 **downloadoncooldown** | boolean  
 Indicates if the worker is on download cooldown
