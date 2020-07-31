@@ -132,14 +132,18 @@ func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
 		u := updates[i]
 		switch u.Name {
 		case updateDeleteName:
-			if err := readAndApplyDeleteUpdate(u); err != nil {
-				return err
-			}
-			updates = updates[i+1:]
-			break
 		default:
+			// Continue here will trigger the next iteration of the for loop and no
+			// code after the switch statement will be executed.
 			continue
 		}
+		// Read and apply the delete update.
+		if err := readAndApplyDeleteUpdate(u); err != nil {
+			return err
+		}
+		// Truncate the updates and break out of the for loop.
+		updates = updates[i+1:]
+		break
 	}
 	if len(updates) == 0 {
 		return nil
