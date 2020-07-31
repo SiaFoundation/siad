@@ -212,3 +212,97 @@ func TestDefaultPath(t *testing.T) {
 		})
 	}
 }
+
+func TestSplitSkylinkString(t *testing.T) {
+	tests := []struct {
+		name                 string
+		strToParse           string
+		skylink              string
+		skylinkStringNoQuery string
+		path                 string
+		err                  error
+	}{
+		{
+			name:                 "no path",
+			strToParse:           "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
+			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
+			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
+			path:                 "/",
+			err:                  nil,
+		},
+		{
+			name:                 "no path with query",
+			strToParse:           "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w?foo=bar",
+			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
+			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
+			path:                 "/",
+			err:                  nil,
+		},
+		{
+			name:                 "with path to file",
+			strToParse:           "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar.baz",
+			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
+			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar.baz",
+			path:                 "/foo/bar.baz",
+			err:                  nil,
+		},
+		{
+			name:                 "with path to dir with trailing slash",
+			strToParse:           "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar/",
+			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
+			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar/",
+			path:                 "/foo/bar/",
+			err:                  nil,
+		},
+		{
+			name:                 "with path to dir without trailing slash",
+			strToParse:           "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar",
+			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
+			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar",
+			path:                 "/foo/bar",
+			err:                  nil,
+		},
+		{
+			name:                 "with path to file with query",
+			strToParse:           "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar.baz?lala=nope",
+			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
+			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar.baz",
+			path:                 "/foo/bar.baz",
+			err:                  nil,
+		},
+		{
+			name:                 "with path to dir with query with trailing slash",
+			strToParse:           "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar/",
+			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
+			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar/",
+			path:                 "/foo/bar/",
+			err:                  nil,
+		},
+		{
+			name:                 "with path to dir with query without trailing slash",
+			strToParse:           "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar",
+			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
+			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar",
+			path:                 "/foo/bar",
+			err:                  nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			skylink, skylinkStringNoQuery, path, err := splitSkylinkString(tt.strToParse)
+			if (err != nil || tt.err != nil) && !errors.Contains(err, tt.err) {
+				t.Fatalf("Expected error %v, got %v\n", tt.err, err)
+			}
+			if skylink.String() != tt.skylink {
+				t.Fatalf("Expected skylink '%v', got '%v'\n", tt.skylink, skylink)
+			}
+			if skylinkStringNoQuery != tt.skylinkStringNoQuery {
+				t.Fatalf("Expected skylinkStringNoQuery '%v', got '%v'\n", tt.skylinkStringNoQuery, skylinkStringNoQuery)
+			}
+			if path != tt.path {
+				t.Fatalf("Expected path '%v', got '%v'\n", tt.path, path)
+			}
+		})
+	}
+}

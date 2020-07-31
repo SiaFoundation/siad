@@ -242,25 +242,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}()
 
-	strLink := ps.ByName("skylink")
-	strLink = strings.TrimPrefix(strLink, "/")
-
-	// Parse out optional path to a subfile
-	path := "/" // default to root
-	noQuery := strings.SplitN(strLink, "?", 2)
-	splits := strings.SplitN(noQuery[0], "/", 2)
-	hasSubPath := len(splits) > 1 && len(splits[1]) > 0
-	if hasSubPath {
-		path = fmt.Sprintf("/%s", splits[1])
-	}
-	skylinkStringClean := noQuery[0]
-	if !hasSubPath && strings.HasSuffix(noQuery[0], "/") {
-		skylinkStringClean = noQuery[0] + "/"
-	}
-
-	// Parse skylink
-	var skylink modules.Skylink
-	err := skylink.LoadString(strLink)
+	skylink, skylinkStringNoQuery, path, err := splitSkylinkString(ps.ByName("skylink"))
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
 		return
@@ -359,37 +341,31 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s) which refers to a non-root file, please specify a format", metadata.DefaultPath)}, http.StatusBadRequest)
 			return
 		}
-		//TODO Remove all checks for hasSubPath here - if we did the path wouldn't be "/"
-
 		// If we don't have a subPath and the skylink doesn't end with a trailing
 		// slash we need to redirect in order to add the trailing slash.
-		if !hasSubPath && !strings.HasSuffix(skylinkStringClean, "/") {
-			w.Header().Set("Location", skylinkStringClean+"/")
+		if !strings.HasSuffix(skylinkStringNoQuery, "/") {
+			w.Header().Set("Location", skylinkStringNoQuery+"/")
 			w.WriteHeader(http.StatusTemporaryRedirect)
 			return
 		}
-		// Check if the default path matches a specific html file and serve its
-		// content.
-		if !hasSubPath && (strings.HasSuffix(metadata.DefaultPath, ".html") || strings.HasSuffix(metadata.DefaultPath, ".htm") || len(metadata.Subfiles) == 1) {
-			metadataForPath, file, offset, size := metadata.ForPath(metadata.DefaultPath)
-			if len(metadataForPath.Subfiles) == 0 {
-				WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v", path)}, http.StatusNotFound)
-				return
-			}
-			streamer, err = NewLimitStreamer(streamer, offset, size)
-			if err != nil {
-				WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
-				return
-			}
-			isSubfile = file
-		} else {
-			// TODO I've used an `else` here in order to keep the changes to a
-			// 	minimum. We can remove it in a follow up.
-			//
-			// Otherwise fail with an error.
+		isHtml := strings.HasSuffix(metadata.DefaultPath, ".html") || strings.HasSuffix(metadata.DefaultPath, ".htm")
+		// Only serve the default path if it points to an HTML file or the only
+		// file in the skyfile.
+		if !isHtml && len(metadata.Subfiles) > 1 {
 			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s), please specify a format", metadata.DefaultPath)}, http.StatusBadRequest)
 			return
 		}
+		metaForPath, file, offset, size := metadata.ForPath(metadata.DefaultPath)
+		if len(metaForPath.Subfiles) == 0 {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v", path)}, http.StatusNotFound)
+			return
+		}
+		streamer, err = NewLimitStreamer(streamer, offset, size)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
+			return
+		}
+		isSubfile = file
 	}
 
 	// Serve the contents of the skyfile at path if one is set
@@ -507,6 +483,25 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
+}
+
+// splitSkylinkString splits a skylink string into its component - a skylink,
+// a string representation of the skylink with the query parameters stripped,
+// and a path.
+func splitSkylinkString(s string) (skylink modules.Skylink, skylinkStringNoQuery, path string, err error) {
+	s = strings.TrimPrefix(s, "/")
+	// Parse out optional path to a subfile
+	path = "/" // default to root
+	splits := strings.SplitN(s, "?", 2)
+	skylinkStringNoQuery = splits[0]
+	splits = strings.SplitN(skylinkStringNoQuery, "/", 2)
+	// Check if a path is passed.
+	if len(splits) > 1 && len(splits[1]) > 0 {
+		path = modules.EnsurePrefix(splits[1], "/")
+	}
+	// Parse skylink
+	err = skylink.LoadString(s)
+	return
 }
 
 // skynetSkylinkPinHandlerPOST will pin a skylink to this Sia node, ensuring
