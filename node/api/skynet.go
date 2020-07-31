@@ -309,6 +309,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	defer streamer.Close()
 
 	var isSubfile bool
+	responseContentType := metadata.ContentType()
 
 	if metadata.DefaultPath == "" && !metadata.DisableDefaultPath {
 		if len(metadata.Subfiles) == 1 {
@@ -366,6 +367,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			return
 		}
 		isSubfile = file
+		responseContentType = metaForPath.ContentType()
 	}
 
 	// Serve the contents of the skyfile at path if one is set
@@ -476,8 +478,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// Only set the Content-Type header when the metadata defines one, if we
 	// were to set the header to an empty string, it would prevent the http
 	// library from sniffing the file's content type.
-	if metadata.ContentType() != "" {
-		w.Header().Set("Content-Type", metadata.ContentType())
+	if responseContentType != "" {
+		w.Header().Set("Content-Type", responseContentType)
 	}
 	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 	w.Header().Set("Access-Control-Allow-Origin", "*")
