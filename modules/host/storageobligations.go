@@ -1256,7 +1256,7 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 // managedBuildStorageProof builds a storage proof for a given storageObligation
 // for the host to submit.
 func (h *Host) managedBuildStorageProof(so storageObligation, segmentIndex uint64) (types.StorageProof, bool) {
-	// Handle empty contract edgge case.
+	// Handle empty contract edge case.
 	if len(so.SectorRoots) == 0 {
 		return types.StorageProof{
 			ParentID: so.id(),
