@@ -247,13 +247,16 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// Parse out optional path to a subfile
 	path := "/" // default to root
-	splits := strings.SplitN(strLink, "?", 2)
-	splits = strings.SplitN(splits[0], "/", 2)
-	hasSubPath := len(splits) > 1
+	noQuery := strings.SplitN(strLink, "?", 2)
+	splits := strings.SplitN(noQuery[0], "/", 2)
+	hasSubPath := len(splits) > 1 && len(splits[1]) > 0
 	if hasSubPath {
 		path = fmt.Sprintf("/%s", splits[1])
 	}
-	skylinkStringClean := splits[0]
+	skylinkStringClean := noQuery[0]
+	if !hasSubPath && strings.HasSuffix(noQuery[0], "/") {
+		skylinkStringClean = noQuery[0] + "/"
+	}
 
 	// Parse skylink
 	var skylink modules.Skylink
@@ -356,6 +359,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s) which refers to a non-root file, please specify a format", metadata.DefaultPath)}, http.StatusBadRequest)
 			return
 		}
+		//TODO Remove all checks for hasSubPath here - if we did the path wouldn't be "/"
+
 		// If we don't have a subPath and the skylink doesn't end with a trailing
 		// slash we need to redirect in order to add the trailing slash.
 		if !hasSubPath && !strings.HasSuffix(skylinkStringClean, "/") {
@@ -366,7 +371,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		// Check if the default path matches a specific html file and serve its
 		// content.
 		if !hasSubPath && (strings.HasSuffix(metadata.DefaultPath, ".html") || strings.HasSuffix(metadata.DefaultPath, ".htm")) {
-			metadataForPath, file, offset, size := metadata.ForPath(path)
+			metadataForPath, file, offset, size := metadata.ForPath(metadata.DefaultPath)
 			if len(metadataForPath.Subfiles) == 0 {
 				WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v", path)}, http.StatusNotFound)
 				return
