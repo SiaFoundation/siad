@@ -36,11 +36,11 @@ func TestSkynetDownloads(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
-		{Name: "SingleFileRegular", Test: testDownloadSingleFileRegular},
-		{Name: "SingleFileMultiPart", Test: testDownloadSingleFileMultiPart},
-		{Name: "DirectoryBasic", Test: testDownloadDirectoryBasic},
-		{Name: "DirectoryNested", Test: testDownloadDirectoryNested},
-		{Name: "ContentDisposition", Test: testDownloadContentDisposition},
+		//{Name: "SingleFileRegular", Test: testDownloadSingleFileRegular},
+		//{Name: "SingleFileMultiPart", Test: testDownloadSingleFileMultiPart},
+		//{Name: "DirectoryBasic", Test: testDownloadDirectoryBasic},
+		//{Name: "DirectoryNested", Test: testDownloadDirectoryNested},
+		//{Name: "ContentDisposition", Test: testDownloadContentDisposition},
 	}
 
 	// Run tests

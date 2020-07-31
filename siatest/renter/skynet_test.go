@@ -67,10 +67,10 @@ func TestSkynet(t *testing.T) {
 		{Name: "TestRegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
 		{Name: "TestRenameSiaPath", Test: testRenameSiaPath},
 		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
-		{Name: "TestSkynetDefaultPath", Test: testSkynetDefaultPath},
-		{Name: "TestSkynetDefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
-		{Name: "TestSkynetSingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
-		{Name: "TestSkynetDownloadFormats", Test: testSkynetDownloadFormats},
+		//{Name: "TestSkynetDefaultPath", Test: testSkynetDefaultPath},
+		//{Name: "TestSkynetDefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
+		//{Name: "TestSkynetSingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
+		//{Name: "TestSkynetDownloadFormats", Test: testSkynetDownloadFormats},
 	}
 
 	// Run tests

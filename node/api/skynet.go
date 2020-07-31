@@ -253,6 +253,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if hasSubPath {
 		path = fmt.Sprintf("/%s", splits[1])
 	}
+	skylinkStringClean := splits[0]
 
 	// Parse skylink
 	var skylink modules.Skylink
@@ -355,19 +356,35 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s) which refers to a non-root file, please specify a format", metadata.DefaultPath)}, http.StatusBadRequest)
 			return
 		}
-		// Check if this matches a specific html file and redirect to it.
-		if !hasSubPath && (strings.HasSuffix(metadata.DefaultPath, ".html") || strings.HasSuffix(metadata.DefaultPath, ".htm")) {
-			for _, f := range metadata.Subfiles {
-				if modules.EnsurePrefix(f.Filename, "/") == metadata.DefaultPath {
-					w.Header().Set("Location", skylink.String()+metadata.DefaultPath)
-					w.WriteHeader(http.StatusTemporaryRedirect)
-					return
-				}
-			}
+		// If we don't have a subPath and the skylink doesn't end with a trailing
+		// slash we need to redirect in order to add the trailing slash.
+		if !hasSubPath && !strings.HasSuffix(skylinkStringClean, "/") {
+			w.Header().Set("Location", skylinkStringClean+"/")
+			w.WriteHeader(http.StatusTemporaryRedirect)
+			return
 		}
-		// Otherwise fail with an error.
-		WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s), please specify a format", metadata.DefaultPath)}, http.StatusBadRequest)
-		return
+		// Check if the default path matches a specific html file and serve its
+		// content.
+		if !hasSubPath && (strings.HasSuffix(metadata.DefaultPath, ".html") || strings.HasSuffix(metadata.DefaultPath, ".htm")) {
+			metadataForPath, file, offset, size := metadata.ForPath(path)
+			if len(metadataForPath.Subfiles) == 0 {
+				WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v", path)}, http.StatusNotFound)
+				return
+			}
+			streamer, err = NewLimitStreamer(streamer, offset, size)
+			if err != nil {
+				WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
+				return
+			}
+			isSubfile = file
+		} else {
+			// TODO I've used an `else` here in order to keep the changes to a
+			// 	minimum. We can remove it in a follow up.
+			//
+			// Otherwise fail with an error.
+			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s), please specify a format", metadata.DefaultPath)}, http.StatusBadRequest)
+			return
+		}
 	}
 
 	// Serve the contents of the skyfile at path if one is set
@@ -1313,19 +1330,6 @@ func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaul
 		return "", true, nil
 	}
 	if defaultPath == "" {
-		// No default path specified, check if there is an `index.html` file.
-		_, exists := subfiles[DefaultSkynetDefaultPath]
-		if exists {
-			return DefaultSkynetDefaultPath, false, nil
-		}
-		// For single file directories we want to serve the only file.
-		if len(subfiles) == 1 {
-			for filename := range subfiles {
-				return filename, false, nil
-			}
-		}
-		// No `index.html` in a multi-file directory, so we can't have a
-		// default path.
 		return "", false, nil
 	}
 	// Check if the defaultPath exists. Omit the leading slash because
