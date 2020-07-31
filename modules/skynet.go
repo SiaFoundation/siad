@@ -1,7 +1,6 @@
 package modules
 
 import (
-	"fmt"
 	"io"
 	"math"
 	"os"
@@ -313,7 +312,7 @@ func EnsurePrefix(str, prefix string) string {
 	if strings.HasPrefix(str, prefix) {
 		return str
 	}
-	return fmt.Sprintf("%s%s", prefix, str)
+	return prefix + str
 }
 
 // EnsureSuffix checks if `str` ends with `suffix` and adds it if that's not
@@ -322,5 +321,5 @@ func EnsureSuffix(str, suffix string) string {
 	if strings.HasSuffix(str, suffix) {
 		return str
 	}
-	return fmt.Sprintf("%s%s", str, suffix)
+	return str + suffix
 }
