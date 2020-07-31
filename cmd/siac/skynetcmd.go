@@ -32,11 +32,24 @@ on top of Sia.`,
 	}
 
 	skynetBlacklistCmd = &cobra.Command{
-		Use:   "blacklist [skylink]",
-		Short: "Blacklist a skylink from skynet.",
-		Long: `Blacklist a skylink from skynet. Use the --remove flag to
-remove a skylink from the blacklist.`,
-		Run: skynetblacklistcmd,
+		Use:   "blacklist",
+		Short: "Add, remove, or list blacklisted skylinks.",
+		Long:  "Add, remove, or list blacklisted skylinks.",
+		Run:   skynetblacklistgetcmd,
+	}
+
+	skynetBlacklistAddCmd = &cobra.Command{
+		Use:   "add [skylink] ...",
+		Short: "Add skylinks to the blacklist",
+		Long:  "Add space separated skylinks to the blacklist.",
+		Run:   skynetblacklistaddcmd,
+	}
+
+	skynetBlacklistRemoveCmd = &cobra.Command{
+		Use:   "remove [skylink] ...",
+		Short: "Remove skylinks from the blacklist",
+		Long:  "Remove space separated skylinks from the blacklist.",
+		Run:   skynetblacklistremovecmd,
 	}
 
 	skynetConvertCmd = &cobra.Command{
@@ -104,32 +117,53 @@ func skynetcmd(cmd *cobra.Command, args []string) {
 	os.Exit(exitCodeUsage)
 }
 
-// skynetblacklistcmd handles adding and removing a skylink from the Skynet
-// Blacklist
-func skynetblacklistcmd(cmd *cobra.Command, args []string) {
-	if len(args) != 1 {
-		cmd.UsageFunc()(cmd)
-		os.Exit(exitCodeUsage)
-	}
+// skynetblacklistaddcmd adds skylinks to the blacklist
+func skynetblacklistaddcmd(cmd *cobra.Command, args []string) {
+	skynetblacklistUpdate(args, nil)
+}
 
-	// Get the skylink
-	skylink := args[0]
-	skylink = strings.TrimPrefix(skylink, "sia://")
+// skynetblacklistremovecmd removes skylinks from the blacklist
+func skynetblacklistremovecmd(cmd *cobra.Command, args []string) {
+	skynetblacklistUpdate(nil, args)
+}
 
-	// Check if this is an addition or removal
-	var add, remove []string
-	if skynetBlacklistRemove {
-		remove = append(remove, skylink)
-	} else {
-		add = append(add, skylink)
-	}
+// skynetblacklistUpdate adds/removes trimmed skylinks to the blacklist
+func skynetblacklistUpdate(additions, removals []string) {
+	additions = skynetblacklistTrimLinks(additions)
+	removals = skynetblacklistTrimLinks(removals)
 
-	// Try to update the Skynet Blacklist.
-	err := httpClient.SkynetBlacklistPost(add, remove)
+	err := httpClient.SkynetBlacklistPost(additions, removals)
 	if err != nil {
 		die("Unable to update skynet blacklist:", err)
 	}
+
 	fmt.Println("Skynet Blacklist updated")
+}
+
+// skynetblacklistTrimLinks will trim away `sia://` from skylinks
+func skynetblacklistTrimLinks(links []string) []string {
+	var result []string
+
+	for _, link := range links {
+		trimmed := strings.TrimPrefix(link, "sia://")
+		result = append(result, trimmed)
+	}
+
+	return result
+}
+
+// skynetblacklistgetcmd will return the list of hashed merkleroots that are blocked
+// from Skynet.
+func skynetblacklistgetcmd(cmd *cobra.Command, args []string) {
+	response, err := httpClient.SkynetBlacklistGet()
+	if err != nil {
+		die("Unable to get skynet blacklist:", err)
+	}
+
+	fmt.Printf("Listing %d blacklisted skylink(s) merkleroots:\n", len(response.Blacklist))
+	for _, hash := range response.Blacklist {
+		fmt.Printf("\t%s\n", hash)
+	}
 }
 
 // skynetconvertcmd will convert an existing siafile to a skyfile and skylink on

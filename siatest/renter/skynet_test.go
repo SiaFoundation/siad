@@ -1596,6 +1596,12 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
+	// Verify that removing the same skylink twice is a noop
+	err = r.SkynetBlacklistPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Verify that the skylink is removed from the Blacklist
 	sbg, err = r.SkynetBlacklistGet()
 	if err != nil {
@@ -1666,6 +1672,13 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Verify that adding the same skylink twice is a noop
+	err = r.SkynetBlacklistPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	sbg, err = r.SkynetBlacklistGet()
 	if err != nil {
 		t.Fatal(err)
