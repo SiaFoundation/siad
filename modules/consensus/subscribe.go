@@ -12,6 +12,8 @@ import (
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 )
 
+// computeConsensusChangeDiffs computes the ConsensusChangeDiffs for the
+// provided block.
 func computeConsensusChangeDiffs(pb *processedBlock, apply bool) modules.ConsensusChangeDiffs {
 	if apply {
 		return modules.ConsensusChangeDiffs{
@@ -69,11 +71,7 @@ func (cs *ConsensusSet) computeConsensusChange(tx *bolt.Tx, ce changeEntry) (mod
 		cc.RevertedBlocks = append(cc.RevertedBlocks, revertedBlock.Block)
 		diffs := computeConsensusChangeDiffs(revertedBlock, false)
 		cc.RevertedDiffs = append(cc.RevertedDiffs, diffs)
-		cc.SiacoinOutputDiffs = append(cc.SiacoinOutputDiffs, diffs.SiacoinOutputDiffs...)
-		cc.FileContractDiffs = append(cc.FileContractDiffs, diffs.FileContractDiffs...)
-		cc.SiafundOutputDiffs = append(cc.SiafundOutputDiffs, diffs.SiafundOutputDiffs...)
-		cc.DelayedSiacoinOutputDiffs = append(cc.DelayedSiacoinOutputDiffs, diffs.DelayedSiacoinOutputDiffs...)
-		cc.SiafundPoolDiffs = append(cc.SiafundPoolDiffs, diffs.SiafundPoolDiffs...)
+		cc.AppendDiffs(diffs)
 	}
 	for _, appliedBlockID := range ce.AppliedBlocks {
 		appliedBlock, err := getBlockMap(tx, appliedBlockID)
@@ -84,11 +82,7 @@ func (cs *ConsensusSet) computeConsensusChange(tx *bolt.Tx, ce changeEntry) (mod
 		cc.AppliedBlocks = append(cc.AppliedBlocks, appliedBlock.Block)
 		diffs := computeConsensusChangeDiffs(appliedBlock, true)
 		cc.AppliedDiffs = append(cc.AppliedDiffs, diffs)
-		cc.SiacoinOutputDiffs = append(cc.SiacoinOutputDiffs, diffs.SiacoinOutputDiffs...)
-		cc.FileContractDiffs = append(cc.FileContractDiffs, diffs.FileContractDiffs...)
-		cc.SiafundOutputDiffs = append(cc.SiafundOutputDiffs, diffs.SiafundOutputDiffs...)
-		cc.DelayedSiacoinOutputDiffs = append(cc.DelayedSiacoinOutputDiffs, diffs.DelayedSiacoinOutputDiffs...)
-		cc.SiafundPoolDiffs = append(cc.SiafundPoolDiffs, diffs.SiafundPoolDiffs...)
+		cc.AppendDiffs(diffs)
 	}
 
 	// Grab the child target and the minimum valid child timestamp.

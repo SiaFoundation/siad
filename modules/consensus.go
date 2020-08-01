@@ -249,6 +249,15 @@ type (
 	}
 )
 
+// AppendDiffs appends a set of diffs to cc.
+func (cc *ConsensusChange) AppendDiffs(diffs ConsensusChangeDiffs) {
+	cc.SiacoinOutputDiffs = append(cc.SiacoinOutputDiffs, diffs.SiacoinOutputDiffs...)
+	cc.FileContractDiffs = append(cc.FileContractDiffs, diffs.FileContractDiffs...)
+	cc.SiafundOutputDiffs = append(cc.SiafundOutputDiffs, diffs.SiafundOutputDiffs...)
+	cc.DelayedSiacoinOutputDiffs = append(cc.DelayedSiacoinOutputDiffs, diffs.DelayedSiacoinOutputDiffs...)
+	cc.SiafundPoolDiffs = append(cc.SiafundPoolDiffs, diffs.SiafundPoolDiffs...)
+}
+
 // MarshalSia implements encoding.SiaMarshaler.
 func (cc ConsensusChange) MarshalSia(w io.Writer) error {
 	return encoding.NewEncoder(w).EncodeAll(
@@ -280,19 +289,11 @@ func (cc *ConsensusChange) UnmarshalSia(r io.Reader) error {
 		return err
 	}
 	// reconstruct diffs
-	for _, diff := range cc.RevertedDiffs {
-		cc.SiacoinOutputDiffs = append(cc.SiacoinOutputDiffs, diff.SiacoinOutputDiffs...)
-		cc.FileContractDiffs = append(cc.FileContractDiffs, diff.FileContractDiffs...)
-		cc.SiafundOutputDiffs = append(cc.SiafundOutputDiffs, diff.SiafundOutputDiffs...)
-		cc.DelayedSiacoinOutputDiffs = append(cc.DelayedSiacoinOutputDiffs, diff.DelayedSiacoinOutputDiffs...)
-		cc.SiafundPoolDiffs = append(cc.SiafundPoolDiffs, diff.SiafundPoolDiffs...)
+	for _, diffs := range cc.RevertedDiffs {
+		cc.AppendDiffs(diffs)
 	}
-	for _, diff := range cc.AppliedDiffs {
-		cc.SiacoinOutputDiffs = append(cc.SiacoinOutputDiffs, diff.SiacoinOutputDiffs...)
-		cc.FileContractDiffs = append(cc.FileContractDiffs, diff.FileContractDiffs...)
-		cc.SiafundOutputDiffs = append(cc.SiafundOutputDiffs, diff.SiafundOutputDiffs...)
-		cc.DelayedSiacoinOutputDiffs = append(cc.DelayedSiacoinOutputDiffs, diff.DelayedSiacoinOutputDiffs...)
-		cc.SiafundPoolDiffs = append(cc.SiafundPoolDiffs, diff.SiafundPoolDiffs...)
+	for _, diffs := range cc.AppliedDiffs {
+		cc.AppendDiffs(diffs)
 	}
 	return nil
 }
