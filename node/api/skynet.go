@@ -308,9 +308,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	defer streamer.Close()
 
-	var isSubfile bool
-	responseContentType := metadata.ContentType()
-
 	if metadata.DefaultPath == "" && !metadata.DisableDefaultPath {
 		if len(metadata.Subfiles) == 1 {
 			// Handle the legacy case in which the fields `defaultpath` and
@@ -331,6 +328,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			}
 		}
 	}
+
+	var isSubfile bool
+	responseContentType := metadata.ContentType()
 
 	// Serve the contents of the file at the default path if one is set. Note
 	// that we return the metadata for the entire Skylink when we serve the
