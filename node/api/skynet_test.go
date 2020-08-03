@@ -213,6 +213,7 @@ func TestDefaultPath(t *testing.T) {
 	}
 }
 
+// TestSplitSkylinkString is a table test for the splitSkylinkString function.
 func TestSplitSkylinkString(t *testing.T) {
 	tests := []struct {
 		name                 string
@@ -264,7 +265,7 @@ func TestSplitSkylinkString(t *testing.T) {
 		},
 		{
 			name:                 "with path to file with query",
-			strToParse:           "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar.baz?lala=nope",
+			strToParse:           "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar.baz?foobar=nope",
 			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
 			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar.baz",
 			path:                 "/foo/bar.baz",
