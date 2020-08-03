@@ -242,21 +242,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}()
 
-	strLink := ps.ByName("skylink")
-	strLink = strings.TrimPrefix(strLink, "/")
-
-	// Parse out optional path to a subfile
-	path := "/" // default to root
-	splits := strings.SplitN(strLink, "?", 2)
-	splits = strings.SplitN(splits[0], "/", 2)
-	hasSubPath := len(splits) > 1
-	if hasSubPath {
-		path = fmt.Sprintf("/%s", splits[1])
-	}
-
-	// Parse skylink
-	var skylink modules.Skylink
-	err := skylink.LoadString(strLink)
+	skylink, skylinkStringNoQuery, path, err := splitSkylinkString(ps.ByName("skylink"))
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
 		return
@@ -322,8 +308,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	defer streamer.Close()
 
-	var isSubfile bool
-
 	if metadata.DefaultPath == "" && !metadata.DisableDefaultPath {
 		if len(metadata.Subfiles) == 1 {
 			// Handle the legacy case in which the fields `defaultpath` and
@@ -345,29 +329,45 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}
 
+	var isSubfile bool
+	responseContentType := metadata.ContentType()
+
 	// Serve the contents of the file at the default path if one is set. Note
 	// that we return the metadata for the entire Skylink when we serve the
 	// contents of the file at the default path.
 	if path == "/" &&
 		metadata.DefaultPath != "" &&
 		format == modules.SkyfileFormatNotSpecified {
-		if strings.Count(metadata.DefaultPath, "/") > 1 {
+		if strings.Count(metadata.DefaultPath, "/") > 1 && len(metadata.Subfiles) > 1 {
 			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s) which refers to a non-root file, please specify a format", metadata.DefaultPath)}, http.StatusBadRequest)
 			return
 		}
-		// Check if this matches a specific html file and redirect to it.
-		if !hasSubPath && (strings.HasSuffix(metadata.DefaultPath, ".html") || strings.HasSuffix(metadata.DefaultPath, ".htm")) {
-			for _, f := range metadata.Subfiles {
-				if modules.EnsurePrefix(f.Filename, "/") == metadata.DefaultPath {
-					w.Header().Set("Location", skylink.String()+metadata.DefaultPath)
-					w.WriteHeader(http.StatusTemporaryRedirect)
-					return
-				}
-			}
+		// If we don't have a subPath and the skylink doesn't end with a trailing
+		// slash we need to redirect in order to add the trailing slash.
+		if !strings.HasSuffix(skylinkStringNoQuery, "/") {
+			w.Header().Set("Location", skylinkStringNoQuery+"/")
+			w.WriteHeader(http.StatusTemporaryRedirect)
+			return
 		}
-		// Otherwise fail with an error.
-		WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s), please specify a format", metadata.DefaultPath)}, http.StatusBadRequest)
-		return
+		isHtml := strings.HasSuffix(metadata.DefaultPath, ".html") || strings.HasSuffix(metadata.DefaultPath, ".htm")
+		// Only serve the default path if it points to an HTML file or the only
+		// file in the skyfile.
+		if !isHtml && len(metadata.Subfiles) > 1 {
+			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s), please specify a format", metadata.DefaultPath)}, http.StatusBadRequest)
+			return
+		}
+		metaForPath, file, offset, size := metadata.ForPath(metadata.DefaultPath)
+		if len(metaForPath.Subfiles) == 0 {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v", path)}, http.StatusNotFound)
+			return
+		}
+		streamer, err = NewLimitStreamer(streamer, offset, size)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
+			return
+		}
+		isSubfile = file
+		responseContentType = metaForPath.ContentType()
 	}
 
 	// Serve the contents of the skyfile at path if one is set
@@ -478,13 +478,32 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// Only set the Content-Type header when the metadata defines one, if we
 	// were to set the header to an empty string, it would prevent the http
 	// library from sniffing the file's content type.
-	if metadata.ContentType() != "" {
-		w.Header().Set("Content-Type", metadata.ContentType())
+	if responseContentType != "" {
+		w.Header().Set("Content-Type", responseContentType)
 	}
 	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
+}
+
+// splitSkylinkString splits a skylink string into its component - a skylink,
+// a string representation of the skylink with the query parameters stripped,
+// and a path.
+func splitSkylinkString(s string) (skylink modules.Skylink, skylinkStringNoQuery, path string, err error) {
+	s = strings.TrimPrefix(s, "/")
+	// Parse out optional path to a subfile
+	path = "/" // default to root
+	splits := strings.SplitN(s, "?", 2)
+	skylinkStringNoQuery = splits[0]
+	splits = strings.SplitN(skylinkStringNoQuery, "/", 2)
+	// Check if a path is passed.
+	if len(splits) > 1 && len(splits[1]) > 0 {
+		path = modules.EnsurePrefix(splits[1], "/")
+	}
+	// Parse skylink
+	err = skylink.LoadString(s)
+	return
 }
 
 // skynetSkylinkPinHandlerPOST will pin a skylink to this Sia node, ensuring
@@ -1313,19 +1332,6 @@ func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaul
 		return "", true, nil
 	}
 	if defaultPath == "" {
-		// No default path specified, check if there is an `index.html` file.
-		_, exists := subfiles[DefaultSkynetDefaultPath]
-		if exists {
-			return DefaultSkynetDefaultPath, false, nil
-		}
-		// For single file directories we want to serve the only file.
-		if len(subfiles) == 1 {
-			for filename := range subfiles {
-				return filename, false, nil
-			}
-		}
-		// No `index.html` in a multi-file directory, so we can't have a
-		// default path.
 		return "", false, nil
 	}
 	// Check if the defaultPath exists. Omit the leading slash because

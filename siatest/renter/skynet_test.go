@@ -2389,7 +2389,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 
 	// TEST: Does not contain "index.html".
 	// Contains a single file and specifies an empty default path (disabled).
-	// It should not return an error and download the file as zip
+	// It should not return an error and download the file as zip.
 	filename = "index.js_empty"
 	files = []siatest.TestFile{
 		{Name: "index.js", Data: []byte(fc1)},
@@ -2409,15 +2409,18 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 
 	// TEST: Does not contain "index.html".
 	// Contains a single file and doesn't specify a default path (not disabled).
-	// It should fail with 'format required'.
+	// It should serve the only file's content.
 	filename = "index.js"
 	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "", false, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
 	content, _, err = r.SkynetSkylinkGet(skylink)
-	if err == nil || !strings.Contains(err.Error(), "please specify a format") {
-		t.Fatalf("Expected error 'please specify a format', got %+v\n", err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(content, files[0].Data) {
+		t.Fatalf("Expected to get content '%s', instead got '%s'", files[0].Data, string(content))
 	}
 }
 
@@ -2501,12 +2504,13 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		},
 
 		{
-			// Single dir with valid default path.
-			// OK
-			name:            "single_dir_correct",
-			files:           singleDir,
-			defaultPath:     dirAbout,
-			expectedContent: fc1,
+			// Single dir with default path set to a nested file.
+			// Error: invalid default path.
+			name:                 "single_dir_nested",
+			files:                singleDir,
+			defaultPath:          dirAbout,
+			expectedContent:      nil,
+			expectedErrStrUpload: "invalid default path provided",
 		},
 		{
 			// Single dir without default path (not disabled).
@@ -2565,12 +2569,12 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		{
 			// Multi dir with index, non-html default path.
 			// Error on download: specify a format.
-			name:                   "multi_idx_non_html",
-			files:                  multiHasIndexIndexJs,
-			defaultPath:            nonHTML,
-			disableDefaultPath:     false,
-			expectedContent:        multiHasIndexIndexJs[1].Data,
-			expectedErrStrDownload: "please specify a format",
+			name:                 "multi_idx_non_html",
+			files:                multiHasIndexIndexJs,
+			defaultPath:          nonHTML,
+			disableDefaultPath:   false,
+			expectedContent:      nil,
+			expectedErrStrUpload: "invalid default path provided",
 		},
 		{
 			// Multi dir with index, bad default path.
