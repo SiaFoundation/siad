@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/url"
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -221,7 +222,7 @@ func TestSplitSkylinkString(t *testing.T) {
 		skylink              string
 		skylinkStringNoQuery string
 		path                 string
-		err                  error
+		errMsg               string
 	}{
 		{
 			name:                 "no path",
@@ -229,7 +230,7 @@ func TestSplitSkylinkString(t *testing.T) {
 			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
 			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
 			path:                 "/",
-			err:                  nil,
+			errMsg:               "",
 		},
 		{
 			name:                 "no path with query",
@@ -237,7 +238,7 @@ func TestSplitSkylinkString(t *testing.T) {
 			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
 			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
 			path:                 "/",
-			err:                  nil,
+			errMsg:               "",
 		},
 		{
 			name:                 "with path to file",
@@ -245,7 +246,7 @@ func TestSplitSkylinkString(t *testing.T) {
 			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
 			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar.baz",
 			path:                 "/foo/bar.baz",
-			err:                  nil,
+			errMsg:               "",
 		},
 		{
 			name:                 "with path to dir with trailing slash",
@@ -253,7 +254,7 @@ func TestSplitSkylinkString(t *testing.T) {
 			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
 			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar/",
 			path:                 "/foo/bar/",
-			err:                  nil,
+			errMsg:               "",
 		},
 		{
 			name:                 "with path to dir without trailing slash",
@@ -261,7 +262,7 @@ func TestSplitSkylinkString(t *testing.T) {
 			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
 			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar",
 			path:                 "/foo/bar",
-			err:                  nil,
+			errMsg:               "",
 		},
 		{
 			name:                 "with path to file with query",
@@ -269,31 +270,50 @@ func TestSplitSkylinkString(t *testing.T) {
 			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
 			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar.baz",
 			path:                 "/foo/bar.baz",
-			err:                  nil,
+			errMsg:               "",
 		},
 		{
 			name:                 "with path to dir with query with trailing slash",
-			strToParse:           "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar/",
+			strToParse:           "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar/?foobar=nope",
 			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
 			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar/",
 			path:                 "/foo/bar/",
-			err:                  nil,
+			errMsg:               "",
 		},
 		{
 			name:                 "with path to dir with query without trailing slash",
-			strToParse:           "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar",
+			strToParse:           "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar?foobar=nope",
 			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
 			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo/bar",
 			path:                 "/foo/bar",
-			err:                  nil,
+			errMsg:               "",
+		},
+		{
+			name:                 "invalid skylink",
+			strToParse:           "invalid_skylink/foo/bar?foobar=nope",
+			skylink:              "",
+			skylinkStringNoQuery: "",
+			path:                 "",
+			errMsg:               "not a skylink, skylinks are always 46 bytes",
+		},
+		{
+			name:                 "empty input",
+			strToParse:           "",
+			skylink:              "",
+			skylinkStringNoQuery: "",
+			path:                 "",
+			errMsg:               "not a skylink, skylinks are always 46 bytes",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			skylink, skylinkStringNoQuery, path, err := splitSkylinkString(tt.strToParse)
-			if (err != nil || tt.err != nil) && !errors.Contains(err, tt.err) {
-				t.Fatalf("Expected error %v, got %v\n", tt.err, err)
+			if (err != nil || tt.errMsg != "") && !strings.Contains(err.Error(), tt.errMsg) {
+				t.Fatalf("Expected error '%s', got %v\n", tt.errMsg, err)
+			}
+			if tt.errMsg != "" {
+				return
 			}
 			if skylink.String() != tt.skylink {
 				t.Fatalf("Expected skylink '%v', got '%v'\n", tt.skylink, skylink)

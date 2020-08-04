@@ -1322,11 +1322,11 @@ func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaul
 	}
 	// Parse the "defaultPath" param.
 	defaultPath = queryForm.Get(modules.SkyfileDefaultPathParamName)
-	if (disableDefaultPath || defaultPath != "") && len(subfiles) == 0 {
-		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath and DisableDefaultPath are not applicable to skyfiles without subfiles.")
+	if len(subfiles) == 0 && (disableDefaultPath || defaultPath != "") {
+		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath and DisableDefaultPath are not applicable to skyfiles without subfiles")
 	}
 	if disableDefaultPath && defaultPath != "" {
-		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath and DisableDefaultPath are mutually exclusive and cannot be set together.")
+		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath and DisableDefaultPath are mutually exclusive and cannot be set together")
 	}
 	if disableDefaultPath {
 		return "", true, nil
@@ -1341,13 +1341,13 @@ func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaul
 	}
 	// Ensure that the defaultPath is an HTML file.
 	if !strings.HasSuffix(defaultPath, ".html") && !strings.HasSuffix(defaultPath, ".htm") {
-		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath must point to an HTML file.")
+		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath must point to an HTML file")
 	}
 	defaultPath = modules.EnsurePrefix(defaultPath, "/")
 	// Do not allow default path to point to files which are not in the root
 	// directory of the skyfile.
 	if strings.Count(defaultPath, "/") > 1 {
-		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath must point to a file in the root directory of the skyfile.")
+		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath must point to a file in the root directory of the skyfile")
 	}
 	return defaultPath, false, nil
 }
