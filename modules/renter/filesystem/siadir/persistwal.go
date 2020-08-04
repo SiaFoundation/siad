@@ -130,11 +130,7 @@ func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
 	// the file while holding a open file handle.
 	for i := len(updates) - 1; i >= 0; i-- {
 		u := updates[i]
-		switch u.Name {
-		case updateDeleteName:
-		default:
-			// Continue here will trigger the next iteration of the for loop and no
-			// code after the switch statement will be executed.
+		if u.Name != updateDeleteName {
 			continue
 		}
 		// Read and apply the delete update.
