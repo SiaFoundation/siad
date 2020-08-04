@@ -196,7 +196,7 @@ func consensusBlocksGetFromBlock(b types.Block, h types.BlockHeight, d types.Cur
 }
 
 // consensusHandler handles the API calls to /consensus.
-func (api *API) consensusHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) consensusHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	height := api.cs.Height()
 	b, found := api.cs.BlockAtHeight(height)
 	if !found {
@@ -236,7 +236,7 @@ func (api *API) consensusHandler(w http.ResponseWriter, req *http.Request, _ htt
 
 // consensusBlocksIDHandler handles the API calls to /consensus/blocks
 // endpoint.
-func (api *API) consensusBlocksHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) consensusBlocksHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Get query params and check them.
 	id, height := req.FormValue("id"), req.FormValue("height")
 	if id != "" && height != "" {
@@ -267,7 +267,7 @@ func (api *API) consensusBlocksHandler(w http.ResponseWriter, req *http.Request,
 			WriteError(w, Error{"failed to parse block height"}, http.StatusBadRequest)
 			return
 		}
-		b, exists = api.cs.BlockAtHeight(types.BlockHeight(h))
+		b, exists = api.cs.BlockAtHeight(h)
 	}
 	// Check if block was found
 	if !exists {

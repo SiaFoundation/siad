@@ -21,7 +21,7 @@ func applyUpdate(deps modules.Dependencies, update writeaheadlog.Update) error {
 	case updateMetadataName:
 		return readAndApplyMetadataUpdate(deps, update)
 	default:
-		return fmt.Errorf("Update not recognized: %v", update.Name)
+		return fmt.Errorf("update not recognized: %v", update.Name)
 	}
 }
 
@@ -170,7 +170,7 @@ func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
 			case updateMetadataName:
 				return sd.readAndApplyMetadataUpdate(file, u)
 			default:
-				return fmt.Errorf("Update not recognized: %v", u.Name)
+				return fmt.Errorf("update not recognized: %v", u.Name)
 			}
 		}()
 		if err != nil {

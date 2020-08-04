@@ -440,3 +440,28 @@ func parsePercentages(values []float64) []float64 {
 
 	return values
 }
+
+// sizeString converts the uint64 size to a string with appropriate units
+func sizeString(size uint64) string {
+	sizes := []struct {
+		unit   string
+		factor float64
+	}{
+		{"PB", 1e15},
+		{"TB", 1e12},
+		{"GB", 1e9},
+		{"MB", 1e6},
+		{"KB", 1e3},
+		{"B", 1e0},
+	}
+
+	// Convert size to a float
+	for _, s := range sizes {
+		res := float64(size) / s.factor
+		if res >= 1 {
+			return fmt.Sprintf("%.4g %s", res, s.unit)
+		}
+	}
+
+	return "0 B"
+}

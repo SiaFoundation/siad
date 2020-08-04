@@ -84,6 +84,8 @@ type (
 		FinancialMetrics modules.ContractorSpending `json:"financialmetrics"`
 		CurrentPeriod    types.BlockHeight          `json:"currentperiod"`
 		NextPeriod       types.BlockHeight          `json:"nextperiod"`
+
+		MemoryStatus modules.MemoryStatus `json:"memorystatus"`
 	}
 
 	// RenterContract represents a contract formed by the renter.
@@ -575,7 +577,7 @@ func ParseDataAndParityPieces(strDataPieces, strParityPieces string) (dataPieces
 }
 
 // renterHandlerGET handles the API call to /renter.
-func (api *API) renterHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) renterHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	settings, err := api.renter.Settings()
 	if err != nil {
 		WriteError(w, Error{"unable able to get renter settings: " + err.Error()}, http.StatusBadRequest)
@@ -588,11 +590,18 @@ func (api *API) renterHandlerGET(w http.ResponseWriter, req *http.Request, _ htt
 	}
 	currentPeriod := api.renter.CurrentPeriod()
 	nextPeriod := currentPeriod + settings.Allowance.Period
+	memoryStatus, err := api.renter.MemoryStatus()
+	if err != nil {
+		WriteError(w, Error{"unable to get renter memory information: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
 	WriteJSON(w, RenterGET{
 		Settings:         settings,
 		FinancialMetrics: spending,
 		CurrentPeriod:    currentPeriod,
 		NextPeriod:       nextPeriod,
+
+		MemoryStatus: memoryStatus,
 	})
 }
 
@@ -1165,7 +1174,7 @@ func (api *API) renterClearDownloadsHandler(w http.ResponseWriter, req *http.Req
 
 // renterContractorChurnStatus handles the API call to request the churn status
 // from the renter's contractor.
-func (api *API) renterContractorChurnStatus(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) renterContractorChurnStatus(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	WriteJSON(w, api.renter.ContractorChurnStatus())
 }
 
@@ -1202,7 +1211,7 @@ func (api *API) renterDownloadsHandler(w http.ResponseWriter, _ *http.Request, _
 }
 
 // renterDownloadByUIDHandlerGET handles the API call to /renter/downloadinfo.
-func (api *API) renterDownloadByUIDHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) renterDownloadByUIDHandlerGET(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	uid := strings.TrimPrefix(ps.ByName("uid"), "/")
 	di, exists := api.renter.DownloadByUID(modules.DownloadID(uid))
 	if !exists {
@@ -1234,7 +1243,7 @@ func (api *API) renterDownloadByUIDHandlerGET(w http.ResponseWriter, req *http.R
 }
 
 // renterFuseHandlerGET handles the API call to /renter/fuse.
-func (api *API) renterFuseHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) renterFuseHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	rfi := RenterFuseInfo{
 		MountPoints: api.renter.MountInfo(),
 	}
@@ -1306,7 +1315,7 @@ func (api *API) renterFuseUnmountHandlerPOST(w http.ResponseWriter, req *http.Re
 }
 
 // renterRecoveryScanHandlerPOST handles the API call to /renter/recoveryscan.
-func (api *API) renterRecoveryScanHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) renterRecoveryScanHandlerPOST(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	if err := api.renter.InitRecoveryScan(); err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -1315,7 +1324,7 @@ func (api *API) renterRecoveryScanHandlerPOST(w http.ResponseWriter, req *http.R
 }
 
 // renterRecoveryScanHandlerGET handles the API call to /renter/recoveryscan.
-func (api *API) renterRecoveryScanHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) renterRecoveryScanHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	scanInProgress, height := api.renter.RecoveryScanStatus()
 	WriteJSON(w, RenterRecoveryStatusGET{
 		ScanInProgress: scanInProgress,
@@ -1476,7 +1485,7 @@ func (api *API) renterFilesHandler(w http.ResponseWriter, req *http.Request, _ h
 
 // renterPricesHandler reports the expected costs of various actions given the
 // renter settings and the set of available hosts.
-func (api *API) renterPricesHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) renterPricesHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	allowance := modules.Allowance{}
 	// Scan the allowance amount. (optional parameter)
 	if f := req.FormValue("funds"); f != "" {
@@ -1590,7 +1599,7 @@ func (api *API) renterDeleteHandler(w http.ResponseWriter, req *http.Request, ps
 }
 
 // renterCancelDownloadHandler handles the API call to cancel a download.
-func (api *API) renterCancelDownloadHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) renterCancelDownloadHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Get the id.
 	id := modules.DownloadID(req.FormValue("id"))
 	if id == "" {
@@ -2124,7 +2133,7 @@ func (api *API) renterDirHandlerPOST(w http.ResponseWriter, req *http.Request, p
 
 // renterContractStatusHandler  handles the API call to check the status of a
 // contract monitored by the renter.
-func (api *API) renterContractStatusHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) renterContractStatusHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var fcID types.FileContractID
 	if err := fcID.LoadString(req.FormValue("id")); err != nil {
 		WriteError(w, Error{"unable to parse id: " + err.Error()}, http.StatusBadRequest)

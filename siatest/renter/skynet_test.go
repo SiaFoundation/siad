@@ -779,9 +779,6 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 	// Check the metadata of the siafile, see that the metadata of the siafile
 	// has the skylink referenced.
-	if err != nil {
-		t.Fatal(err)
-	}
 	largeSkyfilePath, err := modules.SkynetFolder.Join(uploadSiaPath.String())
 	if err != nil {
 		t.Fatal(err)
@@ -794,9 +791,9 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("expecting one skylink:", len(largeRenterFile.File.Skylinks))
 	}
 	if largeRenterFile.File.Skylinks[0] != largeSkylink {
-		t.Fatal("skylinks should match")
 		t.Log(largeRenterFile.File.Skylinks[0])
 		t.Log(largeSkylink)
+		t.Fatal("skylinks should match")
 	}
 
 	// Test the small download
@@ -2052,7 +2049,7 @@ func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 		// verify the skylink can't be found after a dry run
 		status, _, _ := r.SkynetSkylinkHead(skylinkDry)
 		if status != http.StatusNotFound {
-			t.Fatal(fmt.Errorf("Expected 404 not found when trying to fetch a skylink retrieved from a dry run, instead received status %d", status))
+			t.Fatal(fmt.Errorf("expected 404 not found when trying to fetch a skylink retrieved from a dry run, instead received status %d", status))
 		}
 
 		// verify the skfyile got deleted properly
@@ -2231,10 +2228,10 @@ func testRenameSiaPath(t *testing.T, tg *siatest.TestGroup) {
 
 	// Create a skyfile
 	skylink, sup, _, err := r.UploadNewSkyfileBlocking("testRenameFile", 100, false)
-	siaPath := sup.SiaPath
 	if err != nil {
 		t.Fatal(err)
 	}
+	siaPath := sup.SiaPath
 
 	// Rename Skyfile with root set to false should fail
 	err = r.RenterRenamePost(siaPath, modules.RandomSiaPath(), false)

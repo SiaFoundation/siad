@@ -1,0 +1,1 @@
+- Added available and priority memory output to `siac renter -v`

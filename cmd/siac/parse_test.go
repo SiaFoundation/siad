@@ -328,3 +328,26 @@ func randomPercentages() []float64 {
 
 	return p
 }
+
+// TestSizeString probes the sizeString function
+func TestSizeString(t *testing.T) {
+	tests := []struct {
+		in  uint64
+		out string
+	}{
+		{0, "0 B"},
+		{123, "123 B"},
+		{1234, "1.234 KB"},
+		{1234000, "1.234 MB"},
+		{1234000000, "1.234 GB"},
+		{1234000000000, "1.234 TB"},
+		{1234000000000000, "1.234 PB"},
+		{1234000000000000000, "1234 PB"},
+	}
+	for _, test := range tests {
+		out := sizeString(test.in)
+		if out != test.out {
+			t.Errorf("sizeString(%v): expected %v, got %v", test.in, test.out, out)
+		}
+	}
+}

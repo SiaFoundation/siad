@@ -52,7 +52,7 @@ func decodeTransactionID(txidStr string) (types.TransactionID, error) {
 
 // tpoolFeeHandlerGET returns the current estimated fee. Transactions with
 // fees are lower than the estimated fee may take longer to confirm.
-func (api *API) tpoolFeeHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) tpoolFeeHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	min, max := api.tpool.FeeEstimation()
 	WriteJSON(w, TpoolFeeGET{
 		Minimum: min,
@@ -62,7 +62,7 @@ func (api *API) tpoolFeeHandlerGET(w http.ResponseWriter, req *http.Request, ps 
 
 // tpoolRawHandlerGET will provide the raw byte representation of a
 // transaction that matches the input id.
-func (api *API) tpoolRawHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) tpoolRawHandlerGET(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	txid, err := decodeTransactionID(ps.ByName("id"))
 	if err != nil {
 		WriteError(w, Error{"error decoding transaction id: " + err.Error()}, http.StatusBadRequest)
@@ -123,7 +123,7 @@ func (api *API) tpoolRawHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 
 // tpoolConfirmedGET returns whether the specified transaction has
 // been seen on the blockchain.
-func (api *API) tpoolConfirmedGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) tpoolConfirmedGET(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	txid, err := decodeTransactionID(ps.ByName("id"))
 	if err != nil {
 		WriteError(w, Error{"error decoding transaction id: " + err.Error()}, http.StatusBadRequest)
@@ -141,7 +141,7 @@ func (api *API) tpoolConfirmedGET(w http.ResponseWriter, req *http.Request, ps h
 
 // tpoolTransactionsHandler returns the current transactions of the transaction
 // pool
-func (api *API) tpoolTransactionsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) tpoolTransactionsHandler(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	txns := api.tpool.Transactions()
 	WriteJSON(w, TpoolTxnsGET{
 		Transactions: txns,
