@@ -40,7 +40,7 @@ var (
 		Use:   "delete",
 		Short: "Delete the skykey by its name or id",
 		Long:  `Delete the base64-encoded skykey using either its name with --name or id with --id`,
-		Run:   wrap(skykeycreatecmd),
+		Run:   wrap(skykeydeletecmd),
 	}
 
 	skykeyGetCmd = &cobra.Command{
@@ -129,7 +129,8 @@ func skykeyAdd(c client.Client, skykeyString string) error {
 	return nil
 }
 
-// skykeydeletecmd is a wrapper for skykeyGet that handles skykey get commands.
+// skykeydeletecmd is a wrapper for skykeyDelete that handles skykey delete
+// commands.
 func skykeydeletecmd() {
 	err := skykeyDelete(httpClient, skykeyName, skykeyID)
 	if err != nil {
@@ -144,7 +145,7 @@ func skykeyDelete(c client.Client, name, id string) error {
 	// Validate the usage of name and ID
 	err := validateNameAndIDUsage(name, id)
 	if err != nil {
-		return errors.AddContext(err, "cannot delete skykey")
+		return errors.AddContext(err, "cannot validate skykey name and ID usage to delete skykey")
 	}
 
 	// Delete the Skykey with the provide parameter
@@ -177,7 +178,7 @@ func skykeygetcmd() {
 func skykeyGet(c client.Client, name, id string) (string, error) {
 	err := validateNameAndIDUsage(name, id)
 	if err != nil {
-		return "", errors.AddContext(err, "cannot get skykey")
+		return "", errors.AddContext(err, "cannot validate skykey name and ID usage to get skykey")
 	}
 
 	var sk skykey.Skykey
