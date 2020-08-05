@@ -610,7 +610,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParamete
 		}
 	}()
 
-	// Now that we now the filesize, extend the metadata.
+	// Now that we know the filesize, extend the metadata.
 	lup.FileMetadata.Length = fileNode.Size()
 
 	// Convert the new siafile we just uploaded into a skyfile using the
