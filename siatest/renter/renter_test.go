@@ -1187,6 +1187,8 @@ func testPriceTablesUpdated(t *testing.T, tg *siatest.TestGroup) {
 
 // testRemoteRepair tests if a renter correctly repairs a file by
 // downloading it after a host goes offline.
+//
+// This test was extended to also support testing the download cooldowns.
 func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 	// Grab the first of the group's renters
 	r := tg.Renters()[0]
@@ -1260,9 +1262,52 @@ func testRemoteRepair(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// We should be able to download
+	start := time.Now()
 	_, _, err = r.DownloadByStream(remoteFile)
 	if err != nil {
 		t.Error("Failed to download file", err)
+	}
+
+	// Check that the worker is not on cooldown.
+	err = build.Retry(50, 100*time.Millisecond, func() error {
+		rwg, err := r.RenterWorkersGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rwg.TotalDownloadCoolDown == 0 {
+			// Do the download again to reset any cooldowns. Especially on CI,
+			// the amount of time between DownloadByStream and RenterWorkersGet
+			// can be longer than the base cooldown, but the cooldown eventually
+			// reaches 24 seconds, which should be enough time.
+			t.Log("Performing another download, because no workers are on cooldown:", time.Since(start))
+			_, _, err = r.DownloadByStream(remoteFile)
+			if err != nil {
+				t.Fatal("Failed to download file", err)
+			}
+			t.Log(rwg.NumWorkers, time.Since(start))
+			return errors.New("there should be workers on download cooldown because we took their hosts offline")
+		}
+		if rwg.NumWorkers-rwg.TotalDownloadCoolDown == 0 {
+			return errors.New("there should be hosts that are not on cooldown")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Error(err)
+	}
+	// The workers should eventually come off of cooldown.
+	err = build.Retry(500, 100*time.Millisecond, func() error {
+		rwg, err := r.RenterWorkersGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rwg.TotalDownloadCoolDown != 0 {
+			return errors.New("worker still on cooldown")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Error(err)
 	}
 }
 
@@ -4788,17 +4833,11 @@ func TestWorkerStatus(t *testing.T) {
 		if !worker.AccountStatus.NegativeBalance.IsZero() {
 			t.Error("Expected negative balance to be zero but was", worker.AccountStatus.NegativeBalance.HumanString())
 		}
-		if worker.AccountStatus.OnCoolDown {
-			t.Error("Worker account should not be on cool down")
-		}
 		if worker.AccountStatus.RecentErr != "" {
 			t.Error("Expected recent err to be nil but was", worker.AccountStatus.RecentErr)
 		}
 
 		// PriceTableStatus checks
-		if worker.PriceTableStatus.OnCoolDown {
-			t.Error("Worker price table should not be on cool down")
-		}
 		if worker.PriceTableStatus.RecentErr != "" {
 			t.Error("Expected recent err to be nil but was", worker.PriceTableStatus.RecentErr)
 		}
@@ -4851,9 +4890,11 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	defer tg.Close()
 
 	// add a renter with a dependency that simulates an unclean shutdown by
-	// preventing accounts to be saved
+	// preventing accounts to be saved and also prevents the snapshot syncing
+	// thread from running. That way we won't experience unexpected withdrawals
+	// or refunds.
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
-	renterParams.RenterDeps = &dependencies.DependencyInterruptAccountSaveOnShutdown{}
+	renterParams.RenterDeps = &dependencies.DependencyNoSnapshotSyncInterruptAccountSaveOnShutdown{}
 
 	// add a host with a dependency that alters the deposit amount, in a way not
 	// noticeable to the renter until he asks for his balance, this is necessary
@@ -4897,7 +4938,7 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	// ephemeral account, remember this balance value as the renter's version of
 	// the balance
 	var renterBalance types.Currency
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(300, 100*time.Millisecond, func() error {
 		rwg, err := r.RenterWorkersGet()
 		if err != nil {
 			return err

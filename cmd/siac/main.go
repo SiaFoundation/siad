@@ -22,6 +22,9 @@ var (
 
 	// Module Specific Flags
 	//
+	// Daemon Flags
+	daemonStackOutputFile string // The file that the stack trace will be written to
+
 	// FeeManager Flags
 	feeManagerVerbose bool // display additional info for the FeeManager
 
@@ -73,14 +76,13 @@ var (
 	skykeyType            string // Type used to create a new Skykey.
 
 	// Skynet Flags
-	skynetBlacklistRemove bool   // Remove a skylink from the Skynet Blacklist.
-	skynetDownloadPortal  string // Portal to use when trying to download a skylink.
-	skynetLsRecursive     bool   // List files of folder recursively.
-	skynetLsRoot          bool   // Use root as the base instead of the Skynet folder.
-	skynetUnpinRoot       bool   // Use root as the base instead of the Skynet folder.
-	skynetUploadDryRun    bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
-	skynetUploadRoot      bool   // Use root as the base instead of the Skynet folder.
-	skynetUploadSilent    bool   // Don't report progress while uploading
+	skynetDownloadPortal string // Portal to use when trying to download a skylink.
+	skynetLsRecursive    bool   // List files of folder recursively.
+	skynetLsRoot         bool   // Use root as the base instead of the Skynet folder.
+	skynetUnpinRoot      bool   // Use root as the base instead of the Skynet folder.
+	skynetUploadDryRun   bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
+	skynetUploadRoot     bool   // Use root as the base instead of the Skynet folder.
+	skynetUploadSilent   bool   // Don't report progress while uploading
 
 	// Utils Flags
 	dictionaryLanguage      string // dictionary for seed utils
@@ -381,7 +383,7 @@ func initCmds() *cobra.Command {
 	skynetDownloadCmd.Flags().StringVar(&skynetDownloadPortal, "portal", "", "Use a Skynet portal to complete the download")
 	skynetLsCmd.Flags().BoolVarP(&skynetLsRecursive, "recursive", "R", false, "Recursively list skyfiles and folders")
 	skynetLsCmd.Flags().BoolVar(&skynetLsRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
-	skynetBlacklistCmd.Flags().BoolVar(&skynetBlacklistRemove, "remove", false, "Remove the skylink from the blacklist")
+	skynetBlacklistCmd.AddCommand(skynetBlacklistAddCmd, skynetBlacklistRemoveCmd)
 
 	root.AddCommand(skykeyCmd)
 	skykeyCmd.AddCommand(skykeyCreateCmd, skykeyAddCmd, skykeyGetCmd, skykeyGetIDCmd, skykeyListCmd)
@@ -391,7 +393,9 @@ func initCmds() *cobra.Command {
 	skykeyGetCmd.Flags().StringVar(&skykeyID, "id", "", "The base-64 encoded skykey ID")
 	skykeyListCmd.Flags().BoolVar(&skykeyShowPrivateKeys, "show-priv-keys", false, "Show private key data.")
 
-	root.AddCommand(updateCmd)
+	// Daemon Commands
+	root.AddCommand(alertsCmd, globalRatelimitCmd, stackCmd, stopCmd, updateCmd, versionCmd)
+	stackCmd.Flags().StringVarP(&daemonStackOutputFile, "filename", "f", "stack.txt", "Specify the output file for the stack trace")
 	updateCmd.AddCommand(updateCheckCmd)
 
 	root.AddCommand(utilsCmd)
@@ -401,8 +405,6 @@ func initCmds() *cobra.Command {
 
 	utilsVerifySeedCmd.Flags().StringVarP(&dictionaryLanguage, "language", "l", "english", "which dictionary you want to use")
 	utilsUploadedsizeCmd.Flags().BoolVarP(&uploadedsizeUtilVerbose, "verbose", "v", false, "Display more information")
-
-	root.AddCommand(alertsCmd, globalRatelimitCmd, stopCmd, versionCmd)
 
 	root.AddCommand(walletCmd)
 	walletCmd.AddCommand(walletAddressCmd, walletAddressesCmd, walletBalanceCmd, walletBroadcastCmd, walletChangepasswordCmd,

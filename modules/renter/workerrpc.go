@@ -155,8 +155,16 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 		return nil, errors.New("host doesn't support this")
 	}
 
+	// If disrupt is called we sleep for the specified 'defaultNewStreamTimeout'
+	// simulating how an unreachable host would behave in production.
+	timeout := defaultNewStreamTimeout
+	if w.renter.deps.Disrupt("InterruptNewStreamTimeout") {
+		time.Sleep(timeout)
+		return nil, errors.New("InterruptNewStreamTimeout")
+	}
+
 	// Create a stream with a reasonable dial up timeout.
-	stream, err := w.renter.staticMux.NewStreamTimeout(modules.HostSiaMuxSubscriberName, w.staticHostMuxAddress, defaultNewStreamTimeout, modules.SiaPKToMuxPK(w.staticHostPubKey))
+	stream, err := w.renter.staticMux.NewStreamTimeout(modules.HostSiaMuxSubscriberName, w.staticHostMuxAddress, timeout, modules.SiaPKToMuxPK(w.staticHostPubKey))
 	if err != nil {
 		return nil, err
 	}

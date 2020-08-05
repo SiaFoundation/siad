@@ -103,7 +103,14 @@ The standard error response indicating the request failed for any reason, is a
 ### Module Not Loaded
 
 A module that is not reachable due to not being loaded by siad will return
-the custom status code `490 ModuleNotLoaded`.
+the custom status code `490 ModuleNotLoaded`. This is only returned during
+startup. Once the startup is complete and the module is still not available,
+ModuleDisabled will be returned.
+
+### Module Disabled
+
+A module that is not reachable due to being disabled, will return the custom
+status code `491 ModuleDisabled`.
 
 # Authentication
 > Example POST curl call with Authentication
@@ -681,6 +688,27 @@ set.
 
 **modules** | struct  
 Is a list of the siad modules with a bool indicating if the module was launched.
+
+## /daemon/stack [GET]
+**UNSTABLE**
+> curl example  
+
+```go
+curl -A "Sia-Agent" "localhost:9980/daemon/stack"
+```
+Returns the daemon's current stack trace.
+
+### JSON Response
+> JSON Response Example
+ 
+```go
+{
+  "stack": [1,2,21,1,13,32,14,141,13,2,41,120], // []byte
+}
+```
+
+**stack** | []byte  
+Current stack trace. 
 
 ## /daemon/settings [POST]
 > curl example  
@@ -4466,6 +4494,7 @@ returns the the status of all the workers in the renter's workerpool.
 {
   "numworkers":            2, // int
   "totaldownloadcooldown": 0, // int
+  "totalmaintenancecooldown": 0, // int
   "totaluploadcooldown":   0, // int
   
   "workers": [ // []WorkerStatus
@@ -4501,13 +4530,14 @@ returns the the status of all the workers in the renter's workerpool.
       "backupjobqueuesize": 0,        // int
       "downloadrootjobqueuesize": 0,  // int
 
+      "maintenanceoncooldown": false,                      // bool
+      "maintenancerecenterr": "",                          // string
+      "maintenancerecenterrtime": "0001-01-01T00:00:00Z",  // time
+
       "accountstatus": {
         "availablebalance": "1000000000000000000000000", // hasting
         "negativebalance": "0",                          // hasting
         "funded": true,                                  // boolean
-        "oncooldown": false,                             // boolean
-        "oncooldownuntil": "0001-01-01T00:00:00Z",       // time
-        "consecutivefailures": 0,                        // int
         "recenterr": "",                                 // string
         "recenterrtime": "0001-01-01T00:00:00Z"          // time
       },
@@ -4516,9 +4546,6 @@ returns the the status of all the workers in the renter's workerpool.
         "expirytime": "2020-06-15T16:17:01.040481+02:00", // time
         "updatetime": "2020-06-15T16:12:01.040481+02:00", // time
         "active": true,                                   // boolean
-        "oncooldown": false,                              // boolean
-        "oncooldownuntil": "0001-01-01T00:00:00Z",        // time
-        "consecutivefailures": 0,                         // int
         "recenterr": "",                                  // string
         "recenterrtime": "0001-01-01T00:00:00Z"           // time
       },
@@ -4545,11 +4572,15 @@ returns the the status of all the workers in the renter's workerpool.
 }
 ```
 
+
 **numworkers** | int  
 Number of workers in the workerpool
 
 **totaldownloadcooldown** | int  
 Number of workers on download cooldown
+
+**totalmaintenancecooldown** | int  
+Number of workers on maintenance cooldown
 
 **totaluploadcooldown** | int  
 Number of workers on upload cooldown
@@ -4615,6 +4646,15 @@ The size of the worker's backup job queue
 
 **downloadrootjobqueuesize** | int  
 The size of the worker's download by root job queue
+
+**maintenanceoncooldown** | boolean  
+Indicates if the worker is on maintenance cooldown
+
+**maintenancecooldownerror** | string  
+The error reason for the worker being on maintenance cooldown
+
+**maintenancecooldowntime** | time.Duration  
+How long the worker is on maintenance cooldown
 
 **accountstatus** | object
 Detailed information about the workers' ephemeral account status
@@ -4786,8 +4826,13 @@ curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGv
 
 downloads a skylink using http streaming. This call blocks until the data is
 received. There is a 30s default timeout applied to downloading a skylink. If
-the data can not be found within this 30s time constraint, a 404 will be
+the data cannot be found within this 30s time constraint, a 404 will be
 returned. This timeout is configurable through the query string parameters.
+
+In order to make sure skapps function correctly when they rely on relative paths
+within the same skyfile, we need the skylink to be followed by a trailing slash.
+If that is not the case the API responds with a redirect to the same skylink,
+adding that trailing slash.
 
 ### Path Parameters 
 ### Required
@@ -4887,17 +4932,22 @@ required to be maintained on the network in order for the skylink to remain
 active. This field is mutually exclusive with uploading streaming.
 
 **defaultpath** string  
-The path to the default file to returned when the skyfile is visited at the root
-path. If the defaultpath parameter is not provided, it will default to
-`index.html` for directories that have that file, or it will default to the only
-file in the directory, if a single file directory is uploaded. This behaviour
-can be disabled using the `disabledefaultpath` parameter.
+The path to the default file whose content is to be returned when the skyfile is 
+accessed at the root path. The `defaultpath` must point to a file in the root
+directory of the skyfile (except for skyfiles with a single file in them). If
+the `defaultpath` parameter is not provided, it will default to `index.html` 
+for directories that have that file, or it will default to the only file in the 
+directory, if a single file directory is uploaded. This behaviour can be 
+disabled using the `disabledefaultpath` parameter. The two parameters are 
+mutually exclusive and only one can be specified. Neither one is applicable to 
+skyfiles without subfiles.
 
 **disabledefaultpath** bool  
-The 'disabledefaultpath' allows to disable the default path behaviour. If this
-parameter is set to true, there will be no automatic default to `index.html`,
-nor to the single file in directory upload.
- 
+The `disabledefaultpath` allows to disable the default path behaviour. If this
+parameter is set to `true`, there will be no automatic default to `index.html`,
+nor to the single file in directory upload. This parameter is mutually exclusive
+with `defaultpath` and specifying both will result in an error. Neither one is 
+applicable to skyfiles without subfiles.
 
 **filename** | string  
 The name of the file. This name will be encoded into the skyfile metadata, and

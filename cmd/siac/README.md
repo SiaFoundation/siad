@@ -50,6 +50,8 @@ Full Descriptions
 
 ### Daemon tasks
 
+* `siac stack` writes the current stack trace to an output file.
+
 * `siac stop` sends the stop signal to siad to safely terminate. This has the
   same effect as C^c on the terminal.
 
@@ -192,8 +194,13 @@ TODO - Fill in
 
 ### Skynet tasks
 
-* `siac skynet blacklist [skylink]` will add or remove a skylink from the
-  Renter's Skynet Blacklist
+* `siac skynet blacklist` lists the merkleroots of all blacklisted skylinks.
+
+* `siac skynet blacklist add [skylink]` will add any skylinks separated by
+  spaces to the blacklist.
+
+* `siac skynet blacklist remove [skylinks]` will remove any skylinks
+  separated by spaces from the blacklist.
 
 * `siac skynet convert [source siaPath] [destination siaPath]` converts
   a siafile to a skyfile and then generates its skylink. A new skylink will be
