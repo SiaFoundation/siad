@@ -917,8 +917,12 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 	if err != nil {
 		return err
 	}
+	hdbag, err := renter.HostDbAllGet()
+	if err != nil {
+		return err
+	}
 	if len(hdbActive.Hosts) != len(tg.Hosts()) {
-		return fmt.Errorf("Not expected number of active hosts after disabling FilterMode: got %v expected %v", len(hdbActive.Hosts), len(tg.Hosts()))
+		return fmt.Errorf("Not expected number of active hosts after disabling FilterMode: got %v expected %v (%v)", len(hdbActive.Hosts), len(tg.Hosts()), len(hdbag.Hosts))
 	}
 
 	// Confirm that contracts will form with non listed hosts again by
