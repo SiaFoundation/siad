@@ -1,6 +1,7 @@
 package hostdb
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
+	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
@@ -921,7 +923,18 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 	if err != nil {
 		return err
 	}
+	set := make(map[string]api.ExtendedHostDBEntry)
+	for _, ah := range hdbActive.Hosts {
+		set[ah.PublicKeyString] = ah
+	}
 	if len(hdbActive.Hosts) != len(tg.Hosts()) {
+		for _, h := range hdbag.Hosts {
+			_, exists := set[h.PublicKeyString]
+			if !exists {
+				d, _ := json.MarshalIndent(h, " ", "\t")
+				fmt.Println(string(d))
+			}
+		}
 		return fmt.Errorf("Not expected number of active hosts after disabling FilterMode: got %v expected %v (%v)", len(hdbActive.Hosts), len(tg.Hosts()), len(hdbag.Hosts))
 	}
 

@@ -431,12 +431,15 @@ func (hdb *HostDB) ActiveHosts() (activeHosts []modules.HostDBEntry, err error) 
 	hdb.mu.RUnlock()
 	for _, entry := range allHosts {
 		if len(entry.ScanHistory) == 0 {
+			println("no scan history")
 			continue
 		}
 		if !entry.ScanHistory[len(entry.ScanHistory)-1].Success {
+			println("no success")
 			continue
 		}
 		if !entry.AcceptingContracts {
+			println("not accepting contracts")
 			continue
 		}
 		activeHosts = append(activeHosts, entry)
