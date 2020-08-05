@@ -69,6 +69,7 @@ import (
 	"net"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -188,6 +189,10 @@ type Host struct {
 	// subject to various conditions specific to the RPC in question. Examples
 	// of such conditions are congestion, load, liquidity, etc.
 	staticPriceTables *hostPrices
+
+	// Fields related to RHP3 bandwidhth.
+	atomicStreamUpload   uint64
+	atomicStreamDownload uint64
 
 	// Misc state.
 	db            *persist.BoltDatabase
@@ -565,6 +570,8 @@ func (h *Host) BandwidthCounters() (uint64, uint64, time.Time, error) {
 	}
 	defer h.tg.Done()
 	readBytes, writeBytes := h.staticMonitor.Counts()
+	readBytes += atomic.LoadUint64(&h.atomicStreamDownload)
+	writeBytes += atomic.LoadUint64(&h.atomicStreamUpload)
 	startTime := h.staticMonitor.StartTime()
 	return writeBytes, readBytes, startTime, nil
 }

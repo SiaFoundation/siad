@@ -7,6 +7,7 @@ import (
 	"math"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -238,6 +239,13 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Check bandwidth tallies.
+	down := atomic.LoadUint64(&rhp.staticHT.host.atomicStreamDownload)
+	up := atomic.LoadUint64(&rhp.staticHT.host.atomicStreamUpload)
+	if down != expectedDownload || up != expectedUpload {
+		t.Fatal("bandwidth status don't match")
 	}
 }
 
