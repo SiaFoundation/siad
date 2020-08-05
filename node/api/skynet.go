@@ -965,7 +965,7 @@ func serveArchive(dst io.Writer, src io.ReadSeeker, md modules.SkyfileMetadata, 
 	// If there are no files, it's a single file download. Manually construct a
 	// SkyfileSubfileMetadata from the SkyfileMetadata.
 	if len(files) == 0 {
-		var length uint64
+		length := md.Length
 		if md.Length == 0 {
 			// v150Compat a missing length is fine for legacy links but new
 			// links should always have the length set.
@@ -983,8 +983,6 @@ func serveArchive(dst io.Writer, src io.ReadSeeker, md modules.SkyfileMetadata, 
 				return errors.AddContext(err, "serveTar: failed to seek to start of skyfile")
 			}
 			length = uint64(seekLen)
-		} else {
-			length = md.Length
 		}
 		// Construct the SkyfileSubfileMetadata.
 		files = append(files, modules.SkyfileSubfileMetadata{
