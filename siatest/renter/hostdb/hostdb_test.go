@@ -1,7 +1,6 @@
 package hostdb
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -14,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
-	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
@@ -739,10 +737,11 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 	}
 	allowHosts := int(rg.Settings.Allowance.Hosts)
 
-	// Confirm we are starting with expected number of contracts
+	// Confirm we are starting with expected number of contracts and active
+	// hosts.
 	loop := 0
 	m := tg.Miners()[0]
-	err = build.Retry(50, 100*time.Millisecond, func() error {
+	err = build.Retry(100, 100*time.Millisecond, func() error {
 		// Mine a block every 10 iterations to make sure
 		// threadedContractMaintenance is being triggered
 		if loop%10 == 0 {
@@ -757,6 +756,13 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 		}
 		if len(rc.ActiveContracts) < allowHosts {
 			return fmt.Errorf("Contracts did not form as expected, have %v expected at least %v", len(rc.ActiveContracts), allowHosts)
+		}
+		hdbActive, err := renter.HostDbActiveGet()
+		if err != nil {
+			return err
+		}
+		if len(hdbActive.Hosts) != len(tg.Hosts()) {
+			return fmt.Errorf("expected %v active hosts but got %v", len(tg.Hosts()), len(hdbActive.Hosts))
 		}
 		return nil
 	})
@@ -923,18 +929,7 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 	if err != nil {
 		return err
 	}
-	set := make(map[string]api.ExtendedHostDBEntry)
-	for _, ah := range hdbActive.Hosts {
-		set[ah.PublicKeyString] = ah
-	}
 	if len(hdbActive.Hosts) != len(tg.Hosts()) {
-		for _, h := range hdbag.Hosts {
-			_, exists := set[h.PublicKeyString]
-			if !exists {
-				d, _ := json.MarshalIndent(h, " ", "\t")
-				fmt.Println(string(d))
-			}
-		}
 		return fmt.Errorf("Not expected number of active hosts after disabling FilterMode: got %v expected %v (%v)", len(hdbActive.Hosts), len(tg.Hosts()), len(hdbag.Hosts))
 	}
 
