@@ -4826,8 +4826,13 @@ curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGv
 
 downloads a skylink using http streaming. This call blocks until the data is
 received. There is a 30s default timeout applied to downloading a skylink. If
-the data can not be found within this 30s time constraint, a 404 will be
+the data cannot be found within this 30s time constraint, a 404 will be
 returned. This timeout is configurable through the query string parameters.
+
+In order to make sure skapps function correctly when they rely on relative paths
+within the same skyfile, we need the skylink to be followed by a trailing slash.
+If that is not the case the API responds with a redirect to the same skylink,
+adding that trailing slash.
 
 ### Path Parameters 
 ### Required

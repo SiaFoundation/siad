@@ -164,13 +164,3 @@ in its root directory then we return the content of that `index.html`.
 
 Otherwise, the entire content of the skyfile is returned as a zip or another 
 format, if one is specified via the `format` parameter.
-
-
-
-
-
-
-
-
-
-

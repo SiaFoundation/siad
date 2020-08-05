@@ -104,7 +104,7 @@ func testDownloadSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 				Offset:      0,
 				Len:         uint64(len(data)),
 			}},
-		DefaultPath: "/file1.png",
+		DefaultPath: "",
 	}
 	// verify downloads
 	err = verifyDownloadRaw(t, r, skylink, data, expectedMetadataPNG, testName)
@@ -135,7 +135,7 @@ func testDownloadSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 				Offset:      0,
 				Len:         uint64(len(data)),
 			}},
-		DefaultPath: "/file1.html",
+		DefaultPath: "",
 	}
 	// verify downloads
 	err = verifyDownloadRaw(t, r, skylink, data, expectedMetadataHTML, testName)
@@ -192,7 +192,7 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 				Offset:      uint64(len(files[0].Data)),
 				Len:         uint64(len(files[1].Data)),
 			}},
-		DefaultPath:        "/index.html",
+		DefaultPath:        "",
 		DisableDefaultPath: false,
 	}
 
@@ -346,7 +346,7 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 				Len:         uint64(len(files[2].Data)),
 			},
 		},
-		DefaultPath:        "/index.html",
+		DefaultPath:        "",
 		DisableDefaultPath: false,
 	}
 
