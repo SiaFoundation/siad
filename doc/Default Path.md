@@ -79,41 +79,35 @@ results in Error.
 If `defaultPath` is set to a directory path (i.e. not a file) that is considered
 to not match any file and results in an Error.  
 
-#### Non-empty `defaultPath`
-
 If `defaultPath` is set to a valid file from `subfiles` that value is accepted 
 and set in the metadata. Note that this is always the case, regardless of other
 restrictions on valid default paths, such as default path files needing to be
 HTML files.
 
-#### Empty `defaultPath`
-
-If `defaultPath` is empty and there is an `index.html` file in the root 
-directory of the skyfile than the `defaultPath` is set to that `index.html`.
-
 ## Behaviour on download
 
-If the value of `disableDefaultPath` is `true` the `defaultPath` field is set to
- `""` and no content is served if the skyfile is accessed at its root path.
- Instead, the content of the entire skyfile is downloaded as a zip.
+If the value of `disableDefaultPath` is `true` no content is served if the 
+skyfile is accessed at its root path. Instead, the content of the entire skyfile 
+is downloaded as a zip or another format, if one is specified via the `format` 
+parameter.
  
  If the value of `defaultPath` is `""` and `disableDefaultPath` is `false` we do
  a couple of checks:
  - if the skyfile contains a single file we serve the content of that file
  - if the skyfile contains more than one file and has an `index.html` file in
  its root directory, we serve that `index.html` file
- - if neither is true we download the entire file in zip format
+ - if neither is true we download the entire file as a zip or another format, if
+  one is specified via the `format` parameter
+
+If both `defaultPath` and `disableDefaultPath` are set simultaneously and no 
+`format` is specified we return an error.
  
- In all the above cases we serve the full metadata of the skyfile. 
+In all the above cases we serve the full metadata of the skyfile. 
 
 ### Single file
 
-Since single file uploads ignore `defaultPath` and `disableDefaultPath` they
-will download their content directly.
-
-In case a `defaultPath` is set on a single file it will be ignored. This is not 
-a dedicated execution path, it's just a side effect of the way `ForPath` is
-implemented.
+In case a `defaultPath` is set on a single file we return an error - the file
+can only be downloaded by specifying a `format`.
 
 ### Single file directory
 
@@ -129,7 +123,8 @@ The entire metadata of the skyfile is returned.
 
 #### `defaultPath` is empty and `disableDefaultPath` is `true`
 
-The content of the skyfile is returned in a zipped form.
+The content of the skyfile is returned as a zip or another format, if one is 
+specified via the `format` parameter.
 
 The entire metadata of the skyfile is returned.
 
@@ -167,7 +162,8 @@ the client should use a format to download the skyfile.
 If `disableDefaultPath` is `false` and the skyfile contains an `index.html` file
 in its root directory then we return the content of that `index.html`.
 
-Otherwise, the entire content of the skyfile is returned as a zip.
+Otherwise, the entire content of the skyfile is returned as a zip or another 
+format, if one is specified via the `format` parameter.
 
 
 

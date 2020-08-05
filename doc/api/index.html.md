@@ -4927,10 +4927,10 @@ required to be maintained on the network in order for the skylink to remain
 active. This field is mutually exclusive with uploading streaming.
 
 **defaultpath** string  
-The path to the default file whose content to be returned when the skyfile is 
+The path to the default file whose content is to be returned when the skyfile is 
 accessed at the root path. The `defaultpath` must point to a file in the root
-directory of the skyfile (execpt for skyfiles with a single file in them). If
-the `defaultpath` parameter is not provided, it will default to `/index.html` 
+directory of the skyfile (except for skyfiles with a single file in them). If
+the `defaultpath` parameter is not provided, it will default to `index.html` 
 for directories that have that file, or it will default to the only file in the 
 directory, if a single file directory is uploaded. This behaviour can be 
 disabled using the `disabledefaultpath` parameter. The two parameters are 
@@ -4939,7 +4939,7 @@ skyfiles without subfiles.
 
 **disabledefaultpath** bool  
 The `disabledefaultpath` allows to disable the default path behaviour. If this
-parameter is set to `true`, there will be no automatic default to `/index.html`,
+parameter is set to `true`, there will be no automatic default to `index.html`,
 nor to the single file in directory upload. This parameter is mutually exclusive
 with `defaultpath` and specifying both will result in an error. Neither one is 
 applicable to skyfiles without subfiles.
