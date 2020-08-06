@@ -148,8 +148,8 @@ gitlab.com/NebulousLabs/persist v0.0.0-20200605115618-007e5e23d877 h1:BGJ+na/hpe
 gitlab.com/NebulousLabs/persist v0.0.0-20200605115618-007e5e23d877/go.mod h1:KT2SgNX75xjMIQdDi3Rf3tcDWsX/D289R65Ss/7lKBg=
 gitlab.com/NebulousLabs/ratelimit v0.0.0-20200703092634-24a64284c0ec h1:+FlF7OO7h81SPLkx9wpDAnnTbLiTL5izb9gldkbW/MQ=
 gitlab.com/NebulousLabs/ratelimit v0.0.0-20200703092634-24a64284c0ec/go.mod h1:hvNy5sMP9gGrNQ7kNgb+vWuiPptqTk4W45bQbbT/vmg=
-gitlab.com/NebulousLabs/siamux v0.0.0-20200806080724-ebf2cc709a70 h1:k5WFziDMDrDXBYdfyhOKOM8eEiVGvcxSTLUsCH0pjV4=
-gitlab.com/NebulousLabs/siamux v0.0.0-20200806080724-ebf2cc709a70/go.mod h1:B0RyynPElUG2Y2CAVIIRriIqR9qht2I+nDisi3gfKn0=
+gitlab.com/NebulousLabs/siamux v0.0.0-20200806091936-b4f3a6563bd4 h1:C0MMtkRF0b29a5yhfRD7r5xlF9Ge1oGXzNAtrpS9gy0=
+gitlab.com/NebulousLabs/siamux v0.0.0-20200806091936-b4f3a6563bd4/go.mod h1:B0RyynPElUG2Y2CAVIIRriIqR9qht2I+nDisi3gfKn0=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20200527092543-afa01960408c/go.mod h1:av52iTyGuPtGU+GMcqfGtZu2vxhIjPgrxvIwVYelEvs=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213 h1:owERlKtUEFTPQ897iiqWPOuWBdq7BYqPxDOCgEZnbN4=
 gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213/go.mod h1:vIutAvl7lmJqLVYTCBY5WDdJomP+V74At8LCeEYoH8w=
