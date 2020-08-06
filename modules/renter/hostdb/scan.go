@@ -681,7 +681,7 @@ func (hdb *HostDB) threadedScan() {
 // TCP connections. Otherwise we would end up with one TCP connection for every
 // host in the network after scanning the whole network.
 func fetchPriceTable(siamux *siamux.SiaMux, hostAddr string, timeout time.Duration, hpk mux.ED25519PublicKey) (*modules.RPCPriceTable, error) {
-	stream, err := siamux.NewStreamTimeout(modules.HostSiaMuxSubscriberName, hostAddr, timeout, hpk)
+	stream, err := siamux.NewEphemeralStream(modules.HostSiaMuxSubscriberName, hostAddr, timeout, hpk)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to create ephemeral stream")
 	}
