@@ -453,7 +453,7 @@ func TestFileContractUnspentOutputs(t *testing.T) {
 	}
 	defer tg.Close()
 
-	// Add a custom renter that won't fill EAs or create snashots.
+	// Add a custom renter that won't fill EAs or create snapshots.
 	p := node.Renter(filepath.Join(testDir, "renter"))
 	p.RenterDeps = &dependencies.DependencyDisableWorker{}
 	nodes, err := tg.AddNodes(p)

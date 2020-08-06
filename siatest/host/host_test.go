@@ -539,7 +539,7 @@ func TestStorageProofEmptyContract(t *testing.T) {
 
 	// Download a file from the second renter. This should cause the second
 	// renter to spend money on its contracts without increasing their size.
-	err = build.Retry(100, 100*time.Second, func() error {
+	err = build.Retry(100, 100*time.Millisecond, func() error {
 		_, _, err = renterDownload.SkynetSkylinkGet(skylink)
 		if err != nil {
 			return err
@@ -550,7 +550,7 @@ func TestStorageProofEmptyContract(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Get the storage obligations form the hosts.
+	// Get the storage obligations from the hosts.
 	hosts := tg.Hosts()
 	host1, host2 := hosts[0], hosts[1]
 	cig1, err := host1.HostContractInfoGet()
@@ -596,6 +596,7 @@ func TestStorageProofEmptyContract(t *testing.T) {
 				return nil
 			}
 		}
+		retries++
 
 		cig1, err = host1.HostContractInfoGet()
 		if err != nil {

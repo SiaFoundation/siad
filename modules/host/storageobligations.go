@@ -871,7 +871,7 @@ func (h *Host) removeStorageObligation(so storageObligation, sos storageObligati
 		// storage obligation should equal the contract cost of the obligation.
 		revenue := so.ContractCost.Add(so.PotentialStorageRevenue).Add(so.PotentialDownloadRevenue).Add(so.PotentialUploadRevenue)
 		if !so.requiresProof() {
-			h.log.Printf("No need to submit a storage proof the contract. Revenue is %v.\n", revenue)
+			h.log.Printf("No need to submit a storage proof for the contract. Revenue is %v.\n", revenue)
 		} else {
 			h.log.Printf("Successfully submitted a storage proof. Revenue is %v.\n", revenue)
 		}
@@ -1143,10 +1143,9 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 	if !so.ProofConfirmed && blockHeight >= so.expiration()+resubmissionTimeout {
 		h.log.Debugln("Host is attempting a storage proof for", so.id())
 
-		// If the obligation has never been revised, we can remove the
-		// obligation and not submit a storage proof. The host payout for a
-		// failed unrevised contract includes the contract cost and locked
-		// collateral.
+		// If the obligation doesn't require a proof, we can remove the
+		// obligation and avoid submitting a storage proof. In that case the
+		// host payout for a includes the contract cost and locked collateral.
 		if !so.requiresProof() {
 			h.log.Debugln("storage proof not submitted for unrevised contract, id", so.id())
 			h.mu.Lock()
