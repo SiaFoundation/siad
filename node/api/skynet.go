@@ -125,7 +125,7 @@ type (
 		Skykeys []SkykeyGET `json:"skykeys"`
 	}
 
-	// archiveFunc is a function that serves subfiles from src at to dst and
+	// archiveFunc is a function that serves subfiles from src to dst and
 	// archives them using a certain algorithm.
 	archiveFunc func(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error
 )
@@ -951,10 +951,10 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 	})
 }
 
-// serveArchive serves skyfiles as an by reading them from r and writing the
-// archive to dst using the given archiveFunc.
+// serveArchive serves skyfiles as an archive by reading them from r and writing
+// the archive to dst using the given archiveFunc.
 func serveArchive(dst io.Writer, src io.ReadSeeker, md modules.SkyfileMetadata, archiveFunc archiveFunc) error {
-	// Get the files to tar.
+	// Get the files to archive.
 	var files []modules.SkyfileSubfileMetadata
 	for _, file := range md.Subfiles {
 		files = append(files, file)
@@ -976,11 +976,11 @@ func serveArchive(dst io.Writer, src io.ReadSeeker, md modules.SkyfileMetadata, 
 			// the start.
 			seekLen, err := src.Seek(0, io.SeekEnd)
 			if err != nil {
-				return errors.AddContext(err, "serveTar: failed to seek to end of skyfile")
+				return errors.AddContext(err, "serveArchive: failed to seek to end of skyfile")
 			}
 			_, err = src.Seek(0, io.SeekStart)
 			if err != nil {
-				return errors.AddContext(err, "serveTar: failed to seek to start of skyfile")
+				return errors.AddContext(err, "serveArchive: failed to seek to start of skyfile")
 			}
 			length = uint64(seekLen)
 		}

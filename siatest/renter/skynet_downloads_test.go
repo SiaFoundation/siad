@@ -128,7 +128,7 @@ func testDownloadSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 	//we expect the full metadata to be returned
 	expectedMetadataHTML := modules.SkyfileMetadata{
 		Filename: "SingleFileMultiPartHTML",
-		Length:   19,
+		Length:   uint64(len(data)),
 		Subfiles: map[string]modules.SkyfileSubfileMetadata{
 			"file1.html": {
 				FileMode:    os.FileMode(0644),
