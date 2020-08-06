@@ -26,8 +26,9 @@ const (
 // leading bytes of the skyfile, meaning that this struct can be extended
 // without breaking compatibility.
 type SkyfileMetadata struct {
-	Mode     os.FileMode     `json:"mode,omitempty"`
 	Filename string          `json:"filename,omitempty"`
+	Length   uint64          `json:"length,omitempty"`
+	Mode     os.FileMode     `json:"mode,omitempty"`
 	Subfiles SkyfileSubfiles `json:"subfiles,omitempty"`
 
 	// DefaultPath indicates what content to serve if the user has not specified
@@ -81,6 +82,10 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 			sf.Offset -= offset
 			metadata.Subfiles[sf.Filename] = sf
 		}
+	}
+	// Set the metadata length by summing up the length of the subfiles.
+	for _, file := range metadata.Subfiles {
+		metadata.Length += file.Len
 	}
 	return metadata, isFile, offset, metadata.size()
 }
