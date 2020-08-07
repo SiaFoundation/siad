@@ -103,7 +103,7 @@ func TestSkykeyManager(t *testing.T) {
 	randomNameBytes := fastrand.Bytes(24)
 	randomName := string(randomNameBytes)
 	id, err = keyMan.IDByName(randomName)
-	if err != errNoSkykeysWithThatName {
+	if err != ErrNoSkykeysWithThatName {
 		t.Fatal(err)
 	}
 
