@@ -696,7 +696,9 @@ Is a list of the siad modules with a bool indicating if the module was launched.
 ```go
 curl -A "Sia-Agent" "localhost:9980/daemon/stack"
 ```
-Returns the daemon's current stack trace.
+Returns the daemon's current stack trace. The maximum buffer size that will be
+returned is 64MB. If the stack trace is larger than 64MB the first 64MB are
+returned.
 
 ### JSON Response
 > JSON Response Example
