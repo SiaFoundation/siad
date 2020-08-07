@@ -1,1 +1,0 @@
-- Add Skykey delete methods to API.

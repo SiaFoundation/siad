@@ -1,2 +1,0 @@
-- Add testing infrastructure to validate the output of siac commands.
-- Add root siac Cobra command test with subtests.

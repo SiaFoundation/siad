@@ -1,1 +1,0 @@
-- integrade download cooldown system into download jobs
