@@ -234,9 +234,6 @@ func cleanCloseHandler(next http.Handler) http.Handler {
 			defer close(done)
 			next.ServeHTTP(w, r)
 		}(w, r)
-		select {
-		case <-done:
-		}
 
 		// Sanity check - thread should not take more than an hour to return. This
 		// must be done in a goroutine, otherwise the server will not close the
