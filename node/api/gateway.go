@@ -43,8 +43,8 @@ type (
 	}
 )
 
-// gatewayHandlerGET handles the API call asking for the gatway status.
-func (api *API) gatewayHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+// gatewayHandlerGET handles the API call asking for the gateway status.
+func (api *API) gatewayHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	peers := api.gateway.Peers()
 	mds, mus := api.gateway.RateLimits()
 	// nil slices are marshalled as 'null' in JSON, whereas 0-length slices are
@@ -86,9 +86,9 @@ func (api *API) gatewayHandlerPOST(w http.ResponseWriter, req *http.Request, _ h
 	WriteSuccess(w)
 }
 
-// gatewayBandwidthHandlerGET handles the API call asking for the gatway's
+// gatewayBandwidthHandlerGET handles the API call asking for the gateway's
 // bandwidth usage.
-func (api *API) gatewayBandwidthHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) gatewayBandwidthHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	upload, download, startTime, err := api.gateway.BandwidthCounters()
 	if err != nil {
 		WriteError(w, Error{"failed to get gateway's bandwidth usage: " + err.Error()}, http.StatusBadRequest)
@@ -102,7 +102,7 @@ func (api *API) gatewayBandwidthHandlerGET(w http.ResponseWriter, req *http.Requ
 }
 
 // gatewayConnectHandler handles the API call to add a peer to the gateway.
-func (api *API) gatewayConnectHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) gatewayConnectHandler(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	addr := modules.NetAddress(ps.ByName("netaddress"))
 	err := api.gateway.ConnectManual(addr)
 	if err != nil {
@@ -114,7 +114,7 @@ func (api *API) gatewayConnectHandler(w http.ResponseWriter, req *http.Request, 
 }
 
 // gatewayDisconnectHandler handles the API call to remove a peer from the gateway.
-func (api *API) gatewayDisconnectHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) gatewayDisconnectHandler(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	addr := modules.NetAddress(ps.ByName("netaddress"))
 	err := api.gateway.DisconnectManual(addr)
 	if err != nil {

@@ -33,11 +33,11 @@ func TestReloading(t *testing.T) {
 	}
 	t.Parallel()
 	st, err := createServerTester(t.Name())
-
-	height := st.server.api.cs.Height()
 	if err != nil {
 		t.Fatal(err)
 	}
+	height := st.server.api.cs.Height()
+
 	err = st.server.Close()
 	if err != nil {
 		t.Fatal(err)

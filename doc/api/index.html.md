@@ -4512,9 +4512,11 @@ returns the the status of all the workers in the renter's workerpool.
         "key": "BervnaN85yB02PzIA66y/3MfWpsjRIgovCU9/L4d8zQ=" // hash
       },
       
-      "downloadoncooldown": false, // boolean
-      "downloadqueuesize":  0,     // int
-      "downloadterminated": false, // boolean
+      "downloadcooldownerror": "",                   // string
+      "downloadcooldowntime":  -9223372036854775808, // time.Duration
+      "downloadoncooldown":    false,                // boolean
+      "downloadqueuesize":     0,                    // int
+      "downloadterminated":    false,                // boolean
       
       "uploadcooldownerror": "",                   // string
       "uploadcooldowntime":  -9223372036854775808, // time.Duration
@@ -4610,6 +4612,12 @@ The worker's contract's utility is locked
 
 **hostpublickey** | SiaPublicKey  
 Public key of the host that the file contract is formed with.  
+
+**downloadcooldownerror** | error  
+The error reason for the worker being on download cooldown
+
+**downloadcooldowntime** | time.Duration  
+How long the worker is on download cooldown
 
 **downloadoncooldown** | boolean  
 Indicates if the worker is on download cooldown
@@ -4826,8 +4834,13 @@ curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGv
 
 downloads a skylink using http streaming. This call blocks until the data is
 received. There is a 30s default timeout applied to downloading a skylink. If
-the data can not be found within this 30s time constraint, a 404 will be
+the data cannot be found within this 30s time constraint, a 404 will be
 returned. This timeout is configurable through the query string parameters.
+
+In order to make sure skapps function correctly when they rely on relative paths
+within the same skyfile, we need the skylink to be followed by a trailing slash.
+If that is not the case the API responds with a redirect to the same skylink,
+adding that trailing slash.
 
 ### Path Parameters 
 ### Required
@@ -4927,17 +4940,22 @@ required to be maintained on the network in order for the skylink to remain
 active. This field is mutually exclusive with uploading streaming.
 
 **defaultpath** string  
-The path to the default file to returned when the skyfile is visited at the root
-path. If the defaultpath parameter is not provided, it will default to
-`index.html` for directories that have that file, or it will default to the only
-file in the directory, if a single file directory is uploaded. This behaviour
-can be disabled using the `disabledefaultpath` parameter.
+The path to the default file whose content is to be returned when the skyfile is 
+accessed at the root path. The `defaultpath` must point to a file in the root
+directory of the skyfile (except for skyfiles with a single file in them). If
+the `defaultpath` parameter is not provided, it will default to `index.html` 
+for directories that have that file, or it will default to the only file in the 
+directory, if a single file directory is uploaded. This behaviour can be 
+disabled using the `disabledefaultpath` parameter. The two parameters are 
+mutually exclusive and only one can be specified. Neither one is applicable to 
+skyfiles without subfiles.
 
 **disabledefaultpath** bool  
-The 'disabledefaultpath' allows to disable the default path behaviour. If this
-parameter is set to true, there will be no automatic default to `index.html`,
-nor to the single file in directory upload.
- 
+The `disabledefaultpath` allows to disable the default path behaviour. If this
+parameter is set to `true`, there will be no automatic default to `index.html`,
+nor to the single file in directory upload. This parameter is mutually exclusive
+with `defaultpath` and specifying both will result in an error. Neither one is 
+applicable to skyfiles without subfiles.
 
 **filename** | string  
 The name of the file. This name will be encoded into the skyfile metadata, and

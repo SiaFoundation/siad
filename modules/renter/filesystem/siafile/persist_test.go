@@ -1041,3 +1041,22 @@ func TestCreateAndApplyTransactionPanic(t *testing.T) {
 		_ = createAndApplyTransaction(sf.wal, update)
 	}()
 }
+
+// TestDeleteUpdateRegression is a regression test that ensure apply updates
+// won't panic when called with a set of updates with the last one being
+// a delete update.
+func TestDeleteUpdateRegression(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create siafile
+	sf := newBlankTestFile()
+
+	// Apply updates with the last update as a delete update. This use to trigger
+	// a panic. No need to check the return value as we are only concerned with the
+	// panic
+	update := sf.createDeleteUpdate()
+	sf.createAndApplyTransaction(update, update)
+}

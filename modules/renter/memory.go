@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 const (
@@ -26,7 +27,7 @@ const (
 
 	// memoryPriorityStarvationDivisor controls how many low priority items get
 	// bumped into the high priority queue when starvation protection is
-	// triggered. For example, take a divsor of 4 and a base memory of 1 GB.
+	// triggered. For example, take a divisor of 4 and a base memory of 1 GB.
 	// When starvation is triggered, low priority items will be moved into the
 	// high priority queue until a total of 250 MB or more of low priority items
 	// have been added to the high priority queue.
@@ -103,7 +104,6 @@ func (mm *memoryManager) handleStarvation() {
 	if mm.memSinceLowPriority < mm.base*memoryPriorityStarvationMultiple {
 		return
 	}
-
 	// Bump a limited number of low priority items into the high priority queue.
 	totalBumped := uint64(0)
 	for totalBumped < mm.base/memoryPriorityStarvationDivisor && len(mm.fifo) > 0 {
@@ -275,6 +275,41 @@ func (mm *memoryManager) Return(amount uint64) {
 		// request and continue checking the next requests.
 		close(mm.fifo[0].done)
 		mm.fifo = mm.fifo[1:]
+	}
+}
+
+// callAvailable returns the current status of the memory manager.
+func (mm *memoryManager) callStatus() modules.MemoryStatus {
+	mm.mu.Lock()
+	defer mm.mu.Unlock()
+	var available, requested, priorityAvailable, priorityRequested uint64
+
+	// Determine available memory and priority memory. All memory is available as
+	// priority memory. If there is more memory available than the amount
+	// reserved for priority memory then there is also regular memory
+	// availability.
+	priorityAvailable = mm.available
+	if mm.available > mm.priorityReserve {
+		available = mm.available - mm.priorityReserve
+	}
+
+	// Calculate how much memory has been requested for each
+	for _, request := range mm.fifo {
+		requested += request.amount
+	}
+	for _, request := range mm.priorityFifo {
+		priorityRequested += request.amount
+	}
+
+	return modules.MemoryStatus{
+		Available: available,
+		Base:      mm.base - mm.priorityReserve,
+		Requested: requested,
+
+		PriorityAvailable: priorityAvailable,
+		PriorityBase:      mm.base,
+		PriorityRequested: priorityRequested,
+		PriorityReserve:   mm.priorityReserve,
 	}
 }
 

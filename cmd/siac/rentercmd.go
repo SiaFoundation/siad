@@ -279,6 +279,13 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 		Run:   wrap(renterworkerseacmd),
 	}
 
+	renterWorkersDownloadsCmd = &cobra.Command{
+		Use:   "dj",
+		Short: "View the workers' download jobs",
+		Long:  "View detailed information of the workers' download jobs",
+		Run:   wrap(renterworkersdownloadscmd),
+	}
+
 	renterWorkersPriceTableCmd = &cobra.Command{
 		Use:   "pt",
 		Short: "View the workers's price table",
@@ -298,6 +305,13 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 		Short: "View the workers' has sector jobs",
 		Long:  "View detailed information of the workers' has sector jobs",
 		Run:   wrap(renterworkershsjcmd),
+	}
+
+	renterWorkersUploadsCmd = &cobra.Command{
+		Use:   "uj",
+		Short: "View the workers' upload jobs",
+		Long:  "View detailed information of the workers' upload jobs",
+		Run:   wrap(renterworkersuploadscmd),
 	}
 )
 
@@ -357,6 +371,21 @@ func rentercmd() {
 
 	if !renterVerbose {
 		return
+	}
+
+	// Print out the memory information for the renter
+	ms := rg.MemoryStatus
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "\nMemory Status\n")
+	fmt.Fprintf(w, "  Available Memory\t%v\n", sizeString(ms.Available))
+	fmt.Fprintf(w, "  Starting Memory\t%v\n", sizeString(ms.Base))
+	fmt.Fprintf(w, "  Requested Memory\t%v\n", sizeString(ms.Requested))
+	fmt.Fprintf(w, "\n  Available Priority Memory\t%v\n", sizeString(ms.PriorityAvailable))
+	fmt.Fprintf(w, "  Starting Priority Memory\t%v\n", sizeString(ms.PriorityBase))
+	fmt.Fprintf(w, "  Requested Priority Memory\t%v\n", sizeString(ms.PriorityRequested))
+	err = w.Flush()
+	if err != nil {
+		die(err)
 	}
 
 	// Print out ratelimit info about the renter
@@ -2689,6 +2718,54 @@ func renterworkerseacmd() {
 	}
 }
 
+// renterworkersdownloadscmd is the handler for the command `siac renter workers
+// dj`.  It lists the status of the download jobs of every worker.
+func renterworkersdownloadscmd() {
+	rw, err := httpClient.RenterWorkersGet()
+	if err != nil {
+		die("Could not get worker statuses:", err)
+	}
+
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
+
+	// Create tab writer
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	defer func() {
+		err := w.Flush()
+		if err != nil {
+			die("Could not flush tabwriter:", err)
+		}
+	}()
+
+	// print summary
+	fmt.Fprintf(w, "Worker Pool Summary \n")
+	fmt.Fprintf(w, "  Total Workers: \t%v\n", rw.NumWorkers)
+	fmt.Fprintf(w, "  Workers On Download Cooldown:\t%v\n", rw.TotalDownloadCoolDown)
+
+	// print header
+	hostInfo := "Host PubKey"
+	downloadInfo := "\tOn Cooldown\tCooldown Time\tLast Error\tQueue\tDownload Terminated"
+	header := hostInfo + downloadInfo
+	fmt.Fprintln(w, "\nWorker Downloads Detail  \n\n"+header)
+
+	// print rows
+	for _, worker := range rw.Workers {
+		// Host Info
+		fmt.Fprintf(w, "%v", worker.HostPubKey.String())
+
+		// Download Info
+		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
+			worker.DownloadOnCoolDown,
+			absDuration(worker.DownloadCoolDownTime),
+			worker.DownloadCoolDownError,
+			worker.DownloadQueueSize,
+			worker.DownloadTerminated)
+	}
+}
+
 // renterworkersptcmd is the handler for the command `siac renter workers pt`.
 // It lists the status of the price table of every worker.
 func renterworkersptcmd() {
@@ -2825,23 +2902,73 @@ func renterworkershsjcmd() {
 	}
 }
 
+// renterworkersuploadscmd is the handler for the command `siac renter workers
+// uj`.  It lists the status of the upload jobs of every worker.
+func renterworkersuploadscmd() {
+	rw, err := httpClient.RenterWorkersGet()
+	if err != nil {
+		die("Could not get worker statuses:", err)
+	}
+
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
+
+	// Create tab writer
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	defer func() {
+		err := w.Flush()
+		if err != nil {
+			die("Could not flush tabwriter:", err)
+		}
+	}()
+
+	// print summary
+	fmt.Fprintf(w, "Worker Pool Summary \n")
+	fmt.Fprintf(w, "  Total Workers: \t%v\n", rw.NumWorkers)
+	fmt.Fprintf(w, "  Workers On Upload Cooldown:\t%v\n", rw.TotalUploadCoolDown)
+
+	// print header
+	hostInfo := "Host PubKey"
+	uploadInfo := "\tOn Cooldown\tCooldown Time\tLast Error\tQueue\tTerminated"
+	header := hostInfo + uploadInfo
+	fmt.Fprintln(w, "\nWorker Uploads Detail  \n\n"+header)
+
+	// print rows
+	for _, worker := range rw.Workers {
+		// Host Info
+		fmt.Fprintf(w, "%v", worker.HostPubKey.String())
+
+		// Upload Info
+		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
+			worker.UploadOnCoolDown,
+			absDuration(worker.UploadCoolDownTime),
+			worker.UploadCoolDownError,
+			worker.UploadQueueSize,
+			worker.UploadTerminated)
+	}
+}
+
 // writeWorkers is a helper function to display workers
 func writeWorkers(workers []modules.WorkerStatus) {
 	fmt.Println("  Number of Workers:", len(workers))
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	contractHeader := "Worker Contract\t \t \t "
 	contractInfo := "Contract ID\tHost PubKey\tGood For Renew\tGood For Upload"
-	downloadInfo := "\tDownload On Cooldown\tDownload Queue\tDownload Terminated"
-	uploadInfo := "\tLast Upload Error\tUpload Cooldown Time\tUpload On Cooldown\tUpload Queue\tUpload Terminated"
-	maintenanceInfo := "\tMaintenance On Cooldown\tMaintenance Cooldown Time\tLast Maintenance Error"
-	eaInfo := "\tAvailable Balance\tBalance Targe\tFund Account Queue"
-	jobInfo := "\tBackup Queue\tDownload By Root Queue"
-	fmt.Fprintln(w, "  \n"+contractInfo+downloadInfo+uploadInfo+maintenanceInfo+eaInfo+jobInfo)
+	downloadHeader := "\tWorker Downloads\t "
+	downloadInfo := "\tOn Cooldown\tQueue"
+	uploadHeader := "\tWorker Uploads\t "
+	uploadInfo := "\tOn Cooldown\tQueue"
+	maintenanceHeader := "\tWorker Maintenance\t \t "
+	maintenanceInfo := "\tOn Cooldown\tCooldown Time\tLast Error"
+	eaHeader := "\tWorker Account"
+	eaInfo := "\tAvailable Balance"
+	jobHeader := "\tWorker Jobs\t \t "
+	jobInfo := "\tBackups\tDownload By Root\tHas Sector"
+	fmt.Fprintln(w, "\n  "+contractHeader+downloadHeader+uploadHeader+maintenanceHeader+eaHeader+jobHeader)
+	fmt.Fprintln(w, "  "+contractInfo+downloadInfo+uploadInfo+maintenanceInfo+eaInfo+jobInfo)
 	for _, worker := range workers {
-		// Sanitize output
-		var uploadCoolDownTime time.Duration
-		if worker.UploadCoolDownTime > 0 {
-			uploadCoolDownTime = worker.UploadCoolDownTime
-		}
 		// Contract Info
 		fmt.Fprintf(w, "  %v\t%v\t%v\t%v",
 			worker.ContractID,
@@ -2850,18 +2977,14 @@ func writeWorkers(workers []modules.WorkerStatus) {
 			worker.ContractUtility.GoodForUpload)
 
 		// Download Info
-		fmt.Fprintf(w, "\t%v\t%v\t%v",
+		fmt.Fprintf(w, "\t%v\t%v",
 			worker.DownloadOnCoolDown,
-			worker.DownloadQueueSize,
-			worker.DownloadTerminated)
+			worker.DownloadQueueSize)
 
 		// Upload Info
-		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v",
-			worker.UploadCoolDownError,
-			uploadCoolDownTime,
+		fmt.Fprintf(w, "\t%v\t%v",
 			worker.UploadOnCoolDown,
-			worker.UploadQueueSize,
-			worker.UploadTerminated)
+			worker.UploadQueueSize)
 
 		// Maintenance Info
 		fmt.Fprintf(w, "\t%t\t%v\t%v",
@@ -2870,16 +2993,26 @@ func writeWorkers(workers []modules.WorkerStatus) {
 			worker.MaintenanceCoolDownError)
 
 		// EA Info
-		fmt.Fprintf(w, "\t%v\t%v",
-			worker.AccountStatus.AvailableBalance,
-			worker.AccountBalanceTarget)
+		fmt.Fprintf(w, "\t%v",
+			worker.AccountStatus.AvailableBalance)
 
 		// Job Info
-		fmt.Fprintf(w, "\t%v\t%v\n",
+		fmt.Fprintf(w, "\t%v\t%v\t%v\n",
 			worker.BackupJobQueueSize,
-			worker.DownloadRootJobQueueSize)
+			worker.DownloadRootJobQueueSize,
+			worker.HasSectorJobsStatus.JobQueueSize)
 	}
 	w.Flush()
+}
+
+// absDuration is a small helper function that sanitizes the output for the
+// given time duration. If the duration is less than 0 it will return 0,
+// otherwise it will return the duration.
+func absDuration(t time.Duration) time.Duration {
+	if t <= 0 {
+		return 0
+	}
+	return t
 }
 
 // sanitizeTime is a small helper function that sanitizes the output for the

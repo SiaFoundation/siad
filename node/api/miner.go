@@ -21,7 +21,7 @@ type (
 )
 
 // minerHandler handles the API call that queries the miner's status.
-func (api *API) minerHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) minerHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	blocksMined, staleMined := api.miner.BlocksMined()
 	mg := MinerGET{
 		BlocksMined:      blocksMined,
@@ -33,20 +33,20 @@ func (api *API) minerHandler(w http.ResponseWriter, req *http.Request, _ httprou
 }
 
 // minerStartHandler handles the API call that starts the miner.
-func (api *API) minerStartHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) minerStartHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	api.miner.StartCPUMining()
 	WriteSuccess(w)
 }
 
 // minerStopHandler handles the API call to stop the miner.
-func (api *API) minerStopHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) minerStopHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	api.miner.StopCPUMining()
 	WriteSuccess(w)
 }
 
 // minerHeaderHandlerGET handles the API call that retrieves a block header
 // for work.
-func (api *API) minerHeaderHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) minerHeaderHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	bhfw, target, err := api.miner.HeaderForWork()
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)

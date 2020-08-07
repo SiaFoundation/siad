@@ -143,6 +143,9 @@ type stream struct {
 }
 
 // streamBuffer is a buffer for a single dataSource.
+//
+// The streamBuffer uses a threadgroup to ensure that it does not call ReadAt
+// after calling SilentClose.
 type streamBuffer struct {
 	dataSections map[uint64]*dataSection
 
@@ -152,6 +155,7 @@ type streamBuffer struct {
 	externRefCount uint64
 
 	mu                    sync.Mutex
+	tg                    threadgroup.ThreadGroup
 	staticDataSize        uint64
 	staticDataSource      streamBufferDataSource
 	staticDataSectionSize uint64
@@ -455,9 +459,18 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 	// Perform the data fetch in a goroutine. The dataAvailable channel will be
 	// closed when the data is available.
 	go func() {
-		_, err := sb.staticDataSource.ReadAt(ds.externData, int64(index*dataSectionSize))
+		// Ensure that the streambuffer has not closed.
+		err := sb.tg.Add()
 		if err != nil {
-			ds.externErr = errors.AddContext(err, "data section fetch failed")
+			ds.externErr = errors.AddContext(err, "stream buffer has been shut down")
+			return
+		}
+		defer sb.tg.Done()
+
+		// Grab the data from the data source.
+		_, err = sb.staticDataSource.ReadAt(ds.externData, int64(index*dataSectionSize))
+		if err != nil {
+			ds.externErr = errors.AddContext(err, "data section ReadAt failed")
 		}
 		close(ds.dataAvailable)
 	}()
@@ -472,17 +485,21 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 // stream buffer set because the stream buffer needs to be deleted from the
 // stream buffer set simultaneously with the reference counter reaching zero.
 func (sbs *streamBufferSet) managedRemoveStream(sb *streamBuffer) {
-	sbs.mu.Lock()
-	defer sbs.mu.Unlock()
-
 	// Decrement the refcount of the streamBuffer.
+	sbs.mu.Lock()
 	sb.externRefCount--
 	if sb.externRefCount > 0 {
 		// streamBuffer still in use, nothing to do.
+		sbs.mu.Unlock()
 		return
 	}
-
-	// Close out the streamBuffer and its data source.
 	delete(sbs.streams, sb.staticStreamID)
+	sbs.mu.Unlock()
+
+	// Close out the streamBuffer and its data source. Calling Stop() will block
+	// any new calls to ReadAt from executing, and will block until all existing
+	// calls are completed. This prevents any issues that could be caused by the
+	// data source being accessed after it has been closed.
+	sb.tg.Stop()
 	sb.staticDataSource.SilentClose()
 }
