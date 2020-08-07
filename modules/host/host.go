@@ -680,7 +680,8 @@ func (h *Host) BlockHeight() types.BlockHeight {
 // cannot be set by the user (host is configured through InternalSettings), and
 // are the values that get displayed to other hosts on the network.
 func (h *Host) managedExternalSettings() modules.HostExternalSettings {
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.externalSettings()
+	return h.externalSettings(maxFee)
 }
