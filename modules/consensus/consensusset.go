@@ -180,7 +180,10 @@ func consensusSetAsyncStartup(cs *ConsensusSet, bootstrap bool) error {
 		cs.gateway.UnregisterConnectCall("SendBlocks")
 		return nil
 	})
-	if err != nil {
+	if err == threadgroup.ErrStopped {
+		// Shutdown occurred during IBD
+		return nil
+	} else if err != nil {
 		return err
 	}
 

@@ -619,7 +619,11 @@ func (cs *ConsensusSet) managedInitialBlockchainDownload() error {
 			break
 		} else {
 			// Sleep so we don't hammer the network with SendBlock requests.
-			time.Sleep(ibdLoopDelay)
+			select {
+			case <-time.After(ibdLoopDelay):
+			case <-cs.tg.StopChan():
+				return nil
+			}
 		}
 	}
 
