@@ -84,8 +84,8 @@ func (h *Host) managedAddRenewCollateral(so storageObligation, settings modules.
 	return builder, newParents, newInputs, newOutputs, nil
 }
 
-// managedRenewContract accepts a request to renew a file contract.
-func (h *Host) managedRPCRenewContract(conn net.Conn) error {
+// managedRenewContractRHP2 accepts a request to renew a file contract.
+func (h *Host) managedRPCRenewContractRHP2(conn net.Conn) error {
 	// Perform the recent revision protocol to get the file contract being
 	// revised.
 	_, so, err := h.managedRPCRecentRevision(conn)
@@ -134,7 +134,7 @@ func (h *Host) managedRPCRenewContract(conn net.Conn) error {
 	h.mu.Unlock()
 
 	// Verify that the transaction coming over the wire is a proper renewal.
-	err = h.managedVerifyRenewedContract(so, txnSet, renterPK)
+	err = h.managedVerifyRenewedContract(so, txnSet, types.Ed25519PublicKey(renterPK))
 	if err != nil {
 		modules.WriteNegotiationRejection(conn, err) // Error is ignored to preserve type for extendErr
 		return extendErr("verification of renewal failed: ", err)
@@ -239,7 +239,7 @@ func (h *Host) managedRPCRenewContract(conn net.Conn) error {
 
 // managedVerifyRenewedContract checks that the contract renewal matches the
 // previous contract and makes all of the appropriate payments.
-func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types.Transaction, renterPK crypto.PublicKey) error {
+func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types.Transaction, renterPK types.SiaPublicKey) error {
 	// Register the HostInsufficientCollateral alert if necessary.
 	var registerHostInsufficientCollateral bool
 	defer func() {
@@ -345,7 +345,7 @@ func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types
 	// the host knows how to spend.
 	expectedUH := types.UnlockConditions{
 		PublicKeys: []types.SiaPublicKey{
-			types.Ed25519PublicKey(renterPK),
+			renterPK,
 			publicKey,
 		},
 		SignaturesRequired: 2,

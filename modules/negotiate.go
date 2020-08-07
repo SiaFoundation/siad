@@ -194,8 +194,8 @@ var (
 	// RPCFormContract is the specifier for forming a contract with a host.
 	RPCFormContract = types.NewSpecifier("FormContract" + string(2))
 
-	// RPCRenewContract is the specifier to renewing an existing contract.
-	RPCRenewContract = types.NewSpecifier("RenewContract" + string(2))
+	// RPCRenewContractRHP2 is the specifier to renewing an existing contract.
+	RPCRenewContractRHP2 = types.NewSpecifier("RenewContract" + string(2))
 
 	// RPCReviseContract is the specifier for revising an existing file
 	// contract.

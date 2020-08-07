@@ -688,9 +688,7 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	}
 
 	// Verify that the transaction coming over the wire is a proper renewal.
-	var renterPK crypto.PublicKey
-	copy(renterPK[:], req.RenterKey.Key)
-	err := h.managedVerifyRenewedContract(s.so, req.Transactions, renterPK)
+	err := h.managedVerifyRenewedContract(s.so, req.Transactions, req.RenterKey)
 	if err != nil {
 		s.writeError(err)
 		return extendErr("verification of renewal failed: ", err)
@@ -732,6 +730,8 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 		s.writeError(err)
 		return extendErr("failed to compute contract collateral: ", err)
 	}
+	var renterPK crypto.PublicKey
+	copy(renterPK[:], req.RenterKey.Key)
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
 		renewal:                 false,
@@ -933,20 +933,14 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	newRevision.NewMissedProofOutputs = newRevision.NewValidProofOutputs
 
 	// Verifiy the final revision of the old contract.
-	newRevenue := settings.BaseRPCPrice
-	newRoots := []crypto.Hash{}
-	s.so.SectorRoots, newRoots = newRoots, s.so.SectorRoots // verifyRevision assumes new roots
-	err := verifyClearingRevision(s.so, newRevision, blockHeight, newRevenue, types.ZeroCurrency)
-	s.so.SectorRoots, newRoots = newRoots, s.so.SectorRoots
+	err := verifyClearingRevision(currentRevision, newRevision, blockHeight, settings.BaseRPCPrice)
 	if err != nil {
 		s.writeError(err)
 		return err
 	}
 
 	// Verify that the transaction coming over the wire is a proper renewal.
-	var renterPK crypto.PublicKey
-	copy(renterPK[:], req.RenterKey.Key)
-	err = h.managedVerifyRenewedContract(s.so, req.Transactions, renterPK)
+	err = h.managedVerifyRenewedContract(s.so, req.Transactions, req.RenterKey)
 	if err != nil {
 		s.writeError(err)
 		return extendErr("verification of renewal failed: ", err)
@@ -1001,6 +995,8 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 		s.writeError(err)
 		return extendErr("failed to compute contract collateral: ", err)
 	}
+	var renterPK crypto.PublicKey
+	copy(renterPK[:], req.RenterKey.Key)
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
 		renewal:                 true,

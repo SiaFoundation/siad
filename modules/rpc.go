@@ -74,6 +74,10 @@ type RPCPriceTable struct {
 	ReadBaseCost   types.Currency `json:"readbasecost"`
 	ReadLengthCost types.Currency `json:"readlengthcost"`
 
+	// Cost values specific to the RenewContract instruction.
+	// TODO: update price tables with value
+	RenewContractCost types.Currency `json:"renewcontractcost"`
+
 	// Cost values specific to the Revision command.
 	RevisionBaseCost types.Currency `json:"revisionbasecost"`
 
@@ -105,6 +109,9 @@ var (
 
 	// RPCLatestRevision specifier
 	RPCLatestRevision = types.NewSpecifier("LatestRevision")
+
+	// RPCRenewContract specifier
+	RPCRenewContract = types.NewSpecifier("RenewContract")
 )
 
 type (
@@ -195,6 +202,24 @@ type (
 	// signal it has received payment for the price table and has tracked it,
 	// thus considering it valid.
 	RPCTrackedPriceTableResponse struct{}
+
+	// RPCRenewContractRequest contains the transaction set with both the final
+	// revision of a contract to be renewed as well as the new contract and the
+	// renter's public key used within the unlock conditions of the new
+	// contract.
+	RPCRenewContractRequest struct {
+		TSet     []types.Transaction
+		RenterPK types.SiaPublicKey
+	}
+
+	// RPCRenewContractCollateralResponse is the response sent by the host after
+	// adding the collateral to the transaction. It contains any new parents,
+	// inputs and outputs that were added.
+	RPCRenewContractCollateralResponse struct {
+		NewParents []types.Transaction
+		NewInputs  []types.SiacoinInput
+		NewOutputs []types.SiacoinOutput
+	}
 
 	// rpcResponse is a helper type for encoding and decoding RPC response
 	// messages.

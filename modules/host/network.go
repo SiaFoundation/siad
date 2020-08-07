@@ -318,9 +318,9 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 	case modules.RPCDownload:
 		atomic.AddUint64(&h.atomicDownloadCalls, 1)
 		err = extendErr("incoming RPCDownload failed: ", h.managedRPCDownload(conn))
-	case modules.RPCRenewContract:
+	case modules.RPCRenewContractRHP2:
 		atomic.AddUint64(&h.atomicRenewCalls, 1)
-		err = extendErr("incoming RPCRenewContract failed: ", h.managedRPCRenewContract(conn))
+		err = extendErr("incoming RPCRenewContract failed: ", h.managedRPCRenewContractRHP2(conn))
 	case modules.RPCFormContract:
 		atomic.AddUint64(&h.atomicFormContractCalls, 1)
 		err = extendErr("incoming RPCFormContract failed: ", h.managedRPCFormContract(conn))
@@ -393,6 +393,8 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 		err = h.managedRPCFundEphemeralAccount(stream)
 	case modules.RPCLatestRevision:
 		err = h.managedRPCLatestRevision(stream)
+	case modules.RPCRenewContract:
+		err = h.managedRPCRenewContract(stream)
 	default:
 		h.log.Debugf("WARN: incoming stream %v requested unknown RPC \"%v\"", stream.RemoteAddr().String(), rpcID)
 		err = errors.New(fmt.Sprintf("Unrecognized RPC id %v", rpcID))

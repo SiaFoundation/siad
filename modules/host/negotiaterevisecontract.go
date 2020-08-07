@@ -350,7 +350,7 @@ func verifyRevision(so storageObligation, revision types.FileContractRevision, b
 // verifyClearingRevision checks that the final revision pays the host
 // correctly, and that the revision does not attempt any malicious or unexpected
 // changes.
-func verifyClearingRevision(so storageObligation, revision types.FileContractRevision, blockHeight types.BlockHeight, expectedExchange, expectedCollateral types.Currency) error {
+func verifyClearingRevision(oldFCR, revision types.FileContractRevision, blockHeight types.BlockHeight, expectedExchange types.Currency) error {
 	// Check that the revision is well-formed.
 	if len(revision.NewValidProofOutputs) != 2 || len(revision.NewMissedProofOutputs) != 2 {
 		return ErrBadContractOutputCounts
@@ -359,20 +359,12 @@ func verifyClearingRevision(so storageObligation, revision types.FileContractRev
 		return ErrBadPayoutUnlockHashes
 	}
 
-	// Check that the time to finalize and submit the file contract revision
-	// has not already passed.
-	// TODO: safe to ignore? We don't seem to check for this in the regular
-	// renewal code.
-	//	if so.expiration()-revisionSubmissionBuffer <= blockHeight {
-	//		fmt.Println("trololo", so.expiration(), revisionSubmissionBuffer, blockHeight)
-	//		return ErrLateRevision
-	//	}
-
-	oldFCR := so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0]
-
-	// Host payout addresses shouldn't change
+	// Payout addresses shouldn't change.
 	if revision.ValidHostOutput().UnlockHash != oldFCR.ValidHostOutput().UnlockHash {
 		return errors.New("host payout address changed")
+	}
+	if revision.ValidRenterOutput().UnlockHash != oldFCR.ValidRenterOutput().UnlockHash {
+		return errors.New("renter payout address changed")
 	}
 
 	// Check that all non-volatile fields are the same.
@@ -385,7 +377,7 @@ func verifyClearingRevision(so storageObligation, revision types.FileContractRev
 	if oldFCR.NewRevisionNumber >= revision.NewRevisionNumber {
 		return ErrBadRevisionNumber
 	}
-	if revision.NewFileSize != uint64(len(so.SectorRoots))*modules.SectorSize {
+	if revision.NewFileSize != 0 {
 		return ErrBadFileSize
 	}
 	if oldFCR.NewWindowStart != revision.NewWindowStart {
@@ -425,8 +417,9 @@ func verifyClearingRevision(so storageObligation, revision types.FileContractRev
 		return ErrBadRevisionNumber
 	}
 
-	// The Merkle root is checked last because it is the most expensive check.
-	if revision.NewFileMerkleRoot != cachedMerkleRoot(so.SectorRoots) {
+	// The merkle root should be blank now.
+	blank := crypto.Hash{}
+	if revision.NewFileMerkleRoot != blank {
 		return ErrBadFileMerkleRoot
 	}
 
