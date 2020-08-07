@@ -569,9 +569,19 @@ func (h *Host) BandwidthCounters() (uint64, uint64, time.Time, error) {
 		return 0, 0, time.Time{}, err
 	}
 	defer h.tg.Done()
+
+	// Get the bandwidth usage for RHP1 & RHP2 connections.
 	readBytes, writeBytes := h.staticMonitor.Counts()
+
+	// Get the bandwidth usage for RHP3 connections. Unfortunately we can't just
+	// wrap the siamux streams since that wouldn't give us the raw data send
+	// over the TCP connection. Since we want this to be as accurately as
+	// possible, we use the `Limit` method on the streams before closing them to
+	// get the accurate amount of data sent and received. This includes overhead
+	// such as frame headers and encryption.
 	readBytes += atomic.LoadUint64(&h.atomicStreamDownload)
 	writeBytes += atomic.LoadUint64(&h.atomicStreamUpload)
+
 	startTime := h.staticMonitor.StartTime()
 	return writeBytes, readBytes, startTime, nil
 }
