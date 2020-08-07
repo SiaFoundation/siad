@@ -3422,6 +3422,12 @@ retrieves the contents of a directory on the sia network
 **siapath** | string  
 Path to the directory on the sia network  
 
+### OPTIONAL
+**root** | bool  
+Whether or not to treat the siapath as being relative to the user's home
+directory. If this field is not set, the siapath will be interpreted as
+relative to 'home/user/'.  
+
 ### JSON Response
 > JSON Response Example
 
@@ -3511,7 +3517,8 @@ Location where the directory will reside in the renter on the network. The path
 must be non-empty, may not include any path traversal strings ("./", "../"), and
 may not begin with a forward-slash character.  
 
-**root** | bool
+### OPTIONAL
+**root** | bool  
 Whether or not to treat the siapath as being relative to the user's home
 directory. If this field is not set, the siapath will be interpreted as
 relative to 'home/user/'.  
@@ -3525,14 +3532,14 @@ Action can be either `create`, `delete` or `rename`.
    return an error if the target is a file.
  - `rename` will rename a directory on the sia network
 
- **newsiapath** | string  
- The new siapath of the renamed folder. Only required for the `rename` action.
+**newsiapath** | string  
+The new siapath of the renamed folder. Only required for the `rename` action.
 
- ### OPTIONAL
- **mode** | uint32  
- The mode can be specified in addition to the `create` action to create the
- directory with specific permissions. If not specified, the default
- permissions 0755 will be used.
+### OPTIONAL
+**mode** | uint32  
+The mode can be specified in addition to the `create` action to create the
+directory with specific permissions. If not specified, the default permissions
+0755 will be used.
 
 ### Response
 
