@@ -176,3 +176,7 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 	// Wrap the stream in a ratelimit.
 	return ratelimit.NewRLStream(stream, w.renter.rl, w.renter.tg.StopChan()), nil
 }
+
+func (w *worker) managedRenew() error {
+	panic("not implemented yet")
+}
