@@ -141,6 +141,11 @@ const (
 
 // Constants that tune the health and repair processes.
 const (
+	// maxConsecutiveDirHeapFailures is the maximum number of consecutive times
+	// the repair heap is allowed to fail to get a directory from the Directory
+	// Heap
+	maxConsecutiveDirHeapFailures = 5
+
 	// maxRandomStuckChunksAddToHeap is the maximum number of random stuck
 	// chunks that the stuck loop will add to the uploadHeap at a time. Random
 	// stuck chunks are the stuck chunks chosen at random from the file system
