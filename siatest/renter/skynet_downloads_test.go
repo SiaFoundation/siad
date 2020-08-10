@@ -96,6 +96,7 @@ func testDownloadSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 	// construct the metadata object we expect to be returned
 	expectedMetadataPNG := modules.SkyfileMetadata{
 		Filename: "SingleFileMultiPartPNG",
+		Length:   uint64(len(data)),
 		Subfiles: map[string]modules.SkyfileSubfileMetadata{
 			"file1.png": {
 				FileMode:    os.FileMode(0644),
@@ -127,6 +128,7 @@ func testDownloadSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 	//we expect the full metadata to be returned
 	expectedMetadataHTML := modules.SkyfileMetadata{
 		Filename: "SingleFileMultiPartHTML",
+		Length:   uint64(len(data)),
 		Subfiles: map[string]modules.SkyfileSubfileMetadata{
 			"file1.html": {
 				FileMode:    os.FileMode(0644),
@@ -177,6 +179,7 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 	// construct the metadata object we expect to be returned
 	expectedMetadata := modules.SkyfileMetadata{
 		Filename: "DirectoryBasic",
+		Length:   uint64(len(files[0].Data) + len(files[1].Data)),
 		Subfiles: map[string]modules.SkyfileSubfileMetadata{
 			"index.html": {
 				FileMode:    os.FileMode(0644),
@@ -221,6 +224,7 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 	// construct the metadata object we expect to be returned
 	expectedMetadata = modules.SkyfileMetadata{
 		Filename: "DirectoryBasic",
+		Length:   uint64(len(files[0].Data) + len(files[1].Data)),
 		Subfiles: map[string]modules.SkyfileSubfileMetadata{
 			"index.html": {
 				FileMode:    os.FileMode(0644),
@@ -263,6 +267,7 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 	// construct the metadata object we expect to be returned
 	expectedMetadata = modules.SkyfileMetadata{
 		Filename: "DirectoryBasic",
+		Length:   uint64(len(files[0].Data) + len(files[1].Data)),
 		Subfiles: map[string]modules.SkyfileSubfileMetadata{
 			"index.html": {
 				FileMode:    os.FileMode(0644),
@@ -312,10 +317,15 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var length uint64
+	for _, file := range files {
+		length += uint64(len(file.Data))
+	}
 
 	// note that index.html is listed first but is uploaded as the last file
 	expectedMetadata := modules.SkyfileMetadata{
 		Filename: "DirectoryNested",
+		Length:   length,
 		Subfiles: map[string]modules.SkyfileSubfileMetadata{
 			"index.html": {
 				FileMode:    os.FileMode(0644),
@@ -365,6 +375,7 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 	// verify downloading a subdirectory
 	expectedMetadata = modules.SkyfileMetadata{
 		Filename: "/assets/images",
+		Length:   uint64(len(files[0].Data) + len(files[1].Data)),
 		Subfiles: map[string]modules.SkyfileSubfileMetadata{
 			"assets/images/file1.png": {
 				FileMode:    os.FileMode(0644),
@@ -398,6 +409,7 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 
 	expectedMetadata = modules.SkyfileMetadata{
 		Filename: "/assets/index.html",
+		Length:   uint64(len(files[2].Data)),
 		Subfiles: map[string]modules.SkyfileSubfileMetadata{
 			"assets/index.html": {
 				FileMode:    os.FileMode(0644),

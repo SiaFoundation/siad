@@ -21,6 +21,13 @@ var (
 		Run:   skykeycmd,
 	}
 
+	skykeyAddCmd = &cobra.Command{
+		Use:   "add [skykey base64-encoded skykey]",
+		Short: "Add a base64-encoded skykey to the key manager.",
+		Long:  `Add a base64-encoded skykey to the key manager.`,
+		Run:   wrap(skykeyaddcmd),
+	}
+
 	skykeyCreateCmd = &cobra.Command{
 		Use:   "create [name]",
 		Short: "Create a skykey with the given name.",
@@ -29,11 +36,11 @@ var (
 		Run: wrap(skykeycreatecmd),
 	}
 
-	skykeyAddCmd = &cobra.Command{
-		Use:   "add [skykey base64-encoded skykey]",
-		Short: "Add a base64-encoded skykey to the key manager.",
-		Long:  `Add a base64-encoded skykey to the key manager.`,
-		Run:   wrap(skykeyaddcmd),
+	skykeyDeleteCmd = &cobra.Command{
+		Use:   "delete",
+		Short: "Delete the skykey by its name or id",
+		Long:  `Delete the base64-encoded skykey using either its name with --name or id with --id`,
+		Run:   wrap(skykeydeletecmd),
 	}
 
 	skykeyGetCmd = &cobra.Command{
@@ -122,6 +129,41 @@ func skykeyAdd(c client.Client, skykeyString string) error {
 	return nil
 }
 
+// skykeydeletecmd is a wrapper for skykeyDelete that handles skykey delete
+// commands.
+func skykeydeletecmd() {
+	err := skykeyDelete(httpClient, skykeyName, skykeyID)
+	if err != nil {
+		die(err)
+	}
+
+	fmt.Println("Skykey Deleted!")
+}
+
+// skykeyDelete deletes the skykey using a name or id flag.
+func skykeyDelete(c client.Client, name, id string) error {
+	// Validate the usage of name and ID
+	err := validateNameAndIDUsage(name, id)
+	if err != nil {
+		return errors.AddContext(err, "cannot validate skykey name and ID usage to delete skykey")
+	}
+
+	// Delete the Skykey with the provide parameter
+	if name != "" {
+		err = c.SkykeyDeleteByNamePost(name)
+	} else {
+		var skykeyID skykey.SkykeyID
+		err = skykeyID.FromString(id)
+		if err != nil {
+			return errors.AddContext(err, "could not decode skykey ID")
+		}
+		err = c.SkykeyDeleteByIDPost(skykeyID)
+	}
+
+	// Return error with context if there is an error
+	return errors.AddContext(err, "failed to delete skykey")
+}
+
 // skykeygetcmd is a wrapper for skykeyGet that handles skykey get commands.
 func skykeygetcmd() {
 	skykeyStr, err := skykeyGet(httpClient, skykeyName, skykeyID)
@@ -134,15 +176,12 @@ func skykeygetcmd() {
 
 // skykeyGet retrieves the skykey using a name or id flag.
 func skykeyGet(c client.Client, name, id string) (string, error) {
-	if name == "" && id == "" {
-		return "", errors.New("Cannot get skykey without using --name or --id flag")
-	}
-	if name != "" && id != "" {
-		return "", errors.New("Use only one flag to get the skykey: --name or --id flag")
+	err := validateNameAndIDUsage(name, id)
+	if err != nil {
+		return "", errors.AddContext(err, "cannot validate skykey name and ID usage to get skykey")
 	}
 
 	var sk skykey.Skykey
-	var err error
 	if name != "" {
 		sk, err = c.SkykeyGetByName(name)
 	} else {
@@ -225,4 +264,16 @@ func skykeyListKeys(c client.Client, showPrivateKeys bool) (string, error) {
 		return "", err
 	}
 	return b.String(), nil
+}
+
+// validateNameAndIDUsage validates the usage of name and ID, ensuring that only
+// one is used.
+func validateNameAndIDUsage(name, id string) error {
+	if name == "" && id == "" {
+		return errors.New("Must use either the --name or --id flag")
+	}
+	if name != "" && id != "" {
+		return errors.New("Can only use one flag: --name or --id flag")
+	}
+	return nil
 }

@@ -354,6 +354,10 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 		if err != nil {
 			h.log.Println("ERROR: failed to close stream:", err)
 		}
+		// Update used bandwidth.
+		l := stream.Limit()
+		atomic.AddUint64(&h.atomicStreamUpload, l.Uploaded())
+		atomic.AddUint64(&h.atomicStreamDownload, l.Downloaded())
 	}()
 
 	err := h.tg.Add()
