@@ -63,6 +63,11 @@ const (
 	// modifyStorageObligation on an obligation for a contract with a size
 	// greater than or equal to largeContractSize.
 	largeContractUpdateDelay = 2 * time.Second
+
+	// txnFeeSizeBuffer is a buffer added to the approximate size of a
+	// transaction before estimating its fee. This makes it more likely that the
+	// txn will be mined in the next block.
+	txnFeeSizeBuffer = 300
 )
 
 var (
@@ -450,10 +455,11 @@ func (so storageObligation) requiresProof() bool {
 	// should never happen.
 	rev, err := so.recentRevision()
 	if err != nil {
-		build.Critical("requiresProof:", err)
+		build.Critical("requiresProof: failed to retrieve recent revision for storage obligation", err)
 		return false
 	}
-	// No need for a proof if the valid outputs match the invalid ones.
+	// No need for a proof if the valid outputs match the invalid ones. Right
+	// now this is only the case if the contract was renewed.
 	if reflect.DeepEqual(rev.NewValidProofOutputs, rev.NewMissedProofOutputs) {
 		return false
 	}
@@ -1112,7 +1118,7 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 			builder.Drop()
 			return
 		}
-		txnSize := uint64(len(encoding.MarshalAll(so.RevisionTransactionSet)) + 300)
+		txnSize := uint64(len(encoding.MarshalAll(so.RevisionTransactionSet)) + txnFeeSizeBuffer)
 		requiredFee := feeRecommendation.Mul64(txnSize)
 		err = builder.FundSiacoins(requiredFee)
 		if err != nil {
@@ -1145,7 +1151,8 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 
 		// If the obligation doesn't require a proof, we can remove the
 		// obligation and avoid submitting a storage proof. In that case the
-		// host payout for a includes the contract cost and locked collateral.
+		// host payout for the contract includes the contract cost and locked
+		// collateral.
 		if !so.requiresProof() {
 			h.log.Debugln("storage proof not submitted for unrevised contract, id", so.id())
 			h.mu.Lock()
@@ -1177,9 +1184,10 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 		}
 
 		// Build StorageProof.
-		sp, ok := h.managedBuildStorageProof(so, segmentIndex)
-		if !ok {
-			return // errors are logged within method
+		sp, err := h.managedBuildStorageProof(so, segmentIndex)
+		if err != nil {
+			h.log.Debugln("Host encountered an error when building the storage proof", err)
+			return
 		}
 
 		// Create and build the transaction with the storage proof.
@@ -1189,7 +1197,7 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 			return
 		}
 		_, feeRecommendation := h.tpool.FeeEstimation()
-		txnSize := uint64(len(encoding.Marshal(sp)) + 300)
+		txnSize := uint64(len(encoding.Marshal(sp)) + txnFeeSizeBuffer)
 		requiredFee := feeRecommendation.Mul64(txnSize)
 		if so.value().Cmp(requiredFee) < 0 {
 			// There's no sense submitting the storage proof if the fee is more
@@ -1254,20 +1262,19 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 
 // managedBuildStorageProof builds a storage proof for a given storageObligation
 // for the host to submit.
-func (h *Host) managedBuildStorageProof(so storageObligation, segmentIndex uint64) (types.StorageProof, bool) {
+func (h *Host) managedBuildStorageProof(so storageObligation, segmentIndex uint64) (types.StorageProof, error) {
 	// Handle empty contract edge case.
 	if len(so.SectorRoots) == 0 {
 		return types.StorageProof{
 			ParentID: so.id(),
-		}, true
+		}, nil
 	}
 	sectorIndex := segmentIndex / (modules.SectorSize / crypto.SegmentSize)
 	// Pull the corresponding sector into memory.
 	sectorRoot := so.SectorRoots[sectorIndex]
 	sectorBytes, err := h.ReadSector(sectorRoot)
 	if err != nil {
-		h.log.Debugln(err)
-		return types.StorageProof{}, false
+		return types.StorageProof{}, errors.AddContext(err, "managedBuildStorageProof: failed to read sector")
 	}
 
 	// Build the storage proof for just the sector.
@@ -1290,7 +1297,7 @@ func (h *Host) managedBuildStorageProof(so storageObligation, segmentIndex uint6
 		HashSet:  hashSet,
 	}
 	copy(sp.Segment[:], base)
-	return sp, true
+	return sp, nil
 }
 
 // StorageObligations fetches the set of storage obligations in the host and

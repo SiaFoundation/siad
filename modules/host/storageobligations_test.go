@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -361,7 +362,12 @@ func TestManagedBuildStorageProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a storage obligation without data.
 	so, err := ht.newTesterStorageObligation()
@@ -392,9 +398,9 @@ func TestManagedBuildStorageProof(t *testing.T) {
 	ht.host.managedUnlockStorageObligation(so.id())
 
 	// Build a proof for the SO.
-	sp, ok := ht.host.managedBuildStorageProof(so, 0)
-	if !ok {
-		t.Fatal("failed to build proof")
+	sp, err := ht.host.managedBuildStorageProof(so, 0)
+	if err != nil {
+		t.Fatal("failed to build proof", err)
 	}
 
 	// Check the proof.
@@ -424,10 +430,10 @@ func TestManagedBuildStorageProof(t *testing.T) {
 	}
 
 	// Build another proof.
-	segmentIndex := uint64(0)
-	sp, ok = ht.host.managedBuildStorageProof(so, segmentIndex)
-	if !ok {
-		t.Fatal("failed to build proof")
+	segmentIndex := fastrand.Uint64n(modules.SectorSize / crypto.SegmentSize)
+	sp, err = ht.host.managedBuildStorageProof(so, segmentIndex)
+	if err != nil {
+		t.Fatal("failed to build proof", err)
 	}
 
 	// Verify the proof.
@@ -455,7 +461,12 @@ func TestStorageObligationRequiresProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		err := ht.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a storage obligation without data.
 	so, err := ht.newTesterStorageObligation()
