@@ -441,7 +441,8 @@ func parsePercentages(values []float64) []float64 {
 	return values
 }
 
-// sizeString converts the uint64 size to a string with appropriate units
+// sizeString converts the uint64 size to a string with appropriate units and
+// rounds to 4 significant digits.
 func sizeString(size uint64) string {
 	sizes := []struct {
 		unit   string
@@ -456,11 +457,29 @@ func sizeString(size uint64) string {
 	}
 
 	// Convert size to a float
-	for _, s := range sizes {
+	for i, s := range sizes {
+		// Check to see if we are at the right order of magnitude.
 		res := float64(size) / s.factor
-		if res >= 1 {
-			return fmt.Sprintf("%.4g %s", res, s.unit)
+		if res < 1 {
+			continue
 		}
+		// Create the string
+		str := fmt.Sprintf("%.4g %s", res, s.unit)
+		// Check for rounding to three 0s
+		if !strings.Contains(str, "000") {
+			return str
+		}
+		// Check for rounding to three 0s in the decimal place
+		if strings.Contains(str, ".") {
+			// Trim the trailing three 0s in the decimal place and return the whole number
+			return fmt.Sprintf("%s %s", strings.Split(str, ".")[0], s.unit)
+		}
+		// If we are at the max unit then there is no trimming to do
+		if i == 0 {
+			return str
+		}
+		// Trim the trailing three 0s and round to the next unit size
+		return fmt.Sprintf("%s %s", string(str[0]), sizes[i-1].unit)
 	}
 
 	return "0 B"

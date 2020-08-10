@@ -336,12 +336,20 @@ func TestSizeString(t *testing.T) {
 		out string
 	}{
 		{0, "0 B"},
+		{1, "1 B"},
 		{123, "123 B"},
+		{999, "999 B"},
+		{1000, "1 KB"},
+		{1001, "1.001 KB"},
 		{1234, "1.234 KB"},
+		{999999, "1 MB"}, // Should round up to 1MB
+		{1000001, "1 MB"},
+		{1999999, "2 MB"}, // Should round up to 2MB
 		{1234000, "1.234 MB"},
 		{1234000000, "1.234 GB"},
 		{1234000000000, "1.234 TB"},
 		{1234000000000000, "1.234 PB"},
+		{1000000000000000000, "1000 PB"}, // Check rounding on max unit value
 		{1234000000000000000, "1234 PB"},
 	}
 	for _, test := range tests {
@@ -349,5 +357,10 @@ func TestSizeString(t *testing.T) {
 		if out != test.out {
 			t.Errorf("sizeString(%v): expected %v, got %v", test.in, test.out, out)
 		}
+	}
+
+	// Add some random tests for any edge case panics
+	for i := 0; i < 10; i++ {
+		sizeString(fastrand.Uint64n(math.MaxUint64))
 	}
 }
