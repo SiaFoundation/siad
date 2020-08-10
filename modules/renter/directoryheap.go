@@ -2,6 +2,7 @@ package renter
 
 import (
 	"container/heap"
+	"fmt"
 	"math"
 	"sync"
 
@@ -272,7 +273,8 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 		// Add Sub directories
 		err := r.managedPushSubDirectories(d)
 		if err != nil {
-			return nil, errors.AddContext(err, "unable to push subdirectories")
+			contextStr := fmt.Sprintf("unable to push subdirectories for `%v`", d.staticSiaPath)
+			return nil, errors.AddContext(err, contextStr)
 		}
 
 		// Add popped directory back to heap with explored now set to true.
@@ -285,12 +287,14 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 func (r *Renter) managedPushSubDirectories(d *directory) error {
 	subDirs, err := r.managedSubDirectories(d.staticSiaPath)
 	if err != nil {
-		return errors.AddContext(err, "unable to get subdirectories")
+		contextStr := fmt.Sprintf("unable to get subdirectories for `%v`", d.staticSiaPath)
+		return errors.AddContext(err, contextStr)
 	}
 	for _, subDir := range subDirs {
 		err = r.managedPushUnexploredDirectory(subDir)
 		if err != nil {
-			return errors.AddContext(err, "unable to push unexplored directory")
+			contextStr := fmt.Sprintf("unable to push unexplored directory `%v`", subDir)
+			return errors.AddContext(err, contextStr)
 		}
 	}
 	return nil
