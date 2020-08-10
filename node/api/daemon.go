@@ -471,7 +471,7 @@ func (api *API) daemonStopHandler(w http.ResponseWriter, _ *http.Request, _ http
 
 // daemonSettingsHandlerGET handles the API call asking for the daemon's
 // settings.
-func (api *API) daemonSettingsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) daemonSettingsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	gmds, gmus, _ := modules.GlobalRateLimits.Limits()
 	WriteJSON(w, DaemonSettingsGet{
 		MaxDownloadSpeed: gmds,

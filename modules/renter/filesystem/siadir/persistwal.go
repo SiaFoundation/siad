@@ -21,7 +21,7 @@ func applyUpdate(deps modules.Dependencies, update writeaheadlog.Update) error {
 	case updateMetadataName:
 		return readAndApplyMetadataUpdate(deps, update)
 	default:
-		return fmt.Errorf("Update not recognized: %v", update.Name)
+		return fmt.Errorf("update not recognized: %v", update.Name)
 	}
 }
 
@@ -130,16 +130,16 @@ func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
 	// the file while holding a open file handle.
 	for i := len(updates) - 1; i >= 0; i-- {
 		u := updates[i]
-		switch u.Name {
-		case updateDeleteName:
-			if err := readAndApplyDeleteUpdate(u); err != nil {
-				return err
-			}
-			updates = updates[i+1:]
-			break
-		default:
+		if u.Name != updateDeleteName {
 			continue
 		}
+		// Read and apply the delete update.
+		if err := readAndApplyDeleteUpdate(u); err != nil {
+			return err
+		}
+		// Truncate the updates and break out of the for loop.
+		updates = updates[i+1:]
+		break
 	}
 	if len(updates) == 0 {
 		return nil
@@ -170,7 +170,7 @@ func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
 			case updateMetadataName:
 				return sd.readAndApplyMetadataUpdate(file, u)
 			default:
-				return fmt.Errorf("Update not recognized: %v", u.Name)
+				return fmt.Errorf("update not recognized: %v", u.Name)
 			}
 		}()
 		if err != nil {

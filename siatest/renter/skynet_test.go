@@ -708,7 +708,12 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	expected := modules.SkyfileMetadata{Filename: uploadSiaPath.String(), Subfiles: subfiles}
+	var length uint64
+	for _, file := range subfiles {
+		length += uint64(file.Len)
+	}
+
+	expected := modules.SkyfileMetadata{Filename: uploadSiaPath.String(), Subfiles: subfiles, Length: length}
 	if !reflect.DeepEqual(expected, fileMetadata) {
 		t.Log("Expected:", expected)
 		t.Log("Actual:", fileMetadata)
@@ -779,9 +784,6 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 	// Check the metadata of the siafile, see that the metadata of the siafile
 	// has the skylink referenced.
-	if err != nil {
-		t.Fatal(err)
-	}
 	largeSkyfilePath, err := modules.SkynetFolder.Join(uploadSiaPath.String())
 	if err != nil {
 		t.Fatal(err)
@@ -794,9 +796,9 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("expecting one skylink:", len(largeRenterFile.File.Skylinks))
 	}
 	if largeRenterFile.File.Skylinks[0] != largeSkylink {
-		t.Fatal("skylinks should match")
 		t.Log(largeRenterFile.File.Skylinks[0])
 		t.Log(largeSkylink)
+		t.Fatal("skylinks should match")
 	}
 
 	// Test the small download
@@ -2052,7 +2054,7 @@ func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 		// verify the skylink can't be found after a dry run
 		status, _, _ := r.SkynetSkylinkHead(skylinkDry)
 		if status != http.StatusNotFound {
-			t.Fatal(fmt.Errorf("Expected 404 not found when trying to fetch a skylink retrieved from a dry run, instead received status %d", status))
+			t.Fatal(fmt.Errorf("expected 404 not found when trying to fetch a skylink retrieved from a dry run, instead received status %d", status))
 		}
 
 		// verify the skfyile got deleted properly
@@ -2231,10 +2233,10 @@ func testRenameSiaPath(t *testing.T, tg *siatest.TestGroup) {
 
 	// Create a skyfile
 	skylink, sup, _, err := r.UploadNewSkyfileBlocking("testRenameFile", 100, false)
-	siaPath := sup.SiaPath
 	if err != nil {
 		t.Fatal(err)
 	}
+	siaPath := sup.SiaPath
 
 	// Rename Skyfile with root set to false should fail
 	err = r.RenterRenamePost(siaPath, modules.RandomSiaPath(), false)
@@ -2389,7 +2391,7 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 
 	// TEST: Does not contain "index.html".
 	// Contains a single file and specifies an empty default path (disabled).
-	// It should not return an error and download the file as zip
+	// It should not return an error and download the file as zip.
 	filename = "index.js_empty"
 	files = []siatest.TestFile{
 		{Name: "index.js", Data: []byte(fc1)},
@@ -2409,15 +2411,18 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 
 	// TEST: Does not contain "index.html".
 	// Contains a single file and doesn't specify a default path (not disabled).
-	// It should fail with 'format required'.
+	// It should serve the only file's content.
 	filename = "index.js"
 	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "", false, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
 	content, _, err = r.SkynetSkylinkGet(skylink)
-	if err == nil || !strings.Contains(err.Error(), "please specify a format") {
-		t.Fatalf("Expected error 'please specify a format', got %+v\n", err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(content, files[0].Data) {
+		t.Fatalf("Expected to get content '%s', instead got '%s'", files[0].Data, string(content))
 	}
 }
 
@@ -2501,12 +2506,13 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		},
 
 		{
-			// Single dir with valid default path.
-			// OK
-			name:            "single_dir_correct",
-			files:           singleDir,
-			defaultPath:     dirAbout,
-			expectedContent: fc1,
+			// Single dir with default path set to a nested file.
+			// Error: invalid default path.
+			name:                 "single_dir_nested",
+			files:                singleDir,
+			defaultPath:          dirAbout,
+			expectedContent:      nil,
+			expectedErrStrUpload: "invalid default path provided",
 		},
 		{
 			// Single dir without default path (not disabled).
@@ -2565,12 +2571,12 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		{
 			// Multi dir with index, non-html default path.
 			// Error on download: specify a format.
-			name:                   "multi_idx_non_html",
-			files:                  multiHasIndexIndexJs,
-			defaultPath:            nonHTML,
-			disableDefaultPath:     false,
-			expectedContent:        multiHasIndexIndexJs[1].Data,
-			expectedErrStrDownload: "please specify a format",
+			name:                 "multi_idx_non_html",
+			files:                multiHasIndexIndexJs,
+			defaultPath:          nonHTML,
+			disableDefaultPath:   false,
+			expectedContent:      nil,
+			expectedErrStrUpload: "invalid default path provided",
 		},
 		{
 			// Multi dir with index, bad default path.

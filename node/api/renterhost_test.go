@@ -1681,10 +1681,10 @@ func TestUploadedBytesReporting(t *testing.T) {
 			return err
 		}
 		if rf.File.UploadProgress < 100 {
-			return fmt.Errorf("Expected UploadProgress to be 100 but was %v", rf.File.UploadProgress)
+			return fmt.Errorf("expected UploadProgress to be 100 but was %v", rf.File.UploadProgress)
 		}
 		if rf.File.Redundancy != 2 {
-			return fmt.Errorf("Expected Redundancy to be 2 but was %v", rf.File.Redundancy)
+			return fmt.Errorf("expected Redundancy to be 2 but was %v", rf.File.Redundancy)
 		}
 		return nil
 	})

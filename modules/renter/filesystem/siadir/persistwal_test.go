@@ -35,3 +35,25 @@ func TestReadAndApplyMetadataUpdateMissingDir(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestDeleteUpdateRegression is a regression test that ensure apply updates
+// won't panic when called with a set of updates with the last one being
+// a delete update.
+func TestDeleteUpdateRegression(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create SiaDir
+	sd, err := newTestDir(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Apply updates with the last update as a delete update. This use to trigger
+	// a panic. No need to check the return value as we are only concerned with
+	// the panic.
+	update := sd.createDeleteUpdate()
+	sd.createAndApplyTransaction(update, update)
+}

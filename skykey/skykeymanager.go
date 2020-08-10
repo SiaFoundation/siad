@@ -57,9 +57,12 @@ var (
 	// because a key with the same name is already being stored.
 	ErrSkykeyWithNameAlreadyExists = errors.New("Skykey name already used by another key.")
 
-	// Skykey name errors
-	errNoSkykeysWithThatName = errors.New("No Skykey with that name")
-	errSkykeyNameToolong     = errors.New("Skykey name exceeds max length")
+	// ErrNoSkykeysWithThatName indicates that the skykey manager doesn't have
+	// a key with that ID
+	ErrNoSkykeysWithThatName = errors.New("No Skykey with that name")
+
+	// errSkykeyNameToolong indicates that the name is too long
+	errSkykeyNameToolong = errors.New("Skykey name exceeds max length")
 )
 
 // SkykeyManager manages the creation and handling of new skykeys which can be
@@ -243,7 +246,7 @@ func (sm *SkykeyManager) DeleteKeyByName(name string) error {
 
 	id, ok := sm.idsByName[name]
 	if !ok {
-		return errNoSkykeysWithThatName
+		return ErrNoSkykeysWithThatName
 	}
 
 	return sm.deleteKeyByID(id)
@@ -256,7 +259,7 @@ func (sm *SkykeyManager) IDByName(name string) (SkykeyID, error) {
 
 	id, ok := sm.idsByName[name]
 	if !ok {
-		return SkykeyID{}, errNoSkykeysWithThatName
+		return SkykeyID{}, ErrNoSkykeysWithThatName
 	}
 	return id, nil
 }
@@ -280,7 +283,7 @@ func (sm *SkykeyManager) KeyByName(name string) (Skykey, error) {
 
 	id, ok := sm.idsByName[name]
 	if !ok {
-		return Skykey{}, errNoSkykeysWithThatName
+		return Skykey{}, ErrNoSkykeysWithThatName
 	}
 
 	key, ok := sm.keysByID[id]

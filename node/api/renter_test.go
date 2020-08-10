@@ -295,7 +295,7 @@ func TestValidDownloads(t *testing.T) {
 func runDownloadParamTest(t *testing.T, length, offset, filesize int) error {
 	ulSiaPath := "test.dat"
 
-	st, _ := setupTestDownload(t, int(filesize), ulSiaPath, true)
+	st, _ := setupTestDownload(t, filesize, ulSiaPath, true)
 	defer st.server.Close()
 
 	// Download the original file from offset 40 and length 10.
@@ -1565,7 +1565,7 @@ func TestHealthLoop(t *testing.T) {
 			return err
 		}
 		if rd.Directories[0].Health != 0 {
-			return fmt.Errorf("Directory health should be 0 but was %v", rd.Directories[0].Health)
+			return fmt.Errorf("directory health should be 0 but was %v", rd.Directories[0].Health)
 		}
 		return nil
 	})
@@ -1581,7 +1581,7 @@ func TestHealthLoop(t *testing.T) {
 		var rf RenterFiles
 		st1.getAPI("/renter/files", &rf)
 		if len(rf.Files) >= 1 && rf.Files[0].Redundancy == 2 {
-			return fmt.Errorf("Expect 1 file with a redundancy of less than 2, got %v files and redundancy of %v", len(rf.Files), rf.Files[0].Redundancy)
+			return fmt.Errorf("expected 1 file with a redundancy of less than 2, got %v files and redundancy of %v", len(rf.Files), rf.Files[0].Redundancy)
 		}
 		return nil
 	})
@@ -1594,7 +1594,7 @@ func TestHealthLoop(t *testing.T) {
 		var rd RenterDirectory
 		st1.getAPI("/renter/dir/", &rd)
 		if rd.Directories[0].MaxHealth == 0 {
-			return fmt.Errorf("Directory max health should have dropped below 0 but was %v", rd.Directories[0].MaxHealth)
+			return fmt.Errorf("directory max health should have dropped below 0 but was %v", rd.Directories[0].MaxHealth)
 		}
 		return nil
 	})

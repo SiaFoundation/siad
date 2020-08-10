@@ -1,10 +1,14 @@
 package renter
 
 import (
+	"fmt"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -490,4 +494,138 @@ func TestMemoryManagerConcurrent(t *testing.T) {
 	// Close out the memory and wait for all the threads to die.
 	close(stopChan)
 	wg.Wait()
+}
+
+// TestMemoryManagerStatus probes the response from callStatus
+func TestMemoryManagerStatus(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create memory manager
+	stopChan := make(chan struct{})
+	mm := newMemoryManager(memoryDefault, memoryPriorityDefault, stopChan)
+
+	// Check status
+	ms := mm.callStatus()
+	expectedStatus := modules.MemoryStatus{
+		Available: memoryDefault - memoryPriorityDefault,
+		Base:      memoryDefault - memoryPriorityDefault,
+		Requested: 0,
+
+		PriorityAvailable: memoryDefault,
+		PriorityBase:      memoryDefault,
+		PriorityRequested: 0,
+		PriorityReserve:   memoryPriorityDefault,
+	}
+	if !reflect.DeepEqual(ms, expectedStatus) {
+		t.Log("Expected:", expectedStatus)
+		t.Log("Status:", ms)
+		t.Fatal("MemoryStatus not as expected")
+	}
+
+	// Request memory
+	normalRequest := uint64(100)
+	requested := mm.Request(normalRequest, memoryPriorityLow)
+	if !requested {
+		t.Error("Normal request should have succeeded")
+	}
+	priorityRequest := uint64(123)
+	requested = mm.Request(priorityRequest, memoryPriorityHigh)
+	if !requested {
+		t.Error("Priority request should have succeeded")
+	}
+
+	// Check status
+	ms = mm.callStatus()
+	expectedStatus = modules.MemoryStatus{
+		Available: memoryDefault - memoryPriorityDefault - normalRequest - priorityRequest,
+		Base:      memoryDefault - memoryPriorityDefault,
+		Requested: 0,
+
+		PriorityAvailable: memoryDefault - normalRequest - priorityRequest,
+		PriorityBase:      memoryDefault,
+		PriorityRequested: 0,
+		PriorityReserve:   memoryPriorityDefault,
+	}
+	if !reflect.DeepEqual(ms, expectedStatus) {
+		t.Log("Expected:", expectedStatus)
+		t.Log("Status:", ms)
+		t.Fatal("MemoryStatus not as expected")
+	}
+
+	// Request remaining memory
+	mm.mu.Lock()
+	request := mm.available
+	mm.mu.Unlock()
+	requested = mm.Request(request, memoryPriorityHigh)
+	if !requested {
+		t.Error("Priority request should have succeeded")
+	}
+
+	// Check status
+	ms = mm.callStatus()
+	expectedStatus = modules.MemoryStatus{
+		Available: 0,
+		Base:      memoryDefault - memoryPriorityDefault,
+		Requested: 0,
+
+		PriorityAvailable: 0,
+		PriorityBase:      memoryDefault,
+		PriorityRequested: 0,
+		PriorityReserve:   memoryPriorityDefault,
+	}
+	if !reflect.DeepEqual(ms, expectedStatus) {
+		t.Log("Expected:", expectedStatus)
+		t.Log("Status:", ms)
+		t.Fatal("MemoryStatus not as expected")
+	}
+
+	// Request enough memory to have a FIFO queue.
+	//
+	// These must happen in a go routine since they are blocking calls. We don't
+	// care about the calls returning since the block is after the request is
+	// added to the FIFO queue which is what the test is concerned with.
+	go func() {
+		_ = mm.Request(memoryDefault, memoryPriorityLow)
+	}()
+	go func() {
+		_ = mm.Request(memoryDefault, memoryPriorityHigh)
+	}()
+
+	// Since the requests are being handled in a go routine, wait until each
+	// request appears in the FIFO queue
+	err := build.Retry(100, 10*time.Millisecond, func() error {
+		mm.mu.Lock()
+		defer mm.mu.Unlock()
+		if len(mm.fifo) != 1 {
+			return fmt.Errorf("FIFO queue should have 1 request but has %v", len(mm.fifo))
+		}
+		if len(mm.priorityFifo) != 1 {
+			return fmt.Errorf("Priority FIFO queue should have 1 request but has %v", len(mm.priorityFifo))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check Status
+	ms = mm.callStatus()
+	expectedStatus = modules.MemoryStatus{
+		Available: 0,
+		Base:      memoryDefault - memoryPriorityDefault,
+		Requested: memoryDefault,
+
+		PriorityAvailable: 0,
+		PriorityBase:      memoryDefault,
+		PriorityRequested: memoryDefault,
+		PriorityReserve:   memoryPriorityDefault,
+	}
+	if !reflect.DeepEqual(ms, expectedStatus) {
+		t.Log("Expected:", expectedStatus)
+		t.Log("Status:", ms)
+		t.Fatal("MemoryStatus not as expected")
+	}
 }
