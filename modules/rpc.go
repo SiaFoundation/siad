@@ -221,6 +221,18 @@ type (
 		NewOutputs []types.SiacoinOutput
 	}
 
+	RPCRenewContractRenterSignatures struct {
+		RenterFinalRevisionSig []byte
+		RenterContractSig      []types.TransactionSignature
+		RenterNoOpRevisionSig  types.TransactionSignature
+	}
+
+	RPCRenewContractHostSignatures struct {
+		ContractSignatures     []types.TransactionSignature
+		FinalRevisionSignature []byte
+		NoOpRevisionSignature  types.TransactionSignature
+	}
+
 	// rpcResponse is a helper type for encoding and decoding RPC response
 	// messages.
 	rpcResponse struct {

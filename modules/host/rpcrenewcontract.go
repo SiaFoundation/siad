@@ -1,6 +1,7 @@
 package host
 
 import (
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -22,12 +23,13 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	h.mu.RLock()
 	bh := pt.HostBlockHeight
 	hpk := h.publicKey
+	hsk := h.secretKey
 	is := h.settings
 	es := h.externalSettings()
 	lockedCollateral := h.financialMetrics.LockedStorageCollateral
 	h.mu.RUnlock()
 
-	// TODO: read request
+	// Read request
 	var req modules.RPCRenewContractRequest
 	err = modules.RPCRead(stream, &req)
 	if err != nil {
@@ -96,7 +98,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	}
 
 	// Add the collateral to the contract.
-	_, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(so, es, txns)
+	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(so, es, txns)
 	if err != nil {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to add collateral")
 	}
@@ -111,17 +113,101 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to send collateral response")
 	}
 
-	// TODO: Receive the txn signatures from the renter.
+	// Receive the txn signatures from the renter.
+	var renterSignatureResp modules.RPCRenewContractRenterSignatures
+	err = modules.RPCRead(stream, &renterSignatureResp)
+	if err != nil {
+		return errors.AddContext(err, "managedRPCRenewContract: failed to receive renter signatures")
+	}
+	renterFinalRevisionSig := renterSignatureResp.RenterFinalRevisionSig
+	renterContractSig := renterSignatureResp.RenterContractSig
+	renterNoOpRevisionSig := renterSignatureResp.RenterNoOpRevisionSig
 
-	// TODO: Manually add the revision signatures.
+	// Manually add the revision signatures.
+	err = addRevisionSignatures(&txns[len(txns)-1], finalRevision, renterFinalRevisionSig, hsk, bh)
+	if err != nil {
+		return errors.AddContext(err, "managedRPCRenewContract: failed to add revision signatures to transaction")
+	}
 
-	// TODO: use the transaction builder to add the renter's contract signatures
+	// The host adds the renter transaction signatures, then signs the
+	// transaction and submits it to the blockchain, creating a storage
+	// obligation in the process.
+	h.mu.RLock()
+	fc := txns[len(txns)-1].FileContracts[0]
+	renewRevenue := renewBasePrice(so, es, fc)
+	renewRisk := renewBaseCollateral(so, es, fc)
+	renewCollateral, err := renewContractCollateral(so, es, fc)
+	h.mu.RUnlock()
+	if err != nil {
+		return errors.AddContext(err, "managedRPCRenewContract: failed to comput contract collateral")
+	}
 
-	// TODO: Sign the contract using txnBuilder.Sign
+	// Finalize the contract.
+	var renterPK crypto.PublicKey
+	copy(renterPK[:], rpk.Key)
+	fca := finalizeContractArgs{
+		builder:                 txnBuilder,
+		renewal:                 true,
+		renterPK:                renterPK,
+		renterSignatures:        renterContractSig,
+		renterRevisionSignature: renterNoOpRevisionSig,
+		initialSectorRoots:      so.SectorRoots,
+		hostCollateral:          renewCollateral,
+		hostInitialRevenue:      renewRevenue,
+		hostInitialRisk:         renewRisk,
+		settings:                es,
+	}
+	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(fca)
+	if err != nil {
+		return errors.AddContext(err, "managedRPCRenewContract: failed to finalize contract")
+	}
 
-	// TODO: Update obligation.
+	defer h.managedUnlockStorageObligation(newSOID)
+
+	// Clear the old storage obligatoin.
+	so.SectorRoots = []crypto.Hash{}
+	so.RevisionTransactionSet = []types.Transaction{txns[len(txns)-1]}
+
+	// we don't count the sectors as being removed since we prevented
+	// managedFinalizeContract from incrementing the counters on virtual sectors
+	// before
+	h.managedModifyStorageObligation(so, nil, nil)
+
+	// Send signatures back to renter.
+	err = modules.RPCWrite(stream, modules.RPCRenewContractHostSignatures{
+		ContractSignatures:    hostTxnSignatures,
+		NoOpRevisionSignature: hostRevisionSignature,
+
+		FinalRevisionSignature: txns[len(txns)-1].TransactionSignatures[1].Signature,
+	})
+	if err != nil {
+		return errors.AddContext(err, "managedRPCRenewContract: failed to send host signatures")
+	}
 
 	return nil
+}
+
+func addRevisionSignatures(txn *types.Transaction, finalRevision types.FileContractRevision, renterSigBytes []byte, sk crypto.SecretKey, bh types.BlockHeight) error {
+	parentID := crypto.Hash(finalRevision.ParentID)
+	renterSig := types.TransactionSignature{
+		ParentID:       parentID,
+		CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+		PublicKeyIndex: 0,
+		Signature:      renterSigBytes,
+	}
+	hostSig := types.TransactionSignature{
+		ParentID:       parentID,
+		PublicKeyIndex: 1,
+		CoveredFields: types.CoveredFields{
+			FileContractRevisions: []uint64{0},
+		},
+	}
+	txn.TransactionSignatures = []types.TransactionSignature{renterSig, hostSig}
+	sigHash := txn.SigHash(1, bh)
+	encodedSig := crypto.SignHash(sigHash, sk)
+	txn.TransactionSignatures[1].Signature = encodedSig[:]
+
+	return txn.StandaloneValid(bh)
 }
 
 func managedAcceptRenewal(acceptingContracts bool, blockHeight, soExpiration types.BlockHeight) error {
