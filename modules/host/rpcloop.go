@@ -3,7 +3,6 @@ package host
 import (
 	"crypto/cipher"
 	"errors"
-	"fmt"
 	"net"
 	"time"
 
@@ -136,7 +135,6 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 		conn.SetDeadline(time.Now().Add(rpcRequestInterval))
 		id, err := modules.ReadRPCID(conn, aead)
 		if err != nil {
-			fmt.Println("exit1", err)
 			h.log.Debugf("WARN: could not read RPC ID: %v", err)
 			s.writeError(err) // try to write, even though this is probably due to a faulty connection
 			return err
@@ -144,10 +142,8 @@ func (h *Host) managedRPCLoop(conn net.Conn) error {
 			return nil
 		}
 		if rpcFn, ok := rpcs[id]; !ok {
-			fmt.Println("exit3")
 			return errors.New("invalid or unknown RPC ID: " + id.String())
 		} else if err := rpcFn(s); err != nil {
-			fmt.Println("exit4, id", err)
 			return extendErr("incoming RPC"+id.String()+" failed: ", err)
 		}
 	}

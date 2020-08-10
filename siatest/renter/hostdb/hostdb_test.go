@@ -770,9 +770,6 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 		return err
 	}
 
-	fmt.Println("start----------------------")
-	defer fmt.Println("end------------------------")
-
 	// Get listedHosts. If testing blacklist mode we want to grab hosts we
 	// currently have contracts with. if we are in whitelist mode we want to
 	// grab hosts that we don't have contracts with to ensure that contract

@@ -404,7 +404,6 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	}
 
 	if err != nil {
-		fmt.Println("H: rpcerr:", err)
 		err = errors.Compose(err, modules.RPCWriteError(stream, err))
 		atomic.AddUint64(&h.atomicErroredCalls, 1)
 		h.managedLogError(err)

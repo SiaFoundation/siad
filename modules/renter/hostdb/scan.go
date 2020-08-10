@@ -489,9 +489,6 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 		entry.HostExternalSettings = settings
 	}
 	success := err == nil
-	if !success {
-		fmt.Println("not successful", err)
-	}
 
 	hdb.mu.Lock()
 	defer hdb.mu.Unlock()
