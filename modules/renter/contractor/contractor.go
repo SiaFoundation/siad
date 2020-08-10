@@ -3,6 +3,7 @@ package contractor
 import (
 	"bytes"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -638,4 +639,17 @@ func newPayByContractRequest(rev types.FileContractRevision, sig crypto.Signatur
 		req.NewMissedProofValues[i] = o.Value
 	}
 	return req
+}
+
+// RenewContract takes an established connection to a host and renews the
+// contract with that host.
+func (c *Contractor) RenewContract(conn net.Conn, hpk types.SiaPublicKey) error {
+	// Translate host's key to contract.
+	c.mu.RLock()
+	fcid, exists := c.pubKeysToContractID[hpk.String()]
+	c.mu.RUnlock()
+	if !exists {
+		return errors.New("RenewContract: failed to translate host key to contract id")
+	}
+	return c.staticContracts.RenewContract(conn, fcid)
 }

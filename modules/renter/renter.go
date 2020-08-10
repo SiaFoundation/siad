@@ -25,6 +25,7 @@ package renter
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -144,6 +145,10 @@ type hostContractor interface {
 
 	// RefreshedContract checks if the contract was previously refreshed
 	RefreshedContract(fcid types.FileContractID) bool
+
+	// RenewContract takes an established connection to a host and renews the
+	// contract with that host.
+	RenewContract(conn net.Conn, hpk types.SiaPublicKey) error
 
 	// Synced returns a channel that is closed when the contractor is fully
 	// synced with the peer-to-peer network.

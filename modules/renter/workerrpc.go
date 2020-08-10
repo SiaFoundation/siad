@@ -178,5 +178,35 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 }
 
 func (w *worker) managedRenew() error {
-	panic("not implemented yet")
+	// create a new stream
+	stream, err := w.staticNewStream()
+	if err != nil {
+		return errors.AddContext(err, "managedRenew: unable to create a new stream")
+	}
+	defer func() {
+		if err := stream.Close(); err != nil {
+			w.renter.log.Println("managedRenew: failed to close stream", err)
+		}
+	}()
+
+	// write the specifier.
+	err = modules.RPCWrite(stream, modules.RPCRenewContract)
+	if err != nil {
+		return errors.AddContext(err, "managedRenew: failed to write RPC specifier")
+	}
+
+	// send price table uid
+	pt := w.staticPriceTable().staticPriceTable
+	err = modules.RPCWrite(stream, pt.UID)
+	if err != nil {
+		return errors.AddContext(err, "managedRenew: failed to write price table uid")
+	}
+
+	// have the contractset handle the renewal.
+	err = w.renter.hostContractor.RenewContract(stream, w.staticHostPubKey)
+	if err != nil {
+		return errors.AddContext(err, "managedRenew: call to RenewContract failed")
+	}
+
+	return nil
 }

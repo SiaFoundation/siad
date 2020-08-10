@@ -2,6 +2,7 @@ package proto
 
 import (
 	"math"
+	"net"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -624,4 +625,10 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
 	return meta, txnSet, sweepTxn, sweepParents, nil
+}
+
+// RenewContract takes an established connection to a host and renews the
+// contract with that host.
+func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID) error {
+	panic("not implemented yet")
 }
