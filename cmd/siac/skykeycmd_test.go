@@ -7,6 +7,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 const testSkykeyString string = "skykey:Aa71WcCoKFwVGAVotJh3USAslb8dotVJp2VZRRSAG2QhYRbuTbQhjDolIJ1nOlQ-rWYK29_1xee5?name=test_key1"
@@ -110,7 +111,32 @@ func testDeleteKey(t *testing.T, c client.Client) {
 		t.Fatal(err)
 	}
 	if sk.Name != keyName {
-		t.Fatalf("Expected SkyKey name %v but got %v", keyName, sk.Name)
+		t.Fatalf("Expected Skykey name %v but got %v", keyName, sk.Name)
+	}
+
+	// Verify incorrect param usage will return an error and will not delete the
+	// key
+	err = skykeyDelete(c, "name", "id")
+	if err == nil || !errors.Contains(err, errBothNameAndIDUsed) {
+		t.Fatalf("Unexpected Error: got `%v`, expected `%v`", err, errBothNameAndIDUsed)
+	}
+	sk, err = c.SkykeyGetByName(keyName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sk.Name != keyName {
+		t.Fatalf("Expected Skykey name %v but got %v", keyName, sk.Name)
+	}
+	err = skykeyDelete(c, "", "")
+	if err == nil || !errors.Contains(err, errNeitherNameOrIDUsed) {
+		t.Fatalf("Unexpected Error: got `%v`, expected `%v`", err, errNeitherNameOrIDUsed)
+	}
+	sk, err = c.SkykeyGetByName(keyName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sk.Name != keyName {
+		t.Fatalf("Expected Skykey name %v but got %v", keyName, sk.Name)
 	}
 
 	// Delete key by name

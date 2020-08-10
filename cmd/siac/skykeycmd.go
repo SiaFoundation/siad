@@ -14,6 +14,15 @@ import (
 )
 
 var (
+	// errBothNameAndIDUsed is returned if both the Skykey name and ID are
+	// supplied for an operation that requires one or the other
+	errBothNameAndIDUsed = errors.New("Can only use one flag: --name or --id flag")
+
+	// errNeitherNameOrIDUsed is returned if neither the Skykey name or ID are
+	// supplied for an operation that requires one or the other
+	errNeitherNameOrIDUsed = errors.New("Must use either the --name or --id flag")
+)
+var (
 	skykeyCmd = &cobra.Command{
 		Use:   "skykey",
 		Short: "Perform actions related to Skykeys",
@@ -270,10 +279,10 @@ func skykeyListKeys(c client.Client, showPrivateKeys bool) (string, error) {
 // one is used.
 func validateNameAndIDUsage(name, id string) error {
 	if name == "" && id == "" {
-		return errors.New("Must use either the --name or --id flag")
+		return errNeitherNameOrIDUsed
 	}
 	if name != "" && id != "" {
-		return errors.New("Can only use one flag: --name or --id flag")
+		return errBothNameAndIDUsed
 	}
 	return nil
 }
