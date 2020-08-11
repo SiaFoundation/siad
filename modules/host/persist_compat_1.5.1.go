@@ -47,5 +47,5 @@ func (h *Host) upgradeFromV143ToV151() error {
 // the given settings contain a value for the `EphemeralAccountExpiry` field
 // that needs to be reset. Extracted for unit testing purposes.
 func shouldResetEphemeralAccountExpiry(his modules.HostInternalSettings) bool {
-	return his.EphemeralAccountExpiry != modules.DefaultEphemeralAccountExpiry && his.EphemeralAccountExpiry.Nanoseconds() != 0
+	return his.EphemeralAccountExpiry != modules.CompatV1412DefaultEphemeralAccountExpiry && his.EphemeralAccountExpiry.Nanoseconds() != 0
 }
