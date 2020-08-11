@@ -66,7 +66,10 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	err = f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Verify the persistence
 	err = loadAndVerifyPersistence(subTestDir)
@@ -95,8 +98,11 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
 	_, err = f.Write(fastrand.Bytes(100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = f.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
