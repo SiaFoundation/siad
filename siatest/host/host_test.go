@@ -588,7 +588,7 @@ func TestStorageProofEmptyContract(t *testing.T) {
 
 	// Check that the right number of storage obligations were provided.
 	retries := 0
-	err = build.Retry(100, time.Second, func() error {
+	err = build.Retry(1000, 100*time.Millisecond, func() error {
 		if retries%10 == 0 {
 			err = tg.Miners()[0].MineBlock()
 			if err != nil {
