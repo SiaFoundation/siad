@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -247,7 +248,7 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 	for {
 		select {
 		case <-r.tg.StopChan():
-			return nil, errors.New("renter shutdown before directory could be returned")
+			return nil, errors.AddContext(threadgroup.ErrStopped, "renter shutdown before directory could be returned")
 		default:
 		}
 
