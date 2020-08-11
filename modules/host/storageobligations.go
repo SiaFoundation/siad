@@ -447,10 +447,6 @@ func (so storageObligation) revisionNumber() uint64 {
 // requiresProof is a helper to determine whether the storage obligation
 // requires a proof.
 func (so storageObligation) requiresProof() bool {
-	// No need for a proof if the contract has never been revised.
-	if so.revisionNumber() <= 1 {
-		return false
-	}
 	// No need for a proof if the obligation doesn't have a revision. This
 	// should never happen.
 	rev, err := so.recentRevision()

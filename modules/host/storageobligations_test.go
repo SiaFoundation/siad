@@ -491,9 +491,9 @@ func TestStorageObligationRequiresProof(t *testing.T) {
 		}},
 	}}
 
-	// Obligation shouldn't require a proof cause it has never been revised.
-	if so.requiresProof() {
-		t.Fatal("obligation shouldn't require proof")
+	// Obligation should require a proof even though it has never been revised.
+	if !so.requiresProof() {
+		t.Fatal("obligation should require proof")
 	}
 
 	// Increment the revision number. Obligation should now require a proof
