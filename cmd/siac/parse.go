@@ -442,12 +442,13 @@ func parsePercentages(values []float64) []float64 {
 }
 
 // sizeString converts the uint64 size to a string with appropriate units and
-// rounds to 4 significant digits.
+// truncates to 4 significant digits.
 func sizeString(size uint64) string {
 	sizes := []struct {
 		unit   string
 		factor float64
 	}{
+		{"EB", 1e18},
 		{"PB", 1e15},
 		{"TB", 1e12},
 		{"GB", 1e9},
@@ -469,18 +470,13 @@ func sizeString(size uint64) string {
 		if !strings.Contains(str, "000") {
 			return str
 		}
-		// Check for rounding to three 0s in the decimal place
-		if strings.Contains(str, ".") {
-			// Trim the trailing three 0s in the decimal place and return the whole number
-			return fmt.Sprintf("%s %s", strings.Split(str, ".")[0], s.unit)
-		}
 		// If we are at the max unit then there is no trimming to do
 		if i == 0 {
+			build.Critical("input uint64 overflows uint64, shouldn't be possible")
 			return str
 		}
 		// Trim the trailing three 0s and round to the next unit size
 		return fmt.Sprintf("%s %s", string(str[0]), sizes[i-1].unit)
 	}
-
 	return "0 B"
 }

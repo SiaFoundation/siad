@@ -346,11 +346,11 @@ func TestSizeString(t *testing.T) {
 		{1000001, "1 MB"},
 		{1999999, "2 MB"}, // Should round up to 2MB
 		{1234000, "1.234 MB"},
-		{1234000000, "1.234 GB"},
-		{1234000000000, "1.234 TB"},
-		{1234000000000000, "1.234 PB"},
-		{1000000000000000000, "1000 PB"}, // Check rounding on max unit value
-		{1234000000000000000, "1234 PB"},
+		{1235000000, "1.235 GB"},       // Verifies it doesn't round the last digit
+		{1234500000000, "1.234 TB"},    // Verifies it truncates and doesn't round
+		{1234490000000000, "1.234 PB"}, // Verifies it truncates and doesn't round
+		{1234000000000000000, "1.234 EB"},
+		{math.MaxUint64, "18.45 EB"},
 	}
 	for _, test := range tests {
 		out := sizeString(test.in)
@@ -360,7 +360,7 @@ func TestSizeString(t *testing.T) {
 	}
 
 	// Add some random tests for any edge case panics
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 1e3; i++ {
 		sizeString(fastrand.Uint64n(math.MaxUint64))
 	}
 }
