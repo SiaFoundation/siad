@@ -674,7 +674,7 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 		// Pop an explored directory off of the directory heap
 		dir, err := r.managedNextExploredDirectory()
 		if err != nil {
-			r.repairLog.Severe("WARN: error fetching directory for repair:", err)
+			r.repairLog.Severe("error fetching directory for repair:", err)
 			// Log the error and then decide whether or not to continue of to return
 			consecutiveDirHeapFailures++
 			if consecutiveDirHeapFailures > maxConsecutiveDirHeapFailures {
