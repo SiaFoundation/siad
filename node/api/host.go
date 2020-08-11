@@ -107,6 +107,11 @@ func (api *API) hostHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprou
 		WorkingStatus:        ws,
 		PublicKey:            pk,
 	}
+
+	if api.staticDeps.Disrupt("TimeoutOnHostGET") {
+		time.Sleep(httpServerTimeout + 5*time.Second)
+	}
+
 	WriteJSON(w, hg)
 }
 

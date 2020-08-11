@@ -1,8 +1,14 @@
 package api
 
 import (
+	"encoding/json"
+	"io/ioutil"
 	"net/http"
+	"strings"
 	"testing"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
 
 // TestExplorerPreset checks that the default configuration for the explorer is
@@ -58,6 +64,55 @@ func TestReloading(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// TestServerTimeout verifies the server returns a Gateway Timeout if an HTTP
+// call exceeds the predefined timeout period.
+func TestServerTimeout(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	apiDeps := &dependencies.DependencyTimeoutOnHostGET{}
+	st, err := createServerTesterWithDeps(t.Name(), modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, apiDeps)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		err = st.server.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Test that the call times out
+	testGETURL := "http://" + st.server.listener.Addr().String() + "/host"
+	resp, err := HttpGET(testGETURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify status code
+	if resp.StatusCode != 504 {
+		t.Fatal("Expected HTTP Status Code to be 504 ")
+	}
+
+	// Verify response body
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var apiErr Error
+	err = json.Unmarshal(body, &apiErr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(apiErr.Message, "HTTP call exceeded the timeout") {
+		t.Fatal("Expected response body to contain mention of the timeout")
 	}
 }
 

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -8,6 +10,16 @@ import (
 	"github.com/julienschmidt/httprouter"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+)
+
+var (
+	// httpServerTimeout is the timeout after which an HTTP call will return a
+	// 504 Gateway Timeout if it took too long to serve the response.
+	httpServerTimeout = build.Select(build.Var{
+		Standard: 24 * time.Hour,
+		Dev:      1 * time.Hour,
+		Testing:  1 * time.Minute,
+	}).(time.Duration)
 )
 
 // buildHttpRoutes sets up and returns an * httprouter.Router.
@@ -227,26 +239,24 @@ func (api *API) buildHTTPRoutes() {
 // handler finishes.
 func cleanCloseHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Close this file handle either when the function completes or when the
-		// connection is done.
+		// Create a context that times out after the `httpServerTimeout` expires
+		ctx, cancel := context.WithTimeout(context.Background(), httpServerTimeout)
+		defer cancel()
+
+		// Serve the HTTP in a goroutine
 		done := make(chan struct{})
 		go func(w http.ResponseWriter, r *http.Request) {
-			defer close(done)
 			next.ServeHTTP(w, r)
+			close(done)
 		}(w, r)
 
-		// Sanity check - thread should not take more than an hour to return. This
-		// must be done in a goroutine, otherwise the server will not close the
-		// underlying socket for this API call.
-		timer := time.NewTimer(time.Minute * 60)
-		go func() {
-			select {
-			case <-done:
-				timer.Stop()
-			case <-timer.C:
-				build.Severe("api call is taking more than 60 minutes to return:", r.URL.Path)
-			}
-		}()
+		// Return a '504 Gateway Timeout' when it exceeds the server timeout
+		select {
+		case <-ctx.Done():
+			WriteError(w, Error{fmt.Sprintf("HTTP call exceeded the timeout of %v", httpServerTimeout)}, http.StatusGatewayTimeout)
+			return
+		case <-done:
+		}
 	})
 }
 
