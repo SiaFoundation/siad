@@ -3,8 +3,8 @@ package host
 import (
 	"path/filepath"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // upgradeFromV143ToV151 is an upgrade layer that fixes a bug in the host's
@@ -18,7 +18,7 @@ func (h *Host) upgradeFromV143ToV151() error {
 	p := new(persistence)
 	err := h.dependencies.LoadFile(modules.Hostv143PersistMetadata, p, filepath.Join(h.persistDir, settingsFile))
 	if err != nil {
-		return build.ExtendErr("could not load persistence object", err)
+		return errors.AddContext(err, "could not load persistence object")
 	}
 
 	// The persistence object for hosts that upgraded to v1.5.0 (so non-new
@@ -37,7 +37,7 @@ func (h *Host) upgradeFromV143ToV151() error {
 	// Save the updated persist so that the upgrade is not triggered again.
 	err = h.saveSync()
 	if err != nil {
-		return build.ExtendErr("could not save persistence object", err)
+		return errors.AddContext(err, "could not save persistence object")
 	}
 
 	return nil

@@ -32,17 +32,13 @@ func TestV143HostUpgrade(t *testing.T) {
 	}
 	t.Parallel()
 
-	// create a tmp dir and ensure it's empty
+	// create a tmp dir
 	persistDir := build.TempDir(t.Name())
-	err := os.RemoveAll(persistDir)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// extract the legacy host data
 	hostDir := build.TempDir(persistDir, modules.HostDir)
 	source := filepath.Join("testdata", v143Host)
-	err = build.ExtractTarGz(source, hostDir)
+	err := build.ExtractTarGz(source, hostDir)
 	if err != nil {
 		t.Fatal(err)
 	}

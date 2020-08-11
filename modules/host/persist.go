@@ -170,7 +170,6 @@ func (h *Host) load() error {
 	p := new(persistence)
 	err = h.dependencies.LoadFile(modules.Hostv151PersistMetadata, p, filepath.Join(h.persistDir, settingsFile))
 	if err == nil {
-		println("loading persistence")
 		// Copy in the persistence.
 		h.loadPersistObject(p)
 	} else if os.IsNotExist(err) {
@@ -190,7 +189,7 @@ func (h *Host) load() error {
 		// Then upgrade from V143 to V151.
 		err = h.upgradeFromV143ToV151()
 		if err != nil {
-			h.log.Println("WARNING: v120 to v143 host upgrade failed, nothing left to try", err)
+			h.log.Println("WARNING: v143 to v151 host upgrade failed, nothing left to try", err)
 			return err
 		}
 
