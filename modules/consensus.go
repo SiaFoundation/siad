@@ -73,6 +73,12 @@ type (
 	}
 
 	// ConsensusChangeDiffs is a collection of diffs caused by a single block.
+	// If the block was reverted, the individual diff directions are inverted.
+	// For example, a block that spends an output and creates a miner payout
+	// would have one SiacoinOutputDiff with direction DiffRevert and one
+	// DelayedSiacoinOutputDiff with direction DiffApply. If the same block
+	// were reverted, the SCOD would have direction DiffApply and the DSCOD
+	// would have direction DiffRevert.
 	ConsensusChangeDiffs struct {
 		SiacoinOutputDiffs        []SiacoinOutputDiff
 		FileContractDiffs         []FileContractDiff
