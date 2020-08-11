@@ -447,11 +447,9 @@ func (so storageObligation) revisionNumber() uint64 {
 // requiresProof is a helper to determine whether the storage obligation
 // requires a proof.
 func (so storageObligation) requiresProof() bool {
-	// No need for a proof if the obligation doesn't have a revision. This
-	// should never happen.
+	// No need for a proof if the obligation doesn't have a revision.
 	rev, err := so.recentRevision()
 	if err != nil {
-		build.Critical("requiresProof: failed to retrieve recent revision for storage obligation", err)
 		return false
 	}
 	// No need for a proof if the valid outputs match the invalid ones. Right
