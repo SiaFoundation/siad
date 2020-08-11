@@ -12,6 +12,11 @@ func (w *worker) callStatus() modules.WorkerStatus {
 	downloadOnCoolDown := w.onDownloadCooldown()
 	downloadTerminated := w.downloadTerminated
 	downloadQueueSize := len(w.downloadChunks)
+	var downloadCoolDownErr string
+	if w.downloadRecentFailureErr != nil {
+		downloadCoolDownErr = w.downloadRecentFailureErr.Error()
+	}
+	downloadCoolDownTime := w.downloadRecentFailure.Add(downloadFailureCooldown).Sub(time.Now())
 	w.downloadMu.Unlock()
 
 	w.mu.Lock()
@@ -39,9 +44,11 @@ func (w *worker) callStatus() modules.WorkerStatus {
 		HostPubKey:      w.staticHostPubKey,
 
 		// Download information
-		DownloadOnCoolDown: downloadOnCoolDown,
-		DownloadQueueSize:  downloadQueueSize,
-		DownloadTerminated: downloadTerminated,
+		DownloadCoolDownError: downloadCoolDownErr,
+		DownloadCoolDownTime:  downloadCoolDownTime,
+		DownloadOnCoolDown:    downloadOnCoolDown,
+		DownloadQueueSize:     downloadQueueSize,
+		DownloadTerminated:    downloadTerminated,
 
 		// Upload information
 		UploadCoolDownError: uploadCoolDownErr,
