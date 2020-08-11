@@ -117,7 +117,7 @@ func testDeleteKey(t *testing.T, c client.Client) {
 	// Verify incorrect param usage will return an error and will not delete the
 	// key
 	err = skykeyDelete(c, "name", "id")
-	if err == nil || !errors.Contains(err, errBothNameAndIDUsed) {
+	if !errors.Contains(err, errBothNameAndIDUsed) {
 		t.Fatalf("Unexpected Error: got `%v`, expected `%v`", err, errBothNameAndIDUsed)
 	}
 	sk, err = c.SkykeyGetByName(keyName)
@@ -128,8 +128,8 @@ func testDeleteKey(t *testing.T, c client.Client) {
 		t.Fatalf("Expected Skykey name %v but got %v", keyName, sk.Name)
 	}
 	err = skykeyDelete(c, "", "")
-	if err == nil || !errors.Contains(err, errNeitherNameOrIDUsed) {
-		t.Fatalf("Unexpected Error: got `%v`, expected `%v`", err, errNeitherNameOrIDUsed)
+	if !errors.Contains(err, errNeitherNameNorIDUsed) {
+		t.Fatalf("Unexpected Error: got `%v`, expected `%v`", err, errNeitherNameNorIDUsed)
 	}
 	sk, err = c.SkykeyGetByName(keyName)
 	if err != nil {
