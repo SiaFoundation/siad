@@ -286,6 +286,13 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 		Run:   wrap(renterworkersdownloadscmd),
 	}
 
+	renterWorkersHasSectorJobSCmd = &cobra.Command{
+		Use:   "hsj",
+		Short: "View the workers' has sector jobs",
+		Long:  "View detailed information of the workers' has sector jobs",
+		Run:   wrap(renterworkershsjcmd),
+	}
+
 	renterWorkersPriceTableCmd = &cobra.Command{
 		Use:   "pt",
 		Short: "View the workers's price table",
@@ -298,13 +305,6 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 		Short: "View the workers' read jobs",
 		Long:  "View detailed information of the workers' read jobs",
 		Run:   wrap(renterworkersrjcmd),
-	}
-
-	renterWorkersHasSectorJobSCmd = &cobra.Command{
-		Use:   "hsj",
-		Short: "View the workers' has sector jobs",
-		Long:  "View detailed information of the workers' has sector jobs",
-		Run:   wrap(renterworkershsjcmd),
 	}
 
 	renterWorkersUploadsCmd = &cobra.Command{
@@ -2739,17 +2739,31 @@ func renterworkersdownloadscmd() {
 			die("Could not flush tabwriter:", err)
 		}
 	}()
+	// Write Download Info
+	writeWorkerDownloadUploadInfo(true, w, rw)
+}
 
+// writeWorkerDownloadUploadInfo is a helper function for writing the download
+// or upload information to the tabwriter.
+func writeWorkerDownloadUploadInfo(download bool, w *tabwriter.Writer, rw modules.WorkerPoolStatus) {
 	// print summary
 	fmt.Fprintf(w, "Worker Pool Summary \n")
 	fmt.Fprintf(w, "  Total Workers: \t%v\n", rw.NumWorkers)
-	fmt.Fprintf(w, "  Workers On Download Cooldown:\t%v\n", rw.TotalDownloadCoolDown)
+	if download {
+		fmt.Fprintf(w, "  Workers On Download Cooldown:\t%v\n", rw.TotalDownloadCoolDown)
+	} else {
+		fmt.Fprintf(w, "  Workers On Upload Cooldown:\t%v\n", rw.TotalUploadCoolDown)
+	}
 
 	// print header
 	hostInfo := "Host PubKey"
-	downloadInfo := "\tOn Cooldown\tCooldown Time\tLast Error\tQueue\tDownload Terminated"
-	header := hostInfo + downloadInfo
-	fmt.Fprintln(w, "\nWorker Downloads Detail  \n\n"+header)
+	info := "\tOn Cooldown\tCooldown Time\tLast Error\tQueue\tTerminated"
+	header := hostInfo + info
+	if download {
+		fmt.Fprintln(w, "\nWorker Downloads Detail  \n\n"+header)
+	} else {
+		fmt.Fprintln(w, "\nWorker Uploads Detail  \n\n"+header)
+	}
 
 	// print rows
 	for _, worker := range rw.Workers {
@@ -2757,12 +2771,22 @@ func renterworkersdownloadscmd() {
 		fmt.Fprintf(w, "%v", worker.HostPubKey.String())
 
 		// Download Info
+		if download {
+			fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
+				worker.DownloadOnCoolDown,
+				absDuration(worker.DownloadCoolDownTime),
+				worker.DownloadCoolDownError,
+				worker.DownloadQueueSize,
+				worker.DownloadTerminated)
+			continue
+		}
+		// Upload Info
 		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
-			worker.DownloadOnCoolDown,
-			absDuration(worker.DownloadCoolDownTime),
-			worker.DownloadCoolDownError,
-			worker.DownloadQueueSize,
-			worker.DownloadTerminated)
+			worker.UploadOnCoolDown,
+			absDuration(worker.UploadCoolDownTime),
+			worker.UploadCoolDownError,
+			worker.UploadQueueSize,
+			worker.UploadTerminated)
 	}
 }
 
@@ -2923,31 +2947,8 @@ func renterworkersuploadscmd() {
 			die("Could not flush tabwriter:", err)
 		}
 	}()
-
-	// print summary
-	fmt.Fprintf(w, "Worker Pool Summary \n")
-	fmt.Fprintf(w, "  Total Workers: \t%v\n", rw.NumWorkers)
-	fmt.Fprintf(w, "  Workers On Upload Cooldown:\t%v\n", rw.TotalUploadCoolDown)
-
-	// print header
-	hostInfo := "Host PubKey"
-	uploadInfo := "\tOn Cooldown\tCooldown Time\tLast Error\tQueue\tTerminated"
-	header := hostInfo + uploadInfo
-	fmt.Fprintln(w, "\nWorker Uploads Detail  \n\n"+header)
-
-	// print rows
-	for _, worker := range rw.Workers {
-		// Host Info
-		fmt.Fprintf(w, "%v", worker.HostPubKey.String())
-
-		// Upload Info
-		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
-			worker.UploadOnCoolDown,
-			absDuration(worker.UploadCoolDownTime),
-			worker.UploadCoolDownError,
-			worker.UploadQueueSize,
-			worker.UploadTerminated)
-	}
+	// Write Upload Info
+	writeWorkerDownloadUploadInfo(false, w, rw)
 }
 
 // writeWorkers is a helper function to display workers
@@ -3007,12 +3008,12 @@ func writeWorkers(workers []modules.WorkerStatus) {
 
 // absDuration is a small helper function that sanitizes the output for the
 // given time duration. If the duration is less than 0 it will return 0,
-// otherwise it will return the duration.
+// otherwise it will return the duration rounded to the nearest second.
 func absDuration(t time.Duration) time.Duration {
 	if t <= 0 {
 		return 0
 	}
-	return t
+	return t.Round(time.Second)
 }
 
 // sanitizeTime is a small helper function that sanitizes the output for the
