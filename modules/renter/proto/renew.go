@@ -629,6 +629,18 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 
 // RenewContract takes an established connection to a host and renews the
 // contract with that host.
-func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID) error {
-	panic("not implemented yet")
+func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, params ContractParams, txnBuilder transactionBuilder, tpool transactionPool, hdb hostDB) error {
+	// Fetch the contract.
+	oldSC, ok := cs.Acquire(fcid)
+	if !ok {
+		return errors.New("RenewContract: failed to acquire contract to renew")
+	}
+	oldContract := oldSC.header
+	oldRev := contract.LastRevision()
+
+	// Extract vars from params, for convenience.
+	allowance, host, funding, startHeight, endHeight, refundAddress := params.Allowance, params.Host, params.Funding, params.StartHeight, params.EndHeight, params.RefundAddress
+	ourSK := oldContract.SecretKey
+
+	// Calculate basePrice and baseCollateral
 }
