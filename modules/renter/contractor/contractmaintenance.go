@@ -612,12 +612,25 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	// wipe the renter seed once we are done using it.
 	defer fastrand.Read(params.RenterSeed[:])
 
-	// execute negotiation protocol
+	// create a transaction builder with the correct amount of funding for the renewal.
 	txnBuilder, err := c.wallet.StartTransaction()
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
-	newContract, formationTxnSet, sweepTxn, sweepParents, err := c.staticContracts.Renew(sc, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
+	err = txnBuilder.FundSiacoins(params.Funding)
+	if err != nil {
+		txnBuilder.Drop() // return unused outputs to wallet
+		return modules.RenterContract{}, err
+	}
+	// Add an output that sends all fund back to the refundAddress.
+	// Note that in order to send this transaction, a miner fee will have to be subtracted.
+	output := types.SiacoinOutput{
+		Value:      params.Funding,
+		UnlockHash: params.RefundAddress,
+	}
+	sweepTxn, sweepParents := txnBuilder.Sweep(output)
+
+	newContract, formationTxnSet, err := c.staticContracts.Renew(sc, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
 	if err != nil {
 		txnBuilder.Drop() // return unused outputs to wallet
 		return modules.RenterContract{}, err
