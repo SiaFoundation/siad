@@ -221,12 +221,18 @@ type (
 		NewOutputs []types.SiacoinOutput
 	}
 
+	// RPCRenewContractRenterSignatures contains the renter's signatures for the
+	// final revision of the old contract, the new contract and the initial
+	// revision of the new contract.
 	RPCRenewContractRenterSignatures struct {
 		RenterFinalRevisionSig []byte
 		RenterContractSig      []types.TransactionSignature
 		RenterNoOpRevisionSig  types.TransactionSignature
 	}
 
+	// RPCRenewContractHostSignatures contains the host's revisions for the
+	// final revision of the old contract, the new contract and the initial
+	// revision of the new contract.
 	RPCRenewContractHostSignatures struct {
 		ContractSignatures     []types.TransactionSignature
 		FinalRevisionSignature []byte

@@ -20,12 +20,13 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	}
 
 	// Get some values for the RPC.
+	_, maxEstimate := h.tpool.FeeEstimation()
 	h.mu.RLock()
 	bh := pt.HostBlockHeight
 	hpk := h.publicKey
 	hsk := h.secretKey
 	is := h.settings
-	es := h.externalSettings()
+	es := h.externalSettings(maxEstimate)
 	lockedCollateral := h.financialMetrics.LockedStorageCollateral
 	h.mu.RUnlock()
 

@@ -189,20 +189,20 @@ var (
 	PrefixFileContractIdentifier = types.NewSpecifier("FCIdentifier")
 
 	// RPCDownload is the specifier for downloading a file from a host.
-	RPCDownload = types.NewSpecifier("Download" + string(2))
+	RPCDownload = types.NewSpecifier("Download" + types.RuneToString(2))
 
 	// RPCFormContract is the specifier for forming a contract with a host.
-	RPCFormContract = types.NewSpecifier("FormContract" + string(2))
+	RPCFormContract = types.NewSpecifier("FormContract" + types.RuneToString(2))
 
 	// RPCRenewContractRHP2 is the specifier to renewing an existing contract.
-	RPCRenewContractRHP2 = types.NewSpecifier("RenewContract" + string(2))
+	RPCRenewContractRHP2 = types.NewSpecifier("RenewContract" + types.RuneToString(2))
 
 	// RPCReviseContract is the specifier for revising an existing file
 	// contract.
-	RPCReviseContract = types.NewSpecifier("ReviseContract" + string(2))
+	RPCReviseContract = types.NewSpecifier("ReviseContract" + types.RuneToString(2))
 
 	// RPCSettings is the specifier for requesting settings from the host.
-	RPCSettings = types.NewSpecifier("Settings" + string(2))
+	RPCSettings = types.NewSpecifier("Settings" + types.RuneToString(2))
 
 	// SectorSize defines how large a sector should be in bytes. The sector
 	// size needs to be a power of two to be compatible with package

@@ -1,6 +1,8 @@
 package renter
 
 import (
+	"context"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -27,7 +29,13 @@ type (
 	}
 )
 
-// TODO: Gouging
+// renewJobExpectedBandwidth is a helper function that returns the expected
+// bandwidth consumption of a renew job.
+func renewJobExpectedBandwidth() (ul, dl uint64) {
+	ul = 1 << 13 // 8 KiB
+	dl = 1 << 13 // 8 KiB
+	return
+}
 
 // newJobHasSector is a helper method to create a new HasSector job.
 func (w *worker) newJobRenew(cancel <-chan struct{}, responseChan chan *jobRenewResponse, roots ...crypto.Hash) *jobRenew {
@@ -80,6 +88,10 @@ func (j *jobRenew) callExecute() {
 	}
 }
 
+func (j *jobRenew) callExpectedBandwidth() (ul, dl uint64) {
+	return renewJobExpectedBandwidth()
+}
+
 func (w *worker) initJobRenewQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobRenewQueue != nil {
@@ -87,7 +99,29 @@ func (w *worker) initJobRenewQueue() {
 		return
 	}
 
-	w.staticJobHasSectorQueue = &jobHasSectorQueue{
+	w.staticJobRenewQueue = &jobRenewQueue{
 		jobGenericQueue: newJobGenericQueue(w),
 	}
+}
+
+func (w *worker) RenewContract(ctx context.Context) error {
+	renewResponseChan := make(chan *jobRenewResponse)
+	jro := &jobRenew{
+		staticResponseChan: renewResponseChan,
+		jobGeneric:         newJobGeneric(w.staticJobReadQueue, ctx.Done()),
+	}
+
+	// Add the job to the queue.
+	if !w.staticJobRenewQueue.callAdd(jro) {
+		return errors.New("worker unavailable")
+	}
+
+	// Wait for the response.
+	var resp *jobRenewResponse
+	select {
+	case <-ctx.Done():
+		return errors.New("Renew interrupted")
+	case resp = <-renewResponseChan:
+	}
+	return resp.staticErr
 }
