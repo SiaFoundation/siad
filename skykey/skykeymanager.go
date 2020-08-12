@@ -453,7 +453,7 @@ func (sm *SkykeyManager) loadHeader(file *os.File) error {
 	if err != nil {
 		return err
 	}
-	version := strings.ReplaceAll(string(versionBytes), string(0x0), "")
+	version := strings.ReplaceAll(string(versionBytes), types.RuneToString(0x0), "")
 
 	if !build.IsVersion(version) {
 		return errors.New("skykey file header missing version")

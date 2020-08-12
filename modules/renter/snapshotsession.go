@@ -17,6 +17,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 )
 
@@ -122,7 +123,7 @@ func (r *Renter) callFetchHostBackups(session contractor.Session) ([]modules.Upl
 	uploadedBackups := make([]modules.UploadedBackup, len(entryTable))
 	for i, e := range entryTable {
 		uploadedBackups[i] = modules.UploadedBackup{
-			Name:           string(bytes.TrimRight(e.Name[:], string(0))),
+			Name:           string(bytes.TrimRight(e.Name[:], types.RuneToString(0))),
 			UID:            e.UID,
 			CreationDate:   e.CreationDate,
 			Size:           e.Size,
