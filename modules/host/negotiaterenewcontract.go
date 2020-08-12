@@ -129,8 +129,9 @@ func (h *Host) managedRPCRenewContractRHP2(conn net.Conn) error {
 		return extendErr("unable to read renter public key: ", ErrorConnection(err.Error()))
 	}
 
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
-	settings := h.externalSettings()
+	settings := h.externalSettings(maxFee)
 	h.mu.Unlock()
 
 	// Verify that the transaction coming over the wire is a proper renewal.
@@ -259,9 +260,10 @@ func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types
 		return extendErr("transaction without file contract: ", ErrEmptyObject)
 	}
 
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
 	blockHeight := h.blockHeight
-	externalSettings := h.externalSettings()
+	externalSettings := h.externalSettings(maxFee)
 	internalSettings := h.settings
 	lockedStorageCollateral := h.financialMetrics.LockedStorageCollateral
 	publicKey := h.publicKey

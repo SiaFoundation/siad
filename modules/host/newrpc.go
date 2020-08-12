@@ -23,8 +23,9 @@ func (h *Host) managedRPCLoopSettings(s *rpcSession) error {
 	atomic.AddUint64(&h.atomicSettingsCalls, 1)
 	s.extendDeadline(modules.NegotiateSettingsTime)
 
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
-	hes := h.externalSettings()
+	hes := h.externalSettings(maxFee)
 	h.mu.Unlock()
 	js, _ := json.Marshal(hes)
 	resp := modules.LoopSettingsResponse{
@@ -181,10 +182,11 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	}
 
 	// Read some internal fields for later.
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
 	blockHeight := h.blockHeight
 	secretKey := h.secretKey
-	settings := h.externalSettings()
+	settings := h.externalSettings(maxFee)
 	h.mu.Unlock()
 	currentRevision := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
@@ -435,10 +437,11 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	}
 
 	// Read some internal fields for later.
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
 	blockHeight := h.blockHeight
 	secretKey := h.secretKey
-	settings := h.externalSettings()
+	settings := h.externalSettings(maxFee)
 	h.mu.Unlock()
 	currentRevision := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
@@ -584,8 +587,9 @@ func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 		return err
 	}
 
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
-	settings := h.externalSettings()
+	settings := h.externalSettings(maxFee)
 	h.mu.Unlock()
 	if !settings.AcceptingContracts {
 		s.writeError(errors.New("host is not accepting new contracts"))
@@ -674,9 +678,9 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 		s.writeError(err)
 		return err
 	}
-
+	_, max := h.tpool.FeeEstimation()
 	h.mu.Lock()
-	settings := h.externalSettings()
+	settings := h.externalSettings(max)
 	h.mu.Unlock()
 	if !settings.AcceptingContracts {
 		s.writeError(errors.New("host is not accepting new contracts"))
@@ -785,10 +789,11 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 	}
 
 	// Read some internal fields for later.
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
 	blockHeight := h.blockHeight
 	secretKey := h.secretKey
-	settings := h.externalSettings()
+	settings := h.externalSettings(maxFee)
 	h.mu.Unlock()
 	currentRevision := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
@@ -894,10 +899,11 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	}
 
 	// Read some internal fields for later.
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
 	blockHeight := h.blockHeight
 	secretKey := h.secretKey
-	settings := h.externalSettings()
+	settings := h.externalSettings(maxFee)
 	h.mu.Unlock()
 
 	// Check that the old contract is locked.

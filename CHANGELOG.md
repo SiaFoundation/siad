@@ -17,16 +17,18 @@ Latest:
 - add support for write MDM programs to host
 - Added `defaultpath` - a new optional path parameter when creating Skylinks. It
   determines which is the default file to open in a multi-file skyfile.
-- Add `configModules` to the API so that the siad modules can be return in `/daemon/settings [GET]`
+- Add `configModules` to the API so that the siad modules can be return in
+  `/daemon/settings [GET]`
 - Allow the renew window to be larger than the period
 - Convert skynetblacklist from merkleroots to hashes of the merkleroots
-- split up the custom http status code returned by the API for unloaded modules into 2 distinct codes.
+- split up the custom http status code returned by the API for unloaded modules
+  into 2 distinct codes.
 - Add `daemon/stack` endpoint to get the current stack trace.
 - Add Skykey delete methods to API.
-- Add `disabledefaultpath` - a new optional path parameter when creating 
-Skylinks. It disables the default path functionality, guaranteeing that the user
-will not be automatically redirected to `/index.html` if it exists in the 
-skyfile.
+- Add `disabledefaultpath` - a new optional path parameter when creating
+  Skylinks. It disables the default path functionality, guaranteeing that the
+  user will not be automatically redirected to `/index.html` if it exists in the
+  skyfile.
 - Add 'siac' commands for the FeeManager
 - Add `TypePrivateID` Skykeys with skyfile encryption support
 - Added available and priority memory output to `siac renter -v`
@@ -36,16 +38,20 @@ skyfile.
 - fixed bug in rotation of fingerprint buckets
 - fix issue where priority tasks could wait for low priority tasks to complete
 - Fix panic in backup code due to not using `newJobGeneric`
-- Skynet filenames are now validated when uploading. Previously you could upload files called e.g. "../foo" which would be inaccessible.
-- The Skykey encryption API docs were updated to fix some discrepancies. In particular, the skykeyid section was removed.
-- The createskykey endpoint was fixed as it was not returning the full Skykey that was created.
+- Skynet filenames are now validated when uploading. Previously you could upload
+  files called e.g. "../foo" which would be inaccessible.
+- The Skykey encryption API docs were updated to fix some discrepancies. In
+  particular, the skykeyid section was removed.
+- The createskykey endpoint was fixed as it was not returning the full Skykey
+  that was created.
 - integrade download cooldown system into download jobs
 - fix bug which could prevent downloads from making progress
 - Fix panic in the wal of the siadir and siafile if a delete update was
   submitted as the last update in a set of updates.
 
 **Other**
-- Add `EphemeralAccountExpiry` and `MaxEphemeralAccountBalance` to the Host's ExternalSettings
+- Add `EphemeralAccountExpiry` and `MaxEphemeralAccountBalance` to the Host's
+  ExternalSettings
 - Add testing infrastructure to validate the output of siac commands.
 - Add root siac Cobra command test with subtests.
 - Optimise writes when we execute an MDM program on the host to lower overall
