@@ -137,7 +137,9 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 	if err != nil {
 		return errors.AddContext(err, "failed to open backup for uploading")
 	}
-	defer backup.Close()
+	defer func() {
+		err = errors.Compose(err, backup.Close())
+	}()
 
 	// Prepare the siapath.
 	sp, err := modules.BackupFolder.Join(name)
@@ -198,7 +200,9 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+	defer func() {
+		err = errors.Compose(err, dstFile.Close())
+	}()
 	// search for backup
 	if len(name) > 96 {
 		return errors.New("no record of a backup with that name")

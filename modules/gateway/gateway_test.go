@@ -12,6 +12,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/threadgroup"
 )
@@ -159,7 +160,7 @@ func TestNew(t *testing.T) {
 	// create corrupted nodes.json
 	dir := build.TempDir("gateway", t.Name()+"2")
 	os.MkdirAll(dir, 0700)
-	err := ioutil.WriteFile(filepath.Join(dir, "nodes.json"), []byte{1, 2, 3}, 0660)
+	err := ioutil.WriteFile(filepath.Join(dir, "nodes.json"), []byte{1, 2, 3}, persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal("couldn't create corrupted file:", err)
 	}

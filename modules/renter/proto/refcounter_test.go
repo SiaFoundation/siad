@@ -532,7 +532,11 @@ func TestRefCounterLoadInvalidVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create test file:", err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// The first 8 bytes are the version number. Write down an invalid one
 	// followed 4 counters (another 8 bytes).
@@ -993,7 +997,9 @@ func writeVal(path string, secIdx uint64, val uint16) error {
 	if err != nil {
 		return errors.AddContext(err, "failed to open refcounter file")
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
 	var b u16
 	binary.LittleEndian.PutUint16(b[:], val)
 	if _, err = f.WriteAt(b[:], int64(offset(secIdx))); err != nil {
