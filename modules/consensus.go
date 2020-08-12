@@ -72,6 +72,21 @@ type (
 		ProcessConsensusChange(ConsensusChange)
 	}
 
+	// ConsensusChangeDiffs is a collection of diffs caused by a single block.
+	// If the block was reverted, the individual diff directions are inverted.
+	// For example, a block that spends an output and creates a miner payout
+	// would have one SiacoinOutputDiff with direction DiffRevert and one
+	// DelayedSiacoinOutputDiff with direction DiffApply. If the same block
+	// were reverted, the SCOD would have direction DiffApply and the DSCOD
+	// would have direction DiffRevert.
+	ConsensusChangeDiffs struct {
+		SiacoinOutputDiffs        []SiacoinOutputDiff
+		FileContractDiffs         []FileContractDiff
+		SiafundOutputDiffs        []SiafundOutputDiff
+		DelayedSiacoinOutputDiffs []DelayedSiacoinOutputDiff
+		SiafundPoolDiffs          []SiafundPoolDiff
+	}
+
 	// A ConsensusChange enumerates a set of changes that occurred to the consensus set.
 	ConsensusChange struct {
 		// ID is a unique id for the consensus change derived from the reverted
@@ -90,28 +105,17 @@ type (
 		// applied.
 		AppliedBlocks []types.Block
 
-		// SiacoinOutputDiffs contains the set of siacoin diffs that were applied
-		// to the consensus set in the recent change. The direction for the set of
-		// diffs is 'DiffApply'.
-		SiacoinOutputDiffs []SiacoinOutputDiff
+		// RevertedDiffs is the set of diffs caused by reverted blocks. Each
+		// element corresponds to a block in RevertedBlocks.
+		RevertedDiffs []ConsensusChangeDiffs
 
-		// FileContractDiffs contains the set of file contract diffs that were
-		// applied to the consensus set in the recent change. The direction for the
-		// set of diffs is 'DiffApply'.
-		FileContractDiffs []FileContractDiff
+		// AppliedDiffs is the set of diffs caused by applied blocks. Each
+		// element corresponds to a block in AppliedBlocks.
+		AppliedDiffs []ConsensusChangeDiffs
 
-		// SiafundOutputDiffs contains the set of siafund diffs that were applied
-		// to the consensus set in the recent change. The direction for the set of
-		// diffs is 'DiffApply'.
-		SiafundOutputDiffs []SiafundOutputDiff
-
-		// DelayedSiacoinOutputDiffs contains the set of delayed siacoin output
-		// diffs that were applied to the consensus set in the recent change.
-		DelayedSiacoinOutputDiffs []DelayedSiacoinOutputDiff
-
-		// SiafundPoolDiffs are the siafund pool diffs that were applied to the
-		// consensus set in the recent change.
-		SiafundPoolDiffs []SiafundPoolDiff
+		// ConsensusChangeDiffs is the concatenation of all RevertedDiffs and
+		// AppliedDiffs.
+		ConsensusChangeDiffs
 
 		// ChildTarget defines the target of any block that would be the child
 		// of the block most recently appended to the consensus set.
@@ -251,19 +255,13 @@ type (
 	}
 )
 
-// Append takes to ConsensusChange objects and adds all of their diffs together.
-//
-// NOTE: It is possible for diffs to overlap or be inconsistent. This function
-// should only be used with consecutive or disjoint consensus change objects.
-func (cc ConsensusChange) Append(cc2 ConsensusChange) ConsensusChange {
-	return ConsensusChange{
-		RevertedBlocks:            append(cc.RevertedBlocks, cc2.RevertedBlocks...),
-		AppliedBlocks:             append(cc.AppliedBlocks, cc2.AppliedBlocks...),
-		SiacoinOutputDiffs:        append(cc.SiacoinOutputDiffs, cc2.SiacoinOutputDiffs...),
-		FileContractDiffs:         append(cc.FileContractDiffs, cc2.FileContractDiffs...),
-		SiafundOutputDiffs:        append(cc.SiafundOutputDiffs, cc2.SiafundOutputDiffs...),
-		DelayedSiacoinOutputDiffs: append(cc.DelayedSiacoinOutputDiffs, cc2.DelayedSiacoinOutputDiffs...),
-	}
+// AppendDiffs appends a set of diffs to cc.
+func (cc *ConsensusChange) AppendDiffs(diffs ConsensusChangeDiffs) {
+	cc.SiacoinOutputDiffs = append(cc.SiacoinOutputDiffs, diffs.SiacoinOutputDiffs...)
+	cc.FileContractDiffs = append(cc.FileContractDiffs, diffs.FileContractDiffs...)
+	cc.SiafundOutputDiffs = append(cc.SiafundOutputDiffs, diffs.SiafundOutputDiffs...)
+	cc.DelayedSiacoinOutputDiffs = append(cc.DelayedSiacoinOutputDiffs, diffs.DelayedSiacoinOutputDiffs...)
+	cc.SiafundPoolDiffs = append(cc.SiafundPoolDiffs, diffs.SiafundPoolDiffs...)
 }
 
 // MarshalSia implements encoding.SiaMarshaler.
@@ -272,11 +270,8 @@ func (cc ConsensusChange) MarshalSia(w io.Writer) error {
 		cc.ID,
 		cc.RevertedBlocks,
 		cc.AppliedBlocks,
-		cc.SiacoinOutputDiffs,
-		cc.FileContractDiffs,
-		cc.SiafundOutputDiffs,
-		cc.DelayedSiacoinOutputDiffs,
-		cc.SiafundPoolDiffs,
+		cc.RevertedDiffs,
+		cc.AppliedDiffs,
 		cc.ChildTarget,
 		cc.MinimumValidChildTimestamp,
 		cc.Synced,
@@ -286,19 +281,27 @@ func (cc ConsensusChange) MarshalSia(w io.Writer) error {
 // UnmarshalSia implements encoding.SiaUnmarshaler.
 func (cc *ConsensusChange) UnmarshalSia(r io.Reader) error {
 	const maxSize = 100e6 // consensus changes can be arbitrarily large
-	return encoding.NewDecoder(r, maxSize).DecodeAll(
+	err := encoding.NewDecoder(r, maxSize).DecodeAll(
 		&cc.ID,
 		&cc.RevertedBlocks,
 		&cc.AppliedBlocks,
-		&cc.SiacoinOutputDiffs,
-		&cc.FileContractDiffs,
-		&cc.SiafundOutputDiffs,
-		&cc.DelayedSiacoinOutputDiffs,
-		&cc.SiafundPoolDiffs,
+		&cc.RevertedDiffs,
+		&cc.AppliedDiffs,
 		&cc.ChildTarget,
 		&cc.MinimumValidChildTimestamp,
 		&cc.Synced,
 	)
+	if err != nil {
+		return err
+	}
+	// reconstruct diffs
+	for _, diffs := range cc.RevertedDiffs {
+		cc.AppendDiffs(diffs)
+	}
+	for _, diffs := range cc.AppliedDiffs {
+		cc.AppendDiffs(diffs)
+	}
+	return nil
 }
 
 // String returns the ConsensusChangeID as a string.

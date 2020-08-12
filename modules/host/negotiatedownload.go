@@ -43,10 +43,11 @@ func (h *Host) managedDownloadIteration(conn net.Conn, so *storageObligation) er
 	}
 
 	// Grab a set of variables that will be useful later in the function.
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
 	blockHeight := h.blockHeight
 	secretKey := h.secretKey
-	settings := h.externalSettings()
+	settings := h.externalSettings(maxFee)
 	h.mu.Unlock()
 
 	// Read the download requests, followed by the file contract revision that
