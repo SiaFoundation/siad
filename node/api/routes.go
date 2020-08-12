@@ -253,6 +253,13 @@ func cleanCloseHandler(next http.Handler) http.Handler {
 		// Return a '504 Gateway Timeout' when it exceeds the server timeout
 		select {
 		case <-ctx.Done():
+			// Note that this theoretically introduces a race condition where
+			// this erorr is written at the exact same time `ServeHTTP` fulfils
+			// the HTTP request. However, due to the very long timeout on
+			// production (24h), I don't think this will pose an issue, it's
+			// also not immediately obvious on how to guard against this, but
+			// perhaps we can follow-up with this in the future should it pose
+			// an issue after all.
 			WriteError(w, Error{fmt.Sprintf("HTTP call exceeded the timeout of %v", httpServerTimeout)}, http.StatusGatewayTimeout)
 			return
 		case <-done:
