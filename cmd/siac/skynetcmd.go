@@ -423,11 +423,48 @@ func skynetpincmd(sourceSkylink, destSiaPath string) {
 		Root:    skynetUploadRoot,
 	}
 
-	err = httpClient.SkynetSkylinkPinPost(skylink, spp)
-	if err != nil {
-		die("could not pin file to Skynet:", err)
+	// Check for skynetPinPort
+	if skynetPinPortal == "" {
+		err = httpClient.SkynetSkylinkPinPost(skylink, spp)
+		if err != nil {
+			die("could not pin file to Skynet:", err)
+		}
+		fmt.Printf("Skyfile pinned successfully \nSkylink: sia://%v\n", skylink)
+		return
 	}
 
+	// Download skyfile from the Portal
+	url := skynetPinPortal + "/" + skylink
+	resp, err := http.Get(url)
+	if err != nil {
+		die("Unable to download from portal:", err)
+	}
+	reader := resp.Body
+	defer reader.Close()
+
+	// Get the SkyfileMetadata from the Header
+	var sm modules.SkyfileMetadata
+	strMetadata := resp.Header.Get("Skynet-File-Metadata")
+	if strMetadata != "" {
+		err = json.Unmarshal([]byte(strMetadata), &sm)
+		if err != nil {
+			die("unable to unmarshal skyfile metadata:", err)
+		}
+	}
+
+	// Upload the skyfile to pin it to the renter node
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:      siaPath,
+		Reader:       reader,
+		FileMetadata: sm,
+	}
+	// NOTE: Since the user can define a new siapath the Skyfile the skylink
+	// returned from the upload may be different than the original skylink which
+	// is why we are overwriting the skylink here.
+	skylink, _, err = httpClient.SkynetSkyfilePost(sup)
+	if err != nil {
+		die("Unable to reload skyfile from portal:", err)
+	}
 	fmt.Printf("Skyfile pinned successfully \nSkylink: sia://%v\n", skylink)
 }
 
