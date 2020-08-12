@@ -443,8 +443,9 @@ func TestFileContractUnspentOutputs(t *testing.T) {
 	}
 
 	gp := siatest.GroupParams{
-		Hosts:  1,
-		Miners: 1,
+		Hosts:   1,
+		Miners:  1,
+		Renters: 1,
 	}
 	testDir := siatest.TestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, gp)
@@ -453,16 +454,8 @@ func TestFileContractUnspentOutputs(t *testing.T) {
 	}
 	defer tg.Close()
 
-	// Add a custom renter that won't fill EAs or create snapshots.
-	p := node.Renter(filepath.Join(testDir, "renter"))
-	p.RenterDeps = &dependencies.DependencyDisableWorker{}
-	nodes, err := tg.AddNodes(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// pick a renter contract
-	renter := nodes[0]
+	renter := tg.Renters()[0]
 	rc, err := renter.RenterContractsGet()
 	if err != nil {
 		t.Fatal(err)
@@ -476,8 +469,8 @@ func TestFileContractUnspentOutputs(t *testing.T) {
 	}
 
 	// wallet should report the unspent output (the storage proof is missed
-	// because we did not upload any data to the contract -- the host has no
-	// incentive to submit a proof)
+	// cause the contract was renewed and therefore no proof needs to be
+	// submitted)
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		outputID := contract.ID.StorageProofOutputID(types.ProofMissed, 0)
 		wug, err := renter.WalletUnspentGet()
