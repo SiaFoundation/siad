@@ -69,7 +69,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	// Manually add workers to worker pool
 	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < int(f.NumChunks()); i++ {
-		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
+		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{
 			killChan: make(chan struct{}),
 		}
 	}
@@ -166,7 +166,7 @@ func TestBuildChunkHeap(t *testing.T) {
 	hosts := make(map[string]struct{})
 	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < int(f1.NumChunks()); i++ {
-		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
+		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{
 			killChan: make(chan struct{}),
 		}
 	}
@@ -391,7 +391,7 @@ func TestAddChunksToHeap(t *testing.T) {
 	hosts := make(map[string]struct{})
 	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < rsc.MinPieces(); i++ {
-		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
+		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{
 			killChan: make(chan struct{}),
 		}
 	}
@@ -503,7 +503,7 @@ func TestAddRemoteChunksToHeap(t *testing.T) {
 	hosts := make(map[string]struct{})
 	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < rsc.MinPieces(); i++ {
-		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
+		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{
 			killChan: make(chan struct{}),
 		}
 	}
@@ -588,7 +588,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	// Manually add workers to worker pool
 	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < int(f.NumChunks()); i++ {
-		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
+		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{
 			killChan: make(chan struct{}),
 		}
 	}
