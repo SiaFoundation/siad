@@ -20,6 +20,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -409,35 +410,25 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	}
 }
 
-// skynetpincmd will pin the file from this skylink.
-func skynetpincmd(sourceSkylink, destSiaPath string) {
-	skylink := strings.TrimPrefix(sourceSkylink, "sia://")
-	// Create the siapath.
-	siaPath, err := modules.NewSiaPath(destSiaPath)
-	if err != nil {
-		die("Could not parse destination siapath:", err)
-	}
-
-	spp := modules.SkyfilePinParameters{
-		SiaPath: siaPath,
-		Root:    skynetUploadRoot,
-	}
-
-	// Check for skynetPinPort
+// skynetPin will pin the Skyfile associated with the provided Skylink at the
+// provided SiaPath
+func skynetPin(skylink string, siaPath modules.SiaPath) (string, error) {
+	// Check if --portal was set
 	if skynetPinPortal == "" {
-		err = httpClient.SkynetSkylinkPinPost(skylink, spp)
-		if err != nil {
-			die("could not pin file to Skynet:", err)
+		spp := modules.SkyfilePinParameters{
+			SiaPath: siaPath,
+			Root:    skynetUploadRoot,
 		}
-		fmt.Printf("Skyfile pinned successfully \nSkylink: sia://%v\n", skylink)
-		return
+		fmt.Println("Pinning Skyfile ...")
+		return skylink, httpClient.SkynetSkylinkPinPost(skylink, spp)
 	}
 
 	// Download skyfile from the Portal
+	fmt.Printf("Downloading Skyfile from %v ...", skynetPinPortal)
 	url := skynetPinPortal + "/" + skylink
 	resp, err := http.Get(url)
 	if err != nil {
-		die("Unable to download from portal:", err)
+		return "", errors.AddContext(err, "unable to download from portal")
 	}
 	reader := resp.Body
 	defer reader.Close()
@@ -448,7 +439,7 @@ func skynetpincmd(sourceSkylink, destSiaPath string) {
 	if strMetadata != "" {
 		err = json.Unmarshal([]byte(strMetadata), &sm)
 		if err != nil {
-			die("unable to unmarshal skyfile metadata:", err)
+			return "", errors.AddContext(err, "unable to unmarshal skyfile metadata")
 		}
 	}
 
@@ -458,14 +449,32 @@ func skynetpincmd(sourceSkylink, destSiaPath string) {
 		Reader:       reader,
 		FileMetadata: sm,
 	}
-	// NOTE: Since the user can define a new siapath the Skyfile the skylink
+	// NOTE: Since the user can define a new siapath for the Skyfile the skylink
 	// returned from the upload may be different than the original skylink which
 	// is why we are overwriting the skylink here.
+	fmt.Println("Pinning Skyfile ...")
 	skylink, _, err = httpClient.SkynetSkyfilePost(sup)
 	if err != nil {
-		die("Unable to reload skyfile from portal:", err)
+		return "", errors.AddContext(err, "unable to upload skyfile")
 	}
-	fmt.Printf("Skyfile pinned successfully \nSkylink: sia://%v\n", skylink)
+	return skylink, nil
+}
+
+// skynetpincmd will pin the file from this skylink.
+func skynetpincmd(sourceSkylink, destSiaPath string) {
+	skylink := strings.TrimPrefix(sourceSkylink, "sia://")
+	// Create the siapath.
+	siaPath, err := modules.NewSiaPath(destSiaPath)
+	if err != nil {
+		die("Could not parse destination siapath:", err)
+	}
+
+	// Pin the Skyfile
+	skylink, err = skynetPin(skylink, siaPath)
+	if err != nil {
+		die("Unable to Pin Skyfile:", err)
+	}
+	fmt.Printf("Skyfile pinned successfully\nSkylink: sia://%v\n", skylink)
 }
 
 // skynetunpincmd will unpin and delete either a single or multiple files or
