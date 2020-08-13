@@ -214,7 +214,7 @@ func TestSkylink(t *testing.T) {
 		t.Error("should not be able to load non base64 string")
 	}
 
-	// Try lodaing a base32 encoded skylink string
+	// Try loading a base32 encoded skylink string
 	raw, err := base64.RawURLEncoding.DecodeString(slStr)
 	if err != nil {
 		t.Error(err)
@@ -223,6 +223,9 @@ func TestSkylink(t *testing.T) {
 	err = sl.LoadString(b32)
 	if err != nil {
 		t.Error("should be no issues loading a base32 encoded skylink")
+	}
+	if sl.String() != slStr {
+		t.Error("skylink mismatch after decoding")
 	}
 
 	// Try parsing a skyfile that's got a bad version.
