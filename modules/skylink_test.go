@@ -1,6 +1,8 @@
 package modules
 
 import (
+	"encoding/base32"
+	"encoding/base64"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -210,6 +212,17 @@ func TestSkylink(t *testing.T) {
 	err = sl.LoadString(nonb64[:len(slStr)])
 	if err == nil {
 		t.Error("should not be able to load non base64 string")
+	}
+
+	// Try lodaing a base32 encoded skylink string
+	raw, err := base64.RawURLEncoding.DecodeString(slStr)
+	if err != nil {
+		t.Error(err)
+	}
+	b32 := base32.HexEncoding.WithPadding(base32.NoPadding).EncodeToString(raw)
+	err = sl.LoadString(b32)
+	if err != nil {
+		t.Error("should be no issues loading a base32 encoded skylink")
 	}
 
 	// Try parsing a skyfile that's got a bad version.
