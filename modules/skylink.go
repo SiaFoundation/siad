@@ -5,6 +5,7 @@ package modules
 // subsections of a sector.
 
 import (
+	"encoding/base32"
 	"encoding/base64"
 	"encoding/binary"
 	"math/bits"
@@ -21,6 +22,10 @@ const (
 	// encodedSkylinkSize is the size of the Skylink after it has been encoded
 	// using base64.
 	encodedSkylinkSize = 46
+
+	// base32EncodedSkylinkSize is the size of the Skylink after it has been
+	// encoded using base32.
+	base32EncodedSkylinkSize = 55
 )
 
 const (
@@ -142,6 +147,17 @@ func (sl *Skylink) LoadString(s string) error {
 	splits = strings.Split(base, "/")
 	if len(splits) > 1 {
 		base = splits[0]
+	}
+
+	// Decode the skylink to a base64 encoded string if the size indicates
+	// base32 encoding.
+	if len(base) == base32EncodedSkylinkSize {
+		base32HexEncoded := strings.ToUpper(base)
+		base32Decoded, err := base32.HexEncoding.WithPadding(base32.NoPadding).DecodeString(base32HexEncoded)
+		if err != nil {
+			return errors.AddContext(err, "unable to convert base32 encoded skylink")
+		}
+		base = base64.RawURLEncoding.EncodeToString(base32Decoded)
 	}
 
 	// Input check, ensure that this string is the expected size.
