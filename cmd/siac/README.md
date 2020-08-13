@@ -200,7 +200,7 @@ have the nickname be the same as the filename.
   recent error.
 
 ### Skykey tasks
-* `siac skykey add [skykey base64-encoded skykey]`will add a base64-encoded
+* `siac skykey add [skykey base64-encoded skykey]` will add a base64-encoded
   skykey to the key manager.
 
 * `siac skykey create [name]` will create a skykey  with the given name. The

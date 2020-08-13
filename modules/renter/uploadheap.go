@@ -18,6 +18,7 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -757,11 +758,15 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 
 		// Pop an explored directory off of the directory heap
 		dir, err := r.managedNextExploredDirectory()
-		if err != nil {
-			r.repairLog.Println("WARN: error fetching directory for repair:", err)
+		if errors.Contains(err, threadgroup.ErrStopped) {
+			// Check to see if the error is due to a shutdown. If so then avoid the
+			// log Severe.
+			return siaPaths, errors.New("renter shutdown before we could finish adding chunks to heap")
+		} else if err != nil {
+			r.repairLog.Severe("error fetching directory for repair:", err)
 			// Log the error and then decide whether or not to continue of to return
 			consecutiveDirHeapFailures++
-			if consecutiveDirHeapFailures > 5 {
+			if consecutiveDirHeapFailures > maxConsecutiveDirHeapFailures {
 				r.directoryHeap.managedReset()
 				return siaPaths, errors.AddContext(err, "too many consecutive dir heap failures")
 			}

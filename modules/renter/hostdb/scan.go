@@ -446,7 +446,7 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 		}
 		defer s.WriteRequest(modules.RPCLoopExit, nil) // make sure we close cleanly
 		if err := s.WriteRequest(modules.RPCLoopSettings, nil); err != nil {
-			return errors.AddContext(err, "count not write the loop settings request in the RHP2 check")
+			return errors.AddContext(err, "could not write the loop settings request in the RHP2 check")
 		}
 		var resp modules.LoopSettingsResponse
 		if err := s.ReadResponse(&resp, maxSettingsLen); err != nil {
@@ -683,6 +683,12 @@ func fetchPriceTable(siamux *siamux.SiaMux, hostAddr string, timeout time.Durati
 		return nil, errors.AddContext(err, "failed to create ephemeral stream")
 	}
 	defer stream.Close()
+
+	// set a deadline on the stream.
+	err = stream.SetDeadline(time.Now().Add(hostScanDeadline))
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to set stream deadline")
+	}
 
 	// initiate the RPC
 	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)

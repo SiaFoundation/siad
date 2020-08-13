@@ -72,7 +72,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	// Manually add workers to worker pool
 	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < int(f.NumChunks()); i++ {
-		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
+		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{
 			killChan: make(chan struct{}),
 		}
 	}
@@ -169,7 +169,7 @@ func TestBuildChunkHeap(t *testing.T) {
 	hosts := make(map[string]struct{})
 	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < int(f1.NumChunks()); i++ {
-		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
+		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{
 			killChan: make(chan struct{}),
 		}
 	}
@@ -398,7 +398,7 @@ func TestAddChunksToHeap(t *testing.T) {
 	hosts := make(map[string]struct{})
 	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < rsc.MinPieces(); i++ {
-		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
+		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{
 			killChan: make(chan struct{}),
 		}
 	}
@@ -510,7 +510,7 @@ func TestAddRemoteChunksToHeap(t *testing.T) {
 	hosts := make(map[string]struct{})
 	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < rsc.MinPieces(); i++ {
-		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
+		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{
 			killChan: make(chan struct{}),
 		}
 	}
@@ -595,7 +595,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	// Manually add workers to worker pool
 	rt.renter.staticWorkerPool.mu.Lock()
 	for i := 0; i < int(f.NumChunks()); i++ {
-		rt.renter.staticWorkerPool.workers[string(i)] = &worker{
+		rt.renter.staticWorkerPool.workers[fmt.Sprint(i)] = &worker{
 			killChan: make(chan struct{}),
 		}
 	}
@@ -1097,6 +1097,39 @@ func TestUploadHeapTryUpdate(t *testing.T) {
 			t.Errorf("Chunk should have been pushed %v for test %v", test.pushAfterUpdate, test.name)
 		}
 	}
+}
+
+// TestRenterAddChunksToHeapPanic tests that the log.Severe is triggered if
+// there is an error getting a directory from the directory heap.
+func TestRenterAddChunksToHeapPanic(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create Renter
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add maxConsecutiveDirHeapFailures non existent directories to the
+	// directoryHeap
+	for i := 0; i < maxConsecutiveDirHeapFailures; i++ {
+		rt.renter.directoryHeap.managedPush(&directory{
+			staticSiaPath: modules.RandomSiaPath(),
+		})
+	}
+
+	// Recover panic
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic")
+		}
+	}()
+
+	// Call managedAddChunksToHeap
+	rt.renter.managedAddChunksToHeap(nil)
 }
 
 // managedBlockUntilBubblesComplete is a helper that blocks until all pending
