@@ -315,7 +315,7 @@ func (h *Host) managedVerifyNewContract(txnSet []types.Transaction, renterPK cry
 	if !validPayout.Equals(missedPayout) {
 		return ErrInvalidPayoutSums
 	}
-	if !totalPayout.Equals(validPayout) {
+	if !types.PostTax(blockHeight, totalPayout).Equals(validPayout) {
 		return ErrInvalidPayoutSums
 	}
 	// The unlock hash for the file contract must match the unlock hash that

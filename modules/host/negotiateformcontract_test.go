@@ -51,12 +51,12 @@ func TestVerifyNewContract(t *testing.T) {
 				{
 					Payout: types.NewCurrency64(10),
 					ValidProofOutputs: []types.SiacoinOutput{
-						{Value: types.NewCurrency64(5)},
-						{Value: types.NewCurrency64(5)},
+						{Value: types.NewCurrency64(4)},
+						{Value: types.NewCurrency64(6)},
 					},
 					MissedProofOutputs: []types.SiacoinOutput{
-						{Value: types.NewCurrency64(5)},
-						{Value: types.NewCurrency64(5)},
+						{Value: types.NewCurrency64(4)},
+						{Value: types.NewCurrency64(6)},
 						{Value: types.ZeroCurrency},
 					},
 					UnlockHash: types.UnlockConditions{
