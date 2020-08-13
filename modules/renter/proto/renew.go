@@ -128,7 +128,7 @@ func (cs *ContractSet) managedNewRenew(oldContract *SafeContract, params Contrac
 	}
 
 	// Prepare the noop init revision.
-	revisionTxn := prepareInitRevision(lastRev, fc, startHeight, ourSK, signedTxnSet[len(signedTxnSet)-1].FileContractID(0))
+	revisionTxn := prepareInitRevisionTxn(lastRev, fc, startHeight, ourSK, signedTxnSet[len(signedTxnSet)-1].FileContractID(0))
 
 	// Send acceptance and signatures
 	renterSigs := modules.LoopContractSignatures{
@@ -341,7 +341,7 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 	}
 
 	// create initial (no-op) revision, transaction, and signature
-	revisionTxn := prepareInitRevision(lastRev, fc, startHeight, ourSK, signedTxnSet[len(signedTxnSet)-1].FileContractID(0))
+	revisionTxn := prepareInitRevisionTxn(lastRev, fc, startHeight, ourSK, signedTxnSet[len(signedTxnSet)-1].FileContractID(0))
 
 	// Send acceptance and signatures
 	renterSigs := modules.LoopRenewAndClearContractSignatures{
@@ -435,9 +435,9 @@ func baseCosts(lastRev types.FileContractRevision, host modules.HostDBEntry, end
 	return
 }
 
-// prepareInitRevision creates the initRevision, places it in a transaction and
+// prepareInitRevisionTxn creates the initRevision, places it in a transaction and
 // adds the signature or the revision to the transaction.
-func prepareInitRevision(lastRev types.FileContractRevision, newContract types.FileContract, startHeight types.BlockHeight, renterSK crypto.SecretKey, parentID types.FileContractID) types.Transaction {
+func prepareInitRevisionTxn(lastRev types.FileContractRevision, newContract types.FileContract, startHeight types.BlockHeight, renterSK crypto.SecretKey, parentID types.FileContractID) types.Transaction {
 	initRevision := types.FileContractRevision{
 		ParentID:          parentID,
 		UnlockConditions:  lastRev.UnlockConditions,

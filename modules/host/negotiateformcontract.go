@@ -312,7 +312,10 @@ func (h *Host) managedVerifyNewContract(txnSet []types.Transaction, renterPK cry
 	}
 	// Check that the total payouts match.
 	totalPayout, validPayout, missedPayout := fc.TotalPayout()
-	if !totalPayout.Equals(validPayout.Add(missedPayout)) {
+	if !validPayout.Equals(missedPayout) {
+		return ErrInvalidPayoutSums
+	}
+	if !totalPayout.Equals(validPayout) {
 		return ErrInvalidPayoutSums
 	}
 	// The unlock hash for the file contract must match the unlock hash that
