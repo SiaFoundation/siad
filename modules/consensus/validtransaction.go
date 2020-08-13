@@ -233,13 +233,8 @@ func validFileContractRevisions(tx *bolt.Tx, t types.Transaction) error {
 
 		// Check that the payout of the revision matches the payout of the
 		// original, and that the payouts match each other.
-		var validPayout, missedPayout, oldPayout types.Currency
-		for _, output := range fcr.NewValidProofOutputs {
-			validPayout = validPayout.Add(output.Value)
-		}
-		for _, output := range fcr.NewMissedProofOutputs {
-			missedPayout = missedPayout.Add(output.Value)
-		}
+		validPayout, missedPayout := fcr.TotalPayout()
+		var oldPayout types.Currency
 		for _, output := range fc.ValidProofOutputs {
 			oldPayout = oldPayout.Add(output.Value)
 		}

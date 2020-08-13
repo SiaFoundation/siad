@@ -310,7 +310,11 @@ func (h *Host) managedVerifyNewContract(txnSet []types.Transaction, renterPK cry
 		registerHostInsufficientCollateral = true
 		return errCollateralBudgetExceeded
 	}
-
+	// Check that the total payouts match.
+	totalPayout, validPayout, missedPayout := fc.TotalPayout()
+	if !totalPayout.Equals(validPayout.Add(missedPayout)) {
+		return ErrInvalidPayoutSums
+	}
 	// The unlock hash for the file contract must match the unlock hash that
 	// the host knows how to spend.
 	expectedUH := types.UnlockConditions{
