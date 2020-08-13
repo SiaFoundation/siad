@@ -476,7 +476,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 				}
 			}
 			ub = modules.UploadedBackup{
-				Name:           string(bytes.TrimRight(entry.Name[:], string(0))),
+				Name:           string(bytes.TrimRight(entry.Name[:], types.RuneToString(0))),
 				UID:            entry.UID,
 				CreationDate:   entry.CreationDate,
 				Size:           entry.Size,
@@ -511,7 +511,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		for _, e := range entryTable {
 			if _, ok := known[e.UID]; !ok {
 				unknown = append(unknown, modules.UploadedBackup{
-					Name:           string(bytes.TrimRight(e.Name[:], string(0))),
+					Name:           string(bytes.TrimRight(e.Name[:], types.RuneToString(0))),
 					UID:            e.UID,
 					CreationDate:   e.CreationDate,
 					Size:           e.Size,

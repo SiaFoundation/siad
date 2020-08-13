@@ -2,6 +2,7 @@ package skykey
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -719,7 +720,7 @@ func TestSkyfileEncryptionIDs(t *testing.T) {
 	privIDKeys := make([]Skykey, nPrivIDKeys)
 	privIDKeys[0] = privSkykey
 	for i := 0; i < nPrivIDKeys-1; i++ {
-		privIDKeys[i+1], err = keyMan.CreateKey("private_id"+t.Name()+string(i+1), TypePrivateID)
+		privIDKeys[i+1], err = keyMan.CreateKey("private_id"+t.Name()+fmt.Sprint(i+1), TypePrivateID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -787,7 +788,7 @@ func TestSkykeyDelete(t *testing.T) {
 	// Add several keys and delete them all.
 	keys := make([]Skykey, 0)
 	for i := 0; i < 5; i++ {
-		sk, err := keyMan.CreateKey("keys-to-delete"+string(i), TypePrivateID)
+		sk, err := keyMan.CreateKey("keys-to-delete"+fmt.Sprint(i), TypePrivateID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -849,7 +850,7 @@ func TestSkykeyDelete(t *testing.T) {
 	nKeys := 10
 	keys = make([]Skykey, 0)
 	for i := 0; i < nKeys; i++ {
-		sk, err := keyMan.CreateKey("key"+string(i), TypePrivateID)
+		sk, err := keyMan.CreateKey("key"+fmt.Sprint(i), TypePrivateID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -888,7 +889,7 @@ func TestSkykeyDelete(t *testing.T) {
 
 	// Add a few more keys.
 	for i := 0; i < nKeys; i++ {
-		sk, err := keyMan.CreateKey("extra-key"+string(i), TypePrivateID)
+		sk, err := keyMan.CreateKey("extra-key"+fmt.Sprint(i), TypePrivateID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -898,7 +899,7 @@ func TestSkykeyDelete(t *testing.T) {
 
 	// Sanity check on DeleteKeyByName by deleting some of the new keys.
 	for i := 0; i < len(expectedKeySet)/2; i += 2 {
-		sk, err := keyMan.KeyByName("extra-key" + string(i))
+		sk, err := keyMan.KeyByName("extra-key" + fmt.Sprint(i))
 		if err != nil {
 			t.Fatal(err)
 		}
