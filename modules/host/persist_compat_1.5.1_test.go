@@ -46,7 +46,7 @@ func TestV143HostUpgrade(t *testing.T) {
 	// copy its persistence file into the appropriate location
 	src := filepath.Join(hostDir, v143HostDir, settingsFile)
 	dst := filepath.Join(hostDir, settingsFile)
-	err = loadHostPersistenceFile(src, dst, hostDir)
+	err = build.CopyFile(src, dst)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,6 +87,47 @@ func TestV143HostUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// verify the upgrade properly fixed the EphemeralAccountExpiry
+	his := host.InternalSettings()
+	if his.EphemeralAccountExpiry != modules.DefaultEphemeralAccountExpiry {
+		t.Fatal("EphemeralAccountExpiry not properly fixed after upgrade")
+	}
+
+	// sanity check the metadata version
+	err = persist.LoadJSON(modules.Hostv151PersistMetadata, struct{}{}, filepath.Join(hostDir, modules.HostSettingsFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// close the host
+	err = closefn()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// undo the changes by overwriting the file with the legacy version, and
+	// alter it in a way that simulates the user has manually set the
+	// ephemeralaccountexpiry field to 0
+	err = build.CopyFile(src, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = persist.LoadJSON(modules.Hostv143PersistMetadata, &hp, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hp.Settings.EphemeralAccountExpiry = 0
+	err = persist.SaveJSON(modules.Hostv143PersistMetadata, hp, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// reload the host
+	closefn, host, err = loadExistingHostWithNewDeps(persistDir, siaMuxDir, hostDir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer func() {
 		err := closefn()
 		if err != nil {
@@ -94,10 +135,10 @@ func TestV143HostUpgrade(t *testing.T) {
 		}
 	}()
 
-	// verify the upgrade properly fixed the EphemeralAccountExpiry
-	his := host.InternalSettings()
-	if his.EphemeralAccountExpiry != modules.DefaultEphemeralAccountExpiry {
-		t.Fatal("EphemeralAccountExpiry not properly fixed after upgrade")
+	// verify the upgrade ignored the field and left it at 0
+	his = host.InternalSettings()
+	if his.EphemeralAccountExpiry.Nanoseconds() != 0 {
+		t.Fatal("EphemeralAccountExpiry not properly ignored on upgrade")
 	}
 
 	// sanity check the metadata version
