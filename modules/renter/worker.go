@@ -64,9 +64,8 @@ type (
 
 		// The host pub key also serves as an id for the worker, as there is
 		// only one worker per host.
-		staticHostPubKey     types.SiaPublicKey
-		staticHostPubKeyStr  string
-		staticHostMuxAddress string
+		staticHostPubKey    types.SiaPublicKey
+		staticHostPubKeyStr string
 
 		// Download variables related to queuing work. They have a separate
 		// mutex to minimize lock contention.
@@ -151,7 +150,7 @@ func (w *worker) staticWake() {
 
 // newWorker will create and return a worker that is ready to receive jobs.
 func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
-	host, ok, err := r.hostDB.Host(hostPubKey)
+	_, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
 	}
@@ -175,9 +174,8 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	}
 
 	w := &worker{
-		staticHostPubKey:     hostPubKey,
-		staticHostPubKeyStr:  hostPubKey.String(),
-		staticHostMuxAddress: host.HostExternalSettings.SiaMuxAddress(),
+		staticHostPubKey:    hostPubKey,
+		staticHostPubKeyStr: hostPubKey.String(),
 
 		staticAccount:       account,
 		staticBalanceTarget: balanceTarget,
