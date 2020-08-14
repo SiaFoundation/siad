@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -229,42 +228,9 @@ func (api *API) buildHTTPRoutes() {
 
 	// Apply UserAgent middleware and return the Router
 	api.routerMu.Lock()
-	api.router = cleanCloseHandler(RequireUserAgent(router, requiredUserAgent))
+	api.router = http.TimeoutHandler(RequireUserAgent(router, requiredUserAgent), httpServerTimeout, fmt.Sprintf("HTTP call exceeded the timeout of %v", httpServerTimeout))
 	api.routerMu.Unlock()
 	return
-}
-
-// cleanCloseHandler wraps the entire API, ensuring that underlying conns are
-// not leaked if the remote end closes the connection before the underlying
-// handler finishes.
-func cleanCloseHandler(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Create a context that times out after the `httpServerTimeout` expires
-		ctx, cancel := context.WithTimeout(context.Background(), httpServerTimeout)
-		defer cancel()
-
-		// Serve the HTTP in a goroutine
-		done := make(chan struct{})
-		go func(w http.ResponseWriter, r *http.Request) {
-			next.ServeHTTP(w, r)
-			close(done)
-		}(w, r)
-
-		// Return a '504 Gateway Timeout' when it exceeds the server timeout
-		select {
-		case <-ctx.Done():
-			// Note that this theoretically introduces a race condition where
-			// this erorr is written at the exact same time `ServeHTTP` fulfils
-			// the HTTP request. However, due to the very long timeout on
-			// production (24h), I don't think this will pose an issue, it's
-			// also not immediately obvious on how to guard against this, but
-			// perhaps we can follow-up with this in the future should it pose
-			// an issue after all.
-			WriteError(w, Error{fmt.Sprintf("HTTP call exceeded the timeout of %v", httpServerTimeout)}, http.StatusGatewayTimeout)
-			return
-		case <-done:
-		}
-	})
 }
 
 // RequireUserAgent is middleware that requires all requests to set a

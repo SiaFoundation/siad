@@ -1,10 +1,9 @@
 package api
 
 import (
-	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
-	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -96,8 +95,8 @@ func TestServerTimeout(t *testing.T) {
 	}
 
 	// Verify status code
-	if resp.StatusCode != 504 {
-		t.Fatal("Expected HTTP Status Code to be 504 ")
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("Expected HTTP Status Code to be %v, instead it was %v", http.StatusServiceUnavailable, resp.StatusCode)
 	}
 
 	// Verify response body
@@ -106,13 +105,9 @@ func TestServerTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var apiErr Error
-	err = json.Unmarshal(body, &apiErr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(apiErr.Message, "HTTP call exceeded the timeout") {
-		t.Fatal("Expected response body to contain mention of the timeout")
+	// Verify error msg
+	if string(body) != fmt.Sprintf("HTTP call exceeded the timeout of %v", httpServerTimeout) {
+		t.Fatal("Expected response body to contain the custom error message")
 	}
 }
 
