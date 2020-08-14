@@ -2,6 +2,7 @@ package host
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -361,8 +362,20 @@ func TestHostContracts(t *testing.T) {
 		t.Fatal("contract should have received more revisions from the upload", hc.Contracts[0].RevisionNumber)
 	}
 
-	if hc.Contracts[0].PotentialAccountFunding.IsZero() {
-		t.Fatal("contract should have account funding")
+	// We don't need a funded account for uploading so the account might not be
+	// funded yet. That's why we retry to avoid an NDF.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		hc, err = hostNode.HostContractInfoGet()
+		if err != nil {
+			return err
+		}
+		if hc.Contracts[0].PotentialAccountFunding.IsZero() {
+			return errors.New("contract should have account funding")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	if hc.Contracts[0].PotentialUploadRevenue.IsZero() {
