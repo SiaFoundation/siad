@@ -1,9 +1,11 @@
 package contractor
 
 import (
+	"math"
 	"math/big"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -23,6 +25,18 @@ func (c *Contractor) badContractCheck(u modules.ContractUtility) (modules.Contra
 	if u.BadContract {
 		u.GoodForUpload = false
 		u.GoodForRenew = false
+		return u, true
+	}
+	return u, false
+}
+
+// maxRevisionCheck will return a locked utility if the contract has reached its
+// max revision.
+func (c *Contractor) maxRevisionCheck(u modules.ContractUtility, revisionNumber uint64) (modules.ContractUtility, bool) {
+	if revisionNumber == math.MaxUint64 {
+		u.GoodForUpload = false
+		u.GoodForRenew = false
+		u.Locked = true
 		return u, true
 	}
 	return u, false
@@ -126,7 +140,9 @@ func (c *Contractor) managedCheckHostScore(contract modules.RenterContract, sb m
 // !GFR and !GFU, even if the contract is already marked as such. If
 // 'needsUpdate' is set to true, other checks which may change those values will
 // be ignored and the contract will remain marked as having no utility.
-func (c *Contractor) managedCriticalUtilityChecks(contract modules.RenterContract, host modules.HostDBEntry) (modules.ContractUtility, bool) {
+func (c *Contractor) managedCriticalUtilityChecks(sc *proto.SafeContract, host modules.HostDBEntry) (modules.ContractUtility, bool) {
+	contract := sc.Metadata()
+
 	c.mu.RLock()
 	blockHeight := c.blockHeight
 	renewWindow := c.allowance.RenewWindow
@@ -136,6 +152,11 @@ func (c *Contractor) managedCriticalUtilityChecks(contract modules.RenterContrac
 
 	// A contract that has been renewed should be set to !GFU and !GFR.
 	u, needsUpdate := c.renewedCheck(contract.Utility, renewed)
+	if needsUpdate {
+		return u, needsUpdate
+	}
+
+	u, needsUpdate = c.maxRevisionCheck(contract.Utility, sc.LastRevision().NewRevisionNumber)
 	if needsUpdate {
 		return u, needsUpdate
 	}

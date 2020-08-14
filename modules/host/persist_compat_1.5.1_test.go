@@ -175,7 +175,7 @@ func TestShouldResetEphemeralAccountExpiry(t *testing.T) {
 	}
 
 	// default in seconds
-	his.EphemeralAccountExpiry = time.Duration(time.Duration(oneWeekInSeconds) * time.Second)
+	his.EphemeralAccountExpiry = time.Duration(oneWeekInSeconds) * time.Second
 	if shouldResetEphemeralAccountExpiry(his) {
 		t.Fatal("Unexpected outcome of `shouldResetEphemeralAccountExpiry`")
 	}

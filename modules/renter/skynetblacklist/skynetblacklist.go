@@ -64,6 +64,7 @@ func New(persistDir string) (*SkynetBlacklist, error) {
 	}
 	hashes, err := unmarshalObjects(reader)
 	if err != nil {
+		err = errors.Compose(err, aop.Close())
 		return nil, errors.AddContext(err, "unable to unmarshal persist objects")
 	}
 	sb.hashes = hashes
