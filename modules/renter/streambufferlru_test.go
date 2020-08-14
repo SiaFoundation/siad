@@ -286,21 +286,8 @@ func TestStreamLRU(t *testing.T) {
 		t.Fatal("bad")
 	}
 
-	// streamBuffer should have data pieces 1,3,4.
-	_, exists = sb.dataSections[1]
-	if !exists {
-		t.Fatal("bad")
-	}
-	_, exists = sb.dataSections[3]
-	if !exists {
-		t.Fatal("bad")
-	}
-	_, exists = sb.dataSections[4]
-	if !exists {
-		t.Fatal("bad")
-	}
-
-	// Attempt to evict the tail node.
+	// Add another node and attempt to evict the tail node.
+	lru.callUpdate(2)
 	lru.managedEvict()
 	if len(lru.nodes) != 4 {
 		t.Fatal("bad", len(lru.nodes))
@@ -308,17 +295,41 @@ func TestStreamLRU(t *testing.T) {
 	if len(sb.dataSections) != 4 {
 		t.Fatal("bad", len(sb.dataSections))
 	}
-	if lru.head.index != 10 {
+	if lru.head.index != 2 {
 		t.Fatal("bad", lru.head.index)
 	}
-	if lru.head.next.index != 3 {
+	if lru.head.next.index != 10 {
 		t.Fatal("bad", lru.head.next.index)
 	}
-	if lru.tail.index != 4 {
+	if lru.tail.index != 1 {
 		t.Fatal("bad", lru.tail.index)
 	}
-	if lru.tail.prev.index != 1 {
+	if lru.tail.prev.index != 3 {
 		t.Fatal("bad", lru.tail.prev.index)
+	}
+
+	// streamBuffer should have data pieces 1,2,3,10.
+	_, exists = sb.dataSections[1]
+	if !exists {
+		t.Fatal("bad")
+	}
+	_, exists = sb.dataSections[2]
+	if !exists {
+		t.Fatal("bad")
+	}
+	_, exists = sb.dataSections[3]
+	if !exists {
+		t.Fatal("bad")
+	}
+	_, exists = sb.dataSections[10]
+	if !exists {
+		t.Fatal("bad")
+	}
+
+	// Evict again. Should be a no-op now.
+	lru.managedEvict()
+	if len(lru.nodes) != 4 {
+		t.Fatal("bad", len(lru.nodes))
 	}
 
 	// streamBuffer should have data pieces 1,3.
