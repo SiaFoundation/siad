@@ -85,6 +85,7 @@ var (
 	skynetUploadDryRun   bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
 	skynetUploadRoot     bool   // Use root as the base instead of the Skynet folder.
 	skynetUploadSilent   bool   // Don't report progress while uploading
+	skynetPortalPublic   bool   // Specify if a portal is public or not
 
 	// Utils Flags
 	dictionaryLanguage      string // dictionary for seed utils
@@ -388,6 +389,7 @@ func initCmds() *cobra.Command {
 	skynetPinCmd.Flags().StringVar(&skynetPinPortal, "portal", "", "Use a Skynet portal to download the skylink in order to pin the skyfile")
 	skynetBlacklistCmd.AddCommand(skynetBlacklistAddCmd, skynetBlacklistRemoveCmd)
 	skynetPortalsCmd.AddCommand(skynetPortalsAddCmd, skynetPortalsRemoveCmd)
+	skynetPortalsAddCmd.Flags().BoolVar(&skynetPortalPublic, "public", false, "Add this Skynet portal as public")
 
 	root.AddCommand(skykeyCmd)
 	skykeyCmd.AddCommand(skykeyAddCmd, skykeyCreateCmd, skykeyDeleteCmd, skykeyGetCmd, skykeyGetIDCmd, skykeyListCmd)

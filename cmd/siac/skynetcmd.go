@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"text/tabwriter"
@@ -696,36 +695,28 @@ func skynetportalsgetcmd(cmd *cobra.Command, skyPathStrs []string) {
 		die("Could not get portal list:", err)
 	}
 
-	var b strings.Builder
-	w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 
-	_, _ = fmt.Fprintf(w, "Address\tPublic\n")
-	_, _ = fmt.Fprintf(w, "-------\t------\n")
+	fmt.Fprintf(w, "Address\tPublic\n")
+	fmt.Fprintf(w, "-------\t------\n")
 
 	for _, portal := range portals.Portals {
-		_, _ = fmt.Fprintf(w, "%s\t%t\n", portal.Address, portal.Public)
+		fmt.Fprintf(w, "%s\t%t\n", portal.Address, portal.Public)
 	}
 
 	if err = w.Flush(); err != nil {
 		die(err)
 	}
-
-	fmt.Printf("%s", b.String())
 }
 
 // skynetportalsaddcmd adds a Skynet portal as either public or private
-func skynetportalsaddcmd(portalUrl, portalPublic string) {
-	public, err := strconv.ParseBool(portalPublic)
-	if err != nil {
-		die("Could not parse flag:", err)
-	}
-
+func skynetportalsaddcmd(portalUrl string) {
 	addition := modules.SkynetPortal{
 		Address: modules.NetAddress(portalUrl),
-		Public:  public,
+		Public:  skynetPortalPublic,
 	}
 
-	err = httpClient.SkynetPortalsPost([]modules.SkynetPortal{addition}, nil)
+	err := httpClient.SkynetPortalsPost([]modules.SkynetPortal{addition}, nil)
 	if err != nil {
 		die("Could not add portal:", err)
 	}
