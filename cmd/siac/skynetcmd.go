@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"text/tabwriter"
@@ -108,6 +109,28 @@ will be pinned to this Sia node, meaning that this node will pay for storage and
 are manually deleted. Use the --dry-run flag to fetch the skylink without actually uploading the file. 
 Alternatively the source path can be omitted if the input is piped in.`,
 		Run: skynetuploadcmd,
+	}
+
+	skynetPortalsCmd = &cobra.Command{
+		Use:   "portals",
+		Short: "Add, remove, or list registered Skynet portals.",
+		Long:  "Add, remove, or list registered Skynet portals.",
+		Run:   skynetportalsgetcmd,
+	}
+
+	skynetPortalsAddCmd = &cobra.Command{
+		Use:   "add [url] [public]",
+		Short: "Add a Skynet portal as public or private to the persisted portals list.",
+		Long: `Add a Skynet portal as public or private. Specify the url of the Skynet portal followed
+by 1 for a public portal or 0 if it should be persisted as a private portal.`,
+		Run: wrap(skynetportalsaddcmd),
+	}
+
+	skynetPortalsRemoveCmd = &cobra.Command{
+		Use:   "remove [url]",
+		Short: "Remove a Skynet portal from the persisted portals list.",
+		Long:  "Remove a Skynet portal from the persisted portals list.",
+		Run:   wrap(skynetportalsremovecmd),
 	}
 )
 
@@ -665,6 +688,57 @@ func skynetuploadpipecmd(destSiaPath string) {
 	// Replace the spinner with the skylink and stop it
 	newProgressSkylink(pbs, pSpinner, filename, skylink)
 	return
+
+// skynetportalsgetcmd displays the list of persisted Skynet portals
+func skynetportalsgetcmd(cmd *cobra.Command, skyPathStrs []string) {
+	portals, err := httpClient.SkynetPortalsGet()
+	if err != nil {
+		die("Could not get portal list:", err)
+	}
+
+	var b strings.Builder
+	w := tabwriter.NewWriter(&b, 0, 0, 2, ' ', 0)
+
+	_, _ = fmt.Fprintf(w, "Address\tPublic\n")
+	_, _ = fmt.Fprintf(w, "-------\t------\n")
+
+	for _, portal := range portals.Portals {
+		_, _ = fmt.Fprintf(w, "%s\t%t\n", portal.Address, portal.Public)
+	}
+
+	if err = w.Flush(); err != nil {
+		die(err)
+	}
+
+	fmt.Printf("%s", b.String())
+}
+
+// skynetportalsaddcmd adds a Skynet portal as either public or private
+func skynetportalsaddcmd(portalUrl, portalPublic string) {
+	public, err := strconv.ParseBool(portalPublic)
+	if err != nil {
+		die("Could not parse flag:", err)
+	}
+
+	addition := modules.SkynetPortal{
+		Address: modules.NetAddress(portalUrl),
+		Public:  public,
+	}
+
+	err = httpClient.SkynetPortalsPost([]modules.SkynetPortal{addition}, nil)
+	if err != nil {
+		die("Could not add portal:", err)
+	}
+}
+
+// skynetportalsaddcmd removes a Skynet portal
+func skynetportalsremovecmd(portalUrl string) {
+	removal := modules.NetAddress(portalUrl)
+
+	err := httpClient.SkynetPortalsPost(nil, []modules.NetAddress{removal})
+	if err != nil {
+		die("Could not remove portal:", err)
+	}
 }
 
 // skynetUploadFile uploads a file to Skynet
