@@ -53,8 +53,9 @@ func (h *Host) managedRevisionIteration(conn net.Conn, so *storageObligation, fi
 	}
 
 	// Read some variables from the host for use later in the function.
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
-	settings := h.externalSettings()
+	settings := h.externalSettings(maxFee)
 	secretKey := h.secretKey
 	blockHeight := h.blockHeight
 	h.mu.Unlock()
