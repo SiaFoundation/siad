@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	// httpServerTimeout is the timeout after which an HTTP call will return a
-	// 504 Gateway Timeout if it took too long to serve the response.
+	// httpServerTimeout defines the maximum amount of time before an HTTP call
+	// will timeout and an error will be returned.
 	httpServerTimeout = build.Select(build.Var{
 		Standard: 24 * time.Hour,
 		Dev:      1 * time.Hour,
