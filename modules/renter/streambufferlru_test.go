@@ -286,43 +286,6 @@ func TestStreamLRU(t *testing.T) {
 		t.Fatal("bad")
 	}
 
-	// Attempt a direct evict on a node that doesn't exist. Nothing should
-	// happen.
-	lru.callEvict(500)
-	if len(lru.nodes) != 4 {
-		t.Fatal("bad", len(lru.nodes))
-	}
-	if len(sb.dataSections) != 4 {
-		t.Fatal("bad")
-	}
-
-	// Attempt to evict the head node.
-	lru.callEvict(10)
-	if len(lru.nodes) != 3 {
-		t.Fatal("bad", len(lru.nodes))
-	}
-	if len(sb.dataSections) != 3 {
-		t.Fatal("bad")
-	}
-	if lru.head.index != 3 {
-		t.Fatal("bad")
-	}
-	if lru.head.next.index != 1 {
-		t.Fatal("bad")
-	}
-	if lru.head.next.next.index != 4 {
-		t.Fatal("bad")
-	}
-	if lru.tail.index != 4 {
-		t.Fatal("bad", lru.tail.index)
-	}
-	if lru.tail.prev.index != 1 {
-		t.Fatal("bad")
-	}
-	if lru.tail.prev.prev.index != 3 {
-		t.Fatal("bad")
-	}
-
 	// streamBuffer should have data pieces 1,3,4.
 	_, exists = sb.dataSections[1]
 	if !exists {
@@ -338,24 +301,24 @@ func TestStreamLRU(t *testing.T) {
 	}
 
 	// Attempt to evict the tail node.
-	lru.callEvict(4)
-	if len(lru.nodes) != 2 {
+	lru.managedEvict()
+	if len(lru.nodes) != 4 {
 		t.Fatal("bad", len(lru.nodes))
 	}
-	if len(sb.dataSections) != 2 {
-		t.Fatal("bad")
+	if len(sb.dataSections) != 4 {
+		t.Fatal("bad", len(sb.dataSections))
 	}
-	if lru.head.index != 3 {
-		t.Fatal("bad")
+	if lru.head.index != 10 {
+		t.Fatal("bad", lru.head.index)
 	}
-	if lru.head.next.index != 1 {
-		t.Fatal("bad")
+	if lru.head.next.index != 3 {
+		t.Fatal("bad", lru.head.next.index)
 	}
-	if lru.tail.index != 1 {
+	if lru.tail.index != 4 {
 		t.Fatal("bad", lru.tail.index)
 	}
-	if lru.tail.prev.index != 3 {
-		t.Fatal("bad")
+	if lru.tail.prev.index != 1 {
+		t.Fatal("bad", lru.tail.prev.index)
 	}
 
 	// streamBuffer should have data pieces 1,3.
