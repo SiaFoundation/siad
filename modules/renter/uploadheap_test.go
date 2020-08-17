@@ -967,8 +967,12 @@ func TestUploadHeapStreamPush(t *testing.T) {
 		t.Error("chunk should not be able to be added twice")
 	}
 
-	// Clear the stream chunk from the repair map
+	// Clear the stream chunk from the repair map and reset the heap
 	uh.managedMarkRepairDone(streamChunk.id)
+	err = uh.managedReset()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Add a local chunk to the heap
 	localChunk := &unfinishedUploadChunk{
@@ -987,8 +991,12 @@ func TestUploadHeapStreamPush(t *testing.T) {
 	// successful
 	pushAndVerify(streamChunk)
 
-	// Clear the stream chunk from the repair map
+	// Clear the stream chunk from the repair map and reset the heap
 	uh.managedMarkRepairDone(streamChunk.id)
+	err = uh.managedReset()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Add the local chunk directly to the repair map
 	uh.mu.Lock()

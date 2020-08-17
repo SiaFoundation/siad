@@ -150,7 +150,7 @@ func (uch *uploadChunkHeap) Pop() interface{} {
 // the chunks are closed
 func (uch *uploadChunkHeap) reset() (err error) {
 	for _, c := range *uch {
-		c.fileEntry.Close()
+		err = errors.Compose(err, c.fileEntry.Close())
 	}
 	*uch = uploadChunkHeap{}
 	return err
