@@ -79,6 +79,7 @@ var (
 	skynetDownloadPortal string // Portal to use when trying to download a skylink.
 	skynetLsRecursive    bool   // List files of folder recursively.
 	skynetLsRoot         bool   // Use root as the base instead of the Skynet folder.
+	skynetPinPortal      string // Portal to use when trying to pin a skylink.
 	skynetUnpinRoot      bool   // Use root as the base instead of the Skynet folder.
 	skynetUploadDryRun   bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
 	skynetUploadRoot     bool   // Use root as the base instead of the Skynet folder.
@@ -383,6 +384,7 @@ func initCmds() *cobra.Command {
 	skynetDownloadCmd.Flags().StringVar(&skynetDownloadPortal, "portal", "", "Use a Skynet portal to complete the download")
 	skynetLsCmd.Flags().BoolVarP(&skynetLsRecursive, "recursive", "R", false, "Recursively list skyfiles and folders")
 	skynetLsCmd.Flags().BoolVar(&skynetLsRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
+	skynetPinCmd.Flags().StringVar(&skynetPinPortal, "portal", "", "Use a Skynet portal to download the skylink in order to pin the skyfile")
 	skynetBlacklistCmd.AddCommand(skynetBlacklistAddCmd, skynetBlacklistRemoveCmd)
 
 	root.AddCommand(skykeyCmd)

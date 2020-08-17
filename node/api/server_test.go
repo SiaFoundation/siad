@@ -1,8 +1,13 @@
 package api
 
 import (
+	"fmt"
+	"io/ioutil"
 	"net/http"
 	"testing"
+
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
 
 // TestExplorerPreset checks that the default configuration for the explorer is
@@ -58,6 +63,51 @@ func TestReloading(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// TestServerTimeout verifies the server returns a Gateway Timeout if an HTTP
+// call exceeds the predefined timeout period.
+func TestServerTimeout(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	apiDeps := &dependencies.DependencyTimeoutOnHostGET{}
+	st, err := createServerTesterWithDeps(t.Name(), modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, modules.ProdDependencies, apiDeps)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		err = st.server.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Test that the call times out
+	testGETURL := "http://" + st.server.listener.Addr().String() + "/host"
+	resp, err := HttpGET(testGETURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify status code
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("Expected HTTP Status Code to be %v, instead it was %v", http.StatusServiceUnavailable, resp.StatusCode)
+	}
+
+	// Verify response body
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify error msg
+	if string(body) != fmt.Sprintf("HTTP call exceeded the timeout of %v", httpServerTimeout) {
+		t.Fatal("Expected response body to contain the custom error message")
 	}
 }
 
