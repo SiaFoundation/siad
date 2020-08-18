@@ -274,6 +274,9 @@ func TestUploadHeap(t *testing.T) {
 			8, rt.renter.uploadHeap.managedLen())
 	}
 
+	// Save chunks
+	var chunks []*unfinishedUploadChunk
+
 	// Check order of chunks
 	//  - First 2 chunks should be priority
 	//  - Second 2 chunks should be fileRecentlyRepair
@@ -290,6 +293,8 @@ func TestUploadHeap(t *testing.T) {
 		t.Fatalf("expected top chunk to have worst health, chunk1: %v, chunk2: %v",
 			chunk1.health, chunk2.health)
 	}
+	topChunkID := chunk1.id
+	chunks = append(chunks, chunk1, chunk2)
 	chunk1 = rt.renter.uploadHeap.managedPop()
 	chunk2 = rt.renter.uploadHeap.managedPop()
 	if !chunk1.fileRecentlySuccessful || !chunk2.fileRecentlySuccessful {
@@ -300,6 +305,7 @@ func TestUploadHeap(t *testing.T) {
 		t.Fatalf("expected top chunk to have worst health, chunk1: %v, chunk2: %v",
 			chunk1.health, chunk2.health)
 	}
+	chunks = append(chunks, chunk1, chunk2)
 	chunk1 = rt.renter.uploadHeap.managedPop()
 	chunk2 = rt.renter.uploadHeap.managedPop()
 	if !chunk1.stuck || !chunk2.stuck {
@@ -310,6 +316,7 @@ func TestUploadHeap(t *testing.T) {
 		t.Fatalf("expected top chunk to have worst health, chunk1: %v, chunk2: %v",
 			chunk1.health, chunk2.health)
 	}
+	chunks = append(chunks, chunk1, chunk2)
 	chunk1 = rt.renter.uploadHeap.managedPop()
 	chunk2 = rt.renter.uploadHeap.managedPop()
 	if chunk1.onDisk || chunk2.onDisk {
@@ -320,12 +327,53 @@ func TestUploadHeap(t *testing.T) {
 		t.Fatalf("expected top chunk to have worst health, chunk1: %v, chunk2: %v",
 			chunk1.health, chunk2.health)
 	}
+	middleChunkID := chunk1.id
+	chunks = append(chunks, chunk1, chunk2)
 	chunk1 = rt.renter.uploadHeap.managedPop()
 	chunk2 = rt.renter.uploadHeap.managedPop()
 	if chunk1.health < chunk2.health {
 		t.Fatalf("expected top chunk to have worst health, chunk1: %v, chunk2: %v",
 			chunk1.health, chunk2.health)
 	}
+	bottomChunkID := chunk2.id
+	chunks = append(chunks, chunk1, chunk2)
+
+	// Clear and reset the heap
+	uh := &rt.renter.uploadHeap
+	err = uh.managedReset()
+	if err != nil {
+		t.Fatal(err)
+	}
+	uh.mu.Lock()
+	uh.repairingChunks = make(map[uploadChunkID]*unfinishedUploadChunk)
+	uh.mu.Unlock()
+
+	// Add the chunks back to the heap
+	for _, chunk := range chunks {
+		pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !pushed {
+			t.Fatal("chunk not pushed")
+		}
+	}
+
+	// Test removing the top chunk, bottom chunk, and then a chunk in the middle
+	uh.mu.Lock()
+	uh.heap.remove(topChunkID)
+	if uh.heap.Len() != len(chunks)-1 {
+		t.Fatal("Chunk not removed from heap")
+	}
+	uh.heap.remove(bottomChunkID)
+	if uh.heap.Len() != len(chunks)-2 {
+		t.Fatal("Chunk not removed from heap")
+	}
+	uh.heap.remove(middleChunkID)
+	if uh.heap.Len() != len(chunks)-3 {
+		t.Fatal("Chunk not removed from heap")
+	}
+	uh.mu.Unlock()
 }
 
 // TestAddChunksToHeap probes the managedAddChunksToHeap method to ensure it is
@@ -953,6 +1001,12 @@ func TestUploadHeapStreamPush(t *testing.T) {
 			t.Log("repairChunk:", repairChunk)
 			t.Fatal("chunk in repair map not equal to the chunk added")
 		}
+
+		// The underlying heap slice should be empty
+		length := uh.managedLen()
+		if length != 0 {
+			t.Fatal("Heap has non zero length:", length)
+		}
 	}
 
 	// Pushing the chunk to the repair map should succeed
@@ -967,12 +1021,8 @@ func TestUploadHeapStreamPush(t *testing.T) {
 		t.Error("chunk should not be able to be added twice")
 	}
 
-	// Clear the stream chunk from the repair map and reset the heap
+	// Clear the stream chunk from the repair map
 	uh.managedMarkRepairDone(streamChunk.id)
-	err = uh.managedReset()
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// Add a local chunk to the heap
 	localChunk := &unfinishedUploadChunk{
@@ -991,12 +1041,8 @@ func TestUploadHeapStreamPush(t *testing.T) {
 	// successful
 	pushAndVerify(streamChunk)
 
-	// Clear the stream chunk from the repair map and reset the heap
+	// Clear the stream chunk from the repair map
 	uh.managedMarkRepairDone(streamChunk.id)
-	err = uh.managedReset()
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// Add the local chunk directly to the repair map
 	uh.mu.Lock()

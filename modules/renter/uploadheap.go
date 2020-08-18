@@ -146,6 +146,28 @@ func (uch *uploadChunkHeap) Pop() interface{} {
 	return x
 }
 
+// remove removes the chunk with the corresponding uploadChunkID from the heap.
+//
+// NOTE: This is intentionally not using the Remove interface of the heap
+// because the uploadChunkHeap does not utilize an index for the chunks in the
+// heap. The index of the chunks in the heap refers to the siafile index.
+func (uch *uploadChunkHeap) remove(cid uploadChunkID) {
+	for i, c := range *uch {
+		if c.id != cid {
+			continue
+		}
+		old := *uch
+		if i == len(*uch)-1 {
+			// Chunk is the last element in the slice so just truncate the slice
+			*uch = old[:i]
+		} else {
+			// Remove the chunk from the middle of the slice
+			*uch = append(old[:i], old[i+1:]...)
+		}
+		break
+	}
+}
+
 // reset clears the uploadChunkHeap and makes sure all the files belonging to
 // the chunks are closed
 func (uch *uploadChunkHeap) reset() (err error) {
@@ -326,6 +348,11 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) bool
 		delete(uh.unstuckHeapChunks, uuc.id)
 		delete(uh.stuckHeapChunks, uuc.id)
 
+		// Remove the chunk from the heap slice if it currently exists
+		if exists {
+			uh.heap.remove(uuc.id)
+		}
+
 		// Add to the repair map
 		uh.repairingChunks[uuc.id] = uuc
 		return true
@@ -433,6 +460,7 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 	if !existsrepairing {
 		delete(uh.unstuckHeapChunks, existingUUC.id)
 		delete(uh.stuckHeapChunks, existingUUC.id)
+		uh.heap.remove(existingUUC.id)
 		uh.mu.Unlock()
 		return existingUUC.fileEntry.Close()
 	}
@@ -1222,14 +1250,14 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 // workers.
 //
 // The boolean returned indicates whether or not the chunk was successfully
-// pushed onto the uploadHeap. The error return indicates an error sending the
-// chunk to the workers.
+// pushed onto the uploadHeap.
 func (r *Renter) managedPushChunkForRepair(uuc *unfinishedUploadChunk, ct chunkType) (bool, error) {
 	// Validate use of chunkType
 	if (ct == chunkTypeStreamChunk) != (uuc.sourceReader != nil) {
 		err := fmt.Errorf("Invalid chunkType use: streamChunk  %v, chunk has sourceReader reader %v",
 			ct == chunkTypeStreamChunk, uuc.sourceReader != nil)
 		build.Critical(err)
+		return false, err
 	}
 
 	// Try and update any existing chunk in the heap
