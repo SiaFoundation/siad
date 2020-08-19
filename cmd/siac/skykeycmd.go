@@ -92,11 +92,15 @@ func skykeycreatecmd(name string) {
 // skykeyCreate creates a new Skykey with the given name and cipher type
 func skykeyCreate(c client.Client, name, skykeyTypeString string) (string, error) {
 	var st skykey.SkykeyType
-	err := st.FromString(skykeyTypeString)
-	if err != nil {
-		return "", errors.AddContext(err, "Unable to decode skykey type")
+	if skykeyTypeString == "" {
+		// If not type is provided, set the type as Private by default
+		st = skykey.TypePrivateID
+	} else {
+		err := st.FromString(skykeyTypeString)
+		if err != nil {
+			return "", errors.AddContext(err, "Unable to decode skykey type")
+		}
 	}
-
 	sk, err := c.SkykeyCreateKeyPost(name, st)
 	if err != nil {
 		return "", errors.AddContext(err, "Could not create skykey")
