@@ -56,7 +56,9 @@ func (r *Renter) managedCreateBackup(dst string, secret []byte) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
 	archive := io.Writer(f)
 
 	// Prepare a header for the backup and default to no encryption. This will
@@ -145,7 +147,9 @@ func (r *Renter) LoadBackup(src string, secret []byte) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
 	archive := io.Reader(f)
 
 	// Read the checksum.

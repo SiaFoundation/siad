@@ -217,7 +217,11 @@ func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 	if err != nil {
 		die("Unable to create destination file:", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			die(err)
+		}
+	}()
 
 	// Check whether the portal flag is set, if so use the portal download
 	// method.
@@ -535,7 +539,11 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	if err != nil {
 		die("Unable to open source path:", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			die(err)
+		}
+	}()
 	fi, err := file.Stat()
 	if err != nil {
 		die("Unable to fetch source fileinfo:", err)
@@ -622,7 +630,11 @@ func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.
 	if err != nil {
 		die("Unable to open source path:", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			die(err)
+		}
+	}()
 	fi, err := file.Stat()
 	if err != nil {
 		die("Unable to fetch source fileinfo:", err)

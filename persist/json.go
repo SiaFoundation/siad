@@ -23,7 +23,7 @@ import (
 // verifyChecksum will disregard the metadata of the saved file, and just verify
 // that the checksum matches the data below the checksum to be certain that the
 // file is correct.
-func verifyChecksum(filename string) bool {
+func verifyChecksum(filename string) (valid bool) {
 	// Open the file.
 	file, err := os.Open(filename)
 	if os.IsNotExist(err) {
@@ -33,10 +33,15 @@ func verifyChecksum(filename string) bool {
 	}
 	if err != nil {
 		// An error opening the file means that the checksum verification has
-		// failed, we don't have confidence that this a a good file.
+		// failed, we don't have confidence that this a good file.
 		return false
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			// If we are unable to cleanly close the file then return false
+			valid = false
+		}
+	}()
 
 	// Read the metadata from the file. This is not covered by the checksum but
 	// we have to read it anyway to get to the checksum.
@@ -103,7 +108,9 @@ func readJSON(meta Metadata, object interface{}, filename string) error {
 	if err != nil {
 		return build.ExtendErr("unable to open persisted json object file", err)
 	}
-	defer file.Close()
+	defer func() {
+		err = errors.Compose(err, file.Close())
+	}()
 
 	// Read the metadata from the file.
 	var header, version string

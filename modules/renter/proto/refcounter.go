@@ -122,7 +122,9 @@ func loadRefCounter(path string, wal *writeaheadlog.WAL) (*refCounter, error) {
 	if err != nil {
 		return nil, ErrRefCounterNotExist
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
 
 	var header refCounterHeader
 	headerBytes := make([]byte, refCounterHeaderSize)
