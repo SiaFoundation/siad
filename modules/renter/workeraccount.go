@@ -21,10 +21,10 @@ import (
 )
 
 const (
-	// withdrawalValidityPeriod defines the period (in blocks) a withdrawal message
-	// remains spendable after it has been created. Together with the current block
-	// height at time of creation, this period makes up the WithdrawalMessage's
-	// expiry height.
+	// withdrawalValidityPeriod defines the period (in blocks) a withdrawal
+	// message remains spendable after it has been created. Together with the
+	// current block height at time of creation, this period makes up the
+	// WithdrawalMessage's expiry height.
 	withdrawalValidityPeriod = 6
 
 	// fundAccountGougingPercentageThreshold is the percentage threshold, in
@@ -94,11 +94,9 @@ type (
 		pendingWithdrawals types.Currency
 		pendingDeposits    types.Currency
 
-		// Error handling and cooldown tracking.
-		consecutiveFailures uint64
-		cooldownUntil       time.Time
-		recentErr           error
-		recentErrTime       time.Time
+		// Error tracking.
+		recentErr     error
+		recentErrTime time.Time
 
 		// syncAt defines what time the renter should be syncing the account to
 		// the host.
@@ -133,7 +131,7 @@ type (
 // Note that this implementation does not 'Read' from the stream. This allows
 // the caller to pass in a buffer if he so pleases in order to optimise the
 // amount of writes on the actual stream.
-func (a *account) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
+func (a *account) ProvidePayment(stream io.Writer, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
 	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
 		return errors.New("Refund account is expected to be the zero account when funding an ephemeral account")
 	}
@@ -290,12 +288,11 @@ func (a *account) managedCommitWithdrawal(amount types.Currency, success bool) {
 	}
 }
 
-// managedOnCooldown returns true if the account is on cooldown and therefore
-// unlikely to receive additional funding in the near future.
-func (a *account) managedOnCooldown() bool {
+// managedNeedsToRefill returns whether or not the account needs to be refilled.
+func (a *account) managedNeedsToRefill(target types.Currency) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return time.Now().Before(a.cooldownUntil)
+	return a.availableBalance().Cmp(target) < 0
 }
 
 // managedResetBalance sets the given balance and resets the account's balance
@@ -308,15 +305,6 @@ func (a *account) managedResetBalance(balance types.Currency) {
 	a.pendingDeposits = types.ZeroCurrency
 	a.pendingWithdrawals = types.ZeroCurrency
 	a.negativeBalance = types.ZeroCurrency
-}
-
-// managedResetCoolDown sets consecutive failures to 0 and clears the
-// cooldownUntil field on the account
-func (a *account) managedResetCoolDown() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.consecutiveFailures = 0
-	a.cooldownUntil = time.Time{}
 }
 
 // managedStatus returns the status of the account
@@ -334,10 +322,6 @@ func (a *account) managedStatus() modules.WorkerAccountStatus {
 		NegativeBalance:  a.negativeBalance,
 
 		Funded: !a.availableBalance().IsZero(),
-
-		OnCoolDown:          a.cooldownUntil.After(time.Now()),
-		OnCoolDownUntil:     a.cooldownUntil,
-		ConsecutiveFailures: a.consecutiveFailures,
 
 		RecentErr:     recentErrStr,
 		RecentErrTime: a.recentErrTime,
@@ -374,40 +358,135 @@ func newWithdrawalMessage(id modules.AccountID, amount types.Currency, blockHeig
 	}
 }
 
-// managedAccountNeedsRefill will check whether the worker's account needs to be
-// refilled. This function will return false if any conditions are met which
+// externSyncAccountBalanceToHost is executed before the worker loop and
+// corrects the account balance in case of an unclean renter shutdown. It does
+// so by performing the AccountBalanceRPC and resetting the account to the
+// balance communicated by the host. This only happens if our account balance is
+// zero, which indicates an unclean shutdown.
+//
+// NOTE: it is important this function is only used when the worker has no
+// in-progress jobs, neither serial nor async, to ensure the account balance
+// sync does not leave the account in an undesired state. The worker should not
+// be launching new jobs while this function is running. To achieve this, we
+// ensure that this thread is only run from the primary work loop, which is also
+// the only thread that is allowed to launch jobs. As long as this function is
+// only called by that thread, and no other thread launches jobs, this function
+// is threadsafe.
+func (w *worker) externSyncAccountBalanceToHost() {
+	// Spin/block until the worker has no jobs in motion. This should only be
+	// called from the primary loop of the worker, meaning that no new jobs will
+	// be launched while we spin.
+	isIdle := func() bool {
+		sls := w.staticLoopState
+		a := atomic.LoadUint64(&sls.atomicSerialJobRunning) == 0
+		b := atomic.LoadUint64(&sls.atomicAsyncJobsRunning) == 0
+		return a && b
+	}
+	start := time.Now()
+	for !isIdle() {
+		if time.Since(start) > accountIdleMaxWait {
+			// The worker failed to go idle for too long. Print the loop state,
+			// so we know what kind of task is keeping it busy.
+			w.renter.log.Printf("Worker static loop state: %+v\n\n", w.staticLoopState)
+			// Get the stack traces of all running goroutines.
+			buf := make([]byte, modules.StackSize) // 64MB
+			n := runtime.Stack(buf, true)
+			w.renter.log.Println(string(buf[:n]))
+			w.renter.log.Critical(fmt.Sprintf("worker has taken more than %v minutes to go idle", accountIdleMaxWait.Minutes()))
+			return
+		}
+		awake := w.renter.tg.Sleep(accountIdleCheckFrequency)
+		if !awake {
+			return
+		}
+	}
+	// Do a check to ensure that the worker is still idle after the function is
+	// complete. This should help to catch any situation where the worker is
+	// spinning up new jobs, even though it is not supposed to be spinning up
+	// new jobs while it is performing the sync operation.
+	defer func() {
+		if !isIdle() {
+			w.renter.log.Critical("worker appears to be spinning up new jobs during managedSyncAccountBalanceToHost")
+		}
+	}()
+
+	// Sanity check the account's deltas are zero, indicating there are no
+	// in-progress jobs
+	w.staticAccount.mu.Lock()
+	deltasAreZero := w.staticAccount.pendingDeposits.IsZero() && w.staticAccount.pendingWithdrawals.IsZero()
+	w.staticAccount.mu.Unlock()
+	if !deltasAreZero {
+		build.Critical("managedSyncAccountBalanceToHost is called on a worker with an account that has non-zero deltas, indicating in-progress jobs")
+	}
+
+	// Track the outcome of the account sync - this ensures a proper working of
+	// the maintenance cooldown mechanism.
+	balance, err := w.staticHostAccountBalance()
+	w.managedTrackAccountSyncErr(err)
+	if err != nil {
+		w.renter.log.Debugf("ERROR: failed to check account balance on host %v failed, err: %v\n", w.staticHostPubKeyStr, err)
+		return
+	}
+
+	// If our account balance is lower than the balance indicated by the host,
+	// we want to sync our balance by resetting it.
+	if w.staticAccount.managedAvailableBalance().Cmp(balance) < 0 {
+		w.staticAccount.managedResetBalance(balance)
+	}
+
+	// Determine how long to wait before attempting to sync again, and then
+	// update the syncAt time. There is significant randomness in the waiting
+	// because syncing with the host requires freezing up the worker. We do not
+	// want to freeze up a large number of workers at once, nor do we want to
+	// freeze them frequently.
+	waitTime := time.Duration(fastrand.Intn(accountSyncRandWaitMilliseconds)) * time.Millisecond
+	waitTime += accountSyncMinWaitTime
+	w.staticAccount.callSetSyncAt(time.Now().Add(waitTime))
+
+	// TODO perform a thorough balance comparison to decide whether the drift in
+	// the account balance is warranted. If not the host needs to be penalized
+	// accordingly. Perform this check at startup and periodically.
+}
+
+// managedNeedsToRefillAccount will check whether the worker's account needs to
+// be refilled. This function will return false if any conditions are met which
 // are likely to prevent the refill from being successful.
-func (w *worker) managedAccountNeedsRefill() bool {
-	// Check if the host version is compatible with accounts.
-	cache := w.staticCache()
-	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
+func (w *worker) managedNeedsToRefillAccount() bool {
+	// No need to refill the account if the worker's host does not support RHP3.
+	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
 		return false
 	}
-	// Check if the price table is valid.
+	// No need to refill the account if the worker is on maintenance cooldown.
+	if w.managedOnMaintenanceCooldown() {
+		return false
+	}
+	// No need to refill if the price table is not valid, as it would only
+	// result in failure anyway.
 	if !w.staticPriceTable().staticValid() {
 		return false
 	}
-	// Check if the account is synced.
-	if w.managedNeedsToSyncAccountToHost() {
+
+	return w.staticAccount.managedNeedsToRefill(w.staticBalanceTarget.Div64(2))
+}
+
+// managedNeedsToSyncAccountBalanceToHost returns true if the renter needs to
+// sync the renter's account balance with the host's version of the account.
+func (w *worker) managedNeedsToSyncAccountBalanceToHost() bool {
+	// No need to sync the account if the worker's host does not support RHP3.
+	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
+		return false
+	}
+	// No need to sync the account if the worker's RHP3 is on cooldown.
+	if w.managedOnMaintenanceCooldown() {
+		return false
+	}
+	// No need to sync if the price table is not valid, as it would only
+	// result in failure anyway.
+	if !w.staticPriceTable().staticValid() {
 		return false
 	}
 
-	// Check if there is a cooldown in place, and check if the balance is low
-	// enough to justify a refill.
-	w.staticAccount.mu.Lock()
-	cooldownUntil := w.staticAccount.cooldownUntil
-	balance := w.staticAccount.availableBalance()
-	w.staticAccount.mu.Unlock()
-	if time.Now().Before(cooldownUntil) {
-		return false
-	}
-	refillAt := w.staticBalanceTarget.Div64(2)
-	if balance.Cmp(refillAt) >= 0 {
-		return false
-	}
-
-	// A refill is needed.
-	return true
+	return w.staticAccount.callNeedsToSync()
 }
 
 // managedRefillAccount will refill the account if it needs to be refilled
@@ -436,16 +515,18 @@ func (w *worker) managedRefillAccount() {
 		// need to be refilled until the worker has spent up the funds in the
 		// account.
 		w.staticAccount.managedCommitDeposit(amount, err == nil)
+
+		// Track the outcome of the account refill - this ensures a proper
+		// working of the maintenance cooldown mechanism.
+		cd := w.managedTrackAccountRefillErr(err)
+
+		// If the error is nil, return.
 		if err == nil {
-			w.staticAccount.managedResetCoolDown()
 			return
 		}
 
-		// If the error is not nil, increment the cooldown.
+		// Track the error on the account for debugging purposes.
 		w.staticAccount.mu.Lock()
-		cd := cooldownUntil(w.staticAccount.consecutiveFailures)
-		w.staticAccount.cooldownUntil = cd
-		w.staticAccount.consecutiveFailures++
 		w.staticAccount.recentErr = err
 		w.staticAccount.recentErrTime = time.Now()
 		w.staticAccount.mu.Unlock()
@@ -523,10 +604,13 @@ func (w *worker) managedRefillAccount() {
 		// the host believes that we have more money than we believe that we
 		// have.
 		if !w.renter.deps.Disrupt("DisableCriticalOnMaxBalance") {
-			// Log a critical as this is very unlikely to happen due to the
-			// order of events in the worker loop, seeing as we just synced our
-			// account balance with the host if that was necessary
-			w.renter.log.Critical("worker account refill failed with a max balance - are the host max balance settings lower than the threshold balance?")
+			// Log a critical in testing as this is very unlikely to happen due
+			// to the order of events in the worker loop, seeing as we just
+			// synced our account balance with the host if that was necessary
+			if build.Release == "testing" {
+				build.Critical("worker account refill failed with a max balance - are the host max balance settings lower than the threshold balance?")
+			}
+			w.renter.log.Println("worker account refill failed", err)
 		}
 		w.staticAccount.mu.Lock()
 		w.staticAccount.syncAt = time.Time{}
@@ -551,104 +635,6 @@ func (w *worker) managedRefillAccount() {
 	// money in the account can be activated.
 	w.staticWake()
 	return
-}
-
-// externSyncAccountBalanceToHost is executed before the worker loop and
-// corrects the account balance in case of an unclean renter shutdown. It does
-// so by performing the AccountBalanceRPC and resetting the account to the
-// balance communicated by the host. This only happens if our account balance is
-// zero, which indicates an unclean shutdown.
-//
-// NOTE: it is important this function is only used when the worker has no
-// in-progress jobs, neither serial nor async, to ensure the account balance
-// sync does not leave the account in an undesired state. The worker should not
-// be launching new jobs while this function is running. To achieve this, we
-// ensure that this thread is only run from the primary work loop, which is also
-// the only thread that is allowed to launch jobs. As long as this function is
-// only called by that thread, and no other thread launches jobs, this function
-// is threadsafe.
-func (w *worker) externSyncAccountBalanceToHost() {
-	// Spin/block until the worker has no jobs in motion. This should only be
-	// called from the primary loop of the worker, meaning that no new jobs will
-	// be launched while we spin.
-	isIdle := func() bool {
-		sls := w.staticLoopState
-		a := atomic.LoadUint64(&sls.atomicSerialJobRunning) == 0
-		b := atomic.LoadUint64(&sls.atomicAsyncJobsRunning) == 0
-		return a && b
-	}
-	start := time.Now()
-	for !isIdle() {
-		if time.Since(start) > accountIdleMaxWait {
-			// The worker failed to go idle for too long. Print the loop state,
-			// so we know what kind of task is keeping it busy.
-			w.renter.log.Printf("Worker static loop state: %+v\n\n", w.staticLoopState)
-			// Get the stack traces of all running goroutines.
-			buf := make([]byte, 64e6) // 64MB
-			n := runtime.Stack(buf, true)
-			w.renter.log.Println(string(buf[:n]))
-			w.renter.log.Critical(fmt.Sprintf("worker has taken more than %v minutes to go idle", accountIdleMaxWait.Minutes()))
-			return
-		}
-		awake := w.renter.tg.Sleep(accountIdleCheckFrequency)
-		if !awake {
-			return
-		}
-	}
-	// Do a check to ensure that the worker is still idle after the function is
-	// complete. This should help to catch any situation where the worker is
-	// spinning up new jobs, even though it is not supposed to be spinning up
-	// new jobs while it is performing the sync operation.
-	defer func() {
-		if !isIdle() {
-			w.renter.log.Critical("worker appears to be spinning up new jobs during managedSyncAccountBalanceToHost")
-		}
-	}()
-
-	// Sanity check the account's deltas are zero, indicating there are no
-	// in-progress jobs
-	w.staticAccount.mu.Lock()
-	deltasAreZero := w.staticAccount.pendingDeposits.IsZero() && w.staticAccount.pendingWithdrawals.IsZero()
-	w.staticAccount.mu.Unlock()
-	if !deltasAreZero {
-		build.Critical("managedSyncAccountBalanceToHost is called on a worker with an account that has non-zero deltas, indicating in-progress jobs")
-	}
-
-	balance, err := w.staticHostAccountBalance()
-	if err != nil {
-		w.renter.log.Printf("ERROR: failed to check account balance on host %v failed, err: %v\n", w.staticHostPubKeyStr, err)
-		return
-	}
-
-	// If our account balance is lower than the balance indicated by the host,
-	// we want to sync our balance by resetting it.
-	if w.staticAccount.managedAvailableBalance().Cmp(balance) < 0 {
-		w.staticAccount.managedResetBalance(balance)
-	}
-
-	// Determine how long to wait before attempting to sync again, and then
-	// update the syncAt time. There is significant randomness in the waiting
-	// because syncing with the host requires freezing up the worker. We do not
-	// want to freeze up a large number of workers at once, nor do we want to
-	// freeze them frequently.
-	waitTime := time.Duration(fastrand.Intn(accountSyncRandWaitMilliseconds)) * time.Millisecond
-	waitTime += accountSyncMinWaitTime
-	w.staticAccount.callSetSyncAt(time.Now().Add(waitTime))
-
-	// TODO perform a thorough balance comparison to decide whether the drift in
-	// the account balance is warranted. If not the host needs to be penalized
-	// accordingly. Perform this check at startup and periodically.
-}
-
-// managedNeedsToSyncAccountToHost returns true if the renter needs to sync the
-// account to the host.
-func (w *worker) managedNeedsToSyncAccountToHost() bool {
-	// There is no need to sync the account to the host if the worker does not
-	// support RHP3.
-	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) < 0 {
-		return false
-	}
-	return w.staticAccount.callNeedsToSync()
 }
 
 // staticHostAccountBalance performs the AccountBalanceRPC on the host

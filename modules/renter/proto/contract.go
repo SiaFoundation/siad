@@ -258,6 +258,14 @@ func (c *SafeContract) Metadata() modules.RenterContract {
 	}
 }
 
+// PublicKey returns the public key capable of verifying the renter's signature
+// on a contract.
+func (c *SafeContract) PublicKey() crypto.PublicKey {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.header.SecretKey.PublicKey()
+}
+
 // RecordPaymentIntent will records the changes we are about to make to the
 // revision in order to pay a host for an RPC.
 func (c *SafeContract) RecordPaymentIntent(rev types.FileContractRevision, amount types.Currency, rpc types.Specifier) (*unappliedWalTxn, error) {
@@ -617,6 +625,9 @@ func (c *SafeContract) managedCommitClearContract(t *unappliedWalTxn, signedTxn 
 	newHeader := c.header
 	newHeader.Transaction = signedTxn
 	newHeader.UploadSpending = newHeader.UploadSpending.Add(bandwidthCost)
+	newHeader.Utility.GoodForRenew = false
+	newHeader.Utility.GoodForUpload = false
+	newHeader.Utility.Locked = true
 
 	if err := c.applySetHeader(newHeader); err != nil {
 		return err

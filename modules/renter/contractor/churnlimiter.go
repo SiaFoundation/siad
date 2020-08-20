@@ -243,7 +243,7 @@ func (c *Contractor) managedMarkContractUtility(contract modules.RenterContract,
 	}
 
 	// Do critical contract checks and update the utility if any checks fail.
-	u, needsUpdate = c.managedCriticalUtilityChecks(contract, host)
+	u, needsUpdate = c.managedCriticalUtilityChecks(sc, host)
 	if needsUpdate {
 		err := c.managedUpdateContractUtility(sc, u)
 		if err != nil {
@@ -321,7 +321,6 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			suggestedUpdateQueue = append(suggestedUpdateQueue, contractScoreAndUtil{contract, sb.Score, utility})
 		}
 	}
-
 	// Process the suggested updates through the churn limiter.
 	err = c.staticChurnLimiter.managedProcessSuggestedUpdates(suggestedUpdateQueue)
 	if err != nil {

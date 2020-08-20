@@ -345,11 +345,13 @@ func (cs *ConsensusSet) tryTransactionSet(txns []types.Transaction) (modules.Con
 		return modules.ConsensusChange{}, err
 	}
 	cc := modules.ConsensusChange{
-		SiacoinOutputDiffs:        diffHolder.SiacoinOutputDiffs,
-		FileContractDiffs:         diffHolder.FileContractDiffs,
-		SiafundOutputDiffs:        diffHolder.SiafundOutputDiffs,
-		DelayedSiacoinOutputDiffs: diffHolder.DelayedSiacoinOutputDiffs,
-		SiafundPoolDiffs:          diffHolder.SiafundPoolDiffs,
+		ConsensusChangeDiffs: modules.ConsensusChangeDiffs{
+			SiacoinOutputDiffs:        diffHolder.SiacoinOutputDiffs,
+			FileContractDiffs:         diffHolder.FileContractDiffs,
+			SiafundOutputDiffs:        diffHolder.SiafundOutputDiffs,
+			DelayedSiacoinOutputDiffs: diffHolder.DelayedSiacoinOutputDiffs,
+			SiafundPoolDiffs:          diffHolder.SiafundPoolDiffs,
+		},
 	}
 	return cc, nil
 }

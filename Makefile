@@ -83,11 +83,22 @@ release-pkgs = ./cmd/siac ./cmd/siad
 # lockcheckpkgs are the packages that are checked for locking violations.
 lockcheckpkgs = \
 	./benchmark \
+	./build \
+	./cmd/sia-node-scanner \
 	./cmd/siac \
+	./cmd/siad \
+	./cmd/skynet-benchmark \
+	./node \
+	./node/api \
+	./node/api/client \
+	./node/api/server \
 	./modules/host/mdm \
 	./modules/renter/hostdb \
 	./modules/renter/proto \
 	./modules/renter/skynetblacklist \
+	./skykey \
+	./types \
+	./types/typesutil 
 
 # run determines which tests run when running any variation of 'make test'.
 run = .
@@ -193,11 +204,13 @@ test-vlong: clean fmt vet lint-ci
 ifneq ("$(OS)","Windows_NT")
 # Linux
 	@mkdir -p cover
+	GORACE='$(racevars)' go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
 else
 # Windows
 	MD cover
+	SET GORACE='$(racevars)'
+	go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
 endif
-	GORACE='$(racevars)' go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
 
 test-cpu:
 	go test -v -tags='testing debug netgo' -timeout=500s -cpuprofile cpu.prof $(pkgs) -run=$(run) -count=$(count)

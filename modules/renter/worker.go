@@ -75,6 +75,7 @@ type (
 		downloadTerminated          bool      // Has downloading been terminated for this worker?
 		downloadConsecutiveFailures int       // How many failures in a row?
 		downloadRecentFailure       time.Time // How recent was the last failure?
+		downloadRecentFailureErr    error     // What was the reason for the last failure?
 
 		// Job queues for the worker.
 		staticFetchBackupsJobQueue   fetchBackupsJobQueue
@@ -101,6 +102,11 @@ type (
 		// mostly atomic variables that the worker uses to ratelimit the
 		// launching of async jobs.
 		staticLoopState *workerLoopState
+
+		// The maintenance state contains information about the worker's RHP3
+		// related state. It is used to determine whether or not the worker's
+		// maintenance cooldown can be reset.
+		staticMaintenanceState *workerMaintenanceState
 
 		// Utilities.
 		killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
@@ -183,6 +189,8 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 			atomicReadDataLimit:  initialConcurrentAsyncReadData,
 			atomicWriteDataLimit: initialConcurrentAsyncWriteData,
 		},
+
+		staticMaintenanceState: new(workerMaintenanceState),
 
 		killChan: make(chan struct{}),
 		wakeChan: make(chan struct{}, 1),

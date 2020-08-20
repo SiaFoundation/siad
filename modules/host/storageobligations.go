@@ -33,6 +33,7 @@ package host
 import (
 	"encoding/binary"
 	"encoding/json"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -62,6 +63,11 @@ const (
 	// modifyStorageObligation on an obligation for a contract with a size
 	// greater than or equal to largeContractSize.
 	largeContractUpdateDelay = 2 * time.Second
+
+	// txnFeeSizeBuffer is a buffer added to the approximate size of a
+	// transaction before estimating its fee. This makes it more likely that the
+	// txn will be mined in the next block.
+	txnFeeSizeBuffer = 300
 )
 
 var (
@@ -436,6 +442,23 @@ func (so storageObligation) revisionNumber() uint64 {
 		return so.RevisionTransactionSet[len(so.RevisionTransactionSet)-1].FileContractRevisions[0].NewRevisionNumber
 	}
 	return so.OriginTransactionSet[len(so.OriginTransactionSet)-1].FileContracts[0].RevisionNumber
+}
+
+// requiresProof is a helper to determine whether the storage obligation
+// requires a proof.
+func (so storageObligation) requiresProof() bool {
+	// No need for a proof if the obligation doesn't have a revision.
+	rev, err := so.recentRevision()
+	if err != nil {
+		return false
+	}
+	// No need for a proof if the valid outputs match the invalid ones. Right
+	// now this is only the case if the contract was renewed.
+	if reflect.DeepEqual(rev.NewValidProofOutputs, rev.NewMissedProofOutputs) {
+		return false
+	}
+	// Every other case requires a proof.
+	return true
 }
 
 // proofDeadline returns the height by which the storage proof must be
@@ -844,12 +867,11 @@ func (h *Host) removeStorageObligation(so storageObligation, sos storageObligati
 		}
 	}
 	if sos == obligationSucceeded {
-		// Empty obligations don't submit a storage proof. The revenue for an
-		// empty storage obligation should equal the contract cost of the
-		// obligation
+		// Some contracts don't require a storage proof. The revenue for such a
+		// storage obligation should equal the contract cost of the obligation.
 		revenue := so.ContractCost.Add(so.PotentialStorageRevenue).Add(so.PotentialDownloadRevenue).Add(so.PotentialUploadRevenue)
-		if len(so.SectorRoots) == 0 {
-			h.log.Printf("No need to submit a storage proof for empty contract. Revenue is %v.\n", revenue)
+		if !so.requiresProof() {
+			h.log.Printf("No need to submit a storage proof for the contract. Revenue is %v.\n", revenue)
 		} else {
 			h.log.Printf("Successfully submitted a storage proof. Revenue is %v.\n", revenue)
 		}
@@ -1090,7 +1112,7 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 			builder.Drop()
 			return
 		}
-		txnSize := uint64(len(encoding.MarshalAll(so.RevisionTransactionSet)) + 300)
+		txnSize := uint64(len(encoding.MarshalAll(so.RevisionTransactionSet)) + txnFeeSizeBuffer)
 		requiredFee := feeRecommendation.Mul64(txnSize)
 		err = builder.FundSiacoins(requiredFee)
 		if err != nil {
@@ -1121,11 +1143,12 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 	if !so.ProofConfirmed && blockHeight >= so.expiration()+resubmissionTimeout {
 		h.log.Debugln("Host is attempting a storage proof for", so.id())
 
-		// If the obligation has no sector roots, we can remove the obligation and not
-		// submit a storage proof. The host payout for a failed empty contract
-		// includes the contract cost and locked collateral.
-		if len(so.SectorRoots) == 0 {
-			h.log.Debugln("storage proof not submitted for empty contract, id", so.id())
+		// If the obligation doesn't require a proof, we can remove the
+		// obligation and avoid submitting a storage proof. In that case the
+		// host payout for the contract includes the contract cost and locked
+		// collateral.
+		if !so.requiresProof() {
+			h.log.Debugln("storage proof not submitted for unrevised contract, id", so.id())
 			h.mu.Lock()
 			err := h.removeStorageObligation(so, obligationSucceeded)
 			h.mu.Unlock()
@@ -1146,42 +1169,20 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 			}
 			return
 		}
-		// Get the index of the segment, and the index of the sector containing
-		// the segment.
+
+		// Get the index of the segment for which to build the proof.
 		segmentIndex, err := h.cs.StorageProofSegment(so.id())
 		if err != nil {
 			h.log.Debugln("Host got an error when fetching a storage proof segment:", err)
 			return
 		}
-		sectorIndex := segmentIndex / (modules.SectorSize / crypto.SegmentSize)
-		// Pull the corresponding sector into memory.
-		sectorRoot := so.SectorRoots[sectorIndex]
-		sectorBytes, err := h.ReadSector(sectorRoot)
+
+		// Build StorageProof.
+		sp, err := h.managedBuildStorageProof(so, segmentIndex)
 		if err != nil {
-			h.log.Debugln(err)
+			h.log.Debugln("Host encountered an error when building the storage proof", err)
 			return
 		}
-
-		// Build the storage proof for just the sector.
-		sectorSegment := segmentIndex % (modules.SectorSize / crypto.SegmentSize)
-		base, cachedHashSet := crypto.MerkleProof(sectorBytes, sectorSegment)
-
-		// Using the sector, build a cached root.
-		log2SectorSize := uint64(0)
-		for 1<<log2SectorSize < (modules.SectorSize / crypto.SegmentSize) {
-			log2SectorSize++
-		}
-		ct := crypto.NewCachedTree(log2SectorSize)
-		ct.SetIndex(segmentIndex)
-		for _, root := range so.SectorRoots {
-			ct.PushSubTree(0, root)
-		}
-		hashSet := ct.Prove(base, cachedHashSet)
-		sp := types.StorageProof{
-			ParentID: so.id(),
-			HashSet:  hashSet,
-		}
-		copy(sp.Segment[:], base)
 
 		// Create and build the transaction with the storage proof.
 		builder, err := h.wallet.StartTransaction()
@@ -1190,15 +1191,15 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 			return
 		}
 		_, feeRecommendation := h.tpool.FeeEstimation()
-		if so.value().Cmp(feeRecommendation) < 0 {
+		txnSize := uint64(len(encoding.Marshal(sp)) + txnFeeSizeBuffer)
+		requiredFee := feeRecommendation.Mul64(txnSize)
+		if so.value().Cmp(requiredFee) < 0 {
 			// There's no sense submitting the storage proof if the fee is more
 			// than the anticipated revenue.
 			h.log.Debugln("Host not submitting storage proof due to a value that does not sufficiently exceed the fee cost")
 			builder.Drop()
 			return
 		}
-		txnSize := uint64(len(encoding.Marshal(sp)) + 300)
-		requiredFee := feeRecommendation.Mul64(txnSize)
 		err = builder.FundSiacoins(requiredFee)
 		if err != nil {
 			h.log.Println("Host error when funding a storage proof transaction fee:", err)
@@ -1251,6 +1252,46 @@ func (h *Host) threadedHandleActionItem(soid types.FileContractID) {
 		h.removeStorageObligation(so, obligationSucceeded)
 		h.mu.Unlock()
 	}
+}
+
+// managedBuildStorageProof builds a storage proof for a given storageObligation
+// for the host to submit.
+func (h *Host) managedBuildStorageProof(so storageObligation, segmentIndex uint64) (types.StorageProof, error) {
+	// Handle empty contract edge case.
+	if len(so.SectorRoots) == 0 {
+		return types.StorageProof{
+			ParentID: so.id(),
+		}, nil
+	}
+	sectorIndex := segmentIndex / (modules.SectorSize / crypto.SegmentSize)
+	// Pull the corresponding sector into memory.
+	sectorRoot := so.SectorRoots[sectorIndex]
+	sectorBytes, err := h.ReadSector(sectorRoot)
+	if err != nil {
+		return types.StorageProof{}, errors.AddContext(err, "managedBuildStorageProof: failed to read sector")
+	}
+
+	// Build the storage proof for just the sector.
+	sectorSegment := segmentIndex % (modules.SectorSize / crypto.SegmentSize)
+	base, cachedHashSet := crypto.MerkleProof(sectorBytes, sectorSegment)
+
+	// Using the sector, build a cached root.
+	log2SectorSize := uint64(0)
+	for 1<<log2SectorSize < (modules.SectorSize / crypto.SegmentSize) {
+		log2SectorSize++
+	}
+	ct := crypto.NewCachedTree(log2SectorSize)
+	ct.SetIndex(segmentIndex)
+	for _, root := range so.SectorRoots {
+		ct.PushSubTree(0, root)
+	}
+	hashSet := ct.Prove(base, cachedHashSet)
+	sp := types.StorageProof{
+		ParentID: so.id(),
+		HashSet:  hashSet,
+	}
+	copy(sp.Segment[:], base)
+	return sp, nil
 }
 
 // StorageObligations fetches the set of storage obligations in the host and

@@ -198,7 +198,7 @@ func (api *API) buildExplorerBlock(height types.BlockHeight, block types.Block) 
 }
 
 // explorerHandler handles API calls to /explorer/blocks/:height.
-func (api *API) explorerBlocksHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) explorerBlocksHandler(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	// Parse the height that's being requested.
 	var height types.BlockHeight
 	_, err := fmt.Sscan(ps.ByName("height"), &height)
@@ -246,7 +246,7 @@ func (api *API) buildTransactionSet(txids []types.TransactionID) (txns []Explore
 }
 
 // explorerHashHandler handles GET requests to /explorer/hash/:hash.
-func (api *API) explorerHashHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) explorerHashHandler(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	// Scan the hash as a hash. If that fails, try scanning the hash as an
 	// address.
 	hash, err := scanHash(ps.ByName("hash"))
@@ -352,7 +352,7 @@ func (api *API) explorerHashHandler(w http.ResponseWriter, req *http.Request, ps
 }
 
 // explorerHandler handles API calls to /explorer
-func (api *API) explorerHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) explorerHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	facts := api.explorer.LatestBlockFacts()
 	WriteJSON(w, ExplorerGET{
 		BlockFacts: facts,

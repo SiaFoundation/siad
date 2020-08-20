@@ -14,10 +14,13 @@ package renter
 import (
 	"io"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/threadgroup"
 )
 
 const (
@@ -50,6 +53,37 @@ var (
 		Dev:      uint64(1 << 25), // 32 MiB
 		Standard: uint64(1 << 25), // 32 MiB
 		Testing:  uint64(1 << 8),  // 256 bytes
+	}).(uint64)
+
+	// keepOldBuffersDuration specifies how long a stream buffer will stay in
+	// the buffer set after the final stream is closed. This gives some buffer
+	// time for a new request to the same resource, without having the data
+	// source fully cleared out. This optimization is particularly useful for
+	// certain video players and web applications.
+	keepOldBuffersDuration = build.Select(build.Var{
+		Dev:      time.Second * 15,
+		Standard: time.Second * 60,
+		Testing:  time.Second * 2,
+	}).(time.Duration)
+
+	// minimumLookahead defines the minimum amount that the stream will fetch
+	// ahead of the current seek position in a stream.
+	//
+	// Note that there is a throughput vs. latency tradeoff here. The maximum
+	// speed of a stream has an upper bound of the lookahead / latency. So if it
+	// takes 1 second to fetch data and the lookahead is 2 MB, the maximum speed
+	// of a single stream is going to be 2 MB/s. When Sia is healthy, the
+	// latency on a fetch should be under 200ms, which means with a 2 MB
+	// lookahead a single stream should be able to do more than 10 MB/s.
+	//
+	// A smaller minimum lookahead means that less data is being buffered
+	// simultaneously, so seek times should be lower. A smaller minimum
+	// lookahead becomes less important if we get some way to ensure the earlier
+	// parts are prioritized, but we don't have control over that at the moment.
+	minimumLookahead = build.Select(build.Var{
+		Dev:      uint64(1 << 21), // 2 MiB
+		Standard: uint64(1 << 21), // 2 MiB
+		Testing:  uint64(1 << 6),  // 64 bytes
 	}).(uint64)
 )
 
@@ -129,6 +163,9 @@ type stream struct {
 }
 
 // streamBuffer is a buffer for a single dataSource.
+//
+// The streamBuffer uses a threadgroup to ensure that it does not call ReadAt
+// after calling SilentClose.
 type streamBuffer struct {
 	dataSections map[uint64]*dataSection
 
@@ -138,6 +175,7 @@ type streamBuffer struct {
 	externRefCount uint64
 
 	mu                    sync.Mutex
+	tg                    threadgroup.ThreadGroup
 	staticDataSize        uint64
 	staticDataSource      streamBufferDataSource
 	staticDataSectionSize uint64
@@ -151,13 +189,16 @@ type streamBuffer struct {
 type streamBufferSet struct {
 	streams map[streamDataSourceID]*streamBuffer
 
-	mu sync.Mutex
+	staticTG *threadgroup.ThreadGroup
+	mu       sync.Mutex
 }
 
 // newStreamBufferSet initializes and returns a stream buffer set.
-func newStreamBufferSet() *streamBufferSet {
+func newStreamBufferSet(tg *threadgroup.ThreadGroup) *streamBufferSet {
 	return &streamBufferSet{
 		streams: make(map[streamDataSourceID]*streamBuffer),
+
+		staticTG: tg,
 	}
 }
 
@@ -225,14 +266,30 @@ func (ds *dataSection) managedData() ([]byte, error) {
 }
 
 // Close will release all of the resources held by a stream.
+//
+// Before removing the stream, this function will sleep for some time. This is
+// specifically to address the use case where an application may be using the
+// same file or resource continuously, but doing so by repeatedly opening new
+// connections to siad rather than keeping a single stable connection. Some
+// video players do this. On Skynet, most javascript applications do this, as
+// the javascript application does not realize that multiple files within the
+// app are all part of the same resource. This sleep here to delay the release
+// of a resource substantially improves performance in practice, in many cases
+// causing a 4x reduction in response latency.
 func (s *stream) Close() error {
-	// Drop all nodes from the lru.
-	s.lru.callEvictAll()
+	s.staticStreamBuffer.staticStreamBufferSet.staticTG.Launch(func() {
+		// Convenience variables.
+		sb := s.staticStreamBuffer
+		sbs := sb.staticStreamBufferSet
+		// Keep the memory for a while after closing.
+		sbs.staticTG.Sleep(keepOldBuffersDuration)
 
-	// Remove the stream from the streamBuffer.
-	streamBuf := s.staticStreamBuffer
-	streamBufSet := streamBuf.staticStreamBufferSet
-	streamBufSet.managedRemoveStream(streamBuf)
+		// Drop all nodes from the lru.
+		s.lru.callEvictAll()
+
+		// Remove the stream from the streamBuffer.
+		sbs.managedRemoveStream(sb)
+	})
 	return nil
 }
 
@@ -350,10 +407,20 @@ func (s *stream) prepareOffset() {
 	index := s.offset / dataSectionSize
 	s.lru.callUpdate(index)
 
-	// If there is a following data section, update that as well.
+	// If there is a following data section, update that as well. This update is
+	// done regardless of the minimumLookahead, we always want to buffer at
+	// least one more piece than the current piece.
 	nextIndex := index + 1
 	if nextIndex*dataSectionSize < dataSize {
 		s.lru.callUpdate(nextIndex)
+	}
+
+	// Keep adding more pieces to the buffer until we have buffered at least
+	// minimumLookahead total data or have reached the end of the stream.
+	nextIndex++
+	for i := dataSectionSize * 2; i < minimumLookahead && nextIndex*dataSectionSize < dataSize; i += dataSectionSize {
+		s.lru.callUpdate(nextIndex)
+		nextIndex++
 	}
 }
 
@@ -422,9 +489,18 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 	// Perform the data fetch in a goroutine. The dataAvailable channel will be
 	// closed when the data is available.
 	go func() {
-		_, err := sb.staticDataSource.ReadAt(ds.externData, int64(index*dataSectionSize))
+		// Ensure that the streambuffer has not closed.
+		err := sb.tg.Add()
 		if err != nil {
-			ds.externErr = errors.AddContext(err, "data section fetch failed")
+			ds.externErr = errors.AddContext(err, "stream buffer has been shut down")
+			return
+		}
+		defer sb.tg.Done()
+
+		// Grab the data from the data source.
+		_, err = sb.staticDataSource.ReadAt(ds.externData, int64(index*dataSectionSize))
+		if err != nil {
+			ds.externErr = errors.AddContext(err, "data section ReadAt failed")
 		}
 		close(ds.dataAvailable)
 	}()
@@ -439,17 +515,21 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 // stream buffer set because the stream buffer needs to be deleted from the
 // stream buffer set simultaneously with the reference counter reaching zero.
 func (sbs *streamBufferSet) managedRemoveStream(sb *streamBuffer) {
-	sbs.mu.Lock()
-	defer sbs.mu.Unlock()
-
 	// Decrement the refcount of the streamBuffer.
+	sbs.mu.Lock()
 	sb.externRefCount--
 	if sb.externRefCount > 0 {
 		// streamBuffer still in use, nothing to do.
+		sbs.mu.Unlock()
 		return
 	}
-
-	// Close out the streamBuffer and its data source.
 	delete(sbs.streams, sb.staticStreamID)
+	sbs.mu.Unlock()
+
+	// Close out the streamBuffer and its data source. Calling Stop() will block
+	// any new calls to ReadAt from executing, and will block until all existing
+	// calls are completed. This prevents any issues that could be caused by the
+	// data source being accessed after it has been closed.
+	sb.tg.Stop()
 	sb.staticDataSource.SilentClose()
 }

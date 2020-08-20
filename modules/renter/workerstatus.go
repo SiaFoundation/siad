@@ -8,15 +8,30 @@ import (
 
 // callStatus returns the status of the worker.
 func (w *worker) callStatus() modules.WorkerStatus {
+	w.downloadMu.Lock()
+	downloadOnCoolDown := w.onDownloadCooldown()
+	downloadTerminated := w.downloadTerminated
+	downloadQueueSize := len(w.downloadChunks)
+	var downloadCoolDownErr string
+	if w.downloadRecentFailureErr != nil {
+		downloadCoolDownErr = w.downloadRecentFailureErr.Error()
+	}
+	downloadCoolDownTime := w.downloadRecentFailure.Add(downloadFailureCooldown).Sub(time.Now())
+	w.downloadMu.Unlock()
+
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	downloadOnCoolDown := w.onDownloadCooldown()
 	uploadOnCoolDown, uploadCoolDownTime := w.onUploadCooldown()
-
 	var uploadCoolDownErr string
 	if w.uploadRecentFailureErr != nil {
 		uploadCoolDownErr = w.uploadRecentFailureErr.Error()
+	}
+
+	maintenanceOnCooldown, maintenanceCoolDownTime, maintenanceCoolDownErr := w.staticMaintenanceState.managedMaintenanceCooldownStatus()
+	var mcdErr string
+	if maintenanceCoolDownErr != nil {
+		mcdErr = maintenanceCoolDownErr.Error()
 	}
 
 	// Update the worker cache before returning a status.
@@ -29,9 +44,11 @@ func (w *worker) callStatus() modules.WorkerStatus {
 		HostPubKey:      w.staticHostPubKey,
 
 		// Download information
-		DownloadOnCoolDown: downloadOnCoolDown,
-		DownloadQueueSize:  len(w.downloadChunks),
-		DownloadTerminated: w.downloadTerminated,
+		DownloadCoolDownError: downloadCoolDownErr,
+		DownloadCoolDownTime:  downloadCoolDownTime,
+		DownloadOnCoolDown:    downloadOnCoolDown,
+		DownloadQueueSize:     downloadQueueSize,
+		DownloadTerminated:    downloadTerminated,
 
 		// Upload information
 		UploadCoolDownError: uploadCoolDownErr,
@@ -43,6 +60,11 @@ func (w *worker) callStatus() modules.WorkerStatus {
 		// Job Queues
 		BackupJobQueueSize:       w.staticFetchBackupsJobQueue.managedLen(),
 		DownloadRootJobQueueSize: w.staticJobQueueDownloadByRoot.managedLen(),
+
+		// Maintenance Cooldown Information
+		MaintenanceOnCooldown:    maintenanceOnCooldown,
+		MaintenanceCoolDownError: mcdErr,
+		MaintenanceCoolDownTime:  maintenanceCoolDownTime,
 
 		// Account Information
 		AccountBalanceTarget: w.staticBalanceTarget,
@@ -68,23 +90,11 @@ func (w *worker) staticPriceTableStatus() modules.WorkerPriceTableStatus {
 		recentErrStr = pt.staticRecentErr.Error()
 	}
 
-	// use consecutive failures and the update time to figure out whether the
-	// worker's price table is on cooldown
-	ocd := pt.staticConsecutiveFailures > 0
-	var ocdu time.Time
-	if ocd {
-		ocdu = pt.staticUpdateTime
-	}
-
 	return modules.WorkerPriceTableStatus{
 		ExpiryTime: pt.staticExpiryTime,
 		UpdateTime: pt.staticUpdateTime,
 
 		Active: time.Now().Before(pt.staticExpiryTime),
-
-		OnCoolDown:          ocd,
-		OnCoolDownUntil:     ocdu,
-		ConsecutiveFailures: pt.staticConsecutiveFailures,
 
 		RecentErr:     recentErrStr,
 		RecentErrTime: pt.staticRecentErrTime,

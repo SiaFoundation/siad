@@ -66,7 +66,10 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	err = f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Verify the persistence
 	err = loadAndVerifyPersistence(subTestDir)
@@ -95,8 +98,11 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
 	_, err = f.Write(fastrand.Bytes(100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = f.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +194,9 @@ func loadV143CompatPersistFile(testDir string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
 	bytes, err := ioutil.ReadAll(f)
 	if err != nil {
 		return err
@@ -197,7 +205,9 @@ func loadV143CompatPersistFile(testDir string) error {
 	if err != nil {
 		return err
 	}
-	defer pf.Close()
+	defer func() {
+		err = errors.Compose(err, pf.Close())
+	}()
 	_, err = pf.Write(bytes)
 	if err != nil {
 		return err

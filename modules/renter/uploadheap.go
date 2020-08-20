@@ -18,6 +18,7 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -673,11 +674,15 @@ func (r *Renter) managedAddChunksToHeap(hosts map[string]struct{}) (*uniqueRefre
 
 		// Pop an explored directory off of the directory heap
 		dir, err := r.managedNextExploredDirectory()
-		if err != nil {
-			r.repairLog.Println("WARN: error fetching directory for repair:", err)
+		if errors.Contains(err, threadgroup.ErrStopped) {
+			// Check to see if the error is due to a shutdown. If so then avoid the
+			// log Severe.
+			return siaPaths, errors.New("renter shutdown before we could finish adding chunks to heap")
+		} else if err != nil {
+			r.repairLog.Severe("error fetching directory for repair:", err)
 			// Log the error and then decide whether or not to continue of to return
 			consecutiveDirHeapFailures++
-			if consecutiveDirHeapFailures > 5 {
+			if consecutiveDirHeapFailures > maxConsecutiveDirHeapFailures {
 				r.directoryHeap.managedReset()
 				return siaPaths, errors.AddContext(err, "too many consecutive dir heap failures")
 			}
@@ -1115,7 +1120,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 // available, fetching the logical data for the chunk (either from the disk or
 // from the network), erasure coding the logical data into the physical data,
 // and then finally passing the work onto the workers.
-func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk, hosts map[string]struct{}) error {
+func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk) error {
 	// Grab the next chunk, loop until we have enough memory, update the amount
 	// of memory available, and then spin up a thread to asynchronously handle
 	// the rest of the chunk tasks.
@@ -1248,7 +1253,7 @@ func (r *Renter) managedRepairLoop(hosts map[string]struct{}) error {
 		nextChunk.mu.Lock()
 		nextChunk.chunkPoppedFromHeapTime = time.Now()
 		nextChunk.mu.Unlock()
-		err := r.managedPrepareNextChunk(nextChunk, hosts)
+		err := r.managedPrepareNextChunk(nextChunk)
 		if err != nil {
 			// An error was return which means the renter was unable to allocate
 			// memory for the repair. Since that is not an issue with the file

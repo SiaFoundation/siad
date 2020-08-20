@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -263,7 +264,7 @@ func clearDownloadHistory(rt *renterTester, after, before int) (int, error) {
 	for i := 2; i < 10; i++ {
 		if i != 5 && i != 7 {
 			d := &download{
-				staticUID:       modules.DownloadID(string(i)),
+				staticUID:       modules.DownloadID(fmt.Sprint(i)),
 				staticStartTime: time.Unix(int64(i), 0),
 			}
 			downloads[d.UID()] = d
