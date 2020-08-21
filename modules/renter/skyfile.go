@@ -748,7 +748,14 @@ func parseSkyfileMetadata(baseSector []byte) (sl skyfileLayout, fanoutBytes []by
 // download.
 func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (modules.SkyfileMetadata, modules.Streamer, error) {
 	if r.deps.Disrupt("resolveSkylinkToFixture") {
-		return loadSkylinkFixture(link)
+		sf, ok, err := fixtures.LoadSkylinkFixture(link)
+		if err != nil {
+			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "failed to fetch fixture")
+		}
+		if !ok {
+			return modules.SkyfileMetadata{}, nil, errors.New("fixture not found for skylink " + link.String())
+		}
+		return sf.Metadata, streamerFromSlice(sf.Content), nil
 	}
 
 	// Check if link is blacklisted
@@ -1001,12 +1008,4 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 		deleteErr = errors.Compose(deleteErr, r.DeleteFile(extendedSiaPath))
 	}
 	return modules.Skylink{}, errors.Compose(ErrSkylinkBlacklisted, deleteErr)
-}
-
-func loadSkylinkFixture(skylink modules.Skylink) (modules.SkyfileMetadata, modules.Streamer, error) {
-	sf, ok := fixtures.LoadSkylinkFixture(skylink)
-	if !ok {
-		return modules.SkyfileMetadata{}, nil, errors.New("fixture not found")
-	}
-	return sf.Metadata, sf.Streamer, nil
 }

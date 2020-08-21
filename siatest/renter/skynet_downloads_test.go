@@ -8,9 +8,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"gitlab.com/NebulousLabs/Sia/node"
+	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
@@ -711,4 +716,62 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 	}
 
 	return nil
+}
+
+// TestSkynetSkylinkHandlerGET_InvalidMeta tests the behaviour of
+// SkynetSkylinkHandlerGET when it handles invalid metadata.
+func TestSkynetSkylinkHandlerGET_InvalidMeta(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  3,
+		Miners: 1,
+	}
+	testDir := siatest.TestDir("renter", t.Name())
+	if err := os.MkdirAll(testDir, persist.DefaultDiskPermissionsTest); err != nil {
+		t.Fatal(err)
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add a Renter node.
+	renterParams := node.Renter(filepath.Join(testDir, "renter"))
+	renterParams.RenterDeps = &dependencies.DependencyResolveSkylinkToFixture{}
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+	defer func() { _ = tg.RemoveNode(r) }()
+
+	subTests := []siatest.SubTest{
+		{Name: "InvalidMetadata", Test: testInvalidMeta},
+	}
+
+	// Run the tests.
+	for _, test := range subTests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.Test(t, tg)
+		})
+	}
+}
+
+func testInvalidMeta(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+	content, meta, err := r.SkynetSkylinkGet("_A6d-2CpM2OQ-7m5NPAYW830NdzC3wGydFzzd-KnHXhwJA")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("Content: %s\nMeta: %+v\n", string(content), meta)
 }
