@@ -51,26 +51,26 @@ func TestSkynet(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
-		{Name: "TestSkynetBasic", Test: testSkynetBasic},
-		{Name: "TestConvertSiaFile", Test: testConvertSiaFile},
-		{Name: "TestSkynetLargeMetadata", Test: testSkynetLargeMetadata},
-		{Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
-		{Name: "TestSkynetInvalidFilename", Test: testSkynetInvalidFilename},
-		{Name: "TestSkynetSubDirDownload", Test: testSkynetSubDirDownload},
-		{Name: "TestSkynetDisableForce", Test: testSkynetDisableForce},
-		{Name: "TestSkynetBlacklist", Test: testSkynetBlacklist},
-		{Name: "TestSkynetPortals", Test: testSkynetPortals},
-		{Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
-		{Name: "TestSkynetStats", Test: testSkynetStats},
-		{Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
-		{Name: "TestSkynetDryRunUpload", Test: testSkynetDryRunUpload},
-		{Name: "TestRegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
-		{Name: "TestRenameSiaPath", Test: testRenameSiaPath},
-		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
-		{Name: "TestSkynetDefaultPath", Test: testSkynetDefaultPath},
+		//{Name: "TestSkynetBasic", Test: testSkynetBasic},
+		//{Name: "TestConvertSiaFile", Test: testConvertSiaFile},
+		//{Name: "TestSkynetLargeMetadata", Test: testSkynetLargeMetadata},
+		//{Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
+		//{Name: "TestSkynetInvalidFilename", Test: testSkynetInvalidFilename},
+		//{Name: "TestSkynetSubDirDownload", Test: testSkynetSubDirDownload},
+		//{Name: "TestSkynetDisableForce", Test: testSkynetDisableForce},
+		//{Name: "TestSkynetBlacklist", Test: testSkynetBlacklist},
+		//{Name: "TestSkynetPortals", Test: testSkynetPortals},
+		//{Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
+		//{Name: "TestSkynetStats", Test: testSkynetStats},
+		//{Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
+		//{Name: "TestSkynetDryRunUpload", Test: testSkynetDryRunUpload},
+		//{Name: "TestRegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
+		//{Name: "TestRenameSiaPath", Test: testRenameSiaPath},
+		//{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
+		//{Name: "TestSkynetDefaultPath", Test: testSkynetDefaultPath},
 		{Name: "TestSkynetDefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
-		{Name: "TestSkynetSingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
-		{Name: "TestSkynetDownloadFormats", Test: testSkynetDownloadFormats},
+		//{Name: "TestSkynetSingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
+		//{Name: "TestSkynetDownloadFormats", Test: testSkynetDownloadFormats},
 	}
 
 	// Run tests
@@ -2452,6 +2452,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 	multiNoIndex := []siatest.TestFile{
 		{Name: "hello.html", Data: fc1},
 		{Name: "about.html", Data: fc2},
+		{Name: "dir/about.html", Data: fc2},
 	}
 
 	about := "/about.html"
@@ -2623,6 +2624,25 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 			defaultPath:          bad,
 			expectedContent:      nil,
 			expectedErrStrUpload: "invalid default path provided",
+		},
+		{
+			// Multi dir with both defaultPath and disableDefaultPath set.
+			// Error on upload.
+			name:                 "multi_defpath_disabledefpath",
+			files:                multiHasIndex,
+			defaultPath:          index,
+			disableDefaultPath:   true,
+			expectedContent:      nil,
+			expectedErrStrUpload: "DefaultPath and DisableDefaultPath are mutually exclusive and cannot be set together",
+		},
+		{
+			// Multi dir with defaultPath pointing to a non-root file..
+			// Error on upload.
+			name:                 "multi_nonroot_defpath",
+			files:                multiNoIndex,
+			defaultPath:          dirAbout,
+			expectedContent:      nil,
+			expectedErrStrUpload: "DefaultPath must point to a file in the root directory of the skyfile",
 		},
 	}
 

@@ -55,6 +55,8 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 	subTests := []siatest.SubTest{
 		{Name: "ValidSkyfile", Test: testSkyfileValid},
 		{Name: "SingleFileDefaultPath", Test: testSkyfileSingleFileDefaultPath},
+		{Name: "DefaultPathDisableDefaultPath", Test: testSkyfileDefaultPathDisableDefaultPath},
+		{Name: "NonRootDefaultPath", Test: testSkyfileNonRootDefaukltPath},
 	}
 
 	// Run the tests.
@@ -82,5 +84,27 @@ func testSkyfileSingleFileDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	_, _, err := r.SkynetSkylinkGet("3AAcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA")
 	if err == nil || !strings.Contains(err.Error(), "defaultpath is not allowed on single files") {
 		t.Fatalf("Expected error 'defaultpath is not allowed on single files', got %+v\n", err)
+	}
+}
+
+// testSkyfileDefaultPathDisableDefaultPath ensures that we return an error if
+// a file has both defaultPath and disableDefaultPath set.
+func testSkyfileDefaultPathDisableDefaultPath(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+	expectedError := "both defaultpath and disabledefaultpath are set"
+	_, _, err := r.SkynetSkylinkGet("3BBcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA")
+	if err == nil || !strings.Contains(err.Error(), expectedError) {
+		t.Fatalf("Expected error '%s', got %+v\n", expectedError, err)
+	}
+}
+
+// testSkyfileDefaultPathDisableDefaultPath ensures that we return an error if
+// a file has both defaultPath and disableDefaultPath set.
+func testSkyfileNonRootDefaukltPath(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+	expectedError := "both defaultpath and disabledefaultpath are set"
+	_, _, err := r.SkynetSkylinkGet("4BBcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA")
+	if err == nil || !strings.Contains(err.Error(), expectedError) {
+		t.Fatalf("Expected error '%s', got %+v\n", expectedError, err)
 	}
 }
