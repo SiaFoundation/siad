@@ -625,6 +625,9 @@ func (c *SafeContract) managedCommitClearContract(t *unappliedWalTxn, signedTxn 
 	newHeader := c.header
 	newHeader.Transaction = signedTxn
 	newHeader.UploadSpending = newHeader.UploadSpending.Add(bandwidthCost)
+	newHeader.Utility.GoodForRenew = false
+	newHeader.Utility.GoodForUpload = false
+	newHeader.Utility.Locked = true
 
 	if err := c.applySetHeader(newHeader); err != nil {
 		return err

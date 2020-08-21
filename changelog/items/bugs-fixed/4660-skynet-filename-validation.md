@@ -1,1 +1,0 @@
-- Skynet filenames are now validated when uploading. Previously you could upload files called e.g. "../foo" which would be inaccessible.

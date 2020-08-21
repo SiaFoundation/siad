@@ -245,6 +245,15 @@ func (r *Renter) Close() error {
 	return errors.Compose(r.tg.Stop(), r.hostDB.Close(), r.hostContractor.Close(), r.staticSkynetBlacklist.Close(), r.staticSkynetPortals.Close())
 }
 
+// MemoryStatus returns the current status of the memory manager
+func (r *Renter) MemoryStatus() (modules.MemoryStatus, error) {
+	if err := r.tg.Add(); err != nil {
+		return modules.MemoryStatus{}, err
+	}
+	defer r.tg.Done()
+	return r.memoryManager.callStatus(), nil
+}
+
 // PriceEstimation estimates the cost in siacoins of performing various storage
 // and data operations.  The estimation will be done using the provided
 // allowance, if an empty allowance is provided then the renter's current

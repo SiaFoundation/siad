@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -619,7 +620,9 @@ func (cs *ConsensusSet) managedInitialBlockchainDownload() error {
 			break
 		} else {
 			// Sleep so we don't hammer the network with SendBlock requests.
-			time.Sleep(ibdLoopDelay)
+			if !cs.tg.Sleep(ibdLoopDelay) {
+				return threadgroup.ErrStopped
+			}
 		}
 	}
 

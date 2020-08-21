@@ -137,7 +137,9 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 	if err != nil {
 		return errors.AddContext(err, "failed to open backup for uploading")
 	}
-	defer backup.Close()
+	defer func() {
+		err = errors.Compose(err, backup.Close())
+	}()
 
 	// Prepare the siapath.
 	sp, err := modules.BackupFolder.Join(name)
@@ -198,7 +200,9 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+	defer func() {
+		err = errors.Compose(err, dstFile.Close())
+	}()
 	// search for backup
 	if len(name) > 96 {
 		return errors.New("no record of a backup with that name")
@@ -476,7 +480,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 				}
 			}
 			ub = modules.UploadedBackup{
-				Name:           string(bytes.TrimRight(entry.Name[:], string(0))),
+				Name:           string(bytes.TrimRight(entry.Name[:], types.RuneToString(0))),
 				UID:            entry.UID,
 				CreationDate:   entry.CreationDate,
 				Size:           entry.Size,
@@ -511,7 +515,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		for _, e := range entryTable {
 			if _, ok := known[e.UID]; !ok {
 				unknown = append(unknown, modules.UploadedBackup{
-					Name:           string(bytes.TrimRight(e.Name[:], string(0))),
+					Name:           string(bytes.TrimRight(e.Name[:], types.RuneToString(0))),
 					UID:            e.UID,
 					CreationDate:   e.CreationDate,
 					Size:           e.Size,

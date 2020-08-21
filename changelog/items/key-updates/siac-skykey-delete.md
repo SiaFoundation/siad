@@ -1,0 +1,1 @@
+- Add support for skykey delete in siac.

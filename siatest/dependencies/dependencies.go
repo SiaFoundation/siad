@@ -87,6 +87,12 @@ type (
 		modules.ProductionDependencies
 	}
 
+	// DependencyTimeoutOnHostGET times out when the client performs the HTTP
+	// call to GET /host.
+	DependencyTimeoutOnHostGET struct {
+		modules.ProductionDependencies
+	}
+
 	// DependencyInterruptCountOccurrences is a generic dependency that
 	// interrupts the flow of the program if the argument passed to Disrupt
 	// equals str and it keeps track of how many times this happened.
@@ -364,6 +370,11 @@ func (d *DependencyInterruptAccountSaveOnShutdown) Disrupt(s string) bool {
 // Disrupt returns true if the correct string is provided.
 func (d *DependencyDisableRotateFingerprintBuckets) Disrupt(s string) bool {
 	return s == "DisableRotateFingerprintBuckets"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyTimeoutOnHostGET) Disrupt(s string) bool {
+	return s == "TimeoutOnHostGET"
 }
 
 // Disrupt returns true if the correct string is provided. It keeps track of how

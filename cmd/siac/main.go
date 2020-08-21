@@ -76,14 +76,14 @@ var (
 	skykeyType            string // Type used to create a new Skykey.
 
 	// Skynet Flags
-	skynetBlacklistRemove bool   // Remove a skylink from the Skynet Blacklist.
-	skynetDownloadPortal  string // Portal to use when trying to download a skylink.
-	skynetLsRecursive     bool   // List files of folder recursively.
-	skynetLsRoot          bool   // Use root as the base instead of the Skynet folder.
-	skynetUnpinRoot       bool   // Use root as the base instead of the Skynet folder.
-	skynetUploadDryRun    bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
-	skynetUploadRoot      bool   // Use root as the base instead of the Skynet folder.
-	skynetUploadSilent    bool   // Don't report progress while uploading
+	skynetDownloadPortal string // Portal to use when trying to download a skylink.
+	skynetLsRecursive    bool   // List files of folder recursively.
+	skynetLsRoot         bool   // Use root as the base instead of the Skynet folder.
+	skynetPinPortal      string // Portal to use when trying to pin a skylink.
+	skynetUnpinRoot      bool   // Use root as the base instead of the Skynet folder.
+	skynetUploadDryRun   bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
+	skynetUploadRoot     bool   // Use root as the base instead of the Skynet folder.
+	skynetUploadSilent   bool   // Don't report progress while uploading
 
 	// Utils Flags
 	dictionaryLanguage      string // dictionary for seed utils
@@ -334,7 +334,7 @@ func initCmds() *cobra.Command {
 		renterFilesListCmd, renterFilesRenameCmd, renterFilesUnstuckCmd, renterFilesUploadCmd,
 		renterFuseCmd, renterPricesCmd, renterRatelimitCmd, renterSetAllowanceCmd,
 		renterSetLocalPathCmd, renterTriggerContractRecoveryScanCmd, renterUploadsCmd, renterWorkersCmd)
-	renterWorkersCmd.AddCommand(renterWorkersAccountsCmd, renterWorkersPriceTableCmd, renterWorkersReadJobsCmd, renterWorkersHasSectorJobSCmd)
+	renterWorkersCmd.AddCommand(renterWorkersAccountsCmd, renterWorkersDownloadsCmd, renterWorkersPriceTableCmd, renterWorkersReadJobsCmd, renterWorkersHasSectorJobSCmd, renterWorkersUploadsCmd)
 
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
 	renterContractsCmd.AddCommand(renterContractsViewCmd)
@@ -384,12 +384,15 @@ func initCmds() *cobra.Command {
 	skynetDownloadCmd.Flags().StringVar(&skynetDownloadPortal, "portal", "", "Use a Skynet portal to complete the download")
 	skynetLsCmd.Flags().BoolVarP(&skynetLsRecursive, "recursive", "R", false, "Recursively list skyfiles and folders")
 	skynetLsCmd.Flags().BoolVar(&skynetLsRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
-	skynetBlacklistCmd.Flags().BoolVar(&skynetBlacklistRemove, "remove", false, "Remove the skylink from the blacklist")
+	skynetPinCmd.Flags().StringVar(&skynetPinPortal, "portal", "", "Use a Skynet portal to download the skylink in order to pin the skyfile")
+	skynetBlacklistCmd.AddCommand(skynetBlacklistAddCmd, skynetBlacklistRemoveCmd)
 
 	root.AddCommand(skykeyCmd)
-	skykeyCmd.AddCommand(skykeyCreateCmd, skykeyAddCmd, skykeyGetCmd, skykeyGetIDCmd, skykeyListCmd)
+	skykeyCmd.AddCommand(skykeyAddCmd, skykeyCreateCmd, skykeyDeleteCmd, skykeyGetCmd, skykeyGetIDCmd, skykeyListCmd)
 	skykeyAddCmd.Flags().StringVar(&skykeyRenameAs, "rename-as", "", "The new name for the skykey being added")
 	skykeyCreateCmd.Flags().StringVar(&skykeyType, "type", "", "The type of the skykey")
+	skykeyDeleteCmd.Flags().StringVar(&skykeyName, "name", "", "The name of the skykey")
+	skykeyDeleteCmd.Flags().StringVar(&skykeyID, "id", "", "The base-64 encoded skykey ID")
 	skykeyGetCmd.Flags().StringVar(&skykeyName, "name", "", "The name of the skykey")
 	skykeyGetCmd.Flags().StringVar(&skykeyID, "id", "", "The base-64 encoded skykey ID")
 	skykeyListCmd.Flags().BoolVar(&skykeyShowPrivateKeys, "show-priv-keys", false, "Show private key data.")

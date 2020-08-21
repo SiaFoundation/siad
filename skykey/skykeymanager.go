@@ -57,9 +57,12 @@ var (
 	// because a key with the same name is already being stored.
 	ErrSkykeyWithNameAlreadyExists = errors.New("Skykey name already used by another key.")
 
-	// Skykey name errors
-	errNoSkykeysWithThatName = errors.New("No Skykey with that name")
-	errSkykeyNameToolong     = errors.New("Skykey name exceeds max length")
+	// ErrNoSkykeysWithThatName indicates that the skykey manager doesn't have
+	// a key with that ID
+	ErrNoSkykeysWithThatName = errors.New("No Skykey with that name")
+
+	// errSkykeyNameToolong indicates that the name is too long
+	errSkykeyNameToolong = errors.New("Skykey name exceeds max length")
 )
 
 // SkykeyManager manages the creation and handling of new skykeys which can be
@@ -243,7 +246,7 @@ func (sm *SkykeyManager) DeleteKeyByName(name string) error {
 
 	id, ok := sm.idsByName[name]
 	if !ok {
-		return errNoSkykeysWithThatName
+		return ErrNoSkykeysWithThatName
 	}
 
 	return sm.deleteKeyByID(id)
@@ -256,7 +259,7 @@ func (sm *SkykeyManager) IDByName(name string) (SkykeyID, error) {
 
 	id, ok := sm.idsByName[name]
 	if !ok {
-		return SkykeyID{}, errNoSkykeysWithThatName
+		return SkykeyID{}, ErrNoSkykeysWithThatName
 	}
 	return id, nil
 }
@@ -280,7 +283,7 @@ func (sm *SkykeyManager) KeyByName(name string) (Skykey, error) {
 
 	id, ok := sm.idsByName[name]
 	if !ok {
-		return Skykey{}, errNoSkykeysWithThatName
+		return Skykey{}, ErrNoSkykeysWithThatName
 	}
 
 	key, ok := sm.keysByID[id]
@@ -326,7 +329,9 @@ func (sm *SkykeyManager) deleteKeyByID(id SkykeyID) error {
 	if err != nil {
 		return errors.AddContext(err, "Unable to open SkykeyManager persist file")
 	}
-	defer file.Close()
+	defer func() {
+		err = errors.Compose(err, file.Close())
+	}()
 
 	_, err = file.Seek(int64(headerLen), io.SeekStart)
 	if err != nil {
@@ -373,7 +378,9 @@ func (sm *SkykeyManager) load() error {
 	if err != nil {
 		return errors.AddContext(err, "Unable to open SkykeyManager persist file")
 	}
-	defer file.Close()
+	defer func() {
+		err = errors.Compose(err, file.Close())
+	}()
 
 	// Check if the file has a header. If there is not, then set the default
 	// values and save it.
@@ -450,7 +457,7 @@ func (sm *SkykeyManager) loadHeader(file *os.File) error {
 	if err != nil {
 		return err
 	}
-	version := strings.ReplaceAll(string(versionBytes), string(0x0), "")
+	version := strings.ReplaceAll(string(versionBytes), types.RuneToString(0x0), "")
 
 	if !build.IsVersion(version) {
 		return errors.New("skykey file header missing version")
@@ -501,7 +508,9 @@ func (sm *SkykeyManager) saveKey(skykey Skykey) error {
 	if err != nil {
 		return errors.AddContext(err, "Unable to open SkykeyManager persist file")
 	}
-	defer file.Close()
+	defer func() {
+		err = errors.Compose(err, file.Close())
+	}()
 
 	// Seek to the end of the known-to-be-valid part of the file.
 	_, err = file.Seek(int64(sm.fileLen), io.SeekStart)

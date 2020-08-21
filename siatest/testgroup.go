@@ -523,7 +523,8 @@ func (tg *TestGroup) AddNodes(nps ...node.NodeParams) ([]*TestNode, error) {
 	newHosts := make(map[*TestNode]struct{})
 	newRenters := make(map[*TestNode]struct{})
 	newMiners := make(map[*TestNode]struct{})
-	for _, np := range nps {
+	for i := range nps {
+		np := nps[i]
 		// Create the nodes and add them to the group.
 		randomNodeDir(tg.dir, &np)
 		node, err := NewCleanNode(np)
