@@ -13,6 +13,9 @@ const (
 	// currently running test's home directory and do not depend on the location
 	// of this implementation. This allows us to load different data for
 	// different tests.
+
+	// SKYLINK_FIXTURES_PATH points to fixtures representing skylinks when they
+	// are being downloaded. See the SkylinkFixture struct.
 	SKYLINK_FIXTURES_PATH = "testdata/skylink_fixtures.json"
 )
 
