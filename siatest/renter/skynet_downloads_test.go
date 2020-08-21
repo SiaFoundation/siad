@@ -718,9 +718,9 @@ func verifyDownloadAsArchive(t *testing.T, r *siatest.TestNode, skylink string, 
 	return nil
 }
 
-// TestSkynetSkylinkHandlerGET_InvalidMeta tests the behaviour of
-// SkynetSkylinkHandlerGET when it handles invalid metadata.
-func TestSkynetSkylinkHandlerGET_InvalidMeta(t *testing.T) {
+// TestSkynetSkylinkHandlerGET tests the behaviour of SkynetSkylinkHandlerGET
+// when it handles different combinations of metadata and content.
+func TestSkynetSkylinkHandlerGET(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
