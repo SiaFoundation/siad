@@ -221,7 +221,7 @@ func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, ini
 // callNewStreamFromID will check the stream buffer set to see if a stream
 // buffer exists for the given data source id. If so, a new stream will be
 // created using the data source, and the bool will be set to 'true'. Otherwise,
-// the stream returned will be nil and the bool will be set to false.
+// the stream returned will be nil and the bool will be set to 'false'.
 func (sbs *streamBufferSet) callNewStreamFromID(id modules.DataSourceID, initialOffset uint64) (*stream, bool) {
 	sbs.mu.Lock()
 	streamBuf, exists := sbs.streams[id]
