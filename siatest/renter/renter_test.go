@@ -1129,9 +1129,11 @@ func testPriceTablesUpdated(t *testing.T, tg *siatest.TestGroup) {
 		}
 
 		var ws *modules.WorkerStatus
-		for _, worker := range rwg.Workers {
+		for i := range rwg.Workers {
+			worker := rwg.Workers[i]
 			if worker.HostPubKey.Equals(host) {
 				ws = &worker
+				break
 			}
 		}
 		if ws == nil {
@@ -1165,9 +1167,11 @@ func testPriceTablesUpdated(t *testing.T, tg *siatest.TestGroup) {
 		}
 
 		var ws *modules.WorkerStatus
-		for _, worker := range rwg.Workers {
+		for i := range rwg.Workers {
+			worker := rwg.Workers[i]
 			if worker.HostPubKey.Equals(host) {
 				ws = &worker
+				break
 			}
 		}
 		if ws == nil {
@@ -1423,7 +1427,8 @@ func testCancelAsyncDownload(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	var di *api.DownloadInfo
-	for _, d := range rdg.Downloads {
+	for i := range rdg.Downloads {
+		d := rdg.Downloads[i]
 		if remoteFile.SiaPath() == d.SiaPath && dst == d.Destination {
 			di = &d
 			break

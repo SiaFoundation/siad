@@ -1382,7 +1382,7 @@ func TestDeleteCorruptSiaFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	siaFilePath := siaPath.SiaFileSysPath(sfs.Root())
-	err = ioutil.WriteFile(siaFilePath, fastrand.Bytes(100), 0666)
+	err = ioutil.WriteFile(siaFilePath, fastrand.Bytes(100), persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -32,7 +32,11 @@ func TestParallelFileAccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create the data that will be writted to the file, such that it can be
 	// verified later.

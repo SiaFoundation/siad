@@ -163,7 +163,11 @@ func stackcmd() {
 	if err != nil {
 		die("Unable to create output file:", err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			die(err)
+		}
+	}()
 
 	// Write stack trace to output file
 	_, err = f.Write(dsg.Stack)

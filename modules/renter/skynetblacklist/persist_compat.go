@@ -125,7 +125,9 @@ func createTempFileFromPersistFile(persistDir string) (io.Reader, error) {
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to open temp file")
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
 
 	// Write the data to the temp file, leaving space for the checksum at the
 	// beginning of the file
@@ -160,7 +162,9 @@ func loadTempFile(persistDir string) (io.Reader, error) {
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to open temp file")
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
 
 	// Read file
 	fileBytes, err := ioutil.ReadAll(f)
