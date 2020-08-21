@@ -141,8 +141,14 @@ func TestStreamSmoke(t *testing.T) {
 	if refs != 3 {
 		t.Fatal("bad")
 	}
-	repeatStream.Close()
-	streamFromID.Close()
+	err := repeatStream.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = streamFromID.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 	time.Sleep(keepOldBuffersDuration)
 	time.Sleep(keepOldBuffersDuration / 3)
 	sbs.mu.Lock()
