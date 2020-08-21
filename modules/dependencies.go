@@ -258,6 +258,11 @@ func (*ProductionDependencies) LoadFile(meta persist.Metadata, data interface{},
 // LookupIP resolves a hostname to a number of IP addresses. If an IP address
 // is provided as an argument it will just return that IP.
 func (*ProductionDependencies) LookupIP(host string) ([]net.IP, error) {
+	if build.Release == "testing" {
+		rawIP := make([]byte, 16)
+		fastrand.Read(rawIP)
+		return []net.IP{net.IP(rawIP)}, nil
+	}
 	return net.LookupIP(host)
 }
 
