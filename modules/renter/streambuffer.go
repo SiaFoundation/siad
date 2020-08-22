@@ -65,6 +65,26 @@ var (
 		Standard: time.Second * 60,
 		Testing:  time.Second * 2,
 	}).(time.Duration)
+
+	// minimumLookahead defines the minimum amount that the stream will fetch
+	// ahead of the current seek position in a stream.
+	//
+	// Note that there is a throughput vs. latency tradeoff here. The maximum
+	// speed of a stream has an upper bound of the lookahead / latency. So if it
+	// takes 1 second to fetch data and the lookahead is 2 MB, the maximum speed
+	// of a single stream is going to be 2 MB/s. When Sia is healthy, the
+	// latency on a fetch should be under 200ms, which means with a 2 MB
+	// lookahead a single stream should be able to do more than 10 MB/s.
+	//
+	// A smaller minimum lookahead means that less data is being buffered
+	// simultaneously, so seek times should be lower. A smaller minimum
+	// lookahead becomes less important if we get some way to ensure the earlier
+	// parts are prioritized, but we don't have control over that at the moment.
+	minimumLookahead = build.Select(build.Var{
+		Dev:      uint64(1 << 21), // 2 MiB
+		Standard: uint64(1 << 21), // 2 MiB
+		Testing:  uint64(1 << 6),  // 64 bytes
+	}).(uint64)
 )
 
 // streamBufferDataSource is an interface that the stream buffer uses to fetch
@@ -387,10 +407,20 @@ func (s *stream) prepareOffset() {
 	index := s.offset / dataSectionSize
 	s.lru.callUpdate(index)
 
-	// If there is a following data section, update that as well.
+	// If there is a following data section, update that as well. This update is
+	// done regardless of the minimumLookahead, we always want to buffer at
+	// least one more piece than the current piece.
 	nextIndex := index + 1
 	if nextIndex*dataSectionSize < dataSize {
 		s.lru.callUpdate(nextIndex)
+	}
+
+	// Keep adding more pieces to the buffer until we have buffered at least
+	// minimumLookahead total data or have reached the end of the stream.
+	nextIndex++
+	for i := dataSectionSize * 2; i < minimumLookahead && nextIndex*dataSectionSize < dataSize; i += dataSectionSize {
+		s.lru.callUpdate(nextIndex)
+		nextIndex++
 	}
 }
 

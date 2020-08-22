@@ -329,7 +329,9 @@ func (sm *SkykeyManager) deleteKeyByID(id SkykeyID) error {
 	if err != nil {
 		return errors.AddContext(err, "Unable to open SkykeyManager persist file")
 	}
-	defer file.Close()
+	defer func() {
+		err = errors.Compose(err, file.Close())
+	}()
 
 	_, err = file.Seek(int64(headerLen), io.SeekStart)
 	if err != nil {
@@ -376,7 +378,9 @@ func (sm *SkykeyManager) load() error {
 	if err != nil {
 		return errors.AddContext(err, "Unable to open SkykeyManager persist file")
 	}
-	defer file.Close()
+	defer func() {
+		err = errors.Compose(err, file.Close())
+	}()
 
 	// Check if the file has a header. If there is not, then set the default
 	// values and save it.
@@ -504,7 +508,9 @@ func (sm *SkykeyManager) saveKey(skykey Skykey) error {
 	if err != nil {
 		return errors.AddContext(err, "Unable to open SkykeyManager persist file")
 	}
-	defer file.Close()
+	defer func() {
+		err = errors.Compose(err, file.Close())
+	}()
 
 	// Seek to the end of the known-to-be-valid part of the file.
 	_, err = file.Seek(int64(sm.fileLen), io.SeekStart)

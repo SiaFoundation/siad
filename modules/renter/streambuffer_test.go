@@ -121,6 +121,19 @@ func TestStreamSmoke(t *testing.T) {
 	if offset != 0 {
 		t.Fatal("bad")
 	}
+	// Check that the right pieces have been buffered. 4 sections should be in
+	// the buffer total.
+	streamBuf := stream.staticStreamBuffer
+	streamBuf.mu.Lock()
+	_, exists0 := streamBuf.dataSections[0]
+	_, exists1 := streamBuf.dataSections[1]
+	_, exists2 := streamBuf.dataSections[2]
+	_, exists3 := streamBuf.dataSections[3]
+	_, exists4 := streamBuf.dataSections[4]
+	streamBuf.mu.Unlock()
+	if !exists0 || !exists1 || !exists2 || !exists3 || exists4 {
+		t.Fatal("bad")
+	}
 	buf := make([]byte, 512)
 	bytesRead, err := io.ReadFull(stream, buf)
 	if err != nil {
@@ -132,11 +145,31 @@ func TestStreamSmoke(t *testing.T) {
 	if !bytes.Equal(buf, data[:512]) {
 		t.Fatal("bad")
 	}
+	streamBuf.mu.Lock()
+	_, exists0 = streamBuf.dataSections[32]
+	_, exists1 = streamBuf.dataSections[33]
+	_, exists2 = streamBuf.dataSections[34]
+	_, exists3 = streamBuf.dataSections[35]
+	_, exists4 = streamBuf.dataSections[36]
+	streamBuf.mu.Unlock()
+	if !exists0 || !exists1 || !exists2 || !exists3 || exists4 {
+		t.Fatal("bad")
+	}
 	offset, err = stream.Seek(0, io.SeekStart)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if offset != 0 {
+		t.Fatal("bad")
+	}
+	streamBuf.mu.Lock()
+	_, exists0 = streamBuf.dataSections[0]
+	_, exists1 = streamBuf.dataSections[1]
+	_, exists2 = streamBuf.dataSections[2]
+	_, exists3 = streamBuf.dataSections[3]
+	_, exists4 = streamBuf.dataSections[4]
+	streamBuf.mu.Unlock()
+	if !exists0 || !exists1 || !exists2 || !exists3 || exists4 {
 		t.Fatal("bad")
 	}
 	buf = make([]byte, 1000)
@@ -148,6 +181,32 @@ func TestStreamSmoke(t *testing.T) {
 		t.Fatal("bad")
 	}
 	if !bytes.Equal(buf, data[:1000]) {
+		t.Fatal("bad")
+	}
+	streamBuf.mu.Lock()
+	_, exists0 = streamBuf.dataSections[62]
+	_, exists1 = streamBuf.dataSections[63]
+	_, exists2 = streamBuf.dataSections[64]
+	_, exists3 = streamBuf.dataSections[65]
+	_, exists4 = streamBuf.dataSections[66]
+	streamBuf.mu.Unlock()
+	if !exists0 || !exists1 || !exists2 || !exists3 || exists4 {
+		t.Fatal("bad")
+	}
+	// Seek to near the end to see that the cache tool collects the correct
+	// pieces.
+	offset, err = stream.Seek(35, io.SeekEnd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	streamBuf.mu.Lock()
+	_, existsi := streamBuf.dataSections[996] // Should not be buffered
+	_, exists0 = streamBuf.dataSections[997]  // Up to byte 15968
+	_, exists1 = streamBuf.dataSections[998]  // Up to byte 15984
+	_, exists2 = streamBuf.dataSections[999]  // Up to byte 16000
+	_, exists3 = streamBuf.dataSections[1000] // Beyond end of file.
+	streamBuf.mu.Unlock()
+	if existsi || !exists0 || !exists1 || !exists2 || exists3 {
 		t.Fatal("bad")
 	}
 	// Seek back to the beginning one more time to do a full read of the data.

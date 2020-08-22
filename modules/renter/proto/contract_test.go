@@ -965,4 +965,13 @@ func TestContractRecordCommitRenewAndClearIntent(t *testing.T) {
 	if len(sc.unappliedTxns) != 0 {
 		t.Fatalf("expected %v unapplied txns but got %v", 0, len(sc.unappliedTxns))
 	}
+	if sc.Utility().GoodForRenew {
+		t.Fatal("contract shouldn't be good for renew")
+	}
+	if sc.Utility().GoodForUpload {
+		t.Fatal("contract shouldn't be good for upload")
+	}
+	if !sc.Utility().Locked {
+		t.Fatal("contract should be locked")
+	}
 }

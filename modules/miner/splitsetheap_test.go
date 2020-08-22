@@ -1,7 +1,6 @@
 package miner
 
 import (
-	"math/rand"
 	"testing"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -185,7 +184,7 @@ func TestMapHeapRemoveBySetID(t *testing.T) {
 		min.push(e2)
 	}
 
-	randID := splitSetID(rand.Intn(5000))
+	randID := splitSetID(fastrand.Intn(5000))
 	firstToBeRemoved := max.selectID[randID]
 
 	// Iterate over data in min heap and max heap to confirm the element to be

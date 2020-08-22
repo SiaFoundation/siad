@@ -2689,3 +2689,48 @@ func testSkynetSingleFileNoSubfiles(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Expected empty subfiles on download, got", sup.FileMetadata.Subfiles)
 	}
 }
+
+// BenchmarkSkynet verifies the functionality of Skynet, a decentralized CDN and
+// sharing platform.
+// i9 - 51.01 MB/s - dbe75c8436cea64f2664e52f9489e9ac761bc058
+func BenchmarkSkynetSingleSector(b *testing.B) {
+	testDir := renterTestDir(b.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   3,
+		Miners:  1,
+		Renters: 1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}()
+
+	// Upload a file that is a single sector big.
+	r := tg.Renters()[0]
+	skylink, _, _, err := r.UploadNewSkyfileBlocking("foo", modules.SectorSize, false)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	// Sleep a bit to give the workers time to get set up.
+	time.Sleep(time.Second * 5)
+
+	// Reset the timer once the setup is done.
+	b.ResetTimer()
+	b.SetBytes(int64(b.N) * int64(modules.SectorSize))
+
+	// Download the file.
+	for i := 0; i < b.N; i++ {
+		_, _, err := r.SkynetSkylinkGet(skylink)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}

@@ -20,6 +20,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -216,7 +217,11 @@ func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 	if err != nil {
 		die("Unable to create destination file:", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			die(err)
+		}
+	}()
 
 	// Check whether the portal flag is set, if so use the portal download
 	// method.
@@ -409,6 +414,56 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	}
 }
 
+// skynetPin will pin the Skyfile associated with the provided Skylink at the
+// provided SiaPath
+func skynetPin(skylink string, siaPath modules.SiaPath) (string, error) {
+	// Check if --portal was set
+	if skynetPinPortal == "" {
+		spp := modules.SkyfilePinParameters{
+			SiaPath: siaPath,
+			Root:    skynetUploadRoot,
+		}
+		fmt.Println("Pinning Skyfile ...")
+		return skylink, httpClient.SkynetSkylinkPinPost(skylink, spp)
+	}
+
+	// Download skyfile from the Portal
+	fmt.Printf("Downloading Skyfile from %v ...", skynetPinPortal)
+	url := skynetPinPortal + "/" + skylink
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to download from portal")
+	}
+	reader := resp.Body
+	defer reader.Close()
+
+	// Get the SkyfileMetadata from the Header
+	var sm modules.SkyfileMetadata
+	strMetadata := resp.Header.Get("Skynet-File-Metadata")
+	if strMetadata != "" {
+		err = json.Unmarshal([]byte(strMetadata), &sm)
+		if err != nil {
+			return "", errors.AddContext(err, "unable to unmarshal skyfile metadata")
+		}
+	}
+
+	// Upload the skyfile to pin it to the renter node
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:      siaPath,
+		Reader:       reader,
+		FileMetadata: sm,
+	}
+	// NOTE: Since the user can define a new siapath for the Skyfile the skylink
+	// returned from the upload may be different than the original skylink which
+	// is why we are overwriting the skylink here.
+	fmt.Println("Pinning Skyfile ...")
+	skylink, _, err = httpClient.SkynetSkyfilePost(sup)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to upload skyfile")
+	}
+	return skylink, nil
+}
+
 // skynetpincmd will pin the file from this skylink.
 func skynetpincmd(sourceSkylink, destSiaPath string) {
 	skylink := strings.TrimPrefix(sourceSkylink, "sia://")
@@ -418,17 +473,12 @@ func skynetpincmd(sourceSkylink, destSiaPath string) {
 		die("Could not parse destination siapath:", err)
 	}
 
-	spp := modules.SkyfilePinParameters{
-		SiaPath: siaPath,
-		Root:    skynetUploadRoot,
-	}
-
-	err = httpClient.SkynetSkylinkPinPost(skylink, spp)
+	// Pin the Skyfile
+	skylink, err = skynetPin(skylink, siaPath)
 	if err != nil {
-		die("could not pin file to Skynet:", err)
+		die("Unable to Pin Skyfile:", err)
 	}
-
-	fmt.Printf("Skyfile pinned successfully \nSkylink: sia://%v\n", skylink)
+	fmt.Printf("Skyfile pinned successfully\nSkylink: sia://%v\n", skylink)
 }
 
 // skynetunpincmd will unpin and delete either a single or multiple files or
@@ -489,7 +539,11 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	if err != nil {
 		die("Unable to open source path:", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			die(err)
+		}
+	}()
 	fi, err := file.Stat()
 	if err != nil {
 		die("Unable to fetch source fileinfo:", err)
@@ -576,7 +630,11 @@ func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.
 	if err != nil {
 		die("Unable to open source path:", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			die(err)
+		}
+	}()
 	fi, err := file.Stat()
 	if err != nil {
 		die("Unable to fetch source fileinfo:", err)
