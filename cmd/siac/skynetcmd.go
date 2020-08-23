@@ -114,7 +114,7 @@ Alternatively the source path can be omitted if the input is piped in.`,
 		Use:   "portals",
 		Short: "Add, remove, or list registered Skynet portals.",
 		Long:  "Add, remove, or list registered Skynet portals.",
-		Run:   skynetportalsgetcmd,
+		Run:   wrap(skynetportalsgetcmd),
 	}
 
 	skynetPortalsAddCmd = &cobra.Command{
@@ -689,7 +689,7 @@ func skynetuploadpipecmd(destSiaPath string) {
 	return
 
 // skynetportalsgetcmd displays the list of persisted Skynet portals
-func skynetportalsgetcmd(cmd *cobra.Command, skyPathStrs []string) {
+func skynetportalsgetcmd() {
 	portals, err := httpClient.SkynetPortalsGet()
 	if err != nil {
 		die("Could not get portal list:", err)
