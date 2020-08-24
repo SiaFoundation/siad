@@ -929,14 +929,22 @@ func TestSkykeyDeleteCompat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer persistFile.Close()
+	defer func() {
+		if err := persistFile.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	testDataFileName := filepath.Join("testdata", "v144_and_v149_skykeys.dat")
 	testDataFile, err := os.Open(testDataFileName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer testDataFile.Close()
+	defer func() {
+		if err := testDataFile.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	_, err = io.Copy(persistFile, testDataFile)
 
 	if err != nil {

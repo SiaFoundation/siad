@@ -92,7 +92,8 @@ func (tn *TestNode) DownloadInfo(lf *LocalFile, rf *RemoteFile) (*api.DownloadIn
 		return nil, err
 	}
 	var di *api.DownloadInfo
-	for _, d := range rdq.Downloads {
+	for i := range rdq.Downloads {
+		d := rdq.Downloads[i]
 		if rf.siaPath == d.SiaPath && lf.path == d.Destination {
 			di = &d
 			break

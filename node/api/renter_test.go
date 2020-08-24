@@ -189,7 +189,11 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 		if err != nil {
 			return err
 		}
-		defer df.Close()
+		defer func() {
+			if err := df.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 
 		_, err = io.Copy(&downbytes, df)
 		if err != nil {

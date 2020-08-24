@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
@@ -65,6 +65,26 @@ var (
 		Standard: time.Second * 60,
 		Testing:  time.Second * 2,
 	}).(time.Duration)
+
+	// minimumLookahead defines the minimum amount that the stream will fetch
+	// ahead of the current seek position in a stream.
+	//
+	// Note that there is a throughput vs. latency tradeoff here. The maximum
+	// speed of a stream has an upper bound of the lookahead / latency. So if it
+	// takes 1 second to fetch data and the lookahead is 2 MB, the maximum speed
+	// of a single stream is going to be 2 MB/s. When Sia is healthy, the
+	// latency on a fetch should be under 200ms, which means with a 2 MB
+	// lookahead a single stream should be able to do more than 10 MB/s.
+	//
+	// A smaller minimum lookahead means that less data is being buffered
+	// simultaneously, so seek times should be lower. A smaller minimum
+	// lookahead becomes less important if we get some way to ensure the earlier
+	// parts are prioritized, but we don't have control over that at the moment.
+	minimumLookahead = build.Select(build.Var{
+		Dev:      uint64(1 << 21), // 2 MiB
+		Standard: uint64(1 << 21), // 2 MiB
+		Testing:  uint64(1 << 6),  // 64 bytes
+	}).(uint64)
 )
 
 // streamBufferDataSource is an interface that the stream buffer uses to fetch
@@ -79,7 +99,10 @@ type streamBufferDataSource interface {
 	// ID returns the ID of the data source. This should be unique to the data
 	// source - that is, every data source that returns the same ID should have
 	// identical data and be fully interchangeable.
-	ID() streamDataSourceID
+	ID() modules.DataSourceID
+
+	// Metadata returns the Skyfile metadata of a data source.
+	Metadata() modules.SkyfileMetadata
 
 	// RequestSize should return the request size that the dataSource expects
 	// the streamBuffer to use. The streamBuffer will always make ReadAt calls
@@ -104,10 +127,6 @@ type streamBufferDataSource interface {
 	// ReaderAt allows the stream buffer to request specific data chunks.
 	io.ReaderAt
 }
-
-// streamDataSourceID is a type safe crypto.Hash which is used to uniquely
-// identify data sources for streams.
-type streamDataSourceID crypto.Hash
 
 // dataSection represents a section of data from a data source. The data section
 // includes a refcount of how many different streams have the data in their LRU.
@@ -160,14 +179,14 @@ type streamBuffer struct {
 	staticDataSource      streamBufferDataSource
 	staticDataSectionSize uint64
 	staticStreamBufferSet *streamBufferSet
-	staticStreamID        streamDataSourceID
+	staticStreamID        modules.DataSourceID
 }
 
 // streamBufferSet tracks all of the stream buffers that are currently active.
 // When a new stream is created, the stream buffer set is referenced to check
 // whether another stream using the same data source already exists.
 type streamBufferSet struct {
-	streams map[streamDataSourceID]*streamBuffer
+	streams map[modules.DataSourceID]*streamBuffer
 
 	staticTG *threadgroup.ThreadGroup
 	mu       sync.Mutex
@@ -176,7 +195,7 @@ type streamBufferSet struct {
 // newStreamBufferSet initializes and returns a stream buffer set.
 func newStreamBufferSet(tg *threadgroup.ThreadGroup) *streamBufferSet {
 	return &streamBufferSet{
-		streams: make(map[streamDataSourceID]*streamBuffer),
+		streams: make(map[modules.DataSourceID]*streamBuffer),
 
 		staticTG: tg,
 	}
@@ -220,22 +239,23 @@ func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, ini
 	}
 	streamBuf.externRefCount++
 	sbs.mu.Unlock()
+	return streamBuf.managedPrepareNewStream(initialOffset)
+}
 
-	// Determine how many data sections the stream should cache.
-	dataSectionsToCache := bytesBufferedPerStream / streamBuf.staticDataSectionSize
-	if dataSectionsToCache < minimumDataSections {
-		dataSectionsToCache = minimumDataSections
+// callNewStreamFromID will check the stream buffer set to see if a stream
+// buffer exists for the given data source id. If so, a new stream will be
+// created using the data source, and the bool will be set to 'true'. Otherwise,
+// the stream returned will be nil and the bool will be set to 'false'.
+func (sbs *streamBufferSet) callNewStreamFromID(id modules.DataSourceID, initialOffset uint64) (*stream, bool) {
+	sbs.mu.Lock()
+	streamBuf, exists := sbs.streams[id]
+	if !exists {
+		sbs.mu.Unlock()
+		return nil, false
 	}
-
-	// Create a stream that points to the stream buffer.
-	stream := &stream{
-		lru:    newLeastRecentlyUsedCache(dataSectionsToCache, streamBuf),
-		offset: initialOffset,
-
-		staticStreamBuffer: streamBuf,
-	}
-	stream.prepareOffset()
-	return stream
+	streamBuf.externRefCount++
+	sbs.mu.Unlock()
+	return streamBuf.managedPrepareNewStream(initialOffset), true
 }
 
 // managedData will block until the data for a data section is available, and
@@ -271,6 +291,11 @@ func (s *stream) Close() error {
 		sbs.managedRemoveStream(sb)
 	})
 	return nil
+}
+
+// Metadata returns the skyfile metadata associated with this stream.
+func (s *stream) Metadata() modules.SkyfileMetadata {
+	return s.staticStreamBuffer.staticDataSource.Metadata()
 }
 
 // Read will read data into 'b', returning the number of bytes read and any
@@ -387,10 +412,20 @@ func (s *stream) prepareOffset() {
 	index := s.offset / dataSectionSize
 	s.lru.callUpdate(index)
 
-	// If there is a following data section, update that as well.
+	// If there is a following data section, update that as well. This update is
+	// done regardless of the minimumLookahead, we always want to buffer at
+	// least one more piece than the current piece.
 	nextIndex := index + 1
 	if nextIndex*dataSectionSize < dataSize {
 		s.lru.callUpdate(nextIndex)
+	}
+
+	// Keep adding more pieces to the buffer until we have buffered at least
+	// minimumLookahead total data or have reached the end of the stream.
+	nextIndex++
+	for i := dataSectionSize * 2; i < minimumLookahead && nextIndex*dataSectionSize < dataSize; i += dataSectionSize {
+		s.lru.callUpdate(nextIndex)
+		nextIndex++
 	}
 }
 
@@ -428,6 +463,27 @@ func (sb *streamBuffer) callRemoveDataSection(index uint64) {
 	if dataSection.refCount == 0 {
 		delete(sb.dataSections, index)
 	}
+}
+
+// managedPrepareNewStream creates a new stream from an existing stream buffer.
+// The ref count for the buffer needs to be incremented under the
+// streamBufferSet lock, before this method is called.
+func (sb *streamBuffer) managedPrepareNewStream(initialOffset uint64) *stream {
+	// Determine how many data sections the stream should cache.
+	dataSectionsToCache := bytesBufferedPerStream / sb.staticDataSectionSize
+	if dataSectionsToCache < minimumDataSections {
+		dataSectionsToCache = minimumDataSections
+	}
+
+	// Create a stream that points to the stream buffer.
+	stream := &stream{
+		lru:    newLeastRecentlyUsedCache(dataSectionsToCache, sb),
+		offset: initialOffset,
+
+		staticStreamBuffer: sb,
+	}
+	stream.prepareOffset()
+	return stream
 }
 
 // newDataSection will create a new data section for the streamBuffer and spin

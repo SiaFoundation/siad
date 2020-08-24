@@ -194,7 +194,9 @@ func loadV143CompatPersistFile(testDir string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
 	bytes, err := ioutil.ReadAll(f)
 	if err != nil {
 		return err
@@ -203,7 +205,9 @@ func loadV143CompatPersistFile(testDir string) error {
 	if err != nil {
 		return err
 	}
-	defer pf.Close()
+	defer func() {
+		err = errors.Compose(err, pf.Close())
+	}()
 	_, err = pf.Write(bytes)
 	if err != nil {
 		return err

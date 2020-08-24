@@ -14,6 +14,15 @@ import (
 )
 
 var (
+	// errBothNameAndIDUsed is returned if both the Skykey name and ID are
+	// supplied for an operation that requires one or the other
+	errBothNameAndIDUsed = errors.New("Can only use one flag: --name or --id flag")
+
+	// errNeitherNameNorIDUsed is returned if neither the Skykey name or ID are
+	// supplied for an operation that requires one or the other
+	errNeitherNameNorIDUsed = errors.New("Must use either the --name or --id flag")
+)
+var (
 	skykeyCmd = &cobra.Command{
 		Use:   "skykey",
 		Short: "Perform actions related to Skykeys",
@@ -83,11 +92,15 @@ func skykeycreatecmd(name string) {
 // skykeyCreate creates a new Skykey with the given name and cipher type
 func skykeyCreate(c client.Client, name, skykeyTypeString string) (string, error) {
 	var st skykey.SkykeyType
-	err := st.FromString(skykeyTypeString)
-	if err != nil {
-		return "", errors.AddContext(err, "Unable to decode skykey type")
+	if skykeyTypeString == "" {
+		// If not type is provided, set the type as Private by default
+		st = skykey.TypePrivateID
+	} else {
+		err := st.FromString(skykeyTypeString)
+		if err != nil {
+			return "", errors.AddContext(err, "Unable to decode skykey type")
+		}
 	}
-
 	sk, err := c.SkykeyCreateKeyPost(name, st)
 	if err != nil {
 		return "", errors.AddContext(err, "Could not create skykey")
@@ -270,10 +283,10 @@ func skykeyListKeys(c client.Client, showPrivateKeys bool) (string, error) {
 // one is used.
 func validateNameAndIDUsage(name, id string) error {
 	if name == "" && id == "" {
-		return errors.New("Must use either the --name or --id flag")
+		return errNeitherNameNorIDUsed
 	}
 	if name != "" && id != "" {
-		return errors.New("Can only use one flag: --name or --id flag")
+		return errBothNameAndIDUsed
 	}
 	return nil
 }
