@@ -557,7 +557,10 @@ func (sf *SiaFile) iterateChunksReadonly(iterFunc func(chunk chunk) error) error
 	if err != nil {
 		return errors.AddContext(err, "failed to open file")
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
+
 	// Seek to the first chunk.
 	_, err = f.Seek(sf.staticMetadata.ChunkOffset, io.SeekStart)
 	if err != nil {

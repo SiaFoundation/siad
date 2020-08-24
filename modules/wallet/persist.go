@@ -199,7 +199,9 @@ func (w *Wallet) CreateBackup(backupFilepath string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
 	return w.createBackup(f)
 }
 

@@ -13,6 +13,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -148,6 +149,12 @@ func (sl Skylink) Base32EncodedString() string {
 // Bitfield returns the bitfield of a skylink.
 func (sl *Skylink) Bitfield() uint16 {
 	return sl.bitfield
+}
+
+// DataSourceID returns a resource ID for the Skylink. This ID is typically used
+// inside of the renter to uniquely identify a stream buffer.
+func (sl Skylink) DataSourceID() DataSourceID {
+	return DataSourceID(crypto.HashObject(sl.String()))
 }
 
 // LoadString converts from a string and loads the result into sl.

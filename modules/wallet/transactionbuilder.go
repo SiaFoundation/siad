@@ -459,6 +459,14 @@ func (tb *transactionBuilder) FundSiafunds(amount types.Currency) error {
 	return nil
 }
 
+// Sweep creates a funded txn that sends the inputs of this transactionBuilder
+// to the specified output if submitted to the blockchain.
+func (tb *transactionBuilder) Sweep(output types.SiacoinOutput) (txn types.Transaction, parents []types.Transaction) {
+	builder := tb.Copy()
+	builder.AddSiacoinOutput(output)
+	return builder.View()
+}
+
 // UnconfirmedParents returns the unconfirmed parents of the transaction set
 // that is being constructed by the transaction builder.
 func (tb *transactionBuilder) UnconfirmedParents() (parents []types.Transaction, err error) {

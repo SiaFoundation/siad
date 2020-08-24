@@ -98,7 +98,11 @@ func TestSiaUploadsDownloads(t *testing.T) {
 
 	// Init log to file
 	f := initLog()
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Init actual file size
 	initFileSize()
@@ -285,7 +289,11 @@ func createFile(filename string) {
 	path := filepath.Join(upDir, filename)
 	f, err := os.Create(path)
 	check(err)
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			check(err)
+		}
+	}()
 
 	_, err = io.CopyN(f, fastrand.Reader, int64(actualFileSize))
 	check(err)

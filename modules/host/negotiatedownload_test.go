@@ -51,9 +51,18 @@ func TestVerifyPaymentRevision(t *testing.T) {
 		return
 	}
 
+	// make sure verification fails if the amount of money moved to the void
+	// doesn't match the amount of money moved to the host.
+	badPayment := deepCopy(payment)
+	badPayment.SetMissedVoidPayout(types.SiacoinPrecision)
+	err = verifyPaymentRevision(curr, badPayment, height, amount)
+	if !errors.Contains(err, ErrLowVoidOutput) {
+		t.Fatalf("expected %v but got %v", ErrLowVoidOutput, err)
+	}
+
 	// expect ErrBadContractOutputCounts
 	badOutputs := []types.SiacoinOutput{payment.NewMissedProofOutputs[0]}
-	badPayment := deepCopy(payment)
+	badPayment = deepCopy(payment)
 	badPayment.NewMissedProofOutputs = badOutputs
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
 	if err != ErrBadContractOutputCounts {
@@ -226,4 +235,10 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	if err != ErrLowHostMissedOutput {
 		t.Fatalf("Expected ErrLowHostMissedOutput but received '%v'", err)
 	}
+
+	// NOTE: we don't trigger the last check in verifyPaymentRevision which
+	// makes sure that the payouts between the revisions match. This is due to
+	// the fact that the existing checks around the outputs are so tight, that
+	// they will trigger before the payout check does. This essentially makes
+	// the payout check redundant, but it's skill kept to be 100% sure.
 }
