@@ -17,6 +17,13 @@ import (
 )
 
 const (
+	// SkylinkMaxFetchSize defines the maximum fetch size that is supported by
+	// the skylink format. This is intentionally the same number as
+	// modules.SectorSize on the release build. We could not use
+	// modules.SectorSize directly because during testing that value is too
+	// small to properly test the link format.
+	SkylinkMaxFetchSize = 1 << 22
+
 	// rawSkylinkSize is the raw size of the data that gets put into a link.
 	rawSkylinkSize = 34
 
@@ -29,25 +36,25 @@ const (
 	base64EncodedSkylinkSize = 46
 )
 
-const (
-	// SkylinkMaxFetchSize defines the maximum fetch size that is supported by
-	// the skylink format. This is intentionally the same number as
-	// modules.SectorSize on the release build. We could not use
-	// modules.SectorSize directly because during testing that value is too
-	// small to properly test the link format.
-	SkylinkMaxFetchSize = 1 << 22
+var (
+	// ErrSkylinkIncorrectSize is returned when a string could not be decoded
+	// into a Skylink due to it having an incorrect size.
+	ErrSkylinkIncorrectSize = errors.New("Skylinks are always either 46 or 55 bytes in size, depending on how they were encoded.")
 )
 
-// Skylink contains all of the information that can be encoded into a skylink.
-// This information consists of a 32 byte MerkleRoot and a 2 byte bitfield.
-//
-// The first two bits of the bitfield (values 1 and 2 in decimal) determine the
-// version of the skylink. The skylink version determines how the remaining bits
-// are used. Not all values of the bitfield are legal.
-type Skylink struct {
-	bitfield   uint16
-	merkleRoot crypto.Hash
-}
+type (
+	// Skylink contains all of the information that can be encoded into a
+	// skylink. This information consists of a 32 byte MerkleRoot and a 2 byte
+	// bitfield.
+	//
+	// The first two bits of the bitfield (values 1 and 2 in decimal) determine
+	// the version of the skylink. The skylink version determines how the
+	// remaining bits are used. Not all values of the bitfield are legal.
+	Skylink struct {
+		bitfield   uint16
+		merkleRoot crypto.Hash
+	}
+)
 
 // NewSkylinkV1 will return a v1 Skylink object with the version set to 1 and
 // the remaining fields set appropriately. Note that the offset needs to be
@@ -411,5 +418,5 @@ func decodeSkylink(encoded string) ([]byte, error) {
 		return base64.RawURLEncoding.DecodeString(encoded)
 	}
 
-	return nil, errors.New("not a skylink, skylinks are always either 46 or 55 bytes in size, depending on how they were encoded")
+	return nil, errors.AddContext(ErrSkylinkIncorrectSize, "failed to decode Skylink")
 }

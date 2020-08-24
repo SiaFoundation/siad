@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -182,8 +183,15 @@ func TestSkylink(t *testing.T) {
 	// Try loading a base32 encoded string that has an incorrect size
 	b32OffByOne := b32[1:]
 	err = slMaxB32Decoded.LoadString(b32OffByOne)
-	if err == nil {
-		t.Error("expecting error when loading string that is too small")
+	if !errors.Contains(err, ErrSkylinkIncorrectSize) {
+		t.Error("expecting 'ErrSkylinkIncorrectSize' when loading string that is too small")
+	}
+
+	// Try loading a base32 encoded string that has an incorrect size
+	b32OffByOne = b32 + "a"
+	err = slMaxB32Decoded.LoadString(b32OffByOne)
+	if !errors.Contains(err, ErrSkylinkIncorrectSize) {
+		t.Error("expecting 'ErrSkylinkIncorrectSize' when loading string that is too large")
 	}
 
 	// Try loading a base32 encoded string that has an illegal character
@@ -209,8 +217,8 @@ func TestSkylink(t *testing.T) {
 		arb = arb + "a"
 	}
 	err = sl.LoadString(arb)
-	if err == nil {
-		t.Error("expecting error when loading string that is too small")
+	if !errors.Contains(err, ErrSkylinkIncorrectSize) {
+		t.Error("expecting 'ErrSkylinkIncorrectSize' when loading string that is too small")
 	}
 	// Try loading a siafile that's just arbitrary/meaningless data.
 	arb = arb + "a"
@@ -227,8 +235,8 @@ func TestSkylink(t *testing.T) {
 	// Try loading a blank siafile.
 	blank := ""
 	err = sl.LoadString(blank)
-	if err == nil {
-		t.Error("expecting an error when loading a blank skylink")
+	if !errors.Contains(err, ErrSkylinkIncorrectSize) {
+		t.Error("expecting 'ErrSkylinkIncorrectSize' when loading a blank string")
 	}
 
 	// Try giving a skylink extra params and loading that.
