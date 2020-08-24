@@ -24,9 +24,6 @@ const (
 	// small to properly test the link format.
 	SkylinkMaxFetchSize = 1 << 22
 
-	// rawSkylinkSize is the raw size of the data that gets put into a link.
-	rawSkylinkSize = 34
-
 	// base32EncodedSkylinkSize is the size of the Skylink after it has been
 	// encoded using base32.
 	base32EncodedSkylinkSize = 55
@@ -34,6 +31,9 @@ const (
 	// base64EncodedSkylinkSize is the size of the Skylink after it has been
 	// encoded using base64.
 	base64EncodedSkylinkSize = 46
+
+	// rawSkylinkSize is the raw size of the data that gets put into a link.
+	rawSkylinkSize = 34
 )
 
 var (
@@ -418,5 +418,5 @@ func decodeSkylink(encoded string) ([]byte, error) {
 		return base64.RawURLEncoding.DecodeString(encoded)
 	}
 
-	return nil, errors.AddContext(ErrSkylinkIncorrectSize, "failed to decode Skylink")
+	return nil, ErrSkylinkIncorrectSize
 }
