@@ -40,7 +40,7 @@ const (
 var (
 	// ErrSkylinkIncorrectSize is returned when a string could not be decoded
 	// into a Skylink due to it having an incorrect size.
-	ErrSkylinkIncorrectSize = errors.New("Skylinks are always either 46 or 55 bytes in size, depending on how they were encoded.")
+	ErrSkylinkIncorrectSize = errors.New("skylink has incorrect size")
 )
 
 type (
@@ -417,13 +417,12 @@ func (sl *Skylink) setOffsetAndFetchSize(offset, fetchSize uint64) error {
 // representation of a skylink  into raw bytes. It either performs a base32
 // decoding, or base64 decoding, depending on the length.
 func decodeSkylink(encoded string) ([]byte, error) {
-	if len(encoded) == base32EncodedSkylinkSize {
+	switch len(encoded) {
+	case base32EncodedSkylinkSize:
 		return base32.HexEncoding.WithPadding(base32.NoPadding).DecodeString(strings.ToUpper(encoded))
-	}
-
-	if len(encoded) == base64EncodedSkylinkSize {
+	case base64EncodedSkylinkSize:
 		return base64.RawURLEncoding.DecodeString(encoded)
+	default:
+		return nil, ErrSkylinkIncorrectSize
 	}
-
-	return nil, ErrSkylinkIncorrectSize
 }
