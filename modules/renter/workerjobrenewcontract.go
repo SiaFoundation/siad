@@ -4,13 +4,17 @@ import (
 	"context"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 
 	"gitlab.com/NebulousLabs/errors"
 )
 
 type (
 	jobRenew struct {
-		staticResponseChan chan *jobRenewResponse // Channel to send a response down
+		staticResponseChan       chan *jobRenewResponse // Channel to send a response down
+		staticTransactionBuilder modules.TransactionBuilder
+		staticParams             proto.ContractParams
 
 		*jobGeneric
 	}
@@ -63,7 +67,7 @@ func (j *jobRenew) callDiscard(err error) {
 // callExecute will run the renew job.
 func (j *jobRenew) callExecute() {
 	w := j.staticQueue.staticWorker()
-	err := w.managedRenew()
+	err := w.managedRenew(j.staticParams, j.staticTransactionBuilder)
 
 	// Send the response.
 	response := &jobRenewResponse{
@@ -104,11 +108,14 @@ func (w *worker) initJobRenewQueue() {
 	}
 }
 
-func (w *worker) RenewContract(ctx context.Context) error {
+func (w *worker) RenewContract(ctx context.Context, params proto.ContractParams, txnBuilder modules.TransactionBuilder) error {
 	renewResponseChan := make(chan *jobRenewResponse)
+	params.PriceTable = &w.staticPriceTable().staticPriceTable
 	jro := &jobRenew{
-		staticResponseChan: renewResponseChan,
-		jobGeneric:         newJobGeneric(w.staticJobReadQueue, ctx.Done()),
+		staticParams:             params,
+		staticResponseChan:       renewResponseChan,
+		staticTransactionBuilder: txnBuilder,
+		jobGeneric:               newJobGeneric(w.staticJobReadQueue, ctx.Done()),
 	}
 
 	// Add the job to the queue.

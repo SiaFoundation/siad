@@ -19,14 +19,16 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 		return errors.AddContext(err, "failed to read price table")
 	}
 
-	// Get some values for the RPC.
-	_, maxEstimate := h.tpool.FeeEstimation()
+	// Get some values for the RPC. Use the ones from the price table if
+	// available.
 	h.mu.RLock()
 	bh := pt.HostBlockHeight
+	maxFee := pt.TxnFeeMaxRecommended
+	minFee := pt.TxnFeeMinRecommended
 	hpk := h.publicKey
 	hsk := h.secretKey
 	is := h.settings
-	es := h.externalSettings(maxEstimate)
+	es := h.externalSettings(maxFee)
 	lockedCollateral := h.financialMetrics.LockedStorageCollateral
 	h.mu.RUnlock()
 
@@ -93,9 +95,8 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	// Check that the transaction set has enough fees on it to get into the
 	// blockchain.
 	setFee := modules.CalculateFee(txns)
-	minFee, _ := h.tpool.FeeEstimation()
 	if setFee.Cmp(minFee) < 0 {
-		return ErrLowTransactionFees
+		return errors.AddContext(ErrLowTransactionFees, "managedRPCRenewContract: insufficient txn fees")
 	}
 
 	// Add the collateral to the contract.
@@ -103,6 +104,9 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	if err != nil {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to add collateral")
 	}
+
+	// TODO: do we need to drop the txnBuilder in case of an error? According to
+	// the docstring Drop can only be called before signatures are added.
 
 	// Send the new inputs and outputs to the renter.
 	err = modules.RPCWrite(stream, modules.RPCRenewContractCollateralResponse{
@@ -114,21 +118,36 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to send collateral response")
 	}
 
+	// Receive the signature for the final revision from the renter.
+	var finalRevisionSigRenterResp modules.RPCRenewContractFinalRevisionSig
+	err = modules.RPCRead(stream, &finalRevisionSigRenterResp)
+	if err != nil {
+		return errors.AddContext(err, "managedRPCRenewContract: failed to read final revision signatures from renter")
+	}
+	finalRevRenterSig := finalRevisionSigRenterResp.Signature
+
+	// Manually add the revision signatures.
+	finalRevHostSig, err := addRevisionSignatures(&txns[len(txns)-1], finalRevision, finalRevRenterSig, hsk, rpk.ToPublicKey(), bh)
+	if err != nil {
+		return errors.AddContext(err, "managedRPCRenewContract: failed to add revision signatures to transaction")
+	}
+
+	// Send the host's signature back.
+	err = modules.RPCWrite(stream, modules.RPCRenewContractFinalRevisionSig{
+		Signature: finalRevHostSig,
+	})
+	if err != nil {
+		return errors.AddContext(err, "managedRPCRenewContract: failed to send final revision signatures to renter")
+	}
+
 	// Receive the txn signatures from the renter.
 	var renterSignatureResp modules.RPCRenewContractRenterSignatures
 	err = modules.RPCRead(stream, &renterSignatureResp)
 	if err != nil {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to receive renter signatures")
 	}
-	renterFinalRevisionSig := renterSignatureResp.RenterFinalRevisionSig
-	renterContractSig := renterSignatureResp.RenterContractSig
+	renterTxnSigs := renterSignatureResp.RenterTxnSigs
 	renterNoOpRevisionSig := renterSignatureResp.RenterNoOpRevisionSig
-
-	// Manually add the revision signatures.
-	err = addRevisionSignatures(&txns[len(txns)-1], finalRevision, renterFinalRevisionSig, hsk, bh)
-	if err != nil {
-		return errors.AddContext(err, "managedRPCRenewContract: failed to add revision signatures to transaction")
-	}
 
 	// The host adds the renter transaction signatures, then signs the
 	// transaction and submits it to the blockchain, creating a storage
@@ -150,7 +169,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 		builder:                 txnBuilder,
 		renewal:                 true,
 		renterPK:                renterPK,
-		renterSignatures:        renterContractSig,
+		renterSignatures:        renterTxnSigs,
 		renterRevisionSignature: renterNoOpRevisionSig,
 		initialSectorRoots:      so.SectorRoots,
 		hostCollateral:          renewCollateral,
@@ -178,8 +197,6 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	err = modules.RPCWrite(stream, modules.RPCRenewContractHostSignatures{
 		ContractSignatures:    hostTxnSignatures,
 		NoOpRevisionSignature: hostRevisionSignature,
-
-		FinalRevisionSignature: txns[len(txns)-1].TransactionSignatures[1].Signature,
 	})
 	if err != nil {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to send host signatures")
@@ -188,18 +205,22 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	return nil
 }
 
-func addRevisionSignatures(txn *types.Transaction, finalRevision types.FileContractRevision, renterSigBytes []byte, sk crypto.SecretKey, bh types.BlockHeight) error {
+func addRevisionSignatures(txn *types.Transaction, finalRevision types.FileContractRevision, renterSigBytes crypto.Signature, sk crypto.SecretKey, rpk crypto.PublicKey, bh types.BlockHeight) (crypto.Signature, error) {
 	parentID := crypto.Hash(finalRevision.ParentID)
 	renterSig := types.TransactionSignature{
-		ParentID:       parentID,
-		CoveredFields:  types.CoveredFields{FileContractRevisions: []uint64{0}},
+		ParentID: parentID,
+		CoveredFields: types.CoveredFields{
+			FileContracts:         []uint64{0},
+			FileContractRevisions: []uint64{0},
+		},
 		PublicKeyIndex: 0,
-		Signature:      renterSigBytes,
+		Signature:      renterSigBytes[:],
 	}
 	hostSig := types.TransactionSignature{
 		ParentID:       parentID,
 		PublicKeyIndex: 1,
 		CoveredFields: types.CoveredFields{
+			FileContracts:         []uint64{0},
 			FileContractRevisions: []uint64{0},
 		},
 	}
@@ -208,7 +229,9 @@ func addRevisionSignatures(txn *types.Transaction, finalRevision types.FileContr
 	encodedSig := crypto.SignHash(sigHash, sk)
 	txn.TransactionSignatures[1].Signature = encodedSig[:]
 
-	return txn.StandaloneValid(bh)
+	// Verify the renter's signature.
+	renterSigHash := txn.SigHash(0, bh)
+	return encodedSig, crypto.VerifyHash(renterSigHash, rpk, renterSigBytes)
 }
 
 func managedAcceptRenewal(acceptingContracts bool, blockHeight, soExpiration types.BlockHeight) error {

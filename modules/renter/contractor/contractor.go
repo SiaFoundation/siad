@@ -643,7 +643,7 @@ func newPayByContractRequest(rev types.FileContractRevision, sig crypto.Signatur
 
 // RenewContract takes an established connection to a host and renews the
 // contract with that host.
-func (c *Contractor) RenewContract(conn net.Conn, hpk types.SiaPublicKey) error {
+func (c *Contractor) RenewContract(conn net.Conn, hpk types.SiaPublicKey, params proto.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb modules.HostDB) error {
 	// Translate host's key to contract.
 	c.mu.RLock()
 	fcid, exists := c.pubKeysToContractID[hpk.String()]
@@ -651,11 +651,5 @@ func (c *Contractor) RenewContract(conn net.Conn, hpk types.SiaPublicKey) error 
 	if !exists {
 		return errors.New("RenewContract: failed to translate host key to contract id")
 	}
-
-	// TODO: set fields
-	var params proto.ContractParams
-	var txnBuilder transactionBuilder
-	var tpool transactionPool
-	var hdb hostDB
 	return c.staticContracts.RenewContract(conn, fcid, params, txnBuilder, tpool, hdb)
 }
