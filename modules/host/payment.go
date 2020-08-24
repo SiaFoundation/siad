@@ -378,6 +378,9 @@ func verifyEAFundRevision(existingRevision, paymentRevision types.FileContractRe
 	if paymentRevision.NewUnlockHash != existingRevision.NewUnlockHash {
 		return ErrBadUnlockHash
 	}
+	if err := verifyPayoutSums(existingRevision, paymentRevision); err != nil {
+		return errors.Compose(ErrInvalidPayoutSums, err)
+	}
 	return nil
 }
 
