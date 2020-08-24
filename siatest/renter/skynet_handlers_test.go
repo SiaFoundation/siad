@@ -3,14 +3,13 @@ package renter
 import (
 	"testing"
 
-	"gitlab.com/NebulousLabs/Sia/siatest"
-
 	"os"
 	"path/filepath"
 	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
 
@@ -82,7 +81,7 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 			// NonRootDefaultPath ensures that we return an error if a file has
 			// both defaultPath and disableDefaultPath set.
 			Name:          "NonRootDefaultPath",
-			Skylink:       "4BBcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA",
+			Skylink:       "4BBcCO73xMbehYaK 7bjDGCtW0GwOL6Swl-lNY52Pb_APzA",
 			ExpectedError: "both defaultpath and disabledefaultpath are set",
 		},
 	}
@@ -92,10 +91,10 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 		r := tg.Renters()[0]
 		_, _, err := r.SkynetSkylinkGet(test.Skylink)
 		if err == nil && test.ExpectedError != "" {
-			t.Fatal(err)
+			t.Fatalf("%s failed: %+v\n", test.Name, err)
 		}
 		if err != nil && (test.ExpectedError == "" || !strings.Contains(err.Error(), test.ExpectedError)) {
-			t.Fatalf("Expected error '%s', got %+v\n", test.ExpectedError, err)
+			t.Fatalf("%s failed: expected error '%s', got '%+v'\n", test.Name, test.ExpectedError, err)
 		}
 	}
 }

@@ -748,12 +748,9 @@ func parseSkyfileMetadata(baseSector []byte) (sl skyfileLayout, fanoutBytes []by
 // download.
 func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (modules.SkyfileMetadata, modules.Streamer, error) {
 	if r.deps.Disrupt("resolveSkylinkToFixture") {
-		sf, ok, err := fixtures.LoadSkylinkFixture(link)
+		sf, err := fixtures.LoadSkylinkFixture(link)
 		if err != nil {
 			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "failed to fetch fixture")
-		}
-		if !ok {
-			return modules.SkyfileMetadata{}, nil, errors.New("fixture not found for skylink " + link.String())
 		}
 		return sf.Metadata, streamerFromSlice(sf.Content), nil
 	}
