@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/threadgroup"
@@ -17,8 +18,13 @@ import (
 
 // mockDataSource implements a stream buffer data source that can be used to
 // test the stream buffer. It's a simple in-memory buffer.
+//
+// staticDataLen is a separate field so we can have a sanity check on the reads
+// in ReadAt of the mockDataSource without having a race condition if ReadAt is
+// called after the stream is closed.
 type mockDataSource struct {
 	data              []byte
+	staticDataLen     uint64
 	staticRequestSize uint64
 	mu                sync.Mutex
 }
@@ -27,6 +33,7 @@ type mockDataSource struct {
 func newMockDataSource(data []byte, requestSize uint64) *mockDataSource {
 	return &mockDataSource{
 		data:              data,
+		staticDataLen:     uint64(len(data)),
 		staticRequestSize: requestSize,
 	}
 }
@@ -39,8 +46,15 @@ func (mds *mockDataSource) DataSize() uint64 {
 }
 
 // ID implements streamBufferDataSource
-func (mds *mockDataSource) ID() streamDataSourceID {
-	return streamDataSourceID(crypto.HashAll(mds))
+func (mds *mockDataSource) ID() modules.DataSourceID {
+	mds.mu.Lock()
+	defer mds.mu.Unlock()
+	return modules.DataSourceID(crypto.HashObject(mds.data))
+}
+
+// Metadata implements streamBufferDataSource
+func (mds *mockDataSource) Metadata() modules.SkyfileMetadata {
+	return modules.SkyfileMetadata{}
 }
 
 // RequestSize implements streamBufferDataSource.
@@ -60,17 +74,17 @@ func (mds *mockDataSource) ReadAt(b []byte, offset int64) (int, error) {
 	if offset < 0 {
 		panic("bad call to mocked ReadAt")
 	}
-	if uint64(offset+int64(len(b))) > uint64(len(mds.data)) {
-		str := fmt.Sprintf("call to ReadAt is asking for data that exceeds the data size: %v - %v", offset+int64(len(b)), uint64(len(mds.data)))
+	if uint64(offset+int64(len(b))) > mds.staticDataLen {
+		str := fmt.Sprintf("call to ReadAt is asking for data that exceeds the data size: %v - %v", offset+int64(len(b)), mds.staticDataLen)
 		panic(str)
 	}
 	if uint64(offset)%mds.RequestSize() != 0 {
 		panic("bad call to mocked ReadAt")
 	}
-	if uint64(len(b)) > uint64(len(mds.data)) {
+	if uint64(len(b)) > mds.staticDataLen {
 		panic("bad call to mocked ReadAt")
 	}
-	if uint64(len(b)) != mds.RequestSize() && uint64(offset+int64(len(b))) != uint64(len(mds.data)) {
+	if uint64(len(b)) != mds.RequestSize() && uint64(offset+int64(len(b))) != mds.staticDataLen {
 		panic("bad call to mocked ReadAt")
 	}
 	n := copy(b, mds.data[offset:])
@@ -90,6 +104,7 @@ func TestStreamSmoke(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+
 	// Create a usable stream, starting at offset 0.
 	var tg threadgroup.ThreadGroup
 	data := fastrand.Bytes(15999) // 1 byte short of 1000 data sections.
@@ -97,6 +112,51 @@ func TestStreamSmoke(t *testing.T) {
 	dataSource := newMockDataSource(data, dataSectionSize)
 	sbs := newStreamBufferSet(&tg)
 	stream := sbs.callNewStream(dataSource, 0)
+
+	// Check that there is one reference in the stream buffer.
+	sbs.mu.Lock()
+	refs := stream.staticStreamBuffer.externRefCount
+	sbs.mu.Unlock()
+	if refs != 1 {
+		t.Fatal("bad")
+	}
+	// Create a new stream from an id, check that the ref count goes up.
+	streamFromID, exists := sbs.callNewStreamFromID(dataSource.ID(), 0)
+	if !exists {
+		t.Fatal("bad")
+	}
+	sbs.mu.Lock()
+	refs = stream.staticStreamBuffer.externRefCount
+	sbs.mu.Unlock()
+	if refs != 2 {
+		t.Fatal("bad")
+	}
+	// Create a second, different data source with the same id and try to use
+	// that.
+	dataSource2 := newMockDataSource(data, dataSectionSize)
+	repeatStream := sbs.callNewStream(dataSource2, 0)
+	sbs.mu.Lock()
+	refs = stream.staticStreamBuffer.externRefCount
+	sbs.mu.Unlock()
+	if refs != 3 {
+		t.Fatal("bad")
+	}
+	err := repeatStream.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = streamFromID.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(keepOldBuffersDuration)
+	time.Sleep(keepOldBuffersDuration / 3)
+	sbs.mu.Lock()
+	refs = stream.staticStreamBuffer.externRefCount
+	sbs.mu.Unlock()
+	if refs != 1 {
+		t.Fatal("bad")
+	}
 
 	// Perform the ritual that the http.ResponseWriter performs - seek to front,
 	// seek to back, read 512 bytes, seek to front, read a bigger chunk of data.
@@ -244,8 +304,8 @@ func TestStreamSmoke(t *testing.T) {
 	// not used. The stream buffer expects that when multiple data sources have
 	// the same ID, they are actually separate objects which need to be closed
 	// individually.
-	dataSource2 := newMockDataSource(data, dataSectionSize)
-	stream2 := sbs.callNewStream(dataSource2, 0)
+	dataSource3 := newMockDataSource(data, dataSectionSize)
+	stream2 := sbs.callNewStream(dataSource3, 0)
 	bytesRead, err = io.ReadFull(stream2, buf)
 	if err != nil {
 		t.Fatal(err)
@@ -372,8 +432,8 @@ func TestStreamSmoke(t *testing.T) {
 	}
 
 	// Check that if the tg is stopped, the stream closes immediately.
-	dataSource3 := newMockDataSource(data, dataSectionSize)
-	stream3 := sbs.callNewStream(dataSource3, 0)
+	dataSource4 := newMockDataSource(data, dataSectionSize)
+	stream3 := sbs.callNewStream(dataSource4, 0)
 	bytesRead, err = io.ReadFull(stream3, buf)
 	if err != nil {
 		t.Fatal(err)
