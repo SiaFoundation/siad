@@ -81,7 +81,7 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 			// NonRootDefaultPath ensures that we return an error if a file has
 			// both defaultPath and disableDefaultPath set.
 			Name:          "NonRootDefaultPath",
-			Skylink:       "4BBcCO73xMbehYaK 7bjDGCtW0GwOL6Swl-lNY52Pb_APzA",
+			Skylink:       "4BBcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA",
 			ExpectedError: "both defaultpath and disabledefaultpath are set",
 		},
 	}
