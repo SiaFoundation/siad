@@ -207,6 +207,8 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	return nil
 }
 
+// addRevisionSignatures verifies the revision signature provided by the renter
+// and adds it together with the host's own signature to the txnBuilder.
 func addRevisionSignatures(txnBuilder modules.TransactionBuilder, finalRevision types.FileContractRevision, renterSigBytes crypto.Signature, sk crypto.SecretKey, rpk crypto.PublicKey, bh types.BlockHeight) (crypto.Signature, error) {
 	txn, _ := txnBuilder.View()
 	parentID := crypto.Hash(finalRevision.ParentID)
@@ -246,6 +248,8 @@ func addRevisionSignatures(txnBuilder modules.TransactionBuilder, finalRevision 
 	return encodedSig, nil
 }
 
+// managedAcceptRenewal determines whether it's ok for a contract to be renewed
+// according to the host.
 func managedAcceptRenewal(acceptingContracts bool, blockHeight, soExpiration types.BlockHeight) error {
 	// Don't accept a renewal if we don't accept new contracts.
 	if !acceptingContracts {
@@ -259,6 +263,9 @@ func managedAcceptRenewal(acceptingContracts bool, blockHeight, soExpiration typ
 	return nil
 }
 
+// fetchRevisionAndContract extracts a revision and contract from the provided
+// txnSet while also sanity checking the length of the set and the number of
+// contracts and revisions in it.
 func fetchRevisionAndContract(txnSet []types.Transaction) (types.FileContractRevision, types.FileContract, error) {
 	// Check that the transaction set is not empty.
 	if len(txnSet) < 1 {
@@ -273,11 +280,11 @@ func fetchRevisionAndContract(txnSet []types.Transaction) (types.FileContractRev
 	if len(txn.FileContractRevisions) != 1 {
 		return types.FileContractRevision{}, types.FileContract{}, errors.New("fetchRevisionAndContract: unexpected number of revisions")
 	}
-	// TODO: is it safe to check that the whole txnSet only contains a single
-	// contract and revision?
 	return txn.FileContractRevisions[0], txn.FileContracts[0], nil
 }
 
+// verifyRenewedContract is a helper method that checks if the proposed renewed
+// contract is acceptable.
 func verifyRenewedContract(so storageObligation, fc types.FileContract, oldRevision types.FileContractRevision, blockHeight types.BlockHeight, internalSettings modules.HostInternalSettings, externalSettings modules.HostExternalSettings, renterPK, hostPK types.SiaPublicKey, lockedCollateral types.Currency) error {
 	unlockHash := externalSettings.UnlockHash
 
