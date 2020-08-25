@@ -559,6 +559,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	if !ok {
 		return errors.New("RenewContract: failed to acquire contract to renew")
 	}
+	defer cs.Return(oldSC)
 	oldContract := oldSC.header
 	oldRev := oldContract.LastRevision()
 
@@ -684,7 +685,6 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	if err != nil {
 		return errors.AddContext(err, "failed to sign transaction set")
 	}
-	println("hehe", len(signedTxnSet[len(signedTxnSet)-1].TransactionSignatures))
 
 	// Calculate signatures added by the transaction builder
 	var addedSignatures []types.TransactionSignature
@@ -704,9 +704,6 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	if err != nil {
 		return errors.AddContext(err, "failed to send RPCRenewContractRenterSignatures to host")
 	}
-
-	tmp, _ := json.Marshal(signedTxnSet[len(signedTxnSet)-1])
-	fmt.Println("renter: ", string(tmp))
 
 	// Read the host's signatures and add them to the transactions.
 	var hostSignatureResp modules.RPCRenewContractHostSignatures
@@ -767,6 +764,5 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	if err := oldSC.managedCommitClearContract(walTxn, finalRevTxn, renewCost); err != nil {
 		return err
 	}
-
-	panic("success")
+	return nil
 }

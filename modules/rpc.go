@@ -221,6 +221,9 @@ type (
 		NewOutputs []types.SiacoinOutput
 	}
 
+	// RPCRenewContractFinalRevisionSig is a response used by both host and
+	// renter to transmit the signature for the final revision of the renewed
+	// contract.
 	RPCRenewContractFinalRevisionSig struct {
 		Signature crypto.Signature
 	}

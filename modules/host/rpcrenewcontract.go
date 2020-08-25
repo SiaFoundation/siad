@@ -1,6 +1,8 @@
 package host
 
 import (
+	"fmt"
+
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -96,7 +98,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	// blockchain.
 	setFee := modules.CalculateFee(txns)
 	if setFee.Cmp(minFee) < 0 {
-		return errors.AddContext(ErrLowTransactionFees, "managedRPCRenewContract: insufficient txn fees")
+		return errors.AddContext(ErrLowTransactionFees, fmt.Sprintf("managedRPCRenewContract: insufficient txn fees %v < %v", setFee, minFee))
 	}
 
 	// Add the collateral to the contract.
@@ -127,7 +129,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	finalRevRenterSig := finalRevisionSigRenterResp.Signature
 
 	// Manually add the revision signatures.
-	finalRevHostSig, err := addRevisionSignatures(&txns[len(txns)-1], finalRevision, finalRevRenterSig, hsk, rpk.ToPublicKey(), bh)
+	finalRevHostSig, err := addRevisionSignatures(txnBuilder, finalRevision, finalRevRenterSig, hsk, rpk.ToPublicKey(), bh)
 	if err != nil {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to add revision signatures to transaction")
 	}
@@ -205,7 +207,8 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	return nil
 }
 
-func addRevisionSignatures(txn *types.Transaction, finalRevision types.FileContractRevision, renterSigBytes crypto.Signature, sk crypto.SecretKey, rpk crypto.PublicKey, bh types.BlockHeight) (crypto.Signature, error) {
+func addRevisionSignatures(txnBuilder modules.TransactionBuilder, finalRevision types.FileContractRevision, renterSigBytes crypto.Signature, sk crypto.SecretKey, rpk crypto.PublicKey, bh types.BlockHeight) (crypto.Signature, error) {
+	txn, _ := txnBuilder.View()
 	parentID := crypto.Hash(finalRevision.ParentID)
 	renterSig := types.TransactionSignature{
 		ParentID: parentID,
@@ -224,14 +227,23 @@ func addRevisionSignatures(txn *types.Transaction, finalRevision types.FileContr
 			FileContractRevisions: []uint64{0},
 		},
 	}
+	// Add the signatures to the builder.
 	txn.TransactionSignatures = []types.TransactionSignature{renterSig, hostSig}
 	sigHash := txn.SigHash(1, bh)
 	encodedSig := crypto.SignHash(sigHash, sk)
-	txn.TransactionSignatures[1].Signature = encodedSig[:]
+	hostSig.Signature = encodedSig[:]
 
 	// Verify the renter's signature.
 	renterSigHash := txn.SigHash(0, bh)
-	return encodedSig, crypto.VerifyHash(renterSigHash, rpk, renterSigBytes)
+	err := crypto.VerifyHash(renterSigHash, rpk, renterSigBytes)
+	if err != nil {
+		return crypto.Signature{}, errors.AddContext(err, "addRevisionSignatures: invalid renter signature")
+	}
+
+	// Add the signatures to the builder.
+	txnBuilder.AddTransactionSignature(renterSig)
+	txnBuilder.AddTransactionSignature(hostSig)
+	return encodedSig, nil
 }
 
 func managedAcceptRenewal(acceptingContracts bool, blockHeight, soExpiration types.BlockHeight) error {

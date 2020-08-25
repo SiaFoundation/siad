@@ -2,8 +2,10 @@ package renter
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -15,7 +17,7 @@ func TestRenewContract(t *testing.T) {
 	}
 	t.Parallel()
 
-	// Create a disabled worker. That way no background thread will interfere.
+	// Create a worker.
 	wt, err := newWorkerTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
@@ -60,13 +62,50 @@ func TestRenewContract(t *testing.T) {
 		RenterSeed:    rs.EphemeralRenterSeed(bh + allowance.Period),
 	}
 
+	// Get the old contract and revision.
+	oldContract, ok := wt.renter.hostContractor.ContractByPublicKey(wt.staticHostPubKey)
+	if !ok {
+		t.Fatal("oldContract not found")
+	}
+
 	// Renew the contract.
 	err = wt.RenewContract(context.Background(), params, txnBuilder)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// TODO: Check if contract actually was renewed.
+	// Mine a block to mine the contract and trigger maintenance.
+	b, err := wt.rt.miner.AddBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check if the right txn was mined. It should contain both a revision and
+	// contract.
+	found := false
+	var fcr types.FileContractRevision
+	for _, txn := range b.Transactions {
+		if len(txn.FileContractRevisions) == 1 && len(txn.FileContracts) == 1 {
+			fcr = txn.FileContractRevisions[0]
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("txn containing both the final revision and contract wasn't mined")
+	}
+	if fcr.ParentID != oldContract.ID {
+		t.Fatalf("expected fcr to have parent %v but was %v", oldContract.ID, fcr.ParentID)
+	}
+	if !reflect.DeepEqual(fcr.NewMissedProofOutputs, fcr.NewValidProofOutputs) {
+		t.Fatal("expected valid outputs to match missed ones")
+	}
+	if fcr.NewFileSize != 0 {
+		t.Fatal("size should be 0", fcr.NewFileSize)
+	}
+	if fcr.NewFileMerkleRoot != (crypto.Hash{}) {
+		t.Fatal("size should be 0", fcr.NewFileSize)
+	}
 
 	// Close the worker.
 	if err := wt.Close(); err != nil {
