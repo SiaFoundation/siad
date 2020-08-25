@@ -69,6 +69,15 @@ func newWorkerTesterCustomDependency(name string, renterDeps modules.Dependencie
 		return nil, err
 	}
 
+	// Wait for the price table to be updated.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		pt := w.staticPriceTable()
+		if pt.staticUpdateTime.IsZero() {
+			return errors.New("price table not updated")
+		}
+		return nil
+	})
+
 	return &workerTester{
 		rt:     rt,
 		host:   host,
