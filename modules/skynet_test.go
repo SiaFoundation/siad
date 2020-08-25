@@ -125,3 +125,82 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 		t.Fatal(`Expected offset to be zero, got`, offset)
 	}
 }
+
+func TestIsDirectory(t *testing.T) {
+	tests := []struct {
+		name           string
+		meta           SkyfileMetadata
+		expectedResult bool
+	}{
+		{
+			name: "nil subfiles",
+			meta: SkyfileMetadata{
+				Filename: "foo",
+				Length:   10,
+				Mode:     0644,
+				Subfiles: nil,
+			},
+			expectedResult: false,
+		},
+		{
+			name: "empty subfiles struct",
+			meta: SkyfileMetadata{
+				Filename: "foo",
+				Length:   10,
+				Mode:     0644,
+				Subfiles: SkyfileSubfiles{},
+			},
+			expectedResult: false,
+		},
+		{
+			name: "one subfile",
+			meta: SkyfileMetadata{
+				Filename: "foo",
+				Length:   10,
+				Mode:     0644,
+				Subfiles: SkyfileSubfiles{
+					"foo": SkyfileSubfileMetadata{
+						FileMode:    10,
+						Filename:    "foo",
+						ContentType: "text/plain",
+						Offset:      0,
+						Len:         10,
+					},
+				},
+			},
+			expectedResult: false,
+		},
+		{
+			name: "two subfiles",
+			meta: SkyfileMetadata{
+				Filename: "foo",
+				Length:   20,
+				Mode:     0644,
+				Subfiles: SkyfileSubfiles{
+					"foo": SkyfileSubfileMetadata{
+						FileMode:    10,
+						Filename:    "foo",
+						ContentType: "text/plain",
+						Offset:      0,
+						Len:         10,
+					},
+					"bar": SkyfileSubfileMetadata{
+						FileMode:    10,
+						Filename:    "bar",
+						ContentType: "text/plain",
+						Offset:      10,
+						Len:         10,
+					},
+				},
+			},
+			expectedResult: true,
+		},
+	}
+
+	for _, test := range tests {
+		result := test.meta.IsDirectory()
+		if result != test.expectedResult {
+			t.Fatalf("'%s' failed: expected '%t', got '%t'", test.name, test.expectedResult, result)
+		}
+	}
+}

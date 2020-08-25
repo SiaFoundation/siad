@@ -549,10 +549,12 @@ func verifyDownloadRaw(t *testing.T, r *siatest.TestNode, skylink string, expect
 	if err != nil {
 		return err
 	}
-	if !bytes.Equal(data, expectedData) {
+	if bytes.Equal(data, expectedData) {
 		t.Log("Test:", testName)
-		t.Log("expected data: ", string(expectedData))
-		t.Log("actual   data: ", string(data))
+		t.Log("expected data: ")
+		siatest.PrintJSON(expectedData)
+		t.Log("actual   data: ")
+		siatest.PrintJSON(data)
 		return errors.New("Unexpected data")
 	}
 	if !reflect.DeepEqual(metadata, expectedMetadata) {
