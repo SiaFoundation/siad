@@ -21,6 +21,14 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// closeFileInTest is a small helper for calling close on a file in a test
+func closeFileInTest(t *testing.T, f *os.File) {
+	err := f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // equalFiles is a helper that compares two SiaFiles for equality.
 func equalFiles(sf, sf2 *SiaFile) error {
 	// Backup the metadata structs for both files.
@@ -298,7 +306,7 @@ func TestNewFile(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to open file", err)
 	}
-	defer f.Close()
+	defer closeFileInTest(t, f)
 	// Check the filesize. It should be equal to the offset of the last chunk
 	// on disk + its marshaled length.
 	fi, err := f.Stat()
@@ -567,7 +575,7 @@ func TestSaveSmallHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to open file", err)
 	}
-	defer f.Close()
+	defer closeFileInTest(t, f)
 
 	// Make sure the metadata was written to disk correctly.
 	rawMetadata, err := marshalMetadata(sf.staticMetadata)
@@ -616,7 +624,7 @@ func TestSaveLargeHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to open file", err)
 	}
-	defer f.Close()
+	defer closeFileInTest(t, f)
 
 	// Write some data right after the ChunkOffset as a checksum.
 	chunkData := fastrand.Bytes(100)
@@ -827,7 +835,7 @@ func TestSaveChunk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer closeFileInTest(t, f)
 
 	readChunk := make([]byte, len(marshaledChunk))
 	if n, err := f.ReadAt(readChunk, sf.chunkOffset(chunkIndex)); err != nil {

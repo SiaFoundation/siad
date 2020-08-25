@@ -237,6 +237,12 @@ func TestVerifyEAFundRevision(t *testing.T) {
 	if err != ErrLowHostMissedOutput {
 		t.Fatalf("Expected ErrLowHostMissedOutput but received '%v'", err)
 	}
+
+	// NOTE: we don't trigger the last check in verifyEAFundRevision which makes
+	// sure that the payouts between the revisions match. This is due to the
+	// fact that the existing checks around the outputs are so tight, that they
+	// will trigger before the payout check does. This essentially makes the
+	// payout check redundant, but it's skill kept to be 100% sure.
 }
 
 // TestProcessPayment verifies the host's ProcessPayment method. It covers both

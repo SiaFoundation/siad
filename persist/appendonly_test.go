@@ -184,7 +184,11 @@ func TestMarshalMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Manually create struct of a persist object and set the length. Not using
 	// the New method to avoid overwriting the persist file on disk.

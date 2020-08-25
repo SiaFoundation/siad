@@ -51,6 +51,12 @@ var (
 	BackupKeySpecifier = types.NewSpecifier("backupkey")
 )
 
+// DataSourceID is an identifier to uniquely identify a data source, such as for
+// loading a file. Adding data sources that have the same ID should return the
+// exact same data when queried. This is typically used inside of the renter to
+// build stream buffers.
+type DataSourceID crypto.Hash
+
 // FilterMode is the helper type for the enum constants for the HostDB filter
 // mode
 type FilterMode int

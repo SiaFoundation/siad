@@ -323,10 +323,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	defaultPath := metadata.DefaultPath
 	if metadata.DefaultPath == "" && !metadata.DisableDefaultPath {
 		if len(metadata.Subfiles) == 1 {
-			// Handle the legacy case in which the fields `defaultpath` and
-			// `disabledefaultpath` are not defined. If the skyfile has a single
-			// subfile we want to automatically default to it in order to retain
-			// the current behaviour.
+			// If `defaultpath` and `disabledefaultpath` are not set and the
+			// skyfile has a single subfile we automatically default to it.
 			for filename := range metadata.Subfiles {
 				defaultPath = modules.EnsurePrefix(filename, "/")
 				break
@@ -493,7 +491,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		w.Header().Set("Content-Type", responseContentType)
 	}
 	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
 }
@@ -812,9 +809,6 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 		lup.SkykeyID = ID
 	}
-
-	// Enable CORS
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	// Check for a convertpath input
 	convertPathStr := queryForm.Get("convertpath")

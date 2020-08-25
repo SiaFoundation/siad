@@ -31,7 +31,8 @@ type fanoutStreamBufferDataSource struct {
 	staticErasureCoder modules.ErasureCoder
 	staticLayout       skyfileLayout
 	staticMasterKey    crypto.CipherKey
-	staticStreamID     streamDataSourceID
+	staticMetadata     modules.SkyfileMetadata
+	staticStreamID     modules.DataSourceID
 
 	// staticTimeout defines a timeout that is applied to every chunk download
 	staticTimeout time.Duration
@@ -44,7 +45,7 @@ type fanoutStreamBufferDataSource struct {
 // newFanoutStreamer will create a modules.Streamer from the fanout of a
 // skyfile. The streamer is created by implementing the streamBufferDataSource
 // interface on the skyfile, and then passing that to the stream buffer set.
-func (r *Renter) newFanoutStreamer(link modules.Skylink, ll skyfileLayout, fanoutBytes []byte, timeout time.Duration, sk skykey.Skykey) (modules.Streamer, error) {
+func (r *Renter) newFanoutStreamer(link modules.Skylink, ll skyfileLayout, metadata modules.SkyfileMetadata, fanoutBytes []byte, timeout time.Duration, sk skykey.Skykey) (modules.Streamer, error) {
 	masterKey, err := r.deriveFanoutKey(&ll, sk)
 	if err != nil {
 		return nil, errors.AddContext(err, "count not recover siafile fanout because cipher key was unavailable")
@@ -62,7 +63,8 @@ func (r *Renter) newFanoutStreamer(link modules.Skylink, ll skyfileLayout, fanou
 		staticErasureCoder: ec,
 		staticLayout:       ll,
 		staticMasterKey:    masterKey,
-		staticStreamID:     streamDataSourceID(crypto.HashObject(link.String())),
+		staticMetadata:     metadata,
+		staticStreamID:     link.DataSourceID(),
 		staticTimeout:      timeout,
 		staticRenter:       r,
 	}
@@ -188,8 +190,13 @@ func (fs *fanoutStreamBufferDataSource) DataSize() uint64 {
 
 // ID returns the id of the skylink being fetched, this is just the hash of the
 // skylink.
-func (fs *fanoutStreamBufferDataSource) ID() streamDataSourceID {
+func (fs *fanoutStreamBufferDataSource) ID() modules.DataSourceID {
 	return fs.staticStreamID
+}
+
+// Metadata returns the metadata of the skylink being fetched.
+func (fs *fanoutStreamBufferDataSource) Metadata() modules.SkyfileMetadata {
+	return fs.staticMetadata
 }
 
 // ReadAt will fetch data from the siafile at the provided offset.

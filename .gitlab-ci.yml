@@ -63,6 +63,7 @@ default: &default_params
   ## improvements.
   image: golang:latest
   before_script:
+    - go version
     - mkdir -p .cache/gocache
     - export PATH=$PATH:$CI_PROJECT_DIR/.cache/bin/
     - export GOPATH="$CI_PROJECT_DIR/.cache"

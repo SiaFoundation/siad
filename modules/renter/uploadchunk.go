@@ -542,7 +542,9 @@ func (r *Renter) managedFetchLogicalChunkData(uc *unfinishedUploadChunk) error {
 		if err != nil {
 			return errors.AddContext(err, "unable to open file locally")
 		}
-		defer osFile.Close()
+		defer func() {
+			err = errors.Compose(err, osFile.Close())
+		}()
 		sr := io.NewSectionReader(osFile, uc.offset, int64(uc.length))
 		dataPieces, _, err := readDataPieces(sr, uc.fileEntry.ErasureCode(), uc.fileEntry.PieceSize())
 		if err != nil {
