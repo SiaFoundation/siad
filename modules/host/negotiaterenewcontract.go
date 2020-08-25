@@ -339,7 +339,7 @@ func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types
 	}
 	// Check that the void output has the correct value.
 	expectedVoidOutput := basePrice.Add(baseCollateral)
-	if voidOutput.Value.Cmp(expectedVoidOutput) > 0 {
+	if voidOutput.Value.Cmp(expectedVoidOutput) < 0 {
 		return ErrLowVoidOutput
 	}
 

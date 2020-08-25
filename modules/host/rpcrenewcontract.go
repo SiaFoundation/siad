@@ -311,7 +311,7 @@ func verifyRenewedContract(so storageObligation, fc types.FileContract, oldRevis
 		return ErrLongDuration
 	}
 
-	// ValidProofOutputs shoud have 2 outputs (renter + host) and missed
+	// ValidProofOutputs should have 2 outputs (renter + host) and missed
 	// outputs should have 3 (renter + host + void)
 	if len(fc.ValidProofOutputs) != 2 || len(fc.MissedProofOutputs) != 3 {
 		return ErrBadContractOutputCounts
@@ -355,7 +355,7 @@ func verifyRenewedContract(so storageObligation, fc types.FileContract, oldRevis
 	}
 	// Check that the void output has the correct value.
 	expectedVoidOutput := basePrice.Add(baseCollateral)
-	if voidOutput.Value.Cmp(expectedVoidOutput) > 0 {
+	if voidOutput.Value.Cmp(expectedVoidOutput) < 0 {
 		return ErrLowVoidOutput
 	}
 
