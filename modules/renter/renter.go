@@ -891,7 +891,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	// Create the skykey manager.
 	// In testing, keep the skykeys with the rest of the renter data.
 	skykeyManDir := build.DefaultSkynetDir()
-	if build.Release == "testing" {
+	if build.Release != "standard" {
 		skykeyManDir = persistDir
 	}
 	r.staticSkykeyManager, err = skykey.NewSkykeyManager(skykeyManDir)
