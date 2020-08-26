@@ -1,6 +1,8 @@
 package modules
 
 import (
+	"encoding/base32"
+	"encoding/binary"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -164,7 +166,7 @@ func TestSkylink(t *testing.T) {
 	}
 
 	// Verify the base32 encoded representation of the Skylink
-	b32 := slMax.Base32EncodedString()
+	b32 := base32Encode(slMax)
 	if len(b32) != base32EncodedSkylinkSize {
 		t.Error("encoded base32 string is not the right size")
 	}
@@ -204,7 +206,7 @@ func TestSkylink(t *testing.T) {
 	// Try loading a base32 encoded string with invalid bitfield
 	var slInvalidBitfield Skylink
 	slInvalidBitfield.bitfield = 1
-	b32BadBitfield := slInvalidBitfield.Base32EncodedString()
+	b32BadBitfield := base32Encode(slInvalidBitfield)
 	err = slMaxB32Decoded.LoadString(b32BadBitfield)
 	if err == nil {
 		t.Error("expecting error when loading a string representing a skylink with an illegal bitfield")
@@ -375,4 +377,16 @@ func TestSkylinkAutoExamples(t *testing.T) {
 			}
 		}
 	}
+}
+
+// base32Encode is a helper function that converts the given Skylink to a base32
+// encoded string.
+func base32Encode(sl Skylink) string {
+	// Build the raw string.
+	raw := make([]byte, rawSkylinkSize)
+	binary.LittleEndian.PutUint16(raw, sl.bitfield)
+	copy(raw[2:], sl.merkleRoot[:])
+
+	// Encode the raw bytes to base32
+	return base32.HexEncoding.WithPadding(base32.NoPadding).EncodeToString(raw)
 }

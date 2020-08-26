@@ -135,17 +135,6 @@ func validateAndParseV1Bitfield(bitfield uint16) (offset uint64, fetchSize uint6
 	return offset, fetchSize, nil
 }
 
-// Base32EncodedString converts Skylink to a base32 encoded string.
-func (sl Skylink) Base32EncodedString() string {
-	// Build the raw string.
-	raw := make([]byte, rawSkylinkSize)
-	binary.LittleEndian.PutUint16(raw, sl.bitfield)
-	copy(raw[2:], sl.merkleRoot[:])
-
-	// Encode the raw bytes to base32
-	return base32.HexEncoding.WithPadding(base32.NoPadding).EncodeToString(raw)
-}
-
 // Bitfield returns the bitfield of a skylink.
 func (sl *Skylink) Bitfield() uint16 {
 	return sl.bitfield
