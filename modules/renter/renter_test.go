@@ -155,7 +155,7 @@ func (rt *renterTester) reloadRenter(r *Renter) (*Renter, error) {
 
 // reloadRenterWithDependency closes the given renter and recreates it using the
 // given dependency, it then re-adds the renter on the renter tester effectively
-// relodaing it.
+// reloading it.
 func (rt *renterTester) reloadRenterWithDependency(r *Renter, deps modules.Dependencies) (*Renter, error) {
 	err := r.Close()
 	if err != nil {
