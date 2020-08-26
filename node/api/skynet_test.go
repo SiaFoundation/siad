@@ -294,7 +294,7 @@ func TestSplitSkylinkString(t *testing.T) {
 			skylink:              "",
 			skylinkStringNoQuery: "",
 			path:                 "",
-			errMsg:               "not a skylink, skylinks are always 46 bytes",
+			errMsg:               modules.ErrSkylinkIncorrectSize.Error(),
 		},
 		{
 			name:                 "empty input",
@@ -302,7 +302,7 @@ func TestSplitSkylinkString(t *testing.T) {
 			skylink:              "",
 			skylinkStringNoQuery: "",
 			path:                 "",
-			errMsg:               "not a skylink, skylinks are always 46 bytes",
+			errMsg:               modules.ErrSkylinkIncorrectSize.Error(),
 		},
 	}
 
