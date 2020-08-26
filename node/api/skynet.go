@@ -351,10 +351,29 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s) which refers to a non-root file, please specify a format", defaultPath)}, http.StatusBadRequest)
 			return
 		}
+		var isSkapp bool
+		for _, subfile := range metadata.Subfiles {
+			if strings.HasSuffix(subfile.Filename, ".html") || strings.HasSuffix(subfile.Filename, "htm") {
+				isSkapp = true
+				break
+			}
+		}
 		// If we don't have a subPath and the skylink doesn't end with a trailing
 		// slash we need to redirect in order to add the trailing slash.
-		if !strings.HasSuffix(skylinkStringNoQuery, "/") {
-			w.Header().Set("Location", skylinkStringNoQuery+"/")
+		// This is only true for skapps - they need it in order to properly work
+		// with relative paths.
+		if isSkapp && !strings.HasSuffix(skylinkStringNoQuery, "/") {
+			newLocation := strings.Builder{}
+			newLocation.WriteString(skylinkStringNoQuery + "/")
+			// Add back all the query parameters.
+			// The inner loop takes care of arrays.
+			for key, values := range queryForm {
+				for _, val := range values {
+					newLocation.WriteString(fmt.Sprint("%s=%s&", key, val))
+				}
+			}
+			location := strings.TrimSuffix(newLocation.String(), "&")
+			w.Header().Set("Location", location)
 			w.WriteHeader(http.StatusTemporaryRedirect)
 			return
 		}
