@@ -369,7 +369,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			// The inner loop takes care of arrays.
 			for key, values := range queryForm {
 				for _, val := range values {
-					newLocation.WriteString(fmt.Sprint("%s=%s&", key, val))
+					newLocation.WriteString(fmt.Sprintf("%s=%s&", key, val))
 				}
 			}
 			location := strings.TrimSuffix(newLocation.String(), "&")
