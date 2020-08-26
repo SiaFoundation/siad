@@ -140,6 +140,14 @@ func (sl *Skylink) Bitfield() uint16 {
 	return sl.bitfield
 }
 
+// Bytes returns the raw bytes representation of a Skylink
+func (sl *Skylink) Bytes() []byte {
+	raw := make([]byte, rawSkylinkSize)
+	binary.LittleEndian.PutUint16(raw, sl.bitfield)
+	copy(raw[2:], sl.merkleRoot[:])
+	return raw
+}
+
 // DataSourceID returns a resource ID for the Skylink. This ID is typically used
 // inside of the renter to uniquely identify a stream buffer.
 func (sl Skylink) DataSourceID() DataSourceID {
@@ -290,13 +298,8 @@ func (sl Skylink) OffsetAndFetchSize() (offset uint64, fetchSize uint64, err err
 
 // String converts Skylink to a string.
 func (sl Skylink) String() string {
-	// Build the raw string.
-	raw := make([]byte, rawSkylinkSize)
-	binary.LittleEndian.PutUint16(raw, sl.bitfield)
-	copy(raw[2:], sl.merkleRoot[:])
-
 	// Encode the raw bytes to base64.
-	return base64.RawURLEncoding.EncodeToString(raw)
+	return base64.RawURLEncoding.EncodeToString(sl.Bytes())
 }
 
 // Version will pull the version out of the bitfield and return it. The version
