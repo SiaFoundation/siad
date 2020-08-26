@@ -178,7 +178,33 @@ func testDeleteKey(t *testing.T, c client.Client) {
 
 // testInvalidSkykeyType tests that invalid cipher types are caught.
 func testInvalidSkykeyType(t *testing.T, c client.Client) {
+	// Verify invalid type returns error
 	_, err := skykeyCreate(c, "createkey2", skykey.TypeInvalid.ToString())
+	if !strings.Contains(err.Error(), skykey.ErrInvalidSkykeyType.Error()) {
+		t.Fatal("Expected error when creating key with invalid skykeytpe", err)
+	}
+
+	// Submitting a blank skykey type should succeed and default to private
+	keyName := "blankType"
+	_, err = skykeyCreate(c, keyName, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sk, err := c.SkykeyGetByName(keyName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sk.Type != skykey.TypePrivateID {
+		t.Fatal("Skykey type expected to be private")
+	}
+	// Delete Key to not impact future sub tests
+	err = skykeyDelete(c, keyName, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify a random type gives an error
+	_, err = skykeyCreate(c, "", "not a type")
 	if !strings.Contains(err.Error(), skykey.ErrInvalidSkykeyType.Error()) {
 		t.Fatal("Expected error when creating key with invalid skykeytpe", err)
 	}

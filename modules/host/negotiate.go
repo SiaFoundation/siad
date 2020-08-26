@@ -89,6 +89,10 @@ var (
 	// length.
 	ErrIllegalOffsetAndLength = ErrorCommunication("renter is trying to do a modify with an illegal offset and length")
 
+	// ErrInvalidPayoutSums is returned if a revision doesn't sum up to the same
+	// total payout as the previous revision or contract.
+	ErrInvalidPayoutSums = ErrorCommunication("renter provided a revision with an invalid total payout")
+
 	// ErrLargeSector is returned if the renter sends a RevisionAction that has
 	// data which creates a sector that is larger than what the host uses.
 	ErrLargeSector = ErrorCommunication("renter has sent a sector that exceeds the host's sector size")

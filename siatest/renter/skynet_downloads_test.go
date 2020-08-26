@@ -64,6 +64,10 @@ func testDownloadSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// verify downloads
+	//
+	// note: these switch from un-cached to cached downloads partway through. By
+	// passing verification on all pieces of the test, we are confirming that
+	// the caching is correct.
 	err = verifyDownloadRaw(t, r, skylink, data, sup.FileMetadata, testName)
 	if err != nil {
 		t.Fatal(err)
