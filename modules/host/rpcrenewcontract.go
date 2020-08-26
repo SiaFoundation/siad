@@ -72,7 +72,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	}
 
 	// Check if the host wants to accept a renewal for the obligation.
-	err = managedAcceptRenewal(es.AcceptingContracts, bh, so.expiration())
+	err = needsRenewal(es.AcceptingContracts, bh, so.expiration())
 	if err != nil {
 		return errors.AddContext(err, "managedRPCRenewContract: host is not accepting a renewal")
 	}
@@ -187,13 +187,21 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	defer h.managedUnlockStorageObligation(newSOID)
 
 	// Clear the old storage obligatoin.
+	// TODO: In the unlikely event where we crash after finalizing the contract
+	// but before clearing the old obligation, the old obligation won't be
+	// cleared. To fix this we need to change managedFinalizeContract to create
+	// the new obligation and clear the old one within a single database
+	// transaction.
 	so.SectorRoots = []crypto.Hash{}
 	so.RevisionTransactionSet = []types.Transaction{txns[len(txns)-1]}
 
 	// we don't count the sectors as being removed since we prevented
 	// managedFinalizeContract from incrementing the counters on virtual sectors
 	// before
-	h.managedModifyStorageObligation(so, nil, nil)
+	err = h.managedModifyStorageObligation(so, nil, nil)
+	if err != nil {
+		return errors.AddContext(err, "managedRPCRenewContract: failed to modify storage obligation")
+	}
 
 	// Send signatures back to renter.
 	err = modules.RPCWrite(stream, modules.RPCRenewContractHostSignatures{
@@ -248,9 +256,9 @@ func addRevisionSignatures(txnBuilder modules.TransactionBuilder, finalRevision 
 	return encodedSig, nil
 }
 
-// managedAcceptRenewal determines whether it's ok for a contract to be renewed
+// needsRenewal determines whether it's ok for a contract to be renewed
 // according to the host.
-func managedAcceptRenewal(acceptingContracts bool, blockHeight, soExpiration types.BlockHeight) error {
+func needsRenewal(acceptingContracts bool, blockHeight, soExpiration types.BlockHeight) error {
 	// Don't accept a renewal if we don't accept new contracts.
 	if !acceptingContracts {
 		return errors.New("host is not accepting new contracts")

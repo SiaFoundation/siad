@@ -48,7 +48,7 @@ type (
 		*jobGenericQueue
 	}
 
-	// jobReadResponse contains the result of a hasSector query.
+	// jobReadResponse contains the result of a Read query.
 	jobReadResponse struct {
 		staticData []byte
 		staticErr  error

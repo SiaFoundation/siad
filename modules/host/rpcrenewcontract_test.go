@@ -17,19 +17,19 @@ func TestAcceptRenewal(t *testing.T) {
 	t.Parallel()
 
 	// acceptable
-	err := managedAcceptRenewal(true, 0, revisionSubmissionBuffer+1)
+	err := needsRenewal(true, 0, revisionSubmissionBuffer+1)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// not accepting new contracts
-	err = managedAcceptRenewal(false, 0, revisionSubmissionBuffer+1)
+	err = needsRenewal(false, 0, revisionSubmissionBuffer+1)
 	if err == nil || !strings.Contains(err.Error(), "host is not accepting new contracts") {
 		t.Fatal(err)
 	}
 
 	// too close to submission.
-	err = managedAcceptRenewal(true, 0, revisionSubmissionBuffer)
+	err = needsRenewal(true, 0, revisionSubmissionBuffer)
 	if !errors.Contains(err, ErrLateRevision) {
 		t.Fatal(err)
 	}

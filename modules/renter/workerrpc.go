@@ -178,6 +178,7 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 	return ratelimit.NewRLStream(stream, w.renter.rl, w.renter.tg.StopChan()), nil
 }
 
+// managedRenew renews the contract with the worker's host.
 func (w *worker) managedRenew(params proto.ContractParams, txnBuilder modules.TransactionBuilder) error {
 	// create a new stream
 	stream, err := w.staticNewStream()

@@ -11,6 +11,7 @@ import (
 )
 
 type (
+	// jobRenew contains information about a Renew query.
 	jobRenew struct {
 		staticResponseChan       chan *jobRenewResponse // Channel to send a response down
 		staticTransactionBuilder modules.TransactionBuilder
@@ -19,10 +20,13 @@ type (
 		*jobGeneric
 	}
 
+	// jobReadQueue is a list of Renew queries that have been assigned to the
+	// worker.
 	jobRenewQueue struct {
 		*jobGenericQueue
 	}
 
+	// jobReadResponse contains the result of a Renew query.
 	jobRenewResponse struct {
 		staticErr error
 
@@ -92,10 +96,14 @@ func (j *jobRenew) callExecute() {
 	}
 }
 
+// callExpectedBandwidth returns the amount of bandwidth this job is expected to
+// consume.
 func (j *jobRenew) callExpectedBandwidth() (ul, dl uint64) {
 	return renewJobExpectedBandwidth()
 }
 
+// initJobRenewQueue will initialize a queue for renewing contracts with a host
+// for the worker. This is only meant to be run once at startup.
 func (w *worker) initJobRenewQueue() {
 	// Sanity check that there is no existing job queue.
 	if w.staticJobRenewQueue != nil {
@@ -108,6 +116,7 @@ func (w *worker) initJobRenewQueue() {
 	}
 }
 
+// RenewContract renews the contract with the worker's host.
 func (w *worker) RenewContract(ctx context.Context, params proto.ContractParams, txnBuilder modules.TransactionBuilder) error {
 	renewResponseChan := make(chan *jobRenewResponse)
 	params.PriceTable = &w.staticPriceTable().staticPriceTable
