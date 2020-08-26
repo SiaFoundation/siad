@@ -70,7 +70,7 @@ func TestFetchRevisionAndContract(t *testing.T) {
 	// Empty set
 	_, _, err = fetchRevisionAndContract([]types.Transaction{})
 	if err == nil {
-		t.Fatal(err)
+		t.Fatal("empty set shouldn't succeed")
 	}
 
 	// No contract.
