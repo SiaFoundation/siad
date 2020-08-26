@@ -118,10 +118,10 @@ Alternatively the source path can be omitted if the input is piped in.`,
 	}
 
 	skynetPortalsAddCmd = &cobra.Command{
-		Use:   "add [url] [public]",
+		Use:   "add [url] [flags]",
 		Short: "Add a Skynet portal as public or private to the persisted portals list.",
 		Long: `Add a Skynet portal as public or private. Specify the url of the Skynet portal followed
-by 1 for a public portal or 0 if it should be persisted as a private portal.`,
+by --public if you want it to be publicly available.`,
 		Run: wrap(skynetportalsaddcmd),
 	}
 
