@@ -126,6 +126,7 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 	}
 }
 
+// TestIsDirectory is a table test for the IsDirectory method.
 func TestIsDirectory(t *testing.T) {
 	tests := []struct {
 		name           string
