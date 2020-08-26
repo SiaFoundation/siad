@@ -362,7 +362,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		// slash we need to redirect in order to add the trailing slash.
 		// This is only true for skapps - they need it in order to properly work
 		// with relative paths.
-		if isSkapp && !strings.HasSuffix(skylinkStringNoQuery, "/") {
+		// We also don't need to redirect if this is a HEAD request or if it's a
+		// download as attachment.
+		if isSkapp && !attachment && req.Method == http.MethodGet && !strings.HasSuffix(skylinkStringNoQuery, "/") {
 			newLocation := strings.Builder{}
 			newLocation.WriteString(skylinkStringNoQuery + "/")
 			// Add back all the query parameters.
