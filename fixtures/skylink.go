@@ -3,7 +3,7 @@ package fixtures
 import (
 	"encoding/json"
 	"errors"
-	"os"
+	"io/ioutil"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
@@ -34,22 +34,12 @@ type (
 // means that we can load a relative path and each test will load its own data
 // or, at least, the data of its own directory.
 func LoadSkylinkFixture(link modules.Skylink) (SkylinkFixture, error) {
-	f, err := os.Open(skylinkFixturesPath)
-	if err != nil {
-		return SkylinkFixture{}, err
-	}
-	defer func() { _ = f.Close() }()
-	fi, err := f.Stat()
-	if err != nil {
-		return SkylinkFixture{}, err
-	}
-	b := make([]byte, fi.Size())
-	n, err := f.Read(b)
+	b, err := ioutil.ReadFile(skylinkFixturesPath)
 	if err != nil {
 		return SkylinkFixture{}, err
 	}
 	skylinkFixtures := make(map[string]SkylinkFixture)
-	err = json.Unmarshal(b[:n], &skylinkFixtures)
+	err = json.Unmarshal(b, &skylinkFixtures)
 	if err != nil {
 		return SkylinkFixture{}, err
 	}
