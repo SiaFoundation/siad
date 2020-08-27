@@ -692,6 +692,11 @@ func (h *Host) managedAddRenewedStorageObligation(oldSO, newSO storageObligation
 
 	// Check that the transaction is fully valid and submit it to the
 	// transaction pool.
+	// TODO: There is a chance that we crash here before the txn gets submitted.
+	// This will result in the obligation existing on disk and the renter not
+	// realizing that the host already updated the obligation. The only way to
+	// mitigate this is by finding a way to realize that we crashed an
+	// resubmitting the transaction set.
 	err = h.tpool.AcceptTransactionSet(newSO.OriginTransactionSet)
 	if err != nil {
 		h.mu.Lock()
@@ -708,6 +713,9 @@ func (h *Host) managedAddRenewedStorageObligation(oldSO, newSO storageObligation
 	}
 
 	// Queue the action items.
+	// TODO: When we crash here we might end up with a valid obligation and a
+	// renter using that contract but never getting remembered to actually
+	// provide a proof since we didn't register in the queue.
 	err = h.managedQueueActionItemsForNewSO(newSO)
 	if err != nil {
 		// If queueing the action items failed, but broadcasting the txn worked,
