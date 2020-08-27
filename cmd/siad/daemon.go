@@ -224,7 +224,7 @@ func startDaemon(config Config) (err error) {
 
 	// Print a 'startup complete' message.
 	startupTime := time.Since(loadStart)
-	fmt.Printf("Finished full setup in %.3f seconds\n", startupTime.Seconds())
+	fmt.Printf("Finished full setup in %s\n", startupTime.Truncate(time.Second).String())
 
 	// wait for Serve to return or for kill signal to be caught
 	err = func() error {
