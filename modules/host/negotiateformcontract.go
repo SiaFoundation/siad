@@ -181,7 +181,6 @@ func (h *Host) managedRPCFormContract(conn net.Conn) error {
 	h.mu.RUnlock()
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
-		renewal:                 false,
 		renterPK:                renterPK,
 		renterSignatures:        renterTxnSignatures,
 		renterRevisionSignature: renterRevisionSignature,

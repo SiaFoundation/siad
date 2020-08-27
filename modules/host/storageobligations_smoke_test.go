@@ -147,7 +147,7 @@ func TestBlankStorageObligation(t *testing.T) {
 		t.Fatal(err)
 	}
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
+	err = ht.host.managedAddStorageObligation(so)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +282,7 @@ func TestPruneStaleStorageObligations(t *testing.T) {
 		so.ContractCost = contractCost
 		so.LockedCollateral = lockedCollateral
 		ht.host.managedLockStorageObligation(so.id())
-		err = ht.host.managedAddStorageObligation(so, false)
+		err = ht.host.managedAddStorageObligation(so)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -327,7 +327,7 @@ func TestPruneStaleStorageObligations(t *testing.T) {
 		so.ContractCost = contractCost
 		so.LockedCollateral = lockedCollateral
 		ht.host.managedLockStorageObligation(so.id())
-		err = ht.host.managedAddStorageObligation(so, false)
+		err = ht.host.managedAddStorageObligation(so)
 		if err != transactionpool.ErrTxnSetNotAccepted {
 			t.Error("Wrong error:", err)
 		}
@@ -567,7 +567,7 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 		t.Fatal(err)
 	}
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
+	err = ht.host.managedAddStorageObligation(so)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -763,7 +763,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 		t.Fatal(err)
 	}
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
+	err = ht.host.managedAddStorageObligation(so)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1023,7 +1023,7 @@ func TestAutoRevisionSubmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
+	err = ht.host.managedAddStorageObligation(so)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1169,7 +1169,7 @@ func TestLargeContractBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	ht.host.managedLockStorageObligation(so1.id())
-	err = ht.host.managedAddStorageObligation(so1, false)
+	err = ht.host.managedAddStorageObligation(so1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1179,7 +1179,7 @@ func TestLargeContractBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	ht.host.managedLockStorageObligation(so2.id())
-	err = ht.host.managedAddStorageObligation(so2, false)
+	err = ht.host.managedAddStorageObligation(so2)
 	if err != nil {
 		t.Fatal(err)
 	}

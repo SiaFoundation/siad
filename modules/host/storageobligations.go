@@ -559,7 +559,7 @@ func (h *Host) queueActionItem(height types.BlockHeight, id types.FileContractID
 // which means that addStorageObligation should be exclusively called when
 // creating a new, empty file contract or when renewing an existing file
 // contract.
-func (h *Host) managedAddStorageObligation(so storageObligation, renewal bool) error {
+func (h *Host) managedAddStorageObligation(so storageObligation) error {
 	var soid types.FileContractID
 	err := func() error {
 		h.mu.Lock()
@@ -595,25 +595,20 @@ func (h *Host) managedAddStorageObligation(so storageObligation, renewal bool) e
 			// other conditions might cause problems. The check for duplicate file
 			// contract ids should happen during the negotiation phase, and not
 			// during the 'addStorageObligation' phase.
-			bso := tx.Bucket(bucketStorageObligations)
 
 			// If the storage obligation already has sectors, it means that the
 			// file contract is being renewed, and that the sector should be
 			// re-added with a new expiration height. If there is an error at any
 			// point, all of the sectors should be removed.
-			if len(so.SectorRoots) != 0 && !renewal {
+			if len(so.SectorRoots) != 0 {
 				err := h.AddSectorBatch(so.SectorRoots)
 				if err != nil {
 					return err
 				}
 			}
 
-			// Add the storage obligation to the database.
-			soBytes, err := json.Marshal(so)
-			if err != nil {
-				return err
-			}
-			return bso.Put(soid[:], soBytes)
+			// Store the new obligation too.
+			return putStorageObligation(tx, so)
 		})
 		if err != nil {
 			return err
@@ -621,15 +616,7 @@ func (h *Host) managedAddStorageObligation(so storageObligation, renewal bool) e
 
 		// Update the host financial metrics with regards to this storage
 		// obligation.
-		h.financialMetrics.ContractCount++
-		h.financialMetrics.PotentialContractCompensation = h.financialMetrics.PotentialContractCompensation.Add(so.ContractCost)
-		h.financialMetrics.LockedStorageCollateral = h.financialMetrics.LockedStorageCollateral.Add(so.LockedCollateral)
-		h.financialMetrics.PotentialStorageRevenue = h.financialMetrics.PotentialStorageRevenue.Add(so.PotentialStorageRevenue)
-		h.financialMetrics.PotentialAccountFunding = h.financialMetrics.PotentialAccountFunding.Add(so.PotentialAccountFunding)
-		h.financialMetrics.PotentialDownloadBandwidthRevenue = h.financialMetrics.PotentialDownloadBandwidthRevenue.Add(so.PotentialDownloadRevenue)
-		h.financialMetrics.PotentialUploadBandwidthRevenue = h.financialMetrics.PotentialUploadBandwidthRevenue.Add(so.PotentialUploadRevenue)
-		h.financialMetrics.RiskedStorageCollateral = h.financialMetrics.RiskedStorageCollateral.Add(so.RiskedCollateral)
-		h.financialMetrics.TransactionFeeExpenses = h.financialMetrics.TransactionFeeExpenses.Add(so.TransactionFeesAdded)
+		h.updateFinancialMetricsAddSO(so)
 		return nil
 	}()
 	if err != nil {
@@ -645,8 +632,98 @@ func (h *Host) managedAddStorageObligation(so storageObligation, renewal bool) e
 	}
 
 	// Queue the action items.
+	err = h.managedQueueActionItemsForNewSO(so)
+	if err != nil {
+		h.log.Println("Error with transaction set, redacting obligation, id", so.id())
+		return composeErrors(err, h.removeStorageObligation(so, obligationRejected))
+	}
+	return nil
+}
+
+// managedAddRenewedStorageObligation adds a new obligation to the host and
+// modifies the old obligation from which it was renewed from atomically.
+func (h *Host) managedAddRenewedStorageObligation(oldSO, newSO storageObligation) error {
+	// Sanity check - obligations should be under lock while being modified.
+	h.mu.Lock()
+	_, exists1 := h.lockedStorageObligations[oldSO.id()]
+	_, exists2 := h.lockedStorageObligations[newSO.id()]
+	h.mu.Unlock()
+	if !exists1 || !exists2 {
+		err := errors.New("addRenewedStorageObligation called with an obligation that is not locked")
+		h.log.Print(err)
+		return err
+	}
+
+	// Lock the host while we update storage obligation and financial metrics.
 	h.mu.Lock()
 	defer h.mu.Unlock()
+
+	// Update the database to contain the new storage obligation.
+	var err error
+	var oldSOBefore storageObligation
+	err = h.db.Update(func(tx *bolt.Tx) error {
+		// Get the old storage obligation as a reference to know how to upate
+		// the host financial stats.
+		oldSOBefore, err = h.getStorageObligation(tx, oldSO.id())
+		if err != nil {
+			return err
+		}
+
+		// Store the obligation to replace the old entry.
+		err = putStorageObligation(tx, oldSO)
+		if err != nil {
+			return err
+		}
+
+		// Store the new obligation too.
+		err = putStorageObligation(tx, newSO)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return errors.New("managedAddRenewedStorageObligation: failed to modify oldSO")
+	}
+
+	// Update the metrics.
+	h.updateFinancialMetricsUpdateSO(oldSOBefore, oldSO)
+	h.updateFinancialMetricsAddSO(newSO)
+
+	// Check that the transaction is fully valid and submit it to the
+	// transaction pool.
+	err = h.tpool.AcceptTransactionSet(newSO.OriginTransactionSet)
+	if err != nil {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		// If we can't submit the txn, we need to undo the changes to the oldSO
+		// and remove the newSO from the db.
+		err2 := h.db.Update(func(tx *bolt.Tx) error {
+			return putStorageObligation(tx, oldSOBefore)
+		})
+		h.updateFinancialMetricsUpdateSO(oldSO, oldSOBefore)
+		err3 := h.removeStorageObligation(newSO, obligationRejected)
+		h.log.Println("Failed to add storage obligation, transaction set was not accepted:", errors.Compose(err, err2, err3))
+		return err
+	}
+
+	// Queue the action items.
+	err = h.managedQueueActionItemsForNewSO(newSO)
+	if err != nil {
+		// If queueing the action items failed, but broadcasting the txn worked,
+		// we can only remove the newSO. The txn will still be mined.
+		h.log.Println("Error with transaction set, redacting obligation, id", newSO.id())
+		return composeErrors(err, h.removeStorageObligation(newSO, obligationRejected))
+	}
+	return nil
+}
+
+// managedQueueActionItemsForNewSO queues the action items for a newly created
+// storage obligation.
+func (h *Host) managedQueueActionItemsForNewSO(so storageObligation) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	soid := so.id()
 
 	// The file contract was already submitted to the blockchain, need to check
 	// after the resubmission timeout that it was submitted successfully.
@@ -660,12 +737,51 @@ func (h *Host) managedAddStorageObligation(so storageObligation, renewal bool) e
 	// The storage proof should be submitted
 	err5 := h.queueActionItem(so.expiration()+resubmissionTimeout, soid)
 	err6 := h.queueActionItem(so.expiration()+resubmissionTimeout*2, soid) // Paranoia
-	err = composeErrors(err1, err2, err3, err4, err5, err6)
-	if err != nil {
-		h.log.Println("Error with transaction set, redacting obligation, id", so.id())
-		return composeErrors(err, h.removeStorageObligation(so, obligationRejected))
-	}
-	return nil
+	return composeErrors(err1, err2, err3, err4, err5, err6)
+}
+
+// updateFinancialMetricsAddSO updates the host's financial metrics for a newly
+// added storage obligation.
+func (h *Host) updateFinancialMetricsAddSO(so storageObligation) {
+	h.financialMetrics.ContractCount++
+	h.financialMetrics.PotentialContractCompensation = h.financialMetrics.PotentialContractCompensation.Add(so.ContractCost)
+	h.financialMetrics.LockedStorageCollateral = h.financialMetrics.LockedStorageCollateral.Add(so.LockedCollateral)
+	h.financialMetrics.PotentialStorageRevenue = h.financialMetrics.PotentialStorageRevenue.Add(so.PotentialStorageRevenue)
+	h.financialMetrics.PotentialAccountFunding = h.financialMetrics.PotentialAccountFunding.Add(so.PotentialAccountFunding)
+	h.financialMetrics.PotentialDownloadBandwidthRevenue = h.financialMetrics.PotentialDownloadBandwidthRevenue.Add(so.PotentialDownloadRevenue)
+	h.financialMetrics.PotentialUploadBandwidthRevenue = h.financialMetrics.PotentialUploadBandwidthRevenue.Add(so.PotentialUploadRevenue)
+	h.financialMetrics.RiskedStorageCollateral = h.financialMetrics.RiskedStorageCollateral.Add(so.RiskedCollateral)
+	h.financialMetrics.TransactionFeeExpenses = h.financialMetrics.TransactionFeeExpenses.Add(so.TransactionFeesAdded)
+}
+
+// updateFinancialMetricsAddSO updates the host's financial metrics for a
+// modified storage obligation.
+func (h *Host) updateFinancialMetricsUpdateSO(oldSO, newSO storageObligation) {
+	// Update the financial information for the storage obligation - apply the
+	// new values.
+	h.financialMetrics.PotentialContractCompensation = h.financialMetrics.PotentialContractCompensation.Add(newSO.ContractCost)
+	h.financialMetrics.LockedStorageCollateral = h.financialMetrics.LockedStorageCollateral.Add(newSO.LockedCollateral)
+	h.financialMetrics.PotentialAccountFunding = h.financialMetrics.PotentialAccountFunding.Add(newSO.PotentialAccountFunding)
+	h.financialMetrics.PotentialStorageRevenue = h.financialMetrics.PotentialStorageRevenue.Add(newSO.PotentialStorageRevenue)
+	h.financialMetrics.PotentialDownloadBandwidthRevenue = h.financialMetrics.PotentialDownloadBandwidthRevenue.Add(newSO.PotentialDownloadRevenue)
+	h.financialMetrics.PotentialUploadBandwidthRevenue = h.financialMetrics.PotentialUploadBandwidthRevenue.Add(newSO.PotentialUploadRevenue)
+	h.financialMetrics.RiskedStorageCollateral = h.financialMetrics.RiskedStorageCollateral.Add(newSO.RiskedCollateral)
+	h.financialMetrics.TransactionFeeExpenses = h.financialMetrics.TransactionFeeExpenses.Add(newSO.TransactionFeesAdded)
+
+	// Update the financial information for the storage obligation - remove the
+	// old values.
+	h.financialMetrics.PotentialContractCompensation = h.financialMetrics.PotentialContractCompensation.Sub(oldSO.ContractCost)
+	h.financialMetrics.LockedStorageCollateral = h.financialMetrics.LockedStorageCollateral.Sub(oldSO.LockedCollateral)
+	h.financialMetrics.PotentialAccountFunding = h.financialMetrics.PotentialAccountFunding.Sub(oldSO.PotentialAccountFunding)
+	h.financialMetrics.PotentialStorageRevenue = h.financialMetrics.PotentialStorageRevenue.Sub(oldSO.PotentialStorageRevenue)
+	h.financialMetrics.PotentialDownloadBandwidthRevenue = h.financialMetrics.PotentialDownloadBandwidthRevenue.Sub(oldSO.PotentialDownloadRevenue)
+	h.financialMetrics.PotentialUploadBandwidthRevenue = h.financialMetrics.PotentialUploadBandwidthRevenue.Sub(oldSO.PotentialUploadRevenue)
+	h.financialMetrics.RiskedStorageCollateral = h.financialMetrics.RiskedStorageCollateral.Sub(oldSO.RiskedCollateral)
+	h.financialMetrics.TransactionFeeExpenses = h.financialMetrics.TransactionFeeExpenses.Sub(oldSO.TransactionFeesAdded)
+
+	// The locked storage collateral was altered, we potentially want to
+	// unregister the insufficient collateral budget alert
+	h.tryUnregisterInsufficientCollateralBudgetAlert()
 }
 
 // managedModifyStorageObligation will take an updated storage obligation along
@@ -773,32 +889,8 @@ func (h *Host) managedModifyStorageObligation(so storageObligation, sectorsRemov
 		_ = h.RemoveSector(sectorsRemoved[k])
 	}
 
-	// Update the financial information for the storage obligation - apply the
-	// new values.
-	h.financialMetrics.PotentialContractCompensation = h.financialMetrics.PotentialContractCompensation.Add(so.ContractCost)
-	h.financialMetrics.LockedStorageCollateral = h.financialMetrics.LockedStorageCollateral.Add(so.LockedCollateral)
-	h.financialMetrics.PotentialAccountFunding = h.financialMetrics.PotentialAccountFunding.Add(so.PotentialAccountFunding)
-	h.financialMetrics.PotentialStorageRevenue = h.financialMetrics.PotentialStorageRevenue.Add(so.PotentialStorageRevenue)
-	h.financialMetrics.PotentialDownloadBandwidthRevenue = h.financialMetrics.PotentialDownloadBandwidthRevenue.Add(so.PotentialDownloadRevenue)
-	h.financialMetrics.PotentialUploadBandwidthRevenue = h.financialMetrics.PotentialUploadBandwidthRevenue.Add(so.PotentialUploadRevenue)
-	h.financialMetrics.RiskedStorageCollateral = h.financialMetrics.RiskedStorageCollateral.Add(so.RiskedCollateral)
-	h.financialMetrics.TransactionFeeExpenses = h.financialMetrics.TransactionFeeExpenses.Add(so.TransactionFeesAdded)
-
-	// Update the financial information for the storage obligation - remove the
-	// old values.
-	h.financialMetrics.PotentialContractCompensation = h.financialMetrics.PotentialContractCompensation.Sub(oldSO.ContractCost)
-	h.financialMetrics.LockedStorageCollateral = h.financialMetrics.LockedStorageCollateral.Sub(oldSO.LockedCollateral)
-	h.financialMetrics.PotentialAccountFunding = h.financialMetrics.PotentialAccountFunding.Sub(oldSO.PotentialAccountFunding)
-	h.financialMetrics.PotentialStorageRevenue = h.financialMetrics.PotentialStorageRevenue.Sub(oldSO.PotentialStorageRevenue)
-	h.financialMetrics.PotentialDownloadBandwidthRevenue = h.financialMetrics.PotentialDownloadBandwidthRevenue.Sub(oldSO.PotentialDownloadRevenue)
-	h.financialMetrics.PotentialUploadBandwidthRevenue = h.financialMetrics.PotentialUploadBandwidthRevenue.Sub(oldSO.PotentialUploadRevenue)
-	h.financialMetrics.RiskedStorageCollateral = h.financialMetrics.RiskedStorageCollateral.Sub(oldSO.RiskedCollateral)
-	h.financialMetrics.TransactionFeeExpenses = h.financialMetrics.TransactionFeeExpenses.Sub(oldSO.TransactionFeesAdded)
-
-	// The locked storage collateral was altered, we potentially want to
-	// unregister the insufficient collateral budget alert
-	h.tryUnregisterInsufficientCollateralBudgetAlert()
-
+	// Update the financial information for the storage obligation
+	h.updateFinancialMetricsUpdateSO(oldSO, so)
 	return nil
 }
 
