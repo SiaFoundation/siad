@@ -32,9 +32,10 @@ type SkyfileMetadata struct {
 	Subfiles SkyfileSubfiles `json:"subfiles,omitempty"`
 
 	// DefaultPath indicates what content to serve if the user has not specified
-	// a path, and the user is not trying to download the Skylink as an archive.
-	// It defaults to 'index.html' on upload if not specified and if a file with
-	// that name is present in the upload.
+	// a path and the user is not trying to download the Skylink as an archive.
+	// If left empty, it will be interpreted as "index.html" on download, if the
+	// skyfile contains such a file, or the only file in the skyfile, if the
+	// skyfile contains a single file.
 	DefaultPath string `json:"defaultpath,omitempty"`
 	// DisableDefaultPath prevents the usage of DefaultPath. As a result no
 	// content will be automatically served for the skyfile.
