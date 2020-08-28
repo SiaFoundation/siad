@@ -170,6 +170,12 @@ type (
 		enabled bool
 		mu      sync.Mutex
 	}
+
+	// DependencyResolveSkylinkToFixture will disable downloading skylinks and
+	// will replace it with fetching from a set of predefined fixtures.
+	DependencyResolveSkylinkToFixture struct {
+		modules.ProductionDependencies
+	}
 )
 
 // NewDependencyCorruptMDMOutput returns a dependency that can be used to
@@ -556,6 +562,11 @@ func (d *DependencyDefaultRenewSettings) Disable() {
 	d.mu.Lock()
 	d.enabled = false
 	d.mu.Unlock()
+}
+
+// Disrupt causes skylink data to be loaded from fixtures instead of downloaded.
+func (d *DependencyResolveSkylinkToFixture) Disrupt(s string) bool {
+	return s == "resolveSkylinkToFixture"
 }
 
 // DependencyWithDisableAndEnable adds the ability to disable the dependency
