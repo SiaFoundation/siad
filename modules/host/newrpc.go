@@ -1006,6 +1006,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 		return extendErr("failed to compute contract collateral: ", err)
 	}
 	// Clear the old storage obligation.
+	oldRoots := s.so.SectorRoots
 	s.so.SectorRoots = []crypto.Hash{}
 	s.so.RevisionTransactionSet = []types.Transaction{finalRevTxn}
 	// Finalize the contract. This creates a new SO and saves the old one atomically.
@@ -1015,7 +1016,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 		renterPK:                renterPK,
 		renterSignatures:        renterSigs.ContractSignatures,
 		renterRevisionSignature: renterSigs.RevisionSignature,
-		initialSectorRoots:      s.so.SectorRoots,
+		initialSectorRoots:      oldRoots,
 		hostCollateral:          renewCollateral,
 		hostInitialRevenue:      renewRevenue,
 		hostInitialRisk:         renewRisk,
