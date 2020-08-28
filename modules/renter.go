@@ -291,6 +291,11 @@ func (a Allowance) Active() bool {
 	return a.Period != 0
 }
 
+// PortalMode returns true if the renter is supposed to act as a portal.
+func (a Allowance) PortalMode() bool {
+	return !a.PaymentContractInitialFunding.IsZero()
+}
+
 // ContractUtility contains metrics internal to the contractor that reflect the
 // utility of a given contract.
 type ContractUtility struct {
