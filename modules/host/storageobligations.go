@@ -656,7 +656,6 @@ func (h *Host) managedAddRenewedStorageObligation(oldSO, newSO storageObligation
 
 	// Lock the host while we update storage obligation and financial metrics.
 	h.mu.Lock()
-	defer h.mu.Unlock()
 
 	// Update the database to contain the new storage obligation.
 	var err error
@@ -683,12 +682,14 @@ func (h *Host) managedAddRenewedStorageObligation(oldSO, newSO storageObligation
 		return nil
 	})
 	if err != nil {
+		h.mu.Unlock()
 		return errors.New("managedAddRenewedStorageObligation: failed to modify oldSO")
 	}
 
 	// Update the metrics.
 	h.updateFinancialMetricsUpdateSO(oldSOBefore, oldSO)
 	h.updateFinancialMetricsAddSO(newSO)
+	h.mu.Unlock()
 
 	// Check that the transaction is fully valid and submit it to the
 	// transaction pool.
