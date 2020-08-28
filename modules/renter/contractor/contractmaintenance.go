@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/big"
 	"reflect"
+	"sort"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -474,6 +475,67 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 	for _, host := range badHosts {
 		if err := c.managedCancelContract(cids[host.String()]); err != nil {
 			c.log.Print("WARNING: Wasn't able to cancel contract in managedPrunedRedundantAddressRange", err)
+		}
+	}
+}
+
+// managedLimitGFUHosts caps the number of GFU hosts for non-portals to
+// allowance.Hosts.
+func (c *Contractor) managedLimitGFUHosts() {
+	c.mu.Lock()
+	portalMode := c.allowance.PortalMode()
+	wantedHosts := c.allowance.Hosts
+	c.mu.Unlock()
+	if portalMode {
+		// Nothing to do for portal.
+		return
+	}
+	// Get all GFU contracts and their score.
+	type gfuContract struct {
+		c     modules.RenterContract
+		score types.Currency
+	}
+	var gfuContracts []gfuContract
+	for _, contract := range c.Contracts() {
+		if !contract.Utility.GoodForUpload {
+			continue
+		}
+		host, ok, err := c.hdb.Host(contract.HostPublicKey)
+		if !ok || err != nil {
+			build.Critical("managedLimitGFUHosts was run after updating contract utility but found contract without host in hostdb that's GFU")
+			continue
+		}
+		score, err := c.hdb.ScoreBreakdown(host)
+		if err != nil {
+			c.log.Print("managedLimitGFUHosts: failed to get score breakdown for GFU host")
+			continue
+		}
+		gfuContracts = append(gfuContracts, gfuContract{
+			c:     contract,
+			score: score.Score,
+		})
+	}
+	// Sort gfuContracts by score.
+	sort.Slice(gfuContracts, func(i, j int) bool {
+		return gfuContracts[i].score.Cmp(gfuContracts[j].score) < 0
+	})
+	// Mark them bad for upload until we are below the expected number of hosts.
+	var contract gfuContract
+	for uint64(len(gfuContracts)) > wantedHosts {
+		contract, gfuContracts = gfuContracts[0], gfuContracts[1:]
+		sc, ok := c.staticContracts.Acquire(contract.c.ID)
+		if !ok {
+			c.log.Print("managedLimitGFUHosts: failed to acquire GFU contract")
+			continue
+		}
+		u := sc.Utility()
+		u.GoodForUpload = false
+		err := c.managedUpdateContractUtility(sc, u)
+		c.staticContracts.Return(sc)
+		if err != nil {
+			c.log.Print("managedLimitGFUHosts: failed to update GFU contract utility")
+			c.staticContracts.Return(sc)
+			continue
 		}
 	}
 }
@@ -977,6 +1039,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		c.log.Println("Unable to update hostdb contracts:", err)
 		return
 	}
+	c.managedLimitGFUHosts()
 
 	// If there are no hosts requested by the allowance, there is no remaining
 	// work.

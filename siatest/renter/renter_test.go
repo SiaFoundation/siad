@@ -5126,3 +5126,84 @@ func TestRenterPricesVolatility(t *testing.T) {
 		t.Fatal("expected renter price estimation to be constant")
 	}
 }
+
+// TestRenterPricesVolatility verifies that the renter caches its price
+// estimation, and subsequent calls result in non-volatile results.
+func TestRenterLimitGFUContracts(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a testgroup with PriceEstimationScope hosts.
+	groupParams := siatest.GroupParams{
+		Miners:  1,
+		Hosts:   int(siatest.DefaultAllowance.Hosts),
+		Renters: 1,
+	}
+
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer tg.Close()
+
+	renter := tg.Renters()[0]
+
+	// Helper to check the number of GFU contracts.
+	test := func(hosts uint64, portalMode bool) error {
+		// Update the allowance.
+		allowance := siatest.DefaultAllowance
+		allowance.Hosts = hosts
+		if portalMode {
+			allowance.PaymentContractInitialFunding = types.SiacoinPrecision
+		}
+		err := renter.RenterPostAllowance(allowance)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Wait for the number of hosts to match allowance.
+		retries := 0
+		return build.Retry(100, 100*time.Millisecond, func() error {
+			if retries%10 == 0 {
+				err := tg.Miners()[0].MineBlock()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			retries++
+
+			rcg, err := renter.RenterAllContractsGet()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			gfuContracts := uint64(0)
+			for _, contract := range rcg.ActiveContracts {
+				if contract.GoodForUpload {
+					gfuContracts++
+				}
+			}
+			if gfuContracts != hosts && !portalMode {
+				return fmt.Errorf("expected %v contracts but got %v", hosts, gfuContracts)
+			} else if gfuContracts != uint64(len(tg.Hosts())) && portalMode {
+				return fmt.Errorf("expected %v contracts but got %v", hosts, gfuContracts)
+			}
+			return nil
+		})
+	}
+
+	// Run for default allowance and then one less every time until we reach 0
+	// hosts.
+	for hosts := siatest.DefaultAllowance.Hosts; hosts > 0; hosts-- {
+		if err := test(hosts, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Run for portal.
+	if err := test(1, true); err != nil {
+		t.Fatal(err)
+	}
+}

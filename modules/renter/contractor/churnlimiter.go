@@ -1,7 +1,6 @@
 package contractor
 
 import (
-	"math"
 	"sort"
 	"sync"
 
@@ -144,15 +143,7 @@ func (cl *churnLimiter) managedProcessSuggestedUpdates(queue []contractScoreAndU
 		return queue[i].score.Cmp(queue[j].score) < 0
 	})
 
-	// Check how many GFU contracts we want. A Portal doesn't have a limit.
-	allowance := cl.contractor.Allowance()
-	wantedGFUHosts := allowance.Hosts
-	if allowance.PortalMode() {
-		wantedGFUHosts = math.MaxUint64
-	}
-
 	var queuedContract contractScoreAndUtil
-	var gfuHosts uint64
 	for len(queue) > 0 {
 		queuedContract, queue = queue[0], queue[1:]
 
@@ -170,15 +161,6 @@ func (cl *churnLimiter) managedProcessSuggestedUpdates(queue []contractScoreAndU
 
 		if churningThisContract {
 			cl.contractor.log.Println("Churning contract for bad score: ", queuedContract.contract.ID, queuedContract.score)
-		}
-
-		// Limite gfuHosts to wantedGFUHosts
-		if gfuHosts > wantedGFUHosts {
-			cl.contractor.log.Debugf("Marking contract as !gfu cause gfu limit is reached %v > %v: ", gfuHosts, wantedGFUHosts)
-			queuedContract.util.GoodForUpload = false
-		}
-		if queuedContract.util.GoodForUpload && !churningThisContract {
-			gfuHosts++
 		}
 
 		// Apply changes.
