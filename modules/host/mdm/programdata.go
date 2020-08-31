@@ -24,9 +24,6 @@ type programData struct {
 	// the reader. Less data will be considered an unexpected EOF.
 	staticLength uint64
 
-	// r is the reader used to fetch more data.
-	r io.Reader
-
 	// readErr contains the first error encountered by threadedFetchData.
 	readErr error
 
@@ -53,13 +50,12 @@ type dataRequest struct {
 func openProgramData(r io.Reader, dataLength uint64) *programData {
 	pd := &programData{
 		cancel:       make(chan struct{}),
-		r:            r,
 		staticLength: dataLength,
 	}
 	pd.wg.Add(1)
 	go func() {
 		defer pd.wg.Done()
-		pd.threadedFetchData()
+		pd.threadedFetchData(r)
 	}()
 	return pd
 }
@@ -67,7 +63,7 @@ func openProgramData(r io.Reader, dataLength uint64) *programData {
 // threadedFetchData fetches the program's data from the underlying reader of
 // the ProgramData. It will read from the reader until io.EOF is reached or
 // until the maximum number of packets are read.
-func (pd *programData) threadedFetchData() {
+func (pd *programData) threadedFetchData(r io.Reader) {
 	var packet [1024]byte // 1kib
 	remainingData := int64(pd.staticLength)
 	quit := func(err error) {
@@ -95,9 +91,7 @@ func (pd *programData) threadedFetchData() {
 		if remainingData <= int64(cap(d)) {
 			d = d[:remainingData]
 		}
-		pd.mu.Lock()
-		n, err := pd.r.Read(d)
-		pd.mu.Unlock()
+		n, err := r.Read(d)
 		if err != nil {
 			quit(err)
 			return
