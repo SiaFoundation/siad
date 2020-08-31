@@ -723,7 +723,7 @@ func (n *DirNode) readonlyOpenFile(fileName string) (*FileNode, error) {
 		return nil, ErrNotExist
 	}
 	if err != nil {
-		return nil, errors.AddContext(err, "failed to load SiaFile from disk")
+		return nil, errors.AddContext(err, fmt.Sprintf("failed to load SiaFile '%v' from disk", filePath))
 	}
 	fn = &FileNode{
 		node:    newNode(n, filePath, fileName, 0, n.staticWal, n.staticLog),
