@@ -36,6 +36,21 @@ func (c *Client) DaemonSettingsGet() (dsg api.DaemonSettingsGet, err error) {
 	return
 }
 
+// DaemonStartProfilePost requests the /daemon/startprofile api resource.
+func (c *Client) DaemonStartProfilePost(profileFlags, profileDir string) (err error) {
+	values := url.Values{}
+	values.Set("profileFlags", profileFlags)
+	values.Set("profileDir", profileDir)
+	err = c.post("/daemon/startprofile", values.Encode(), nil)
+	return
+}
+
+// DaemonStopProfileGet requests the /daemon/stopprofile api resource.
+func (c *Client) DaemonStopProfileGet() (err error) {
+	err = c.get("/daemon/stopprofile", nil)
+	return
+}
+
 // DaemonStackGet requests the /daemon/stack api resource.
 func (c *Client) DaemonStackGet() (dsg api.DaemonStackGet, err error) {
 	err = c.get("/daemon/stack", &dsg)
