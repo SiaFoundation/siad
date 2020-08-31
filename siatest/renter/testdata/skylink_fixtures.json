@@ -49,8 +49,8 @@
       "subfiles": {
         "filename.txt": {
           "mode": 420,
-          "filename": "filename.txt",
-          "contenttype": "text/plain",
+          "filename": "filename.html",
+          "contenttype": "text/html",
           "len": 38
         },
         "dir/file.txt": {
@@ -60,8 +60,30 @@
           "len": 38
         }
       },
-      "defaultpath": "/dir/file.txt",
-      "disabledefaultpath": true
+      "defaultpath": "/dir/file.txt"
     }
+  },
+  "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA": {
+    "metadata": {
+      "filename": "filename",
+      "length": 76,
+      "mode": 420,
+      "subfiles": {
+        "filename.txt": {
+          "mode": 420,
+          "filename": "filename.html",
+          "contenttype": "text/html",
+          "len": 38
+        },
+        "file.html": {
+          "mode": 420,
+          "filename": "file.html",
+          "contenttype": "text/html",
+          "len": 38
+        }
+      },
+      "defaultpath": "/file.html"
+    },
+    "content": "SGVsbG8sIHRoaXMgaXMgc29tZSBub3Qgc28gcmFuZG9tIHRleHQ="
   }
 }
