@@ -75,8 +75,8 @@ func (n *DirNode) Delete() error {
 // Deleted is a wrapper for SiaDir.Deleted.
 func (n *DirNode) Deleted() (bool, error) {
 	n.mu.Lock()
-	defer n.mu.Unlock()
 	sd, err := n.siaDir()
+	n.mu.Unlock()
 	if err != nil {
 		return false, err
 	}
