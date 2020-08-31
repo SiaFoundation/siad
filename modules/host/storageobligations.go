@@ -625,6 +625,11 @@ func (h *Host) managedAddStorageObligation(so storageObligation) error {
 
 	// Check that the transaction is fully valid and submit it to the
 	// transaction pool.
+	// TODO: There is a chance that we crash here before the txn gets submitted.
+	// This will result in the obligation existing on disk and the renter not
+	// realizing that the host already updated the obligation. The only way to
+	// mitigate this is by finding a way to realize that we crashed an
+	// resubmitting the transaction set.
 	err = h.tpool.AcceptTransactionSet(so.OriginTransactionSet)
 	if err != nil {
 		h.log.Println("Failed to add storage obligation, transaction set was not accepted:", err)
