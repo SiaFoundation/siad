@@ -30,6 +30,8 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	hpk := h.publicKey
 	hsk := h.secretKey
 	is := h.settings
+	// TODO: get rid of the external settings here. Instead add the
+	// contractPrice to the agreed upon price table.
 	es := h.externalSettings(maxFee)
 	lockedCollateral := h.financialMetrics.LockedStorageCollateral
 	h.mu.RUnlock()
