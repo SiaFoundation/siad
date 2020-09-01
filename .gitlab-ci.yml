@@ -37,6 +37,7 @@ variables:
     ./modules/miner
     ./modules/wallet
     ./modules/transactionpool
+    ./profile
     ./persist
     ./sync
     ./skykey

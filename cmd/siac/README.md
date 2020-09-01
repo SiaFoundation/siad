@@ -52,6 +52,12 @@ Full Descriptions
 
 ### Daemon tasks
 
+* `siac profile` performs actions related to the profiles for the daemon.
+
+* `siac profile start` starts a profile for the daemon.
+
+* `siac profile stop` stops a profile for the daemon.
+
 * `siac stack` writes the current stack trace to an output file.
 
 * `siac stop` sends the stop signal to siad to safely terminate. This has the
