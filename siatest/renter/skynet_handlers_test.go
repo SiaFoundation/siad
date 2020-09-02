@@ -2,6 +2,7 @@ package renter
 
 import (
 	"net/http"
+	"regexp"
 	"testing"
 
 	"os"
@@ -53,11 +54,11 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 	r := nodes[0]
 	defer func() { _ = tg.RemoveNode(r) }()
 
-	redirectErrStr := "Redirect"
 	subTests := []struct {
-		Name          string
-		Skylink       string
-		ExpectedError string
+		Name             string
+		Skylink          string
+		ExpectedError    string
+		ExpectedRedirect string
 	}{
 		{
 			// ValidSkyfile is the happy path, ensuring that we don't get errors
@@ -91,9 +92,10 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 			// DetectRedirect ensures that if the skylink doesn't have a
 			// trailing slash and has a default path that results in an HTML
 			// file we redirect to the same skylink with a trailing slash.
-			Name:          "DetectRedirect",
-			Skylink:       "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA",
-			ExpectedError: redirectErrStr,
+			Name:             "DetectRedirect",
+			Skylink:          "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA?foo=bar",
+			ExpectedError:    "Redirect",
+			ExpectedRedirect: "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/?foo=bar",
 		},
 		{
 			// EnsureNoRedirect ensures that there is no redirect if the skylink
@@ -107,8 +109,9 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 
 	r = tg.Renters()[0]
 	r.Client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		return errors.New(redirectErrStr)
+		return errors.New("Redirect:###" + req.URL.String() + "###")
 	}
+	re := regexp.MustCompile(`Redirect:###(.*)###`)
 	// Run the tests.
 	for _, test := range subTests {
 		_, _, err := r.SkynetSkylinkGet(test.Skylink)
@@ -117,6 +120,19 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 		}
 		if err != nil && (test.ExpectedError == "" || !strings.Contains(err.Error(), test.ExpectedError)) {
 			t.Fatalf("%s failed: expected error '%s', got '%+v'\n", test.Name, test.ExpectedError, err)
+		}
+		// Add a specific check for the redirect URL.
+		if err != nil && test.ExpectedError == "Redirect" {
+			matches := re.FindStringSubmatch(err.Error())
+			if len(matches) < 2 {
+				t.Fatalf("%s failed: redirect string not found. Error str: %s\n", test.Name, err.Error())
+			}
+			// We are using HasSuffix instead of a direct match because the URL
+			// to which we get redirected will have some mock server prefix
+			// similar to `http://[::]:51866/skynet/skylink/`.
+			if !strings.HasSuffix(matches[1], test.ExpectedRedirect) {
+				t.Fatalf("%s failed: expected redirect '%s', got '%s'\n", test.Name, test.ExpectedRedirect, matches[1])
+			}
 		}
 	}
 }
