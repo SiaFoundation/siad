@@ -362,8 +362,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		// We also don't need to redirect if this is a HEAD request or if it's a
 		// download as attachment.
 		if isSkapp && !attachment && req.Method == http.MethodGet && !strings.HasSuffix(skylinkStringNoQuery, "/") {
-			query := strings.TrimSuffix(req.URL.RawQuery, "?")
-			w.Header().Set("Location", skylinkStringNoQuery+"/?"+query)
+			w.Header().Set("Location", skylinkStringNoQuery+"/?"+req.URL.RawQuery)
 			w.WriteHeader(http.StatusTemporaryRedirect)
 			return
 		}
