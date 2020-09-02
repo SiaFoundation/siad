@@ -11,26 +11,26 @@ set -e
 
 # Build binaries and sign them.
 for arch in amd64 arm64; do
-	for os in darwin linux windows freebsd; do
-	  echo Building ${os}/${arch}...
-	        for pkg in siac siad; do
-			# Ignore unsupported arch/os combinations.
-			if [ "$arch" == "arm64" ]; then
-				if [ "$os" == "windows" ] || [ "$os" == "darwin" ] || [ "$os" == "freebsd" ]; then
-					continue
-				fi
-			fi
+  for os in darwin linux windows freebsd; do
+    echo Building ${os}/${arch}...
+    for pkg in siac siad; do
+      # Ignore unsupported arch/os combinations.
+      if [ "$arch" == "arm64" ]; then
+        if [ "$os" == "windows" ] || [ "$os" == "darwin" ] || [ "$os" == "freebsd" ]; then
+          continue
+        fi
+      fi
 
-			# Binaries are called 'siac' and i'siad'.
-	                bin=$pkg
+      # Binaries are called 'siac' and 'siad'.
+      bin=$pkg
 
-			# Different naming convention for windows.
-	                if [ "$os" == "windows" ]; then
-	                        bin=${pkg}.exe
-	                fi
+      # Different naming convention for windows.
+      if [ "$os" == "windows" ]; then
+        bin=${pkg}.exe
+      fi
 
-			# Build binary.
-	                GOOS=${os} GOARCH=${arch} go build -tags='netgo' -o artifacts/$arch/$os/$bin ./cmd/$pkg
-	        done
-	done
+      # Build binary.
+      GOOS=${os} GOARCH=${arch} go build -tags='netgo' -o artifacts/$arch/$os/$bin ./cmd/$pkg
+    done
+  done
 done
