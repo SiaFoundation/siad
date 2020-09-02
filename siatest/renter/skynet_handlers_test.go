@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"net/http"
 	"testing"
 
 	"os"
@@ -11,6 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestSkynetSkylinkHandlerGET tests the behaviour of SkynetSkylinkHandlerGET
@@ -51,6 +53,7 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 	r := nodes[0]
 	defer func() { _ = tg.RemoveNode(r) }()
 
+	redirectErrStr := "Redirect"
 	subTests := []struct {
 		Name          string
 		Skylink       string
@@ -79,16 +82,35 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 		},
 		{
 			// NonRootDefaultPath ensures that we return an error if a file has
-			// both defaultPath and disableDefaultPath set.
+			// a non-root defaultPath.
 			Name:          "NonRootDefaultPath",
 			Skylink:       "4BBcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA",
-			ExpectedError: "both defaultpath and disabledefaultpath are set",
+			ExpectedError: "which refers to a non-root file",
+		},
+		{
+			// DetectRedirect ensures that if the skylink doesn't have a
+			// trailing slash and has a default path that results in an HTML
+			// file we redirect to the same skylink with a trailing slash.
+			Name:          "DetectRedirect",
+			Skylink:       "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA",
+			ExpectedError: redirectErrStr,
+		},
+		{
+			// EnsureNoRedirect ensures that there is no redirect if the skylink
+			// has a trailing slash.
+			// This is the happy case for DetectRedirect.
+			Name:          "EnsureNoRedirect",
+			Skylink:       "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/",
+			ExpectedError: "",
 		},
 	}
 
+	r = tg.Renters()[0]
+	r.Client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return errors.New(redirectErrStr)
+	}
 	// Run the tests.
 	for _, test := range subTests {
-		r := tg.Renters()[0]
 		_, _, err := r.SkynetSkylinkGet(test.Skylink)
 		if err == nil && test.ExpectedError != "" {
 			t.Fatalf("%s failed: %+v\n", test.Name, err)
