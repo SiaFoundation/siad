@@ -109,9 +109,9 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 
 	r = tg.Renters()[0]
 	r.Client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		return errors.New("Redirect:[" + req.URL.String() + "]")
+		return errors.New("Redirect:###" + req.URL.String() + "###")
 	}
-	re := regexp.MustCompile(`Redirect:\[(.*)\]\]`)
+	re := regexp.MustCompile(`Redirect:###(.*)###`)
 	// Run the tests.
 	for _, test := range subTests {
 		_, _, err := r.SkynetSkylinkGet(test.Skylink)
