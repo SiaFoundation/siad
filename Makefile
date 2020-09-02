@@ -74,9 +74,9 @@ pkgs = \
 	./skykey \
 	./sync \
 	./types \
-	./types/typesutil
+	./types/typesutil \
 
-# release-pkgs determine which packages are built for release and distrubtion
+# release-pkgs determine which packages are built for release and distribution
 # when running a 'make release' command.
 release-pkgs = ./cmd/siac ./cmd/siad
 
@@ -98,7 +98,7 @@ lockcheckpkgs = \
 	./modules/renter/skynetblacklist \
 	./skykey \
 	./types \
-	./types/typesutil 
+	./types/typesutil \
 
 # run determines which tests run when running any variation of 'make test'.
 run = .
@@ -222,7 +222,7 @@ cover: clean
 	@mkdir -p cover
 	@for package in $(pkgs); do                                                                                                                                 \
 		mkdir -p `dirname cover/$$package`                                                                                                                      \
-		&& go test -tags='testing debug netgo' -timeout=500s -covermode=atomic -coverprofile=cover/$$package.out ./$$package -run=$(run) || true \
+		&& go test -tags='testing debug netgo' -timeout=500s -covermode=atomic -coverprofile=cover/$$package.out ./$$package -run=$(run) || true 				\
 		&& go tool cover -html=cover/$$package.out -o=cover/$$package.html ;                                                                                    \
 	done
 
@@ -246,7 +246,7 @@ fullcover: clean
 	@echo "mode: atomic" >> fullcover/fullcover.out
 	@for package in $(pkgs); do                                                                                                                                                             \
 		mkdir -p `dirname fullcover/tests/$$package`                                                                                                                                        \
-		&& go test -tags='testing debug netgo' -timeout=500s -covermode=atomic -coverprofile=fullcover/tests/$$package.out -coverpkg $(cpkg) ./$$package -run=$(run) || true \
+		&& go test -tags='testing debug netgo' -timeout=500s -covermode=atomic -coverprofile=fullcover/tests/$$package.out -coverpkg $(cpkg) ./$$package -run=$(run) || true 				\
 		&& go tool cover -html=fullcover/tests/$$package.out -o=fullcover/tests/$$package.html                                                                                              \
 		&& tail -n +2 fullcover/tests/$$package.out >> fullcover/fullcover.out ;                                                                                                            \
 	done
