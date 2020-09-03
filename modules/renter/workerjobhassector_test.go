@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -28,10 +29,10 @@ func TestHasSectorCallExecuteCancelledJob(t *testing.T) {
 	}()
 
 	// Create a cancelled job.
-	cancel := make(chan struct{})
-	close(cancel)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 	responseChan := make(chan *jobHasSectorResponse)
-	jhs := wt.worker.newJobHasSector(cancel, responseChan, crypto.Hash{})
+	jhs := wt.worker.newJobHasSector(ctx, responseChan, crypto.Hash{})
 
 	// Add the job to the queue.
 	if !wt.worker.staticJobHasSectorQueue.callAdd(jhs) {

@@ -2,6 +2,7 @@ package renter
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"time"
 
@@ -37,7 +38,7 @@ type programResponse struct {
 }
 
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
-func (w *worker) managedExecuteProgram(cancel <-chan struct{}, p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
+func (w *worker) managedExecuteProgram(ctx context.Context, p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
 	// check host version
 	cache := w.staticCache()
 	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
@@ -71,7 +72,7 @@ func (w *worker) managedExecuteProgram(cancel <-chan struct{}, p modules.Program
 		select {
 		case <-done:
 			return
-		case <-cancel:
+		case <-ctx.Done():
 			_ = stream.Close()
 		}
 	}()

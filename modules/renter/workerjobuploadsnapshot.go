@@ -104,7 +104,7 @@ func (j *jobUploadSnapshot) callDiscard(err error) {
 	w.renter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- resp:
-		case <-j.staticCancelChan:
+		case <-j.staticCtx.Done():
 		case <-w.renter.tg.StopChan():
 		}
 	})
@@ -124,7 +124,7 @@ func (j *jobUploadSnapshot) callExecute() {
 		w.renter.tg.Launch(func() {
 			select {
 			case j.staticResponseChan <- resp:
-			case <-j.staticCancelChan:
+			case <-j.staticCtx.Done():
 			case <-w.renter.tg.StopChan():
 			}
 		})
@@ -297,7 +297,7 @@ func (w *worker) UploadSnapshot(ctx context.Context, meta modules.UploadedBackup
 		staticSiaFileData:  dotSia,
 		staticResponseChan: uploadSnapshotRespChan,
 
-		jobGeneric: newJobGeneric(w.staticJobUploadSnapshotQueue, ctx.Done()),
+		jobGeneric: newJobGeneric(ctx, w.staticJobUploadSnapshotQueue),
 	}
 
 	// Add the job to the queue.

@@ -2,6 +2,7 @@ package renter
 
 import (
 	"bytes"
+	"context"
 	"testing"
 	"time"
 
@@ -76,9 +77,9 @@ func TestWorkerMaintenanceCoolDown(t *testing.T) {
 	}
 
 	// run a couple of has sector jobs to spend money
-	cc := make(chan struct{})
+	ctx := context.Background()
 	rc := make(chan *jobHasSectorResponse)
-	jhs := w.newJobHasSector(cc, rc, crypto.Hash{})
+	jhs := w.newJobHasSector(ctx, rc, crypto.Hash{})
 	for i := 0; i < 100; i++ {
 		if !w.staticJobHasSectorQueue.callAdd(jhs) {
 			t.Fatal("could not add job to queue")

@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"io"
 	"testing"
 	"time"
@@ -70,7 +71,7 @@ func testExecuteProgramUsedBandwidthHasSector(t *testing.T, wt *workerTester) {
 	cost = cost.Add(bandwidthCost)
 
 	// execute it
-	_, limit, err := w.managedExecuteProgram(make(chan struct{}), p, data, types.FileContractID{}, cost)
+	_, limit, err := w.managedExecuteProgram(context.Background(), p, data, types.FileContractID{}, cost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +114,7 @@ func testExecuteProgramUsedBandwidthReadSector(t *testing.T, wt *workerTester) {
 	cost = cost.Add(bandwidthCost)
 
 	// execute it
-	_, limit, err := w.managedExecuteProgram(make(chan struct{}), p, data, types.FileContractID{}, cost)
+	_, limit, err := w.managedExecuteProgram(context.Background(), p, data, types.FileContractID{}, cost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,12 +169,9 @@ func TestCancelMDMProgram(t *testing.T) {
 	hostDeps.Enable()
 
 	// execute it but cancel it after 1 second.
-	c := make(chan struct{})
-	go func() {
-		<-time.After(time.Second)
-		close(c)
-	}()
-	_, _, err = wt.worker.managedExecuteProgram(c, p, data, types.FileContractID{}, cost)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_, _, err = wt.worker.managedExecuteProgram(ctx, p, data, types.FileContractID{}, cost)
 	if !errors.Contains(err, io.ErrClosedPipe) {
 		t.Fatal(err)
 	}

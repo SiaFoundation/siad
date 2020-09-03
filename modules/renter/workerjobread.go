@@ -65,7 +65,7 @@ func (j *jobRead) callDiscard(err error) {
 		select {
 		case j.staticResponseChan <- response:
 		case <-w.renter.tg.StopChan():
-		case <-j.staticCancelChan:
+		case <-j.staticCtx.Done():
 		}
 	})
 }
@@ -86,7 +86,7 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 	w.renter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- response:
-		case <-j.staticCancelChan:
+		case <-j.staticCtx.Done():
 		case <-w.renter.tg.StopChan():
 		}
 	})
@@ -141,7 +141,7 @@ func (j *jobRead) callExpectedBandwidth() (ul, dl uint64) {
 // proof.
 func (j *jobRead) managedRead(w *worker, program modules.Program, programData []byte, cost types.Currency) ([]programResponse, error) {
 	// execute it
-	responses, _, err := w.managedExecuteProgram(j.staticCancelChan, program, programData, w.staticCache().staticContractID, cost)
+	responses, _, err := w.managedExecuteProgram(j.staticCtx, program, programData, w.staticCache().staticContractID, cost)
 	if err != nil {
 		return []programResponse{}, err
 	}

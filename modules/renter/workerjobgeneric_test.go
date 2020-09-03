@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"golang.org/x/net/context"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -53,7 +54,7 @@ func (j *jobTest) sendResult(result *jobTestResult) {
 		select {
 		case j.resultChan <- result:
 		case <-w.renter.tg.StopChan():
-		case <-j.staticCancelChan:
+		case <-j.staticCtx.Done():
 		}
 	})
 }
@@ -118,13 +119,13 @@ func TestWorkerJobGeneric(t *testing.T) {
 	w := new(worker)
 	w.renter = new(Renter)
 	jq := newJobGenericQueue(w)
-	cancelChan := make(chan struct{})
+	cancelCtx, cancel := context.WithCancel(context.Background())
 
 	// Create a job, add the job to the queue, and then ensure that the
 	// cancelation is working correctly.
 	resultChan := make(chan *jobTestResult, 1)
 	j := &jobTest{
-		jobGeneric: newJobGeneric(jq, cancelChan),
+		jobGeneric: newJobGeneric(cancelCtx, jq),
 
 		resultChan: resultChan,
 	}
@@ -134,7 +135,7 @@ func TestWorkerJobGeneric(t *testing.T) {
 	if !jq.callAdd(j) {
 		t.Fatal("call to add job to new job queue should succeed")
 	}
-	close(cancelChan)
+	cancel()
 	job := jq.callNext()
 	if job != nil {
 		t.Error("queue should not be returning canceled jobs")
@@ -162,10 +163,10 @@ func TestWorkerJobGeneric(t *testing.T) {
 
 	// Create two new jobs, add them to the queue, and then simulate the work
 	// loop executing the jobs.
-	cancelChan = make(chan struct{})
+	cancelCtx, cancel = context.WithCancel(context.Background())
 	resultChan = make(chan *jobTestResult, 1)
 	j = &jobTest{
-		jobGeneric: newJobGeneric(jq, cancelChan),
+		jobGeneric: newJobGeneric(cancelCtx, jq),
 
 		resultChan: resultChan,
 	}
@@ -174,10 +175,10 @@ func TestWorkerJobGeneric(t *testing.T) {
 	}
 	// Add a second job to the queue to check that the queue function is working
 	// correctly.
-	cancelChan2 := make(chan struct{})
+	cancelCtx2, _ := context.WithCancel(context.Background())
 	resultChan2 := make(chan *jobTestResult, 1)
 	j2 := &jobTest{
-		jobGeneric: newJobGeneric(jq, cancelChan2),
+		jobGeneric: newJobGeneric(cancelCtx2, jq),
 
 		resultChan: resultChan2,
 	}
@@ -233,10 +234,10 @@ func TestWorkerJobGeneric(t *testing.T) {
 	// Create several jobs and add them to the queue. Have the first job fail,
 	// this should result in the worker going on cooldown and cause all of the
 	// rest of the jobs to fail as well.
-	cancelChan = make(chan struct{})
+	cancelCtx, cancel = context.WithCancel(context.Background())
 	resultChan = make(chan *jobTestResult, 1)
 	j = &jobTest{
-		jobGeneric: newJobGeneric(jq, cancelChan),
+		jobGeneric: newJobGeneric(cancelCtx, jq),
 
 		resultChan: resultChan,
 
@@ -246,20 +247,20 @@ func TestWorkerJobGeneric(t *testing.T) {
 	if !jq.callAdd(j) {
 		t.Fatal("call to add job to new job queue should succeed")
 	}
-	cancelChan2 = make(chan struct{})
+	cancelCtx2, _ = context.WithCancel(context.Background())
 	resultChan2 = make(chan *jobTestResult, 1)
 	j2 = &jobTest{
-		jobGeneric: newJobGeneric(jq, cancelChan2),
+		jobGeneric: newJobGeneric(cancelCtx2, jq),
 
 		resultChan: resultChan2,
 	}
 	if !jq.callAdd(j2) {
 		t.Fatal("call to add job to new job queue should succeed")
 	}
-	cancelChan3 := make(chan struct{})
+	cancelCtx3, _ := context.WithCancel(context.Background())
 	resultChan3 := make(chan *jobTestResult, 1)
 	j3 := &jobTest{
-		jobGeneric: newJobGeneric(jq, cancelChan3),
+		jobGeneric: newJobGeneric(cancelCtx3, jq),
 
 		resultChan: resultChan3,
 	}
@@ -331,10 +332,10 @@ func TestWorkerJobGeneric(t *testing.T) {
 	jq.mu.Unlock()
 
 	// The queue should be on cooldown now, adding a new job should fail.
-	cancelChan = make(chan struct{})
+	cancelCtx, cancel = context.WithCancel(context.Background())
 	resultChan = make(chan *jobTestResult, 1)
 	j = &jobTest{
-		jobGeneric: newJobGeneric(jq, cancelChan),
+		jobGeneric: newJobGeneric(cancelCtx, jq),
 
 		resultChan: resultChan,
 
@@ -385,10 +386,10 @@ func TestWorkerJobGeneric(t *testing.T) {
 	time.Sleep(time.Until(cu))
 
 	// Add one more job, and check that killing the queue kills the job.
-	cancelChan = make(chan struct{})
+	cancelCtx, cancel = context.WithCancel(context.Background())
 	resultChan = make(chan *jobTestResult, 1)
 	j = &jobTest{
-		jobGeneric: newJobGeneric(jq, cancelChan),
+		jobGeneric: newJobGeneric(cancelCtx, jq),
 
 		resultChan: resultChan,
 	}
@@ -419,10 +420,10 @@ func TestWorkerJobGeneric(t *testing.T) {
 	j.mu.Unlock()
 
 	// Try adding a new job, this should fail because the queue was killed.
-	cancelChan = make(chan struct{})
+	cancelCtx, cancel = context.WithCancel(context.Background())
 	resultChan = make(chan *jobTestResult, 1)
 	j = &jobTest{
-		jobGeneric: newJobGeneric(jq, cancelChan),
+		jobGeneric: newJobGeneric(cancelCtx, jq),
 
 		resultChan: resultChan,
 	}
