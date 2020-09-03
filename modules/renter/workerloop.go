@@ -148,11 +148,7 @@ func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 	atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, uploadBandwidth)
 	atomic.AddUint64(&w.staticLoopState.atomicAsyncJobsRunning, 1)
 	fn := func() {
-		if job.staticCanceled() {
-			job.callDiscard(nil) // no separate error needed. callDiscard will return ErrJobDisarded
-		} else {
-			job.callExecute()
-		}
+		job.callExecute()
 		// Subtract the outstanding data now that the job is complete. Atomic
 		// subtraction works by adding and using some bit tricks.
 		atomic.AddUint64(&w.staticLoopState.atomicReadDataOutstanding, -downloadBandwidth)
