@@ -1,0 +1,1 @@
+- Skylink GET was truncating any paths that contained `?` because it interpreted them as beginning query parameters, even if the `?` was URL-encoded first. This has been fixed.
