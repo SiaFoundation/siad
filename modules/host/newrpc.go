@@ -727,8 +727,8 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	// obligation in the process.
 	h.mu.RLock()
 	fc := req.Transactions[len(req.Transactions)-1].FileContracts[0]
-	renewRevenue := renewBasePrice(s.so, settings, fc)
-	renewRisk := renewBaseCollateral(s.so, settings, fc)
+	renewRevenue := rhp2RenewBasePrice(s.so, settings, fc)
+	renewRisk := rhp2RenewBaseCollateral(s.so, settings, fc)
 	renewCollateral, err := renewContractCollateral(s.so, settings, fc)
 	h.mu.RUnlock()
 	if err != nil {
@@ -997,8 +997,8 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	// obligation in the process.
 	h.mu.RLock()
 	fc := req.Transactions[len(req.Transactions)-1].FileContracts[0]
-	renewRevenue := renewBasePrice(s.so, settings, fc)
-	renewRisk := renewBaseCollateral(s.so, settings, fc)
+	renewRevenue := rhp2RenewBasePrice(s.so, settings, fc)
+	renewRisk := rhp2RenewBaseCollateral(s.so, settings, fc)
 	renewCollateral, err := renewContractCollateral(s.so, settings, fc)
 	h.mu.RUnlock()
 	if err != nil {
