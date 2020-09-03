@@ -70,9 +70,11 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	}
 
 	// If there is no exact match look for directories.
+	pathDir := EnsureSuffix(path, "/")
 	if len(metadata.Subfiles) == 0 {
 		for _, sf := range sm.Subfiles {
-			if strings.HasPrefix(EnsurePrefix(sf.Filename, "/"), path) {
+			// Check if the given file's path starts with `pathDir`.
+			if strings.HasPrefix(EnsurePrefix(sf.Filename, "/"), pathDir) {
 				metadata.Subfiles[sf.Filename] = sf
 			}
 		}
