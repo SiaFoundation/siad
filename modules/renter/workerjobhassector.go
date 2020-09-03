@@ -147,7 +147,7 @@ func (j *jobHasSector) managedHasSector() ([]bool, error) {
 	//
 	hasSectors := make([]bool, 0, len(program))
 	var responses []programResponse
-	responses, _, err := w.managedExecuteProgram(j.staticCtx, program, programData, types.FileContractID{}, cost)
+	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
 	if err != nil {
 		return nil, errors.AddContext(err, "Unable to execute program")
 	}
