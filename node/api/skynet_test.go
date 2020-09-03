@@ -289,6 +289,15 @@ func TestSplitSkylinkString(t *testing.T) {
 			errMsg:               "",
 		},
 		{
+			// We don't do any URL encoding within splitSkylingString itself.
+			name:                 "with path to dir containing both a query and an encoded '?'",
+			strToParse:           "/IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo%3Fbar?foobar=nope",
+			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
+			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo%3Fbar",
+			path:                 "/foo%3Fbar",
+			errMsg:               "",
+		},
+		{
 			name:                 "invalid skylink",
 			strToParse:           "invalid_skylink/foo/bar?foobar=nope",
 			skylink:              "",
@@ -309,7 +318,7 @@ func TestSplitSkylinkString(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			skylink, skylinkStringNoQuery, path, err := splitSkylinkString(tt.strToParse)
-			if (err != nil || tt.errMsg != "") && !strings.Contains(err.Error(), tt.errMsg) {
+			if (err != nil || tt.errMsg != "") && (err == nil || !strings.Contains(err.Error(), tt.errMsg)) {
 				t.Fatalf("Expected error '%s', got %v\n", tt.errMsg, err)
 			}
 			if tt.errMsg != "" {

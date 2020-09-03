@@ -75,10 +75,22 @@
           "contenttype": "text/html",
           "len": 38
         },
+        "dir/index.html": {
+          "mode": 420,
+          "filename": "dir/index.html",
+          "contenttype": "text/html",
+          "len": 38
+        },
         "file.html": {
           "mode": 420,
           "filename": "file.html",
           "contenttype": "text/html",
+          "len": 38
+        },
+        "test?encoding": {
+          "mode": 420,
+          "filename": "test?encoding",
+          "contenttype": "text/plain",
           "len": 38
         }
       },
