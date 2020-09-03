@@ -360,6 +360,17 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 		atomic.AddUint64(&h.atomicStreamDownload, l.Downloaded())
 	}()
 
+	// If the right dependency was injected we block here until it's disabled
+	// again.
+	for h.dependencies.Disrupt("HostBlockRPC") {
+		select {
+		case <-time.After(time.Second):
+			continue
+		case <-h.tg.StopChan():
+			return
+		}
+	}
+
 	err := h.tg.Add()
 	if err != nil {
 		return

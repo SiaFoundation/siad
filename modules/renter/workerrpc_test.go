@@ -1,12 +1,14 @@
 package renter
 
 import (
+	"io"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -129,4 +131,50 @@ func testExecuteProgramUsedBandwidthReadSector(t *testing.T, wt *workerTester) {
 
 	// log the bandwidth used
 	t.Logf("Used bandwidth (read sector program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+}
+
+// TestCancelMDMProgram tests that closing the channel in managedExecuteProgram
+// will stop the program and return the appropriate error.
+func TestCancelMDMProgram(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// Add a disabled dependency.
+	hostDeps := dependencies.NewDependencyHostBlockRPC()
+	hostDeps.Disable()
+
+	wt, err := newWorkerTesterCustomDependency(t.Name(), modules.ProdDependencies, hostDeps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Prepare a program. A hasSector program will do.
+	pt := wt.staticPriceTable().staticPriceTable
+	pb := modules.NewProgramBuilder(&pt, 0)
+	pb.AddHasSectorInstruction(crypto.Hash{})
+	p, data := pb.Program()
+	cost, _, _ := pb.Cost(true)
+	ulBandwidth, dlBandwidth := new(jobReadSector).callExpectedBandwidth()
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	cost = cost.Add(bandwidthCost)
+
+	// enable the dependency
+	hostDeps.Enable()
+
+	// execute it but cancel it after 1 second.
+	c := make(chan struct{})
+	go func() {
+		<-time.After(time.Second)
+		close(c)
+	}()
+	_, _, err = wt.worker.managedExecuteProgram(c, p, data, types.FileContractID{}, cost)
+	if !errors.Contains(err, io.ErrClosedPipe) {
+		t.Fatal(err)
+	}
 }
