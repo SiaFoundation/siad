@@ -1,0 +1,1 @@
+- A bug was fixed where partial dir paths were accepted when resolving skylinks. Now these are rejected.
