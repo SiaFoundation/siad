@@ -534,17 +534,7 @@ func skynetunpincmd(cmd *cobra.Command, skyPathStrs []string) {
 // skynetuploadcmd will upload a file or directory to Skynet. If --dry-run is
 // passed, it will fetch the skylinks without uploading.
 func skynetuploadcmd(sourcePath, destSiaPath string) {
-	// Open the source file.
-	file, err := os.Open(sourcePath)
-	if err != nil {
-		die("Unable to open source path:", err)
-	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			die(err)
-		}
-	}()
-	fi, err := file.Stat()
+	fi, err := os.Stat(sourcePath)
 	if err != nil {
 		die("Unable to fetch source fileinfo:", err)
 	}
@@ -631,7 +621,10 @@ func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.
 		die("Unable to open source path:", err)
 	}
 	defer func() {
-		if err := file.Close(); err != nil {
+		// On successful upload the file will be closed automatically in
+		// postRawResponseWithHeaders, so we can ignore double-close errors here
+		// and only focus on closing the file in the case of an error.
+		if err := file.Close(); err != nil && !strings.Contains(err.Error(), "file already closed") {
 			die(err)
 		}
 	}()
