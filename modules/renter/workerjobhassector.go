@@ -78,17 +78,9 @@ func (j *jobHasSector) callDiscard(err error) {
 
 // callExecute will run the has sector job.
 func (j *jobHasSector) callExecute() {
-	var err error
-	var availables []bool
 	start := time.Now()
 	w := j.staticQueue.staticWorker()
-
-	// If the job was cancelled already, don't execute the program.
-	if j.staticCanceled() {
-		err = ErrJobDiscarded
-	} else {
-		availables, err = j.managedHasSector()
-	}
+	availables, err := j.managedHasSector()
 	jobTime := time.Since(start)
 
 	// Send the response.
