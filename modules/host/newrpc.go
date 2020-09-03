@@ -638,7 +638,6 @@ func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 	h.mu.RUnlock()
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
-		renewal:                 false,
 		renterPK:                renterPK,
 		renterSignatures:        renterSigs.ContractSignatures,
 		renterRevisionSignature: renterSigs.RevisionSignature,
@@ -738,7 +737,6 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	}
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
-		renewal:                 false,
 		renterPK:                renterPK,
 		renterSignatures:        renterSigs.ContractSignatures,
 		renterRevisionSignature: renterSigs.RevisionSignature,
@@ -1007,13 +1005,18 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 		s.writeError(err)
 		return extendErr("failed to compute contract collateral: ", err)
 	}
+	// Clear the old storage obligation.
+	oldRoots := s.so.SectorRoots
+	s.so.SectorRoots = []crypto.Hash{}
+	s.so.RevisionTransactionSet = []types.Transaction{finalRevTxn}
+	// Finalize the contract. This creates a new SO and saves the old one atomically.
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
-		renewal:                 true,
+		renewedSO:               &s.so,
 		renterPK:                renterPK,
 		renterSignatures:        renterSigs.ContractSignatures,
 		renterRevisionSignature: renterSigs.RevisionSignature,
-		initialSectorRoots:      s.so.SectorRoots,
+		initialSectorRoots:      oldRoots,
 		hostCollateral:          renewCollateral,
 		hostInitialRevenue:      renewRevenue,
 		hostInitialRisk:         renewRisk,
@@ -1025,14 +1028,6 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 		return extendErr("failed to finalize contract: ", err)
 	}
 	defer h.managedUnlockStorageObligation(newSOID)
-
-	// Clear the old storage obligatoin.
-	s.so.SectorRoots = []crypto.Hash{}
-	s.so.RevisionTransactionSet = []types.Transaction{finalRevTxn}
-	// we don't count the sectors as being removed since we prevented
-	// managedFinalizeContract from incrementing the counters on virtual sectors
-	// before
-	h.managedModifyStorageObligation(s.so, nil, nil)
 
 	// Send our signatures for the contract transaction and initial revision.
 	hostSigs := modules.LoopRenewAndClearContractSignatures{

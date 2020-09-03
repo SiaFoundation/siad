@@ -205,7 +205,6 @@ func (h *Host) managedRPCRenewContract(conn net.Conn) error {
 
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
-		renewal:                 false,
 		renterPK:                renterPK,
 		renterSignatures:        renterTxnSignatures,
 		renterRevisionSignature: renterRevisionSignature,
