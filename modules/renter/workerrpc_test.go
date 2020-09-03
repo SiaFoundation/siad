@@ -68,7 +68,7 @@ func testExecuteProgramUsedBandwidthHasSector(t *testing.T, wt *workerTester) {
 	cost = cost.Add(bandwidthCost)
 
 	// execute it
-	_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, cost)
+	_, limit, err := w.managedExecuteProgram(make(chan struct{}), p, data, types.FileContractID{}, cost)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func testExecuteProgramUsedBandwidthReadSector(t *testing.T, wt *workerTester) {
 	cost = cost.Add(bandwidthCost)
 
 	// execute it
-	_, limit, err := w.managedExecuteProgram(p, data, types.FileContractID{}, cost)
+	_, limit, err := w.managedExecuteProgram(make(chan struct{}), p, data, types.FileContractID{}, cost)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -37,7 +37,7 @@ type programResponse struct {
 }
 
 // managedExecuteProgram performs the ExecuteProgramRPC on the host
-func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
+func (w *worker) managedExecuteProgram(cancel <-chan struct{}, p modules.Program, data []byte, fcid types.FileContractID, cost types.Currency) (responses []programResponse, limit mux.BandwidthLimit, err error) {
 	// check host version
 	cache := w.staticCache()
 	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
@@ -60,6 +60,19 @@ func (w *worker) managedExecuteProgram(p modules.Program, data []byte, fcid type
 	defer func() {
 		if err := stream.Close(); err != nil {
 			w.renter.log.Println("ERROR: failed to close stream", err)
+		}
+	}()
+
+	// if the operation got canceled, close the stream. This should cause the
+	// program to error out.
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-done:
+			return
+		case <-cancel:
+			_ = stream.Close()
 		}
 	}()
 
