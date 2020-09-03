@@ -47,7 +47,7 @@
       "length": 76,
       "mode": 420,
       "subfiles": {
-        "filename.txt": {
+        "filename.html": {
           "mode": 420,
           "filename": "filename.html",
           "contenttype": "text/html",
@@ -70,13 +70,13 @@
       "length": 76,
       "mode": 420,
       "subfiles": {
-        "filename.txt": {
+        "filename.html": {
           "mode": 420,
           "filename": "filename.html",
           "contenttype": "text/html",
           "len": 38
         },
-        "dir/filename.txt": {
+        "dir/filename.html": {
           "mode": 420,
           "filename": "dir/filename.html",
           "contenttype": "text/html",
