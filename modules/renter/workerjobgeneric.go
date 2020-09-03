@@ -164,6 +164,7 @@ func (jq *jobGenericQueue) callNext() workerJob {
 		job := jq.jobs[0]
 		jq.jobs = jq.jobs[1:]
 		if job.staticCanceled() {
+			job.callDiscard(errors.New("callNext: skipping and discarding already canceled job"))
 			continue
 		}
 		return job
