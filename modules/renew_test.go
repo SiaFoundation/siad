@@ -8,7 +8,6 @@ import (
 
 // TestRenewBaseCost is a unit test for RenewBaseCosts.
 func TestRenewBaseCost(t *testing.T) {
-	// 1 SC / byte of collateral and storage cost and a 10 blocks window size.
 	var host HostExternalSettings
 	host.StoragePrice = types.SiacoinPrecision
 	host.Collateral = types.SiacoinPrecision.Mul64(2)

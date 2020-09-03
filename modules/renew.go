@@ -7,6 +7,11 @@ import (
 // RenewBaseCosts is a helper to calculate the base costs for a renewed
 // contract. The base costs consist of the initial storage cost and collateral
 // associated with renewing a contract that already contains data.
+// NOTE: The baseCollateral is computed using the maximum acceptable collateral
+// to the host. Because of siafund fees, a renter may decide to use less than
+// the amount of collateral advertised by the host. If the renter would rather
+// have lower collateral and pay fewer siafund fees, they have the full freedom
+// within the protocol to do that. It is strictly advantageous for the host.
 func RenewBaseCosts(lastRev types.FileContractRevision, host HostExternalSettings, endHeight types.BlockHeight) (basePrice, baseCollateral types.Currency) {
 	// Get the height until which the storage is already paid for, the height
 	// until which we want to pay for storage and the amount of storage that
