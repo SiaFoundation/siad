@@ -654,7 +654,7 @@ func (h *Host) managedAddRenewedStorageObligation(oldSO, newSO storageObligation
 	_, exists2 := h.lockedStorageObligations[newSO.id()]
 	if !exists1 || !exists2 {
 		h.mu.Unlock()
-		err := errors.New("addRenewedStorageObligation called with an obligation that is not locked")
+		err := errors.New("managedAddRenewedStorageObligation called with an obligation that is not locked")
 		h.log.Print(err)
 		return err
 	}
