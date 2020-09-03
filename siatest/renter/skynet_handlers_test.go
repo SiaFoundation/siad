@@ -89,6 +89,13 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 			ExpectedError: "which refers to a non-root file",
 		},
 		{
+			// NonRootPath ensures that we can get a non-root file by passing
+			// its path manually.
+			Name:          "NonRootPath",
+			Skylink:       "4BBcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/dir/file.txt",
+			ExpectedError: "",
+		},
+		{
 			// DetectRedirect ensures that if the skylink doesn't have a
 			// trailing slash and has a default path that results in an HTML
 			// file we redirect to the same skylink with a trailing slash.
@@ -103,6 +110,20 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 			// This is the happy case for DetectRedirect.
 			Name:          "EnsureNoRedirect",
 			Skylink:       "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/",
+			ExpectedError: "",
+		},
+		{
+			// IncompletePath ensures that we return an error if a partial
+			// fragment of a path is passed.
+			Name:          "IncompletePath",
+			Skylink:       "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/di",
+			ExpectedError: "failed to download contents for path: /di",
+		},
+		{
+			// CompletePath ensures that we don't get an error on a complete,
+			// existent dir path.
+			Name:          "CompletePath",
+			Skylink:       "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/dir/",
 			ExpectedError: "",
 		},
 	}

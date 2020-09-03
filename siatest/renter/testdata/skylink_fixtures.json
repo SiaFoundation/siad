@@ -55,13 +55,14 @@
         },
         "dir/file.txt": {
           "mode": 420,
-          "filename": "file.txt",
+          "filename": "dir/file.txt",
           "contenttype": "text/plain",
           "len": 38
         }
       },
       "defaultpath": "/dir/file.txt"
-    }
+    },
+    "content": "SGVsbG8sIHRoaXMgaXMgc29tZSBub3Qgc28gcmFuZG9tIHRleHQ="
   },
   "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA": {
     "metadata": {
@@ -72,6 +73,12 @@
         "filename.txt": {
           "mode": 420,
           "filename": "filename.html",
+          "contenttype": "text/html",
+          "len": 38
+        },
+        "dir/filename.txt": {
+          "mode": 420,
+          "filename": "dir/filename.html",
           "contenttype": "text/html",
           "len": 38
         },
