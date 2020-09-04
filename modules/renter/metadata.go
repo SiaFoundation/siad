@@ -121,6 +121,10 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 				r.staticAlerter.RegisterAlert(modules.AlertIDSiafileLowRedundancy(uid), AlertMSGSiafileLowRedundancy,
 					AlertCauseSiafileLowRedundancy(fileSiaPath, maxHealth),
 					modules.SeverityWarning)
+				// Log a severe warning if we are not in testing
+				if build.Release != "testing" {
+					r.log.Severe(AlertCauseSiafileLowRedundancy(fileSiaPath, maxHealth))
+				}
 			} else {
 				r.staticAlerter.UnregisterAlert(modules.AlertIDSiafileLowRedundancy(uid))
 			}
