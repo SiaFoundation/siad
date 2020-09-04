@@ -125,6 +125,7 @@ func TestVerifyRenewedContract(t *testing.T) {
 		},
 	}
 	oldRevision := types.FileContractRevision{
+		NewFileSize: so.fileSize(),
 		NewValidProofOutputs: []types.SiacoinOutput{
 			{
 				UnlockHash: types.UnlockHash{1},
