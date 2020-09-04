@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/inconshreveable/go-update"
+
 	"github.com/julienschmidt/httprouter"
 	"github.com/kardianos/osext"
 	"golang.org/x/crypto/openpgp"
@@ -444,7 +445,9 @@ func (api *API) daemonStackHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 	}
 
 	// Return the n bytes of the stack that were used.
-	WriteJSON(w, DaemonStackGet{Stack: string(stack[:n])})
+	WriteJSON(w, DaemonStackGet{
+		Stack: string(stack[:n]),
+	})
 }
 
 // daemonStartProfileHandlerPOST handles the API call that starts a profile for the daemon.
