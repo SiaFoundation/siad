@@ -684,6 +684,8 @@ func skynetuploadpipecmd(destSiaPath string) {
 	bar := pbs.AddSpinner(
 		0, // size is unknown
 		mpb.SpinnerOnLeft,
+		mpb.SpinnerStyle([]string{"∙∙∙", "●∙∙", "∙●∙", "∙∙●", "∙∙∙"}),
+		mpb.BarFillerClearOnComplete(),
 		mpb.PrependDecorators(
 			decor.AverageSpeed(decor.UnitKiB, "% .1f", decor.WC{W: 4}),
 			decor.Counters(decor.UnitKiB, " - %.1f / %.1f", decor.WC{W: 4}),
@@ -835,7 +837,6 @@ func newProgressSkylink(pbs *mpb.Progress, afterBar *mpb.Bar, filename, skylink 
 	bar := pbs.AddBar(
 		1, // we'll increment it once to stop it
 		mpb.BarQueueAfter(afterBar),
-		mpb.BarFillerClearOnComplete(),
 		mpb.PrependDecorators(
 			decor.Name(pBarJobDone, decor.WC{W: 10}),
 			decor.Name(skylink),
