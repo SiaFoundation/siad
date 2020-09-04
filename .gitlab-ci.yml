@@ -58,6 +58,7 @@ variables:
     ./siatest/renter/contractor
     ./siatest/renter/hostdb
     ./siatest/renterhost
+  docker_hub_dev_hook: https://hub.docker.com/api/build/v1/source/57afb708-6926-411b-98fc-44c79f59097c/trigger/513a6d92-9f8b-4f04-b20a-ebd51b193b5d/call/
 
 default: &default_params
   ## Run tests with most recent golang version to take advantage of any perf
@@ -176,6 +177,13 @@ build:
       - $CI_PROJECT_DIR/artifacts
   script:
     - ./check-builds.sh
+
+deploy:
+  stage: deploy
+  script:
+    - curl -X POST -H "Content-Type:application/json" --data '{"name":"'"$CI_COMMIT_REF_NAME"'"}' $docker_hub_dev_hook
+  only:
+    - build_dev
 
 legacy-tests:
   <<: *default_test_params
