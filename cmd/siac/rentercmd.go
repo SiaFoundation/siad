@@ -2620,11 +2620,6 @@ func renterworkerscmd() {
 		die("Could not get contracts:", err)
 	}
 
-	// Sort workers by public key.
-	sort.Slice(rw.Workers, func(i, j int) bool {
-		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
-	})
-
 	// Print Worker Pool Summary
 	fmt.Println("Worker Pool Summary")
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
@@ -2672,7 +2667,7 @@ func renterworkerseacmd() {
 	// collect some overal account stats
 	var nfw uint64
 	for _, worker := range rw.Workers {
-		if !worker.AccountStatus.Funded {
+		if worker.AccountStatus.AvailableBalance.IsZero() {
 			nfw++
 		}
 	}
@@ -2692,8 +2687,8 @@ func renterworkerseacmd() {
 
 	// print header
 	hostInfo := "Host PubKey"
-	accountInfo := "\tFunded\tAvailBal\tNegBal\tBalTarget"
-	errorInfo := "\tErrorAt\tError"
+	accountInfo := "\tAvailBal\tNegBal\tTargetBal"
+	errorInfo := "\tSucceededAt\tErrorAt\tError"
 	header := hostInfo + accountInfo + errorInfo
 	fmt.Fprintln(w, "\nWorker Accounts Detail  \n\n"+header)
 
@@ -2705,16 +2700,16 @@ func renterworkerseacmd() {
 		fmt.Fprintf(w, "%v", worker.HostPubKey.String())
 
 		// Account Info
-		fmt.Fprintf(w, "\t%t\t%s\t%s\t%s",
-			as.Funded,
+		fmt.Fprintf(w, "\t%s\t%s\t%s",
 			as.AvailableBalance.HumanString(),
 			as.NegativeBalance.HumanString(),
 			worker.AccountBalanceTarget.HumanString())
 
 		// Error Info
-		fmt.Fprintf(w, "\t%v\t%v\n",
+		fmt.Fprintf(w, "\t%v\t%v\t%v\n",
+			sanitizeTime(as.RecentSuccessTime, as.RecentSuccessTime != time.Time{}),
 			sanitizeTime(as.RecentErrTime, as.RecentErr != ""),
-			sanitizeErr(as.RecentErr))
+			sanitizeErr(as.RecentErr, workerVerbose))
 	}
 }
 
@@ -2725,11 +2720,6 @@ func renterworkersdownloadscmd() {
 	if err != nil {
 		die("Could not get worker statuses:", err)
 	}
-
-	// Sort workers by public key.
-	sort.Slice(rw.Workers, func(i, j int) bool {
-		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
-	})
 
 	// Create tab writer
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
@@ -2775,7 +2765,7 @@ func writeWorkerDownloadUploadInfo(download bool, w *tabwriter.Writer, rw module
 			fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
 				worker.DownloadOnCoolDown,
 				absDuration(worker.DownloadCoolDownTime),
-				worker.DownloadCoolDownError,
+				sanitizeErr(worker.DownloadCoolDownError, workerVerbose),
 				worker.DownloadQueueSize,
 				worker.DownloadTerminated)
 			continue
@@ -2784,7 +2774,7 @@ func writeWorkerDownloadUploadInfo(download bool, w *tabwriter.Writer, rw module
 		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
 			worker.UploadOnCoolDown,
 			absDuration(worker.UploadCoolDownTime),
-			worker.UploadCoolDownError,
+			sanitizeErr(worker.UploadCoolDownError, workerVerbose),
 			worker.UploadQueueSize,
 			worker.UploadTerminated)
 	}
@@ -2822,7 +2812,7 @@ func renterworkersptcmd() {
 	// print header
 	hostInfo := "Host PubKey"
 	priceTableInfo := "\tActive\tExpiry\tUpdate"
-	queueInfo := "\tOnCoolDown\tCoolDownUntil\tConsecFail\tErrorAt\tError"
+	queueInfo := "\tErrorAt\tError"
 	header := hostInfo + priceTableInfo + queueInfo
 	fmt.Fprintln(w, "\nWorker Price Tables Detail  \n\n"+header)
 
@@ -2842,7 +2832,7 @@ func renterworkersptcmd() {
 		// Error Info
 		fmt.Fprintf(w, "\t%v\t%v\n",
 			sanitizeTime(pts.RecentErrTime, pts.RecentErr != ""),
-			sanitizeErr(pts.RecentErr))
+			sanitizeErr(pts.RecentErr, workerVerbose))
 	}
 }
 
@@ -2883,7 +2873,7 @@ func renterworkersrjcmd() {
 			rjs.AvgJobTime4m,
 			rjs.ConsecutiveFailures,
 			sanitizeTime(rjs.RecentErrTime, rjs.RecentErr != ""),
-			sanitizeErr(rjs.RecentErr))
+			sanitizeErr(rjs.RecentErr, workerVerbose))
 	}
 }
 
@@ -2922,7 +2912,7 @@ func renterworkershsjcmd() {
 			hsjs.AvgJobTime,
 			hsjs.ConsecutiveFailures,
 			sanitizeTime(hsjs.RecentErrTime, hsjs.RecentErr != ""),
-			sanitizeErr(hsjs.RecentErr))
+			sanitizeErr(hsjs.RecentErr, workerVerbose))
 	}
 }
 
@@ -2933,11 +2923,6 @@ func renterworkersuploadscmd() {
 	if err != nil {
 		die("Could not get worker statuses:", err)
 	}
-
-	// Sort workers by public key.
-	sort.Slice(rw.Workers, func(i, j int) bool {
-		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
-	})
 
 	// Create tab writer
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
@@ -2956,7 +2941,7 @@ func writeWorkers(workers []modules.WorkerStatus) {
 	fmt.Println("  Number of Workers:", len(workers))
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 	contractHeader := "Worker Contract\t \t \t "
-	contractInfo := "Contract ID\tHost PubKey\tGood For Renew\tGood For Upload"
+	contractInfo := "Host PubKey\tContract ID\tGood For Renew\tGood For Upload"
 	downloadHeader := "\tWorker Downloads\t "
 	downloadInfo := "\tOn Cooldown\tQueue"
 	uploadHeader := "\tWorker Uploads\t "
@@ -2964,16 +2949,16 @@ func writeWorkers(workers []modules.WorkerStatus) {
 	maintenanceHeader := "\tWorker Maintenance\t \t "
 	maintenanceInfo := "\tOn Cooldown\tCooldown Time\tLast Error"
 	eaHeader := "\tWorker Account"
-	eaInfo := "\tAvailable Balance"
 	jobHeader := "\tWorker Jobs\t \t "
 	jobInfo := "\tBackups\tDownload By Root\tHas Sector"
 	fmt.Fprintln(w, "\n  "+contractHeader+downloadHeader+uploadHeader+maintenanceHeader+eaHeader+jobHeader)
-	fmt.Fprintln(w, "  "+contractInfo+downloadInfo+uploadInfo+maintenanceInfo+eaInfo+jobInfo)
+	fmt.Fprintln(w, "  "+contractInfo+downloadInfo+uploadInfo+maintenanceInfo+jobInfo)
+
 	for _, worker := range workers {
 		// Contract Info
 		fmt.Fprintf(w, "  %v\t%v\t%v\t%v",
-			worker.ContractID,
 			worker.HostPubKey.String(),
+			worker.ContractID,
 			worker.ContractUtility.GoodForRenew,
 			worker.ContractUtility.GoodForUpload)
 
@@ -2991,11 +2976,7 @@ func writeWorkers(workers []modules.WorkerStatus) {
 		fmt.Fprintf(w, "\t%t\t%v\t%v",
 			worker.MaintenanceOnCooldown,
 			worker.MaintenanceCoolDownTime,
-			worker.MaintenanceCoolDownError)
-
-		// EA Info
-		fmt.Fprintf(w, "\t%v",
-			worker.AccountStatus.AvailableBalance)
+			sanitizeErr(worker.MaintenanceCoolDownError, workerVerbose))
 
 		// Job Info
 		fmt.Fprintf(w, "\t%v\t%v\t%v\n",
@@ -3029,9 +3010,12 @@ func sanitizeTime(t time.Time, cond bool) string {
 // sanitizeErr is a small helper function that sanitizes the output for the
 // given error string. It will print "-", if the error string is the equivalent
 // of a nil error.
-func sanitizeErr(errStr string) string {
+func sanitizeErr(errStr string, verbose bool) string {
 	if errStr == "" {
 		return "-"
+	}
+	if !verbose {
+		errStr = errStr[:24] + "..."
 	}
 	return errStr
 }

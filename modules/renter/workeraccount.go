@@ -95,8 +95,9 @@ type (
 		pendingDeposits    types.Currency
 
 		// Error tracking.
-		recentErr     error
-		recentErrTime time.Time
+		recentErr         error
+		recentErrTime     time.Time
+		recentSuccessTime time.Time
 
 		// syncAt defines what time the renter should be syncing the account to
 		// the host.
@@ -321,10 +322,9 @@ func (a *account) managedStatus() modules.WorkerAccountStatus {
 		AvailableBalance: a.availableBalance(),
 		NegativeBalance:  a.negativeBalance,
 
-		Funded: !a.availableBalance().IsZero(),
-
-		RecentErr:     recentErrStr,
-		RecentErrTime: a.recentErrTime,
+		RecentErr:         recentErrStr,
+		RecentErrTime:     a.recentErrTime,
+		RecentSuccessTime: a.recentSuccessTime,
 	}
 }
 
@@ -522,6 +522,9 @@ func (w *worker) managedRefillAccount() {
 
 		// If the error is nil, return.
 		if err == nil {
+			w.staticAccount.mu.Lock()
+			w.staticAccount.recentSuccessTime = time.Now()
+			w.staticAccount.mu.Unlock()
 			return
 		}
 

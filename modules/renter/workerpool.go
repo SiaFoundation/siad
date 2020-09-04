@@ -2,6 +2,7 @@ package renter
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -42,8 +43,14 @@ func (wp *workerPool) callStatus() modules.WorkerPoolStatus {
 	var totalDownloadCoolDown, totalMaintenanceCoolDown, totalUploadCoolDown int
 	var statuss []modules.WorkerStatus // Plural of status is statuss, deal with it.
 	workers := wp.callWorkers()
+
+	// Sort them by hostkey.
+	sort.Slice(workers, func(i, j int) bool {
+		return workers[i].staticHostPubKeyStr < workers[j].staticHostPubKeyStr
+	})
+
+	// Loop all workers and collect their status objects.
 	for _, w := range workers {
-		// Get the status of the worker.
 		status := w.callStatus()
 		if status.DownloadOnCoolDown {
 			totalDownloadCoolDown++
