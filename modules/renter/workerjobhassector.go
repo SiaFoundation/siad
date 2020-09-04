@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -53,11 +54,11 @@ type (
 // TODO: Gouging
 
 // newJobHasSector is a helper method to create a new HasSector job.
-func (w *worker) newJobHasSector(cancel <-chan struct{}, responseChan chan *jobHasSectorResponse, roots ...crypto.Hash) *jobHasSector {
+func (w *worker) newJobHasSector(ctx context.Context, responseChan chan *jobHasSectorResponse, roots ...crypto.Hash) *jobHasSector {
 	return &jobHasSector{
 		staticSectors:      roots,
 		staticResponseChan: responseChan,
-		jobGeneric:         newJobGeneric(w.staticJobHasSectorQueue, cancel),
+		jobGeneric:         newJobGeneric(ctx, w.staticJobHasSectorQueue),
 	}
 }
 
@@ -70,7 +71,7 @@ func (j *jobHasSector) callDiscard(err error) {
 		}
 		select {
 		case j.staticResponseChan <- response:
-		case <-j.staticCancelChan:
+		case <-j.staticCtx.Done():
 		case <-w.renter.tg.StopChan():
 		}
 	})
@@ -93,7 +94,7 @@ func (j *jobHasSector) callExecute() {
 	w.renter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- response:
-		case <-j.staticCancelChan:
+		case <-j.staticCtx.Done():
 		case <-w.renter.tg.StopChan():
 		}
 	})

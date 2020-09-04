@@ -323,8 +323,8 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 	// Submit a job to each worker. Make sure the response channel has enough
 	// room in the buffer for all results, this way workers are not being
 	// blocked when returning their results.
-	cancelChan := make(chan struct{})
-	defer close(cancelChan)
+	maxWait, cancel := context.WithTimeout(r.tg.StopCtx(), maxSnapshotUploadTime)
+	defer cancel()
 	responseChan := make(chan *jobUploadSnapshotResponse, len(workers))
 	queued := 0
 	for _, w := range workers {
@@ -334,7 +334,7 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 
 			staticResponseChan: responseChan,
 
-			jobGeneric: newJobGeneric(w.staticJobUploadSnapshotQueue, cancelChan),
+			jobGeneric: newJobGeneric(maxWait, w.staticJobUploadSnapshotQueue),
 		}
 
 		// If a job is not added correctly, count this as a failed response.
@@ -342,10 +342,6 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 			queued++
 		}
 	}
-
-	// Cap the total amount of time that we wait for results.
-	maxWait, cancel := context.WithTimeout(r.tg.StopCtx(), maxSnapshotUploadTime)
-	defer cancel()
 
 	// Iteratively grab the responses from the workers.
 	responses := 0
