@@ -683,13 +683,8 @@ func skynetuploadpipecmd(destSiaPath string) {
 	// Create the single bar.
 	bar := pbs.AddBar(
 		0, // size is unknown
-		mpb.PrependDecorators(
-			decor.Name(pBarJobUpload, decor.WC{W: 10}),
-			decor.Percentage(decor.WC{W: 6}),
-		),
-		mpb.AppendDecorators(
-			decor.Name(filename, decor.WC{W: len(filename) + 1, C: decor.DidentRight}),
-		),
+		mpb.PrependDecorators(decor.Counters(decor.UnitKiB, "% .1f / % .1f")),
+		mpb.AppendDecorators(decor.Percentage()),
 	)
 	// Create the proxy reader from stdin.
 	r := newStreamProgressReader(bar, bufio.NewReader(os.Stdin))
