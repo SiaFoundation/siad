@@ -170,6 +170,12 @@ type (
 		enabled bool
 		mu      sync.Mutex
 	}
+
+	// DependencyResolveSkylinkToFixture will disable downloading skylinks and
+	// will replace it with fetching from a set of predefined fixtures.
+	DependencyResolveSkylinkToFixture struct {
+		modules.ProductionDependencies
+	}
 )
 
 // NewDependencyCorruptMDMOutput returns a dependency that can be used to
@@ -281,6 +287,12 @@ func newDependencyInterruptCountOccurrences(str string) *DependencyInterruptCoun
 	return &DependencyInterruptCountOccurrences{
 		str: str,
 	}
+}
+
+// NewDependencyHostBlockRPC creates a new dependency that can be used to
+// simulate an unresponsive host.
+func NewDependencyHostBlockRPC() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("HostBlockRPC")
 }
 
 // Disrupt returns true if the correct string is provided.
@@ -556,6 +568,11 @@ func (d *DependencyDefaultRenewSettings) Disable() {
 	d.mu.Lock()
 	d.enabled = false
 	d.mu.Unlock()
+}
+
+// Disrupt causes skylink data to be loaded from fixtures instead of downloaded.
+func (d *DependencyResolveSkylinkToFixture) Disrupt(s string) bool {
+	return s == "resolveSkylinkToFixture"
 }
 
 // DependencyWithDisableAndEnable adds the ability to disable the dependency

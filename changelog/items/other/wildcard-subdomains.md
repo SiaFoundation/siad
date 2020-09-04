@@ -1,0 +1,1 @@
+- Add the ability to parse base32 encoded Skylinks

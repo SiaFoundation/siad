@@ -1605,7 +1605,7 @@ func testWalletTransactionsEndpoint(t *testing.T, st *serverTester, expectedConf
 
 	queriedTxns = 0
 	batchSize := types.BlockHeight(5)
-	for i := types.BlockHeight(0); i <= st.cs.Height(); i += (batchSize + 1) {
+	for i := types.BlockHeight(0); i <= st.cs.Height(); i += batchSize + 1 {
 		err := st.getAPI(fmt.Sprintf("/wallet/transactions?startheight=%v&endheight=%v", i, i+batchSize), &wtg)
 		if err != nil {
 			t.Fatal(err)

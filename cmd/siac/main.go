@@ -23,7 +23,8 @@ var (
 	// Module Specific Flags
 	//
 	// Daemon Flags
-	daemonStackOutputFile string // The file that the stack trace will be written to
+	daemonStackOutputFile  string // The file that the stack trace will be written to
+	daemonProfileDirectory string // the Directory where the profile logs are saved
 
 	// FeeManager Flags
 	feeManagerVerbose bool // display additional info for the FeeManager
@@ -398,7 +399,9 @@ func initCmds() *cobra.Command {
 	skykeyListCmd.Flags().BoolVar(&skykeyShowPrivateKeys, "show-priv-keys", false, "Show private key data.")
 
 	// Daemon Commands
-	root.AddCommand(alertsCmd, globalRatelimitCmd, stackCmd, stopCmd, updateCmd, versionCmd)
+	root.AddCommand(alertsCmd, globalRatelimitCmd, profileCmd, stackCmd, stopCmd, updateCmd, versionCmd)
+	profileCmd.AddCommand(profileStartCmd, profileStopCmd)
+	profileStartCmd.Flags().StringVar(&daemonProfileDirectory, "profileDir", "", "Specify the directory where the profile logs are to be saved")
 	stackCmd.Flags().StringVarP(&daemonStackOutputFile, "filename", "f", "stack.txt", "Specify the output file for the stack trace")
 	updateCmd.AddCommand(updateCheckCmd)
 

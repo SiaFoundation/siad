@@ -1,0 +1,89 @@
+{
+  "_A6d-2CpM2OQ-7m5NPAYW830NdzC3wGydFzzd-KnHXhwJA": {
+    "metadata": {
+      "filename": "filename.txt",
+      "length": 38,
+      "mode": 420,
+      "subfiles": {
+        "filename.txt": {
+          "mode": 420,
+          "filename": "filename.txt",
+          "contenttype": "text/plain",
+          "len": 38
+        }
+      }
+    },
+    "content": "SGVsbG8sIHRoaXMgaXMgc29tZSBub3Qgc28gcmFuZG9tIHRleHQ="
+  },
+  "3AAcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA": {
+    "metadata": {
+      "filename": "tiananmun square.jpeg",
+      "length": 190709,
+      "mode": 420,
+      "defaultpath": "/tiananmun square.jpeg"
+    },
+    "content": "SGVsbG8sIHRoaXMgaXMgc29tZSBub3Qgc28gcmFuZG9tIHRleHQ="
+  },
+  "3BBcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA": {
+    "metadata": {
+      "filename": "filename.txt",
+      "length": 38,
+      "mode": 420,
+      "subfiles": {
+        "filename.txt": {
+          "mode": 420,
+          "filename": "filename.txt",
+          "contenttype": "text/plain",
+          "len": 38
+        }
+      },
+      "defaultpath": "/filename.txt",
+      "disabledefaultpath": true
+    }
+  },
+  "4BBcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA": {
+    "metadata": {
+      "filename": "filename.txt",
+      "length": 76,
+      "mode": 420,
+      "subfiles": {
+        "filename.txt": {
+          "mode": 420,
+          "filename": "filename.html",
+          "contenttype": "text/html",
+          "len": 38
+        },
+        "dir/file.txt": {
+          "mode": 420,
+          "filename": "file.txt",
+          "contenttype": "text/plain",
+          "len": 38
+        }
+      },
+      "defaultpath": "/dir/file.txt"
+    }
+  },
+  "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA": {
+    "metadata": {
+      "filename": "filename",
+      "length": 76,
+      "mode": 420,
+      "subfiles": {
+        "filename.txt": {
+          "mode": 420,
+          "filename": "filename.html",
+          "contenttype": "text/html",
+          "len": 38
+        },
+        "file.html": {
+          "mode": 420,
+          "filename": "file.html",
+          "contenttype": "text/html",
+          "len": 38
+        }
+      },
+      "defaultpath": "/file.html"
+    },
+    "content": "SGVsbG8sIHRoaXMgaXMgc29tZSBub3Qgc28gcmFuZG9tIHRleHQ="
+  }
+}

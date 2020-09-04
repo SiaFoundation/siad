@@ -322,7 +322,7 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 		return nil, errors.AddContext(err, "unable to add noop revision")
 	}
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
+	err = ht.host.managedAddStorageObligation(so)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to add the storage obligation")
 	}

@@ -3,7 +3,6 @@ package renter
 import (
 	"context"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 
@@ -45,14 +44,6 @@ func renewJobExpectedBandwidth() (ul, dl uint64) {
 	return
 }
 
-// newJobHasSector is a helper method to create a new HasSector job.
-func (w *worker) newJobRenew(cancel <-chan struct{}, responseChan chan *jobRenewResponse, roots ...crypto.Hash) *jobRenew {
-	return &jobRenew{
-		staticResponseChan: responseChan,
-		jobGeneric:         newJobGeneric(w.staticJobHasSectorQueue, cancel),
-	}
-}
-
 // callDiscard will discard a job, sending the provided error.
 func (j *jobRenew) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
@@ -62,7 +53,7 @@ func (j *jobRenew) callDiscard(err error) {
 		}
 		select {
 		case j.staticResponseChan <- response:
-		case <-j.staticCancelChan:
+		case <-j.staticCtx.Done():
 		case <-w.renter.tg.StopChan():
 		}
 	})
@@ -82,7 +73,7 @@ func (j *jobRenew) callExecute() {
 	w.renter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- response:
-		case <-j.staticCancelChan:
+		case <-j.staticCtx.Done():
 		case <-w.renter.tg.StopChan():
 		}
 	})
@@ -124,7 +115,7 @@ func (w *worker) RenewContract(ctx context.Context, params proto.ContractParams,
 		staticParams:             params,
 		staticResponseChan:       renewResponseChan,
 		staticTransactionBuilder: txnBuilder,
-		jobGeneric:               newJobGeneric(w.staticJobReadQueue, ctx.Done()),
+		jobGeneric:               newJobGeneric(ctx, w.staticJobReadQueue),
 	}
 
 	// Add the job to the queue.

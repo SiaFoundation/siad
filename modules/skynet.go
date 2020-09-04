@@ -32,9 +32,10 @@ type SkyfileMetadata struct {
 	Subfiles SkyfileSubfiles `json:"subfiles,omitempty"`
 
 	// DefaultPath indicates what content to serve if the user has not specified
-	// a path, and the user is not trying to download the Skylink as an archive.
-	// It defaults to 'index.html' on upload if not specified and if a file with
-	// that name is present in the upload.
+	// a path and the user is not trying to download the Skylink as an archive.
+	// If left empty, it will be interpreted as "index.html" on download, if the
+	// skyfile contains such a file, or the only file in the skyfile, if the
+	// skyfile contains a single file.
 	DefaultPath string `json:"defaultpath,omitempty"`
 	// DisableDefaultPath prevents the usage of DefaultPath. As a result no
 	// content will be automatically served for the skyfile.
@@ -274,26 +275,26 @@ type SkyfileUploadParameters struct {
 // uploads. See SkyfileUploadParameters for a detailed description of the
 // fields.
 type SkyfileMultipartUploadParameters struct {
-	SiaPath             SiaPath   `json:"siapath"`
-	Force               bool      `json:"force"`
-	Root                bool      `json:"root"`
-	BaseChunkRedundancy uint8     `json:"basechunkredundancy"`
-	Reader              io.Reader `json:"reader"`
+	SiaPath             SiaPath
+	Force               bool
+	Root                bool
+	BaseChunkRedundancy uint8
+	Reader              io.Reader
 
 	// Filename indicates the filename of the skyfile.
-	Filename string `json:"filename"`
+	Filename string
 
 	// DefaultPath indicates the default file to be opened when opening skyfiles
 	// that contain directories. If set to empty string no file will be opened
 	// by default.
-	DefaultPath string `json:"defaultpath,omitempty"`
+	DefaultPath string
 
 	// DisableDefaultPath prevents the usage of DefaultPath. As a result no
 	// content will be automatically served for the skyfile.
-	DisableDefaultPath bool `json:"disabledefaultpath,omitempty"`
+	DisableDefaultPath bool
 
 	// ContentType indicates the media type of the data supplied by the reader.
-	ContentType string `json:"contenttype"`
+	ContentType string
 }
 
 // SkyfilePinParameters defines the parameters specific to pinning a skylink.

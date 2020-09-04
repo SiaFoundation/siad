@@ -1,17 +1,18 @@
 package profile
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
 	"runtime/trace"
+	"strings"
 	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // There's a global lock on cpu and memory profiling, because I'm not sure what
@@ -25,6 +26,33 @@ var (
 	traceActive bool
 	traceLock   sync.Mutex
 )
+
+var (
+	// ErrInvalidProfileFlags is the error returned when there is an error parsing
+	// the profile flags
+	ErrInvalidProfileFlags = errors.New("Unable to parse --profile flags, unrecognized or duplicate flags")
+)
+
+// ProcessProfileFlags checks that the flags given for profiling are valid.
+func ProcessProfileFlags(profile string) (string, error) {
+	// Check for input
+	if profile == "" {
+		return "", errors.New("no profile flags provided")
+	}
+
+	// Convert to lowercase and check flags
+	profile = strings.ToLower(profile)
+	validProfiles := "cmt"
+
+	invalidProfiles := profile
+	for _, p := range validProfiles {
+		invalidProfiles = strings.Replace(invalidProfiles, string(p), "", 1)
+	}
+	if len(invalidProfiles) > 0 {
+		return "", errors.AddContext(ErrInvalidProfileFlags, invalidProfiles)
+	}
+	return profile, nil
+}
 
 // StartCPUProfile starts cpu profiling. An error will be returned if a cpu
 // profiler is already running.

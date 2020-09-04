@@ -79,14 +79,14 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 		return errors.AddContext(err, "managedRPCRenewContract: host is not accepting a renewal")
 	}
 
-	// Verify the final revision.
+	// Verify the final revision against the current revision.
 	err = verifyClearingRevision(currentRevision, finalRevision, bh, pt.RenewContractCost)
 	if err != nil {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to verify final revision")
 	}
 
-	// Verify the new contract.
-	err = verifyRenewedContract(so, newContract, currentRevision, bh, is, es, rpk, hpk, lockedCollateral)
+	// Verify the new contract against the final revision.
+	err = verifyRenewedContract(so, newContract, finalRevision, bh, is, es, rpk, hpk, lockedCollateral)
 	if errors.Contains(err, errCollateralBudgetExceeded) {
 		h.staticAlerter.RegisterAlert(modules.AlertIDHostInsufficientCollateral, AlertMSGHostInsufficientCollateral, "", modules.SeverityWarning)
 	} else {
@@ -158,24 +158,27 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	// obligation in the process.
 	h.mu.RLock()
 	fc := txns[len(txns)-1].FileContracts[0]
-	renewRevenue := renewBasePrice(so, es, fc)
-	renewRisk := renewBaseCollateral(so, es, fc)
+	renewRevenue, renewRisk := modules.RenewBaseCosts(finalRevision, es, fc.WindowStart)
 	renewCollateral, err := renewContractCollateral(so, es, fc)
 	h.mu.RUnlock()
 	if err != nil {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to comput contract collateral")
 	}
 
+	// Clear the old storage obligation.
+	oldRoots := so.SectorRoots
+	so.SectorRoots = []crypto.Hash{}
+	so.RevisionTransactionSet = []types.Transaction{txns[len(txns)-1]}
+
 	// Finalize the contract.
 	var renterPK crypto.PublicKey
 	copy(renterPK[:], rpk.Key)
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
-		renewal:                 true,
 		renterPK:                renterPK,
 		renterSignatures:        renterTxnSigs,
 		renterRevisionSignature: renterNoOpRevisionSig,
-		initialSectorRoots:      so.SectorRoots,
+		initialSectorRoots:      oldRoots,
 		hostCollateral:          renewCollateral,
 		hostInitialRevenue:      renewRevenue,
 		hostInitialRisk:         renewRisk,
@@ -187,15 +190,6 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	}
 
 	defer h.managedUnlockStorageObligation(newSOID)
-
-	// Clear the old storage obligatoin.
-	// TODO: In the unlikely event where we crash after finalizing the contract
-	// but before clearing the old obligation, the old obligation won't be
-	// cleared. To fix this we need to change managedFinalizeContract to create
-	// the new obligation and clear the old one within a single database
-	// transaction.
-	so.SectorRoots = []crypto.Hash{}
-	so.RevisionTransactionSet = []types.Transaction{txns[len(txns)-1]}
 
 	// we don't count the sectors as being removed since we prevented
 	// managedFinalizeContract from incrementing the counters on virtual sectors
@@ -354,8 +348,7 @@ func verifyRenewedContract(so storageObligation, fc types.FileContract, oldRevis
 
 	// Check that the missed proof outputs contain enough money, and that the
 	// void output contains enough money.
-	basePrice := renewBasePrice(so, externalSettings, fc)
-	baseCollateral := renewBaseCollateral(so, externalSettings, fc)
+	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevision, externalSettings, fc.WindowStart)
 	if fc.ValidHostPayout().Cmp(basePrice.Add(baseCollateral)) < 0 {
 		return ErrLowHostValidOutput
 	}

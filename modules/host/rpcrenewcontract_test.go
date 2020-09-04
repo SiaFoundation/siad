@@ -165,8 +165,7 @@ func TestVerifyRenewedContract(t *testing.T) {
 			SignaturesRequired: 2,
 		}.UnlockHash(),
 	}
-	basePrice := renewBasePrice(so, es, fc)
-	baseCollateral := renewBaseCollateral(so, es, fc)
+	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevision, es, fc.WindowStart)
 	oldRevision.NewMissedProofOutputs[2].Value = basePrice.Add(baseCollateral)
 	lockedCollateral := types.ZeroCurrency
 	expectedCollateral, err := renewContractCollateral(so, es, fc)
@@ -287,7 +286,7 @@ func TestVerifyRenewedContract(t *testing.T) {
 	badES.MaxCollateral = types.SiacoinPrecision.Mul64(math.MaxUint64)
 	badIS := is
 	badIS.CollateralBudget = badES.MaxCollateral
-	badBaseCollateral := renewBaseCollateral(so, badES, badFC)
+	_, badBaseCollateral := modules.RenewBaseCosts(oldRevision, badES, badFC.WindowStart)
 	badFC.ValidProofOutputs = append([]types.SiacoinOutput{}, badFC.ValidProofOutputs...)
 	badFC.ValidProofOutputs[1].Value = basePrice.Add(badBaseCollateral).Sub64(1)
 	err = verifyRenewedContract(so, badFC, oldRevision, bh, badIS, badES, rpk, hpk, lockedCollateral)
@@ -297,8 +296,7 @@ func TestVerifyRenewedContract(t *testing.T) {
 
 	// Low host missed output
 	badFC = fc
-	badBasePrice := renewBasePrice(so, badES, badFC)
-	badBaseCollateral = renewBaseCollateral(so, badES, badFC)
+	badBasePrice, badBaseCollateral := modules.RenewBaseCosts(oldRevision, badES, badFC.WindowStart)
 	badFC.ValidProofOutputs = append([]types.SiacoinOutput{}, badFC.ValidProofOutputs...)
 	badFC.MissedProofOutputs = append([]types.SiacoinOutput{}, badFC.MissedProofOutputs...)
 	badFC.ValidProofOutputs[1].Value = badBasePrice.Add(badBaseCollateral).Add64(1)

@@ -4742,132 +4742,138 @@ func TestWorkerStatus(t *testing.T) {
 		pks[c.HostPublicKey.String()] = struct{}{}
 	}
 
-	// Get the worker status
-	rwg, err := r.RenterWorkersGet()
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Get the worker status
+		rwg, err := r.RenterWorkersGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// There should be the same number of workers as Hosts
+		if rwg.NumWorkers != numHosts {
+			t.Fatalf("Expected NumWorkers to be %v but got %v", numHosts, rwg.NumWorkers)
+		}
+		if len(rwg.Workers) != numHosts {
+			t.Fatalf("Expected %v Workers but got %v", numHosts, len(rwg.Workers))
+		}
+
+		// No workers should be on cooldown
+		if rwg.TotalDownloadCoolDown != 0 {
+			t.Fatal("Didn't expect any workers on download cool down but found", rwg.TotalDownloadCoolDown)
+		}
+		if rwg.TotalUploadCoolDown != 0 {
+			t.Fatal("Didn't expect any workers on upload cool down but found", rwg.TotalUploadCoolDown)
+		}
+
+		// Check Worker information
+		for _, worker := range rwg.Workers {
+			// Contract Field checks
+			if _, ok := contracts[worker.ContractID]; !ok {
+				return fmt.Errorf("Worker Contract ID not found in Contract map %v", worker.ContractID)
+			}
+			cu := worker.ContractUtility
+			if !cu.GoodForUpload {
+				return errors.New("Worker contract should be GFR")
+			}
+			if !cu.GoodForRenew {
+				return errors.New("Worker contract should be GFR")
+			}
+			if cu.BadContract {
+				return errors.New("Worker contract should not be marked as Bad")
+			}
+			if cu.LastOOSErr != 0 {
+				return errors.New("Worker contract LastOOSErr should be 0")
+			}
+			if cu.Locked {
+				return errors.New("Worker contract should not be locked")
+			}
+			if _, ok := pks[worker.HostPubKey.String()]; !ok {
+				return fmt.Errorf("Worker PubKey not found in PubKey map %v", worker.HostPubKey)
+			}
+
+			// Download Field checks
+			if worker.DownloadOnCoolDown {
+				return errors.New("Worker should not be on cool down")
+			}
+			if worker.DownloadQueueSize != 0 {
+				return fmt.Errorf("Expected download queue to be empty but was %v", worker.DownloadQueueSize)
+			}
+			if worker.DownloadTerminated {
+				return errors.New("Worker should not be marked as DownloadTerminated")
+			}
+
+			// Upload Field checks
+			if worker.UploadCoolDownError != "" {
+				return fmt.Errorf("Cool down error should be nil but was %v", worker.UploadCoolDownError)
+			}
+			if worker.UploadCoolDownTime.Nanoseconds() >= 0 {
+				return fmt.Errorf("Cool down time should be negative but was %v", worker.UploadCoolDownTime)
+			}
+			if worker.UploadOnCoolDown {
+				return errors.New("Worker should not be on cool down")
+			}
+			if worker.UploadQueueSize != 0 {
+				return fmt.Errorf("Expected upload queue to be empty but was %v", worker.UploadQueueSize)
+			}
+			if worker.UploadTerminated {
+				return errors.New("Worker should not be marked as UploadTerminated")
+			}
+
+			// Account checks
+			if !worker.AccountBalanceTarget.Equals(types.SiacoinPrecision) {
+				return fmt.Errorf("Expected balance target to be 1SC but was %v", worker.AccountBalanceTarget.HumanString())
+			}
+
+			// Job Queues
+			if worker.BackupJobQueueSize != 0 {
+				return fmt.Errorf("Expected backup queue to be empty but was %v", worker.BackupJobQueueSize)
+			}
+			if worker.DownloadRootJobQueueSize != 0 {
+				return fmt.Errorf("Expected download by root queue to be empty but was %v", worker.DownloadRootJobQueueSize)
+			}
+
+			// AccountStatus checks
+			if worker.AccountStatus.AvailableBalance.IsZero() {
+				return fmt.Errorf("Expected available balance to be greater zero but was %v", worker.AccountStatus.AvailableBalance.HumanString())
+			}
+			if !worker.AccountStatus.NegativeBalance.IsZero() {
+				return fmt.Errorf("Expected negative balance to be zero but was %v", worker.AccountStatus.NegativeBalance.HumanString())
+			}
+			if worker.AccountStatus.RecentErr != "" {
+				return fmt.Errorf("Expected recent err to be nil but was %v", worker.AccountStatus.RecentErr)
+			}
+
+			// PriceTableStatus checks
+			if worker.PriceTableStatus.RecentErr != "" {
+				return fmt.Errorf("Expected recent err to be nil but was %v", worker.PriceTableStatus.RecentErr)
+			}
+
+			// ReadJobsStatus checks
+			if worker.ReadJobsStatus.RecentErr != "" {
+				return fmt.Errorf("Expected recent err to be nil but was %v", worker.ReadJobsStatus.RecentErr)
+			}
+			if worker.ReadJobsStatus.JobQueueSize != 0 {
+				return fmt.Errorf("Expected job queue size to be 0 but was %v", worker.ReadJobsStatus.JobQueueSize)
+			}
+			if worker.ReadJobsStatus.ConsecutiveFailures != 0 {
+				return fmt.Errorf("Expected consecutive failures to be 0 but was %v", worker.ReadJobsStatus.ConsecutiveFailures)
+			}
+
+			// HasSectorJobStatus checks
+			if worker.HasSectorJobsStatus.RecentErr != "" {
+				return fmt.Errorf("Expected recent err to be nil but was %v", worker.HasSectorJobsStatus.RecentErr)
+			}
+			if worker.HasSectorJobsStatus.JobQueueSize != 0 {
+				return fmt.Errorf("Expected job queue size to be 0 but was %v", worker.HasSectorJobsStatus.JobQueueSize)
+			}
+			if worker.HasSectorJobsStatus.ConsecutiveFailures != 0 {
+				return fmt.Errorf("Expected consecutive failures to be 0 but was %v", worker.HasSectorJobsStatus.ConsecutiveFailures)
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	// There should be the same number of workers as Hosts
-	if rwg.NumWorkers != numHosts {
-		t.Errorf("Expected NumWorkers to be %v but got %v", numHosts, rwg.NumWorkers)
-	}
-	if len(rwg.Workers) != numHosts {
-		t.Errorf("Expected %v Workers but got %v", numHosts, len(rwg.Workers))
-	}
-
-	// No workers should be on cooldown
-	if rwg.TotalDownloadCoolDown != 0 {
-		t.Error("Didn't expect any workers on download cool down but found", rwg.TotalDownloadCoolDown)
-	}
-	if rwg.TotalUploadCoolDown != 0 {
-		t.Error("Didn't expect any workers on upload cool down but found", rwg.TotalUploadCoolDown)
-	}
-
-	// Check Worker information
-	for _, worker := range rwg.Workers {
-		// Contract Field checks
-		if _, ok := contracts[worker.ContractID]; !ok {
-			t.Error("Worker Contract ID not found in Contract map", worker.ContractID)
-		}
-		cu := worker.ContractUtility
-		if !cu.GoodForUpload {
-			t.Error("Worker contract should be GFR")
-		}
-		if !cu.GoodForRenew {
-			t.Error("Worker contract should be GFR")
-		}
-		if cu.BadContract {
-			t.Error("Worker contract should not be marked as Bad")
-		}
-		if cu.LastOOSErr != 0 {
-			t.Error("Worker contract LastOOSErr should be 0")
-		}
-		if cu.Locked {
-			t.Error("Worker contract should not be locked")
-		}
-		if _, ok := pks[worker.HostPubKey.String()]; !ok {
-			t.Error("Worker PubKey not found in PubKey map", worker.HostPubKey)
-		}
-
-		// Download Field checks
-		if worker.DownloadOnCoolDown {
-			t.Error("Worker should not be on cool down")
-		}
-		if worker.DownloadQueueSize != 0 {
-			t.Error("Expected download queue to be empty but was", worker.DownloadQueueSize)
-		}
-		if worker.DownloadTerminated {
-			t.Error("Worker should not be marked as DownloadTerminated")
-		}
-
-		// Upload Field checks
-		if worker.UploadCoolDownError != "" {
-			t.Error("Cool down error should be nil but was", worker.UploadCoolDownError)
-		}
-		if worker.UploadCoolDownTime.Nanoseconds() >= 0 {
-			t.Error("Cool down time should be negative but was", worker.UploadCoolDownTime)
-		}
-		if worker.UploadOnCoolDown {
-			t.Error("Worker should not be on cool down")
-		}
-		if worker.UploadQueueSize != 0 {
-			t.Error("Expected upload queue to be empty but was", worker.UploadQueueSize)
-		}
-		if worker.UploadTerminated {
-			t.Error("Worker should not be marked as UploadTerminated")
-		}
-
-		// Account checks
-		if !worker.AccountBalanceTarget.Equals(types.SiacoinPrecision) {
-			t.Error("Expected balance target to be 1SC but was", worker.AccountBalanceTarget.HumanString())
-		}
-
-		// Job Queues
-		if worker.BackupJobQueueSize != 0 {
-			t.Error("Expected backup queue to be empty but was", worker.BackupJobQueueSize)
-		}
-		if worker.DownloadRootJobQueueSize != 0 {
-			t.Error("Expected download by root queue to be empty but was", worker.DownloadRootJobQueueSize)
-		}
-
-		// AccountStatus checks
-		if !worker.AccountStatus.AvailableBalance.IsZero() {
-			t.Error("Expected available balance to be zero but was", worker.AccountStatus.AvailableBalance.HumanString())
-		}
-		if !worker.AccountStatus.NegativeBalance.IsZero() {
-			t.Error("Expected negative balance to be zero but was", worker.AccountStatus.NegativeBalance.HumanString())
-		}
-		if worker.AccountStatus.RecentErr != "" {
-			t.Error("Expected recent err to be nil but was", worker.AccountStatus.RecentErr)
-		}
-
-		// PriceTableStatus checks
-		if worker.PriceTableStatus.RecentErr != "" {
-			t.Error("Expected recent err to be nil but was", worker.PriceTableStatus.RecentErr)
-		}
-
-		// ReadJobsStatus checks
-		if worker.ReadJobsStatus.RecentErr != "" {
-			t.Error("Expected recent err to be nil but was", worker.ReadJobsStatus.RecentErr)
-		}
-		if worker.ReadJobsStatus.JobQueueSize != 0 {
-			t.Error("Expected job queue size to be 0 but was", worker.ReadJobsStatus.JobQueueSize)
-		}
-		if worker.ReadJobsStatus.ConsecutiveFailures != 0 {
-			t.Error("Expected consecutive failures to be 0 but was", worker.ReadJobsStatus.ConsecutiveFailures)
-		}
-
-		// HasSectorJobStatus checks
-		if worker.HasSectorJobsStatus.RecentErr != "" {
-			t.Error("Expected recent err to be nil but was", worker.HasSectorJobsStatus.RecentErr)
-		}
-		if worker.HasSectorJobsStatus.JobQueueSize != 0 {
-			t.Error("Expected job queue size to be 0 but was", worker.HasSectorJobsStatus.JobQueueSize)
-		}
-		if worker.HasSectorJobsStatus.ConsecutiveFailures != 0 {
-			t.Error("Expected consecutive failures to be 0 but was", worker.HasSectorJobsStatus.ConsecutiveFailures)
-		}
 	}
 }
 

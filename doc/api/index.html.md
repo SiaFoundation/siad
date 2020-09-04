@@ -4849,7 +4849,8 @@ returned. This timeout is configurable through the query string parameters.
 In order to make sure skapps function correctly when they rely on relative paths
 within the same skyfile, we need the skylink to be followed by a trailing slash.
 If that is not the case the API responds with a redirect to the same skylink,
-adding that trailing slash.
+adding that trailing slash. This redirect only happens if the skyfile holds a 
+skapp.
 
 ### Path Parameters 
 ### Required

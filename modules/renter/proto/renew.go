@@ -44,7 +44,7 @@ func (cs *ContractSet) managedNewRenew(oldContract *SafeContract, params Contrac
 	txnFee := maxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
 
 	// Calculate the base cost.
-	basePrice, baseCollateral := baseCosts(lastRev, host, endHeight)
+	basePrice, baseCollateral := rhp2BaseCosts(lastRev, host, endHeight)
 
 	// Create file contract and add it together with the fee to the builder.
 	fc, err := createRenewedContract(lastRev, params, txnFee, basePrice, baseCollateral, tpool)
@@ -213,7 +213,7 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 	txnFee := maxFee.Mul64(modules.EstimatedFileContractTransactionSetSize)
 
 	// Calculate the base cost.
-	basePrice, baseCollateral := baseCosts(lastRev, host, endHeight)
+	basePrice, baseCollateral := rhp2BaseCosts(lastRev, host, endHeight)
 
 	// Create file contract and add it together with the fee to the builder.
 	fc, err := createRenewedContract(lastRev, params, txnFee, basePrice, baseCollateral, tpool)
@@ -424,8 +424,8 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 	return meta, txnSet, nil
 }
 
-// baseCosts computes the base costs for renewing a contract.
-func baseCosts(lastRev types.FileContractRevision, host modules.HostDBEntry, endHeight types.BlockHeight) (basePrice, baseCollateral types.Currency) {
+// rhp2BaseCosts computes the base costs for renewing a contract.
+func rhp2BaseCosts(lastRev types.FileContractRevision, host modules.HostDBEntry, endHeight types.BlockHeight) (basePrice, baseCollateral types.Currency) {
 	// If the contract height did not increase, basePrice and baseCollateral are
 	// zero.
 	if endHeight+host.WindowSize > lastRev.NewWindowEnd {
@@ -572,7 +572,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	txnFee := pt.TxnFeeMaxRecommended.Mul64(2 * modules.EstimatedFileContractTransactionSetSize)
 
 	// Calculate the base cost.
-	basePrice, baseCollateral := baseCosts(oldRev, host, endHeight)
+	basePrice, baseCollateral := modules.RenewBaseCosts(oldRev, host.HostExternalSettings, endHeight)
 
 	// Create the final revision of the old contract.
 	renewCost := pt.RenewContractCost

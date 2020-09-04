@@ -638,7 +638,6 @@ func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 	h.mu.RUnlock()
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
-		renewal:                 false,
 		renterPK:                renterPK,
 		renterSignatures:        renterSigs.ContractSignatures,
 		renterRevisionSignature: renterSigs.RevisionSignature,
@@ -726,8 +725,8 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	// obligation in the process.
 	h.mu.RLock()
 	fc := req.Transactions[len(req.Transactions)-1].FileContracts[0]
-	renewRevenue := renewBasePrice(s.so, settings, fc)
-	renewRisk := renewBaseCollateral(s.so, settings, fc)
+	renewRevenue := rhp2RenewBasePrice(s.so, settings, fc)
+	renewRisk := rhp2RenewBaseCollateral(s.so, settings, fc)
 	renewCollateral, err := renewContractCollateral(s.so, settings, fc)
 	h.mu.RUnlock()
 	if err != nil {
@@ -738,7 +737,6 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	copy(renterPK[:], req.RenterKey.Key)
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
-		renewal:                 false,
 		renterPK:                renterPK,
 		renterSignatures:        renterSigs.ContractSignatures,
 		renterRevisionSignature: renterSigs.RevisionSignature,
@@ -993,8 +991,8 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	// obligation in the process.
 	h.mu.RLock()
 	fc := req.Transactions[len(req.Transactions)-1].FileContracts[0]
-	renewRevenue := renewBasePrice(s.so, settings, fc)
-	renewRisk := renewBaseCollateral(s.so, settings, fc)
+	renewRevenue := rhp2RenewBasePrice(s.so, settings, fc)
+	renewRisk := rhp2RenewBaseCollateral(s.so, settings, fc)
 	renewCollateral, err := renewContractCollateral(s.so, settings, fc)
 	h.mu.RUnlock()
 	if err != nil {
@@ -1003,13 +1001,20 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	}
 	var renterPK crypto.PublicKey
 	copy(renterPK[:], req.RenterKey.Key)
+
+	// Clear the old storage obligation.
+	oldRoots := s.so.SectorRoots
+	s.so.SectorRoots = []crypto.Hash{}
+	s.so.RevisionTransactionSet = []types.Transaction{finalRevTxn}
+
+	// Finalize the contract. This creates a new SO and saves the old one atomically.
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
-		renewal:                 true,
+		renewedSO:               &s.so,
 		renterPK:                renterPK,
 		renterSignatures:        renterSigs.ContractSignatures,
 		renterRevisionSignature: renterSigs.RevisionSignature,
-		initialSectorRoots:      s.so.SectorRoots,
+		initialSectorRoots:      oldRoots,
 		hostCollateral:          renewCollateral,
 		hostInitialRevenue:      renewRevenue,
 		hostInitialRisk:         renewRisk,
@@ -1021,14 +1026,6 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 		return extendErr("failed to finalize contract: ", err)
 	}
 	defer h.managedUnlockStorageObligation(newSOID)
-
-	// Clear the old storage obligatoin.
-	s.so.SectorRoots = []crypto.Hash{}
-	s.so.RevisionTransactionSet = []types.Transaction{finalRevTxn}
-	// we don't count the sectors as being removed since we prevented
-	// managedFinalizeContract from incrementing the counters on virtual sectors
-	// before
-	h.managedModifyStorageObligation(s.so, nil, nil)
 
 	// Send our signatures for the contract transaction and initial revision.
 	hostSigs := modules.LoopRenewAndClearContractSignatures{
