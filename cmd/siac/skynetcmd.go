@@ -646,7 +646,7 @@ func skynetuploadpipecmd(destSiaPath string) {
 	// create a new progress bar set:
 	pbs := mpb.New(mpb.WithWidth(40))
 	// Wrap the file reader in a progress bar reader
-	pUpload, rc := newProgressReader(pbs, 0, "-", os.Stdin)
+	pUpload, rc := newProgressReader(pbs, -1, "-", os.Stdin)
 	// Set a spinner to start after the upload is finished
 	pSpinner := newProgressSpinner(pbs, pUpload, filename)
 	// Perform the upload
