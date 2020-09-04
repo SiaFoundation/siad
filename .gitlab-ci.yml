@@ -183,7 +183,7 @@ deploy:
   script:
     - curl -X POST -H "Content-Type:application/json" --data '{"name":"'"$CI_COMMIT_REF_NAME"'"}' $docker_hub_dev_hook
   only:
-    - build_dev
+    - master
 
 legacy-tests:
   <<: *default_test_params
