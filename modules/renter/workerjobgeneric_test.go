@@ -147,8 +147,8 @@ func TestWorkerJobGeneric(t *testing.T) {
 	discarded := j.discarded
 	executed := j.executed
 	j.mu.Unlock()
-	if discarded || executed {
-		t.Error("job should not have executed or been discarded")
+	if !discarded || executed {
+		t.Error("job should not have executed but discarded")
 	}
 	// NOTE: the job is not expected to send a result when it has been
 	// explicitly canceled. Check that no result was sent.
