@@ -218,7 +218,7 @@ func stackcmd() {
 	}()
 
 	// Write stack trace to output file
-	_, err = f.Write(dsg.Stack)
+	_, err = f.Write([]byte(dsg.Stack))
 	if err != nil {
 		die("Unable to write to output file:", err)
 	}
