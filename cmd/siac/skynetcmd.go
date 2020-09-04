@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v5"
@@ -847,5 +848,6 @@ func newProgressSkylink(pbs *mpb.Progress, afterBar *mpb.Bar, filename, skylink 
 	)
 	afterBar.SetTotal(0, true)
 	bar.SetTotal(0, true)
+	time.Sleep(time.Second)
 	return bar
 }
