@@ -434,7 +434,7 @@ func initCmds() *cobra.Command {
 
 // initClient initializes client cmd flags and default values
 func initClient(root *cobra.Command, verbose *bool, client *client.Client, siaDir *string) {
-	root.Flags().BoolVarP(verbose, "verbose", "v", false, "Display additional siac information")
+	root.PersistentFlags().BoolVarP(verbose, "verbose", "v", false, "Display additional information")
 	root.PersistentFlags().StringVarP(&client.Address, "addr", "a", "localhost:9980", "which host/port to communicate with (i.e. the host/port siad is listening on)")
 	root.PersistentFlags().StringVarP(&client.Password, "apipassword", "", "", "the password for the API's http authentication")
 	root.PersistentFlags().StringVarP(siaDir, "sia-directory", "d", "", "location of the sia directory")
