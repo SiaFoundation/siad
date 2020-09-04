@@ -656,6 +656,7 @@ func newStreamProgressReader(bar *mpb.Bar, r io.Reader) *streamProgressReader {
 	bar.SetTotal(1, false)
 	return &streamProgressReader{
 		bar:   bar,
+		r:     r,
 		total: 1,
 	}
 }
