@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -626,6 +627,39 @@ func skynetuploadcmd(cmd *cobra.Command, args []string) {
 	fmt.Printf("Successfully uploaded %d skyfiles!\n", len(filesToUpload))
 }
 
+// streamProgressReader is a proxy for showing the progress of a stream of
+// unknown size as a bar.
+type streamProgressReader struct {
+	bar   *mpb.Bar
+	r     io.Reader
+	total int64
+}
+
+// Read will increment the bar for every byte read. Upon io.EOF, it signals
+// completion and sibtracts the additional 1 byte from the total again.
+func (spr *streamProgressReader) Read(b []byte) (n int, err error) {
+	n, err = spr.r.Read(b)
+	if err == io.EOF {
+		spr.bar.SetTotal(spr.total+int64(n)-1, true)
+	} else {
+		spr.bar.SetTotal(spr.total+int64(n), false)
+	}
+	spr.total += int64(n)
+	spr.bar.IncrBy(n)
+	return
+}
+
+// newStreamProgressReader creates a new streamProgressReader.
+func newStreamProgressReader(bar *mpb.Bar, r io.Reader) *streamProgressReader {
+	// Set total to 1. That way the total will always be 1 ahead of the stream
+	// and the bar won't automatically trigger the complete event.
+	bar.SetTotal(1, false)
+	return &streamProgressReader{
+		bar:   bar,
+		total: 1,
+	}
+}
+
 // skynetuploadpipecmd will upload a file or directory to Skynet. If --dry-run is
 // passed, it will fetch the skylinks without uploading.
 func skynetuploadpipecmd(destSiaPath string) {
@@ -645,12 +679,23 @@ func skynetuploadpipecmd(destSiaPath string) {
 
 	// create a new progress bar set:
 	pbs := mpb.New(mpb.WithWidth(40))
-	// Wrap the file reader in a progress bar reader
-	pUpload, rc := newProgressReader(pbs, -1, "-", os.Stdin)
+	// Create the single bar.
+	bar := pbs.AddBar(
+		0, // size is unknown
+		mpb.PrependDecorators(
+			decor.Name(pBarJobUpload, decor.WC{W: 10}),
+			decor.Percentage(decor.WC{W: 6}),
+		),
+		mpb.AppendDecorators(
+			decor.Name(filename, decor.WC{W: len(filename) + 1, C: decor.DidentRight}),
+		),
+	)
+	// Create the proxy reader from stdin.
+	r := newStreamProgressReader(bar, bufio.NewReader(os.Stdin))
 	// Set a spinner to start after the upload is finished
-	pSpinner := newProgressSpinner(pbs, pUpload, filename)
+	pSpinner := newProgressSpinner(pbs, bar, filename)
 	// Perform the upload
-	skylink := skynetUploadFileFromReader(rc, filename, siaPath, modules.DefaultFilePerm)
+	skylink := skynetUploadFileFromReader(r, filename, siaPath, modules.DefaultFilePerm)
 	// Replace the spinner with the skylink and stop it
 	newProgressSkylink(pbs, pSpinner, filename, skylink)
 	return
