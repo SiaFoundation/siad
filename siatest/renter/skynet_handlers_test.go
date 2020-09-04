@@ -98,7 +98,7 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 			ExpectedRedirect: "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/?foo=bar",
 		},
 		{
-			// DetectRedirectWithEhcoding ensures that if the skylink needs to
+			// DetectRedirectWithEncoding ensures that if the skylink needs to
 			// be redirected and has encoded special characters in its URL, that
 			// these are not decoded by redirecting.
 			Name:             "DetectRedirectWithEncoding",
@@ -107,7 +107,7 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 			ExpectedRedirect: "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/?filename=encoding%23test%3F",
 		},
 		{
-			// PartialFilenameWithEhcoding ensures that if a partial version of
+			// PartialFilenameWithEncoding ensures that if a partial version of
 			// an existing path has encoded special characters in its URL, no
 			// file found.
 			Name:          "PartialFilenameWithEncoding",
@@ -115,7 +115,7 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 			ExpectedError: "failed to download contents for path: /test?",
 		},
 		{
-			// FilenameWithEhcoding ensures that if the path has encoded special
+			// FilenameWithEncoding ensures that if the path has encoded special
 			// characters in its URL, that the correct file is found.
 			Name:          "FilenameWithEncoding",
 			Skylink:       "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/test%3Fencoding",

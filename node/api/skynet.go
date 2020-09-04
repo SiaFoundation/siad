@@ -246,17 +246,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}()
 
-	// Get the skylink from the request URL. It does not decode special
-	// characters like '?', which appears in the URL as `%3F`, allowing us to
-	// differentiate it from the '?' that begins query parameters.
+	// Get the skylink from the request URL. It decodes special characters like
+	// '?', which appears in the URL as '%3F', from the path. This allows us to
+	// differentiate '%3F' from the '?' that begins query parameters.
 	skylinkStr := strings.TrimPrefix(req.URL.String(), "/skynet/skylink/")
-	skylink, skylinkStringNoQuery, path, err := splitSkylinkString(skylinkStr)
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
-		return
-	}
-	// Decode the path now so we can match file names with special characters.
-	path, err = url.QueryUnescape(path)
+	skylink, skylinkStringNoQuery, path, err := parseSkylinkString(skylinkStr)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
 		return
@@ -516,10 +510,10 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
 }
 
-// splitSkylinkString splits a skylink string into its components - a skylink, a
+// parseSkylinkString splits a skylink string into its components - a skylink, a
 // string representation of the skylink with the query parameters stripped, and
-// a path.
-func splitSkylinkString(s string) (skylink modules.Skylink, skylinkStringNoQuery, path string, err error) {
+// a path. The path is URL-decoded while the other components are not.
+func parseSkylinkString(s string) (skylink modules.Skylink, skylinkStringNoQuery, path string, err error) {
 	s = strings.TrimPrefix(s, "/")
 	// Parse out optional path to a subfile
 	path = "/" // default to root
@@ -529,6 +523,11 @@ func splitSkylinkString(s string) (skylink modules.Skylink, skylinkStringNoQuery
 	// Check if a path is passed.
 	if len(splits) > 1 && len(splits[1]) > 0 {
 		path = modules.EnsurePrefix(splits[1], "/")
+	}
+	// Decode the path as it may contain URL-encoded characters.
+	path, err = url.QueryUnescape(path)
+	if err != nil {
+		return
 	}
 	// Parse skylink
 	err = skylink.LoadString(s)
