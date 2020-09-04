@@ -45,6 +45,13 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	txns := req.TSet
 	rpk := req.RenterPK
 
+	// Check that the transaction set has enough fees on it to get into the
+	// blockchain.
+	setFee := modules.CalculateFee(txns)
+	if setFee.Cmp(minFee) < 0 {
+		return errors.AddContext(ErrLowTransactionFees, fmt.Sprintf("managedRPCRenewContract: insufficient txn fees %v < %v", setFee, minFee))
+	}
+
 	// Fetch the final revision and new contract from the transactionset the
 	// renter sent. This also verifies that there are only one contract and
 	// revision in the last transaction.
@@ -96,21 +103,11 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to verify new contract")
 	}
 
-	// Check that the transaction set has enough fees on it to get into the
-	// blockchain.
-	setFee := modules.CalculateFee(txns)
-	if setFee.Cmp(minFee) < 0 {
-		return errors.AddContext(ErrLowTransactionFees, fmt.Sprintf("managedRPCRenewContract: insufficient txn fees %v < %v", setFee, minFee))
-	}
-
 	// Add the collateral to the contract.
 	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(so, es, txns)
 	if err != nil {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to add collateral")
 	}
-
-	// TODO: do we need to drop the txnBuilder in case of an error? According to
-	// the docstring Drop can only be called before signatures are added.
 
 	// Send the new inputs and outputs to the renter.
 	err = modules.RPCWrite(stream, modules.RPCRenewContractCollateralResponse{
@@ -119,6 +116,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 		NewOutputs: newOutputs,
 	})
 	if err != nil {
+		txnBuilder.Drop()
 		return errors.AddContext(err, "managedRPCRenewContract: failed to send collateral response")
 	}
 
@@ -126,6 +124,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	var finalRevisionSigRenterResp modules.RPCRenewContractFinalRevisionSig
 	err = modules.RPCRead(stream, &finalRevisionSigRenterResp)
 	if err != nil {
+		txnBuilder.Drop()
 		return errors.AddContext(err, "managedRPCRenewContract: failed to read final revision signatures from renter")
 	}
 	finalRevRenterSig := finalRevisionSigRenterResp.Signature
@@ -133,6 +132,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	// Manually add the revision signatures.
 	finalRevHostSig, err := addRevisionSignatures(txnBuilder, finalRevision, finalRevRenterSig, hsk, rpk.ToPublicKey(), bh)
 	if err != nil {
+		txnBuilder.Drop()
 		return errors.AddContext(err, "managedRPCRenewContract: failed to add revision signatures to transaction")
 	}
 
@@ -141,6 +141,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 		Signature: finalRevHostSig,
 	})
 	if err != nil {
+		txnBuilder.Drop()
 		return errors.AddContext(err, "managedRPCRenewContract: failed to send final revision signatures to renter")
 	}
 
@@ -148,6 +149,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	var renterSignatureResp modules.RPCRenewContractRenterSignatures
 	err = modules.RPCRead(stream, &renterSignatureResp)
 	if err != nil {
+		txnBuilder.Drop()
 		return errors.AddContext(err, "managedRPCRenewContract: failed to receive renter signatures")
 	}
 	renterTxnSigs := renterSignatureResp.RenterTxnSigs
@@ -162,7 +164,8 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	renewCollateral, err := renewContractCollateral(so, es, fc)
 	h.mu.RUnlock()
 	if err != nil {
-		return errors.AddContext(err, "managedRPCRenewContract: failed to comput contract collateral")
+		txnBuilder.Drop()
+		return errors.AddContext(err, "managedRPCRenewContract: failed to compute contract collateral")
 	}
 
 	// Clear the old storage obligation.
@@ -190,14 +193,6 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	}
 
 	defer h.managedUnlockStorageObligation(newSOID)
-
-	// we don't count the sectors as being removed since we prevented
-	// managedFinalizeContract from incrementing the counters on virtual sectors
-	// before
-	err = h.managedModifyStorageObligation(so, nil, nil)
-	if err != nil {
-		return errors.AddContext(err, "managedRPCRenewContract: failed to modify storage obligation")
-	}
 
 	// Send signatures back to renter.
 	err = modules.RPCWrite(stream, modules.RPCRenewContractHostSignatures{

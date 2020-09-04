@@ -709,7 +709,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	var hostSignatureResp modules.RPCRenewContractHostSignatures
 	err = modules.RPCRead(conn, &hostSignatureResp)
 	if err != nil {
-		return errors.AddContext(err, "failed to read RPCRenewContractRenterSignatures from host")
+		return errors.AddContext(err, "failed to read RPCRenewContractHostSignatures from host")
 	}
 	for _, sig := range hostSignatureResp.ContractSignatures {
 		_ = txnBuilder.AddTransactionSignature(sig)

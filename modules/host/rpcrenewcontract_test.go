@@ -76,7 +76,7 @@ func TestFetchRevisionAndContract(t *testing.T) {
 	// No contract.
 	noContract := txnSet
 	noContract[1].FileContracts = nil
-	fcr, fc, err = fetchRevisionAndContract(noContract)
+	_, _, err = fetchRevisionAndContract(noContract)
 	if err == nil {
 		t.Fatal("found contract")
 	}
@@ -84,7 +84,7 @@ func TestFetchRevisionAndContract(t *testing.T) {
 	// No revision.
 	noRevision := txnSet
 	noRevision[1].FileContractRevisions = nil
-	fcr, fc, err = fetchRevisionAndContract(noRevision)
+	_, _, err = fetchRevisionAndContract(noRevision)
 	if err == nil {
 		t.Fatal("found revision")
 	}

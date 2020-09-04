@@ -375,6 +375,9 @@ func verifyClearingRevision(oldFCR, revision types.FileContractRevision, blockHe
 	if oldFCR.UnlockConditions.UnlockHash() != revision.UnlockConditions.UnlockHash() {
 		return ErrBadUnlockConditions
 	}
+	if revision.NewRevisionNumber != math.MaxUint64 {
+		return ErrBadRevisionNumber
+	}
 	if oldFCR.NewRevisionNumber >= revision.NewRevisionNumber {
 		return ErrBadRevisionNumber
 	}

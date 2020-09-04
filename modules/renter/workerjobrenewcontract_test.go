@@ -23,6 +23,13 @@ func TestRenewContract(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Close the worker.
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
 	// Get a transaction builder and add the funding.
 	funding := types.SiacoinPrecision
 	txnBuilder, err := wt.rt.wallet.StartTransaction()
@@ -40,7 +47,7 @@ func TestRenewContract(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// get the wallet seed
+	// Get the wallet seed
 	seed, _, err := wt.rt.wallet.PrimarySeed()
 	if err != nil {
 		t.Fatal(err)
@@ -105,10 +112,5 @@ func TestRenewContract(t *testing.T) {
 	}
 	if fcr.NewFileMerkleRoot != (crypto.Hash{}) {
 		t.Fatal("size should be 0", fcr.NewFileSize)
-	}
-
-	// Close the worker.
-	if err := wt.Close(); err != nil {
-		t.Fatal(err)
 	}
 }

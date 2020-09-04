@@ -26,7 +26,7 @@ type (
 	jobRead struct {
 		staticLength uint64
 
-		staticResponseChan chan *jobReadResponse // Channel to send a response down
+		staticResponseChan chan *jobReadResponse
 
 		*jobGeneric
 	}
@@ -92,12 +92,11 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 	})
 
 	// Report success or failure to the queue.
-	if readErr == nil {
-		j.staticQueue.callReportSuccess()
-	} else {
+	if readErr != nil {
 		j.staticQueue.callReportFailure(readErr)
 		return
 	}
+	j.staticQueue.callReportSuccess()
 
 	// Job succeeded.
 	//

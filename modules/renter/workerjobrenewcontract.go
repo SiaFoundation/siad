@@ -12,20 +12,20 @@ import (
 type (
 	// jobRenew contains information about a Renew query.
 	jobRenew struct {
-		staticResponseChan       chan *jobRenewResponse // Channel to send a response down
+		staticResponseChan       chan *jobRenewResponse
 		staticTransactionBuilder modules.TransactionBuilder
 		staticParams             proto.ContractParams
 
 		*jobGeneric
 	}
 
-	// jobReadQueue is a list of Renew queries that have been assigned to the
+	// jobRenewQueue is a list of Renew queries that have been assigned to the
 	// worker.
 	jobRenewQueue struct {
 		*jobGenericQueue
 	}
 
-	// jobReadResponse contains the result of a Renew query.
+	// jobRenewResponse contains the result of a Renew query.
 	jobRenewResponse struct {
 		staticErr error
 
@@ -79,12 +79,11 @@ func (j *jobRenew) callExecute() {
 	})
 
 	// Report success or failure to the queue.
-	if err == nil {
-		j.staticQueue.callReportSuccess()
-	} else {
+	if err != nil {
 		j.staticQueue.callReportFailure(err)
 		return
 	}
+	j.staticQueue.callReportSuccess()
 }
 
 // callExpectedBandwidth returns the amount of bandwidth this job is expected to
