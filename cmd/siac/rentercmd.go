@@ -31,6 +31,9 @@ import (
 const (
 	fileSizeUnits = "B, KB, MB, GB, TB, PB, EB, ZB, YB"
 
+	// truncateErrLength is the length at which an error string gets truncated
+	truncateErrLength = 24
+
 	// colourful strings for the console UI
 	pBarJobProcess = "\x1b[34;1mpinning   \x1b[0m" // blue
 	pBarJobUpload  = "\x1b[33;1muploading \x1b[0m" // yellow
@@ -2709,7 +2712,7 @@ func renterworkerseacmd() {
 		fmt.Fprintf(w, "\t%v\t%v\t%v\n",
 			sanitizeTime(as.RecentSuccessTime, as.RecentSuccessTime != time.Time{}),
 			sanitizeTime(as.RecentErrTime, as.RecentErr != ""),
-			sanitizeErr(as.RecentErr, workerVerbose))
+			sanitizeErr(as.RecentErr))
 	}
 }
 
@@ -2765,7 +2768,7 @@ func writeWorkerDownloadUploadInfo(download bool, w *tabwriter.Writer, rw module
 			fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
 				worker.DownloadOnCoolDown,
 				absDuration(worker.DownloadCoolDownTime),
-				sanitizeErr(worker.DownloadCoolDownError, workerVerbose),
+				sanitizeErr(worker.DownloadCoolDownError),
 				worker.DownloadQueueSize,
 				worker.DownloadTerminated)
 			continue
@@ -2774,7 +2777,7 @@ func writeWorkerDownloadUploadInfo(download bool, w *tabwriter.Writer, rw module
 		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
 			worker.UploadOnCoolDown,
 			absDuration(worker.UploadCoolDownTime),
-			sanitizeErr(worker.UploadCoolDownError, workerVerbose),
+			sanitizeErr(worker.UploadCoolDownError),
 			worker.UploadQueueSize,
 			worker.UploadTerminated)
 	}
@@ -2832,7 +2835,7 @@ func renterworkersptcmd() {
 		// Error Info
 		fmt.Fprintf(w, "\t%v\t%v\n",
 			sanitizeTime(pts.RecentErrTime, pts.RecentErr != ""),
-			sanitizeErr(pts.RecentErr, workerVerbose))
+			sanitizeErr(pts.RecentErr))
 	}
 }
 
@@ -2873,7 +2876,7 @@ func renterworkersrjcmd() {
 			rjs.AvgJobTime4m,
 			rjs.ConsecutiveFailures,
 			sanitizeTime(rjs.RecentErrTime, rjs.RecentErr != ""),
-			sanitizeErr(rjs.RecentErr, workerVerbose))
+			sanitizeErr(rjs.RecentErr))
 	}
 }
 
@@ -2912,7 +2915,7 @@ func renterworkershsjcmd() {
 			hsjs.AvgJobTime,
 			hsjs.ConsecutiveFailures,
 			sanitizeTime(hsjs.RecentErrTime, hsjs.RecentErr != ""),
-			sanitizeErr(hsjs.RecentErr, workerVerbose))
+			sanitizeErr(hsjs.RecentErr))
 	}
 }
 
@@ -2976,7 +2979,7 @@ func writeWorkers(workers []modules.WorkerStatus) {
 		fmt.Fprintf(w, "\t%t\t%v\t%v",
 			worker.MaintenanceOnCooldown,
 			worker.MaintenanceCoolDownTime,
-			sanitizeErr(worker.MaintenanceCoolDownError, workerVerbose))
+			sanitizeErr(worker.MaintenanceCoolDownError))
 
 		// Job Info
 		fmt.Fprintf(w, "\t%v\t%v\t%v\n",
@@ -3010,12 +3013,12 @@ func sanitizeTime(t time.Time, cond bool) string {
 // sanitizeErr is a small helper function that sanitizes the output for the
 // given error string. It will print "-", if the error string is the equivalent
 // of a nil error.
-func sanitizeErr(errStr string, verbose bool) string {
+func sanitizeErr(errStr string) string {
 	if errStr == "" {
 		return "-"
 	}
-	if !verbose {
-		errStr = errStr[:24] + "..."
+	if !statusVerbose && len(errStr) > truncateErrLength {
+		errStr = errStr[:truncateErrLength] + "..."
 	}
 	return errStr
 }

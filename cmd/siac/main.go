@@ -97,9 +97,6 @@ var (
 	walletStartHeight    uint64 // Start height for transaction search.
 	walletEndHeight      uint64 // End height for transaction search.
 	walletTxnFeeIncluded bool   // include the fee in the balance being sent
-
-	// Worker Flags
-	workerVerbose bool // Show additional info in the worker commands
 )
 
 var (
@@ -343,8 +340,6 @@ func initCmds() *cobra.Command {
 	renterAllowanceCmd.AddCommand(renterAllowanceCancelCmd)
 	renterContractsCmd.AddCommand(renterContractsViewCmd)
 	renterFilesUploadCmd.AddCommand(renterFilesUploadPauseCmd, renterFilesUploadResumeCmd)
-
-	renterWorkersCmd.Flags().BoolVarP(&workerVerbose, "verbose", "v", false, "Show additional worker info such as error details")
 
 	renterCmd.Flags().BoolVarP(&renterVerbose, "verbose", "v", false, "Show additional renter info such as allowance details")
 	renterContractsCmd.Flags().BoolVarP(&renterAllContracts, "all", "A", false, "Show all expired contracts in addition to active contracts")
