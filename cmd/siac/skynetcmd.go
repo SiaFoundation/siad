@@ -845,7 +845,7 @@ func newProgressSkylink(pbs *mpb.Progress, afterBar *mpb.Bar, filename, skylink 
 			decor.Name(filename, decor.WC{W: len(filename) + 1, C: decor.DidentRight}),
 		),
 	)
-	afterBar.Increment()
-	bar.Increment()
+	afterBar.SetTotal(0, true)
+	bar.SetTotal(0, true)
 	return bar
 }
