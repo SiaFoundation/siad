@@ -686,7 +686,7 @@ func skynetuploadpipecmd(destSiaPath string) {
 		mpb.SpinnerOnLeft,
 		mpb.PrependDecorators(
 			decor.AverageSpeed(decor.UnitKiB, "% .1f", decor.WC{W: 4}),
-			decor.Counters(decor.UnitKiB, "%.1f", decor.WC{W: 4}),
+			decor.Counters(decor.UnitKiB, " - %.1f / %.1f", decor.WC{W: 4}),
 		),
 	)
 	// Create the proxy reader from stdin.
