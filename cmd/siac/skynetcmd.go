@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -627,40 +626,6 @@ func skynetuploadcmd(cmd *cobra.Command, args []string) {
 	fmt.Printf("Successfully uploaded %d skyfiles!\n", len(filesToUpload))
 }
 
-// streamProgressReader is a proxy for showing the progress of a stream of
-// unknown size as a bar.
-type streamProgressReader struct {
-	bar   *mpb.Bar
-	r     io.Reader
-	total int64
-}
-
-// Read will increment the bar for every byte read. Upon io.EOF, it signals
-// completion and sibtracts the additional 1 byte from the total again.
-func (spr *streamProgressReader) Read(b []byte) (n int, err error) {
-	n, err = spr.r.Read(b)
-	if err == io.EOF {
-		spr.bar.SetTotal(spr.total+int64(n)-1, true)
-	} else {
-		spr.bar.SetTotal(spr.total+int64(n), false)
-	}
-	spr.total += int64(n)
-	spr.bar.IncrBy(n)
-	return
-}
-
-// newStreamProgressReader creates a new streamProgressReader.
-func newStreamProgressReader(bar *mpb.Bar, r io.Reader) *streamProgressReader {
-	// Set total to 1. That way the total will always be 1 ahead of the stream
-	// and the bar won't automatically trigger the complete event.
-	bar.SetTotal(1, false)
-	return &streamProgressReader{
-		bar:   bar,
-		r:     r,
-		total: 1,
-	}
-}
-
 // skynetuploadpipecmd will upload a file or directory to Skynet. If --dry-run is
 // passed, it will fetch the skylinks without uploading.
 func skynetuploadpipecmd(destSiaPath string) {
@@ -682,7 +647,7 @@ func skynetuploadpipecmd(destSiaPath string) {
 	pbs := mpb.New(mpb.WithWidth(40))
 	// Create the single bar.
 	bar := pbs.AddSpinner(
-		0, // size is unknown
+		-1, // size is unknown
 		mpb.SpinnerOnLeft,
 		mpb.SpinnerStyle([]string{"∙∙∙", "●∙∙", "∙●∙", "∙∙●", "∙∙∙"}),
 		mpb.BarFillerClearOnComplete(),
@@ -692,7 +657,7 @@ func skynetuploadpipecmd(destSiaPath string) {
 		),
 	)
 	// Create the proxy reader from stdin.
-	r := newStreamProgressReader(bar, bufio.NewReader(os.Stdin))
+	r := bar.ProxyReader(os.Stdin)
 	// Set a spinner to start after the upload is finished
 	pSpinner := newProgressSpinner(pbs, bar, filename)
 	// Perform the upload
