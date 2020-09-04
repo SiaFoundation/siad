@@ -3,7 +3,6 @@ package host
 import (
 	"math"
 	"reflect"
-	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -24,7 +23,7 @@ func TestAcceptRenewal(t *testing.T) {
 
 	// not accepting new contracts
 	err = needsRenewal(false, 0, revisionSubmissionBuffer+1)
-	if err == nil || !strings.Contains(err.Error(), "host is not accepting new contracts") {
+	if !errors.Contains(err, ErrNotAcceptingContracts) {
 		t.Fatal(err)
 	}
 
@@ -304,6 +303,15 @@ func TestVerifyRenewedContract(t *testing.T) {
 	badFC.MissedProofOutputs[1].Value = badFC.ValidProofOutputs[1].Value.Sub(badBaseCollateral).Sub(badBasePrice).Sub64(1)
 	err = verifyRenewedContract(so, badFC, oldRevision, bh, badIS, badES, rpk, hpk, lockedCollateral)
 	if !errors.Contains(err, ErrLowHostMissedOutput) {
+		t.Fatal(err)
+	}
+
+	// Low void output.
+	badFC = fc
+	badFC.MissedProofOutputs = append([]types.SiacoinOutput{}, badFC.MissedProofOutputs...)
+	_ = badFC.SetMissedVoidPayout(baseCollateral.Add(basePrice).Sub64(1))
+	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, rpk, hpk, lockedCollateral)
+	if !errors.Contains(err, ErrLowVoidOutput) {
 		t.Fatal(err)
 	}
 

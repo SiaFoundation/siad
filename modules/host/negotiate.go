@@ -129,6 +129,10 @@ var (
 	// formation.
 	ErrMismatchedHostPayouts = ErrorCommunication("rejected because host valid and missed payouts are not the same value")
 
+	// ErrNotAcceptingContracts is returned if the host is currently not
+	// accepting new contracts.
+	ErrNotAcceptingContracts = ErrorCommunication("host is not accepting new contracts")
+
 	// ErrSmallWindow is returned if the renter suggests a storage proof window
 	// that is too small.
 	ErrSmallWindow = ErrorCommunication("rejected for small window size")

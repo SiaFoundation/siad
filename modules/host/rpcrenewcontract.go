@@ -252,7 +252,7 @@ func addRevisionSignatures(txnBuilder modules.TransactionBuilder, finalRevision 
 func needsRenewal(acceptingContracts bool, blockHeight, soExpiration types.BlockHeight) error {
 	// Don't accept a renewal if we don't accept new contracts.
 	if !acceptingContracts {
-		return errors.New("host is not accepting new contracts")
+		return ErrNotAcceptingContracts
 	}
 	// Check that the time to finalize and submit the file contract revision
 	// has not already passed.

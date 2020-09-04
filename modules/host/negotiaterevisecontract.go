@@ -426,6 +426,9 @@ func verifyClearingRevision(oldFCR, revision types.FileContractRevision, blockHe
 	if revision.NewFileMerkleRoot != blank {
 		return ErrBadFileMerkleRoot
 	}
-
+	// Make sure the payout sums are still the same.
+	if err := verifyPayoutSums(oldFCR, revision); err != nil {
+		return errors.Compose(ErrInvalidPayoutSums, err)
+	}
 	return nil
 }
