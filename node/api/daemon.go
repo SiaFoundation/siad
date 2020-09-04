@@ -134,7 +134,7 @@ type (
 
 	// DaemonStackGet contains information about the daemon's stack.
 	DaemonStackGet struct {
-		Stack []byte `json:"stack"`
+		Stack string `json:"stack"`
 	}
 
 	// DaemonSettingsGet contains information about global daemon settings.
@@ -444,9 +444,7 @@ func (api *API) daemonStackHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 	}
 
 	// Return the n bytes of the stack that were used.
-	WriteJSON(w, DaemonStackGet{
-		Stack: stack[:n],
-	})
+	WriteJSON(w, DaemonStackGet{Stack: string(stack[:n])})
 }
 
 // daemonStartProfileHandlerPOST handles the API call that starts a profile for the daemon.
