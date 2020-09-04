@@ -123,7 +123,7 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 			// CompletePath ensures that we don't get an error on a complete,
 			// existent dir path.
 			Name:          "CompletePath",
-			Skylink:       "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/dir/",
+			Skylink:       "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/dir",
 			ExpectedError: "",
 		},
 	}

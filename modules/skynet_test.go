@@ -97,13 +97,13 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 		t.Fatal("Expected to find a dir, got a file.")
 	}
 	if offset != 5 {
-		t.Fatalf("Expected offset %d, got %d", 4, offset)
+		t.Fatalf("Expected offset %d, got %d", 5, offset)
 	}
 	if subfile5.Offset != 0 {
 		t.Fatalf("Expected offset %d, got %d", 0, subfile4.Offset)
 	}
 	if size != 5 {
-		t.Fatalf("Expected size %d, got %d", 9, size)
+		t.Fatalf("Expected size %d, got %d", 5, size)
 	}
 
 	// Expect no files found on nonexistent path.
