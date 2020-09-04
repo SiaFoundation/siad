@@ -684,7 +684,10 @@ func skynetuploadpipecmd(destSiaPath string) {
 	bar := pbs.AddSpinner(
 		0, // size is unknown
 		mpb.SpinnerOnLeft,
-		mpb.AppendDecorators(decor.AverageSpeed(decor.UnitKiB, "% .1f", decor.WC{W: 4})),
+		mpb.PrependDecorators(
+			decor.AverageSpeed(decor.UnitKiB, "% .1f", decor.WC{W: 4}),
+			decor.Counters(decor.UnitKiB, "%.1f", decor.WC{W: 4}),
+		),
 	)
 	// Create the proxy reader from stdin.
 	r := newStreamProgressReader(bar, bufio.NewReader(os.Stdin))
