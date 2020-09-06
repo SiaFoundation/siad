@@ -376,7 +376,7 @@ func initCmds() *cobra.Command {
 	renterFuseMountCmd.Flags().BoolVarP(&renterFuseMountAllowOther, "allow-other", "", false, "Allow users other than the user that mounted the fuse directory to access and use the fuse directory")
 
 	root.AddCommand(skynetCmd)
-	skynetCmd.AddCommand(skynetBlacklistCmd, skynetConvertCmd, skynetDownloadCmd, skynetLsCmd, skynetPinCmd, skynetUnpinCmd, skynetUploadCmd, skynetPortalsCmd)
+	skynetCmd.AddCommand(skynetBlacklistCmd, skynetConvertCmd, skynetDownloadCmd, skynetLsCmd, skynetPinCmd, skynetPortalsCmd, skynetUnpinCmd, skynetUploadCmd)
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadDryRun, "dry-run", false, "Perform a dry-run of the upload, returning the skylink without actually uploading the file")
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSilent, "silent", "s", false, "Don't report progress while uploading")

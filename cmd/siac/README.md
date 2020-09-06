@@ -252,16 +252,6 @@ counted.
 will still be available on skynet as long as you continue maintaining the file
 in your renter.
 
-* `siac skynet unpin [siapath]` unpins one or more skyfiles or directories,
-  deleting them from your list of stored files or directories.
-
-* `siac skynet upload [source filepath] [destination siapath]` uploads a file or
-  directory to Skynet. A skylink will be produced for each file. The link can be
-shared and used to retrieve the file. The file(s) that get uploaded will be
-pinned to this Sia node, meaning that this node will pay for storage and repairs
-until the file(s) are manually deleted. If the `silent` flag is provided, `siac`
-will not output progress bars during upload.
-
 * `siac skynet portals` list the persisted Skynet portals.
 
 * `siac skynet portals add [url]` adds a Skynet portals which is either
@@ -271,6 +261,16 @@ It defaults to private.
 
 * `siac skynet portals remove [url]` removes the Skynet portal from the
 persisted list. The Skynet portal URL is of the form `url:port`.
+
+* `siac skynet unpin [siapath]` unpins one or more skyfiles or directories,
+  deleting them from your list of stored files or directories.
+
+* `siac skynet upload [source filepath] [destination siapath]` uploads a file or
+  directory to Skynet. A skylink will be produced for each file. The link can be
+shared and used to retrieve the file. The file(s) that get uploaded will be
+pinned to this Sia node, meaning that this node will pay for storage and repairs
+until the file(s) are manually deleted. If the `silent` flag is provided, `siac`
+will not output progress bars during upload.
 
 ### Utils tasks
 TODO - Fill in

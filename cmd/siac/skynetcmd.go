@@ -118,7 +118,7 @@ Alternatively the source path can be omitted if the input is piped in.`,
 	}
 
 	skynetPortalsAddCmd = &cobra.Command{
-		Use:   "add [url] [flags]",
+		Use:   "add [url]",
 		Short: "Add a Skynet portal as public or private to the persisted portals list.",
 		Long: `Add a Skynet portal as public or private. Specify the url of the Skynet portal followed
 by --public if you want it to be publicly available.`,
@@ -130,6 +130,25 @@ by --public if you want it to be publicly available.`,
 		Short: "Remove a Skynet portal from the persisted portals list.",
 		Long:  "Remove a Skynet portal from the persisted portals list.",
 		Run:   wrap(skynetportalsremovecmd),
+	}
+
+	skynetUnpinCmd = &cobra.Command{
+		Use:   "unpin [siapath]",
+		Short: "Unpin pinned skyfiles or directories.",
+		Long: `Unpin one or more pinned skyfiles or directories at the given siapaths. The
+files and directories will continue to be available on Skynet if other nodes have pinned them.`,
+		Run: skynetunpincmd,
+	}
+
+	skynetUploadCmd = &cobra.Command{
+		Use:   "upload [source path] [destination siapath]",
+		Short: "Upload a file or a directory to Skynet.",
+		Long: `Upload a file or a directory to Skynet. A skylink will be produced which can be
+shared and used to retrieve the file. If the given path is a directory all files under that directory will
+be uploaded individually and an individual skylink will be produced for each. All files that get uploaded
+will be pinned to this Sia node, meaning that this node will pay for storage and repairs until the files
+are manually deleted. Use the --dry-run flag to fetch the skylink without actually uploading the file.`,
+		Run: wrap(skynetuploadcmd),
 	}
 )
 
@@ -710,9 +729,9 @@ func skynetportalsgetcmd() {
 }
 
 // skynetportalsaddcmd adds a Skynet portal as either public or private
-func skynetportalsaddcmd(portalUrl string) {
+func skynetportalsaddcmd(portalURL string) {
 	addition := modules.SkynetPortal{
-		Address: modules.NetAddress(portalUrl),
+		Address: modules.NetAddress(portalURL),
 		Public:  skynetPortalPublic,
 	}
 
@@ -722,7 +741,7 @@ func skynetportalsaddcmd(portalUrl string) {
 	}
 }
 
-// skynetportalsaddcmd removes a Skynet portal
+// skynetportalsremovecmd removes a Skynet portal
 func skynetportalsremovecmd(portalUrl string) {
 	removal := modules.NetAddress(portalUrl)
 
