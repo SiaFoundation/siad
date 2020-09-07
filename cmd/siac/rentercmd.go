@@ -360,7 +360,7 @@ func rentercmd() {
 	}
 
 	// detailed allowance spending for current period
-	if renterVerbose {
+	if verbose {
 		renterallowancespending(rg)
 	}
 
@@ -372,7 +372,7 @@ func rentercmd() {
 		die(err)
 	}
 
-	if !renterVerbose {
+	if !verbose {
 		return
 	}
 
@@ -2220,7 +2220,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	fmt.Printf("\nListing %v files/dirs:\t%9s\n\n", numFilesDirs, totalStoredStr)
 
 	// Handle the non verbose output.
-	if !renterListVerbose {
+	if !verbose {
 		for _, dir := range dirs {
 			fmt.Printf("%v/\n", dir.dir.SiaPath)
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
@@ -3017,7 +3017,7 @@ func sanitizeErr(errStr string) string {
 	if errStr == "" {
 		return "-"
 	}
-	if !statusVerbose && len(errStr) > truncateErrLength {
+	if !verbose && len(errStr) > truncateErrLength {
 		errStr = errStr[:truncateErrLength] + "..."
 	}
 	return errStr

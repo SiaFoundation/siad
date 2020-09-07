@@ -74,7 +74,7 @@ func printScoreBreakdown(info *api.HostdbHostsGET) {
 // hostdbcmd is the handler for the command `siac hostdb`.
 // Lists hosts known to the hostdb
 func hostdbcmd() {
-	if !hostdbVerbose {
+	if !verbose {
 		info, err := httpClient.HostDbActiveGet()
 		if errors.Contains(err, api.ErrAPICallNotRecognized) {
 			// Assume module is not loaded if status command is not recognized.
