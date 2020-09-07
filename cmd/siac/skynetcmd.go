@@ -90,26 +90,6 @@ maintaining the file in your renter.`,
 		Run: wrap(skynetpincmd),
 	}
 
-	skynetUnpinCmd = &cobra.Command{
-		Use:   "unpin [siapath]",
-		Short: "Unpin pinned skyfiles or directories.",
-		Long: `Unpin one or more pinned skyfiles or directories at the given siapaths. The
-files and directories will continue to be available on Skynet if other nodes have pinned them.`,
-		Run: skynetunpincmd,
-	}
-
-	skynetUploadCmd = &cobra.Command{
-		Use:   "upload [source path] [destination siapath]",
-		Short: "Upload a file or a directory to Skynet.",
-		Long: `Upload a file or a directory to Skynet. A skylink will be produced which can be
-shared and used to retrieve the file. If the given path is a directory all files under that directory will
-be uploaded individually and an individual skylink will be produced for each. All files that get uploaded
-will be pinned to this Sia node, meaning that this node will pay for storage and repairs until the files 
-are manually deleted. Use the --dry-run flag to fetch the skylink without actually uploading the file. 
-Alternatively the source path can be omitted if the input is piped in.`,
-		Run: skynetuploadcmd,
-	}
-
 	skynetPortalsCmd = &cobra.Command{
 		Use:   "portals",
 		Short: "Add, remove, or list registered Skynet portals.",
@@ -706,6 +686,7 @@ func skynetuploadpipecmd(destSiaPath string) {
 	// Replace the spinner with the skylink and stop it
 	newProgressSkylink(pbs, pSpinner, filename, skylink)
 	return
+}
 
 // skynetportalsgetcmd displays the list of persisted Skynet portals
 func skynetportalsgetcmd() {
