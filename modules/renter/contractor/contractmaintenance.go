@@ -788,8 +788,8 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 
 		// Seems like it doesn't have to be replaced yet. Log the
 		// failure and number of renews that have failed so far.
-		c.log.Printf("WARN: failed to renew contract %v [%v] [%v]: %v\n",
-			oldContract.Metadata().HostPublicKey, numRenews, endHeight, errRenew)
+		c.log.Printf("WARN: failed to renew contract %v [%v]: '%v'\n current height: %v, end height: %v, max duration: %v",
+			oldContract.Metadata().HostPublicKey, numRenews, errRenew, blockHeight, endHeight, hostSettings.MaxDuration)
 		c.staticContracts.Return(oldContract)
 		return types.ZeroCurrency, errors.AddContext(errRenew, "contract renewal with host was unsuccessful")
 	}
