@@ -105,8 +105,9 @@ files and directories will continue to be available on Skynet if other nodes hav
 shared and used to retrieve the file. If the given path is a directory all files under that directory will
 be uploaded individually and an individual skylink will be produced for each. All files that get uploaded
 will be pinned to this Sia node, meaning that this node will pay for storage and repairs until the files 
-are manually deleted. Use the --dry-run flag to fetch the skylink without actually uploading the file.`,
-		Run: wrap(skynetuploadcmd),
+are manually deleted. Use the --dry-run flag to fetch the skylink without actually uploading the file. 
+Alternatively the source path can be omitted if the input is piped in.`,
+		Run: skynetuploadcmd,
 	}
 )
 
@@ -533,7 +534,15 @@ func skynetunpincmd(cmd *cobra.Command, skyPathStrs []string) {
 
 // skynetuploadcmd will upload a file or directory to Skynet. If --dry-run is
 // passed, it will fetch the skylinks without uploading.
-func skynetuploadcmd(sourcePath, destSiaPath string) {
+func skynetuploadcmd(_ *cobra.Command, args []string) {
+	if len(args) == 1 {
+		skynetuploadpipecmd(args[0])
+		return
+	}
+	if len(args) != 2 {
+		die("wrong number of arguments")
+	}
+	sourcePath, destSiaPath := args[0], args[1]
 	fi, err := os.Stat(sourcePath)
 	if err != nil {
 		die("Unable to fetch source fileinfo:", err)
@@ -606,6 +615,47 @@ func skynetuploadcmd(sourcePath, destSiaPath string) {
 	fmt.Printf("Successfully uploaded %d skyfiles!\n", len(filesToUpload))
 }
 
+// skynetuploadpipecmd will upload a file or directory to Skynet. If --dry-run is
+// passed, it will fetch the skylinks without uploading.
+func skynetuploadpipecmd(destSiaPath string) {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		die(err)
+	}
+	if fi.Mode()&os.ModeNamedPipe == 0 {
+		die("Command is meant to be used with either a pipe or src file")
+	}
+	// Create the siapath.
+	siaPath, err := modules.NewSiaPath(destSiaPath)
+	if err != nil {
+		die("Could not parse destination siapath:", err)
+	}
+	filename := siaPath.Name()
+
+	// create a new progress bar set:
+	pbs := mpb.New(mpb.WithWidth(40))
+	// Create the single bar.
+	bar := pbs.AddSpinner(
+		-1, // size is unknown
+		mpb.SpinnerOnLeft,
+		mpb.SpinnerStyle([]string{"∙∙∙", "●∙∙", "∙●∙", "∙∙●", "∙∙∙"}),
+		mpb.BarFillerClearOnComplete(),
+		mpb.PrependDecorators(
+			decor.AverageSpeed(decor.UnitKiB, "% .1f", decor.WC{W: 4}),
+			decor.Counters(decor.UnitKiB, " - %.1f / %.1f", decor.WC{W: 4}),
+		),
+	)
+	// Create the proxy reader from stdin.
+	r := bar.ProxyReader(os.Stdin)
+	// Set a spinner to start after the upload is finished
+	pSpinner := newProgressSpinner(pbs, bar, filename)
+	// Perform the upload
+	skylink := skynetUploadFileFromReader(r, filename, siaPath, modules.DefaultFilePerm)
+	// Replace the spinner with the skylink and stop it
+	newProgressSkylink(pbs, pSpinner, filename, skylink)
+	return
+}
+
 // skynetUploadFile uploads a file to Skynet
 func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.Progress) (skylink string) {
 	// Create the siapath.
@@ -615,7 +665,7 @@ func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.
 	}
 	filename := filepath.Base(sourcePath)
 
-	// Open the source file.
+	// Open the source.
 	file, err := os.Open(sourcePath)
 	if err != nil {
 		die("Unable to open source path:", err)
@@ -653,9 +703,8 @@ func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.
 			die("Could not get relative path:", err)
 		}
 	}
-	rc := io.ReadCloser(file)
 	// Wrap the file reader in a progress bar reader
-	pUpload, rc := newProgressReader(pbs, fi.Size(), relPath, rc)
+	pUpload, rc := newProgressReader(pbs, fi.Size(), relPath, file)
 	// Set a spinner to start after the upload is finished
 	pSpinner := newProgressSpinner(pbs, pUpload, relPath)
 	// Perform the upload
@@ -745,7 +794,6 @@ func newProgressSkylink(pbs *mpb.Progress, afterBar *mpb.Bar, filename, skylink 
 	bar := pbs.AddBar(
 		1, // we'll increment it once to stop it
 		mpb.BarQueueAfter(afterBar),
-		mpb.BarFillerClearOnComplete(),
 		mpb.PrependDecorators(
 			decor.Name(pBarJobDone, decor.WC{W: 10}),
 			decor.Name(skylink),
@@ -756,5 +804,7 @@ func newProgressSkylink(pbs *mpb.Progress, afterBar *mpb.Bar, filename, skylink 
 	)
 	afterBar.Increment()
 	bar.Increment()
+	// Wait for finished bars to be rendered.
+	pbs.Wait()
 	return bar
 }
