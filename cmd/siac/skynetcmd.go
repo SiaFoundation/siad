@@ -128,7 +128,7 @@ shared and used to retrieve the file. If the given path is a directory all files
 be uploaded individually and an individual skylink will be produced for each. All files that get uploaded
 will be pinned to this Sia node, meaning that this node will pay for storage and repairs until the files
 are manually deleted. Use the --dry-run flag to fetch the skylink without actually uploading the file.`,
-		Run: wrap(skynetuploadcmd),
+		Run: skynetuploadcmd,
 	}
 )
 
