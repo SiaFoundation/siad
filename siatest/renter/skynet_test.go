@@ -26,6 +26,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
@@ -2833,5 +2834,71 @@ func BenchmarkSkynetSingleSector(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+func TestFormContractBadScore(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := renterTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Set one host to have a bad max duration.
+	h := tg.Hosts()[0]
+	a := siatest.DefaultAllowance
+	err = h.HostModifySettingPost(client.HostParamMaxDuration, a.Period+a.RenewWindow-1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a new renter.
+	rt := node.RenterTemplate
+	rt.SkipSetAllowance = true
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Set the allowance.
+	err = r.RenterPostAllowance(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait to give the renter some time to form contracts. Only 1 contract
+	// should be formed.
+	time.Sleep(time.Second * 5)
+	err = siatest.CheckExpectedNumberOfContracts(r, 1, 0, 0, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Enable portal mode and wait again. We should still only see 1 contract.
+	a.PaymentContractInitialFunding = a.Funds.Div64(10)
+	err = r.RenterPostAllowance(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second * 5)
+	err = siatest.CheckExpectedNumberOfContracts(r, 1, 0, 0, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
 	}
 }

@@ -1437,9 +1437,16 @@ func (c *Contractor) threadedContractMaintenance() {
 		default:
 		}
 
+		// Skip host if it has a dead score.
+		sb, err := c.hdb.ScoreBreakdown(host)
+		if err != nil || sb.Score.Equals(types.NewCurrency64(1)) {
+			c.log.Debugf("skipping host %v due to dead or unknown score", host.PublicKey)
+			continue
+		}
+
 		// Check that the price settings of the host are acceptable.
 		hostSettings := host.HostExternalSettings
-		err := staticCheckFormPaymentContractGouging(allowance, hostSettings)
+		err = staticCheckFormPaymentContractGouging(allowance, hostSettings)
 		if err != nil {
 			c.log.Debugf("payment contract loop igorning host %v for gouging: %v", hostSettings, err)
 			continue
