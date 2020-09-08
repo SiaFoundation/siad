@@ -1443,7 +1443,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		// Skip host if it has a dead score.
 		sb, err := c.hdb.ScoreBreakdown(host)
 		if err != nil || sb.Score.Equals(types.NewCurrency64(1)) {
-			c.log.Debugf("skipping host %v due to dead or unknown score", host.PublicKey)
+			c.log.Debugf("skipping host %v due to dead or unknown score (%v)", host.PublicKey, err)
 			continue
 		}
 

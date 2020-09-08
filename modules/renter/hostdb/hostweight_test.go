@@ -291,7 +291,7 @@ func TestHostWeightMaxDuration(t *testing.T) {
 		t.Error("Entries should have same weight", w1, w2)
 	}
 
-	// Entry2 is just below the limit. Should have smalles weight possible.
+	// Entry2 is just below the limit. Should have smallest weight possible.
 	entry2.MaxDuration--
 	w2 = hdb.weightFunc(entry2).Score()
 	if w1.Cmp(w2) <= 0 {
@@ -690,7 +690,7 @@ func TestHostWeightAcceptContract(t *testing.T) {
 	entry2 := DefaultHostDBEntry
 	entry2.AcceptingContracts = false
 
-	// Entry2 is not accepting contracts. Should have smalles weight possible.
+	// Entry2 is not accepting contracts. Should have smallest weight possible.
 	entry2.MaxDuration--
 	w1 := hdb.weightFunc(entry).Score()
 	w2 := hdb.weightFunc(entry2).Score()
