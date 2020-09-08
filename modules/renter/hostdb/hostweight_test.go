@@ -675,3 +675,29 @@ func TestHostWeightExtraPriceAdjustments(t *testing.T) {
 		t.Fatal("Expected score decrease with higher sector access price")
 	}
 }
+
+// TestHostWeightAcceptContract checks that the host that doesn't accept
+// contracts has a worse score than the one that does.
+func TestHostWeightAcceptContract(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	hdb := bareHostDB()
+	hdb.SetAllowance(DefaultTestAllowance)
+
+	entry := DefaultHostDBEntry
+	entry2 := DefaultHostDBEntry
+	entry2.AcceptingContracts = false
+
+	// Entry2 is not accepting contracts. Should have smalles weight possible.
+	entry2.MaxDuration--
+	w1 := hdb.weightFunc(entry).Score()
+	w2 := hdb.weightFunc(entry2).Score()
+	if w1.Cmp(w2) <= 0 {
+		t.Error("Entry2 should have smaller weight", w1, w2)
+	}
+	if w2.Cmp64(1) != 0 {
+		t.Error("Entry2 should have smallest weight")
+	}
+}

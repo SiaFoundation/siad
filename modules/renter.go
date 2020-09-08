@@ -513,6 +513,7 @@ type HostScoreBreakdown struct {
 	Score          types.Currency `json:"score"`
 	ConversionRate float64        `json:"conversionrate"`
 
+	AcceptContractAdjustment   float64 `json:"acceptcontractadjustment"`
 	AgeAdjustment              float64 `json:"ageadjustment"`
 	BasePriceAdjustment        float64 `json:"basepriceadjustment"`
 	BurnAdjustment             float64 `json:"burnadjustment"`
