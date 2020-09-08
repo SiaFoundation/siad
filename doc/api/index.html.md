@@ -2482,6 +2482,7 @@ ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
   },
   "scorebreakdown": {
     "score":                      1,        // big int
+    "acceptcontractadjustment":   1,        // float64
     "ageadjustment":              0.1234,   // float64
     "basepriceadjustment":        1,        // float64
     "burnadjustment":             0.1234,   // float64
@@ -2514,6 +2515,9 @@ configurations, and different versions the absolute scores for a given host can
 be off by many orders of magnitude. When displaying to a human, some form of
 normalization with respect to the other hosts (for example, divide all scores by
 the median score of the hosts) is recommended.  
+
+**acceptcontractadjustment** | float64  
+The multiplier that gets applied to the host based on whether its accepting contracts or not. Typically "1" if they do and "0" if they don't.
 
 **ageadjustment** | float64  
 The multiplier that gets applied to the host based on how long it has been a
