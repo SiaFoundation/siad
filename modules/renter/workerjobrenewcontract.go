@@ -39,8 +39,8 @@ type (
 // renewJobExpectedBandwidth is a helper function that returns the expected
 // bandwidth consumption of a renew job.
 func renewJobExpectedBandwidth() (ul, dl uint64) {
-	ul = 1 << 13 // 8 KiB
-	dl = 1 << 13 // 8 KiB
+	ul = 8760
+	dl = 4380
 	return
 }
 
