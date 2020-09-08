@@ -282,7 +282,7 @@ func TestHostWeightMaxDuration(t *testing.T) {
 
 	entry := DefaultHostDBEntry
 	entry2 := DefaultHostDBEntry
-	entry2.MaxDuration = DefaultTestAllowance.Period + DefaultTestAllowance.RenewWindow // Shorter than the allowance period.
+	entry2.MaxDuration = DefaultTestAllowance.Period + DefaultTestAllowance.RenewWindow
 
 	// Entry2 is exactly at the limit. Weights should match.
 	w1 := hdb.weightFunc(entry).Score()

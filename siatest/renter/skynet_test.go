@@ -2837,6 +2837,8 @@ func BenchmarkSkynetSingleSector(b *testing.B) {
 	}
 }
 
+// TestFormContractBadScore makes sure that a portal won't form a contract with
+// a dead score host.
 func TestFormContractBadScore(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
