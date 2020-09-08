@@ -155,19 +155,22 @@ func createDirMetadata(path string, mode os.FileMode) (Metadata, writeaheadlog.U
 	// Initialize metadata, set Health and StuckHealth to DefaultDirHealth so
 	// empty directories won't be viewed as being the most in need. Initialize
 	// ModTimes.
+	now := time.Now()
 	md := Metadata{
-		AggregateHealth:        DefaultDirHealth,
-		AggregateMinRedundancy: DefaultDirRedundancy,
-		AggregateModTime:       time.Now(),
-		AggregateRemoteHealth:  DefaultDirHealth,
-		AggregateStuckHealth:   DefaultDirHealth,
+		AggregateHealth:              DefaultDirHealth,
+		AggregateLastHealthCheckTime: now,
+		AggregateMinRedundancy:       DefaultDirRedundancy,
+		AggregateModTime:             now,
+		AggregateRemoteHealth:        DefaultDirHealth,
+		AggregateStuckHealth:         DefaultDirHealth,
 
-		Health:        DefaultDirHealth,
-		MinRedundancy: DefaultDirRedundancy,
-		Mode:          mode,
-		ModTime:       time.Now(),
-		RemoteHealth:  DefaultDirHealth,
-		StuckHealth:   DefaultDirHealth,
+		Health:              DefaultDirHealth,
+		LastHealthCheckTime: now,
+		MinRedundancy:       DefaultDirRedundancy,
+		Mode:                mode,
+		ModTime:             now,
+		RemoteHealth:        DefaultDirHealth,
+		StuckHealth:         DefaultDirHealth,
 	}
 	update, err := createMetadataUpdate(mdPath, md)
 	return md, update, err
