@@ -302,7 +302,7 @@ func (c *Contractor) managedMarkContractUtility(contract modules.RenterContract,
 // figures out whether the contract is useful for uploading, and whether the
 // contract should be renewed.
 func (c *Contractor) managedMarkContractsUtility() error {
-	err, minScoreGFR, minScoreGFU := c.managedFindMinAllowedHostScores()
+	minScoreGFR, minScoreGFU, err := c.managedFindMinAllowedHostScores()
 	if err != nil {
 		return err
 	}
