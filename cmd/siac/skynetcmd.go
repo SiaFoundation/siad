@@ -359,7 +359,8 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 				}
 			}
 			// Remove the file.
-			dirs[j].files = append(dirs[j].files[:i], dirs[j].files[i+1:]...)
+			copy(dirs[j].files[i:], dirs[j].files[i+1:])
+			dirs[j].files = dirs[j].files[len(dirs[j].files)-1:]
 			i--
 		}
 	}
