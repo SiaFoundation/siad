@@ -43,9 +43,9 @@ func LoadSkylinkFixture(link modules.Skylink) (SkylinkFixture, error) {
 	if err != nil {
 		return SkylinkFixture{}, err
 	}
-	fs, exists := skylinkFixtures[link.String()]
+	sf, exists := skylinkFixtures[link.String()]
 	if !exists {
 		return SkylinkFixture{}, errors.New("fixture not found")
 	}
-	return fs, nil
+	return sf, nil
 }

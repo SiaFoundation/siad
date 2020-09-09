@@ -56,7 +56,7 @@ func (c *Client) skynetSkylinkGetWithParameters(skylink string, params map[strin
 	getQuery := skylinkQueryWithValues(skylink, values)
 	header, fileData, err := c.getRawResponse(getQuery)
 	if err != nil {
-		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "error fetching api response")
+		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "error fetching api response for GET with parameters")
 	}
 
 	var sm modules.SkyfileMetadata
@@ -122,7 +122,7 @@ func (c *Client) SkynetSkylinkConcatGet(skylink string) ([]byte, modules.Skyfile
 	var reader io.Reader
 	header, body, err := c.getReaderResponse(getQuery)
 	if err != nil {
-		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "error fetching api response")
+		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "error fetching api response for GET with format=concat")
 	}
 	defer body.Close()
 	reader = body

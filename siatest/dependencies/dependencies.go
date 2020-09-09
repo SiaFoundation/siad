@@ -289,6 +289,12 @@ func newDependencyInterruptCountOccurrences(str string) *DependencyInterruptCoun
 	}
 }
 
+// NewDependencyHostBlockRPC creates a new dependency that can be used to
+// simulate an unresponsive host.
+func NewDependencyHostBlockRPC() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("HostBlockRPC")
+}
+
 // Disrupt returns true if the correct string is provided.
 func (d *DependencyDisableWorker) Disrupt(s string) bool {
 	if s == "DisableWorkerLoop" {

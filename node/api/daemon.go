@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/inconshreveable/go-update"
+
 	"github.com/julienschmidt/httprouter"
 	"github.com/kardianos/osext"
 	"golang.org/x/crypto/openpgp"
@@ -134,7 +135,7 @@ type (
 
 	// DaemonStackGet contains information about the daemon's stack.
 	DaemonStackGet struct {
-		Stack []byte `json:"stack"`
+		Stack string `json:"stack"`
 	}
 
 	// DaemonSettingsGet contains information about global daemon settings.
@@ -445,7 +446,7 @@ func (api *API) daemonStackHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 
 	// Return the n bytes of the stack that were used.
 	WriteJSON(w, DaemonStackGet{
-		Stack: stack[:n],
+		Stack: string(stack[:n]),
 	})
 }
 
