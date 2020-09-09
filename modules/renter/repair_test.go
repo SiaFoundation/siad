@@ -435,7 +435,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 	}
 
 	// Find the oldest directory, should be SubDir1/SubDir2
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		dir, lastCheck, err := rt.renter.managedOldestHealthCheckTime()
 		if err != nil {
 			return err
