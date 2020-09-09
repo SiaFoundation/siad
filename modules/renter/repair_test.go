@@ -427,15 +427,15 @@ func TestOldestHealthCheckTime(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Bubble the health of SubDir1 so that the oldest LastHealthCheckTime of
-	// SubDir1/SubDir2 gets bubbled up
-	err = rt.renter.managedBubbleMetadata(subDir1)
-	if err != nil {
-		t.Fatal(err)
-	}
+	err = build.Retry(60, time.Second, func() error {
+		// Bubble the health of SubDir1 so that the oldest LastHealthCheckTime of
+		// SubDir1/SubDir2 gets bubbled up
+		err = rt.renter.managedBubbleMetadata(subDir1)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	// Find the oldest directory, should be SubDir1/SubDir2
-	err = build.Retry(600, 100*time.Millisecond, func() error {
+		// Find the oldest directory, should be SubDir1/SubDir2
 		dir, lastCheck, err := rt.renter.managedOldestHealthCheckTime()
 		if err != nil {
 			return err
