@@ -48,8 +48,21 @@ var (
 	skykeyDeleteCmd = &cobra.Command{
 		Use:   "delete",
 		Short: "Delete the skykey by its name or id",
-		Long:  `Delete the base64-encoded skykey using either its name with --name or id with --id`,
-		Run:   wrap(skykeydeletecmd),
+		Long:  `Delete the base64-encoded skykey using its name or id`,
+	}
+
+	skykeyDeleteNameCmd = &cobra.Command{
+		Use:   "name [name]",
+		Short: "Delete the skykey by its name",
+		Long:  `Delete the base64-encoded skykey using its name`,
+		Run:   wrap(skykeydeletenamecmd),
+	}
+
+	skykeyDeleteIDCmd = &cobra.Command{
+		Use:   "id [id]",
+		Short: "Delete the skykey by its id",
+		Long:  `Delete the base64-encoded skykey using its id`,
+		Run:   wrap(skykeydeleteidcmd),
 	}
 
 	skykeyGetCmd = &cobra.Command{
@@ -142,10 +155,15 @@ func skykeyAdd(c client.Client, skykeyString string) error {
 	return nil
 }
 
-// skykeydeletecmd is a wrapper for skykeyDelete that handles skykey delete
-// commands.
-func skykeydeletecmd() {
-	err := skykeyDelete(httpClient, skykeyName, skykeyID)
+// skykeydeleteidcmd is a wrapper for skykeyDeleteID that handles skykey
+// delete commands.
+func skykeydeleteidcmd(id string) {
+	var skykeyID skykey.SkykeyID
+	err := skykeyID.FromString(id)
+	if err != nil {
+		die(errors.AddContext(err, "could not decode skykey ID"))
+	}
+	err = httpClient.SkykeyDeleteByIDPost(skykeyID)
 	if err != nil {
 		die(err)
 	}
@@ -153,28 +171,15 @@ func skykeydeletecmd() {
 	fmt.Println("Skykey Deleted!")
 }
 
-// skykeyDelete deletes the skykey using a name or id flag.
-func skykeyDelete(c client.Client, name, id string) error {
-	// Validate the usage of name and ID
-	err := validateNameAndIDUsage(name, id)
+// skykeydeletenamecmd is a wrapper for skykeyDeleteName that handles skykey
+// delete commands.
+func skykeydeletenamecmd(name string) {
+	err := httpClient.SkykeyDeleteByNamePost(name)
 	if err != nil {
-		return errors.AddContext(err, "cannot validate skykey name and ID usage to delete skykey")
+		die(err)
 	}
 
-	// Delete the Skykey with the provide parameter
-	if name != "" {
-		err = c.SkykeyDeleteByNamePost(name)
-	} else {
-		var skykeyID skykey.SkykeyID
-		err = skykeyID.FromString(id)
-		if err != nil {
-			return errors.AddContext(err, "could not decode skykey ID")
-		}
-		err = c.SkykeyDeleteByIDPost(skykeyID)
-	}
-
-	// Return error with context if there is an error
-	return errors.AddContext(err, "failed to delete skykey")
+	fmt.Println("Skykey Deleted!")
 }
 
 // skykeygetcmd is a wrapper for skykeyGet that handles skykey get commands.
