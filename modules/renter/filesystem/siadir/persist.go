@@ -157,20 +157,18 @@ func createDirMetadata(path string, mode os.FileMode) (Metadata, writeaheadlog.U
 	// ModTimes.
 	now := time.Now()
 	md := Metadata{
-		AggregateHealth:              DefaultDirHealth,
-		AggregateLastHealthCheckTime: now,
-		AggregateMinRedundancy:       DefaultDirRedundancy,
-		AggregateModTime:             now,
-		AggregateRemoteHealth:        DefaultDirHealth,
-		AggregateStuckHealth:         DefaultDirHealth,
+		AggregateHealth:        DefaultDirHealth,
+		AggregateMinRedundancy: DefaultDirRedundancy,
+		AggregateModTime:       now,
+		AggregateRemoteHealth:  DefaultDirHealth,
+		AggregateStuckHealth:   DefaultDirHealth,
 
-		Health:              DefaultDirHealth,
-		LastHealthCheckTime: now,
-		MinRedundancy:       DefaultDirRedundancy,
-		Mode:                mode,
-		ModTime:             now,
-		RemoteHealth:        DefaultDirHealth,
-		StuckHealth:         DefaultDirHealth,
+		Health:        DefaultDirHealth,
+		MinRedundancy: DefaultDirRedundancy,
+		Mode:          mode,
+		ModTime:       now,
+		RemoteHealth:  DefaultDirHealth,
+		StuckHealth:   DefaultDirHealth,
 	}
 	update, err := createMetadataUpdate(mdPath, md)
 	return md, update, err

@@ -394,8 +394,30 @@ func TestOldestHealthCheckTime(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Update all dirs to same health check time.
+	now := time.Now()
+	nowMD := siadir.Metadata{
+		Health:                       1,
+		StuckHealth:                  0,
+		AggregateLastHealthCheckTime: now,
+		LastHealthCheckTime:          now,
+	}
+	err1 := rt.openAndUpdateDir(modules.RootSiaPath(), nowMD)
+	err2 := rt.openAndUpdateDir(modules.BackupFolder, nowMD)
+	err3 := rt.openAndUpdateDir(modules.HomeFolder, nowMD)
+	err4 := rt.openAndUpdateDir(modules.SkynetFolder, nowMD)
+	err5 := rt.openAndUpdateDir(modules.UserFolder, nowMD)
+	err6 := rt.openAndUpdateDir(modules.VarFolder, nowMD)
+	err7 := rt.openAndUpdateDir(subDir1, nowMD)
+	err8 := rt.openAndUpdateDir(subDir2, nowMD)
+	err9 := rt.openAndUpdateDir(subDir1_2, nowMD)
+	err = errors.Compose(err1, err2, err3, err4, err5, err6, err7, err8, err8, err9)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Set the LastHealthCheckTime of SubDir1/SubDir2 to be the oldest
-	oldestCheckTime := time.Now().AddDate(0, 0, -1)
+	oldestCheckTime := now.AddDate(0, 0, -1)
 	oldestHealthCheckUpdate := siadir.Metadata{
 		Health:              1,
 		StuckHealth:         0,
@@ -419,7 +441,7 @@ func TestOldestHealthCheckTime(t *testing.T) {
 			return err
 		}
 		if !dir.Equals(subDir1_2) {
-			return fmt.Errorf("Expected to find %v but found %v", subDir1_2.Path, dir.Path)
+			return fmt.Errorf("Expected to find %v but found %v", subDir1_2.String(), dir.String())
 		}
 		if !lastCheck.Equal(oldestCheckTime) {
 			return fmt.Errorf("Expected to find time of %v but found %v", oldestCheckTime, lastCheck)

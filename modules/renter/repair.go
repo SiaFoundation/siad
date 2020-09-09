@@ -202,9 +202,9 @@ func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, err
 				return modules.SiaPath{}, time.Time{}, err
 			}
 
-			// If the LastHealthCheckTime is after current LastHealthCheckTime
-			// continue since we are already in a directory with an older
-			// timestamp
+			// If the AggregateLastHealthCheckTime is after current
+			// AggregateLastHealthCheckTime continue since we are already in a
+			// directory with an older timestamp
 			if subMetadata.AggregateLastHealthCheckTime.After(metadata.AggregateLastHealthCheckTime) {
 				continue
 			}
@@ -218,11 +218,11 @@ func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, err
 		// If the values were never updated with any of the sub directory values
 		// then return as we are in the directory we are looking for
 		if !updated {
-			return siaPath, metadata.AggregateLastHealthCheckTime, nil
+			return siaPath, metadata.LastHealthCheckTime, nil
 		}
 	}
 
-	return siaPath, metadata.AggregateLastHealthCheckTime, nil
+	return siaPath, metadata.LastHealthCheckTime, nil
 }
 
 // managedStuckDirectory randomly finds a directory that contains stuck chunks
