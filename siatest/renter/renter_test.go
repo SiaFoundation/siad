@@ -2079,20 +2079,9 @@ func TestRenewFailing(t *testing.T) {
 	}
 
 	// There should be no inactive contracts, only active contracts since we are
-	// 1 block before the renewWindow. Do this in a retry to give the contractor
-	// some time to catch up.
+	// 1 block before the renewWindow/s second half. Do this in a retry to give
+	// the contractor some time to catch up.
 	err = build.Retry(int(renewWindow/2), time.Second, func() error {
-		rcg, err = renter.RenterInactiveContractsGet()
-		if err != nil {
-			return err
-		}
-		if len(rcg.ActiveContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("renter had %v contracts but should have %v",
-				len(rcg.ActiveContracts), len(tg.Hosts()))
-		}
-		if len(rcg.InactiveContracts) != 0 {
-			return fmt.Errorf("Renter should have 0 inactive contracts but has %v", len(rcg.InactiveContracts))
-		}
 		return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, 0, 0)
 	})
 	if err != nil {
