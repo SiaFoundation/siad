@@ -796,15 +796,12 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 		c.log.Debugln("Contract does not seem to exist")
 		return types.ZeroCurrency, errors.New("contract no longer exists")
 	}
-	oldUtility, exists := c.managedContractUtility(id)
-	if !exists {
-		c.log.Printf("Contract %v slated for renew could not be found in the utility lookup", id)
-		return types.ZeroCurrency, errors.New("contract utility could not be found")
-	}
+	oldUtility := oldContract.Utility()
 
 	// The contract could have been marked !GFR while the contractor lock was not
 	// held.
 	if !oldUtility.GoodForRenew {
+		c.staticContracts.Return(oldContract)
 		return types.ZeroCurrency, errContractNotGFR
 	}
 
@@ -1500,31 +1497,24 @@ func (c *Contractor) threadedContractMaintenance() {
 		default:
 		}
 
-		// Check that the price settings of the host are acceptable.
-		hostSettings := host.HostExternalSettings
-		err := staticCheckFormPaymentContractGouging(allowance, hostSettings)
-		if err != nil {
-			c.log.Debugf("payment contract loop igorning host %v for gouging: %v", hostSettings, err)
+		// Check if there is already a contract with this host.
+		_, exists := currentContracts[host.PublicKey.String()]
+		if exists {
 			continue
 		}
 
-		// Check if there is already a contract with this host.
-		contract, exists := currentContracts[host.PublicKey.String()]
-		if exists {
-			// Check whether the contract is marked GoodForRenew. If not, mark
-			// it as GoodForRenew, but only if the contract has no data in it.
-			gfr := contract.Utility.GoodForRenew
-			locked := contract.Utility.Locked
-			bad := contract.Utility.BadContract
-			noData := len(contract.Transaction.FileContracts) > 0 && contract.Transaction.FileContracts[0].FileSize == 0
-			if !gfr && !locked && !bad && noData {
-				utility := contract.Utility
-				utility.GoodForRenew = true
-				err := c.managedAcquireAndUpdateContractUtility(contract.ID, utility)
-				if err != nil {
-					c.log.Printf("Failed to update contract utility for host %v: %v", contract.HostPublicKey.String(), err)
-				}
-			}
+		// Skip host if it has a dead score.
+		sb, err := c.hdb.ScoreBreakdown(host)
+		if err != nil || sb.Score.Equals(types.NewCurrency64(1)) {
+			c.log.Debugf("skipping host %v due to dead or unknown score (%v)", host.PublicKey, err)
+			continue
+		}
+
+		// Check that the price settings of the host are acceptable.
+		hostSettings := host.HostExternalSettings
+		err = staticCheckFormPaymentContractGouging(allowance, hostSettings)
+		if err != nil {
+			c.log.Debugf("payment contract loop igorning host %v for gouging: %v", hostSettings, err)
 			continue
 		}
 
@@ -1561,14 +1551,6 @@ func (c *Contractor) threadedContractMaintenance() {
 		c.log.Println("A view contract has been formed with a host:", newContract.ID)
 
 		// Add this contract to the contractor and save.
-		err = c.managedAcquireAndUpdateContractUtility(newContract.ID, modules.ContractUtility{
-			GoodForUpload: false,
-			GoodForRenew:  true,
-		})
-		if err != nil {
-			c.log.Println("Failed to update the contract utilities", err)
-			return
-		}
 		c.mu.Lock()
 		err = c.save()
 		c.mu.Unlock()

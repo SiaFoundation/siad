@@ -21,7 +21,7 @@ var (
 	DefaultAllowance = Allowance{
 		Funds:       types.SiacoinPrecision.Mul64(2500),
 		Hosts:       uint64(PriceEstimationScope),
-		Period:      3 * types.BlocksPerMonth,
+		Period:      2 * types.BlocksPerMonth,
 		RenewWindow: types.BlocksPerMonth,
 
 		ExpectedStorage:    1e12,                                         // 1 TB
@@ -518,6 +518,7 @@ type HostScoreBreakdown struct {
 	Score          types.Currency `json:"score"`
 	ConversionRate float64        `json:"conversionrate"`
 
+	AcceptContractAdjustment   float64 `json:"acceptcontractadjustment"`
 	AgeAdjustment              float64 `json:"ageadjustment"`
 	BasePriceAdjustment        float64 `json:"basepriceadjustment"`
 	BurnAdjustment             float64 `json:"burnadjustment"`
