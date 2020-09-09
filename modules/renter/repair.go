@@ -203,9 +203,9 @@ func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, err
 			}
 
 			// If the AggregateLastHealthCheckTime is after current
-			// AggregateLastHealthCheckTime continue since we are already in a
+			// LastHealthCheckTime continue since we are already in a
 			// directory with an older timestamp
-			if subMetadata.AggregateLastHealthCheckTime.After(metadata.AggregateLastHealthCheckTime) {
+			if subMetadata.AggregateLastHealthCheckTime.After(metadata.LastHealthCheckTime) {
 				continue
 			}
 
