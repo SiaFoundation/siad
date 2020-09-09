@@ -2011,9 +2011,8 @@ func TestRenewFailing(t *testing.T) {
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
-		Hosts:   5,
-		Renters: 1,
-		Miners:  1,
+		Hosts:  4,
+		Miners: 1,
 	}
 	testDir := renterTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
@@ -2025,7 +2024,26 @@ func TestRenewFailing(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	renter := tg.Renters()[0]
+
+	// Add a host that can't renew.
+	hostParams := node.HostTemplate
+	hostParams.HostDeps = &dependencies.DependencyRenewFail{}
+	nodes, err := tg.AddNodes(hostParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failHost := nodes[0]
+	lockedHostPK, err := failHost.HostPublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a regular renter.
+	nodes, err = tg.AddNodes(node.RenterTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
 
 	// All the contracts of the renter should be goodForRenew. So there should
 	// be no inactive contracts, only active contracts
@@ -2043,22 +2061,13 @@ func TestRenewFailing(t *testing.T) {
 		}
 		hostMap[pk.String()] = host
 	}
-	// Lock the wallet of one of the used hosts to make the renew fail.
+
+	// Get the contracts
 	rcg, err := renter.RenterAllContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var lockedHostPK types.SiaPublicKey
-	for _, c := range rcg.ActiveContracts {
-		if host, used := hostMap[c.HostPublicKey.String()]; used {
-			lockedHostPK = c.HostPublicKey
-			if err := host.WalletLockPost(); err != nil {
-				t.Fatal(err)
-			}
-			break
-		}
-	}
 	// Wait until the contract is supposed to be renewed.
 	cg, err := renter.ConsensusGet()
 	if err != nil {
@@ -2093,6 +2102,7 @@ func TestRenewFailing(t *testing.T) {
 		if err := miner.MineBlock(); err != nil {
 			t.Fatal(err)
 		}
+		blockHeight++
 	}
 
 	// We should be within the second half of the renew window now. We keep

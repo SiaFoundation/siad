@@ -904,6 +904,11 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	settings := h.externalSettings(maxFee)
 	h.mu.Unlock()
 
+	// Disrupt if necessary.
+	if h.dependencies.Disrupt("RenewFail") {
+		return errors.New("RenewFail")
+	}
+
 	// Check that the old contract is locked.
 	if len(s.so.OriginTransactionSet) == 0 {
 		err := errors.New("no contract locked")
