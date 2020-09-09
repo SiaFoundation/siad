@@ -142,7 +142,7 @@ func (c *Client) getRawResponse(resource string) (http.Header, []byte, error) {
 	}
 	defer drainAndClose(reader)
 	d, err := ioutil.ReadAll(reader)
-	return header, d, err
+	return header, d, errors.AddContext(err, "failed to read all bytes from reader")
 }
 
 // getReaderResponse requests the specified resource. The response, if provided,
