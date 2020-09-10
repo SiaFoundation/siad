@@ -85,9 +85,6 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		r.log.Printf("WARN: Error in reading files in directory %v : %v\n", siaPath.String(), err)
 		return siadir.Metadata{}, err
 	}
-	fmt.Println("-------start-------")
-	fmt.Println("  ", siaPath)
-	defer fmt.Println("-------end-------")
 
 	// Iterate over directory
 	for _, fi := range fileinfos {
@@ -142,7 +139,6 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			if !fileMetadata.OnDisk {
 				aggregateRemoteHealth = fileMetadata.Health
 			}
-			fmt.Println("    aggregateLastHealthCheckTime", fileSiaPath, aggregateLastHealthCheckTime)
 
 			// Update aggregate fields.
 			metadata.AggregateNumFiles++
@@ -185,7 +181,6 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			aggregateLastHealthCheckTime = dirMetadata.AggregateLastHealthCheckTime
 			aggregateModTime = dirMetadata.AggregateModTime
 			aggregateRemoteHealth = dirMetadata.AggregateRemoteHealth
-			fmt.Println("    aggregateLastHealthCheckTime", dirSiaPath, aggregateLastHealthCheckTime)
 
 			// Update aggregate fields.
 			metadata.AggregateNumFiles += dirMetadata.AggregateNumFiles
@@ -213,7 +208,6 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		// Update LastHealthCheckTime
 		if aggregateLastHealthCheckTime.Before(metadata.AggregateLastHealthCheckTime) {
 			metadata.AggregateLastHealthCheckTime = aggregateLastHealthCheckTime
-			fmt.Println("      ", aggregateLastHealthCheckTime)
 		}
 		// Update ModTime
 		if aggregateModTime.After(metadata.AggregateModTime) {

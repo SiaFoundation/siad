@@ -169,7 +169,6 @@ func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, err
 	if err != nil {
 		return modules.SiaPath{}, time.Time{}, err
 	}
-	fmt.Printf("->'%v' %v %v\n", siaPath, metadata.AggregateLastHealthCheckTime, metadata.LastHealthCheckTime)
 
 	// Follow the path of oldest LastHealthCheckTime to the lowest level
 	// directory
@@ -186,12 +185,10 @@ func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, err
 		if err != nil {
 			return modules.SiaPath{}, time.Time{}, err
 		}
-		fmt.Println("# ", subDirSiaPaths)
 
 		// Find the oldest LastHealthCheckTime of the sub directories
 		updated := false
 		for _, subDirPath := range subDirSiaPaths {
-			fmt.Println("  ", subDirPath)
 			// Check to make sure renter hasn't been shutdown
 			select {
 			case <-r.tg.StopChan():
@@ -209,10 +206,7 @@ func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, err
 			// LastHealthCheckTime continue since we are already in a
 			// directory with an older timestamp
 			if subMetadata.AggregateLastHealthCheckTime.After(metadata.AggregateLastHealthCheckTime) {
-				fmt.Printf("  ->'%v' %v after %v", subDirPath, subMetadata.AggregateLastHealthCheckTime, metadata.LastHealthCheckTime)
 				continue
-			} else {
-				fmt.Printf("  ->'%v' %v not after %v", subDirPath, subMetadata.AggregateLastHealthCheckTime, metadata.LastHealthCheckTime)
 			}
 
 			// Update LastHealthCheckTime and follow older path
@@ -220,7 +214,6 @@ func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, err
 			metadata = subMetadata
 			siaPath = subDirPath
 		}
-		fmt.Printf("->'%v' %v %v\n", siaPath, metadata.AggregateLastHealthCheckTime, metadata.LastHealthCheckTime)
 
 		// If the values were never updated with any of the sub directory values
 		// then return as we are in the directory we are looking for
