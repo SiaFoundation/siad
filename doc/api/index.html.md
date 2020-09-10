@@ -542,7 +542,7 @@ Returns the some of the constants that the Sia daemon uses.
   "rootdepth":  // target
   [255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255],
   
-  "allowance":  // allowance
+  "defaultallowance":  // allowance
     {
       "funds":"250000000000000000000000000000",  // currency
       "hosts":50,                       // uint64
@@ -632,7 +632,8 @@ cumulated difficulty yet.
 
 **defaultallowance** | allowance  
 DefaultAllowance is the set of default allowance settings that will be used when
-allowances are not set or not fully set
+allowances are not set or not fully set. See [/renter GET](#renter-get) for an
+explanation of the fields.
 
 **maxtargetadjustmentup** | big.Rat  
 MaxTargetAdjustmentUp restrict how much the block difficulty is allowed to
@@ -2923,7 +2924,7 @@ and bandwidth needs while spending significantly less than the overall
 allowance.
 
 **expectedupload** | bytes  
-Expected upload tells siad how much uploading the user expects to do each month.
+Expected upload tells siad how many bytes the user expects to upload per block.
 If this value is high, siad will more strongly prefer hosts that have a low
 upload bandwidth price. If this value is low, siad will focus on other metrics
 than upload bandwidth pricing, because even if the host charges a lot for upload
@@ -2933,8 +2934,8 @@ The user should not consider upload bandwidth used during repairs, siad will
 consider repair bandwidth separately.
 
 **expecteddownload** | bytes  
-Expected download tells siad how much downloading the user expects to do each
-month. If this value is high, siad will more strongly prefer hosts that have a
+Expected download tells siad how many bytes the user expects to download per
+block. If this value is high, siad will more strongly prefer hosts that have a
 low download bandwidth price. If this value is low, siad will focus on other
 metrics than download bandwidth pricing, because even if the host charges a lot
 for downloads, it will not impact the total cost to the user very much.
