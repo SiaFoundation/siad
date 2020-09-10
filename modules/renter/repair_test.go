@@ -649,8 +649,8 @@ func TestDirectorySize(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if dirInfo.AggregateSize != 3*fileSize {
-			return fmt.Errorf("AggregateSize incorrect, got %v expected %v", dirInfo.AggregateSize, 3*fileSize)
+		if dirInfo.AggregateSize != 2*fileSize {
+			return fmt.Errorf("AggregateSize incorrect, got %v expected %v", dirInfo.AggregateSize, 2*fileSize)
 		}
 		return nil
 	})
@@ -700,10 +700,11 @@ func TestDirectoryModTime(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Add files
+	sp1 := modules.RandomSiaPath()
 	rsc, _ := siafile.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
 		Source:      "",
-		SiaPath:     modules.RandomSiaPath(),
+		SiaPath:     sp1,
 		ErasureCode: rsc,
 	}
 	fileSize := uint64(100)
@@ -711,18 +712,33 @@ func TestDirectoryModTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	up.SiaPath, err = subDir1_2.Join(hex.EncodeToString(fastrand.Bytes(8)))
+	sp2, err := subDir1_2.Join(hex.EncodeToString(fastrand.Bytes(8)))
 	if err != nil {
 		t.Fatal(err)
 	}
+	up.SiaPath = sp2
 	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
+	f1, err := rt.renter.staticFileSystem.OpenSiaFile(sp1)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := f1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	f2, err := rt.renter.staticFileSystem.OpenSiaFile(sp2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := f2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Call bubble on lowest lever and confirm top level reports accurate last
 	// update time
@@ -735,8 +751,11 @@ func TestDirectoryModTime(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if dirInfo.MostRecentModTime != f.ModTime() {
-			return fmt.Errorf("ModTime is incorrect, got %v expected %v", dirInfo.MostRecentModTime, f.ModTime())
+		if dirInfo.MostRecentModTime != f1.ModTime() {
+			return fmt.Errorf("ModTime is incorrect, got %v expected %v", dirInfo.MostRecentModTime, f1.ModTime())
+		}
+		if dirInfo.AggregateMostRecentModTime != f2.ModTime() {
+			return fmt.Errorf("ModTime is incorrect, got %v expected %v", dirInfo.MostRecentModTime, f2.ModTime())
 		}
 		return nil
 	})
