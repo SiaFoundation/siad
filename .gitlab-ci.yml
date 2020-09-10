@@ -165,7 +165,7 @@ lint:
     - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
     - make lint-analyze
     - make markdown-spellcheck
-    - make test
+    - make test-long pkgs=./modules/renter run=TestOldestHealth count=10
 
 build:
   stage: lint
