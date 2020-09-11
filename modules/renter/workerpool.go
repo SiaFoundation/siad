@@ -2,7 +2,6 @@ package renter
 
 import (
 	"fmt"
-	"sort"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
