@@ -53,14 +53,14 @@ var (
 
 	skykeyDeleteNameCmd = &cobra.Command{
 		Use:   "name [name]",
-		Short: "Delete the skykey by its name",
+		Short: "Delete the skykey by name",
 		Long:  `Delete the base64-encoded skykey using its name`,
 		Run:   wrap(skykeydeletenamecmd),
 	}
 
 	skykeyDeleteIDCmd = &cobra.Command{
 		Use:   "id [id]",
-		Short: "Delete the skykey by its id",
+		Short: "Delete the skykey by id",
 		Long:  `Delete the base64-encoded skykey using its id`,
 		Run:   wrap(skykeydeleteidcmd),
 	}
