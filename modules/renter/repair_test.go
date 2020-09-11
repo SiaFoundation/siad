@@ -270,6 +270,7 @@ func TestBubbleHealth(t *testing.T) {
 	//
 	// Note: this tests the edge case of bubbling a directory with a file
 	// but no sub directories
+	rt.renter.managedUpdateRenterContractsAndUtilities()
 	offline, goodForRenew, _, _ := rt.renter.managedRenterContractsAndUtilities()
 	fileHealth, _, _, _, _ := f.Health(offline, goodForRenew)
 	if fileHealth != 2 {
@@ -1149,6 +1150,7 @@ func TestCalculateFileMetadata(t *testing.T) {
 	}
 
 	// Grab initial metadata values
+	rt.renter.managedUpdateRenterContractsAndUtilities()
 	offline, goodForRenew, _, _ := rt.renter.managedRenterContractsAndUtilities()
 	health, stuckHealth, _, _, numStuckChunks := sf.Health(offline, goodForRenew)
 	redundancy, _, err := sf.Redundancy(offline, goodForRenew)

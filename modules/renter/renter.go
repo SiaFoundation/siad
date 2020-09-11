@@ -30,6 +30,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/ratelimit"
@@ -162,6 +163,15 @@ type renterFuseManager interface {
 	Unmount(mountPoint string) error
 }
 
+// cachedUtilities contains the cached utilities used when bubbling file and
+// folder metadata.
+type cachedUtilities struct {
+	offline      map[string]bool
+	goodForRenew map[string]bool
+	contracts    map[string]modules.RenterContract
+	used         []types.SiaPublicKey
+}
+
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
@@ -198,8 +208,12 @@ type Renter struct {
 	// A bubble is the process of updating a directory's metadata and then
 	// moving on to its parent directory so that any changes in metadata are
 	// properly reflected throughout the filesystem.
+	//
+	// cachedUtilities contain contract information used when bubbling. These
+	// values are cached to prevent recomputing them too often.
 	bubbleUpdates   map[string]bubbleStatus
 	bubbleUpdatesMu sync.Mutex
+	cachedUtilities cachedUtilities
 
 	// Stateful variables related to projects the worker can launch. Typically
 	// projects manage all of their own state, but for example they may track
@@ -473,20 +487,28 @@ func (r *Renter) managedContractUtilityMaps() (offline map[string]bool, goodForR
 	return offline, goodForRenew, contracts
 }
 
-// managedRenterContractsAndUtilities grabs the pubkeys of the hosts that the
-// file(s) have been uploaded to and then generates maps of the contract's
-// utilities showing which hosts are GoodForRenew and which hosts are Offline.
-// Additionally a map of host pubkeys to renter contract is returned.  The
-// offline and goodforrenew maps are needed for calculating redundancy and other
-// file metrics.
+// managedRenterContractsAndUtilities returns the cached contracts and utilities
+// from the renter. They can be updated by calling
+// managedUpdateRenterContractsAndUtilities.
 func (r *Renter) managedRenterContractsAndUtilities() (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract, used []types.SiaPublicKey) {
-	// Save host keys in map.
-	goodForRenew = make(map[string]bool)
-	offline = make(map[string]bool)
-	// Build 2 maps that map every pubkey to its offline and goodForRenew
-	// status.
+	id := r.mu.Lock()
+	defer r.mu.Unlock(id)
+	cu := r.cachedUtilities
+	return cu.offline, cu.goodForRenew, cu.contracts, cu.used
+}
+
+// managedUpdateRenterContractsAndUtilities grabs the pubkeys of the hosts that
+// the file(s) have been uploaded to and then generates maps of the contract's
+// utilities showing which hosts are GoodForRenew and which hosts are Offline.
+// Additionally a map of host pubkeys to renter contract is created. The offline
+// and goodforrenew maps are needed for calculating redundancy and other file
+// metrics. All of that information is cached within the renter.
+func (r *Renter) managedUpdateRenterContractsAndUtilities() {
+	var used []types.SiaPublicKey
+	goodForRenew := make(map[string]bool)
+	offline := make(map[string]bool)
 	allContracts := r.hostContractor.Contracts()
-	contracts = make(map[string]modules.RenterContract)
+	contracts := make(map[string]modules.RenterContract)
 	for _, contract := range allContracts {
 		pk := contract.HostPublicKey
 		cu := contract.Utility
@@ -505,7 +527,16 @@ func (r *Renter) managedRenterContractsAndUtilities() (offline map[string]bool, 
 			used = append(used, pk)
 		}
 	}
-	return offline, goodForRenew, contracts, used
+
+	// Update cache.
+	id := r.mu.Lock()
+	r.cachedUtilities = cachedUtilities{
+		offline:      offline,
+		goodForRenew: goodForRenew,
+		contracts:    contracts,
+		used:         used,
+	}
+	r.mu.Unlock(id)
 }
 
 // setBandwidthLimits will change the bandwidth limits of the renter based on
@@ -1005,6 +1036,20 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	if err != nil {
 		return nil, err
 	}
+
+	// Calculate the initial cached utilities and kick off a thread that updates
+	// the utilities regularly.
+	r.managedUpdateRenterContractsAndUtilities()
+	go func() {
+		for {
+			select {
+			case <-r.tg.StopChan():
+				return
+			case <-time.After(cachedUtilitiesUpdateInterval):
+			}
+			r.managedUpdateRenterContractsAndUtilities()
+		}
+	}()
 
 	// Spin up background threads which are not depending on the renter being
 	// up-to-date with consensus.
