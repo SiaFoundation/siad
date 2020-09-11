@@ -1518,7 +1518,7 @@ func TestHealthLoop(t *testing.T) {
 	}
 
 	// Block until the allowance has finished forming contracts.
-	err = build.Retry(50, time.Millisecond*250, func() error {
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		var rc RenterContracts
 		err = st1.getAPI("/renter/contracts", &rc)
 		if err != nil {
@@ -1549,7 +1549,7 @@ func TestHealthLoop(t *testing.T) {
 	}
 
 	// redundancy should reach 2
-	err = build.Retry(120, 250*time.Millisecond, func() error {
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		var rf RenterFiles
 		st1.getAPI("/renter/files", &rf)
 		if len(rf.Files) >= 1 && rf.Files[0].Redundancy == 2 {
@@ -1581,7 +1581,7 @@ func TestHealthLoop(t *testing.T) {
 	st2.server.panicClose()
 
 	// redundancy should drop
-	err = build.Retry(120, 250*time.Millisecond, func() error {
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		var rf RenterFiles
 		st1.getAPI("/renter/files", &rf)
 		if len(rf.Files) >= 1 && rf.Files[0].Redundancy == 2 {
@@ -1594,7 +1594,7 @@ func TestHealthLoop(t *testing.T) {
 	}
 
 	// Check that the metadata has been updated
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		var rd RenterDirectory
 		st1.getAPI("/renter/dir/", &rd)
 		if rd.Directories[0].MaxHealth == 0 {
