@@ -117,7 +117,8 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			// Directory is found, read the directory metadata file
 			dirSiaPath, err := siaPath.Join(fi.Name())
 			if err != nil {
-				return siadir.Metadata{}, err
+				r.log.Println("unable to join siapath with dirpath while calculating directory metadata:", err)
+				continue
 			}
 			dirSiaPaths = append(dirSiaPaths, dirSiaPath)
 		}
@@ -265,7 +266,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 // caller can decide themselves whether to use the output in case of an error or
 // not.
 func (r *Renter) managedCalculateAndUpdateFileMetadatas(siaPaths []modules.SiaPath) ([]bubbledMetadata, error) {
-	// Get offline and goodforrenew maps.
+	// Get cached offline and goodforrenew maps.
 	hostOfflineMap, hostGoodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
 
 	// Load the Siafiles.
