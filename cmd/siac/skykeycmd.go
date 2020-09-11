@@ -47,7 +47,7 @@ var (
 
 	skykeyDeleteCmd = &cobra.Command{
 		Use:   "delete",
-		Short: "Delete the skykey by its name or id",
+		Short: "Delete the skykey by name or id",
 		Long:  `Delete the base64-encoded skykey using its name or id`,
 	}
 
