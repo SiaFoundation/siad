@@ -6,17 +6,20 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // updateSiaDirHealth is a helper method to update the health and the aggregate
 // health of a siadir
-func (r *Renter) updateSiaDirHealth(siaPath modules.SiaPath, health, aggregateHealth float64) error {
+func (r *Renter) updateSiaDirHealth(siaPath modules.SiaPath, health, aggregateHealth float64) (err error) {
 	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil {
 		return err
 	}
-	defer siaDir.Close()
+	defer func() {
+		err = errors.Compose(err, siaDir.Close())
+	}()
 	metadata, err := siaDir.Metadata()
 	if err != nil {
 		return err
@@ -88,7 +91,11 @@ func TestDirectoryHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Check that the heap was initialized properly
 	if rt.renter.directoryHeap.managedLen() != 1 {
@@ -233,7 +240,11 @@ func TestPushSubDirectories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a test directory with the following healths
 	//
@@ -327,7 +338,11 @@ func TestNextExploredDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a test directory with the following healths/aggregateHealths
 	//

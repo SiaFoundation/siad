@@ -76,7 +76,7 @@ var (
 
 // skykeycmd displays the usage info for the command.
 func skykeycmd(cmd *cobra.Command, args []string) {
-	cmd.UsageFunc()(cmd)
+	_ = cmd.UsageFunc()(cmd)
 	os.Exit(exitCodeUsage)
 }
 

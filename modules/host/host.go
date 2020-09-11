@@ -395,7 +395,7 @@ func (h *Host) threadedPruneExpiredPriceTables() {
 // mocked such that the dependencies can return unexpected errors or unique
 // behaviors during testing, enabling easier testing of the failure modes of
 // the Host.
-func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, mux *siamux.SiaMux, listenerAddress string, persistDir string) (*Host, error) {
+func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, mux *siamux.SiaMux, listenerAddress string, persistDir string) (_ *Host, err error) {
 	// Check that all the dependencies were provided.
 	if cs == nil {
 		return nil, errNilCS
@@ -433,7 +433,6 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 	h.staticMDM = mdm.New(h)
 
 	// Call stop in the event of a partial startup.
-	var err error
 	defer func() {
 		if err != nil {
 			err = composeErrors(h.tg.Stop(), err)

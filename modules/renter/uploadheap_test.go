@@ -28,7 +28,11 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create file on disk
 	path, err := rt.createZeroByteFileOnDisk()
@@ -140,7 +144,11 @@ func TestBuildChunkHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create 2 files
 	source, err := rt.createZeroByteFileOnDisk()
@@ -233,7 +241,11 @@ func TestUploadHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Add chunks to heap. Chunks are prioritize by stuck status first and then
 	// by piecesComplete/piecesNeeded
@@ -334,7 +346,11 @@ func TestAddChunksToHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create File params
 	_, rsc := testingFileParams()
@@ -435,7 +451,11 @@ func TestAddRemoteChunksToHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a local file for the local file uploads
 	source, err := rt.createZeroByteFileOnDisk()
@@ -554,7 +574,11 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create file
 	rsc, _ := siafile.NewRSCode(1, 1)
@@ -686,7 +710,11 @@ func TestUploadHeapMaps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Add stuck and unstuck chunks to heap to fill up the heap maps
 	numHeapChunks := uint64(10)
@@ -818,7 +846,11 @@ func TestChunkSwitchStuckStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create minimum chunk
 	chunk := &unfinishedUploadChunk{

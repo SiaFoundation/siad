@@ -91,7 +91,10 @@ func TestHostObligationAcceptingContracts(t *testing.T) {
 	// redundancy should reach 1
 	var rf RenterFiles
 	err = build.Retry(120, time.Millisecond*250, func() error {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(rf.Files) >= 1 && rf.Files[0].Available {
 			return nil
 		}
@@ -271,7 +274,10 @@ func TestHostAndRentVanilla(t *testing.T) {
 	// Only one piece will be uploaded (10% at current redundancy).
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
@@ -293,7 +299,10 @@ func TestHostAndRentVanilla(t *testing.T) {
 	}
 	// Only one piece will be uploaded (10% at current redundancy).
 	for i := 0; i < 200 && (len(rf.Files) != 2 || rf.Files[0].UploadProgress < 10 || rf.Files[1].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if len(rf.Files) != 2 || rf.Files[0].UploadProgress < 10 || rf.Files[1].UploadProgress < 10 {
@@ -492,7 +501,10 @@ func TestHostAndRentMultiHost(t *testing.T) {
 	// Three pieces should get uploaded.
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 50); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 50 {
@@ -657,7 +669,10 @@ func TestHostAndRentManyFiles(t *testing.T) {
 	// Block until all files hit 100% uploaded.
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 3 || rf.Files[0].UploadProgress < 100 || rf.Files[1].UploadProgress < 100 || rf.Files[2].UploadProgress < 100); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(500 * time.Millisecond)
 	}
 	if len(rf.Files) != 3 || rf.Files[0].UploadProgress < 100 || rf.Files[1].UploadProgress < 100 || rf.Files[2].UploadProgress < 100 {
@@ -821,7 +836,10 @@ func TestRenterUploadDownload(t *testing.T) {
 	// Only one piece will be uploaded (10% at current redundancy).
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
@@ -861,7 +879,10 @@ func TestRenterUploadDownload(t *testing.T) {
 
 	// Wait for upload to complete.
 	for i := 0; i < 200 && (len(rf.Files) != 2 || rf.Files[0].UploadProgress < 10 || rf.Files[1].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if len(rf.Files) != 2 || rf.Files[0].UploadProgress < 10 || rf.Files[1].UploadProgress < 10 {
@@ -943,7 +964,10 @@ func TestRenterParallelDelete(t *testing.T) {
 	// Wait for the first file to be registered in the renter.
 	var rf RenterFiles
 	for i := 0; i < 200 && len(rf.Files) != 1; i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 {
@@ -963,7 +987,10 @@ func TestRenterParallelDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Only the second file should be present
-	st.getAPI("/renter/files", &rf)
+	err = st.getAPI("/renter/files", &rf)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(rf.Files) != 1 || rf.Files[0].SiaPath.String() != "test2" {
 		t.Fatal("file was not deleted properly:", rf.Files)
 	}
@@ -971,7 +998,10 @@ func TestRenterParallelDelete(t *testing.T) {
 	// Wait for the second upload to complete.
 	var file RenterFile
 	for i := 0; i < 200 && file.File.UploadProgress < 10; i++ {
-		st.getAPI("/renter/file/test2", &file)
+		err = st.getAPI("/renter/file/test2", &file)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if file.File.UploadProgress < 10 {
@@ -988,7 +1018,10 @@ func TestRenterParallelDelete(t *testing.T) {
 	}
 
 	// No files should be present
-	st.getAPI("/renter/files", &rf)
+	err = st.getAPI("/renter/files", &rf)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(rf.Files) != 0 {
 		t.Fatal("file was not deleted properly:", rf.Files)
 	}
@@ -1079,7 +1112,10 @@ func TestRenterRenew(t *testing.T) {
 	// Only one piece will be uploaded (10% at current redundancy).
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
@@ -1109,7 +1145,10 @@ func TestRenterRenew(t *testing.T) {
 	}
 	// Wait for the contract to be renewed.
 	for i := 0; i < 200 && (len(rc.Contracts) != 1 || rc.Contracts[0].ID == contractID); i++ {
-		st.getAPI("/renter/contracts?expired=true", &rc)
+		err = st.getAPI("/renter/contracts?expired=true", &rc)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if rc.Contracts[0].ID == contractID {
@@ -1196,7 +1235,10 @@ func TestRenterAllowance(t *testing.T) {
 	// Only one piece will be uploaded (10% at current redundancy).
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
@@ -1328,7 +1370,10 @@ func TestHostAndRentReload(t *testing.T) {
 	// Only one piece will be uploaded (10% at current redundancy).
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
@@ -1517,7 +1562,10 @@ func TestHostAndRenterRenewInterrupt(t *testing.T) {
 	}
 	// Wait for the contract to be renewed.
 	for i := 0; i < 200 && (len(rc.Contracts) != 1 || rc.Contracts[0].ID == contractID); i++ {
-		st.getAPI("/renter/contracts", &rc)
+		err = st.getAPI("/renter/contracts", &rc)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if rc.Contracts[0].ID == contractID {
@@ -1527,7 +1575,10 @@ func TestHostAndRenterRenewInterrupt(t *testing.T) {
 	// Only one piece will be uploaded (10% at current redundancy).
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(1000 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
@@ -1661,7 +1712,10 @@ func TestUploadedBytesReporting(t *testing.T) {
 	// the fully redundant file size always equals UploadedBytes reported
 	var rf RenterFile
 	for i := 0; i < 60 && rf.File.UploadProgress < 100; i++ {
-		st.getAPI("/renter/file/test", &rf)
+		err = st.getAPI("/renter/file/test", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		uploadProgressBytes := uint64(float64(fullyRedundantSize(rf.File.CipherType)) * rf.File.UploadProgress / 100.0)
 		// Note: in Go 1.10 we will be able to write Math.Round(uploadProgressBytes) != rf.Files[0].UploadedBytes
 		if uploadProgressBytes != rf.File.UploadedBytes && (uploadProgressBytes+1) != rf.File.UploadedBytes {
@@ -1772,7 +1826,10 @@ func TestRepairLoopBlocking(t *testing.T) {
 	// redundancy should reach 2
 	var rf RenterFiles
 	err = build.Retry(60, time.Second, func() error {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(rf.Files) >= 1 && rf.Files[0].Redundancy == 2 {
 			return nil
 		}
@@ -1803,7 +1860,10 @@ func TestRepairLoopBlocking(t *testing.T) {
 
 	// wait for the redundancy to decrement
 	err = build.Retry(60, time.Second, func() error {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(rf.Files) >= 1 && rf.Files[0].Redundancy == 1 {
 			return nil
 		}
@@ -1882,7 +1942,10 @@ func TestRepairLoopBlocking(t *testing.T) {
 	time.Sleep(3 * time.Second)
 
 	// redundancy should not increment back to 2 because the renter should be blocked
-	st.getAPI("/renter/files", &rf)
+	err = st.getAPI("/renter/files", &rf)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(rf.Files) >= 1 && rf.Files[0].Redundancy >= 2 && rf.Files[0].Available {
 		t.Error("The file's redundancy incremented back to 2 but shouldn't")
 	}
@@ -1914,7 +1977,10 @@ func TestRepairLoopBlocking(t *testing.T) {
 
 	// redundancy should reach 2 for the second file
 	err = build.Retry(60, time.Second, func() error {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(rf.Files) >= 2 && rf.Files[1].Redundancy >= 2 {
 			return nil
 		}
@@ -2005,7 +2071,10 @@ func TestRemoteFileRepairMassive(t *testing.T) {
 	// redundancy should reach 2 for all files
 	var rf RenterFiles
 	err = build.Retry(600, time.Second, func() error {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(rf.Files) != numUploads {
 			return errors.New("file not uploaded")
 		}
@@ -2034,7 +2103,10 @@ func TestRemoteFileRepairMassive(t *testing.T) {
 
 	// wait for the redundancy to decrement
 	err = build.Retry(60, time.Second, func() error {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(rf.Files) != numUploads {
 			return errors.New("file not uploaded")
 		}
@@ -2106,7 +2178,10 @@ func TestRemoteFileRepairMassive(t *testing.T) {
 	// redundancy should increment back to 2 as the renter uploads to the new
 	// host using the download-to-upload strategy
 	err = build.Retry(300, time.Second, func() error {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(rf.Files) != numUploads {
 			return errors.New("file not uploaded")
 		}

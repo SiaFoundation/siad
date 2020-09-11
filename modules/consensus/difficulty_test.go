@@ -21,7 +21,11 @@ func TestChildTargetOak(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cs := cst.cs
 	// NOTE: Test must not be run in parallel.
 	//
@@ -252,7 +256,11 @@ func TestStoreBlockTotals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cs := cst.cs
 	// NOTE: Test must not be run in parallel.
 	//
@@ -350,7 +358,11 @@ func TestHardforkMechanic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine blocks until the oak hardfork height, printing the current target at
 	// each height.

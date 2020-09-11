@@ -36,7 +36,11 @@ func TestAddPeer(t *testing.T) {
 	}
 	t.Parallel()
 	g := newTestingGateway(t)
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -58,7 +62,11 @@ func TestAcceptPeer(t *testing.T) {
 	}
 	t.Parallel()
 	g := newTestingGateway(t)
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -136,7 +144,11 @@ func TestAcceptPeerSameHost(t *testing.T) {
 	}
 	t.Parallel()
 	g := newTestingGateway(t)
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -198,7 +210,11 @@ func TestRandomOutboundPeer(t *testing.T) {
 	}
 	t.Parallel()
 	g := newTestingGateway(t)
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -230,7 +246,11 @@ func TestListen(t *testing.T) {
 	}
 	t.Parallel()
 	g := newTestingGateway(t)
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// compliant connect with old version
 	conn, err := net.Dial("tcp", string(g.Address()))
@@ -372,7 +392,11 @@ func TestConnect(t *testing.T) {
 
 	// create peer who will connect to bootstrap
 	g := newNamedTestingGateway(t, "2")
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// first simulate a "bad" connect, where bootstrap won't share its nodes
 	bootstrap.mu.Lock()
@@ -524,10 +548,18 @@ func TestConnectRejectsInvalidAddrs(t *testing.T) {
 	}
 	t.Parallel()
 	g := newNamedTestingGateway(t, "1")
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	_, g2Port, err := net.SplitHostPort(string(g2.Address()))
 	if err != nil {
@@ -579,7 +611,11 @@ func TestConnectRejectsVersions(t *testing.T) {
 		t.SkipNow()
 	}
 	g := newTestingGateway(t)
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// Setup a listener that mocks Gateway.acceptConn, but sends the
 	// version sent over mockVersionChan instead of build.Version.
 	listener, err := net.Listen("tcp", "localhost:0")
@@ -748,7 +784,11 @@ func TestAcceptConnRejectsVersions(t *testing.T) {
 	}
 	t.Parallel()
 	g := newTestingGateway(t)
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	tests := []struct {
 		remoteVersion       string
@@ -863,9 +903,17 @@ func TestDisconnect(t *testing.T) {
 	}
 	t.Parallel()
 	g := newTestingGateway(t)
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// Try disconnecting from a peer that doesn't exist.
 	if err := g.Disconnect("bar.com:123"); err == nil {
 		t.Fatal("disconnect removed unconnected peer")
@@ -910,11 +958,19 @@ func TestPeerManager(t *testing.T) {
 	}
 	t.Parallel()
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// create a valid node to connect to
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// g1's node list should only contain g2
 	g1.mu.Lock()
@@ -1066,11 +1122,23 @@ func TestPeerManagerPriority(t *testing.T) {
 	t.Parallel()
 
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g3 := newNamedTestingGateway(t, "3")
-	defer g3.Close()
+	defer func() {
+		if err := g3.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Connect g1 to g2. This will cause g2 to be saved as an outbound peer in
 	// g1's node list.
@@ -1133,7 +1201,11 @@ func TestPeerManagerPriority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Wait until g1 connects to g2.
 	for i := 0; i < 100; i++ {

@@ -179,19 +179,17 @@ func (np NodeParams) NumModules() (n int) {
 }
 
 // printlnRelease is a wrapper that only prints to stdout in release builds.
-func printlnRelease(a ...interface{}) (int, error) {
+func printlnRelease(a ...interface{}) {
 	if build.Release == "standard" {
-		return fmt.Println(a...)
+		fmt.Println(a...)
 	}
-	return 0, nil
 }
 
 // printfRelease is a wrapper that only prints to stdout in release builds.
-func printfRelease(format string, a ...interface{}) (int, error) {
+func printfRelease(format string, a ...interface{}) {
 	if build.Release == "standard" {
-		return fmt.Printf(format, a...)
+		fmt.Printf(format, a...)
 	}
-	return 0, nil
 }
 
 // Close will call close on every module within the node, combining and

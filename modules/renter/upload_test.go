@@ -19,13 +19,21 @@ func TestRenterUploadDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	testUploadPath, err := ioutil.TempDir("", t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(testUploadPath)
+	defer func() {
+		if err := os.RemoveAll(testUploadPath); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	ec, err := siafile.NewRSCode(DefaultDataPieces, DefaultParityPieces)
 	if err != nil {

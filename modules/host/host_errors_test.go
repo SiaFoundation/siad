@@ -33,7 +33,11 @@ func TestHostFailedMkdirAll(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err = ht.host.Close()
 	if err != nil {
@@ -73,7 +77,11 @@ func TestHostFailedNewLogger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err = ht.host.Close()
 	if err != nil {
@@ -113,7 +121,11 @@ func TestHostFailedOpenDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err = ht.host.Close()
 	if err != nil {
@@ -153,7 +165,11 @@ func TestHostFailedLoadFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err = ht.host.Close()
 	if err != nil {
@@ -193,7 +209,11 @@ func TestHostFailedListen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err = ht.host.Close()
 	if err != nil {

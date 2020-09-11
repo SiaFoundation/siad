@@ -20,7 +20,11 @@ func TestSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cst.testBlockSuite()
 	oldHash := cst.cs.dbConsensusChecksum()
 	cst.cs.Close()

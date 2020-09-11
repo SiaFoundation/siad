@@ -137,7 +137,7 @@ are manually deleted. Use the --dry-run flag to fetch the skylink without actual
 //
 // TODO: Could put some stats or summaries or something here.
 func skynetcmd(cmd *cobra.Command, args []string) {
-	cmd.UsageFunc()(cmd)
+	_ = cmd.UsageFunc()(cmd)
 	os.Exit(exitCodeUsage)
 }
 
@@ -228,7 +228,7 @@ func skynetconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 // skynetdownloadcmd will perform the download of a skylink.
 func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 	if len(args) != 2 {
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 
@@ -283,7 +283,7 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	case 1:
 		path = args[0]
 	default:
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 	// Parse the input siapath.
@@ -428,7 +428,9 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 				fmt.Fprintf(w, "\t%v\t\n", skylink)
 			}
 		}
-		w.Flush()
+		if err := w.Flush(); err != nil {
+			die("failed to flush writer")
+		}
 		fmt.Println()
 
 		if !skynetLsRecursive {
@@ -509,7 +511,7 @@ func skynetpincmd(sourceSkylink, destSiaPath string) {
 // directories from the Renter.
 func skynetunpincmd(cmd *cobra.Command, skyPathStrs []string) {
 	if len(skyPathStrs) == 0 {
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 
