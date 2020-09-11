@@ -13,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -271,7 +270,7 @@ func TestBubbleHealth(t *testing.T) {
 	//
 	// Note: this tests the edge case of bubbling a directory with a file
 	// but no sub directories
-	offline, goodForRenew, _ := rt.renter.managedRenterContractsAndUtilities([]*filesystem.FileNode{f})
+	offline, goodForRenew, _, _ := rt.renter.managedRenterContractsAndUtilities()
 	fileHealth, _, _, _, _ := f.Health(offline, goodForRenew)
 	if fileHealth != 2 {
 		t.Fatalf("Expected heath to be 2, got %v", fileHealth)
@@ -1150,7 +1149,7 @@ func TestCalculateFileMetadata(t *testing.T) {
 	}
 
 	// Grab initial metadata values
-	offline, goodForRenew, _ := rt.renter.managedRenterContractsAndUtilities([]*filesystem.FileNode{sf})
+	offline, goodForRenew, _, _ := rt.renter.managedRenterContractsAndUtilities()
 	health, stuckHealth, _, _, numStuckChunks := sf.Health(offline, goodForRenew)
 	redundancy, _, err := sf.Redundancy(offline, goodForRenew)
 	if err != nil {

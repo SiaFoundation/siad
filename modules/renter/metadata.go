@@ -265,66 +265,71 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 // caller can decide themselves whether to use the output in case of an error or
 // not.
 func (r *Renter) managedCalculateAndUpdateFileMetadatas(siaPaths []modules.SiaPath) ([]bubbledMetadata, error) {
+	// Get offline and goodforrenew maps.
+	hostOfflineMap, hostGoodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
+
 	// Load the Siafiles.
 	var errs error
-	sfs := make([]*filesystem.FileNode, 0, len(siaPaths))
+	mds := make([]bubbledMetadata, 0, len(siaPaths))
 	for _, siaPath := range siaPaths {
-		sf, err := r.staticFileSystem.OpenSiaFile(siaPath)
-		if err != nil {
-			errs = errors.Compose(errs, err)
-			continue
-		}
-		defer sf.Close()
-		sfs = append(sfs, sf)
-	}
+		err := func() (err error) {
+			sf, err := r.staticFileSystem.OpenSiaFile(siaPath)
+			if err != nil {
+				return err
+			}
+			defer func() {
+				err = errors.Compose(err, sf.Close())
+			}()
 
-	// Get offline and goodforrenew maps.
-	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities(sfs)
+			// Update the siafile's used hosts.
+			if err := sf.UpdateUsedHosts(used); err != nil {
+				r.log.Debugln("WARN: Could not update used hosts:", err)
+			}
+			// Update the cached expiration of the siafile.
+			_ = sf.Expiration(contracts)
 
-	// Compute the metadatas.
-	mds := make([]bubbledMetadata, 0, len(sfs))
-	for _, sf := range sfs {
-		// Calculate file health
-		siaPath := r.staticFileSystem.FileSiaPath(sf)
-		health, stuckHealth, _, _, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
+			// Calculate file health
+			siaPath := r.staticFileSystem.FileSiaPath(sf)
+			health, stuckHealth, _, _, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
 
-		// Set the LastHealthCheckTime
-		sf.SetLastHealthCheckTime()
+			// Set the LastHealthCheckTime
+			sf.SetLastHealthCheckTime()
 
-		// Calculate file Redundancy and check if local file is missing and
-		// redundancy is less than one
-		redundancy, _, err := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
-		if err != nil {
-			errs = errors.Compose(errs, err)
-			continue
-		}
-		_, err = os.Stat(sf.LocalPath())
-		onDisk := err == nil
-		if !onDisk && redundancy < 1 {
-			r.log.Debugf("File not found on disk and possibly unrecoverable: LocalPath %v; SiaPath %v", sf.LocalPath(), siaPath.String())
-		}
+			// Calculate file Redundancy and check if local file is missing and
+			// redundancy is less than one
+			redundancy, _, err := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
+			if err != nil {
+				return err
+			}
+			_, err = os.Stat(sf.LocalPath())
+			onDisk := err == nil
+			if !onDisk && redundancy < 1 {
+				r.log.Debugf("File not found on disk and possibly unrecoverable: LocalPath %v; SiaPath %v", sf.LocalPath(), siaPath.String())
+			}
 
-		// Save the metadata.
-		err = sf.SaveMetadata()
-		if err != nil {
-			errs = errors.Compose(errs, err)
-			continue
-		}
+			// Save the metadata.
+			err = sf.SaveMetadata()
+			if err != nil {
+				return err
+			}
 
-		mds = append(mds, bubbledMetadata{
-			sp: siaPath,
-			bm: siafile.BubbledMetadata{
-				Health:              health,
-				LastHealthCheckTime: sf.LastHealthCheckTime(),
-				ModTime:             sf.ModTime(),
-				NumStuckChunks:      numStuckChunks,
-				OnDisk:              onDisk,
-				Redundancy:          redundancy,
-				Size:                sf.Size(),
-				StuckHealth:         stuckHealth,
-				UID:                 sf.UID(),
-			},
-		})
+			mds = append(mds, bubbledMetadata{
+				sp: siaPath,
+				bm: siafile.BubbledMetadata{
+					Health:              health,
+					LastHealthCheckTime: sf.LastHealthCheckTime(),
+					ModTime:             sf.ModTime(),
+					NumStuckChunks:      numStuckChunks,
+					OnDisk:              onDisk,
+					Redundancy:          redundancy,
+					Size:                sf.Size(),
+					StuckHealth:         stuckHealth,
+					UID:                 sf.UID(),
+				},
+			})
+			return nil
+		}()
+		errs = errors.Compose(errs, err)
 	}
 	return mds, errs
 }

@@ -479,50 +479,33 @@ func (r *Renter) managedContractUtilityMaps() (offline map[string]bool, goodForR
 // Additionally a map of host pubkeys to renter contract is returned.  The
 // offline and goodforrenew maps are needed for calculating redundancy and other
 // file metrics.
-func (r *Renter) managedRenterContractsAndUtilities(entrys []*filesystem.FileNode) (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) {
+func (r *Renter) managedRenterContractsAndUtilities() (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract, used []types.SiaPublicKey) {
 	// Save host keys in map.
-	pks := make(map[string]types.SiaPublicKey)
 	goodForRenew = make(map[string]bool)
 	offline = make(map[string]bool)
-	for _, e := range entrys {
-		for _, pk := range e.HostPublicKeys() {
-			pks[pk.String()] = pk
-		}
-	}
 	// Build 2 maps that map every pubkey to its offline and goodForRenew
 	// status.
+	allContracts := r.hostContractor.Contracts()
 	contracts = make(map[string]modules.RenterContract)
-	for _, pk := range pks {
-		cu, ok := r.ContractUtility(pk)
-		if !ok {
-			continue
-		}
-		contract, ok := r.hostContractor.ContractByPublicKey(pk)
-		if !ok {
-			continue
-		}
+	for _, contract := range allContracts {
+		pk := contract.HostPublicKey
+		cu := contract.Utility
 		goodForRenew[pk.String()] = cu.GoodForRenew
 		offline[pk.String()] = r.hostContractor.IsOffline(pk)
 		contracts[pk.String()] = contract
+		if cu.GoodForRenew {
+			used = append(used, pk)
+		}
 	}
 	// Update the used hosts of the Siafile. Only consider the ones that
 	// are goodForRenew.
-	var used []types.SiaPublicKey
-	for _, pk := range pks {
+	for _, contract := range allContracts {
+		pk := contract.HostPublicKey
 		if _, gfr := goodForRenew[pk.String()]; gfr {
 			used = append(used, pk)
 		}
 	}
-	for _, e := range entrys {
-		if err := e.UpdateUsedHosts(used); err != nil {
-			r.log.Debugln("WARN: Could not update used hosts:", err)
-		}
-	}
-	// Update the cached expiration of the siafiles.
-	for _, e := range entrys {
-		_ = e.Expiration(contracts)
-	}
-	return offline, goodForRenew, contracts
+	return offline, goodForRenew, contracts, used
 }
 
 // setBandwidthLimits will change the bandwidth limits of the renter based on
