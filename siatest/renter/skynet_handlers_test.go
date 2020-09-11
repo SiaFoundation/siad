@@ -105,6 +105,30 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 			ExpectedRedirect: "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/?foo=bar",
 		},
 		{
+			// DetectRedirectWithEncoding ensures that if the skylink needs to
+			// be redirected and has encoded special characters in its URL, that
+			// these are not decoded by redirecting.
+			Name:             "DetectRedirectWithEncoding",
+			Skylink:          "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA?filename=encoding%23test%3F",
+			ExpectedError:    "Redirect",
+			ExpectedRedirect: "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/?filename=encoding%23test%3F",
+		},
+		{
+			// PartialFilenameWithEncoding ensures that if a partial version of
+			// an existing path has encoded special characters in its URL, no
+			// file found.
+			Name:          "PartialFilenameWithEncoding",
+			Skylink:       "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/test%3F",
+			ExpectedError: "failed to download contents for path: /test?",
+		},
+		{
+			// FilenameWithEncoding ensures that if the path has encoded special
+			// characters in its URL, that the correct file is found.
+			Name:          "FilenameWithEncoding",
+			Skylink:       "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/test%3Fencoding",
+			ExpectedError: "",
+		},
+		{
 			// EnsureNoRedirect ensures that there is no redirect if the skylink
 			// has a trailing slash.
 			// This is the happy case for DetectRedirect.
@@ -137,7 +161,7 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 	for _, test := range subTests {
 		_, _, err := r.SkynetSkylinkGet(test.Skylink)
 		if err == nil && test.ExpectedError != "" {
-			t.Fatalf("%s failed: %+v\n", test.Name, err)
+			t.Fatalf("%s failed: expected error '%s', got '%+v'\n", test.Name, test.ExpectedError, err)
 		}
 		if err != nil && (test.ExpectedError == "" || !strings.Contains(err.Error(), test.ExpectedError)) {
 			t.Fatalf("%s failed: expected error '%s', got '%+v'\n", test.Name, test.ExpectedError, err)
