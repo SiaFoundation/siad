@@ -13,8 +13,9 @@ import (
 	"sync"
 	"text/tabwriter"
 
-	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v5"
+
+	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v5/decor"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -556,7 +557,7 @@ func skynetunpincmd(cmd *cobra.Command, skyPathStrs []string) {
 
 // skynetuploadcmd will upload a file or directory to Skynet. If --dry-run is
 // passed, it will fetch the skylinks without uploading.
-func skynetuploadcmd(cmd *cobra.Command, args []string) {
+func skynetuploadcmd(_ *cobra.Command, args []string) {
 	if len(args) == 1 {
 		skynetuploadpipecmd(args[0])
 		return
@@ -565,18 +566,7 @@ func skynetuploadcmd(cmd *cobra.Command, args []string) {
 		die("wrong number of arguments")
 	}
 	sourcePath, destSiaPath := args[0], args[1]
-
-	// Open the source file.
-	file, err := os.Open(sourcePath)
-	if err != nil {
-		die("Unable to open source path:", err)
-	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			die(err)
-		}
-	}()
-	fi, err := file.Stat()
+	fi, err := os.Stat(sourcePath)
 	if err != nil {
 		die("Unable to fetch source fileinfo:", err)
 	}
@@ -747,11 +737,7 @@ func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.
 	if err != nil {
 		die("Unable to open source path:", err)
 	}
-	defer func() {
-		if err := file.Close(); err != nil {
-			die(err)
-		}
-	}()
+	defer func() { _ = file.Close() }()
 	fi, err := file.Stat()
 	if err != nil {
 		die("Unable to fetch source fileinfo:", err)
