@@ -26,9 +26,11 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -2833,5 +2835,154 @@ func BenchmarkSkynetSingleSector(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+// TestFormContractBadScore makes sure that a portal won't form a contract with
+// a dead score host.
+func TestFormContractBadScore(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := renterTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Set one host to have a bad max duration.
+	h := tg.Hosts()[0]
+	a := siatest.DefaultAllowance
+	err = h.HostModifySettingPost(client.HostParamMaxDuration, a.Period+a.RenewWindow-1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a new renter.
+	rt := node.RenterTemplate
+	rt.SkipSetAllowance = true
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Set the allowance.
+	err = r.RenterPostAllowance(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait to give the renter some time to form contracts. Only 1 contract
+	// should be formed.
+	time.Sleep(time.Second * 5)
+	err = siatest.CheckExpectedNumberOfContracts(r, 1, 0, 0, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Enable portal mode and wait again. We should still only see 1 contract.
+	a.PaymentContractInitialFunding = a.Funds.Div64(10)
+	err = r.RenterPostAllowance(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second * 5)
+	err = siatest.CheckExpectedNumberOfContracts(r, 1, 0, 0, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRenewContractBadScore tests that a portal won't renew a contract with a
+// host that has a dead score.
+func TestRenewContractBadScore(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := renterTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add a new renter.
+	rt := node.RenterTemplate
+	rt.SkipSetAllowance = true
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Set the allowance. The renter should act as a portal but only form a
+	// regular contract with 1 host and form the other contract with the portal.
+	a := siatest.DefaultAllowance
+	a.PaymentContractInitialFunding = a.Funds.Div64(10)
+	a.Hosts = 1
+	err = r.RenterPostAllowance(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should have 2 contracts now. 1 active (regular) and 1 passive (portal).
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(r, 2, 0, 0, 0, 0, 0)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set both hosts to have a bad max duration.
+	hosts := tg.Hosts()
+	h1, h2 := hosts[0], hosts[1]
+	err = h1.HostModifySettingPost(client.HostParamMaxDuration, a.Period+a.RenewWindow-1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = h2.HostModifySettingPost(client.HostParamMaxDuration, a.Period+a.RenewWindow-1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine through a full period and renew window.
+	for i := types.BlockHeight(0); i < a.Period+a.RenewWindow; i++ {
+		err = tg.Miners()[0].MineBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(time.Millisecond * 10)
+	}
+
+	// There should only be 2 expired contracts.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(r, 0, 0, 0, 0, 2, 0)
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

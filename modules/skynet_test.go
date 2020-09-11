@@ -66,7 +66,7 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 	subMeta, isSubFile, offset, size = fullMeta.ForPath("/bar")
 	subfile4, exists4 := subMeta.Subfiles[filePath4]
 	subfile5, exists5 := subMeta.Subfiles[filePath5]
-	// Expect to find files 1 and 2 and nothing else.
+	// Expect to find files 4 and 5 and nothing else.
 	if !(exists4 && exists5 && len(subMeta.Subfiles) == 2) {
 		t.Fatal("Expected to find two files by their directory.")
 	}
@@ -86,20 +86,41 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 		t.Fatalf("Expected size %d, got %d", 9, size)
 	}
 
+	// Find files in the given directory.
+	subMeta, isSubFile, offset, size = fullMeta.ForPath("/bar/baz/")
+	subfile5, exists5 = subMeta.Subfiles[filePath5]
+	// Expect to find file 5 and nothing else.
+	if !(exists5 && len(subMeta.Subfiles) == 1) {
+		t.Fatal("Expected to find one file by its directory.")
+	}
+	if isSubFile {
+		t.Fatal("Expected to find a dir, got a file.")
+	}
+	if offset != 5 {
+		t.Fatalf("Expected offset %d, got %d", 5, offset)
+	}
+	if subfile5.Offset != 0 {
+		t.Fatalf("Expected offset %d, got %d", 0, subfile4.Offset)
+	}
+	if size != 5 {
+		t.Fatalf("Expected size %d, got %d", 5, size)
+	}
+
 	// Expect no files found on nonexistent path.
-	subMeta, _, offset, size = fullMeta.ForPath("/nonexistent")
-	if len(subMeta.Subfiles) > 0 {
-		t.Fatal("Expected to not find any files on nonexistent path but found", len(subMeta.Subfiles))
-	}
-	if offset != 0 {
-		t.Fatalf("Expected offset %d, got %d", 0, offset)
-	}
-	if size != 0 {
-		t.Fatalf("Expected size %d, got %d", 0, size)
+	for _, path := range []string{"/nonexistent", "/fo", "/file", "/b", "/bar/ba"} {
+		subMeta, _, offset, size = fullMeta.ForPath(path)
+		if len(subMeta.Subfiles) > 0 {
+			t.Fatalf("Expected to not find any files on nonexistent path %s but found %v", path, len(subMeta.Subfiles))
+		}
+		if offset != 0 {
+			t.Fatalf("Expected offset %d, got %d", 0, offset)
+		}
+		if size != 0 {
+			t.Fatalf("Expected size %d, got %d", 0, size)
+		}
 	}
 
 	// Find files by their directory, even if it contains a trailing slash.
-	// This is a regression test.
 	subMeta, _, _, _ = fullMeta.ForPath("/foo/")
 	if _, exists := subMeta.Subfiles[filePath1]; !exists {
 		t.Fatal(`Expected to find a file by its directory, even when followed by a "/".`)
@@ -110,7 +131,6 @@ func TestSkyfileMetadata_ForPath(t *testing.T) {
 	}
 
 	// Find files by their directory, even if it's missing its leading slash.
-	// This is a regression test.
 	subMeta, _, _, _ = fullMeta.ForPath("foo")
 	if _, exists := subMeta.Subfiles[filePath1]; !exists {
 		t.Fatal(`Expected to find a file by its directory, even when it's missing its leading "/".`)

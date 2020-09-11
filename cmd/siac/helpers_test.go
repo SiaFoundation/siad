@@ -90,7 +90,7 @@ func getRootCmdForSiacCmdsTests(dir string) *cobra.Command {
 	root := initCmds()
 
 	// initialize a siac cobra command
-	initClient(root, &statusVerbose, &httpClient, &dir)
+	initClient(root, &verbose, &httpClient, &dir)
 
 	return root
 }

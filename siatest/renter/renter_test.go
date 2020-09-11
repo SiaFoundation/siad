@@ -935,7 +935,7 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 		}
 		var found bool
 		for _, alert := range dag.Alerts {
-			expectedCause := fmt.Sprintf("Siafile '%v' has a health of %v", remoteFile.SiaPath().String(), f.MaxHealth)
+			expectedCause := fmt.Sprintf("Siafile 'home/user/%v' has a health of %v", remoteFile.SiaPath().String(), f.MaxHealth)
 			if alert.Msg == renter.AlertMSGSiafileLowRedundancy &&
 				alert.Cause == expectedCause {
 				found = true
@@ -2011,9 +2011,8 @@ func TestRenewFailing(t *testing.T) {
 
 	// Create a group for testing
 	groupParams := siatest.GroupParams{
-		Hosts:   5,
-		Renters: 1,
-		Miners:  1,
+		Hosts:  4,
+		Miners: 1,
 	}
 	testDir := renterTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
@@ -2025,7 +2024,26 @@ func TestRenewFailing(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	renter := tg.Renters()[0]
+
+	// Add a host that can't renew.
+	hostParams := node.HostTemplate
+	hostParams.HostDeps = &dependencies.DependencyRenewFail{}
+	nodes, err := tg.AddNodes(hostParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failHost := nodes[0]
+	lockedHostPK, err := failHost.HostPublicKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a regular renter.
+	nodes, err = tg.AddNodes(node.RenterTemplate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renter := nodes[0]
 
 	// All the contracts of the renter should be goodForRenew. So there should
 	// be no inactive contracts, only active contracts
@@ -2043,22 +2061,13 @@ func TestRenewFailing(t *testing.T) {
 		}
 		hostMap[pk.String()] = host
 	}
-	// Lock the wallet of one of the used hosts to make the renew fail.
+
+	// Get the contracts
 	rcg, err := renter.RenterAllContractsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	var lockedHostPK types.SiaPublicKey
-	for _, c := range rcg.ActiveContracts {
-		if host, used := hostMap[c.HostPublicKey.String()]; used {
-			lockedHostPK = c.HostPublicKey
-			if err := host.WalletLockPost(); err != nil {
-				t.Fatal(err)
-			}
-			break
-		}
-	}
 	// Wait until the contract is supposed to be renewed.
 	cg, err := renter.ConsensusGet()
 	if err != nil {
@@ -2079,20 +2088,9 @@ func TestRenewFailing(t *testing.T) {
 	}
 
 	// There should be no inactive contracts, only active contracts since we are
-	// 1 block before the renewWindow. Do this in a retry to give the contractor
-	// some time to catch up.
+	// 1 block before the renewWindow/s second half. Do this in a retry to give
+	// the contractor some time to catch up.
 	err = build.Retry(int(renewWindow/2), time.Second, func() error {
-		rcg, err = renter.RenterInactiveContractsGet()
-		if err != nil {
-			return err
-		}
-		if len(rcg.ActiveContracts) != len(tg.Hosts()) {
-			return fmt.Errorf("renter had %v contracts but should have %v",
-				len(rcg.ActiveContracts), len(tg.Hosts()))
-		}
-		if len(rcg.InactiveContracts) != 0 {
-			return fmt.Errorf("Renter should have 0 inactive contracts but has %v", len(rcg.InactiveContracts))
-		}
 		return siatest.CheckExpectedNumberOfContracts(renter, len(tg.Hosts()), 0, 0, 0, 0, 0)
 	})
 	if err != nil {
@@ -2104,6 +2102,7 @@ func TestRenewFailing(t *testing.T) {
 		if err := miner.MineBlock(); err != nil {
 			t.Fatal(err)
 		}
+		blockHeight++
 	}
 
 	// We should be within the second half of the renew window now. We keep
@@ -5124,5 +5123,86 @@ func TestRenterPricesVolatility(t *testing.T) {
 		t.Log("Initial:", string(initialJSON))
 		t.Log("After:", string(afterJSON))
 		t.Fatal("expected renter price estimation to be constant")
+	}
+}
+
+// TestRenterPricesVolatility verifies that the renter caches its price
+// estimation, and subsequent calls result in non-volatile results.
+func TestRenterLimitGFUContracts(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a testgroup with PriceEstimationScope hosts.
+	groupParams := siatest.GroupParams{
+		Miners:  1,
+		Hosts:   int(siatest.DefaultAllowance.Hosts),
+		Renters: 1,
+	}
+
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer tg.Close()
+
+	renter := tg.Renters()[0]
+
+	// Helper to check the number of GFU contracts.
+	test := func(hosts uint64, portalMode bool) error {
+		// Update the allowance.
+		allowance := siatest.DefaultAllowance
+		allowance.Hosts = hosts
+		if portalMode {
+			allowance.PaymentContractInitialFunding = types.SiacoinPrecision
+		}
+		err := renter.RenterPostAllowance(allowance)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Wait for the number of hosts to match allowance.
+		retries := 0
+		return build.Retry(100, 100*time.Millisecond, func() error {
+			if retries%10 == 0 {
+				err := tg.Miners()[0].MineBlock()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			retries++
+
+			rcg, err := renter.RenterAllContractsGet()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			gfuContracts := uint64(0)
+			for _, contract := range rcg.ActiveContracts {
+				if contract.GoodForUpload {
+					gfuContracts++
+				}
+			}
+			if gfuContracts != hosts && !portalMode {
+				return fmt.Errorf("expected %v contracts but got %v", hosts, gfuContracts)
+			} else if gfuContracts != uint64(len(tg.Hosts())) && portalMode {
+				return fmt.Errorf("expected %v contracts but got %v", hosts, gfuContracts)
+			}
+			return nil
+		})
+	}
+
+	// Run for default allowance and then one less every time until we reach 0
+	// hosts.
+	for hosts := siatest.DefaultAllowance.Hosts; hosts > 0; hosts-- {
+		if err := test(hosts, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Run for portal.
+	if err := test(1, true); err != nil {
+		t.Fatal(err)
 	}
 }
