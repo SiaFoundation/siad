@@ -13,8 +13,9 @@ import (
 	"sync"
 	"text/tabwriter"
 
-	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v5"
+
+	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v5/decor"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -670,14 +671,7 @@ func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.
 	if err != nil {
 		die("Unable to open source path:", err)
 	}
-	defer func() {
-		// On successful upload the file will be closed automatically in
-		// postRawResponseWithHeaders, so we can ignore double-close errors here
-		// and only focus on closing the file in the case of an error.
-		if err := file.Close(); err != nil && !strings.Contains(err.Error(), "file already closed") {
-			die(err)
-		}
-	}()
+	defer func() { _ = file.Close() }()
 	fi, err := file.Stat()
 	if err != nil {
 		die("Unable to fetch source fileinfo:", err)
