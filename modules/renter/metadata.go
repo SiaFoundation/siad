@@ -123,10 +123,6 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		}
 	}
 
-	// Aggregate Fields
-	var aggregateHealth, aggregateRemoteHealth, aggregateStuckHealth, aggregateMinRedundancy float64
-	var aggregateLastHealthCheckTime, aggregateModTime time.Time
-
 	// Files first.
 	// Note: We don't need to abort on error. It's likely that only one or a few
 	// files failed and that the remaining metadatas are good to use.
@@ -135,103 +131,111 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		r.log.Printf("failed to calculate file metadata: %v", err)
 	}
 
-	for _, bubbledMetadata := range bubbledMetadatas {
-		fileSiaPath := bubbledMetadata.sp
-		fileMetadata := bubbledMetadata.bm
-		// If 75% or more of the redundancy is missing, register an alert
-		// for the file.
-		uid := string(fileMetadata.UID)
-		if maxHealth := math.Max(fileMetadata.Health, fileMetadata.StuckHealth); maxHealth >= AlertSiafileLowRedundancyThreshold {
-			r.staticAlerter.RegisterAlert(modules.AlertIDSiafileLowRedundancy(uid), AlertMSGSiafileLowRedundancy,
-				AlertCauseSiafileLowRedundancy(fileSiaPath, maxHealth),
-				modules.SeverityWarning)
-			// Log a severe warning if we are not in testing
-			if build.Release != "testing" {
-				r.log.Severe(AlertCauseSiafileLowRedundancy(fileSiaPath, maxHealth))
+	for len(bubbledMetadatas)+len(dirSiaPaths) > 0 {
+		// Aggregate Fields
+		var aggregateHealth, aggregateRemoteHealth, aggregateStuckHealth, aggregateMinRedundancy float64
+		var aggregateLastHealthCheckTime, aggregateModTime time.Time
+		if len(bubbledMetadatas) > 0 {
+			// Get next file's metadata.
+			bubbledMetadata := bubbledMetadatas[0]
+			bubbledMetadatas = bubbledMetadatas[1:]
+			fileSiaPath := bubbledMetadata.sp
+			fileMetadata := bubbledMetadata.bm
+			// If 75% or more of the redundancy is missing, register an alert
+			// for the file.
+			uid := string(fileMetadata.UID)
+			if maxHealth := math.Max(fileMetadata.Health, fileMetadata.StuckHealth); maxHealth >= AlertSiafileLowRedundancyThreshold {
+				r.staticAlerter.RegisterAlert(modules.AlertIDSiafileLowRedundancy(uid), AlertMSGSiafileLowRedundancy,
+					AlertCauseSiafileLowRedundancy(fileSiaPath, maxHealth),
+					modules.SeverityWarning)
+				// Log a severe warning if we are not in testing
+				if build.Release != "testing" {
+					r.log.Severe(AlertCauseSiafileLowRedundancy(fileSiaPath, maxHealth))
+				}
+			} else {
+				r.staticAlerter.UnregisterAlert(modules.AlertIDSiafileLowRedundancy(uid))
 			}
-		} else {
-			r.staticAlerter.UnregisterAlert(modules.AlertIDSiafileLowRedundancy(uid))
-		}
 
-		// Record Values that compare against sub directories
-		aggregateHealth = fileMetadata.Health
-		aggregateStuckHealth = fileMetadata.StuckHealth
-		aggregateMinRedundancy = fileMetadata.Redundancy
-		aggregateLastHealthCheckTime = fileMetadata.LastHealthCheckTime
-		aggregateModTime = fileMetadata.ModTime
-		if !fileMetadata.OnDisk {
-			aggregateRemoteHealth = fileMetadata.Health
-		}
+			// Record Values that compare against sub directories
+			aggregateHealth = fileMetadata.Health
+			aggregateStuckHealth = fileMetadata.StuckHealth
+			aggregateMinRedundancy = fileMetadata.Redundancy
+			aggregateLastHealthCheckTime = fileMetadata.LastHealthCheckTime
+			aggregateModTime = fileMetadata.ModTime
+			if !fileMetadata.OnDisk {
+				aggregateRemoteHealth = fileMetadata.Health
+			}
 
-		// Update aggregate fields.
-		metadata.AggregateNumFiles++
-		metadata.AggregateNumStuckChunks += fileMetadata.NumStuckChunks
-		metadata.AggregateSize += fileMetadata.Size
+			// Update aggregate fields.
+			metadata.AggregateNumFiles++
+			metadata.AggregateNumStuckChunks += fileMetadata.NumStuckChunks
+			metadata.AggregateSize += fileMetadata.Size
 
-		// Update siadir fields.
-		metadata.Health = math.Max(metadata.Health, fileMetadata.Health)
-		if fileMetadata.LastHealthCheckTime.Before(metadata.LastHealthCheckTime) {
-			metadata.LastHealthCheckTime = fileMetadata.LastHealthCheckTime
+			// Update siadir fields.
+			metadata.Health = math.Max(metadata.Health, fileMetadata.Health)
+			if fileMetadata.LastHealthCheckTime.Before(metadata.LastHealthCheckTime) {
+				metadata.LastHealthCheckTime = fileMetadata.LastHealthCheckTime
+			}
+			if fileMetadata.Redundancy != -1 {
+				metadata.MinRedundancy = math.Min(metadata.MinRedundancy, fileMetadata.Redundancy)
+			}
+			if fileMetadata.ModTime.After(metadata.ModTime) {
+				metadata.ModTime = fileMetadata.ModTime
+			}
+			metadata.NumFiles++
+			metadata.NumStuckChunks += fileMetadata.NumStuckChunks
+			if !fileMetadata.OnDisk {
+				metadata.RemoteHealth = math.Max(metadata.RemoteHealth, fileMetadata.Health)
+			}
+			metadata.Size += fileMetadata.Size
+			metadata.StuckHealth = math.Max(metadata.StuckHealth, fileMetadata.StuckHealth)
+		} else if len(dirSiaPaths) > 0 {
+			// Get next dir's metadata.
+			dirSiaPath := dirSiaPaths[0]
+			dirSiaPaths = dirSiaPaths[1:]
+			dirMetadata, err := r.managedDirectoryMetadata(dirSiaPath)
+			if err != nil {
+				return siadir.Metadata{}, err
+			}
+
+			// Record Values that compare against files
+			aggregateHealth = dirMetadata.AggregateHealth
+			aggregateStuckHealth = dirMetadata.AggregateStuckHealth
+			aggregateMinRedundancy = dirMetadata.AggregateMinRedundancy
+			aggregateLastHealthCheckTime = dirMetadata.AggregateLastHealthCheckTime
+			aggregateModTime = dirMetadata.AggregateModTime
+			aggregateRemoteHealth = dirMetadata.AggregateRemoteHealth
+
+			// Update aggregate fields.
+			metadata.AggregateNumFiles += dirMetadata.AggregateNumFiles
+			metadata.AggregateNumStuckChunks += dirMetadata.AggregateNumStuckChunks
+			metadata.AggregateNumSubDirs += dirMetadata.AggregateNumSubDirs
+			metadata.AggregateSize += dirMetadata.AggregateSize
+
+			// Add 1 to the AggregateNumSubDirs to account for this subdirectory.
+			metadata.AggregateNumSubDirs++
+
+			// Update siadir fields
+			metadata.NumSubDirs++
 		}
-		if fileMetadata.Redundancy != -1 {
-			metadata.MinRedundancy = math.Min(metadata.MinRedundancy, fileMetadata.Redundancy)
+		// Track the max value of aggregate health values
+		metadata.AggregateHealth = math.Max(metadata.AggregateHealth, aggregateHealth)
+		metadata.AggregateRemoteHealth = math.Max(metadata.AggregateRemoteHealth, aggregateRemoteHealth)
+		metadata.AggregateStuckHealth = math.Max(metadata.AggregateStuckHealth, aggregateStuckHealth)
+		// Track the min value for AggregateMinRedundancy
+		if aggregateMinRedundancy != -1 {
+			metadata.AggregateMinRedundancy = math.Min(metadata.AggregateMinRedundancy, aggregateMinRedundancy)
 		}
-		if fileMetadata.ModTime.After(metadata.ModTime) {
-			metadata.ModTime = fileMetadata.ModTime
+		// Update LastHealthCheckTime
+		if aggregateLastHealthCheckTime.Before(metadata.AggregateLastHealthCheckTime) {
+			metadata.AggregateLastHealthCheckTime = aggregateLastHealthCheckTime
 		}
-		metadata.NumFiles++
-		metadata.NumStuckChunks += fileMetadata.NumStuckChunks
-		if !fileMetadata.OnDisk {
-			metadata.RemoteHealth = math.Max(metadata.RemoteHealth, fileMetadata.Health)
+		// Update ModTime
+		if aggregateModTime.After(metadata.AggregateModTime) {
+			metadata.AggregateModTime = aggregateModTime
 		}
-		metadata.Size += fileMetadata.Size
-		metadata.StuckHealth = math.Max(metadata.StuckHealth, fileMetadata.StuckHealth)
 	}
 
-	// Then dirs.
-	for _, dirSiaPath := range dirSiaPaths {
-		dirMetadata, err := r.managedDirectoryMetadata(dirSiaPath)
-		if err != nil {
-			return siadir.Metadata{}, err
-		}
-
-		// Record Values that compare against files
-		aggregateHealth = dirMetadata.AggregateHealth
-		aggregateStuckHealth = dirMetadata.AggregateStuckHealth
-		aggregateMinRedundancy = dirMetadata.AggregateMinRedundancy
-		aggregateLastHealthCheckTime = dirMetadata.AggregateLastHealthCheckTime
-		aggregateModTime = dirMetadata.AggregateModTime
-		aggregateRemoteHealth = dirMetadata.AggregateRemoteHealth
-
-		// Update aggregate fields.
-		metadata.AggregateNumFiles += dirMetadata.AggregateNumFiles
-		metadata.AggregateNumStuckChunks += dirMetadata.AggregateNumStuckChunks
-		metadata.AggregateNumSubDirs += dirMetadata.AggregateNumSubDirs
-		metadata.AggregateSize += dirMetadata.AggregateSize
-
-		// Add 1 to the AggregateNumSubDirs to account for this subdirectory.
-		metadata.AggregateNumSubDirs++
-
-		// Update siadir fields
-		metadata.NumSubDirs++
-	}
-
-	// Track the max value of aggregate health values
-	metadata.AggregateHealth = math.Max(metadata.AggregateHealth, aggregateHealth)
-	metadata.AggregateRemoteHealth = math.Max(metadata.AggregateRemoteHealth, aggregateRemoteHealth)
-	metadata.AggregateStuckHealth = math.Max(metadata.AggregateStuckHealth, aggregateStuckHealth)
-	// Track the min value for AggregateMinRedundancy
-	if aggregateMinRedundancy != -1 {
-		metadata.AggregateMinRedundancy = math.Min(metadata.AggregateMinRedundancy, aggregateMinRedundancy)
-	}
-	// Update LastHealthCheckTime
-	if aggregateLastHealthCheckTime.Before(metadata.AggregateLastHealthCheckTime) {
-		metadata.AggregateLastHealthCheckTime = aggregateLastHealthCheckTime
-	}
-	// Update ModTime
-	if aggregateModTime.After(metadata.AggregateModTime) {
-		metadata.AggregateModTime = aggregateModTime
-	}
 	// Sanity check on ModTime. If mod time is still zero it means there were no
 	// files or subdirectories. Set ModTime to now since we just updated this
 	// directory
