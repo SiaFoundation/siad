@@ -2924,21 +2924,23 @@ and bandwidth needs while spending significantly less than the overall
 allowance.
 
 **expectedupload** | bytes  
-Expected upload tells siad how many bytes the user expects to upload per block.
-If this value is high, siad will more strongly prefer hosts that have a low
-upload bandwidth price. If this value is low, siad will focus on other metrics
-than upload bandwidth pricing, because even if the host charges a lot for upload
-bandwidth, it will not impact the total cost to the user very much.
+Expected upload tells siad how many bytes per block the user expects to upload
+during the configured period. If this value is high, siad will more strongly
+prefer hosts that have a low upload bandwidth price. If this value is low, siad
+will focus on other metrics than upload bandwidth pricing, because even if the
+host charges a lot for upload bandwidth, it will not impact the total cost to
+the user very much.
 
 The user should not consider upload bandwidth used during repairs, siad will
 consider repair bandwidth separately.
 
 **expecteddownload** | bytes  
-Expected download tells siad how many bytes the user expects to download per
-block. If this value is high, siad will more strongly prefer hosts that have a
-low download bandwidth price. If this value is low, siad will focus on other
-metrics than download bandwidth pricing, because even if the host charges a lot
-for downloads, it will not impact the total cost to the user very much.
+Expected download tells siad how many bytes per block the user expects to
+download during the configured period. If this value is high, siad will more
+strongly prefer hosts that have a low download bandwidth price. If this value is
+low, siad will focus on other metrics than download bandwidth pricing, because
+even if the host charges a lot for downloads, it will not impact the total cost
+to the user very much.
 
 The user should not consider download bandwidth used during repairs, siad will
 consider repair bandwidth separately.
