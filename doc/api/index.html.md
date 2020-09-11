@@ -4552,9 +4552,9 @@ returns the the status of all the workers in the renter's workerpool.
       "accountstatus": {
         "availablebalance": "1000000000000000000000000", // hasting
         "negativebalance": "0",                          // hasting
-        "funded": true,                                  // boolean
         "recenterr": "",                                 // string
         "recenterrtime": "0001-01-01T00:00:00Z"          // time
+        "recentsuccesstime": "0001-01-01T00:00:00Z"      // time
       },
 
       "pricetablestatus": {

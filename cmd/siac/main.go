@@ -17,8 +17,8 @@ import (
 
 var (
 	// General Flags
-	siaDir        string // Path to sia data dir
-	statusVerbose bool   // Display additional siac information
+	siaDir  string // Path to sia data dir
+	verbose bool   // Display additional information
 
 	// Module Specific Flags
 	//
@@ -26,13 +26,9 @@ var (
 	daemonStackOutputFile  string // The file that the stack trace will be written to
 	daemonProfileDirectory string // the Directory where the profile logs are saved
 
-	// FeeManager Flags
-	feeManagerVerbose bool // display additional info for the FeeManager
-
 	// Host Flags
 	hostContractOutputType string // output type for host contracts
 	hostFolderRemoveForce  bool   // force folder remove
-	hostVerbose            bool   // display additional host info
 
 	// Renter Flags
 	dataPieces                string // the number of data pieces a file should be uploaded with
@@ -44,10 +40,8 @@ var (
 	renterFuseMountAllowOther bool   // Mount fuse with 'AllowOther' set to true.
 	renterListRecursive       bool   // List files of folder recursively.
 	renterListRoot            bool   // List path start from root instead of the UserFolder.
-	renterListVerbose         bool   // Show additional info about uploaded files.
 	renterRenameRoot          bool   // Rename files relative to root instead of the UserFolder.
 	renterShowHistory         bool   // Show download history in addition to download queue.
-	renterVerbose             bool   // Show additional info about the renter
 
 	// Renter Allowance Flags
 	allowanceFunds       string // amount of money to be used within a period
@@ -88,8 +82,7 @@ var (
 	skynetPortalPublic   bool   // Specify if a portal is public or not
 
 	// Utils Flags
-	dictionaryLanguage      string // dictionary for seed utils
-	uploadedsizeUtilVerbose bool   // display additional info for "utils upload-size"
+	dictionaryLanguage string // dictionary for seed utils
 
 	// Wallet Flags
 	initForce            bool   // destroy and re-encrypt the wallet on init if it already exists
@@ -202,7 +195,7 @@ func statuscmd() {
 		die(err)
 	}
 
-	if !statusVerbose {
+	if !verbose {
 		return
 	}
 
@@ -260,7 +253,7 @@ func main() {
 	rootCmd = initCmds()
 
 	// initialize client
-	initClient(rootCmd, &statusVerbose, &httpClient, &siaDir)
+	initClient(rootCmd, &verbose, &httpClient, &siaDir)
 
 	// set API password if it was not set
 	setAPIPasswordIfNotSet()
@@ -300,14 +293,10 @@ func initCmds() *cobra.Command {
 
 	// create command tree (alphabetized by root command)
 	root.AddCommand(consensusCmd)
-	consensusCmd.Flags().BoolVarP(&consensusCmdVerbose, "verbose", "v", false, "Display full consensus information")
 
 	// Add feemanager commands
 	root.AddCommand(feeManagerCmd)
 	feeManagerCmd.AddCommand(feeManagerCancelFeeCmd)
-
-	// Add flags to FeeManager commands
-	feeManagerCmd.Flags().BoolVarP(&feeManagerVerbose, "verbose", "v", false, "Show additional FeeManager info such as paid fees")
 
 	root.AddCommand(gatewayCmd)
 	gatewayCmd.AddCommand(gatewayAddressCmd, gatewayBandwidthCmd, gatewayBlocklistCmd, gatewayConnectCmd, gatewayDisconnectCmd, gatewayListCmd, gatewayRatelimitCmd)
@@ -317,14 +306,12 @@ func initCmds() *cobra.Command {
 	hostCmd.AddCommand(hostAnnounceCmd, hostConfigCmd, hostContractCmd, hostFolderCmd, hostSectorCmd)
 	hostFolderCmd.AddCommand(hostFolderAddCmd, hostFolderRemoveCmd, hostFolderResizeCmd)
 	hostSectorCmd.AddCommand(hostSectorDeleteCmd)
-	hostCmd.Flags().BoolVarP(&hostVerbose, "verbose", "v", false, "Display detailed host info")
 	hostContractCmd.Flags().StringVarP(&hostContractOutputType, "type", "t", "value", "Select output type")
 	hostFolderRemoveCmd.Flags().BoolVarP(&hostFolderRemoveForce, "force", "f", false, "Force the removal of the folder and its data")
 
 	root.AddCommand(hostdbCmd)
 	hostdbCmd.AddCommand(hostdbFiltermodeCmd, hostdbSetFiltermodeCmd, hostdbViewCmd)
 	hostdbCmd.Flags().IntVarP(&hostdbNumHosts, "numhosts", "n", 0, "Number of hosts to display from the hostdb")
-	hostdbCmd.Flags().BoolVarP(&hostdbVerbose, "verbose", "v", false, "Display full hostdb information")
 
 	root.AddCommand(minerCmd)
 	minerCmd.AddCommand(minerStartCmd, minerStopCmd)
@@ -342,13 +329,11 @@ func initCmds() *cobra.Command {
 	renterContractsCmd.AddCommand(renterContractsViewCmd)
 	renterFilesUploadCmd.AddCommand(renterFilesUploadPauseCmd, renterFilesUploadResumeCmd)
 
-	renterCmd.Flags().BoolVarP(&renterVerbose, "verbose", "v", false, "Show additional renter info such as allowance details")
 	renterContractsCmd.Flags().BoolVarP(&renterAllContracts, "all", "A", false, "Show all expired contracts in addition to active contracts")
 	renterDownloadsCmd.Flags().BoolVarP(&renterShowHistory, "history", "H", false, "Show download history in addition to the download queue")
 	renterFilesDeleteCmd.Flags().BoolVar(&renterDeleteRoot, "root", false, "Delete files and folders from root instead of from the user home directory")
 	renterFilesDownloadCmd.Flags().BoolVarP(&renterDownloadAsync, "async", "A", false, "Download file asynchronously")
 	renterFilesDownloadCmd.Flags().BoolVarP(&renterDownloadRecursive, "recursive", "R", false, "Download folder recursively")
-	renterFilesListCmd.Flags().BoolVarP(&renterListVerbose, "verbose", "v", false, "Show additional file info such as redundancy")
 	renterFilesListCmd.Flags().BoolVarP(&renterListRecursive, "recursive", "R", false, "Recursively list files and folders")
 	renterFilesListCmd.Flags().BoolVar(&renterListRoot, "root", false, "List files and folders from root instead of from the user home directory")
 	renterFilesUploadCmd.Flags().StringVar(&dataPieces, "data-pieces", "", "the number of data pieces a files should be uploaded with")
@@ -414,7 +399,6 @@ func initCmds() *cobra.Command {
 		utilsSigHashCmd, utilsUploadedsizeCmd, utilsVerifySeedCmd)
 
 	utilsVerifySeedCmd.Flags().StringVarP(&dictionaryLanguage, "language", "l", "english", "which dictionary you want to use")
-	utilsUploadedsizeCmd.Flags().BoolVarP(&uploadedsizeUtilVerbose, "verbose", "v", false, "Display more information")
 
 	root.AddCommand(walletCmd)
 	walletCmd.AddCommand(walletAddressCmd, walletAddressesCmd, walletBalanceCmd, walletBroadcastCmd, walletChangepasswordCmd,
@@ -437,7 +421,7 @@ func initCmds() *cobra.Command {
 
 // initClient initializes client cmd flags and default values
 func initClient(root *cobra.Command, verbose *bool, client *client.Client, siaDir *string) {
-	root.Flags().BoolVarP(verbose, "verbose", "v", false, "Display additional siac information")
+	root.PersistentFlags().BoolVarP(verbose, "verbose", "v", false, "Display additional information")
 	root.PersistentFlags().StringVarP(&client.Address, "addr", "a", "localhost:9980", "which host/port to communicate with (i.e. the host/port siad is listening on)")
 	root.PersistentFlags().StringVarP(&client.Password, "apipassword", "", "", "the password for the API's http authentication")
 	root.PersistentFlags().StringVarP(siaDir, "sia-directory", "d", "", "location of the sia directory")

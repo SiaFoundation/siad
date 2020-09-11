@@ -50,7 +50,7 @@ func TestWorkerAccountStatus(t *testing.T) {
 	// fetch the worker's account status and verify its output
 	a := w.staticAccount
 	status := a.managedStatus()
-	if !(status.Funded == true &&
+	if !(!status.AvailableBalance.IsZero() &&
 		status.AvailableBalance.Equals(w.staticBalanceTarget) &&
 		status.RecentErr == "" &&
 		status.RecentErrTime == time.Time{}) {
@@ -71,7 +71,7 @@ func TestWorkerAccountStatus(t *testing.T) {
 
 	// fetch the worker's account status and verify the error is being set
 	status = a.managedStatus()
-	if !(status.Funded == false &&
+	if !(status.AvailableBalance.IsZero() &&
 		status.AvailableBalance.IsZero() &&
 		status.RecentErr != "" &&
 		status.RecentErrTime != time.Time{}) {
