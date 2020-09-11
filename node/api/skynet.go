@@ -246,9 +246,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}()
 
-	// Get the skylink from the request URL. It decodes special characters like
-	// '?', which appears in the URL as '%3F', from the path. This allows us to
-	// differentiate '%3F' from the '?' that begins query parameters.
+	// Parse the skylink from the raw URL of the request. Any special characters
+	// in the raw URL are still encoded, allowing us to differentiate e.g. the
+	// '?' that begins query parameters from the encoded version '%3F'.
 	skylinkStr := strings.TrimPrefix(req.URL.String(), "/skynet/skylink/")
 	skylink, skylinkStringNoQuery, path, err := parseSkylinkString(skylinkStr)
 	if err != nil {
@@ -512,7 +512,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 // parseSkylinkString splits a skylink string into its components - a skylink, a
 // string representation of the skylink with the query parameters stripped, and
-// a path. The path is URL-decoded while the other components are not.
+// a path. The path is URL-decoded as it is for us to parse and use, while the
+// other components remain encoded for the skapp.
 func parseSkylinkString(s string) (skylink modules.Skylink, skylinkStringNoQuery, path string, err error) {
 	s = strings.TrimPrefix(s, "/")
 	// Parse out optional path to a subfile
