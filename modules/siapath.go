@@ -59,6 +59,9 @@ var (
 
 	// UserFolder is the Sia folder that is used to store the renter's siafiles.
 	UserFolder = NewGlobalSiaPath("/home/user")
+
+	// VarFolder is the Sia folder that contains the skynet folder.
+	VarFolder = NewGlobalSiaPath("/var")
 )
 
 type (

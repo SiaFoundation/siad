@@ -55,9 +55,10 @@ func (r *Renter) managedPrepareBubble(siaPath modules.SiaPath) bool {
 // be bubbled up
 func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metadata, error) {
 	// Set default metadata values to start
+	now := time.Now()
 	metadata := siadir.Metadata{
 		AggregateHealth:              siadir.DefaultDirHealth,
-		AggregateLastHealthCheckTime: time.Now(),
+		AggregateLastHealthCheckTime: now,
 		AggregateMinRedundancy:       math.MaxFloat64,
 		AggregateModTime:             time.Time{},
 		AggregateNumFiles:            uint64(0),
@@ -68,7 +69,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		AggregateStuckHealth:         siadir.DefaultDirHealth,
 
 		Health:              siadir.DefaultDirHealth,
-		LastHealthCheckTime: time.Now(),
+		LastHealthCheckTime: now,
 		MinRedundancy:       math.MaxFloat64,
 		ModTime:             time.Time{},
 		NumFiles:            uint64(0),
