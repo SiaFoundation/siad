@@ -64,6 +64,14 @@ var (
 		Standard: time.Second * 5,
 		Testing:  time.Second,
 	}).(time.Duration)
+
+	// cachedUtilitiesUpdateInterval is how often the renter updates the
+	// cachedUtilities.
+	cachedUtilitiesUpdateInterval = build.Select(build.Var{
+		Dev:      time.Minute,
+		Standard: time.Minute * 10,
+		Testing:  time.Second * 3,
+	}).(time.Duration)
 )
 
 // Default memory usage parameters.

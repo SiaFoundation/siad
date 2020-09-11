@@ -13,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -22,6 +21,8 @@ import (
 
 // equalBubbledMetadata is a helper that checks for equality in the siadir
 // metadata that gets bubbled
+// Since we can't check timestamps for equality cause they are often set to
+// `time.Now()` by methods, we allow a timestamp to be off by a certain delta.
 func equalBubbledMetadata(md1, md2 siadir.Metadata, delta time.Duration) error {
 	timeEquals := func(t1, t2 time.Time) bool {
 		if t1.After(t2) && t1.After(t2.Add(delta)) {
@@ -269,7 +270,8 @@ func TestBubbleHealth(t *testing.T) {
 	//
 	// Note: this tests the edge case of bubbling a directory with a file
 	// but no sub directories
-	offline, goodForRenew, _ := rt.renter.managedRenterContractsAndUtilities([]*filesystem.FileNode{f})
+	rt.renter.managedUpdateRenterContractsAndUtilities()
+	offline, goodForRenew, _, _ := rt.renter.managedRenterContractsAndUtilities()
 	fileHealth, _, _, _, _ := f.Health(offline, goodForRenew)
 	if fileHealth != 2 {
 		t.Fatalf("Expected heath to be 2, got %v", fileHealth)
@@ -753,10 +755,10 @@ func TestDirectoryModTime(t *testing.T) {
 			return err
 		}
 		if dirInfo.MostRecentModTime != f1.ModTime() {
-			return fmt.Errorf("ModTime is incorrect, got %v expected %v", dirInfo.MostRecentModTime, f1.ModTime())
+			return fmt.Errorf("MostRecentModTime is incorrect, got %v expected %v", dirInfo.MostRecentModTime, f1.ModTime())
 		}
 		if dirInfo.AggregateMostRecentModTime != f2.ModTime() {
-			return fmt.Errorf("ModTime is incorrect, got %v expected %v", dirInfo.MostRecentModTime, f2.ModTime())
+			return fmt.Errorf("AggregateMostRecentModTime is incorrect, got %v expected %v", dirInfo.AggregateMostRecentModTime, f2.ModTime())
 		}
 		return nil
 	})
@@ -1148,7 +1150,8 @@ func TestCalculateFileMetadata(t *testing.T) {
 	}
 
 	// Grab initial metadata values
-	offline, goodForRenew, _ := rt.renter.managedRenterContractsAndUtilities([]*filesystem.FileNode{sf})
+	rt.renter.managedUpdateRenterContractsAndUtilities()
+	offline, goodForRenew, _, _ := rt.renter.managedRenterContractsAndUtilities()
 	health, stuckHealth, _, _, numStuckChunks := sf.Health(offline, goodForRenew)
 	redundancy, _, err := sf.Redundancy(offline, goodForRenew)
 	if err != nil {
@@ -1158,10 +1161,11 @@ func TestCalculateFileMetadata(t *testing.T) {
 	modTime := sf.ModTime()
 
 	// Check calculated metadata
-	fileMetadata, err := rt.renter.managedCalculateAndUpdateFileMetadata(up.SiaPath)
+	bubbledMetadatas, err := rt.renter.managedCalculateAndUpdateFileMetadatas([]modules.SiaPath{up.SiaPath})
 	if err != nil {
 		t.Fatal(err)
 	}
+	fileMetadata := bubbledMetadatas[0].bm
 
 	// Check siafile calculated metadata
 	if fileMetadata.Health != health {
