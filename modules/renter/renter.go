@@ -1040,16 +1040,7 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	// Calculate the initial cached utilities and kick off a thread that updates
 	// the utilities regularly.
 	r.managedUpdateRenterContractsAndUtilities()
-	go func() {
-		for {
-			select {
-			case <-r.tg.StopChan():
-				return
-			case <-time.After(cachedUtilitiesUpdateInterval):
-			}
-			r.managedUpdateRenterContractsAndUtilities()
-		}
-	}()
+	go r.threadedUpdateRenterContractsAndUtilities()
 
 	// Spin up background threads which are not depending on the renter being
 	// up-to-date with consensus.
@@ -1095,6 +1086,24 @@ func renterAsyncStartup(r *Renter, cs modules.ConsensusSet) error {
 		go r.threadedSynchronizeSnapshots()
 	}
 	return nil
+}
+
+// threadedUpdateRenterContractsAndUtilities periodically calls
+// managedUpdateRenterContractsAndUtilities.
+func (r *Renter) threadedUpdateRenterContractsAndUtilities() {
+	err := r.tg.Add()
+	if err != nil {
+		return
+	}
+	defer r.tg.Done()
+	for {
+		select {
+		case <-r.tg.StopChan():
+			return
+		case <-time.After(cachedUtilitiesUpdateInterval):
+		}
+		r.managedUpdateRenterContractsAndUtilities()
+	}
 }
 
 // NewCustomRenter initializes a renter and returns it.
