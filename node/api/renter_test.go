@@ -1561,8 +1561,8 @@ func TestHealthLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Verify folder metadata is update, directory health should be 0
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	// Verify folder metadata is updated, directory health should be 0
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		var rd RenterDirectory
 		err := st1.getAPI("/renter/dir/", &rd)
 		if err != nil {

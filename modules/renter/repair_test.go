@@ -22,6 +22,8 @@ import (
 
 // equalBubbledMetadata is a helper that checks for equality in the siadir
 // metadata that gets bubbled
+// Since we can't check timestamps for equality cause they are often set to
+// `time.Now()` by methods, we allow a timestamp to be off by a certain delta.
 func equalBubbledMetadata(md1, md2 siadir.Metadata, delta time.Duration) error {
 	timeEquals := func(t1, t2 time.Time) bool {
 		if t1.After(t2) && t1.After(t2.Add(delta)) {
@@ -753,10 +755,10 @@ func TestDirectoryModTime(t *testing.T) {
 			return err
 		}
 		if dirInfo.MostRecentModTime != f1.ModTime() {
-			return fmt.Errorf("ModTime is incorrect, got %v expected %v", dirInfo.MostRecentModTime, f1.ModTime())
+			return fmt.Errorf("MostRecentModTime is incorrect, got %v expected %v", dirInfo.MostRecentModTime, f1.ModTime())
 		}
 		if dirInfo.AggregateMostRecentModTime != f2.ModTime() {
-			return fmt.Errorf("ModTime is incorrect, got %v expected %v", dirInfo.MostRecentModTime, f2.ModTime())
+			return fmt.Errorf("AggregateMostRecentModTime is incorrect, got %v expected %v", dirInfo.AggregateMostRecentModTime, f2.ModTime())
 		}
 		return nil
 	})

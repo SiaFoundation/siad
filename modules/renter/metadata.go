@@ -257,9 +257,9 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 	return metadata, nil
 }
 
-// managedCalculateAndUpdateFileMetadata calculates and returns the necessary
-// metadata information of a siafile that needs to be bubbled. The calculated
-// metadata information is also updated and saved to disk.
+// managedCalculateAndUpdateFileMetadatas calculates and returns the necessary
+// metadata information of multiple siafiles that need to be bubbled. The
+// calculated metadata information is also updated and saved to disk.
 // Usually the return value of a method is ignored when the returned error !=
 // nil. For managedCalculateAndUpdateFileMetadata we make an exception. The
 // caller can decide themselves whether to use the output in case of an error or
