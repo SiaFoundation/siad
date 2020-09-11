@@ -44,11 +44,6 @@ func (wp *workerPool) callStatus() modules.WorkerPoolStatus {
 	var statuss []modules.WorkerStatus // Plural of status is statuss, deal with it.
 	workers := wp.callWorkers()
 
-	// Sort them by hostkey.
-	sort.Slice(workers, func(i, j int) bool {
-		return workers[i].staticHostPubKeyStr < workers[j].staticHostPubKeyStr
-	})
-
 	// Loop all workers and collect their status objects.
 	for _, w := range workers {
 		status := w.callStatus()

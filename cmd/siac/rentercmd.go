@@ -2623,6 +2623,11 @@ func renterworkerscmd() {
 		die("Could not get contracts:", err)
 	}
 
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
+
 	// Print Worker Pool Summary
 	fmt.Println("Worker Pool Summary")
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
@@ -2666,6 +2671,11 @@ func renterworkerseacmd() {
 	if err != nil {
 		die("Could not get worker statuses:", err)
 	}
+
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
 
 	// collect some overal account stats
 	var nfw uint64
@@ -2723,6 +2733,11 @@ func renterworkersdownloadscmd() {
 	if err != nil {
 		die("Could not get worker statuses:", err)
 	}
+
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
 
 	// Create tab writer
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
@@ -2791,6 +2806,11 @@ func renterworkersptcmd() {
 		die("Could not get worker statuses:", err)
 	}
 
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
+
 	// collect some overal account stats
 	var workersWithoutPTs uint64
 	for _, worker := range rw.Workers {
@@ -2847,6 +2867,11 @@ func renterworkersrjcmd() {
 		die("Could not get worker statuses:", err)
 	}
 
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
+
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 	defer func() {
 		err := w.Flush()
@@ -2888,6 +2913,11 @@ func renterworkershsjcmd() {
 		die("Could not get worker statuses:", err)
 	}
 
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
+
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
 	defer func() {
 		err := w.Flush()
@@ -2926,6 +2956,11 @@ func renterworkersuploadscmd() {
 	if err != nil {
 		die("Could not get worker statuses:", err)
 	}
+
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
 
 	// Create tab writer
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
