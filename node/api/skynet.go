@@ -247,10 +247,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}()
 
 	// Parse the skylink from the raw URL of the request. Any special characters
-	// in the raw URL are still encoded, allowing us to differentiate e.g. the
-	// '?' that begins query parameters from the encoded version '%3F'.
-	skylinkStr := strings.TrimPrefix(req.URL.String(), "/skynet/skylink/")
-	skylink, skylinkStringNoQuery, path, err := parseSkylinkString(skylinkStr)
+	// in the raw URL are encoded, allowing us to differentiate e.g. the '?'
+	// that begins query parameters from the encoded version '%3F'.
+	skylink, skylinkStringNoQuery, path, err := parseSkylinkURL(req.URL.String())
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
 		return
@@ -510,11 +509,13 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
 }
 
-// parseSkylinkString splits a skylink string into its components - a skylink, a
+// parseSkylinkURL splits a raw skylink URL into its components - a skylink, a
 // string representation of the skylink with the query parameters stripped, and
-// a path. The path is URL-decoded as it is for us to parse and use, while the
+// a path. The skylink URL should not have been URL-decoded. The path is
+// URL-decoded before returning as it is for us to parse and use, while the
 // other components remain encoded for the skapp.
-func parseSkylinkString(s string) (skylink modules.Skylink, skylinkStringNoQuery, path string, err error) {
+func parseSkylinkURL(skylinkURL string) (skylink modules.Skylink, skylinkStringNoQuery, path string, err error) {
+	s := strings.TrimPrefix(skylinkURL, "/skynet/skylink/")
 	s = strings.TrimPrefix(s, "/")
 	// Parse out optional path to a subfile
 	path = "/" // default to root
