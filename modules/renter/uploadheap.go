@@ -152,20 +152,24 @@ func (uch *uploadChunkHeap) Pop() interface{} {
 // because the uploadChunkHeap does not utilize an index for the chunks in the
 // heap. The index of the chunks in the heap refers to the siafile index.
 func (uch *uploadChunkHeap) removeByID(cid uploadChunkID) {
+	// Find the chunk index in the heap
+	index := -1
 	for i, c := range *uch {
 		if c.id != cid {
 			continue
 		}
-		old := *uch
-		if i == len(*uch)-1 {
-			// Chunk is the last element in the slice so just truncate the slice
-			*uch = old[:i]
-		} else {
-			// Remove the chunk from the middle of the slice
-			*uch = append(old[:i], old[i+1:]...)
-		}
+		index = i
 		break
 	}
+
+	//Remove the chunk from the heap
+	if index == -1 {
+		// Chunk not found
+		return
+	}
+	old := *uch
+	copy(old[index:], old[index+1:])
+	*uch = old[:len(old)-1]
 }
 
 // reset clears the uploadChunkHeap and makes sure all the files belonging to

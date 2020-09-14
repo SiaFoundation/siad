@@ -268,10 +268,10 @@ func TestUploadHeap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// There should be 8 chunks in the heap
+	// There should be 10 chunks in the heap
 	if rt.renter.uploadHeap.managedLen() != 10 {
 		t.Fatalf("Expected %v chunks in heap found %v",
-			8, rt.renter.uploadHeap.managedLen())
+			10, rt.renter.uploadHeap.managedLen())
 	}
 
 	// Save chunks
@@ -365,28 +365,15 @@ func TestUploadHeap(t *testing.T) {
 	if uh.heap.Len() != len(chunks)-1 {
 		t.Fatal("Chunk not removed from heap")
 	}
-	uh.mu.Unlock()
-	if uh.managedExists(topChunkID) {
-		t.Fatal("shouldn't exist")
-	}
 	// Test removing the bottom chunk
-	uh.mu.Lock()
 	uh.heap.removeByID(bottomChunkID)
 	if uh.heap.Len() != len(chunks)-2 {
 		t.Fatal("Chunk not removed from heap")
 	}
-	uh.mu.Unlock()
-	if uh.managedExists(bottomChunkID) {
-		t.Fatal("shouldn't exist")
-	}
 	// Test removing a chunk in the middle
-	uh.mu.Lock()
 	uh.heap.removeByID(middleChunkID)
 	if uh.heap.Len() != len(chunks)-3 {
 		t.Fatal("Chunk not removed from heap")
-	}
-	if uh.managedExists(middleChunkID) {
-		t.Fatal("shouldn't exist")
 	}
 	uh.mu.Unlock()
 }
