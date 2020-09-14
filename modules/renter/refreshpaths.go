@@ -80,3 +80,14 @@ func (ufp *uniqueRefreshPaths) callRefreshAll() {
 		go ufp.r.callThreadedBubbleMetadata(sp)
 	}
 }
+
+// callRefreshAllBlocking uses the uniqueRefreshPaths's Renter to call
+// managedBubbleMetadata on all the directories in the childDir map
+func (ufp *uniqueRefreshPaths) callRefreshAllBlocking() (err error) {
+	ufp.mu.Lock()
+	defer ufp.mu.Unlock()
+	for sp := range ufp.childDirs {
+		err = errors.Compose(err, ufp.r.managedBubbleMetadata(sp))
+	}
+	return
+}
