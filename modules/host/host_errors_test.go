@@ -88,7 +88,7 @@ func TestHostFailedNewLogger(t *testing.T) {
 		t.Fatal(err)
 	}
 	ht.host, err = NewCustomHost(&dependencyErrNewLogger{}, ht.cs, ht.gateway, ht.tpool, ht.wallet, ht.mux, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
-	if err != mockErrNewLogger {
+	if !errors.Contains(err, mockErrNewLogger) {
 		t.Fatal(err)
 	}
 	// Set ht.host to something non-nil - nil was returned because startup was
