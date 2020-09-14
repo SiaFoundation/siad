@@ -359,19 +359,34 @@ func TestUploadHeap(t *testing.T) {
 		}
 	}
 
-	// Test removing the top chunk, bottom chunk, and then a chunk in the middle
+	// Test removing the top chunk
 	uh.mu.Lock()
-	uh.heap.remove(topChunkID)
+	uh.heap.removeByID(topChunkID)
 	if uh.heap.Len() != len(chunks)-1 {
 		t.Fatal("Chunk not removed from heap")
 	}
-	uh.heap.remove(bottomChunkID)
+	uh.mu.Unlock()
+	if uh.managedExists(topChunkID) {
+		t.Fatal("shouldn't exist")
+	}
+	// Test removing the bottom chunk
+	uh.mu.Lock()
+	uh.heap.removeByID(bottomChunkID)
 	if uh.heap.Len() != len(chunks)-2 {
 		t.Fatal("Chunk not removed from heap")
 	}
-	uh.heap.remove(middleChunkID)
+	uh.mu.Unlock()
+	if uh.managedExists(bottomChunkID) {
+		t.Fatal("shouldn't exist")
+	}
+	// Test removing a chunk in the middle
+	uh.mu.Lock()
+	uh.heap.removeByID(middleChunkID)
 	if uh.heap.Len() != len(chunks)-3 {
 		t.Fatal("Chunk not removed from heap")
+	}
+	if uh.managedExists(middleChunkID) {
+		t.Fatal("shouldn't exist")
 	}
 	uh.mu.Unlock()
 }

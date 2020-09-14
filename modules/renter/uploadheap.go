@@ -146,12 +146,12 @@ func (uch *uploadChunkHeap) Pop() interface{} {
 	return x
 }
 
-// remove removes the chunk with the corresponding uploadChunkID from the heap.
+// removeByID removes the chunk with the corresponding uploadChunkID from the heap.
 //
 // NOTE: This is intentionally not using the Remove interface of the heap
 // because the uploadChunkHeap does not utilize an index for the chunks in the
 // heap. The index of the chunks in the heap refers to the siafile index.
-func (uch *uploadChunkHeap) remove(cid uploadChunkID) {
+func (uch *uploadChunkHeap) removeByID(cid uploadChunkID) {
 	for i, c := range *uch {
 		if c.id != cid {
 			continue
@@ -350,7 +350,7 @@ func (uh *uploadHeap) managedPush(uuc *unfinishedUploadChunk, ct chunkType) bool
 
 		// Remove the chunk from the heap slice if it currently exists
 		if exists {
-			uh.heap.remove(uuc.id)
+			uh.heap.removeByID(uuc.id)
 		}
 
 		// Add to the repair map
@@ -412,7 +412,7 @@ func (uh *uploadHeap) managedResume() {
 // managedTryUpdate will try and update the chunk in the uploadHeap associated
 // with a chunk id. If a chunk exists in the uploadHeap and needs to be updated
 // to the supplied chunk, the chunk that is currently in the heap will be
-// canceled and then returned.
+// canceled.
 func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType) error {
 	// Validate use of chunkType
 	if (ct == chunkTypeStreamChunk) != (uuc.sourceReader != nil) {
@@ -460,7 +460,7 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 	if !existsrepairing {
 		delete(uh.unstuckHeapChunks, existingUUC.id)
 		delete(uh.stuckHeapChunks, existingUUC.id)
-		uh.heap.remove(existingUUC.id)
+		uh.heap.removeByID(existingUUC.id)
 		uh.mu.Unlock()
 		return existingUUC.fileEntry.Close()
 	}
@@ -1245,7 +1245,7 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 
 // managedPushChunkForRepair pushes a chunk to the appropriate resource for
 // repair based on the chunkType. For localChunks this means pushing the chunk
-// onto the uploadHeap. For steamChunks this means adding the chunk directly to
+// onto the uploadHeap. For streamChunks this means adding the chunk directly to
 // the uploadHeap's repair map and then sending the chunk directly to the
 // workers.
 //

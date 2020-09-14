@@ -638,9 +638,8 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	Success Times: %v`, int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), failedTimes, successTimes)
 		}
 	}
-	uc.memoryReleased += uint64(memoryReleased)
+	uc.memoryReleased += memoryReleased
 	totalMemoryReleased := uc.memoryReleased
-	canceled := uc.canceled
 	workersRemaining := uc.workersRemaining
 	uc.mu.Unlock()
 
@@ -669,8 +668,8 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	if memoryReleased > 0 {
 		r.memoryManager.Return(memoryReleased)
 	}
-	// Make sure file is closed for canceled chunks
-	if canceled && workersRemaining == 0 {
+	// Make sure file is closed when all workers are done
+	if workersRemaining == 0 {
 		err := uc.fileEntry.Close()
 		if err != nil {
 			r.log.Println("WARN: unable to close file entry for chunk", uc.fileEntry.SiaFilePath())
