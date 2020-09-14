@@ -225,6 +225,10 @@ func createTxnDroppedEntrys(feeUIDs []modules.FeeUID, txnID types.TransactionID)
 
 // createTransactionsFeeUIDEntrys will create entryTransactionAndFeeUIDs persist
 // entrys for the provided entryType specifier
+//
+// entryTransactionAndFeeUIDs is the persist entry that links a transaction ID
+// with a set of Fee UIDs in a persist event such as a transaction being
+// created, confirmed, or dropped.
 func createTransactionFeeUIDEntrys(feeUIDs []modules.FeeUID, txnID types.TransactionID, entryType types.Specifier) (rets [][persistEntrySize]byte, err error) {
 	// Validate the entryType
 	switch entryType {
@@ -239,22 +243,27 @@ func createTransactionFeeUIDEntrys(feeUIDs []modules.FeeUID, txnID types.Transac
 	numFeeUIDs := 0
 	timeStamp := time.Now().Unix()
 	for i, feeUID := range feeUIDs {
+		// Track how many feeUIDs are going into each entry
 		numFeeUIDs++
+
+		// Marshal the feeUID
 		feeUIDsBytes = append(feeUIDsBytes, encoding.Marshal(feeUID)...)
+
+		// Check if there is space left in the entry or if we are on the last feeUID
 		if len(feeUIDsBytes) < persistFeeUIDsSize && i+1 < len(feeUIDs) {
 			continue
 		}
 
 		// Create the transaction and FeeUIDs entry.
-		etc := entryTransactionAndFeeUIDs{
+		etf := entryTransactionAndFeeUIDs{
 			NumFeeUIDs: numFeeUIDs,
 			Timestamp:  timeStamp,
 			TxnID:      txnID,
 		}
-		copy(etc.FeeUIDsBytes[:], feeUIDsBytes)
+		copy(etf.FeeUIDsBytes[:], feeUIDsBytes)
 
 		// Marshal the transaction and FeeUIDs entry
-		payload := encoding.Marshal(etc)
+		payload := encoding.Marshal(etf)
 		if len(payload) > persistEntryPayloadSize {
 			build.Critical("an encoded payload is too big", len(payload))
 		}
@@ -382,7 +391,7 @@ func (fm *FeeManager) applyEntryTransaction(payload [persistEntryPayloadSize]byt
 	}
 
 	// Build the transaction
-	txn, complete, err := ps.managedBuidlTransaction(et)
+	txn, complete, err := ps.managedBuildTransaction(et)
 	if err != nil {
 		return errors.AddContext(err, "unable to build partial transaction")
 	}
@@ -398,8 +407,8 @@ func (fm *FeeManager) applyEntryTransaction(payload [persistEntryPayloadSize]byt
 	return nil
 }
 
-// applyEntryTxnConfirmed will apply a transaction confirmed entry to the fee
-// manager.
+// applyEntryTxnConfirmed will apply an entryTransactionAndFeeUIDs persist entry
+// of type entryTypeTransactionConfirmed to the FeeManager.
 func (fm *FeeManager) applyEntryTxnConfirmed(payload [persistEntryPayloadSize]byte) error {
 	var etf entryTransactionAndFeeUIDs
 	err := encoding.Unmarshal(payload[:], &etf)
@@ -408,23 +417,9 @@ func (fm *FeeManager) applyEntryTxnConfirmed(payload [persistEntryPayloadSize]by
 	}
 
 	// Apply the Transaction Confirmed event to the FeeManager
-	index := 0
-	feeUIDs := make([]modules.FeeUID, etf.NumFeeUIDs)
-	for i := 0; i < etf.NumFeeUIDs; i++ {
-		var feeUID modules.FeeUID
-		err = encoding.Unmarshal(etf.FeeUIDsBytes[index:index+marshalledFeeUIDSize], &feeUID)
-		if err != nil {
-			return errors.AddContext(err, "could not unmarshal feeUID")
-		}
-		index += marshalledFeeUIDSize
-		fee, ok := fm.fees[feeUID]
-		if !ok {
-			err = errors.New("fee not found in map but has transaction confirmed persist entry")
-			build.Critical(err)
-			return err
-		}
-		fee.PaymentCompleted = true
-		feeUIDs[i] = feeUID
+	_, err = fm.applyTxnAndFeeUIDs(etf, entryTypeTransactionConfirmed)
+	if err != nil {
+		return errors.AddContext(err, "unable to apply transaction and feeUIDs to FeeManager")
 	}
 
 	// Clear the transaction from the watchdog
@@ -439,8 +434,8 @@ func (fm *FeeManager) applyEntryTxnConfirmed(payload [persistEntryPayloadSize]by
 	return nil
 }
 
-// applyEntryTxnCreated will apply a transaction created entry to the fee
-// manager.
+// applyEntryTxnCreated will apply an entryTransactionAndFeeUIDs persist entry
+// of type entryTypeTransactionCreated to the FeeManager.
 func (fm *FeeManager) applyEntryTxnCreated(payload [persistEntryPayloadSize]byte) error {
 	var etf entryTransactionAndFeeUIDs
 	err := encoding.Unmarshal(payload[:], &etf)
@@ -449,23 +444,9 @@ func (fm *FeeManager) applyEntryTxnCreated(payload [persistEntryPayloadSize]byte
 	}
 
 	// Apply the Transaction Created event to the FeeManager
-	index := 0
-	feeUIDs := make([]modules.FeeUID, etf.NumFeeUIDs)
-	for i := 0; i < etf.NumFeeUIDs; i++ {
-		var feeUID modules.FeeUID
-		err = encoding.Unmarshal(etf.FeeUIDsBytes[index:index+marshalledFeeUIDSize], &feeUID)
-		if err != nil {
-			return errors.AddContext(err, "could not unmarshal feeUID")
-		}
-		index += marshalledFeeUIDSize
-		fee, ok := fm.fees[feeUID]
-		if !ok {
-			err = errors.New("fee not found in map but has transaction created persist entry")
-			build.Critical(err)
-			return err
-		}
-		fee.TransactionCreated = true
-		feeUIDs[i] = feeUID
+	feeUIDs, err := fm.applyTxnAndFeeUIDs(etf, entryTypeTransactionCreated)
+	if err != nil {
+		return errors.AddContext(err, "unable to apply transaction and feeUIDs to FeeManager")
 	}
 
 	// Apply the Transaction Created event to the Watchdog by adding the fees to
@@ -474,8 +455,8 @@ func (fm *FeeManager) applyEntryTxnCreated(payload [persistEntryPayloadSize]byte
 	return nil
 }
 
-// applyEntryTxnDropped will apply a transaction dropped entry to the fee
-// manager.
+// applyEntryTxnDropped will apply an entryTransactionAndFeeUIDs persist entry
+// of type entryTypeTransactionDropped to the FeeManager.
 func (fm *FeeManager) applyEntryTxnDropped(payload [persistEntryPayloadSize]byte) error {
 	var etf entryTransactionAndFeeUIDs
 	err := encoding.Unmarshal(payload[:], &etf)
@@ -484,26 +465,9 @@ func (fm *FeeManager) applyEntryTxnDropped(payload [persistEntryPayloadSize]byte
 	}
 
 	// Apply the Transaction Dropped event to the FeeManager
-	index := 0
-	feeUIDs := make([]modules.FeeUID, etf.NumFeeUIDs)
-	for i := 0; i < etf.NumFeeUIDs; i++ {
-		var feeUID modules.FeeUID
-		err = encoding.Unmarshal(etf.FeeUIDsBytes[index:index+marshalledFeeUIDSize], &feeUID)
-		if err != nil {
-			return errors.AddContext(err, "could not unmarshal feeUID")
-		}
-		index += marshalledFeeUIDSize
-		fee, ok := fm.fees[feeUID]
-		if !ok {
-			err = errors.New("fee not found in map but has transaction dropped persist entry")
-			build.Critical(err)
-			return err
-		}
-		// Make sure the fee reflects that the transaction was dropped by setting
-		// TransactionCreated to false. This will ensure that a new transaction is
-		// created.
-		fee.TransactionCreated = false
-		feeUIDs[i] = feeUID
+	_, err = fm.applyTxnAndFeeUIDs(etf, entryTypeTransactionConfirmed)
+	if err != nil {
+		return errors.AddContext(err, "unable to apply transaction and feeUIDs to FeeManager")
 	}
 
 	// Clear the transaction from  the Watchdog
@@ -533,9 +497,42 @@ func (fm *FeeManager) applyEntryUpdateFee(payload [persistEntryPayloadSize]byte)
 	return nil
 }
 
-// managedBuidlTransaction builds a transaction from an entryTransaction.  Once
+// applyTxnAndFeeUIDs applies transaction and FeeUID information to the
+// FeeManager from an entryTransactionAndFeeUIDs persist entry
+func (fm *FeeManager) applyTxnAndFeeUIDs(etf entryTransactionAndFeeUIDs, entryType types.Specifier) ([]modules.FeeUID, error) {
+	index := 0
+	feeUIDs := make([]modules.FeeUID, etf.NumFeeUIDs)
+	for i := 0; i < etf.NumFeeUIDs; i++ {
+		var feeUID modules.FeeUID
+		err := encoding.Unmarshal(etf.FeeUIDsBytes[index:index+marshalledFeeUIDSize], &feeUID)
+		if err != nil {
+			return nil, errors.AddContext(err, "could not unmarshal feeUID")
+		}
+		index += marshalledFeeUIDSize
+		fee, ok := fm.fees[feeUID]
+		if !ok {
+			err = errors.New("fee not found in map but has transaction created persist entry")
+			build.Critical(err)
+			return nil, err
+		}
+		feeUIDs[i] = feeUID
+		switch entryType {
+		case entryTypeTransactionConfirmed:
+			fee.PaymentCompleted = true
+		case entryTypeTransactionCreated:
+			fee.TransactionCreated = true
+		case entryTypeTransactionDropped:
+			fee.TransactionCreated = false
+		default:
+			return nil, errors.New("invalid entry type")
+		}
+	}
+	return feeUIDs, nil
+}
+
+// managedBuildTransaction builds a transaction from an entryTransaction.  Once
 // a full transaction has been created it is unmarshalled and returned
-func (ps *persistSubsystem) managedBuidlTransaction(et entryTransaction) (types.Transaction, bool, error) {
+func (ps *persistSubsystem) managedBuildTransaction(et entryTransaction) (types.Transaction, bool, error) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 

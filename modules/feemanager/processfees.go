@@ -29,8 +29,8 @@ var (
 	}).(time.Duration)
 )
 
-// blockUntilSynced will block until the consensus is synced
-func (fm *FeeManager) blockUntilSynced() {
+// managedBlockUntilSynced will block until the consensus is synced
+func (fm *FeeManager) managedBlockUntilSynced() {
 	for {
 		// Check if consensus is synced
 		if fm.staticCommon.staticCS.Synced() {
@@ -46,9 +46,9 @@ func (fm *FeeManager) blockUntilSynced() {
 	}
 }
 
-// createdAndPersistTransaction will create a transaction by sending the outputs
+// createAndPersistTransaction will create a transaction by sending the outputs
 // to the wallet and will then persist the events
-func (fm *FeeManager) createdAndPersistTransaction(feeUIDs []modules.FeeUID, outputs []types.SiacoinOutput) (err error) {
+func (fm *FeeManager) createAndPersistTransaction(feeUIDs []modules.FeeUID, outputs []types.SiacoinOutput) (err error) {
 	// Submit the outputs and get the transactions
 	txns, err := fm.staticCommon.staticWallet.SendSiacoinsMulti(outputs)
 	if err != nil {
@@ -140,7 +140,7 @@ func (fm *FeeManager) managedProcessFees(feeUIDs []modules.FeeUID) error {
 	})
 
 	// Create and persist the transaction
-	err := fm.createdAndPersistTransaction(feeUIDs, outputs)
+	err := fm.createAndPersistTransaction(feeUIDs, outputs)
 	if err == nil {
 		return nil
 	}
@@ -177,7 +177,7 @@ func (fm *FeeManager) threadedProcessFees() {
 	// Process Fees in a loop until the Feemanager shutsdown
 	for {
 		// Block until synced
-		fm.blockUntilSynced()
+		fm.managedBlockUntilSynced()
 
 		// Grab the Current blockheight
 		bh := fc.staticCS.Height()

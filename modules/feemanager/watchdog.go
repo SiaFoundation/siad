@@ -254,7 +254,7 @@ func (fm *FeeManager) managedDropTransaction(tt trackedTransaction) error {
 }
 
 // threadedMonitorTransactions checks the transactions that the watchdog is
-// monitoring in a loop to see when they are confirmed in the wallet
+// monitoring in a loop to see when they are confirmed in the tpool
 func (fm *FeeManager) threadedMonitorTransactions() {
 	// Define shorter name helpers
 	fc := fm.staticCommon
@@ -270,7 +270,7 @@ func (fm *FeeManager) threadedMonitorTransactions() {
 	// Check for Transactions in a loop
 	for {
 		// Make sure we are synced before checking for transactions
-		fm.blockUntilSynced()
+		fm.managedBlockUntilSynced()
 
 		trackedTxns := w.managedTrackedTxns()
 		for _, tt := range trackedTxns {
@@ -291,7 +291,7 @@ func (fm *FeeManager) threadedMonitorTransactions() {
 				continue
 			}
 
-			// Check if Transaction is found in the wallet
+			// Check if Transaction is found in the tpool
 			if !found {
 				// Try and rebroadcast the transaction
 				err = fc.staticTpool.AcceptTransactionSet([]types.Transaction{tt.txn})
@@ -303,7 +303,7 @@ func (fm *FeeManager) threadedMonitorTransactions() {
 
 			// Check if the ConfirmationHeight is set
 			if walletTxn.ConfirmationHeight != types.BlockHeight(math.MaxUint64) {
-				// Transaction is confirmed in the wallet. Mark the transaction as
+				// The wallet sees the transaction as confirmed. Mark the transaction as
 				// confirmed.
 				err = fm.managedConfirmTransaction(tt)
 				if err != nil {
