@@ -855,7 +855,9 @@ The unique application identifier for the application that set the fee.
 
 ### OPTIONAL
 **recurring** | bool  
-Indicates whether or not this fee will be a recurring fee. 
+Indicates whether or not this fee will be a recurring fee.  
+**NOTE:** This is only informational, the application charging the fee is
+responsible for submitting the fee on the recurring interval. 
 
 ### JSON Response
 > JSON Response Example
