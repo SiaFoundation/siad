@@ -145,12 +145,14 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 	// Download the original file from the passed offsets.
 	fname := testName + "-download.dat"
 	downpath := filepath.Join(st.dir, fname)
-	defer func() {
-		err = os.Remove(downpath)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
+	if !useHttpResp {
+		defer func() {
+			err = os.Remove(downpath)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
+	}
 
 	dlURL := fmt.Sprintf("/renter/download/%s?disablelocalfetch=true&offset=%d&length=%d", ulSiaPath, offset, length)
 

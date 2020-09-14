@@ -556,7 +556,7 @@ func TestConnectRejectsInvalidAddrs(t *testing.T) {
 
 	g2 := newNamedTestingGateway(t, "2")
 	defer func() {
-		if err := g.Close(); err != nil {
+		if err := g2.Close(); err != nil {
 			t.Fatal(err)
 		}
 	}()
@@ -910,7 +910,7 @@ func TestDisconnect(t *testing.T) {
 	}()
 	g2 := newNamedTestingGateway(t, "2")
 	defer func() {
-		if err := g.Close(); err != nil {
+		if err := g2.Close(); err != nil {
 			t.Fatal(err)
 		}
 	}()
@@ -1201,11 +1201,6 @@ func TestPeerManagerPriority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := g1.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
 
 	// Wait until g1 connects to g2.
 	for i := 0; i < 100; i++ {

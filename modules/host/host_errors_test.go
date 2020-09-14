@@ -220,7 +220,7 @@ func TestHostFailedListen(t *testing.T) {
 		t.Fatal(err)
 	}
 	ht.host, err = NewCustomHost(&dependencyErrListen{}, ht.cs, ht.gateway, ht.tpool, ht.wallet, ht.mux, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
-	if err != mockErrListen {
+	if !errors.Contains(err, mockErrListen) {
 		t.Fatal(err)
 	}
 	// Set ht.host to something non-nil - nil was returned because startup was

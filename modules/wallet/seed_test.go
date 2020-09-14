@@ -125,10 +125,11 @@ func TestLoadSeed(t *testing.T) {
 	}
 
 	dir := filepath.Join(build.TempDir(modules.WalletDir, t.Name()+"1"), modules.WalletDir)
-	w, err := New(wt.cs, wt.tpool, dir)
+	wt.wallet, err = New(wt.cs, wt.tpool, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
+	w := wt.wallet
 	newSeed, err := w.Encrypt(nil)
 	if err != nil {
 		t.Fatal(err)

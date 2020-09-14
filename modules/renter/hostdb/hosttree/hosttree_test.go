@@ -391,7 +391,7 @@ func TestRepeatInsert(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = tree.Insert(entry2)
-	if err != nil {
+	if err != ErrHostExists {
 		t.Fatal(err)
 	}
 	if len(tree.hosts) != 1 {
