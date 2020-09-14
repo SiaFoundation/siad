@@ -191,6 +191,9 @@ func TestHostDBHostsHandler(t *testing.T) {
 	if hh.ScoreBreakdown.Score.IsZero() {
 		t.Error("Zero vaue score in score breakdown")
 	}
+	if hh.ScoreBreakdown.AcceptContractAdjustment == 0 {
+		t.Error("Zero value in host score breakdown")
+	}
 	if hh.ScoreBreakdown.AgeAdjustment == 0 {
 		t.Error("Zero value in host score breakdown")
 	}

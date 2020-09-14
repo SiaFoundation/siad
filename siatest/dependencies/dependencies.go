@@ -9,6 +9,10 @@ import (
 )
 
 type (
+	// DependencyRenewFail causes the renewal to fail on the host side.
+	DependencyRenewFail struct {
+		modules.ProductionDependencies
+	}
 	// DependencyDisableWorker will disable the worker's work loop, the health
 	// loop, the repair loop and the snapshot loop.
 	DependencyDisableWorker struct {
@@ -170,6 +174,12 @@ type (
 		enabled bool
 		mu      sync.Mutex
 	}
+
+	// DependencyResolveSkylinkToFixture will disable downloading skylinks and
+	// will replace it with fetching from a set of predefined fixtures.
+	DependencyResolveSkylinkToFixture struct {
+		modules.ProductionDependencies
+	}
 )
 
 // NewDependencyCorruptMDMOutput returns a dependency that can be used to
@@ -210,8 +220,8 @@ func NewDependencyDisruptUploadStream(numChunks int) *DependencyInterruptAfterNC
 // NewDependencyDisableCommitPaymentIntent creates a new dependency that
 // prevents the contractor for committing a payment intent, this essentially
 // ensures the renter's revision is not in sync with the host's revision.
-func NewDependencyDisableCommitPaymentIntent() *DependencyInterruptCountOccurrences {
-	return newDependencyInterruptCountOccurrences("DisableCommitPaymentIntent")
+func NewDependencyDisableCommitPaymentIntent() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("DisableCommitPaymentIntent")
 }
 
 // NewDependencyInterruptContractSaveToDiskAfterDeletion creates a new
@@ -281,6 +291,17 @@ func newDependencyInterruptCountOccurrences(str string) *DependencyInterruptCoun
 	return &DependencyInterruptCountOccurrences{
 		str: str,
 	}
+}
+
+// NewDependencyHostBlockRPC creates a new dependency that can be used to
+// simulate an unresponsive host.
+func NewDependencyHostBlockRPC() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("HostBlockRPC")
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyRenewFail) Disrupt(s string) bool {
+	return s == "RenewFail"
 }
 
 // Disrupt returns true if the correct string is provided.
@@ -556,6 +577,11 @@ func (d *DependencyDefaultRenewSettings) Disable() {
 	d.mu.Lock()
 	d.enabled = false
 	d.mu.Unlock()
+}
+
+// Disrupt causes skylink data to be loaded from fixtures instead of downloaded.
+func (d *DependencyResolveSkylinkToFixture) Disrupt(s string) bool {
+	return s == "resolveSkylinkToFixture"
 }
 
 // DependencyWithDisableAndEnable adds the ability to disable the dependency

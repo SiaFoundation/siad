@@ -131,7 +131,7 @@ func TestStorageObligationSnapshot(t *testing.T) {
 
 	// Insert the SO
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
+	err = ht.host.managedAddStorageObligation(so)
 	ht.host.managedUnlockStorageObligation(so.id())
 
 	// Fetch a snapshot & verify its fields
@@ -262,7 +262,7 @@ func TestAccountFundingTracking(t *testing.T) {
 	rd1 := fastrand.Intn(10) + 1
 	so.PotentialAccountFunding = so.PotentialAccountFunding.Add64(uint64(rd1))
 	if err = expectDelta(rd1, 0, "add SO", func() error {
-		return ht.host.managedAddStorageObligation(so, false)
+		return ht.host.managedAddStorageObligation(so)
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +322,7 @@ func TestManagedModifyUnlockedStorageObligation(t *testing.T) {
 	}
 
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
+	err = ht.host.managedAddStorageObligation(so)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,7 +393,7 @@ func TestManagedBuildStorageProof(t *testing.T) {
 
 	// Insert the SO
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
+	err = ht.host.managedAddStorageObligation(so)
 	ht.host.managedUnlockStorageObligation(so.id())
 
 	// Build a proof for the SO.

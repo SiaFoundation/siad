@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sync/atomic"
@@ -49,7 +50,7 @@ func TestWorkerAccountStatus(t *testing.T) {
 	// fetch the worker's account status and verify its output
 	a := w.staticAccount
 	status := a.managedStatus()
-	if !(status.Funded == true &&
+	if !(!status.AvailableBalance.IsZero() &&
 		status.AvailableBalance.Equals(w.staticBalanceTarget) &&
 		status.RecentErr == "" &&
 		status.RecentErrTime == time.Time{}) {
@@ -70,7 +71,7 @@ func TestWorkerAccountStatus(t *testing.T) {
 
 	// fetch the worker's account status and verify the error is being set
 	status = a.managedStatus()
-	if !(status.Funded == false &&
+	if !(status.AvailableBalance.IsZero() &&
 		status.AvailableBalance.IsZero() &&
 		status.RecentErr != "" &&
 		status.RecentErrTime != time.Time{}) {
@@ -212,7 +213,7 @@ func TestWorkerReadJobStatus(t *testing.T) {
 	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, limit)
 
 	// add the job to the worker
-	cc := make(chan struct{})
+	ctx := context.Background()
 	rc := make(chan *jobReadResponse)
 
 	jhs := &jobReadSector{
@@ -220,8 +221,8 @@ func TestWorkerReadJobStatus(t *testing.T) {
 			staticResponseChan: rc,
 			staticLength:       modules.SectorSize,
 			jobGeneric: &jobGeneric{
-				staticCancelChan: cc,
-				staticQueue:      w.staticJobReadQueue,
+				staticCtx:   ctx,
+				staticQueue: w.staticJobReadQueue,
 			},
 		},
 		staticOffset: 0,
@@ -258,8 +259,8 @@ func TestWorkerReadJobStatus(t *testing.T) {
 			staticResponseChan: rc,
 			staticLength:       modules.SectorSize,
 			jobGeneric: &jobGeneric{
-				staticCancelChan: cc,
-				staticQueue:      w.staticJobReadQueue,
+				staticCtx:   ctx,
+				staticQueue: w.staticJobReadQueue,
 			},
 		},
 		staticOffset: 0,
@@ -336,9 +337,9 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, limit)
 
 	// add the job to the worker
-	cc := make(chan struct{})
+	ctx := context.Background()
 	rc := make(chan *jobHasSectorResponse)
-	jhs := w.newJobHasSector(cc, rc, crypto.Hash{})
+	jhs := w.newJobHasSector(ctx, rc, crypto.Hash{})
 	if !w.staticJobHasSectorQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")
 	}
@@ -372,7 +373,7 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	hostClosed = true
 
 	// add another job to the worker
-	jhs = w.newJobHasSector(cc, rc, crypto.Hash{})
+	jhs = w.newJobHasSector(ctx, rc, crypto.Hash{})
 	if !w.staticJobHasSectorQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")
 	}

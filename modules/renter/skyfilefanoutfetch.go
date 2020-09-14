@@ -53,6 +53,12 @@ func (fcs *fetchChunkState) managedFailPiece() {
 // threadedFetchPiece is intended to run as a separate thread which fetches a
 // particular piece of a chunk in the fanout.
 func (fcs *fetchChunkState) threadedFetchPiece(pieceIndex uint64, pieceRoot crypto.Hash) {
+	err := fcs.staticRenter.tg.Add()
+	if err != nil {
+		return
+	}
+	defer fcs.staticRenter.tg.Done()
+
 	// Fetch the piece.
 	//
 	// TODO: This is fetching from 0 to modules.SectorSize, for the final chunk

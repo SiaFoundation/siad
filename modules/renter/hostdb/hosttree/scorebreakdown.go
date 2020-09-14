@@ -17,6 +17,7 @@ type ScoreBreakdown interface {
 // HostAdjustments contains all the adjustments relevant to a host's score and
 // implements the scoreBreakdown interface.
 type HostAdjustments struct {
+	AcceptContractAdjustment   float64
 	AgeAdjustment              float64
 	BasePriceAdjustment        float64
 	BurnAdjustment             float64
@@ -68,6 +69,7 @@ func (h HostAdjustments) HostScoreBreakdown(totalScore types.Currency, ignoreAge
 		Score:          score,
 		ConversionRate: conversionRate(score, totalScore),
 
+		AcceptContractAdjustment:   h.AcceptContractAdjustment,
 		AgeAdjustment:              h.AgeAdjustment,
 		BasePriceAdjustment:        h.BasePriceAdjustment,
 		BurnAdjustment:             h.BurnAdjustment,
@@ -86,6 +88,7 @@ func (h HostAdjustments) HostScoreBreakdown(totalScore types.Currency, ignoreAge
 func (h HostAdjustments) Score() types.Currency {
 	// Combine the adjustments.
 	fullPenalty := h.AgeAdjustment *
+		h.AcceptContractAdjustment *
 		h.BasePriceAdjustment *
 		h.BurnAdjustment *
 		h.CollateralAdjustment *

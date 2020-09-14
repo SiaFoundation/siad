@@ -282,12 +282,23 @@ func TestHostWeightMaxDuration(t *testing.T) {
 
 	entry := DefaultHostDBEntry
 	entry2 := DefaultHostDBEntry
-	entry2.MaxDuration = 100 // Shorter than the allowance period.
+	entry2.MaxDuration = DefaultTestAllowance.Period + DefaultTestAllowance.RenewWindow
 
+	// Entry2 is exactly at the limit. Weights should match.
 	w1 := hdb.weightFunc(entry).Score()
 	w2 := hdb.weightFunc(entry2).Score()
+	if w1.Cmp(w2) != 0 {
+		t.Error("Entries should have same weight", w1, w2)
+	}
+
+	// Entry2 is just below the limit. Should have smallest weight possible.
+	entry2.MaxDuration--
+	w2 = hdb.weightFunc(entry2).Score()
 	if w1.Cmp(w2) <= 0 {
-		t.Error("Acceptable duration should have more weight", w1, w2)
+		t.Error("Entry2 should have smaller weight", w1, w2)
+	}
+	if w2.Cmp64(1) != 0 {
+		t.Error("Entry2 should have smallest weight")
 	}
 }
 
@@ -662,5 +673,31 @@ func TestHostWeightExtraPriceAdjustments(t *testing.T) {
 	highestSectorPrice := hdb.weightFunc(entry).Score()
 	if higherSectorPrice.Cmp(highestSectorPrice) <= 0 {
 		t.Fatal("Expected score decrease with higher sector access price")
+	}
+}
+
+// TestHostWeightAcceptContract checks that the host that doesn't accept
+// contracts has a worse score than the one that does.
+func TestHostWeightAcceptContract(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	hdb := bareHostDB()
+	hdb.SetAllowance(DefaultTestAllowance)
+
+	entry := DefaultHostDBEntry
+	entry2 := DefaultHostDBEntry
+	entry2.AcceptingContracts = false
+
+	// Entry2 is not accepting contracts. Should have smallest weight possible.
+	entry2.MaxDuration--
+	w1 := hdb.weightFunc(entry).Score()
+	w2 := hdb.weightFunc(entry2).Score()
+	if w1.Cmp(w2) <= 0 {
+		t.Error("Entry2 should have smaller weight", w1, w2)
+	}
+	if w2.Cmp64(1) != 0 {
+		t.Error("Entry2 should have smallest weight")
 	}
 }

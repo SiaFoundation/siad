@@ -214,8 +214,8 @@ func TestDefaultPath(t *testing.T) {
 	}
 }
 
-// TestSplitSkylinkString is a table test for the splitSkylinkString function.
-func TestSplitSkylinkString(t *testing.T) {
+// TestParseSkylinkString is a table test for the parseSkylinkString function.
+func TestParseSkylinkString(t *testing.T) {
 	tests := []struct {
 		name                 string
 		strToParse           string
@@ -289,12 +289,21 @@ func TestSplitSkylinkString(t *testing.T) {
 			errMsg:               "",
 		},
 		{
+			// Test URL-decoding the path within parseSkylinkString.
+			name:                 "with path to dir containing both a query and an encoded '?'",
+			strToParse:           "/IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo%3Fbar?foobar=nope",
+			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
+			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo%3Fbar",
+			path:                 "/foo?bar",
+			errMsg:               "",
+		},
+		{
 			name:                 "invalid skylink",
 			strToParse:           "invalid_skylink/foo/bar?foobar=nope",
 			skylink:              "",
 			skylinkStringNoQuery: "",
 			path:                 "",
-			errMsg:               "not a skylink, skylinks are always 46 bytes",
+			errMsg:               modules.ErrSkylinkIncorrectSize.Error(),
 		},
 		{
 			name:                 "empty input",
@@ -302,18 +311,22 @@ func TestSplitSkylinkString(t *testing.T) {
 			skylink:              "",
 			skylinkStringNoQuery: "",
 			path:                 "",
-			errMsg:               "not a skylink, skylinks are always 46 bytes",
+			errMsg:               modules.ErrSkylinkIncorrectSize.Error(),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			skylink, skylinkStringNoQuery, path, err := splitSkylinkString(tt.strToParse)
-			if (err != nil || tt.errMsg != "") && !strings.Contains(err.Error(), tt.errMsg) {
-				t.Fatalf("Expected error '%s', got %v\n", tt.errMsg, err)
-			}
-			if tt.errMsg != "" {
-				return
+			skylink, skylinkStringNoQuery, path, err := parseSkylinkString(tt.strToParse)
+			// Is there an actual or expected error?
+			if err != nil || tt.errMsg != "" {
+				// Actual err should contain expected err.
+				if err == nil || !strings.Contains(err.Error(), tt.errMsg) {
+					t.Fatalf("Expected error '%s', got %v\n", tt.errMsg, err)
+				} else {
+					// The errors match, so the test case passes.
+					return
+				}
 			}
 			if skylink.String() != tt.skylink {
 				t.Fatalf("Expected skylink '%v', got '%v'\n", tt.skylink, skylink)

@@ -168,7 +168,7 @@ var (
 // finalizeContractArgs are the arguments passed into managedFinalizeContract.
 type finalizeContractArgs struct {
 	builder                 modules.TransactionBuilder
-	renewal                 bool
+	renewedSO               *storageObligation
 	renterPK                crypto.PublicKey
 	renterSignatures        []types.TransactionSignature
 	renterRevisionSignature types.TransactionSignature
@@ -211,7 +211,7 @@ func createRevisionSignature(fcr types.FileContractRevision, renterSig types.Tra
 // to the caller.
 func (h *Host) managedFinalizeContract(args finalizeContractArgs) ([]types.TransactionSignature, types.TransactionSignature, types.FileContractID, error) {
 	// Extract args
-	builder, renewal, renterPK, renterSignatures := args.builder, args.renewal, args.renterPK, args.renterSignatures
+	builder, renterPK, renterSignatures := args.builder, args.renterPK, args.renterSignatures
 	renterRevisionSignature, initialSectorRoots, hostCollateral := args.renterRevisionSignature, args.initialSectorRoots, args.hostCollateral
 	hostInitialRevenue, hostInitialRisk, settings := args.hostInitialRevenue, args.hostInitialRisk, args.settings
 
@@ -303,7 +303,11 @@ func (h *Host) managedFinalizeContract(args finalizeContractArgs) ([]types.Trans
 		// just when the actual modification is happening.
 		i := 0
 		for {
-			err = h.managedAddStorageObligation(so, renewal)
+			if args.renewedSO == nil {
+				err = h.managedAddStorageObligation(so)
+			} else {
+				err = h.managedAddRenewedStorageObligation(*args.renewedSO, so)
+			}
 			if err == nil {
 				return nil
 			}

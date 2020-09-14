@@ -229,7 +229,7 @@ func NewCustom(cfg *modules.SiadConfig, requiredUserAgent string, requiredPasswo
 }
 
 // UnrecognizedCallHandler handles calls to disabled/not-loaded modules.
-func (api *API) UnrecognizedCallHandler(w http.ResponseWriter, req *http.Request) {
+func (api *API) UnrecognizedCallHandler(w http.ResponseWriter, _ *http.Request) {
 	var errStr string
 	if api.modulesSet {
 		errStr = fmt.Sprintf("%d Module disabled - Refer to API.md", StatusModuleDisabled)

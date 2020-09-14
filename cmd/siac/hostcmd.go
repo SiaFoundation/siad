@@ -203,7 +203,7 @@ func hostcmd() {
 		connectabilityString = "Host is not connectable (re-checks every few minutes)."
 	}
 
-	if hostVerbose {
+	if verbose {
 		// describe net address
 		fmt.Printf(`General Info:
 	Connectability Status: %v
