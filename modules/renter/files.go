@@ -108,12 +108,15 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 		return err
 	}
 	bubblePaths := r.newUniqueRefreshPaths()
-	err1 := bubblePaths.callAdd(oldDirSiaPath)
-	err2 := bubblePaths.callAdd(newDirSiaPath)
-	bubblePaths.callRefreshAll()
-	if err := errors.Compose(err1, err2); err != nil {
-		r.log.Printf("failed to bubble paths after RenameFile %v %v: %v", oldDirSiaPath, newDirSiaPath, err)
+	err = bubblePaths.callAdd(oldDirSiaPath)
+	if err != nil {
+		r.log.Printf("failed to add old directory '%v' to bubble paths:  %v", oldDirSiaPath, err)
 	}
+	err = bubblePaths.callAdd(newDirSiaPath)
+	if err != nil {
+		r.log.Printf("failed to add new directory '%v' to bubble paths:  %v", newDirSiaPath, err)
+	}
+	bubblePaths.callRefreshAll()
 	return nil
 }
 
