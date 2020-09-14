@@ -500,15 +500,20 @@ func (r *Renter) threadedStuckFileLoop() {
 		// TODO - once bubbling metadata has been updated to be more I/O
 		// efficient this code should be removed and we should call bubble when
 		// we clean up the upload chunk after a successful repair.
+		bubblePaths := r.newUniqueRefreshPaths()
 		for _, dirSiaPath := range dirSiaPaths {
-			err = r.managedBubbleMetadata(dirSiaPath)
+			err = bubblePaths.callAdd(dirSiaPath)
 			if err != nil {
-				r.repairLog.Printf("Error propagating updated health of %s: %v", dirSiaPath.String(), err)
-				select {
-				case <-time.After(stuckLoopErrorSleepDuration):
-				case <-r.tg.StopChan():
-					return
-				}
+				r.repairLog.Printf("Error adding refresh path of %s: %v", dirSiaPath.String(), err)
+			}
+		}
+		err = bubblePaths.callRefreshAllBlocking()
+		if err != nil {
+			r.repairLog.Print("Error bubbling dirSiaPaths", err)
+			select {
+			case <-time.After(stuckLoopErrorSleepDuration):
+			case <-r.tg.StopChan():
+				return
 			}
 		}
 	}
