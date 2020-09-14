@@ -37,6 +37,7 @@ variables:
     ./modules/miner
     ./modules/wallet
     ./modules/transactionpool
+    ./profile
     ./persist
     ./sync
     ./skykey
@@ -57,12 +58,15 @@ variables:
     ./siatest/renter/contractor
     ./siatest/renter/hostdb
     ./siatest/renterhost
+  docker_hub_dev_hook: https://hub.docker.com/api/build/v1/source/57afb708-6926-411b-98fc-44c79f59097c/trigger/513a6d92-9f8b-4f04-b20a-ebd51b193b5d/call/
 
 default: &default_params
   ## Run tests with most recent golang version to take advantage of any perf
   ## improvements.
-  image: golang:latest
+  image: nebulouslabs/sia-ci
   before_script:
+    - date
+    - go version
     - mkdir -p .cache/gocache
     - export PATH=$PATH:$CI_PROJECT_DIR/.cache/bin/
     - export GOPATH="$CI_PROJECT_DIR/.cache"
@@ -159,12 +163,6 @@ lint:
   script:
     ## This is the recommended way to install golang-ci lint.
     - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
-    - wget -O- -nv https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.24.0
-    - apt-get update
-    - apt-get -y install python3-pip
-    - pip3 install codespell
-    - go get gitlab.com/NebulousLabs/analyze
-    - ./bin/golangci-lint run -c .golangci.yml ./...
     - make lint-analyze
     - make markdown-spellcheck
     - make test
@@ -172,13 +170,20 @@ lint:
 build:
   stage: lint
   ## go 1.13 is the minimum accepted version for building Sia.
-  image: golang:1.13
+  image: nebulouslabs/sia-ci
   artifacts:
     name: "Binaries"
     paths:
       - $CI_PROJECT_DIR/artifacts
   script:
     - ./check-builds.sh
+
+deploy:
+  stage: deploy
+  script:
+    - curl -X POST -H "Content-Type:application/json" --data '{"name":"'"$CI_COMMIT_REF_NAME"'"}' $docker_hub_dev_hook
+  only:
+    - master
 
 legacy-tests:
   <<: *default_test_params

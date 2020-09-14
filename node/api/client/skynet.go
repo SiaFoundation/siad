@@ -53,10 +53,10 @@ func (c *Client) skynetSkylinkGetWithParameters(skylink string, params map[strin
 		values.Set(k, v)
 	}
 
-	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
+	getQuery := skylinkQueryWithValues(skylink, values)
 	header, fileData, err := c.getRawResponse(getQuery)
 	if err != nil {
-		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "error fetching api response")
+		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "error fetching api response for GET with parameters")
 	}
 
 	var sm modules.SkyfileMetadata
@@ -109,7 +109,7 @@ func (c *Client) SkynetSkylinkHeadWithFormat(skylink string, format modules.Skyf
 // headers that are returned if the skyfile were to be requested using the
 // SkynetSkylinkGet method. The values are encoded in the querystring.
 func (c *Client) SkynetSkylinkHeadWithParameters(skylink string, values url.Values) (int, http.Header, error) {
-	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
+	getQuery := skylinkQueryWithValues(skylink, values)
 	return c.head(getQuery)
 }
 
@@ -118,11 +118,11 @@ func (c *Client) SkynetSkylinkHeadWithParameters(skylink string, values url.Valu
 func (c *Client) SkynetSkylinkConcatGet(skylink string) ([]byte, modules.SkyfileMetadata, error) {
 	values := url.Values{}
 	values.Set("format", string(modules.SkyfileFormatConcat))
-	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
+	getQuery := skylinkQueryWithValues(skylink, values)
 	var reader io.Reader
 	header, body, err := c.getReaderResponse(getQuery)
 	if err != nil {
-		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "error fetching api response")
+		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "error fetching api response for GET with format=concat")
 	}
 	defer body.Close()
 	reader = body
@@ -157,7 +157,7 @@ func (c *Client) SkynetSkylinkReaderGet(skylink string) (io.ReadCloser, error) {
 func (c *Client) SkynetSkylinkConcatReaderGet(skylink string) (io.ReadCloser, error) {
 	values := url.Values{}
 	values.Set("format", string(modules.SkyfileFormatConcat))
-	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
+	getQuery := skylinkQueryWithValues(skylink, values)
 	_, reader, err := c.getReaderResponse(getQuery)
 	return reader, errors.AddContext(err, "unable to fetch skylink data")
 }
@@ -167,7 +167,7 @@ func (c *Client) SkynetSkylinkConcatReaderGet(skylink string) (io.ReadCloser, er
 func (c *Client) SkynetSkylinkTarReaderGet(skylink string) (http.Header, io.ReadCloser, error) {
 	values := url.Values{}
 	values.Set("format", string(modules.SkyfileFormatTar))
-	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
+	getQuery := skylinkQueryWithValues(skylink, values)
 	header, reader, err := c.getReaderResponse(getQuery)
 	return header, reader, errors.AddContext(err, "unable to fetch skylink data")
 }
@@ -177,7 +177,7 @@ func (c *Client) SkynetSkylinkTarReaderGet(skylink string) (http.Header, io.Read
 func (c *Client) SkynetSkylinkTarGzReaderGet(skylink string) (http.Header, io.ReadCloser, error) {
 	values := url.Values{}
 	values.Set("format", string(modules.SkyfileFormatTarGz))
-	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
+	getQuery := skylinkQueryWithValues(skylink, values)
 	header, reader, err := c.getReaderResponse(getQuery)
 	return header, reader, errors.AddContext(err, "unable to fetch skylink data")
 }
@@ -187,7 +187,7 @@ func (c *Client) SkynetSkylinkTarGzReaderGet(skylink string) (http.Header, io.Re
 func (c *Client) SkynetSkylinkZipReaderGet(skylink string) (http.Header, io.ReadCloser, error) {
 	values := url.Values{}
 	values.Set("format", string(modules.SkyfileFormatZip))
-	getQuery := fmt.Sprintf("/skynet/skylink/%s?%s", skylink, values.Encode())
+	getQuery := skylinkQueryWithValues(skylink, values)
 	header, reader, err := c.getReaderResponse(getQuery)
 	return header, reader, errors.AddContext(err, "unable to fetch skylink data")
 }
@@ -524,4 +524,14 @@ func (c *Client) SkykeySkykeysGet() ([]skykey.Skykey, error) {
 		}
 	}
 	return res, nil
+}
+
+// skylinkQueryWithValues returns a skylink query based on the given skylink and
+// values. If the values are empty it will not append a `?` to the query.
+func skylinkQueryWithValues(skylink string, values url.Values) string {
+	getQuery := fmt.Sprintf("/skynet/skylink/%s", skylink)
+	if len(values) > 0 {
+		getQuery = fmt.Sprintf("%s?%s", getQuery, values.Encode())
+	}
+	return getQuery
 }

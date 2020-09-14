@@ -2,6 +2,9 @@ package daemon
 
 import (
 	"encoding/hex"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
+	"gitlab.com/NebulousLabs/Sia/profile"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 )
 
@@ -351,5 +355,81 @@ func TestDaemonConfig(t *testing.T) {
 	}
 	if dsg.Modules.Wallet {
 		t.Error("Wallet should be set as false")
+	}
+}
+
+// TestDaemonStack test the /dameon/stack endpoint.
+func TestDaemonStack(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	testDir := daemonTestDir(t.Name())
+
+	// Create a new server
+	testNode, err := siatest.NewCleanNode(node.Gateway(testDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer testNode.Close()
+
+	// Get the stack
+	dsg, err := testNode.DaemonStackGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Make sure the stack is not empty
+	if len(dsg.Stack) == 0 {
+		t.Fatal("Stack is empt")
+	}
+}
+
+// TestDaemonProfile test the /dameon/profile endpoint.
+func TestDaemonProfile(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	testDir := daemonTestDir(t.Name())
+
+	// Create a new server
+	testNode, err := siatest.NewCleanNode(node.Gateway(testDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer testNode.Close()
+
+	// Test known error cases
+	err = testNode.DaemonStartProfilePost("", "")
+	if !strings.Contains(err.Error(), "profile flags cannot be blank") {
+		t.Error("Unexpected error:", err)
+	}
+	err = testNode.DaemonStartProfilePost("test", "")
+	if !strings.Contains(err.Error(), profile.ErrInvalidProfileFlags.Error()) {
+		t.Error("Unexpected error:", err)
+	}
+
+	// Test Stopping without a profile started
+	err = testNode.DaemonStopProfileGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Start Profile
+	profileDir := filepath.Join(testNode.Dir, "profile")
+	err = testNode.DaemonStartProfilePost("cmt", profileDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify profile directory was created
+	_, err = os.Stat(profileDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Stop Profile
+	err = testNode.DaemonStopProfileGet()
+	if err != nil {
+		t.Fatal(err)
 	}
 }

@@ -137,7 +137,9 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 	if err != nil {
 		return errors.AddContext(err, "failed to open backup for uploading")
 	}
-	defer backup.Close()
+	defer func() {
+		err = errors.Compose(err, backup.Close())
+	}()
 
 	// Prepare the siapath.
 	sp, err := modules.BackupFolder.Join(name)
@@ -198,7 +200,9 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+	defer func() {
+		err = errors.Compose(err, dstFile.Close())
+	}()
 	// search for backup
 	if len(name) > 96 {
 		return errors.New("no record of a backup with that name")
@@ -319,8 +323,8 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 	// Submit a job to each worker. Make sure the response channel has enough
 	// room in the buffer for all results, this way workers are not being
 	// blocked when returning their results.
-	cancelChan := make(chan struct{})
-	defer close(cancelChan)
+	maxWait, cancel := context.WithTimeout(r.tg.StopCtx(), maxSnapshotUploadTime)
+	defer cancel()
 	responseChan := make(chan *jobUploadSnapshotResponse, len(workers))
 	queued := 0
 	for _, w := range workers {
@@ -330,7 +334,7 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 
 			staticResponseChan: responseChan,
 
-			jobGeneric: newJobGeneric(w.staticJobUploadSnapshotQueue, cancelChan),
+			jobGeneric: newJobGeneric(maxWait, w.staticJobUploadSnapshotQueue),
 		}
 
 		// If a job is not added correctly, count this as a failed response.
@@ -338,10 +342,6 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 			queued++
 		}
 	}
-
-	// Cap the total amount of time that we wait for results.
-	maxWait, cancel := context.WithTimeout(r.tg.StopCtx(), maxSnapshotUploadTime)
-	defer cancel()
 
 	// Iteratively grab the responses from the workers.
 	responses := 0
@@ -476,7 +476,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 				}
 			}
 			ub = modules.UploadedBackup{
-				Name:           string(bytes.TrimRight(entry.Name[:], string(0))),
+				Name:           string(bytes.TrimRight(entry.Name[:], types.RuneToString(0))),
 				UID:            entry.UID,
 				CreationDate:   entry.CreationDate,
 				Size:           entry.Size,
@@ -511,7 +511,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		for _, e := range entryTable {
 			if _, ok := known[e.UID]; !ok {
 				unknown = append(unknown, modules.UploadedBackup{
-					Name:           string(bytes.TrimRight(e.Name[:], string(0))),
+					Name:           string(bytes.TrimRight(e.Name[:], types.RuneToString(0))),
 					UID:            e.UID,
 					CreationDate:   e.CreationDate,
 					Size:           e.Size,
@@ -696,6 +696,21 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			w, err := r.staticWorkerPool.callWorker(c.HostPublicKey)
 			if err != nil {
 				return err
+			}
+
+			// Check for out-of-bounds before doing network I/O. This way we
+			// don't put the worker on cooldown when trying to fetch a snapshot
+			// table from an empty contract.
+			contract, found := w.renter.hostContractor.ContractByPublicKey(w.staticHostPubKey)
+			if !found {
+				return errors.New("threadedSynchronizeSnapshots: failed to retrieve contract")
+			}
+			revs := contract.Transaction.FileContractRevisions
+			if len(revs) == 0 {
+				return errors.New("threadedSynchronizeSnapshots: transaction doesn't contain a revision")
+			}
+			if revs[0].NewFileSize == 0 {
+				return errors.New("contract of size 0 doesn't have a snapshot table yet")
 			}
 
 			// TODO: Remove this when enough hosts have upgraded to fixed

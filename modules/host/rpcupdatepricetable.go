@@ -3,6 +3,8 @@ package host
 import (
 	"container/heap"
 	"encoding/json"
+	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -129,6 +131,9 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) (err error) {
 	// been added to the map, which means that the renter has to pay for it in
 	// order for it to became active and accepted by the host.
 	payment, err := h.ProcessPayment(stream)
+	if errors.Contains(err, io.ErrClosedPipe) {
+		return nil // renter didn't intend to pay
+	}
 	if err != nil {
 		return errors.AddContext(err, "Failed to process payment")
 	}
@@ -168,12 +173,12 @@ func (h *Host) staticReadPriceTableID(stream siamux.Stream) (*modules.RPCPriceTa
 	var found bool
 	pt, found := h.staticPriceTables.managedGet(uid)
 	if !found {
-		return nil, ErrPriceTableNotFound
+		return nil, errors.AddContext(ErrPriceTableNotFound, fmt.Sprint(uid))
 	}
 
 	// make sure the table isn't expired.
 	if time.Now().After(pt.Expiry()) {
-		return nil, ErrPriceTableExpired
+		return nil, errors.AddContext(ErrPriceTableExpired, fmt.Sprint(uid))
 	}
 	return &pt.RPCPriceTable, nil
 }

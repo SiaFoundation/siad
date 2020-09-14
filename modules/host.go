@@ -39,6 +39,12 @@ var (
 		Header:  "Sia Host",
 		Version: "1.4.3",
 	}
+
+	// Hostv151PersistMetadata is the header of the v151 host persist file.
+	Hostv151PersistMetadata = persist.Metadata{
+		Header:  "Sia Host",
+		Version: "1.5.1",
+	}
 )
 
 const (

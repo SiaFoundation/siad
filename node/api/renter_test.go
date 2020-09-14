@@ -189,7 +189,11 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 		if err != nil {
 			return err
 		}
-		defer df.Close()
+		defer func() {
+			if err := df.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 
 		_, err = io.Copy(&downbytes, df)
 		if err != nil {
@@ -295,7 +299,7 @@ func TestValidDownloads(t *testing.T) {
 func runDownloadParamTest(t *testing.T, length, offset, filesize int) error {
 	ulSiaPath := "test.dat"
 
-	st, _ := setupTestDownload(t, int(filesize), ulSiaPath, true)
+	st, _ := setupTestDownload(t, filesize, ulSiaPath, true)
 	defer st.server.Close()
 
 	// Download the original file from offset 40 and length 10.
@@ -1514,7 +1518,7 @@ func TestHealthLoop(t *testing.T) {
 	}
 
 	// Block until the allowance has finished forming contracts.
-	err = build.Retry(50, time.Millisecond*250, func() error {
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		var rc RenterContracts
 		err = st1.getAPI("/renter/contracts", &rc)
 		if err != nil {
@@ -1545,7 +1549,7 @@ func TestHealthLoop(t *testing.T) {
 	}
 
 	// redundancy should reach 2
-	err = build.Retry(120, 250*time.Millisecond, func() error {
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		var rf RenterFiles
 		st1.getAPI("/renter/files", &rf)
 		if len(rf.Files) >= 1 && rf.Files[0].Redundancy == 2 {
@@ -1557,15 +1561,15 @@ func TestHealthLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Verify folder metadata is update, directory health should be 0
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	// Verify folder metadata is updated, directory health should be 0
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		var rd RenterDirectory
 		err := st1.getAPI("/renter/dir/", &rd)
 		if err != nil {
 			return err
 		}
 		if rd.Directories[0].Health != 0 {
-			return fmt.Errorf("Directory health should be 0 but was %v", rd.Directories[0].Health)
+			return fmt.Errorf("directory health should be 0 but was %v", rd.Directories[0].Health)
 		}
 		return nil
 	})
@@ -1577,11 +1581,11 @@ func TestHealthLoop(t *testing.T) {
 	st2.server.panicClose()
 
 	// redundancy should drop
-	err = build.Retry(120, 250*time.Millisecond, func() error {
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		var rf RenterFiles
 		st1.getAPI("/renter/files", &rf)
 		if len(rf.Files) >= 1 && rf.Files[0].Redundancy == 2 {
-			return fmt.Errorf("Expect 1 file with a redundancy of less than 2, got %v files and redundancy of %v", len(rf.Files), rf.Files[0].Redundancy)
+			return fmt.Errorf("expected 1 file with a redundancy of less than 2, got %v files and redundancy of %v", len(rf.Files), rf.Files[0].Redundancy)
 		}
 		return nil
 	})
@@ -1590,11 +1594,11 @@ func TestHealthLoop(t *testing.T) {
 	}
 
 	// Check that the metadata has been updated
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		var rd RenterDirectory
 		st1.getAPI("/renter/dir/", &rd)
 		if rd.Directories[0].MaxHealth == 0 {
-			return fmt.Errorf("Directory max health should have dropped below 0 but was %v", rd.Directories[0].MaxHealth)
+			return fmt.Errorf("directory max health should have dropped below 0 but was %v", rd.Directories[0].MaxHealth)
 		}
 		return nil
 	})

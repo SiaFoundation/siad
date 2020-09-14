@@ -53,7 +53,7 @@ func (rt *renterTester) Close() error {
 	return nil
 }
 
-// addHost adds a host to the test group so that it appears in the host db
+// addCustomHost adds a host to the test group so that it appears in the host db
 func (rt *renterTester) addCustomHost(testdir string, deps modules.Dependencies) (modules.Host, error) {
 	// create a siamux for this particular host
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
@@ -155,7 +155,7 @@ func (rt *renterTester) reloadRenter(r *Renter) (*Renter, error) {
 
 // reloadRenterWithDependency closes the given renter and recreates it using the
 // given dependency, it then re-adds the renter on the renter tester effectively
-// relodaing it.
+// reloading it.
 func (rt *renterTester) reloadRenterWithDependency(r *Renter, deps modules.Dependencies) (*Renter, error) {
 	err := r.Close()
 	if err != nil {

@@ -81,7 +81,7 @@ func folderIndex(folderPath string, storageFolders []modules.StorageFolderMetada
 
 // hostContractInfoHandler handles the API call to get the contract information of the host.
 // Information is retrieved via the storage obligations from the host database.
-func (api *API) hostContractInfoHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) hostContractInfoHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	cg := ContractInfoGET{
 		Contracts: api.host.StorageObligations(),
 	}
@@ -90,7 +90,7 @@ func (api *API) hostContractInfoHandler(w http.ResponseWriter, req *http.Request
 
 // hostHandlerGET handles GET requests to the /host API endpoint, returning key
 // information about the host.
-func (api *API) hostHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) hostHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	es := api.host.ExternalSettings()
 	fm := api.host.FinancialMetrics()
 	is := api.host.InternalSettings()
@@ -107,12 +107,17 @@ func (api *API) hostHandlerGET(w http.ResponseWriter, req *http.Request, _ httpr
 		WorkingStatus:        ws,
 		PublicKey:            pk,
 	}
+
+	if api.staticDeps.Disrupt("TimeoutOnHostGET") {
+		time.Sleep(httpServerTimeout + 5*time.Second)
+	}
+
 	WriteJSON(w, hg)
 }
 
 // hostsBandwidthHandlerGET handles GET requests to the /host/bandwidth API endpoint,
 // returning bandwidth usage data from the host module
-func (api *API) hostBandwidthHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) hostBandwidthHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	sent, receive, startTime, err := api.host.BandwidthCounters()
 	if err != nil {
 		WriteError(w, Error{"failed to get hosts's bandwidth usage: " + err.Error()}, http.StatusBadRequest)
@@ -387,7 +392,7 @@ func (api *API) hostAnnounceHandler(w http.ResponseWriter, req *http.Request, _ 
 
 // storageHandler returns a bunch of information about storage management on
 // the host.
-func (api *API) storageHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) storageHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	WriteJSON(w, StorageGET{
 		Folders: api.host.StorageFolders(),
 	})
@@ -466,7 +471,7 @@ func (api *API) storageFoldersRemoveHandler(w http.ResponseWriter, req *http.Req
 
 // storageSectorsDeleteHandler handles the call to delete a sector from the
 // storage manager.
-func (api *API) storageSectorsDeleteHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) storageSectorsDeleteHandler(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	sectorRoot, err := scanHash(ps.ByName("merkleroot"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)

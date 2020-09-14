@@ -203,7 +203,7 @@ func hostcmd() {
 		connectabilityString = "Host is not connectable (re-checks every few minutes)."
 	}
 
-	if hostVerbose {
+	if verbose {
 		// describe net address
 		fmt.Printf(`General Info:
 	Connectability Status: %v
@@ -228,7 +228,7 @@ Host Internal Settings:
 	minstorageprice:           %v / TB / Month
 	minuploadbandwidthprice:   %v / TB
 
-	ephemeralaccountexpiry:     %v
+	ephemeralaccountexpiry:     %vs
 	maxephemeralaccountbalance: %v
 	maxephemeralaccountrisk:    %v
 
@@ -280,7 +280,7 @@ RPC Stats:
 			currencyUnits(is.MinStoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)),
 			currencyUnits(is.MinUploadBandwidthPrice.Mul(modules.BytesPerTerabyte)),
 
-			is.EphemeralAccountExpiry,
+			is.EphemeralAccountExpiry.Seconds(),
 			currencyUnits(is.MaxEphemeralAccountBalance),
 			currencyUnits(is.MaxEphemeralAccountRisk),
 

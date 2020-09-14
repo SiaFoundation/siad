@@ -124,6 +124,10 @@ type (
 	SkykeysGET struct {
 		Skykeys []SkykeyGET `json:"skykeys"`
 	}
+
+	// archiveFunc is a function that serves subfiles from src to dst and
+	// archives them using a certain algorithm.
+	archiveFunc func(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error
 )
 
 // skynetBlacklistHandlerGET handles the API call to get the list of blacklisted
@@ -242,20 +246,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}()
 
-	strLink := ps.ByName("skylink")
-	strLink = strings.TrimPrefix(strLink, "/")
-
-	// Parse out optional path to a subfile
-	path := "/" // default to root
-	splits := strings.SplitN(strLink, "?", 2)
-	splits = strings.SplitN(splits[0], "/", 2)
-	if len(splits) > 1 {
-		path = fmt.Sprintf("/%s", splits[1])
-	}
-
-	// Parse skylink
-	var skylink modules.Skylink
-	err := skylink.LoadString(strLink)
+	// Get the skylink from the request URL. It decodes special characters like
+	// '?', which appears in the URL as '%3F', from the path. This allows us to
+	// differentiate '%3F' from the '?' that begins query parameters.
+	skylinkStr := strings.TrimPrefix(req.URL.String(), "/skynet/skylink/")
+	skylink, skylinkStringNoQuery, path, err := parseSkylinkString(skylinkStr)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
 		return
@@ -321,29 +316,82 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	defer streamer.Close()
 
-	var isSubfile bool
-
-	// Handle the legacy case
-	if metadata.DefaultPath == "" && !metadata.DisableDefaultPath && len(metadata.Subfiles) == 1 {
-		for filename := range metadata.Subfiles {
-			metadata.DefaultPath = modules.EnsurePrefix(filename, "/")
-			break
+	if metadata.DefaultPath != "" && len(metadata.Subfiles) == 0 {
+		WriteError(w, Error{"defaultpath is not allowed on single files, please specify a format"}, http.StatusBadRequest)
+		return
+	}
+	if metadata.DefaultPath != "" && metadata.DisableDefaultPath && format == modules.SkyfileFormatNotSpecified {
+		WriteError(w, Error{"invalid defaultpath state - both defaultpath and disabledefaultpath are set, please specify a format"}, http.StatusBadRequest)
+		return
+	}
+	defaultPath := metadata.DefaultPath
+	if metadata.DefaultPath == "" && !metadata.DisableDefaultPath {
+		if len(metadata.Subfiles) == 1 {
+			// If `defaultpath` and `disabledefaultpath` are not set and the
+			// skyfile has a single subfile we automatically default to it.
+			for filename := range metadata.Subfiles {
+				defaultPath = modules.EnsurePrefix(filename, "/")
+				break
+			}
+		} else {
+			prefixedDefaultSkynetPath := modules.EnsurePrefix(DefaultSkynetDefaultPath, "/")
+			for filename := range metadata.Subfiles {
+				if modules.EnsurePrefix(filename, "/") == prefixedDefaultSkynetPath {
+					defaultPath = prefixedDefaultSkynetPath
+					break
+				}
+			}
 		}
 	}
+
+	var isSubfile bool
+	responseContentType := metadata.ContentType()
 
 	// Serve the contents of the file at the default path if one is set. Note
 	// that we return the metadata for the entire Skylink when we serve the
 	// contents of the file at the default path.
-	if path == "/" &&
-		metadata.DefaultPath != "" &&
-		format == modules.SkyfileFormatNotSpecified {
-		_, _, offset, size := metadata.ForPath(metadata.DefaultPath)
-		streamer, err = NewLimitStreamer(streamer, offset, size)
-		isSubfile = true
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed to download contents for path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
+	// We only use the default path when the user requests the root path because
+	// we want to enable people to access individual subfile without forcing
+	// them to download the entire skyfile.
+	if path == "/" && defaultPath != "" && format == modules.SkyfileFormatNotSpecified {
+		if strings.Count(defaultPath, "/") > 1 && len(metadata.Subfiles) > 1 {
+			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s) which refers to a non-root file, please specify a format", defaultPath)}, http.StatusBadRequest)
 			return
 		}
+		isSkapp := strings.HasSuffix(defaultPath, ".html") || strings.HasSuffix(defaultPath, ".htm")
+		// If we don't have a subPath and the skylink doesn't end with a trailing
+		// slash we need to redirect in order to add the trailing slash.
+		// This is only true for skapps - they need it in order to properly work
+		// with relative paths.
+		// We also don't need to redirect if this is a HEAD request or if it's a
+		// download as attachment.
+		if isSkapp && !attachment && req.Method == http.MethodGet && !strings.HasSuffix(skylinkStringNoQuery, "/") {
+			w.Header().Set("Location", skylinkStringNoQuery+"/?"+req.URL.RawQuery)
+			w.WriteHeader(http.StatusTemporaryRedirect)
+			return
+		}
+		// Only serve the default path if it points to an HTML file (this is a
+		// skapp) or it's the only file in the skyfile.
+		if !isSkapp && len(metadata.Subfiles) > 1 {
+			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s), please specify a format", defaultPath)}, http.StatusBadRequest)
+			return
+		}
+		metaForPath, isFile, offset, size := metadata.ForPath(defaultPath)
+		if len(metaForPath.Subfiles) == 0 {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v", path)}, http.StatusNotFound)
+			return
+		}
+		if !isFile {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, please specify a specific path or a format in order to download the content", defaultPath)}, http.StatusNotFound)
+			return
+		}
+		streamer, err = NewLimitStreamer(streamer, offset, size)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
+			return
+		}
+		isSubfile = isFile
+		responseContentType = metaForPath.ContentType()
 	}
 
 	// Serve the contents of the skyfile at path if one is set
@@ -407,7 +455,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
 	}()
 
-	// Set an appropritate Content-Disposition header
+	// Set an appropriate Content-Disposition header
 	var cdh string
 	filename := filepath.Base(metadata.Filename)
 	if format.IsArchive() {
@@ -424,7 +472,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if format == modules.SkyfileFormatTar {
 		w.Header().Set("Content-Type", "application/x-tar")
 		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
-		err = serveTar(w, metadata, streamer)
+		err = serveArchive(w, streamer, metadata, serveTar)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar archive: %v", err)}, http.StatusInternalServerError)
 		}
@@ -434,7 +482,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		w.Header().Set("Content-Type", "application/gzip")
 		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 		gzw := gzip.NewWriter(w)
-		err = serveTar(gzw, metadata, streamer)
+		err = serveArchive(gzw, streamer, metadata, serveTar)
 		err = errors.Compose(err, gzw.Close())
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar gz archive: %v", err)}, http.StatusInternalServerError)
@@ -444,7 +492,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if format == modules.SkyfileFormatZip {
 		w.Header().Set("Content-Type", "application/zip")
 		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
-		err = serveZip(w, metadata, streamer)
+		err = serveArchive(w, streamer, metadata, serveZip)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as zip archive: %v", err)}, http.StatusInternalServerError)
 		}
@@ -454,13 +502,36 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// Only set the Content-Type header when the metadata defines one, if we
 	// were to set the header to an empty string, it would prevent the http
 	// library from sniffing the file's content type.
-	if metadata.ContentType() != "" {
-		w.Header().Set("Content-Type", metadata.ContentType())
+	if responseContentType != "" {
+		w.Header().Set("Content-Type", responseContentType)
 	}
 	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
+}
+
+// parseSkylinkString splits a skylink string into its components - a skylink, a
+// string representation of the skylink with the query parameters stripped, and
+// a path. The path is URL-decoded while the other components are not.
+func parseSkylinkString(s string) (skylink modules.Skylink, skylinkStringNoQuery, path string, err error) {
+	s = strings.TrimPrefix(s, "/")
+	// Parse out optional path to a subfile
+	path = "/" // default to root
+	splits := strings.SplitN(s, "?", 2)
+	skylinkStringNoQuery = splits[0]
+	splits = strings.SplitN(skylinkStringNoQuery, "/", 2)
+	// Check if a path is passed.
+	if len(splits) > 1 && len(splits[1]) > 0 {
+		path = modules.EnsurePrefix(splits[1], "/")
+	}
+	// Decode the path as it may contain URL-encoded characters.
+	path, err = url.QueryUnescape(path)
+	if err != nil {
+		return
+	}
+	// Parse skylink
+	err = skylink.LoadString(s)
+	return
 }
 
 // skynetSkylinkPinHandlerPOST will pin a skylink to this Sia node, ensuring
@@ -738,7 +809,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
-	// Grab the skykey specified.
+	// Grab the skykey specified by name or ID.
 	skykeyName := queryForm.Get("skykeyname")
 	skykeyID := queryForm.Get("skykeyid")
 	if skykeyName != "" && skykeyID != "" {
@@ -758,9 +829,6 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 		lup.SkykeyID = ID
 	}
-
-	// Enable CORS
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	// Check for a convertpath input
 	convertPathStr := queryForm.Get("convertpath")
@@ -897,11 +965,10 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 	})
 }
 
-// serveTar serves skyfiles as a tar by reading them from r and writing the
-// archive to dst.
-func serveTar(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Streamer) error {
-	tw := tar.NewWriter(dst)
-	// Get the files to tar.
+// serveArchive serves skyfiles as an archive by reading them from r and writing
+// the archive to dst using the given archiveFunc.
+func serveArchive(dst io.Writer, src io.ReadSeeker, md modules.SkyfileMetadata, archiveFunc archiveFunc) error {
+	// Get the files to archive.
 	var files []modules.SkyfileSubfileMetadata
 	for _, file := range md.Subfiles {
 		files = append(files, file)
@@ -912,24 +979,40 @@ func serveTar(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Stream
 	// If there are no files, it's a single file download. Manually construct a
 	// SkyfileSubfileMetadata from the SkyfileMetadata.
 	if len(files) == 0 {
-		// Fetch the length of the file by seeking to the end and then back to
-		// the start.
-		length, err := streamer.Seek(0, io.SeekEnd)
-		if err != nil {
-			return errors.AddContext(err, "serveTar: failed to seek to end of skyfile")
-		}
-		_, err = streamer.Seek(0, io.SeekStart)
-		if err != nil {
-			return errors.AddContext(err, "serveTar: failed to seek to start of skyfile")
+		length := md.Length
+		if md.Length == 0 {
+			// v150Compat a missing length is fine for legacy links but new
+			// links should always have the length set.
+			if build.Release == "testing" {
+				build.Critical("SkyfileMetadata is missing length")
+			}
+			// Fetch the length of the file by seeking to the end and then back to
+			// the start.
+			seekLen, err := src.Seek(0, io.SeekEnd)
+			if err != nil {
+				return errors.AddContext(err, "serveArchive: failed to seek to end of skyfile")
+			}
+			_, err = src.Seek(0, io.SeekStart)
+			if err != nil {
+				return errors.AddContext(err, "serveArchive: failed to seek to start of skyfile")
+			}
+			length = uint64(seekLen)
 		}
 		// Construct the SkyfileSubfileMetadata.
 		files = append(files, modules.SkyfileSubfileMetadata{
 			FileMode: md.Mode,
 			Filename: md.Filename,
 			Offset:   0,
-			Len:      uint64(length),
+			Len:      length,
 		})
 	}
+	return archiveFunc(dst, src, files)
+}
+
+// serveTar is an archiveFunc that implements serving the files from src to dst
+// as a tar.
+func serveTar(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error {
+	tw := tar.NewWriter(dst)
 	for _, file := range files {
 		// Create header.
 		header, err := tar.FileInfoHeader(file, file.Name())
@@ -943,49 +1026,17 @@ func serveTar(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Stream
 			return err
 		}
 		// Write file content.
-		if _, err := io.CopyN(tw, streamer, header.Size); err != nil {
+		if _, err := io.CopyN(tw, src, header.Size); err != nil {
 			return err
 		}
 	}
 	return tw.Close()
 }
 
-// serveZip serves skyfiles as a zip by reading them from r and writing the
-// archive to dst.
-func serveZip(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Streamer) error {
+// serveZip is an archiveFunc that implements serving the files from src to dst
+// as a zip.
+func serveZip(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error {
 	zw := zip.NewWriter(dst)
-
-	// Get the files to zip.
-	var files []modules.SkyfileSubfileMetadata
-	for _, file := range md.Subfiles {
-		files = append(files, file)
-	}
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].Offset < files[j].Offset
-	})
-
-	// If there are no files, it's a single file download. Manually construct a
-	// SkyfileSubfileMetadata from the SkyfileMetadata.
-	if len(files) == 0 {
-		// Fetch the length of the file by seeking to the end and then back to
-		// the start.
-		length, err := streamer.Seek(0, io.SeekEnd)
-		if err != nil {
-			return errors.AddContext(err, "serveZip: failed to seek to end of skyfile")
-		}
-		_, err = streamer.Seek(0, io.SeekStart)
-		if err != nil {
-			return errors.AddContext(err, "serveZip: failed to seek to start of skyfile")
-		}
-		// Construct the SkyfileSubfileMetadata.
-		files = append(files, modules.SkyfileSubfileMetadata{
-			FileMode: md.Mode,
-			Filename: md.Filename,
-			Offset:   0,
-			Len:      uint64(length),
-		})
-	}
-
 	for _, file := range files {
 		f, err := zw.Create(file.Filename)
 		if err != nil {
@@ -993,7 +1044,7 @@ func serveZip(dst io.Writer, md modules.SkyfileMetadata, streamer modules.Stream
 		}
 
 		// Write file content.
-		_, err = io.CopyN(f, streamer, int64(file.Len))
+		_, err = io.CopyN(f, src, int64(file.Len))
 		if err != nil {
 			return errors.AddContext(err, "serveZip: failed to write file contents to the zip")
 		}
@@ -1263,13 +1314,13 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 // defaultPath extracts the defaultPath from the request or returns a default.
 // It will never return a directory because `subfiles` contains only files.
 func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaultPath string, disableDefaultPath bool, err error) {
-	// ensure the defaultPath always has a leading slash
 	defer func() {
+		// Ensure the defaultPath always has a leading slash.
 		if defaultPath != "" {
 			defaultPath = modules.EnsurePrefix(defaultPath, "/")
 		}
 	}()
-	// Parse "disabledefaultpath" param
+	// Parse the "disabledefaultpath" param.
 	disableDefaultPathStr := queryForm.Get(modules.SkyfileDisableDefaultPathParamName)
 	if disableDefaultPathStr != "" {
 		disableDefaultPath, err = strconv.ParseBool(disableDefaultPathStr)
@@ -1277,34 +1328,34 @@ func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaul
 			return "", false, fmt.Errorf("unable to parse 'disabledefaultpath' parameter: " + err.Error())
 		}
 	}
-	// Parse "defaultPath" param
+	// Parse the "defaultPath" param.
 	defaultPath = queryForm.Get(modules.SkyfileDefaultPathParamName)
-	if (disableDefaultPath || defaultPath != "") && len(subfiles) == 0 {
-		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath and DisableDefaultPath are not applicable to skyfiles without subfiles.")
+	if len(subfiles) == 0 && (disableDefaultPath || defaultPath != "") {
+		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath and DisableDefaultPath are not applicable to skyfiles without subfiles")
+	}
+	if disableDefaultPath && defaultPath != "" {
+		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath and DisableDefaultPath are mutually exclusive and cannot be set together")
 	}
 	if disableDefaultPath {
 		return "", true, nil
 	}
 	if defaultPath == "" {
-		// No default path specified, check if there is an `index.html` file.
-		_, exists := subfiles[DefaultSkynetDefaultPath]
-		if exists {
-			return DefaultSkynetDefaultPath, false, nil
-		}
-		// For single file directories we want to serve the only file.
-		if len(subfiles) == 1 {
-			for filename := range subfiles {
-				return filename, false, nil
-			}
-		}
-		// No `index.html` in a multi-file directory, so we can't have a
-		// default path.
 		return "", false, nil
 	}
 	// Check if the defaultPath exists. Omit the leading slash because
 	// the filenames in `subfiles` won't have it.
 	if _, exists := subfiles[strings.TrimPrefix(defaultPath, "/")]; !exists {
 		return "", false, errors.AddContext(ErrInvalidDefaultPath, fmt.Sprintf("no such path: %s", defaultPath))
+	}
+	// Ensure that the defaultPath is an HTML file.
+	if !strings.HasSuffix(defaultPath, ".html") && !strings.HasSuffix(defaultPath, ".htm") {
+		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath must point to an HTML file")
+	}
+	defaultPath = modules.EnsurePrefix(defaultPath, "/")
+	// Do not allow default path to point to files which are not in the root
+	// directory of the skyfile.
+	if strings.Count(defaultPath, "/") > 1 {
+		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath must point to a file in the root directory of the skyfile")
 	}
 	return defaultPath, false, nil
 }

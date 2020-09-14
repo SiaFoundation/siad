@@ -35,10 +35,12 @@ Renter:
 * `siac renter upload [filepath] [nickname]` upload a file
 * `siac renter download [nickname] [filepath]` download a file
 * `siac renter workers` show worker status
+* `siac renter workers dj` show worker download info
 * `siac renter workers ea` show worker account status
+* `siac renter workers hsj` show worker has sector jobs status
 * `siac renter workers pt` show worker price table status
 * `siac renter workers rj` show worker read jobs status
-* `siac renter workers hsj` show worker has sector jobs status
+* `siac renter workers uj` show worker upload info
 
 Full Descriptions
 -----------------
@@ -49,6 +51,14 @@ Full Descriptions
   current target.
 
 ### Daemon tasks
+
+* `siac profile` performs actions related to the profiles for the daemon.
+
+* `siac profile start` starts a profile for the daemon.
+
+* `siac profile stop` stops a profile for the daemon.
+
+* `siac stack` writes the current stack trace to an output file.
 
 * `siac stop` sends the stop signal to siad to safely terminate. This has the
   same effect as C^c on the terminal.
@@ -170,9 +180,18 @@ have the nickname be the same as the filename.
 * `siac renter workers` shows a detailed overview of all workers. It shows
   information about their accounts, contract and download and upload status.
 
+* `siac renter workers dj` shows a detailed overview of the workers' download
+  statuses, such as whether its on cooldown or not and potentially the most
+  recent error.
+
 * `siac renter workers ea` shows a detailed overview of the workers' ephemeral
   account statuses, such as balance information, whether its on cooldown or not
   and potentially the most recent error.
+
+* `siac renter workers hsj` shows information about the has sector jobs queue.
+  How many jobs are in the queue and their average completion time. In case
+  there was an error it will also display the most recent error and when it
+  occurred.
 
 * `siac renter workers pt` shows a detailed overview of the workers's price table
   statuses, such as when it was updated, when it expires, whether its on cooldown
@@ -182,18 +201,37 @@ have the nickname be the same as the filename.
   jobs are in the queue and their average completion time. In case there was an
   error it will also display the most recent error and when it occurred.
 
-* `siac renter workers hsj` shows information about the has sector jobs queue.
-  How many jobs are in the queue and their average completion time. In case
-  there was an error it will also display the most recent error and when it
-  occurred.
+* `siac renter workers uj` shows a detailed overview of the workers' upload
+  statuses, such as whether its on cooldown or not and potentially the most
+  recent error.
 
 ### Skykey tasks
-TODO - Fill in
+* `siac skykey add [skykey base64-encoded skykey]` will add a base64-encoded
+  skykey to the key manager.
+
+* `siac skykey create [name]` will create a skykey  with the given name. The
+  --type flag can be used to specify the skykey type. Its default is private-id.
+
+* `siac skykey delete` will delete the base64-encoded skykey using either its
+  name with --name or id with --id
+
+* `siac skykey get` will get the base64-encoded skykey using either its name
+  with --name or id with --id
+
+* `siac skykey get-id [name]` will get the base64-encoded skykey id by its name
+
+* `siac skykey ls` will list all skykeys. Use with --show-priv-keys to show full
+  encoding with private key also.
 
 ### Skynet tasks
 
-* `siac skynet blacklist [skylink]` will add or remove a skylink from the
-  Renter's Skynet Blacklist
+* `siac skynet blacklist` lists the merkleroots of all blacklisted skylinks.
+
+* `siac skynet blacklist add [skylink]` will add any skylinks separated by
+  spaces to the blacklist.
+
+* `siac skynet blacklist remove [skylinks]` will remove any skylinks
+  separated by spaces from the blacklist.
 
 * `siac skynet convert [source siaPath] [destination siaPath]` converts
   a siafile to a skyfile and then generates its skylink. A new skylink will be
@@ -213,6 +251,16 @@ counted.
   with this skylink by re-uploading an exact copy. This ensures that the file
 will still be available on skynet as long as you continue maintaining the file
 in your renter.
+
+* `siac skynet portals` list the persisted Skynet portals.
+
+* `siac skynet portals add [url]` adds a Skynet portals which is either
+public or private to the list of persisted Skynet portals. The Skynet portal
+URL is of the form `url:port`. Add the `--public` if you want it to be public.
+It defaults to private.
+
+* `siac skynet portals remove [url]` removes the Skynet portal from the
+persisted list. The Skynet portal URL is of the form `url:port`.
 
 * `siac skynet unpin [siapath]` unpins one or more skyfiles or directories,
   deleting them from your list of stored files or directories.

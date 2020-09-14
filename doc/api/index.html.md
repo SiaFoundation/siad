@@ -103,7 +103,14 @@ The standard error response indicating the request failed for any reason, is a
 ### Module Not Loaded
 
 A module that is not reachable due to not being loaded by siad will return
-the custom status code `490 ModuleNotLoaded`.
+the custom status code `490 ModuleNotLoaded`. This is only returned during
+startup. Once the startup is complete and the module is still not available,
+ModuleDisabled will be returned.
+
+### Module Disabled
+
+A module that is not reachable due to being disabled, will return the custom
+status code `491 ModuleDisabled`.
 
 # Authentication
 > Example POST curl call with Authentication
@@ -535,7 +542,7 @@ Returns the some of the constants that the Sia daemon uses.
   "rootdepth":  // target
   [255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255],
   
-  "allowance":  // allowance
+  "defaultallowance":  // allowance
     {
       "funds":"250000000000000000000000000000",  // currency
       "hosts":50,                       // uint64
@@ -625,7 +632,8 @@ cumulated difficulty yet.
 
 **defaultallowance** | allowance  
 DefaultAllowance is the set of default allowance settings that will be used when
-allowances are not set or not fully set
+allowances are not set or not fully set. See [/renter GET](#renter-get) for an
+explanation of the fields.
 
 **maxtargetadjustmentup** | big.Rat  
 MaxTargetAdjustmentUp restrict how much the block difficulty is allowed to
@@ -681,6 +689,29 @@ set.
 
 **modules** | struct  
 Is a list of the siad modules with a bool indicating if the module was launched.
+
+## /daemon/stack [GET]
+**UNSTABLE**
+> curl example  
+
+```go
+curl -A "Sia-Agent" "localhost:9980/daemon/stack"
+```
+Returns the daemon's current stack trace. The maximum buffer size that will be
+returned is 64MB. If the stack trace is larger than 64MB the first 64MB are
+returned.
+
+### JSON Response
+> JSON Response Example
+ 
+```go
+{
+  "stack": [1,2,21,1,13,32,14,141,13,2,41,120], // []byte
+}
+```
+
+**stack** | []byte  
+Current stack trace. 
 
 ## /daemon/settings [POST]
 > curl example  
@@ -825,7 +856,9 @@ The unique application identifier for the application that set the fee.
 
 ### OPTIONAL
 **recurring** | bool  
-Indicates whether or not this fee will be a recurring fee. 
+Indicates whether or not this fee will be a recurring fee.  
+**NOTE:** This is only informational, the application charging the fee is
+responsible for submitting the fee on the recurring interval. 
 
 ### JSON Response
 > JSON Response Example
@@ -2452,6 +2485,7 @@ ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
   },
   "scorebreakdown": {
     "score":                      1,        // big int
+    "acceptcontractadjustment":   1,        // float64
     "ageadjustment":              0.1234,   // float64
     "basepriceadjustment":        1,        // float64
     "burnadjustment":             0.1234,   // float64
@@ -2484,6 +2518,9 @@ configurations, and different versions the absolute scores for a given host can
 be off by many orders of magnitude. When displaying to a human, some form of
 normalization with respect to the other hosts (for example, divide all scores by
 the median score of the hosts) is recommended.  
+
+**acceptcontractadjustment** | float64  
+The multiplier that gets applied to the host based on whether its accepting contracts or not. Typically "1" if they do and "0" if they don't.
 
 **ageadjustment** | float64  
 The multiplier that gets applied to the host based on how long it has been a
@@ -2889,21 +2926,23 @@ and bandwidth needs while spending significantly less than the overall
 allowance.
 
 **expectedupload** | bytes  
-Expected upload tells siad how much uploading the user expects to do each month.
-If this value is high, siad will more strongly prefer hosts that have a low
-upload bandwidth price. If this value is low, siad will focus on other metrics
-than upload bandwidth pricing, because even if the host charges a lot for upload
-bandwidth, it will not impact the total cost to the user very much.
+Expected upload tells siad how many bytes per block the user expects to upload
+during the configured period. If this value is high, siad will more strongly
+prefer hosts that have a low upload bandwidth price. If this value is low, siad
+will focus on metrics other than upload bandwidth pricing, because even if the
+host charges a lot for upload bandwidth, it will not impact the total cost to
+the user very much.
 
 The user should not consider upload bandwidth used during repairs, siad will
 consider repair bandwidth separately.
 
 **expecteddownload** | bytes  
-Expected download tells siad how much downloading the user expects to do each
-month. If this value is high, siad will more strongly prefer hosts that have a
-low download bandwidth price. If this value is low, siad will focus on other
-metrics than download bandwidth pricing, because even if the host charges a lot
-for downloads, it will not impact the total cost to the user very much.
+Expected download tells siad how many bytes per block the user expects to
+download during the configured period. If this value is high, siad will more
+strongly prefer hosts that have a low download bandwidth price. If this value is
+low, siad will focus on metrics other than download bandwidth pricing, because
+even if the host charges a lot for downloads, it will not impact the total cost
+to the user very much.
 
 The user should not consider download bandwidth used during repairs, siad will
 consider repair bandwidth separately.
@@ -3392,6 +3431,12 @@ retrieves the contents of a directory on the sia network
 **siapath** | string  
 Path to the directory on the sia network  
 
+### OPTIONAL
+**root** | bool  
+Whether or not to treat the siapath as being relative to the user's home
+directory. If this field is not set, the siapath will be interpreted as
+relative to 'home/user/'.  
+
 ### JSON Response
 > JSON Response Example
 
@@ -3481,7 +3526,8 @@ Location where the directory will reside in the renter on the network. The path
 must be non-empty, may not include any path traversal strings ("./", "../"), and
 may not begin with a forward-slash character.  
 
-**root** | bool
+### OPTIONAL
+**root** | bool  
 Whether or not to treat the siapath as being relative to the user's home
 directory. If this field is not set, the siapath will be interpreted as
 relative to 'home/user/'.  
@@ -3495,14 +3541,14 @@ Action can be either `create`, `delete` or `rename`.
    return an error if the target is a file.
  - `rename` will rename a directory on the sia network
 
- **newsiapath** | string  
- The new siapath of the renamed folder. Only required for the `rename` action.
+**newsiapath** | string  
+The new siapath of the renamed folder. Only required for the `rename` action.
 
- ### OPTIONAL
- **mode** | uint32  
- The mode can be specified in addition to the `create` action to create the
- directory with specific permissions. If not specified, the default
- permissions 0755 will be used.
+### OPTIONAL
+**mode** | uint32  
+The mode can be specified in addition to the `create` action to create the
+directory with specific permissions. If not specified, the default permissions
+0755 will be used.
 
 ### Response
 
@@ -4466,6 +4512,7 @@ returns the the status of all the workers in the renter's workerpool.
 {
   "numworkers":            2, // int
   "totaldownloadcooldown": 0, // int
+  "totalmaintenancecooldown": 0, // int
   "totaluploadcooldown":   0, // int
   
   "workers": [ // []WorkerStatus
@@ -4483,9 +4530,11 @@ returns the the status of all the workers in the renter's workerpool.
         "key": "BervnaN85yB02PzIA66y/3MfWpsjRIgovCU9/L4d8zQ=" // hash
       },
       
-      "downloadoncooldown": false, // boolean
-      "downloadqueuesize":  0,     // int
-      "downloadterminated": false, // boolean
+      "downloadcooldownerror": "",                   // string
+      "downloadcooldowntime":  -9223372036854775808, // time.Duration
+      "downloadoncooldown":    false,                // boolean
+      "downloadqueuesize":     0,                    // int
+      "downloadterminated":    false,                // boolean
       
       "uploadcooldownerror": "",                   // string
       "uploadcooldowntime":  -9223372036854775808, // time.Duration
@@ -4501,24 +4550,22 @@ returns the the status of all the workers in the renter's workerpool.
       "backupjobqueuesize": 0,        // int
       "downloadrootjobqueuesize": 0,  // int
 
+      "maintenanceoncooldown": false,                      // bool
+      "maintenancerecenterr": "",                          // string
+      "maintenancerecenterrtime": "0001-01-01T00:00:00Z",  // time
+
       "accountstatus": {
         "availablebalance": "1000000000000000000000000", // hasting
         "negativebalance": "0",                          // hasting
-        "funded": true,                                  // boolean
-        "oncooldown": false,                             // boolean
-        "oncooldownuntil": "0001-01-01T00:00:00Z",       // time
-        "consecutivefailures": 0,                        // int
         "recenterr": "",                                 // string
         "recenterrtime": "0001-01-01T00:00:00Z"          // time
+        "recentsuccesstime": "0001-01-01T00:00:00Z"      // time
       },
 
       "pricetablestatus": {
         "expirytime": "2020-06-15T16:17:01.040481+02:00", // time
         "updatetime": "2020-06-15T16:12:01.040481+02:00", // time
         "active": true,                                   // boolean
-        "oncooldown": false,                              // boolean
-        "oncooldownuntil": "0001-01-01T00:00:00Z",        // time
-        "consecutivefailures": 0,                         // int
         "recenterr": "",                                  // string
         "recenterrtime": "0001-01-01T00:00:00Z"           // time
       },
@@ -4545,11 +4592,15 @@ returns the the status of all the workers in the renter's workerpool.
 }
 ```
 
+
 **numworkers** | int  
 Number of workers in the workerpool
 
 **totaldownloadcooldown** | int  
 Number of workers on download cooldown
+
+**totalmaintenancecooldown** | int  
+Number of workers on maintenance cooldown
 
 **totaluploadcooldown** | int  
 Number of workers on upload cooldown
@@ -4579,6 +4630,12 @@ The worker's contract's utility is locked
 
 **hostpublickey** | SiaPublicKey  
 Public key of the host that the file contract is formed with.  
+
+**downloadcooldownerror** | error  
+The error reason for the worker being on download cooldown
+
+**downloadcooldowntime** | time.Duration  
+How long the worker is on download cooldown
 
 **downloadoncooldown** | boolean  
 Indicates if the worker is on download cooldown
@@ -4615,6 +4672,15 @@ The size of the worker's backup job queue
 
 **downloadrootjobqueuesize** | int  
 The size of the worker's download by root job queue
+
+**maintenanceoncooldown** | boolean  
+Indicates if the worker is on maintenance cooldown
+
+**maintenancecooldownerror** | string  
+The error reason for the worker being on maintenance cooldown
+
+**maintenancecooldowntime** | time.Duration  
+How long the worker is on maintenance cooldown
 
 **accountstatus** | object
 Detailed information about the workers' ephemeral account status
@@ -4786,8 +4852,14 @@ curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGv
 
 downloads a skylink using http streaming. This call blocks until the data is
 received. There is a 30s default timeout applied to downloading a skylink. If
-the data can not be found within this 30s time constraint, a 404 will be
+the data cannot be found within this 30s time constraint, a 404 will be
 returned. This timeout is configurable through the query string parameters.
+
+In order to make sure skapps function correctly when they rely on relative paths
+within the same skyfile, we need the skylink to be followed by a trailing slash.
+If that is not the case the API responds with a redirect to the same skylink,
+adding that trailing slash. This redirect only happens if the skyfile holds a 
+skapp.
 
 ### Path Parameters 
 ### Required
@@ -4887,17 +4959,22 @@ required to be maintained on the network in order for the skylink to remain
 active. This field is mutually exclusive with uploading streaming.
 
 **defaultpath** string  
-The path to the default file to returned when the skyfile is visited at the root
-path. If the defaultpath parameter is not provided, it will default to
-`index.html` for directories that have that file, or it will default to the only
-file in the directory, if a single file directory is uploaded. This behaviour
-can be disabled using the `disabledefaultpath` parameter.
+The path to the default file whose content is to be returned when the skyfile is 
+accessed at the root path. The `defaultpath` must point to a file in the root
+directory of the skyfile (except for skyfiles with a single file in them). If
+the `defaultpath` parameter is not provided, it will default to `index.html` 
+for directories that have that file, or it will default to the only file in the 
+directory, if a single file directory is uploaded. This behaviour can be 
+disabled using the `disabledefaultpath` parameter. The two parameters are 
+mutually exclusive and only one can be specified. Neither one is applicable to 
+skyfiles without subfiles.
 
 **disabledefaultpath** bool  
-The 'disabledefaultpath' allows to disable the default path behaviour. If this
-parameter is set to true, there will be no automatic default to `index.html`,
-nor to the single file in directory upload.
- 
+The `disabledefaultpath` allows to disable the default path behaviour. If this
+parameter is set to `true`, there will be no automatic default to `index.html`,
+nor to the single file in directory upload. This parameter is mutually exclusive
+with `defaultpath` and specifying both will result in an error. Neither one is 
+applicable to skyfiles without subfiles.
 
 **filename** | string  
 The name of the file. This name will be encoded into the skyfile metadata, and

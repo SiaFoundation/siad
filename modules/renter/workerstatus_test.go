@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sync/atomic"
@@ -49,14 +50,16 @@ func TestWorkerAccountStatus(t *testing.T) {
 	// fetch the worker's account status and verify its output
 	a := w.staticAccount
 	status := a.managedStatus()
-	if !(status.Funded == true &&
+	if !(!status.AvailableBalance.IsZero() &&
 		status.AvailableBalance.Equals(w.staticBalanceTarget) &&
-		status.OnCoolDown == false &&
-		status.OnCoolDownUntil == time.Time{} &&
-		status.ConsecutiveFailures == 0 &&
 		status.RecentErr == "" &&
 		status.RecentErrTime == time.Time{}) {
 		t.Fatal("Unexpected account status", ToJSON(status))
+	}
+
+	// ensure the worker is not on maintenance cooldown
+	if w.managedOnMaintenanceCooldown() {
+		t.Fatal("Unexpected maintenance cooldown")
 	}
 
 	// nullify the account balance to ensure refilling triggers a max balance
@@ -68,14 +71,16 @@ func TestWorkerAccountStatus(t *testing.T) {
 
 	// fetch the worker's account status and verify the error is being set
 	status = a.managedStatus()
-	if !(status.Funded == false &&
+	if !(status.AvailableBalance.IsZero() &&
 		status.AvailableBalance.IsZero() &&
-		status.OnCoolDown == true &&
-		status.OnCoolDownUntil != time.Time{} &&
-		status.ConsecutiveFailures == 1 &&
 		status.RecentErr != "" &&
 		status.RecentErrTime != time.Time{}) {
 		t.Fatal("Unexpected account status", ToJSON(status))
+	}
+
+	// ensure the worker's RHP3 system is on cooldown
+	if !w.managedOnMaintenanceCooldown() {
+		t.Fatal("Expected RHP3 to have been put on cooldown")
 	}
 }
 
@@ -120,9 +125,6 @@ func TestWorkerPriceTableStatus(t *testing.T) {
 	// fetch the worker's pricetable status and verify its output
 	status := w.staticPriceTableStatus()
 	if !(status.Active == true &&
-		status.OnCoolDown == false &&
-		status.OnCoolDownUntil == time.Time{} &&
-		status.ConsecutiveFailures == 0 &&
 		status.RecentErr == "" &&
 		status.RecentErrTime == time.Time{}) {
 		t.Fatal("Unexpected price table status", ToJSON(status))
@@ -146,9 +148,6 @@ func TestWorkerPriceTableStatus(t *testing.T) {
 	if err := build.Retry(100, 100*time.Millisecond, func() error {
 		status = w.staticPriceTableStatus()
 		if !(status.Active == true &&
-			status.OnCoolDown == true &&
-			status.OnCoolDownUntil != time.Time{} &&
-			status.ConsecutiveFailures == 1 &&
 			status.RecentErr != "" &&
 			status.RecentErrTime != time.Time{}) {
 			return fmt.Errorf("Unexpected pricetable status %v", ToJSON(status))
@@ -214,7 +213,7 @@ func TestWorkerReadJobStatus(t *testing.T) {
 	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, limit)
 
 	// add the job to the worker
-	cc := make(chan struct{})
+	ctx := context.Background()
 	rc := make(chan *jobReadResponse)
 
 	jhs := &jobReadSector{
@@ -222,8 +221,8 @@ func TestWorkerReadJobStatus(t *testing.T) {
 			staticResponseChan: rc,
 			staticLength:       modules.SectorSize,
 			jobGeneric: &jobGeneric{
-				staticCancelChan: cc,
-				staticQueue:      w.staticJobReadQueue,
+				staticCtx:   ctx,
+				staticQueue: w.staticJobReadQueue,
 			},
 		},
 		staticOffset: 0,
@@ -260,8 +259,8 @@ func TestWorkerReadJobStatus(t *testing.T) {
 			staticResponseChan: rc,
 			staticLength:       modules.SectorSize,
 			jobGeneric: &jobGeneric{
-				staticCancelChan: cc,
-				staticQueue:      w.staticJobReadQueue,
+				staticCtx:   ctx,
+				staticQueue: w.staticJobReadQueue,
 			},
 		},
 		staticOffset: 0,
@@ -338,9 +337,9 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, limit)
 
 	// add the job to the worker
-	cc := make(chan struct{})
+	ctx := context.Background()
 	rc := make(chan *jobHasSectorResponse)
-	jhs := w.newJobHasSector(cc, rc, crypto.Hash{})
+	jhs := w.newJobHasSector(ctx, rc, crypto.Hash{})
 	if !w.staticJobHasSectorQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")
 	}
@@ -374,7 +373,7 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	hostClosed = true
 
 	// add another job to the worker
-	jhs = w.newJobHasSector(cc, rc, crypto.Hash{})
+	jhs = w.newJobHasSector(ctx, rc, crypto.Hash{})
 	if !w.staticJobHasSectorQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")
 	}

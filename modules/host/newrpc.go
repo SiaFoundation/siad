@@ -23,8 +23,9 @@ func (h *Host) managedRPCLoopSettings(s *rpcSession) error {
 	atomic.AddUint64(&h.atomicSettingsCalls, 1)
 	s.extendDeadline(modules.NegotiateSettingsTime)
 
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
-	hes := h.externalSettings()
+	hes := h.externalSettings(maxFee)
 	h.mu.Unlock()
 	js, _ := json.Marshal(hes)
 	resp := modules.LoopSettingsResponse{
@@ -181,10 +182,11 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	}
 
 	// Read some internal fields for later.
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
 	blockHeight := h.blockHeight
 	secretKey := h.secretKey
-	settings := h.externalSettings()
+	settings := h.externalSettings(maxFee)
 	h.mu.Unlock()
 	currentRevision := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
@@ -435,10 +437,11 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	}
 
 	// Read some internal fields for later.
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
 	blockHeight := h.blockHeight
 	secretKey := h.secretKey
-	settings := h.externalSettings()
+	settings := h.externalSettings(maxFee)
 	h.mu.Unlock()
 	currentRevision := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
@@ -584,8 +587,9 @@ func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 		return err
 	}
 
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
-	settings := h.externalSettings()
+	settings := h.externalSettings(maxFee)
 	h.mu.Unlock()
 	if !settings.AcceptingContracts {
 		s.writeError(errors.New("host is not accepting new contracts"))
@@ -634,7 +638,6 @@ func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 	h.mu.RUnlock()
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
-		renewal:                 false,
 		renterPK:                renterPK,
 		renterSignatures:        renterSigs.ContractSignatures,
 		renterRevisionSignature: renterSigs.RevisionSignature,
@@ -674,9 +677,9 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 		s.writeError(err)
 		return err
 	}
-
+	_, max := h.tpool.FeeEstimation()
 	h.mu.Lock()
-	settings := h.externalSettings()
+	settings := h.externalSettings(max)
 	h.mu.Unlock()
 	if !settings.AcceptingContracts {
 		s.writeError(errors.New("host is not accepting new contracts"))
@@ -724,8 +727,8 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	// obligation in the process.
 	h.mu.RLock()
 	fc := req.Transactions[len(req.Transactions)-1].FileContracts[0]
-	renewRevenue := renewBasePrice(s.so, settings, fc)
-	renewRisk := renewBaseCollateral(s.so, settings, fc)
+	renewRevenue := rhp2RenewBasePrice(s.so, settings, fc)
+	renewRisk := rhp2RenewBaseCollateral(s.so, settings, fc)
 	renewCollateral, err := renewContractCollateral(s.so, settings, fc)
 	h.mu.RUnlock()
 	if err != nil {
@@ -734,7 +737,6 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	}
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
-		renewal:                 false,
 		renterPK:                renterPK,
 		renterSignatures:        renterSigs.ContractSignatures,
 		renterRevisionSignature: renterSigs.RevisionSignature,
@@ -785,10 +787,11 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 	}
 
 	// Read some internal fields for later.
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
 	blockHeight := h.blockHeight
 	secretKey := h.secretKey
-	settings := h.externalSettings()
+	settings := h.externalSettings(maxFee)
 	h.mu.Unlock()
 	currentRevision := s.so.RevisionTransactionSet[len(s.so.RevisionTransactionSet)-1].FileContractRevisions[0]
 
@@ -894,11 +897,17 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	}
 
 	// Read some internal fields for later.
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
 	blockHeight := h.blockHeight
 	secretKey := h.secretKey
-	settings := h.externalSettings()
+	settings := h.externalSettings(maxFee)
 	h.mu.Unlock()
+
+	// Disrupt if necessary.
+	if h.dependencies.Disrupt("RenewFail") {
+		return errors.New("RenewFail")
+	}
 
 	// Check that the old contract is locked.
 	if len(s.so.OriginTransactionSet) == 0 {
@@ -993,21 +1002,26 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	// obligation in the process.
 	h.mu.RLock()
 	fc := req.Transactions[len(req.Transactions)-1].FileContracts[0]
-	renewRevenue := renewBasePrice(s.so, settings, fc)
-	renewRisk := renewBaseCollateral(s.so, settings, fc)
+	renewRevenue := rhp2RenewBasePrice(s.so, settings, fc)
+	renewRisk := rhp2RenewBaseCollateral(s.so, settings, fc)
 	renewCollateral, err := renewContractCollateral(s.so, settings, fc)
 	h.mu.RUnlock()
 	if err != nil {
 		s.writeError(err)
 		return extendErr("failed to compute contract collateral: ", err)
 	}
+	// Clear the old storage obligation.
+	oldRoots := s.so.SectorRoots
+	s.so.SectorRoots = []crypto.Hash{}
+	s.so.RevisionTransactionSet = []types.Transaction{finalRevTxn}
+	// Finalize the contract. This creates a new SO and saves the old one atomically.
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
-		renewal:                 true,
+		renewedSO:               &s.so,
 		renterPK:                renterPK,
 		renterSignatures:        renterSigs.ContractSignatures,
 		renterRevisionSignature: renterSigs.RevisionSignature,
-		initialSectorRoots:      s.so.SectorRoots,
+		initialSectorRoots:      oldRoots,
 		hostCollateral:          renewCollateral,
 		hostInitialRevenue:      renewRevenue,
 		hostInitialRisk:         renewRisk,
@@ -1019,14 +1033,6 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 		return extendErr("failed to finalize contract: ", err)
 	}
 	defer h.managedUnlockStorageObligation(newSOID)
-
-	// Clear the old storage obligatoin.
-	s.so.SectorRoots = []crypto.Hash{}
-	s.so.RevisionTransactionSet = []types.Transaction{finalRevTxn}
-	// we don't count the sectors as being removed since we prevented
-	// managedFinalizeContract from incrementing the counters on virtual sectors
-	// before
-	h.managedModifyStorageObligation(s.so, nil, nil)
 
 	// Send our signatures for the contract transaction and initial revision.
 	hostSigs := modules.LoopRenewAndClearContractSignatures{

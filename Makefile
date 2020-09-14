@@ -74,20 +74,31 @@ pkgs = \
 	./skykey \
 	./sync \
 	./types \
-	./types/typesutil
+	./types/typesutil \
 
-# release-pkgs determine which packages are built for release and distrubtion
+# release-pkgs determine which packages are built for release and distribution
 # when running a 'make release' command.
 release-pkgs = ./cmd/siac ./cmd/siad
 
 # lockcheckpkgs are the packages that are checked for locking violations.
 lockcheckpkgs = \
 	./benchmark \
+	./build \
+	./cmd/sia-node-scanner \
 	./cmd/siac \
+	./cmd/siad \
+	./cmd/skynet-benchmark \
+	./node \
+	./node/api \
+	./node/api/client \
+	./node/api/server \
 	./modules/host/mdm \
 	./modules/renter/hostdb \
 	./modules/renter/proto \
 	./modules/renter/skynetblacklist \
+	./skykey \
+	./types \
+	./types/typesutil \
 
 # run determines which tests run when running any variation of 'make test'.
 run = .
@@ -193,11 +204,13 @@ test-vlong: clean fmt vet lint-ci
 ifneq ("$(OS)","Windows_NT")
 # Linux
 	@mkdir -p cover
+	GORACE='$(racevars)' go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
 else
 # Windows
 	MD cover
+	SET GORACE='$(racevars)'
+	go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
 endif
-	GORACE='$(racevars)' go test --coverprofile='./cover/cover.out' -v -race -tags='testing debug vlong netgo' -timeout=20000s $(pkgs) -run=$(run) -count=$(count)
 
 test-cpu:
 	go test -v -tags='testing debug netgo' -timeout=500s -cpuprofile cpu.prof $(pkgs) -run=$(run) -count=$(count)
@@ -209,7 +222,7 @@ cover: clean
 	@mkdir -p cover
 	@for package in $(pkgs); do                                                                                                                                 \
 		mkdir -p `dirname cover/$$package`                                                                                                                      \
-		&& go test -tags='testing debug netgo' -timeout=500s -covermode=atomic -coverprofile=cover/$$package.out ./$$package -run=$(run) || true \
+		&& go test -tags='testing debug netgo' -timeout=500s -covermode=atomic -coverprofile=cover/$$package.out ./$$package -run=$(run) || true 				\
 		&& go tool cover -html=cover/$$package.out -o=cover/$$package.html ;                                                                                    \
 	done
 
@@ -233,7 +246,7 @@ fullcover: clean
 	@echo "mode: atomic" >> fullcover/fullcover.out
 	@for package in $(pkgs); do                                                                                                                                                             \
 		mkdir -p `dirname fullcover/tests/$$package`                                                                                                                                        \
-		&& go test -tags='testing debug netgo' -timeout=500s -covermode=atomic -coverprofile=fullcover/tests/$$package.out -coverpkg $(cpkg) ./$$package -run=$(run) || true \
+		&& go test -tags='testing debug netgo' -timeout=500s -covermode=atomic -coverprofile=fullcover/tests/$$package.out -coverpkg $(cpkg) ./$$package -run=$(run) || true 				\
 		&& go tool cover -html=fullcover/tests/$$package.out -o=fullcover/tests/$$package.html                                                                                              \
 		&& tail -n +2 fullcover/tests/$$package.out >> fullcover/fullcover.out ;                                                                                                            \
 	done

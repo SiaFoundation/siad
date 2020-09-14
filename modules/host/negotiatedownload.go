@@ -43,10 +43,11 @@ func (h *Host) managedDownloadIteration(conn net.Conn, so *storageObligation) er
 	}
 
 	// Grab a set of variables that will be useful later in the function.
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
 	blockHeight := h.blockHeight
 	secretKey := h.secretKey
-	settings := h.externalSettings()
+	settings := h.externalSettings(maxFee)
 	h.mu.Unlock()
 
 	// Read the download requests, followed by the file contract revision that
@@ -209,6 +210,11 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 		s := fmt.Sprintf("expected exactly %v to be transferred to the host, but %v was transferred: ", fromRenter, toHost)
 		return errors.AddContext(ErrLowHostValidOutput, s)
 	}
+	// The amount of money moved to the void output should match the money moved
+	// to the valid host output.
+	if !paymentVoidOutput.Value.Equals(existingVoidOutput.Value.Add(toHost)) {
+		return ErrLowVoidOutput
+	}
 
 	// If the renter's valid proof output is larger than the renter's missed
 	// proof output, the renter has incentive to see the host fail. Make sure
@@ -248,6 +254,26 @@ func verifyPaymentRevision(existingRevision, paymentRevision types.FileContractR
 	}
 	if !paymentRevision.MissedHostOutput().Value.Equals(existingRevision.MissedHostOutput().Value) {
 		return ErrLowHostMissedOutput
+	}
+	if err := verifyPayoutSums(existingRevision, paymentRevision); err != nil {
+		return errors.Compose(ErrInvalidPayoutSums, err)
+	}
+	return nil
+}
+
+// verifyPayoutSums compares two revisions and makes sure Sum(validPayouts,
+// missedPayouts) is true for both and that they both have the same payout.
+func verifyPayoutSums(oldRevision, newRevision types.FileContractRevision) error {
+	oldValid, oldMissed := oldRevision.TotalPayout()
+	if !oldValid.Equals(oldMissed) {
+		return errors.New("old revision's valid output doesn't match missed output")
+	}
+	newValid, newMissed := newRevision.TotalPayout()
+	if !newValid.Equals(newMissed) {
+		return errors.New("new revision's valid output doesn't match missed output")
+	}
+	if !oldValid.Equals(newValid) {
+		return errors.New("total payout of new revision doesn't match old revision's")
 	}
 	return nil
 }

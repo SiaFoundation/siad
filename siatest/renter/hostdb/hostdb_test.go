@@ -737,10 +737,11 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 	}
 	allowHosts := int(rg.Settings.Allowance.Hosts)
 
-	// Confirm we are starting with expected number of contracts
+	// Confirm we are starting with expected number of contracts and active
+	// hosts.
 	loop := 0
 	m := tg.Miners()[0]
-	err = build.Retry(50, 100*time.Millisecond, func() error {
+	err = build.Retry(100, 100*time.Millisecond, func() error {
 		// Mine a block every 10 iterations to make sure
 		// threadedContractMaintenance is being triggered
 		if loop%10 == 0 {
@@ -755,6 +756,13 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 		}
 		if len(rc.ActiveContracts) < allowHosts {
 			return fmt.Errorf("Contracts did not form as expected, have %v expected at least %v", len(rc.ActiveContracts), allowHosts)
+		}
+		hdbActive, err := renter.HostDbActiveGet()
+		if err != nil {
+			return err
+		}
+		if len(hdbActive.Hosts) != len(tg.Hosts()) {
+			return fmt.Errorf("expected %v active hosts but got %v", len(tg.Hosts()), len(hdbActive.Hosts))
 		}
 		return nil
 	})
@@ -917,8 +925,12 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 	if err != nil {
 		return err
 	}
+	hdbag, err := renter.HostDbAllGet()
+	if err != nil {
+		return err
+	}
 	if len(hdbActive.Hosts) != len(tg.Hosts()) {
-		return fmt.Errorf("Not expected number of active hosts after disabling FilterMode: got %v expected %v", len(hdbActive.Hosts), len(tg.Hosts()))
+		return fmt.Errorf("Unexpected number of active hosts after disabling FilterMode: got %v expected %v (%v)", len(hdbActive.Hosts), len(tg.Hosts()), len(hdbag.Hosts))
 	}
 
 	// Confirm that contracts will form with non listed hosts again by

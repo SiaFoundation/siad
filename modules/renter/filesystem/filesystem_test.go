@@ -1295,7 +1295,7 @@ func TestRenameFileInMemory(t *testing.T) {
 }
 
 // TestDeleteFileInMemory confirms that threads that have access to a file
-// will continue to have access to the file even it another thread deletes it
+// will continue to have access to the file even if another thread deletes it
 func TestDeleteFileInMemory(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -1382,7 +1382,7 @@ func TestDeleteCorruptSiaFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	siaFilePath := siaPath.SiaFileSysPath(sfs.Root())
-	err = ioutil.WriteFile(siaFilePath, fastrand.Bytes(100), 0666)
+	err = ioutil.WriteFile(siaFilePath, fastrand.Bytes(100), persist.DefaultDiskPermissionsTest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1690,7 +1690,7 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 }
 
 // TestRenameDirInMemory confirms that threads that have access to a dir
-// will continue to have access to the dir even it another thread renames it
+// will continue to have access to the dir even if the dir is renamed.
 func TestRenameDirInMemory(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -1707,17 +1707,12 @@ func TestRenameDirInMemory(t *testing.T) {
 	if !exists {
 		t.Fatal("No SiaDir found")
 	}
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// Confirm there are 1 dir in memory
 	if len(fs.directories) != 1 {
 		t.Fatal("Expected 1 dir in memory, got:", len(fs.directories))
 	}
 
-	// Test renaming an instance of a dir
-	//
 	// Access dir with another instance
 	entry2, err := fs.OpenSiaDir(siaPath)
 	if err != nil {
@@ -1727,7 +1722,7 @@ func TestRenameDirInMemory(t *testing.T) {
 	if len(fs.directories) != 1 {
 		t.Fatal("Expected 1 dir in memory, got:", len(fs.directories))
 	}
-	path, err := entry.Path()
+	path, err := entry2.Path()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1735,14 +1730,21 @@ func TestRenameDirInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Rename second instance
+	// Rename the directory.
 	newSiaPath := modules.RandomSiaPath()
 	err = fs.RenameDir(siaPath, newSiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm the other instance is still in memory.
+	// Confirm both instances are still in memory.
 	deleted, err := entry.Deleted()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted {
+		t.Fatal("Expected file to not be deleted")
+	}
+	deleted, err = entry2.Deleted()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1755,7 +1757,7 @@ func TestRenameDirInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm the other instance is still in memory.
+	// Confirm the directory is still in memory.
 	deleted, err = entry.Deleted()
 	if err != nil {
 		t.Fatal(err)
@@ -1764,33 +1766,33 @@ func TestRenameDirInMemory(t *testing.T) {
 		t.Fatal("Expected file to not be deleted")
 	}
 
-	// Confirm there are still only 1 dir in memory as renaming doesn't add
-	// the new name to memory
+	// Confirm there is still only 1 dir in memory as renaming doesn't add
+	// the new name to memory.
 	if len(fs.directories) != 1 {
 		t.Fatal("Expected 1 dir in memory, got:", len(fs.directories))
 	}
-	// Close instance of renamed dir
+	// Close instance of renamed dir.
 	err = entry2.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there are still only 1 dir in memory
+	// Confirm there are still only 1 dir in memory.
 	if len(fs.directories) != 1 {
 		t.Fatal("Expected 1 dir in memory, got:", len(fs.directories))
 	}
-	// Close other instance of second dir
+	// Close other instance of second dir.
 	err = entry.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm there is no dir in memory
+	// Confirm there is no dir in memory.
 	if len(fs.directories) != 0 {
 		t.Fatal("Expected 0 dirs in memory, got:", len(fs.directories))
 	}
 }
 
 // TestDeleteDirInMemory confirms that threads that have access to a dir
-// will continue to have access to the dir even it another thread deletes it
+// will continue to have access to the dir even if another thread deletes it
 func TestDeleteDirInMemory(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -1806,9 +1808,6 @@ func TestDeleteDirInMemory(t *testing.T) {
 	exists, _ := fs.DirExists(dirPath)
 	if !exists {
 		t.Fatal("No SiaDirSetEntry found")
-	}
-	if err != nil {
-		t.Fatal(err)
 	}
 
 	// Confirm there is 1 dir in memory
@@ -1860,7 +1859,8 @@ func TestDeleteDirInMemory(t *testing.T) {
 		t.Fatal("expected file2 not to be marked deleted")
 	}
 	// Delete and close instance of dir.
-	if err := fs.DeleteDir(dirPath); err != nil {
+	err = fs.DeleteDir(dirPath)
+	if err != nil {
 		t.Fatal(err)
 	}
 	err = entry2.Close()
@@ -1923,7 +1923,7 @@ func TestDeleteDirInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Confirm renter has one dir in memory
+	// Confirm renter has no dirs in memory
 	if len(fs.directories) != 0 {
 		t.Fatal("Expected 0 dirs in memory, got:", len(fs.directories))
 	}

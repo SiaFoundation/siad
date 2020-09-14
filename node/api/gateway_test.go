@@ -7,7 +7,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
 )
 
-// TestGatewayStatus checks that the /gateway/status call is returning a corect
+// TestGatewayStatus checks that the /gateway/status call is returning a correct
 // peerlist.
 func TestGatewayStatus(t *testing.T) {
 	if testing.Short() {

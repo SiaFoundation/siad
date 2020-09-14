@@ -1,0 +1,1 @@
+- Added feature to use pipes with 'siac skynet upload'. e.g. 'dd if=/dev/zero bs=1M count=1000 | siac skynet upload 1GB.dat'

@@ -241,6 +241,10 @@ type (
 		// transaction should be dropped.
 		Sign(wholeTransaction bool) ([]types.Transaction, error)
 
+		// Sweep creates a funded txn that sends the inputs of this transactionBuilder
+		// to the specified output if submitted to the blockchain.
+		Sweep(output types.SiacoinOutput) (txn types.Transaction, parents []types.Transaction)
+
 		// UnconfirmedParents returns any unconfirmed parents the transaction set that
 		// is being built by the transaction builder could have.
 		UnconfirmedParents() ([]types.Transaction, error)

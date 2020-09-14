@@ -1,0 +1,1 @@
+- Split out `siac renter workers` download and upload info

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -41,6 +42,37 @@ or
 Bits per second: Bps, Kbps, Mbps, Gbps, Tbps
 Set them to 0 for no limit.`,
 		Run: wrap(globalratelimitcmd),
+	}
+
+	profileCmd = &cobra.Command{
+		Use:   "profile",
+		Short: "Start and stop profiles for the daemon",
+		Long:  "Start and stop profiles for the daemon",
+		Run:   profilecmd,
+	}
+
+	profileStartCmd = &cobra.Command{
+		Use:   "start [profileFlags]",
+		Short: "Start the profile for the daemon",
+		Long: `Start a CPU, memory, and/or trace profile for the daemon.
+Acceptable profile flags are 'cmt'. Provide a profileDir to save the profiles to.
+If no profileDir is provided the profiles will be saved in a the default profile
+directory in the siad data directory.`,
+		Run: wrap(profilestartcmd),
+	}
+
+	profileStopCmd = &cobra.Command{
+		Use:   "stop",
+		Short: "Stop profiles for the daemon",
+		Long:  "Stop profiles for the daemon",
+		Run:   wrap(profilestopcmd),
+	}
+
+	stackCmd = &cobra.Command{
+		Use:   "stack",
+		Short: "Get current stack trace for the daemon",
+		Long:  "Get current stack trace for the daemon",
+		Run:   wrap(stackcmd),
 	}
 
 	updateCmd = &cobra.Command{
@@ -106,6 +138,30 @@ func alertscmd() {
 	}
 }
 
+// profilecmd displays the usage info for the command.
+func profilecmd(cmd *cobra.Command, args []string) {
+	cmd.UsageFunc()(cmd)
+	os.Exit(exitCodeUsage)
+}
+
+// profilestartcmd starts the profile for the daemon.
+func profilestartcmd(profileFlags string) {
+	err := httpClient.DaemonStartProfilePost(profileFlags, daemonProfileDirectory)
+	if err != nil {
+		die(err)
+	}
+	fmt.Println("Profile Started!")
+}
+
+// profilestopcmd stops the profile for the daemon.
+func profilestopcmd() {
+	err := httpClient.DaemonStopProfileGet()
+	if err != nil {
+		die(err)
+	}
+	fmt.Println("Profile Stopped")
+}
+
 // version prints the version of siac and siad.
 func versioncmd() {
 	fmt.Println("Sia Client")
@@ -139,6 +195,35 @@ func stopcmd() {
 		die("Could not stop daemon:", err)
 	}
 	fmt.Println("Sia daemon stopped.")
+}
+
+// stackcmd is the handler for the command `siac stack` and writes the current
+// stack trace to an output file.
+func stackcmd() {
+	// Get the stack trace
+	dsg, err := httpClient.DaemonStackGet()
+	if err != nil {
+		die("Could not get the stack:", err)
+	}
+	fmt.Println(dsg.Stack)
+	// Create output file
+	f, err := os.Create(daemonStackOutputFile)
+	if err != nil {
+		die("Unable to create output file:", err)
+	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			die(err)
+		}
+	}()
+
+	// Write stack trace to output file
+	_, err = f.Write([]byte(dsg.Stack))
+	if err != nil {
+		die("Unable to write to output file:", err)
+	}
+
+	fmt.Println("Current stack trace written to:", daemonStackOutputFile)
 }
 
 // updatecmd is the handler for the command `siac update`.

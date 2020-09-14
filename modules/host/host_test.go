@@ -322,7 +322,7 @@ func newRenterHostPairCustomHostTester(ht *hostTester) (*renterHostPair, error) 
 		return nil, errors.AddContext(err, "unable to add noop revision")
 	}
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
+	err = ht.host.managedAddStorageObligation(so)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to add the storage obligation")
 	}
@@ -865,6 +865,21 @@ func (p *renterHostPair) managedLatestRevision(payByFC bool, fundAmt types.Curre
 		return types.FileContractRevision{}, err
 	}
 
+	// send the request.
+	err = modules.RPCWrite(stream, modules.RPCLatestRevisionRequest{
+		FileContractID: fcid,
+	})
+	if err != nil {
+		return types.FileContractRevision{}, err
+	}
+
+	// read the response.
+	var lrr modules.RPCLatestRevisionResponse
+	err = modules.RPCRead(stream, &lrr)
+	if err != nil {
+		return types.FileContractRevision{}, err
+	}
+
 	// Write the pricetable uid.
 	err = modules.RPCWrite(stream, pt.UID)
 	if err != nil {
@@ -882,21 +897,6 @@ func (p *renterHostPair) managedLatestRevision(payByFC bool, fundAmt types.Curre
 		if err != nil {
 			return types.FileContractRevision{}, err
 		}
-	}
-
-	// send the request.
-	err = modules.RPCWrite(stream, modules.RPCLatestRevisionRequest{
-		FileContractID: fcid,
-	})
-	if err != nil {
-		return types.FileContractRevision{}, err
-	}
-
-	// read the response.
-	var lrr modules.RPCLatestRevisionResponse
-	err = modules.RPCRead(stream, &lrr)
-	if err != nil {
-		return types.FileContractRevision{}, err
 	}
 
 	// expect clean stream close

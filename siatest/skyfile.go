@@ -15,6 +15,13 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// TestFile is a small helper struct that identifies a file to be uploaded. The
+// upload helpers take a slice of these files to ensure order is maintained.
+type TestFile struct {
+	Name string
+	Data []byte
+}
+
 // AddMultipartFile is a helper function to add a file to the multipart form-
 // data. Note that the given data will be treated as binary data, and the multi
 // part's ContentType header will be set accordingly.
@@ -65,6 +72,7 @@ func (tn *TestNode) UploadNewSkyfileWithDataBlocking(filename string, filedata [
 		BaseChunkRedundancy: 2,
 		FileMetadata: modules.SkyfileMetadata{
 			Filename: filename,
+			Length:   uint64(len(filedata)),
 			Mode:     modules.DefaultFilePerm,
 		},
 		Reader: reader,
@@ -114,13 +122,6 @@ func (tn *TestNode) UploadNewSkyfileWithDataBlocking(filename string, filedata [
 func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, force bool) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
 	data := fastrand.Bytes(int(filesize))
 	return tn.UploadNewSkyfileWithDataBlocking(filename, data, force)
-}
-
-// TestFile is a small helper struct that identifies a file to be uploaded. The
-// upload helpers take a slice of these files to ensure order is maintained.
-type TestFile struct {
-	Name string
-	Data []byte
 }
 
 // UploadNewMultipartSkyfileBlocking uploads a multipart skyfile that

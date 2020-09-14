@@ -12,9 +12,9 @@ import (
 	"gitlab.com/NebulousLabs/encoding"
 )
 
-// renewBaseCollateral returns the base collateral on the storage in the file
+// rhp2RenewBaseCollateral returns the base collateral on the storage in the file
 // contract, using the host's external settings and the starting file contract.
-func renewBaseCollateral(so storageObligation, settings modules.HostExternalSettings, fc types.FileContract) types.Currency {
+func rhp2RenewBaseCollateral(so storageObligation, settings modules.HostExternalSettings, fc types.FileContract) types.Currency {
 	if fc.WindowEnd <= so.proofDeadline() {
 		return types.NewCurrency64(0)
 	}
@@ -22,9 +22,9 @@ func renewBaseCollateral(so storageObligation, settings modules.HostExternalSett
 	return settings.Collateral.Mul64(fc.FileSize).Mul64(uint64(timeExtension))
 }
 
-// renewBasePrice returns the base cost of the storage in the file contract,
+// rhp2RenewBasePrice returns the base cost of the storage in the file contract,
 // using the host external settings and the starting file contract.
-func renewBasePrice(so storageObligation, settings modules.HostExternalSettings, fc types.FileContract) types.Currency {
+func rhp2RenewBasePrice(so storageObligation, settings modules.HostExternalSettings, fc types.FileContract) types.Currency {
 	if fc.WindowEnd <= so.proofDeadline() {
 		return types.NewCurrency64(0)
 	}
@@ -41,7 +41,7 @@ func renewContractCollateral(so storageObligation, settings modules.HostExternal
 	}
 
 	diff := fc.ValidHostPayout().Sub(settings.ContractPrice)
-	rbp := renewBasePrice(so, settings, fc)
+	rbp := rhp2RenewBasePrice(so, settings, fc)
 	if diff.Cmp(rbp) < 0 {
 		return types.Currency{}, errors.New("ValidHostOutput smaller than ContractPrice + RenewBasePrice")
 	}
@@ -129,8 +129,9 @@ func (h *Host) managedRPCRenewContract(conn net.Conn) error {
 		return extendErr("unable to read renter public key: ", ErrorConnection(err.Error()))
 	}
 
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
-	settings := h.externalSettings()
+	settings := h.externalSettings(maxFee)
 	h.mu.Unlock()
 
 	// Verify that the transaction coming over the wire is a proper renewal.
@@ -193,8 +194,8 @@ func (h *Host) managedRPCRenewContract(conn net.Conn) error {
 	// During finalization the signatures sent by the renter are all checked.
 	h.mu.RLock()
 	fc := txnSet[len(txnSet)-1].FileContracts[0]
-	renewRevenue := renewBasePrice(so, settings, fc)
-	renewRisk := renewBaseCollateral(so, settings, fc)
+	renewRevenue := rhp2RenewBasePrice(so, settings, fc)
+	renewRisk := rhp2RenewBaseCollateral(so, settings, fc)
 	renewCollateral, err := renewContractCollateral(so, settings, fc)
 	h.mu.RUnlock()
 	if err != nil {
@@ -204,7 +205,6 @@ func (h *Host) managedRPCRenewContract(conn net.Conn) error {
 
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
-		renewal:                 false,
 		renterPK:                renterPK,
 		renterSignatures:        renterTxnSignatures,
 		renterRevisionSignature: renterRevisionSignature,
@@ -259,9 +259,10 @@ func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types
 		return extendErr("transaction without file contract: ", ErrEmptyObject)
 	}
 
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
 	blockHeight := h.blockHeight
-	externalSettings := h.externalSettings()
+	externalSettings := h.externalSettings(maxFee)
 	internalSettings := h.settings
 	lockedStorageCollateral := h.financialMetrics.LockedStorageCollateral
 	publicKey := h.publicKey
@@ -326,8 +327,8 @@ func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types
 
 	// Check that the missed proof outputs contain enough money, and that the
 	// void output contains enough money.
-	basePrice := renewBasePrice(so, externalSettings, fc)
-	baseCollateral := renewBaseCollateral(so, externalSettings, fc)
+	basePrice := rhp2RenewBasePrice(so, externalSettings, fc)
+	baseCollateral := rhp2RenewBaseCollateral(so, externalSettings, fc)
 	if fc.ValidHostPayout().Cmp(basePrice.Add(baseCollateral)) < 0 {
 		return ErrLowHostValidOutput
 	}

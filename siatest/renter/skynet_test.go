@@ -11,7 +11,6 @@ import (
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -31,7 +30,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
-	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -54,31 +53,26 @@ func TestSkynet(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
-		{Name: "TestSkynetBasic", Test: testSkynetBasic},
-		{Name: "TestConvertSiaFile", Test: testConvertSiaFile},
-		{Name: "TestSkynetSkykey", Test: testSkynetSkykey},
-		{Name: "TestSkynetLargeMetadata", Test: testSkynetLargeMetadata},
-		{Name: "TestSkynetMultipartUpload", Test: testSkynetMultipartUpload},
-		{Name: "TestSkynetInvalidFilename", Test: testSkynetInvalidFilename},
-		{Name: "TestSkynetSubDirDownload", Test: testSkynetSubDirDownload},
-		{Name: "TestSkynetDisableForce", Test: testSkynetDisableForce},
-		{Name: "TestSkynetBlacklist", Test: testSkynetBlacklist},
-		{Name: "TestSkynetPortals", Test: testSkynetPortals},
-		{Name: "TestSkynetHeadRequest", Test: testSkynetHeadRequest},
-		{Name: "TestSkynetStats", Test: testSkynetStats},
-		{Name: "TestSkynetRequestTimeout", Test: testSkynetRequestTimeout},
-		{Name: "TestSkynetDryRunUpload", Test: testSkynetDryRunUpload},
-		{Name: "TestRegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
-		{Name: "TestRenameSiaPath", Test: testRenameSiaPath},
-		{Name: "TestSkynetNoWorkers", Test: testSkynetNoWorkers},
-		{Name: "TestSkynetEncryptionPublicID", Test: testSkynetEncryptionWithType(skykey.TypePublicID)},
-		{Name: "TestSkynetEncryptionPrivateID", Test: testSkynetEncryptionWithType(skykey.TypePrivateID)},
-		{Name: "TestSkynetEncryptionLargeFilePublicID", Test: testSkynetEncryptionLargeFileWithType(skykey.TypePublicID)},
-		{Name: "TestSkynetEncryptionLargeFilePrivateID", Test: testSkynetEncryptionLargeFileWithType(skykey.TypePrivateID)},
-		{Name: "TestSkynetDefaultPath", Test: testSkynetDefaultPath},
-		{Name: "TestSkynetDefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
-		{Name: "TestSkynetSingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
-		{Name: "TestSkynetDownloadFormats", Test: testSkynetDownloadFormats},
+		{Name: "Basic", Test: testSkynetBasic},
+		{Name: "ConvertSiaFile", Test: testConvertSiaFile},
+		{Name: "LargeMetadata", Test: testSkynetLargeMetadata},
+		{Name: "MultipartUpload", Test: testSkynetMultipartUpload},
+		{Name: "InvalidFilename", Test: testSkynetInvalidFilename},
+		{Name: "SubDirDownload", Test: testSkynetSubDirDownload},
+		{Name: "DisableForce", Test: testSkynetDisableForce},
+		{Name: "Blacklist", Test: testSkynetBlacklist},
+		{Name: "Portals", Test: testSkynetPortals},
+		{Name: "HeadRequest", Test: testSkynetHeadRequest},
+		{Name: "Stats", Test: testSkynetStats},
+		{Name: "RequestTimeout", Test: testSkynetRequestTimeout},
+		{Name: "DryRunUpload", Test: testSkynetDryRunUpload},
+		{Name: "RegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
+		{Name: "RenameSiaPath", Test: testRenameSiaPath},
+		{Name: "NoWorkers", Test: testSkynetNoWorkers},
+		{Name: "DefaultPath", Test: testSkynetDefaultPath},
+		{Name: "DefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
+		{Name: "SingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
+		{Name: "DownloadFormats", Test: testSkynetDownloadFormats},
 	}
 
 	// Run tests
@@ -675,7 +669,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 	// add a nested file
 	data = []byte("File2Contents")
-	subfile = siatest.AddMultipartFile(writer, data, "files[]", "nested/file2", 0640, &offset)
+	subfile = siatest.AddMultipartFile(writer, data, "files[]", "nested/file2.html", 0640, &offset)
 	subfiles[subfile.Filename] = subfile
 
 	err = writer.Close()
@@ -716,7 +710,12 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	expected := modules.SkyfileMetadata{Filename: uploadSiaPath.String(), Subfiles: subfiles}
+	var length uint64
+	for _, file := range subfiles {
+		length += uint64(file.Len)
+	}
+
+	expected := modules.SkyfileMetadata{Filename: uploadSiaPath.String(), Subfiles: subfiles, Length: length}
 	if !reflect.DeepEqual(expected, fileMetadata) {
 		t.Log("Expected:", expected)
 		t.Log("Actual:", fileMetadata)
@@ -724,7 +723,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Download the second file
-	nestedfile, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/%s", skylink, "nested/file2"))
+	nestedfile, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/%s", skylink, "nested/file2.html"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -787,9 +786,6 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 	// Check the metadata of the siafile, see that the metadata of the siafile
 	// has the skylink referenced.
-	if err != nil {
-		t.Fatal(err)
-	}
 	largeSkyfilePath, err := modules.SkynetFolder.Join(uploadSiaPath.String())
 	if err != nil {
 		t.Fatal(err)
@@ -802,9 +798,9 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("expecting one skylink:", len(largeRenterFile.File.Skylinks))
 	}
 	if largeRenterFile.File.Skylinks[0] != largeSkylink {
-		t.Fatal("skylinks should match")
 		t.Log(largeRenterFile.File.Skylinks[0])
 		t.Log(largeSkylink)
+		t.Fatal("skylinks should match")
 	}
 
 	// Test the small download
@@ -1604,6 +1600,12 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
+	// Verify that removing the same skylink twice is a noop
+	err = r.SkynetBlacklistPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Verify that the skylink is removed from the Blacklist
 	sbg, err = r.SkynetBlacklistGet()
 	if err != nil {
@@ -1674,6 +1676,13 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Verify that adding the same skylink twice is a noop
+	err = r.SkynetBlacklistPost(add, remove)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	sbg, err = r.SkynetBlacklistGet()
 	if err != nil {
 		t.Fatal(err)
@@ -2047,7 +2056,7 @@ func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 		// verify the skylink can't be found after a dry run
 		status, _, _ := r.SkynetSkylinkHead(skylinkDry)
 		if status != http.StatusNotFound {
-			t.Fatal(fmt.Errorf("Expected 404 not found when trying to fetch a skylink retrieved from a dry run, instead received status %d", status))
+			t.Fatal(fmt.Errorf("expected 404 not found when trying to fetch a skylink retrieved from a dry run, instead received status %d", status))
 		}
 
 		// verify the skfyile got deleted properly
@@ -2219,269 +2228,6 @@ func testSkynetLargeMetadata(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testSkynetSkykey tests basic Skykey manager functionality.
-func testSkynetSkykey(t *testing.T, tg *siatest.TestGroup) {
-	r := tg.Renters()[0]
-
-	// The renter should be initialized with 0 skykeys.
-	skykeys, err := r.SkykeySkykeysGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(skykeys) != 0 {
-		t.Log(skykeys)
-		t.Fatal("Expected 0 skykeys")
-	}
-
-	sk, err := r.SkykeyCreateKeyPost("testkey1", skykey.TypePrivateID)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Check that the newly created skykey shows up.
-	skykeys, err = r.SkykeySkykeysGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(skykeys) != 1 {
-		t.Log(skykeys)
-		t.Fatal("Expected 1 skykey")
-	}
-	if skykeys[0].ID() != sk.ID() || skykeys[0].Name != sk.Name {
-		t.Log(skykeys[0])
-		t.Log(sk)
-		t.Fatal("Expected same skykey")
-	}
-
-	// Adding the same key should return an error.
-	err = r.SkykeyAddKeyPost(sk)
-	if err == nil {
-		t.Fatal("Expected error", err)
-	}
-
-	// Create a testkey from a hard-coded skykey string.
-	testSkykeyString := "skykey:AbAc7Uz4NxBrVIzR2lY-LsVs3VWsuCA0D01jxYjaHdRwrfVUuo8DutiGD7OF1B1b3P1olWPXZO1X?name=hardcodedtestkey"
-	var testSkykey skykey.Skykey
-	err = testSkykey.FromString(testSkykeyString)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Adding an unknown key should succeed.
-	err = r.SkykeyAddKeyPost(testSkykey)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	sk2, err := r.SkykeyGetByName("testkey1")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	skStr, err := sk.ToString()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sk2Str, err := sk2.ToString()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if skStr != sk2Str {
-		t.Fatal("Expected same Skykey string")
-	}
-
-	// Check byte equality and string equality.
-	skID := sk.ID()
-	sk2ID := sk2.ID()
-	if !bytes.Equal(skID[:], sk2ID[:]) {
-		t.Fatal("Expected byte level equality in IDs")
-	}
-	if sk2.ID().ToString() != sk.ID().ToString() {
-		t.Fatal("Expected to get same key")
-	}
-
-	// Check the GetByID endpoint
-	sk3, err := r.SkykeyGetByID(sk.ID())
-	if err != nil {
-		t.Fatal(err)
-	}
-	sk3Str, err := sk3.ToString()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if skStr != sk3Str {
-		t.Fatal("Expected same Skykey string")
-	}
-
-	// Create a set with the strings of every skykey in the test.
-	skykeySet := make(map[string]struct{})
-	skykeySet[testSkykeyString] = struct{}{}
-	skykeySet[sk2Str] = struct{}{}
-
-	// Create a bunch of skykeys and check that they all get returned.
-	nKeys := 10
-	for i := 0; i < nKeys; i++ {
-		nextSk, err := r.SkykeyCreateKeyPost(fmt.Sprintf("anotherkey-%d", i), skykey.TypePrivateID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		nextSkStr, err := nextSk.ToString()
-		if err != nil {
-			t.Fatal(err)
-		}
-		skykeySet[nextSkStr] = struct{}{}
-	}
-
-	// Check that the expected number of keys was created.
-	skykeys, err = r.SkykeySkykeysGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(skykeys) != nKeys+2 {
-		t.Log(len(skykeys), nKeys+2)
-		t.Fatal("Wrong number of keys")
-	}
-
-	// Check that getting all the keys returns all the keys we just created.
-	for _, skFromList := range skykeys {
-		skStrFromList, err := skFromList.ToString()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, ok := skykeySet[skStrFromList]; !ok {
-			t.Log(skStrFromList, skykeys)
-			t.Fatal("Didn't find key")
-		}
-	}
-
-	// Test misuse of the /skynet/skykey endpoint using an UnsafeClient.
-	uc := client.NewUnsafeClient(r.Client)
-
-	// Passing in 0 params shouild return an error.
-	baseQuery := "/skynet/skykey"
-	var skykeyGet api.SkykeyGET
-	err = uc.Get(baseQuery, &skykeyGet)
-	if err == nil {
-		t.Fatal("Expected an error")
-	}
-
-	// Passing in 2 params shouild return an error.
-	values := url.Values{}
-	values.Set("name", "testkey1")
-	values.Set("id", skID.ToString())
-	err = uc.Get(fmt.Sprintf("%s?%s", baseQuery, values.Encode()), &skykeyGet)
-	if err == nil {
-		t.Fatal("Expected an error")
-	}
-
-	// Sanity check: uc.Get should return the same value as the safe client
-	// method.
-	values = url.Values{}
-	values.Set("name", "testkey1")
-	err = uc.Get(fmt.Sprintf("%s?%s", baseQuery, values.Encode()), &skykeyGet)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if skykeyGet.Skykey != sk2Str {
-		t.Fatal("Expected same result from  unsafe client")
-	}
-
-	// Use the unsafe client to check the Name and ID parameters are set in the
-	// GET response.
-	values = url.Values{}
-	values.Set("name", testSkykey.Name)
-	getQuery := fmt.Sprintf("/skynet/skykey?%s", values.Encode())
-
-	skykeyGet = api.SkykeyGET{}
-	err = uc.Get(getQuery, &skykeyGet)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if skykeyGet.Name != testSkykey.Name {
-		t.Log(skykeyGet)
-		t.Fatal("Wrong skykey name")
-	}
-	if skykeyGet.ID != testSkykey.ID().ToString() {
-		t.Log(skykeyGet)
-		t.Fatal("Wrong skykey ID")
-	}
-	if skykeyGet.Skykey != testSkykeyString {
-		t.Log(skykeyGet)
-		t.Fatal("Wrong skykey string")
-	}
-
-	// Check the Name and ID params from the /skynet/skykeys GET response.
-	var skykeysGet api.SkykeysGET
-	err = uc.Get("/skynet/skykeys", &skykeysGet)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(skykeysGet.Skykeys) != len(skykeySet) {
-		t.Fatalf("Got %d skykeys, expected %d", len(skykeysGet.Skykeys), len(skykeySet))
-	}
-	for _, skGet := range skykeysGet.Skykeys {
-		if _, ok := skykeySet[skGet.Skykey]; !ok {
-			t.Fatal("skykey not in test set")
-		}
-
-		var nextSk skykey.Skykey
-		err = nextSk.FromString(skGet.Skykey)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if nextSk.Name != skGet.Name {
-			t.Fatal("Wrong skykey name")
-		}
-		if nextSk.ID().ToString() != skGet.ID {
-			t.Fatal("Wrong skykey id")
-		}
-		if nextSk.Type.ToString() != skGet.Type {
-			t.Fatal("Wrong skykey type")
-		}
-	}
-
-	// Test deletion endpoints by deleting half of the keys.
-	skykeys, err = r.SkykeySkykeysGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	deletedKeys := make(map[skykey.SkykeyID]struct{})
-	nKeys = len(skykeys)
-	nToDelete := nKeys / 2
-	for i, sk := range skykeys {
-		if i >= nToDelete {
-			break
-		}
-
-		if i%2 == 0 {
-			err = r.SkykeyDeleteByNamePost(sk.Name)
-		} else {
-			err = r.SkykeyDeleteByIDPost(sk.ID())
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		deletedKeys[sk.ID()] = struct{}{}
-	}
-
-	// Check that the skykeys were deleted.
-	skykeys, err = r.SkykeySkykeysGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(skykeys) != nKeys-nToDelete {
-		t.Fatalf("Expected %d keys, got %d", nKeys-nToDelete, len(skykeys))
-	}
-
-	// Sanity check: Make sure deleted keys are not still around.
-	for _, sk := range skykeys {
-		if _, ok := deletedKeys[sk.ID()]; ok {
-			t.Fatal("Found a key that should have been deleted")
-		}
-	}
-}
-
 // testRenameSiaPath verifies that the siapath to the skyfile can be renamed.
 func testRenameSiaPath(t *testing.T, tg *siatest.TestGroup) {
 	// Grab Renter
@@ -2489,10 +2235,10 @@ func testRenameSiaPath(t *testing.T, tg *siatest.TestGroup) {
 
 	// Create a skyfile
 	skylink, sup, _, err := r.UploadNewSkyfileBlocking("testRenameFile", 100, false)
-	siaPath := sup.SiaPath
 	if err != nil {
 		t.Fatal(err)
 	}
+	siaPath := sup.SiaPath
 
 	// Rename Skyfile with root set to false should fail
 	err = r.RenterRenamePost(siaPath, modules.RandomSiaPath(), false)
@@ -2524,234 +2270,39 @@ func testRenameSiaPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testSkynetEncryptionWithType returns the encryption test with the given
-// skykeyType set.
-func testSkynetEncryptionWithType(skykeyType skykey.SkykeyType) func(t *testing.T, tg *siatest.TestGroup) {
-	return func(t *testing.T, tg *siatest.TestGroup) {
-		testSkynetEncryption(t, tg, skykeyType)
-	}
-}
-
-// testSkynetEncryption tests the uploading and pinning of small skyfiles using
-// encryption with the given skykeyType.
-func testSkynetEncryption(t *testing.T, tg *siatest.TestGroup, skykeyType skykey.SkykeyType) {
-	r := tg.Renters()[0]
-	encKeyName := "encryption-test-key-" + skykeyType.ToString()
-
-	// Create some data to upload as a skyfile.
-	data := fastrand.Bytes(100 + siatest.Fuzz())
-	// Need it to be a reader.
-	reader := bytes.NewReader(data)
-	// Call the upload skyfile client call.
-	filename := "testEncryptSmall-" + skykeyType.ToString()
-	uploadSiaPath, err := modules.NewSiaPath(filename)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sup := modules.SkyfileUploadParameters{
-		SiaPath:             uploadSiaPath,
-		Force:               false,
-		Root:                false,
-		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: filename,
-			Mode:     0640, // Intentionally does not match any defaults.
-		},
-		Reader:     reader,
-		SkykeyName: encKeyName,
-	}
-
-	_, _, err = r.SkynetSkyfilePost(sup)
-	if err == nil {
-		t.Fatal("Expected error for using unknown key")
-	}
-
-	// Try again after adding a key.
-	// Note we must create a new reader in the params!
-	sup.Reader = bytes.NewReader(data)
-
-	_, err = r.SkykeyCreateKeyPost(encKeyName, skykeyType)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	skylink, sfMeta, err := r.SkynetSkyfilePost(sup)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Try to download the file behind the skylink.
-	fetchedData, metadata, err := r.SkynetSkylinkGet(sfMeta.Skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(fetchedData, data) {
-		t.Error("upload and download doesn't match")
-		t.Log(data)
-		t.Log(fetchedData)
-	}
-	if metadata.Mode != 0640 {
-		t.Error("bad mode")
-	}
-	if metadata.Filename != filename {
-		t.Error("bad filename")
-	}
-
-	if sfMeta.Skylink != skylink {
-		t.Log(sfMeta.Skylink)
-		t.Log(skylink)
-		t.Fatal("Expected metadata skylink to match returned skylink")
-	}
-
-	// Pin the encrypted Skyfile.
-	pinSiaPath, err := modules.NewSiaPath("testSmallEncryptedPinPath" + skykeyType.ToString())
-	if err != nil {
-		t.Fatal(err)
-	}
-	pinLUP := modules.SkyfilePinParameters{
-		SiaPath:             pinSiaPath,
-		Force:               false,
-		Root:                false,
-		BaseChunkRedundancy: 3,
-	}
-	err = r.SkynetSkylinkPinPost(skylink, pinLUP)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// See if the file is present.
-	fullPinSiaPath, err := modules.SkynetFolder.Join(pinSiaPath.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	pinnedFile, err := r.RenterFileRootGet(fullPinSiaPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pinnedFile.File.Skylinks) != 1 {
-		t.Fatal("expecting 1 skylink")
-	}
-	if pinnedFile.File.Skylinks[0] != skylink {
-		t.Fatal("skylink mismatch")
-	}
-}
-
-// testSkynetEncryptionLargeFileWithType returns the large-file encryption test with the given
-// skykeyType.
-func testSkynetEncryptionLargeFileWithType(skykeyType skykey.SkykeyType) func(t *testing.T, tg *siatest.TestGroup) {
-	return func(t *testing.T, tg *siatest.TestGroup) {
-		testSkynetEncryptionLargeFile(t, tg, skykeyType)
-	}
-}
-
-// testSkynetEncryption tests the uploading and pinning of large skyfiles using
-// encryption.
-func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup, skykeyType skykey.SkykeyType) {
-	r := tg.Renters()[0]
-	encKeyName := "large-file-encryption-test-key-" + skykeyType.ToString()
-
-	// Create some data to upload as a skyfile.
-	data := fastrand.Bytes(5 * int(modules.SectorSize))
-	// Need it to be a reader.
-	reader := bytes.NewReader(data)
-	// Call the upload skyfile client call.
-	filename := "testEncryptLarge-" + skykeyType.ToString()
-	uploadSiaPath, err := modules.NewSiaPath(filename)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sup := modules.SkyfileUploadParameters{
-		SiaPath:             uploadSiaPath,
-		Force:               false,
-		Root:                false,
-		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: filename,
-			Mode:     0640, // Intentionally does not match any defaults.
-		},
-		Reader:     reader,
-		SkykeyName: encKeyName,
-	}
-
-	_, err = r.SkykeyCreateKeyPost(encKeyName, skykeyType)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	skylink, sfMeta, err := r.SkynetSkyfilePost(sup)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if sfMeta.Skylink != skylink {
-		t.Log(sfMeta.Skylink)
-		t.Log(skylink)
-		t.Fatal("Expected metadata skylink to match returned skylink")
-	}
-
-	// Try to download the file behind the skylink.
-	fetchedData, metadata, err := r.SkynetSkylinkGet(sfMeta.Skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(fetchedData, data) {
-		t.Error("upload and download doesn't match")
-		t.Log(data)
-		t.Log(fetchedData)
-	}
-	if metadata.Mode != 0640 {
-		t.Error("bad mode")
-	}
-	if metadata.Filename != filename {
-		t.Error("bad filename")
-	}
-
-	// Pin the encrypted Skyfile.
-	pinSiaPath, err := modules.NewSiaPath("testEncryptedPinPath" + skykeyType.ToString())
-	if err != nil {
-		t.Fatal(err)
-	}
-	pinLUP := modules.SkyfilePinParameters{
-		SiaPath:             pinSiaPath,
-		Force:               false,
-		Root:                false,
-		BaseChunkRedundancy: 2,
-	}
-	err = r.SkynetSkylinkPinPost(skylink, pinLUP)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// See if the file is present.
-	fullPinSiaPath, err := modules.SkynetFolder.Join(pinSiaPath.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	pinnedFile, err := r.RenterFileRootGet(fullPinSiaPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pinnedFile.File.Skylinks) != 1 {
-		t.Fatal("expecting 1 skylink")
-	}
-	if pinnedFile.File.Skylinks[0] != skylink {
-		t.Fatal("skylink mismatch")
-	}
-}
-
 // testSkynetDefaultPath tests whether defaultPath metadata parameter works
 // correctly
 func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
+	// Specify subtests to run
+	subTests := []siatest.SubTest{
+		//{Name: "TestSkynetBasic", Test: testSkynetBasic},
+		{Name: "HasIndexNoDefaultPath", Test: testHasIndexNoDefaultPath},
+		{Name: "HasIndexDisabledDefaultPath", Test: testHasIndexDisabledDefaultPath},
+		{Name: "HasIndexDifferentDefaultPath", Test: testHasIndexDifferentDefaultPath},
+		{Name: "HasIndexInvalidDefaultPath", Test: testHasIndexInvalidDefaultPath},
+		{Name: "NoIndexDifferentDefaultPath", Test: testNoIndexDifferentDefaultPath},
+		{Name: "NoIndexInvalidDefaultPath", Test: testNoIndexInvalidDefaultPath},
+		{Name: "NoIndexNoDefaultPath", Test: testNoIndexNoDefaultPath},
+		{Name: "NoIndexSingleFileDisabledDefaultPath", Test: testNoIndexSingleFileDisabledDefaultPath},
+		{Name: "NoIndexSingleFileNoDefaultPath", Test: testNoIndexSingleFileNoDefaultPath},
+	}
+
+	// Run subtests
+	for _, test := range subTests {
+		t.Run(test.Name, func(t *testing.T) {
+			test.Test(t, tg)
+		})
+	}
+}
+
+// testHasIndexNoDefaultPath Contains index.html but doesn't specify a default
+// path (not disabled).
+// It should return the content of index.html.
+func testHasIndexNoDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 	fc1 := "File1Contents"
 	fc2 := "File2Contents"
-	indexJs := "index.js"
-	invalidPath := "invalid.js"
-
-	// TEST: Contains index.html but doesn't specify a default path (not disabled).
-	// It should return the content of index.html.
 	filename := "index.html_nil"
-
 	files := []siatest.TestFile{
 		{Name: "index.html", Data: []byte(fc1)},
 		{Name: "about.html", Data: []byte(fc2)},
@@ -2767,11 +2318,21 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	if !bytes.Equal(content, files[0].Data) {
 		t.Fatalf("Expected to get content '%s', instead got '%s'", files[0].Data, string(content))
 	}
+}
 
-	// TEST: Contains index.html but specifies an empty default path (disabled).
-	// It should not return an error and download the file as zip
-	filename = "index.html_empty"
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "", true, false)
+// testHasIndexDisabledDefaultPath Contains index.html but specifies an empty
+// default path (disabled).
+// It should not return an error and download the file as zip
+func testHasIndexDisabledDefaultPath(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+	fc1 := "File1Contents"
+	fc2 := "File2Contents"
+	filename := "index.html_empty"
+	files := []siatest.TestFile{
+		{Name: "index.html", Data: []byte(fc1)},
+		{Name: "about.html", Data: []byte(fc2)},
+	}
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(filename, files, "", true, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
@@ -2781,114 +2342,165 @@ func testSkynetDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 	ct := header.Get("Content-Type")
 	if ct != "application/zip" {
-		t.Fatal("expecteed zip archive")
+		t.Fatal("expected zip archive")
 	}
+}
 
-	// TEST: Contains index.html but specifies a different default path.
-	// Contains index.js and specifies "index.js" as default path.
-	// It should return the content of index.js.
-	filename = "index.html_index.js"
-	files = []siatest.TestFile{
+// testHasIndexDifferentDefaultPath Contains index.html but specifies a
+// different default, existing path.
+// It should return the content of about.html.
+func testHasIndexDifferentDefaultPath(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+	fc1 := "File1Contents"
+	fc2 := "File2Contents"
+	aboutHtml := "about.html"
+	filename := "index.html_about.html"
+	files := []siatest.TestFile{
 		{Name: "index.html", Data: []byte(fc1)},
-		{Name: "index.js", Data: []byte(fc2)},
+		{Name: "about.html", Data: []byte(fc2)},
 	}
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, indexJs, false, false)
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(filename, files, aboutHtml, false, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
-	content, _, err = r.SkynetSkylinkGet(skylink)
+	content, _, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(content, files[1].Data) {
 		t.Fatalf("Expected to get content '%s', instead got '%s'", files[1].Data, string(content))
 	}
+}
 
-	// TEST: Contains index.html but specifies a different INVALID default path.
-	// This should fail on upload with "invalid default path provided".
-	filename = "index.html_invalid"
-	files = []siatest.TestFile{
+// testHasIndexInvalidDefaultPath Contains index.html but specifies a different
+// INVALID default path.
+// This should fail on upload with "invalid default path provided".
+func testHasIndexInvalidDefaultPath(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+	fc1 := "File1Contents"
+	fc2 := "File2Contents"
+	invalidPath := "invalid.js"
+	filename := "index.html_invalid"
+	files := []siatest.TestFile{
 		{Name: "index.html", Data: []byte(fc1)},
 		{Name: "about.html", Data: []byte(fc2)},
 	}
-	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, invalidPath, false, false)
+	_, _, _, err := r.UploadNewMultipartSkyfileBlocking(filename, files, invalidPath, false, false)
 	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidDefaultPath.Error()) {
 		t.Fatalf("Expected error 'invalid default path provided', got '%+v'", err)
 	}
+}
 
-	// TEST: Does not contain "index.html".
-	// Contains index.js and specifies "index.js" as default path.
-	// It should return the content of index.js.
-	filename = "index.js_index.js"
-	files = []siatest.TestFile{
+// testNoIndexDifferentDefaultPath Does not contain "index.html".
+// Contains about.html and specifies it as default path.
+// It should return the content of about.html.
+func testNoIndexDifferentDefaultPath(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+	fc1 := "File1Contents"
+	fc2 := "File2Contents"
+	aboutHtml := "about.html"
+	filename := "index.js_about.html"
+	files := []siatest.TestFile{
 		{Name: "index.js", Data: []byte(fc1)},
 		{Name: "about.html", Data: []byte(fc2)},
 	}
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, indexJs, false, false)
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(filename, files, aboutHtml, false, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
-	content, _, err = r.SkynetSkylinkGet(skylink)
+	content, _, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(content, files[0].Data) {
-		t.Fatalf("Expected to get content '%s', instead got '%s'", files[0].Data, string(content))
+	if !bytes.Equal(content, files[1].Data) {
+		t.Fatalf("Expected to get content '%s', instead got '%s'", files[1].Data, string(content))
 	}
+}
 
-	// TEST: Does not contain index.html and specifies an INVALID default path.
-	// This should fail on upload with "invalid default path provided".
-	filename = "index.js_invalid"
-	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, invalidPath, false, false)
+// testNoIndexInvalidDefaultPath  Does not contain index.html and specifies an
+// INVALID default path.
+// This should fail on upload with "invalid default path provided".
+func testNoIndexInvalidDefaultPath(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+	fc1 := "File1Contents"
+	fc2 := "File2Contents"
+	invalidPath := "invalid.js"
+	files := []siatest.TestFile{
+		{Name: "index.js", Data: []byte(fc1)},
+		{Name: "about.html", Data: []byte(fc2)},
+	}
+	filename := "index.js_invalid"
+	_, _, _, err := r.UploadNewMultipartSkyfileBlocking(filename, files, invalidPath, false, false)
 	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidDefaultPath.Error()) {
 		t.Fatalf("Expected error 'invalid default path provided', got '%+v'", err)
 	}
+}
 
-	// TEST: Does not contain index.html and doesn't specify default path (not disabled).
-	// It should not return an error and download the file as zip
-	filename = "index.js_nil"
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "", false, false)
+// testNoIndexNoDefaultPath Does not contain index.html and doesn't specify
+// default path (not disabled).
+// It should not return an error and download the file as zip
+func testNoIndexNoDefaultPath(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+	fc1 := "File1Contents"
+	fc2 := "File2Contents"
+	files := []siatest.TestFile{
+		{Name: "index.js", Data: []byte(fc1)},
+		{Name: "about.html", Data: []byte(fc2)},
+	}
+	filename := "index.js_nil"
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(filename, files, "", false, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
-	_, header, err = r.SkynetSkylinkHead(skylink)
+	_, header, err := r.SkynetSkylinkHead(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ct = header.Get("Content-Type")
+	ct := header.Get("Content-Type")
 	if ct != "application/zip" {
-		t.Fatal("expecteed zip archive")
+		t.Fatalf("expected zip archive, got '%s'\n", ct)
 	}
+}
 
-	// TEST: Does not contain "index.html".
-	// Contains a single file and specifies an empty default path (disabled).
-	// It should not return an error and download the file as zip
-	filename = "index.js_empty"
-	files = []siatest.TestFile{
+// testNoIndexSingleFileDisabledDefaultPath Does not contain "index.html".
+// Contains a single file and specifies an empty default path (disabled).
+// It should not return an error and download the file as zip.
+func testNoIndexSingleFileDisabledDefaultPath(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+	fc1 := "File1Contents"
+	filename := "index.js_empty"
+	files := []siatest.TestFile{
 		{Name: "index.js", Data: []byte(fc1)},
 	}
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "", true, false)
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(filename, files, "", true, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
-	_, header, err = r.SkynetSkylinkHead(skylink)
+	_, header, err := r.SkynetSkylinkHead(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ct = header.Get("Content-Type")
+	ct := header.Get("Content-Type")
 	if ct != "application/zip" {
-		t.Fatal("expecteed zip archive")
+		t.Fatal("expected zip archive")
 	}
+}
 
-	// TEST: Does not contain "index.html".
-	// Contains a single file and doesn't specify a default path (not disabled).
-	// It should return the content of index.js.
-	filename = "index.js"
-	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking(filename, files, "", false, false)
+// testNoIndexSingleFileNoDefaultPath Does not contain "index.html".
+// Contains a single file and doesn't specify a default path (not disabled).
+// It should serve the only file's content.
+func testNoIndexSingleFileNoDefaultPath(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+	fc1 := "File1Contents"
+	files := []siatest.TestFile{
+		{Name: "index.js", Data: []byte(fc1)},
+	}
+	filename := "index.js"
+	skylink, _, _, err := r.UploadNewMultipartSkyfileBlocking(filename, files, "", false, false)
 	if err != nil {
 		t.Fatal("Failed to upload multipart file.", err)
 	}
-	content, _, err = r.SkynetSkylinkGet(skylink)
+	content, _, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2915,15 +2527,22 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		{Name: "index.html", Data: fc1},
 		{Name: "about.html", Data: fc2},
 	}
+	multiHasIndexIndexJs := []siatest.TestFile{
+		{Name: "index.html", Data: fc1},
+		{Name: "index.js", Data: fc1},
+		{Name: "about.html", Data: fc2},
+	}
 	multiNoIndex := []siatest.TestFile{
 		{Name: "hello.html", Data: fc1},
 		{Name: "about.html", Data: fc2},
+		{Name: "dir/about.html", Data: fc2},
 	}
 
 	about := "/about.html"
 	bad := "/bad.html"
 	index := "/index.html"
 	hello := "/hello.html"
+	nonHTML := "/index.js"
 	dirAbout := "/dir/about.html"
 	tests := []struct {
 		name                   string
@@ -2971,12 +2590,13 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 		},
 
 		{
-			// Single dir with valid default path.
-			// OK
-			name:            "single_dir_correct",
-			files:           singleDir,
-			defaultPath:     dirAbout,
-			expectedContent: fc1,
+			// Single dir with default path set to a nested file.
+			// Error: invalid default path.
+			name:                 "single_dir_nested",
+			files:                singleDir,
+			defaultPath:          dirAbout,
+			expectedContent:      nil,
+			expectedErrStrUpload: "invalid default path provided",
 		},
 		{
 			// Single dir without default path (not disabled).
@@ -3033,6 +2653,16 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 			expectedZipArchive: true,
 		},
 		{
+			// Multi dir with index, non-html default path.
+			// Error on download: specify a format.
+			name:                 "multi_idx_non_html",
+			files:                multiHasIndexIndexJs,
+			defaultPath:          nonHTML,
+			disableDefaultPath:   false,
+			expectedContent:      nil,
+			expectedErrStrUpload: "invalid default path provided",
+		},
+		{
 			// Multi dir with index, bad default path.
 			// Error on upload: invalid default path.
 			name:                 "multi_idx_bad",
@@ -3078,6 +2708,25 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 			expectedContent:      nil,
 			expectedErrStrUpload: "invalid default path provided",
 		},
+		{
+			// Multi dir with both defaultPath and disableDefaultPath set.
+			// Error on upload.
+			name:                 "multi_defpath_disabledefpath",
+			files:                multiHasIndex,
+			defaultPath:          index,
+			disableDefaultPath:   true,
+			expectedContent:      nil,
+			expectedErrStrUpload: "DefaultPath and DisableDefaultPath are mutually exclusive and cannot be set together",
+		},
+		{
+			// Multi dir with defaultPath pointing to a non-root file..
+			// Error on upload.
+			name:                 "multi_nonroot_defpath",
+			files:                multiNoIndex,
+			defaultPath:          dirAbout,
+			expectedContent:      nil,
+			expectedErrStrUpload: "DefaultPath must point to a file in the root directory of the skyfile",
+		},
 	}
 
 	for _, tt := range tests {
@@ -3116,7 +2765,6 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 				t.Fatalf("Expected error '%s', got '%s'", tt.expectedErrStrDownload, err.Error())
 			}
 			if tt.expectedErrStrDownload == "" && !bytes.Equal(content, tt.expectedContent) {
-				t.Logf(err.Error())
 				t.Fatalf("Content mismatch! Expected %d bytes, got %d bytes.", len(tt.expectedContent), len(content))
 			}
 		})
@@ -3142,5 +2790,199 @@ func testSkynetSingleFileNoSubfiles(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if metadata.Subfiles != nil {
 		t.Fatal("Expected empty subfiles on download, got", sup.FileMetadata.Subfiles)
+	}
+}
+
+// BenchmarkSkynet verifies the functionality of Skynet, a decentralized CDN and
+// sharing platform.
+// i9 - 51.01 MB/s - dbe75c8436cea64f2664e52f9489e9ac761bc058
+func BenchmarkSkynetSingleSector(b *testing.B) {
+	testDir := renterTestDir(b.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   3,
+		Miners:  1,
+		Renters: 1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}()
+
+	// Upload a file that is a single sector big.
+	r := tg.Renters()[0]
+	skylink, _, _, err := r.UploadNewSkyfileBlocking("foo", modules.SectorSize, false)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	// Sleep a bit to give the workers time to get set up.
+	time.Sleep(time.Second * 5)
+
+	// Reset the timer once the setup is done.
+	b.ResetTimer()
+	b.SetBytes(int64(b.N) * int64(modules.SectorSize))
+
+	// Download the file.
+	for i := 0; i < b.N; i++ {
+		_, _, err := r.SkynetSkylinkGet(skylink)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// TestFormContractBadScore makes sure that a portal won't form a contract with
+// a dead score host.
+func TestFormContractBadScore(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := renterTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Set one host to have a bad max duration.
+	h := tg.Hosts()[0]
+	a := siatest.DefaultAllowance
+	err = h.HostModifySettingPost(client.HostParamMaxDuration, a.Period+a.RenewWindow-1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a new renter.
+	rt := node.RenterTemplate
+	rt.SkipSetAllowance = true
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Set the allowance.
+	err = r.RenterPostAllowance(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait to give the renter some time to form contracts. Only 1 contract
+	// should be formed.
+	time.Sleep(time.Second * 5)
+	err = siatest.CheckExpectedNumberOfContracts(r, 1, 0, 0, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Enable portal mode and wait again. We should still only see 1 contract.
+	a.PaymentContractInitialFunding = a.Funds.Div64(10)
+	err = r.RenterPostAllowance(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Second * 5)
+	err = siatest.CheckExpectedNumberOfContracts(r, 1, 0, 0, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRenewContractBadScore tests that a portal won't renew a contract with a
+// host that has a dead score.
+func TestRenewContractBadScore(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := renterTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  2,
+		Miners: 1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add a new renter.
+	rt := node.RenterTemplate
+	rt.SkipSetAllowance = true
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Set the allowance. The renter should act as a portal but only form a
+	// regular contract with 1 host and form the other contract with the portal.
+	a := siatest.DefaultAllowance
+	a.PaymentContractInitialFunding = a.Funds.Div64(10)
+	a.Hosts = 1
+	err = r.RenterPostAllowance(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should have 2 contracts now. 1 active (regular) and 1 passive (portal).
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(r, 2, 0, 0, 0, 0, 0)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set both hosts to have a bad max duration.
+	hosts := tg.Hosts()
+	h1, h2 := hosts[0], hosts[1]
+	err = h1.HostModifySettingPost(client.HostParamMaxDuration, a.Period+a.RenewWindow-1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = h2.HostModifySettingPost(client.HostParamMaxDuration, a.Period+a.RenewWindow-1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine through a full period and renew window.
+	for i := types.BlockHeight(0); i < a.Period+a.RenewWindow; i++ {
+		err = tg.Miners()[0].MineBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(time.Millisecond * 10)
+	}
+
+	// There should only be 2 expired contracts.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		return siatest.CheckExpectedNumberOfContracts(r, 0, 0, 0, 0, 2, 0)
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

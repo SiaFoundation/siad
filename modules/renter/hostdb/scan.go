@@ -446,7 +446,7 @@ func (hdb *HostDB) managedScanHost(entry modules.HostDBEntry) {
 		}
 		defer s.WriteRequest(modules.RPCLoopExit, nil) // make sure we close cleanly
 		if err := s.WriteRequest(modules.RPCLoopSettings, nil); err != nil {
-			return errors.AddContext(err, "count not write the loop settings request in the RHP2 check")
+			return errors.AddContext(err, "could not write the loop settings request in the RHP2 check")
 		}
 		var resp modules.LoopSettingsResponse
 		if err := s.ReadResponse(&resp, maxSettingsLen); err != nil {
@@ -677,12 +677,18 @@ func (hdb *HostDB) threadedScan() {
 // uses an ephemeral stream which is a special type of stream that doesn't leak
 // TCP connections. Otherwise we would end up with one TCP connection for every
 // host in the network after scanning the whole network.
-func fetchPriceTable(siamux *siamux.SiaMux, addr string, timeout time.Duration, hpk mux.ED25519PublicKey) (*modules.RPCPriceTable, error) {
-	stream, err := siamux.NewEphemeralStream(modules.HostSiaMuxSubscriberName, addr, timeout, hpk)
+func fetchPriceTable(siamux *siamux.SiaMux, hostAddr string, timeout time.Duration, hpk mux.ED25519PublicKey) (*modules.RPCPriceTable, error) {
+	stream, err := siamux.NewEphemeralStream(modules.HostSiaMuxSubscriberName, hostAddr, timeout, hpk)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to create ephemeral stream")
 	}
 	defer stream.Close()
+
+	// set a deadline on the stream.
+	err = stream.SetDeadline(time.Now().Add(hostScanDeadline))
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to set stream deadline")
+	}
 
 	// initiate the RPC
 	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)

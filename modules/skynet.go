@@ -1,7 +1,6 @@
 package modules
 
 import (
-	"fmt"
 	"io"
 	"math"
 	"os"
@@ -27,14 +26,16 @@ const (
 // leading bytes of the skyfile, meaning that this struct can be extended
 // without breaking compatibility.
 type SkyfileMetadata struct {
-	Mode     os.FileMode     `json:"mode,omitempty"`
 	Filename string          `json:"filename,omitempty"`
+	Length   uint64          `json:"length,omitempty"`
+	Mode     os.FileMode     `json:"mode,omitempty"`
 	Subfiles SkyfileSubfiles `json:"subfiles,omitempty"`
 
 	// DefaultPath indicates what content to serve if the user has not specified
-	// a path, and the user is not trying to download the Skylink as an archive.
-	// It defaults to 'index.html' on upload if not specified and if a file with
-	// that name is present in the upload.
+	// a path and the user is not trying to download the Skylink as an archive.
+	// If left empty, it will be interpreted as "index.html" on download, if the
+	// skyfile contains such a file, or the only file in the skyfile, if the
+	// skyfile contains a single file.
 	DefaultPath string `json:"defaultpath,omitempty"`
 	// DisableDefaultPath prevents the usage of DefaultPath. As a result no
 	// content will be automatically served for the skyfile.
@@ -69,9 +70,11 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 	}
 
 	// If there is no exact match look for directories.
+	pathDir := EnsureSuffix(path, "/")
 	if len(metadata.Subfiles) == 0 {
 		for _, sf := range sm.Subfiles {
-			if strings.HasPrefix(EnsurePrefix(sf.Filename, "/"), path) {
+			// Check if the given file's path starts with `pathDir`.
+			if strings.HasPrefix(EnsurePrefix(sf.Filename, "/"), pathDir) {
 				metadata.Subfiles[sf.Filename] = sf
 			}
 		}
@@ -82,6 +85,10 @@ func (sm SkyfileMetadata) ForPath(path string) (SkyfileMetadata, bool, uint64, u
 			sf.Offset -= offset
 			metadata.Subfiles[sf.Filename] = sf
 		}
+	}
+	// Set the metadata length by summing up the length of the subfiles.
+	for _, file := range metadata.Subfiles {
+		metadata.Length += file.Len
 	}
 	return metadata, isFile, offset, metadata.size()
 }
@@ -270,26 +277,26 @@ type SkyfileUploadParameters struct {
 // uploads. See SkyfileUploadParameters for a detailed description of the
 // fields.
 type SkyfileMultipartUploadParameters struct {
-	SiaPath             SiaPath   `json:"siapath"`
-	Force               bool      `json:"force"`
-	Root                bool      `json:"root"`
-	BaseChunkRedundancy uint8     `json:"basechunkredundancy"`
-	Reader              io.Reader `json:"reader"`
+	SiaPath             SiaPath
+	Force               bool
+	Root                bool
+	BaseChunkRedundancy uint8
+	Reader              io.Reader
 
 	// Filename indicates the filename of the skyfile.
-	Filename string `json:"filename"`
+	Filename string
 
 	// DefaultPath indicates the default file to be opened when opening skyfiles
 	// that contain directories. If set to empty string no file will be opened
 	// by default.
-	DefaultPath string `json:"defaultpath,omitempty"`
+	DefaultPath string
 
 	// DisableDefaultPath prevents the usage of DefaultPath. As a result no
 	// content will be automatically served for the skyfile.
-	DisableDefaultPath bool `json:"disabledefaultpath,omitempty"`
+	DisableDefaultPath bool
 
 	// ContentType indicates the media type of the data supplied by the reader.
-	ContentType string `json:"contenttype"`
+	ContentType string
 }
 
 // SkyfilePinParameters defines the parameters specific to pinning a skylink.
@@ -313,7 +320,7 @@ func EnsurePrefix(str, prefix string) string {
 	if strings.HasPrefix(str, prefix) {
 		return str
 	}
-	return fmt.Sprintf("%s%s", prefix, str)
+	return prefix + str
 }
 
 // EnsureSuffix checks if `str` ends with `suffix` and adds it if that's not
@@ -322,5 +329,5 @@ func EnsureSuffix(str, suffix string) string {
 	if strings.HasSuffix(str, suffix) {
 		return str
 	}
-	return fmt.Sprintf("%s%s", str, suffix)
+	return str + suffix
 }

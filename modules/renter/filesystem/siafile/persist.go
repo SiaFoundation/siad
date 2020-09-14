@@ -436,16 +436,16 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 	// the file while holding a open file handle.
 	for i := len(updates) - 1; i >= 0; i-- {
 		u := updates[i]
-		switch u.Name {
-		case updateDeleteName:
-			if err := readAndApplyDeleteUpdate(sf.deps, u); err != nil {
-				return err
-			}
-			updates = updates[i+1:]
-			break
-		default:
+		if u.Name != updateDeleteName {
 			continue
 		}
+		// Read and apply the delete update.
+		if err := readAndApplyDeleteUpdate(sf.deps, u); err != nil {
+			return err
+		}
+		// Truncate the updates and break out of the for loop.
+		updates = updates[i+1:]
+		break
 	}
 	if len(updates) == 0 {
 		return nil
@@ -557,7 +557,10 @@ func (sf *SiaFile) iterateChunksReadonly(iterFunc func(chunk chunk) error) error
 	if err != nil {
 		return errors.AddContext(err, "failed to open file")
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
+
 	// Seek to the first chunk.
 	_, err = f.Seek(sf.staticMetadata.ChunkOffset, io.SeekStart)
 	if err != nil {

@@ -354,7 +354,22 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 		if err != nil {
 			h.log.Println("ERROR: failed to close stream:", err)
 		}
+		// Update used bandwidth.
+		l := stream.Limit()
+		atomic.AddUint64(&h.atomicStreamUpload, l.Uploaded())
+		atomic.AddUint64(&h.atomicStreamDownload, l.Downloaded())
 	}()
+
+	// If the right dependency was injected we block here until it's disabled
+	// again.
+	for h.dependencies.Disrupt("HostBlockRPC") {
+		select {
+		case <-time.After(time.Second):
+			continue
+		case <-h.tg.StopChan():
+			return
+		}
+	}
 
 	err := h.tg.Add()
 	if err != nil {

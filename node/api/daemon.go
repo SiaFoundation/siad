@@ -10,12 +10,14 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net/http"
+	"os"
 	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
 
 	"github.com/inconshreveable/go-update"
+
 	"github.com/julienschmidt/httprouter"
 	"github.com/kardianos/osext"
 	"golang.org/x/crypto/openpgp"
@@ -23,6 +25,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/profile"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -128,6 +131,11 @@ type (
 		MaxTargetAdjustmentDown *big.Rat `json:"maxtargetadjustmentdown"`
 
 		SiacoinPrecision types.Currency `json:"siacoinprecision"`
+	}
+
+	// DaemonStackGet contains information about the daemon's stack.
+	DaemonStackGet struct {
+		Stack string `json:"stack"`
 	}
 
 	// DaemonSettingsGet contains information about global daemon settings.
@@ -426,6 +434,62 @@ func (api *API) daemonConstantsHandler(w http.ResponseWriter, _ *http.Request, _
 	WriteJSON(w, sc)
 }
 
+// daemonStackHandlerGET handles the API call that requests the daemon's stack trace.
+func (api *API) daemonStackHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	// Get the stack traces of all running goroutines.
+	stack := make([]byte, modules.StackSize)
+	n := runtime.Stack(stack, true)
+	if n == 0 {
+		WriteError(w, Error{"no stack trace pulled"}, http.StatusInternalServerError)
+		return
+	}
+
+	// Return the n bytes of the stack that were used.
+	WriteJSON(w, DaemonStackGet{
+		Stack: string(stack[:n]),
+	})
+}
+
+// daemonStartProfileHandlerPOST handles the API call that starts a profile for the daemon.
+func (api *API) daemonStartProfileHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse profile string
+	profileStr := req.FormValue("profileFlags")
+	if profileStr == "" {
+		WriteError(w, Error{"profile flags cannot be blank"}, http.StatusBadRequest)
+		return
+	}
+	profileStr, err := profile.ProcessProfileFlags(profileStr)
+	if err != nil {
+		WriteError(w, Error{"unable to process profile flags:" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	profileCPU := strings.Contains(profileStr, "c")
+	profileMem := strings.Contains(profileStr, "m")
+	profileTrace := strings.Contains(profileStr, "t")
+
+	// Parse profile directory
+	profileDir := req.FormValue("profileDir")
+	if profileDir == "" {
+		profileDir = build.ProfileDir()
+	}
+	err = os.MkdirAll(profileDir, modules.DefaultDirPerm)
+	if err != nil {
+		WriteError(w, Error{"unable to create directory for profiles:" + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	go profile.StartContinuousProfile(profileDir, profileCPU, profileMem, profileTrace)
+	WriteSuccess(w)
+}
+
+// daemonStopProfileHandlerGET handles the API call that stops a profile for the daemon.
+func (api *API) daemonStopProfileHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	// Stop any CPU or Trace profiles. Memory Profiles do not have a stop function
+	profile.StopCPUProfile()
+	profile.StopTrace()
+	WriteSuccess(w)
+}
+
 // daemonVersionHandler handles the API call that requests the daemon's version.
 func (api *API) daemonVersionHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	version := build.Version
@@ -450,7 +514,7 @@ func (api *API) daemonStopHandler(w http.ResponseWriter, _ *http.Request, _ http
 
 // daemonSettingsHandlerGET handles the API call asking for the daemon's
 // settings.
-func (api *API) daemonSettingsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) daemonSettingsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	gmds, gmus, _ := modules.GlobalRateLimits.Limits()
 	WriteJSON(w, DaemonSettingsGet{
 		MaxDownloadSpeed: gmds,

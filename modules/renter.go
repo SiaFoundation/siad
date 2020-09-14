@@ -21,7 +21,7 @@ var (
 	DefaultAllowance = Allowance{
 		Funds:       types.SiacoinPrecision.Mul64(2500),
 		Hosts:       uint64(PriceEstimationScope),
-		Period:      3 * types.BlocksPerMonth,
+		Period:      2 * types.BlocksPerMonth,
 		RenewWindow: types.BlocksPerMonth,
 
 		ExpectedStorage:    1e12,                                         // 1 TB
@@ -50,6 +50,12 @@ var (
 	// create a key for encrypting backups.
 	BackupKeySpecifier = types.NewSpecifier("backupkey")
 )
+
+// DataSourceID is an identifier to uniquely identify a data source, such as for
+// loading a file. Adding data sources that have the same ID should return the
+// exact same data when queried. This is typically used inside of the renter to
+// build stream buffers.
+type DataSourceID crypto.Hash
 
 // FilterMode is the helper type for the enum constants for the HostDB filter
 // mode
@@ -285,6 +291,11 @@ func (a Allowance) Active() bool {
 	return a.Period != 0
 }
 
+// PortalMode returns true if the renter is supposed to act as a portal.
+func (a Allowance) PortalMode() bool {
+	return !a.PaymentContractInitialFunding.IsZero()
+}
+
 // ContractUtility contains metrics internal to the contractor that reflect the
 // utility of a given contract.
 type ContractUtility struct {
@@ -507,6 +518,7 @@ type HostScoreBreakdown struct {
 	Score          types.Currency `json:"score"`
 	ConversionRate float64        `json:"conversionrate"`
 
+	AcceptContractAdjustment   float64 `json:"acceptcontractadjustment"`
 	AgeAdjustment              float64 `json:"ageadjustment"`
 	BasePriceAdjustment        float64 `json:"basepriceadjustment"`
 	BurnAdjustment             float64 `json:"burnadjustment"`
@@ -517,6 +529,18 @@ type HostScoreBreakdown struct {
 	StorageRemainingAdjustment float64 `json:"storageremainingadjustment"`
 	UptimeAdjustment           float64 `json:"uptimeadjustment"`
 	VersionAdjustment          float64 `json:"versionadjustment"`
+}
+
+// MemoryStatus contains information about the status of the memory manager
+type MemoryStatus struct {
+	Available uint64 `json:"available"`
+	Base      uint64 `json:"base"`
+	Requested uint64 `json:"requested"`
+
+	PriorityAvailable uint64 `json:"priorityavailable"`
+	PriorityBase      uint64 `json:"prioritybase"`
+	PriorityRequested uint64 `json:"priorityrequested"`
+	PriorityReserve   uint64 `json:"priorityreserve"`
 }
 
 // MountInfo contains information about a mounted FUSE filesystem.
@@ -730,10 +754,11 @@ type (
 	// WorkerPoolStatus contains information about the status of the workerPool
 	// and the workers
 	WorkerPoolStatus struct {
-		NumWorkers            int            `json:"numworkers"`
-		TotalDownloadCoolDown int            `json:"totaldownloadcooldown"`
-		TotalUploadCoolDown   int            `json:"totaluploadcooldown"`
-		Workers               []WorkerStatus `json:"workers"`
+		NumWorkers               int            `json:"numworkers"`
+		TotalDownloadCoolDown    int            `json:"totaldownloadcooldown"`
+		TotalMaintenanceCoolDown int            `json:"totalmaintenancecooldown"`
+		TotalUploadCoolDown      int            `json:"totaluploadcooldown"`
+		Workers                  []WorkerStatus `json:"workers"`
 	}
 
 	// WorkerStatus contains information about the status of a worker
@@ -744,9 +769,11 @@ type (
 		HostPubKey      types.SiaPublicKey   `json:"hostpubkey"`
 
 		// Download status information
-		DownloadOnCoolDown bool `json:"downloadoncooldown"`
-		DownloadQueueSize  int  `json:"downloadqueuesize"`
-		DownloadTerminated bool `json:"downloadterminated"`
+		DownloadCoolDownError string        `json:"downloadcooldownerror"`
+		DownloadCoolDownTime  time.Duration `json:"downloadcooldowntime"`
+		DownloadOnCoolDown    bool          `json:"downloadoncooldown"`
+		DownloadQueueSize     int           `json:"downloadqueuesize"`
+		DownloadTerminated    bool          `json:"downloadterminated"`
 
 		// Upload status information
 		UploadCoolDownError string        `json:"uploadcooldownerror"`
@@ -754,6 +781,11 @@ type (
 		UploadOnCoolDown    bool          `json:"uploadoncooldown"`
 		UploadQueueSize     int           `json:"uploadqueuesize"`
 		UploadTerminated    bool          `json:"uploadterminated"`
+
+		// Maintenance Cooldown information
+		MaintenanceOnCooldown    bool          `json:"maintenanceoncooldown"`
+		MaintenanceCoolDownError string        `json:"maintenancecooldownerror"`
+		MaintenanceCoolDownTime  time.Duration `json:"maintenancecooldowntime"`
 
 		// Ephemeral Account information
 		AccountBalanceTarget types.Currency      `json:"accountbalancetarget"`
@@ -778,14 +810,9 @@ type (
 		AvailableBalance types.Currency `json:"availablebalance"`
 		NegativeBalance  types.Currency `json:"negativebalance"`
 
-		Funded bool `json:"funded"`
-
-		OnCoolDown          bool      `json:"oncooldown"`
-		OnCoolDownUntil     time.Time `json:"oncooldownuntil"`
-		ConsecutiveFailures uint64    `json:"consecutivefailures"`
-
-		RecentErr     string    `json:"recenterr"`
-		RecentErrTime time.Time `json:"recenterrtime"`
+		RecentErr         string    `json:"recenterr"`
+		RecentErrTime     time.Time `json:"recenterrtime"`
+		RecentSuccessTime time.Time `json:"recentsuccesstime"`
 	}
 
 	// WorkerPriceTableStatus contains detailed information about the price
@@ -795,10 +822,6 @@ type (
 		UpdateTime time.Time `json:"updatetime"`
 
 		Active bool `json:"active"`
-
-		OnCoolDown          bool      `json:"oncooldown"`
-		OnCoolDownUntil     time.Time `json:"oncooldownuntil"`
-		ConsecutiveFailures uint64    `json:"consecutivefailures"`
 
 		RecentErr     string    `json:"recenterr"`
 		RecentErrTime time.Time `json:"recenterrtime"`
@@ -886,6 +909,9 @@ type Renter interface {
 	// CurrentPeriod returns the height at which the current allowance period
 	// began.
 	CurrentPeriod() types.BlockHeight
+
+	// MemoryStatus returns the current status of the memory manager
+	MemoryStatus() (MemoryStatus, error)
 
 	// Mount mounts a FUSE filesystem at mountPoint, making the contents of sp
 	// available via the local filesystem.

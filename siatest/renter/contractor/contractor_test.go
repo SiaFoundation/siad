@@ -695,18 +695,38 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The renter shouldn't have any contracts.
-	rcg, err := r.RenterContractsGet()
+	// Mine blocks until the renter has the same number of contracts as before.
+	miner := tg.Miners()[0]
+	numRetries := 0
+	err = build.Retry(100, time.Second, func() error {
+		if numRetries%10 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		numRetries++
+		rcg, err := r.RenterAllContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rcg.Contracts) != len(oldContracts) {
+			return errors.New("renter doesn't have any contracts")
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rcg.ActiveContracts)+len(rcg.InactiveContracts)+len(rcg.ExpiredContracts) > 0 {
-		t.Fatal("There shouldn't be any contracts after deleting them")
+
+	// Set the allowance to the default again to make the contracts show up as
+	// active.
+	err = r.RenterPostAllowance(siatest.DefaultAllowance)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// The new renter should have the same active contracts as the old one.
-	miner := tg.Miners()[0]
-	numRetries := 0
+	numRetries = 0
 	err = build.Retry(60, time.Second, func() error {
 		if numRetries%10 == 0 {
 			if err := miner.MineBlock(); err != nil {
@@ -849,9 +869,38 @@ func TestRenterContractInitRecoveryScan(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The new renter should have the same active contracts as the old one.
+	// Mine blocks until the renter has the same number of contracts as before.
 	miner := tg.Miners()[0]
 	numRetries := 0
+	err = build.Retry(100, time.Second, func() error {
+		if numRetries%10 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		numRetries++
+		rcg, err := r.RenterAllContractsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rcg.Contracts) != len(oldContracts) {
+			return errors.New("renter doesn't have any contracts")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set the allowance to the default again to make the contracts show up as
+	// active.
+	err = r.RenterPostAllowance(siatest.DefaultAllowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The new renter should have the same active contracts as the old one.
+	numRetries = 0
 	err = build.Retry(60, time.Second, func() error {
 		if numRetries%10 == 0 {
 			if err := miner.MineBlock(); err != nil {
@@ -2547,6 +2596,7 @@ func TestFreshSettingsForRenew(t *testing.T) {
 	}
 	// Check that we haven't renewed.
 	err = build.Retry(200, 100*time.Millisecond, func() error {
+		r.PrintDebugInfo(t, true, true, true)
 		return siatest.CheckExpectedNumberOfContracts(r, 0, 0, 0, 1, 0, 0)
 	})
 	if err != nil {
@@ -2562,7 +2612,7 @@ func TestFreshSettingsForRenew(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		numTries += 1
+		numTries++
 		rc, err := r.RenterContractsGet()
 		if err != nil {
 			return err
