@@ -29,7 +29,7 @@ func TestHostFailedMkdirAll(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	ht, err := blankHostTester("TestHostFailedMkdirAll")
+	ht, err := blankHostTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestHostFailedMkdirAll(t *testing.T) {
 		t.Fatal(err)
 	}
 	ht.host, err = NewCustomHost(&dependencyErrMkdirAll{}, ht.cs, ht.gateway, ht.tpool, ht.wallet, ht.mux, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
-	if err != mockErrMkdirAll {
+	if !errors.Contains(err, mockErrMkdirAll) {
 		t.Fatal(err)
 	}
 	// Set ht.host to something non-nil - nil was returned because startup was
