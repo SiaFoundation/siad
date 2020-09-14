@@ -1,4 +1,4 @@
-package host
+package registry
 
 import (
 	"bufio"
@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
@@ -15,115 +16,62 @@ import (
 )
 
 const (
-	storeEntrySize uint64 = 256
-	storeVersion   uint64 = 1
+	persistedEntrySize uint64 = 512
+	storeVersion       uint64 = 1
 )
 
-var errStoreEntryUnused = errors.New("entry is not in use")
+var (
+	errEntryUnused   = errors.New("entry is not in use")
+	errEntryTooLarge = errors.New("marshaled entry is too large")
+)
 
 type (
-	keyValueStore struct {
-		entryMap map[string]*storedEntry
-		usage    bitfield
-		f        *os.File
+	// Registry is an in-memory key-value store. Renter's can pay the
+	Registry struct {
+		entries map[key]*value
+		usage   bitfield
+		f       *os.File
 	}
 
-	// storedEntry is an entry in the keyValueStore.
-	storedEntry struct {
+	key struct {
+		key   [32]byte
+		tweak uint64
+	}
+
+	value struct {
+		// fields relevant to host
 		expiry types.BlockHeight // expiry of the entry
 		index  uint64            // index within file
-		data   []byte            // stored raw data
+
+		data [256]byte // stored raw data
 	}
 
-	bitfield []uint64
+	persistedEntry struct {
+		// key data
+		key   [32]byte
+		tweak [32]byte
+
+		// value data
+		expiry types.BlockHeight
+		data   [256]byte
+
+		// data related to persistence
+		used   bool
+		unused [191]byte
+	}
 )
 
-func (b bitfield) Len() uint64 {
-	return uint64(len(b)) * 64
+func (entry persistedEntry) Marshal() ([]byte, error) {
+	data := encoding.Marshal(entry)
+	if len(data) > persistedEntrySize {
+		build.Critical(errEntryTooLarge)
+		return nil, errEntryTooLarge
+	}
+	return data, nil
 }
 
-func (b bitfield) IsSet(index uint64) bool {
-	// Each index covers 8 bytes which 8 bits each. So 64 bits in total.
-	sliceOffset := index / 64
-	bitOffset := index % 64
-
-	// Check out-of-bounds.
-	if sliceOffset >= uint64(len(b)) {
-		return false
-	}
-	return b[sliceOffset]>>(63-bitOffset)&1 == 1
-}
-
-func (b *bitfield) Set(index uint64) {
-	// Each index covers 8 bytes which 8 bits each. So 64 bits in total.
-	sliceOffset := index / 64
-	bitOffset := index % 64
-
-	// Extend bitfield if necessary.
-	for sliceOffset >= uint64(len(*b)) {
-		*b = append(*b, 0)
-	}
-
-	(*b)[sliceOffset] |= 1 << (63 - bitOffset)
-}
-
-func (b *bitfield) Unset(index uint64) {
-	// Each index covers 8 bytes which 8 bits each. So 64 bits in total.
-	sliceOffset := index / 64
-	bitOffset := index % 64
-
-	// Extend bitfield if necessary.
-	for sliceOffset >= uint64(len(*b)) {
-		*b = append(*b, 0)
-	}
-
-	(*b)[sliceOffset] &= ^(1 << (63 - bitOffset))
-}
-
-func (b *bitfield) Trim() {
-	toRemove := 0
-	old := *b
-	for i := len(old) - 1; i >= 0; i-- {
-		if old[i] != 0 {
-			break
-		}
-		toRemove++
-	}
-	if toRemove > 0 {
-		*b = make([]uint64, len(old)-toRemove)
-		copy(*b, old[:len(old)-toRemove])
-	}
-}
-
-func (se storedEntry) Marshal() ([]byte, error) {
-	var b [storeEntrySize]byte
-	// The first byte is set to 1 to indicate that the entry is in use.
-	b[0] = 1
-	binary.LittleEndian.PutUint64(b[1:9] , se.index)
-	binary.LittleEndian.PutUint64(b[9:17] , se.expiry)
-	b[17] = byte(len(se.data))
-	n := copy(b[18:], se.data)
-	if n != len(se.data) {
-		return nil, errors.New("failed to copy full entry")
-	}
-	return b[:], nil
-}
-
-func (se *storedEntry) Unmarshal(b []byte) error {
-	if uint64(len(b)) != storeEntrySize {
-		return fmt.Errorf("wrong size %v != %v", len(b), storeEntrySize)
-	}
-	// Check if it's in use. If it's not, don't load it.
-	if b[0] == 0 {
-		return errStoreEntryUnused
-	}
-	se.index = binary.LittleEndian.Uint64(b[1:9])
-	se.expiry = binary.LittleEndian.Uint64(b[9:17])
-	dataLen = int(b[17])
-	if dataLen 
-	se.data = append([]byte{}, b[18:18+dataLen])
-	// Unmarshal the remaining data.
-	return encoding.Unmarshal(b[1:], se)
+func (entry *persistedEntry) Unmarshal(b []byte) error {
+	return encoding.Unmarshal(b, entry)
 }
 
 func initKeyValueStore(path string, wal *writeaheadlog.WAL) (*os.File, error) {
@@ -188,7 +136,7 @@ func openKeyValueStore(path string, wal *writeaheadlog.WAL) (_ *keyValueStore, e
 	}
 	// Create the store.
 	kvs := &keyValueStore{
-		entryMap: make(map[string]*storedEntry),
+		entryMap: make(map[entryKey]*storedEntry),
 	}
 	// Load the remaining entries.
 	for i := uint64(1); i < uint64(fi.Size())/storeEntrySize; i++ {
@@ -196,15 +144,18 @@ func openKeyValueStore(path string, wal *writeaheadlog.WAL) (_ *keyValueStore, e
 		if err != nil {
 			return nil, errors.AddContext(err, fmt.Sprintf("failed to read entry %v of %v", i, fi.Size()/int64(storeEntrySize)))
 		}
-		var storedEntry storedEntry
-		err = storedEntry.Unmarshal(entry[:])
+		var se storedEntry
+		err = se.Unmarshal(entry[:])
 		if errors.Contains(err, errStoreEntryUnused) {
 			continue // ignore unused entries
 		} else if err != nil {
 			return nil, errors.AddContext(err, fmt.Sprintf("failed to parse entry %v of %v", i, fi.Size()/int64(storeEntrySize)))
 		}
 		// Add the entry to the store.
-		kvs.entryMap[]
+		kvs.entryMap[entryKey{
+			key:   nil,
+			tweak: 0,
+		}] = &se
 
 	}
 	return kvs, nil

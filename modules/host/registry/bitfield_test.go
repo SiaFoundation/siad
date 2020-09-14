@@ -1,10 +1,11 @@
-package host
+package registry
 
 import (
 	"fmt"
 	"testing"
 )
 
+// TestBitfield tests setting and unsettings values in the bitfield.
 func TestBitfield(t *testing.T) {
 	var b bitfield
 

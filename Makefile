@@ -38,6 +38,7 @@ pkgs = \
 	./modules/host \
 	./modules/host/contractmanager \
 	./modules/host/mdm \
+	./modules/host/registry \
 	./modules/miner \
 	./modules/renter \
 	./modules/renter/contractor \
@@ -93,6 +94,7 @@ lockcheckpkgs = \
 	./node/api/client \
 	./node/api/server \
 	./modules/host/mdm \
+	./modules/host/registry \
 	./modules/renter/hostdb \
 	./modules/renter/proto \
 	./modules/renter/skynetblacklist \
