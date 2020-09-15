@@ -195,6 +195,16 @@ func (hdb *HostDB) collateralAdjustments(entry modules.HostDBEntry, allowance mo
 	return smallWeight * largeWeight
 }
 
+// acceptContractAdjustments checks that a host which doesn't accept contracts
+// will receive the worst score possible until it enables accepting contracts
+// again.
+func (hdb *HostDB) acceptContractAdjustments(entry modules.HostDBEntry) float64 {
+	if !entry.AcceptingContracts {
+		return math.SmallestNonzeroFloat64
+	}
+	return 1
+}
+
 // durationAdjustments checks that the host has a maxduration which is larger
 // than the period of the allowance. The host's score is heavily minimized if
 // not.
@@ -592,6 +602,7 @@ func (hdb *HostDB) managedCalculateHostWeightFn(allowance modules.Allowance) hos
 	// Create the weight function.
 	return func(entry modules.HostDBEntry) hosttree.ScoreBreakdown {
 		return hosttree.HostAdjustments{
+			AcceptContractAdjustment:   hdb.acceptContractAdjustments(entry),
 			AgeAdjustment:              hdb.lifetimeAdjustments(entry),
 			BasePriceAdjustment:        hdb.basePriceAdjustments(entry),
 			BurnAdjustment:             1,

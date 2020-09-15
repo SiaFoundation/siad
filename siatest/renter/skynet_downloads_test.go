@@ -64,6 +64,10 @@ func testDownloadSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// verify downloads
+	//
+	// note: these switch from un-cached to cached downloads partway through. By
+	// passing verification on all pieces of the test, we are confirming that
+	// the caching is correct.
 	err = verifyDownloadRaw(t, r, skylink, data, sup.FileMetadata, testName)
 	if err != nil {
 		t.Fatal(err)
@@ -547,8 +551,10 @@ func verifyDownloadRaw(t *testing.T, r *siatest.TestNode, skylink string, expect
 	}
 	if !bytes.Equal(data, expectedData) {
 		t.Log("Test:", testName)
-		t.Log("expected data: ", string(expectedData))
-		t.Log("actual   data: ", string(data))
+		t.Log("expected data: ")
+		siatest.PrintJSON(expectedData)
+		t.Log("actual   data: ")
+		siatest.PrintJSON(data)
 		return errors.New("Unexpected data")
 	}
 	if !reflect.DeepEqual(metadata, expectedMetadata) {

@@ -181,7 +181,6 @@ func (h *Host) managedRPCFormContract(conn net.Conn) error {
 	h.mu.RUnlock()
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
-		renewal:                 false,
 		renterPK:                renterPK,
 		renterSignatures:        renterTxnSignatures,
 		renterRevisionSignature: renterRevisionSignature,
@@ -310,7 +309,14 @@ func (h *Host) managedVerifyNewContract(txnSet []types.Transaction, renterPK cry
 		registerHostInsufficientCollateral = true
 		return errCollateralBudgetExceeded
 	}
-
+	// Check that the total payouts match.
+	totalPayout, validPayout, missedPayout := fc.TotalPayout()
+	if !validPayout.Equals(missedPayout) {
+		return ErrInvalidPayoutSums
+	}
+	if !types.PostTax(blockHeight, totalPayout).Equals(validPayout) {
+		return ErrInvalidPayoutSums
+	}
 	// The unlock hash for the file contract must match the unlock hash that
 	// the host knows how to spend.
 	expectedUH := types.UnlockConditions{

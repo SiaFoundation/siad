@@ -78,21 +78,6 @@ func processModules(modules string) (string, error) {
 	return modules, nil
 }
 
-// processProfileFlags checks that the flags given for profiling are valid.
-func processProfileFlags(profile string) (string, error) {
-	profile = strings.ToLower(profile)
-	validProfiles := "cmt"
-
-	invalidProfiles := profile
-	for _, p := range validProfiles {
-		invalidProfiles = strings.Replace(invalidProfiles, string(p), "", 1)
-	}
-	if len(invalidProfiles) > 0 {
-		return "", errors.New("Unable to parse --profile flags, unrecognized or duplicate flags: " + invalidProfiles)
-	}
-	return profile, nil
-}
-
 // processConfig checks the configuration values and performs cleanup on
 // incorrect-but-allowed values.
 func processConfig(config Config) (Config, error) {
@@ -101,7 +86,9 @@ func processConfig(config Config) (Config, error) {
 	config.Siad.RPCaddr = processNetAddr(config.Siad.RPCaddr)
 	config.Siad.HostAddr = processNetAddr(config.Siad.HostAddr)
 	config.Siad.Modules, err1 = processModules(config.Siad.Modules)
-	config.Siad.Profile, err2 = processProfileFlags(config.Siad.Profile)
+	if config.Siad.Profile != "" {
+		config.Siad.Profile, err2 = profile.ProcessProfileFlags(config.Siad.Profile)
+	}
 	err3 := verifyAPISecurity(config)
 	err := build.JoinErrors([]error{err1, err2, err3}, ", and ")
 	if err != nil {
@@ -224,7 +211,7 @@ func startDaemon(config Config) (err error) {
 
 	// Print a 'startup complete' message.
 	startupTime := time.Since(loadStart)
-	fmt.Printf("Finished full setup in %.3f seconds\n", startupTime.Seconds())
+	fmt.Printf("Finished full setup in %s\n", startupTime.Truncate(time.Second).String())
 
 	// wait for Serve to return or for kill signal to be caught
 	err = func() error {

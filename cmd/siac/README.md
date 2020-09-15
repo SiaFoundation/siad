@@ -52,6 +52,12 @@ Full Descriptions
 
 ### Daemon tasks
 
+* `siac profile` performs actions related to the profiles for the daemon.
+
+* `siac profile start` starts a profile for the daemon.
+
+* `siac profile stop` stops a profile for the daemon.
+
 * `siac stack` writes the current stack trace to an output file.
 
 * `siac stop` sends the stop signal to siad to safely terminate. This has the
@@ -245,6 +251,16 @@ counted.
   with this skylink by re-uploading an exact copy. This ensures that the file
 will still be available on skynet as long as you continue maintaining the file
 in your renter.
+
+* `siac skynet portals` list the persisted Skynet portals.
+
+* `siac skynet portals add [url]` adds a Skynet portals which is either
+public or private to the list of persisted Skynet portals. The Skynet portal
+URL is of the form `url:port`. Add the `--public` if you want it to be public.
+It defaults to private.
+
+* `siac skynet portals remove [url]` removes the Skynet portal from the
+persisted list. The Skynet portal URL is of the form `url:port`.
 
 * `siac skynet unpin [siapath]` unpins one or more skyfiles or directories,
   deleting them from your list of stored files or directories.

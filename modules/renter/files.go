@@ -97,21 +97,26 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 		return err
 	}
 
-	// Call callThreadedBubbleMetadata on the old directory to make sure the
-	// system metadata is updated to reflect the move.
+	// Call callThreadedBubbleMetadata on the old and new directories to make
+	// sure the system metadata is updated to reflect the move.
 	oldDirSiaPath, err := currentName.Dir()
 	if err != nil {
 		return err
 	}
-	go r.callThreadedBubbleMetadata(oldDirSiaPath)
-	// Call callThreadedBubbleMetadata on the new directory to make sure the
-	// system metadata is updated to reflect the move.
 	newDirSiaPath, err := newName.Dir()
 	if err != nil {
 		return err
 	}
-	go r.callThreadedBubbleMetadata(newDirSiaPath)
-
+	bubblePaths := r.newUniqueRefreshPaths()
+	err = bubblePaths.callAdd(oldDirSiaPath)
+	if err != nil {
+		r.log.Printf("failed to add old directory '%v' to bubble paths:  %v", oldDirSiaPath, err)
+	}
+	err = bubblePaths.callAdd(newDirSiaPath)
+	if err != nil {
+		r.log.Printf("failed to add new directory '%v' to bubble paths:  %v", newDirSiaPath, err)
+	}
+	bubblePaths.callRefreshAll()
 	return nil
 }
 

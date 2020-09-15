@@ -1,7 +1,6 @@
 package host
 
 import (
-	"math/rand"
 	"reflect"
 	"testing"
 
@@ -132,7 +131,7 @@ func TestStorageObligationSnapshot(t *testing.T) {
 
 	// Insert the SO
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
+	err = ht.host.managedAddStorageObligation(so)
 	ht.host.managedUnlockStorageObligation(so.id())
 
 	// Fetch a snapshot & verify its fields
@@ -206,7 +205,7 @@ func TestAccountFundingTracking(t *testing.T) {
 	// expectDelta is a helper that asserts the deltas, with regards to the
 	// account funding fields, in the host's financial metrics before and after
 	// executing the given function f.
-	expectDelta := func(pafDelta, afDelta int64, action string, f func() error) error {
+	expectDelta := func(pafDelta, afDelta int, action string, f func() error) error {
 		bkp := ht.host.FinancialMetrics()
 		if err := f(); err != nil {
 			return err
@@ -260,18 +259,18 @@ func TestAccountFundingTracking(t *testing.T) {
 	defer ht.host.managedUnlockStorageObligation(so.id())
 
 	// add the storage obligation (expect PAF to increase - AF remain same)
-	rd1 := rand.Int63n(10) + 1
+	rd1 := fastrand.Intn(10) + 1
 	so.PotentialAccountFunding = so.PotentialAccountFunding.Add64(uint64(rd1))
 	if err = expectDelta(rd1, 0, "add SO", func() error {
-		return ht.host.managedAddStorageObligation(so, false)
+		return ht.host.managedAddStorageObligation(so)
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	// modify the storage obligation (expect PAF to increase - AF remain same)
-	rd2 := rand.Int63n(10) + 1
+	rd2 := fastrand.Intn(10) + 1
 	so.PotentialAccountFunding = so.PotentialAccountFunding.Add64(uint64(rd2))
-	if err = expectDelta(int64(rd2), 0, "modify SO", func() error {
+	if err = expectDelta(rd2, 0, "modify SO", func() error {
 		return ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, make(map[crypto.Hash][]byte, 0))
 	}); err != nil {
 		t.Fatal(err)
@@ -323,7 +322,7 @@ func TestManagedModifyUnlockedStorageObligation(t *testing.T) {
 	}
 
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
+	err = ht.host.managedAddStorageObligation(so)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -394,7 +393,7 @@ func TestManagedBuildStorageProof(t *testing.T) {
 
 	// Insert the SO
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
+	err = ht.host.managedAddStorageObligation(so)
 	ht.host.managedUnlockStorageObligation(so.id())
 
 	// Build a proof for the SO.

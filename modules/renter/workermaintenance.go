@@ -79,6 +79,15 @@ func (wms *workerMaintenanceState) tryResetMaintenanceCooldown() time.Time {
 	return wms.cooldownUntil
 }
 
+// managedMaintenanceRecentError is a helper function that returns the recent
+// maintenance error
+func (w *worker) managedMaintenanceRecentError() error {
+	wms := w.staticMaintenanceState
+	wms.mu.Lock()
+	defer wms.mu.Unlock()
+	return wms.recentErr
+}
+
 // managedMaintenanceSucceeded is a helper function that returns whether the
 // maintenance state indicates all maintenance tasks succeeded.
 func (w *worker) managedMaintenanceSucceeded() bool {

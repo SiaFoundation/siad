@@ -214,7 +214,11 @@ func (r *Renter) managedTryFetchChunkFromDisk(chunk *unfinishedDownloadChunk) bo
 	}
 	go func() (success bool) {
 		defer r.tg.Done()
-		defer file.Close()
+		defer func() {
+			if err := file.Close(); err != nil {
+				r.log.Println("WARN: error closing file after download served from disk:", err)
+			}
+		}()
 		// Try downloading if serving from disk failed.
 		defer func() {
 			if success {

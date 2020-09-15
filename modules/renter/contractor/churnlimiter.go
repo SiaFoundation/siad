@@ -243,7 +243,7 @@ func (c *Contractor) managedMarkContractUtility(contract modules.RenterContract,
 	}
 
 	// Do critical contract checks and update the utility if any checks fail.
-	u, needsUpdate = c.managedCriticalUtilityChecks(contract, host)
+	u, needsUpdate = c.managedCriticalUtilityChecks(sc, host)
 	if needsUpdate {
 		err := c.managedUpdateContractUtility(sc, u)
 		if err != nil {
@@ -302,7 +302,7 @@ func (c *Contractor) managedMarkContractUtility(contract modules.RenterContract,
 // figures out whether the contract is useful for uploading, and whether the
 // contract should be renewed.
 func (c *Contractor) managedMarkContractsUtility() error {
-	err, minScoreGFR, minScoreGFU := c.managedFindMinAllowedHostScores()
+	minScoreGFR, minScoreGFU, err := c.managedFindMinAllowedHostScores()
 	if err != nil {
 		return err
 	}

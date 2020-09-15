@@ -168,7 +168,7 @@ func TestHostAndRentVanilla(t *testing.T) {
 	// the contract.
 	pd := modules.ProdDependencies
 	csDeps := &dependencies.DependencyRenewWithoutClear{}
-	st, err := createServerTesterWithDeps(t.Name(), pd, pd, pd, pd, pd, pd, pd, pd, csDeps)
+	st, err := createServerTesterWithDeps(t.Name(), pd, pd, pd, pd, pd, pd, pd, pd, csDeps, pd)
 	if err != nil {
 		t.Fatal(err)
 	}

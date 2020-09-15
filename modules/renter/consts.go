@@ -26,7 +26,6 @@ const (
 // AlertCauseSiafileLowRedundancy creates a customized "cause" for a siafile
 // with a certain path and health.
 func AlertCauseSiafileLowRedundancy(siaPath modules.SiaPath, health float64) string {
-	siaPath, _ = siaPath.Rebase(modules.UserFolder, modules.RootSiaPath())
 	return fmt.Sprintf("Siafile '%v' has a health of %v", siaPath.String(), health)
 }
 
@@ -64,6 +63,14 @@ var (
 		Dev:      time.Second * 3,
 		Standard: time.Second * 5,
 		Testing:  time.Second,
+	}).(time.Duration)
+
+	// cachedUtilitiesUpdateInterval is how often the renter updates the
+	// cachedUtilities.
+	cachedUtilitiesUpdateInterval = build.Select(build.Var{
+		Dev:      time.Minute,
+		Standard: time.Minute * 10,
+		Testing:  time.Second * 3,
 	}).(time.Duration)
 )
 
@@ -141,6 +148,11 @@ const (
 
 // Constants that tune the health and repair processes.
 const (
+	// maxConsecutiveDirHeapFailures is the maximum number of consecutive times
+	// the repair heap is allowed to fail to get a directory from the Directory
+	// Heap
+	maxConsecutiveDirHeapFailures = 5
+
 	// maxRandomStuckChunksAddToHeap is the maximum number of random stuck
 	// chunks that the stuck loop will add to the uploadHeap at a time. Random
 	// stuck chunks are the stuck chunks chosen at random from the file system

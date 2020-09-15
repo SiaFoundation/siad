@@ -68,7 +68,7 @@ func (w *worker) ReadSector(ctx context.Context, root crypto.Hash, offset, lengt
 		jobRead: jobRead{
 			staticResponseChan: readSectorRespChan,
 			staticLength:       length,
-			jobGeneric:         newJobGeneric(w.staticJobReadQueue, ctx.Done()),
+			jobGeneric:         newJobGeneric(ctx, w.staticJobReadQueue),
 		},
 		staticOffset: offset,
 		staticSector: root,

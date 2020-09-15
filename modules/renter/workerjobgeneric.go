@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -19,7 +20,7 @@ var (
 type (
 	// jobGeneric implements the basic functionality for a job.
 	jobGeneric struct {
-		staticCancelChan <-chan struct{}
+		staticCtx context.Context
 
 		staticQueue workerJobQueue
 	}
@@ -95,9 +96,9 @@ type (
 // newJobGeneric returns an initialized jobGeneric. The queue that is associated
 // with the job should be used as the input to this function. The job will
 // cancel itself if the cancelChan is closed.
-func newJobGeneric(queue workerJobQueue, cancelChan <-chan struct{}) *jobGeneric {
+func newJobGeneric(ctx context.Context, queue workerJobQueue) *jobGeneric {
 	return &jobGeneric{
-		staticCancelChan: cancelChan,
+		staticCtx: ctx,
 
 		staticQueue: queue,
 	}
@@ -113,7 +114,7 @@ func newJobGenericQueue(w *worker) *jobGenericQueue {
 // staticCanceled returns whether or not the job has been canceled.
 func (j *jobGeneric) staticCanceled() bool {
 	select {
-	case <-j.staticCancelChan:
+	case <-j.staticCtx.Done():
 		return true
 	default:
 		return false
@@ -163,6 +164,7 @@ func (jq *jobGenericQueue) callNext() workerJob {
 		job := jq.jobs[0]
 		jq.jobs = jq.jobs[1:]
 		if job.staticCanceled() {
+			job.callDiscard(errors.New("callNext: skipping and discarding already canceled job"))
 			continue
 		}
 		return job

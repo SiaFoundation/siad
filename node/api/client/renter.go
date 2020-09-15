@@ -459,6 +459,7 @@ func (c *Client) RenterPostAllowance(allowance modules.Allowance) error {
 	a = a.WithExpectedDownload(allowance.ExpectedDownload)
 	a = a.WithExpectedRedundancy(allowance.ExpectedRedundancy)
 	a = a.WithMaxPeriodChurn(allowance.MaxPeriodChurn)
+	a = a.WithPaymentContractInitialFunding(allowance.PaymentContractInitialFunding)
 	return a.Send()
 }
 

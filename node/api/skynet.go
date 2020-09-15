@@ -246,7 +246,10 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}()
 
-	skylink, skylinkStringNoQuery, path, err := splitSkylinkString(ps.ByName("skylink"))
+	// Parse the skylink from the raw URL of the request. Any special characters
+	// in the raw URL are encoded, allowing us to differentiate e.g. the '?'
+	// that begins query parameters from the encoded version '%3F'.
+	skylink, skylinkStringNoQuery, path, err := parseSkylinkURL(req.URL.String())
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
 		return
@@ -323,10 +326,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	defaultPath := metadata.DefaultPath
 	if metadata.DefaultPath == "" && !metadata.DisableDefaultPath {
 		if len(metadata.Subfiles) == 1 {
-			// Handle the legacy case in which the fields `defaultpath` and
-			// `disabledefaultpath` are not defined. If the skyfile has a single
-			// subfile we want to automatically default to it in order to retain
-			// the current behaviour.
+			// If `defaultpath` and `disabledefaultpath` are not set and the
+			// skyfile has a single subfile we automatically default to it.
 			for filename := range metadata.Subfiles {
 				defaultPath = modules.EnsurePrefix(filename, "/")
 				break
@@ -348,28 +349,39 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// Serve the contents of the file at the default path if one is set. Note
 	// that we return the metadata for the entire Skylink when we serve the
 	// contents of the file at the default path.
+	// We only use the default path when the user requests the root path because
+	// we want to enable people to access individual subfile without forcing
+	// them to download the entire skyfile.
 	if path == "/" && defaultPath != "" && format == modules.SkyfileFormatNotSpecified {
 		if strings.Count(defaultPath, "/") > 1 && len(metadata.Subfiles) > 1 {
 			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s) which refers to a non-root file, please specify a format", defaultPath)}, http.StatusBadRequest)
 			return
 		}
+		isSkapp := strings.HasSuffix(defaultPath, ".html") || strings.HasSuffix(defaultPath, ".htm")
 		// If we don't have a subPath and the skylink doesn't end with a trailing
 		// slash we need to redirect in order to add the trailing slash.
-		if !strings.HasSuffix(skylinkStringNoQuery, "/") {
-			w.Header().Set("Location", skylinkStringNoQuery+"/")
+		// This is only true for skapps - they need it in order to properly work
+		// with relative paths.
+		// We also don't need to redirect if this is a HEAD request or if it's a
+		// download as attachment.
+		if isSkapp && !attachment && req.Method == http.MethodGet && !strings.HasSuffix(skylinkStringNoQuery, "/") {
+			w.Header().Set("Location", skylinkStringNoQuery+"/?"+req.URL.RawQuery)
 			w.WriteHeader(http.StatusTemporaryRedirect)
 			return
 		}
-		isHtml := strings.HasSuffix(defaultPath, ".html") || strings.HasSuffix(defaultPath, ".htm")
-		// Only serve the default path if it points to an HTML file or the only
-		// file in the skyfile.
-		if !isHtml && len(metadata.Subfiles) > 1 {
+		// Only serve the default path if it points to an HTML file (this is a
+		// skapp) or it's the only file in the skyfile.
+		if !isSkapp && len(metadata.Subfiles) > 1 {
 			WriteError(w, Error{fmt.Sprintf("skyfile has invalid default path (%s), please specify a format", defaultPath)}, http.StatusBadRequest)
 			return
 		}
-		metaForPath, file, offset, size := metadata.ForPath(defaultPath)
+		metaForPath, isFile, offset, size := metadata.ForPath(defaultPath)
 		if len(metaForPath.Subfiles) == 0 {
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v", path)}, http.StatusNotFound)
+			return
+		}
+		if !isFile {
+			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, please specify a specific path or a format in order to download the content", defaultPath)}, http.StatusNotFound)
 			return
 		}
 		streamer, err = NewLimitStreamer(streamer, offset, size)
@@ -377,7 +389,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			WriteError(w, Error{fmt.Sprintf("failed to download contents for default path: %v, could not create limit streamer", path)}, http.StatusInternalServerError)
 			return
 		}
-		isSubfile = file
+		isSubfile = isFile
 		responseContentType = metaForPath.ContentType()
 	}
 
@@ -493,15 +505,17 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		w.Header().Set("Content-Type", responseContentType)
 	}
 	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
 }
 
-// splitSkylinkString splits a skylink string into its component - a skylink,
-// a string representation of the skylink with the query parameters stripped,
-// and a path.
-func splitSkylinkString(s string) (skylink modules.Skylink, skylinkStringNoQuery, path string, err error) {
+// parseSkylinkURL splits a raw skylink URL into its components - a skylink, a
+// string representation of the skylink with the query parameters stripped, and
+// a path. The skylink URL should not have been URL-decoded. The path is
+// URL-decoded before returning as it is for us to parse and use, while the
+// other components remain encoded for the skapp.
+func parseSkylinkURL(skylinkURL string) (skylink modules.Skylink, skylinkStringNoQuery, path string, err error) {
+	s := strings.TrimPrefix(skylinkURL, "/skynet/skylink/")
 	s = strings.TrimPrefix(s, "/")
 	// Parse out optional path to a subfile
 	path = "/" // default to root
@@ -511,6 +525,11 @@ func splitSkylinkString(s string) (skylink modules.Skylink, skylinkStringNoQuery
 	// Check if a path is passed.
 	if len(splits) > 1 && len(splits[1]) > 0 {
 		path = modules.EnsurePrefix(splits[1], "/")
+	}
+	// Decode the path as it may contain URL-encoded characters.
+	path, err = url.QueryUnescape(path)
+	if err != nil {
+		return
 	}
 	// Parse skylink
 	err = skylink.LoadString(s)
@@ -792,7 +811,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 	}
 
-	// Grab the skykey specified.
+	// Grab the skykey specified by name or ID.
 	skykeyName := queryForm.Get("skykeyname")
 	skykeyID := queryForm.Get("skykeyid")
 	if skykeyName != "" && skykeyID != "" {
@@ -812,9 +831,6 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 		lup.SkykeyID = ID
 	}
-
-	// Enable CORS
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	// Check for a convertpath input
 	convertPathStr := queryForm.Get("convertpath")

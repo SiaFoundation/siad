@@ -89,6 +89,10 @@ var (
 	// length.
 	ErrIllegalOffsetAndLength = ErrorCommunication("renter is trying to do a modify with an illegal offset and length")
 
+	// ErrInvalidPayoutSums is returned if a revision doesn't sum up to the same
+	// total payout as the previous revision or contract.
+	ErrInvalidPayoutSums = ErrorCommunication("renter provided a revision with an invalid total payout")
+
 	// ErrLargeSector is returned if the renter sends a RevisionAction that has
 	// data which creates a sector that is larger than what the host uses.
 	ErrLargeSector = ErrorCommunication("renter has sent a sector that exceeds the host's sector size")
@@ -164,7 +168,7 @@ var (
 // finalizeContractArgs are the arguments passed into managedFinalizeContract.
 type finalizeContractArgs struct {
 	builder                 modules.TransactionBuilder
-	renewal                 bool
+	renewedSO               *storageObligation
 	renterPK                crypto.PublicKey
 	renterSignatures        []types.TransactionSignature
 	renterRevisionSignature types.TransactionSignature
@@ -207,7 +211,7 @@ func createRevisionSignature(fcr types.FileContractRevision, renterSig types.Tra
 // to the caller.
 func (h *Host) managedFinalizeContract(args finalizeContractArgs) ([]types.TransactionSignature, types.TransactionSignature, types.FileContractID, error) {
 	// Extract args
-	builder, renewal, renterPK, renterSignatures := args.builder, args.renewal, args.renterPK, args.renterSignatures
+	builder, renterPK, renterSignatures := args.builder, args.renterPK, args.renterSignatures
 	renterRevisionSignature, initialSectorRoots, hostCollateral := args.renterRevisionSignature, args.initialSectorRoots, args.hostCollateral
 	hostInitialRevenue, hostInitialRisk, settings := args.hostInitialRevenue, args.hostInitialRisk, args.settings
 
@@ -299,7 +303,11 @@ func (h *Host) managedFinalizeContract(args finalizeContractArgs) ([]types.Trans
 		// just when the actual modification is happening.
 		i := 0
 		for {
-			err = h.managedAddStorageObligation(so, renewal)
+			if args.renewedSO == nil {
+				err = h.managedAddStorageObligation(so)
+			} else {
+				err = h.managedAddRenewedStorageObligation(*args.renewedSO, so)
+			}
 			if err == nil {
 				return nil
 			}

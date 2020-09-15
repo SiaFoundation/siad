@@ -388,7 +388,7 @@ Lost space: %v
 		lostPercent,
 		modules.FilesizeUnits(minFileSize))
 
-	if uploadedsizeUtilVerbose { // print only if -v or --verbose used
+	if verbose { // print only if -v or --verbose used
 		fmt.Printf(`
 Files: %v
     Average: %v

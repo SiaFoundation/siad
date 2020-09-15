@@ -863,6 +863,39 @@ func TestChunkSwitchStuckStatus(t *testing.T) {
 	}
 }
 
+// TestRenterAddChunksToHeapPanic tests that the log.Severe is triggered if
+// there is an error getting a directory from the directory heap.
+func TestRenterAddChunksToHeapPanic(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create Renter
+	rt, err := newRenterTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add maxConsecutiveDirHeapFailures non existent directories to the
+	// directoryHeap
+	for i := 0; i < maxConsecutiveDirHeapFailures; i++ {
+		rt.renter.directoryHeap.managedPush(&directory{
+			staticSiaPath: modules.RandomSiaPath(),
+		})
+	}
+
+	// Recover panic
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected panic")
+		}
+	}()
+
+	// Call managedAddChunksToHeap
+	rt.renter.managedAddChunksToHeap(nil)
+}
+
 // managedBlockUntilBubblesComplete is a helper that blocks until all pending
 // bubbles are complete
 func (rt *renterTester) managedBlockUntilBubblesComplete() {

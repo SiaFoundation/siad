@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -78,8 +79,18 @@ func newWorkerTesterCustomDependency(name string, renterDeps modules.Dependencie
 
 // Close closes the renter and host.
 func (wt *workerTester) Close() error {
-	err1 := wt.rt.Close()
-	err2 := wt.host.Close()
+	var err1, err2 error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		err1 = wt.rt.Close()
+		wg.Done()
+	}()
+	go func() {
+		err2 = wt.host.Close()
+		wg.Done()
+	}()
+	wg.Wait()
 	return errors.Compose(err1, err2)
 }
 
