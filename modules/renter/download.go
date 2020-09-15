@@ -410,7 +410,9 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 func (d *download) Start() error {
 	// Nothing more to do for 0-byte files or 0-length downloads.
 	if d.staticLength == 0 {
+		d.mu.Lock()
 		d.markComplete()
+		d.mu.Unlock()
 		return nil
 	}
 
@@ -530,11 +532,13 @@ func (d *download) Start() error {
 // DownloadByUID returns a single download from the history by it's UID.
 func (r *Renter) DownloadByUID(uid modules.DownloadID) (modules.DownloadInfo, bool) {
 	r.downloadHistoryMu.Lock()
-	defer r.downloadHistoryMu.Unlock()
 	d, exists := r.downloadHistory[uid]
+	r.downloadHistoryMu.Unlock()
 	if !exists {
 		return modules.DownloadInfo{}, false
 	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	return modules.DownloadInfo{
 		Destination:     d.destinationString,
 		DestinationType: d.staticDestinationType,

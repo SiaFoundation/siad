@@ -148,33 +148,33 @@ func TestCheckDownloadGouging(t *testing.T) {
 	//
 	// The cost is set to be exactly equal to the price gouging limit, such that
 	// slightly decreasing any of the values evades the price gouging detector.
-	minHostSettings := modules.HostExternalSettings{
-		BaseRPCPrice:           types.SiacoinPrecision,
-		DownloadBandwidthPrice: types.SiacoinPrecision.Div64(modules.StreamDownloadSize),
-		SectorAccessPrice:      types.SiacoinPrecision,
+	minPriceTable := &modules.RPCPriceTable{
+		ReadBaseCost:          types.SiacoinPrecision,
+		ReadLengthCost:        types.SiacoinPrecision.Div64(modules.StreamDownloadSize),
+		DownloadBandwidthCost: types.SiacoinPrecision.Div64(modules.StreamDownloadSize),
 	}
 
-	err := checkDownloadGouging(minAllowance, minHostSettings)
+	err := checkDownloadGouging(minAllowance, minPriceTable)
 	if err == nil {
 		t.Fatal("expecting price gouging check to fail:", err)
 	}
 
 	// Drop the host prices one field at a time.
-	newHostSettings := minHostSettings
-	newHostSettings.BaseRPCPrice = minHostSettings.BaseRPCPrice.Mul64(100).Div64(101)
-	err = checkDownloadGouging(minAllowance, newHostSettings)
+	newPriceTable := minPriceTable
+	newPriceTable.ReadBaseCost = minPriceTable.ReadBaseCost.Mul64(100).Div64(101)
+	err = checkDownloadGouging(minAllowance, newPriceTable)
 	if err != nil {
 		t.Fatal(err)
 	}
-	newHostSettings = minHostSettings
-	newHostSettings.DownloadBandwidthPrice = minHostSettings.DownloadBandwidthPrice.Mul64(100).Div64(101)
-	err = checkDownloadGouging(minAllowance, newHostSettings)
+	newPriceTable = minPriceTable
+	newPriceTable.DownloadBandwidthCost = minPriceTable.DownloadBandwidthCost.Mul64(100).Div64(101)
+	err = checkDownloadGouging(minAllowance, newPriceTable)
 	if err != nil {
 		t.Fatal(err)
 	}
-	newHostSettings = minHostSettings
-	newHostSettings.SectorAccessPrice = minHostSettings.SectorAccessPrice.Mul64(100).Div64(101)
-	err = checkDownloadGouging(minAllowance, newHostSettings)
+	newPriceTable = minPriceTable
+	newPriceTable.ReadLengthCost = minPriceTable.ReadLengthCost.Mul64(100).Div64(101)
+	err = checkDownloadGouging(minAllowance, newPriceTable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,15 +183,14 @@ func TestCheckDownloadGouging(t *testing.T) {
 	// acceptable.
 	maxAllowance := minAllowance
 	maxAllowance.Funds = maxAllowance.Funds.Add(oneCurrency)
-	maxAllowance.MaxRPCPrice = types.SiacoinPrecision.Add(oneCurrency)
+	maxAllowance.MaxRPCPrice = modules.MDMReadCost(minPriceTable, modules.StreamDownloadSize).Add(oneCurrency)
 	maxAllowance.MaxContractPrice = oneCurrency
-	maxAllowance.MaxDownloadBandwidthPrice = types.SiacoinPrecision.Div64(modules.StreamDownloadSize).Add(oneCurrency)
-	maxAllowance.MaxSectorAccessPrice = types.SiacoinPrecision.Add(oneCurrency)
+	maxAllowance.MaxDownloadBandwidthPrice = minPriceTable.DownloadBandwidthCost.Add(oneCurrency)
 	maxAllowance.MaxStoragePrice = oneCurrency
 	maxAllowance.MaxUploadBandwidthPrice = oneCurrency
 
 	// The max allowance should have no issues with price gouging.
-	err = checkDownloadGouging(maxAllowance, minHostSettings)
+	err = checkDownloadGouging(maxAllowance, minPriceTable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,23 +198,15 @@ func TestCheckDownloadGouging(t *testing.T) {
 	// Should fail if the MaxRPCPrice is dropped.
 	failAllowance := maxAllowance
 	failAllowance.MaxRPCPrice = types.SiacoinPrecision.Sub(oneCurrency)
-	err = checkDownloadGouging(failAllowance, minHostSettings)
+	err = checkDownloadGouging(failAllowance, minPriceTable)
 	if err == nil {
 		t.Fatal("expecting price gouging check to fail")
 	}
 
 	// Should fail if the MaxDownloadBandwidthPrice is dropped.
 	failAllowance = maxAllowance
-	failAllowance.MaxDownloadBandwidthPrice = types.SiacoinPrecision.Div64(modules.StreamDownloadSize).Sub(oneCurrency)
-	err = checkDownloadGouging(failAllowance, minHostSettings)
-	if err == nil {
-		t.Fatal("expecting price gouging check to fail")
-	}
-
-	// Should fail if the MaxSectorAccessPrice is dropped.
-	failAllowance = maxAllowance
-	failAllowance.MaxSectorAccessPrice = types.SiacoinPrecision.Sub(oneCurrency)
-	err = checkDownloadGouging(failAllowance, minHostSettings)
+	failAllowance.MaxDownloadBandwidthPrice = minPriceTable.DownloadBandwidthCost.Sub(oneCurrency)
+	err = checkDownloadGouging(failAllowance, minPriceTable)
 	if err == nil {
 		t.Fatal("expecting price gouging check to fail")
 	}
