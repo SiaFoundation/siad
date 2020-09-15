@@ -334,9 +334,10 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 
 	// Get the full set of files and directories.
 	//
-	// NOTE: Always query recursively so that we can filter out non-tracked
-	// files and get accurate, consistent sizes for dirs. If the --recursive
-	// flag was not passed, we limit the directory output later.
+	// NOTE: Always query recursively so that we can filter out files that are
+	// not tracked by Skynet and get accurate, consistent sizes for dirs when
+	// displaying. If the --recursive flag was not passed, we limit the
+	// directory output later.
 	dirs := getDir(sp, true, true)
 
 	// Sort the directories and the files.

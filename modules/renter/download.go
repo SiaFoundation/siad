@@ -440,7 +440,7 @@ func (d *download) Start() error {
 		// Create the map.
 		chunkMaps[chunkIndex-minChunk] = make(map[string]downloadPieceInfo)
 		// Get the pieces for the chunk.
-		pieces := params.file.Pieces(uint64(chunkIndex))
+		pieces := params.file.Pieces(chunkIndex)
 		for pieceIndex, pieceSet := range pieces {
 			for _, piece := range pieceSet {
 				// Sanity check - the same worker should not have two pieces for
