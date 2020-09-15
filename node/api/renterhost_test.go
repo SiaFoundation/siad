@@ -1404,8 +1404,12 @@ func TestHostAndRentReload(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Try downloading the file.
-	err = st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downpath)
+	// Try downloading the file but do so in a loop. There is a chance that the
+	// worker is put on a cooldown due to the renter starting up before the host
+	// and the host being unavailable.
+	err = build.Retry(60, time.Second, func() error {
+		return st.stdGetAPI("/renter/download/test?disablelocalfetch=true&destination=" + downpath)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
