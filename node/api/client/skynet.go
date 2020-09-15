@@ -339,7 +339,7 @@ func (c *Client) SkynetSkyfileMultiPartPost(params modules.SkyfileMultipartUploa
 // siapath of the siafile that should be converted. The siapath provided inside
 // of the upload params is the name that will be used for the base sector of the
 // skyfile.
-func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadParameters, convert modules.SiaPath) (string, error) {
+func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadParameters, convert modules.SiaPath) (string, api.SkynetSkyfileHandlerPOST, error) {
 	// Set the url values.
 	values := url.Values{}
 	values.Set("filename", lup.FileMetadata.Filename)
@@ -355,16 +355,16 @@ func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadPara
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())
 	_, resp, err := c.postRawResponse(query, lup.Reader)
 	if err != nil {
-		return "", errors.AddContext(err, "post call to "+query+" failed")
+		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "post call to "+query+" failed")
 	}
 
 	// Parse the response to get the skylink.
 	var rshp api.SkynetSkyfileHandlerPOST
 	err = json.Unmarshal(resp, &rshp)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to parse the skylink upload response")
+		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "unable to parse the skylink upload response")
 	}
-	return rshp.Skylink, err
+	return rshp.Skylink, rshp, err
 }
 
 // SkynetBlacklistGet requests the /skynet/blacklist Get endpoint
@@ -373,17 +373,24 @@ func (c *Client) SkynetBlacklistGet() (blacklist api.SkynetBlacklistGET, err err
 	return
 }
 
-// SkynetBlacklistPost requests the /skynet/blacklist Post endpoint
-func (c *Client) SkynetBlacklistPost(additions, removals []string) (err error) {
+// SkynetBlacklistHashPost requests the /skynet/blacklist Post endpoint
+func (c *Client) SkynetBlacklistHashPost(additions, removals []string, isHash bool) (err error) {
 	sbp := api.SkynetBlacklistPOST{
 		Add:    additions,
 		Remove: removals,
+		IsHash: isHash,
 	}
 	data, err := json.Marshal(sbp)
 	if err != nil {
 		return err
 	}
 	err = c.post("/skynet/blacklist", string(data), nil)
+	return
+}
+
+// SkynetBlacklistPost requests the /skynet/blacklist Post endpoint
+func (c *Client) SkynetBlacklistPost(additions, removals []string) (err error) {
+	err = c.SkynetBlacklistHashPost(additions, removals, false)
 	return
 }
 

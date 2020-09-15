@@ -1,0 +1,1 @@
+- Enable submitted the hash of the skylink merkleroot to the skynet blacklist

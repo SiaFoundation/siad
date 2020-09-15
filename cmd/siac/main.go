@@ -71,6 +71,7 @@ var (
 	skykeyType            string // Type used to create a new Skykey.
 
 	// Skynet Flags
+	skynetBlacklistHash  bool   // Indicates if the input for the blacklist is already a hash.
 	skynetDownloadPortal string // Portal to use when trying to download a skylink.
 	skynetLsRecursive    bool   // List files of folder recursively.
 	skynetLsRoot         bool   // Use root as the base instead of the Skynet folder.
@@ -373,6 +374,8 @@ func initCmds() *cobra.Command {
 	skynetLsCmd.Flags().BoolVar(&skynetLsRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetPinCmd.Flags().StringVar(&skynetPinPortal, "portal", "", "Use a Skynet portal to download the skylink in order to pin the skyfile")
 	skynetBlacklistCmd.AddCommand(skynetBlacklistAddCmd, skynetBlacklistRemoveCmd)
+	skynetBlacklistAddCmd.Flags().BoolVar(&skynetBlacklistHash, "hash", false, "Indicates if the input is already a hash of the Skylink's Merkleroot")
+	skynetBlacklistRemoveCmd.Flags().BoolVar(&skynetBlacklistHash, "hash", false, "Indicates if the input is already a hash of the Skylink's Merkleroot")
 	skynetPortalsCmd.AddCommand(skynetPortalsAddCmd, skynetPortalsRemoveCmd)
 	skynetPortalsAddCmd.Flags().BoolVar(&skynetPortalPublic, "public", false, "Add this Skynet portal as public")
 

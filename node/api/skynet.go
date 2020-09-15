@@ -76,6 +76,10 @@ type (
 	SkynetBlacklistPOST struct {
 		Add    []string `json:"add"`
 		Remove []string `json:"remove"`
+
+		// IsHash indiactes if the supplied Add and Remove strings are already
+		// hashes of Skylinks
+		IsHash bool `json:"ishash"`
 	}
 
 	// SkynetPortalsGET contains the information queried for the /skynet/portals
@@ -161,9 +165,22 @@ func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 		return
 	}
 
-	// Convert to Skylinks
+	// Convert to Skylinks or Hash
 	addSkylinks := make([]modules.Skylink, len(params.Add))
+	addHashes := make(crypto.HashSlice, len(params.Add))
 	for i, addStr := range params.Add {
+		// Convert Hash
+		if params.IsHash {
+			var hash crypto.Hash
+			err := hash.LoadString(addStr)
+			if err != nil {
+				WriteError(w, Error{fmt.Sprintf("error parsing hash: %v", err)}, http.StatusBadRequest)
+				return
+			}
+			addHashes[i] = hash
+			continue
+		}
+		// Convert Skylink
 		var skylink modules.Skylink
 		err := skylink.LoadString(addStr)
 		if err != nil {
@@ -173,7 +190,20 @@ func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 		addSkylinks[i] = skylink
 	}
 	removeSkylinks := make([]modules.Skylink, len(params.Remove))
+	removeHashes := make(crypto.HashSlice, len(params.Remove))
 	for i, removeStr := range params.Remove {
+		// Convert Hash
+		if params.IsHash {
+			var hash crypto.Hash
+			err := hash.LoadString(removeStr)
+			if err != nil {
+				WriteError(w, Error{fmt.Sprintf("error parsing hash: %v", err)}, http.StatusBadRequest)
+				return
+			}
+			removeHashes[i] = hash
+			continue
+		}
+		// Convert Skylink
 		var skylink modules.Skylink
 		err := skylink.LoadString(removeStr)
 		if err != nil {
@@ -184,7 +214,11 @@ func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 	}
 
 	// Update the Skynet Blacklist
-	err = api.renter.UpdateSkynetBlacklist(addSkylinks, removeSkylinks)
+	if params.IsHash {
+		err = api.renter.UpdateSkynetBlacklistHash(addHashes, removeHashes)
+	} else {
+		err = api.renter.UpdateSkynetBlacklist(addSkylinks, removeSkylinks)
+	}
 	if err != nil {
 		WriteError(w, Error{"unable to update the skynet blacklist: " + err.Error()}, http.StatusInternalServerError)
 		return

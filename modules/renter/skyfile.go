@@ -463,6 +463,17 @@ func (r *Renter) UpdateSkynetBlacklist(additions, removals []modules.Skylink) er
 	return r.staticSkynetBlacklist.UpdateBlacklist(additions, removals)
 }
 
+// UpdateSkynetBlacklistHash updates the list of skylinks that are blacklisted
+// with already hashed skylinks
+func (r *Renter) UpdateSkynetBlacklistHash(additions, removals crypto.HashSlice) error {
+	err := r.tg.Add()
+	if err != nil {
+		return err
+	}
+	defer r.tg.Done()
+	return r.staticSkynetBlacklist.UpdateBlacklistHash(additions, removals)
+}
+
 // Portals returns the list of known skynet portals.
 func (r *Renter) Portals() ([]modules.SkynetPortal, error) {
 	err := r.tg.Add()
