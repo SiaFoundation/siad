@@ -747,6 +747,27 @@ func parseSkyfileMetadata(baseSector []byte) (sl skyfileLayout, fanoutBytes []by
 // DownloadSkylink will take a link and turn it into the metadata and data of a
 // download.
 func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (modules.SkyfileMetadata, modules.Streamer, error) {
+	if err := r.tg.Add(); err != nil {
+		return modules.SkyfileMetadata{}, nil, err
+	}
+	defer r.tg.Done()
+	return r.managedDownloadSkylink(link, timeout)
+}
+
+// DownloadSkylinkRaw will take a link and turn it into the data of a download
+// without any decoding of the metadata, fanout, or decryption.
+func (r *Renter) DownloadSkylinkRaw(link modules.Skylink, timeout time.Duration) (modules.Streamer, error) {
+	if err := r.tg.Add(); err != nil {
+		return nil, err
+	}
+	defer r.tg.Done()
+	baseSector, _, err := r.managedDownloadBaseSector(link, timeout)
+	return streamerFromSlice(baseSector), err
+}
+
+// managedDownloadSkylink will take a link and turn it into the metadata and data of a
+// download.
+func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Duration) (modules.SkyfileMetadata, modules.Streamer, error) {
 	if r.deps.Disrupt("resolveSkylinkToFixture") {
 		sf, err := fixtures.LoadSkylinkFixture(link)
 		if err != nil {
@@ -755,33 +776,12 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 		return sf.Metadata, streamerFromSlice(sf.Content), nil
 	}
 
-	// Check if link is blacklisted
-	if r.staticSkynetBlacklist.IsBlacklisted(link) {
-		return modules.SkyfileMetadata{}, nil, ErrSkylinkBlacklisted
+	baseSector, streamer, err := r.managedDownloadBaseSector(link, timeout)
+	if err != nil {
+		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to perform raw download of the skyfile")
 	}
-
-	// Check if this skylink is already in the stream buffer set. If so, we can
-	// skip the lookup procedure and use any data that other threads have
-	// cached.
-	id := link.DataSourceID()
-	streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0)
-	if exists {
+	if streamer != nil {
 		return streamer.Metadata(), streamer, nil
-	}
-
-	// Pull the offset and fetchSize out of the skylink.
-	offset, fetchSize, err := link.OffsetAndFetchSize()
-	if err != nil {
-		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to parse skylink")
-	}
-
-	// Fetch the leading chunk.
-	baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize, timeout)
-	if err != nil {
-		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to fetch base sector of skylink")
-	}
-	if len(baseSector) < SkyfileLayoutSize {
-		return modules.SkyfileMetadata{}, nil, errors.New("download did not fetch enough data, layout cannot be decoded")
 	}
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
@@ -813,6 +813,42 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create fanout fetcher")
 	}
 	return metadata, fs, nil
+}
+
+// managedDownloadBaseSector will download the baseSector for the skylink or
+// return the active stream
+func (r *Renter) managedDownloadBaseSector(link modules.Skylink, timeout time.Duration) ([]byte, *stream, error) {
+	// Check if link is blacklisted
+	if r.staticSkynetBlacklist.IsBlacklisted(link) {
+		return nil, nil, ErrSkylinkBlacklisted
+	}
+
+	// Check if this skylink is already in the stream buffer set. If so, we can
+	// skip the lookup procedure and use any data that other threads have
+	// cached.
+	id := link.DataSourceID()
+	streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0)
+	if exists {
+		return nil, streamer, nil
+	}
+
+	// Pull the offset and fetchSize out of the skylink.
+	offset, fetchSize, err := link.OffsetAndFetchSize()
+	if err != nil {
+		return nil, nil, errors.AddContext(err, "unable to parse skylink")
+	}
+
+	// Fetch the leading chunk.
+	baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize, timeout)
+	if err != nil {
+		return nil, nil, errors.AddContext(err, "unable to fetch base sector of skylink")
+	}
+	if len(baseSector) < SkyfileLayoutSize {
+		return nil, nil, errors.New("download did not fetch enough data, layout cannot be decoded")
+	}
+
+	// Return the baseSector
+	return baseSector, nil, nil
 }
 
 // PinSkylink wil fetch the file associated with the Skylink, and then pin all

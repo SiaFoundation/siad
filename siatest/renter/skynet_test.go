@@ -1326,6 +1326,19 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 	if ct != "application/zip" {
 		t.Fatal("unexpected content type: ", ct)
 	}
+
+	// now specify the raw format
+	_, skyfileReader, err = r.SkynetSkylinkRawReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// TODO - How should we then test this reader?
+	//
+	// Do we reimplement or export parseSkyfileMetadata and newFanoutStreamer in
+	// order to break out the metadata and filedata information?
+	//
+	// Is it enough to simply verify that the endpoint works?
 }
 
 // testSkynetSubDirDownload verifies downloading data from a skyfile using a

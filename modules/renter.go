@@ -1097,6 +1097,10 @@ type Renter interface {
 	// DownloadSkylink will fetch a file from the Sia network using the skylink.
 	DownloadSkylink(Skylink, time.Duration) (SkyfileMetadata, Streamer, error)
 
+	// DownloadSkylinkRaw will take a link and turn it into the data of a download
+	// without any decoding of the metadata, fanout, or decryption.
+	DownloadSkylinkRaw(Skylink, time.Duration) (Streamer, error)
+
 	// UploadSkyfile will upload data to the Sia network from a reader and
 	// create a skyfile, returning the skylink that can be used to access the
 	// file.

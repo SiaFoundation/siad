@@ -277,12 +277,13 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	format := modules.SkyfileFormat(strings.ToLower(queryForm.Get("format")))
 	switch format {
 	case modules.SkyfileFormatNotSpecified:
+	case modules.SkyfileFormatConcat:
+	case modules.SkyfileFormatRaw:
 	case modules.SkyfileFormatTar:
 	case modules.SkyfileFormatTarGz:
-	case modules.SkyfileFormatConcat:
 	case modules.SkyfileFormatZip:
 	default:
-		WriteError(w, Error{"unable to parse 'format' parameter, allowed values are: 'concat', 'tar', 'targz' and 'zip'"}, http.StatusBadRequest)
+		WriteError(w, Error{"unable to parse 'format' parameter, allowed values are: 'concat', 'raw', 'tar', 'targz' and 'zip'"}, http.StatusBadRequest)
 		return
 	}
 
@@ -304,7 +305,13 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// Fetch the skyfile's metadata and a streamer to download the file
-	metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout)
+	var metadata modules.SkyfileMetadata
+	var streamer modules.Streamer
+	if format == modules.SkyfileFormatRaw {
+		streamer, err = api.renter.DownloadSkylinkRaw(skylink, timeout)
+	} else {
+		metadata, streamer, err = api.renter.DownloadSkylink(skylink, timeout)
+	}
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
 		return
@@ -315,6 +322,13 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	defer streamer.Close()
 
+	// If requested, serve the raw download and return
+	if format == modules.SkyfileFormatRaw {
+		serveRaw(w, req, streamer, skylink, startTime)
+		return
+	}
+
+	// Validate Metadata
 	if metadata.DefaultPath != "" && len(metadata.Subfiles) == 0 {
 		WriteError(w, Error{"defaultpath is not allowed on single files, please specify a format"}, http.StatusBadRequest)
 		return
@@ -1009,6 +1023,42 @@ func serveArchive(dst io.Writer, src io.ReadSeeker, md modules.SkyfileMetadata, 
 		})
 	}
 	return archiveFunc(dst, src, files)
+}
+
+// serveRaw will log the performance stats for skynet and serve the stream
+// content
+func serveRaw(w http.ResponseWriter, req *http.Request, streamer modules.Streamer, skylink modules.Skylink, startTime time.Time) {
+	// No Metadata to parsed, stop the time here for TTFB.
+	skynetPerformanceStatsMu.Lock()
+	skynetPerformanceStats.TimeToFirstByte.AddRequest(time.Since(startTime))
+	skynetPerformanceStatsMu.Unlock()
+	// Defer a function to record the total performance time.
+	defer func() {
+		skynetPerformanceStatsMu.Lock()
+		defer skynetPerformanceStatsMu.Unlock()
+
+		_, fetchSize, err := skylink.OffsetAndFetchSize()
+		if err != nil {
+			return
+		}
+		if fetchSize <= 64e3 {
+			skynetPerformanceStats.Download64KB.AddRequest(time.Since(startTime))
+			return
+		}
+		if fetchSize <= 1e6 {
+			skynetPerformanceStats.Download1MB.AddRequest(time.Since(startTime))
+			return
+		}
+		if fetchSize <= 4e6 {
+			skynetPerformanceStats.Download4MB.AddRequest(time.Since(startTime))
+			return
+		}
+		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
+	}()
+
+	// Serve the raw download
+	http.ServeContent(w, req, "", time.Time{}, streamer)
+	return
 }
 
 // serveTar is an archiveFunc that implements serving the files from src to dst

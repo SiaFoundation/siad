@@ -198,6 +198,8 @@ var (
 	SkyfileFormatNotSpecified = SkyfileFormat("")
 	// SkyfileFormatConcat returns the skyfiles in a concatenated manner.
 	SkyfileFormatConcat = SkyfileFormat("concat")
+	// SkyfileFormatRaw returns the raw data for a skyfile.
+	SkyfileFormatRaw = SkyfileFormat("raw")
 	// SkyfileFormatTar returns the skyfiles as a .tar.
 	SkyfileFormatTar = SkyfileFormat("tar")
 	// SkyfileFormatTarGz returns the skyfiles as a .tar.gz.

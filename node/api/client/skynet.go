@@ -155,41 +155,42 @@ func (c *Client) SkynetSkylinkReaderGet(skylink string) (io.ReadCloser, error) {
 // SkynetSkylinkConcatReaderGet uses the /skynet/skylink endpoint to fetch a
 // reader of the file data with the 'concat' format specified.
 func (c *Client) SkynetSkylinkConcatReaderGet(skylink string) (io.ReadCloser, error) {
+	_, reader, err := c.SkynetSkylinkFormarGet(skylink, modules.SkyfileFormatConcat)
+	return reader, err
+}
+
+// SkynetSkylinkFormarGet uses the /skynet/skylink endpoint to fetch a reader of
+// the file data with the format specified.
+func (c *Client) SkynetSkylinkFormarGet(skylink string, format modules.SkyfileFormat) (http.Header, io.ReadCloser, error) {
 	values := url.Values{}
-	values.Set("format", string(modules.SkyfileFormatConcat))
+	values.Set("format", string(format))
 	getQuery := skylinkQueryWithValues(skylink, values)
-	_, reader, err := c.getReaderResponse(getQuery)
-	return reader, errors.AddContext(err, "unable to fetch skylink data")
+	header, reader, err := c.getReaderResponse(getQuery)
+	return header, reader, errors.AddContext(err, "unable to fetch skylink data")
+}
+
+// SkynetSkylinkRawReaderGet uses the /skynet/skylink endpoint to fetch a
+// reader of the file data with the 'raw' format specified.
+func (c *Client) SkynetSkylinkRawReaderGet(skylink string) (http.Header, io.ReadCloser, error) {
+	return c.SkynetSkylinkFormarGet(skylink, modules.SkyfileFormatRaw)
 }
 
 // SkynetSkylinkTarReaderGet uses the /skynet/skylink endpoint to fetch a
 // reader of the file data with the 'tar' format specified.
 func (c *Client) SkynetSkylinkTarReaderGet(skylink string) (http.Header, io.ReadCloser, error) {
-	values := url.Values{}
-	values.Set("format", string(modules.SkyfileFormatTar))
-	getQuery := skylinkQueryWithValues(skylink, values)
-	header, reader, err := c.getReaderResponse(getQuery)
-	return header, reader, errors.AddContext(err, "unable to fetch skylink data")
+	return c.SkynetSkylinkFormarGet(skylink, modules.SkyfileFormatTar)
 }
 
 // SkynetSkylinkTarGzReaderGet uses the /skynet/skylink endpoint to fetch a
 // reader of the file data with the 'targz' format specified.
 func (c *Client) SkynetSkylinkTarGzReaderGet(skylink string) (http.Header, io.ReadCloser, error) {
-	values := url.Values{}
-	values.Set("format", string(modules.SkyfileFormatTarGz))
-	getQuery := skylinkQueryWithValues(skylink, values)
-	header, reader, err := c.getReaderResponse(getQuery)
-	return header, reader, errors.AddContext(err, "unable to fetch skylink data")
+	return c.SkynetSkylinkFormarGet(skylink, modules.SkyfileFormatTarGz)
 }
 
 // SkynetSkylinkZipReaderGet uses the /skynet/skylink endpoint to fetch a
 // reader of the file data with the 'zip' format specified.
 func (c *Client) SkynetSkylinkZipReaderGet(skylink string) (http.Header, io.ReadCloser, error) {
-	values := url.Values{}
-	values.Set("format", string(modules.SkyfileFormatZip))
-	getQuery := skylinkQueryWithValues(skylink, values)
-	header, reader, err := c.getReaderResponse(getQuery)
-	return header, reader, errors.AddContext(err, "unable to fetch skylink data")
+	return c.SkynetSkylinkFormarGet(skylink, modules.SkyfileFormatZip)
 }
 
 // SkynetSkylinkPinPost uses the /skynet/pin endpoint to pin the file at the
