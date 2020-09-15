@@ -207,6 +207,7 @@ func skynetconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 	sup := modules.SkyfileUploadParameters{
 		SiaPath: destSiaPath,
 	}
+	sup = parseAndAddSkykey(sup)
 	skylink, err := httpClient.SkynetConvertSiafileToSkyfilePost(sup, sourceSiaPath)
 	if err != nil {
 		die("could not convert siafile to skyfile:", err)
@@ -775,6 +776,26 @@ func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.
 	return
 }
 
+// parseAndAddSkykey is a helper that parses any supplied skykey and adds it to
+// the SkyfileUploadParameters
+func parseAndAddSkykey(sup modules.SkyfileUploadParameters) modules.SkyfileUploadParameters {
+	if skykeyName != "" && skykeyID != "" {
+		die("Can only use either skykeyname or skykeyid flag, not both.")
+	}
+	// Set Encrypt param to true if a skykey ID or name is set.
+	if skykeyName != "" {
+		sup.SkykeyName = skykeyName
+	} else if skykeyID != "" {
+		var ID skykey.SkykeyID
+		err := ID.FromString(skykeyID)
+		if err != nil {
+			die("Unable to parse skykey ID")
+		}
+		sup.SkykeyID = ID
+	}
+	return sup
+}
+
 // skynetUploadFileFromReader is a helper method that uploads a file to Skynet
 func skynetUploadFileFromReader(source io.Reader, filename string, siaPath modules.SiaPath, mode os.FileMode) (skylink string) {
 	// Upload the file and return a skylink
@@ -791,22 +812,7 @@ func skynetUploadFileFromReader(source io.Reader, filename string, siaPath modul
 
 		Reader: source,
 	}
-
-	if skykeyName != "" && skykeyID != "" {
-		die("Can only use either skykeyname or skykeyid flag, not both.")
-	}
-	// Set Encrypt param to true if a skykey ID or name is set.
-	if skykeyName != "" {
-		sup.SkykeyName = skykeyName
-	} else if skykeyID != "" {
-		var ID skykey.SkykeyID
-		err := ID.FromString(skykeyID)
-		if err != nil {
-			die("Unable to parse skykey ID")
-		}
-		sup.SkykeyID = ID
-	}
-
+	sup = parseAndAddSkykey(sup)
 	skylink, _, err := httpClient.SkynetSkyfilePost(sup)
 	if err != nil {
 		die("could not upload file to Skynet:", err)
