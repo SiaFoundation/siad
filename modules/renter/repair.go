@@ -589,10 +589,10 @@ func (r *Renter) threadedUpdateRenterHealth() {
 	}
 }
 
+// managedUpdateFileMetadata updates the metadata of all siafiles within a dir.
+// This can be very expensive for large directory and should therefore only
+// happen sparingly.
 func (r *Renter) managedUpdateFileMetadatas(dirSiaPath modules.SiaPath) error {
-	// Get cached offline and goodforrenew maps.
-	_, _, contracts, used := r.managedRenterContractsAndUtilities()
-
 	fis, err := r.staticFileSystem.ReadDir(dirSiaPath)
 	if err != nil {
 		return errors.AddContext(err, "managedUpdateFileMetadatas: failed to read dir")
@@ -608,31 +608,42 @@ func (r *Renter) managedUpdateFileMetadatas(dirSiaPath modules.SiaPath) error {
 				continue
 			}
 			// Update the file.
-			err = func() (err error) {
-				sf, err := r.staticFileSystem.OpenSiaFile(fileSiaPath)
-				if err != nil {
-					return err
-				}
-				defer func() {
-					err = errors.Compose(err, sf.Close())
-				}()
-				// Update the siafile's used hosts.
-				if err := sf.UpdateUsedHosts(used); err != nil {
-					r.log.Debugln("WARN: Could not update used hosts:", err)
-				}
-				// Set the LastHealthCheckTime
-				sf.SetLastHealthCheckTime()
-				// Update the cached expiration of the siafile.
-				_ = sf.Expiration(contracts)
-				// Save the metadata.
-				err = sf.SaveMetadata()
-				if err != nil {
-					return err
-				}
-				return nil
-			}()
+			err = r.managedUpdateFileMetadata(fileSiaPath)
 			errs = errors.Compose(errs, err)
 		}
 	}
 	return errs
+}
+
+// managedUpdateFileMetadata updates the metadata of a siafile.
+func (r *Renter) managedUpdateFileMetadata(fileSiaPath modules.SiaPath) (err error) {
+	// Get cached offline and goodforrenew maps.
+	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
+
+	sf, err := r.staticFileSystem.OpenSiaFile(fileSiaPath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = errors.Compose(err, sf.Close())
+	}()
+	// Update the siafile's used hosts.
+	if err := sf.UpdateUsedHosts(used); err != nil {
+		r.log.Debugln("WARN: Could not update used hosts:", err)
+	}
+	// Update cached redundancy values.
+	_, _, err = sf.Redundancy(offlineMap, goodForRenewMap)
+	if err != nil {
+		r.log.Debugln("WARN: Could not update cached redundancy:", err)
+	}
+	// Set the LastHealthCheckTime
+	sf.SetLastHealthCheckTime()
+	// Update the cached expiration of the siafile.
+	_ = sf.Expiration(contracts)
+	// Save the metadata.
+	err = sf.SaveMetadata()
+	if err != nil {
+		return err
+	}
+	return nil
 }
