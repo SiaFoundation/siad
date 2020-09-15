@@ -10,15 +10,21 @@ import (
 	"gitlab.com/NebulousLabs/siamux"
 )
 
+var (
+	// ErrInsufficientRenterFee is the error returned when the renter provided
+	// less txn fees than specified in the price table.
+	ErrInsufficientRenterFee = errors.New("renter proposed a txn with less fees than specified in the price table")
+)
+
 // managedRPCRenewContract renews an existing contract. This causes the old
 // contract to be revised to its maximum revision number and submitted to the
 // blockchain in the same transaction which creates the new contract. That way
 // contract renewal happens atomically.
 func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
-	// read the price table
+	// fetch the price table
 	pt, err := h.staticReadPriceTableID(stream)
 	if err != nil {
-		return errors.AddContext(err, "failed to read price table")
+		return errors.AddContext(err, "failed to fetch price table")
 	}
 
 	// Get some values for the RPC. Use the ones from the price table if
@@ -29,10 +35,10 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	minFee := pt.TxnFeeMinRecommended
 	hpk := h.publicKey
 	hsk := h.secretKey
-	is := h.settings
 	// TODO: get rid of the external settings here. Instead add the
 	// contractPrice to the agreed upon price table.
-	es := h.externalSettings(maxFee)
+	es := h.externalSettings(maxFee) // external settings
+	is := h.settings                 // internal settings
 	lockedCollateral := h.financialMetrics.LockedStorageCollateral
 	h.mu.RUnlock()
 
@@ -46,9 +52,14 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	rpk := req.RenterPK
 
 	// Check that the transaction set has enough fees on it to get into the
-	// blockchain.
+	// blockchain. There need to be enough fees to make it into the current pool
+	// and also at least as much fees as specified in the price table.
 	setFee := modules.CalculateFee(txns)
 	if setFee.Cmp(minFee) < 0 {
+		return errors.AddContext(ErrInsufficientRenterFee, fmt.Sprintf("managedRPCRenewContract: insufficient txn fees %v < %v", setFee, minFee))
+	}
+	poolMinFee, _ := h.tpool.FeeEstimation()
+	if setFee.Cmp(poolMinFee) < 0 {
 		return errors.AddContext(ErrLowTransactionFees, fmt.Sprintf("managedRPCRenewContract: insufficient txn fees %v < %v", setFee, minFee))
 	}
 
@@ -161,7 +172,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	h.mu.RLock()
 	fc := txns[len(txns)-1].FileContracts[0]
 	renewRevenue, renewRisk := modules.RenewBaseCosts(finalRevision, es, fc.WindowStart)
-	renewCollateral, err := renewContractCollateral(so, es, fc)
+	renewCollateral, err := renewContractCollateral(finalRevision, es, fc)
 	h.mu.RUnlock()
 	if err != nil {
 		txnBuilder.Drop()
@@ -178,6 +189,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	copy(renterPK[:], rpk.Key)
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
+		renewedSO:               &so,
 		renterPK:                renterPK,
 		renterSignatures:        renterTxnSigs,
 		renterRevisionSignature: renterNoOpRevisionSig,
@@ -284,51 +296,51 @@ func fetchRevisionAndContract(txnSet []types.Transaction) (types.FileContractRev
 
 // verifyRenewedContract is a helper method that checks if the proposed renewed
 // contract is acceptable.
-func verifyRenewedContract(so storageObligation, fc types.FileContract, oldRevision types.FileContractRevision, blockHeight types.BlockHeight, internalSettings modules.HostInternalSettings, externalSettings modules.HostExternalSettings, renterPK, hostPK types.SiaPublicKey, lockedCollateral types.Currency) error {
+func verifyRenewedContract(so storageObligation, newContract types.FileContract, oldRevision types.FileContractRevision, blockHeight types.BlockHeight, internalSettings modules.HostInternalSettings, externalSettings modules.HostExternalSettings, renterPK, hostPK types.SiaPublicKey, lockedCollateral types.Currency) error {
 	unlockHash := externalSettings.UnlockHash
 
 	// The file size and merkle root must match the file size and merkle root
 	// from the previous file contract.
-	if fc.FileSize != so.fileSize() {
+	if newContract.FileSize != so.fileSize() {
 		return ErrBadFileSize
 	}
-	if fc.FileMerkleRoot != so.merkleRoot() {
+	if newContract.FileMerkleRoot != so.merkleRoot() {
 		return ErrBadFileMerkleRoot
 	}
 	// The WindowStart must be at least revisionSubmissionBuffer blocks into
 	// the future.
-	if fc.WindowStart <= blockHeight+revisionSubmissionBuffer {
+	if newContract.WindowStart <= blockHeight+revisionSubmissionBuffer {
 		return ErrEarlyWindow
 	}
 	// WindowEnd must be at least externalSettings.WindowSize blocks after WindowStart.
-	if fc.WindowEnd < fc.WindowStart+externalSettings.WindowSize {
+	if newContract.WindowEnd < newContract.WindowStart+externalSettings.WindowSize {
 		return ErrSmallWindow
 	}
 	// WindowStart must not be more than externalSettings.MaxDuration blocks into the
 	// future.
-	if fc.WindowStart > blockHeight+externalSettings.MaxDuration {
+	if newContract.WindowStart > blockHeight+externalSettings.MaxDuration {
 		return ErrLongDuration
 	}
 
 	// ValidProofOutputs should have 2 outputs (renter + host) and missed
 	// outputs should have 3 (renter + host + void)
-	if len(fc.ValidProofOutputs) != 2 || len(fc.MissedProofOutputs) != 3 {
+	if len(newContract.ValidProofOutputs) != 2 || len(newContract.MissedProofOutputs) != 3 {
 		return ErrBadContractOutputCounts
 	}
 	// The unlock hashes of the valid and missed proof outputs for the host
 	// must match the host's unlock hash. The third missed output should point
 	// to the void.
-	voidOutput, err := fc.MissedVoidOutput()
+	voidOutput, err := newContract.MissedVoidOutput()
 	if err != nil {
 		return err
 	}
-	if fc.ValidHostOutput().UnlockHash != oldRevision.ValidHostOutput().UnlockHash || fc.MissedHostOutput().UnlockHash != unlockHash || voidOutput.UnlockHash != (types.UnlockHash{}) {
+	if newContract.ValidHostOutput().UnlockHash != oldRevision.ValidHostOutput().UnlockHash || newContract.MissedHostOutput().UnlockHash != unlockHash || voidOutput.UnlockHash != (types.UnlockHash{}) {
 		return ErrBadPayoutUnlockHashes
 	}
 
 	// Check that the collateral does not exceed the maximum amount of
 	// collateral allowed.
-	expectedCollateral, err := renewContractCollateral(so, externalSettings, fc)
+	expectedCollateral, err := renewContractCollateral(oldRevision, externalSettings, newContract)
 	if err != nil {
 		return errors.AddContext(err, "Failed to compute contract collateral")
 	}
@@ -343,12 +355,12 @@ func verifyRenewedContract(so storageObligation, fc types.FileContract, oldRevis
 
 	// Check that the missed proof outputs contain enough money, and that the
 	// void output contains enough money.
-	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevision, externalSettings, fc.WindowStart)
-	if fc.ValidHostPayout().Cmp(basePrice.Add(baseCollateral)) < 0 {
+	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevision, externalSettings, newContract.WindowStart)
+	if newContract.ValidHostPayout().Cmp(basePrice.Add(baseCollateral).Add(externalSettings.ContractPrice)) < 0 {
 		return ErrLowHostValidOutput
 	}
-	expectedHostMissedOutput := fc.ValidHostPayout().Sub(basePrice).Sub(baseCollateral)
-	if fc.MissedHostOutput().Value.Cmp(expectedHostMissedOutput) < 0 {
+	expectedHostMissedOutput := newContract.ValidHostPayout().Sub(basePrice).Sub(baseCollateral)
+	if newContract.MissedHostOutput().Value.Cmp(expectedHostMissedOutput) < 0 {
 		return ErrLowHostMissedOutput
 	}
 	// Check that the void output has the correct value.
@@ -366,7 +378,7 @@ func verifyRenewedContract(so storageObligation, fc types.FileContract, oldRevis
 		},
 		SignaturesRequired: 2,
 	}.UnlockHash()
-	if fc.UnlockHash != expectedUH {
+	if newContract.UnlockHash != expectedUH {
 		return ErrBadUnlockHash
 	}
 	return nil

@@ -32,10 +32,10 @@ func rhp2RenewBasePrice(so storageObligation, settings modules.HostExternalSetti
 	return settings.StoragePrice.Mul64(fc.FileSize).Mul64(uint64(timeExtension))
 }
 
-// renewContractCollateral returns the amount of collateral that the host is
+// rhp2RenewContractCollateral returns the amount of collateral that the host is
 // expected to add to the file contract based on the file contract and host
 // settings.
-func renewContractCollateral(so storageObligation, settings modules.HostExternalSettings, fc types.FileContract) (types.Currency, error) {
+func rhp2RenewContractCollateral(so storageObligation, settings modules.HostExternalSettings, fc types.FileContract) (types.Currency, error) {
 	if fc.ValidHostPayout().Cmp(settings.ContractPrice) < 0 {
 		return types.Currency{}, errors.New("ContractPrice higher than ValidHostOutput")
 	}
@@ -48,13 +48,29 @@ func renewContractCollateral(so storageObligation, settings modules.HostExternal
 	return diff.Sub(rbp), nil
 }
 
+// renewContractCollateral returns the amount of collateral that the host is
+// expected to add to the file contract based on the file contract and host
+// settings.
+func renewContractCollateral(rev types.FileContractRevision, settings modules.HostExternalSettings, fc types.FileContract) (types.Currency, error) {
+	if fc.ValidHostPayout().Cmp(settings.ContractPrice) < 0 {
+		return types.Currency{}, errors.New("ContractPrice higher than ValidHostOutput")
+	}
+
+	diff := fc.ValidHostPayout().Sub(settings.ContractPrice)
+	rbp, _ := modules.RenewBaseCosts(rev, settings, fc.WindowStart)
+	if diff.Cmp(rbp) < 0 {
+		return types.Currency{}, errors.New("ValidHostOutput smaller than ContractPrice + RenewBasePrice")
+	}
+	return diff.Sub(rbp), nil
+}
+
 // managedAddRenewCollateral adds the host's collateral to the renewed file
 // contract.
 func (h *Host) managedAddRenewCollateral(so storageObligation, settings modules.HostExternalSettings, txnSet []types.Transaction) (builder modules.TransactionBuilder, newParents []types.Transaction, newInputs []types.SiacoinInput, newOutputs []types.SiacoinOutput, err error) {
 	txn := txnSet[len(txnSet)-1]
 	parents := txnSet[:len(txnSet)-1]
 	fc := txn.FileContracts[0]
-	hostPortion, err := renewContractCollateral(so, settings, fc)
+	hostPortion, err := rhp2RenewContractCollateral(so, settings, fc)
 	if err != nil {
 		return nil, nil, nil, nil, extendErr("could not compute contract collateral: ", ErrorCommunication(err.Error()))
 	}
@@ -196,7 +212,7 @@ func (h *Host) managedRPCRenewContractRHP2(conn net.Conn) error {
 	fc := txnSet[len(txnSet)-1].FileContracts[0]
 	renewRevenue := rhp2RenewBasePrice(so, settings, fc)
 	renewRisk := rhp2RenewBaseCollateral(so, settings, fc)
-	renewCollateral, err := renewContractCollateral(so, settings, fc)
+	renewCollateral, err := rhp2RenewContractCollateral(so, settings, fc)
 	h.mu.RUnlock()
 	if err != nil {
 		modules.WriteNegotiationRejection(conn, err)
@@ -311,7 +327,7 @@ func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types
 
 	// Check that the collateral does not exceed the maximum amount of
 	// collateral allowed.
-	expectedCollateral, err := renewContractCollateral(so, externalSettings, fc)
+	expectedCollateral, err := rhp2RenewContractCollateral(so, externalSettings, fc)
 	if err != nil {
 		return errors.AddContext(err, "Failed to compute contract collateral")
 	}

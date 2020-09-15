@@ -727,7 +727,7 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	fc := req.Transactions[len(req.Transactions)-1].FileContracts[0]
 	renewRevenue := rhp2RenewBasePrice(s.so, settings, fc)
 	renewRisk := rhp2RenewBaseCollateral(s.so, settings, fc)
-	renewCollateral, err := renewContractCollateral(s.so, settings, fc)
+	renewCollateral, err := rhp2RenewContractCollateral(s.so, settings, fc)
 	h.mu.RUnlock()
 	if err != nil {
 		s.writeError(err)
@@ -993,7 +993,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	fc := req.Transactions[len(req.Transactions)-1].FileContracts[0]
 	renewRevenue := rhp2RenewBasePrice(s.so, settings, fc)
 	renewRisk := rhp2RenewBaseCollateral(s.so, settings, fc)
-	renewCollateral, err := renewContractCollateral(s.so, settings, fc)
+	renewCollateral, err := rhp2RenewContractCollateral(s.so, settings, fc)
 	h.mu.RUnlock()
 	if err != nil {
 		s.writeError(err)
