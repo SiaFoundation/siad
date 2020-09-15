@@ -47,16 +47,16 @@ Set them to 0 for no limit.`,
 	profileCmd = &cobra.Command{
 		Use:   "profile",
 		Short: "Start and stop profiles for the daemon",
-		Long:  "Start and stop profiles for the daemon",
+		Long:  "Start and stop CPU, memory, and/or trace profiles for the daemon",
 		Run:   profilecmd,
 	}
 
 	profileStartCmd = &cobra.Command{
-		Use:   "start [profileFlags]",
+		Use:   "start",
 		Short: "Start the profile for the daemon",
-		Long: `Start a CPU, memory, and/or trace profile for the daemon.
-Acceptable profile flags are 'cmt'. Provide a profileDir to save the profiles to.
-If no profileDir is provided the profiles will be saved in a the default profile
+		Long: `Start a CPU, memory, and/or trace profile for the daemon by using
+the corresponding flag.  Provide a profileDir to save the profiles to.  If no
+profileDir is provided the profiles will be saved in the default profile
 directory in the siad data directory.`,
 		Run: wrap(profilestartcmd),
 	}
@@ -145,7 +145,20 @@ func profilecmd(cmd *cobra.Command, args []string) {
 }
 
 // profilestartcmd starts the profile for the daemon.
-func profilestartcmd(profileFlags string) {
+func profilestartcmd() {
+	var profileFlags string
+	if daemonCPUProfile {
+		profileFlags += "c"
+	}
+	if daemonMemoryProfile {
+		profileFlags += "m"
+	}
+	if daemonTraceProfile {
+		profileFlags += "t"
+	}
+	if profileFlags == "" {
+		die("no profiles submitted")
+	}
 	err := httpClient.DaemonStartProfilePost(profileFlags, daemonProfileDirectory)
 	if err != nil {
 		die(err)
@@ -155,7 +168,7 @@ func profilestartcmd(profileFlags string) {
 
 // profilestopcmd stops the profile for the daemon.
 func profilestopcmd() {
-	err := httpClient.DaemonStopProfileGet()
+	err := httpClient.DaemonStopProfilePost()
 	if err != nil {
 		die(err)
 	}

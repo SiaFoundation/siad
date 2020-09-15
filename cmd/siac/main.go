@@ -24,7 +24,10 @@ var (
 	//
 	// Daemon Flags
 	daemonStackOutputFile  string // The file that the stack trace will be written to
-	daemonProfileDirectory string // the Directory where the profile logs are saved
+	daemonCPUProfile       bool   // Indicates that the CPU profile should be started
+	daemonMemoryProfile    bool   // Indicates that the Memory profile should be started
+	daemonProfileDirectory string // The Directory where the profile logs are saved
+	daemonTraceProfile     bool   // Indicates that the Trace profile should be started
 
 	// Host Flags
 	hostContractOutputType string // output type for host contracts
@@ -389,7 +392,10 @@ func initCmds() *cobra.Command {
 	// Daemon Commands
 	root.AddCommand(alertsCmd, globalRatelimitCmd, profileCmd, stackCmd, stopCmd, updateCmd, versionCmd)
 	profileCmd.AddCommand(profileStartCmd, profileStopCmd)
+	profileStartCmd.Flags().BoolVarP(&daemonCPUProfile, "CPU", "c", false, "Start the CPU profile")
+	profileStartCmd.Flags().BoolVarP(&daemonMemoryProfile, "memory", "m", false, "Start the Memory profile")
 	profileStartCmd.Flags().StringVar(&daemonProfileDirectory, "profileDir", "", "Specify the directory where the profile logs are to be saved")
+	profileStartCmd.Flags().BoolVarP(&daemonTraceProfile, "trace", "t", false, "Start the Trace profile")
 	stackCmd.Flags().StringVarP(&daemonStackOutputFile, "filename", "f", "stack.txt", "Specify the output file for the stack trace")
 	updateCmd.AddCommand(updateCheckCmd)
 
