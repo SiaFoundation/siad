@@ -127,7 +127,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 	// Files first.
 	// Note: We don't need to abort on error. It's likely that only one or a few
 	// files failed and that the remaining metadatas are good to use.
-	bubbledMetadatas, err := r.managedCalculateAndUpdateFileMetadatas(fileSiaPaths)
+	bubbledMetadatas, err := r.managedCalculateFileMetadatas(fileSiaPaths)
 	if err != nil {
 		r.log.Printf("failed to calculate file metadata: %v", err)
 	}
@@ -265,9 +265,9 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 // nil. For managedCalculateAndUpdateFileMetadata we make an exception. The
 // caller can decide themselves whether to use the output in case of an error or
 // not.
-func (r *Renter) managedCalculateAndUpdateFileMetadatas(siaPaths []modules.SiaPath) ([]bubbledMetadata, error) {
+func (r *Renter) managedCalculateFileMetadatas(siaPaths []modules.SiaPath) ([]bubbledMetadata, error) {
 	// Get cached offline and goodforrenew maps.
-	hostOfflineMap, hostGoodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
+	hostOfflineMap, hostGoodForRenewMap, _, _ := r.managedRenterContractsAndUtilities()
 
 	// Load the Siafiles.
 	var errs error
@@ -282,19 +282,9 @@ func (r *Renter) managedCalculateAndUpdateFileMetadatas(siaPaths []modules.SiaPa
 				err = errors.Compose(err, sf.Close())
 			}()
 
-			// Update the siafile's used hosts.
-			if err := sf.UpdateUsedHosts(used); err != nil {
-				r.log.Debugln("WARN: Could not update used hosts:", err)
-			}
-			// Update the cached expiration of the siafile.
-			_ = sf.Expiration(contracts)
-
 			// Calculate file health
 			siaPath := r.staticFileSystem.FileSiaPath(sf)
 			health, stuckHealth, _, _, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
-
-			// Set the LastHealthCheckTime
-			sf.SetLastHealthCheckTime()
 
 			// Calculate file Redundancy and check if local file is missing and
 			// redundancy is less than one
@@ -306,12 +296,6 @@ func (r *Renter) managedCalculateAndUpdateFileMetadatas(siaPaths []modules.SiaPa
 			onDisk := err == nil
 			if !onDisk && redundancy < 1 {
 				r.log.Debugf("File not found on disk and possibly unrecoverable: LocalPath %v; SiaPath %v", sf.LocalPath(), siaPath.String())
-			}
-
-			// Save the metadata.
-			err = sf.SaveMetadata()
-			if err != nil {
-				return err
 			}
 
 			mds = append(mds, bubbledMetadata{

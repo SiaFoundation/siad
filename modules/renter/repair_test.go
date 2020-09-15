@@ -1161,7 +1161,7 @@ func TestCalculateFileMetadata(t *testing.T) {
 	modTime := sf.ModTime()
 
 	// Check calculated metadata
-	bubbledMetadatas, err := rt.renter.managedCalculateAndUpdateFileMetadatas([]modules.SiaPath{up.SiaPath})
+	bubbledMetadatas, err := rt.renter.managedCalculateFileMetadatas([]modules.SiaPath{up.SiaPath})
 	if err != nil {
 		t.Fatal(err)
 	}

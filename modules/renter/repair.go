@@ -569,6 +569,13 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			case <-wakeSignal:
 			}
 		}
+
+		// Update files in dir before bubbling it.
+		err = r.managedUpdateFileMetadatas(siaPath)
+		if err != nil {
+			r.log.Println("Error calling managedUpdateFileMetadatas on `", siaPath.String(), "`:", err)
+		}
+
 		r.log.Debug("Health Loop calling bubble on '", siaPath.String(), "'")
 		err = r.managedBubbleMetadata(siaPath)
 		if err != nil {
@@ -580,4 +587,52 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			}
 		}
 	}
+}
+
+func (r *Renter) managedUpdateFileMetadatas(dirSiaPath modules.SiaPath) error {
+	// Get cached offline and goodforrenew maps.
+	_, _, contracts, used := r.managedRenterContractsAndUtilities()
+
+	fis, err := r.staticFileSystem.ReadDir(dirSiaPath)
+	if err != nil {
+		return errors.AddContext(err, "managedUpdateFileMetadatas: failed to read dir")
+	}
+	var errs error
+	for _, fi := range fis {
+		ext := filepath.Ext(fi.Name())
+		if ext == modules.SiaFileExtension {
+			fName := strings.TrimSuffix(fi.Name(), modules.SiaFileExtension)
+			fileSiaPath, err := dirSiaPath.Join(fName)
+			if err != nil {
+				r.log.Println("managedUpdateFileMetadatas: unable to join siapath with dirpath", err)
+				continue
+			}
+			// Update the file.
+			err = func() (err error) {
+				sf, err := r.staticFileSystem.OpenSiaFile(fileSiaPath)
+				if err != nil {
+					return err
+				}
+				defer func() {
+					err = errors.Compose(err, sf.Close())
+				}()
+				// Update the siafile's used hosts.
+				if err := sf.UpdateUsedHosts(used); err != nil {
+					r.log.Debugln("WARN: Could not update used hosts:", err)
+				}
+				// Set the LastHealthCheckTime
+				sf.SetLastHealthCheckTime()
+				// Update the cached expiration of the siafile.
+				_ = sf.Expiration(contracts)
+				// Save the metadata.
+				err = sf.SaveMetadata()
+				if err != nil {
+					return err
+				}
+				return nil
+			}()
+			errs = errors.Compose(errs, err)
+		}
+	}
+	return errs
 }
