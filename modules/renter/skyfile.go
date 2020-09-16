@@ -465,7 +465,7 @@ func (r *Renter) UpdateSkynetBlacklist(additions, removals []modules.Skylink) er
 
 // UpdateSkynetBlacklistHash updates the list of skylinks that are blacklisted
 // with already hashed skylinks
-func (r *Renter) UpdateSkynetBlacklistHash(additions, removals crypto.HashSlice) error {
+func (r *Renter) UpdateSkynetBlacklistHash(additions, removals []crypto.Hash) error {
 	err := r.tg.Add()
 	if err != nil {
 		return err

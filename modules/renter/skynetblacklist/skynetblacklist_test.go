@@ -401,8 +401,8 @@ func TestPersistHash(t *testing.T) {
 	// Update blacklist
 	var skylink modules.Skylink
 	hash := crypto.HashObject(skylink.MerkleRoot())
-	add := crypto.HashSlice{hash}
-	remove := crypto.HashSlice{hash}
+	add := []crypto.Hash{hash}
+	remove := []crypto.Hash{hash}
 	err = sb.UpdateBlacklistHash(add, remove)
 	if err != nil {
 		t.Fatal(err)
@@ -421,7 +421,7 @@ func TestPersistHash(t *testing.T) {
 	}
 
 	// Add the hash again
-	err = sb.UpdateBlacklistHash(add, crypto.HashSlice{})
+	err = sb.UpdateBlacklistHash(add, []crypto.Hash{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -456,7 +456,7 @@ func TestPersistHash(t *testing.T) {
 	}
 
 	// Add the skylink again
-	err = sb2.UpdateBlacklistHash(add, crypto.HashSlice{})
+	err = sb2.UpdateBlacklistHash(add, []crypto.Hash{})
 	if err != nil {
 		t.Fatal(err)
 	}

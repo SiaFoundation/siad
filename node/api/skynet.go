@@ -167,7 +167,7 @@ func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 
 	// Convert to Skylinks or Hash
 	addSkylinks := make([]modules.Skylink, len(params.Add))
-	addHashes := make(crypto.HashSlice, len(params.Add))
+	addHashes := make([]crypto.Hash, len(params.Add))
 	for i, addStr := range params.Add {
 		// Convert Hash
 		if params.IsHash {
@@ -190,7 +190,7 @@ func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 		addSkylinks[i] = skylink
 	}
 	removeSkylinks := make([]modules.Skylink, len(params.Remove))
-	removeHashes := make(crypto.HashSlice, len(params.Remove))
+	removeHashes := make([]crypto.Hash, len(params.Remove))
 	for i, removeStr := range params.Remove {
 		// Convert Hash
 		if params.IsHash {

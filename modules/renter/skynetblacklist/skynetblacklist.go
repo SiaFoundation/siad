@@ -113,7 +113,7 @@ func (sb *SkynetBlacklist) UpdateBlacklist(additions, removals []modules.Skylink
 
 // UpdateBlacklistHash updates the list of skylinks that are blacklisted with
 // already hashed skylinks.
-func (sb *SkynetBlacklist) UpdateBlacklistHash(additions, removals crypto.HashSlice) error {
+func (sb *SkynetBlacklist) UpdateBlacklistHash(additions, removals []crypto.Hash) error {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
 
@@ -128,7 +128,7 @@ func (sb *SkynetBlacklist) UpdateBlacklistHash(additions, removals crypto.HashSl
 // marshalHashes marshals the given hashes into a byte buffer.
 //
 // NOTE: this method does not check for duplicate additions or removals
-func (sb *SkynetBlacklist) marshalHashes(additions, removals crypto.HashSlice) (bytes.Buffer, error) {
+func (sb *SkynetBlacklist) marshalHashes(additions, removals []crypto.Hash) (bytes.Buffer, error) {
 	// Create buffer for encoder
 	var buf bytes.Buffer
 	// Create and encode the persist links
@@ -139,8 +139,11 @@ func (sb *SkynetBlacklist) marshalHashes(additions, removals crypto.HashSlice) (
 
 		// Marshal the update
 		pe := persistEntry{hash, listed}
-		bytes := encoding.Marshal(pe)
-		buf.Write(bytes)
+		data := encoding.Marshal(pe)
+		_, err := buf.Write(data)
+		if err != nil {
+			return bytes.Buffer{}, errors.AddContext(err, "unable to write addition to the buffer")
+		}
 	}
 	listed = false
 	for _, hash := range removals {
@@ -149,8 +152,11 @@ func (sb *SkynetBlacklist) marshalHashes(additions, removals crypto.HashSlice) (
 
 		// Marshal the update
 		pe := persistEntry{hash, listed}
-		bytes := encoding.Marshal(pe)
-		buf.Write(bytes)
+		data := encoding.Marshal(pe)
+		_, err := buf.Write(data)
+		if err != nil {
+			return bytes.Buffer{}, errors.AddContext(err, "unable to write removal to the buffer")
+		}
 	}
 
 	return buf, nil
@@ -171,8 +177,11 @@ func (sb *SkynetBlacklist) marshalObjects(additions, removals []modules.Skylink)
 
 		// Marshal the update
 		pe := persistEntry{hash, listed}
-		bytes := encoding.Marshal(pe)
-		buf.Write(bytes)
+		data := encoding.Marshal(pe)
+		_, err := buf.Write(data)
+		if err != nil {
+			return bytes.Buffer{}, errors.AddContext(err, "unable to write addition to the buffer")
+		}
 	}
 	listed = false
 	for _, skylink := range removals {
@@ -182,8 +191,11 @@ func (sb *SkynetBlacklist) marshalObjects(additions, removals []modules.Skylink)
 
 		// Marshal the update
 		pe := persistEntry{hash, listed}
-		bytes := encoding.Marshal(pe)
-		buf.Write(bytes)
+		data := encoding.Marshal(pe)
+		_, err := buf.Write(data)
+		if err != nil {
+			return bytes.Buffer{}, errors.AddContext(err, "unable to write removal to the buffer")
+		}
 	}
 
 	return buf, nil

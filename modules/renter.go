@@ -1115,7 +1115,7 @@ type Renter interface {
 
 	// UpdateSkynetBlacklistHash updates the list of skylinks that are blacklisted
 	// with already hashed skylinks
-	UpdateSkynetBlacklistHash(additions, removals crypto.HashSlice) error
+	UpdateSkynetBlacklistHash(additions, removals []crypto.Hash) error
 
 	// PinSkylink re-uploads the data stored at the file under that skylink with
 	// the given parameters.

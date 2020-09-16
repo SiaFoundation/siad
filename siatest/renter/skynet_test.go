@@ -577,7 +577,8 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 
 	// Try and convert to a Skyfile, this should fail due to the original
 	// siafile being a N-of-M redundancy
-	skylink, _, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
+	sshp, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
+	skylink := sshp.Skylink
 	if !strings.Contains(err.Error(), renter.ErrRedundancyNotSupported.Error()) {
 		t.Fatalf("Expected Error to contain %v but got %v", renter.ErrRedundancyNotSupported, err)
 	}
@@ -599,7 +600,8 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Convert to a Skyfile
-	skylink, _, err = r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
+	sshp, err = r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
+	skylink = sshp.Skylink
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1651,7 +1653,8 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	convertUP := modules.SkyfileUploadParameters{
 		SiaPath: siafileSiaPath,
 	}
-	convertSkylink, _, err := r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
+	sshp, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
+	convertSkylink := sshp.Skylink
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1703,7 +1706,7 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	// Try and convert to skylink again, should fail. Set the Force Flag to true
 	// to avoid error for file already existing
 	convertUP.Force = true
-	_, _, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
+	_, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrSkylinkBlacklisted.Error()) {
 		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlacklisted, err)
 	}
@@ -1734,7 +1737,7 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Convert should succeed
-	_, _, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
+	_, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1922,7 +1925,8 @@ func testSkynetBlacklistHash(t *testing.T, tg *siatest.TestGroup) {
 	convertUP := modules.SkyfileUploadParameters{
 		SiaPath: siafileSiaPath,
 	}
-	convertSkylink, convertSSHP, err := r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
+	convertSSHP, err := r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
+	convertSkylink := convertSSHP.Skylink
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1975,7 +1979,7 @@ func testSkynetBlacklistHash(t *testing.T, tg *siatest.TestGroup) {
 	// Try and convert to skylink again, should fail. Set the Force Flag to true
 	// to avoid error for file already existing
 	convertUP.Force = true
-	_, _, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
+	_, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrSkylinkBlacklisted.Error()) {
 		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlacklisted, err)
 	}
@@ -2006,7 +2010,7 @@ func testSkynetBlacklistHash(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Convert should succeed
-	_, _, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
+	_, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
