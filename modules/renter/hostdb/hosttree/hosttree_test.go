@@ -335,7 +335,7 @@ func TestVariedWeights(t *testing.T) {
 		entry := makeHostDBEntry()
 		err := tree.Insert(entry)
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 		selections += i * expectedPerWeight
 	}

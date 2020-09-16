@@ -163,7 +163,6 @@ func fetchLatestRelease() (_ gitlabRelease, err error) {
 		closeErr := resp.Body.Close()
 		if closeErr != nil {
 			err = errors.Compose(err, closeErr)
-			return
 		}
 	}()
 	var releases []gitlabRelease

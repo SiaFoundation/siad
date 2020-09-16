@@ -379,11 +379,11 @@ func (api *API) renterBackupsCreateHandlerPOST(w http.ResponseWriter, req *http.
 	}
 	randomSuffix := persist.RandomSuffix()
 	backupPath := filepath.Join(tmpDir, fmt.Sprintf("%v-%v.bak", name, randomSuffix))
-	err = os.RemoveAll(backupPath)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusInternalServerError)
-		return
-	}
+	defer func() {
+		// At this point we have already responded so we can't write a potential
+		// error here.
+		_ = os.RemoveAll(backupPath)
+	}()
 
 	// Get the wallet seed.
 	ws, _, err := api.wallet.PrimarySeed()

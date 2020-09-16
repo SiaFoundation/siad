@@ -474,7 +474,6 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 			// Otherwise we still need to close the file.
 			err = errors.Compose(err, f.Close())
 		}
-		return
 	}()
 
 	// Apply updates.
@@ -568,7 +567,6 @@ func (sf *SiaFile) iterateChunksReadonly(iterFunc func(chunk chunk) error) (err 
 	}
 	defer func() {
 		err = errors.Compose(err, f.Close())
-		return
 	}()
 
 	// Seek to the first chunk.
