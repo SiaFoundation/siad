@@ -168,7 +168,7 @@ func (w *worker) managedPerformUploadChunkJob() {
 	if nextChunk.canceled {
 		nextChunk.cancelMU.Unlock()
 		// If the chunk was canceled then we drop the chunk. This will decrement the
-		// chunks remainingWorkers and perform any clean up work necessary
+		// chunk's remainingWorkers and perform any clean up work necessary
 		w.managedDropChunk(nextChunk)
 		return
 	}
