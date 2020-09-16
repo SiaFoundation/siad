@@ -11,6 +11,8 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TODO - once bubbling metadata has been updated to be more I/O
@@ -589,10 +591,26 @@ func (r *Renter) threadedUpdateRenterHealth() {
 	}
 }
 
+// threadedUpdateFileMetadatas is a threaded version of
+// managedUPdateFileMetadatas.
+func (r *Renter) threadedUpdateFileMetadatas(dirSiaPath modules.SiaPath) {
+	if err := r.tg.Add(); err != nil {
+		return
+	}
+	defer r.tg.Done()
+	err := r.managedUpdateFileMetadatas(dirSiaPath)
+	if err != nil {
+		r.log.Print("threadedUPdateFileMetadatas failed", err)
+	}
+}
+
 // managedUpdateFileMetadata updates the metadata of all siafiles within a dir.
-// This can be very expensive for large directory and should therefore only
+// This can be very expensive for large directories and should therefore only
 // happen sparingly.
 func (r *Renter) managedUpdateFileMetadatas(dirSiaPath modules.SiaPath) error {
+	// Get cached offline and goodforrenew maps.
+	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
+
 	fis, err := r.staticFileSystem.ReadDir(dirSiaPath)
 	if err != nil {
 		return errors.AddContext(err, "managedUpdateFileMetadatas: failed to read dir")
@@ -608,7 +626,14 @@ func (r *Renter) managedUpdateFileMetadatas(dirSiaPath modules.SiaPath) error {
 				continue
 			}
 			// Update the file.
-			err = r.managedUpdateFileMetadata(fileSiaPath)
+			err = func() error {
+				sf, err := r.staticFileSystem.OpenSiaFile(fileSiaPath)
+				if err != nil {
+					return err
+				}
+				err = r.managedUpdateFileMetadata(sf, offlineMap, goodForRenewMap, contracts, used)
+				return errors.Compose(err, sf.Close())
+			}()
 			errs = errors.Compose(errs, err)
 		}
 	}
@@ -616,26 +641,18 @@ func (r *Renter) managedUpdateFileMetadatas(dirSiaPath modules.SiaPath) error {
 }
 
 // managedUpdateFileMetadata updates the metadata of a siafile.
-func (r *Renter) managedUpdateFileMetadata(fileSiaPath modules.SiaPath) (err error) {
-	// Get cached offline and goodforrenew maps.
-	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
-
-	sf, err := r.staticFileSystem.OpenSiaFile(fileSiaPath)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		err = errors.Compose(err, sf.Close())
-	}()
+func (r *Renter) managedUpdateFileMetadata(sf *filesystem.FileNode, offlineMap, goodForRenew map[string]bool, contracts map[string]modules.RenterContract, used []types.SiaPublicKey) (err error) {
 	// Update the siafile's used hosts.
 	if err := sf.UpdateUsedHosts(used); err != nil {
-		r.log.Debugln("WARN: Could not update used hosts:", err)
+		r.log.Println("WARN: Could not update used hosts:", err)
 	}
 	// Update cached redundancy values.
-	_, _, err = sf.Redundancy(offlineMap, goodForRenewMap)
+	_, _, err = sf.Redundancy(offlineMap, goodForRenew)
 	if err != nil {
-		r.log.Debugln("WARN: Could not update cached redundancy:", err)
+		r.log.Println("WARN: Could not update cached redundancy:", err)
 	}
+	// Update cached health values.
+	_, _, _, _, _ = sf.Health(offlineMap, goodForRenew)
 	// Set the LastHealthCheckTime
 	sf.SetLastHealthCheckTime()
 	// Update the cached expiration of the siafile.

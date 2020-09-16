@@ -565,8 +565,8 @@ func (r *Renter) managedFetchLogicalChunkData(uc *unfinishedUploadChunk) error {
 }
 
 // managedCleanUpUploadChunk will check the state of the chunk and perform any
-// cleanup required. This can include returning rememory and releasing the chunk
-// from the map of active chunks in the chunk heap.
+// cleanup required. This can include returning reserved memory and releasing
+// the chunk from the map of active chunks in the chunk heap.
 func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	uc.mu.Lock()
 	piecesAvailable := 0
@@ -653,6 +653,16 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	// If required, remove the chunk from the set of repairing chunks.
 	if chunkComplete && !released {
 		r.managedUpdateUploadChunkStuckStatus(uc)
+
+		// Update the file's metadata.
+		// TODO: Ideally this is only called once per file instead of once per
+		// chunk.
+		offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
+		err := r.managedUpdateFileMetadata(uc.fileEntry, offlineMap, goodForRenewMap, contracts, used)
+		if err != nil {
+			r.log.Print("managedCleanUpUploadChunk: failed to update file metadata", err)
+		}
+
 		// Close the file entry unless disrupted.
 		if !r.deps.Disrupt("disableCloseUploadEntry") {
 			uc.fileEntry.Close()
