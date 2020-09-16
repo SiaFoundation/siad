@@ -69,6 +69,10 @@ var (
 	// SiafundPool is a database bucket storing the current value of the
 	// siafund pool.
 	SiafundPool = []byte("SiafundPool")
+
+	// FoundationUnlockHashes is a database bucket storing the current primary
+	// and failsafe Foundation UnlockHashes.
+	FoundationUnlockHashes = []byte("FoundationUnlockHashes")
 )
 
 var (
@@ -486,6 +490,25 @@ func getSiafundPool(tx *bolt.Tx) (pool types.Currency) {
 // setSiafundPool updates the saved siafund pool on disk
 func setSiafundPool(tx *bolt.Tx, c types.Currency) {
 	err := tx.Bucket(SiafundPool).Put(SiafundPool, encoding.Marshal(c))
+	if build.DEBUG && err != nil {
+		panic(err)
+	}
+}
+
+// getFoundationUnlockHashes returns the current primary and failsafe Foundation
+// addresses.
+func getFoundationUnlockHashes(tx *bolt.Tx) (primary, failsafe types.UnlockHash) {
+	err := encoding.UnmarshalAll(tx.Bucket(FoundationUnlockHashes).Get(FoundationUnlockHashes), &primary, &failsafe)
+	if build.DEBUG && err != nil {
+		panic(err)
+	}
+	return
+}
+
+// setFoundationUnlockHashes updates the primary and failsafe Foundation
+// addresses.
+func setFoundationUnlockHashes(tx *bolt.Tx, primary, failsafe types.UnlockHash) {
+	err := tx.Bucket(FoundationUnlockHashes).Put(FoundationUnlockHashes, encoding.MarshalAll(primary, failsafe))
 	if build.DEBUG && err != nil {
 		panic(err)
 	}

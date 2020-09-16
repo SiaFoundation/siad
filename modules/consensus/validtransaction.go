@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"bytes"
 	"math/big"
 
 	"gitlab.com/NebulousLabs/bolt"
@@ -24,6 +25,7 @@ var (
 	errUnfinishedFileContract     = errors.New("file contract window has not yet openend")
 	errUnrecognizedFileContractID = errors.New("cannot fetch storage proof segment for unknown file contract")
 	errWrongUnlockConditions      = errors.New("transaction contains incorrect unlock conditions")
+	errInvalidFoundationUpdate    = errors.New("transaction contains an invalid or unsigned Foundation UnlockHash update")
 )
 
 // validSiacoins checks that the siacoin inputs and outputs are valid in the
@@ -276,6 +278,47 @@ func validSiafunds(tx *bolt.Tx, t types.Transaction) (err error) {
 	return
 }
 
+// validArbitraryData checks that the ArbitraryData portions of the transaction are
+// valid in the context of the consensus set. Currently, only ArbitraryData with
+// the types.SpecifierFoundation prefix is examined.
+func validArbitraryData(tx *bolt.Tx, t types.Transaction) error {
+	for i, arb := range t.ArbitraryData {
+		if bytes.HasPrefix(arb, types.SpecifierFoundation[:]) {
+			validEncoding := encoding.Unmarshal(arb[types.SpecifierLen:], new(types.FoundationUnlockHashUpdate)) != nil
+			if !validEncoding || !foundationUpdateIsSigned(tx, t, i) {
+				return errInvalidFoundationUpdate
+			}
+		}
+	}
+	return nil
+}
+
+func foundationUpdateIsSigned(tx *bolt.Tx, t types.Transaction, arbIndex int) bool {
+	// To be considered valid, the update must have a signature that
+	// covers a SiacoinInput controlled by either the primary or
+	// failsafe UnlockHash.
+	primary, failsafe := getFoundationUnlockHashes(tx)
+	for _, sci := range t.SiacoinInputs {
+		if uh := sci.UnlockConditions.UnlockHash(); uh == primary || uh == failsafe {
+			// Locate the corresponding signature.
+			for _, sig := range t.TransactionSignatures {
+				if sig.ParentID == crypto.Hash(sci.ParentID) {
+					// Check whether the signature covers the update.
+					if sig.CoveredFields.WholeTransaction {
+						return true
+					}
+					for _, i := range sig.CoveredFields.ArbitraryData {
+						if i == uint64(arbIndex) {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
 // validTransaction checks that all fields are valid within the current
 // consensus state. If not an error is returned.
 func validTransaction(tx *bolt.Tx, t types.Transaction) error {
@@ -301,6 +344,10 @@ func validTransaction(tx *bolt.Tx, t types.Transaction) error {
 		return err
 	}
 	err = validSiafunds(tx, t)
+	if err != nil {
+		return err
+	}
+	err = validArbitraryData(tx, t)
 	if err != nil {
 		return err
 	}

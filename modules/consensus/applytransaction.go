@@ -4,7 +4,10 @@ package consensus
 // There is an assumption that the transaction has already been verified.
 
 import (
+	"bytes"
+
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/encoding"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -73,7 +76,7 @@ func applyFileContracts(tx *bolt.Tx, pb *processedBlock, t types.Transaction) {
 	}
 }
 
-// applyTxFileContractRevisions iterates through all of the file contract
+// applyFileContractRevisions iterates through all of the file contract
 // revisions in a transaction and applies them to the state, updating the diffs
 // in the processed block.
 func applyFileContractRevisions(tx *bolt.Tx, pb *processedBlock, t types.Transaction) {
@@ -185,7 +188,7 @@ func applySiafundInputs(tx *bolt.Tx, pb *processedBlock, t types.Transaction) {
 	}
 }
 
-// applySiafundOutput applies a siafund output to the consensus set.
+// applySiafundOutputs applies a siafund output to the consensus set.
 func applySiafundOutputs(tx *bolt.Tx, pb *processedBlock, t types.Transaction) {
 	for i, sfo := range t.SiafundOutputs {
 		sfoid := t.SiafundOutputID(uint64(i))
@@ -200,6 +203,22 @@ func applySiafundOutputs(tx *bolt.Tx, pb *processedBlock, t types.Transaction) {
 	}
 }
 
+// applyArbitraryData applies arbitrary data to the consensus set. Currently,
+// only arbitrary data with the types.SpecifierFoundation prefix is handled.
+func applyArbitraryData(tx *bolt.Tx, pb *processedBlock, t types.Transaction) {
+	for _, arb := range t.ArbitraryData {
+		if bytes.HasPrefix(arb, types.SpecifierFoundation[:]) {
+			var update types.FoundationUnlockHashUpdate
+			err := encoding.Unmarshal(arb[types.SpecifierLen:], &update)
+			if build.DEBUG && err != nil {
+				// validArbitraryData should guarantee that decoding will not fail
+				panic(err)
+			}
+			setFoundationUnlockHashes(tx, update.NewPrimary, update.NewFailsafe)
+		}
+	}
+}
+
 // applyTransaction applies the contents of a transaction to the ConsensusSet.
 // This produces a set of diffs, which are stored in the blockNode containing
 // the transaction. No verification is done by this function.
@@ -211,4 +230,5 @@ func applyTransaction(tx *bolt.Tx, pb *processedBlock, t types.Transaction) {
 	applyStorageProofs(tx, pb, t)
 	applySiafundInputs(tx, pb, t)
 	applySiafundOutputs(tx, pb, t)
+	applyArbitraryData(tx, pb, t)
 }

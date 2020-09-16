@@ -65,6 +65,15 @@ var (
 	// But if the Timestamp is further into the future than ExtremeFutureThreshold,
 	// the Block is immediately discarded.
 	ExtremeFutureThreshold Timestamp
+
+	// FoundationHardforkHeight is the height at which the Foundation subsidy
+	// hardfork was activated.
+	FoundationHardforkHeight BlockHeight
+
+	// FoundationSubsidy is the amount sent to the Foundation address every 4320
+	// blocks.
+	FoundationSubsidy = SiacoinPrecision.Mul64(30e3).Mul64(uint64(BlocksPerMonth))
+
 	// FutureThreshold is a temporal limit beyond which Blocks are
 	// discarded by the consensus rules. When incoming Blocks are processed, their
 	// Timestamp is allowed to exceed the processor's current time by no more than
@@ -89,6 +98,22 @@ var (
 	GenesisTimestamp Timestamp
 	// InitialCoinbase is the coinbase reward of the Genesis block.
 	InitialCoinbase = uint64(300e3)
+
+	// InitialFoundationUnlockHash is the primary Foundation subsidy address. It
+	// receives the initial Foundation subsidy. The keys that this address was
+	// derived from can also be used to set a new primary and failsafe address.
+	InitialFoundationUnlockHash = UnlockHash{1, 2, 3} // TODO
+	// InitialFoundationFailsafeUnlockHash is the "backup" Foundation address.
+	// It does not receive the Foundation subsidy, but its keys can be used to
+	// set a new primary and failsafe address. These UnlockConditions should
+	// also be subject to a timelock that prevents the failsafe from being used
+	// immediately.
+	InitialFoundationFailsafeUnlockHash = UnlockHash{4, 5, 6} // TODO
+	// InitialFoundationSubsidy is the one-time subsidy sent to the Foundation
+	// address upon activation of the hardfork, representing one year's worth of
+	// block subsidies.
+	InitialFoundationSubsidy = FoundationSubsidy.Mul64(12)
+
 	// MaturityDelay specifies the number of blocks that a maturity-required output
 	// is required to be on hold before it can be spent on the blockchain.
 	// Outputs are maturity-required if they are highly likely to be altered or
@@ -189,6 +214,8 @@ func init() {
 		ASICHardforkTotalTarget = Target{0, 0, 0, 8}
 		ASICHardforkTotalTime = 800
 
+		FoundationHardforkHeight = 30
+
 		BlockFrequency = 12                      // 12 seconds: slow enough for developers to see ~each block, fast enough that blocks don't waste time.
 		MaturityDelay = 10                       // 60 seconds before a delayed output matures.
 		GenesisTimestamp = Timestamp(1424139000) // Change as necessary.
@@ -238,6 +265,8 @@ func init() {
 		ASICHardforkHeight = 5
 		ASICHardforkTotalTarget = Target{255, 255}
 		ASICHardforkTotalTime = 10e3
+
+		FoundationHardforkHeight = 10
 
 		BlockFrequency = 1 // As fast as possible
 		MaturityDelay = 3
@@ -301,6 +330,10 @@ func init() {
 		ASICHardforkHeight = 179000
 		ASICHardforkTotalTarget = Target{0, 0, 0, 0, 0, 0, 0, 0, 32}
 		ASICHardforkTotalTime = 120e3
+
+		// The Foundation subsidy hardfork activates at approximately 12pm EST
+		// on January 1, 2021.
+		FoundationHardforkHeight = 293210
 
 		// A block time of 1 block per 10 minutes is chosen to follow Bitcoin's
 		// example. The security lost by lowering the block time is not

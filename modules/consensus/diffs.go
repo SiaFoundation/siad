@@ -227,7 +227,7 @@ func generateAndApplyDiff(tx *bolt.Tx, pb *processedBlock) error {
 	// After all of the transactions have been applied, 'maintenance' is
 	// applied on the block. This includes adding any outputs that have reached
 	// maturity, applying any contracts with missed storage proofs, and adding
-	// the miner payouts to the list of delayed outputs.
+	// the miner payouts and Foundation subsidy to the list of delayed outputs.
 	applyMaintenance(tx, pb)
 
 	// DiffsGenerated are only set to true after the block has been fully

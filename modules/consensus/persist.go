@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 const (
@@ -18,6 +19,12 @@ const (
 	// when managing consensus.
 	DatabaseFilename = modules.ConsensusDir + ".db"
 	logFile          = modules.ConsensusDir + ".log"
+)
+
+var (
+	// errFoundationHardforkIncompatibility is returned if the consensus
+	// database was not upgraded prior to the Foundation hardfork height.
+	errFoundationHardforkIncompatibility = errors.New("cannot upgrade database for Foundation hardfork after activation height")
 )
 
 // loadDB pulls all the blocks that have been saved to disk into memory, using
@@ -47,6 +54,12 @@ func (cs *ConsensusSet) loadDB() error {
 			return err
 		}
 
+		// Initialize the Foundation hardfork fields, if necessary.
+		err = cs.initFoundation(tx)
+		if err != nil {
+			return err
+		}
+
 		// Check that the genesis block is correct - typically only incorrect
 		// in the event of developer binaries vs. release binaires.
 		genesisID, err := getPath(tx, 0)
@@ -58,6 +71,28 @@ func (cs *ConsensusSet) loadDB() error {
 		}
 		return nil
 	})
+}
+
+// initFoundation initializes the database fields relating to the Foundation
+// subsidy hardfork. If these fields have already been set, it does nothing.
+func (cs *ConsensusSet) initFoundation(tx *bolt.Tx) error {
+	b, err := tx.CreateBucketIfNotExists(FoundationUnlockHashes)
+	if err != nil {
+		return err
+	}
+	if len(b.Get(FoundationUnlockHashes)) > 0 {
+		// UnlockHashes have already been set; nothing to do.
+		return nil
+	}
+	// If the current height is greater than the hardfork trigger date, return
+	// an error and refuse to initialize.
+	height := blockHeight(tx)
+	if height > types.FoundationHardforkHeight {
+		return errFoundationHardforkIncompatibility
+	}
+	// Set the initial Foundation addresses.
+	setFoundationUnlockHashes(tx, types.InitialFoundationUnlockHash, types.InitialFoundationFailsafeUnlockHash)
+	return nil
 }
 
 // initPersist initializes the persistence structures of the consensus set, in

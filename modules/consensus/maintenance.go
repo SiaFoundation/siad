@@ -17,6 +17,28 @@ var (
 	errStorageProofTiming  = errors.New("missed proof triggered for file contract that is not expiring")
 )
 
+// applyFoundationSubsidy adds a block's Foundation subsidy to the consensus set
+// as delayed siacoin outputs.
+func applyFoundationSubsidy(tx *bolt.Tx, pb *processedBlock) {
+	value := types.FoundationSubsidy
+	if pb.Height == types.FoundationHardforkHeight {
+		value = types.InitialFoundationSubsidy
+	}
+	// The subsidy is always sent to the primary address.
+	addr, _ := getFoundationUnlockHashes(tx)
+	dscod := modules.DelayedSiacoinOutputDiff{
+		Direction: modules.DiffApply,
+		ID:        pb.Block.FoundationSubsidyID(),
+		SiacoinOutput: types.SiacoinOutput{
+			Value:      value,
+			UnlockHash: addr,
+		},
+		MaturityHeight: pb.Height + types.MaturityDelay,
+	}
+	pb.DelayedSiacoinOutputDiffs = append(pb.DelayedSiacoinOutputDiffs, dscod)
+	commitDelayedSiacoinOutputDiff(tx, dscod, modules.DiffApply)
+}
+
 // applyMinerPayouts adds a block's miner payouts to the consensus set as
 // delayed siacoin outputs.
 func applyMinerPayouts(tx *bolt.Tx, pb *processedBlock) {
@@ -186,6 +208,12 @@ func applyFileContractMaintenance(tx *bolt.Tx, pb *processedBlock) {
 // Maintenance is applied after all of the transactions for the block have been
 // applied.
 func applyMaintenance(tx *bolt.Tx, pb *processedBlock) {
+	if pb.Height >= types.FoundationHardforkHeight {
+		// A Foundation subsidy is generated once per month.
+		if (pb.Height-types.FoundationHardforkHeight)%types.BlocksPerMonth == 0 {
+			applyFoundationSubsidy(tx, pb)
+		}
+	}
 	applyMinerPayouts(tx, pb)
 	applyMaturedSiacoinOutputs(tx, pb)
 	applyFileContractMaintenance(tx, pb)
