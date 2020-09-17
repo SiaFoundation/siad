@@ -595,19 +595,6 @@ func (r *Renter) threadedUpdateRenterHealth() {
 	}
 }
 
-// threadedUpdateFileMetadatas is a threaded version of
-// managedUPdateFileMetadatas.
-func (r *Renter) threadedUpdateFileMetadatas(dirSiaPath modules.SiaPath) {
-	if err := r.tg.Add(); err != nil {
-		return
-	}
-	defer r.tg.Done()
-	err := r.managedUpdateFileMetadatas(dirSiaPath)
-	if err != nil {
-		r.log.Print("threadedUPdateFileMetadatas failed", err)
-	}
-}
-
 // managedUpdateFileMetadata updates the metadata of all siafiles within a dir.
 // This can be very expensive for large directories and should therefore only
 // happen sparingly.

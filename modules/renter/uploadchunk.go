@@ -655,8 +655,6 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		r.managedUpdateUploadChunkStuckStatus(uc)
 
 		// Update the file's metadata.
-		// TODO: Ideally this is only called once per file instead of once per
-		// chunk.
 		offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
 		err := r.managedUpdateFileMetadata(uc.fileEntry, offlineMap, goodForRenewMap, contracts, used)
 		if err != nil {
