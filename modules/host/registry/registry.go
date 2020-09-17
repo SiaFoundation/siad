@@ -16,7 +16,7 @@ import (
 )
 
 // TODO: must haves
-// - signature verificatio and storage
+// - signature verification
 
 // TODO: F/Us
 // - cap max entries (only LRU in memory rest on disk)
@@ -32,10 +32,14 @@ const (
 
 	// RegistryDataSize is the amount of arbitrary data a renter can register in
 	// the registry.
-	RegistryDataSize = 256
+	RegistryDataSize = 109
 
-	persistedEntrySize = 512
-	registryVersion    = 1
+	// persistedEntrySize is the size of a marshaled entry on disk.
+	persistedEntrySize = 256
+
+	// registryVersion is the version at the beginning of the registry on disk
+	// for future compatibility changes.
+	registryVersion = 1
 )
 
 var (
@@ -53,28 +57,33 @@ var (
 type (
 	// Registry is an in-memory key-value store. Renter's can pay the
 	Registry struct {
-		entries     map[key]*value
+		entries     map[crypto.Hash]*value
 		staticUsage bitfield
 		staticPath  string
 		staticWAL   *writeaheadlog.WAL
 		mu          sync.Mutex
 	}
 
-	// key represents a key registered in the Registry.
-	key struct {
-		key   crypto.PublicKey
-		tweak crypto.Hash
-	}
-
 	// values represents the value associated with a registered key.
 	value struct {
+		// key
+		key   types.SiaPublicKey
+		tweak crypto.Hash
+
+		// value
 		expiry      types.BlockHeight // expiry of the entry
 		staticIndex int64             // index within file
 
-		data     []byte // stored raw data
-		revision uint64
+		data      []byte // stored raw data
+		revision  uint64
+		signature crypto.Signature
 	}
 )
+
+// mapKey creates a key usable in in-memory maps from the value.
+func (v value) mapKey() crypto.Hash {
+	return crypto.HashAll(v.key, v.tweak)
+}
 
 // New creates a new registry or opens an existing one.
 func New(path string, wal *writeaheadlog.WAL) (_ *Registry, err error) {
@@ -118,7 +127,7 @@ func New(path string, wal *writeaheadlog.WAL) (_ *Registry, err error) {
 	}
 	// Create the registry.
 	reg := &Registry{
-		entries:    make(map[key]*value),
+		entries:    make(map[crypto.Hash]*value),
 		staticPath: path,
 		staticWAL:  wal,
 	}
@@ -139,17 +148,17 @@ func New(path string, wal *writeaheadlog.WAL) (_ *Registry, err error) {
 			continue // ignore unused entries
 		}
 		// Add the entry to the store.
-		k, v, err := se.KeyValue(index)
+		v, err := se.Value(index)
 		if err != nil {
 			return nil, errors.AddContext(err, fmt.Sprintf("failed to get key-value pair from entry %v of %v", index, fi.Size()/int64(persistedEntrySize)))
 		}
-		reg.entries[k] = &v
+		reg.entries[v.mapKey()] = &v
 	}
 	return reg, nil
 }
 
 // Update adds an entry to the registry or if it exists already, updates it.
-func (r *Registry) Update(pubKey crypto.PublicKey, tweak crypto.Hash, expiry types.BlockHeight, revision uint64, data []byte) (_ bool, err error) {
+func (r *Registry) Update(pubKey types.SiaPublicKey, tweak crypto.Hash, expiry types.BlockHeight, revision uint64, data []byte) (_ bool, err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -158,11 +167,9 @@ func (r *Registry) Update(pubKey crypto.PublicKey, tweak crypto.Hash, expiry typ
 		return false, errTooMuchData
 	}
 
-	k := key{
-		key:   pubKey,
-		tweak: tweak,
-	}
 	v := value{
+		key:         pubKey,
+		tweak:       tweak,
 		expiry:      expiry,
 		staticIndex: -1, // Is set later.
 		data:        data,
@@ -171,10 +178,10 @@ func (r *Registry) Update(pubKey crypto.PublicKey, tweak crypto.Hash, expiry typ
 
 	// Check if the entry exists already. If it does and the new revision is
 	// smaller than the last one, we update it.
-	entry, exists := r.entries[k]
+	entry, exists := r.entries[v.mapKey()]
 	if exists && revision > entry.revision {
 		v.staticIndex = entry.staticIndex
-		r.entries[k] = &v
+		r.entries[v.mapKey()] = &v
 		return true, nil
 	} else if exists {
 		return false, errInvalidRevNum
@@ -192,13 +199,13 @@ func (r *Registry) Update(pubKey crypto.PublicKey, tweak crypto.Hash, expiry typ
 	}()
 
 	// Write the entry to disk.
-	err = r.saveEntry(k, v, true)
+	err = r.saveEntry(v, true)
 	if err != nil {
 		return false, errors.New("failed to save new entry to disk")
 	}
 
 	// Update the in-memory map last.
-	r.entries[k] = &v
+	r.entries[v.mapKey()] = &v
 	return false, nil
 }
 
@@ -214,7 +221,7 @@ func (r *Registry) Prune(expiry types.BlockHeight) error {
 			continue // not expired
 		}
 		// Purge the entry by setting it unused.
-		if err := r.saveEntry(k, *v, false); err != nil {
+		if err := r.saveEntry(*v, false); err != nil {
 			errs = errors.Compose(errs, err)
 			continue
 		}

@@ -10,17 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
-
-// randomKey creates a random key object for testing.
-func randomKey() key {
-	var k key
-	fastrand.Read(k.key[:])
-	fastrand.Read(k.tweak[:])
-	return k
-}
 
 // randomValue creates a random value object for testing.
 func randomValue(index int64) value {
@@ -30,7 +23,37 @@ func randomValue(index int64) value {
 		data:        fastrand.Bytes(fastrand.Intn(RegistryDataSize) + 1),
 		revision:    fastrand.Uint64n(math.MaxUint64 - 100), // Leave some room for incrementing the revision during tests
 	}
+	v.key.Algorithm = types.SignatureEd25519
+	v.key.Key = fastrand.Bytes(crypto.PublicKeySize)
+	fastrand.Read(v.tweak[:])
 	return v
+}
+
+func TestPubKeyCompression(t *testing.T) {
+	// Create a valid key.
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       fastrand.Bytes(crypto.PublicKeySize),
+	}
+	// Convert the key.
+	cpk, err := newCompressedPublicKey(spk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(cpk.Key[:], spk.Key) {
+		t.Fatal("keys don't match")
+	}
+	if cpk.Algorithm != signatureEd25519 {
+		t.Fatal("wrong algo")
+	}
+	// Convert it back.
+	spk2, err := newSiaPublicKey(cpk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(spk, spk2) {
+		t.Fatal("spks don't match")
+	}
 }
 
 // TestInitRegistry is a unit test for initRegistry.
@@ -83,21 +106,25 @@ func TestInitRegistry(t *testing.T) {
 // TestPersistedEntryMarshalUnmarshal tests marshaling persistedEntries.
 func TestPersistedEntryMarshalUnmarshal(t *testing.T) {
 	entry := persistedEntry{
-		Key:      [KeySize]byte{1},
-		Tweak:    [TweakSize]byte{2},
-		Expiry:   3,
-		DataLen:  100,
-		Data:     [256]byte{4},
+		Key: compressedPublicKey{
+			Algorithm: signatureEd25519,
+		},
+		Expiry:   types.BlockHeight(fastrand.Uint64n(math.MaxUint64)),
+		DataLen:  RegistryDataSize,
 		IsUsed:   true,
-		Revision: 5,
-		Unused:   [167]byte{6},
+		Revision: fastrand.Uint64n(math.MaxUint64),
 	}
+	fastrand.Read(entry.Key.Key[:])
+	fastrand.Read(entry.Tweak[:])
+	fastrand.Read(entry.Data[:])
+	fastrand.Read(entry.Signature[:])
+
 	b, err := entry.Marshal()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if uint64(len(b)) != persistedEntrySize {
-		t.Fatal("marshaled entry has wrong size")
+		t.Fatal("marshaled entry has wrong size", len(b), persistedEntrySize)
 	}
 	var entry2 persistedEntry
 	err = entry2.Unmarshal(b)
@@ -105,6 +132,8 @@ func TestPersistedEntryMarshalUnmarshal(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(entry, entry2) {
+		t.Log(entry)
+		t.Log(entry2)
 		t.Fatal("entries don't match")
 	}
 }
@@ -115,9 +144,8 @@ func TestNewPersistedEntry(t *testing.T) {
 	// Create a random key/value pair that is stored at index 1
 	index := int64(1)
 	isUsed := true
-	k := randomKey()
 	v := randomValue(index)
-	pe, err := newPersistedEntry(k, v, isUsed)
+	pe, err := newPersistedEntry(v, isUsed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,10 +153,13 @@ func TestNewPersistedEntry(t *testing.T) {
 	if v.staticIndex != index {
 		t.Fatal("index doesn't match")
 	}
-	if !bytes.Equal(pe.Key[:], k.key[:]) {
+	if !bytes.Equal(pe.Key.Key[:], v.key.Key) {
 		t.Fatal("key doesn't match")
 	}
-	if !bytes.Equal(pe.Tweak[:], k.tweak[:]) {
+	if pe.Key.Algorithm != signatureEd25519 {
+		t.Fatal("wrong algo")
+	}
+	if !bytes.Equal(pe.Tweak[:], v.tweak[:]) {
 		t.Fatal("tweak doesn't match")
 	}
 	if pe.Expiry != v.expiry {
@@ -145,14 +176,9 @@ func TestNewPersistedEntry(t *testing.T) {
 	}
 
 	// Convert the persisted entry back into the key value pair.
-	k2, v2, err := pe.KeyValue(index)
+	v2, err := pe.Value(index)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if !reflect.DeepEqual(k, k2) {
-		t.Log(k)
-		t.Log(k2)
-		t.Fatal("keys don't match")
 	}
 	if !reflect.DeepEqual(v, v2) {
 		t.Log(v)
@@ -176,15 +202,14 @@ func TestSaveEntry(t *testing.T) {
 	// Create a pair that is stored at index 2.
 	index := int64(2)
 	isUsed := true
-	k := randomKey()
 	v := randomValue(index)
-	pe, err := newPersistedEntry(k, v, isUsed)
+	pe, err := newPersistedEntry(v, isUsed)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Save it and read the file afterwards.
-	err = r.saveEntry(k, v, true)
+	err = r.saveEntry(v, true)
 	if err != nil {
 		t.Fatal(err)
 	}

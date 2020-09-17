@@ -65,13 +65,13 @@ func TestNew(t *testing.T) {
 
 	// Save a random unused entry at the first index and a used entry at the
 	// second index.
-	kUnused, vUnused := randomKey(), randomValue(1)
-	kUsed, vUsed := randomKey(), randomValue(2)
-	err = r.saveEntry(kUnused, vUnused, false)
+	vUnused := randomValue(1)
+	vUsed := randomValue(2)
+	err = r.saveEntry(vUnused, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = r.saveEntry(kUsed, vUsed, true)
+	err = r.saveEntry(vUsed, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestNew(t *testing.T) {
 	if len(r.entries) != 1 {
 		t.Fatal("registry should contain one entry", len(r.entries))
 	}
-	if v, exists := r.entries[kUsed]; !exists || !reflect.DeepEqual(*v, vUsed) {
+	if v, exists := r.entries[vUsed.mapKey()]; !exists || !reflect.DeepEqual(*v, vUsed) {
 		t.Log(v)
 		t.Log(vUsed)
 		t.Fatal("registry contains wrong key-value pair")
@@ -106,9 +106,9 @@ func TestUpdate(t *testing.T) {
 	}
 
 	// Register a value.
-	k, v := randomKey(), randomValue(2)
+	v := randomValue(2)
 	v.staticIndex = 1 // expected index
-	updated, err := r.Update(k.key, k.tweak, v.expiry, v.revision, v.data)
+	updated, err := r.Update(v.key, v.tweak, v.expiry, v.revision, v.data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestUpdate(t *testing.T) {
 	if len(r.entries) != 1 {
 		t.Fatal("registry should contain one entry", len(r.entries))
 	}
-	if vExist, exists := r.entries[k]; !exists || !reflect.DeepEqual(*vExist, v) {
+	if vExist, exists := r.entries[v.mapKey()]; !exists || !reflect.DeepEqual(*vExist, v) {
 		t.Log(v)
 		t.Log(*vExist)
 		t.Fatal("registry contains wrong key-value pair")
@@ -126,14 +126,14 @@ func TestUpdate(t *testing.T) {
 
 	// Update the same key again. This shouldn't work cause the revision is the
 	// same.
-	_, err = r.Update(k.key, k.tweak, v.expiry, v.revision, v.data)
+	_, err = r.Update(v.key, v.tweak, v.expiry, v.revision, v.data)
 	if !errors.Contains(err, errInvalidRevNum) {
 		t.Fatal("expected invalid rev number")
 	}
 
 	// Try again with a higher revision number. This should work.
 	v.revision++
-	updated, err = r.Update(k.key, k.tweak, v.expiry, v.revision, v.data)
+	updated, err = r.Update(v.key, v.tweak, v.expiry, v.revision, v.data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestUpdate(t *testing.T) {
 	if len(r.entries) != 1 {
 		t.Fatal("registry should contain one entry", len(r.entries))
 	}
-	if vExist, exists := r.entries[k]; !exists || !reflect.DeepEqual(*vExist, v) {
+	if vExist, exists := r.entries[v.mapKey()]; !exists || !reflect.DeepEqual(*vExist, v) {
 		t.Log(v)
 		t.Log(*vExist)
 		t.Fatal("registry contains wrong key-value pair")
@@ -151,15 +151,15 @@ func TestUpdate(t *testing.T) {
 
 	// Try another update with too much data.
 	v.revision++
-	_, err = r.Update(k.key, k.tweak, v.expiry, v.revision, make([]byte, RegistryDataSize+1))
+	_, err = r.Update(v.key, v.tweak, v.expiry, v.revision, make([]byte, RegistryDataSize+1))
 	if !errors.Contains(err, errTooMuchData) {
 		t.Fatal("expected too much data")
 	}
 
 	// Add a second entry.
-	k2, v2 := randomKey(), randomValue(2)
+	v2 := randomValue(2)
 	v2.staticIndex = 2 // expected index
-	updated, err = r.Update(k2.key, k2.tweak, v2.expiry, v2.revision, v2.data)
+	updated, err = r.Update(v2.key, v2.tweak, v2.expiry, v2.revision, v2.data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,14 +169,14 @@ func TestUpdate(t *testing.T) {
 	if len(r.entries) != 2 {
 		t.Fatal("registry should contain two entries", len(r.entries))
 	}
-	if vExist, exists := r.entries[k2]; !exists || !reflect.DeepEqual(*vExist, v2) {
+	if vExist, exists := r.entries[v2.mapKey()]; !exists || !reflect.DeepEqual(*vExist, v2) {
 		t.Log(v2)
 		t.Log(*vExist)
 		t.Fatal("registry contains wrong key-value pair")
 	}
 
 	// Mark the first entry as unused and save it to disk.
-	err = r.saveEntry(k, v, false)
+	err = r.saveEntry(v, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func TestUpdate(t *testing.T) {
 	if len(r.entries) != 1 {
 		t.Fatal("registry should contain one entries", len(r.entries))
 	}
-	if vExist, exists := r.entries[k2]; !exists || !reflect.DeepEqual(*vExist, v2) {
+	if vExist, exists := r.entries[v2.mapKey()]; !exists || !reflect.DeepEqual(*vExist, v2) {
 		t.Log(v2)
 		t.Log(*vExist)
 		t.Fatal("registry contains wrong key-value pair")
@@ -197,9 +197,9 @@ func TestUpdate(t *testing.T) {
 
 	// Update the registry with a third entry. It should get the index that the
 	// first entry had before.
-	k3, v3 := randomKey(), randomValue(2)
+	v3 := randomValue(2)
 	v3.staticIndex = v.staticIndex // expected index
-	updated, err = r.Update(k3.key, k3.tweak, v3.expiry, v3.revision, v3.data)
+	updated, err = r.Update(v3.key, v3.tweak, v3.expiry, v3.revision, v3.data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestUpdate(t *testing.T) {
 	if len(r.entries) != 2 {
 		t.Fatal("registry should contain two entries", len(r.entries))
 	}
-	if vExist, exists := r.entries[k3]; !exists || !reflect.DeepEqual(*vExist, v3) {
+	if vExist, exists := r.entries[v3.mapKey()]; !exists || !reflect.DeepEqual(*vExist, v3) {
 		t.Log(v3)
 		t.Log(*vExist)
 		t.Fatal("registry contains wrong key-value pair")
@@ -229,15 +229,15 @@ func TestPrune(t *testing.T) {
 	}
 
 	// Add 2 entries with different expiries.
-	k1, v1 := randomKey(), randomValue(1)
+	v1 := randomValue(1)
 	v1.expiry = 1
-	_, err = r.Update(k1.key, k1.tweak, v1.expiry, v1.revision, v1.data)
+	_, err = r.Update(v1.key, v1.tweak, v1.expiry, v1.revision, v1.data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	k2, v2 := randomKey(), randomValue(2)
+	v2 := randomValue(2)
 	v2.expiry = 2
-	_, err = r.Update(k2.key, k2.tweak, v2.expiry, v2.revision, v2.data)
+	_, err = r.Update(v2.key, v2.tweak, v2.expiry, v2.revision, v2.data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +257,7 @@ func TestPrune(t *testing.T) {
 	if len(r.entries) != 1 {
 		t.Fatal("wrong number of entries")
 	}
-	if vExist, exists := r.entries[k2]; !exists || !reflect.DeepEqual(*vExist, v2) {
+	if vExist, exists := r.entries[v2.mapKey()]; !exists || !reflect.DeepEqual(*vExist, v2) {
 		t.Log(v2)
 		t.Log(*vExist)
 		t.Fatal("registry contains wrong key-value pair")
@@ -273,7 +273,7 @@ func TestPrune(t *testing.T) {
 	if len(r.entries) != 1 {
 		t.Fatal("wrong number of entries")
 	}
-	if vExist, exists := r.entries[k2]; !exists || !reflect.DeepEqual(*vExist, v2) {
+	if vExist, exists := r.entries[v2.mapKey()]; !exists || !reflect.DeepEqual(*vExist, v2) {
 		t.Log(v2)
 		t.Log(*vExist)
 		t.Fatal("registry contains wrong key-value pair")
