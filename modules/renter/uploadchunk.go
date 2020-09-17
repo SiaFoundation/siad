@@ -673,7 +673,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		r.memoryManager.Return(memoryReleased)
 	}
 	// Make sure file is closed for canceled chunks when all workers are done
-	if canceled && workersRemaining == 0 {
+	if canceled && workersRemaining == 0 && !chunkComplete {
 		err := uc.fileEntry.Close()
 		if err != nil {
 			r.log.Println("WARN: unable to close file entry for chunk", uc.fileEntry.SiaFilePath())
