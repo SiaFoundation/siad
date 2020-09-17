@@ -985,7 +985,11 @@ func TestHostInitialization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// verify its initial block height is zero
 	if ht.host.blockHeight != 0 {
@@ -1011,7 +1015,11 @@ func TestHostMultiClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err = ht.host.Close()
 	if err != nil {
@@ -1044,7 +1052,11 @@ func TestNilValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	hostDir := filepath.Join(ht.persistDir, modules.HostDir)
 	_, err = New(nil, ht.gateway, ht.tpool, ht.wallet, ht.mux, "localhost:0", hostDir)
@@ -1094,7 +1106,11 @@ func TestSetAndGetInternalSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Check the default settings get returned at first call.
 	settings := ht.host.InternalSettings()
@@ -1206,7 +1222,12 @@ func TestSetAndGetSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+  if err := ht.Close(); err != nil {
+t.Fatal(err)
+}
+
+}()
 
 	// Check the default settings get returned at first call.
 	settings := ht.host.Settings()
@@ -1284,7 +1305,12 @@ func TestPersistentSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+  if err := ht.Close(); err != nil {
+t.Fatal(err)
+}
+
+}()
 
 	// Submit updated settings.
 	settings := ht.host.Settings()

@@ -5099,7 +5099,7 @@ Versioninfo is an object that contains the node's version information.
 Version is the siad version the node is running.
 
 **gitrevision** | string  
-Gitrevision refers to the commit hash used to build said.
+Gitrevision refers to the commit hash used to build siad.
 
 **performancestats** | object - api.SkynetPerformanceStats  
 PerformanceStats is an object that contains a breakdown of performance metrics

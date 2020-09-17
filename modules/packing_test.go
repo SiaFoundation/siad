@@ -253,7 +253,9 @@ func TestPackingUtilization(t *testing.T) {
 		fmt.Fprintln(w, amount, "\t", avgSectors, "\t", avgUtil*100)
 	}
 
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		t.Error("failed to flush writer")
+	}
 }
 
 // randomFileMap generates a map of random files for testing purposes.

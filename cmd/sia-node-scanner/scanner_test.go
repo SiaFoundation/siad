@@ -95,7 +95,11 @@ func TestSendShareNodesRequests(t *testing.T) {
 			t.Fatal("Error making new gateway: ", err)
 		}
 		gateways = append(gateways, g)
-		defer g.Close()
+		defer func() {
+			if err := g.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 	}
 
 	// Connect the the 0th testing gateway to all the other ones.

@@ -789,7 +789,11 @@ func testDownloadAfterLegacyRenewAndClear(t *testing.T, tg *siatest.TestGroup) {
 	// Add the node and remove it at the end of the test.
 	nodes, err := tg.AddNodes(params)
 	renter := nodes[0]
-	defer tg.RemoveNode(renter)
+	defer func() {
+		if err := tg.RemoveNode(renter); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Upload file, creating a piece for each host in the group
 	dataPieces := uint64(1)
@@ -840,7 +844,11 @@ func testDownloadMultipleLargeSectors(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	renter := nodes[0]
-	defer tg.RemoveNode(renter)
+	defer func() {
+		if err := tg.RemoveNode(renter); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Upload files
 	dataPieces := uint64(len(tg.Hosts())) - 1
@@ -2490,7 +2498,11 @@ func TestRenterLosingHosts(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Add renter to the group
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
@@ -2709,7 +2721,11 @@ func TestRenterFailingStandbyDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Add renter to the group
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
@@ -3701,11 +3717,15 @@ func TestSiafileCompatCodeV140(t *testing.T) {
 	if f, err = os.Create(filepath.Join(siafilesDir, dummySiafile)); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if f, err = os.Create(filepath.Join(snapshotsDir, dummySnapshot)); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 	// Create new node with legacy sia file.
 	r, err := siatest.NewNode(node.AllModules(testDir))
 	if err != nil {
@@ -4900,7 +4920,11 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// add a renter with a dependency that simulates an unclean shutdown by
 	// preventing accounts to be saved and also prevents the snapshot syncing
@@ -5021,7 +5045,11 @@ func TestReadSectorOutputCorrupted(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// add a host that corrupts downloads.
 	deps1 := dependencies.NewDependencyCorruptMDMOutput()
@@ -5087,7 +5115,11 @@ func TestRenterPricesVolatility(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	renter := tg.Renters()[0]
 	host := tg.Hosts()[0]
@@ -5149,7 +5181,11 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	renter := tg.Renters()[0]
 

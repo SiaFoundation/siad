@@ -122,7 +122,7 @@ func wrap(fn interface{}) func(*cobra.Command, []string) {
 
 	return func(cmd *cobra.Command, args []string) {
 		if len(args) != fnType.NumIn() {
-			cmd.UsageFunc()(cmd)
+			_ = cmd.UsageFunc()(cmd)
 			os.Exit(exitCodeUsage)
 		}
 		argVals := make([]reflect.Value, fnType.NumIn())

@@ -18,7 +18,11 @@ func TestIntegrationLoad1of1Siag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Load the key into the wallet.
 	err = wt.wallet.LoadSiagKeys(wt.walletMasterKey, []string{"../../types/siag0of1of1.siakey"})
@@ -63,7 +67,11 @@ func TestIntegrationLoad2of3Siag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Load the key into the wallet.
 	err = wt.wallet.LoadSiagKeys(wt.walletMasterKey, []string{"../../types/siag0of2of3.siakey", "../../types/siag1of2of3.siakey"})

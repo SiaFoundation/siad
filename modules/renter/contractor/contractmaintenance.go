@@ -502,7 +502,7 @@ func (c *Contractor) managedLimitGFUHosts() {
 		}
 		host, ok, err := c.hdb.Host(contract.HostPublicKey)
 		if !ok || err != nil {
-			build.Critical("managedLimitGFUHosts was run after updating contract utility but found contract without host in hostdb that's GFU")
+			c.log.Print("managedLimitGFUHosts was run after updating contract utility but found contract without host in hostdb that's GFU", contract.HostPublicKey)
 			continue
 		}
 		score, err := c.hdb.ScoreBreakdown(host)

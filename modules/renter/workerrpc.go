@@ -164,7 +164,7 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 	}
 
 	// Create a stream with a reasonable dial up timeout.
-	stream, err := w.renter.staticMux.NewStreamTimeout(modules.HostSiaMuxSubscriberName, w.staticHostMuxAddress, timeout, modules.SiaPKToMuxPK(w.staticHostPubKey))
+	stream, err := w.renter.staticMux.NewStreamTimeout(modules.HostSiaMuxSubscriberName, w.staticCache().staticHostMuxAddress, timeout, modules.SiaPKToMuxPK(w.staticHostPubKey))
 	if err != nil {
 		return nil, err
 	}

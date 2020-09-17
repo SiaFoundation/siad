@@ -353,7 +353,9 @@ RPC Stats:
 		pctUsed := 100 * (float64(curSize) / float64(folder.Capacity))
 		fmt.Fprintf(w, "\t%s\t%s\t%.2f\t%s\n", modules.FilesizeUnits(uint64(curSize)), modules.FilesizeUnits(folder.Capacity), pctUsed, folder.Path)
 	}
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		die("failed to flush writer")
+	}
 }
 
 // hostconfigcmd is the handler for the command `siac host config [setting] [value]`.
@@ -461,7 +463,9 @@ func hostcontractcmd() {
 	default:
 		die("\"" + hostContractOutputType + "\" is not a format")
 	}
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		die("failed to flush writer")
+	}
 }
 
 // hostannouncecmd is the handler for the command `siac host announce`.
@@ -475,7 +479,7 @@ func hostannouncecmd(cmd *cobra.Command, args []string) {
 	case 1:
 		err = httpClient.HostAnnounceAddrPost(modules.NetAddress(args[0]))
 	default:
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 	if err != nil {

@@ -11,6 +11,8 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TODO - once bubbling metadata has been updated to be more I/O
@@ -317,7 +319,9 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 	if err != nil {
 		return modules.SiaPath{}, errors.AddContext(err, "unable to open siaDir "+dirSiaPath.String())
 	}
-	defer siaDir.Close()
+	defer func() {
+		err = errors.Compose(err, siaDir.Close())
+	}()
 	metadata, err := siaDir.Metadata()
 	if err != nil {
 		return modules.SiaPath{}, err
@@ -364,7 +368,9 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 			return modules.SiaPath{}, errors.AddContext(err, "could not open siafileset for "+sp.String())
 		}
 		numStuckChunks := int(f.NumStuckChunks())
-		f.Close()
+		if err := f.Close(); err != nil {
+			return modules.SiaPath{}, errors.AddContext(err, "failed to close filenode "+sp.String())
+		}
 
 		// Check if stuck
 		if numStuckChunks == 0 {
@@ -573,6 +579,13 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			case <-wakeSignal:
 			}
 		}
+
+		// Update files in dir before bubbling it.
+		err = r.managedUpdateFileMetadatas(siaPath)
+		if err != nil {
+			r.log.Println("Error calling managedUpdateFileMetadatas on `", siaPath.String(), "`:", err)
+		}
+
 		r.log.Debug("Health Loop calling bubble on '", siaPath.String(), "'")
 		err = r.managedBubbleMetadata(siaPath)
 		if err != nil {
@@ -584,4 +597,65 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			}
 		}
 	}
+}
+
+// managedUpdateFileMetadata updates the metadata of all siafiles within a dir.
+// This can be very expensive for large directories and should therefore only
+// happen sparingly.
+func (r *Renter) managedUpdateFileMetadatas(dirSiaPath modules.SiaPath) error {
+	// Get cached offline and goodforrenew maps.
+	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
+
+	fis, err := r.staticFileSystem.ReadDir(dirSiaPath)
+	if err != nil {
+		return errors.AddContext(err, "managedUpdateFileMetadatas: failed to read dir")
+	}
+	var errs error
+	for _, fi := range fis {
+		ext := filepath.Ext(fi.Name())
+		if ext == modules.SiaFileExtension {
+			fName := strings.TrimSuffix(fi.Name(), modules.SiaFileExtension)
+			fileSiaPath, err := dirSiaPath.Join(fName)
+			if err != nil {
+				r.log.Println("managedUpdateFileMetadatas: unable to join siapath with dirpath", err)
+				continue
+			}
+			// Update the file.
+			err = func() error {
+				sf, err := r.staticFileSystem.OpenSiaFile(fileSiaPath)
+				if err != nil {
+					return err
+				}
+				err = r.managedUpdateFileMetadata(sf, offlineMap, goodForRenewMap, contracts, used)
+				return errors.Compose(err, sf.Close())
+			}()
+			errs = errors.Compose(errs, err)
+		}
+	}
+	return errs
+}
+
+// managedUpdateFileMetadata updates the metadata of a siafile.
+func (r *Renter) managedUpdateFileMetadata(sf *filesystem.FileNode, offlineMap, goodForRenew map[string]bool, contracts map[string]modules.RenterContract, used []types.SiaPublicKey) (err error) {
+	// Update the siafile's used hosts.
+	if err := sf.UpdateUsedHosts(used); err != nil {
+		r.log.Println("WARN: Could not update used hosts:", err)
+	}
+	// Update cached redundancy values.
+	_, _, err = sf.Redundancy(offlineMap, goodForRenew)
+	if err != nil {
+		r.log.Println("WARN: Could not update cached redundancy:", err)
+	}
+	// Update cached health values.
+	_, _, _, _, _ = sf.Health(offlineMap, goodForRenew)
+	// Set the LastHealthCheckTime
+	sf.SetLastHealthCheckTime()
+	// Update the cached expiration of the siafile.
+	_ = sf.Expiration(contracts)
+	// Save the metadata.
+	err = sf.SaveMetadata()
+	if err != nil {
+		return err
+	}
+	return nil
 }

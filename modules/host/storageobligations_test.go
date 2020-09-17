@@ -99,7 +99,11 @@ func TestStorageObligationSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a storage obligation & add a revision
 	so, err := ht.newTesterStorageObligation()
@@ -200,7 +204,11 @@ func TestAccountFundingTracking(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// expectDelta is a helper that asserts the deltas, with regards to the
 	// account funding fields, in the host's financial metrics before and after
@@ -313,7 +321,11 @@ func TestManagedModifyUnlockedStorageObligation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// add a storage obligation for testing.
 	so, err := ht.newTesterStorageObligation()

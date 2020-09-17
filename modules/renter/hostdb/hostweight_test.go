@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -50,16 +51,19 @@ var (
 
 // calculateWeightFromUInt64Price will fill out a host entry with a bunch of
 // defaults, and then grab the weight of that host using a set price.
-func calculateWeightFromUInt64Price(price, collateral uint64) (weight types.Currency) {
+func calculateWeightFromUInt64Price(price, collateral uint64) (weight types.Currency, err error) {
 	hdb := bareHostDB()
-	hdb.SetAllowance(DefaultTestAllowance)
+	err = hdb.SetAllowance(DefaultTestAllowance)
+	if err != nil {
+		return
+	}
 	hdb.blockHeight = 0
 
 	entry := DefaultHostDBEntry
 	entry.StoragePrice = types.NewCurrency64(price).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
 	entry.Collateral = types.NewCurrency64(collateral).Mul(types.SiacoinPrecision).Div(modules.BlockBytesPerMonthTerabyte)
 
-	return hdb.weightFunc(entry).Score()
+	return hdb.weightFunc(entry).Score(), nil
 }
 
 // TestHostDBBasePriceAdjustment ensures that the basePriceAdjustment is impacted by
@@ -150,8 +154,11 @@ func TestHostWeightDistinctPrices(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	weight1 := calculateWeightFromUInt64Price(300, 100)
-	weight2 := calculateWeightFromUInt64Price(301, 100)
+	weight1, err1 := calculateWeightFromUInt64Price(300, 100)
+	weight2, err2 := calculateWeightFromUInt64Price(301, 100)
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal(err)
+	}
 	if weight1.Cmp(weight2) <= 0 {
 		t.Log(weight1)
 		t.Log(weight2)
@@ -167,8 +174,11 @@ func TestHostWeightDistinctCollateral(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	weight1 := calculateWeightFromUInt64Price(300, 100)
-	weight2 := calculateWeightFromUInt64Price(300, 99)
+	weight1, err1 := calculateWeightFromUInt64Price(300, 100)
+	weight2, err2 := calculateWeightFromUInt64Price(300, 99)
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal(err)
+	}
 	if weight1.Cmp(weight2) <= 0 {
 		t.Log(weight1)
 		t.Log(weight2)
@@ -183,8 +193,11 @@ func TestHostWeightCollateralBelowCutoff(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	weight1 := calculateWeightFromUInt64Price(300, 10)
-	weight2 := calculateWeightFromUInt64Price(150, 5)
+	weight1, err1 := calculateWeightFromUInt64Price(300, 10)
+	weight2, err2 := calculateWeightFromUInt64Price(150, 5)
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal(err)
+	}
 	if weight1.Cmp(weight2) <= 0 {
 		t.Log(weight1)
 		t.Log(weight2)
@@ -199,8 +212,11 @@ func TestHostWeightCollateralAboveCutoff(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	weight1 := calculateWeightFromUInt64Price(300, 1000)
-	weight2 := calculateWeightFromUInt64Price(150, 500)
+	weight1, err1 := calculateWeightFromUInt64Price(300, 1000)
+	weight2, err2 := calculateWeightFromUInt64Price(150, 500)
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal(err)
+	}
 	if weight1.Cmp(weight2) >= 0 {
 		t.Log(weight1)
 		t.Log(weight2)
@@ -216,8 +232,11 @@ func TestHostWeightIdenticalPrices(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	weight1 := calculateWeightFromUInt64Price(42, 100)
-	weight2 := calculateWeightFromUInt64Price(42, 100)
+	weight1, err1 := calculateWeightFromUInt64Price(42, 100)
+	weight2, err2 := calculateWeightFromUInt64Price(42, 100)
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal(err)
+	}
 	if weight1.Cmp(weight2) != 0 {
 		t.Error("Weight of identically priced hosts should be equal.")
 	}
@@ -231,8 +250,11 @@ func TestHostWeightWithOnePricedZero(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	weight1 := calculateWeightFromUInt64Price(5, 10)
-	weight2 := calculateWeightFromUInt64Price(0, 10)
+	weight1, err1 := calculateWeightFromUInt64Price(5, 10)
+	weight2, err2 := calculateWeightFromUInt64Price(0, 10)
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal(err)
+	}
 	if weight1.Cmp(weight2) >= 0 {
 		t.Log(weight1)
 		t.Log(weight2)
@@ -247,8 +269,11 @@ func TestHostWeightWithBothPricesZero(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	weight1 := calculateWeightFromUInt64Price(0, 100)
-	weight2 := calculateWeightFromUInt64Price(0, 100)
+	weight1, err1 := calculateWeightFromUInt64Price(0, 100)
+	weight2, err2 := calculateWeightFromUInt64Price(0, 100)
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal(err)
+	}
 	if weight1.Cmp(weight2) != 0 {
 		t.Error("Weight of two zero-priced hosts should be equal.")
 	}
@@ -261,8 +286,11 @@ func TestHostWeightWithNoCollateral(t *testing.T) {
 		t.SkipNow()
 	}
 	t.Parallel()
-	weight1 := calculateWeightFromUInt64Price(300, 1)
-	weight2 := calculateWeightFromUInt64Price(300, 0)
+	weight1, err1 := calculateWeightFromUInt64Price(300, 1)
+	weight2, err2 := calculateWeightFromUInt64Price(300, 0)
+	if err := errors.Compose(err1, err2); err != nil {
+		t.Fatal(err)
+	}
 	if weight1.Cmp(weight2) <= 0 {
 		t.Log(weight1)
 		t.Log(weight2)
@@ -278,7 +306,10 @@ func TestHostWeightMaxDuration(t *testing.T) {
 	}
 	t.Parallel()
 	hdb := bareHostDB()
-	hdb.SetAllowance(DefaultTestAllowance)
+	err := hdb.SetAllowance(DefaultTestAllowance)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	entry := DefaultHostDBEntry
 	entry2 := DefaultHostDBEntry
@@ -612,17 +643,26 @@ func TestHostWeightConstants(t *testing.T) {
 
 	// Try a few hosts and make sure we always end up with a score that is
 	// greater than 1 million.
-	weight := calculateWeightFromUInt64Price(300, 100)
+	weight, err := calculateWeightFromUInt64Price(300, 100)
 	if weight.Cmp(types.NewCurrency64(1e9)) < 0 {
 		t.Error("weight is not sufficiently high for hosts")
 	}
-	weight = calculateWeightFromUInt64Price(1000, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	weight, err = calculateWeightFromUInt64Price(1000, 1)
 	if weight.Cmp(types.NewCurrency64(1e9)) < 0 {
 		t.Error("weight is not sufficiently high for hosts")
+	}
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	hdb := bareHostDB()
-	hdb.SetAllowance(DefaultTestAllowance)
+	err = hdb.SetAllowance(DefaultTestAllowance)
+	if err != nil {
+		t.Fatal(err)
+	}
 	hdb.blockHeight = 0
 
 	entry := DefaultHostDBEntry
@@ -642,7 +682,10 @@ func TestHostWeightExtraPriceAdjustments(t *testing.T) {
 	hdb := bareHostDB()
 
 	allowance := DefaultTestAllowance
-	hdb.SetAllowance(allowance)
+	err := hdb.SetAllowance(allowance)
+	if err != nil {
+		t.Fatal(err)
+	}
 	entry := DefaultHostDBEntry
 	defaultScore := hdb.weightFunc(entry).Score()
 
@@ -684,7 +727,10 @@ func TestHostWeightAcceptContract(t *testing.T) {
 	}
 	t.Parallel()
 	hdb := bareHostDB()
-	hdb.SetAllowance(DefaultTestAllowance)
+	err := hdb.SetAllowance(DefaultTestAllowance)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	entry := DefaultHostDBEntry
 	entry2 := DefaultHostDBEntry
