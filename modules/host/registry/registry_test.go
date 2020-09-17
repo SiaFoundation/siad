@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -33,53 +32,6 @@ func testDir(name string) string {
 		panic(err)
 	}
 	return dir
-}
-
-// TestInitRegistry is a unit test for initRegistry.
-func TestInitRegistry(t *testing.T) {
-	dir := testDir(t.Name())
-	wal := newTestWAL(filepath.Join(dir, "wal"))
-
-	// Init the registry.
-	registryPath := filepath.Join(dir, "registry")
-	f, err := initRegistry(registryPath, wal)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Check the size.
-	fi, err := f.Stat()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fi.Size() != int64(persistedEntrySize) {
-		t.Fatal("wrong size")
-	}
-
-	// Close the file again.
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	// Compare the contents to what we expect. The version is hardcoded to
-	// prevent us from accidentally changing it without breaking this test.
-	expected := make([]byte, persistedEntrySize)
-	binary.LittleEndian.PutUint64(expected, uint64(1))
-	b, err := ioutil.ReadFile(registryPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(b, expected) {
-		t.Fatal("metadata doesn't match")
-	}
-
-	// Try to reinit the same registry again. This should fail. We check the
-	// string directly since neither os.IsExist nor errors.Contains(err,
-	// os.ErrExist) work.
-	_, err = initRegistry(registryPath, wal)
-	if err == nil || !strings.Contains(err.Error(), "file exists") {
-		t.Fatal(err)
-	}
 }
 
 // TestNew is a unit test for New. It confirms that New can initialize an empty

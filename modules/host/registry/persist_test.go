@@ -2,16 +2,19 @@ package registry
 
 import (
 	"bytes"
+	"encoding/binary"
 	"io/ioutil"
 	"math"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// randomKey creates a random key object for testing.
 func randomKey() key {
 	var k key
 	fastrand.Read(k.key[:])
@@ -19,6 +22,7 @@ func randomKey() key {
 	return k
 }
 
+// randomValue creates a random value object for testing.
 func randomValue(index int64) value {
 	v := value{
 		expiry:      types.BlockHeight(fastrand.Uint64n(math.MaxUint64)),
@@ -27,6 +31,53 @@ func randomValue(index int64) value {
 		revision:    fastrand.Uint64n(math.MaxUint64 - 100), // Leave some room for incrementing the revision during tests
 	}
 	return v
+}
+
+// TestInitRegistry is a unit test for initRegistry.
+func TestInitRegistry(t *testing.T) {
+	dir := testDir(t.Name())
+	wal := newTestWAL(filepath.Join(dir, "wal"))
+
+	// Init the registry.
+	registryPath := filepath.Join(dir, "registry")
+	f, err := initRegistry(registryPath, wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check the size.
+	fi, err := f.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Size() != int64(persistedEntrySize) {
+		t.Fatal("wrong size")
+	}
+
+	// Close the file again.
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Compare the contents to what we expect. The version is hardcoded to
+	// prevent us from accidentally changing it without breaking this test.
+	expected := make([]byte, persistedEntrySize)
+	binary.LittleEndian.PutUint64(expected, uint64(1))
+	b, err := ioutil.ReadFile(registryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(b, expected) {
+		t.Fatal("metadata doesn't match")
+	}
+
+	// Try to reinit the same registry again. This should fail. We check the
+	// string directly since neither os.IsExist nor errors.Contains(err,
+	// os.ErrExist) work.
+	_, err = initRegistry(registryPath, wal)
+	if err == nil || !strings.Contains(err.Error(), "file exists") {
+		t.Fatal(err)
+	}
 }
 
 // TestPersistedEntryMarshalUnmarshal tests marshaling persistedEntries.

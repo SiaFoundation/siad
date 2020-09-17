@@ -15,10 +15,14 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
+// TODO: must haves
+// - signature verificatio and storage
+// - prune unit test
+
 // TODO: F/Us
 // - cap max entries (only LRU in memory rest on disk)
 // - purge expired entries
-
+// - optimize locking by locking each entry individually
 const (
 	// KeySize is the size of a registered key.
 	KeySize = crypto.PublicKeySize
@@ -36,10 +40,15 @@ const (
 )
 
 var (
-	errEntryUnused    = errors.New("entry is not in use")
+	// errEntryWrongSize is returned when a marshaled entry doesn't have a size
+	// of persistedEntrySize. This should never happen.
 	errEntryWrongSize = errors.New("marshaled entry has wrong size")
-	errInvalidRevNum  = errors.New("provided revision number is invalid")
-	errTooMuchData    = errors.New("registered data is too large")
+	// errInvalidRevNum is returned when the revision number of the data to
+	// register isn't greater than the known revision number.
+	errInvalidRevNum = errors.New("provided revision number is invalid")
+	// errTooMuchData is returned when the data to register is larger than
+	// RegistryDataSize.
+	errTooMuchData = errors.New("registered data is too large")
 )
 
 type (
@@ -52,11 +61,13 @@ type (
 		mu          sync.Mutex
 	}
 
+	// key represents a key registered in the Registry.
 	key struct {
 		key   crypto.PublicKey
 		tweak crypto.Hash
 	}
 
+	// values represents the value associated with a registered key.
 	value struct {
 		expiry      types.BlockHeight // expiry of the entry
 		staticIndex int64             // index within file
@@ -65,29 +76,6 @@ type (
 		revision uint64
 	}
 )
-
-// initRegistry initializes a registry at the specified path using the provided
-// wal.
-func initRegistry(path string, wal *writeaheadlog.WAL) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, modules.DefaultFilePerm)
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to create new file for key/value store")
-	}
-
-	// The first entry is reserved for metadata. Right now only the version
-	// number.
-	initData := make([]byte, persistedEntrySize)
-	binary.LittleEndian.PutUint64(initData, registryVersion)
-
-	// Write data to disk in an ACID way.
-	initUpdate := writeaheadlog.WriteAtUpdate(path, 0, initData)
-	err = wal.CreateAndApplyTransaction(writeaheadlog.ApplyUpdates, initUpdate)
-	if err != nil {
-		err = errors.Compose(err, f.Close()) // close the file on error
-		return nil, errors.AddContext(err, "failed to apply init update")
-	}
-	return f, nil
-}
 
 // New creates a new registry or opens an existing one.
 func New(path string, wal *writeaheadlog.WAL) (_ *Registry, err error) {
@@ -213,4 +201,28 @@ func (r *Registry) Update(pubKey crypto.PublicKey, tweak crypto.Hash, expiry typ
 	// Update the in-memory map last.
 	r.entries[k] = &v
 	return false, nil
+}
+
+// Purge deletes all entries from the registry that expire at a height smaller
+// than the provided expiry argument.
+func (r *Registry) Purge(expiry types.BlockHeight) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var errs error
+	for k, v := range r.entries {
+		if v.expiry < expiry {
+			continue // not expired
+		}
+		// Purge the entry by setting it unused.
+		if err := r.saveEntry(k, *v, false); err != nil {
+			errs = errors.Compose(errs, err)
+			continue
+		}
+		// Mark the space on disk unused and remove the entry from the in-memory
+		// map.
+		delete(r.entries, k)
+		r.staticUsage.Unset(uint64(v.staticIndex))
+	}
+	return errs
 }

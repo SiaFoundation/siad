@@ -1,9 +1,12 @@
 package registry
 
 import (
+	"encoding/binary"
 	"fmt"
+	"os"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
@@ -27,6 +30,29 @@ type (
 		Unused [167]byte // unused bytes for potential future fields
 	}
 )
+
+// initRegistry initializes a registry at the specified path using the provided
+// wal.
+func initRegistry(path string, wal *writeaheadlog.WAL) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, modules.DefaultFilePerm)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to create new file for key/value store")
+	}
+
+	// The first entry is reserved for metadata. Right now only the version
+	// number.
+	initData := make([]byte, persistedEntrySize)
+	binary.LittleEndian.PutUint64(initData, registryVersion)
+
+	// Write data to disk in an ACID way.
+	initUpdate := writeaheadlog.WriteAtUpdate(path, 0, initData)
+	err = wal.CreateAndApplyTransaction(writeaheadlog.ApplyUpdates, initUpdate)
+	if err != nil {
+		err = errors.Compose(err, f.Close()) // close the file on error
+		return nil, errors.AddContext(err, "failed to apply init update")
+	}
+	return f, nil
+}
 
 // newPersistedEntry turns a key-value pair into a persistedEntry.
 func newPersistedEntry(key key, value value, isUsed bool) (persistedEntry, error) {
