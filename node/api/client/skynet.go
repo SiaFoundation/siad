@@ -32,6 +32,16 @@ func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, modules.SkyfileMetada
 	return c.SkynetSkylinkGetWithTimeout(skylink, -1)
 }
 
+// SkynetSkylinkGetWithETag uses the /skynet/skylink endpoint to download a
+// skylink file setting the given ETag as value in the If-None-Match request
+// header.
+func (c *Client) SkynetSkylinkGetWithETag(skylink string, ETag string) (*http.Response, error) {
+	query := skylinkQueryWithValues(skylink, url.Values{})
+	headers := make(Headers)
+	headers["If-None-Match"] = ETag
+	return c.getRawResponseWithHeaders(query, headers)
+}
+
 // SkynetSkylinkGetWithTimeout uses the /skynet/skylink endpoint to download a
 // skylink file, specifying the given timeout.
 func (c *Client) SkynetSkylinkGetWithTimeout(skylink string, timeout int) ([]byte, modules.SkyfileMetadata, error) {

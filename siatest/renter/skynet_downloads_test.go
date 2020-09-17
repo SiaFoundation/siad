@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -41,6 +42,7 @@ func TestSkynetDownloads(t *testing.T) {
 		{Name: "DirectoryBasic", Test: testDownloadDirectoryBasic},
 		{Name: "DirectoryNested", Test: testDownloadDirectoryNested},
 		{Name: "ContentDisposition", Test: testDownloadContentDisposition},
+		{Name: "NotModified", Test: testNotModified},
 	}
 
 	// Run tests
@@ -530,6 +532,124 @@ func testDownloadContentDisposition(t *testing.T, tg *siatest.TestGroup) {
 	err = errors.Compose(err, verifyCDHeader(header, attachmentZip))
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testNotModified verifies the functionality of the '304 Not Modified' header
+func testNotModified(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// upload a single file
+	file := make([]byte, 100)
+	fastrand.Read(file)
+	skylink, _, _, err := r.UploadNewSkyfileWithDataBlocking("testNotModified", file, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// download the skylink
+	resp, err := r.SkynetSkylinkGetWithETag(skylink, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("Unexpected status code")
+	}
+
+	// verify ETag header is set
+	ETag := resp.Header.Get("ETag")
+	if ETag == "" {
+		t.Fatal("Unexpected ETag response header")
+	}
+
+	// download the skylink but now pass the ETag in the request header
+	resp, err = r.SkynetSkylinkGetWithETag(skylink, ETag)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+
+	// verify status code is 304 and no data was returned
+	if resp.StatusCode != http.StatusNotModified {
+		t.Fatal("Unexpected status code", resp.StatusCode)
+	}
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if len(data) != 0 {
+		t.Fatal("Unexpected response data")
+	}
+
+	// verify we miss the cache if the path is altered
+	resp, err = r.SkynetSkylinkGetWithETag(skylink+"/foo", ETag)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatal("Unexpected status code", resp.StatusCode)
+	}
+
+	// verify we miss the cache if format is passed
+	resp, err = r.SkynetSkylinkGetWithETag(skylink+"?format="+string(modules.SkyfileFormatZip), ETag)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("Unexpected status code", resp.StatusCode)
+	}
+
+	// verify this has an affect on the returned ETag
+	if resp.Header.Get("ETag") == ETag {
+		t.Fatal("Unexpected ETag")
+	}
+
+	// verify we miss the cache if nocache=1 is supplied
+	resp, err = r.SkynetSkylinkGetWithETag(skylink+"?nocache=1", ETag)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("Unexpected status code", resp.StatusCode)
+	}
+	data, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if !bytes.Equal(file, data) {
+		t.Fatal("Unexpected response data")
+	}
+	// verify this has no affect on the returned ETag
+	if resp.Header.Get("ETag") != ETag {
+		t.Fatal("Unexpected ETag")
+	}
+
+	// verify random query string params do not affect the ETag value
+	resp, err = r.SkynetSkylinkGetWithETag(skylink+"?foo=bar", "")
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("Unexpected status code", resp.StatusCode)
+	}
+	if resp.Header.Get("ETag") != ETag {
+		t.Fatal("Unexpected ETag", resp.Header.Get("ETag"))
+	}
+
+	// verify manipulating the ETag slightly misses the cache
+	ETagCorrupted := "abcd" + ETag[4:]
+	resp, err = r.SkynetSkylinkGetWithETag(skylink+"?foo=bar", ETagCorrupted)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("Unexpected status code", resp.StatusCode)
+	}
+	data, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if !bytes.Equal(file, data) {
+		t.Fatal("Unexpected response data")
 	}
 }
 

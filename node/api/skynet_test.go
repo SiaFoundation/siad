@@ -10,6 +10,49 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
+// TestBuildETag verifies the functionality of the buildETag helper function
+func TestBuildETag(t *testing.T) {
+	t.Parallel()
+
+	// base case
+	path := "/"
+	format := modules.SkyfileFormatNotSpecified
+	var skylink modules.Skylink
+	err := skylink.LoadString("AACogzrAimYPG42tDOKhS3lXZD8YvlF8Q8R17afe95iV2Q")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	eTag := buildETag(skylink, path, format)
+	if eTag == "" {
+		t.Fatal("unexpected output")
+	}
+
+	// adjust URL and expect different hash value
+	path = "/foo"
+	eTag2 := buildETag(skylink, path, format)
+	if eTag2 == eTag {
+		t.Fatal("unexpected output")
+	}
+
+	// adjust query and expect different hash value
+	format = modules.SkyfileFormatZip
+	eTag3 := buildETag(skylink, path, format)
+	if eTag3 == eTag2 {
+		t.Fatal("unexpected output")
+	}
+
+	// adjust skylink and expect different hash value
+	err = skylink.LoadString("BBCogzrAimYPG42tDOKhS3lXZD8YvlF8Q8R17afe95iV2Q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eTag4 := buildETag(skylink, path, format)
+	if eTag4 == eTag3 {
+		t.Fatal("unexpected output")
+	}
+}
+
 // TestDefaultPath ensures defaultPath functions correctly.
 func TestDefaultPath(t *testing.T) {
 	tests := []struct {

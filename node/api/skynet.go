@@ -262,7 +262,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	// Parse the querystring.
+	// Parse the 'attachment' query string parameter.
 	var attachment bool
 	attachmentStr := queryForm.Get("attachment")
 	if attachmentStr != "" {
@@ -273,7 +273,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}
 
-	// Parse the format.
+	// Parse the 'format' query string parameter.
 	format := modules.SkyfileFormat(strings.ToLower(queryForm.Get("format")))
 	switch format {
 	case modules.SkyfileFormatNotSpecified:
@@ -301,6 +301,24 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			return
 		}
 		timeout = time.Duration(timeoutInt) * time.Second
+	}
+
+	// Parse the 'nocache' query string parameter.
+	var nocache bool
+	nocacheStr := queryForm.Get("nocache")
+	if nocacheStr != "" {
+		nocache, err = strconv.ParseBool(nocacheStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'nocache' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Return '304 Not Modified' if ETags match and user did not supply nocache
+	ETag := buildETag(skylink, path, format)
+	if !nocache && req.Header.Get("If-None-Match") == ETag {
+		w.WriteHeader(http.StatusNotModified)
+		return
 	}
 
 	// Fetch the skyfile's metadata and a streamer to download the file
@@ -453,6 +471,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
 	}()
+
+	// Set the ETag response header
+	w.Header().Set("ETag", ETag)
 
 	// Set an appropriate Content-Disposition header
 	var cdh string
@@ -1366,4 +1387,13 @@ func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaul
 // matches that of a multipart form.
 func isMultipartRequest(mediaType string) bool {
 	return strings.HasPrefix(mediaType, "multipart/form-data")
+}
+
+// buildETag is a helper function that returns an ETag.
+func buildETag(skylink modules.Skylink, path string, format modules.SkyfileFormat) string {
+	return crypto.HashBytes([]byte(strings.Join([]string{
+		skylink.String(),
+		path,
+		string(format),
+	}, "::"))).String()
 }

@@ -21,6 +21,9 @@ type (
 		Options
 	}
 
+	// Headers is a helper type that contains request or response headers
+	Headers map[string]string
+
 	// Options defines the options that are available when creating a
 	// client.
 	Options struct {
@@ -145,6 +148,23 @@ func (c *Client) getRawResponse(resource string) (http.Header, []byte, error) {
 	return header, d, errors.AddContext(err, "failed to read all bytes from reader")
 }
 
+// getRawResponseWithHeaders requests the specified resource using the given
+// request headers.
+func (c *Client) getRawResponseWithHeaders(resource string, headers Headers) (*http.Response, error) {
+	req, err := c.NewRequest("GET", resource, nil)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to construct GET request")
+	}
+
+	// Decorate the headers on the request object
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	httpClient := http.Client{CheckRedirect: c.CheckRedirect}
+	return httpClient.Do(req)
+}
+
 // getReaderResponse requests the specified resource. The response, if provided,
 // will be returned as an io.Reader.
 func (c *Client) getReaderResponse(resource string) (http.Header, io.ReadCloser, error) {
@@ -158,8 +178,8 @@ func (c *Client) getReaderResponse(resource string) (http.Header, io.ReadCloser,
 		return nil, nil, errors.AddContext(err, "GET request failed")
 	}
 
-	// Add ErrAPICallNotRecognized if StatusCode is StatusModuleNotLoaded to allow for
-	// handling of modules that are not loaded
+	// Add ErrAPICallNotRecognized if StatusCode is StatusModuleNotLoaded to
+	// allow for handling of modules that are not loaded
 	if res.StatusCode == api.StatusModuleNotLoaded || res.StatusCode == api.StatusModuleDisabled {
 		err = errors.Compose(readAPIError(res.Body), api.ErrAPICallNotRecognized)
 		return nil, nil, errors.AddContext(err, "unable to perform GET on "+resource)
@@ -262,13 +282,14 @@ func (c *Client) postRawResponse(resource string, body io.Reader) (http.Header, 
 	// if the caller is performing a multipart form-data upload he can do so by
 	// using `postRawResponseWithHeaders` and manually set the Content-Type
 	// header himself.
-	headers := map[string]string{"Content-Type": "application/x-www-form-urlencoded"}
+	headers := make(Headers)
+	headers["Content-Type"] = "application/x-www-form-urlencoded"
 	return c.postRawResponseWithHeaders(resource, body, headers)
 }
 
 // postRawResponseWithHeaders requests the specified resource and allows to pass
 // custom headers. The response, if provided, will be returned in a byte slice
-func (c *Client) postRawResponseWithHeaders(resource string, body io.Reader, headers map[string]string) (http.Header, []byte, error) {
+func (c *Client) postRawResponseWithHeaders(resource string, body io.Reader, headers Headers) (http.Header, []byte, error) {
 	req, err := c.NewRequest("POST", resource, body)
 	if err != nil {
 		return http.Header{}, nil, errors.AddContext(err, "failed to construct POST request")
