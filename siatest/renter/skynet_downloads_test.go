@@ -562,6 +562,18 @@ func testNotModified(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Unexpected ETag response header")
 	}
 
+	// verify the ETag header is diferent for a HEAD requests
+	status, header, err := r.SkynetSkylinkHead(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != http.StatusOK {
+		t.Fatal("Unexpected status code")
+	}
+	if header.Get("ETag") == ETag {
+		t.Fatal("Unexpected ETag response header")
+	}
+
 	// download the skylink but now pass the ETag in the request header
 	resp, err = r.SkynetSkylinkGetWithETag(skylink, ETag)
 	if err != nil {

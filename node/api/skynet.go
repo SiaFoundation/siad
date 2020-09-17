@@ -315,7 +315,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// Return '304 Not Modified' if ETags match and user did not supply nocache
-	ETag := buildETag(skylink, path, format)
+	ETag := buildETag(skylink, req.Method, path, format)
 	if !nocache && req.Header.Get("If-None-Match") == ETag {
 		w.WriteHeader(http.StatusNotModified)
 		return
@@ -1390,9 +1390,10 @@ func isMultipartRequest(mediaType string) bool {
 }
 
 // buildETag is a helper function that returns an ETag.
-func buildETag(skylink modules.Skylink, path string, format modules.SkyfileFormat) string {
+func buildETag(skylink modules.Skylink, method, path string, format modules.SkyfileFormat) string {
 	return crypto.HashBytes([]byte(strings.Join([]string{
 		skylink.String(),
+		method,
 		path,
 		string(format),
 	}, "::"))).String()
