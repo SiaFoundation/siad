@@ -60,7 +60,7 @@ func readAndApplyDeleteUpdate(update writeaheadlog.Update) error {
 // readAndApplyMetadataUpdate reads the metadata update and then applies it.
 // This helper assumes that the file is not currently open and so should only be
 // called on startup before any siadir is loaded from disk
-func readAndApplyMetadataUpdate(deps modules.Dependencies, update writeaheadlog.Update) error {
+func readAndApplyMetadataUpdate(deps modules.Dependencies, update writeaheadlog.Update) (err error) {
 	if !IsSiaDirUpdate(update) {
 		err := errors.New("readAndApplyMetadataUpdate can't read non-SiaDir update")
 		build.Critical(err)

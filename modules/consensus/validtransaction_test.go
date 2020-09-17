@@ -22,7 +22,11 @@ func TestTryValidTransactionSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	initialHash := cst.cs.dbConsensusChecksum()
 
 	// Try a valid transaction.
@@ -54,7 +58,11 @@ func TestTryInvalidTransactionSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	initialHash := cst.cs.dbConsensusChecksum()
 
 	// Try a valid transaction followed by an invalid transaction.
@@ -91,7 +99,11 @@ func TestStorageProofBoundaries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine enough blocks to put us beyond the testing hardfork.
 	for i := 0; i < 10; i++ {
@@ -223,7 +235,11 @@ func TestEmptyStorageProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine enough blocks to put us beyond the testing hardfork.
 	for i := 0; i < 10; i++ {
@@ -336,7 +352,11 @@ func TestValidSiacoins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a transaction pointing to a nonexistent siacoin output.
 	txn := types.Transaction{
@@ -403,7 +423,11 @@ func TestStorageProofSegment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Submit a file contract that is unrecognized.
 	_, err = cst.cs.dbStorageProofSegment(types.FileContractID{})
@@ -433,7 +457,11 @@ func TestValidStorageProofs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// COMPATv0.4.0
 	//
@@ -550,7 +578,11 @@ func TestPreForkValidStorageProofs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Try a proof set where there is padding on the last segment in the file.
 	file := fastrand.Bytes(100)
@@ -603,7 +635,11 @@ func TestValidFileContractRevisions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Grab an address + unlock conditions for the transaction.
 	unlockConditions, err := cst.wallet.NextAddress()

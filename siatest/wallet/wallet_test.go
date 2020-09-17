@@ -452,7 +452,11 @@ func TestFileContractUnspentOutputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// pick a renter contract
 	renter := tg.Renters()[0]

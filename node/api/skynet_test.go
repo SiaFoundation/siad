@@ -214,8 +214,8 @@ func TestDefaultPath(t *testing.T) {
 	}
 }
 
-// TestParseSkylinkString is a table test for the parseSkylinkString function.
-func TestParseSkylinkString(t *testing.T) {
+// TestParseSkylinkURL is a table test for the parseSkylinkUrl function.
+func TestParseSkylinkURL(t *testing.T) {
 	tests := []struct {
 		name                 string
 		strToParse           string
@@ -289,7 +289,7 @@ func TestParseSkylinkString(t *testing.T) {
 			errMsg:               "",
 		},
 		{
-			// Test URL-decoding the path within parseSkylinkString.
+			// Test URL-decoding the path.
 			name:                 "with path to dir containing both a query and an encoded '?'",
 			strToParse:           "/IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo%3Fbar?foobar=nope",
 			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
@@ -317,7 +317,7 @@ func TestParseSkylinkString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			skylink, skylinkStringNoQuery, path, err := parseSkylinkString(tt.strToParse)
+			skylink, skylinkStringNoQuery, path, err := parseSkylinkURL(tt.strToParse)
 			// Is there an actual or expected error?
 			if err != nil || tt.errMsg != "" {
 				// Actual err should contain expected err.

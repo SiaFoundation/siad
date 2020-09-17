@@ -197,7 +197,11 @@ func TestManagedLogError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	logFilepath := filepath.Join(ht.persistDir, modules.HostDir, logFile)
 
 	// Count the number of lines in the log file.

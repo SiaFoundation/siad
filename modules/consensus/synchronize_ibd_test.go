@@ -32,7 +32,11 @@ func TestSimpleInitialBlockchainDownload(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer cst.Close()
+		defer func() {
+			if err := cst.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 		remoteCSTs[i] = cst
 	}
 	// Create the "local" peer.
@@ -221,7 +225,11 @@ func TestInitialBlockchainDownloadDisconnects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	mg := mockGatewayRPCError{
 		Gateway: g,
 		rpcErrs: make(map[modules.NetAddress]error),
@@ -251,7 +259,11 @@ func TestInitialBlockchainDownloadDisconnects(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer g.Close()
+		defer func() {
+			if err := g.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 		err = localCS.gateway.Connect(g.Address())
 		if err != nil {
 			t.Fatal(err)
@@ -295,7 +307,11 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	mg := mockGatewayRPCError{
 		Gateway: g,
 		rpcErrs: make(map[modules.NetAddress]error),
@@ -364,7 +380,11 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer gatewayTimesout.Close()
+	defer func() {
+		if err := gatewayTimesout.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	mg.mu.Lock()
 	mg.rpcErrs[gatewayTimesout.Address()] = mockNetError{
 		error:   errors.New("Read timeout"),
@@ -388,7 +408,11 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer gatewayNoTimeout.Close()
+	defer func() {
+		if err := gatewayNoTimeout.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	mg.mu.Lock()
 	mg.rpcErrs[gatewayNoTimeout.Address()] = nil
 	mg.mu.Unlock()

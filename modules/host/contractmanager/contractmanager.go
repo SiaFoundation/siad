@@ -108,7 +108,7 @@ func (cm *ContractManager) Close() error {
 
 // newContractManager returns a contract manager that is ready to be used with
 // the provided dependencies.
-func newContractManager(dependencies modules.Dependencies, persistDir string) (*ContractManager, error) {
+func newContractManager(dependencies modules.Dependencies, persistDir string) (_ *ContractManager, err error) {
 	cm := &ContractManager{
 		storageFolders:  make(map[uint16]*storageFolder),
 		sectorLocations: make(map[sectorID]sectorLocation),
@@ -126,7 +126,6 @@ func newContractManager(dependencies modules.Dependencies, persistDir string) (*
 	})
 
 	// Perform clean shutdown of already-initialized features if startup fails.
-	var err error
 	defer func() {
 		if err != nil {
 			err1 := errors.Extend(err, errors.New("error during contract manager startup"))
