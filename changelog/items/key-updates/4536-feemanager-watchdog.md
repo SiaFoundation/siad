@@ -1,0 +1,1 @@
+- Add basic watchdog to the feemanager
