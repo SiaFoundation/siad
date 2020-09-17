@@ -215,3 +215,67 @@ func TestUpdate(t *testing.T) {
 		t.Fatal("registry contains wrong key-value pair")
 	}
 }
+
+// TestPrune is a unit test for Prune.
+func TestPrune(t *testing.T) {
+	dir := testDir(t.Name())
+	wal := newTestWAL(filepath.Join(dir, "wal"))
+
+	// Create a new registry.
+	registryPath := filepath.Join(dir, "registry")
+	r, err := New(registryPath, wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add 2 entries with different expiries.
+	k1, v1 := randomKey(), randomValue(1)
+	v1.expiry = 1
+	_, err = r.Update(k1.key, k1.tweak, v1.expiry, v1.revision, v1.data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k2, v2 := randomKey(), randomValue(2)
+	v2.expiry = 2
+	_, err = r.Update(k2.key, k2.tweak, v2.expiry, v2.revision, v2.data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should have 2 entries.
+	if len(r.entries) != 2 {
+		t.Fatal("wrong number of entries")
+	}
+
+	// Purge 1 of them.
+	err = r.Prune(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should have 1 entry.
+	if len(r.entries) != 1 {
+		t.Fatal("wrong number of entries")
+	}
+	if vExist, exists := r.entries[k2]; !exists || !reflect.DeepEqual(*vExist, v2) {
+		t.Log(v2)
+		t.Log(*vExist)
+		t.Fatal("registry contains wrong key-value pair")
+	}
+
+	// Restart.
+	_, err = New(registryPath, wal)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should have 1 entry.
+	if len(r.entries) != 1 {
+		t.Fatal("wrong number of entries")
+	}
+	if vExist, exists := r.entries[k2]; !exists || !reflect.DeepEqual(*vExist, v2) {
+		t.Log(v2)
+		t.Log(*vExist)
+		t.Fatal("registry contains wrong key-value pair")
+	}
+}

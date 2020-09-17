@@ -17,7 +17,6 @@ import (
 
 // TODO: must haves
 // - signature verificatio and storage
-// - prune unit test
 
 // TODO: F/Us
 // - cap max entries (only LRU in memory rest on disk)
@@ -203,15 +202,15 @@ func (r *Registry) Update(pubKey crypto.PublicKey, tweak crypto.Hash, expiry typ
 	return false, nil
 }
 
-// Purge deletes all entries from the registry that expire at a height smaller
+// Prune deletes all entries from the registry that expire at a height smaller
 // than the provided expiry argument.
-func (r *Registry) Purge(expiry types.BlockHeight) error {
+func (r *Registry) Prune(expiry types.BlockHeight) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	var errs error
 	for k, v := range r.entries {
-		if v.expiry < expiry {
+		if v.expiry > expiry {
 			continue // not expired
 		}
 		// Purge the entry by setting it unused.
