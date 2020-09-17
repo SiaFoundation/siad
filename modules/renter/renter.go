@@ -30,6 +30,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/ratelimit"
@@ -162,6 +163,15 @@ type renterFuseManager interface {
 	Unmount(mountPoint string) error
 }
 
+// cachedUtilities contains the cached utilities used when bubbling file and
+// folder metadata.
+type cachedUtilities struct {
+	offline      map[string]bool
+	goodForRenew map[string]bool
+	contracts    map[string]modules.RenterContract
+	used         []types.SiaPublicKey
+}
+
 // A Renter is responsible for tracking all of the files that a user has
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
@@ -198,8 +208,12 @@ type Renter struct {
 	// A bubble is the process of updating a directory's metadata and then
 	// moving on to its parent directory so that any changes in metadata are
 	// properly reflected throughout the filesystem.
+	//
+	// cachedUtilities contain contract information used when bubbling. These
+	// values are cached to prevent recomputing them too often.
 	bubbleUpdates   map[string]bubbleStatus
 	bubbleUpdatesMu sync.Mutex
+	cachedUtilities cachedUtilities
 
 	// Stateful variables related to projects the worker can launch. Typically
 	// projects manage all of their own state, but for example they may track
@@ -473,56 +487,56 @@ func (r *Renter) managedContractUtilityMaps() (offline map[string]bool, goodForR
 	return offline, goodForRenew, contracts
 }
 
-// managedRenterContractsAndUtilities grabs the pubkeys of the hosts that the
-// file(s) have been uploaded to and then generates maps of the contract's
+// managedRenterContractsAndUtilities returns the cached contracts and utilities
+// from the renter. They can be updated by calling
+// managedUpdateRenterContractsAndUtilities.
+func (r *Renter) managedRenterContractsAndUtilities() (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract, used []types.SiaPublicKey) {
+	id := r.mu.Lock()
+	defer r.mu.Unlock(id)
+	cu := r.cachedUtilities
+	return cu.offline, cu.goodForRenew, cu.contracts, cu.used
+}
+
+// managedUpdateRenterContractsAndUtilities grabs the pubkeys of the hosts that
+// the file(s) have been uploaded to and then generates maps of the contract's
 // utilities showing which hosts are GoodForRenew and which hosts are Offline.
-// Additionally a map of host pubkeys to renter contract is returned.  The
-// offline and goodforrenew maps are needed for calculating redundancy and other
-// file metrics.
-func (r *Renter) managedRenterContractsAndUtilities(entrys []*filesystem.FileNode) (offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) {
-	// Save host keys in map.
-	pks := make(map[string]types.SiaPublicKey)
-	goodForRenew = make(map[string]bool)
-	offline = make(map[string]bool)
-	for _, e := range entrys {
-		for _, pk := range e.HostPublicKeys() {
-			pks[pk.String()] = pk
-		}
-	}
-	// Build 2 maps that map every pubkey to its offline and goodForRenew
-	// status.
-	contracts = make(map[string]modules.RenterContract)
-	for _, pk := range pks {
-		cu, ok := r.ContractUtility(pk)
-		if !ok {
-			continue
-		}
-		contract, ok := r.hostContractor.ContractByPublicKey(pk)
-		if !ok {
-			continue
-		}
+// Additionally a map of host pubkeys to renter contract is created. The offline
+// and goodforrenew maps are needed for calculating redundancy and other file
+// metrics. All of that information is cached within the renter.
+func (r *Renter) managedUpdateRenterContractsAndUtilities() {
+	var used []types.SiaPublicKey
+	goodForRenew := make(map[string]bool)
+	offline := make(map[string]bool)
+	allContracts := r.hostContractor.Contracts()
+	contracts := make(map[string]modules.RenterContract)
+	for _, contract := range allContracts {
+		pk := contract.HostPublicKey
+		cu := contract.Utility
 		goodForRenew[pk.String()] = cu.GoodForRenew
 		offline[pk.String()] = r.hostContractor.IsOffline(pk)
 		contracts[pk.String()] = contract
+		if cu.GoodForRenew {
+			used = append(used, pk)
+		}
 	}
 	// Update the used hosts of the Siafile. Only consider the ones that
 	// are goodForRenew.
-	var used []types.SiaPublicKey
-	for _, pk := range pks {
+	for _, contract := range allContracts {
+		pk := contract.HostPublicKey
 		if _, gfr := goodForRenew[pk.String()]; gfr {
 			used = append(used, pk)
 		}
 	}
-	for _, e := range entrys {
-		if err := e.UpdateUsedHosts(used); err != nil {
-			r.log.Debugln("WARN: Could not update used hosts:", err)
-		}
+
+	// Update cache.
+	id := r.mu.Lock()
+	r.cachedUtilities = cachedUtilities{
+		offline:      offline,
+		goodForRenew: goodForRenew,
+		contracts:    contracts,
+		used:         used,
 	}
-	// Update the cached expiration of the siafiles.
-	for _, e := range entrys {
-		_ = e.Expiration(contracts)
-	}
-	return offline, goodForRenew, contracts
+	r.mu.Unlock(id)
 }
 
 // setBandwidthLimits will change the bandwidth limits of the renter based on
@@ -1023,6 +1037,11 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		return nil, err
 	}
 
+	// Calculate the initial cached utilities and kick off a thread that updates
+	// the utilities regularly.
+	r.managedUpdateRenterContractsAndUtilities()
+	go r.threadedUpdateRenterContractsAndUtilities()
+
 	// Spin up background threads which are not depending on the renter being
 	// up-to-date with consensus.
 	if !r.deps.Disrupt("DisableRepairAndHealthLoops") {
@@ -1067,6 +1086,24 @@ func renterAsyncStartup(r *Renter, cs modules.ConsensusSet) error {
 		go r.threadedSynchronizeSnapshots()
 	}
 	return nil
+}
+
+// threadedUpdateRenterContractsAndUtilities periodically calls
+// managedUpdateRenterContractsAndUtilities.
+func (r *Renter) threadedUpdateRenterContractsAndUtilities() {
+	err := r.tg.Add()
+	if err != nil {
+		return
+	}
+	defer r.tg.Done()
+	for {
+		select {
+		case <-r.tg.StopChan():
+			return
+		case <-time.After(cachedUtilitiesUpdateInterval):
+		}
+		r.managedUpdateRenterContractsAndUtilities()
+	}
 }
 
 // NewCustomRenter initializes a renter and returns it.

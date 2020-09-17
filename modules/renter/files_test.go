@@ -53,7 +53,11 @@ func TestRenterFileListLocalPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	id := rt.renter.mu.Lock()
 	entry, _ := rt.renter.newRenterTestFile()
 	if err := entry.SetLocalPath("TestPath"); err != nil {
@@ -81,7 +85,11 @@ func TestRenterDeleteFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Delete a file from an empty renter.
 	siaPath, err := modules.NewSiaPath("dne")
@@ -191,7 +199,11 @@ func TestRenterDeleteFileMissingParent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Put a file in the renter.
 	siaPath, err := modules.NewSiaPath("parent/file")
@@ -235,7 +247,11 @@ func TestRenterFileList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Get the file list of an empty renter.
 	files, err := rt.renter.FileList(modules.RootSiaPath(), true, false)
@@ -294,7 +310,11 @@ func TestRenterRenameFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Rename a file that doesn't exist.
 	siaPath1, err := modules.NewSiaPath("1")
@@ -412,7 +432,11 @@ func TestRenterFileDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create local file to upload
 	localDir := filepath.Join(rt.dir, "files")

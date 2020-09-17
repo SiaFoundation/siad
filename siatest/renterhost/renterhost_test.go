@@ -40,7 +40,11 @@ func TestSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// manually grab a renter contract
 	renter := tg.Renters()[0]
@@ -173,7 +177,11 @@ func TestHostLockTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// manually grab a renter contract
 	renter := tg.Renters()[0]
@@ -282,7 +290,11 @@ func TestHostBaseRPCPrice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// manually grab a renter contract
 	renter := tg.Renters()[0]
@@ -348,7 +360,11 @@ func TestMultiRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// manually grab a renter contract
 	renter := tg.Renters()[0]

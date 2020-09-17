@@ -476,7 +476,7 @@ func sizeString(size uint64) string {
 			return str
 		}
 		// Trim the trailing three 0s and round to the next unit size
-		return fmt.Sprintf("%s %s", string(str[0]), sizes[i-1].unit)
+		return fmt.Sprintf("1 %s", sizes[i-1].unit)
 	}
 	return "0 B"
 }

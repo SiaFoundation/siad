@@ -161,7 +161,6 @@ lint:
     paths:
       - .cache
   script:
-    ## This is the recommended way to install golang-ci lint.
     - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
     - make lint-analyze
     - make markdown-spellcheck

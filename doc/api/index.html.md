@@ -542,7 +542,7 @@ Returns the some of the constants that the Sia daemon uses.
   "rootdepth":  // target
   [255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255],
   
-  "allowance":  // allowance
+  "defaultallowance":  // allowance
     {
       "funds":"250000000000000000000000000000",  // currency
       "hosts":50,                       // uint64
@@ -632,7 +632,8 @@ cumulated difficulty yet.
 
 **defaultallowance** | allowance  
 DefaultAllowance is the set of default allowance settings that will be used when
-allowances are not set or not fully set
+allowances are not set or not fully set. See [/renter GET](#renter-get) for an
+explanation of the fields.
 
 **maxtargetadjustmentup** | big.Rat  
 MaxTargetAdjustmentUp restrict how much the block difficulty is allowed to
@@ -855,7 +856,9 @@ The unique application identifier for the application that set the fee.
 
 ### OPTIONAL
 **recurring** | bool  
-Indicates whether or not this fee will be a recurring fee. 
+Indicates whether or not this fee will be a recurring fee.  
+**NOTE:** This is only informational, the application charging the fee is
+responsible for submitting the fee on the recurring interval. 
 
 ### JSON Response
 > JSON Response Example
@@ -2923,21 +2926,23 @@ and bandwidth needs while spending significantly less than the overall
 allowance.
 
 **expectedupload** | bytes  
-Expected upload tells siad how much uploading the user expects to do each month.
-If this value is high, siad will more strongly prefer hosts that have a low
-upload bandwidth price. If this value is low, siad will focus on other metrics
-than upload bandwidth pricing, because even if the host charges a lot for upload
-bandwidth, it will not impact the total cost to the user very much.
+Expected upload tells siad how many bytes per block the user expects to upload
+during the configured period. If this value is high, siad will more strongly
+prefer hosts that have a low upload bandwidth price. If this value is low, siad
+will focus on metrics other than upload bandwidth pricing, because even if the
+host charges a lot for upload bandwidth, it will not impact the total cost to
+the user very much.
 
 The user should not consider upload bandwidth used during repairs, siad will
 consider repair bandwidth separately.
 
 **expecteddownload** | bytes  
-Expected download tells siad how much downloading the user expects to do each
-month. If this value is high, siad will more strongly prefer hosts that have a
-low download bandwidth price. If this value is low, siad will focus on other
-metrics than download bandwidth pricing, because even if the host charges a lot
-for downloads, it will not impact the total cost to the user very much.
+Expected download tells siad how many bytes per block the user expects to
+download during the configured period. If this value is high, siad will more
+strongly prefer hosts that have a low download bandwidth price. If this value is
+low, siad will focus on metrics other than download bandwidth pricing, because
+even if the host charges a lot for downloads, it will not impact the total cost
+to the user very much.
 
 The user should not consider download bandwidth used during repairs, siad will
 consider repair bandwidth separately.
@@ -4552,9 +4557,9 @@ returns the the status of all the workers in the renter's workerpool.
       "accountstatus": {
         "availablebalance": "1000000000000000000000000", // hasting
         "negativebalance": "0",                          // hasting
-        "funded": true,                                  // boolean
         "recenterr": "",                                 // string
         "recenterrtime": "0001-01-01T00:00:00Z"          // time
+        "recentsuccesstime": "0001-01-01T00:00:00Z"      // time
       },
 
       "pricetablestatus": {
@@ -5094,7 +5099,7 @@ Versioninfo is an object that contains the node's version information.
 Version is the siad version the node is running.
 
 **gitrevision** | string  
-Gitrevision refers to the commit hash used to build said.
+Gitrevision refers to the commit hash used to build siad.
 
 **performancestats** | object - api.SkynetPerformanceStats  
 PerformanceStats is an object that contains a breakdown of performance metrics

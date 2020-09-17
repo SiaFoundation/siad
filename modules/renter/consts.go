@@ -26,7 +26,6 @@ const (
 // AlertCauseSiafileLowRedundancy creates a customized "cause" for a siafile
 // with a certain path and health.
 func AlertCauseSiafileLowRedundancy(siaPath modules.SiaPath, health float64) string {
-	siaPath, _ = siaPath.Rebase(modules.UserFolder, modules.RootSiaPath())
 	return fmt.Sprintf("Siafile '%v' has a health of %v", siaPath.String(), health)
 }
 
@@ -64,6 +63,14 @@ var (
 		Dev:      time.Second * 3,
 		Standard: time.Second * 5,
 		Testing:  time.Second,
+	}).(time.Duration)
+
+	// cachedUtilitiesUpdateInterval is how often the renter updates the
+	// cachedUtilities.
+	cachedUtilitiesUpdateInterval = build.Select(build.Var{
+		Dev:      time.Minute,
+		Standard: time.Minute * 10,
+		Testing:  time.Second * 3,
 	}).(time.Duration)
 )
 

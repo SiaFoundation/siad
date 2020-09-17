@@ -64,7 +64,6 @@ package host
 // TODO: update_test.go has commented out tests.
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -80,6 +79,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	connmonitor "gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/siamux"
 )
@@ -395,7 +395,7 @@ func (h *Host) threadedPruneExpiredPriceTables() {
 // mocked such that the dependencies can return unexpected errors or unique
 // behaviors during testing, enabling easier testing of the failure modes of
 // the Host.
-func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, mux *siamux.SiaMux, listenerAddress string, persistDir string) (*Host, error) {
+func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, mux *siamux.SiaMux, listenerAddress string, persistDir string) (_ *Host, err error) {
 	// Check that all the dependencies were provided.
 	if cs == nil {
 		return nil, errNilCS
@@ -433,10 +433,9 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 	h.staticMDM = mdm.New(h)
 
 	// Call stop in the event of a partial startup.
-	var err error
 	defer func() {
 		if err != nil {
-			err = composeErrors(h.tg.Stop(), err)
+			err = errors.Compose(h.tg.Stop(), err)
 		}
 	}()
 
@@ -454,7 +453,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 	}
 
 	h.tg.AfterStop(func() {
-		err = h.log.Close()
+		err := h.log.Close()
 		if err != nil {
 			// State of the logger is uncertain, a Println will have to
 			// suffice.
@@ -470,7 +469,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		return nil, err
 	}
 	h.tg.AfterStop(func() {
-		err = h.StorageManager.Close()
+		err := h.StorageManager.Close()
 		if err != nil {
 			h.log.Println("Could not close storage manager:", err)
 		}
@@ -483,7 +482,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		return nil, err
 	}
 	h.tg.AfterStop(func() {
-		err = h.saveSync()
+		err := h.saveSync()
 		if err != nil {
 			h.log.Println("Could not save host upon shutdown:", err)
 		}

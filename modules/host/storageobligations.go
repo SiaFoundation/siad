@@ -1386,7 +1386,9 @@ func (h *Host) managedBuildStorageProof(so storageObligation, segmentIndex uint6
 	ct := crypto.NewCachedTree(log2SectorSize)
 	ct.SetIndex(segmentIndex)
 	for _, root := range so.SectorRoots {
-		ct.PushSubTree(0, root)
+		if err := ct.PushSubTree(0, root); err != nil {
+			return types.StorageProof{}, errors.AddContext(err, "managedBuildStorageProof: failed to push subtree")
+		}
 	}
 	hashSet := ct.Prove(base, cachedHashSet)
 	sp := types.StorageProof{

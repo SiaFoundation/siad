@@ -214,8 +214,8 @@ func TestDefaultPath(t *testing.T) {
 	}
 }
 
-// TestSplitSkylinkString is a table test for the splitSkylinkString function.
-func TestSplitSkylinkString(t *testing.T) {
+// TestParseSkylinkURL is a table test for the parseSkylinkUrl function.
+func TestParseSkylinkURL(t *testing.T) {
 	tests := []struct {
 		name                 string
 		strToParse           string
@@ -289,6 +289,15 @@ func TestSplitSkylinkString(t *testing.T) {
 			errMsg:               "",
 		},
 		{
+			// Test URL-decoding the path.
+			name:                 "with path to dir containing both a query and an encoded '?'",
+			strToParse:           "/IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo%3Fbar?foobar=nope",
+			skylink:              "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w",
+			skylinkStringNoQuery: "IAC6CkhNYuWZqMVr1gob1B6tPg4MrBGRzTaDvAIAeu9A9w/foo%3Fbar",
+			path:                 "/foo?bar",
+			errMsg:               "",
+		},
+		{
 			name:                 "invalid skylink",
 			strToParse:           "invalid_skylink/foo/bar?foobar=nope",
 			skylink:              "",
@@ -308,12 +317,16 @@ func TestSplitSkylinkString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			skylink, skylinkStringNoQuery, path, err := splitSkylinkString(tt.strToParse)
-			if (err != nil || tt.errMsg != "") && !strings.Contains(err.Error(), tt.errMsg) {
-				t.Fatalf("Expected error '%s', got %v\n", tt.errMsg, err)
-			}
-			if tt.errMsg != "" {
-				return
+			skylink, skylinkStringNoQuery, path, err := parseSkylinkURL(tt.strToParse)
+			// Is there an actual or expected error?
+			if err != nil || tt.errMsg != "" {
+				// Actual err should contain expected err.
+				if err == nil || !strings.Contains(err.Error(), tt.errMsg) {
+					t.Fatalf("Expected error '%s', got %v\n", tt.errMsg, err)
+				} else {
+					// The errors match, so the test case passes.
+					return
+				}
 			}
 			if skylink.String() != tt.skylink {
 				t.Fatalf("Expected skylink '%v', got '%v'\n", tt.skylink, skylink)

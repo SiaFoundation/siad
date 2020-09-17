@@ -220,8 +220,8 @@ func NewDependencyDisruptUploadStream(numChunks int) *DependencyInterruptAfterNC
 // NewDependencyDisableCommitPaymentIntent creates a new dependency that
 // prevents the contractor for committing a payment intent, this essentially
 // ensures the renter's revision is not in sync with the host's revision.
-func NewDependencyDisableCommitPaymentIntent() *DependencyInterruptCountOccurrences {
-	return newDependencyInterruptCountOccurrences("DisableCommitPaymentIntent")
+func NewDependencyDisableCommitPaymentIntent() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("DisableCommitPaymentIntent")
 }
 
 // NewDependencyInterruptContractSaveToDiskAfterDeletion creates a new

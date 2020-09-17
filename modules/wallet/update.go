@@ -17,9 +17,10 @@ type (
 
 // threadedResetSubscriptions unsubscribes the wallet from the consensus set and transaction pool
 // and subscribes again.
-func (w *Wallet) threadedResetSubscriptions() error {
+func (w *Wallet) threadedResetSubscriptions() {
 	if !w.scanLock.TryLock() {
-		return errScanInProgress
+		w.log.Print("failed to lock wallet", errScanInProgress)
+		return
 	}
 	defer w.scanLock.Unlock()
 
@@ -28,10 +29,10 @@ func (w *Wallet) threadedResetSubscriptions() error {
 
 	err := w.cs.ConsensusSetSubscribe(w, modules.ConsensusChangeBeginning, w.tg.StopChan())
 	if err != nil {
-		return err
+		w.log.Print("failed to subscribe wallet to consensus", err)
+		return
 	}
 	w.tpool.TransactionPoolSubscribe(w)
-	return nil
 }
 
 // advanceSeedLookahead generates all keys from the current primary seed progress up to index

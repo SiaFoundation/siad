@@ -810,10 +810,9 @@ type (
 		AvailableBalance types.Currency `json:"availablebalance"`
 		NegativeBalance  types.Currency `json:"negativebalance"`
 
-		Funded bool `json:"funded"`
-
-		RecentErr     string    `json:"recenterr"`
-		RecentErrTime time.Time `json:"recenterrtime"`
+		RecentErr         string    `json:"recenterr"`
+		RecentErrTime     time.Time `json:"recenterrtime"`
+		RecentSuccessTime time.Time `json:"recentsuccesstime"`
 	}
 
 	// WorkerPriceTableStatus contains detailed information about the price

@@ -31,12 +31,20 @@ func TestSynchronize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst1.Close()
+	defer func() {
+		if err := cst1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cst2, err := createConsensusSetTester(t.Name() + "2")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst2.Close()
+	defer func() {
+		if err := cst2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// mine on cst2 until it is above cst1
 	for cst1.cs.dbBlockHeight() >= cst2.cs.dbBlockHeight() {
@@ -119,7 +127,11 @@ func TestBlockHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// mine until we have enough blocks to test blockHistory
 	for cst.cs.dbBlockHeight() < 50 {
@@ -209,12 +221,20 @@ func TestSendBlocksBroadcastsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst1.Close()
+	defer func() {
+		if err := cst1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cst2, err := blankConsensusSetTester(t.Name()+"2", modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst2.Close()
+	defer func() {
+		if err := cst2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// Setup mock gateway.
 	mg := mockGatewayCountBroadcasts{Gateway: cst1.cs.gateway}
 	cst1.cs.gateway = &mg
@@ -537,7 +557,11 @@ func TestRPCSendBlockSendsOnlyNecessaryBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// Create the "local" peer.
 	//
 	// We create this peer manually (not using blankConsensusSetTester) so that we
@@ -548,7 +572,11 @@ func TestRPCSendBlockSendsOnlyNecessaryBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	err = g.Connect(cst.cs.gateway.Address())
 	if err != nil {
 		t.Fatal(err)
@@ -699,7 +727,11 @@ func TestSendBlk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	p1, p2 := net.Pipe()
 	mockP1 := mockPeerConn{p1}
@@ -790,7 +822,11 @@ func TestThreadedReceiveBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	p1, p2 := net.Pipe()
 	mockP1 := mockPeerConn{p1}
@@ -911,12 +947,20 @@ func TestIntegrationSendBlkRPC(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst1.Close()
+	defer func() {
+		if err := cst1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cst2, err := blankConsensusSetTester(t.Name()+"2", modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst2.Close()
+	defer func() {
+		if err := cst2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err = cst1.cs.gateway.Connect(cst2.cs.gateway.Address())
 	if err != nil {
@@ -1010,7 +1054,11 @@ func TestRelayHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	mg := &mockGatewayCallsRPC{
 		Gateway:   cst.cs.gateway,
@@ -1117,12 +1165,20 @@ func TestIntegrationBroadcastRelayHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst1.Close()
+	defer func() {
+		if err := cst1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cst2, err := blankConsensusSetTester(t.Name()+"2", modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst2.Close()
+	defer func() {
+		if err := cst2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// Setup mock gateway.
 	mg := &mockGatewayDoesBroadcast{
 		Gateway:         cst2.cs.gateway,
@@ -1173,17 +1229,29 @@ func TestIntegrationRelaySynchronize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst1.Close()
+	defer func() {
+		if err := cst1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cst2, err := blankConsensusSetTester(t.Name()+"2", modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst2.Close()
+	defer func() {
+		if err := cst2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cst3, err := blankConsensusSetTester(t.Name()+"3", modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst3.Close()
+	defer func() {
+		if err := cst3.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Connect them like so: cst1 <-> cst2 <-> cst3
 	err = cst1.gateway.Connect(cst2.gateway.Address())
@@ -1369,7 +1437,11 @@ func TestThreadedReceiveBlocksStalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	p1, p2 := net.Pipe()
 	mockP2 := mockPeerConn{p2}
@@ -1488,12 +1560,20 @@ func TestIntegrationSendBlocksStalls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cstLocal.Close()
+	defer func() {
+		if err := cstLocal.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cstRemote, err := blankConsensusSetTester(t.Name()+"- remote", modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cstRemote.Close()
+	defer func() {
+		if err := cstRemote.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	cstLocal.cs.gateway.Connect(cstRemote.cs.gateway.Address())
 
