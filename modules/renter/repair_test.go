@@ -90,8 +90,8 @@ func (rt *renterTester) openAndUpdateDir(siapath modules.SiaPath, metadata siadi
 	if err != nil {
 		return err
 	}
-	defer siadir.Close()
-	return siadir.UpdateMetadata(metadata)
+	err = siadir.UpdateMetadata(metadata)
+	return errors.Compose(err, siadir.Close())
 }
 
 // TestBubbleHealth tests to make sure that the health of the most in need file
@@ -108,7 +108,11 @@ func TestBubbleHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Bubble all the system dirs.
 	beforeBubble := time.Now()
@@ -416,7 +420,11 @@ func TestOldestHealthCheckTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create directory tree
 	subDir1, err := modules.NewSiaPath("SubDir1")
@@ -519,7 +527,11 @@ func TestNumFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create directory tree
 	subDir1, err := modules.NewSiaPath("SubDir1")
@@ -603,7 +615,11 @@ func TestDirectorySize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create directory tree
 	subDir1, err := modules.NewSiaPath("SubDir1")
@@ -681,7 +697,11 @@ func TestDirectoryModTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create directory tree
 	subDir1, err := modules.NewSiaPath("SubDir1")
@@ -780,7 +800,11 @@ func TestRandomStuckDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a test directory with sub folders
 	//
@@ -836,7 +860,9 @@ func TestRandomStuckDirectory(t *testing.T) {
 	if err = f.SetStuck(uint64(0), true); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 	up.SiaPath, err = subDir1_2.Join(hex.EncodeToString(fastrand.Bytes(8)))
 	if err != nil {
 		t.Fatal(err)
@@ -860,7 +886,9 @@ func TestRandomStuckDirectory(t *testing.T) {
 	if err = f.SetStuck(uint64(0), true); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Bubble directory information so NumStuckChunks is updated, there should
 	// be at least 3 stuck chunks because of the 3 we manually marked as stuck,
@@ -940,7 +968,11 @@ func TestRandomStuckFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create 3 files at root
 	//
@@ -1126,7 +1158,11 @@ func TestCalculateFileMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a file
 	rsc, _ := siafile.NewRSCode(1, 1)
@@ -1206,7 +1242,11 @@ func TestCreateMissingSiaDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Confirm the siadir file is on disk
 	siaDirPath := modules.RootSiaPath().SiaDirMetadataSysPath(rt.renter.staticFileSystem.Root())
@@ -1329,7 +1369,11 @@ func TestRandomStuckFileRegression(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create 1 file at root with all chunks stuck
 	file, err := rt.renter.newRenterTestFile()

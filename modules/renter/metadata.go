@@ -265,7 +265,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 // nil. For managedCalculateAndUpdateFileMetadata we make an exception. The
 // caller can decide themselves whether to use the output in case of an error or
 // not.
-func (r *Renter) managedCalculateAndUpdateFileMetadatas(siaPaths []modules.SiaPath) ([]bubbledMetadata, error) {
+func (r *Renter) managedCalculateAndUpdateFileMetadatas(siaPaths []modules.SiaPath) (_ []bubbledMetadata, err error) {
 	// Get cached offline and goodforrenew maps.
 	hostOfflineMap, hostGoodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
 
@@ -378,7 +378,7 @@ func (r *Renter) managedCompleteBubbleUpdate(siaPath modules.SiaPath) {
 
 // managedDirectoryMetadata reads the directory metadata and returns the bubble
 // metadata
-func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metadata, error) {
+func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (_ siadir.Metadata, err error) {
 	// Check for bad paths and files
 	fi, err := r.staticFileSystem.Stat(siaPath)
 	if err != nil {
@@ -403,7 +403,9 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metad
 	} else if err != nil {
 		return siadir.Metadata{}, err
 	}
-	defer siaDir.Close()
+	defer func() {
+		err = errors.Compose(err, siaDir.Close())
+	}()
 
 	// Grab the metadata.
 	md, err := siaDir.Metadata()
@@ -519,7 +521,9 @@ func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err erro
 		e := fmt.Sprintf("could not open directory %v", siaPath.String())
 		err = errors.AddContext(err, e)
 	} else {
-		defer siaDir.Close()
+		defer func() {
+			err = errors.Compose(err, siaDir.Close())
+		}()
 		err = siaDir.UpdateBubbledMetadata(metadata)
 		if err != nil {
 			e := fmt.Sprintf("could not update the metadata of the directory %v", siaPath.String())

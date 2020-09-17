@@ -188,7 +188,7 @@ func loadAndVerifyPersistence(testDir string) error {
 }
 
 // loadV143CompatPersistFile loads the v1.4.3 persist file into the testDir
-func loadV143CompatPersistFile(testDir string) error {
+func loadV143CompatPersistFile(testDir string) (err error) {
 	v143FileName := filepath.Join("..", "..", "..", "compatibility", persistFile+"_v143")
 	f, err := os.Open(v143FileName)
 	if err != nil {

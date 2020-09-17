@@ -93,7 +93,10 @@ func setupTestDownload(t *testing.T, size int, name string, waitOnRedundancy boo
 		// wait for the file to have a redundancy > 1
 		err = build.Retry(200, time.Second, func() error {
 			var rf RenterFile
-			st.getAPI("/renter/file/"+name, &rf)
+			err = st.getAPI("/renter/file/"+name, &rf)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if rf.File.Redundancy < 1 {
 				return fmt.Errorf("the uploading is not succeeding for some reason: %v", rf.File)
 			}
@@ -118,7 +121,10 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 	st, path := setupTestDownload(t, int(filesize), ulSiaPath.String(), true)
 	defer func() {
 		st.server.panicClose()
-		os.Remove(path)
+		err = os.Remove(path)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}()
 
 	// Read the section to be downloaded from the original file.
@@ -139,7 +145,14 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 	// Download the original file from the passed offsets.
 	fname := testName + "-download.dat"
 	downpath := filepath.Join(st.dir, fname)
-	defer os.Remove(downpath)
+	if !useHttpResp {
+		defer func() {
+			err = os.Remove(downpath)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
+	}
 
 	dlURL := fmt.Sprintf("/renter/download/%s?disablelocalfetch=true&offset=%d&length=%d", ulSiaPath, offset, length)
 
@@ -433,11 +446,14 @@ func TestRenterAsyncDownloadError(t *testing.T) {
 	// don't wait for the upload to complete, try to download immediately to
 	// intentionally cause a download error
 	downpath := filepath.Join(st.dir, "asyncdown.dat")
-	st.getAPI("/renter/downloadasync/test.dat?disablelocalfetch=true&destination="+downpath, nil)
+	err := st.getAPI("/renter/downloadasync/test.dat?disablelocalfetch=true&destination="+downpath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// verify the file has an error
 	var rdq RenterDownloadQueue
-	err := st.getAPI("/renter/downloads", &rdq)
+	err = st.getAPI("/renter/downloads", &rdq)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -921,7 +937,10 @@ func TestRenterHandlerRename(t *testing.T) {
 	// Should be able to continue uploading and downloading using the new name.
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
@@ -1129,7 +1148,10 @@ func TestRenterRelativePathErrorDownload(t *testing.T) {
 	}
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(200 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {

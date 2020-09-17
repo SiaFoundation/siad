@@ -14,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestRenterCreateDirectories checks that the renter properly created metadata files
@@ -26,7 +27,11 @@ func TestRenterCreateDirectories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Test creating directory
 	siaPath, err := modules.NewSiaPath("foo/bar/baz")
@@ -68,12 +73,14 @@ func TestRenterCreateDirectories(t *testing.T) {
 // checkDirInitialized is a helper function that checks that the directory was
 // initialized correctly and the metadata file exist and contain the correct
 // information
-func (rt *renterTester) checkDirInitialized(siaPath modules.SiaPath) error {
+func (rt *renterTester) checkDirInitialized(siaPath modules.SiaPath) (err error) {
 	siaDir, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil {
 		return fmt.Errorf("unable to load directory %v metadata: %v", siaPath, err)
 	}
-	defer siaDir.Close()
+	defer func() {
+		err = errors.Compose(err, siaDir.Close())
+	}()
 	fullpath := siaPath.SiaDirMetadataSysPath(rt.renter.staticFileSystem.Root())
 	if _, err := os.Stat(fullpath); err != nil {
 		return err
@@ -135,7 +142,11 @@ func TestDirInfo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create directory
 	siaPath, err := modules.NewSiaPath("foo/")
@@ -183,7 +194,11 @@ func TestRenterListDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create directory
 	siaPath, err := modules.NewSiaPath("foo/")

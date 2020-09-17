@@ -84,7 +84,7 @@ func convertPersistVersionFromv143Tov150(persistDir string) error {
 // a temporary file and returns a reader for the data. This function checks for
 // the existence of a temp file first and will return a reader for the temporary
 // file if the temporary file contains a valid checksum.
-func createTempFileFromPersistFile(persistDir string) (io.Reader, error) {
+func createTempFileFromPersistFile(persistDir string) (_ io.Reader, err error) {
 	// Try and load the temporary file first. This is done first because an
 	// unclean shutdown could result in a valid temporary file existing but no
 	// persist file existing. In this case we do not want a call to
@@ -155,7 +155,7 @@ func createTempFileFromPersistFile(persistDir string) (io.Reader, error) {
 
 // loadTempFile will load a temporary file and verifies the checksum that was
 // prefixed. If the checksum is valid a reader will be returned.
-func loadTempFile(persistDir string) (io.Reader, error) {
+func loadTempFile(persistDir string) (_ io.Reader, err error) {
 	// Open the temporary file
 	tempFilePath := filepath.Join(persistDir, tempPersistFile)
 	f, err := os.Open(tempFilePath)

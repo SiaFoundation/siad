@@ -140,7 +140,7 @@ func alertscmd() {
 
 // profilecmd displays the usage info for the command.
 func profilecmd(cmd *cobra.Command, args []string) {
-	cmd.UsageFunc()(cmd)
+	_ = cmd.UsageFunc()(cmd)
 	os.Exit(exitCodeUsage)
 }
 

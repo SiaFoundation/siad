@@ -370,7 +370,12 @@ func TestDaemonStack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer testNode.Close()
+	defer func() {
+		err = testNode.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Get the stack
 	dsg, err := testNode.DaemonStackGet()
@@ -396,7 +401,12 @@ func TestDaemonProfile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer testNode.Close()
+	defer func() {
+		err = testNode.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Test known error cases
 	err = testNode.DaemonStartProfilePost("", "")

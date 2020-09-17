@@ -152,7 +152,7 @@ func (aop *AppendOnlyPersist) initOrLoadPersist(dir string) (io.Reader, error) {
 }
 
 // init initializes the persistence file.
-func (aop *AppendOnlyPersist) init() error {
+func (aop *AppendOnlyPersist) init() (err error) {
 	// Marshal the metadata.
 	aop.metadata.Length = MetadataPageSize
 	metadataBytes := encoding.Marshal(aop.metadata)
@@ -193,7 +193,7 @@ func (aop *AppendOnlyPersist) init() error {
 }
 
 // load loads the persist file from disk, returning the non-metadata bytes.
-func (aop *AppendOnlyPersist) load() (io.Reader, error) {
+func (aop *AppendOnlyPersist) load() (_ io.Reader, err error) {
 	// Open File
 	filepath := aop.FilePath()
 	f, err := os.OpenFile(filepath, os.O_RDWR, defaultFilePermissions)
