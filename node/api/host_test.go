@@ -247,7 +247,10 @@ func TestWorkingStatus(t *testing.T) {
 	// Only one piece will be uploaded (10% at current redundancy)
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
@@ -257,7 +260,10 @@ func TestWorkingStatus(t *testing.T) {
 
 	err = build.Retry(30, time.Second, func() error {
 		var hg HostGET
-		st.getAPI("/host", &hg)
+		err = st.getAPI("/host", &hg)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		if hg.WorkingStatus != modules.HostWorkingStatusWorking {
 			return errors.New("expected host to be working")
@@ -290,7 +296,10 @@ func TestConnectabilityStatus(t *testing.T) {
 
 	err = build.Retry(30, time.Second, func() error {
 		var hg HostGET
-		st.getAPI("/host", &hg)
+		err = st.getAPI("/host", &hg)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		if hg.ConnectabilityStatus != modules.HostConnectabilityStatusConnectable {
 			return errors.New("expected host to be connectable")
@@ -368,7 +377,10 @@ func TestStorageHandler(t *testing.T) {
 	// Only one piece will be uploaded (10% at current redundancy)
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
@@ -618,7 +630,10 @@ func TestResizeNonemptyStorageFolder(t *testing.T) {
 	// Only one piece will be uploaded (10% at current redundancy)
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
@@ -747,7 +762,10 @@ func TestStorageFolderUnavailable(t *testing.T) {
 	}
 
 	// remove the folder on disk
-	st.server.Close()
+	err = st.server.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 	sfPath2 := build.TempDir(t.Name(), "storagefolder-old")
 	err = os.Rename(sfPath, sfPath2)
 	if err != nil {
@@ -808,7 +826,10 @@ func TestStorageFolderUnavailable(t *testing.T) {
 	}
 
 	// reload the host and verify the storage folder is still good
-	st.server.Close()
+	err = st.server.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 	st, err = st.reloadedServerTester()
 	if err != nil {
 		t.Fatal(err)
@@ -976,7 +997,10 @@ func TestRemoveStorageFolderForced(t *testing.T) {
 	// Only one piece will be uploaded (10%  at current redundancy)
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
@@ -1065,7 +1089,10 @@ func TestDeleteSector(t *testing.T) {
 	// Only one piece will be uploaded (10%  at current redundancy)
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {

@@ -23,7 +23,11 @@ func TestDefragWallet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// mine defragThreshold blocks, resulting in defragThreshold outputs
 	for i := 0; i < defragThreshold; i++ {
@@ -50,7 +54,9 @@ func TestDefragWallet(t *testing.T) {
 	// defrag should keep the outputs below the threshold
 	wt.wallet.mu.Lock()
 	// force a sync because bucket stats may not be reliable until commit
-	wt.wallet.syncDB()
+	if err := wt.wallet.syncDB(); err != nil {
+		t.Fatal(err)
+	}
 	siacoinOutputs := wt.wallet.dbTx.Bucket(bucketSiacoinOutputs).Stats().KeyN
 	wt.wallet.mu.Unlock()
 	if siacoinOutputs > defragThreshold {
@@ -69,7 +75,11 @@ func TestDefragWalletDust(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	dustOutputValue := types.NewCurrency64(10000)
 	noutputs := defragThreshold + 1
@@ -117,7 +127,9 @@ func TestDefragWalletDust(t *testing.T) {
 
 	wt.wallet.mu.Lock()
 	// force a sync because bucket stats may not be reliable until commit
-	wt.wallet.syncDB()
+	if err := wt.wallet.syncDB(); err != nil {
+		t.Fatal(err)
+	}
 	siacoinOutputs := wt.wallet.dbTx.Bucket(bucketSiacoinOutputs).Stats().KeyN
 	wt.wallet.mu.Unlock()
 	if siacoinOutputs < defragThreshold {
@@ -136,7 +148,11 @@ func TestDefragOutputExhaustion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	wt.wallet.mu.Lock()
 	var dest types.UnlockHash
@@ -231,7 +247,11 @@ func TestDefragInterrupted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// mine defragThreshold blocks, resulting in defragThreshold outputs
 	for i := 0; i < defragThreshold; i++ {
@@ -244,7 +264,9 @@ func TestDefragInterrupted(t *testing.T) {
 	err = build.Retry(50, 100*time.Millisecond, func() error {
 		wt.wallet.mu.Lock()
 		// force a sync because bucket stats may not be reliable until commit
-		wt.wallet.syncDB()
+		if err := wt.wallet.syncDB(); err != nil {
+			t.Fatal(err)
+		}
 		spentOutputs := wt.wallet.dbTx.Bucket(bucketSpentOutputs).Stats().KeyN
 		siacoinOutputs := wt.wallet.dbTx.Bucket(bucketSiacoinOutputs).Stats().KeyN
 		wt.wallet.mu.Unlock()
@@ -284,7 +306,9 @@ func TestDefragInterrupted(t *testing.T) {
 
 		// force a sync because bucket stats may not be reliable until commit
 		wt.wallet.mu.Lock()
-		wt.wallet.syncDB()
+		if err := wt.wallet.syncDB(); err != nil {
+			t.Fatal(err)
+		}
 		spentOutputs := wt.wallet.dbTx.Bucket(bucketSpentOutputs).Stats().KeyN
 		siacoinOutputs := wt.wallet.dbTx.Bucket(bucketSiacoinOutputs).Stats().KeyN
 		wt.wallet.mu.Unlock()

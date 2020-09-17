@@ -90,7 +90,10 @@ func verifyTree(tree *HostTree, nentries int) error {
 		removedEntries = append(removedEntries, node.entry)
 	}
 	for _, entry := range removedEntries {
-		tree.Insert(entry.HostDBEntry)
+		err := tree.Insert(entry.HostDBEntry)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -152,7 +155,10 @@ func TestHostTree(t *testing.T) {
 	secondInsertions := 64
 	for i := firstInsertions; i < firstInsertions+secondInsertions; i++ {
 		entry := makeHostDBEntry()
-		tree.Insert(entry)
+		err := tree.Insert(entry)
+		if err != nil {
+			t.Error(err)
+		}
 	}
 	err = verifyTree(tree, firstInsertions-len(removed)+secondInsertions)
 	if err != nil {
@@ -179,7 +185,9 @@ func TestHostTreeParallel(t *testing.T) {
 	var mu sync.Mutex
 	for i := 0; i < nthreads; i++ {
 		go func() {
-			tg.Add()
+			if err := tg.Add(); err != nil {
+				t.Error(err)
+			}
 			defer tg.Done()
 
 			inserted := make(map[string]modules.HostDBEntry)
@@ -254,7 +262,9 @@ func TestHostTreeParallel(t *testing.T) {
 	time.Sleep(time.Second * 5)
 
 	// stop the goroutines
-	tg.Stop()
+	if err := tg.Stop(); err != nil {
+		t.Fatal(err)
+	}
 
 	// verify the consistency of the tree
 	err := verifyTree(tree, int(nelements))
@@ -323,7 +333,10 @@ func TestVariedWeights(t *testing.T) {
 	selections := 0
 	for i = 0; i < hostCount; i++ {
 		entry := makeHostDBEntry()
-		tree.Insert(entry)
+		err := tree.Insert(entry)
+		if err != nil {
+			t.Error(err)
+		}
 		selections += i * expectedPerWeight
 	}
 
@@ -373,8 +386,14 @@ func TestRepeatInsert(t *testing.T) {
 	entry1 := makeHostDBEntry()
 	entry2 := entry1
 
-	tree.Insert(entry1)
-	tree.Insert(entry2)
+	err := tree.Insert(entry1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tree.Insert(entry2)
+	if err != ErrHostExists {
+		t.Fatal(err)
+	}
 	if len(tree.hosts) != 1 {
 		t.Error("inserting the same entry twice should result in only 1 entry")
 	}
@@ -549,8 +568,14 @@ func TestHostTreeFilter(t *testing.T) {
 	}, testHostTreeFilterResolver{})
 
 	// Insert host1 and host2. Both should be returned by SelectRandom.
-	tree.Insert(entry1)
-	tree.Insert(entry2)
+	err := tree.Insert(entry1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tree.Insert(entry2)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(tree.SelectRandom(2, nil, nil)) != 2 {
 		t.Error("Expected both hosts to be returned")
 	}
@@ -562,14 +587,23 @@ func TestHostTreeFilter(t *testing.T) {
 	}, testHostTreeFilterResolver{})
 
 	// Insert host1 and host3. Only a single host should be returned.
-	tree.Insert(entry1)
-	tree.Insert(entry3)
+	err = tree.Insert(entry1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tree.Insert(entry3)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if numHosts := len(tree.SelectRandom(2, nil, nil)); numHosts != 1 {
 		t.Error("Expected only one host but was", numHosts)
 	}
 
 	// Add host2 to the tree to have all 3 hosts in it.
-	tree.Insert(entry2)
+	err = tree.Insert(entry2)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Call SelectRandom again but ignore host 2. This should give us only 1
 	// host.

@@ -2162,7 +2162,7 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 	case 1:
 		path = args[0]
 	default:
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 	// Parse the input siapath.
@@ -2534,7 +2534,7 @@ func renterpricescmd(cmd *cobra.Command, args []string) {
 	allowance := modules.Allowance{}
 
 	if len(args) != 0 && len(args) != 4 {
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 	if len(args) > 0 {

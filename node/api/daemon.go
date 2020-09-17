@@ -154,12 +154,17 @@ type (
 )
 
 // fetchLatestRelease returns metadata about the most recent GitLab release.
-func fetchLatestRelease() (gitlabRelease, error) {
+func fetchLatestRelease() (_ gitlabRelease, err error) {
 	resp, err := http.Get("https://gitlab.com/api/v4/projects/7508674/repository/tags?order_by=name")
 	if err != nil {
 		return gitlabRelease{}, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		closeErr := resp.Body.Close()
+		if closeErr != nil {
+			err = errors.Compose(err, closeErr)
+		}
+	}()
 	var releases []gitlabRelease
 	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
 		return gitlabRelease{}, err
@@ -193,7 +198,7 @@ func updateToRelease(version string) error {
 	// The file should be small enough to store in memory (<1 MiB); use
 	// MaxBytesReader to ensure we don't download more than 8 MiB
 	signatureBytes, err := ioutil.ReadAll(http.MaxBytesReader(nil, resp.Body, 1<<23))
-	resp.Body.Close()
+	err = errors.Compose(err, resp.Body.Close())
 	if err != nil {
 		return err
 	}
@@ -235,7 +240,7 @@ func updateToRelease(version string) error {
 	// release should be small enough to store in memory (<10 MiB); use
 	// LimitReader to ensure we don't download more than 32 MiB
 	content, err := ioutil.ReadAll(http.MaxBytesReader(nil, zipResp.Body, 1<<25))
-	resp.Body.Close()
+	err = errors.Compose(err, resp.Body.Close())
 	if err != nil {
 		return err
 	}
