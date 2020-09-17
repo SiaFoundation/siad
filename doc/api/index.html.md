@@ -4919,6 +4919,18 @@ supplied, this metadata will be relative to the given path.
 }
 ```
 
+**ETag** | string
+
+The ETag response header contains a hash that can be supplied using the
+"If-None-Match" request header. If that header is supplied, and if we find that
+the requested data has not changed, siad will respond with a '304 Not Modified'
+response, letting the caller know it can safely reuse it previously cached
+reponse data.
+
+See
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/ETag for more
+information on the ETag header.
+
 ### Response Body
 
 The response body is the raw data for the file.
