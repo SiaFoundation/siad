@@ -2148,7 +2148,11 @@ func testSkynetRequestTimeout(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	r = nodes[0]
-	defer tg.RemoveNode(r)
+	defer func() {
+		if err := tg.RemoveNode(r); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Verify timeout on head request
 	status, _, err := r.SkynetSkylinkHeadWithTimeout(skylink, 1)
@@ -2198,7 +2202,11 @@ func testRegressionTimeoutPanic(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	r = nodes[0]
-	defer tg.RemoveNode(r)
+	defer func() {
+		if err := tg.RemoveNode(r); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Verify timeout on download request doesn't panic.
 	_, _, err = r.SkynetSkylinkGetWithTimeout(skylink, 1)

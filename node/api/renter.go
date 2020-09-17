@@ -379,7 +379,11 @@ func (api *API) renterBackupsCreateHandlerPOST(w http.ResponseWriter, req *http.
 	}
 	randomSuffix := persist.RandomSuffix()
 	backupPath := filepath.Join(tmpDir, fmt.Sprintf("%v-%v.bak", name, randomSuffix))
-	defer os.RemoveAll(backupPath)
+	defer func() {
+		// At this point we have already responded so we can't write a potential
+		// error here.
+		_ = os.RemoveAll(backupPath)
+	}()
 
 	// Get the wallet seed.
 	ws, _, err := api.wallet.PrimarySeed()
@@ -420,7 +424,9 @@ func (api *API) renterBackupsRestoreHandlerGET(w http.ResponseWriter, req *http.
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
 	backupPath := filepath.Join(tmpDir, name)
 	if err := api.renter.DownloadBackup(backupPath, name); err != nil {
 		WriteError(w, Error{"failed to download backup: " + err.Error()}, http.StatusBadRequest)

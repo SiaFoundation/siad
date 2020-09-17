@@ -168,7 +168,11 @@ func TestIntegrationUserSuppliedEncryption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	masterKey := crypto.NewWalletKey(crypto.HashObject([]byte{}))
 	_, err = wt.wallet.Encrypt(masterKey)
 	if err != nil {
@@ -189,7 +193,11 @@ func TestIntegrationBlankEncryption(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// Encrypt the wallet using a blank key.
 	seed, err := wt.wallet.Encrypt(nil)
 	if err != nil {
@@ -225,7 +233,11 @@ func TestLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Grab a block for work - miner will not supply blocks after the wallet
 	// has been locked, and the test needs to mine a block after locking the
@@ -297,7 +309,11 @@ func TestInitFromSeedConcurrentUnlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	seed, _, err := wt.wallet.PrimarySeed()
 	if err != nil {
 		t.Fatal(err)
@@ -357,10 +373,17 @@ func TestUnlockConcurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// lock the wallet
-	wt.wallet.Lock()
+	err = wt.wallet.Lock()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// spawn an unlock goroutine
 	errChan := make(chan error)
@@ -396,7 +419,11 @@ func TestInitFromSeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	seed, _, err := wt.wallet.PrimarySeed()
 	if err != nil {
 		t.Fatal(err)
@@ -442,7 +469,11 @@ func TestReset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	originalKey := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	_, err = wt.wallet.Encrypt(originalKey)
@@ -491,7 +522,11 @@ func TestChangeKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	newKey := crypto.GenerateSiaKey(crypto.TypeDefaultWallet)
 	origBal, _, _, err := wt.wallet.ConfirmedBalance()
@@ -554,7 +589,11 @@ func TestChangeKeyWithSeedCompatV141(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Restart wallet.
 	if err := wt.wallet.Close(); err != nil {

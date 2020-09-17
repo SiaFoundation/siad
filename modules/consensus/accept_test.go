@@ -501,7 +501,11 @@ func TestIntegrationDoSBlockHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine a block that is valid except for containing a buried invalid
 	// transaction. The transaction has more siacoin inputs than outputs.
@@ -549,7 +553,11 @@ func TestBlockKnownHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Get a block destined to be stale.
 	block, target, err := cst.miner.BlockForWork()
@@ -613,7 +621,11 @@ func TestOrphanHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Try submitting an orphan block to the consensus set. The empty block can
 	// be used, because looking for a parent is one of the first checks the
@@ -639,7 +651,11 @@ func TestMissedTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine a block that doesn't meet the target.
 	block, target, err := cst.miner.BlockForWork()
@@ -669,7 +685,11 @@ func TestMinerPayoutHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block with the wrong miner payout structure - testing can be
 	// light here because there is heavier testing in the 'types' package,
@@ -697,7 +717,11 @@ func TestEarlyTimestampHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	minTimestamp := types.CurrentTimestamp()
 	cst.cs.blockRuleHelper = mockBlockRuleHelper{
 		minTimestamp: minTimestamp,
@@ -727,7 +751,11 @@ func TestFutureTimestampHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Submit a block with a timestamp in the future, but not the extreme
 	// future.
@@ -767,7 +795,11 @@ func TestExtremeFutureTimestampHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Submit a block with a timestamp in the extreme future.
 	block, target, err := cst.miner.BlockForWork()
@@ -793,7 +825,11 @@ func TestBuriedBadTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	pb := cst.cs.dbCurrentProcessedBlock()
 
 	// Create a good transaction using the wallet.
@@ -881,7 +917,11 @@ func TestTaxHardfork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a file contract with a payout that is put into the blockchain
 	// before the hardfork block but expires after the hardfork block.
@@ -1006,7 +1046,11 @@ func TestAcceptBlockBroadcasts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	mg := &mockGatewayDoesBroadcast{
 		Gateway:         cst.cs.gateway,
 		broadcastCalled: make(chan struct{}),
@@ -1080,12 +1124,20 @@ func TestChainedAcceptBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cst2, err := blankConsensusSetTester(t.Name()+"2", modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst2.Close()
+	defer func() {
+		if err := cst2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// Subscribe a blockCountingSubscriber to cst2.
 	var bcs blockCountingSubscriber
 	cst2.cs.ConsensusSetSubscribe(&bcs, modules.ConsensusChangeBeginning, cst2.cs.tg.StopChan())

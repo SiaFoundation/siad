@@ -290,7 +290,11 @@ func TestBaseSectorKeyID(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := rt.renter
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a test skykey.
 	publicIDKeyName := t.Name() + "-public-id-key"

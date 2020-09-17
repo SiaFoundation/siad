@@ -317,7 +317,9 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 	if err != nil {
 		return modules.SiaPath{}, errors.AddContext(err, "unable to open siaDir "+dirSiaPath.String())
 	}
-	defer siaDir.Close()
+	defer func() {
+		err = errors.Compose(err, siaDir.Close())
+	}()
 	metadata, err := siaDir.Metadata()
 	if err != nil {
 		return modules.SiaPath{}, err
@@ -364,7 +366,9 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 			return modules.SiaPath{}, errors.AddContext(err, "could not open siafileset for "+sp.String())
 		}
 		numStuckChunks := int(f.NumStuckChunks())
-		f.Close()
+		if err := f.Close(); err != nil {
+			return modules.SiaPath{}, errors.AddContext(err, "failed to close filenode "+sp.String())
+		}
 
 		// Check if stuck
 		if numStuckChunks == 0 {

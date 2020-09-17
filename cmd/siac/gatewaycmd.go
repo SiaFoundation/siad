@@ -190,7 +190,7 @@ func gatewayblocklistcmd() {
 func gatewayblocklistappendcmd(cmd *cobra.Command, addresses []string) {
 	if len(addresses) == 0 {
 		fmt.Println("No IP addresses submitted to append")
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 	err := httpClient.GatewayAppendBlocklistPost(addresses)
@@ -217,7 +217,7 @@ func gatewayblocklistclearcmd(cmd *cobra.Command, addresses []string) {
 func gatewayblocklistremovecmd(cmd *cobra.Command, addresses []string) {
 	if len(addresses) == 0 {
 		fmt.Println("No IP addresses submitted to remove")
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 	err := httpClient.GatewayRemoveBlocklistPost(addresses)
@@ -233,7 +233,7 @@ func gatewayblocklistremovecmd(cmd *cobra.Command, addresses []string) {
 func gatewayblocklistsetcmd(cmd *cobra.Command, addresses []string) {
 	if len(addresses) == 0 {
 		fmt.Println("No IP addresses submitted")
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 	err := httpClient.GatewaySetBlocklistPost(addresses)
@@ -260,7 +260,9 @@ func gatewaylistcmd() {
 	for _, peer := range info.Peers {
 		fmt.Fprintf(w, "%v\t%v\t%v\n", peer.Version, yesNo(!peer.Inbound), peer.NetAddress)
 	}
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		die("failed to flush writer")
+	}
 }
 
 // gatewayratelimitcmd is the handler for the command `siac gateway ratelimit`.

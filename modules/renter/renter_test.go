@@ -314,7 +314,11 @@ func TestRenterCanAccessEphemeralAccountHostSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Add a host to the test group
 	h, err := rt.addHost(t.Name())
@@ -349,7 +353,11 @@ func TestRenterPricesDivideByZero(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Confirm price estimation returns error if there are no hosts available
 	_, _, err = rt.renter.PriceEstimation(modules.Allowance{})

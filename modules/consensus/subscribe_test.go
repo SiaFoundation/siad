@@ -50,7 +50,11 @@ func TestInvalidConsensusChangeSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	ms := newMockSubscriber()
 	badCCID := modules.ConsensusChangeID{255, 255, 255}
@@ -81,7 +85,11 @@ func TestInvalidToValidSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Start by performing a bad subscribe.
 	ms := newMockSubscriber()
@@ -120,7 +128,11 @@ func TestUnsubscribe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Subscribe the mock subscriber to the consensus set.
 	ms := newMockSubscriber()
@@ -165,7 +177,11 @@ func TestModuleDesync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine some blocks.
 	for i := 0; i < 10; i++ {
@@ -252,7 +268,11 @@ func TestPerBlockDiffs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Subscribe the mock subscriber to the consensus set.
 	ms := newMockSubscriber()

@@ -30,6 +30,7 @@ type (
 		staticContractUtility modules.ContractUtility
 		staticHostVersion     string
 		staticRenterAllowance modules.Allowance
+		staticHostMuxAddress  string
 		staticSynced          bool
 
 		staticLastUpdate time.Time
@@ -73,6 +74,7 @@ func (w *worker) managedUpdateCache() {
 		staticBlockHeight:     w.renter.cs.Height(),
 		staticContractID:      renterContract.ID,
 		staticContractUtility: renterContract.Utility,
+		staticHostMuxAddress:  host.SiaMuxAddress(),
 		staticHostVersion:     host.Version,
 		staticRenterAllowance: w.renter.hostContractor.Allowance(),
 		staticSynced:          w.renter.cs.Synced(),
