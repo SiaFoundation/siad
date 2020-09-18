@@ -284,6 +284,12 @@ func TestBubbleHealth(t *testing.T) {
 	// Mark the file as stuck by marking one of its chunks as stuck
 	f.SetStuck(0, true)
 
+	// Update the file metadata within the dir.
+	err = rt.renter.managedUpdateFileMetadatas(subDir1_2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Now when we bubble the health and check for the worst health we should still see
 	// that the health is the health of subDir1/subDir1 which was set to 1 again
 	// and the stuck health will be the health of the stuck file
@@ -321,6 +327,12 @@ func TestBubbleHealth(t *testing.T) {
 
 	// Mark the file as un-stuck
 	f.SetStuck(0, false)
+
+	// Update the file metadata within the dir.
+	err = rt.renter.managedUpdateFileMetadatas(subDir1_2)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Now if we bubble the health and check for the worst health we should see
 	// that the health is the health of the file
@@ -1196,8 +1208,14 @@ func TestCalculateFileMetadata(t *testing.T) {
 	lastHealthCheckTime := sf.LastHealthCheckTime()
 	modTime := sf.ModTime()
 
+	// Update the file metadata.
+	err = rt.renter.managedUpdateFileMetadatas(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Check calculated metadata
-	bubbledMetadatas, err := rt.renter.managedCalculateAndUpdateFileMetadatas([]modules.SiaPath{up.SiaPath})
+	bubbledMetadatas, err := rt.renter.managedCalculateFileMetadatas([]modules.SiaPath{up.SiaPath})
 	if err != nil {
 		t.Fatal(err)
 	}

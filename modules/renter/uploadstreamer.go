@@ -272,21 +272,20 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 
 		// Check if the chunk needs any work or if we can skip it.
 		if uuc.piecesCompleted < uuc.piecesNeeded {
-			// Add the chunk to the upload heap.
-			if !r.uploadHeap.managedPush(uuc) {
-				// The chunk can't be added to the heap. It's probably already being
-				// repaired. Flush the shard and move on to the next one.
+			// Add the chunk to the upload heap's repair map.
+			pushed, err := r.managedPushChunkForRepair(uuc, chunkTypeStreamChunk)
+			if err != nil {
+				return nil, errors.AddContext(err, "unable to push chunk")
+			}
+			if !pushed {
+				// The chunk wasn't added to the repair map meaning it must have already
+				// been in the repair map
 				_, _ = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
 				if err := ss.Close(); err != nil {
 					return nil, err
 				}
 			}
-			// Notify the upload loop.
 			chunks = append(chunks, uuc)
-			select {
-			case r.uploadHeap.newUploads <- struct{}{}:
-			default:
-			}
 		} else {
 			// The chunk doesn't need any work. We still need to read a chunk
 			// from the shard though. Otherwise we will upload the wrong chunk

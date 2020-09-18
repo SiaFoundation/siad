@@ -1,0 +1,1 @@
+- Update the upload streamer code to send chunks directly to the workers instead of through the `uploadHeap`.
