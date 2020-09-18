@@ -392,7 +392,7 @@ func initCmds() *cobra.Command {
 	// Daemon Commands
 	root.AddCommand(alertsCmd, globalRatelimitCmd, profileCmd, stackCmd, stopCmd, updateCmd, versionCmd)
 	profileCmd.AddCommand(profileStartCmd, profileStopCmd)
-	profileStartCmd.Flags().BoolVarP(&daemonCPUProfile, "CPU", "c", false, "Start the CPU profile")
+	profileStartCmd.Flags().BoolVarP(&daemonCPUProfile, "cpu", "c", false, "Start the CPU profile")
 	profileStartCmd.Flags().BoolVarP(&daemonMemoryProfile, "memory", "m", false, "Start the Memory profile")
 	profileStartCmd.Flags().StringVar(&daemonProfileDirectory, "profileDir", "", "Specify the directory where the profile logs are to be saved")
 	profileStartCmd.Flags().BoolVarP(&daemonTraceProfile, "trace", "t", false, "Start the Trace profile")
