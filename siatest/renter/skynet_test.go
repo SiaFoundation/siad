@@ -1785,7 +1785,7 @@ func testSkynetBlacklistHash(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// Confirm submitted the hash as a skylink returns an error
+	// Confirm submitting the hash as a skylink returns an error
 	hash := crypto.HashObject(sshp.MerkleRoot)
 	add := []string{hash.String()}
 	remove := []string{}

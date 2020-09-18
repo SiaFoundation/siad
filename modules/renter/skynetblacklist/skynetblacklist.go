@@ -99,7 +99,7 @@ func (sb *SkynetBlacklist) IsBlacklisted(skylink modules.Skylink) bool {
 }
 
 // UpdateBlacklist updates the list of skylinks that are blacklisted.
-func (sb *SkynetBlacklist) UpdateBlacklist(additions, removals []modules.Skylink) error {
+func (sb *SkynetBlacklist) UpdateBlacklist(additions, removals []crypto.Hash) error {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
 
@@ -111,24 +111,10 @@ func (sb *SkynetBlacklist) UpdateBlacklist(additions, removals []modules.Skylink
 	return errors.AddContext(err, fmt.Sprintf("unable to update skynet blacklist persistence at '%v'", sb.staticAop.FilePath()))
 }
 
-// UpdateBlacklistHash updates the list of skylinks that are blacklisted with
-// already hashed skylinks.
-func (sb *SkynetBlacklist) UpdateBlacklistHash(additions, removals []crypto.Hash) error {
-	sb.mu.Lock()
-	defer sb.mu.Unlock()
-
-	buf, err := sb.marshalHashes(additions, removals)
-	if err != nil {
-		return errors.AddContext(err, fmt.Sprintf("unable to update skynet blacklist persistence at '%v'", sb.staticAop.FilePath()))
-	}
-	_, err = sb.staticAop.Write(buf.Bytes())
-	return errors.AddContext(err, fmt.Sprintf("unable to update skynet blacklist persistence at '%v'", sb.staticAop.FilePath()))
-}
-
-// marshalHashes marshals the given hashes into a byte buffer.
+// marshalObjects marshals the given objects into a byte buffer.
 //
 // NOTE: this method does not check for duplicate additions or removals
-func (sb *SkynetBlacklist) marshalHashes(additions, removals []crypto.Hash) (bytes.Buffer, error) {
+func (sb *SkynetBlacklist) marshalObjects(additions, removals []crypto.Hash) (bytes.Buffer, error) {
 	// Create buffer for encoder
 	var buf bytes.Buffer
 	// Create and encode the persist links
@@ -148,45 +134,6 @@ func (sb *SkynetBlacklist) marshalHashes(additions, removals []crypto.Hash) (byt
 	listed = false
 	for _, hash := range removals {
 		// Remove hash from map
-		delete(sb.hashes, hash)
-
-		// Marshal the update
-		pe := persistEntry{hash, listed}
-		data := encoding.Marshal(pe)
-		_, err := buf.Write(data)
-		if err != nil {
-			return bytes.Buffer{}, errors.AddContext(err, "unable to write removal to the buffer")
-		}
-	}
-
-	return buf, nil
-}
-
-// marshalObjects marshals the given objects into a byte buffer.
-//
-// NOTE: this method does not check for duplicate additions or removals
-func (sb *SkynetBlacklist) marshalObjects(additions, removals []modules.Skylink) (bytes.Buffer, error) {
-	// Create buffer for encoder
-	var buf bytes.Buffer
-	// Create and encode the persist links
-	listed := true
-	for _, skylink := range additions {
-		// Add skylink merkleroot to map
-		hash := crypto.HashObject(skylink.MerkleRoot())
-		sb.hashes[hash] = struct{}{}
-
-		// Marshal the update
-		pe := persistEntry{hash, listed}
-		data := encoding.Marshal(pe)
-		_, err := buf.Write(data)
-		if err != nil {
-			return bytes.Buffer{}, errors.AddContext(err, "unable to write addition to the buffer")
-		}
-	}
-	listed = false
-	for _, skylink := range removals {
-		// Remove skylink merkleroot from map
-		hash := crypto.HashObject(skylink.MerkleRoot())
 		delete(sb.hashes, hash)
 
 		// Marshal the update

@@ -22,5 +22,3 @@ updates.
  - `IsBlacklisted` returns whether or not a skylink merkleroot is blacklisted
  - `New` creates and returns a new Skynet Blacklist
  - `UpdateBlacklist` updates the blacklist
- - `UpdateBlacklistHash` updates the blacklist with the hash of the Skylink's
-     merkleroot

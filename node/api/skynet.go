@@ -77,7 +77,7 @@ type (
 		Add    []string `json:"add"`
 		Remove []string `json:"remove"`
 
-		// IsHash indiactes if the supplied Add and Remove strings are already
+		// IsHash indicates if the supplied Add and Remove strings are already
 		// hashes of Skylinks
 		IsHash bool `json:"ishash"`
 	}
@@ -166,59 +166,53 @@ func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 	}
 
 	// Convert to Skylinks or Hash
-	addSkylinks := make([]modules.Skylink, len(params.Add))
 	addHashes := make([]crypto.Hash, len(params.Add))
 	for i, addStr := range params.Add {
+		var hash crypto.Hash
 		// Convert Hash
 		if params.IsHash {
-			var hash crypto.Hash
 			err := hash.LoadString(addStr)
 			if err != nil {
 				WriteError(w, Error{fmt.Sprintf("error parsing hash: %v", err)}, http.StatusBadRequest)
 				return
 			}
-			addHashes[i] = hash
-			continue
+		} else {
+			// Convert Skylink
+			var skylink modules.Skylink
+			err := skylink.LoadString(addStr)
+			if err != nil {
+				WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+				return
+			}
+			hash = crypto.HashObject(skylink.MerkleRoot())
 		}
-		// Convert Skylink
-		var skylink modules.Skylink
-		err := skylink.LoadString(addStr)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
-			return
-		}
-		addSkylinks[i] = skylink
+		addHashes[i] = hash
 	}
-	removeSkylinks := make([]modules.Skylink, len(params.Remove))
 	removeHashes := make([]crypto.Hash, len(params.Remove))
 	for i, removeStr := range params.Remove {
+		var hash crypto.Hash
 		// Convert Hash
 		if params.IsHash {
-			var hash crypto.Hash
 			err := hash.LoadString(removeStr)
 			if err != nil {
 				WriteError(w, Error{fmt.Sprintf("error parsing hash: %v", err)}, http.StatusBadRequest)
 				return
 			}
-			removeHashes[i] = hash
-			continue
+		} else {
+			// Convert Skylink
+			var skylink modules.Skylink
+			err := skylink.LoadString(removeStr)
+			if err != nil {
+				WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+				return
+			}
+			hash = crypto.HashObject(skylink.MerkleRoot())
 		}
-		// Convert Skylink
-		var skylink modules.Skylink
-		err := skylink.LoadString(removeStr)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
-			return
-		}
-		removeSkylinks[i] = skylink
+		removeHashes[i] = hash
 	}
 
 	// Update the Skynet Blacklist
-	if params.IsHash {
-		err = api.renter.UpdateSkynetBlacklistHash(addHashes, removeHashes)
-	} else {
-		err = api.renter.UpdateSkynetBlacklist(addSkylinks, removeSkylinks)
-	}
+	err = api.renter.UpdateSkynetBlacklist(addHashes, removeHashes)
 	if err != nil {
 		WriteError(w, Error{"unable to update the skynet blacklist: " + err.Error()}, http.StatusInternalServerError)
 		return
