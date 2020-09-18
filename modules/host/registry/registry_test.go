@@ -24,6 +24,7 @@ func newTestWAL(path string) *writeaheadlog.WAL {
 	return wal
 }
 
+// testDir creates a temporary dir for testing.
 func testDir(name string) string {
 	dir := build.TempDir(name)
 	_ = os.RemoveAll(dir)
@@ -37,6 +38,11 @@ func testDir(name string) string {
 // TestNew is a unit test for New. It confirms that New can initialize an empty
 // registry and load existing items from disk.
 func TestNew(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	dir := testDir(t.Name())
 	wal := newTestWAL(filepath.Join(dir, "wal"))
 
@@ -65,8 +71,8 @@ func TestNew(t *testing.T) {
 
 	// Save a random unused entry at the first index and a used entry at the
 	// second index.
-	vUnused := randomValue(1)
-	vUsed := randomValue(2)
+	_, vUnused, _ := randomValue(1)
+	_, vUsed, _ := randomValue(2)
 	err = r.saveEntry(vUnused, false)
 	if err != nil {
 		t.Fatal(err)
@@ -95,6 +101,11 @@ func TestNew(t *testing.T) {
 // TestUpdate is a unit test for Update. It makes sure new entries are added
 // correctly, old ones are updated and that unused slots on disk are filled.
 func TestUpdate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	dir := testDir(t.Name())
 	wal := newTestWAL(filepath.Join(dir, "wal"))
 
@@ -106,9 +117,9 @@ func TestUpdate(t *testing.T) {
 	}
 
 	// Register a value.
-	v := randomValue(2)
+	rv, v, sk := randomValue(2)
 	v.staticIndex = 1 // expected index
-	updated, err := r.Update(v.key, v.tweak, v.expiry, v.revision, v.data)
+	updated, err := r.Update(rv, v.key, v.expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,14 +137,16 @@ func TestUpdate(t *testing.T) {
 
 	// Update the same key again. This shouldn't work cause the revision is the
 	// same.
-	_, err = r.Update(v.key, v.tweak, v.expiry, v.revision, v.data)
+	_, err = r.Update(rv, v.key, v.expiry)
 	if !errors.Contains(err, errInvalidRevNum) {
 		t.Fatal("expected invalid rev number")
 	}
 
 	// Try again with a higher revision number. This should work.
 	v.revision++
-	updated, err = r.Update(v.key, v.tweak, v.expiry, v.revision, v.data)
+	rv.Revision++
+	rv.Sign(sk)
+	updated, err = r.Update(rv, v.key, v.expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,15 +164,19 @@ func TestUpdate(t *testing.T) {
 
 	// Try another update with too much data.
 	v.revision++
-	_, err = r.Update(v.key, v.tweak, v.expiry, v.revision, make([]byte, RegistryDataSize+1))
+	rv.Revision++
+	v.data = make([]byte, modules.RegistryDataSize+1)
+	rv.Data = v.data
+	_, err = r.Update(rv, v.key, v.expiry)
 	if !errors.Contains(err, errTooMuchData) {
 		t.Fatal("expected too much data")
 	}
+	v.data = make([]byte, modules.RegistryDataSize)
 
 	// Add a second entry.
-	v2 := randomValue(2)
+	rv2, v2, _ := randomValue(2)
 	v2.staticIndex = 2 // expected index
-	updated, err = r.Update(v2.key, v2.tweak, v2.expiry, v2.revision, v2.data)
+	updated, err = r.Update(rv2, v2.key, v2.expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,9 +214,9 @@ func TestUpdate(t *testing.T) {
 
 	// Update the registry with a third entry. It should get the index that the
 	// first entry had before.
-	v3 := randomValue(2)
+	rv3, v3, _ := randomValue(2)
 	v3.staticIndex = v.staticIndex // expected index
-	updated, err = r.Update(v3.key, v3.tweak, v3.expiry, v3.revision, v3.data)
+	updated, err = r.Update(rv3, v3.key, v3.expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,10 +231,23 @@ func TestUpdate(t *testing.T) {
 		t.Log(*vExist)
 		t.Fatal("registry contains wrong key-value pair")
 	}
+
+	// Update the registry with the third entry again but increment the revision
+	// number without resigning. This should fail.
+	rv3.Revision++
+	updated, err = r.Update(rv3, v3.key, v3.expiry)
+	if !errors.Contains(err, errInvalidSignature) {
+		t.Fatal(err)
+	}
 }
 
 // TestPrune is a unit test for Prune.
 func TestPrune(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	dir := testDir(t.Name())
 	wal := newTestWAL(filepath.Join(dir, "wal"))
 
@@ -229,15 +259,15 @@ func TestPrune(t *testing.T) {
 	}
 
 	// Add 2 entries with different expiries.
-	v1 := randomValue(1)
+	rv1, v1, _ := randomValue(1)
 	v1.expiry = 1
-	_, err = r.Update(v1.key, v1.tweak, v1.expiry, v1.revision, v1.data)
+	_, err = r.Update(rv1, v1.key, v1.expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
-	v2 := randomValue(2)
+	rv2, v2, _ := randomValue(2)
 	v2.expiry = 2
-	_, err = r.Update(v2.key, v2.tweak, v2.expiry, v2.revision, v2.data)
+	_, err = r.Update(rv2, v2.key, v2.expiry)
 	if err != nil {
 		t.Fatal(err)
 	}

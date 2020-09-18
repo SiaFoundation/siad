@@ -11,25 +11,44 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// randomValue creates a random value object for testing.
-func randomValue(index int64) value {
+// randomValue creates a random value object for testing and returns it both as
+// the RegistryValue and value representation.
+func randomValue(index int64) (modules.RegistryValue, value, crypto.SecretKey) {
+	// Create in-memory value first.
+	sk, pk := crypto.GenerateKeyPair()
 	v := value{
 		expiry:      types.BlockHeight(fastrand.Uint64n(math.MaxUint64)),
 		staticIndex: index,
-		data:        fastrand.Bytes(fastrand.Intn(RegistryDataSize) + 1),
+		data:        fastrand.Bytes(fastrand.Intn(modules.RegistryDataSize) + 1),
 		revision:    fastrand.Uint64n(math.MaxUint64 - 100), // Leave some room for incrementing the revision during tests
 	}
 	v.key.Algorithm = types.SignatureEd25519
-	v.key.Key = fastrand.Bytes(crypto.PublicKeySize)
+	v.key.Key = pk[:]
 	fastrand.Read(v.tweak[:])
-	return v
+
+	// Then the RegistryValue.
+	rv := modules.RegistryValue{
+		Tweak:    v.tweak,
+		Data:     v.data,
+		Revision: v.revision,
+	}
+	rv.Sign(sk)
+	return rv, v, sk
 }
 
+// TestPubKeyCompression tests converting a types.SiaPublicKey to a
+// compressedPublicKey and back.
 func TestPubKeyCompression(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	// Create a valid key.
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
@@ -58,6 +77,11 @@ func TestPubKeyCompression(t *testing.T) {
 
 // TestInitRegistry is a unit test for initRegistry.
 func TestInitRegistry(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	dir := testDir(t.Name())
 	wal := newTestWAL(filepath.Join(dir, "wal"))
 
@@ -105,12 +129,13 @@ func TestInitRegistry(t *testing.T) {
 
 // TestPersistedEntryMarshalUnmarshal tests marshaling persistedEntries.
 func TestPersistedEntryMarshalUnmarshal(t *testing.T) {
+	t.Parallel()
 	entry := persistedEntry{
 		Key: compressedPublicKey{
 			Algorithm: signatureEd25519,
 		},
 		Expiry:   types.BlockHeight(fastrand.Uint64n(math.MaxUint64)),
-		DataLen:  RegistryDataSize,
+		DataLen:  modules.RegistryDataSize,
 		IsUsed:   true,
 		Revision: fastrand.Uint64n(math.MaxUint64),
 	}
@@ -141,10 +166,11 @@ func TestPersistedEntryMarshalUnmarshal(t *testing.T) {
 // TestNewPersistedEntryAndKeyValue is a unit test for newPersistedEntry and
 // KeyValue.
 func TestNewPersistedEntry(t *testing.T) {
+	t.Parallel()
 	// Create a random key/value pair that is stored at index 1
 	index := int64(1)
 	isUsed := true
-	v := randomValue(index)
+	_, v, _ := randomValue(index)
 	pe, err := newPersistedEntry(v, isUsed)
 	if err != nil {
 		t.Fatal(err)
@@ -189,6 +215,11 @@ func TestNewPersistedEntry(t *testing.T) {
 
 // TestSaveEntry unit tests the SaveEntry method.
 func TestSaveEntry(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	dir := testDir(t.Name())
 	wal := newTestWAL(filepath.Join(dir, "wal"))
 
@@ -202,7 +233,7 @@ func TestSaveEntry(t *testing.T) {
 	// Create a pair that is stored at index 2.
 	index := int64(2)
 	isUsed := true
-	v := randomValue(index)
+	_, v, _ := randomValue(index)
 	pe, err := newPersistedEntry(v, isUsed)
 	if err != nil {
 		t.Fatal(err)

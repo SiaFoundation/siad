@@ -23,12 +23,12 @@ type (
 	persistedEntry struct {
 		// key data
 		Key   compressedPublicKey
-		Tweak [TweakSize]byte
+		Tweak [modules.TweakSize]byte
 
 		// value data
 		Expiry    types.BlockHeight
 		DataLen   uint8
-		Data      [RegistryDataSize]byte
+		Data      [modules.RegistryDataSize]byte
 		Revision  uint64
 		Signature crypto.Signature
 
@@ -92,7 +92,7 @@ func initRegistry(path string, wal *writeaheadlog.WAL) (*os.File, error) {
 
 // newPersistedEntry turns a key-value pair into a persistedEntry.
 func newPersistedEntry(value value, isUsed bool) (persistedEntry, error) {
-	if len(value.data) > RegistryDataSize {
+	if len(value.data) > modules.RegistryDataSize {
 		build.Critical("newPersistedEntry: called with too much data")
 		return persistedEntry{}, errors.New("value's data is too large")
 	}
@@ -116,7 +116,7 @@ func newPersistedEntry(value value, isUsed bool) (persistedEntry, error) {
 
 // KeyValue converts a persistedEntry into a key-value pair.
 func (entry persistedEntry) Value(index int64) (value, error) {
-	if entry.DataLen > RegistryDataSize {
+	if entry.DataLen > modules.RegistryDataSize {
 		err := errors.New("KeyValue: entry has a too big data len")
 		build.Critical(err)
 		return value{}, err
@@ -137,7 +137,7 @@ func (entry persistedEntry) Value(index int64) (value, error) {
 
 // Marshal marshals a persistedEntry.
 func (entry persistedEntry) Marshal() ([]byte, error) {
-	if entry.DataLen > RegistryDataSize {
+	if entry.DataLen > modules.RegistryDataSize {
 		build.Critical(errTooMuchData)
 		return nil, errTooMuchData
 	}

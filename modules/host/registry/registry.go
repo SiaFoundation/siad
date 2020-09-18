@@ -23,17 +23,6 @@ import (
 // - purge expired entries
 // - optimize locking by locking each entry individually
 const (
-	// KeySize is the size of a registered key.
-	KeySize = crypto.PublicKeySize
-
-	// TweakSize is the size of the tweak which can be used to register multiple
-	// values for the same pubkey.
-	TweakSize = crypto.HashSize
-
-	// RegistryDataSize is the amount of arbitrary data a renter can register in
-	// the registry.
-	RegistryDataSize = 109
-
 	// persistedEntrySize is the size of a marshaled entry on disk.
 	persistedEntrySize = 256
 
@@ -49,6 +38,9 @@ var (
 	// errInvalidRevNum is returned when the revision number of the data to
 	// register isn't greater than the known revision number.
 	errInvalidRevNum = errors.New("provided revision number is invalid")
+	// errInvalidSignature is returned when the signature doesn't match a
+	// registry value.
+	errInvalidSignature = errors.New("provided signature is invalid")
 	// errTooMuchData is returned when the data to register is larger than
 	// RegistryDataSize.
 	errTooMuchData = errors.New("registered data is too large")
@@ -158,28 +150,35 @@ func New(path string, wal *writeaheadlog.WAL) (_ *Registry, err error) {
 }
 
 // Update adds an entry to the registry or if it exists already, updates it.
-func (r *Registry) Update(pubKey types.SiaPublicKey, tweak crypto.Hash, expiry types.BlockHeight, revision uint64, data []byte) (_ bool, err error) {
+func (r *Registry) Update(rv modules.RegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (_ bool, err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	// Check the data against the limit.
-	if len(data) > RegistryDataSize {
+	data := rv.Data
+	if len(data) > modules.RegistryDataSize {
 		return false, errTooMuchData
+	}
+
+	// Check the signature against the pubkey.
+	if err := rv.Verify(pubKey.ToPublicKey()); err != nil {
+		err = errors.Compose(err, errInvalidSignature)
+		return false, errors.AddContext(err, "Update: failed to verify signature")
 	}
 
 	v := value{
 		key:         pubKey,
-		tweak:       tweak,
+		tweak:       rv.Tweak,
 		expiry:      expiry,
 		staticIndex: -1, // Is set later.
 		data:        data,
-		revision:    revision,
+		revision:    rv.Revision,
 	}
 
 	// Check if the entry exists already. If it does and the new revision is
 	// smaller than the last one, we update it.
 	entry, exists := r.entries[v.mapKey()]
-	if exists && revision > entry.revision {
+	if exists && v.revision > entry.revision {
 		v.staticIndex = entry.staticIndex
 		r.entries[v.mapKey()] = &v
 		return true, nil
