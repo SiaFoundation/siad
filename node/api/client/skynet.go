@@ -39,7 +39,7 @@ func (c *Client) SkynetSkylinkGetWithETag(skylink string, ETag string) (*http.Re
 	query := skylinkQueryWithValues(skylink, url.Values{})
 	headers := make(Headers)
 	headers["If-None-Match"] = ETag
-	return c.getRawResponseWithHeaders(query, headers)
+	return c.getResponseWithHeaders(query, headers)
 }
 
 // SkynetSkylinkGetWithTimeout uses the /skynet/skylink endpoint to download a

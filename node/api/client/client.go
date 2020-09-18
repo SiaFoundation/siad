@@ -148,9 +148,9 @@ func (c *Client) getRawResponse(resource string) (http.Header, []byte, error) {
 	return header, d, errors.AddContext(err, "failed to read all bytes from reader")
 }
 
-// getRawResponseWithHeaders requests the specified resource using the given
+// getResponseWithHeaders requests the specified resource using the given
 // request headers.
-func (c *Client) getRawResponseWithHeaders(resource string, headers Headers) (*http.Response, error) {
+func (c *Client) getResponseWithHeaders(resource string, headers Headers) (*http.Response, error) {
 	req, err := c.NewRequest("GET", resource, nil)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to construct GET request")
@@ -162,7 +162,19 @@ func (c *Client) getRawResponseWithHeaders(resource string, headers Headers) (*h
 	}
 
 	httpClient := http.Client{CheckRedirect: c.CheckRedirect}
-	return httpClient.Do(req)
+	res, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add ErrAPICallNotRecognized if StatusCode is StatusModuleNotLoaded to
+	// allow for handling of modules that are not loaded
+	if res.StatusCode == api.StatusModuleNotLoaded || res.StatusCode == api.StatusModuleDisabled {
+		err = errors.Compose(readAPIError(res.Body), api.ErrAPICallNotRecognized)
+		return nil, errors.AddContext(err, "unable to perform GET on "+resource)
+	}
+
+	return res, nil
 }
 
 // getReaderResponse requests the specified resource. The response, if provided,

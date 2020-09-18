@@ -24,21 +24,21 @@ func TestBuildETag(t *testing.T) {
 	}
 
 	eTag := buildETag(skylink, "GET", path, format)
-	if eTag == "" {
+	if eTag != "0f93d92d7cb79e11e948038ed24d0541dedadb9fc84993b9a8f9e323376e2bfa" {
 		t.Fatal("unexpected output")
 	}
 
 	// adjust URL and expect different hash value
 	path = "/foo"
 	eTag2 := buildETag(skylink, "GET", path, format)
-	if eTag2 == eTag {
+	if eTag2 == "" || eTag2 == eTag {
 		t.Fatal("unexpected output")
 	}
 
 	// adjust query and expect different hash value
 	format = modules.SkyfileFormatZip
 	eTag3 := buildETag(skylink, "GET", path, format)
-	if eTag3 == eTag2 {
+	if eTag3 == "" || eTag3 == eTag2 {
 		t.Fatal("unexpected output")
 	}
 
@@ -48,7 +48,7 @@ func TestBuildETag(t *testing.T) {
 		t.Fatal(err)
 	}
 	eTag4 := buildETag(skylink, "GET", path, format)
-	if eTag4 == eTag3 {
+	if eTag4 == "" || eTag4 == eTag3 {
 		t.Fatal("unexpected output")
 	}
 
@@ -58,7 +58,7 @@ func TestBuildETag(t *testing.T) {
 		t.Fatal(err)
 	}
 	eTag5 := buildETag(skylink, "HEAD", path, format)
-	if eTag5 == eTag4 {
+	if eTag5 == "" || eTag5 == eTag4 {
 		t.Fatal("unexpected output")
 	}
 }
