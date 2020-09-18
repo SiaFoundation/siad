@@ -131,7 +131,7 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath, hosts map[
 	defer func() {
 		// Close out remaining file entries
 		for _, chunk := range unfinishedStuckChunks {
-			chunk.fileEntry.Close()
+			allErrors = errors.Compose(allErrors, chunk.fileEntry.Close())
 		}
 	}()
 
@@ -143,10 +143,14 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath, hosts map[
 		unfinishedStuckChunks = unfinishedStuckChunks[1:]
 		chunk.stuckRepair = true
 		chunk.fileRecentlySuccessful = true
-		if !r.uploadHeap.managedPush(chunk) {
+		pushed, err := r.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
+		if err != nil {
+			return errors.Compose(allErrors, err, chunk.fileEntry.Close())
+		}
+		if !pushed {
 			// Stuck chunk unable to be added. Close the file entry of that
 			// chunk
-			chunk.fileEntry.Close()
+			allErrors = errors.Compose(allErrors, chunk.fileEntry.Close())
 			continue
 		}
 		stuckChunksAdded++

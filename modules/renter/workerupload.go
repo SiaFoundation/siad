@@ -167,6 +167,9 @@ func (w *worker) managedPerformUploadChunkJob() {
 	nextChunk.cancelMU.Lock()
 	if nextChunk.canceled {
 		nextChunk.cancelMU.Unlock()
+		// If the chunk was canceled then we drop the chunk. This will decrement the
+		// chunk's remainingWorkers and perform any clean up work necessary
+		w.managedDropChunk(nextChunk)
 		return
 	}
 	// Add this worker to the chunk's cancelWG for the duration of this method.
