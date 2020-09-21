@@ -1,1 +1,2 @@
 - add root flag to download endpoints
+- add root flag to list downloads endpoint
