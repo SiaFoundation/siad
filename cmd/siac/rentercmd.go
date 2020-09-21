@@ -1905,7 +1905,12 @@ func renterfilesdownload(path, destination string, root bool) {
 	}
 
 	// If the download is blocking, display progress as the file downloads.
-	file, err := httpClient.RenterFileGet(siaPath)
+	var file api.RenterFile
+	if root {
+		file, err = httpClient.RenterFileRootGet(siaPath)
+	} else {
+		file, err = httpClient.RenterFileGet(siaPath)
+	}
 	if err != nil {
 		die("Error getting file after download has started:", err)
 	}
