@@ -406,6 +406,13 @@ func (c *Client) RenterDownloadsGet() (rdq api.RenterDownloadQueue, err error) {
 	return
 }
 
+// RenterDownloadsRootGet requests the /renter/downloads resource with the root
+// flag set.
+func (c *Client) RenterDownloadsRootGet() (rdq api.RenterDownloadQueue, err error) {
+	err = c.get("/renter/downloads?root=true", &rdq)
+	return
+}
+
 // RenterDownloadHTTPResponseGet uses the /renter/download endpoint to download
 // a file and return its data.
 func (c *Client) RenterDownloadHTTPResponseGet(siaPath modules.SiaPath, offset, length uint64, disableLocalFetch, root bool) (modules.DownloadID, []byte, error) {
