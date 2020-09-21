@@ -1848,14 +1848,22 @@ func renterfilesdownloadcmd(path, destination string) {
 	if err != nil {
 		die("Couldn't parse SiaPath:", err)
 	}
-	_, err = httpClient.RenterFileGet(siaPath)
+	if renterDownloadRoot {
+		_, err = httpClient.RenterFileRootGet(siaPath)
+	} else {
+		_, err = httpClient.RenterFileGet(siaPath)
+	}
 	if err == nil {
 		renterfilesdownload(path, destination, renterDownloadRoot)
 		return
 	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download file:", err)
 	}
-	_, err = httpClient.RenterDirGet(siaPath)
+	if renterDownloadRoot {
+		_, err = httpClient.RenterDirRootGet(siaPath)
+	} else {
+		_, err = httpClient.RenterDirGet(siaPath)
+	}
 	if err == nil {
 		renterdirdownload(path, destination, renterDownloadRoot)
 		return
