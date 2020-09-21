@@ -1689,7 +1689,7 @@ Contract %v
 // location. It returns all the files for which a download was initialized as
 // tracked files and the ones which were ignored as skipped. Errors are composed
 // into a single error.
-func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile, skipped []string, totalSize uint64, err error) {
+func downloadDir(siaPath modules.SiaPath, destination string, root bool) (tfs []trackedFile, skipped []string, totalSize uint64, err error) {
 	// Get dir info.
 	rd, err := httpClient.RenterDirGet(siaPath)
 	if err != nil {
@@ -1714,7 +1714,7 @@ func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile
 		}
 		// Download file.
 		totalSize += file.Filesize
-		_, err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true)
+		_, err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true, root)
 		if err != nil {
 			err = errors.AddContext(err, "Failed to start download")
 			return
@@ -1732,7 +1732,7 @@ func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile
 	// Call downloadDir on all subdirs.
 	for i := 1; i < len(rd.Directories); i++ {
 		subDir := rd.Directories[i]
-		rtfs, rskipped, totalSubSize, rerr := downloadDir(subDir.SiaPath, filepath.Join(destination, subDir.SiaPath.Name()))
+		rtfs, rskipped, totalSubSize, rerr := downloadDir(subDir.SiaPath, filepath.Join(destination, subDir.SiaPath.Name()), root)
 		tfs = append(tfs, rtfs...)
 		skipped = append(skipped, rskipped...)
 		totalSize += totalSubSize
@@ -1743,7 +1743,7 @@ func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile
 
 // renterfilesdownload downloads the dir at the given path from the Sia network
 // to the local specified destination.
-func renterdirdownload(path, destination string) {
+func renterdirdownload(path, destination string, root bool) {
 	destination = abs(destination)
 	// Parse SiaPath.
 	siaPath, err := modules.NewSiaPath(path)
@@ -1752,7 +1752,7 @@ func renterdirdownload(path, destination string) {
 	}
 	// Download dir.
 	start := time.Now()
-	tfs, skipped, totalSize, downloadErr := downloadDir(siaPath, destination)
+	tfs, skipped, totalSize, downloadErr := downloadDir(siaPath, destination, root)
 	if renterDownloadAsync && downloadErr != nil {
 		fmt.Println("At least one error occurred when initializing the download:", downloadErr)
 	}
@@ -1850,14 +1850,14 @@ func renterfilesdownloadcmd(path, destination string) {
 	}
 	_, err = httpClient.RenterFileGet(siaPath)
 	if err == nil {
-		renterfilesdownload(path, destination)
+		renterfilesdownload(path, destination, renterDownloadRoot)
 		return
 	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download file:", err)
 	}
 	_, err = httpClient.RenterDirGet(siaPath)
 	if err == nil {
-		renterdirdownload(path, destination)
+		renterdirdownload(path, destination, renterDownloadRoot)
 		return
 	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download folder:", err)
@@ -1867,7 +1867,7 @@ func renterfilesdownloadcmd(path, destination string) {
 
 // renterfilesdownload downloads the file at the specified path from the Sia
 // network to the local specified destination.
-func renterfilesdownload(path, destination string) {
+func renterfilesdownload(path, destination string, root bool) {
 	destination = abs(destination)
 	// Parse SiaPath.
 	siaPath, err := modules.NewSiaPath(path)
@@ -1884,7 +1884,7 @@ func renterfilesdownload(path, destination string) {
 	// the call will return before the download has completed. The call is made
 	// as an async call.
 	start := time.Now()
-	cancelID, err := httpClient.RenterDownloadFullGet(siaPath, destination, true)
+	cancelID, err := httpClient.RenterDownloadFullGet(siaPath, destination, true, root)
 	if err != nil {
 		die("Download could not be started:", err)
 	}
