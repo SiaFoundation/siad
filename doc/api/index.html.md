@@ -4034,6 +4034,9 @@ httpresp.
 If disablelocalfetch is true, downloads won't be served from disk even if the
 file is available locally.
 
+**root** | boolean  
+If root is true, the provided siapath will not be prefixed with /home/user but is instead taken as an absolute path.
+
 **length** | bytes  
 Length of the requested data. Has to be <= filesize-offset.  
 
@@ -4302,6 +4305,9 @@ Path to the file in the renter on the network.
 **disablelocalfetch** | boolean  
 If disablelocalfetch is true, downloads won't be served from disk even if the
 file is available locally.
+
+**root** | boolean  
+If root is true, the provided siapath will not be prefixed with /home/user but is instead taken as an absolute path.
 
 ### Response
 
