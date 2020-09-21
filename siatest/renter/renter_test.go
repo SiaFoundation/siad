@@ -371,6 +371,21 @@ func testReceivedFieldEqualsFileSize(t *testing.T, tg *siatest.TestGroup) {
 	if d.Received != fetchLen {
 		t.Errorf("Received was %v but should be %v", d.Received, fetchLen)
 	}
+	// Compare siapaths.
+	rdgr, err := r.RenterDownloadsRootGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !d.SiaPath.Equals(rf.SiaPath()) {
+		t.Fatal(d.SiaPath.String(), rf.SiaPath().String())
+	}
+	sp, err := rf.SiaPath().Rebase(modules.RootSiaPath(), modules.UserFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rdgr.Downloads[0].SiaPath.Equals(sp) {
+		t.Fatal(d.SiaPath.String(), rf.SiaPath().String())
+	}
 }
 
 // testClearDownloadHistory makes sure that the download history is
