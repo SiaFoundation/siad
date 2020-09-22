@@ -430,7 +430,7 @@ func (fs *FileSystem) OpenSiaDirCustom(siaPath modules.SiaPath, create bool) (*D
 		if err != nil && !errors.Contains(err, ErrExists) {
 			return nil, err
 		}
-		return fs.OpenSiaDir(siaPath)
+		return fs.managedOpenSiaDir(siaPath)
 	}
 	return dn, err
 }
