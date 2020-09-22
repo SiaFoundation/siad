@@ -670,6 +670,11 @@ func (fs *FileSystem) managedNewSiaFile(relPath string, source string, ec module
 // filesystem tree.
 func (fs *FileSystem) managedOpenSiaDir(siaPath modules.SiaPath) (*DirNode, error) {
 	if siaPath.IsRoot() {
+		// Make sure the metadata exists.
+		_, err := os.Stat(filepath.Join(fs.absPath(), modules.SiaDirExtension))
+		if os.IsNotExist(err) {
+			return nil, ErrNotExist
+		}
 		return fs.DirNode.managedCopy(), nil
 	}
 	dir, err := fs.DirNode.managedOpenDir(siaPath.String())
