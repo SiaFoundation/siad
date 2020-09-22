@@ -371,6 +371,21 @@ func testReceivedFieldEqualsFileSize(t *testing.T, tg *siatest.TestGroup) {
 	if d.Received != fetchLen {
 		t.Errorf("Received was %v but should be %v", d.Received, fetchLen)
 	}
+	// Compare siapaths.
+	rdgr, err := r.RenterDownloadsRootGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !d.SiaPath.Equals(rf.SiaPath()) {
+		t.Fatal(d.SiaPath.String(), rf.SiaPath().String())
+	}
+	sp, err := rf.SiaPath().Rebase(modules.RootSiaPath(), modules.UserFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rdgr.Downloads[0].SiaPath.Equals(sp) {
+		t.Fatal(d.SiaPath.String(), rf.SiaPath().String())
+	}
 }
 
 // testClearDownloadHistory makes sure that the download history is
@@ -408,7 +423,7 @@ func testClearDownloadHistory(t *testing.T, tg *siatest.TestGroup) {
 		// Download files to build download history
 		dest := filepath.Join(siatest.SiaTestingDir, strconv.Itoa(fastrand.Intn(math.MaxInt32)))
 		for i := 0; i < remainingDownloads; i++ {
-			_, err = r.RenterDownloadGet(rf.Files[0].SiaPath, dest, 0, rf.Files[0].Filesize, false, false)
+			_, err = r.RenterDownloadGet(rf.Files[0].SiaPath, dest, 0, rf.Files[0].Filesize, false, false, false)
 			if err != nil {
 				t.Fatal("Could not Download file:", err)
 			}
@@ -653,7 +668,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 			len(rgd.Directories)-1)
 	}
 	// Try downloading the renamed file.
-	if _, _, err := r.RenterDownloadHTTPResponseGet(rgd.Files[0].SiaPath, 0, uint64(size), true); err != nil {
+	if _, _, err := r.RenterDownloadHTTPResponseGet(rgd.Files[0].SiaPath, 0, uint64(size), true, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1420,7 +1435,7 @@ func testCancelAsyncDownload(t *testing.T, tg *siatest.TestGroup) {
 	}()
 	// Download the file asynchronously.
 	dst := filepath.Join(renter.FilesDir().Path(), "canceled_download.dat")
-	cancelID, err := renter.RenterDownloadGet(remoteFile.SiaPath(), dst, 0, fileSize, true, true)
+	cancelID, err := renter.RenterDownloadGet(remoteFile.SiaPath(), dst, 0, fileSize, true, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1503,6 +1518,33 @@ func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+	// Download the file again with root set.
+	rootPath, err := remoteFile.SiaPath().Rebase(modules.RootSiaPath(), modules.UserFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(renter.FilesDir().Path(), "root.dat")
+	_, err = renter.RenterDownloadGet(rootPath, dst, 0, uint64(fileSize), false, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst = filepath.Join(renter.FilesDir().Path(), "root2.dat")
+	_, err = renter.RenterDownloadFullGet(rootPath, dst, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = renter.RenterDownloadHTTPResponseGet(rootPath, 0, uint64(fileSize), true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = renter.RenterStreamGet(rootPath, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = renter.RenterStreamPartialGet(rootPath, 0, uint64(fileSize), false, true)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

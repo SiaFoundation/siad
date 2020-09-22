@@ -67,7 +67,7 @@ func (tn *TestNode) DownloadByStreamWithDiskFetch(rf *RemoteFile, disableLocalFe
 	if err != nil {
 		return "", nil, errors.AddContext(err, "failed to retrieve FileInfo")
 	}
-	uid, data, err = tn.RenterDownloadHTTPResponseGet(rf.SiaPath(), 0, fi.Filesize, disableLocalFetch)
+	uid, data, err = tn.RenterDownloadHTTPResponseGet(rf.SiaPath(), 0, fi.Filesize, disableLocalFetch, false)
 	if err == nil && rf.Checksum() != crypto.HashBytes(data) {
 		err = fmt.Errorf("downloaded bytes don't match requested data (len %v)", len(data))
 	}
@@ -136,7 +136,7 @@ func (tn *TestNode) DownloadToDiskPartial(rf *RemoteFile, lf *LocalFile, async b
 	// Create a random destination for the download
 	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, persist.RandomSuffix())
 	dest := filepath.Join(tn.downloadDir.path, fileName)
-	uid, err := tn.RenterDownloadGet(rf.siaPath, dest, offset, length, async, true)
+	uid, err := tn.RenterDownloadGet(rf.siaPath, dest, offset, length, async, true, false)
 	if err != nil {
 		return "", nil, errors.AddContext(err, "failed to download file")
 	}
@@ -184,7 +184,7 @@ func (tn *TestNode) DownloadToDiskWithDiskFetch(rf *RemoteFile, async bool, disa
 	// Create a random destination for the download
 	fileName := fmt.Sprintf("%dbytes %s", fi.Filesize, persist.RandomSuffix())
 	dest := filepath.Join(tn.downloadDir.path, fileName)
-	uid, err := tn.RenterDownloadGet(rf.SiaPath(), dest, 0, fi.Filesize, async, disableLocalFetch)
+	uid, err := tn.RenterDownloadGet(rf.SiaPath(), dest, 0, fi.Filesize, async, disableLocalFetch, false)
 	if err != nil {
 		return "", nil, errors.AddContext(err, "failed to download file")
 	}
@@ -288,7 +288,7 @@ func (tn *TestNode) Stream(rf *RemoteFile) (data []byte, err error) {
 // range [from;to]. A local file can be provided optionally to implicitly check
 // the checksum of the downloaded data.
 func (tn *TestNode) StreamPartial(rf *RemoteFile, lf *LocalFile, from, to uint64) (data []byte, err error) {
-	data, err = tn.RenterStreamPartialGet(rf.siaPath, from, to, true)
+	data, err = tn.RenterStreamPartialGet(rf.siaPath, from, to, true, false)
 	if err != nil {
 		return
 	}
@@ -314,7 +314,7 @@ func (tn *TestNode) StreamPartial(rf *RemoteFile, lf *LocalFile, from, to uint64
 
 // StreamWithDiskFetch uses the streaming endpoint to download a file.
 func (tn *TestNode) StreamWithDiskFetch(rf *RemoteFile, disableLocalFetch bool) (data []byte, err error) {
-	data, err = tn.RenterStreamGet(rf.siaPath, disableLocalFetch)
+	data, err = tn.RenterStreamGet(rf.siaPath, disableLocalFetch, false)
 	if err == nil && rf.checksum != crypto.HashBytes(data) {
 		err = errors.New("downloaded bytes don't match requested data")
 	}

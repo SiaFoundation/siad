@@ -334,7 +334,7 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Download the file again.
-	_, downloadedData, err := r.RenterDownloadHTTPResponseGet(siaPath, 0, uint64(len(data)), true)
+	_, downloadedData, err := r.RenterDownloadHTTPResponseGet(siaPath, 0, uint64(len(data)), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
