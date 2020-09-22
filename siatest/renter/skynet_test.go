@@ -626,7 +626,7 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	// create a multipart upload that without any files
+	// create a multipart upload without any files
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
 	err := writer.Close()

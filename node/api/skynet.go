@@ -649,10 +649,6 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			WriteError(w, Error{fmt.Sprintf("failed parsing multipart request: %v", err)}, http.StatusBadRequest)
 			return
 		}
-		if len(subfiles) == 0 {
-			WriteError(w, Error{"failed parsing multipart request: no parts found"}, http.StatusBadRequest)
-			return
-		}
 
 		// Use the filename of the first subfile if it's not passed as query
 		// string parameter and there's only one subfile.
