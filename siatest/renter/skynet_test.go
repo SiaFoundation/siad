@@ -2083,6 +2083,7 @@ func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 		}
 	}
 
+	fmt.Println("small file")
 	// verify dry-run of small file
 	uploadSiaPath, err := modules.NewSiaPath(fmt.Sprintf("%s%s", t.Name(), "S"))
 	if err != nil {
@@ -2096,7 +2097,9 @@ func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 			Mode:     0640,
 		},
 	}, 100)
+	fmt.Println("small file done")
 
+	fmt.Println("large file")
 	// verify dry-run of large file
 	uploadSiaPath, err = modules.NewSiaPath(fmt.Sprintf("%s%s", t.Name(), "L"))
 	if err != nil {
@@ -2110,6 +2113,7 @@ func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 			Mode:     0640,
 		},
 	}, int(modules.SectorSize*2)+siatest.Fuzz())
+	fmt.Println("large file done")
 }
 
 // testSkynetRequestTimeout verifies that the Skylink routes timeout when a

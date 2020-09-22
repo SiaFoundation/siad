@@ -11,15 +11,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/skykey"
 )
 
-const (
-	// SkyfileDefaultPathParamName specifies the name of the form parameter that
-	// holds the default path.
-	SkyfileDefaultPathParamName = "defaultpath"
-	// SkyfileDisableDefaultPathParamName specifies the name of the form
-	// parameter that holds the disable-default-path flag.
-	SkyfileDisableDefaultPathParamName = "disabledefaultpath"
-)
-
 // SkyfileMetadata is all of the metadata that gets placed into the first 4096
 // bytes of the skyfile, and is used to set the metadata of the file when
 // writing back to disk. The data is json-encoded when it is placed into the
@@ -162,6 +153,11 @@ type SkyfileSubfileMetadata struct {
 // IsDir implements the os.FileInfo interface for SkyfileSubfileMetadata.
 func (sm SkyfileSubfileMetadata) IsDir() bool {
 	return false
+}
+
+// IsHTML returns whether or not this subfile is an HTML file
+func (sm SkyfileSubfileMetadata) IsHTML() bool {
+	return strings.HasSuffix(sm.Filename, ".html") || strings.HasSuffix(sm.Filename, ".htm")
 }
 
 // Mode implements the os.FileInfo interface for SkyfileSubfileMetadata.
