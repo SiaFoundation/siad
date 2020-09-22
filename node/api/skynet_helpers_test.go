@@ -156,7 +156,7 @@ func testParseSkylinkURL(t *testing.T) {
 type dict map[string]string
 
 // testParseUploadRequestParameters verifies the functionality of
-// 'parseUploadRequestParameters'.
+// 'parseUploadHeadersAndRequestParameters'.
 func testParseUploadRequestParameters(t *testing.T) {
 	t.Parallel()
 
@@ -184,14 +184,14 @@ func testParseUploadRequestParameters(t *testing.T) {
 		return req
 	}
 
-	// parseRequest simply wraps 'parseUploadRequestParameters' to avoid
+	// parseRequest simply wraps 'parseUploadHeadersAndRequestParameters' to avoid
 	// handling the error for every case
 	parseRequest := func(req *http.Request, ps httprouter.Params) (*skyfileUploadHeaders, *skyfileUploadParams) {
 		// if content type is not set, default to a binary stream
 		if req.Header.Get("Content-Type") == "" {
 			req.Header.Set("Content-Type", "application/octet-stream")
 		}
-		headers, params, err := parseUploadRequestParameters(req, ps)
+		headers, params, err := parseUploadHeadersAndRequestParameters(req, ps)
 		if err != nil {
 			t.Fatal("Unexpected error", err)
 		}
@@ -214,7 +214,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 
 	// verify 'Skynet-Disable-Force' - combo with 'force'
 	req = buildRequest(dict{"force": yes}, hdrs)
-	_, _, err = parseUploadRequestParameters(req, defaultParams)
+	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
 	}
@@ -242,7 +242,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 
 	// verify 'convertpath' - combo with 'filename
 	req = buildRequest(dict{"convertpath": "/foo/bar", "filename": "foo.txt"}, none)
-	_, _, err = parseUploadRequestParameters(req, defaultParams)
+	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
 	}
@@ -263,7 +263,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 
 	// verify 'disabledefaultpath' - combo with 'defaultpath'
 	req = buildRequest(dict{"defaultpath": "/foo/bar.txt", "disabledefaultpath": yes}, none)
-	_, _, err = parseUploadRequestParameters(req, defaultParams)
+	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
 	}
@@ -291,7 +291,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 
 	// verify 'force' - combo with 'dryrun
 	req = buildRequest(dict{"force": yes, "dryrun": yes}, none)
-	_, _, err = parseUploadRequestParameters(req, defaultParams)
+	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
 	}
@@ -352,7 +352,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 
 	// verify 'skykeyid' - combo with 'skykeyname'
 	req = buildRequest(dict{"skykeyname": key.Name, "skykeyid": key.ID().ToString()}, none)
-	_, _, err = parseUploadRequestParameters(req, defaultParams)
+	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
 	}

@@ -158,9 +158,9 @@ func parseTimeout(queryForm url.Values) (time.Duration, error) {
 	return time.Duration(timeoutInt) * time.Second, nil
 }
 
-// parseUploadRequestParameters is a helper function that parses all of the
-// query parameters and headers from an upload request
-func parseUploadRequestParameters(req *http.Request, ps httprouter.Params) (*skyfileUploadHeaders, *skyfileUploadParams, error) {
+// parseUploadHeadersAndRequestParameters is a helper function that parses all
+// of the query parameters and headers from an upload request
+func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Params) (*skyfileUploadHeaders, *skyfileUploadParams, error) {
 	var err error
 
 	// parse 'Skynet-Disable-Force' request header

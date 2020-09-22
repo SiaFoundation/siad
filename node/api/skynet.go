@@ -628,7 +628,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	startTime := time.Now()
 
 	// parse the request headers and parameters
-	headers, params, err := parseUploadRequestParameters(req, ps)
+	headers, params, err := parseUploadHeadersAndRequestParameters(req, ps)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
@@ -652,9 +652,10 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 		// Use the filename of the first subfile if it's not passed as query
 		// string parameter and there's only one subfile.
-		if params.filename == "" && len(subfiles) == 1 {
+		var filename = params.filename
+		if filename == "" && len(subfiles) == 1 {
 			for _, sf := range subfiles {
-				params.filename = sf.Filename
+				filename = sf.Filename
 				break
 			}
 		}
@@ -671,7 +672,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 		lup.Reader = reader
 		lup.FileMetadata = modules.SkyfileMetadata{
-			Filename:           params.filename,
+			Filename:           filename,
 			Subfiles:           subfiles,
 			DefaultPath:        defaultPath,
 			DisableDefaultPath: params.disableDefaultPath,

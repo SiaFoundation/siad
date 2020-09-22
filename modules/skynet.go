@@ -157,7 +157,8 @@ func (sm SkyfileSubfileMetadata) IsDir() bool {
 
 // IsHTML returns whether or not this subfile is an HTML file
 func (sm SkyfileSubfileMetadata) IsHTML() bool {
-	return strings.HasSuffix(sm.Filename, ".html") || strings.HasSuffix(sm.Filename, ".htm")
+	extension := filepath.Ext(sm.Filename)
+	return extension == ".html" || extension == ".htm"
 }
 
 // Mode implements the os.FileInfo interface for SkyfileSubfileMetadata.
