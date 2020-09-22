@@ -15,6 +15,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -547,8 +548,12 @@ func testNotModified(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
+	// we use an unsafe client as it directly returns the http response object,
+	// and we don't want to expose such methods on the actual client.
+	uc := client.NewUnsafeClient(r.Client)
+
 	// download the skylink
-	resp, err := r.SkynetSkylinkGetWithETag(skylink, "")
+	resp, err := uc.SkynetSkylinkGetWithETag(skylink, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -557,8 +562,8 @@ func testNotModified(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// verify ETag header is set
-	ETag := resp.Header.Get("ETag")
-	if ETag == "" {
+	eTag := resp.Header.Get("ETag")
+	if eTag == "" {
 		t.Fatal("Unexpected ETag response header")
 	}
 
@@ -570,12 +575,12 @@ func testNotModified(t *testing.T, tg *siatest.TestGroup) {
 	if status != http.StatusOK {
 		t.Fatal("Unexpected status code")
 	}
-	if header.Get("ETag") == ETag {
+	if header.Get("ETag") == eTag {
 		t.Fatal("Unexpected ETag response header")
 	}
 
 	// download the skylink but now pass the ETag in the request header
-	resp, err = r.SkynetSkylinkGetWithETag(skylink, ETag)
+	resp, err = uc.SkynetSkylinkGetWithETag(skylink, eTag)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}
@@ -593,7 +598,7 @@ func testNotModified(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// verify we miss the cache if the path is altered
-	resp, err = r.SkynetSkylinkGetWithETag(skylink+"/foo", ETag)
+	resp, err = uc.SkynetSkylinkGetWithETag(skylink+"/foo", eTag)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}
@@ -602,7 +607,7 @@ func testNotModified(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// verify we miss the cache if format is passed
-	resp, err = r.SkynetSkylinkGetWithETag(skylink+"?format="+string(modules.SkyfileFormatZip), ETag)
+	resp, err = uc.SkynetSkylinkGetWithETag(skylink+"?format="+string(modules.SkyfileFormatZip), eTag)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}
@@ -611,12 +616,12 @@ func testNotModified(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// verify this has an affect on the returned ETag
-	if resp.Header.Get("ETag") == ETag {
+	if resp.Header.Get("ETag") == eTag {
 		t.Fatal("Unexpected ETag")
 	}
 
 	// verify we miss the cache if nocache=1 is supplied
-	resp, err = r.SkynetSkylinkGetWithETag(skylink+"?nocache=1", ETag)
+	resp, err = uc.SkynetSkylinkGetWithETag(skylink+"?nocache=1", ETag)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}
@@ -631,25 +636,25 @@ func testNotModified(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("Unexpected response data")
 	}
 	// verify this has no affect on the returned ETag
-	if resp.Header.Get("ETag") != ETag {
+	if resp.Header.Get("ETag") != eTag {
 		t.Fatal("Unexpected ETag")
 	}
 
 	// verify random query string params do not affect the ETag value
-	resp, err = r.SkynetSkylinkGetWithETag(skylink+"?foo=bar", "")
+	resp, err = uc.SkynetSkylinkGetWithETag(skylink+"?foo=bar", "")
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		t.Fatal("Unexpected status code", resp.StatusCode)
 	}
-	if resp.Header.Get("ETag") != ETag {
+	if resp.Header.Get("ETag") != eTag {
 		t.Fatal("Unexpected ETag", resp.Header.Get("ETag"))
 	}
 
 	// verify manipulating the ETag slightly misses the cache
-	ETagCorrupted := "abcd" + ETag[4:]
-	resp, err = r.SkynetSkylinkGetWithETag(skylink+"?foo=bar", ETagCorrupted)
+	ETagCorrupted := "abcd" + eTag[4:]
+	resp, err = uc.SkynetSkylinkGetWithETag(skylink+"?foo=bar", ETagCorrupted)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}

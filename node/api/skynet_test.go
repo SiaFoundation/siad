@@ -24,7 +24,7 @@ func TestBuildETag(t *testing.T) {
 	}
 
 	eTag := buildETag(skylink, "GET", path, format)
-	if eTag != "0f93d92d7cb79e11e948038ed24d0541dedadb9fc84993b9a8f9e323376e2bfa" {
+	if eTag != "a58dd03937cacfeaa6974c8d12c1758bc05d8a49777eda3be52a9ba701364804" {
 		t.Fatal("unexpected output")
 	}
 

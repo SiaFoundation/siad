@@ -15,6 +15,13 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+// SkynetSkylinkGetWithETag uses the /skynet/skylink endpoint to download a
+// skylink file setting the given ETag as value in the If-None-Match request
+// header.
+func (uc *UnsafeClient) SkynetSkylinkGetWithETag(skylink string, eTag string) (*http.Response, error) {
+	return uc.GetWithHeaders(skylinkQueryWithValues(skylink, url.Values{}), Headers{"If-None-Match": eTag})
+}
+
 // RenterSkyfileGet wraps RenterFileRootGet to query a skyfile.
 func (c *Client) RenterSkyfileGet(siaPath modules.SiaPath, root bool) (rf api.RenterFile, err error) {
 	if !root {
@@ -30,16 +37,6 @@ func (c *Client) RenterSkyfileGet(siaPath modules.SiaPath, root bool) (rf api.Re
 // file.
 func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, modules.SkyfileMetadata, error) {
 	return c.SkynetSkylinkGetWithTimeout(skylink, -1)
-}
-
-// SkynetSkylinkGetWithETag uses the /skynet/skylink endpoint to download a
-// skylink file setting the given ETag as value in the If-None-Match request
-// header.
-func (c *Client) SkynetSkylinkGetWithETag(skylink string, ETag string) (*http.Response, error) {
-	query := skylinkQueryWithValues(skylink, url.Values{})
-	headers := make(Headers)
-	headers["If-None-Match"] = ETag
-	return c.getResponseWithHeaders(query, headers)
 }
 
 // SkynetSkylinkGetWithTimeout uses the /skynet/skylink endpoint to download a

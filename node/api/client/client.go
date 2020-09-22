@@ -67,6 +67,23 @@ func (uc *UnsafeClient) Get(resource string, obj interface{}) error {
 	return uc.get(resource, obj)
 }
 
+// GetWithHeaders requests the specified resource using the given
+// request headers.
+func (uc *UnsafeClient) GetWithHeaders(resource string, headers Headers) (*http.Response, error) {
+	req, err := uc.NewRequest("GET", resource, nil)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to construct GET request")
+	}
+
+	// Decorate the headers on the request object
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	httpClient := http.Client{CheckRedirect: uc.CheckRedirect}
+	return httpClient.Do(req)
+}
+
 // New creates a new Client using the provided address. The password will be set
 // using build.APIPassword and the user agent will be set to "Sia-Agent". Both
 // can be changed manually by the caller after the client is returned.
@@ -146,35 +163,6 @@ func (c *Client) getRawResponse(resource string) (http.Header, []byte, error) {
 	defer drainAndClose(reader)
 	d, err := ioutil.ReadAll(reader)
 	return header, d, errors.AddContext(err, "failed to read all bytes from reader")
-}
-
-// getResponseWithHeaders requests the specified resource using the given
-// request headers.
-func (c *Client) getResponseWithHeaders(resource string, headers Headers) (*http.Response, error) {
-	req, err := c.NewRequest("GET", resource, nil)
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to construct GET request")
-	}
-
-	// Decorate the headers on the request object
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-
-	httpClient := http.Client{CheckRedirect: c.CheckRedirect}
-	res, err := httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	// Add ErrAPICallNotRecognized if StatusCode is StatusModuleNotLoaded to
-	// allow for handling of modules that are not loaded
-	if res.StatusCode == api.StatusModuleNotLoaded || res.StatusCode == api.StatusModuleDisabled {
-		err = errors.Compose(readAPIError(res.Body), api.ErrAPICallNotRecognized)
-		return nil, errors.AddContext(err, "unable to perform GET on "+resource)
-	}
-
-	return res, nil
 }
 
 // getReaderResponse requests the specified resource. The response, if provided,
@@ -294,8 +282,7 @@ func (c *Client) postRawResponse(resource string, body io.Reader) (http.Header, 
 	// if the caller is performing a multipart form-data upload he can do so by
 	// using `postRawResponseWithHeaders` and manually set the Content-Type
 	// header himself.
-	headers := make(Headers)
-	headers["Content-Type"] = "application/x-www-form-urlencoded"
+	headers := Headers{"Content-Type": "application/x-www-form-urlencoded"}
 	return c.postRawResponseWithHeaders(resource, body, headers)
 }
 
