@@ -749,6 +749,16 @@ func (n *DirNode) openDir(dirName string) (*DirNode, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Make sure the metadata exists too.
+	dirMDPath := filepath.Join(dirPath, modules.SiaDirExtension)
+	_, err = os.Stat(dirMDPath)
+	if os.IsNotExist(err) {
+		return nil, ErrNotExist
+	}
+	if err != nil {
+		return nil, err
+	}
+	// Add the dir to the opened dirs.
 	dir = &DirNode{
 		node:        newNode(n, dirPath, dirName, 0, n.staticWal, n.staticLog),
 		directories: make(map[string]*DirNode),

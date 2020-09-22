@@ -175,7 +175,7 @@ func TestUpdateSiaDirSetMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry, err := fs.OpenSiaDir(sp)
+	entry, err := fs.OpenSiaDir(sp, false)
 	if err != nil {
 		t.Fatal(err)
 	}

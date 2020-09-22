@@ -136,7 +136,7 @@ func (r *Renter) LoadBackup(src string, secret []byte) (err error) {
 	defer r.tg.Done()
 
 	// Only load a backup if there are no siafiles yet.
-	root, err := r.staticFileSystem.OpenSiaDir(modules.UserFolder)
+	root, err := r.staticFileSystem.OpenSiaDir(modules.UserFolder, false)
 	if err != nil {
 		return err
 	}
@@ -297,7 +297,7 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 					return err
 				}
 			}
-			entry, err := r.staticFileSystem.OpenSiaDir(siaPath)
+			entry, err := r.staticFileSystem.OpenSiaDir(siaPath, false)
 			if err != nil {
 				return err
 			}
@@ -384,7 +384,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 				return errors.AddContext(err, fmt.Sprintf("could not create dir at  %v", siaPath))
 			}
 			// Update the metadata.
-			dirEntry, err := r.staticFileSystem.OpenSiaDir(siaPath)
+			dirEntry, err := r.staticFileSystem.OpenSiaDir(siaPath, false)
 			if err != nil {
 				return errors.AddContext(err, fmt.Sprintf("could not open dir at %v", siaPath))
 			}

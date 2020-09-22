@@ -104,7 +104,7 @@ func (fm *fuseManager) Mount(mountPoint string, sp modules.SiaPath, opts modules
 	}
 
 	// Get the mountpoint's root from the filesystem.
-	rootDirNode, err := fm.renter.staticFileSystem.OpenSiaDir(sp)
+	rootDirNode, err := fm.renter.staticFileSystem.OpenSiaDir(sp, false)
 	if err != nil {
 		return errors.AddContext(err, "unable to open the mounted siapath in the filesystem")
 	}

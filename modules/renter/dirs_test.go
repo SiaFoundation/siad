@@ -74,7 +74,7 @@ func TestRenterCreateDirectories(t *testing.T) {
 // initialized correctly and the metadata file exist and contain the correct
 // information
 func (rt *renterTester) checkDirInitialized(siaPath modules.SiaPath) (err error) {
-	siaDir, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath)
+	siaDir, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath, false)
 	if err != nil {
 		return fmt.Errorf("unable to load directory %v metadata: %v", siaPath, err)
 	}
@@ -166,11 +166,11 @@ func TestDirInfo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fooEntry, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath)
+	fooEntry, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootEntry, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath())
+	rootEntry, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath(), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,20 +263,20 @@ func TestRenterListDirectory(t *testing.T) {
 	}
 
 	// Verify that the directory information matches the on disk information
-	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath())
+	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath(), false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	rootDir.Close()
-	fooDir, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath)
+	fooDir, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	homeDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.HomeFolder)
+	homeDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.HomeFolder, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshotsDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.BackupFolder)
+	snapshotsDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.BackupFolder, false)
 	if err != nil {
 		t.Fatal(err)
 	}

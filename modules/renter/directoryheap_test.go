@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"os"
 	"reflect"
 	"testing"
 
@@ -13,7 +14,7 @@ import (
 // updateSiaDirHealth is a helper method to update the health and the aggregate
 // health of a siadir
 func (r *Renter) updateSiaDirHealth(siaPath modules.SiaPath, health, aggregateHealth float64) (err error) {
-	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath)
+	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath, false)
 	if err != nil {
 		return err
 	}
@@ -224,6 +225,25 @@ func TestDirectoryHeap(t *testing.T) {
 	}
 	if !d.staticSiaPath.Equals(modules.RootSiaPath()) {
 		t.Fatal("Directory should be root directory but is", d.staticSiaPath)
+	}
+
+	// Make sure pushing an unexplored dir that doesn't exist works.
+	randomSP, err := modules.RootSiaPath().Join(modules.RandomSiaPath().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.managedPushUnexploredDirectory(randomSP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Try again but this time just remove the .siadir file.
+	err = os.Remove(randomSP.SiaDirMetadataSysPath(rt.renter.staticFileSystem.Root()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.managedPushUnexploredDirectory(randomSP)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
