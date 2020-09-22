@@ -424,7 +424,7 @@ func (fs *FileSystem) OpenSiaDir(siaPath modules.SiaPath) (*DirNode, error) {
 // exist.
 func (fs *FileSystem) OpenSiaDirCustom(siaPath modules.SiaPath, create bool) (*DirNode, error) {
 	dn, err := fs.managedOpenSiaDir(siaPath)
-	if create && err != nil && errors.Contains(err, ErrNotExist) {
+	if create && errors.Contains(err, ErrNotExist) {
 		// If siadir doesn't exist create one
 		err = fs.NewSiaDir(siaPath, modules.DefaultDirPerm)
 		if err != nil && !errors.Contains(err, ErrExists) {
