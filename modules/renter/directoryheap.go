@@ -304,8 +304,8 @@ func (r *Renter) managedPushSubDirectories(d *directory) error {
 // managedPushUnexploredDirectory reads the health from the siadir metadata and
 // pushes an unexplored directory element onto the heap
 func (r *Renter) managedPushUnexploredDirectory(siaPath modules.SiaPath) (err error) {
-	// Grab the siadir metadata.
-	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath)
+	// Grab the siadir metadata. If it doesn't exist, create it.
+	siaDir, err := r.staticFileSystem.OpenSiaDirCustom(siaPath, true)
 	if err != nil {
 		return err
 	}

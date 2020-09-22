@@ -245,13 +245,10 @@ func TestOpenSiaDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer foo.Close()
-	// Create dir /sub/foo
+	// Create dir /sub/foo. This time don't use NewSiaDir but OpenSiaDir with
+	// the create flag set to `true`.
 	sp = newSiaPath("sub/foo")
-	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != nil {
-		t.Fatal(err)
-	}
-	// Open the newly created dir.
-	sd, err := fs.OpenSiaDir(sp)
+	sd, err := fs.OpenSiaDirCustom(sp, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -466,7 +463,7 @@ func TestCloseSiaDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sd2, err := fs.OpenSiaDir(sp)
+	sd2, err := fs.OpenSiaDirCustom(sp, true)
 	if err != nil {
 		t.Fatal(err)
 	}
