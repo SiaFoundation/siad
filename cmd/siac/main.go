@@ -71,16 +71,17 @@ var (
 	skykeyType            string // Type used to create a new Skykey.
 
 	// Skynet Flags
-	skynetBlacklistHash  bool   // Indicates if the input for the blacklist is already a hash.
-	skynetDownloadPortal string // Portal to use when trying to download a skylink.
-	skynetLsRecursive    bool   // List files of folder recursively.
-	skynetLsRoot         bool   // Use root as the base instead of the Skynet folder.
-	skynetPinPortal      string // Portal to use when trying to pin a skylink.
-	skynetUnpinRoot      bool   // Use root as the base instead of the Skynet folder.
-	skynetUploadDryRun   bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
-	skynetUploadRoot     bool   // Use root as the base instead of the Skynet folder.
-	skynetUploadSilent   bool   // Don't report progress while uploading
-	skynetPortalPublic   bool   // Specify if a portal is public or not
+	skynetBlacklistHash    bool   // Indicates if the input for the blacklist is already a hash.
+	skynetDownloadPortal   string // Portal to use when trying to download a skylink.
+	skynetLsRecursive      bool   // List files of folder recursively.
+	skynetLsRoot           bool   // Use root as the base instead of the Skynet folder.
+	skynetPinPortal        string // Portal to use when trying to pin a skylink.
+	skynetUnpinRoot        bool   // Use root as the base instead of the Skynet folder.
+	skynetUploadDryRun     bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
+	skynetUploadRoot       bool   // Use root as the base instead of the Skynet folder.
+	skynetUploadSeparately bool   // When uploading all files from a directory, upload each file separately, generating individual skylinks.
+	skynetUploadSilent     bool   // Don't report progress while uploading
+	skynetPortalPublic     bool   // Specify if a portal is public or not
 
 	// Utils Flags
 	dictionaryLanguage string // dictionary for seed utils
@@ -367,6 +368,7 @@ func initCmds() *cobra.Command {
 	skynetConvertCmd.Flags().StringVar(&skykeyID, "skykeyid", "", "Specify the skykey to be used by id.")
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadDryRun, "dry-run", false, "Perform a dry-run of the upload, returning the skylink without actually uploading the file")
+	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSeparately, "separately", "sp", false, "Upload each file separately, generating individual skylinks")
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSilent, "silent", "s", false, "Don't report progress while uploading")
 	skynetUploadCmd.Flags().StringVar(&skykeyName, "skykeyname", "", "Specify the skykey to be used by name.")
 	skynetUploadCmd.Flags().StringVar(&skykeyID, "skykeyid", "", "Specify the skykey to be used by id.")
