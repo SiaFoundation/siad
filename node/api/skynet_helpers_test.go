@@ -17,8 +17,8 @@ import (
 )
 
 // TestSkynetHelpers is a convenience function that wraps all of the Skynet
-// helper tests, this ensures these tests are ran when running `TestSkynet` from
-// the command line.
+// helper tests, this ensures these tests are ran when supplying `-run
+// TestSkynet` from the command line.
 func TestSkynetHelpers(t *testing.T) {
 	t.Run("ParseSkylinkURL", testParseSkylinkURL)
 	t.Run("ParseUploadRequestParameters", testParseUploadRequestParameters)
