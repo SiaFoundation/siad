@@ -415,7 +415,7 @@ func TestRenterRenameFile(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = rt.renter.staticFileSystem.OpenSiaDir(siaPathWithDir, false)
+		_, err = rt.renter.staticFileSystem.OpenSiaDir(siaPathWithDir)
 		if err != nil {
 			t.Fatal(err)
 		}

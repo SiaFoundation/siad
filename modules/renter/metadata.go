@@ -370,7 +370,7 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (_ siadir.Met
 	}
 
 	//  Open SiaDir
-	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath, true)
+	siaDir, err := r.staticFileSystem.OpenSiaDirCustom(siaPath, true)
 	if err != nil {
 		return siadir.Metadata{}, err
 	}
@@ -425,7 +425,7 @@ func (r *Renter) managedUpdateLastHealthCheckTime(siaPath modules.SiaPath) error
 	}
 
 	// Write changes to disk.
-	entry, err := r.staticFileSystem.OpenSiaDir(siaPath, false)
+	entry, err := r.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil {
 		return err
 	}
@@ -475,7 +475,7 @@ func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err erro
 
 	// Update directory metadata with the health information. Don't return here
 	// to avoid skipping the repairNeeded and stuckChunkFound signals.
-	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath, false)
+	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil {
 		e := fmt.Sprintf("could not open directory %v", siaPath.String())
 		err = errors.AddContext(err, e)

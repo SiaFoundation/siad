@@ -86,7 +86,7 @@ func equalBubbledMetadata(md1, md2 siadir.Metadata, delta time.Duration) error {
 
 // openAndUpdateDir is a helper method for updating a siadir metadata
 func (rt *renterTester) openAndUpdateDir(siapath modules.SiaPath, metadata siadir.Metadata) error {
-	siadir, err := rt.renter.staticFileSystem.OpenSiaDir(siapath, false)
+	siadir, err := rt.renter.staticFileSystem.OpenSiaDir(siapath)
 	if err != nil {
 		return err
 	}
@@ -1407,7 +1407,7 @@ func TestRandomStuckFileRegression(t *testing.T) {
 	// Set the root directories metadata to have a large number of aggregate
 	// stuck chunks. Since there is only 1 stuck chunk this was causing the
 	// likelihood of the stuck file being chosen to be very low.
-	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath(), false)
+	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}

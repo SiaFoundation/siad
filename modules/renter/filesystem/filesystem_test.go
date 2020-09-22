@@ -46,7 +46,7 @@ func newTestFileSystemWithDir(name string) (*DirNode, *FileSystem, error) {
 	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != nil {
 		panic(err) // Reflect behavior of newTestFileSystemWithFile.
 	}
-	sd, err := fs.OpenSiaDir(sp, false)
+	sd, err := fs.OpenSiaDir(sp)
 	return sd, fs, err
 }
 
@@ -240,7 +240,7 @@ func TestOpenSiaDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Open the newly created dir.
-	foo, err := fs.OpenSiaDir(sp, false)
+	foo, err := fs.OpenSiaDir(sp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +248,7 @@ func TestOpenSiaDir(t *testing.T) {
 	// Create dir /sub/foo. This time don't use NewSiaDir but OpenSiaDir with
 	// the create flag set to `true`.
 	sp = newSiaPath("sub/foo")
-	sd, err := fs.OpenSiaDir(sp, true)
+	sd, err := fs.OpenSiaDirCustom(sp, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestOpenSiaDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Open the root node manually and confirm that they are the same.
-	rootSD, err := fs.OpenSiaDir(modules.RootSiaPath(), false)
+	rootSD, err := fs.OpenSiaDir(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestOpenSiaDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Open the newly created dir again.
-	sd2, err := fs.OpenSiaDir(sp, false)
+	sd2, err := fs.OpenSiaDir(sp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,7 @@ func TestOpenSiaDir(t *testing.T) {
 		t.Fatal("sd and sd1's threads don't contain the right uids")
 	}
 	// Open /sub manually and make sure that subDir and sdSub are consistent.
-	sdSub, err := fs.OpenSiaDir(newSiaPath("sub"), false)
+	sdSub, err := fs.OpenSiaDir(newSiaPath("sub"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +437,7 @@ func TestCloseSiaDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Open the newly created dir.
-	sd, err := fs.OpenSiaDir(sp, false)
+	sd, err := fs.OpenSiaDir(sp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -459,11 +459,11 @@ func TestCloseSiaDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Open the dir again. This time twice.
-	sd1, err := fs.OpenSiaDir(sp, false)
+	sd1, err := fs.OpenSiaDir(sp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sd2, err := fs.OpenSiaDir(sp, true)
+	sd2, err := fs.OpenSiaDirCustom(sp, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -776,7 +776,7 @@ func TestThreadedAccess(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				sd, err := fs.OpenSiaDir(sp, false)
+				sd, err := fs.OpenSiaDir(sp)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -858,7 +858,7 @@ func TestSiaDirRename(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		entry, err := fs.OpenSiaDir(sp, false)
+		entry, err := fs.OpenSiaDir(sp)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -897,12 +897,12 @@ func TestSiaDirRename(t *testing.T) {
 			t.Fatal(err)
 		}
 		// Open entry with old dir. Shouldn't work.
-		_, err := fs.OpenSiaDir(oldDir, false)
+		_, err := fs.OpenSiaDir(oldDir)
 		if err != ErrNotExist {
 			t.Fatal("shouldn't be able to open old path", oldDir.String(), err)
 		}
 		// Open entry with new dir. Should succeed.
-		entry, err := fs.OpenSiaDir(newDir, false)
+		entry, err := fs.OpenSiaDir(newDir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1460,7 +1460,7 @@ func TestSiaDirDelete(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		entry, err := fs.OpenSiaDir(sp, false)
+		entry, err := fs.OpenSiaDir(sp)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1593,7 +1593,7 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		entry, err := fs.OpenSiaDir(sp, false)
+		entry, err := fs.OpenSiaDir(sp)
 		// 50% chance to close the dir.
 		if fastrand.Intn(2) == 0 {
 			entry.Close()
@@ -1646,7 +1646,7 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 		// Open entry with old dir. Shouldn't work.
-		_, err := fs.OpenSiaDir(oldDir, false)
+		_, err := fs.OpenSiaDir(oldDir)
 		if err != ErrNotExist {
 			t.Fatal("shouldn't be able to open old path", oldDir.String(), err)
 		}
@@ -1655,7 +1655,7 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 		// Open entry with new dir. Should succeed.
-		entry, err := fs.OpenSiaDir(newDir, false)
+		entry, err := fs.OpenSiaDir(newDir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1711,7 +1711,7 @@ func TestRenameDirInMemory(t *testing.T) {
 	}
 
 	// Access dir with another instance
-	entry2, err := fs.OpenSiaDir(siaPath, false)
+	entry2, err := fs.OpenSiaDir(siaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1840,7 +1840,7 @@ func TestDeleteDirInMemory(t *testing.T) {
 	// Test deleting an instance of a dir
 	//
 	// Access the dir again
-	entry2, err := fs.OpenSiaDir(dirPath, false)
+	entry2, err := fs.OpenSiaDir(dirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1891,7 +1891,7 @@ func TestDeleteDirInMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Get the entry.
-	entry3, err := fs.OpenSiaDir(dirPath, false)
+	entry3, err := fs.OpenSiaDir(dirPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1942,7 +1942,7 @@ func TestLazySiaDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Open the newly created dir.
-	foo, err := fs.OpenSiaDir(sp, false)
+	foo, err := fs.OpenSiaDir(sp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1962,7 +1962,7 @@ func TestLazySiaDir(t *testing.T) {
 		t.Fatal("fooRoot doesn't have lazydir set")
 	}
 	// Open foo again.
-	foo2, err := fs.OpenSiaDir(sp, false)
+	foo2, err := fs.OpenSiaDir(sp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1984,7 +1984,7 @@ func TestOpenCloseRoot(t *testing.T) {
 	root := filepath.Join(testDir(t.Name()), "fs-root")
 	fs := newTestFileSystem(root)
 
-	rootNode, err := fs.OpenSiaDir(modules.RootSiaPath(), false)
+	rootNode, err := fs.OpenSiaDir(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2015,7 +2015,7 @@ func TestFailedOpenFileFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Open "foo" as a dir.
-	_, err = fs.OpenSiaDir(foo, false)
+	_, err = fs.OpenSiaDir(foo)
 	if err != ErrNotExist {
 		t.Fatal("err should be ErrNotExist but was", err)
 	}
@@ -2108,7 +2108,7 @@ func testFileDirConflict(t *testing.T, open bool) {
 
 	if open {
 		// Open the dir. This shouldn't affect later checks.
-		node, err := fs.OpenSiaDir(dirpath, false)
+		node, err := fs.OpenSiaDir(dirpath)
 		if err != nil {
 			t.Fatal(err)
 		}

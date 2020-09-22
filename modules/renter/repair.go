@@ -315,7 +315,7 @@ func (r *Renter) managedStuckFile(dirSiaPath modules.SiaPath) (siapath modules.S
 	// NOTE: using the aggregate number of stuck chunks assumes that the
 	// directory and the files within the directory are in sync. This is ok to
 	// do as the risks associated with being out of sync are low.
-	siaDir, err := r.staticFileSystem.OpenSiaDir(dirSiaPath, false)
+	siaDir, err := r.staticFileSystem.OpenSiaDir(dirSiaPath)
 	if err != nil {
 		return modules.SiaPath{}, errors.AddContext(err, "unable to open siaDir "+dirSiaPath.String())
 	}
