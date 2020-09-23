@@ -110,10 +110,11 @@ suites, respectively. Finally, `make cover` will generate code coverage reports
 for each package; they are stored in the `cover` folder and can be viewed in
 your browser.
 
-### Running Sia on a Raspberry Pi
+Official Releases
+--------------------
+Official binaries can be found under
+[Releases](https://gitlab.com/NebulousLabs/Sia/-/releases) or on
+[sia.tech](https://sia.tech/get-started).
 
-Official binaries are not provided for the Raspberry Pi, but you can easily
-compile them yourself by installing the Go toolchain on your Raspberry Pi.
-Alternatively, you can cross-compile by running `GOOS=linux GOARCH=arm64 make`.
-Raspberry Pi compatible binaries will then be installed in
-`$GOPATH/bin/linux_arm64/`.
+Additionally, an official Docker image can be found
+[here](https://hub.docker.com/r/nebulouslabs/sia).
