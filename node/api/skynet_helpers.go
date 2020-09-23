@@ -27,7 +27,7 @@ type (
 	skyfileUploadParams struct {
 		baseChunkRedundancy uint8
 		defaultPath         string
-		convertpath         string
+		convertPath         string
 		disableDefaultPath  bool
 		dryRun              bool
 		filename            string
@@ -35,7 +35,7 @@ type (
 		mode                os.FileMode
 		root                bool
 		siaPath             modules.SiaPath
-		skyKeyId            skykey.SkykeyID
+		skyKeyID            skykey.SkykeyID
 		skyKeyName          string
 	}
 
@@ -312,7 +312,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 	}
 	params := &skyfileUploadParams{
 		baseChunkRedundancy: baseChunkRedundancy,
-		convertpath:         convertPath,
+		convertPath:         convertPath,
 		defaultPath:         defaultPath,
 		disableDefaultPath:  disableDefaultPath,
 		dryRun:              dryRun,
@@ -321,7 +321,7 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 		mode:                mode,
 		root:                root,
 		siaPath:             siaPath,
-		skyKeyId:            skykeyID,
+		skyKeyID:            skykeyID,
 		skyKeyName:          skykeyName,
 	}
 	return headers, params, nil

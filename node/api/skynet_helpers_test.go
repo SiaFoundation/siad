@@ -236,7 +236,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 	// verify 'convertpath'
 	req = buildRequest(dict{"convertpath": "/foo/bar"}, none)
 	_, params = parseRequest(req, defaultParams)
-	if params.convertpath != "/foo/bar" {
+	if params.convertPath != "/foo/bar" {
 		t.Fatal("Unexpected")
 	}
 
@@ -346,7 +346,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 	// verify 'skykeyid'
 	req = buildRequest(dict{"skykeyid": keyIdStr}, none)
 	_, params = parseRequest(req, defaultParams)
-	if params.skyKeyId.ToString() != keyIdStr {
+	if params.skyKeyID.ToString() != keyIdStr {
 		t.Fatal("Unexpected")
 	}
 

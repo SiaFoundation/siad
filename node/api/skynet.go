@@ -687,12 +687,12 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 	// Set encryption key details
 	lup.SkykeyName = params.skyKeyName
-	lup.SkykeyID = params.skyKeyId
+	lup.SkykeyID = params.skyKeyID
 
 	// Check whether this is a streaming upload or a siafile conversion. If no
 	// convert path is provided, assume that the req.Body will be used as a
 	// streaming upload.
-	if params.convertpath == "" {
+	if params.convertPath == "" {
 		// Ensure we have a valid filename.
 		if err = modules.ValidatePathString(lup.FileMetadata.Filename, false); err != nil {
 			WriteError(w, Error{fmt.Sprintf("invalid filename provided: %v", err)}, http.StatusBadRequest)
@@ -741,7 +741,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 
 	// There is a convert path.
-	convertPath, err := modules.NewSiaPath(params.convertpath)
+	convertPath, err := modules.NewSiaPath(params.convertPath)
 	if err != nil {
 		WriteError(w, Error{"invalid convertpath provided: " + err.Error()}, http.StatusBadRequest)
 		return
