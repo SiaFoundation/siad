@@ -15,12 +15,12 @@ import (
 )
 
 // TODO: F/Us
-// - cap max entries (only LRU in memory rest on disk)
-// - purge expired entries
+// - use LRU for limited entries in memory, rest on disk
 // - optimize locking by locking each entry individually
+// - correctly handle shrinking the registry
 const (
-	// persistedEntrySize is the size of a marshaled entry on disk.
-	persistedEntrySize = 256
+	// PersistedEntrySize is the size of a marshaled entry on disk.
+	PersistedEntrySize = 256
 
 	// registryVersion is the version at the beginning of the registry on disk
 	// for future compatibility changes.
@@ -75,11 +75,11 @@ func (v value) mapKey() crypto.Hash {
 }
 
 // New creates a new registry or opens an existing one.
-func New(path string, wal *writeaheadlog.WAL) (_ *Registry, err error) {
+func New(path string, wal *writeaheadlog.WAL, maxEntries uint64) (_ *Registry, err error) {
 	f, err := os.OpenFile(path, os.O_RDWR, modules.DefaultFilePerm)
 	if os.IsNotExist(err) {
 		// try creating a new one
-		f, err = initRegistry(path, wal)
+		f, err = initRegistry(path, wal, maxEntries)
 	}
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to open store")
@@ -94,7 +94,7 @@ func New(path string, wal *writeaheadlog.WAL) (_ *Registry, err error) {
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to sanity check store size")
 	}
-	if fi.Size()%int64(persistedEntrySize) != 0 || fi.Size() == 0 {
+	if fi.Size()%int64(PersistedEntrySize) != 0 || fi.Size() == 0 {
 		return nil, errors.New("expected size of store to be multiple of entry size and not 0")
 	}
 	// Prepare the reader by seeking to the beginning of the file.
@@ -110,13 +110,17 @@ func New(path string, wal *writeaheadlog.WAL) (_ *Registry, err error) {
 	}
 	// Create the registry.
 	reg := &Registry{
-		staticPath: path,
-		staticWAL:  wal,
+		staticPath:  path,
+		staticWAL:   wal,
+		staticUsage: newBitfield(maxEntries),
 	}
 	// The first page is always in use.
-	reg.staticUsage.Set(0)
+	err = reg.staticUsage.Set(0)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to set bit for metadata page")
+	}
 	// Load the remaining entries.
-	reg.entries, err = loadRegistryEntries(r, fi.Size()/persistedEntrySize)
+	reg.entries, err = loadRegistryEntries(r, fi.Size()/PersistedEntrySize)
 	return reg, nil
 }
 
@@ -156,7 +160,11 @@ func (r *Registry) Update(rv modules.RegistryValue, pubKey types.SiaPublicKey, e
 	} else if !exists {
 		// The entry doesn't exist yet. So we need to create it. To do so we search
 		// for the first available slot on disk.
-		v.staticIndex = int64(r.staticUsage.SetFirst())
+		bit, err := r.staticUsage.SetRandom()
+		if err != nil {
+			return false, errors.AddContext(err, "failed to obtain free slot")
+		}
+		v.staticIndex = int64(bit)
 	}
 
 	// Write the entry to disk.

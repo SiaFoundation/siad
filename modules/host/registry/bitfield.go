@@ -1,8 +1,10 @@
 package registry
 
 import (
+	"fmt"
 	"math"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -10,13 +12,22 @@ type (
 	bitfield []uint64
 )
 
-// SetFirst finds the first unused gap in the bitfield and sets it.
-func (b *bitfield) SetFirst() uint64 {
-	// If the bitfield is empty, set 0.
-	if len(*b) == 0 {
-		b.Set(0)
-		return 0
+// ErrNoFreeBit is returned by SetRandom if no free bit was found.
+var ErrNoFreeBit = errors.New("no free bit available in bitfield")
+
+// newBitfield creates a new bitfield which can set n bits.
+// NOTE: The bitfield will round up to the nearest multiple of 64.
+func newBitfield(nBits uint64) bitfield {
+	if nBits%64 != 0 {
+		nBits /= 64
+		nBits++
+		nBits *= 64
 	}
+	return make([]uint64, nBits/64)
+}
+
+// SetRandom finds an unset bitfield and sets it.
+func (b *bitfield) SetRandom() (uint64, error) {
 	// Search for a gap. Start at a random position.
 	initialPos := fastrand.Intn(len(*b))
 	i := initialPos
@@ -27,7 +38,7 @@ func (b *bitfield) SetFirst() uint64 {
 				index := uint64(i)*64 + j
 				if !b.IsSet(index) {
 					b.Set(index)
-					return index
+					return index, nil
 				}
 			}
 			panic("b[i] != math.MaxUint64 but no bit found. This is impossible.")
@@ -44,9 +55,7 @@ func (b *bitfield) SetFirst() uint64 {
 		}
 	}
 	// No gap found. Extend the bitfield.
-	l := b.Len()
-	b.Set(l)
-	return l
+	return 0, ErrNoFreeBit
 }
 
 // IsSet returns whether the gap at the specified index is set.
@@ -68,45 +77,31 @@ func (b bitfield) Len() uint64 {
 }
 
 // Set sets a gap in the bitfield.
-func (b *bitfield) Set(index uint64) {
+func (b *bitfield) Set(index uint64) error {
 	// Each index covers 8 bytes which 8 bits each. So 64 bits in total.
 	sliceOffset := index / 64
 	bitOffset := index % 64
 
 	// Extend bitfield if necessary.
 	for sliceOffset >= uint64(len(*b)) {
-		*b = append(*b, 0)
+		return fmt.Errorf("Set: out-of-bounds %v >= %v", sliceOffset, len(*b))
 	}
 
 	(*b)[sliceOffset] |= 1 << (63 - bitOffset)
+	return nil
 }
 
 // Unset unsets a gap in the bitfield.
-func (b *bitfield) Unset(index uint64) {
+func (b *bitfield) Unset(index uint64) error {
 	// Each index covers 8 bytes which 8 bits each. So 64 bits in total.
 	sliceOffset := index / 64
 	bitOffset := index % 64
 
 	// Extend bitfield if necessary.
 	for sliceOffset >= uint64(len(*b)) {
-		*b = append(*b, 0)
+		return fmt.Errorf("Unset: out-of-bounds %v >= %v", sliceOffset, len(*b))
 	}
 
 	(*b)[sliceOffset] &= ^(1 << (63 - bitOffset))
-}
-
-// Trim trims unset gaps from the end of the bitfield.
-func (b *bitfield) Trim() {
-	toRemove := 0
-	old := *b
-	for i := len(old) - 1; i >= 0; i-- {
-		if old[i] != 0 {
-			break
-		}
-		toRemove++
-	}
-	if toRemove > 0 {
-		*b = make([]uint64, len(old)-toRemove)
-		copy(*b, old[:len(old)-toRemove])
-	}
+	return nil
 }

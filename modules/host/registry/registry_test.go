@@ -48,19 +48,19 @@ func TestNew(t *testing.T) {
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, wal)
+	r, err := New(registryPath, wal, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// The first call should simply init it. Check the size and version.
-	expected := make([]byte, persistedEntrySize)
+	expected := make([]byte, PersistedEntrySize)
 	binary.LittleEndian.PutUint64(expected, registryVersion)
 	b, err := ioutil.ReadFile(registryPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(b, expected) {
+	if !bytes.Equal(b[:PersistedEntrySize], expected) {
 		t.Fatal("metadata doesn't match")
 	}
 
@@ -84,7 +84,7 @@ func TestNew(t *testing.T) {
 
 	// Load the registry again. 'New' should load the used entry from disk but
 	// not the unused one.
-	r, err = New(registryPath, wal)
+	r, err = New(registryPath, wal, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,14 +111,13 @@ func TestUpdate(t *testing.T) {
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, wal)
+	r, err := New(registryPath, wal, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Register a value.
 	rv, v, sk := randomValue(2)
-	v.staticIndex = 1 // expected index
 	updated, err := r.Update(rv, v.key, v.expiry)
 	if err != nil {
 		t.Fatal(err)
@@ -129,7 +128,12 @@ func TestUpdate(t *testing.T) {
 	if len(r.entries) != 1 {
 		t.Fatal("registry should contain one entry", len(r.entries))
 	}
-	if vExist, exists := r.entries[v.mapKey()]; !exists || !reflect.DeepEqual(*vExist, v) {
+	vExist, exists := r.entries[v.mapKey()]
+	if !exists {
+		t.Fatal("entry doesn't exist")
+	}
+	v.staticIndex = vExist.staticIndex
+	if !reflect.DeepEqual(*vExist, v) {
 		t.Log(v)
 		t.Log(*vExist)
 		t.Fatal("registry contains wrong key-value pair")
@@ -153,7 +157,7 @@ func TestUpdate(t *testing.T) {
 	if !updated {
 		t.Fatal("key should have existed before")
 	}
-	r, err = New(registryPath, wal)
+	r, err = New(registryPath, wal, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +208,7 @@ func TestUpdate(t *testing.T) {
 	}
 
 	// Reload the registry. Only the second entry should exist.
-	r, err = New(registryPath, wal)
+	r, err = New(registryPath, wal, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,6 +250,42 @@ func TestUpdate(t *testing.T) {
 	}
 }
 
+// TestRegistryLimit checks if the bitfield of the limit enforces its
+// preallocated size.
+func TestRegistryLimit(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	dir := testDir(t.Name())
+	wal := newTestWAL(filepath.Join(dir, "wal"))
+
+	// Create a new registry.
+	registryPath := filepath.Join(dir, "registry")
+	limit := uint64(128)
+	r, err := New(registryPath, wal, limit)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add entries up until the limit.
+	for i := uint64(0); i < limit-1; i++ {
+		rv, v, _ := randomValue(0)
+		_, err = r.Update(rv, v.key, v.expiry)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Next one should fail.
+	rv, v, _ := randomValue(0)
+	_, err = r.Update(rv, v.key, v.expiry)
+	if !errors.Contains(err, ErrNoFreeBit) {
+		t.Fatal(err)
+	}
+}
+
 // TestPrune is a unit test for Prune.
 func TestPrune(t *testing.T) {
 	if testing.Short() {
@@ -258,19 +298,19 @@ func TestPrune(t *testing.T) {
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, wal)
+	r, err := New(registryPath, wal, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Add 2 entries with different expiries.
-	rv1, v1, _ := randomValue(1)
+	rv1, v1, _ := randomValue(0)
 	v1.expiry = 1
 	_, err = r.Update(rv1, v1.key, v1.expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rv2, v2, _ := randomValue(2)
+	rv2, v2, _ := randomValue(0)
 	v2.expiry = 2
 	_, err = r.Update(rv2, v2.key, v2.expiry)
 	if err != nil {
@@ -292,14 +332,19 @@ func TestPrune(t *testing.T) {
 	if len(r.entries) != 1 {
 		t.Fatal("wrong number of entries")
 	}
-	if vExist, exists := r.entries[v2.mapKey()]; !exists || !reflect.DeepEqual(*vExist, v2) {
+	vExist, exists := r.entries[v2.mapKey()]
+	if !exists {
+		t.Fatal("entry doesn't exist")
+	}
+	v2.staticIndex = vExist.staticIndex
+	if !reflect.DeepEqual(*vExist, v2) {
 		t.Log(v2)
 		t.Log(*vExist)
 		t.Fatal("registry contains wrong key-value pair")
 	}
 
 	// Restart.
-	_, err = New(registryPath, wal)
+	_, err = New(registryPath, wal, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}

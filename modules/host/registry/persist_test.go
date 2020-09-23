@@ -16,6 +16,8 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+const testingDefaultMaxEntries = 640
+
 // randomValue creates a random value object for testing and returns it both as
 // the RegistryValue and value representation.
 func randomValue(index int64) (modules.RegistryValue, value, crypto.SecretKey) {
@@ -87,7 +89,7 @@ func TestInitRegistry(t *testing.T) {
 
 	// Init the registry.
 	registryPath := filepath.Join(dir, "registry")
-	f, err := initRegistry(registryPath, wal)
+	f, err := initRegistry(registryPath, wal, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +99,7 @@ func TestInitRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi.Size() != int64(persistedEntrySize) {
+	if fi.Size() != int64(PersistedEntrySize*testingDefaultMaxEntries) {
 		t.Fatal("wrong size")
 	}
 
@@ -108,20 +110,20 @@ func TestInitRegistry(t *testing.T) {
 
 	// Compare the contents to what we expect. The version is hardcoded to
 	// prevent us from accidentally changing it without breaking this test.
-	expected := make([]byte, persistedEntrySize)
+	expected := make([]byte, PersistedEntrySize)
 	binary.LittleEndian.PutUint64(expected, uint64(1))
 	b, err := ioutil.ReadFile(registryPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(b, expected) {
+	if !bytes.Equal(b[:PersistedEntrySize], expected) {
 		t.Fatal("metadata doesn't match")
 	}
 
 	// Try to reinit the same registry again. This should fail. We check the
 	// string directly since neither os.IsExist nor errors.Contains(err,
 	// os.ErrExist) work.
-	_, err = initRegistry(registryPath, wal)
+	_, err = initRegistry(registryPath, wal, testingDefaultMaxEntries)
 	if err == nil || !strings.Contains(err.Error(), "file exists") {
 		t.Fatal(err)
 	}
@@ -147,8 +149,8 @@ func TestPersistedEntryMarshalUnmarshal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if uint64(len(b)) != persistedEntrySize {
-		t.Fatal("marshaled entry has wrong size", len(b), persistedEntrySize)
+	if uint64(len(b)) != PersistedEntrySize {
+		t.Fatal("marshaled entry has wrong size", len(b), PersistedEntrySize)
 	}
 	var entry2 persistedEntry
 	err = entry2.Unmarshal(b)
@@ -220,7 +222,7 @@ func TestSaveEntry(t *testing.T) {
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, wal)
+	r, err := New(registryPath, wal, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,20 +245,24 @@ func TestSaveEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The data should be 3 entries long, the first one being the metadata, then
-	// one being all zeros and the third one matching the stored entry.
-	if len(b) != 3*persistedEntrySize {
+	// The data should be testingDefaultMaxEntries entries long, the first one
+	// being the metadata, then one being all zeros and the third one matching
+	// the stored entry. Everything after that should be zeros again.
+	if len(b) != testingDefaultMaxEntries*PersistedEntrySize {
 		t.Fatal("file has wrong size")
 	}
-	zeros := make([]byte, persistedEntrySize)
-	if !bytes.Equal(zeros, b[persistedEntrySize:2*persistedEntrySize]) {
+	zeros := make([]byte, PersistedEntrySize)
+	if !bytes.Equal(zeros, b[PersistedEntrySize:2*PersistedEntrySize]) {
 		t.Fatal("second entry isn't empty")
 	}
 	expected, err := pe.Marshal()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(expected, b[2*persistedEntrySize:]) {
+	if !bytes.Equal(expected, b[2*PersistedEntrySize:3*PersistedEntrySize]) {
 		t.Fatal("third entry doesn't match expected entry")
+	}
+	if !bytes.Equal(make([]byte, (testingDefaultMaxEntries-3)*PersistedEntrySize), b[3*PersistedEntrySize:]) {
+		t.Fatal("remaining data should be zeros")
 	}
 }

@@ -7,7 +7,8 @@ import (
 
 // TestBitfield tests setting and unsettings values in the bitfield.
 func TestBitfield(t *testing.T) {
-	var b bitfield
+	nBits := uint64(64 * 200)
+	b := newBitfield(nBits)
 
 	// Declare a helper to check all indices.
 	areSet := func(bf bitfield, set []uint64) error {
@@ -25,48 +26,48 @@ func TestBitfield(t *testing.T) {
 		return nil
 	}
 
-	// Initial length is 0.
-	if b.Len() != 0 {
+	// Length is nBits.
+	if b.Len() != nBits {
 		t.Fatalf("length should be 0 but was %v", b.Len())
 	}
 
-	// Set bit 0 and 63. The length is now 64.
-	b.Set(0)
-	b.Set(63)
-	if b.Len() != 64 {
-		t.Fatalf("length should be 64 but was %v", b.Len())
+	// Set bit 0 and 63.
+	err := b.Set(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = b.Set(63)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if err := areSet(b, []uint64{0, 63}); err != nil {
 		t.Fatal(err)
 	}
 
-	// Set bit 64. The length is now 128.
-	b.Set(64)
-	if b.Len() != 128 {
-		t.Fatalf("length should be 128 but was %v", b.Len())
+	// Set bit 64.
+	err = b.Set(64)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if err := areSet(b, []uint64{0, 63, 64}); err != nil {
 		t.Fatal(err)
 	}
 
-	// Unset bit 64. The length is still 128.
-	b.Unset(64)
-	if b.Len() != 128 {
-		t.Fatalf("length should be 128 but was %v", b.Len())
+	// Unset bit 64.
+	err = b.Unset(64)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if err := areSet(b, []uint64{0, 63}); err != nil {
 		t.Fatal(err)
 	}
 
-	// Trim the bitfield. The length is 64.
-	b.Trim()
-	if b.Len() != 64 {
-		t.Fatalf("length should be 64 but was %v", b.Len())
-	}
-
 	// Unset all bits.
 	for i := uint64(0); i < b.Len(); i++ {
-		b.Unset(i)
+		err = b.Unset(i)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	for i := uint64(0); i < b.Len(); i++ {
 		if b.IsSet(i) {
@@ -76,7 +77,10 @@ func TestBitfield(t *testing.T) {
 
 	// Set all bits.
 	for i := uint64(0); i < b.Len(); i++ {
-		b.Set(i)
+		err = b.Set(i)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	for i := uint64(0); i < b.Len(); i++ {
 		if !b.IsSet(i) {
@@ -86,7 +90,10 @@ func TestBitfield(t *testing.T) {
 
 	// Unset all bits again.
 	for i := uint64(0); i < b.Len(); i++ {
-		b.Unset(i)
+		err = b.Unset(i)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	for i := uint64(0); i < b.Len(); i++ {
 		if b.IsSet(i) {
@@ -95,16 +102,19 @@ func TestBitfield(t *testing.T) {
 	}
 }
 
-// TestSetFirst is a unit test for SetFirst.
-func TestSetFirst(t *testing.T) {
-	var b bitfield
+// TestSetRandom is a unit test for SetRandom.
+func TestSetRandom(t *testing.T) {
 	// Start setting the next bit 128 times.
 	setMap := make(map[uint64]struct{})
 	n := 640
+	b := newBitfield(uint64(n))
 	for i := 0; i < n; i++ {
-		first := b.SetFirst()
+		first, err := b.SetRandom()
+		if err != nil {
+			t.Fatal(err)
+		}
 		if _, exists := setMap[first]; exists {
-			t.Fatal("SetFirst set an already set field")
+			t.Fatal("SetRandom set an already set field")
 		}
 		if !b.IsSet(first) {
 			t.Fatalf("expected first %v to be set", first)
@@ -123,17 +133,34 @@ func TestSetFirst(t *testing.T) {
 	}
 
 	// Create a few gaps.
-	b.Unset(0)
-	b.Unset(63)
-	b.Unset(64)
-	b.Unset(65)
-	b.Unset(127)
+	err := b.Unset(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = b.Unset(63)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = b.Unset(64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = b.Unset(65)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = b.Unset(127)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Call b.SetFist and confirm the gaps are filled.
 	setMap = make(map[uint64]struct{})
 	for i := 0; i < 5; i++ {
-		first := b.SetFirst()
-		println("first", first)
+		first, err := b.SetRandom()
+		if err != nil {
+			t.Fatal(err)
+		}
 		if _, exists := setMap[first]; exists {
 			t.Fatal("SetFirst set an already set field")
 		}

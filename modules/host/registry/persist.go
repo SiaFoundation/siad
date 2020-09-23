@@ -72,15 +72,21 @@ func newSiaPublicKey(cpk compressedPublicKey) (spk types.SiaPublicKey, _ error) 
 
 // initRegistry initializes a registry at the specified path using the provided
 // wal.
-func initRegistry(path string, wal *writeaheadlog.WAL) (*os.File, error) {
+func initRegistry(path string, wal *writeaheadlog.WAL, maxEntries uint64) (*os.File, error) {
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, modules.DefaultFilePerm)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to create new file for key/value store")
 	}
 
+	// Truncate the file to its max size.
+	err = f.Truncate(int64(maxEntries * PersistedEntrySize))
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to preallocate registry disk space")
+	}
+
 	// The first entry is reserved for metadata. Right now only the version
 	// number.
-	initData := make([]byte, persistedEntrySize)
+	initData := make([]byte, PersistedEntrySize)
 	binary.LittleEndian.PutUint64(initData, registryVersion)
 
 	// Write data to disk in an ACID way.
@@ -98,7 +104,7 @@ func initRegistry(path string, wal *writeaheadlog.WAL) (*os.File, error) {
 func loadRegistryMetadata(r io.Reader) error {
 	// Check version. We only have one so far so we can compare to that
 	// directly.
-	var entry [persistedEntrySize]byte
+	var entry [PersistedEntrySize]byte
 	_, err := io.ReadFull(r, entry[:])
 	if err != nil {
 		return errors.AddContext(err, "failed to read metadata page")
@@ -113,7 +119,7 @@ func loadRegistryMetadata(r io.Reader) error {
 // loadRegistryEntries reads the currently in use registry entries from disk.
 func loadRegistryEntries(r io.Reader, numEntries int64) (map[crypto.Hash]*value, error) {
 	// Load the remaining entries.
-	var entry [persistedEntrySize]byte
+	var entry [PersistedEntrySize]byte
 	entries := make(map[crypto.Hash]*value)
 	for index := int64(1); index < numEntries; index++ {
 		_, err := io.ReadFull(r, entry[:])
@@ -187,7 +193,7 @@ func (entry persistedEntry) Marshal() ([]byte, error) {
 		build.Critical(errTooMuchData)
 		return nil, errTooMuchData
 	}
-	b := make([]byte, persistedEntrySize)
+	b := make([]byte, PersistedEntrySize)
 	b[0] = entry.Key.Algorithm
 	copy(b[1:], entry.Key.Key[:])
 	copy(b[33:], entry.Tweak[:])
@@ -201,7 +207,7 @@ func (entry persistedEntry) Marshal() ([]byte, error) {
 
 // Unmarshal unmarshals a persistedEntry.
 func (entry *persistedEntry) Unmarshal(b []byte) error {
-	if len(b) != persistedEntrySize {
+	if len(b) != PersistedEntrySize {
 		build.Critical(errEntryWrongSize)
 		return errEntryWrongSize
 	}
@@ -234,6 +240,6 @@ func (r *Registry) saveEntry(v value, used bool) error {
 	if err != nil {
 		return errors.AddContext(err, "Save: failed to marshal persistedEntry")
 	}
-	update := writeaheadlog.WriteAtUpdate(r.staticPath, v.staticIndex*persistedEntrySize, b)
+	update := writeaheadlog.WriteAtUpdate(r.staticPath, v.staticIndex*PersistedEntrySize, b)
 	return r.staticWAL.CreateAndApplyTransaction(writeaheadlog.ApplyUpdates, update)
 }
