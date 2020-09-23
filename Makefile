@@ -72,6 +72,7 @@ pkgs = \
 	./siatest/transactionpool \
 	./siatest/wallet \
 	./skykey \
+	./skynet \
 	./sync \
 	./types \
 	./types/typesutil \
