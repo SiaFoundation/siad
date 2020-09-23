@@ -574,8 +574,10 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	// Calculate the base cost.
 	basePrice, baseCollateral := modules.RenewBaseCosts(oldRev, host.HostExternalSettings, pt.RenewContractCost, endHeight)
 
-	// Create the final revision of the old contract.
-	renewCost := pt.RenewContractCost
+	// Create the final revision of the old contract. The renew cost is 0H for
+	// the final revision since the new contract will pay for it as part of the
+	// basePrice.
+	renewCost := types.ZeroCurrency
 	finalRev, err := prepareFinalRevision(oldContract, renewCost)
 	if err != nil {
 		return errors.AddContext(err, "Unable to create final revision")
@@ -728,7 +730,8 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 		ContractFee:     host.ContractPrice,
 		TxnFee:          txnFee,
 		SiafundFee:      types.Tax(startHeight, fc.Payout),
-		StorageSpending: basePrice,
+		StorageSpending: basePrice.Sub(pt.RenewContractCost),
+		UploadSpending:  pt.RenewContractCost,
 		Utility: modules.ContractUtility{
 			GoodForUpload: true,
 			GoodForRenew:  true,

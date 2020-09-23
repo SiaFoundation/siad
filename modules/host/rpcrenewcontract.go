@@ -341,18 +341,25 @@ func verifyRenewedContract(so storageObligation, newContract types.FileContract,
 		return errCollateralBudgetExceeded
 	}
 
+	// Compute the basePrice and baseCollateral.
+	// NOTE: Since the renter might choose to expect less than the
+	// baseCollateral, we need to potentially adjust it.
+	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevision, externalSettings, contractRenewRPCCost, newContract.WindowStart)
+	if expectedCollateral.Cmp(baseCollateral) < 0 {
+		baseCollateral = expectedCollateral
+	}
+
 	// Check that the missed proof outputs contain enough money, and that the
 	// void output contains enough money.
-	basePrice, _ := modules.RenewBaseCosts(oldRevision, externalSettings, contractRenewRPCCost, newContract.WindowStart)
-	if newContract.ValidHostPayout().Cmp(basePrice.Add(expectedCollateral).Add(externalSettings.ContractPrice)) < 0 {
+	if newContract.ValidHostPayout().Cmp(basePrice.Add(baseCollateral).Add(externalSettings.ContractPrice)) < 0 {
 		return ErrLowHostValidOutput
 	}
-	expectedHostMissedOutput := newContract.ValidHostPayout().Sub(basePrice).Sub(expectedCollateral)
+	expectedHostMissedOutput := newContract.ValidHostPayout().Sub(basePrice).Sub(baseCollateral)
 	if newContract.MissedHostOutput().Value.Cmp(expectedHostMissedOutput) < 0 {
 		return ErrLowHostMissedOutput
 	}
 	// Check that the void output has the correct value.
-	expectedVoidOutput := basePrice.Add(expectedCollateral)
+	expectedVoidOutput := basePrice.Add(baseCollateral)
 	if voidOutput.Value.Cmp(expectedVoidOutput) < 0 {
 		return ErrLowVoidOutput
 	}
