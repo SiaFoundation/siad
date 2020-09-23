@@ -115,7 +115,7 @@ func parseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, io.Reade
 
 // parseSkylinkURL splits a raw skylink URL into its components - a skylink, a
 // string representation of the skylink with the query parameters stripped, and
-// a path. The skylink URL should not have been URL-decoded. The path is
+// a path. The input skylink URL should not have been URL-decoded. The path is
 // URL-decoded before returning as it is for us to parse and use, while the
 // other components remain encoded for the skapp.
 func parseSkylinkURL(skylinkURL string) (skylink modules.Skylink, skylinkStringNoQuery, path string, err error) {
