@@ -2,6 +2,8 @@ package registry
 
 import (
 	"encoding/binary"
+	"fmt"
+	"io"
 	"os"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -26,14 +28,11 @@ type (
 		Tweak [modules.TweakSize]byte
 
 		// value data
-		Expiry    types.BlockHeight
+		Expiry    compressedBlockHeight
 		DataLen   uint8
 		Data      [modules.RegistryDataSize]byte
 		Revision  uint64
 		Signature crypto.Signature
-
-		// data related to persistence
-		IsUsed bool
 	}
 
 	// compressedPublicKey is a version of the types.SiaPublicKey which is
@@ -42,6 +41,10 @@ type (
 		Algorithm byte
 		Key       [crypto.PublicKeySize]byte
 	}
+
+	// compressedBlockHeight is a version of types.Blockheight which is half the
+	// size.
+	compressedBlockHeight uint32
 )
 
 // newCompressedPublicKey creates a compressed public key from a sia public key.
@@ -90,8 +93,53 @@ func initRegistry(path string, wal *writeaheadlog.WAL) (*os.File, error) {
 	return f, nil
 }
 
+// loadRegistryMetadata tries to read the first persisted entry that contains
+// the registry metadata and verifies it.
+func loadRegistryMetadata(r io.Reader) error {
+	// Check version. We only have one so far so we can compare to that
+	// directly.
+	var entry [persistedEntrySize]byte
+	_, err := io.ReadFull(r, entry[:])
+	if err != nil {
+		return errors.AddContext(err, "failed to read metadata page")
+	}
+	version := binary.LittleEndian.Uint64(entry[:])
+	if version != registryVersion {
+		return fmt.Errorf("expected store version %v but got %v", registryVersion, version)
+	}
+	return nil
+}
+
+// loadRegistryEntries reads the currently in use registry entries from disk.
+func loadRegistryEntries(r io.Reader, numEntries int64) (map[crypto.Hash]*value, error) {
+	// Load the remaining entries.
+	var entry [persistedEntrySize]byte
+	entries := make(map[crypto.Hash]*value)
+	for index := int64(1); index < numEntries; index++ {
+		_, err := io.ReadFull(r, entry[:])
+		if err != nil {
+			return nil, errors.AddContext(err, fmt.Sprintf("failed to read entry %v of %v", index, numEntries))
+		}
+		var se persistedEntry
+		err = se.Unmarshal(entry[:])
+		if err != nil {
+			return nil, errors.AddContext(err, fmt.Sprintf("failed to parse entry %v of %v", index, numEntries))
+		}
+		if se.Key == (compressedPublicKey{}) {
+			continue // ignore unused entries
+		}
+		// Add the entry to the store.
+		v, err := se.Value(index)
+		if err != nil {
+			return nil, errors.AddContext(err, fmt.Sprintf("failed to get key-value pair from entry %v of %v", index, numEntries))
+		}
+		entries[v.mapKey()] = &v
+	}
+	return entries, nil
+}
+
 // newPersistedEntry turns a key-value pair into a persistedEntry.
-func newPersistedEntry(value value, isUsed bool) (persistedEntry, error) {
+func newPersistedEntry(value value) (persistedEntry, error) {
 	if len(value.data) > modules.RegistryDataSize {
 		build.Critical("newPersistedEntry: called with too much data")
 		return persistedEntry{}, errors.New("value's data is too large")
@@ -105,10 +153,8 @@ func newPersistedEntry(value value, isUsed bool) (persistedEntry, error) {
 		Tweak: value.tweak,
 
 		DataLen:  uint8(len(value.data)),
-		Expiry:   value.expiry,
+		Expiry:   compressedBlockHeight(value.expiry),
 		Revision: value.revision,
-
-		IsUsed: isUsed,
 	}
 	copy(pe.Data[:], value.data)
 	return pe, nil
@@ -128,7 +174,7 @@ func (entry persistedEntry) Value(index int64) (value, error) {
 	return value{
 		key:         spk,
 		tweak:       entry.Tweak,
-		expiry:      entry.Expiry,
+		expiry:      types.BlockHeight(entry.Expiry),
 		data:        entry.Data[:entry.DataLen],
 		revision:    entry.Revision,
 		staticIndex: index,
@@ -145,14 +191,11 @@ func (entry persistedEntry) Marshal() ([]byte, error) {
 	b[0] = entry.Key.Algorithm
 	copy(b[1:], entry.Key.Key[:])
 	copy(b[33:], entry.Tweak[:])
-	binary.LittleEndian.PutUint64(b[65:], uint64(entry.Expiry))
-	binary.LittleEndian.PutUint64(b[73:], uint64(entry.Revision))
-	copy(b[81:], entry.Signature[:])
-	if entry.IsUsed {
-		b[145] = 1
-	}
-	b[146] = byte(entry.DataLen)
-	copy(b[147:], entry.Data[:])
+	binary.LittleEndian.PutUint32(b[65:], uint32(entry.Expiry))
+	binary.LittleEndian.PutUint64(b[69:], uint64(entry.Revision))
+	copy(b[77:], entry.Signature[:])
+	b[141] = byte(entry.DataLen)
+	copy(b[142:], entry.Data[:])
 	return b, nil
 }
 
@@ -165,21 +208,25 @@ func (entry *persistedEntry) Unmarshal(b []byte) error {
 	entry.Key.Algorithm = b[0]
 	copy(entry.Key.Key[:], b[1:])
 	copy(entry.Tweak[:], b[33:])
-	entry.Expiry = types.BlockHeight(binary.LittleEndian.Uint64(b[65:]))
-	entry.Revision = binary.LittleEndian.Uint64(b[73:])
-	copy(entry.Signature[:], b[81:])
-	entry.IsUsed = b[145] == 1
-	entry.DataLen = uint8(b[146])
+	entry.Expiry = compressedBlockHeight(binary.LittleEndian.Uint32(b[65:]))
+	entry.Revision = binary.LittleEndian.Uint64(b[69:])
+	copy(entry.Signature[:], b[77:])
+	entry.DataLen = uint8(b[141])
 	if int(entry.DataLen) > len(entry.Data) {
 		return errors.New("read DataLen exceeds length of available data")
 	}
-	copy(entry.Data[:], b[147:])
+	copy(entry.Data[:], b[142:])
 	return nil
 }
 
-// saveEntry stores a key-value pair on disk in an ACID fashion.
-func (r *Registry) saveEntry(v value, isUsed bool) error {
-	entry, err := newPersistedEntry(v, isUsed)
+// saveEntry stores a key-value pair on disk in an ACID fashion. If unused is
+// set, the entry will be marked as not in use.
+func (r *Registry) saveEntry(v value, used bool) error {
+	var entry persistedEntry
+	var err error
+	if used {
+		entry, err = newPersistedEntry(v)
+	}
 	if err != nil {
 		return errors.AddContext(err, "Save: failed to get persistedEntry from key-value pair")
 	}

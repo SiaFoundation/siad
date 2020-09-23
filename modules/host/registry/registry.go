@@ -2,10 +2,9 @@ package registry
 
 import (
 	"bufio"
-	"encoding/binary"
-	"fmt"
 	"io"
 	"os"
+	"sort"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -14,9 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
-
-// TODO: must haves
-// - signature verification
 
 // TODO: F/Us
 // - cap max entries (only LRU in memory rest on disk)
@@ -47,7 +43,8 @@ var (
 )
 
 type (
-	// Registry is an in-memory key-value store. Renter's can pay the
+	// Registry is an in-memory key-value store. Renter's can pay the host to
+	// register data with a given pubkey and secondary key (tweak).
 	Registry struct {
 		entries     map[crypto.Hash]*value
 		staticUsage bitfield
@@ -62,10 +59,10 @@ type (
 		key   types.SiaPublicKey
 		tweak crypto.Hash
 
-		// value
 		expiry      types.BlockHeight // expiry of the entry
 		staticIndex int64             // index within file
 
+		// value
 		data      []byte // stored raw data
 		revision  uint64
 		signature crypto.Signature
@@ -106,51 +103,25 @@ func New(path string, wal *writeaheadlog.WAL) (_ *Registry, err error) {
 		return nil, errors.AddContext(err, "failed to seek to start of store file")
 	}
 	r := bufio.NewReader(f)
-	// Check version. We only have one so far so we can compare to that
-	// directly.
-	var entry [persistedEntrySize]byte
-	_, err = io.ReadFull(r, entry[:])
+	// Load and verify the metadata.
+	err = loadRegistryMetadata(r)
 	if err != nil {
-		return nil, errors.AddContext(err, "failed to read metadata page")
-	}
-	version := binary.LittleEndian.Uint64(entry[:])
-	if version != registryVersion {
-		return nil, fmt.Errorf("expected store version %v but got %v", registryVersion, version)
+		return nil, errors.AddContext(err, "failed to load and verify metadata")
 	}
 	// Create the registry.
 	reg := &Registry{
-		entries:    make(map[crypto.Hash]*value),
 		staticPath: path,
 		staticWAL:  wal,
 	}
 	// The first page is always in use.
 	reg.staticUsage.Set(0)
 	// Load the remaining entries.
-	for index := int64(1); index < fi.Size()/persistedEntrySize; index++ {
-		_, err := io.ReadFull(r, entry[:])
-		if err != nil {
-			return nil, errors.AddContext(err, fmt.Sprintf("failed to read entry %v of %v", index, fi.Size()/int64(persistedEntrySize)))
-		}
-		var se persistedEntry
-		err = se.Unmarshal(entry[:])
-		if err != nil {
-			return nil, errors.AddContext(err, fmt.Sprintf("failed to parse entry %v of %v", index, fi.Size()/int64(persistedEntrySize)))
-		}
-		if !se.IsUsed {
-			continue // ignore unused entries
-		}
-		// Add the entry to the store.
-		v, err := se.Value(index)
-		if err != nil {
-			return nil, errors.AddContext(err, fmt.Sprintf("failed to get key-value pair from entry %v of %v", index, fi.Size()/int64(persistedEntrySize)))
-		}
-		reg.entries[v.mapKey()] = &v
-	}
+	reg.entries, err = loadRegistryEntries(r, fi.Size()/persistedEntrySize)
 	return reg, nil
 }
 
 // Update adds an entry to the registry or if it exists already, updates it.
-func (r *Registry) Update(rv modules.RegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (_ bool, err error) {
+func (r *Registry) Update(rv modules.RegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -180,32 +151,28 @@ func (r *Registry) Update(rv modules.RegistryValue, pubKey types.SiaPublicKey, e
 	entry, exists := r.entries[v.mapKey()]
 	if exists && v.revision > entry.revision {
 		v.staticIndex = entry.staticIndex
-		r.entries[v.mapKey()] = &v
-		return true, nil
 	} else if exists {
-		return false, errInvalidRevNum
+		return exists, errInvalidRevNum
+	} else if !exists {
+		// The entry doesn't exist yet. So we need to create it. To do so we search
+		// for the first available slot on disk.
+		v.staticIndex = int64(r.staticUsage.SetFirst())
 	}
 
-	// The entry doesn't exist yet. So we need to create it. To do so we search
-	// for the first available slot on disk.
-	v.staticIndex = int64(r.staticUsage.SetFirst())
-
-	// If an error occurs during execution, unset the reserved index again.
-	defer func() {
-		if err != nil {
-			r.staticUsage.Unset(uint64(v.staticIndex))
-		}
-	}()
-
 	// Write the entry to disk.
-	err = r.saveEntry(v, true)
+	err := r.saveEntry(v, true)
+	if err != nil && !exists {
+		// If an error occurs during saving, unset the reserved index again if
+		// it wasn't in use already.
+		r.staticUsage.Unset(uint64(v.staticIndex))
+	}
 	if err != nil {
-		return false, errors.New("failed to save new entry to disk")
+		return exists, errors.New("failed to save new entry to disk")
 	}
 
 	// Update the in-memory map last.
 	r.entries[v.mapKey()] = &v
-	return false, nil
+	return exists, nil
 }
 
 // Prune deletes all entries from the registry that expire at a height smaller
@@ -214,12 +181,31 @@ func (r *Registry) Prune(expiry types.BlockHeight) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	var errs error
+	// Get a slice of entries that is sorted by indices for more optimized disk
+	// access.
+	type kv struct {
+		key   crypto.Hash
+		value *value
+	}
+	entries := make([]kv, 0, len(r.entries))
 	for k, v := range r.entries {
+		entries = append(entries, kv{
+			key:   k,
+			value: v,
+		})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].value.staticIndex < entries[j].value.staticIndex
+	})
+
+	var errs error
+	for _, entry := range entries {
+		k := entry.key
+		v := entry.value
 		if v.expiry > expiry {
 			continue // not expired
 		}
-		// Purge the entry by setting it unused.
+		// Purge the entry.
 		if err := r.saveEntry(*v, false); err != nil {
 			errs = errors.Compose(errs, err)
 			continue

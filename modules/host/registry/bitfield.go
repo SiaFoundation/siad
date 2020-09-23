@@ -1,6 +1,10 @@
 package registry
 
-import "math"
+import (
+	"math"
+
+	"gitlab.com/NebulousLabs/fastrand"
+)
 
 type (
 	bitfield []uint64
@@ -8,21 +12,38 @@ type (
 
 // SetFirst finds the first unused gap in the bitfield and sets it.
 func (b *bitfield) SetFirst() uint64 {
-	// Search for a gap.
-	for i := 0; i < len(*b); i++ {
-		if (*b)[i] == math.MaxUint64 {
-			continue
-		}
-		// Index with gap found. Search for gap.
-		for j := uint64(0); j < 64; j++ {
-			index := uint64(i)*64 + j
-			if !b.IsSet(index) {
-				b.Set(index)
-				return index
+	// If the bitfield is empty, set 0.
+	if len(*b) == 0 {
+		b.Set(0)
+		return 0
+	}
+	// Search for a gap. Start at a random position.
+	initialPos := fastrand.Intn(len(*b))
+	i := initialPos
+	for {
+		// If the position contains unset bits, find one and set it.
+		if (*b)[i] != math.MaxUint64 {
+			for j := uint64(0); j < 64; j++ {
+				index := uint64(i)*64 + j
+				if !b.IsSet(index) {
+					b.Set(index)
+					return index
+				}
 			}
+			panic("b[i] != math.MaxUint64 but no bit found. This is impossible.")
+		}
+		// Increment the position we are looking at.
+		i++
+		// When we reached the end, start at the beginning again.
+		if i == len(*b) {
+			i = 0
+		}
+		// If we are back at the initialPos, there is no gap.
+		if i == initialPos {
+			break
 		}
 	}
-	// No gap found.
+	// No gap found. Extend the bitfield.
 	l := b.Len()
 	b.Set(l)
 	return l

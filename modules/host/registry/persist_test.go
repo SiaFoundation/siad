@@ -22,7 +22,7 @@ func randomValue(index int64) (modules.RegistryValue, value, crypto.SecretKey) {
 	// Create in-memory value first.
 	sk, pk := crypto.GenerateKeyPair()
 	v := value{
-		expiry:      types.BlockHeight(fastrand.Uint64n(math.MaxUint64)),
+		expiry:      types.BlockHeight(fastrand.Uint64n(math.MaxUint32)),
 		staticIndex: index,
 		data:        fastrand.Bytes(fastrand.Intn(modules.RegistryDataSize) + 1),
 		revision:    fastrand.Uint64n(math.MaxUint64 - 100), // Leave some room for incrementing the revision during tests
@@ -134,9 +134,8 @@ func TestPersistedEntryMarshalUnmarshal(t *testing.T) {
 		Key: compressedPublicKey{
 			Algorithm: signatureEd25519,
 		},
-		Expiry:   types.BlockHeight(fastrand.Uint64n(math.MaxUint64)),
+		Expiry:   compressedBlockHeight(fastrand.Uint64n(math.MaxUint32)),
 		DataLen:  modules.RegistryDataSize,
-		IsUsed:   true,
 		Revision: fastrand.Uint64n(math.MaxUint64),
 	}
 	fastrand.Read(entry.Key.Key[:])
@@ -169,9 +168,8 @@ func TestNewPersistedEntry(t *testing.T) {
 	t.Parallel()
 	// Create a random key/value pair that is stored at index 1
 	index := int64(1)
-	isUsed := true
 	_, v, _ := randomValue(index)
-	pe, err := newPersistedEntry(v, isUsed)
+	pe, err := newPersistedEntry(v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +186,7 @@ func TestNewPersistedEntry(t *testing.T) {
 	if !bytes.Equal(pe.Tweak[:], v.tweak[:]) {
 		t.Fatal("tweak doesn't match")
 	}
-	if pe.Expiry != v.expiry {
+	if types.BlockHeight(pe.Expiry) != v.expiry {
 		t.Fatal("expiry doesn't match")
 	}
 	if !bytes.Equal(pe.Data[:pe.DataLen], v.data) {
@@ -196,9 +194,6 @@ func TestNewPersistedEntry(t *testing.T) {
 	}
 	if pe.Revision != v.revision {
 		t.Fatal("revision doesn't match")
-	}
-	if pe.IsUsed != isUsed {
-		t.Fatal("isUsed doesn't match")
 	}
 
 	// Convert the persisted entry back into the key value pair.
@@ -232,9 +227,8 @@ func TestSaveEntry(t *testing.T) {
 
 	// Create a pair that is stored at index 2.
 	index := int64(2)
-	isUsed := true
 	_, v, _ := randomValue(index)
-	pe, err := newPersistedEntry(v, isUsed)
+	pe, err := newPersistedEntry(v)
 	if err != nil {
 		t.Fatal(err)
 	}

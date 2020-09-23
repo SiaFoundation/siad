@@ -12,7 +12,7 @@ const (
 
 	// RegistryDataSize is the amount of arbitrary data a renter can register in
 	// the registry.
-	RegistryDataSize = 109
+	RegistryDataSize = 114
 )
 
 // RegistryValue is a value that can be registered on a host's registry.
