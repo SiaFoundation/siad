@@ -21,9 +21,6 @@ type (
 		Options
 	}
 
-	// Headers is a helper type that contains request or response headers
-	Headers map[string]string
-
 	// Options defines the options that are available when creating a
 	// client.
 	Options struct {
@@ -43,8 +40,8 @@ type (
 		CheckRedirect func(req *http.Request, via []*http.Request) error
 	}
 
-	// A UnsafeClient is a Client with additional access to unsafe methods that are
-	// easy to misuse. It should only be used for testing.
+	// A UnsafeClient is a Client with additional access to unsafe methods that
+	// are easy to misuse. It should only be used for testing.
 	UnsafeClient struct {
 		Client
 	}
@@ -69,7 +66,7 @@ func (uc *UnsafeClient) Get(resource string, obj interface{}) error {
 
 // GetWithHeaders requests the specified resource using the given
 // request headers.
-func (uc *UnsafeClient) GetWithHeaders(resource string, headers Headers) (*http.Response, error) {
+func (uc *UnsafeClient) GetWithHeaders(resource string, headers http.Header) (*http.Response, error) {
 	req, err := uc.NewRequest("GET", resource, nil)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to construct GET request")
@@ -77,7 +74,9 @@ func (uc *UnsafeClient) GetWithHeaders(resource string, headers Headers) (*http.
 
 	// Decorate the headers on the request object
 	for k, v := range headers {
-		req.Header.Set(k, v)
+		for _, vv := range v {
+			req.Header.Add(k, vv)
+		}
 	}
 
 	httpClient := http.Client{CheckRedirect: uc.CheckRedirect}
@@ -282,13 +281,13 @@ func (c *Client) postRawResponse(resource string, body io.Reader) (http.Header, 
 	// if the caller is performing a multipart form-data upload he can do so by
 	// using `postRawResponseWithHeaders` and manually set the Content-Type
 	// header himself.
-	headers := Headers{"Content-Type": "application/x-www-form-urlencoded"}
+	headers := http.Header{"Content-Type": []string{"application/x-www-form-urlencoded"}}
 	return c.postRawResponseWithHeaders(resource, body, headers)
 }
 
 // postRawResponseWithHeaders requests the specified resource and allows to pass
 // custom headers. The response, if provided, will be returned in a byte slice
-func (c *Client) postRawResponseWithHeaders(resource string, body io.Reader, headers Headers) (http.Header, []byte, error) {
+func (c *Client) postRawResponseWithHeaders(resource string, body io.Reader, headers http.Header) (http.Header, []byte, error) {
 	req, err := c.NewRequest("POST", resource, body)
 	if err != nil {
 		return http.Header{}, nil, errors.AddContext(err, "failed to construct POST request")
@@ -296,7 +295,9 @@ func (c *Client) postRawResponseWithHeaders(resource string, body io.Reader, hea
 
 	// Decorate the headers on the request object
 	for k, v := range headers {
-		req.Header.Set(k, v)
+		for _, vv := range v {
+			req.Header.Add(k, vv)
+		}
 	}
 
 	httpClient := http.Client{CheckRedirect: c.CheckRedirect}

@@ -621,7 +621,7 @@ func testNotModified(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// verify we miss the cache if nocache=1 is supplied
-	resp, err = uc.SkynetSkylinkGetWithETag(skylink+"?nocache=1", ETag)
+	resp, err = uc.SkynetSkylinkGetWithETag(skylink+"?nocache=1", eTag)
 	if err != nil {
 		t.Fatal("Unexpected error", err)
 	}

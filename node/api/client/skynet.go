@@ -19,7 +19,7 @@ import (
 // skylink file setting the given ETag as value in the If-None-Match request
 // header.
 func (uc *UnsafeClient) SkynetSkylinkGetWithETag(skylink string, eTag string) (*http.Response, error) {
-	return uc.GetWithHeaders(skylinkQueryWithValues(skylink, url.Values{}), Headers{"If-None-Match": eTag})
+	return uc.GetWithHeaders(skylinkQueryWithValues(skylink, url.Values{}), http.Header{"If-None-Match": []string{eTag}})
 }
 
 // RenterSkyfileGet wraps RenterFileRootGet to query a skyfile.
@@ -286,9 +286,9 @@ func (c *Client) SkynetSkyfilePostDisableForce(params modules.SkyfileUploadParam
 	values.Set("root", rootStr)
 
 	// Set the headers
-	headers := map[string]string{"Content-Type": "application/x-www-form-urlencoded"}
+	headers := http.Header{"Content-Type": []string{"application/x-www-form-urlencoded"}}
 	if disableForce {
-		headers["Skynet-Disable-Force"] = strconv.FormatBool(disableForce)
+		headers.Add("Skynet-Disable-Force", strconv.FormatBool(disableForce))
 	}
 
 	// Make the call to upload the file.
@@ -326,7 +326,7 @@ func (c *Client) SkynetSkyfileMultiPartPost(params modules.SkyfileMultipartUploa
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", params.SiaPath.String(), values.Encode())
 
-	headers := map[string]string{"Content-Type": params.ContentType}
+	headers := http.Header{"Content-Type": []string{params.ContentType}}
 	_, resp, err := c.postRawResponseWithHeaders(query, params.Reader, headers)
 	if err != nil {
 		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "post call to "+query+" failed")
