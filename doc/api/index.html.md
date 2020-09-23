@@ -4925,7 +4925,7 @@ The ETag response header contains a hash that can be supplied using the
 "If-None-Match" request header. If that header is supplied, and if we find that
 the requested data has not changed, siad will respond with a '304 Not Modified'
 response, letting the caller know it can safely reuse it previously cached
-reponse data.
+response data.
 
 See
 https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/ETag for more
