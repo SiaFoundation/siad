@@ -416,11 +416,6 @@ func verifyClearingRevision(oldFCR, revision types.FileContractRevision, blockHe
 		return extendErr(s, ErrLowHostValidOutput)
 	}
 
-	// Check that the revision is set to the maximum.
-	if revision.NewRevisionNumber != math.MaxUint64 {
-		return ErrBadRevisionNumber
-	}
-
 	// The merkle root should be blank now.
 	blank := crypto.Hash{}
 	if revision.NewFileMerkleRoot != blank {

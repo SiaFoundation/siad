@@ -572,7 +572,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	txnFee := pt.TxnFeeMaxRecommended.Mul64(2 * modules.EstimatedFileContractTransactionSetSize)
 
 	// Calculate the base cost.
-	basePrice, baseCollateral := modules.RenewBaseCosts(oldRev, host.HostExternalSettings, endHeight)
+	basePrice, baseCollateral := modules.RenewBaseCosts(oldRev, host.HostExternalSettings, pt.RenewContractCost, endHeight)
 
 	// Create the final revision of the old contract.
 	renewCost := pt.RenewContractCost
@@ -612,16 +612,32 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 		return errors.AddContext(err, "failed to prepare txnSet with finalRev and new contract")
 	}
 
+	// Sign the final revision.
+	finalRevRenterSig := types.TransactionSignature{
+		ParentID:       crypto.Hash(finalRev.ParentID),
+		PublicKeyIndex: 0, // renter key is first
+		CoveredFields: types.CoveredFields{
+			FileContracts:         []uint64{0},
+			FileContractRevisions: []uint64{0},
+		},
+	}
+	finalRevTxn, _ := txnBuilder.View()
+	finalRevTxn.TransactionSignatures = append(finalRevTxn.TransactionSignatures, finalRevRenterSig)
+	finalRevRenterSigRaw := crypto.SignHash(finalRevTxn.SigHash(0, pt.HostBlockHeight), ourSK)
+	finalRevRenterSig.Signature = finalRevRenterSigRaw[:]
+
 	// Write the request.
 	err = modules.RPCWrite(conn, modules.RPCRenewContractRequest{
-		TSet:     txnSet,
-		RenterPK: types.Ed25519PublicKey(ourSK.PublicKey()),
+		TSet:        txnSet,
+		RenterPK:    types.Ed25519PublicKey(ourSK.PublicKey()),
+		FinalRevSig: finalRevRenterSigRaw,
 	})
 	if err != nil {
 		return errors.AddContext(err, "failed to write RPCRenewContractRequest")
 	}
 
-	// Read the response.
+	// Read the response. It contains the host's final revision sig and any
+	// additions it made.
 	var resp modules.RPCRenewContractCollateralResponse
 	err = modules.RPCRead(conn, &resp)
 	if err != nil {
@@ -637,37 +653,8 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 		txnBuilder.AddSiacoinOutput(output)
 	}
 
-	// Sign the final revision.
-	finalRevRenterSig := types.TransactionSignature{
-		ParentID:       crypto.Hash(finalRev.ParentID),
-		PublicKeyIndex: 0, // renter key is first
-		CoveredFields: types.CoveredFields{
-			FileContracts:         []uint64{0},
-			FileContractRevisions: []uint64{0},
-		},
-	}
-	finalRevTxn, _ := txnBuilder.View()
-	finalRevTxn.TransactionSignatures = append(finalRevTxn.TransactionSignatures, finalRevRenterSig)
-	finalRevRenterSigRaw := crypto.SignHash(finalRevTxn.SigHash(0, pt.HostBlockHeight), ourSK)
-	finalRevRenterSig.Signature = finalRevRenterSigRaw[:]
-
-	// Send the renter's final revision sig to the host.
-	err = modules.RPCWrite(conn, modules.RPCRenewContractFinalRevisionSig{
-		Signature: finalRevRenterSigRaw,
-	})
-	if err != nil {
-		return errors.AddContext(err, "failed to send RPCRenewContractFinalRevisionSig to host")
-	}
-
-	// Receive the host's final revision sig.
-	var finalRevisionSigHostResp modules.RPCRenewContractFinalRevisionSig
-	err = modules.RPCRead(conn, &finalRevisionSigHostResp)
-	if err != nil {
-		return errors.AddContext(err, "failed to read RPCRenewContractFinalRevisionSig from host")
-	}
-
 	// Create the host sig for the final revision.
-	finalRevHostSigRaw := finalRevisionSigHostResp.Signature
+	finalRevHostSigRaw := resp.FinalRevSig
 	finalRevHostSig := types.TransactionSignature{
 		ParentID:       crypto.Hash(finalRev.ParentID),
 		PublicKeyIndex: 1,

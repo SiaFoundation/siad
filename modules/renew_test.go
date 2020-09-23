@@ -28,7 +28,7 @@ func TestRenewBaseCost(t *testing.T) {
 			newEndHeight: 10,
 			storage:      0,
 
-			basePrice:      types.ZeroCurrency,
+			basePrice:      types.SiacoinPrecision,
 			baseCollateral: types.ZeroCurrency,
 		},
 		// 1 block time extension
@@ -37,7 +37,7 @@ func TestRenewBaseCost(t *testing.T) {
 			newEndHeight: 0,
 			storage:      1,
 
-			basePrice:      types.SiacoinPrecision,
+			basePrice:      types.SiacoinPrecision.Mul64(2),
 			baseCollateral: types.SiacoinPrecision.Mul64(2),
 		},
 		// 0 block time extension.
@@ -46,7 +46,7 @@ func TestRenewBaseCost(t *testing.T) {
 			newEndHeight: 0,
 			storage:      1,
 
-			basePrice:      types.ZeroCurrency,
+			basePrice:      types.SiacoinPrecision,
 			baseCollateral: types.ZeroCurrency,
 		},
 		// -1 block time extension.
@@ -55,7 +55,7 @@ func TestRenewBaseCost(t *testing.T) {
 			newEndHeight: 0,
 			storage:      1,
 
-			basePrice:      types.ZeroCurrency,
+			basePrice:      types.SiacoinPrecision,
 			baseCollateral: types.ZeroCurrency,
 		},
 		// 60 block time extension
@@ -64,7 +64,7 @@ func TestRenewBaseCost(t *testing.T) {
 			newEndHeight: 10,
 			storage:      1,
 
-			basePrice:      types.SiacoinPrecision.Mul64(60),
+			basePrice:      types.SiacoinPrecision.Mul64(61),
 			baseCollateral: types.SiacoinPrecision.Mul64(120),
 		},
 	}
@@ -75,7 +75,7 @@ func TestRenewBaseCost(t *testing.T) {
 		lastRev.NewWindowEnd = test.oldWindowEnd
 		lastRev.NewFileSize = test.storage
 		endHeight := test.newEndHeight
-		basePrice, baseCollateral := RenewBaseCosts(lastRev, host, endHeight)
+		basePrice, baseCollateral := RenewBaseCosts(lastRev, host, types.SiacoinPrecision, endHeight)
 
 		if !basePrice.Equals(test.basePrice) {
 			t.Fatalf("%v: expected basePrice %v but was %v", i, test.basePrice, basePrice)

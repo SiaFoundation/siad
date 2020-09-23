@@ -51,13 +51,13 @@ func rhp2RenewContractCollateral(so storageObligation, settings modules.HostExte
 // renewContractCollateral returns the amount of collateral that the host is
 // expected to add to the file contract based on the file contract and host
 // settings.
-func renewContractCollateral(rev types.FileContractRevision, settings modules.HostExternalSettings, fc types.FileContract) (types.Currency, error) {
+func renewContractCollateral(rev types.FileContractRevision, settings modules.HostExternalSettings, renewRPCCost types.Currency, fc types.FileContract) (types.Currency, error) {
 	if fc.ValidHostPayout().Cmp(settings.ContractPrice) < 0 {
 		return types.Currency{}, errors.New("ContractPrice higher than ValidHostOutput")
 	}
 
 	diff := fc.ValidHostPayout().Sub(settings.ContractPrice)
-	rbp, _ := modules.RenewBaseCosts(rev, settings, fc.WindowStart)
+	rbp, _ := modules.RenewBaseCosts(rev, settings, renewRPCCost, fc.WindowStart)
 	if diff.Cmp(rbp) < 0 {
 		return types.Currency{}, errors.New("ValidHostOutput smaller than ContractPrice + RenewBasePrice")
 	}

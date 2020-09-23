@@ -208,24 +208,19 @@ type (
 	// renter's public key used within the unlock conditions of the new
 	// contract.
 	RPCRenewContractRequest struct {
-		TSet     []types.Transaction
-		RenterPK types.SiaPublicKey
+		TSet        []types.Transaction
+		RenterPK    types.SiaPublicKey
+		FinalRevSig crypto.Signature
 	}
 
 	// RPCRenewContractCollateralResponse is the response sent by the host after
 	// adding the collateral to the transaction. It contains any new parents,
 	// inputs and outputs that were added.
 	RPCRenewContractCollateralResponse struct {
-		NewParents []types.Transaction
-		NewInputs  []types.SiacoinInput
-		NewOutputs []types.SiacoinOutput
-	}
-
-	// RPCRenewContractFinalRevisionSig is a response used by both host and
-	// renter to transmit the signature for the final revision of the renewed
-	// contract.
-	RPCRenewContractFinalRevisionSig struct {
-		Signature crypto.Signature
+		NewParents  []types.Transaction
+		NewInputs   []types.SiacoinInput
+		NewOutputs  []types.SiacoinOutput
+		FinalRevSig crypto.Signature
 	}
 
 	// RPCRenewContractRenterSignatures contains the renter's signatures for the

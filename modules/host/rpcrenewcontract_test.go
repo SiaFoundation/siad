@@ -1,7 +1,6 @@
 package host
 
 import (
-	"math"
 	"reflect"
 	"testing"
 
@@ -16,19 +15,19 @@ func TestAcceptRenewal(t *testing.T) {
 	t.Parallel()
 
 	// acceptable
-	err := needsRenewal(true, 0, revisionSubmissionBuffer+1)
+	err := renewAllowed(true, 0, revisionSubmissionBuffer+1)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// not accepting new contracts
-	err = needsRenewal(false, 0, revisionSubmissionBuffer+1)
+	err = renewAllowed(false, 0, revisionSubmissionBuffer+1)
 	if !errors.Contains(err, ErrNotAcceptingContracts) {
 		t.Fatal(err)
 	}
 
 	// too close to submission.
-	err = needsRenewal(true, 0, revisionSubmissionBuffer)
+	err = renewAllowed(true, 0, revisionSubmissionBuffer)
 	if !errors.Contains(err, ErrLateRevision) {
 		t.Fatal(err)
 	}
@@ -165,16 +164,26 @@ func TestVerifyRenewedContract(t *testing.T) {
 			SignaturesRequired: 2,
 		}.UnlockHash(),
 	}
-	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevision, es, fc.WindowStart)
-	oldRevision.NewMissedProofOutputs[2].Value = basePrice.Add(baseCollateral)
+	renewContractRPCCost := types.SiacoinPrecision
+	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevision, es, renewContractRPCCost, fc.WindowStart)
 	lockedCollateral := types.ZeroCurrency
-	expectedCollateral, err := renewContractCollateral(so.RevisionTransactionSet[0].FileContractRevisions[0], es, fc)
+	expectedCollateral, err := renewContractCollateral(so.RevisionTransactionSet[0].FileContractRevisions[0], es, renewContractRPCCost, fc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldRevision.NewMissedProofOutputs[2].Value = basePrice.Add(expectedCollateral)
+
+	// Success
+	err = verifyRenewedContract(so, fc, oldRevision, bh, is, es, renewContractRPCCost, rpk, hpk, lockedCollateral)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Success
-	err = verifyRenewedContract(so, fc, oldRevision, bh, is, es, rpk, hpk, lockedCollateral)
+	// Success - Renter expecting less (== 0) collateral
+	goodFC := fc
+	goodFC.ValidProofOutputs = append([]types.SiacoinOutput{}, goodFC.ValidProofOutputs...)
+	goodFC.SetValidHostPayout(basePrice.Add(es.ContractPrice))
+	err = verifyRenewedContract(so, goodFC, oldRevision, bh, is, es, renewContractRPCCost, rpk, hpk, lockedCollateral)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +191,7 @@ func TestVerifyRenewedContract(t *testing.T) {
 	// Wrong filesize
 	badFC := fc
 	badFC.FileSize++
-	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, rpk, hpk, lockedCollateral)
+	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, renewContractRPCCost, rpk, hpk, lockedCollateral)
 	if !errors.Contains(err, ErrBadFileSize) {
 		t.Fatal(err)
 	}
@@ -190,7 +199,7 @@ func TestVerifyRenewedContract(t *testing.T) {
 	// Wrong merkle root
 	badFC = fc
 	badFC.FileMerkleRoot = crypto.Hash{}
-	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, rpk, hpk, lockedCollateral)
+	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, renewContractRPCCost, rpk, hpk, lockedCollateral)
 	if !errors.Contains(err, ErrBadFileMerkleRoot) {
 		t.Fatal(err)
 	}
@@ -198,7 +207,7 @@ func TestVerifyRenewedContract(t *testing.T) {
 	// Early window
 	badFC = fc
 	badFC.WindowStart--
-	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, rpk, hpk, lockedCollateral)
+	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, renewContractRPCCost, rpk, hpk, lockedCollateral)
 	if !errors.Contains(err, ErrEarlyWindow) {
 		t.Fatal(err)
 	}
@@ -206,7 +215,7 @@ func TestVerifyRenewedContract(t *testing.T) {
 	// Small window
 	badFC = fc
 	badFC.WindowEnd--
-	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, rpk, hpk, lockedCollateral)
+	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, renewContractRPCCost, rpk, hpk, lockedCollateral)
 	if !errors.Contains(err, ErrSmallWindow) {
 		t.Fatal(err)
 	}
@@ -215,7 +224,7 @@ func TestVerifyRenewedContract(t *testing.T) {
 	badFC = fc
 	badFC.WindowStart = bh + es.MaxDuration + 1
 	badFC.WindowEnd = badFC.WindowStart + es.WindowSize
-	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, rpk, hpk, lockedCollateral)
+	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, renewContractRPCCost, rpk, hpk, lockedCollateral)
 	if !errors.Contains(err, ErrLongDuration) {
 		t.Fatal(err)
 	}
@@ -223,7 +232,7 @@ func TestVerifyRenewedContract(t *testing.T) {
 	// Bad output count #1
 	badFC = fc
 	badFC.ValidProofOutputs = nil
-	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, rpk, hpk, lockedCollateral)
+	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, renewContractRPCCost, rpk, hpk, lockedCollateral)
 	if !errors.Contains(err, ErrBadContractOutputCounts) {
 		t.Fatal(err)
 	}
@@ -231,7 +240,7 @@ func TestVerifyRenewedContract(t *testing.T) {
 	// Bad output count #2
 	badFC = fc
 	badFC.MissedProofOutputs = nil
-	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, rpk, hpk, lockedCollateral)
+	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, renewContractRPCCost, rpk, hpk, lockedCollateral)
 	if !errors.Contains(err, ErrBadContractOutputCounts) {
 		t.Fatal(err)
 	}
@@ -240,7 +249,7 @@ func TestVerifyRenewedContract(t *testing.T) {
 	badFC = fc
 	badFC.ValidProofOutputs = append([]types.SiacoinOutput{}, badFC.ValidProofOutputs...)
 	badFC.ValidProofOutputs[1].UnlockHash = types.UnlockHash{}
-	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, rpk, hpk, lockedCollateral)
+	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, renewContractRPCCost, rpk, hpk, lockedCollateral)
 	if !errors.Contains(err, ErrBadPayoutUnlockHashes) {
 		t.Fatal(err)
 	}
@@ -249,7 +258,7 @@ func TestVerifyRenewedContract(t *testing.T) {
 	badFC = fc
 	badFC.MissedProofOutputs = append([]types.SiacoinOutput{}, badFC.MissedProofOutputs...)
 	badFC.MissedProofOutputs[1].UnlockHash = types.UnlockHash{}
-	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, rpk, hpk, lockedCollateral)
+	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, renewContractRPCCost, rpk, hpk, lockedCollateral)
 	if !errors.Contains(err, ErrBadPayoutUnlockHashes) {
 		t.Fatal(err)
 	}
@@ -258,7 +267,7 @@ func TestVerifyRenewedContract(t *testing.T) {
 	badFC = fc
 	badFC.MissedProofOutputs = append([]types.SiacoinOutput{}, badFC.MissedProofOutputs...)
 	badFC.MissedProofOutputs[2].UnlockHash = types.UnlockHash{1}
-	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, rpk, hpk, lockedCollateral)
+	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, renewContractRPCCost, rpk, hpk, lockedCollateral)
 	if !errors.Contains(err, ErrBadPayoutUnlockHashes) {
 		t.Fatal(err)
 	}
@@ -266,42 +275,34 @@ func TestVerifyRenewedContract(t *testing.T) {
 	// Max collateral reached
 	badES := es
 	badES.MaxCollateral = expectedCollateral.Sub64(1)
-	err = verifyRenewedContract(so, fc, oldRevision, bh, is, badES, rpk, hpk, lockedCollateral)
+	err = verifyRenewedContract(so, fc, oldRevision, bh, is, badES, renewContractRPCCost, rpk, hpk, lockedCollateral)
 	if !errors.Contains(err, errMaxCollateralReached) {
 		t.Fatal(err)
 	}
 
 	// Collateral budget exceeded.
 	badLockedCollateral := is.CollateralBudget.Sub(expectedCollateral).Add64(1)
-	err = verifyRenewedContract(so, fc, oldRevision, bh, is, es, rpk, hpk, badLockedCollateral)
+	err = verifyRenewedContract(so, fc, oldRevision, bh, is, es, renewContractRPCCost, rpk, hpk, badLockedCollateral)
 	if !errors.Contains(err, errCollateralBudgetExceeded) {
 		t.Fatal(err)
 	}
 
 	// Low host valid output
 	badFC = fc
-	badES = es
-	badES.ContractPrice = types.ZeroCurrency
-	badES.Collateral = types.SiacoinPrecision
-	badES.MaxCollateral = types.SiacoinPrecision.Mul64(math.MaxUint64)
-	badIS := is
-	badIS.CollateralBudget = badES.MaxCollateral
-	_, badBaseCollateral := modules.RenewBaseCosts(oldRevision, badES, badFC.WindowStart)
 	badFC.ValidProofOutputs = append([]types.SiacoinOutput{}, badFC.ValidProofOutputs...)
-	badFC.ValidProofOutputs[1].Value = basePrice.Add(badBaseCollateral).Sub64(1)
-	err = verifyRenewedContract(so, badFC, oldRevision, bh, badIS, badES, rpk, hpk, lockedCollateral)
+	badFC.ValidProofOutputs[1].Value = es.ContractPrice.Add(basePrice).Sub64(1)
+	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, renewContractRPCCost, rpk, hpk, lockedCollateral)
 	if !errors.Contains(err, ErrLowHostValidOutput) {
 		t.Fatal(err)
 	}
 
 	// Low host missed output
 	badFC = fc
-	badBasePrice, badBaseCollateral := modules.RenewBaseCosts(oldRevision, badES, badFC.WindowStart)
 	badFC.ValidProofOutputs = append([]types.SiacoinOutput{}, badFC.ValidProofOutputs...)
 	badFC.MissedProofOutputs = append([]types.SiacoinOutput{}, badFC.MissedProofOutputs...)
-	badFC.ValidProofOutputs[1].Value = badBasePrice.Add(badBaseCollateral).Add64(1)
-	badFC.MissedProofOutputs[1].Value = badFC.ValidProofOutputs[1].Value.Sub(badBaseCollateral).Sub(badBasePrice).Sub64(1)
-	err = verifyRenewedContract(so, badFC, oldRevision, bh, badIS, badES, rpk, hpk, lockedCollateral)
+	badFC.ValidProofOutputs[1].Value = es.ContractPrice.Add(basePrice)
+	badFC.MissedProofOutputs[1].Value = badFC.ValidProofOutputs[1].Value.Sub(baseCollateral).Sub(basePrice).Sub64(1)
+	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, renewContractRPCCost, rpk, hpk, lockedCollateral)
 	if !errors.Contains(err, ErrLowHostMissedOutput) {
 		t.Fatal(err)
 	}
@@ -310,7 +311,7 @@ func TestVerifyRenewedContract(t *testing.T) {
 	badFC = fc
 	badFC.MissedProofOutputs = append([]types.SiacoinOutput{}, badFC.MissedProofOutputs...)
 	_ = badFC.SetMissedVoidPayout(baseCollateral.Add(basePrice).Sub64(1))
-	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, rpk, hpk, lockedCollateral)
+	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, renewContractRPCCost, rpk, hpk, lockedCollateral)
 	if !errors.Contains(err, ErrLowVoidOutput) {
 		t.Fatal(err)
 	}
@@ -318,7 +319,7 @@ func TestVerifyRenewedContract(t *testing.T) {
 	// Bad unlock hash.
 	badFC = fc
 	badFC.UnlockHash = types.UnlockHash{}
-	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, rpk, hpk, lockedCollateral)
+	err = verifyRenewedContract(so, badFC, oldRevision, bh, is, es, renewContractRPCCost, rpk, hpk, lockedCollateral)
 	if !errors.Contains(err, ErrBadUnlockHash) {
 		t.Fatal(err)
 	}
