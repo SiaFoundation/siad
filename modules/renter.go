@@ -795,8 +795,7 @@ type (
 		PriceTableStatus WorkerPriceTableStatus `json:"pricetablestatus"`
 
 		// Job Queues
-		BackupJobQueueSize       int `json:"backupjobqueuesize"`
-		DownloadRootJobQueueSize int `json:"downloadrootjobqueuesize"`
+		BackupJobQueueSize int `json:"backupjobqueuesize"`
 
 		// Read Jobs Information
 		ReadJobsStatus WorkerReadJobsStatus `json:"readjobsstatus"`

@@ -21,6 +21,13 @@ const (
 )
 
 var (
+	// ErrRootNotFound is returned if all workers were unable to recover the
+	// root
+	ErrRootNotFound = errors.New("workers were unable to recover the data by sector root - all workers failed")
+
+	// ErrProjectTimedOut is returned when the project timed out
+	ErrProjectTimedOut = errors.New("project timed out")
+
 	// sectorLookupToDownloadRatio is an arbitrary ratio that resembles the
 	// amount of lookups vs downloads. It is used in price gouging checks.
 	sectorLookupToDownloadRatio = 16

@@ -2988,7 +2988,7 @@ func writeWorkers(workers []modules.WorkerStatus) {
 	maintenanceInfo := "\tOn Cooldown\tCooldown Time\tLast Error"
 	eaHeader := "\tWorker Account"
 	jobHeader := "\tWorker Jobs\t \t "
-	jobInfo := "\tBackups\tDownload By Root\tHas Sector"
+	jobInfo := "\tBackups\tHas Sector"
 	fmt.Fprintln(w, "\n  "+contractHeader+downloadHeader+uploadHeader+maintenanceHeader+eaHeader+jobHeader)
 	fmt.Fprintln(w, "  "+contractInfo+downloadInfo+uploadInfo+maintenanceInfo+jobInfo)
 
@@ -3017,9 +3017,8 @@ func writeWorkers(workers []modules.WorkerStatus) {
 			sanitizeErr(worker.MaintenanceCoolDownError))
 
 		// Job Info
-		fmt.Fprintf(w, "\t%v\t%v\t%v\n",
+		fmt.Fprintf(w, "\t%v\t%v\n",
 			worker.BackupJobQueueSize,
-			worker.DownloadRootJobQueueSize,
 			worker.HasSectorJobsStatus.JobQueueSize)
 	}
 	w.Flush()

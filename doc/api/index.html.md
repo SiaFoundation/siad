@@ -4545,10 +4545,6 @@ returns the the status of all the workers in the renter's workerpool.
       "balancetarget":       "0", // hastings
       
       "backupjobqueuesize":       0, // int
-      "downloadrootjobqueuesize": 0  // int
-
-      "backupjobqueuesize": 0,        // int
-      "downloadrootjobqueuesize": 0,  // int
 
       "maintenanceoncooldown": false,                      // bool
       "maintenancerecenterr": "",                          // string
@@ -4669,9 +4665,6 @@ The worker's Ephemeral Account target balance
 
 **backupjobqueuesize** | int  
 The size of the worker's backup job queue
-
-**downloadrootjobqueuesize** | int  
-The size of the worker's download by root job queue
 
 **maintenanceoncooldown** | boolean  
 Indicates if the worker is on maintenance cooldown

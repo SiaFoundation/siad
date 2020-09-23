@@ -4850,9 +4850,6 @@ func TestWorkerStatus(t *testing.T) {
 			if worker.BackupJobQueueSize != 0 {
 				return fmt.Errorf("Expected backup queue to be empty but was %v", worker.BackupJobQueueSize)
 			}
-			if worker.DownloadRootJobQueueSize != 0 {
-				return fmt.Errorf("Expected download by root queue to be empty but was %v", worker.DownloadRootJobQueueSize)
-			}
 
 			// AccountStatus checks
 			if worker.AccountStatus.AvailableBalance.IsZero() {
