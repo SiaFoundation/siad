@@ -29,7 +29,7 @@ func RenewBaseCosts(lastRev types.FileContractRevision, host HostExternalSetting
 	// Otherwise we calculate the number of blocks we still need to pay for and
 	// the amount of cost and collateral expected.
 	timeExtension := uint64(payForUntil - paidForUntil)
-	basePrice = host.StoragePrice.Mul64(storage).Mul64(timeExtension)    // cost of already uploaded data that needs to be covered by the renewed contract.
-	baseCollateral = host.Collateral.Mul64(storage).Mul64(timeExtension) // same as basePrice.
+	basePrice = basePrice.Add(host.StoragePrice.Mul64(storage).Mul64(timeExtension)) // cost of already uploaded data that needs to be covered by the renewed contract.
+	baseCollateral = host.Collateral.Mul64(storage).Mul64(timeExtension)             // same as basePrice.
 	return
 }
