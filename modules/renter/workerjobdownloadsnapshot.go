@@ -156,7 +156,8 @@ func (w *worker) initJobDownloadSnapshotQueue() {
 	}
 }
 
-// UploadSnapshot is a helper method to run a UploadSnapshot job on a worker.
+// FetchHostBackups is a convenience method to runs a DownloadSnapshot job on a
+// worker and formats the response to a list of UploadedBackup objects.
 func (w *worker) FetchHostBackups(ctx context.Context) ([]modules.UploadedBackup, error) {
 	downloadSnapshotRespChan := make(chan *jobDownloadSnapshotResponse)
 	jus := &jobDownloadSnapshot{
