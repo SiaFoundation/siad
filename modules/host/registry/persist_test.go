@@ -12,9 +12,11 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// testingDefaultMaxEntries defines sane maxEntries for testing.
 const testingDefaultMaxEntries = 640
 
 // randomValue creates a random value object for testing and returns it both as
@@ -45,9 +47,6 @@ func randomValue(index int64) (modules.RegistryValue, value, crypto.SecretKey) {
 // TestPubKeyCompression tests converting a types.SiaPublicKey to a
 // compressedPublicKey and back.
 func TestPubKeyCompression(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
 	t.Parallel()
 
 	// Create a valid key.
@@ -145,6 +144,7 @@ func TestPersistedEntryMarshalUnmarshal(t *testing.T) {
 	fastrand.Read(entry.Data[:])
 	fastrand.Read(entry.Signature[:])
 
+	// Marshal
 	b, err := entry.Marshal()
 	if err != nil {
 		t.Fatal(err)
@@ -152,15 +152,37 @@ func TestPersistedEntryMarshalUnmarshal(t *testing.T) {
 	if uint64(len(b)) != PersistedEntrySize {
 		t.Fatal("marshaled entry has wrong size", len(b), PersistedEntrySize)
 	}
+	// Unmarshal
 	var entry2 persistedEntry
 	err = entry2.Unmarshal(b)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Check
 	if !reflect.DeepEqual(entry, entry2) {
 		t.Log(entry)
 		t.Log(entry2)
 		t.Fatal("entries don't match")
+	}
+
+	// Try again with too much data.
+	func() {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("should have triggered sanity check")
+			}
+		}()
+		entry.DataLen++
+		_, err = entry.Marshal()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Manually corrupt the length.
+	b[141] = 255
+	err = entry2.Unmarshal(b)
+	if !errors.Contains(err, errTooMuchData) {
+		t.Fatal(err)
 	}
 }
 

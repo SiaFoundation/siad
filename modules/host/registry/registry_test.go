@@ -189,7 +189,6 @@ func TestUpdate(t *testing.T) {
 		t.Log(*vExist)
 		t.Fatal("registry contains wrong key-value pair")
 	}
-	t.SkipNow()
 
 	// Try another update with too much data.
 	v.revision++
@@ -215,7 +214,12 @@ func TestUpdate(t *testing.T) {
 	if len(r.entries) != 2 {
 		t.Fatal("registry should contain two entries", len(r.entries))
 	}
-	if vExist, exists := r.entries[v2.mapKey()]; !exists || !reflect.DeepEqual(*vExist, v2) {
+	vExist, exists = r.entries[v2.mapKey()]
+	if !exists {
+		t.Fatal("entry doesn't exist")
+	}
+	v2.staticIndex = vExist.staticIndex
+	if !reflect.DeepEqual(*vExist, v2) {
 		t.Log(v2)
 		t.Log(*vExist)
 		t.Fatal("registry contains wrong key-value pair")
@@ -255,7 +259,12 @@ func TestUpdate(t *testing.T) {
 	if len(r.entries) != 2 {
 		t.Fatal("registry should contain two entries", len(r.entries))
 	}
-	if vExist, exists := r.entries[v3.mapKey()]; !exists || !reflect.DeepEqual(*vExist, v3) {
+	vExist, exists = r.entries[v3.mapKey()]
+	if !exists {
+		t.Fatal("entry doesn't exist")
+	}
+	v3.staticIndex = vExist.staticIndex
+	if !reflect.DeepEqual(*vExist, v3) {
 		t.Log(v3)
 		t.Log(*vExist)
 		t.Fatal("registry contains wrong key-value pair")

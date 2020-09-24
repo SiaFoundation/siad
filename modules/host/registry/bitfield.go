@@ -9,6 +9,8 @@ import (
 )
 
 type (
+	// bitfield is an efficient way to mark specific slots on disk as used,
+	// unused or fetch a new free slot.
 	bitfield []uint64
 )
 
@@ -60,7 +62,7 @@ func (b *bitfield) SetRandom() (uint64, error) {
 
 // IsSet returns whether the gap at the specified index is set.
 func (b bitfield) IsSet(index uint64) bool {
-	// Each index covers 8 bytes which 8 bits each. So 64 bits in total.
+	// Each index covers 8 bytes which 8 are bits each. So 64 bits in total.
 	sliceOffset := index / 64
 	bitOffset := index % 64
 
@@ -78,12 +80,12 @@ func (b bitfield) Len() uint64 {
 
 // Set sets a gap in the bitfield.
 func (b *bitfield) Set(index uint64) error {
-	// Each index covers 8 bytes which 8 bits each. So 64 bits in total.
+	// Each index covers 8 bytes which are 8 bits each. So 64 bits in total.
 	sliceOffset := index / 64
 	bitOffset := index % 64
 
-	// Extend bitfield if necessary.
-	for sliceOffset >= uint64(len(*b)) {
+	// Check out-of-bounds.
+	if sliceOffset >= uint64(len(*b)) {
 		return fmt.Errorf("Set: out-of-bounds %v >= %v", sliceOffset, len(*b))
 	}
 
@@ -93,12 +95,12 @@ func (b *bitfield) Set(index uint64) error {
 
 // Unset unsets a gap in the bitfield.
 func (b *bitfield) Unset(index uint64) error {
-	// Each index covers 8 bytes which 8 bits each. So 64 bits in total.
+	// Each index covers 8 bytes which are 8 bits each. So 64 bits in total.
 	sliceOffset := index / 64
 	bitOffset := index % 64
 
-	// Extend bitfield if necessary.
-	for sliceOffset >= uint64(len(*b)) {
+	// Check out-of-bounds.
+	if sliceOffset >= uint64(len(*b)) {
 		return fmt.Errorf("Unset: out-of-bounds %v >= %v", sliceOffset, len(*b))
 	}
 

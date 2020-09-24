@@ -144,7 +144,7 @@ func (r *Registry) Update(rv modules.RegistryValue, pubKey types.SiaPublicKey, e
 	}
 
 	// Check if the entry exists already. If it does and the new revision is
-	// smaller than the last one, we update it.
+	// larger than the last one, we update it.
 	entry, exists := r.entries[v.mapKey()]
 	if exists && v.revision > entry.revision {
 		v.staticIndex = entry.staticIndex
@@ -177,7 +177,7 @@ func (r *Registry) Update(rv modules.RegistryValue, pubKey types.SiaPublicKey, e
 }
 
 // Prune deletes all entries from the registry that expire at a height smaller
-// than the provided expiry argument.
+// than or equal to the provided expiry argument.
 func (r *Registry) Prune(expiry types.BlockHeight) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

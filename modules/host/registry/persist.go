@@ -91,6 +91,7 @@ func initRegistry(path string, wal *writeaheadlog.WAL, maxEntries uint64) (*os.F
 	// Truncate the file to its max size.
 	err = f.Truncate(int64(maxEntries * PersistedEntrySize))
 	if err != nil {
+		err = errors.Compose(err, f.Close()) // close the file on error
 		return nil, errors.AddContext(err, "failed to preallocate registry disk space")
 	}
 
@@ -137,16 +138,16 @@ func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield) (map[crypto.
 		if err != nil {
 			return nil, errors.AddContext(err, fmt.Sprintf("failed to read entry %v of %v", index, numEntries))
 		}
-		var se persistedEntry
-		err = se.Unmarshal(entry[:])
+		var pe persistedEntry
+		err = pe.Unmarshal(entry[:])
 		if err != nil {
 			return nil, errors.AddContext(err, fmt.Sprintf("failed to parse entry %v of %v", index, numEntries))
 		}
-		if se.Key == noKey {
+		if pe.Key == noKey {
 			continue // ignore unused entries
 		}
 		// Add the entry to the store.
-		v, err := se.Value(index)
+		v, err := pe.Value(index)
 		if err != nil {
 			return nil, errors.AddContext(err, fmt.Sprintf("failed to get key-value pair from entry %v of %v", index, numEntries))
 		}
@@ -160,7 +161,7 @@ func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield) (map[crypto.
 	return entries, nil
 }
 
-// newPersistedEntry turns a key-value pair into a persistedEntry.
+// newPersistedEntry turns a value type into a persistedEntry.
 func newPersistedEntry(value value) (persistedEntry, error) {
 	if len(value.data) > modules.RegistryDataSize {
 		build.Critical("newPersistedEntry: called with too much data")
@@ -182,16 +183,16 @@ func newPersistedEntry(value value) (persistedEntry, error) {
 	return pe, nil
 }
 
-// KeyValue converts a persistedEntry into a key-value pair.
+// Value converts a persistedEntry into a value type.
 func (entry persistedEntry) Value(index int64) (value, error) {
 	if entry.DataLen > modules.RegistryDataSize {
-		err := errors.New("KeyValue: entry has a too big data len")
+		err := errors.New("Value: entry has a too big data len")
 		build.Critical(err)
 		return value{}, err
 	}
 	spk, err := newSiaPublicKey(entry.Key)
 	if err != nil {
-		return value{}, errors.AddContext(err, "KeyVale: failed to convert compressed key to SiaPublicKey")
+		return value{}, errors.AddContext(err, "Value: failed to convert compressed key to SiaPublicKey")
 	}
 	return value{
 		key:         spk,
@@ -235,14 +236,14 @@ func (entry *persistedEntry) Unmarshal(b []byte) error {
 	copy(entry.Signature[:], b[77:])
 	entry.DataLen = uint8(b[141])
 	if int(entry.DataLen) > len(entry.Data) {
-		return errors.New("read DataLen exceeds length of available data")
+		return errTooMuchData
 	}
 	copy(entry.Data[:], b[142:])
 	return nil
 }
 
-// saveEntry stores a key-value pair on disk in an ACID fashion. If unused is
-// set, the entry will be marked as not in use.
+// saveEntry stores a value on disk in an ACID fashion. If used is set, the
+// entry will be marked as in use. Otherwise a sentinel value will be persisted.
 func (r *Registry) saveEntry(v value, used bool) error {
 	var entry persistedEntry
 	var err error

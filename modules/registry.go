@@ -10,8 +10,8 @@ const (
 	// values for the same pubkey.
 	TweakSize = crypto.HashSize
 
-	// RegistryDataSize is the amount of arbitrary data a renter can register in
-	// the registry.
+	// RegistryDataSize is the amount of arbitrary data in bytes a renter can
+	// register in the registry.
 	RegistryDataSize = 114
 )
 

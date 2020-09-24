@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// TestRegistryValueSignature tests signature verification on registry values.
 func TestRegistryValueSignature(t *testing.T) {
 	signedRV := func() (RegistryValue, crypto.PublicKey) {
 		sk, pk := crypto.GenerateKeyPair()
