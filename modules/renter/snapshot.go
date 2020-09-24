@@ -307,9 +307,6 @@ func (r *Renter) managedSaveSnapshot(meta modules.UploadedBackup) error {
 }
 
 // managedDownloadSnapshotTable will fetch the snapshot table from the host.
-//
-// TODO: The implementation for managedDownloadSnapshotTable currently silences
-// several errors, these errors should be handled explicitly.
 func (r *Renter) managedDownloadSnapshotTable(host *worker) ([]snapshotEntry, error) {
 	// Get the wallet seed.
 	ws, _, err := r.w.PrimarySeed()
