@@ -58,7 +58,6 @@ func (w *worker) callStatus() modules.WorkerStatus {
 		UploadTerminated:    w.uploadTerminated,
 
 		// Job Queues
-		DownloadRootJobQueueSize:     w.staticJobQueueDownloadByRoot.managedLen(),
 		DownloadSnapshotJobQueueSize: int(w.staticJobDownloadSnapshotQueue.callStatus().size),
 		UploadSnapshotJobQueueSize:   int(w.staticJobUploadSnapshotQueue.callStatus().size),
 

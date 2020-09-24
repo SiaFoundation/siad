@@ -469,7 +469,7 @@ func threadedDownloadFiles(workerIndex int) {
 
 		start := time.Now()
 
-		_, err = c.RenterDownloadFullGet(siaPath, localPath, false)
+		_, err = c.RenterDownloadFullGet(siaPath, localPath, false, false)
 		check(err)
 
 		// Log duration

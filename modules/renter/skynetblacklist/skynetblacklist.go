@@ -99,7 +99,7 @@ func (sb *SkynetBlacklist) IsBlacklisted(skylink modules.Skylink) bool {
 }
 
 // UpdateBlacklist updates the list of skylinks that are blacklisted.
-func (sb *SkynetBlacklist) UpdateBlacklist(additions, removals []modules.Skylink) error {
+func (sb *SkynetBlacklist) UpdateBlacklist(additions, removals []crypto.Hash) error {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
 
@@ -114,31 +114,35 @@ func (sb *SkynetBlacklist) UpdateBlacklist(additions, removals []modules.Skylink
 // marshalObjects marshals the given objects into a byte buffer.
 //
 // NOTE: this method does not check for duplicate additions or removals
-func (sb *SkynetBlacklist) marshalObjects(additions, removals []modules.Skylink) (bytes.Buffer, error) {
+func (sb *SkynetBlacklist) marshalObjects(additions, removals []crypto.Hash) (bytes.Buffer, error) {
 	// Create buffer for encoder
 	var buf bytes.Buffer
 	// Create and encode the persist links
 	listed := true
-	for _, skylink := range additions {
-		// Add skylink merkleroot to map
-		hash := crypto.HashObject(skylink.MerkleRoot())
+	for _, hash := range additions {
+		// Add hash to map
 		sb.hashes[hash] = struct{}{}
 
 		// Marshal the update
 		pe := persistEntry{hash, listed}
-		bytes := encoding.Marshal(pe)
-		buf.Write(bytes)
+		data := encoding.Marshal(pe)
+		_, err := buf.Write(data)
+		if err != nil {
+			return bytes.Buffer{}, errors.AddContext(err, "unable to write addition to the buffer")
+		}
 	}
 	listed = false
-	for _, skylink := range removals {
-		// Remove skylink merkleroot from map
-		hash := crypto.HashObject(skylink.MerkleRoot())
+	for _, hash := range removals {
+		// Remove hash from map
 		delete(sb.hashes, hash)
 
 		// Marshal the update
 		pe := persistEntry{hash, listed}
-		bytes := encoding.Marshal(pe)
-		buf.Write(bytes)
+		data := encoding.Marshal(pe)
+		_, err := buf.Write(data)
+		if err != nil {
+			return bytes.Buffer{}, errors.AddContext(err, "unable to write removal to the buffer")
+		}
 	}
 
 	return buf, nil

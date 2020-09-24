@@ -1691,7 +1691,7 @@ Contract %v
 // into a single error.
 func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile, skipped []string, totalSize uint64, err error) {
 	// Get dir info.
-	rd, err := httpClient.RenterDirGet(siaPath)
+	rd, err := httpClient.RenterDirRootGet(siaPath)
 	if err != nil {
 		err = errors.AddContext(err, "failed to get dir info")
 		return
@@ -1714,7 +1714,7 @@ func downloadDir(siaPath modules.SiaPath, destination string) (tfs []trackedFile
 		}
 		// Download file.
 		totalSize += file.Filesize
-		_, err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true)
+		_, err = httpClient.RenterDownloadFullGet(file.SiaPath, dst, true, true)
 		if err != nil {
 			err = errors.AddContext(err, "Failed to start download")
 			return
@@ -1748,7 +1748,14 @@ func renterdirdownload(path, destination string) {
 	// Parse SiaPath.
 	siaPath, err := modules.NewSiaPath(path)
 	if err != nil {
-		die("Failed to parse SiaPath:", err)
+		die("Couldn't parse SiaPath:", err)
+	}
+	// If root is not set we need to rebase.
+	if !renterDownloadRoot {
+		siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.UserFolder)
+		if err != nil {
+			die("Couldn't rebase SiaPath:", err)
+		}
 	}
 	// Download dir.
 	start := time.Now()
@@ -1848,14 +1855,21 @@ func renterfilesdownloadcmd(path, destination string) {
 	if err != nil {
 		die("Couldn't parse SiaPath:", err)
 	}
-	_, err = httpClient.RenterFileGet(siaPath)
+	// If root is not set we need to rebase.
+	if !renterDownloadRoot {
+		siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.UserFolder)
+		if err != nil {
+			die("Couldn't rebase SiaPath:", err)
+		}
+	}
+	_, err = httpClient.RenterFileRootGet(siaPath)
 	if err == nil {
 		renterfilesdownload(path, destination)
 		return
 	} else if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		die("Failed to download file:", err)
 	}
-	_, err = httpClient.RenterDirGet(siaPath)
+	_, err = httpClient.RenterDirRootGet(siaPath)
 	if err == nil {
 		renterdirdownload(path, destination)
 		return
@@ -1874,6 +1888,13 @@ func renterfilesdownload(path, destination string) {
 	if err != nil {
 		die("Couldn't parse SiaPath:", err)
 	}
+	// If root is not set we need to rebase.
+	if !renterDownloadRoot {
+		siaPath, err = siaPath.Rebase(modules.RootSiaPath(), modules.UserFolder)
+		if err != nil {
+			die("Couldn't rebase SiaPath:", err)
+		}
+	}
 	// If the destination is a folder, download the file to that folder.
 	fi, err := os.Stat(destination)
 	if err == nil && fi.IsDir() {
@@ -1884,7 +1905,7 @@ func renterfilesdownload(path, destination string) {
 	// the call will return before the download has completed. The call is made
 	// as an async call.
 	start := time.Now()
-	cancelID, err := httpClient.RenterDownloadFullGet(siaPath, destination, true)
+	cancelID, err := httpClient.RenterDownloadFullGet(siaPath, destination, true, true)
 	if err != nil {
 		die("Download could not be started:", err)
 	}
@@ -1897,7 +1918,8 @@ func renterfilesdownload(path, destination string) {
 	}
 
 	// If the download is blocking, display progress as the file downloads.
-	file, err := httpClient.RenterFileGet(siaPath)
+	var file api.RenterFile
+	file, err = httpClient.RenterFileRootGet(siaPath)
 	if err != nil {
 		die("Error getting file after download has started:", err)
 	}
@@ -2002,7 +2024,7 @@ func downloadprogress(tfs []trackedFile) []api.DownloadInfo {
 	}
 	for range time.Tick(OutputRefreshRate) {
 		// Get the list of downloads.
-		rdg, err := httpClient.RenterDownloadsGet()
+		rdg, err := httpClient.RenterDownloadsRootGet()
 		if err != nil {
 			continue // benign
 		}
@@ -2987,7 +3009,7 @@ func writeWorkers(workers []modules.WorkerStatus) {
 	maintenanceHeader := "\tWorker Maintenance\t \t "
 	maintenanceInfo := "\tOn Cooldown\tCooldown Time\tLast Error"
 	jobHeader := "\tWorker Jobs\t \t "
-	jobInfo := "\tDownload By Root\tHas Sector\tRead Sector\tSnapshot UL\tSnapshot DL"
+	jobInfo := "\tHas Sector\tRead Sector\tSnapshot UL\tSnapshot DL"
 	fmt.Fprintln(w, "\n  "+contractHeader+downloadHeader+uploadHeader+maintenanceHeader+jobHeader)
 	fmt.Fprintln(w, "  "+contractInfo+downloadInfo+uploadInfo+maintenanceInfo+jobInfo)
 
@@ -3016,8 +3038,7 @@ func writeWorkers(workers []modules.WorkerStatus) {
 			sanitizeErr(worker.MaintenanceCoolDownError))
 
 		// Job Info
-		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
-			worker.DownloadRootJobQueueSize,
+		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\n",
 			worker.HasSectorJobsStatus.JobQueueSize,
 			worker.ReadJobsStatus.JobQueueSize,
 			worker.DownloadSnapshotJobQueueSize,

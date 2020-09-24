@@ -76,7 +76,6 @@ type (
 		downloadRecentFailureErr    error     // What was the reason for the last failure?
 
 		// Job queues for the worker.
-		staticJobQueueDownloadByRoot   jobQueueDownloadByRoot
 		staticJobHasSectorQueue        *jobHasSectorQueue
 		staticJobReadQueue             *jobReadQueue
 		staticJobDownloadSnapshotQueue *jobDownloadSnapshotQueue

@@ -795,7 +795,6 @@ type (
 		PriceTableStatus WorkerPriceTableStatus `json:"pricetablestatus"`
 
 		// Job Queues
-		DownloadRootJobQueueSize     int `json:"downloadrootjobqueuesize"`
 		DownloadSnapshotJobQueueSize int `json:"downloadsnapshotjobqueuesize"`
 		UploadSnapshotJobQueueSize   int `json:"uploadsnapshotjobqueuesize"`
 
@@ -1111,8 +1110,8 @@ type Renter interface {
 	// Blacklist returns the merkleroots that are blacklisted
 	Blacklist() ([]crypto.Hash, error)
 
-	// UpdateSkynetBlacklist updates the list of skylinks that are blacklisted
-	UpdateSkynetBlacklist(additions, removals []Skylink) error
+	// UpdateSkynetBlacklist updates the list of hashed merkleroots that are blacklisted
+	UpdateSkynetBlacklist(additions, removals []crypto.Hash) error
 
 	// PinSkylink re-uploads the data stored at the file under that skylink with
 	// the given parameters.

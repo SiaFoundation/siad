@@ -12,7 +12,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 )
@@ -149,8 +148,9 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 				r.staticAlerter.RegisterAlert(modules.AlertIDSiafileLowRedundancy(uid), AlertMSGSiafileLowRedundancy,
 					AlertCauseSiafileLowRedundancy(fileSiaPath, maxHealth),
 					modules.SeverityWarning)
-				// Log a severe warning if we are not in testing
-				if build.Release != "testing" {
+				// Log a severe warning only if we are in production, otherwise it will
+				// panic and crash the node
+				if build.Release == "standard" {
 					r.log.Severe(AlertCauseSiafileLowRedundancy(fileSiaPath, maxHealth))
 				}
 			} else {
@@ -371,18 +371,8 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (_ siadir.Met
 	}
 
 	//  Open SiaDir
-	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath)
-	if err != nil && errors.Contains(err, filesystem.ErrNotExist) {
-		// If siadir doesn't exist create one
-		err = r.staticFileSystem.NewSiaDir(siaPath, modules.DefaultDirPerm)
-		if err != nil {
-			return siadir.Metadata{}, err
-		}
-		siaDir, err = r.staticFileSystem.OpenSiaDir(siaPath)
-		if err != nil {
-			return siadir.Metadata{}, err
-		}
-	} else if err != nil {
+	siaDir, err := r.staticFileSystem.OpenSiaDirCustom(siaPath, true)
+	if err != nil {
 		return siadir.Metadata{}, err
 	}
 	defer func() {
@@ -390,19 +380,7 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (_ siadir.Met
 	}()
 
 	// Grab the metadata.
-	md, err := siaDir.Metadata()
-	if err != nil && errors.Contains(err, filesystem.ErrNotExist) {
-		// If metadata doesn't exist create it.
-		err = r.staticFileSystem.NewSiaDir(siaPath, modules.DefaultDirPerm)
-		if err != nil {
-			return siadir.Metadata{}, err
-		}
-		// Try loading Metadata again.
-		return siaDir.Metadata()
-	} else if err != nil {
-		return siadir.Metadata{}, err
-	}
-	return md, nil
+	return siaDir.Metadata()
 }
 
 // managedUpdateLastHealthCheckTime updates the LastHealthCheckTime and

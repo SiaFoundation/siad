@@ -1193,7 +1193,7 @@ func TestRenterDownloadWithDrainedContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = renter.RenterStreamGet(files[fastrand.Intn(len(files))].SiaPath, true)
+	_, err = renter.RenterStreamGet(files[fastrand.Intn(len(files))].SiaPath, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -169,6 +169,17 @@ func TestRenterPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Create the parent dirs manually since we are going to use siafile.New
+	// instead of filesystem.NewSiaFile.
+	sp3Parent, err := siaPath3.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.staticFileSystem.NewSiaDir(sp3Parent, modules.DefaultDirPerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	wal := rt.renter.wal
 	rc, err := siafile.NewRSSubCode(1, 1, crypto.SegmentSize)
 	if err != nil {
