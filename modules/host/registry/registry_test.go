@@ -10,6 +10,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 )
@@ -52,13 +53,10 @@ func TestNew(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Only first bit is in use.
-	if !r.staticUsage.IsSet(0) {
-		t.Fatal("first page is not marked as in use")
-	}
-	for i := uint64(1); i < r.staticUsage.Len(); i++ {
+	// No bit should be used.
+	for i := uint64(0); i < r.staticUsage.Len(); i++ {
 		if r.staticUsage.IsSet(i) {
-			t.Fatal("no other page should be in use")
+			t.Fatal("no page should be in use")
 		}
 	}
 
@@ -107,12 +105,9 @@ func TestNew(t *testing.T) {
 		t.Fatal("registry contains wrong key-value pair")
 	}
 
-	// First bit + loaded page should be in use.
-	if !r.staticUsage.IsSet(0) {
-		t.Fatal("first page is not marked as in use")
-	}
-	for i := uint64(1); i < r.staticUsage.Len(); i++ {
-		if r.staticUsage.IsSet(i) != (i == uint64(v.staticIndex)) {
+	// Loaded page should be in use.
+	for i := uint64(0); i < r.staticUsage.Len(); i++ {
+		if r.staticUsage.IsSet(i) != (i == uint64(v.staticIndex-1)) {
 			t.Fatal("wrong page is set")
 		}
 	}
@@ -299,7 +294,7 @@ func TestRegistryLimit(t *testing.T) {
 	}
 
 	// Add entries up until the limit.
-	for i := uint64(0); i < limit-1; i++ {
+	for i := uint64(0); i < limit; i++ {
 		rv, v, _ := randomValue(0)
 		_, err = r.Update(rv, v.key, v.expiry)
 		if err != nil {
@@ -352,17 +347,14 @@ func TestPrune(t *testing.T) {
 	}
 
 	// Check bitfield.
-	if !r.staticUsage.IsSet(0) {
-		t.Fatal("first page should be set")
-	}
 	inUse := 0
 	for i := uint64(0); i < r.staticUsage.Len(); i++ {
 		if r.staticUsage.IsSet(i) {
 			inUse++
 		}
 	}
-	if inUse != len(r.entries)+1 {
-		t.Fatalf("expected %v bits to be in use", len(r.entries)+1)
+	if inUse != len(r.entries) {
+		t.Fatalf("expected %v bits to be in use", len(r.entries))
 	}
 
 	// Purge 1 of them.
@@ -387,17 +379,14 @@ func TestPrune(t *testing.T) {
 	}
 
 	// Check bitfield.
-	if !r.staticUsage.IsSet(0) {
-		t.Fatal("first page should be set")
-	}
 	inUse = 0
 	for i := uint64(0); i < r.staticUsage.Len(); i++ {
 		if r.staticUsage.IsSet(i) {
 			inUse++
 		}
 	}
-	if inUse != len(r.entries)+1 {
-		t.Fatalf("expected %v bits to be in use", len(r.entries)+1)
+	if inUse != len(r.entries) {
+		t.Fatalf("expected %v bits to be in use", len(r.entries))
 	}
 
 	// Restart.
@@ -417,16 +406,103 @@ func TestPrune(t *testing.T) {
 	}
 
 	// Check bitfield.
-	if !r.staticUsage.IsSet(0) {
-		t.Fatal("first page should be set")
-	}
 	inUse = 0
 	for i := uint64(0); i < r.staticUsage.Len(); i++ {
 		if r.staticUsage.IsSet(i) {
 			inUse++
 		}
 	}
-	if inUse != len(r.entries)+1 {
-		t.Fatalf("expected %v bits to be in use", len(r.entries)+1)
+	if inUse != len(r.entries) {
+		t.Fatalf("expected %v bits to be in use", len(r.entries))
+	}
+}
+
+// TestFullRegistry tests filling up a whole registry, reloading it and pruning
+// it.
+func TestFullRegistry(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	dir := testDir(t.Name())
+	wal := newTestWAL(filepath.Join(dir, "wal"))
+
+	// Create a new registry.
+	registryPath := filepath.Join(dir, "registry")
+	numEntries := uint64(128)
+	r, err := New(registryPath, wal, numEntries)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Fill it completely.
+	vals := make([]value, 0, numEntries)
+	for i := uint64(0); i < numEntries; i++ {
+		rv, v, _ := randomValue(0)
+		v.expiry = types.BlockHeight(i)
+		u, err := r.Update(rv, v.key, v.expiry)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if u {
+			t.Fatal("entry shouldn't exist")
+		}
+		vals = append(vals, v)
+	}
+
+	// Try one more entry. This should fail.
+	rv, v, _ := randomValue(0)
+	_, err = r.Update(rv, v.key, v.expiry)
+	if !errors.Contains(err, ErrNoFreeBit) {
+		t.Fatal(err)
+	}
+
+	// Reload it.
+	r, err = New(registryPath, wal, numEntries)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check number of entries.
+	if uint64(len(r.entries)) != numEntries {
+		t.Fatal(err)
+	}
+	for _, val := range vals {
+		valExist, exists := r.entries[val.mapKey()]
+		if !exists {
+			t.Fatal("entry not found")
+		}
+		val.staticIndex = valExist.staticIndex
+		if !reflect.DeepEqual(*valExist, val) {
+			t.Fatal("vals don't match")
+		}
+	}
+
+	// Prune expiry numEntries-1. This should leave half the entries.
+	err = r.Prune(types.BlockHeight(numEntries/2 - 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reload it.
+	r, err = New(registryPath, wal, numEntries)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check number of entries. Second half should still be in there.
+	if uint64(len(r.entries)) != numEntries/2 {
+		t.Fatal(len(r.entries), numEntries/2)
+	}
+	for _, val := range vals[numEntries/2:] {
+		valExist, exists := r.entries[val.mapKey()]
+		if !exists {
+			t.Fatal("entry not found")
+		}
+		val.staticIndex = valExist.staticIndex
+		if !reflect.DeepEqual(*valExist, val) {
+			t.Fatal("vals don't match")
+		}
 	}
 }

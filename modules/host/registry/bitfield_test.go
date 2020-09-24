@@ -8,7 +8,10 @@ import (
 // TestBitfield tests setting and unsettings values in the bitfield.
 func TestBitfield(t *testing.T) {
 	nBits := uint64(64 * 200)
-	b := newBitfield(nBits)
+	b, err := newBitfield(nBits)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Declare a helper to check all indices.
 	areSet := func(bf bitfield, set []uint64) error {
@@ -32,7 +35,7 @@ func TestBitfield(t *testing.T) {
 	}
 
 	// Set bit 0 and 63.
-	err := b.Set(0)
+	err = b.Set(0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +110,10 @@ func TestSetRandom(t *testing.T) {
 	// Start setting the next bit n times.
 	setMap := make(map[uint64]struct{})
 	n := 640
-	b := newBitfield(uint64(n))
+	b, err := newBitfield(uint64(n))
+	if err != nil {
+		t.Fatal(err)
+	}
 	for i := 0; i < n; i++ {
 		first, err := b.SetRandom()
 		if err != nil {
@@ -130,7 +136,7 @@ func TestSetRandom(t *testing.T) {
 	}
 
 	// Create a few gaps.
-	err := b.Unset(0)
+	err = b.Unset(0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,24 +194,26 @@ func TestSetRandom(t *testing.T) {
 
 // TestNewBitfield makes sure a bitfield is initialized with the right length.
 func TestNewBitfield(t *testing.T) {
-	b := newBitfield(0)
+	b, err := newBitfield(0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if b.Len() != 0 {
 		t.Fatal("wrong length")
 	}
-	b = newBitfield(1)
-	if b.Len() != 64 {
-		t.Fatal("wrong length")
+	b, err = newBitfield(1)
+	if err == nil {
+		t.Fatal("should have failed")
 	}
-	b = newBitfield(63)
-	if b.Len() != 64 {
-		t.Fatal("wrong length")
+	b, err = newBitfield(63)
+	if err == nil {
+		t.Fatal("should have failed")
 	}
-	b = newBitfield(64)
-	if b.Len() != 64 {
-		t.Fatal("wrong length")
+	b, err = newBitfield(64)
+	if err != nil {
+		t.Fatal(err)
 	}
-	b = newBitfield(65)
-	if b.Len() != 128 {
+	if b.Len() != 64 {
 		t.Fatal("wrong length")
 	}
 }

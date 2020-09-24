@@ -19,13 +19,11 @@ var ErrNoFreeBit = errors.New("no free bit available in bitfield")
 
 // newBitfield creates a new bitfield which can set n bits.
 // NOTE: The bitfield will round up to the nearest multiple of 64.
-func newBitfield(nBits uint64) bitfield {
+func newBitfield(nBits uint64) (bitfield, error) {
 	if nBits%64 != 0 {
-		nBits /= 64
-		nBits++
-		nBits *= 64
+		return nil, errors.New("invalid size for bitfield - needs to be multiple of 64")
 	}
-	return make([]uint64, nBits/64)
+	return make([]uint64, nBits/64), nil
 }
 
 // SetRandom finds an unset bitfield and sets it.

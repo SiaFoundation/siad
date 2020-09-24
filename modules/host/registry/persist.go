@@ -124,8 +124,7 @@ func loadRegistryMetadata(r io.Reader, b bitfield) error {
 	if !bytes.Equal(version, registryVersion[:]) {
 		return fmt.Errorf("expected store version %v but got %v", registryVersion, version)
 	}
-	// Track the first page in the bitfield.
-	return b.Set(0)
+	return nil
 }
 
 // loadRegistryEntries reads the currently in use registry entries from disk.
@@ -153,7 +152,7 @@ func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield) (map[crypto.
 		}
 		entries[v.mapKey()] = &v
 		// Track it in the bitfield.
-		err = b.Set(uint64(index))
+		err = b.Set(uint64(index) - 1)
 		if err != nil {
 			return nil, errors.AddContext(err, fmt.Sprintf("failed to mark entry %v of %v as used in bitfield", index, numEntries))
 		}

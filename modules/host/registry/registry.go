@@ -100,7 +100,10 @@ func New(path string, wal *writeaheadlog.WAL, maxEntries uint64) (_ *Registry, e
 	}
 	r := bufio.NewReader(f)
 	// Create a bitfield to track the used pages.
-	b := newBitfield(maxEntries)
+	b, err := newBitfield(maxEntries)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to create bitfield")
+	}
 	// Load and verify the metadata.
 	err = loadRegistryMetadata(r, b)
 	if err != nil {
@@ -157,7 +160,7 @@ func (r *Registry) Update(rv modules.RegistryValue, pubKey types.SiaPublicKey, e
 		if err != nil {
 			return false, errors.AddContext(err, "failed to obtain free slot")
 		}
-		v.staticIndex = int64(bit)
+		v.staticIndex = int64(bit) + 1
 	}
 
 	// Write the entry to disk.
@@ -165,7 +168,7 @@ func (r *Registry) Update(rv modules.RegistryValue, pubKey types.SiaPublicKey, e
 	if err != nil && !exists {
 		// If an error occurs during saving, unset the reserved index again if
 		// it wasn't in use already.
-		r.staticUsage.Unset(uint64(v.staticIndex))
+		r.staticUsage.Unset(uint64(v.staticIndex) - 1)
 	}
 	if err != nil {
 		return exists, errors.New("failed to save new entry to disk")
@@ -214,7 +217,7 @@ func (r *Registry) Prune(expiry types.BlockHeight) error {
 		// Mark the space on disk unused and remove the entry from the in-memory
 		// map.
 		delete(r.entries, k)
-		r.staticUsage.Unset(uint64(v.staticIndex))
+		r.staticUsage.Unset(uint64(v.staticIndex) - 1)
 	}
 	return errs
 }
