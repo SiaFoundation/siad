@@ -79,8 +79,8 @@ type (
 		staticJobQueueDownloadByRoot   jobQueueDownloadByRoot
 		staticJobHasSectorQueue        *jobHasSectorQueue
 		staticJobReadQueue             *jobReadQueue
-		staticJobUploadSnapshotQueue   *jobUploadSnapshotQueue
 		staticJobDownloadSnapshotQueue *jobDownloadSnapshotQueue
+		staticJobUploadSnapshotQueue   *jobUploadSnapshotQueue
 
 		// Upload variables.
 		unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
@@ -196,7 +196,9 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	w.newPriceTable()
 	w.initJobHasSectorQueue()
 	w.initJobReadQueue()
+	w.initJobDownloadSnapshotQueue()
 	w.initJobUploadSnapshotQueue()
+
 	// Get the worker cache set up before returning the worker. This prevents a
 	// race condition in some tests.
 	w.managedUpdateCache()
