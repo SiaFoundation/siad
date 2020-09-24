@@ -78,7 +78,6 @@ type (
 
 		// Job queues for the worker.
 		staticFetchBackupsJobQueue   fetchBackupsJobQueue
-		staticJobQueueDownloadByRoot jobQueueDownloadByRoot
 		staticJobHasSectorQueue      *jobHasSectorQueue
 		staticJobReadQueue           *jobReadQueue
 		staticJobUploadSnapshotQueue *jobUploadSnapshotQueue

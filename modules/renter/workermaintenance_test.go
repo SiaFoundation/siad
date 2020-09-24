@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"bytes"
 	"context"
 	"testing"
 	"time"
@@ -11,7 +10,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestWorkerMaintenanceCoolDown verifies the functionality of the worker's
@@ -92,113 +90,5 @@ func TestWorkerMaintenanceCoolDown(t *testing.T) {
 	// verify the account is not on cooldown
 	if w.managedOnMaintenanceCooldown() {
 		t.Fatal("Worker's RHP3 subsystems should not be on cooldown")
-	}
-}
-
-// TestRHP2DownloadOnMaintenanceCoolDown verifies the worker correctly processes
-// download jobs. Note that this are RHP2 downloads, this test will verify in
-// particular that these jobs manage to succeed even if the worker is on
-// (RHP3) maintenance cool down.
-func TestRHP2DownloadOnMaintenanceCoolDown(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// create a new worker tester
-	deps := dependencies.NewDependencyInterruptNewStreamTimeout()
-
-	wt, err := newWorkerTesterCustomDependency(t.Name(), deps, &modules.ProductionDependencies{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err := wt.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	// ensure the worker is on maintenance cooldown, this should be the case as
-	// we've initialised the renter with a dependency that times out acuiring a
-	// stream to the host
-	err = build.Retry(600, 100*time.Millisecond, func() error {
-		if !wt.worker.managedOnMaintenanceCooldown() {
-			return errors.New("Worker not on maintenance cool down")
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// prepare upload params
-	sp, err := modules.NewSiaPath(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	fup, err := fileUploadParamsFromLUP(modules.SkyfileUploadParameters{
-		SiaPath:             sp,
-		DryRun:              false,
-		Force:               false,
-		BaseChunkRedundancy: 2,
-	})
-	fup.CipherType = crypto.TypePlain // don't care about encryption
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// upload some data
-	data := fastrand.Bytes(int(modules.SectorSize))
-	reader := bytes.NewReader(data)
-	err = wt.renter.UploadStreamFromReader(fup, reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// download the data using the legacy (!) download, which is RHP2
-	root := crypto.MerkleRoot(data)
-	downloaded, err := wt.renter.DownloadByRootLegacy(root, 0, modules.SectorSize, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(downloaded, data) {
-		t.Fatal("Downloaded data did not match uploaded data")
-	}
-
-	// grab the cooldown until
-	wms := wt.worker.staticMaintenanceState
-	wms.mu.Lock()
-	cdu := wms.cooldownUntil
-	wms.mu.Unlock()
-
-	// sleep until the cooldown until time
-	time.Sleep(time.Until(cdu))
-	deps.Disable()
-
-	// wait until the worker is ready
-	err = build.Retry(600, 100*time.Millisecond, func() error {
-		if wt.worker.managedOnMaintenanceCooldown() {
-			return errors.New("Worker still on maintenance cool down")
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// download the data using the RHP3 download method
-	err = build.Retry(60, time.Second, func() error {
-		actual, err := wt.renter.DownloadByRoot(root, 0, modules.SectorSize, 0)
-		if err != nil {
-			return err
-		}
-		if !bytes.Equal(actual, data) {
-			return errors.New("Downloaded data did not match uploaded data")
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 }
