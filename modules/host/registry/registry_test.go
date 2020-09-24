@@ -2,7 +2,6 @@ package registry
 
 import (
 	"bytes"
-	"encoding/binary"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -65,7 +64,7 @@ func TestNew(t *testing.T) {
 
 	// The first call should simply init it. Check the size and version.
 	expected := make([]byte, PersistedEntrySize)
-	binary.LittleEndian.PutUint64(expected, registryVersion)
+	copy(expected[:], registryVersion[:])
 	b, err := ioutil.ReadFile(registryPath)
 	if err != nil {
 		t.Fatal(err)
@@ -343,6 +342,20 @@ func TestPrune(t *testing.T) {
 		t.Fatal("wrong number of entries")
 	}
 
+	// Check bitfield.
+	if !r.staticUsage.IsSet(0) {
+		t.Fatal("first page should be set")
+	}
+	inUse := 0
+	for i := uint64(0); i < r.staticUsage.Len(); i++ {
+		if r.staticUsage.IsSet(i) {
+			inUse++
+		}
+	}
+	if inUse != len(r.entries)+1 {
+		t.Fatalf("expected %v bits to be in use", len(r.entries)+1)
+	}
+
 	// Purge 1 of them.
 	err = r.Prune(1)
 	if err != nil {
@@ -364,6 +377,20 @@ func TestPrune(t *testing.T) {
 		t.Fatal("registry contains wrong key-value pair")
 	}
 
+	// Check bitfield.
+	if !r.staticUsage.IsSet(0) {
+		t.Fatal("first page should be set")
+	}
+	inUse = 0
+	for i := uint64(0); i < r.staticUsage.Len(); i++ {
+		if r.staticUsage.IsSet(i) {
+			inUse++
+		}
+	}
+	if inUse != len(r.entries)+1 {
+		t.Fatalf("expected %v bits to be in use", len(r.entries)+1)
+	}
+
 	// Restart.
 	_, err = New(registryPath, wal, testingDefaultMaxEntries)
 	if err != nil {
@@ -378,5 +405,19 @@ func TestPrune(t *testing.T) {
 		t.Log(v2)
 		t.Log(*vExist)
 		t.Fatal("registry contains wrong key-value pair")
+	}
+
+	// Check bitfield.
+	if !r.staticUsage.IsSet(0) {
+		t.Fatal("first page should be set")
+	}
+	inUse = 0
+	for i := uint64(0); i < r.staticUsage.Len(); i++ {
+		if r.staticUsage.IsSet(i) {
+			inUse++
+		}
+	}
+	if inUse != len(r.entries)+1 {
+		t.Fatalf("expected %v bits to be in use", len(r.entries)+1)
 	}
 }

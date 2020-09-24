@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -19,9 +20,18 @@ const (
 	signatureEd25519 = 1
 )
 
+// noKey is a sentinel value for persisted entries. A persisted entry with the
+// default key is considered to not be in use. This means the disk space can be
+// reclaimed.
+var noKey = compressedPublicKey{}
+
+// registryVersion is the version at the beginning of the registry on disk
+// for future compatibility changes.
+var registryVersion = types.NewSpecifier("1.0.0")
+
 type (
 	// pesistedEntry is an entry
-	// Size on disk: 1 + 32 + 32 + 8 + 1 + 109 + 8 + 64 + 1 = 256
+	// Size on disk: (1 + 32) + 32 + 4 + 1 + 114 + 8 + 64 = 256
 	persistedEntry struct {
 		// key data
 		Key   compressedPublicKey
@@ -87,7 +97,7 @@ func initRegistry(path string, wal *writeaheadlog.WAL, maxEntries uint64) (*os.F
 	// The first entry is reserved for metadata. Right now only the version
 	// number.
 	initData := make([]byte, PersistedEntrySize)
-	binary.LittleEndian.PutUint64(initData, registryVersion)
+	copy(initData[:], registryVersion[:])
 
 	// Write data to disk in an ACID way.
 	initUpdate := writeaheadlog.WriteAtUpdate(path, 0, initData)
@@ -109,8 +119,8 @@ func loadRegistryMetadata(r io.Reader, b bitfield) error {
 	if err != nil {
 		return errors.AddContext(err, "failed to read metadata page")
 	}
-	version := binary.LittleEndian.Uint64(entry[:])
-	if version != registryVersion {
+	version := entry[:types.SpecifierLen]
+	if !bytes.Equal(version, registryVersion[:]) {
 		return fmt.Errorf("expected store version %v but got %v", registryVersion, version)
 	}
 	// Track the first page in the bitfield.
@@ -132,7 +142,7 @@ func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield) (map[crypto.
 		if err != nil {
 			return nil, errors.AddContext(err, fmt.Sprintf("failed to parse entry %v of %v", index, numEntries))
 		}
-		if se.Key == (compressedPublicKey{}) {
+		if se.Key == noKey {
 			continue // ignore unused entries
 		}
 		// Add the entry to the store.

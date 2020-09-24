@@ -17,14 +17,10 @@ import (
 // TODO: F/Us
 // - use LRU for limited entries in memory, rest on disk
 // - optimize locking by locking each entry individually
-// - correctly handle shrinking the registry
+// - correctly handle growing/shrinking the registry
 const (
 	// PersistedEntrySize is the size of a marshaled entry on disk.
 	PersistedEntrySize = 256
-
-	// registryVersion is the version at the beginning of the registry on disk
-	// for future compatibility changes.
-	registryVersion = 1
 )
 
 var (

@@ -2,7 +2,6 @@ package registry
 
 import (
 	"bytes"
-	"encoding/binary"
 	"io/ioutil"
 	"math"
 	"path/filepath"
@@ -111,13 +110,14 @@ func TestInitRegistry(t *testing.T) {
 	// Compare the contents to what we expect. The version is hardcoded to
 	// prevent us from accidentally changing it without breaking this test.
 	expected := make([]byte, PersistedEntrySize)
-	binary.LittleEndian.PutUint64(expected, uint64(1))
+	v := types.Specifier{'1', '.', '0', '.', '0', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	copy(expected[:], v[:])
 	b, err := ioutil.ReadFile(registryPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(b[:PersistedEntrySize], expected) {
-		t.Fatal("metadata doesn't match")
+		t.Fatal("metadata doesn't match", b[:PersistedEntrySize], expected)
 	}
 
 	// Try to reinit the same registry again. This should fail. We check the
