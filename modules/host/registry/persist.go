@@ -101,7 +101,7 @@ func initRegistry(path string, wal *writeaheadlog.WAL, maxEntries uint64) (*os.F
 
 // loadRegistryMetadata tries to read the first persisted entry that contains
 // the registry metadata and verifies it.
-func loadRegistryMetadata(r io.Reader) error {
+func loadRegistryMetadata(r io.Reader, b bitfield) error {
 	// Check version. We only have one so far so we can compare to that
 	// directly.
 	var entry [PersistedEntrySize]byte
@@ -113,11 +113,12 @@ func loadRegistryMetadata(r io.Reader) error {
 	if version != registryVersion {
 		return fmt.Errorf("expected store version %v but got %v", registryVersion, version)
 	}
-	return nil
+	// Track the first page in the bitfield.
+	return b.Set(0)
 }
 
 // loadRegistryEntries reads the currently in use registry entries from disk.
-func loadRegistryEntries(r io.Reader, numEntries int64) (map[crypto.Hash]*value, error) {
+func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield) (map[crypto.Hash]*value, error) {
 	// Load the remaining entries.
 	var entry [PersistedEntrySize]byte
 	entries := make(map[crypto.Hash]*value)
@@ -140,6 +141,11 @@ func loadRegistryEntries(r io.Reader, numEntries int64) (map[crypto.Hash]*value,
 			return nil, errors.AddContext(err, fmt.Sprintf("failed to get key-value pair from entry %v of %v", index, numEntries))
 		}
 		entries[v.mapKey()] = &v
+		// Track it in the bitfield.
+		err = b.Set(uint64(index))
+		if err != nil {
+			return nil, errors.AddContext(err, fmt.Sprintf("failed to mark entry %v of %v as used in bitfield", index, numEntries))
+		}
 	}
 	return entries, nil
 }

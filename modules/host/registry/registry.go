@@ -103,8 +103,10 @@ func New(path string, wal *writeaheadlog.WAL, maxEntries uint64) (_ *Registry, e
 		return nil, errors.AddContext(err, "failed to seek to start of store file")
 	}
 	r := bufio.NewReader(f)
+	// Create a bitfield to track the used pages.
+	b := newBitfield(maxEntries)
 	// Load and verify the metadata.
-	err = loadRegistryMetadata(r)
+	err = loadRegistryMetadata(r, b)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to load and verify metadata")
 	}
@@ -112,15 +114,10 @@ func New(path string, wal *writeaheadlog.WAL, maxEntries uint64) (_ *Registry, e
 	reg := &Registry{
 		staticPath:  path,
 		staticWAL:   wal,
-		staticUsage: newBitfield(maxEntries),
-	}
-	// The first page is always in use.
-	err = reg.staticUsage.Set(0)
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to set bit for metadata page")
+		staticUsage: b,
 	}
 	// Load the remaining entries.
-	reg.entries, err = loadRegistryEntries(r, fi.Size()/PersistedEntrySize)
+	reg.entries, err = loadRegistryEntries(r, fi.Size()/PersistedEntrySize, b)
 	return reg, nil
 }
 

@@ -53,6 +53,16 @@ func TestNew(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Only first bit is in use.
+	if !r.staticUsage.IsSet(0) {
+		t.Fatal("first page is not marked as in use")
+	}
+	for i := uint64(1); i < r.staticUsage.Len(); i++ {
+		if r.staticUsage.IsSet(i) {
+			t.Fatal("no other page should be in use")
+		}
+	}
+
 	// The first call should simply init it. Check the size and version.
 	expected := make([]byte, PersistedEntrySize)
 	binary.LittleEndian.PutUint64(expected, registryVersion)
@@ -91,10 +101,21 @@ func TestNew(t *testing.T) {
 	if len(r.entries) != 1 {
 		t.Fatal("registry should contain one entry", len(r.entries))
 	}
-	if v, exists := r.entries[vUsed.mapKey()]; !exists || !reflect.DeepEqual(*v, vUsed) {
+	v, exists := r.entries[vUsed.mapKey()]
+	if !exists || !reflect.DeepEqual(*v, vUsed) {
 		t.Log(v)
 		t.Log(vUsed)
 		t.Fatal("registry contains wrong key-value pair")
+	}
+
+	// First bit + loaded page should be in use.
+	if !r.staticUsage.IsSet(0) {
+		t.Fatal("first page is not marked as in use")
+	}
+	for i := uint64(1); i < r.staticUsage.Len(); i++ {
+		if r.staticUsage.IsSet(i) != (i == uint64(v.staticIndex)) {
+			t.Fatal("wrong page is set")
+		}
 	}
 }
 
