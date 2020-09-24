@@ -102,13 +102,13 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	// ZeroCurrency here since the basePrice will cover the renewal rpc cost.
 	// That way the new contract pays for the renewal instead of the old one.
 	// Which means a contract can even renew if it's out of money.
-	err = verifyClearingRevision(currentRevision, finalRevision, bh, types.ZeroCurrency)
+	excessPayment, err := verifyClearingRevision(currentRevision, finalRevision, bh, types.ZeroCurrency)
 	if err != nil {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to verify final revision")
 	}
 
 	// Verify the new contract against the final revision.
-	err = verifyRenewedContract(so, newContract, finalRevision, bh, is, es, pt.RenewContractCost, rpk, hpk, lockedCollateral)
+	hostCollateral, err := verifyRenewedContract(so, newContract, finalRevision, bh, is, es, pt.RenewContractCost, excessPayment, rpk, hpk, lockedCollateral)
 	if errors.Contains(err, errCollateralBudgetExceeded) {
 		h.staticAlerter.RegisterAlert(modules.AlertIDHostInsufficientCollateral, AlertMSGHostInsufficientCollateral, "", modules.SeverityWarning)
 	} else {
@@ -119,7 +119,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	}
 
 	// Add the collateral to the contract.
-	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(so, es, txns)
+	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(hostCollateral, so, es, txns)
 	if err != nil {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to add collateral")
 	}
@@ -159,12 +159,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	h.mu.RLock()
 	fc := txns[len(txns)-1].FileContracts[0]
 	renewRevenue, renewRisk := modules.RenewBaseCosts(finalRevision, es, pt.RenewContractCost, fc.WindowStart)
-	renewCollateral, err := renewContractCollateral(finalRevision, es, pt.RenewContractCost, fc)
 	h.mu.RUnlock()
-	if err != nil {
-		txnBuilder.Drop()
-		return errors.AddContext(err, "managedRPCRenewContract: failed to compute contract collateral")
-	}
 
 	// Clear the old storage obligation.
 	oldRoots := so.SectorRoots
@@ -181,7 +176,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 		renterSignatures:        renterTxnSigs,
 		renterRevisionSignature: renterNoOpRevisionSig,
 		initialSectorRoots:      oldRoots,
-		hostCollateral:          renewCollateral,
+		hostCollateral:          hostCollateral,
 		hostInitialRevenue:      renewRevenue,
 		hostInitialRisk:         renewRisk,
 		settings:                es,
@@ -283,46 +278,46 @@ func fetchRevisionAndContract(txnSet []types.Transaction) (types.FileContractRev
 
 // verifyRenewedContract is a helper method that checks if the proposed renewed
 // contract is acceptable.
-func verifyRenewedContract(so storageObligation, newContract types.FileContract, oldRevision types.FileContractRevision, blockHeight types.BlockHeight, internalSettings modules.HostInternalSettings, externalSettings modules.HostExternalSettings, contractRenewRPCCost types.Currency, renterPK, hostPK types.SiaPublicKey, lockedCollateral types.Currency) error {
+func verifyRenewedContract(so storageObligation, newContract types.FileContract, oldRevision types.FileContractRevision, blockHeight types.BlockHeight, internalSettings modules.HostInternalSettings, externalSettings modules.HostExternalSettings, contractRenewRPCCost, renterPayment types.Currency, renterPK, hostPK types.SiaPublicKey, lockedCollateral types.Currency) (types.Currency, error) {
 	unlockHash := externalSettings.UnlockHash
 
 	// The file size and merkle root must match the file size and merkle root
 	// from the previous file contract.
 	if newContract.FileSize != so.fileSize() {
-		return ErrBadFileSize
+		return types.Currency{}, ErrBadFileSize
 	}
 	if newContract.FileMerkleRoot != so.merkleRoot() {
-		return ErrBadFileMerkleRoot
+		return types.Currency{}, ErrBadFileMerkleRoot
 	}
 	// The WindowStart must be at least revisionSubmissionBuffer blocks into
 	// the future.
 	if newContract.WindowStart <= blockHeight+revisionSubmissionBuffer {
-		return ErrEarlyWindow
+		return types.Currency{}, ErrEarlyWindow
 	}
 	// WindowEnd must be at least externalSettings.WindowSize blocks after WindowStart.
 	if newContract.WindowEnd < newContract.WindowStart+externalSettings.WindowSize {
-		return ErrSmallWindow
+		return types.Currency{}, ErrSmallWindow
 	}
 	// WindowStart must not be more than externalSettings.MaxDuration blocks into the
 	// future.
 	if newContract.WindowStart > blockHeight+externalSettings.MaxDuration {
-		return ErrLongDuration
+		return types.Currency{}, ErrLongDuration
 	}
 
 	// ValidProofOutputs should have 2 outputs (renter + host) and missed
 	// outputs should have 3 (renter + host + void)
 	if len(newContract.ValidProofOutputs) != 2 || len(newContract.MissedProofOutputs) != 3 {
-		return ErrBadContractOutputCounts
+		return types.Currency{}, ErrBadContractOutputCounts
 	}
 	// The unlock hashes of the valid and missed proof outputs for the host
 	// must match the host's unlock hash. The third missed output should point
 	// to the void.
 	voidOutput, err := newContract.MissedVoidOutput()
 	if err != nil {
-		return err
+		return types.Currency{}, err
 	}
 	if newContract.ValidHostOutput().UnlockHash != unlockHash || newContract.MissedHostOutput().UnlockHash != unlockHash || voidOutput.UnlockHash != (types.UnlockHash{}) {
-		return ErrBadPayoutUnlockHashes
+		return types.Currency{}, ErrBadPayoutUnlockHashes
 	}
 
 	// Check that the collateral does not exceed the maximum amount of
@@ -330,15 +325,15 @@ func verifyRenewedContract(so storageObligation, newContract types.FileContract,
 	expectedCollateral, err := renewContractCollateral(oldRevision, externalSettings, contractRenewRPCCost, newContract)
 	if err != nil {
 		err = errors.Compose(err, ErrLowHostValidOutput)
-		return errors.AddContext(err, "Failed to compute contract collateral")
+		return types.Currency{}, errors.AddContext(err, "Failed to compute contract collateral")
 	}
 	if expectedCollateral.Cmp(externalSettings.MaxCollateral) > 0 {
-		return errMaxCollateralReached
+		return types.Currency{}, errMaxCollateralReached
 	}
 	// Check that the host has enough room in the collateral budget to add this
 	// collateral.
 	if lockedCollateral.Add(expectedCollateral).Cmp(internalSettings.CollateralBudget) > 0 {
-		return errCollateralBudgetExceeded
+		return types.Currency{}, errCollateralBudgetExceeded
 	}
 
 	// Compute the basePrice and baseCollateral.
@@ -349,19 +344,27 @@ func verifyRenewedContract(so storageObligation, newContract types.FileContract,
 		baseCollateral = expectedCollateral
 	}
 
+	// Reduce the basePrice by up to renterPayment since the renter already paid
+	// for that using other means.
+	if basePrice.Cmp(renterPayment) < 0 {
+		basePrice = types.ZeroCurrency
+	} else {
+		basePrice = basePrice.Sub(renterPayment)
+	}
+
 	// Check that the missed proof outputs contain enough money, and that the
 	// void output contains enough money.
 	if newContract.ValidHostPayout().Cmp(basePrice.Add(baseCollateral).Add(externalSettings.ContractPrice)) < 0 {
-		return ErrLowHostValidOutput
+		return types.Currency{}, ErrLowHostValidOutput
 	}
 	expectedHostMissedOutput := newContract.ValidHostPayout().Sub(basePrice).Sub(baseCollateral)
 	if newContract.MissedHostOutput().Value.Cmp(expectedHostMissedOutput) < 0 {
-		return ErrLowHostMissedOutput
+		return types.Currency{}, ErrLowHostMissedOutput
 	}
 	// Check that the void output has the correct value.
 	expectedVoidOutput := basePrice.Add(baseCollateral)
 	if voidOutput.Value.Cmp(expectedVoidOutput) < 0 {
-		return ErrLowVoidOutput
+		return types.Currency{}, ErrLowVoidOutput
 	}
 
 	// The unlock hash for the file contract must match the unlock hash that
@@ -374,7 +377,7 @@ func verifyRenewedContract(so storageObligation, newContract types.FileContract,
 		SignaturesRequired: 2,
 	}.UnlockHash()
 	if newContract.UnlockHash != expectedUH {
-		return ErrBadUnlockHash
+		return types.Currency{}, ErrBadUnlockHash
 	}
-	return nil
+	return expectedCollateral, nil
 }

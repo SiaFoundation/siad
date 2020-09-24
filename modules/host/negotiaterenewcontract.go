@@ -66,20 +66,15 @@ func renewContractCollateral(rev types.FileContractRevision, settings modules.Ho
 
 // managedAddRenewCollateral adds the host's collateral to the renewed file
 // contract.
-func (h *Host) managedAddRenewCollateral(so storageObligation, settings modules.HostExternalSettings, txnSet []types.Transaction) (builder modules.TransactionBuilder, newParents []types.Transaction, newInputs []types.SiacoinInput, newOutputs []types.SiacoinOutput, err error) {
+func (h *Host) managedAddRenewCollateral(hostCollateral types.Currency, so storageObligation, settings modules.HostExternalSettings, txnSet []types.Transaction) (builder modules.TransactionBuilder, newParents []types.Transaction, newInputs []types.SiacoinInput, newOutputs []types.SiacoinOutput, err error) {
 	txn := txnSet[len(txnSet)-1]
 	parents := txnSet[:len(txnSet)-1]
-	fc := txn.FileContracts[0]
-	hostPortion, err := rhp2RenewContractCollateral(so, settings, fc)
-	if err != nil {
-		return nil, nil, nil, nil, extendErr("could not compute contract collateral: ", ErrorCommunication(err.Error()))
-	}
 
 	builder, err = h.wallet.RegisterTransaction(txn, parents)
 	if err != nil {
 		return
 	}
-	err = builder.FundSiacoins(hostPortion)
+	err = builder.FundSiacoins(hostCollateral)
 	if err != nil {
 		builder.Drop()
 		return nil, nil, nil, nil, extendErr("could not add collateral: ", ErrorInternal(err.Error()))
@@ -151,12 +146,12 @@ func (h *Host) managedRPCRenewContractRHP2(conn net.Conn) error {
 	h.mu.Unlock()
 
 	// Verify that the transaction coming over the wire is a proper renewal.
-	err = h.managedVerifyRenewedContract(so, txnSet, types.Ed25519PublicKey(renterPK))
+	hostCollateral, err := h.managedVerifyRenewedContract(so, txnSet, types.Ed25519PublicKey(renterPK))
 	if err != nil {
 		modules.WriteNegotiationRejection(conn, err) // Error is ignored to preserve type for extendErr
 		return extendErr("verification of renewal failed: ", err)
 	}
-	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(so, settings, txnSet)
+	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(hostCollateral, so, settings, txnSet)
 	if err != nil {
 		modules.WriteNegotiationRejection(conn, err) // Error is ignored to preserve type for extendErr
 		return extendErr("failed to add collateral: ", err)
@@ -212,12 +207,7 @@ func (h *Host) managedRPCRenewContractRHP2(conn net.Conn) error {
 	fc := txnSet[len(txnSet)-1].FileContracts[0]
 	renewRevenue := rhp2RenewBasePrice(so, settings, fc)
 	renewRisk := rhp2RenewBaseCollateral(so, settings, fc)
-	renewCollateral, err := rhp2RenewContractCollateral(so, settings, fc)
 	h.mu.RUnlock()
-	if err != nil {
-		modules.WriteNegotiationRejection(conn, err)
-		return extendErr("failed to compute contract collateral: ", err)
-	}
 
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
@@ -225,7 +215,7 @@ func (h *Host) managedRPCRenewContractRHP2(conn net.Conn) error {
 		renterSignatures:        renterTxnSignatures,
 		renterRevisionSignature: renterRevisionSignature,
 		initialSectorRoots:      so.SectorRoots,
-		hostCollateral:          renewCollateral,
+		hostCollateral:          hostCollateral,
 		hostInitialRevenue:      renewRevenue,
 		hostInitialRisk:         renewRisk,
 		settings:                settings,
@@ -255,7 +245,7 @@ func (h *Host) managedRPCRenewContractRHP2(conn net.Conn) error {
 
 // managedVerifyRenewedContract checks that the contract renewal matches the
 // previous contract and makes all of the appropriate payments.
-func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types.Transaction, renterPK types.SiaPublicKey) error {
+func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types.Transaction, renterPK types.SiaPublicKey) (types.Currency, error) {
 	// Register the HostInsufficientCollateral alert if necessary.
 	var registerHostInsufficientCollateral bool
 	defer func() {
@@ -268,11 +258,11 @@ func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types
 
 	// Check that the transaction set is not empty.
 	if len(txnSet) < 1 {
-		return extendErr("zero-length transaction set: ", ErrEmptyObject)
+		return types.Currency{}, extendErr("zero-length transaction set: ", ErrEmptyObject)
 	}
 	// Check that the transaction set has a file contract.
 	if len(txnSet[len(txnSet)-1].FileContracts) < 1 {
-		return extendErr("transaction without file contract: ", ErrEmptyObject)
+		return types.Currency{}, extendErr("transaction without file contract: ", ErrEmptyObject)
 	}
 
 	_, maxFee := h.tpool.FeeEstimation()
@@ -289,56 +279,56 @@ func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types
 	// The file size and merkle root must match the file size and merkle root
 	// from the previous file contract.
 	if fc.FileSize != so.fileSize() {
-		return ErrBadFileSize
+		return types.Currency{}, ErrBadFileSize
 	}
 	if fc.FileMerkleRoot != so.merkleRoot() {
-		return ErrBadFileMerkleRoot
+		return types.Currency{}, ErrBadFileMerkleRoot
 	}
 	// The WindowStart must be at least revisionSubmissionBuffer blocks into
 	// the future.
 	if fc.WindowStart <= blockHeight+revisionSubmissionBuffer {
-		return ErrEarlyWindow
+		return types.Currency{}, ErrEarlyWindow
 	}
 	// WindowEnd must be at least settings.WindowSize blocks after WindowStart.
 	if fc.WindowEnd < fc.WindowStart+externalSettings.WindowSize {
-		return ErrSmallWindow
+		return types.Currency{}, ErrSmallWindow
 	}
 	// WindowStart must not be more than settings.MaxDuration blocks into the
 	// future.
 	if fc.WindowStart > blockHeight+externalSettings.MaxDuration {
-		return ErrLongDuration
+		return types.Currency{}, ErrLongDuration
 	}
 
 	// ValidProofOutputs shoud have 2 outputs (renter + host) and missed
 	// outputs should have 3 (renter + host + void)
 	if len(fc.ValidProofOutputs) != 2 || len(fc.MissedProofOutputs) != 3 {
-		return ErrBadContractOutputCounts
+		return types.Currency{}, ErrBadContractOutputCounts
 	}
 	// The unlock hashes of the valid and missed proof outputs for the host
 	// must match the host's unlock hash. The third missed output should point
 	// to the void.
 	voidOutput, err := fc.MissedVoidOutput()
 	if err != nil {
-		return err
+		return types.Currency{}, err
 	}
 	if fc.ValidHostOutput().UnlockHash != unlockHash || fc.MissedHostOutput().UnlockHash != unlockHash || voidOutput.UnlockHash != (types.UnlockHash{}) {
-		return ErrBadPayoutUnlockHashes
+		return types.Currency{}, ErrBadPayoutUnlockHashes
 	}
 
 	// Check that the collateral does not exceed the maximum amount of
 	// collateral allowed.
 	expectedCollateral, err := rhp2RenewContractCollateral(so, externalSettings, fc)
 	if err != nil {
-		return errors.AddContext(err, "Failed to compute contract collateral")
+		return types.Currency{}, errors.AddContext(err, "Failed to compute contract collateral")
 	}
 	if expectedCollateral.Cmp(externalSettings.MaxCollateral) > 0 {
-		return errMaxCollateralReached
+		return types.Currency{}, errMaxCollateralReached
 	}
 	// Check that the host has enough room in the collateral budget to add this
 	// collateral.
 	if lockedStorageCollateral.Add(expectedCollateral).Cmp(internalSettings.CollateralBudget) > 0 {
 		registerHostInsufficientCollateral = true
-		return errCollateralBudgetExceeded
+		return types.Currency{}, errCollateralBudgetExceeded
 	}
 
 	// Check that the missed proof outputs contain enough money, and that the
@@ -346,16 +336,16 @@ func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types
 	basePrice := rhp2RenewBasePrice(so, externalSettings, fc)
 	baseCollateral := rhp2RenewBaseCollateral(so, externalSettings, fc)
 	if fc.ValidHostPayout().Cmp(basePrice.Add(baseCollateral)) < 0 {
-		return ErrLowHostValidOutput
+		return types.Currency{}, ErrLowHostValidOutput
 	}
 	expectedHostMissedOutput := fc.ValidHostPayout().Sub(basePrice).Sub(baseCollateral)
 	if fc.MissedHostOutput().Value.Cmp(expectedHostMissedOutput) < 0 {
-		return ErrLowHostMissedOutput
+		return types.Currency{}, ErrLowHostMissedOutput
 	}
 	// Check that the void output has the correct value.
 	expectedVoidOutput := basePrice.Add(baseCollateral)
 	if voidOutput.Value.Cmp(expectedVoidOutput) < 0 {
-		return ErrLowVoidOutput
+		return types.Currency{}, ErrLowVoidOutput
 	}
 
 	// The unlock hash for the file contract must match the unlock hash that
@@ -368,7 +358,7 @@ func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types
 		SignaturesRequired: 2,
 	}.UnlockHash()
 	if fc.UnlockHash != expectedUH {
-		return ErrBadUnlockHash
+		return types.Currency{}, ErrBadUnlockHash
 	}
 
 	// Check that the transaction set has enough fees on it to get into the
@@ -376,7 +366,7 @@ func (h *Host) managedVerifyRenewedContract(so storageObligation, txnSet []types
 	setFee := modules.CalculateFee(txnSet)
 	minFee, _ := h.tpool.FeeEstimation()
 	if setFee.Cmp(minFee) < 0 {
-		return ErrLowTransactionFees
+		return types.Currency{}, ErrLowTransactionFees
 	}
-	return nil
+	return expectedCollateral, nil
 }

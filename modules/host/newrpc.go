@@ -691,12 +691,12 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	}
 
 	// Verify that the transaction coming over the wire is a proper renewal.
-	err := h.managedVerifyRenewedContract(s.so, req.Transactions, req.RenterKey)
+	hostCollateral, err := h.managedVerifyRenewedContract(s.so, req.Transactions, req.RenterKey)
 	if err != nil {
 		s.writeError(err)
 		return extendErr("verification of renewal failed: ", err)
 	}
-	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(s.so, settings, req.Transactions)
+	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(hostCollateral, s.so, settings, req.Transactions)
 	if err != nil {
 		s.writeError(err)
 		return extendErr("failed to add collateral: ", err)
@@ -727,12 +727,8 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	fc := req.Transactions[len(req.Transactions)-1].FileContracts[0]
 	renewRevenue := rhp2RenewBasePrice(s.so, settings, fc)
 	renewRisk := rhp2RenewBaseCollateral(s.so, settings, fc)
-	renewCollateral, err := rhp2RenewContractCollateral(s.so, settings, fc)
 	h.mu.RUnlock()
-	if err != nil {
-		s.writeError(err)
-		return extendErr("failed to compute contract collateral: ", err)
-	}
+
 	var renterPK crypto.PublicKey
 	copy(renterPK[:], req.RenterKey.Key)
 	fca := finalizeContractArgs{
@@ -741,7 +737,7 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 		renterSignatures:        renterSigs.ContractSignatures,
 		renterRevisionSignature: renterSigs.RevisionSignature,
 		initialSectorRoots:      s.so.SectorRoots,
-		hostCollateral:          renewCollateral,
+		hostCollateral:          hostCollateral,
 		hostInitialRevenue:      renewRevenue,
 		hostInitialRisk:         renewRisk,
 		settings:                settings,
@@ -937,19 +933,19 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	newRevision.NewMissedProofOutputs = newRevision.NewValidProofOutputs
 
 	// Verifiy the final revision of the old contract.
-	err := verifyClearingRevision(currentRevision, newRevision, blockHeight, settings.BaseRPCPrice)
+	_, err := verifyClearingRevision(currentRevision, newRevision, blockHeight, settings.BaseRPCPrice)
 	if err != nil {
 		s.writeError(err)
 		return err
 	}
 
 	// Verify that the transaction coming over the wire is a proper renewal.
-	err = h.managedVerifyRenewedContract(s.so, req.Transactions, req.RenterKey)
+	hostCollateral, err := h.managedVerifyRenewedContract(s.so, req.Transactions, req.RenterKey)
 	if err != nil {
 		s.writeError(err)
 		return extendErr("verification of renewal failed: ", err)
 	}
-	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(s.so, settings, req.Transactions)
+	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(hostCollateral, s.so, settings, req.Transactions)
 	if err != nil {
 		s.writeError(err)
 		return extendErr("failed to add collateral: ", err)
@@ -993,12 +989,8 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	fc := req.Transactions[len(req.Transactions)-1].FileContracts[0]
 	renewRevenue := rhp2RenewBasePrice(s.so, settings, fc)
 	renewRisk := rhp2RenewBaseCollateral(s.so, settings, fc)
-	renewCollateral, err := rhp2RenewContractCollateral(s.so, settings, fc)
 	h.mu.RUnlock()
-	if err != nil {
-		s.writeError(err)
-		return extendErr("failed to compute contract collateral: ", err)
-	}
+
 	var renterPK crypto.PublicKey
 	copy(renterPK[:], req.RenterKey.Key)
 
@@ -1015,7 +1007,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 		renterSignatures:        renterSigs.ContractSignatures,
 		renterRevisionSignature: renterSigs.RevisionSignature,
 		initialSectorRoots:      oldRoots,
-		hostCollateral:          renewCollateral,
+		hostCollateral:          hostCollateral,
 		hostInitialRevenue:      renewRevenue,
 		hostInitialRisk:         renewRisk,
 		settings:                settings,
