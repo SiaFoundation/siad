@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"mime"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"os"
 	"path/filepath"
 	"sort"
@@ -797,79 +801,107 @@ func skynetUploadFilesSeparately(sourcePath, destSiaPath string, pbs *mpb.Progre
 
 // skynetUploadDirectory uploads a directory as a single skyfile
 func skynetUploadDirectory(sourcePath, destSiaPath string) {
-	siaPath, err := modules.NewSiaPath(destSiaPath)
+	skyfilePath, err := modules.NewSiaPath(destSiaPath)
 	if err != nil {
 		fmt.Println("Failed to create siapath", destSiaPath)
 		die(err)
 	}
+	body := new(bytes.Buffer)
+	writer := multipart.NewWriter(body)
 	// Walk the target directory and collect all files that are going to be
 	// uploaded.
-	filesToUpload := make([]string, 0)
+	var offset uint64
 	err = filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			fmt.Printf("Failed to read file %s.\n", path)
 			die(err)
 		}
-		if !info.IsDir() {
-			filesToUpload = append(filesToUpload, path)
+		if info.IsDir() {
+			return nil
 		}
+		data, err := ioutil.ReadFile(path)
+		if err != nil {
+			fmt.Printf("Failed to read file %s.\n", path)
+			die(err)
+		}
+		_ = addMultipartFile(writer, data, "files[]", info.Name(), modules.DefaultFilePerm, &offset)
 		return nil
 	})
 	if err != nil {
 		die(err)
 	}
-	subfiles := make(modules.SkyfileSubfiles)
-	var readers []io.Reader
-	var offset uint64 // this will also serve as length later on
-	for _, filename := range filesToUpload {
-		f, err := os.Open(filename)
-		defer func() { _ = f.Close() }()
-		if err != nil {
-			fmt.Printf("Failed to read file %s.\n", filename)
-			die(err)
-		}
-		readers = append(readers, f)
-		fi, err := f.Stat()
-		if err != nil {
-			fmt.Printf("Failed to read file stats for %s.\n", filename)
-			die(err)
-		}
-		contentType, err := fileContentType(filename, f)
-		if err != nil {
-			fmt.Printf("Failed to read file %s.\n", filename)
-			die(err)
-		}
-		subfiles[filename] = modules.SkyfileSubfileMetadata{
-			FileMode:    fi.Mode(),
-			Filename:    filename,
-			ContentType: contentType,
-			Offset:      offset,
-			Len:         uint64(fi.Size()),
-		}
-		offset += uint64(fi.Size())
+	if err = writer.Close(); err != nil {
+		return
 	}
-	// Build the upload parameters
-	sup := modules.SkyfileUploadParameters{
-		SiaPath:             siaPath,
-		DryRun:              skynetUploadDryRun,
-		Root:                false,
+	reader := bytes.NewReader(body.Bytes())
+
+	sup := modules.SkyfileMultipartUploadParameters{
+		SiaPath:             skyfilePath,
 		Force:               false,
+		Root:                false,
 		BaseChunkRedundancy: renter.SkyfileDefaultBaseChunkRedundancy,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename:           siaPath.Name(),
-			Length:             offset,
-			Subfiles:           subfiles,
-			DefaultPath:        "",
-			DisableDefaultPath: false,
-		},
-		Reader: io.MultiReader(readers...),
+		Reader:              reader,
+		Filename:            skyfilePath.Name(),
+		DefaultPath:         "",
+		DisableDefaultPath:  false,
+		ContentType:         writer.FormDataContentType(),
+		//DefaultPath:         defaultPath,
+		//DisableDefaultPath:  disableDefaultPath,
 	}
-	skylink, _, err := httpClient.SkynetSkyfilePost(sup)
+	skylink, _, err := httpClient.SkynetSkyfileMultiPartPost(sup)
 	if err != nil {
 		fmt.Println("Failed to upload directory.")
 		die(err)
 	}
-	fmt.Println("Successfully uploaded directory: ", skylink)
+	fmt.Println("Successfully uploaded directory:", skylink)
+}
+
+// addMultipartFile is a helper function to add a file to the multipart form-
+// data. Note that the given data will be treated as binary data, and the multi
+// part's ContentType header will be set accordingly.
+func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename string, filemode uint64, offset *uint64) modules.SkyfileSubfileMetadata {
+	filemodeStr := fmt.Sprintf("%o", filemode)
+	contentType, err := fileContentType(filename, bytes.NewReader(filedata))
+	if err != nil {
+		fmt.Printf("Failed to read file %s.\n", filename)
+		die(err)
+	}
+	partHeader := createFormFileHeaders(filekey, filename, filemodeStr, contentType)
+	part, err := w.CreatePart(partHeader)
+	if err != nil {
+		die(err)
+	}
+	_, err = part.Write(filedata)
+	if err != nil {
+		die(err)
+	}
+	metadata := modules.SkyfileSubfileMetadata{
+		Filename:    filename,
+		ContentType: contentType,
+		FileMode:    os.FileMode(filemode),
+		Len:         uint64(len(filedata)),
+	}
+	if offset != nil {
+		metadata.Offset = *offset
+		*offset += metadata.Len
+	}
+	return metadata
+}
+
+// createFormFileHeaders builds a header from the given params. These headers
+// are used when creating the parts in a multi-part form upload.
+func createFormFileHeaders(fieldname, filename, filemode, contentType string) textproto.MIMEHeader {
+	escapeQuotes := func(s string) string {
+		return strings.NewReplacer("\\", "\\\\", `"`, "\\\"").Replace(s)
+	}
+	fieldname = escapeQuotes(fieldname)
+	filename = escapeQuotes(filename)
+
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Type", contentType)
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldname, filename))
+	h.Set("mode", filemode)
+	return h
 }
 
 // fileContentType extracts the content type from a given file.
