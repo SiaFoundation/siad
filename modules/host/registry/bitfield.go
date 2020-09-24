@@ -62,7 +62,7 @@ func (b *bitfield) SetRandom() (uint64, error) {
 
 // IsSet returns whether the gap at the specified index is set.
 func (b bitfield) IsSet(index uint64) bool {
-	// Each index covers 8 bytes which 8 are bits each. So 64 bits in total.
+	// Each index covers 8 bytes which are 8 bits each. So 64 bits in total.
 	sliceOffset := index / 64
 	bitOffset := index % 64
 
