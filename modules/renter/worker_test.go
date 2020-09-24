@@ -142,14 +142,13 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	// Download the first sector partially and then fully since both actions
 	// require different proofs.
-	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize/2)
+	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize/2, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize)
+	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +156,7 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 	// Do it again but this time corrupt the output to make sure the proof
 	// doesn't match.
 	deps.Fail()
-	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize/2)
+	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize/2, false)
 	if err == nil || !strings.Contains(err.Error(), "verifying proof failed") {
 		t.Fatal(err)
 	}
@@ -165,7 +164,7 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 	// Retry since the worker might be on a cooldown.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		deps.Fail()
-		_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize)
+		_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize, false)
 		if err == nil || !strings.Contains(err.Error(), "verifying proof failed") {
 			return fmt.Errorf("unexpected error %v", err)
 		}

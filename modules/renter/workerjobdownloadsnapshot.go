@@ -132,15 +132,19 @@ func (j *jobDownloadSnapshot) callExecute() {
 
 	// Perform the actual download
 	snapshots, err = w.renter.managedDownloadSnapshotTable(w)
+	if err != nil && errors.Contains(err, errEmptyContract) {
+		err = nil
+	}
+
 	return
 }
 
 // callExpectedBandwidth returns the amount of bandwidth this job is expected to
 // consume.
 func (j *jobDownloadSnapshot) callExpectedBandwidth() (ul, dl uint64) {
-	ul = 1 << 15                                          // 32 KiB
-	dl = uint64(float64(modules.SectorSize)*1.01) + 1<<14 // (sectorSize * 1.01 + 16 KiB)
-	return
+	// Estimate 50kb in overhead for upload and download, and then 4 MiB
+	// necessary to send the actual full sector payload.
+	return 50e3 + 1<<22, 50e3
 }
 
 // initJobUploadSnapshotQueue will initialize the upload snapshot job queue for

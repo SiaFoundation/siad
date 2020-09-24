@@ -224,7 +224,7 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 
 	// download the snapshot table
 	entryTable, err := r.managedDownloadSnapshotTable(w)
-	if err != nil {
+	if err != nil && !errors.Contains(err, errEmptyContract) {
 		return errors.AddContext(err, "could not download the snapshot table")
 	}
 

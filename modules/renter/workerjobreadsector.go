@@ -27,7 +27,7 @@ func (j *jobReadSector) callExecute() {
 	jobTime := time.Since(start)
 
 	// Finish the execution.
-	j.jobRead.managedFinishExecute(data, err, jobTime)
+	j.jobRead.managedFinishExecute(data, err, false, jobTime)
 }
 
 // managedReadSector returns the sector data for given root.

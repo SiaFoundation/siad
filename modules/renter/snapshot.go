@@ -25,8 +25,8 @@ import (
 )
 
 var (
-	// snapshotKeySpecifier is the specifier used for deriving the secret used to
-	// encrypt a snapshot from the RenterSeed.
+	// snapshotKeySpecifier is the specifier used for deriving the secret used
+	// to encrypt a snapshot from the RenterSeed.
 	snapshotKeySpecifier = types.NewSpecifier("snapshot")
 
 	// snapshotTableSpecifier is the specifier used to identify a snapshot entry
@@ -35,6 +35,11 @@ var (
 )
 
 var (
+	// errEmptyContract is returned when we are trying to read from an empty
+	// contract, this can be the case when downloading a snapshot from a host
+	// that does not have one yet.
+	errEmptyContract = errors.New("empty contract")
+
 	// maxSnapshotUploadTime defines the total amount of time that the renter
 	// will allocate to complete an upload of a snapshot .sia file to all hosts.
 	// This is done with each host in parallel, and the .sia file is not
@@ -318,18 +323,20 @@ func (r *Renter) managedDownloadSnapshotTable(host *worker) ([]snapshotEntry, er
 	secret := crypto.HashAll(rs, snapshotKeySpecifier)
 	defer fastrand.Read(secret[:])
 
+	// Create an empty entryTable
+	var entryTable []snapshotEntry
+
 	// Download the table of snapshots that the host is storing.
-	tableSector, err := host.ReadOffset(r.tg.StopCtx(), 0, modules.SectorSize)
+	tableSector, err := host.TryReadOffset(r.tg.StopCtx(), 0, modules.SectorSize)
 	if err != nil {
-		if strings.Contains(err.Error(), "invalid sector bounds") {
+		if strings.Contains(err.Error(), "invalid sector bounds") ||
+			strings.Contains(err.Error(), "secOff out of bounds") {
 			// host is not storing any data yet; return an empty table.
-			//
-			// TODO: Should retrun an error that the host does not have any
-			// snapshots / has not been prepared for snapshots yet.
-			return nil, nil
+			return entryTable, errEmptyContract
 		}
 		return nil, errors.AddContext(err, "unable to perform a download by index on this contract")
 	}
+
 	// decrypt the table
 	c, _ := crypto.NewSiaKey(crypto.TypeThreefish, secret[:])
 	encTable, err := c.DecryptBytesInPlace(tableSector, 0)
@@ -342,7 +349,6 @@ func (r *Renter) managedDownloadSnapshotTable(host *worker) ([]snapshotEntry, er
 		return nil, errors.AddContext(err, "error decrypting bytes")
 	}
 
-	var entryTable []snapshotEntry
 	if err := encoding.Unmarshal(encTable[16:], &entryTable); err != nil {
 		return nil, errors.AddContext(err, "error unmarshaling the entry table")
 	}
@@ -479,9 +485,10 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 			}
 			// download the snapshot table
 			entryTable, err := r.managedDownloadSnapshotTable(w)
-			if err != nil {
+			if err != nil && !errors.Contains(err, errEmptyContract) {
 				return err
 			}
+
 			// search for the desired snapshot
 			var entry *snapshotEntry
 			for j := range entryTable {
@@ -746,7 +753,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 
 			// download the snapshot table
 			entryTable, err := r.managedDownloadSnapshotTable(w)
-			if err != nil {
+			if err != nil && !errors.Contains(err, errEmptyContract) {
 				return err
 			}
 
