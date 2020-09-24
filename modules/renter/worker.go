@@ -7,8 +7,7 @@ package renter
 // functions for a job are Queue, Kill, and Perform. Queue will add a job to the
 // queue of work of that type. Kill will empty the queue and close out any work
 // that will not be completed. Perform will grab a job from the queue if one
-// exists and complete that piece of work. See workerfetchbackups.go for a clean
-// example.
+// exists and complete that piece of work.
 //
 // The worker has an ephemeral account on the host. It can use this account to
 // pay for downloads and uploads. In order to ensure the account's balance does
@@ -77,11 +76,11 @@ type (
 		downloadRecentFailureErr    error     // What was the reason for the last failure?
 
 		// Job queues for the worker.
-		staticFetchBackupsJobQueue   fetchBackupsJobQueue
-		staticJobQueueDownloadByRoot jobQueueDownloadByRoot
-		staticJobHasSectorQueue      *jobHasSectorQueue
-		staticJobReadQueue           *jobReadQueue
-		staticJobUploadSnapshotQueue *jobUploadSnapshotQueue
+		staticJobQueueDownloadByRoot   jobQueueDownloadByRoot
+		staticJobHasSectorQueue        *jobHasSectorQueue
+		staticJobReadQueue             *jobReadQueue
+		staticJobUploadSnapshotQueue   *jobUploadSnapshotQueue
+		staticJobDownloadSnapshotQueue *jobDownloadSnapshotQueue
 
 		// Upload variables.
 		unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.

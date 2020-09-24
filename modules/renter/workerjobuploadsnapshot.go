@@ -167,9 +167,8 @@ func (j *jobUploadSnapshot) callExecute() {
 		return
 	}
 
-	// Upload the snapshot to the host. The session is created by passing in a
-	// thread group, so this call should be responsive to fast shutdown.
-	err = w.renter.managedUploadSnapshotHost(j.staticMetadata, j.staticSiaFileData, sess)
+	// Upload the snapshot to the host.
+	err = w.renter.managedUploadSnapshotHost(j.staticMetadata, j.staticSiaFileData, sess, w)
 	if err != nil {
 		w.renter.log.Debugln("uploading a snapshot to a host failed:", err)
 		err = errors.AddContext(err, "uploading a snapshot to a host failed")
@@ -199,7 +198,7 @@ func (w *worker) initJobUploadSnapshotQueue() {
 }
 
 // managedUploadSnapshotHost uploads a snapshot to a single host.
-func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia []byte, host contractor.Session) error {
+func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia []byte, host contractor.Session, w *worker) error {
 	// Get the wallet seed.
 	ws, _, err := r.w.PrimarySeed()
 	if err != nil {
@@ -223,6 +222,19 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 		return errors.New("snapshot is too large")
 	}
 
+	// download the snapshot table
+	entryTable, err := r.managedDownloadSnapshotTable(w)
+	if err != nil {
+		return errors.AddContext(err, "could not download the snapshot table")
+	}
+
+	// check if the table already contains the entry.
+	for _, existingEntry := range entryTable {
+		if existingEntry.UID == meta.UID {
+			return nil // host already contains entry
+		}
+	}
+
 	// upload the siafile, creating a snapshotEntry
 	var name [96]byte
 	copy(name[:], meta.Name)
@@ -238,22 +250,6 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 			return errors.AddContext(err, "could not perform host upload")
 		}
 		entry.DataSectors[j] = root
-	}
-
-	// TODO: this should happen before uploading the pieces. Unfortunately RHP2
-	// won't let us easily do that because host.Upload is going to fail if
-	// called after managedDownloadSnapshotTableRHP2.
-	// download the current entry table
-	entryTable, err := r.managedDownloadSnapshotTableRHP2(host)
-	if err != nil {
-		return errors.AddContext(err, "could not download the snapshot table")
-	}
-
-	// check if the table already contains the entry.
-	for _, existingEntry := range entryTable {
-		if existingEntry.UID == meta.UID {
-			return nil // host already contains entry
-		}
 	}
 
 	shouldOverwrite := len(entryTable) != 0 // only overwrite if the sector already contained an entryTable
