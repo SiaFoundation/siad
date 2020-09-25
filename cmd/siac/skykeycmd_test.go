@@ -115,7 +115,10 @@ func testDeleteKey(t *testing.T, c client.Client) {
 	}
 
 	// Delete key by name
-	skykeydeletenamecmd(keyName)
+	err = c.SkykeyDeleteByNamePost(keyName)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Try and get the key again
 	_, err = c.SkykeyGetByName(keyName)
@@ -136,7 +139,10 @@ func testDeleteKey(t *testing.T, c client.Client) {
 	}
 
 	// Delete key by ID
-	skykeydeleteidcmd(sk.ID().ToString())
+	err = c.SkykeyDeleteByIDPost(sk.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Try and get the key again
 	_, err = c.SkykeyGetByName(keyName)
@@ -167,8 +173,10 @@ func testInvalidSkykeyType(t *testing.T, c client.Client) {
 		t.Fatal("Skykey type expected to be private")
 	}
 	// Delete Key to not impact future sub tests
-	skykeydeletenamecmd(keyName)
-
+	err = c.SkykeyDeleteByNamePost(keyName)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Verify a random type gives an error
 	_, err = skykeyCreate(c, "", "not a type")
 	if !strings.Contains(err.Error(), skykey.ErrInvalidSkykeyType.Error()) {
