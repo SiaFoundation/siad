@@ -458,26 +458,26 @@ func TestSiaPublicKeyLoadString(t *testing.T) {
 
 	// Try loading crappy strings.
 	parts := strings.Split(spkString, ":")
-	if err := spk.LoadString(parts[0]); err != nil {
-		t.Fatal(err)
+	if err := spk.LoadString(parts[0]); err == nil {
+		t.Fatal("should have failed")
 	}
-	if err := spk.LoadString(parts[0][1:]); err != nil {
-		t.Fatal(err)
+	if err := spk.LoadString(parts[0][1:]); err == nil {
+		t.Fatal("should have failed")
 	}
-	if err := spk.LoadString(parts[0][:1]); err != nil {
-		t.Fatal(err)
+	if err := spk.LoadString(parts[0][:1]); err == nil {
+		t.Fatal("should have failed")
 	}
-	if err := spk.LoadString(parts[1]); err != nil {
-		t.Fatal(err)
+	if err := spk.LoadString(parts[1]); err == nil {
+		t.Fatal("should have failed")
 	}
-	if err := spk.LoadString(parts[1][1:]); err != nil {
-		t.Fatal(err)
+	if err := spk.LoadString(parts[1][1:]); err == nil {
+		t.Fatal("should have failed")
 	}
-	if err := spk.LoadString(parts[1][:1]); err != nil {
-		t.Fatal(err)
+	if err := spk.LoadString(parts[1][:1]); err == nil {
+		t.Fatal("should have failed")
 	}
-	if err := spk.LoadString(parts[0] + parts[1]); err != nil {
-		t.Fatal(err)
+	if err := spk.LoadString(parts[0] + parts[1]); err == nil {
+		t.Fatal("should have failed")
 	}
 }
 
