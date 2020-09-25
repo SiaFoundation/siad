@@ -403,6 +403,8 @@ func rentercmd() {
 	rateLimitSummary(rg.Settings.MaxDownloadSpeed, rg.Settings.MaxUploadSpeed)
 }
 
+// renterhealthsummarycmd is the handler for displaying the overall health
+// summary for uploaded files.
 func renterhealthsummarycmd() {
 	// Print out file health summary for the renter
 	dirs := getDir(modules.RootSiaPath(), true, true)
