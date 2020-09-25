@@ -638,6 +638,7 @@ func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 	h.mu.RUnlock()
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
+		contractPrice:           settings.ContractPrice,
 		renterPK:                renterPK,
 		renterSignatures:        renterSigs.ContractSignatures,
 		renterRevisionSignature: renterSigs.RevisionSignature,
@@ -645,7 +646,6 @@ func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 		hostCollateral:          hostCollateral,
 		hostInitialRevenue:      types.ZeroCurrency,
 		hostInitialRisk:         types.ZeroCurrency,
-		settings:                settings,
 	}
 	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(fca)
 	if err != nil {
@@ -696,7 +696,7 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 		s.writeError(err)
 		return extendErr("verification of renewal failed: ", err)
 	}
-	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(hostCollateral, s.so, settings, req.Transactions)
+	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(hostCollateral, s.so, req.Transactions)
 	if err != nil {
 		s.writeError(err)
 		return extendErr("failed to add collateral: ", err)
@@ -733,6 +733,7 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	copy(renterPK[:], req.RenterKey.Key)
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
+		contractPrice:           settings.ContractPrice,
 		renterPK:                renterPK,
 		renterSignatures:        renterSigs.ContractSignatures,
 		renterRevisionSignature: renterSigs.RevisionSignature,
@@ -740,7 +741,6 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 		hostCollateral:          hostCollateral,
 		hostInitialRevenue:      renewRevenue,
 		hostInitialRisk:         renewRisk,
-		settings:                settings,
 	}
 	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(fca)
 	if err != nil {
@@ -945,7 +945,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 		s.writeError(err)
 		return extendErr("verification of renewal failed: ", err)
 	}
-	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(hostCollateral, s.so, settings, req.Transactions)
+	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(hostCollateral, s.so, req.Transactions)
 	if err != nil {
 		s.writeError(err)
 		return extendErr("failed to add collateral: ", err)
@@ -1002,6 +1002,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	// Finalize the contract. This creates a new SO and saves the old one atomically.
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
+		contractPrice:           settings.ContractPrice,
 		renewedSO:               &s.so,
 		renterPK:                renterPK,
 		renterSignatures:        renterSigs.ContractSignatures,
@@ -1010,7 +1011,6 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 		hostCollateral:          hostCollateral,
 		hostInitialRevenue:      renewRevenue,
 		hostInitialRisk:         renewRisk,
-		settings:                settings,
 	}
 	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(fca)
 	if err != nil {

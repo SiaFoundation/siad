@@ -180,7 +180,7 @@ type finalizeContractArgs struct {
 	hostCollateral          types.Currency
 	hostInitialRevenue      types.Currency
 	hostInitialRisk         types.Currency
-	settings                modules.HostExternalSettings
+	contractPrice           types.Currency
 }
 
 // createRevisionSignature creates a signature for a file contract revision
@@ -217,7 +217,7 @@ func (h *Host) managedFinalizeContract(args finalizeContractArgs) ([]types.Trans
 	// Extract args
 	builder, renterPK, renterSignatures := args.builder, args.renterPK, args.renterSignatures
 	renterRevisionSignature, initialSectorRoots, hostCollateral := args.renterRevisionSignature, args.initialSectorRoots, args.hostCollateral
-	hostInitialRevenue, hostInitialRisk, settings := args.hostInitialRevenue, args.hostInitialRisk, args.settings
+	hostInitialRevenue, hostInitialRisk, contractPrice := args.hostInitialRevenue, args.hostInitialRisk, args.contractPrice
 
 	for _, sig := range renterSignatures {
 		builder.AddTransactionSignature(sig)
@@ -267,7 +267,7 @@ func (h *Host) managedFinalizeContract(args finalizeContractArgs) ([]types.Trans
 	so := storageObligation{
 		SectorRoots: initialSectorRoots,
 
-		ContractCost:            settings.ContractPrice,
+		ContractCost:            contractPrice,
 		LockedCollateral:        hostCollateral,
 		PotentialStorageRevenue: hostInitialRevenue,
 		RiskedCollateral:        hostInitialRisk,

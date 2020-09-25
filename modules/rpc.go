@@ -55,10 +55,6 @@ type RPCPriceTable struct {
 	// by the memory consumption of the program.
 	MemoryTimeCost types.Currency `json:"memorytimecost"`
 
-	// CollateralCost is the amount of money per byte the host is promising to
-	// lock away as collateral when adding new data to a contract.
-	CollateralCost types.Currency `json:"collateralcost"`
-
 	// Cost values specific to the bandwidth consumption.
 	DownloadBandwidthCost types.Currency `json:"downloadbandwidthcost"`
 	UploadBandwidthCost   types.Currency `json:"uploadbandwidthcost"`
@@ -92,6 +88,26 @@ type RPCPriceTable struct {
 	// TxnFee estimations.
 	TxnFeeMinRecommended types.Currency `json:"txnfeeminrecommended"`
 	TxnFeeMaxRecommended types.Currency `json:"txnfeemaxrecommended"`
+
+	// ContractPrice is the additional cost to pay when forming/renewing a
+	// contract.
+	ContractPrice types.Currency
+
+	// CollateralCost is the amount of money per byte the host is promising to
+	// lock away as collateral when adding new data to a contract.
+	CollateralCost types.Currency `json:"collateralcost"`
+
+	// MaxCollateral is the maximum amount of collateral the host is willing to
+	// put into a single file contract.
+	MaxCollateral types.Currency
+
+	// MaxDuration is the max duration for which the host is willing to form a
+	// contract.
+	MaxDuration types.BlockHeight
+
+	// WindowSize is the minimum time in blocks the host requests the
+	// renewWindow of a new contract to be.
+	WindowSize types.BlockHeight
 }
 
 var (

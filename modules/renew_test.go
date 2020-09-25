@@ -8,10 +8,11 @@ import (
 
 // TestRenewBaseCost is a unit test for RenewBaseCosts.
 func TestRenewBaseCost(t *testing.T) {
-	var host HostExternalSettings
-	host.StoragePrice = types.SiacoinPrecision
-	host.Collateral = types.SiacoinPrecision.Mul64(2)
-	host.WindowSize = 50
+	var pt RPCPriceTable
+	pt.WriteStoreCost = types.SiacoinPrecision
+	pt.CollateralCost = types.SiacoinPrecision.Mul64(2)
+	pt.RenewContractCost = types.SiacoinPrecision
+	pt.WindowSize = 50
 
 	// Declare test cases.
 	tests := []struct {
@@ -75,7 +76,7 @@ func TestRenewBaseCost(t *testing.T) {
 		lastRev.NewWindowEnd = test.oldWindowEnd
 		lastRev.NewFileSize = test.storage
 		endHeight := test.newEndHeight
-		basePrice, baseCollateral := RenewBaseCosts(lastRev, host, types.SiacoinPrecision, endHeight)
+		basePrice, baseCollateral := RenewBaseCosts(lastRev, &pt, endHeight)
 
 		if !basePrice.Equals(test.basePrice) {
 			t.Fatalf("%v: expected basePrice %v but was %v", i, test.basePrice, basePrice)

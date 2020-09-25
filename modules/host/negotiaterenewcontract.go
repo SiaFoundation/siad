@@ -51,13 +51,13 @@ func rhp2RenewContractCollateral(so storageObligation, settings modules.HostExte
 // renewContractCollateral returns the amount of collateral that the host is
 // expected to add to the file contract based on the file contract and host
 // settings.
-func renewContractCollateral(rev types.FileContractRevision, settings modules.HostExternalSettings, renewRPCCost types.Currency, fc types.FileContract) (types.Currency, error) {
-	if fc.ValidHostPayout().Cmp(settings.ContractPrice) < 0 {
+func renewContractCollateral(rev types.FileContractRevision, pt *modules.RPCPriceTable, fc types.FileContract) (types.Currency, error) {
+	if fc.ValidHostPayout().Cmp(pt.ContractPrice) < 0 {
 		return types.Currency{}, errors.New("ContractPrice higher than ValidHostOutput")
 	}
 
-	diff := fc.ValidHostPayout().Sub(settings.ContractPrice)
-	rbp, _ := modules.RenewBaseCosts(rev, settings, renewRPCCost, fc.WindowStart)
+	diff := fc.ValidHostPayout().Sub(pt.ContractPrice)
+	rbp, _ := modules.RenewBaseCosts(rev, pt, fc.WindowStart)
 	if diff.Cmp(rbp) < 0 {
 		return types.Currency{}, errors.New("ValidHostOutput smaller than ContractPrice + RenewBasePrice")
 	}
@@ -66,7 +66,7 @@ func renewContractCollateral(rev types.FileContractRevision, settings modules.Ho
 
 // managedAddRenewCollateral adds the host's collateral to the renewed file
 // contract.
-func (h *Host) managedAddRenewCollateral(hostCollateral types.Currency, so storageObligation, settings modules.HostExternalSettings, txnSet []types.Transaction) (builder modules.TransactionBuilder, newParents []types.Transaction, newInputs []types.SiacoinInput, newOutputs []types.SiacoinOutput, err error) {
+func (h *Host) managedAddRenewCollateral(hostCollateral types.Currency, so storageObligation, txnSet []types.Transaction) (builder modules.TransactionBuilder, newParents []types.Transaction, newInputs []types.SiacoinInput, newOutputs []types.SiacoinOutput, err error) {
 	txn := txnSet[len(txnSet)-1]
 	parents := txnSet[:len(txnSet)-1]
 
@@ -151,7 +151,7 @@ func (h *Host) managedRPCRenewContractRHP2(conn net.Conn) error {
 		modules.WriteNegotiationRejection(conn, err) // Error is ignored to preserve type for extendErr
 		return extendErr("verification of renewal failed: ", err)
 	}
-	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(hostCollateral, so, settings, txnSet)
+	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(hostCollateral, so, txnSet)
 	if err != nil {
 		modules.WriteNegotiationRejection(conn, err) // Error is ignored to preserve type for extendErr
 		return extendErr("failed to add collateral: ", err)
@@ -211,6 +211,7 @@ func (h *Host) managedRPCRenewContractRHP2(conn net.Conn) error {
 
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
+		contractPrice:           settings.ContractPrice,
 		renterPK:                renterPK,
 		renterSignatures:        renterTxnSignatures,
 		renterRevisionSignature: renterRevisionSignature,
@@ -218,7 +219,6 @@ func (h *Host) managedRPCRenewContractRHP2(conn net.Conn) error {
 		hostCollateral:          hostCollateral,
 		hostInitialRevenue:      renewRevenue,
 		hostInitialRisk:         renewRisk,
-		settings:                settings,
 	}
 	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(fca)
 	if err != nil {

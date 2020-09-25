@@ -326,6 +326,7 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 func (h *Host) managedUpdatePriceTable() {
 	// create a new RPC price table
 	hes := h.managedExternalSettings()
+	minRecommended, maxRecommended := h.tpool.FeeEstimation()
 	priceTable := modules.RPCPriceTable{
 		// TODO: hardcoded cost should be updated to use a better value.
 		AccountBalanceCost:   types.NewCurrency64(1),
@@ -360,6 +361,15 @@ func (h *Host) managedUpdatePriceTable() {
 		// Bandwidth related fields.
 		DownloadBandwidthCost: hes.DownloadBandwidthPrice,
 		UploadBandwidthCost:   hes.UploadBandwidthPrice,
+
+		// Contract Formation/Renewal related fields
+		ContractPrice:        hes.ContractPrice,
+		CollateralCost:       hes.Collateral,
+		MaxCollateral:        hes.MaxCollateral,
+		MaxDuration:          hes.MaxDuration,
+		TxnFeeMinRecommended: minRecommended,
+		TxnFeeMaxRecommended: maxRecommended,
+		WindowSize:           hes.WindowSize,
 	}
 	// update the pricetable
 	h.staticPriceTables.managedSetCurrent(priceTable)

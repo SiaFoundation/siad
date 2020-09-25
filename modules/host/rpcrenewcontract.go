@@ -35,11 +35,11 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	minFee := pt.TxnFeeMinRecommended
 	hpk := h.publicKey
 	hsk := h.secretKey
-	// TODO: get rid of the external settings here. Instead add the
-	// contractPrice to the agreed upon price table.
-	es := h.externalSettings(maxFee) // external settings
-	is := h.settings                 // internal settings
+	contractPrice := pt.ContractPrice
+	ac := h.externalSettings(maxFee).AcceptingContracts
+	is := h.settings // internal settings
 	lockedCollateral := h.financialMetrics.LockedStorageCollateral
+	unlockHash := h.unlockHash
 	h.mu.RUnlock()
 
 	// Read request
@@ -93,7 +93,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	}
 
 	// Check if the host wants to accept a renewal for the obligation.
-	err = renewAllowed(es.AcceptingContracts, bh, so.expiration())
+	err = renewAllowed(ac, bh, so.expiration())
 	if err != nil {
 		return errors.AddContext(err, "managedRPCRenewContract: host is not accepting a renewal")
 	}
@@ -108,7 +108,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	}
 
 	// Verify the new contract against the final revision.
-	hostCollateral, err := verifyRenewedContract(so, newContract, finalRevision, bh, is, es, pt.RenewContractCost, excessPayment, rpk, hpk, lockedCollateral)
+	hostCollateral, err := verifyRenewedContract(so, newContract, finalRevision, bh, is, unlockHash, pt, excessPayment, rpk, hpk, lockedCollateral)
 	if errors.Contains(err, errCollateralBudgetExceeded) {
 		h.staticAlerter.RegisterAlert(modules.AlertIDHostInsufficientCollateral, AlertMSGHostInsufficientCollateral, "", modules.SeverityWarning)
 	} else {
@@ -119,7 +119,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	}
 
 	// Add the collateral to the contract.
-	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(hostCollateral, so, es, txns)
+	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(hostCollateral, so, txns)
 	if err != nil {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to add collateral")
 	}
@@ -158,7 +158,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	// obligation in the process.
 	h.mu.RLock()
 	fc := txns[len(txns)-1].FileContracts[0]
-	renewRevenue, renewRisk := modules.RenewBaseCosts(finalRevision, es, pt.RenewContractCost, fc.WindowStart)
+	renewRevenue, renewRisk := modules.RenewBaseCosts(finalRevision, pt, fc.WindowStart)
 	h.mu.RUnlock()
 
 	// Clear the old storage obligation.
@@ -171,6 +171,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	copy(renterPK[:], rpk.Key)
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
+		contractPrice:           contractPrice,
 		renewedSO:               &so,
 		renterPK:                renterPK,
 		renterSignatures:        renterTxnSigs,
@@ -179,7 +180,6 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 		hostCollateral:          hostCollateral,
 		hostInitialRevenue:      renewRevenue,
 		hostInitialRisk:         renewRisk,
-		settings:                es,
 	}
 	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(fca)
 	if err != nil {
@@ -278,9 +278,7 @@ func fetchRevisionAndContract(txnSet []types.Transaction) (types.FileContractRev
 
 // verifyRenewedContract is a helper method that checks if the proposed renewed
 // contract is acceptable.
-func verifyRenewedContract(so storageObligation, newContract types.FileContract, oldRevision types.FileContractRevision, blockHeight types.BlockHeight, internalSettings modules.HostInternalSettings, externalSettings modules.HostExternalSettings, contractRenewRPCCost, renterPayment types.Currency, renterPK, hostPK types.SiaPublicKey, lockedCollateral types.Currency) (types.Currency, error) {
-	unlockHash := externalSettings.UnlockHash
-
+func verifyRenewedContract(so storageObligation, newContract types.FileContract, oldRevision types.FileContractRevision, blockHeight types.BlockHeight, internalSettings modules.HostInternalSettings, unlockHash types.UnlockHash, pt *modules.RPCPriceTable, renterPayment types.Currency, renterPK, hostPK types.SiaPublicKey, lockedCollateral types.Currency) (types.Currency, error) {
 	// The file size and merkle root must match the file size and merkle root
 	// from the previous file contract.
 	if newContract.FileSize != so.fileSize() {
@@ -294,13 +292,13 @@ func verifyRenewedContract(so storageObligation, newContract types.FileContract,
 	if newContract.WindowStart <= blockHeight+revisionSubmissionBuffer {
 		return types.Currency{}, ErrEarlyWindow
 	}
-	// WindowEnd must be at least externalSettings.WindowSize blocks after WindowStart.
-	if newContract.WindowEnd < newContract.WindowStart+externalSettings.WindowSize {
+	// WindowEnd must be at least pt.WindowSize blocks after WindowStart.
+	if newContract.WindowEnd < newContract.WindowStart+pt.WindowSize {
 		return types.Currency{}, ErrSmallWindow
 	}
-	// WindowStart must not be more than externalSettings.MaxDuration blocks into the
+	// WindowStart must not be more than pt.MaxDuration blocks into the
 	// future.
-	if newContract.WindowStart > blockHeight+externalSettings.MaxDuration {
+	if newContract.WindowStart > blockHeight+pt.MaxDuration {
 		return types.Currency{}, ErrLongDuration
 	}
 
@@ -322,12 +320,12 @@ func verifyRenewedContract(so storageObligation, newContract types.FileContract,
 
 	// Check that the collateral does not exceed the maximum amount of
 	// collateral allowed.
-	expectedCollateral, err := renewContractCollateral(oldRevision, externalSettings, contractRenewRPCCost, newContract)
+	expectedCollateral, err := renewContractCollateral(oldRevision, pt, newContract)
 	if err != nil {
 		err = errors.Compose(err, ErrLowHostValidOutput)
 		return types.Currency{}, errors.AddContext(err, "Failed to compute contract collateral")
 	}
-	if expectedCollateral.Cmp(externalSettings.MaxCollateral) > 0 {
+	if expectedCollateral.Cmp(pt.MaxCollateral) > 0 {
 		return types.Currency{}, errMaxCollateralReached
 	}
 	// Check that the host has enough room in the collateral budget to add this
@@ -339,7 +337,7 @@ func verifyRenewedContract(so storageObligation, newContract types.FileContract,
 	// Compute the basePrice and baseCollateral.
 	// NOTE: Since the renter might choose to expect less than the
 	// baseCollateral, we need to potentially adjust it.
-	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevision, externalSettings, contractRenewRPCCost, newContract.WindowStart)
+	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevision, pt, newContract.WindowStart)
 	if expectedCollateral.Cmp(baseCollateral) < 0 {
 		baseCollateral = expectedCollateral
 	}
@@ -354,7 +352,7 @@ func verifyRenewedContract(so storageObligation, newContract types.FileContract,
 
 	// Check that the missed proof outputs contain enough money, and that the
 	// void output contains enough money.
-	if newContract.ValidHostPayout().Cmp(basePrice.Add(baseCollateral).Add(externalSettings.ContractPrice)) < 0 {
+	if newContract.ValidHostPayout().Cmp(basePrice.Add(baseCollateral).Add(pt.ContractPrice)) < 0 {
 		return types.Currency{}, ErrLowHostValidOutput
 	}
 	expectedHostMissedOutput := newContract.ValidHostPayout().Sub(basePrice).Sub(baseCollateral)

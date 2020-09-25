@@ -572,7 +572,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	txnFee := pt.TxnFeeMaxRecommended.Mul64(2 * modules.EstimatedFileContractTransactionSetSize)
 
 	// Calculate the base cost.
-	basePrice, baseCollateral := modules.RenewBaseCosts(oldRev, host.HostExternalSettings, pt.RenewContractCost, endHeight)
+	basePrice, baseCollateral := modules.RenewBaseCosts(oldRev, pt, endHeight)
 
 	// Create the final revision of the old contract. The renew cost is 0H for
 	// the final revision since the new contract will pay for it as part of the
@@ -727,7 +727,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 		SecretKey:       ourSK,
 		StartHeight:     startHeight,
 		TotalCost:       funding,
-		ContractFee:     host.ContractPrice,
+		ContractFee:     pt.ContractPrice,
 		TxnFee:          txnFee,
 		SiafundFee:      types.Tax(startHeight, fc.Payout),
 		StorageSpending: basePrice.Sub(pt.RenewContractCost),
