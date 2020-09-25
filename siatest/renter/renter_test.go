@@ -2549,7 +2549,7 @@ func TestRenterLosingHosts(t *testing.T) {
 	// Add renter to the group
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
 	renterParams.Allowance = siatest.DefaultAllowance
-	renterParams.Allowance.Hosts = 3
+	renterParams.Allowance.Hosts = 3 // hosts-1
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal("Failed to add renter:", err)
@@ -2563,9 +2563,6 @@ func TestRenterLosingHosts(t *testing.T) {
 	}
 	contractHosts := make(map[string]struct{})
 	for _, c := range rc.ActiveContracts {
-		if _, ok := contractHosts[c.HostPublicKey.String()]; ok {
-			continue
-		}
 		contractHosts[c.HostPublicKey.String()] = struct{}{}
 	}
 
@@ -2640,7 +2637,7 @@ func TestRenterLosingHosts(t *testing.T) {
 
 	// Since there is another host, another contract should form and the
 	// redundancy should stay at 1.5
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(100, 200*time.Millisecond, func() error {
 		file, err := r.RenterFileGet(rf.SiaPath())
 		if err != nil {
 			return err
