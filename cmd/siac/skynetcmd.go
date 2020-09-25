@@ -806,47 +806,52 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 		fmt.Println("Failed to create siapath", destSiaPath)
 		die(err)
 	}
-	body := new(bytes.Buffer)
-	writer := multipart.NewWriter(body)
-	// Walk the target directory and collect all files that are going to be
-	// uploaded.
-	var offset uint64
-	err = filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			fmt.Printf("Failed to read file %s.\n", path)
-			die(err)
-		}
-		if info.IsDir() {
+	if skynetUploadDisableDefaultPath && skynetUploadDefaultPath != "" {
+		fmt.Println("Illegal combination of parameters: --defaultpath and --disabledefaultpath are mutually exclusive.")
+		die()
+	}
+	pr, pw := io.Pipe()
+	defer pr.Close()
+	writer := multipart.NewWriter(pw)
+	go func() {
+		defer pw.Close()
+		// Walk the target directory and collect all files that are going to be
+		// uploaded.
+		var offset uint64
+		err = filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				fmt.Printf("Failed to read file %s.\n", path)
+				die(err)
+			}
+			if info.IsDir() {
+				return nil
+			}
+			data, err := ioutil.ReadFile(path)
+			if err != nil {
+				fmt.Printf("Failed to read file %s.\n", path)
+				die(err)
+			}
+			_ = addMultipartFile(writer, data, "files[]", info.Name(), modules.DefaultFilePerm, &offset)
 			return nil
-		}
-		data, err := ioutil.ReadFile(path)
+		})
 		if err != nil {
-			fmt.Printf("Failed to read file %s.\n", path)
 			die(err)
 		}
-		_ = addMultipartFile(writer, data, "files[]", info.Name(), modules.DefaultFilePerm, &offset)
-		return nil
-	})
-	if err != nil {
-		die(err)
-	}
-	if err = writer.Close(); err != nil {
-		return
-	}
-	reader := bytes.NewReader(body.Bytes())
+		if err = writer.Close(); err != nil {
+			return
+		}
+	}()
 
 	sup := modules.SkyfileMultipartUploadParameters{
 		SiaPath:             skyfilePath,
 		Force:               false,
 		Root:                false,
 		BaseChunkRedundancy: renter.SkyfileDefaultBaseChunkRedundancy,
-		Reader:              reader,
+		Reader:              pr,
 		Filename:            skyfilePath.Name(),
-		DefaultPath:         "",
-		DisableDefaultPath:  false,
+		DefaultPath:         skynetUploadDefaultPath,
+		DisableDefaultPath:  skynetUploadDisableDefaultPath,
 		ContentType:         writer.FormDataContentType(),
-		//DefaultPath:         defaultPath,
-		//DisableDefaultPath:  disableDefaultPath,
 	}
 	skylink, _, err := httpClient.SkynetSkyfileMultiPartPost(sup)
 	if err != nil {
