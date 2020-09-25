@@ -50,13 +50,16 @@ type jobTestResult struct {
 // that we should implement precautions on both ends.
 func (j *jobTest) sendResult(result *jobTestResult) {
 	w := j.staticQueue.staticWorker()
-	w.renter.tg.Launch(func() {
+	err := w.renter.tg.Launch(func() {
 		select {
 		case j.resultChan <- result:
 		case <-w.renter.tg.StopChan():
 		case <-j.staticCtx.Done():
 		}
 	})
+	if err != nil {
+		w.renter.log.Severe(err)
+	}
 }
 
 // callDiscard expires the job. This typically requires telling the caller that

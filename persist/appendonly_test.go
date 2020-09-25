@@ -202,7 +202,11 @@ func TestMarshalMetadata(t *testing.T) {
 			Length: MetadataPageSize,
 		},
 	}
-	defer aop.Close()
+	defer func() {
+		if err := aop.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Marshal the metadata and write to disk
 	metadataBytes := encoding.Marshal(aop.metadata)

@@ -18,14 +18,14 @@ import (
 // MarshalSia implements the encoding.SiaMarshaler interface.
 func (b Block) MarshalSia(w io.Writer) error {
 	e := encoding.NewEncoder(w)
-	e.Write(b.ParentID[:])
-	e.Write(b.Nonce[:])
-	e.WriteUint64(uint64(b.Timestamp))
-	e.WriteInt(len(b.MinerPayouts))
+	_, _ = e.Write(b.ParentID[:])
+	_, _ = e.Write(b.Nonce[:])
+	_ = e.WriteUint64(uint64(b.Timestamp))
+	_ = e.WriteInt(len(b.MinerPayouts))
 	for i := range b.MinerPayouts {
 		b.MinerPayouts[i].MarshalSia(e)
 	}
-	e.WriteInt(len(b.Transactions))
+	_ = e.WriteInt(len(b.Transactions))
 	for i := range b.Transactions {
 		if err := b.Transactions[i].MarshalSia(e); err != nil {
 			return err

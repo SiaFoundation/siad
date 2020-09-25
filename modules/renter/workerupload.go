@@ -194,7 +194,11 @@ func (w *worker) managedPerformUploadChunkJob() {
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
-	defer e.Close()
+	defer func() {
+		if err := e.Close(); err != nil {
+			w.renter.log.Print("managedPerformUploadChunkJob: failed to close editor", err)
+		}
+	}()
 
 	// Before performing the upload, check for price gouging.
 	allowance := w.renter.hostContractor.Allowance()

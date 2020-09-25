@@ -585,7 +585,11 @@ func TestRPCSendBlockSendsOnlyNecessaryBlocks(t *testing.T) {
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
-	defer cs.Close()
+	defer func() {
+		if err := cs.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Add a few initial blocks to both consensus sets. These are the blocks we
 	// want to make sure SendBlocks is not sending unnecessarily as both parties

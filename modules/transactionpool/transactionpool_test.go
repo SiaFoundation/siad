@@ -176,7 +176,11 @@ func TestGetTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	value := types.NewCurrency64(35e6)
 	fee := types.NewCurrency64(3e2)
@@ -243,7 +247,11 @@ func TestFeeEstimation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Prepare a bunch of outputs for a series of graphs to fill up the
 	// transaction pool.
@@ -373,7 +381,11 @@ func TestTpoolScalability(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine a few more blocks to get some extra funding.
 	for i := 0; i < 3; i++ {
@@ -506,7 +518,11 @@ func TestHeapFees(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine a few more blocks to get some extra funding.
 	for i := 0; i < 4; i++ {
@@ -692,7 +708,11 @@ func TestBigTpool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine a few more blocks to get some extra funding.
 	for i := 0; i < 4; i++ {
@@ -1098,8 +1118,16 @@ func TestTpoolRevert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
-	defer tpt2.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	defer func() {
+		if err := tpt2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine blocks until there is money in the wallet. We have to make sure they
 	// are on the same chain by feeding all blocks to the other tester.

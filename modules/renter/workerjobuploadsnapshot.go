@@ -101,13 +101,16 @@ func (j *jobUploadSnapshot) callDiscard(err error) {
 		staticErr: errors.Extend(err, ErrJobDiscarded),
 	}
 	w := j.staticQueue.staticWorker()
-	w.renter.tg.Launch(func() {
+	errLaunch := w.renter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- resp:
 		case <-j.staticCtx.Done():
 		case <-w.renter.tg.StopChan():
 		}
 	})
+	if errLaunch != nil {
+		w.renter.log.Print("callDiscard: launch failed", err)
+	}
 }
 
 // callExecute will perform an upload snapshot job for the worker.
@@ -121,13 +124,16 @@ func (j *jobUploadSnapshot) callExecute() {
 		resp := &jobUploadSnapshotResponse{
 			staticErr: err,
 		}
-		w.renter.tg.Launch(func() {
+		errLaunch := w.renter.tg.Launch(func() {
 			select {
 			case j.staticResponseChan <- resp:
 			case <-j.staticCtx.Done():
 			case <-w.renter.tg.StopChan():
 			}
 		})
+		if errLaunch != nil {
+			w.renter.log.Print("callExecute: launch failed", err)
+		}
 
 		// Report a failure to the queue if this job had an error.
 		if err != nil {

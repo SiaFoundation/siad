@@ -21,7 +21,11 @@ func TestNegotiateRevisionStopResponse(t *testing.T) {
 
 	// handle the host's half of the pipe
 	go func() {
-		defer hConn.Close()
+		defer func() {
+			if err := hConn.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 		// read revision
 		encoding.ReadObject(hConn, new(types.FileContractRevision), 1<<22)
 		// write acceptance
@@ -48,7 +52,11 @@ func TestNegotiateRevisionStopResponse(t *testing.T) {
 	// should expect to see a transaction validation error instead).
 	rConn, hConn = net.Pipe()
 	go func() {
-		defer hConn.Close()
+		defer func() {
+			if err := hConn.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 		encoding.ReadObject(hConn, new(types.FileContractRevision), 1<<22)
 		modules.WriteNegotiationAcceptance(hConn)
 		encoding.ReadObject(hConn, new(types.TransactionSignature), 1<<22)

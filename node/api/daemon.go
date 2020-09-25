@@ -183,7 +183,7 @@ func fetchLatestRelease() (_ gitlabRelease, err error) {
 
 // updateToRelease updates siad and siac to the release specified. siac is
 // assumed to be in the same folder as siad.
-func updateToRelease(version string) error {
+func updateToRelease(version string) (err error) {
 	binaryFolder, err := osext.ExecutableFolder()
 	if err != nil {
 		return err
@@ -273,7 +273,9 @@ func updateToRelease(version string) error {
 			if err != nil {
 				return err
 			}
-			defer binData.Close()
+			defer func() {
+				err = errors.Compose(err, binData.Close())
+			}()
 		}
 		if binData == nil {
 			return errors.New("could not find " + binary + " binary")

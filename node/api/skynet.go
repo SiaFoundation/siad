@@ -359,7 +359,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
-	defer streamer.Close()
+	defer func() {
+		_ = streamer.Close()
+	}()
 
 	if metadata.DefaultPath != "" && len(metadata.Subfiles) == 0 {
 		WriteError(w, Error{"defaultpath is not allowed on single files, please specify a format"}, http.StatusBadRequest)

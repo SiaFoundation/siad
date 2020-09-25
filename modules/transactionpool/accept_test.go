@@ -20,7 +20,11 @@ func TestAcceptTransactionSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Check that the transaction pool is empty.
 	if len(tpt.tpool.transactionSets) != 0 {
@@ -71,7 +75,11 @@ func TestConflictingTransactionSets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Fund a partial transaction.
 	fund := types.NewCurrency64(30e6)
@@ -132,7 +140,11 @@ func TestCheckMinerFees(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Prepare a bunch of outputs for a series of graphs to fill up the
 	// transaction pool.
@@ -245,7 +257,11 @@ func TestTransactionGraph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a transaction sending money to an output that TransactionGraph can
 	// spent (the empty UnlockConditions).
@@ -287,7 +303,11 @@ func TestTransactionGraphDiamond(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a transaction sending money to an output that TransactionGraph can
 	// spent (the empty UnlockConditions).
@@ -335,7 +355,11 @@ func TestTransactionSuperset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Fund a partial transaction.
 	fund := types.NewCurrency64(30e6)
@@ -397,7 +421,11 @@ func TestTransactionSubset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Fund a partial transaction.
 	fund := types.NewCurrency64(30e6)
@@ -447,7 +475,11 @@ func TestTransactionChild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Fund a partial transaction.
 	fund := types.NewCurrency64(30e6)
@@ -496,7 +528,11 @@ func TestNilAccept(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err = tpt.tpool.AcceptTransactionSet(nil)
 	if err == nil {
@@ -520,7 +556,11 @@ func TestAcceptFCAndConflictingRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create and fund a valid file contract.
 	builder, err := tpt.wallet.StartTransaction()
@@ -579,7 +619,11 @@ func TestPartialConfirmation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create and fund a valid file contract.
 	builder, err := tpt.wallet.StartTransaction()
@@ -659,7 +703,11 @@ func TestPartialConfirmationWeave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a transaction with a single output to a fully controlled address.
 	emptyUH := types.UnlockConditions{}.UnlockHash()

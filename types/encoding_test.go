@@ -458,13 +458,27 @@ func TestSiaPublicKeyLoadString(t *testing.T) {
 
 	// Try loading crappy strings.
 	parts := strings.Split(spkString, ":")
-	spk.LoadString(parts[0])
-	spk.LoadString(parts[0][1:])
-	spk.LoadString(parts[0][:1])
-	spk.LoadString(parts[1])
-	spk.LoadString(parts[1][1:])
-	spk.LoadString(parts[1][:1])
-	spk.LoadString(parts[0] + parts[1])
+	if err := spk.LoadString(parts[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := spk.LoadString(parts[0][1:]); err != nil {
+		t.Fatal(err)
+	}
+	if err := spk.LoadString(parts[0][:1]); err != nil {
+		t.Fatal(err)
+	}
+	if err := spk.LoadString(parts[1]); err != nil {
+		t.Fatal(err)
+	}
+	if err := spk.LoadString(parts[1][1:]); err != nil {
+		t.Fatal(err)
+	}
+	if err := spk.LoadString(parts[1][:1]); err != nil {
+		t.Fatal(err)
+	}
+	if err := spk.LoadString(parts[0] + parts[1]); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestSiaPublicKeyString does a quick check to verify that the String method

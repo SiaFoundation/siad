@@ -113,7 +113,9 @@ func (hd *Downloader) Download(root crypto.Hash, offset, length uint32) (_ modul
 		// If the host wants to stop communicating after this iteration, close
 		// our connection; this will cause the next download to fail. However,
 		// we must delay closing until we've finished downloading the sector.
-		defer hd.conn.Close()
+		defer func() {
+			err = errors.Compose(err, hd.conn.Close())
+		}()
 	} else if err != nil {
 		return modules.RenterContract{}, nil, err
 	}

@@ -610,7 +610,7 @@ func (r *Renter) SetSettings(s modules.RenterSettings) error {
 // right size, but it can't check that the content is the same. Therefore the
 // caller is responsible for not accidentally corrupting the uploaded file by
 // providing a different file with the same size.
-func (r *Renter) SetFileTrackingPath(siaPath modules.SiaPath, newPath string) error {
+func (r *Renter) SetFileTrackingPath(siaPath modules.SiaPath, newPath string) (err error) {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -620,7 +620,9 @@ func (r *Renter) SetFileTrackingPath(siaPath modules.SiaPath, newPath string) er
 	if err != nil {
 		return err
 	}
-	defer entry.Close()
+	defer func() {
+		err = errors.Compose(err, entry.Close())
+	}()
 
 	// Sanity check that a file with the correct size exists at the new
 	// location.

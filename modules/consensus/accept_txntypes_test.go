@@ -1240,7 +1240,11 @@ func TestPaymentChannelBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+  if err := cst.Close(); err != nil {
+    t.Fatal(err)
+  }
+}()
 	err = cst.testPaymentChannelBlocks()
 	if err != nil {
 		t.Fatal(err)

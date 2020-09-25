@@ -390,7 +390,7 @@ type executeProgramResponse struct {
 // and returns the responses received by the host. A failure to execute an
 // instruction won't result in an error. Instead the returned responses need to
 // be inspected for that depending on the testcase.
-func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency, updatePriceTable, finalize bool) ([]executeProgramResponse, mux.BandwidthLimit, error) {
+func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequest, programData []byte, budget types.Currency, updatePriceTable, finalize bool) (_ []executeProgramResponse, _ mux.BandwidthLimit, err error) {
 	// Only allow a single write program or multiple read programs to run in
 	// parallel. A production worker will have better locking than this but
 	// since we just mock the renter this is used for unit testing the host.
@@ -401,7 +401,6 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 		p.mdmMu.Lock()
 		defer p.mdmMu.Unlock()
 	}
-	var err error
 
 	pt := p.managedPriceTable()
 	if updatePriceTable {
@@ -453,7 +452,9 @@ func (p *renterHostPair) managedExecuteProgram(epr modules.RPCExecuteProgramRequ
 
 	// create stream
 	stream := p.managedNewStream()
-	defer stream.Close()
+	defer func() {
+		err = errors.Compose(err, stream.Close())
+	}()
 
 	// Get the limit to track bandwidth.
 	limit := stream.Limit()
@@ -536,9 +537,7 @@ func (p *renterHostPair) managedFetchPriceTable() (*modules.RPCPriceTable, error
 // managedFundEphemeralAccount will deposit the given amount in the pair's
 // ephemeral account using the pair's file contract to provide payment and the
 // given price table.
-func (p *renterHostPair) managedFundEphemeralAccount(amount types.Currency, updatePriceTable bool) (modules.FundAccountResponse, error) {
-	var err error
-
+func (p *renterHostPair) managedFundEphemeralAccount(amount types.Currency, updatePriceTable bool) (_ modules.FundAccountResponse, err error) {
 	pt := p.managedPriceTable()
 	if updatePriceTable {
 		pt, err = p.managedFetchPriceTable()
@@ -549,7 +548,9 @@ func (p *renterHostPair) managedFundEphemeralAccount(amount types.Currency, upda
 
 	// create stream
 	stream := p.managedNewStream()
-	defer stream.Close()
+	defer func() {
+		err = errors.Compose(err, stream.Close())
+	}()
 
 	// Write RPC ID.
 	err = modules.RPCWrite(stream, modules.RPCFundAccount)
@@ -788,9 +789,11 @@ func (p *renterHostPair) managedSign(rev types.FileContractRevision) crypto.Sign
 }
 
 // AccountBalance returns the account balance of the specified account.
-func (p *renterHostPair) managedAccountBalance(payByFC bool, fundAmt types.Currency, fundAcc, balanceAcc modules.AccountID) (types.Currency, error) {
+func (p *renterHostPair) managedAccountBalance(payByFC bool, fundAmt types.Currency, fundAcc, balanceAcc modules.AccountID) (_ types.Currency, err error) {
 	stream := p.managedNewStream()
-	defer stream.Close()
+	defer func() {
+		err = errors.Compose(err, stream.Close())
+	}()
 
 	// Fetch the price table.
 	pt, err := p.managedFetchPriceTable()
@@ -849,9 +852,11 @@ func (p *renterHostPair) managedAccountBalance(payByFC bool, fundAmt types.Curre
 
 // managedLatestRevision performs a RPCLatestRevision to get the latest revision
 // for the contract with fcid from the host.
-func (p *renterHostPair) managedLatestRevision(payByFC bool, fundAmt types.Currency, fundAcc modules.AccountID, fcid types.FileContractID) (types.FileContractRevision, error) {
+func (p *renterHostPair) managedLatestRevision(payByFC bool, fundAmt types.Currency, fundAcc modules.AccountID, fcid types.FileContractID) (_ types.FileContractRevision, err error) {
 	stream := p.managedNewStream()
-	defer stream.Close()
+	defer func() {
+		err = errors.Compose(err, stream.Close())
+	}()
 
 	// Fetch the price table.
 	pt, err := p.managedFetchPriceTable()
@@ -921,12 +926,14 @@ func (p *renterHostPair) LatestRevision(payByFC bool) (types.FileContractRevisio
 
 // UpdatePriceTable runs the UpdatePriceTableRPC on the host and sets the price
 // table on the pair
-func (p *renterHostPair) managedUpdatePriceTable(payByFC bool) error {
+func (p *renterHostPair) managedUpdatePriceTable(payByFC bool) (err error) {
 	stream := p.managedNewStream()
-	defer stream.Close()
+	defer func() {
+		err = errors.Compose(err, stream.Close())
+	}()
 
 	// initiate the RPC
-	err := modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
+	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		return err
 	}

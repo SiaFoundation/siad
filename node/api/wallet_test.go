@@ -805,7 +805,11 @@ func TestWalletTransactionGETid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st2.server.Close()
+	defer func() {
+		if err := st2.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	err = st2.getAPI("/wallet/transactions?startheight=0&endheight=10000", &wtg)
 	if err != nil {
 		t.Fatal(err)
@@ -1404,27 +1408,47 @@ func TestWalletSiacoins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st2.server.Close()
+	defer func() {
+		if err := st2.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	st3, err := blankServerTester(t.Name() + "-wallet3")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st3.server.Close()
+	defer func() {
+		if err := st3.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	st4, err := blankServerTester(t.Name() + "-wallet4")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st4.server.Close()
+	defer func() {
+		if err := st4.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	st5, err := blankServerTester(t.Name() + "-wallet5")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st5.server.Close()
+	defer func() {
+		if err := st5.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	st6, err := blankServerTester(t.Name() + "-wallet6")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st6.server.Close()
+	defer func() {
+		if err := st6.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine two more blocks with 'st' to get extra outputs to spend.
 	for i := 0; i < 2; i++ {

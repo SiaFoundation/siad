@@ -87,14 +87,18 @@ func TestRenterSaveLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	siapath := rt.renter.staticFileSystem.FileSiaPath(entry)
-	entry.Close()
+	if err := entry.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Check that SiaFileSet knows of the SiaFile
 	entry, err = rt.renter.staticFileSystem.OpenSiaFile(siapath)
 	if err != nil {
 		t.Fatal("SiaFile not found in the renter's staticFileSet after creation")
 	}
-	entry.Close()
+	if err := entry.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	err = rt.renter.saveSync() // save metadata
 	if err != nil {

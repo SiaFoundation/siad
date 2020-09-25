@@ -47,7 +47,11 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rhp.Close()
+	defer func() {
+		if err := rhp.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// prefund the EA
 	his := rhp.staticHT.host.managedInternalSettings()
@@ -58,7 +62,11 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 
 	// create stream
 	stream := rhp.managedNewStream()
-	defer stream.Close()
+	defer func() {
+		if err := stream.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// create a random sector
 	sectorRoot, _, err := addRandomSector(rhp)

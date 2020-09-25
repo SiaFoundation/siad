@@ -383,7 +383,11 @@ func TestConnect(t *testing.T) {
 	t.Parallel()
 	// create bootstrap peer
 	bootstrap := newNamedTestingGateway(t, "1")
-	defer bootstrap.Close()
+	defer func() {
+		if err := bootstrap.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// give it a node
 	bootstrap.mu.Lock()
@@ -622,7 +626,11 @@ func TestConnectRejectsVersions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() {
+		if err := listener.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	tests := []struct {
 		version             string

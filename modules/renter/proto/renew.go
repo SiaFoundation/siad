@@ -80,7 +80,9 @@ func (cs *ContractSet) managedNewRenew(oldContract *SafeContract, params Contrac
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
-	defer s.Close()
+	defer func() {
+		err = errors.Compose(err, s.Close())
+	}()
 
 	// Lock the contract and resynchronize if necessary
 	rev, sigs, err := s.Lock(contract.ID(), contract.SecretKey)
@@ -249,7 +251,9 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
-	defer s.Close()
+	defer func() {
+		err = errors.Compose(err, s.Close())
+	}()
 
 	// Lock the contract and resynchronize if necessary
 	rev, sigs, err := s.Lock(contract.ID(), contract.SecretKey)

@@ -469,7 +469,7 @@ func (s *streamer) Seek(offset int64, whence int) (int64, error) {
 
 // Streamer creates a modules.Streamer that can be used to stream downloads from
 // the sia network.
-func (r *Renter) Streamer(siaPath modules.SiaPath, disableLocalFetch bool) (string, modules.Streamer, error) {
+func (r *Renter) Streamer(siaPath modules.SiaPath, disableLocalFetch bool) (_ string, _ modules.Streamer, err error) {
 	if err := r.tg.Add(); err != nil {
 		return "", nil, err
 	}
@@ -480,7 +480,9 @@ func (r *Renter) Streamer(siaPath modules.SiaPath, disableLocalFetch bool) (stri
 	if err != nil {
 		return "", nil, err
 	}
-	defer node.Close()
+	defer func() {
+		err = errors.Compose(err, node.Close())
+	}()
 
 	// Create the streamer
 	snap, err := node.Snapshot(siaPath)

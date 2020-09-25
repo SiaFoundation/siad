@@ -29,7 +29,11 @@ func TestRescan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a valid transaction set using the wallet.
 	txns, err := tpt.wallet.SendSiacoins(types.NewCurrency64(100), types.UnlockHash{})

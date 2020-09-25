@@ -122,7 +122,9 @@ func TestRenterDeleteFile(t *testing.T) {
 	// Delete the file.
 	siapath := rt.renter.staticFileSystem.FileSiaPath(entry)
 
-	entry.Close()
+	if err := entry.Close(); err != nil {
+		t.Fatal(err)
+	}
 	err = rt.renter.DeleteFile(siapath)
 	if err != nil {
 		t.Fatal(err)

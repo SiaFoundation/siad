@@ -323,7 +323,11 @@ func TestThreadedHandleConn(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		defer func() {
+			if err := conn.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 		return fn(conn)
 	}
 

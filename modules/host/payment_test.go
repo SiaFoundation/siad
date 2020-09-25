@@ -292,8 +292,16 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 		t.Error(err)
 		return
 	}
-	defer rStream.Close()
-	defer hStream.Close()
+	defer func() {
+		if err := rStream.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	defer func() {
+		if err := hStream.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// create a refund account.
 	_, refundAccount := prepareAccount()
@@ -428,8 +436,16 @@ func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
 		t.Error(err)
 		return
 	}
-	defer rStream.Close()
-	defer hStream.Close()
+	defer func() {
+		if err := rStream.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	defer func() {
+		if err := hStream.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	var payment modules.PaymentDetails
 
@@ -475,8 +491,16 @@ func testUnknownPaymentMethodError(t *testing.T, pair *renterHostPair) {
 		t.Error(err)
 		return
 	}
-	defer rStream.Close()
-	defer hStream.Close()
+	defer func() {
+		if err := rStream.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	defer func() {
+		if err := hStream.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err = run(func() error {
 		// send PaymentRequest

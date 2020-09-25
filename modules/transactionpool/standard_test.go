@@ -20,7 +20,11 @@ func TestIntegrationLargeTransactions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a large transaction and try to get it accepted.
 	arbData := make([]byte, modules.TransactionSizeLimit)

@@ -789,7 +789,7 @@ func (n *DirNode) managedCopy() *DirNode {
 }
 
 // managedOpenDir opens a SiaDir.
-func (n *DirNode) managedOpenDir(path string) (*DirNode, error) {
+func (n *DirNode) managedOpenDir(path string) (_ *DirNode, err error) {
 	// Get the name of the next sub directory.
 	pathList := strings.Split(path, string(filepath.Separator))
 	n.mu.Lock()
@@ -804,7 +804,9 @@ func (n *DirNode) managedOpenDir(path string) (*DirNode, error) {
 		return subNode, nil
 	}
 	// Otherwise open the next dir.
-	defer subNode.Close()
+	defer func() {
+		err = errors.Compose(subNode.Close())
+	}()
 	return subNode.managedOpenDir(filepath.Join(pathList...))
 }
 

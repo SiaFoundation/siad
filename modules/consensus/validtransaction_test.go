@@ -776,7 +776,11 @@ func TestValidSiafunds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+  if err := cst.Close(); err != nil {
+    t.Fatal(err)
+  }
+}()
 
 	// Create a transaction pointing to a nonexistent siafund output.
 	txn := types.Transaction{
@@ -826,7 +830,11 @@ func TestValidTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+  if err := cst.Close(); err != nil {
+    t.Fatal(err)
+  }
+}()
 
 	// Create a transaction that is not standalone valid.
 	txn := types.Transaction{

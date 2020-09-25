@@ -44,7 +44,11 @@ func TestSimpleInitialBlockchainDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer localCST.Close()
+	defer func() {
+		if err := localCST.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	for _, cst := range remoteCSTs {
 		err = localCST.cs.gateway.Connect(cst.cs.gateway.Address())
 		if err != nil {
@@ -238,7 +242,11 @@ func TestInitialBlockchainDownloadDisconnects(t *testing.T) {
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
-	defer localCS.Close()
+	defer func() {
+		if err := localCS.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	rpcErrs := []error{
 		// rpcErrs that should cause a a disconnect.
@@ -320,7 +328,11 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 	if err := <-errChan; err != nil {
 		t.Fatal(err)
 	}
-	defer cs.Close()
+	defer func() {
+		if err := cs.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Verify that the consensus set will not signal IBD completion when it has
 	// zero peers.
@@ -350,7 +362,11 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer inboundCST.Close()
+			defer func() {
+				if err := inboundCST.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}()
 			inboundCST.cs.gateway.Connect(cs.gateway.Address())
 		}
 		<-doneChan
@@ -433,7 +449,11 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer gatewayNoTimeout2.Close()
+	defer func() {
+		if err := gatewayNoTimeout2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	mg.mu.Lock()
 	mg.rpcErrs[gatewayNoTimeout2.Address()] = nil
 	mg.mu.Unlock()
@@ -454,7 +474,11 @@ func TestInitialBlockchainDownloadDoneRules(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer tmpG.Close()
+		defer func() {
+			if err := tmpG.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 		mg.mu.Lock()
 		mg.rpcErrs[tmpG.Address()] = nil
 		mg.mu.Unlock()

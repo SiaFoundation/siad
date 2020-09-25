@@ -985,7 +985,11 @@ func TestUploadHeapStreamPush(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	uh := &rt.renter.uploadHeap
 
 	// Create a stream chunk
@@ -993,7 +997,11 @@ func TestUploadHeapStreamPush(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	var buf []byte
 	sr := NewStreamShard(bytes.NewReader(buf), buf)
 	streamChunk := &unfinishedUploadChunk{
@@ -1099,7 +1107,11 @@ func TestUploadHeapTryUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.renter.Close()
+	defer func() {
+		if err := rt.renter.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	uh := &rt.renter.uploadHeap
 
 	// Define test cases
@@ -1141,7 +1153,11 @@ func TestUploadHeapTryUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer entry.Close()
+	defer func() {
+		if err := entry.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Run test cases
 	for i, test := range tests {

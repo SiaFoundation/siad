@@ -143,7 +143,7 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 
 // loadAndVerifyPersistence loads the persistence and verifies that the
 // conversion from v1.4.3 to v1.5.0 updated the persistence as expected
-func loadAndVerifyPersistence(testDir string) error {
+func loadAndVerifyPersistence(testDir string) (err error) {
 	// Verify that loading the older persist file works
 	aop, reader, err := persist.NewAppendOnlyPersist(testDir, persistFile, metadataHeader, metadataVersionV143)
 	if err != nil {
@@ -170,7 +170,9 @@ func loadAndVerifyPersistence(testDir string) error {
 	if err != nil {
 		return err
 	}
-	defer sb.Close()
+	defer func() {
+		err = errors.Compose(err, sb.Close())
+	}()
 
 	// Verify that the original merkleroots are now the hashes in the blacklist
 	sb.mu.Lock()

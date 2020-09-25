@@ -238,9 +238,9 @@ func streamerFromSlice(b []byte) modules.Streamer {
 // siafile data. The SiaPath provided in 'lup' indicates where the new base
 // sector skyfile will be placed, and the siaPath provided as its own input is
 // the siaPath of the file that is being used to create the skyfile.
-func (r *Renter) CreateSkylinkFromSiafile(lup modules.SkyfileUploadParameters, siaPath modules.SiaPath) (modules.Skylink, error) {
+func (r *Renter) CreateSkylinkFromSiafile(lup modules.SkyfileUploadParameters, siaPath modules.SiaPath) (_ modules.Skylink, err error) {
 	// Set reasonable default values for any lup fields that are blank.
-	err := skyfileEstablishDefaults(&lup)
+	err = skyfileEstablishDefaults(&lup)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "skyfile upload parameters are incorrect")
 	}
@@ -250,7 +250,9 @@ func (r *Renter) CreateSkylinkFromSiafile(lup modules.SkyfileUploadParameters, s
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to open siafile")
 	}
-	defer fileNode.Close()
+	defer func() {
+		err = errors.Compose(err, fileNode.Close())
+	}()
 
 	// Override the metadata with the info from the fileNode.
 	lup.FileMetadata = modules.SkyfileMetadata{
@@ -407,8 +409,10 @@ func (r *Renter) managedCreateFileNodeFromReader(up modules.FileUploadParams, re
 
 		// Allocate data pieces and fill them with data from r.
 		ss := NewStreamShard(reader, peek)
-		err = func() error {
-			defer ss.Close()
+		err = func() (err error) {
+			defer func() {
+				err = errors.Compose(err, ss.Close())
+			}()
 
 			dataPieces, total, errRead := readDataPieces(ss, ec, psize)
 			if errRead != nil {
@@ -623,7 +627,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParamete
 // managedUploadBaseSector will take the raw baseSector bytes and upload them,
 // returning the resulting merkle root, and the fileNode of the siafile that is
 // tracking the base sector.
-func (r *Renter) managedUploadBaseSector(lup modules.SkyfileUploadParameters, baseSector []byte, skylink modules.Skylink) error {
+func (r *Renter) managedUploadBaseSector(lup modules.SkyfileUploadParameters, baseSector []byte, skylink modules.Skylink) (err error) {
 	fileUploadParams, err := fileUploadParamsFromLUP(lup)
 	if err != nil {
 		return errors.AddContext(err, "failed to create siafile upload parameters")
@@ -637,7 +641,9 @@ func (r *Renter) managedUploadBaseSector(lup modules.SkyfileUploadParameters, ba
 	if err != nil {
 		return errors.AddContext(err, "failed to stream upload small skyfile")
 	}
-	defer fileNode.Close()
+	defer func() {
+		err = errors.Compose(err, fileNode.Close())
+	}()
 
 	// Add the skylink to the Siafile.
 	err = fileNode.AddSkylink(skylink)

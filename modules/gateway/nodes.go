@@ -1,11 +1,11 @@
 package gateway
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -47,14 +47,16 @@ func (g *Gateway) addNode(addr modules.NetAddress) error {
 
 // staticPingNode verifies that there is a reachable node at the provided address
 // by performing the Sia gateway handshake protocol.
-func (g *Gateway) staticPingNode(addr modules.NetAddress) error {
+func (g *Gateway) staticPingNode(addr modules.NetAddress) (err error) {
 	// Ping the untrusted node to see whether or not there's actually a
 	// reachable node at the provided address.
 	conn, err := g.staticDial(addr)
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() {
+		err = errors.Compose(err, conn.Close())
+	}()
 
 	// Read the node's version.
 	remoteVersion, err := connectVersionHandshake(conn, build.Version)

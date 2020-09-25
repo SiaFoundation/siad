@@ -617,12 +617,14 @@ func (st *serverTester) announceHost() error {
 }
 
 // getAPI makes an API call and decodes the response.
-func (st *serverTester) getAPI(call string, obj interface{}) error {
+func (st *serverTester) getAPI(call string, obj interface{}) (err error) {
 	resp, err := HttpGET("http://" + st.server.listener.Addr().String() + call)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		err = errors.Compose(resp.Body.Close())
+	}()
 
 	if non2xx(resp.StatusCode) {
 		return decodeError(resp)
@@ -642,12 +644,14 @@ func (st *serverTester) getAPI(call string, obj interface{}) error {
 }
 
 // postAPI makes an API call and decodes the response.
-func (st *serverTester) postAPI(call string, values url.Values, obj interface{}) error {
+func (st *serverTester) postAPI(call string, values url.Values, obj interface{}) (err error) {
 	resp, err := HttpPOST("http://"+st.server.listener.Addr().String()+call, values.Encode())
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		err = errors.Compose(err, resp.Body.Close())
+	}()
 
 	if non2xx(resp.StatusCode) {
 		return decodeError(resp)
@@ -667,12 +671,14 @@ func (st *serverTester) postAPI(call string, values url.Values, obj interface{})
 }
 
 // stdGetAPI makes an API call and discards the response.
-func (st *serverTester) stdGetAPI(call string) error {
+func (st *serverTester) stdGetAPI(call string) (err error) {
 	resp, err := HttpGET("http://" + st.server.listener.Addr().String() + call)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		err = errors.Compose(err, resp.Body.Close())
+	}()
 
 	if non2xx(resp.StatusCode) {
 		return decodeError(resp)
@@ -681,7 +687,7 @@ func (st *serverTester) stdGetAPI(call string) error {
 }
 
 // stdGetAPIUA makes an API call with a custom user agent.
-func (st *serverTester) stdGetAPIUA(call string, userAgent string) error {
+func (st *serverTester) stdGetAPIUA(call string, userAgent string) (err error) {
 	req, err := http.NewRequest("GET", "http://"+st.server.listener.Addr().String()+call, nil)
 	if err != nil {
 		return err
@@ -691,7 +697,9 @@ func (st *serverTester) stdGetAPIUA(call string, userAgent string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		err = errors.Compose(err, resp.Body.Close())
+	}()
 
 	if non2xx(resp.StatusCode) {
 		return decodeError(resp)
@@ -700,12 +708,14 @@ func (st *serverTester) stdGetAPIUA(call string, userAgent string) error {
 }
 
 // stdPostAPI makes an API call and discards the response.
-func (st *serverTester) stdPostAPI(call string, values url.Values) error {
+func (st *serverTester) stdPostAPI(call string, values url.Values) (err error) {
 	resp, err := HttpPOST("http://"+st.server.listener.Addr().String()+call, values.Encode())
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		err = errors.Compose(err, resp.Body.Close())
+	}()
 
 	if non2xx(resp.StatusCode) {
 		return decodeError(resp)

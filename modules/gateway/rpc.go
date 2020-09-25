@@ -1,13 +1,13 @@
 package gateway
 
 import (
-	"errors"
 	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // rpcID is an 8-byte signature that is added to all RPCs to tell the gatway
@@ -35,7 +35,7 @@ func handlerName(name string) (id rpcID) {
 
 // managedRPC calls an RPC on the given address. managedRPC cannot be called on
 // an address that the Gateway is not connected to.
-func (g *Gateway) managedRPC(addr modules.NetAddress, name string, fn modules.RPCFunc) error {
+func (g *Gateway) managedRPC(addr modules.NetAddress, name string, fn modules.RPCFunc) (err error) {
 	g.mu.RLock()
 	peer, ok := g.peers[addr]
 	g.mu.RUnlock()
@@ -54,7 +54,9 @@ func (g *Gateway) managedRPC(addr modules.NetAddress, name string, fn modules.RP
 		g.mu.Unlock()
 		return err
 	}
-	defer conn.Close()
+	defer func() {
+		err = errors.Compose(err, conn.Close())
+	}()
 
 	// write header
 	conn.SetDeadline(time.Now().Add(rpcStdDeadline))
@@ -197,7 +199,11 @@ func (g *Gateway) threadedListenPeer(p *peer) {
 // threadedHandleConn reads header data from a connection, then routes it to the
 // appropriate handler for further processing.
 func (g *Gateway) threadedHandleConn(conn modules.PeerConn) {
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			g.log.Print("threadedHandleConn: failed to close conn", err)
+		}
+	}()
 	if g.threads.Add() != nil {
 		return
 	}

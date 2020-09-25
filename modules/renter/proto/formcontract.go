@@ -129,7 +129,9 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 	if err != nil {
 		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
-	defer s.Close()
+	defer func() {
+		err = errors.Compose(err, s.Close())
+	}()
 
 	// Send the FormContract request.
 	req := modules.LoopFormContractRequest{

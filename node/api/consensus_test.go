@@ -77,7 +77,11 @@ func TestConsensusValidateTransactionSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	if non2xx(resp.StatusCode) {
 		t.Fatal(decodeError(resp))
 	}

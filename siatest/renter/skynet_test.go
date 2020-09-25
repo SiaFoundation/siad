@@ -272,7 +272,11 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer gzr.Close()
+	defer func() {
+		if err := gzr.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	tr = tar.NewReader(gzr)
 	header, err = tr.Next()
 	if err != nil {

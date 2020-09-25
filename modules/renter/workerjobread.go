@@ -58,7 +58,7 @@ type (
 // callDiscard will discard a job, forwarding the error to the caller.
 func (j *jobRead) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
-	w.renter.tg.Launch(func() {
+	errLaunch := w.renter.tg.Launch(func() {
 		response := &jobReadResponse{
 			staticErr: errors.Extend(err, ErrJobDiscarded),
 		}
@@ -68,6 +68,9 @@ func (j *jobRead) callDiscard(err error) {
 		case <-j.staticCtx.Done():
 		}
 	})
+	if errLaunch != nil {
+		w.renter.log.Print("callDiscard: launch failed", err)
+	}
 }
 
 // managedFinishExecute will execute code that is shared by multiple read jobs
@@ -83,13 +86,16 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 		staticData: readData,
 		staticErr:  readErr,
 	}
-	w.renter.tg.Launch(func() {
+	err := w.renter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
 		case <-w.renter.tg.StopChan():
 		}
 	})
+	if err != nil {
+		j.staticQueue.staticWorker().renter.log.Print("managedFinishExecute: launch failed", err)
+	}
 
 	// Report success or failure to the queue.
 	if readErr == nil {
