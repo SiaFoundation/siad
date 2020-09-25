@@ -191,6 +191,9 @@ func (tb *transactionBuilder) MarkWalletInputs() bool {
 // correct value. The siacoin input will not be signed until 'Sign' is called
 // on the transaction builder.
 func (tb *transactionBuilder) FundSiacoins(amount types.Currency) error {
+	if amount.IsZero() {
+		return nil
+	}
 	// dustThreshold has to be obtained separate from the lock
 	dustThreshold, err := tb.wallet.DustThreshold()
 	if err != nil {
@@ -333,6 +336,10 @@ func (tb *transactionBuilder) FundSiacoins(amount types.Currency) error {
 // correct value. The siafund input will not be signed until 'Sign' is called
 // on the transaction builder.
 func (tb *transactionBuilder) FundSiafunds(amount types.Currency) error {
+	if amount.IsZero() {
+		return nil
+	}
+
 	tb.wallet.mu.Lock()
 	defer tb.wallet.mu.Unlock()
 

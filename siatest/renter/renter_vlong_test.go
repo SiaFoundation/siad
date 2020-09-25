@@ -788,7 +788,7 @@ func TestUploadStreamFailAndRepair(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Make sure we can download the file.
-	_, downloadedData, err := renter.RenterDownloadHTTPResponseGet(sp, 0, uint64(len(data)), true)
+	_, downloadedData, err := renter.RenterDownloadHTTPResponseGet(sp, 0, uint64(len(data)), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}

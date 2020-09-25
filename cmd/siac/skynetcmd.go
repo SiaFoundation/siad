@@ -156,7 +156,7 @@ func skynetblacklistUpdate(additions, removals []string) {
 	additions = skynetblacklistTrimLinks(additions)
 	removals = skynetblacklistTrimLinks(removals)
 
-	err := httpClient.SkynetBlacklistPost(additions, removals)
+	err := httpClient.SkynetBlacklistHashPost(additions, removals, skynetBlacklistHash)
 	if err != nil {
 		die("Unable to update skynet blacklist:", err)
 	}
@@ -208,7 +208,8 @@ func skynetconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 		SiaPath: destSiaPath,
 	}
 	sup = parseAndAddSkykey(sup)
-	skylink, err := httpClient.SkynetConvertSiafileToSkyfilePost(sup, sourceSiaPath)
+	sshp, err := httpClient.SkynetConvertSiafileToSkyfilePost(sup, sourceSiaPath)
+	skylink := sshp.Skylink
 	if err != nil {
 		die("could not convert siafile to skyfile:", err)
 	}

@@ -37,6 +37,7 @@ var (
 	renterDeleteRoot          bool   // Delete path start from root instead of the UserFolder.
 	renterDownloadAsync       bool   // Downloads files asynchronously
 	renterDownloadRecursive   bool   // Downloads folders recursively.
+	renterDownloadRoot        bool   // Download path start from root instead of the UserFolder.
 	renterFuseMountAllowOther bool   // Mount fuse with 'AllowOther' set to true.
 	renterListRecursive       bool   // List files of folder recursively.
 	renterListRoot            bool   // List path start from root instead of the UserFolder.
@@ -71,6 +72,7 @@ var (
 	skykeyType            string // Type used to create a new Skykey.
 
 	// Skynet Flags
+	skynetBlacklistHash  bool   // Indicates if the input for the blacklist is already a hash.
 	skynetDownloadPortal string // Portal to use when trying to download a skylink.
 	skynetLsRecursive    bool   // List files of folder recursively.
 	skynetLsRoot         bool   // Use root as the base instead of the Skynet folder.
@@ -334,6 +336,7 @@ func initCmds() *cobra.Command {
 	renterFilesDeleteCmd.Flags().BoolVar(&renterDeleteRoot, "root", false, "Delete files and folders from root instead of from the user home directory")
 	renterFilesDownloadCmd.Flags().BoolVarP(&renterDownloadAsync, "async", "A", false, "Download file asynchronously")
 	renterFilesDownloadCmd.Flags().BoolVarP(&renterDownloadRecursive, "recursive", "R", false, "Download folder recursively")
+	renterFilesDownloadCmd.Flags().BoolVar(&renterDownloadRoot, "root", false, "Download files and folders from root instead of from the user home directory")
 	renterFilesListCmd.Flags().BoolVarP(&renterListRecursive, "recursive", "R", false, "Recursively list files and folders")
 	renterFilesListCmd.Flags().BoolVar(&renterListRoot, "root", false, "List files and folders from root instead of from the user home directory")
 	renterFilesUploadCmd.Flags().StringVar(&dataPieces, "data-pieces", "", "the number of data pieces a files should be uploaded with")
@@ -375,6 +378,8 @@ func initCmds() *cobra.Command {
 	skynetLsCmd.Flags().BoolVar(&skynetLsRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetPinCmd.Flags().StringVar(&skynetPinPortal, "portal", "", "Use a Skynet portal to download the skylink in order to pin the skyfile")
 	skynetBlacklistCmd.AddCommand(skynetBlacklistAddCmd, skynetBlacklistRemoveCmd)
+	skynetBlacklistAddCmd.Flags().BoolVar(&skynetBlacklistHash, "hash", false, "Indicates if the input is already a hash of the Skylink's Merkleroot")
+	skynetBlacklistRemoveCmd.Flags().BoolVar(&skynetBlacklistHash, "hash", false, "Indicates if the input is already a hash of the Skylink's Merkleroot")
 	skynetPortalsCmd.AddCommand(skynetPortalsAddCmd, skynetPortalsRemoveCmd)
 	skynetPortalsAddCmd.Flags().BoolVar(&skynetPortalPublic, "public", false, "Add this Skynet portal as public")
 

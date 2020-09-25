@@ -16,6 +16,7 @@ import (
 
 	"github.com/julienschmidt/httprouter"
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
@@ -46,6 +47,16 @@ type (
 		disableForce bool
 	}
 )
+
+// buildETag is a helper function that returns an ETag.
+func buildETag(skylink modules.Skylink, method, path string, format modules.SkyfileFormat) string {
+	return crypto.HashAll(
+		skylink.String(),
+		method,
+		path,
+		string(format),
+	).String()
+}
 
 // isMultipartRequest is a helper method that checks if the given media type
 // matches that of a multipart form.

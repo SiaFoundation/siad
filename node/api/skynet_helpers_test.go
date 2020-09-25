@@ -20,9 +20,63 @@ import (
 // helper tests, this ensures these tests are ran when supplying `-run
 // TestSkynet` from the command line.
 func TestSkynetHelpers(t *testing.T) {
+	t.Run("BuildETag", testBuildETag)
 	t.Run("ParseSkylinkURL", testParseSkylinkURL)
 	t.Run("ParseUploadRequestParameters", testParseUploadRequestParameters)
 	t.Run("ValidDefaultPath", testValidDefaultPath)
+}
+
+// testBuildETag verifies the functionality of the buildETag helper function
+func testBuildETag(t *testing.T) {
+	t.Parallel()
+
+	// base case
+	path := "/"
+	format := modules.SkyfileFormatNotSpecified
+	var skylink modules.Skylink
+	err := skylink.LoadString("AACogzrAimYPG42tDOKhS3lXZD8YvlF8Q8R17afe95iV2Q")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	eTag := buildETag(skylink, "GET", path, format)
+	if eTag != "a58dd03937cacfeaa6974c8d12c1758bc05d8a49777eda3be52a9ba701364804" {
+		t.Fatal("unexpected output")
+	}
+
+	// adjust URL and expect different hash value
+	path = "/foo"
+	eTag2 := buildETag(skylink, "GET", path, format)
+	if eTag2 == "" || eTag2 == eTag {
+		t.Fatal("unexpected output")
+	}
+
+	// adjust query and expect different hash value
+	format = modules.SkyfileFormatZip
+	eTag3 := buildETag(skylink, "GET", path, format)
+	if eTag3 == "" || eTag3 == eTag2 {
+		t.Fatal("unexpected output")
+	}
+
+	// adjust skylink and expect different hash value
+	err = skylink.LoadString("BBCogzrAimYPG42tDOKhS3lXZD8YvlF8Q8R17afe95iV2Q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eTag4 := buildETag(skylink, "GET", path, format)
+	if eTag4 == "" || eTag4 == eTag3 {
+		t.Fatal("unexpected output")
+	}
+
+	// adjust method and expect different hash value
+	err = skylink.LoadString("BBCogzrAimYPG42tDOKhS3lXZD8YvlF8Q8R17afe95iV2Q")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eTag5 := buildETag(skylink, "HEAD", path, format)
+	if eTag5 == "" || eTag5 == eTag4 {
+		t.Fatal("unexpected output")
+	}
 }
 
 // testParseSkylinkURL is a table test for the parseSkylinkUrl function.
