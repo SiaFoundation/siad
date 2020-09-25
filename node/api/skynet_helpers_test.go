@@ -206,9 +206,6 @@ func testParseSkylinkURL(t *testing.T) {
 	}
 }
 
-// dict is a small helper type that represents a dictionary of key,value pairs
-type dict map[string]string
-
 // testParseUploadRequestParameters verifies the functionality of
 // 'parseUploadHeadersAndRequestParameters'.
 func testParseUploadRequestParameters(t *testing.T) {
@@ -221,25 +218,22 @@ func testParseUploadRequestParameters(t *testing.T) {
 	}
 
 	// buildRequest is a helper function that creates a request object
-	buildRequest := func(query, headers dict) *http.Request {
-		values := url.Values{}
-		for k, v := range query {
-			values.Set(k, v)
-		}
-		resource := fmt.Sprintf("/skynet/skyfile/%s?%s", siapath.String(), values.Encode())
-		req, err := http.NewRequest("POST", resource, nil)
+	buildRequest := func(query url.Values, headers http.Header) *http.Request {
+		req, err := http.NewRequest("POST", fmt.Sprintf("/skynet/skyfile/%s?%s", siapath.String(), query.Encode()), nil)
 		if err != nil {
 			t.Fatal("Could not create request", err)
 		}
+
 		for k, v := range headers {
-			values.Set(k, v)
-			req.Header.Set(k, v)
+			for _, vv := range v {
+				req.Header.Add(k, vv)
+			}
 		}
 		return req
 	}
 
-	// parseRequest simply wraps 'parseUploadHeadersAndRequestParameters' to avoid
-	// handling the error for every case
+	// parseRequest simply wraps 'parseUploadHeadersAndRequestParameters' to
+	// avoid handling the error for every case
 	parseRequest := func(req *http.Request, ps httprouter.Params) (*skyfileUploadHeaders, *skyfileUploadParams) {
 		// if content type is not set, default to a binary stream
 		if req.Header.Get("Content-Type") == "" {
@@ -255,117 +249,117 @@ func testParseUploadRequestParameters(t *testing.T) {
 	// create empty router params
 	param := httprouter.Param{Key: "siapath", Value: siapath.String()}
 	defaultParams := httprouter.Params{param}
-	none := make(dict)
-	yes := fmt.Sprintf("%t", true)
+
+	trueStr := []string{fmt.Sprintf("%t", true)}
 
 	// verify 'Skynet-Disable-Force'
-	hdrs := dict{"Skynet-Disable-Force": yes}
-	req := buildRequest(make(dict), hdrs)
+	hdrs := http.Header{"Skynet-Disable-Force": trueStr}
+	req := buildRequest(url.Values{}, hdrs)
 	headers, _ := parseRequest(req, defaultParams)
 	if !headers.disableForce {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'Skynet-Disable-Force' - combo with 'force'
-	req = buildRequest(dict{"force": yes}, hdrs)
+	req = buildRequest(url.Values{"force": trueStr}, hdrs)
 	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'Content-Type'
-	req = buildRequest(make(dict), dict{"Content-Type": "text/html"})
+	req = buildRequest(url.Values{}, http.Header{"Content-Type": []string{"text/html"}})
 	headers, _ = parseRequest(req, defaultParams)
 	if headers.mediaType != "text/html" {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'basechunkredundancy'
-	req = buildRequest(dict{"basechunkredundancy": fmt.Sprintf("%v", 2)}, none)
+	req = buildRequest(url.Values{"basechunkredundancy": []string{fmt.Sprintf("%v", 2)}}, http.Header{})
 	_, params := parseRequest(req, defaultParams)
 	if params.baseChunkRedundancy != uint8(2) {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'convertpath'
-	req = buildRequest(dict{"convertpath": "/foo/bar"}, none)
+	req = buildRequest(url.Values{"convertpath": []string{"/foo/bar"}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
 	if params.convertPath != "/foo/bar" {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'convertpath' - combo with 'filename
-	req = buildRequest(dict{"convertpath": "/foo/bar", "filename": "foo.txt"}, none)
+	req = buildRequest(url.Values{"convertpath": []string{"/foo/bar"}, "filename": []string{"foo.txt"}}, http.Header{})
 	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'defaultpath'
-	req = buildRequest(dict{"defaultpath": "/foo/bar.txt"}, none)
+	req = buildRequest(url.Values{"defaultpath": []string{"/foo/bar.txt"}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
 	if params.defaultPath != "/foo/bar.txt" {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'disabledefaultpath'
-	req = buildRequest(dict{"disabledefaultpath": yes}, none)
+	req = buildRequest(url.Values{"disabledefaultpath": trueStr}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
 	if !params.disableDefaultPath {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'disabledefaultpath' - combo with 'defaultpath'
-	req = buildRequest(dict{"defaultpath": "/foo/bar.txt", "disabledefaultpath": yes}, none)
+	req = buildRequest(url.Values{"defaultpath": []string{"/foo/bar.txt"}, "disabledefaultpath": trueStr}, http.Header{})
 	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'dryrun'
-	req = buildRequest(dict{"dryrun": yes}, none)
+	req = buildRequest(url.Values{"dryrun": trueStr}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
 	if !params.dryRun {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'filename'
-	req = buildRequest(dict{"filename": "foo.txt"}, none)
+	req = buildRequest(url.Values{"filename": []string{"foo.txt"}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
 	if params.filename != "foo.txt" {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'force'
-	req = buildRequest(dict{"force": yes}, none)
+	req = buildRequest(url.Values{"force": trueStr}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
 	if !params.force {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'force' - combo with 'dryrun
-	req = buildRequest(dict{"force": yes, "dryrun": yes}, none)
+	req = buildRequest(url.Values{"force": trueStr, "dryrun": trueStr}, http.Header{})
 	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'mode'
-	req = buildRequest(dict{"mode": fmt.Sprintf("%o", os.FileMode(0644))}, none)
+	req = buildRequest(url.Values{"mode": []string{fmt.Sprintf("%o", os.FileMode(0644))}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
 	if params.mode != os.FileMode(0644) {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'root'
-	req = buildRequest(dict{"root": yes}, none)
+	req = buildRequest(url.Values{"root": trueStr}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
 	if !params.root {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'siapath' (no root)
-	req = buildRequest(none, none)
+	req = buildRequest(url.Values{}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
 	expected, err := modules.SkynetFolder.Join(siapath.String())
 	if err != nil || params.siaPath != expected {
@@ -373,7 +367,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 	}
 
 	// verify 'siapath' (at root)
-	req = buildRequest(dict{"root": yes}, none)
+	req = buildRequest(url.Values{"root": trueStr}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
 	if params.siaPath != siapath {
 		t.Fatal("Unexpected")
@@ -391,21 +385,21 @@ func testParseUploadRequestParameters(t *testing.T) {
 	keyIdStr := key.ID().ToString()
 
 	// verify 'skykeyname'
-	req = buildRequest(dict{"skykeyname": key.Name}, none)
+	req = buildRequest(url.Values{"skykeyname": []string{key.Name}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
 	if params.skyKeyName != key.Name {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'skykeyid'
-	req = buildRequest(dict{"skykeyid": keyIdStr}, none)
+	req = buildRequest(url.Values{"skykeyid": []string{keyIdStr}}, http.Header{})
 	_, params = parseRequest(req, defaultParams)
 	if params.skyKeyID.ToString() != keyIdStr {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'skykeyid' - combo with 'skykeyname'
-	req = buildRequest(dict{"skykeyname": key.Name, "skykeyid": key.ID().ToString()}, none)
+	req = buildRequest(url.Values{"skykeyname": []string{key.Name}, "skykeyid": []string{key.ID().ToString()}}, http.Header{})
 	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
