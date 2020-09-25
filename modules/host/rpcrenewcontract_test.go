@@ -279,9 +279,9 @@ func TestVerifyRenewedContract(t *testing.T) {
 	}
 
 	// Max collateral reached
-	badPT := pt
+	badPT := *pt
 	badPT.MaxCollateral = expectedCollateral.Sub64(1)
-	_, err = verifyRenewedContract(so, fc, oldRevision, bh, is, unlockHash, badPT, types.ZeroCurrency, rpk, hpk, lockedCollateral)
+	_, err = verifyRenewedContract(so, fc, oldRevision, bh, is, unlockHash, &badPT, types.ZeroCurrency, rpk, hpk, lockedCollateral)
 	if !errors.Contains(err, errMaxCollateralReached) {
 		t.Fatal(err)
 	}
