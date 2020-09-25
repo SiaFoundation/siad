@@ -63,6 +63,10 @@ func (h *Host) managedAddRenewCollateral(so storageObligation, settings modules.
 	if err != nil {
 		return
 	}
+	if hostPortion.IsZero() {
+		// We don't need to add anything to the transaction.
+		return builder, nil, nil, nil, nil
+	}
 	err = builder.FundSiacoins(hostPortion)
 	if err != nil {
 		builder.Drop()

@@ -24,7 +24,11 @@ func TestPrimarySeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a seed and unlock the wallet.
 	seed, err := wt.wallet.Encrypt(nil)
@@ -97,7 +101,11 @@ func TestLoadSeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	seed, _, err := wt.wallet.PrimarySeed()
 	if err != nil {
 		t.Fatal(err)
@@ -111,13 +119,17 @@ func TestLoadSeed(t *testing.T) {
 	} else if allSeeds[0] != seed {
 		t.Fatal("AllSeeds returned the wrong seed")
 	}
-	wt.wallet.Close()
-
-	dir := filepath.Join(build.TempDir(modules.WalletDir, t.Name()+"1"), modules.WalletDir)
-	w, err := New(wt.cs, wt.tpool, dir)
+	err = wt.wallet.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	dir := filepath.Join(build.TempDir(modules.WalletDir, t.Name()+"1"), modules.WalletDir)
+	wt.wallet, err = New(wt.cs, wt.tpool, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := wt.wallet
 	newSeed, err := w.Encrypt(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -188,7 +200,11 @@ func TestSweepSeedCoins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	seed, _, err := wt.wallet.PrimarySeed()
 	if err != nil {
 		t.Fatal(err)
@@ -262,7 +278,11 @@ func TestSweepSeedFunds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Load the key into the wallet.
 	err = wt.wallet.LoadSiagKeys(wt.walletMasterKey, []string{"../../types/siag0of1of1.siakey"})
@@ -300,7 +320,9 @@ func TestSweepSeedFunds(t *testing.T) {
 	}
 	// mine blocks without earning payout until our balance is stable
 	for i := types.BlockHeight(0); i < types.MaturityDelay; i++ {
-		wt.addBlockNoPayout()
+		if err := wt.addBlockNoPayout(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	oldCoinBalance, siafundBal, _, err := wt.wallet.ConfirmedBalance()
 	if err != nil {
@@ -322,7 +344,9 @@ func TestSweepSeedFunds(t *testing.T) {
 		t.Errorf("expected to sweep %v funds, got %v", 12, funds)
 	}
 	// add a block without earning its payout
-	wt.addBlockNoPayout()
+	if err := wt.addBlockNoPayout(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Wallet balance should have decreased to pay for the sweep transaction.
 	newCoinBalance, _, _, err := wt.wallet.ConfirmedBalance()
@@ -346,7 +370,11 @@ func TestSweepSeedSentFunds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Load the key into the wallet.
 	err = wt.wallet.LoadSiagKeys(wt.walletMasterKey, []string{"../../types/siag0of1of1.siakey"})
@@ -377,14 +405,18 @@ func TestSweepSeedSentFunds(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		wt.addBlockNoPayout()
+		if err := wt.addBlockNoPayout(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// send some funds to the void
 	_, err = wt.wallet.SendSiafunds(types.NewCurrency64(10), types.UnlockHash{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	wt.addBlockNoPayout()
+	if err := wt.addBlockNoPayout(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Create a seed and generate an address to send money to.
 	seed := modules.Seed{1, 2, 3}
@@ -397,7 +429,9 @@ func TestSweepSeedSentFunds(t *testing.T) {
 	}
 	// mine blocks without earning payout until our balance is stable
 	for i := types.BlockHeight(0); i < types.MaturityDelay; i++ {
-		wt.addBlockNoPayout()
+		if err := wt.addBlockNoPayout(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	oldCoinBalance, siafundBal, _, err := wt.wallet.ConfirmedBalance()
 	if err != nil {
@@ -419,7 +453,9 @@ func TestSweepSeedSentFunds(t *testing.T) {
 		t.Errorf("expected to sweep %v funds, got %v", 12, funds)
 	}
 	// add a block without earning its payout
-	wt.addBlockNoPayout()
+	if err := wt.addBlockNoPayout(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Wallet balance should have decreased to pay for the sweep transaction.
 	newCoinBalance, _, _, err := wt.wallet.ConfirmedBalance()
@@ -442,7 +478,11 @@ func TestSweepSeedCoinsAndFunds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Load the key into the wallet.
 	err = wt.wallet.LoadSiagKeys(wt.walletMasterKey, []string{"../../types/siag0of1of1.siakey"})
@@ -468,7 +508,9 @@ func TestSweepSeedCoinsAndFunds(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		wt.addBlockNoPayout()
+		if err := wt.addBlockNoPayout(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// Send some siacoins to the address -- must be more than the transaction
 	// fee.
@@ -477,11 +519,15 @@ func TestSweepSeedCoinsAndFunds(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		wt.addBlockNoPayout()
+		if err := wt.addBlockNoPayout(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// mine blocks without earning payout until our balance is stable
 	for i := types.BlockHeight(0); i < types.MaturityDelay; i++ {
-		wt.addBlockNoPayout()
+		if err := wt.addBlockNoPayout(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	oldCoinBalance, siafundBal, _, err := wt.wallet.ConfirmedBalance()
 	if err != nil {
@@ -503,7 +549,9 @@ func TestSweepSeedCoinsAndFunds(t *testing.T) {
 		t.Errorf("expected to sweep %v funds, got %v", 12, funds)
 	}
 	// add a block without earning its payout
-	wt.addBlockNoPayout()
+	if err := wt.addBlockNoPayout(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Wallet balance should have decreased to pay for the sweep transaction.
 	newCoinBalance, _, _, err := wt.wallet.ConfirmedBalance()

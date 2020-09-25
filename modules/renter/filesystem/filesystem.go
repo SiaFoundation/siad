@@ -416,7 +416,23 @@ func (fs *FileSystem) NewSiaFileFromLegacyData(fd siafile.FileData) (*FileNode, 
 // OpenSiaDir opens a SiaDir and adds it and all of its parents to the
 // filesystem tree.
 func (fs *FileSystem) OpenSiaDir(siaPath modules.SiaPath) (*DirNode, error) {
-	return fs.managedOpenSiaDir(siaPath)
+	return fs.OpenSiaDirCustom(siaPath, false)
+}
+
+// OpenSiaDirCustom opens a SiaDir and adds it and all of its parents to the
+// filesystem tree. If create is true it will create the dir if it doesn't
+// exist.
+func (fs *FileSystem) OpenSiaDirCustom(siaPath modules.SiaPath, create bool) (*DirNode, error) {
+	dn, err := fs.managedOpenSiaDir(siaPath)
+	if create && errors.Contains(err, ErrNotExist) {
+		// If siadir doesn't exist create one
+		err = fs.NewSiaDir(siaPath, modules.DefaultDirPerm)
+		if err != nil && !errors.Contains(err, ErrExists) {
+			return nil, err
+		}
+		return fs.managedOpenSiaDir(siaPath)
+	}
+	return dn, err
 }
 
 // OpenSiaFile opens a SiaFile and adds it and all of its parents to the
@@ -661,6 +677,11 @@ func (fs *FileSystem) managedNewSiaFile(relPath string, source string, ec module
 // filesystem tree.
 func (fs *FileSystem) managedOpenSiaDir(siaPath modules.SiaPath) (*DirNode, error) {
 	if siaPath.IsRoot() {
+		// Make sure the metadata exists.
+		_, err := os.Stat(filepath.Join(fs.absPath(), modules.SiaDirExtension))
+		if os.IsNotExist(err) {
+			return nil, ErrNotExist
+		}
 		return fs.DirNode.managedCopy(), nil
 	}
 	dir, err := fs.DirNode.managedOpenDir(siaPath.String())

@@ -105,6 +105,16 @@ func TestSkynetSkylinkHandlerGET(t *testing.T) {
 			ExpectedRedirect: "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/?foo=bar",
 		},
 		{
+			// DetectRedirectNoQuestionMark ensures that if the skylink doesn't
+			// have a trailing slash, and doesn't have query params, and has a
+			// default path that results in an HTML file we redirect to the same
+			// skylink with a trailing slash and without a question mark.
+			Name:             "DetectRedirectNoQuestionMark",
+			Skylink:          "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA?",
+			ExpectedError:    "Redirect",
+			ExpectedRedirect: "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA/",
+		},
+		{
 			// DetectRedirectWithEncoding ensures that if the skylink needs to
 			// be redirected and has encoded special characters in its URL, that
 			// these are not decoded by redirecting.

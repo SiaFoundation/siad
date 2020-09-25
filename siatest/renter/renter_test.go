@@ -371,6 +371,21 @@ func testReceivedFieldEqualsFileSize(t *testing.T, tg *siatest.TestGroup) {
 	if d.Received != fetchLen {
 		t.Errorf("Received was %v but should be %v", d.Received, fetchLen)
 	}
+	// Compare siapaths.
+	rdgr, err := r.RenterDownloadsRootGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !d.SiaPath.Equals(rf.SiaPath()) {
+		t.Fatal(d.SiaPath.String(), rf.SiaPath().String())
+	}
+	sp, err := rf.SiaPath().Rebase(modules.RootSiaPath(), modules.UserFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rdgr.Downloads[0].SiaPath.Equals(sp) {
+		t.Fatal(d.SiaPath.String(), rf.SiaPath().String())
+	}
 }
 
 // testClearDownloadHistory makes sure that the download history is
@@ -408,7 +423,7 @@ func testClearDownloadHistory(t *testing.T, tg *siatest.TestGroup) {
 		// Download files to build download history
 		dest := filepath.Join(siatest.SiaTestingDir, strconv.Itoa(fastrand.Intn(math.MaxInt32)))
 		for i := 0; i < remainingDownloads; i++ {
-			_, err = r.RenterDownloadGet(rf.Files[0].SiaPath, dest, 0, rf.Files[0].Filesize, false, false)
+			_, err = r.RenterDownloadGet(rf.Files[0].SiaPath, dest, 0, rf.Files[0].Filesize, false, false, false)
 			if err != nil {
 				t.Fatal("Could not Download file:", err)
 			}
@@ -653,7 +668,7 @@ func testDirectories(t *testing.T, tg *siatest.TestGroup) {
 			len(rgd.Directories)-1)
 	}
 	// Try downloading the renamed file.
-	if _, _, err := r.RenterDownloadHTTPResponseGet(rgd.Files[0].SiaPath, 0, uint64(size), true); err != nil {
+	if _, _, err := r.RenterDownloadHTTPResponseGet(rgd.Files[0].SiaPath, 0, uint64(size), true, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -789,7 +804,11 @@ func testDownloadAfterLegacyRenewAndClear(t *testing.T, tg *siatest.TestGroup) {
 	// Add the node and remove it at the end of the test.
 	nodes, err := tg.AddNodes(params)
 	renter := nodes[0]
-	defer tg.RemoveNode(renter)
+	defer func() {
+		if err := tg.RemoveNode(renter); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Upload file, creating a piece for each host in the group
 	dataPieces := uint64(1)
@@ -840,7 +859,11 @@ func testDownloadMultipleLargeSectors(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	renter := nodes[0]
-	defer tg.RemoveNode(renter)
+	defer func() {
+		if err := tg.RemoveNode(renter); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Upload files
 	dataPieces := uint64(len(tg.Hosts())) - 1
@@ -981,6 +1004,8 @@ func TestLocalRepairCorrupted(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
+
 	// Create a group for the subtests
 	gp := siatest.GroupParams{
 		Hosts:   3,
@@ -1410,7 +1435,7 @@ func testCancelAsyncDownload(t *testing.T, tg *siatest.TestGroup) {
 	}()
 	// Download the file asynchronously.
 	dst := filepath.Join(renter.FilesDir().Path(), "canceled_download.dat")
-	cancelID, err := renter.RenterDownloadGet(remoteFile.SiaPath(), dst, 0, fileSize, true, true)
+	cancelID, err := renter.RenterDownloadGet(remoteFile.SiaPath(), dst, 0, fileSize, true, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1493,6 +1518,33 @@ func testUploadDownload(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+	// Download the file again with root set.
+	rootPath, err := remoteFile.SiaPath().Rebase(modules.RootSiaPath(), modules.UserFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(renter.FilesDir().Path(), "root.dat")
+	_, err = renter.RenterDownloadGet(rootPath, dst, 0, uint64(fileSize), false, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst = filepath.Join(renter.FilesDir().Path(), "root2.dat")
+	_, err = renter.RenterDownloadFullGet(rootPath, dst, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = renter.RenterDownloadHTTPResponseGet(rootPath, 0, uint64(fileSize), true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = renter.RenterStreamGet(rootPath, false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = renter.RenterStreamPartialGet(rootPath, 0, uint64(fileSize), false, true)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -2488,7 +2540,11 @@ func TestRenterLosingHosts(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Add renter to the group
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
@@ -2707,7 +2763,11 @@ func TestRenterFailingStandbyDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Add renter to the group
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
@@ -3184,6 +3244,7 @@ func TestSetFileTrackingPath(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	// Create a testgroup.
 	gp := siatest.GroupParams{
@@ -3698,11 +3759,15 @@ func TestSiafileCompatCodeV140(t *testing.T) {
 	if f, err = os.Create(filepath.Join(siafilesDir, dummySiafile)); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if f, err = os.Create(filepath.Join(snapshotsDir, dummySnapshot)); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 	// Create new node with legacy sia file.
 	r, err := siatest.NewNode(node.AllModules(testDir))
 	if err != nil {
@@ -4827,9 +4892,6 @@ func TestWorkerStatus(t *testing.T) {
 			if worker.BackupJobQueueSize != 0 {
 				return fmt.Errorf("Expected backup queue to be empty but was %v", worker.BackupJobQueueSize)
 			}
-			if worker.DownloadRootJobQueueSize != 0 {
-				return fmt.Errorf("Expected download by root queue to be empty but was %v", worker.DownloadRootJobQueueSize)
-			}
 
 			// AccountStatus checks
 			if worker.AccountStatus.AvailableBalance.IsZero() {
@@ -4897,7 +4959,11 @@ func TestWorkerSyncBalanceWithHost(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// add a renter with a dependency that simulates an unclean shutdown by
 	// preventing accounts to be saved and also prevents the snapshot syncing
@@ -5018,7 +5084,11 @@ func TestReadSectorOutputCorrupted(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// add a host that corrupts downloads.
 	deps1 := dependencies.NewDependencyCorruptMDMOutput()
@@ -5084,7 +5154,11 @@ func TestRenterPricesVolatility(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	renter := tg.Renters()[0]
 	host := tg.Hosts()[0]
@@ -5146,7 +5220,11 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group:", err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	renter := tg.Renters()[0]
 

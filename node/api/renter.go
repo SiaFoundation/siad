@@ -379,7 +379,11 @@ func (api *API) renterBackupsCreateHandlerPOST(w http.ResponseWriter, req *http.
 	}
 	randomSuffix := persist.RandomSuffix()
 	backupPath := filepath.Join(tmpDir, fmt.Sprintf("%v-%v.bak", name, randomSuffix))
-	defer os.RemoveAll(backupPath)
+	defer func() {
+		// At this point we have already responded so we can't write a potential
+		// error here.
+		_ = os.RemoveAll(backupPath)
+	}()
 
 	// Get the wallet seed.
 	ws, _, err := api.wallet.PrimarySeed()
@@ -420,7 +424,9 @@ func (api *API) renterBackupsRestoreHandlerGET(w http.ResponseWriter, req *http.
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() {
+		_ = os.RemoveAll(tmpDir)
+	}()
 	backupPath := filepath.Join(tmpDir, name)
 	if err := api.renter.DownloadBackup(backupPath, name); err != nil {
 		WriteError(w, Error{"failed to download backup: " + err.Error()}, http.StatusBadRequest)
@@ -1179,13 +1185,21 @@ func (api *API) renterContractorChurnStatus(w http.ResponseWriter, _ *http.Reque
 }
 
 // renterDownloadsHandler handles the API call to request the download queue.
-func (api *API) renterDownloadsHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+func (api *API) renterDownloadsHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var downloads []DownloadInfo
+	var err error
 	dis := api.renter.DownloadHistory()
-	dis, err := trimDownloadInfo(dis...)
+	root, err := scanBool(req.FormValue("root"))
 	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
+	}
+	if !root {
+		dis, err = trimDownloadInfo(dis...)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusInternalServerError)
+			return
+		}
 	}
 	for _, di := range dis {
 		downloads = append(downloads, DownloadInfo{
@@ -1690,6 +1704,10 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 	// If httprespparam is present, this parameter is ignored.
 	asyncparam := req.FormValue("async")
 
+	// Determines whether to interpret the siapath as a root path or originating
+	// from /home/user.
+	rootparam := req.FormValue("root")
+
 	// disablelocalfetchparam determines whether downloads will be fetched from
 	// disk if available.
 	disablelocalfetchparam := req.FormValue("disablelocalfetch")
@@ -1721,13 +1739,23 @@ func parseDownloadParameters(w http.ResponseWriter, req *http.Request, ps httpro
 		return modules.RenterDownloadParameters{}, errors.AddContext(err, "async parameter could not be parsed")
 	}
 
+	// Parse the root parameter. If it is set we rebase the siapath.
+	root, err := scanBool(rootparam)
+	if err != nil {
+		return modules.RenterDownloadParameters{}, errors.AddContext(err, "root parameter could not be parsed")
+	}
+
 	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
 		return modules.RenterDownloadParameters{}, errors.AddContext(err, "error parsing the siapath")
 	}
-	siaPath, err = rebaseInputSiaPath(siaPath)
-	if err != nil {
-		return modules.RenterDownloadParameters{}, err
+
+	// If root is not set we need to rebase the siapath.
+	if !root {
+		siaPath, err = rebaseInputSiaPath(siaPath)
+		if err != nil {
+			return modules.RenterDownloadParameters{}, err
+		}
 	}
 
 	var disableLocalFetch bool
@@ -1760,10 +1788,18 @@ func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
-	siaPath, err = rebaseInputSiaPath(siaPath)
+	root, err := scanBool(req.FormValue("root"))
 	if err != nil {
+		err = errors.AddContext(err, "error parsing the root flag")
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
+	}
+	if !root {
+		siaPath, err = rebaseInputSiaPath(siaPath)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
 	}
 	disablelocalfetchparam := req.FormValue("disablelocalfetch")
 	var disableLocalFetch bool

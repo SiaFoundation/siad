@@ -58,8 +58,7 @@ func (w *worker) callStatus() modules.WorkerStatus {
 		UploadTerminated:    w.uploadTerminated,
 
 		// Job Queues
-		BackupJobQueueSize:       w.staticFetchBackupsJobQueue.managedLen(),
-		DownloadRootJobQueueSize: w.staticJobQueueDownloadByRoot.managedLen(),
+		BackupJobQueueSize: w.staticFetchBackupsJobQueue.managedLen(),
 
 		// Maintenance Cooldown Information
 		MaintenanceOnCooldown:    maintenanceOnCooldown,

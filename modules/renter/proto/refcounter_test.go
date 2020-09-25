@@ -497,10 +497,12 @@ func TestRefCounterLoadInvalidHeader(t *testing.T) {
 
 	// The version number is 8 bytes. We'll only write 4.
 	if _, err = f.Write(fastrand.Bytes(4)); err != nil {
-		f.Close()
+		err = errors.Compose(err, f.Close())
 		t.Fatal("Failed to write to test file:", err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Make sure we fail to load from that file and that we fail with the right
 	// error
@@ -992,7 +994,7 @@ func testPrepareRefCounter(numSec uint64, t *testing.T) *refCounter {
 // writeVal is a helper method that writes a certain counter value to disk. This
 // method does not do any validations or checks, the caller must make certain
 // that the input parameters are valid.
-func writeVal(path string, secIdx uint64, val uint16) error {
+func writeVal(path string, secIdx uint64, val uint16) (err error) {
 	f, err := os.OpenFile(path, os.O_RDWR, modules.DefaultFilePerm)
 	if err != nil {
 		return errors.AddContext(err, "failed to open refcounter file")

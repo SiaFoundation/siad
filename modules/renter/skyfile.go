@@ -370,8 +370,8 @@ func (r *Renter) Blacklist() ([]crypto.Hash, error) {
 	return r.staticSkynetBlacklist.Blacklist(), nil
 }
 
-// UpdateSkynetBlacklist updates the list of skylinks that are blacklisted
-func (r *Renter) UpdateSkynetBlacklist(additions, removals []modules.Skylink) error {
+// UpdateSkynetBlacklist updates the list of hashed merkleroots that are blacklisted
+func (r *Renter) UpdateSkynetBlacklist(additions, removals []crypto.Hash) error {
 	err := r.tg.Add()
 	if err != nil {
 		return err

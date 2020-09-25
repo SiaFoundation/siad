@@ -342,9 +342,18 @@ func TestSizeString(t *testing.T) {
 		{1000, "1 KB"},
 		{1001, "1.001 KB"},
 		{1234, "1.234 KB"},
+		{12340, "12.34 KB"},
+		{123400, "123.4 KB"},
+		{1234000, "1.234 MB"},
+		{500000, "500 KB"},
+		{900000, "900 KB"},
+		{998999, "999 KB"},
+		{999001, "999 KB"},
+		{999998, "1 MB"}, // Should round up to 1MB
 		{999999, "1 MB"}, // Should round up to 1MB
 		{1000001, "1 MB"},
 		{1999999, "2 MB"}, // Should round up to 2MB
+		{2000001, "2 MB"},
 		{1234000, "1.234 MB"},
 		{1235000000, "1.235 GB"},       // Verifies it doesn't round the last digit
 		{1234500000000, "1.234 TB"},    // Verifies it truncates and doesn't round

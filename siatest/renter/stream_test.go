@@ -270,7 +270,7 @@ func testStreamRepair(t *testing.T, tg *siatest.TestGroup) {
 	corruptB := fastrand.Bytes(len(b))
 	// Try repairing the file with the corrupt data. This should fail.
 	if err := r.RenterUploadStreamRepairPost(bytes.NewReader(corruptB), remoteFile.SiaPath()); err == nil {
-		t.Fatal(err)
+		t.Fatal("Corrupt file repair should fail")
 	}
 	if err := r.WaitForDecreasingRedundancy(remoteFile, 0); err != nil {
 		t.Fatal("Redundancy isn't staying at 0", err)
@@ -334,7 +334,7 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Download the file again.
-	_, downloadedData, err := r.RenterDownloadHTTPResponseGet(siaPath, 0, uint64(len(data)), true)
+	_, downloadedData, err := r.RenterDownloadHTTPResponseGet(siaPath, 0, uint64(len(data)), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,7 +359,11 @@ func testUploadStreamingWithBadDeps(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	renter := nodes[0]
-	defer tg.RemoveNode(renter)
+	defer func() {
+		if err := tg.RemoveNode(renter); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create some random data to write.
 	fileSize := fastrand.Intn(2*int(modules.SectorSize)) + siatest.Fuzz() + 2 // between 1 and 2*SectorSize + 3 bytes

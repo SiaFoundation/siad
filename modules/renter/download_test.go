@@ -19,7 +19,11 @@ func TestClearDownloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Test clearing empty download history
 	if err := rt.renter.ClearDownloadHistory(time.Time{}, time.Time{}); err != nil {

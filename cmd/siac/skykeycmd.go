@@ -76,7 +76,7 @@ var (
 
 // skykeycmd displays the usage info for the command.
 func skykeycmd(cmd *cobra.Command, args []string) {
-	cmd.UsageFunc()(cmd)
+	_ = cmd.UsageFunc()(cmd)
 	os.Exit(exitCodeUsage)
 }
 
@@ -93,7 +93,7 @@ func skykeycreatecmd(name string) {
 func skykeyCreate(c client.Client, name, skykeyTypeString string) (string, error) {
 	var st skykey.SkykeyType
 	if skykeyTypeString == "" {
-		// If not type is provided, set the type as Private by default
+		// If no type is provided, default to Private
 		st = skykey.TypePrivateID
 	} else {
 		err := st.FromString(skykeyTypeString)

@@ -55,7 +55,11 @@ func TestRenterSaveLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Check that the default values got set correctly.
 	settings, err := rt.renter.Settings()
@@ -140,7 +144,11 @@ func TestRenterPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create and save some files.
 	// The result of saving these files should be a directory containing:
@@ -157,6 +165,17 @@ func TestRenterPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	siaPath3, err := modules.NewSiaPath("foo/bar/baz")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create the parent dirs manually since we are going to use siafile.New
+	// instead of filesystem.NewSiaFile.
+	sp3Parent, err := siaPath3.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.staticFileSystem.NewSiaDir(sp3Parent, modules.DefaultDirPerm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,7 +266,11 @@ func TestSiafileCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Load the compatibility file into the renter.
 	path := filepath.Join("..", "..", "compatibility", "siafile_v0.4.8.sia")

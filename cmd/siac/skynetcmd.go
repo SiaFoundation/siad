@@ -137,7 +137,7 @@ are manually deleted. Use the --dry-run flag to fetch the skylink without actual
 //
 // TODO: Could put some stats or summaries or something here.
 func skynetcmd(cmd *cobra.Command, args []string) {
-	cmd.UsageFunc()(cmd)
+	_ = cmd.UsageFunc()(cmd)
 	os.Exit(exitCodeUsage)
 }
 
@@ -156,7 +156,7 @@ func skynetblacklistUpdate(additions, removals []string) {
 	additions = skynetblacklistTrimLinks(additions)
 	removals = skynetblacklistTrimLinks(removals)
 
-	err := httpClient.SkynetBlacklistPost(additions, removals)
+	err := httpClient.SkynetBlacklistHashPost(additions, removals, skynetBlacklistHash)
 	if err != nil {
 		die("Unable to update skynet blacklist:", err)
 	}
@@ -207,7 +207,9 @@ func skynetconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 	sup := modules.SkyfileUploadParameters{
 		SiaPath: destSiaPath,
 	}
-	skylink, err := httpClient.SkynetConvertSiafileToSkyfilePost(sup, sourceSiaPath)
+	sup = parseAndAddSkykey(sup)
+	sshp, err := httpClient.SkynetConvertSiafileToSkyfilePost(sup, sourceSiaPath)
+	skylink := sshp.Skylink
 	if err != nil {
 		die("could not convert siafile to skyfile:", err)
 	}
@@ -228,7 +230,7 @@ func skynetconvertcmd(sourceSiaPathStr, destSiaPathStr string) {
 // skynetdownloadcmd will perform the download of a skylink.
 func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 	if len(args) != 2 {
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 
@@ -283,7 +285,7 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 	case 1:
 		path = args[0]
 	default:
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 	// Parse the input siapath.
@@ -429,7 +431,9 @@ func skynetlscmd(cmd *cobra.Command, args []string) {
 				fmt.Fprintf(w, "\t%v\t\n", skylink)
 			}
 		}
-		w.Flush()
+		if err := w.Flush(); err != nil {
+			die("failed to flush writer")
+		}
 		fmt.Println()
 
 		if !skynetLsRecursive {
@@ -510,7 +514,7 @@ func skynetpincmd(sourceSkylink, destSiaPath string) {
 // directories from the Renter.
 func skynetunpincmd(cmd *cobra.Command, skyPathStrs []string) {
 	if len(skyPathStrs) == 0 {
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 
@@ -775,6 +779,26 @@ func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.
 	return
 }
 
+// parseAndAddSkykey is a helper that parses any supplied skykey and adds it to
+// the SkyfileUploadParameters
+func parseAndAddSkykey(sup modules.SkyfileUploadParameters) modules.SkyfileUploadParameters {
+	if skykeyName != "" && skykeyID != "" {
+		die("Can only use either skykeyname or skykeyid flag, not both.")
+	}
+	// Set Encrypt param to true if a skykey ID or name is set.
+	if skykeyName != "" {
+		sup.SkykeyName = skykeyName
+	} else if skykeyID != "" {
+		var ID skykey.SkykeyID
+		err := ID.FromString(skykeyID)
+		if err != nil {
+			die("Unable to parse skykey ID")
+		}
+		sup.SkykeyID = ID
+	}
+	return sup
+}
+
 // skynetUploadFileFromReader is a helper method that uploads a file to Skynet
 func skynetUploadFileFromReader(source io.Reader, filename string, siaPath modules.SiaPath, mode os.FileMode) (skylink string) {
 	// Upload the file and return a skylink
@@ -791,22 +815,7 @@ func skynetUploadFileFromReader(source io.Reader, filename string, siaPath modul
 
 		Reader: source,
 	}
-
-	if skykeyName != "" && skykeyID != "" {
-		die("Can only use either skykeyname or skykeyid flag, not both.")
-	}
-	// Set Encrypt param to true if a skykey ID or name is set.
-	if skykeyName != "" {
-		sup.SkykeyName = skykeyName
-	} else if skykeyID != "" {
-		var ID skykey.SkykeyID
-		err := ID.FromString(skykeyID)
-		if err != nil {
-			die("Unable to parse skykey ID")
-		}
-		sup.SkykeyID = ID
-	}
-
+	sup = parseAndAddSkykey(sup)
 	skylink, _, err := httpClient.SkynetSkyfilePost(sup)
 	if err != nil {
 		die("could not upload file to Skynet:", err)

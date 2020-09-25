@@ -91,7 +91,11 @@ func TestAddress(t *testing.T) {
 	}
 	t.Parallel()
 	g := newTestingGateway(t)
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	if g.Address() != g.myAddr {
 		t.Fatal("Address does not return g.myAddr")
@@ -119,9 +123,17 @@ func TestPeers(t *testing.T) {
 	}
 	t.Parallel()
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err := g1.Connect(g2.Address())
 	if err != nil {
@@ -239,9 +251,17 @@ func TestManualConnectDisconnect(t *testing.T) {
 	}
 	t.Parallel()
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// g1 should be able to connect to g2
 	if err := connectToNode(g1, g2, false); err != nil {
@@ -292,7 +312,11 @@ func TestManualConnectDisconnectPersist(t *testing.T) {
 	}
 	t.Parallel()
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g2 := newNamedTestingGateway(t, "2")
 
 	// g1 should be able to connect to g2
@@ -322,7 +346,11 @@ func TestManualConnectDisconnectPersist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Neither g1 nor g2 can connect after g1 being blocklisted
 	if err := connectToNode(g1, g2, false); err == nil {
