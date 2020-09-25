@@ -8,7 +8,6 @@ import (
 	"io/ioutil"
 	"os"
 	"sort"
-	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -323,14 +322,19 @@ func (r *Renter) managedDownloadSnapshotTable(host *worker) ([]snapshotEntry, er
 	// Create an empty entryTable
 	var entryTable []snapshotEntry
 
+	// Fetch the contract and see if it's empty, if that is the case return an
+	// empty entryTable and appropriate error.
+	contract, ok := r.hostContractor.ContractByPublicKey(host.staticHostPubKey)
+	if !ok {
+		return nil, errors.New("failed to host contract")
+	}
+	if contract.Size() == 0 {
+		return entryTable, errEmptyContract
+	}
+
 	// Download the table of snapshots that the host is storing.
-	tableSector, err := host.TryReadOffset(r.tg.StopCtx(), 0, modules.SectorSize)
+	tableSector, err := host.ReadOffset(r.tg.StopCtx(), 0, modules.SectorSize)
 	if err != nil {
-		if strings.Contains(err.Error(), "invalid sector bounds") ||
-			strings.Contains(err.Error(), "secOff out of bounds") {
-			// host is not storing any data yet; return an empty table.
-			return entryTable, errEmptyContract
-		}
 		return nil, errors.AddContext(err, "unable to perform a download by index on this contract")
 	}
 

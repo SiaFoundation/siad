@@ -698,6 +698,15 @@ type RenterContract struct {
 	SiafundFee  types.Currency
 }
 
+// Size returns the contract size
+func (rc *RenterContract) Size() uint64 {
+	var size uint64
+	if len(rc.Transaction.FileContractRevisions) != 0 {
+		size = rc.Transaction.FileContractRevisions[0].NewFileSize
+	}
+	return size
+}
+
 // ContractorSpending contains the metrics about how much the Contractor has
 // spent during the current billing period.
 type ContractorSpending struct {

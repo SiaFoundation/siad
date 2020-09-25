@@ -14,8 +14,7 @@ type (
 	// jobReadOffset contains information about a ReadOffset job.
 	jobReadOffset struct {
 		jobRead
-		staticIgnoreErr bool
-		staticOffset    uint64
+		staticOffset uint64
 	}
 )
 
@@ -27,7 +26,7 @@ func (j *jobReadOffset) callExecute() {
 	jobTime := time.Since(start)
 
 	// Finish the execution.
-	j.jobRead.managedFinishExecute(data, err, j.staticIgnoreErr, jobTime)
+	j.jobRead.managedFinishExecute(data, err, jobTime)
 }
 
 // managedReadOffset returns the sector data for given root.
@@ -98,15 +97,8 @@ func (j *jobReadOffset) managedReadOffset() ([]byte, error) {
 	return downloadResponse.Output, nil
 }
 
-// TryReadOffset is a convenience method that runs a ReadOffset job on a worker
-// but does not report a failure, and thus does not go on a cooldown, on
-// failure.
-func (w *worker) TryReadOffset(ctx context.Context, offset, length uint64) ([]byte, error) {
-	return w.ReadOffset(ctx, offset, length, true)
-}
-
 // ReadOffset is a helper method to run a ReadOffset job on a worker.
-func (w *worker) ReadOffset(ctx context.Context, offset, length uint64, ignoreErr bool) ([]byte, error) {
+func (w *worker) ReadOffset(ctx context.Context, offset, length uint64) ([]byte, error) {
 	readOffsetRespChan := make(chan *jobReadResponse)
 	jro := &jobReadOffset{
 		jobRead: jobRead{
@@ -114,8 +106,7 @@ func (w *worker) ReadOffset(ctx context.Context, offset, length uint64, ignoreEr
 			staticLength:       length,
 			jobGeneric:         newJobGeneric(ctx, w.staticJobReadQueue),
 		},
-		staticIgnoreErr: ignoreErr,
-		staticOffset:    offset,
+		staticOffset: offset,
 	}
 
 	// Add the job to the queue.

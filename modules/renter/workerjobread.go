@@ -73,7 +73,7 @@ func (j *jobRead) callDiscard(err error) {
 // managedFinishExecute will execute code that is shared by multiple read jobs
 // after execution. It updates the performance metrics, records whether the
 // execution was successful and returns the response.
-func (j *jobRead) managedFinishExecute(readData []byte, readErr error, ignoreErr bool, readJobTime time.Duration) {
+func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTime time.Duration) {
 	w := j.staticQueue.staticWorker()
 
 	// Send the response in a goroutine so that the worker resources can be
@@ -92,7 +92,7 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, ignoreErr
 	})
 
 	// Report success or failure to the queue.
-	if readErr == nil || ignoreErr {
+	if readErr == nil {
 		j.staticQueue.callReportSuccess()
 	} else {
 		j.staticQueue.callReportFailure(readErr)
