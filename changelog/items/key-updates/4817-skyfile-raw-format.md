@@ -1,0 +1,1 @@
+- Add the `raw` format option for Skyfile downloads.
