@@ -1,22 +1,21 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
-	"mime"
 	"mime/multipart"
 	"net/http"
-	"net/textproto"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"text/tabwriter"
+
+	"gitlab.com/NebulousLabs/Sia/siatest"
 
 	"github.com/vbauerster/mpb/v5"
 
@@ -831,7 +830,15 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 				fmt.Printf("Failed to read file %s.\n", path)
 				die(err)
 			}
-			_ = addMultipartFile(writer, data, "files[]", info.Name(), modules.DefaultFilePerm, &offset)
+			// siatest.AddMultipartFile will panic on error. We want to avoid
+			// the raw panic and exit cleanly with an error message and os.Exit.
+			defer func() {
+				if e := recover(); e != nil {
+					fmt.Printf("Failed to read file %s.\n", path)
+					die(e)
+				}
+			}()
+			_ = siatest.AddMultipartFile(writer, data, "files[]", info.Name(), modules.DefaultFilePerm, &offset)
 			return nil
 		})
 		if err != nil {
@@ -859,71 +866,6 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 		die(err)
 	}
 	fmt.Println("Successfully uploaded directory:", skylink)
-}
-
-// addMultipartFile is a helper function to add a file to the multipart form-
-// data. Note that the given data will be treated as binary data, and the multi
-// part's ContentType header will be set accordingly.
-func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename string, filemode uint64, offset *uint64) modules.SkyfileSubfileMetadata {
-	filemodeStr := fmt.Sprintf("%o", filemode)
-	contentType, err := fileContentType(filename, bytes.NewReader(filedata))
-	if err != nil {
-		fmt.Printf("Failed to read file %s.\n", filename)
-		die(err)
-	}
-	partHeader := createFormFileHeaders(filekey, filename, filemodeStr, contentType)
-	part, err := w.CreatePart(partHeader)
-	if err != nil {
-		die(err)
-	}
-	_, err = part.Write(filedata)
-	if err != nil {
-		die(err)
-	}
-	metadata := modules.SkyfileSubfileMetadata{
-		Filename:    filename,
-		ContentType: contentType,
-		FileMode:    os.FileMode(filemode),
-		Len:         uint64(len(filedata)),
-	}
-	if offset != nil {
-		metadata.Offset = *offset
-		*offset += metadata.Len
-	}
-	return metadata
-}
-
-// createFormFileHeaders builds a header from the given params. These headers
-// are used when creating the parts in a multi-part form upload.
-func createFormFileHeaders(fieldname, filename, filemode, contentType string) textproto.MIMEHeader {
-	escapeQuotes := func(s string) string {
-		return strings.NewReplacer("\\", "\\\\", `"`, "\\\"").Replace(s)
-	}
-	fieldname = escapeQuotes(fieldname)
-	filename = escapeQuotes(filename)
-
-	h := make(textproto.MIMEHeader)
-	h.Set("Content-Type", contentType)
-	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldname, filename))
-	h.Set("mode", filemode)
-	return h
-}
-
-// fileContentType extracts the content type from a given file.
-func fileContentType(filename string, file io.Reader) (string, error) {
-	contentType := mime.TypeByExtension(filepath.Ext(filename))
-	if contentType != "" {
-		return contentType, nil
-	}
-	// Only the first 512 bytes are used to sniff the content type.
-	buffer := make([]byte, 512)
-	_, err := file.Read(buffer)
-	if err != nil {
-		return "", err
-	}
-	// Always returns a valid content-type by returning
-	// "application/octet-stream" if no others seemed to match.
-	return http.DetectContentType(buffer), nil
 }
 
 // parseAndAddSkykey is a helper that parses any supplied skykey and adds it to
