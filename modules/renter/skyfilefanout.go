@@ -7,7 +7,7 @@ package renter
 //
 // The fanout is encoded such that the first 32 bytes are chunk 0 index 0, the
 // second 32 bytes are chunk 0 index 1, etc... and then the second chunk is
-// appended immedately after, and so on.
+// appended immediately after, and so on.
 
 import (
 	"sync"

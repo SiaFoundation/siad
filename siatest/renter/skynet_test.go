@@ -30,6 +30,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/Sia/skynet"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -73,6 +74,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "DefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
 		{Name: "SingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
 		{Name: "DownloadFormats", Test: testSkynetDownloadFormats},
+		{Name: "DownloadRaw", Test: testSkynetDownloadRaw},
 	}
 
 	// Run tests
@@ -1326,19 +1328,62 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 	if ct != "application/zip" {
 		t.Fatal("unexpected content type: ", ct)
 	}
+}
 
-	// now specify the raw format
-	_, skyfileReader, err = r.SkynetSkylinkRawReaderGet(skylink)
+// testSkynetDownloadRaw tests downloading a skylink with the Raw format
+// specified
+func testSkynetDownloadRaw(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Upload a small skyfile
+	filename := "smallRawfile"
+	size := 100 + siatest.Fuzz()
+	smallFileData := fastrand.Bytes(size)
+	skylink, sup, _, err := r.UploadNewSkyfileWithDataBlocking(filename, smallFileData, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// TODO - How should we then test this reader?
-	//
-	// Do we reimplement or export parseSkyfileMetadata and newFanoutStreamer in
-	// order to break out the metadata and filedata information?
-	//
-	// Is it enough to simply verify that the endpoint works?
+	// Download the skylink with the raw format specified
+	_, skyfileReader, err := r.SkynetSkylinkRawReaderGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read the baseSector
+	baseSector := make([]byte, modules.SectorSize)
+	_, err = skyfileReader.Read(baseSector)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Parse the skyfile metadata from the baseSector
+	_, fanoutBytes, metadata, baseSectorPayload, err := skynet.ParseSkyfileMetadata(baseSector)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the metadata
+	if !reflect.DeepEqual(sup.FileMetadata, metadata) {
+		siatest.PrintJSON(sup.FileMetadata)
+		siatest.PrintJSON(metadata)
+		t.Error("Metadata not equal")
+	}
+
+	// Verify the file data
+	if !bytes.Equal(smallFileData, baseSectorPayload) {
+		t.Log("FileData bytes:", smallFileData)
+		t.Log("BaseSectorPayload bytes:", baseSectorPayload)
+		t.Errorf("Bytes not equal")
+	}
+
+	// Since this was a small file upload there should be no fanout bytes
+	if len(fanoutBytes) != 0 {
+		t.Error("Expected 0 fanout bytes:", fanoutBytes)
+	}
+
+	// TODO - Verify Raw Format for Large file when DownloadByRoot is directly
+	// accessible by the API
 }
 
 // testSkynetSubDirDownload verifies downloading data from a skyfile using a
