@@ -95,6 +95,8 @@ func testAddKeyTwice(t *testing.T, c client.Client) {
 	}
 }
 
+// testDeleteKey tests that deleting a Skykey by name or id actually deletes
+// the key
 func testDeleteKey(t *testing.T, c client.Client) {
 	// Create a key.
 	keyName := "keyToDeleteByName"
@@ -142,86 +144,6 @@ func testDeleteKey(t *testing.T, c client.Client) {
 		t.Fatalf("Expected Error to contain %v and got %v", skykey.ErrNoSkykeysWithThatName, err)
 	}
 }
-
-//// testDeleteKey tests deleting a key.
-//func testDeleteKey(t *testing.T, c client.Client) {
-//	// Create a key.
-//	keyName := "keyToDeleteByName"
-//	_, err := skykeyCreate(c, keyName, skykey.TypePublicID.ToString())
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//
-//	// Get the Key
-//	sk, err := c.SkykeyGetByName(keyName)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//	if sk.Name != keyName {
-//		t.Fatalf("Expected Skykey name %v but got %v", keyName, sk.Name)
-//	}
-//
-//	// Verify incorrect param usage will return an error and will not delete the
-//	// key
-//	err = skykeyDelete(c, "name", "id")
-//	if !errors.Contains(err, errBothNameAndIDUsed) {
-//		t.Fatalf("Unexpected Error: got `%v`, expected `%v`", err, errBothNameAndIDUsed)
-//	}
-//	sk, err = c.SkykeyGetByName(keyName)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//	if sk.Name != keyName {
-//		t.Fatalf("Expected Skykey name %v but got %v", keyName, sk.Name)
-//	}
-//	err = skykeyDelete(c, "", "")
-//	if !errors.Contains(err, errNeitherNameNorIDUsed) {
-//		t.Fatalf("Unexpected Error: got `%v`, expected `%v`", err, errNeitherNameNorIDUsed)
-//	}
-//	sk, err = c.SkykeyGetByName(keyName)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//	if sk.Name != keyName {
-//		t.Fatalf("Expected Skykey name %v but got %v", keyName, sk.Name)
-//	}
-//
-//	// Delete key by name
-//	err = skykeyDelete(c, keyName, "")
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//
-//	// Try and get the key again
-//	_, err = c.SkykeyGetByName(keyName)
-//	if err == nil || !strings.Contains(err.Error(), skykey.ErrNoSkykeysWithThatName.Error()) {
-//		t.Fatalf("Expected Error to contain %v and got %v", skykey.ErrNoSkykeysWithThatName, err)
-//	}
-//
-//	// Create key again
-//	_, err = skykeyCreate(c, keyName, skykey.TypePublicID.ToString())
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//
-//	// Get ID
-//	sk, err = c.SkykeyGetByName(keyName)
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//
-//	// Delete key by ID
-//	err = skykeyDelete(c, "", sk.ID().ToString())
-//	if err != nil {
-//		t.Fatal(err)
-//	}
-//
-//	// Try and get the key again
-//	_, err = c.SkykeyGetByName(keyName)
-//	if err == nil || !strings.Contains(err.Error(), skykey.ErrNoSkykeysWithThatName.Error()) {
-//		t.Fatalf("Expected Error to contain %v and got %v", skykey.ErrNoSkykeysWithThatName, err)
-//	}
-//}
 
 // testInvalidSkykeyType tests that invalid cipher types are caught.
 func testInvalidSkykeyType(t *testing.T, c client.Client) {
