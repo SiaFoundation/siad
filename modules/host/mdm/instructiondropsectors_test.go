@@ -7,7 +7,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -24,7 +23,7 @@ func TestDropSectorsVerify(t *testing.T) {
 	}
 	for _, test := range tests {
 		err := dropSectorsVerify(test.numDropped, test.oldNum)
-		if !errors.Contains(err, test.err) && err.Error() != test.err.Error() {
+		if err != test.err && err.Error() != test.err.Error() {
 			t.Errorf("dropSectorsVerify(%v, %v): expected '%v', got '%v'", test.numDropped, test.oldNum, test.err, err)
 		}
 	}
