@@ -207,11 +207,11 @@ func TestRestartScanner(t *testing.T) {
 		if i%2 == 1 {
 			gateways[i].Close()
 		} else {
-			defer func() {
+			defer func(i int) {
 				if err := gateways[i].Close(); err != nil {
 					t.Fatal(err)
 				}
-			}()
+			}(i)
 		}
 	}
 
