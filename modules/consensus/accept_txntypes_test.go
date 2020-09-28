@@ -3,6 +3,7 @@ package consensus
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -276,7 +277,7 @@ func (cst *consensusSetTester) testValidStorageProofBlocks() {
 
 	// Check that the file contract has been removed.
 	_, err = cst.cs.dbGetFileContract(fcid)
-	if err != errNilItem {
+	if !errors.Contains(err, errNilItem) {
 		panic("file contract should not exist in the database")
 	}
 
@@ -388,7 +389,7 @@ func (cst *consensusSetTester) testMissedStorageProofBlocks() {
 
 	// Check that the file contract has been removed.
 	_, err = cst.cs.dbGetFileContract(fcid)
-	if err != errNilItem {
+	if !errors.Contains(err, errNilItem) {
 		panic("file contract should not exist in the database")
 	}
 
@@ -570,7 +571,7 @@ func (cst *consensusSetTester) testFileContractRevision() {
 
 	// Check that the file contract has been removed.
 	_, err = cst.cs.dbGetFileContract(fcid)
-	if err != errNilItem {
+	if !errors.Contains(err, errNilItem) {
 		panic("file contract should not exist in the database")
 	}
 }
@@ -902,7 +903,7 @@ func (cst *consensusSetTester) testPaymentChannelBlocks() error {
 
 	// Try to submit the refund transaction before the timelock has expired.
 	err = cst.tpool.AcceptTransactionSet([]types.Transaction{refundTxn})
-	if err != types.ErrPrematureSignature {
+	if !errors.Contains(err, types.ErrPrematureSignature){
 		return err
 	}
 

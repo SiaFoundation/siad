@@ -187,7 +187,7 @@ func (n *DirNode) managedList(fsRoot string, recursive, cached bool, offlineMap 
 				di, err = sd.managedInfo(nodeSiaPath(fsRoot, &sd.node))
 			}
 			sd.Close()
-			if err == ErrNotExist {
+			if errors.Contains(err, ErrNotExist) {
 				continue
 			}
 			if err != nil {
@@ -212,7 +212,7 @@ func (n *DirNode) managedList(fsRoot string, recursive, cached bool, offlineMap 
 			} else {
 				fi, err = sf.managedFileInfo(nodeSiaPath(fsRoot, &sf.node), offlineMap, goodForRenewMap, contractsMap)
 			}
-			if err == ErrNotExist {
+			if errors.Contains(err, ErrNotExist) {
 				continue
 			}
 			if err != nil {
@@ -719,7 +719,7 @@ func (n *DirNode) readonlyOpenFile(fileName string) (*FileNode, error) {
 	// Load file from disk.
 	filePath := filepath.Join(n.absPath(), fileName+modules.SiaFileExtension)
 	sf, err := siafile.LoadSiaFile(filePath, n.staticWal)
-	if err == siafile.ErrUnknownPath || os.IsNotExist(err) {
+	if errors.Contains(err, siafile.ErrUnknownPath) || os.IsNotExist(err) {
 		return nil, ErrNotExist
 	}
 	if err != nil {

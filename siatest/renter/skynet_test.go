@@ -254,7 +254,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("reader data doesn't match data")
 	}
 	_, err = tr.Next()
-	if err != io.EOF {
+	if !errors.Contains(err, io.EOF) {
 		t.Fatal("expected error to be EOF but was", err)
 	}
 	err = skylinkReader.Close()
@@ -294,7 +294,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("reader data doesn't match data")
 	}
 	_, err = tr.Next()
-	if err != io.EOF {
+	if !errors.Contains(err, io.EOF) {
 		t.Fatal("expected error to be EOF but was", err)
 	}
 	err = skylinkReader.Close()

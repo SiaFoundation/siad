@@ -1,7 +1,6 @@
 package consensus
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -15,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestSimpleInitialBlockchainDownload tests that
@@ -81,7 +81,7 @@ func TestSimpleInitialBlockchainDownload(t *testing.T) {
 		}
 		for _, cst := range remoteCSTs {
 			_, err = cst.cs.managedAcceptBlocks([]types.Block{b})
-			if err != nil && err != modules.ErrBlockKnown && err != modules.ErrNonExtendingBlock {
+			if err != nil && !errors.Contains(err, modules.ErrBlockKnown) && !errors.Contains(err, modules.ErrNonExtendingBlock) {
 				t.Fatal(err)
 			}
 		}
@@ -107,7 +107,7 @@ func TestSimpleInitialBlockchainDownload(t *testing.T) {
 		}
 		for _, cst := range remoteCSTs {
 			_, err = cst.cs.managedAcceptBlocks([]types.Block{b})
-			if err != nil && err != modules.ErrBlockKnown {
+			if err != nil && !errors.Contains(err, modules.ErrBlockKnown) {
 				t.Fatal(err)
 			}
 		}
@@ -143,7 +143,7 @@ func TestSimpleInitialBlockchainDownload(t *testing.T) {
 		}
 		for _, cst := range remoteCSTs {
 			_, err = cst.cs.managedAcceptBlocks([]types.Block{b})
-			if err != nil && err != modules.ErrBlockKnown {
+			if err != nil && !errors.Contains(err, modules.ErrBlockKnown) {
 				t.Log(i)
 				t.Fatal(err)
 			}
@@ -180,7 +180,7 @@ func TestSimpleInitialBlockchainDownload(t *testing.T) {
 		}
 		for _, cst := range remoteCSTs {
 			_, err = cst.cs.managedAcceptBlocks([]types.Block{b})
-			if err != nil && err != modules.ErrBlockKnown {
+			if err != nil && !errors.Contains(err, modules.ErrBlockKnown) {
 				t.Log(i)
 				t.Fatal(err)
 			}

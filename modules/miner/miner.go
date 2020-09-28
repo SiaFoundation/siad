@@ -2,7 +2,6 @@
 package miner
 
 import (
-	"errors"
 	"sync"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/threadgroup"
 )
@@ -196,7 +196,7 @@ func New(cs modules.ConsensusSet, tpool modules.TransactionPool, w modules.Walle
 	}
 
 	err = m.cs.ConsensusSetSubscribe(m, m.persist.RecentChange, m.tg.StopChan())
-	if err == modules.ErrInvalidConsensusChangeID {
+	if errors.Contains(err, modules.ErrInvalidConsensusChangeID) {
 		// Perform a rescan of the consensus set if the change id is not found.
 		// The id will only be not found if there has been desynchronization
 		// between the miner and the consensus package.

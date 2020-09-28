@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -9,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -219,7 +219,7 @@ func TestRandomOutboundPeer(t *testing.T) {
 	defer g.mu.Unlock()
 
 	_, err := g.randomOutboundPeer()
-	if err != errNoPeers {
+	if !errors.Contains(err, errNoPeers) {
 		t.Fatal("expected errNoPeers, got", err)
 	}
 
@@ -259,7 +259,7 @@ func TestListen(t *testing.T) {
 	}
 	addr := modules.NetAddress(conn.LocalAddr().String())
 	ack, err := connectVersionHandshake(conn, "0.1")
-	if err != errPeerRejectedConn {
+	if !errors.Contains(err, errPeerRejectedConn) {
 		t.Fatal(err)
 	}
 	if ack != "" {
@@ -893,7 +893,7 @@ func TestAcceptConnRejectsVersions(t *testing.T) {
 			t.Fatal(err)
 		}
 		remoteVersion, err := connectVersionHandshake(conn, tt.remoteVersion)
-		if err != tt.errWant {
+		if !errors.Contains(err, tt.errWant) {
 			t.Fatal(err)
 		}
 		if remoteVersion != tt.versionResponseWant {

@@ -351,7 +351,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 	// Copy the files from the tarball to the new location.
 	for {
 		header, err := tr.Next()
-		if err == io.EOF {
+		if errors.Contains(err, io.EOF) {
 			break
 		} else if err != nil {
 			return errors.AddContext(err, "could not get next entry in the tar archive")

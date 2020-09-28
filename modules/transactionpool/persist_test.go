@@ -83,7 +83,7 @@ func TestRescan(t *testing.T) {
 
 	// 1st send should be a duplicate transaction set.
 	err = tpt.tpool.AcceptTransactionSet(txns)
-	if err != modules.ErrDuplicateTransactionSet {
+	if !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		t.Fatal("expecting modules.ErrDuplicateTransactionSet, got: ", err)
 	}
 
@@ -159,7 +159,7 @@ func TestRescan(t *testing.T) {
 
 	// This send should still be a duplicate transaction set.
 	err = tpt.tpool.AcceptTransactionSet(txns)
-	if err != modules.ErrDuplicateTransactionSet {
+	if !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		t.Fatal("expecting modules.ErrDuplicateTransactionSet, got:", err)
 	}
 }

@@ -3,6 +3,7 @@ package transactionpool
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -42,7 +43,7 @@ func TestAcceptTransactionSet(t *testing.T) {
 
 	// Submit the transaction set again to trigger a duplication error.
 	err = tpt.tpool.AcceptTransactionSet(txns)
-	if err != modules.ErrDuplicateTransactionSet {
+	if !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		t.Error(err)
 	}
 
@@ -193,7 +194,7 @@ func TestCheckMinerFees(t *testing.T) {
 
 	// Add another transaction, this one should fail for having too few fees.
 	err = tpt.tpool.AcceptTransactionSet([]types.Transaction{{}})
-	if err != errLowMinerFees {
+	if !errors.Contains(err, errLowMinerFees) {
 		t.Error(err)
 	}
 
@@ -240,7 +241,7 @@ func TestCheckMinerFees(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = tpt.tpool.AcceptTransactionSet(lowFeeGraph)
-	if err != errLowMinerFees {
+	if !errors.Contains(err, errLowMinerFees) {
 		t.Fatal(err)
 	}
 }
@@ -401,11 +402,11 @@ func TestTransactionSuperset(t *testing.T) {
 	// Try resubmitting the individual transaction and the superset, a
 	// duplication error should be returned for each case.
 	err = tpt.tpool.AcceptTransactionSet(txnSet[:1])
-	if err != modules.ErrDuplicateTransactionSet {
+	if !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		t.Fatal(err)
 	}
 	err = tpt.tpool.AcceptTransactionSet(txnSet)
-	if err != modules.ErrDuplicateTransactionSet {
+	if !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		t.Fatal("super setting is not working:", err)
 	}
 }
@@ -459,7 +460,7 @@ func TestTransactionSubset(t *testing.T) {
 		t.Fatal("super setting is not working:", err)
 	}
 	err = tpt.tpool.AcceptTransactionSet(txnSet[:1])
-	if err != modules.ErrDuplicateTransactionSet {
+	if !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		t.Fatal(err)
 	}
 }

@@ -245,7 +245,7 @@ func (api *API) wallet033xHandler(w http.ResponseWriter, req *http.Request, _ ht
 			WriteSuccess(w)
 			return
 		}
-		if err != modules.ErrBadEncryptionKey {
+		if !errors.Contains(err, modules.ErrBadEncryptionKey) {
 			WriteError(w, Error{"error when calling /wallet/033x: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
@@ -404,7 +404,7 @@ func (api *API) walletSeedHandler(w http.ResponseWriter, req *http.Request, _ ht
 			WriteSuccess(w)
 			return
 		}
-		if err != modules.ErrBadEncryptionKey {
+		if !errors.Contains(err, modules.ErrBadEncryptionKey) {
 			WriteError(w, Error{"error when calling /wallet/seed: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
@@ -432,7 +432,7 @@ func (api *API) walletSiagkeyHandler(w http.ResponseWriter, req *http.Request, _
 			WriteSuccess(w)
 			return
 		}
-		if err != modules.ErrBadEncryptionKey {
+		if !errors.Contains(err, modules.ErrBadEncryptionKey) {
 			WriteError(w, Error{"error when calling /wallet/siagkey: " + err.Error()}, http.StatusBadRequest)
 			return
 		}

@@ -92,7 +92,7 @@ func (hd *Downloader) Download(root crypto.Hash, offset, length uint32) (_ modul
 	defer func() {
 		// Ignore ErrStopResponse and closed network connecton errors since
 		// they are not considered a failed interaction with the host.
-		if err != nil && err != modules.ErrStopResponse && !strings.Contains(err.Error(), "use of closed network connection") {
+		if err != nil && !errors.Contains(err, modules.ErrStopResponse) && !strings.Contains(err.Error(), "use of closed network connection") {
 			hd.hdb.IncrementFailedInteractions(contract.HostPublicKey())
 			err = errors.Extend(err, modules.ErrHostFault)
 		} else {
@@ -109,7 +109,7 @@ func (hd *Downloader) Download(root crypto.Hash, offset, length uint32) (_ modul
 	// send the revision to the host for approval
 	extendDeadline(hd.conn, connTimeout)
 	signedTxn, err := negotiateRevision(hd.conn, rev, contract.SecretKey, hd.height)
-	if err == modules.ErrStopResponse {
+	if errors.Contains(err, modules.ErrStopResponse) {
 		// If the host wants to stop communicating after this iteration, close
 		// our connection; this will cause the next download to fail. However,
 		// we must delay closing until we've finished downloading the sector.

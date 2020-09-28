@@ -42,7 +42,7 @@ func TestNegotiateRevisionStopResponse(t *testing.T) {
 	// transaction. This will return a known error because we are supplying an
 	// empty revision.
 	_, err := negotiateRevision(rConn, types.FileContractRevision{}, crypto.SecretKey{}, 0)
-	if err != types.ErrFileContractWindowStartViolation {
+	if !errors.Contains(err, types.ErrFileContractWindowStartViolation) {
 		t.Fatalf("expected %q, got \"%v\"", types.ErrFileContractWindowStartViolation, err)
 	}
 	rConn.Close()

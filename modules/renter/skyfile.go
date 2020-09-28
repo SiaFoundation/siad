@@ -437,7 +437,7 @@ func (r *Renter) managedCreateFileNodeFromReader(up modules.FileUploadParams, re
 		}
 
 		_, err = ss.Result()
-		if err == io.EOF {
+		if errors.Contains(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -509,7 +509,7 @@ func uploadSkyfileReadLeadingChunk(r io.Reader, headerSize uint64) ([]byte, io.R
 	// Read data from the reader to fill out the remainder of the first sector.
 	fileBytes := make([]byte, modules.SectorSize-headerSize, modules.SectorSize-headerSize+1) // +1 capacity for the peek byte
 	size, err := io.ReadFull(r, fileBytes)
-	if err == io.EOF || err == io.ErrUnexpectedEOF {
+	if errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF) {
 		err = nil
 	}
 	if err != nil {
@@ -523,7 +523,7 @@ func uploadSkyfileReadLeadingChunk(r io.Reader, headerSize uint64) ([]byte, io.R
 	// will be returned.
 	peek := make([]byte, 1)
 	n, peekErr := io.ReadFull(r, peek)
-	if peekErr == io.EOF || peekErr == io.ErrUnexpectedEOF {
+	if errors.Contains(peekErr, io.EOF) || errors.Contains(peekErr, io.ErrUnexpectedEOF) {
 		peekErr = nil
 	}
 	if peekErr != nil {

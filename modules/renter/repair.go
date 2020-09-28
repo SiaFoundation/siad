@@ -91,7 +91,7 @@ func (r *Renter) managedAddStuckChunksFromStuckStack(hosts map[string]struct{}) 
 
 		// Add stuck chunks to uploadHeap
 		err := r.managedAddStuckChunksToHeap(siaPath, hosts, offline, goodForRenew)
-		if err != nil && err != errNoStuckChunks {
+		if err != nil && !errors.Contains(err, errNoStuckChunks) {
 			return dirSiaPaths, errors.AddContext(err, "unable to add stuck chunks to heap")
 		}
 

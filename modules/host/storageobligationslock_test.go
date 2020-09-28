@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestObligationLocks checks that the storage obligation locking functions
@@ -74,7 +75,7 @@ func TestObligationLocks(t *testing.T) {
 		ht.host.managedUnlockStorageObligation(ob1)
 	}()
 	err = ht.host.managedTryLockStorageObligation(ob1, obligationLockTimeout)
-	if err != ErrObligationLocked {
+	if !errors.Contains(err, ErrObligationLocked) {
 		t.Fatal("storage obligation was able to get a lock, despite already being locked")
 	}
 
@@ -107,7 +108,7 @@ func TestObligationLocks(t *testing.T) {
 		t.Fatal("unable to get lock despite not having a lock in place")
 	}
 	err = ht.host.managedTryLockStorageObligation(ob1, obligationLockTimeout)
-	if err != ErrObligationLocked {
+	if !errors.Contains(err, ErrObligationLocked) {
 		t.Fatal("storage obligation was able to get a lock, despite already being locked")
 	}
 	ht.host.managedUnlockStorageObligation(ob1)

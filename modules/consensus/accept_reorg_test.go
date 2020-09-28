@@ -6,6 +6,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // reorgSets contains multiple consensus sets that share a genesis block, which
@@ -338,7 +339,7 @@ func TestBuriedBadFork(t *testing.T) {
 	}
 	badBlock, _ = cst.miner.SolveBlock(badBlock, parent.ChildTarget)
 	err = cst.cs.AcceptBlock(badBlock)
-	if err != modules.ErrNonExtendingBlock {
+	if !errors.Contains(err, modules.ErrNonExtendingBlock) {
 		t.Fatal(err)
 	}
 

@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // addBlockNoPayout adds a block to the wallet tester that does not have any
@@ -136,7 +137,7 @@ func TestViewAdded(t *testing.T) {
 	}
 	set3Txn, set3Parents := b.View()
 	err = wt.tpool.AcceptTransactionSet(append(set3Parents, set3Txn))
-	if err != modules.ErrDuplicateTransactionSet {
+	if !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		t.Fatal(err)
 	}
 }
@@ -173,7 +174,7 @@ func TestDoubleSignError(t *testing.T) {
 		t.Fatal(err)
 	}
 	txnSet2, err := b.Sign(true)
-	if err != errBuilderAlreadySigned {
+	if !errors.Contains(err, errBuilderAlreadySigned) {
 		t.Error("the wrong error is being returned after a double call to sign")
 	}
 	if err != nil && txnSet2 != nil {
@@ -390,7 +391,7 @@ func TestConcurrentBuildersSingleOutput(t *testing.T) {
 	}
 	// This add should fail, blocking the builder from completion.
 	err = builder2.FundSiacoins(funding)
-	if err != modules.ErrIncompleteTransactions {
+	if !errors.Contains(err, modules.ErrIncompleteTransactions) {
 		t.Fatal(err)
 	}
 

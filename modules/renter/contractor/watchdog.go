@@ -241,7 +241,7 @@ func (w *watchdog) sendTxnSet(txnSet []types.Transaction, reason string) {
 		defer w.contractor.tg.Done()
 
 		err = w.tpool.AcceptTransactionSet(txnSet)
-		if err != nil && err != modules.ErrDuplicateTransactionSet {
+		if err != nil && !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 			w.contractor.log.Println("watchdog send transaction error: "+reason, err)
 		}
 	}()

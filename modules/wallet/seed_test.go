@@ -10,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestPrimarySeed checks that the correct seed is returned when calling
@@ -70,7 +71,7 @@ func TestPrimarySeed(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _, err = wt.wallet.PrimarySeed()
-	if err != modules.ErrLockedWallet {
+	if !errors.Contains(err, modules.ErrLockedWallet) {
 		t.Error("unexpected err:", err)
 	}
 	sk = crypto.NewWalletKey(crypto.HashObject(seed))

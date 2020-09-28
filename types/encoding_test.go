@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -255,7 +256,7 @@ func TestNegativeCurrencyUnmarshalJSON(t *testing.T) {
 	// Try unmarshalling the negative currency.
 	var cNeg Currency
 	err = cNeg.UnmarshalJSON(cMar)
-	if err != ErrNegativeCurrency {
+	if !errors.Contains(err, ErrNegativeCurrency) {
 		t.Error("expecting ErrNegativeCurrency:", err)
 	}
 	if cNeg.i.Sign() < 0 {
@@ -268,7 +269,7 @@ func TestNegativeCurrencyUnmarshalJSON(t *testing.T) {
 func TestNegativeCurrencyScan(t *testing.T) {
 	var c Currency
 	_, err := fmt.Sscan("-23", &c)
-	if err != ErrNegativeCurrency {
+	if !errors.Contains(err, ErrNegativeCurrency) {
 		t.Error("expecting ErrNegativeCurrency:", err)
 	}
 }
@@ -607,7 +608,7 @@ func TestUnlockHashJSONMarshalling(t *testing.T) {
 	// Corrupt the checksum.
 	marUH[36]++
 	err = umarUH.UnmarshalJSON(marUH)
-	if err != ErrInvalidUnlockHashChecksum {
+	if !errors.Contains(err, ErrInvalidUnlockHashChecksum) {
 		t.Error("expecting an invalid checksum:", err)
 	}
 	marUH[36]--
@@ -622,7 +623,7 @@ func TestUnlockHashJSONMarshalling(t *testing.T) {
 
 	// Try an input of the wrong length.
 	err = (&umarUH).UnmarshalJSON(marUH[2:])
-	if err != ErrUnlockHashWrongLen {
+	if !errors.Contains(err, ErrUnlockHashWrongLen) {
 		t.Error("Got wrong error:", err)
 	}
 }
@@ -655,7 +656,7 @@ func TestUnlockHashStringMarshalling(t *testing.T) {
 	byteMarUH := []byte(marUH)
 	byteMarUH[36]++
 	err = umarUH.LoadString(string(byteMarUH))
-	if err != ErrInvalidUnlockHashChecksum {
+	if !errors.Contains(err, ErrInvalidUnlockHashChecksum) {
 		t.Error("expecting an invalid checksum:", err)
 	}
 	byteMarUH[36]--
@@ -670,7 +671,7 @@ func TestUnlockHashStringMarshalling(t *testing.T) {
 
 	// Try an input of the wrong length.
 	err = umarUH.LoadString(string(byteMarUH[2:]))
-	if err != ErrUnlockHashWrongLen {
+	if !errors.Contains(err, ErrUnlockHashWrongLen) {
 		t.Error("Got wrong error:", err)
 	}
 }

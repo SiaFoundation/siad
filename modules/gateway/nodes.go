@@ -180,7 +180,7 @@ func (g *Gateway) requestNodes(conn modules.PeerConn) error {
 	changed := false
 	for _, node := range nodes {
 		err := g.addNode(node)
-		if err != nil && err != errNodeExists && err != errOurAddress {
+		if err != nil && !errors.Contains(err, errNodeExists) && !errors.Contains(err, errOurAddress) {
 			g.log.Printf("WARN: peer '%v' sent the invalid addr '%v'", conn.RPCAddr(), node)
 		}
 		if err == nil {
@@ -240,7 +240,7 @@ func (g *Gateway) permanentNodePurger(closeChan chan struct{}) {
 		numNodes := len(g.nodes)
 		node, err := g.randomNode()
 		g.mu.RUnlock()
-		if err == errNoNodes {
+		if errors.Contains(err, errNoNodes) {
 			// errNoNodes is a common error that will be resolved by the
 			// bootstrap process.
 			continue
@@ -304,7 +304,7 @@ func (g *Gateway) permanentNodeManager(closeChan chan struct{}) {
 		numNodes := len(g.nodes)
 		peer, err := g.randomOutboundPeer()
 		g.mu.RUnlock()
-		if err == errNoPeers {
+		if errors.Contains(err, errNoPeers) {
 			// errNoPeers is a common and expected error, there's no need to
 			// log it.
 			continue

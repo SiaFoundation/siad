@@ -109,13 +109,13 @@ func loadExistingMerkleRootsFromSection(file *fileSection) (*merkleRoots, bool, 
 	rootsData := make([]byte, rootsDiskLoadBulkSize)
 	for {
 		n, err := file.ReadAt(rootsData, readOff)
-		if err == io.ErrUnexpectedEOF && n == 0 {
+		if errors.Contains(err, io.ErrUnexpectedEOF) && n == 0 {
 			break
 		}
-		if err == io.EOF && n == 0 {
+		if errors.Contains(err, io.EOF) && n == 0 {
 			break
 		}
-		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		if err != nil && !errors.Contains(err, io.EOF) && err != io.ErrUnexpectedEOF {
 			return nil, applyTxns, err
 		}
 		roots, err := parseRootsFromData(rootsData[:n])
@@ -371,7 +371,7 @@ func (mr *merkleRoots) merkleRootsFromIndexFromDisk(from, to int) ([]crypto.Hash
 			rootsData = make([]byte, remainingData)
 		}
 		n, err := mr.rootsFile.ReadAt(rootsData, readOff)
-		if err == io.ErrUnexpectedEOF || err == io.EOF {
+		if errors.Contains(err, io.ErrUnexpectedEOF) || errors.Contains(err, io.EOF) {
 			return nil, errors.New("merkleRootsFromIndexFromDisk failed: roots have unexpected length")
 		}
 		if err != nil {

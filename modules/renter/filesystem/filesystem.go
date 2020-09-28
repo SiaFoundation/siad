@@ -469,7 +469,7 @@ func (fs *FileSystem) RenameFile(oldSiaPath, newSiaPath modules.SiaPath) (err er
 	}()
 	// Open the file.
 	sf, err := oldDir.managedOpenFile(oldSiaPath.Name())
-	if err == ErrNotExist {
+	if errors.Contains(err, ErrNotExist) {
 		return ErrNotExist
 	}
 	if err != nil {
@@ -516,7 +516,7 @@ func (fs *FileSystem) RenameDir(oldSiaPath, newSiaPath modules.SiaPath) error {
 	}()
 	// Open the dir to rename.
 	sd, err := oldDir.managedOpenDir(oldSiaPath.Name())
-	if err == ErrNotExist {
+	if errors.Contains(err, ErrNotExist) {
 		return ErrNotExist
 	}
 	if err != nil {
@@ -640,7 +640,7 @@ func (fs *FileSystem) managedNewSiaDir(siaPath modules.SiaPath, mode os.FileMode
 		return err
 	}
 	parent, err := fs.managedOpenDir(parentPath.String())
-	if err == ErrNotExist {
+	if errors.Contains(err, ErrNotExist) {
 		// If the parent doesn't exist yet we create it.
 		err = fs.managedNewSiaDir(parentPath, mode)
 		if err == nil {

@@ -191,7 +191,7 @@ func readDataPieces(r io.Reader, ec modules.ErasureCoder, pieceSize uint64) ([][
 		dataPieces[i] = make([]byte, pieceSize)
 		n, err := io.ReadFull(r, dataPieces[i])
 		total += uint64(n)
-		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		if err != nil && !errors.Contains(err, io.EOF) && err != io.ErrUnexpectedEOF {
 			return nil, 0, errors.AddContext(err, "failed to read chunk from source reader")
 		}
 	}

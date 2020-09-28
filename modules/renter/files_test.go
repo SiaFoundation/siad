@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -383,12 +384,12 @@ func TestRenterRenameFile(t *testing.T) {
 	}
 	entry2.Close()
 	err = rt.renter.RenameFile(siaPath1, siaPath1a)
-	if err != filesystem.ErrExists {
+	if !errors.Contains(err, filesystem.ErrExists) {
 		t.Fatal("Expecting ErrExists, got", err)
 	}
 	// Rename a file to the same name.
 	err = rt.renter.RenameFile(siaPath1, siaPath1)
-	if err != filesystem.ErrExists {
+	if !errors.Contains(err, filesystem.ErrExists) {
 		t.Fatal("Expecting ErrExists, got", err)
 	}
 

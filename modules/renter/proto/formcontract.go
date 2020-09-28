@@ -228,7 +228,7 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 
 	// Submit to blockchain.
 	err = tpool.AcceptTransactionSet(minSet)
-	if err == modules.ErrDuplicateTransactionSet {
+	if errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		// As long as it made it into the transaction pool, we're good.
 		err = nil
 	}

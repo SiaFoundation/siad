@@ -181,7 +181,7 @@ func TestFoo(t *testing.T) {
 	// NOTE: Always prefer to compare to a specific error, rather than 
 	// err == nil
 	err = Foo.Bar(0)
-	if err != errDivideByZero {
+	if !errors.Contains(err, errDivideByZero){
 		t.Errorf("expected errDivideByZero, got %v", err)
 	}
 }
@@ -227,7 +227,7 @@ func TestParseFilesize(t *testing.T) {
 	// the expected output and error for each.
 	for _, test := range tests {
 		res, err := parseFilesize(test.in)
-		if res != test.out || err != test.err {
+		if res != test.out || !errors.Contains(err, test.err){
 			t.Errorf("parseFilesize(%v): expected %v %v, got %v %v", test.in, test.out, test.err, res, err)
 		}
 	}

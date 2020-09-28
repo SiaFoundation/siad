@@ -1033,11 +1033,11 @@ func TestHostMultiClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = ht.host.Close()
-	if err != siasync.ErrStopped {
+	if !errors.Contains(err, siasync.ErrStopped) {
 		t.Fatal(err)
 	}
 	err = ht.host.Close()
-	if err != siasync.ErrStopped {
+	if !errors.Contains(err, siasync.ErrStopped) {
 		t.Fatal(err)
 	}
 	// Set ht.host to something non-nil - nil was returned because startup was
@@ -1067,19 +1067,19 @@ func TestNilValues(t *testing.T) {
 
 	hostDir := filepath.Join(ht.persistDir, modules.HostDir)
 	_, err = New(nil, ht.gateway, ht.tpool, ht.wallet, ht.mux, "localhost:0", hostDir)
-	if err != errNilCS {
+	if !errors.Contains(err, errNilCS) {
 		t.Fatal("could not trigger errNilCS")
 	}
 	_, err = New(ht.cs, nil, ht.tpool, ht.wallet, ht.mux, "localhost:0", hostDir)
-	if err != errNilGateway {
+	if !errors.Contains(err, errNilGateway) {
 		t.Fatal("Could not trigger errNilGateay")
 	}
 	_, err = New(ht.cs, ht.gateway, nil, ht.wallet, ht.mux, "localhost:0", hostDir)
-	if err != errNilTpool {
+	if !errors.Contains(err, errNilTpool) {
 		t.Fatal("could not trigger errNilTpool")
 	}
 	_, err = New(ht.cs, ht.gateway, ht.tpool, nil, ht.mux, "localhost:0", hostDir)
-	if err != errNilWallet {
+	if !errors.Contains(err, errNilWallet) {
 		t.Fatal("Could not trigger errNilWallet")
 	}
 }

@@ -1,10 +1,10 @@
 package consensus
 
 import (
-	"errors"
 	"math/big"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -336,7 +336,7 @@ func (cs *ConsensusSet) tryTransactionSet(txns []types.Transaction) (modules.Con
 		}
 		return errSuccess
 	})
-	if err != errSuccess {
+	if !errors.Contains(err, errSuccess) {
 		return modules.ConsensusChange{}, err
 	}
 	cc := modules.ConsensusChange{

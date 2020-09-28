@@ -233,7 +233,7 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 		revisionTxn: contract.Transaction,
 	}
 	err = c.staticWatchdog.callMonitorContract(monitorContractArgs)
-	if err == errAlreadyWatchingContract {
+	if errors.Contains(err, errAlreadyWatchingContract) {
 		c.log.Debugln("Watchdog already aware of recovered contract")
 		err = nil
 	}

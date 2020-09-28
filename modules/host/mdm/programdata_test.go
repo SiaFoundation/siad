@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -97,7 +98,7 @@ func TestEOFWhileReading(t *testing.T) {
 		}()
 	}()
 	_, err := pd.Uint64(0)
-	if err != io.EOF {
+	if !errors.Contains(err, io.EOF) {
 		t.Errorf("error was supposed to be %v but was %v", io.EOF, err)
 	}
 	close(cont)

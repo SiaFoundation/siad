@@ -159,7 +159,7 @@ func (cs *ContractSet) managedNewRenew(oldContract *SafeContract, params Contrac
 
 	// Submit to blockchain.
 	err = tpool.AcceptTransactionSet(txnSet)
-	if err == modules.ErrDuplicateTransactionSet {
+	if errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		// As long as it made it into the transaction pool, we're good.
 		err = nil
 	}
@@ -377,7 +377,7 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 
 	// Submit to blockchain.
 	err = tpool.AcceptTransactionSet(txnSet)
-	if err == modules.ErrDuplicateTransactionSet {
+	if errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		// As long as it made it into the transaction pool, we're good.
 		err = nil
 	}
@@ -385,7 +385,7 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 		return modules.RenterContract{}, nil, err
 	}
 	err = tpool.AcceptTransactionSet([]types.Transaction{finalRevTxn})
-	if err == modules.ErrDuplicateTransactionSet {
+	if errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		// As long as it made it into the transaction pool, we're good.
 		err = nil
 	}

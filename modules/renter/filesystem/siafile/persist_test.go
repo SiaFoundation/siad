@@ -341,7 +341,7 @@ func TestNewFile(t *testing.T) {
 	readChunk := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
 	err = sf.iterateChunksReadonly(func(chunk chunk) error {
 		_, err := f.ReadAt(readChunk, sf.chunkOffset(chunk.Index))
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Contains(err, io.EOF) {
 			t.Fatal(err)
 		}
 		if !bytes.Equal(readChunk[:len(chunks[chunk.Index])], chunks[chunk.Index]) {

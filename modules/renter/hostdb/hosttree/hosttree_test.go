@@ -1,7 +1,6 @@
 package hosttree
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -9,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/threadgroup"
 
@@ -291,7 +291,7 @@ func TestHostTreeModify(t *testing.T) {
 
 	// should fail with a nonexistent key
 	err := tree.Modify(modules.HostDBEntry{})
-	if err != ErrNoSuchHost {
+	if !errors.Contains(err, ErrNoSuchHost) {
 		t.Fatalf("modify should fail with ErrNoSuchHost when provided a nonexistent public key. Got error: %v\n", err)
 	}
 
@@ -391,7 +391,7 @@ func TestRepeatInsert(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = tree.Insert(entry2)
-	if err != ErrHostExists {
+	if !errors.Contains(err, ErrHostExists) {
 		t.Fatal(err)
 	}
 	if len(tree.hosts) != 1 {

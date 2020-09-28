@@ -57,7 +57,7 @@ func LoadSiaFileFromReaderWithChunks(r io.ReadSeeker, path string, wal *writeahe
 	var chunks []chunk
 	chunkBytes := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
 	for chunkIndex := 0; chunkIndex < sf.numChunks; chunkIndex++ {
-		if _, err := r.Read(chunkBytes); err != nil && err != io.EOF {
+		if _, err := r.Read(chunkBytes); err != nil && !errors.Contains(err, io.EOF) {
 			return nil, Chunks{}, errors.AddContext(err, fmt.Sprintf("failed to read chunk %v", chunkIndex))
 		}
 		chunk, err := unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)
@@ -278,7 +278,7 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 	if _, err := r.Seek(sf.staticMetadata.PubKeyTableOffset, io.SeekStart); err != nil {
 		return nil, errors.AddContext(err, "failed to seek to pubKeyTable")
 	}
-	if _, err := r.Read(rawPubKeyTable); err == io.EOF {
+	if _, err := r.Read(rawPubKeyTable); errors.Contains(err, io.EOF) {
 		// Empty table.
 		sf.pubKeyTable = []HostPublicKey{}
 	} else if err != nil {
@@ -521,7 +521,7 @@ func (sf *SiaFile) chunk(chunkIndex int) (_ chunk, err error) {
 	defer func() {
 		err = errors.Compose(err, f.Close())
 	}()
-	if _, err := f.ReadAt(chunkBytes, chunkOffset); err != nil && err != io.EOF {
+	if _, err := f.ReadAt(chunkBytes, chunkOffset); err != nil && !errors.Contains(err, io.EOF) {
 		return chunk{}, errors.AddContext(err, "failed to read chunk from disk")
 	}
 	c, err := unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)
@@ -584,7 +584,7 @@ func (sf *SiaFile) iterateChunksReadonly(iterFunc func(chunk chunk) error) (err 
 		} else if sf.isIncompletePartialChunk(uint64(chunkIndex)) {
 			c = chunk{Pieces: make([][]piece, sf.staticMetadata.staticErasureCode.NumPieces())}
 		} else {
-			if _, err := f.Read(chunkBytes); err != nil && err != io.EOF {
+			if _, err := f.Read(chunkBytes); err != nil && !errors.Contains(err, io.EOF) {
 				return errors.AddContext(err, fmt.Sprintf("failed to read chunk %v", chunkIndex))
 			}
 			c, err = unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)

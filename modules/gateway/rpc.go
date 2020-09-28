@@ -231,7 +231,7 @@ func (g *Gateway) threadedHandleConn(conn modules.PeerConn) {
 	startRPCTime := time.Now()
 	err = fn(conn)
 	// don't log benign errors
-	if err == modules.ErrDuplicateTransactionSet || err == modules.ErrBlockKnown {
+	if errors.Contains(err, modules.ErrDuplicateTransactionSet) || errors.Contains(err, modules.ErrBlockKnown) {
 		err = nil
 	}
 	if err != nil {

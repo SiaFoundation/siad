@@ -650,7 +650,7 @@ func TestDeleteFile(t *testing.T) {
 	}
 	// Check that we can't open another instance of foo and that we can't create
 	// a new file at the same path.
-	if _, err := fs.OpenSiaFile(sp); err != ErrNotExist {
+	if _, err := fs.OpenSiaFile(sp); !errors.Contains(err, ErrNotExist) {
 		t.Fatal("err should be ErrNotExist but was:", err)
 	}
 	if err := fs.addTestSiaFileWithErr(sp); err != nil {
@@ -710,7 +710,7 @@ func TestRenameFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Check if the file was renamed.
-	if _, err := fs.OpenSiaFile(foo); err != ErrNotExist {
+	if _, err := fs.OpenSiaFile(foo); !errors.Contains(err, ErrNotExist) {
 		t.Fatal("expected ErrNotExist but got:", err)
 	}
 	sf, err := fs.OpenSiaFile(foobar)
@@ -930,7 +930,7 @@ func TestSiaDirRename(t *testing.T) {
 		}
 		// Open entry with old dir. Shouldn't work.
 		_, err := fs.OpenSiaDir(oldDir)
-		if err != ErrNotExist {
+		if !errors.Contains(err, ErrNotExist) {
 			t.Fatal("shouldn't be able to open old path", oldDir.String(), err)
 		}
 		// Open entry with new dir. Should succeed.
@@ -1121,7 +1121,7 @@ func TestSiaFileSetDeleteOpen(t *testing.T) {
 	}
 	// The SiaFile shouldn't exist anymore.
 	_, err := sfs.OpenSiaFile(siaPath)
-	if err != ErrNotExist {
+	if !errors.Contains(err, ErrNotExist) {
 		t.Fatal("SiaFile shouldn't exist anymore")
 	}
 	// Close the entries.
@@ -1428,7 +1428,7 @@ func TestDeleteCorruptSiaFile(t *testing.T) {
 
 	// Confirm the siafile cannot be opened
 	_, err = sfs.OpenSiaFile(siaPath)
-	if err == nil || err == ErrNotExist {
+	if err == nil || errors.Contains(err, ErrNotExist) {
 		t.Fatal("expected open to fail for read error but instead got:", err)
 	}
 
@@ -1701,7 +1701,7 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 		}
 		// Open entry with old dir. Shouldn't work.
 		_, err := fs.OpenSiaDir(oldDir)
-		if err != ErrNotExist {
+		if !errors.Contains(err, ErrNotExist) {
 			t.Fatal("shouldn't be able to open old path", oldDir.String(), err)
 		}
 		// Old dir shouldn't exist.
@@ -2078,7 +2078,7 @@ func TestFailedOpenFileFolder(t *testing.T) {
 	}
 	// Open "foo" as a dir.
 	_, err = fs.OpenSiaDir(foo)
-	if err != ErrNotExist {
+	if !errors.Contains(err, ErrNotExist) {
 		t.Fatal("err should be ErrNotExist but was", err)
 	}
 	if len(fs.files) != 0 || len(fs.directories) != 0 {
@@ -2086,7 +2086,7 @@ func TestFailedOpenFileFolder(t *testing.T) {
 	}
 	// Open "foo" as a file.
 	_, err = fs.OpenSiaFile(foo)
-	if err != ErrNotExist {
+	if !errors.Contains(err, ErrNotExist) {
 		t.Fatal("err should be ErrNotExist but was", err)
 	}
 	if len(fs.files) != 0 || len(fs.directories) != 0 {

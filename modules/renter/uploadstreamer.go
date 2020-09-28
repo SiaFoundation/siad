@@ -305,7 +305,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 
 		// If an io.EOF error occurred or less than chunkSize was read, we are
 		// done. Otherwise we report the error.
-		if _, err := ss.Result(); err == io.EOF {
+		if _, err := ss.Result(); errors.Contains(err, io.EOF) {
 			// All chunks successfully submitted.
 			break
 		} else if ss.err != nil {
@@ -314,7 +314,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 
 		// Call Peek to make sure that there's more data for another shard.
 		peek, err = ss.Peek()
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF) {
 			break
 		} else if err != nil {
 			return nil, ss.err

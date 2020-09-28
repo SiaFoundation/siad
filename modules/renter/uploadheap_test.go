@@ -16,6 +16,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestBuildUnfinishedChunks probes buildUnfinishedChunks to make sure that the
@@ -446,7 +447,7 @@ func TestAddChunksToHeap(t *testing.T) {
 		}
 		// Make sure directories are created
 		err = rt.renter.CreateDir(dirSiaPath, modules.DefaultDirPerm)
-		if err != nil && err != filesystem.ErrExists {
+		if err != nil && !errors.Contains(err, filesystem.ErrExists) {
 			t.Fatal(err)
 		}
 		dirSiaPaths = append(dirSiaPaths, dirSiaPath)
@@ -564,7 +565,7 @@ func TestAddRemoteChunksToHeap(t *testing.T) {
 			t.Fatal(err)
 		}
 		err = rt.renter.CreateDir(dirSiaPath, modules.DefaultDirPerm)
-		if err != nil && err != filesystem.ErrExists {
+		if err != nil && !errors.Contains(err, filesystem.ErrExists) {
 			t.Fatal(err)
 		}
 		dirSiaPaths.callAdd(dirSiaPath)

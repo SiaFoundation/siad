@@ -104,7 +104,7 @@ func TestSkykeyManager(t *testing.T) {
 	randomNameBytes := fastrand.Bytes(24)
 	randomName := string(randomNameBytes)
 	id, err = keyMan.IDByName(randomName)
-	if err != ErrNoSkykeysWithThatName {
+	if !errors.Contains(err, ErrNoSkykeysWithThatName) {
 		t.Fatal(err)
 	}
 
@@ -112,7 +112,7 @@ func TestSkykeyManager(t *testing.T) {
 	var randomID SkykeyID
 	fastrand.Read(randomID[:])
 	_, err = keyMan.KeyByID(randomID)
-	if err != ErrNoSkykeysWithThatID {
+	if !errors.Contains(err, ErrNoSkykeysWithThatID) {
 		t.Fatal(err)
 	}
 
@@ -644,7 +644,7 @@ func TestSkykeyTypeStrings(t *testing.T) {
 
 	var invalidSt SkykeyType
 	err = invalidSt.FromString(invalidTypeString)
-	if err != ErrInvalidSkykeyType {
+	if !errors.Contains(err, ErrInvalidSkykeyType) {
 		t.Fatal(err)
 	}
 

@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestAnnouncementHandling checks that CreateAnnouncement and
@@ -47,7 +48,7 @@ func TestAnnouncementHandling(t *testing.T) {
 	// Corrupt the net address.
 	annBytes[25]++
 	_, _, err = DecodeAnnouncement(annBytes)
-	if err != crypto.ErrInvalidSignature {
+	if !errors.Contains(err, crypto.ErrInvalidSignature) {
 		t.Error(err)
 	}
 	annBytes[25]--
@@ -57,7 +58,7 @@ func TestAnnouncementHandling(t *testing.T) {
 	lastIndex := len(annBytes) - 1
 	annBytes[lastIndex]++
 	_, _, err = DecodeAnnouncement(annBytes)
-	if err != crypto.ErrInvalidSignature {
+	if !errors.Contains(err, crypto.ErrInvalidSignature) {
 		t.Error(err)
 	}
 	annBytes[lastIndex]--
@@ -65,7 +66,7 @@ func TestAnnouncementHandling(t *testing.T) {
 	// Pass in a bad specifier - change the host announcement type.
 	annBytes[0]++
 	_, _, err = DecodeAnnouncement(annBytes)
-	if err != ErrAnnNotAnnouncement {
+	if !errors.Contains(err, ErrAnnNotAnnouncement) {
 		t.Error(err)
 	}
 	annBytes[0]--
@@ -73,7 +74,7 @@ func TestAnnouncementHandling(t *testing.T) {
 	// Pass in a bad signature algorithm. 16 bytes to pass the specifier, 8+8 bytes to pass the net address.
 	annBytes[33]++
 	_, _, err = DecodeAnnouncement(annBytes)
-	if err != ErrAnnUnrecognizedSignature {
+	if !errors.Contains(err, ErrAnnUnrecognizedSignature) {
 		t.Error(err)
 	}
 	annBytes[33]--
@@ -102,7 +103,7 @@ func TestNegotiationResponses(t *testing.T) {
 	// Write/Read rejection
 	buf.Reset()
 	err = WriteNegotiationRejection(buf, ErrLowBalance)
-	if err != ErrLowBalance {
+	if !errors.Contains(err, ErrLowBalance) {
 		t.Fatal(err)
 	}
 	err = ReadNegotiationAcceptance(buf)
@@ -118,7 +119,7 @@ func TestNegotiationResponses(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = ReadNegotiationAcceptance(buf)
-	if err != ErrStopResponse {
+	if !errors.Contains(err, ErrStopResponse) {
 		t.Fatal(err)
 	}
 }

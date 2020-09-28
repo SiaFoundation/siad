@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -153,11 +154,11 @@ func TestIntegrationNewNilInputs(t *testing.T) {
 		t.Error(err)
 	}
 	_, err = New(nil, g, tpDir)
-	if err != errNilCS {
+	if !errors.Contains(err, errNilCS) {
 		t.Error(err)
 	}
 	_, err = New(cs, nil, tpDir)
-	if err != errNilGateway {
+	if !errors.Contains(err, errNilGateway) {
 		t.Error(err)
 	}
 	_, err = New(cs, g, tpDir)

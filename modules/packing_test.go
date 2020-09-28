@@ -8,6 +8,7 @@ import (
 	"text/tabwriter"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -128,7 +129,7 @@ func TestPackFiles(t *testing.T) {
 
 	for _, test := range tests {
 		res, num, err := PackFiles(test.in)
-		if !reflect.DeepEqual(res, test.out) || num != test.num || err != test.err {
+		if !reflect.DeepEqual(res, test.out) || num != test.num || !errors.Contains(err, test.err) {
 			t.Errorf("PackFiles(%v): expected %v %v %v, got %v %v %v", test.in, test.out, test.num, test.err, res, num, err)
 		}
 	}
@@ -335,7 +336,7 @@ func TestFindBucket(t *testing.T) {
 
 	for _, test := range tests {
 		res, err := findBucket(test.fileSize, test.buckets)
-		if res != test.out || err != test.err {
+		if res != test.out || !errors.Contains(err, test.err) {
 			t.Errorf("findBucket(%v, %v, %v): expected %v %v, got %v %v", test.fileSize, test.buckets, test.numSectors, test.out, test.err, res, err)
 		}
 	}
@@ -360,7 +361,7 @@ func TestRequiredAlignment(t *testing.T) {
 
 	for _, test := range tests {
 		res, err := requiredAlignment(test.fileSize)
-		if res != test.out || err != test.err {
+		if res != test.out || !errors.Contains(err, test.err) {
 			t.Errorf("requiredAlignment(%v): expected %v %v, got %v %v", test.fileSize, test.out, test.err, res, err)
 		}
 	}
@@ -386,7 +387,7 @@ func TestAlignFileInBucket(t *testing.T) {
 
 	for _, test := range tests {
 		res, err := alignFileInBucket(test.fileSize, test.sectorOffset)
-		if res != test.out || err != test.err {
+		if res != test.out || !errors.Contains(err, test.err) {
 			t.Errorf("AlignFileInBucket(%v, %v): expected %v %v, got %v %v", test.fileSize, test.sectorOffset, test.out, test.err, res, err)
 		}
 	}
