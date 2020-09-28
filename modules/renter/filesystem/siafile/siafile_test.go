@@ -869,11 +869,7 @@ func TestChunkHealth(t *testing.T) {
 	}
 
 	// Add good piece to first chunk
-	host := fmt.Sprintln("host_0")
-	spk := types.SiaPublicKey{}
-	if err := spk.LoadString(host); err != nil {
-		t.Fatal(err)
-	}
+	spk := types.SiaPublicKey{Algorithm: types.SignatureEd25519, Key: []byte{1}}
 	offlineMap[spk.String()] = false
 	goodForRenewMap[spk.String()] = true
 	if err := setCombinedChunkOfTestFile(sf); err != nil {
@@ -911,11 +907,7 @@ func TestChunkHealth(t *testing.T) {
 	}
 
 	// Add good piece to second chunk
-	host = fmt.Sprintln("host_1")
-	spk = types.SiaPublicKey{}
-	if err := spk.LoadString(host); err != nil {
-		t.Fatal(err)
-	}
+	spk = types.SiaPublicKey{Algorithm: types.SignatureEd25519, Key: []byte{2}}
 	offlineMap[spk.String()] = false
 	goodForRenewMap[spk.String()] = true
 	if err := sf.AddPiece(spk, 1, 0, crypto.Hash{}); err != nil {
