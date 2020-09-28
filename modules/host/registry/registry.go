@@ -36,6 +36,9 @@ var (
 	// errTooMuchData is returned when the data to register is larger than
 	// RegistryDataSize.
 	errTooMuchData = errors.New("registered data is too large")
+	// errInvalidEntry is returned when trying to update an entry that has been
+	// invalidated on disk and only exists in memory anymore.
+	errInvalidEntry = errors.New("invalid entry")
 )
 
 type (
@@ -62,12 +65,22 @@ type (
 		data      []byte // stored raw data
 		revision  uint64
 		signature crypto.Signature
+
+		// utilities
+		mu      sync.Mutex
+		invalid bool
 	}
 )
 
 // mapKey creates a key usable in in-memory maps from the value.
-func (v value) mapKey() crypto.Hash {
-	return crypto.HashAll(v.key, v.tweak)
+func (v *value) mapKey() crypto.Hash {
+	return valueMapKey(v.key, v.tweak)
+}
+
+// valueMapKey creates a key usable in in-memory maps from a value's key and
+// tweak.
+func valueMapKey(key types.SiaPublicKey, tweak crypto.Hash) crypto.Hash {
+	return crypto.HashAll(key, tweak)
 }
 
 // New creates a new registry or opens an existing one.
@@ -122,9 +135,6 @@ func New(path string, wal *writeaheadlog.WAL, maxEntries uint64) (_ *Registry, e
 
 // Update adds an entry to the registry or if it exists already, updates it.
 func (r *Registry) Update(rv modules.RegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (bool, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	// Check the data against the limit.
 	data := rv.Data
 	if len(data) > modules.RegistryDataSize {
@@ -137,87 +147,144 @@ func (r *Registry) Update(rv modules.RegistryValue, pubKey types.SiaPublicKey, e
 		return false, errors.AddContext(err, "Update: failed to verify signature")
 	}
 
-	v := value{
-		key:         pubKey,
-		tweak:       rv.Tweak,
-		expiry:      expiry,
-		staticIndex: -1, // Is set later.
-		data:        data,
-		revision:    rv.Revision,
-	}
+	// Lock the registry until we have found the existing entry or a new index
+	// on disk to save a new entry. Don't hold the lock during disk I/O.
+	r.mu.Lock()
 
 	// Check if the entry exists already. If it does and the new revision is
 	// larger than the last one, we update it.
-	entry, exists := r.entries[v.mapKey()]
-	if exists && v.revision > entry.revision {
-		v.staticIndex = entry.staticIndex
-	} else if exists {
-		return exists, errInvalidRevNum
-	} else if !exists {
-		// The entry doesn't exist yet. So we need to create it. To do so we search
-		// for the first available slot on disk.
+	entry, exists := r.entries[valueMapKey(pubKey, rv.Tweak)]
+	if exists {
+		// The entry exists. Release the global lock since we don't need to
+		// update the map.
+		r.mu.Unlock()
+
+		// Acquire the entry lock.
+		entry.mu.Lock()
+
+		// Check if the entry has been invalidated. This should only ever be the
+		// case when an entry is updated at the same time as its pruned so its
+		// incredibly unlikely to happen. Usually entries would be updated long
+		// before their expiry.
+		if entry.invalid {
+			entry.mu.Unlock()
+			return false, errInvalidEntry
+		}
+
+		// Check if the new revision number is valid.
+		if rv.Revision <= entry.revision {
+			entry.mu.Unlock()
+			return false, errInvalidRevNum
+		}
+
+		// Update the entry.
+		entry.expiry = expiry
+		entry.data = data
+		entry.revision = rv.Revision
+	} else {
+		// If it doesn't exist or if it was invalid, we create a new entry.
+		// Search for the first available slot on disk.
 		bit, err := r.staticUsage.SetRandom()
 		if err != nil {
+			r.mu.Unlock()
 			return false, errors.AddContext(err, "failed to obtain free slot")
 		}
-		v.staticIndex = int64(bit) + 1
+		entry = &value{
+			key:         pubKey,
+			tweak:       rv.Tweak,
+			expiry:      expiry,
+			staticIndex: int64(bit) + 1,
+			data:        data,
+			revision:    rv.Revision,
+		}
+
+		// Lock it to make sure its not fetched or updated before this initial
+		// update is finished by locking it before putting it in the map. We can
+		// do this here while still holding the registry lock since its
+		// guaranteed to not block at this point. This is the only time we hold
+		// both the registry as well as an entry lock at the same time.
+		entry.mu.Lock()
+
+		// Add it to the map.
+		r.entries[entry.mapKey()] = entry
+
+		// Unlock the registry lock now that the entry is in the map.
+		r.mu.Unlock()
 	}
 
 	// Write the entry to disk.
-	err := r.saveEntry(v, true)
-	if err != nil && !exists {
-		// If an error occurs during saving, unset the reserved index again if
-		// it wasn't in use already.
-		r.staticUsage.Unset(uint64(v.staticIndex) - 1)
-	}
+	err := r.managedSaveEntry(entry, true)
 	if err != nil {
+		// If an error occurs during saving and the error was just created, we
+		// invalidate it, delete it from the registry and free its index.
+		entry.invalid = !exists
+		entry.mu.Unlock()
+		if !exists {
+			r.managedDeleteEntry(entry)
+		}
 		return exists, errors.New("failed to save new entry to disk")
 	}
-
-	// Update the in-memory map last.
-	r.entries[v.mapKey()] = &v
+	entry.mu.Unlock()
 	return exists, nil
+}
+
+// managedDeleteEntry deletes an entry from the registry by freeing its index in
+// the bitfield and removing it from the map. This does not invalidate the entry
+// itself or delete it from disk.
+func (r *Registry) managedDeleteEntry(v *value) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	// Unset the index.
+	r.staticUsage.Unset(uint64(v.staticIndex) - 1)
+	// Delete the entry from the map.
+	delete(r.entries, v.mapKey())
 }
 
 // Prune deletes all entries from the registry that expire at a height smaller
 // than or equal to the provided expiry argument.
-func (r *Registry) Prune(expiry types.BlockHeight) error {
+func (r *Registry) Prune(expiry types.BlockHeight) (uint64, error) {
+	// Get a slice of entries. We only hold the lock during the map access.
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	entries := make([]*value, 0, len(r.entries))
+	for _, v := range r.entries {
+		entries = append(entries, v)
+	}
+	r.mu.Unlock()
 
-	// Get a slice of entries that is sorted by indices for more optimized disk
-	// access.
-	type kv struct {
-		key   crypto.Hash
-		value *value
-	}
-	entries := make([]kv, 0, len(r.entries))
-	for k, v := range r.entries {
-		entries = append(entries, kv{
-			key:   k,
-			value: v,
-		})
-	}
+	// Sort the entries without holding the lock.
 	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].value.staticIndex < entries[j].value.staticIndex
+		return entries[i].staticIndex < entries[j].staticIndex
 	})
 
+	// Loop over them and delete the ones that are expired.
 	var errs error
+	var pruned uint64
 	for _, entry := range entries {
-		k := entry.key
-		v := entry.value
-		if v.expiry > expiry {
+		// Lock the entry.
+		entry.mu.Lock()
+
+		// Ignore invalid entries.
+		if entry.invalid {
+			entry.mu.Unlock()
+			continue // already deleted
+		}
+		// Ignore non-expired entries.
+		if entry.expiry > expiry {
+			entry.mu.Unlock()
 			continue // not expired
 		}
-		// Purge the entry.
-		if err := r.saveEntry(*v, false); err != nil {
+		// Delete the entry from disk.
+		if err := r.managedSaveEntry(entry, false); err != nil {
 			errs = errors.Compose(errs, err)
+			entry.mu.Unlock()
 			continue
 		}
-		// Mark the space on disk unused and remove the entry from the in-memory
-		// map.
-		delete(r.entries, k)
-		r.staticUsage.Unset(uint64(v.staticIndex) - 1)
+		// Invalidate the entry.
+		entry.invalid = true
+		entry.mu.Unlock()
+		// Delete the entry from the registry.
+		r.managedDeleteEntry(entry)
+		pruned++
 	}
-	return errs
+	return pruned, errs
 }
