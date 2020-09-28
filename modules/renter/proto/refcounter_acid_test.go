@@ -178,7 +178,7 @@ func loadWal(rcFilePath string, walPath string, fdd *dependencies.DependencyFaul
 		return nil, errors.AddContext(err, "failed to open refcounter file in order to apply updates")
 	}
 	defer func() {
-		err = errors.Compose(f.Close())
+		err = errors.Compose(err, f.Close())
 	}()
 	// apply any outstanding transactions
 	for _, txn := range txns {

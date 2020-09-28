@@ -141,7 +141,7 @@ func (r *Renter) LoadBackup(src string, secret []byte) (err error) {
 		return err
 	}
 	defer func() {
-		err = errors.Compose(root.Close())
+		err = errors.Compose(err, root.Close())
 	}()
 
 	// Open the gzip file.

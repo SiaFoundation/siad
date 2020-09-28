@@ -246,7 +246,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (_ *downloa
 		return nil, err
 	}
 	defer func() {
-		err = errors.Compose(entry.UpdateAccessTime())
+		err = errors.Compose(err, entry.UpdateAccessTime())
 		err = errors.Compose(err, entry.Close())
 	}()
 

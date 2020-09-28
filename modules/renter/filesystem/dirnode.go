@@ -805,7 +805,7 @@ func (n *DirNode) managedOpenDir(path string) (_ *DirNode, err error) {
 	}
 	// Otherwise open the next dir.
 	defer func() {
-		err = errors.Compose(subNode.Close())
+		err = errors.Compose(err, subNode.Close())
 	}()
 	return subNode.managedOpenDir(filepath.Join(pathList...))
 }
