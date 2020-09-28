@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"errors"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -10,6 +9,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 func TestRPCID(t *testing.T) {
@@ -101,7 +101,7 @@ func TestUnregisterRPC(t *testing.T) {
 	// Unregister RPC and check that calling it fails.
 	g1.UnregisterRPC("Foo")
 	err = g2.RPC(g1.Address(), "Foo", dummyFunc)
-	if err != io.EOF {
+	if !errors.Contains(err, io.EOF) {
 		t.Errorf("calling unregistered RPC on g1 returned %q instead of io.EOF", err)
 	}
 
