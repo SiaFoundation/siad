@@ -640,11 +640,9 @@ func TestIntegrationDownloaderCaching(t *testing.T) {
 
 	// close one of the downloaders; it should not fully close, since d1 is
 	// still using it
-	defer func() {
-		if err := d2.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+	if err := d2.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	c.mu.RLock()
 	_, ok := c.downloaders[contract.ID]
@@ -666,12 +664,12 @@ func TestIntegrationDownloaderCaching(t *testing.T) {
 	}
 
 	// close both downloaders
-	d1.Close()
-	defer func() {
-		if err := d2.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+	if err := d1.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := d2.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	c.mu.RLock()
 	_, ok = c.downloaders[contract.ID]
