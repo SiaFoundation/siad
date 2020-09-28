@@ -623,7 +623,7 @@ func (st *serverTester) getAPI(call string, obj interface{}) (err error) {
 		return err
 	}
 	defer func() {
-		err = errors.Compose(resp.Body.Close())
+		err = errors.Compose(err, resp.Body.Close())
 	}()
 
 	if non2xx(resp.StatusCode) {
