@@ -298,7 +298,7 @@ func TestUnitValidateHeaderAndBlock(t *testing.T) {
 		// Reset the stored parameters to ValidateBlock.
 		validateBlockParamsGot = validateBlockParams{}
 		_, err := cs.validateHeaderAndBlock(tx, tt.block, tt.block.ID())
-		if !errors.Contains(err, tt.errWant) {
+		if err != tt.errWant && !errors.Contains(err, tt.errWant) {
 			t.Errorf("%s: expected to fail with `%v', got: `%v'", tt.msg, tt.errWant, err)
 		}
 		if err == nil || validateBlockParamsGot.called {
@@ -484,7 +484,7 @@ func TestUnitValidateHeader(t *testing.T) {
 			},
 		}
 		err := cs.validateHeader(tx, tt.header)
-		if !errors.Contains(err, tt.errWant) {
+		if err != tt.errWant {
 			t.Errorf("%s: expected to fail with `%v', got: `%v'", tt.msg, tt.errWant, err)
 		}
 	}

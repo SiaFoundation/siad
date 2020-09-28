@@ -3,7 +3,6 @@ package main
 import (
 	"math"
 	"math/big"
-	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -53,7 +52,7 @@ func TestParseFilesize(t *testing.T) {
 	}
 	for _, test := range tests {
 		res, err := parseFilesize(test.in)
-		if res != test.out || !errors.Contains(err, test.err) {
+		if res != test.out || err != test.err {
 			t.Errorf("parseFilesize(%v): expected %v %v, got %v %v", test.in, test.out, test.err, res, err)
 		}
 	}
@@ -103,7 +102,7 @@ func TestParsePeriod(t *testing.T) {
 	}
 	for _, test := range tests {
 		res, err := parsePeriod(test.in)
-		if res != test.out || !errors.Contains(err, test.err) {
+		if res != test.out || err != test.err {
 			t.Errorf("parsePeriod(%v): expected %v %v, got %v %v", test.in, test.out, test.err, res, err)
 		}
 	}
@@ -142,7 +141,7 @@ func TestParseCurrency(t *testing.T) {
 	}
 	for _, test := range tests {
 		res, err := parseCurrency(test.in)
-		if res != test.out || !errors.Contains(err, test.err) {
+		if res != test.out || err != test.err {
 			t.Errorf("parseCurrency(%v): expected %v %v, got %v %v", test.in, test.out, test.err, res, err)
 		}
 	}
@@ -237,7 +236,7 @@ func TestParseRatelimit(t *testing.T) {
 
 	for _, test := range tests {
 		res, err := parseRatelimit(test.in)
-		if res != test.out || (!errors.Contains(err, test.err) && !strings.Contains(err.Error(), test.err.Error())) {
+		if res != test.out || (err != test.err && !errors.Contains(err, test.err)) {
 			t.Errorf("parsePeriod(%v): expected %v %v, got %v %v", test.in, test.out, test.err, res, err)
 		}
 	}
