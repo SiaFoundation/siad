@@ -755,11 +755,9 @@ func TestIntegrationEditorCaching(t *testing.T) {
 
 	// close one of the editors; it should not fully close, since d1 is
 	// still using it
-	defer func() {
-		if err := d2.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+	if err := d2.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	c.mu.RLock()
 	_, ok := c.editors[contract.ID]
@@ -781,12 +779,12 @@ func TestIntegrationEditorCaching(t *testing.T) {
 	}
 
 	// close both editors
-	d1.Close()
-	defer func() {
-		if err := d2.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+	if err := d1.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := d2.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	c.mu.RLock()
 	_, ok = c.editors[contract.ID]
