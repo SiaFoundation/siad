@@ -1022,7 +1022,10 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// After persist is initialized, push the root directory onto the directory
 	// heap for the repair process.
-	r.managedPushUnexploredDirectory(modules.RootSiaPath())
+	err = r.managedPushUnexploredDirectory(modules.RootSiaPath())
+	if err != nil {
+		return nil, err
+	}
 	// After persist is initialized, create the worker pool.
 	r.staticWorkerPool = r.newWorkerPool()
 
