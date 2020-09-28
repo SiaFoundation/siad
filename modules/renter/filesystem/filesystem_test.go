@@ -512,11 +512,9 @@ func TestCloseSiaDir(t *testing.T) {
 		t.Fatalf("The parent should have 1 directory but got %v", len(sd.parent.directories))
 	}
 	// Close the second one.
-	defer func() {
-		if err := sd2.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+	if err := sd2.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if len(fs.threads) != 0 {
 		t.Fatalf("There should be 0 threads in fs.threads but got %v", len(fs.threads))
 	}
