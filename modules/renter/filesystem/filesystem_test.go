@@ -188,7 +188,7 @@ func TestNewSiaFile(t *testing.T) {
 	// Create file /sub/foo/file
 	sp := newSiaPath("sub/foo/file")
 	fs.addTestSiaFile(sp)
-	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != ErrExists {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); !errors.Contains(err, ErrExists) {
 		t.Fatal("err should be ErrExists but was", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, sp.String())); !os.IsNotExist(err) {
@@ -200,7 +200,7 @@ func TestNewSiaFile(t *testing.T) {
 	// Create a file in the root dir.
 	sp = newSiaPath("file")
 	fs.addTestSiaFile(sp)
-	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != ErrExists {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); !errors.Contains(err, ErrExists) {
 		t.Fatal("err should be ErrExists but was", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, sp.String())); !os.IsNotExist(err) {
