@@ -265,7 +265,7 @@ func isCalledWithRootFlag(req *http.Request) (bool, error) {
 }
 
 // rebaseInputSiaPath rebases the SiaPath provided by the user to one that is
-// prefix by the user's home directory.
+// prefixed by the user's home directory.
 func rebaseInputSiaPath(siaPath modules.SiaPath) (modules.SiaPath, error) {
 	// Prepend the provided siapath with the /home/siafiles dir.
 	if siaPath.IsRoot() {

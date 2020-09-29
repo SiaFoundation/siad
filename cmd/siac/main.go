@@ -78,7 +78,7 @@ var (
 	skynetLsRoot                   bool   // Use root as the base instead of the Skynet folder.
 	skynetPinPortal                string // Portal to use when trying to pin a skylink.
 	skynetUnpinRoot                bool   // Use root as the base instead of the Skynet folder.
-	skynetUploadDefaultPath        string // Specify the file to serve when no specific file is specified. Especially useful for skapps, galleries, and playlists.
+	skynetUploadDefaultPath        string // Specify the file to serve when no specific file is specified.
 	skynetUploadDisableDefaultPath bool   // This skyfile will not have a default path. The only way to use it is to download it.
 	skynetUploadDryRun             bool   // Perform a dry-run of the upload. This returns the skylink without actually uploading the file to the network.
 	skynetUploadRoot               bool   // Use root as the base instead of the Skynet folder.
@@ -374,7 +374,7 @@ func initCmds() *cobra.Command {
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadDryRun, "dry-run", false, "Perform a dry-run of the upload, returning the skylink without actually uploading the file")
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSeparately, "separately", "", false, "Upload each file separately, generating individual skylinks")
-	skynetUploadCmd.Flags().StringVar(&skynetUploadDefaultPath, "defaultpath", "", "Specify the file to serve when no specific file is specified. Especially useful for skapps, galleries, and playlists.")
+	skynetUploadCmd.Flags().StringVar(&skynetUploadDefaultPath, "defaultpath", "", "Specify the file to serve when no specific file is specified.")
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadDisableDefaultPath, "disabledefaultpath", "", false, "This skyfile will not have a default path. The only way to use it is to download it. Mutually exclusive with --defaultpath")
 	skynetUploadCmd.Flags().BoolVarP(&skynetUploadSilent, "silent", "s", false, "Don't report progress while uploading")
 	skynetUploadCmd.Flags().StringVar(&skykeyID, "skykeyid", "", "Specify the skykey to be used by its key identifier.")

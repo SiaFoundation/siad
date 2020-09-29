@@ -479,8 +479,8 @@ func (n *DirNode) managedDelete() error {
 	var filesToDelete []*FileNode
 	var lockedNodes []*node
 	for _, file := range n.childFiles() {
-		file.mu.Lock()
-		file.Lock()
+		file.node.mu.Lock()
+		file.SiaFile.Lock()
 		lockedNodes = append(lockedNodes, &file.node)
 		filesToDelete = append(filesToDelete, file)
 	}
@@ -504,8 +504,8 @@ func (n *DirNode) managedDelete() error {
 		lockedNodes = append(lockedNodes, &d.node)
 		// Remember the open files.
 		for _, file := range d.files {
-			file.mu.Lock()
-			file.Lock()
+			file.node.mu.Lock()
+			file.SiaFile.Lock()
 			lockedNodes = append(lockedNodes, &file.node)
 			filesToDelete = append(filesToDelete, file)
 		}
@@ -853,8 +853,8 @@ func (n *DirNode) managedRename(newName string, oldParent, newParent *DirNode) e
 	var filesToRename []*FileNode
 	var lockedNodes []*node
 	for _, file := range n.childFiles() {
-		file.mu.Lock()
-		file.Lock()
+		file.node.mu.Lock()
+		file.SiaFile.Lock()
 		lockedNodes = append(lockedNodes, &file.node)
 		filesToRename = append(filesToRename, file)
 	}
@@ -879,8 +879,8 @@ func (n *DirNode) managedRename(newName string, oldParent, newParent *DirNode) e
 		dirsToRename = append(dirsToRename, d)
 		// Lock the open files.
 		for _, file := range d.files {
-			file.mu.Lock()
-			file.Lock()
+			file.node.mu.Lock()
+			file.SiaFile.Lock()
 			lockedNodes = append(lockedNodes, &file.node)
 			filesToRename = append(filesToRename, file)
 		}
