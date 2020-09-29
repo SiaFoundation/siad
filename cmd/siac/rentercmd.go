@@ -719,7 +719,7 @@ again:
 
 // rentersetallowancecmd is the handler for `siac renter setallowance`.
 // set the allowance or modify individual allowance fields.
-func rentersetallowancecmd(cmd *cobra.Command, args []string) {
+func rentersetallowancecmd(_ *cobra.Command, _ []string) {
 	// Get the current period setting.
 	rg, err := httpClient.RenterGet()
 	if err != nil {

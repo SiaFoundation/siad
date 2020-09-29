@@ -139,13 +139,11 @@ func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files []T
 
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
-	subfiles := make(modules.SkyfileSubfiles)
 
 	// add the files
 	var offset uint64
 	for _, tf := range files {
-		subfile := AddMultipartFile(writer, tf.Data, "files[]", tf.Name, modules.DefaultFilePerm, &offset)
-		subfiles[subfile.Filename] = subfile
+		_ = AddMultipartFile(writer, tf.Data, "files[]", tf.Name, modules.DefaultFilePerm, &offset)
 	}
 
 	if err = writer.Close(); err != nil {
