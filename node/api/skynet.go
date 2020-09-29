@@ -958,7 +958,7 @@ func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Requ
 	skykeyTypeString := req.FormValue("type")
 
 	if name == "" {
-		WriteError(w, Error{"you must specify the name the skykey"}, http.StatusInternalServerError)
+		WriteError(w, Error{"you must specify the name of the skykey"}, http.StatusInternalServerError)
 		return
 	}
 
