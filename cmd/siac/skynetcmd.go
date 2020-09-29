@@ -839,7 +839,7 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 			die(err)
 		}
 		if err = writer.Close(); err != nil {
-			return
+			die(err)
 		}
 	}()
 
