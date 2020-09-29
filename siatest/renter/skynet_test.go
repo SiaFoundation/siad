@@ -478,7 +478,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Make sure the file is no longer present.
 	_, err = r.RenterFileRootGet(fullPinSiaPath)
-	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+	if err != nil && !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		t.Fatal("skyfile still present after deletion")
 	}
 
@@ -534,7 +534,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Make sure the file is no longer present.
 	_, err = r.RenterFileRootGet(fullLargePinSiaPath)
-	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+	if err != nil && !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		t.Fatal("skyfile still present after deletion")
 	}
 
@@ -577,8 +577,10 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 
 	// Try and convert to a Skyfile, this should fail due to the original
 	// siafile being a N-of-M redundancy
-	sshp, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
-	skylink := sshp.Skylink
+	_, err = r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
+	if err == nil {
+		t.Fatal("Expected conversion from Siafile to Skyfile Post to fail.")
+	}
 	if !strings.Contains(err.Error(), renter.ErrRedundancyNotSupported.Error()) {
 		t.Fatalf("Expected Error to contain %v but got %v", renter.ErrRedundancyNotSupported, err)
 	}
@@ -600,11 +602,11 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Convert to a Skyfile
-	sshp, err = r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
-	skylink = sshp.Skylink
+	sshp, err := r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
+	skylink := sshp.Skylink
 
 	// Try to download the skylink.
 	fetchedData, _, err := r.SkynetSkylinkGet(skylink)
@@ -667,12 +669,18 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 	// add a file at root level
 	data := []byte("File1Contents")
-	subfile := siatest.AddMultipartFile(writer, data, "files[]", "file1", 0600, &offset)
+	subfile, err := modules.AddMultipartFile(writer, data, "files[]", "file1", 0600, &offset)
+	if err != nil {
+		t.Fatal(err)
+	}
 	subfiles[subfile.Filename] = subfile
 
 	// add a nested file
 	data = []byte("File2Contents")
-	subfile = siatest.AddMultipartFile(writer, data, "files[]", "nested/file2.html", 0640, &offset)
+	subfile, err = modules.AddMultipartFile(writer, data, "files[]", "nested/file2.html", 0640, &offset)
+	if err != nil {
+		t.Fatal(err)
+	}
 	subfiles[subfile.Filename] = subfile
 
 	err = writer.Close()
@@ -715,7 +723,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 	var length uint64
 	for _, file := range subfiles {
-		length += uint64(file.Len)
+		length += file.Len
 	}
 
 	expected := modules.SkyfileMetadata{Filename: uploadSiaPath.String(), Subfiles: subfiles, Length: length}
@@ -743,12 +751,18 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 
 	// add a small file at root level
 	smallData := []byte("File1Contents")
-	subfile = siatest.AddMultipartFile(writer, smallData, "files[]", "smallfile1.txt", 0600, &offset)
+	subfile, err = modules.AddMultipartFile(writer, smallData, "files[]", "smallfile1.txt", 0600, &offset)
+	if err != nil {
+		t.Fatal(err)
+	}
 	subfiles[subfile.Filename] = subfile
 
 	// add a large nested file
 	largeData := fastrand.Bytes(2 * int(modules.SectorSize))
-	subfile = siatest.AddMultipartFile(writer, largeData, "files[]", "nested/largefile2.txt", 0644, &offset)
+	subfile, err = modules.AddMultipartFile(writer, largeData, "files[]", "nested/largefile2.txt", 0644, &offset)
+	if err != nil {
+		t.Fatal(err)
+	}
 	subfiles[subfile.Filename] = subfile
 
 	err = writer.Close()
@@ -942,7 +956,10 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 		body := new(bytes.Buffer)
 		writer := multipart.NewWriter(body)
 		data = []byte("File1Contents")
-		subfile := siatest.AddMultipartFile(writer, data, "files[]", filename, 0600, nil)
+		subfile, err := modules.AddMultipartFile(writer, data, "files[]", filename, 0600, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 		err = writer.Close()
 		if err != nil {
 			t.Fatal(err)
@@ -1015,7 +1032,10 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
 
-	subfile := siatest.AddMultipartFile(writer, []byte("File1Contents"), "files[]", "testInvalidFilenameMultipart", 0600, nil)
+	subfile, err := modules.AddMultipartFile(writer, []byte("File1Contents"), "files[]", "testInvalidFilenameMultipart", 0600, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	err = writer.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -1057,9 +1077,18 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 	filePath1 := "a/5.f4f8b583.chunk.js"
 	filePath2 := "a/5.f4f.chunk.js.map"
 	filePath3 := "b/file3.txt"
-	siatest.AddMultipartFile(writer, dataFile1, "files[]", filePath1, 0600, nil)
-	siatest.AddMultipartFile(writer, dataFile2, "files[]", filePath2, 0600, nil)
-	siatest.AddMultipartFile(writer, dataFile3, "files[]", filePath3, 0640, nil)
+	_, err := modules.AddMultipartFile(writer, dataFile1, "files[]", filePath1, 0600, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = modules.AddMultipartFile(writer, dataFile2, "files[]", filePath2, 0600, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = modules.AddMultipartFile(writer, dataFile3, "files[]", filePath3, 0640, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -1345,9 +1374,18 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 	filePath1 := "a/5.f4f8b583.chunk.js"
 	filePath2 := "a/5.f4f.chunk.js.map"
 	filePath3 := "b/file3.txt"
-	siatest.AddMultipartFile(writer, dataFile1, "files[]", filePath1, 0600, nil)
-	siatest.AddMultipartFile(writer, dataFile2, "files[]", filePath2, 0600, nil)
-	siatest.AddMultipartFile(writer, dataFile3, "files[]", filePath3, 0640, nil)
+	_, err := modules.AddMultipartFile(writer, dataFile1, "files[]", filePath1, 0600, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = modules.AddMultipartFile(writer, dataFile2, "files[]", filePath2, 0600, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = modules.AddMultipartFile(writer, dataFile3, "files[]", filePath3, 0640, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
@@ -1457,7 +1495,7 @@ func testSkynetDisableForce(t *testing.T, tg *siatest.TestGroup) {
 
 	// Upload at same path without force, assert this fails
 	_, _, _, err = r.UploadNewSkyfileBlocking(t.Name(), 100, false)
-	if !strings.Contains(err.Error(), "already exists") {
+	if err != nil && !strings.Contains(err.Error(), "already exists") {
 		t.Fatal(err)
 	}
 
@@ -1670,10 +1708,10 @@ func testSkynetBlacklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 		SiaPath: siafileSiaPath,
 	}
 	convertSSHP, err := r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
-	convertSkylink := convertSSHP.Skylink
 	if err != nil {
 		t.Fatal(err)
 	}
+	convertSkylink := convertSSHP.Skylink
 
 	// Confirm there is a siafile and a skyfile
 	_, err = r.RenterFileGet(siafileSiaPath)
@@ -1832,7 +1870,7 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	add = []modules.SkynetPortal{}
 	remove = []modules.NetAddress{portal1.Address}
 	err = r.SkynetPortalsPost(add, remove)
-	if !strings.Contains(err.Error(), "address "+string(portal1.Address)+" not already present in list of portals or being added") {
+	if err != nil && !strings.Contains(err.Error(), "address "+string(portal1.Address)+" not already present in list of portals or being added") {
 		t.Fatal("portal should fail to be removed")
 	}
 
@@ -1896,7 +1934,7 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	add = []modules.SkynetPortal{portal3}
 	remove = []modules.NetAddress{}
 	err = r.SkynetPortalsPost(add, remove)
-	if !strings.Contains(err.Error(), "missing port in address") {
+	if err != nil && !strings.Contains(err.Error(), "missing port in address") {
 		t.Fatal("expected 'missing port' error")
 	}
 
@@ -2282,7 +2320,7 @@ func testRenameSiaPath(t *testing.T, tg *siatest.TestGroup) {
 	if err == nil {
 		t.Error("Rename should have failed if the root flag is false")
 	}
-	if !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+	if err != nil && !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		t.Errorf("Expected error to contain %v but got %v", filesystem.ErrNotExist, err)
 	}
 
