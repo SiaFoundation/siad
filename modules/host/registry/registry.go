@@ -86,11 +86,13 @@ func valueMapKey(key types.SiaPublicKey, tweak crypto.Hash) crypto.Hash {
 // Get fetches the data associated with a key and tweak from the registry.
 func (r *Registry) Get(pubKey types.SiaPublicKey, tweak crypto.Hash) ([]byte, bool) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	v, ok := r.entries[valueMapKey(pubKey, tweak)]
+	r.mu.Unlock()
 	if !ok {
 		return nil, false
 	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
 	return v.data, true
 }
 
@@ -166,40 +168,24 @@ func (r *Registry) Update(rv modules.RegistryValue, pubKey types.SiaPublicKey, e
 	// larger than the last one, we update it.
 	var err error
 	entry, exists := r.entries[valueMapKey(pubKey, rv.Tweak)]
-	if exists {
-		// The entry exists. Release the global lock since we don't need to
-		// update the map.
-		r.mu.Unlock()
-
-		// Acquire the entry lock.
-		entry.mu.Lock()
-
-		// Update the entry.
-		err = entry.update(rv.Revision, expiry, data)
-		if err != nil {
-			entry.mu.Unlock()
-			return false, errors.AddContext(err, "failed to update existing entry")
-		}
-	} else {
-		// If it doesn't exist or if it was invalid, we create a new entry.
+	if !exists {
+		// If it doesn't exist we create a new entry.
 		entry, err = r.newValue(rv, pubKey, expiry)
 		if err != nil {
 			r.mu.Unlock()
 			return false, errors.AddContext(err, "failed to create new value")
 		}
+	}
 
-		// Lock it to make sure its not fetched or updated before this initial
-		// update is finished by locking it before putting it in the map. We can
-		// do this here while still holding the registry lock since its
-		// guaranteed to not block at this point. This is the only time we hold
-		// both the registry as well as an entry lock at the same time.
-		entry.mu.Lock()
+	// Release the global lock before acquiring the entry lock.
+	r.mu.Unlock()
 
-		// Add it to the map.
-		r.entries[entry.mapKey()] = entry
-
-		// Unlock the registry lock now that the entry is in the map.
-		r.mu.Unlock()
+	// Update the entry.
+	entry.mu.Lock()
+	err = entry.update(rv.Revision, expiry, rv.Data, !exists)
+	if err != nil {
+		entry.mu.Unlock()
+		return false, errors.AddContext(err, "failed to update entry")
 	}
 
 	// Write the entry to disk.
@@ -231,20 +217,22 @@ func (r *Registry) managedDeleteFromMemory(v *value) {
 }
 
 // newValue creates a new value and assigns it a free bit from the bitfield. It
-// won't add the new value to the registry.
+// adds the new value to the registry as well.
 func (r *Registry) newValue(rv modules.RegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (*value, error) {
 	bit, err := r.staticUsage.SetRandom()
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to obtain free slot")
 	}
-	return &value{
+	v := &value{
 		key:         pubKey,
 		tweak:       rv.Tweak,
 		expiry:      expiry,
 		staticIndex: int64(bit) + 1,
 		data:        rv.Data,
 		revision:    rv.Revision,
-	}, nil
+	}
+	r.entries[v.mapKey()] = v
+	return v, nil
 }
 
 // Prune deletes all entries from the registry that expire at a height smaller
@@ -297,7 +285,7 @@ func (r *Registry) Prune(expiry types.BlockHeight) (uint64, error) {
 }
 
 // update updates a value with a new revision, expiry and data.
-func (v *value) update(newRevision uint64, newExpiry types.BlockHeight, newData []byte) error {
+func (v *value) update(newRevision uint64, newExpiry types.BlockHeight, newData []byte, init bool) error {
 	// Check if the entry has been invalidated. This should only ever be the
 	// case when an entry is updated at the same time as its pruned so its
 	// incredibly unlikely to happen. Usually entries would be updated long
@@ -307,7 +295,7 @@ func (v *value) update(newRevision uint64, newExpiry types.BlockHeight, newData 
 	}
 
 	// Check if the new revision number is valid.
-	if newRevision <= v.revision {
+	if newRevision <= v.revision && !init {
 		return errInvalidRevNum
 	}
 
