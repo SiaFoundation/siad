@@ -1422,7 +1422,7 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 	mdF3Expected := modules.SkyfileSubfileMetadata{
 		FileMode:    os.FileMode(0640),
 		Filename:    "b/file3.txt",
-		ContentType: "application/octet-stream",
+		ContentType: "text/plain; charset=utf-8",
 		Offset:      0,
 		Len:         uint64(len(dataFile3)),
 	}

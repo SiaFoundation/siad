@@ -3,9 +3,13 @@ package siatest
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"mime"
 	"mime/multipart"
+	"net/http"
 	"net/textproto"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -27,7 +31,11 @@ type TestFile struct {
 // part's ContentType header will be set accordingly.
 func AddMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename string, filemode uint64, offset *uint64) modules.SkyfileSubfileMetadata {
 	filemodeStr := fmt.Sprintf("%o", filemode)
-	partHeader := createFormFileHeaders(filekey, filename, filemodeStr)
+	contentType, err := fileContentType(filename, bytes.NewReader(filedata))
+	if err != nil {
+		panic(err)
+	}
+	partHeader := createFormFileHeaders(filekey, filename, filemodeStr, contentType)
 	part, err := w.CreatePart(partHeader)
 	if err != nil {
 		panic(err)
@@ -40,7 +48,7 @@ func AddMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename st
 
 	metadata := modules.SkyfileSubfileMetadata{
 		Filename:    filename,
-		ContentType: "application/octet-stream",
+		ContentType: contentType,
 		FileMode:    os.FileMode(filemode),
 		Len:         uint64(len(filedata)),
 	}
@@ -206,13 +214,30 @@ func escapeQuotes(s string) string {
 
 // createFormFileHeaders builds a header from the given params. These headers
 // are used when creating the parts in a multi-part form upload.
-func createFormFileHeaders(fieldname, filename, filemode string) textproto.MIMEHeader {
+func createFormFileHeaders(fieldname, filename, filemode, contentType string) textproto.MIMEHeader {
 	fieldname = escapeQuotes(fieldname)
 	filename = escapeQuotes(filename)
 
 	h := make(textproto.MIMEHeader)
-	h.Set("Content-Type", "application/octet-stream")
+	h.Set("Content-Type", contentType)
 	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldname, filename))
 	h.Set("mode", filemode)
 	return h
+}
+
+// fileContentType extracts the content type from a given file.
+func fileContentType(filename string, file io.Reader) (string, error) {
+	contentType := mime.TypeByExtension(filepath.Ext(filename))
+	if contentType != "" {
+		return contentType, nil
+	}
+	// Only the first 512 bytes are used to sniff the content type.
+	buffer := make([]byte, 512)
+	_, err := file.Read(buffer)
+	if err != nil {
+		return "", err
+	}
+	// Always returns a valid content-type by returning
+	// "application/octet-stream" if no others seemed to match.
+	return http.DetectContentType(buffer), nil
 }
