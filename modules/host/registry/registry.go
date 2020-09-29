@@ -73,15 +73,38 @@ type (
 	}
 )
 
+// valueMapKey creates a key usable in in-memory maps from a value's key and
+// tweak.
+func valueMapKey(key types.SiaPublicKey, tweak crypto.Hash) crypto.Hash {
+	return crypto.HashAll(key, tweak)
+}
+
 // mapKey creates a key usable in in-memory maps from the value.
 func (v *value) mapKey() crypto.Hash {
 	return valueMapKey(v.key, v.tweak)
 }
 
-// valueMapKey creates a key usable in in-memory maps from a value's key and
-// tweak.
-func valueMapKey(key types.SiaPublicKey, tweak crypto.Hash) crypto.Hash {
-	return crypto.HashAll(key, tweak)
+// update updates a value with a new revision, expiry and data.
+func (v *value) update(newRevision uint64, newExpiry types.BlockHeight, newData []byte, init bool) error {
+	// Check if the entry has been invalidated. This should only ever be the
+	// case when an entry is updated at the same time as its pruned so its
+	// incredibly unlikely to happen. Usually entries would be updated long
+	// before their expiry.
+	if v.invalid {
+		return errInvalidEntry
+	}
+
+	// Check if the new revision number is valid.
+	if newRevision <= v.revision && !init {
+		s := fmt.Sprintf("%v <= %v", newRevision, v.revision)
+		return errors.AddContext(errInvalidRevNum, s)
+	}
+
+	// Update the entry.
+	v.expiry = newExpiry
+	v.data = newData
+	v.revision = newRevision
+	return nil
 }
 
 // Get fetches the data associated with a key and tweak from the registry.
@@ -283,27 +306,4 @@ func (r *Registry) Prune(expiry types.BlockHeight) (uint64, error) {
 		pruned++
 	}
 	return pruned, errs
-}
-
-// update updates a value with a new revision, expiry and data.
-func (v *value) update(newRevision uint64, newExpiry types.BlockHeight, newData []byte, init bool) error {
-	// Check if the entry has been invalidated. This should only ever be the
-	// case when an entry is updated at the same time as its pruned so its
-	// incredibly unlikely to happen. Usually entries would be updated long
-	// before their expiry.
-	if v.invalid {
-		return errInvalidEntry
-	}
-
-	// Check if the new revision number is valid.
-	if newRevision <= v.revision && !init {
-		s := fmt.Sprintf("%v <= %v", newRevision, v.revision)
-		return errors.AddContext(errInvalidRevNum, s)
-	}
-
-	// Update the entry.
-	v.expiry = newExpiry
-	v.data = newData
-	v.revision = newRevision
-	return nil
 }
