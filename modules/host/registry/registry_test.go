@@ -87,7 +87,7 @@ func TestDeleteEntry(t *testing.T) {
 	}
 
 	// Delete the value.
-	r.managedDeleteEntry(vExists)
+	r.managedDeleteFromMemory(vExists)
 
 	// Map should be empty now.
 	if len(r.entries) != 0 {

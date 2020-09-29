@@ -83,6 +83,17 @@ func valueMapKey(key types.SiaPublicKey, tweak crypto.Hash) crypto.Hash {
 	return crypto.HashAll(key, tweak)
 }
 
+// Get fetches the data associated with a key and tweak from the registry.
+func (r *Registry) Get(pubKey types.SiaPublicKey, tweak crypto.Hash) ([]byte, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	v, ok := r.entries[valueMapKey(pubKey, tweak)]
+	if !ok {
+		return nil, false
+	}
+	return v.data, true
+}
+
 // New creates a new registry or opens an existing one.
 func New(path string, wal *writeaheadlog.WAL, maxEntries uint64) (_ *Registry, err error) {
 	f, err := os.OpenFile(path, os.O_RDWR, modules.DefaultFilePerm)
@@ -153,6 +164,7 @@ func (r *Registry) Update(rv modules.RegistryValue, pubKey types.SiaPublicKey, e
 
 	// Check if the entry exists already. If it does and the new revision is
 	// larger than the last one, we update it.
+	var err error
 	entry, exists := r.entries[valueMapKey(pubKey, rv.Tweak)]
 	if exists {
 		// The entry exists. Release the global lock since we don't need to
@@ -162,40 +174,18 @@ func (r *Registry) Update(rv modules.RegistryValue, pubKey types.SiaPublicKey, e
 		// Acquire the entry lock.
 		entry.mu.Lock()
 
-		// Check if the entry has been invalidated. This should only ever be the
-		// case when an entry is updated at the same time as its pruned so its
-		// incredibly unlikely to happen. Usually entries would be updated long
-		// before their expiry.
-		if entry.invalid {
-			entry.mu.Unlock()
-			return false, errInvalidEntry
-		}
-
-		// Check if the new revision number is valid.
-		if rv.Revision <= entry.revision {
-			entry.mu.Unlock()
-			return false, errInvalidRevNum
-		}
-
 		// Update the entry.
-		entry.expiry = expiry
-		entry.data = data
-		entry.revision = rv.Revision
+		err = entry.update(rv.Revision, expiry, data)
+		if err != nil {
+			entry.mu.Unlock()
+			return false, errors.AddContext(err, "failed to update existing entry")
+		}
 	} else {
 		// If it doesn't exist or if it was invalid, we create a new entry.
-		// Search for the first available slot on disk.
-		bit, err := r.staticUsage.SetRandom()
+		entry, err = r.newValue(rv, pubKey, expiry)
 		if err != nil {
 			r.mu.Unlock()
-			return false, errors.AddContext(err, "failed to obtain free slot")
-		}
-		entry = &value{
-			key:         pubKey,
-			tweak:       rv.Tweak,
-			expiry:      expiry,
-			staticIndex: int64(bit) + 1,
-			data:        data,
-			revision:    rv.Revision,
+			return false, errors.AddContext(err, "failed to create new value")
 		}
 
 		// Lock it to make sure its not fetched or updated before this initial
@@ -213,14 +203,14 @@ func (r *Registry) Update(rv modules.RegistryValue, pubKey types.SiaPublicKey, e
 	}
 
 	// Write the entry to disk.
-	err := r.managedSaveEntry(entry, true)
+	err = r.managedSaveEntry(entry, true)
 	if err != nil {
 		// If an error occurs during saving and the error was just created, we
 		// invalidate it, delete it from the registry and free its index.
 		entry.invalid = !exists
 		entry.mu.Unlock()
 		if !exists {
-			r.managedDeleteEntry(entry)
+			r.managedDeleteFromMemory(entry)
 		}
 		return exists, errors.New("failed to save new entry to disk")
 	}
@@ -228,16 +218,33 @@ func (r *Registry) Update(rv modules.RegistryValue, pubKey types.SiaPublicKey, e
 	return exists, nil
 }
 
-// managedDeleteEntry deletes an entry from the registry by freeing its index in
-// the bitfield and removing it from the map. This does not invalidate the entry
-// itself or delete it from disk.
-func (r *Registry) managedDeleteEntry(v *value) {
+// managedDeleteFromMemory deletes an entry from the registry by freeing its
+// index in the bitfield and removing it from the map. This does not invalidate
+// the entry itself or delete it from disk.
+func (r *Registry) managedDeleteFromMemory(v *value) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	// Unset the index.
 	r.staticUsage.Unset(uint64(v.staticIndex) - 1)
 	// Delete the entry from the map.
 	delete(r.entries, v.mapKey())
+}
+
+// newValue creates a new value and assigns it a free bit from the bitfield. It
+// won't add the new value to the registry.
+func (r *Registry) newValue(rv modules.RegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (*value, error) {
+	bit, err := r.staticUsage.SetRandom()
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to obtain free slot")
+	}
+	return &value{
+		key:         pubKey,
+		tweak:       rv.Tweak,
+		expiry:      expiry,
+		staticIndex: int64(bit) + 1,
+		data:        rv.Data,
+		revision:    rv.Revision,
+	}, nil
 }
 
 // Prune deletes all entries from the registry that expire at a height smaller
@@ -283,8 +290,30 @@ func (r *Registry) Prune(expiry types.BlockHeight) (uint64, error) {
 		entry.invalid = true
 		entry.mu.Unlock()
 		// Delete the entry from the registry.
-		r.managedDeleteEntry(entry)
+		r.managedDeleteFromMemory(entry)
 		pruned++
 	}
 	return pruned, errs
+}
+
+// update updates a value with a new revision, expiry and data.
+func (v *value) update(newRevision uint64, newExpiry types.BlockHeight, newData []byte) error {
+	// Check if the entry has been invalidated. This should only ever be the
+	// case when an entry is updated at the same time as its pruned so its
+	// incredibly unlikely to happen. Usually entries would be updated long
+	// before their expiry.
+	if v.invalid {
+		return errInvalidEntry
+	}
+
+	// Check if the new revision number is valid.
+	if newRevision <= v.revision {
+		return errInvalidRevNum
+	}
+
+	// Update the entry.
+	v.expiry = newExpiry
+	v.data = newData
+	v.revision = newRevision
+	return nil
 }
