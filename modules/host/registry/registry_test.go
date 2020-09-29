@@ -785,6 +785,11 @@ func TestRegistryRace(t *testing.T) {
 
 // BenchmarkRegistryUpdate is a benchmark for the Update method. It updates
 // NumCPU entries from NumCPU goroutines in parallel.
+//
+// CPU | DiskType | #CPUs | #Updates/s | Commit
+//
+// i9  | SSD      | 16    | 196        | 1a862b7bace95e968f04f0a2151e5a572c948f22
+//
 func BenchmarkRegistryUpdate(b *testing.B) {
 	b.StopTimer()
 	dir := testDir(b.Name())
@@ -801,9 +806,6 @@ func BenchmarkRegistryUpdate(b *testing.B) {
 	// application. That means each entry will be updated by a single thread
 	// sequentially and have multiple threads read from it in parallel.
 	nEntries := runtime.NumCPU()
-
-	// Log some info about benchmark.
-	b.Logf("Running benchmark with %v entries", nEntries)
 
 	// Add entries.
 	rvs := make([]modules.RegistryValue, 0, nEntries)
