@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -656,6 +657,8 @@ func TestRegistryRace(t *testing.T) {
 
 	for i := 0; i < numEntries; i++ {
 		rv, v, sk := randomValue(0)
+		rv.Revision = 0 // set revision number to 0
+		rv.Sign(sk)
 		_, err = r.Update(rv, v.key, 0)
 		if err != nil {
 			t.Fatal(err)
@@ -778,4 +781,79 @@ func TestRegistryRace(t *testing.T) {
 			t.Fatal("wrong expiry")
 		}
 	}
+}
+
+// BenchmarkRegistryUpdate is a benchmark for the Update method. It updates
+// NumCPU entries from NumCPU goroutines in parallel.
+func BenchmarkRegistryUpdate(b *testing.B) {
+	b.StopTimer()
+	dir := testDir(b.Name())
+	wal := newTestWAL(filepath.Join(dir, "wal"))
+
+	// Create a new registry.
+	registryPath := filepath.Join(dir, "registry")
+	r, err := New(registryPath, wal, 64)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	// Declare a number of entries to run. We try to mimic real world
+	// application. That means each entry will be updated by a single thread
+	// sequentially and have multiple threads read from it in parallel.
+	nEntries := runtime.NumCPU()
+
+	// Log some info about benchmark.
+	b.Logf("Running benchmark with %v entries", nEntries)
+
+	// Add entries.
+	rvs := make([]modules.RegistryValue, 0, nEntries)
+	keys := make([]types.SiaPublicKey, 0, nEntries)
+	skeys := make([]crypto.SecretKey, 0, nEntries)
+	for i := 0; i < nEntries; i++ {
+		rv, v, sk := randomValue(0)
+		rv.Revision = 0 // set revision number to 0
+		rvs = append(rvs, rv)
+		keys = append(keys, v.key)
+		skeys = append(skeys, sk)
+	}
+
+	// Declare writing thread.
+	start := make(chan struct{})
+	var iters uint64
+	writer := func(i int) {
+		// Grab vars.
+		rv := rvs[i]
+		key := keys[i]
+		sk := skeys[i]
+		var revision uint64
+		var expiry types.BlockHeight
+
+		// Wait for start signal.
+		<-start
+		for i := atomic.AddUint64(&iters, 1); i < uint64(b.N); i = atomic.AddUint64(&iters, 1) {
+			// Update
+			rv.Revision = revision
+			rv.Sign(sk)
+			_, err := r.Update(rv, key, expiry)
+			if err != nil {
+				b.Error(err)
+				return
+			}
+			revision++
+		}
+	}
+
+	// Spawn workers. Assign them the different entries.
+	var wg sync.WaitGroup
+	for i := 0; i < nEntries; i++ {
+		wg.Add(1)
+		go func(i int) {
+			writer(i)
+			wg.Done()
+		}(i % nEntries)
+	}
+	b.ResetTimer()
+	b.StartTimer()
+	close(start)
+	wg.Wait()
 }

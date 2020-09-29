@@ -2,6 +2,7 @@ package registry
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"os"
 	"sort"
@@ -296,7 +297,8 @@ func (v *value) update(newRevision uint64, newExpiry types.BlockHeight, newData 
 
 	// Check if the new revision number is valid.
 	if newRevision <= v.revision && !init {
-		return errInvalidRevNum
+		s := fmt.Sprintf("%v <= %v", newRevision, v.revision)
+		return errors.AddContext(errInvalidRevNum, s)
 	}
 
 	// Update the entry.
