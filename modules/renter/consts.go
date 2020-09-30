@@ -26,7 +26,7 @@ const (
 // AlertCauseSiafileLowRedundancy creates a customized "cause" for a siafile
 // with a certain path and health.
 func AlertCauseSiafileLowRedundancy(siaPath modules.SiaPath, health, redundancy float64) string {
-	return fmt.Sprintf("Siafile '%v' has a health of %v and redundadncy of %v", siaPath.String(), health, redundancy)
+	return fmt.Sprintf("Siafile '%v' has a health of %v and redundancy of %v", siaPath.String(), health, redundancy)
 }
 
 // Default redundancy parameters.

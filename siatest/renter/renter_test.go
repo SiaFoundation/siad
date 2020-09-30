@@ -958,7 +958,7 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 		}
 		var found bool
 		for _, alert := range dag.Alerts {
-			expectedCause := fmt.Sprintf("Siafile 'home/user/%v' has a health of %v and redundadncy of %v", remoteFile.SiaPath().String(), f.MaxHealth, f.Redundancy)
+			expectedCause := fmt.Sprintf("Siafile 'home/user/%v' has a health of %v and redundancy of %v", remoteFile.SiaPath().String(), f.MaxHealth, f.Redundancy)
 			if alert.Msg == renter.AlertMSGSiafileLowRedundancy &&
 				alert.Cause == expectedCause {
 				found = true
