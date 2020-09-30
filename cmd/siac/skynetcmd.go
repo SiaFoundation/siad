@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,12 +15,15 @@ import (
 	"sync"
 	"text/tabwriter"
 
+	"gitlab.com/NebulousLabs/Sia/siatest"
+
 	"github.com/vbauerster/mpb/v5"
 
 	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v5/decor"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
@@ -124,11 +129,14 @@ files and directories will continue to be available on Skynet if other nodes hav
 	skynetUploadCmd = &cobra.Command{
 		Use:   "upload [source path] [destination siapath]",
 		Short: "Upload a file or a directory to Skynet.",
-		Long: `Upload a file or a directory to Skynet. A skylink will be produced which can be
-shared and used to retrieve the file. If the given path is a directory all files under that directory will
-be uploaded individually and an individual skylink will be produced for each. All files that get uploaded
-will be pinned to this Sia node, meaning that this node will pay for storage and repairs until the files
-are manually deleted. Use the --dry-run flag to fetch the skylink without actually uploading the file.`,
+		Long: `Upload a file or a directory to Skynet. A skylink will be 
+produced which can be shared and used to retrieve the file. If the given path is
+a directory it will be uploaded as a single skylink unless the --separately flag
+is passed, in which case all files under that directory will be uploaded 
+individually and an individual skylink will be produced for each. All files that
+get uploaded will be pinned to this Sia node, meaning that this node will pay
+for storage and repairs until the files are manually deleted. Use the --dry-run 
+flag to fetch the skylink without actually uploading the file.`,
 		Run: skynetuploadcmd,
 	}
 )
@@ -136,7 +144,7 @@ are manually deleted. Use the --dry-run flag to fetch the skylink without actual
 // skynetcmd displays the usage info for the command.
 //
 // TODO: Could put some stats or summaries or something here.
-func skynetcmd(cmd *cobra.Command, args []string) {
+func skynetcmd(cmd *cobra.Command, _ []string) {
 	_ = cmd.UsageFunc()(cmd)
 	os.Exit(exitCodeUsage)
 }
@@ -178,7 +186,7 @@ func skynetBlocklistTrimLinks(links []string) []string {
 
 // skynetblocklistgetcmd will return the list of hashed merkleroots that are blocked
 // from Skynet.
-func skynetblocklistgetcmd(cmd *cobra.Command, args []string) {
+func skynetblocklistgetcmd(_ *cobra.Command, _ []string) {
 	response, err := httpClient.SkynetBlocklistGet()
 	if err != nil {
 		die("Unable to get skynet blocklist:", err)
@@ -589,58 +597,11 @@ func skynetuploadcmd(_ *cobra.Command, args []string) {
 		return
 	}
 
-	// Walk the target directory and collect all files that are going to be
-	// uploaded.
-	filesToUpload := make([]string, 0)
-	err = filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			fmt.Println("Warning: skipping file:", err)
-			return nil
-		}
-		if !info.IsDir() {
-			filesToUpload = append(filesToUpload, path)
-		}
-		return nil
-	})
-	if err != nil {
-		die(err)
+	if skynetUploadSeparately {
+		skynetUploadFilesSeparately(sourcePath, destSiaPath, pbs)
+		return
 	}
-	// Confirm with the user that they want to upload all of them.
-	if skynetUploadDryRun {
-		fmt.Print("[dry run] ")
-	}
-	ok := askForConfirmation(fmt.Sprintf("Are you sure that you want to upload %d files to Skynet?", len(filesToUpload)))
-	if !ok {
-		os.Exit(0)
-	}
-
-	// Start the workers.
-	filesChan := make(chan string)
-	var wg sync.WaitGroup
-	for i := 0; i < SimultaneousSkynetUploads; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for filename := range filesChan {
-				// get only the filename and path, relative to the original destSiaPath
-				// in order to figure out where to put the file
-				newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(filename, sourcePath))
-				skynetUploadFile(sourcePath, filename, newDestSiaPath, pbs)
-			}
-		}()
-	}
-	// Send all files for upload.
-	for _, path := range filesToUpload {
-		filesChan <- path
-	}
-	// Signal the workers that there is no more work.
-	close(filesChan)
-	wg.Wait()
-	pbs.Wait()
-	if skynetUploadDryRun {
-		fmt.Print("[dry run] ")
-	}
-	fmt.Printf("Successfully uploaded %d skyfiles!\n", len(filesToUpload))
+	skynetUploadDirectory(sourcePath, destSiaPath)
 }
 
 // skynetuploadpipecmd will upload a file or directory to Skynet. If --dry-run is
@@ -729,7 +690,7 @@ func skynetportalsremovecmd(portalUrl string) {
 }
 
 // skynetUploadFile uploads a file to Skynet
-func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.Progress) (skylink string) {
+func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.Progress) {
 	// Create the siapath.
 	siaPath, err := modules.NewSiaPath(destSiaPath)
 	if err != nil {
@@ -751,7 +712,7 @@ func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.
 	if skynetUploadSilent {
 		// Silently upload the file and print a simple source -> skylink
 		// matching after it's done.
-		skylink = skynetUploadFileFromReader(file, filename, siaPath, fi.Mode())
+		skylink := skynetUploadFileFromReader(file, filename, siaPath, fi.Mode())
 		fmt.Printf("%s -> %s\n", sourcePath, skylink)
 		return
 	}
@@ -773,10 +734,138 @@ func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.
 	// Set a spinner to start after the upload is finished
 	pSpinner := newProgressSpinner(pbs, pUpload, relPath)
 	// Perform the upload
-	skylink = skynetUploadFileFromReader(rc, filename, siaPath, fi.Mode())
+	skylink := skynetUploadFileFromReader(rc, filename, siaPath, fi.Mode())
 	// Replace the spinner with the skylink and stop it
 	newProgressSkylink(pbs, pSpinner, relPath, skylink)
 	return
+}
+
+// skynetUploadFilesSeparately uploads a number of files to Skynet, printing out
+// separate skylink for each
+func skynetUploadFilesSeparately(sourcePath, destSiaPath string, pbs *mpb.Progress) {
+	// Walk the target directory and collect all files that are going to be
+	// uploaded.
+	filesToUpload := make([]string, 0)
+	err := filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			fmt.Println("Warning: skipping file:", err)
+			return nil
+		}
+		if !info.IsDir() {
+			filesToUpload = append(filesToUpload, path)
+		}
+		return nil
+	})
+	if err != nil {
+		die(err)
+	}
+
+	// Confirm with the user that they want to upload all of them.
+	if skynetUploadDryRun {
+		fmt.Print("[dry run] ")
+	}
+	ok := askForConfirmation(fmt.Sprintf("Are you sure that you want to upload %d files to Skynet?", len(filesToUpload)))
+	if !ok {
+		os.Exit(0)
+	}
+
+	// Start the workers.
+	filesChan := make(chan string)
+	var wg sync.WaitGroup
+	for i := 0; i < SimultaneousSkynetUploads; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for filename := range filesChan {
+				// get only the filename and path, relative to the original destSiaPath
+				// in order to figure out where to put the file
+				newDestSiaPath := filepath.Join(destSiaPath, strings.TrimPrefix(filename, sourcePath))
+				skynetUploadFile(sourcePath, filename, newDestSiaPath, pbs)
+			}
+		}()
+	}
+	// Send all files for upload.
+	for _, path := range filesToUpload {
+		filesChan <- path
+	}
+	// Signal the workers that there is no more work.
+	close(filesChan)
+	wg.Wait()
+	pbs.Wait()
+	if skynetUploadDryRun {
+		fmt.Print("[dry run] ")
+	}
+	fmt.Printf("Successfully uploaded %d skyfiles!\n", len(filesToUpload))
+}
+
+// skynetUploadDirectory uploads a directory as a single skyfile
+func skynetUploadDirectory(sourcePath, destSiaPath string) {
+	skyfilePath, err := modules.NewSiaPath(destSiaPath)
+	if err != nil {
+		fmt.Println("Failed to create siapath", destSiaPath)
+		die(err)
+	}
+	if skynetUploadDisableDefaultPath && skynetUploadDefaultPath != "" {
+		fmt.Println("Illegal combination of parameters: --defaultpath and --disabledefaultpath are mutually exclusive.")
+		die()
+	}
+	pr, pw := io.Pipe()
+	defer pr.Close()
+	writer := multipart.NewWriter(pw)
+	go func() {
+		defer pw.Close()
+		// Walk the target directory and collect all files that are going to be
+		// uploaded.
+		var offset uint64
+		err = filepath.Walk(sourcePath, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				fmt.Printf("Failed to read file %s.\n", path)
+				die(err)
+			}
+			if info.IsDir() {
+				return nil
+			}
+			data, err := ioutil.ReadFile(path)
+			if err != nil {
+				fmt.Printf("Failed to read file %s.\n", path)
+				die(err)
+			}
+			// siatest.AddMultipartFile will panic on error. We want to avoid
+			// the raw panic and exit cleanly with an error message and os.Exit.
+			defer func() {
+				if e := recover(); e != nil {
+					fmt.Printf("Failed to read file %s.\n", path)
+					die(e)
+				}
+			}()
+			_ = siatest.AddMultipartFile(writer, data, "files[]", info.Name(), modules.DefaultFilePerm, &offset)
+			return nil
+		})
+		if err != nil {
+			die(err)
+		}
+		if err = writer.Close(); err != nil {
+			return
+		}
+	}()
+
+	sup := modules.SkyfileMultipartUploadParameters{
+		SiaPath:             skyfilePath,
+		Force:               false,
+		Root:                false,
+		BaseChunkRedundancy: renter.SkyfileDefaultBaseChunkRedundancy,
+		Reader:              pr,
+		Filename:            skyfilePath.Name(),
+		DefaultPath:         skynetUploadDefaultPath,
+		DisableDefaultPath:  skynetUploadDisableDefaultPath,
+		ContentType:         writer.FormDataContentType(),
+	}
+	skylink, _, err := httpClient.SkynetSkyfileMultiPartPost(sup)
+	if err != nil {
+		fmt.Println("Failed to upload directory.")
+		die(err)
+	}
+	fmt.Println("Successfully uploaded directory:", skylink)
 }
 
 // parseAndAddSkykey is a helper that parses any supplied skykey and adds it to

@@ -150,7 +150,7 @@ func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield) (map[crypto.
 		if err != nil {
 			return nil, errors.AddContext(err, fmt.Sprintf("failed to get key-value pair from entry %v of %v", index, numEntries))
 		}
-		entries[v.mapKey()] = &v
+		entries[v.mapKey()] = v
 		// Track it in the bitfield.
 		err = b.Set(uint64(index) - 1)
 		if err != nil {
@@ -161,7 +161,7 @@ func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield) (map[crypto.
 }
 
 // newPersistedEntry turns a value type into a persistedEntry.
-func newPersistedEntry(value value) (persistedEntry, error) {
+func newPersistedEntry(value *value) (persistedEntry, error) {
 	if len(value.data) > modules.RegistryDataSize {
 		build.Critical("newPersistedEntry: called with too much data")
 		return persistedEntry{}, errors.New("value's data is too large")
@@ -183,17 +183,17 @@ func newPersistedEntry(value value) (persistedEntry, error) {
 }
 
 // Value converts a persistedEntry into a value type.
-func (entry persistedEntry) Value(index int64) (value, error) {
+func (entry persistedEntry) Value(index int64) (*value, error) {
 	if entry.DataLen > modules.RegistryDataSize {
 		err := errors.New("Value: entry has a too big data len")
 		build.Critical(err)
-		return value{}, err
+		return nil, err
 	}
 	spk, err := newSiaPublicKey(entry.Key)
 	if err != nil {
-		return value{}, errors.AddContext(err, "Value: failed to convert compressed key to SiaPublicKey")
+		return nil, errors.AddContext(err, "Value: failed to convert compressed key to SiaPublicKey")
 	}
-	return value{
+	return &value{
 		key:         spk,
 		tweak:       entry.Tweak,
 		expiry:      types.BlockHeight(entry.Expiry),
@@ -241,9 +241,10 @@ func (entry *persistedEntry) Unmarshal(b []byte) error {
 	return nil
 }
 
-// saveEntry stores a value on disk in an ACID fashion. If used is set, the
+// managedSaveEntry stores a value on disk in an ACID fashion. If used is set, the
 // entry will be marked as in use. Otherwise a sentinel value will be persisted.
-func (r *Registry) saveEntry(v value, used bool) error {
+// NOTE: v.mu is expected to be acquired.
+func (r *Registry) managedSaveEntry(v *value, used bool) error {
 	var entry persistedEntry
 	var err error
 	if used {
