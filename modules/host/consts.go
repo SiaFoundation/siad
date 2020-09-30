@@ -105,9 +105,9 @@ var (
 	// registryDefaultMaxEntries is the limit for entries the registry can
 	// store.
 	registryDefaultMaxEntries = build.Select(build.Var{
-		Dev:      64 * 100, // ~1.63 mib
-		Standard: 1 << 24,  // 2^24 * 256 bytes == 4 GiB
-		Testing:  64 * 10,  // ~163 kib
+		Dev:      uint64(64 * 100), // ~1.63 mib
+		Standard: uint64(1 << 24),  // 2^24 * 256 bytes == 4 GiB
+		Testing:  uint64(64 * 10),  // ~163 kib
 	}).(uint64)
 
 	// revisionSubmissionBuffer describes the number of blocks ahead of time
