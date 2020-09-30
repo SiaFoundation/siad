@@ -35,8 +35,8 @@ on top of Sia.`,
 
 	skynetBlocklistCmd = &cobra.Command{
 		Use:   "blocklist",
-		Short: "Add, remove, or list skylinks from the blocklisted.",
-		Long:  "Add, remove, or list skylinks from the blocklisted.",
+		Short: "Add, remove, or list skylinks from the blocklist.",
+		Long:  "Add, remove, or list skylinks from the blocklist.",
 		Run:   skynetblocklistgetcmd,
 	}
 
@@ -143,18 +143,18 @@ func skynetcmd(cmd *cobra.Command, args []string) {
 
 // skynetblocklistaddcmd adds skylinks to the blocklist
 func skynetblocklistaddcmd(cmd *cobra.Command, args []string) {
-	skynetblocklistUpdate(args, nil)
+	skynetBlocklistUpdate(args, nil)
 }
 
 // skynetblocklistremovecmd removes skylinks from the blocklist
 func skynetblocklistremovecmd(cmd *cobra.Command, args []string) {
-	skynetblocklistUpdate(nil, args)
+	skynetBlocklistUpdate(nil, args)
 }
 
-// skynetblocklistUpdate adds/removes trimmed skylinks to the blocklist
-func skynetblocklistUpdate(additions, removals []string) {
-	additions = skynetblocklistTrimLinks(additions)
-	removals = skynetblocklistTrimLinks(removals)
+// skynetBlocklistUpdate adds/removes trimmed skylinks to the blocklist
+func skynetBlocklistUpdate(additions, removals []string) {
+	additions = skynetBlocklistTrimLinks(additions)
+	removals = skynetBlocklistTrimLinks(removals)
 
 	err := httpClient.SkynetBlocklistHashPost(additions, removals, skynetBlocklistHash)
 	if err != nil {
@@ -164,8 +164,8 @@ func skynetblocklistUpdate(additions, removals []string) {
 	fmt.Println("Skynet Blocklist updated")
 }
 
-// skynetblocklistTrimLinks will trim away `sia://` from skylinks
-func skynetblocklistTrimLinks(links []string) []string {
+// skynetBlocklistTrimLinks will trim away `sia://` from skylinks
+func skynetBlocklistTrimLinks(links []string) []string {
 	var result []string
 
 	for _, link := range links {
@@ -184,7 +184,7 @@ func skynetblocklistgetcmd(cmd *cobra.Command, args []string) {
 		die("Unable to get skynet blocklist:", err)
 	}
 
-	fmt.Printf("Listing %d blocklisted skylink(s) merkleroots:\n", len(response.Blocklist))
+	fmt.Printf("Listing %d blocked skylink(s) merkleroots:\n", len(response.Blocklist))
 	for _, hash := range response.Blocklist {
 		fmt.Printf("\t%s\n", hash)
 	}

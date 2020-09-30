@@ -130,7 +130,7 @@ type (
 	archiveFunc func(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error
 )
 
-// skynetBlocklistHandlerGET handles the API call to get the list of blocklisted
+// skynetBlocklistHandlerGET handles the API call to get the list of blocked
 // skylinks.
 func (api *API) skynetBlocklistHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	// Get the Blocklist

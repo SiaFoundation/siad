@@ -19,6 +19,6 @@ updates.
 
 **Exports**
  - `Blocklist` returns the list of hashes of the blocked merkle roots
- - `IsBlocklisted` returns whether or not a skylink merkleroot is blocked
+ - `IsBlocked` returns whether or not a skylink merkleroot is blocked
  - `New` creates and returns a new Skynet Blocklist
  - `UpdateBlocklist` updates the blocklist

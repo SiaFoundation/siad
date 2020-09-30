@@ -89,8 +89,8 @@ func (sb *SkynetBlocklist) Close() error {
 	return sb.staticAop.Close()
 }
 
-// IsBlocklisted indicates if a skylink is currently blocked
-func (sb *SkynetBlocklist) IsBlocklisted(skylink modules.Skylink) bool {
+// IsBlocked indicates if a skylink is currently blocked
+func (sb *SkynetBlocklist) IsBlocked(skylink modules.Skylink) bool {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
 	hash := crypto.HashObject(skylink.MerkleRoot())

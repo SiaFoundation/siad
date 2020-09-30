@@ -89,7 +89,7 @@ func TestPersist(t *testing.T) {
 	if len(sb.hashes) != 1 {
 		t.Fatal("Expected 1 element in the blocklist but found:", len(sb.hashes))
 	}
-	if !sb.IsBlocklisted(skylink) {
+	if !sb.IsBlocked(skylink) {
 		t.Fatal("Expected skylink to be listed in blocklist")
 	}
 
@@ -110,7 +110,7 @@ func TestPersist(t *testing.T) {
 	if len(sb2.hashes) != 1 {
 		t.Fatal("Expected 1 element in the blocklist but found:", len(sb2.hashes))
 	}
-	if !sb.IsBlocklisted(skylink) {
+	if !sb.IsBlocked(skylink) {
 		t.Fatal("Expected skylink to be listed in blocklist")
 	}
 
@@ -124,7 +124,7 @@ func TestPersist(t *testing.T) {
 	if len(sb2.hashes) != 1 {
 		t.Fatal("Expected 1 element in the blocklist but found:", len(sb2.hashes))
 	}
-	if !sb2.IsBlocklisted(skylink) {
+	if !sb2.IsBlocked(skylink) {
 		t.Fatal("Expected skylink to be listed in blocklist")
 	}
 
@@ -145,7 +145,7 @@ func TestPersist(t *testing.T) {
 	if len(sb3.hashes) != 1 {
 		t.Fatal("Expected 1 element in the blocklist but found:", len(sb3.hashes))
 	}
-	if !sb3.IsBlocklisted(skylink) {
+	if !sb3.IsBlocked(skylink) {
 		t.Fatal("Expected skylink to be listed in blocklist")
 	}
 }
@@ -237,7 +237,7 @@ func TestPersistCorruption(t *testing.T) {
 	if len(sb.hashes) != 1 {
 		t.Fatal("Expected 1 element in the blocklist but found:", len(sb.hashes))
 	}
-	if !sb.IsBlocklisted(skylink) {
+	if !sb.IsBlocked(skylink) {
 		t.Fatal("Expected skylink to be listed in blocklist")
 	}
 
@@ -252,7 +252,7 @@ func TestPersistCorruption(t *testing.T) {
 	if len(sb2.hashes) != 1 {
 		t.Fatal("Expected 1 element in the blocklist but found:", len(sb2.hashes))
 	}
-	if !sb2.IsBlocklisted(skylink) {
+	if !sb2.IsBlocked(skylink) {
 		t.Fatal("Expected skylink to be listed in blocklist")
 	}
 
@@ -266,7 +266,7 @@ func TestPersistCorruption(t *testing.T) {
 	if len(sb2.hashes) != 1 {
 		t.Fatal("Expected 1 element in the blocklist but found:", len(sb2.hashes))
 	}
-	if !sb2.IsBlocklisted(skylink) {
+	if !sb2.IsBlocked(skylink) {
 		t.Fatal("Expected skylink to be listed in blocklist")
 	}
 
@@ -281,7 +281,7 @@ func TestPersistCorruption(t *testing.T) {
 	if len(sb3.hashes) != 1 {
 		t.Fatal("Expected 1 element in the blocklist but found:", len(sb3.hashes))
 	}
-	if !sb3.IsBlocklisted(skylink) {
+	if !sb3.IsBlocked(skylink) {
 		t.Fatal("Expected skylink to be listed in blocklist")
 	}
 

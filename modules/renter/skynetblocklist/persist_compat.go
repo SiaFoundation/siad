@@ -26,6 +26,8 @@ var (
 	// NOTE: There is a MetadataVersionV150 in the persist package
 )
 
+// tempPersistFileName is a helper for creating the file name for a temporary
+// persist file during conversion
 func tempPersistFileName(persistFileName string) string {
 	return persistFileName + "_temp"
 }
@@ -91,13 +93,13 @@ func convertPersistVersionFromv143Tov150(persistDir string) error {
 	return nil
 }
 
-// convertPersistVersionFromv150ToBlocklist handles the compatibility code for
-// upgrading the persistence from v1.5.0 to blocklist. The change in persistence is
+// convertPersistVersionFromv150Tov151 handles the compatibility code for
+// upgrading the persistence from v1.5.0 to v1.5.1. The change in persistence is
 // in the name of the header and the version.
-func convertPersistVersionFromv150ToBlocklist(persistDir string) error {
+func convertPersistVersionFromv150Tov151(persistDir string) error {
 	// Identify the filepath for the persist file and the temp persist file that
 	// will be created during the conversion of the persistence from
-	// v1.5.0 to blocklist
+	// v1.5.0 to v1.5.1
 	persistFilePath := filepath.Join(persistDir, blacklistPersistFile)
 	tempFilePath := filepath.Join(persistDir, tempPersistFileName(blacklistPersistFile))
 
@@ -260,20 +262,42 @@ func loadPersist(persistDir string) (*persist.AppendOnlyPersist, io.Reader, erro
 	_, err := os.Stat(tempFilePath)
 	if !os.IsNotExist(err) {
 		// Temp file exists. Continue persistence update
-		// Try and convert the persistence from v143 to v150
-		err := convertPersistVersionFromv143Tov150(persistDir)
+		// Try and convert the persistence from v1.4.3 to v1.5.0
+		err1 := convertPersistVersionFromv143Tov150(persistDir)
+		if err1 != nil {
+			// If there was an error with the conversion from v1.4.3 to v1.5.0 we try
+			// and convert the persistence from v1.5.0 to v1.5.1
+			err = convertPersistVersionFromv150Tov151(persistDir)
+			if err != nil {
+				return nil, nil, errors.AddContext(errors.Compose(err, err1), "unable to convert persistence from temp file")
+			}
+		}
+		// If the conversion from v1.4.3 to v1.5.0 was successful then we try and
+		// convert the persistence from v1.5.0 to v1.5.1
+		err = convertPersistVersionFromv150Tov151(persistDir)
 		if err != nil {
-			return nil, nil, errors.AddContext(err, "unable to convert persistence from v1.4.3 to v1.5.0")
+			return nil, nil, errors.AddContext(err, "unable to convert persistence from temp file")
 		}
 	}
 
 	// Load Persistence
 	aop, reader, err := persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
 	if errors.Contains(err, persist.ErrWrongVersion) {
-		// Try and convert the persistence from v143 to v150
-		err = convertPersistVersionFromv143Tov150(persistDir)
+		// Try and convert the persistence from v1.4.3 to v1.5.0
+		err1 := convertPersistVersionFromv143Tov150(persistDir)
+		if err1 != nil {
+			// If there was an error with the conversion from v1.4.3 to v1.5.0 we try
+			// and convert the persistence from v1.5.0 to v1.5.1
+			err = convertPersistVersionFromv150Tov151(persistDir)
+			if err != nil {
+				return nil, nil, errors.AddContext(errors.Compose(err, err1), "unable to convert persistence")
+			}
+		}
+		// If the conversion from v1.4.3 to v1.5.0 was successful then we try and
+		// convert the persistence from v1.5.0 to v1.5.1
+		err = convertPersistVersionFromv150Tov151(persistDir)
 		if err != nil {
-			return nil, nil, errors.AddContext(err, "unable to convert persistence from v1.4.3 to v1.5.0")
+			return nil, nil, errors.AddContext(err, "unable to convert persistence")
 		}
 		// Load the v1.5.0 persistence
 		aop, reader, err = persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)

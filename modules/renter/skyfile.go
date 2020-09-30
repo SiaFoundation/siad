@@ -267,8 +267,7 @@ func (r *Renter) CreateSkylinkFromSiafile(lup modules.SkyfileUploadParameters, s
 // its own name, which allows the file to be renamed concurrently without
 // causing any race conditions.
 func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParameters, fileNode *filesystem.FileNode) (modules.Skylink, error) {
-	// First check if any of the skylinks associated with the siafile are
-	// blocklisted
+	// First check if any of the skylinks associated with the siafile are blocked
 	skylinkstrs := fileNode.Metadata().Skylinks
 	for _, skylinkstr := range skylinkstrs {
 		var skylink modules.Skylink
@@ -282,7 +281,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 			continue
 		}
 		// Check if skylink is blocked
-		if r.staticSkynetBlocklist.IsBlocklisted(skylink) {
+		if r.staticSkynetBlocklist.IsBlocked(skylink) {
 			// Skylink is blocked, return error and try and delete file
 			return modules.Skylink{}, errors.Compose(ErrSkylinkBlocked, r.DeleteFile(lup.SiaPath))
 		}
@@ -360,7 +359,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 	}
 
 	// Check if the new skylink is blocked
-	if r.staticSkynetBlocklist.IsBlocklisted(skylink) {
+	if r.staticSkynetBlocklist.IsBlocked(skylink) {
 		// Skylink is blocked, return error and try and delete file
 		return modules.Skylink{}, errors.Compose(ErrSkylinkBlocked, r.DeleteFile(lup.SiaPath))
 	}
@@ -443,7 +442,7 @@ func (r *Renter) managedCreateFileNodeFromReader(up modules.FileUploadParams, re
 	return fileNode, nil
 }
 
-// Blocklist returns the merkleroots that are blocklisted
+// Blocklist returns the merkleroots that are on the blocklist
 func (r *Renter) Blocklist() ([]crypto.Hash, error) {
 	err := r.tg.Add()
 	if err != nil {
@@ -756,7 +755,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 	}
 
 	// Check if link is blocked
-	if r.staticSkynetBlocklist.IsBlocklisted(link) {
+	if r.staticSkynetBlocklist.IsBlocked(link) {
 		return modules.SkyfileMetadata{}, nil, ErrSkylinkBlocked
 	}
 
@@ -819,7 +818,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 // necessary content to maintain that Skylink.
 func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadParameters, timeout time.Duration) error {
 	// Check if link is blocked
-	if r.staticSkynetBlocklist.IsBlocklisted(skylink) {
+	if r.staticSkynetBlocklist.IsBlocked(skylink) {
 		return ErrSkylinkBlocked
 	}
 
@@ -1000,7 +999,7 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 	}
 
 	// Check if skylink is blocked
-	if !r.staticSkynetBlocklist.IsBlocklisted(skylink) {
+	if !r.staticSkynetBlocklist.IsBlocked(skylink) {
 		return skylink, nil
 	}
 

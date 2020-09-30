@@ -15,26 +15,6 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-/* TODO
-*
-* test v150 blacklist to v150 blocklist
-* test v143 blacklist to v150 bloclist
-*
- */
-
-// TestPersistCompatBlacklistToBlocklist tests converting the v1.5.0 skynet
-// blacklist persistence to the v1.5.1 skynet blocklist persistence
-func TestPersistCompatBlacklistToBlocklist(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	testdir := testDir(t.Name())
-
-	testPersistCompat(t, testdir, blacklistPersistFile, persistFile, blacklistMetadataHeader, metadataHeader, persist.MetadataVersionv150, metadataVersion)
-}
-
 // TestPersistCompatv143Tov150 tests converting the skynet blacklist persistence
 // from v1.4.3 to v1.5.0
 func TestPersistCompatv143Tov150(t *testing.T) {
@@ -46,6 +26,34 @@ func TestPersistCompatv143Tov150(t *testing.T) {
 	testdir := testDir(t.Name())
 
 	testPersistCompat(t, testdir, blacklistPersistFile, blacklistPersistFile, blacklistMetadataHeader, blacklistMetadataHeader, metadataVersionV143, persist.MetadataVersionv150)
+}
+
+// TestPersistCompatv143Tov151 tests converting the skynet blacklist persistence
+// from v1.4.3 to v1.5.1
+func TestPersistCompatv143Tov151(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	testdir := testDir(t.Name())
+
+	// Test v1.4.3 to v1.5.1
+	testPersistCompat(t, testdir, blacklistPersistFile, persistFile, blacklistMetadataHeader, metadataHeader, metadataVersionV143, metadataVersion)
+}
+
+// TestPersistCompatv150Tov151 tests converting the skynet blacklist persistence
+// from v1.5.0 to v1.5.1
+func TestPersistCompatv150Tov151(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	testdir := testDir(t.Name())
+
+	// Test v1.5.0 to v1.5.1
+	testPersistCompat(t, testdir, blacklistPersistFile, persistFile, blacklistMetadataHeader, metadataHeader, persist.MetadataVersionv150, metadataVersion)
 }
 
 // testPersistCompat tests the persist compat code going between two versions
@@ -191,14 +199,12 @@ func loadAndVerifyPersistence(testDir, oldPersistFile, newPersistFile string, ol
 		return errors.AddContext(err, "unable to close old aop")
 	}
 
-	// Convert the persistence based on the old version
-	switch oldVersion {
-	case metadataVersionV143:
+	// Convert the persistence
+	if oldVersion == metadataVersionV143 {
 		err = convertPersistVersionFromv143Tov150(testDir)
-	case persist.MetadataVersionv150:
-		err = convertPersistVersionFromv150ToBlocklist(testDir)
-	default:
-		err = errors.New("invalid version")
+	}
+	if oldVersion == persist.MetadataVersionv150 || newVersion == metadataVersion {
+		err = errors.Compose(err, convertPersistVersionFromv150Tov151(testDir))
 	}
 	if err != nil {
 		return errors.AddContext(err, "unable to convert persistence")
