@@ -89,25 +89,27 @@ type RPCPriceTable struct {
 	TxnFeeMinRecommended types.Currency `json:"txnfeeminrecommended"`
 	TxnFeeMaxRecommended types.Currency `json:"txnfeemaxrecommended"`
 
-	// ContractPrice is the additional cost to pay when forming/renewing a
-	// contract.
-	ContractPrice types.Currency
+	// ContractPrice is the additional fee a host charges when forming/renewing
+	// a contract to cover the miner fees when submitting the contract and
+	// revision to the blockchain.
+	ContractPrice types.Currency `json:"contractprice"`
 
 	// CollateralCost is the amount of money per byte the host is promising to
-	// lock away as collateral when adding new data to a contract.
+	// lock away as collateral when adding new data to a contract. It's paid out
+	// to the host regardless of the outcome of the storage proof.
 	CollateralCost types.Currency `json:"collateralcost"`
 
 	// MaxCollateral is the maximum amount of collateral the host is willing to
 	// put into a single file contract.
-	MaxCollateral types.Currency
+	MaxCollateral types.Currency `json:"maxcollateral"`
 
 	// MaxDuration is the max duration for which the host is willing to form a
 	// contract.
-	MaxDuration types.BlockHeight
+	MaxDuration types.BlockHeight `json:"maxduration"`
 
 	// WindowSize is the minimum time in blocks the host requests the
 	// renewWindow of a new contract to be.
-	WindowSize types.BlockHeight
+	WindowSize types.BlockHeight `json:"windowsize"`
 }
 
 var (
