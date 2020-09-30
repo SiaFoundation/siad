@@ -478,7 +478,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Make sure the file is no longer present.
 	_, err = r.RenterFileRootGet(fullPinSiaPath)
-	if err != nil && !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+	if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		t.Fatal("skyfile still present after deletion")
 	}
 
@@ -534,7 +534,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 	// Make sure the file is no longer present.
 	_, err = r.RenterFileRootGet(fullLargePinSiaPath)
-	if err != nil && !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
+	if err == nil || !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		t.Fatal("skyfile still present after deletion")
 	}
 
@@ -1495,7 +1495,7 @@ func testSkynetDisableForce(t *testing.T, tg *siatest.TestGroup) {
 
 	// Upload at same path without force, assert this fails
 	_, _, _, err = r.UploadNewSkyfileBlocking(t.Name(), 100, false)
-	if err != nil && !strings.Contains(err.Error(), "already exists") {
+	if err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatal(err)
 	}
 
@@ -1870,7 +1870,7 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	add = []modules.SkynetPortal{}
 	remove = []modules.NetAddress{portal1.Address}
 	err = r.SkynetPortalsPost(add, remove)
-	if err != nil && !strings.Contains(err.Error(), "address "+string(portal1.Address)+" not already present in list of portals or being added") {
+	if err == nil || !strings.Contains(err.Error(), "address "+string(portal1.Address)+" not already present in list of portals or being added") {
 		t.Fatal("portal should fail to be removed")
 	}
 
@@ -1934,7 +1934,7 @@ func testSkynetPortals(t *testing.T, tg *siatest.TestGroup) {
 	add = []modules.SkynetPortal{portal3}
 	remove = []modules.NetAddress{}
 	err = r.SkynetPortalsPost(add, remove)
-	if err != nil && !strings.Contains(err.Error(), "missing port in address") {
+	if err == nil || !strings.Contains(err.Error(), "missing port in address") {
 		t.Fatal("expected 'missing port' error")
 	}
 
