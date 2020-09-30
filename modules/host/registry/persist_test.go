@@ -21,7 +21,7 @@ const testingDefaultMaxEntries = 640
 
 // randomValue creates a random value object for testing and returns it both as
 // the RegistryValue and value representation.
-func randomValue(index int64) (modules.RegistryValue, value, crypto.SecretKey) {
+func randomValue(index int64) (modules.RegistryValue, *value, crypto.SecretKey) {
 	// Create in-memory value first.
 	sk, pk := crypto.GenerateKeyPair()
 	v := value{
@@ -41,7 +41,7 @@ func randomValue(index int64) (modules.RegistryValue, value, crypto.SecretKey) {
 		Revision: v.revision,
 	}
 	rv.Sign(sk)
-	return rv, v, sk
+	return rv, &v, sk
 }
 
 // TestPubKeyCompression tests converting a types.SiaPublicKey to a
@@ -258,7 +258,7 @@ func TestSaveEntry(t *testing.T) {
 	}
 
 	// Save it and read the file afterwards.
-	err = r.saveEntry(v, true)
+	err = r.managedSaveEntry(v, true)
 	if err != nil {
 		t.Fatal(err)
 	}
