@@ -21,7 +21,7 @@ const testingDefaultMaxEntries = 640
 
 // randomValue creates a random value object for testing and returns it both as
 // the RegistryValue and value representation.
-func randomValue(index int64) (modules.RegistryValue, *value, crypto.SecretKey) {
+func randomValue(index int64) (modules.SignedRegistryValue, *value, crypto.SecretKey) {
 	// Create in-memory value first.
 	sk, pk := crypto.GenerateKeyPair()
 	v := value{
@@ -35,12 +35,7 @@ func randomValue(index int64) (modules.RegistryValue, *value, crypto.SecretKey) 
 	fastrand.Read(v.tweak[:])
 
 	// Then the RegistryValue.
-	rv := modules.RegistryValue{
-		Tweak:    v.tweak,
-		Data:     v.data,
-		Revision: v.revision,
-	}
-	rv.Sign(sk)
+	rv := modules.NewRegistryValue(v.tweak, v.data, v.revision).Sign(sk)
 	v.signature = rv.Signature
 	return rv, &v, sk
 }

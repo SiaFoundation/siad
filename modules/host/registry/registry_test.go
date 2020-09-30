@@ -586,12 +586,7 @@ func TestFullRegistry(t *testing.T) {
 			t.Fatal("entry shouldn't be invalid")
 		}
 		// Verify signatures.
-		rv := modules.RegistryValue{
-			Tweak:     val.tweak,
-			Data:      val.data,
-			Revision:  val.revision,
-			Signature: val.signature,
-		}
+		rv := modules.NewSignedRegistryValue(val.tweak, val.data, val.revision, val.signature)
 		err = rv.Verify(val.key.ToPublicKey())
 		if err != nil {
 			t.Fatal(err)
@@ -670,7 +665,7 @@ func TestRegistryRace(t *testing.T) {
 
 	// Add 3 entries to it.
 	numEntries := 3
-	rvs := make([]modules.RegistryValue, 0, numEntries)
+	rvs := make([]modules.SignedRegistryValue, 0, numEntries)
 	keys := make([]types.SiaPublicKey, 0, numEntries)
 	skeys := make([]crypto.SecretKey, 0, numEntries)
 
@@ -695,7 +690,7 @@ func TestRegistryRace(t *testing.T) {
 
 	// Declare worker thread.
 	done := make(chan struct{})
-	worker := func(key types.SiaPublicKey, sk crypto.SecretKey, rv modules.RegistryValue, nextExpiry, nextRevision *uint64) {
+	worker := func(key types.SiaPublicKey, sk crypto.SecretKey, rv modules.SignedRegistryValue, nextExpiry, nextRevision *uint64) {
 		for {
 			atomic.AddUint64(&iterations, 1)
 			// Flip a coin. 'False' means update. 'True' means prune.
@@ -827,7 +822,7 @@ func BenchmarkRegistryUpdate(b *testing.B) {
 	nEntries := runtime.NumCPU()
 
 	// Add entries.
-	rvs := make([]modules.RegistryValue, 0, nEntries)
+	rvs := make([]modules.SignedRegistryValue, 0, nEntries)
 	keys := make([]types.SiaPublicKey, 0, nEntries)
 	skeys := make([]crypto.SecretKey, 0, nEntries)
 	for i := 0; i < nEntries; i++ {

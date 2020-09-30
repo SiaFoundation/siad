@@ -111,7 +111,7 @@ const (
 
 	// RPCIUpdateRegistryLen is the expected length of the 'Args' of an
 	// UpdateRegistry instruction.
-	RPCIUpdateRegistryLen = 48
+	RPCIUpdateRegistryLen = 56
 )
 
 var (
@@ -395,6 +395,8 @@ func (p Program) ReadOnly() bool {
 		case SpecifierRevision:
 		case SpecifierSwapSector:
 			return false
+		case SpecifierUpdateRegistry:
+			// considered read-only cause it doesn't update a contract
 		default:
 			build.Critical("ReadOnly: unknown instruction")
 		}
@@ -421,6 +423,7 @@ func (p Program) RequiresSnapshot() bool {
 			return true
 		case SpecifierSwapSector:
 			return true
+		case SpecifierUpdateRegistry:
 		default:
 			build.Critical("RequiresSnapshot: unknown instruction")
 		}

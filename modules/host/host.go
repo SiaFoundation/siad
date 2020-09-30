@@ -731,17 +731,17 @@ func (h *Host) managedExternalSettings() modules.HostExternalSettings {
 }
 
 // RegistryGet retrieves a value from the registry.
-func (h *Host) RegistryGet(pubKey types.SiaPublicKey, tweak crypto.Hash) ([]byte, bool) {
+func (h *Host) RegistryGet(pubKey types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, bool) {
 	err := h.tg.Add()
 	if err != nil {
-		return nil, false
+		return modules.SignedRegistryValue{}, false
 	}
 	defer h.tg.Done()
 	return h.staticRegistry.Get(pubKey, tweak)
 }
 
 // RegistryUpdate updates a value in the registry.
-func (h *Host) RegistryUpdate(rv modules.RegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (bool, error) {
+func (h *Host) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (bool, error) {
 	err := h.tg.Add()
 	if err != nil {
 		return false, err

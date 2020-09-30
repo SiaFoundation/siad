@@ -86,7 +86,7 @@ func (v *value) mapKey() crypto.Hash {
 }
 
 // update updates a value with a new revision, expiry and data.
-func (v *value) update(rv modules.RegistryValue, newExpiry types.BlockHeight, init bool) error {
+func (v *value) update(rv modules.SignedRegistryValue, newExpiry types.BlockHeight, init bool) error {
 	// Check if the entry has been invalidated. This should only ever be the
 	// case when an entry is updated at the same time as its pruned so its
 	// incredibly unlikely to happen. Usually entries would be updated long
@@ -110,16 +110,16 @@ func (v *value) update(rv modules.RegistryValue, newExpiry types.BlockHeight, in
 }
 
 // Get fetches the data associated with a key and tweak from the registry.
-func (r *Registry) Get(pubKey types.SiaPublicKey, tweak crypto.Hash) ([]byte, bool) {
+func (r *Registry) Get(pubKey types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, bool) {
 	r.mu.Lock()
 	v, ok := r.entries[valueMapKey(pubKey, tweak)]
 	r.mu.Unlock()
 	if !ok {
-		return nil, false
+		return modules.SignedRegistryValue{}, false
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	return v.data, true
+	return modules.NewSignedRegistryValue(v.tweak, v.data, v.revision, v.signature), true
 }
 
 // New creates a new registry or opens an existing one.
@@ -173,7 +173,7 @@ func New(path string, wal *writeaheadlog.WAL, maxEntries uint64) (_ *Registry, e
 }
 
 // Update adds an entry to the registry or if it exists already, updates it.
-func (r *Registry) Update(rv modules.RegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (bool, error) {
+func (r *Registry) Update(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (bool, error) {
 	// Check the data against the limit.
 	if len(rv.Data) > modules.RegistryDataSize {
 		return false, errTooMuchData
@@ -246,7 +246,7 @@ func (r *Registry) managedDeleteFromMemory(v *value) {
 
 // newValue creates a new value and assigns it a free bit from the bitfield. It
 // adds the new value to the registry as well.
-func (r *Registry) newValue(rv modules.RegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (*value, error) {
+func (r *Registry) newValue(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (*value, error) {
 	bit, err := r.staticUsage.SetRandom()
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to obtain free slot")
