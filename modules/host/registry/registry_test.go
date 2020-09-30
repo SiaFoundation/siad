@@ -233,6 +233,7 @@ func TestUpdate(t *testing.T) {
 	v.revision++
 	rv.Revision++
 	rv.Sign(sk)
+	v.signature = rv.Signature
 	updated, err = r.Update(rv, v.key, v.expiry)
 	if err != nil {
 		t.Fatal(err)
@@ -247,7 +248,11 @@ func TestUpdate(t *testing.T) {
 	if len(r.entries) != 1 {
 		t.Fatal("registry should contain one entry", len(r.entries))
 	}
-	if vExist, exists := r.entries[v.mapKey()]; !exists || !reflect.DeepEqual(vExist, v) {
+	vExist, exists = r.entries[v.mapKey()]
+	if !exists {
+		t.Fatal("entry doesn't exist")
+	}
+	if !reflect.DeepEqual(vExist, v) {
 		t.Log(v)
 		t.Log(vExist)
 		t.Fatal("registry contains wrong key-value pair")
@@ -538,6 +543,7 @@ func TestFullRegistry(t *testing.T) {
 	for i := uint64(0); i < numEntries; i++ {
 		rv, v, _ := randomValue(0)
 		v.expiry = types.BlockHeight(i)
+		v.signature = rv.Signature
 		u, err := r.Update(rv, v.key, v.expiry)
 		if err != nil {
 			t.Fatal(err)
@@ -572,10 +578,23 @@ func TestFullRegistry(t *testing.T) {
 		}
 		val.staticIndex = valExist.staticIndex
 		if !reflect.DeepEqual(valExist, val) {
+			t.Log(valExist)
+			t.Log(val)
 			t.Fatal("vals don't match")
 		}
 		if val.invalid {
 			t.Fatal("entry shouldn't be invalid")
+		}
+		// Verify signatures.
+		rv := modules.RegistryValue{
+			Tweak:     val.tweak,
+			Data:      val.data,
+			Revision:  val.revision,
+			Signature: val.signature,
+		}
+		err = rv.Verify(val.key.ToPublicKey())
+		if err != nil {
+			t.Fatal(err)
 		}
 	}
 

@@ -25,6 +25,7 @@ type (
 		generateSectors bool
 		blockHeight     types.BlockHeight
 		sectors         map[crypto.Hash][]byte
+		registry        map[crypto.Hash]modules.RegistryValue
 		mu              sync.Mutex
 	}
 	// TestStorageObligation is a dummy storage obligation for testing which
@@ -74,6 +75,23 @@ func (h *TestHost) HasSector(sectorRoot crypto.Hash) bool {
 	_, exists := h.sectors[sectorRoot]
 	h.mu.Unlock()
 	return exists
+}
+
+// RegistryGet retrieves a value from the registry.
+func (h *TestHost) RegistryGet(pubKey types.SiaPublicKey, tweak crypto.Hash) ([]byte, bool) {
+	v, exists := h.registry[crypto.HashAll(pubKey, tweak)]
+	if !exists {
+		return nil, false
+	}
+	return v.Data, true
+}
+
+// RegistryUpdate updates a value in the registry.
+func (h *TestHost) RegistryUpdate(rv modules.RegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (bool, error) {
+	key := crypto.HashAll(pubKey, rv.Tweak)
+	_, exists := h.registry[key]
+	h.registry[key] = rv
+	return exists, nil
 }
 
 // ReadSector implements the Host interface by returning a random sector for

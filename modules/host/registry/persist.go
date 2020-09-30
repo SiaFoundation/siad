@@ -171,8 +171,9 @@ func newPersistedEntry(value *value) (persistedEntry, error) {
 		return persistedEntry{}, errors.AddContext(err, "newPersistedEntry: failed to compress key")
 	}
 	pe := persistedEntry{
-		Key:   cpk,
-		Tweak: value.tweak,
+		Key:       cpk,
+		Signature: value.signature,
+		Tweak:     value.tweak,
 
 		DataLen:  uint8(len(value.data)),
 		Expiry:   compressedBlockHeight(value.expiry),
@@ -199,6 +200,7 @@ func (entry persistedEntry) Value(index int64) (*value, error) {
 		expiry:      types.BlockHeight(entry.Expiry),
 		data:        entry.Data[:entry.DataLen],
 		revision:    entry.Revision,
+		signature:   entry.Signature,
 		staticIndex: index,
 	}, nil
 }

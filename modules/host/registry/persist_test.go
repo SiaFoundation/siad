@@ -41,6 +41,7 @@ func randomValue(index int64) (modules.RegistryValue, *value, crypto.SecretKey) 
 		Revision: v.revision,
 	}
 	rv.Sign(sk)
+	v.signature = rv.Signature
 	return rv, &v, sk
 }
 
