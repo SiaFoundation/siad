@@ -804,7 +804,7 @@ func TestSendBlk(t *testing.T) {
 	for _, tt := range tests {
 		go tt.fn()
 		err := cst.cs.rpcSendBlk(tt.conn)
-		if !errors.Contains(err, tt.errWant) {
+		if err != tt.errWant {
 			t.Errorf("%s: expected to fail with `%v', got: `%v'", tt.msg, tt.errWant, err)
 		}
 		err = <-fnErr
@@ -931,7 +931,7 @@ func TestThreadedReceiveBlock(t *testing.T) {
 		managedReceiveFN := cst.cs.managedReceiveBlock(tt.id)
 		go tt.fn()
 		err := managedReceiveFN(tt.conn)
-		if !errors.Contains(err, tt.errWant) {
+		if err != tt.errWant {
 			t.Errorf("%s: expected to fail with `%v', got: `%v'", tt.msg, tt.errWant, err)
 		}
 		err = <-fnErr
@@ -1132,7 +1132,7 @@ func TestRelayHeader(t *testing.T) {
 			errChan <- encoding.WriteObject(p1, tt.header)
 		}()
 		err = cst.cs.threadedRPCRelayHeader(mockP2)
-		if !errors.Contains(err, tt.errWant) {
+		if err != tt.errWant {
 			t.Errorf("%s: expected '%v', got '%v'", tt.errMSG, tt.errWant, err)
 		}
 		err = <-errChan

@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 // mockMarshaler is a mock implementation of the encoding.GenericMarshaler
@@ -80,7 +79,7 @@ func TestUnitValidateBlock(t *testing.T) {
 			},
 		}
 		err := blockValidator.ValidateBlock(b, b.ID(), tt.minTimestamp, types.RootDepth, 0, nil)
-		if !errors.Contains(err, tt.errWant) {
+		if err != tt.errWant {
 			t.Errorf("%s: got %v, want %v", tt.msg, err, tt.errWant)
 		}
 	}

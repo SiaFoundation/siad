@@ -893,7 +893,7 @@ func TestAcceptConnRejectsVersions(t *testing.T) {
 			t.Fatal(err)
 		}
 		remoteVersion, err := connectVersionHandshake(conn, tt.remoteVersion)
-		if !errors.Contains(err, tt.errWant) {
+		if err != tt.errWant {
 			t.Fatal(err)
 		}
 		if remoteVersion != tt.versionResponseWant {

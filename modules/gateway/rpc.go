@@ -200,9 +200,7 @@ func (g *Gateway) threadedListenPeer(p *peer) {
 // appropriate handler for further processing.
 func (g *Gateway) threadedHandleConn(conn modules.PeerConn) {
 	defer func() {
-		if err := conn.Close(); err != nil {
-			g.log.Print("threadedHandleConn: failed to close conn", err)
-		}
+		_ = conn.Close()
 	}()
 	if g.threads.Add() != nil {
 		return
