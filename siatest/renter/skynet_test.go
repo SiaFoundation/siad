@@ -1495,7 +1495,10 @@ func testSkynetDisableForce(t *testing.T, tg *siatest.TestGroup) {
 
 	// Upload at same path without force, assert this fails
 	_, _, _, err = r.UploadNewSkyfileBlocking(t.Name(), 100, false)
-	if err == nil || !strings.Contains(err.Error(), "already exists") {
+	if err == nil {
+		t.Fatal("Expected the upload without force to fail but it didn't.")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
 		t.Fatal(err)
 	}
 
