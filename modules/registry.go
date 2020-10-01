@@ -39,8 +39,8 @@ func NewRegistryValue(tweak crypto.Hash, data []byte, rev uint64) RegistryValue 
 	}
 }
 
-// NewSignedRegistryValue is a convenience method for creating a new RegistryValue
-// from arguments.
+// NewSignedRegistryValue is a convenience method for creating a new
+// SignedRegistryValue from arguments.
 func NewSignedRegistryValue(tweak crypto.Hash, data []byte, rev uint64, sig crypto.Signature) SignedRegistryValue {
 	return SignedRegistryValue{
 		RegistryValue: NewRegistryValue(tweak, data, rev),

@@ -8,6 +8,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// instructionUpdateRegistry defines an update to a value in the host's
+// registry.
 type instructionUpdateRegistry struct {
 	commonInstruction
 
@@ -96,7 +98,8 @@ func (i *instructionUpdateRegistry) Execute(prevOutput output) output {
 	}
 }
 
-// Collateral is zero for updating the registry.
+// Collateral returns the collateral the host has to put up for this
+// instruction.
 func (i *instructionUpdateRegistry) Collateral() types.Currency {
 	return modules.MDMUpdateRegistryCollateral()
 }

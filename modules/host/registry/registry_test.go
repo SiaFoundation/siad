@@ -19,17 +19,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 )
-
-// newTestWal is a helper method to create a WAL for testing.
-func newTestWAL(path string) *writeaheadlog.WAL {
-	_, wal, err := writeaheadlog.New(path)
-	if err != nil {
-		panic(err)
-	}
-	return wal
-}
 
 // testDir creates a temporary dir for testing.
 func testDir(name string) string {
@@ -50,11 +40,10 @@ func TestDeleteEntry(t *testing.T) {
 	t.Parallel()
 
 	dir := testDir(t.Name())
-	wal := newTestWAL(filepath.Join(dir, "wal"))
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, wal, testingDefaultMaxEntries)
+	r, err := New(registryPath, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,11 +107,10 @@ func TestNew(t *testing.T) {
 	t.Parallel()
 
 	dir := testDir(t.Name())
-	wal := newTestWAL(filepath.Join(dir, "wal"))
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, wal, testingDefaultMaxEntries)
+	r, err := New(registryPath, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +158,7 @@ func TestNew(t *testing.T) {
 
 	// Load the registry again. 'New' should load the used entry from disk but
 	// not the unused one.
-	r, err = New(registryPath, wal, testingDefaultMaxEntries)
+	r, err = New(registryPath, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,11 +194,10 @@ func TestUpdate(t *testing.T) {
 	t.Parallel()
 
 	dir := testDir(t.Name())
-	wal := newTestWAL(filepath.Join(dir, "wal"))
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, wal, testingDefaultMaxEntries)
+	r, err := New(registryPath, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +249,7 @@ func TestUpdate(t *testing.T) {
 	if !updated {
 		t.Fatal("key should have existed before")
 	}
-	r, err = New(registryPath, wal, testingDefaultMaxEntries)
+	r, err = New(registryPath, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +313,7 @@ func TestUpdate(t *testing.T) {
 	}
 
 	// Reload the registry. Only the second entry should exist.
-	r, err = New(registryPath, wal, testingDefaultMaxEntries)
+	r, err = New(registryPath, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,12 +387,11 @@ func TestRegistryLimit(t *testing.T) {
 	t.Parallel()
 
 	dir := testDir(t.Name())
-	wal := newTestWAL(filepath.Join(dir, "wal"))
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
 	limit := uint64(128)
-	r, err := New(registryPath, wal, limit)
+	r, err := New(registryPath, limit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,11 +426,10 @@ func TestPrune(t *testing.T) {
 	t.Parallel()
 
 	dir := testDir(t.Name())
-	wal := newTestWAL(filepath.Join(dir, "wal"))
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, wal, testingDefaultMaxEntries)
+	r, err := New(registryPath, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -533,7 +518,7 @@ func TestPrune(t *testing.T) {
 	}
 
 	// Restart.
-	_, err = New(registryPath, wal, testingDefaultMaxEntries)
+	_, err = New(registryPath, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -574,12 +559,11 @@ func TestFullRegistry(t *testing.T) {
 	t.Parallel()
 
 	dir := testDir(t.Name())
-	wal := newTestWAL(filepath.Join(dir, "wal"))
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
 	numEntries := uint64(128)
-	r, err := New(registryPath, wal, numEntries)
+	r, err := New(registryPath, numEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -613,7 +597,7 @@ func TestFullRegistry(t *testing.T) {
 	}
 
 	// Reload it.
-	r, err = New(registryPath, wal, numEntries)
+	r, err = New(registryPath, numEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -665,7 +649,7 @@ func TestFullRegistry(t *testing.T) {
 	}
 
 	// Reload it.
-	r, err = New(registryPath, wal, numEntries)
+	r, err = New(registryPath, numEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -715,11 +699,10 @@ func TestRegistryRace(t *testing.T) {
 	t.Parallel()
 
 	dir := testDir(t.Name())
-	wal := newTestWAL(filepath.Join(dir, "wal"))
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, wal, 64)
+	r, err := New(registryPath, 64)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -841,7 +824,7 @@ func TestRegistryRace(t *testing.T) {
 	}
 
 	// Reload registry.
-	r, err = New(registryPath, wal, 64)
+	r, err = New(registryPath, 64)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -878,11 +861,10 @@ func TestRegistryRace(t *testing.T) {
 func BenchmarkRegistryUpdate(b *testing.B) {
 	b.StopTimer()
 	dir := testDir(b.Name())
-	wal := newTestWAL(filepath.Join(dir, "wal"))
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, wal, 64)
+	r, err := New(registryPath, 64)
 	if err != nil {
 		b.Fatal(err)
 	}

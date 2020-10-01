@@ -78,7 +78,8 @@ const (
 	// MDMTimeWriteSector is the time for executing a 'WriteSector' instruction.
 	MDMTimeWriteSector = 10000
 
-	// MDMTimeUpdateRegistry is the time for executing a 'UpdateRegistry' instruction.
+	// MDMTimeUpdateRegistry is the time for executing an 'UpdateRegistry'
+	// instruction.
 	MDMTimeUpdateRegistry = 10000
 
 	// RPCIAppendLen is the expected length of the 'Args' of an Append
@@ -111,6 +112,8 @@ const (
 
 	// RPCIUpdateRegistryLen is the expected length of the 'Args' of an
 	// UpdateRegistry instruction.
+	// tweakOffset + revisionOffset + signatureOffset + pubKeyOffset +
+	// pubKeyLength + dataOffset + dataLength = 7 * 8 bytes = 56 byte
 	RPCIUpdateRegistryLen = 56
 )
 

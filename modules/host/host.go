@@ -448,7 +448,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 	}
 
 	// Load the registry.
-	registry, err := registry.New(filepath.Join(h.persistDir, modules.HostRegistryFile), wal, registryDefaultMaxEntries)
+	registry, err := registry.New(filepath.Join(h.persistDir, modules.HostRegistryFile), registryDefaultMaxEntries)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to load host registry")
 	}

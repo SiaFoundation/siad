@@ -13,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 // TODO: F/Us
@@ -128,11 +127,11 @@ func (r *Registry) Get(pubKey types.SiaPublicKey, tweak crypto.Hash) (modules.Si
 }
 
 // New creates a new registry or opens an existing one.
-func New(path string, wal *writeaheadlog.WAL, maxEntries uint64) (_ *Registry, err error) {
+func New(path string, maxEntries uint64) (_ *Registry, err error) {
 	f, err := os.OpenFile(path, os.O_RDWR, modules.DefaultFilePerm)
 	if os.IsNotExist(err) {
 		// try creating a new one
-		f, err = initRegistry(path, wal, maxEntries)
+		f, err = initRegistry(path, maxEntries)
 	}
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to open store")
@@ -178,6 +177,7 @@ func New(path string, wal *writeaheadlog.WAL, maxEntries uint64) (_ *Registry, e
 }
 
 // Update adds an entry to the registry or if it exists already, updates it.
+// This will also verify the revision number of the new value and the signature.
 func (r *Registry) Update(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (bool, error) {
 	// Check the data against the limit.
 	if len(rv.Data) > modules.RegistryDataSize {

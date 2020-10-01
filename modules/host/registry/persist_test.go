@@ -80,11 +80,10 @@ func TestInitRegistry(t *testing.T) {
 	t.Parallel()
 
 	dir := testDir(t.Name())
-	wal := newTestWAL(filepath.Join(dir, "wal"))
 
 	// Init the registry.
 	registryPath := filepath.Join(dir, "registry")
-	f, err := initRegistry(registryPath, wal, testingDefaultMaxEntries)
+	f, err := initRegistry(registryPath, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +118,7 @@ func TestInitRegistry(t *testing.T) {
 	// Try to reinit the same registry again. This should fail. We check the
 	// string directly since neither os.IsExist nor errors.Contains(err,
 	// os.ErrExist) work.
-	_, err = initRegistry(registryPath, wal, testingDefaultMaxEntries)
+	_, err = initRegistry(registryPath, testingDefaultMaxEntries)
 	if err == nil || !strings.Contains(err.Error(), "file exists") {
 		t.Fatal(err)
 	}
@@ -237,11 +236,10 @@ func TestSaveEntry(t *testing.T) {
 	t.Parallel()
 
 	dir := testDir(t.Name())
-	wal := newTestWAL(filepath.Join(dir, "wal"))
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, wal, testingDefaultMaxEntries)
+	r, err := New(registryPath, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -184,9 +184,8 @@ func (pd *programData) Hash(offset uint64) (crypto.Hash, error) {
 	return h, nil
 }
 
-// Signature returns the next crypto.SignatureSize bytes at the specified offset
-// within the program data as a crypto.Signature. This call will block if the
-// data at the specified offset hasn't been fetched yet.
+// SiaPublicKey reads a types.SiaPublicKey from the programData. Given an offset
+// and a key length. The length includes the specifier size.
 func (pd *programData) SiaPublicKey(offset, length uint64) (types.SiaPublicKey, error) {
 	d, err := pd.managedBytes(offset, length)
 	if err != nil {
@@ -197,7 +196,7 @@ func (pd *programData) SiaPublicKey(offset, length uint64) (types.SiaPublicKey, 
 	return spk, err
 }
 
-// Signature returns the next crypto.SignatureSize bytes at the specified offset
+// SiaPublicKey returns the next crypto.SignatureSize bytes at the specified offset
 // within the program data as a crypto.Signature. This call will block if the
 // data at the specified offset hasn't been fetched yet.
 func (pd *programData) Signature(offset uint64) (crypto.Signature, error) {
