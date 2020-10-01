@@ -639,12 +639,12 @@ func (r *Renter) managedUpdateFileMetadatas(dirSiaPath modules.SiaPath) error {
 func (r *Renter) managedUpdateFileMetadata(sf *filesystem.FileNode, offlineMap, goodForRenew map[string]bool, contracts map[string]modules.RenterContract, used []types.SiaPublicKey) (err error) {
 	// Update the siafile's used hosts.
 	if err := sf.UpdateUsedHosts(used); err != nil {
-		r.log.Println("WARN: Could not update used hosts:", err)
+		return errors.AddContext(err, "WARN: Could not update used hosts")
 	}
 	// Update cached redundancy values.
 	_, _, err = sf.Redundancy(offlineMap, goodForRenew)
 	if err != nil {
-		r.log.Println("WARN: Could not update cached redundancy:", err)
+		return errors.AddContext(err, "WARN: Could not update cached redundancy")
 	}
 	// Update cached health values.
 	_, _, _, _, _ = sf.Health(offlineMap, goodForRenew)

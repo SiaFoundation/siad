@@ -503,6 +503,10 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 
 // chunk reads the chunk with index chunkIndex from disk.
 func (sf *SiaFile) chunk(chunkIndex int) (_ chunk, err error) {
+	// If the file has been deleted we can't call chunk.
+	if sf.deleted {
+		return chunk{}, errors.AddContext(ErrDeleted, "can't call call on deleted file")
+	}
 	// Handle partial chunk.
 	if cci, ok := sf.isIncludedPartialChunk(uint64(chunkIndex)); ok {
 		c, err := sf.partialsSiaFile.Chunk(cci.Index)
@@ -535,6 +539,9 @@ func (sf *SiaFile) chunk(chunkIndex int) (_ chunk, err error) {
 // iterateChunks iterates over all the chunks on disk and create wal updates for
 // each chunk that was modified.
 func (sf *SiaFile) iterateChunks(iterFunc func(chunk *chunk) (bool, error)) ([]writeaheadlog.Update, error) {
+	if sf.deleted {
+		return nil, errors.New("can't call iterateChunks on deleted file")
+	}
 	var updates []writeaheadlog.Update
 	err := sf.iterateChunksReadonly(func(chunk chunk) error {
 		modified, err := iterFunc(&chunk)
@@ -560,6 +567,12 @@ func (sf *SiaFile) iterateChunks(iterFunc func(chunk *chunk) (bool, error)) ([]w
 // iterateChunksReadonly iterates over all the chunks on disk and calls iterFunc
 // on each one without modifying them.
 func (sf *SiaFile) iterateChunksReadonly(iterFunc func(chunk chunk) error) (err error) {
+	if sf.deleted {
+		if sf.deleted {
+			return errors.AddContext(err, "can't call iterateChunksReadonly on deleted file")
+		}
+		return errors.AddContext(err, "can't call iterateChunksReadonly on deleted file")
+	}
 	// Open the file.
 	f, err := os.Open(sf.siaFilePath)
 	if err != nil {
