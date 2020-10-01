@@ -77,8 +77,8 @@ var (
 	// by Skynet
 	ErrRedundancyNotSupported = errors.New("skylinks currently only support 1-of-N redundancy, other redundancies will be supported in a later version")
 
-	// ErrSkylinkBlacklisted is the error returned when a skylink is blacklisted
-	ErrSkylinkBlacklisted = errors.New("skylink is blacklisted")
+	// ErrSkylinkBlocked is the error returned when a skylink is blocked
+	ErrSkylinkBlocked = errors.New("skylink is blocked")
 
 	// ExtendedSuffix is the suffix that is added to a skyfile siapath if it is
 	// a large file upload
@@ -269,8 +269,7 @@ func (r *Renter) CreateSkylinkFromSiafile(lup modules.SkyfileUploadParameters, s
 // its own name, which allows the file to be renamed concurrently without
 // causing any race conditions.
 func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParameters, fileNode *filesystem.FileNode) (modules.Skylink, error) {
-	// First check if any of the skylinks associated with the siafile are
-	// blacklisted
+	// First check if any of the skylinks associated with the siafile are blocked
 	skylinkstrs := fileNode.Metadata().Skylinks
 	for _, skylinkstr := range skylinkstrs {
 		var skylink modules.Skylink
@@ -283,10 +282,10 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 			r.log.Printf("WARN: previous skylink for siafile %v could not be loaded from string; potentially corrupt skylink: %v", fileNode.SiaFilePath(), skylinkstr)
 			continue
 		}
-		// Check if skylink is blacklisted
-		if r.staticSkynetBlacklist.IsBlacklisted(skylink) {
-			// Skylink is blacklisted, return error and try and delete file
-			return modules.Skylink{}, errors.Compose(ErrSkylinkBlacklisted, r.DeleteFile(lup.SiaPath))
+		// Check if skylink is blocked
+		if r.staticSkynetBlocklist.IsBlocked(skylink) {
+			// Skylink is blocked, return error and try and delete file
+			return modules.Skylink{}, errors.Compose(ErrSkylinkBlocked, r.DeleteFile(lup.SiaPath))
 		}
 	}
 
@@ -361,10 +360,10 @@ func (r *Renter) managedCreateSkylinkFromFileNode(lup modules.SkyfileUploadParam
 		return skylink, nil
 	}
 
-	// Check if the new skylink is blacklisted
-	if r.staticSkynetBlacklist.IsBlacklisted(skylink) {
-		// Skylink is blacklisted, return error and try and delete file
-		return modules.Skylink{}, errors.Compose(ErrSkylinkBlacklisted, r.DeleteFile(lup.SiaPath))
+	// Check if the new skylink is blocked
+	if r.staticSkynetBlocklist.IsBlocked(skylink) {
+		// Skylink is blocked, return error and try and delete file
+		return modules.Skylink{}, errors.Compose(ErrSkylinkBlocked, r.DeleteFile(lup.SiaPath))
 	}
 
 	// Add the skylink to the siafiles.
@@ -447,24 +446,24 @@ func (r *Renter) managedCreateFileNodeFromReader(up modules.FileUploadParams, re
 	return fileNode, nil
 }
 
-// Blacklist returns the merkleroots that are blacklisted
-func (r *Renter) Blacklist() ([]crypto.Hash, error) {
+// Blocklist returns the merkleroots that are on the blocklist
+func (r *Renter) Blocklist() ([]crypto.Hash, error) {
 	err := r.tg.Add()
 	if err != nil {
 		return []crypto.Hash{}, err
 	}
 	defer r.tg.Done()
-	return r.staticSkynetBlacklist.Blacklist(), nil
+	return r.staticSkynetBlocklist.Blocklist(), nil
 }
 
-// UpdateSkynetBlacklist updates the list of hashed merkleroots that are blacklisted
-func (r *Renter) UpdateSkynetBlacklist(additions, removals []crypto.Hash) error {
+// UpdateSkynetBlocklist updates the list of hashed merkleroots that are blocked
+func (r *Renter) UpdateSkynetBlocklist(additions, removals []crypto.Hash) error {
 	err := r.tg.Add()
 	if err != nil {
 		return err
 	}
 	defer r.tg.Done()
-	return r.staticSkynetBlacklist.UpdateBlacklist(additions, removals)
+	return r.staticSkynetBlocklist.UpdateBlocklist(additions, removals)
 }
 
 // Portals returns the list of known skynet portals.
@@ -761,9 +760,9 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 		return sf.Metadata, streamerFromSlice(sf.Content), nil
 	}
 
-	// Check if link is blacklisted
-	if r.staticSkynetBlacklist.IsBlacklisted(link) {
-		return modules.SkyfileMetadata{}, nil, ErrSkylinkBlacklisted
+	// Check if link is blocked
+	if r.staticSkynetBlocklist.IsBlocked(link) {
+		return modules.SkyfileMetadata{}, nil, ErrSkylinkBlocked
 	}
 
 	// Check if this skylink is already in the stream buffer set. If so, we can
@@ -824,9 +823,9 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 // PinSkylink wil fetch the file associated with the Skylink, and then pin all
 // necessary content to maintain that Skylink.
 func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadParameters, timeout time.Duration) error {
-	// Check if link is blacklisted
-	if r.staticSkynetBlacklist.IsBlacklisted(skylink) {
-		return ErrSkylinkBlacklisted
+	// Check if link is blocked
+	if r.staticSkynetBlocklist.IsBlocked(skylink) {
+		return ErrSkylinkBlocked
 	}
 
 	// Set sane defaults for unspecified values.
@@ -1005,12 +1004,12 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 		return skylink, nil
 	}
 
-	// Check if skylink is blacklisted
-	if !r.staticSkynetBlacklist.IsBlacklisted(skylink) {
+	// Check if skylink is blocked
+	if !r.staticSkynetBlocklist.IsBlocked(skylink) {
 		return skylink, nil
 	}
 
-	// Skylink is blacklisted, try and delete the file and return an error
+	// Skylink is blocked, try and delete the file and return an error
 	deleteErr := r.DeleteFile(lup.SiaPath)
 	if largeFile {
 		extendedSiaPath, err := modules.NewSiaPath(lup.SiaPath.String() + ExtendedSuffix)
@@ -1019,5 +1018,5 @@ func (r *Renter) UploadSkyfile(lup modules.SkyfileUploadParameters) (modules.Sky
 		}
 		deleteErr = errors.Compose(deleteErr, r.DeleteFile(extendedSiaPath))
 	}
-	return modules.Skylink{}, errors.Compose(ErrSkylinkBlacklisted, deleteErr)
+	return modules.Skylink{}, errors.Compose(ErrSkylinkBlocked, deleteErr)
 }

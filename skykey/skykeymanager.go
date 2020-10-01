@@ -51,11 +51,11 @@ var (
 	// ErrSkykeyWithIDAlreadyExists indicates that a key cannot be created or
 	// added because a key with the same ID (and therefore same key entropy) is
 	// already being stored.
-	ErrSkykeyWithIDAlreadyExists = errors.New("Skykey ID already exists.")
+	ErrSkykeyWithIDAlreadyExists = errors.New("Skykey ID already exists")
 
 	// ErrSkykeyWithNameAlreadyExists indicates that a key cannot be created or added
 	// because a key with the same name is already being stored.
-	ErrSkykeyWithNameAlreadyExists = errors.New("Skykey name already used by another key.")
+	ErrSkykeyWithNameAlreadyExists = errors.New("Skykey name already used by another key")
 
 	// ErrNoSkykeysWithThatName indicates that the skykey manager doesn't have
 	// a key with that ID

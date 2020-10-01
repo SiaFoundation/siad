@@ -734,7 +734,7 @@ type ContractorSpending struct {
 // ContractorChurnStatus contains the current churn budgets for the Contractor's
 // churnLimiter and the aggregate churn for the current period.
 type ContractorChurnStatus struct {
-	// AggregatCurrentePeriodChurn is the total size of files from churned contracts in this
+	// AggregateCurrentPeriodChurn is the total size of files from churned contracts in this
 	// period.
 	AggregateCurrentPeriodChurn uint64 `json:"aggregatecurrentperiodchurn"`
 	// MaxPeriodChurn is the (adjustable) maximum churn allowed per period.
@@ -1106,11 +1106,11 @@ type Renter interface {
 	// file.
 	UploadSkyfile(SkyfileUploadParameters) (Skylink, error)
 
-	// Blacklist returns the merkleroots that are blacklisted
-	Blacklist() ([]crypto.Hash, error)
+	// Blocklist returns the merkleroots that are blocked
+	Blocklist() ([]crypto.Hash, error)
 
-	// UpdateSkynetBlacklist updates the list of hashed merkleroots that are blacklisted
-	UpdateSkynetBlacklist(additions, removals []crypto.Hash) error
+	// UpdateSkynetBlocklist updates the list of hashed merkleroots that are blocked
+	UpdateSkynetBlocklist(additions, removals []crypto.Hash) error
 
 	// PinSkylink re-uploads the data stored at the file under that skylink with
 	// the given parameters.

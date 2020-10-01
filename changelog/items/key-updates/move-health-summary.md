@@ -1,0 +1,1 @@
+- move health summary from `siac renter -v` to `siac renter health`

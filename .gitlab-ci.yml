@@ -32,7 +32,7 @@ variables:
     ./modules/renter/hostdb
     ./modules/renter/hostdb/hosttree
     ./modules/renter/proto
-    ./modules/renter/skynetblacklist
+    ./modules/renter/skynetblocklist
     ./modules/renter/skynetportals
     ./modules/miner
     ./modules/wallet
@@ -162,6 +162,7 @@ lint:
       - .cache
   script:
     - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
+    - golangci-lint run -c .golangci.yml ./...
     - make lint-analyze
     - make markdown-spellcheck
     - make test
