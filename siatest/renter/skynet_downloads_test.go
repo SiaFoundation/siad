@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -41,6 +43,7 @@ func TestSkynetDownloads(t *testing.T) {
 		{Name: "DirectoryBasic", Test: testDownloadDirectoryBasic},
 		{Name: "DirectoryNested", Test: testDownloadDirectoryNested},
 		{Name: "ContentDisposition", Test: testDownloadContentDisposition},
+		{Name: "NotModified", Test: testNotModified},
 	}
 
 	// Run tests
@@ -105,7 +108,7 @@ func testDownloadSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 			"file1.png": {
 				FileMode:    os.FileMode(0644),
 				Filename:    "file1.png",
-				ContentType: "application/octet-stream",
+				ContentType: "image/png",
 				Offset:      0,
 				Len:         uint64(len(data)),
 			}},
@@ -137,7 +140,7 @@ func testDownloadSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 			"file1.html": {
 				FileMode:    os.FileMode(0644),
 				Filename:    "file1.html",
-				ContentType: "application/octet-stream",
+				ContentType: "text/html; charset=utf-8",
 				Offset:      0,
 				Len:         uint64(len(data)),
 			}},
@@ -188,14 +191,14 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 			"index.html": {
 				FileMode:    os.FileMode(0644),
 				Filename:    "index.html",
-				ContentType: "application/octet-stream",
+				ContentType: "text/html; charset=utf-8",
 				Offset:      0,
 				Len:         uint64(len(files[0].Data)),
 			},
 			"about.html": {
 				FileMode:    os.FileMode(0644),
 				Filename:    "about.html",
-				ContentType: "application/octet-stream",
+				ContentType: "text/html; charset=utf-8",
 				Offset:      uint64(len(files[0].Data)),
 				Len:         uint64(len(files[1].Data)),
 			}},
@@ -233,14 +236,14 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 			"index.html": {
 				FileMode:    os.FileMode(0644),
 				Filename:    "index.html",
-				ContentType: "application/octet-stream",
+				ContentType: "text/html; charset=utf-8",
 				Offset:      0,
 				Len:         uint64(len(files[0].Data)),
 			},
 			"about.html": {
 				FileMode:    os.FileMode(0644),
 				Filename:    "about.html",
-				ContentType: "application/octet-stream",
+				ContentType: "text/html; charset=utf-8",
 				Offset:      uint64(len(files[0].Data)),
 				Len:         uint64(len(files[1].Data)),
 			}},
@@ -276,14 +279,14 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 			"index.html": {
 				FileMode:    os.FileMode(0644),
 				Filename:    "index.html",
-				ContentType: "application/octet-stream",
+				ContentType: "text/html; charset=utf-8",
 				Offset:      0,
 				Len:         uint64(len(files[0].Data)),
 			},
 			"about.html": {
 				FileMode:    os.FileMode(0644),
 				Filename:    "about.html",
-				ContentType: "application/octet-stream",
+				ContentType: "text/html; charset=utf-8",
 				Offset:      uint64(len(files[0].Data)),
 				Len:         uint64(len(files[1].Data)),
 			},
@@ -334,28 +337,28 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 			"index.html": {
 				FileMode:    os.FileMode(0644),
 				Filename:    "index.html",
-				ContentType: "application/octet-stream",
+				ContentType: "text/html; charset=utf-8",
 				Offset:      uint64(len(files[0].Data) + len(files[1].Data) + len(files[2].Data)),
 				Len:         uint64(len(files[3].Data)),
 			},
 			"assets/images/file1.png": {
 				FileMode:    os.FileMode(0644),
 				Filename:    "assets/images/file1.png",
-				ContentType: "application/octet-stream",
+				ContentType: "image/png",
 				Offset:      0,
 				Len:         uint64(len(files[0].Data)),
 			},
 			"assets/images/file2.png": {
 				FileMode:    os.FileMode(0644),
 				Filename:    "assets/images/file2.png",
-				ContentType: "application/octet-stream",
+				ContentType: "image/png",
 				Offset:      uint64(len(files[0].Data)),
 				Len:         uint64(len(files[1].Data)),
 			},
 			"assets/index.html": {
 				FileMode:    os.FileMode(0644),
 				Filename:    "assets/index.html",
-				ContentType: "application/octet-stream",
+				ContentType: "text/html; charset=utf-8",
 				Offset:      uint64(len(files[0].Data) + len(files[1].Data)),
 				Len:         uint64(len(files[2].Data)),
 			},
@@ -384,14 +387,14 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 			"assets/images/file1.png": {
 				FileMode:    os.FileMode(0644),
 				Filename:    "assets/images/file1.png",
-				ContentType: "application/octet-stream",
+				ContentType: "image/png",
 				Offset:      0,
 				Len:         uint64(len(files[0].Data)),
 			},
 			"assets/images/file2.png": {
 				FileMode:    os.FileMode(0644),
 				Filename:    "assets/images/file2.png",
-				ContentType: "application/octet-stream",
+				ContentType: "image/png",
 				Offset:      uint64(len(files[0].Data)),
 				Len:         uint64(len(files[1].Data)),
 			},
@@ -418,7 +421,7 @@ func testDownloadDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 			"assets/index.html": {
 				FileMode:    os.FileMode(0644),
 				Filename:    "assets/index.html",
-				ContentType: "application/octet-stream",
+				ContentType: "text/html; charset=utf-8",
 				Offset:      0,
 				Len:         uint64(len(files[2].Data)),
 			},
@@ -530,6 +533,140 @@ func testDownloadContentDisposition(t *testing.T, tg *siatest.TestGroup) {
 	err = errors.Compose(err, verifyCDHeader(header, attachmentZip))
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testNotModified verifies the functionality of the '304 Not Modified' header
+func testNotModified(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// upload a single file
+	file := make([]byte, 100)
+	fastrand.Read(file)
+	skylink, _, _, err := r.UploadNewSkyfileWithDataBlocking("testNotModified", file, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// we use an unsafe client as it directly returns the http response object,
+	// and we don't want to expose such methods on the actual client.
+	uc := client.NewUnsafeClient(r.Client)
+
+	// download the skylink
+	resp, err := uc.SkynetSkylinkGetWithETag(skylink, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("Unexpected status code")
+	}
+
+	// verify ETag header is set
+	eTag := resp.Header.Get("ETag")
+	if eTag == "" {
+		t.Fatal("Unexpected ETag response header")
+	}
+
+	// verify the ETag header is different for a HEAD requests
+	status, header, err := r.SkynetSkylinkHead(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != http.StatusOK {
+		t.Fatal("Unexpected status code")
+	}
+	if header.Get("ETag") == eTag {
+		t.Fatal("Unexpected ETag response header")
+	}
+
+	// download the skylink but now pass the ETag in the request header
+	resp, err = uc.SkynetSkylinkGetWithETag(skylink, eTag)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+
+	// verify status code is 304 and no data was returned
+	if resp.StatusCode != http.StatusNotModified {
+		t.Fatal("Unexpected status code", resp.StatusCode)
+	}
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if len(data) != 0 {
+		t.Fatal("Unexpected response data")
+	}
+
+	// verify we miss the cache if the path is altered
+	resp, err = uc.SkynetSkylinkGetWithETag(skylink+"/foo", eTag)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatal("Unexpected status code", resp.StatusCode)
+	}
+
+	// verify we miss the cache if format is passed
+	resp, err = uc.SkynetSkylinkGetWithETag(skylink+"?format="+string(modules.SkyfileFormatZip), eTag)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("Unexpected status code", resp.StatusCode)
+	}
+
+	// verify this has an affect on the returned ETag
+	if resp.Header.Get("ETag") == eTag {
+		t.Fatal("Unexpected ETag")
+	}
+
+	// verify we miss the cache if nocache=1 is supplied
+	resp, err = uc.SkynetSkylinkGetWithETag(skylink+"?nocache=1", eTag)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("Unexpected status code", resp.StatusCode)
+	}
+	data, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if !bytes.Equal(file, data) {
+		t.Fatal("Unexpected response data")
+	}
+	// verify this has no affect on the returned ETag
+	if resp.Header.Get("ETag") != eTag {
+		t.Fatal("Unexpected ETag")
+	}
+
+	// verify random query string params do not affect the ETag value
+	resp, err = uc.SkynetSkylinkGetWithETag(skylink+"?foo=bar", "")
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("Unexpected status code", resp.StatusCode)
+	}
+	if resp.Header.Get("ETag") != eTag {
+		t.Fatal("Unexpected ETag", resp.Header.Get("ETag"))
+	}
+
+	// verify manipulating the ETag slightly misses the cache
+	ETagCorrupted := "abcd" + eTag[4:]
+	resp, err = uc.SkynetSkylinkGetWithETag(skylink+"?foo=bar", ETagCorrupted)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("Unexpected status code", resp.StatusCode)
+	}
+	data, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal("Unexpected error", err)
+	}
+	if !bytes.Equal(file, data) {
+		t.Fatal("Unexpected response data")
 	}
 }
 

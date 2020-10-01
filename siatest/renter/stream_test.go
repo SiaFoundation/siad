@@ -339,7 +339,7 @@ func testUploadStreaming(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	// Compare downloaded data to original one.
-	if !bytes.Equal([]byte(data), downloadedData) {
+	if !bytes.Equal(data, downloadedData) {
 		t.Log("originalData:", data)
 		t.Log("downloadedData:", downloadedData)
 		t.Fatal("Downloaded data doesn't match uploaded data")

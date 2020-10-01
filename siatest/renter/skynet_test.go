@@ -629,7 +629,7 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	// create a multipart upload that without any files
+	// create a multipart upload without any files
 	body := new(bytes.Buffer)
 	writer := multipart.NewWriter(body)
 	err := writer.Close()
@@ -1422,7 +1422,7 @@ func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
 	mdF3Expected := modules.SkyfileSubfileMetadata{
 		FileMode:    os.FileMode(0640),
 		Filename:    "b/file3.txt",
-		ContentType: "application/octet-stream",
+		ContentType: "text/plain; charset=utf-8",
 		Offset:      0,
 		Len:         uint64(len(dataFile3)),
 	}

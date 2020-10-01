@@ -15,6 +15,13 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+// SkynetSkylinkGetWithETag uses the /skynet/skylink endpoint to download a
+// skylink file setting the given ETag as value in the If-None-Match request
+// header.
+func (uc *UnsafeClient) SkynetSkylinkGetWithETag(skylink string, eTag string) (*http.Response, error) {
+	return uc.GetWithHeaders(skylinkQueryWithValues(skylink, url.Values{}), http.Header{"If-None-Match": []string{eTag}})
+}
+
 // RenterSkyfileGet wraps RenterFileRootGet to query a skyfile.
 func (c *Client) RenterSkyfileGet(siaPath modules.SiaPath, root bool) (rf api.RenterFile, err error) {
 	if !root {
@@ -279,9 +286,9 @@ func (c *Client) SkynetSkyfilePostDisableForce(params modules.SkyfileUploadParam
 	values.Set("root", rootStr)
 
 	// Set the headers
-	headers := map[string]string{"Content-Type": "application/x-www-form-urlencoded"}
+	headers := http.Header{"Content-Type": []string{"application/x-www-form-urlencoded"}}
 	if disableForce {
-		headers["Skynet-Disable-Force"] = strconv.FormatBool(disableForce)
+		headers.Add("Skynet-Disable-Force", strconv.FormatBool(disableForce))
 	}
 
 	// Make the call to upload the file.
@@ -307,8 +314,8 @@ func (c *Client) SkynetSkyfileMultiPartPost(params modules.SkyfileMultipartUploa
 	// Set the url values.
 	values := url.Values{}
 	values.Set("filename", params.Filename)
-	values.Set(modules.SkyfileDisableDefaultPathParamName, strconv.FormatBool(params.DisableDefaultPath))
-	values.Set(modules.SkyfileDefaultPathParamName, params.DefaultPath)
+	values.Set("disabledefaultpath", strconv.FormatBool(params.DisableDefaultPath))
+	values.Set("defaultpath", params.DefaultPath)
 	forceStr := fmt.Sprintf("%t", params.Force)
 	values.Set("force", forceStr)
 	redundancyStr := fmt.Sprintf("%v", params.BaseChunkRedundancy)
@@ -319,7 +326,7 @@ func (c *Client) SkynetSkyfileMultiPartPost(params modules.SkyfileMultipartUploa
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", params.SiaPath.String(), values.Encode())
 
-	headers := map[string]string{"Content-Type": params.ContentType}
+	headers := http.Header{"Content-Type": []string{params.ContentType}}
 	_, resp, err := c.postRawResponseWithHeaders(query, params.Reader, headers)
 	if err != nil {
 		return "", api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "post call to "+query+" failed")
