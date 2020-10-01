@@ -40,7 +40,7 @@ func (api *API) buildHTTPRoutes() {
 	router.GET("/daemon/stack", api.daemonStackHandlerGET)
 	router.POST("/daemon/startprofile", api.daemonStartProfileHandlerPOST)
 	router.GET("/daemon/stop", RequirePassword(api.daemonStopHandler, requiredPassword))
-	router.GET("/daemon/stopprofile", api.daemonStopProfileHandlerGET)
+	router.POST("/daemon/stopprofile", api.daemonStopProfileHandlerPOST)
 	router.GET("/daemon/update", api.daemonUpdateHandlerGET)
 	router.POST("/daemon/update", api.daemonUpdateHandlerPOST)
 	router.GET("/daemon/version", api.daemonVersionHandler)

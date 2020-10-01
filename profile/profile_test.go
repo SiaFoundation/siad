@@ -29,14 +29,16 @@ func TestProcessProfileFlags(t *testing.T) {
 		{"cMT", "cmt", true},
 		{"CMT", "cmt", true},
 
+		// Check spaces
+		{" ", " ", true},
+		{" CMT", " cmt", true},
+		{"CMT ", "cmt ", true},
+
 		// Error Cases
 		{"", "", false},
-		{" ", "", false},
-		{"x", "", false},
-		{" CMT", "", false},
-		{"CMT ", "", false},
 		{" CMT ", "", false},
 		{" cmt ", "", false},
+		{"x", "", false},
 		{"at", "", false},
 		{"abdfijklnopqsuvxyz", "", false},
 		{"cghmrtwez", "", false},

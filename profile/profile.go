@@ -40,10 +40,13 @@ func ProcessProfileFlags(profile string) (string, error) {
 		return "", errors.New("no profile flags provided")
 	}
 
-	// Convert to lowercase and check flags
+	// Convert to lowercase
 	profile = strings.ToLower(profile)
-	validProfiles := "cmt"
 
+	// Valid profile flags are spaces, c, m, and t
+	validProfiles := " cmt"
+
+	// Check profile flags
 	invalidProfiles := profile
 	for _, p := range validProfiles {
 		invalidProfiles = strings.Replace(invalidProfiles, string(p), "", 1)

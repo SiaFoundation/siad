@@ -172,11 +172,6 @@ func tryAutoUnlock(srv *server.Server) {
 // siad.
 func startDaemon(config Config) (err error) {
 	loadStart := time.Now()
-	// Process the config variables after they are parsed by cobra.
-	config, err = processConfig(config)
-	if err != nil {
-		return errors.AddContext(err, "failed to parse input parameter")
-	}
 
 	// Load API password.
 	config, err = loadAPIPassword(config)
@@ -235,29 +230,36 @@ func startDaemon(config Config) (err error) {
 
 // startDaemonCmd is a passthrough function for startDaemon.
 func startDaemonCmd(cmd *cobra.Command, _ []string) {
-	var profileCPU, profileMem, profileTrace bool
+	// Process the config variables after they are parsed by cobra.
+	config, err := processConfig(globalConfig)
+	if err != nil {
+		die(errors.AddContext(err, "failed to parse input parameter"))
+	}
 
-	profileCPU = strings.Contains(globalConfig.Siad.Profile, "c")
-	profileMem = strings.Contains(globalConfig.Siad.Profile, "m")
-	profileTrace = strings.Contains(globalConfig.Siad.Profile, "t")
+	// Parse profile flags
+	profileCPU := strings.Contains(config.Siad.Profile, "c")
+	profileMem := strings.Contains(config.Siad.Profile, "m")
+	profileTrace := strings.Contains(config.Siad.Profile, "t")
 
+	// Always run CPU and memory profiles on debug
 	if build.DEBUG {
 		profileCPU = true
 		profileMem = true
 	}
 
+	// Launch any profiles
 	if profileCPU || profileMem || profileTrace {
 		var profileDir string
 		if cmd.Root().Flag("profile-directory").Changed {
-			profileDir = globalConfig.Siad.ProfileDir
+			profileDir = config.Siad.ProfileDir
 		} else {
-			profileDir = filepath.Join(globalConfig.Siad.SiaDir, globalConfig.Siad.ProfileDir)
+			profileDir = filepath.Join(config.Siad.SiaDir, config.Siad.ProfileDir)
 		}
 		go profile.StartContinuousProfile(profileDir, profileCPU, profileMem, profileTrace)
 	}
 
 	// Start siad. startDaemon will only return when it is shutting down.
-	err := startDaemon(globalConfig)
+	err = startDaemon(config)
 	if err != nil {
 		die(err)
 	}
