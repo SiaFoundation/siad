@@ -1443,8 +1443,9 @@ func TestSiaDirDelete(t *testing.T) {
 			default:
 			}
 			err := entry.SaveHeader()
-			if err != nil && !strings.Contains(err.Error(), "can't call createAndApplyTransaction on deleted file") {
-				t.Fatal(err)
+			if err != nil && !errors.Contains(err, siafile.ErrDeleted) {
+				t.Error(err)
+				return
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
