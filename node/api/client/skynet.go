@@ -371,7 +371,7 @@ func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadPara
 	if err != nil {
 		return api.SkynetSkyfileHandlerPOST{}, errors.AddContext(err, "unable to parse the skylink upload response")
 	}
-	return rshp, err
+	return rshp, nil
 }
 
 // SkynetBlacklistGet requests the /skynet/blacklist Get endpoint

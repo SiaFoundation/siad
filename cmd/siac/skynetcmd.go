@@ -15,8 +15,6 @@ import (
 	"sync"
 	"text/tabwriter"
 
-	"gitlab.com/NebulousLabs/Sia/siatest"
-
 	"github.com/vbauerster/mpb/v5"
 
 	"github.com/spf13/cobra"
@@ -830,22 +828,18 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 				fmt.Printf("Failed to read file %s.\n", path)
 				die(err)
 			}
-			// siatest.AddMultipartFile will panic on error. We want to avoid
-			// the raw panic and exit cleanly with an error message and os.Exit.
-			defer func() {
-				if e := recover(); e != nil {
-					fmt.Printf("Failed to read file %s.\n", path)
-					die(e)
-				}
-			}()
-			_ = siatest.AddMultipartFile(writer, data, "files[]", info.Name(), modules.DefaultFilePerm, &offset)
+			_, err = modules.AddMultipartFile(writer, data, "files[]", info.Name(), modules.DefaultFilePerm, &offset)
+			if err != nil {
+				fmt.Printf("Failed to add file %s to multipart upload.\n", path)
+				die(err)
+			}
 			return nil
 		})
 		if err != nil {
 			die(err)
 		}
 		if err = writer.Close(); err != nil {
-			return
+			die(err)
 		}
 	}()
 

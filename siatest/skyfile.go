@@ -2,15 +2,7 @@ package siatest
 
 import (
 	"bytes"
-	"fmt"
-	"io"
-	"mime"
 	"mime/multipart"
-	"net/http"
-	"net/textproto"
-	"os"
-	"path/filepath"
-	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -24,41 +16,6 @@ import (
 type TestFile struct {
 	Name string
 	Data []byte
-}
-
-// AddMultipartFile is a helper function to add a file to the multipart form-
-// data. Note that the given data will be treated as binary data, and the multi
-// part's ContentType header will be set accordingly.
-func AddMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename string, filemode uint64, offset *uint64) modules.SkyfileSubfileMetadata {
-	filemodeStr := fmt.Sprintf("%o", filemode)
-	contentType, err := fileContentType(filename, bytes.NewReader(filedata))
-	if err != nil {
-		panic(err)
-	}
-	partHeader := createFormFileHeaders(filekey, filename, filemodeStr, contentType)
-	part, err := w.CreatePart(partHeader)
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = part.Write(filedata)
-	if err != nil {
-		panic(err)
-	}
-
-	metadata := modules.SkyfileSubfileMetadata{
-		Filename:    filename,
-		ContentType: contentType,
-		FileMode:    os.FileMode(filemode),
-		Len:         uint64(len(filedata)),
-	}
-
-	if offset != nil {
-		metadata.Offset = *offset
-		*offset += metadata.Len
-	}
-
-	return metadata
 }
 
 // UploadNewSkyfileWithDataBlocking attempts to upload a skyfile with given
@@ -151,7 +108,10 @@ func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files []T
 	// add the files
 	var offset uint64
 	for _, tf := range files {
-		_ = AddMultipartFile(writer, tf.Data, "files[]", tf.Name, modules.DefaultFilePerm, &offset)
+		_, err = modules.AddMultipartFile(writer, tf.Data, "files[]", tf.Name, modules.DefaultFilePerm, &offset)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	if err = writer.Close(); err != nil {
@@ -204,40 +164,4 @@ func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files []T
 	}
 
 	return
-}
-
-// escapeQuotes escapes the quotes in the given string.
-func escapeQuotes(s string) string {
-	quoteEscaper := strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
-	return quoteEscaper.Replace(s)
-}
-
-// createFormFileHeaders builds a header from the given params. These headers
-// are used when creating the parts in a multi-part form upload.
-func createFormFileHeaders(fieldname, filename, filemode, contentType string) textproto.MIMEHeader {
-	fieldname = escapeQuotes(fieldname)
-	filename = escapeQuotes(filename)
-
-	h := make(textproto.MIMEHeader)
-	h.Set("Content-Type", contentType)
-	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldname, filename))
-	h.Set("mode", filemode)
-	return h
-}
-
-// fileContentType extracts the content type from a given file.
-func fileContentType(filename string, file io.Reader) (string, error) {
-	contentType := mime.TypeByExtension(filepath.Ext(filename))
-	if contentType != "" {
-		return contentType, nil
-	}
-	// Only the first 512 bytes are used to sniff the content type.
-	buffer := make([]byte, 512)
-	_, err := file.Read(buffer)
-	if err != nil {
-		return "", err
-	}
-	// Always returns a valid content-type by returning
-	// "application/octet-stream" if no others seemed to match.
-	return http.DetectContentType(buffer), nil
 }
