@@ -240,7 +240,7 @@ func TestUpdate(t *testing.T) {
 	// Try again with a higher revision number. This should work.
 	v.revision++
 	rv.Revision++
-	rv.Sign(sk)
+	rv = rv.Sign(sk)
 	v.signature = rv.Signature
 	updated, err = r.Update(rv, v.key, v.expiry)
 	if err != nil {
@@ -274,6 +274,7 @@ func TestUpdate(t *testing.T) {
 	// Try another update with too much data.
 	v.revision++
 	rv.Revision++
+	rv = rv.Sign(sk)
 	v.data = make([]byte, modules.RegistryDataSize+1)
 	rv.Data = v.data
 	_, err = r.Update(rv, v.key, v.expiry)
@@ -366,7 +367,7 @@ func TestUpdate(t *testing.T) {
 
 	// Mark v3 invalid and try to update it. This should fail.
 	rv3.Revision++
-	rv3.Sign(sk3)
+	rv3 = rv3.Sign(sk3)
 	vExist, exists = r.entries[v3.mapKey()]
 	if !exists {
 		t.Fatal("entry doesn't exist")
@@ -518,7 +519,7 @@ func TestPrune(t *testing.T) {
 	}
 
 	// Restart.
-	_, err = New(registryPath, testingDefaultMaxEntries)
+	r, err = New(registryPath, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -721,7 +722,7 @@ func TestRegistryRace(t *testing.T) {
 	for i := 0; i < numEntries; i++ {
 		rv, v, sk := randomValue(0)
 		rv.Revision = 0 // set revision number to 0
-		rv.Sign(sk)
+		rv = rv.Sign(sk)
 		_, err = r.Update(rv, v.key, 0)
 		if err != nil {
 			t.Fatal(err)
@@ -762,7 +763,7 @@ func TestRegistryRace(t *testing.T) {
 			rev := atomic.AddUint64(nextRevision, 1)
 			rv.Revision = rev
 			exp := types.BlockHeight(atomic.AddUint64(nextExpiry, 1))
-			rv.Sign(sk)
+			rv = rv.Sign(sk)
 			_, err := r.Update(rv, key, exp)
 			if errors.Contains(err, errInvalidRevNum) {
 				continue // invalid revision numbers are expected
