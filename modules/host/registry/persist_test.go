@@ -2,6 +2,7 @@ package registry
 
 import (
 	"bytes"
+	"io"
 	"io/ioutil"
 	"math"
 	"path/filepath"
@@ -244,6 +245,11 @@ func TestSaveEntry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
 
 	// Create a pair that is stored at index 2.
 	index := int64(2)

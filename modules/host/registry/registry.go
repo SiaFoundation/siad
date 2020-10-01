@@ -50,7 +50,7 @@ type (
 		entries     map[crypto.Hash]*value
 		staticUsage bitfield
 		staticPath  string
-		staticWAL   *writeaheadlog.WAL
+		staticFile  *os.File
 		mu          sync.Mutex
 	}
 
@@ -109,6 +109,11 @@ func (v *value) update(rv modules.SignedRegistryValue, newExpiry types.BlockHeig
 	return nil
 }
 
+// Close closes the registry and its underlying resources.
+func (r *Registry) Close() error {
+	return r.staticFile.Close()
+}
+
 // Get fetches the data associated with a key and tweak from the registry.
 func (r *Registry) Get(pubKey types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, bool) {
 	r.mu.Lock()
@@ -163,8 +168,8 @@ func New(path string, wal *writeaheadlog.WAL, maxEntries uint64) (_ *Registry, e
 	}
 	// Create the registry.
 	reg := &Registry{
+		staticFile:  f,
 		staticPath:  path,
-		staticWAL:   wal,
 		staticUsage: b,
 	}
 	// Load the remaining entries.

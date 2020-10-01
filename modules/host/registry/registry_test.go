@@ -2,6 +2,7 @@ package registry
 
 import (
 	"bytes"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -57,6 +58,11 @@ func TestDeleteEntry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
 
 	// No bit should be used.
 	for i := uint64(0); i < r.staticUsage.Len(); i++ {
@@ -120,6 +126,11 @@ func TestNew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
 
 	// No bit should be used.
 	for i := uint64(0); i < r.staticUsage.Len(); i++ {
@@ -163,6 +174,11 @@ func TestNew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
 	if len(r.entries) != 1 {
 		t.Fatal("registry should contain one entry", len(r.entries))
 	}
@@ -198,6 +214,11 @@ func TestUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
 
 	// Register a value.
 	rv, v, sk := randomValue(2)
@@ -245,6 +266,11 @@ func TestUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
 	if len(r.entries) != 1 {
 		t.Fatal("registry should contain one entry", len(r.entries))
 	}
@@ -304,6 +330,11 @@ func TestUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
 	if len(r.entries) != 1 {
 		t.Fatal("registry should contain one entries", len(r.entries))
 	}
@@ -378,6 +409,11 @@ func TestRegistryLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
 
 	// Add entries up until the limit.
 	for i := uint64(0); i < limit; i++ {
@@ -412,6 +448,11 @@ func TestPrune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
 
 	// Add 2 entries with different expiries.
 	rv1, v1, _ := randomValue(0)
@@ -496,6 +537,11 @@ func TestPrune(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
 
 	// Should have 1 entry.
 	if len(r.entries) != 1 {
@@ -537,6 +583,11 @@ func TestFullRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
 
 	// Fill it completely.
 	vals := make([]*value, 0, numEntries)
@@ -566,6 +617,11 @@ func TestFullRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
 
 	// Check number of entries.
 	if uint64(len(r.entries)) != numEntries {
@@ -613,6 +669,11 @@ func TestFullRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
 
 	// Check number of entries. Second half should still be in there.
 	if uint64(len(r.entries)) != numEntries/2 {
@@ -662,6 +723,11 @@ func TestRegistryRace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
 
 	// Add 3 entries to it.
 	numEntries := 3
@@ -779,6 +845,11 @@ func TestRegistryRace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
 
 	// Check again.
 	for i := 0; i < numEntries; i++ {
@@ -815,6 +886,11 @@ func BenchmarkRegistryUpdate(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}(r)
 
 	// Declare a number of entries to run. We try to mimic real world
 	// application. That means each entry will be updated by a single thread
@@ -849,8 +925,7 @@ func BenchmarkRegistryUpdate(b *testing.B) {
 		for i := atomic.AddUint64(&iters, 1); i < uint64(b.N); i = atomic.AddUint64(&iters, 1) {
 			// Update
 			rv.Revision = revision
-			rv.Sign(sk)
-			_, err := r.Update(rv, key, expiry)
+			_, err := r.Update(rv.Sign(sk), key, expiry)
 			if err != nil {
 				b.Error(err)
 				return

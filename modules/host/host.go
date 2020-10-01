@@ -83,7 +83,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	connmonitor "gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/siamux"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 const (
@@ -154,7 +153,6 @@ type Host struct {
 	wallet        modules.Wallet
 	staticAlerter *modules.GenericAlerter
 	staticMux     *siamux.SiaMux
-	staticWAL     *writeaheadlog.WAL
 	dependencies  modules.Dependencies
 	modules.StorageManager
 
@@ -449,29 +447,20 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		return nil, err
 	}
 
-	// Create the wal.
-	txns, wal, err := writeaheadlog.New(filepath.Join(h.persistDir, modules.HostWALFile))
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to load WAL")
-	}
-	for _, txn := range txns {
-		err = writeaheadlog.ApplyUpdates(txn.Updates...)
-		if err != nil {
-			return nil, errors.AddContext(err, "failed to apply wal update")
-		}
-		err = txn.SignalUpdatesApplied()
-		if err != nil {
-			return nil, errors.AddContext(err, "host failed to signal applied updates")
-		}
-	}
-	h.staticWAL = wal
-
 	// Load the registry.
 	registry, err := registry.New(filepath.Join(h.persistDir, modules.HostRegistryFile), wal, registryDefaultMaxEntries)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to load host registry")
 	}
 	h.staticRegistry = registry
+	h.tg.AfterStop(func() {
+		err := h.staticRegistry.Close()
+		if err != nil {
+			// State of the registry is uncertain, a Println will have to
+			// suffice.
+			fmt.Println("Error when closing the logger:", err)
+		}
+	})
 
 	// Initialize the logger, and set up the stop call that will close the
 	// logger.

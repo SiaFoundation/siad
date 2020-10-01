@@ -259,6 +259,9 @@ func (r *Registry) managedSaveEntry(v *value, used bool) error {
 	if err != nil {
 		return errors.AddContext(err, "Save: failed to marshal persistedEntry")
 	}
-	update := writeaheadlog.WriteAtUpdate(r.staticPath, v.staticIndex*PersistedEntrySize, b)
-	return r.staticWAL.CreateAndApplyTransaction(writeaheadlog.ApplyUpdates, update)
+	_, err = r.staticFile.WriteAt(b, v.staticIndex*PersistedEntrySize)
+	if err != nil {
+		return errors.AddContext(err, "failed to save entry")
+	}
+	return nil
 }
