@@ -225,13 +225,13 @@ have the nickname be the same as the filename.
 
 ### Skynet tasks
 
-* `siac skynet blacklist` lists the merkleroots of all blacklisted skylinks.
+* `siac skynet blocklist` lists the merkleroots of all blocked skylinks.
 
-* `siac skynet blacklist add [skylink]` will add any skylinks separated by
-  spaces to the blacklist.
+* `siac skynet blocklist add [skylink]` will add any skylinks separated by
+  spaces to the blocklist.
 
-* `siac skynet blacklist remove [skylinks]` will remove any skylinks
-  separated by spaces from the blacklist.
+* `siac skynet blocklist remove [skylinks]` will remove any skylinks
+  separated by spaces from the blocklist.
 
 * `siac skynet convert [source siaPath] [destination siaPath]` converts
   a siafile to a skyfile and then generates its skylink. A new skylink will be

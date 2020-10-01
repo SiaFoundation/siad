@@ -374,15 +374,15 @@ func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadPara
 	return rshp, nil
 }
 
-// SkynetBlacklistGet requests the /skynet/blacklist Get endpoint
-func (c *Client) SkynetBlacklistGet() (blacklist api.SkynetBlacklistGET, err error) {
-	err = c.get("/skynet/blacklist", &blacklist)
+// SkynetBlocklistGet requests the /skynet/blocklist Get endpoint
+func (c *Client) SkynetBlocklistGet() (blocklist api.SkynetBlocklistGET, err error) {
+	err = c.get("/skynet/blocklist", &blocklist)
 	return
 }
 
-// SkynetBlacklistHashPost requests the /skynet/blacklist Post endpoint
-func (c *Client) SkynetBlacklistHashPost(additions, removals []string, isHash bool) (err error) {
-	sbp := api.SkynetBlacklistPOST{
+// SkynetBlocklistHashPost requests the /skynet/blocklist Post endpoint
+func (c *Client) SkynetBlocklistHashPost(additions, removals []string, isHash bool) (err error) {
+	sbp := api.SkynetBlocklistPOST{
 		Add:    additions,
 		Remove: removals,
 		IsHash: isHash,
@@ -391,13 +391,13 @@ func (c *Client) SkynetBlacklistHashPost(additions, removals []string, isHash bo
 	if err != nil {
 		return err
 	}
-	err = c.post("/skynet/blacklist", string(data), nil)
+	err = c.post("/skynet/blocklist", string(data), nil)
 	return
 }
 
-// SkynetBlacklistPost requests the /skynet/blacklist Post endpoint
-func (c *Client) SkynetBlacklistPost(additions, removals []string) (err error) {
-	err = c.SkynetBlacklistHashPost(additions, removals, false)
+// SkynetBlocklistPost requests the /skynet/blocklist Post endpoint
+func (c *Client) SkynetBlocklistPost(additions, removals []string) (err error) {
+	err = c.SkynetBlocklistHashPost(additions, removals, false)
 	return
 }
 

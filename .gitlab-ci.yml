@@ -32,7 +32,7 @@ variables:
     ./modules/renter/hostdb
     ./modules/renter/hostdb/hosttree
     ./modules/renter/proto
-    ./modules/renter/skynetblacklist
+    ./modules/renter/skynetblocklist
     ./modules/renter/skynetportals
     ./modules/miner
     ./modules/wallet

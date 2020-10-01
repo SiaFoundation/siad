@@ -36,25 +36,25 @@ on top of Sia.`,
 		Run: skynetcmd,
 	}
 
-	skynetBlacklistCmd = &cobra.Command{
-		Use:   "blacklist",
-		Short: "Add, remove, or list blacklisted skylinks.",
-		Long:  "Add, remove, or list blacklisted skylinks.",
-		Run:   skynetblacklistgetcmd,
+	skynetBlocklistCmd = &cobra.Command{
+		Use:   "blocklist",
+		Short: "Add, remove, or list skylinks from the blocklist.",
+		Long:  "Add, remove, or list skylinks from the blocklist.",
+		Run:   skynetblocklistgetcmd,
 	}
 
-	skynetBlacklistAddCmd = &cobra.Command{
+	skynetBlocklistAddCmd = &cobra.Command{
 		Use:   "add [skylink] ...",
-		Short: "Add skylinks to the blacklist",
-		Long:  "Add space separated skylinks to the blacklist.",
-		Run:   skynetblacklistaddcmd,
+		Short: "Add skylinks to the blocklist",
+		Long:  "Add space separated skylinks to the blocklist.",
+		Run:   skynetblocklistaddcmd,
 	}
 
-	skynetBlacklistRemoveCmd = &cobra.Command{
+	skynetBlocklistRemoveCmd = &cobra.Command{
 		Use:   "remove [skylink] ...",
-		Short: "Remove skylinks from the blacklist",
-		Long:  "Remove space separated skylinks from the blacklist.",
-		Run:   skynetblacklistremovecmd,
+		Short: "Remove skylinks from the blocklist",
+		Long:  "Remove space separated skylinks from the blocklist.",
+		Run:   skynetblocklistremovecmd,
 	}
 
 	skynetConvertCmd = &cobra.Command{
@@ -147,31 +147,31 @@ func skynetcmd(cmd *cobra.Command, _ []string) {
 	os.Exit(exitCodeUsage)
 }
 
-// skynetblacklistaddcmd adds skylinks to the blacklist
-func skynetblacklistaddcmd(_ *cobra.Command, args []string) {
-	skynetblacklistUpdate(args, nil)
+// skynetblocklistaddcmd adds skylinks to the blocklist
+func skynetblocklistaddcmd(cmd *cobra.Command, args []string) {
+	skynetBlocklistUpdate(args, nil)
 }
 
-// skynetblacklistremovecmd removes skylinks from the blacklist
-func skynetblacklistremovecmd(_ *cobra.Command, args []string) {
-	skynetblacklistUpdate(nil, args)
+// skynetblocklistremovecmd removes skylinks from the blocklist
+func skynetblocklistremovecmd(cmd *cobra.Command, args []string) {
+	skynetBlocklistUpdate(nil, args)
 }
 
-// skynetblacklistUpdate adds/removes trimmed skylinks to the blacklist
-func skynetblacklistUpdate(additions, removals []string) {
-	additions = skynetblacklistTrimLinks(additions)
-	removals = skynetblacklistTrimLinks(removals)
+// skynetBlocklistUpdate adds/removes trimmed skylinks to the blocklist
+func skynetBlocklistUpdate(additions, removals []string) {
+	additions = skynetBlocklistTrimLinks(additions)
+	removals = skynetBlocklistTrimLinks(removals)
 
-	err := httpClient.SkynetBlacklistHashPost(additions, removals, skynetBlacklistHash)
+	err := httpClient.SkynetBlocklistHashPost(additions, removals, skynetBlocklistHash)
 	if err != nil {
-		die("Unable to update skynet blacklist:", err)
+		die("Unable to update skynet blocklist:", err)
 	}
 
-	fmt.Println("Skynet Blacklist updated")
+	fmt.Println("Skynet Blocklist updated")
 }
 
-// skynetblacklistTrimLinks will trim away `sia://` from skylinks
-func skynetblacklistTrimLinks(links []string) []string {
+// skynetBlocklistTrimLinks will trim away `sia://` from skylinks
+func skynetBlocklistTrimLinks(links []string) []string {
 	var result []string
 
 	for _, link := range links {
@@ -182,16 +182,16 @@ func skynetblacklistTrimLinks(links []string) []string {
 	return result
 }
 
-// skynetblacklistgetcmd will return the list of hashed merkleroots that are blocked
+// skynetblocklistgetcmd will return the list of hashed merkleroots that are blocked
 // from Skynet.
-func skynetblacklistgetcmd(_ *cobra.Command, _ []string) {
-	response, err := httpClient.SkynetBlacklistGet()
+func skynetblocklistgetcmd(_ *cobra.Command, _ []string) {
+	response, err := httpClient.SkynetBlocklistGet()
 	if err != nil {
-		die("Unable to get skynet blacklist:", err)
+		die("Unable to get skynet blocklist:", err)
 	}
 
-	fmt.Printf("Listing %d blacklisted skylink(s) merkleroots:\n", len(response.Blacklist))
-	for _, hash := range response.Blacklist {
+	fmt.Printf("Listing %d blocked skylink(s) merkleroots:\n", len(response.Blocklist))
+	for _, hash := range response.Blocklist {
 		fmt.Printf("\t%s\n", hash)
 	}
 }
