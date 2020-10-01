@@ -320,7 +320,7 @@ func verifyRenewedContract(so storageObligation, newContract types.FileContract,
 
 	// Check that the collateral does not exceed the maximum amount of
 	// collateral allowed.
-	expectedCollateral, err := renewContractCollateral(oldRevision, pt, newContract)
+	expectedCollateral, err := renewContractCollateral(pt, oldRevision, newContract)
 	if err != nil {
 		err = errors.Compose(err, ErrLowHostValidOutput)
 		return types.Currency{}, errors.AddContext(err, "Failed to compute contract collateral")

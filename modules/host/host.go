@@ -325,8 +325,10 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
 	// create a new RPC price table
-	hes := h.managedExternalSettings()
 	minRecommended, maxRecommended := h.tpool.FeeEstimation()
+	h.mu.Lock()
+	hes := h.externalSettings(maxRecommended) // use externalSettings to avoid another fee estimation
+	h.mu.Unlock()
 	priceTable := modules.RPCPriceTable{
 		// TODO: hardcoded cost should be updated to use a better value.
 		AccountBalanceCost:   types.NewCurrency64(1),

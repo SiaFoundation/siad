@@ -167,7 +167,7 @@ func TestVerifyRenewedContract(t *testing.T) {
 	}
 	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevision, pt, fc.WindowStart)
 	lockedCollateral := types.ZeroCurrency
-	expectedCollateral, err := renewContractCollateral(so.RevisionTransactionSet[0].FileContractRevisions[0], pt, fc)
+	expectedCollateral, err := renewContractCollateral(pt, so.RevisionTransactionSet[0].FileContractRevisions[0], fc)
 	if err != nil {
 		t.Fatal(err)
 	}
