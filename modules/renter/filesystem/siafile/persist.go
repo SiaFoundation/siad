@@ -505,7 +505,7 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 func (sf *SiaFile) chunk(chunkIndex int) (_ chunk, err error) {
 	// If the file has been deleted we can't call chunk.
 	if sf.deleted {
-		return chunk{}, errors.AddContext(ErrDeleted, "can't call call on deleted file")
+		return chunk{}, errors.AddContext(ErrDeleted, "can't call chunk on deleted file")
 	}
 	// Handle partial chunk.
 	if cci, ok := sf.isIncludedPartialChunk(uint64(chunkIndex)); ok {
