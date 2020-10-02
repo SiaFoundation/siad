@@ -99,7 +99,7 @@ func (na NetAddress) IsLocal() bool {
 // banned).
 func (na NetAddress) IsValid() error {
 	// Check the loopback address.
-	if na.IsLoopback() && build.Release != "testing" {
+	if na.IsLoopback() && build.Release == "standard" {
 		return errors.New("host is a loopback address")
 	}
 	return na.IsStdValid()
