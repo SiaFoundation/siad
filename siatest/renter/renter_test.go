@@ -3955,7 +3955,7 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 	if fi.File.Stuck == f.Stuck {
-		t.Fatalf("Stuck field should be %v but was %v", f.Stuck, fi.File.Stuck)
+		t.Fatalf("Stuck field should be %v but was %v", !f.Stuck, fi.File.Stuck)
 	}
 }
 

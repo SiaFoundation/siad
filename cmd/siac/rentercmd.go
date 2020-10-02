@@ -2419,6 +2419,12 @@ func renterfilesunstuckcmd() {
 	// Get all dirs and their files recursively.
 	dirs := getDir(modules.RootSiaPath(), true, true)
 
+	// Count all files.
+	totalFiles := 0
+	for _, d := range dirs {
+		totalFiles += len(d.files)
+	}
+
 	// Declare a worker function to mark files as not stuck.
 	var atomicFilesDone uint64
 	toUnstuck := make(chan modules.SiaPath)
@@ -2439,11 +2445,6 @@ func renterfilesunstuckcmd() {
 			defer wg.Done()
 			worker()
 		}()
-	}
-	// Count all files.
-	totalFiles := 0
-	for _, d := range dirs {
-		totalFiles += len(d.files)
 	}
 	// Pass the files on to the workers.
 	lastStatusUpdate := time.Now()
