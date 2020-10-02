@@ -2449,6 +2449,11 @@ func renterfilesunstuckcmd() {
 	lastStatusUpdate := time.Now()
 	for _, d := range dirs {
 		for _, f := range d.files {
+			if !f.Stuck && f.NumStuckChunks == 0 {
+				// Nothing to do. Count as set for progress.
+				atomic.AddUint64(&atomicFilesDone, 1)
+				continue
+			}
 			toUnstuck <- f.SiaPath
 			if time.Since(lastStatusUpdate) > time.Second {
 				fmt.Printf("\r%v of %v files set to 'unstuck'",
