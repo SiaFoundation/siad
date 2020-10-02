@@ -2416,16 +2416,15 @@ func rentersetlocalpathcmd(siapath, newlocalpath string) {
 // renterfilesunstuckcmd is the handler for the command `siac renter
 // unstuckall`. Sets all files to unstuck.
 func renterfilesunstuckcmd() {
-	rfg, err := httpClient.RenterFilesGet(true)
-	if err != nil {
-		die("Couldn't get list of all files:", err)
-	}
+	// Get all dirs and their files recursively.
+	dirs := getDir(modules.RootSiaPath(), true, true)
+
 	// Declare a worker function to mark files as not stuck.
 	var atomicFilesDone uint64
 	toUnstuck := make(chan modules.SiaPath)
 	worker := func() {
 		for siaPath := range toUnstuck {
-			err = httpClient.RenterSetFileStuckPost(siaPath, false)
+			err := httpClient.RenterSetFileStuckPost(siaPath, false)
 			if err != nil {
 				die(fmt.Sprintf("Couldn't set %v to unstuck: %v", siaPath, err))
 			}
@@ -2441,14 +2440,21 @@ func renterfilesunstuckcmd() {
 			worker()
 		}()
 	}
+	// Count all files.
+	totalFiles := 0
+	for _, d := range dirs {
+		totalFiles += len(d.files)
+	}
 	// Pass the files on to the workers.
 	lastStatusUpdate := time.Now()
-	for _, f := range rfg.Files {
-		toUnstuck <- f.SiaPath
-		if time.Since(lastStatusUpdate) > time.Second {
-			fmt.Printf("\r%v of %v files set to 'unstuck'",
-				atomic.LoadUint64(&atomicFilesDone), len(rfg.Files))
-			lastStatusUpdate = time.Now()
+	for _, d := range dirs {
+		for _, f := range d.files {
+			toUnstuck <- f.SiaPath
+			if time.Since(lastStatusUpdate) > time.Second {
+				fmt.Printf("\r%v of %v files set to 'unstuck'",
+					atomic.LoadUint64(&atomicFilesDone), totalFiles)
+				lastStatusUpdate = time.Now()
+			}
 		}
 	}
 	close(toUnstuck)
