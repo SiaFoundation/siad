@@ -2424,7 +2424,7 @@ func renterfilesunstuckcmd() {
 	toUnstuck := make(chan modules.SiaPath)
 	worker := func() {
 		for siaPath := range toUnstuck {
-			err := httpClient.RenterSetFileStuckPost(siaPath, false)
+			err := httpClient.RenterSetFileStuckPost(siaPath, true, false)
 			if err != nil {
 				die(fmt.Sprintf("Couldn't set %v to unstuck: %v", siaPath, err))
 			}

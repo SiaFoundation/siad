@@ -560,10 +560,11 @@ func (c *Client) RenterSetRepairPathPost(siaPath modules.SiaPath, newPath string
 
 // RenterSetFileStuckPost sets the 'stuck' field of the siafile at siaPath to
 // stuck.
-func (c *Client) RenterSetFileStuckPost(siaPath modules.SiaPath, stuck bool) (err error) {
+func (c *Client) RenterSetFileStuckPost(siaPath modules.SiaPath, root, stuck bool) (err error) {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("stuck", fmt.Sprint(stuck))
+	values.Set("root", fmt.Sprint(root))
 	err = c.post(fmt.Sprintf("/renter/file/%v", sp), values.Encode(), nil)
 	return
 }
