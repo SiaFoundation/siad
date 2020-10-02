@@ -212,7 +212,8 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 	}
 	// Need to make a copy of this value for the defer statement. Because
 	// 'fileNode' is a named value, if you run the call `return nil, err`, then
-	// 'fileNode' will be set to 'nil' when defer call 'fileNode.Close()'.
+	// 'fileNode' will be set to 'nil' when 'fileNode.Close()' gets called in
+	// the 'defer'.
 	fn := fileNode
 	defer func() {
 		// Ensure the fileNode is closed if there is an error upon return.
