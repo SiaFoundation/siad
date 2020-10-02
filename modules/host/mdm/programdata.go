@@ -196,7 +196,7 @@ func (pd *programData) SiaPublicKey(offset, length uint64) (types.SiaPublicKey, 
 	return spk, err
 }
 
-// SiaPublicKey returns the next crypto.SignatureSize bytes at the specified offset
+// Signature returns the next crypto.SignatureSize bytes at the specified offset
 // within the program data as a crypto.Signature. This call will block if the
 // data at the specified offset hasn't been fetched yet.
 func (pd *programData) Signature(offset uint64) (crypto.Signature, error) {
