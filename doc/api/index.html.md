@@ -3978,8 +3978,8 @@ If provided, this parameter changes the tracking path of a file to the
 specified path. Useful if moving the file to a different location on disk.
 
 **stuck** | bool  
-if set a file will be marked as either stuck or not by marking all of its
-chunks.
+if set a file will be marked as either stuck or not stuck by marking all of
+its chunks.
 
 **root** | bool  
 Whether or not to treat the siapath as being relative to the user's home
