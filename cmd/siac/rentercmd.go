@@ -2201,7 +2201,12 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 
 	// Check for file first
 	if !sp.IsRoot() {
-		rf, err := httpClient.RenterFileGet(sp)
+		var rf api.RenterFile
+		if renterListRoot {
+			rf, err = httpClient.RenterFileRootGet(sp)
+		} else {
+			rf, err = httpClient.RenterFileGet(sp)
+		}
 		if err == nil {
 			json, err := json.MarshalIndent(rf.File, "", "  ")
 			if err != nil {
