@@ -51,8 +51,6 @@ type (
 	}
 )
 
-// TODO: Gouging
-
 // newJobHasSector is a helper method to create a new HasSector job.
 func (w *worker) newJobHasSector(ctx context.Context, responseChan chan *jobHasSectorResponse, roots ...crypto.Hash) *jobHasSector {
 	return &jobHasSector{
@@ -119,11 +117,8 @@ func (j *jobHasSector) callExecute() {
 
 // callExpectedBandwidth returns the bandwidth that is expected to be consumed
 // by the job.
-//
-// TODO: These values are overly conservative, once we've got the protocol more
-// optimized we can bring these down.
 func (j *jobHasSector) callExpectedBandwidth() (ul, dl uint64) {
-	return hasSectorJobExpectedBandwidth()
+	return hasSectorJobExpectedBandwidth(len(j.staticSectors))
 }
 
 // managedHasSector returns whether or not the host has a sector with given root
@@ -144,12 +139,14 @@ func (j *jobHasSector) managedHasSector() ([]bool, error) {
 	cost = cost.Add(bandwidthCost)
 
 	// Execute the program and parse the responses.
-	//
 	hasSectors := make([]bool, 0, len(program))
 	var responses []programResponse
-	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
+	// TODO: we get errors if we don't increase the cost, probably because one
+	// of the estimators is incorrect. Need to debug this further. Instead of
+	// multiplying the cost by 2 we should fix the estimators.
+	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost.Mul64(2))
 	if err != nil {
-		return nil, errors.AddContext(err, "Unable to execute program")
+		return nil, errors.AddContext(err, "unable to execute program for has sector job")
 	}
 	for _, resp := range responses {
 		if resp.Error != nil {
@@ -164,9 +161,26 @@ func (j *jobHasSector) managedHasSector() ([]bool, error) {
 	return hasSectors, nil
 }
 
-// callAverageJobTime will return the recent performance of the worker
-// attempting to complete has sector jobs.
-func (jq *jobHasSectorQueue) callAverageJobTime() time.Duration {
+// callAddWithEstimate will add a job to the queue and return a timestamp for
+// when the job is estimated to complete. An error will be returned if the job
+// is not successfully queued.
+//
+// TODO: This should be the format for 'callAdd' instead of a separate function,
+// out of scope at the moment to make all of those changes though.
+func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector) (time.Time, error) {
+	estimate := jq.callExpectedJobTime()
+	if !jq.callAdd(j) {
+		return time.Time{}, errors.New("unable to add job to queue")
+	}
+	return time.Now().Add(estimate), nil
+}
+
+// callExpectedJobTime returns the expected amount of time that this job will
+// take to complete.
+//
+// TODO: Have it take a number of sectors as an input, as this impacts the size
+// of the request being made.
+func (jq *jobHasSectorQueue) callExpectedJobTime() time.Duration {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	return time.Duration(jq.weightedJobTime / jq.weightedJobsCompleted)
@@ -188,8 +202,15 @@ func (w *worker) initJobHasSectorQueue() {
 // hasSectorJobExpectedBandwidth is a helper function that returns the expected
 // bandwidth consumption of a has sector job. This helper function enables
 // getting at the expected bandwidth without having to instantiate a job.
-func hasSectorJobExpectedBandwidth() (ul, dl uint64) {
-	ul = 20e3
-	dl = 20e3
+func hasSectorJobExpectedBandwidth(numRoots int) (ul, dl uint64) {
+	// Roughly 40 roots can fit into a single frame. To be conservative, we use
+	// a value of 30.
+	//
+	// Roughly 150 responses can fit into a single frame. To be conservative, we
+	// use a value of 100.
+	uploadMult := numRoots / 30
+	downloadMult := numRoots / 150
+	ul = uint64(1500 * (1 + uploadMult))
+	dl = uint64(1500 * (1 + downloadMult))
 	return
 }
