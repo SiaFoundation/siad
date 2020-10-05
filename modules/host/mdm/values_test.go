@@ -6,6 +6,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -126,6 +127,19 @@ func (v *TestValues) AddSwapSectorInstruction() {
 	newData := 8 + 8
 	readonly := false
 	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, newData, readonly)
+}
+
+// AddUpdateRegistryInstruction adds a revision instruction to the builder, keeping
+// track of running values.
+func (v *TestValues) AddUpdateRegistryInstruction(spk types.SiaPublicKey, rv modules.SignedRegistryValue) {
+	memory := modules.MDMUpdateRegistryMemory()
+	collateral := modules.MDMUpdateRegistryCollateral()
+	cost := modules.MDMUpdateRegistryCost(v.staticPT)
+	refund := types.ZeroCurrency
+	time := uint64(modules.MDMTimeUpdateRegistry)
+	newData := crypto.HashSize + 8 + crypto.SignatureSize + len(rv.Data) + len(encoding.Marshal(spk))
+	readonly := true
+	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly)
 }
 
 // Cost returns the current cost of the program which would result . If

@@ -78,6 +78,10 @@ const (
 	// MDMTimeWriteSector is the time for executing a 'WriteSector' instruction.
 	MDMTimeWriteSector = 10000
 
+	// MDMTimeUpdateRegistry is the time for executing an 'UpdateRegistry'
+	// instruction.
+	MDMTimeUpdateRegistry = 10000
+
 	// RPCIAppendLen is the expected length of the 'Args' of an Append
 	// instructon.
 	RPCIAppendLen = 9
@@ -105,6 +109,12 @@ const (
 	// RPCISwapSectorLen is the expected length of the 'Args' of an SwapSector
 	// instructon.
 	RPCISwapSectorLen = 17 // 2 uint64 offsets + merkle proof flag
+
+	// RPCIUpdateRegistryLen is the expected length of the 'Args' of an
+	// UpdateRegistry instruction.
+	// tweakOffset + revisionOffset + signatureOffset + pubKeyOffset +
+	// pubKeyLength + dataOffset + dataLength = 7 * 8 bytes = 56 byte
+	RPCIUpdateRegistryLen = 56
 )
 
 var (
@@ -138,6 +148,10 @@ var (
 
 	// SpecifierSwapSector is the specifier for the SwapSector instruction.
 	SpecifierSwapSector = InstructionSpecifier{'S', 'w', 'a', 'p', 'S', 'e', 'c', 't', 'o', 'r'}
+
+	// SpecifierUpdateRegistry is the specifier for the UpdateRegistry
+	// instruction.
+	SpecifierUpdateRegistry = InstructionSpecifier{'U', 'p', 'd', 'a', 't', 'e', 'R', 'e', 'g', 'i', 's', 't', 'r', 'y'}
 
 	// ErrInsufficientBandwidthBudget is returned when bandwidth can no longer
 	// be paid for with the provided budget.
@@ -237,6 +251,15 @@ func MDMSwapSectorCost(pt *RPCPriceTable) types.Currency {
 	return pt.SwapSectorCost
 }
 
+// MDMUpdateRegistryCost is the cost of executing a 'UpdateRegistry' instruction.
+func MDMUpdateRegistryCost(pt *RPCPriceTable) types.Currency {
+	// Cost is the same as uploading a 4MiB sector of new data for a month but
+	// it's paid at once instead of differentiating between write and storage
+	// cost.
+	writeCost, storeCost := MDMAppendCost(pt, types.BlocksPerMonth)
+	return writeCost.Add(storeCost)
+}
+
 // MDMWriteCost is the cost of executing a 'Write' instruction of a certain length.
 func MDMWriteCost(pt *RPCPriceTable, writeLength uint64) types.Currency {
 	writeCost := pt.WriteLengthCost.Mul64(writeLength).Add(pt.WriteBaseCost)
@@ -294,6 +317,12 @@ func MDMSwapSectorMemory() uint64 {
 	return 0 // 'SwapSector' doesn't hold on to any memory beyond the lifetime of the instruction.
 }
 
+// MDMUpdateRegistryMemory returns the additional memory consumption of a
+// 'UpdateRegistry' instruction.
+func MDMUpdateRegistryMemory() uint64 {
+	return 0 // 'UpdateRegistry' doesn't hold on to any memory beyond the lifetime of the instruction.
+}
+
 // MDMBandwidthCost computes the total bandwidth cost given a price table and
 // used up- and download bandwidth.
 func MDMBandwidthCost(pt RPCPriceTable, uploadBandwidth, downloadBandwidth uint64) types.Currency {
@@ -349,6 +378,12 @@ func MDMSwapSectorCollateral() types.Currency {
 	return types.ZeroCurrency
 }
 
+// MDMUpdateRegistryCollateral returns the additional collateral a 'UpdateRegistry'
+// instruction requires the host to put up.
+func MDMUpdateRegistryCollateral() types.Currency {
+	return types.ZeroCurrency
+}
+
 // ReadOnly returns true if the program consists of no write instructions.
 func (p Program) ReadOnly() bool {
 	for _, instruction := range p {
@@ -363,6 +398,8 @@ func (p Program) ReadOnly() bool {
 		case SpecifierRevision:
 		case SpecifierSwapSector:
 			return false
+		case SpecifierUpdateRegistry:
+			// considered read-only cause it doesn't update a contract
 		default:
 			build.Critical("ReadOnly: unknown instruction")
 		}
@@ -389,6 +426,7 @@ func (p Program) RequiresSnapshot() bool {
 			return true
 		case SpecifierSwapSector:
 			return true
+		case SpecifierUpdateRegistry:
 		default:
 			build.Critical("RequiresSnapshot: unknown instruction")
 		}
