@@ -139,7 +139,7 @@ func (w *worker) callHasSectorJobStatus() modules.WorkerHasSectorJobsStatus {
 	}
 
 	var avgJobTimeInMs uint64 = 0
-	if d := hsq.callAverageJobTime(); d > 0 {
+	if d := hsq.callExpectedJobTime(); d > 0 {
 		avgJobTimeInMs = uint64(d.Milliseconds())
 	}
 
