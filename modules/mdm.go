@@ -275,7 +275,7 @@ func MDMUpdateRegistryCost(pt *RPCPriceTable) types.Currency {
 	// but it's paid at once instead of differentiating between write and
 	// storage cost.
 	writeCost := MDMWriteCost(pt, RegistryEntrySize)
-	storeCost := pt.WriteStoreCost.Mul64(RegistryEntrySize).Mul64(uint64(types.BlocksPerYear))
+	storeCost := pt.WriteStoreCost.Mul64(RegistryEntrySize).Mul64(uint64(10 * types.BlocksPerYear))
 	return writeCost.Add(storeCost)
 }
 
