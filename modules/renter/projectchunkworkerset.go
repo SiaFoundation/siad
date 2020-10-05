@@ -55,7 +55,7 @@ const (
 	// flagged for being too expensive.
 	//
 	// For example, if the denom is 10, that means that if a worker's HasSector
-	// cost multipled by the total expected number of HasSector jobs to be
+	// cost multiplied by the total expected number of HasSector jobs to be
 	// performed in a period exceeds 10% of the allowance, that worker will be
 	// flagged for price gouging. If the denom is 100, the worker will be
 	// flagged if the HasSector cost reaches 1% of the total cost of the
