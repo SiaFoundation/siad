@@ -3919,7 +3919,7 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 	}
 	f := rfg.Files[0]
 	// Set stuck to the opposite value it had before.
-	if err := r.RenterSetFileStuckPost(f.SiaPath, !f.Stuck); err != nil {
+	if err := r.RenterSetFileStuckPost(f.SiaPath, false, !f.Stuck); err != nil {
 		t.Fatal(err)
 	}
 	// Check if it was set correctly.
@@ -3931,7 +3931,7 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatalf("Stuck field should be %v but was %v", !f.Stuck, fi.File.Stuck)
 	}
 	// Set stuck to the original value.
-	if err := r.RenterSetFileStuckPost(f.SiaPath, f.Stuck); err != nil {
+	if err := r.RenterSetFileStuckPost(f.SiaPath, false, f.Stuck); err != nil {
 		t.Fatal(err)
 	}
 	// Check if it was set correctly.
@@ -3941,6 +3941,22 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if fi.File.Stuck != f.Stuck {
 		t.Fatalf("Stuck field should be %v but was %v", f.Stuck, fi.File.Stuck)
+	}
+	// Set stuck back once more using the root flag.
+	rebased, err := f.SiaPath.Rebase(modules.RootSiaPath(), modules.UserFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.RenterSetFileStuckPost(rebased, true, !f.Stuck); err != nil {
+		t.Fatal(err)
+	}
+	// Check if it was set correctly.
+	fi, err = r.RenterFileGet(f.SiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.File.Stuck == f.Stuck {
+		t.Fatalf("Stuck field should be %v but was %v", !f.Stuck, fi.File.Stuck)
 	}
 }
 

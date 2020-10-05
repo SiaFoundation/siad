@@ -268,7 +268,7 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 		if directories[0].AggregateNumStuckChunks == 0 {
 			// Log error if we are not at the root directory
 			if !siaPath.IsRoot() {
-				r.log.Debugln("WARN: ended up in directory with no stuck chunks that is not root directory:", siaPath)
+				r.log.Println("WARN: ended up in directory with no stuck chunks that is not root directory:", siaPath)
 			}
 			return siaPath, errNoStuckFiles
 		}
@@ -439,7 +439,7 @@ func (r *Renter) threadedStuckFileLoop() {
 		// Wait until the renter is online to proceed.
 		if !r.managedBlockUntilOnline() {
 			// The renter shut down before the internet connection was restored.
-			r.log.Debugln("renter shutdown before internet connection")
+			r.log.Println("renter shutdown before internet connection")
 			return
 		}
 
@@ -556,7 +556,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		if err != nil {
 			// If there is an error getting the lastHealthCheckTime sleep for a
 			// little bit before continuing
-			r.log.Debug("WARN: Could not find oldest health check time:", err)
+			r.log.Println("WARN: Could not find oldest health check time:", err)
 			select {
 			case <-time.After(healthLoopErrorSleepDuration):
 			case <-r.tg.StopChan():
@@ -573,7 +573,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		if timeSinceLastCheck < healthCheckInterval {
 			// Sleep until the least recent check is outside the check interval.
 			sleepDuration := healthCheckInterval - timeSinceLastCheck
-			r.log.Debugln("Health loop sleeping for", sleepDuration)
+			r.log.Println("Health loop sleeping for", sleepDuration)
 			wakeSignal := time.After(sleepDuration)
 			select {
 			case <-r.tg.StopChan():
