@@ -559,11 +559,7 @@ func TestKeepAlive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := srvListener.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+	defer srvListener.Close()
 	go func() {
 		conn, err := srvListener.Accept()
 		if err != nil {
@@ -573,21 +569,13 @@ func TestKeepAlive(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer func() {
-			if err := srv.Close(); err != nil {
-				t.Fatal(err)
-			}
-		}()
+		defer srv.Close()
 		for i := 0; i < 2; i++ {
 			stream, err := srv.AcceptStream()
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer func() {
-				if err := stream.Close(); err != nil {
-					t.Fatal(err)
-				}
-			}()
+			defer stream.Close()
 			// echo until Read fails
 			for {
 				buf := make([]byte, 65536)
@@ -608,11 +596,7 @@ func TestKeepAlive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := cli.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+	defer cli.Close()
 
 	time.Sleep(10 * time.Second)
 
@@ -620,11 +604,7 @@ func TestKeepAlive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := cliStream.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+	defer cliStream.Close()
 
 	// perform an echo exchange
 	const echoString = "hello world"
@@ -670,11 +650,7 @@ func TestKeepAlive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := cliStream.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+	defer cliStream.Close()
 
 	// perform an echo exchange
 	_, err = cliStream.Write([]byte(echoString))
@@ -713,11 +689,7 @@ func TestKeepAliveSlowServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := srvListener.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+	defer srvListener.Close()
 	go func() {
 		conn, err := srvListener.Accept()
 		if err != nil {
@@ -731,11 +703,7 @@ func TestKeepAliveSlowServer(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer func() {
-			if err := srv.Close(); err != nil {
-				t.Fatal(err)
-			}
-		}()
+		defer srv.Close()
 		for {
 			_, err := srv.AcceptStream()
 			if err != nil {
@@ -752,11 +720,7 @@ func TestKeepAliveSlowServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := cli.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+	defer cli.Close()
 
 	// open a stream
 	_, err = cli.OpenStream()
@@ -786,11 +750,7 @@ func TestStreamDeadlineSlowServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := srvListener.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+	defer srvListener.Close()
 	go func() {
 		conn, err := srvListener.Accept()
 		if err != nil {
@@ -800,11 +760,7 @@ func TestStreamDeadlineSlowServer(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer func() {
-			if err := srv.Close(); err != nil {
-				t.Fatal(err)
-			}
-		}()
+		defer srv.Close()
 		for {
 			// accept stream, but perform no further I/O
 			_, err := srv.AcceptStream()
@@ -822,22 +778,14 @@ func TestStreamDeadlineSlowServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := cli.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+	defer cli.Close()
 
 	// open a stream
 	stream, err := cli.OpenStream()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := stream.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+	defer stream.Close()
 
 	// set deadline and attempt a read
 	stream.SetReadDeadline(time.Now().Add(time.Second))
@@ -866,16 +814,8 @@ func BenchmarkConnSmux(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer func() {
-		if err := cs.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-	defer func() {
-		if err := ss.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+	defer cs.Close()
+	defer ss.Close()
 	bench(b, cs, ss)
 }
 
@@ -884,16 +824,8 @@ func BenchmarkConnTCP(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer func() {
-		if err := cs.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-	defer func() {
-		if err := ss.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
+	defer cs.Close()
+	defer ss.Close()
 	bench(b, cs, ss)
 }
 
