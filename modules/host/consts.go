@@ -102,6 +102,14 @@ var (
 		Testing:  time.Second * 3,
 	}).(time.Duration)
 
+	// registryDefaultMaxEntries is the limit for entries the registry can
+	// store.
+	registryDefaultMaxEntries = build.Select(build.Var{
+		Dev:      uint64(64 * 1e3), // ~16.63 mib
+		Standard: uint64(1 << 24),  // 2^26 * 256 bytes == 16 GiB
+		Testing:  uint64(64 * 100), // ~1.63 mib
+	}).(uint64)
+
 	// revisionSubmissionBuffer describes the number of blocks ahead of time
 	// that the host will submit a file contract revision. The host will not
 	// accept any more revisions once inside the submission buffer.

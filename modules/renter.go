@@ -1116,11 +1116,11 @@ type Renter interface {
 	// file.
 	UploadSkyfile(SkyfileUploadParameters) (Skylink, error)
 
-	// Blacklist returns the merkleroots that are blacklisted
-	Blacklist() ([]crypto.Hash, error)
+	// Blocklist returns the merkleroots that are blocked
+	Blocklist() ([]crypto.Hash, error)
 
-	// UpdateSkynetBlacklist updates the list of hashed merkleroots that are blacklisted
-	UpdateSkynetBlacklist(additions, removals []crypto.Hash) error
+	// UpdateSkynetBlocklist updates the list of hashed merkleroots that are blocked
+	UpdateSkynetBlocklist(additions, removals []crypto.Hash) error
 
 	// PinSkylink re-uploads the data stored at the file under that skylink with
 	// the given parameters.

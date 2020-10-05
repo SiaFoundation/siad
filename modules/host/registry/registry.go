@@ -8,11 +8,11 @@ import (
 	"sort"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 // TODO: F/Us
@@ -49,7 +49,7 @@ type (
 		entries     map[crypto.Hash]*value
 		staticUsage bitfield
 		staticPath  string
-		staticWAL   *writeaheadlog.WAL
+		staticFile  *os.File
 		mu          sync.Mutex
 	}
 
@@ -85,7 +85,7 @@ func (v *value) mapKey() crypto.Hash {
 }
 
 // update updates a value with a new revision, expiry and data.
-func (v *value) update(newRevision uint64, newExpiry types.BlockHeight, newData []byte, init bool) error {
+func (v *value) update(rv modules.SignedRegistryValue, newExpiry types.BlockHeight, init bool) error {
 	// Check if the entry has been invalidated. This should only ever be the
 	// case when an entry is updated at the same time as its pruned so its
 	// incredibly unlikely to happen. Usually entries would be updated long
@@ -95,37 +95,43 @@ func (v *value) update(newRevision uint64, newExpiry types.BlockHeight, newData 
 	}
 
 	// Check if the new revision number is valid.
-	if newRevision <= v.revision && !init {
-		s := fmt.Sprintf("%v <= %v", newRevision, v.revision)
+	if rv.Revision <= v.revision && !init {
+		s := fmt.Sprintf("%v <= %v", rv.Revision, v.revision)
 		return errors.AddContext(errInvalidRevNum, s)
 	}
 
 	// Update the entry.
 	v.expiry = newExpiry
-	v.data = newData
-	v.revision = newRevision
+	v.data = rv.Data
+	v.revision = rv.Revision
+	v.signature = rv.Signature
 	return nil
 }
 
+// Close closes the registry and its underlying resources.
+func (r *Registry) Close() error {
+	return r.staticFile.Close()
+}
+
 // Get fetches the data associated with a key and tweak from the registry.
-func (r *Registry) Get(pubKey types.SiaPublicKey, tweak crypto.Hash) ([]byte, bool) {
+func (r *Registry) Get(pubKey types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, bool) {
 	r.mu.Lock()
 	v, ok := r.entries[valueMapKey(pubKey, tweak)]
 	r.mu.Unlock()
 	if !ok {
-		return nil, false
+		return modules.SignedRegistryValue{}, false
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	return v.data, true
+	return modules.NewSignedRegistryValue(v.tweak, v.data, v.revision, v.signature), true
 }
 
 // New creates a new registry or opens an existing one.
-func New(path string, wal *writeaheadlog.WAL, maxEntries uint64) (_ *Registry, err error) {
+func New(path string, maxEntries uint64) (_ *Registry, err error) {
 	f, err := os.OpenFile(path, os.O_RDWR, modules.DefaultFilePerm)
 	if os.IsNotExist(err) {
 		// try creating a new one
-		f, err = initRegistry(path, wal, maxEntries)
+		f, err = initRegistry(path, maxEntries)
 	}
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to open store")
@@ -161,8 +167,8 @@ func New(path string, wal *writeaheadlog.WAL, maxEntries uint64) (_ *Registry, e
 	}
 	// Create the registry.
 	reg := &Registry{
+		staticFile:  f,
 		staticPath:  path,
-		staticWAL:   wal,
 		staticUsage: b,
 	}
 	// Load the remaining entries.
@@ -171,10 +177,10 @@ func New(path string, wal *writeaheadlog.WAL, maxEntries uint64) (_ *Registry, e
 }
 
 // Update adds an entry to the registry or if it exists already, updates it.
-func (r *Registry) Update(rv modules.RegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (bool, error) {
+// This will also verify the revision number of the new value and the signature.
+func (r *Registry) Update(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (bool, error) {
 	// Check the data against the limit.
-	data := rv.Data
-	if len(data) > modules.RegistryDataSize {
+	if len(rv.Data) > modules.RegistryDataSize {
 		return false, errTooMuchData
 	}
 
@@ -206,7 +212,7 @@ func (r *Registry) Update(rv modules.RegistryValue, pubKey types.SiaPublicKey, e
 
 	// Update the entry.
 	entry.mu.Lock()
-	err = entry.update(rv.Revision, expiry, rv.Data, !exists)
+	err = entry.update(rv, expiry, !exists)
 	if err != nil {
 		entry.mu.Unlock()
 		return false, errors.AddContext(err, "failed to update entry")
@@ -235,14 +241,17 @@ func (r *Registry) managedDeleteFromMemory(v *value) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	// Unset the index.
-	r.staticUsage.Unset(uint64(v.staticIndex) - 1)
+	err := r.staticUsage.Unset(uint64(v.staticIndex) - 1)
+	if err != nil {
+		build.Critical("managedDeleteFromMemory: unsetting an index should never fail")
+	}
 	// Delete the entry from the map.
 	delete(r.entries, v.mapKey())
 }
 
 // newValue creates a new value and assigns it a free bit from the bitfield. It
 // adds the new value to the registry as well.
-func (r *Registry) newValue(rv modules.RegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (*value, error) {
+func (r *Registry) newValue(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (*value, error) {
 	bit, err := r.staticUsage.SetRandom()
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to obtain free slot")
@@ -254,6 +263,7 @@ func (r *Registry) newValue(rv modules.RegistryValue, pubKey types.SiaPublicKey,
 		staticIndex: int64(bit) + 1,
 		data:        rv.Data,
 		revision:    rv.Revision,
+		signature:   rv.Signature,
 	}
 	r.entries[v.mapKey()] = v
 	return v, nil

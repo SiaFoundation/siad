@@ -12,7 +12,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/writeaheadlog"
 )
 
 // List of supported signature algorithms.
@@ -82,7 +81,7 @@ func newSiaPublicKey(cpk compressedPublicKey) (spk types.SiaPublicKey, _ error) 
 
 // initRegistry initializes a registry at the specified path using the provided
 // wal.
-func initRegistry(path string, wal *writeaheadlog.WAL, maxEntries uint64) (*os.File, error) {
+func initRegistry(path string, maxEntries uint64) (*os.File, error) {
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, modules.DefaultFilePerm)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to create new file for key/value store")
@@ -100,14 +99,13 @@ func initRegistry(path string, wal *writeaheadlog.WAL, maxEntries uint64) (*os.F
 	initData := make([]byte, PersistedEntrySize)
 	copy(initData[:], registryVersion[:])
 
-	// Write data to disk in an ACID way.
-	initUpdate := writeaheadlog.WriteAtUpdate(path, 0, initData)
-	err = wal.CreateAndApplyTransaction(writeaheadlog.ApplyUpdates, initUpdate)
+	// Write data to disk.
+	_, err = f.WriteAt(initData, 0)
 	if err != nil {
 		err = errors.Compose(err, f.Close()) // close the file on error
-		return nil, errors.AddContext(err, "failed to apply init update")
+		return nil, errors.AddContext(err, "failed to write initial data to registry")
 	}
-	return f, nil
+	return f, f.Sync()
 }
 
 // loadRegistryMetadata tries to read the first persisted entry that contains
@@ -171,8 +169,9 @@ func newPersistedEntry(value *value) (persistedEntry, error) {
 		return persistedEntry{}, errors.AddContext(err, "newPersistedEntry: failed to compress key")
 	}
 	pe := persistedEntry{
-		Key:   cpk,
-		Tweak: value.tweak,
+		Key:       cpk,
+		Signature: value.signature,
+		Tweak:     value.tweak,
 
 		DataLen:  uint8(len(value.data)),
 		Expiry:   compressedBlockHeight(value.expiry),
@@ -199,6 +198,7 @@ func (entry persistedEntry) Value(index int64) (*value, error) {
 		expiry:      types.BlockHeight(entry.Expiry),
 		data:        entry.Data[:entry.DataLen],
 		revision:    entry.Revision,
+		signature:   entry.Signature,
 		staticIndex: index,
 	}, nil
 }
@@ -257,6 +257,9 @@ func (r *Registry) managedSaveEntry(v *value, used bool) error {
 	if err != nil {
 		return errors.AddContext(err, "Save: failed to marshal persistedEntry")
 	}
-	update := writeaheadlog.WriteAtUpdate(r.staticPath, v.staticIndex*PersistedEntrySize, b)
-	return r.staticWAL.CreateAndApplyTransaction(writeaheadlog.ApplyUpdates, update)
+	_, err = r.staticFile.WriteAt(b, v.staticIndex*PersistedEntrySize)
+	if err != nil {
+		return errors.AddContext(err, "failed to save entry")
+	}
+	return nil
 }

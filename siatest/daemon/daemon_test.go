@@ -419,7 +419,7 @@ func TestDaemonProfile(t *testing.T) {
 	}
 
 	// Test Stopping without a profile started
-	err = testNode.DaemonStopProfileGet()
+	err = testNode.DaemonStopProfilePost()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,7 +438,7 @@ func TestDaemonProfile(t *testing.T) {
 	}
 
 	// Stop Profile
-	err = testNode.DaemonStopProfileGet()
+	err = testNode.DaemonStopProfilePost()
 	if err != nil {
 		t.Fatal(err)
 	}

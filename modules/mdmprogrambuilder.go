@@ -7,6 +7,8 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 type (
@@ -179,6 +181,41 @@ func (pb *ProgramBuilder) AddSwapSectorInstruction(sector1Idx, sector2Idx uint64
 	pb.readonly = false
 }
 
+// AddUpdateRegistryInstruction adds an UpdateRegistry instruction to the program.
+func (pb *ProgramBuilder) AddUpdateRegistryInstruction(spk types.SiaPublicKey, rv SignedRegistryValue) error {
+	// Marshal pubKey.
+	pk := encoding.Marshal(spk)
+	// Compute the argument offsets.
+	tweakOff := uint64(pb.programData.Len())
+	revisionOff := tweakOff + crypto.HashSize
+	signatureOff := revisionOff + 8
+	pubKeyOff := signatureOff + crypto.SignatureSize
+	pubKeyLen := uint64(len(pk))
+	dataOff := pubKeyOff + pubKeyLen
+	dataLen := uint64(len(rv.Data))
+	// Extend the programData.
+	_, err1 := pb.programData.Write(rv.Tweak[:])
+	err2 := binary.Write(pb.programData, binary.LittleEndian, rv.Revision)
+	_, err3 := pb.programData.Write(rv.Signature[:])
+	_, err4 := pb.programData.Write(pk)
+	_, err5 := pb.programData.Write(rv.Data)
+	if err := errors.Compose(err1, err2, err3, err4, err5); err != nil {
+		return errors.AddContext(err, "AddUpdateRegistryInstruction: failed to extend programData")
+	}
+	// Create the instruction.
+	i := NewUpdateRegistryInstruction(tweakOff, revisionOff, signatureOff, pubKeyOff, pubKeyLen, dataOff, dataLen)
+	// Append instruction
+	pb.program = append(pb.program, i)
+	// Update cost, collateral and memory usage.
+	collateral := MDMUpdateRegistryCollateral()
+	cost := MDMUpdateRegistryCost(pb.staticPT)
+	refund := types.ZeroCurrency
+	memory := MDMUpdateRegistryMemory()
+	time := uint64(MDMTimeUpdateRegistry)
+	pb.addInstruction(collateral, cost, refund, memory, time)
+	return nil
+}
+
 // Cost returns the current cost of the program being built by the builder. If
 // 'finalized' is 'true', the memory cost of finalizing the program is included.
 func (pb *ProgramBuilder) Cost(finalized bool) (cost, storage, collateral types.Currency) {
@@ -224,6 +261,22 @@ func NewAppendInstruction(dataOffset uint64, merkleProof bool) Instruction {
 	if merkleProof {
 		i.Args[8] = 1
 	}
+	return i
+}
+
+// NewUpdateRegistryInstruction creates an Instruction from arguments.
+func NewUpdateRegistryInstruction(tweakOff, revisionOff, signatureOff, pubKeyOff, pubKeyLen, dataOff, dataLen uint64) Instruction {
+	i := Instruction{
+		Specifier: SpecifierUpdateRegistry,
+		Args:      make([]byte, RPCIUpdateRegistryLen),
+	}
+	binary.LittleEndian.PutUint64(i.Args[:8], tweakOff)
+	binary.LittleEndian.PutUint64(i.Args[8:16], revisionOff)
+	binary.LittleEndian.PutUint64(i.Args[16:24], signatureOff)
+	binary.LittleEndian.PutUint64(i.Args[24:32], pubKeyOff)
+	binary.LittleEndian.PutUint64(i.Args[32:40], pubKeyLen)
+	binary.LittleEndian.PutUint64(i.Args[40:48], dataOff)
+	binary.LittleEndian.PutUint64(i.Args[48:56], dataLen)
 	return i
 }
 

@@ -107,6 +107,13 @@ func (tb *testProgramBuilder) AddSwapSectorInstruction(sector1Idx, sector2Idx ui
 	tb.staticValues.AddSwapSectorInstruction()
 }
 
+// AddUpdateRegistryInstruction adds an UpdateRegistry instruction to the
+// builder, keeping track of running values.
+func (tb *testProgramBuilder) AddUpdateRegistryInstruction(spk types.SiaPublicKey, rv modules.SignedRegistryValue) {
+	tb.staticPB.AddUpdateRegistryInstruction(spk, rv)
+	tb.staticValues.AddUpdateRegistryInstruction(spk, rv)
+}
+
 // Program returns the built program.
 func (tb *testProgramBuilder) Program() (modules.Program, modules.ProgramData) {
 	return tb.staticPB.Program()

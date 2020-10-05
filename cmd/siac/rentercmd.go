@@ -2211,7 +2211,12 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 
 	// Check for file first
 	if !sp.IsRoot() {
-		rf, err := httpClient.RenterFileGet(sp)
+		var rf api.RenterFile
+		if renterListRoot {
+			rf, err = httpClient.RenterFileRootGet(sp)
+		} else {
+			rf, err = httpClient.RenterFileGet(sp)
+		}
 		if err == nil {
 			json, err := json.MarshalIndent(rf.File, "", "  ")
 			if err != nil {
@@ -2426,16 +2431,21 @@ func rentersetlocalpathcmd(siapath, newlocalpath string) {
 // renterfilesunstuckcmd is the handler for the command `siac renter
 // unstuckall`. Sets all files to unstuck.
 func renterfilesunstuckcmd() {
-	rfg, err := httpClient.RenterFilesGet(true)
-	if err != nil {
-		die("Couldn't get list of all files:", err)
+	// Get all dirs and their files recursively.
+	dirs := getDir(modules.RootSiaPath(), true, true)
+
+	// Count all files.
+	totalFiles := 0
+	for _, d := range dirs {
+		totalFiles += len(d.files)
 	}
+
 	// Declare a worker function to mark files as not stuck.
 	var atomicFilesDone uint64
 	toUnstuck := make(chan modules.SiaPath)
 	worker := func() {
 		for siaPath := range toUnstuck {
-			err = httpClient.RenterSetFileStuckPost(siaPath, false)
+			err := httpClient.RenterSetFileStuckPost(siaPath, true, false)
 			if err != nil {
 				die(fmt.Sprintf("Couldn't set %v to unstuck: %v", siaPath, err))
 			}
@@ -2453,12 +2463,19 @@ func renterfilesunstuckcmd() {
 	}
 	// Pass the files on to the workers.
 	lastStatusUpdate := time.Now()
-	for _, f := range rfg.Files {
-		toUnstuck <- f.SiaPath
-		if time.Since(lastStatusUpdate) > time.Second {
-			fmt.Printf("\r%v of %v files set to 'unstuck'",
-				atomic.LoadUint64(&atomicFilesDone), len(rfg.Files))
-			lastStatusUpdate = time.Now()
+	for _, d := range dirs {
+		for _, f := range d.files {
+			if !f.Stuck && f.NumStuckChunks == 0 {
+				// Nothing to do. Count as set for progress.
+				atomic.AddUint64(&atomicFilesDone, 1)
+				continue
+			}
+			toUnstuck <- f.SiaPath
+			if time.Since(lastStatusUpdate) > time.Second {
+				fmt.Printf("\r%v of %v files set to 'unstuck'",
+					atomic.LoadUint64(&atomicFilesDone), totalFiles)
+				lastStatusUpdate = time.Now()
+			}
 		}
 	}
 	close(toUnstuck)

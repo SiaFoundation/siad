@@ -45,9 +45,9 @@ func (c *Client) DaemonStartProfilePost(profileFlags, profileDir string) (err er
 	return
 }
 
-// DaemonStopProfileGet requests the /daemon/stopprofile api resource.
-func (c *Client) DaemonStopProfileGet() (err error) {
-	err = c.get("/daemon/stopprofile", nil)
+// DaemonStopProfilePost requests the /daemon/stopprofile api resource.
+func (c *Client) DaemonStopProfilePost() (err error) {
+	err = c.post("/daemon/stopprofile", "", nil)
 	return
 }
 

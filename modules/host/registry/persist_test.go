@@ -2,6 +2,7 @@ package registry
 
 import (
 	"bytes"
+	"io"
 	"io/ioutil"
 	"math"
 	"path/filepath"
@@ -21,7 +22,7 @@ const testingDefaultMaxEntries = 640
 
 // randomValue creates a random value object for testing and returns it both as
 // the RegistryValue and value representation.
-func randomValue(index int64) (modules.RegistryValue, *value, crypto.SecretKey) {
+func randomValue(index int64) (modules.SignedRegistryValue, *value, crypto.SecretKey) {
 	// Create in-memory value first.
 	sk, pk := crypto.GenerateKeyPair()
 	v := value{
@@ -35,12 +36,8 @@ func randomValue(index int64) (modules.RegistryValue, *value, crypto.SecretKey) 
 	fastrand.Read(v.tweak[:])
 
 	// Then the RegistryValue.
-	rv := modules.RegistryValue{
-		Tweak:    v.tweak,
-		Data:     v.data,
-		Revision: v.revision,
-	}
-	rv.Sign(sk)
+	rv := modules.NewRegistryValue(v.tweak, v.data, v.revision).Sign(sk)
+	v.signature = rv.Signature
 	return rv, &v, sk
 }
 
@@ -83,11 +80,10 @@ func TestInitRegistry(t *testing.T) {
 	t.Parallel()
 
 	dir := testDir(t.Name())
-	wal := newTestWAL(filepath.Join(dir, "wal"))
 
 	// Init the registry.
 	registryPath := filepath.Join(dir, "registry")
-	f, err := initRegistry(registryPath, wal, testingDefaultMaxEntries)
+	f, err := initRegistry(registryPath, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +118,7 @@ func TestInitRegistry(t *testing.T) {
 	// Try to reinit the same registry again. This should fail. We check the
 	// string directly since neither os.IsExist nor errors.Contains(err,
 	// os.ErrExist) work.
-	_, err = initRegistry(registryPath, wal, testingDefaultMaxEntries)
+	_, err = initRegistry(registryPath, testingDefaultMaxEntries)
 	if err == nil || !strings.Contains(err.Error(), "file exists") {
 		t.Fatal(err)
 	}
@@ -240,14 +236,18 @@ func TestSaveEntry(t *testing.T) {
 	t.Parallel()
 
 	dir := testDir(t.Name())
-	wal := newTestWAL(filepath.Join(dir, "wal"))
 
 	// Create a new registry.
 	registryPath := filepath.Join(dir, "registry")
-	r, err := New(registryPath, wal, testingDefaultMaxEntries)
+	r, err := New(registryPath, testingDefaultMaxEntries)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
 
 	// Create a pair that is stored at index 2.
 	index := int64(2)

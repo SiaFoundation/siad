@@ -11,6 +11,111 @@ import (
 	"gitlab.com/NebulousLabs/Sia/skykey"
 )
 
+var (
+	// SkyfileFormatNotSpecified is the default format for the endpoint when the
+	// format isn't specified explicitly.
+	SkyfileFormatNotSpecified = SkyfileFormat("")
+	// SkyfileFormatConcat returns the skyfiles in a concatenated manner.
+	SkyfileFormatConcat = SkyfileFormat("concat")
+	// SkyfileFormatTar returns the skyfiles as a .tar.
+	SkyfileFormatTar = SkyfileFormat("tar")
+	// SkyfileFormatTarGz returns the skyfiles as a .tar.gz.
+	SkyfileFormatTarGz = SkyfileFormat("targz")
+	// SkyfileFormatZip returns the skyfiles as a .zip.
+	SkyfileFormatZip = SkyfileFormat("zip")
+)
+
+// SkyfileSubfiles contains the subfiles of a skyfile, indexed by their
+// filename.
+type SkyfileSubfiles map[string]SkyfileSubfileMetadata
+
+// SkyfileUploadParameters establishes the parameters such as the intra-root
+// erasure coding.
+type SkyfileUploadParameters struct {
+	// SiaPath defines the siapath that the skyfile is going to be uploaded to.
+	// Recommended that the skyfile is placed in /var/skynet
+	SiaPath SiaPath `json:"siapath"`
+
+	// DryRun allows to retrieve the skylink without actually uploading the file
+	// to the Sia network.
+	DryRun bool `json:"dryrun"`
+
+	// Force determines whether the upload should overwrite an existing siafile
+	// at 'SiaPath'. If set to false, an error will be returned if there is
+	// already a file or folder at 'SiaPath'. If set to true, any existing file
+	// or folder at 'SiaPath' will be deleted and overwritten.
+	Force bool `json:"force"`
+
+	// Root determines whether the upload should treat the filepath as a path
+	// from system root, or if the path should be from /var/skynet.
+	Root bool `json:"root"`
+
+	// The base chunk is always uploaded with a 1-of-N erasure coding setting,
+	// meaning that only the redundancy needs to be configured by the user.
+	BaseChunkRedundancy uint8 `json:"basechunkredundancy"`
+
+	// This metadata will be included in the base chunk, meaning that this
+	// metadata is visible to the downloader before any of the file data is
+	// visible.
+	FileMetadata SkyfileMetadata `json:"filemetadata"`
+
+	// Reader supplies the file data for the skyfile.
+	Reader io.Reader `json:"reader"`
+
+	// SkykeyName is the name of the Skykey that should be used to encrypt the
+	// Skyfile.
+	SkykeyName string `json:"skykeyname"`
+
+	// SkykeyID is the ID of Skykey that should be used to encrypt the file.
+	SkykeyID skykey.SkykeyID `json:"skykeyid"`
+
+	// If Encrypt is set to true and one of SkykeyName or SkykeyID was set, a
+	// Skykey will be derived from the Master Skykey found under that name/ID to
+	// be used for this specific upload.
+	FileSpecificSkykey skykey.Skykey
+}
+
+// SkyfileMultipartUploadParameters defines the parameters specific to multipart
+// uploads. See SkyfileUploadParameters for a detailed description of the
+// fields.
+type SkyfileMultipartUploadParameters struct {
+	SiaPath             SiaPath
+	Force               bool
+	Root                bool
+	BaseChunkRedundancy uint8
+	Reader              io.Reader
+
+	// Filename indicates the filename of the skyfile.
+	Filename string
+
+	// DefaultPath indicates the default file to be opened when opening skyfiles
+	// that contain directories. If set to empty string no file will be opened
+	// by default.
+	DefaultPath string
+
+	// DisableDefaultPath prevents the usage of DefaultPath. As a result no
+	// content will be automatically served for the skyfile.
+	DisableDefaultPath bool
+
+	// ContentType indicates the media type of the data supplied by the reader.
+	ContentType string
+}
+
+// SkyfilePinParameters defines the parameters specific to pinning a skylink.
+// See SkyfileUploadParameters for a detailed description of the fields.
+type SkyfilePinParameters struct {
+	SiaPath             SiaPath `json:"siapath"`
+	Force               bool    `json:"force"`
+	Root                bool    `json:"root"`
+	BaseChunkRedundancy uint8   `json:"basechunkredundancy"`
+}
+
+// SkynetPortal contains information identifying a Skynet portal.
+type SkynetPortal struct {
+	Address NetAddress `json:"address"` // the IP or domain name of the portal. Must be a valid network address
+	Public  bool       `json:"public"`  // indicates whether the portal can be accessed publicly or not
+}
+
 // SkyfileMetadata is all of the metadata that gets placed into the first 4096
 // bytes of the skyfile, and is used to set the metadata of the file when
 // writing back to disk. The data is json-encoded when it is placed into the
@@ -32,10 +137,6 @@ type SkyfileMetadata struct {
 	// content will be automatically served for the skyfile.
 	DisableDefaultPath bool `json:"disabledefaultpath,omitempty"`
 }
-
-// SkyfileSubfiles contains the subfiles of a skyfile, indexed by their
-// filename.
-type SkyfileSubfiles map[string]SkyfileSubfileMetadata
 
 // ForPath returns a subset of the SkyfileMetadata that contains all of the
 // subfiles for the given path. The path can lead to both a directory or a file.
@@ -189,20 +290,6 @@ func (sm SkyfileSubfileMetadata) Sys() interface{} {
 // SkyfileFormat is the file format the API uses to return a Skyfile as.
 type SkyfileFormat string
 
-var (
-	// SkyfileFormatNotSpecified is the default format for the endpoint when the
-	// format isn't specified explicitly.
-	SkyfileFormatNotSpecified = SkyfileFormat("")
-	// SkyfileFormatConcat returns the skyfiles in a concatenated manner.
-	SkyfileFormatConcat = SkyfileFormat("concat")
-	// SkyfileFormatTar returns the skyfiles as a .tar.
-	SkyfileFormatTar = SkyfileFormat("tar")
-	// SkyfileFormatTarGz returns the skyfiles as a .tar.gz.
-	SkyfileFormatTarGz = SkyfileFormat("targz")
-	// SkyfileFormatZip returns the skyfiles as a .zip.
-	SkyfileFormatZip = SkyfileFormat("zip")
-)
-
 // Extension returns the extension for the format
 func (sf SkyfileFormat) Extension() string {
 	switch sf {
@@ -222,109 +309,4 @@ func (sf SkyfileFormat) IsArchive() bool {
 	return sf == SkyfileFormatTar ||
 		sf == SkyfileFormatTarGz ||
 		sf == SkyfileFormatZip
-}
-
-// SkyfileUploadParameters establishes the parameters such as the intra-root
-// erasure coding.
-type SkyfileUploadParameters struct {
-	// SiaPath defines the siapath that the skyfile is going to be uploaded to.
-	// Recommended that the skyfile is placed in /var/skynet
-	SiaPath SiaPath `json:"siapath"`
-
-	// DryRun allows to retrieve the skylink without actually uploading the file
-	// to the Sia network.
-	DryRun bool `json:"dryrun"`
-
-	// Force determines whether the upload should overwrite an existing siafile
-	// at 'SiaPath'. If set to false, an error will be returned if there is
-	// already a file or folder at 'SiaPath'. If set to true, any existing file
-	// or folder at 'SiaPath' will be deleted and overwritten.
-	Force bool `json:"force"`
-
-	// Root determines whether the upload should treat the filepath as a path
-	// from system root, or if the path should be from /var/skynet.
-	Root bool `json:"root"`
-
-	// The base chunk is always uploaded with a 1-of-N erasure coding setting,
-	// meaning that only the redundancy needs to be configured by the user.
-	BaseChunkRedundancy uint8 `json:"basechunkredundancy"`
-
-	// This metadata will be included in the base chunk, meaning that this
-	// metadata is visible to the downloader before any of the file data is
-	// visible.
-	FileMetadata SkyfileMetadata `json:"filemetadata"`
-
-	// Reader supplies the file data for the skyfile.
-	Reader io.Reader `json:"reader"`
-
-	// SkykeyName is the name of the Skykey that should be used to encrypt the
-	// Skyfile.
-	SkykeyName string `json:"skykeyname"`
-
-	// SkykeyID is the ID of Skykey that should be used to encrypt the file.
-	SkykeyID skykey.SkykeyID `json:"skykeyid"`
-
-	// If Encrypt is set to true and one of SkykeyName or SkykeyID was set, a
-	// Skykey will be derived from the Master Skykey found under that name/ID to
-	// be used for this specific upload.
-	FileSpecificSkykey skykey.Skykey
-}
-
-// SkyfileMultipartUploadParameters defines the parameters specific to multipart
-// uploads. See SkyfileUploadParameters for a detailed description of the
-// fields.
-type SkyfileMultipartUploadParameters struct {
-	SiaPath             SiaPath
-	Force               bool
-	Root                bool
-	BaseChunkRedundancy uint8
-	Reader              io.Reader
-
-	// Filename indicates the filename of the skyfile.
-	Filename string
-
-	// DefaultPath indicates the default file to be opened when opening skyfiles
-	// that contain directories. If set to empty string no file will be opened
-	// by default.
-	DefaultPath string
-
-	// DisableDefaultPath prevents the usage of DefaultPath. As a result no
-	// content will be automatically served for the skyfile.
-	DisableDefaultPath bool
-
-	// ContentType indicates the media type of the data supplied by the reader.
-	ContentType string
-}
-
-// SkyfilePinParameters defines the parameters specific to pinning a skylink.
-// See SkyfileUploadParameters for a detailed description of the fields.
-type SkyfilePinParameters struct {
-	SiaPath             SiaPath `json:"siapath"`
-	Force               bool    `json:"force"`
-	Root                bool    `json:"root"`
-	BaseChunkRedundancy uint8   `json:"basechunkredundancy"`
-}
-
-// SkynetPortal contains information identifying a Skynet portal.
-type SkynetPortal struct {
-	Address NetAddress `json:"address"` // the IP or domain name of the portal. Must be a valid network address
-	Public  bool       `json:"public"`  // indicates whether the portal can be accessed publicly or not
-}
-
-// EnsurePrefix checks if `str` starts with `prefix` and adds it if that's not
-// the case.
-func EnsurePrefix(str, prefix string) string {
-	if strings.HasPrefix(str, prefix) {
-		return str
-	}
-	return prefix + str
-}
-
-// EnsureSuffix checks if `str` ends with `suffix` and adds it if that's not
-// the case.
-func EnsureSuffix(str, suffix string) string {
-	if strings.HasSuffix(str, suffix) {
-		return str
-	}
-	return str + suffix
 }

@@ -44,7 +44,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetblacklist"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetblocklist"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetportals"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/skykey"
@@ -176,7 +176,7 @@ type cachedUtilities struct {
 // uploaded to Sia, as well as the locations and health of these files.
 type Renter struct {
 	// Skynet Management
-	staticSkynetBlacklist *skynetblacklist.SkynetBlacklist
+	staticSkynetBlocklist *skynetblocklist.SkynetBlocklist
 	staticSkynetPortals   *skynetportals.SkynetPortals
 
 	// Download management. The heap has a separate mutex because it is always
@@ -256,7 +256,7 @@ func (r *Renter) Close() error {
 		return nil
 	}
 
-	return errors.Compose(r.tg.Stop(), r.hostDB.Close(), r.hostContractor.Close(), r.staticSkynetBlacklist.Close(), r.staticSkynetPortals.Close())
+	return errors.Compose(r.tg.Stop(), r.hostDB.Close(), r.hostContractor.Close(), r.staticSkynetBlocklist.Close(), r.staticSkynetPortals.Close())
 }
 
 // MemoryStatus returns the current status of the memory manager
@@ -1000,12 +1000,12 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticFuseManager = newFuseManager(r)
 	r.stuckStack = callNewStuckStack()
 
-	// Add SkynetBlacklist
-	sb, err := skynetblacklist.New(r.persistDir)
+	// Add SkynetBlocklist
+	sb, err := skynetblocklist.New(r.persistDir)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to create new skynet blacklist")
+		return nil, errors.AddContext(err, "unable to create new skynet blocklist")
 	}
-	r.staticSkynetBlacklist = sb
+	r.staticSkynetBlocklist = sb
 
 	// Add SkynetPortals
 	sp, err := skynetportals.New(r.persistDir)
