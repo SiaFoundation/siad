@@ -12,6 +12,10 @@ import (
 	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
+// ErrRegistryValueNotExist is returned by the MDM when the requested value of
+// the host's registry couldn't be found.
+var ErrRegistryValueNotExist = errors.New("unable to find requested registry value")
+
 type (
 	// Instruction specifies a generic instruction used as an input to
 	// `mdm.ExecuteProgram`.
@@ -82,6 +86,10 @@ const (
 	// instruction.
 	MDMTimeUpdateRegistry = 10000
 
+	// MDMTimeReadRegistry is the time for executing an 'ReadRegistry'
+	// instruction.
+	MDMTimeReadRegistry = 1000
+
 	// RPCIAppendLen is the expected length of the 'Args' of an Append
 	// instructon.
 	RPCIAppendLen = 9
@@ -115,6 +123,11 @@ const (
 	// tweakOffset + revisionOffset + signatureOffset + pubKeyOffset +
 	// pubKeyLength + dataOffset + dataLength = 7 * 8 bytes = 56 byte
 	RPCIUpdateRegistryLen = 56
+
+	// RPCIReadRegistryLen is the expected length of the 'Args' of an
+	// ReadRegistry instruction.
+	// tweakOffset + pubKeyOffset + pubKeyLength = 3 * 8 bytes = 24 byte
+	RPCIReadRegistryLen = 56
 )
 
 var (
@@ -152,6 +165,10 @@ var (
 	// SpecifierUpdateRegistry is the specifier for the UpdateRegistry
 	// instruction.
 	SpecifierUpdateRegistry = InstructionSpecifier{'U', 'p', 'd', 'a', 't', 'e', 'R', 'e', 'g', 'i', 's', 't', 'r', 'y'}
+
+	// SpecifierReadRegistry is the specifier for the ReadRegistry
+	// instruction.
+	SpecifierReadRegistry = InstructionSpecifier{'R', 'e', 'a', 'd', 'R', 'e', 'g', 'i', 's', 't', 'r', 'y'}
 
 	// ErrInsufficientBandwidthBudget is returned when bandwidth can no longer
 	// be paid for with the provided budget.
@@ -251,13 +268,20 @@ func MDMSwapSectorCost(pt *RPCPriceTable) types.Currency {
 	return pt.SwapSectorCost
 }
 
-// MDMUpdateRegistryCost is the cost of executing a 'UpdateRegistry' instruction.
+// MDMUpdateRegistryCost is the cost of executing a 'UpdateRegistry'
+// instruction.
 func MDMUpdateRegistryCost(pt *RPCPriceTable) types.Currency {
 	// Cost is the same as uploading a 4MiB sector of new data for a month but
 	// it's paid at once instead of differentiating between write and storage
 	// cost.
 	writeCost, storeCost := MDMAppendCost(pt, types.BlocksPerMonth)
 	return writeCost.Add(storeCost)
+}
+
+// MDMReadRegistryCost is the cost of executing a 'ReadRegistry' instruction.
+func MDMReadRegistryCost(pt *RPCPriceTable) types.Currency {
+	// Cost is the same as downloading a 4MiB sector.
+	return MDMReadCost(pt, SectorSize)
 }
 
 // MDMWriteCost is the cost of executing a 'Write' instruction of a certain length.
@@ -323,6 +347,12 @@ func MDMUpdateRegistryMemory() uint64 {
 	return 0 // 'UpdateRegistry' doesn't hold on to any memory beyond the lifetime of the instruction.
 }
 
+// MDMReadRegistryMemory returns the additional memory consumption of a
+// 'ReadRegistry' instruction.
+func MDMReadRegistryMemory() uint64 {
+	return 0 // 'ReadRegistry' doesn't hold on to any memory beyond the lifetime of the instruction.
+}
+
 // MDMBandwidthCost computes the total bandwidth cost given a price table and
 // used up- and download bandwidth.
 func MDMBandwidthCost(pt RPCPriceTable, uploadBandwidth, downloadBandwidth uint64) types.Currency {
@@ -378,9 +408,15 @@ func MDMSwapSectorCollateral() types.Currency {
 	return types.ZeroCurrency
 }
 
-// MDMUpdateRegistryCollateral returns the additional collateral a 'UpdateRegistry'
-// instruction requires the host to put up.
+// MDMUpdateRegistryCollateral returns the additional collateral a
+// 'UpdateRegistry' instruction requires the host to put up.
 func MDMUpdateRegistryCollateral() types.Currency {
+	return types.ZeroCurrency
+}
+
+// MDMReadRegistryCollateral returns the additional collateral a
+// 'ReadRegistry' instruction requires the host to put up.
+func MDMReadRegistryCollateral() types.Currency {
 	return types.ZeroCurrency
 }
 
@@ -400,6 +436,7 @@ func (p Program) ReadOnly() bool {
 			return false
 		case SpecifierUpdateRegistry:
 			// considered read-only cause it doesn't update a contract
+		case SpecifierReadRegistry:
 		default:
 			build.Critical("ReadOnly: unknown instruction")
 		}
@@ -427,6 +464,7 @@ func (p Program) RequiresSnapshot() bool {
 		case SpecifierSwapSector:
 			return true
 		case SpecifierUpdateRegistry:
+		case SpecifierReadRegistry:
 		default:
 			build.Critical("RequiresSnapshot: unknown instruction")
 		}

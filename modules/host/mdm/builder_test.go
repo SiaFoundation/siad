@@ -114,6 +114,13 @@ func (tb *testProgramBuilder) AddUpdateRegistryInstruction(spk types.SiaPublicKe
 	tb.staticValues.AddUpdateRegistryInstruction(spk, rv)
 }
 
+// AddReadRegistryInstruction adds an ReadRegistry instruction to the
+// builder, keeping track of running values.
+func (tb *testProgramBuilder) AddReadRegistryInstruction(spk types.SiaPublicKey, tweak crypto.Hash) {
+	tb.staticPB.AddReadRegistryInstruction(spk, tweak)
+	tb.staticValues.AddReadRegistryInstruction(spk)
+}
+
 // Program returns the built program.
 func (tb *testProgramBuilder) Program() (modules.Program, modules.ProgramData) {
 	return tb.staticPB.Program()

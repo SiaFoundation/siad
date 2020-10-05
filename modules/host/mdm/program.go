@@ -102,6 +102,8 @@ func decodeInstruction(p *program, i modules.Instruction) (instruction, error) {
 		return p.staticDecodeSwapSectorInstruction(i)
 	case modules.SpecifierUpdateRegistry:
 		return p.staticDecodeUpdateRegistryInstruction(i)
+	case modules.SpecifierReadRegistry:
+		return p.staticDecodeReadRegistryInstruction(i)
 	default:
 		return nil, fmt.Errorf("unknown instruction specifier: %v", i.Specifier)
 	}
