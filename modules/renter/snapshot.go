@@ -104,7 +104,7 @@ func (r *Renter) BackupsOnHost(hostKey types.SiaPublicKey) ([]modules.UploadedBa
 		return nil, errors.AddContext(err, "host not found in the worker table")
 	}
 
-	return w.FetchHostBackups(r.tg.StopCtx())
+	return w.FetchBackups(r.tg.StopCtx())
 }
 
 // UploadBackup creates a backup of the renter which is uploaded to the sia

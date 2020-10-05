@@ -160,9 +160,9 @@ func (w *worker) initJobDownloadSnapshotQueue() {
 	}
 }
 
-// FetchHostBackups is a convenience method to runs a DownloadSnapshot job on a
+// FetchBackups is a convenience method to runs a DownloadSnapshot job on a
 // worker and formats the response to a list of UploadedBackup objects.
-func (w *worker) FetchHostBackups(ctx context.Context) ([]modules.UploadedBackup, error) {
+func (w *worker) FetchBackups(ctx context.Context) ([]modules.UploadedBackup, error) {
 	downloadSnapshotRespChan := make(chan *jobDownloadSnapshotResponse)
 	jus := &jobDownloadSnapshot{
 		staticResponseChan: downloadSnapshotRespChan,
@@ -179,12 +179,12 @@ func (w *worker) FetchHostBackups(ctx context.Context) ([]modules.UploadedBackup
 	var resp *jobDownloadSnapshotResponse
 	select {
 	case <-ctx.Done():
-		return nil, errors.New("FetchHostBackups interrupted")
+		return nil, errors.New("FetchBackups interrupted")
 	case resp = <-downloadSnapshotRespChan:
 	}
 
 	if resp.staticErr != nil {
-		return nil, errors.AddContext(resp.staticErr, "FetchHostBackups failed")
+		return nil, errors.AddContext(resp.staticErr, "FetchBackups failed")
 	}
 
 	// Format the response and return the response to the requester.
