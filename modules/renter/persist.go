@@ -83,7 +83,7 @@ func (r *Renter) managedLoadSettings() error {
 		if err != nil {
 			return err
 		}
-	} else if err == persist.ErrBadVersion {
+	} else if errors.Contains(err, persist.ErrBadVersion) {
 		// Outdated version, try the 040 to 133 upgrade.
 		err = convertPersistVersionFrom040To133(filepath.Join(r.persistDir, PersistFilename))
 		if err != nil {
@@ -192,19 +192,19 @@ func (r *Renter) managedInitPersist() error {
 
 	// Create the essential dirs in the filesystem.
 	err = fs.NewSiaDir(modules.HomeFolder, modules.DefaultDirPerm)
-	if err != nil && err != filesystem.ErrExists {
+	if err != nil && !errors.Contains(err, filesystem.ErrExists) {
 		return err
 	}
 	err = fs.NewSiaDir(modules.UserFolder, modules.DefaultDirPerm)
-	if err != nil && err != filesystem.ErrExists {
+	if err != nil && !errors.Contains(err, filesystem.ErrExists) {
 		return err
 	}
 	err = fs.NewSiaDir(modules.BackupFolder, modules.DefaultDirPerm)
-	if err != nil && err != filesystem.ErrExists {
+	if err != nil && !errors.Contains(err, filesystem.ErrExists) {
 		return err
 	}
 	err = fs.NewSiaDir(modules.SkynetFolder, modules.DefaultDirPerm)
-	if err != nil && err != filesystem.ErrExists {
+	if err != nil && !errors.Contains(err, filesystem.ErrExists) {
 		return err
 	}
 	return nil

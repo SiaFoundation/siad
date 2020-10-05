@@ -21,7 +21,7 @@ func readTarArchive(r io.Reader) (fileMap, error) {
 	tr := tar.NewReader(r)
 	for {
 		header, err := tr.Next()
-		if err == io.EOF {
+		if errors.Contains(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -71,7 +71,7 @@ func readZipArchive(r io.Reader) (fileMap, error) {
 			return
 		}()
 
-		if err == io.EOF {
+		if errors.Contains(err, io.EOF) {
 			break
 		}
 		if err != nil {

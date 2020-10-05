@@ -15,6 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // A minerTester is the helper object for miner testing.
@@ -139,15 +140,15 @@ func TestIntegrationNilMinerDependencies(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = New(mt.cs, mt.tpool, nil, "")
-	if err != errNilWallet {
+	if !errors.Contains(err, errNilWallet) {
 		t.Fatal(err)
 	}
 	_, err = New(mt.cs, nil, mt.wallet, "")
-	if err != errNilTpool {
+	if !errors.Contains(err, errNilTpool) {
 		t.Fatal(err)
 	}
 	_, err = New(nil, mt.tpool, mt.wallet, "")
-	if err != errNilCS {
+	if !errors.Contains(err, errNilCS) {
 		t.Fatal(err)
 	}
 	_, err = New(nil, nil, nil, "")
@@ -197,7 +198,7 @@ func TestIntegrationBlocksMined(t *testing.T) {
 	// Submit the unsolved header followed by the two solved headers, this
 	// should result in 1 real block mined and 1 stale block mined.
 	err = mt.miner.SubmitHeader(unsolvedHeader)
-	if err != modules.ErrBlockUnsolved {
+	if !errors.Contains(err, modules.ErrBlockUnsolved) {
 		t.Fatal(err)
 	}
 	err = mt.miner.SubmitHeader(header1)
@@ -205,7 +206,7 @@ func TestIntegrationBlocksMined(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = mt.miner.SubmitHeader(header2)
-	if err != modules.ErrNonExtendingBlock {
+	if !errors.Contains(err, modules.ErrNonExtendingBlock) {
 		t.Fatal(err)
 	}
 	goodBlocks, staleBlocks := mt.miner.BlocksMined()

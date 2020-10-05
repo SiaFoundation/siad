@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -59,7 +60,7 @@ func TestInvalidConsensusChangeSubscription(t *testing.T) {
 	ms := newMockSubscriber()
 	badCCID := modules.ConsensusChangeID{255, 255, 255}
 	err = cst.cs.ConsensusSetSubscribe(&ms, badCCID, cst.cs.tg.StopChan())
-	if err != modules.ErrInvalidConsensusChangeID {
+	if !errors.Contains(err, modules.ErrInvalidConsensusChangeID) {
 		t.Error("consensus set returning the wrong error during an invalid subscription:", err)
 	}
 
@@ -95,7 +96,7 @@ func TestInvalidToValidSubscription(t *testing.T) {
 	ms := newMockSubscriber()
 	badCCID := modules.ConsensusChangeID{255, 255, 255}
 	err = cst.cs.ConsensusSetSubscribe(&ms, badCCID, cst.cs.tg.StopChan())
-	if err != modules.ErrInvalidConsensusChangeID {
+	if !errors.Contains(err, modules.ErrInvalidConsensusChangeID) {
 		t.Error("consensus set returning the wrong error during an invalid subscription:", err)
 	}
 

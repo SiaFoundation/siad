@@ -2,10 +2,10 @@ package wallet
 
 import (
 	"bytes"
-	"errors"
 	"sort"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -246,7 +246,7 @@ func (tb *transactionBuilder) FundSiacoins(amount types.Currency) error {
 		sco := so.outputs[i]
 		// Check that the output can be spent.
 		if err := tb.wallet.checkOutput(tb.wallet.dbTx, consensusHeight, scoid, sco, dustThreshold); err != nil {
-			if err == errSpendHeightTooHigh {
+			if errors.Contains(err, errSpendHeightTooHigh) {
 				potentialFund = potentialFund.Add(sco.Value)
 			}
 			continue

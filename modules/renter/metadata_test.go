@@ -24,7 +24,11 @@ func BenchmarkBubbleMetadata(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer r.Close()
+	defer func() {
+		if err := r.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}()
 
 	// Create Directory
 	dirSiaPath, err := modules.NewSiaPath("root")

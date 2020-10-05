@@ -430,8 +430,8 @@ func (r *Renter) managedUpdateLastHealthCheckTime(siaPath modules.SiaPath) error
 	if err != nil {
 		return err
 	}
-	defer entry.Close()
-	return entry.UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, time.Now())
+	err = entry.UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, time.Now())
+	return errors.Compose(err, entry.Close())
 }
 
 // callThreadedBubbleMetadata is the thread safe method used to call

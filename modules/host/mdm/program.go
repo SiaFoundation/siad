@@ -156,7 +156,9 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 	}
 	go func() {
 		defer cancel()
-		defer program.staticData.Close()
+		defer func() {
+			err = errors.Compose(err, program.staticData.Close())
+		}()
 		defer program.tg.Done()
 		defer close(program.outputChan)
 		program.outputErr = program.executeInstructions(ctx, sos.ContractSize(), sos.MerkleRoot())

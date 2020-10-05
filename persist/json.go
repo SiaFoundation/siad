@@ -212,7 +212,7 @@ func LoadJSON(meta Metadata, object interface{}, filename string) error {
 
 	// Try opening the primary file.
 	err = readJSON(meta, object, filename)
-	if err == ErrBadHeader || err == ErrBadVersion || os.IsNotExist(err) {
+	if errors.Contains(err, ErrBadHeader) || errors.Contains(err, ErrBadVersion) || os.IsNotExist(err) {
 		return err
 	}
 	if err != nil {

@@ -91,7 +91,7 @@ func (r *Renter) managedAddStuckChunksFromStuckStack(hosts map[string]struct{}) 
 
 		// Add stuck chunks to uploadHeap
 		err := r.managedAddStuckChunksToHeap(siaPath, hosts, offline, goodForRenew)
-		if err != nil && err != errNoStuckChunks {
+		if err != nil && !errors.Contains(err, errNoStuckChunks) {
 			return dirSiaPaths, errors.AddContext(err, "unable to add stuck chunks to heap")
 		}
 
@@ -112,13 +112,15 @@ func (r *Renter) managedAddStuckChunksFromStuckStack(hosts map[string]struct{}) 
 
 // managedAddStuckChunksToHeap tries to add as many stuck chunks from a siafile
 // to the upload heap as possible
-func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath, hosts map[string]struct{}, offline, goodForRenew map[string]bool) error {
+func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath, hosts map[string]struct{}, offline, goodForRenew map[string]bool) (err error) {
 	// Open File
 	sf, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		return fmt.Errorf("unable to open siafile %v, error: %v", siaPath, err)
 	}
-	defer sf.Close()
+	defer func() {
+		err = errors.Compose(err, sf.Close())
+	}()
 
 	// Check if there are still stuck chunks to repair
 	if sf.NumStuckChunks() == 0 {

@@ -16,6 +16,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestBuildUnfinishedChunks probes buildUnfinishedChunks to make sure that the
@@ -446,7 +447,7 @@ func TestAddChunksToHeap(t *testing.T) {
 		}
 		// Make sure directories are created
 		err = rt.renter.CreateDir(dirSiaPath, modules.DefaultDirPerm)
-		if err != nil && err != filesystem.ErrExists {
+		if err != nil && !errors.Contains(err, filesystem.ErrExists) {
 			t.Fatal(err)
 		}
 		dirSiaPaths = append(dirSiaPaths, dirSiaPath)
@@ -564,7 +565,7 @@ func TestAddRemoteChunksToHeap(t *testing.T) {
 			t.Fatal(err)
 		}
 		err = rt.renter.CreateDir(dirSiaPath, modules.DefaultDirPerm)
-		if err != nil && err != filesystem.ErrExists {
+		if err != nil && !errors.Contains(err, filesystem.ErrExists) {
 			t.Fatal(err)
 		}
 		dirSiaPaths.callAdd(dirSiaPath)
@@ -985,7 +986,11 @@ func TestUploadHeapStreamPush(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	uh := &rt.renter.uploadHeap
 
 	// Create a stream chunk
@@ -993,7 +998,11 @@ func TestUploadHeapStreamPush(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	var buf []byte
 	sr := NewStreamShard(bytes.NewReader(buf), buf)
 	streamChunk := &unfinishedUploadChunk{
@@ -1099,7 +1108,11 @@ func TestUploadHeapTryUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.renter.Close()
+	defer func() {
+		if err := rt.renter.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	uh := &rt.renter.uploadHeap
 
 	// Define test cases
@@ -1141,7 +1154,11 @@ func TestUploadHeapTryUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer entry.Close()
+	defer func() {
+		if err := entry.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Run test cases
 	for i, test := range tests {

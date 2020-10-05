@@ -363,9 +363,7 @@ func TestFileHealth(t *testing.T) {
 			}
 	*/
 	for i := 0; i < 2; i++ {
-		host := fmt.Sprintln("host", i)
-		spk := types.SiaPublicKey{}
-		spk.LoadString(host)
+		spk := types.SiaPublicKey{Algorithm: types.SignatureEd25519, Key: []byte{byte(i)}}
 		offlineMap[spk.String()] = false
 		goodForRenewMap[spk.String()] = true
 		if err := f.AddPiece(spk, 0, 0, crypto.Hash{}); err != nil {
@@ -383,9 +381,7 @@ func TestFileHealth(t *testing.T) {
 	}
 
 	// Add one good pieces to second piece set, confirm health is now 1.40.
-	host := fmt.Sprintln("host", 0)
-	spk := types.SiaPublicKey{}
-	spk.LoadString(host)
+	spk := types.SiaPublicKey{Algorithm: types.SignatureEd25519, Key: []byte{0}}
 	offlineMap[spk.String()] = false
 	goodForRenewMap[spk.String()] = true
 	if err := f.AddPiece(spk, 0, 1, crypto.Hash{}); err != nil {
@@ -397,9 +393,7 @@ func TestFileHealth(t *testing.T) {
 	}
 
 	// Add another good pieces to second piece set, confirm health is still 1.40.
-	host = fmt.Sprintln("host", 1)
-	spk = types.SiaPublicKey{}
-	spk.LoadString(host)
+	spk = types.SiaPublicKey{Algorithm: types.SignatureEd25519, Key: []byte{1}}
 	offlineMap[spk.String()] = false
 	goodForRenewMap[spk.String()] = true
 	if err := f.AddPiece(spk, 0, 1, crypto.Hash{}); err != nil {
@@ -449,9 +443,7 @@ func TestFileHealth(t *testing.T) {
 
 	// Add good pieces to the first chunk
 	for i := 0; i < 4; i++ {
-		host := fmt.Sprintln("host", i)
-		spk := types.SiaPublicKey{}
-		spk.LoadString(host)
+		spk := types.SiaPublicKey{Algorithm: types.SignatureEd25519, Key: []byte{byte(i)}}
 		offlineMap[spk.String()] = false
 		goodForRenewMap[spk.String()] = true
 		if err := f.AddPiece(spk, 0, uint64(i%2), crypto.Hash{}); err != nil {
@@ -472,9 +464,7 @@ func TestFileHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 4; i++ {
-		host := fmt.Sprintln("host", i)
-		spk := types.SiaPublicKey{}
-		spk.LoadString(host)
+		spk := types.SiaPublicKey{Algorithm: types.SignatureEd25519, Key: []byte{byte(i)}}
 		offlineMap[spk.String()] = false
 		goodForRenewMap[spk.String()] = true
 		if err := f.AddPiece(spk, 1, uint64(i%2), crypto.Hash{}); err != nil {
@@ -859,9 +849,7 @@ func TestChunkHealth(t *testing.T) {
 	}
 
 	// Add good piece to first chunk
-	host := fmt.Sprintln("host_0")
-	spk := types.SiaPublicKey{}
-	spk.LoadString(host)
+	spk := types.SiaPublicKey{Algorithm: types.SignatureEd25519, Key: []byte{1}}
 	offlineMap[spk.String()] = false
 	goodForRenewMap[spk.String()] = true
 	if err := setCombinedChunkOfTestFile(sf); err != nil {
@@ -899,9 +887,7 @@ func TestChunkHealth(t *testing.T) {
 	}
 
 	// Add good piece to second chunk
-	host = fmt.Sprintln("host_1")
-	spk = types.SiaPublicKey{}
-	spk.LoadString(host)
+	spk = types.SiaPublicKey{Algorithm: types.SignatureEd25519, Key: []byte{2}}
 	offlineMap[spk.String()] = false
 	goodForRenewMap[spk.String()] = true
 	if err := sf.AddPiece(spk, 1, 0, crypto.Hash{}); err != nil {

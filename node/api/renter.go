@@ -1824,7 +1824,9 @@ func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps
 			http.StatusInternalServerError)
 		return
 	}
-	defer streamer.Close()
+	defer func() {
+		_ = streamer.Close()
+	}()
 	http.ServeContent(w, req, fileName, time.Time{}, streamer)
 }
 

@@ -76,7 +76,11 @@ func TestHostAnnounce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer af.Close()
+	defer func() {
+		if err := af.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create an announcement, then use the address finding module to scan the
 	// blockchain for the host's address.
@@ -122,7 +126,11 @@ func TestHostAnnounceAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer af.Close()
+	defer func() {
+		if err := af.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create an announcement, then use the address finding module to scan the
 	// blockchain for the host's address.

@@ -424,7 +424,7 @@ func (fm *FeeManager) applyEntryTxnConfirmed(payload [persistEntryPayloadSize]by
 
 	// Clear the transaction from the watchdog
 	fm.staticCommon.staticWatchdog.callClearTransaction(etf.TxnID)
-	if err != nil && err != errTxnNotFound {
+	if err != nil && !errors.Contains(err, errTxnNotFound) {
 		// Return an error only if the error is not errTxnNotFound. This is because
 		// Transaction Confirmed events can span multiple persist entries and so the
 		// first persist entry will clear the transaction and the rest will be
@@ -472,7 +472,7 @@ func (fm *FeeManager) applyEntryTxnDropped(payload [persistEntryPayloadSize]byte
 
 	// Clear the transaction from  the Watchdog
 	err = fm.staticCommon.staticWatchdog.callClearTransaction(etf.TxnID)
-	if err != nil && err != errTxnNotFound {
+	if err != nil && !errors.Contains(err, errTxnNotFound) {
 		// Return an error only if the error is not errTxnNotFound. This is because
 		// Transaction Dropped events can span multiple persist entries and so the
 		// first persist entry will clear the transaction and the rest will be

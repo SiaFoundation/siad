@@ -1,12 +1,12 @@
 package gateway
 
 import (
-	"errors"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -35,7 +35,7 @@ func TestAddNode(t *testing.T) {
 	if err := g.addNode(dummyNode); err != nil {
 		t.Fatal("addNode failed:", err)
 	}
-	if err := g.addNode(dummyNode); err != errNodeExists {
+	if err := g.addNode(dummyNode); !errors.Contains(err, errNodeExists) {
 		t.Error("addNode added duplicate node")
 	}
 	if err := g.addNode("foo"); err == nil {
@@ -47,7 +47,7 @@ func TestAddNode(t *testing.T) {
 	if err := g.addNode("[::]:9981"); err == nil {
 		t.Error("addNode added unspecified address")
 	}
-	if err := g.addNode(g.myAddr); err != errOurAddress {
+	if err := g.addNode(g.myAddr); !errors.Contains(err, errOurAddress) {
 		t.Error("addNode added our own address")
 	}
 }
@@ -96,7 +96,7 @@ func TestRandomNode(t *testing.T) {
 	g.mu.RLock()
 	_, err := g.randomNode()
 	g.mu.RUnlock()
-	if err != errNoPeers {
+	if !errors.Contains(err, errNoPeers) {
 		t.Fatal("randomNode should fail when the gateway has 0 nodes")
 	}
 
@@ -125,7 +125,7 @@ func TestRandomNode(t *testing.T) {
 	g.mu.RLock()
 	_, err = g.randomNode()
 	g.mu.RUnlock()
-	if err != errNoPeers {
+	if !errors.Contains(err, errNoPeers) {
 		t.Fatalf("randomNode returned wrong error: expected %v, got %v", errNoPeers, err)
 	}
 

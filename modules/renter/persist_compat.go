@@ -415,7 +415,10 @@ func (r *Renter) compatV137loadSiaFilesFromReader(reader io.Reader, tracking map
 			return nil, errors.AddContext(err, "new file has invalid number of chunks")
 		}
 		names[i] = f.name
-		entry.Close()
+		err = entry.Close()
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to close file")
+		}
 	}
 	return names, err
 }

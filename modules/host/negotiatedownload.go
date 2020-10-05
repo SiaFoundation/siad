@@ -36,7 +36,7 @@ func (h *Host) managedDownloadIteration(conn net.Conn, so *storageObligation) er
 
 	// The renter will either accept or reject the host's settings.
 	err = modules.ReadNegotiationAcceptance(conn)
-	if err == modules.ErrStopResponse {
+	if errors.Contains(err, modules.ErrStopResponse) {
 		return err // managedRPCDownload will catch this and exit gracefully
 	} else if err != nil {
 		return extendErr("renter rejected host settings: ", ErrorCommunication(err.Error()))
@@ -300,7 +300,7 @@ func (h *Host) managedRPCDownload(conn net.Conn) error {
 	// time for a single connection has been reached.
 	for time.Now().Before(startTime.Add(iteratedConnectionTime)) {
 		err := h.managedDownloadIteration(conn, &so)
-		if err == modules.ErrStopResponse {
+		if errors.Contains(err, modules.ErrStopResponse) {
 			// The renter has indicated that it has finished downloading the
 			// data, therefore there is no error. Return nil.
 			return nil

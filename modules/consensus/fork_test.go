@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestBacktrackToCurrentPath probes the backtrackToCurrentPath method of the
@@ -41,7 +42,7 @@ func TestBacktrackToCurrentPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = cst.cs.AcceptBlock(child1)
-	if err != modules.ErrNonExtendingBlock {
+	if !errors.Contains(err, modules.ErrNonExtendingBlock) {
 		t.Fatal(err)
 	}
 	pb, err = cst.cs.dbGetBlockMap(child1.ID())
