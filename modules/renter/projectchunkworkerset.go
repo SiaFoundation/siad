@@ -1,17 +1,5 @@
 package renter
 
-// TODO: Add a method to initialize a projectChunkWorkerSet with a set of
-// merkleroot + host pairs, allowing the object to skip the initial HasSector
-// scan of the network. This allows the projectChunkWorkerSet to replace legacy
-// downloads.
-//
-// Replacing legacy downloads is desirable because the projectChunkWorkerSet has
-// intelligent host selection logic based on latency and pricing.
-//
-// Open question whether that route should be refreshed over time. Either we can
-// keep the corresponding siafile open and keep checking if there are updates,
-// or we can do the network based checking over time.
-
 // TODO: What do we do about the edge case where a chunk is created, is still
 // uploading, and then someone creates a worker set before the upload is
 // finished? The worker set may be made immediately out of date by the new
@@ -59,6 +47,20 @@ var (
 		Standard: time.Minute * 3,
 		Testing:  time.Second * 10,
 	}).(time.Duration)
+)
+
+const (
+	// pcwsGougingFractionDenom is used to identify what percentage of the
+	// allowance is allowed to be spent on HasSector jobs before a worker is
+	// flagged for being too expensive.
+	//
+	// For example, if the denom is 10, that means that if a worker's HasSector
+	// cost multipled by the total expected number of HasSector jobs to be
+	// performed in a period exceeds 10% of the allowance, that worker will be
+	// flagged for price gouging. If the denom is 100, the worker will be
+	// flagged if the HasSector cost reaches 1% of the total cost of the
+	// allowance.
+	pcwsGougingFractionDenom = 25
 )
 
 // pcwsUnreseovledWorker tracks an unresolved worker that is associated with a
@@ -169,6 +171,60 @@ type projectChunkWorkerSet struct {
 	mu           sync.Mutex
 }
 
+// checkPCWSGouging verifies the cost of grabbing the HasSector information from
+// a host is reasonble. The cost of completing the download is not checked.
+//
+// NOTE: The logic in this function assumes that every pcws results in just one
+// download. The reality is that depending on the type of use case, there may be
+// significantly less than 1 download per pcws (for single-user nodes that
+// frequently open large movies without watching the full movie), or
+// significantly more than one download per pcws (for multi-user nodes where
+// users most commonly are using the same file over and over).
+func checkPCWSGouging(pt modules.RPCPriceTable, allowance modules.Allowance, numWorkers int, numRoots int) error {
+	// Check whether the download bandwidth price is too high.
+	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
+		return fmt.Errorf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.DownloadBandwidthCost, allowance.MaxDownloadBandwidthPrice)
+	}
+	// Check whether the upload bandwidth price is too high.
+	if !allowance.MaxUploadBandwidthPrice.IsZero() && allowance.MaxUploadBandwidthPrice.Cmp(pt.UploadBandwidthCost) < 0 {
+		return fmt.Errorf("upload bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v - price gouging protection enabled", pt.UploadBandwidthCost, allowance.MaxUploadBandwidthPrice)
+	}
+	// If there is no allowance, price gouging checks have to be disabled,
+	// because there is no baseline for understanding what might count as price
+	// gouging.
+	if allowance.Funds.IsZero() {
+		return nil
+	}
+
+	// Calculate the cost of a has sector job.
+	pb := modules.NewProgramBuilder(&pt, 0)
+	for i := 0; i < numRoots; i++ {
+		pb.AddHasSectorInstruction(crypto.Hash{})
+	}
+	programCost, _, _ := pb.Cost(true)
+	ulbw, dlbw := hasSectorJobExpectedBandwidth(numRoots)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulbw, dlbw)
+	costHasSectorJob := programCost.Add(bandwidthCost)
+
+	// Determine based on the allowance the number of HasSector jobs that would
+	// need to be performed under normal conditions to reach the desired amount
+	// of total data.
+	requiredProjects := allowance.ExpectedDownload / modules.StreamDownloadSize
+	requiredHasSectorQueries := requiredProjects * uint64(numWorkers)
+
+	// Determine the total amount that we'd be willing to spend on all of those
+	// queries before considering the host complicit in gouging.
+	totalCost := costHasSectorJob.Mul64(requiredHasSectorQueries)
+	reducedAllowance := allowance.Funds.Div64(pcwsGougingFractionDenom)
+
+	// Check that we do not consider the host complicit in gouging.
+	if totalCost.Cmp(reducedAllowance) > 0 {
+		errStr := fmt.Sprintf("the cost of performing a HasSector job is too high - price gouging protection enabled")
+		return errors.New(errStr)
+	}
+	return nil
+}
+
 // closeUpdateChans will close all of the update chans and clear out the slice.
 // This will cause any threads waiting for more results from the unresolved
 // workers to unblock.
@@ -246,11 +302,10 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 // returned so it can be added to the pending worker state.
 func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *worker, responseChan chan *jobHasSectorResponse, ws *pcwsWorkerState) {
 	// Check for gouging.
-	//
-	// TODO (before merge): use a different gouging function.
 	cache := w.staticCache()
 	pt := w.staticPriceTable().staticPriceTable
-	err := checkPDBRGouging(pt, cache.staticRenterAllowance, len(pcws.staticPieceRoots))
+	numWorkers := pcws.staticRenter.staticWorkerPool.callNumWorkers()
+	err := checkPCWSGouging(pt, cache.staticRenterAllowance, numWorkers, len(pcws.staticPieceRoots))
 	if err != nil {
 		pcws.staticRenter.log.Debugf("price gouging for chunk worker set detected in worker %v, err %v", w.staticHostPubKeyStr, err)
 		return
