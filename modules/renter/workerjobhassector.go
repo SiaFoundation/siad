@@ -101,7 +101,9 @@ func (j *jobHasSector) callExecute() {
 		case <-w.renter.tg.StopChan():
 		}
 	})
-	err = errors.Compose(err, err2)
+	if err2 != nil {
+		w.renter.log.Println("callExececute: launch failed", err)
+	}
 
 	// Report success or failure to the queue.
 	if err == nil {

@@ -1115,15 +1115,15 @@ func TestTpoolRevert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tpt2, err := blankTpoolTester(t.Name() + "2")
-	if err != nil {
-		t.Fatal(err)
-	}
 	defer func() {
 		if err := tpt.Close(); err != nil {
 			t.Fatal(err)
 		}
 	}()
+	tpt2, err := blankTpoolTester(t.Name() + "2")
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer func() {
 		if err := tpt2.Close(); err != nil {
 			t.Fatal(err)

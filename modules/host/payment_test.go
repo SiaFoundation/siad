@@ -296,8 +296,6 @@ func testPayByContract(t *testing.T, pair *renterHostPair) {
 		if err := rStream.Close(); err != nil {
 			t.Fatal(err)
 		}
-	}()
-	defer func() {
 		if err := hStream.Close(); err != nil {
 			t.Fatal(err)
 		}
@@ -440,8 +438,6 @@ func testPayByEphemeralAccount(t *testing.T, pair *renterHostPair) {
 		if err := rStream.Close(); err != nil {
 			t.Fatal(err)
 		}
-	}()
-	defer func() {
 		if err := hStream.Close(); err != nil {
 			t.Fatal(err)
 		}
@@ -495,8 +491,6 @@ func testUnknownPaymentMethodError(t *testing.T, pair *renterHostPair) {
 		if err := rStream.Close(); err != nil {
 			t.Fatal(err)
 		}
-	}()
-	defer func() {
 		if err := hStream.Close(); err != nil {
 			t.Fatal(err)
 		}

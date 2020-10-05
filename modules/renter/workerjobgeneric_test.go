@@ -58,7 +58,7 @@ func (j *jobTest) sendResult(result *jobTestResult) {
 		}
 	})
 	if err != nil {
-		w.renter.log.Severe(err)
+		panic(err)
 	}
 }
 

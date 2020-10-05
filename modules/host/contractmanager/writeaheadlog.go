@@ -296,8 +296,8 @@ func (wal *writeAheadLog) load() error {
 	} else if !os.IsNotExist(err) {
 		return build.ExtendErr("walFile was not opened successfully", err)
 	}
-	// errors.Contains(err, os.IsNotExist,)suggesting a successful, clean shutdown. No action
-	// is taken.
+	// If the file doesn't exist it indicates a clean shutdown. No action is
+	// taken.
 
 	// Create the tmp settings file and initialize the first write to it. This
 	// is necessary before kicking off the sync loop.

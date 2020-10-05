@@ -18,10 +18,10 @@ func TestApplyMinerPayouts(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-  if err := cst.Close(); err != nil {
-    t.Fatal(err)
-  }
-}()
+  		if err := cst.Close(); err != nil {
+   	 		t.Fatal(err)
+  		}
+	}()
 
 	// Create a block node with a single miner payout.
 	pb := new(processedBlock)
@@ -125,10 +125,10 @@ func TestApplyMaturedSiacoinOutputs(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-  if err := cst.Close(); err != nil {
-    t.Fatal(err)
-  }
-}()
+  		if err := cst.Close(); err != nil {
+    		t.Fatal(err)
+  		}
+	}()
 	pb := cst.cs.dbCurrentProcessedBlock()
 
 	// Trigger the sanity check concerning already-matured outputs.
@@ -161,10 +161,10 @@ func TestApplyMissedStorageProof(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-  if err := cst.Close(); err != nil {
-    t.Fatal(err)
-  }
-}()
+  		if err := cst.Close(); err != nil {
+   			t.Fatal(err)
+  		}
+	}()
 
 	// Create a block node.
 	pb := new(processedBlock)
@@ -256,10 +256,10 @@ func TestApplyFileContractMaintenance(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-  if err := cst.Close(); err != nil {
-    t.Fatal(err)
-  }
-}()
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node.
 	pb := new(processedBlock)
