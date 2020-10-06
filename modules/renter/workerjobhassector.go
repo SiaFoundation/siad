@@ -66,6 +66,8 @@ func (j *jobHasSector) callDiscard(err error) {
 	w.renter.tg.Launch(func() {
 		response := &jobHasSectorResponse{
 			staticErr: errors.Extend(err, ErrJobDiscarded),
+
+			staticWorker: w,
 		}
 		select {
 		case j.staticResponseChan <- response:

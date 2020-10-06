@@ -265,7 +265,7 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	// Delete the worker from the set of unresolved workers.
 	w := resp.staticWorker
 	if w == nil {
-		panic("nil worker provided in resp")
+		ws.staticRenter.log.Critical("nil worker provided in resp")
 	}
 	delete(ws.unresolvedWorkers, w.staticHostPubKeyStr)
 	ws.closeUpdateChans()
