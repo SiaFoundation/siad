@@ -27,7 +27,7 @@ type (
 		// These fields are set when the job is added to the job queue and used
 		// after execution to log the delta between the estimated job time and
 		// the actual job time.
-		externJobStartTime time.Time
+		externJobStartTime         time.Time
 		externEstimatedJobDuration time.Duration
 	}
 
