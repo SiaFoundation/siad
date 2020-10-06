@@ -15,6 +15,19 @@ const (
 	RegistryDataSize = 114
 )
 
+// RoundRegistrySize is a helper to correctly round up the size of a registry to
+// the closest valid one.
+func RoundRegistrySize(size uint64) uint64 {
+	// TODO: this will be changed once the MR is rebased on top of the open
+	// registry MDM MR.
+	smallestRegUnit := uint64(256 * 64)
+	nUnits := size / smallestRegUnit
+	if size%smallestRegUnit != 0 {
+		nUnits++
+	}
+	return nUnits * smallestRegUnit
+}
+
 // RegistryValue is a value that can be registered on a host's registry.
 type RegistryValue struct {
 	Tweak    crypto.Hash

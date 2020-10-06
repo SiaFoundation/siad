@@ -502,7 +502,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 
 	// Load the registry.
 	registrySize := h.managedInternalSettings().RegistrySize
-	registry, err := registry.New(filepath.Join(h.persistDir, modules.HostRegistryFile), registrySize)
+	registry, err := registry.New(filepath.Join(h.persistDir, modules.HostRegistryFile), registrySize/256)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to load host registry")
 	}
@@ -689,9 +689,12 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 		h.announced = false
 	}
 
-	// Check if the size of the registry changed.
+	// Translate the size of the registry in bytes to the number of entries. Adjust
+	// the input in case it's not a multiple of 64 times the size of a persisted
+	// entry.
+	settings.RegistrySize = modules.RoundRegistrySize(settings.RegistrySize)
 	if h.settings.RegistrySize != settings.RegistrySize {
-		err := h.staticRegistry.Truncate(settings.RegistrySize)
+		err := h.staticRegistry.Truncate(settings.RegistrySize / 256)
 		if err != nil {
 			return errors.AddContext(err, "registry size not updated")
 		}

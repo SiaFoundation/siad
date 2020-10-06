@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -16,7 +17,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/consensus"
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
-	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
@@ -1037,13 +1037,13 @@ func TestHostRegistry(t *testing.T) {
 	}
 
 	// Update the internal settings.
-	is.RegistrySize = 128
+	is.RegistrySize = 128 * 256
 	err = h.SetInternalSettings(is)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Len() != 0 || r.Cap() != is.RegistrySize {
-		t.Fatal("truncate wasn't called on registry")
+	if r.Len() != 0 || r.Cap() != 128 {
+		t.Fatal("truncate wasn't called on registry", r.Len(), r.Cap())
 	}
 
 	// Add 64 entries.
@@ -1062,25 +1062,18 @@ func TestHostRegistry(t *testing.T) {
 	}
 
 	// Check registry.
-	if r.Len() != 64 || r.Cap() != is.RegistrySize {
-		t.Fatal("truncate wasn't called on registry")
+	if r.Len() != 64 || r.Cap() != 128 {
+		t.Fatal("truncate wasn't called on registry", r.Len(), r.Cap())
 	}
 
-	// Try truncating below that. Shouldn't work.
-	is.RegistrySize = 63
-	err = h.SetInternalSettings(is)
-	if !errors.Contains(err, registry.ErrInvalidTruncate) {
-		t.Fatal("truncating to 63 entries shouldn't work", err)
-	}
-
-	// Exact truncate should work.
-	is.RegistrySize = 64
+	// Try truncating below that. Should round up to 64 entries.
+	is.RegistrySize = 64*256 - 1
 	err = h.SetInternalSettings(is)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("truncating to 63 entries shouldn't work", err)
 	}
 	if r.Len() != 64 || r.Cap() != 64 {
-		t.Fatal("truncate wasn't called on registry")
+		t.Fatal("truncate wasn't called on registry", r.Len(), r.Cap())
 	}
 
 	// Close host and restart it.
@@ -1088,20 +1081,39 @@ func TestHostRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rebootHost, err := New(ht.cs, ht.gateway, ht.tpool, ht.wallet, ht.mux, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
+	h, err = New(ht.cs, ht.gateway, ht.tpool, ht.wallet, ht.mux, "localhost:0", filepath.Join(ht.persistDir, modules.HostDir))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := rebootHost.Close(); err != nil {
+		if err := h.Close(); err != nil {
 			t.Fatal(err)
 		}
 	}()
-	r = rebootHost.staticRegistry
+	r = h.staticRegistry
 
 	// Check registry.
 	if r.Len() != 64 || r.Cap() != 64 {
 		t.Fatal("truncate wasn't called on registry", r.Len(), r.Cap())
+	}
+
+	// Clear registry.
+	_, err = r.Prune(types.BlockHeight(math.MaxUint64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Len() != 0 || r.Cap() != 64 {
+		t.Fatal("clearing wasn't successful", r.Len(), r.Cap())
+	}
+
+	// Set the size back to 0.
+	is.RegistrySize = 0
+	err = h.SetInternalSettings(is)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Len() != 0 || r.Cap() != 0 {
+		t.Fatal("truncate wasn't called on registry")
 	}
 }
 
