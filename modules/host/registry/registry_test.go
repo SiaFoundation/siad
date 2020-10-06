@@ -54,8 +54,8 @@ func TestDeleteEntry(t *testing.T) {
 	}(r)
 
 	// No bit should be used.
-	for i := uint64(0); i < r.staticUsage.Len(); i++ {
-		if r.staticUsage.IsSet(i) {
+	for i := uint64(0); i < r.usage.Len(); i++ {
+		if r.usage.IsSet(i) {
 			t.Fatal("no page should be in use")
 		}
 	}
@@ -78,7 +78,7 @@ func TestDeleteEntry(t *testing.T) {
 	}
 
 	// The bit should be set.
-	if !r.staticUsage.IsSet(uint64(vExists.staticIndex) - 1) {
+	if !r.usage.IsSet(uint64(vExists.staticIndex) - 1) {
 		t.Fatal("bit wasn't set")
 	}
 
@@ -91,8 +91,8 @@ func TestDeleteEntry(t *testing.T) {
 	}
 
 	// No bit should be used again.
-	for i := uint64(0); i < r.staticUsage.Len(); i++ {
-		if r.staticUsage.IsSet(i) {
+	for i := uint64(0); i < r.usage.Len(); i++ {
+		if r.usage.IsSet(i) {
 			t.Fatal("no page should be in use")
 		}
 	}
@@ -121,8 +121,8 @@ func TestNew(t *testing.T) {
 	}(r)
 
 	// No bit should be used.
-	for i := uint64(0); i < r.staticUsage.Len(); i++ {
-		if r.staticUsage.IsSet(i) {
+	for i := uint64(0); i < r.usage.Len(); i++ {
+		if r.usage.IsSet(i) {
 			t.Fatal("no page should be in use")
 		}
 	}
@@ -147,11 +147,11 @@ func TestNew(t *testing.T) {
 	// second index.
 	_, vUnused, _ := randomValue(1)
 	_, vUsed, _ := randomValue(2)
-	err = r.managedSaveEntry(vUnused, false)
+	err = r.staticSaveEntry(vUnused, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = r.managedSaveEntry(vUsed, true)
+	err = r.staticSaveEntry(vUsed, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,8 +178,8 @@ func TestNew(t *testing.T) {
 	}
 
 	// Loaded page should be in use.
-	for i := uint64(0); i < r.staticUsage.Len(); i++ {
-		if r.staticUsage.IsSet(i) != (i == uint64(v.staticIndex-1)) {
+	for i := uint64(0); i < r.usage.Len(); i++ {
+		if r.usage.IsSet(i) != (i == uint64(v.staticIndex-1)) {
 			t.Fatal("wrong page is set")
 		}
 	}
@@ -308,7 +308,7 @@ func TestUpdate(t *testing.T) {
 	}
 
 	// Mark the first entry as unused and save it to disk.
-	err = r.managedSaveEntry(v, false)
+	err = r.staticSaveEntry(v, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -467,8 +467,8 @@ func TestPrune(t *testing.T) {
 
 	// Check bitfield.
 	inUse := 0
-	for i := uint64(0); i < r.staticUsage.Len(); i++ {
-		if r.staticUsage.IsSet(i) {
+	for i := uint64(0); i < r.usage.Len(); i++ {
+		if r.usage.IsSet(i) {
 			inUse++
 		}
 	}
@@ -509,8 +509,8 @@ func TestPrune(t *testing.T) {
 
 	// Check bitfield.
 	inUse = 0
-	for i := uint64(0); i < r.staticUsage.Len(); i++ {
-		if r.staticUsage.IsSet(i) {
+	for i := uint64(0); i < r.usage.Len(); i++ {
+		if r.usage.IsSet(i) {
 			inUse++
 		}
 	}
@@ -541,8 +541,8 @@ func TestPrune(t *testing.T) {
 
 	// Check bitfield.
 	inUse = 0
-	for i := uint64(0); i < r.staticUsage.Len(); i++ {
-		if r.staticUsage.IsSet(i) {
+	for i := uint64(0); i < r.usage.Len(); i++ {
+		if r.usage.IsSet(i) {
 			inUse++
 		}
 	}
@@ -930,4 +930,180 @@ func BenchmarkRegistryUpdate(b *testing.B) {
 	b.StartTimer()
 	close(start)
 	wg.Wait()
+}
+
+// TestTruncate is a unit test for the registry's Truncate method.
+func TestTruncate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	dir := testDir(t.Name())
+
+	// Create a new registry.
+	registryPath := filepath.Join(dir, "registry")
+	r, err := New(registryPath, 128)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
+
+	// Capacity should be 128 and length 0.
+	if r.Cap() != 128 || r.Len() != 0 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+
+	// Add 64 entries to it.
+	numEntries := 64
+	entries := make([]modules.SignedRegistryValue, 0, numEntries)
+	keys := make([]types.SiaPublicKey, 0, numEntries)
+	for i := 0; i < numEntries; i++ {
+		rv, v, sk := randomValue(0)
+		rv.Revision = 0 // set revision number to 0
+		rv = rv.Sign(sk)
+		_, err = r.Update(rv, v.key, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rv, _ = r.Get(v.key, v.tweak)
+		entries = append(entries, rv)
+		keys = append(keys, v.key)
+	}
+
+	// Check capacity and length again.
+	if r.Cap() != 128 || r.Len() != 64 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+
+	// Truncate the registry to 63 entries. This shouldn't work.
+	if err := r.Truncate(63); !errors.Contains(err, ErrInvalidTruncate) {
+		t.Fatal(err)
+	}
+
+	// Truncate to 192. This should work.
+	if err := r.Truncate(192); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check capacity and length again.
+	if r.Cap() != 192 || r.Len() != 64 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+
+	// Check file size.
+	fi, err := r.staticFile.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Size() != 193*PersistedEntrySize {
+		t.Fatal("wrong size", fi.Size(), 193*PersistedEntrySize)
+	}
+
+	// Entries should be the same as before.
+	for i, entry := range entries {
+		entryExist, exists := r.Get(keys[i], entry.Tweak)
+		if !exists {
+			t.Fatal("entry doesn't exist")
+		}
+		if !reflect.DeepEqual(entry, entryExist) {
+			t.Log(entry)
+			t.Log(entryExist)
+			t.Fatal("entries don't match")
+		}
+	}
+
+	// Reload registry.
+	r, err = New(registryPath, 192)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
+
+	// Check capacity and length again.
+	if r.Cap() != 192 || r.Len() != 64 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+
+	// Entries should be the same as before.
+	for i, entry := range entries {
+		entryExist, exists := r.Get(keys[i], entry.Tweak)
+		if !exists {
+			t.Fatal("entry doesn't exist")
+		}
+		if !reflect.DeepEqual(entry, entryExist) {
+			t.Log(entry)
+			t.Log(entryExist)
+			t.Fatal("entries don't match")
+		}
+	}
+
+	// Truncate to 64. This should work.
+	if err := r.Truncate(64); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check capacity and length again.
+	if r.Cap() != 64 || r.Len() != 64 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+
+	// Check file size.
+	fi, err = r.staticFile.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Size() != 65*PersistedEntrySize {
+		t.Fatal("wrong size", fi.Size(), 65*PersistedEntrySize)
+	}
+
+	// Entries should be the same as before.
+	for i, entry := range entries {
+		entryExist, exists := r.Get(keys[i], entry.Tweak)
+		if !exists {
+			t.Fatal("entry doesn't exist")
+		}
+		if !reflect.DeepEqual(entry, entryExist) {
+			t.Log(entry)
+			t.Log(entryExist)
+			t.Fatal("entries don't match")
+		}
+	}
+
+	// Reload registry.
+	r, err = New(registryPath, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
+
+	// Check capacity and length again.
+	if r.Cap() != 64 || r.Len() != 64 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+
+	// Entries should be the same as before.
+	for i, entry := range entries {
+		entryExist, exists := r.Get(keys[i], entry.Tweak)
+		if !exists {
+			t.Fatal("entry doesn't exist")
+		}
+		if !reflect.DeepEqual(entry, entryExist) {
+			t.Log(entry)
+			t.Log(entryExist)
+			t.Fatal("entries don't match")
+		}
+	}
 }

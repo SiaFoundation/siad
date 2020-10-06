@@ -362,6 +362,9 @@ func (h *Host) managedUpdatePriceTable() {
 		// Bandwidth related fields.
 		DownloadBandwidthCost: hes.DownloadBandwidthPrice,
 		UploadBandwidthCost:   hes.UploadBandwidthPrice,
+
+		// Registry related fields.
+		RegistryEntriesLeft: h.staticRegistry.Cap() - h.staticRegistry.Len(),
 	}
 	// update the pricetable
 	h.staticPriceTables.managedSetCurrent(priceTable)
@@ -447,21 +450,6 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		return nil, err
 	}
 
-	// Load the registry.
-	registry, err := registry.New(filepath.Join(h.persistDir, modules.HostRegistryFile), registryDefaultMaxEntries)
-	if err != nil {
-		return nil, errors.AddContext(err, "failed to load host registry")
-	}
-	h.staticRegistry = registry
-	h.tg.AfterStop(func() {
-		err := h.staticRegistry.Close()
-		if err != nil {
-			// State of the registry is uncertain, a Println will have to
-			// suffice.
-			fmt.Println("Error when closing the logger:", err)
-		}
-	})
-
 	// Initialize the logger, and set up the stop call that will close the
 	// logger.
 	h.log, err = dependencies.NewLogger(filepath.Join(h.persistDir, logFile))
@@ -502,6 +490,22 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		err := h.saveSync()
 		if err != nil {
 			h.log.Println("Could not save host upon shutdown:", err)
+		}
+	})
+
+	// Load the registry.
+	registrySize := h.managedInternalSettings().RegistrySize
+	registry, err := registry.New(filepath.Join(h.persistDir, modules.HostRegistryFile), registrySize)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to load host registry")
+	}
+	h.staticRegistry = registry
+	h.tg.AfterStop(func() {
+		err := h.staticRegistry.Close()
+		if err != nil {
+			// State of the registry is uncertain, a Println will have to
+			// suffice.
+			fmt.Println("Error when closing the logger:", err)
 		}
 	})
 
@@ -676,6 +680,14 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 	// another blockchain announcement.
 	if h.settings.NetAddress != settings.NetAddress && settings.NetAddress != h.autoAddress {
 		h.announced = false
+	}
+
+	// Check if the size of the registry changed.
+	if h.settings.RegistrySize != settings.RegistrySize {
+		err := h.staticRegistry.Truncate(settings.RegistrySize)
+		if err != nil {
+			return errors.AddContext(err, "registry size not updated")
+		}
 	}
 
 	h.settings = settings

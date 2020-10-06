@@ -18,7 +18,6 @@ import (
 // TODO: F/Us
 // - use LRU for limited entries in memory, rest on disk
 // - optimize locking by locking each entry individually
-// - correctly handle growing/shrinking the registry
 const (
 	// PersistedEntrySize is the size of a marshaled entry on disk.
 	PersistedEntrySize = 256
@@ -40,17 +39,19 @@ var (
 	// errInvalidEntry is returned when trying to update an entry that has been
 	// invalidated on disk and only exists in memory anymore.
 	errInvalidEntry = errors.New("invalid entry")
+	// ErrInvalidTruncate is returned if a truncate would lead to data loss.
+	ErrInvalidTruncate = errors.New("can't truncate registry below the number of used entries")
 )
 
 type (
 	// Registry is an in-memory key-value store. Renter's can pay the host to
 	// register data with a given pubkey and secondary key (tweak).
 	Registry struct {
-		entries     map[crypto.Hash]*value
-		staticUsage bitfield
-		staticPath  string
-		staticFile  *os.File
-		mu          sync.Mutex
+		entries    map[crypto.Hash]*value
+		staticPath string
+		staticFile *os.File
+		usage      bitfield
+		mu         sync.Mutex
 	}
 
 	// values represents the value associated with a registered key.
@@ -108,6 +109,13 @@ func (v *value) update(rv modules.SignedRegistryValue, newExpiry types.BlockHeig
 	return nil
 }
 
+// Cap returns the capacity of the registry.
+func (r *Registry) Cap() uint64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.usage.Len()
+}
+
 // Close closes the registry and its underlying resources.
 func (r *Registry) Close() error {
 	return r.staticFile.Close()
@@ -124,6 +132,80 @@ func (r *Registry) Get(pubKey types.SiaPublicKey, tweak crypto.Hash) (modules.Si
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	return modules.NewSignedRegistryValue(v.tweak, v.data, v.revision, v.signature), true
+}
+
+// Len returns the length of the registry.
+func (r *Registry) Len() uint64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return uint64(len(r.entries))
+}
+
+// Truncate resizes the registry.
+func (r *Registry) Truncate(newMaxEntries uint64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Check if truncating is possible.
+	if newMaxEntries < uint64(len(r.entries)) {
+		return ErrInvalidTruncate
+	}
+
+	// Create a new bitfield and mark all the existing entries within its range
+	// and remember the ones that aren't.
+	var entriesToMove []*value
+	newUsage, err := newBitfield(newMaxEntries)
+	if err != nil {
+		return errors.AddContext(err, "failed to create new bitfield")
+	}
+	for _, entry := range r.entries {
+		entry.mu.Lock()
+		defer entry.mu.Unlock()
+		// Check if entry is valid.
+		if entry.invalid {
+			continue // ignore invalid entries
+		}
+		// Check if entry is already in a valid spot.
+		bit := uint64(entry.staticIndex - 1)
+		if bit < newMaxEntries {
+			err = newUsage.Set(bit)
+			if err != nil {
+				return errors.AddContext(err, "failed to set bit in new bitfield for existing index")
+			}
+			continue
+		}
+		// If not, remember the entry and keep it locked.
+		entriesToMove = append(entriesToMove, entry)
+	}
+	// Loop over the unset bits of the new bitfield and move the entries
+	// accordingly.
+	for i := uint64(0); len(entriesToMove) > 0; i++ {
+		if i >= newUsage.Len() {
+			err := errors.New("entriesToMove is longer than free entries, this shouldn't happen")
+			build.Critical(err)
+			return err
+		}
+		if newUsage.IsSet(i) {
+			continue // already in use
+		}
+		err = newUsage.Set(i)
+		if err != nil {
+			return errors.AddContext(err, "failed to set bit in new bitfield for new index")
+		}
+		// Move entry to new location.
+		var v *value
+		v, entriesToMove = entriesToMove[0], entriesToMove[1:]
+		v.staticIndex = int64(i) + 1
+		err = r.staticSaveEntry(v, true)
+		if err != nil {
+			return errors.AddContext(err, "failed to save value at new location")
+		}
+	}
+	// Replace the usage bitfield.
+	r.usage = newUsage
+
+	// Truncate the file.
+	return r.staticFile.Truncate(int64(PersistedEntrySize * (newMaxEntries + 1)))
 }
 
 // New creates a new registry or opens an existing one.
@@ -167,9 +249,9 @@ func New(path string, maxEntries uint64) (_ *Registry, err error) {
 	}
 	// Create the registry.
 	reg := &Registry{
-		staticFile:  f,
-		staticPath:  path,
-		staticUsage: b,
+		staticFile: f,
+		staticPath: path,
+		usage:      b,
 	}
 	// Load the remaining entries.
 	reg.entries, err = loadRegistryEntries(r, fi.Size()/PersistedEntrySize, b)
@@ -219,7 +301,7 @@ func (r *Registry) Update(rv modules.SignedRegistryValue, pubKey types.SiaPublic
 	}
 
 	// Write the entry to disk.
-	err = r.managedSaveEntry(entry, true)
+	err = r.staticSaveEntry(entry, true)
 	if err != nil {
 		// If an error occurs during saving and the error was just created, we
 		// invalidate it, delete it from the registry and free its index.
@@ -241,7 +323,7 @@ func (r *Registry) managedDeleteFromMemory(v *value) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	// Unset the index.
-	err := r.staticUsage.Unset(uint64(v.staticIndex) - 1)
+	err := r.usage.Unset(uint64(v.staticIndex) - 1)
 	if err != nil {
 		build.Critical("managedDeleteFromMemory: unsetting an index should never fail")
 	}
@@ -252,7 +334,7 @@ func (r *Registry) managedDeleteFromMemory(v *value) {
 // newValue creates a new value and assigns it a free bit from the bitfield. It
 // adds the new value to the registry as well.
 func (r *Registry) newValue(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (*value, error) {
-	bit, err := r.staticUsage.SetRandom()
+	bit, err := r.usage.SetRandom()
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to obtain free slot")
 	}
@@ -303,7 +385,7 @@ func (r *Registry) Prune(expiry types.BlockHeight) (uint64, error) {
 			continue // not expired
 		}
 		// Delete the entry from disk.
-		if err := r.managedSaveEntry(entry, false); err != nil {
+		if err := r.staticSaveEntry(entry, false); err != nil {
 			errs = errors.Compose(errs, err)
 			entry.mu.Unlock()
 			continue

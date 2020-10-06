@@ -258,7 +258,7 @@ func TestSaveEntry(t *testing.T) {
 	}
 
 	// Save it and read the file afterwards.
-	err = r.managedSaveEntry(v, true)
+	err = r.staticSaveEntry(v, true)
 	if err != nil {
 		t.Fatal(err)
 	}

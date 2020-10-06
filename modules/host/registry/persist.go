@@ -241,10 +241,10 @@ func (entry *persistedEntry) Unmarshal(b []byte) error {
 	return nil
 }
 
-// managedSaveEntry stores a value on disk in an ACID fashion. If used is set, the
-// entry will be marked as in use. Otherwise a sentinel value will be persisted.
+// staticSaveEntry stores a value on disk atomically. If used is set, the entry
+// will be marked as in use. Otherwise a sentinel value will be persisted.
 // NOTE: v.mu is expected to be acquired.
-func (r *Registry) managedSaveEntry(v *value, used bool) error {
+func (r *Registry) staticSaveEntry(v *value, used bool) error {
 	var entry persistedEntry
 	var err error
 	if used {
