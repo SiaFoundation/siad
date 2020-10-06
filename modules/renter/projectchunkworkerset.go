@@ -111,7 +111,7 @@ type pcwsWorkerState struct {
 	// NOTE: Once 'unresolvedWorkers' has a length of zero, any attempt to add a
 	// channel to the set of workerUpdateChans should fail, as there will be no
 	// more updates. This is specific to this particular worker state, the
-	// pcwsWorkerSet as a whole can reset by replacing the worker state.
+	// pcwsWorkerSet as a whole can be reset by replacing the worker state.
 	workerUpdateChans []chan struct{}
 
 	// Utilities.

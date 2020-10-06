@@ -213,6 +213,12 @@ func hasSectorJobExpectedBandwidth(numRoots int) (ul, dl uint64) {
 	// use a value of 100.
 	uploadMult := numRoots / 30
 	downloadMult := numRoots / 100
+	// A base of 1500 is used for the packet size. On ipv4, it is technically
+	// smaller, but siamux is general and the packet size is the Ethernet MTU
+	// (1500 bytes) minus any protocol overheads. It's possible if the renter is
+	// connected directly over an interface to a host that there is no overhead,
+	// which means siamux could use the full 1500 bytes. So we use the most
+	// conservative value here as well.
 	ul = uint64(1500 * (1 + uploadMult))
 	dl = uint64(1500 * (1 + downloadMult))
 	return
