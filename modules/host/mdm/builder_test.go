@@ -62,7 +62,10 @@ func (tb *testProgramBuilder) Cost() TestValues {
 // AddAppendInstruction adds an append instruction to the builder, keeping
 // track of running values.
 func (tb *testProgramBuilder) AddAppendInstruction(data []byte, merkleProof bool) {
-	tb.staticPB.AddAppendInstruction(data, merkleProof)
+	err := tb.staticPB.AddAppendInstruction(data, merkleProof)
+	if err != nil {
+		panic(err)
+	}
 	tb.staticValues.AddAppendInstruction(data)
 }
 
@@ -110,14 +113,20 @@ func (tb *testProgramBuilder) AddSwapSectorInstruction(sector1Idx, sector2Idx ui
 // AddUpdateRegistryInstruction adds an UpdateRegistry instruction to the
 // builder, keeping track of running values.
 func (tb *testProgramBuilder) AddUpdateRegistryInstruction(spk types.SiaPublicKey, rv modules.SignedRegistryValue) {
-	tb.staticPB.AddUpdateRegistryInstruction(spk, rv)
+	err := tb.staticPB.AddUpdateRegistryInstruction(spk, rv)
+	if err != nil {
+		panic(err)
+	}
 	tb.staticValues.AddUpdateRegistryInstruction(spk, rv)
 }
 
 // AddReadRegistryInstruction adds an ReadRegistry instruction to the
 // builder, keeping track of running values.
 func (tb *testProgramBuilder) AddReadRegistryInstruction(spk types.SiaPublicKey, tweak crypto.Hash) {
-	tb.staticPB.AddReadRegistryInstruction(spk, tweak)
+	err := tb.staticPB.AddReadRegistryInstruction(spk, tweak)
+	if err != nil {
+		panic(err)
+	}
 	tb.staticValues.AddReadRegistryInstruction(spk)
 }
 

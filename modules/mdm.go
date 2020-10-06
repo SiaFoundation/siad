@@ -127,7 +127,7 @@ const (
 	// RPCIReadRegistryLen is the expected length of the 'Args' of an
 	// ReadRegistry instruction.
 	// tweakOffset + pubKeyOffset + pubKeyLength = 3 * 8 bytes = 24 byte
-	RPCIReadRegistryLen = 56
+	RPCIReadRegistryLen = 24
 )
 
 var (
@@ -281,12 +281,17 @@ func MDMUpdateRegistryCost(pt *RPCPriceTable) types.Currency {
 
 // MDMReadRegistryCost is the cost of executing a 'ReadRegistry' instruction.
 func MDMReadRegistryCost(pt *RPCPriceTable) types.Currency {
-	// Cost is the same as downloading a 4MiB sector.
+	// Cost is the same as downloading a sector.
 	return MDMReadCost(pt, SectorSize)
 }
 
 // MDMWriteCost is the cost of executing a 'Write' instruction of a certain length.
 func MDMWriteCost(pt *RPCPriceTable, writeLength uint64) types.Currency {
+	// Atomic write size for modern disks is 4kib so we round up.
+	atomicWriteSize := uint64(1 << 12)
+	if mod := writeLength % atomicWriteSize; mod != 0 {
+		writeLength += (atomicWriteSize - mod)
+	}
 	writeCost := pt.WriteLengthCost.Mul64(writeLength).Add(pt.WriteBaseCost)
 	return writeCost
 }
