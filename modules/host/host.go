@@ -326,6 +326,9 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 // managedUpdatePriceTable will recalculate the RPC costs and update the host's
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
+	// set the transaction fee estimates
+	minRecommended, maxRecommended := h.tpool.FeeEstimation()
+
 	// create a new RPC price table
 	hes := h.managedExternalSettings()
 	priceTable := modules.RPCPriceTable{
@@ -365,6 +368,10 @@ func (h *Host) managedUpdatePriceTable() {
 
 		// Registry related fields.
 		RegistryEntriesLeft: h.staticRegistry.Cap() - h.staticRegistry.Len(),
+
+		// TxnFee related fields.
+		TxnFeeMinRecommended: minRecommended,
+		TxnFeeMaxRecommended: maxRecommended,
 	}
 	// update the pricetable
 	h.staticPriceTables.managedSetCurrent(priceTable)
