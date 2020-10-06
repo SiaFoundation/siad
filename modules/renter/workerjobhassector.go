@@ -99,6 +99,7 @@ func (j *jobHasSector) callExecute() {
 
 	// Report success or failure to the queue.
 	if err == nil {
+		j.staticQueue.staticWorker().renter.log.Println("expected vs. actual time:", j.externEstimatedJobDuration, " :: ", time.Since(j.externJobStartTime))
 		j.staticQueue.callReportSuccess()
 	} else {
 		j.staticQueue.callReportFailure(err)
@@ -141,10 +142,7 @@ func (j *jobHasSector) managedHasSector() ([]bool, error) {
 	// Execute the program and parse the responses.
 	hasSectors := make([]bool, 0, len(program))
 	var responses []programResponse
-	// TODO: we get errors if we don't increase the cost, probably because one
-	// of the estimators is incorrect. Need to debug this further. Instead of
-	// multiplying the cost by 2 we should fix the estimators.
-	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost.Mul64(2))
+	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to execute program for has sector job")
 	}
@@ -164,26 +162,31 @@ func (j *jobHasSector) managedHasSector() ([]bool, error) {
 // callAddWithEstimate will add a job to the queue and return a timestamp for
 // when the job is estimated to complete. An error will be returned if the job
 // is not successfully queued.
-//
-// TODO: This should be the format for 'callAdd' instead of a separate function,
-// out of scope at the moment to make all of those changes though.
 func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector) (time.Time, error) {
-	estimate := jq.callExpectedJobTime()
-	if !jq.callAdd(j) {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	now := time.Now()
+	estimate := jq.expectedJobTime(uint64(len(j.staticSectors)))
+	j.externJobStartTime = now
+	j.externEstimatedJobDuration = estimate
+	if !jq.add(j) {
 		return time.Time{}, errors.New("unable to add job to queue")
 	}
-	return time.Now().Add(estimate), nil
+	return now.Add(estimate), nil
+}
+
+// expectedJobTime will return the amount of time that a job is expected to
+// take, given the current conditions of the queue.
+func (jq *jobHasSectorQueue) expectedJobTime(numSectors uint64) time.Duration {
+	return time.Duration(jq.weightedJobTime / jq.weightedJobsCompleted)
 }
 
 // callExpectedJobTime returns the expected amount of time that this job will
 // take to complete.
-//
-// TODO: Have it take a number of sectors as an input, as this impacts the size
-// of the request being made.
-func (jq *jobHasSectorQueue) callExpectedJobTime() time.Duration {
+func (jq *jobHasSectorQueue) callExpectedJobTime(numSectors uint64) time.Duration {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
-	return time.Duration(jq.weightedJobTime / jq.weightedJobsCompleted)
+	return jq.expectedJobTime(numSectors)
 }
 
 // initJobHasSectorQueue will init the queue for the has sector jobs.
