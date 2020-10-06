@@ -1,19 +1,17 @@
 package renter
 
-// TODO: What do we do about the edge case where a chunk is created, is still
-// uploading, and then someone creates a worker set before the upload is
-// finished? The worker set may be made immediately out of date by the new
-// uploads. This is probably best handled by not returning an upload as complete
-// nor returning the accompanying skylink until after it has hit full
-// redundancy.
+// TODO: Currently, to optimize upload latency, we return the skylink to the
+// user as soon as a single sector has finished uploading. This can cause
+// problems if the user immediately attempts to download the file, resulting in
+// the user creating a pcws that will be immediately out of date, and will
+// remain out of date for the entire first 'pcwsWorkerStateResetTime'.
 //
-// The fear is that because the workerState does not refresh very often, if we
-// request a pcws of a chunk that we have not finished uploading yet, that pcws
-// will continue to be in a degraded state for quite some time. This fear really
-// only applies to brand new uploads, and if we block until an upload is
-// complete, there should only be issues if somehow the uploader knows the
-// Merkle roots before the uploads are complete and attempts to shortcut the
-// process of downloading them.
+// We either need to change the upload streamer to delay returning the skylink
+// until the upload is more complete, or we need the pcws to be able to reset
+// relatively quickly the first time. Because skylinks are cross-portal, it's
+// not sufficient to get a signal from elsewhere in siad that the upload is now
+// complete, because the portal doing the download may not be the same as the
+// portal doing the upload.
 
 import (
 	"context"
