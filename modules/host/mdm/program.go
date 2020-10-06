@@ -200,7 +200,7 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		NewSize:       fcSize,
 		NewMerkleRoot: fcRoot,
 	}
-	for _, i := range p.instructions {
+	for idx, i := range p.instructions {
 		select {
 		case <-ctx.Done(): // Check for interrupt
 			p.outputChan <- outputFromError(ErrInterrupted, p.additionalCollateral, p.executionCost, p.additionalStorageCost)
@@ -237,10 +237,15 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		}
 		// Add the instruction's potential refund to the total.
 		p.additionalStorageCost = p.additionalStorageCost.Add(storageCost)
+		// Figure out whether to recommend the caller to batch this instruction
+		// with the next one. We batch if the instruction is supposed to be
+		// batched and if it's not the last instruction in the program.
+		batch := idx < len(p.instructions)-1 && p.instructions[idx+1].Batch()
 		// Execute next instruction.
 		output = i.Execute(output)
 		p.outputChan <- Output{
 			output:                output,
+			Batch:                 batch,
 			ExecutionCost:         p.executionCost,
 			AdditionalCollateral:  p.additionalCollateral,
 			AdditionalStorageCost: p.additionalStorageCost,

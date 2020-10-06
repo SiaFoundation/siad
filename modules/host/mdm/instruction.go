@@ -8,6 +8,9 @@ import (
 // instruction is the interface an instruction needs to implement to be part of
 // a program.
 type instruction interface {
+	// Batch indicates whether an instruction can be batched together with its
+	// predecessor.
+	Batch() bool
 	// Collateral returns the amount of additional collateral the host is
 	// expected to put up for this instruction after execution.
 	Collateral() (collateral types.Currency)
@@ -29,6 +32,10 @@ type instruction interface {
 type Output struct {
 	output
 
+	// Batch indicates whether or not the caller is recommended to hold off on
+	// sending the output over the wire in favor of batching the writes with the
+	// result of the next instruction.
+	Batch bool
 	// ExecutionCost contains the running program value for the execution cost.
 	ExecutionCost types.Currency
 	// AdditionalCollateral contains the running program value for the

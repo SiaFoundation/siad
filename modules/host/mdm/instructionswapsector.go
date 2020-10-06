@@ -46,6 +46,12 @@ func (p *program) staticDecodeSwapSectorInstruction(instruction modules.Instruct
 	}, nil
 }
 
+// Batch declares whether or not this instruction can be batched together with
+// the previous instruction.
+func (i instructionSwapSector) Batch() bool {
+	return false
+}
+
 // Execute executes the 'SwapSector' instruction.
 func (i *instructionSwapSector) Execute(prevOutput output) output {
 	// Fetch the data.
