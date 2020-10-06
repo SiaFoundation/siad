@@ -32,6 +32,10 @@ type (
 )
 
 const (
+	// MDMMaxBatchBufferSize is the maximum number of bytes the ExecuteProgram
+	// RPC will buffer in favor of batching fast instructions.
+	MDMMaxBatchBufferSize = 1 << 16 // 64 kib
+
 	// MDMCancellationTokenLen is the length of a program's cancellation token
 	// in bytes.
 	MDMCancellationTokenLen = 16

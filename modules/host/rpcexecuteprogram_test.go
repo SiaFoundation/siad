@@ -1107,3 +1107,100 @@ func TestExecuteAppendProgram(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestExecuteHasSectorProgramBatching tests the managedRPCExecuteProgram with a
+// valid 'HasSector' program containing multiple HasSector instructions.
+func TestExecuteHasSectorProgramBatching(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a blank host tester
+	rhp, err := newRenterHostPair(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := rhp.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+	ht := rhp.staticHT
+
+	// Add a sector to the host but not the storage obligation or contract. This
+	// instruction should also work for foreign sectors.
+	sectorData := fastrand.Bytes(int(modules.SectorSize))
+	sectorRoot := crypto.MerkleRoot(sectorData)
+	err = ht.host.AddSector(sectorRoot, sectorData)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create the 'HasSector' program.
+	pt := rhp.managedPriceTable()
+	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since HasSector doesn't depend on duration.
+	for i := 0; i < 10; i++ {
+		pb.AddHasSectorInstruction(sectorRoot)
+	}
+	program, data := pb.Program()
+	programCost, _, _ := pb.Cost(true)
+
+	// Prepare the request.
+	epr := modules.RPCExecuteProgramRequest{
+		FileContractID:    rhp.staticFCID,
+		Program:           program,
+		ProgramDataLength: uint64(len(data)),
+	}
+
+	// Fund an account with the max balance.
+	maxBalance := rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance
+	fundingAmt := maxBalance.Add(pt.FundAccountCost)
+	_, err = rhp.managedFundEphemeralAccount(fundingAmt, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compute expected bandwidth cost. These hardcoded values were chosen after
+	// running this test with a high budget and measuring the used bandwidth for
+	// this particular program on the "renter" side. This way we can test that
+	// the bandwidth measured by the renter is large enough to be accepted by
+	// the host.
+	expectedDownload := uint64(1460) // download
+	expectedUpload := uint64(1460)   // upload
+	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
+	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
+	bandwidthCost := downloadCost.Add(uploadCost)
+
+	// Execute program.
+	cost := programCost.Add(bandwidthCost)
+	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Log the bandwidth used by this RPC.
+	t.Logf("Used bandwidth (valid has sector program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+	// There should only be a single response.
+	if len(resps) != 10 {
+		t.Fatalf("expected 10 responses but got %v", len(resps))
+	}
+
+	// Check response.
+	for _, resp := range resps {
+		if resp.Error != nil {
+			t.Fatal(resp.Error)
+		}
+		if resp.Output[0] != 1 {
+			t.Fatalf("wrong Output %v != %v", resp.Output[0], []byte{1})
+		}
+	}
+
+	// Make sure the right amount of money remains on the EA.
+	am := rhp.staticHT.host.staticAccountManager
+	expectedBalance := maxBalance.Sub(cost)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
