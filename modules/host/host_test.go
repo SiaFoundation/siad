@@ -1076,6 +1076,23 @@ func TestHostRegistry(t *testing.T) {
 		t.Fatal("truncate wasn't called on registry", r.Len(), r.Cap())
 	}
 
+	// Move to new location.
+	dst := filepath.Join(ht.persistDir, "newreg.dat")
+	is.CustomRegistryPath = dst
+	err = h.SetInternalSettings(is)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that file exists and the old one doesn't.
+	if _, err := os.Stat(dst); err != nil {
+		t.Fatal(err)
+	}
+	defaultPath := filepath.Join(ht.host.persistDir, modules.HostRegistryFile)
+	if _, err := os.Stat(defaultPath); !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+
 	// Close host and restart it.
 	err = ht.host.Close()
 	if err != nil {
@@ -1114,6 +1131,21 @@ func TestHostRegistry(t *testing.T) {
 	}
 	if r.Len() != 0 || r.Cap() != 0 {
 		t.Fatal("truncate wasn't called on registry")
+	}
+
+	// Move registry back to default.
+	is.CustomRegistryPath = ""
+	err = h.SetInternalSettings(is)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that registry exists at default again.
+	if _, err := os.Stat(dst); !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(defaultPath); err != nil {
+		t.Fatal(err)
 	}
 }
 
