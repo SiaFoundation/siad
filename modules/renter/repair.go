@@ -217,7 +217,7 @@ func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, err
 			isOldestAggregate := subMetadata.AggregateLastHealthCheckTime.After(metadata.AggregateLastHealthCheckTime)
 			// Whenever the node stops there is a chance the directory tree is not
 			// fully updated if there are bubbles pending. With this in mind we also
-			// what to confirm that the current directory's LastHealthCheckTime is
+			// want to confirm that the current directory's LastHealthCheckTime is
 			// older than the sub directory's AggregateLastHealthCheckTime as well.
 			isOldestDirectory := subMetadata.AggregateLastHealthCheckTime.After(metadata.LastHealthCheckTime)
 			// The isOldestDirectory condition is only a valid check if we have not
