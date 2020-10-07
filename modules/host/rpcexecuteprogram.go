@@ -212,7 +212,13 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			time.Sleep(modules.MDMProgramWriteResponseTime * 2)
 		}
 
-		// Write contents of the buffer
+		// Don't write contents of the buffer if the MDM recommends batching the
+		// output as long as the buffer stays under a threshold.
+		if output.Batch && buffer.Len() < modules.MDMMaxBatchBufferSize {
+			continue
+		}
+
+		// Write contents of the buffer.
 		_, err = buffer.WriteTo(stream)
 		if err != nil {
 			return errors.AddContext(err, "failed to send data to peer")

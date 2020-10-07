@@ -311,12 +311,14 @@ func testUpdatePriceTableHostNoStreamClose(t *testing.T, rhp *renterHostPair) {
 // runUpdatePriceTableRPCWithRequest is a helper function that performs the
 // renter-side of the update price table RPC using a custom PayByContractRequest
 // to similate various edge cases or error flows.
-func runUpdatePriceTableRPCWithRequest(rhp *renterHostPair, pbcRequest modules.PayByContractRequest) (*modules.RPCPriceTable, error) {
+func runUpdatePriceTableRPCWithRequest(rhp *renterHostPair, pbcRequest modules.PayByContractRequest) (_ *modules.RPCPriceTable, err error) {
 	stream := rhp.managedNewStream()
-	defer stream.Close()
+	defer func() {
+		err = errors.Compose(err, stream.Close())
+	}()
 
 	// initiate the RPC
-	err := modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
+	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		return nil, err
 	}

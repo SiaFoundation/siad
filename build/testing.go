@@ -116,7 +116,7 @@ func ExtractTarGz(filename, dir string) error {
 	for {
 		// Read header.
 		hdr, err := t.Next()
-		if err == io.EOF {
+		if errors.Contains(err, io.EOF) {
 			return nil
 		} else if err != nil {
 			return err

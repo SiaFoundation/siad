@@ -4,11 +4,11 @@ package consensus
 // inconsistencies. All of the database-specific logic belongs here.
 
 import (
-	"errors"
 	"fmt"
 	"os"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -72,7 +72,7 @@ func (cs *ConsensusSet) replaceDatabase(filename string) error {
 // openDB loads the set database and populates it with the necessary buckets
 func (cs *ConsensusSet) openDB(filename string) (err error) {
 	cs.db, err = persist.OpenDatabase(dbMetadata, filename)
-	if err == persist.ErrBadVersion {
+	if errors.Contains(err, persist.ErrBadVersion) {
 		return cs.replaceDatabase(filename)
 	}
 	if err != nil {

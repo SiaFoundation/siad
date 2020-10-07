@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -355,7 +356,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
-	defer streamer.Close()
+	defer func() {
+		_ = streamer.Close()
+	}()
 
 	if metadata.DefaultPath != "" && len(metadata.Subfiles) == 0 {
 		WriteError(w, Error{"defaultpath is not allowed on single files, please specify a format"}, http.StatusBadRequest)
@@ -699,6 +702,15 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			WriteError(w, Error{fmt.Sprintf("failed parsing multipart request: %v", err)}, http.StatusBadRequest)
 			return
 		}
+		// Make sure temporary files created while parsing the multipart form
+		// are properly removed on error. The fact that they tend to linger
+		// unless explicitly removed is a known (open) issue:
+		// https://github.com/golang/go/issues/20253
+		defer func() {
+			if err := req.MultipartForm.RemoveAll(); err != nil {
+				log.Printf("failed to clean up multipart tmp file: %v", err)
+			}
+		}()
 
 		// Use the filename of the first subfile if it's not passed as query
 		// string parameter and there's only one subfile.

@@ -188,7 +188,7 @@ func TestNewSiaFile(t *testing.T) {
 	// Create file /sub/foo/file
 	sp := newSiaPath("sub/foo/file")
 	fs.addTestSiaFile(sp)
-	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != ErrExists {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); !errors.Contains(err, ErrExists) {
 		t.Fatal("err should be ErrExists but was", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, sp.String())); !os.IsNotExist(err) {
@@ -200,7 +200,7 @@ func TestNewSiaFile(t *testing.T) {
 	// Create a file in the root dir.
 	sp = newSiaPath("file")
 	fs.addTestSiaFile(sp)
-	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); err != ErrExists {
+	if err := fs.NewSiaDir(sp, modules.DefaultDirPerm); !errors.Contains(err, ErrExists) {
 		t.Fatal("err should be ErrExists but was", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, sp.String())); !os.IsNotExist(err) {
@@ -244,7 +244,11 @@ func TestOpenSiaDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer foo.Close()
+	defer func() {
+		if err := foo.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// Create dir /sub/foo. This time don't use NewSiaDir but OpenSiaDir with
 	// the create flag set to `true`.
 	sp = newSiaPath("sub/foo")
@@ -252,7 +256,11 @@ func TestOpenSiaDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sd.Close()
+	defer func() {
+		if err := sd.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// Confirm the integrity of the root node.
 	if err := fs.checkNode(0, 2, 0); err != nil {
 		t.Fatal(err)
@@ -298,7 +306,11 @@ func TestOpenSiaDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sd2.Close()
+	defer func() {
+		if err := sd2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// They should have different UIDs.
 	if sd.threadUID == 0 {
 		t.Fatal("threaduid shouldn't be 0")
@@ -324,7 +336,11 @@ func TestOpenSiaDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sdSub.Close()
+	defer func() {
+		if err := sdSub.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	if err := subNode.checkNode(1, 1, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +367,11 @@ func TestOpenSiaFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sf.Close()
+	defer func() {
+		if err := sf.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// Confirm the integrity of the file.
 	if *sf.name != "file" {
 		t.Fatalf("name of file should be file but was %v", *sf.name)
@@ -389,7 +409,11 @@ func TestOpenSiaFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sf2.Close()
+	defer func() {
+		if err := sf2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// Confirm the integrity of the file.
 	if *sf2.name != "file" {
 		t.Fatalf("name of file should be file but was %v", *sf2.name)
@@ -488,7 +512,9 @@ func TestCloseSiaDir(t *testing.T) {
 		t.Fatalf("The parent should have 1 directory but got %v", len(sd.parent.directories))
 	}
 	// Close the second one.
-	sd2.Close()
+	if err := sd2.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if len(fs.threads) != 0 {
 		t.Fatalf("There should be 0 threads in fs.threads but got %v", len(fs.threads))
 	}
@@ -624,7 +650,7 @@ func TestDeleteFile(t *testing.T) {
 	}
 	// Check that we can't open another instance of foo and that we can't create
 	// a new file at the same path.
-	if _, err := fs.OpenSiaFile(sp); err != ErrNotExist {
+	if _, err := fs.OpenSiaFile(sp); !errors.Contains(err, ErrNotExist) {
 		t.Fatal("err should be ErrNotExist but was:", err)
 	}
 	if err := fs.addTestSiaFileWithErr(sp); err != nil {
@@ -684,7 +710,7 @@ func TestRenameFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Check if the file was renamed.
-	if _, err := fs.OpenSiaFile(foo); err != ErrNotExist {
+	if _, err := fs.OpenSiaFile(foo); !errors.Contains(err, ErrNotExist) {
 		t.Fatal("expected ErrNotExist but got:", err)
 	}
 	sf, err := fs.OpenSiaFile(foobar)
@@ -832,7 +858,11 @@ func TestSiaDirRename(t *testing.T) {
 	wg := new(sync.WaitGroup)
 	f := func(entry *DirNode) {
 		defer wg.Done()
-		defer entry.Close()
+		defer func() {
+			if err := entry.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 		for {
 			select {
 			case <-stop:
@@ -868,7 +898,9 @@ func TestSiaDirRename(t *testing.T) {
 			wg.Add(1)
 			go f(entry)
 		} else {
-			entry.Close()
+			if err := entry.Close(); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	// Wait a second for the goroutines to write to disk a few times.
@@ -898,7 +930,7 @@ func TestSiaDirRename(t *testing.T) {
 		}
 		// Open entry with old dir. Shouldn't work.
 		_, err := fs.OpenSiaDir(oldDir)
-		if err != ErrNotExist {
+		if !errors.Contains(err, ErrNotExist) {
 			t.Fatal("shouldn't be able to open old path", oldDir.String(), err)
 		}
 		// Open entry with new dir. Should succeed.
@@ -906,7 +938,11 @@ func TestSiaDirRename(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer entry.Close()
+		defer func() {
+			if err := entry.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 		// Check path of entry.
 		if expectedPath := fs.DirPath(newDir); *entry.path != expectedPath {
 			t.Fatalf("entry should have path '%v' but was '%v'", expectedPath, entry.path)
@@ -1085,12 +1121,14 @@ func TestSiaFileSetDeleteOpen(t *testing.T) {
 	}
 	// The SiaFile shouldn't exist anymore.
 	_, err := sfs.OpenSiaFile(siaPath)
-	if err != ErrNotExist {
+	if !errors.Contains(err, ErrNotExist) {
 		t.Fatal("SiaFile shouldn't exist anymore")
 	}
 	// Close the entries.
 	for _, entry := range entries {
-		entry.Close()
+		if err := entry.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -1127,7 +1165,9 @@ func TestSiaFileSetOpenClose(t *testing.T) {
 	}
 
 	// Close SiaFileSetEntry
-	entry.Close()
+	if err := entry.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	// Confirm that threadCount was decremented
 	if len(entry.threads) != 0 {
@@ -1175,7 +1215,9 @@ func TestFilesInMemory(t *testing.T) {
 		t.Fatal("Expected 1 files in memory, got:", len(sfs.files))
 	}
 	// Close File
-	entry.Close()
+	if err := entry.Close(); err != nil {
+		t.Fatal(err)
+	}
 	// Confirm there are no files in memory
 	if len(sfs.files) != 0 {
 		t.Fatal("Expected 0 files in memory, got:", len(sfs.files))
@@ -1386,7 +1428,7 @@ func TestDeleteCorruptSiaFile(t *testing.T) {
 
 	// Confirm the siafile cannot be opened
 	_, err = sfs.OpenSiaFile(siaPath)
-	if err == nil || err == ErrNotExist {
+	if err == nil || errors.Contains(err, ErrNotExist) {
 		t.Fatal("expected open to fail for read error but instead got:", err)
 	}
 
@@ -1435,7 +1477,11 @@ func TestSiaDirDelete(t *testing.T) {
 	wg := new(sync.WaitGroup)
 	f := func(entry *FileNode) {
 		defer wg.Done()
-		defer entry.Close()
+		defer func() {
+			if err := entry.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 		for {
 			select {
 			case <-stop:
@@ -1443,8 +1489,9 @@ func TestSiaDirDelete(t *testing.T) {
 			default:
 			}
 			err := entry.SaveHeader()
-			if err != nil && !strings.Contains(err.Error(), "can't call createAndApplyTransaction on deleted file") {
-				t.Fatal(err)
+			if err != nil && !errors.Contains(err, siafile.ErrDeleted) {
+				t.Error(err)
+				return
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
@@ -1466,7 +1513,9 @@ func TestSiaDirDelete(t *testing.T) {
 		}
 		// 50% chance to close the dir.
 		if fastrand.Intn(2) == 0 {
-			entry.Close()
+			if err := entry.Close(); err != nil {
+				t.Fatal(err)
+			}
 		}
 		// Create a file in the dir.
 		fileSP, err := sp.Join(hex.EncodeToString(fastrand.Bytes(16)))
@@ -1568,7 +1617,11 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 	wg := new(sync.WaitGroup)
 	f := func(entry *FileNode) {
 		defer wg.Done()
-		defer entry.Close()
+		defer func() {
+			if err := entry.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 		for {
 			select {
 			case <-stop:
@@ -1596,7 +1649,9 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 		entry, err := fs.OpenSiaDir(sp)
 		// 50% chance to close the dir.
 		if fastrand.Intn(2) == 0 {
-			entry.Close()
+			if err := entry.Close(); err != nil {
+				t.Fatal(err)
+			}
 		}
 		// Create a file in the dir.
 		fileSP, err := sp.Join(hex.EncodeToString(fastrand.Bytes(16)))
@@ -1647,7 +1702,7 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 		}
 		// Open entry with old dir. Shouldn't work.
 		_, err := fs.OpenSiaDir(oldDir)
-		if err != ErrNotExist {
+		if !errors.Contains(err, ErrNotExist) {
 			t.Fatal("shouldn't be able to open old path", oldDir.String(), err)
 		}
 		// Old dir shouldn't exist.
@@ -1946,7 +2001,11 @@ func TestLazySiaDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer foo.Close()
+	defer func() {
+		if err := foo.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// Get the siadir.
 	sd, err := foo.siaDir()
 	if err != nil {
@@ -1966,7 +2025,11 @@ func TestLazySiaDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer foo2.Close()
+	defer func() {
+		if err := foo2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// Lazydir should already be loaded.
 	if *foo2.lazySiaDir != sd {
 		t.Fatal("foo2.lazySiaDir isn't set correctly", foo2.lazySiaDir)
@@ -2016,7 +2079,7 @@ func TestFailedOpenFileFolder(t *testing.T) {
 	}
 	// Open "foo" as a dir.
 	_, err = fs.OpenSiaDir(foo)
-	if err != ErrNotExist {
+	if !errors.Contains(err, ErrNotExist) {
 		t.Fatal("err should be ErrNotExist but was", err)
 	}
 	if len(fs.files) != 0 || len(fs.directories) != 0 {
@@ -2024,7 +2087,7 @@ func TestFailedOpenFileFolder(t *testing.T) {
 	}
 	// Open "foo" as a file.
 	_, err = fs.OpenSiaFile(foo)
-	if err != ErrNotExist {
+	if !errors.Contains(err, ErrNotExist) {
 		t.Fatal("err should be ErrNotExist but was", err)
 	}
 	if len(fs.files) != 0 || len(fs.directories) != 0 {

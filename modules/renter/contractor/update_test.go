@@ -203,7 +203,7 @@ func TestIntegrationRenewInvalidate(t *testing.T) {
 
 	// editor should have been invalidated
 	_, err = editor.Upload(make([]byte, modules.SectorSize))
-	if err != errInvalidEditor && err != errInvalidSession {
+	if !errors.Contains(err, errInvalidEditor) && !errors.Contains(err, errInvalidSession) {
 		t.Error("expected invalid editor error; got", err)
 	}
 	editor.Close()
@@ -228,7 +228,7 @@ func TestIntegrationRenewInvalidate(t *testing.T) {
 		c.maintenanceLock.Lock()
 		c.maintenanceLock.Unlock()
 		_, err2 := downloader.Download(crypto.Hash{}, 0, 0)
-		if err2 != errInvalidDownloader && err2 != errInvalidSession {
+		if !errors.Contains(err2, errInvalidDownloader) && !errors.Contains(err2, errInvalidSession) {
 			return errors.AddContext(err, "expected invalid downloader error")
 		}
 		return downloader.Close()

@@ -122,7 +122,7 @@ func (c *Client) SkynetSkylinkHeadWithParameters(skylink string, values url.Valu
 
 // SkynetSkylinkConcatGet uses the /skynet/skylink endpoint to download a
 // skylink file with the 'concat' format specified.
-func (c *Client) SkynetSkylinkConcatGet(skylink string) ([]byte, modules.SkyfileMetadata, error) {
+func (c *Client) SkynetSkylinkConcatGet(skylink string) (_ []byte, _ modules.SkyfileMetadata, err error) {
 	values := url.Values{}
 	values.Set("format", string(modules.SkyfileFormatConcat))
 	getQuery := skylinkQueryWithValues(skylink, values)
@@ -131,7 +131,9 @@ func (c *Client) SkynetSkylinkConcatGet(skylink string) ([]byte, modules.Skyfile
 	if err != nil {
 		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "error fetching api response for GET with format=concat")
 	}
-	defer body.Close()
+	defer func() {
+		err = errors.Compose(err, body.Close())
+	}()
 	reader = body
 
 	// Read the fileData.

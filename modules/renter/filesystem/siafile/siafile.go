@@ -522,6 +522,10 @@ func (sf *SiaFile) SaveWithChunks(chunks Chunks) (err error) {
 func (sf *SiaFile) SaveHeader() (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+	// Can't save the header of a deleted file.
+	if sf.deleted {
+		return errors.AddContext(ErrDeleted, "can't SaveHeader of deleted file")
+	}
 	// Adding this should restore the metadata later.
 	defer func(backup Metadata) {
 		if err != nil {
@@ -748,6 +752,12 @@ func (sf *SiaFile) NumChunks() uint64 {
 func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
+
+	// If the file has been deleted, we can't load its pieces.
+	if sf.deleted {
+		return nil, errors.AddContext(ErrDeleted, "can't call Pieces on deleted file")
+	}
+
 	if chunkIndex >= uint64(sf.numChunks) {
 		err := fmt.Errorf("index %v out of bounds (%v)", chunkIndex, sf.numChunks)
 		build.Critical(err)
@@ -788,6 +798,12 @@ func (sf *SiaFile) Pieces(chunkIndex uint64) ([][]Piece, error) {
 func (sf *SiaFile) Redundancy(offlineMap map[string]bool, goodForRenewMap map[string]bool) (r, ur float64, err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+
+	// If the file has been deleted, we can't compute its redundancy.
+	if sf.deleted {
+		return 0, 0, errors.AddContext(ErrDeleted, "can't call Redundancy on deleted file")
+	}
+
 	// Update the cache.
 	defer func() {
 		sf.staticMetadata.CachedRedundancy = r
@@ -929,6 +945,12 @@ func (sf *SiaFile) SetAllStuck(stuck bool) (err error) {
 func (sf *SiaFile) SetChunkStatusCompleted(pci uint64) (err error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
+
+	// If the file has been deleted we can't call SetChunkStatusCompleted.
+	if sf.deleted {
+		return errors.AddContext(ErrDeleted, "can't call SetChunkStatusCompleted on deleted file")
+	}
+
 	// Backup the changed metadata before changing it. Revert the change on
 	// error.
 	defer func(backup Metadata) {
@@ -1081,7 +1103,7 @@ func (sf *SiaFile) hostKey(offset uint32) HostPublicKey {
 	if offset >= uint32(len(sf.pubKeyTable)) {
 		// Causes tests to fail. The following for loop will try to fix the
 		// corruption on release builds.
-		build.Critical("piece.HostTableOffset", offset, " >= len(sf.pubKeyTable)", len(sf.pubKeyTable))
+		build.Critical("piece.HostTableOffset", offset, " >= len(sf.pubKeyTable)", len(sf.pubKeyTable), sf.deleted)
 		for offset >= uint32(len(sf.pubKeyTable)) {
 			sf.pubKeyTable = append(sf.pubKeyTable, HostPublicKey{Used: false})
 		}

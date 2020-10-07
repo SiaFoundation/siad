@@ -85,7 +85,11 @@ func TestSendShareNodesRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal("Error making new gateway: ", err)
 	}
-	defer mainGateway.Close()
+	defer func() {
+		if err := mainGateway.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create testing gateways.
 	gateways := make([]*gateway.Gateway, 0, numTestingGateways)
@@ -163,7 +167,11 @@ func TestRestartScanner(t *testing.T) {
 
 	// Create the testing node scanner.
 	ns := newNodeScanner(testDir)
-	defer ns.gateway.Close()
+	defer func() {
+		if err := ns.gateway.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a fake persisted set file, using the testing gateway addresses.
 	err = ns.setupPersistFile(ns.persistFile)
@@ -199,7 +207,11 @@ func TestRestartScanner(t *testing.T) {
 		if i%2 == 1 {
 			gateways[i].Close()
 		} else {
-			defer gateways[i].Close()
+			defer func(i int) {
+				if err := gateways[i].Close(); err != nil {
+					t.Fatal(err)
+				}
+			}(i)
 		}
 	}
 

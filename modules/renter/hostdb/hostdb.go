@@ -358,7 +358,7 @@ func hostdbAsyncStartup(hdb *HostDB, cs modules.ConsensusSet) error {
 	if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
 		return err
 	}
-	if err == modules.ErrInvalidConsensusChangeID {
+	if errors.Contains(err, modules.ErrInvalidConsensusChangeID) {
 		// Subscribe again using the new ID. This will cause a triggered scan
 		// on all of the hosts, but that should be acceptable.
 		hdb.mu.Lock()

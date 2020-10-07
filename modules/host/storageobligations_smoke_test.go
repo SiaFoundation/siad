@@ -332,7 +332,7 @@ func TestPruneStaleStorageObligations(t *testing.T) {
 		so.LockedCollateral = lockedCollateral
 		ht.host.managedLockStorageObligation(so.id())
 		err = ht.host.managedAddStorageObligation(so)
-		if err != transactionpool.ErrTxnSetNotAccepted {
+		if !errors.Contains(err, transactionpool.ErrTxnSetNotAccepted) {
 			t.Error("Wrong error:", err)
 		}
 		ht.host.managedUnlockStorageObligation(so.id())

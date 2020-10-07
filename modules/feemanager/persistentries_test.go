@@ -37,7 +37,7 @@ func TestApplyEntry(t *testing.T) {
 	copy(entry.Payload[:], fastrand.Bytes(persistEntrySize))
 	encodedEntry := encoding.Marshal(entry)
 	err := fm.applyEntry(encodedEntry[:])
-	if err != errUnrecognizedEntryType {
+	if !errors.Contains(err, errUnrecognizedEntryType) {
 		t.Fatalf("Expected error to be %v but was %v", errUnrecognizedEntryType, err)
 	}
 

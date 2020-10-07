@@ -185,7 +185,7 @@ func unmarshalPubKeyTable(raw []byte) (keys []HostPublicKey, err error) {
 	// Unmarshal the keys one by one until EOF or a different error occur.
 	for {
 		var key HostPublicKey
-		if err = key.UnmarshalSia(r); err == io.EOF {
+		if err = key.UnmarshalSia(r); errors.Contains(err, io.EOF) {
 			break
 		} else if err != nil {
 			return nil, err

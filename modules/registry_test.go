@@ -10,14 +10,9 @@ import (
 
 // TestRegistryValueSignature tests signature verification on registry values.
 func TestRegistryValueSignature(t *testing.T) {
-	signedRV := func() (RegistryValue, crypto.PublicKey) {
+	signedRV := func() (SignedRegistryValue, crypto.PublicKey) {
 		sk, pk := crypto.GenerateKeyPair()
-		rv := RegistryValue{
-			Tweak:    crypto.Hash{1},
-			Data:     fastrand.Bytes(100),
-			Revision: 2,
-		}
-		rv.Sign(sk)
+		rv := NewRegistryValue(crypto.Hash{1}, fastrand.Bytes(100), 2).Sign(sk)
 		return rv, pk
 	}
 

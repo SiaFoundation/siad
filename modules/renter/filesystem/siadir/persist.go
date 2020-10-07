@@ -217,7 +217,9 @@ func callLoadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata
 	if err != nil {
 		return Metadata{}, err
 	}
-	defer file.Close()
+	defer func() {
+		err = errors.Compose(err, file.Close())
+	}()
 
 	// Read the file
 	bytes, err := ioutil.ReadAll(file)

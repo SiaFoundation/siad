@@ -36,6 +36,12 @@ func (p *program) staticDecodeRevisionInstruction(instruction modules.Instructio
 	}, nil
 }
 
+// Batch declares whether or not this instruction can be batched together with
+// the previous instruction.
+func (i instructionRevision) Batch() bool {
+	return false
+}
+
 // Collateral is zero for the Revision instruction.
 func (i *instructionRevision) Collateral() types.Currency {
 	return modules.MDMRevisionCollateral()

@@ -63,7 +63,7 @@ func (w *worker) newJobHasSector(ctx context.Context, responseChan chan *jobHasS
 // callDiscard will discard a job, sending the provided error.
 func (j *jobHasSector) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
-	w.renter.tg.Launch(func() {
+	errLaunch := w.renter.tg.Launch(func() {
 		response := &jobHasSectorResponse{
 			staticErr: errors.Extend(err, ErrJobDiscarded),
 
@@ -75,6 +75,9 @@ func (j *jobHasSector) callDiscard(err error) {
 		case <-w.renter.tg.StopChan():
 		}
 	})
+	if errLaunch != nil {
+		w.renter.log.Print("callDiscard: launch failed", err)
+	}
 }
 
 // callExecute will run the has sector job.
@@ -91,13 +94,16 @@ func (j *jobHasSector) callExecute() {
 
 		staticWorker: w,
 	}
-	w.renter.tg.Launch(func() {
+	err2 := w.renter.tg.Launch(func() {
 		select {
 		case j.staticResponseChan <- response:
 		case <-j.staticCtx.Done():
 		case <-w.renter.tg.StopChan():
 		}
 	})
+	if err2 != nil {
+		w.renter.log.Println("callExececute: launch failed", err)
+	}
 
 	// Report success or failure to the queue.
 	if err == nil {

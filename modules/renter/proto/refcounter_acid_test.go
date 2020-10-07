@@ -167,7 +167,7 @@ OUTER:
 }
 
 // loadWal reads the wal from disk and applies all outstanding transactions
-func loadWal(rcFilePath string, walPath string, fdd *dependencies.DependencyFaultyDisk) (*writeaheadlog.WAL, error) {
+func loadWal(rcFilePath string, walPath string, fdd *dependencies.DependencyFaultyDisk) (_ *writeaheadlog.WAL, err error) {
 	// load the wal from disk
 	txns, newWal, err := writeaheadlog.New(walPath)
 	if err != nil {
@@ -177,7 +177,9 @@ func loadWal(rcFilePath string, walPath string, fdd *dependencies.DependencyFaul
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to open refcounter file in order to apply updates")
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
 	// apply any outstanding transactions
 	for _, txn := range txns {
 		if err := applyUpdates(f, txn.Updates...); err != nil {

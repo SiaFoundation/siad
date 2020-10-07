@@ -1346,7 +1346,7 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 
 	// call managedAddStuckChunksToHeap, no chunks should be added
 	err = rt.renter.managedAddStuckChunksToHeap(up.SiaPath, hosts, offline, goodForRenew)
-	if err != errNoStuckChunks {
+	if !errors.Contains(err, errNoStuckChunks) {
 		t.Fatal(err)
 	}
 	if rt.renter.uploadHeap.managedLen() != 0 {

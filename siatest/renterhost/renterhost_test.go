@@ -225,7 +225,11 @@ func TestHostLockTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s2.Close()
+	defer func() {
+		if err := s2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Attempt to begin a separate RPC session. This will block while waiting to
 	// acquire the contract lock. In the meantime, modify the contract, then
@@ -241,7 +245,11 @@ func TestHostLockTimeout(t *testing.T) {
 			errCh <- err
 			return
 		}
-		defer cs2.Close()
+		defer func() {
+			if err := cs2.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 		s1, err = cs2.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, log.DiscardLogger, nil)
 		if err != nil {
 			errCh <- err

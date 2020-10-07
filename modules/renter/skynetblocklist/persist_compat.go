@@ -36,7 +36,7 @@ func tempPersistFileName(persistFileName string) string {
 // upgrading the persistence from v1.4.3 to v1.5.0. The change in persistence is
 // that the hash of the merkleroot is now persisted instead of the merkleroot
 // itself.
-func convertPersistVersionFromv143Tov150(persistDir string) error {
+func convertPersistVersionFromv143Tov150(persistDir string) (err error) {
 	// Identify the filepath for the persist file and the temp persist file that
 	// will be created during the conversion of the persistence from v1.4.3 to
 	// v1.5.0
@@ -76,7 +76,9 @@ func convertPersistVersionFromv143Tov150(persistDir string) error {
 	if err != nil {
 		return errors.AddContext(err, "unable to initialize v1.5.0 persist file")
 	}
-	defer aopV150.Close()
+	defer func() {
+		err = errors.Compose(err, aopV150.Close())
+	}()
 
 	// Write the hashes to the v1.5.0 persist file
 	_, err = aopV150.Write(buf.Bytes())
@@ -170,7 +172,9 @@ func createTempFileFromPersistFile(persistDir, fileName string, header, version 
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to load persistence")
 	}
-	defer aop.Close()
+	defer func() {
+		err = errors.Compose(err, aop.Close())
+	}()
 
 	// Read the persist file
 	data, err := ioutil.ReadAll(reader)

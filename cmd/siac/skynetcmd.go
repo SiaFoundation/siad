@@ -264,14 +264,24 @@ func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 			die("Unable to download from portal:", err)
 		}
 		reader = resp.Body
-		defer reader.Close()
+		defer func() {
+			err = reader.Close()
+			if err != nil {
+				die("unable to close reader:", err)
+			}
+		}()
 	} else {
 		// Try to perform a download using the client package.
 		reader, err = httpClient.SkynetSkylinkReaderGet(skylink)
 		if err != nil {
 			die("Unable to fetch skylink:", err)
 		}
-		defer reader.Close()
+		defer func() {
+			err = reader.Close()
+			if err != nil {
+				die("unable to close reader:", err)
+			}
+		}()
 	}
 
 	_, err = io.Copy(file, reader)
@@ -470,7 +480,12 @@ func skynetPin(skylink string, siaPath modules.SiaPath) (string, error) {
 		return "", errors.AddContext(err, "unable to download from portal")
 	}
 	reader := resp.Body
-	defer reader.Close()
+	defer func() {
+		err = reader.Close()
+		if err != nil {
+			die("unable to close reader:", err)
+		}
+	}()
 
 	// Get the SkyfileMetadata from the Header
 	var sm modules.SkyfileMetadata
@@ -702,6 +717,7 @@ func skynetUploadFile(basePath, sourcePath string, destSiaPath string, pbs *mpb.
 		die("Unable to open source path:", err)
 	}
 	defer func() { _ = file.Close() }()
+
 	fi, err := file.Stat()
 	if err != nil {
 		die("Unable to fetch source fileinfo:", err)

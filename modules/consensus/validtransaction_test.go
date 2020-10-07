@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -364,7 +365,7 @@ func TestValidSiacoins(t *testing.T) {
 	}
 	err = cst.cs.db.View(func(tx *bolt.Tx) error {
 		err := validSiacoins(tx, txn)
-		if err != errMissingSiacoinOutput {
+		if !errors.Contains(err, errMissingSiacoinOutput) {
 			t.Fatal(err)
 		}
 		return nil
@@ -385,7 +386,7 @@ func TestValidSiacoins(t *testing.T) {
 	}
 	err = cst.cs.db.View(func(tx *bolt.Tx) error {
 		err := validSiacoins(tx, txn)
-		if err != errWrongUnlockConditions {
+		if !errors.Contains(err, errWrongUnlockConditions) {
 			t.Fatal(err)
 		}
 		return nil
@@ -402,7 +403,7 @@ func TestValidSiacoins(t *testing.T) {
 	}
 	err = cst.cs.db.View(func(tx *bolt.Tx) error {
 		err := validSiacoins(tx, txn)
-		if err != errSiacoinInputOutputMismatch {
+		if !errors.Contains(err, errSiacoinInputOutputMismatch) {
 			t.Fatal(err)
 		}
 		return nil
@@ -431,7 +432,7 @@ func TestStorageProofSegment(t *testing.T) {
 
 	// Submit a file contract that is unrecognized.
 	_, err = cst.cs.dbStorageProofSegment(types.FileContractID{})
-	if err != errUnrecognizedFileContractID {
+	if !errors.Contains(err, errUnrecognizedFileContractID) {
 		t.Error(err)
 	}
 
@@ -441,7 +442,7 @@ func TestStorageProofSegment(t *testing.T) {
 		WindowStart: 100000,
 	})
 	_, err = cst.cs.dbStorageProofSegment(types.FileContractID{})
-	if err != errUnfinishedFileContract {
+	if !errors.Contains(err, errUnfinishedFileContract) {
 		t.Error(err)
 	}
 }
@@ -516,14 +517,14 @@ func TestValidStorageProofs(t *testing.T) {
 	}
 	copy(txn.StorageProofs[0].Segment[:], base)
 	err = cst.cs.dbValidStorageProofs(txn)
-	if err != errInvalidStorageProof {
+	if !errors.Contains(err, errInvalidStorageProof) {
 		t.Error(err)
 	}
 
 	// Try to validate a proof for a file contract that doesn't exist.
 	txn.StorageProofs[0].ParentID = types.FileContractID{}
 	err = cst.cs.dbValidStorageProofs(txn)
-	if err != errUnrecognizedFileContractID {
+	if !errors.Contains(err, errUnrecognizedFileContractID) {
 		t.Error(err)
 	}
 
@@ -618,7 +619,7 @@ func TestPreForkValidStorageProofs(t *testing.T) {
 	}
 	copy(txn.StorageProofs[0].Segment[:], base)
 	err = cst.cs.dbValidStorageProofs(txn)
-	if err != errInvalidStorageProof {
+	if !errors.Contains(err, errInvalidStorageProof) {
 		t.Log(cst.cs.dbBlockHeight())
 		t.Fatal(err)
 	}
@@ -689,7 +690,7 @@ func TestValidFileContractRevisions(t *testing.T) {
 		},
 	}
 	err = cst.cs.dbValidFileContractRevisions(txn)
-	if err != errLowRevisionNumber {
+	if !errors.Contains(err, errLowRevisionNumber) {
 		t.Error(err)
 	}
 	txn = types.Transaction{
@@ -702,14 +703,14 @@ func TestValidFileContractRevisions(t *testing.T) {
 		},
 	}
 	err = cst.cs.dbValidFileContractRevisions(txn)
-	if err != errLowRevisionNumber {
+	if !errors.Contains(err, errLowRevisionNumber) {
 		t.Error(err)
 	}
 
 	// Submit a file contract revision pointing to an invalid parent.
 	txn.FileContractRevisions[0].ParentID[0]--
 	err = cst.cs.dbValidFileContractRevisions(txn)
-	if err != errNilItem {
+	if !errors.Contains(err, errNilItem) {
 		t.Error(err)
 	}
 	txn.FileContractRevisions[0].ParentID[0]++
@@ -725,7 +726,7 @@ func TestValidFileContractRevisions(t *testing.T) {
 	cst.cs.dbAddFileContract(fcid, fc)
 	txn.FileContractRevisions[0].NewRevisionNumber = 3
 	err = cst.cs.dbValidFileContractRevisions(txn)
-	if err != errLateRevision {
+	if !errors.Contains(err, errLateRevision) {
 		t.Error(err)
 	}
 
@@ -735,7 +736,7 @@ func TestValidFileContractRevisions(t *testing.T) {
 	cst.cs.dbAddFileContract(fcid, fc)
 	txn.FileContractRevisions[0].UnlockConditions.Timelock++
 	err = cst.cs.dbValidFileContractRevisions(txn)
-	if err != errWrongUnlockConditions {
+	if !errors.Contains(err, errWrongUnlockConditions) {
 		t.Error(err)
 	}
 	txn.FileContractRevisions[0].UnlockConditions.Timelock--
@@ -748,12 +749,12 @@ func TestValidFileContractRevisions(t *testing.T) {
 		Value: types.NewCurrency64(1),
 	}}
 	err = cst.cs.dbValidFileContractRevisions(txn)
-	if err != errAlteredRevisionPayouts {
+	if !errors.Contains(err, errAlteredRevisionPayouts) {
 		t.Error(err)
 	}
 	txn.FileContractRevisions[0].NewValidProofOutputs = nil
 	err = cst.cs.dbValidFileContractRevisions(txn)
-	if err != errAlteredRevisionPayouts {
+	if !errors.Contains(err, errAlteredRevisionPayouts) {
 		t.Error(err)
 	}
 	txn.FileContractRevisions[0].NewValidProofOutputs = []types.SiacoinOutput{{
@@ -761,7 +762,7 @@ func TestValidFileContractRevisions(t *testing.T) {
 	}}
 	txn.FileContractRevisions[0].NewMissedProofOutputs = nil
 	err = cst.cs.dbValidFileContractRevisions(txn)
-	if err != errAlteredRevisionPayouts {
+	if !errors.Contains(err, errAlteredRevisionPayouts) {
 		t.Error(err)
 	}
 }
@@ -776,14 +777,18 @@ func TestValidSiafunds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+  	if err := cst.Close(); err != nil {
+    	t.Fatal(err)
+  	}
+	}()
 
 	// Create a transaction pointing to a nonexistent siafund output.
 	txn := types.Transaction{
 		SiafundInputs: []types.SiafundInput{{}},
 	}
 	err = cst.cs.validSiafunds(txn)
-	if err != ErrMissingSiafundOutput {
+	if !errors.Contains(err, ErrMissingSiafundOutput){
 		t.Error(err)
 	}
 
@@ -800,7 +805,7 @@ func TestValidSiafunds(t *testing.T) {
 		}},
 	}
 	err = cst.cs.validSiafunds(txn)
-	if err != ErrWrongUnlockConditions {
+	if !errors.Contains(err, ErrWrongUnlockConditions){
 		t.Error(err)
 	}
 
@@ -811,7 +816,7 @@ func TestValidSiafunds(t *testing.T) {
 		}},
 	}
 	err = cst.cs.validSiafunds(txn)
-	if err != ErrSiafundInputOutputMismatch {
+	if !errors.Contains(err, ErrSiafundInputOutputMismatch){
 		t.Error(err)
 	}
 }
@@ -826,7 +831,11 @@ func TestValidTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+  		if err := cst.Close(); err != nil {
+    		t.Fatal(err)
+  		}
+	}()
 
 	// Create a transaction that is not standalone valid.
 	txn := types.Transaction{

@@ -76,6 +76,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -158,6 +159,7 @@ type Host struct {
 	// Subsystems
 	staticAccountManager *accountManager
 	staticMDM            *mdm.MDM
+	staticRegistry       *registry.Registry
 
 	// Host ACID fields - these fields need to be updated in serial, ACID
 	// transactions.
@@ -445,6 +447,21 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		return nil, err
 	}
 
+	// Load the registry.
+	registry, err := registry.New(filepath.Join(h.persistDir, modules.HostRegistryFile), registryDefaultMaxEntries)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to load host registry")
+	}
+	h.staticRegistry = registry
+	h.tg.AfterStop(func() {
+		err := h.staticRegistry.Close()
+		if err != nil {
+			// State of the registry is uncertain, a Println will have to
+			// suffice.
+			fmt.Println("Error when closing the logger:", err)
+		}
+	})
+
 	// Initialize the logger, and set up the stop call that will close the
 	// logger.
 	h.log, err = dependencies.NewLogger(filepath.Join(h.persistDir, logFile))
@@ -700,4 +717,24 @@ func (h *Host) managedExternalSettings() modules.HostExternalSettings {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.externalSettings(maxFee)
+}
+
+// RegistryGet retrieves a value from the registry.
+func (h *Host) RegistryGet(pubKey types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, bool) {
+	err := h.tg.Add()
+	if err != nil {
+		return modules.SignedRegistryValue{}, false
+	}
+	defer h.tg.Done()
+	return h.staticRegistry.Get(pubKey, tweak)
+}
+
+// RegistryUpdate updates a value in the registry.
+func (h *Host) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (bool, error) {
+	err := h.tg.Add()
+	if err != nil {
+		return false, err
+	}
+	defer h.tg.Done()
+	return h.staticRegistry.Update(rv, pubKey, expiry)
 }

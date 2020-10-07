@@ -11,6 +11,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 // programData is a buffer for the program data. It will read packets from r and
@@ -180,6 +182,31 @@ func (pd *programData) Hash(offset uint64) (crypto.Hash, error) {
 	var h crypto.Hash
 	copy(h[:], d)
 	return h, nil
+}
+
+// SiaPublicKey reads a types.SiaPublicKey from the programData. Given an offset
+// and a key length. The length includes the specifier size.
+func (pd *programData) SiaPublicKey(offset, length uint64) (types.SiaPublicKey, error) {
+	d, err := pd.managedBytes(offset, length)
+	if err != nil {
+		return types.SiaPublicKey{}, err
+	}
+	var spk types.SiaPublicKey
+	err = encoding.Unmarshal(d, &spk)
+	return spk, err
+}
+
+// Signature returns the next crypto.SignatureSize bytes at the specified offset
+// within the program data as a crypto.Signature. This call will block if the
+// data at the specified offset hasn't been fetched yet.
+func (pd *programData) Signature(offset uint64) (crypto.Signature, error) {
+	d, err := pd.managedBytes(offset, crypto.SignatureSize)
+	if err != nil {
+		return crypto.Signature{}, err
+	}
+	var sig crypto.Signature
+	copy(sig[:], d)
+	return sig, nil
 }
 
 // Bytes returns 'length' bytes from offset 'offset' from the programData.

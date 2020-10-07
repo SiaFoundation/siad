@@ -140,7 +140,9 @@ func (r *Renter) LoadBackup(src string, secret []byte) (err error) {
 	if err != nil {
 		return err
 	}
-	defer root.Close()
+	defer func() {
+		err = errors.Compose(err, root.Close())
+	}()
 
 	// Open the gzip file.
 	f, err := os.Open(src)
@@ -204,7 +206,9 @@ func (r *Renter) LoadBackup(src string, secret []byte) (err error) {
 	if err != nil {
 		return err
 	}
-	defer gzr.Close()
+	defer func() {
+		err = errors.Compose(err, gzr.Close())
+	}()
 	// Wrap the gzip reader in a tar reader.
 	tr := tar.NewReader(gzr)
 	// Untar the files.
@@ -235,11 +239,11 @@ func (r *Renter) LoadBackup(src string, secret []byte) (err error) {
 func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 	// Walk over all the siafiles in in the user's home and add them to the
 	// tarball.
-	return r.staticFileSystem.Walk(modules.UserFolder, func(path string, info os.FileInfo, err error) error {
+	return r.staticFileSystem.Walk(modules.UserFolder, func(path string, info os.FileInfo, statErr error) (err error) {
 		// This error is non-nil if filepath.Walk couldn't stat a file or
 		// folder.
-		if err != nil {
-			return err
+		if statErr != nil {
+			return statErr
 		}
 		// Nothing to do for non-folders and non-siafiles.
 		if !info.IsDir() && filepath.Ext(path) != modules.SiaFileExtension &&
@@ -270,13 +274,17 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			if err != nil {
 				return err
 			}
-			defer entry.Close()
+			defer func() {
+				err = errors.Compose(err, entry.Close())
+			}()
 			// Get a reader to read from the siafile.
 			sr, err := entry.SnapshotReader()
 			if err != nil {
 				return err
 			}
-			defer sr.Close()
+			defer func() {
+				err = errors.Compose(err, sr.Close())
+			}()
 			file = sr
 			// Update the size of the file within the header since it might have changed
 			// while we weren't holding the lock.
@@ -301,13 +309,17 @@ func (r *Renter) managedTarSiaFiles(tw *tar.Writer) error {
 			if err != nil {
 				return err
 			}
-			defer entry.Close()
+			defer func() {
+				err = errors.Compose(err, entry.Close())
+			}()
 			// Get a reader to read from the siadir.
 			dr, err := entry.DirReader()
 			if err != nil {
 				return err
 			}
-			defer dr.Close()
+			defer func() {
+				err = errors.Compose(err, dr.Close())
+			}()
 			file = dr
 			// Update the size of the file within the header since it might have changed
 			// while we weren't holding the lock.
@@ -339,7 +351,7 @@ func (r *Renter) managedUntarDir(tr *tar.Reader) error {
 	// Copy the files from the tarball to the new location.
 	for {
 		header, err := tr.Next()
-		if err == io.EOF {
+		if errors.Contains(err, io.EOF) {
 			break
 		} else if err != nil {
 			return errors.AddContext(err, "could not get next entry in the tar archive")

@@ -249,7 +249,7 @@ func announceHosts(hosts map[*TestNode]struct{}) error {
 // connectNodes connects two nodes
 func connectNodes(nodeA, nodeB *TestNode) error {
 	err := build.Retry(100, 100*time.Millisecond, func() error {
-		if err := nodeA.GatewayConnectPost(nodeB.GatewayAddress()); err != nil && err != client.ErrPeerExists {
+		if err := nodeA.GatewayConnectPost(nodeB.GatewayAddress()); err != nil && !errors.Contains(err, client.ErrPeerExists) {
 			return errors.AddContext(err, "failed to connect to peer")
 		}
 		isPeer1, err1 := nodeA.hasPeer(nodeB)
