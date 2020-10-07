@@ -66,6 +66,7 @@ package host
 import (
 	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -501,20 +502,10 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 	})
 
 	// Load the registry.
-	registrySize := h.managedInternalSettings().RegistrySize
-	registry, err := registry.New(filepath.Join(h.persistDir, modules.HostRegistryFile), registrySize/256)
+	err = h.managedInitRegistry()
 	if err != nil {
-		return nil, errors.AddContext(err, "failed to load host registry")
+		return nil, err
 	}
-	h.staticRegistry = registry
-	h.tg.AfterStop(func() {
-		err := h.staticRegistry.Close()
-		if err != nil {
-			// State of the registry is uncertain, a Println will have to
-			// suffice.
-			fmt.Println("Error when closing the logger:", err)
-		}
-	})
 
 	// Add the account manager subsystem
 	h.staticAccountManager, err = h.newAccountManager()
@@ -759,4 +750,57 @@ func (h *Host) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPu
 	}
 	defer h.tg.Done()
 	return h.staticRegistry.Update(rv, pubKey, expiry)
+}
+
+// managedInitRegistry initializes the host's registry on startup. If the
+// registry on disk is larger than the expected size in the settings, it updates
+// the settings to allow the host to boot. Since a registry should not be
+// resized that way, the user will be notified.
+func (h *Host) managedInitRegistry() error {
+	// Get the registry path.
+	path := filepath.Join(h.persistDir, modules.HostRegistryFile)
+
+	// If there is a registry on disk, get its size in entries.
+	fi, err := os.Stat(path)
+	onDiskEntries := uint64(0)
+	if err == nil && fi.Size() > modules.RegistryEntrySize {
+		// We subtract -1 to account for the metadata page.
+		onDiskEntries = (uint64(fi.Size()) / modules.RegistryEntrySize) - 1
+	}
+
+	// Also get the size in entries from the internal settings.
+	is := h.managedInternalSettings()
+	settingsEntries := modules.RoundRegistrySize(is.RegistrySize) / modules.RegistryEntrySize
+
+	// If the registry on disk is larger than the limit specified in settings,
+	// we assume that the user made manual changes and update the settings.
+	// Otherwise the user won't be able to start the host and as a result won't
+	// be able to adjust the settings through the API.
+	// Since it's not recommended to resize/move the registry that way, a
+	// build.Critical is used to notify the user upon startup.
+	if onDiskEntries > settingsEntries {
+		settingsEntries = onDiskEntries
+		h.mu.Lock()
+		h.settings.RegistrySize = settingsEntries * modules.RegistryEntrySize
+		h.mu.Unlock()
+		build.Critical("Host registry on disk was larger than specified in settings. Settings have been updated.")
+	}
+
+	// Load the registry.
+	registry, err := registry.New(path, settingsEntries)
+	if err != nil {
+		return errors.AddContext(err, "failed to load host registry")
+	}
+	h.staticRegistry = registry
+
+	// Make sure the registry is closed on shutdown.
+	h.tg.AfterStop(func() {
+		err := h.staticRegistry.Close()
+		if err != nil {
+			// State of the registry is uncertain, a Println will have to
+			// suffice.
+			fmt.Println("Error when closing the logger:", err)
+		}
+	})
+	return nil
 }

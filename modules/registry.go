@@ -21,9 +21,7 @@ const (
 // RoundRegistrySize is a helper to correctly round up the size of a registry to
 // the closest valid one.
 func RoundRegistrySize(size uint64) uint64 {
-	// TODO: this will be changed once the MR is rebased on top of the open
-	// registry MDM MR.
-	smallestRegUnit := uint64(256 * 64)
+	smallestRegUnit := uint64(RegistryEntrySize * 64)
 	nUnits := size / smallestRegUnit
 	if size%smallestRegUnit != 0 {
 		nUnits++
