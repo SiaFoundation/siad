@@ -58,6 +58,12 @@ func (p *program) staticDecodeUpdateRegistryInstruction(instruction modules.Inst
 	}, nil
 }
 
+// Batch declares whether or not this instruction can be batched together with
+// the previous instruction.
+func (i instructionUpdateRegistry) Batch() bool {
+	return true
+}
+
 // Execute executes the 'UpdateRegistry' instruction.
 func (i *instructionUpdateRegistry) Execute(prevOutput output) output {
 	// Fetch the args.

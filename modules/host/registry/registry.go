@@ -20,7 +20,7 @@ import (
 // - optimize locking by locking each entry individually
 const (
 	// PersistedEntrySize is the size of a marshaled entry on disk.
-	PersistedEntrySize = 256
+	PersistedEntrySize = modules.RegistryEntrySize
 )
 
 var (
