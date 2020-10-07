@@ -161,7 +161,8 @@ func (v *TestValues) AddReadRegistryInstruction(spk types.SiaPublicKey) {
 	time := uint64(modules.MDMTimeReadRegistry)
 	newData := crypto.HashSize + len(encoding.Marshal(spk))
 	readonly := true
-	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly)
+	batch := true
+	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly, batch)
 }
 
 // Cost returns the current cost of the program which would result . If
