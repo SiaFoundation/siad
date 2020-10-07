@@ -44,6 +44,20 @@ func TestNewGroup(t *testing.T) {
 		t.Error("Wrong number of nodes")
 	}
 
+	// Check that all hosts are announced and have a registry.
+	for _, host := range tg.Hosts() {
+		hg, err := host.HostGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hg.InternalSettings.AcceptingContracts {
+			t.Fatal("host not accepting contracts")
+		}
+		if hg.InternalSettings.RegistrySize == 0 {
+			t.Fatal("registry not set")
+		}
+	}
+
 	// Check if nodes are funded
 	cg, err := tg.Nodes()[0].ConsensusGet()
 	if err != nil {

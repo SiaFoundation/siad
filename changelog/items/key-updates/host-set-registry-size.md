@@ -1,0 +1,1 @@
+- add API support for setting registry size

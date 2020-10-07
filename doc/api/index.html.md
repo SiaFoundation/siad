@@ -1294,6 +1294,7 @@ fetches status information about the host.
     "storageprice":           "231481481481",               // hastings / byte / block
     "uploadbandwidthprice":   "100000000000000",            // hastings / byte
 
+    "registrysize": 16384,    // int
     "revisionnumber": 0,      // int
     "version":        "1.0.0" // string
   },
@@ -1433,6 +1434,12 @@ The price that a renter has to pay to store files with the host.
 
 **uploadbandwidthprice** | hastings / byte  
 The price that a renter has to pay when uploading data to the host.  
+
+**registrysize** | int  
+The size of the registry in bytes. One entry requires 256 bytes of storage on
+disk and the size of the registry needs to be a multiple of 64 entries.
+Therefore any provided number >0 bytes will be rounded to the nearest 16kib.
+The default is 0 which means no registry.
 
 **revisionnumber** | int  
 The revision number indicates to the renter what iteration of settings the host
@@ -1826,6 +1833,12 @@ the amount at risk will be minuscule unless the host experiences an unclean
 shutdown while in the middle of many transactions with many users at once. This
 value should be larger than 'maxephemeralaccountbalance but does not need to be
 significantly larger.
+
+**registrysize** | int  
+The size of the registry in bytes. One entry requires 256 bytes of storage on
+disk and the size of the registry needs to be a multiple of 64 entries.
+Therefore any provided number >0 bytes will be rounded to the nearest 16kib.
+The default is 0 which means no registry.
 
 ### Response
 

@@ -65,7 +65,9 @@ Available settings:
 
      ephemeralaccountexpiry:     seconds
      maxephemeralaccountbalance: currency
-     maxephemeralaccountrisk:    currency
+	 maxephemeralaccountrisk:    currency
+	 
+	 registrysize: filesize
 
 Currency units can be specified, e.g. 10SC; run 'siac help wallet' for details.
 
@@ -402,6 +404,13 @@ func hostconfigcmd(param, value string) {
 	// duration (convert to blocks)
 	case "maxduration", "windowsize":
 		value, err = parsePeriod(value)
+		if err != nil {
+			die("Could not parse "+param+":", err)
+		}
+
+	// filesize (convert to bytes)
+	case "registrysize":
+		value, err = parseFilesize(value)
 		if err != nil {
 			die("Could not parse "+param+":", err)
 		}
