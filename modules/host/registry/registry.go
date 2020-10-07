@@ -21,7 +21,7 @@ import (
 // - correctly handle growing/shrinking the registry
 const (
 	// PersistedEntrySize is the size of a marshaled entry on disk.
-	PersistedEntrySize = 256
+	PersistedEntrySize = modules.RegistryEntrySize
 )
 
 var (

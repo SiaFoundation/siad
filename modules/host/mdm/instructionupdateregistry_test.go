@@ -33,25 +33,15 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 
 	// Execute it.
 	so := host.newTestStorageObligation(true)
-	finalizeFn, budget, outputs, err := mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, 0, true)
+	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Assert the outputs.
-	for _, output := range outputs {
-		err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	// Finalize the program.
-	if finalizeFn != nil {
-		t.Fatal("registry updates don't require finalizing")
-	}
-
-	// Budget should be empty now.
-	if !budget.Remaining().IsZero() {
-		t.Fatal("budget wasn't completely depleted")
+	// Assert output.
+	output := outputs[0]
+	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, []byte{})
+	if err != nil {
+		t.Fatal(err)
 	}
 	// Registry should contain correct value.
 	rv2, ok := host.RegistryGet(spk, rv.Tweak)

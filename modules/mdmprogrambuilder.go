@@ -216,6 +216,34 @@ func (pb *ProgramBuilder) AddUpdateRegistryInstruction(spk types.SiaPublicKey, r
 	return nil
 }
 
+// AddReadRegistryInstruction adds an ReadRegistry instruction to the program.
+func (pb *ProgramBuilder) AddReadRegistryInstruction(spk types.SiaPublicKey, tweak crypto.Hash) error {
+	// Marshal pubKey.
+	pk := encoding.Marshal(spk)
+	// Compute the argument offsets.
+	pubKeyOff := uint64(pb.programData.Len())
+	pubKeyLen := uint64(len(pk))
+	tweakOff := pubKeyOff + pubKeyLen
+	// Extend the programData.
+	_, err1 := pb.programData.Write(pk)
+	_, err2 := pb.programData.Write(tweak[:])
+	if err := errors.Compose(err1, err2); err != nil {
+		return errors.AddContext(err, "AddReadRegistryInstruction: failed to extend programData")
+	}
+	// Create the instruction.
+	i := NewReadRegistryInstruction(pubKeyOff, pubKeyLen, tweakOff)
+	// Append instruction
+	pb.program = append(pb.program, i)
+	// Read cost, collateral and memory usage.
+	collateral := MDMReadRegistryCollateral()
+	cost := MDMReadRegistryCost(pb.staticPT)
+	refund := types.ZeroCurrency
+	memory := MDMReadRegistryMemory()
+	time := uint64(MDMTimeReadRegistry)
+	pb.addInstruction(collateral, cost, refund, memory, time)
+	return nil
+}
+
 // Cost returns the current cost of the program being built by the builder. If
 // 'finalized' is 'true', the memory cost of finalizing the program is included.
 func (pb *ProgramBuilder) Cost(finalized bool) (cost, storage, collateral types.Currency) {
@@ -277,6 +305,18 @@ func NewUpdateRegistryInstruction(tweakOff, revisionOff, signatureOff, pubKeyOff
 	binary.LittleEndian.PutUint64(i.Args[32:40], pubKeyLen)
 	binary.LittleEndian.PutUint64(i.Args[40:48], dataOff)
 	binary.LittleEndian.PutUint64(i.Args[48:56], dataLen)
+	return i
+}
+
+// NewReadRegistryInstruction creates an Instruction from arguments.
+func NewReadRegistryInstruction(pubKeyOff, pubKeyLen, tweakOff uint64) Instruction {
+	i := Instruction{
+		Specifier: SpecifierReadRegistry,
+		Args:      make([]byte, RPCIReadRegistryLen),
+	}
+	binary.LittleEndian.PutUint64(i.Args[:8], pubKeyOff)
+	binary.LittleEndian.PutUint64(i.Args[8:16], pubKeyLen)
+	binary.LittleEndian.PutUint64(i.Args[16:24], tweakOff)
 	return i
 }
 
