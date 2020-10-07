@@ -74,6 +74,13 @@ func (i *instructionReadRegistry) Execute(prevOutput output) output {
 	}
 }
 
+// Registry reads can be batched, because they are both tiny, and low latency.
+// Typical case is an in-memory lookup, worst case is a small, single on-disk
+// read.
+func (i *instructionReadRegistry) Batch() bool {
+	return true
+}
+
 // Collateral returns the collateral the host has to put up for this
 // instruction.
 func (i *instructionReadRegistry) Collateral() types.Currency {
