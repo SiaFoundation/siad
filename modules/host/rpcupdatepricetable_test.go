@@ -190,7 +190,7 @@ func testUpdatePriceTableBasic(t *testing.T, rhp *renterHostPair) {
 	// set the registry size to a known value.
 	host := rhp.staticHT.host
 	is := host.InternalSettings()
-	is.RegistrySize = 192
+	is.RegistrySize = 128 * modules.RegistryEntrySize
 	err := rhp.staticHT.host.SetInternalSettings(is)
 	if err != nil {
 		t.Fatal(err)
