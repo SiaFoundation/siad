@@ -1294,7 +1294,7 @@ fetches status information about the host.
     "storageprice":           "231481481481",               // hastings / byte / block
     "uploadbandwidthprice":   "100000000000000",            // hastings / byte
 
-    "registrysize": 128, // int
+    "registrysize": 16384,    // int
     "revisionnumber": 0,      // int
     "version":        "1.0.0" // string
   },
@@ -1439,7 +1439,7 @@ The price that a renter has to pay when uploading data to the host.
 The size of the registry in bytes. One entry requires 256 bytes of storage on
 disk and the size of the registry needs to be a multiple of 64 entries.
 Therefore any provided number >0 bytes will be rounded to the nearest 16kib.
-The default is 0.
+The default is 0 which means no registry.
 
 **revisionnumber** | int  
 The revision number indicates to the renter what iteration of settings the host
@@ -1838,7 +1838,7 @@ significantly larger.
 The size of the registry in bytes. One entry requires 256 bytes of storage on
 disk and the size of the registry needs to be a multiple of 64 entries.
 Therefore any provided number >0 bytes will be rounded to the nearest 16kib.
-The default is 0.
+The default is 0 which means no registry.
 
 ### Response
 

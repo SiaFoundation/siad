@@ -1037,7 +1037,7 @@ func TestHostRegistry(t *testing.T) {
 	}
 
 	// Update the internal settings.
-	is.RegistrySize = 128 * 256
+	is.RegistrySize = 128 * modules.RegistryEntrySize
 	err = h.SetInternalSettings(is)
 	if err != nil {
 		t.Fatal(err)
@@ -1067,10 +1067,10 @@ func TestHostRegistry(t *testing.T) {
 	}
 
 	// Try truncating below that. Should round up to 64 entries.
-	is.RegistrySize = 64*256 - 1
+	is.RegistrySize = 64*modules.RegistryEntrySize - 1
 	err = h.SetInternalSettings(is)
 	if err != nil {
-		t.Fatal("truncating to 63 entries shouldn't work", err)
+		t.Fatal(err)
 	}
 	if r.Len() != 64 || r.Cap() != 64 {
 		t.Fatal("truncate wasn't called on registry", r.Len(), r.Cap())

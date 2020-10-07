@@ -799,7 +799,7 @@ func (h *Host) managedInitRegistry() error {
 		if err != nil {
 			// State of the registry is uncertain, a Println will have to
 			// suffice.
-			fmt.Println("Error when closing the logger:", err)
+			fmt.Println("Error when closing the registry:", err)
 		}
 	})
 	return nil
