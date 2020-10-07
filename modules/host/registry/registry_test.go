@@ -1107,3 +1107,90 @@ func TestTruncate(t *testing.T) {
 		}
 	}
 }
+
+// TestMigrate is a unit test for the registry's Migrate method.
+func TestMigrate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	dir := testDir(t.Name())
+
+	// Prepare a source and destination path for the registry.
+	registryPathSrc := filepath.Join(dir, "registrySrc")
+	registryPathDst := filepath.Join(dir, "registryDst")
+
+	// Create a new registry.
+	r, err := New(registryPathSrc, 128)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add 64 entries to it.
+	numEntries := 64
+	entries := make([]modules.SignedRegistryValue, 0, numEntries)
+	keys := make([]types.SiaPublicKey, 0, numEntries)
+	for i := 0; i < numEntries; i++ {
+		rv, v, sk := randomValue(0)
+		rv.Revision = 0 // set revision number to 0
+		rv = rv.Sign(sk)
+		_, err = r.Update(rv, v.key, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rv, _ = r.Get(v.key, v.tweak)
+		entries = append(entries, rv)
+		keys = append(keys, v.key)
+	}
+
+	// Check capacity and length.
+	if r.Cap() != 128 || r.Len() != 64 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+
+	// Migrate the registry.
+	err = r.Migrate(registryPathDst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Make sure the old file is gone.
+	if _, err := os.Stat(registryPathSrc); !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+
+	// Close registry
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Reload the registry.
+	r, err = New(registryPathDst, 128)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
+
+	// Check capacity and length.
+	if r.Cap() != 128 || r.Len() != 64 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+
+	// Entries should be the same as before.
+	for i, entry := range entries {
+		entryExist, exists := r.Get(keys[i], entry.Tweak)
+		if !exists {
+			t.Fatal("entry doesn't exist")
+		}
+		if !reflect.DeepEqual(entry, entryExist) {
+			t.Log(entry)
+			t.Log(entryExist)
+			t.Fatal("entries don't match")
+		}
+	}
+}

@@ -691,6 +691,19 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 		}
 	}
 
+	// Migrate the registry if necessary.
+	if h.settings.CustomRegistryPath != settings.CustomRegistryPath {
+		path := settings.CustomRegistryPath
+		if path == "" {
+			// If path is blank use the default.
+			path = filepath.Join(h.persistDir, modules.HostRegistryFile)
+		}
+		err = h.staticRegistry.Migrate(path)
+		if err != nil {
+			return errors.AddContext(err, "failed to move registry to new location")
+		}
+	}
+
 	h.settings = settings
 	h.revisionNumber++
 
@@ -757,8 +770,13 @@ func (h *Host) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPu
 // the settings to allow the host to boot. Since a registry should not be
 // resized that way, the user will be notified.
 func (h *Host) managedInitRegistry() error {
-	// Get the registry path.
-	path := filepath.Join(h.persistDir, modules.HostRegistryFile)
+	// Get the registry path from the settings. If it isn't set, use the default
+	// which is relative to the host dir.
+	is := h.managedInternalSettings()
+	path := is.CustomRegistryPath
+	if path == "" {
+		path = filepath.Join(h.persistDir, modules.HostRegistryFile)
+	}
 
 	// If there is a registry on disk, get its size in entries.
 	fi, err := os.Stat(path)
@@ -769,7 +787,6 @@ func (h *Host) managedInitRegistry() error {
 	}
 
 	// Also get the size in entries from the internal settings.
-	is := h.managedInternalSettings()
 	settingsEntries := modules.RoundRegistrySize(is.RegistrySize) / modules.RegistryEntrySize
 
 	// If the registry on disk is larger than the limit specified in settings,

@@ -290,6 +290,9 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 		}
 		settings.RegistrySize = x
 	}
+	if req.FormValue("customregistrypath") != "" {
+		settings.CustomRegistryPath = req.FormValue("customregistrypath")
+	}
 
 	// Validate the RPC, Sector Access, and Download Prices
 	minBaseRPCPrice := settings.MinBaseRPCPrice

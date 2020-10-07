@@ -399,3 +399,56 @@ func (r *Registry) Prune(expiry types.BlockHeight) (uint64, error) {
 	}
 	return pruned, errs
 }
+
+// Migrate migrates the registry to a new location.
+func (r *Registry) Migrate(path string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Create the file at the new location only if it doesn't exist yet.
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, modules.DefaultFilePerm)
+	if err != nil {
+		return errors.AddContext(err, "Migrate: failed to create file at new location")
+	}
+
+	// Lock all existing entries and unlock them when migration is complete.
+	for _, entry := range r.entries {
+		entry.mu.Lock()
+		defer entry.mu.Unlock()
+	}
+
+	// Seek to the beginning of the file.
+	_, err = r.staticFile.Seek(0, os.SEEK_SET)
+	if err != nil {
+		return errors.AddContext(err, "Migrate: failed to seek to beginning of file")
+	}
+
+	// Copy the file.
+	_, err = io.Copy(f, r.staticFile)
+	if err != nil {
+		return errors.AddContext(err, "Migrate: failed to copy file to new location")
+	}
+
+	// Sync it.
+	err = f.Sync()
+	if err != nil {
+		return errors.AddContext(err, "Migrate: failed to sync copied file to disk")
+	}
+
+	// Update the in-memory state.
+	oldPath := r.staticPath
+	oldFile := r.staticFile
+	r.staticFile = f
+	r.staticPath = path
+
+	// Cleanup old file.
+	err = oldFile.Close()
+	if err != nil {
+		return errors.AddContext(err, "Migrate: failed to close old file handle")
+	}
+	err = os.Remove(oldPath)
+	if err != nil {
+		return errors.AddContext(err, "Migrate: failed to delete old file")
+	}
+	return nil
+}
