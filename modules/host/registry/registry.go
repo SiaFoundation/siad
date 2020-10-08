@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"sync"
 
@@ -41,6 +42,12 @@ var (
 	errInvalidEntry = errors.New("invalid entry")
 	// ErrInvalidTruncate is returned if a truncate would lead to data loss.
 	ErrInvalidTruncate = errors.New("can't truncate registry below the number of used entries")
+	// errPathNotAbsolute is returned if the registry is created from a relative
+	// path or if it's migrated to a relative path.
+	errPathNotAbsolute = errors.New("registry path needs to be absolute")
+	// errSamePath is returned if the registry is about to be migrated to its
+	// current path.
+	errSamePath = errors.New("registry can't be migrated to its current path")
 )
 
 type (
@@ -210,6 +217,10 @@ func (r *Registry) Truncate(newMaxEntries uint64) error {
 
 // New creates a new registry or opens an existing one.
 func New(path string, maxEntries uint64) (_ *Registry, err error) {
+	// The path should be an absolute path.
+	if !filepath.IsAbs(path) {
+		return nil, errPathNotAbsolute
+	}
 	f, err := os.OpenFile(path, os.O_RDWR, modules.DefaultFilePerm)
 	if os.IsNotExist(err) {
 		// try creating a new one
@@ -402,8 +413,19 @@ func (r *Registry) Prune(expiry types.BlockHeight) (uint64, error) {
 
 // Migrate migrates the registry to a new location.
 func (r *Registry) Migrate(path string) error {
+	// Return an error if the paths match.
+	if !filepath.IsAbs(path) {
+		return errPathNotAbsolute
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	// Return an error if the registry is about to be migrated to the current
+	// path.
+	if path == r.staticPath {
+		return errSamePath
+	}
 
 	// Create the file at the new location only if it doesn't exist yet.
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, modules.DefaultFilePerm)

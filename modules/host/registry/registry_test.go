@@ -183,6 +183,13 @@ func TestNew(t *testing.T) {
 			t.Fatal("wrong page is set")
 		}
 	}
+
+	// Try to create a registry at a relative path. This shouldn't work.
+	registryPath = "./registry.dat"
+	_, err = New(registryPath, testingDefaultMaxEntries)
+	if !errors.Contains(err, errPathNotAbsolute) {
+		t.Fatal(err)
+	}
 }
 
 // TestUpdate is a unit test for Update. It makes sure new entries are added
@@ -1192,5 +1199,17 @@ func TestMigrate(t *testing.T) {
 			t.Log(entryExist)
 			t.Fatal("entries don't match")
 		}
+	}
+
+	// Try to migrate a registry to a relative path. This shouldn't work.
+	err = r.Migrate("./registry.dat")
+	if !errors.Contains(err, errPathNotAbsolute) {
+		t.Fatal(err)
+	}
+
+	// Try to migrate a registry to its own path. This shouldn't work.
+	err = r.Migrate(registryPathDst)
+	if !errors.Contains(err, errSamePath) {
+		t.Fatal(err)
 	}
 }
