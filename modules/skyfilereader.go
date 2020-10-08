@@ -84,9 +84,9 @@ func (sr *skyfileReader) SetReadBuffer(b []byte) {
 
 // SkyfileMetadata returns the SkyfileMetadata associated with this reader.
 func (sr *skyfileReader) SkyfileMetadata() (SkyfileMetadata, error) {
+	// Wait for the metadata to become available, that will be the case when the
+	// reader returned an EOF
 	<-sr.metadataAvail
-
-	// TODO use a tg context
 
 	return sr.metadata, nil
 }
@@ -121,9 +121,10 @@ func (sr *skyfileReader) Read(p []byte) (n int, err error) {
 	return
 }
 
-// NewSkyfileReader wraps the given reader and returns a SkyfileUploadReader.
-// By reading from this reader until an EOF is reached, the SkyfileMetadata will
-// be constructed incrementally every time a new Part is read.
+// NewSkyfileMultipartReader wraps the given reader and returns a
+// SkyfileUploadReader. By reading from this reader until an EOF is reached, the
+// SkyfileMetadata will be constructed incrementally every time a new Part is
+// read.
 func NewSkyfileMultipartReader(reader *multipart.Reader, sup SkyfileUploadParameters) SkyfileUploadReader {
 	return &skyfileMultipartReader{
 		reader:  reader,
@@ -148,9 +149,9 @@ func (sr *skyfileMultipartReader) SetReadBuffer(b []byte) {
 
 // SkyfileMetadata returns the SkyfileMetadata associated with this reader.
 func (sr *skyfileMultipartReader) SkyfileMetadata() (SkyfileMetadata, error) {
+	// Wait for the metadata to become available, that will be the case when the
+	// reader returned an EOF
 	<-sr.metadataAvail
-
-	// TODO use a tg context
 
 	// Check whether we found multipart files
 	if len(sr.metadata.Subfiles) == 0 {
