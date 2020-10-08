@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/errors"
@@ -66,20 +65,27 @@ func testDownloadSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
+	// construct expected metadata
+	metadata := modules.SkyfileMetadata{
+		Filename: sup.Filename,
+		Mode:     sup.Mode,
+		Length:   size,
+	}
+
 	// verify downloads
 	//
 	// note: these switch from un-cached to cached downloads partway through. By
 	// passing verification on all pieces of the test, we are confirming that
 	// the caching is correct.
-	err = verifyDownloadRaw(t, r, skylink, data, sup.FileMetadata, testName)
+	err = verifyDownloadRaw(t, r, skylink, data, metadata, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = verifyDownloadDirectory(t, r, skylink, data, sup.FileMetadata, testName)
+	err = verifyDownloadDirectory(t, r, skylink, data, metadata, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = verifyDownloadAsArchive(t, r, skylink, fileMap{"SingleFileRegular": data}, sup.FileMetadata, testName)
+	err = verifyDownloadAsArchive(t, r, skylink, fileMap{"SingleFileRegular": data}, metadata, testName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,8 +164,8 @@ func testDownloadSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 
 	// verify non existing default path
 	_, _, _, err = r.UploadNewMultipartSkyfileBlocking("multipartUploadSingle", files, "notexists.png", false, false)
-	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidDefaultPath.Error()) {
-		t.Errorf("Expected '%v' instead error was '%v'", api.ErrInvalidDefaultPath, err)
+	if err == nil || !strings.Contains(err.Error(), modules.ErrInvalidDefaultPath.Error()) {
+		t.Errorf("Expected '%v' instead error was '%v'", modules.ErrInvalidDefaultPath, err)
 	}
 
 	// verify trying to set no default path on single file upload
@@ -303,8 +309,8 @@ func testDownloadDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 
 	// verify some errors on upload
 	skylink, _, _, err = r.UploadNewMultipartSkyfileBlocking("DirectoryBasic", files, "notexists.html", false, false)
-	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidDefaultPath.Error()) {
-		t.Errorf("Expected '%v' instead error was '%v'", api.ErrInvalidDefaultPath, err)
+	if err == nil || !strings.Contains(err.Error(), modules.ErrInvalidDefaultPath.Error()) {
+		t.Errorf("Expected '%v' instead error was '%v'", modules.ErrInvalidDefaultPath, err)
 	}
 }
 

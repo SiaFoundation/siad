@@ -14,13 +14,18 @@ var (
 	// ErrIllegalFormName is returned when the multipart form contains a part
 	// under an illegal form name, only 'files[]' or 'file' are allowed.
 	ErrIllegalFormName = errors.New("multipart file submitted under an illegal form name, allowed values are 'files[]' and 'file'")
+
+	// ErrEmptyFilename is returned when the multipart form contains a part
+	// with an empty filename
+	ErrEmptyFilename = errors.New("no filename provided")
 )
 
 type (
 	// SkyfileUploadReader is an interface that wraps a reader, containing the
 	// Skyfile data, and adds a method to fetch the SkyfileMetadata.
 	SkyfileUploadReader interface {
-		SkyfileMetadata() SkyfileMetadata
+		SetReadBuffer(data []byte)
+		SkyfileMetadata() (SkyfileMetadata, error)
 		io.Reader
 	}
 
@@ -30,7 +35,8 @@ type (
 	// NOTE: this object is not threadsafe and thus should not be called from
 	// more than one thread.
 	skyfileMultipartReader struct {
-		reader *multipart.Reader
+		reader  *multipart.Reader
+		readBuf []byte
 
 		currLen  uint64
 		currOff  uint64
@@ -46,52 +52,147 @@ type (
 	// NOTE: this object is not threadsafe and thus should not be called from
 	// more than one thread.
 	skyfileReader struct {
-		reader   io.Reader
-		metadata SkyfileMetadata
+		reader  io.Reader
+		readBuf []byte
+
+		currLen uint64
+
+		metadata      SkyfileMetadata
+		metadataAvail chan struct{}
 	}
 )
 
 // NewSkyfileReader wraps the given reader and metadata and returns a
 // SkyfileUploadReader
-func NewSkyfileReader(reader io.Reader, metadata SkyfileMetadata) SkyfileUploadReader {
+func NewSkyfileReader(reader io.Reader, sup SkyfileUploadParameters) SkyfileUploadReader {
 	return &skyfileReader{
-		reader:   reader,
-		metadata: metadata,
+		reader:  reader,
+		readBuf: make([]byte, 0),
+		metadata: SkyfileMetadata{
+			Filename: sup.Filename,
+			Mode:     sup.Mode,
+		},
+		metadataAvail: make(chan struct{}),
 	}
 }
 
+// SetReadBuffer adds the given bytes to the read buffer, the next reads will
+// read from this buffer opposed to the underlying reader.
+func (sr *skyfileReader) SetReadBuffer(b []byte) {
+	sr.readBuf = append(sr.readBuf, b...)
+}
+
 // SkyfileMetadata returns the SkyfileMetadata associated with this reader.
-func (sr *skyfileReader) SkyfileMetadata() SkyfileMetadata {
-	return sr.metadata
+func (sr *skyfileReader) SkyfileMetadata() (SkyfileMetadata, error) {
+	<-sr.metadataAvail
+
+	// TODO use a tg context
+
+	return sr.metadata, nil
 }
 
 // Read implents the io.Reader part of the interface and reads data from the
 // underlying reader.
 func (sr *skyfileReader) Read(p []byte) (n int, err error) {
-	return sr.reader.Read(p)
+	if len(sr.readBuf) > 0 {
+		n = copy(p, sr.readBuf)
+		sr.readBuf = sr.readBuf[n:]
+	}
+
+	// check if we've already read until EOF, that will be the case if
+	// `metadataAvail` is closed.
+	select {
+	case <-sr.metadataAvail:
+		return n, io.EOF
+	default:
+	}
+
+	if n < len(p) {
+		var nn int
+		nn, err = sr.reader.Read(p[n:])
+		n += nn
+		sr.currLen += uint64(nn)
+
+		if errors.Contains(err, io.EOF) {
+			close(sr.metadataAvail)
+			sr.metadata.Length = sr.currLen
+		}
+	}
+	return
 }
 
 // NewSkyfileReader wraps the given reader and returns a SkyfileUploadReader.
 // By reading from this reader until an EOF is reached, the SkyfileMetadata will
 // be constructed incrementally every time a new Part is read.
-func NewSkyfileMultipartReader(reader *multipart.Reader) SkyfileUploadReader {
+func NewSkyfileMultipartReader(reader *multipart.Reader, sup SkyfileUploadParameters) SkyfileUploadReader {
 	return &skyfileMultipartReader{
-		reader:        reader,
-		metadata:      SkyfileMetadata{Subfiles: make(SkyfileSubfiles)},
+		reader:  reader,
+		readBuf: make([]byte, 0),
+
+		metadata: SkyfileMetadata{
+			Filename:           sup.Filename,
+			Mode:               sup.Mode,
+			DefaultPath:        sup.DefaultPath,
+			DisableDefaultPath: sup.DisableDefaultPath,
+			Subfiles:           make(SkyfileSubfiles),
+		},
 		metadataAvail: make(chan struct{}),
 	}
 }
 
+// SetReadBuffer adds the given bytes to the read buffer, the next reads will
+// read from this buffer opposed to the underlying reader.
+func (sr *skyfileMultipartReader) SetReadBuffer(b []byte) {
+	sr.readBuf = b
+}
+
 // SkyfileMetadata returns the SkyfileMetadata associated with this reader.
-func (sr *skyfileMultipartReader) SkyfileMetadata() SkyfileMetadata {
-	<-sr.metadataAvail // TODO use a tg context
-	return sr.metadata
+func (sr *skyfileMultipartReader) SkyfileMetadata() (SkyfileMetadata, error) {
+	<-sr.metadataAvail
+
+	// TODO use a tg context
+
+	// Check whether we found multipart files
+	if len(sr.metadata.Subfiles) == 0 {
+		return SkyfileMetadata{}, errors.New("could not find multipart file")
+	}
+
+	// Use the filename of the first subfile if it's not passed as query
+	// string parameter and there's only one subfile.
+	if sr.metadata.Filename == "" && len(sr.metadata.Subfiles) == 1 {
+		for _, sf := range sr.metadata.Subfiles {
+			sr.metadata.Filename = sf.Filename
+			break
+		}
+	}
+
+	// Set the total length as the sum of the lengths of every subfile
+	if sr.metadata.Length == 0 {
+		for _, sf := range sr.metadata.Subfiles {
+			sr.metadata.Length += sf.Len
+		}
+	}
+
+	return sr.metadata, nil
 }
 
 // Read implents the io.Reader part of the interface and reads data from the
 // underlying multipart reader. While the data is being read, the metadata is
 // being constructed.
 func (sr *skyfileMultipartReader) Read(p []byte) (n int, err error) {
+	if len(sr.readBuf) > 0 {
+		n = copy(p, sr.readBuf)
+		sr.readBuf = sr.readBuf[n:]
+	}
+
+	// check if we've already read until EOF, that will be the case if
+	// `metadataAvail` is closed.
+	select {
+	case <-sr.metadataAvail:
+		return n, io.EOF
+	default:
+	}
+
 	for n < len(p) && err == nil {
 		// only read the next part if the current part is not set
 		if sr.currPart == nil {
@@ -137,19 +238,26 @@ func (sr *skyfileMultipartReader) Read(p []byte) (n int, err error) {
 	return
 }
 
-// createSubfileFromCurrPart adds a subfile to the metadata's Subfiles for the
-// part that is currently set as `currPart`.
+// createSubfileFromCurrPart adds a subfile for the current part.
 func (sr *skyfileMultipartReader) createSubfileFromCurrPart() error {
+	// sanity check the reader has a current part set
 	if sr.currPart == nil {
 		build.Critical("createSubfileFromCurrPart called when currPart is nil")
+		return errors.New("could not create metadata for subfile")
 	}
 
+	// parse the mode from the part header
 	mode, err := parseMode(sr.currPart.Header.Get("Mode"))
 	if err != nil {
 		return errors.AddContext(err, "failed to parse file mode")
 	}
 
+	// parse the filename
 	filename := sr.currPart.FileName()
+	if filename == "" {
+		return ErrEmptyFilename
+	}
+
 	sr.metadata.Subfiles[filename] = SkyfileSubfileMetadata{
 		FileMode:    mode,
 		Filename:    filename,

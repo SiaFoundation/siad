@@ -499,10 +499,12 @@ func skynetPin(skylink string, siaPath modules.SiaPath) (string, error) {
 
 	// Upload the skyfile to pin it to the renter node
 	sup := modules.SkyfileUploadParameters{
-		SiaPath:      siaPath,
-		Reader:       reader,
-		FileMetadata: sm,
+		SiaPath:  siaPath,
+		Reader:   reader,
+		Filename: sm.Filename,
+		Mode:     sm.Mode,
 	}
+
 	// NOTE: Since the user can define a new siapath for the Skyfile the skylink
 	// returned from the upload may be different than the original skylink which
 	// is why we are overwriting the skylink here.
@@ -905,13 +907,10 @@ func skynetUploadFileFromReader(source io.Reader, filename string, siaPath modul
 		SiaPath: siaPath,
 		Root:    skynetUploadRoot,
 
+		Filename: filename,
+		Mode:     mode,
+
 		DryRun: skynetUploadDryRun,
-
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: filename,
-			Mode:     mode,
-		},
-
 		Reader: source,
 	}
 	sup = parseAndAddSkykey(sup)

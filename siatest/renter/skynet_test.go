@@ -108,11 +108,9 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		Force:               force,
 		Root:                false,
 		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: filename,
-			Mode:     0640, // Intentionally does not match any defaults.
-		},
-		Reader: reader,
+		Filename:            filename,
+		Mode:                0640, // Intentionally does not match any defaults.
+		Reader:              reader,
 	}
 	skylink, rshp, err := r.SkynetSkyfilePost(sup)
 	if err != nil {
@@ -333,12 +331,9 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		Force:               rootForce,
 		Root:                true,
 		BaseChunkRedundancy: 3,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: rootFilename,
-			Mode:     0600, // Intentionally does not match any defaults.
-		},
-
-		Reader: rootReader,
+		Filename:            rootFilename,
+		Mode:                0600, // Intentionally does not match any defaults.
+		Reader:              rootReader,
 	}
 	_, _, err = r.SkynetSkyfilePost(rootLup)
 	if err != nil {
@@ -386,13 +381,8 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		Force:               force2,
 		Root:                false,
 		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: largeFilename,
-			// Remaining fields intentionally left blank so the renter sets
-			// defaults.
-		},
-
-		Reader: largeReader,
+		Filename:            largeFilename,
+		Reader:              largeReader,
 	}
 	largeSkylink, _, err := r.SkynetSkyfilePost(largeLup)
 	if err != nil {
@@ -941,12 +931,9 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 			Force:               false,
 			Root:                false,
 			BaseChunkRedundancy: 2,
-			FileMetadata: modules.SkyfileMetadata{
-				Filename: filename,
-				Mode:     0640, // Intentionally does not match any defaults.
-			},
-
-			Reader: reader,
+			Filename:            filename,
+			Mode:                0640, // Intentionally does not match any defaults.
+			Reader:              reader,
 		}
 
 		// Try posting the skyfile with an invalid filename
@@ -989,27 +976,14 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 		}
 
 		_, _, err = r.SkynetSkyfileMultiPartPost(mup)
-		if filename == "" {
-			// NOTE: we have to check for a different error message here. This
-			// is due to the fact that the http library uses the filename when
-			// parsing the multipart form request. Not providing a filename,
-			// makes it interpret the file as a form value, which leads to the
-			// file not being found, opposed to erroring on the filename not
-			// being set.
-			if err == nil || !strings.Contains(err.Error(), "could not find multipart file") {
-				t.Log("Error:", err)
-				t.Fatal("Expected SkynetSkyfileMultiPartPost to fail due to lack of a filename")
-			}
-		} else {
-			if err == nil || !strings.Contains(err.Error(), modules.ErrInvalidPathString.Error()) {
-				t.Log("Error:", err)
-				t.Fatal("Expected SkynetSkyfileMultiPartPost to fail due to invalid filename")
-			}
+		if err == nil || (!strings.Contains(err.Error(), modules.ErrInvalidPathString.Error()) && !strings.Contains(err.Error(), modules.ErrEmptyFilename.Error())) {
+			t.Log("Error:", err)
+			t.Fatal("Expected SkynetSkyfileMultiPartPost to fail due to invalid filename")
 		}
 	}
 
 	// These cases should succeed.
-
+	reader = bytes.NewReader(data)
 	uploadSiaPath, err := modules.NewSiaPath("testInvalidFilename")
 	if err != nil {
 		t.Fatal(err)
@@ -1019,12 +993,9 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 		Force:               false,
 		Root:                false,
 		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: "testInvalidFilename",
-			Mode:     0640, // Intentionally does not match any defaults.
-		},
-
-		Reader: reader,
+		Filename:            "testInvalidFilename",
+		Mode:                0640, // Intentionally does not match any defaults.
+		Reader:              reader,
 	}
 	_, _, err = r.SkynetSkyfilePost(sup)
 	if err != nil {
@@ -2087,16 +2058,16 @@ func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// verify we can perform a skyfile upload (note that we need this to trigger
-	// contracts being created, this issue only surfaces when commenting out all
-	// other skynet tets)
+	// verify basic skyfile upload
+	//
+	// NOTE: this ensure there's workers in the pool, if we remove this the test
+	// fails further down the line because there are no workers
 	_, _, err = r.SkynetSkyfilePost(modules.SkyfileUploadParameters{
 		SiaPath:             siaPath,
 		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: "testSkynetDryRun",
-			Mode:     0640,
-		},
+		Filename:            "testSkynetDryRun",
+		Mode:                0640,
+		Reader:              bytes.NewReader(fastrand.Bytes(100)),
 	})
 	if err != nil {
 		t.Fatal("Expected skynet upload to be successful, instead received err:", err)
@@ -2106,12 +2077,11 @@ func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 	_, _, err = r.SkynetSkyfilePost(modules.SkyfileUploadParameters{
 		SiaPath:             siaPath,
 		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: "testSkynetDryRun",
-			Mode:     0640,
-		},
-		Force:  true,
-		DryRun: true,
+		Reader:              bytes.NewReader(fastrand.Bytes(100)),
+		Filename:            "testSkynetDryRun",
+		Mode:                0640,
+		Force:               true,
+		DryRun:              true,
 	})
 	if err == nil {
 		t.Fatal("Expected failure when both 'force' and 'dryrun' parameter are given")
@@ -2128,9 +2098,9 @@ func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 		}
 
 		// verify the skylink can't be found after a dry run
-		status, _, _ := r.SkynetSkylinkHead(skylinkDry)
+		status, _, err := r.SkynetSkylinkHead(skylinkDry)
 		if status != http.StatusNotFound {
-			t.Fatal(fmt.Errorf("expected 404 not found when trying to fetch a skylink retrieved from a dry run, instead received status %d", status))
+			t.Fatal(fmt.Errorf("expected 404 not found when trying to fetch a skylink retrieved from a dry run, instead received status %d and err %v", status, err))
 		}
 
 		// verify the skfyile got deleted properly
@@ -2165,10 +2135,8 @@ func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 	verifyDryRun(modules.SkyfileUploadParameters{
 		SiaPath:             uploadSiaPath,
 		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: "testSkynetDryRunUploadSmall",
-			Mode:     0640,
-		},
+		Filename:            "testSkynetDryRunUploadSmall",
+		Mode:                0640,
 	}, 100)
 
 	// verify dry-run of large file
@@ -2179,10 +2147,8 @@ func testSkynetDryRunUpload(t *testing.T, tg *siatest.TestGroup) {
 	verifyDryRun(modules.SkyfileUploadParameters{
 		SiaPath:             uploadSiaPath,
 		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: "testSkynetDryRunUploadLarge",
-			Mode:     0640,
-		},
+		Filename:            "testSkynetDryRunUploadLarge",
+		Mode:                0640,
 	}, int(modules.SectorSize*2)+siatest.Fuzz())
 }
 
@@ -2296,6 +2262,8 @@ func testSkynetLargeMetadata(t *testing.T, tg *siatest.TestGroup) {
 	// Prepare a filename that's greater than a sector. That's the easiest way
 	// to force the metadata to be larger than a sector.
 	filename := hex.EncodeToString(fastrand.Bytes(int(modules.SectorSize + 1)))
+	filedata := fastrand.Bytes(int(100 + siatest.Fuzz()))
+	files := []siatest.TestFile{{Name: filename, Data: filedata}}
 
 	// Quick fuzz on the force value so that sometimes it is set, sometimes it
 	// is not.
@@ -2304,7 +2272,12 @@ func testSkynetLargeMetadata(t *testing.T, tg *siatest.TestGroup) {
 		force = true
 	}
 
-	_, _, _, err := r.UploadNewSkyfileBlocking(filename, uint64(100+siatest.Fuzz()), force)
+	// Upload the file
+	//
+	// Note that we use a multipart upload to avoid running into `file name too
+	// long`, returned by the file system. By using a multipart upload we really
+	// isolate the error returned after validating the metadata.
+	_, _, _, err := r.UploadNewMultipartSkyfileBlocking(t.Name(), files, "", false, force)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrMetadataTooBig.Error()) {
 		t.Fatal("Should fail due to ErrMetadataTooBig", err)
 	}
@@ -2468,7 +2441,7 @@ func testHasIndexInvalidDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 		{Name: "about.html", Data: []byte(fc2)},
 	}
 	_, _, _, err := r.UploadNewMultipartSkyfileBlocking(filename, files, invalidPath, false, false)
-	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidDefaultPath.Error()) {
+	if err == nil || !strings.Contains(err.Error(), modules.ErrInvalidDefaultPath.Error()) {
 		t.Fatalf("Expected error 'invalid default path provided', got '%+v'", err)
 	}
 }
@@ -2513,7 +2486,7 @@ func testNoIndexInvalidDefaultPath(t *testing.T, tg *siatest.TestGroup) {
 	}
 	filename := "index.js_invalid"
 	_, _, _, err := r.UploadNewMultipartSkyfileBlocking(filename, files, invalidPath, false, false)
-	if err == nil || !strings.Contains(err.Error(), api.ErrInvalidDefaultPath.Error()) {
+	if err == nil || !strings.Contains(err.Error(), modules.ErrInvalidDefaultPath.Error()) {
 		t.Fatalf("Expected error 'invalid default path provided', got '%+v'", err)
 	}
 }
@@ -2807,7 +2780,7 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 			files:                multiNoIndex,
 			defaultPath:          dirAbout,
 			expectedContent:      nil,
-			expectedErrStrUpload: "DefaultPath must point to a file in the root directory of the skyfile",
+			expectedErrStrUpload: "the default path must point to a file in the root directory of the skyfile",
 		},
 	}
 
@@ -2859,19 +2832,16 @@ func testSkynetDefaultPath_TableTest(t *testing.T, tg *siatest.TestGroup) {
 func testSkynetSingleFileNoSubfiles(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	skylink, sup, _, err := r.UploadNewSkyfileBlocking("testSkynetSingleFileNoSubfiles", modules.SectorSize, false)
+	skylink, _, _, err := r.UploadNewSkyfileBlocking("testSkynetSingleFileNoSubfiles", modules.SectorSize, false)
 	if err != nil {
 		t.Fatal("Failed to upload a single file.", err)
-	}
-	if sup.FileMetadata.Subfiles != nil {
-		t.Fatal("Expected empty subfiles on upload, got", sup.FileMetadata.Subfiles)
 	}
 	_, metadata, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if metadata.Subfiles != nil {
-		t.Fatal("Expected empty subfiles on download, got", sup.FileMetadata.Subfiles)
+		t.Fatal("Expected empty subfiles on download, got", metadata.Subfiles)
 	}
 }
 

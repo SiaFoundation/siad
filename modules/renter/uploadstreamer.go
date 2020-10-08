@@ -279,8 +279,8 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 				return nil, errors.AddContext(err, "unable to push chunk")
 			}
 			if !pushed {
-				// The chunk wasn't added to the repair map meaning it must have already
-				// been in the repair map
+				// The chunk wasn't added to the repair map meaning it must have
+				// already been in the repair map
 				_, _ = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
 				if err := ss.Close(); err != nil {
 					return nil, err

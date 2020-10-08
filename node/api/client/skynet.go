@@ -234,12 +234,12 @@ func (c *Client) SkynetSkylinkPinPostWithTimeout(skylink string, params modules.
 func (c *Client) SkynetSkyfilePost(params modules.SkyfileUploadParameters) (string, api.SkynetSkyfileHandlerPOST, error) {
 	// Set the url values.
 	values := url.Values{}
-	values.Set("filename", params.FileMetadata.Filename)
+	values.Set("filename", params.Filename)
 	dryRunStr := fmt.Sprintf("%t", params.DryRun)
 	values.Set("dryrun", dryRunStr)
 	forceStr := fmt.Sprintf("%t", params.Force)
 	values.Set("force", forceStr)
-	modeStr := fmt.Sprintf("%o", params.FileMetadata.Mode)
+	modeStr := fmt.Sprintf("%o", params.Mode)
 	values.Set("mode", modeStr)
 	redundancyStr := fmt.Sprintf("%v", params.BaseChunkRedundancy)
 	values.Set("basechunkredundancy", redundancyStr)
@@ -277,10 +277,10 @@ func (c *Client) SkynetSkyfilePost(params modules.SkyfileUploadParameters) (stri
 func (c *Client) SkynetSkyfilePostDisableForce(params modules.SkyfileUploadParameters, disableForce bool) (string, api.SkynetSkyfileHandlerPOST, error) {
 	// Set the url values.
 	values := url.Values{}
-	values.Set("filename", params.FileMetadata.Filename)
+	values.Set("filename", params.Filename)
 	forceStr := fmt.Sprintf("%t", params.Force)
 	values.Set("force", forceStr)
-	modeStr := fmt.Sprintf("%o", params.FileMetadata.Mode)
+	modeStr := fmt.Sprintf("%o", params.Mode)
 	values.Set("mode", modeStr)
 	redundancyStr := fmt.Sprintf("%v", params.BaseChunkRedundancy)
 	values.Set("basechunkredundancy", redundancyStr)
@@ -351,10 +351,10 @@ func (c *Client) SkynetSkyfileMultiPartPost(params modules.SkyfileMultipartUploa
 func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadParameters, convert modules.SiaPath) (api.SkynetSkyfileHandlerPOST, error) {
 	// Set the url values.
 	values := url.Values{}
-	values.Set("filename", lup.FileMetadata.Filename)
+	values.Set("filename", lup.Filename)
 	forceStr := fmt.Sprintf("%t", lup.Force)
 	values.Set("force", forceStr)
-	modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
+	modeStr := fmt.Sprintf("%o", lup.Mode)
 	values.Set("mode", modeStr)
 	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
 	values.Set("redundancy", redundancyStr)

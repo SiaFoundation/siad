@@ -64,66 +64,6 @@ func isMultipartRequest(mediaType string) bool {
 	return strings.HasPrefix(mediaType, "multipart/form-data")
 }
 
-// parseMultiPartRequest parses the given request and returns the subfiles found
-// in the multipart request body, alongside with an io.Reader containing all of
-// the files.
-func parseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, io.Reader, error) {
-	subfiles := make(modules.SkyfileSubfiles)
-
-	// Parse the multipart form
-	err := req.ParseMultipartForm(32 << 20) // 32MB max memory
-	if err != nil {
-		return subfiles, nil, errors.AddContext(err, "failed parsing multipart form")
-	}
-
-	// Parse out all of the multipart file headers
-	mpfHeaders := append(req.MultipartForm.File["file"], req.MultipartForm.File["files[]"]...)
-	if len(mpfHeaders) == 0 {
-		return subfiles, nil, errors.New("could not find multipart file")
-	}
-
-	// If there are multiple, treat the entire upload as one with all separate
-	// files being subfiles. This is used for uploading a directory to Skynet.
-	readers := make([]io.Reader, len(mpfHeaders))
-	var offset uint64
-	for i, fh := range mpfHeaders {
-		f, err := fh.Open()
-		if err != nil {
-			return subfiles, nil, errors.AddContext(err, "could not open multipart file")
-		}
-		readers[i] = f
-
-		// parse mode from multipart header
-		modeStr := fh.Header.Get("Mode")
-		var mode os.FileMode
-		if modeStr != "" {
-			_, err := fmt.Sscanf(modeStr, "%o", &mode)
-			if err != nil {
-				return subfiles, nil, errors.AddContext(err, "failed to parse file mode")
-			}
-		}
-
-		// parse filename from multipart
-		filename := fh.Filename
-		if filename == "" {
-			return subfiles, nil, errors.New("no filename provided")
-		}
-
-		// parse content type from multipart header
-		contentType := fh.Header.Get("Content-Type")
-		subfiles[fh.Filename] = modules.SkyfileSubfileMetadata{
-			FileMode:    mode,
-			Filename:    filename,
-			ContentType: contentType,
-			Offset:      offset,
-			Len:         uint64(fh.Size),
-		}
-		offset += uint64(fh.Size)
-	}
-
-	return subfiles, io.MultiReader(readers...), nil
-}
-
 // parseSkylinkURL splits a raw skylink URL into its components - a skylink, a
 // string representation of the skylink with the query parameters stripped, and
 // a path. The input skylink URL should not have been URL-decoded. The path is
@@ -210,6 +150,9 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 
 	// parse 'defaultpath' query parameter
 	defaultPath := queryForm.Get("defaultpath")
+	if defaultPath != "" {
+		defaultPath = modules.EnsurePrefix(defaultPath, "/")
+	}
 
 	// parse 'disabledefaultpath' query parameter
 	var disableDefaultPath bool
@@ -303,7 +246,12 @@ func parseUploadHeadersAndRequestParameters(req *http.Request, ps httprouter.Par
 
 	// verify disabledefaultpath and defaultpath are not combined
 	if disableDefaultPath && defaultPath != "" {
-		return nil, nil, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath and DisableDefaultPath are mutually exclusive and cannot be set together")
+		return nil, nil, errors.AddContext(modules.ErrInvalidDefaultPath, "DefaultPath and DisableDefaultPath are mutually exclusive and cannot be set together")
+	}
+
+	// verify default path params are not set if it's not a multipart upload
+	if !isMultipartRequest(mediaType) && (disableDefaultPath || defaultPath != "") {
+		return nil, nil, errors.New("DefaultPath and DisableDefaultPath can only be set on multipart uploads")
 	}
 
 	// verify convertpath and filename are not combined
@@ -359,8 +307,8 @@ func serveArchive(dst io.Writer, src io.ReadSeeker, md modules.SkyfileMetadata, 
 			if build.Release == "testing" {
 				build.Critical("SkyfileMetadata is missing length")
 			}
-			// Fetch the length of the file by seeking to the end and then back to
-			// the start.
+			// Fetch the length of the file by seeking to the end and then back
+			// to the start.
 			seekLen, err := src.Seek(0, io.SeekEnd)
 			if err != nil {
 				return errors.AddContext(err, "serveArchive: failed to seek to end of skyfile")
@@ -423,30 +371,4 @@ func serveZip(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetada
 		}
 	}
 	return zw.Close()
-}
-
-// validDefaultPath ensures the given default path makes sense in relation to
-// the subfiles being uploaded.
-func validDefaultPath(defaultPath string, subfiles modules.SkyfileSubfiles) (string, error) {
-	if defaultPath == "" {
-		return defaultPath, nil
-	}
-	defaultPath = modules.EnsurePrefix(defaultPath, "/")
-
-	// check if we have a subfile at the given default path.
-	subfile, found := subfiles[strings.TrimPrefix(defaultPath, "/")]
-	if !found {
-		return "", errors.AddContext(ErrInvalidDefaultPath, fmt.Sprintf("no such path: %s", defaultPath))
-	}
-
-	// ensure it's an HTML file.
-	if !subfile.IsHTML() {
-		return "", errors.AddContext(ErrInvalidDefaultPath, "DefaultPath must point to an HTML file")
-	}
-
-	// ensure it's at the root of the Skyfile
-	if strings.Count(defaultPath, "/") > 1 {
-		return "", errors.AddContext(ErrInvalidDefaultPath, "DefaultPath must point to a file in the root directory of the skyfile")
-	}
-	return defaultPath, nil
 }

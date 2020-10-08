@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -40,12 +39,6 @@ const (
 	// could cause a go-routine leak by creating a bunch of requests with very
 	// high timeouts.
 	MaxSkynetRequestTimeout = 15 * 60 // in seconds
-)
-
-var (
-	// ErrInvalidDefaultPath is returned when the specified default path is not
-	// valid, e.g. the file it points to does not exist.
-	ErrInvalidDefaultPath = errors.New("invalid default path provided")
 )
 
 type (
@@ -688,94 +681,42 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 
 	// build the upload parameters
-	lup := modules.SkyfileUploadParameters{
-		SiaPath:             params.siaPath,
+	sup := modules.SkyfileUploadParameters{
+		BaseChunkRedundancy: params.baseChunkRedundancy,
 		DryRun:              params.dryRun,
 		Force:               params.force,
-		BaseChunkRedundancy: params.baseChunkRedundancy,
+		SiaPath:             params.siaPath,
+
+		// Set filename and mode
+		Filename: params.filename,
+		Mode:     params.mode,
+
+		// Set the default path params
+		DefaultPath:        params.defaultPath,
+		DisableDefaultPath: params.disableDefaultPath,
+
+		// Set encryption key details
+		SkykeyName: params.skyKeyName,
+		SkykeyID:   params.skyKeyID,
 	}
 
-	// Build the Skyfile metadata from the request
+	// set the reader
 	if isMultipartRequest(headers.mediaType) {
-		subfiles, reader, err := parseMultiPartRequest(req)
+		mpr, err := req.MultipartReader()
 		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("failed parsing multipart request: %v", err)}, http.StatusBadRequest)
+			WriteError(w, Error{fmt.Sprintf("could not get multipart reader from request, error: %v", err)}, http.StatusBadRequest)
 			return
 		}
-		// Make sure temporary files created while parsing the multipart form
-		// are properly removed on error. The fact that they tend to linger
-		// unless explicitly removed is a known (open) issue:
-		// https://github.com/golang/go/issues/20253
-		defer func() {
-			if err := req.MultipartForm.RemoveAll(); err != nil {
-				log.Printf("failed to clean up multipart tmp file: %v", err)
-			}
-		}()
-
-		// Use the filename of the first subfile if it's not passed as query
-		// string parameter and there's only one subfile.
-		var filename = params.filename
-		if filename == "" && len(subfiles) == 1 {
-			for _, sf := range subfiles {
-				filename = sf.Filename
-				break
-			}
-		}
-
-		// Get the default path.
-		var defaultPath string
-		if !params.disableDefaultPath {
-			defaultPath, err = validDefaultPath(params.defaultPath, subfiles)
-			if err != nil {
-				WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-				return
-			}
-		}
-
-		lup.Reader = reader
-		lup.FileMetadata = modules.SkyfileMetadata{
-			Filename:           filename,
-			Subfiles:           subfiles,
-			DefaultPath:        defaultPath,
-			DisableDefaultPath: params.disableDefaultPath,
-		}
+		sup.SkyfileReader = modules.NewSkyfileMultipartReader(mpr, sup)
 	} else {
-		lup.Reader = req.Body
-		lup.FileMetadata = modules.SkyfileMetadata{
-			Mode:     params.mode,
-			Filename: params.filename,
-		}
+		sup.SkyfileReader = modules.NewSkyfileReader(req.Body, sup)
 	}
-
-	// Set encryption key details
-	lup.SkykeyName = params.skyKeyName
-	lup.SkykeyID = params.skyKeyID
 
 	// Check whether this is a streaming upload or a siafile conversion. If no
 	// convert path is provided, assume that the req.Body will be used as a
 	// streaming upload.
 	if params.convertPath == "" {
-		// Ensure we have a valid filename.
-		if err = modules.ValidatePathString(lup.FileMetadata.Filename, false); err != nil {
-			WriteError(w, Error{fmt.Sprintf("invalid filename provided: %v", err)}, http.StatusBadRequest)
-			return
-		}
-
-		// Check filenames of subfiles.
-		if lup.FileMetadata.Subfiles != nil {
-			for subfile, metadata := range lup.FileMetadata.Subfiles {
-				if subfile != metadata.Filename {
-					WriteError(w, Error{"subfile name did not match metadata filename"}, http.StatusBadRequest)
-					return
-				}
-				if err = modules.ValidatePathString(subfile, false); err != nil {
-					WriteError(w, Error{fmt.Sprintf("invalid filename provided: %v", err)}, http.StatusBadRequest)
-					return
-				}
-			}
-		}
-
-		skylink, err := api.renter.UploadSkyfile(lup)
+		skylink, err := api.renter.UploadSkyfile(sup)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to upload file to Skynet: %v", err)}, http.StatusBadRequest)
 			return
@@ -783,7 +724,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 		// Determine whether the file is large or not, and update the
 		// appropriate bucket.
-		file, err := api.renter.File(lup.SiaPath)
+		file, err := api.renter.File(sup.SiaPath)
 		if err == nil && file.Filesize <= 4e6 {
 			skynetPerformanceStatsMu.Lock()
 			skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime))
@@ -813,7 +754,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		WriteError(w, Error{"invalid convertpath provided - can't rebase: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	skylink, err := api.renter.CreateSkylinkFromSiafile(lup, convertPath)
+	skylink, err := api.renter.CreateSkylinkFromSiafile(sup, convertPath)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to convert siafile to skyfile: %v", err)}, http.StatusBadRequest)
 		return
