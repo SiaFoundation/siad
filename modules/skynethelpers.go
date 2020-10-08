@@ -149,6 +149,7 @@ func validateDefaultPath(defaultPath string, subfiles SkyfileSubfiles) (string, 
 	if defaultPath == "" {
 		return defaultPath, nil
 	}
+	defaultPath = EnsurePrefix(defaultPath, "/")
 
 	// check if we have a subfile at the given default path.
 	subfile, found := subfiles[strings.TrimPrefix(defaultPath, "/")]
