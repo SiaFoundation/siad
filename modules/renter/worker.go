@@ -80,6 +80,7 @@ type (
 		staticFetchBackupsJobQueue   fetchBackupsJobQueue
 		staticJobHasSectorQueue      *jobHasSectorQueue
 		staticJobReadQueue           *jobReadQueue
+		staticJobUpdateRegistryQueue *jobUpdateRegistryQueue
 		staticJobUploadSnapshotQueue *jobUploadSnapshotQueue
 
 		// Upload variables.

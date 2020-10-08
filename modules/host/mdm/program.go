@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -159,7 +160,13 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 	go func() {
 		defer cancel()
 		defer func() {
-			err = errors.Compose(err, program.staticData.Close())
+			err := program.staticData.Close()
+			if err != nil {
+				// This never returns an err != nila but we still want to
+				// satisfy the errcheck lint while also not missing a potential
+				// future error.
+				build.Critical(err)
+			}
 		}()
 		defer program.tg.Done()
 		defer close(program.outputChan)
