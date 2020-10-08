@@ -14,6 +14,11 @@ import (
 // TestUpdateRegistryJob tests the various cases of running an UpdateRegistry
 // job on a host.
 func TestUpdateRegistryJob(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
 	wt, err := newWorkerTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
