@@ -294,21 +294,35 @@ func testParseUploadRequestParameters(t *testing.T) {
 	}
 
 	// verify 'defaultpath'
-	req = buildRequest(url.Values{"defaultpath": []string{"/foo/bar.txt"}}, http.Header{})
+	req = buildRequest(url.Values{"defaultpath": []string{"/foo/bar.txt"}}, http.Header{"Content-Type": []string{"multipart/form-data; boundary=---------------------------9051914041544843365972754266"}})
 	_, params = parseRequest(req, defaultParams)
 	if params.defaultPath != "/foo/bar.txt" {
 		t.Fatal("Unexpected")
 	}
 
+	// verify 'defaultpath' - combo with a non-multipart request
+	req = buildRequest(url.Values{"defaultpath": []string{"/foo/bar.txt"}}, http.Header{"Content-Type": []string{"text/html"}})
+	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
+	if err == nil {
+		t.Fatal("Unexpected")
+	}
+
 	// verify 'disabledefaultpath'
-	req = buildRequest(url.Values{"disabledefaultpath": trueStr}, http.Header{})
+	req = buildRequest(url.Values{"disabledefaultpath": trueStr}, http.Header{"Content-Type": []string{"multipart/form-data; boundary=---------------------------9051914041544843365972754266"}})
 	_, params = parseRequest(req, defaultParams)
 	if !params.disableDefaultPath {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'disabledefaultpath' - combo with 'defaultpath'
-	req = buildRequest(url.Values{"defaultpath": []string{"/foo/bar.txt"}, "disabledefaultpath": trueStr}, http.Header{})
+	req = buildRequest(url.Values{"defaultpath": []string{"/foo/bar.txt"}, "disabledefaultpath": trueStr}, http.Header{"Content-Type": []string{"multipart/form-data; boundary=---------------------------9051914041544843365972754266"}})
+	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
+	if err == nil {
+		t.Fatal("Unexpected")
+	}
+
+	// verify 'disabledefaultpath' - combo with a non-multipart request
+	req = buildRequest(url.Values{"disabledefaultpath": trueStr}, http.Header{"Content-Type": []string{"text/html"}})
 	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
@@ -402,7 +416,4 @@ func testParseUploadRequestParameters(t *testing.T) {
 	if err == nil {
 		t.Fatal("Unexpected")
 	}
-
-	// TODO: verify filename validation
-	// TODO: verify disable defaultpath params only on multipart request
 }
