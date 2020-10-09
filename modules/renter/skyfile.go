@@ -627,9 +627,9 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration) (m
 	return r.managedDownloadSkylink(link, timeout)
 }
 
-// DownloadSkylinkRaw will take a link and turn it into the data of a download
-// without any decoding of the metadata, fanout, or decryption.
-func (r *Renter) DownloadSkylinkRaw(link modules.Skylink, timeout time.Duration) (modules.Streamer, error) {
+// DownloadSkylinkBaseSector will take a link and turn it into the data of
+// a basesector without any decoding of the metadata, fanout, or decryption.
+func (r *Renter) DownloadSkylinkBaseSector(link modules.Skylink, timeout time.Duration) (modules.Streamer, error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, err
 	}

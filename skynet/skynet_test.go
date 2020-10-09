@@ -10,6 +10,8 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// newTestSkyfileLayout is a helper that returns a SkyfileLayout with some
+// default settings for testing.
 func newTestSkyfileLayout() SkyfileLayout {
 	return SkyfileLayout{
 		Version:            SkyfileVersion,

@@ -75,7 +75,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "DefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
 		{Name: "SingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
 		{Name: "DownloadFormats", Test: testSkynetDownloadFormats},
-		{Name: "DownloadRaw", Test: testSkynetDownloadRaw},
+		{Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSector},
 	}
 
 	// Run tests
@@ -1366,13 +1366,12 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testSkynetDownloadRaw tests downloading a skylink with the Raw format
-// specified
-func testSkynetDownloadRaw(t *testing.T, tg *siatest.TestGroup) {
+// testSkynetDownloadBaseSector tests downloading a skylink's baseSector
+func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
 	// Upload a small skyfile
-	filename := "smallRawfile"
+	filename := "onlyBaseSector"
 	size := 100 + siatest.Fuzz()
 	smallFileData := fastrand.Bytes(size)
 	skylink, sup, _, err := r.UploadNewSkyfileWithDataBlocking(filename, smallFileData, false)
@@ -1380,15 +1379,15 @@ func testSkynetDownloadRaw(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// Download the skylink with the raw format specified
-	_, skyfileReader, err := r.SkynetSkylinkRawReaderGet(skylink)
+	// Download the BaseSector reader
+	baseSectorReader, err := r.SkynetBaseSectorGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Read the baseSector
 	baseSector := make([]byte, modules.SectorSize)
-	_, err = skyfileReader.Read(baseSector)
+	_, err = baseSectorReader.Read(baseSector)
 	if err != nil {
 		t.Fatal(err)
 	}

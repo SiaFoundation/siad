@@ -152,6 +152,7 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/renter/workers", api.renterWorkersHandler)
 
 		// Skynet endpoints
+		router.GET("/skynet/basesector/*skylink", api.skynetBaseSectorHandlerGET)
 		router.GET("/skynet/blocklist", api.skynetBlocklistHandlerGET)
 		router.POST("/skynet/blocklist", RequirePassword(api.skynetBlocklistHandlerPOST, requiredPassword))
 		router.POST("/skynet/pin/:skylink", RequirePassword(api.skynetSkylinkPinHandlerPOST, requiredPassword))
