@@ -958,7 +958,7 @@ func testLocalRepair(t *testing.T, tg *siatest.TestGroup) {
 		}
 		var found bool
 		for _, alert := range dag.Alerts {
-			expectedCause := fmt.Sprintf("Siafile 'home/user/%v' has a health of %v", remoteFile.SiaPath().String(), f.MaxHealth)
+			expectedCause := fmt.Sprintf("Siafile 'home/user/%v' has a health of %v and redundancy of %v", remoteFile.SiaPath().String(), f.MaxHealth, f.Redundancy)
 			if alert.Msg == renter.AlertMSGSiafileLowRedundancy &&
 				alert.Cause == expectedCause {
 				found = true
@@ -2549,7 +2549,7 @@ func TestRenterLosingHosts(t *testing.T) {
 	// Add renter to the group
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
 	renterParams.Allowance = siatest.DefaultAllowance
-	renterParams.Allowance.Hosts = 3
+	renterParams.Allowance.Hosts = 3 // hosts-1
 	nodes, err := tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal("Failed to add renter:", err)
@@ -2563,9 +2563,6 @@ func TestRenterLosingHosts(t *testing.T) {
 	}
 	contractHosts := make(map[string]struct{})
 	for _, c := range rc.ActiveContracts {
-		if _, ok := contractHosts[c.HostPublicKey.String()]; ok {
-			continue
-		}
 		contractHosts[c.HostPublicKey.String()] = struct{}{}
 	}
 
@@ -2609,7 +2606,7 @@ func TestRenterLosingHosts(t *testing.T) {
 	// Wait for contract to be replaced
 	loop := 0
 	m := tg.Miners()[0]
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		if loop%10 == 0 {
 			if err := m.MineBlock(); err != nil {
 				return err
@@ -2620,8 +2617,9 @@ func TestRenterLosingHosts(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if len(rc.ActiveContracts) != int(renterParams.Allowance.Hosts) {
-			return fmt.Errorf("Expected %v contracts but got %v", int(renterParams.Allowance.Hosts), len(rc.ActiveContracts))
+		err = siatest.CheckExpectedNumberOfContracts(r, int(renterParams.Allowance.Hosts), 0, 0, 1, 0, 0)
+		if err != nil {
+			return err
 		}
 		for _, c := range rc.ActiveContracts {
 			if _, ok := contractHosts[c.HostPublicKey.String()]; !ok {
@@ -2640,7 +2638,7 @@ func TestRenterLosingHosts(t *testing.T) {
 
 	// Since there is another host, another contract should form and the
 	// redundancy should stay at 1.5
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(100, 200*time.Millisecond, func() error {
 		file, err := r.RenterFileGet(rf.SiaPath())
 		if err != nil {
 			return err
@@ -3921,7 +3919,7 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 	}
 	f := rfg.Files[0]
 	// Set stuck to the opposite value it had before.
-	if err := r.RenterSetFileStuckPost(f.SiaPath, !f.Stuck); err != nil {
+	if err := r.RenterSetFileStuckPost(f.SiaPath, false, !f.Stuck); err != nil {
 		t.Fatal(err)
 	}
 	// Check if it was set correctly.
@@ -3933,7 +3931,7 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatalf("Stuck field should be %v but was %v", !f.Stuck, fi.File.Stuck)
 	}
 	// Set stuck to the original value.
-	if err := r.RenterSetFileStuckPost(f.SiaPath, f.Stuck); err != nil {
+	if err := r.RenterSetFileStuckPost(f.SiaPath, false, f.Stuck); err != nil {
 		t.Fatal(err)
 	}
 	// Check if it was set correctly.
@@ -3943,6 +3941,22 @@ func testSetFileStuck(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if fi.File.Stuck != f.Stuck {
 		t.Fatalf("Stuck field should be %v but was %v", f.Stuck, fi.File.Stuck)
+	}
+	// Set stuck back once more using the root flag.
+	rebased, err := f.SiaPath.Rebase(modules.RootSiaPath(), modules.UserFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.RenterSetFileStuckPost(rebased, true, !f.Stuck); err != nil {
+		t.Fatal(err)
+	}
+	// Check if it was set correctly.
+	fi, err = r.RenterFileGet(f.SiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.File.Stuck == f.Stuck {
+		t.Fatalf("Stuck field should be %v but was %v", !f.Stuck, fi.File.Stuck)
 	}
 }
 

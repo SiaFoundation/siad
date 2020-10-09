@@ -1,0 +1,1 @@
+- Rename `skynetblacklist` to `skynetblocklist`

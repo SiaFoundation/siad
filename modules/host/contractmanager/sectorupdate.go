@@ -1,13 +1,13 @@
 package contractmanager
 
 import (
-	"errors"
 	"sync"
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // commitUpdateSector will commit a sector update to the contract manager,
@@ -403,7 +403,7 @@ func (cm *ContractManager) AddSector(root crypto.Hash, sectorData []byte) error 
 	} else {
 		err = cm.wal.managedAddPhysicalSector(id, sectorData, 1)
 	}
-	if err == errDiskTrouble {
+	if errors.Contains(err, errDiskTrouble) {
 		cm.staticAlerter.RegisterAlert(modules.AlertIDHostDiskTrouble, AlertMSGHostDiskTrouble, "", modules.SeverityCritical)
 	}
 	if err != nil {

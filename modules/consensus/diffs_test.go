@@ -61,9 +61,9 @@ func TestCommitNodeDiffs(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-  if err := cst.Close(); err != nil {
-  t.Fatal(err)
- }
+  	if err := cst.Close(); err != nil {
+  		t.Fatal(err)
+ 	}
 }()
 	pb := cst.cs.dbCurrentProcessedBlock()
 	_ = cst.cs.db.Update(func(tx *bolt.Tx) error {
@@ -179,9 +179,9 @@ func TestCommitSiacoinOutputDiff(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() {
-  if err := cst.Close(); err != nil {
-  t.Fatal(err)
- }
+  	if err := cst.Close(); err != nil {
+  		t.Fatal(err)
+ 	}
 }()
 
 	// Commit a siacoin output diff.

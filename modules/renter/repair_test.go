@@ -518,6 +518,36 @@ func TestOldestHealthCheckTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Now update the root directory to have an older AggregateLastHealthCheckTime
+	// than the sub directory but a more recent LastHealthCheckTime. This will
+	// simulate a shutdown before all the pending bubbles could finish.
+	entry, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootTime := now.AddDate(0, 0, -3)
+	err = entry.UpdateLastHealthCheckTime(rootTime, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = entry.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A call to managedOldestHealthCheckTime should still return the same
+	// subDir1_2
+	dir, lastCheck, err := rt.renter.managedOldestHealthCheckTime()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dir.Equals(subDir1_2) {
+		t.Error(fmt.Errorf("Expected to find %v but found %v", subDir1_2.String(), dir.String()))
+	}
+	if !lastCheck.Equal(oldestCheckTime) {
+		t.Error(fmt.Errorf("Expected to find time of %v but found %v", oldestCheckTime, lastCheck))
+	}
 }
 
 // TestNumFiles verifies that the number of files and aggregate number of files
@@ -1346,7 +1376,7 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 
 	// call managedAddStuckChunksToHeap, no chunks should be added
 	err = rt.renter.managedAddStuckChunksToHeap(up.SiaPath, hosts, offline, goodForRenew)
-	if err != errNoStuckChunks {
+	if !errors.Contains(err, errNoStuckChunks) {
 		t.Fatal(err)
 	}
 	if rt.renter.uploadHeap.managedLen() != 0 {

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -229,7 +230,7 @@ func TestTransactionValidCoveredFields(t *testing.T) {
 	// is set.
 	txn.TransactionSignatures[0].CoveredFields.SiacoinOutputs = []uint64{0}
 	err = txn.validCoveredFields()
-	if err != ErrWholeTransactionViolation {
+	if !errors.Contains(err, ErrWholeTransactionViolation) {
 		t.Error("Expecting ErrWholeTransactionViolation, got", err)
 	}
 
@@ -237,14 +238,14 @@ func TestTransactionValidCoveredFields(t *testing.T) {
 	txn.TransactionSignatures[0].CoveredFields.SiacoinOutputs = nil
 	txn.TransactionSignatures[0].CoveredFields.TransactionSignatures = []uint64{1, 2}
 	err = txn.validCoveredFields()
-	if err != ErrSortedUniqueViolation {
+	if !errors.Contains(err, ErrSortedUniqueViolation) {
 		t.Error("Expecting ErrSortedUniqueViolation, got", err)
 	}
 
 	// Clear the CoveredFields completely.
 	txn.TransactionSignatures[0].CoveredFields = CoveredFields{}
 	err = txn.validCoveredFields()
-	if err != ErrWholeTransactionViolation {
+	if !errors.Contains(err, ErrWholeTransactionViolation) {
 		t.Error("Expecting ErrWholeTransactionViolation, got", err)
 	}
 }
@@ -364,7 +365,7 @@ func TestTransactionValidSignatures(t *testing.T) {
 	// Add a frivolous signature
 	txn.TransactionSignatures = append(txn.TransactionSignatures, TransactionSignature{CoveredFields: CoveredFields{WholeTransaction: true}})
 	err = txn.validSignatures(10)
-	if err != ErrFrivolousSignature {
+	if !errors.Contains(err, ErrFrivolousSignature) {
 		t.Error(err)
 	}
 	txn.TransactionSignatures = txn.TransactionSignatures[:len(txn.TransactionSignatures)-1]
@@ -375,21 +376,21 @@ func TestTransactionValidSignatures(t *testing.T) {
 	tmpTxn0 := txn.TransactionSignatures[0]
 	txn.TransactionSignatures[0] = TransactionSignature{PublicKeyIndex: 1, CoveredFields: CoveredFields{WholeTransaction: true}}
 	err = txn.validSignatures(10)
-	if err != ErrPublicKeyOveruse {
+	if !errors.Contains(err, ErrPublicKeyOveruse) {
 		t.Error(err)
 	}
 	txn.TransactionSignatures[0] = tmpTxn0
 
 	// Fail the timelock check for signatures.
 	err = txn.validSignatures(4)
-	if err != ErrPrematureSignature {
+	if !errors.Contains(err, ErrPrematureSignature) {
 		t.Error(err)
 	}
 
 	// Try to spend an entropy signature.
 	txn.TransactionSignatures[0] = TransactionSignature{PublicKeyIndex: 2, CoveredFields: CoveredFields{WholeTransaction: true}}
 	err = txn.validSignatures(10)
-	if err != ErrEntropyKey {
+	if !errors.Contains(err, ErrEntropyKey) {
 		t.Error(err)
 	}
 	txn.TransactionSignatures[0] = tmpTxn0
@@ -397,7 +398,7 @@ func TestTransactionValidSignatures(t *testing.T) {
 	// Try to point to a nonexistent public key.
 	txn.TransactionSignatures[0] = TransactionSignature{PublicKeyIndex: 5, CoveredFields: CoveredFields{WholeTransaction: true}}
 	err = txn.validSignatures(10)
-	if err != ErrInvalidPubKeyIndex {
+	if !errors.Contains(err, ErrInvalidPubKeyIndex) {
 		t.Error(err)
 	}
 	txn.TransactionSignatures[0] = tmpTxn0
@@ -422,7 +423,7 @@ func TestTransactionValidSignatures(t *testing.T) {
 	// available.
 	txn.TransactionSignatures = txn.TransactionSignatures[1:]
 	err = txn.validSignatures(10)
-	if err != ErrMissingSignatures {
+	if !errors.Contains(err, ErrMissingSignatures) {
 		t.Error(err)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -125,7 +126,7 @@ func TestIntegrationManyHeaders(t *testing.T) {
 	// Submit the headers randomly and make sure they are all considered valid.
 	for _, selection := range fastrand.Perm(len(solvedHeaders)) {
 		err = mt.miner.SubmitHeader(solvedHeaders[selection])
-		if err != nil && err != modules.ErrNonExtendingBlock {
+		if err != nil && !errors.Contains(err, modules.ErrNonExtendingBlock) {
 			t.Error(err)
 		}
 	}
@@ -164,7 +165,7 @@ func TestIntegrationHeaderBlockOverflow(t *testing.T) {
 
 	// Previous header should no longer be in memory.
 	err = mt.miner.SubmitHeader(header)
-	if err != errLateHeader {
+	if !errors.Contains(err, errLateHeader) {
 		t.Error(err)
 	}
 }
@@ -204,7 +205,7 @@ func TestIntegrationHeaderRequestOverflow(t *testing.T) {
 
 	// Header should still be in memory.
 	err = mt.miner.SubmitHeader(header)
-	if err != modules.ErrNonExtendingBlock {
+	if !errors.Contains(err, modules.ErrNonExtendingBlock) {
 		t.Error(err)
 	}
 
@@ -217,7 +218,7 @@ func TestIntegrationHeaderRequestOverflow(t *testing.T) {
 	}
 
 	err = mt.miner.SubmitHeader(header)
-	if err != errLateHeader {
+	if !errors.Contains(err, errLateHeader) {
 		t.Error(err)
 	}
 }

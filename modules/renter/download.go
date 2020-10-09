@@ -239,14 +239,16 @@ func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters, f func(error)
 // managedDownload performs a file download using the passed parameters and
 // returns the download object and an error that indicates if the download
 // setup was successful.
-func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download, error) {
+func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (_ *download, err error) {
 	// Lookup the file associated with the nickname.
 	entry, err := r.staticFileSystem.OpenSiaFile(p.SiaPath)
 	if err != nil {
 		return nil, err
 	}
-	defer entry.Close()
-	defer entry.UpdateAccessTime()
+	defer func() {
+		err = errors.Compose(err, entry.UpdateAccessTime())
+		err = errors.Compose(err, entry.Close())
+	}()
 
 	// Validate download parameters.
 	isHTTPResp := p.Httpwriter != nil

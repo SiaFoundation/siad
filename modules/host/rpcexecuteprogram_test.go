@@ -47,7 +47,11 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rhp.Close()
+	defer func() {
+		if err := rhp.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// prefund the EA
 	his := rhp.staticHT.host.managedInternalSettings()
@@ -58,7 +62,11 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 
 	// create stream
 	stream := rhp.managedNewStream()
-	defer stream.Close()
+	defer func() {
+		if err := stream.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// create a random sector
 	sectorRoot, _, err := addRandomSector(rhp)
@@ -766,7 +774,7 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	badRevision := deepCopy(validRevision)
 	badRevision.NewMissedProofOutputs = badOutputs
 	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
-	if err != ErrBadContractOutputCounts {
+	if !errors.Contains(err, ErrBadContractOutputCounts) {
 		t.Fatalf("Expected ErrBadContractOutputCounts but received '%v'", err)
 	}
 
@@ -775,7 +783,7 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	badRevision = deepCopy(validRevision)
 	badRevision.NewMissedProofOutputs = badOutputs
 	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
-	if err != ErrBadContractOutputCounts {
+	if !errors.Contains(err, ErrBadContractOutputCounts) {
 		t.Fatalf("Expected ErrBadContractOutputCounts but received '%v'", err)
 	}
 
@@ -783,7 +791,7 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	badCurr := deepCopy(curr)
 	badCurr.NewWindowStart = curr.NewWindowStart - 1
 	err = verifyExecuteProgramRevision(badCurr, validRevision, height, transferred, newFileSize, newRoot)
-	if err != ErrLateRevision {
+	if !errors.Contains(err, ErrLateRevision) {
 		t.Fatalf("Expected ErrLateRevision but received '%v'", err)
 	}
 
@@ -808,7 +816,7 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	badRevision = deepCopy(validRevision)
 	badRevision.NewMissedProofOutputs[2].UnlockHash = types.UnlockHash(hash)
 	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
-	if err != ErrVoidAddressChanged {
+	if !errors.Contains(err, ErrVoidAddressChanged) {
 		t.Fatalf("Expected lost collaterall error but received '%v'", err)
 	}
 
@@ -816,7 +824,7 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	badRevision = deepCopy(validRevision)
 	badRevision.NewValidProofOutputs[0].Value = badRevision.NewValidProofOutputs[0].Value.Add64(1)
 	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
-	if err != ErrValidRenterPayoutChanged {
+	if !errors.Contains(err, ErrValidRenterPayoutChanged) {
 		t.Fatalf("Expected ErrValidRenterPayoutChanged error but received '%v'", err)
 	}
 
@@ -824,7 +832,7 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	badRevision = deepCopy(validRevision)
 	badRevision.NewMissedProofOutputs[0].Value = badRevision.NewMissedProofOutputs[0].Value.Add64(1)
 	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
-	if err != ErrMissedRenterPayoutChanged {
+	if !errors.Contains(err, ErrMissedRenterPayoutChanged) {
 		t.Fatalf("Expected ErrMissedRenterPayoutChanged error but received '%v'", err)
 	}
 
@@ -871,7 +879,7 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	badRevision.NewMissedProofOutputs = badOutputs
 	badRevision.NewRevisionNumber--
 	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
-	if err != ErrBadRevisionNumber {
+	if !errors.Contains(err, ErrBadRevisionNumber) {
 		t.Fatalf("Expected ErrBadRevisionNumber but received '%v'", err)
 	}
 
@@ -879,7 +887,7 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	badRevision = deepCopy(validRevision)
 	badRevision.ParentID = types.FileContractID(hash)
 	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
-	if err != ErrBadParentID {
+	if !errors.Contains(err, ErrBadParentID) {
 		t.Fatalf("Expected ErrBadParentID but received '%v'", err)
 	}
 
@@ -887,7 +895,7 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	badRevision = deepCopy(validRevision)
 	badRevision.UnlockConditions.Timelock = validRevision.UnlockConditions.Timelock + 1
 	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
-	if err != ErrBadUnlockConditions {
+	if !errors.Contains(err, ErrBadUnlockConditions) {
 		t.Fatalf("Expected ErrBadUnlockConditions but received '%v'", err)
 	}
 
@@ -895,7 +903,7 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	badRevision = deepCopy(validRevision)
 	badRevision.NewFileSize = validRevision.NewFileSize + 1
 	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
-	if err != ErrBadFileSize {
+	if !errors.Contains(err, ErrBadFileSize) {
 		t.Fatalf("Expected ErrBadFileSize but received '%v'", err)
 	}
 
@@ -903,7 +911,7 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	badRevision = deepCopy(validRevision)
 	badRevision.NewFileMerkleRoot = hash
 	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
-	if err != ErrBadFileMerkleRoot {
+	if !errors.Contains(err, ErrBadFileMerkleRoot) {
 		t.Fatalf("Expected ErrBadFileMerkleRoot but received '%v'", err)
 	}
 
@@ -911,7 +919,7 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	badRevision = deepCopy(validRevision)
 	badRevision.NewWindowStart = curr.NewWindowStart + 1
 	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
-	if err != ErrBadWindowStart {
+	if !errors.Contains(err, ErrBadWindowStart) {
 		t.Fatalf("Expected ErrBadWindowStart but received '%v'", err)
 	}
 
@@ -919,7 +927,7 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	badRevision = deepCopy(validRevision)
 	badRevision.NewWindowEnd = curr.NewWindowEnd - 1
 	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
-	if err != ErrBadWindowEnd {
+	if !errors.Contains(err, ErrBadWindowEnd) {
 		t.Fatalf("Expected ErrBadWindowEnd but received '%v'", err)
 	}
 
@@ -927,7 +935,7 @@ func TestVerifyExecuteProgramRevision(t *testing.T) {
 	badRevision = deepCopy(validRevision)
 	badRevision.NewUnlockHash = types.UnlockHash(hash)
 	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
-	if err != ErrBadUnlockHash {
+	if !errors.Contains(err, ErrBadUnlockHash) {
 		t.Fatalf("Expected ErrBadUnlockHash but received '%v'", err)
 	}
 }
@@ -1094,6 +1102,103 @@ func TestExecuteAppendProgram(t *testing.T) {
 
 	// verify the EA balance
 	expectedBalance = expectedBalance.Sub(cost)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestExecuteHasSectorProgramBatching tests the managedRPCExecuteProgram with a
+// valid 'HasSector' program containing multiple HasSector instructions.
+func TestExecuteHasSectorProgramBatching(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a blank host tester
+	rhp, err := newRenterHostPair(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := rhp.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+	ht := rhp.staticHT
+
+	// Add a sector to the host but not the storage obligation or contract. This
+	// instruction should also work for foreign sectors.
+	sectorData := fastrand.Bytes(int(modules.SectorSize))
+	sectorRoot := crypto.MerkleRoot(sectorData)
+	err = ht.host.AddSector(sectorRoot, sectorData)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create the 'HasSector' program.
+	pt := rhp.managedPriceTable()
+	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since HasSector doesn't depend on duration.
+	for i := 0; i < 10; i++ {
+		pb.AddHasSectorInstruction(sectorRoot)
+	}
+	program, data := pb.Program()
+	programCost, _, _ := pb.Cost(true)
+
+	// Prepare the request.
+	epr := modules.RPCExecuteProgramRequest{
+		FileContractID:    rhp.staticFCID,
+		Program:           program,
+		ProgramDataLength: uint64(len(data)),
+	}
+
+	// Fund an account with the max balance.
+	maxBalance := rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance
+	fundingAmt := maxBalance.Add(pt.FundAccountCost)
+	_, err = rhp.managedFundEphemeralAccount(fundingAmt, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compute expected bandwidth cost. These hardcoded values were chosen after
+	// running this test with a high budget and measuring the used bandwidth for
+	// this particular program on the "renter" side. This way we can test that
+	// the bandwidth measured by the renter is large enough to be accepted by
+	// the host.
+	expectedDownload := uint64(1460) // download
+	expectedUpload := uint64(1460)   // upload
+	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
+	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
+	bandwidthCost := downloadCost.Add(uploadCost)
+
+	// Execute program.
+	cost := programCost.Add(bandwidthCost)
+	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Log the bandwidth used by this RPC.
+	t.Logf("Used bandwidth (valid has sector program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+	// There should only be a single response.
+	if len(resps) != 10 {
+		t.Fatalf("expected 10 responses but got %v", len(resps))
+	}
+
+	// Check response.
+	for _, resp := range resps {
+		if resp.Error != nil {
+			t.Fatal(resp.Error)
+		}
+		if resp.Output[0] != 1 {
+			t.Fatalf("wrong Output %v != %v", resp.Output[0], []byte{1})
+		}
+	}
+
+	// Make sure the right amount of money remains on the EA.
+	am := rhp.staticHT.host.staticAccountManager
+	expectedBalance := maxBalance.Sub(cost)
 	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
 	if err != nil {
 		t.Fatal(err)

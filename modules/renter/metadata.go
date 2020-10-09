@@ -146,12 +146,12 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			uid := string(fileMetadata.UID)
 			if maxHealth := math.Max(fileMetadata.Health, fileMetadata.StuckHealth); maxHealth >= AlertSiafileLowRedundancyThreshold {
 				r.staticAlerter.RegisterAlert(modules.AlertIDSiafileLowRedundancy(uid), AlertMSGSiafileLowRedundancy,
-					AlertCauseSiafileLowRedundancy(fileSiaPath, maxHealth),
+					AlertCauseSiafileLowRedundancy(fileSiaPath, maxHealth, fileMetadata.Redundancy),
 					modules.SeverityWarning)
 				// Log a severe warning only if we are in production, otherwise it will
 				// panic and crash the node
 				if build.Release == "standard" {
-					r.log.Severe(AlertCauseSiafileLowRedundancy(fileSiaPath, maxHealth))
+					r.log.Severe(AlertCauseSiafileLowRedundancy(fileSiaPath, maxHealth, fileMetadata.Redundancy))
 				}
 			} else {
 				r.staticAlerter.UnregisterAlert(modules.AlertIDSiafileLowRedundancy(uid))
@@ -430,8 +430,8 @@ func (r *Renter) managedUpdateLastHealthCheckTime(siaPath modules.SiaPath) error
 	if err != nil {
 		return err
 	}
-	defer entry.Close()
-	return entry.UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, time.Now())
+	err = entry.UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, time.Now())
+	return errors.Compose(err, entry.Close())
 }
 
 // callThreadedBubbleMetadata is the thread safe method used to call

@@ -40,7 +40,7 @@ func (api *API) buildHTTPRoutes() {
 	router.GET("/daemon/stack", api.daemonStackHandlerGET)
 	router.POST("/daemon/startprofile", api.daemonStartProfileHandlerPOST)
 	router.GET("/daemon/stop", RequirePassword(api.daemonStopHandler, requiredPassword))
-	router.GET("/daemon/stopprofile", api.daemonStopProfileHandlerGET)
+	router.POST("/daemon/stopprofile", api.daemonStopProfileHandlerPOST)
 	router.GET("/daemon/update", api.daemonUpdateHandlerGET)
 	router.POST("/daemon/update", api.daemonUpdateHandlerPOST)
 	router.GET("/daemon/version", api.daemonVersionHandler)
@@ -152,8 +152,8 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/renter/workers", api.renterWorkersHandler)
 
 		// Skynet endpoints
-		router.GET("/skynet/blacklist", api.skynetBlacklistHandlerGET)
-		router.POST("/skynet/blacklist", RequirePassword(api.skynetBlacklistHandlerPOST, requiredPassword))
+		router.GET("/skynet/blocklist", api.skynetBlocklistHandlerGET)
+		router.POST("/skynet/blocklist", RequirePassword(api.skynetBlocklistHandlerPOST, requiredPassword))
 		router.POST("/skynet/pin/:skylink", RequirePassword(api.skynetSkylinkPinHandlerPOST, requiredPassword))
 		router.GET("/skynet/portals", api.skynetPortalsHandlerGET)
 		router.POST("/skynet/portals", RequirePassword(api.skynetPortalsHandlerPOST, requiredPassword))
@@ -185,6 +185,8 @@ func (api *API) buildHTTPRoutes() {
 		// Deprecated endpoints.
 		router.POST("/renter/backup", RequirePassword(api.renterBackupHandlerPOST, requiredPassword))
 		router.POST("/renter/recoverbackup", RequirePassword(api.renterLoadBackupHandlerPOST, requiredPassword))
+		router.GET("/skynet/blacklist", api.skynetBlocklistHandlerGET)
+		router.POST("/skynet/blacklist", RequirePassword(api.skynetBlocklistHandlerPOST, requiredPassword))
 	}
 
 	// Transaction pool API Calls

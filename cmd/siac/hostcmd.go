@@ -65,7 +65,10 @@ Available settings:
 
      ephemeralaccountexpiry:     seconds
      maxephemeralaccountbalance: currency
-     maxephemeralaccountrisk:    currency
+	 maxephemeralaccountrisk:    currency
+	 
+	 registrysize:       filesize
+	 customregistrypath: string
 
 Currency units can be specified, e.g. 10SC; run 'siac help wallet' for details.
 
@@ -232,6 +235,9 @@ Host Internal Settings:
 	maxephemeralaccountbalance: %v
 	maxephemeralaccountrisk:    %v
 
+	registrysize:       %v
+	customregistrypath: %v
+
 Host Financials:
 	Contract Count:               %v
 	Transaction Fee Compensation: %v
@@ -283,6 +289,8 @@ RPC Stats:
 			is.EphemeralAccountExpiry.Seconds(),
 			currencyUnits(is.MaxEphemeralAccountBalance),
 			currencyUnits(is.MaxEphemeralAccountRisk),
+			modules.FilesizeUnits(is.RegistrySize),
+			is.CustomRegistryPath,
 
 			fm.ContractCount, currencyUnits(fm.ContractCompensation),
 			currencyUnits(fm.PotentialContractCompensation),
@@ -406,6 +414,13 @@ func hostconfigcmd(param, value string) {
 			die("Could not parse "+param+":", err)
 		}
 
+	// filesize (convert to bytes)
+	case "registrysize":
+		value, err = parseFilesize(value)
+		if err != nil {
+			die("Could not parse "+param+":", err)
+		}
+
 	// timeout (convert to seconds)
 	case "ephemeralaccountexpiry":
 		value, err = parseTimeout(value)
@@ -414,7 +429,7 @@ func hostconfigcmd(param, value string) {
 		}
 
 	// other valid settings
-	case "maxdownloadbatchsize", "maxrevisebatchsize", "netaddress":
+	case "maxdownloadbatchsize", "maxrevisebatchsize", "netaddress", "customregistrypath":
 
 	// invalid settings
 	default:

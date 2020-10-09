@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -9,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -219,7 +219,7 @@ func TestRandomOutboundPeer(t *testing.T) {
 	defer g.mu.Unlock()
 
 	_, err := g.randomOutboundPeer()
-	if err != errNoPeers {
+	if !errors.Contains(err, errNoPeers) {
 		t.Fatal("expected errNoPeers, got", err)
 	}
 
@@ -259,7 +259,7 @@ func TestListen(t *testing.T) {
 	}
 	addr := modules.NetAddress(conn.LocalAddr().String())
 	ack, err := connectVersionHandshake(conn, "0.1")
-	if err != errPeerRejectedConn {
+	if !errors.Contains(err, errPeerRejectedConn) {
 		t.Fatal(err)
 	}
 	if ack != "" {
@@ -383,7 +383,11 @@ func TestConnect(t *testing.T) {
 	t.Parallel()
 	// create bootstrap peer
 	bootstrap := newNamedTestingGateway(t, "1")
-	defer bootstrap.Close()
+	defer func() {
+		if err := bootstrap.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// give it a node
 	bootstrap.mu.Lock()
@@ -622,7 +626,11 @@ func TestConnectRejectsVersions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() {
+		if err := listener.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	tests := []struct {
 		version             string

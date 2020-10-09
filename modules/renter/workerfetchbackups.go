@@ -164,7 +164,11 @@ func (w *worker) managedPerformFetchBackupsJob() {
 		resultChan <- result
 		return
 	}
-	defer session.Close()
+	defer func() {
+		if err := session.Close(); err != nil {
+			w.renter.log.Print("managedPerformFetchBackups: failed to close session", err)
+		}
+	}()
 
 	// Check for price gouging before completing the job.
 	allowance := w.renter.hostContractor.Allowance()

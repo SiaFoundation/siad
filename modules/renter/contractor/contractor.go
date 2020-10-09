@@ -512,7 +512,7 @@ func contractorAsyncStartup(c *Contractor, cs modules.ConsensusSet) error {
 		return nil
 	}
 	err := cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
-	if err == modules.ErrInvalidConsensusChangeID {
+	if errors.Contains(err, modules.ErrInvalidConsensusChangeID) {
 		// Reset the contractor consensus variables and try rescanning.
 		c.blockHeight = 0
 		c.lastChange = modules.ConsensusChangeBeginning

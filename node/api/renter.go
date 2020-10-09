@@ -265,7 +265,7 @@ func isCalledWithRootFlag(req *http.Request) (bool, error) {
 }
 
 // rebaseInputSiaPath rebases the SiaPath provided by the user to one that is
-// prefix by the user's home directory.
+// prefixed by the user's home directory.
 func rebaseInputSiaPath(siaPath modules.SiaPath) (modules.SiaPath, error) {
 	// Prepend the provided siapath with the /home/siafiles dir.
 	if siaPath.IsRoot() {
@@ -1439,15 +1439,22 @@ func (api *API) renterFileHandlerGET(w http.ResponseWriter, req *http.Request, p
 func (api *API) renterFileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 	newTrackingPath := req.FormValue("trackingpath")
 	stuck := req.FormValue("stuck")
+	root, err := scanBool(req.FormValue("root"))
+	if err != nil {
+		WriteError(w, Error{"unable to parse root flag: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
 	siaPath, err := modules.NewSiaPath(ps.ByName("siapath"))
 	if err != nil {
 		WriteError(w, Error{"unable to parse siapath: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	siaPath, err = rebaseInputSiaPath(siaPath)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-		return
+	if !root {
+		siaPath, err = rebaseInputSiaPath(siaPath)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
+		}
 	}
 	// Handle changing the tracking path of a file.
 	if newTrackingPath != "" {
@@ -1817,7 +1824,9 @@ func (api *API) renterStreamHandler(w http.ResponseWriter, req *http.Request, ps
 			http.StatusInternalServerError)
 		return
 	}
-	defer streamer.Close()
+	defer func() {
+		_ = streamer.Close()
+	}()
 	http.ServeContent(w, req, fileName, time.Time{}, streamer)
 }
 

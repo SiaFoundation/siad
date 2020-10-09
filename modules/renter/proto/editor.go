@@ -161,7 +161,7 @@ func (he *Editor) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	// send revision to host and exchange signatures
 	extendDeadline(he.conn, connTimeout)
 	signedTxn, err := negotiateRevision(he.conn, rev, contract.SecretKey, he.height)
-	if err == modules.ErrStopResponse {
+	if errors.Contains(err, modules.ErrStopResponse) {
 		// if host gracefully closed, close our connection as well; this will
 		// cause the next operation to fail
 		he.conn.Close()

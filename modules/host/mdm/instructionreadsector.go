@@ -51,6 +51,12 @@ func (p *program) staticDecodeReadSectorInstruction(instruction modules.Instruct
 	}, nil
 }
 
+// Batch declares whether or not this instruction can be batched together with
+// the previous instruction.
+func (i instructionReadSector) Batch() bool {
+	return false
+}
+
 // executeReadSector executes the 'ReadSector' instruction.
 func executeReadSector(previousOutput output, ps *programState, length, offset uint64, sectorRoot crypto.Hash, merkleProof bool) (output, []byte) {
 	// Validate the request.

@@ -10,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/ratelimit"
 )
@@ -268,7 +269,7 @@ func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 	corruptedBytes := accountBytes
 	corruptedBytes[fastrand.Intn(crypto.HashSize)] += 1
 	err = uMar.loadBytes(corruptedBytes)
-	if err != errInvalidChecksum {
+	if !errors.Contains(err, errInvalidChecksum) {
 		t.Fatalf("Expected error '%v', instead '%v'", errInvalidChecksum, err)
 	}
 
@@ -276,7 +277,7 @@ func TestAccountPersistenceToAndFromBytes(t *testing.T) {
 	corruptedBytes2 := accountBytes
 	corruptedBytes2[fastrand.Intn(accountSize-crypto.HashSize)+crypto.HashSize] += 1
 	err = uMar.loadBytes(corruptedBytes2)
-	if err != errInvalidChecksum {
+	if !errors.Contains(err, errInvalidChecksum) {
 		t.Fatalf("Expected error '%v', instead '%v'", errInvalidChecksum, err)
 	}
 }

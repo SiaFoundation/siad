@@ -106,7 +106,7 @@ func TestTransactionPoolRawHandlerPOST(t *testing.T) {
 	// Transaction should not be visible on node 2.
 	var trg2 TpoolRawGET
 	err = st2.getAPI("/tpool/raw/"+lastTxn.ID().String(), &trg2)
-	if err.Error() != "transaction not found in transaction pool" {
+	if !strings.Contains(err.Error(), "transaction not found in transaction pool") {
 		t.Fatal("transaction should be missing initially from the second tpool")
 	}
 

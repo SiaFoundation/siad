@@ -121,7 +121,7 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 }
 
 // SetFileStuck sets the Stuck field of the whole siafile to stuck.
-func (r *Renter) SetFileStuck(siaPath modules.SiaPath, stuck bool) error {
+func (r *Renter) SetFileStuck(siaPath modules.SiaPath, stuck bool) (err error) {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -131,7 +131,9 @@ func (r *Renter) SetFileStuck(siaPath modules.SiaPath, stuck bool) error {
 	if err != nil {
 		return err
 	}
-	defer entry.Close()
+	defer func() {
+		err = errors.Compose(err, entry.Close())
+	}()
 	// Update the file.
 	return entry.SetAllStuck(stuck)
 }

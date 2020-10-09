@@ -183,7 +183,7 @@ func fetchLatestRelease() (_ gitlabRelease, err error) {
 
 // updateToRelease updates siad and siac to the release specified. siac is
 // assumed to be in the same folder as siad.
-func updateToRelease(version string) error {
+func updateToRelease(version string) (err error) {
 	binaryFolder, err := osext.ExecutableFolder()
 	if err != nil {
 		return err
@@ -273,7 +273,9 @@ func updateToRelease(version string) error {
 			if err != nil {
 				return err
 			}
-			defer binData.Close()
+			defer func() {
+				err = errors.Compose(err, binData.Close())
+			}()
 		}
 		if binData == nil {
 			return errors.New("could not find " + binary + " binary")
@@ -487,8 +489,8 @@ func (api *API) daemonStartProfileHandlerPOST(w http.ResponseWriter, req *http.R
 	WriteSuccess(w)
 }
 
-// daemonStopProfileHandlerGET handles the API call that stops a profile for the daemon.
-func (api *API) daemonStopProfileHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+// daemonStopProfileHandlerPOST handles the API call that stops a profile for the daemon.
+func (api *API) daemonStopProfileHandlerPOST(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	// Stop any CPU or Trace profiles. Memory Profiles do not have a stop function
 	profile.StopCPUProfile()
 	profile.StopTrace()

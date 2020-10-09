@@ -165,7 +165,11 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 		if err != nil {
 			return errors.AddContext(err, "unable to make an http request")
 		}
-		defer resp.Body.Close()
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 		if non2xx(resp.StatusCode) {
 			return decodeError(resp)
 		}
@@ -236,7 +240,11 @@ func TestRenterDownloadError(t *testing.T) {
 	t.Parallel()
 
 	st, _ := setupTestDownload(t, 1e4, "test.dat", false)
-	defer st.server.Close()
+	defer func() {
+		if err := st.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// don't wait for the upload to complete, try to download immediately to
 	// intentionally cause a download error
@@ -313,7 +321,11 @@ func runDownloadParamTest(t *testing.T, length, offset, filesize int) error {
 	ulSiaPath := "test.dat"
 
 	st, _ := setupTestDownload(t, filesize, ulSiaPath, true)
-	defer st.server.Close()
+	defer func() {
+		if err := st.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Download the original file from offset 40 and length 10.
 	fname := "offsetsinglechunk.dat"
@@ -361,7 +373,11 @@ func TestRenterDownloadAsyncAndHttpRespError(t *testing.T) {
 	ulSiaPath := "test.dat"
 
 	st, _ := setupTestDownload(t, int(filesize), ulSiaPath, true)
-	defer st.server.Close()
+	defer func() {
+		if err := st.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Download the original file from offset 40 and length 10.
 	fname := "offsetsinglechunk.dat"
@@ -382,7 +398,11 @@ func TestRenterDownloadAsyncNonexistentFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.server.Close()
+	defer func() {
+		if err := st.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	downpath := filepath.Join(st.dir, "testfile")
 	err = st.getAPI(fmt.Sprintf("/renter/downloadasync/doesntexist?destination=%v", downpath), nil)
@@ -401,7 +421,11 @@ func TestRenterDownloadAsyncAndNotDestinationError(t *testing.T) {
 	ulSiaPath := "test.dat"
 
 	st, _ := setupTestDownload(t, int(filesize), ulSiaPath, true)
-	defer st.server.Close()
+	defer func() {
+		if err := st.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Download the original file from offset 40 and length 10.
 	dlURL := fmt.Sprintf("/renter/download/%s?disablelocalfetch=true&async=true", ulSiaPath)
@@ -421,7 +445,11 @@ func TestRenterDownloadHttpRespAndDestinationError(t *testing.T) {
 	ulSiaPath := "test.dat"
 
 	st, _ := setupTestDownload(t, int(filesize), ulSiaPath, true)
-	defer st.server.Close()
+	defer func() {
+		if err := st.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Download the original file from offset 40 and length 10.
 	fname := "test.dat"

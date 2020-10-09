@@ -48,7 +48,7 @@ pkgs = \
 	./modules/renter/hostdb \
 	./modules/renter/hostdb/hosttree \
 	./modules/renter/proto \
-	./modules/renter/skynetblacklist \
+	./modules/renter/skynetblocklist \
 	./modules/renter/skynetportals \
 	./modules/transactionpool \
 	./modules/wallet \
@@ -98,7 +98,7 @@ lockcheckpkgs = \
 	./modules/host/registry \
 	./modules/renter/hostdb \
 	./modules/renter/proto \
-	./modules/renter/skynetblacklist \
+	./modules/renter/skynetblocklist \
 	./skykey \
 	./types \
 	./types/typesutil \

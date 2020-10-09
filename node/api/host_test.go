@@ -735,7 +735,11 @@ func TestStorageFolderUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.server.Close()
+	defer func() {
+		if err := st.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// add a storage folder
 	sfPath := build.TempDir(t.Name(), "storagefolder")
@@ -777,7 +781,11 @@ func TestStorageFolderUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.server.Close()
+	defer func() {
+		if err := st.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err = st.getAPI("/host/storage", &sfs)
 	if err != nil {
@@ -834,7 +842,11 @@ func TestStorageFolderUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.server.Close()
+	defer func() {
+		if err := st.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// storage folder should still be good
 	err = st.getAPI("/host/storage", &sfs)

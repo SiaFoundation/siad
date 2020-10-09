@@ -282,6 +282,17 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 		}
 		settings.MaxEphemeralAccountRisk = x
 	}
+	if req.FormValue("registrysize") != "" {
+		var x uint64
+		_, err := fmt.Sscan(req.FormValue("registrysize"), &x)
+		if err != nil {
+			return modules.HostInternalSettings{}, err
+		}
+		settings.RegistrySize = x
+	}
+	if req.FormValue("customregistrypath") != "" {
+		settings.CustomRegistryPath = req.FormValue("customregistrypath")
+	}
 
 	// Validate the RPC, Sector Access, and Download Prices
 	minBaseRPCPrice := settings.MinBaseRPCPrice

@@ -1,8 +1,7 @@
 package wallet
 
 import (
-	"errors"
-
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -247,7 +246,7 @@ func (w *Wallet) Load033xWallet(masterKey crypto.CipherKey, filepath033x string)
 				SecretKeys:       []crypto.SecretKey{savedKey.SecretKey},
 			}
 			err = w.loadSpendableKey(masterKey, spendKey)
-			if err != nil && err != errDuplicateSpendableKey {
+			if err != nil && !errors.Contains(err, errDuplicateSpendableKey) {
 				return err
 			}
 			if err == nil {

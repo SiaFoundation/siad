@@ -1294,8 +1294,10 @@ fetches status information about the host.
     "storageprice":           "231481481481",               // hastings / byte / block
     "uploadbandwidthprice":   "100000000000000",            // hastings / byte
 
-    "revisionnumber": 0,      // int
-    "version":        "1.0.0" // string
+    "registrysize":       16384,  // int
+    "customregistrypath": ""      // string
+    "revisionnumber":     0,      // int
+    "version":            "1.0.0" // string
   },
 
   "financialmetrics": {
@@ -1433,6 +1435,18 @@ The price that a renter has to pay to store files with the host.
 
 **uploadbandwidthprice** | hastings / byte  
 The price that a renter has to pay when uploading data to the host.  
+
+**registrysize** | int  
+The size of the registry in bytes. One entry requires 256 bytes of storage on
+disk and the size of the registry needs to be a multiple of 64 entries.
+Therefore any provided number >0 bytes will be rounded to the nearest 16kib.
+The default is 0 which means no registry.
+
+**customregistrypath** | string  
+The path of the registry on disk. If it's empty, it uses the default location
+relative to siad's host folder. Otherwise the provided path will be used.
+Changing it will trigger a registry migration which takes an arbitrary amount
+of time depending of the size of the registry.
 
 **revisionnumber** | int  
 The revision number indicates to the renter what iteration of settings the host
@@ -1826,6 +1840,18 @@ the amount at risk will be minuscule unless the host experiences an unclean
 shutdown while in the middle of many transactions with many users at once. This
 value should be larger than 'maxephemeralaccountbalance but does not need to be
 significantly larger.
+
+**registrysize** | int  
+The size of the registry in bytes. One entry requires 256 bytes of storage on
+disk and the size of the registry needs to be a multiple of 64 entries.
+Therefore any provided number >0 bytes will be rounded to the nearest 16kib.
+The default is 0 which means no registry.
+
+**customregistrypath** | string  
+The path of the registry on disk. If it's empty, it uses the default location
+relative to siad's host folder. Otherwise the provided path will be used.
+Changing it will trigger a registry migration which takes an arbitrary amount
+of time depending of the size of the registry.
 
 ### Response
 
@@ -3977,6 +4003,15 @@ character.
 If provided, this parameter changes the tracking path of a file to the
 specified path. Useful if moving the file to a different location on disk.
 
+**stuck** | bool  
+if set a file will be marked as either stuck or not stuck by marking all of
+its chunks.
+
+**root** | bool  
+Whether or not to treat the siapath as being relative to the user's home
+directory. If this field is not set, the siapath will be interpreted as
+relative to 'home/user/'.  
+
 ### Response
 
 standard success or error response. See [standard
@@ -4701,19 +4736,19 @@ Details of the workers' has sector jobs queue
 
 # Skynet
 
-## /skynet/blacklist [GET]
+## /skynet/blocklist [GET]
 > curl example
 
 ```go
-curl -A "Sia-Agent" "localhost:9980/skynet/blacklist"
+curl -A "Sia-Agent" "localhost:9980/skynet/blocklist"
 ```
 
-returns the list of hashed merkleroots that are blacklisted. 
+returns the list of hashed merkleroots that are blocked. 
 
 NOTE: these are not the same values that were submitted via the POST endpoint.
 This is intentional so that it is harder to find the blocked content.
 	
-NOTE: With v1.5.0 the return value for the Blacklist changed. Pre v1.5.0 the
+NOTE: With v1.5.0 the return value for the Blocklist changed. Pre v1.5.0 the
 []crypto.Hash was a slice of MerkleRoots. Post v1.5.0 the []crypto.Hash is
 a slice of the Hashes of the MerkleRoots
 
@@ -4722,37 +4757,37 @@ a slice of the Hashes of the MerkleRoots
 
 ```go
 {
-  "blacklist": {
+  "blocklist": {
     "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
     "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
     "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
   }
 }
 ```
-**blacklist** | Hashes  
-The blacklist is a list of hashed merkleroots, that are blacklisted.
+**blocklist** | Hashes  
+The blocklist is a list of hashed merkleroots, that are blocked.
 
-## /skynet/blacklist [POST]
+## /skynet/blocklist [POST]
 > curl example
 
 ```go
-curl -A "Sia-Agent" --user "":<apipassword> --data '{"add" : ["GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"]}' "localhost:9980/skynet/blacklist"
+curl -A "Sia-Agent" --user "":<apipassword> --data '{"add" : ["GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"]}' "localhost:9980/skynet/blocklist"
 
-curl -A "Sia-Agent" --user "":<apipassword> --data '{"remove" : ["GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"]}' "localhost:9980/skynet/blacklist"
+curl -A "Sia-Agent" --user "":<apipassword> --data '{"remove" : ["GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"]}' "localhost:9980/skynet/blocklist"
 ```
 
-updates the list of skylinks that should be blacklisted from Skynet. This
-endpoint can be used to both add and remove skylinks from the blacklist.
+updates the list of skylinks that should be blocked from Skynet. This endpoint
+can be used to both add and remove skylinks from the blocklist.
 
 ### Path Parameters
 ### REQUIRED
 At least one of the following fields needs to be non empty.
 
 **add** | array of strings  
-add is an array of skylinks that should be added to the blacklist.
+add is an array of skylinks that should be added to the blocklist.
 
 **remove** | array of strings  
-remove is an array of skylinks that should be removed from the blacklist.
+remove is an array of skylinks that should be removed from the blocklist.
 
 ### Response
 

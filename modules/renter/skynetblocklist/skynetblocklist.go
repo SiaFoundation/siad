@@ -1,4 +1,4 @@
-package skynetblacklist
+package skynetblocklist
 
 import (
 	"bytes"
@@ -16,50 +16,50 @@ import (
 
 const (
 	// persistFile is the name of the persist file
-	persistFile string = "skynetblacklist"
+	persistFile string = "skynetblocklist.dat"
 
-	// persistSize is the size of a persisted merkleroot in the blacklist. It is
+	// persistSize is the size of a persisted merkleroot in the blocklist. It is
 	// the length of `merkleroot` plus the `listed` flag (32 + 1).
 	persistSize uint64 = 33
 )
 
 var (
 	// metadataHeader is the header of the metadata for the persist file
-	metadataHeader = types.NewSpecifier("SkynetBlacklist\n")
+	metadataHeader = types.NewSpecifier("SkynetBlocklist\n")
 
 	// metadataVersion is the version of the persistence file
-	metadataVersion = persist.MetadataVersionv150
+	metadataVersion = types.NewSpecifier("v1.5.1\n")
 )
 
 type (
-	// SkynetBlacklist manages a set of blacklisted skylinks by tracking the
+	// SkynetBlocklist manages a set of blocked skylinks by tracking the
 	// merkleroots and persists the list to disk.
-	SkynetBlacklist struct {
+	SkynetBlocklist struct {
 		staticAop *persist.AppendOnlyPersist
 
-		// hashes is a set of hashed blacklisted merkleroots.
+		// hashes is a set of hashed blocked merkleroots.
 		hashes map[crypto.Hash]struct{}
 
 		mu sync.Mutex
 	}
 
 	// persistEntry contains a hash and whether it should be listed as being in
-	// the current blacklist.
+	// the current blocklist.
 	persistEntry struct {
 		Hash   crypto.Hash
 		Listed bool
 	}
 )
 
-// New returns an initialized SkynetBlacklist.
-func New(persistDir string) (*SkynetBlacklist, error) {
-	// Load the persistence of the blacklist.
+// New returns an initialized SkynetBlocklist.
+func New(persistDir string) (*SkynetBlocklist, error) {
+	// Load the persistence of the blocklist.
 	aop, reader, err := loadPersist(persistDir)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to load the skynet blacklist persistence")
+		return nil, errors.AddContext(err, "unable to load the skynet blocklist persistence")
 	}
 
-	sb := &SkynetBlacklist{
+	sb := &SkynetBlocklist{
 		staticAop: aop,
 	}
 	hashes, err := unmarshalObjects(reader)
@@ -72,25 +72,25 @@ func New(persistDir string) (*SkynetBlacklist, error) {
 	return sb, nil
 }
 
-// Blacklist returns the hashes of the merkleroots that are blacklisted
-func (sb *SkynetBlacklist) Blacklist() []crypto.Hash {
+// Blocklist returns the hashes of the merkleroots that are blocked
+func (sb *SkynetBlocklist) Blocklist() []crypto.Hash {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
 
-	var blacklist []crypto.Hash
+	var blocklist []crypto.Hash
 	for hash := range sb.hashes {
-		blacklist = append(blacklist, hash)
+		blocklist = append(blocklist, hash)
 	}
-	return blacklist
+	return blocklist
 }
 
 // Close closes and frees associated resources.
-func (sb *SkynetBlacklist) Close() error {
+func (sb *SkynetBlocklist) Close() error {
 	return sb.staticAop.Close()
 }
 
-// IsBlacklisted indicates if a skylink is currently blacklisted
-func (sb *SkynetBlacklist) IsBlacklisted(skylink modules.Skylink) bool {
+// IsBlocked indicates if a skylink is currently blocked
+func (sb *SkynetBlocklist) IsBlocked(skylink modules.Skylink) bool {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
 	hash := crypto.HashObject(skylink.MerkleRoot())
@@ -98,23 +98,23 @@ func (sb *SkynetBlacklist) IsBlacklisted(skylink modules.Skylink) bool {
 	return ok
 }
 
-// UpdateBlacklist updates the list of skylinks that are blacklisted.
-func (sb *SkynetBlacklist) UpdateBlacklist(additions, removals []crypto.Hash) error {
+// UpdateBlocklist updates the list of skylinks that are blocked.
+func (sb *SkynetBlocklist) UpdateBlocklist(additions, removals []crypto.Hash) error {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
 
 	buf, err := sb.marshalObjects(additions, removals)
 	if err != nil {
-		return errors.AddContext(err, fmt.Sprintf("unable to update skynet blacklist persistence at '%v'", sb.staticAop.FilePath()))
+		return errors.AddContext(err, fmt.Sprintf("unable to update skynet blocklist persistence at '%v'", sb.staticAop.FilePath()))
 	}
 	_, err = sb.staticAop.Write(buf.Bytes())
-	return errors.AddContext(err, fmt.Sprintf("unable to update skynet blacklist persistence at '%v'", sb.staticAop.FilePath()))
+	return errors.AddContext(err, fmt.Sprintf("unable to update skynet blocklist persistence at '%v'", sb.staticAop.FilePath()))
 }
 
 // marshalObjects marshals the given objects into a byte buffer.
 //
 // NOTE: this method does not check for duplicate additions or removals
-func (sb *SkynetBlacklist) marshalObjects(additions, removals []crypto.Hash) (bytes.Buffer, error) {
+func (sb *SkynetBlocklist) marshalObjects(additions, removals []crypto.Hash) (bytes.Buffer, error) {
 	// Create buffer for encoder
 	var buf bytes.Buffer
 	// Create and encode the persist links
@@ -150,8 +150,8 @@ func (sb *SkynetBlacklist) marshalObjects(additions, removals []crypto.Hash) (by
 
 // unmarshalObjects unmarshals the sia encoded objects.
 func unmarshalObjects(reader io.Reader) (map[crypto.Hash]struct{}, error) {
-	blacklist := make(map[crypto.Hash]struct{})
-	// Unmarshal blacklisted links one by one until EOF.
+	blocklist := make(map[crypto.Hash]struct{})
+	// Unmarshal blocked links one by one until EOF.
 	var offset uint64
 	for {
 		buf := make([]byte, persistSize)
@@ -170,10 +170,10 @@ func unmarshalObjects(reader io.Reader) (map[crypto.Hash]struct{}, error) {
 		offset += persistSize
 
 		if !pe.Listed {
-			delete(blacklist, pe.Hash)
+			delete(blocklist, pe.Hash)
 			continue
 		}
-		blacklist[pe.Hash] = struct{}{}
+		blocklist[pe.Hash] = struct{}{}
 	}
-	return blacklist, nil
+	return blocklist, nil
 }

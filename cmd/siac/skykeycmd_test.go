@@ -7,7 +7,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/skykey"
-	"gitlab.com/NebulousLabs/errors"
 )
 
 const testSkykeyString string = "skykey:Aa71WcCoKFwVGAVotJh3USAslb8dotVJp2VZRRSAG2QhYRbuTbQhjDolIJ1nOlQ-rWYK29_1xee5?name=test_key1"
@@ -96,7 +95,8 @@ func testAddKeyTwice(t *testing.T, c client.Client) {
 	}
 }
 
-// testDeleteKey tests deleting a key.
+// testDeleteKey tests that deleting a Skykey by name or id actually deletes
+// the key
 func testDeleteKey(t *testing.T, c client.Client) {
 	// Create a key.
 	keyName := "keyToDeleteByName"
@@ -114,33 +114,8 @@ func testDeleteKey(t *testing.T, c client.Client) {
 		t.Fatalf("Expected Skykey name %v but got %v", keyName, sk.Name)
 	}
 
-	// Verify incorrect param usage will return an error and will not delete the
-	// key
-	err = skykeyDelete(c, "name", "id")
-	if !errors.Contains(err, errBothNameAndIDUsed) {
-		t.Fatalf("Unexpected Error: got `%v`, expected `%v`", err, errBothNameAndIDUsed)
-	}
-	sk, err = c.SkykeyGetByName(keyName)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sk.Name != keyName {
-		t.Fatalf("Expected Skykey name %v but got %v", keyName, sk.Name)
-	}
-	err = skykeyDelete(c, "", "")
-	if !errors.Contains(err, errNeitherNameNorIDUsed) {
-		t.Fatalf("Unexpected Error: got `%v`, expected `%v`", err, errNeitherNameNorIDUsed)
-	}
-	sk, err = c.SkykeyGetByName(keyName)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sk.Name != keyName {
-		t.Fatalf("Expected Skykey name %v but got %v", keyName, sk.Name)
-	}
-
 	// Delete key by name
-	err = skykeyDelete(c, keyName, "")
+	err = c.SkykeyDeleteByNamePost(keyName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +139,7 @@ func testDeleteKey(t *testing.T, c client.Client) {
 	}
 
 	// Delete key by ID
-	err = skykeyDelete(c, "", sk.ID().ToString())
+	err = c.SkykeyDeleteByIDPost(sk.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,11 +173,10 @@ func testInvalidSkykeyType(t *testing.T, c client.Client) {
 		t.Fatal("Skykey type expected to be private")
 	}
 	// Delete Key to not impact future sub tests
-	err = skykeyDelete(c, keyName, "")
+	err = c.SkykeyDeleteByNamePost(keyName)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	// Verify a random type gives an error
 	_, err = skykeyCreate(c, "", "not a type")
 	if !strings.Contains(err.Error(), skykey.ErrInvalidSkykeyType.Error()) {

@@ -57,7 +57,7 @@ func LoadSiaFileFromReaderWithChunks(r io.ReadSeeker, path string, wal *writeahe
 	var chunks []chunk
 	chunkBytes := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
 	for chunkIndex := 0; chunkIndex < sf.numChunks; chunkIndex++ {
-		if _, err := r.Read(chunkBytes); err != nil && err != io.EOF {
+		if _, err := r.Read(chunkBytes); err != nil && !errors.Contains(err, io.EOF) {
 			return nil, Chunks{}, errors.AddContext(err, fmt.Sprintf("failed to read chunk %v", chunkIndex))
 		}
 		chunk, err := unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)
@@ -278,7 +278,7 @@ func loadSiaFileFromReader(r io.ReadSeeker, path string, wal *writeaheadlog.WAL,
 	if _, err := r.Seek(sf.staticMetadata.PubKeyTableOffset, io.SeekStart); err != nil {
 		return nil, errors.AddContext(err, "failed to seek to pubKeyTable")
 	}
-	if _, err := r.Read(rawPubKeyTable); err == io.EOF {
+	if _, err := r.Read(rawPubKeyTable); errors.Contains(err, io.EOF) {
 		// Empty table.
 		sf.pubKeyTable = []HostPublicKey{}
 	} else if err != nil {
@@ -503,6 +503,10 @@ func (sf *SiaFile) applyUpdates(updates ...writeaheadlog.Update) (err error) {
 
 // chunk reads the chunk with index chunkIndex from disk.
 func (sf *SiaFile) chunk(chunkIndex int) (_ chunk, err error) {
+	// If the file has been deleted we can't call chunk.
+	if sf.deleted {
+		return chunk{}, errors.AddContext(ErrDeleted, "can't call chunk on deleted file")
+	}
 	// Handle partial chunk.
 	if cci, ok := sf.isIncludedPartialChunk(uint64(chunkIndex)); ok {
 		c, err := sf.partialsSiaFile.Chunk(cci.Index)
@@ -521,7 +525,7 @@ func (sf *SiaFile) chunk(chunkIndex int) (_ chunk, err error) {
 	defer func() {
 		err = errors.Compose(err, f.Close())
 	}()
-	if _, err := f.ReadAt(chunkBytes, chunkOffset); err != nil && err != io.EOF {
+	if _, err := f.ReadAt(chunkBytes, chunkOffset); err != nil && !errors.Contains(err, io.EOF) {
 		return chunk{}, errors.AddContext(err, "failed to read chunk from disk")
 	}
 	c, err := unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)
@@ -535,6 +539,9 @@ func (sf *SiaFile) chunk(chunkIndex int) (_ chunk, err error) {
 // iterateChunks iterates over all the chunks on disk and create wal updates for
 // each chunk that was modified.
 func (sf *SiaFile) iterateChunks(iterFunc func(chunk *chunk) (bool, error)) ([]writeaheadlog.Update, error) {
+	if sf.deleted {
+		return nil, errors.AddContext(ErrDeleted, "can't call iterateChunks on deleted file")
+	}
 	var updates []writeaheadlog.Update
 	err := sf.iterateChunksReadonly(func(chunk chunk) error {
 		modified, err := iterFunc(&chunk)
@@ -560,6 +567,9 @@ func (sf *SiaFile) iterateChunks(iterFunc func(chunk *chunk) (bool, error)) ([]w
 // iterateChunksReadonly iterates over all the chunks on disk and calls iterFunc
 // on each one without modifying them.
 func (sf *SiaFile) iterateChunksReadonly(iterFunc func(chunk chunk) error) (err error) {
+	if sf.deleted {
+		return errors.AddContext(err, "can't call iterateChunksReadonly on deleted file")
+	}
 	// Open the file.
 	f, err := os.Open(sf.siaFilePath)
 	if err != nil {
@@ -584,7 +594,7 @@ func (sf *SiaFile) iterateChunksReadonly(iterFunc func(chunk chunk) error) (err 
 		} else if sf.isIncompletePartialChunk(uint64(chunkIndex)) {
 			c = chunk{Pieces: make([][]piece, sf.staticMetadata.staticErasureCode.NumPieces())}
 		} else {
-			if _, err := f.Read(chunkBytes); err != nil && err != io.EOF {
+			if _, err := f.Read(chunkBytes); err != nil && !errors.Contains(err, io.EOF) {
 				return errors.AddContext(err, fmt.Sprintf("failed to read chunk %v", chunkIndex))
 			}
 			c, err = unmarshalChunk(uint32(sf.staticMetadata.staticErasureCode.NumPieces()), chunkBytes)

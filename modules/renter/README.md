@@ -21,7 +21,7 @@ README files should be reviewed.
  - Filesystem
  - HostDB
  - Proto
- - Skynet Blacklist
+ - Skynet Blocklist
  - Skynet Portals
 
 ### Contractor
@@ -48,9 +48,9 @@ including contract formation and renewal RPCs, uploading and downloading,
 verifying Merkle proofs, and synchronizing revision states. It is a low-level
 module whose functionality is largely wrapped by the Contractor.
 
-### Skynet Blacklist
-The Skynet Blacklist module manages the list of skylinks that the Renter wants
-blacklisted. It also manages persisting the blacklist in an ACID and performant
+### Skynet Blocklist
+The Skynet Blocklist module manages the list of skylinks that the Renter wants
+blocked. It also manages persisting the blocklist in an ACID and performant
 manner.
 
 ### Skynet Portals

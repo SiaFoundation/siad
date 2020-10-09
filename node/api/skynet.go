@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -56,19 +57,20 @@ type (
 		Bitfield   uint16      `json:"bitfield"`
 	}
 
-	// SkynetBlacklistGET contains the information queried for the
-	// /skynet/blacklist GET endpoint
+	// SkynetBlocklistGET contains the information queried for the
+	// /skynet/blocklist GET endpoint
 	//
-	// NOTE: With v1.5.0 the return value for the Blacklist changed. Pre v1.5.0
+	// NOTE: With v1.5.0 the return value for the Blocklist changed. Pre v1.5.0
 	// the []crypto.Hash was a slice of MerkleRoots. Post v1.5.0 the []crypto.Hash
 	// is a slice of the Hashes of the MerkleRoots
-	SkynetBlacklistGET struct {
-		Blacklist []crypto.Hash `json:"blacklist"`
+	SkynetBlocklistGET struct {
+		Blacklist []crypto.Hash `json:"blacklist"` // Deprecated, kept for backwards compatibility
+		Blocklist []crypto.Hash `json:"blocklist"`
 	}
 
-	// SkynetBlacklistPOST contains the information needed for the
-	// /skynet/blacklist POST endpoint to be called
-	SkynetBlacklistPOST struct {
+	// SkynetBlocklistPOST contains the information needed for the
+	// /skynet/blocklist POST endpoint to be called
+	SkynetBlocklistPOST struct {
 		Add    []string `json:"add"`
 		Remove []string `json:"remove"`
 
@@ -129,25 +131,25 @@ type (
 	archiveFunc func(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error
 )
 
-// skynetBlacklistHandlerGET handles the API call to get the list of blacklisted
+// skynetBlocklistHandlerGET handles the API call to get the list of blocked
 // skylinks.
-func (api *API) skynetBlacklistHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	// Get the Blacklist
-	blacklist, err := api.renter.Blacklist()
+func (api *API) skynetBlocklistHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	// Get the Blocklist
+	blocklist, err := api.renter.Blocklist()
 	if err != nil {
-		WriteError(w, Error{"unable to get the blacklist: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"unable to get the blocklist: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 
-	WriteJSON(w, SkynetBlacklistGET{
-		Blacklist: blacklist,
+	WriteJSON(w, SkynetBlocklistGET{
+		Blocklist: blocklist,
 	})
 }
 
-// skynetBlacklistHandlerPOST handles the API call to blacklist certain skylinks.
-func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+// skynetBlocklistHandlerPOST handles the API call to block certain skylinks.
+func (api *API) skynetBlocklistHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse parameters
-	var params SkynetBlacklistPOST
+	var params SkynetBlocklistPOST
 	err := json.NewDecoder(req.Body).Decode(&params)
 	if err != nil {
 		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
@@ -206,10 +208,10 @@ func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 		removeHashes[i] = hash
 	}
 
-	// Update the Skynet Blacklist
-	err = api.renter.UpdateSkynetBlacklist(addHashes, removeHashes)
+	// Update the Skynet Blocklist
+	err = api.renter.UpdateSkynetBlocklist(addHashes, removeHashes)
 	if err != nil {
-		WriteError(w, Error{"unable to update the skynet blacklist: " + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"unable to update the skynet blocklist: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
@@ -361,7 +363,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
-	defer streamer.Close()
+	defer func() {
+		_ = streamer.Close()
+	}()
 
 	// If requested, serve the raw download and return
 	if format == modules.SkyfileFormatRaw {
@@ -712,6 +716,15 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			WriteError(w, Error{fmt.Sprintf("failed parsing multipart request: %v", err)}, http.StatusBadRequest)
 			return
 		}
+		// Make sure temporary files created while parsing the multipart form
+		// are properly removed on error. The fact that they tend to linger
+		// unless explicitly removed is a known (open) issue:
+		// https://github.com/golang/go/issues/20253
+		defer func() {
+			if err := req.MultipartForm.RemoveAll(); err != nil {
+				log.Printf("failed to clean up multipart tmp file: %v", err)
+			}
+		}()
 
 		// Use the filename of the first subfile if it's not passed as query
 		// string parameter and there's only one subfile.
@@ -972,7 +985,7 @@ func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Requ
 	skykeyTypeString := req.FormValue("type")
 
 	if name == "" {
-		WriteError(w, Error{"you must specify the name the skykey"}, http.StatusInternalServerError)
+		WriteError(w, Error{"you must specify the name of the skykey"}, http.StatusInternalServerError)
 		return
 	}
 

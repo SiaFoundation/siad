@@ -457,7 +457,7 @@ func NewCustomGateway(addr string, bootstrap bool, persistDir string, deps modul
 	if bootstrap {
 		for _, addr := range modules.BootstrapPeers {
 			err := g.addNode(addr)
-			if err != nil && err != errNodeExists {
+			if err != nil && !errors.Contains(err, errNodeExists) {
 				g.log.Printf("WARN: failed to add the bootstrap node '%v': %v", addr, err)
 			}
 		}

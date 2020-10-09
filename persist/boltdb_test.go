@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -133,7 +134,7 @@ func TestOpenDatabase(t *testing.T) {
 			_, err := tx.CreateBucketIfNotExists(nil)
 			return err
 		})
-		if err != bolt.ErrBucketNameRequired {
+		if !errors.Contains(err, bolt.ErrBucketNameRequired) {
 		}
 		// Fill each bucket with a random number (0-9, inclusive) of key/value
 		// pairs, where each key is a length-10 random byteslice and each value
@@ -224,7 +225,7 @@ func TestErrTxNotWritable(t *testing.T) {
 		// Should return an error because updateMetadata is being called from
 		// a read-only transaction.
 		err = db.View(boltDB.updateMetadata)
-		if err != bolt.ErrTxNotWritable {
+		if !errors.Contains(err, bolt.ErrTxNotWritable) {
 			t.Errorf("updateMetadata returned wrong error for input %v, filename %v; expected tx not writable, got %v", in.md, dbFilename, err)
 		}
 		err = boltDB.Close()
@@ -265,7 +266,7 @@ func TestErrDatabaseNotOpen(t *testing.T) {
 	}
 	// Should return an error since boltDB is closed.
 	err = boltDB.checkMetadata(md)
-	if err != bolt.ErrDatabaseNotOpen {
+	if !errors.Contains(err, bolt.ErrDatabaseNotOpen) {
 		t.Errorf("expected database not open, got %v", err)
 	}
 	err = os.Remove(dbFilepath)

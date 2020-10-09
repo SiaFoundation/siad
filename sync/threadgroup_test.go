@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestThreadGroupStopEarly tests that a thread group can correctly interrupt
@@ -165,11 +166,11 @@ func TestThreadGroupStop(t *testing.T) {
 
 	// Add and Stop should return errors.
 	err = tg.Add()
-	if err != ErrStopped {
+	if !errors.Contains(err, ErrStopped) {
 		t.Error("expected ErrStopped, got", err)
 	}
 	err = tg.Stop()
-	if err != ErrStopped {
+	if !errors.Contains(err, ErrStopped) {
 		t.Error("expected ErrStopped, got", err)
 	}
 

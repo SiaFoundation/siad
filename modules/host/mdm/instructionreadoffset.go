@@ -45,6 +45,12 @@ func (p *program) staticDecodeReadOffsetInstruction(instruction modules.Instruct
 	}, nil
 }
 
+// Batch declares whether or not this instruction can be batched together with
+// the previous instruction.
+func (i instructionReadOffset) Batch() bool {
+	return false
+}
+
 // Execute executes the 'ReadOffset' instruction.
 func (i *instructionReadOffset) Execute(previousOutput output) output {
 	// Fetch the operands.

@@ -243,11 +243,11 @@ func TestExecuteProgramRevision(t *testing.T) {
 	// expect an error if the revision number didn't increase.
 	rev = mock(100, 50)
 	_, err = rev.ExecuteProgramRevision(0, NewCurrency64(49), crypto.Hash{}, 0)
-	if err != ErrRevisionNotIncremented {
+	if !errors.Contains(err, ErrRevisionNotIncremented) {
 		t.Fatal("expected ErrRevisionNotIncremented but got", err)
 	}
 	_, err = rev.ExecuteProgramRevision(1, NewCurrency64(49), crypto.Hash{}, 0)
-	if err != ErrRevisionNotIncremented {
+	if !errors.Contains(err, ErrRevisionNotIncremented) {
 		t.Fatal("expected ErrRevisionNotIncremented but got", err)
 	}
 

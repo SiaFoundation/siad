@@ -19,6 +19,13 @@ const (
 	// HostSiaMuxSubscriberName is the name used by the host to register a
 	// listener on the SiaMux.
 	HostSiaMuxSubscriberName = "host"
+
+	// HostWALFile is the name of the file the host's wal is stored in.
+	HostWALFile = "host.wal"
+
+	// HostRegistryFile is the name of the file the host's registry is stored
+	// in.
+	HostRegistryFile = "registry.dat"
 )
 
 var (
@@ -279,6 +286,9 @@ type (
 		EphemeralAccountExpiry     time.Duration  `json:"ephemeralaccountexpiry"`
 		MaxEphemeralAccountBalance types.Currency `json:"maxephemeralaccountbalance"`
 		MaxEphemeralAccountRisk    types.Currency `json:"maxephemeralaccountrisk"`
+
+		CustomRegistryPath string `json:"customregistrypath"`
+		RegistrySize       uint64 `json:"registrysize"`
 	}
 
 	// HostNetworkMetrics reports the quantity of each type of RPC call that
