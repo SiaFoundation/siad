@@ -4736,6 +4736,40 @@ Details of the workers' has sector jobs queue
 
 # Skynet
 
+## /skynet/basesector/*skylink* [GET]
+> curl example  
+
+```bash
+curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg"
+```  
+
+downloads the basesector of a skylink using http streaming. This call blocks
+until the data is received. There is a 30s default timeout applied to
+downloading a basesector. If the data cannot be found within this 30s time
+constraint, a 404 will be returned. This timeout is configurable through the
+query string parameters.
+
+
+### Path Parameters 
+### Required
+**skylink** | string  
+The skylink of the basesector that should be downloaded.
+
+### Query String Parameters
+### OPTIONAL
+
+**timeout** | int  
+If 'timeout' is set, the download will fail if the basesector cannot be
+retrieved before it expires. Note that this timeout does not cover the actual
+download time, but rather covers the TTFB. Timeout is specified in seconds,
+a timeout value of 0 will be ignored. If no timeout is given, the default will
+be used, which is a 30 second timeout. The maximum allowed timeout is 900s (15
+minutes).
+
+### Response Body
+
+The response body is the raw data for the basesector.
+
 ## /skynet/blocklist [GET]
 > curl example
 
@@ -4921,8 +4955,6 @@ If 'format' is set, the skylink can point to a directory and it will return the
 data inside that directory. Format will decide the format in which it is
 returned. Currently, we support the following values:  
  * 'concat' will return the concatenated data of all subfiles in that directory
- * 'raw' will return the encoded baseSector directly. The caller is then
- responsible for any decoding and/or decrpyting of the data.
  * 'tar' will return a tar archive of all subfiles in that directory
  * 'targz' will return a gzipped tar archive of all subfiles in that directory.  
  * 'zip' will return a zip archive

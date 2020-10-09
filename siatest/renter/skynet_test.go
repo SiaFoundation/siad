@@ -1417,8 +1417,7 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup) {
 		t.Error("Expected 0 fanout bytes:", fanoutBytes)
 	}
 
-	// TODO - Verify Raw Format for Large file when DownloadByRoot is directly
-	// accessible by the API
+	// TODO - Verify Raw Format for Large file when /skynet/fanout is added
 }
 
 // testSkynetSubDirDownload verifies downloading data from a skyfile using a
