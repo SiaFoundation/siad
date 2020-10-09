@@ -671,8 +671,8 @@ func testNotModified(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testSkynetSkylinkHeader tests that downloads have a custom 'Skynet-Skylink'
-// response header.
+// testSkynetSkylinkHeader tests that the 'Skynet-Skylink' is set both on the
+// Skynet upload - and download route.
 func testSkynetSkylinkHeader(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
