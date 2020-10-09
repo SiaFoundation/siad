@@ -4959,6 +4959,11 @@ supplied, this metadata will be relative to the given path.
 }
 ```
 
+**Skynet-Skylink** | string
+
+The value of "Skynet-Skylink" is a string representation of the base64 encoded
+Skylink that was requested.
+
 **ETag** | string
 
 The ETag response header contains a hash that can be supplied using the
@@ -5083,6 +5088,13 @@ for Skynet portal operators that would like to have some control over the
 requests that are being passed to siad. To avoid having to parse query string
 parameters and overrule them that way, this header can be set to disable the
 force flag and disallow overwriting the file at the given siapath.
+
+### Response Header
+
+**Skynet-Skylink** | string
+
+The value of "Skynet-Skylink" is a string representation of the base64 encoded
+Skylink that was uploaded.
 
 ### JSON Response
 > JSON Response Example

@@ -503,6 +503,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
 	}()
 
+	// Set the Skylink response header
+	w.Header().Set("Skynet-Skylink", skylink.String())
+
 	// Set the ETag response header
 	w.Header().Set("ETag", eTag)
 
@@ -794,6 +797,9 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			skynetPerformanceStatsMu.Unlock()
 		}
 
+		// Set the Skylink response header
+		w.Header().Set("Skynet-Skylink", skylink.String())
+
 		WriteJSON(w, SkynetSkyfileHandlerPOST{
 			Skylink:    skylink.String(),
 			MerkleRoot: skylink.MerkleRoot(),
@@ -824,6 +830,9 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	skynetPerformanceStatsMu.Lock()
 	skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime))
 	skynetPerformanceStatsMu.Unlock()
+
+	// Set the Skylink response header
+	w.Header().Set("Skynet-Skylink", skylink.String())
 
 	WriteJSON(w, SkynetSkyfileHandlerPOST{
 		Skylink:    skylink.String(),

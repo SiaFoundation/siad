@@ -22,6 +22,38 @@ func (uc *UnsafeClient) SkynetSkylinkGetWithETag(skylink string, eTag string) (*
 	return uc.GetWithHeaders(skylinkQueryWithValues(skylink, url.Values{}), http.Header{"If-None-Match": []string{eTag}})
 }
 
+// SkynetSkyfilePostRawResponse uses the /skynet/skyfile endpoint to upload a
+// skyfile.  This function is unsafe as it returns the raw response alongside
+// the http headers.
+func (uc *UnsafeClient) SkynetSkyfilePostRawResponse(params modules.SkyfileUploadParameters) (http.Header, []byte, error) {
+	// Set the url values.
+	values := url.Values{}
+	values.Set("filename", params.FileMetadata.Filename)
+	dryRunStr := fmt.Sprintf("%t", params.DryRun)
+	values.Set("dryrun", dryRunStr)
+	forceStr := fmt.Sprintf("%t", params.Force)
+	values.Set("force", forceStr)
+	modeStr := fmt.Sprintf("%o", params.FileMetadata.Mode)
+	values.Set("mode", modeStr)
+	redundancyStr := fmt.Sprintf("%v", params.BaseChunkRedundancy)
+	values.Set("basechunkredundancy", redundancyStr)
+	rootStr := fmt.Sprintf("%t", params.Root)
+	values.Set("root", rootStr)
+
+	// Encode SkykeyName or SkykeyID.
+	if params.SkykeyName != "" {
+		values.Set("skykeyname", params.SkykeyName)
+	}
+	hasSkykeyID := params.SkykeyID != skykey.SkykeyID{}
+	if hasSkykeyID {
+		values.Set("skykeyid", params.SkykeyID.ToString())
+	}
+
+	// Make the call to upload the file.
+	query := fmt.Sprintf("/skynet/skyfile/%s?%s", params.SiaPath.String(), values.Encode())
+	return uc.postRawResponse(query, params.Reader)
+}
+
 // RenterSkyfileGet wraps RenterFileRootGet to query a skyfile.
 func (c *Client) RenterSkyfileGet(siaPath modules.SiaPath, root bool) (rf api.RenterFile, err error) {
 	if !root {

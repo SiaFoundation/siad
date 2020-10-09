@@ -44,6 +44,7 @@ func TestSkynetDownloads(t *testing.T) {
 		{Name: "DirectoryNested", Test: testDownloadDirectoryNested},
 		{Name: "ContentDisposition", Test: testDownloadContentDisposition},
 		{Name: "NotModified", Test: testNotModified},
+		{Name: "SkynetSkylinkHeader", Test: testSkynetSkylinkHeader},
 	}
 
 	// Run tests
@@ -667,6 +668,68 @@ func testNotModified(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if !bytes.Equal(file, data) {
 		t.Fatal("Unexpected response data")
+	}
+}
+
+// testSkynetSkylinkHeader tests that downloads have a custom 'Skynet-Skylink'
+// response header.
+func testSkynetSkylinkHeader(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// create the siapath
+	siapath, err := modules.NewSiaPath(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create the upload params
+	reader := bytes.NewReader(fastrand.Bytes(100))
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:             siapath,
+		BaseChunkRedundancy: 2,
+		FileMetadata: modules.SkyfileMetadata{
+			Filename: t.Name(),
+			Length:   uint64(100),
+			Mode:     modules.DefaultFilePerm,
+		},
+		Reader: reader,
+	}
+
+	// upload the skyfile, use an unsafe client to get access to the response
+	// headers
+	uc := client.NewUnsafeClient(r.Client)
+	header, body, err := uc.SkynetSkyfilePostRawResponse(sup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// parse the response manually
+	var rshp api.SkynetSkyfileHandlerPOST
+	err = json.Unmarshal(body, &rshp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify we get a valid skylink
+	var skylink modules.Skylink
+	err = skylink.LoadString(rshp.Skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the response header contains the same Skylink
+	if header.Get("Skynet-Skylink") != skylink.String() {
+		t.Fatal("unexpected")
+	}
+
+	// verify a HEAD call has the response header as well, we use HEAD call as
+	// this verifies both the HEAD and GET endpoint
+	_, header, err = r.SkynetSkylinkHead(skylink.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Get("Skynet-Skylink") != skylink.String() {
+		t.Fatal("unexpected")
 	}
 }
 
