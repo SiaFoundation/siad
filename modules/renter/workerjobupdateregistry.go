@@ -8,6 +8,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -23,8 +24,8 @@ const (
 type (
 	// jobUpdateRegistry contains information about a UpdateRegistry query.
 	jobUpdateRegistry struct {
-		staticSPK types.SiaPublicKey
-		staticRV  modules.SignedRegistryValue
+		staticSiaPublicKey        types.SiaPublicKey
+		staticSignedRegistryValue modules.SignedRegistryValue
 
 		staticResponseChan chan *jobUpdateRegistryResponse // Channel to send a response down
 
@@ -36,8 +37,7 @@ type (
 	jobUpdateRegistryQueue struct {
 		// These variables contain an exponential weighted average of the
 		// worker's recent performance for jobUpdateRegistryQueue.
-		weightedJobTime       float64
-		weightedJobsCompleted float64
+		weightedJobTime float64
 
 		*jobGenericQueue
 	}
@@ -49,12 +49,12 @@ type (
 )
 
 // newJobUpdateRegistry is a helper method to create a new UpdateRegistry job.
-func (w *worker) newJobUpdateRegistry(ctx context.Context, responseChan chan *jobUpdateRegistryResponse, spk types.SiaPublicKey, rv modules.SignedRegistryValue) *jobUpdateRegistry {
+func (w *worker) newJobUpdateRegistry(ctx context.Context, responseChan chan *jobUpdateRegistryResponse, spk types.SiaPublicKey, srv modules.SignedRegistryValue) *jobUpdateRegistry {
 	return &jobUpdateRegistry{
-		staticSPK:          spk,
-		staticRV:           rv,
-		staticResponseChan: responseChan,
-		jobGeneric:         newJobGeneric(ctx, w.staticJobUpdateRegistryQueue),
+		staticSiaPublicKey:        spk,
+		staticSignedRegistryValue: srv,
+		staticResponseChan:        responseChan,
+		jobGeneric:                newJobGeneric(ctx, w.staticJobUpdateRegistryQueue),
 	}
 }
 
@@ -72,7 +72,7 @@ func (j *jobUpdateRegistry) callDiscard(err error) {
 		}
 	})
 	if errLaunch != nil {
-		w.renter.log.Print("callDiscard: launch failed", err)
+		w.renter.log.Debugln("callDiscard: launch failed", err)
 	}
 }
 
@@ -94,27 +94,16 @@ func (j *jobUpdateRegistry) callExecute() {
 			}
 		})
 		if errLaunch != nil {
-			w.renter.log.Println("callExececute: launch failed", err)
+			w.renter.log.Debugln("callExececute: launch failed", err)
 		}
 	}
 
-	// Check if the host already has the latest entry.
-	existingRV, err := lookupRegistry(w, j.staticSPK, j.staticRV.Tweak)
-	if err != nil && !strings.Contains(err.Error(), modules.ErrRegistryValueNotExist.Error()) {
+	// update the rv
+	err := j.managedUpdateRegistry()
+	if err != nil && !strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) {
 		sendResponse(err)
 		j.staticQueue.callReportFailure(err)
 		return
-	}
-	found := err == nil
-
-	// if the existing rv doesn't match or if we didn't find any rv we update it.
-	if !found || existingRV.Revision != j.staticRV.Revision {
-		err = j.managedUpdateRegistry()
-		if err != nil {
-			sendResponse(err)
-			j.staticQueue.callReportFailure(err)
-			return
-		}
 	}
 
 	// Success. We either confirmed the latest revision or updated the host successfully.
@@ -127,16 +116,12 @@ func (j *jobUpdateRegistry) callExecute() {
 	// Update the performance stats on the queue.
 	jq := j.staticQueue.(*jobUpdateRegistryQueue)
 	jq.mu.Lock()
-	jq.weightedJobTime *= jobUpdateRegistryPerformanceDecay
-	jq.weightedJobsCompleted *= jobUpdateRegistryPerformanceDecay
-	jq.weightedJobTime += float64(jobTime)
-	jq.weightedJobsCompleted++
+	jq.weightedJobTime = expMovingAvg(jq.weightedJobTime, float64(jobTime), jobUpdateRegistryPerformanceDecay)
 	jq.mu.Unlock()
 }
 
 // callExpectedBandwidth returns the bandwidth that is expected to be consumed
 // by the job.
-//
 func (j *jobUpdateRegistry) callExpectedBandwidth() (ul, dl uint64) {
 	return updateRegistryJobExpectedBandwidth()
 }
@@ -190,7 +175,7 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() error {
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since UpdateRegistry doesn't depend on it.
-	pb.AddUpdateRegistryInstruction(j.staticSPK, j.staticRV)
+	pb.AddUpdateRegistryInstruction(j.staticSiaPublicKey, j.staticSignedRegistryValue)
 	program, programData := pb.Program()
 	cost, _, _ := pb.Cost(true)
 
