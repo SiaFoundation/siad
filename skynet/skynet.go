@@ -94,6 +94,29 @@ func (sl *SkyfileLayout) Decode(b []byte) {
 	}
 }
 
+// DecodeFanout will take the fanout bytes from a baseSector and decode them.
+func DecodeFanout(sl SkyfileLayout, fanoutBytes []byte) (piecesPerChunk, chunkRootsSize, numChunks uint64, err error) {
+	// Special case: if the data of the file is using 1-of-N erasure coding,
+	// each piece will be identical, so the fanout will only have encoded a
+	// single piece for each chunk.
+	if sl.FanoutDataPieces == 1 && sl.CipherType == crypto.TypePlain {
+		piecesPerChunk = 1
+		chunkRootsSize = crypto.HashSize
+	} else {
+		// This is the case where the file data is not 1-of-N. Every piece is
+		// different, so every piece must get enumerated.
+		piecesPerChunk = uint64(sl.FanoutDataPieces) + uint64(sl.FanoutParityPieces)
+		chunkRootsSize = crypto.HashSize * piecesPerChunk
+	}
+	// Sanity check - the fanout bytes should be an even number of chunks.
+	if uint64(len(fanoutBytes))%chunkRootsSize != 0 {
+		err = errors.New("the fanout bytes do not contain an even number of chunks")
+		return
+	}
+	numChunks = uint64(len(fanoutBytes)) / chunkRootsSize
+	return
+}
+
 // ParseSkyfileMetadata will pull the metadata (including layout and fanout) out
 // of a skyfile.
 func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []byte, sm modules.SkyfileMetadata, baseSectorPayload []byte, err error) {

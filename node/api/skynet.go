@@ -373,6 +373,124 @@ func (api *API) skynetPortalsHandlerPOST(w http.ResponseWriter, req *http.Reques
 	WriteSuccess(w)
 }
 
+// skynetRootHandlerGET handles the api call for a download by root request.
+// This call returns the encoded sector.
+func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Start the timer for the performance measurement.
+	startTime := time.Now()
+	isErr := true
+	defer func() {
+		if isErr {
+			skynetPerformanceStats.TimeToFirstByte.AddRequest(0)
+		}
+	}()
+
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the timeout.
+	timeout := DefaultSkynetRequestTimeout
+	timeoutStr := queryForm.Get("timeout")
+	if timeoutStr != "" {
+		timeoutInt, err := strconv.Atoi(timeoutStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+
+		if timeoutInt > MaxSkynetRequestTimeout {
+			WriteError(w, Error{fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout)}, http.StatusBadRequest)
+			return
+		}
+		timeout = time.Duration(timeoutInt) * time.Second
+	}
+
+	// Parse the root.
+	rootStr := queryForm.Get("root")
+	if rootStr == "" {
+		WriteError(w, Error{"no root hash provided"}, http.StatusBadRequest)
+		return
+	}
+	var root crypto.Hash
+	err = root.LoadString(rootStr)
+	if err != nil {
+		WriteError(w, Error{"unable to parse 'root' parameter: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the offset.
+	offsetStr := queryForm.Get("offset")
+	if offsetStr == "" {
+		WriteError(w, Error{"no offset provided"}, http.StatusBadRequest)
+		return
+	}
+	offset, err := strconv.ParseUint(offsetStr, 10, 64)
+	if err != nil {
+		WriteError(w, Error{"unable to parse 'offset' parameter: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the length.
+	lengthStr := queryForm.Get("length")
+	if lengthStr == "" {
+		WriteError(w, Error{"no length provided"}, http.StatusBadRequest)
+		return
+	}
+	length, err := strconv.ParseUint(lengthStr, 10, 64)
+	if err != nil {
+		WriteError(w, Error{"unable to parse 'length' parameter: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Fetch the skyfile's  streamer to serve the basesector of the file
+	sector, err := api.renter.DownloadByRoot(root, offset, length, timeout)
+	if errors.Contains(err, renter.ErrRootNotFound) {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch root: %v", err)}, http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch root: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+
+	// Stop the time here for TTFB.
+	skynetPerformanceStatsMu.Lock()
+	skynetPerformanceStats.TimeToFirstByte.AddRequest(time.Since(startTime))
+	skynetPerformanceStatsMu.Unlock()
+	// Defer a function to record the total performance time.
+	defer func() {
+		skynetPerformanceStatsMu.Lock()
+		defer skynetPerformanceStatsMu.Unlock()
+
+		if length <= 64e3 {
+			skynetPerformanceStats.Download64KB.AddRequest(time.Since(startTime))
+			return
+		}
+		if length <= 1e6 {
+			skynetPerformanceStats.Download1MB.AddRequest(time.Since(startTime))
+			return
+		}
+		if length <= 4e6 {
+			skynetPerformanceStats.Download4MB.AddRequest(time.Since(startTime))
+			return
+		}
+		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
+	}()
+
+	streamer := renter.StreamerFromSlice(sector)
+	defer func() {
+		_ = streamer.Close()
+	}()
+
+	// Serve the basesector
+	http.ServeContent(w, req, "", time.Time{}, streamer)
+	return
+}
+
 // skynetSkylinkHandlerGET accepts a skylink as input and will stream the data
 // from the skylink out of the response body as output.
 func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {

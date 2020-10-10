@@ -82,26 +82,11 @@ func (r *Renter) newFanoutStreamer(link modules.Skylink, sl skynet.SkyfileLayout
 // decodeFanout will take the fanout bytes from a skyfile and decode them in to
 // the staticChunks filed of the fanoutStreamBufferDataSource.
 func (fs *fanoutStreamBufferDataSource) decodeFanout(fanoutBytes []byte) error {
-	// Special case: if the data of the file is using 1-of-N erasure coding,
-	// each piece will be identical, so the fanout will only have encoded a
-	// single piece for each chunk.
-	ll := fs.staticLayout
-	var piecesPerChunk uint64
-	var chunkRootsSize uint64
-	if ll.FanoutDataPieces == 1 && ll.CipherType == crypto.TypePlain {
-		piecesPerChunk = 1
-		chunkRootsSize = crypto.HashSize
-	} else {
-		// This is the case where the file data is not 1-of-N. Every piece is
-		// different, so every piece must get enumerated.
-		piecesPerChunk = uint64(ll.FanoutDataPieces) + uint64(ll.FanoutParityPieces)
-		chunkRootsSize = crypto.HashSize * piecesPerChunk
+	// Decode piecesPerChunk, chunkRootsSize, and numChunks
+	piecesPerChunk, chunkRootsSize, numChunks, err := skynet.DecodeFanout(fs.staticLayout, fanoutBytes)
+	if err != nil {
+		return err
 	}
-	// Sanity check - the fanout bytes should be an even number of chunks.
-	if uint64(len(fanoutBytes))%chunkRootsSize != 0 {
-		return errors.New("the fanout bytes do not contain an even number of chunks")
-	}
-	numChunks := uint64(len(fanoutBytes)) / chunkRootsSize
 
 	// Decode the fanout data into the list of chunks for the
 	// fanoutStreamBufferDataSource.

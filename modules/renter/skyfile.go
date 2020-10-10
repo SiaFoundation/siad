@@ -141,9 +141,9 @@ func (sfr *streamerFromReader) Close() error {
 	return nil
 }
 
-// streamerFromSlice returns a modules.Streamer given a slice. This is
+// StreamerFromSlice returns a modules.Streamer given a slice. This is
 // non-trivial because a bytes.Reader does not implement Close.
-func streamerFromSlice(b []byte) modules.Streamer {
+func StreamerFromSlice(b []byte) modules.Streamer {
 	reader := bytes.NewReader(b)
 	return &streamerFromReader{
 		Reader: reader,
@@ -635,7 +635,7 @@ func (r *Renter) DownloadSkylinkBaseSector(link modules.Skylink, timeout time.Du
 	}
 	defer r.tg.Done()
 	baseSector, _, err := r.managedDownloadBaseSector(link, timeout)
-	return streamerFromSlice(baseSector), err
+	return StreamerFromSlice(baseSector), err
 }
 
 // managedDownloadSkylink will take a link and turn it into the metadata and data of a
@@ -646,7 +646,7 @@ func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Durat
 		if err != nil {
 			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "failed to fetch fixture")
 		}
-		return sf.Metadata, streamerFromSlice(sf.Content), nil
+		return sf.Metadata, StreamerFromSlice(sf.Content), nil
 	}
 
 	baseSector, streamer, err := r.managedDownloadBaseSector(link, timeout)
@@ -676,7 +676,7 @@ func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Durat
 	// If there is no fanout, all of the data will be contained in the base
 	// sector, return a streamer using the data from the base sector.
 	if layout.FanoutSize == 0 {
-		streamer := streamerFromSlice(baseSectorPayload)
+		streamer := StreamerFromSlice(baseSectorPayload)
 		return metadata, streamer, nil
 	}
 

@@ -77,6 +77,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "SingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
 		{Name: "DownloadFormats", Test: testSkynetDownloadFormats},
 		{Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSector},
+		{Name: "DownloadByRoot", Test: testSkynetDownloadByRoot},
 	}
 
 	// Run tests
@@ -1375,7 +1376,7 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup) {
 	filename := "onlyBaseSector"
 	size := 100 + siatest.Fuzz()
 	smallFileData := fastrand.Bytes(size)
-	skylink, sup, _, err := r.UploadNewSkyfileWithDataBlocking(filename, smallFileData, false)
+	skylink, sup, sshp, err := r.UploadNewSkyfileWithDataBlocking(filename, smallFileData, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1418,7 +1419,137 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup) {
 		t.Error("Expected 0 fanout bytes:", fanoutBytes)
 	}
 
-	// TODO - Verify Raw Format for Large file when /skynet/fanout is added
+	// Verify DownloadByRoot gives the same information
+	rootSectorReader, err := r.SkynetDownloadByRootGet(sshp.MerkleRoot, 0, modules.SectorSize, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read the rootSector
+	rootSector := make([]byte, modules.SectorSize)
+	_, err = rootSectorReader.Read(rootSector)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Parse the skyfile metadata from the rootSector
+	_, fanoutBytes, metadata, rootSectorPayload, err := skynet.ParseSkyfileMetadata(rootSector)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the metadata
+	if !reflect.DeepEqual(sup.FileMetadata, metadata) {
+		siatest.PrintJSON(sup.FileMetadata)
+		siatest.PrintJSON(metadata)
+		t.Error("Metadata not equal")
+	}
+
+	// Verify the file data
+	if !bytes.Equal(smallFileData, rootSectorPayload) {
+		t.Log("FileData bytes:", smallFileData)
+		t.Log("rootSectorPayload bytes:", rootSectorPayload)
+		t.Errorf("Bytes not equal")
+	}
+
+	// Since this was a small file upload there should be no fanout bytes
+	if len(fanoutBytes) != 0 {
+		t.Error("Expected 0 fanout bytes:", fanoutBytes)
+	}
+}
+
+// testSkynetDownloadByRoot tests downloading by root
+func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Upload a skyfile that will have a fanout
+	filename := "byRootLargeFile"
+	size := 2*int(modules.SectorSize) + siatest.Fuzz()
+	fileData := fastrand.Bytes(size)
+	_, sup, sshp, err := r.UploadNewSkyfileWithDataBlocking(filename, fileData, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// TODO: add to blocklist test
+	// Download the base sector
+	reader, err := r.SkynetDownloadByRootGet(sshp.MerkleRoot, 0, modules.SectorSize, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read the baseSector
+	baseSector := make([]byte, modules.SectorSize)
+	_, err = reader.Read(baseSector)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Parse the skyfile metadata from the baseSector
+	layout, fanoutBytes, metadata, baseSectorPayload, err := skynet.ParseSkyfileMetadata(baseSector)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the metadata
+	if !reflect.DeepEqual(sup.FileMetadata, metadata) {
+		siatest.PrintJSON(sup.FileMetadata)
+		siatest.PrintJSON(metadata)
+		t.Error("Metadata not equal")
+	}
+
+	// The baseSector should be empty since there is a fanout
+	if len(baseSectorPayload) != 0 {
+		t.Error("baseSectorPayload should be empty:", baseSectorPayload)
+	}
+
+	// For large files there should be fanout bytes
+	if len(fanoutBytes) == 0 {
+		t.Error("no fanout bytes")
+	}
+
+	// Decode Fanout
+	piecesPerChunk, chunkRootsSize, numChunks, err := skynet.DecodeFanout(layout, fanoutBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if piecesPerChunk != 1 {
+		t.Fatal("incorrect for 1-of-N scheme")
+	}
+	if chunkRootsSize != crypto.HashSize {
+		t.Fatal("incorrect for 1-of-N scheme")
+	}
+
+	// Download roots
+	var rootBytes []byte
+	for i := uint64(0); i < numChunks; i++ {
+		root := make([]crypto.Hash, piecesPerChunk)
+		fanoutOffset := i * chunkRootsSize
+		copy(root[0][:], fanoutBytes[fanoutOffset:])
+
+		// Download root
+		reader, err := r.SkynetDownloadByRootGet(root[0], 0, modules.SectorSize, -1)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Read the sector
+		sector := make([]byte, modules.SectorSize)
+		_, err = reader.Read(sector)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Add to rootBytes
+		rootBytes = append(rootBytes, sector...)
+	}
+
+	// Verify bytes
+	if !reflect.DeepEqual(fileData, rootBytes) {
+		t.Log("FileData bytes:", fileData)
+		t.Log("root bytes:", rootBytes)
+		t.Error("Bytes not equal")
+	}
 }
 
 // testSkynetSubDirDownload verifies downloading data from a skyfile using a
