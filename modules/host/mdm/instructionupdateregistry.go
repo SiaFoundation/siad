@@ -111,8 +111,8 @@ func (i *instructionUpdateRegistry) Collateral() types.Currency {
 }
 
 // Cost returns the Cost of this `UpdateRegistry` instruction.
-func (i *instructionUpdateRegistry) Cost() (executionCost, _ types.Currency, err error) {
-	executionCost = modules.MDMUpdateRegistryCost(i.staticState.priceTable)
+func (i *instructionUpdateRegistry) Cost() (executionCost, storeCost types.Currency, err error) {
+	executionCost, storeCost = modules.MDMUpdateRegistryCost(i.staticState.priceTable)
 	return
 }
 

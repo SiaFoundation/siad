@@ -63,3 +63,31 @@ func TestInstructionReadRegistry(t *testing.T) {
 		t.Fatal("verification failed", err)
 	}
 }
+
+// TestInstructionReadRegistry tests the ReadRegistry instruction.
+func TestInstructionReadRegistryNotFound(t *testing.T) {
+	host := newTestHost()
+	mdm := New(host)
+	defer mdm.Stop()
+
+	// Add a registry value for a given random key/tweak pair.
+	_, pk := crypto.GenerateKeyPair()
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+
+	so := host.newTestStorageObligation(true)
+	pt := newTestPriceTable()
+	tb := newTestProgramBuilder(pt, 0)
+	tb.AddReadRegistryInstruction(spk, crypto.Hash{})
+
+	// Execute it.
+	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outputs[0].Error.Error() != modules.ErrRegistryValueNotExist.Error() {
+		t.Fatal("wrong error returned", outputs[0].Error, modules.ErrRegistryValueNotExist)
+	}
+}

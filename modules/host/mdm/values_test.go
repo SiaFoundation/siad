@@ -142,8 +142,7 @@ func (v *TestValues) AddSwapSectorInstruction() {
 func (v *TestValues) AddUpdateRegistryInstruction(spk types.SiaPublicKey, rv modules.SignedRegistryValue) {
 	memory := modules.MDMUpdateRegistryMemory()
 	collateral := modules.MDMUpdateRegistryCollateral()
-	cost := modules.MDMUpdateRegistryCost(v.staticPT)
-	refund := types.ZeroCurrency
+	cost, refund := modules.MDMUpdateRegistryCost(v.staticPT)
 	time := uint64(modules.MDMTimeUpdateRegistry)
 	newData := crypto.HashSize + 8 + crypto.SignatureSize + len(rv.Data) + len(encoding.Marshal(spk))
 	readonly := true
