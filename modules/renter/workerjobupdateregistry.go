@@ -2,11 +2,9 @@ package renter
 
 import (
 	"context"
-	"encoding/binary"
 	"strings"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -124,49 +122,6 @@ func (j *jobUpdateRegistry) callExecute() {
 // by the job.
 func (j *jobUpdateRegistry) callExpectedBandwidth() (ul, dl uint64) {
 	return updateRegistryJobExpectedBandwidth()
-}
-
-// lookupsRegistry looks up a registry on the host and verifies its signature.
-func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
-	// Create the program.
-	pt := w.staticPriceTable().staticPriceTable
-	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since UpdateRegistry doesn't depend on it.
-	pb.AddReadRegistryInstruction(spk, tweak)
-	program, programData := pb.Program()
-	cost, _, _ := pb.Cost(true)
-
-	// take into account bandwidth costs
-	ulBandwidth, dlBandwidth := updateRegistryJobExpectedBandwidth()
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth/2, dlBandwidth/2)
-	cost = cost.Add(bandwidthCost)
-
-	// Execute the program and parse the responses.
-	//
-	var responses []programResponse
-	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
-	if err != nil {
-		return modules.SignedRegistryValue{}, errors.AddContext(err, "Unable to execute program")
-	}
-	for _, resp := range responses {
-		if resp.Error != nil {
-			return modules.SignedRegistryValue{}, errors.AddContext(resp.Error, "Output error")
-		}
-		break
-	}
-	if len(responses) != len(program) {
-		return modules.SignedRegistryValue{}, errors.New("received invalid number of responses but no error")
-	}
-	// Parse response.
-	resp := responses[0]
-	var sig crypto.Signature
-	copy(sig[:], resp.Output[:crypto.SignatureSize])
-	rev := binary.LittleEndian.Uint64(resp.Output[crypto.SignatureSize:])
-	data := resp.Output[crypto.SignatureSize+8:]
-	rv := modules.NewSignedRegistryValue(tweak, data, rev, sig)
-	if rv.Verify(spk.ToPublicKey()) != nil {
-		return modules.SignedRegistryValue{}, errors.New("failed to verify returned registry value's signature")
-	}
-	return rv, nil
 }
 
 // managedUpdateRegistry updates a registry entry on a host.
