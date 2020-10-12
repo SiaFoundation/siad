@@ -58,6 +58,12 @@ func buildETag(skylink modules.Skylink, method, path string, format modules.Skyf
 	).String()
 }
 
+// compareETag is a helper function that performs a (strong) comparison between
+// two ETags. It is the same function as is used by go's http library.
+func compareETag(a, b string) bool {
+	return a == b && a != "" && a[0] == '"'
+}
+
 // isMultipartRequest is a helper method that checks if the given media type
 // matches that of a multipart form.
 func isMultipartRequest(mediaType string) bool {

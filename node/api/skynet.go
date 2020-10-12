@@ -328,24 +328,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		timeout = time.Duration(timeoutInt) * time.Second
 	}
 
-	// Parse the 'nocache' query string parameter.
-	var nocache bool
-	nocacheStr := queryForm.Get("nocache")
-	if nocacheStr != "" {
-		nocache, err = strconv.ParseBool(nocacheStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'nocache' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-	}
-
-	// Return '304 Not Modified' if ETags match and user did not supply nocache
-	eTag := buildETag(skylink, req.Method, path, format)
-	if !nocache && req.Header.Get("If-None-Match") == eTag {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-
 	// Fetch the skyfile's metadata and a streamer to download the file
 	metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout)
 	if errors.Contains(err, renter.ErrRootNotFound) {
@@ -504,7 +486,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}()
 
 	// Set the ETag response header
-	w.Header().Set("ETag", eTag)
+	eTag := buildETag(skylink, req.Method, path, format)
+	w.Header().Set("ETag", fmt.Sprintf("\"%v\"", eTag))
 
 	// Set an appropriate Content-Disposition header
 	var cdh string
