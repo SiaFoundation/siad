@@ -249,7 +249,7 @@ func TestUpdate(t *testing.T) {
 	v.revision--
 	rv = rv.Sign(sk)
 	_, err = r.Update(rv, v.key, v.expiry)
-	if !errors.Contains(err, errLowerRevNum) {
+	if !errors.Contains(err, ErrLowerRevNum) {
 		t.Fatal("expected invalid rev number", err)
 	}
 
@@ -784,7 +784,7 @@ func TestRegistryRace(t *testing.T) {
 			if errors.Contains(err, ErrSameRevNum) {
 				continue // invalid revision numbers are expected
 			}
-			if errors.Contains(err, errLowerRevNum) {
+			if errors.Contains(err, ErrLowerRevNum) {
 				continue // invalid revision numbers are expected
 			}
 			if errors.Contains(err, errInvalidEntry) {
