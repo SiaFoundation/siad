@@ -179,7 +179,7 @@ func (sl *Skylink) LoadString(s string) error {
 	}
 
 	// Load the raw data
-	return sl.loadBytes(raw)
+	return sl.LoadBytes(raw)
 }
 
 // MerkleRoot returns the merkle root of the Skylink.
@@ -310,8 +310,8 @@ func (sl Skylink) Version() uint16 {
 	return (sl.bitfield & 3) + 1
 }
 
-// loadBytes loads the given raw data onto the skylink.
-func (sl *Skylink) loadBytes(data []byte) error {
+// LoadBytes loads the given raw data onto the skylink.
+func (sl *Skylink) LoadBytes(data []byte) error {
 	// Sanity check the size of the given data
 	if len(data) != rawSkylinkSize {
 		build.Critical("raw skylink data has the incorrect size")

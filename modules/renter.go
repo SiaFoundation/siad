@@ -1016,6 +1016,12 @@ type Renter interface {
 	// settings, assuming perfect age and uptime adjustments
 	EstimateHostScore(entry HostDBEntry, allowance Allowance) (HostScoreBreakdown, error)
 
+	// ReadRegistry starts a registry lookup on all available workers. The
+	// jobs have 'timeout' amount of time to finish their jobs and return a
+	// response. Otherwise the response with the highest revision number will be
+	// used.
+	ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout time.Duration) (SignedRegistryValue, error)
+
 	// ScoreBreakdown will return the score for a host db entry using the
 	// hostdb's weighting algorithm.
 	ScoreBreakdown(entry HostDBEntry) (HostScoreBreakdown, error)
@@ -1029,6 +1035,10 @@ type Renter interface {
 	// SetFileTrackingPath sets the on-disk location of an uploaded file to a
 	// new value. Useful if files need to be moved on disk.
 	SetFileTrackingPath(siaPath SiaPath, newPath string) error
+
+	// UpdateRegistry updates the registries on all workers with the given
+	// registry value.
+	UpdateRegistry(spk types.SiaPublicKey, srv SignedRegistryValue, timeout time.Duration) error
 
 	// PauseRepairsAndUploads pauses the renter's repairs and uploads for a time
 	// duration
