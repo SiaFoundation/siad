@@ -80,6 +80,7 @@ type (
 		staticFetchBackupsJobQueue   fetchBackupsJobQueue
 		staticJobHasSectorQueue      *jobHasSectorQueue
 		staticJobReadQueue           *jobReadQueue
+		staticJobReadRegistryQueue   *jobReadRegistryQueue
 		staticJobUpdateRegistryQueue *jobUpdateRegistryQueue
 		staticJobUploadSnapshotQueue *jobUploadSnapshotQueue
 
@@ -197,6 +198,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	w.newPriceTable()
 	w.initJobHasSectorQueue()
 	w.initJobReadQueue()
+	w.initJobReadRegistryQueue()
 	w.initJobUpdateRegistryQueue()
 	w.initJobUploadSnapshotQueue()
 	// Get the worker cache set up before returning the worker. This prevents a

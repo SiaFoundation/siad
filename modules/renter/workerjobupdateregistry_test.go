@@ -3,10 +3,13 @@ package renter
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -34,7 +37,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	var tweak crypto.Hash
 	fastrand.Read(tweak[:])
 	data := fastrand.Bytes(modules.RegistryDataSize)
-	rev := fastrand.Uint64n(1000)
+	rev := fastrand.Uint64n(1000) + 1
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
@@ -58,12 +61,33 @@ func TestUpdateRegistryJob(t *testing.T) {
 		t.Fatal("entries don't match")
 	}
 
-	// Run the UpdateRegistryJob again. This time it's a no-op and should
-	// succeed.
+	// Run the UpdateRegistryJob again. This time it should fail with an error
+	// indicating that the revision number already exists.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
-	if err != nil {
+	if !strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) {
 		t.Fatal(err)
 	}
+
+	// Get rid of the cooldown.
+	wt.staticJobUpdateRegistryQueue.mu.Lock()
+	wt.staticJobUpdateRegistryQueue.cooldownUntil = time.Now()
+	wt.staticJobUpdateRegistryQueue.mu.Unlock()
+
+	// Run the UpdateRegistryJob with a lower revision number. This time it
+	// should fail with an error indicating that the revision number already
+	// exists.
+	rvLowRevNum := rv
+	rvLowRevNum.Revision--
+	rvLowRevNum = rvLowRevNum.Sign(sk)
+	err = wt.UpdateRegistry(context.Background(), spk, rvLowRevNum)
+	if !strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) {
+		t.Fatal(err)
+	}
+
+	// Get rid of the cooldown.
+	wt.staticJobUpdateRegistryQueue.mu.Lock()
+	wt.staticJobUpdateRegistryQueue.cooldownUntil = time.Now()
+	wt.staticJobUpdateRegistryQueue.mu.Unlock()
 
 	// Manually try to read the entry from the host.
 	lookedUpRV, err = lookupRegistry(wt.worker, spk, tweak)
