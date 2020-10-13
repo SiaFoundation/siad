@@ -138,7 +138,6 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() error {
 	cost = cost.Add(bandwidthCost)
 
 	// Execute the program and parse the responses.
-	//
 	var responses []programResponse
 	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
 	if err != nil {
@@ -194,5 +193,5 @@ func (w *worker) UpdateRegistry(ctx context.Context, spk types.SiaPublicKey, rv 
 // function enables getting at the expected bandwidth without having to
 // instantiate a job.
 func updateRegistryJobExpectedBandwidth() (ul, dl uint64) {
-	return 1500, 1500 // a single frame each for upload and download
+	return ethernetMTU, ethernetMTU // a single frame each for upload and download
 }

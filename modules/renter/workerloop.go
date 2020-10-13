@@ -223,8 +223,7 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		return true
 	}
 	// Check if registry jobs are supported.
-	// TODO: Bump to 1.5.1
-	if build.VersionCmp(cache.staticHostVersion, "1.5.0") >= 0 {
+	if build.VersionCmp(cache.staticHostVersion, "1.5.1") >= 0 {
 		job = w.staticJobUpdateRegistryQueue.callNext()
 		if job != nil {
 			w.externLaunchAsyncJob(job)

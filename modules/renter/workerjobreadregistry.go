@@ -13,6 +13,10 @@ import (
 )
 
 const (
+	// ethernetMTU is the minimum transferable size for ethernet networks. It's
+	// used as the estimated upper limit for the frame size of the SiaMux.
+	ethernetMTU = 1500
+
 	// jobReadRegistryPerformanceDecay defines how much the average
 	// performance is decayed each time a new datapoint is added. The jobs use
 	// an exponential weighted average.
@@ -62,7 +66,6 @@ func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (modul
 	cost = cost.Add(bandwidthCost)
 
 	// Execute the program and parse the responses.
-	//
 	var responses []programResponse
 	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
 	if err != nil {
@@ -206,5 +209,5 @@ func (w *worker) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak
 // enables getting at the expected bandwidth without having to instantiate a
 // job.
 func readRegistryJobExpectedBandwidth() (ul, dl uint64) {
-	return 1500, 1500 // a single frame each for upload and download
+	return ethernetMTU, ethernetMTU // a single frame each for upload and download
 }
