@@ -12,10 +12,6 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// MinUpdateRegistrySuccesses is the minimum amount of success responses we
-// require from UpdateRegistry to be valid.
-const MinUpdateRegistrySuccesses = 10
-
 var (
 	// ErrRegistryEntryNotFound is returned if all workers were unable to fetch
 	// the entry.
@@ -36,11 +32,27 @@ var (
 
 	// DefaultRegistryUpdateTimeout is the default timeout used when updating
 	// the registry.
-	DefaultRegistryUpdateTimeout = 5 * time.Minute
+	DefaultRegistryUpdateTimeout = build.Select(build.Var{
+		Dev:      30 * time.Second,
+		Standard: 5 * time.Minute,
+		Testing:  3 * time.Second,
+	}).(time.Duration)
 
 	// DefaultRegistryReadTimeout is the default timeout used when reading from
 	// the registry.
-	DefaultRegistryReadTimeout = 5 * time.Minute
+	DefaultRegistryReadTimeout = build.Select(build.Var{
+		Dev:      30 * time.Second,
+		Standard: 5 * time.Minute,
+		Testing:  3 * time.Second,
+	}).(time.Duration)
+
+	// MinUpdateRegistrySuccesses is the minimum amount of success responses we
+	// require from UpdateRegistry to be valid.
+	MinUpdateRegistrySuccesses = build.Select(build.Var{
+		Dev:      1,
+		Standard: 10,
+		Testing:  1,
+	}).(int)
 )
 
 // ReadRegistry starts a registry lookup on all available workers. The

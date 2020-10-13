@@ -3068,3 +3068,125 @@ func TestRenewContractBadScore(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestRegistryUpdateRead tests setting a registry entry and reading in through
+// the API.
+func TestRegistryUpdateRead(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := renterTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   2,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	r := tg.Renters()[0]
+
+	// Create some random skylinks to use later.
+	skylink1, err := modules.NewSkylinkV1(crypto.HashBytes(fastrand.Bytes(100)), 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skylink2, err := modules.NewSkylinkV1(crypto.HashBytes(fastrand.Bytes(100)), 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skylink3, err := modules.NewSkylinkV1(crypto.HashBytes(fastrand.Bytes(100)), 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a signed registry value.
+	sk, pk := crypto.GenerateKeyPair()
+	fileID := t.Name()
+	tweak := crypto.HashBytes([]byte(fileID))
+	data1 := skylink1.Bytes()
+	data2 := skylink2.Bytes()
+	data3 := skylink3.Bytes()
+	srv1 := modules.NewRegistryValue(tweak, data1, 0).Sign(sk) // rev 0
+	srv2 := modules.NewRegistryValue(tweak, data2, 1).Sign(sk) // rev 1
+	srv3 := modules.NewRegistryValue(tweak, data3, 0).Sign(sk) // rev 0
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+
+	// Force a refresh of the worker pool for testing.
+	_, err = r.RenterWorkersGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to read it from the host. Shouldn't work.
+	_, err = r.RegistryRead(spk, fileID)
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryEntryNotFound.Error()) {
+		t.Fatal(err)
+	}
+
+	// Update the regisry.
+	err = r.RegistryUpdate(spk, fileID, srv1.Revision, srv1.Signature, skylink1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read it again. This should work.
+	readSRV, err := r.RegistryRead(spk, fileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(srv1, readSRV) {
+		t.Log(srv1)
+		t.Log(readSRV)
+		t.Fatal("srvs don't match")
+	}
+
+	// Update the regisry again, with a higher revision.
+	err = r.RegistryUpdate(spk, fileID, srv2.Revision, srv2.Signature, skylink2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read it again. This should work.
+	readSRV, err = r.RegistryRead(spk, fileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(srv2, readSRV) {
+		t.Log(srv2)
+		t.Log(readSRV)
+		t.Fatal("srvs don't match")
+	}
+
+	// Update the regisry again, with the same revision. Shouldn't work.
+	err = r.RegistryUpdate(spk, fileID, srv2.Revision, srv2.Signature, skylink2)
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateTimeout.Error()) {
+		t.Fatal(err)
+	}
+
+	// Update the regisry again, with a lower revision. Shouldn't work.
+	err = r.RegistryUpdate(spk, fileID, srv3.Revision, srv3.Signature, skylink3)
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateTimeout.Error()) {
+		t.Fatal(err)
+	}
+
+	// Update the regisry again, with an invalid sig. Shouldn't work.
+	var invalidSig crypto.Signature
+	fastrand.Read(invalidSig[:])
+	err = r.RegistryUpdate(spk, fileID, srv3.Revision, invalidSig, skylink3)
+	if err == nil || !strings.Contains(err.Error(), crypto.ErrInvalidSignature.Error()) {
+		t.Fatal(err)
+	}
+}
