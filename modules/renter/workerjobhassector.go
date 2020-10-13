@@ -150,7 +150,6 @@ func (j *jobHasSector) managedHasSector() ([]bool, error) {
 	cost = cost.Add(bandwidthCost)
 
 	// Execute the program and parse the responses.
-	//
 	hasSectors := make([]bool, 0, len(program))
 	var responses []programResponse
 	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
