@@ -2,6 +2,7 @@ package api
 
 import (
 	"compress/gzip"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,6 +21,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetportals"
 	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -1041,4 +1043,56 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 		}
 	}
 	WriteJSON(w, res)
+}
+
+// registryHandlerPOST handles the POST calls to /skynet/registry.
+func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse public key
+	var spk types.SiaPublicKey
+	err := spk.LoadString(req.FormValue("publickey"))
+	if err != nil {
+		WriteError(w, Error{"Unable to parse publickey param: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse tweak.
+	tweak := crypto.HashBytes([]byte(req.FormValue("fileid")))
+
+	// Parse revision number.
+	var revision uint64
+	_, err = fmt.Sscan(req.FormValue("revision"), &revision)
+	if err != nil {
+		WriteError(w, Error{"Unable to parse revision param: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse skylink.
+	var skylink modules.Skylink
+	err = skylink.LoadString(req.FormValue("skylink"))
+	if err != nil {
+		WriteError(w, Error{"Unable to parse skylink param: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse signature.
+	sigBytes, err := hex.DecodeString(req.FormValue("signature"))
+	if err != nil {
+		WriteError(w, Error{"Unable to decode signature param: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	if len(sigBytes) != crypto.SignatureSize {
+		WriteError(w, Error{fmt.Sprintf("Signature has invalid length: should be %v but was %v", crypto.SignatureSize, len(sigBytes))}, http.StatusBadRequest)
+		return
+	}
+	var signature crypto.Signature
+	copy(signature[:], sigBytes)
+
+	// Update the registry.
+	srv := modules.NewSignedRegistryValue(tweak, skylink.Bytes(), revision, signature)
+	err = api.renter.UpdateRegistry(spk, srv, renter.DefaultRegistryUpdateTimeout)
+	if err != nil {
+		WriteError(w, Error{"Unable to update the registry: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
 }

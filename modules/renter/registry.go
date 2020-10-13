@@ -33,6 +33,10 @@ var (
 	// ErrRegistryUpdateTimeout is returned when updating the registry was
 	// aborted before reaching MinUpdateRegistrySucesses.
 	ErrRegistryUpdateTimeout = errors.New("registry update timed out before reaching the minimum amount of updated hosts")
+
+	// DefaultRegistryUpdateTimeout is the default timeout used when updating
+	// the registry.
+	DefaultRegistryUpdateTimeout = 5 * time.Minute
 )
 
 // ReadRegistry starts a registry lookup on all available workers. The
@@ -212,6 +216,10 @@ LOOP:
 // before the timeout. It doesn't stop the update jobs. That's because we want
 // to always make sure we update as many hosts as possble.
 func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicKey, srv modules.SignedRegistryValue) error {
+	// Verify the signature before updating the hosts.
+	if err := srv.Verify(spk.ToPublicKey()); err != nil {
+		return errors.AddContext(err, "managedUpdateRegistry: failed to verify signature of entry")
+	}
 	// Get the full list of workers and create a channel to receive all of the
 	// results from the workers. The channel is buffered with one slot per
 	// worker, so that the workers do not have to block when returning the
@@ -259,13 +267,13 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	responses := 0
 	successfulResponses := 0
 
-LOOP:
 	for successfulResponses < MinUpdateRegistrySuccesses && workersLeft >= MinUpdateRegistrySuccesses {
 		// Check deadline.
 		var resp *jobUpdateRegistryResponse
 		select {
 		case <-ctx.Done():
-			break LOOP // timeout reached
+			// Timeout reached.
+			return ErrRegistryUpdateTimeout
 		case resp = <-staticResponseChan:
 		}
 
@@ -281,19 +289,14 @@ LOOP:
 		successfulResponses++
 	}
 
-	// Check for timeout.
-	if successfulResponses < MinUpdateRegistrySuccesses && workersLeft >= MinUpdateRegistrySuccesses {
-		return ErrRegistryUpdateTimeout
-	}
-
 	// Check if we ran out of workers.
 	if workersLeft < MinUpdateRegistrySuccesses {
 		return ErrRegistryUpdateOutOfWorkers
 	}
 
 	// Check if we were able to reach enough successful responses.
-	if successfulResponses < MinUpdateRegistrySuccesses {
-		return ErrRegistryLookupTimeout
+	if successfulResponses >= MinUpdateRegistrySuccesses {
+		return nil
 	}
 
 	// The if conditions above cover every case. This code should never be
