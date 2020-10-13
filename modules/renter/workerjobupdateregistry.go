@@ -2,11 +2,9 @@ package renter
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -98,7 +96,7 @@ func (j *jobUpdateRegistry) callExecute() {
 
 	// update the rv
 	err := j.managedUpdateRegistry()
-	if err != nil && !strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) {
+	if err != nil {
 		sendResponse(err)
 		j.staticQueue.callReportFailure(err)
 		return
@@ -136,7 +134,7 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() error {
 
 	// take into account bandwidth costs
 	ulBandwidth, dlBandwidth := j.callExpectedBandwidth()
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth/2, dlBandwidth/2)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// Execute the program and parse the responses.
@@ -196,5 +194,5 @@ func (w *worker) UpdateRegistry(ctx context.Context, spk types.SiaPublicKey, rv 
 // function enables getting at the expected bandwidth without having to
 // instantiate a job.
 func updateRegistryJobExpectedBandwidth() (ul, dl uint64) {
-	return 2 * 1500, 2 * 1500 // 2 programs using a single frame each
+	return 1500, 1500 // a single frame each for upload and download
 }

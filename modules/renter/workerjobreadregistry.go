@@ -3,12 +3,10 @@ package renter
 import (
 	"context"
 	"encoding/binary"
-	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -60,7 +58,7 @@ func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (modul
 
 	// take into account bandwidth costs
 	ulBandwidth, dlBandwidth := readRegistryJobExpectedBandwidth()
-	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth/2, dlBandwidth/2)
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
 	// Execute the program and parse the responses.
@@ -145,8 +143,7 @@ func (j *jobReadRegistry) callExecute() {
 
 	// read the value
 	srv, err := lookupRegistry(w, j.staticSiaPublicKey, j.staticTweak)
-	if err != nil && !strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) {
-		sendResponse(modules.SignedRegistryValue{}, err)
+	if err != nil {
 		j.staticQueue.callReportFailure(err)
 		return
 	}
@@ -209,5 +206,5 @@ func (w *worker) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak
 // enables getting at the expected bandwidth without having to instantiate a
 // job.
 func readRegistryJobExpectedBandwidth() (ul, dl uint64) {
-	return 2 * 1500, 2 * 1500 // 2 programs using a single frame each
+	return 1500, 1500 // a single frame each for upload and download
 }
