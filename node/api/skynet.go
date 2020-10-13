@@ -123,9 +123,19 @@ type (
 		ID     string `json:"id"`   // base64 encoded Skykey ID
 		Type   string `json:"type"` // human-readable Skykey Type
 	}
+
 	// SkykeysGET contains a slice of Skykeys.
 	SkykeysGET struct {
 		Skykeys []SkykeyGET `json:"skykeys"`
+	}
+
+	// RegistryHandlerGET is the response returned by the registryHandlerGET
+	// handler.
+	RegistryHandlerGET struct {
+		Tweak     string `json:"tweak"`
+		Data      string `json:"data"`
+		Revision  uint64 `json:"revision"`
+		Signature string `json:"signature"`
 	}
 
 	// archiveFunc is a function that serves subfiles from src to dst and
@@ -1066,14 +1076,6 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 		return
 	}
 
-	// Parse skylink.
-	var skylink modules.Skylink
-	err = skylink.LoadString(req.FormValue("skylink"))
-	if err != nil {
-		WriteError(w, Error{"Unable to parse skylink param: " + err.Error()}, http.StatusBadRequest)
-		return
-	}
-
 	// Parse signature.
 	sigBytes, err := hex.DecodeString(req.FormValue("signature"))
 	if err != nil {
@@ -1087,12 +1089,54 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 	var signature crypto.Signature
 	copy(signature[:], sigBytes)
 
+	// Parse data.
+	data, err := hex.DecodeString(req.FormValue("data"))
+	if err != nil {
+		WriteError(w, Error{"Unable to parse data param: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Check data length here to be able to offer a better and faster error
+	// message than when the hosts return it.
+	if len(data) > modules.RegistryDataSize {
+		WriteError(w, Error{fmt.Sprintf("Registry data is too big: %v > %v", len(data), modules.RegistryDataSize)}, http.StatusBadRequest)
+		return
+	}
+
 	// Update the registry.
-	srv := modules.NewSignedRegistryValue(tweak, skylink.Bytes(), revision, signature)
+	srv := modules.NewSignedRegistryValue(tweak, data, revision, signature)
 	err = api.renter.UpdateRegistry(spk, srv, renter.DefaultRegistryUpdateTimeout)
 	if err != nil {
 		WriteError(w, Error{"Unable to update the registry: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteSuccess(w)
+}
+
+// registryHandlerGET handles the GET calls to /skynet/registry.
+func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse public key
+	var spk types.SiaPublicKey
+	err := spk.LoadString(req.FormValue("publickey"))
+	if err != nil {
+		WriteError(w, Error{"Unable to parse publickey param: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse tweak.
+	tweak := crypto.HashBytes([]byte(req.FormValue("fileid")))
+
+	srv, err := api.renter.ReadRegistry(spk, tweak, renter.DefaultRegistryReadTimeout)
+	if err != nil {
+		WriteError(w, Error{"Unable to read from the registry: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Send response.
+	WriteJSON(w, RegistryHandlerGET{
+		Tweak:     hex.EncodeToString(srv.Tweak[:]),
+		Data:      hex.EncodeToString(srv.Data),
+		Revision:  srv.Revision,
+		Signature: hex.EncodeToString(srv.Signature[:]),
+	})
 }

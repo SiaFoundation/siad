@@ -37,6 +37,10 @@ var (
 	// DefaultRegistryUpdateTimeout is the default timeout used when updating
 	// the registry.
 	DefaultRegistryUpdateTimeout = 5 * time.Minute
+
+	// DefaultRegistryReadTimeout is the default timeout used when reading from
+	// the registry.
+	DefaultRegistryReadTimeout = 5 * time.Minute
 )
 
 // ReadRegistry starts a registry lookup on all available workers. The
