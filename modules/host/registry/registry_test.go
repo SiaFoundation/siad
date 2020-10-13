@@ -240,13 +240,22 @@ func TestUpdate(t *testing.T) {
 	// Update the same key again. This shouldn't work cause the revision is the
 	// same.
 	_, err = r.Update(rv, v.key, v.expiry)
-	if !errors.Contains(err, errInvalidRevNum) {
-		t.Fatal("expected invalid rev number")
+	if !errors.Contains(err, ErrSameRevNum) {
+		t.Fatal("expected invalid rev number", err)
+	}
+
+	// Lower the revision. This is still invalid but returns a different error.
+	rv.Revision--
+	v.revision--
+	rv = rv.Sign(sk)
+	_, err = r.Update(rv, v.key, v.expiry)
+	if !errors.Contains(err, errLowerRevNum) {
+		t.Fatal("expected invalid rev number", err)
 	}
 
 	// Try again with a higher revision number. This should work.
-	v.revision++
-	rv.Revision++
+	v.revision += 2
+	rv.Revision += 2
 	rv = rv.Sign(sk)
 	v.signature = rv.Signature
 	updated, err = r.Update(rv, v.key, v.expiry)
@@ -772,7 +781,10 @@ func TestRegistryRace(t *testing.T) {
 			exp := types.BlockHeight(atomic.AddUint64(nextExpiry, 1))
 			rv = rv.Sign(sk)
 			_, err := r.Update(rv, key, exp)
-			if errors.Contains(err, errInvalidRevNum) {
+			if errors.Contains(err, ErrSameRevNum) {
+				continue // invalid revision numbers are expected
+			}
+			if errors.Contains(err, errLowerRevNum) {
 				continue // invalid revision numbers are expected
 			}
 			if errors.Contains(err, errInvalidEntry) {

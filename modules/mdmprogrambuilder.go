@@ -208,8 +208,7 @@ func (pb *ProgramBuilder) AddUpdateRegistryInstruction(spk types.SiaPublicKey, r
 	pb.program = append(pb.program, i)
 	// Update cost, collateral and memory usage.
 	collateral := MDMUpdateRegistryCollateral()
-	cost := MDMUpdateRegistryCost(pb.staticPT)
-	refund := types.ZeroCurrency
+	cost, refund := MDMUpdateRegistryCost(pb.staticPT)
 	memory := MDMUpdateRegistryMemory()
 	time := uint64(MDMTimeUpdateRegistry)
 	pb.addInstruction(collateral, cost, refund, memory, time)

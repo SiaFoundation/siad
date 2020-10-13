@@ -43,8 +43,8 @@ func TestSkynetDownloads(t *testing.T) {
 		{Name: "DirectoryBasic", Test: testDownloadDirectoryBasic},
 		{Name: "DirectoryNested", Test: testDownloadDirectoryNested},
 		{Name: "ContentDisposition", Test: testDownloadContentDisposition},
-		{Name: "NotModified", Test: testNotModified},
 		{Name: "SkynetSkylinkHeader", Test: testSkynetSkylinkHeader},
+		{Name: "ETag", Test: testETag},
 	}
 
 	// Run tests
@@ -537,9 +537,14 @@ func testDownloadContentDisposition(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testNotModified verifies the functionality of the '304 Not Modified' header
-func testNotModified(t *testing.T, tg *siatest.TestGroup) {
+// testETag verifies the functionality of the ETag response header
+func testETag(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
+
+	// use the function used by the http library itself to compare etags
+	etagStrongMatch := func(a, b string) bool {
+		return a == b && a != "" && a[0] == '"'
+	}
 
 	// upload a single file
 	file := make([]byte, 100)
@@ -617,27 +622,7 @@ func testNotModified(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// verify this has an affect on the returned ETag
-	if resp.Header.Get("ETag") == eTag {
-		t.Fatal("Unexpected ETag")
-	}
-
-	// verify we miss the cache if nocache=1 is supplied
-	resp, err = uc.SkynetSkylinkGetWithETag(skylink+"?nocache=1", eTag)
-	if err != nil {
-		t.Fatal("Unexpected error", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Fatal("Unexpected status code", resp.StatusCode)
-	}
-	data, err = ioutil.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatal("Unexpected error", err)
-	}
-	if !bytes.Equal(file, data) {
-		t.Fatal("Unexpected response data")
-	}
-	// verify this has no affect on the returned ETag
-	if resp.Header.Get("ETag") != eTag {
+	if etagStrongMatch(eTag, resp.Header.Get("ETag")) {
 		t.Fatal("Unexpected ETag")
 	}
 
@@ -649,7 +634,7 @@ func testNotModified(t *testing.T, tg *siatest.TestGroup) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatal("Unexpected status code", resp.StatusCode)
 	}
-	if resp.Header.Get("ETag") != eTag {
+	if !etagStrongMatch(eTag, resp.Header.Get("ETag")) {
 		t.Fatal("Unexpected ETag", resp.Header.Get("ETag"))
 	}
 

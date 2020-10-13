@@ -67,9 +67,10 @@ func (rt *renterTester) addCustomHost(testdir string, deps modules.Dependencies)
 		return nil, err
 	}
 
-	// configure host to accept contracts
+	// configure host to accept contracts and to have a registry.
 	settings := h.InternalSettings()
 	settings.AcceptingContracts = true
+	settings.RegistrySize = 640 * modules.RegistryEntrySize
 	err = h.SetInternalSettings(settings)
 	if err != nil {
 		return nil, err
