@@ -2073,9 +2073,9 @@ func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
 	// lock.
 	_, _, err = r.SkynetSkylinkGet(modules.Skylink{}.String())
 	if err == nil {
-		t.Fatal("Error is nil, expected error due to no worker")
-	} else if !strings.Contains(err.Error(), "no workers") {
-		t.Errorf("Expected error containing 'no workers' but got %v", err)
+		t.Fatal("Error is nil, expected error due to not enough workers")
+	} else if !strings.Contains(err.Error(), modules.ErrNotEnoughWorkersInWorkerPool.Error()) {
+		t.Errorf("Expected error containing '%v' but got %v", modules.ErrNotEnoughWorkersInWorkerPool, err)
 	}
 }
 
