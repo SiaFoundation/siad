@@ -37,6 +37,11 @@ var (
 	// manually by the user.
 	ErrDownloadCancelled = errors.New("download was cancelled")
 
+	// ErrNotEnoughWorkersInWorkerPool is an error that is returned whenever an
+	// operation expects a certain number of workers but there aren't that many
+	// available.
+	ErrNotEnoughWorkersInWorkerPool = errors.New("not enough workers in worker pool")
+
 	// PriceEstimationScope is the number of hosts that get queried by the
 	// renter when providing price estimates. Especially for the 'Standard'
 	// variable, there should be congruence with the number of contracts being

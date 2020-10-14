@@ -13,22 +13,13 @@ import (
 )
 
 var (
-	// ErrRegistryEntryNotFound is returned if all workers were unable to fetch
-	// the entry.
-	ErrRegistryEntryNotFound = errors.New("failed to look up the registry entry")
-
-	// ErrRegistryLookupTimeout is similar to ErrRegistryEntryNotFound but it is
-	// returned instead of the lookup timed out before all workers returned.
-	ErrRegistryLookupTimeout = errors.New("lokoing up a registry entry timed out")
-
-	// ErrRegistryUpdateOutOfWorkers is returned if updating the registry failed
-	// to due running out of workers before reaching MinUpdateRegistrySuccess
-	// successful updates.
-	ErrRegistryUpdateOutOfWorkers = errors.New("registry update failed due to running out of good workers")
-
-	// ErrRegistryUpdateTimeout is returned when updating the registry was
-	// aborted before reaching MinUpdateRegistrySucesses.
-	ErrRegistryUpdateTimeout = errors.New("registry update timed out before reaching the minimum amount of updated hosts")
+	// DefaultRegistryReadTimeout is the default timeout used when reading from
+	// the registry.
+	DefaultRegistryReadTimeout = build.Select(build.Var{
+		Dev:      30 * time.Second,
+		Standard: 5 * time.Minute,
+		Testing:  3 * time.Second,
+	}).(time.Duration)
 
 	// DefaultRegistryUpdateTimeout is the default timeout used when updating
 	// the registry.
@@ -38,13 +29,22 @@ var (
 		Testing:  3 * time.Second,
 	}).(time.Duration)
 
-	// DefaultRegistryReadTimeout is the default timeout used when reading from
-	// the registry.
-	DefaultRegistryReadTimeout = build.Select(build.Var{
-		Dev:      30 * time.Second,
-		Standard: 5 * time.Minute,
-		Testing:  3 * time.Second,
-	}).(time.Duration)
+	// ErrRegistryEntryNotFound is returned if all workers were unable to fetch
+	// the entry.
+	ErrRegistryEntryNotFound = errors.New("failed to look up the registry entry")
+
+	// ErrRegistryLookupTimeout is similar to ErrRegistryEntryNotFound but it is
+	// returned instead of the lookup timed out before all workers returned.
+	ErrRegistryLookupTimeout = errors.New("looking up a registry entry timed out")
+
+	// ErrRegistryUpdateOutOfWorkers is returned if updating the registry failed
+	// due to running out of workers before reaching MinUpdateRegistrySuccess
+	// successful updates.
+	ErrRegistryUpdateOutOfWorkers = errors.New("registry update failed due to running out of good workers")
+
+	// ErrRegistryUpdateTimeout is returned when updating the registry was
+	// aborted before reaching MinUpdateRegistrySucesses.
+	ErrRegistryUpdateTimeout = errors.New("registry update timed out before reaching the minimum amount of updated hosts")
 
 	// MinUpdateRegistrySuccesses is the minimum amount of success responses we
 	// require from UpdateRegistry to be valid.
@@ -53,6 +53,19 @@ var (
 		Standard: 10,
 		Testing:  1,
 	}).(int)
+
+	// updateRegistryMemory is the amount of registry that UpdateRegistry will
+	// request from the memory manager.
+	updateRegistryMemory = uint64(100 * modules.RegistryEntrySize)
+
+	// readRegistryMemory is the amount of registry that ReadRegistry will
+	// request from the memory manager.
+	readRegistryMemory = uint64(100 * modules.RegistryEntrySize)
+
+	// useHighestRevTimeout is the amount of time before ReadRegistry will stop
+	// waiting for additional responses from hsots and accept the response with
+	// the highest rev number.
+	useHighestRevTimeout = 100 * time.Millisecond
 )
 
 // ReadRegistry starts a registry lookup on all available workers. The
@@ -63,11 +76,10 @@ func (r *Renter) ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
 	// Since registry entries are very small we use a fairly generous multiple.
-	memory := uint64(100 * modules.RegistryEntrySize)
-	if !r.memoryManager.Request(memory, memoryPriorityHigh) {
+	if !r.memoryManager.Request(readRegistryMemory, memoryPriorityHigh) {
 		return modules.SignedRegistryValue{}, errors.New("renter shut down before memory could be allocated for the project")
 	}
-	defer r.memoryManager.Return(memory)
+	defer r.memoryManager.Return(readRegistryMemory)
 
 	// Create a context. If the timeout is greater than zero, have the context
 	// expire when the timeout triggers.
@@ -92,11 +104,10 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
 	// Since registry entries are very small we use a fairly generous multiple.
-	memory := uint64(100 * modules.RegistryEntrySize)
-	if !r.memoryManager.Request(memory, memoryPriorityHigh) {
+	if !r.memoryManager.Request(updateRegistryMemory, memoryPriorityHigh) {
 		return errors.New("renter shut down before memory could be allocated for the project")
 	}
-	defer r.memoryManager.Return(memory)
+	defer r.memoryManager.Return(updateRegistryMemory)
 
 	// Create a context. If the timeout is greater than zero, have the context
 	// expire when the timeout triggers.
@@ -146,7 +157,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 		pt := worker.staticPriceTable().staticPriceTable
 		err := checkPDBRGouging(pt, cache.staticRenterAllowance)
 		if err != nil {
-			r.log.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
+			r.log.Printf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
 			continue
 		}
 
@@ -162,12 +173,12 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	workers = workers[:numAsyncWorkers]
 	// If there are no workers remaining, fail early.
 	if len(workers) == 0 {
-		return modules.SignedRegistryValue{}, errors.New("cannot perform ReadRegistry, no workers in worker pool")
+		return modules.SignedRegistryValue{}, errors.AddContext(modules.ErrNotEnoughWorkersInWorkerPool, "cannot perform ReadRegistry")
 	}
 
 	// Determine another soft timeout after which we use the highest revision
 	// response we have received so far.
-	useHighestRevCtx, useHighestRevCancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	useHighestRevCtx, useHighestRevCancel := context.WithTimeout(ctx, useHighestRevTimeout)
 	defer useHighestRevCancel()
 
 	var srv modules.SignedRegistryValue
@@ -257,7 +268,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		pt := worker.staticPriceTable().staticPriceTable
 		err := checkPDBRGouging(pt, cache.staticRenterAllowance)
 		if err != nil {
-			r.log.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
+			r.log.Printf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
 			continue
 		}
 
@@ -276,14 +287,14 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	workers = workers[:numAsyncWorkers]
 	// If there are no workers remaining, fail early.
 	if len(workers) < MinUpdateRegistrySuccesses {
-		return fmt.Errorf("cannot perform UpdateRegistry, not enough workers in worker pool %v < %v", len(workers), MinUpdateRegistrySuccesses)
+		return errors.AddContext(modules.ErrNotEnoughWorkersInWorkerPool, "cannot performa UpdateRegistry")
 	}
 
 	workersLeft := len(workers)
 	responses := 0
 	successfulResponses := 0
 
-	for successfulResponses < MinUpdateRegistrySuccesses && workersLeft >= MinUpdateRegistrySuccesses {
+	for successfulResponses < MinUpdateRegistrySuccesses && workersLeft+successfulResponses >= MinUpdateRegistrySuccesses {
 		// Check deadline.
 		var resp *jobUpdateRegistryResponse
 		select {
@@ -292,6 +303,9 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 			return ErrRegistryUpdateTimeout
 		case resp = <-staticResponseChan:
 		}
+
+		// Decrement the number of workers.
+		workersLeft--
 
 		// Increment number of responses.
 		responses++
@@ -306,7 +320,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	}
 
 	// Check if we ran out of workers.
-	if workersLeft < MinUpdateRegistrySuccesses {
+	if workersLeft+successfulResponses < MinUpdateRegistrySuccesses {
 		return ErrRegistryUpdateOutOfWorkers
 	}
 

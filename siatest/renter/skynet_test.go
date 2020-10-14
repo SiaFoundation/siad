@@ -3172,13 +3172,13 @@ func TestRegistryUpdateRead(t *testing.T) {
 
 	// Update the regisry again, with the same revision. Shouldn't work.
 	err = r.RegistryUpdate(spk, fileID, srv2.Revision, srv2.Signature, skylink2)
-	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateTimeout.Error()) {
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateOutOfWorkers.Error()) {
 		t.Fatal(err)
 	}
 
 	// Update the regisry again, with a lower revision. Shouldn't work.
 	err = r.RegistryUpdate(spk, fileID, srv3.Revision, srv3.Signature, skylink3)
-	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateTimeout.Error()) {
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateOutOfWorkers.Error()) {
 		t.Fatal(err)
 	}
 
