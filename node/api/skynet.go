@@ -141,11 +141,11 @@ type (
 	// RegistryHandlerRequestPOST is the expected format of the json request for
 	// /skynet/registry [POST].
 	RegistryHandlerRequestPOST struct {
-		PublicKey types.SiaPublicKey
-		FileID    modules.FileID
-		Revision  uint64
-		Signature crypto.Signature
-		Data      []byte
+		PublicKey types.SiaPublicKey `json:"publickey"`
+		FileID    modules.FileID     `json:"fileid"`
+		Revision  uint64             `json:"revision"`
+		Signature crypto.Signature   `json:"signature"`
+		Data      []byte             `json:"data"`
 	}
 
 	// archiveFunc is a function that serves subfiles from src to dst and
