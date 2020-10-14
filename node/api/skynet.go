@@ -131,6 +131,98 @@ type (
 	archiveFunc func(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error
 )
 
+// skynetBaseSectorHandlerGET accepts a skylink as input and will return the
+// encoded basesector.
+func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Start the timer for the performance measurement.
+	startTime := time.Now()
+	isErr := true
+	defer func() {
+		if isErr {
+			skynetPerformanceStats.TimeToFirstByte.AddRequest(0)
+		}
+	}()
+
+	// Parse the skylink from the raw URL of the request. Any special characters
+	// in the raw URL are encoded, allowing us to differentiate e.g. the '?'
+	// that begins query parameters from the encoded version '%3F'.
+	skylink, _, _, err := parseSkylinkURL(req.URL.String(), "/skynet/basesector/")
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the timeout.
+	timeout := DefaultSkynetRequestTimeout
+	timeoutStr := queryForm.Get("timeout")
+	if timeoutStr != "" {
+		timeoutInt, err := strconv.Atoi(timeoutStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+
+		if timeoutInt > MaxSkynetRequestTimeout {
+			WriteError(w, Error{fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout)}, http.StatusBadRequest)
+			return
+		}
+		timeout = time.Duration(timeoutInt) * time.Second
+	}
+
+	// Fetch the skyfile's  streamer to serve the basesector of the file
+	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout)
+	if errors.Contains(err, renter.ErrRootNotFound) {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+	defer func() {
+		_ = streamer.Close()
+	}()
+
+	// Stop the time here for TTFB.
+	skynetPerformanceStatsMu.Lock()
+	skynetPerformanceStats.TimeToFirstByte.AddRequest(time.Since(startTime))
+	skynetPerformanceStatsMu.Unlock()
+	// Defer a function to record the total performance time.
+	defer func() {
+		skynetPerformanceStatsMu.Lock()
+		defer skynetPerformanceStatsMu.Unlock()
+
+		_, fetchSize, err := skylink.OffsetAndFetchSize()
+		if err != nil {
+			return
+		}
+		if fetchSize <= 64e3 {
+			skynetPerformanceStats.Download64KB.AddRequest(time.Since(startTime))
+			return
+		}
+		if fetchSize <= 1e6 {
+			skynetPerformanceStats.Download1MB.AddRequest(time.Since(startTime))
+			return
+		}
+		if fetchSize <= 4e6 {
+			skynetPerformanceStats.Download4MB.AddRequest(time.Since(startTime))
+			return
+		}
+		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
+	}()
+
+	// Serve the basesector
+	http.ServeContent(w, req, "", time.Time{}, streamer)
+	return
+}
+
 // skynetBlocklistHandlerGET handles the API call to get the list of blocked
 // skylinks.
 func (api *API) skynetBlocklistHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
@@ -274,7 +366,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	// Parse the skylink from the raw URL of the request. Any special characters
 	// in the raw URL are encoded, allowing us to differentiate e.g. the '?'
 	// that begins query parameters from the encoded version '%3F'.
-	skylink, skylinkStringNoQuery, path, err := parseSkylinkURL(req.URL.String())
+	skylink, skylinkStringNoQuery, path, err := parseSkylinkURL(req.URL.String(), "/skynet/skylink/")
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
 		return
@@ -302,9 +394,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	format := modules.SkyfileFormat(strings.ToLower(queryForm.Get("format")))
 	switch format {
 	case modules.SkyfileFormatNotSpecified:
+	case modules.SkyfileFormatConcat:
 	case modules.SkyfileFormatTar:
 	case modules.SkyfileFormatTarGz:
-	case modules.SkyfileFormatConcat:
 	case modules.SkyfileFormatZip:
 	default:
 		WriteError(w, Error{"unable to parse 'format' parameter, allowed values are: 'concat', 'tar', 'targz' and 'zip'"}, http.StatusBadRequest)
@@ -342,6 +434,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		_ = streamer.Close()
 	}()
 
+	// Validate Metadata
 	if metadata.DefaultPath != "" && len(metadata.Subfiles) == 0 {
 		WriteError(w, Error{"defaultpath is not allowed on single files, please specify a format"}, http.StatusBadRequest)
 		return

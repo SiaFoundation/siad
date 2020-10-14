@@ -10,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/Sia/skynet"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"github.com/aead/chacha20/chacha"
@@ -27,9 +28,9 @@ var errNoSkykeyMatchesSkyfileEncryptionID = errors.New("Unable to find matching 
 
 // deriveFanoutKey returns the crypto.CipherKey that should be used for
 // decrypting the fanout stream from the skyfile stored using this layout.
-func (r *Renter) deriveFanoutKey(sl *skyfileLayout, fileSkykey skykey.Skykey) (crypto.CipherKey, error) {
-	if sl.cipherType != crypto.TypeXChaCha20 {
-		return crypto.NewSiaKey(sl.cipherType, sl.keyData[:])
+func (r *Renter) deriveFanoutKey(sl *skynet.SkyfileLayout, fileSkykey skykey.Skykey) (crypto.CipherKey, error) {
+	if sl.CipherType != crypto.TypeXChaCha20 {
+		return crypto.NewSiaKey(sl.CipherType, sl.KeyData[:])
 	}
 
 	// Derive the fanout key.
@@ -69,8 +70,8 @@ func (r *Renter) decryptBaseSector(baseSector []byte) (skykey.Skykey, error) {
 		build.Critical("decryptBaseSector given a baseSector that is too large")
 		return skykey.Skykey{}, errors.New("baseSector too large")
 	}
-	var sl skyfileLayout
-	sl.decode(baseSector)
+	var sl skynet.SkyfileLayout
+	sl.Decode(baseSector)
 
 	if !isEncryptedLayout(sl) {
 		build.Critical("Expected layout to be marked as encrypted!")
@@ -79,11 +80,11 @@ func (r *Renter) decryptBaseSector(baseSector []byte) (skykey.Skykey, error) {
 	// Get the nonce to be used for getting private-id skykeys, and for deriving the
 	// file-specific skykey.
 	nonce := make([]byte, chacha.XNonceSize)
-	copy(nonce[:], sl.keyData[skykey.SkykeyIDLen:skykey.SkykeyIDLen+chacha.XNonceSize])
+	copy(nonce[:], sl.KeyData[skykey.SkykeyIDLen:skykey.SkykeyIDLen+chacha.XNonceSize])
 
 	// Grab the key ID from the layout.
 	var keyID skykey.SkykeyID
-	copy(keyID[:], sl.keyData[:skykey.SkykeyIDLen])
+	copy(keyID[:], sl.KeyData[:skykey.SkykeyIDLen])
 
 	// Try to get the skykey associated with that ID.
 	masterSkykey, err := r.staticSkykeyManager.KeyByID(keyID)
@@ -120,22 +121,22 @@ func (r *Renter) decryptBaseSector(baseSector []byte) (skykey.Skykey, error) {
 	}
 
 	// Save the visible-by-default fields of the baseSector's layout.
-	version := sl.version
-	cipherType := sl.cipherType
+	version := sl.Version
+	cipherType := sl.CipherType
 	var keyData [64]byte
-	copy(keyData[:], sl.keyData[:])
+	copy(keyData[:], sl.KeyData[:])
 
 	// Decode the now decrypted layout.
-	sl.decode(baseSector)
+	sl.Decode(baseSector)
 
 	// Reset the visible-by-default fields.
 	// (They were turned into random values by the decryption)
-	sl.version = version
-	sl.cipherType = cipherType
-	copy(sl.keyData[:], keyData[:])
+	sl.Version = version
+	sl.CipherType = cipherType
+	copy(sl.KeyData[:], keyData[:])
 
 	// Now re-copy the decrypted layout into the decrypted baseSector.
-	copy(baseSector[:SkyfileLayoutSize], sl.encode())
+	copy(baseSector[:skynet.SkyfileLayoutSize], sl.Encode())
 
 	return fileSkykey, nil
 }
@@ -143,7 +144,7 @@ func (r *Renter) decryptBaseSector(baseSector []byte) (skykey.Skykey, error) {
 // encryptBaseSectorWithSkykey encrypts the baseSector in place using the given
 // Skykey. Certain fields of the layout are restored in plaintext into the
 // encrypted baseSector to indicate to downloaders what Skykey was used.
-func encryptBaseSectorWithSkykey(baseSector []byte, plaintextLayout skyfileLayout, sk skykey.Skykey) error {
+func encryptBaseSectorWithSkykey(baseSector []byte, plaintextLayout skynet.SkyfileLayout, sk skykey.Skykey) error {
 	baseSectorKey, err := sk.DeriveSubkey(baseSectorNonceDerivation[:])
 	if err != nil {
 		return errors.AddContext(err, "Unable to derive baseSector subkey")
@@ -161,24 +162,24 @@ func encryptBaseSectorWithSkykey(baseSector []byte, plaintextLayout skyfileLayou
 	}
 
 	// Re-add the visible-by-default fields of the baseSector.
-	var encryptedLayout skyfileLayout
-	encryptedLayout.decode(baseSector)
-	encryptedLayout.version = plaintextLayout.version
-	encryptedLayout.cipherType = baseSectorKey.CipherType()
+	var encryptedLayout skynet.SkyfileLayout
+	encryptedLayout.Decode(baseSector)
+	encryptedLayout.Version = plaintextLayout.Version
+	encryptedLayout.CipherType = baseSectorKey.CipherType()
 
 	// Add the key ID or the encrypted skyfile identifier, depending on the key
 	// type.
 	switch sk.Type {
 	case skykey.TypePublicID:
 		keyID := sk.ID()
-		copy(encryptedLayout.keyData[:skykey.SkykeyIDLen], keyID[:])
+		copy(encryptedLayout.KeyData[:skykey.SkykeyIDLen], keyID[:])
 
 	case skykey.TypePrivateID:
 		encryptedIdentifier, err := sk.GenerateSkyfileEncryptionID()
 		if err != nil {
 			return errors.AddContext(err, "Unable to generate encrypted skyfile ID")
 		}
-		copy(encryptedLayout.keyData[:skykey.SkykeyIDLen], encryptedIdentifier[:])
+		copy(encryptedLayout.KeyData[:skykey.SkykeyIDLen], encryptedIdentifier[:])
 
 	default:
 		build.Critical("No encryption implemented for this skykey type")
@@ -187,25 +188,25 @@ func encryptBaseSectorWithSkykey(baseSector []byte, plaintextLayout skyfileLayou
 
 	// Add the nonce to the base sector, in plaintext.
 	nonce := sk.Nonce()
-	copy(encryptedLayout.keyData[skykey.SkykeyIDLen:skykey.SkykeyIDLen+len(nonce)], nonce[:])
+	copy(encryptedLayout.KeyData[skykey.SkykeyIDLen:skykey.SkykeyIDLen+len(nonce)], nonce[:])
 
 	// Now re-copy the encrypted layout into the baseSector.
-	copy(baseSector[:SkyfileLayoutSize], encryptedLayout.encode())
+	copy(baseSector[:skynet.SkyfileLayoutSize], encryptedLayout.Encode())
 	return nil
 }
 
 // isEncryptedBaseSector returns true if and only if the the baseSector is
 // encrypted.
 func isEncryptedBaseSector(baseSector []byte) bool {
-	var sl skyfileLayout
-	sl.decode(baseSector)
+	var sl skynet.SkyfileLayout
+	sl.Decode(baseSector)
 	return isEncryptedLayout(sl)
 }
 
 // isEncryptedLayout returns true if and only if the the layout indicates that
 // it is from an encrypted base sector.
-func isEncryptedLayout(sl skyfileLayout) bool {
-	return sl.version == 1 && sl.cipherType == crypto.TypeXChaCha20
+func isEncryptedLayout(sl skynet.SkyfileLayout) bool {
+	return sl.Version == 1 && sl.CipherType == crypto.TypeXChaCha20
 }
 
 func encryptionEnabled(sup modules.SkyfileUploadParameters) bool {
