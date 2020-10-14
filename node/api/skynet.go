@@ -138,6 +138,16 @@ type (
 		Signature string `json:"signature"`
 	}
 
+	// RegistryHandlerRequestPOST is the expected format of the json request for
+	// /skynet/registry [POST].
+	RegistryHandlerRequestPOST struct {
+		PublicKey types.SiaPublicKey
+		FileID    modules.FileID
+		Revision  uint64
+		Signature crypto.Signature
+		Data      []byte
+	}
+
 	// archiveFunc is a function that serves subfiles from src to dst and
 	// archives them using a certain algorithm.
 	archiveFunc func(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error
@@ -1057,55 +1067,40 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 
 // registryHandlerPOST handles the POST calls to /skynet/registry.
 func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	// Parse public key
-	var spk types.SiaPublicKey
-	err := spk.LoadString(req.FormValue("publickey"))
+	// Decode request.
+	dec := json.NewDecoder(req.Body)
+	var rhp RegistryHandlerRequestPOST
+	err := dec.Decode(&rhp)
 	if err != nil {
-		WriteError(w, Error{"Unable to parse publickey param: " + err.Error()}, http.StatusBadRequest)
-		return
-	}
-
-	// Parse tweak.
-	tweak := crypto.HashBytes([]byte(req.FormValue("fileid")))
-
-	// Parse revision number.
-	var revision uint64
-	_, err = fmt.Sscan(req.FormValue("revision"), &revision)
-	if err != nil {
-		WriteError(w, Error{"Unable to parse revision param: " + err.Error()}, http.StatusBadRequest)
-		return
-	}
-
-	// Parse signature.
-	sigBytes, err := hex.DecodeString(req.FormValue("signature"))
-	if err != nil {
-		WriteError(w, Error{"Unable to decode signature param: " + err.Error()}, http.StatusBadRequest)
-		return
-	}
-	if len(sigBytes) != crypto.SignatureSize {
-		WriteError(w, Error{fmt.Sprintf("Signature has invalid length: should be %v but was %v", crypto.SignatureSize, len(sigBytes))}, http.StatusBadRequest)
-		return
-	}
-	var signature crypto.Signature
-	copy(signature[:], sigBytes)
-
-	// Parse data.
-	data, err := hex.DecodeString(req.FormValue("data"))
-	if err != nil {
-		WriteError(w, Error{"Unable to parse data param: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"Failed to decode request: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 
 	// Check data length here to be able to offer a better and faster error
 	// message than when the hosts return it.
-	if len(data) > modules.RegistryDataSize {
-		WriteError(w, Error{fmt.Sprintf("Registry data is too big: %v > %v", len(data), modules.RegistryDataSize)}, http.StatusBadRequest)
+	if len(rhp.Data) > modules.RegistryDataSize {
+		WriteError(w, Error{fmt.Sprintf("Registry data is too big: %v > %v", len(rhp.Data), modules.RegistryDataSize)}, http.StatusBadRequest)
+		return
+	}
+
+	// Check the version of the FileID object.
+	// TODO: add more sophisticated checks in the future. e.g. type, permissions
+	// etc.
+	if rhp.FileID.Version != modules.FileIDVersion {
+		WriteError(w, Error{"Unexpected FileID version"}, http.StatusBadRequest)
+		return
+	}
+
+	// Compute the tweak.
+	tweak, err := rhp.FileID.Tweak()
+	if err != nil {
+		WriteError(w, Error{"Failed to compute tweak: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
 	// Update the registry.
-	srv := modules.NewSignedRegistryValue(tweak, data, revision, signature)
-	err = api.renter.UpdateRegistry(spk, srv, renter.DefaultRegistryUpdateTimeout)
+	srv := modules.NewSignedRegistryValue(tweak, rhp.Data, rhp.Revision, rhp.Signature)
+	err = api.renter.UpdateRegistry(rhp.PublicKey, srv, renter.DefaultRegistryUpdateTimeout)
 	if err != nil {
 		WriteError(w, Error{"Unable to update the registry: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -1124,7 +1119,24 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 	}
 
 	// Parse tweak.
-	tweak := crypto.HashBytes([]byte(req.FormValue("fileid")))
+	fileIDBytes, err := hex.DecodeString(req.FormValue("fileid"))
+	if err != nil {
+		WriteError(w, Error{"Unable to decode fileid param: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	// Decode fileid.
+	var fileID modules.FileID
+	err = json.Unmarshal(fileIDBytes, &fileID)
+	if err != nil {
+		WriteError(w, Error{"Unable to json decode fileid param: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	// Compute tweak.
+	tweak, err := fileID.Tweak()
+	if err != nil {
+		WriteError(w, Error{"Unable to compute tweak: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
 
 	srv, err := api.renter.ReadRegistry(spk, tweak, renter.DefaultRegistryReadTimeout)
 	if err != nil {

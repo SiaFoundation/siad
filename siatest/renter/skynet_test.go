@@ -3111,8 +3111,13 @@ func TestRegistryUpdateRead(t *testing.T) {
 
 	// Create a signed registry value.
 	sk, pk := crypto.GenerateKeyPair()
-	fileID := t.Name()
-	tweak := crypto.HashBytes([]byte(fileID))
+	fileID := modules.FileID{
+		Version: modules.FileIDVersion,
+	}
+	tweak, err := fileID.Tweak()
+	if err != nil {
+		t.Fatal(err)
+	}
 	data1 := skylink1.Bytes()
 	data2 := skylink2.Bytes()
 	data3 := skylink3.Bytes()

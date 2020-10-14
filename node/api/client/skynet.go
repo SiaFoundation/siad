@@ -546,14 +546,21 @@ func (c *Client) SkykeySkykeysGet() ([]skykey.Skykey, error) {
 }
 
 // RegistryRead queries the /skynet/registry [GET] endpoint.
-func (c *Client) RegistryRead(spk types.SiaPublicKey, fileID string) (modules.SignedRegistryValue, error) {
+func (c *Client) RegistryRead(spk types.SiaPublicKey, fileID modules.FileID) (modules.SignedRegistryValue, error) {
+	// Encode the fileID.
+	fileIDBytes, err := json.Marshal(fileID)
+	if err != nil {
+		return modules.SignedRegistryValue{}, err
+	}
+
+	// Set the values.
 	values := url.Values{}
 	values.Set("publickey", spk.String())
-	values.Set("fileid", fileID)
+	values.Set("fileid", hex.EncodeToString(fileIDBytes))
 
 	// Send request.
 	var rhg api.RegistryHandlerGET
-	err := c.get(fmt.Sprintf("/skynet/registry?%v", values.Encode()), &rhg)
+	err = c.get(fmt.Sprintf("/skynet/registry?%v", values.Encode()), &rhg)
 	if err != nil {
 		return modules.SignedRegistryValue{}, err
 	}
@@ -587,14 +594,19 @@ func (c *Client) RegistryRead(spk types.SiaPublicKey, fileID string) (modules.Si
 }
 
 // RegistryUpdate queries the /skynet/registry [POST] endpoint.
-func (c *Client) RegistryUpdate(spk types.SiaPublicKey, fileID string, revision uint64, sig crypto.Signature, skylink modules.Skylink) error {
-	values := url.Values{}
-	values.Set("publickey", spk.String())
-	values.Set("fileid", fileID)
-	values.Set("revision", fmt.Sprint(revision))
-	values.Set("signature", hex.EncodeToString(sig[:]))
-	values.Set("data", hex.EncodeToString(skylink.Bytes()))
-	return c.post("/skynet/registry", values.Encode(), nil)
+func (c *Client) RegistryUpdate(spk types.SiaPublicKey, fileID modules.FileID, revision uint64, sig crypto.Signature, skylink modules.Skylink) error {
+	req := api.RegistryHandlerRequestPOST{
+		PublicKey: spk,
+		FileID:    fileID,
+		Revision:  revision,
+		Signature: sig,
+		Data:      skylink.Bytes(),
+	}
+	reqBytes, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	return c.post("/skynet/registry", string(reqBytes), nil)
 }
 
 // skylinkQueryWithValues returns a skylink query based on the given skylink and
