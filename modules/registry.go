@@ -28,10 +28,11 @@ const (
 
 // FileID is the id associated with a registry entry.
 type FileID struct {
+	Version uint8 `json:"version"`
+
 	ApplicationID string `json:"applicationid"`
-	Type          uint8  `json:"type"`
-	Name          string `json:"name"`
-	Version       uint8  `json:"version"`
+	FileType      uint8  `json:"filetype"`
+	FileName      string `json:"filename"`
 }
 
 // Tweak creates the tweak from a FileID object.
@@ -40,8 +41,8 @@ func (fid FileID) Tweak() (crypto.Hash, error) {
 	enc := encoding.NewEncoder(b)
 	_ = enc.Encode(fid.Version)
 	_ = enc.Encode(fid.ApplicationID)
-	_ = enc.Encode(fid.Type)
-	_ = enc.Encode(fid.Name)
+	_ = enc.Encode(fid.FileType)
+	_ = enc.Encode(fid.FileName)
 	if err := enc.Err(); err != nil {
 		return crypto.Hash{}, err
 	}

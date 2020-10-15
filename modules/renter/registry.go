@@ -34,7 +34,7 @@ var (
 	ErrRegistryEntryNotFound = errors.New("failed to look up the registry entry")
 
 	// ErrRegistryLookupTimeout is similar to ErrRegistryEntryNotFound but it is
-	// returned instead of the lookup timed out before all workers returned.
+	// returned instead if the lookup timed out before all workers returned.
 	ErrRegistryLookupTimeout = errors.New("looking up a registry entry timed out")
 
 	// ErrRegistryUpdateOutOfWorkers is returned if updating the registry failed
@@ -49,23 +49,24 @@ var (
 	// MinUpdateRegistrySuccesses is the minimum amount of success responses we
 	// require from UpdateRegistry to be valid.
 	MinUpdateRegistrySuccesses = build.Select(build.Var{
-		Dev:      1,
-		Standard: 10,
-		Testing:  1,
+		Dev:      3,
+		Standard: 3,
+		Testing:  3,
 	}).(int)
 
 	// updateRegistryMemory is the amount of registry that UpdateRegistry will
 	// request from the memory manager.
-	updateRegistryMemory = uint64(100 * modules.RegistryEntrySize)
+	updateRegistryMemory = uint64(20 * (1 << 10)) // 20kib
 
 	// readRegistryMemory is the amount of registry that ReadRegistry will
 	// request from the memory manager.
-	readRegistryMemory = uint64(100 * modules.RegistryEntrySize)
+	readRegistryMemory = uint64(20 * (1 << 10)) // 20kib
 
-	// useHighestRevTimeout is the amount of time before ReadRegistry will stop
-	// waiting for additional responses from hsots and accept the response with
-	// the highest rev number.
-	useHighestRevTimeout = 100 * time.Millisecond
+	// useHighestRevDefaultTimeout is the amount of time before ReadRegistry
+	// will stop waiting for additional responses from hosts and accept the
+	// response with the highest rev number. The timer starts when we get the
+	// first response and doesn't reset afterwards.
+	useHighestRevDefaultTimeout = 100 * time.Millisecond
 )
 
 // ReadRegistry starts a registry lookup on all available workers. The
@@ -144,7 +145,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	staticResponseChan := make(chan *jobReadRegistryResponse, len(workers))
 
 	// Filter out hosts that don't support the registry.
-	numAsyncWorkers := 0
+	numRegistryWorkers := 0
 	for _, worker := range workers {
 		cache := worker.staticCache()
 		if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) < 0 {
@@ -157,7 +158,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 		pt := worker.staticPriceTable().staticPriceTable
 		err := checkPDBRGouging(pt, cache.staticRenterAllowance)
 		if err != nil {
-			r.log.Printf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
+			r.log.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
 			continue
 		}
 
@@ -167,19 +168,20 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 			// otherwise can't participate in the project.
 			continue
 		}
-		workers[numAsyncWorkers] = worker
-		numAsyncWorkers++
+		workers[numRegistryWorkers] = worker
+		numRegistryWorkers++
 	}
-	workers = workers[:numAsyncWorkers]
+	workers = workers[:numRegistryWorkers]
 	// If there are no workers remaining, fail early.
 	if len(workers) == 0 {
 		return modules.SignedRegistryValue{}, errors.AddContext(modules.ErrNotEnoughWorkersInWorkerPool, "cannot perform ReadRegistry")
 	}
 
-	// Determine another soft timeout after which we use the highest revision
-	// response we have received so far.
-	useHighestRevCtx, useHighestRevCancel := context.WithTimeout(ctx, useHighestRevTimeout)
-	defer useHighestRevCancel()
+	// Prepare a context which will be overwritten by a child context with a timeout
+	// when we receive the first response. useHighestRevDefaultTimeout after
+	// receiving the first response, this will be closed to abort the search for
+	// the highest rev number and return the highest one we have so far.
+	useHighestRevCtx := ctx
 
 	var srv modules.SignedRegistryValue
 	responses := 0
@@ -203,6 +205,14 @@ LOOP:
 		case <-ctx.Done():
 			break LOOP // timeout reached
 		case resp = <-staticResponseChan:
+		}
+
+		// When we get the first response, we initialize the highest rev
+		// timeout.
+		if responses == 0 {
+			c, cancel := context.WithTimeout(ctx, useHighestRevDefaultTimeout)
+			defer cancel()
+			useHighestRevCtx = c
 		}
 
 		// Increment responses.
@@ -255,7 +265,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	staticResponseChan := make(chan *jobUpdateRegistryResponse, len(workers))
 
 	// Filter out hosts that don't support the registry.
-	numAsyncWorkers := 0
+	numRegistryWorkers := 0
 	for _, worker := range workers {
 		cache := worker.staticCache()
 		if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) < 0 {
@@ -263,12 +273,15 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		}
 
 		// check for price gouging
-		// TODO: use PDBR gouging for some basic protection. Should be replaced
-		// as part of the gouging overhaul.
-		pt := worker.staticPriceTable().staticPriceTable
-		err := checkPDBRGouging(pt, cache.staticRenterAllowance)
+		// TODO: use upload gouging for some basic protection. Should be
+		// replaced as part of the gouging overhaul.
+		host, ok, err := r.hostDB.Host(worker.staticHostPubKey)
+		if !ok || err != nil {
+			continue
+		}
+		err = checkUploadGouging(cache.staticRenterAllowance, host.HostExternalSettings)
 		if err != nil {
-			r.log.Printf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
+			r.log.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
 			continue
 		}
 
@@ -281,10 +294,10 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 			// otherwise can't participate in the project.
 			continue
 		}
-		workers[numAsyncWorkers] = worker
-		numAsyncWorkers++
+		workers[numRegistryWorkers] = worker
+		numRegistryWorkers++
 	}
-	workers = workers[:numAsyncWorkers]
+	workers = workers[:numRegistryWorkers]
 	// If there are no workers remaining, fail early.
 	if len(workers) < MinUpdateRegistrySuccesses {
 		return errors.AddContext(modules.ErrNotEnoughWorkersInWorkerPool, "cannot performa UpdateRegistry")
@@ -320,18 +333,8 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	}
 
 	// Check if we ran out of workers.
-	if workersLeft+successfulResponses < MinUpdateRegistrySuccesses {
+	if successfulResponses < MinUpdateRegistrySuccesses {
 		return ErrRegistryUpdateOutOfWorkers
 	}
-
-	// Check if we were able to reach enough successful responses.
-	if successfulResponses >= MinUpdateRegistrySuccesses {
-		return nil
-	}
-
-	// The if conditions above cover every case. This code should never be
-	// reached.
-	err := errors.New("managedUpdateRegistry failed for unknown reasons")
-	build.Critical(err)
-	return err
+	return nil
 }

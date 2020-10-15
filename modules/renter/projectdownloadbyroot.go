@@ -152,7 +152,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		pt := worker.staticPriceTable().staticPriceTable
 		err := checkPDBRGouging(pt, cache.staticRenterAllowance)
 		if err != nil {
-			r.log.Printf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
+			r.log.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
 			continue
 		}
 
