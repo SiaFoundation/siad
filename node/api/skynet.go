@@ -1087,7 +1087,7 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 	// TODO: add more sophisticated checks in the future. e.g. type, permissions
 	// etc.
 	if rhp.FileID.Version != modules.FileIDVersion {
-		WriteError(w, Error{"Unexpected FileID version"}, http.StatusBadRequest)
+		WriteError(w, Error{fmt.Sprintf("Unexpected FileID version '%v' != '%v'", rhp.FileID.Version, modules.FileIDVersion)}, http.StatusBadRequest)
 		return
 	}
 
