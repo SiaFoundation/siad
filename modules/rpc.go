@@ -90,7 +90,8 @@ type RPCPriceTable struct {
 	TxnFeeMaxRecommended types.Currency `json:"txnfeemaxrecommended"`
 
 	// Registry related fields.
-	RegistryEntriesLeft uint64 `json:"registryentriesleft"`
+	RegistryEntriesLeft  uint64 `json:"registryentriesleft"`
+	RegistryEntriesTotal uint64 `json:"registryentriestotal"`
 }
 
 var (

@@ -256,6 +256,9 @@ func testUpdatePriceTableBasic(t *testing.T, rhp *renterHostPair) {
 	if pt.RegistryEntriesLeft != left {
 		t.Fatal("Wrong number of registry entries", pt.RegistryEntriesLeft, left)
 	}
+	if pt.RegistryEntriesTotal != 128 {
+		t.Fatal("Wrong number of entries", pt.RegistryEntriesTotal, 128)
+	}
 }
 
 // testUpdatePriceTableAfterSettingsUpdate verifies the price table is updated
