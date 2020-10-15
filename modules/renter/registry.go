@@ -3,11 +3,13 @@ package renter
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -37,10 +39,14 @@ var (
 	// returned instead if the lookup timed out before all workers returned.
 	ErrRegistryLookupTimeout = errors.New("looking up a registry entry timed out")
 
-	// ErrRegistryUpdateOutOfWorkers is returned if updating the registry failed
-	// due to running out of workers before reaching MinUpdateRegistrySuccess
-	// successful updates.
-	ErrRegistryUpdateOutOfWorkers = errors.New("registry update failed due to running out of good workers")
+	// ErrRegistryUpdateInsufficientRedundancy is returned if updating the
+	// registry failed due to running out of workers before reaching
+	// MinUpdateRegistrySuccess successful updates.
+	ErrRegistryUpdateInsufficientRedundancy = errors.New("registry update failed due reach sufficient redundancy")
+
+	// ErrRegistryUpdateNoSuccessfulUpdates is returned if not a single update
+	// was successful.
+	ErrRegistryUpdateNoSuccessfulUpdates = errors.New("all registry updates failed")
 
 	// ErrRegistryUpdateTimeout is returned when updating the registry was
 	// aborted before reaching MinUpdateRegistrySucesses.
@@ -307,6 +313,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	responses := 0
 	successfulResponses := 0
 
+	var additionalErrs error
 	for successfulResponses < MinUpdateRegistrySuccesses && workersLeft+successfulResponses >= MinUpdateRegistrySuccesses {
 		// Check deadline.
 		var resp *jobUpdateRegistryResponse
@@ -325,6 +332,10 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 
 		// Ignore error responses.
 		if resp.staticErr != nil {
+			if strings.Contains(resp.staticErr.Error(), registry.ErrLowerRevNum.Error()) ||
+				strings.Contains(resp.staticErr.Error(), registry.ErrSameRevNum.Error()) {
+				additionalErrs = errors.Compose(additionalErrs, resp.staticErr)
+			}
 			continue
 		}
 
@@ -333,8 +344,11 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	}
 
 	// Check if we ran out of workers.
+	if successfulResponses == 0 {
+		return errors.Compose(ErrRegistryUpdateNoSuccessfulUpdates, additionalErrs)
+	}
 	if successfulResponses < MinUpdateRegistrySuccesses {
-		return ErrRegistryUpdateOutOfWorkers
+		return errors.Compose(ErrRegistryUpdateInsufficientRedundancy, additionalErrs)
 	}
 	return nil
 }

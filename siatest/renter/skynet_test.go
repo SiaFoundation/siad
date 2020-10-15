@@ -22,6 +22,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/node"
@@ -3177,13 +3178,19 @@ func TestRegistryUpdateRead(t *testing.T) {
 
 	// Update the regisry again, with the same revision. Shouldn't work.
 	err = r.RegistryUpdate(spk, fileID, srv2.Revision, srv2.Signature, skylink2)
-	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateOutOfWorkers.Error()) {
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateNoSuccessfulUpdates.Error()) {
+		t.Fatal(err)
+	}
+	if err == nil || !strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) {
 		t.Fatal(err)
 	}
 
 	// Update the regisry again, with a lower revision. Shouldn't work.
 	err = r.RegistryUpdate(spk, fileID, srv3.Revision, srv3.Signature, skylink3)
-	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateOutOfWorkers.Error()) {
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateNoSuccessfulUpdates.Error()) {
+		t.Fatal(err)
+	}
+	if err == nil || !strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) {
 		t.Fatal(err)
 	}
 
