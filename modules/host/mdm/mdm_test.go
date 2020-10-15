@@ -307,9 +307,9 @@ func (mdm *MDM) ExecuteProgramWithBuilderManualFinalize(tb *testProgramBuilder, 
 // using ExecuteProgramWithBuilder.
 func (o Output) assert(newSize uint64, newMerkleRoot crypto.Hash, proof []crypto.Hash, output []byte, err error) error {
 	if err != nil && o.Error == nil {
+		return fmt.Errorf("output didn't contain error")
+	} else if err == nil && o.Error != nil {
 		return fmt.Errorf("output contained error: %v", o.Error)
-	} else if o.Error == nil && err != nil {
-		return errors.New("output didn't contain error")
 	} else if o.Error != nil && err != nil && o.Error.Error() != err.Error() {
 		return fmt.Errorf("output errors don't match %v != %v", o.Error, err)
 	}

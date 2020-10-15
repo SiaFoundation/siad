@@ -7,6 +7,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -56,7 +57,7 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 		t.Fatal("registry returned wrong data")
 	}
 
-	// Execute it again. This should fail with Err
+	// Execute it again. This should fail with ErrSameRevNum.
 	outputs, err = mdm.ExecuteProgramWithBuilder(tb, so, 0, false)
 	if err != nil {
 		t.Fatal(err)
@@ -67,7 +68,7 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 	expectedOutput := append(rv.Signature[:], append(revBytes, rv.Data...)...)
 	// Assert output.
 	output = outputs[0]
-	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, expectedOutput, nil)
+	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, expectedOutput, registry.ErrSameRevNum)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +116,7 @@ func TestInstructionUpdateRegistry(t *testing.T) {
 	expectedOutput = append(rv2.Signature[:], append(revBytes, rv2.Data...)...)
 	// Assert output.
 	output = outputs[0]
-	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, expectedOutput, nil)
+	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, expectedOutput, registry.ErrLowerRevNum)
 	if err != nil {
 		t.Fatal(err)
 	}
