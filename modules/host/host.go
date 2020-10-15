@@ -368,8 +368,8 @@ func (h *Host) managedUpdatePriceTable() {
 		UploadBandwidthCost:   hes.UploadBandwidthPrice,
 
 		// Registry related fields.
-		RegistryEntriesLeft: h.staticRegistry.Cap() - h.staticRegistry.Len(),
-		RegistryEntries:     h.staticRegistry.Cap(),
+		RegistryEntriesLeft:  h.staticRegistry.Cap() - h.staticRegistry.Len(),
+		RegistryEntriesTotal: h.staticRegistry.Cap(),
 
 		// TxnFee related fields.
 		TxnFeeMinRecommended: minRecommended,
