@@ -65,10 +65,10 @@ Available settings:
 
      ephemeralaccountexpiry:     seconds
      maxephemeralaccountbalance: currency
-	 maxephemeralaccountrisk:    currency
+     maxephemeralaccountrisk:    currency
 	 
-	 registrysize:       filesize
-	 customregistrypath: string
+     registrysize:       filesize
+     customregistrypath: string
 
 Currency units can be specified, e.g. 10SC; run 'siac help wallet' for details.
 
