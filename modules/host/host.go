@@ -757,10 +757,10 @@ func (h *Host) RegistryGet(pubKey types.SiaPublicKey, tweak crypto.Hash) (module
 }
 
 // RegistryUpdate updates a value in the registry.
-func (h *Host) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (bool, error) {
+func (h *Host) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (modules.SignedRegistryValue, error) {
 	err := h.tg.Add()
 	if err != nil {
-		return false, err
+		return modules.SignedRegistryValue{}, err
 	}
 	defer h.tg.Done()
 	return h.staticRegistry.Update(rv, pubKey, expiry)

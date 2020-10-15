@@ -52,6 +52,19 @@ type (
 	}
 )
 
+// parseSignedRegistryValueResponse is a helper function to parse a response
+// containing a signed registry value.
+func parseSignedRegistryValueResponse(resp []byte, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
+	if len(resp) < crypto.SignatureSize+8 {
+		return modules.SignedRegistryValue{}, errors.New("failed to parse response due to invalid size")
+	}
+	var sig crypto.Signature
+	copy(sig[:], resp[:crypto.SignatureSize])
+	rev := binary.LittleEndian.Uint64(resp[crypto.SignatureSize:])
+	data := resp[crypto.SignatureSize+8:]
+	return modules.NewSignedRegistryValue(tweak, data, rev, sig), nil
+}
+
 // lookupsRegistry looks up a registry on the host and verifies its signature.
 func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
 	// Create the program.
@@ -84,15 +97,9 @@ func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (modul
 
 	// Parse response.
 	resp := responses[0]
-	var sig crypto.Signature
-	copy(sig[:], resp.Output[:crypto.SignatureSize])
-	rev := binary.LittleEndian.Uint64(resp.Output[crypto.SignatureSize:])
-	data := resp.Output[crypto.SignatureSize+8:]
-	rv := modules.NewSignedRegistryValue(tweak, data, rev, sig)
-
-	// Verify tweak.
-	if rv.Tweak != tweak {
-		return modules.SignedRegistryValue{}, errors.New("host returned a registry value for the wrong tweak")
+	rv, err := parseSignedRegistryValueResponse(resp.Output, tweak)
+	if err != nil {
+		return modules.SignedRegistryValue{}, errors.AddContext(err, "failed to parse signed revision response")
 	}
 
 	// Verify signature.

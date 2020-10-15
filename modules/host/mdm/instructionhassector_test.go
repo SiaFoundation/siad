@@ -42,7 +42,7 @@ func TestInstructionHasSector(t *testing.T) {
 	}
 
 	// Assert output.
-	err = outputs[0].assert(ics, imr, []crypto.Hash{}, []byte{1})
+	err = outputs[0].assert(ics, imr, []crypto.Hash{}, []byte{1}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

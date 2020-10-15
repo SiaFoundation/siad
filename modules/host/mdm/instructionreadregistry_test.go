@@ -48,7 +48,7 @@ func TestInstructionReadRegistry(t *testing.T) {
 	revBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(revBytes, rev)
 	expectedOutput := append(rv.Signature[:], append(revBytes, rv.Data...)...)
-	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, expectedOutput)
+	err = output.assert(0, crypto.Hash{}, []crypto.Hash{}, expectedOutput, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

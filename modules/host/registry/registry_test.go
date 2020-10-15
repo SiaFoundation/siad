@@ -62,11 +62,11 @@ func TestDeleteEntry(t *testing.T) {
 
 	// Register a value.
 	rv, v, _ := randomValue(0)
-	updated, err := r.Update(rv, v.key, v.expiry)
+	oldRV, err := r.Update(rv, v.key, v.expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated {
+	if !reflect.DeepEqual(oldRV, modules.SignedRegistryValue{}) {
 		t.Fatal("key shouldn't have existed before")
 	}
 	if len(r.entries) != 1 {
@@ -216,11 +216,11 @@ func TestUpdate(t *testing.T) {
 
 	// Register a value.
 	rv, v, sk := randomValue(2)
-	updated, err := r.Update(rv, v.key, v.expiry)
+	oldRV, err := r.Update(rv, v.key, v.expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated {
+	if !reflect.DeepEqual(oldRV, modules.SignedRegistryValue{}) {
 		t.Fatal("key shouldn't have existed before")
 	}
 	if len(r.entries) != 1 {
@@ -239,18 +239,29 @@ func TestUpdate(t *testing.T) {
 
 	// Update the same key again. This shouldn't work cause the revision is the
 	// same.
-	_, err = r.Update(rv, v.key, v.expiry)
+	expectedRV := rv
+	oldRV, err = r.Update(rv, v.key, v.expiry)
 	if !errors.Contains(err, ErrSameRevNum) {
 		t.Fatal("expected invalid rev number", err)
+	}
+	if !reflect.DeepEqual(oldRV, expectedRV) {
+		t.Log(oldRV)
+		t.Log(expectedRV)
+		t.Fatal("wrong oldRV returned")
 	}
 
 	// Lower the revision. This is still invalid but returns a different error.
 	rv.Revision--
 	v.revision--
 	rv = rv.Sign(sk)
-	_, err = r.Update(rv, v.key, v.expiry)
+	oldRV, err = r.Update(rv, v.key, v.expiry)
 	if !errors.Contains(err, ErrLowerRevNum) {
 		t.Fatal("expected invalid rev number", err)
+	}
+	if !reflect.DeepEqual(oldRV, expectedRV) {
+		t.Log(oldRV)
+		t.Log(expectedRV)
+		t.Fatal("wrong oldRV returned")
 	}
 
 	// Try again with a higher revision number. This should work.
@@ -258,11 +269,11 @@ func TestUpdate(t *testing.T) {
 	rv.Revision += 2
 	rv = rv.Sign(sk)
 	v.signature = rv.Signature
-	updated, err = r.Update(rv, v.key, v.expiry)
+	oldRV, err = r.Update(rv, v.key, v.expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !updated {
+	if reflect.DeepEqual(oldRV, modules.SignedRegistryValue{}) {
 		t.Fatal("key should have existed before")
 	}
 	r, err = New(registryPath, testingDefaultMaxEntries)
@@ -302,11 +313,11 @@ func TestUpdate(t *testing.T) {
 	// Add a second entry.
 	rv2, v2, _ := randomValue(2)
 	v2.staticIndex = 2 // expected index
-	updated, err = r.Update(rv2, v2.key, v2.expiry)
+	oldRV, err = r.Update(rv2, v2.key, v2.expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated {
+	if !reflect.DeepEqual(oldRV, modules.SignedRegistryValue{}) {
 		t.Fatal("key shouldn't have existed before")
 	}
 	if len(r.entries) != 2 {
@@ -352,11 +363,11 @@ func TestUpdate(t *testing.T) {
 	// first entry had before.
 	rv3, v3, sk3 := randomValue(2)
 	v3.staticIndex = v.staticIndex // expected index
-	updated, err = r.Update(rv3, v3.key, v3.expiry)
+	oldRV, err = r.Update(rv3, v3.key, v3.expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated {
+	if !reflect.DeepEqual(oldRV, modules.SignedRegistryValue{}) {
 		t.Fatal("key shouldn't have existed before")
 	}
 	if len(r.entries) != 2 {
@@ -376,7 +387,7 @@ func TestUpdate(t *testing.T) {
 	// Update the registry with the third entry again but increment the revision
 	// number without resigning. This should fail.
 	rv3.Revision++
-	updated, err = r.Update(rv3, v3.key, v3.expiry)
+	_, err = r.Update(rv3, v3.key, v3.expiry)
 	if !errors.Contains(err, errInvalidSignature) {
 		t.Fatal(err)
 	}
@@ -389,7 +400,7 @@ func TestUpdate(t *testing.T) {
 		t.Fatal("entry doesn't exist")
 	}
 	vExist.invalid = true
-	updated, err = r.Update(rv3, v3.key, v3.expiry)
+	_, err = r.Update(rv3, v3.key, v3.expiry)
 	if !errors.Contains(err, errInvalidEntry) {
 		t.Fatal("should fail with invalid entry error")
 	}
@@ -596,11 +607,11 @@ func TestFullRegistry(t *testing.T) {
 		rv, v, _ := randomValue(0)
 		v.expiry = types.BlockHeight(i)
 		v.signature = rv.Signature
-		u, err := r.Update(rv, v.key, v.expiry)
+		oldRV, err := r.Update(rv, v.key, v.expiry)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if u {
+		if !reflect.DeepEqual(oldRV, modules.SignedRegistryValue{}) {
 			t.Fatal("entry shouldn't exist")
 		}
 		vals = append(vals, v)

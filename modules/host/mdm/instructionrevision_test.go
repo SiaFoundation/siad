@@ -53,7 +53,7 @@ func TestInstructionRevision(t *testing.T) {
 	expectedOutput := encoding.Marshal(modules.MDMInstructionRevisionResponse{
 		RevisionTxn: so.RevisionTxn(),
 	})
-	err = outputs[0].assert(ics, imr, []crypto.Hash{}, expectedOutput)
+	err = outputs[0].assert(ics, imr, []crypto.Hash{}, expectedOutput, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -79,7 +79,7 @@ type SignedRegistryValue struct {
 func NewRegistryValue(tweak crypto.Hash, data []byte, rev uint64) RegistryValue {
 	return RegistryValue{
 		Tweak:    tweak,
-		Data:     data,
+		Data:     append([]byte{}, data...), // deep copy data to prevent races
 		Revision: rev,
 	}
 }

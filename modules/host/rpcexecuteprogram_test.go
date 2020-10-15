@@ -15,6 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
@@ -1245,7 +1246,7 @@ func TestExecuteUpdateRegistryProgram(t *testing.T) {
 	sk, pk := crypto.GenerateKeyPair()
 	tweak := crypto.Hash{1, 2, 3}
 	data := fastrand.Bytes(modules.RegistryDataSize)
-	rev := uint64(0)
+	rev := uint64(1)
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
@@ -1331,6 +1332,133 @@ func TestExecuteUpdateRegistryProgram(t *testing.T) {
 	// Make sure the right amount of money remains on the EA.
 	am := rhp.staticHT.host.staticAccountManager
 	expectedBalance := maxBalance.Sub(cost)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run the same program again. Should fail due to the revision number being
+	// the same.
+	resps, limit, err = rhp.managedExecuteProgram(epr, data, cost, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Log the bandwidth used by this RPC.
+	t.Logf("Used bandwidth (valid UpdateRegistry program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+	// There should only be a single response.
+	if len(resps) != 1 {
+		t.Fatalf("expected 1 response but got %v", len(resps))
+	}
+	resp = resps[0]
+
+	// Check response.
+	if resp.Error == nil || !strings.Contains(resp.Error.Error(), registry.ErrSameRevNum.Error()) {
+		t.Fatal(resp.Error)
+	}
+	if !resp.AdditionalCollateral.Equals(collateral) {
+		t.Fatalf("wrong AdditionalCollateral %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
+	}
+	if resp.NewMerkleRoot != sos.MerkleRoot() {
+		t.Fatalf("wrong NewMerkleRoot %v != %v", resp.NewMerkleRoot, sos.MerkleRoot())
+	}
+	if resp.NewSize != 0 {
+		t.Fatalf("wrong NewSize %v != %v", resp.NewSize, 0)
+	}
+	if len(resp.Proof) != 0 {
+		t.Fatalf("wrong Proof %v != %v", resp.Proof, []crypto.Hash{})
+	}
+	if !resp.TotalCost.Equals(programCost) {
+		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
+	}
+	if !resp.StorageCost.Equals(refund) {
+		t.Fatalf("wrong StorageCost %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
+	}
+	// Parse response.
+	var sig2 crypto.Signature
+	copy(sig2[:], resp.Output[:crypto.SignatureSize])
+	rev2 := binary.LittleEndian.Uint64(resp.Output[crypto.SignatureSize:])
+	data2 := resp.Output[crypto.SignatureSize+8:]
+	rv2 := modules.NewSignedRegistryValue(tweak, data2, rev2, sig2)
+	if !reflect.DeepEqual(rv, rv2) {
+		t.Log(rv)
+		t.Log(rv2)
+		t.Fatal("rvs don't match")
+	}
+
+	// Make sure the right amount of money remains on the EA.
+	expectedBalance = expectedBalance.Sub(cost).Add(refund)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run it one more time. Time time with a lower revision number which should
+	// also fail.
+	pb = modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since HasSector doesn't depend on duration.
+	rvLowRev := rv
+	rvLowRev.Revision--
+	rvLowRev = rvLowRev.Sign(sk)
+	println("argh", rvLowRev.Revision)
+	err = pb.AddUpdateRegistryInstruction(spk, rvLowRev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, data = pb.Program()
+
+	// Prepare the request.
+	epr = modules.RPCExecuteProgramRequest{
+		FileContractID:    rhp.staticFCID,
+		Program:           program,
+		ProgramDataLength: uint64(len(data)),
+	}
+
+	resps, limit, err = rhp.managedExecuteProgram(epr, data, cost, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Log the bandwidth used by this RPC.
+	t.Logf("Used bandwidth (valid UpdateRegistry program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+	// There should only be a single response.
+	if len(resps) != 1 {
+		t.Fatalf("expected 1 response but got %v", len(resps))
+	}
+	resp = resps[0]
+
+	// Check response.
+	if resp.Error == nil || !strings.Contains(resp.Error.Error(), registry.ErrLowerRevNum.Error()) {
+		t.Fatal(resp.Error)
+	}
+	if !resp.AdditionalCollateral.Equals(collateral) {
+		t.Fatalf("wrong AdditionalCollateral %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
+	}
+	if resp.NewMerkleRoot != sos.MerkleRoot() {
+		t.Fatalf("wrong NewMerkleRoot %v != %v", resp.NewMerkleRoot, sos.MerkleRoot())
+	}
+	if resp.NewSize != 0 {
+		t.Fatalf("wrong NewSize %v != %v", resp.NewSize, 0)
+	}
+	if len(resp.Proof) != 0 {
+		t.Fatalf("wrong Proof %v != %v", resp.Proof, []crypto.Hash{})
+	}
+	if !resp.TotalCost.Equals(programCost) {
+		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
+	}
+	if !resp.StorageCost.Equals(refund) {
+		t.Fatalf("wrong StorageCost %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
+	}
+	// Parse response.
+	copy(sig2[:], resp.Output[:crypto.SignatureSize])
+	rev2 = binary.LittleEndian.Uint64(resp.Output[crypto.SignatureSize:])
+	data2 = resp.Output[crypto.SignatureSize+8:]
+	rv2 = modules.NewSignedRegistryValue(tweak, data2, rev2, sig2)
+	if !reflect.DeepEqual(rv, rv2) {
+		t.Log(rv)
+		t.Log(rv2)
+		t.Fatal("rvs don't match")
+	}
+
+	// Make sure the right amount of money remains on the EA.
+	expectedBalance = expectedBalance.Sub(cost).Add(refund)
 	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
 	if err != nil {
 		t.Fatal(err)
