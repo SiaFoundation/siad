@@ -3,6 +3,7 @@ package renter
 import (
 	"context"
 	"encoding/binary"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -80,6 +81,7 @@ func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (modul
 	if len(responses) != len(program) {
 		return modules.SignedRegistryValue{}, errors.New("received invalid number of responses but no error")
 	}
+
 	// Parse response.
 	resp := responses[0]
 	var sig crypto.Signature
@@ -87,6 +89,13 @@ func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (modul
 	rev := binary.LittleEndian.Uint64(resp.Output[crypto.SignatureSize:])
 	data := resp.Output[crypto.SignatureSize+8:]
 	rv := modules.NewSignedRegistryValue(tweak, data, rev, sig)
+
+	// Verify tweak.
+	if rv.Tweak != tweak {
+		return modules.SignedRegistryValue{}, errors.New("host returned a registry value for the wrong tweak")
+	}
+
+	// Verify signature.
 	if rv.Verify(spk.ToPublicKey()) != nil {
 		return modules.SignedRegistryValue{}, errors.New("failed to verify returned registry value's signature")
 	}
@@ -144,9 +153,12 @@ func (j *jobReadRegistry) callExecute() {
 		}
 	}
 
-	// read the value
+	// read the value. We ignore ErrRegistryValueNotExist to not put the host on
+	// a cooldown for something that's not necessarily its fault. In the future
+	// we might want to implement a flag to disable this behavior in case we
+	// know that a host must have the entry.
 	srv, err := lookupRegistry(w, j.staticSiaPublicKey, j.staticTweak)
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), modules.ErrRegistryValueNotExist.Error()) {
 		j.staticQueue.callReportFailure(err)
 		return
 	}
@@ -155,7 +167,7 @@ func (j *jobReadRegistry) callExecute() {
 	jobTime := time.Since(start)
 
 	// Send the response and report success.
-	sendResponse(srv, nil)
+	sendResponse(srv, err)
 	j.staticQueue.callReportSuccess()
 
 	// Update the performance stats on the queue.

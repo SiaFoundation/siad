@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -68,11 +67,6 @@ func TestUpdateRegistryJob(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Get rid of the cooldown.
-	wt.staticJobUpdateRegistryQueue.mu.Lock()
-	wt.staticJobUpdateRegistryQueue.cooldownUntil = time.Now()
-	wt.staticJobUpdateRegistryQueue.mu.Unlock()
-
 	// Run the UpdateRegistryJob with a lower revision number. This time it
 	// should fail with an error indicating that the revision number already
 	// exists.
@@ -83,11 +77,6 @@ func TestUpdateRegistryJob(t *testing.T) {
 	if !strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) {
 		t.Fatal(err)
 	}
-
-	// Get rid of the cooldown.
-	wt.staticJobUpdateRegistryQueue.mu.Lock()
-	wt.staticJobUpdateRegistryQueue.cooldownUntil = time.Now()
-	wt.staticJobUpdateRegistryQueue.mu.Unlock()
 
 	// Manually try to read the entry from the host.
 	lookedUpRV, err = lookupRegistry(wt.worker, spk, tweak)

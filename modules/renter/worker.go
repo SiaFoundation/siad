@@ -25,8 +25,12 @@ import (
 )
 
 const (
-	// minAsyncVersion defines the minimum version that is supported
+	// minAsyncVersion defines the minimum version that supports RHP3.
 	minAsyncVersion = "1.4.10"
+
+	// minRegistryVersion defines the minimum version that is required for a
+	// host to support the registry.
+	minRegistryVersion = "1.5.1"
 )
 
 const (

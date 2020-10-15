@@ -2,6 +2,7 @@ package api
 
 import (
 	"compress/gzip"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,6 +21,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetportals"
 	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -121,9 +123,29 @@ type (
 		ID     string `json:"id"`   // base64 encoded Skykey ID
 		Type   string `json:"type"` // human-readable Skykey Type
 	}
+
 	// SkykeysGET contains a slice of Skykeys.
 	SkykeysGET struct {
 		Skykeys []SkykeyGET `json:"skykeys"`
+	}
+
+	// RegistryHandlerGET is the response returned by the registryHandlerGET
+	// handler.
+	RegistryHandlerGET struct {
+		Tweak     string `json:"tweak"`
+		Data      string `json:"data"`
+		Revision  uint64 `json:"revision"`
+		Signature string `json:"signature"`
+	}
+
+	// RegistryHandlerRequestPOST is the expected format of the json request for
+	// /skynet/registry [POST].
+	RegistryHandlerRequestPOST struct {
+		PublicKey types.SiaPublicKey `json:"publickey"`
+		FileID    modules.FileID     `json:"fileid"`
+		Revision  uint64             `json:"revision"`
+		Signature crypto.Signature   `json:"signature"`
+		Data      []byte             `json:"data"`
 	}
 
 	// archiveFunc is a function that serves subfiles from src to dst and
@@ -1143,4 +1165,100 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 		}
 	}
 	WriteJSON(w, res)
+}
+
+// registryHandlerPOST handles the POST calls to /skynet/registry.
+func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Decode request.
+	dec := json.NewDecoder(req.Body)
+	var rhp RegistryHandlerRequestPOST
+	err := dec.Decode(&rhp)
+	if err != nil {
+		WriteError(w, Error{"Failed to decode request: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Check data length here to be able to offer a better and faster error
+	// message than when the hosts return it.
+	if len(rhp.Data) > modules.RegistryDataSize {
+		WriteError(w, Error{fmt.Sprintf("Registry data is too big: %v > %v", len(rhp.Data), modules.RegistryDataSize)}, http.StatusBadRequest)
+		return
+	}
+
+	// Check the version of the FileID object.
+	// TODO: add more sophisticated checks in the future. e.g. type, permissions
+	// etc.
+	if rhp.FileID.Version != modules.FileIDVersion {
+		WriteError(w, Error{fmt.Sprintf("Unexpected FileID version '%v' != '%v'", rhp.FileID.Version, modules.FileIDVersion)}, http.StatusBadRequest)
+		return
+	}
+
+	// Compute the tweak.
+	tweak, err := rhp.FileID.Tweak()
+	if err != nil {
+		WriteError(w, Error{"Failed to compute tweak: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	// Update the registry.
+	srv := modules.NewSignedRegistryValue(tweak, rhp.Data, rhp.Revision, rhp.Signature)
+	err = api.renter.UpdateRegistry(rhp.PublicKey, srv, renter.DefaultRegistryUpdateTimeout)
+	if err != nil {
+		WriteError(w, Error{"Unable to update the registry: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
+// registryHandlerGET handles the GET calls to /skynet/registry.
+func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse public key
+	var spk types.SiaPublicKey
+	err := spk.LoadString(req.FormValue("publickey"))
+	if err != nil {
+		WriteError(w, Error{"Unable to parse publickey param: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse tweak.
+	fileIDBytes, err := hex.DecodeString(req.FormValue("fileid"))
+	if err != nil {
+		WriteError(w, Error{"Unable to decode fileid param: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	// Decode fileid.
+	var fileID modules.FileID
+	err = json.Unmarshal(fileIDBytes, &fileID)
+	if err != nil {
+		WriteError(w, Error{"Unable to json decode fileid param: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	// Compute tweak.
+	tweak, err := fileID.Tweak()
+	if err != nil {
+		WriteError(w, Error{"Unable to compute tweak: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	srv, err := api.renter.ReadRegistry(spk, tweak, renter.DefaultRegistryReadTimeout)
+	if errors.Contains(err, renter.ErrRegistryEntryNotFound) {
+		WriteError(w, Error{"Unable to read from the registry: " + err.Error()}, http.StatusNotFound)
+		return
+	}
+	if errors.Contains(err, renter.ErrRegistryLookupTimeout) {
+		WriteError(w, Error{"Unable to read from the registry: " + err.Error()}, http.StatusRequestTimeout)
+		return
+	}
+	if err != nil {
+		WriteError(w, Error{"Unable to read from the registry: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	// Send response.
+	WriteJSON(w, RegistryHandlerGET{
+		Tweak:     hex.EncodeToString(srv.Tweak[:]),
+		Data:      hex.EncodeToString(srv.Data),
+		Revision:  srv.Revision,
+		Signature: hex.EncodeToString(srv.Signature[:]),
+	})
 }

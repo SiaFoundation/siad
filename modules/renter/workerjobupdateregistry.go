@@ -2,9 +2,11 @@ package renter
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -94,9 +96,14 @@ func (j *jobUpdateRegistry) callExecute() {
 		}
 	}
 
-	// update the rv
+	// update the rv. We ignore ErrSameRevNum and ErrLowerRevNum to not put the
+	// host on a cooldown for something that's not necessarily its fault. We
+	// might want to add another argument to the job that disables this behavior
+	// in the future in case we are certain that a host can't contain those
+	// errors.
 	err := j.managedUpdateRegistry()
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) &&
+		!strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) {
 		sendResponse(err)
 		j.staticQueue.callReportFailure(err)
 		return
@@ -106,7 +113,7 @@ func (j *jobUpdateRegistry) callExecute() {
 	jobTime := time.Since(start)
 
 	// Send the response and report success.
-	sendResponse(nil)
+	sendResponse(err)
 	j.staticQueue.callReportSuccess()
 
 	// Update the performance stats on the queue.

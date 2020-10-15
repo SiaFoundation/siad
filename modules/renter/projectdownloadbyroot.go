@@ -168,7 +168,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	workers = workers[:numAsyncWorkers]
 	// If there are no workers remaining, fail early.
 	if len(workers) == 0 {
-		return nil, errors.New("cannot perform DownloadByRoot, no workers in worker pool")
+		return nil, errors.AddContext(modules.ErrNotEnoughWorkersInWorkerPool, "cannot perform DownloadByRoot")
 	}
 
 	// Create a timer that is used to determine when the project should stop

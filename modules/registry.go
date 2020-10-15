@@ -1,6 +1,11 @@
 package modules
 
-import "gitlab.com/NebulousLabs/Sia/crypto"
+import (
+	"bytes"
+
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/encoding"
+)
 
 const (
 	// KeySize is the size of a registered key.
@@ -16,7 +21,33 @@ const (
 
 	// RegistryEntrySize is the size of a marshaled registry value on disk.
 	RegistryEntrySize = 256
+
+	// FileIDVersion is the current version we expect in a FileID.
+	FileIDVersion = 1
 )
+
+// FileID is the id associated with a registry entry.
+type FileID struct {
+	Version uint8 `json:"version"`
+
+	ApplicationID string `json:"applicationid"`
+	FileType      uint8  `json:"filetype"`
+	FileName      string `json:"filename"`
+}
+
+// Tweak creates the tweak from a FileID object.
+func (fid FileID) Tweak() (crypto.Hash, error) {
+	b := bytes.NewBuffer(nil)
+	enc := encoding.NewEncoder(b)
+	_ = enc.Encode(fid.Version)
+	_ = enc.Encode(fid.ApplicationID)
+	_ = enc.Encode(fid.FileType)
+	_ = enc.Encode(fid.FileName)
+	if err := enc.Err(); err != nil {
+		return crypto.Hash{}, err
+	}
+	return crypto.HashBytes(b.Bytes()), nil
+}
 
 // RoundRegistrySize is a helper to correctly round up the size of a registry to
 // the closest valid one.
