@@ -101,9 +101,13 @@ func (j *jobUpdateRegistry) callExecute() {
 	// might want to add another argument to the job that disables this behavior
 	// in the future in case we are certain that a host can't contain those
 	// errors.
-	err := j.managedUpdateRegistry()
-	if err != nil && !strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) &&
-		!strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) {
+	_, err := j.managedUpdateRegistry()
+	if err != nil && (strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) ||
+		strings.Contains(err.Error(), registry.ErrSameRevNum.Error())) {
+		// TODO: punish the host if it can't provide a proof for the error
+		sendResponse(err)
+		return
+	} else if err != nil {
 		sendResponse(err)
 		j.staticQueue.callReportFailure(err)
 		return
@@ -129,8 +133,10 @@ func (j *jobUpdateRegistry) callExpectedBandwidth() (ul, dl uint64) {
 	return updateRegistryJobExpectedBandwidth()
 }
 
-// managedUpdateRegistry updates a registry entry on a host.
-func (j *jobUpdateRegistry) managedUpdateRegistry() error {
+// managedUpdateRegistry updates a registry entry on a host. If the error is
+// ErrLowerRevNum or ErrSameRevNum, a signed registry value should be returned
+// as proof.
+func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue, error) {
 	w := j.staticQueue.staticWorker()
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
@@ -148,18 +154,22 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() error {
 	var responses []programResponse
 	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
 	if err != nil {
-		return errors.AddContext(err, "Unable to execute program")
+		return modules.SignedRegistryValue{}, errors.AddContext(err, "Unable to execute program")
 	}
 	for _, resp := range responses {
+		// TODO: if a revision related error was returned, we try to parse the
+		// signed registry value from the response and make sure that it's a
+		// valid one with a lower revision number or the same revision number as
+		// the one we use for the update.
 		if resp.Error != nil {
-			return errors.AddContext(resp.Error, "Output error")
+			return modules.SignedRegistryValue{}, errors.AddContext(resp.Error, "Output error")
 		}
 		break
 	}
 	if len(responses) != len(program) {
-		return errors.New("received invalid number of responses but no error")
+		return modules.SignedRegistryValue{}, errors.New("received invalid number of responses but no error")
 	}
-	return nil
+	return modules.SignedRegistryValue{}, nil
 }
 
 // initJobUpdateRegistryQueue will init the queue for the UpdateRegistry jobs.

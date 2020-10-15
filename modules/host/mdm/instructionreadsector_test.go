@@ -42,7 +42,7 @@ func TestInstructionReadSector(t *testing.T) {
 	}
 
 	// Assert the output.
-	err = outputs[0].assert(ics, imr, []crypto.Hash{}, outputData)
+	err = outputs[0].assert(ics, imr, []crypto.Hash{}, outputData, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func TestInstructionReadSector(t *testing.T) {
 	proofEnd := int(offset+length) / crypto.SegmentSize
 	proof := crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
 	outputData = sectorData[offset:][:length]
-	err = outputs[0].assert(ics, imr, proof, outputData)
+	err = outputs[0].assert(ics, imr, proof, outputData, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,5 +114,5 @@ func TestInstructionReadOutsideSector(t *testing.T) {
 	}
 
 	// Check output.
-	outputs[0].assert(0, imr, []crypto.Hash{}, sectorData)
+	outputs[0].assert(0, imr, []crypto.Hash{}, sectorData, nil)
 }
