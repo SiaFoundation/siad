@@ -91,6 +91,7 @@ type RPCPriceTable struct {
 
 	// Registry related fields.
 	RegistryEntriesLeft uint64 `json:"registryentriesleft"`
+	RegistryEntries     uint64 `json:"registryentries"`
 }
 
 var (

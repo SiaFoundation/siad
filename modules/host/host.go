@@ -369,6 +369,7 @@ func (h *Host) managedUpdatePriceTable() {
 
 		// Registry related fields.
 		RegistryEntriesLeft: h.staticRegistry.Cap() - h.staticRegistry.Len(),
+		RegistryEntries:     h.staticRegistry.Cap(),
 
 		// TxnFee related fields.
 		TxnFeeMinRecommended: minRecommended,
