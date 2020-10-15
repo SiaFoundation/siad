@@ -43,7 +43,7 @@ func (sl *SkyfileLayout) Encode() []byte {
 	b := make([]byte, SkyfileLayoutSize)
 	offset := 0
 	b[offset] = sl.Version
-	offset += 1
+	offset++
 	binary.LittleEndian.PutUint64(b[offset:], sl.Filesize)
 	offset += 8
 	binary.LittleEndian.PutUint64(b[offset:], sl.MetadataSize)
@@ -51,9 +51,9 @@ func (sl *SkyfileLayout) Encode() []byte {
 	binary.LittleEndian.PutUint64(b[offset:], sl.FanoutSize)
 	offset += 8
 	b[offset] = sl.FanoutDataPieces
-	offset += 1
+	offset++
 	b[offset] = sl.FanoutParityPieces
-	offset += 1
+	offset++
 	copy(b[offset:], sl.CipherType[:])
 	offset += len(sl.CipherType)
 	copy(b[offset:], sl.KeyData[:])
@@ -71,7 +71,7 @@ func (sl *SkyfileLayout) Encode() []byte {
 func (sl *SkyfileLayout) Decode(b []byte) {
 	offset := 0
 	sl.Version = b[offset]
-	offset += 1
+	offset++
 	sl.Filesize = binary.LittleEndian.Uint64(b[offset:])
 	offset += 8
 	sl.MetadataSize = binary.LittleEndian.Uint64(b[offset:])
@@ -79,9 +79,9 @@ func (sl *SkyfileLayout) Decode(b []byte) {
 	sl.FanoutSize = binary.LittleEndian.Uint64(b[offset:])
 	offset += 8
 	sl.FanoutDataPieces = b[offset]
-	offset += 1
+	offset++
 	sl.FanoutParityPieces = b[offset]
-	offset += 1
+	offset++
 	copy(sl.CipherType[:], b[offset:])
 	offset += len(sl.CipherType)
 	copy(sl.KeyData[:], b[offset:])
