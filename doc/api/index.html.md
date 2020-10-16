@@ -5023,12 +5023,21 @@ The response body is the raw data for the file.
 // This command uploads the file 'myImage.png' to the Sia folder
 // 'var/skynet/images/myImage.png'. Users who download the file will see the name
 // 'image.png'.
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png?filename=image.png" --data-binary @myImage.png
+curl -A Sia-Agent -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png" -F file=@image.png
+
+// This command uploads a directory with the local files `src/main.rs` and
+// `src/test.c` to the Sia folder 'var/skynet/src'.
+curl -A Sia-Agent -u "":<apipassword> "localhost:9980/skynet/skyfile/src?filename=src" -F files[]=@./src/main.rs -F files[]=@./src/test.c
 ```
 
-uploads a file to the network using a stream. If the upload stream POST call
+Uploads a file to the network using a stream. If the upload stream POST call
 fails or quits before the file is fully uploaded, the file can be repaired by a
 subsequent call to the upload stream endpoint using the `repair` flag.
+
+It is also possible to upload a directory as a single piece of content using
+multipart uploads. Doing this will allow you to address your content under one
+skylink, and access the files by their path. This is especially useful for
+webapps.
 
 ### Path Parameters
 ### REQUIRED
