@@ -4981,17 +4981,17 @@ supplied, this metadata will be relative to the given path.
 
 ```go
 {
-"mode":     640,      // os.FileMode
-"filename": "folder", // string
-"subfiles": [         // []SkyfileSubfileMetadata | null
-  {
-  "mode":         640,                // os.FileMode
-  "filename":     "folder/file1.txt", // string
-  "contenttype":  "text/plain",       // string
-  "offset":       0,                  // uint64
-  "len":          6                   // uint64
+  "mode":     640,      // os.FileMode
+  "filename": "folder", // string
+  "subfiles": {         // map[string]SkyfileSubfileMetadata | null
+    "folder/file1.txt": {                 // string
+      "mode":         640,                // os.FileMode
+      "filename":     "folder/file1.txt", // string
+      "contenttype":  "text/plain",       // string
+      "offset":       0,                  // uint64
+      "len":          6                   // uint64
+    }
   }
-]
 }
 ```
 

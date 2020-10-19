@@ -146,8 +146,7 @@ func NewSiaKey(ct CipherType, entropy []byte) (CipherKey, error) {
 	}
 }
 
-// GenerateSiaKey creates a new SiaKey from the provided type and
-// entropy.
+// GenerateSiaKey creates a new SiaKey from the provided type.
 func GenerateSiaKey(ct CipherType) CipherKey {
 	switch ct {
 	case TypePlain:
