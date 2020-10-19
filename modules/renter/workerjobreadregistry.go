@@ -3,7 +3,6 @@ package renter
 import (
 	"context"
 	"encoding/binary"
-	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -47,7 +46,7 @@ type (
 
 	// jobReadRegistryResponse contains the result of a ReadRegistry query.
 	jobReadRegistryResponse struct {
-		staticSignedRegistryValue modules.SignedRegistryValue
+		staticSignedRegistryValue *modules.SignedRegistryValue
 		staticErr                 error
 	}
 )
@@ -146,7 +145,7 @@ func (j *jobReadRegistry) callExecute() {
 	sendResponse := func(srv modules.SignedRegistryValue, err error) {
 		errLaunch := w.renter.tg.Launch(func() {
 			response := &jobReadRegistryResponse{
-				staticSignedRegistryValue: srv,
+				staticSignedRegistryValue: &srv,
 				staticErr:                 err,
 			}
 			select {
@@ -165,7 +164,7 @@ func (j *jobReadRegistry) callExecute() {
 	// we might want to implement a flag to disable this behavior in case we
 	// know that a host must have the entry.
 	srv, err := lookupRegistry(w, j.staticSiaPublicKey, j.staticTweak)
-	if err != nil && !strings.Contains(err.Error(), modules.ErrRegistryValueNotExist.Error()) {
+	if err != nil {
 		j.staticQueue.callReportFailure(err)
 		return
 	}
@@ -174,7 +173,7 @@ func (j *jobReadRegistry) callExecute() {
 	jobTime := time.Since(start)
 
 	// Send the response and report success.
-	sendResponse(srv, err)
+	sendResponse(srv, nil)
 	j.staticQueue.callReportSuccess()
 
 	// Update the performance stats on the queue.
@@ -204,20 +203,20 @@ func (w *worker) initJobReadRegistryQueue() {
 }
 
 // ReadRegistry is a helper method to run a ReadRegistry job on a worker.
-func (w *worker) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
+func (w *worker) ReadRegistry(ctx context.Context, spk types.SiaPublicKey, tweak crypto.Hash) (*modules.SignedRegistryValue, error) {
 	readRegistryRespChan := make(chan *jobReadRegistryResponse)
 	jur := w.newJobReadRegistry(ctx, readRegistryRespChan, spk, tweak)
 
 	// Add the job to the queue.
 	if !w.staticJobReadRegistryQueue.callAdd(jur) {
-		return modules.SignedRegistryValue{}, errors.New("worker unavailable")
+		return nil, errors.New("worker unavailable")
 	}
 
 	// Wait for the response.
 	var resp *jobReadRegistryResponse
 	select {
 	case <-ctx.Done():
-		return modules.SignedRegistryValue{}, errors.New("ReadRegistry interrupted")
+		return nil, errors.New("ReadRegistry interrupted")
 	case resp = <-readRegistryRespChan:
 	}
 	return resp.staticSignedRegistryValue, resp.staticErr

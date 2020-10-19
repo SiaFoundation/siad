@@ -224,8 +224,8 @@ LOOP:
 		// Increment responses.
 		responses++
 
-		// Ignore error responses.
-		if resp.staticErr != nil {
+		// Ignore error responses and responses that returned no entry.
+		if resp.staticErr != nil || resp.staticSignedRegistryValue == nil {
 			continue
 		}
 
@@ -235,7 +235,7 @@ LOOP:
 		// Remember the response with the highest revision number. We use >=
 		// here to also catch the edge case of the initial revision being 0.
 		if resp.staticSignedRegistryValue.Revision >= srv.Revision {
-			srv = resp.staticSignedRegistryValue
+			srv = *resp.staticSignedRegistryValue
 		}
 	}
 
