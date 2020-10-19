@@ -1388,8 +1388,7 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Read the baseSector
-	baseSector := make([]byte, modules.SectorSize)
-	_, err = baseSectorReader.Read(baseSector)
+	baseSector, err := ioutil.ReadAll(baseSectorReader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1426,8 +1425,7 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Read the rootSector
-	rootSector := make([]byte, modules.SectorSize)
-	_, err = rootSectorReader.Read(rootSector)
+	rootSector, err := ioutil.ReadAll(rootSectorReader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1471,7 +1469,7 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// TODO: add to blocklist test
+	// SeveyTODO: add to blocklist test
 	// Download the base sector
 	reader, err := r.SkynetDownloadByRootGet(sshp.MerkleRoot, 0, modules.SectorSize, -1)
 	if err != nil {
@@ -1479,13 +1477,12 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Read the baseSector
-	baseSector := make([]byte, modules.SectorSize)
-	_, err = reader.Read(baseSector)
+	baseSector, err := ioutil.ReadAll(reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Parse the skyfile metadata from the baseSector
+	// Parse the information from the BaseSector
 	layout, fanoutBytes, metadata, baseSectorPayload, err := skynet.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		t.Fatal(err)
@@ -1520,6 +1517,14 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("incorrect for 1-of-N scheme")
 	}
 
+	// For Encryption
+	//
+	// // Derive the fanout key
+	// fanoutKey, err := skynet.DeriveFanoutKey(&layout, skykey.Skykey{})
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+
 	// Download roots
 	var rootBytes []byte
 	for i := uint64(0); i < numChunks; i++ {
@@ -1534,15 +1539,24 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup) {
 		}
 
 		// Read the sector
-		sector := make([]byte, modules.SectorSize)
-		_, err = reader.Read(sector)
+		sector, err := ioutil.ReadAll(reader)
 		if err != nil {
 			t.Fatal(err)
 		}
-
-		// Add to rootBytes
 		rootBytes = append(rootBytes, sector...)
+
+		// For Encryption
+		//
+		// // Decrypt to data
+		// key := fanoutKey.Derive(i, 0)
+		// _, err = key.DecryptBytesInPlace(sector, 0)
+		// if err != nil {
+		// 	t.Fatal(err)
+		// }
 	}
+
+	// Truncate download data to the file length
+	rootBytes = rootBytes[:sup.FileMetadata.Length]
 
 	// Verify bytes
 	if !reflect.DeepEqual(fileData, rootBytes) {

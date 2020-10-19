@@ -490,7 +490,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParamete
 
 	// Check if an encryption key was specified.
 	if encryptionEnabled(lup) {
-		fanoutSkykey, err := lup.FileSpecificSkykey.DeriveSubkey(fanoutNonceDerivation[:])
+		fanoutSkykey, err := lup.FileSpecificSkykey.DeriveSubkey(skynet.FanoutNonceDerivation[:])
 		if err != nil {
 			return modules.Skylink{}, errors.AddContext(err, "unable to derive fanout subkey")
 		}
@@ -776,7 +776,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 		}
 
 		// Derive the fanout key and add to the fup.
-		fanoutSkykey, err := fileSpecificSkykey.DeriveSubkey(fanoutNonceDerivation[:])
+		fanoutSkykey, err := fileSpecificSkykey.DeriveSubkey(skynet.FanoutNonceDerivation[:])
 		if err != nil {
 			return errors.AddContext(err, "Error deriving fanout skykey")
 		}

@@ -7,6 +7,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -22,6 +24,10 @@ const (
 	// layoutKeyDataSize is the size of the key-data field in a skyfileLayout.
 	layoutKeyDataSize = 64
 )
+
+// FanoutNonceDerivation is the specifier used to derive a nonce for
+// fanout encryption.
+var FanoutNonceDerivation = types.NewSpecifier("FanoutNonce")
 
 // SkyfileLayout explains the layout information that is used for storing data
 // inside of the skyfile. The SkyfileLayout always appears as the first bytes
@@ -115,6 +121,21 @@ func DecodeFanout(sl SkyfileLayout, fanoutBytes []byte) (piecesPerChunk, chunkRo
 	}
 	numChunks = uint64(len(fanoutBytes)) / chunkRootsSize
 	return
+}
+
+// DeriveFanoutKey returns the crypto.CipherKey that should be used for
+// decrypting the fanout stream from the skyfile stored using this layout.
+func DeriveFanoutKey(sl *SkyfileLayout, fileSkykey skykey.Skykey) (crypto.CipherKey, error) {
+	if sl.CipherType != crypto.TypeXChaCha20 {
+		return crypto.NewSiaKey(sl.CipherType, sl.KeyData[:])
+	}
+
+	// Derive the fanout key.
+	fanoutSkykey, err := fileSkykey.DeriveSubkey(FanoutNonceDerivation[:])
+	if err != nil {
+		return nil, errors.AddContext(err, "Error deriving skykey subkey")
+	}
+	return fanoutSkykey.CipherKey()
 }
 
 // ParseSkyfileMetadata will pull the metadata (including layout and fanout) out

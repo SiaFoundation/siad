@@ -20,25 +20,12 @@ import (
 // sector encryption
 var baseSectorNonceDerivation = types.NewSpecifier("BaseSectorNonce")
 
-// fanoutNonceDerivation is the specifier used to derive a nonce for
-// fanout encryption.
-var fanoutNonceDerivation = types.NewSpecifier("FanoutNonce")
-
 var errNoSkykeyMatchesSkyfileEncryptionID = errors.New("Unable to find matching skykey for public ID encryption")
 
 // deriveFanoutKey returns the crypto.CipherKey that should be used for
 // decrypting the fanout stream from the skyfile stored using this layout.
 func (r *Renter) deriveFanoutKey(sl *skynet.SkyfileLayout, fileSkykey skykey.Skykey) (crypto.CipherKey, error) {
-	if sl.CipherType != crypto.TypeXChaCha20 {
-		return crypto.NewSiaKey(sl.CipherType, sl.KeyData[:])
-	}
-
-	// Derive the fanout key.
-	fanoutSkykey, err := fileSkykey.DeriveSubkey(fanoutNonceDerivation[:])
-	if err != nil {
-		return nil, errors.AddContext(err, "Error deriving skykey subkey")
-	}
-	return fanoutSkykey.CipherKey()
+	return skynet.DeriveFanoutKey(sl, fileSkykey)
 }
 
 // checkSkyfileEncryptionIDMatch tries to find a Skykey that can decrypt the

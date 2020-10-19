@@ -269,7 +269,7 @@ func testBaseSectorEncryptionWithType(t *testing.T, r *Renter, skykeyType skykey
 	// Check that deriveFanoutKey produces the same derived key as a manual
 	// derivation from the original.The fact that it is different fsKey1 is
 	// guaranteed by skykey module tests.
-	fanoutKey2, err := fsKey1.DeriveSubkey(fanoutNonceDerivation[:])
+	fanoutKey2, err := fsKey1.DeriveSubkey(skynet.FanoutNonceDerivation[:])
 	if err != nil {
 		t.Fatal(err)
 	}
