@@ -1584,9 +1584,9 @@ func TestExecuteReadRegistryProgram(t *testing.T) {
 	if len(resp.Proof) != 0 {
 		t.Fatalf("wrong Proof %v != %v", resp.Proof, []crypto.Hash{})
 	}
-	if len(resp.Output) != 186 {
+	if len(resp.Output) != 185 {
 		// 186 = 64 (sig) + 8 (revision) + 114 (data)
-		t.Fatalf("wrong Output length %v != %v", len(resp.Output), 0)
+		t.Fatalf("wrong Output length %v != %v", len(resp.Output), 185)
 	}
 	if !resp.TotalCost.Equals(programCost) {
 		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
