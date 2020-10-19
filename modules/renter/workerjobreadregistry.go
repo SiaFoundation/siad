@@ -54,7 +54,7 @@ type (
 // parseSignedRegistryValueResponse is a helper function to parse a response
 // containing a signed registry value.
 func parseSignedRegistryValueResponse(resp []byte, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
-	if len(resp) < crypto.SignatureSize+8 {
+	if len(resp) < crypto.SignatureSize+9 {
 		return modules.SignedRegistryValue{}, errors.New("failed to parse response due to invalid size")
 	}
 	var sig crypto.Signature
@@ -65,7 +65,7 @@ func parseSignedRegistryValueResponse(resp []byte, tweak crypto.Hash) (modules.S
 }
 
 // lookupsRegistry looks up a registry on the host and verifies its signature.
-func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
+func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (*modules.SignedRegistryValue, error) {
 	// Create the program.
 	pt := w.staticPriceTable().staticPriceTable
 	pb := modules.NewProgramBuilder(&pt, 0) // 0 duration since ReadRegistry doesn't depend on it.
@@ -82,30 +82,35 @@ func lookupRegistry(w *worker, spk types.SiaPublicKey, tweak crypto.Hash) (modul
 	var responses []programResponse
 	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
 	if err != nil {
-		return modules.SignedRegistryValue{}, errors.AddContext(err, "Unable to execute program")
+		return nil, errors.AddContext(err, "Unable to execute program")
 	}
 	for _, resp := range responses {
 		if resp.Error != nil {
-			return modules.SignedRegistryValue{}, errors.AddContext(resp.Error, "Output error")
+			return nil, errors.AddContext(resp.Error, "Output error")
 		}
 		break
 	}
 	if len(responses) != len(program) {
-		return modules.SignedRegistryValue{}, errors.New("received invalid number of responses but no error")
+		return nil, errors.New("received invalid number of responses but no error")
+	}
+
+	// Check if entry was found.
+	resp := responses[0]
+	if resp.OutputLength == 0 {
+		return nil, nil
 	}
 
 	// Parse response.
-	resp := responses[0]
 	rv, err := parseSignedRegistryValueResponse(resp.Output, tweak)
 	if err != nil {
-		return modules.SignedRegistryValue{}, errors.AddContext(err, "failed to parse signed revision response")
+		return nil, errors.AddContext(err, "failed to parse signed revision response")
 	}
 
 	// Verify signature.
 	if rv.Verify(spk.ToPublicKey()) != nil {
-		return modules.SignedRegistryValue{}, errors.New("failed to verify returned registry value's signature")
+		return nil, errors.New("failed to verify returned registry value's signature")
 	}
-	return rv, nil
+	return &rv, nil
 }
 
 // newJobReadRegistry is a helper method to create a new ReadRegistry job.
@@ -142,10 +147,10 @@ func (j *jobReadRegistry) callExecute() {
 	w := j.staticQueue.staticWorker()
 
 	// Prepare a method to send a response asynchronously.
-	sendResponse := func(srv modules.SignedRegistryValue, err error) {
+	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
 		errLaunch := w.renter.tg.Launch(func() {
 			response := &jobReadRegistryResponse{
-				staticSignedRegistryValue: &srv,
+				staticSignedRegistryValue: srv,
 				staticErr:                 err,
 			}
 			select {
@@ -165,6 +170,7 @@ func (j *jobReadRegistry) callExecute() {
 	// know that a host must have the entry.
 	srv, err := lookupRegistry(w, j.staticSiaPublicKey, j.staticTweak)
 	if err != nil {
+		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
 		return
 	}
