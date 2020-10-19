@@ -505,7 +505,7 @@ func (sk *Skykey) MatchesSkyfileEncryptionID(encryptionID, nonce []byte) (bool, 
 	}
 
 	// Decrypt the identifier and check that it matches the skyfile encryption
-	// ID specifier..
+	// ID specifier.
 	ck, err := encIDSkykey.CipherKey()
 	if err != nil {
 		return false, err
