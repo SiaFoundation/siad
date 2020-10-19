@@ -17,7 +17,7 @@ const (
 
 	// RegistryDataSize is the amount of arbitrary data in bytes a renter can
 	// register in the registry.
-	RegistryDataSize = 114
+	RegistryDataSize = 113
 
 	// RegistryEntrySize is the size of a marshaled registry value on disk.
 	RegistryEntrySize = 256
