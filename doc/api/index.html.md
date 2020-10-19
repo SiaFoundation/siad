@@ -4983,7 +4983,7 @@ supplied, this metadata will be relative to the given path.
 {
   "mode":     640,      // os.FileMode
   "filename": "folder", // string
-  "subfiles": {         // []SkyfileSubfileMetadata | null
+  "subfiles": {         // map[string]SkyfileSubfileMetadata | null
     "folder/file1.txt": {                 // string
       "mode":         640,                // os.FileMode
       "filename":     "folder/file1.txt", // string
