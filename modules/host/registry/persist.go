@@ -34,7 +34,7 @@ var persistedEntryType = uint8(1)
 
 type (
 	// pesistedEntry is an entry
-	// Size on disk: (1 + 32) + 32 + 4 + 1 + 114 + 8 + 64 = 256
+	// Size on disk: (1 + 32) + 32 + 4 + 1 + 113 + 8 + 64 + 1 = 256
 	persistedEntry struct {
 		// key data
 		Key   compressedPublicKey
@@ -48,6 +48,8 @@ type (
 		Signature crypto.Signature
 
 		// utility fields
+		// Type is the type of the entry. Right now only a single one exists
+		// which will probably change in the future.
 		Type uint8
 	}
 

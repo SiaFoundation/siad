@@ -16,7 +16,8 @@ const (
 	TweakSize = crypto.HashSize
 
 	// RegistryDataSize is the amount of arbitrary data in bytes a renter can
-	// register in the registry.
+	// register in the registry. It's RegistryEntrySize - all the fields besides
+	// the data that get persisted.
 	RegistryDataSize = 113
 
 	// RegistryEntrySize is the size of a marshaled registry value on disk.
