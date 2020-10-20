@@ -54,7 +54,7 @@ type (
 // parseSignedRegistryValueResponse is a helper function to parse a response
 // containing a signed registry value.
 func parseSignedRegistryValueResponse(resp []byte, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
-	if len(resp) < crypto.SignatureSize+9 {
+	if len(resp) < crypto.SignatureSize+8 {
 		return modules.SignedRegistryValue{}, errors.New("failed to parse response due to invalid size")
 	}
 	var sig crypto.Signature
@@ -164,10 +164,7 @@ func (j *jobReadRegistry) callExecute() {
 		}
 	}
 
-	// read the value. We ignore ErrRegistryValueNotExist to not put the host on
-	// a cooldown for something that's not necessarily its fault. In the future
-	// we might want to implement a flag to disable this behavior in case we
-	// know that a host must have the entry.
+	// Read the value.
 	srv, err := lookupRegistry(w, j.staticSiaPublicKey, j.staticTweak)
 	if err != nil {
 		sendResponse(nil, err)
