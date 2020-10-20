@@ -46,8 +46,8 @@ type (
 		metadataAvail chan struct{}
 	}
 
-	// skyfileMultipartReader is a helper struct that implements the
-	// SkyfileUploadReader interface for a regular upload
+	// skyfileReader is a helper struct that implements the SkyfileUploadReader
+	// interface for a regular upload
 	//
 	// NOTE: this object is not threadsafe and thus should not be called from
 	// more than one thread.
@@ -83,6 +83,8 @@ func (sr *skyfileReader) SetReadBuffer(b []byte) {
 }
 
 // SkyfileMetadata returns the SkyfileMetadata associated with this reader.
+//
+// NOTE: this method will block until the metadata becomes available
 func (sr *skyfileReader) SkyfileMetadata() (SkyfileMetadata, error) {
 	// Wait for the metadata to become available, that will be the case when the
 	// reader returned an EOF
@@ -91,7 +93,7 @@ func (sr *skyfileReader) SkyfileMetadata() (SkyfileMetadata, error) {
 	return sr.metadata, nil
 }
 
-// Read implents the io.Reader part of the interface and reads data from the
+// Read implements the io.Reader part of the interface and reads data from the
 // underlying reader.
 func (sr *skyfileReader) Read(p []byte) (n int, err error) {
 	if len(sr.readBuf) > 0 {
@@ -177,7 +179,7 @@ func (sr *skyfileMultipartReader) SkyfileMetadata() (SkyfileMetadata, error) {
 	return sr.metadata, nil
 }
 
-// Read implents the io.Reader part of the interface and reads data from the
+// Read implements the io.Reader part of the interface and reads data from the
 // underlying multipart reader. While the data is being read, the metadata is
 // being constructed.
 func (sr *skyfileMultipartReader) Read(p []byte) (n int, err error) {

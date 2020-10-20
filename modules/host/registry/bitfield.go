@@ -28,6 +28,10 @@ func newBitfield(nBits uint64) (bitfield, error) {
 
 // SetRandom finds an unset bitfield and sets it.
 func (b *bitfield) SetRandom() (uint64, error) {
+	// If the bitfield is empty there is nothing we can do.
+	if len(*b) == 0 {
+		return 0, ErrNoFreeBit
+	}
 	// Search for a gap. Start at a random position.
 	initialPos := fastrand.Intn(len(*b))
 	i := initialPos

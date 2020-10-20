@@ -97,14 +97,12 @@ func (pth *rpcPriceTableHeap) Pop() interface{} {
 // table. These prices are valid for the duration of the
 // rpcPriceGuaranteePeriod, which is defined by the price table's Expiry
 func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) (err error) {
+	// update the price table to make sure it has the most recent information.
+	h.managedUpdatePriceTable()
+
 	// copy the host's price table and give it a random UID
 	pt := h.staticPriceTables.managedCurrent()
 	fastrand.Read(pt.UID[:])
-
-	// set the transaction fee estimates
-	minRecommended, maxRecommended := h.tpool.FeeEstimation()
-	pt.TxnFeeMinRecommended = minRecommended
-	pt.TxnFeeMaxRecommended = maxRecommended
 
 	// set the validity to signal how long these prices are guaranteed for
 	pt.Validity = rpcPriceGuaranteePeriod

@@ -286,6 +286,9 @@ type (
 		EphemeralAccountExpiry     time.Duration  `json:"ephemeralaccountexpiry"`
 		MaxEphemeralAccountBalance types.Currency `json:"maxephemeralaccountbalance"`
 		MaxEphemeralAccountRisk    types.Currency `json:"maxephemeralaccountrisk"`
+
+		CustomRegistryPath string `json:"customregistrypath"`
+		RegistrySize       uint64 `json:"registrysize"`
 	}
 
 	// HostNetworkMetrics reports the quantity of each type of RPC call that

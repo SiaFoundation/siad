@@ -3,6 +3,8 @@ package registry
 import (
 	"fmt"
 	"testing"
+
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestBitfield tests setting and unsettings values in the bitfield.
@@ -189,6 +191,15 @@ func TestSetRandom(t *testing.T) {
 	}
 	if !b.IsSet(127) {
 		t.Fatal("bit wasn't set")
+	}
+
+	// EdgeCase: TestRandom on empty bitfield.
+	b, err = newBitfield(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.SetRandom(); !errors.Contains(err, ErrNoFreeBit) {
+		t.Fatal(err)
 	}
 }
 

@@ -42,6 +42,12 @@ func (p *program) staticDecodeDropSectorsInstruction(instruction modules.Instruc
 	}, nil
 }
 
+// Batch declares whether or not this instruction can be batched together with
+// the previous instruction.
+func (i instructionDropSectors) Batch() bool {
+	return false
+}
+
 // Execute executes the 'DropSectors' instruction.
 //
 // If the number of sectors is 0 this instruction is a noop.

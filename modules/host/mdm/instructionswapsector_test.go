@@ -102,7 +102,7 @@ func testInstructionSwapSectorBasic(t *testing.T, mdm *MDM, numSectors uint64, p
 	}
 
 	// Assert the output.
-	err = outputs[0].assert(ics, nmr, expectedProof, expectedOutput)
+	err = outputs[0].assert(ics, nmr, expectedProof, expectedOutput, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func testInstructionSwapSectorSameIndex(t *testing.T, mdm *MDM, numSectors uint6
 	expectedOutput := encoding.Marshal(oldLeafHashes)
 
 	// Assert the output.
-	err = outputs[0].assert(ics, imr, expectedProof, expectedOutput)
+	err = outputs[0].assert(ics, imr, expectedProof, expectedOutput, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +277,7 @@ func testInstructionSwapSectorNoProof(t *testing.T, mdm *MDM, numSectors uint64,
 	}
 
 	// Assert the output.
-	err = outputs[0].assert(ics, nmr, []crypto.Hash{}, []byte{})
+	err = outputs[0].assert(ics, nmr, []crypto.Hash{}, []byte{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

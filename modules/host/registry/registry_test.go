@@ -54,19 +54,19 @@ func TestDeleteEntry(t *testing.T) {
 	}(r)
 
 	// No bit should be used.
-	for i := uint64(0); i < r.staticUsage.Len(); i++ {
-		if r.staticUsage.IsSet(i) {
+	for i := uint64(0); i < r.usage.Len(); i++ {
+		if r.usage.IsSet(i) {
 			t.Fatal("no page should be in use")
 		}
 	}
 
 	// Register a value.
 	rv, v, _ := randomValue(0)
-	updated, err := r.Update(rv, v.key, v.expiry)
+	oldRV, err := r.Update(rv, v.key, v.expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated {
+	if !reflect.DeepEqual(oldRV, modules.SignedRegistryValue{}) {
 		t.Fatal("key shouldn't have existed before")
 	}
 	if len(r.entries) != 1 {
@@ -78,7 +78,7 @@ func TestDeleteEntry(t *testing.T) {
 	}
 
 	// The bit should be set.
-	if !r.staticUsage.IsSet(uint64(vExists.staticIndex) - 1) {
+	if !r.usage.IsSet(uint64(vExists.staticIndex) - 1) {
 		t.Fatal("bit wasn't set")
 	}
 
@@ -91,8 +91,8 @@ func TestDeleteEntry(t *testing.T) {
 	}
 
 	// No bit should be used again.
-	for i := uint64(0); i < r.staticUsage.Len(); i++ {
-		if r.staticUsage.IsSet(i) {
+	for i := uint64(0); i < r.usage.Len(); i++ {
+		if r.usage.IsSet(i) {
 			t.Fatal("no page should be in use")
 		}
 	}
@@ -121,8 +121,8 @@ func TestNew(t *testing.T) {
 	}(r)
 
 	// No bit should be used.
-	for i := uint64(0); i < r.staticUsage.Len(); i++ {
-		if r.staticUsage.IsSet(i) {
+	for i := uint64(0); i < r.usage.Len(); i++ {
+		if r.usage.IsSet(i) {
 			t.Fatal("no page should be in use")
 		}
 	}
@@ -147,11 +147,11 @@ func TestNew(t *testing.T) {
 	// second index.
 	_, vUnused, _ := randomValue(1)
 	_, vUsed, _ := randomValue(2)
-	err = r.managedSaveEntry(vUnused, false)
+	err = r.staticSaveEntry(vUnused, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = r.managedSaveEntry(vUsed, true)
+	err = r.staticSaveEntry(vUsed, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,10 +178,17 @@ func TestNew(t *testing.T) {
 	}
 
 	// Loaded page should be in use.
-	for i := uint64(0); i < r.staticUsage.Len(); i++ {
-		if r.staticUsage.IsSet(i) != (i == uint64(v.staticIndex-1)) {
+	for i := uint64(0); i < r.usage.Len(); i++ {
+		if r.usage.IsSet(i) != (i == uint64(v.staticIndex-1)) {
 			t.Fatal("wrong page is set")
 		}
+	}
+
+	// Try to create a registry at a relative path. This shouldn't work.
+	registryPath = "./registry.dat"
+	_, err = New(registryPath, testingDefaultMaxEntries)
+	if !errors.Contains(err, errPathNotAbsolute) {
+		t.Fatal(err)
 	}
 }
 
@@ -209,11 +216,11 @@ func TestUpdate(t *testing.T) {
 
 	// Register a value.
 	rv, v, sk := randomValue(2)
-	updated, err := r.Update(rv, v.key, v.expiry)
+	oldRV, err := r.Update(rv, v.key, v.expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated {
+	if !reflect.DeepEqual(oldRV, modules.SignedRegistryValue{}) {
 		t.Fatal("key shouldn't have existed before")
 	}
 	if len(r.entries) != 1 {
@@ -232,21 +239,41 @@ func TestUpdate(t *testing.T) {
 
 	// Update the same key again. This shouldn't work cause the revision is the
 	// same.
-	_, err = r.Update(rv, v.key, v.expiry)
-	if !errors.Contains(err, errInvalidRevNum) {
-		t.Fatal("expected invalid rev number")
+	expectedRV := rv
+	oldRV, err = r.Update(rv, v.key, v.expiry)
+	if !errors.Contains(err, ErrSameRevNum) {
+		t.Fatal("expected invalid rev number", err)
+	}
+	if !reflect.DeepEqual(oldRV, expectedRV) {
+		t.Log(oldRV)
+		t.Log(expectedRV)
+		t.Fatal("wrong oldRV returned")
+	}
+
+	// Lower the revision. This is still invalid but returns a different error.
+	rv.Revision--
+	v.revision--
+	rv = rv.Sign(sk)
+	oldRV, err = r.Update(rv, v.key, v.expiry)
+	if !errors.Contains(err, ErrLowerRevNum) {
+		t.Fatal("expected invalid rev number", err)
+	}
+	if !reflect.DeepEqual(oldRV, expectedRV) {
+		t.Log(oldRV)
+		t.Log(expectedRV)
+		t.Fatal("wrong oldRV returned")
 	}
 
 	// Try again with a higher revision number. This should work.
-	v.revision++
-	rv.Revision++
+	v.revision += 2
+	rv.Revision += 2
 	rv = rv.Sign(sk)
 	v.signature = rv.Signature
-	updated, err = r.Update(rv, v.key, v.expiry)
+	oldRV, err = r.Update(rv, v.key, v.expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !updated {
+	if reflect.DeepEqual(oldRV, modules.SignedRegistryValue{}) {
 		t.Fatal("key should have existed before")
 	}
 	r, err = New(registryPath, testingDefaultMaxEntries)
@@ -286,11 +313,11 @@ func TestUpdate(t *testing.T) {
 	// Add a second entry.
 	rv2, v2, _ := randomValue(2)
 	v2.staticIndex = 2 // expected index
-	updated, err = r.Update(rv2, v2.key, v2.expiry)
+	oldRV, err = r.Update(rv2, v2.key, v2.expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated {
+	if !reflect.DeepEqual(oldRV, modules.SignedRegistryValue{}) {
 		t.Fatal("key shouldn't have existed before")
 	}
 	if len(r.entries) != 2 {
@@ -308,7 +335,7 @@ func TestUpdate(t *testing.T) {
 	}
 
 	// Mark the first entry as unused and save it to disk.
-	err = r.managedSaveEntry(v, false)
+	err = r.staticSaveEntry(v, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,11 +363,11 @@ func TestUpdate(t *testing.T) {
 	// first entry had before.
 	rv3, v3, sk3 := randomValue(2)
 	v3.staticIndex = v.staticIndex // expected index
-	updated, err = r.Update(rv3, v3.key, v3.expiry)
+	oldRV, err = r.Update(rv3, v3.key, v3.expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated {
+	if !reflect.DeepEqual(oldRV, modules.SignedRegistryValue{}) {
 		t.Fatal("key shouldn't have existed before")
 	}
 	if len(r.entries) != 2 {
@@ -360,7 +387,7 @@ func TestUpdate(t *testing.T) {
 	// Update the registry with the third entry again but increment the revision
 	// number without resigning. This should fail.
 	rv3.Revision++
-	updated, err = r.Update(rv3, v3.key, v3.expiry)
+	_, err = r.Update(rv3, v3.key, v3.expiry)
 	if !errors.Contains(err, errInvalidSignature) {
 		t.Fatal(err)
 	}
@@ -373,7 +400,7 @@ func TestUpdate(t *testing.T) {
 		t.Fatal("entry doesn't exist")
 	}
 	vExist.invalid = true
-	updated, err = r.Update(rv3, v3.key, v3.expiry)
+	_, err = r.Update(rv3, v3.key, v3.expiry)
 	if !errors.Contains(err, errInvalidEntry) {
 		t.Fatal("should fail with invalid entry error")
 	}
@@ -467,8 +494,8 @@ func TestPrune(t *testing.T) {
 
 	// Check bitfield.
 	inUse := 0
-	for i := uint64(0); i < r.staticUsage.Len(); i++ {
-		if r.staticUsage.IsSet(i) {
+	for i := uint64(0); i < r.usage.Len(); i++ {
+		if r.usage.IsSet(i) {
 			inUse++
 		}
 	}
@@ -509,8 +536,8 @@ func TestPrune(t *testing.T) {
 
 	// Check bitfield.
 	inUse = 0
-	for i := uint64(0); i < r.staticUsage.Len(); i++ {
-		if r.staticUsage.IsSet(i) {
+	for i := uint64(0); i < r.usage.Len(); i++ {
+		if r.usage.IsSet(i) {
 			inUse++
 		}
 	}
@@ -541,8 +568,8 @@ func TestPrune(t *testing.T) {
 
 	// Check bitfield.
 	inUse = 0
-	for i := uint64(0); i < r.staticUsage.Len(); i++ {
-		if r.staticUsage.IsSet(i) {
+	for i := uint64(0); i < r.usage.Len(); i++ {
+		if r.usage.IsSet(i) {
 			inUse++
 		}
 	}
@@ -580,11 +607,11 @@ func TestFullRegistry(t *testing.T) {
 		rv, v, _ := randomValue(0)
 		v.expiry = types.BlockHeight(i)
 		v.signature = rv.Signature
-		u, err := r.Update(rv, v.key, v.expiry)
+		oldRV, err := r.Update(rv, v.key, v.expiry)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if u {
+		if !reflect.DeepEqual(oldRV, modules.SignedRegistryValue{}) {
 			t.Fatal("entry shouldn't exist")
 		}
 		vals = append(vals, v)
@@ -765,7 +792,10 @@ func TestRegistryRace(t *testing.T) {
 			exp := types.BlockHeight(atomic.AddUint64(nextExpiry, 1))
 			rv = rv.Sign(sk)
 			_, err := r.Update(rv, key, exp)
-			if errors.Contains(err, errInvalidRevNum) {
+			if errors.Contains(err, ErrSameRevNum) {
+				continue // invalid revision numbers are expected
+			}
+			if errors.Contains(err, ErrLowerRevNum) {
 				continue // invalid revision numbers are expected
 			}
 			if errors.Contains(err, errInvalidEntry) {
@@ -930,4 +960,279 @@ func BenchmarkRegistryUpdate(b *testing.B) {
 	b.StartTimer()
 	close(start)
 	wg.Wait()
+}
+
+// TestTruncate is a unit test for the registry's Truncate method.
+func TestTruncate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	dir := testDir(t.Name())
+
+	// Create a new registry.
+	registryPath := filepath.Join(dir, "registry")
+	r, err := New(registryPath, 128)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
+
+	// Capacity should be 128 and length 0.
+	if r.Cap() != 128 || r.Len() != 0 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+
+	// Add 64 entries to it.
+	numEntries := 64
+	entries := make([]modules.SignedRegistryValue, 0, numEntries)
+	keys := make([]types.SiaPublicKey, 0, numEntries)
+	for i := 0; i < numEntries; i++ {
+		rv, v, sk := randomValue(0)
+		rv.Revision = 0 // set revision number to 0
+		rv = rv.Sign(sk)
+		_, err = r.Update(rv, v.key, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rv, _ = r.Get(v.key, v.tweak)
+		entries = append(entries, rv)
+		keys = append(keys, v.key)
+	}
+
+	// Check capacity and length again.
+	if r.Cap() != 128 || r.Len() != 64 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+
+	// Truncate the registry to 63 entries. This shouldn't work.
+	if err := r.Truncate(63); !errors.Contains(err, ErrInvalidTruncate) {
+		t.Fatal(err)
+	}
+
+	// Truncate to 192. This should work.
+	if err := r.Truncate(192); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check capacity and length again.
+	if r.Cap() != 192 || r.Len() != 64 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+
+	// Check file size.
+	fi, err := r.staticFile.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Size() != 193*PersistedEntrySize {
+		t.Fatal("wrong size", fi.Size(), 193*PersistedEntrySize)
+	}
+
+	// Entries should be the same as before.
+	for i, entry := range entries {
+		entryExist, exists := r.Get(keys[i], entry.Tweak)
+		if !exists {
+			t.Fatal("entry doesn't exist")
+		}
+		if !reflect.DeepEqual(entry, entryExist) {
+			t.Log(entry)
+			t.Log(entryExist)
+			t.Fatal("entries don't match")
+		}
+	}
+
+	// Reload registry.
+	r, err = New(registryPath, 192)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
+
+	// Check capacity and length again.
+	if r.Cap() != 192 || r.Len() != 64 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+
+	// Entries should be the same as before.
+	for i, entry := range entries {
+		entryExist, exists := r.Get(keys[i], entry.Tweak)
+		if !exists {
+			t.Fatal("entry doesn't exist")
+		}
+		if !reflect.DeepEqual(entry, entryExist) {
+			t.Log(entry)
+			t.Log(entryExist)
+			t.Fatal("entries don't match")
+		}
+	}
+
+	// Truncate to 64. This should work.
+	if err := r.Truncate(64); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check capacity and length again.
+	if r.Cap() != 64 || r.Len() != 64 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+
+	// Check file size.
+	fi, err = r.staticFile.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Size() != 65*PersistedEntrySize {
+		t.Fatal("wrong size", fi.Size(), 65*PersistedEntrySize)
+	}
+
+	// Entries should be the same as before.
+	for i, entry := range entries {
+		entryExist, exists := r.Get(keys[i], entry.Tweak)
+		if !exists {
+			t.Fatal("entry doesn't exist")
+		}
+		if !reflect.DeepEqual(entry, entryExist) {
+			t.Log(entry)
+			t.Log(entryExist)
+			t.Fatal("entries don't match")
+		}
+	}
+
+	// Reload registry.
+	r, err = New(registryPath, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
+
+	// Check capacity and length again.
+	if r.Cap() != 64 || r.Len() != 64 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+
+	// Entries should be the same as before.
+	for i, entry := range entries {
+		entryExist, exists := r.Get(keys[i], entry.Tweak)
+		if !exists {
+			t.Fatal("entry doesn't exist")
+		}
+		if !reflect.DeepEqual(entry, entryExist) {
+			t.Log(entry)
+			t.Log(entryExist)
+			t.Fatal("entries don't match")
+		}
+	}
+}
+
+// TestMigrate is a unit test for the registry's Migrate method.
+func TestMigrate(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	dir := testDir(t.Name())
+
+	// Prepare a source and destination path for the registry.
+	registryPathSrc := filepath.Join(dir, "registrySrc")
+	registryPathDst := filepath.Join(dir, "registryDst")
+
+	// Create a new registry.
+	r, err := New(registryPathSrc, 128)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add 64 entries to it.
+	numEntries := 64
+	entries := make([]modules.SignedRegistryValue, 0, numEntries)
+	keys := make([]types.SiaPublicKey, 0, numEntries)
+	for i := 0; i < numEntries; i++ {
+		rv, v, sk := randomValue(0)
+		rv.Revision = 0 // set revision number to 0
+		rv = rv.Sign(sk)
+		_, err = r.Update(rv, v.key, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rv, _ = r.Get(v.key, v.tweak)
+		entries = append(entries, rv)
+		keys = append(keys, v.key)
+	}
+
+	// Check capacity and length.
+	if r.Cap() != 128 || r.Len() != 64 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+
+	// Migrate the registry.
+	err = r.Migrate(registryPathDst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Make sure the old file is gone.
+	if _, err := os.Stat(registryPathSrc); !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+
+	// Close registry
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Reload the registry.
+	r, err = New(registryPathDst, 128)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
+
+	// Check capacity and length.
+	if r.Cap() != 128 || r.Len() != 64 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+
+	// Entries should be the same as before.
+	for i, entry := range entries {
+		entryExist, exists := r.Get(keys[i], entry.Tweak)
+		if !exists {
+			t.Fatal("entry doesn't exist")
+		}
+		if !reflect.DeepEqual(entry, entryExist) {
+			t.Log(entry)
+			t.Log(entryExist)
+			t.Fatal("entries don't match")
+		}
+	}
+
+	// Try to migrate a registry to a relative path. This shouldn't work.
+	err = r.Migrate("./registry.dat")
+	if !errors.Contains(err, errPathNotAbsolute) {
+		t.Fatal(err)
+	}
+
+	// Try to migrate a registry to its own path. This shouldn't work.
+	err = r.Migrate(registryPathDst)
+	if !errors.Contains(err, errSamePath) {
+		t.Fatal(err)
+	}
 }

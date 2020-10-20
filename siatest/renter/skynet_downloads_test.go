@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/errors"
@@ -42,7 +43,8 @@ func TestSkynetDownloads(t *testing.T) {
 		{Name: "DirectoryBasic", Test: testDownloadDirectoryBasic},
 		{Name: "DirectoryNested", Test: testDownloadDirectoryNested},
 		{Name: "ContentDisposition", Test: testDownloadContentDisposition},
-		{Name: "NotModified", Test: testNotModified},
+		{Name: "SkynetSkylinkHeader", Test: testSkynetSkylinkHeader},
+		{Name: "ETag", Test: testETag},
 	}
 
 	// Run tests
@@ -542,9 +544,14 @@ func testDownloadContentDisposition(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
-// testNotModified verifies the functionality of the '304 Not Modified' header
-func testNotModified(t *testing.T, tg *siatest.TestGroup) {
+// testETag verifies the functionality of the ETag response header
+func testETag(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
+
+	// use the function used by the http library itself to compare etags
+	etagStrongMatch := func(a, b string) bool {
+		return a == b && a != "" && a[0] == '"'
+	}
 
 	// upload a single file
 	file := make([]byte, 100)
@@ -622,27 +629,7 @@ func testNotModified(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// verify this has an affect on the returned ETag
-	if resp.Header.Get("ETag") == eTag {
-		t.Fatal("Unexpected ETag")
-	}
-
-	// verify we miss the cache if nocache=1 is supplied
-	resp, err = uc.SkynetSkylinkGetWithETag(skylink+"?nocache=1", eTag)
-	if err != nil {
-		t.Fatal("Unexpected error", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Fatal("Unexpected status code", resp.StatusCode)
-	}
-	data, err = ioutil.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatal("Unexpected error", err)
-	}
-	if !bytes.Equal(file, data) {
-		t.Fatal("Unexpected response data")
-	}
-	// verify this has no affect on the returned ETag
-	if resp.Header.Get("ETag") != eTag {
+	if etagStrongMatch(eTag, resp.Header.Get("ETag")) {
 		t.Fatal("Unexpected ETag")
 	}
 
@@ -654,7 +641,7 @@ func testNotModified(t *testing.T, tg *siatest.TestGroup) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatal("Unexpected status code", resp.StatusCode)
 	}
-	if resp.Header.Get("ETag") != eTag {
+	if !etagStrongMatch(eTag, resp.Header.Get("ETag")) {
 		t.Fatal("Unexpected ETag", resp.Header.Get("ETag"))
 	}
 
@@ -673,6 +660,65 @@ func testNotModified(t *testing.T, tg *siatest.TestGroup) {
 	}
 	if !bytes.Equal(file, data) {
 		t.Fatal("Unexpected response data")
+	}
+}
+
+// testSkynetSkylinkHeader tests that the 'Skynet-Skylink' is set both on the
+// Skynet upload - and download route.
+func testSkynetSkylinkHeader(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// create the siapath
+	siapath, err := modules.NewSiaPath(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create the upload params
+	reader := bytes.NewReader(fastrand.Bytes(100))
+	sup := modules.SkyfileUploadParameters{
+		SiaPath:             siapath,
+		BaseChunkRedundancy: 2,
+		Filename:            t.Name(),
+		Mode:                modules.DefaultFilePerm,
+		Reader:              reader,
+	}
+
+	// upload the skyfile, use an unsafe client to get access to the response
+	// headers
+	uc := client.NewUnsafeClient(r.Client)
+	header, body, err := uc.SkynetSkyfilePostRawResponse(sup)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// parse the response manually
+	var rshp api.SkynetSkyfileHandlerPOST
+	err = json.Unmarshal(body, &rshp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify we get a valid skylink
+	var skylink modules.Skylink
+	err = skylink.LoadString(rshp.Skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify the response header contains the same Skylink
+	if header.Get("Skynet-Skylink") != skylink.String() {
+		t.Fatal("unexpected")
+	}
+
+	// verify a HEAD call has the response header as well, we use HEAD call as
+	// this verifies both the HEAD and GET endpoint
+	_, header, err = r.SkynetSkylinkHead(skylink.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if header.Get("Skynet-Skylink") != skylink.String() {
+		t.Fatal("unexpected")
 	}
 }
 

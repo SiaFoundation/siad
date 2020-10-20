@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,17 +10,58 @@ import (
 	"net/url"
 	"strconv"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
+
+// SkynetBaseSectorGet uses the /skynet/basesector endpoint to fetch a reader of
+// the basesector data.
+func (c *Client) SkynetBaseSectorGet(skylink string) (io.ReadCloser, error) {
+	_, reader, err := c.getReaderResponse(fmt.Sprintf("/skynet/basesector/%s", skylink))
+	return reader, err
+}
 
 // SkynetSkylinkGetWithETag uses the /skynet/skylink endpoint to download a
 // skylink file setting the given ETag as value in the If-None-Match request
 // header.
 func (uc *UnsafeClient) SkynetSkylinkGetWithETag(skylink string, eTag string) (*http.Response, error) {
 	return uc.GetWithHeaders(skylinkQueryWithValues(skylink, url.Values{}), http.Header{"If-None-Match": []string{eTag}})
+}
+
+// SkynetSkyfilePostRawResponse uses the /skynet/skyfile endpoint to upload a
+// skyfile.  This function is unsafe as it returns the raw response alongside
+// the http headers.
+func (uc *UnsafeClient) SkynetSkyfilePostRawResponse(params modules.SkyfileUploadParameters) (http.Header, []byte, error) {
+	// Set the url values.
+	values := url.Values{}
+	values.Set("filename", params.Filename)
+	dryRunStr := fmt.Sprintf("%t", params.DryRun)
+	values.Set("dryrun", dryRunStr)
+	forceStr := fmt.Sprintf("%t", params.Force)
+	values.Set("force", forceStr)
+	modeStr := fmt.Sprintf("%o", params.Mode)
+	values.Set("mode", modeStr)
+	redundancyStr := fmt.Sprintf("%v", params.BaseChunkRedundancy)
+	values.Set("basechunkredundancy", redundancyStr)
+	rootStr := fmt.Sprintf("%t", params.Root)
+	values.Set("root", rootStr)
+
+	// Encode SkykeyName or SkykeyID.
+	if params.SkykeyName != "" {
+		values.Set("skykeyname", params.SkykeyName)
+	}
+	hasSkykeyID := params.SkykeyID != skykey.SkykeyID{}
+	if hasSkykeyID {
+		values.Set("skykeyid", params.SkykeyID.ToString())
+	}
+
+	// Make the call to upload the file.
+	query := fmt.Sprintf("/skynet/skyfile/%s?%s", params.SiaPath.String(), values.Encode())
+	return uc.postRawResponse(query, params.Reader)
 }
 
 // RenterSkyfileGet wraps RenterFileRootGet to query a skyfile.
@@ -164,41 +206,36 @@ func (c *Client) SkynetSkylinkReaderGet(skylink string) (io.ReadCloser, error) {
 // SkynetSkylinkConcatReaderGet uses the /skynet/skylink endpoint to fetch a
 // reader of the file data with the 'concat' format specified.
 func (c *Client) SkynetSkylinkConcatReaderGet(skylink string) (io.ReadCloser, error) {
+	_, reader, err := c.SkynetSkylinkFormatGet(skylink, modules.SkyfileFormatConcat)
+	return reader, err
+}
+
+// SkynetSkylinkFormatGet uses the /skynet/skylink endpoint to fetch a reader of
+// the file data with the format specified.
+func (c *Client) SkynetSkylinkFormatGet(skylink string, format modules.SkyfileFormat) (http.Header, io.ReadCloser, error) {
 	values := url.Values{}
-	values.Set("format", string(modules.SkyfileFormatConcat))
+	values.Set("format", string(format))
 	getQuery := skylinkQueryWithValues(skylink, values)
-	_, reader, err := c.getReaderResponse(getQuery)
-	return reader, errors.AddContext(err, "unable to fetch skylink data")
+	header, reader, err := c.getReaderResponse(getQuery)
+	return header, reader, errors.AddContext(err, "unable to fetch skylink data")
 }
 
 // SkynetSkylinkTarReaderGet uses the /skynet/skylink endpoint to fetch a
 // reader of the file data with the 'tar' format specified.
 func (c *Client) SkynetSkylinkTarReaderGet(skylink string) (http.Header, io.ReadCloser, error) {
-	values := url.Values{}
-	values.Set("format", string(modules.SkyfileFormatTar))
-	getQuery := skylinkQueryWithValues(skylink, values)
-	header, reader, err := c.getReaderResponse(getQuery)
-	return header, reader, errors.AddContext(err, "unable to fetch skylink data")
+	return c.SkynetSkylinkFormatGet(skylink, modules.SkyfileFormatTar)
 }
 
 // SkynetSkylinkTarGzReaderGet uses the /skynet/skylink endpoint to fetch a
 // reader of the file data with the 'targz' format specified.
 func (c *Client) SkynetSkylinkTarGzReaderGet(skylink string) (http.Header, io.ReadCloser, error) {
-	values := url.Values{}
-	values.Set("format", string(modules.SkyfileFormatTarGz))
-	getQuery := skylinkQueryWithValues(skylink, values)
-	header, reader, err := c.getReaderResponse(getQuery)
-	return header, reader, errors.AddContext(err, "unable to fetch skylink data")
+	return c.SkynetSkylinkFormatGet(skylink, modules.SkyfileFormatTarGz)
 }
 
 // SkynetSkylinkZipReaderGet uses the /skynet/skylink endpoint to fetch a
 // reader of the file data with the 'zip' format specified.
 func (c *Client) SkynetSkylinkZipReaderGet(skylink string) (http.Header, io.ReadCloser, error) {
-	values := url.Values{}
-	values.Set("format", string(modules.SkyfileFormatZip))
-	getQuery := skylinkQueryWithValues(skylink, values)
-	header, reader, err := c.getReaderResponse(getQuery)
-	return header, reader, errors.AddContext(err, "unable to fetch skylink data")
+	return c.SkynetSkylinkFormatGet(skylink, modules.SkyfileFormatZip)
 }
 
 // SkynetSkylinkPinPost uses the /skynet/pin endpoint to pin the file at the
@@ -540,6 +577,70 @@ func (c *Client) SkykeySkykeysGet() ([]skykey.Skykey, error) {
 		}
 	}
 	return res, nil
+}
+
+// RegistryRead queries the /skynet/registry [GET] endpoint.
+func (c *Client) RegistryRead(spk types.SiaPublicKey, fileID modules.FileID) (modules.SignedRegistryValue, error) {
+	// Encode the fileID.
+	fileIDBytes, err := json.Marshal(fileID)
+	if err != nil {
+		return modules.SignedRegistryValue{}, err
+	}
+
+	// Set the values.
+	values := url.Values{}
+	values.Set("publickey", spk.String())
+	values.Set("fileid", hex.EncodeToString(fileIDBytes))
+
+	// Send request.
+	var rhg api.RegistryHandlerGET
+	err = c.get(fmt.Sprintf("/skynet/registry?%v", values.Encode()), &rhg)
+	if err != nil {
+		return modules.SignedRegistryValue{}, err
+	}
+
+	// Decode tweak.
+	var tweak crypto.Hash
+	tweakBytes, err := hex.DecodeString(rhg.Tweak)
+	if err != nil {
+		return modules.SignedRegistryValue{}, errors.AddContext(err, "failed to decode tweak")
+	}
+	if len(tweakBytes) != len(tweak) {
+		return modules.SignedRegistryValue{}, fmt.Errorf("unexpected tweak length %v != %v", len(tweakBytes), len(tweak))
+	}
+	copy(tweak[:], tweakBytes)
+	// Decode data.
+	data, err := hex.DecodeString(rhg.Data)
+	if err != nil {
+		return modules.SignedRegistryValue{}, errors.AddContext(err, "failed to decode signature")
+	}
+	// Decode signature.
+	var sig crypto.Signature
+	sigBytes, err := hex.DecodeString(rhg.Signature)
+	if err != nil {
+		return modules.SignedRegistryValue{}, errors.AddContext(err, "failed to decode signature")
+	}
+	if len(sigBytes) != len(sig) {
+		return modules.SignedRegistryValue{}, fmt.Errorf("unexpected signature length %v != %v", len(sigBytes), len(sig))
+	}
+	copy(sig[:], sigBytes)
+	return modules.NewSignedRegistryValue(tweak, data, rhg.Revision, sig), nil
+}
+
+// RegistryUpdate queries the /skynet/registry [POST] endpoint.
+func (c *Client) RegistryUpdate(spk types.SiaPublicKey, fileID modules.FileID, revision uint64, sig crypto.Signature, skylink modules.Skylink) error {
+	req := api.RegistryHandlerRequestPOST{
+		PublicKey: spk,
+		FileID:    fileID,
+		Revision:  revision,
+		Signature: sig,
+		Data:      skylink.Bytes(),
+	}
+	reqBytes, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	return c.post("/skynet/registry", string(reqBytes), nil)
 }
 
 // skylinkQueryWithValues returns a skylink query based on the given skylink and
