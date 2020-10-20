@@ -1398,7 +1398,6 @@ func TestExecuteUpdateRegistryProgram(t *testing.T) {
 	rvLowRev := rv
 	rvLowRev.Revision--
 	rvLowRev = rvLowRev.Sign(sk)
-	println("argh", rvLowRev.Revision)
 	err = pb.AddUpdateRegistryInstruction(spk, rvLowRev)
 	if err != nil {
 		t.Fatal(err)

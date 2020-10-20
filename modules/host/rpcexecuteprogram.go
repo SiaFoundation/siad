@@ -189,7 +189,8 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 
 		instructionSpecifier := program[numOutputs-1].Specifier
 		readInstruction := instructionSpecifier == modules.SpecifierReadOffset || instructionSpecifier == modules.SpecifierReadSector
-		if readInstruction && h.dependencies.Disrupt("CorruptMDMOutput") {
+		updateRegistryInstruction := instructionSpecifier == modules.SpecifierUpdateRegistry
+		if (readInstruction || updateRegistryInstruction) && h.dependencies.Disrupt("CorruptMDMOutput") {
 			// Replace output with same amount of random data.
 			fastrand.Read(output.Output)
 		}
