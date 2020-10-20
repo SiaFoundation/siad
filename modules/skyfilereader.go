@@ -24,7 +24,7 @@ type (
 	// SkyfileUploadReader is an interface that wraps a reader, containing the
 	// Skyfile data, and adds a method to fetch the SkyfileMetadata.
 	SkyfileUploadReader interface {
-		SetReadBuffer(data []byte)
+		AddReadBuffer(data []byte)
 		SkyfileMetadata() (SkyfileMetadata, error)
 		io.Reader
 	}
@@ -76,9 +76,9 @@ func NewSkyfileReader(reader io.Reader, sup SkyfileUploadParameters) SkyfileUplo
 	}
 }
 
-// SetReadBuffer adds the given bytes to the read buffer, the next reads will
+// AddReadBuffer adds the given bytes to the read buffer, the next reads will
 // read from this buffer opposed to the underlying reader.
-func (sr *skyfileReader) SetReadBuffer(b []byte) {
+func (sr *skyfileReader) AddReadBuffer(b []byte) {
 	sr.readBuf = append(sr.readBuf, b...)
 }
 
@@ -143,10 +143,10 @@ func NewSkyfileMultipartReader(reader *multipart.Reader, sup SkyfileUploadParame
 	}
 }
 
-// SetReadBuffer adds the given bytes to the read buffer, the next reads will
+// AddReadBuffer adds the given bytes to the read buffer, the next reads will
 // read from this buffer opposed to the underlying reader.
-func (sr *skyfileMultipartReader) SetReadBuffer(b []byte) {
-	sr.readBuf = b
+func (sr *skyfileMultipartReader) AddReadBuffer(b []byte) {
+	sr.readBuf = append(sr.readBuf, b...)
 }
 
 // SkyfileMetadata returns the SkyfileMetadata associated with this reader.

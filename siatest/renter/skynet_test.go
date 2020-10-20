@@ -910,7 +910,6 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 
 	// Create some data to upload as a skyfile.
 	data := fastrand.Bytes(100 + siatest.Fuzz())
-	reader := bytes.NewReader(data)
 
 	filenames := []string{
 		"",
@@ -936,7 +935,7 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 			BaseChunkRedundancy: 2,
 			Filename:            filename,
 			Mode:                0640, // Intentionally does not match any defaults.
-			Reader:              reader,
+			Reader:              bytes.NewReader(data),
 		}
 
 		// Try posting the skyfile with an invalid filename
@@ -958,7 +957,6 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		reader = bytes.NewReader(body.Bytes())
 
 		// Call the upload skyfile client call.
 		uploadSiaPath, err = modules.NewSiaPath("testInvalidFilenameMultipart" + persist.RandomSuffix())
@@ -973,7 +971,7 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 			Force:               false,
 			Root:                false,
 			BaseChunkRedundancy: 2,
-			Reader:              reader,
+			Reader:              bytes.NewReader(body.Bytes()),
 			ContentType:         writer.FormDataContentType(),
 			Filename:            "testInvalidFilenameMultipart",
 		}
@@ -986,7 +984,6 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// These cases should succeed.
-	reader = bytes.NewReader(data)
 	uploadSiaPath, err := modules.NewSiaPath("testInvalidFilename")
 	if err != nil {
 		t.Fatal(err)
@@ -998,7 +995,7 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 		BaseChunkRedundancy: 2,
 		Filename:            "testInvalidFilename",
 		Mode:                0640, // Intentionally does not match any defaults.
-		Reader:              reader,
+		Reader:              bytes.NewReader(data),
 	}
 	_, _, err = r.SkynetSkyfilePost(sup)
 	if err != nil {
@@ -1018,7 +1015,6 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reader = bytes.NewReader(body.Bytes())
 
 	subfiles := make(modules.SkyfileSubfiles)
 	subfiles[subfile.Filename] = subfile
@@ -1031,7 +1027,7 @@ func testSkynetInvalidFilename(t *testing.T, tg *siatest.TestGroup) {
 		Force:               false,
 		Root:                false,
 		BaseChunkRedundancy: 2,
-		Reader:              reader,
+		Reader:              bytes.NewReader(body.Bytes()),
 		ContentType:         writer.FormDataContentType(),
 		Filename:            "testInvalidFilenameMultipart",
 	}

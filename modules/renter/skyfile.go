@@ -922,7 +922,7 @@ func (r *Renter) UploadSkyfile(sup modules.SkyfileUploadParameters) (modules.Sky
 	// exceeded a single sector, upload the data is a large Skyfile, make sure
 	// to prepend the reader with what we have read already
 	if largeFile {
-		sup.SkyfileReader.SetReadBuffer(buf)
+		sup.SkyfileReader.AddReadBuffer(buf)
 		skylink, err = r.managedUploadSkyfileLargeFile(sup, sup.SkyfileReader)
 		if err != nil {
 			return modules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
