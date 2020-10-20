@@ -104,7 +104,8 @@ func (j *jobUpdateRegistry) callExecute() {
 	rv, err := j.managedUpdateRegistry()
 	if err != nil && (strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) ||
 		strings.Contains(err.Error(), registry.ErrSameRevNum.Error())) {
-		// Report the failure if it can't provide a valid entry for the error
+		// Report the failure if the host can't provide a signed registry entry
+		// with the error.
 		if err := rv.Verify(j.staticSiaPublicKey.ToPublicKey()); err != nil {
 			sendResponse(err)
 			j.staticQueue.callReportFailure(err)
@@ -163,9 +164,7 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 	}
 	for _, resp := range responses {
 		// If a revision related error was returned, we try to parse the
-		// signed registry value from the response and make sure that it's a
-		// valid one with a lower revision number or the same revision number as
-		// the one we use for the update.
+		// signed registry value from the response.
 		err = resp.Error
 		if err != nil && (strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) ||
 			strings.Contains(err.Error(), registry.ErrSameRevNum.Error())) {

@@ -84,7 +84,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	deps.Fail()
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
 	deps.Disable()
-	if !strings.Contains(err.Error(), crypto.ErrInvalidSignature.Error()) {
+	if err == nil || !strings.Contains(err.Error(), crypto.ErrInvalidSignature.Error()) {
 		t.Fatal(err)
 	}
 
@@ -126,7 +126,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	deps.Fail()
 	err = wt.UpdateRegistry(context.Background(), spk, rvLowRevNum)
 	deps.Disable()
-	if !strings.Contains(err.Error(), crypto.ErrInvalidSignature.Error()) {
+	if err == nil || !strings.Contains(err.Error(), crypto.ErrInvalidSignature.Error()) {
 		t.Fatal(err)
 	}
 
