@@ -3,6 +3,9 @@ package modules
 import (
 	"strings"
 	"testing"
+
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestSkynetHelpers is a convenience function that wraps all of the Skynet
@@ -10,6 +13,7 @@ import (
 // TestSkynet` from the command line.
 func TestSkynetHelpers(t *testing.T) {
 	t.Run("ValidateDefaultPath", testValidateDefaultPath)
+	t.Run("ValidateSkyfileMetadata", testValidateSkyfileMetadata)
 	t.Run("EnsurePrefix", testEnsurePrefix)
 	t.Run("EnsureSuffix", testEnsureSuffix)
 }
@@ -111,6 +115,73 @@ func testValidateDefaultPath(t *testing.T) {
 				t.Fatal("Unexpected default path")
 			}
 		})
+	}
+}
+
+// testValidateSkyfileMetadata verifies the functionality of
+// `ValidateSkyfileMetadata`
+func testValidateSkyfileMetadata(t *testing.T) {
+	t.Parallel()
+
+	// happy case
+	metadata := SkyfileMetadata{
+		Filename: t.Name(),
+		Length:   fastrand.Uint64n(10),
+		Subfiles: SkyfileSubfiles{
+			"validkey": SkyfileSubfileMetadata{
+				Filename: "validkey",
+			},
+		},
+	}
+	err := ValidateSkyfileMetadata(metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify invalid filename
+	invalid := metadata
+	invalid.Filename = "../../" + metadata.Filename
+	err = ValidateSkyfileMetadata(invalid)
+	if err == nil || !strings.Contains(err.Error(), "invalid filename provided") {
+		t.Fatal("unexpected outcome")
+	}
+
+	// verify invalid subfile metadata
+	invalid = metadata
+	invalid.Subfiles = SkyfileSubfiles{
+		"invalidkey": SkyfileSubfileMetadata{
+			Filename: "keyshouldmatchfilename",
+		},
+	}
+	err = ValidateSkyfileMetadata(invalid)
+	if err == nil || !strings.Contains(err.Error(), "subfile name did not match") {
+		t.Fatal("unexpected outcome")
+	}
+
+	// verify invalid subfile metadata
+	invalid = metadata
+	invalid.Subfiles = SkyfileSubfiles{
+		"foo/../bar": SkyfileSubfileMetadata{
+			Filename: "foo/../bar",
+		},
+	}
+	err = ValidateSkyfileMetadata(invalid)
+	if err == nil || !strings.Contains(err.Error(), "invalid filename provided for subfile") {
+		t.Fatal("unexpected outcome")
+	}
+
+	// verify invalid default path
+	invalid = metadata
+	invalid.DefaultPath = "foo/../bar"
+	err = ValidateSkyfileMetadata(invalid)
+	if !errors.Contains(err, ErrInvalidDefaultPath) {
+		t.Fatal("unexpected outcome")
+	}
+
+	invalid.DisableDefaultPath = true
+	err = ValidateSkyfileMetadata(invalid)
+	if err != nil {
+		t.Fatal("unexpected outcome")
 	}
 }
 
