@@ -5,10 +5,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -21,7 +23,8 @@ func TestUpdateRegistryJob(t *testing.T) {
 	}
 	t.Parallel()
 
-	wt, err := newWorkerTester(t.Name())
+	deps := dependencies.NewDependencyCorruptMDMOutput()
+	wt, err := newWorkerTesterCustomDependency(t.Name(), modules.ProdDependencies, deps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,9 +66,40 @@ func TestUpdateRegistryJob(t *testing.T) {
 	// Run the UpdateRegistryJob again. This time it should fail with an error
 	// indicating that the revision number already exists.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
-	if !strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) {
+	if err == nil || !strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) {
 		t.Fatal(err)
 	}
+
+	// Make sure there is no recent error or cooldown.
+	wt.staticJobUpdateRegistryQueue.mu.Lock()
+	if wt.staticJobUpdateRegistryQueue.recentErr != nil {
+		t.Fatal("recentErr is set", wt.staticJobUpdateRegistryQueue.recentErr)
+	}
+	if wt.staticJobUpdateRegistryQueue.cooldownUntil != (time.Time{}) {
+		t.Fatal("cooldownUntil is set", wt.staticJobUpdateRegistryQueue.cooldownUntil)
+	}
+	wt.staticJobUpdateRegistryQueue.mu.Unlock()
+
+	// Same thing again but corrupt the output.
+	deps.Fail()
+	err = wt.UpdateRegistry(context.Background(), spk, rv)
+	deps.Disable()
+	if err == nil || !strings.Contains(err.Error(), crypto.ErrInvalidSignature.Error()) {
+		t.Fatal(err)
+	}
+
+	// Make sure the recent error is an invalid signature error and reset the
+	// cooldown.
+	wt.staticJobUpdateRegistryQueue.mu.Lock()
+	if !strings.Contains(wt.staticJobUpdateRegistryQueue.recentErr.Error(), crypto.ErrInvalidSignature.Error()) {
+		t.Fatal(err)
+	}
+	if wt.staticJobUpdateRegistryQueue.cooldownUntil == (time.Time{}) {
+		t.Fatal("coolDown not set")
+	}
+	wt.staticJobUpdateRegistryQueue.cooldownUntil = time.Time{}
+	wt.staticJobUpdateRegistryQueue.recentErr = nil
+	wt.staticJobUpdateRegistryQueue.mu.Unlock()
 
 	// Run the UpdateRegistryJob with a lower revision number. This time it
 	// should fail with an error indicating that the revision number already
@@ -74,9 +108,40 @@ func TestUpdateRegistryJob(t *testing.T) {
 	rvLowRevNum.Revision--
 	rvLowRevNum = rvLowRevNum.Sign(sk)
 	err = wt.UpdateRegistry(context.Background(), spk, rvLowRevNum)
-	if !strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) {
+	if err == nil || !strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) {
 		t.Fatal(err)
 	}
+
+	// Make sure there is no recent error or cooldown.
+	wt.staticJobUpdateRegistryQueue.mu.Lock()
+	if wt.staticJobUpdateRegistryQueue.recentErr != nil {
+		t.Fatal("recentErr is set", wt.staticJobUpdateRegistryQueue.recentErr)
+	}
+	if wt.staticJobUpdateRegistryQueue.cooldownUntil != (time.Time{}) {
+		t.Fatal("cooldownUntil is set", wt.staticJobUpdateRegistryQueue.cooldownUntil)
+	}
+	wt.staticJobUpdateRegistryQueue.mu.Unlock()
+
+	// Same thing again but corrupt the output.
+	deps.Fail()
+	err = wt.UpdateRegistry(context.Background(), spk, rvLowRevNum)
+	deps.Disable()
+	if err == nil || !strings.Contains(err.Error(), crypto.ErrInvalidSignature.Error()) {
+		t.Fatal(err)
+	}
+
+	// Make sure the recent error is an invalid signature error and reset the
+	// cooldown.
+	wt.staticJobUpdateRegistryQueue.mu.Lock()
+	if !strings.Contains(wt.staticJobUpdateRegistryQueue.recentErr.Error(), crypto.ErrInvalidSignature.Error()) {
+		t.Fatal(err)
+	}
+	if wt.staticJobUpdateRegistryQueue.cooldownUntil == (time.Time{}) {
+		t.Fatal("coolDown not set")
+	}
+	wt.staticJobUpdateRegistryQueue.cooldownUntil = time.Time{}
+	wt.staticJobUpdateRegistryQueue.recentErr = nil
+	wt.staticJobUpdateRegistryQueue.mu.Unlock()
 
 	// Manually try to read the entry from the host.
 	lookedUpRV, err = lookupRegistry(wt.worker, spk, tweak)
