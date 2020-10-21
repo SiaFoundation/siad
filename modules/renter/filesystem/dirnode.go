@@ -287,11 +287,12 @@ func (n *DirNode) managedRecursiveList(recursive, cached bool, fileLoadChan chan
 		if err != nil {
 			return err
 		}
-		// Hand a copy to the worker. It will handle closing it.
-		dirLoadChan <- dir.managedCopy()
-		// Call managedList on the child if 'recursive' was specified.
 		if recursive {
+			// Call managedList on the child if 'recursive' was specified.
 			err = dir.managedRecursiveList(recursive, cached, fileLoadChan, dirLoadChan)
+		} else {
+			// If not recursive, hand a copy to the worker. It will handle closing it.
+			dirLoadChan <- dir.managedCopy()
 		}
 		if err != nil {
 			return err

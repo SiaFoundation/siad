@@ -2226,3 +2226,61 @@ func testFileDirConflict(t *testing.T, open bool) {
 		t.Fatalf("Expected err %v, got %v", ErrExists, err)
 	}
 }
+
+// TestList tests that the list method of the filesystem returns the correct
+// number of file and directory information
+func TestList(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Prepare a siadirset
+	root := filepath.Join(testDir(t.Name()), "fs-root")
+	os.RemoveAll(root)
+	fs := newTestFileSystem(root)
+
+	// Specify a directory structure for this test.
+	var dirStructure = []string{
+		"dir1",
+		"dir1/subdir1",
+		"dir1/subdir1/subsubdir1",
+		"dir1/subdir1/subsubdir2",
+		"dir1/subdir1/subsubdir3",
+		"dir1/subdir2",
+		"dir1/subdir2/subsubdir1",
+		"dir1/subdir2/subsubdir2",
+		"dir1/subdir2/subsubdir3",
+		"dir1/subdir3",
+		"dir1/subdir3/subsubdir1",
+		"dir1/subdir3/subsubdir2",
+		"dir1/subdir3/subsubdir3",
+	}
+
+	// Create filesystem
+	for _, d := range dirStructure {
+		// Create directory
+		siaPath := newSiaPath(d)
+		err := fs.NewSiaDir(siaPath, persist.DefaultDiskPermissionsTest)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Add a file
+		fileSiaPath, err := siaPath.Join("file")
+		if err != nil {
+			t.Fatal(err)
+		}
+		fs.addTestSiaFile(fileSiaPath)
+	}
+
+	// Get the cached information
+	fis, dis, err := fs.CachedList(newSiaPath(dirStructure[0]), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fis) != len(dirStructure) {
+		t.Fatal("wrong number of files", len(fis), len(dirStructure))
+	}
+	if len(dis) != len(dirStructure) {
+		t.Fatal("wrong number of dirs", len(dis), len(dirStructure))
+	}
+}
