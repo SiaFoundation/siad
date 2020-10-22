@@ -32,8 +32,8 @@ type (
 	// skyfileMultipartReader is a helper struct that implements the
 	// SkyfileUploadReader interface for a multipart upload.
 	//
-	// NOTE: this object is not threadsafe and thus should not be called from
-	// more than one thread.
+	// NOTE: reading from this object is not threadsafe and thus should not be
+	// done from more than one thread if you want the reads to be deterministic.
 	skyfileMultipartReader struct {
 		reader  *multipart.Reader
 		readBuf []byte
@@ -49,8 +49,8 @@ type (
 	// skyfileReader is a helper struct that implements the SkyfileUploadReader
 	// interface for a regular upload
 	//
-	// NOTE: this object is not threadsafe and thus should not be called from
-	// more than one thread.
+	// NOTE: reading from this object is not threadsafe and thus should not be
+	// done from more than one thread if you want the reads to be deterministic.
 	skyfileReader struct {
 		reader  io.Reader
 		readBuf []byte
