@@ -253,7 +253,7 @@ func dbGetUnlockConditions(tx *bolt.Tx, addr types.UnlockHash) (uc types.UnlockC
 // not added again.
 func dbAddAddrTransaction(tx *bolt.Tx, addr types.UnlockHash, txn uint64) error {
 	txns, err := dbGetAddrTransactions(tx, addr)
-	if err != nil && err != errNoKey {
+	if err != nil && !errors.Contains(err, errNoKey) {
 		return err
 	}
 	for _, i := range txns {

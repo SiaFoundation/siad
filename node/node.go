@@ -197,43 +197,43 @@ func printfRelease(format string, a ...interface{}) {
 func (n *Node) Close() (err error) {
 	if n.Renter != nil {
 		printlnRelease("Closing renter...")
-		err = errors.Compose(n.Renter.Close())
+		err = errors.Compose(err, n.Renter.Close())
 	}
 	if n.Host != nil {
 		printlnRelease("Closing host...")
-		err = errors.Compose(n.Host.Close())
+		err = errors.Compose(err, n.Host.Close())
 	}
 	if n.Miner != nil {
 		printlnRelease("Closing miner...")
-		err = errors.Compose(n.Miner.Close())
+		err = errors.Compose(err, n.Miner.Close())
 	}
 	if n.Wallet != nil {
 		printlnRelease("Closing wallet...")
-		err = errors.Compose(n.Wallet.Close())
+		err = errors.Compose(err, n.Wallet.Close())
 	}
 	if n.TransactionPool != nil {
 		printlnRelease("Closing transactionpool...")
-		err = errors.Compose(n.TransactionPool.Close())
+		err = errors.Compose(err, n.TransactionPool.Close())
 	}
 	if n.Explorer != nil {
 		printlnRelease("Closing explorer...")
-		err = errors.Compose(n.Explorer.Close())
+		err = errors.Compose(err, n.Explorer.Close())
 	}
 	if n.FeeManager != nil {
 		printlnRelease("Closing feemanager...")
-		err = errors.Compose(n.FeeManager.Close())
+		err = errors.Compose(err, n.FeeManager.Close())
 	}
 	if n.ConsensusSet != nil {
 		printlnRelease("Closing consensusset...")
-		err = errors.Compose(n.ConsensusSet.Close())
+		err = errors.Compose(err, n.ConsensusSet.Close())
 	}
 	if n.Gateway != nil {
 		printlnRelease("Closing gateway...")
-		err = errors.Compose(n.Gateway.Close())
+		err = errors.Compose(err, n.Gateway.Close())
 	}
 	if n.Mux != nil {
 		printlnRelease("Closing siamux...")
-		err = errors.Compose(n.Mux.Close())
+		err = errors.Compose(err, n.Mux.Close())
 	}
 	return err
 }

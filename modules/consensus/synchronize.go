@@ -1,12 +1,12 @@
 package consensus
 
 import (
-	"errors"
 	"net"
 	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -229,7 +229,7 @@ func (cs *ConsensusSet) managedReceiveBlocks(conn modules.PeerConn) (returnErr e
 		// ErrNonExtendingBlock must be ignored until headers-first block
 		// sharing is implemented, block already in database should also be
 		// ignored.
-		if acceptErr != nil && acceptErr != modules.ErrNonExtendingBlock && acceptErr != modules.ErrBlockKnown {
+		if acceptErr != nil && !errors.Contains(acceptErr, modules.ErrNonExtendingBlock) && !errors.Contains(acceptErr, modules.ErrBlockKnown) {
 			return acceptErr
 		}
 	}
@@ -438,7 +438,7 @@ func (cs *ConsensusSet) threadedRPCRelayHeader(conn modules.PeerConn) error {
 	// Because it is not, we have to do weird threading to prevent
 	// deadlocks, and we also have to be concerned every time the code in
 	// managedReceiveBlock is adjusted.
-	if err == errOrphan { // WARN: orphan multithreading logic case #1
+	if errors.Contains(err, errOrphan) { // WARN: orphan multithreading logic case #1
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

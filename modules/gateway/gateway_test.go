@@ -14,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
 )
 
@@ -74,10 +75,10 @@ func TestExportedMethodsErrAfterClose(t *testing.T) {
 	if err := g.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := g.Close(); err != threadgroup.ErrStopped {
+	if err := g.Close(); !errors.Contains(err, threadgroup.ErrStopped) {
 		t.Fatalf("expected %q, got %q", siasync.ErrStopped, err)
 	}
-	if err := g.Connect("localhost:1234"); err != threadgroup.ErrStopped {
+	if err := g.Connect("localhost:1234"); !errors.Contains(err, threadgroup.ErrStopped) {
 		t.Fatalf("expected %q, got %q", siasync.ErrStopped, err)
 	}
 }

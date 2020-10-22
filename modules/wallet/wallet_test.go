@@ -13,6 +13,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/miner"
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // A Wallet tester contains a ConsensusTester and has a bunch of helpful
@@ -159,15 +160,15 @@ func TestNilInputs(t *testing.T) {
 
 	wdir := filepath.Join(testdir, modules.WalletDir)
 	_, err = New(cs, nil, wdir)
-	if err != errNilTpool {
+	if !errors.Contains(err, errNilTpool) {
 		t.Error(err)
 	}
 	_, err = New(nil, tp, wdir)
-	if err != errNilConsensusSet {
+	if !errors.Contains(err, errNilConsensusSet) {
 		t.Error(err)
 	}
 	_, err = New(nil, nil, wdir)
-	if err != errNilConsensusSet {
+	if !errors.Contains(err, errNilConsensusSet) {
 		t.Error(err)
 	}
 }

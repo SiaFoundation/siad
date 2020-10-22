@@ -1,0 +1,1 @@
+- Add `/skynet/basesector` to the API.

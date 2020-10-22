@@ -188,7 +188,7 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 }
 
 // DownloadBackup downloads the specified backup.
-func (r *Renter) DownloadBackup(dst string, name string) error {
+func (r *Renter) DownloadBackup(dst string, name string) (err error) {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -241,16 +241,17 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	if err != nil {
 		return err
 	}
-	defer entry.Close()
+	defer func() {
+		err = errors.Compose(err, entry.Close())
+	}()
 	// Use .sia file to download snapshot.
 	snap, err := entry.Snapshot(siaPath)
 	if err != nil {
 		return err
 	}
 	s := r.managedStreamer(snap, false)
-	defer s.Close()
 	_, err = io.Copy(dstFile, s)
-	return err
+	return errors.Compose(err, s.Close())
 }
 
 // managedSnapshotExists returns true if a snapshot with a given name already
@@ -479,7 +480,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 		return contracts[i].Utility.GoodForUpload && !contracts[j].Utility.GoodForUpload
 	})
 	for i := range contracts {
-		err := func() error {
+		err := func() (err error) {
 			w, err := r.staticWorkerPool.callWorker(contracts[i].HostPublicKey)
 			if err != nil {
 				return err
@@ -631,8 +632,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				// Read the siafile from disk.
 				sr, err := entry.SnapshotReader()
 				if err != nil {
-					entry.Close()
-					return err
+					return errors.Compose(err, entry.Close())
 				}
 				// NOTE: The snapshot reader needs to be closed before
 				// entry.Close is called, and unfortunately also before
@@ -652,20 +652,21 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				// Need to work around the snapshot reader lock issue as well.
 				dotSia, err := ioutil.ReadAll(sr)
 				if err := sr.Close(); err != nil {
-					entry.Close()
-					return err
+					return errors.Compose(err, entry.Close())
 				}
 
 				// Upload the snapshot to the network.
 				meta.UploadProgress = calcSnapshotUploadProgress(100, 0)
 				meta.Size = uint64(len(dotSia))
 				if err := r.managedUploadSnapshot(meta, dotSia); err != nil {
-					entry.Close()
-					return err
+					return errors.Compose(err, entry.Close())
 				}
 
 				// Close out the entry.
-				entry.Close()
+				err = entry.Close()
+				if err != nil {
+					return err
+				}
 
 				// Delete the local siafile.
 				if err := r.staticFileSystem.DeleteFile(info.SiaPath); err != nil {
@@ -730,7 +731,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 
 		// Synchronize the host.
 		r.log.Debugln("Synchronizing snapshots on host", c.HostPublicKey)
-		err = func() error {
+		err = func() (err error) {
 			// Get the right worker for the host.
 			w, err := r.staticWorkerPool.callWorker(c.HostPublicKey)
 			if err != nil {

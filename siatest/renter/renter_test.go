@@ -2606,7 +2606,7 @@ func TestRenterLosingHosts(t *testing.T) {
 	// Wait for contract to be replaced
 	loop := 0
 	m := tg.Miners()[0]
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		if loop%10 == 0 {
 			if err := m.MineBlock(); err != nil {
 				return err
@@ -2617,8 +2617,9 @@ func TestRenterLosingHosts(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if len(rc.ActiveContracts) != int(renterParams.Allowance.Hosts) {
-			return fmt.Errorf("Expected %v contracts but got %v", int(renterParams.Allowance.Hosts), len(rc.ActiveContracts))
+		err = siatest.CheckExpectedNumberOfContracts(r, int(renterParams.Allowance.Hosts), 0, 0, 1, 0, 0)
+		if err != nil {
+			return err
 		}
 		for _, c := range rc.ActiveContracts {
 			if _, ok := contractHosts[c.HostPublicKey.String()]; !ok {

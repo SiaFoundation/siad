@@ -182,7 +182,7 @@ func testParseSkylinkURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			skylink, skylinkStringNoQuery, path, err := parseSkylinkURL(tt.strToParse)
+			skylink, skylinkStringNoQuery, path, err := parseSkylinkURL(tt.strToParse, "/skynet/skylink/")
 			// Is there an actual or expected error?
 			if err != nil || tt.errMsg != "" {
 				// Actual err should contain expected err.

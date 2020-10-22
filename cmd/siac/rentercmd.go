@@ -430,7 +430,9 @@ func renterFileHealthSummary(dirs []directoryInfo) {
 	fmt.Fprintf(w, "  %% Between 0%% - 25%%\t%v%%\n", percentages[4])
 	fmt.Fprintf(w, "  %% Unrecoverable\t%v%%\n", percentages[5])
 	fmt.Fprintf(w, "  Number of Stuck Files\t%v\n", numStuck)
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		die("failed to flush writer:", err)
+	}
 }
 
 // fileHealthBreakdown returns a percentage breakdown of the renter's files'
@@ -1464,7 +1466,9 @@ func renterbackuplistcmd() {
 		date := time.Unix(int64(ub.CreationDate), 0)
 		fmt.Fprintf(w, "  %v\t%v\t%v\n", ub.Name, date.Format(time.ANSIC), ub.UploadProgress)
 	}
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		die("failed to flush writer:", err)
+	}
 }
 
 // contractStats is a helper function to pull information out of the renter
@@ -1520,7 +1524,9 @@ func writeContracts(contracts []api.RenterContract) {
 			c.GoodForRenew,
 			c.BadContract)
 	}
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		die("failed to flush writer:", err)
+	}
 }
 
 // rentercontractscmd is the handler for the command `siac renter contracts`.
@@ -2272,7 +2278,9 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 				size := modules.FilesizeUnits(file.Filesize)
 				fmt.Fprintf(w, "  %v\t%9v\n", name, size)
 			}
-			w.Flush()
+			if err := w.Flush(); err != nil {
+				die("failed to flush writer:", err)
+			}
 			fmt.Println()
 		}
 		return
@@ -2315,7 +2323,9 @@ func renterfileslistcmd(cmd *cobra.Command, args []string) {
 			recoverStr := yesNo(file.Recoverable)
 			fmt.Fprintf(w, "  %v\t%9v\t%9s\t%9s\t%8s\t%10s\t%7s\t%5s\t%8s\t%7s\t%11s\n", name, size, availStr, bytesUploaded, uploadStr, redundancyStr, healthStr, stuckStr, renewStr, onDiskStr, recoverStr)
 		}
-		w.Flush()
+		if err := w.Flush(); err != nil {
+			die("failed to flush writer:", err)
+		}
 		fmt.Println()
 	}
 }
@@ -2369,7 +2379,9 @@ func renterfusecmd() {
 
 		fmt.Fprintf(w, "\t%s\t%s\n", mp.MountPoint, siaPathStr)
 	}
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		die("failed to flush writer:", err)
+	}
 	fmt.Println()
 }
 
@@ -2633,7 +2645,9 @@ func renterpricescmd(cmd *cobra.Command, args []string) {
 	fmt.Fprintln(w, "\tStore 1 TB for 1 Month:\t", currencyUnits(rpg.StorageTerabyteMonth))
 	fmt.Fprintln(w, "\tStore 1 TB for Allowance Period:\t", currencyUnits(rpg.StorageTerabyteMonth.Mul64(periodFactor)))
 	fmt.Fprintln(w, "\tUpload 1 TB:\t", currencyUnits(rpg.UploadTerabyte))
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		die("failed to flush writer:", err)
+	}
 
 	// Display allowance used for estimate
 	fmt.Println("\nAllowance used for estimate:")
@@ -2641,7 +2655,9 @@ func renterpricescmd(cmd *cobra.Command, args []string) {
 	fmt.Fprintln(w, "\tPeriod:\t", rpg.Allowance.Period)
 	fmt.Fprintln(w, "\tHosts:\t", rpg.Allowance.Hosts)
 	fmt.Fprintln(w, "\tRenew Window:\t", rpg.Allowance.RenewWindow)
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		die("failed to flush writer:", err)
+	}
 }
 
 // renterratelimitcmd is the handler for the command `siac renter ratelimit`
@@ -2684,7 +2700,9 @@ func renterworkerscmd() {
 	fmt.Fprintf(w, "  Workers On Download Cooldown:\t%v\n", rw.TotalDownloadCoolDown)
 	fmt.Fprintf(w, "  Workers On Upload Cooldown:\t%v\n", rw.TotalUploadCoolDown)
 	fmt.Fprintf(w, "  Workers On Maintenance Cooldown:\t%v\n", rw.TotalMaintenanceCoolDown)
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		die("failed to flush writer:", err)
+	}
 
 	// Split Workers into GoodForUpload and !GoodForUpload
 	var goodForUpload, notGoodForUpload []modules.WorkerStatus
@@ -3071,7 +3089,9 @@ func writeWorkers(workers []modules.WorkerStatus) {
 			worker.DownloadSnapshotJobQueueSize,
 			worker.UploadSnapshotJobQueueSize)
 	}
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		die("failed to flush writer:", err)
+	}
 }
 
 // absDuration is a small helper function that sanitizes the output for the

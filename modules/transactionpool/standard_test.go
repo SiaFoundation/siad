@@ -3,6 +3,7 @@ package transactionpool
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -20,7 +21,11 @@ func TestIntegrationLargeTransactions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a large transaction and try to get it accepted.
 	arbData := make([]byte, modules.TransactionSizeLimit)
@@ -28,7 +33,7 @@ func TestIntegrationLargeTransactions(t *testing.T) {
 	fastrand.Read(arbData[100:116]) // prevents collisions with other transacitons in the loop.
 	txn := types.Transaction{ArbitraryData: [][]byte{arbData}}
 	err = tpt.tpool.AcceptTransactionSet([]types.Transaction{txn})
-	if err != modules.ErrLargeTransaction {
+	if !errors.Contains(err, modules.ErrLargeTransaction) {
 		t.Fatal(err)
 	}
 
@@ -42,7 +47,7 @@ func TestIntegrationLargeTransactions(t *testing.T) {
 		tset = append(tset, txn)
 	}
 	err = tpt.tpool.AcceptTransactionSet(tset)
-	if err != modules.ErrLargeTransactionSet {
+	if !errors.Contains(err, modules.ErrLargeTransactionSet) {
 		t.Fatal(err)
 	}
 }

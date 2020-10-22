@@ -7,6 +7,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestRenterUploadDirectory verifies that the renter returns an error if a
@@ -48,7 +49,7 @@ func TestRenterUploadDirectory(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected Upload to fail with empty directory as source")
 	}
-	if err != ErrUploadDirectory {
+	if !errors.Contains(err, ErrUploadDirectory) {
 		t.Fatal("expected ErrUploadDirectory, got", err)
 	}
 }

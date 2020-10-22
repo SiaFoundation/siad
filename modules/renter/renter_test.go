@@ -43,14 +43,14 @@ type renterTester struct {
 
 // Close shuts down the renter tester.
 func (rt *renterTester) Close() error {
-	rt.cs.Close()
-	rt.gateway.Close()
-	rt.miner.Close()
-	rt.tpool.Close()
-	rt.wallet.Close()
-	rt.mux.Close()
-	rt.renter.Close()
-	return nil
+	err1 := rt.cs.Close()
+	err2 := rt.gateway.Close()
+	err3 := rt.miner.Close()
+	err4 := rt.tpool.Close()
+	err5 := rt.wallet.Close()
+	err6 := rt.mux.Close()
+	err7 := rt.renter.Close()
+	return errors.Compose(err1, err2, err3, err4, err5, err6, err7)
 }
 
 // addCustomHost adds a host to the test group so that it appears in the host db
@@ -67,9 +67,10 @@ func (rt *renterTester) addCustomHost(testdir string, deps modules.Dependencies)
 		return nil, err
 	}
 
-	// configure host to accept contracts
+	// configure host to accept contracts and to have a registry.
 	settings := h.InternalSettings()
 	settings.AcceptingContracts = true
+	settings.RegistrySize = 640 * modules.RegistryEntrySize
 	err = h.SetInternalSettings(settings)
 	if err != nil {
 		return nil, err

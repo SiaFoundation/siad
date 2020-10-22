@@ -129,8 +129,8 @@ func parseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, io.Reade
 // a path. The input skylink URL should not have been URL-decoded. The path is
 // URL-decoded before returning as it is for us to parse and use, while the
 // other components remain encoded for the skapp.
-func parseSkylinkURL(skylinkURL string) (skylink modules.Skylink, skylinkStringNoQuery, path string, err error) {
-	s := strings.TrimPrefix(skylinkURL, "/skynet/skylink/")
+func parseSkylinkURL(skylinkURL, apiRoute string) (skylink modules.Skylink, skylinkStringNoQuery, path string, err error) {
+	s := strings.TrimPrefix(skylinkURL, apiRoute)
 	s = strings.TrimPrefix(s, "/")
 	// Parse out optional path to a subfile
 	path = "/" // default to root

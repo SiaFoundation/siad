@@ -142,7 +142,7 @@ func (tp *TransactionPool) initPersist() error {
 
 	// Get the recent consensus change.
 	cc, err = tp.getRecentConsensusChange(tp.dbTx)
-	if err == errNilConsensusChange {
+	if errors.Contains(err, errNilConsensusChange) {
 		err = tp.putRecentConsensusChange(tp.dbTx, modules.ConsensusChangeBeginning)
 	}
 	if err != nil {
@@ -168,12 +168,12 @@ func (tp *TransactionPool) initPersist() error {
 
 	// Get the fee median data.
 	mp, err := tp.getFeeMedian(tp.dbTx)
-	if err != nil && err != errNilFeeMedian {
+	if err != nil && !errors.Contains(err, errNilFeeMedian) {
 		return build.ExtendErr("unable to load the fee median", err)
 	}
 	// Just leave the fields empty if no fee median was found. They will be
 	// filled out.
-	if err != errNilFeeMedian {
+	if !errors.Contains(err, errNilFeeMedian) {
 		tp.recentMedians = mp.RecentMedians
 		tp.recentMedianFee = mp.RecentMedianFee
 	}
@@ -184,7 +184,7 @@ func (tp *TransactionPool) initPersist() error {
 		if err != nil && strings.Contains(err.Error(), threadgroup.ErrStopped.Error()) {
 			return
 		}
-		if err == modules.ErrInvalidConsensusChangeID {
+		if errors.Contains(err, modules.ErrInvalidConsensusChangeID) {
 			tp.log.Println("Invalid consensus change loaded; resetting. This can take a while.")
 			// Reset and rescan because the consensus set does not recognize the
 			// provided consensus change id.

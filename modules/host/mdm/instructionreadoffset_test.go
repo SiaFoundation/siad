@@ -45,7 +45,7 @@ func TestInstructionReadOffset(t *testing.T) {
 	expectedProof := crypto.MerkleSectorRangeProof(so.sectorRoots, int(1), int(2))
 
 	// Assert the output.
-	err = outputs[0].assert(ics, imr, expectedProof, outputData)
+	err = outputs[0].assert(ics, imr, expectedProof, outputData, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestInstructionReadOffset(t *testing.T) {
 	sectorProof := expectedProof
 	expectedProof = crypto.MerkleMixedRangeProof(sectorProof, sectorData, int(modules.SectorSize), proofStart, proofEnd)
 	outputData = sectorData[relOffset:][:length]
-	err = outputs[0].assert(ics, imr, expectedProof, outputData)
+	err = outputs[0].assert(ics, imr, expectedProof, outputData, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

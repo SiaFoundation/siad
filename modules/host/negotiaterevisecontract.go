@@ -46,7 +46,7 @@ func (h *Host) managedRevisionIteration(conn net.Conn, so *storageObligation, fi
 	// transaction. It may also return a stop response to indicate that it
 	// wishes to terminate the revision loop.
 	err = modules.ReadNegotiationAcceptance(conn)
-	if err == modules.ErrStopResponse {
+	if errors.Contains(err, modules.ErrStopResponse) {
 		return err // managedRPCReviseContract will catch this and exit gracefully
 	} else if err != nil {
 		return extendErr("renter rejected host settings: ", ErrorCommunication(err.Error()))
@@ -227,7 +227,7 @@ func (h *Host) managedRPCReviseContract(conn net.Conn) error {
 	for timeoutReached := false; !timeoutReached; {
 		timeoutReached = time.Since(startTime) > iteratedConnectionTime
 		err := h.managedRevisionIteration(conn, &so, timeoutReached)
-		if err == modules.ErrStopResponse {
+		if errors.Contains(err, modules.ErrStopResponse) {
 			return nil
 		} else if err != nil {
 			return extendErr("revision iteration failed: ", err)

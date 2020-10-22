@@ -102,24 +102,24 @@ func TestNew(t *testing.T) {
 
 	// Nil consensus set.
 	_, errChan = New(nil, w, tpool, hdb, rl, dir)
-	if err := <-errChan; err != errNilCS {
+	if err := <-errChan; !errors.Contains(err, errNilCS) {
 		t.Fatalf("expected %v, got %v", errNilCS, err)
 	}
 
 	// Nil wallet.
 	_, errChan = New(cs, nil, tpool, hdb, rl, dir)
-	if err := <-errChan; err != errNilWallet {
+	if err := <-errChan; !errors.Contains(err, errNilWallet) {
 		t.Fatalf("expected %v, got %v", errNilWallet, err)
 	}
 
 	// Nil transaction pool.
 	_, errChan = New(cs, w, nil, hdb, rl, dir)
-	if err := <-errChan; err != errNilTpool {
+	if err := <-errChan; !errors.Contains(err, errNilTpool) {
 		t.Fatalf("expected %v, got %v", errNilTpool, err)
 	}
 	// Nil hostdb.
 	_, errChan = New(cs, w, tpool, nil, rl, dir)
-	if err := <-errChan; err != errNilHDB {
+	if err := <-errChan; !errors.Contains(err, errNilHDB) {
 		t.Fatalf("expected %v, got %v", errNilHDB, err)
 	}
 
@@ -208,54 +208,54 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	// bad args
 	a.Hosts = 1
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceZeroFunds {
+	if !errors.Contains(err, ErrAllowanceZeroFunds) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroFunds, err)
 	}
 	a.Funds = types.SiacoinPrecision
 	a.Hosts = 0
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceNoHosts {
+	if !errors.Contains(err, ErrAllowanceNoHosts) {
 		t.Errorf("expected %q, got %q", ErrAllowanceNoHosts, err)
 	}
 	a.Hosts = 1
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceZeroPeriod {
+	if !errors.Contains(err, ErrAllowanceZeroPeriod) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroPeriod, err)
 	}
 	a.Period = 20
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceZeroWindow {
+	if !errors.Contains(err, ErrAllowanceZeroWindow) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroWindow, err)
 	}
 	// There should not be any errors related to RenewWindow size
 	a.RenewWindow = 30
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceZeroExpectedStorage {
+	if !errors.Contains(err, ErrAllowanceZeroExpectedStorage) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedStorage, err)
 	}
 	a.RenewWindow = 20
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceZeroExpectedStorage {
+	if !errors.Contains(err, ErrAllowanceZeroExpectedStorage) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedStorage, err)
 	}
 	a.RenewWindow = 10
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceZeroExpectedStorage {
+	if !errors.Contains(err, ErrAllowanceZeroExpectedStorage) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedStorage, err)
 	}
 	a.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceZeroExpectedUpload {
+	if !errors.Contains(err, ErrAllowanceZeroExpectedUpload) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedUpload, err)
 	}
 	a.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceZeroExpectedDownload {
+	if !errors.Contains(err, ErrAllowanceZeroExpectedDownload) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedDownload, err)
 	}
 	a.ExpectedDownload = modules.DefaultAllowance.ExpectedDownload
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceZeroExpectedRedundancy {
+	if !errors.Contains(err, ErrAllowanceZeroExpectedRedundancy) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedRedundancy, err)
 	}
 	a.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy

@@ -91,7 +91,7 @@ func (r *Renter) managedAddStuckChunksFromStuckStack(hosts map[string]struct{}) 
 
 		// Add stuck chunks to uploadHeap
 		err := r.managedAddStuckChunksToHeap(siaPath, hosts, offline, goodForRenew)
-		if err != nil && err != errNoStuckChunks {
+		if err != nil && !errors.Contains(err, errNoStuckChunks) {
 			return dirSiaPaths, errors.AddContext(err, "unable to add stuck chunks to heap")
 		}
 
@@ -112,13 +112,15 @@ func (r *Renter) managedAddStuckChunksFromStuckStack(hosts map[string]struct{}) 
 
 // managedAddStuckChunksToHeap tries to add as many stuck chunks from a siafile
 // to the upload heap as possible
-func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath, hosts map[string]struct{}, offline, goodForRenew map[string]bool) error {
+func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath, hosts map[string]struct{}, offline, goodForRenew map[string]bool) (err error) {
 	// Open File
 	sf, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		return fmt.Errorf("unable to open siafile %v, error: %v", siaPath, err)
 	}
-	defer sf.Close()
+	defer func() {
+		err = errors.Compose(err, sf.Close())
+	}()
 
 	// Check if there are still stuck chunks to repair
 	if sf.NumStuckChunks() == 0 {
@@ -208,14 +210,28 @@ func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, err
 				return modules.SiaPath{}, time.Time{}, err
 			}
 
-			// If the AggregateLastHealthCheckTime is after current
-			// LastHealthCheckTime continue since we are already in a
-			// directory with an older timestamp
-			if subMetadata.AggregateLastHealthCheckTime.After(metadata.AggregateLastHealthCheckTime) {
+			// If the AggregateLastHealthCheckTime for the sub directory is after the
+			// current directory's AggregateLastHealthCheckTime then we will want to
+			// continue since we want to follow the path of oldest
+			// AggregateLastHealthCheckTime
+			isOldestAggregate := subMetadata.AggregateLastHealthCheckTime.After(metadata.AggregateLastHealthCheckTime)
+			// Whenever the node stops there is a chance the directory tree is not
+			// fully updated if there are bubbles pending. With this in mind we also
+			// want to confirm that the current directory's LastHealthCheckTime is
+			// older than the sub directory's AggregateLastHealthCheckTime as well.
+			isOldestDirectory := subMetadata.AggregateLastHealthCheckTime.After(metadata.LastHealthCheckTime)
+			// The isOldestDirectory condition is only a valid check if we have not
+			// already updated the metadata for a sub directory. As soon as we have
+			// updated the metadata once, we have confirmed we are not going to get an
+			// incorrect LastHealthCheckTime due to the metadatas being out of date
+			// from a shutdown when there were pending bubbles.
+			if isOldestAggregate && (isOldestDirectory || updated) {
 				continue
 			}
 
-			// Update LastHealthCheckTime and follow older path
+			// Update the metadata and siaPath to follow older path. We do not break
+			// out of the loop just because we have updated these values as we might
+			// find an even older path to follow.
 			updated = true
 			metadata = subMetadata
 			siaPath = subDirPath
@@ -571,7 +587,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		if timeSinceLastCheck < healthCheckInterval {
 			// Sleep until the least recent check is outside the check interval.
 			sleepDuration := healthCheckInterval - timeSinceLastCheck
-			r.log.Println("Health loop sleeping for", sleepDuration)
+			r.log.Printf("Health loop sleeping for %v, lastHealthCheckTime %v, directory %v", sleepDuration, lastHealthCheckTime, siaPath)
 			wakeSignal := time.After(sleepDuration)
 			select {
 			case <-r.tg.StopChan():

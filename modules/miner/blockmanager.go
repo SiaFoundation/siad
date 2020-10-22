@@ -1,9 +1,9 @@
 package miner
 
 import (
-	"errors"
 	"time"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -134,14 +134,14 @@ func (m *Miner) managedSubmitBlock(b types.Block) error {
 	// Give the block to the consensus set.
 	err := m.cs.AcceptBlock(b)
 	// Add the miner to the blocks list if the only problem is that it's stale.
-	if err == modules.ErrNonExtendingBlock {
+	if errors.Contains(err, modules.ErrNonExtendingBlock) {
 		m.mu.Lock()
 		m.persist.BlocksFound = append(m.persist.BlocksFound, b.ID())
 		m.mu.Unlock()
 		m.log.Println("Mined a stale block - block appears valid but does not extend the blockchain")
 		return err
 	}
-	if err == modules.ErrBlockUnsolved {
+	if errors.Contains(err, modules.ErrBlockUnsolved) {
 		m.log.Println("Mined an unsolved block - header submission appears to be incorrect")
 		return err
 	}

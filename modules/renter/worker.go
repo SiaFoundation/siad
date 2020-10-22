@@ -24,8 +24,12 @@ import (
 )
 
 const (
-	// minAsyncVersion defines the minimum version that is supported
+	// minAsyncVersion defines the minimum version that supports RHP3.
 	minAsyncVersion = "1.4.10"
+
+	// minRegistryVersion defines the minimum version that is required for a
+	// host to support the registry.
+	minRegistryVersion = "1.5.1"
 )
 
 const (
@@ -76,9 +80,11 @@ type (
 		downloadRecentFailureErr    error     // What was the reason for the last failure?
 
 		// Job queues for the worker.
+		staticJobDownloadSnapshotQueue *jobDownloadSnapshotQueue
 		staticJobHasSectorQueue        *jobHasSectorQueue
 		staticJobReadQueue             *jobReadQueue
-		staticJobDownloadSnapshotQueue *jobDownloadSnapshotQueue
+		staticJobReadRegistryQueue     *jobReadRegistryQueue
+		staticJobUpdateRegistryQueue   *jobUpdateRegistryQueue
 		staticJobUploadSnapshotQueue   *jobUploadSnapshotQueue
 
 		// Upload variables.
@@ -196,6 +202,8 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	w.initJobHasSectorQueue()
 	w.initJobReadQueue()
 	w.initJobDownloadSnapshotQueue()
+	w.initJobReadRegistryQueue()
+	w.initJobUpdateRegistryQueue()
 	w.initJobUploadSnapshotQueue()
 
 	// Get the worker cache set up before returning the worker. This prevents a

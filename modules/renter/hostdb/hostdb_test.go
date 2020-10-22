@@ -20,6 +20,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/siamux"
 )
@@ -181,17 +182,17 @@ func TestNew(t *testing.T) {
 
 	// Nil gateway.
 	_, errChan = New(nil, cs, tp, mux, hdbName+"2")
-	if err := <-errChan; err != errNilGateway {
+	if err := <-errChan; !errors.Contains(err, errNilGateway) {
 		t.Fatalf("expected %v, got %v", errNilGateway, err)
 	}
 	// Nil consensus set.
 	_, errChan = New(g, nil, tp, mux, hdbName+"3")
-	if err := <-errChan; err != errNilCS {
+	if err := <-errChan; !errors.Contains(err, errNilCS) {
 		t.Fatalf("expected %v, got %v", errNilCS, err)
 	}
 	// Nil tpool.
 	_, errChan = New(g, cs, nil, mux, hdbName+"3")
-	if err := <-errChan; err != errNilTPool {
+	if err := <-errChan; !errors.Contains(err, errNilTPool) {
 		t.Fatalf("expected %v, got %v", errNilTPool, err)
 	}
 	// TODO: Nil siamux?

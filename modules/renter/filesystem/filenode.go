@@ -144,7 +144,7 @@ func (n *FileNode) managedRename(newName string, oldParent, newParent *DirNode) 
 	newPath := filepath.Join(newParent.absPath(), newName) + modules.SiaFileExtension
 	// Rename the file.
 	err := n.SiaFile.Rename(newPath)
-	if err == siafile.ErrPathOverload {
+	if errors.Contains(err, siafile.ErrPathOverload) {
 		return ErrExists
 	}
 	if err != nil {

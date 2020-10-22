@@ -858,7 +858,7 @@ func TestRefCounterUpdateSessionConstraints(t *testing.T) {
 	}
 
 	// make sure we cannot start an update session on a deleted counter
-	if err = rc.callStartUpdate(); err != ErrUpdateAfterDelete {
+	if err = rc.callStartUpdate(); !errors.Contains(err, ErrUpdateAfterDelete) {
 		t.Fatal("Failed to prevent an update creation after a deletion", err)
 	}
 }

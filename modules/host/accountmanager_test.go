@@ -578,9 +578,9 @@ func TestAccountRiskBenchmark(t *testing.T) {
 					atomic.AddUint64(&atomicWithdrawn[randIndex], withdrawn)
 
 					wErr := callWithdraw(am, msg, sig)
-					if wErr == errMaxRiskReached {
+					if errors.Contains(wErr, errMaxRiskReached) {
 						atomic.StoreUint64(&atomicMaxRiskReached, 1)
-					} else if wErr == ErrBalanceInsufficient {
+					} else if errors.Contains(wErr, ErrBalanceInsufficient) {
 						if dErr := callDeposit(am, accountIDs[randIndex], maxBalance); dErr != nil {
 							atomic.AddUint64(&atomicWithdrawalErrs, 1)
 							t.Log(wErr)

@@ -222,7 +222,9 @@ func (rc *refCounter) callCreateAndApplyTransaction(updates ...writeaheadlog.Upd
 	if err != nil {
 		return errors.AddContext(err, "failed to open refcounter file in order to apply updates")
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
 	if !rc.isUpdateInProgress {
 		return ErrUpdateWithoutUpdateSession
 	}
@@ -442,7 +444,7 @@ func (rc *refCounter) managedStartUpdate() error {
 
 // readCount reads the given sector count either from disk (if there are no
 // pending updates) or from the in-memory cache (if there are).
-func (rc *refCounter) readCount(secIdx uint64) (uint16, error) {
+func (rc *refCounter) readCount(secIdx uint64) (_ uint16, err error) {
 	// check if the secIdx is a valid sector index based on the number of
 	// sectors in the file
 	if secIdx >= rc.numSectors {
@@ -457,7 +459,9 @@ func (rc *refCounter) readCount(secIdx uint64) (uint16, error) {
 	if err != nil {
 		return 0, errors.AddContext(err, "failed to open the refcounter file")
 	}
-	defer f.Close()
+	defer func() {
+		err = errors.Compose(err, f.Close())
+	}()
 
 	var b u16
 	if _, err = f.ReadAt(b[:], int64(offset(secIdx))); err != nil {

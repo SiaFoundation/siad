@@ -21,7 +21,11 @@ func TestWatchdog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer fm.Close()
+	defer func() {
+		if err := fm.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create Random Fees.
 	feeUIDs, err := addRandomFees(fm)

@@ -5,7 +5,9 @@ import (
 	"fmt"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // instructionUpdateRegistry defines an update to a value in the host's
@@ -58,6 +60,12 @@ func (p *program) staticDecodeUpdateRegistryInstruction(instruction modules.Inst
 	}, nil
 }
 
+// Batch declares whether or not this instruction can be batched together with
+// the previous instruction.
+func (i instructionUpdateRegistry) Batch() bool {
+	return true
+}
+
 // Execute executes the 'UpdateRegistry' instruction.
 func (i *instructionUpdateRegistry) Execute(prevOutput output) output {
 	// Fetch the args.
@@ -87,7 +95,19 @@ func (i *instructionUpdateRegistry) Execute(prevOutput output) output {
 
 	// Try updating the registry.
 	rv := modules.NewSignedRegistryValue(tweak, data, revision, signature)
-	_, err = i.staticState.host.RegistryUpdate(rv, pubKey, newExpiry)
+	existingRV, err := i.staticState.host.RegistryUpdate(rv, pubKey, newExpiry)
+	if errors.Contains(err, registry.ErrLowerRevNum) || errors.Contains(err, registry.ErrSameRevNum) {
+		// If we weren't able to update the registry due to a ErrLowerRevNum or
+		// ErrSameRevNum, we need to return the existing value as proof.
+		rev := make([]byte, 8)
+		binary.LittleEndian.PutUint64(rev, existingRV.Revision)
+		return output{
+			NewSize:       prevOutput.NewSize,
+			NewMerkleRoot: prevOutput.NewMerkleRoot,
+			Output:        append(existingRV.Signature[:], append(rev, existingRV.Data...)...),
+			Error:         err,
+		}
+	}
 	if err != nil {
 		return errOutput(err)
 	}
@@ -105,8 +125,8 @@ func (i *instructionUpdateRegistry) Collateral() types.Currency {
 }
 
 // Cost returns the Cost of this `UpdateRegistry` instruction.
-func (i *instructionUpdateRegistry) Cost() (executionCost, _ types.Currency, err error) {
-	executionCost = modules.MDMUpdateRegistryCost(i.staticState.priceTable)
+func (i *instructionUpdateRegistry) Cost() (executionCost, storeCost types.Currency, err error) {
+	executionCost, storeCost = modules.MDMUpdateRegistryCost(i.staticState.priceTable)
 	return
 }
 

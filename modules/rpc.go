@@ -88,6 +88,10 @@ type RPCPriceTable struct {
 	// TxnFee estimations.
 	TxnFeeMinRecommended types.Currency `json:"txnfeeminrecommended"`
 	TxnFeeMaxRecommended types.Currency `json:"txnfeemaxrecommended"`
+
+	// Registry related fields.
+	RegistryEntriesLeft  uint64 `json:"registryentriesleft"`
+	RegistryEntriesTotal uint64 `json:"registryentriestotal"`
 }
 
 var (

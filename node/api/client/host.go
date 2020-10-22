@@ -61,6 +61,12 @@ const (
 	// HostParamMaxEphemeralAccountRisk is the maximum ephemeral account risk in
 	// hastings
 	HostParamMaxEphemeralAccountRisk = HostParam("maxephemeralaccountrisk")
+	// HostParamRegistrySize is the preallocated size of the host's registry on
+	// disk.
+	HostParamRegistrySize = HostParam("registrysize")
+	// HostParamCustomRegistryPath is the locataion of the host's registry on
+	// disk.
+	HostParamCustomRegistryPath = HostParam("customregistrypath")
 )
 
 // HostAnnouncePost uses the /host/announce endpoint to announce the host to

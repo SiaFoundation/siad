@@ -34,7 +34,11 @@ func TestHostObligationAcceptingContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.server.Close()
+	defer func() {
+		if err := st.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	err = st.setHostStorage()
 	if err != nil {
 		t.Fatal(err)
@@ -1623,12 +1627,20 @@ func TestUploadedBytesReporting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.server.Close()
+	defer func() {
+		if err := st.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	stH1, err := blankServerTester(t.Name() + " - Host 2")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer stH1.server.Close()
+	defer func() {
+		if err := stH1.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	testGroup := []*serverTester{st, stH1}
 
 	// Connect the testers to eachother so that they are all on the same
@@ -1774,12 +1786,20 @@ func TestRepairLoopBlocking(t *testing.T) {
 		t.Fatal(err)
 	}
 	//st.renter.SetDependencies(renter.BlockRepairUpload{})
-	defer st.server.Close()
+	defer func() {
+		if err := st.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	stH1, err := blankServerTester(t.Name() + " - Host 1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer stH1.server.Close()
+	defer func() {
+		if err := stH1.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	testGroup := []*serverTester{st, stH1}
 
 	// Connect the testers to eachother so that they are all on the same
@@ -1894,7 +1914,11 @@ func TestRepairLoopBlocking(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer stNewHost.server.Close()
+		defer func() {
+			if err := stNewHost.server.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 		testGroup = append(testGroup, stNewHost)
 	}
 
@@ -2015,12 +2039,20 @@ func TestRemoteFileRepairMassive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.server.Close()
+	defer func() {
+		if err := st.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	stH1, err := blankServerTester(t.Name() + " - Host 1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer stH1.server.Close()
+	defer func() {
+		if err := stH1.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	testGroup := []*serverTester{st, stH1}
 
 	// Connect the testers to eachother so that they are all on the same
@@ -2133,7 +2165,11 @@ func TestRemoteFileRepairMassive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer stNewHost.server.Close()
+	defer func() {
+		if err := stNewHost.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	testGroup = []*serverTester{st, stNewHost}
 

@@ -3,10 +3,10 @@ package main
 import (
 	"math"
 	"math/big"
-	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -236,7 +236,7 @@ func TestParseRatelimit(t *testing.T) {
 
 	for _, test := range tests {
 		res, err := parseRatelimit(test.in)
-		if res != test.out || (err != test.err && !strings.Contains(err.Error(), test.err.Error())) {
+		if res != test.out || (err != test.err && !errors.Contains(err, test.err)) {
 			t.Errorf("parsePeriod(%v): expected %v %v, got %v %v", test.in, test.out, test.err, res, err)
 		}
 	}

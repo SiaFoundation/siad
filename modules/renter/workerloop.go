@@ -223,6 +223,19 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		w.externLaunchAsyncJob(job)
 		return true
 	}
+	// Check if registry jobs are supported.
+	if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) >= 0 {
+		job = w.staticJobUpdateRegistryQueue.callNext()
+		if job != nil {
+			w.externLaunchAsyncJob(job)
+			return true
+		}
+		job = w.staticJobReadRegistryQueue.callNext()
+		if job != nil {
+			w.externLaunchAsyncJob(job)
+			return true
+		}
+	}
 	job = w.staticJobReadQueue.callNext()
 	if job != nil {
 		w.externLaunchAsyncJob(job)
@@ -254,6 +267,7 @@ func (w *worker) managedBlockUntilReady() bool {
 // worker has not met sufficient conditions to retain async jobs.
 func (w *worker) managedDiscardAsyncJobs(err error) {
 	w.staticJobHasSectorQueue.callDiscardAll(err)
+	w.staticJobUpdateRegistryQueue.callDiscardAll(err)
 	w.staticJobReadQueue.callDiscardAll(err)
 }
 
@@ -272,6 +286,7 @@ func (w *worker) threadedWorkLoop() {
 	defer w.managedKillUploading()
 	defer w.managedKillDownloading()
 	defer w.staticJobHasSectorQueue.callKill()
+	defer w.staticJobUpdateRegistryQueue.callKill()
 	defer w.staticJobReadQueue.callKill()
 	defer w.staticJobDownloadSnapshotQueue.callKill()
 	defer w.staticJobUploadSnapshotQueue.callKill()

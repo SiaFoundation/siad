@@ -22,6 +22,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/node"
@@ -30,6 +31,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/Sia/skynet"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -74,6 +76,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "DefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
 		{Name: "SingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
 		{Name: "DownloadFormats", Test: testSkynetDownloadFormats},
+		{Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSector},
 	}
 
 	// Run tests
@@ -254,7 +257,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("reader data doesn't match data")
 	}
 	_, err = tr.Next()
-	if err != io.EOF {
+	if !errors.Contains(err, io.EOF) {
 		t.Fatal("expected error to be EOF but was", err)
 	}
 	err = skylinkReader.Close()
@@ -272,7 +275,11 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer gzr.Close()
+	defer func() {
+		if err := gzr.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	tr = tar.NewReader(gzr)
 	header, err = tr.Next()
 	if err != nil {
@@ -290,7 +297,7 @@ func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal("reader data doesn't match data")
 	}
 	_, err = tr.Next()
-	if err != io.EOF {
+	if !errors.Contains(err, io.EOF) {
 		t.Fatal("expected error to be EOF but was", err)
 	}
 	err = skylinkReader.Close()
@@ -1360,6 +1367,60 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// testSkynetDownloadBaseSector tests downloading a skylink's baseSector
+func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Upload a small skyfile
+	filename := "onlyBaseSector"
+	size := 100 + siatest.Fuzz()
+	smallFileData := fastrand.Bytes(size)
+	skylink, sup, _, err := r.UploadNewSkyfileWithDataBlocking(filename, smallFileData, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the BaseSector reader
+	baseSectorReader, err := r.SkynetBaseSectorGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read the baseSector
+	baseSector := make([]byte, modules.SectorSize)
+	_, err = baseSectorReader.Read(baseSector)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Parse the skyfile metadata from the baseSector
+	_, fanoutBytes, metadata, baseSectorPayload, err := skynet.ParseSkyfileMetadata(baseSector)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the metadata
+	if !reflect.DeepEqual(sup.FileMetadata, metadata) {
+		siatest.PrintJSON(sup.FileMetadata)
+		siatest.PrintJSON(metadata)
+		t.Error("Metadata not equal")
+	}
+
+	// Verify the file data
+	if !bytes.Equal(smallFileData, baseSectorPayload) {
+		t.Log("FileData bytes:", smallFileData)
+		t.Log("BaseSectorPayload bytes:", baseSectorPayload)
+		t.Errorf("Bytes not equal")
+	}
+
+	// Since this was a small file upload there should be no fanout bytes
+	if len(fanoutBytes) != 0 {
+		t.Error("Expected 0 fanout bytes:", fanoutBytes)
+	}
+
+	// TODO - Verify Raw Format for Large file when /skynet/fanout is added
+}
+
 // testSkynetSubDirDownload verifies downloading data from a skyfile using a
 // path to download single subfiles or subdirectories
 func testSkynetSubDirDownload(t *testing.T, tg *siatest.TestGroup) {
@@ -2069,9 +2130,9 @@ func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
 	// lock.
 	_, _, err = r.SkynetSkylinkGet(modules.Skylink{}.String())
 	if err == nil {
-		t.Fatal("Error is nil, expected error due to no worker")
-	} else if !strings.Contains(err.Error(), "no workers") {
-		t.Errorf("Expected error containing 'no workers' but got %v", err)
+		t.Fatal("Error is nil, expected error due to not enough workers")
+	} else if !strings.Contains(err.Error(), modules.ErrNotEnoughWorkersInWorkerPool.Error()) {
+		t.Errorf("Expected error containing '%v' but got %v", modules.ErrNotEnoughWorkersInWorkerPool, err)
 	}
 }
 
@@ -3061,6 +3122,139 @@ func TestRenewContractBadScore(t *testing.T) {
 		return siatest.CheckExpectedNumberOfContracts(r, 0, 0, 0, 0, 2, 0)
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestRegistryUpdateRead tests setting a registry entry and reading in through
+// the API.
+func TestRegistryUpdateRead(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	testDir := renterTestDir(t.Name())
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:   renter.MinUpdateRegistrySuccesses,
+		Renters: 1,
+		Miners:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	r := tg.Renters()[0]
+
+	// Create some random skylinks to use later.
+	skylink1, err := modules.NewSkylinkV1(crypto.HashBytes(fastrand.Bytes(100)), 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skylink2, err := modules.NewSkylinkV1(crypto.HashBytes(fastrand.Bytes(100)), 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skylink3, err := modules.NewSkylinkV1(crypto.HashBytes(fastrand.Bytes(100)), 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a signed registry value.
+	sk, pk := crypto.GenerateKeyPair()
+	fileID := modules.FileID{
+		Version: modules.FileIDVersion,
+	}
+	tweak, err := fileID.Tweak()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data1 := skylink1.Bytes()
+	data2 := skylink2.Bytes()
+	data3 := skylink3.Bytes()
+	srv1 := modules.NewRegistryValue(tweak, data1, 0).Sign(sk) // rev 0
+	srv2 := modules.NewRegistryValue(tweak, data2, 1).Sign(sk) // rev 1
+	srv3 := modules.NewRegistryValue(tweak, data3, 0).Sign(sk) // rev 0
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+
+	// Force a refresh of the worker pool for testing.
+	_, err = r.RenterWorkersGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Try to read it from the host. Shouldn't work.
+	_, err = r.RegistryRead(spk, fileID)
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryEntryNotFound.Error()) {
+		t.Fatal(err)
+	}
+
+	// Update the regisry.
+	err = r.RegistryUpdate(spk, fileID, srv1.Revision, srv1.Signature, skylink1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read it again. This should work.
+	readSRV, err := r.RegistryRead(spk, fileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(srv1, readSRV) {
+		t.Log(srv1)
+		t.Log(readSRV)
+		t.Fatal("srvs don't match")
+	}
+
+	// Update the regisry again, with a higher revision.
+	err = r.RegistryUpdate(spk, fileID, srv2.Revision, srv2.Signature, skylink2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read it again. This should work.
+	readSRV, err = r.RegistryRead(spk, fileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(srv2, readSRV) {
+		t.Log(srv2)
+		t.Log(readSRV)
+		t.Fatal("srvs don't match")
+	}
+
+	// Update the regisry again, with the same revision. Shouldn't work.
+	err = r.RegistryUpdate(spk, fileID, srv2.Revision, srv2.Signature, skylink2)
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateNoSuccessfulUpdates.Error()) {
+		t.Fatal(err)
+	}
+	if err == nil || !strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) {
+		t.Fatal(err)
+	}
+
+	// Update the regisry again, with a lower revision. Shouldn't work.
+	err = r.RegistryUpdate(spk, fileID, srv3.Revision, srv3.Signature, skylink3)
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateNoSuccessfulUpdates.Error()) {
+		t.Fatal(err)
+	}
+	if err == nil || !strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) {
+		t.Fatal(err)
+	}
+
+	// Update the regisry again, with an invalid sig. Shouldn't work.
+	var invalidSig crypto.Signature
+	fastrand.Read(invalidSig[:])
+	err = r.RegistryUpdate(spk, fileID, srv3.Revision, invalidSig, skylink3)
+	if err == nil || !strings.Contains(err.Error(), crypto.ErrInvalidSignature.Error()) {
 		t.Fatal(err)
 	}
 }
