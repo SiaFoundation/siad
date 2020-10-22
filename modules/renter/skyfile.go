@@ -36,7 +36,6 @@ import (
 	"io"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/fixtures"
 	"gitlab.com/NebulousLabs/Sia/skynet"
 
@@ -841,13 +840,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 // returning a skylink which can be used by any viewnode to recover the full
 // original file and metadata. The skylink will be unique to the combination of
 // both the file data and metadata.
-func (r *Renter) UploadSkyfile(sup modules.SkyfileUploadParameters) (modules.Skylink, error) {
-	// Sanity check we have a SkyfileReader at this point
-	if sup.SkyfileReader == nil {
-		build.Critical("no skyfile reader set")
-		return modules.Skylink{}, errors.New("could not upload skyfile, no upload data found")
-	}
-
+func (r *Renter) UploadSkyfile(sup modules.SkyfileUploadParameters, reader modules.SkyfileUploadReader) (modules.Skylink, error) {
 	// Set reasonable default values for any lup fields that are blank.
 	err := skyfileEstablishDefaults(&sup)
 	if err != nil {
@@ -882,15 +875,15 @@ func (r *Renter) UploadSkyfile(sup modules.SkyfileUploadParameters) (modules.Sky
 
 	// see if we can fit the entire upload in a single chunk
 	buf := make([]byte, modules.SectorSize)
-	n, err := sup.SkyfileReader.Read(buf)
-	buf = buf[:n] // truncate the buffer
+	numBytes, err := io.ReadFull(reader, buf)
+	buf = buf[:numBytes] // truncate the buffer
 
 	// if we've reached EOF, we can safely fetch the metadata and calculate the
 	// actual header size, if that fits in a single sector we can upload the
 	// Skyfile as a small file
-	if errors.Contains(err, io.EOF) {
+	if errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF) {
 		// get the skyfile metadata from the reader
-		metadata, err := sup.SkyfileReader.SkyfileMetadata()
+		metadata, err := reader.SkyfileMetadata()
 		if err != nil {
 			return modules.Skylink{}, errors.AddContext(err, "unable to get skyfile metadata")
 		}
@@ -909,7 +902,7 @@ func (r *Renter) UploadSkyfile(sup modules.SkyfileUploadParameters) (modules.Sky
 
 		// verify if it fits in a single chunk
 		headerSize := uint64(skynet.SkyfileLayoutSize + len(metadataBytes))
-		if uint64(n)+headerSize <= modules.SectorSize {
+		if uint64(numBytes)+headerSize <= modules.SectorSize {
 			skylink, err = r.managedUploadSkyfileSmallFile(sup, metadataBytes, buf)
 			if err != nil {
 				return modules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
@@ -922,8 +915,8 @@ func (r *Renter) UploadSkyfile(sup modules.SkyfileUploadParameters) (modules.Sky
 	// exceeded a single sector, upload the data is a large Skyfile, make sure
 	// to prepend the reader with what we have read already
 	if largeFile {
-		sup.SkyfileReader.AddReadBuffer(buf)
-		skylink, err = r.managedUploadSkyfileLargeFile(sup, sup.SkyfileReader)
+		reader.AddReadBuffer(buf)
+		skylink, err = r.managedUploadSkyfileLargeFile(sup, reader)
 		if err != nil {
 			return modules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
 		}

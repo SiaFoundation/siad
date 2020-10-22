@@ -109,16 +109,19 @@ func (sr *skyfileReader) Read(p []byte) (n int, err error) {
 	default:
 	}
 
-	if n < len(p) {
-		var nn int
-		nn, err = sr.reader.Read(p[n:])
-		n += nn
-		sr.currLen += uint64(nn)
+	// return early if possible
+	if n == len(p) {
+		return
+	}
 
-		if errors.Contains(err, io.EOF) {
-			close(sr.metadataAvail)
-			sr.metadata.Length = sr.currLen
-		}
+	var nn int
+	nn, err = sr.reader.Read(p[n:])
+	n += nn
+	sr.currLen += uint64(nn)
+
+	if errors.Contains(err, io.EOF) {
+		close(sr.metadataAvail)
+		sr.metadata.Length = sr.currLen
 	}
 	return
 }

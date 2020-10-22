@@ -1123,7 +1123,7 @@ type Renter interface {
 	// skyfile contains more than just the file data, it also contains metadata
 	// about the file and other information which is useful in fetching the
 	// file.
-	UploadSkyfile(SkyfileUploadParameters) (Skylink, error)
+	UploadSkyfile(SkyfileUploadParameters, SkyfileUploadReader) (Skylink, error)
 
 	// Blocklist returns the merkleroots that are blocked
 	Blocklist() ([]crypto.Hash, error)

@@ -76,10 +76,6 @@ type (
 		// Reader supplies the file data for the skyfile.
 		Reader io.Reader
 
-		// SkyfileReader wraps the reader contain the file data and allows to
-		// retrieve the SkyfileMetadata from it.
-		SkyfileReader SkyfileUploadReader
-
 		// SkykeyName is the name of the Skykey that should be used to encrypt
 		// the Skyfile.
 		SkykeyName string

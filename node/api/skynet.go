@@ -802,22 +802,23 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 
 	// set the reader
+	var reader modules.SkyfileUploadReader
 	if isMultipartRequest(headers.mediaType) {
 		mpr, err := req.MultipartReader()
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("could not get multipart reader from request, error: %v", err)}, http.StatusBadRequest)
 			return
 		}
-		sup.SkyfileReader = modules.NewSkyfileMultipartReader(mpr, sup)
+		reader = modules.NewSkyfileMultipartReader(mpr, sup)
 	} else {
-		sup.SkyfileReader = modules.NewSkyfileReader(req.Body, sup)
+		reader = modules.NewSkyfileReader(req.Body, sup)
 	}
 
 	// Check whether this is a streaming upload or a siafile conversion. If no
 	// convert path is provided, assume that the req.Body will be used as a
 	// streaming upload.
 	if params.convertPath == "" {
-		skylink, err := api.renter.UploadSkyfile(sup)
+		skylink, err := api.renter.UploadSkyfile(sup, reader)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to upload file to Skynet: %v", err)}, http.StatusBadRequest)
 			return
