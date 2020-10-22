@@ -1011,12 +1011,12 @@ func TestTruncate(t *testing.T) {
 	}
 
 	// Truncate the registry to 63 entries. This shouldn't work.
-	if err := r.Truncate(63); !errors.Contains(err, ErrInvalidTruncate) {
+	if err := r.Truncate(63, false); !errors.Contains(err, ErrInvalidTruncate) {
 		t.Fatal(err)
 	}
 
 	// Truncate to 192. This should work.
-	if err := r.Truncate(192); err != nil {
+	if err := r.Truncate(192, false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1077,7 +1077,7 @@ func TestTruncate(t *testing.T) {
 	}
 
 	// Truncate to 64. This should work.
-	if err := r.Truncate(64); err != nil {
+	if err := r.Truncate(64, false); err != nil {
 		t.Fatal(err)
 	}
 

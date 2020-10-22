@@ -686,7 +686,7 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 	// entry.
 	settings.RegistrySize = modules.RoundRegistrySize(settings.RegistrySize)
 	if h.settings.RegistrySize != settings.RegistrySize {
-		err := h.staticRegistry.Truncate(settings.RegistrySize / modules.RegistryEntrySize)
+		err := h.staticRegistry.Truncate(settings.RegistrySize/modules.RegistryEntrySize, false)
 		if err != nil {
 			return errors.AddContext(err, "registry size not updated")
 		}
