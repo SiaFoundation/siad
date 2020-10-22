@@ -163,7 +163,7 @@ func (r *Registry) Truncate(newMaxEntries uint64, force bool) error {
 	defer r.mu.Unlock()
 
 	// Check if truncating is possible.
-	if newMaxEntries < uint64(len(r.entries)) {
+	if !force && newMaxEntries < uint64(len(r.entries)) {
 		return ErrInvalidTruncate
 	}
 

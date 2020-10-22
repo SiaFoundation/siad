@@ -1236,3 +1236,105 @@ func TestMigrate(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestTruncateForce is a unit test for the registry's Truncate method with
+// force enabled.
+func TestTruncateForce(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	dir := testDir(t.Name())
+
+	// Create a new registry.
+	registryPath := filepath.Join(dir, "registry")
+	r, err := New(registryPath, 128)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Capacity should be 128 and length 0.
+	if r.Cap() != 128 || r.Len() != 0 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+
+	// Add 128 entries to it.
+	numEntries := 128
+	entries := make([]modules.SignedRegistryValue, 0, numEntries)
+	keys := make([]types.SiaPublicKey, 0, numEntries)
+	for i := 0; i < numEntries; i++ {
+		rv, v, sk := randomValue(0)
+		rv.Revision = 0 // set revision number to 0
+		rv = rv.Sign(sk)
+		_, err = r.Update(rv, v.key, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rv, _ = r.Get(v.key, v.tweak)
+		entries = append(entries, rv)
+		keys = append(keys, v.key)
+	}
+
+	// Check capacity and length again.
+	if r.Cap() != 128 || r.Len() != 128 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+
+	// Truncate the registry to 64 entries. This shouldn't work.
+	if err := r.Truncate(64, false); !errors.Contains(err, ErrInvalidTruncate) {
+		t.Fatal(err)
+	}
+
+	// Truncate to 64 with force. This should work.
+	if err := r.Truncate(64, true); err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be 64 entries in memory now.
+	if r.Cap() != 64 || r.Len() != 64 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+	truncatedEntries := r.entries
+
+	// Close registry
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// The registry should have the right size.
+	fi, err := os.Stat(registryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Size() != 65*PersistedEntrySize {
+		t.Fatalf("registry has wrong size %v != %v", 65*PersistedEntrySize, fi.Size())
+	}
+
+	// Reload the registry.
+	r, err = New(registryPath, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
+
+	// There should be 64 entries in memory.
+	if r.Cap() != 64 || r.Len() != 64 {
+		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
+	}
+
+	// They should be the same as before.
+	for _, entry := range truncatedEntries {
+		vExists, exists := r.entries[entry.mapKey()]
+		if !exists {
+			t.Fatal("entry doesn't exist")
+		}
+		if !reflect.DeepEqual(vExists, entry) {
+			t.Fatal("entries don't match")
+		}
+	}
+}
