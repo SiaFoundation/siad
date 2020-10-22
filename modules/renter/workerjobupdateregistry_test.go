@@ -59,7 +59,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	}
 
 	// The entries should match.
-	if !reflect.DeepEqual(lookedUpRV, rv) {
+	if !reflect.DeepEqual(*lookedUpRV, rv) {
 		t.Fatal("entries don't match")
 	}
 
@@ -150,7 +150,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	}
 
 	// The entries should match.
-	if !reflect.DeepEqual(lookedUpRV, rv) {
+	if !reflect.DeepEqual(*lookedUpRV, rv) {
 		t.Fatal("entries don't match")
 	}
 
@@ -169,7 +169,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	}
 
 	// The entries should match.
-	if !reflect.DeepEqual(lookedUpRV, rv) {
+	if !reflect.DeepEqual(*lookedUpRV, rv) {
 		t.Fatal("entries don't match")
 	}
 }

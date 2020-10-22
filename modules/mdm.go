@@ -12,10 +12,6 @@ import (
 	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
-// ErrRegistryValueNotExist is returned by the MDM when the requested value of
-// the host's registry couldn't be found.
-var ErrRegistryValueNotExist = errors.New("unable to find requested registry value")
-
 type (
 	// Instruction specifies a generic instruction used as an input to
 	// `mdm.ExecuteProgram`.

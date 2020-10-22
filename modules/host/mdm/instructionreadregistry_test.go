@@ -87,7 +87,10 @@ func TestInstructionReadRegistryNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if outputs[0].Error.Error() != modules.ErrRegistryValueNotExist.Error() {
-		t.Fatal("wrong error returned", outputs[0].Error, modules.ErrRegistryValueNotExist)
+	if outputs[0].Error != nil {
+		t.Fatal("error returned", outputs[0].Error)
+	}
+	if len(outputs[0].Output) != 0 {
+		t.Fatal("expected empty output")
 	}
 }

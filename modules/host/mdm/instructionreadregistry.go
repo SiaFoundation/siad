@@ -58,20 +58,24 @@ func (i *instructionReadRegistry) Execute(prevOutput output) output {
 		return errOutput(err)
 	}
 
-	// Get the value.
+	// Prepare the output. An empty output.Output means the data wasn't found.
+	out := output{
+		NewSize:       prevOutput.NewSize,
+		NewMerkleRoot: prevOutput.NewMerkleRoot,
+		Output:        nil,
+	}
+
+	// Get the value. If this fails we are done.
 	rv, found := i.staticState.host.RegistryGet(pubKey, tweak)
 	if !found {
-		return errOutput(modules.ErrRegistryValueNotExist)
+		return out
 	}
 
 	// Return the signature followed by the data.
 	rev := make([]byte, 8)
 	binary.LittleEndian.PutUint64(rev, rv.Revision)
-	return output{
-		NewSize:       prevOutput.NewSize,
-		NewMerkleRoot: prevOutput.NewMerkleRoot,
-		Output:        append(rv.Signature[:], append(rev, rv.Data...)...),
-	}
+	out.Output = append(rv.Signature[:], append(rev, rv.Data...)...)
+	return out
 }
 
 // Registry reads can be batched, because they are both tiny, and low latency.
