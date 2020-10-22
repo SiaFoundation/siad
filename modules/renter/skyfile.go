@@ -467,6 +467,122 @@ func uploadSkyfileReadLeadingChunk(r io.Reader, headerSize uint64) ([]byte, io.R
 	return nil, fullReader, true, nil
 }
 
+// managedUploadBaseSector will take the raw baseSector bytes and upload them,
+// returning the resulting merkle root, and the fileNode of the siafile that is
+// tracking the base sector.
+func (r *Renter) managedUploadBaseSector(lup modules.SkyfileUploadParameters, baseSector []byte, skylink modules.Skylink) (err error) {
+	fileUploadParams, err := fileUploadParamsFromLUP(lup)
+	if err != nil {
+		return errors.AddContext(err, "failed to create siafile upload parameters")
+	}
+	fileUploadParams.CipherType = crypto.TypePlain // the baseSector should be encrypted by the caller.
+
+	// Perform the actual upload. This will require turning the base sector into
+	// a reader.
+	baseSectorReader := bytes.NewReader(baseSector)
+	fileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader)
+	if err != nil {
+		return errors.AddContext(err, "failed to stream upload small skyfile")
+	}
+	defer func() {
+		err = errors.Compose(err, fileNode.Close())
+	}()
+
+	// Add the skylink to the Siafile.
+	err = fileNode.AddSkylink(skylink)
+	return errors.AddContext(err, "unable to add skylink to siafile")
+}
+
+// managedUploadSkyfile uploads a file and returns the skylink and whether or
+// not it was a large file.
+func (r *Renter) managedUploadSkyfile(sup modules.SkyfileUploadParameters, reader modules.SkyfileUploadReader) (modules.Skylink, bool, error) {
+	// see if we can fit the entire upload in a single chunk
+	buf := make([]byte, modules.SectorSize)
+	numBytes, err := io.ReadFull(reader, buf)
+	buf = buf[:numBytes] // truncate the buffer
+
+	// if we've reached EOF, we can safely fetch the metadata and calculate the
+	// actual header size, if that fits in a single sector we can upload the
+	// Skyfile as a small file
+	if errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF) {
+		// get the skyfile metadata from the reader
+		metadata, err := reader.SkyfileMetadata()
+		if err != nil {
+			return modules.Skylink{}, false, errors.AddContext(err, "unable to get skyfile metadata")
+		}
+
+		// check whether it's valid
+		err = modules.ValidateSkyfileMetadata(metadata)
+		if err != nil {
+			return modules.Skylink{}, false, errors.Compose(ErrInvalidMetadata, err)
+		}
+
+		// marshal the skyfile metadata into bytes
+		metadataBytes, err := skyfileMetadataBytes(metadata)
+		if err != nil {
+			return modules.Skylink{}, false, errors.AddContext(err, "unable to get skyfile metadata bytes")
+		}
+
+		// verify if it fits in a single chunk
+		headerSize := uint64(skynet.SkyfileLayoutSize + len(metadataBytes))
+		if uint64(numBytes)+headerSize <= modules.SectorSize {
+			skylink, err := r.managedUploadSkyfileSmallFile(sup, metadataBytes, buf)
+			return skylink, false, err
+		}
+	}
+
+	// if we reach this point it means either we have not reached the EOF or the
+	// data combined with the header exceeds a single sector, we add the data we
+	// already read and upload as a large file
+	reader.AddReadBuffer(buf)
+	skylink, err := r.managedUploadSkyfileLargeFile(sup, reader)
+	return skylink, true, err
+}
+
+// managedUploadSkyfileSmallFile uploads a file that fits entirely in the
+// leading chunk of a skyfile to the Sia network and returns the skylink that
+// can be used to access the file.
+func (r *Renter) managedUploadSkyfileSmallFile(sup modules.SkyfileUploadParameters, metadataBytes, fileBytes []byte) (modules.Skylink, error) {
+	sl := skynet.SkyfileLayout{
+		Version:      skynet.SkyfileVersion,
+		Filesize:     uint64(len(fileBytes)),
+		MetadataSize: uint64(len(metadataBytes)),
+		// No fanout is set yet.
+		// If encryption is set in the upload params, this will be overwritten.
+		CipherType: crypto.TypePlain,
+	}
+
+	// Create the base sector. This is done as late as possible so that any
+	// errors are caught before a large block of memory is allocated.
+	baseSector, fetchSize := skyfileBuildBaseSector(sl.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
+
+	if encryptionEnabled(sup) {
+		err := encryptBaseSectorWithSkykey(baseSector, sl, sup.FileSpecificSkykey)
+		if err != nil {
+			return modules.Skylink{}, errors.AddContext(err, "Failed to encrypt base sector for upload")
+		}
+	}
+
+	// Create the skylink.
+	baseSectorRoot := crypto.MerkleRoot(baseSector) // Should be identical to the sector roots for each sector in the siafile.
+	skylink, err := modules.NewSkylinkV1(baseSectorRoot, 0, fetchSize)
+	if err != nil {
+		return modules.Skylink{}, errors.AddContext(err, "failed to build the skylink")
+	}
+
+	// If this is a dry-run, we do not need to upload the base sector
+	if sup.DryRun {
+		return skylink, nil
+	}
+
+	// Upload the base sector.
+	err = r.managedUploadBaseSector(sup, baseSector, skylink)
+	if err != nil {
+		return modules.Skylink{}, errors.AddContext(err, "failed to upload base sector")
+	}
+	return skylink, nil
+}
+
 // managedUploadSkyfileLargeFile will accept a fileReader containing all of the
 // data to a large siafile and upload it to the Sia network using
 // 'callUploadStreamFromReader'. The final skylink is created by calling
@@ -549,76 +665,6 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup modules.SkyfileUploadParamete
 	// Convert the new siafile we just uploaded into a skyfile using the
 	// convert function.
 	return r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode)
-}
-
-// managedUploadBaseSector will take the raw baseSector bytes and upload them,
-// returning the resulting merkle root, and the fileNode of the siafile that is
-// tracking the base sector.
-func (r *Renter) managedUploadBaseSector(lup modules.SkyfileUploadParameters, baseSector []byte, skylink modules.Skylink) (err error) {
-	fileUploadParams, err := fileUploadParamsFromLUP(lup)
-	if err != nil {
-		return errors.AddContext(err, "failed to create siafile upload parameters")
-	}
-	fileUploadParams.CipherType = crypto.TypePlain // the baseSector should be encrypted by the caller.
-
-	// Perform the actual upload. This will require turning the base sector into
-	// a reader.
-	baseSectorReader := bytes.NewReader(baseSector)
-	fileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader)
-	if err != nil {
-		return errors.AddContext(err, "failed to stream upload small skyfile")
-	}
-	defer func() {
-		err = errors.Compose(err, fileNode.Close())
-	}()
-
-	// Add the skylink to the Siafile.
-	err = fileNode.AddSkylink(skylink)
-	return errors.AddContext(err, "unable to add skylink to siafile")
-}
-
-// managedUploadSkyfileSmallFile uploads a file that fits entirely in the
-// leading chunk of a skyfile to the Sia network and returns the skylink that
-// can be used to access the file.
-func (r *Renter) managedUploadSkyfileSmallFile(sup modules.SkyfileUploadParameters, metadataBytes, fileBytes []byte) (modules.Skylink, error) {
-	sl := skynet.SkyfileLayout{
-		Version:      skynet.SkyfileVersion,
-		Filesize:     uint64(len(fileBytes)),
-		MetadataSize: uint64(len(metadataBytes)),
-		// No fanout is set yet.
-		// If encryption is set in the upload params, this will be overwritten.
-		CipherType: crypto.TypePlain,
-	}
-
-	// Create the base sector. This is done as late as possible so that any
-	// errors are caught before a large block of memory is allocated.
-	baseSector, fetchSize := skyfileBuildBaseSector(sl.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
-
-	if encryptionEnabled(sup) {
-		err := encryptBaseSectorWithSkykey(baseSector, sl, sup.FileSpecificSkykey)
-		if err != nil {
-			return modules.Skylink{}, errors.AddContext(err, "Failed to encrypt base sector for upload")
-		}
-	}
-
-	// Create the skylink.
-	baseSectorRoot := crypto.MerkleRoot(baseSector) // Should be identical to the sector roots for each sector in the siafile.
-	skylink, err := modules.NewSkylinkV1(baseSectorRoot, 0, fetchSize)
-	if err != nil {
-		return modules.Skylink{}, errors.AddContext(err, "failed to build the skylink")
-	}
-
-	// If this is a dry-run, we do not need to upload the base sector
-	if sup.DryRun {
-		return skylink, nil
-	}
-
-	// Upload the base sector.
-	err = r.managedUploadBaseSector(sup, baseSector, skylink)
-	if err != nil {
-		return modules.Skylink{}, errors.AddContext(err, "failed to upload base sector")
-	}
-	return skylink, nil
 }
 
 // DownloadSkylink will take a link and turn it into the metadata and data of a
@@ -870,56 +916,10 @@ func (r *Renter) UploadSkyfile(sup modules.SkyfileUploadParameters, reader modul
 		}
 	}
 
-	var skylink modules.Skylink
-	largeFile := true
-
-	// see if we can fit the entire upload in a single chunk
-	buf := make([]byte, modules.SectorSize)
-	numBytes, err := io.ReadFull(reader, buf)
-	buf = buf[:numBytes] // truncate the buffer
-
-	// if we've reached EOF, we can safely fetch the metadata and calculate the
-	// actual header size, if that fits in a single sector we can upload the
-	// Skyfile as a small file
-	if errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF) {
-		// get the skyfile metadata from the reader
-		metadata, err := reader.SkyfileMetadata()
-		if err != nil {
-			return modules.Skylink{}, errors.AddContext(err, "unable to get skyfile metadata")
-		}
-
-		// check whether it's valid
-		err = modules.ValidateSkyfileMetadata(metadata)
-		if err != nil {
-			return modules.Skylink{}, errors.Compose(ErrInvalidMetadata, err)
-		}
-
-		// marshal the skyfile metadata into bytes
-		metadataBytes, err := skyfileMetadataBytes(metadata)
-		if err != nil {
-			return modules.Skylink{}, errors.AddContext(err, "unable to get skyfile metadata bytes")
-		}
-
-		// verify if it fits in a single chunk
-		headerSize := uint64(skynet.SkyfileLayoutSize + len(metadataBytes))
-		if uint64(numBytes)+headerSize <= modules.SectorSize {
-			skylink, err = r.managedUploadSkyfileSmallFile(sup, metadataBytes, buf)
-			if err != nil {
-				return modules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
-			}
-			largeFile = false
-		}
-	}
-
-	// if we have not yet reached the EOF, or if the data combined with header
-	// exceeded a single sector, upload the data is a large Skyfile, make sure
-	// to prepend the reader with what we have read already
-	if largeFile {
-		reader.AddReadBuffer(buf)
-		skylink, err = r.managedUploadSkyfileLargeFile(sup, reader)
-		if err != nil {
-			return modules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
-		}
+	// Upload the skyfile
+	skylink, largeFile, err := r.managedUploadSkyfile(sup, reader)
+	if err != nil {
+		return modules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
 	}
 
 	if sup.DryRun {
