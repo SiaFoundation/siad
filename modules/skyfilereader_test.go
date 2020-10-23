@@ -2,6 +2,7 @@ package modules
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"reflect"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -18,6 +20,7 @@ import (
 func TestSkyfileReader(t *testing.T) {
 	t.Run("Basic", testSkyfileReaderBasic)
 	t.Run("ReadBuffer", testSkyfileReaderReadBuffer)
+	t.Run("MetadataTimeout", testSkyfileReaderMetadataTimeout)
 }
 
 // testSkyfileReaderBasic verifies the basic use case of the SkyfileReader
@@ -74,7 +77,7 @@ func testSkyfileReaderBasic(t *testing.T) {
 	}
 
 	// fetch the metadata from the reader
-	metadata, err := sfReader.SkyfileMetadata()
+	metadata, err := sfReader.SkyfileMetadata(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +140,7 @@ func testSkyfileReaderReadBuffer(t *testing.T) {
 	}
 
 	// fetch the metadata from the reader
-	metadata, err := sfReader.SkyfileMetadata()
+	metadata, err := sfReader.SkyfileMetadata(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,6 +155,47 @@ func testSkyfileReaderReadBuffer(t *testing.T) {
 	}
 }
 
+// testSkyfileReaderMetadataTimeout verifies metadata returns on timeout,
+// potentially before the reader is fully read
+func testSkyfileReaderMetadataTimeout(t *testing.T) {
+	t.Parallel()
+
+	// create upload parameters
+	sup := SkyfileUploadParameters{
+		Filename: t.Name(),
+		Mode:     os.FileMode(644),
+	}
+
+	// create a reader
+	dataLen := fastrand.Intn(1000) + 10
+	data := fastrand.Bytes(dataLen)
+	reader := bytes.NewReader(data)
+	sfReader := NewSkyfileReader(reader, sup)
+
+	// read less than dataLen
+	read := make([]byte, dataLen/2)
+	_, err := sfReader.Read(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// cancel the context in a goroutine
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(time.Second)
+		cancel()
+	}()
+
+	// fetch the metadata from the reader
+	metadata, err := sfReader.SkyfileMetadata(ctx)
+	if !errors.Contains(err, ErrSkyfileMetadataUnavailable) {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(metadata, SkyfileMetadata{}) {
+		t.Fatal("unexpected metadata", metadata)
+	}
+}
+
 // TestSkyfileMultipartReader verifies the functionality of the
 // SkyfileMultipartReader.
 func TestSkyfileMultipartReader(t *testing.T) {
@@ -160,6 +204,8 @@ func TestSkyfileMultipartReader(t *testing.T) {
 	t.Run("EmptyFilename", testSkyfileMultipartReaderEmptyFilename)
 	t.Run("RandomReadSize", testSkyfileMultipartReaderRandomReadSize)
 	t.Run("ReadBuffer", testSkyfileMultipartReaderReadBuffer)
+	t.Run("MetadataTimeout", testSkyfileMultipartReaderMetadataTimeout)
+
 }
 
 // testSkyfileMultipartReaderBasic verifies the basic use case of a skyfile
@@ -225,7 +271,7 @@ func testSkyfileMultipartReaderBasic(t *testing.T) {
 	sfReader.Read(make([]byte, 1))
 
 	// fetch the metadata from the reader
-	metadata, err := sfReader.SkyfileMetadata()
+	metadata, err := sfReader.SkyfileMetadata(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -355,7 +401,7 @@ func testSkyfileMultipartReaderRandomReadSize(t *testing.T) {
 	}
 
 	// fetch the metadata from the reader
-	metadata, err := sfReader.SkyfileMetadata()
+	metadata, err := sfReader.SkyfileMetadata(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -482,5 +528,66 @@ func testSkyfileMultipartReaderReadBuffer(t *testing.T) {
 	}
 	if !bytes.Equal(expected, data) {
 		t.Fatal("unexpected")
+	}
+}
+
+// testSkyfileMultipartReaderMetadataTimeout verifies metadata returns on
+// timeout, potentially before the reader is fully read
+func testSkyfileMultipartReaderMetadataTimeout(t *testing.T) {
+	t.Parallel()
+
+	// create upload parameters
+	sup := SkyfileUploadParameters{
+		Filename: t.Name(),
+		Mode:     os.FileMode(644),
+	}
+
+	// create a multipart writer
+	buffer := new(bytes.Buffer)
+	writer := multipart.NewWriter(buffer)
+
+	// prepare random file data
+	dataLen := fastrand.Intn(100) + 10
+	data := fastrand.Bytes(dataLen)
+
+	// write the multipart files
+	off := uint64(0)
+	_, err := AddMultipartFile(writer, data, "files[]", "part", 0600, &off)
+	if err != nil {
+		t.Fatal("unexpected")
+	}
+
+	// close the writer
+	err = writer.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// turn it into a skyfile reader
+	reader := bytes.NewReader(buffer.Bytes())
+	multipartReader := multipart.NewReader(reader, writer.Boundary())
+	sfReader := NewSkyfileMultipartReader(multipartReader, sup)
+
+	// read less than dataLen
+	read := make([]byte, dataLen/2)
+	_, err = sfReader.Read(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// cancel the context in a goroutine
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(time.Second)
+		cancel()
+	}()
+
+	// fetch the metadata from the reader
+	metadata, err := sfReader.SkyfileMetadata(ctx)
+	if !errors.Contains(err, ErrSkyfileMetadataUnavailable) {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(metadata, SkyfileMetadata{}) {
+		t.Fatal("unexpected metadata", metadata)
 	}
 }

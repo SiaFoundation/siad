@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -18,6 +19,10 @@ var (
 	// ErrEmptyFilename is returned when the multipart form contains a part
 	// with an empty filename
 	ErrEmptyFilename = errors.New("no filename provided")
+
+	// ErrSkyfileMetadataUnavailable is returned when the context passed to
+	// SkyfileMetadata is cancelled before the metadata became available
+	ErrSkyfileMetadataUnavailable = errors.New("metadata unavailable")
 )
 
 type (
@@ -25,7 +30,7 @@ type (
 	// Skyfile data, and adds a method to fetch the SkyfileMetadata.
 	SkyfileUploadReader interface {
 		AddReadBuffer(data []byte)
-		SkyfileMetadata() (SkyfileMetadata, error)
+		SkyfileMetadata(ctx context.Context) (SkyfileMetadata, error)
 		io.Reader
 	}
 
@@ -66,8 +71,7 @@ type (
 // SkyfileUploadReader
 func NewSkyfileReader(reader io.Reader, sup SkyfileUploadParameters) SkyfileUploadReader {
 	return &skyfileReader{
-		reader:  reader,
-		readBuf: make([]byte, 0),
+		reader: reader,
 		metadata: SkyfileMetadata{
 			Filename: sup.Filename,
 			Mode:     sup.Mode,
@@ -76,8 +80,9 @@ func NewSkyfileReader(reader io.Reader, sup SkyfileUploadParameters) SkyfileUplo
 	}
 }
 
-// AddReadBuffer adds the given bytes to the read buffer, the next reads will
-// read from this buffer opposed to the underlying reader.
+// AddReadBuffer adds the given bytes to the read buffer. The next reads will
+// read from this buffer until it is entirely consumed, after which we continue
+// reading from the underlying reader.
 func (sr *skyfileReader) AddReadBuffer(b []byte) {
 	sr.readBuf = append(sr.readBuf, b...)
 }
@@ -85,10 +90,14 @@ func (sr *skyfileReader) AddReadBuffer(b []byte) {
 // SkyfileMetadata returns the SkyfileMetadata associated with this reader.
 //
 // NOTE: this method will block until the metadata becomes available
-func (sr *skyfileReader) SkyfileMetadata() (SkyfileMetadata, error) {
-	// Wait for the metadata to become available, that will be the case when the
-	// reader returned an EOF
-	<-sr.metadataAvail
+func (sr *skyfileReader) SkyfileMetadata(ctx context.Context) (SkyfileMetadata, error) {
+	// Wait for the metadata to become available, that will be the case when
+	// the reader returned an EOF, or until the context is cancelled.
+	select {
+	case <-ctx.Done():
+		return SkyfileMetadata{}, errors.AddContext(ErrSkyfileMetadataUnavailable, "context cancelled")
+	case <-sr.metadataAvail:
+	}
 
 	return sr.metadata, nil
 }
@@ -132,9 +141,7 @@ func (sr *skyfileReader) Read(p []byte) (n int, err error) {
 // read.
 func NewSkyfileMultipartReader(reader *multipart.Reader, sup SkyfileUploadParameters) SkyfileUploadReader {
 	return &skyfileMultipartReader{
-		reader:  reader,
-		readBuf: make([]byte, 0),
-
+		reader: reader,
 		metadata: SkyfileMetadata{
 			Filename:           sup.Filename,
 			Mode:               sup.Mode,
@@ -146,17 +153,22 @@ func NewSkyfileMultipartReader(reader *multipart.Reader, sup SkyfileUploadParame
 	}
 }
 
-// AddReadBuffer adds the given bytes to the read buffer, the next reads will
-// read from this buffer opposed to the underlying reader.
+// AddReadBuffer adds the given bytes to the read buffer. The next reads will
+// read from this buffer until it is entirely consumed, after which we continue
+// reading from the underlying reader.
 func (sr *skyfileMultipartReader) AddReadBuffer(b []byte) {
 	sr.readBuf = append(sr.readBuf, b...)
 }
 
 // SkyfileMetadata returns the SkyfileMetadata associated with this reader.
-func (sr *skyfileMultipartReader) SkyfileMetadata() (SkyfileMetadata, error) {
-	// Wait for the metadata to become available, that will be the case when the
-	// reader returned an EOF
-	<-sr.metadataAvail
+func (sr *skyfileMultipartReader) SkyfileMetadata(ctx context.Context) (SkyfileMetadata, error) {
+	// Wait for the metadata to become available, that will be the case when
+	// the reader returned an EOF, or until the context is cancelled.
+	select {
+	case <-ctx.Done():
+		return SkyfileMetadata{}, errors.AddContext(ErrSkyfileMetadataUnavailable, "context cancelled")
+	case <-sr.metadataAvail:
+	}
 
 	// Check whether we found multipart files
 	if len(sr.metadata.Subfiles) == 0 {

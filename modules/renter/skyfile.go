@@ -495,7 +495,7 @@ func (r *Renter) managedUploadBaseSector(lup modules.SkyfileUploadParameters, ba
 
 // managedUploadSkyfile uploads a file and returns the skylink and whether or
 // not it was a large file.
-func (r *Renter) managedUploadSkyfile(sup modules.SkyfileUploadParameters, reader modules.SkyfileUploadReader) (modules.Skylink, bool, error) {
+func (r *Renter) managedUploadSkyfile(sup modules.SkyfileUploadParameters, reader modules.SkyfileUploadReader) (modules.Skylink, error) {
 	// see if we can fit the entire upload in a single chunk
 	buf := make([]byte, modules.SectorSize)
 	numBytes, err := io.ReadFull(reader, buf)
@@ -506,28 +506,27 @@ func (r *Renter) managedUploadSkyfile(sup modules.SkyfileUploadParameters, reade
 	// Skyfile as a small file
 	if errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF) {
 		// get the skyfile metadata from the reader
-		metadata, err := reader.SkyfileMetadata()
+		metadata, err := reader.SkyfileMetadata(r.tg.StopCtx())
 		if err != nil {
-			return modules.Skylink{}, false, errors.AddContext(err, "unable to get skyfile metadata")
+			return modules.Skylink{}, errors.AddContext(err, "unable to get skyfile metadata")
 		}
 
 		// check whether it's valid
 		err = modules.ValidateSkyfileMetadata(metadata)
 		if err != nil {
-			return modules.Skylink{}, false, errors.Compose(ErrInvalidMetadata, err)
+			return modules.Skylink{}, errors.Compose(ErrInvalidMetadata, err)
 		}
 
 		// marshal the skyfile metadata into bytes
 		metadataBytes, err := skyfileMetadataBytes(metadata)
 		if err != nil {
-			return modules.Skylink{}, false, errors.AddContext(err, "unable to get skyfile metadata bytes")
+			return modules.Skylink{}, errors.AddContext(err, "unable to get skyfile metadata bytes")
 		}
 
 		// verify if it fits in a single chunk
 		headerSize := uint64(skynet.SkyfileLayoutSize + len(metadataBytes))
 		if uint64(numBytes)+headerSize <= modules.SectorSize {
-			skylink, err := r.managedUploadSkyfileSmallFile(sup, metadataBytes, buf)
-			return skylink, false, err
+			return r.managedUploadSkyfileSmallFile(sup, metadataBytes, buf)
 		}
 	}
 
@@ -535,8 +534,7 @@ func (r *Renter) managedUploadSkyfile(sup modules.SkyfileUploadParameters, reade
 	// data combined with the header exceeds a single sector, we add the data we
 	// already read and upload as a large file
 	reader.AddReadBuffer(buf)
-	skylink, err := r.managedUploadSkyfileLargeFile(sup, reader)
-	return skylink, true, err
+	return r.managedUploadSkyfileLargeFile(sup, reader)
 }
 
 // managedUploadSkyfileSmallFile uploads a file that fits entirely in the
@@ -642,22 +640,16 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup modules.SkyfileUploadParamete
 		}
 	}
 
-	// Defer closing and cleanup of the file in case this was a dry-run
+	// Defer closing the file
 	defer func() {
 		err := fileNode.Close()
 		if err != nil {
 			r.log.Printf("Could not close node, err: %s\n", err.Error())
 		}
-
-		if sup.DryRun {
-			if err := r.DeleteFile(siaPath); err != nil {
-				r.log.Printf("unable to cleanup siafile after performing a dry run of the Skyfile upload, err: %s", err.Error())
-			}
-		}
 	}()
 
 	// Get the SkyfileMetadata from the reader object.
-	metadata, err := fileReader.SkyfileMetadata()
+	metadata, err := fileReader.SkyfileMetadata(r.tg.StopCtx())
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to get skyfile metadata")
 	}
@@ -886,9 +878,9 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 // returning a skylink which can be used by any viewnode to recover the full
 // original file and metadata. The skylink will be unique to the combination of
 // both the file data and metadata.
-func (r *Renter) UploadSkyfile(sup modules.SkyfileUploadParameters, reader modules.SkyfileUploadReader) (modules.Skylink, error) {
+func (r *Renter) UploadSkyfile(sup modules.SkyfileUploadParameters, reader modules.SkyfileUploadReader) (skylink modules.Skylink, err error) {
 	// Set reasonable default values for any lup fields that are blank.
-	err := skyfileEstablishDefaults(&sup)
+	err = skyfileEstablishDefaults(&sup)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "skyfile upload parameters are incorrect")
 	}
@@ -916,29 +908,34 @@ func (r *Renter) UploadSkyfile(sup modules.SkyfileUploadParameters, reader modul
 		}
 	}
 
+	// defer a function that cleans up the siafiles after a failed upload
+	// attempt or after a dry run
+	defer func() {
+		if err != nil || sup.DryRun {
+			go func() {
+				if err := r.DeleteFile(sup.SiaPath); err != nil && !errors.Contains(err, filesystem.ErrNotExist) {
+					r.log.Printf("error deleting siafile after upload error: %v", err)
+				}
+
+				extendedPath := sup.SiaPath.String() + ExtendedSuffix
+				extendedSiaPath, _ := modules.NewSiaPath(extendedPath)
+				if err := r.DeleteFile(extendedSiaPath); err != nil && !errors.Contains(err, filesystem.ErrNotExist) {
+					r.log.Printf("error deleting extended siafile after upload error: %v", err)
+				}
+			}()
+		}
+	}()
+
 	// Upload the skyfile
-	skylink, largeFile, err := r.managedUploadSkyfile(sup, reader)
+	skylink, err = r.managedUploadSkyfile(sup, reader)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
 	}
 
-	if sup.DryRun {
-		return skylink, nil
-	}
-
 	// Check if skylink is blocked
-	if !r.staticSkynetBlocklist.IsBlocked(skylink) {
-		return skylink, nil
+	if r.staticSkynetBlocklist.IsBlocked(skylink) && !sup.DryRun {
+		return modules.Skylink{}, ErrSkylinkBlocked
 	}
 
-	// Skylink is blocked, try and delete the file and return an error
-	deleteErr := r.DeleteFile(sup.SiaPath)
-	if largeFile {
-		extendedSiaPath, err := modules.NewSiaPath(sup.SiaPath.String() + ExtendedSuffix)
-		if err != nil {
-			return modules.Skylink{}, errors.AddContext(err, "unable to create extended SiaPath for large skyfile deletion")
-		}
-		deleteErr = errors.Compose(deleteErr, r.DeleteFile(extendedSiaPath))
-	}
-	return modules.Skylink{}, errors.Compose(ErrSkylinkBlocked, deleteErr)
+	return skylink, nil
 }
