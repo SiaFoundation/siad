@@ -724,7 +724,7 @@ func (r *Renter) managedDownloadBaseSector(link modules.Skylink, timeout time.Du
 	return baseSector, nil, nil
 }
 
-// PinSkylink wil fetch the file associated with the Skylink, and then pin all
+// PinSkylink will fetch the file associated with the Skylink, and then pin all
 // necessary content to maintain that Skylink.
 func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadParameters, timeout time.Duration) error {
 	// Check if link is blocked
