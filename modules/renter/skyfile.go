@@ -931,6 +931,9 @@ func (r *Renter) UploadSkyfile(sup modules.SkyfileUploadParameters, reader modul
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
 	}
+	if r.deps.Disrupt("SkyfileUploadFail") {
+		return modules.Skylink{}, errors.New("SkyfileUploadFail")
+	}
 
 	// Check if skylink is blocked
 	if r.staticSkynetBlocklist.IsBlocked(skylink) && !sup.DryRun {

@@ -3230,3 +3230,110 @@ func TestRegistryUpdateRead(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestSkynetCleanupOnError verifies files are cleaned up on upload error
+func TestSkynetCleanupOnError(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a testgroup.
+	groupParams := siatest.GroupParams{
+		Hosts:  3,
+		Miners: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Create a dependency that interrupts uploads.
+	deps := dependencies.NewDependencySkyfileUploadFail()
+
+	// Add a new renter with that dependency to interrupt skyfile uploads.
+	rt := node.RenterTemplate
+	rt.RenterDeps = deps
+	nodes, err := tg.AddNodes(rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Create a helper function that returns true if the upload failed
+	uploadFailed := func(err error) bool {
+		return err != nil && strings.Contains(err.Error(), "SkyfileUploadFail")
+	}
+
+	// Create a helper function that returns true if the siapath does not exist.
+	skyfileDeleted := func(path modules.SiaPath) bool {
+		_, err = r.RenterFileRootGet(path)
+		return err != nil && strings.Contains(err.Error(), filesystem.ErrNotExist.Error())
+	}
+
+	// Upload a small file
+	_, small, _, err := r.UploadNewSkyfileBlocking("smallfile", 100, false)
+	if !uploadFailed(err) {
+		t.Fatal("unexpected")
+	}
+	smallPath, err := modules.SkynetFolder.Join(small.SiaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = r.RenterFileRootGet(smallPath)
+	if !skyfileDeleted(smallPath) {
+		t.Fatal("unexpected")
+	}
+
+	// Upload a large file
+	ss := modules.SectorSize
+	_, large, _, err := r.UploadNewSkyfileBlocking("largefile", ss*2, false)
+	if !uploadFailed(err) {
+		t.Fatal("unexpected")
+	}
+	largePath, err := modules.SkynetFolder.Join(large.SiaPath.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !skyfileDeleted(largePath) {
+		t.Fatal("unexpected")
+	}
+
+	largePathExtended, err := modules.NewSiaPath(largePath.String() + renter.ExtendedSuffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !skyfileDeleted(largePathExtended) {
+		t.Fatal("unexpected")
+	}
+
+	// Disable the dependency and verify the files are not removed
+	deps.Disable()
+
+	// Re-upload the small file and re-test
+	_, small, _, err = r.UploadNewSkyfileBlocking("smallfile", 100, true)
+	if uploadFailed(err) {
+		t.Fatal("unexpected")
+	}
+	if skyfileDeleted(smallPath) {
+		t.Fatal("unexpected")
+	}
+
+	// Re-upload the large file and re-test
+	_, large, _, err = r.UploadNewSkyfileBlocking("largefile", ss*2, true)
+	if uploadFailed(err) {
+		t.Fatal("unexpected")
+	}
+	if skyfileDeleted(largePath) {
+		t.Fatal("unexpected")
+	}
+	if skyfileDeleted(largePathExtended) {
+		t.Fatal("unexpected")
+	}
+}
