@@ -4902,11 +4902,6 @@ func TestWorkerStatus(t *testing.T) {
 				return fmt.Errorf("Expected balance target to be 1SC but was %v", worker.AccountBalanceTarget.HumanString())
 			}
 
-			// Job Queues
-			if worker.BackupJobQueueSize != 0 {
-				return fmt.Errorf("Expected backup queue to be empty but was %v", worker.BackupJobQueueSize)
-			}
-
 			// AccountStatus checks
 			if worker.AccountStatus.AvailableBalance.IsZero() {
 				return fmt.Errorf("Expected available balance to be greater zero but was %v", worker.AccountStatus.AvailableBalance.HumanString())

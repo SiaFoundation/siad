@@ -142,7 +142,6 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	// Download the first sector partially and then fully since both actions
 	// require different proofs.
 	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize/2)

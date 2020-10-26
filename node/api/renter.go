@@ -1022,11 +1022,6 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 	var rc RenterContracts
 	currentBlockHeight := api.cs.Height()
 	for _, c := range api.renter.Contracts() {
-		var size uint64
-		if len(c.Transaction.FileContractRevisions) != 0 {
-			size = c.Transaction.FileContractRevisions[0].NewFileSize
-		}
-
 		// Fetch host address
 		var netAddress modules.NetAddress
 		hdbe, exists, _ := api.renter.Host(c.HostPublicKey)
@@ -1048,7 +1043,7 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 			LastTransaction:           c.Transaction,
 			NetAddress:                netAddress,
 			RenterFunds:               c.RenterFunds,
-			Size:                      size,
+			Size:                      c.Size(),
 			StartHeight:               c.StartHeight,
 			StorageSpending:           c.StorageSpending,
 			StorageSpendingDeprecated: c.StorageSpending,
