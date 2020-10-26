@@ -205,7 +205,6 @@ func TestSkyfileMultipartReader(t *testing.T) {
 	t.Run("RandomReadSize", testSkyfileMultipartReaderRandomReadSize)
 	t.Run("ReadBuffer", testSkyfileMultipartReaderReadBuffer)
 	t.Run("MetadataTimeout", testSkyfileMultipartReaderMetadataTimeout)
-
 }
 
 // testSkyfileMultipartReaderBasic verifies the basic use case of a skyfile
