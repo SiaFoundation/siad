@@ -19,6 +19,10 @@ const (
 	jobUpdateRegistryPerformanceDecay = 0.9
 )
 
+// errHostOutdatedProof is returned if the host provides a proof that has a
+// valid signature but is still invalid due to its revision number.
+var errHostOutdatedProof = errors.New("host returned invalid proof")
+
 type (
 	// jobUpdateRegistry contains information about a UpdateRegistry query.
 	jobUpdateRegistry struct {
@@ -113,7 +117,7 @@ func (j *jobUpdateRegistry) callExecute() {
 		// If the entry is valid, check if the revision number is actually
 		// invalid.
 		if j.staticSignedRegistryValue.Revision > rv.Revision {
-			sendResponse(errors.New("host returned invalid proof"))
+			sendResponse(errHostOutdatedProof)
 			j.staticQueue.callReportFailure(err)
 			return
 		}

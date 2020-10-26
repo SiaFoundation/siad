@@ -188,8 +188,7 @@ func TestUpdateRegistryLyingHost(t *testing.T) {
 	}
 	t.Parallel()
 
-	deps := dependencies.NewDependencyCorruptMDMOutput()
-	wt, err := newWorkerTesterCustomDependency(t.Name(), modules.ProdDependencies, deps)
+	wt, err := newWorkerTesterCustomDependency(t.Name(), modules.ProdDependencies, &dependencies.DependencyRegistryUpdateLyingHost{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,10 +227,22 @@ func TestUpdateRegistryLyingHost(t *testing.T) {
 		t.Fatal("entries don't match")
 	}
 
-	// Run the UpdateRegistryJob again. This time it should fail with an error
-	// indicating that the revision number already exists.
+	// Increment the revision number.
+	rv.Revision++
+	rv = rv.Sign(sk)
+
+	// Run the UpdateRegistryJob again. This time the host will respond with an
+	// error and provide a proof which has a valid signature, but an outdated
+	// revision. The worker should detect the cheating host an
+	// errHostInvalidProof error but no revision errors.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
-	if !errors.Contains(err, registry.ErrSameRevNum) {
+	if !errors.Contains(err, errHostOutdatedProof) {
+		t.Fatal("worker should return errHostOutdatedProof")
+	}
+	if errors.Contains(err, registry.ErrSameRevNum) {
+		t.Fatal(err)
+	}
+	if errors.Contains(err, registry.ErrLowerRevNum) {
 		t.Fatal(err)
 	}
 }

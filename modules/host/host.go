@@ -763,6 +763,14 @@ func (h *Host) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPu
 		return modules.SignedRegistryValue{}, err
 	}
 	defer h.tg.Done()
+	// On disrupt, return the most recent known value if it exists. Otherwise it
+	// will add the value.
+	if h.dependencies.Disrupt("RegistryUpdateLyingHost") {
+		srv, found := h.staticRegistry.Get(pubKey, rv.Tweak)
+		if found {
+			return srv, registry.ErrSameRevNum
+		}
+	}
 	return h.staticRegistry.Update(rv, pubKey, expiry)
 }
 
