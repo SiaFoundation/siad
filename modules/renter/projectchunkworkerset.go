@@ -32,7 +32,7 @@ var (
 	// the workers will do another round of HasSector queries on the network.
 	pcwsWorkerStateResetTime = build.Select(build.Var{
 		Dev:      time.Minute * 10,
-		Standard: time.Minute * 60 * 3,
+		Standard: time.Hour * 3 * 3,
 		Testing:  time.Second * 15,
 	}).(time.Duration)
 
@@ -298,7 +298,7 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 // managedLaunchWorker will launch a job to determine which sectors of a chunk
 // are available through that worker. The resulting unresolved worker is
 // returned so it can be added to the pending worker state.
-func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *worker, responseChan chan *jobHasSectorResponse, ws *pcwsWorkerState) {
+func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *worker, responseChan chan *jobHasSectorResponse, ws *pcwsWorkerState) error {
 	// Check for gouging.
 	cache := w.staticCache()
 	pt := w.staticPriceTable().staticPriceTable
@@ -306,19 +306,15 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 	err := checkPCWSGouging(pt, cache.staticRenterAllowance, numWorkers, len(pcws.staticPieceRoots))
 	if err != nil {
 		pcws.staticRenter.log.Debugf("price gouging for chunk worker set detected in worker %v, err %v", w.staticHostPubKeyStr, err)
-		return
+		return err
 	}
 
 	// Create and launch the job.
-	jhs := &jobHasSector{
-		staticSectors:      pcws.staticPieceRoots,
-		staticResponseChan: responseChan,
-		jobGeneric:         newJobGeneric(ctx, w.staticJobHasSectorQueue),
-	}
+	jhs := w.newJobHasSector(ctx, responseChan, pcws.staticPieceRoots...)
 	expectedCompleteTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs)
 	if err != nil {
 		pcws.staticRenter.log.Debugf("unable to add has sector job to %v, err %v", w.staticHostPubKeyStr, err)
-		return
+		return err
 	}
 
 	// Create the unresolved worker for this job.
@@ -335,12 +331,19 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 	ws.mu.Lock()
 	ws.unresolvedWorkers[w.staticHostPubKeyStr] = uw
 	ws.mu.Unlock()
+	return nil
 }
 
 // threadedFindWorkers will spin up a bunch of jobs to determine which workers
 // have what pieces for the pcws, and then update the input worker state with
 // the results.
 func (pcws *projectChunkWorkerSet) threadedFindWorkers(allWorkersLaunchedChan chan<- struct{}, ws *pcwsWorkerState) {
+	err := pcws.staticRenter.tg.Add()
+	if err != nil {
+		return
+	}
+	defer pcws.staticRenter.tg.Done()
+
 	// Create a context for finding jobs which has a timeout for waiting on
 	// HasSector requests to return.
 	ctx, cancel := context.WithTimeout(pcws.staticCtx, pcwsHasSectorTimeout)
@@ -351,34 +354,37 @@ func (pcws *projectChunkWorkerSet) threadedFindWorkers(allWorkersLaunchedChan ch
 	// in size to the number of queries so that none of the workers sending
 	// reponses get blocked sending down the channel.
 	workers := ws.staticRenter.staticWorkerPool.callWorkers()
+	workersLaunched := 0
 	responseChan := make(chan *jobHasSectorResponse, len(workers))
 	for _, w := range workers {
-		pcws.managedLaunchWorker(ctx, w, responseChan, ws)
+		err := pcws.managedLaunchWorker(ctx, w, responseChan, ws)
+		if err == nil {
+			workersLaunched++
+		}
 	}
+
 	// Signal that all of the workers have launched.
 	close(allWorkersLaunchedChan)
 
-	// Helper function to get the number of responses remaining. This allows the
-	// loop below to be a lot cleaner.
-	responsesRemaining := func() int {
-		ws.mu.Lock()
-		rr := len(ws.unresolvedWorkers)
-		ws.mu.Unlock()
-		return rr
-	}
 	// Because there are timeouts on the HasSector programs, the longest that
 	// this loop should be active is a little bit longer than the full timeout
 	// for a single HasSector job.
-	for responsesRemaining() > 0 {
+	workersResponded := 0
+	for workersResponded < workersLaunched {
 		// Block until there is a worker response. Give up if the context times
 		// out.
 		var resp *jobHasSectorResponse
 		select {
 		case resp = <-responseChan:
+			workersResponded++
 		case <-ctx.Done():
 			return
+		case <-pcws.staticRenter.tg.StopChan():
+			return
 		}
-		// Consistency check - should not be getting nil responses from the workers.
+
+		// Consistency check - should not be getting nil responses from the
+		// workers.
 		if resp == nil {
 			ws.staticRenter.log.Critical("nil response received")
 			continue
@@ -424,14 +430,11 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 
 		staticRenter: pcws.staticRenter,
 	}
-	// Create an anonymous function to launch the thread to find workers, since
-	// we need to provide input to the find workers function and tg.Launch does
-	// not support that.
-	findWorkers := func() {
-		pcws.threadedFindWorkers(allWorkersLaunchedChan, ws)
-	}
+
 	// Launch the thread to find the workers for this launch state.
-	err := pcws.staticRenter.tg.Launch(findWorkers)
+	err := pcws.staticRenter.tg.Launch(func() {
+		pcws.threadedFindWorkers(allWorkersLaunchedChan, ws)
+	})
 	if err != nil {
 		// If there is an error, need to reset the in-progress fields. This will
 		// result in the worker set continuing to use the previous worker state.
