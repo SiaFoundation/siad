@@ -102,12 +102,18 @@ func (j *jobUpdateRegistry) callExecute() {
 	// in the future in case we are certain that a host can't contain those
 	// errors.
 	rv, err := j.managedUpdateRegistry()
-	if err != nil && (strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) ||
-		strings.Contains(err.Error(), registry.ErrSameRevNum.Error())) {
+	if errors.Contains(err, registry.ErrLowerRevNum) || errors.Contains(err, registry.ErrSameRevNum) {
 		// Report the failure if the host can't provide a signed registry entry
 		// with the error.
 		if err := rv.Verify(j.staticSiaPublicKey.ToPublicKey()); err != nil {
 			sendResponse(err)
+			j.staticQueue.callReportFailure(err)
+			return
+		}
+		// If the entry is valid, check if the revision number is actually
+		// invalid.
+		if j.staticSignedRegistryValue.Revision > rv.Revision {
+			sendResponse(errors.New("host returned invalid proof"))
 			j.staticQueue.callReportFailure(err)
 			return
 		}
@@ -166,8 +172,15 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 		// If a revision related error was returned, we try to parse the
 		// signed registry value from the response.
 		err = resp.Error
-		if err != nil && (strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) ||
-			strings.Contains(err.Error(), registry.ErrSameRevNum.Error())) {
+		// Check for ErrLowerRevNum.
+		if err != nil && strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) {
+			err = registry.ErrLowerRevNum
+		}
+		if err != nil && strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) {
+			err = registry.ErrSameRevNum
+		}
+		if errors.Contains(err, registry.ErrLowerRevNum) || errors.Contains(err, registry.ErrSameRevNum) {
+			// Parse the proof.
 			rv, parseErr := parseSignedRegistryValueResponse(resp.Output, j.staticSignedRegistryValue.Tweak)
 			return rv, errors.Compose(err, parseErr)
 		}

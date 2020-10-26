@@ -3,7 +3,6 @@ package renter
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -332,9 +331,15 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 
 		// Ignore error responses.
 		if resp.staticErr != nil {
-			if strings.Contains(resp.staticErr.Error(), registry.ErrLowerRevNum.Error()) ||
-				strings.Contains(resp.staticErr.Error(), registry.ErrSameRevNum.Error()) {
-				additionalErrs = errors.Compose(additionalErrs, resp.staticErr)
+			// If the error was a ErrLowerRevNum, append it. Only do that once.
+			if errors.Contains(resp.staticErr, registry.ErrLowerRevNum) &&
+				!errors.Contains(additionalErrs, registry.ErrLowerRevNum) {
+				additionalErrs = errors.Compose(additionalErrs, registry.ErrLowerRevNum)
+			}
+			// If the error was a ErrSameRevNum, append it. Only do that once.
+			if errors.Contains(resp.staticErr, registry.ErrSameRevNum) &&
+				!errors.Contains(additionalErrs, registry.ErrSameRevNum) {
+				additionalErrs = errors.Compose(additionalErrs, registry.ErrSameRevNum)
 			}
 			continue
 		}
