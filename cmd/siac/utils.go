@@ -20,7 +20,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
@@ -359,7 +358,7 @@ func utilsuploadedsizecmd(path string) {
 	}
 
 	var diskSize, siaSize, lostPercent uint64
-	minFileSize := siatest.ChunkSize(uint64(renter.DefaultDataPieces), crypto.TypeDefaultRenter)
+	minFileSize := siatest.ChunkSize(uint64(modules.DefaultDataPieces), crypto.TypeDefaultRenter)
 
 	for _, size := range fileSizes { // Calc variables here
 		diskSize += size

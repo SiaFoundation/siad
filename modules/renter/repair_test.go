@@ -14,7 +14,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
@@ -249,7 +248,7 @@ func TestBubbleHealth(t *testing.T) {
 	// Add a file to the lowest level
 	//
 	// Worst health with current erasure coding is 2 = (1 - (0-1)/1)
-	rsc, _ := siafile.NewRSCode(1, 1)
+	rsc, _ := modules.NewRSCode(1, 1)
 	fileSiaPath, err := subDir1_2.Join("test")
 	if err != nil {
 		t.Fatal(err)
@@ -565,7 +564,7 @@ func TestNumFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Add files
-	rsc, _ := siafile.NewRSCode(1, 1)
+	rsc, _ := modules.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
 		Source:      "",
 		SiaPath:     modules.RandomSiaPath(),
@@ -653,7 +652,7 @@ func TestDirectorySize(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Add files
-	rsc, _ := siafile.NewRSCode(1, 1)
+	rsc, _ := modules.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
 		Source:      "",
 		SiaPath:     modules.RandomSiaPath(),
@@ -736,7 +735,7 @@ func TestDirectoryModTime(t *testing.T) {
 	}
 	// Add files
 	sp1 := modules.RandomSiaPath()
-	rsc, _ := siafile.NewRSCode(1, 1)
+	rsc, _ := modules.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
 		Source:      "",
 		SiaPath:     sp1,
@@ -851,7 +850,7 @@ func TestRandomStuckDirectory(t *testing.T) {
 	//
 	// This will test the edge case of continuing to find stuck files when a
 	// directory has no files only directories
-	rsc, _ := siafile.NewRSCode(1, 1)
+	rsc, _ := modules.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
 		Source:      "",
 		SiaPath:     modules.RandomSiaPath(),
@@ -1177,7 +1176,7 @@ func TestCalculateFileMetadata(t *testing.T) {
 	}()
 
 	// Create a file
-	rsc, _ := siafile.NewRSCode(1, 1)
+	rsc, _ := modules.NewRSCode(1, 1)
 	siaPath, err := modules.NewSiaPath("rootFile")
 	if err != nil {
 		t.Fatal(err)
@@ -1314,7 +1313,7 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 	}
 
 	// create file with no stuck chunks
-	rsc, _ := siafile.NewRSCode(1, 1)
+	rsc, _ := modules.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
 		Source:      "",
 		SiaPath:     modules.RandomSiaPath(),

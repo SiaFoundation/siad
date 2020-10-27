@@ -11,7 +11,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -141,7 +140,7 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams) (*filesyst
 	// Check if ec was set. If not use defaults.
 	var err error
 	if ec == nil && !repair {
-		up.ErasureCode, err = siafile.NewRSSubCode(DefaultDataPieces, DefaultParityPieces, 64)
+		up.ErasureCode, err = modules.NewRSSubCode(modules.DefaultDataPieces, modules.DefaultParityPieces, 64)
 		if err != nil {
 			return nil, err
 		}

@@ -3,13 +3,58 @@ package renter
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestPCWSGouging checks that the gouging check is triggering at the right
+// TestPCWS verifies the functionality of the ProjectChunkWorkerSet
+func TestPCWS(t *testing.T) {
+	t.Run("gouging", testGouging)
+	t.Run("basic", testBasic)
+}
+
+func testBasic(t *testing.T) {
+	wt, err := newWorkerTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sectorData := fastrand.Bytes(int(modules.SectorSize))
+	sectorRoot := crypto.MerkleRoot(sectorData)
+	err = wt.host.AddSector(sectorRoot, sectorData)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ptec := modules.NewPassthroughErasureCoder()
+	// tpsk, err := crypto.NewSiaKey(crypto.TypePlain, nil)
+	// if err != nil {
+	// 	return nil, errors.AddContext(err, "unable to create plain skykey")
+	// }
+	// pcws, err := r.newPCWSByRoots(ctx, []crypto.Hash{link.MerkleRoot()}, ptec, tpsk, 0)
+
+	// wt.renter.newPCWSByRoots(context.Background(), []crypto.Hash{sectorRoot}, modules.NewPassthroughErasureCoder(), crypto.Hash{}, 0)
+}
+
+// func testAdvanced() {
+// 	h2, err := rt.addCustomHost(filepath.Join(rt.dir, "host2"), modules.ProductionDependencies)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+
+// 	s1 := fastrand.Bytes(int(modules.SectorSize))
+// 	s2 := fastrand.Bytes(int(modules.SectorSize))
+// 	s3 := fastrand.Bytes(int(modules.SectorSize))
+// 	s4 := fastrand.Bytes(int(modules.SectorSize))
+// 	s5 := fastrand.Bytes(int(modules.SectorSize))
+
+// }
+
+// testGouging checks that the gouging check is triggering at the right
 // times.
-func TestPCWSGouging(t *testing.T) {
+func testGouging(t *testing.T) {
 	// Create some defaults to get some intuitive ideas for gouging.
 	//
 	// 100 workers and 1e9 expected download means ~2e6 HasSector queries will

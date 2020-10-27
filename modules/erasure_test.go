@@ -1,17 +1,121 @@
-package siafile
+package modules
 
 import (
 	"bytes"
+	"io/ioutil"
 	"testing"
 
-	"gitlab.com/NebulousLabs/fastrand"
-
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestPartialEncodeRecover checks that individual segments of an encoded piece
-// can be recovered.
-func TestPartialEncodeRecover(t *testing.T) {
+// TestErasureCode groups all of the tests the three implementations of the
+// erasure code interface, as defined in erasure.go.
+func TestErasureCode(t *testing.T) {
+	t.Run("RSEncode", testRSEncode)
+	t.Run("RSSubCodeRecover", testRSSubCodeRecover)
+	t.Run("UniqueIdentifier", testUniqueIdentifier)
+}
+
+// testRSEncode tests the RSCode EC.
+func testRSEncode(t *testing.T) {
+	badParams := []struct {
+		data, parity int
+	}{
+		{-1, -1},
+		{-1, 0},
+		{0, -1},
+		{0, 0},
+		{0, 1},
+		{1, 0},
+	}
+	for _, ps := range badParams {
+		if _, err := NewRSCode(ps.data, ps.parity); err == nil {
+			t.Error("expected bad parameter error, got nil")
+		}
+	}
+
+	rsc, err := NewRSCode(10, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data := fastrand.Bytes(777)
+
+	pieces, err := rsc.Encode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = rsc.Encode(nil)
+	if err == nil {
+		t.Fatal("expected nil data error, got nil")
+	}
+
+	buf := new(bytes.Buffer)
+	err = rsc.Recover(pieces, 777, buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rsc.Recover(nil, 777, buf)
+	if err == nil {
+		t.Fatal("expected nil pieces error, got nil")
+	}
+
+	if !bytes.Equal(data, buf.Bytes()) {
+		t.Fatal("recovered data does not match original")
+	}
+}
+
+// testUniqueIdentifier checks that different erasure coders produce unique
+// identifiers and that CombinedSiaFilePath also produces unique siapaths using
+// the identifiers.
+func testUniqueIdentifier(t *testing.T) {
+	ec1, err1 := NewRSCode(1, 2)
+	ec2, err2 := NewRSCode(1, 2)
+	ec3, err3 := NewRSCode(1, 3)
+	ec4, err4 := NewRSSubCode(1, 2, 64)
+	ec5 := NewPassthroughErasureCoder()
+	if err := errors.Compose(err1, err2, err3, err4); err != nil {
+		t.Fatal(err)
+	}
+	if ec1.Identifier() != "1+1+2" {
+		t.Error("wrong identifier for ec1")
+	}
+	if ec2.Identifier() != "1+1+2" {
+		t.Error("wrong identifier for ec2")
+	}
+	if ec3.Identifier() != "1+1+3" {
+		t.Error("wrong identifier for ec3")
+	}
+	if ec4.Identifier() != "2+1+2" {
+		t.Error("wrong identifier for ec4")
+	}
+	if ec5.Identifier() != "1+1+1" {
+		t.Error("wrong identifier for ec5")
+	}
+	sp1 := CombinedSiaFilePath(ec1)
+	sp2 := CombinedSiaFilePath(ec2)
+	sp3 := CombinedSiaFilePath(ec3)
+	sp4 := CombinedSiaFilePath(ec4)
+	sp5 := CombinedSiaFilePath(ec5)
+	if !sp1.Equals(sp2) {
+		t.Error("sp1 and sp2 should have the same path")
+	}
+	if sp1.Equals(sp3) {
+		t.Error("sp1 and sp3 should have different path")
+	}
+	if sp1.Equals(sp4) {
+		t.Error("sp1 and sp4 should have different path")
+	}
+	if sp1.Equals(sp5) {
+		t.Error("sp1 and sp5 should have different path")
+	}
+}
+
+// testRSSubCodeRecover checks that individual segments of an encoded piece can
+// be recovered.
+func testRSSubCodeRecover(t *testing.T) {
 	segmentSize := crypto.SegmentSize
 	pieceSize := 4096
 	dataPieces := 10
@@ -83,6 +187,45 @@ func TestPartialEncodeRecover(t *testing.T) {
 	}
 }
 
+// BenchmarkRSEncode benchmarks the 'Encode' function of the RSCode EC.
+func BenchmarkRSEncode(b *testing.B) {
+	rsc, err := NewRSCode(80, 20)
+	if err != nil {
+		b.Fatal(err)
+	}
+	data := fastrand.Bytes(1 << 20)
+
+	b.SetBytes(1 << 20)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		rsc.Encode(data)
+	}
+}
+
+// BenchmarkRSEncode benchmarks the 'Recover' function of the RSCode EC.
+func BenchmarkRSRecover(b *testing.B) {
+	rsc, err := NewRSCode(50, 200)
+	if err != nil {
+		b.Fatal(err)
+	}
+	data := fastrand.Bytes(1 << 20)
+	pieces, err := rsc.Encode(data)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.SetBytes(1 << 20)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < len(pieces)/2; j += 2 {
+			pieces[j] = nil
+		}
+		rsc.Recover(pieces, 1<<20, ioutil.Discard)
+	}
+}
+
+// BenchmarkRSSubCodeRecover benchmarks the 'Recover' function of the RSSubCode
+// EC.
 func BenchmarkRSSubCodeRecover(b *testing.B) {
 	segmentSize := crypto.SegmentSize
 	pieceSize := 4096
