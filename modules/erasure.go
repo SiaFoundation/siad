@@ -3,8 +3,6 @@ package modules
 // erasure.go defines an interface for an erasure coder, as well as an erasure
 // type for data that is not erasure coded.
 
-// TODO: Testing for the passthrough
-
 import (
 	"bytes"
 	"encoding/binary"
