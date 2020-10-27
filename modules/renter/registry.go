@@ -219,7 +219,6 @@ LOOP:
 		// When we get the first response, we initialize the highest rev
 		// timeout.
 		if responses == 0 {
-			println("response received init highest rev timeout")
 			c, cancel := context.WithTimeout(ctx, useHighestRevDefaultTimeout)
 			defer cancel()
 			useHighestRevCtx = c
@@ -232,9 +231,6 @@ LOOP:
 		if resp.staticErr != nil || resp.staticSignedRegistryValue == nil {
 			continue
 		}
-
-		// Increment successful responses.
-		println("received successful response")
 
 		// Remember the response with the highest revision number. We use >=
 		// here to also catch the edge case of the initial revision being 0.
