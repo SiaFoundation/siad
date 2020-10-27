@@ -123,6 +123,16 @@ func NewRSCode(nData, nParity int) (ErasureCoder, error) {
 	return newRSCode(nData, nParity)
 }
 
+// NewRSCodeDefault creates a new Reed-Solomon encoder/decoder using the
+// default parameters.
+func NewRSCodeDefault() ErasureCoder {
+	ec, err := newRSCode(DefaultDataPieces, DefaultParityPieces)
+	if err != nil {
+		build.Critical("defaults are not accepted")
+	}
+	return ec
+}
+
 // NewRSSubCode creates a new Reed-Solomon encoder/decoder using the supplied
 // parameters.
 func NewRSSubCode(nData, nParity int, segmentSize uint64) (ErasureCoder, error) {
@@ -144,6 +154,16 @@ func NewRSSubCode(nData, nParity int, segmentSize uint64) (ErasureCoder, error) 
 		segmentSize,
 		t,
 	}, nil
+}
+
+// NewRSSubCodeDefault creates a new Reed-Solomon encoder/decoder using the
+// default parameters and the default segment size.
+func NewRSSubCodeDefault() ErasureCoder {
+	ec, err := NewRSSubCode(DefaultDataPieces, DefaultParityPieces, crypto.SegmentSize)
+	if err != nil {
+		build.Critical("defaults are not accepted")
+	}
+	return ec
 }
 
 // NewPassthroughErasureCoder will return an erasure coder that does not encode

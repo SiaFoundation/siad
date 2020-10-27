@@ -17,6 +17,7 @@ func TestErasureCode(t *testing.T) {
 	t.Run("RSSubCode", testRSSubCode)
 	t.Run("Passthrough", testPassthrough)
 	t.Run("UniqueIdentifier", testUniqueIdentifier)
+	t.Run("DefaultConstructors", testDefaultConstructors)
 }
 
 // testRSCode tests the RSCode EC.
@@ -252,6 +253,28 @@ func testUniqueIdentifier(t *testing.T) {
 	}
 	if sp1.Equals(sp6) {
 		t.Error("sp1 and sp6 should have different path")
+	}
+}
+
+// testDefaultConstructors verifies the default constructor create erasure codes
+// with the correct parameters
+func testDefaultConstructors(t *testing.T) {
+	rs, err := NewRSCode(DefaultDataPieces, DefaultParityPieces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rsd := NewRSCodeDefault()
+	if rs.Identifier() != rsd.Identifier() {
+		t.Fatal("Unexpected parameters used in default")
+	}
+
+	rss, err := NewRSSubCode(DefaultDataPieces, DefaultParityPieces, crypto.SegmentSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rssd := NewRSSubCodeDefault()
+	if rss.Identifier() != rssd.Identifier() {
+		t.Fatal("Unexpected parameters used in default")
 	}
 }
 
