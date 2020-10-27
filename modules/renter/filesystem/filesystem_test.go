@@ -108,7 +108,7 @@ func (fs *FileSystem) addTestSiaFile(siaPath modules.SiaPath) {
 // addTestSiaFileWithErr is a convenience method to add a SiaFile for testing to
 // a FileSystem.
 func (fs *FileSystem) addTestSiaFileWithErr(siaPath modules.SiaPath) error {
-	ec, err := siafile.NewRSSubCode(10, 20, crypto.SegmentSize)
+	ec, err := modules.NewRSSubCode(10, 20, crypto.SegmentSize)
 	if err != nil {
 		return err
 	}
@@ -1082,7 +1082,7 @@ func TestSiaFileSetDeleteOpen(t *testing.T) {
 	// Create filesystem.
 	sfs := newTestFileSystem(testDir(t.Name()))
 	siaPath := modules.RandomSiaPath()
-	rc, _ := siafile.NewRSSubCode(10, 20, crypto.SegmentSize)
+	rc, _ := modules.NewRSSubCode(10, 20, crypto.SegmentSize)
 	fileSize := uint64(100)
 	source := ""
 	sk := crypto.GenerateSiaKey(crypto.TypeDefaultRenter)
@@ -1522,7 +1522,7 @@ func TestSiaDirDelete(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ec, _ := siafile.NewRSSubCode(10, 20, crypto.SegmentSize)
+		ec, _ := modules.NewRSSubCode(10, 20, crypto.SegmentSize)
 		up := modules.FileUploadParams{Source: "", SiaPath: fileSP, ErasureCode: ec}
 		err = fs.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.TypeDefaultRenter), 100, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
 		if err != nil {
@@ -1589,7 +1589,7 @@ func TestSiaDirRenameWithFiles(t *testing.T) {
 	fs := newTestFileSystem(root)
 
 	// Prepare parameters for siafiles.
-	rc, _ := siafile.NewRSSubCode(10, 20, crypto.SegmentSize)
+	rc, _ := modules.NewRSSubCode(10, 20, crypto.SegmentSize)
 	fileSize := uint64(100)
 	source := ""
 	sk := crypto.GenerateSiaKey(crypto.TypeDefaultRenter)
