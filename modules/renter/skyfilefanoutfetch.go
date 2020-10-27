@@ -105,10 +105,10 @@ func (fcs *fetchChunkState) threadedFetchPiece(pieceIndex uint64, pieceRoot cryp
 // network.
 func (fs *fanoutStreamBufferDataSource) managedFetchChunk(chunkIndex uint64) ([]byte, error) {
 	// Input verification.
-	if chunkIndex*fs.staticChunkSize >= fs.staticLayout.filesize {
+	if chunkIndex*fs.staticChunkSize >= fs.staticLayout.Filesize {
 		return nil, errors.New("requesting a chunk index that does not exist within the file")
 	}
-	if int(fs.staticLayout.fanoutDataPieces) > len(fs.staticChunks[chunkIndex]) {
+	if int(fs.staticLayout.FanoutDataPieces) > len(fs.staticChunks[chunkIndex]) {
 		return nil, errors.New("not enough pieces in the chunk to recover the chunk")
 	}
 
@@ -117,7 +117,7 @@ func (fs *fanoutStreamBufferDataSource) managedFetchChunk(chunkIndex uint64) ([]
 	fcs := fetchChunkState{
 		staticChunkIndex: chunkIndex,
 		staticChunkSize:  fs.staticChunkSize,
-		staticDataPieces: uint64(fs.staticLayout.fanoutDataPieces),
+		staticDataPieces: uint64(fs.staticLayout.FanoutDataPieces),
 		staticMasterKey:  fs.staticMasterKey,
 
 		staticTimeout: fs.staticTimeout,
@@ -171,7 +171,7 @@ func (fs *fanoutStreamBufferDataSource) managedFetchChunk(chunkIndex uint64) ([]
 
 	// Recover the data.
 	buf := bytes.NewBuffer(nil)
-	chunkSize := (modules.SectorSize - fs.staticLayout.cipherType.Overhead()) * uint64(fs.staticLayout.fanoutDataPieces)
+	chunkSize := (modules.SectorSize - fs.staticLayout.CipherType.Overhead()) * uint64(fs.staticLayout.FanoutDataPieces)
 	err := fs.staticErasureCoder.Recover(pieces, chunkSize, buf)
 	if err != nil {
 		return nil, errors.New("erasure decoding of chunk failed.")

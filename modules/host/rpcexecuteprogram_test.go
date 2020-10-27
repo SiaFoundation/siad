@@ -2,6 +2,7 @@ package host
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
@@ -14,6 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
@@ -1194,6 +1196,412 @@ func TestExecuteHasSectorProgramBatching(t *testing.T) {
 		if resp.Output[0] != 1 {
 			t.Fatalf("wrong Output %v != %v", resp.Output[0], []byte{1})
 		}
+	}
+
+	// Make sure the right amount of money remains on the EA.
+	am := rhp.staticHT.host.staticAccountManager
+	expectedBalance := maxBalance.Sub(cost)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestExecuteUpdateRegistryProgram tests the managedRPCExecuteProgram with a
+// valid 'UpdateRegistry' program.
+func TestExecuteUpdateRegistryProgram(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a blank host tester
+	rhp, err := newRenterHostPair(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := rhp.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// Grow the registry.
+	h := rhp.staticHT.host
+	is := h.InternalSettings()
+	is.RegistrySize = 64 * modules.RegistryEntrySize
+	err = h.SetInternalSettings(is)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// get a snapshot of the SO before running the program.
+	sos, err := rhp.staticHT.host.managedGetStorageObligationSnapshot(rhp.staticFCID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a signed registry value.
+	sk, pk := crypto.GenerateKeyPair()
+	tweak := crypto.Hash{1, 2, 3}
+	data := fastrand.Bytes(modules.RegistryDataSize)
+	rev := uint64(1)
+	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+
+	// Create the 'UpdateRegistry' program.
+	pt := rhp.managedPriceTable()
+	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since HasSector doesn't depend on duration.
+	err = pb.AddUpdateRegistryInstruction(spk, rv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, data := pb.Program()
+	programCost, refund, collateral := pb.Cost(true)
+
+	// Prepare the request.
+	epr := modules.RPCExecuteProgramRequest{
+		FileContractID:    rhp.staticFCID,
+		Program:           program,
+		ProgramDataLength: uint64(len(data)),
+	}
+
+	// Fund an account with the max balance.
+	maxBalance := rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance
+	fundingAmt := maxBalance.Add(pt.FundAccountCost)
+	_, err = rhp.managedFundEphemeralAccount(fundingAmt, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compute expected bandwidth cost. These hardcoded values were chosen after
+	// running this test with a high budget and measuring the used bandwidth for
+	// this particular program on the "renter" side. This way we can test that
+	// the bandwidth measured by the renter is large enough to be accepted by
+	// the host.
+	expectedDownload := uint64(1460) // download
+	expectedUpload := uint64(1460)   // upload
+	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
+	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
+	bandwidthCost := downloadCost.Add(uploadCost)
+
+	// Execute program.
+	cost := programCost.Add(bandwidthCost)
+	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Log the bandwidth used by this RPC.
+	t.Logf("Used bandwidth (valid UpdateRegistry program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+	// There should only be a single response.
+	if len(resps) != 1 {
+		t.Fatalf("expected 1 response but got %v", len(resps))
+	}
+	resp := resps[0]
+
+	// Check response.
+	if resp.Error != nil {
+		t.Fatal(resp.Error)
+	}
+	if !resp.AdditionalCollateral.Equals(collateral) {
+		t.Fatalf("wrong AdditionalCollateral %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
+	}
+	if resp.NewMerkleRoot != sos.MerkleRoot() {
+		t.Fatalf("wrong NewMerkleRoot %v != %v", resp.NewMerkleRoot, sos.MerkleRoot())
+	}
+	if resp.NewSize != 0 {
+		t.Fatalf("wrong NewSize %v != %v", resp.NewSize, 0)
+		t.Fatal("wrong NewSize")
+	}
+	if len(resp.Proof) != 0 {
+		t.Fatalf("wrong Proof %v != %v", resp.Proof, []crypto.Hash{})
+	}
+	if len(resp.Output) != 0 {
+		t.Fatalf("wrong Output length %v != %v", len(resp.Output), 0)
+	}
+	if !resp.TotalCost.Equals(programCost) {
+		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
+	}
+	if !resp.StorageCost.Equals(refund) {
+		t.Fatalf("wrong StorageCost %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
+	}
+	// Make sure the right amount of money remains on the EA.
+	am := rhp.staticHT.host.staticAccountManager
+	expectedBalance := maxBalance.Sub(cost)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run the same program again. Should fail due to the revision number being
+	// the same.
+	resps, limit, err = rhp.managedExecuteProgram(epr, data, cost, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Log the bandwidth used by this RPC.
+	t.Logf("Used bandwidth (valid UpdateRegistry program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+	// There should only be a single response.
+	if len(resps) != 1 {
+		t.Fatalf("expected 1 response but got %v", len(resps))
+	}
+	resp = resps[0]
+
+	// Check response.
+	if resp.Error == nil || !strings.Contains(resp.Error.Error(), registry.ErrSameRevNum.Error()) {
+		t.Fatal(resp.Error)
+	}
+	if !resp.AdditionalCollateral.Equals(collateral) {
+		t.Fatalf("wrong AdditionalCollateral %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
+	}
+	if resp.NewMerkleRoot != sos.MerkleRoot() {
+		t.Fatalf("wrong NewMerkleRoot %v != %v", resp.NewMerkleRoot, sos.MerkleRoot())
+	}
+	if resp.NewSize != 0 {
+		t.Fatalf("wrong NewSize %v != %v", resp.NewSize, 0)
+	}
+	if len(resp.Proof) != 0 {
+		t.Fatalf("wrong Proof %v != %v", resp.Proof, []crypto.Hash{})
+	}
+	if !resp.TotalCost.Equals(programCost) {
+		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
+	}
+	if !resp.StorageCost.Equals(refund) {
+		t.Fatalf("wrong StorageCost %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
+	}
+	// Parse response.
+	var sig2 crypto.Signature
+	copy(sig2[:], resp.Output[:crypto.SignatureSize])
+	rev2 := binary.LittleEndian.Uint64(resp.Output[crypto.SignatureSize:])
+	data2 := resp.Output[crypto.SignatureSize+8:]
+	rv2 := modules.NewSignedRegistryValue(tweak, data2, rev2, sig2)
+	if !reflect.DeepEqual(rv, rv2) {
+		t.Log(rv)
+		t.Log(rv2)
+		t.Fatal("rvs don't match")
+	}
+
+	// Make sure the right amount of money remains on the EA.
+	expectedBalance = expectedBalance.Sub(cost).Add(refund)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run it one more time. Time time with a lower revision number which should
+	// also fail.
+	pb = modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since HasSector doesn't depend on duration.
+	rvLowRev := rv
+	rvLowRev.Revision--
+	rvLowRev = rvLowRev.Sign(sk)
+	err = pb.AddUpdateRegistryInstruction(spk, rvLowRev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, data = pb.Program()
+
+	// Prepare the request.
+	epr = modules.RPCExecuteProgramRequest{
+		FileContractID:    rhp.staticFCID,
+		Program:           program,
+		ProgramDataLength: uint64(len(data)),
+	}
+
+	resps, limit, err = rhp.managedExecuteProgram(epr, data, cost, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Log the bandwidth used by this RPC.
+	t.Logf("Used bandwidth (valid UpdateRegistry program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+	// There should only be a single response.
+	if len(resps) != 1 {
+		t.Fatalf("expected 1 response but got %v", len(resps))
+	}
+	resp = resps[0]
+
+	// Check response.
+	if resp.Error == nil || !strings.Contains(resp.Error.Error(), registry.ErrLowerRevNum.Error()) {
+		t.Fatal(resp.Error)
+	}
+	if !resp.AdditionalCollateral.Equals(collateral) {
+		t.Fatalf("wrong AdditionalCollateral %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
+	}
+	if resp.NewMerkleRoot != sos.MerkleRoot() {
+		t.Fatalf("wrong NewMerkleRoot %v != %v", resp.NewMerkleRoot, sos.MerkleRoot())
+	}
+	if resp.NewSize != 0 {
+		t.Fatalf("wrong NewSize %v != %v", resp.NewSize, 0)
+	}
+	if len(resp.Proof) != 0 {
+		t.Fatalf("wrong Proof %v != %v", resp.Proof, []crypto.Hash{})
+	}
+	if !resp.TotalCost.Equals(programCost) {
+		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
+	}
+	if !resp.StorageCost.Equals(refund) {
+		t.Fatalf("wrong StorageCost %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
+	}
+	// Parse response.
+	copy(sig2[:], resp.Output[:crypto.SignatureSize])
+	rev2 = binary.LittleEndian.Uint64(resp.Output[crypto.SignatureSize:])
+	data2 = resp.Output[crypto.SignatureSize+8:]
+	rv2 = modules.NewSignedRegistryValue(tweak, data2, rev2, sig2)
+	if !reflect.DeepEqual(rv, rv2) {
+		t.Log(rv)
+		t.Log(rv2)
+		t.Fatal("rvs don't match")
+	}
+
+	// Make sure the right amount of money remains on the EA.
+	expectedBalance = expectedBalance.Sub(cost).Add(refund)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestExecuteReadRegistryProgram tests the managedRPCExecuteProgram with a
+// valid 'ReadRegistry' program.
+func TestExecuteReadRegistryProgram(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a blank host tester
+	rhp, err := newRenterHostPair(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := rhp.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// Grow the registry.
+	h := rhp.staticHT.host
+	is := h.InternalSettings()
+	is.RegistrySize = 64 * modules.RegistryEntrySize
+	err = h.SetInternalSettings(is)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// get a snapshot of the SO before running the program.
+	sos, err := rhp.staticHT.host.managedGetStorageObligationSnapshot(rhp.staticFCID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a signed registry value.
+	sk, pk := crypto.GenerateKeyPair()
+	tweak := crypto.Hash{1, 2, 3}
+	data := fastrand.Bytes(modules.RegistryDataSize)
+	rev := uint64(0)
+	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+
+	// Update the registry.
+	_, err = h.RegistryUpdate(rv, spk, 123)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create the 'UpdateRegistry' program.
+	pt := rhp.managedPriceTable()
+	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since HasSector doesn't depend on duration.
+	err = pb.AddReadRegistryInstruction(spk, rv.Tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, data := pb.Program()
+	programCost, refund, collateral := pb.Cost(true)
+
+	// Prepare the request.
+	epr := modules.RPCExecuteProgramRequest{
+		FileContractID:    rhp.staticFCID,
+		Program:           program,
+		ProgramDataLength: uint64(len(data)),
+	}
+
+	// Fund an account with the max balance.
+	maxBalance := rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance
+	fundingAmt := maxBalance.Add(pt.FundAccountCost)
+	_, err = rhp.managedFundEphemeralAccount(fundingAmt, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compute expected bandwidth cost. These hardcoded values were chosen after
+	// running this test with a high budget and measuring the used bandwidth for
+	// this particular program on the "renter" side. This way we can test that
+	// the bandwidth measured by the renter is large enough to be accepted by
+	// the host.
+	expectedDownload := uint64(1460) // download
+	expectedUpload := uint64(1460)   // upload
+	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
+	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
+	bandwidthCost := downloadCost.Add(uploadCost)
+
+	// Execute program.
+	cost := programCost.Add(bandwidthCost)
+	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Log the bandwidth used by this RPC.
+	t.Logf("Used bandwidth (valid UpdateRegistry program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+	// There should only be a single response.
+	if len(resps) != 1 {
+		t.Fatalf("expected 1 response but got %v", len(resps))
+	}
+	resp := resps[0]
+
+	// Check response.
+	if resp.Error != nil {
+		t.Fatal(resp.Error)
+	}
+	if !resp.AdditionalCollateral.Equals(collateral) {
+		t.Fatalf("wrong AdditionalCollateral %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
+	}
+	if resp.NewMerkleRoot != sos.MerkleRoot() {
+		t.Fatalf("wrong NewMerkleRoot %v != %v", resp.NewMerkleRoot, sos.MerkleRoot())
+	}
+	if resp.NewSize != 0 {
+		t.Fatalf("wrong NewSize %v != %v", resp.NewSize, 0)
+		t.Fatal("wrong NewSize")
+	}
+	if len(resp.Proof) != 0 {
+		t.Fatalf("wrong Proof %v != %v", resp.Proof, []crypto.Hash{})
+	}
+	if len(resp.Output) != 185 {
+		// 186 = 64 (sig) + 8 (revision) + 113 (data) + 1 (type)
+		t.Fatalf("wrong Output length %v != %v", len(resp.Output), 185)
+	}
+	if !resp.TotalCost.Equals(programCost) {
+		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
+	}
+	if !resp.StorageCost.Equals(refund) {
+		t.Fatalf("wrong StorageCost %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
+	}
+
+	// Parse output.
+	var sig2 crypto.Signature
+	copy(sig2[:], resp.Output[:crypto.SignatureSize])
+	rev2 := binary.LittleEndian.Uint64(resp.Output[crypto.SignatureSize:])
+	data2 := resp.Output[crypto.SignatureSize+8:]
+	rv2 := modules.NewSignedRegistryValue(tweak, data2, rev2, sig2)
+	if rv2.Verify(pk) != nil {
+		t.Fatal("verification failed", err)
 	}
 
 	// Make sure the right amount of money remains on the EA.

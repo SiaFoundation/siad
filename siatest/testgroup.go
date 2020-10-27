@@ -230,7 +230,8 @@ func addStorageFolderToHosts(hosts map[*TestNode]struct{}) error {
 	return errors.Compose(errs...)
 }
 
-// announceHosts adds storage to each host and announces them to the group
+// announceHosts adds storage and a registry to each host and announces them to
+// the group
 func announceHosts(hosts map[*TestNode]struct{}) error {
 	for host := range hosts {
 		if host.params.SkipHostAnnouncement {
@@ -238,6 +239,9 @@ func announceHosts(hosts map[*TestNode]struct{}) error {
 		}
 		if err := host.HostModifySettingPost(client.HostParamAcceptingContracts, true); err != nil {
 			return errors.AddContext(err, "failed to set host to accepting contracts")
+		}
+		if err := host.HostModifySettingPost(client.HostParamRegistrySize, 1<<18); err != nil {
+			return errors.AddContext(err, "failed to set host's default registry size")
 		}
 		if err := host.HostAnnouncePost(); err != nil {
 			return errors.AddContext(err, "failed to announce host")

@@ -3,8 +3,6 @@ package modules
 // erasure.go defines an interface for an erasure coder, as well as an erasure
 // type for data that is not erasure coded.
 
-// TODO: Testing for the passthrough
-
 import (
 	"bytes"
 	"encoding/binary"
@@ -94,9 +92,7 @@ type (
 		// Type returns the type identifier of the ErasureCoder.
 		Type() ErasureCoderType
 	}
-)
 
-type (
 	// RSCode is a Reed-Solomon encoder/decoder. It implements the
 	// ErasureCoder interface.
 	RSCode struct {
@@ -125,6 +121,16 @@ func NewRSCode(nData, nParity int) (ErasureCoder, error) {
 	return newRSCode(nData, nParity)
 }
 
+// NewRSCodeDefault creates a new Reed-Solomon encoder/decoder using the
+// default parameters.
+func NewRSCodeDefault() ErasureCoder {
+	ec, err := newRSCode(DefaultDataPieces, DefaultParityPieces)
+	if err != nil {
+		build.Critical("defaults are not accepted")
+	}
+	return ec
+}
+
 // NewRSSubCode creates a new Reed-Solomon encoder/decoder using the supplied
 // parameters.
 func NewRSSubCode(nData, nParity int, segmentSize uint64) (ErasureCoder, error) {
@@ -146,6 +152,16 @@ func NewRSSubCode(nData, nParity int, segmentSize uint64) (ErasureCoder, error) 
 		segmentSize,
 		t,
 	}, nil
+}
+
+// NewRSSubCodeDefault creates a new Reed-Solomon encoder/decoder using the
+// default parameters and the default segment size.
+func NewRSSubCodeDefault() ErasureCoder {
+	ec, err := NewRSSubCode(DefaultDataPieces, DefaultParityPieces, crypto.SegmentSize)
+	if err != nil {
+		build.Critical("defaults are not accepted")
+	}
+	return ec
 }
 
 // NewPassthroughErasureCoder will return an erasure coder that does not encode
@@ -446,19 +462,55 @@ func ExtractSegment(pieces [][]byte, segmentIndex int, segmentSize uint64) [][]b
 	return segment
 }
 
-// These functions implement the ErasureCoder interface.
-func (pec *PassthroughErasureCoder) NumPieces() int                       { return 1 }
-func (pec *PassthroughErasureCoder) MinPieces() int                       { return 1 }
-func (pec *PassthroughErasureCoder) Encode(data []byte) ([][]byte, error) { return [][]byte{data}, nil }
-func (pec *PassthroughErasureCoder) Identifier() ErasureCoderIdentifier   { return "ECPassthrough" }
+// NumPieces is the number of pieces returned by Encode. For the passthrough
+// this is hardcoded to 1.
+func (pec *PassthroughErasureCoder) NumPieces() int {
+	return 1
+}
+
+// MinPieces is the minimum number of pieces that must be present to recover the
+// original data. For the passthrough this is hardcoded to 1.
+func (pec *PassthroughErasureCoder) MinPieces() int {
+	return 1
+}
+
+// Encode splits data into equal-length pieces, with some pieces containing
+// parity data. For the passthrough this is a no-op.
+func (pec *PassthroughErasureCoder) Encode(data []byte) ([][]byte, error) {
+	return [][]byte{data}, nil
+}
+
+// Identifier returns the ErasureCoderIdentifier of the ErasureCoder.
+func (pec *PassthroughErasureCoder) Identifier() ErasureCoderIdentifier {
+	return "ECPassthrough"
+}
+
+// EncodeShards encodes the input data like Encode but accepts an already
+// sharded input. For the passthrough this is a no-op.
 func (pec *PassthroughErasureCoder) EncodeShards(pieces [][]byte) ([][]byte, error) {
 	return pieces, nil
 }
-func (pec *PassthroughErasureCoder) Reconstruct(pieces [][]byte) error { return nil }
+
+// Reconstruct recovers the full set of encoded shards from the provided pieces,
+// of which at least MinPieces must be non-nil. For the passthrough this is a
+// no-op.
+func (pec *PassthroughErasureCoder) Reconstruct(pieces [][]byte) error {
+	return nil
+}
+
+// Recover recovers the original data from pieces and writes it to w. pieces
+// should be identical to the slice returned by Encode (length and order must be
+// preserved), but with missing elements set to nil. n is the number of bytes to
+// be written to w; this is necessary because pieces may have been padded with
+// zeros during encoding.
 func (pec *PassthroughErasureCoder) Recover(pieces [][]byte, n uint64, w io.Writer) error {
 	_, err := w.Write(pieces[0][:n])
 	return err
 }
+
+// SupportsPartialEncoding returns true if partial encoding is supported. The
+// piece segment size will be returned. Otherwise the numerical return value is
+// set to zero.
 func (pec *PassthroughErasureCoder) SupportsPartialEncoding() (uint64, bool) {
 	// The actual protocol is in some places restricted to using an atomic
 	// request size of crypto.SegmentSize, so that's what we use here.
@@ -467,4 +519,8 @@ func (pec *PassthroughErasureCoder) SupportsPartialEncoding() (uint64, bool) {
 	// to return a segment size of 1.
 	return crypto.SegmentSize, true
 }
-func (pec *PassthroughErasureCoder) Type() ErasureCoderType { return ECPassthrough }
+
+// Type returns the type identifier of the ErasureCoder.
+func (pec *PassthroughErasureCoder) Type() ErasureCoderType {
+	return ECPassthrough
+}

@@ -7,7 +7,7 @@ package renter
 //
 // The fanout is encoded such that the first 32 bytes are chunk 0 index 0, the
 // second 32 bytes are chunk 0 index 1, etc... and then the second chunk is
-// appended immedately after, and so on.
+// appended immediately after, and so on.
 
 import (
 	"sync"
@@ -18,6 +18,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/Sia/skynet"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -29,7 +30,7 @@ type fanoutStreamBufferDataSource struct {
 	staticChunks       [][]crypto.Hash
 	staticChunkSize    uint64
 	staticErasureCoder modules.ErasureCoder
-	staticLayout       skyfileLayout
+	staticLayout       skynet.SkyfileLayout
 	staticMasterKey    crypto.CipherKey
 	staticMetadata     modules.SkyfileMetadata
 	staticStreamID     modules.DataSourceID
@@ -45,23 +46,23 @@ type fanoutStreamBufferDataSource struct {
 // newFanoutStreamer will create a modules.Streamer from the fanout of a
 // skyfile. The streamer is created by implementing the streamBufferDataSource
 // interface on the skyfile, and then passing that to the stream buffer set.
-func (r *Renter) newFanoutStreamer(link modules.Skylink, ll skyfileLayout, metadata modules.SkyfileMetadata, fanoutBytes []byte, timeout time.Duration, sk skykey.Skykey) (modules.Streamer, error) {
-	masterKey, err := r.deriveFanoutKey(&ll, sk)
+func (r *Renter) newFanoutStreamer(link modules.Skylink, sl skynet.SkyfileLayout, metadata modules.SkyfileMetadata, fanoutBytes []byte, timeout time.Duration, sk skykey.Skykey) (modules.Streamer, error) {
+	masterKey, err := r.deriveFanoutKey(&sl, sk)
 	if err != nil {
 		return nil, errors.AddContext(err, "count not recover siafile fanout because cipher key was unavailable")
 	}
 
 	// Create the erasure coder
-	ec, err := modules.NewRSSubCode(int(ll.fanoutDataPieces), int(ll.fanoutParityPieces), crypto.SegmentSize)
+	ec, err := modules.NewRSSubCode(int(sl.FanoutDataPieces), int(sl.FanoutParityPieces), crypto.SegmentSize)
 	if err != nil {
 		return nil, errors.New("unable to initialize erasure code")
 	}
 
 	// Build the base streamer object.
 	fs := &fanoutStreamBufferDataSource{
-		staticChunkSize:    modules.SectorSize * uint64(ll.fanoutDataPieces),
+		staticChunkSize:    modules.SectorSize * uint64(sl.FanoutDataPieces),
 		staticErasureCoder: ec,
-		staticLayout:       ll,
+		staticLayout:       sl,
 		staticMasterKey:    masterKey,
 		staticMetadata:     metadata,
 		staticStreamID:     link.DataSourceID(),
@@ -87,13 +88,13 @@ func (fs *fanoutStreamBufferDataSource) decodeFanout(fanoutBytes []byte) error {
 	ll := fs.staticLayout
 	var piecesPerChunk uint64
 	var chunkRootsSize uint64
-	if ll.fanoutDataPieces == 1 && ll.cipherType == crypto.TypePlain {
+	if ll.FanoutDataPieces == 1 && ll.CipherType == crypto.TypePlain {
 		piecesPerChunk = 1
 		chunkRootsSize = crypto.HashSize
 	} else {
 		// This is the case where the file data is not 1-of-N. Every piece is
 		// different, so every piece must get enumerated.
-		piecesPerChunk = uint64(ll.fanoutDataPieces) + uint64(ll.fanoutParityPieces)
+		piecesPerChunk = uint64(ll.FanoutDataPieces) + uint64(ll.FanoutParityPieces)
 		chunkRootsSize = crypto.HashSize * piecesPerChunk
 	}
 	// Sanity check - the fanout bytes should be an even number of chunks.
@@ -185,7 +186,7 @@ func skyfileEncodeFanout(fileNode *filesystem.FileNode) ([]byte, error) {
 
 // DataSize returns the amount of file data in the underlying skyfile.
 func (fs *fanoutStreamBufferDataSource) DataSize() uint64 {
-	return fs.staticLayout.filesize
+	return fs.staticLayout.Filesize
 }
 
 // ID returns the id of the skylink being fetched, this is just the hash of the
@@ -214,7 +215,7 @@ func (fs *fanoutStreamBufferDataSource) ReadAt(b []byte, offset int64) (int, err
 		return 0, errors.New("request needs to be aligned to RequestSize()")
 	}
 	// Must not go beyond the end of the file.
-	if uint64(offset)+uint64(len(b)) > fs.staticLayout.filesize {
+	if uint64(offset)+uint64(len(b)) > fs.staticLayout.Filesize {
 		return 0, errors.New("making a read request that goes beyond the boundaries of the file")
 	}
 

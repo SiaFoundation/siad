@@ -59,7 +59,7 @@ func (r *Renter) Upload(up modules.FileUploadParams) error {
 
 	// Fill in any missing upload params with sensible defaults.
 	if up.ErasureCode == nil {
-		up.ErasureCode, _ = modules.NewRSSubCode(modules.DefaultDataPieces, modules.DefaultParityPieces, crypto.SegmentSize)
+		up.ErasureCode = modules.NewRSSubCodeDefault()
 	}
 
 	// Check that we have contracts to upload to. We need at least data +

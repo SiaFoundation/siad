@@ -32,7 +32,7 @@ func TestInstructionSingleAppend(t *testing.T) {
 	}
 	// Assert the outputs.
 	for _, output := range outputs {
-		err = output.assert(modules.SectorSize, crypto.MerkleRoot(appendData1), []crypto.Hash{}, nil)
+		err = output.assert(modules.SectorSize, crypto.MerkleRoot(appendData1), []crypto.Hash{}, nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -88,7 +88,7 @@ func TestInstructionSingleAppend(t *testing.T) {
 	}
 	// Assert the outputs.
 	for _, output := range outputs {
-		err = output.assert(expectedOutput.NewSize, expectedOutput.NewMerkleRoot, expectedOutput.Proof, expectedOutput.Output)
+		err = output.assert(expectedOutput.NewSize, expectedOutput.NewMerkleRoot, expectedOutput.Proof, expectedOutput.Output, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

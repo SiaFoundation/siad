@@ -35,14 +35,10 @@ func TestRenterUploadDirectory(t *testing.T) {
 		}
 	}()
 
-	ec, err := modules.NewRSCode(modules.DefaultDataPieces, modules.DefaultParityPieces)
-	if err != nil {
-		t.Fatal(err)
-	}
 	params := modules.FileUploadParams{
 		Source:      testUploadPath,
 		SiaPath:     modules.RandomSiaPath(),
-		ErasureCode: ec,
+		ErasureCode: modules.NewRSCodeDefault(),
 	}
 	err = rt.renter.Upload(params)
 	if err == nil {

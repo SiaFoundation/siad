@@ -454,10 +454,7 @@ func TestRenterFileDir(t *testing.T) {
 	}
 
 	// Upload local file
-	ec, err := modules.NewRSCode(modules.DefaultDataPieces, modules.DefaultParityPieces)
-	if err != nil {
-		t.Fatal(err)
-	}
+	ec := modules.NewRSCodeDefault()
 	siaPath, err := modules.NewSiaPath(fileName)
 	if err != nil {
 		t.Fatal(err)

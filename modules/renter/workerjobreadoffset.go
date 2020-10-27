@@ -14,7 +14,6 @@ type (
 	// jobReadOffset contains information about a ReadOffset job.
 	jobReadOffset struct {
 		jobRead
-
 		staticOffset uint64
 	}
 )

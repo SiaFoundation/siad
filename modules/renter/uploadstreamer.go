@@ -140,11 +140,8 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams) (*filesyst
 	// Check if ec was set. If not use defaults.
 	var err error
 	if ec == nil && !repair {
-		up.ErasureCode, err = modules.NewRSSubCode(modules.DefaultDataPieces, modules.DefaultParityPieces, 64)
-		if err != nil {
-			return nil, err
-		}
-		ec = up.ErasureCode
+		ec = modules.NewRSSubCodeDefault()
+		up.ErasureCode = ec
 	} else if ec != nil && repair {
 		return nil, errors.New("can't provide erasure code settings when doing repairs")
 	}

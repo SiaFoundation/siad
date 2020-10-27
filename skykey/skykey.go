@@ -45,16 +45,16 @@ const (
 	// skykey ID in *every* skyfile it encrypts.
 	TypePublicID = SkykeyType(0x01)
 
-	// TypePrivateID is a Skykey that uses XChaCha20 that does not
-	// reveal its skykey ID when encrypting Skyfiles. Instead, it marks the skykey
-	// used for encryption by storing an encrypted identifier that can only be
+	// TypePrivateID is a Skykey that uses XChaCha20 that does not reveal its
+	// skykey ID when encrypting Skyfiles. Instead, it marks the skykey used for
+	// encryption by storing an encrypted identifier that can only be
 	// successfully decrypted with the correct skykey.
 	TypePrivateID = SkykeyType(0x02)
 
-	// typeDeletedSkykey is used internally to mark a key as deleted in the skykey
-	// manager. It is different from TypeInvalid because TypeInvalid can be used
-	// to catch other kinds of errors, i.e. accidentally using a Skykey{} with
-	// unset fields will cause an invalid-related error.
+	// typeDeletedSkykey is used internally to mark a key as deleted in the
+	// skykey manager. It is different from TypeInvalid because TypeInvalid can
+	// be used to catch other kinds of errors, i.e. accidentally using a
+	// Skykey{} with unset fields will cause an invalid-related error.
 	typeDeletedSkykey = SkykeyType(0xFF)
 )
 
@@ -424,6 +424,7 @@ func (sk *Skykey) GenerateFileSpecificSubkey() (Skykey, error) {
 func (sk *Skykey) DeriveSubkey(derivation []byte) (Skykey, error) {
 	nonce := sk.Nonce()
 	derivedNonceHash := crypto.HashAll(nonce, derivation)
+	// Truncate the hash to a nonce.
 	derivedNonce := derivedNonceHash[:chacha.XNonceSize]
 
 	return sk.SubkeyWithNonce(derivedNonce)
@@ -503,7 +504,8 @@ func (sk *Skykey) MatchesSkyfileEncryptionID(encryptionID, nonce []byte) (bool, 
 		return false, err
 	}
 
-	// Decrypt the identifier and check that it.
+	// Decrypt the identifier and check that it matches the skyfile encryption
+	// ID specifier.
 	ck, err := encIDSkykey.CipherKey()
 	if err != nil {
 		return false, err

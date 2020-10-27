@@ -41,6 +41,7 @@ variables:
     ./persist
     ./sync
     ./skykey
+    ./skynet
     ./types
   siatest_pkgs: >-
     ./siatest

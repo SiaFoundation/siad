@@ -134,6 +134,7 @@ func TestPersistedEntryMarshalUnmarshal(t *testing.T) {
 		Expiry:   compressedBlockHeight(fastrand.Uint64n(math.MaxUint32)),
 		DataLen:  modules.RegistryDataSize,
 		Revision: fastrand.Uint64n(math.MaxUint64),
+		Type:     persistedEntryType,
 	}
 	fastrand.Read(entry.Key.Key[:])
 	fastrand.Read(entry.Tweak[:])
@@ -258,7 +259,7 @@ func TestSaveEntry(t *testing.T) {
 	}
 
 	// Save it and read the file afterwards.
-	err = r.managedSaveEntry(v, true)
+	err = r.staticSaveEntry(v, true)
 	if err != nil {
 		t.Fatal(err)
 	}
