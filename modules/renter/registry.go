@@ -211,6 +211,7 @@ LOOP:
 		case <-ctx.Done():
 			break LOOP // timeout reached
 		case resp = <-staticResponseChan:
+			println(fmt.Sprintf("response received FOUND: %v ERROR: %v", resp.staticErr == nil && resp.staticSignedRegistryValue != nil, resp.staticErr))
 		}
 
 		// When we get the first response, we initialize the highest rev
