@@ -202,9 +202,11 @@ LOOP:
 			if successfulResponses > 0 {
 				break LOOP
 			}
+			println("highest rev no successful responses yet")
 		default:
 		}
 
+		println("waiting for response...")
 		// If not, or if we don't have a valid response yet, we wait for one.
 		var resp *jobReadRegistryResponse
 		select {
@@ -217,6 +219,7 @@ LOOP:
 		// When we get the first response, we initialize the highest rev
 		// timeout.
 		if responses == 0 {
+			println("response received init highest rev timeout")
 			c, cancel := context.WithTimeout(ctx, useHighestRevDefaultTimeout)
 			defer cancel()
 			useHighestRevCtx = c
@@ -231,6 +234,7 @@ LOOP:
 		}
 
 		// Increment successful responses.
+		println("received successful response")
 		successfulResponses++
 
 		// Remember the response with the highest revision number. We use >=
