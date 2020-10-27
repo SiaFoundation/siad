@@ -21,7 +21,7 @@ const (
 
 // errHostOutdatedProof is returned if the host provides a proof that has a
 // valid signature but is still invalid due to its revision number.
-var errHostOutdatedProof = errors.New("host returned invalid proof")
+var errHostOutdatedProof = errors.New("host returned proof with invalid revision number")
 
 type (
 	// jobUpdateRegistry contains information about a UpdateRegistry query.
