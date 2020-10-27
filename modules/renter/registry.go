@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -188,6 +189,8 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	// receiving the first response, this will be closed to abort the search for
 	// the highest rev number and return the highest one we have so far.
 	useHighestRevCtx := ctx
+	useHighestRevChan := make(chan struct{})
+	var once sync.Once
 
 	var srv modules.SignedRegistryValue
 	responses := 0
@@ -200,6 +203,9 @@ LOOP:
 		select {
 		case <-useHighestRevCtx.Done():
 			if successfulResponses > 0 {
+				once.Do(func() {
+					close(useHighestRevChan)
+				})
 				break LOOP
 			}
 			println("highest rev no successful responses yet")
@@ -210,6 +216,8 @@ LOOP:
 		// If not, or if we don't have a valid response yet, we wait for one.
 		var resp *jobReadRegistryResponse
 		select {
+		case <-useHighestRevChan:
+			break LOOP // using best
 		case <-ctx.Done():
 			break LOOP // timeout reached
 		case resp = <-staticResponseChan:
