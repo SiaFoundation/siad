@@ -1184,6 +1184,8 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 		return
 	}
 
+	println(fmt.Sprintf("WRITE pk: %v datakey: %v", rhp.PublicKey.String(), rhp.DataKey.String()))
+
 	// Update the registry.
 	srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature)
 	err = api.renter.UpdateRegistry(rhp.PublicKey, srv, renter.DefaultRegistryUpdateTimeout)
@@ -1211,6 +1213,8 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 		WriteError(w, Error{"Unable to decode dataKey param: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
+
+	println(fmt.Sprintf("READ pk: %v datakey: %v", spk.String(), dataKey.String()))
 
 	// Read registry.
 	srv, err := api.renter.ReadRegistry(spk, dataKey, renter.DefaultRegistryReadTimeout)
