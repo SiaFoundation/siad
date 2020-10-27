@@ -311,8 +311,9 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	workersLeft := len(workers)
 	responses := 0
 	successfulResponses := 0
+	highestInvalidRevNum := uint64(0)
+	invalidRevNum := false
 
-	var additionalErrs error
 	for successfulResponses < MinUpdateRegistrySuccesses && workersLeft+successfulResponses >= MinUpdateRegistrySuccesses {
 		// Check deadline.
 		var resp *jobUpdateRegistryResponse
@@ -329,17 +330,15 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		// Increment number of responses.
 		responses++
 
-		// Ignore error responses.
+		// Ignore error responses except for invalid revision errors.
 		if resp.staticErr != nil {
-			// If the error was a ErrLowerRevNum, append it. Only do that once.
-			if errors.Contains(resp.staticErr, registry.ErrLowerRevNum) &&
-				!errors.Contains(additionalErrs, registry.ErrLowerRevNum) {
-				additionalErrs = errors.Compose(additionalErrs, registry.ErrLowerRevNum)
-			}
-			// If the error was a ErrSameRevNum, append it. Only do that once.
-			if errors.Contains(resp.staticErr, registry.ErrSameRevNum) &&
-				!errors.Contains(additionalErrs, registry.ErrSameRevNum) {
-				additionalErrs = errors.Compose(additionalErrs, registry.ErrSameRevNum)
+			// If we receive ErrLowerRevNum or ErrSameRevNum, remember the revision number
+			// that was presented as proof. In the end we return the highest one to be able
+			// to determine the next revision number that is save to use.
+			if (errors.Contains(resp.staticErr, registry.ErrLowerRevNum) || errors.Contains(resp.staticErr, registry.ErrSameRevNum)) &&
+				resp.srv.Revision > highestInvalidRevNum {
+				highestInvalidRevNum = resp.srv.Revision
+				invalidRevNum = true
 			}
 			continue
 		}
@@ -348,12 +347,23 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		successfulResponses++
 	}
 
+	// Check for an invalid revision error and return the right error according
+	// to the highest invalid revision we remembered.
+	var err error
+	if invalidRevNum {
+		if highestInvalidRevNum == srv.Revision {
+			err = registry.ErrSameRevNum
+		} else {
+			err = registry.ErrLowerRevNum
+		}
+	}
+
 	// Check if we ran out of workers.
 	if successfulResponses == 0 {
-		return errors.Compose(ErrRegistryUpdateNoSuccessfulUpdates, additionalErrs)
+		return errors.Compose(err, ErrRegistryUpdateNoSuccessfulUpdates)
 	}
 	if successfulResponses < MinUpdateRegistrySuccesses {
-		return errors.Compose(ErrRegistryUpdateInsufficientRedundancy, additionalErrs)
+		return errors.Compose(err, ErrRegistryUpdateInsufficientRedundancy)
 	}
 	return nil
 }

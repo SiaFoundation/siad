@@ -46,6 +46,7 @@ type (
 
 	// jobUpdateRegistryResponse contains the result of a UpdateRegistry query.
 	jobUpdateRegistryResponse struct {
+		srv       *modules.SignedRegistryValue // only sent on ErrLowerRevNum and ErrSameRevNum
 		staticErr error
 	}
 )
@@ -65,6 +66,7 @@ func (j *jobUpdateRegistry) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.renter.tg.Launch(func() {
 		response := &jobUpdateRegistryResponse{
+			srv:       nil,
 			staticErr: errors.Extend(err, ErrJobDiscarded),
 		}
 		select {
@@ -84,9 +86,10 @@ func (j *jobUpdateRegistry) callExecute() {
 	w := j.staticQueue.staticWorker()
 
 	// Prepare a method to send a response asynchronously.
-	sendResponse := func(err error) {
+	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
 		errLaunch := w.renter.tg.Launch(func() {
 			response := &jobUpdateRegistryResponse{
+				srv:       srv,
 				staticErr: err,
 			}
 			select {
@@ -110,21 +113,21 @@ func (j *jobUpdateRegistry) callExecute() {
 		// Report the failure if the host can't provide a signed registry entry
 		// with the error.
 		if err := rv.Verify(j.staticSiaPublicKey.ToPublicKey()); err != nil {
-			sendResponse(err)
+			sendResponse(nil, err)
 			j.staticQueue.callReportFailure(err)
 			return
 		}
 		// If the entry is valid, check if the revision number is actually
 		// invalid.
 		if j.staticSignedRegistryValue.Revision > rv.Revision {
-			sendResponse(errHostOutdatedProof)
+			sendResponse(nil, errHostOutdatedProof)
 			j.staticQueue.callReportFailure(err)
 			return
 		}
-		sendResponse(err)
+		sendResponse(&rv, err)
 		return
 	} else if err != nil {
-		sendResponse(err)
+		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
 		return
 	}
@@ -133,7 +136,7 @@ func (j *jobUpdateRegistry) callExecute() {
 	jobTime := time.Since(start)
 
 	// Send the response and report success.
-	sendResponse(err)
+	sendResponse(nil, nil)
 	j.staticQueue.callReportSuccess()
 
 	// Update the performance stats on the queue.
