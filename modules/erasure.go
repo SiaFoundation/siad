@@ -24,8 +24,8 @@ var (
 		Testing:  1,
 	}).(int)
 
-	// DefaultParityPieces is the number of parity pieces per erasure-coded
-	// chunk used in the renter.
+	// RenterDefaultParityPieces is the number of parity pieces per
+	// erasure-coded chunk used in the renter.
 	RenterDefaultParityPieces = build.Select(build.Var{
 		Dev:      1,
 		Standard: 20,
