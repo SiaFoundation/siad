@@ -4888,6 +4888,40 @@ list of portals.
 standard success or error response. See [standard
 responses](#standard-responses).
 
+## /skynet/registry [GET]
+> curl example
+
+```bash
+curl -A "Sia-Agent" "localhost:9980/skynet/registry?publickey=ed25519%3A69de1a15f17050e6855dd03202eed0cac31fe41865a074a43299ff4a598fe4d2&datakey=3f39b735c705edc2b3b5c5fe465da0de0a0755f5f637a556186f12687225259a
+```
+
+This curl command performs a GET request that fetches a registry entry for a publickey and datakey.  
+### Query String Parameters
+### REQUIRED
+
+**publickey** | SiaPublicKey  
+The public key for which to fetch the entry.
+
+**datakey** | Hash  
+The hash for which to fetch the entry.
+
+### OPTIONAL
+**timeout** || uint64  
+The timeout in seconds. Specifies how long it takes the request to time out
+in case no registry entry can be found. The default is the maximum allowed
+value of 5 minutes. The minimum is 1 second.
+
+### Response
+> JSON Response Example
+
+```go
+{
+  "data": "414141446168453132624d6c715f57663973356b35526d70652d4a4b76566c314b74416d6c70786f4a5f77613241", // []byte
+  "revision": 149, // uint64
+  "signature":  "03bf093a42f4df024c765fbec308a7f083fb6c1dddad485fe73810c39ed0344ff8e0db78e79bbdbad6be9d1410e2f122f58f490ff5edf7b45e3dc9fa7983ba05" // crypto.Signature
+}
+```
+
 ## /skynet/skylink/*skylink* [HEAD]
 > curl example
 
