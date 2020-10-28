@@ -1,7 +1,11 @@
 package renter
 
 import (
+	"context"
+	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -9,48 +13,162 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestPCWS verifies the functionality of the ProjectChunkWorkerSet
+// TestPCWS verifies the functionality of the PCWS.
 func TestPCWS(t *testing.T) {
-	t.Run("gouging", testGouging)
 	t.Run("basic", testBasic)
+	t.Run("newPCWSByRoots", testNewPCWSByRoots)
+	t.Run("gouging", testGouging)
 }
 
+// testBasic verifies the PCWS using a simple setup with a single host, looking
+// for a single sector.
 func testBasic(t *testing.T) {
 	wt, err := newWorkerTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// create a random sector
 	sectorData := fastrand.Bytes(int(modules.SectorSize))
 	sectorRoot := crypto.MerkleRoot(sectorData)
+
+	// create a passthrough EC and a passhtrough cipher key
+	ptec := modules.NewPassthroughErasureCoder()
+	ptck, err := crypto.NewSiaKey(crypto.TypePlain, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// define a helper function that waits for an update
+	waitForUpdate := func(ws *pcwsWorkerState) {
+		ws.mu.Lock()
+		wu := ws.registerForWorkerUpdate()
+		ws.mu.Unlock()
+		select {
+		case <-wu:
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out")
+		}
+	}
+
+	// create PCWS
+	pcws, err := wt.renter.newPCWSByRoots(context.Background(), []crypto.Hash{sectorRoot}, ptec, ptck, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// get the current state update
+	pcws.mu.Lock()
+	ws := pcws.workerState
+	wslt := pcws.workerStateLaunchTime
+	pcws.mu.Unlock()
+
+	// verify launch time was set
+	unset := time.Time{}
+	if wslt == unset {
+		t.Fatal("launch time not set")
+	}
+
+	// register for worker update and wait
+	waitForUpdate(ws)
+
+	// verify resolved and unresolved workers
+	ws.mu.Lock()
+	resolved := ws.resolvedWorkers
+	numResolved := len(ws.resolvedWorkers)
+	numUnresolved := len(ws.unresolvedWorkers)
+	ws.mu.Unlock()
+
+	if numResolved != 1 || numUnresolved != 0 {
+		t.Fatal("unexpected")
+	}
+	if len(resolved[0].pieceIndices) != 0 {
+		t.Fatal("unexpected")
+	}
+
+	// add the sector to the host
 	err = wt.host.AddSector(sectorRoot, sectorData)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// ptec := modules.NewPassthroughErasureCoder()
-	// tpsk, err := crypto.NewSiaKey(crypto.TypePlain, nil)
-	// if err != nil {
-	// 	return nil, errors.AddContext(err, "unable to create plain skykey")
-	// }
-	// pcws, err := r.newPCWSByRoots(ctx, []crypto.Hash{link.MerkleRoot()}, ptec, tpsk, 0)
+	// reset the launch time - allowing us to force a state update
+	pcws.mu.Lock()
+	pcws.workerStateLaunchTime = unset
+	pcws.mu.Unlock()
+	err = pcws.managedTryUpdateWorkerState()
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	// wt.renter.newPCWSByRoots(context.Background(), []crypto.Hash{sectorRoot}, modules.NewPassthroughErasureCoder(), crypto.Hash{}, 0)
+	// get the current worker state (!important)
+	pcws.mu.Lock()
+	ws = pcws.workerState
+	pcws.mu.Unlock()
+
+	// register for worker update and wait
+	waitForUpdate(ws)
+
+	// verify resolved and unresolved workers
+	ws.mu.Lock()
+	resolved = ws.resolvedWorkers
+	ws.mu.Unlock()
+
+	// expect we found sector at index 0
+	if len(resolved) != 1 || len(resolved[0].pieceIndices) != 1 {
+		t.Fatal("unexpected")
+	}
 }
 
-// func testAdvanced() {
-// 	h2, err := rt.addCustomHost(filepath.Join(rt.dir, "host2"), modules.ProductionDependencies)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
+// testNewPCWSByRoots verifies the 'newPCWSByRoots' constructor function and its
+// edge cases
+func testNewPCWSByRoots(t *testing.T) {
+	r := new(Renter)
+	r.staticWorkerPool = new(workerPool)
 
-// 	s1 := fastrand.Bytes(int(modules.SectorSize))
-// 	s2 := fastrand.Bytes(int(modules.SectorSize))
-// 	s3 := fastrand.Bytes(int(modules.SectorSize))
-// 	s4 := fastrand.Bytes(int(modules.SectorSize))
-// 	s5 := fastrand.Bytes(int(modules.SectorSize))
+	// create random roots
+	var root1 crypto.Hash
+	var root2 crypto.Hash
+	fastrand.Read(root1[:])
+	fastrand.Read(root2[:])
+	roots := []crypto.Hash{root1, root2}
 
-// }
+	// create a passthrough EC and a passhtrough cipher key
+	ptec := modules.NewPassthroughErasureCoder()
+	ptck, err := crypto.NewSiaKey(crypto.TypePlain, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify basic case
+	_, err = r.newPCWSByRoots(context.Background(), roots[:1], ptec, ptck, 0)
+	if err != nil {
+		t.Fatal("unexpected")
+	}
+
+	// verify the case where we the amount of roots does not equal num pieces
+	// defined in the erasure coder
+	_, err = r.newPCWSByRoots(context.Background(), roots, ptec, ptck, 0)
+	if err == nil || !strings.Contains(err.Error(), "but erasure coder specifies 1 pieces") {
+		t.Fatal(err)
+	}
+
+	// verify the legacy case where 1-of-N only needs 1 root
+	ec, err := modules.NewRSCode(1, 10)
+	if err != nil {
+		t.Fatal("unexpected")
+	}
+
+	// verify the amount of roots provided **does not** equal num pieces,
+	// usually causing an error
+	if len(roots[:1]) == ec.NumPieces() {
+		t.Fatal("unexpected")
+	}
+	_, err = r.newPCWSByRoots(context.Background(), roots[:1], ec, ptck, 0)
+	if err != nil {
+		t.Fatal("unexpected")
+	}
+}
 
 // testGouging checks that the gouging check is triggering at the right
 // times.
