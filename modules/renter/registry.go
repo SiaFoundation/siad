@@ -187,30 +187,33 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	// when we receive the first response. useHighestRevDefaultTimeout after
 	// receiving the first response, this will be closed to abort the search for
 	// the highest rev number and return the highest one we have so far.
-	useHighestRevCtx := ctx
+	var useHighestRevCtx context.Context
 
-	var srv modules.SignedRegistryValue
+	var srv *modules.SignedRegistryValue
 	responses := 0
-	successfulResponses := 0
 
 LOOP:
 	for responses < len(workers) {
-		// Check if we are supposed to stop and use the highest revision
-		// response.
-		select {
-		case <-useHighestRevCtx.Done():
-			if successfulResponses > 0 {
-				break LOOP
-			}
-		default:
-		}
-
-		// If not, or if we don't have a valid response yet, we wait for one.
+		// Check cancel condition and block for more responses.
 		var resp *jobReadRegistryResponse
-		select {
-		case <-ctx.Done():
-			break LOOP // timeout reached
-		case resp = <-staticResponseChan:
+		if srv != nil {
+			// If we have a successful response already, we wait on both contexts
+			// and the response chan.
+			select {
+			case <-useHighestRevCtx.Done():
+				break LOOP // using best
+			case <-ctx.Done():
+				break LOOP // timeout reached
+			case resp = <-staticResponseChan:
+			}
+		} else {
+			// Otherwise we don't wait on the usehighestRevCtx since we need a
+			// successful response to abort.
+			select {
+			case <-ctx.Done():
+				break LOOP // timeout reached
+			case resp = <-staticResponseChan:
+			}
 		}
 
 		// When we get the first response, we initialize the highest rev
@@ -229,28 +232,25 @@ LOOP:
 			continue
 		}
 
-		// Increment successful responses.
-		successfulResponses++
-
 		// Remember the response with the highest revision number. We use >=
 		// here to also catch the edge case of the initial revision being 0.
-		if resp.staticSignedRegistryValue.Revision >= srv.Revision {
-			srv = *resp.staticSignedRegistryValue
+		if srv == nil || resp.staticSignedRegistryValue.Revision >= srv.Revision {
+			srv = resp.staticSignedRegistryValue
 		}
 	}
 
 	// If we don't have a successful response and also not a response for every
 	// worker, we timed out.
-	if successfulResponses == 0 && responses < len(workers) {
+	if srv == nil && responses < len(workers) {
 		return modules.SignedRegistryValue{}, ErrRegistryLookupTimeout
 	}
 
 	// If we don't have a successful response but received a response from every
 	// worker, we were unable to look up the entry.
-	if successfulResponses == 0 {
+	if srv == nil {
 		return modules.SignedRegistryValue{}, ErrRegistryEntryNotFound
 	}
-	return srv, nil
+	return *srv, nil
 }
 
 // managedUpdateRegistry updates the registries on all workers with the given
