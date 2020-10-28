@@ -4906,7 +4906,7 @@ The public key for which to fetch the entry.
 The hash for which to fetch the entry.
 
 ### OPTIONAL
-**timeout** || uint64  
+**timeout** | uint64  
 The timeout in seconds. Specifies how long it takes the request to time out
 in case no registry entry can be found. The default is the maximum allowed
 value of 5 minutes. The minimum is 1 second.
