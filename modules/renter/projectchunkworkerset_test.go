@@ -16,6 +16,10 @@ import (
 
 // TestPCWS verifies the functionality of the PCWS.
 func TestPCWS(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
 	// create a worker tester
 	wt, err := newWorkerTester(t.Name())
 	if err != nil {

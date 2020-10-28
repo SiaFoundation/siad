@@ -13,13 +13,15 @@ import (
 // TestErasureCode groups all of the tests the three implementations of the
 // erasure code interface, as defined in erasure.go.
 func TestErasureCode(t *testing.T) {
-	t.Run("RSEncode", testRSEncode)
-	t.Run("RSSubCodeRecover", testRSSubCodeRecover)
+	t.Run("RSCode", testRSCode)
+	t.Run("RSSubCode", testRSSubCode)
+	t.Run("Passthrough", testPassthrough)
 	t.Run("UniqueIdentifier", testUniqueIdentifier)
+	t.Run("DefaultConstructors", testDefaultConstructors)
 }
 
-// testRSEncode tests the RSCode EC.
-func testRSEncode(t *testing.T) {
+// testRSCode tests the RSCode EC.
+func testRSCode(t *testing.T) {
 	badParams := []struct {
 		data, parity int
 	}{
@@ -67,55 +69,9 @@ func testRSEncode(t *testing.T) {
 	}
 }
 
-// testUniqueIdentifier checks that different erasure coders produce unique
-// identifiers and that CombinedSiaFilePath also produces unique siapaths using
-// the identifiers.
-func testUniqueIdentifier(t *testing.T) {
-	ec1, err1 := NewRSCode(1, 2)
-	ec2, err2 := NewRSCode(1, 2)
-	ec3, err3 := NewRSCode(1, 3)
-	ec4, err4 := NewRSSubCode(1, 2, 64)
-	ec5 := NewPassthroughErasureCoder()
-	if err := errors.Compose(err1, err2, err3, err4); err != nil {
-		t.Fatal(err)
-	}
-	if ec1.Identifier() != "1+1+2" {
-		t.Error("wrong identifier for ec1")
-	}
-	if ec2.Identifier() != "1+1+2" {
-		t.Error("wrong identifier for ec2")
-	}
-	if ec3.Identifier() != "1+1+3" {
-		t.Error("wrong identifier for ec3")
-	}
-	if ec4.Identifier() != "2+1+2" {
-		t.Error("wrong identifier for ec4")
-	}
-	if ec5.Identifier() != "ECPassthrough" {
-		t.Error("wrong identifier for ec5")
-	}
-	sp1 := CombinedSiaFilePath(ec1)
-	sp2 := CombinedSiaFilePath(ec2)
-	sp3 := CombinedSiaFilePath(ec3)
-	sp4 := CombinedSiaFilePath(ec4)
-	sp5 := CombinedSiaFilePath(ec5)
-	if !sp1.Equals(sp2) {
-		t.Error("sp1 and sp2 should have the same path")
-	}
-	if sp1.Equals(sp3) {
-		t.Error("sp1 and sp3 should have different path")
-	}
-	if sp1.Equals(sp4) {
-		t.Error("sp1 and sp4 should have different path")
-	}
-	if sp1.Equals(sp5) {
-		t.Error("sp1 and sp5 should have different path")
-	}
-}
-
-// testRSSubCodeRecover checks that individual segments of an encoded piece can
-// be recovered.
-func testRSSubCodeRecover(t *testing.T) {
+// testRSSubCode checks that individual segments of an encoded piece can be
+// recovered using the RSSub Code.
+func testRSSubCode(t *testing.T) {
 	segmentSize := crypto.SegmentSize
 	pieceSize := 4096
 	dataPieces := 10
@@ -184,6 +140,141 @@ func testRSSubCodeRecover(t *testing.T) {
 	}
 	if !bytes.Equal(buf.Bytes(), originalData) {
 		t.Fatal("decoded bytes don't equal original data")
+	}
+}
+
+// testPassthrough verifies the functionality of the Passthrough EC.
+func testPassthrough(t *testing.T) {
+	ptec := NewPassthroughErasureCoder()
+
+	if ptec.NumPieces() != 1 {
+		t.Fatal("unexpected")
+	}
+	if ptec.MinPieces() != 1 {
+		t.Fatal("unexpected")
+	}
+
+	data := fastrand.Bytes(777)
+	pieces, err := ptec.Encode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pieces) != 1 {
+		t.Fatal("unexpected amount of pieces")
+	}
+	if !bytes.Equal(pieces[0], data) {
+		t.Fatal("unexpected piece")
+	}
+
+	if ptec.Identifier() != "ECPassthrough" {
+		t.Fatal("unexpected")
+	}
+	pieces = [][]byte{data}
+	encoded, err := ptec.EncodeShards(pieces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pieces) != len(encoded) || len(pieces) != 1 {
+		t.Fatal("unexpected")
+	}
+	if !bytes.Equal(pieces[0], encoded[0]) {
+		t.Fatal("unexpected data")
+	}
+
+	err = ptec.Reconstruct(pieces)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	buf := new(bytes.Buffer)
+	err = ptec.Recover(encoded, uint64(len(data)), buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(buf.Bytes(), data) {
+		t.Fatal("decoded bytes don't equal original data")
+	}
+
+	size, supported := ptec.SupportsPartialEncoding()
+	if !supported || size != crypto.SegmentSize {
+		t.Fatal("unexpected")
+	}
+}
+
+// testUniqueIdentifier checks that different erasure coders produce unique
+// identifiers and that CombinedSiaFilePath also produces unique siapaths using
+// the identifiers.
+func testUniqueIdentifier(t *testing.T) {
+	ec1, err1 := NewRSCode(1, 2)
+	ec2, err2 := NewRSCode(1, 2)
+	ec3, err3 := NewRSCode(1, 3)
+	ec4, err4 := NewRSSubCode(1, 2, 64)
+	ec5, err5 := NewRSCode(1, 1)
+	ec6 := NewPassthroughErasureCoder()
+
+	if err := errors.Compose(err1, err2, err3, err4, err5); err != nil {
+		t.Fatal(err)
+	}
+	if ec1.Identifier() != "1+1+2" {
+		t.Error("wrong identifier for ec1")
+	}
+	if ec2.Identifier() != "1+1+2" {
+		t.Error("wrong identifier for ec2")
+	}
+	if ec3.Identifier() != "1+1+3" {
+		t.Error("wrong identifier for ec3")
+	}
+	if ec4.Identifier() != "2+1+2" {
+		t.Error("wrong identifier for ec4")
+	}
+	if ec5.Identifier() != "1+1+1" {
+		t.Error("wrong identifier for ec5")
+	}
+	if ec6.Identifier() != "ECPassthrough" {
+		t.Error("wrong identifier for ec6")
+	}
+	sp1 := CombinedSiaFilePath(ec1)
+	sp2 := CombinedSiaFilePath(ec2)
+	sp3 := CombinedSiaFilePath(ec3)
+	sp4 := CombinedSiaFilePath(ec4)
+	sp5 := CombinedSiaFilePath(ec5)
+	sp6 := CombinedSiaFilePath(ec6)
+	if !sp1.Equals(sp2) {
+		t.Error("sp1 and sp2 should have the same path")
+	}
+	if sp1.Equals(sp3) {
+		t.Error("sp1 and sp3 should have different path")
+	}
+	if sp1.Equals(sp4) {
+		t.Error("sp1 and sp4 should have different path")
+	}
+	if sp1.Equals(sp5) {
+		t.Error("sp1 and sp5 should have different path")
+	}
+	if sp1.Equals(sp6) {
+		t.Error("sp1 and sp6 should have different path")
+	}
+}
+
+// testDefaultConstructors verifies the default constructor create erasure codes
+// with the correct parameters
+func testDefaultConstructors(t *testing.T) {
+	rs, err := NewRSCode(RenterDefaultDataPieces, RenterDefaultParityPieces)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rsd := NewRSCodeDefault()
+	if rs.Identifier() != rsd.Identifier() {
+		t.Fatal("Unexpected parameters used in default")
+	}
+
+	rss, err := NewRSSubCode(RenterDefaultDataPieces, RenterDefaultParityPieces, crypto.SegmentSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rssd := NewRSSubCodeDefault()
+	if rss.Identifier() != rssd.Identifier() {
+		t.Fatal("Unexpected parameters used in default")
 	}
 }
 
