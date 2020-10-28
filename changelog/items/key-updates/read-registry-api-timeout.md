@@ -1,0 +1,1 @@
+- add timeout param to read registry api call
