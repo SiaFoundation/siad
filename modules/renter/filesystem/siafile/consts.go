@@ -48,8 +48,6 @@ const (
 	CombinedChunkStatusCompleted         // partial chunk is included in a completed combined chunk.
 )
 
-var ()
-
 // marshaledChunkSize is a helper method that returns the size of a chunk on
 // disk given the number of pieces the chunk contains.
 func marshaledChunkSize(numPieces int) int64 {

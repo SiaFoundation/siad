@@ -91,7 +91,7 @@ func testUniqueIdentifier(t *testing.T) {
 	if ec4.Identifier() != "2+1+2" {
 		t.Error("wrong identifier for ec4")
 	}
-	if ec5.Identifier() != "1+1+1" {
+	if ec5.Identifier() != "ECPassthrough" {
 		t.Error("wrong identifier for ec5")
 	}
 	sp1 := CombinedSiaFilePath(ec1)
