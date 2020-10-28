@@ -395,6 +395,13 @@ func (pcws *projectChunkWorkerSet) threadedFindWorkers(allWorkersLaunchedChan ch
 	}
 }
 
+// managedWorkerState returns a pointer to the current worker state object
+func (pcws *projectChunkWorkerSet) managedWorkerState() *pcwsWorkerState {
+	pcws.mu.Lock()
+	defer pcws.mu.Unlock()
+	return pcws.workerState
+}
+
 // managedTryUpdateWorkerState will check whether the worker state needs to be
 // refreshed. If so, it will refresh the worker state.
 func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {

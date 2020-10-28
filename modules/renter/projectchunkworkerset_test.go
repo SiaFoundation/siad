@@ -3,6 +3,7 @@ package renter
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,19 +16,27 @@ import (
 
 // TestPCWS verifies the functionality of the PCWS.
 func TestPCWS(t *testing.T) {
-	t.Run("basic", testBasic)
+	// create a worker tester
+	wt, err := newWorkerTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := wt.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	t.Run("basic", func(t *testing.T) { testBasic(t, wt) })
+	t.Run("multiple", func(t *testing.T) { testMultiple(t, wt) })
 	t.Run("newPCWSByRoots", testNewPCWSByRoots)
 	t.Run("gouging", testGouging)
 }
 
 // testBasic verifies the PCWS using a simple setup with a single host, looking
 // for a single sector.
-func testBasic(t *testing.T) {
-	wt, err := newWorkerTester(t.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-
+func testBasic(t *testing.T, wt *workerTester) {
 	// create a random sector
 	sectorData := fastrand.Bytes(int(modules.SectorSize))
 	sectorRoot := crypto.MerkleRoot(sectorData)
@@ -102,9 +111,7 @@ func testBasic(t *testing.T) {
 	}
 
 	// get the current worker state (!important)
-	pcws.mu.Lock()
-	ws = pcws.workerState
-	pcws.mu.Unlock()
+	ws = pcws.managedWorkerState()
 
 	// register for worker update and wait
 	waitForUpdate(ws)
@@ -117,6 +124,114 @@ func testBasic(t *testing.T) {
 	// expect we found sector at index 0
 	if len(resolved) != 1 || len(resolved[0].pieceIndices) != 1 {
 		t.Fatal("unexpected")
+	}
+}
+
+// testMultiple verifies the PCWS for a multiple sector lookup on multiple
+// hosts.
+func testMultiple(t *testing.T, wt *workerTester) {
+	// create a helper function that adds a host
+	numHosts := 0
+	addHost := func() modules.Host {
+		testdir := filepath.Join(wt.rt.dir, fmt.Sprintf("host%d", numHosts))
+		host, err := wt.rt.addCustomHost(testdir, modules.ProdDependencies)
+		if err != nil {
+			t.Fatal(err)
+		}
+		numHosts++
+		return host
+	}
+
+	// create a helper function that adds a random sector on a given host
+	addSector := func(h modules.Host) crypto.Hash {
+		// create a random sector
+		sectorData := fastrand.Bytes(int(modules.SectorSize))
+		sectorRoot := crypto.MerkleRoot(sectorData)
+
+		// add the sector to the host
+		err := h.AddSector(sectorRoot, sectorData)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sectorRoot
+	}
+
+	// create a helper function that waits for an update
+	waitForUpdate := func(ws *pcwsWorkerState) {
+		ws.mu.Lock()
+		wu := ws.registerForWorkerUpdate()
+		ws.mu.Unlock()
+		select {
+		case <-wu:
+		case <-time.After(5 * time.Second):
+			t.Fatal("timed out")
+		}
+	}
+
+	// create a helper function that compares uint64 slices for equality
+	isEqualTo := func(a, b []uint64) bool {
+		if len(a) != len(b) {
+			return false
+		}
+		for i, v := range a {
+			if v != b[i] {
+				return false
+			}
+		}
+		return true
+	}
+
+	h1 := addHost()
+	h2 := addHost()
+	h3 := addHost()
+
+	h1PK := h1.PublicKey().String()
+	h2PK := h2.PublicKey().String()
+	h3PK := h3.PublicKey().String()
+
+	r1 := addSector(h1)
+	r2 := addSector(h1)
+	r3 := addSector(h2)
+	r4 := addSector(h3)
+	r5 := crypto.MerkleRoot(fastrand.Bytes(int(modules.SectorSize)))
+	roots := []crypto.Hash{r1, r2, r3, r4, r5}
+
+	// create an EC and a passhtrough cipher key
+	ec, err := modules.NewRSCode(1, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ptck, err := crypto.NewSiaKey(crypto.TypePlain, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create PCWS
+	pcws, err := wt.renter.newPCWSByRoots(context.Background(), roots, ec, ptck, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ws := pcws.managedWorkerState()
+	waitForUpdate(ws)
+
+	// fetch piece indices per host
+	ws.mu.Lock()
+	resolved := ws.resolvedWorkers
+	ws.mu.Unlock()
+	for _, rw := range resolved {
+		var expected []uint64
+		switch rw.worker.staticHostPubKeyStr {
+		case h1PK:
+			expected = []uint64{0, 1}
+		case h2PK:
+			expected = []uint64{2}
+		case h3PK:
+			expected = []uint64{3, 4}
+		}
+
+		if !isEqualTo(rw.pieceIndices, expected) {
+			t.Error("unexpected pieces", rw.pieceIndices)
+		}
 	}
 }
 
