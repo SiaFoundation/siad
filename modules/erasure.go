@@ -236,7 +236,8 @@ func (rs *RSCode) Recover(pieces [][]byte, n uint64, w io.Writer) error {
 	return rs.enc.Join(w, pieces, int(n))
 }
 
-// SupportsPartialEncoding returns false for the basic reed-solomon encoder.
+// SupportsPartialEncoding returns false for the basic reed-solomon encoder and
+// a size of 0.
 func (rs *RSCode) SupportsPartialEncoding() (uint64, bool) {
 	return 0, false
 }
@@ -438,7 +439,8 @@ func (rs *RSSubCode) Recover(pieces [][]byte, n uint64, w io.Writer) error {
 	return nil
 }
 
-// SupportsPartialEncoding returns true for the custom reed-solomon encoder.
+// SupportsPartialEncoding returns true for the custom reed-solomon encoder and
+// returns the segment size.
 func (rs *RSSubCode) SupportsPartialEncoding() (uint64, bool) {
 	return crypto.SegmentSize, true
 }
