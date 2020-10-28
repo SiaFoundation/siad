@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -581,10 +582,19 @@ func (c *Client) SkykeySkykeysGet() ([]skykey.Skykey, error) {
 
 // RegistryRead queries the /skynet/registry [GET] endpoint.
 func (c *Client) RegistryRead(spk types.SiaPublicKey, dataKey crypto.Hash) (modules.SignedRegistryValue, error) {
+	return c.RegistryReadWithTimeout(spk, dataKey, 0)
+}
+
+// RegistryReadWithTimeout queries the /skynet/registry [GET] endpoint with the
+// specified timeout.
+func (c *Client) RegistryReadWithTimeout(spk types.SiaPublicKey, dataKey crypto.Hash, timeout time.Duration) (modules.SignedRegistryValue, error) {
 	// Set the values.
 	values := url.Values{}
 	values.Set("publickey", spk.String())
 	values.Set("datakey", dataKey.String())
+	if timeout > 0 {
+		values.Set("timeout", fmt.Sprint(int(timeout.Seconds())))
+	}
 
 	// Send request.
 	var rhg api.RegistryHandlerGET

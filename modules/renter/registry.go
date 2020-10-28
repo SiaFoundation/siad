@@ -15,9 +15,9 @@ import (
 )
 
 var (
-	// DefaultRegistryReadTimeout is the default timeout used when reading from
+	// MaxRegistryReadTimeout is the default timeout used when reading from
 	// the registry.
-	DefaultRegistryReadTimeout = build.Select(build.Var{
+	MaxRegistryReadTimeout = build.Select(build.Var{
 		Dev:      30 * time.Second,
 		Standard: 5 * time.Minute,
 		Testing:  3 * time.Second,
