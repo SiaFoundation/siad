@@ -187,7 +187,7 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	// when we receive the first response. useHighestRevDefaultTimeout after
 	// receiving the first response, this will be closed to abort the search for
 	// the highest rev number and return the highest one we have so far.
-	useHighestRevCtx := ctx
+	var useHighestRevCtx context.Context
 
 	var srv *modules.SignedRegistryValue
 	responses := 0
