@@ -16,16 +16,17 @@ import (
 )
 
 var (
-	// DefaultDataPieces is the number of data pieces per erasure-coded chunk
-	DefaultDataPieces = build.Select(build.Var{
+	// RenterDefaultDataPieces is the number of data pieces per erasure-coded
+	// chunk used in the renter.
+	RenterDefaultDataPieces = build.Select(build.Var{
 		Dev:      1,
 		Standard: 10,
 		Testing:  1,
 	}).(int)
 
 	// DefaultParityPieces is the number of parity pieces per erasure-coded
-	// chunk
-	DefaultParityPieces = build.Select(build.Var{
+	// chunk used in the renter.
+	RenterDefaultParityPieces = build.Select(build.Var{
 		Dev:      1,
 		Standard: 20,
 		Testing:  4,
@@ -124,7 +125,7 @@ func NewRSCode(nData, nParity int) (ErasureCoder, error) {
 // NewRSCodeDefault creates a new Reed-Solomon encoder/decoder using the
 // default parameters.
 func NewRSCodeDefault() ErasureCoder {
-	ec, err := newRSCode(DefaultDataPieces, DefaultParityPieces)
+	ec, err := newRSCode(RenterDefaultDataPieces, RenterDefaultParityPieces)
 	if err != nil {
 		build.Critical("defaults are not accepted")
 	}
@@ -157,7 +158,7 @@ func NewRSSubCode(nData, nParity int, segmentSize uint64) (ErasureCoder, error) 
 // NewRSSubCodeDefault creates a new Reed-Solomon encoder/decoder using the
 // default parameters and the default segment size.
 func NewRSSubCodeDefault() ErasureCoder {
-	ec, err := NewRSSubCode(DefaultDataPieces, DefaultParityPieces, crypto.SegmentSize)
+	ec, err := NewRSSubCode(RenterDefaultDataPieces, RenterDefaultParityPieces, crypto.SegmentSize)
 	if err != nil {
 		build.Critical("defaults are not accepted")
 	}

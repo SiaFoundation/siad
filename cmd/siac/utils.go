@@ -358,7 +358,7 @@ func utilsuploadedsizecmd(path string) {
 	}
 
 	var diskSize, siaSize, lostPercent uint64
-	minFileSize := siatest.ChunkSize(uint64(modules.DefaultDataPieces), crypto.TypeDefaultRenter)
+	minFileSize := siatest.ChunkSize(uint64(modules.RenterDefaultDataPieces), crypto.TypeDefaultRenter)
 
 	for _, size := range fileSizes { // Calc variables here
 		diskSize += size

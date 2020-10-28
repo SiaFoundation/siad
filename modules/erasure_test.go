@@ -259,7 +259,7 @@ func testUniqueIdentifier(t *testing.T) {
 // testDefaultConstructors verifies the default constructor create erasure codes
 // with the correct parameters
 func testDefaultConstructors(t *testing.T) {
-	rs, err := NewRSCode(DefaultDataPieces, DefaultParityPieces)
+	rs, err := NewRSCode(RenterDefaultDataPieces, RenterDefaultParityPieces)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func testDefaultConstructors(t *testing.T) {
 		t.Fatal("Unexpected parameters used in default")
 	}
 
-	rss, err := NewRSSubCode(DefaultDataPieces, DefaultParityPieces, crypto.SegmentSize)
+	rss, err := NewRSSubCode(RenterDefaultDataPieces, RenterDefaultParityPieces, crypto.SegmentSize)
 	if err != nil {
 		t.Fatal(err)
 	}

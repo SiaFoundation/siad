@@ -1893,8 +1893,8 @@ func (api *API) renterUploadReadyHandler(w http.ResponseWriter, req *http.Reques
 	}
 	// Check if we need to set to defaults
 	if dataPieces == 0 && parityPieces == 0 {
-		dataPieces = modules.DefaultDataPieces
-		parityPieces = modules.DefaultParityPieces
+		dataPieces = modules.RenterDefaultDataPieces
+		parityPieces = modules.RenterDefaultParityPieces
 	}
 	contractsNeeded := dataPieces + parityPieces
 
