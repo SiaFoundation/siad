@@ -1359,6 +1359,38 @@ fetches status information about the host.
     "algorithm": "ed25519", // string
     "key":       "RW50cm9weSBpc24ndCB3aGF0IGl0IHVzZWQgdG8gYmU=" // string
   },
+
+"pricetable": {
+  "uid":                        "00000000000000000000000000000000", // types.Specifier
+  "validity":                   60000000000, // time.Duration
+  "hostblockheight":            0, // types.BlockHeight
+
+  "updatepricetablecost":       "1", // types.Currency
+  "accountbalancecost":         "1", // types.Currency
+  "fundaccountcost":            "1", // types.Currency
+  "latestrevisioncost":         "151200000000000000", // types.Currency
+  "initbasecost":               "100000000000000000", // types.Currency
+  "memorytimecost":             "1", // types.Currency
+  "collateralcost":             "0", // types.Currency
+  "downloadbandwidthcost":      "25000000000000", // types.Currency
+  "uploadbandwidthcost":        "1000000000000", // types.Currency
+  "dropsectorsbasecost":        "1", // types.Currency
+  "dropsectorsunitcost":        "1", // types.Currency
+  "hassectorbasecost":          "1", // types.Currency
+  "readbasecost":               "2000000000000000000", // types.Currency
+  "readlengthcost":             "1", // types.Currency
+  "revisionbasecost":           "0", // types.Currency
+  "swapsectorcost":             "1", // types.Currency
+  "writebasecost":              "1", // types.Currency
+  "writelengthcost":            "1", // types.Currency
+  "writestorecost":             "11574074074", // types.Currency
+
+  "txnfeeminrecommended":       "10000000000000000000", // types.Currency
+  "txnfeemaxrecommended":       "30000000000000000000", // types.Currency
+
+  "registryentriesleft":        1024, // uint64
+  "registryentriestotal":       1024, // uint64
+  },
 }
 ```
 **externalsettings**    
@@ -1688,6 +1720,93 @@ the host is being actively used by renters.
 
 **publickey** | SiaPublicKey  
 Public key used to identify the host.
+
+**uid** | types.Specifier  
+UID of the current price table. Only filled in for renters over the
+peer-to-peer protocol. In the API it's always zeros.
+
+**valdity** | time.Duration  
+The duration for which a fresh price table is valid.
+
+**hostblockheight** | types.BlockHeight  
+Blockheight as seen by the host at the last time the table was updated.
+
+**updatepricetablecost** | types.Currency  
+Cost for the UpdatePriceTable RPC.
+
+**accountbalanceCost** | types.Currency  
+Cost for the AccountBalance RPC.
+
+**fundaccountcost** | types.Currency  
+Cost for the FundAccount RPC.
+
+**latestrevisioncost** | types.Currency  
+Cost for the LatestRevision RPC.
+
+**initbasecost** | types.Currency  
+InitBaseCost is the amount of cost that is incurred when an MDM program
+starts to run. This doesn't include the memory used by the program data. The
+total cost to initialize a program is calculated as
+InitCost = InitBaseCost + MemoryTimeCost * Time
+
+**memorytimecost** | types.Currency  
+MemoryTimeCost is the amount of cost per byte per time that is incurred by
+the memory consumption of the program.
+
+**collateralcost** | types.Currency  
+CollateralCost is the amount of money per byte the host is promising to lock
+away as collateral when adding new data to a contract.
+
+**downloadbandwidthcost** | types.Currency  
+Cost per byte of downloading from a host.
+
+**uploadbandwidthcost** | types.Currency  
+Cost per byte of uploading from a host.
+
+**dropsectorbasecost** | types.Currency  
+Base cost of a drop sector MDM instruction.
+
+**dropsectorunitcost** | types.Currency  
+Additional per-sector cost of a drop sector MDM instruction.
+
+**hassectorbasecost** | types.Currency  
+Cost of a has sector MDM instruction.
+
+**readbasecost** | types.Currency  
+Base cost of a read instruction.
+
+**readlengthcost** | types.Currency  
+Additional per-byte cost of a read instruction.
+
+**revisionbasecost** | types.Currency  
+Cost of a revision instruction.
+
+**swapsectorcost** | types.Currency  
+Cost of swapping 2 sectors with a swap sector instruction.
+
+**writebasecost** | types.Currency  
+Base cost of a write instruction.
+
+**writelengthcost** | types.Currency  
+Additional per-byte cost of a write instruction.
+
+**writestorecost** | types.Currency  
+Addition per-byte per-block cost of a write instruction. Only applies to
+adding new data, not overwriting data.
+
+**txnfeeminrecommended** | types.Currency  
+Minimum per-byte txnfee recommendation as seen by the host's transaction
+pool.
+
+**txnfeemaxrecommended** | types.Currency  
+Maximum per-byte txnfee recommendation as seen by the host's transaction
+pool.
+
+**registryentriesleft** | uint64  
+number of registry entries not in use.
+
+**registryentriestotal** | uint64  
+total number of registry entries the host has allocated.
 
 ## /host/bandwidth [GET]
 > curl example
