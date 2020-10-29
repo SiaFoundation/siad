@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 
@@ -28,6 +29,12 @@ type (
 
 		staticResponseChan chan *jobReadResponse // Channel to send a response down
 
+		// staticSector can be set by the caller. This field is set in the job
+		// response so that upon getting the response the caller knows which job
+		// was completed.
+		staticSector crypto.Hash
+		staticWorker *worker
+
 		*jobGeneric
 	}
 
@@ -50,8 +57,13 @@ type (
 
 	// jobReadResponse contains the result of a hasSector query.
 	jobReadResponse struct {
+		// The response data.
 		staticData []byte
 		staticErr  error
+
+		// Metadata related to the job query.
+		staticSectorRoot crypto.Hash
+		staticWorker     *worker
 	}
 )
 
@@ -61,6 +73,10 @@ func (j *jobRead) callDiscard(err error) {
 	errLaunch := w.renter.tg.Launch(func() {
 		response := &jobReadResponse{
 			staticErr: errors.Extend(err, ErrJobDiscarded),
+
+			staticSectorRoot: j.staticSector,
+
+			staticWorker: w,
 		}
 		select {
 		case j.staticResponseChan <- response:
@@ -85,6 +101,10 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 	response := &jobReadResponse{
 		staticData: readData,
 		staticErr:  readErr,
+
+		staticSectorRoot: j.staticSector,
+
+		staticWorker: w,
 	}
 	err := w.renter.tg.Launch(func() {
 		select {
@@ -134,12 +154,9 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 
 // callExpectedBandwidth returns the bandwidth that gets consumed by a
 // Read program.
-//
-// TODO: These values are overly conservative, once we've got the protocol more
-// optimized we can bring these down.
 func (j *jobRead) callExpectedBandwidth() (ul, dl uint64) {
-	ul = 1 << 15                                      // 32 KiB
-	dl = uint64(float64(j.staticLength)*1.01) + 1<<14 // (readSize * 1.01 + 16 KiB)
+	ul = 1 << 12                                      // 4 KiB
+	dl = uint64(float64(j.staticLength)*1.01) + 1<<12 // (readSize * 1.01 + 4 KiB)
 	return
 }
 
@@ -180,7 +197,19 @@ func (j *jobRead) managedRead(w *worker, program modules.Program, programData []
 	return responses, nil
 }
 
-// callAverageJobTime will return the recent performance of the worker
+// callAddWithEstimate will add a job to the job read queue while providing an
+// estimate for when the job is expected to return.
+func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) {
+	// TODO: Do the add and the time estimation under the same lock, so that the
+	// estimate cannot be front-run by another job.
+	estimate := jq.callExpectedJobTime(j.staticLength)
+	if !jq.callAdd(j) {
+		return time.Time{}, false
+	}
+	return time.Now().Add(estimate), true
+}
+
+// callExpectedJobTime will return the recent performance of the worker
 // attempting to complete read jobs. The call distinguishes based on the
 // size of the job, breaking the jobs into 3 categories: less than 64kb, less
 // than 1mb, and up to a full sector in size.
@@ -188,7 +217,9 @@ func (j *jobRead) managedRead(w *worker, program modules.Program, programData []
 // The breakout is performed because low latency, low throughput workers are
 // common, and will have very different performance characteristics across the
 // three categories.
-func (jq *jobReadQueue) callAverageJobTime(length uint64) time.Duration {
+//
+// TODO: Make this smarter.
+func (jq *jobReadQueue) callExpectedJobTime(length uint64) time.Duration {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	if length <= 1<<16 {
@@ -198,6 +229,14 @@ func (jq *jobReadQueue) callAverageJobTime(length uint64) time.Duration {
 	} else {
 		return time.Duration(jq.weightedJobTime4m / jq.weightedJobsCompleted4m)
 	}
+}
+
+// callExpectedJobCost returns an estimate for the price of performing a read
+// job with the given length.
+//
+// TODO: I am not sure the best way to estmiate a job cost.
+func (jq *jobReadQueue) callExpectedJobCost(length uint64) types.Currency {
+	return types.SiacoinPrecision
 }
 
 // initJobReadQueue will initialize a queue for downloading sectors by

@@ -33,12 +33,6 @@ type (
 		// jobs that we have submitted for the worker.
 		atomicReadDataOutstanding  uint64
 		atomicWriteDataOutstanding uint64
-
-		// The read data limit and the write data limit define how much work is
-		// allowed to be outstanding before new jobs will be blocked from being
-		// launched async.
-		atomicReadDataLimit  uint64
-		atomicWriteDataLimit uint64
 	}
 )
 
@@ -137,6 +131,13 @@ func (w *worker) externTryLaunchSerialJob() {
 // externLaunchAsyncJob accepts a function to retrieve a job and then uses that
 // to retrieve a job and launch it. The bandwidth consumption will be updated as
 // the job starts and finishes.
+//
+// TODO: Subtracting like this means that large amounts of data outstanding get
+// subtracted all at once, instead of progressively. Subtracting progressively
+// is a bit trickier though because the host may actually send more or less data
+// than expected (the amounts per job are estimates), and when everything is
+// done we would need to ensure that exactly the amount estimated was removed
+// from the counter.
 func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 	// Add the resource requirements to the worker loop state. Also add this
 	// thread to the number of jobs running.
@@ -168,36 +169,10 @@ func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 	return true
 }
 
-// externTryLaunchAsyncJob will look at the async jobs which are in the worker
-// queue and attempt to launch any that are ready. The job launcher will fail if
-// the price table is out of date or if the worker account is empty.
-//
-// The job launcher will also fail if the worker has too much work in jobs
-// already queued. Every time a job is launched, a bandwidth estimate is made.
-// The worker will not allow more than a certain amount of bandwidth to be
-// queued at once to prevent jobs from being spread too thin and sharing too
-// much bandwidth.
-func (w *worker) externTryLaunchAsyncJob() bool {
-	// Verify that the worker has not reached its limits for doing multiple
-	// jobs at once.
-	readLimit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
-	writeLimit := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataLimit)
-	readOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
-	writeOutstanding := atomic.LoadUint64(&w.staticLoopState.atomicWriteDataOutstanding)
-	if readOutstanding > readLimit || writeOutstanding > writeLimit {
-		// Worker does not need to discard jobs, it is making progress, it's
-		// just not launching any new jobs until its current jobs finish up.
-		return false
-	}
-
-	// Perform a disrupt for testing. This is some code that ensures async job
-	// launches are controlled correctly. The disrupt operates on a mock worker,
-	// so it needs to happen after the ratelimit checks but before the cache,
-	// price table, and account checks.
-	if w.renter.deps.Disrupt("TestAsyncJobLaunches") {
-		return true
-	}
-
+// managedAsyncReady will return 'false' if any of the key requirements for
+// performing async work have not been met. 'true' will be returned if the
+// worker is ready for async work.
+func (w *worker) managedAsyncReady() bool {
 	// Hosts that do not support the async protocol cannot do async jobs.
 	cache := w.staticCache()
 	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
@@ -216,6 +191,31 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		w.managedDiscardAsyncJobs(errors.New("the worker account is on cooldown"))
 		return false
 	}
+	return true
+}
+
+// externTryLaunchAsyncJob will look at the async jobs which are in the worker
+// queue and attempt to launch any that are ready. The job launcher will fail if
+// the price table is out of date or if the worker account is empty.
+//
+// The job launcher will also fail if the worker has too much work in jobs
+// already queued. Every time a job is launched, a bandwidth estimate is made.
+// The worker will not allow more than a certain amount of bandwidth to be
+// queued at once to prevent jobs from being spread too thin and sharing too
+// much bandwidth.
+func (w *worker) externTryLaunchAsyncJob() bool {
+	// Perform a disrupt for testing. This is some code that ensures async job
+	// launches are controlled correctly. The disrupt operates on a mock worker,
+	// so it needs to happen after the ratelimit checks but before the cache,
+	// price table, and account checks.
+	if w.renter.deps.Disrupt("TestAsyncJobLaunches") {
+		return true
+	}
+
+	// Exit if the worker is not currently equipped to perform async tasks.
+	if !w.managedAsyncReady() {
+		return false
+	}
 
 	// Check every potential async job that can be launched.
 	job := w.staticJobHasSectorQueue.callNext()
@@ -224,6 +224,7 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		return true
 	}
 	// Check if registry jobs are supported.
+	cache := w.staticCache()
 	if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) >= 0 {
 		job = w.staticJobUpdateRegistryQueue.callNext()
 		if job != nil {

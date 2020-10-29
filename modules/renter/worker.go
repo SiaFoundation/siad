@@ -184,14 +184,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		staticAccount:       account,
 		staticBalanceTarget: balanceTarget,
 
-		// Initialize the read and write limits for the async worker tasks.
-		// These may be updated in real time as the worker collects metrics
-		// about itself.
-		staticLoopState: &workerLoopState{
-			atomicReadDataLimit:  initialConcurrentAsyncReadData,
-			atomicWriteDataLimit: initialConcurrentAsyncWriteData,
-		},
-
+		staticLoopState:        new(workerLoopState),
 		staticMaintenanceState: new(workerMaintenanceState),
 
 		killChan: make(chan struct{}),
