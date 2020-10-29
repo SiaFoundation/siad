@@ -14,7 +14,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
@@ -151,7 +150,7 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 		dataPieces = 1
 	}
 	parityPieces := allowance.Hosts - dataPieces
-	ec, err := siafile.NewRSSubCode(int(dataPieces), int(parityPieces), crypto.SegmentSize)
+	ec, err := modules.NewRSSubCode(int(dataPieces), int(parityPieces), crypto.SegmentSize)
 	if err != nil {
 		return err
 	}

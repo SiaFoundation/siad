@@ -178,56 +178,6 @@ type (
 	}
 )
 
-type (
-	// ErasureCoderType is an identifier for the individual types of erasure
-	// coders.
-	ErasureCoderType [4]byte
-
-	// ErasureCoderIdentifier is an identifier that only matches another
-	// ErasureCoder's identifier if they both are of the same type and settings.
-	ErasureCoderIdentifier string
-
-	// An ErasureCoder is an error-correcting encoder and decoder.
-	ErasureCoder interface {
-		// NumPieces is the number of pieces returned by Encode.
-		NumPieces() int
-
-		// MinPieces is the minimum number of pieces that must be present to
-		// recover the original data.
-		MinPieces() int
-
-		// Encode splits data into equal-length pieces, with some pieces
-		// containing parity data.
-		Encode(data []byte) ([][]byte, error)
-
-		// Identifier returns the ErasureCoderIdentifier of the ErasureCoder.
-		Identifier() ErasureCoderIdentifier
-
-		// EncodeShards encodes the input data like Encode but accepts an already
-		// sharded input.
-		EncodeShards(data [][]byte) ([][]byte, error)
-
-		// Reconstruct recovers the full set of encoded shards from the provided
-		// pieces, of which at least MinPieces must be non-nil.
-		Reconstruct(pieces [][]byte) error
-
-		// Recover recovers the original data from pieces and writes it to w.
-		// pieces should be identical to the slice returned by Encode (length and
-		// order must be preserved), but with missing elements set to nil. n is
-		// the number of bytes to be written to w; this is necessary because
-		// pieces may have been padded with zeros during encoding.
-		Recover(pieces [][]byte, n uint64, w io.Writer) error
-
-		// SupportsPartialEncoding returns true if the ErasureCoder can be used
-		// to encode/decode any crypto.SegmentSize bytes of an encoded piece or
-		// false otherwise.
-		SupportsPartialEncoding() bool
-
-		// Type returns the type identifier of the ErasureCoder.
-		Type() ErasureCoderType
-	}
-)
-
 // An Allowance dictates how much the Renter is allowed to spend in a given
 // period. Note that funds are spent on both storage and bandwidth.
 //

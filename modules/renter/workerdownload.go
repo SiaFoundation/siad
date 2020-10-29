@@ -28,7 +28,7 @@ const (
 func segmentsForRecovery(chunkFetchOffset, chunkFetchLength uint64, rs modules.ErasureCoder) (uint64, uint64) {
 	// If partialDecoding is not available we need to download the whole
 	// sector.
-	if !rs.SupportsPartialEncoding() {
+	if _, supported := rs.SupportsPartialEncoding(); !supported {
 		return 0, uint64(modules.SectorSize) / crypto.SegmentSize
 	}
 	// Else we need to figure out what segments of the piece we need to
