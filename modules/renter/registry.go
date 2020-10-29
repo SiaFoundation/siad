@@ -3,7 +3,6 @@ package renter
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -312,8 +311,9 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	workersLeft := len(workers)
 	responses := 0
 	successfulResponses := 0
+	highestInvalidRevNum := uint64(0)
+	invalidRevNum := false
 
-	var additionalErrs error
 	for successfulResponses < MinUpdateRegistrySuccesses && workersLeft+successfulResponses >= MinUpdateRegistrySuccesses {
 		// Check deadline.
 		var resp *jobUpdateRegistryResponse
@@ -330,11 +330,15 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		// Increment number of responses.
 		responses++
 
-		// Ignore error responses.
+		// Ignore error responses except for invalid revision errors.
 		if resp.staticErr != nil {
-			if strings.Contains(resp.staticErr.Error(), registry.ErrLowerRevNum.Error()) ||
-				strings.Contains(resp.staticErr.Error(), registry.ErrSameRevNum.Error()) {
-				additionalErrs = errors.Compose(additionalErrs, resp.staticErr)
+			// If we receive ErrLowerRevNum or ErrSameRevNum, remember the revision number
+			// that was presented as proof. In the end we return the highest one to be able
+			// to determine the next revision number that is save to use.
+			if (errors.Contains(resp.staticErr, registry.ErrLowerRevNum) || errors.Contains(resp.staticErr, registry.ErrSameRevNum)) &&
+				resp.srv.Revision > highestInvalidRevNum {
+				highestInvalidRevNum = resp.srv.Revision
+				invalidRevNum = true
 			}
 			continue
 		}
@@ -343,12 +347,23 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		successfulResponses++
 	}
 
+	// Check for an invalid revision error and return the right error according
+	// to the highest invalid revision we remembered.
+	var err error
+	if invalidRevNum {
+		if highestInvalidRevNum == srv.Revision {
+			err = registry.ErrSameRevNum
+		} else {
+			err = registry.ErrLowerRevNum
+		}
+	}
+
 	// Check if we ran out of workers.
 	if successfulResponses == 0 {
-		return errors.Compose(ErrRegistryUpdateNoSuccessfulUpdates, additionalErrs)
+		return errors.Compose(err, ErrRegistryUpdateNoSuccessfulUpdates)
 	}
 	if successfulResponses < MinUpdateRegistrySuccesses {
-		return errors.Compose(ErrRegistryUpdateInsufficientRedundancy, additionalErrs)
+		return errors.Compose(err, ErrRegistryUpdateInsufficientRedundancy)
 	}
 	return nil
 }
