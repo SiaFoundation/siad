@@ -115,7 +115,7 @@ func (m *projectDownloadByRootManager) managedAverageProjectTime(length uint64) 
 // memory from the memory manager.
 func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64) ([]byte, error) {
 	// Check if the merkleroot is blocked
-	if r.staticSkynetBlocklist.IsHashBlocked(root) {
+	if r.staticSkynetBlocklist.IsHashBlocked(crypto.HashObject(root)) {
 		return nil, ErrSkylinkBlocked
 	}
 

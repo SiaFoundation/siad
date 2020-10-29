@@ -1469,7 +1469,6 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup) {
 		t.Fatal(err)
 	}
 
-	// SeveyTODO: add to blocklist test
 	// Download the base sector
 	reader, err := r.SkynetDownloadByRootGet(sshp.MerkleRoot, 0, modules.SectorSize, -1)
 	if err != nil {
@@ -1808,6 +1807,24 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 	_, _, err = r.SkynetSkylinkGet(skylink)
 	if err == nil {
 		t.Fatal("Download should have failed")
+	}
+	if !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
+		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlocked, err)
+	}
+
+	// Try to download the BaseSector
+	_, err = r.SkynetBaseSectorGet(skylink)
+	if err == nil {
+		t.Fatal("BaseSector request should have failed")
+	}
+	if !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
+		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlocked, err)
+	}
+
+	// Try to download the BaseSector
+	_, err = r.SkynetDownloadByRootGet(sshp.MerkleRoot, 0, modules.SectorSize, -1)
+	if err == nil {
+		t.Fatal("DownloadByRoot request should have failed")
 	}
 	if !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
 		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlocked, err)
