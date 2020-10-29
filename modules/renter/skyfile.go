@@ -660,7 +660,7 @@ func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Durat
 	// Check if the base sector is encrypted, and attempt to decrypt it.
 	// This will fail if we don't have the decryption key.
 	var fileSpecificSkykey skykey.Skykey
-	if isEncryptedBaseSector(baseSector) {
+	if skynet.IsEncryptedBaseSector(baseSector) {
 		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
 		if err != nil {
 			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "Unable to decrypt skyfile base sector")
@@ -746,7 +746,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
 	var fileSpecificSkykey skykey.Skykey
-	encrypted := isEncryptedBaseSector(baseSector)
+	encrypted := skynet.IsEncryptedBaseSector(baseSector)
 	if encrypted {
 		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
 		if err != nil {

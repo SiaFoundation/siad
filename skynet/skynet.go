@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 
+	"github.com/aead/chacha20/chacha"
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -24,6 +25,10 @@ const (
 	// layoutKeyDataSize is the size of the key-data field in a skyfileLayout.
 	layoutKeyDataSize = 64
 )
+
+// BaseSectorNonceDerivation is the specifier used to derive a nonce for base
+// sector encryption
+var BaseSectorNonceDerivation = types.NewSpecifier("BaseSectorNonce")
 
 // FanoutNonceDerivation is the specifier used to derive a nonce for
 // fanout encryption.
@@ -123,6 +128,77 @@ func DecodeFanout(sl SkyfileLayout, fanoutBytes []byte) (piecesPerChunk, chunkRo
 	return
 }
 
+// DecryptBaseSector attempts to decrypt the baseSector. If it has the necessary
+// Skykey, it will decrypt the baseSector in-place.It returns the file-specific
+// skykey to be used for decrypting the rest of the associated skyfile.
+func DecryptBaseSector(baseSector []byte, sk skykey.Skykey) (skykey.Skykey, error) {
+	// Sanity check - baseSector should not be more than modules.SectorSize.
+	// Note that the base sector may be smaller in the event of a packed
+	// skyfile.
+	if uint64(len(baseSector)) > modules.SectorSize {
+		build.Critical("decryptBaseSector given a baseSector that is too large")
+		return skykey.Skykey{}, errors.New("baseSector too large")
+	}
+	var sl SkyfileLayout
+	sl.Decode(baseSector)
+
+	if !IsEncryptedLayout(sl) {
+		build.Critical("Expected layout to be marked as encrypted!")
+	}
+
+	// Get the nonce to be used for getting private-id skykeys, and for deriving the
+	// file-specific skykey.
+	nonce := make([]byte, chacha.XNonceSize)
+	copy(nonce[:], sl.KeyData[skykey.SkykeyIDLen:skykey.SkykeyIDLen+chacha.XNonceSize])
+
+	// Grab the key ID from the layout.
+	var keyID skykey.SkykeyID
+	copy(keyID[:], sl.KeyData[:skykey.SkykeyIDLen])
+
+	// Derive the file-specific key.
+	fileSkykey, err := sk.SubkeyWithNonce(nonce)
+	if err != nil {
+		return skykey.Skykey{}, errors.AddContext(err, "Unable to derive file-specific subkey")
+	}
+
+	// Derive the base sector subkey and use it to decrypt the base sector.
+	baseSectorKey, err := fileSkykey.DeriveSubkey(BaseSectorNonceDerivation[:])
+	if err != nil {
+		return skykey.Skykey{}, errors.AddContext(err, "Unable to derive baseSector subkey")
+	}
+
+	// Get the cipherkey.
+	ck, err := baseSectorKey.CipherKey()
+	if err != nil {
+		return skykey.Skykey{}, errors.AddContext(err, "Unable to get baseSector cipherkey")
+	}
+
+	_, err = ck.DecryptBytesInPlace(baseSector, 0)
+	if err != nil {
+		return skykey.Skykey{}, errors.New("Error decrypting baseSector for download")
+	}
+
+	// Save the visible-by-default fields of the baseSector's layout.
+	version := sl.Version
+	cipherType := sl.CipherType
+	var keyData [64]byte
+	copy(keyData[:], sl.KeyData[:])
+
+	// Decode the now decrypted layout.
+	sl.Decode(baseSector)
+
+	// Reset the visible-by-default fields.
+	// (They were turned into random values by the decryption)
+	sl.Version = version
+	sl.CipherType = cipherType
+	copy(sl.KeyData[:], keyData[:])
+
+	// Now re-copy the decrypted layout into the decrypted baseSector.
+	copy(baseSector[:SkyfileLayoutSize], sl.Encode())
+
+	return fileSkykey, nil
+}
+
 // DeriveFanoutKey returns the crypto.CipherKey that should be used for
 // decrypting the fanout stream from the skyfile stored using this layout.
 func DeriveFanoutKey(sl *SkyfileLayout, fileSkykey skykey.Skykey) (crypto.CipherKey, error) {
@@ -136,6 +212,20 @@ func DeriveFanoutKey(sl *SkyfileLayout, fileSkykey skykey.Skykey) (crypto.Cipher
 		return nil, errors.AddContext(err, "Error deriving skykey subkey")
 	}
 	return fanoutSkykey.CipherKey()
+}
+
+// IsEncryptedBaseSector returns true if and only if the the baseSector is
+// encrypted.
+func IsEncryptedBaseSector(baseSector []byte) bool {
+	var sl SkyfileLayout
+	sl.Decode(baseSector)
+	return IsEncryptedLayout(sl)
+}
+
+// IsEncryptedLayout returns true if and only if the the layout indicates that
+// it is from an encrypted base sector.
+func IsEncryptedLayout(sl SkyfileLayout) bool {
+	return sl.Version == 1 && sl.CipherType == crypto.TypeXChaCha20
 }
 
 // ParseSkyfileMetadata will pull the metadata (including layout and fanout) out
