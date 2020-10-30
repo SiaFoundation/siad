@@ -26,10 +26,10 @@ func (r *Renter) deriveFanoutKey(sl *skynet.SkyfileLayout, fileSkykey skykey.Sky
 // checkSkyfileEncryptionIDMatch tries to find a Skykey that can decrypt the
 // identifier and be used for decrypting the associated skyfile. It returns an
 // error if it is not found.
-func (r *Renter) checkSkyfileEncryptionIDMatch(encryptionIdentifer []byte, nonce []byte) (skykey.Skykey, error) {
+func (r *Renter) checkSkyfileEncryptionIDMatch(encryptionIdentifier []byte, nonce []byte) (skykey.Skykey, error) {
 	allSkykeys := r.staticSkykeyManager.Skykeys()
 	for _, sk := range allSkykeys {
-		matches, err := sk.MatchesSkyfileEncryptionID(encryptionIdentifer, nonce)
+		matches, err := sk.MatchesSkyfileEncryptionID(encryptionIdentifier, nonce)
 		if err != nil {
 			r.log.Debugln("SkykeyEncryptionID match err", err)
 			continue

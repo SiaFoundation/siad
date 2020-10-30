@@ -114,11 +114,12 @@ func (w *worker) externTryLaunchSerialJob() {
 		w.externLaunchSerialJob(w.managedRefillAccount)
 		return
 	}
-	if w.staticFetchBackupsJobQueue.managedHasJob() {
-		w.externLaunchSerialJob(w.managedPerformFetchBackupsJob)
+	job := w.staticJobDownloadSnapshotQueue.callNext()
+	if job != nil {
+		w.externLaunchSerialJob(job.callExecute)
 		return
 	}
-	job := w.staticJobUploadSnapshotQueue.callNext()
+	job = w.staticJobUploadSnapshotQueue.callNext()
 	if job != nil {
 		w.externLaunchSerialJob(job.callExecute)
 		return
@@ -284,10 +285,10 @@ func (w *worker) threadedWorkLoop() {
 	// Upon shutdown, release all jobs.
 	defer w.managedKillUploading()
 	defer w.managedKillDownloading()
-	defer w.managedKillFetchBackupsJobs()
 	defer w.staticJobHasSectorQueue.callKill()
 	defer w.staticJobUpdateRegistryQueue.callKill()
 	defer w.staticJobReadQueue.callKill()
+	defer w.staticJobDownloadSnapshotQueue.callKill()
 	defer w.staticJobUploadSnapshotQueue.callKill()
 
 	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) >= 0 {

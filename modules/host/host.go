@@ -605,6 +605,13 @@ func (h *Host) BandwidthCounters() (uint64, uint64, time.Time, error) {
 	return writeBytes, readBytes, startTime, nil
 }
 
+// PriceTable returns the host's current price table.
+func (h *Host) PriceTable() modules.RPCPriceTable {
+	pt := h.staticPriceTables.current
+	pt.Validity = rpcPriceGuaranteePeriod
+	return pt
+}
+
 // WorkingStatus returns the working state of the host, where working is
 // defined as having received more than workingStatusThreshold settings calls
 // over the period of workingStatusFrequency.
@@ -763,6 +770,14 @@ func (h *Host) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPu
 		return modules.SignedRegistryValue{}, err
 	}
 	defer h.tg.Done()
+	// On disrupt, return the most recent known value if it exists. Otherwise it
+	// will add the value.
+	if h.dependencies.Disrupt("RegistryUpdateLyingHost") {
+		srv, found := h.staticRegistry.Get(pubKey, rv.Tweak)
+		if found {
+			return srv, registry.ErrSameRevNum
+		}
+	}
 	return h.staticRegistry.Update(rv, pubKey, expiry)
 }
 

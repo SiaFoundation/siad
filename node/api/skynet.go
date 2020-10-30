@@ -132,7 +132,6 @@ type (
 	// RegistryHandlerGET is the response returned by the registryHandlerGET
 	// handler.
 	RegistryHandlerGET struct {
-		Tweak     string `json:"tweak"`
 		Data      string `json:"data"`
 		Revision  uint64 `json:"revision"`
 		Signature string `json:"signature"`
@@ -142,7 +141,7 @@ type (
 	// /skynet/registry [POST].
 	RegistryHandlerRequestPOST struct {
 		PublicKey types.SiaPublicKey `json:"publickey"`
-		FileID    modules.FileID     `json:"fileid"`
+		DataKey   crypto.Hash        `json:"datakey"`
 		Revision  uint64             `json:"revision"`
 		Signature crypto.Signature   `json:"signature"`
 		Data      []byte             `json:"data"`
@@ -1303,23 +1302,8 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 		return
 	}
 
-	// Check the version of the FileID object.
-	// TODO: add more sophisticated checks in the future. e.g. type, permissions
-	// etc.
-	if rhp.FileID.Version != modules.FileIDVersion {
-		WriteError(w, Error{fmt.Sprintf("Unexpected FileID version '%v' != '%v'", rhp.FileID.Version, modules.FileIDVersion)}, http.StatusBadRequest)
-		return
-	}
-
-	// Compute the tweak.
-	tweak, err := rhp.FileID.Tweak()
-	if err != nil {
-		WriteError(w, Error{"Failed to compute tweak: " + err.Error()}, http.StatusInternalServerError)
-		return
-	}
-
 	// Update the registry.
-	srv := modules.NewSignedRegistryValue(tweak, rhp.Data, rhp.Revision, rhp.Signature)
+	srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature)
 	err = api.renter.UpdateRegistry(rhp.PublicKey, srv, renter.DefaultRegistryUpdateTimeout)
 	if err != nil {
 		WriteError(w, Error{"Unable to update the registry: " + err.Error()}, http.StatusBadRequest)
@@ -1338,27 +1322,32 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 		return
 	}
 
-	// Parse tweak.
-	fileIDBytes, err := hex.DecodeString(req.FormValue("fileid"))
+	// Parse datakey.
+	var dataKey crypto.Hash
+	err = dataKey.LoadString(req.FormValue("datakey"))
 	if err != nil {
-		WriteError(w, Error{"Unable to decode fileid param: " + err.Error()}, http.StatusBadRequest)
-		return
-	}
-	// Decode fileid.
-	var fileID modules.FileID
-	err = json.Unmarshal(fileIDBytes, &fileID)
-	if err != nil {
-		WriteError(w, Error{"Unable to json decode fileid param: " + err.Error()}, http.StatusBadRequest)
-		return
-	}
-	// Compute tweak.
-	tweak, err := fileID.Tweak()
-	if err != nil {
-		WriteError(w, Error{"Unable to compute tweak: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"Unable to decode dataKey param: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 
-	srv, err := api.renter.ReadRegistry(spk, tweak, renter.DefaultRegistryReadTimeout)
+	// Parse the timeout.
+	timeout := renter.MaxRegistryReadTimeout
+	timeoutStr := req.FormValue("timeout")
+	if timeoutStr != "" {
+		timeoutInt, err := strconv.Atoi(timeoutStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		timeout = time.Duration(timeoutInt) * time.Second
+		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
+			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Read registry.
+	srv, err := api.renter.ReadRegistry(spk, dataKey, timeout)
 	if errors.Contains(err, renter.ErrRegistryEntryNotFound) {
 		WriteError(w, Error{"Unable to read from the registry: " + err.Error()}, http.StatusNotFound)
 		return
@@ -1374,7 +1363,6 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 
 	// Send response.
 	WriteJSON(w, RegistryHandlerGET{
-		Tweak:     hex.EncodeToString(srv.Tweak[:]),
 		Data:      hex.EncodeToString(srv.Data),
 		Revision:  srv.Revision,
 		Signature: hex.EncodeToString(srv.Signature[:]),

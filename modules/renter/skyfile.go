@@ -117,7 +117,7 @@ func fileUploadParamsFromLUP(lup modules.SkyfileUploadParameters) (modules.FileU
 	// encryption. This should cause all of the pieces to have the same Merkle
 	// root, which is critical to making the file discoverable to viewnodes and
 	// also resilient to host failures.
-	ec, err := siafile.NewRSSubCode(1, int(lup.BaseChunkRedundancy)-1, crypto.SegmentSize)
+	ec, err := modules.NewRSSubCode(1, int(lup.BaseChunkRedundancy)-1, crypto.SegmentSize)
 	if err != nil {
 		return modules.FileUploadParams{}, errors.AddContext(err, "unable to create erasure coder")
 	}
@@ -468,7 +468,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParamete
 	// through the 'managedUploadSkyfile' command, a 1-of-N scheme is always
 	// used, where the redundancy of the data as a whole matches the proposed
 	// redundancy for the base chunk.
-	ec, err := siafile.NewRSSubCode(1, int(lup.BaseChunkRedundancy)-1, crypto.SegmentSize)
+	ec, err := modules.NewRSSubCode(1, int(lup.BaseChunkRedundancy)-1, crypto.SegmentSize)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to create erasure coder for large file")
 	}
@@ -724,7 +724,7 @@ func (r *Renter) managedDownloadBaseSector(link modules.Skylink, timeout time.Du
 	return baseSector, nil, nil
 }
 
-// PinSkylink wil fetch the file associated with the Skylink, and then pin all
+// PinSkylink will fetch the file associated with the Skylink, and then pin all
 // necessary content to maintain that Skylink.
 func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadParameters, timeout time.Duration) error {
 	// Check if link is blocked
@@ -803,7 +803,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 		return nil
 	}
 	// Create the erasure coder to use when uploading the file bulk.
-	fup.ErasureCode, err = siafile.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
+	fup.ErasureCode, err = modules.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
 	if err != nil {
 		return errors.AddContext(err, "unable to create erasure coder for large file")
 	}

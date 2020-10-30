@@ -53,7 +53,7 @@ func (r *Renter) newFanoutStreamer(link modules.Skylink, sl skynet.SkyfileLayout
 	}
 
 	// Create the erasure coder
-	ec, err := siafile.NewRSSubCode(int(sl.FanoutDataPieces), int(sl.FanoutParityPieces), crypto.SegmentSize)
+	ec, err := modules.NewRSSubCode(int(sl.FanoutDataPieces), int(sl.FanoutParityPieces), crypto.SegmentSize)
 	if err != nil {
 		return nil, errors.New("unable to initialize erasure code")
 	}

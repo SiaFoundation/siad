@@ -1359,6 +1359,38 @@ fetches status information about the host.
     "algorithm": "ed25519", // string
     "key":       "RW50cm9weSBpc24ndCB3aGF0IGl0IHVzZWQgdG8gYmU=" // string
   },
+
+"pricetable": {
+  "uid":                        "00000000000000000000000000000000", // types.Specifier
+  "validity":                   60000000000, // time.Duration
+  "hostblockheight":            0, // types.BlockHeight
+
+  "updatepricetablecost":       "1", // types.Currency
+  "accountbalancecost":         "1", // types.Currency
+  "fundaccountcost":            "1", // types.Currency
+  "latestrevisioncost":         "151200000000000000", // types.Currency
+  "initbasecost":               "100000000000000000", // types.Currency
+  "memorytimecost":             "1", // types.Currency
+  "collateralcost":             "0", // types.Currency
+  "downloadbandwidthcost":      "25000000000000", // types.Currency
+  "uploadbandwidthcost":        "1000000000000", // types.Currency
+  "dropsectorsbasecost":        "1", // types.Currency
+  "dropsectorsunitcost":        "1", // types.Currency
+  "hassectorbasecost":          "1", // types.Currency
+  "readbasecost":               "2000000000000000000", // types.Currency
+  "readlengthcost":             "1", // types.Currency
+  "revisionbasecost":           "0", // types.Currency
+  "swapsectorcost":             "1", // types.Currency
+  "writebasecost":              "1", // types.Currency
+  "writelengthcost":            "1", // types.Currency
+  "writestorecost":             "11574074074", // types.Currency
+
+  "txnfeeminrecommended":       "10000000000000000000", // types.Currency
+  "txnfeemaxrecommended":       "30000000000000000000", // types.Currency
+
+  "registryentriesleft":        1024, // uint64
+  "registryentriestotal":       1024, // uint64
+  },
 }
 ```
 **externalsettings**    
@@ -1688,6 +1720,93 @@ the host is being actively used by renters.
 
 **publickey** | SiaPublicKey  
 Public key used to identify the host.
+
+**uid** | types.Specifier  
+UID of the current price table. Only filled in for renters over the
+peer-to-peer protocol. In the API it's always zeros.
+
+**valdity** | time.Duration  
+The duration for which a fresh price table is valid.
+
+**hostblockheight** | types.BlockHeight  
+Blockheight as seen by the host at the last time the table was updated.
+
+**updatepricetablecost** | types.Currency  
+Cost for the UpdatePriceTable RPC.
+
+**accountbalanceCost** | types.Currency  
+Cost for the AccountBalance RPC.
+
+**fundaccountcost** | types.Currency  
+Cost for the FundAccount RPC.
+
+**latestrevisioncost** | types.Currency  
+Cost for the LatestRevision RPC.
+
+**initbasecost** | types.Currency  
+InitBaseCost is the amount of cost that is incurred when an MDM program
+starts to run. This doesn't include the memory used by the program data. The
+total cost to initialize a program is calculated as
+InitCost = InitBaseCost + MemoryTimeCost * Time
+
+**memorytimecost** | types.Currency  
+MemoryTimeCost is the amount of cost per byte per time that is incurred by
+the memory consumption of the program.
+
+**collateralcost** | types.Currency  
+CollateralCost is the amount of money per byte the host is promising to lock
+away as collateral when adding new data to a contract.
+
+**downloadbandwidthcost** | types.Currency  
+Cost per byte of downloading from a host.
+
+**uploadbandwidthcost** | types.Currency  
+Cost per byte of uploading from a host.
+
+**dropsectorbasecost** | types.Currency  
+Base cost of a drop sector MDM instruction.
+
+**dropsectorunitcost** | types.Currency  
+Additional per-sector cost of a drop sector MDM instruction.
+
+**hassectorbasecost** | types.Currency  
+Cost of a has sector MDM instruction.
+
+**readbasecost** | types.Currency  
+Base cost of a read instruction.
+
+**readlengthcost** | types.Currency  
+Additional per-byte cost of a read instruction.
+
+**revisionbasecost** | types.Currency  
+Cost of a revision instruction.
+
+**swapsectorcost** | types.Currency  
+Cost of swapping 2 sectors with a swap sector instruction.
+
+**writebasecost** | types.Currency  
+Base cost of a write instruction.
+
+**writelengthcost** | types.Currency  
+Additional per-byte cost of a write instruction.
+
+**writestorecost** | types.Currency  
+Addition per-byte per-block cost of a write instruction. Only applies to
+adding new data, not overwriting data.
+
+**txnfeeminrecommended** | types.Currency  
+Minimum per-byte txnfee recommendation as seen by the host's transaction
+pool.
+
+**txnfeemaxrecommended** | types.Currency  
+Maximum per-byte txnfee recommendation as seen by the host's transaction
+pool.
+
+**registryentriesleft** | uint64  
+number of registry entries not in use.
+
+**registryentriestotal** | uint64  
+total number of registry entries the host has allocated.
 
 ## /host/bandwidth [GET]
 > curl example
@@ -4590,8 +4709,9 @@ returns the the status of all the workers in the renter's workerpool.
       "uploadterminated":    false,                // boolean
       
       "balancetarget":       "0", // hastings
-      
-      "backupjobqueuesize":       0, // int
+
+      "downloadsnapshotjobqueuesize": 0 // int
+      "uploadsnapshotjobqueuesize": 0   // int
 
       "maintenanceoncooldown": false,                      // bool
       "maintenancerecenterr": "",                          // string
@@ -4710,8 +4830,11 @@ The worker's Ephemeral Account available balance
 **balancetarget** | hastings  
 The worker's Ephemeral Account target balance
 
-**backupjobqueuesize** | int  
-The size of the worker's backup job queue
+**downloadsnapshotjobqueuesize** | int  
+The size of the worker's download snapshot job queue
+
+**uploadsnapshotjobqueuesize** | int  
+The size of the worker's upload snapshot job queue
 
 **maintenanceoncooldown** | boolean  
 Indicates if the worker is on maintenance cooldown
@@ -4884,6 +5007,40 @@ list of portals.
 standard success or error response. See [standard
 responses](#standard-responses).
 
+## /skynet/registry [GET]
+> curl example
+
+```bash
+curl -A "Sia-Agent" "localhost:9980/skynet/registry?publickey=ed25519%3A69de1a15f17050e6855dd03202eed0cac31fe41865a074a43299ff4a598fe4d2&datakey=3f39b735c705edc2b3b5c5fe465da0de0a0755f5f637a556186f12687225259a
+```
+
+This curl command performs a GET request that fetches a registry entry for a publickey and datakey.  
+### Query String Parameters
+### REQUIRED
+
+**publickey** | SiaPublicKey  
+The public key for which to fetch the entry.
+
+**datakey** | Hash  
+The hash for which to fetch the entry.
+
+### OPTIONAL
+**timeout** | uint64  
+The timeout in seconds. Specifies how long it takes the request to time out
+in case no registry entry can be found. The default is the maximum allowed
+value of 5 minutes. The minimum is 1 second.
+
+### Response
+> JSON Response Example
+
+```go
+{
+  "data": "414141446168453132624d6c715f57663973356b35526d70652d4a4b76566c314b74416d6c70786f4a5f77613241", // []byte
+  "revision": 149, // uint64
+  "signature":  "03bf093a42f4df024c765fbec308a7f083fb6c1dddad485fe73810c39ed0344ff8e0db78e79bbdbad6be9d1410e2f122f58f490ff5edf7b45e3dc9fa7983ba05" // crypto.Signature
+}
+```
+
 ## /skynet/root [GET]
 > curl example  
 
@@ -5020,17 +5177,17 @@ supplied, this metadata will be relative to the given path.
 
 ```go
 {
-"mode":     640,      // os.FileMode
-"filename": "folder", // string
-"subfiles": [         // []SkyfileSubfileMetadata | null
-  {
-  "mode":         640,                // os.FileMode
-  "filename":     "folder/file1.txt", // string
-  "contenttype":  "text/plain",       // string
-  "offset":       0,                  // uint64
-  "len":          6                   // uint64
+  "mode":     640,      // os.FileMode
+  "filename": "folder", // string
+  "subfiles": {         // map[string]SkyfileSubfileMetadata | null
+    "folder/file1.txt": {                 // string
+      "mode":         640,                // os.FileMode
+      "filename":     "folder/file1.txt", // string
+      "contenttype":  "text/plain",       // string
+      "offset":       0,                  // uint64
+      "len":          6                   // uint64
+    }
   }
-]
 }
 ```
 
@@ -5121,7 +5278,10 @@ applicable to skyfiles without subfiles.
 The name of the file. This name will be encoded into the skyfile metadata, and
 will be a part of the skylink. If the name changes, the skylink will change as
 well. The name must be non-empty, may not include any path traversal strings
-("./", "../"), and may not begin with a forward-slash character.
+("./", "../"), and may not begin with a forward-slash character. When uploading
+a single file using multipart form upload (the recommended method), this
+parameter is optional; the name will be taken from the filename of the only
+subfile.
 
 **dryrun** | bool  
 If dryrun is set to true, the request will return the Skylink of the file

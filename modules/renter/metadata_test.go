@@ -8,7 +8,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
@@ -41,7 +40,7 @@ func BenchmarkBubbleMetadata(b *testing.B) {
 	}
 
 	// Create and add 5 files
-	rsc, _ := siafile.NewRSCode(1, 1)
+	rsc, _ := modules.NewRSCode(1, 1)
 	for i := 0; i < 5; i++ {
 		fileSiaPath, err := dirSiaPath.Join(fmt.Sprintf("file%v", i))
 		if err != nil {

@@ -25,7 +25,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -1623,7 +1622,7 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 	// Only the encrypted upload is erasure coded.
 	var ec modules.ErasureCoder
 	if encrypted {
-		ec, err = siafile.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
+		ec, err = modules.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -3442,7 +3441,6 @@ func TestRegistryUpdateRead(t *testing.T) {
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
-		Hosts:   renter.MinUpdateRegistrySuccesses,
 		Renters: 1,
 		Miners:  1,
 	}
@@ -3456,6 +3454,16 @@ func TestRegistryUpdateRead(t *testing.T) {
 		}
 	}()
 	r := tg.Renters()[0]
+
+	// Add hosts with a latency dependency.
+	deps := dependencies.NewDependencyHostBlockRPC()
+	deps.Disable()
+	host := node.HostTemplate
+	host.HostDeps = deps
+	_, err = tg.AddNodeN(host, renter.MinUpdateRegistrySuccesses)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Create some random skylinks to use later.
 	skylink1, err := modules.NewSkylinkV1(crypto.HashBytes(fastrand.Bytes(100)), 0, 100)
@@ -3473,19 +3481,14 @@ func TestRegistryUpdateRead(t *testing.T) {
 
 	// Create a signed registry value.
 	sk, pk := crypto.GenerateKeyPair()
-	fileID := modules.FileID{
-		Version: modules.FileIDVersion,
-	}
-	tweak, err := fileID.Tweak()
-	if err != nil {
-		t.Fatal(err)
-	}
+	var dataKey crypto.Hash
+	fastrand.Read(dataKey[:])
 	data1 := skylink1.Bytes()
 	data2 := skylink2.Bytes()
 	data3 := skylink3.Bytes()
-	srv1 := modules.NewRegistryValue(tweak, data1, 0).Sign(sk) // rev 0
-	srv2 := modules.NewRegistryValue(tweak, data2, 1).Sign(sk) // rev 1
-	srv3 := modules.NewRegistryValue(tweak, data3, 0).Sign(sk) // rev 0
+	srv1 := modules.NewRegistryValue(dataKey, data1, 0).Sign(sk) // rev 0
+	srv2 := modules.NewRegistryValue(dataKey, data2, 1).Sign(sk) // rev 1
+	srv3 := modules.NewRegistryValue(dataKey, data3, 0).Sign(sk) // rev 0
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
@@ -3498,19 +3501,19 @@ func TestRegistryUpdateRead(t *testing.T) {
 	}
 
 	// Try to read it from the host. Shouldn't work.
-	_, err = r.RegistryRead(spk, fileID)
+	_, err = r.RegistryRead(spk, dataKey)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryEntryNotFound.Error()) {
 		t.Fatal(err)
 	}
 
 	// Update the regisry.
-	err = r.RegistryUpdate(spk, fileID, srv1.Revision, srv1.Signature, skylink1)
+	err = r.RegistryUpdate(spk, dataKey, srv1.Revision, srv1.Signature, skylink1)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Read it again. This should work.
-	readSRV, err := r.RegistryRead(spk, fileID)
+	readSRV, err := r.RegistryRead(spk, dataKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3520,14 +3523,14 @@ func TestRegistryUpdateRead(t *testing.T) {
 		t.Fatal("srvs don't match")
 	}
 
-	// Update the regisry again, with a higher revision.
-	err = r.RegistryUpdate(spk, fileID, srv2.Revision, srv2.Signature, skylink2)
+	// Update the registry again, with a higher revision.
+	err = r.RegistryUpdate(spk, dataKey, srv2.Revision, srv2.Signature, skylink2)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Read it again. This should work.
-	readSRV, err = r.RegistryRead(spk, fileID)
+	readSRV, err = r.RegistryRead(spk, dataKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3537,8 +3540,22 @@ func TestRegistryUpdateRead(t *testing.T) {
 		t.Fatal("srvs don't match")
 	}
 
-	// Update the regisry again, with the same revision. Shouldn't work.
-	err = r.RegistryUpdate(spk, fileID, srv2.Revision, srv2.Signature, skylink2)
+	// Read it again with a almost zero timeout. This should time out.
+	deps.Enable()
+	start := time.Now()
+	readSRV, err = r.RegistryReadWithTimeout(spk, dataKey, time.Second)
+	deps.Disable()
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryLookupTimeout.Error()) {
+		t.Fatal(err)
+	}
+
+	// Make sure it didn't take too long and timed out.
+	if time.Since(start) > 2*time.Second {
+		t.Fatalf("read took too long to time out %v > %v", time.Since(start), 2*time.Second)
+	}
+
+	// Update the registry again, with the same revision. Shouldn't work.
+	err = r.RegistryUpdate(spk, dataKey, srv2.Revision, srv2.Signature, skylink2)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateNoSuccessfulUpdates.Error()) {
 		t.Fatal(err)
 	}
@@ -3546,8 +3563,8 @@ func TestRegistryUpdateRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Update the regisry again, with a lower revision. Shouldn't work.
-	err = r.RegistryUpdate(spk, fileID, srv3.Revision, srv3.Signature, skylink3)
+	// Update the registry again, with a lower revision. Shouldn't work.
+	err = r.RegistryUpdate(spk, dataKey, srv3.Revision, srv3.Signature, skylink3)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateNoSuccessfulUpdates.Error()) {
 		t.Fatal(err)
 	}
@@ -3555,10 +3572,10 @@ func TestRegistryUpdateRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Update the regisry again, with an invalid sig. Shouldn't work.
+	// Update the registry again, with an invalid sig. Shouldn't work.
 	var invalidSig crypto.Signature
 	fastrand.Read(invalidSig[:])
-	err = r.RegistryUpdate(spk, fileID, srv3.Revision, invalidSig, skylink3)
+	err = r.RegistryUpdate(spk, dataKey, srv3.Revision, invalidSig, skylink3)
 	if err == nil || !strings.Contains(err.Error(), crypto.ErrInvalidSignature.Error()) {
 		t.Fatal(err)
 	}
