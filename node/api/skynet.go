@@ -198,7 +198,7 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 		timeout = time.Duration(timeoutInt) * time.Second
 	}
 
-	// Fetch the skyfile's  streamer to serve the basesector of the file
+	// Fetch the skyfile's streamer to serve the basesector of the file
 	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout)
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)

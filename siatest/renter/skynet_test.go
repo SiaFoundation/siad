@@ -1620,6 +1620,7 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 	}
 
 	// Create the erasure coder
+	// Only the encrypted upload is erasure coded.
 	var ec modules.ErasureCoder
 	if encrypted {
 		ec, err = siafile.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
@@ -1687,6 +1688,8 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 			}
 			chunkBytes = buf.Bytes()
 		} else {
+			// The unencrypted file is not erasure coded so just read the piece data
+			// directly
 			for _, p := range pieces {
 				chunkBytes = append(chunkBytes, p...)
 			}
@@ -1699,8 +1702,8 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 
 	// Verify bytes
 	if !reflect.DeepEqual(fileData, rootBytes) {
-		// t.Log("FileData bytes:", fileData)
-		// t.Log("root bytes:", rootBytes)
+		t.Log("FileData bytes:", fileData)
+		t.Log("root bytes:", rootBytes)
 		t.Error("Bytes not equal")
 	}
 }
