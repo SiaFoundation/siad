@@ -55,7 +55,7 @@ type projectDownloadChunk struct {
 	pricePerMS  types.Currency
 
 	// Values derived from the chunk download parameters. The offset and length
-	// specify the offset and length that will be sent to the host, which much
+	// specify the offset and length that will be sent to the host, which must
 	// be segment aligned.
 	pieceLength uint64
 	pieceOffset uint64
@@ -63,10 +63,10 @@ type projectDownloadChunk struct {
 	// availablePieces are pieces where there are one or more workers that have
 	// been tasked with fetching the piece.
 	//
-	// workersConsidered is a map of which workers have been moved from the
-	// worker set's list of available pieces to the download chunk's list of
-	// available pieces. This enables the worker selection code to realize which
-	// pieces in the worker set have been resolved since the last check.
+	// workersConsideredIndex keeps track of what workers were already
+	// considered after looking at the pcws. This enables the worker selection
+	// code to realize which pieces in the worker set have been resolved since
+	// the last check.
 	availablePieces        [][]pieceDownload
 	workersConsideredIndex int
 
@@ -173,7 +173,7 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 
 	// The download succeeded, add the piece to the appropriate index.
 	pdc.dataPieces[pieceIndex] = jrr.staticData
-	jrr.staticData = nil // Just in case there's a reference to the job reponse elsewhere.
+	jrr.staticData = nil // Just in case there's a reference to the job response elsewhere.
 	for i := 0; i < len(pdc.availablePieces[pieceIndex]); i++ {
 		if pdc.availablePieces[pieceIndex][i].worker.staticHostPubKeyStr == jrr.staticWorker.staticHostPubKeyStr {
 			pdc.availablePieces[pieceIndex][i].completed = true
@@ -243,7 +243,7 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 	ws := pdc.workerState
 	ec := pdc.workerSet.staticErasureCoder
 
-	// Count the number of completed pieces and hopefuly pieces in our list of
+	// Count the number of completed pieces and hopeful pieces in our list of
 	// potential downloads.
 	completedPieces := 0
 	hopefulPieces := 0

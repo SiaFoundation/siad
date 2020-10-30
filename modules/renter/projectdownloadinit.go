@@ -251,7 +251,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 
 	// Build the best set that we can. Each iteration will attempt to improve
 	// the working set by adding a new worker. This may or may not succeed,
-	// depedning on how cheap the worker is and how slow the worker is. Each
+	// depending on how cheap the worker is and how slow the worker is. Each
 	// time that the working set is better than the best set, overwrite the best
 	// set with the new working set.
 	for len(workerHeap) > 0 {
@@ -259,7 +259,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 		// done.
 		nextWorker := heap.Pop(&workerHeap).(*pdcInitialWorker)
 		if nextWorker == nil {
-			// TODO: Not panic
+			// TODO: handle more gracefully
 			build.Critical("wasn't expecting to pop a nil worker")
 			break
 		}
@@ -464,7 +464,4 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 			}
 		}
 	}
-
-	// TODO: check with David what the ention was here - unreachable code
-	// return errors.New("never implemented a function to launch the initial workers")
 }
