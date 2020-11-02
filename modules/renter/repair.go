@@ -168,8 +168,8 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath, hosts map[
 	return allErrors
 }
 
-// managedOldestHealthCheckTime finds the lowest level directory with the oldest
-// LastHealthCheckTime
+// managedOldestHealthCheckTime finds the lowest level directory tree that
+// contains the oldest LastHealthCheckTime.
 func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, error) {
 	// Check the siadir metadata for the root files directory
 	siaPath := modules.RootSiaPath()
@@ -178,9 +178,9 @@ func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, err
 		return modules.SiaPath{}, time.Time{}, err
 	}
 
-	// Follow the path of oldest LastHealthCheckTime to the lowest level
-	// directory
-	for metadata.NumSubDirs > 0 {
+	// Follow the path of oldest LastHealthCheckTime to the lowest level directory
+	// tree defined by the batch constants
+	for (metadata.NumSubDirs > healthLoopNumBatchSubDirs || metadata.AggregateNumFiles > healthLoopNumBatchFiles) && metadata.NumSubDirs > 0 {
 		// Check to make sure renter hasn't been shutdown
 		select {
 		case <-r.tg.StopChan():
@@ -240,11 +240,19 @@ func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, err
 		// If the values were never updated with any of the sub directory values
 		// then return as we are in the directory we are looking for
 		if !updated {
+			// We return the LastHealthCheckTime here because at this point we should
+			// actually be in the oldest directory.
+			r.log.Debugf("Health Loop found LHCT OldestDir %v, LHCT %v, ALHCT %v", siaPath, metadata.LastHealthCheckTime, metadata.AggregateLastHealthCheckTime)
 			return siaPath, metadata.LastHealthCheckTime, nil
 		}
 	}
 
-	return siaPath, metadata.LastHealthCheckTime, nil
+	// Returning the AggregateLastHealthCheckTime here because we stopped
+	// traversing the filesystem via the above for loop. This doesn't mean that we
+	// have necessarily ended up in the oldest directory but we are on the oldest
+	// subtree so return the AggregateLastHealthCheckTime
+	r.log.Debugf("Health Loop found ALHCT OldestDir %v, LHCT %v, ALHCT %v", siaPath, metadata.LastHealthCheckTime, metadata.AggregateLastHealthCheckTime)
+	return siaPath, metadata.AggregateLastHealthCheckTime, nil
 }
 
 // managedStuckDirectory randomly finds a directory that contains stuck chunks
@@ -596,16 +604,28 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			}
 		}
 
-		// Update files in dir before bubbling it.
-		err = r.managedUpdateFileMetadatas(siaPath)
+		// Prepare the subtree for being bubbled
+		urp, err := r.managedPrepareForBubble(siaPath)
 		if err != nil {
-			r.log.Println("Error calling managedUpdateFileMetadatas on `", siaPath.String(), "`:", err)
+			// Log the error but don't sleep for the error duration as some refresh
+			// paths might have been returned
+			r.log.Println("Error calling managedUpdateFilesAndGetDirPaths on `", siaPath.String(), "`:", err)
 		}
-
-		r.log.Debug("Health Loop calling bubble on '", siaPath.String(), "'")
-		err = r.managedBubbleMetadata(siaPath)
+		if urp == nil {
+			// Treat a nil urp as an error and sleep to prevent potential rapid
+			// cycling.
+			r.log.Debugf("WARN: No refresh paths returned from '%v'", siaPath)
+			select {
+			case <-time.After(healthLoopErrorSleepDuration):
+			case <-r.tg.StopChan():
+				return
+			}
+			continue
+		}
+		r.log.Println("Calling bubble on the subtree", siaPath)
+		err = urp.callRefreshAllBlocking()
 		if err != nil {
-			r.log.Println("Error calling managedBubbleMetadata on `", siaPath.String(), "`:", err)
+			r.log.Println("Error calling managedBubbleMetadata on subtree`", siaPath.String(), "`:", err)
 			select {
 			case <-time.After(healthLoopErrorSleepDuration):
 			case <-r.tg.StopChan():
@@ -615,13 +635,69 @@ func (r *Renter) threadedUpdateRenterHealth() {
 	}
 }
 
+// managedPrepareForBubble prepares a directory for the Health Loop to call
+// bubble on and returns a uniqueRefreshPaths including all the paths of the
+// directories in the subtree that need to be updated. This includes updating
+// the metadatas for all the files in the subtree and updating the
+// LastHealthCheckTime for the supplied root directory.
+func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath) (*uniqueRefreshPaths, error) {
+	// Get the list of directories from the subtree
+	_, dis, err := r.staticFileSystem.CachedList(rootDir, true)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to get cached list of sub directories")
+	}
+
+	// Add directory paths to uniqueRefreshPaths while tracking the most recent
+	// LastHealthCheckTime that is skipped
+	urp := r.newUniqueRefreshPaths()
+	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
+	alhct := time.Now()
+	for _, di := range dis {
+		// Skip any directories that have been updated recently
+		if time.Since(di.LastHealthCheckTime) < healthCheckInterval {
+			// Track the LastHealthCheckTime of the skipped directory
+			if di.LastHealthCheckTime.Before(alhct) {
+				alhct = di.LastHealthCheckTime
+			}
+			continue
+		}
+		// Add the directory to uniqueRefreshPaths
+		addErr := urp.callAdd(di.SiaPath)
+		if addErr != nil {
+			r.log.Printf("WARN: unable to add siapath `%v` to uniqueRefreshPaths; err: %v", di.SiaPath, addErr)
+			err = errors.Compose(err, addErr)
+			continue
+		}
+		// Update files in the directory.
+		updateErr := r.managedUpdateFileMetadatasParams(di.SiaPath, offlineMap, goodForRenewMap, contracts, used)
+		if updateErr != nil {
+			r.log.Println("Error calling managedUpdateFileMetadatas on `", di.SiaPath, "`:", updateErr)
+			err = errors.Compose(err, updateErr)
+		}
+	}
+
+	// Update the root directory's LastHealthCheckTime to signal that this sub
+	// tree has been updated
+	entry, openErr := r.staticFileSystem.OpenSiaDir(rootDir)
+	if openErr != nil {
+		return urp, errors.Compose(err, openErr)
+	}
+	return urp, errors.Compose(err, entry.UpdateLastHealthCheckTime(alhct, time.Now()), entry.Close())
+}
+
 // managedUpdateFileMetadata updates the metadata of all siafiles within a dir.
 // This can be very expensive for large directories and should therefore only
 // happen sparingly.
 func (r *Renter) managedUpdateFileMetadatas(dirSiaPath modules.SiaPath) error {
 	// Get cached offline and goodforrenew maps.
 	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
+	return r.managedUpdateFileMetadatasParams(dirSiaPath, offlineMap, goodForRenewMap, contracts, used)
+}
 
+// managedUpdateFileMetadatasParams updates the metadata of all siafiles within
+// a dir with the provided parameters.  This can be very expensive for large
+// directories and should therefore only happen sparingly.
+func (r *Renter) managedUpdateFileMetadatasParams(dirSiaPath modules.SiaPath, offlineMap map[string]bool, goodForRenewMap map[string]bool, contracts map[string]modules.RenterContract, used []types.SiaPublicKey) error {
 	fis, err := r.staticFileSystem.ReadDir(dirSiaPath)
 	if err != nil {
 		return errors.AddContext(err, "managedUpdateFileMetadatas: failed to read dir")
