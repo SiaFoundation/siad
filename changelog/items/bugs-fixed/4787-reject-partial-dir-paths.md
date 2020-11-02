@@ -1,1 +1,0 @@
-- Ensure that only full paths are accepted when resolving skylinks.
