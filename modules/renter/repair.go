@@ -180,7 +180,7 @@ func (r *Renter) managedOldestHealthCheckTime() (modules.SiaPath, time.Time, err
 
 	// Follow the path of oldest LastHealthCheckTime to the lowest level directory
 	// tree defined by the batch constants
-	for (metadata.NumSubDirs > healthLoopNumBatchSubDirs || metadata.AggregateNumFiles > healthLoopNumBatchFiles) && metadata.NumSubDirs > 0 {
+	for (metadata.AggregateNumSubDirs > healthLoopNumBatchSubDirs || metadata.AggregateNumFiles > healthLoopNumBatchFiles) && metadata.NumSubDirs > 0 {
 		// Check to make sure renter hasn't been shutdown
 		select {
 		case <-r.tg.StopChan():

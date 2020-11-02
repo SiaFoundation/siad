@@ -177,7 +177,7 @@ var (
 	healthLoopNumBatchFiles = build.Select(build.Var{
 		Dev:      uint64(1e3),
 		Standard: uint64(10e3),
-		Testing:  uint64(10),
+		Testing:  uint64(5),
 	}).(uint64)
 
 	// healthLoopNumBatchSubDirs defines the number of files the health loop will

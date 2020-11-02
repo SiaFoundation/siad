@@ -157,6 +157,11 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 				r.staticAlerter.UnregisterAlert(modules.AlertIDSiafileLowRedundancy(uid))
 			}
 
+			// Sanity check on File LastHealthCheckTime
+			if fileMetadata.LastHealthCheckTime.IsZero() {
+				build.Critical("file LastHealthCheckTime has not be set before bubble was called", fileSiaPath)
+			}
+
 			// Record Values that compare against sub directories
 			aggregateHealth = fileMetadata.Health
 			aggregateStuckHealth = fileMetadata.StuckHealth
@@ -197,6 +202,11 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			dirMetadata, err := r.managedDirectoryMetadata(dirSiaPath)
 			if err != nil {
 				return siadir.Metadata{}, err
+			}
+
+			// Sanity Check on Directory Metadata
+			if dirMetadata.LastHealthCheckTime.IsZero() || dirMetadata.AggregateLastHealthCheckTime.IsZero() {
+				build.Critical("directory LastHealthCheckTime has not be set before bubble was called", dirSiaPath)
 			}
 
 			// Record Values that compare against files
