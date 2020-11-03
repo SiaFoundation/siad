@@ -111,6 +111,10 @@ type (
 		// maintenance cooldown can be reset.
 		staticMaintenanceState *workerMaintenanceState
 
+		// staticRegistryCache caches information about the worker's host's
+		// registry entries.
+		staticRegistryCache *registryCache
+
 		// Utilities.
 		killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
 		mu       sync.Mutex

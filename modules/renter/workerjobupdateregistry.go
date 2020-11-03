@@ -23,6 +23,11 @@ const (
 // valid signature but is still invalid due to its revision number.
 var errHostOutdatedProof = errors.New("host returned proof with invalid revision number")
 
+// errHostLowerRevisionThanCache is returned whenever the host claims that the
+// latest revision of the registry entry it knows is lower than the one it is
+// supposed to have according to the cache.
+var errHostLowerRevisionThanCache = errors.New("host claims that the latest revision it knows is lower than the one in the cache")
+
 type (
 	// jobUpdateRegistry contains information about a UpdateRegistry query.
 	jobUpdateRegistry struct {
@@ -121,7 +126,16 @@ func (j *jobUpdateRegistry) callExecute() {
 		// invalid.
 		if j.staticSignedRegistryValue.Revision > rv.Revision {
 			sendResponse(nil, errHostOutdatedProof)
-			j.staticQueue.callReportFailure(err)
+			j.staticQueue.callReportFailure(errHostOutdatedProof)
+			return
+		}
+		// If the entry is valid and the revision is also valid, check if we
+		// have a higher revision number in the cache than the provided one.
+		cachedRevision, cached := w.staticRegistryCache.Get(j.staticSiaPublicKey, j.staticSignedRegistryValue.Tweak)
+		if cached && cachedRevision > rv.Revision {
+			sendResponse(nil, errHostLowerRevisionThanCache)
+			j.staticQueue.callReportFailure(errHostLowerRevisionThanCache)
+			w.staticRegistryCache.Set(j.staticSiaPublicKey, rv) // adjust the cache
 			return
 		}
 		sendResponse(&rv, err)
@@ -134,6 +148,9 @@ func (j *jobUpdateRegistry) callExecute() {
 
 	// Success. We either confirmed the latest revision or updated the host successfully.
 	jobTime := time.Since(start)
+
+	// Update the registry cache.
+	w.staticRegistryCache.Set(j.staticSiaPublicKey, j.staticSignedRegistryValue)
 
 	// Send the response and report success.
 	sendResponse(nil, nil)

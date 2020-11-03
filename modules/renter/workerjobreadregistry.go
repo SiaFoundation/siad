@@ -172,6 +172,15 @@ func (j *jobReadRegistry) callExecute() {
 		return
 	}
 
+	// Check if the looked up value matches our expectation.
+	cachedRevision, cached := w.staticRegistryCache.Get(j.staticSiaPublicKey, j.staticTweak)
+	if cached && cachedRevision > srv.Revision {
+		sendResponse(nil, errHostLowerRevisionThanCache)
+		j.staticQueue.callReportFailure(errHostLowerRevisionThanCache)
+		w.staticRegistryCache.Set(j.staticSiaPublicKey, *srv) // adjust the cache
+		return
+	}
+
 	// Success.
 	jobTime := time.Since(start)
 
