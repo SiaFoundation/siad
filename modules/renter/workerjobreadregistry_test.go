@@ -40,7 +40,7 @@ func TestReadRegistryJob(t *testing.T) {
 	}
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
 
-	// Run the UpdateRegistryJob.
+	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
 	if err != nil {
 		t.Fatal(err)

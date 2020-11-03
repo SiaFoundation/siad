@@ -188,6 +188,8 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		staticAccount:       account,
 		staticBalanceTarget: balanceTarget,
 
+		staticRegistryCache: newRegistryCache(1 << 20), // 1 MiB
+
 		// Initialize the read and write limits for the async worker tasks.
 		// These may be updated in real time as the worker collects metrics
 		// about itself.
