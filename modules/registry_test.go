@@ -12,15 +12,13 @@ import (
 // values.
 func TestHashRegistryValue(t *testing.T) {
 	expected := "788dddf5232807611557a3dc0fa5f34012c2650526ba91d55411a2b04ba56164"
-
 	dataKey := "HelloWorld"
-	value := RegistryValue{
-		Tweak:    crypto.HashAll(dataKey),
-		Data:     []byte("abc"),
-		Revision: 123456789,
-	}
+	tweak := crypto.HashAll(dataKey)
+	data := []byte("abc")
+	revision := uint64(123456789)
 
-	hash := crypto.HashAll(value.Tweak, value.Data, value.Revision)
+	value := NewRegistryValue(tweak, data, revision)
+	hash := value.hash()
 	if hash.String() != expected {
 		t.Fatalf("expected hash %v, got %v", expected, hash.String())
 	}
