@@ -10,6 +10,9 @@ import (
 )
 
 type (
+	// registryCache is a helper type to cache information about registry values
+	// in memory. It decides randomly which entries to evict to make it more
+	// unpredictable for the host.
 	registryCache struct {
 		entryMap   map[crypto.Hash]*cachedEntry
 		entryList  []*cachedEntry
@@ -17,14 +20,19 @@ type (
 		mu         sync.Mutex
 	}
 
+	// cachedEntry describes a single cached entry. To make sure we can cache as
+	// many entries as possible, this only contains the necessary information.
 	cachedEntry struct {
 		key      crypto.Hash
 		revision uint64
 	}
 )
 
-const cachedEntryEstimatedSize = 32 + 8 + 16 // hash + revision + overhead of 2 pointers
+// cachedEntryEstimatedSize is the estimated size of a cachedEntry in memory.
+// hash + revision + overhead of 2 pointers
+const cachedEntryEstimatedSize = 32 + 8 + 16
 
+// newRegistryCache creates a new registry cache.
 func newRegistryCache(size uint64) *registryCache {
 	return &registryCache{
 		entryMap:   make(map[crypto.Hash]*cachedEntry),
@@ -33,6 +41,7 @@ func newRegistryCache(size uint64) *registryCache {
 	}
 }
 
+// Get fetches an entry from the cache.
 func (rc *registryCache) Get(pubKey types.SiaPublicKey, tweak crypto.Hash) (uint64, bool) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
@@ -45,6 +54,7 @@ func (rc *registryCache) Get(pubKey types.SiaPublicKey, tweak crypto.Hash) (uint
 	return cachedEntry.revision, true
 }
 
+// Set sets an entry in the registry.
 func (rc *registryCache) Set(pubKey types.SiaPublicKey, rv modules.SignedRegistryValue) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
