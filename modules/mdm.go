@@ -32,6 +32,10 @@ type (
 )
 
 const (
+	// MDMMaxBatchBufferSize is the maximum number of bytes the ExecuteProgram
+	// RPC will buffer in favor of batching fast instructions.
+	MDMMaxBatchBufferSize = 1 << 16 // 64 kib
+
 	// MDMCancellationTokenLen is the length of a program's cancellation token
 	// in bytes.
 	MDMCancellationTokenLen = 16
@@ -78,6 +82,14 @@ const (
 	// MDMTimeWriteSector is the time for executing a 'WriteSector' instruction.
 	MDMTimeWriteSector = 10000
 
+	// MDMTimeUpdateRegistry is the time for executing an 'UpdateRegistry'
+	// instruction.
+	MDMTimeUpdateRegistry = 10000
+
+	// MDMTimeReadRegistry is the time for executing an 'ReadRegistry'
+	// instruction.
+	MDMTimeReadRegistry = 1000
+
 	// RPCIAppendLen is the expected length of the 'Args' of an Append
 	// instructon.
 	RPCIAppendLen = 9
@@ -105,6 +117,17 @@ const (
 	// RPCISwapSectorLen is the expected length of the 'Args' of an SwapSector
 	// instructon.
 	RPCISwapSectorLen = 17 // 2 uint64 offsets + merkle proof flag
+
+	// RPCIUpdateRegistryLen is the expected length of the 'Args' of an
+	// UpdateRegistry instruction.
+	// tweakOffset + revisionOffset + signatureOffset + pubKeyOffset +
+	// pubKeyLength + dataOffset + dataLength = 7 * 8 bytes = 56 byte
+	RPCIUpdateRegistryLen = 56
+
+	// RPCIReadRegistryLen is the expected length of the 'Args' of an
+	// ReadRegistry instruction.
+	// tweakOffset + pubKeyOffset + pubKeyLength = 3 * 8 bytes = 24 byte
+	RPCIReadRegistryLen = 24
 )
 
 var (
@@ -138,6 +161,14 @@ var (
 
 	// SpecifierSwapSector is the specifier for the SwapSector instruction.
 	SpecifierSwapSector = InstructionSpecifier{'S', 'w', 'a', 'p', 'S', 'e', 'c', 't', 'o', 'r'}
+
+	// SpecifierUpdateRegistry is the specifier for the UpdateRegistry
+	// instruction.
+	SpecifierUpdateRegistry = InstructionSpecifier{'U', 'p', 'd', 'a', 't', 'e', 'R', 'e', 'g', 'i', 's', 't', 'r', 'y'}
+
+	// SpecifierReadRegistry is the specifier for the ReadRegistry
+	// instruction.
+	SpecifierReadRegistry = InstructionSpecifier{'R', 'e', 'a', 'd', 'R', 'e', 'g', 'i', 's', 't', 'r', 'y'}
 
 	// ErrInsufficientBandwidthBudget is returned when bandwidth can no longer
 	// be paid for with the provided budget.
@@ -237,8 +268,28 @@ func MDMSwapSectorCost(pt *RPCPriceTable) types.Currency {
 	return pt.SwapSectorCost
 }
 
+// MDMUpdateRegistryCost is the cost of executing a 'UpdateRegistry'
+// instruction.
+func MDMUpdateRegistryCost(pt *RPCPriceTable) (_, _ types.Currency) {
+	// Cost is the same as uploading and storing a registry entry for 10 years.
+	writeCost := MDMWriteCost(pt, RegistryEntrySize)
+	storeCost := pt.WriteStoreCost.Mul64(RegistryEntrySize).Mul64(uint64(10 * types.BlocksPerYear))
+	return writeCost.Add(storeCost), storeCost
+}
+
+// MDMReadRegistryCost is the cost of executing a 'ReadRegistry' instruction.
+func MDMReadRegistryCost(pt *RPCPriceTable) types.Currency {
+	// Cost is the same as downloading a sector.
+	return MDMReadCost(pt, SectorSize)
+}
+
 // MDMWriteCost is the cost of executing a 'Write' instruction of a certain length.
 func MDMWriteCost(pt *RPCPriceTable, writeLength uint64) types.Currency {
+	// Atomic write size for modern disks is 4kib so we round up.
+	atomicWriteSize := uint64(1 << 12)
+	if mod := writeLength % atomicWriteSize; mod != 0 {
+		writeLength += (atomicWriteSize - mod)
+	}
 	writeCost := pt.WriteLengthCost.Mul64(writeLength).Add(pt.WriteBaseCost)
 	return writeCost
 }
@@ -292,6 +343,18 @@ func MDMRevisionMemory() uint64 {
 // 'SwapSector' instruction.
 func MDMSwapSectorMemory() uint64 {
 	return 0 // 'SwapSector' doesn't hold on to any memory beyond the lifetime of the instruction.
+}
+
+// MDMUpdateRegistryMemory returns the additional memory consumption of a
+// 'UpdateRegistry' instruction.
+func MDMUpdateRegistryMemory() uint64 {
+	return 0 // 'UpdateRegistry' doesn't hold on to any memory beyond the lifetime of the instruction.
+}
+
+// MDMReadRegistryMemory returns the additional memory consumption of a
+// 'ReadRegistry' instruction.
+func MDMReadRegistryMemory() uint64 {
+	return 0 // 'ReadRegistry' doesn't hold on to any memory beyond the lifetime of the instruction.
 }
 
 // MDMBandwidthCost computes the total bandwidth cost given a price table and
@@ -349,6 +412,18 @@ func MDMSwapSectorCollateral() types.Currency {
 	return types.ZeroCurrency
 }
 
+// MDMUpdateRegistryCollateral returns the additional collateral a
+// 'UpdateRegistry' instruction requires the host to put up.
+func MDMUpdateRegistryCollateral() types.Currency {
+	return types.ZeroCurrency
+}
+
+// MDMReadRegistryCollateral returns the additional collateral a
+// 'ReadRegistry' instruction requires the host to put up.
+func MDMReadRegistryCollateral() types.Currency {
+	return types.ZeroCurrency
+}
+
 // ReadOnly returns true if the program consists of no write instructions.
 func (p Program) ReadOnly() bool {
 	for _, instruction := range p {
@@ -363,6 +438,9 @@ func (p Program) ReadOnly() bool {
 		case SpecifierRevision:
 		case SpecifierSwapSector:
 			return false
+		case SpecifierUpdateRegistry:
+			// considered read-only cause it doesn't update a contract
+		case SpecifierReadRegistry:
 		default:
 			build.Critical("ReadOnly: unknown instruction")
 		}
@@ -389,6 +467,8 @@ func (p Program) RequiresSnapshot() bool {
 			return true
 		case SpecifierSwapSector:
 			return true
+		case SpecifierUpdateRegistry:
+		case SpecifierReadRegistry:
 		default:
 			build.Critical("RequiresSnapshot: unknown instruction")
 		}

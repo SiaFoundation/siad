@@ -104,7 +104,7 @@ func TestSkykeyManager(t *testing.T) {
 	randomNameBytes := fastrand.Bytes(24)
 	randomName := string(randomNameBytes)
 	id, err = keyMan.IDByName(randomName)
-	if err != ErrNoSkykeysWithThatName {
+	if !errors.Contains(err, ErrNoSkykeysWithThatName) {
 		t.Fatal(err)
 	}
 
@@ -112,7 +112,7 @@ func TestSkykeyManager(t *testing.T) {
 	var randomID SkykeyID
 	fastrand.Read(randomID[:])
 	_, err = keyMan.KeyByID(randomID)
-	if err != ErrNoSkykeysWithThatID {
+	if !errors.Contains(err, ErrNoSkykeysWithThatID) {
 		t.Fatal(err)
 	}
 
@@ -215,14 +215,30 @@ func TestSkykeyDerivations(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	skykey, err := keyMan.CreateKey("derivation_test_key", TypePublicID)
+	// Hard-code some expected values.
+	skykey := Skykey{"derivation_test_key", TypePublicID, []byte{51, 90, 115, 73, 121, 179, 94, 117, 153, 74, 70, 80, 127, 55, 231, 196, 104, 244, 83, 157, 198, 159, 118, 79, 213, 32, 112, 255, 8, 84, 83, 183, 125, 30, 213, 34, 252, 152, 144, 42, 231, 151, 254, 145, 149, 205, 135, 169, 44, 185, 223, 52, 250, 126, 119, 249}}
+	err = keyMan.AddKey(skykey)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	masterNonce := skykey.Nonce()
 
 	derivationPath1 := []byte("derivationtest1")
 	derivationPath2 := []byte("path2")
+
+	// Derive a subkey and check that it matches saved values.
+	dk1, err := skykey.DeriveSubkey(derivationPath1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := []byte{51, 90, 115, 73, 121, 179, 94, 117, 153, 74, 70, 80, 127, 55, 231, 196, 104, 244, 83, 157, 198, 159, 118, 79, 213, 32, 112, 255, 8, 84, 83, 183, 121, 171, 176, 232, 96, 47, 177, 154, 180, 144, 145, 29, 220, 178, 39, 220, 182, 53, 153, 191, 167, 116, 108, 221}
+	if !bytes.Equal(dk1.Entropy, expected) {
+		t.Fatal("unexpected subkey entropy")
+	}
+	if !bytes.Equal(dk1.Entropy[:chacha.KeySize], skykey.Entropy[:chacha.KeySize]) {
+		t.Fatal("did not preserve key part of master key's entropy")
+	}
 
 	// Create file-specific keys.
 	numDerivedSkykeys := 5
@@ -644,7 +660,7 @@ func TestSkykeyTypeStrings(t *testing.T) {
 
 	var invalidSt SkykeyType
 	err = invalidSt.FromString(invalidTypeString)
-	if err != ErrInvalidSkykeyType {
+	if !errors.Contains(err, ErrInvalidSkykeyType) {
 		t.Fatal(err)
 	}
 

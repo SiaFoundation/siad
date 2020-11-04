@@ -131,7 +131,11 @@ func TestBlankStorageObligation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// The number of contracts reported by the host should be zero.
 	fm := ht.host.FinancialMetrics()
@@ -328,7 +332,7 @@ func TestPruneStaleStorageObligations(t *testing.T) {
 		so.LockedCollateral = lockedCollateral
 		ht.host.managedLockStorageObligation(so.id())
 		err = ht.host.managedAddStorageObligation(so)
-		if err != transactionpool.ErrTxnSetNotAccepted {
+		if !errors.Contains(err, transactionpool.ErrTxnSetNotAccepted) {
 			t.Error("Wrong error:", err)
 		}
 		ht.host.managedUnlockStorageObligation(so.id())
@@ -472,7 +476,10 @@ func TestPruneStaleStorageObligations(t *testing.T) {
 
 	// These 2 stale contracts will forever lock storage collateral. Use the
 	// PruneStaleStorgageObligations method to remove them.
-	ht.host.PruneStaleStorageObligations()
+	err = ht.host.PruneStaleStorageObligations()
+	if err != nil {
+		t.Error(err)
+	}
 
 	// Check the financials.
 	fm = ht.host.FinancialMetrics()
@@ -557,7 +564,11 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Start by adding a storage obligation to the host. To emulate conditions
 	// of a renter creating the first contract, the storage obligation has no
@@ -753,7 +764,11 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Start by adding a storage obligation to the host. To emulate conditions
 	// of a renter creating the first contract, the storage obligation has no
@@ -1013,7 +1028,11 @@ func TestAutoRevisionSubmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Start by adding a storage obligation to the host. To emulate conditions
 	// of a renter creating the first contract, the storage obligation has no
@@ -1161,7 +1180,11 @@ func TestLargeContractBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create 2 storage obligations for the test and add them to the host.
 	so1, err := ht.newTesterStorageObligation()

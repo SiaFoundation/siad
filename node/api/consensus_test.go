@@ -77,7 +77,11 @@ func TestConsensusValidateTransactionSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	if non2xx(resp.StatusCode) {
 		t.Fatal(decodeError(resp))
 	}
@@ -92,7 +96,12 @@ func TestConsensusValidateTransactionSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		err := resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 	if !non2xx(resp.StatusCode) {
 		t.Fatal("expected validation error")
 	}
@@ -115,7 +124,12 @@ func TestIntegrationConsensusSubscribe(t *testing.T) {
 	if err != nil {
 		t.Fatal("unable to make an http request", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		err := resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 	if non2xx(resp.StatusCode) {
 		t.Fatal(decodeError(resp))
 	}
@@ -136,7 +150,12 @@ func TestIntegrationConsensusSubscribe(t *testing.T) {
 	if err != nil {
 		t.Fatal("unable to make an http request", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		err := resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 	if non2xx(resp.StatusCode) {
 		t.Fatal(decodeError(resp))
 	}

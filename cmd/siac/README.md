@@ -225,13 +225,13 @@ have the nickname be the same as the filename.
 
 ### Skynet tasks
 
-* `siac skynet blacklist` lists the merkleroots of all blacklisted skylinks.
+* `siac skynet blocklist` lists the merkleroots of all blocked skylinks.
 
-* `siac skynet blacklist add [skylink]` will add any skylinks separated by
-  spaces to the blacklist.
+* `siac skynet blocklist add [skylink]` will add any skylinks separated by
+  spaces to the blocklist.
 
-* `siac skynet blacklist remove [skylinks]` will remove any skylinks
-  separated by spaces from the blacklist.
+* `siac skynet blocklist remove [skylinks]` will remove any skylinks
+  separated by spaces from the blocklist.
 
 * `siac skynet convert [source siaPath] [destination siaPath]` converts
   a siafile to a skyfile and then generates its skylink. A new skylink will be
@@ -251,6 +251,16 @@ counted.
   with this skylink by re-uploading an exact copy. This ensures that the file
 will still be available on skynet as long as you continue maintaining the file
 in your renter.
+
+* `siac skynet portals` list the persisted Skynet portals.
+
+* `siac skynet portals add [url]` adds a Skynet portals which is either
+public or private to the list of persisted Skynet portals. The Skynet portal
+URL is of the form `url:port`. Add the `--public` if you want it to be public.
+It defaults to private.
+
+* `siac skynet portals remove [url]` removes the Skynet portal from the
+persisted list. The Skynet portal URL is of the form `url:port`.
 
 * `siac skynet unpin [siapath]` unpins one or more skyfiles or directories,
   deleting them from your list of stored files or directories.

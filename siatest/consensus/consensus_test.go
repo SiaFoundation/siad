@@ -263,7 +263,10 @@ func TestConsensusSubscribe(t *testing.T) {
 	// unsubscribe and mine more blocks; subscriber should not see them
 	unsubscribe()
 	for i := 0; i < 5; i++ {
-		testNode.MineBlock()
+		err = testNode.MineBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	cg, err = testNode.ConsensusGet()
 	if err != nil {

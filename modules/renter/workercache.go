@@ -30,6 +30,7 @@ type (
 		staticContractUtility modules.ContractUtility
 		staticHostVersion     string
 		staticRenterAllowance modules.Allowance
+		staticHostMuxAddress  string
 		staticSynced          bool
 
 		staticLastUpdate time.Time
@@ -73,6 +74,7 @@ func (w *worker) managedUpdateCache() {
 		staticBlockHeight:     w.renter.cs.Height(),
 		staticContractID:      renterContract.ID,
 		staticContractUtility: renterContract.Utility,
+		staticHostMuxAddress:  host.SiaMuxAddress(),
 		staticHostVersion:     host.Version,
 		staticRenterAllowance: w.renter.hostContractor.Allowance(),
 		staticSynced:          w.renter.cs.Synced(),
@@ -109,7 +111,10 @@ func (w *worker) staticTryUpdateCache() {
 	// Get the new cache in a goroutine. This is because the cache update grabs
 	// a lock on the consensus object, which can sometimes take a while if there
 	// are new blocks being processed or a reorg being processed.
-	w.renter.tg.Launch(w.managedUpdateCache)
+	err := w.renter.tg.Launch(w.managedUpdateCache)
+	if err != nil {
+		w.renter.log.Print("staticTryUpdateCache: failed to launch cache update", err)
+	}
 }
 
 // staticCache returns the current worker cache object.

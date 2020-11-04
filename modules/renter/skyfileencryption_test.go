@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/Sia/skynet"
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -57,13 +58,13 @@ func testBaseSectorEncryptionWithType(t *testing.T, r *Renter, skykeyType skykey
 	if err != nil {
 		t.Fatal(err)
 	}
-	ll := skyfileLayout{
-		version:      SkyfileVersion,
-		filesize:     uint64(len(fileBytes)),
-		metadataSize: uint64(len(metadataBytes)),
-		cipherType:   crypto.TypePlain,
+	ll := skynet.SkyfileLayout{
+		Version:      skynet.SkyfileVersion,
+		Filesize:     uint64(len(fileBytes)),
+		MetadataSize: uint64(len(metadataBytes)),
+		CipherType:   crypto.TypePlain,
 	}
-	baseSector, _ := skyfileBuildBaseSector(ll.encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
+	baseSector, _ := skyfileBuildBaseSector(ll.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
 
 	// Make a helper function for producing copies of the basesector
 	// because encryption is done in-place.
@@ -162,32 +163,32 @@ func testBaseSectorEncryptionWithType(t *testing.T, r *Renter, skykeyType skykey
 
 	// All baseSectors should be equal in everything except their keydata.
 	equalExceptKeyData := func(x, y []byte) error {
-		xLayout, xFanoutBytes, xSM, xPayload, err := parseSkyfileMetadata(x)
+		xLayout, xFanoutBytes, xSM, xPayload, err := skynet.ParseSkyfileMetadata(x)
 		if err != nil {
 			return err
 		}
-		yLayout, yFanoutBytes, ySM, yPayload, err := parseSkyfileMetadata(y)
+		yLayout, yFanoutBytes, ySM, yPayload, err := skynet.ParseSkyfileMetadata(y)
 		if err != nil {
 			return err
 		}
 
 		// Check layout equality.
-		if xLayout.version != yLayout.version {
+		if xLayout.Version != yLayout.Version {
 			return errors.New("Expected version to match")
 		}
-		if xLayout.filesize != yLayout.filesize {
+		if xLayout.Filesize != yLayout.Filesize {
 			return errors.New("Expected filesizes to match")
 		}
-		if xLayout.metadataSize != yLayout.metadataSize {
+		if xLayout.MetadataSize != yLayout.MetadataSize {
 			return errors.New("Expected metadatasizes to match")
 		}
-		if xLayout.fanoutSize != yLayout.fanoutSize {
+		if xLayout.FanoutSize != yLayout.FanoutSize {
 			return errors.New("Expected fanoutsize to match")
 		}
-		if xLayout.fanoutDataPieces != yLayout.fanoutDataPieces {
+		if xLayout.FanoutDataPieces != yLayout.FanoutDataPieces {
 			return errors.New("Expected fanoutDataPieces to match")
 		}
-		if xLayout.fanoutParityPieces != yLayout.fanoutParityPieces {
+		if xLayout.FanoutParityPieces != yLayout.FanoutParityPieces {
 			return errors.New("Expected fanoutParityPieces to match")
 		}
 		// (Key data and cipher type won't match because the unencrypted baseSector won't have any key
@@ -255,7 +256,7 @@ func testBaseSectorEncryptionWithType(t *testing.T, r *Renter, skykeyType skykey
 	}
 
 	// Testing fanout key derivation.
-	layoutForFanout, _, _, _, err := parseSkyfileMetadata(bsCopy1)
+	layoutForFanout, _, _, _, err := skynet.ParseSkyfileMetadata(bsCopy1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +291,11 @@ func TestBaseSectorKeyID(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := rt.renter
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a test skykey.
 	publicIDKeyName := t.Name() + "-public-id-key"
@@ -310,13 +315,13 @@ func TestBaseSectorKeyID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ll := skyfileLayout{
-		version:      SkyfileVersion,
-		filesize:     uint64(len(fileBytes)),
-		metadataSize: uint64(len(metadataBytes)),
-		cipherType:   crypto.TypePlain,
+	ll := skynet.SkyfileLayout{
+		Version:      skynet.SkyfileVersion,
+		Filesize:     uint64(len(fileBytes)),
+		MetadataSize: uint64(len(metadataBytes)),
+		CipherType:   crypto.TypePlain,
 	}
-	baseSector, _ := skyfileBuildBaseSector(ll.encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
+	baseSector, _ := skyfileBuildBaseSector(ll.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
 
 	// Make a helper function for producing copies of the basesector
 	// because encryption is done in-place.
@@ -335,12 +340,12 @@ func TestBaseSectorKeyID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var encLayout skyfileLayout
-	encLayout.decode(bsCopy)
+	var encLayout skynet.SkyfileLayout
+	encLayout.Decode(bsCopy)
 
 	// Check that skykey ID is stored correctly in the layout.
 	var keyID skykey.SkykeyID
-	copy(keyID[:], encLayout.keyData[:skykey.SkykeyIDLen])
+	copy(keyID[:], encLayout.KeyData[:skykey.SkykeyIDLen])
 	if keyID != publicIDKey.ID() {
 		t.Log(encLayout)
 		t.Log(keyID, publicIDKey.ID())
@@ -363,12 +368,12 @@ func TestBaseSectorKeyID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var encLayout2 skyfileLayout
-	encLayout2.decode(bsCopy2)
+	var encLayout2 skynet.SkyfileLayout
+	encLayout2.Decode(bsCopy2)
 
 	// Check that skykey ID is NOT in the layout.
 	var keyID2 skykey.SkykeyID
-	copy(keyID2[:], encLayout2.keyData[:skykey.SkykeyIDLen])
+	copy(keyID2[:], encLayout2.KeyData[:skykey.SkykeyIDLen])
 	privateID := privateIDKey.ID()
 	if keyID2 == privateID {
 		t.Log(keyID, privateID)

@@ -19,14 +19,14 @@ require (
 	gitlab.com/NebulousLabs/demotemutex v0.0.0-20151003192217-235395f71c40
 	gitlab.com/NebulousLabs/encoding v0.0.0-20200604091946-456c3dc907fe
 	gitlab.com/NebulousLabs/entropy-mnemonics v0.0.0-20181018051301-7532f67e3500
-	gitlab.com/NebulousLabs/errors v0.0.0-20171229012116-7ead97ef90b8
+	gitlab.com/NebulousLabs/errors v0.0.0-20200929122200-06c536cf6975
 	gitlab.com/NebulousLabs/fastrand v0.0.0-20181126182046-603482d69e40
 	gitlab.com/NebulousLabs/go-upnp v0.0.0-20181011194642-3a71999ed0d3
 	gitlab.com/NebulousLabs/log v0.0.0-20200604091839-0ba4a941cdc2
 	gitlab.com/NebulousLabs/merkletree v0.0.0-20200118113624-07fbf710afc4
 	gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a
-	gitlab.com/NebulousLabs/ratelimit v0.0.0-20200703092634-24a64284c0ec
-	gitlab.com/NebulousLabs/siamux v0.0.0-20200901125633-5985119d5698
+	gitlab.com/NebulousLabs/ratelimit v0.0.0-20200811080431-99b8f0768b2e
+	gitlab.com/NebulousLabs/siamux v0.0.0-20200925101814-d7bdbba53ac2
 	gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213
 	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20200618142844-c59a90f49130
 	golang.org/x/crypto v0.0.0-20200709230013-948cd5f35899

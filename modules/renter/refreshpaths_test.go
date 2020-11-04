@@ -8,7 +8,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -26,7 +25,11 @@ func TestAddUniqueRefreshPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create some directory tree paths
 	paths := []modules.SiaPath{
@@ -78,7 +81,7 @@ func TestAddUniqueRefreshPaths(t *testing.T) {
 	}
 
 	// Make child directories and add a file to each
-	rsc, _ := siafile.NewRSCode(1, 1)
+	rsc, _ := modules.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
 		Source:      "",
 		ErasureCode: rsc,

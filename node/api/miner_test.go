@@ -118,7 +118,11 @@ func TestMinerHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	targetAndHeader, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatal(err)
@@ -145,7 +149,11 @@ func TestMinerHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	time.Sleep(500 * time.Millisecond)
 	if st.cs.Height() != startingHeight+1 {
 		t.Errorf("block height did not increase after trying to mine a block through the api, started at %v and ended at %v", startingHeight, st.cs.Height())

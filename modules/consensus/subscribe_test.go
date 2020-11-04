@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -50,12 +51,16 @@ func TestInvalidConsensusChangeSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	ms := newMockSubscriber()
 	badCCID := modules.ConsensusChangeID{255, 255, 255}
 	err = cst.cs.ConsensusSetSubscribe(&ms, badCCID, cst.cs.tg.StopChan())
-	if err != modules.ErrInvalidConsensusChangeID {
+	if !errors.Contains(err, modules.ErrInvalidConsensusChangeID) {
 		t.Error("consensus set returning the wrong error during an invalid subscription:", err)
 	}
 
@@ -81,13 +86,17 @@ func TestInvalidToValidSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Start by performing a bad subscribe.
 	ms := newMockSubscriber()
 	badCCID := modules.ConsensusChangeID{255, 255, 255}
 	err = cst.cs.ConsensusSetSubscribe(&ms, badCCID, cst.cs.tg.StopChan())
-	if err != modules.ErrInvalidConsensusChangeID {
+	if !errors.Contains(err, modules.ErrInvalidConsensusChangeID) {
 		t.Error("consensus set returning the wrong error during an invalid subscription:", err)
 	}
 
@@ -120,7 +129,11 @@ func TestUnsubscribe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Subscribe the mock subscriber to the consensus set.
 	ms := newMockSubscriber()
@@ -165,7 +178,11 @@ func TestModuleDesync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine some blocks.
 	for i := 0; i < 10; i++ {
@@ -252,7 +269,11 @@ func TestPerBlockDiffs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Subscribe the mock subscriber to the consensus set.
 	ms := newMockSubscriber()

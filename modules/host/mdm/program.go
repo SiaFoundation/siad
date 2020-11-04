@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -100,6 +101,10 @@ func decodeInstruction(p *program, i modules.Instruction) (instruction, error) {
 		return p.staticDecodeRevisionInstruction(i)
 	case modules.SpecifierSwapSector:
 		return p.staticDecodeSwapSectorInstruction(i)
+	case modules.SpecifierUpdateRegistry:
+		return p.staticDecodeUpdateRegistryInstruction(i)
+	case modules.SpecifierReadRegistry:
+		return p.staticDecodeReadRegistryInstruction(i)
 	default:
 		return nil, fmt.Errorf("unknown instruction specifier: %v", i.Specifier)
 	}
@@ -154,7 +159,15 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 	}
 	go func() {
 		defer cancel()
-		defer program.staticData.Close()
+		defer func() {
+			err := program.staticData.Close()
+			if err != nil {
+				// This never returns an err != nila but we still want to
+				// satisfy the errcheck lint while also not missing a potential
+				// future error.
+				build.Critical(err)
+			}
+		}()
 		defer program.tg.Done()
 		defer close(program.outputChan)
 		program.outputErr = program.executeInstructions(ctx, sos.ContractSize(), sos.MerkleRoot())
@@ -196,7 +209,7 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		NewSize:       fcSize,
 		NewMerkleRoot: fcRoot,
 	}
-	for _, i := range p.instructions {
+	for idx, i := range p.instructions {
 		select {
 		case <-ctx.Done(): // Check for interrupt
 			p.outputChan <- outputFromError(ErrInterrupted, p.additionalCollateral, p.executionCost, p.additionalStorageCost)
@@ -233,10 +246,15 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		}
 		// Add the instruction's potential refund to the total.
 		p.additionalStorageCost = p.additionalStorageCost.Add(storageCost)
+		// Figure out whether to recommend the caller to batch this instruction
+		// with the next one. We batch if the instruction is supposed to be
+		// batched and if it's not the last instruction in the program.
+		batch := idx < len(p.instructions)-1 && p.instructions[idx+1].Batch()
 		// Execute next instruction.
 		output = i.Execute(output)
 		p.outputChan <- Output{
 			output:                output,
+			Batch:                 batch,
 			ExecutionCost:         p.executionCost,
 			AdditionalCollateral:  p.additionalCollateral,
 			AdditionalStorageCost: p.additionalStorageCost,

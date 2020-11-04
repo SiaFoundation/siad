@@ -93,7 +93,10 @@ func setupTestDownload(t *testing.T, size int, name string, waitOnRedundancy boo
 		// wait for the file to have a redundancy > 1
 		err = build.Retry(200, time.Second, func() error {
 			var rf RenterFile
-			st.getAPI("/renter/file/"+name, &rf)
+			err = st.getAPI("/renter/file/"+name, &rf)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if rf.File.Redundancy < 1 {
 				return fmt.Errorf("the uploading is not succeeding for some reason: %v", rf.File)
 			}
@@ -118,7 +121,10 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 	st, path := setupTestDownload(t, int(filesize), ulSiaPath.String(), true)
 	defer func() {
 		st.server.panicClose()
-		os.Remove(path)
+		err = os.Remove(path)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}()
 
 	// Read the section to be downloaded from the original file.
@@ -139,7 +145,14 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 	// Download the original file from the passed offsets.
 	fname := testName + "-download.dat"
 	downpath := filepath.Join(st.dir, fname)
-	defer os.Remove(downpath)
+	if !useHttpResp {
+		defer func() {
+			err = os.Remove(downpath)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}()
+	}
 
 	dlURL := fmt.Sprintf("/renter/download/%s?disablelocalfetch=true&offset=%d&length=%d", ulSiaPath, offset, length)
 
@@ -152,7 +165,11 @@ func runDownloadTest(t *testing.T, filesize, offset, length int64, useHttpResp b
 		if err != nil {
 			return errors.AddContext(err, "unable to make an http request")
 		}
-		defer resp.Body.Close()
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 		if non2xx(resp.StatusCode) {
 			return decodeError(resp)
 		}
@@ -223,7 +240,11 @@ func TestRenterDownloadError(t *testing.T) {
 	t.Parallel()
 
 	st, _ := setupTestDownload(t, 1e4, "test.dat", false)
-	defer st.server.Close()
+	defer func() {
+		if err := st.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// don't wait for the upload to complete, try to download immediately to
 	// intentionally cause a download error
@@ -300,7 +321,11 @@ func runDownloadParamTest(t *testing.T, length, offset, filesize int) error {
 	ulSiaPath := "test.dat"
 
 	st, _ := setupTestDownload(t, filesize, ulSiaPath, true)
-	defer st.server.Close()
+	defer func() {
+		if err := st.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Download the original file from offset 40 and length 10.
 	fname := "offsetsinglechunk.dat"
@@ -348,7 +373,11 @@ func TestRenterDownloadAsyncAndHttpRespError(t *testing.T) {
 	ulSiaPath := "test.dat"
 
 	st, _ := setupTestDownload(t, int(filesize), ulSiaPath, true)
-	defer st.server.Close()
+	defer func() {
+		if err := st.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Download the original file from offset 40 and length 10.
 	fname := "offsetsinglechunk.dat"
@@ -369,7 +398,11 @@ func TestRenterDownloadAsyncNonexistentFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.server.Close()
+	defer func() {
+		if err := st.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	downpath := filepath.Join(st.dir, "testfile")
 	err = st.getAPI(fmt.Sprintf("/renter/downloadasync/doesntexist?destination=%v", downpath), nil)
@@ -388,7 +421,11 @@ func TestRenterDownloadAsyncAndNotDestinationError(t *testing.T) {
 	ulSiaPath := "test.dat"
 
 	st, _ := setupTestDownload(t, int(filesize), ulSiaPath, true)
-	defer st.server.Close()
+	defer func() {
+		if err := st.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Download the original file from offset 40 and length 10.
 	dlURL := fmt.Sprintf("/renter/download/%s?disablelocalfetch=true&async=true", ulSiaPath)
@@ -408,7 +445,11 @@ func TestRenterDownloadHttpRespAndDestinationError(t *testing.T) {
 	ulSiaPath := "test.dat"
 
 	st, _ := setupTestDownload(t, int(filesize), ulSiaPath, true)
-	defer st.server.Close()
+	defer func() {
+		if err := st.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Download the original file from offset 40 and length 10.
 	fname := "test.dat"
@@ -433,11 +474,14 @@ func TestRenterAsyncDownloadError(t *testing.T) {
 	// don't wait for the upload to complete, try to download immediately to
 	// intentionally cause a download error
 	downpath := filepath.Join(st.dir, "asyncdown.dat")
-	st.getAPI("/renter/downloadasync/test.dat?disablelocalfetch=true&destination="+downpath, nil)
+	err := st.getAPI("/renter/downloadasync/test.dat?disablelocalfetch=true&destination="+downpath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// verify the file has an error
 	var rdq RenterDownloadQueue
-	err := st.getAPI("/renter/downloads", &rdq)
+	err = st.getAPI("/renter/downloads", &rdq)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -921,7 +965,10 @@ func TestRenterHandlerRename(t *testing.T) {
 	// Should be able to continue uploading and downloading using the new name.
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
@@ -1129,7 +1176,10 @@ func TestRenterRelativePathErrorDownload(t *testing.T) {
 	}
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(200 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
@@ -1518,7 +1568,7 @@ func TestHealthLoop(t *testing.T) {
 	}
 
 	// Block until the allowance has finished forming contracts.
-	err = build.Retry(50, time.Millisecond*250, func() error {
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		var rc RenterContracts
 		err = st1.getAPI("/renter/contracts", &rc)
 		if err != nil {
@@ -1549,7 +1599,7 @@ func TestHealthLoop(t *testing.T) {
 	}
 
 	// redundancy should reach 2
-	err = build.Retry(120, 250*time.Millisecond, func() error {
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		var rf RenterFiles
 		st1.getAPI("/renter/files", &rf)
 		if len(rf.Files) >= 1 && rf.Files[0].Redundancy == 2 {
@@ -1561,8 +1611,8 @@ func TestHealthLoop(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Verify folder metadata is update, directory health should be 0
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	// Verify folder metadata is updated, directory health should be 0
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		var rd RenterDirectory
 		err := st1.getAPI("/renter/dir/", &rd)
 		if err != nil {
@@ -1581,7 +1631,7 @@ func TestHealthLoop(t *testing.T) {
 	st2.server.panicClose()
 
 	// redundancy should drop
-	err = build.Retry(120, 250*time.Millisecond, func() error {
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		var rf RenterFiles
 		st1.getAPI("/renter/files", &rf)
 		if len(rf.Files) >= 1 && rf.Files[0].Redundancy == 2 {
@@ -1594,7 +1644,7 @@ func TestHealthLoop(t *testing.T) {
 	}
 
 	// Check that the metadata has been updated
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		var rd RenterDirectory
 		st1.getAPI("/renter/dir/", &rd)
 		if rd.Directories[0].MaxHealth == 0 {

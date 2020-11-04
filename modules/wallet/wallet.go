@@ -126,10 +126,13 @@ func (w *Wallet) Height() (types.BlockHeight, error) {
 
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.syncDB()
+	err := w.syncDB()
+	if err != nil {
+		return types.BlockHeight(0), err
+	}
 
 	var height uint64
-	err := w.db.View(func(tx *bolt.Tx) error {
+	err = w.db.View(func(tx *bolt.Tx) error {
 		return encoding.Unmarshal(tx.Bucket(bucketWallet).Get(keyConsensusHeight), &height)
 	})
 	if err != nil {

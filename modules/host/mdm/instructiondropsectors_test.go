@@ -114,7 +114,7 @@ func TestInstructionAppendAndDropSectors(t *testing.T) {
 	}
 	for i, output := range outputs {
 		expected := expectedOutputs[i]
-		if err := output.assert(expected.NewSize, expected.NewMerkleRoot, expected.Proof, expected.Output); err != nil {
+		if err := output.assert(expected.NewSize, expected.NewMerkleRoot, expected.Proof, expected.Output, nil); err != nil {
 			t.Fatal(err)
 		}
 	}

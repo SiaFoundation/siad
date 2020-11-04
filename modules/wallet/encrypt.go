@@ -317,7 +317,7 @@ func (w *Wallet) managedAsyncUnlock(lastChange modules.ConsensusChangeID) error 
 		defer close(done)
 
 		err := w.cs.ConsensusSetSubscribe(w, lastChange, w.tg.StopChan())
-		if err == modules.ErrInvalidConsensusChangeID {
+		if errors.Contains(err, modules.ErrInvalidConsensusChangeID) {
 			// something went wrong; resubscribe from the beginning
 			err = dbPutConsensusChangeID(w.dbTx, modules.ConsensusChangeBeginning)
 			if err != nil {

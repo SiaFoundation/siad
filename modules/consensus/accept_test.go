@@ -2,12 +2,12 @@ package consensus
 
 import (
 	"bytes"
-	"errors"
 	"testing"
 	"time"
 	"unsafe"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -298,7 +298,7 @@ func TestUnitValidateHeaderAndBlock(t *testing.T) {
 		// Reset the stored parameters to ValidateBlock.
 		validateBlockParamsGot = validateBlockParams{}
 		_, err := cs.validateHeaderAndBlock(tx, tt.block, tt.block.ID())
-		if err != tt.errWant {
+		if err != tt.errWant && !errors.Contains(err, tt.errWant) {
 			t.Errorf("%s: expected to fail with `%v', got: `%v'", tt.msg, tt.errWant, err)
 		}
 		if err == nil || validateBlockParamsGot.called {
@@ -501,7 +501,11 @@ func TestIntegrationDoSBlockHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine a block that is valid except for containing a buried invalid
 	// transaction. The transaction has more siacoin inputs than outputs.
@@ -527,14 +531,14 @@ func TestIntegrationDoSBlockHandling(t *testing.T) {
 	block.Transactions = append(block.Transactions, txnSet...)
 	dosBlock, _ := cst.miner.SolveBlock(block, target)
 	err = cst.cs.AcceptBlock(dosBlock)
-	if err != errSiacoinInputOutputMismatch {
+	if !errors.Contains(err, errSiacoinInputOutputMismatch) {
 		t.Fatalf("expected %v, got %v", errSiacoinInputOutputMismatch, err)
 	}
 
 	// Submit the same block a second time. The complaint should be that the
 	// block is already known to be invalid.
 	err = cst.cs.AcceptBlock(dosBlock)
-	if err != errDoSBlock {
+	if !errors.Contains(err, errDoSBlock) {
 		t.Fatalf("expected %v, got %v", errDoSBlock, err)
 	}
 }
@@ -549,7 +553,11 @@ func TestBlockKnownHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Get a block destined to be stale.
 	block, target, err := cst.miner.BlockForWork()
@@ -570,7 +578,7 @@ func TestBlockKnownHandling(t *testing.T) {
 
 	// Submit the stale block.
 	err = cst.cs.AcceptBlock(staleBlock)
-	if err != nil && err != modules.ErrNonExtendingBlock {
+	if err != nil && !errors.Contains(err, modules.ErrNonExtendingBlock) {
 		t.Fatal(err)
 	}
 
@@ -613,18 +621,22 @@ func TestOrphanHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Try submitting an orphan block to the consensus set. The empty block can
 	// be used, because looking for a parent is one of the first checks the
 	// consensus set performs.
 	orphan := types.Block{}
 	err = cst.cs.AcceptBlock(orphan)
-	if err != errOrphan {
+	if !errors.Contains(err, errOrphan) {
 		t.Fatalf("expected %v, got %v", errOrphan, err)
 	}
 	err = cst.cs.AcceptBlock(orphan)
-	if err != errOrphan {
+	if !errors.Contains(err, errOrphan) {
 		t.Fatalf("expected %v, got %v", errOrphan, err)
 	}
 }
@@ -639,7 +651,11 @@ func TestMissedTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine a block that doesn't meet the target.
 	block, target, err := cst.miner.BlockForWork()
@@ -653,7 +669,7 @@ func TestMissedTarget(t *testing.T) {
 		t.Fatal("unable to find a failing target")
 	}
 	err = cst.cs.AcceptBlock(block)
-	if err != modules.ErrBlockUnsolved {
+	if !errors.Contains(err, modules.ErrBlockUnsolved) {
 		t.Fatalf("expected %v, got %v", modules.ErrBlockUnsolved, err)
 	}
 }
@@ -669,7 +685,11 @@ func TestMinerPayoutHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block with the wrong miner payout structure - testing can be
 	// light here because there is heavier testing in the 'types' package,
@@ -681,7 +701,7 @@ func TestMinerPayoutHandling(t *testing.T) {
 	block.MinerPayouts = append(block.MinerPayouts, types.SiacoinOutput{Value: types.NewCurrency64(1)})
 	solvedBlock, _ := cst.miner.SolveBlock(block, target)
 	err = cst.cs.AcceptBlock(solvedBlock)
-	if err != ErrBadMinerPayouts {
+	if !errors.Contains(err, ErrBadMinerPayouts) {
 		t.Fatalf("expected %v, got %v", ErrBadMinerPayouts, err)
 	}
 }
@@ -697,7 +717,11 @@ func TestEarlyTimestampHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	minTimestamp := types.CurrentTimestamp()
 	cst.cs.blockRuleHelper = mockBlockRuleHelper{
 		minTimestamp: minTimestamp,
@@ -711,7 +735,7 @@ func TestEarlyTimestampHandling(t *testing.T) {
 	block.Timestamp = minTimestamp - 1
 	solvedBlock, _ := cst.miner.SolveBlock(block, target)
 	err = cst.cs.AcceptBlock(solvedBlock)
-	if err != ErrEarlyTimestamp {
+	if !errors.Contains(err, ErrEarlyTimestamp) {
 		t.Fatalf("expected %v, got %v", ErrEarlyTimestamp, err)
 	}
 }
@@ -727,7 +751,11 @@ func TestFutureTimestampHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Submit a block with a timestamp in the future, but not the extreme
 	// future.
@@ -738,7 +766,7 @@ func TestFutureTimestampHandling(t *testing.T) {
 	block.Timestamp = types.CurrentTimestamp() + 2 + types.FutureThreshold
 	solvedBlock, _ := cst.miner.SolveBlock(block, target)
 	err = cst.cs.AcceptBlock(solvedBlock)
-	if err != ErrFutureTimestamp {
+	if !errors.Contains(err, ErrFutureTimestamp) {
 		t.Fatalf("expected %v, got %v", ErrFutureTimestamp, err)
 	}
 
@@ -767,7 +795,11 @@ func TestExtremeFutureTimestampHandling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Submit a block with a timestamp in the extreme future.
 	block, target, err := cst.miner.BlockForWork()
@@ -777,7 +809,7 @@ func TestExtremeFutureTimestampHandling(t *testing.T) {
 	block.Timestamp = types.CurrentTimestamp() + 2 + types.ExtremeFutureThreshold
 	solvedBlock, _ := cst.miner.SolveBlock(block, target)
 	err = cst.cs.AcceptBlock(solvedBlock)
-	if err != ErrExtremeFutureTimestamp {
+	if !errors.Contains(err, ErrExtremeFutureTimestamp) {
 		t.Fatalf("expected %v, got %v", ErrFutureTimestamp, err)
 	}
 }
@@ -793,7 +825,11 @@ func TestBuriedBadTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	pb := cst.cs.dbCurrentProcessedBlock()
 
 	// Create a good transaction using the wallet.
@@ -881,7 +917,11 @@ func TestTaxHardfork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a file contract with a payout that is put into the blockchain
 	// before the hardfork block but expires after the hardfork block.
@@ -1006,7 +1046,11 @@ func TestAcceptBlockBroadcasts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	mg := &mockGatewayDoesBroadcast{
 		Gateway:         cst.cs.gateway,
 		broadcastCalled: make(chan struct{}),
@@ -1080,12 +1124,20 @@ func TestChainedAcceptBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cst2, err := blankConsensusSetTester(t.Name()+"2", modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst2.Close()
+	defer func() {
+		if err := cst2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// Subscribe a blockCountingSubscriber to cst2.
 	var bcs blockCountingSubscriber
 	cst2.cs.ConsensusSetSubscribe(&bcs, modules.ConsensusChangeBeginning, cst2.cs.tg.StopChan())
@@ -1119,7 +1171,7 @@ func TestChainedAcceptBlock(t *testing.T) {
 	// Try to submit the blocks out-of-order, which would violate one of the
 	// assumptions in managedAcceptBlocks.
 	_, err = cst2.cs.managedAcceptBlocks(jumble)
-	if err != errNonLinearChain {
+	if !errors.Contains(err, errNonLinearChain) {
 		t.Fatal(err)
 	}
 	if cst2.cs.Height() != 0 {

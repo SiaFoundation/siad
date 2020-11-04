@@ -179,19 +179,17 @@ func (np NodeParams) NumModules() (n int) {
 }
 
 // printlnRelease is a wrapper that only prints to stdout in release builds.
-func printlnRelease(a ...interface{}) (int, error) {
+func printlnRelease(a ...interface{}) {
 	if build.Release == "standard" {
-		return fmt.Println(a...)
+		fmt.Println(a...)
 	}
-	return 0, nil
 }
 
 // printfRelease is a wrapper that only prints to stdout in release builds.
-func printfRelease(format string, a ...interface{}) (int, error) {
+func printfRelease(format string, a ...interface{}) {
 	if build.Release == "standard" {
-		return fmt.Printf(format, a...)
+		fmt.Printf(format, a...)
 	}
-	return 0, nil
 }
 
 // Close will call close on every module within the node, combining and
@@ -199,43 +197,43 @@ func printfRelease(format string, a ...interface{}) (int, error) {
 func (n *Node) Close() (err error) {
 	if n.Renter != nil {
 		printlnRelease("Closing renter...")
-		err = errors.Compose(n.Renter.Close())
+		err = errors.Compose(err, n.Renter.Close())
 	}
 	if n.Host != nil {
 		printlnRelease("Closing host...")
-		err = errors.Compose(n.Host.Close())
+		err = errors.Compose(err, n.Host.Close())
 	}
 	if n.Miner != nil {
 		printlnRelease("Closing miner...")
-		err = errors.Compose(n.Miner.Close())
+		err = errors.Compose(err, n.Miner.Close())
 	}
 	if n.Wallet != nil {
 		printlnRelease("Closing wallet...")
-		err = errors.Compose(n.Wallet.Close())
+		err = errors.Compose(err, n.Wallet.Close())
 	}
 	if n.TransactionPool != nil {
 		printlnRelease("Closing transactionpool...")
-		err = errors.Compose(n.TransactionPool.Close())
+		err = errors.Compose(err, n.TransactionPool.Close())
 	}
 	if n.Explorer != nil {
 		printlnRelease("Closing explorer...")
-		err = errors.Compose(n.Explorer.Close())
+		err = errors.Compose(err, n.Explorer.Close())
 	}
 	if n.FeeManager != nil {
 		printlnRelease("Closing feemanager...")
-		err = errors.Compose(n.FeeManager.Close())
+		err = errors.Compose(err, n.FeeManager.Close())
 	}
 	if n.ConsensusSet != nil {
 		printlnRelease("Closing consensusset...")
-		err = errors.Compose(n.ConsensusSet.Close())
+		err = errors.Compose(err, n.ConsensusSet.Close())
 	}
 	if n.Gateway != nil {
 		printlnRelease("Closing gateway...")
-		err = errors.Compose(n.Gateway.Close())
+		err = errors.Compose(err, n.Gateway.Close())
 	}
 	if n.Mux != nil {
 		printlnRelease("Closing siamux...")
-		err = errors.Compose(n.Mux.Close())
+		err = errors.Compose(err, n.Mux.Close())
 	}
 	return err
 }
@@ -408,7 +406,7 @@ func New(params NodeParams, loadStartTime time.Time) (*Node, <-chan error) {
 		}
 		i++
 		printfRelease("(%d/%d) Loading feemanager...\n", i, numModules)
-		return feemanager.NewCustomFeeManager(cs, w, filepath.Join(dir, modules.FeeManagerDir), feeManagerDeps)
+		return feemanager.NewCustomFeeManager(cs, tp, w, filepath.Join(dir, modules.FeeManagerDir), feeManagerDeps)
 	}()
 	if err != nil {
 		errChan <- errors.Extend(err, errors.New("unable to create feemanager"))

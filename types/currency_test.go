@@ -4,6 +4,8 @@ import (
 	"math"
 	"math/big"
 	"testing"
+
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestNewCurrency initializes a standard new currency.
@@ -405,7 +407,7 @@ func TestCurrencyUint64(t *testing.T) {
 	c := NewCurrency64(math.MaxUint64)
 	c = c.Mul(NewCurrency64(2))
 	result, err := c.Uint64()
-	if err != ErrUint64Overflow {
+	if !errors.Contains(err, ErrUint64Overflow) {
 		t.Error(err)
 	}
 	if result != 0 {

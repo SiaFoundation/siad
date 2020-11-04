@@ -11,6 +11,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -25,6 +26,7 @@ type (
 		generateSectors bool
 		blockHeight     types.BlockHeight
 		sectors         map[crypto.Hash][]byte
+		registry        map[crypto.Hash]modules.SignedRegistryValue
 		mu              sync.Mutex
 	}
 	// TestStorageObligation is a dummy storage obligation for testing which
@@ -46,6 +48,7 @@ func newTestHost() *TestHost {
 func newCustomTestHost(generateSectors bool) *TestHost {
 	return &TestHost{
 		generateSectors: generateSectors,
+		registry:        make(map[crypto.Hash]modules.SignedRegistryValue),
 		sectors:         make(map[crypto.Hash][]byte),
 	}
 }
@@ -74,6 +77,35 @@ func (h *TestHost) HasSector(sectorRoot crypto.Hash) bool {
 	_, exists := h.sectors[sectorRoot]
 	h.mu.Unlock()
 	return exists
+}
+
+// RegistryGet retrieves a value from the registry.
+func (h *TestHost) RegistryGet(pubKey types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	v, exists := h.registry[crypto.HashAll(pubKey, tweak)]
+	if !exists {
+		return modules.SignedRegistryValue{}, false
+	}
+	return v, true
+}
+
+// RegistryUpdate updates a value in the registry.
+func (h *TestHost) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (modules.SignedRegistryValue, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	key := crypto.HashAll(pubKey, rv.Tweak)
+	oldRV, exists := h.registry[key]
+
+	if exists && rv.Revision < oldRV.Revision {
+		return oldRV, registry.ErrLowerRevNum
+	}
+	if exists && rv.Revision == oldRV.Revision {
+		return oldRV, registry.ErrSameRevNum
+	}
+
+	h.registry[key] = rv
+	return oldRV, nil
 }
 
 // ReadSector implements the Host interface by returning a random sector for
@@ -273,9 +305,13 @@ func (mdm *MDM) ExecuteProgramWithBuilderManualFinalize(tb *testProgramBuilder, 
 // assert asserts an output against the provided values. Costs should be
 // asserted using the TestValues type or they will be asserted implicitly when
 // using ExecuteProgramWithBuilder.
-func (o Output) assert(newSize uint64, newMerkleRoot crypto.Hash, proof []crypto.Hash, output []byte) error {
-	if o.Error != nil {
+func (o Output) assert(newSize uint64, newMerkleRoot crypto.Hash, proof []crypto.Hash, output []byte, err error) error {
+	if err != nil && o.Error == nil {
+		return fmt.Errorf("output didn't contain error")
+	} else if err == nil && o.Error != nil {
 		return fmt.Errorf("output contained error: %v", o.Error)
+	} else if o.Error != nil && err != nil && o.Error.Error() != err.Error() {
+		return fmt.Errorf("output errors don't match %v != %v", o.Error, err)
 	}
 	if o.NewSize != newSize {
 		return fmt.Errorf("expected newSize %v but got %v", newSize, o.NewSize)

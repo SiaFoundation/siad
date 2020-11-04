@@ -110,6 +110,10 @@ type RPCPriceTable struct {
 	// WindowSize is the minimum time in blocks the host requests the
 	// renewWindow of a new contract to be.
 	WindowSize types.BlockHeight `json:"windowsize"`
+
+	// Registry related fields.
+	RegistryEntriesLeft  uint64 `json:"registryentriesleft"`
+	RegistryEntriesTotal uint64 `json:"registryentriestotal"`
 }
 
 var (

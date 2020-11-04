@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/inconshreveable/go-update"
+
 	"github.com/julienschmidt/httprouter"
 	"github.com/kardianos/osext"
 	"golang.org/x/crypto/openpgp"
@@ -134,7 +135,7 @@ type (
 
 	// DaemonStackGet contains information about the daemon's stack.
 	DaemonStackGet struct {
-		Stack []byte `json:"stack"`
+		Stack string `json:"stack"`
 	}
 
 	// DaemonSettingsGet contains information about global daemon settings.
@@ -153,12 +154,17 @@ type (
 )
 
 // fetchLatestRelease returns metadata about the most recent GitLab release.
-func fetchLatestRelease() (gitlabRelease, error) {
+func fetchLatestRelease() (_ gitlabRelease, err error) {
 	resp, err := http.Get("https://gitlab.com/api/v4/projects/7508674/repository/tags?order_by=name")
 	if err != nil {
 		return gitlabRelease{}, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		closeErr := resp.Body.Close()
+		if closeErr != nil {
+			err = errors.Compose(err, closeErr)
+		}
+	}()
 	var releases []gitlabRelease
 	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
 		return gitlabRelease{}, err
@@ -177,7 +183,7 @@ func fetchLatestRelease() (gitlabRelease, error) {
 
 // updateToRelease updates siad and siac to the release specified. siac is
 // assumed to be in the same folder as siad.
-func updateToRelease(version string) error {
+func updateToRelease(version string) (err error) {
 	binaryFolder, err := osext.ExecutableFolder()
 	if err != nil {
 		return err
@@ -192,7 +198,7 @@ func updateToRelease(version string) error {
 	// The file should be small enough to store in memory (<1 MiB); use
 	// MaxBytesReader to ensure we don't download more than 8 MiB
 	signatureBytes, err := ioutil.ReadAll(http.MaxBytesReader(nil, resp.Body, 1<<23))
-	resp.Body.Close()
+	err = errors.Compose(err, resp.Body.Close())
 	if err != nil {
 		return err
 	}
@@ -234,7 +240,7 @@ func updateToRelease(version string) error {
 	// release should be small enough to store in memory (<10 MiB); use
 	// LimitReader to ensure we don't download more than 32 MiB
 	content, err := ioutil.ReadAll(http.MaxBytesReader(nil, zipResp.Body, 1<<25))
-	resp.Body.Close()
+	err = errors.Compose(err, resp.Body.Close())
 	if err != nil {
 		return err
 	}
@@ -267,7 +273,9 @@ func updateToRelease(version string) error {
 			if err != nil {
 				return err
 			}
-			defer binData.Close()
+			defer func() {
+				err = errors.Compose(err, binData.Close())
+			}()
 		}
 		if binData == nil {
 			return errors.New("could not find " + binary + " binary")
@@ -445,7 +453,7 @@ func (api *API) daemonStackHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 
 	// Return the n bytes of the stack that were used.
 	WriteJSON(w, DaemonStackGet{
-		Stack: stack[:n],
+		Stack: string(stack[:n]),
 	})
 }
 
@@ -481,8 +489,8 @@ func (api *API) daemonStartProfileHandlerPOST(w http.ResponseWriter, req *http.R
 	WriteSuccess(w)
 }
 
-// daemonStopProfileHandlerGET handles the API call that stops a profile for the daemon.
-func (api *API) daemonStopProfileHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+// daemonStopProfileHandlerPOST handles the API call that stops a profile for the daemon.
+func (api *API) daemonStopProfileHandlerPOST(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	// Stop any CPU or Trace profiles. Memory Profiles do not have a stop function
 	profile.StopCPUProfile()
 	profile.StopTrace()

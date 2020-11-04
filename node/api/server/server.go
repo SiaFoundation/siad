@@ -64,7 +64,7 @@ func (srv *Server) Close() error {
 	err := srv.apiServer.Shutdown(context.Background())
 	// Wait for serve() to return and capture its error.
 	<-srv.serveChan
-	if srv.serveErr != http.ErrServerClosed {
+	if !errors.Contains(srv.serveErr, http.ErrServerClosed) {
 		err = errors.Compose(err, srv.serveErr)
 	}
 	// Shutdown modules.

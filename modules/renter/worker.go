@@ -7,8 +7,7 @@ package renter
 // functions for a job are Queue, Kill, and Perform. Queue will add a job to the
 // queue of work of that type. Kill will empty the queue and close out any work
 // that will not be completed. Perform will grab a job from the queue if one
-// exists and complete that piece of work. See workerfetchbackups.go for a clean
-// example.
+// exists and complete that piece of work.
 //
 // The worker has an ephemeral account on the host. It can use this account to
 // pay for downloads and uploads. In order to ensure the account's balance does
@@ -25,8 +24,12 @@ import (
 )
 
 const (
-	// minAsyncVersion defines the minimum version that is supported
+	// minAsyncVersion defines the minimum version that supports RHP3.
 	minAsyncVersion = "1.4.10"
+
+	// minRegistryVersion defines the minimum version that is required for a
+	// host to support the registry.
+	minRegistryVersion = "1.5.1"
 )
 
 const (
@@ -64,9 +67,8 @@ type (
 
 		// The host pub key also serves as an id for the worker, as there is
 		// only one worker per host.
-		staticHostPubKey     types.SiaPublicKey
-		staticHostPubKeyStr  string
-		staticHostMuxAddress string
+		staticHostPubKey    types.SiaPublicKey
+		staticHostPubKeyStr string
 
 		// Download variables related to queuing work. They have a separate
 		// mutex to minimize lock contention.
@@ -78,12 +80,13 @@ type (
 		downloadRecentFailureErr    error     // What was the reason for the last failure?
 
 		// Job queues for the worker.
-		staticFetchBackupsJobQueue   fetchBackupsJobQueue
-		staticJobQueueDownloadByRoot jobQueueDownloadByRoot
-		staticJobHasSectorQueue      *jobHasSectorQueue
-		staticJobReadQueue           *jobReadQueue
-		staticJobRenewQueue          *jobRenewQueue
-		staticJobUploadSnapshotQueue *jobUploadSnapshotQueue
+		staticJobDownloadSnapshotQueue *jobDownloadSnapshotQueue
+		staticJobHasSectorQueue        *jobHasSectorQueue
+		staticJobReadQueue             *jobReadQueue
+		staticJobReadRegistryQueue     *jobReadRegistryQueue
+		staticJobRenewQueue            *jobRenewQueue
+		staticJobUpdateRegistryQueue   *jobUpdateRegistryQueue
+		staticJobUploadSnapshotQueue   *jobUploadSnapshotQueue
 
 		// Upload variables.
 		unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
@@ -152,7 +155,7 @@ func (w *worker) staticWake() {
 
 // newWorker will create and return a worker that is ready to receive jobs.
 func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
-	host, ok, err := r.hostDB.Host(hostPubKey)
+	_, ok, err := r.hostDB.Host(hostPubKey)
 	if err != nil {
 		return nil, errors.AddContext(err, "could not find host entry")
 	}
@@ -176,9 +179,8 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	}
 
 	w := &worker{
-		staticHostPubKey:     hostPubKey,
-		staticHostPubKeyStr:  hostPubKey.String(),
-		staticHostMuxAddress: host.HostExternalSettings.SiaMuxAddress(),
+		staticHostPubKey:    hostPubKey,
+		staticHostPubKeyStr: hostPubKey.String(),
 
 		staticAccount:       account,
 		staticBalanceTarget: balanceTarget,
@@ -201,7 +203,11 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	w.initJobHasSectorQueue()
 	w.initJobReadQueue()
 	w.initJobRenewQueue()
+	w.initJobDownloadSnapshotQueue()
+	w.initJobReadRegistryQueue()
+	w.initJobUpdateRegistryQueue()
 	w.initJobUploadSnapshotQueue()
+
 	// Get the worker cache set up before returning the worker. This prevents a
 	// race condition in some tests.
 	w.managedUpdateCache()

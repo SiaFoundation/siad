@@ -155,17 +155,18 @@ func createDirMetadata(path string, mode os.FileMode) (Metadata, writeaheadlog.U
 	// Initialize metadata, set Health and StuckHealth to DefaultDirHealth so
 	// empty directories won't be viewed as being the most in need. Initialize
 	// ModTimes.
+	now := time.Now()
 	md := Metadata{
 		AggregateHealth:        DefaultDirHealth,
 		AggregateMinRedundancy: DefaultDirRedundancy,
-		AggregateModTime:       time.Now(),
+		AggregateModTime:       now,
 		AggregateRemoteHealth:  DefaultDirHealth,
 		AggregateStuckHealth:   DefaultDirHealth,
 
 		Health:        DefaultDirHealth,
 		MinRedundancy: DefaultDirRedundancy,
 		Mode:          mode,
-		ModTime:       time.Now(),
+		ModTime:       now,
 		RemoteHealth:  DefaultDirHealth,
 		StuckHealth:   DefaultDirHealth,
 	}
@@ -216,7 +217,9 @@ func callLoadSiaDirMetadata(path string, deps modules.Dependencies) (md Metadata
 	if err != nil {
 		return Metadata{}, err
 	}
-	defer file.Close()
+	defer func() {
+		err = errors.Compose(err, file.Close())
+	}()
 
 	// Read the file
 	bytes, err := ioutil.ReadAll(file)

@@ -97,7 +97,7 @@ func (pth *rpcPriceTableHeap) Pop() interface{} {
 // table. These prices are valid for the duration of the
 // rpcPriceGuaranteePeriod, which is defined by the price table's Expiry
 func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) (err error) {
-	// update the current price table.
+	// update the price table to make sure it has the most recent information.
 	h.managedUpdatePriceTable()
 
 	// copy the host's price table and give it a random UID

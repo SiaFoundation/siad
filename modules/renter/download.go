@@ -239,14 +239,16 @@ func (r *Renter) DownloadAsync(p modules.RenterDownloadParameters, f func(error)
 // managedDownload performs a file download using the passed parameters and
 // returns the download object and an error that indicates if the download
 // setup was successful.
-func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (*download, error) {
+func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (_ *download, err error) {
 	// Lookup the file associated with the nickname.
 	entry, err := r.staticFileSystem.OpenSiaFile(p.SiaPath)
 	if err != nil {
 		return nil, err
 	}
-	defer entry.Close()
-	defer entry.UpdateAccessTime()
+	defer func() {
+		err = errors.Compose(err, entry.UpdateAccessTime())
+		err = errors.Compose(err, entry.Close())
+	}()
 
 	// Validate download parameters.
 	isHTTPResp := p.Httpwriter != nil
@@ -410,7 +412,9 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 func (d *download) Start() error {
 	// Nothing more to do for 0-byte files or 0-length downloads.
 	if d.staticLength == 0 {
+		d.mu.Lock()
 		d.markComplete()
+		d.mu.Unlock()
 		return nil
 	}
 
@@ -438,7 +442,7 @@ func (d *download) Start() error {
 		// Create the map.
 		chunkMaps[chunkIndex-minChunk] = make(map[string]downloadPieceInfo)
 		// Get the pieces for the chunk.
-		pieces := params.file.Pieces(uint64(chunkIndex))
+		pieces := params.file.Pieces(chunkIndex)
 		for pieceIndex, pieceSet := range pieces {
 			for _, piece := range pieceSet {
 				// Sanity check - the same worker should not have two pieces for
@@ -530,11 +534,13 @@ func (d *download) Start() error {
 // DownloadByUID returns a single download from the history by it's UID.
 func (r *Renter) DownloadByUID(uid modules.DownloadID) (modules.DownloadInfo, bool) {
 	r.downloadHistoryMu.Lock()
-	defer r.downloadHistoryMu.Unlock()
 	d, exists := r.downloadHistory[uid]
+	r.downloadHistoryMu.Unlock()
 	if !exists {
 		return modules.DownloadInfo{}, false
 	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	return modules.DownloadInfo{
 		Destination:     d.destinationString,
 		DestinationType: d.staticDestinationType,

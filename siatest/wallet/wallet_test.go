@@ -249,7 +249,10 @@ func TestWatchOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	testNode.MineBlock()
+	err = testNode.MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// the output should not show up in UnspentOutputs, because the address is
 	// not being tracked yet
@@ -323,7 +326,10 @@ func TestWatchOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	testNode.MineBlock()
+	err = testNode.MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// the wallet should no longer list the resulting output as spendable
 	unspentResp, err = testNode.WalletUnspentGet()
@@ -361,7 +367,10 @@ func TestUnspentOutputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	testNode.MineBlock()
+	err = testNode.MineBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// define a helper function to check whether addr appears in
 	// UnspentOutputs
@@ -452,7 +461,11 @@ func TestFileContractUnspentOutputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// pick a renter contract
 	renter := tg.Renters()[0]

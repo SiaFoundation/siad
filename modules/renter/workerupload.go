@@ -167,6 +167,9 @@ func (w *worker) managedPerformUploadChunkJob() {
 	nextChunk.cancelMU.Lock()
 	if nextChunk.canceled {
 		nextChunk.cancelMU.Unlock()
+		// If the chunk was canceled then we drop the chunk. This will decrement the
+		// chunk's remainingWorkers and perform any clean up work necessary
+		w.managedDropChunk(nextChunk)
 		return
 	}
 	// Add this worker to the chunk's cancelWG for the duration of this method.
@@ -191,7 +194,11 @@ func (w *worker) managedPerformUploadChunkJob() {
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
-	defer e.Close()
+	defer func() {
+		if err := e.Close(); err != nil {
+			w.renter.log.Print("managedPerformUploadChunkJob: failed to close editor", err)
+		}
+	}()
 
 	// Before performing the upload, check for price gouging.
 	allowance := w.renter.hostContractor.Allowance()

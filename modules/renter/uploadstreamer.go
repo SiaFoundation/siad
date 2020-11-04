@@ -11,7 +11,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -141,11 +140,8 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams) (*filesyst
 	// Check if ec was set. If not use defaults.
 	var err error
 	if ec == nil && !repair {
-		up.ErasureCode, err = siafile.NewRSSubCode(DefaultDataPieces, DefaultParityPieces, 64)
-		if err != nil {
-			return nil, err
-		}
-		ec = up.ErasureCode
+		ec = modules.NewRSSubCodeDefault()
+		up.ErasureCode = ec
 	} else if ec != nil && repair {
 		return nil, errors.New("can't provide erasure code settings when doing repairs")
 	}
@@ -212,7 +208,8 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 	}
 	// Need to make a copy of this value for the defer statement. Because
 	// 'fileNode' is a named value, if you run the call `return nil, err`, then
-	// 'fileNode' will be set to 'nil' when defer calls 'fileNode.Close()'.
+	// 'fileNode' will be set to 'nil' when 'fileNode.Close()' gets called in
+	// the 'defer'.
 	fn := fileNode
 	defer func() {
 		// Ensure the fileNode is closed if there is an error upon return.
@@ -272,21 +269,20 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 
 		// Check if the chunk needs any work or if we can skip it.
 		if uuc.piecesCompleted < uuc.piecesNeeded {
-			// Add the chunk to the upload heap.
-			if !r.uploadHeap.managedPush(uuc) {
-				// The chunk can't be added to the heap. It's probably already being
-				// repaired. Flush the shard and move on to the next one.
+			// Add the chunk to the upload heap's repair map.
+			pushed, err := r.managedPushChunkForRepair(uuc, chunkTypeStreamChunk)
+			if err != nil {
+				return nil, errors.AddContext(err, "unable to push chunk")
+			}
+			if !pushed {
+				// The chunk wasn't added to the repair map meaning it must have already
+				// been in the repair map
 				_, _ = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
 				if err := ss.Close(); err != nil {
 					return nil, err
 				}
 			}
-			// Notify the upload loop.
 			chunks = append(chunks, uuc)
-			select {
-			case r.uploadHeap.newUploads <- struct{}{}:
-			default:
-			}
 		} else {
 			// The chunk doesn't need any work. We still need to read a chunk
 			// from the shard though. Otherwise we will upload the wrong chunk
@@ -306,7 +302,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 
 		// If an io.EOF error occurred or less than chunkSize was read, we are
 		// done. Otherwise we report the error.
-		if _, err := ss.Result(); err == io.EOF {
+		if _, err := ss.Result(); errors.Contains(err, io.EOF) {
 			// All chunks successfully submitted.
 			break
 		} else if ss.err != nil {
@@ -315,7 +311,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 
 		// Call Peek to make sure that there's more data for another shard.
 		peek, err = ss.Peek()
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF) {
 			break
 		} else if err != nil {
 			return nil, ss.err

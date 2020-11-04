@@ -25,28 +25,12 @@ const (
 
 // AlertCauseSiafileLowRedundancy creates a customized "cause" for a siafile
 // with a certain path and health.
-func AlertCauseSiafileLowRedundancy(siaPath modules.SiaPath, health float64) string {
-	siaPath, _ = siaPath.Rebase(modules.UserFolder, modules.RootSiaPath())
-	return fmt.Sprintf("Siafile '%v' has a health of %v", siaPath.String(), health)
+func AlertCauseSiafileLowRedundancy(siaPath modules.SiaPath, health, redundancy float64) string {
+	return fmt.Sprintf("Siafile '%v' has a health of %v and redundancy of %v", siaPath.String(), health, redundancy)
 }
 
 // Default redundancy parameters.
 var (
-	// DefaultDataPieces is the number of data pieces per erasure-coded chunk
-	DefaultDataPieces = build.Select(build.Var{
-		Dev:      1,
-		Standard: 10,
-		Testing:  1,
-	}).(int)
-
-	// DefaultParityPieces is the number of parity pieces per erasure-coded
-	// chunk
-	DefaultParityPieces = build.Select(build.Var{
-		Dev:      1,
-		Standard: 20,
-		Testing:  4,
-	}).(int)
-
 	// RepairThreshold defines the threshold at which the renter decides to
 	// repair a file. The renter will start repairing the file when the health
 	// is equal to or greater than this value.
@@ -64,6 +48,14 @@ var (
 		Dev:      time.Second * 3,
 		Standard: time.Second * 5,
 		Testing:  time.Second,
+	}).(time.Duration)
+
+	// cachedUtilitiesUpdateInterval is how often the renter updates the
+	// cachedUtilities.
+	cachedUtilitiesUpdateInterval = build.Select(build.Var{
+		Dev:      time.Minute,
+		Standard: time.Minute * 10,
+		Testing:  time.Second * 3,
 	}).(time.Duration)
 )
 

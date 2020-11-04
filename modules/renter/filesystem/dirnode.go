@@ -187,7 +187,7 @@ func (n *DirNode) managedList(fsRoot string, recursive, cached bool, offlineMap 
 				di, err = sd.managedInfo(nodeSiaPath(fsRoot, &sd.node))
 			}
 			sd.Close()
-			if err == ErrNotExist {
+			if errors.Contains(err, ErrNotExist) {
 				continue
 			}
 			if err != nil {
@@ -212,7 +212,7 @@ func (n *DirNode) managedList(fsRoot string, recursive, cached bool, offlineMap 
 			} else {
 				fi, err = sf.managedFileInfo(nodeSiaPath(fsRoot, &sf.node), offlineMap, goodForRenewMap, contractsMap)
 			}
-			if err == ErrNotExist {
+			if errors.Contains(err, ErrNotExist) {
 				continue
 			}
 			if err != nil {
@@ -287,11 +287,12 @@ func (n *DirNode) managedRecursiveList(recursive, cached bool, fileLoadChan chan
 		if err != nil {
 			return err
 		}
-		// Hand a copy to the worker. It will handle closing it.
-		dirLoadChan <- dir.managedCopy()
-		// Call managedList on the child if 'recursive' was specified.
 		if recursive {
+			// Call managedList on the child if 'recursive' was specified.
 			err = dir.managedRecursiveList(recursive, cached, fileLoadChan, dirLoadChan)
+		} else {
+			// If not recursive, hand a copy to the worker. It will handle closing it.
+			dirLoadChan <- dir.managedCopy()
 		}
 		if err != nil {
 			return err
@@ -479,8 +480,8 @@ func (n *DirNode) managedDelete() error {
 	var filesToDelete []*FileNode
 	var lockedNodes []*node
 	for _, file := range n.childFiles() {
-		file.mu.Lock()
-		file.Lock()
+		file.node.mu.Lock()
+		file.SiaFile.Lock()
 		lockedNodes = append(lockedNodes, &file.node)
 		filesToDelete = append(filesToDelete, file)
 	}
@@ -504,8 +505,8 @@ func (n *DirNode) managedDelete() error {
 		lockedNodes = append(lockedNodes, &d.node)
 		// Remember the open files.
 		for _, file := range d.files {
-			file.mu.Lock()
-			file.Lock()
+			file.node.mu.Lock()
+			file.SiaFile.Lock()
 			lockedNodes = append(lockedNodes, &file.node)
 			filesToDelete = append(filesToDelete, file)
 		}
@@ -719,7 +720,7 @@ func (n *DirNode) readonlyOpenFile(fileName string) (*FileNode, error) {
 	// Load file from disk.
 	filePath := filepath.Join(n.absPath(), fileName+modules.SiaFileExtension)
 	sf, err := siafile.LoadSiaFile(filePath, n.staticWal)
-	if err == siafile.ErrUnknownPath || os.IsNotExist(err) {
+	if errors.Contains(err, siafile.ErrUnknownPath) || os.IsNotExist(err) {
 		return nil, ErrNotExist
 	}
 	if err != nil {
@@ -749,6 +750,16 @@ func (n *DirNode) openDir(dirName string) (*DirNode, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Make sure the metadata exists too.
+	dirMDPath := filepath.Join(dirPath, modules.SiaDirExtension)
+	_, err = os.Stat(dirMDPath)
+	if os.IsNotExist(err) {
+		return nil, ErrNotExist
+	}
+	if err != nil {
+		return nil, err
+	}
+	// Add the dir to the opened dirs.
 	dir = &DirNode{
 		node:        newNode(n, dirPath, dirName, 0, n.staticWal, n.staticLog),
 		directories: make(map[string]*DirNode),
@@ -779,7 +790,7 @@ func (n *DirNode) managedCopy() *DirNode {
 }
 
 // managedOpenDir opens a SiaDir.
-func (n *DirNode) managedOpenDir(path string) (*DirNode, error) {
+func (n *DirNode) managedOpenDir(path string) (_ *DirNode, err error) {
 	// Get the name of the next sub directory.
 	pathList := strings.Split(path, string(filepath.Separator))
 	n.mu.Lock()
@@ -794,7 +805,9 @@ func (n *DirNode) managedOpenDir(path string) (*DirNode, error) {
 		return subNode, nil
 	}
 	// Otherwise open the next dir.
-	defer subNode.Close()
+	defer func() {
+		err = errors.Compose(err, subNode.Close())
+	}()
 	return subNode.managedOpenDir(filepath.Join(pathList...))
 }
 
@@ -843,8 +856,8 @@ func (n *DirNode) managedRename(newName string, oldParent, newParent *DirNode) e
 	var filesToRename []*FileNode
 	var lockedNodes []*node
 	for _, file := range n.childFiles() {
-		file.mu.Lock()
-		file.Lock()
+		file.node.mu.Lock()
+		file.SiaFile.Lock()
 		lockedNodes = append(lockedNodes, &file.node)
 		filesToRename = append(filesToRename, file)
 	}
@@ -869,8 +882,8 @@ func (n *DirNode) managedRename(newName string, oldParent, newParent *DirNode) e
 		dirsToRename = append(dirsToRename, d)
 		// Lock the open files.
 		for _, file := range d.files {
-			file.mu.Lock()
-			file.Lock()
+			file.node.mu.Lock()
+			file.SiaFile.Lock()
 			lockedNodes = append(lockedNodes, &file.node)
 			filesToRename = append(filesToRename, file)
 		}

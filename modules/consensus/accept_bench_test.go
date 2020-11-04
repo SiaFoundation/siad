@@ -20,7 +20,11 @@ func BenchmarkAcceptEmptyBlocks(b *testing.B) {
 	if err != nil {
 		b.Fatal("Error creating tester: " + err.Error())
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}()
 
 	// Create an alternate testing consensus set, which does not
 	// have any subscribers
@@ -33,7 +37,11 @@ func BenchmarkAcceptEmptyBlocks(b *testing.B) {
 	if err := <-errChan; err != nil {
 		b.Fatal(err)
 	}
-	defer cs.Close()
+	defer func() {
+		if err := cs.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}()
 
 	// Synchronisze the cst and the subscriberless consensus set.
 	h := cst.cs.dbBlockHeight()
@@ -82,7 +90,11 @@ func BenchmarkAcceptSmallBlocks(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}()
 
 	// COMPAT v0.4.0
 	//
@@ -105,7 +117,11 @@ func BenchmarkAcceptSmallBlocks(b *testing.B) {
 	if err := <-errChan; err != nil {
 		b.Fatal("Error creating consensus: " + err.Error())
 	}
-	defer cs.Close()
+	defer func() {
+		if err := cs.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}()
 
 	// Synchronize the consensus set with the consensus set tester.
 	h := cst.cs.dbBlockHeight()

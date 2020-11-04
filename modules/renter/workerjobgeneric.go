@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -92,6 +93,16 @@ type (
 		recentErrTime       time.Time
 	}
 )
+
+// exMovingAvg is a helper to compute the next exponential moving average given
+// the last value and a new point of measurement.
+// https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average
+func expMovingAvg(oldEMA, newValue, decay float64) float64 {
+	if decay < 0 || decay > 1 {
+		build.Critical("decay has to be a value in range 0 <= x <= 1")
+	}
+	return newValue*decay + (1-decay)*oldEMA
+}
 
 // newJobGeneric returns an initialized jobGeneric. The queue that is associated
 // with the job should be used as the input to this function. The job will

@@ -47,7 +47,7 @@
       "length": 76,
       "mode": 420,
       "subfiles": {
-        "filename.txt": {
+        "filename.html": {
           "mode": 420,
           "filename": "filename.html",
           "contenttype": "text/html",
@@ -55,23 +55,30 @@
         },
         "dir/file.txt": {
           "mode": 420,
-          "filename": "file.txt",
+          "filename": "dir/file.txt",
           "contenttype": "text/plain",
           "len": 38
         }
       },
       "defaultpath": "/dir/file.txt"
-    }
+    },
+    "content": "SGVsbG8sIHRoaXMgaXMgc29tZSBub3Qgc28gcmFuZG9tIHRleHQ="
   },
   "4CCcCO73xMbehYaK7bjDGCtW0GwOL6Swl-lNY52Pb_APzA": {
     "metadata": {
       "filename": "filename",
-      "length": 76,
+      "length": 152,
       "mode": 420,
       "subfiles": {
-        "filename.txt": {
+        "filename.html": {
           "mode": 420,
           "filename": "filename.html",
+          "contenttype": "text/html",
+          "len": 38
+        },
+        "dir/index.html": {
+          "mode": 420,
+          "filename": "dir/index.html",
           "contenttype": "text/html",
           "len": 38
         },
@@ -79,6 +86,12 @@
           "mode": 420,
           "filename": "file.html",
           "contenttype": "text/html",
+          "len": 38
+        },
+        "test?encoding": {
+          "mode": 420,
+          "filename": "test?encoding",
+          "contenttype": "text/plain",
           "len": 38
         }
       },

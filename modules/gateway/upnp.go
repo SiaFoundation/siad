@@ -20,14 +20,16 @@ import (
 
 // myExternalIP discovers the gateway's external IP by querying a centralized
 // service, http://myexternalip.com.
-func myExternalIP() (string, error) {
+func myExternalIP() (_ string, err error) {
 	// timeout after 10 seconds
 	client := http.Client{Timeout: time.Duration(10 * time.Second)}
 	resp, err := client.Get("http://myexternalip.com/raw")
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		err = errors.Compose(err, resp.Body.Close())
+	}()
 	if resp.StatusCode != http.StatusOK {
 		errResp, _ := ioutil.ReadAll(resp.Body)
 		return "", errors.New(string(errResp))

@@ -74,6 +74,10 @@ func (h *Host) managedAddRenewCollateral(hostCollateral types.Currency, so stora
 	if err != nil {
 		return
 	}
+	if hostCollateral.IsZero() {
+		// We don't need to add anything to the transaction.
+		return builder, nil, nil, nil, nil
+	}
 	err = builder.FundSiacoins(hostCollateral)
 	if err != nil {
 		builder.Drop()

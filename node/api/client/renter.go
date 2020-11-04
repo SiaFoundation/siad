@@ -273,7 +273,7 @@ func (c *Client) RenterFileDeletePost(siaPath modules.SiaPath) (err error) {
 
 // RenterDownloadGet uses the /renter/download endpoint to download a file to a
 // destination on disk.
-func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, offset, length uint64, async bool, disableLocalFetch bool) (modules.DownloadID, error) {
+func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, offset, length uint64, async bool, disableLocalFetch bool, root bool) (modules.DownloadID, error) {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("destination", destination)
@@ -281,6 +281,7 @@ func (c *Client) RenterDownloadGet(siaPath modules.SiaPath, destination string, 
 	values.Set("offset", fmt.Sprint(offset))
 	values.Set("length", fmt.Sprint(length))
 	values.Set("async", fmt.Sprint(async))
+	values.Set("root", fmt.Sprint(root))
 	h, _, err := c.getRawResponse(fmt.Sprintf("/renter/download/%s?%s", sp, values.Encode()))
 	if err != nil {
 		return "", err
@@ -350,12 +351,13 @@ func (c *Client) RenterRecoverLocalBackupPost(src string) (err error) {
 
 // RenterDownloadFullGet uses the /renter/download endpoint to download a full
 // file.
-func (c *Client) RenterDownloadFullGet(siaPath modules.SiaPath, destination string, async bool) (modules.DownloadID, error) {
+func (c *Client) RenterDownloadFullGet(siaPath modules.SiaPath, destination string, async, root bool) (modules.DownloadID, error) {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("destination", destination)
 	values.Set("httpresp", fmt.Sprint(false))
 	values.Set("async", fmt.Sprint(async))
+	values.Set("root", fmt.Sprint(root))
 	h, _, err := c.getRawResponse(fmt.Sprintf("/renter/download/%s?%s", sp, values.Encode()))
 	if err != nil {
 		return "", err
@@ -404,15 +406,23 @@ func (c *Client) RenterDownloadsGet() (rdq api.RenterDownloadQueue, err error) {
 	return
 }
 
+// RenterDownloadsRootGet requests the /renter/downloads resource with the root
+// flag set.
+func (c *Client) RenterDownloadsRootGet() (rdq api.RenterDownloadQueue, err error) {
+	err = c.get("/renter/downloads?root=true", &rdq)
+	return
+}
+
 // RenterDownloadHTTPResponseGet uses the /renter/download endpoint to download
 // a file and return its data.
-func (c *Client) RenterDownloadHTTPResponseGet(siaPath modules.SiaPath, offset, length uint64, disableLocalFetch bool) (modules.DownloadID, []byte, error) {
+func (c *Client) RenterDownloadHTTPResponseGet(siaPath modules.SiaPath, offset, length uint64, disableLocalFetch, root bool) (modules.DownloadID, []byte, error) {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("offset", fmt.Sprint(offset))
 	values.Set("length", fmt.Sprint(length))
 	values.Set("httpresp", fmt.Sprint(true))
 	values.Set("disablelocalfetch", fmt.Sprint(disableLocalFetch))
+	values.Set("root", fmt.Sprint(root))
 	h, resp, err := c.getRawResponse(fmt.Sprintf("/renter/download/%s?%s", sp, values.Encode()))
 	if err != nil {
 		return "", nil, err
@@ -459,6 +469,7 @@ func (c *Client) RenterPostAllowance(allowance modules.Allowance) error {
 	a = a.WithExpectedDownload(allowance.ExpectedDownload)
 	a = a.WithExpectedRedundancy(allowance.ExpectedRedundancy)
 	a = a.WithMaxPeriodChurn(allowance.MaxPeriodChurn)
+	a = a.WithPaymentContractInitialFunding(allowance.PaymentContractInitialFunding)
 	return a.Send()
 }
 
@@ -517,9 +528,10 @@ func (c *Client) RenterSetCheckIPViolationPost(enabled bool) (err error) {
 
 // RenterStreamGet uses the /renter/stream endpoint to download data as a
 // stream.
-func (c *Client) RenterStreamGet(siaPath modules.SiaPath, disableLocalFetch bool) (resp []byte, err error) {
+func (c *Client) RenterStreamGet(siaPath modules.SiaPath, disableLocalFetch, root bool) (resp []byte, err error) {
 	values := url.Values{}
 	values.Set("disablelocalfetch", fmt.Sprint(disableLocalFetch))
+	values.Set("root", fmt.Sprint(root))
 	sp := escapeSiaPath(siaPath)
 	_, resp, err = c.getRawResponse(fmt.Sprintf("/renter/stream/%s?%s", sp, values.Encode()))
 	return
@@ -527,9 +539,10 @@ func (c *Client) RenterStreamGet(siaPath modules.SiaPath, disableLocalFetch bool
 
 // RenterStreamPartialGet uses the /renter/stream endpoint to download a part
 // of data as a stream.
-func (c *Client) RenterStreamPartialGet(siaPath modules.SiaPath, start, end uint64, disableLocalFetch bool) (resp []byte, err error) {
+func (c *Client) RenterStreamPartialGet(siaPath modules.SiaPath, start, end uint64, disableLocalFetch, root bool) (resp []byte, err error) {
 	values := url.Values{}
 	values.Set("disablelocalfetch", fmt.Sprint(disableLocalFetch))
+	values.Set("root", fmt.Sprint(root))
 	sp := escapeSiaPath(siaPath)
 	resp, err = c.getRawPartialResponse(fmt.Sprintf("/renter/stream/%s?%s", sp, values.Encode()), start, end)
 	return
@@ -547,10 +560,11 @@ func (c *Client) RenterSetRepairPathPost(siaPath modules.SiaPath, newPath string
 
 // RenterSetFileStuckPost sets the 'stuck' field of the siafile at siaPath to
 // stuck.
-func (c *Client) RenterSetFileStuckPost(siaPath modules.SiaPath, stuck bool) (err error) {
+func (c *Client) RenterSetFileStuckPost(siaPath modules.SiaPath, root, stuck bool) (err error) {
 	sp := escapeSiaPath(siaPath)
 	values := url.Values{}
 	values.Set("stuck", fmt.Sprint(stuck))
+	values.Set("root", fmt.Sprint(root))
 	err = c.post(fmt.Sprintf("/renter/file/%v", sp), values.Encode(), nil)
 	return
 }

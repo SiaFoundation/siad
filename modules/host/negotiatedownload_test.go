@@ -65,7 +65,7 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.NewMissedProofOutputs = badOutputs
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err != ErrBadContractOutputCounts {
+	if !errors.Contains(err, ErrBadContractOutputCounts) {
 		t.Fatalf("Expected ErrBadContractOutputCounts but received '%v'", err)
 	}
 
@@ -73,7 +73,7 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	badCurr := deepCopy(curr)
 	badCurr.NewWindowStart = curr.NewWindowStart - 1
 	err = verifyPaymentRevision(badCurr, payment, height, amount)
-	if err != ErrLateRevision {
+	if !errors.Contains(err, ErrLateRevision) {
 		t.Fatalf("Expected ErrLateRevision but received '%v'", err)
 	}
 
@@ -168,7 +168,7 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	badPayment.NewMissedProofOutputs = badOutputs
 	badPayment.NewRevisionNumber--
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err != ErrBadRevisionNumber {
+	if !errors.Contains(err, ErrBadRevisionNumber) {
 		t.Fatalf("Expected ErrBadRevisionNumber but received '%v'", err)
 	}
 
@@ -176,7 +176,7 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.ParentID = types.FileContractID(hash)
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err != ErrBadParentID {
+	if !errors.Contains(err, ErrBadParentID) {
 		t.Fatalf("Expected ErrBadParentID but received '%v'", err)
 	}
 
@@ -184,7 +184,7 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.UnlockConditions.Timelock = payment.UnlockConditions.Timelock + 1
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err != ErrBadUnlockConditions {
+	if !errors.Contains(err, ErrBadUnlockConditions) {
 		t.Fatalf("Expected ErrBadUnlockConditions but received '%v'", err)
 	}
 
@@ -192,7 +192,7 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.NewFileSize = payment.NewFileSize + 1
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err != ErrBadFileSize {
+	if !errors.Contains(err, ErrBadFileSize) {
 		t.Fatalf("Expected ErrBadFileSize but received '%v'", err)
 	}
 
@@ -200,7 +200,7 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.NewFileMerkleRoot = hash
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err != ErrBadFileMerkleRoot {
+	if !errors.Contains(err, ErrBadFileMerkleRoot) {
 		t.Fatalf("Expected ErrBadFileMerkleRoot but received '%v'", err)
 	}
 
@@ -208,7 +208,7 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.NewWindowStart = curr.NewWindowStart + 1
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err != ErrBadWindowStart {
+	if !errors.Contains(err, ErrBadWindowStart) {
 		t.Fatalf("Expected ErrBadWindowStart but received '%v'", err)
 	}
 
@@ -216,7 +216,7 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.NewWindowEnd = curr.NewWindowEnd - 1
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err != ErrBadWindowEnd {
+	if !errors.Contains(err, ErrBadWindowEnd) {
 		t.Fatalf("Expected ErrBadWindowEnd but received '%v'", err)
 	}
 
@@ -224,7 +224,7 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	badPayment = deepCopy(payment)
 	badPayment.NewUnlockHash = types.UnlockHash(hash)
 	err = verifyPaymentRevision(curr, badPayment, height, amount)
-	if err != ErrBadUnlockHash {
+	if !errors.Contains(err, ErrBadUnlockHash) {
 		t.Fatalf("Expected ErrBadUnlockHash but received '%v'", err)
 	}
 
@@ -232,7 +232,7 @@ func TestVerifyPaymentRevision(t *testing.T) {
 	badCurr = deepCopy(curr)
 	badCurr.SetMissedHostPayout(payment.MissedHostOutput().Value.Sub64(1))
 	err = verifyPaymentRevision(badCurr, payment, height, amount)
-	if err != ErrLowHostMissedOutput {
+	if !errors.Contains(err, ErrLowHostMissedOutput) {
 		t.Fatalf("Expected ErrLowHostMissedOutput but received '%v'", err)
 	}
 

@@ -21,6 +21,13 @@ const (
 )
 
 var (
+	// ErrRootNotFound is returned if all workers were unable to recover the
+	// root
+	ErrRootNotFound = errors.New("workers were unable to recover the data by sector root - all workers failed")
+
+	// ErrProjectTimedOut is returned when the project timed out
+	ErrProjectTimedOut = errors.New("project timed out")
+
 	// sectorLookupToDownloadRatio is an arbitrary ratio that resembles the
 	// amount of lookups vs downloads. It is used in price gouging checks.
 	sectorLookupToDownloadRatio = 16
@@ -161,7 +168,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 	workers = workers[:numAsyncWorkers]
 	// If there are no workers remaining, fail early.
 	if len(workers) == 0 {
-		return nil, errors.New("cannot perform DownloadByRoot, no workers in worker pool")
+		return nil, errors.AddContext(modules.ErrNotEnoughWorkersInWorkerPool, "cannot perform DownloadByRoot")
 	}
 
 	// Create a timer that is used to determine when the project should stop
@@ -347,6 +354,11 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 // DownloadByRoot will fetch data using the merkle root of that data. This uses
 // all of the async worker primitives to improve speed and throughput.
 func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
+	if err := r.tg.Add(); err != nil {
+		return nil, err
+	}
+	defer r.tg.Done()
+
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
 	if !r.memoryManager.Request(length, memoryPriorityHigh) {

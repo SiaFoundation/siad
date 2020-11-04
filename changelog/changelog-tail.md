@@ -1,3 +1,57 @@
+## Nov 2, 2020:
+### v1.5.1
+**Key Updates**
+- Add basic watchdog to the feemanager
+- Add `/skynet/basesector` to the API.
+- Add `--portal` flag to `siac skynet pin`
+- Add the ability to start and stop the profile via the API
+- Add Skykey flags to convert command for encryption
+- Enable adding or removing hashes of skylink merkleroots to the skynet
+  blacklist
+- allow for migrating registry to cstom path
+- Update the upload streamer code to send chunks directly to the workers instead
+  of through the `uploadHeap`.
+- new acceptcontractadjustment in score breakdown
+- reduced default period to 2 months
+- extend /host [GET] to contain pricetable
+- add API support for setting registry size
+- move health summary from `siac renter -v` to `siac renter health`
+- add timeout param to read registry api call
+- add root flag to download endpoints
+- add root flag to list downloads endpoint
+- Add support for skykey delete in siac.
+- Add support for uploading entire directories as skyfiles (e.g. `siac skynet
+  upload dir skyfile_name`). The previous behavior of uploading all files
+  individually is now available when the `--separately` flag is passed.
+  Additional flags: `--defaultpath` and `--disabledefaultpath`. Those are full
+  equivalents to the flags with the same names on the `/skynet/skyfile/*siapath*
+  [POST]` endpoint.
+- Added feature to use pipes with 'siac skynet upload'. e.g. 
+  'dd if=/dev/zero bs=1M count=1000 | siac skynet upload 1GB.dat'
+
+**Bugs Fixed**
+- Fix unit of `EphemeralAccountExpiry` in the host persistence.
+- Fix bug in append only persist code that left a file handle open.
+- Ensure that only full paths are accepted when resolving skylinks.
+- Properly handle URL-encoded characters in `GET /skynet/skylink` route.
+ - Fix bug in Filesystem list that duplicated directories returned for recursive
+     calls
+- Fixed edge case with the health loop where it would not find the correct
+  directory to call bubble on due to the metadatas being out of sync from
+  a shutdown with pending bubbles.
+- Fix skykey default type in siac
+
+**Other**
+- Split out `siac renter workers` download and upload info
+- Rename `skynetblacklist` to `skynetblocklist`
+- Add ETag response header
+- Fix setting `GORACE` for `test-vlong` in `Makefile` for Windows Gitlab
+  runner.
+- Update the `README` to remove the outdated raspberry pi info and link the
+  official release locations.
+- Add `Skynet-Skylink` response headers.
+- Add the ability to parse base32 encoded Skylinks
+
 ## Aug 5, 2020:
 ### v1.5.0
 **Key Updates**

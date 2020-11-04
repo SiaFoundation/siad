@@ -2,7 +2,6 @@ package host
 
 import (
 	"encoding/json"
-	"errors"
 	"math"
 	"math/bits"
 	"sort"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -49,7 +49,7 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 	// Read the request.
 	var req modules.LoopLockRequest
 	if err := s.readRequest(&req, modules.RPCMinLen); err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
@@ -57,7 +57,7 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 	// not allowed.
 	if len(s.so.OriginTransactionSet) != 0 {
 		err := errors.New("another contract is already locked")
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
@@ -65,7 +65,7 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 	lockTimeout := time.Duration(req.Timeout) * time.Millisecond
 	if lockTimeout > maxObligationLockTimeout {
 		err := errors.New("lock timeout is too long")
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
@@ -93,7 +93,7 @@ func (h *Host) managedRPCLoopLock(s *rpcSession) error {
 	copy(renterSig[:], req.Signature)
 	if crypto.VerifyHash(hash, renterPK, renterSig) != nil {
 		err := errors.New("challenge signature is invalid")
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
@@ -162,7 +162,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	if err := s.readRequest(&req, modules.SectorSize*5); err != nil {
 		// Reading may have failed due to a closed connection; regardless, it
 		// doesn't hurt to try and tell the renter about it.
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 	// If no Merkle proof was requested, the renter's signature should be
@@ -177,7 +177,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	// Check that a contract is locked.
 	if len(s.so.OriginTransactionSet) == 0 {
 		err := errors.New("no contract locked")
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
@@ -217,7 +217,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			numSectors := action.A
 			if uint64(len(newRoots)) < numSectors {
 				err := errors.New("trim size exceeds number of sectors")
-				s.writeError(err)
+				err = errors.Compose(err, s.writeError(err))
 				return err
 			}
 			// Update sector roots.
@@ -230,7 +230,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			i, j := action.A, action.B
 			if i >= uint64(len(newRoots)) || j >= uint64(len(newRoots)) {
 				err := errors.New("illegal sector index")
-				s.writeError(err)
+				err = errors.Compose(err, s.writeError(err))
 				return err
 			}
 			// Update sector roots.
@@ -243,7 +243,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			sectorIndex, offset := action.A, action.B
 			if sectorIndex >= uint64(len(newRoots)) {
 				err := errors.New("illegal sector index or offset")
-				s.writeError(err)
+				err = errors.Compose(err, s.writeError(err))
 				return err
 			} else if offset+uint64(len(action.Data)) > modules.SectorSize {
 				s.writeError(ErrIllegalOffsetAndLength)
@@ -252,7 +252,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 			// Update sector roots.
 			sector, err := h.ReadSector(newRoots[sectorIndex])
 			if err != nil {
-				s.writeError(err)
+				err = errors.Compose(err, s.writeError(err))
 				return err
 			}
 			copy(sector[offset:], action.Data)
@@ -266,7 +266,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 
 		default:
 			err := errors.New("unknown action type " + action.Type.String())
-			s.writeError(err)
+			err = errors.Compose(err, s.writeError(err))
 			return err
 		}
 	}
@@ -350,7 +350,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	err := verifyRevision(s.so, newRevision, blockHeight, newRevenue, newCollateral)
 	s.so.SectorRoots, newRoots = newRoots, s.so.SectorRoots
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
@@ -372,7 +372,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	}
 	txn, err := createRevisionSignature(newRevision, renterSig, secretKey, blockHeight)
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
@@ -384,7 +384,7 @@ func (h *Host) managedRPCLoopWrite(s *rpcSession) error {
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
 	err = h.managedModifyStorageObligation(s.so, sectorsRemoved, sectorsGained)
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
@@ -408,7 +408,7 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	if err := s.readRequest(&req, modules.RPCMinLen); err != nil {
 		// Reading may have failed due to a closed connection; regardless, it
 		// doesn't hurt to try and tell the renter about it.
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
@@ -431,7 +431,7 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	// Check that a contract is locked.
 	if len(s.so.OriginTransactionSet) == 0 {
 		err := errors.New("no contract locked")
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		<-stopSignal
 		return err
 	}
@@ -461,7 +461,7 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 			err = errors.New("wrong number of missed proof values")
 		}
 		if err != nil {
-			s.writeError(err)
+			err = errors.Compose(err, s.writeError(err))
 			return err
 		}
 	}
@@ -502,7 +502,7 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	totalCost := settings.BaseRPCPrice.Add(bandwidthCost).Add(sectorAccessCost)
 	err := verifyPaymentRevision(currentRevision, newRevision, blockHeight, totalCost)
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
@@ -515,7 +515,7 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	}
 	txn, err := createRevisionSignature(newRevision, renterSig, secretKey, blockHeight)
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 	hostSig := txn.TransactionSignatures[1].Signature
@@ -526,7 +526,7 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
 	err = h.managedModifyStorageObligation(s.so, nil, nil)
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
@@ -535,7 +535,7 @@ func (h *Host) managedRPCLoopRead(s *rpcSession) error {
 		// Fetch the requested data.
 		sectorData, err := h.ReadSector(sec.MerkleRoot)
 		if err != nil {
-			s.writeError(err)
+			err = errors.Compose(err, s.writeError(err))
 			return err
 		}
 		data := sectorData[sec.Offset : sec.Offset+sec.Length]
@@ -583,7 +583,7 @@ func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 	// Read the contract request.
 	var req modules.LoopFormContractRequest
 	if err := s.readRequest(&req, modules.TransactionSetSizeLimit); err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
@@ -602,13 +602,13 @@ func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 	var renterPK crypto.PublicKey
 	copy(renterPK[:], req.RenterKey.Key)
 	if err := h.managedVerifyNewContract(txnSet, renterPK, settings); err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 	// The host adds collateral to the transaction.
 	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddCollateral(settings, txnSet)
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 	// Send any new inputs and outputs that were added to the transaction.
@@ -626,7 +626,7 @@ func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 	// revision.
 	var renterSigs modules.LoopContractSignatures
 	if err := s.readResponse(&renterSigs, modules.RPCMinLen); err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
@@ -649,7 +649,7 @@ func (h *Host) managedRPCLoopFormContract(s *rpcSession) error {
 	}
 	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(fca)
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 	defer h.managedUnlockStorageObligation(newSOID)
@@ -674,7 +674,7 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	// Read the renewal request.
 	var req modules.LoopRenewContractRequest
 	if err := s.readRequest(&req, modules.TransactionSetSizeLimit); err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 	_, max := h.tpool.FeeEstimation()
@@ -686,19 +686,19 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 		return nil
 	} else if len(s.so.RevisionTransactionSet) == 0 {
 		err := errors.New("no such contract")
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
 	// Verify that the transaction coming over the wire is a proper renewal.
 	hostCollateral, err := h.managedVerifyRenewedContract(s.so, req.Transactions, req.RenterKey)
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return extendErr("verification of renewal failed: ", err)
 	}
 	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(hostCollateral, s.so, req.Transactions)
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return extendErr("failed to add collateral: ", err)
 	}
 	// Send any new inputs and outputs that were added to the transaction.
@@ -716,7 +716,7 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	// revision.
 	var renterSigs modules.LoopContractSignatures
 	if err := s.readResponse(&renterSigs, modules.RPCMinLen); err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
@@ -744,7 +744,7 @@ func (h *Host) managedRPCLoopRenewContract(s *rpcSession) error {
 	}
 	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(fca)
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return extendErr("failed to finalize contract: ", err)
 	}
 	defer h.managedUnlockStorageObligation(newSOID)
@@ -771,14 +771,14 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 	if err := s.readRequest(&req, modules.RPCMinLen); err != nil {
 		// Reading may have failed due to a closed connection; regardless, it
 		// doesn't hurt to try and tell the renter about it.
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
 	// Check that a contract is locked.
 	if len(s.so.OriginTransactionSet) == 0 {
 		err := errors.New("no contract locked")
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
@@ -804,7 +804,7 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 		err = errors.New("wrong number of missed proof values")
 	}
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return extendErr("download iteration request failed: ", err)
 	}
 
@@ -841,7 +841,7 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 	totalCost := settings.BaseRPCPrice.Add(bandwidthCost)
 	err = verifyPaymentRevision(currentRevision, newRevision, blockHeight, totalCost)
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return extendErr("payment validation failed: ", err)
 	}
 
@@ -854,7 +854,7 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 	}
 	txn, err := createRevisionSignature(newRevision, renterSig, secretKey, blockHeight)
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return extendErr("failed to create revision signature: ", err)
 	}
 
@@ -864,7 +864,7 @@ func (h *Host) managedRPCLoopSectorRoots(s *rpcSession) error {
 	s.so.RevisionTransactionSet = []types.Transaction{txn}
 	err = h.managedModifyStorageObligation(s.so, nil, nil)
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return extendErr("failed to modify storage obligation: ", err)
 	}
 
@@ -888,7 +888,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	// Read the renewal request.
 	var req modules.LoopRenewAndClearContractRequest
 	if err := s.readRequest(&req, modules.TransactionSetSizeLimit); err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
@@ -900,10 +900,15 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	settings := h.externalSettings(maxFee)
 	h.mu.Unlock()
 
+	// Disrupt if necessary.
+	if h.dependencies.Disrupt("RenewFail") {
+		return errors.New("RenewFail")
+	}
+
 	// Check that the old contract is locked.
 	if len(s.so.OriginTransactionSet) == 0 {
 		err := errors.New("no contract locked")
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 	if !settings.AcceptingContracts {
@@ -911,7 +916,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 		return nil
 	} else if len(s.so.RevisionTransactionSet) == 0 {
 		err := errors.New("no such contract")
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
@@ -935,19 +940,19 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	// Verifiy the final revision of the old contract.
 	_, err := verifyClearingRevision(currentRevision, newRevision, blockHeight, settings.BaseRPCPrice)
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
 	// Verify that the transaction coming over the wire is a proper renewal.
 	hostCollateral, err := h.managedVerifyRenewedContract(s.so, req.Transactions, req.RenterKey)
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return extendErr("verification of renewal failed: ", err)
 	}
 	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(hostCollateral, s.so, req.Transactions)
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return extendErr("failed to add collateral: ", err)
 	}
 	// Send any new inputs and outputs that were added to the transaction.
@@ -965,7 +970,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	// revision.
 	var renterSigs modules.LoopRenewAndClearContractSignatures
 	if err := s.readResponse(&renterSigs, modules.RPCMinLen); err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
@@ -978,7 +983,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	}
 	finalRevTxn, err := createRevisionSignature(newRevision, renterSig, secretKey, blockHeight)
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return err
 	}
 
@@ -990,7 +995,6 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	renewRevenue := rhp2RenewBasePrice(s.so, settings, fc)
 	renewRisk := rhp2RenewBaseCollateral(s.so, settings, fc)
 	h.mu.RUnlock()
-
 	var renterPK crypto.PublicKey
 	copy(renterPK[:], req.RenterKey.Key)
 
@@ -1014,7 +1018,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	}
 	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(fca)
 	if err != nil {
-		s.writeError(err)
+		err = errors.Compose(err, s.writeError(err))
 		return extendErr("failed to finalize contract: ", err)
 	}
 	defer h.managedUnlockStorageObligation(newSOID)

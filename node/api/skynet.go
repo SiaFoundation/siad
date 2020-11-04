@@ -1,18 +1,15 @@
 package api
 
 import (
-	"archive/tar"
-	"archive/zip"
 	"compress/gzip"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
-	"mime"
+	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +21,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetportals"
 	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -61,21 +59,26 @@ type (
 		Bitfield   uint16      `json:"bitfield"`
 	}
 
-	// SkynetBlacklistGET contains the information queried for the
-	// /skynet/blacklist GET endpoint
+	// SkynetBlocklistGET contains the information queried for the
+	// /skynet/blocklist GET endpoint
 	//
-	// NOTE: With v1.5.0 the return value for the Blacklist changed. Pre v1.5.0
+	// NOTE: With v1.5.0 the return value for the Blocklist changed. Pre v1.5.0
 	// the []crypto.Hash was a slice of MerkleRoots. Post v1.5.0 the []crypto.Hash
 	// is a slice of the Hashes of the MerkleRoots
-	SkynetBlacklistGET struct {
-		Blacklist []crypto.Hash `json:"blacklist"`
+	SkynetBlocklistGET struct {
+		Blacklist []crypto.Hash `json:"blacklist"` // Deprecated, kept for backwards compatibility
+		Blocklist []crypto.Hash `json:"blocklist"`
 	}
 
-	// SkynetBlacklistPOST contains the information needed for the
-	// /skynet/blacklist POST endpoint to be called
-	SkynetBlacklistPOST struct {
+	// SkynetBlocklistPOST contains the information needed for the
+	// /skynet/blocklist POST endpoint to be called
+	SkynetBlocklistPOST struct {
 		Add    []string `json:"add"`
 		Remove []string `json:"remove"`
+
+		// IsHash indicates if the supplied Add and Remove strings are already
+		// hashes of Skylinks
+		IsHash bool `json:"ishash"`
 	}
 
 	// SkynetPortalsGET contains the information queried for the /skynet/portals
@@ -120,9 +123,28 @@ type (
 		ID     string `json:"id"`   // base64 encoded Skykey ID
 		Type   string `json:"type"` // human-readable Skykey Type
 	}
+
 	// SkykeysGET contains a slice of Skykeys.
 	SkykeysGET struct {
 		Skykeys []SkykeyGET `json:"skykeys"`
+	}
+
+	// RegistryHandlerGET is the response returned by the registryHandlerGET
+	// handler.
+	RegistryHandlerGET struct {
+		Data      string `json:"data"`
+		Revision  uint64 `json:"revision"`
+		Signature string `json:"signature"`
+	}
+
+	// RegistryHandlerRequestPOST is the expected format of the json request for
+	// /skynet/registry [POST].
+	RegistryHandlerRequestPOST struct {
+		PublicKey types.SiaPublicKey `json:"publickey"`
+		DataKey   crypto.Hash        `json:"datakey"`
+		Revision  uint64             `json:"revision"`
+		Signature crypto.Signature   `json:"signature"`
+		Data      []byte             `json:"data"`
 	}
 
 	// archiveFunc is a function that serves subfiles from src to dst and
@@ -130,25 +152,117 @@ type (
 	archiveFunc func(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error
 )
 
-// skynetBlacklistHandlerGET handles the API call to get the list of blacklisted
-// skylinks.
-func (api *API) skynetBlacklistHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	// Get the Blacklist
-	blacklist, err := api.renter.Blacklist()
+// skynetBaseSectorHandlerGET accepts a skylink as input and will return the
+// encoded basesector.
+func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Start the timer for the performance measurement.
+	startTime := time.Now()
+	isErr := true
+	defer func() {
+		if isErr {
+			skynetPerformanceStats.TimeToFirstByte.AddRequest(0)
+		}
+	}()
+
+	// Parse the skylink from the raw URL of the request. Any special characters
+	// in the raw URL are encoded, allowing us to differentiate e.g. the '?'
+	// that begins query parameters from the encoded version '%3F'.
+	skylink, _, _, err := parseSkylinkURL(req.URL.String(), "/skynet/basesector/")
 	if err != nil {
-		WriteError(w, Error{"unable to get the blacklist: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
 		return
 	}
 
-	WriteJSON(w, SkynetBlacklistGET{
-		Blacklist: blacklist,
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the timeout.
+	timeout := DefaultSkynetRequestTimeout
+	timeoutStr := queryForm.Get("timeout")
+	if timeoutStr != "" {
+		timeoutInt, err := strconv.Atoi(timeoutStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+
+		if timeoutInt > MaxSkynetRequestTimeout {
+			WriteError(w, Error{fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout)}, http.StatusBadRequest)
+			return
+		}
+		timeout = time.Duration(timeoutInt) * time.Second
+	}
+
+	// Fetch the skyfile's  streamer to serve the basesector of the file
+	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout)
+	if errors.Contains(err, renter.ErrRootNotFound) {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+	defer func() {
+		_ = streamer.Close()
+	}()
+
+	// Stop the time here for TTFB.
+	skynetPerformanceStatsMu.Lock()
+	skynetPerformanceStats.TimeToFirstByte.AddRequest(time.Since(startTime))
+	skynetPerformanceStatsMu.Unlock()
+	// Defer a function to record the total performance time.
+	defer func() {
+		skynetPerformanceStatsMu.Lock()
+		defer skynetPerformanceStatsMu.Unlock()
+
+		_, fetchSize, err := skylink.OffsetAndFetchSize()
+		if err != nil {
+			return
+		}
+		if fetchSize <= 64e3 {
+			skynetPerformanceStats.Download64KB.AddRequest(time.Since(startTime))
+			return
+		}
+		if fetchSize <= 1e6 {
+			skynetPerformanceStats.Download1MB.AddRequest(time.Since(startTime))
+			return
+		}
+		if fetchSize <= 4e6 {
+			skynetPerformanceStats.Download4MB.AddRequest(time.Since(startTime))
+			return
+		}
+		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
+	}()
+
+	// Serve the basesector
+	http.ServeContent(w, req, "", time.Time{}, streamer)
+	return
+}
+
+// skynetBlocklistHandlerGET handles the API call to get the list of blocked
+// skylinks.
+func (api *API) skynetBlocklistHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	// Get the Blocklist
+	blocklist, err := api.renter.Blocklist()
+	if err != nil {
+		WriteError(w, Error{"unable to get the blocklist: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	WriteJSON(w, SkynetBlocklistGET{
+		Blocklist: blocklist,
 	})
 }
 
-// skynetBlacklistHandlerPOST handles the API call to blacklist certain skylinks.
-func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+// skynetBlocklistHandlerPOST handles the API call to block certain skylinks.
+func (api *API) skynetBlocklistHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Parse parameters
-	var params SkynetBlacklistPOST
+	var params SkynetBlocklistPOST
 	err := json.NewDecoder(req.Body).Decode(&params)
 	if err != nil {
 		WriteError(w, Error{"invalid parameters: " + err.Error()}, http.StatusBadRequest)
@@ -161,32 +275,56 @@ func (api *API) skynetBlacklistHandlerPOST(w http.ResponseWriter, req *http.Requ
 		return
 	}
 
-	// Convert to Skylinks
-	addSkylinks := make([]modules.Skylink, len(params.Add))
+	// Convert to Skylinks or Hash
+	addHashes := make([]crypto.Hash, len(params.Add))
 	for i, addStr := range params.Add {
-		var skylink modules.Skylink
-		err := skylink.LoadString(addStr)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
-			return
+		var hash crypto.Hash
+		// Convert Hash
+		if params.IsHash {
+			err := hash.LoadString(addStr)
+			if err != nil {
+				WriteError(w, Error{fmt.Sprintf("error parsing hash: %v", err)}, http.StatusBadRequest)
+				return
+			}
+		} else {
+			// Convert Skylink
+			var skylink modules.Skylink
+			err := skylink.LoadString(addStr)
+			if err != nil {
+				WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+				return
+			}
+			hash = crypto.HashObject(skylink.MerkleRoot())
 		}
-		addSkylinks[i] = skylink
+		addHashes[i] = hash
 	}
-	removeSkylinks := make([]modules.Skylink, len(params.Remove))
+	removeHashes := make([]crypto.Hash, len(params.Remove))
 	for i, removeStr := range params.Remove {
-		var skylink modules.Skylink
-		err := skylink.LoadString(removeStr)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
-			return
+		var hash crypto.Hash
+		// Convert Hash
+		if params.IsHash {
+			err := hash.LoadString(removeStr)
+			if err != nil {
+				WriteError(w, Error{fmt.Sprintf("error parsing hash: %v", err)}, http.StatusBadRequest)
+				return
+			}
+		} else {
+			// Convert Skylink
+			var skylink modules.Skylink
+			err := skylink.LoadString(removeStr)
+			if err != nil {
+				WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
+				return
+			}
+			hash = crypto.HashObject(skylink.MerkleRoot())
 		}
-		removeSkylinks[i] = skylink
+		removeHashes[i] = hash
 	}
 
-	// Update the Skynet Blacklist
-	err = api.renter.UpdateSkynetBlacklist(addSkylinks, removeSkylinks)
+	// Update the Skynet Blocklist
+	err = api.renter.UpdateSkynetBlocklist(addHashes, removeHashes)
 	if err != nil {
-		WriteError(w, Error{"unable to update the skynet blacklist: " + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"unable to update the skynet blocklist: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
@@ -246,7 +384,10 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}()
 
-	skylink, skylinkStringNoQuery, path, err := splitSkylinkString(ps.ByName("skylink"))
+	// Parse the skylink from the raw URL of the request. Any special characters
+	// in the raw URL are encoded, allowing us to differentiate e.g. the '?'
+	// that begins query parameters from the encoded version '%3F'.
+	skylink, skylinkStringNoQuery, path, err := parseSkylinkURL(req.URL.String(), "/skynet/skylink/")
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("error parsing skylink: %v", err)}, http.StatusBadRequest)
 		return
@@ -259,7 +400,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 
-	// Parse the querystring.
+	// Parse the 'attachment' query string parameter.
 	var attachment bool
 	attachmentStr := queryForm.Get("attachment")
 	if attachmentStr != "" {
@@ -270,13 +411,13 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		}
 	}
 
-	// Parse the format.
+	// Parse the 'format' query string parameter.
 	format := modules.SkyfileFormat(strings.ToLower(queryForm.Get("format")))
 	switch format {
 	case modules.SkyfileFormatNotSpecified:
+	case modules.SkyfileFormatConcat:
 	case modules.SkyfileFormatTar:
 	case modules.SkyfileFormatTarGz:
-	case modules.SkyfileFormatConcat:
 	case modules.SkyfileFormatZip:
 	default:
 		WriteError(w, Error{"unable to parse 'format' parameter, allowed values are: 'concat', 'tar', 'targz' and 'zip'"}, http.StatusBadRequest)
@@ -310,8 +451,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusInternalServerError)
 		return
 	}
-	defer streamer.Close()
+	defer func() {
+		_ = streamer.Close()
+	}()
 
+	// Validate Metadata
 	if metadata.DefaultPath != "" && len(metadata.Subfiles) == 0 {
 		WriteError(w, Error{"defaultpath is not allowed on single files, please specify a format"}, http.StatusBadRequest)
 		return
@@ -362,7 +506,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		// We also don't need to redirect if this is a HEAD request or if it's a
 		// download as attachment.
 		if isSkapp && !attachment && req.Method == http.MethodGet && !strings.HasSuffix(skylinkStringNoQuery, "/") {
-			w.Header().Set("Location", skylinkStringNoQuery+"/?"+req.URL.RawQuery)
+			location := skylinkStringNoQuery + "/"
+			if req.URL.RawQuery != "" {
+				location += "?" + req.URL.RawQuery
+			}
+			w.Header().Set("Location", location)
 			w.WriteHeader(http.StatusTemporaryRedirect)
 			return
 		}
@@ -451,6 +599,13 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
 	}()
 
+	// Set the Skylink response header
+	w.Header().Set("Skynet-Skylink", skylink.String())
+
+	// Set the ETag response header
+	eTag := buildETag(skylink, req.Method, path, format)
+	w.Header().Set("ETag", fmt.Sprintf("\"%v\"", eTag))
+
 	// Set an appropriate Content-Disposition header
 	var cdh string
 	filename := filepath.Base(metadata.Filename)
@@ -504,25 +659,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
-}
-
-// splitSkylinkString splits a skylink string into its component - a skylink,
-// a string representation of the skylink with the query parameters stripped,
-// and a path.
-func splitSkylinkString(s string) (skylink modules.Skylink, skylinkStringNoQuery, path string, err error) {
-	s = strings.TrimPrefix(s, "/")
-	// Parse out optional path to a subfile
-	path = "/" // default to root
-	splits := strings.SplitN(s, "?", 2)
-	skylinkStringNoQuery = splits[0]
-	splits = strings.SplitN(skylinkStringNoQuery, "/", 2)
-	// Check if a path is passed.
-	if len(splits) > 1 && len(splits[1]) > 0 {
-		path = modules.EnsurePrefix(splits[1], "/")
-	}
-	// Parse skylink
-	err = skylink.LoadString(s)
-	return
 }
 
 // skynetSkylinkPinHandlerPOST will pin a skylink to this Sia node, ensuring
@@ -641,125 +777,44 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 // set, this is essentially an upload streaming endpoint for Skynet which
 // returns a skylink.
 func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	// Start the timer for the performance measurement.
+	// start the timer for the performance measurement.
 	startTime := time.Now()
 
-	// Parse the query params.
-	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	// parse the request headers and parameters
+	headers, params, err := parseUploadHeadersAndRequestParameters(req, ps)
 	if err != nil {
-		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
 
-	// Parse whether the upload should be performed as a dry-run.
-	var dryRun bool
-	dryRunStr := queryForm.Get("dryrun")
-	if dryRunStr != "" {
-		dryRun, err = strconv.ParseBool(dryRunStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'dryrun' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-	}
-
-	// Parse whether the siapath should be from root or from the skynet folder.
-	var root bool
-	rootStr := queryForm.Get("root")
-	if rootStr != "" {
-		root, err = strconv.ParseBool(rootStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'root' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-	}
-
-	// Parse out the intended siapath.
-	var siaPath modules.SiaPath
-	siaPathStr := ps.ByName("siapath")
-	if root {
-		siaPath, err = modules.NewSiaPath(siaPathStr)
-	} else {
-		siaPath, err = modules.SkynetFolder.Join(siaPathStr)
-	}
-	if err != nil {
-		WriteError(w, Error{"invalid siapath provided: " + err.Error()}, http.StatusBadRequest)
-		return
-	}
-
-	// Check whether force upload is allowed. Skynet portals might disallow
-	// passing the force flag, if they want to they can set overrule the force
-	// flag by passing in the 'Skynet-Disable-Force' header
-	allowForce := true
-	strDisableForce := req.Header.Get("Skynet-Disable-Force")
-	if strDisableForce != "" {
-		disableForce, err := strconv.ParseBool(strDisableForce)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'Skynet-Disable-Force' header: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-		allowForce = !disableForce
-	}
-
-	// Check whether existing file should be overwritten
-	force := false
-	if strForce := queryForm.Get("force"); strForce != "" {
-		force, err = strconv.ParseBool(strForce)
-		if err != nil {
-			WriteError(w, Error{"unable to parse 'force' parameter: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-	}
-
-	// Notify the caller force has been disabled
-	if !allowForce && force {
-		WriteError(w, Error{"'force' has been disabled on this node"}, http.StatusBadRequest)
-		return
-	}
-
-	// Verify the dry-run and force parameter are not combined
-	if allowForce && force && dryRun {
-		WriteError(w, Error{"'dryRun' and 'force' can not be combined"}, http.StatusBadRequest)
-		return
-	}
-
-	// Check whether the redundancy has been set.
-	redundancy := uint8(0)
-	if rStr := queryForm.Get("basechunkredundancy"); rStr != "" {
-		if _, err := fmt.Sscan(rStr, &redundancy); err != nil {
-			WriteError(w, Error{"unable to parse basechunkredundancy: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-	}
-
-	// Parse the filename from the query params.
-	filename := queryForm.Get("filename")
-
-	// Parse Content-Type from the request headers
-	ct := req.Header.Get("Content-Type")
-	mediaType, _, err := mime.ParseMediaType(ct)
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed parsing Content-Type header: %v", err)}, http.StatusBadRequest)
-		return
-	}
-
-	// Build the upload parameters
+	// build the upload parameters
 	lup := modules.SkyfileUploadParameters{
-		SiaPath:             siaPath,
-		DryRun:              dryRun,
-		Force:               force,
-		BaseChunkRedundancy: redundancy,
+		SiaPath:             params.siaPath,
+		DryRun:              params.dryRun,
+		Force:               params.force,
+		BaseChunkRedundancy: params.baseChunkRedundancy,
 	}
 
 	// Build the Skyfile metadata from the request
-	if isMultipartRequest(mediaType) {
-		subfiles, reader, err := skyfileParseMultiPartRequest(req)
+	if isMultipartRequest(headers.mediaType) {
+		subfiles, reader, err := parseMultiPartRequest(req)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed parsing multipart request: %v", err)}, http.StatusBadRequest)
 			return
 		}
+		// Make sure temporary files created while parsing the multipart form
+		// are properly removed on error. The fact that they tend to linger
+		// unless explicitly removed is a known (open) issue:
+		// https://github.com/golang/go/issues/20253
+		defer func() {
+			if err := req.MultipartForm.RemoveAll(); err != nil {
+				log.Printf("failed to clean up multipart tmp file: %v", err)
+			}
+		}()
 
 		// Use the filename of the first subfile if it's not passed as query
 		// string parameter and there's only one subfile.
+		var filename = params.filename
 		if filename == "" && len(subfiles) == 1 {
 			for _, sf := range subfiles {
 				filename = sf.Filename
@@ -768,10 +823,13 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		}
 
 		// Get the default path.
-		defaultPath, disableDefPath, err := defaultPath(queryForm, subfiles)
-		if err != nil {
-			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
-			return
+		var defaultPath string
+		if !params.disableDefaultPath {
+			defaultPath, err = validDefaultPath(params.defaultPath, subfiles)
+			if err != nil {
+				WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+				return
+			}
 		}
 
 		lup.Reader = reader
@@ -779,59 +837,24 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			Filename:           filename,
 			Subfiles:           subfiles,
 			DefaultPath:        defaultPath,
-			DisableDefaultPath: disableDefPath,
+			DisableDefaultPath: params.disableDefaultPath,
 		}
 	} else {
-		// Parse out the filemode
-		modeStr := queryForm.Get("mode")
-		var mode os.FileMode
-		if modeStr != "" {
-			_, err := fmt.Sscanf(modeStr, "%o", &mode)
-			if err != nil {
-				WriteError(w, Error{"unable to parse mode: " + err.Error()}, http.StatusBadRequest)
-				return
-			}
-		}
-
 		lup.Reader = req.Body
 		lup.FileMetadata = modules.SkyfileMetadata{
-			Mode:     mode,
-			Filename: filename,
+			Mode:     params.mode,
+			Filename: params.filename,
 		}
 	}
 
-	// Grab the skykey specified.
-	skykeyName := queryForm.Get("skykeyname")
-	skykeyID := queryForm.Get("skykeyid")
-	if skykeyName != "" && skykeyID != "" {
-		WriteError(w, Error{"Can only use either skykeyname or skykeyid flag, not both."}, http.StatusBadRequest)
-		return
-	}
-
-	if skykeyName != "" {
-		lup.SkykeyName = skykeyName
-	}
-	if skykeyID != "" {
-		var ID skykey.SkykeyID
-		err = ID.FromString(skykeyID)
-		if err != nil {
-			WriteError(w, Error{"Unable to parse skykey ID"}, http.StatusBadRequest)
-			return
-		}
-		lup.SkykeyID = ID
-	}
-
-	// Check for a convertpath input
-	convertPathStr := queryForm.Get("convertpath")
-	if convertPathStr != "" && lup.FileMetadata.Filename != "" {
-		WriteError(w, Error{"cannot set both a convertpath and a filename"}, http.StatusBadRequest)
-		return
-	}
+	// Set encryption key details
+	lup.SkykeyName = params.skyKeyName
+	lup.SkykeyID = params.skyKeyID
 
 	// Check whether this is a streaming upload or a siafile conversion. If no
 	// convert path is provided, assume that the req.Body will be used as a
 	// streaming upload.
-	if convertPathStr == "" {
+	if params.convertPath == "" {
 		// Ensure we have a valid filename.
 		if err = modules.ValidatePathString(lup.FileMetadata.Filename, false); err != nil {
 			WriteError(w, Error{fmt.Sprintf("invalid filename provided: %v", err)}, http.StatusBadRequest)
@@ -871,6 +894,9 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 			skynetPerformanceStatsMu.Unlock()
 		}
 
+		// Set the Skylink response header
+		w.Header().Set("Skynet-Skylink", skylink.String())
+
 		WriteJSON(w, SkynetSkyfileHandlerPOST{
 			Skylink:    skylink.String(),
 			MerkleRoot: skylink.MerkleRoot(),
@@ -880,7 +906,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 
 	// There is a convert path.
-	convertPath, err := modules.NewSiaPath(convertPathStr)
+	convertPath, err := modules.NewSiaPath(params.convertPath)
 	if err != nil {
 		WriteError(w, Error{"invalid convertpath provided: " + err.Error()}, http.StatusBadRequest)
 		return
@@ -901,6 +927,9 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	skynetPerformanceStatsMu.Lock()
 	skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime))
 	skynetPerformanceStatsMu.Unlock()
+
+	// Set the Skylink response header
+	w.Header().Set("Skynet-Skylink", skylink.String())
 
 	WriteJSON(w, SkynetSkyfileHandlerPOST{
 		Skylink:    skylink.String(),
@@ -954,171 +983,6 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 			GitRevision: build.GitRevision,
 		},
 	})
-}
-
-// serveArchive serves skyfiles as an archive by reading them from r and writing
-// the archive to dst using the given archiveFunc.
-func serveArchive(dst io.Writer, src io.ReadSeeker, md modules.SkyfileMetadata, archiveFunc archiveFunc) error {
-	// Get the files to archive.
-	var files []modules.SkyfileSubfileMetadata
-	for _, file := range md.Subfiles {
-		files = append(files, file)
-	}
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].Offset < files[j].Offset
-	})
-	// If there are no files, it's a single file download. Manually construct a
-	// SkyfileSubfileMetadata from the SkyfileMetadata.
-	if len(files) == 0 {
-		length := md.Length
-		if md.Length == 0 {
-			// v150Compat a missing length is fine for legacy links but new
-			// links should always have the length set.
-			if build.Release == "testing" {
-				build.Critical("SkyfileMetadata is missing length")
-			}
-			// Fetch the length of the file by seeking to the end and then back to
-			// the start.
-			seekLen, err := src.Seek(0, io.SeekEnd)
-			if err != nil {
-				return errors.AddContext(err, "serveArchive: failed to seek to end of skyfile")
-			}
-			_, err = src.Seek(0, io.SeekStart)
-			if err != nil {
-				return errors.AddContext(err, "serveArchive: failed to seek to start of skyfile")
-			}
-			length = uint64(seekLen)
-		}
-		// Construct the SkyfileSubfileMetadata.
-		files = append(files, modules.SkyfileSubfileMetadata{
-			FileMode: md.Mode,
-			Filename: md.Filename,
-			Offset:   0,
-			Len:      length,
-		})
-	}
-	return archiveFunc(dst, src, files)
-}
-
-// serveTar is an archiveFunc that implements serving the files from src to dst
-// as a tar.
-func serveTar(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error {
-	tw := tar.NewWriter(dst)
-	for _, file := range files {
-		// Create header.
-		header, err := tar.FileInfoHeader(file, file.Name())
-		if err != nil {
-			return err
-		}
-		// Modify name to match path within skyfile.
-		header.Name = file.Filename
-		// Write header.
-		if err := tw.WriteHeader(header); err != nil {
-			return err
-		}
-		// Write file content.
-		if _, err := io.CopyN(tw, src, header.Size); err != nil {
-			return err
-		}
-	}
-	return tw.Close()
-}
-
-// serveZip is an archiveFunc that implements serving the files from src to dst
-// as a zip.
-func serveZip(dst io.Writer, src io.Reader, files []modules.SkyfileSubfileMetadata) error {
-	zw := zip.NewWriter(dst)
-	for _, file := range files {
-		f, err := zw.Create(file.Filename)
-		if err != nil {
-			return errors.AddContext(err, "serveZip: failed to add the file to the zip")
-		}
-
-		// Write file content.
-		_, err = io.CopyN(f, src, int64(file.Len))
-		if err != nil {
-			return errors.AddContext(err, "serveZip: failed to write file contents to the zip")
-		}
-	}
-	return zw.Close()
-}
-
-// parseTimeout tries to parse the timeout from the query string and validate
-// it. If not present, it will default to DefaultSkynetRequestTimeout.
-func parseTimeout(queryForm url.Values) (time.Duration, error) {
-	timeoutStr := queryForm.Get("timeout")
-	if timeoutStr == "" {
-		return DefaultSkynetRequestTimeout, nil
-	}
-
-	timeoutInt, err := strconv.Atoi(timeoutStr)
-	if err != nil {
-		return 0, errors.AddContext(err, "unable to parse 'timeout'")
-	}
-	if timeoutInt > MaxSkynetRequestTimeout {
-		return 0, errors.AddContext(err, fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout))
-	}
-	return time.Duration(timeoutInt) * time.Second, nil
-}
-
-// skyfileParseMultiPartRequest parses the given request and returns the
-// subfiles found in the multipart request body, alongside with an io.Reader
-// containing all of the files.
-func skyfileParseMultiPartRequest(req *http.Request) (modules.SkyfileSubfiles, io.Reader, error) {
-	subfiles := make(modules.SkyfileSubfiles)
-
-	// Parse the multipart form
-	err := req.ParseMultipartForm(32 << 20) // 32MB max memory
-	if err != nil {
-		return subfiles, nil, errors.AddContext(err, "failed parsing multipart form")
-	}
-
-	// Parse out all of the multipart file headers
-	mpfHeaders := append(req.MultipartForm.File["file"], req.MultipartForm.File["files[]"]...)
-	if len(mpfHeaders) == 0 {
-		return subfiles, nil, errors.New("could not find multipart file")
-	}
-
-	// If there are multiple, treat the entire upload as one with all separate
-	// files being subfiles. This is used for uploading a directory to Skynet.
-	readers := make([]io.Reader, len(mpfHeaders))
-	var offset uint64
-	for i, fh := range mpfHeaders {
-		f, err := fh.Open()
-		if err != nil {
-			return subfiles, nil, errors.AddContext(err, "could not open multipart file")
-		}
-		readers[i] = f
-
-		// parse mode from multipart header
-		modeStr := fh.Header.Get("Mode")
-		var mode os.FileMode
-		if modeStr != "" {
-			_, err := fmt.Sscanf(modeStr, "%o", &mode)
-			if err != nil {
-				return subfiles, nil, errors.AddContext(err, "failed to parse file mode")
-			}
-		}
-
-		// parse filename from multipart
-		filename := fh.Filename
-		if filename == "" {
-			return subfiles, nil, errors.New("no filename provided")
-		}
-
-		// parse content type from multipart header
-		contentType := fh.Header.Get("Content-Type")
-		subfiles[fh.Filename] = modules.SkyfileSubfileMetadata{
-			FileMode:    mode,
-			Filename:    filename,
-			ContentType: contentType,
-			Offset:      offset,
-			Len:         uint64(fh.Size),
-		}
-		offset += uint64(fh.Size)
-	}
-
-	return subfiles, io.MultiReader(readers...), nil
 }
 
 // skykeyHandlerGET handles the API call to get a Skykey and its ID using its
@@ -1213,7 +1077,7 @@ func (api *API) skykeyCreateKeyHandlerPOST(w http.ResponseWriter, req *http.Requ
 	skykeyTypeString := req.FormValue("type")
 
 	if name == "" {
-		WriteError(w, Error{"you must specify the name the skykey"}, http.StatusInternalServerError)
+		WriteError(w, Error{"you must specify the name of the skykey"}, http.StatusInternalServerError)
 		return
 	}
 
@@ -1302,57 +1166,87 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 	WriteJSON(w, res)
 }
 
-// defaultPath extracts the defaultPath from the request or returns a default.
-// It will never return a directory because `subfiles` contains only files.
-func defaultPath(queryForm url.Values, subfiles modules.SkyfileSubfiles) (defaultPath string, disableDefaultPath bool, err error) {
-	defer func() {
-		// Ensure the defaultPath always has a leading slash.
-		if defaultPath != "" {
-			defaultPath = modules.EnsurePrefix(defaultPath, "/")
-		}
-	}()
-	// Parse the "disabledefaultpath" param.
-	disableDefaultPathStr := queryForm.Get(modules.SkyfileDisableDefaultPathParamName)
-	if disableDefaultPathStr != "" {
-		disableDefaultPath, err = strconv.ParseBool(disableDefaultPathStr)
-		if err != nil {
-			return "", false, fmt.Errorf("unable to parse 'disabledefaultpath' parameter: " + err.Error())
-		}
+// registryHandlerPOST handles the POST calls to /skynet/registry.
+func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Decode request.
+	dec := json.NewDecoder(req.Body)
+	var rhp RegistryHandlerRequestPOST
+	err := dec.Decode(&rhp)
+	if err != nil {
+		WriteError(w, Error{"Failed to decode request: " + err.Error()}, http.StatusBadRequest)
+		return
 	}
-	// Parse the "defaultPath" param.
-	defaultPath = queryForm.Get(modules.SkyfileDefaultPathParamName)
-	if len(subfiles) == 0 && (disableDefaultPath || defaultPath != "") {
-		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath and DisableDefaultPath are not applicable to skyfiles without subfiles")
+
+	// Check data length here to be able to offer a better and faster error
+	// message than when the hosts return it.
+	if len(rhp.Data) > modules.RegistryDataSize {
+		WriteError(w, Error{fmt.Sprintf("Registry data is too big: %v > %v", len(rhp.Data), modules.RegistryDataSize)}, http.StatusBadRequest)
+		return
 	}
-	if disableDefaultPath && defaultPath != "" {
-		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath and DisableDefaultPath are mutually exclusive and cannot be set together")
+
+	// Update the registry.
+	srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature)
+	err = api.renter.UpdateRegistry(rhp.PublicKey, srv, renter.DefaultRegistryUpdateTimeout)
+	if err != nil {
+		WriteError(w, Error{"Unable to update the registry: " + err.Error()}, http.StatusBadRequest)
+		return
 	}
-	if disableDefaultPath {
-		return "", true, nil
-	}
-	if defaultPath == "" {
-		return "", false, nil
-	}
-	// Check if the defaultPath exists. Omit the leading slash because
-	// the filenames in `subfiles` won't have it.
-	if _, exists := subfiles[strings.TrimPrefix(defaultPath, "/")]; !exists {
-		return "", false, errors.AddContext(ErrInvalidDefaultPath, fmt.Sprintf("no such path: %s", defaultPath))
-	}
-	// Ensure that the defaultPath is an HTML file.
-	if !strings.HasSuffix(defaultPath, ".html") && !strings.HasSuffix(defaultPath, ".htm") {
-		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath must point to an HTML file")
-	}
-	defaultPath = modules.EnsurePrefix(defaultPath, "/")
-	// Do not allow default path to point to files which are not in the root
-	// directory of the skyfile.
-	if strings.Count(defaultPath, "/") > 1 {
-		return "", false, errors.AddContext(ErrInvalidDefaultPath, "DefaultPath must point to a file in the root directory of the skyfile")
-	}
-	return defaultPath, false, nil
+	WriteSuccess(w)
 }
 
-// isMultipartRequest is a helper method that checks if the given media type
-// matches that of a multipart form.
-func isMultipartRequest(mediaType string) bool {
-	return strings.HasPrefix(mediaType, "multipart/form-data")
+// registryHandlerGET handles the GET calls to /skynet/registry.
+func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse public key
+	var spk types.SiaPublicKey
+	err := spk.LoadString(req.FormValue("publickey"))
+	if err != nil {
+		WriteError(w, Error{"Unable to parse publickey param: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse datakey.
+	var dataKey crypto.Hash
+	err = dataKey.LoadString(req.FormValue("datakey"))
+	if err != nil {
+		WriteError(w, Error{"Unable to decode dataKey param: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the timeout.
+	timeout := renter.MaxRegistryReadTimeout
+	timeoutStr := req.FormValue("timeout")
+	if timeoutStr != "" {
+		timeoutInt, err := strconv.Atoi(timeoutStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		timeout = time.Duration(timeoutInt) * time.Second
+		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
+			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Read registry.
+	srv, err := api.renter.ReadRegistry(spk, dataKey, timeout)
+	if errors.Contains(err, renter.ErrRegistryEntryNotFound) {
+		WriteError(w, Error{"Unable to read from the registry: " + err.Error()}, http.StatusNotFound)
+		return
+	}
+	if errors.Contains(err, renter.ErrRegistryLookupTimeout) {
+		WriteError(w, Error{"Unable to read from the registry: " + err.Error()}, http.StatusRequestTimeout)
+		return
+	}
+	if err != nil {
+		WriteError(w, Error{"Unable to read from the registry: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	// Send response.
+	WriteJSON(w, RegistryHandlerGET{
+		Data:      hex.EncodeToString(srv.Data),
+		Revision:  srv.Revision,
+		Signature: hex.EncodeToString(srv.Signature[:]),
+	})
 }

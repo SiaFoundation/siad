@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -186,6 +187,31 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 // testUpdatePriceTableBasic verifies the basic functionality of the update
 // price table RPC
 func testUpdatePriceTableBasic(t *testing.T, rhp *renterHostPair) {
+	// set the registry size to a known value.
+	host := rhp.staticHT.host
+	is := host.InternalSettings()
+	is.RegistrySize = 128 * modules.RegistryEntrySize
+	err := rhp.staticHT.host.SetInternalSettings(is)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add 64 entries.
+	for i := 0; i < 64; i++ {
+		sk, pk := crypto.GenerateKeyPair()
+		var spk types.SiaPublicKey
+		spk.Algorithm = types.SignatureEd25519
+		spk.Key = pk[:]
+		var tweak crypto.Hash
+		fastrand.Read(tweak[:])
+		rv := modules.NewRegistryValue(tweak, fastrand.Bytes(modules.RegistryDataSize), 0).Sign(sk)
+		_, err := host.RegistryUpdate(rv, spk, 1337)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	left := host.staticRegistry.Cap() - host.staticRegistry.Len()
+
 	// create a payment revision
 	current := rhp.staticHT.host.staticPriceTables.managedCurrent()
 	rev, sig, err := rhp.managedEAFundRevision(current.UpdatePriceTableCost)
@@ -247,6 +273,12 @@ func testUpdatePriceTableBasic(t *testing.T, rhp *renterHostPair) {
 	// ensure the WindowSize is set
 	if pt.WindowSize == 0 {
 		t.Fatal("Expected WindowSize to be set on the price table")
+	}
+	if pt.RegistryEntriesLeft != left {
+		t.Fatal("Wrong number of registry entries", pt.RegistryEntriesLeft, left)
+	}
+	if pt.RegistryEntriesTotal != 128 {
+		t.Fatal("Wrong number of entries", pt.RegistryEntriesTotal, 128)
 	}
 }
 
@@ -332,12 +364,14 @@ func testUpdatePriceTableHostNoStreamClose(t *testing.T, rhp *renterHostPair) {
 // runUpdatePriceTableRPCWithRequest is a helper function that performs the
 // renter-side of the update price table RPC using a custom PayByContractRequest
 // to similate various edge cases or error flows.
-func runUpdatePriceTableRPCWithRequest(rhp *renterHostPair, pbcRequest modules.PayByContractRequest) (*modules.RPCPriceTable, error) {
+func runUpdatePriceTableRPCWithRequest(rhp *renterHostPair, pbcRequest modules.PayByContractRequest) (_ *modules.RPCPriceTable, err error) {
 	stream := rhp.managedNewStream()
-	defer stream.Close()
+	defer func() {
+		err = errors.Compose(err, stream.Close())
+	}()
 
 	// initiate the RPC
-	err := modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
+	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		return nil, err
 	}

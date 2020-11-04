@@ -518,7 +518,7 @@ func walletsweepcmd() {
 // walletsigncmd signs a transaction.
 func walletsigncmd(cmd *cobra.Command, args []string) {
 	if len(args) < 1 {
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 
@@ -554,9 +554,12 @@ func walletsigncmd(cmd *cobra.Command, args []string) {
 	}
 
 	if walletRawTxn {
-		base64.NewEncoder(base64.StdEncoding, os.Stdout).Write(encoding.Marshal(txn))
+		_, err = base64.NewEncoder(base64.StdEncoding, os.Stdout).Write(encoding.Marshal(txn))
 	} else {
-		json.NewEncoder(os.Stdout).Encode(txn)
+		err = json.NewEncoder(os.Stdout).Encode(txn)
+	}
+	if err != nil {
+		die("failed to encode txn", err)
 	}
 	fmt.Println()
 }

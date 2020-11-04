@@ -97,26 +97,31 @@ func (r *Renter) RenameFile(currentName, newName modules.SiaPath) error {
 		return err
 	}
 
-	// Call callThreadedBubbleMetadata on the old directory to make sure the
-	// system metadata is updated to reflect the move.
+	// Call callThreadedBubbleMetadata on the old and new directories to make
+	// sure the system metadata is updated to reflect the move.
 	oldDirSiaPath, err := currentName.Dir()
 	if err != nil {
 		return err
 	}
-	go r.callThreadedBubbleMetadata(oldDirSiaPath)
-	// Call callThreadedBubbleMetadata on the new directory to make sure the
-	// system metadata is updated to reflect the move.
 	newDirSiaPath, err := newName.Dir()
 	if err != nil {
 		return err
 	}
-	go r.callThreadedBubbleMetadata(newDirSiaPath)
-
+	bubblePaths := r.newUniqueRefreshPaths()
+	err = bubblePaths.callAdd(oldDirSiaPath)
+	if err != nil {
+		r.log.Printf("failed to add old directory '%v' to bubble paths:  %v", oldDirSiaPath, err)
+	}
+	err = bubblePaths.callAdd(newDirSiaPath)
+	if err != nil {
+		r.log.Printf("failed to add new directory '%v' to bubble paths:  %v", newDirSiaPath, err)
+	}
+	bubblePaths.callRefreshAll()
 	return nil
 }
 
 // SetFileStuck sets the Stuck field of the whole siafile to stuck.
-func (r *Renter) SetFileStuck(siaPath modules.SiaPath, stuck bool) error {
+func (r *Renter) SetFileStuck(siaPath modules.SiaPath, stuck bool) (err error) {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -126,7 +131,9 @@ func (r *Renter) SetFileStuck(siaPath modules.SiaPath, stuck bool) error {
 	if err != nil {
 		return err
 	}
-	defer entry.Close()
+	defer func() {
+		err = errors.Compose(err, entry.Close())
+	}()
 	// Update the file.
 	return entry.SetAllStuck(stuck)
 }

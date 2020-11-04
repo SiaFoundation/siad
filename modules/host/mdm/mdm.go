@@ -35,6 +35,8 @@ type Host interface {
 	BlockHeight() types.BlockHeight
 	HasSector(crypto.Hash) bool
 	ReadSector(sectorRoot crypto.Hash) ([]byte, error)
+	RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (modules.SignedRegistryValue, error)
+	RegistryGet(pubKey types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, bool)
 }
 
 // MDM (Merklized Data Machine) is a virtual machine that executes instructions

@@ -191,7 +191,7 @@ func readDataPieces(r io.Reader, ec modules.ErasureCoder, pieceSize uint64) ([][
 		dataPieces[i] = make([]byte, pieceSize)
 		n, err := io.ReadFull(r, dataPieces[i])
 		total += uint64(n)
-		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		if err != nil && !errors.Contains(err, io.EOF) && err != io.ErrUnexpectedEOF {
 			return nil, 0, errors.AddContext(err, "failed to read chunk from source reader")
 		}
 	}
@@ -477,8 +477,10 @@ func (uc *unfinishedUploadChunk) staticReadLogicalData(r io.Reader) (uint64, err
 
 // staticFetchLogicalDataFromReader will load the logical data for a chunk from
 // a reader, and perform an integrity check on the chunk to ensure correctness.
-func (r *Renter) staticFetchLogicalDataFromReader(uc *unfinishedUploadChunk) error {
-	defer uc.sourceReader.Close()
+func (r *Renter) staticFetchLogicalDataFromReader(uc *unfinishedUploadChunk) (err error) {
+	defer func() {
+		err = errors.Compose(err, uc.sourceReader.Close())
+	}()
 
 	// Grab the logical data from the reader.
 	n, err := uc.staticReadLogicalData(uc.sourceReader)
@@ -565,8 +567,8 @@ func (r *Renter) managedFetchLogicalChunkData(uc *unfinishedUploadChunk) error {
 }
 
 // managedCleanUpUploadChunk will check the state of the chunk and perform any
-// cleanup required. This can include returning rememory and releasing the chunk
-// from the map of active chunks in the chunk heap.
+// cleanup required. This can include returning reserved memory and releasing
+// the chunk from the map of active chunks in the chunk heap.
 func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	uc.mu.Lock()
 	piecesAvailable := 0
@@ -638,8 +640,10 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	Success Times: %v`, int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), failedTimes, successTimes)
 		}
 	}
-	uc.memoryReleased += uint64(memoryReleased)
+	uc.memoryReleased += memoryReleased
 	totalMemoryReleased := uc.memoryReleased
+	canceled := uc.canceled
+	workersRemaining := uc.workersRemaining
 	uc.mu.Unlock()
 
 	// If there are pieces available, add the standby workers to collect them.
@@ -653,9 +657,20 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	// If required, remove the chunk from the set of repairing chunks.
 	if chunkComplete && !released {
 		r.managedUpdateUploadChunkStuckStatus(uc)
-		// Close the file entry unless disrupted.
+
+		// Update the file's metadata.
+		offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
+		err := r.managedUpdateFileMetadata(uc.fileEntry, offlineMap, goodForRenewMap, contracts, used)
+		if err != nil {
+			r.log.Print("managedCleanUpUploadChunk: failed to update file metadata", err)
+		}
+
+		// Close the file entry for the completed chunk unless disrupted.
 		if !r.deps.Disrupt("disableCloseUploadEntry") {
-			uc.fileEntry.Close()
+			err := uc.fileEntry.Close()
+			if err != nil {
+				r.log.Println("WARN: unable to close file entry for chunk", uc.fileEntry.SiaFilePath())
+			}
 		}
 		// Remove the chunk from the repairingChunks map
 		r.uploadHeap.managedMarkRepairDone(uc.id)
@@ -667,9 +682,16 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	if memoryReleased > 0 {
 		r.memoryManager.Return(memoryReleased)
 	}
+	// Make sure file is closed for canceled chunks when all workers are done
+	if canceled && workersRemaining == 0 && !chunkComplete {
+		err := uc.fileEntry.Close()
+		if err != nil {
+			r.log.Println("WARN: unable to close file entry for chunk", uc.fileEntry.SiaFilePath())
+		}
+	}
 	// Sanity check - all memory should be released if the chunk is complete.
 	if chunkComplete && totalMemoryReleased != uc.memoryNeeded {
-		r.log.Critical("No workers remaining, but not all memory released:", uc.workersRemaining, uc.piecesRegistered, uc.memoryReleased, uc.memoryNeeded)
+		r.log.Critical("No workers remaining, but not all memory released:", workersRemaining, uc.piecesRegistered, uc.memoryReleased, uc.memoryNeeded)
 	}
 }
 

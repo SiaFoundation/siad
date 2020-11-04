@@ -38,6 +38,7 @@ pkgs = \
 	./modules/host \
 	./modules/host/contractmanager \
 	./modules/host/mdm \
+	./modules/host/registry \
 	./modules/miner \
 	./modules/renter \
 	./modules/renter/contractor \
@@ -47,7 +48,7 @@ pkgs = \
 	./modules/renter/hostdb \
 	./modules/renter/hostdb/hosttree \
 	./modules/renter/proto \
-	./modules/renter/skynetblacklist \
+	./modules/renter/skynetblocklist \
 	./modules/renter/skynetportals \
 	./modules/transactionpool \
 	./modules/wallet \
@@ -72,6 +73,7 @@ pkgs = \
 	./siatest/transactionpool \
 	./siatest/wallet \
 	./skykey \
+	./skynet \
 	./sync \
 	./types \
 	./types/typesutil \
@@ -93,9 +95,10 @@ lockcheckpkgs = \
 	./node/api/client \
 	./node/api/server \
 	./modules/host/mdm \
+	./modules/host/registry \
 	./modules/renter/hostdb \
 	./modules/renter/proto \
-	./modules/renter/skynetblacklist \
+	./modules/renter/skynetblocklist \
 	./skykey \
 	./types \
 	./types/typesutil \

@@ -21,7 +21,7 @@ var (
 	DefaultAllowance = Allowance{
 		Funds:       types.SiacoinPrecision.Mul64(2500),
 		Hosts:       uint64(PriceEstimationScope),
-		Period:      3 * types.BlocksPerMonth,
+		Period:      2 * types.BlocksPerMonth,
 		RenewWindow: types.BlocksPerMonth,
 
 		ExpectedStorage:    1e12,                                         // 1 TB
@@ -36,6 +36,11 @@ var (
 	// ErrDownloadCancelled is the error set when a download was cancelled
 	// manually by the user.
 	ErrDownloadCancelled = errors.New("download was cancelled")
+
+	// ErrNotEnoughWorkersInWorkerPool is an error that is returned whenever an
+	// operation expects a certain number of workers but there aren't that many
+	// available.
+	ErrNotEnoughWorkersInWorkerPool = errors.New("not enough workers in worker pool")
 
 	// PriceEstimationScope is the number of hosts that get queried by the
 	// renter when providing price estimates. Especially for the 'Standard'
@@ -173,56 +178,6 @@ type (
 	}
 )
 
-type (
-	// ErasureCoderType is an identifier for the individual types of erasure
-	// coders.
-	ErasureCoderType [4]byte
-
-	// ErasureCoderIdentifier is an identifier that only matches another
-	// ErasureCoder's identifier if they both are of the same type and settings.
-	ErasureCoderIdentifier string
-
-	// An ErasureCoder is an error-correcting encoder and decoder.
-	ErasureCoder interface {
-		// NumPieces is the number of pieces returned by Encode.
-		NumPieces() int
-
-		// MinPieces is the minimum number of pieces that must be present to
-		// recover the original data.
-		MinPieces() int
-
-		// Encode splits data into equal-length pieces, with some pieces
-		// containing parity data.
-		Encode(data []byte) ([][]byte, error)
-
-		// Identifier returns the ErasureCoderIdentifier of the ErasureCoder.
-		Identifier() ErasureCoderIdentifier
-
-		// EncodeShards encodes the input data like Encode but accepts an already
-		// sharded input.
-		EncodeShards(data [][]byte) ([][]byte, error)
-
-		// Reconstruct recovers the full set of encoded shards from the provided
-		// pieces, of which at least MinPieces must be non-nil.
-		Reconstruct(pieces [][]byte) error
-
-		// Recover recovers the original data from pieces and writes it to w.
-		// pieces should be identical to the slice returned by Encode (length and
-		// order must be preserved), but with missing elements set to nil. n is
-		// the number of bytes to be written to w; this is necessary because
-		// pieces may have been padded with zeros during encoding.
-		Recover(pieces [][]byte, n uint64, w io.Writer) error
-
-		// SupportsPartialEncoding returns true if the ErasureCoder can be used
-		// to encode/decode any crypto.SegmentSize bytes of an encoded piece or
-		// false otherwise.
-		SupportsPartialEncoding() bool
-
-		// Type returns the type identifier of the ErasureCoder.
-		Type() ErasureCoderType
-	}
-)
-
 // An Allowance dictates how much the Renter is allowed to spend in a given
 // period. Note that funds are spent on both storage and bandwidth.
 //
@@ -289,6 +244,11 @@ type Allowance struct {
 // contractor.
 func (a Allowance) Active() bool {
 	return a.Period != 0
+}
+
+// PortalMode returns true if the renter is supposed to act as a portal.
+func (a Allowance) PortalMode() bool {
+	return !a.PaymentContractInitialFunding.IsZero()
 }
 
 // ContractUtility contains metrics internal to the contractor that reflect the
@@ -513,6 +473,7 @@ type HostScoreBreakdown struct {
 	Score          types.Currency `json:"score"`
 	ConversionRate float64        `json:"conversionrate"`
 
+	AcceptContractAdjustment   float64 `json:"acceptcontractadjustment"`
 	AgeAdjustment              float64 `json:"ageadjustment"`
 	BasePriceAdjustment        float64 `json:"basepriceadjustment"`
 	BurnAdjustment             float64 `json:"burnadjustment"`
@@ -692,6 +653,15 @@ type RenterContract struct {
 	SiafundFee  types.Currency
 }
 
+// Size returns the contract size
+func (rc *RenterContract) Size() uint64 {
+	var size uint64
+	if len(rc.Transaction.FileContractRevisions) != 0 {
+		size = rc.Transaction.FileContractRevisions[0].NewFileSize
+	}
+	return size
+}
+
 // ContractorSpending contains the metrics about how much the Contractor has
 // spent during the current billing period.
 type ContractorSpending struct {
@@ -728,7 +698,7 @@ type ContractorSpending struct {
 // ContractorChurnStatus contains the current churn budgets for the Contractor's
 // churnLimiter and the aggregate churn for the current period.
 type ContractorChurnStatus struct {
-	// AggregatCurrentePeriodChurn is the total size of files from churned contracts in this
+	// AggregateCurrentPeriodChurn is the total size of files from churned contracts in this
 	// period.
 	AggregateCurrentPeriodChurn uint64 `json:"aggregatecurrentperiodchurn"`
 	// MaxPeriodChurn is the (adjustable) maximum churn allowed per period.
@@ -789,8 +759,8 @@ type (
 		PriceTableStatus WorkerPriceTableStatus `json:"pricetablestatus"`
 
 		// Job Queues
-		BackupJobQueueSize       int `json:"backupjobqueuesize"`
-		DownloadRootJobQueueSize int `json:"downloadrootjobqueuesize"`
+		DownloadSnapshotJobQueueSize int `json:"downloadsnapshotjobqueuesize"`
+		UploadSnapshotJobQueueSize   int `json:"uploadsnapshotjobqueuesize"`
 
 		// Read Jobs Information
 		ReadJobsStatus WorkerReadJobsStatus `json:"readjobsstatus"`
@@ -804,10 +774,9 @@ type (
 		AvailableBalance types.Currency `json:"availablebalance"`
 		NegativeBalance  types.Currency `json:"negativebalance"`
 
-		Funded bool `json:"funded"`
-
-		RecentErr     string    `json:"recenterr"`
-		RecentErrTime time.Time `json:"recenterrtime"`
+		RecentErr         string    `json:"recenterr"`
+		RecentErrTime     time.Time `json:"recenterrtime"`
+		RecentSuccessTime time.Time `json:"recentsuccesstime"`
 	}
 
 	// WorkerPriceTableStatus contains detailed information about the price
@@ -1012,6 +981,12 @@ type Renter interface {
 	// settings, assuming perfect age and uptime adjustments
 	EstimateHostScore(entry HostDBEntry, allowance Allowance) (HostScoreBreakdown, error)
 
+	// ReadRegistry starts a registry lookup on all available workers. The
+	// jobs have 'timeout' amount of time to finish their jobs and return a
+	// response. Otherwise the response with the highest revision number will be
+	// used.
+	ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout time.Duration) (SignedRegistryValue, error)
+
 	// ScoreBreakdown will return the score for a host db entry using the
 	// hostdb's weighting algorithm.
 	ScoreBreakdown(entry HostDBEntry) (HostScoreBreakdown, error)
@@ -1025,6 +1000,10 @@ type Renter interface {
 	// SetFileTrackingPath sets the on-disk location of an uploaded file to a
 	// new value. Useful if files need to be moved on disk.
 	SetFileTrackingPath(siaPath SiaPath, newPath string) error
+
+	// UpdateRegistry updates the registries on all workers with the given
+	// registry value.
+	UpdateRegistry(spk types.SiaPublicKey, srv SignedRegistryValue, timeout time.Duration) error
 
 	// PauseRepairsAndUploads pauses the renter's repairs and uploads for a time
 	// duration
@@ -1092,6 +1071,10 @@ type Renter interface {
 	// DownloadSkylink will fetch a file from the Sia network using the skylink.
 	DownloadSkylink(Skylink, time.Duration) (SkyfileMetadata, Streamer, error)
 
+	// DownloadSkylinkBaseSector will take a link and turn it into the data of a download
+	// without any decoding of the metadata, fanout, or decryption.
+	DownloadSkylinkBaseSector(Skylink, time.Duration) (Streamer, error)
+
 	// UploadSkyfile will upload data to the Sia network from a reader and
 	// create a skyfile, returning the skylink that can be used to access the
 	// file.
@@ -1102,11 +1085,11 @@ type Renter interface {
 	// file.
 	UploadSkyfile(SkyfileUploadParameters) (Skylink, error)
 
-	// Blacklist returns the merkleroots that are blacklisted
-	Blacklist() ([]crypto.Hash, error)
+	// Blocklist returns the merkleroots that are blocked
+	Blocklist() ([]crypto.Hash, error)
 
-	// UpdateSkynetBlacklist updates the list of skylinks that are blacklisted
-	UpdateSkynetBlacklist(additions, removals []Skylink) error
+	// UpdateSkynetBlocklist updates the list of hashed merkleroots that are blocked
+	UpdateSkynetBlocklist(additions, removals []crypto.Hash) error
 
 	// PinSkylink re-uploads the data stored at the file under that skylink with
 	// the given parameters.

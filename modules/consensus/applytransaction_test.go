@@ -1,12 +1,6 @@
 package consensus
 
 /*
-import (
-	"testing"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
-)
-
 // TestApplySiacoinInputs probes the applySiacoinInputs method of the consensus
 // set.
 func TestApplySiacoinInputs(t *testing.T) {
@@ -20,7 +14,11 @@ func TestApplySiacoinInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	b, _ := cst.miner.FindBlock()
 	err = cst.cs.AcceptBlock(b)
 	if err != nil {
@@ -86,7 +84,11 @@ func TestMisuseApplySiacoinInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -126,7 +128,11 @@ func TestApplySiacoinOutputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -190,7 +196,11 @@ func TestMisuseApplySiacoinOutputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -222,7 +232,11 @@ func TestApplyFileContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -289,7 +303,11 @@ func TestMisuseApplyFileContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -321,7 +339,11 @@ func TestApplyFileContractRevisions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -423,7 +445,11 @@ func TestMisuseApplyFileContractRevisions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -451,7 +477,11 @@ func TestApplyStorageProofs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -573,7 +603,11 @@ func TestNonexistentStorageProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -602,7 +636,11 @@ func TestDuplicateStorageProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node.
 	pb := new(processedBlock)
@@ -649,7 +687,11 @@ func TestApplySiafundInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -699,7 +741,11 @@ func TestMisuseApplySiafundInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -741,7 +787,11 @@ func TestApplySiafundOutputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cst.cs.siafundPool = types.NewCurrency64(101)
 
 	// Create a block node to use with application.
@@ -809,7 +859,11 @@ func TestMisuseApplySiafundOutputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)

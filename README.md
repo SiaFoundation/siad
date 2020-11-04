@@ -49,10 +49,11 @@ use. You can tailor your host set for minimum latency, lowest price, widest
 geographic coverage, or even a strict whitelist of IP addresses or public
 keys.
 
-At the core of Sia is a blockchain that closely resembles Bitcoin.
-Transactions are conducted in Siacoin, a cryptocurrency. The blockchain is
-what allows Sia to enforce its smart contracts without relying on centralized
-authority. To acquire siacoins, use an exchange such as [Binance](https://binance.com), [Bittrex](https://bittrex.com), [Shapeshift](https://shapeshift.io), or
+At the core of Sia is a blockchain that closely resembles Bitcoin. Transactions
+are conducted in Siacoin, a cryptocurrency. The blockchain is what allows Sia to
+enforce its smart contracts without relying on centralized authority. To acquire
+siacoins, use an exchange such as [Binance](https://binance.com),
+[Bittrex](https://bittrex.com), [Shapeshift](https://shapeshift.io), or
 [Poloniex](https://poloniex.com).
 
 To get started with Sia, check out the guides below:
@@ -70,12 +71,13 @@ Sia is ready for use with small sums of money and non-critical files, but
 until the network has a more proven track record, we advise against using it
 as a sole means of storing important data.
 
-This release comes with 2 binaries, siad and siac. siad is a background
-service, or "daemon," that runs the Sia protocol and exposes an HTTP API on
-port 9980. siac is a command-line client that can be used to interact with
-siad in a user-friendly way. There is also a graphical client, [Sia-UI](https://gitlab.com/NebulousLabs/Sia-UI), which
-is the preferred way of using Sia for most users. For interested developers,
-the siad API is documented at [sia.tech/docs](https://sia.tech/docs/).
+This release comes with 2 binaries, siad and siac. siad is a background service,
+or "daemon," that runs the Sia protocol and exposes an HTTP API on port 9980.
+siac is a command-line client that can be used to interact with siad in a
+user-friendly way. There is also a graphical client,
+[Sia-UI](https://gitlab.com/NebulousLabs/Sia-UI), which is the preferred way of
+using Sia for most users. For interested developers, the siad API is documented
+at [sia.tech/docs](https://sia.tech/docs/).
 
 siad and siac are run via command prompt. On Windows, you can just double-
 click siad.exe if you don't need to specify any command-line arguments.
@@ -91,8 +93,9 @@ files, and advertise yourself as a host.
 Building From Source
 --------------------
 
-To build from source, [Go 1.13 or above must be installed](https://golang.org/doc/install)
-on the system. Clone the repo and run `make`:
+To build from source, [Go 1.13 or above must be
+installed](https://golang.org/doc/install) on the system. Clone the repo and run
+`make`:
 
 ```
 git clone https://gitlab.com/NebulousLabs/Sia
@@ -107,10 +110,11 @@ suites, respectively. Finally, `make cover` will generate code coverage reports
 for each package; they are stored in the `cover` folder and can be viewed in
 your browser.
 
-### Running Sia on a Raspberry Pi
+Official Releases
+--------------------
+Official binaries can be found under
+[Releases](https://gitlab.com/NebulousLabs/Sia/-/releases) or on
+[sia.tech](https://sia.tech/get-started).
 
-Official binaries are not provided for the Raspberry Pi, but you can easily
-compile them yourself by installing the Go toolchain on your Raspberry Pi.
-Alternatively, you can cross-compile by running `GOOS=linux GOARCH=arm64 make`.
-Raspberry Pi compatible binaries will then be installed in
-`$GOPATH/bin/linux_arm64/`.
+Additionally, an official Docker image can be found
+[here](https://hub.docker.com/r/nebulouslabs/sia).

@@ -9,6 +9,15 @@ import (
 )
 
 type (
+	// DependencyRegistryUpdateLyingHost causes RegistryUpdate to return the
+	// most recent known value for a lookup together with a ErrSameRevNum error.
+	DependencyRegistryUpdateLyingHost struct {
+		modules.ProductionDependencies
+	}
+	// DependencyRenewFail causes the renewal to fail on the host side.
+	DependencyRenewFail struct {
+		modules.ProductionDependencies
+	}
 	// DependencyDisableWorker will disable the worker's work loop, the health
 	// loop, the repair loop and the snapshot loop.
 	DependencyDisableWorker struct {
@@ -216,8 +225,8 @@ func NewDependencyDisruptUploadStream(numChunks int) *DependencyInterruptAfterNC
 // NewDependencyDisableCommitPaymentIntent creates a new dependency that
 // prevents the contractor for committing a payment intent, this essentially
 // ensures the renter's revision is not in sync with the host's revision.
-func NewDependencyDisableCommitPaymentIntent() *DependencyInterruptCountOccurrences {
-	return newDependencyInterruptCountOccurrences("DisableCommitPaymentIntent")
+func NewDependencyDisableCommitPaymentIntent() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("DisableCommitPaymentIntent")
 }
 
 // NewDependencyInterruptContractSaveToDiskAfterDeletion creates a new
@@ -293,6 +302,16 @@ func newDependencyInterruptCountOccurrences(str string) *DependencyInterruptCoun
 // simulate an unresponsive host.
 func NewDependencyHostBlockRPC() *DependencyWithDisableAndEnable {
 	return newDependencywithDisableAndEnable("HostBlockRPC")
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyRegistryUpdateLyingHost) Disrupt(s string) bool {
+	return s == "RegistryUpdateLyingHost"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyRenewFail) Disrupt(s string) bool {
+	return s == "RenewFail"
 }
 
 // Disrupt returns true if the correct string is provided.

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -54,6 +55,14 @@ type (
 		LatestSyncedOffset uint64
 	}
 
+	// partialTransactions contains information about a transaction that is
+	// partially loaded from disk
+	partialTransactions struct {
+		finalIndex int
+		txnBytes   []byte
+		txnID      types.TransactionID
+	}
+
 	// persistSubsystem contains the state for the persistence of the fee
 	// manager.
 	//
@@ -67,6 +76,9 @@ type (
 
 		// persistFile is the file handle of the file where data is written to.
 		persistFile *os.File
+
+		// partialTxns is a map used to help load transactions from disk
+		partialTxns map[types.TransactionID]partialTransactions
 
 		// Utilities
 		staticCommon          *feeManagerCommon
@@ -200,6 +212,10 @@ func (fm *FeeManager) callInitPersist() error {
 			return errors.AddContext(err, "parsing a persist entry failed")
 		}
 	}
+
+	// Clear the partial transaction map from the persistSubsystem to free any
+	// remaining memory
+	ps.managedClearPartialTxnMap()
 	return nil
 }
 
@@ -230,17 +246,37 @@ func (ps *persistSubsystem) callPersistTransaction(txn types.Transaction) error 
 	return ps.managedAppendEntrys(entrys)
 }
 
-// callPersistTxnCreated will persist a transaction created entry to the persist
-// file.
-func (ps *persistSubsystem) callPersistTxnCreated(feeUIDs []modules.FeeUID, txnID types.TransactionID) error {
-	entrys, err := createTxnCreatedEntrys(feeUIDs, txnID)
+// callPersistTxnConfirmed will persist transaction confirmed entrys to the
+// persist file.
+func (ps *persistSubsystem) callPersistTxnConfirmed(feeUIDs []modules.FeeUID, txnID types.TransactionID) error {
+	entrys, err := createTxnConfirmedEntrys(feeUIDs, txnID)
 	if err != nil {
-		return errors.AddContext(err, "unable to create transaction created entrys")
+		return errors.AddContext(err, "unable to create transaction confirmed entries")
 	}
 	return ps.managedAppendEntrys(entrys)
 }
 
-// managedAppendEntriy will take a slice of new encoded entries and append them
+// callPersistTxnCreated will persist transaction created entrys to the persist
+// file.
+func (ps *persistSubsystem) callPersistTxnCreated(feeUIDs []modules.FeeUID, txnID types.TransactionID) error {
+	entrys, err := createTxnCreatedEntrys(feeUIDs, txnID)
+	if err != nil {
+		return errors.AddContext(err, "unable to create transaction created entries")
+	}
+	return ps.managedAppendEntrys(entrys)
+}
+
+// callPersistTxnDropped will persist transaction dropped entrys to the persist
+// file.
+func (ps *persistSubsystem) callPersistTxnDropped(feeUIDs []modules.FeeUID, txnID types.TransactionID) error {
+	entrys, err := createTxnDroppedEntrys(feeUIDs, txnID)
+	if err != nil {
+		return errors.AddContext(err, "unable to create transaction dropped entries")
+	}
+	return ps.managedAppendEntrys(entrys)
+}
+
+// managedAppendEntrys will take a slice of new encoded entries and append them
 // to the persist file.
 func (ps *persistSubsystem) managedAppendEntrys(entrys [][persistEntrySize]byte) error {
 	var entriesBytes []byte
@@ -280,6 +316,16 @@ func (ps *persistSubsystem) managedAppendEntry(entry [persistEntrySize]byte) err
 	// Ensure that the new update is synced and the header of the persist file
 	// gets updated accordingly.
 	return ps.staticSyncCoordinator.managedSyncPersist()
+}
+
+// managedClearPartialTxnMap will clear the partial transaction map
+func (ps *persistSubsystem) managedClearPartialTxnMap() {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	if len(ps.partialTxns) != 0 {
+		build.Critical("partial transaction map not empty after loading persistence")
+	}
+	ps.partialTxns = nil
 }
 
 // newPersist is called if there is no existing persist file.

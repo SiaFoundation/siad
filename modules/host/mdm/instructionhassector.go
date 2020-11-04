@@ -41,6 +41,12 @@ func (p *program) staticDecodeHasSectorInstruction(instruction modules.Instructi
 	}, nil
 }
 
+// Batch declares whether or not this instruction can be batched together with
+// the previous instruction.
+func (i instructionHasSector) Batch() bool {
+	return true
+}
+
 // Collateral is zero for the HasSector instruction.
 func (i *instructionHasSector) Collateral() types.Currency {
 	return modules.MDMHasSectorCollateral()

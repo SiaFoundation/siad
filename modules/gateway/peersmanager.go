@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -12,7 +13,7 @@ import (
 func (g *Gateway) managedPeerManagerConnect(addr modules.NetAddress) {
 	g.log.Debugf("[PMC] [%v] Attempting connection", addr)
 	err := g.managedConnect(addr)
-	if err == errPeerExists {
+	if errors.Contains(err, errPeerExists) {
 		// This peer is already connected to us. Safety around the
 		// outbound peers relates to the fact that we have picked out
 		// the outbound peers instead of allow the attacker to pick out

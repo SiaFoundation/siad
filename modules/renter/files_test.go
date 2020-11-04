@@ -9,12 +9,12 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 )
 
@@ -53,7 +53,11 @@ func TestRenterFileListLocalPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	id := rt.renter.mu.Lock()
 	entry, _ := rt.renter.newRenterTestFile()
 	if err := entry.SetLocalPath("TestPath"); err != nil {
@@ -81,7 +85,11 @@ func TestRenterDeleteFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Delete a file from an empty renter.
 	siaPath, err := modules.NewSiaPath("dne")
@@ -114,7 +122,9 @@ func TestRenterDeleteFile(t *testing.T) {
 	// Delete the file.
 	siapath := rt.renter.staticFileSystem.FileSiaPath(entry)
 
-	entry.Close()
+	if err := entry.Close(); err != nil {
+		t.Fatal(err)
+	}
 	err = rt.renter.DeleteFile(siapath)
 	if err != nil {
 		t.Fatal(err)
@@ -191,7 +201,11 @@ func TestRenterDeleteFileMissingParent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Put a file in the renter.
 	siaPath, err := modules.NewSiaPath("parent/file")
@@ -235,7 +249,11 @@ func TestRenterFileList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Get the file list of an empty renter.
 	files, err := rt.renter.FileList(modules.RootSiaPath(), true, false)
@@ -294,7 +312,11 @@ func TestRenterRenameFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Rename a file that doesn't exist.
 	siaPath1, err := modules.NewSiaPath("1")
@@ -361,12 +383,12 @@ func TestRenterRenameFile(t *testing.T) {
 	}
 	entry2.Close()
 	err = rt.renter.RenameFile(siaPath1, siaPath1a)
-	if err != filesystem.ErrExists {
+	if !errors.Contains(err, filesystem.ErrExists) {
 		t.Fatal("Expecting ErrExists, got", err)
 	}
 	// Rename a file to the same name.
 	err = rt.renter.RenameFile(siaPath1, siaPath1)
-	if err != filesystem.ErrExists {
+	if !errors.Contains(err, filesystem.ErrExists) {
 		t.Fatal("Expecting ErrExists, got", err)
 	}
 
@@ -412,7 +434,11 @@ func TestRenterFileDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create local file to upload
 	localDir := filepath.Join(rt.dir, "files")
@@ -428,10 +454,7 @@ func TestRenterFileDir(t *testing.T) {
 	}
 
 	// Upload local file
-	ec, err := siafile.NewRSCode(DefaultDataPieces, DefaultParityPieces)
-	if err != nil {
-		t.Fatal(err)
-	}
+	ec := modules.NewRSCodeDefault()
 	siaPath, err := modules.NewSiaPath(fileName)
 	if err != nil {
 		t.Fatal(err)
