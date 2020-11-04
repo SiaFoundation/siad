@@ -5010,7 +5010,7 @@ responses](#standard-responses).
 ## /skynet/registry [GET]
 > curl example
 
-```bash
+```go
 curl -A "Sia-Agent" "localhost:9980/skynet/registry?publickey=ed25519%3A69de1a15f17050e6855dd03202eed0cac31fe41865a074a43299ff4a598fe4d2&datakey=3f39b735c705edc2b3b5c5fe465da0de0a0755f5f637a556186f12687225259a
 ```
 
@@ -5044,12 +5044,12 @@ value of 5 minutes. The minimum is 1 second.
 ## /skynet/registry [POST]
 > curl example
 
-```bash
-curl -A "Sia-Agent" -u "":<apipassword> --data "<json-encoded-body>"
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data "<json-encoded-body>" "localhost:9980/skynet/registry"
 ```
 
 > json body example
-```json
+```go
 {
   "publickey":{
     "algorithm":"ed25519",
@@ -5062,7 +5062,9 @@ curl -A "Sia-Agent" -u "":<apipassword> --data "<json-encoded-body>"
 }
 ```
 
-This curl command performs a GET request that fetches a registry entry for a publickey and datakey.  
+This curl command performs a POST request that updates a registry entry for a
+publickey and datakey.
+
 ### JSON Parameters
 ### REQUIRED
 
@@ -5070,7 +5072,7 @@ This curl command performs a GET request that fetches a registry entry for a pub
 The public key for which to update the entry.
 
 **datakey** | Hash  
-The hash for which to update the entry.
+The key for which to update the entry.
 
 **revision** | uint64  
 The revision of the entry. Needs to be greater than the most recent
