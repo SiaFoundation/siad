@@ -1230,12 +1230,9 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 
 	// Read registry.
 	srv, err := api.renter.ReadRegistry(spk, dataKey, timeout)
-	if errors.Contains(err, renter.ErrRegistryEntryNotFound) {
-		WriteError(w, Error{"Unable to read from the registry: " + err.Error()}, http.StatusNotFound)
-		return
-	}
-	if errors.Contains(err, renter.ErrRegistryLookupTimeout) {
-		WriteError(w, Error{"Unable to read from the registry: " + err.Error()}, http.StatusRequestTimeout)
+	if errors.Contains(err, renter.ErrRegistryEntryNotFound) ||
+		errors.Contains(err, renter.ErrRegistryLookupTimeout) {
+		WriteError(w, Error{err.Error()}, http.StatusNotFound)
 		return
 	}
 	if err != nil {
