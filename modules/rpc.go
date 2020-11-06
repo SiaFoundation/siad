@@ -19,6 +19,14 @@ const (
 	SubscriptionEntrySize = 100
 )
 
+// Subcription request related enum.
+const (
+	SubscriptionRequestInvalid uint8 = iota
+	SubscriptionRequestSubscribe
+	SubscriptionRequestUnsubscribe
+	SubscriptionRequestExtend
+)
+
 var (
 	// SubscriptionPeriod is the duration by which a period gets extended after
 	// a payment.
