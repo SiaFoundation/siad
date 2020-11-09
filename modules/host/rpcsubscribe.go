@@ -21,8 +21,8 @@ type (
 	// subscriptionInfo holds the information required to respond to a
 	// subscriber and to correctly charge it.
 	subscriptionInfo struct {
-		pt *modules.RPCPriceTable
-		mu sync.Mutex
+		notificationsLeft uint64
+		mu                sync.Mutex
 
 		staticStream siamux.Stream
 	}
@@ -44,11 +44,9 @@ func newRegistrySubscriptions() *registrySubscriptions {
 	}
 }
 
-// subscriptionPeriodCost is a helper that returns the cost of storing a
-// provided number of subscriptions for a subscription period.
-func subscriptionPeriodCost(pt *modules.RPCPriceTable, numSubscriptions uint64) types.Currency {
-	memory := numSubscriptions * modules.SubscriptionEntrySize
-	return pt.SubscriptionBaseCost.Add(pt.SubscriptionMemoryCost.Mul64(memory))
+func subscriptionMemoryCost(pt *modules.RPCPriceTable, newSubscriptions uint64) types.Currency {
+	memory := newSubscriptions * modules.SubscriptionEntrySize
+	return pt.SubscriptionMemoryCost.Mul64(memory)
 }
 
 // AddSubscription adds one of multiple subscription.
@@ -81,7 +79,7 @@ func (rs *registrySubscriptions) RemoveSubscriptions(info *subscriptionInfo, ent
 }
 
 // managedHandleSubscribeRequest handles a new subscription.
-func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, subs map[subscriptionID]struct{}, pt *modules.RPCPriceTable, pd modules.PaymentDetails) (types.Currency, error) {
+func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules.RPCPriceTable, pd modules.PaymentDetails) (types.Currency, error) {
 	stream := info.staticStream
 
 	// Read a number indicating how many requests to expect.
@@ -92,7 +90,9 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, subs map[su
 	}
 
 	// Check payment first.
-	cost := subscriptionPeriodCost(pt, 1).Mul64(numSubs)
+	requestCost := pt.SubscriptionBaseCost.Mul64(numSubs)
+	memoryCost := subscriptionMemoryCost(pt, numSubs)
+	cost := requestCost.Add(memoryCost)
 	if pd.Amount().Cmp(cost) < 0 {
 		return types.ZeroCurrency, modules.ErrInsufficientPaymentForRPC
 	}
@@ -114,7 +114,7 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, subs map[su
 }
 
 // managedHandleSubscribeRequest handles a request to unsubscribe.
-func (h *Host) managedHandleUnsubscribeRequest(info *subscriptionInfo, subs map[subscriptionID]struct{}, pt *modules.RPCPriceTable, pd modules.PaymentDetails) (types.Currency, error) {
+func (h *Host) managedHandleUnsubscribeRequest(info *subscriptionInfo, pt *modules.RPCPriceTable, pd modules.PaymentDetails) (types.Currency, error) {
 	stream := info.staticStream
 
 	// Read a number indicating how many requests to expect.
@@ -125,7 +125,7 @@ func (h *Host) managedHandleUnsubscribeRequest(info *subscriptionInfo, subs map[
 	}
 
 	// Check payment first.
-	cost := subscriptionPeriodCost(pt, 0).Mul64(numUnsubs) // no need to pay for memory upon deletion
+	cost := pt.SubscriptionBaseCost.Mul64(numUnsubs)
 	if pd.Amount().Cmp(cost) < 0 {
 		return types.ZeroCurrency, modules.ErrInsufficientPaymentForRPC
 	}
@@ -153,7 +153,8 @@ func (h *Host) managedHandleExtendSubscriptionRequest(stream siamux.Stream, subs
 	newDeadline := oldDeadline.Add(modules.SubscriptionPeriod)
 
 	// Check payment first.
-	cost := subscriptionPeriodCost(pt, uint64(len(subs)))
+	memoryCost := subscriptionMemoryCost(pt, uint64(len(subs)))
+	cost := pt.SubscriptionBaseCost.Add(memoryCost)
 	if pd.Amount().Cmp(cost) < 0 {
 		return types.ZeroCurrency, time.Time{}, modules.ErrInsufficientPaymentForRPC
 	}
@@ -167,19 +168,42 @@ func (h *Host) managedHandleExtendSubscriptionRequest(stream siamux.Stream, subs
 	return refund, newDeadline, nil
 }
 
+// managedHandlePrepayNotifications handles a request to pay for more notifications.
+func (h *Host) managedHandlePrepayNotifications(stream siamux.Stream, info *subscriptionInfo, pt *modules.RPCPriceTable, pd modules.PaymentDetails) (types.Currency, error) {
+	// Read the number of notifications the caller would like to pay for.
+	var numNotifications uint64
+	err := modules.RPCRead(stream, &numNotifications)
+	if err != nil {
+		return types.ZeroCurrency, errors.New("failed to read number of notifications to expect")
+	}
+	// Check payment first.
+	cost := pt.SubscriptionBaseCost.Add(pt.SubscriptionNotificationCost.Mul64(numNotifications))
+	if pd.Amount().Cmp(cost) < 0 {
+		return types.ZeroCurrency, modules.ErrInsufficientPaymentForRPC
+	}
+	refund := pd.Amount().Sub(cost)
+
+	// Update notifications.
+	info.mu.Lock()
+	info.notificationsLeft += numNotifications
+	info.mu.Unlock()
+	return refund, nil
+}
+
 // threadedNotifySubscribers handles notifying all subscribers for a certain
 // key/tweak combination.
-func (h *Host) threadedNotifySubscribers(pubKey types.SiaPublicKey, tweak crypto.Hash) {
+func (h *Host) threadedNotifySubscribers(pubKey types.SiaPublicKey, rv modules.SignedRegistryValue) {
 	err := h.tg.Add()
 	if err != nil {
 		return
 	}
 	defer h.tg.Done()
 
-	id := createSubscriptionID(pubKey, tweak)
-
+	// Look up subscribers.
 	h.staticRegistrySubscriptions.mu.Lock()
 	defer h.staticRegistrySubscriptions.mu.Unlock()
+
+	id := createSubscriptionID(pubKey, rv.Tweak)
 	infos, found := h.staticRegistrySubscriptions.subscriptions[id]
 	if !found {
 		return
@@ -190,8 +214,21 @@ func (h *Host) threadedNotifySubscribers(pubKey types.SiaPublicKey, tweak crypto
 			info.mu.Lock()
 			defer info.mu.Unlock()
 
+			// No notification if caller ran out of prepaid notifications.
+			if info.notificationsLeft == 0 {
+				return
+			}
+			info.notificationsLeft--
+
 			// Notify the caller.
-			panic("not implemented yet")
+			err := modules.RPCWrite(info.staticStream, modules.RPCRegistrySubscriptionNotification{
+				Type:  modules.SubscriptionResponseRegistryValue,
+				Entry: rv,
+			})
+			if err != nil {
+				h.log.Debug("failed to notify a subscriber", err)
+				return
+			}
 		}(info)
 	}
 }
@@ -211,12 +248,13 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (err error) {
 	}
 
 	// Check payment.
-	if pd.Amount().Cmp(pt.SubscriptionBaseCost) < 0 {
+	cost := pt.SubscriptionBaseCost.Add(pt.SubscriptionNotificationCost.Mul64(modules.InitialNumNotifications))
+	if pd.Amount().Cmp(cost) < 0 {
 		return modules.ErrInsufficientPaymentForRPC
 	}
 
 	// Refund excessive amount.
-	if pd.Amount().Cmp(pt.SubscriptionBaseCost) > 0 {
+	if pd.Amount().Cmp(cost) > 0 {
 		err = h.staticAccountManager.callRefund(pd.AccountID(), pd.Amount().Sub(pt.SubscriptionBaseCost))
 		if err != nil {
 			return errors.AddContext(err, "failed to refund excessive initial subscription payment")
@@ -234,8 +272,8 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (err error) {
 	// Keep count of the unique subscriptions to be able to charge accordingly.
 	subscriptions := make(map[subscriptionID]struct{})
 	info := &subscriptionInfo{
-		staticStream: stream,
-		pt:           pt,
+		staticStream:      stream,
+		notificationsLeft: modules.InitialNumNotifications,
 	}
 
 	// Clean up the subscriptions at the end.
@@ -263,11 +301,6 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (err error) {
 			return errors.AddContext(err, "failed to read price table")
 		}
 
-		// Update the subscription info's price table.
-		info.mu.Lock()
-		info.pt = pt
-		info.mu.Unlock()
-
 		// Process payment.
 		pd, err := h.ProcessPayment(stream)
 		if err != nil {
@@ -278,11 +311,13 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (err error) {
 		var refund types.Currency
 		switch requestType {
 		case modules.SubscriptionRequestSubscribe:
-			refund, err = h.managedHandleSubscribeRequest(info, subscriptions, pt, pd)
+			refund, err = h.managedHandleSubscribeRequest(info, pt, pd)
 		case modules.SubscriptionRequestUnsubscribe:
-			refund, err = h.managedHandleUnsubscribeRequest(info, subscriptions, pt, pd)
+			refund, err = h.managedHandleUnsubscribeRequest(info, pt, pd)
 		case modules.SubscriptionRequestExtend:
 			refund, deadline, err = h.managedHandleExtendSubscriptionRequest(stream, subscriptions, deadline, pt, pd)
+		case modules.SubscriptionRequestPrepay:
+			refund, err = h.managedHandlePrepayNotifications(stream, info, pt, pd)
 		default:
 			return errors.New("unknown request type")
 		}

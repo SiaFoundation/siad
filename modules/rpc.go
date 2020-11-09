@@ -17,6 +17,10 @@ const (
 	// SubscriptionEntrySize is the estimated size of a single subscribed to
 	// entry takes up in memory.
 	SubscriptionEntrySize = 100
+
+	// InitialNumNotifications is the initial number of notifications a caller
+	// has to pay for when opening the subsription loop with a host.
+	InitialNumNotifications = 100
 )
 
 // Subcription request related enum.
@@ -25,6 +29,13 @@ const (
 	SubscriptionRequestSubscribe
 	SubscriptionRequestUnsubscribe
 	SubscriptionRequestExtend
+	SubscriptionRequestPrepay
+)
+
+// Subcription response related enum.
+const (
+	SubscriptionResponseInvalid uint8 = iota
+	SubscriptionResponseRegistryValue
 )
 
 var (
@@ -70,6 +81,10 @@ type RPCPriceTable struct {
 
 	// SubscriptionBaseCost is the base cost of all subscription based requests.
 	SubscriptionBaseCost types.Currency `json:"subscriptionbasecost"`
+
+	// SubscriptionNotificationCost is the cost of pre-paying for a single
+	// subscription notification.
+	SubscriptionNotificationCost types.Currency `json:"subscriptionnotificationcost"`
 
 	// SubscriptionMemoryCost is the cost of storing a byte of data for
 	// SubscriptionPeriod time.
@@ -230,6 +245,15 @@ type (
 	RPCRegistrySubscriptionRequest struct {
 		PubKey types.SiaPublicKey
 		Tweak  crypto.Hash
+	}
+
+	// RPCRegistrySubscriptionNotification is the response received whenever a
+	// subscribed entry is updated. It contains a type to allow for different
+	// types of responses in the future. Right now there is only one type and it
+	// returns the signed registry value.
+	RPCRegistrySubscriptionNotification struct {
+		Type  uint8
+		Entry SignedRegistryValue
 	}
 
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table

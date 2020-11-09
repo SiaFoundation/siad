@@ -372,6 +372,11 @@ func (h *Host) managedUpdatePriceTable() {
 		RegistryEntriesLeft:  h.staticRegistry.Cap() - h.staticRegistry.Len(),
 		RegistryEntriesTotal: h.staticRegistry.Cap(),
 
+		// Subscription related fields.
+		SubscriptionBaseCost:         types.NewCurrency64(1),
+		SubscriptionMemoryCost:       types.NewCurrency64(1),
+		SubscriptionNotificationCost: types.NewCurrency64(1),
+
 		// TxnFee related fields.
 		TxnFeeMinRecommended: minRecommended,
 		TxnFeeMaxRecommended: maxRecommended,
@@ -786,7 +791,7 @@ func (h *Host) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPu
 		return existingSRV, errors.AddContext(err, "failed to update registry")
 	}
 	// On success, we notify the subscribers.
-	go h.threadedNotifySubscribers(pubKey, rv.Tweak)
+	go h.threadedNotifySubscribers(pubKey, rv)
 	return existingSRV, nil
 }
 
