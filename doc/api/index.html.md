@@ -5010,7 +5010,7 @@ responses](#standard-responses).
 ## /skynet/registry [GET]
 > curl example
 
-```bash
+```go
 curl -A "Sia-Agent" "localhost:9980/skynet/registry?publickey=ed25519%3A69de1a15f17050e6855dd03202eed0cac31fe41865a074a43299ff4a598fe4d2&datakey=3f39b735c705edc2b3b5c5fe465da0de0a0755f5f637a556186f12687225259a
 ```
 
@@ -5079,6 +5079,53 @@ minutes).
 ### Response Body
 
 The response body is the raw data for the sector.
+
+## /skynet/registry [POST]
+> curl example
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data "<json-encoded-body>" "localhost:9980/skynet/registry"
+```
+
+> json body example
+```go
+{
+  "publickey":{
+    "algorithm":"ed25519",
+    "key":"UDBtQAKGsVcdGk4LT3W3QJNhYirzCzff8T7RucKED+8="
+  },
+  "datakey":"5345e582d27a2ff7e3d45e2ce3d77acca0dd2cf23d3eaa5592c4095ccee502db",
+  "revision":0,
+  "signature":[127,39,167,244,6,164,160,7,184,232,14,101,46,148,149,73,52,108,194,195,22,46,188,46,200,20,8,5,71,1,138,216,25,4,29,105,127,63,195,46,214,64,112,72,174,228,66,84,211,254,140,18,181,203,46,199,174,173,112,8,218,238,200,6],
+  "data":"AAC0rdNrjqEO2cDMonNlncRf0wu4bBs05rBWy6cQlgVMEA=="
+}
+```
+
+This curl command performs a POST request that updates a registry entry for a
+publickey and datakey.
+
+### JSON Parameters
+### REQUIRED
+
+**publickey** | SiaPublicKey  
+The public key for which to update the entry.
+
+**datakey** | Hash  
+The key for which to update the entry.
+
+**revision** | uint64  
+The revision of the entry. Needs to be greater than the most recent
+registered entry.
+
+**signature** | uint8 array  
+64 byte signature that covers the datakey, data and revision.
+
+**data** | string  
+base64 encoded data to register. Up to 113 bytes.
+
+### Response
+standard success or error response. See [standard
+responses](#standard-responses).
 
 ## /skynet/skylink/*skylink* [HEAD]
 > curl example

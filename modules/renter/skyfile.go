@@ -809,7 +809,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	}
 	// Create the siapath for the skyfile extra data. This is going to be the
 	// same as the skyfile upload siapath, except with a suffix.
-	fup.SiaPath, err = modules.NewSiaPath(lup.SiaPath.String() + "-extended")
+	fup.SiaPath, err = modules.NewSiaPath(lup.SiaPath.String() + ExtendedSuffix)
 	if err != nil {
 		return errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
 	}

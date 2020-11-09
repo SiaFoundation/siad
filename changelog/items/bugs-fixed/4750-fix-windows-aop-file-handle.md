@@ -1,1 +1,0 @@
-- Fix bug in append only persist code that left a file handle open.
