@@ -180,8 +180,8 @@ var (
 		Testing:  uint64(5),
 	}).(uint64)
 
-	// healthLoopNumBatchSubDirs defines the number of files the health loop will
-	// try to batch together in a subtree when updating the filesystem.
+	// healthLoopNumBatchSubDirs defines the number of sub directories the health
+	// loop will try to batch together in a subtree when updating the filesystem.
 	healthLoopNumBatchSubDirs = build.Select(build.Var{
 		Dev:      uint64(100),
 		Standard: uint64(1e3),

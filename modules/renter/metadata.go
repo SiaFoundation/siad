@@ -159,6 +159,13 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 
 			// If the file's LastHealthCheckTime is still zero, set it as now since it
 			// it currently being checked.
+			//
+			// The LastHealthCheckTime is not a field that is initialized when a file
+			// is created, so we can reach this point by one of two ways. If a file is
+			// created in the directory after the health loop has decided it needs to
+			// be bubbled, or a file is created in a directory that gets a bubble
+			// called on it outside of the health loop before the health loop as been
+			// able to set the LastHealthCheckTime.
 			if fileMetadata.LastHealthCheckTime.IsZero() {
 				fileMetadata.LastHealthCheckTime = time.Now()
 			}
@@ -208,6 +215,11 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			// Check if the directory's AggregateLastHealthCheckTime is Zero. If so
 			// set the time to now and call bubble on that directory to try and fix
 			// the directories metadata.
+			//
+			// The LastHealthCheckTime is not a field that is initialized when
+			// a directory is created, so we can reach this point if a directory is
+			// created and gets a bubble called on it outside of the health loop
+			// before the health loop as been able to set the LastHealthCheckTime.
 			if dirMetadata.AggregateLastHealthCheckTime.IsZero() {
 				dirMetadata.AggregateLastHealthCheckTime = time.Now()
 				err = r.tg.Launch(func() {

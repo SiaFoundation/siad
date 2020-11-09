@@ -611,9 +611,9 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			// paths might have been returned
 			r.log.Println("Error calling managedUpdateFilesAndGetDirPaths on `", siaPath.String(), "`:", err)
 		}
-		if urp == nil {
-			// Treat a nil urp as an error and sleep to prevent potential rapid
-			// cycling.
+		if urp.callNumChildDirs() == 0 {
+			// Treat a urp with no ChildDirs as an error and sleep to prevent
+			// potential rapid cycling.
 			r.log.Debugf("WARN: No refresh paths returned from '%v'", siaPath)
 			select {
 			case <-time.After(healthLoopErrorSleepDuration):
@@ -651,13 +651,13 @@ func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath) (*uniqueRefres
 	// LastHealthCheckTime that is skipped
 	urp := r.newUniqueRefreshPaths()
 	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
-	alhct := time.Now()
+	aggregateLastHealthCheckTime := time.Now()
 	for _, di := range dis {
 		// Skip any directories that have been updated recently
 		if time.Since(di.LastHealthCheckTime) < healthCheckInterval {
 			// Track the LastHealthCheckTime of the skipped directory
-			if di.LastHealthCheckTime.Before(alhct) {
-				alhct = di.LastHealthCheckTime
+			if di.LastHealthCheckTime.Before(aggregateLastHealthCheckTime) {
+				aggregateLastHealthCheckTime = di.LastHealthCheckTime
 			}
 			continue
 		}
@@ -682,7 +682,7 @@ func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath) (*uniqueRefres
 	if openErr != nil {
 		return urp, errors.Compose(err, openErr)
 	}
-	return urp, errors.Compose(err, entry.UpdateLastHealthCheckTime(alhct, time.Now()), entry.Close())
+	return urp, errors.Compose(err, entry.UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, time.Now()), entry.Close())
 }
 
 // managedUpdateFileMetadata updates the metadata of all siafiles within a dir.
