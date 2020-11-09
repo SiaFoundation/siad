@@ -965,7 +965,8 @@ func (p *renterHostPair) AccountBalance(payByFC bool) (types.Currency, error) {
 
 // BeginSubscription starts the subscription loop and returns the stream.
 func (p *renterHostPair) BeginSubscription() (siamux.Stream, error) {
-	return p.managedBeginSubscription(false, p.pt.SubscriptionBaseCost, p.staticAccountID, p.staticFCID)
+	funding := p.pt.SubscriptionBaseCost.Add(modules.MDMReadRegistryCost(p.pt).Mul64(modules.InitialNumNotifications))
+	return p.managedBeginSubscription(false, funding, p.staticAccountID, p.staticFCID)
 }
 
 // LatestRevision performs a RPCLatestRevision to get the latest revision for

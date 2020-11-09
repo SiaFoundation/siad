@@ -77,16 +77,17 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 		t.Fatal(err)
 	}
 
+	// check the account balance.
+	expectedBalance := modules.DefaultHostExternalSettings().MaxEphemeralAccountBalance
+	if !host.staticAccountManager.callAccountBalance(rhp.staticAccountID).Equals(expectedBalance) {
+		t.Fatal("invalid balance", expectedBalance, host.staticAccountManager.callAccountBalance(rhp.staticAccountID))
+	}
+
 	// begin the subscription loop.
 	stream, err := rhp.BeginSubscription()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := stream.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
 
 	// subsribe to the previously created entry.
 	pt := rhp.managedPriceTable()
@@ -199,6 +200,30 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	}
 	err = modules.RPCRead(stream, &notification)
 	if err == nil || !strings.Contains(err.Error(), "stream timed out") {
+		t.Fatal(err)
+	}
+
+	// Close the subscription.
+	if err := stream.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check the balance.
+	// 1. subtract the base cost and 100 notifications for opening the loop
+	// 2. subtract the base cost and memory cost for 1 subscription
+	// 3. subtract the bast cost for unsubscribing 1 time
+	// 4. add the InitialNumNotifications-1 unused notifications as a refund
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		expectedBalance := expectedBalance.Sub(pt.SubscriptionBaseCost.Add(modules.MDMReadRegistryCost(pt).Mul64(modules.InitialNumNotifications)))
+		expectedBalance = expectedBalance.Sub(pt.SubscriptionBaseCost.Add(subscriptionMemoryCost(pt, 1)))
+		expectedBalance = expectedBalance.Sub(pt.SubscriptionBaseCost)
+		expectedBalance = expectedBalance.Add(modules.MDMReadRegistryCost(pt).Mul64(modules.InitialNumNotifications - 1))
+		if !host.staticAccountManager.callAccountBalance(rhp.staticAccountID).Equals(expectedBalance) {
+			return fmt.Errorf("invalid balance %v != %v", expectedBalance, host.staticAccountManager.callAccountBalance(rhp.staticAccountID))
+		}
+		return nil
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 }

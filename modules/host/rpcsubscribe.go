@@ -177,7 +177,7 @@ func (h *Host) managedHandlePrepayNotifications(stream siamux.Stream, info *subs
 		return types.ZeroCurrency, errors.New("failed to read number of notifications to expect")
 	}
 	// Check payment first.
-	cost := pt.SubscriptionBaseCost.Add(pt.SubscriptionNotificationCost.Mul64(numNotifications))
+	cost := pt.SubscriptionBaseCost.Add(modules.MDMReadRegistryCost(pt).Mul64(numNotifications))
 	if pd.Amount().Cmp(cost) < 0 {
 		return types.ZeroCurrency, modules.ErrInsufficientPaymentForRPC
 	}
@@ -248,7 +248,7 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (err error) {
 	}
 
 	// Check payment.
-	cost := pt.SubscriptionBaseCost.Add(pt.SubscriptionNotificationCost.Mul64(modules.InitialNumNotifications))
+	cost := pt.SubscriptionBaseCost.Add(modules.MDMReadRegistryCost(pt).Mul64(modules.InitialNumNotifications))
 	if pd.Amount().Cmp(cost) < 0 {
 		return modules.ErrInsufficientPaymentForRPC
 	}
@@ -262,8 +262,7 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (err error) {
 	}
 
 	// Set the stream deadline.
-	subscriptionTimeExtension := 5 * time.Minute
-	deadline := time.Now().Add(subscriptionTimeExtension)
+	deadline := time.Now().Add(modules.SubscriptionTimeExtension)
 	err = stream.SetReadDeadline(deadline)
 	if err != nil {
 		return errors.AddContext(err, "failed to set intitial subscription deadline")
@@ -283,6 +282,15 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (err error) {
 			entryIDs = append(entryIDs, entryID)
 		}
 		h.staticRegistrySubscriptions.RemoveSubscriptions(info, entryIDs...)
+
+		// Refund the unused notifications.
+		info.mu.Lock()
+		defer info.mu.Unlock()
+		if info.notificationsLeft > 0 {
+			refund := modules.MDMReadRegistryCost(pt).Mul64(info.notificationsLeft)
+			err = errors.Compose(err, h.staticAccountManager.callRefund(pd.AccountID(), refund))
+			info.notificationsLeft = 0
+		}
 	}()
 
 	// The subscription RPC is a request/response loop that continues for as

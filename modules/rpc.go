@@ -21,6 +21,10 @@ const (
 	// InitialNumNotifications is the initial number of notifications a caller
 	// has to pay for when opening the subsription loop with a host.
 	InitialNumNotifications = 100
+
+	// SubscriptionTimeExtension is the time for which a subscription lasts
+	// unless extended. It can be extended SubscriptionTimeExtension at a time.
+	SubscriptionTimeExtension = 5 * time.Minute
 )
 
 // Subcription request related enum.
@@ -81,10 +85,6 @@ type RPCPriceTable struct {
 
 	// SubscriptionBaseCost is the base cost of all subscription based requests.
 	SubscriptionBaseCost types.Currency `json:"subscriptionbasecost"`
-
-	// SubscriptionNotificationCost is the cost of pre-paying for a single
-	// subscription notification.
-	SubscriptionNotificationCost types.Currency `json:"subscriptionnotificationcost"`
 
 	// SubscriptionMemoryCost is the cost of storing a byte of data for
 	// SubscriptionPeriod time.
