@@ -1341,6 +1341,11 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// create file with no stuck chunks
 	rsc, _ := modules.NewRSCode(1, 1)
