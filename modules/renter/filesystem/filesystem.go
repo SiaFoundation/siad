@@ -443,6 +443,16 @@ func (fs *FileSystem) OpenSiaDirCustom(siaPath modules.SiaPath, create bool) (*D
 	return dn, err
 }
 
+// OpenReadOnlySiaFile opens a SiaFile and does not add it to the parent so it
+// doesn't need to be closed.
+func (fs *FileSystem) OpenReadOnlySiaFile(siaPath modules.SiaPath) (*FileNode, error) {
+	sf, err := fs.managedOpenReadOnlyFile(siaPath.String())
+	if err != nil {
+		return nil, err
+	}
+	return sf, nil
+}
+
 // OpenSiaFile opens a SiaFile and adds it and all of its parents to the
 // filesystem tree.
 func (fs *FileSystem) OpenSiaFile(siaPath modules.SiaPath) (*FileNode, error) {
@@ -678,6 +688,29 @@ func (fs *FileSystem) managedOpenFile(relPath string) (_ *FileNode, err error) {
 		}()
 	}
 	return dir.managedOpenFile(fileName)
+}
+
+// managedOpenReadOnlyFile opens a SiaFile and does not add it to the parent so
+// it doesn't need to be closed.
+func (fs *FileSystem) managedOpenReadOnlyFile(relPath string) (_ *FileNode, err error) {
+	// Open the folder that contains the file.
+	dirPath, fileName := filepath.Split(relPath)
+	var dir *DirNode
+	if dirPath == string(filepath.Separator) || dirPath == "." || dirPath == "" {
+		dir = &fs.DirNode // file is in the root dir
+	} else {
+		var err error
+		dir, err = fs.managedOpenDir(filepath.Dir(relPath))
+		if err != nil {
+			return nil, errors.AddContext(err, "failed to open parent dir of file")
+		}
+		// Close the dir since we are not returning it. The open file keeps it
+		// loaded in memory.
+		defer func() {
+			err = errors.Compose(err, dir.Close())
+		}()
+	}
+	return dir.managedOpenReadOnlyFile(fileName)
 }
 
 // managedNewSiaFile opens the parent folder of the new SiaFile and calls
