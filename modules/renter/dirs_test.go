@@ -267,7 +267,6 @@ func TestRenterListDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rootDir.Close()
 	fooDir, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath)
 	if err != nil {
 		t.Fatal(err)
@@ -277,6 +276,17 @@ func TestRenterListDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	snapshotsDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.BackupFolder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = errors.Compose(rootDir.Close(), fooDir.Close(), homeDir.Close(), snapshotsDir.Close())
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Refresh Directories
+	directories, err = rt.renter.DirList(modules.RootSiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
