@@ -194,19 +194,24 @@ func (s *Snapshot) UID() SiafileUID {
 	return s.staticUID
 }
 
+// readlockChunks reads all chunks from the siafile within the range [min;max].
 func (sf *SiaFile) readlockChunks(min, max int) ([]chunk, error) {
 	// Copy chunks.
 	chunks := make([]chunk, 0, sf.numChunks)
-	err := sf.iterateChunksReadonly(func(c chunk) error {
-		if c.Index < min || c.Index > max {
-			chunks = append(chunks, chunk{Index: c.Index})
-			return nil
+	for chunkIndex := 0; chunkIndex < sf.numChunks; chunkIndex++ {
+		if chunkIndex < min || chunkIndex > max {
+			chunks = append(chunks, chunk{Index: chunkIndex})
+			continue
+		}
+		// Read chunk.
+		c, err := sf.chunk(chunkIndex)
+		if err != nil {
+			return nil, err
 		}
 		// Handle complete partial chunk.
 		chunks = append(chunks, c)
-		return nil
-	})
-	return chunks, err
+	}
+	return chunks, nil
 }
 
 // readlockSnapshot creates a snapshot of the SiaFile.
