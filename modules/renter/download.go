@@ -402,6 +402,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 	d.onComplete(func(_ error) error {
 		d.endTime = time.Now()
 		d.destination = nil
+		d.staticParams.file = nil
 		return nil
 	})
 
