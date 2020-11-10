@@ -1,3 +1,20 @@
+## Nov 10, 2020:
+### v1.5.3
+**Bugs Fixed**
+- Updated siafile snapshots to only store range of chunks needed for repair to
+  address OOM during large file repairs
+
+## Nov 9, 2020:
+### v1.5.2
+**Key Updates**
+- RHP3 Renewal RPC now only uses the Host's price table
+
+**Bugs Fixed**
+- Add missing error check in registry creation
+
+**Other**
+- Registry lookup to always return 404 even for timeouts
+
 ## Nov 2, 2020:
 ### v1.5.1
 **Key Updates**
