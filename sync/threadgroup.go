@@ -164,3 +164,9 @@ func (tg *ThreadGroup) StopChan() <-chan struct{} {
 	tg.once.Do(tg.init)
 	return tg.stopCtx.Done()
 }
+
+// StopCtx returns the threadgroups underlying context.
+func (tg *ThreadGroup) StopCtx() context.Context {
+	tg.once.Do(tg.init)
+	return tg.stopCtx
+}
