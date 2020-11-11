@@ -223,19 +223,19 @@ func TestThreadGroupConcurrentAdd(t *testing.T) {
 // properly initialized.
 func TestThreadGroupOnce(t *testing.T) {
 	tg := new(ThreadGroup)
-	if tg.stopChan != nil {
+	if tg.stopCtx != nil {
 		t.Error("expected nil stopChan")
 	}
 
 	// these methods should cause stopChan to be initialized
 	tg.StopChan()
-	if tg.stopChan == nil {
+	if tg.stopCtx == nil {
 		t.Error("stopChan should have been initialized by StopChan")
 	}
 
 	tg = new(ThreadGroup)
 	tg.isStopped()
-	if tg.stopChan == nil {
+	if tg.stopCtx == nil {
 		t.Error("stopChan should have been initialized by isStopped")
 	}
 
@@ -243,7 +243,7 @@ func TestThreadGroupOnce(t *testing.T) {
 	if err := tg.Add(); err != nil {
 		t.Error(err)
 	}
-	if tg.stopChan == nil {
+	if tg.stopCtx == nil {
 		t.Error("stopChan should have been initialized by Add")
 	}
 
@@ -251,7 +251,7 @@ func TestThreadGroupOnce(t *testing.T) {
 	if err := tg.Stop(); err != nil {
 		t.Fatal(err)
 	}
-	if tg.stopChan == nil {
+	if tg.stopCtx == nil {
 		t.Error("stopChan should have been initialized by Stop")
 	}
 }

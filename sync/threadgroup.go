@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"errors"
 	"sync"
 )
@@ -24,24 +25,25 @@ var ErrStopped = errors.New("ThreadGroup already stopped")
 type ThreadGroup struct {
 	onStopFns    []func()
 	afterStopFns []func()
+	mu           sync.Mutex // Protects the 'onStopFns' and 'afterStopFns' variable
 
-	once     sync.Once
-	stopChan chan struct{}
-	bmu      sync.Mutex // Ensures blocking between calls to 'Add', 'Flush', and 'Stop'
-	mu       sync.Mutex // Protects the 'onStopFns' and 'afterStopFns' variable
-	wg       sync.WaitGroup
+	once          sync.Once
+	stopCtx       context.Context
+	stopCtxCancel context.CancelFunc
+	bmu           sync.Mutex // Ensures blocking between calls to 'Add', 'Flush', and 'Stop'
+	wg            sync.WaitGroup
 }
 
 // init creates the stop channel for the thread group.
 func (tg *ThreadGroup) init() {
-	tg.stopChan = make(chan struct{})
+	tg.stopCtx, tg.stopCtxCancel = context.WithCancel(context.Background())
 }
 
 // isStopped will return true if Stop() has been called on the thread group.
 func (tg *ThreadGroup) isStopped() bool {
 	tg.once.Do(tg.init)
 	select {
-	case <-tg.stopChan:
+	case <-tg.stopCtx.Done():
 		return true
 	default:
 		return false
@@ -123,30 +125,35 @@ func (tg *ThreadGroup) Flush() error {
 func (tg *ThreadGroup) Stop() error {
 	// Establish that Stop has been called.
 	tg.bmu.Lock()
-	defer tg.bmu.Unlock()
-
 	if tg.isStopped() {
+		tg.bmu.Unlock()
 		return ErrStopped
 	}
-	close(tg.stopChan)
+	// Close the context while holding the lock. That way the next thread
+	// calling "Stop" will get an "ErrStopped".
+	tg.stopCtxCancel()
+	tg.bmu.Unlock()
 
+	// Flush any function that made it past isStopped and might be trying to do
+	// something under the mu lock. Any calls to OnStop or AfterStop after this
+	// will fail, because isStopped will cut them short.
 	tg.mu.Lock()
+	tg.mu.Unlock()
+
 	for i := len(tg.onStopFns) - 1; i >= 0; i-- {
 		tg.onStopFns[i]()
 	}
 	tg.onStopFns = nil
-	tg.mu.Unlock()
 
+	// Wait for all running processes to signal completion.
 	tg.wg.Wait()
 
 	// After waiting for all resources to release the thread group, iterate
 	// through the stop functions and call them in reverse oreder.
-	tg.mu.Lock()
 	for i := len(tg.afterStopFns) - 1; i >= 0; i-- {
 		tg.afterStopFns[i]()
 	}
 	tg.afterStopFns = nil
-	tg.mu.Unlock()
 	return nil
 }
 
@@ -155,5 +162,5 @@ func (tg *ThreadGroup) Stop() error {
 // time.After).
 func (tg *ThreadGroup) StopChan() <-chan struct{} {
 	tg.once.Do(tg.init)
-	return tg.stopChan
+	return tg.stopCtx.Done()
 }
