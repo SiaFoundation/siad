@@ -70,7 +70,7 @@ func NewSignedRegistryValue(tweak crypto.Hash, data []byte, rev uint64, sig cryp
 
 // Sign adds a signature to the RegistryValue.
 func (entry RegistryValue) Sign(sk crypto.SecretKey) SignedRegistryValue {
-	hash := crypto.HashAll(entry.Tweak, entry.Data, entry.Revision)
+	hash := entry.hash()
 	return SignedRegistryValue{
 		RegistryValue: entry,
 		Signature:     crypto.SignHash(hash, sk),
@@ -79,6 +79,11 @@ func (entry RegistryValue) Sign(sk crypto.SecretKey) SignedRegistryValue {
 
 // Verify verifies the signature on the RegistryValue.
 func (entry SignedRegistryValue) Verify(pk crypto.PublicKey) error {
-	hash := crypto.HashAll(entry.Tweak, entry.Data, entry.Revision)
+	hash := entry.hash()
 	return crypto.VerifyHash(hash, pk, entry.Signature)
+}
+
+// hash hashes the registry value.
+func (entry RegistryValue) hash() crypto.Hash {
+	return crypto.HashAll(entry.Tweak, entry.Data, entry.Revision)
 }
