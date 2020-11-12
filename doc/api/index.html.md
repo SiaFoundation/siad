@@ -1478,7 +1478,7 @@ The default is 0 which means no registry.
 The path of the registry on disk. If it's empty, it uses the default location
 relative to siad's host folder. Otherwise the provided path will be used.
 Changing it will trigger a registry migration which takes an arbitrary amount
-of time depending of the size of the registry.
+of time depending on the size of the registry.
 
 **revisionnumber** | int  
 The revision number indicates to the renter what iteration of settings the host
@@ -1970,7 +1970,7 @@ The default is 0 which means no registry.
 The path of the registry on disk. If it's empty, it uses the default location
 relative to siad's host folder. Otherwise the provided path will be used.
 Changing it will trigger a registry migration which takes an arbitrary amount
-of time depending of the size of the registry.
+of time depending on the size of the registry.
 
 ### Response
 

@@ -1180,6 +1180,11 @@ func TestMigrate(t *testing.T) {
 		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
 	}
 
+	// Make sure the registry file is where we expect it to be.
+	if _, err := os.Stat(registryPathSrc); err != nil {
+		t.Fatal(err)
+	}
+
 	// Migrate the registry.
 	err = r.Migrate(registryPathDst)
 	if err != nil {
