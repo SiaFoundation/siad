@@ -57,11 +57,11 @@ func renewContractCollateral(pt *modules.RPCPriceTable, rev types.FileContractRe
 	}
 
 	diff := fc.ValidHostPayout().Sub(pt.ContractPrice)
-	rbp, _ := modules.RenewBaseCosts(rev, pt, fc.WindowStart)
-	if diff.Cmp(rbp) < 0 {
+	rbc, _ := modules.RenewBaseCosts(rev, pt, fc.WindowStart)
+	if diff.Cmp(rbc) < 0 {
 		return types.Currency{}, errors.New("ValidHostOutput smaller than ContractPrice + RenewBasePrice")
 	}
-	return diff.Sub(rbp), nil
+	return diff.Sub(rbc), nil
 }
 
 // managedAddRenewCollateral adds the host's collateral to the renewed file
