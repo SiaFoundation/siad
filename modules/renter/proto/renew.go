@@ -575,20 +575,29 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	// estimation.
 	txnFee := pt.TxnFeeMaxRecommended.Mul64(2 * modules.EstimatedFileContractTransactionSetSize)
 
-	// Calculate the base cost.
+	// Calculate the base cost. This includes the RPC cost.
 	basePrice, baseCollateral := modules.RenewBaseCosts(oldRev, pt, endHeight)
 
-	// Create the final revision of the old contract. The renew cost is 0H for
-	// the final revision since the new contract will pay for it as part of the
-	// basePrice.
-	renewCost := types.ZeroCurrency
-	finalRev, err := prepareFinalRevision(oldContract, renewCost)
+	// Figure out how much of the basePrice we can already pay using the final
+	// revision. The rest of the basePrice is paid with the new contract.
+	prePayment := oldRev.ValidRenterPayout()
+	if prePayment.Cmp(basePrice) >= 0 {
+		// Enough money left to pay basePrice in full.
+		basePrice = types.ZeroCurrency
+		prePayment = prePayment.Sub(basePrice)
+	} else {
+		// Partially pay basePrice.
+		basePrice = basePrice.Sub(prePayment)
+	}
+
+	// Create the final revision of the old contract.
+	finalRev, err := prepareFinalRevision(oldContract, prePayment)
 	if err != nil {
 		return errors.AddContext(err, "Unable to create final revision")
 	}
 
 	// Record the changes we are about to make to the contract.
-	walTxn, err := oldSC.managedRecordClearContractIntent(finalRev, renewCost)
+	walTxn, err := oldSC.managedRecordClearContractIntent(finalRev, types.ZeroCurrency)
 	if err != nil {
 		return errors.AddContext(err, "failed to record clear contract intent")
 	}
@@ -755,7 +764,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	}
 
 	// Commit changes to old contract.
-	if err := oldSC.managedCommitClearContract(walTxn, finalRevTxn, renewCost); err != nil {
+	if err := oldSC.managedCommitClearContract(walTxn, finalRevTxn, types.ZeroCurrency); err != nil {
 		return err
 	}
 	return nil
