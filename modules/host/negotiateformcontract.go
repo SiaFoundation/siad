@@ -181,6 +181,7 @@ func (h *Host) managedRPCFormContract(conn net.Conn) error {
 	h.mu.RUnlock()
 	fca := finalizeContractArgs{
 		builder:                 txnBuilder,
+		contractPrice:           settings.ContractPrice,
 		renterPK:                renterPK,
 		renterSignatures:        renterTxnSignatures,
 		renterRevisionSignature: renterRevisionSignature,
@@ -188,7 +189,6 @@ func (h *Host) managedRPCFormContract(conn net.Conn) error {
 		hostCollateral:          hostCollateral,
 		hostInitialRevenue:      types.ZeroCurrency,
 		hostInitialRisk:         types.ZeroCurrency,
-		settings:                settings,
 	}
 	hostTxnSignatures, hostRevisionSignature, newSOID, err := h.managedFinalizeContract(fca)
 	if err != nil {

@@ -1,1 +1,0 @@
-- extend /host [GET] to contain pricetable

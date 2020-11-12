@@ -32,11 +32,11 @@ var (
 
 	// ErrRegistryEntryNotFound is returned if all workers were unable to fetch
 	// the entry.
-	ErrRegistryEntryNotFound = errors.New("failed to look up the registry entry")
+	ErrRegistryEntryNotFound = errors.New("registry entry not found")
 
 	// ErrRegistryLookupTimeout is similar to ErrRegistryEntryNotFound but it is
 	// returned instead if the lookup timed out before all workers returned.
-	ErrRegistryLookupTimeout = errors.New("looking up a registry entry timed out")
+	ErrRegistryLookupTimeout = errors.New("registry entry not found within given time")
 
 	// ErrRegistryUpdateInsufficientRedundancy is returned if updating the
 	// registry failed due to running out of workers before reaching
@@ -274,6 +274,11 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	for _, worker := range workers {
 		cache := worker.staticCache()
 		if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) < 0 {
+			continue
+		}
+
+		// Skip !goodForUpload workers.
+		if !cache.staticContractUtility.GoodForUpload {
 			continue
 		}
 

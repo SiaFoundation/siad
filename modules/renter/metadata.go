@@ -219,7 +219,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			// The LastHealthCheckTime is not a field that is initialized when
 			// a directory is created, so we can reach this point if a directory is
 			// created and gets a bubble called on it outside of the health loop
-			// before the health loop as been able to set the LastHealthCheckTime.
+			// before the health loop has been able to set the LastHealthCheckTime.
 			if dirMetadata.AggregateLastHealthCheckTime.IsZero() {
 				dirMetadata.AggregateLastHealthCheckTime = time.Now()
 				err = r.tg.Launch(func() {
