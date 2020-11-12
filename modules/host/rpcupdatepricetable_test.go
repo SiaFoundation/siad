@@ -280,6 +280,9 @@ func testUpdatePriceTableBasic(t *testing.T, rhp *renterHostPair) {
 	if pt.RegistryEntriesTotal != 128 {
 		t.Fatal("Wrong number of entries", pt.RegistryEntriesTotal, 128)
 	}
+	if !pt.RenewContractCost.Equals(modules.DefaultBaseRPCPrice) {
+		t.Fatal("Wrong renew cost", pt.RenewContractCost, modules.DefaultBaseRPCPrice)
+	}
 }
 
 // testUpdatePriceTableAfterSettingsUpdate verifies the price table is updated

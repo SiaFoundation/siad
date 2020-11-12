@@ -71,7 +71,6 @@ type RPCPriceTable struct {
 	ReadLengthCost types.Currency `json:"readlengthcost"`
 
 	// Cost values specific to the RenewContract instruction.
-	// TODO: update price tables with value
 	RenewContractCost types.Currency `json:"renewcontractcost"`
 
 	// Cost values specific to the Revision command.
