@@ -21,7 +21,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -546,7 +545,7 @@ func parseErasureCodingParameters(strDataPieces, strParityPieces string) (module
 	}
 
 	// Create the erasure coder.
-	return siafile.NewRSSubCode(dataPieces, parityPieces, crypto.SegmentSize)
+	return modules.NewRSSubCode(dataPieces, parityPieces, crypto.SegmentSize)
 }
 
 // ParseDataAndParityPieces parse the numeric values for dataPieces and
@@ -1022,11 +1021,6 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 	var rc RenterContracts
 	currentBlockHeight := api.cs.Height()
 	for _, c := range api.renter.Contracts() {
-		var size uint64
-		if len(c.Transaction.FileContractRevisions) != 0 {
-			size = c.Transaction.FileContractRevisions[0].NewFileSize
-		}
-
 		// Fetch host address
 		var netAddress modules.NetAddress
 		hdbe, exists, _ := api.renter.Host(c.HostPublicKey)
@@ -1048,7 +1042,7 @@ func (api *API) parseRenterContracts(disabled, inactive, expired bool) RenterCon
 			LastTransaction:           c.Transaction,
 			NetAddress:                netAddress,
 			RenterFunds:               c.RenterFunds,
-			Size:                      size,
+			Size:                      c.Size(),
 			StartHeight:               c.StartHeight,
 			StorageSpending:           c.StorageSpending,
 			StorageSpendingDeprecated: c.StorageSpending,
@@ -1899,8 +1893,8 @@ func (api *API) renterUploadReadyHandler(w http.ResponseWriter, req *http.Reques
 	}
 	// Check if we need to set to defaults
 	if dataPieces == 0 && parityPieces == 0 {
-		dataPieces = renter.DefaultDataPieces
-		parityPieces = renter.DefaultParityPieces
+		dataPieces = modules.RenterDefaultDataPieces
+		parityPieces = modules.RenterDefaultParityPieces
 	}
 	contractsNeeded := dataPieces + parityPieces
 

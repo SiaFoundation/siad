@@ -1,1 +1,0 @@
-- Update the `README` to remove the outdated raspberry pi info and link the official release locations.

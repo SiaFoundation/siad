@@ -9,14 +9,13 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TestSegmentsForRecovery tests the segmentsForRecovery helper function.
 func TestSegmentsForRecovery(t *testing.T) {
 	// Test the legacy erasure coder first.
-	rscOld, err := siafile.NewRSCode(10, 20)
+	rscOld, err := modules.NewRSCode(10, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +27,7 @@ func TestSegmentsForRecovery(t *testing.T) {
 	}
 
 	// Get a new erasure coder and decoded segment size.
-	rsc, err := siafile.NewRSSubCode(10, 20, 64)
+	rsc, err := modules.NewRSSubCode(10, 20, 64)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +72,7 @@ func TestSegmentsForRecovery(t *testing.T) {
 // TestSectorOffsetAndLength tests the sectorOffsetAndLength helper function.
 func TestSectorOffsetAndLength(t *testing.T) {
 	// Test the legacy erasure coder first.
-	rscOld, err := siafile.NewRSCode(10, 20)
+	rscOld, err := modules.NewRSCode(10, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +84,7 @@ func TestSectorOffsetAndLength(t *testing.T) {
 	}
 
 	// Get a new erasure coder and decoded segment size.
-	rsc, err := siafile.NewRSSubCode(10, 20, 64)
+	rsc, err := modules.NewRSSubCode(10, 20, 64)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +223,7 @@ func TestProcessDownloadChunk(t *testing.T) {
 	}
 
 	// Prepare a method to create a minimal valid chunk.
-	rc, err := siafile.NewRSSubCode(1, 1, crypto.SegmentSize)
+	rc, err := modules.NewRSSubCode(1, 1, crypto.SegmentSize)
 	if err != nil {
 		t.Fatal(err)
 	}

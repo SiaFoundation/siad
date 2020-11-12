@@ -1212,14 +1212,27 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 		return
 	}
 
-	// Read registry.
-	srv, err := api.renter.ReadRegistry(spk, dataKey, renter.DefaultRegistryReadTimeout)
-	if errors.Contains(err, renter.ErrRegistryEntryNotFound) {
-		WriteError(w, Error{"Unable to read from the registry: " + err.Error()}, http.StatusNotFound)
-		return
+	// Parse the timeout.
+	timeout := renter.MaxRegistryReadTimeout
+	timeoutStr := req.FormValue("timeout")
+	if timeoutStr != "" {
+		timeoutInt, err := strconv.Atoi(timeoutStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		timeout = time.Duration(timeoutInt) * time.Second
+		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
+			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
+			return
+		}
 	}
-	if errors.Contains(err, renter.ErrRegistryLookupTimeout) {
-		WriteError(w, Error{"Unable to read from the registry: " + err.Error()}, http.StatusRequestTimeout)
+
+	// Read registry.
+	srv, err := api.renter.ReadRegistry(spk, dataKey, timeout)
+	if errors.Contains(err, renter.ErrRegistryEntryNotFound) ||
+		errors.Contains(err, renter.ErrRegistryLookupTimeout) {
+		WriteError(w, Error{err.Error()}, http.StatusNotFound)
 		return
 	}
 	if err != nil {

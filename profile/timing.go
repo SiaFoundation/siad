@@ -21,11 +21,11 @@ func Uptime() int64 {
 	return (time.Now().UnixNano() - uptime) / 1e6
 }
 
-// PrintTimes prints how much time has passed at each timer.
+// PrintTimes prints how much time, in milliseconds, has passed at each timer.
 func PrintTimes() string {
 	s := "Printing Timers:\n"
 	for name, time := range times {
-		s += fmt.Sprintf("\t%v: %v\n", name, time/1e6)
+		s += fmt.Sprintf("\t%v: %vms\n", name, time/1e6)
 	}
 	return s
 }

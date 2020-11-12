@@ -3,7 +3,6 @@ package renter
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -15,9 +14,9 @@ import (
 )
 
 var (
-	// DefaultRegistryReadTimeout is the default timeout used when reading from
+	// MaxRegistryReadTimeout is the default timeout used when reading from
 	// the registry.
-	DefaultRegistryReadTimeout = build.Select(build.Var{
+	MaxRegistryReadTimeout = build.Select(build.Var{
 		Dev:      30 * time.Second,
 		Standard: 5 * time.Minute,
 		Testing:  3 * time.Second,
@@ -33,11 +32,11 @@ var (
 
 	// ErrRegistryEntryNotFound is returned if all workers were unable to fetch
 	// the entry.
-	ErrRegistryEntryNotFound = errors.New("failed to look up the registry entry")
+	ErrRegistryEntryNotFound = errors.New("registry entry not found")
 
 	// ErrRegistryLookupTimeout is similar to ErrRegistryEntryNotFound but it is
 	// returned instead if the lookup timed out before all workers returned.
-	ErrRegistryLookupTimeout = errors.New("looking up a registry entry timed out")
+	ErrRegistryLookupTimeout = errors.New("registry entry not found within given time")
 
 	// ErrRegistryUpdateInsufficientRedundancy is returned if updating the
 	// registry failed due to running out of workers before reaching
@@ -187,30 +186,33 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 	// when we receive the first response. useHighestRevDefaultTimeout after
 	// receiving the first response, this will be closed to abort the search for
 	// the highest rev number and return the highest one we have so far.
-	useHighestRevCtx := ctx
+	var useHighestRevCtx context.Context
 
-	var srv modules.SignedRegistryValue
+	var srv *modules.SignedRegistryValue
 	responses := 0
-	successfulResponses := 0
 
 LOOP:
 	for responses < len(workers) {
-		// Check if we are supposed to stop and use the highest revision
-		// response.
-		select {
-		case <-useHighestRevCtx.Done():
-			if successfulResponses > 0 {
-				break LOOP
-			}
-		default:
-		}
-
-		// If not, or if we don't have a valid response yet, we wait for one.
+		// Check cancel condition and block for more responses.
 		var resp *jobReadRegistryResponse
-		select {
-		case <-ctx.Done():
-			break LOOP // timeout reached
-		case resp = <-staticResponseChan:
+		if srv != nil {
+			// If we have a successful response already, we wait on both contexts
+			// and the response chan.
+			select {
+			case <-useHighestRevCtx.Done():
+				break LOOP // using best
+			case <-ctx.Done():
+				break LOOP // timeout reached
+			case resp = <-staticResponseChan:
+			}
+		} else {
+			// Otherwise we don't wait on the usehighestRevCtx since we need a
+			// successful response to abort.
+			select {
+			case <-ctx.Done():
+				break LOOP // timeout reached
+			case resp = <-staticResponseChan:
+			}
 		}
 
 		// When we get the first response, we initialize the highest rev
@@ -229,28 +231,25 @@ LOOP:
 			continue
 		}
 
-		// Increment successful responses.
-		successfulResponses++
-
 		// Remember the response with the highest revision number. We use >=
 		// here to also catch the edge case of the initial revision being 0.
-		if resp.staticSignedRegistryValue.Revision >= srv.Revision {
-			srv = *resp.staticSignedRegistryValue
+		if srv == nil || resp.staticSignedRegistryValue.Revision >= srv.Revision {
+			srv = resp.staticSignedRegistryValue
 		}
 	}
 
 	// If we don't have a successful response and also not a response for every
 	// worker, we timed out.
-	if successfulResponses == 0 && responses < len(workers) {
+	if srv == nil && responses < len(workers) {
 		return modules.SignedRegistryValue{}, ErrRegistryLookupTimeout
 	}
 
 	// If we don't have a successful response but received a response from every
 	// worker, we were unable to look up the entry.
-	if successfulResponses == 0 {
+	if srv == nil {
 		return modules.SignedRegistryValue{}, ErrRegistryEntryNotFound
 	}
-	return srv, nil
+	return *srv, nil
 }
 
 // managedUpdateRegistry updates the registries on all workers with the given
@@ -317,8 +316,9 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	workersLeft := len(workers)
 	responses := 0
 	successfulResponses := 0
+	highestInvalidRevNum := uint64(0)
+	invalidRevNum := false
 
-	var additionalErrs error
 	for successfulResponses < MinUpdateRegistrySuccesses && workersLeft+successfulResponses >= MinUpdateRegistrySuccesses {
 		// Check deadline.
 		var resp *jobUpdateRegistryResponse
@@ -335,11 +335,15 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		// Increment number of responses.
 		responses++
 
-		// Ignore error responses.
+		// Ignore error responses except for invalid revision errors.
 		if resp.staticErr != nil {
-			if strings.Contains(resp.staticErr.Error(), registry.ErrLowerRevNum.Error()) ||
-				strings.Contains(resp.staticErr.Error(), registry.ErrSameRevNum.Error()) {
-				additionalErrs = errors.Compose(additionalErrs, resp.staticErr)
+			// If we receive ErrLowerRevNum or ErrSameRevNum, remember the revision number
+			// that was presented as proof. In the end we return the highest one to be able
+			// to determine the next revision number that is save to use.
+			if (errors.Contains(resp.staticErr, registry.ErrLowerRevNum) || errors.Contains(resp.staticErr, registry.ErrSameRevNum)) &&
+				resp.srv.Revision > highestInvalidRevNum {
+				highestInvalidRevNum = resp.srv.Revision
+				invalidRevNum = true
 			}
 			continue
 		}
@@ -348,12 +352,23 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 		successfulResponses++
 	}
 
+	// Check for an invalid revision error and return the right error according
+	// to the highest invalid revision we remembered.
+	var err error
+	if invalidRevNum {
+		if highestInvalidRevNum == srv.Revision {
+			err = registry.ErrSameRevNum
+		} else {
+			err = registry.ErrLowerRevNum
+		}
+	}
+
 	// Check if we ran out of workers.
 	if successfulResponses == 0 {
-		return errors.Compose(ErrRegistryUpdateNoSuccessfulUpdates, additionalErrs)
+		return errors.Compose(err, ErrRegistryUpdateNoSuccessfulUpdates)
 	}
 	if successfulResponses < MinUpdateRegistrySuccesses {
-		return errors.Compose(ErrRegistryUpdateInsufficientRedundancy, additionalErrs)
+		return errors.Compose(err, ErrRegistryUpdateInsufficientRedundancy)
 	}
 	return nil
 }

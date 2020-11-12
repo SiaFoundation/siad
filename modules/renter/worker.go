@@ -7,8 +7,7 @@ package renter
 // functions for a job are Queue, Kill, and Perform. Queue will add a job to the
 // queue of work of that type. Kill will empty the queue and close out any work
 // that will not be completed. Perform will grab a job from the queue if one
-// exists and complete that piece of work. See workerfetchbackups.go for a clean
-// example.
+// exists and complete that piece of work.
 //
 // The worker has an ephemeral account on the host. It can use this account to
 // pay for downloads and uploads. In order to ensure the account's balance does
@@ -81,12 +80,12 @@ type (
 		downloadRecentFailureErr    error     // What was the reason for the last failure?
 
 		// Job queues for the worker.
-		staticFetchBackupsJobQueue   fetchBackupsJobQueue
-		staticJobHasSectorQueue      *jobHasSectorQueue
-		staticJobReadQueue           *jobReadQueue
-		staticJobReadRegistryQueue   *jobReadRegistryQueue
-		staticJobUpdateRegistryQueue *jobUpdateRegistryQueue
-		staticJobUploadSnapshotQueue *jobUploadSnapshotQueue
+		staticJobDownloadSnapshotQueue *jobDownloadSnapshotQueue
+		staticJobHasSectorQueue        *jobHasSectorQueue
+		staticJobReadQueue             *jobReadQueue
+		staticJobReadRegistryQueue     *jobReadRegistryQueue
+		staticJobUpdateRegistryQueue   *jobUpdateRegistryQueue
+		staticJobUploadSnapshotQueue   *jobUploadSnapshotQueue
 
 		// Upload variables.
 		unprocessedChunks         []*unfinishedUploadChunk // Yet unprocessed work items.
@@ -202,9 +201,11 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	w.newPriceTable()
 	w.initJobHasSectorQueue()
 	w.initJobReadQueue()
+	w.initJobDownloadSnapshotQueue()
 	w.initJobReadRegistryQueue()
 	w.initJobUpdateRegistryQueue()
 	w.initJobUploadSnapshotQueue()
+
 	// Get the worker cache set up before returning the worker. This prevents a
 	// race condition in some tests.
 	w.managedUpdateCache()

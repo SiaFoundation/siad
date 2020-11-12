@@ -195,7 +195,7 @@ func newTestFile() *SiaFile {
 // newTestFileParams creates the required parameters for creating a siafile and
 // creates a directory for the file
 func newTestFileParams(minChunks int, partialChunk bool) (string, modules.SiaPath, string, modules.ErasureCoder, crypto.CipherKey, uint64, int, os.FileMode) {
-	rc, err := NewRSCode(10, 20)
+	rc, err := modules.NewRSCode(10, 20)
 	if err != nil {
 		panic(err)
 	}
