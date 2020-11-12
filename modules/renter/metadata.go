@@ -275,10 +275,13 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 func (r *Renter) managedCalculateFileMetadata(siaPath modules.SiaPath, hostOfflineMap, hostGoodForRenewMap map[string]bool) (bubbledSiaFileMetadata, error) {
 	// Open SiaFile in a read only state so that it doesn't need to be
 	// closed
-	sf, err := r.staticFileSystem.OpenReadOnlySiaFile(siaPath)
+	sf, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
 		return bubbledSiaFileMetadata{}, err
 	}
+	defer func() {
+		err = errors.Compose(err, sf.Close())
+	}()
 
 	// Calculate file health
 	health, stuckHealth, _, _, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)

@@ -20,7 +20,7 @@ import (
 // Results (goos, goarch, CPU: Benchmark Output: date)
 //
 // linux, amd64, Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz:  6 | 180163684 ns/op | 249937 B/op | 1606 allocs/op: 03/19/2020
-// linux, amd64, Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz: 34 |  34108444 ns/op                                 11/10/2020
+// linux, amd64, Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz: 34 |  34416443 ns/op                                 11/10/2020
 //
 func BenchmarkBubbleMetadata(b *testing.B) {
 	r, err := newBenchmarkRenterWithDependency(b.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})

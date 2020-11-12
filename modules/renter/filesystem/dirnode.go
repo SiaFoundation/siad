@@ -697,14 +697,6 @@ func (n *DirNode) managedOpenFile(fileName string) (*FileNode, error) {
 	return n.openFile(fileName)
 }
 
-// managedOpenReadOnlyFile opens a SiaFile and does not add it to the parent so
-// it doesn't need to be closed.
-func (n *DirNode) managedOpenReadOnlyFile(fileName string) (*FileNode, error) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	return n.readonlyOpenFile(fileName)
-}
-
 // openFile is like readonlyOpenFile but adds the file to the parent.
 func (n *DirNode) openFile(fileName string) (*FileNode, error) {
 	fn, err := n.readonlyOpenFile(fileName)
@@ -734,8 +726,6 @@ func (n *DirNode) readonlyOpenFile(fileName string) (*FileNode, error) {
 	if err != nil {
 		return nil, errors.AddContext(err, fmt.Sprintf("failed to load SiaFile '%v' from disk", filePath))
 	}
-	// TODO: This seems like this is leaking the underlying flie handle for the
-	// siafile?
 	fn = &FileNode{
 		node:    newNode(n, filePath, fileName, 0, n.staticWal, n.staticLog),
 		SiaFile: sf,
