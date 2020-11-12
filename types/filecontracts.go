@@ -314,6 +314,11 @@ func (fc FileContract) MissedRenterOutput() SiacoinOutput {
 	return fc.MissedProofOutputs[0]
 }
 
+// MissedRenterPayout gets the value of the renter's missed proof output.
+func (fc FileContract) MissedRenterPayout() Currency {
+	return fc.MissedRenterOutput().Value
+}
+
 // MissedHostOutput gets the host's missed proof output.
 func (fc FileContract) MissedHostOutput() SiacoinOutput {
 	return fc.MissedProofOutputs[1]
