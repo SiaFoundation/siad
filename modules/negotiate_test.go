@@ -138,14 +138,14 @@ func TestRenterPayoutsPreTax(t *testing.T) {
 	basePrice := types.NewCurrency64(5)
 
 	// Check for underflow condition
-	_, _, _, err := RenterPayoutsPreTax(host, funding, txnFee, basePrice, baseCollateral, period, expectedStorage)
+	_, _, _, err := RenterPayoutsPreTax(host, funding, types.ZeroCurrency, txnFee, basePrice, baseCollateral, period, expectedStorage)
 	if err == nil {
 		t.Fatal("Expected underflow error but got nil")
 	}
 
 	// Confirm no underflow
 	funding = types.NewCurrency64(11)
-	renterPayout, hostPayout, hostCollateral, err := RenterPayoutsPreTax(host, funding, txnFee, basePrice, baseCollateral, period, expectedStorage)
+	renterPayout, hostPayout, hostCollateral, err := RenterPayoutsPreTax(host, funding, types.ZeroCurrency, txnFee, basePrice, baseCollateral, period, expectedStorage)
 	if err != nil {
 		t.Fatal(err)
 	}

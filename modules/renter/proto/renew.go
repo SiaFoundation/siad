@@ -47,7 +47,7 @@ func (cs *ContractSet) managedNewRenew(oldContract *SafeContract, params Contrac
 	basePrice, baseCollateral := rhp2BaseCosts(lastRev, host, endHeight)
 
 	// Create file contract and add it together with the fee to the builder.
-	fc, err := createRenewedContract(lastRev, params, txnFee, basePrice, baseCollateral, tpool)
+	fc, err := createRenewedContract(lastRev, params, txnFee, basePrice, baseCollateral, types.ZeroCurrency, tpool)
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
@@ -218,7 +218,7 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 	basePrice, baseCollateral := rhp2BaseCosts(lastRev, host, endHeight)
 
 	// Create file contract and add it together with the fee to the builder.
-	fc, err := createRenewedContract(lastRev, params, txnFee, basePrice, baseCollateral, tpool)
+	fc, err := createRenewedContract(lastRev, params, txnFee, basePrice, baseCollateral, types.ZeroCurrency, tpool)
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
@@ -489,8 +489,8 @@ func prepareFinalRevision(contract contractHeader, payment types.Currency) (type
 	finalRev.NewFileMerkleRoot = crypto.Hash{}
 	finalRev.NewRevisionNumber = math.MaxUint64
 
-	// The missed proof outputs become the valid ones since the host won't need
-	// to provide a storage proof. We need to preserve the void output though.
+	// The valid proof outputs become the missed ones since the host won't need
+	// to provide a storage proof.
 	finalRev.NewMissedProofOutputs = finalRev.NewValidProofOutputs
 	return finalRev, nil
 }
@@ -511,12 +511,12 @@ func prepareTransactionSet(txnBuilder transactionBuilder) ([]types.Transaction, 
 
 // createRenewedContract creates a new contract from another contract's last
 // revision given some additional renewal parameters.
-func createRenewedContract(lastRev types.FileContractRevision, params ContractParams, txnFee, basePrice, baseCollateral types.Currency, tpool transactionPool) (types.FileContract, error) {
+func createRenewedContract(lastRev types.FileContractRevision, params ContractParams, txnFee, basePrice, baseCollateral, renterPrePay types.Currency, tpool transactionPool) (types.FileContract, error) {
 	allowance, startHeight, endHeight, host, funding := params.Allowance, params.StartHeight, params.EndHeight, params.Host, params.Funding
 
 	// Calculate the payouts for the renter, host, and whole contract.
 	period := endHeight - startHeight
-	renterPayout, hostPayout, hostCollateral, err := modules.RenterPayoutsPreTax(host, funding, txnFee, basePrice, baseCollateral, period, allowance.ExpectedStorage/allowance.Hosts)
+	renterPayout, hostPayout, hostCollateral, err := modules.RenterPayoutsPreTax(host, funding, renterPrePay, txnFee, basePrice, baseCollateral, period, allowance.ExpectedStorage/allowance.Hosts)
 	if err != nil {
 		return types.FileContract{}, err
 	}
@@ -582,12 +582,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	// revision. The rest of the basePrice is paid with the new contract.
 	prePayment := oldRev.ValidRenterPayout()
 	if prePayment.Cmp(basePrice) >= 0 {
-		// Enough money left to pay basePrice in full.
-		basePrice = types.ZeroCurrency
-		prePayment = prePayment.Sub(basePrice)
-	} else {
-		// Partially pay basePrice.
-		basePrice = basePrice.Sub(prePayment)
+		prePayment = basePrice
 	}
 
 	// Create the final revision of the old contract.
@@ -603,7 +598,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	}
 
 	// Create the new file contract.
-	fc, err := createRenewedContract(oldRev, params, txnFee, basePrice, baseCollateral, tpool)
+	fc, err := createRenewedContract(oldRev, params, txnFee, basePrice, baseCollateral, prePayment, tpool)
 	if err != nil {
 		return errors.AddContext(err, "Unable to create new contract")
 	}

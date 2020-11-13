@@ -118,8 +118,8 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to verify new contract")
 	}
 
-	// Add the collateral to the contract.
-	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(hostCollateral, so, txns)
+	// Add the collateral to the contract as well as the renter's pre-payment.
+	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(hostCollateral.Add(excessPayment), so, txns)
 	if err != nil {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to add collateral")
 	}
@@ -342,12 +342,10 @@ func verifyRenewedContract(so storageObligation, newContract types.FileContract,
 		baseCollateral = expectedCollateral
 	}
 
-	// Reduce the basePrice by up to renterPayment since the renter already paid
-	// for that using other means.
+	// Make sure the renter didn't pre-pay more than basePrice since we need to
+	// match that payment in the renewed contract.
 	if basePrice.Cmp(renterPayment) < 0 {
-		basePrice = types.ZeroCurrency
-	} else {
-		basePrice = basePrice.Sub(renterPayment)
+		return types.Currency{}, errors.New("renter pre-paid more than basePrice")
 	}
 
 	// Check that the missed proof outputs contain enough money, and that the

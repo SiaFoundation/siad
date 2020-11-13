@@ -2,10 +2,12 @@ package renter
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -74,6 +76,7 @@ func TestRenewContract(t *testing.T) {
 	if !ok {
 		t.Fatal("oldContract not found")
 	}
+	oldRevision := oldContract.Transaction.FileContractRevisions[0]
 
 	// Renew the contract.
 	err = wt.RenewContract(context.Background(), params, txnBuilder)
@@ -101,6 +104,16 @@ func TestRenewContract(t *testing.T) {
 	if !found {
 		t.Fatal("txn containing both the final revision and contract wasn't mined")
 	}
+
+	// Compute the expected base costs.
+	pt := wt.staticPriceTable().staticPriceTable
+	params.PriceTable = &pt
+	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevision, params.PriceTable, params.EndHeight)
+	fmt.Println("base", basePrice, baseCollateral)
+	fmt.Println("diff", oldRevision.ValidRenterPayout().Sub(fcr.ValidRenterPayout()))
+	fmt.Println("diff", fcr.ValidHostPayout().Sub(oldRevision.ValidHostPayout()))
+
+	// Check final revision.
 	if fcr.ParentID != oldContract.ID {
 		t.Fatalf("expected fcr to have parent %v but was %v", oldContract.ID, fcr.ParentID)
 	}

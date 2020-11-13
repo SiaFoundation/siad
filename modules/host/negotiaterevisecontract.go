@@ -426,5 +426,5 @@ func verifyClearingRevision(oldFCR, revision types.FileContractRevision, blockHe
 	if err := verifyPayoutSums(oldFCR, revision); err != nil {
 		return types.Currency{}, errors.Compose(ErrInvalidPayoutSums, err)
 	}
-	return expectedExchange.Sub(fromRenter), nil
+	return fromRenter.Sub(expectedExchange), nil
 }
