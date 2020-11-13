@@ -579,14 +579,14 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	basePrice, baseCollateral := modules.RenewBaseCosts(oldRev, pt, endHeight)
 
 	// Create the final revision of the old contract.
-	cost := types.ZeroCurrency
-	finalRev, err := prepareFinalRevision(oldContract, cost)
+	renewCost := types.ZeroCurrency
+	finalRev, err := prepareFinalRevision(oldContract, renewCost)
 	if err != nil {
 		return errors.AddContext(err, "Unable to create final revision")
 	}
 
 	// Record the changes we are about to make to the contract.
-	walTxn, err := oldSC.managedRecordClearContractIntent(finalRev, types.ZeroCurrency)
+	walTxn, err := oldSC.managedRecordClearContractIntent(finalRev, renewCost)
 	if err != nil {
 		return errors.AddContext(err, "failed to record clear contract intent")
 	}
@@ -753,7 +753,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	}
 
 	// Commit changes to old contract.
-	if err := oldSC.managedCommitClearContract(walTxn, finalRevTxn, types.ZeroCurrency); err != nil {
+	if err := oldSC.managedCommitClearContract(walTxn, finalRevTxn, renewCost); err != nil {
 		return err
 	}
 	return nil

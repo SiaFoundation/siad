@@ -133,10 +133,6 @@ var (
 	// accepting new contracts.
 	ErrNotAcceptingContracts = ErrorCommunication("host is not accepting new contracts")
 
-	// ErrRenterHighPrePay is returned if the renter tries to prepay more than
-	// basePrice coins.
-	ErrRenterHighPrePay = ErrorCommunication("rejected since renter prepaid more than basePrice")
-
 	// ErrSmallWindow is returned if the renter suggests a storage proof window
 	// that is too small.
 	ErrSmallWindow = ErrorCommunication("rejected for small window size")
