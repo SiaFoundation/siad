@@ -317,7 +317,7 @@ func TestVerifyRenewedContract(t *testing.T) {
 	badFC = fc
 	badFC.MissedProofOutputs = append([]types.SiacoinOutput{}, badFC.MissedProofOutputs...)
 	_ = badFC.SetMissedVoidPayout(baseCollateral.Add(basePrice).Sub64(1))
-	_, err = verifyRenewedContract(so, badFC, oldRevision, bh, is, unlockHash, pt, types.ZeroCurrency, rpk, hpk, lockedCollateral)
+	_, err = verifyRenewedContract(so, badFC, oldRevision, bh, is, unlockHash, pt, types.NewCurrency64(1), rpk, hpk, lockedCollateral)
 	if !errors.Contains(err, ErrLowVoidOutput) {
 		t.Fatal(err)
 	}
@@ -336,7 +336,7 @@ func TestVerifyRenewedContract(t *testing.T) {
 	goodFC.MissedProofOutputs = append([]types.SiacoinOutput{}, goodFC.MissedProofOutputs...)
 	collateral := types.NewCurrency64(1)
 	goodFC.SetValidHostPayout(pt.ContractPrice.Add(basePrice).Add(collateral))
-	err = goodFC.SetMissedVoidPayout(collateral)
+	err = goodFC.SetMissedVoidPayout(collateral.Add(basePrice))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,14 +349,11 @@ func TestVerifyRenewedContract(t *testing.T) {
 		t.Fatal("wrong collateral returned", hostCollateral)
 	}
 
-	// Success - more than whole basePrice is already paid for.
+	// Failure - more than whole basePrice is paid for.
 	excessPayment = basePrice.Add64(1)
-	hostCollateral, err = verifyRenewedContract(so, goodFC, oldRevision, bh, is, unlockHash, pt, excessPayment, rpk, hpk, lockedCollateral)
-	if err != nil {
+	_, err = verifyRenewedContract(so, goodFC, oldRevision, bh, is, unlockHash, pt, excessPayment, rpk, hpk, lockedCollateral)
+	if !errors.Contains(err, ErrRenterHighPrePay) {
 		t.Fatal(err)
-	}
-	if collateral.Cmp(hostCollateral) != 0 {
-		t.Fatal("wrong collateral returned")
 	}
 
 	// Failure - excessPayment insufficient.

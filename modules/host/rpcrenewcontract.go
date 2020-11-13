@@ -345,7 +345,7 @@ func verifyRenewedContract(so storageObligation, newContract types.FileContract,
 	// Make sure the renter didn't pre-pay more than basePrice since we need to
 	// match that payment in the renewed contract.
 	if basePrice.Cmp(renterPayment) < 0 {
-		return types.Currency{}, errors.New("renter pre-paid more than basePrice")
+		return types.Currency{}, ErrRenterHighPrePay
 	}
 
 	// Check that the missed proof outputs contain enough money, and that the
