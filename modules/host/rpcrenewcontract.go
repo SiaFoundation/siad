@@ -107,8 +107,10 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to verify final revision")
 	}
 
-	// Verify the new contract against the final revision.
-	hostCollateral, err := verifyRenewedContract(so, newContract, finalRevision, bh, is, unlockHash, pt, rpk, hpk, lockedCollateral)
+	// Verify the new contract against the old revision. The final one doesn't
+	// have the size set anymore which we need for collateral and base price
+	// calculations.
+	hostCollateral, err := verifyRenewedContract(so, newContract, currentRevision, bh, is, unlockHash, pt, rpk, hpk, lockedCollateral)
 	if errors.Contains(err, errCollateralBudgetExceeded) {
 		h.staticAlerter.RegisterAlert(modules.AlertIDHostInsufficientCollateral, AlertMSGHostInsufficientCollateral, "", modules.SeverityWarning)
 	} else {

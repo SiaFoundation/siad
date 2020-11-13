@@ -686,7 +686,6 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 
 	// Create initial (no-op) revision, transaction, and signature
 	noOpRevTxn := prepareInitRevisionTxn(oldRev, fc, startHeight, ourSK, signedTxnSet[len(signedTxnSet)-1].FileContractID(0))
-
 	// Send transaction signatures and no-op revision signature to host.
 	err = modules.RPCWrite(conn, modules.RPCRenewContractRenterSignatures{
 		RenterNoOpRevisionSig: noOpRevTxn.RenterSignature(),
