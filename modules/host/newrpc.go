@@ -938,7 +938,7 @@ func (h *Host) managedRPCLoopRenewAndClearContract(s *rpcSession) error {
 	newRevision.NewMissedProofOutputs = newRevision.NewValidProofOutputs
 
 	// Verifiy the final revision of the old contract.
-	_, err := verifyClearingRevision(currentRevision, newRevision, blockHeight, settings.BaseRPCPrice)
+	err := verifyClearingRevision(currentRevision, newRevision, blockHeight, settings.BaseRPCPrice)
 	if err != nil {
 		err = errors.Compose(err, s.writeError(err))
 		return err

@@ -976,24 +976,19 @@ func VerifyFileContractRevisionTransactionSignatures(fcr types.FileContractRevis
 // given a host, the available renter funding, the expected txnFee for the
 // transaction and an optional basePrice in case this helper is used for a
 // renewal. It also returns the hostCollateral.
-func RenterPayoutsPreTax(host HostDBEntry, funding, renterPrePaid, txnFee, basePrice, baseCollateral types.Currency, period types.BlockHeight, expectedStorage uint64) (renterPayout, hostPayout, hostCollateral types.Currency, err error) {
+func RenterPayoutsPreTax(host HostDBEntry, funding, txnFee, basePrice, baseCollateral types.Currency, period types.BlockHeight, expectedStorage uint64) (renterPayout, hostPayout, hostCollateral types.Currency, err error) {
 	// Divide by zero check.
 	if host.StoragePrice.IsZero() {
 		host.StoragePrice = types.NewCurrency64(1)
 	}
-	// Underflow checks.
+	// Underflow check.
 	if funding.Cmp(host.ContractPrice.Add(txnFee).Add(basePrice)) <= 0 {
 		err = fmt.Errorf("contract price (%v) plus transaction fee (%v) plus base price (%v) exceeds funding (%v)",
 			host.ContractPrice.HumanString(), txnFee.HumanString(), basePrice.HumanString(), funding.HumanString())
 		return
 	}
-	if basePrice.Cmp(renterPrePaid) < 0 {
-		err = errors.New("can't pre-pay more than the baseprice")
-		build.Critical(err)
-		return
-	}
 	// Calculate renterPayout.
-	renterPayout = funding.Sub(host.ContractPrice).Sub(txnFee).Sub(basePrice).Add(renterPrePaid)
+	renterPayout = funding.Sub(host.ContractPrice).Sub(txnFee).Sub(basePrice)
 	// Calculate hostCollateral by calculating the maximum amount of storage
 	// the renter can afford with 'funding' and calculating how much collateral
 	// the host wouldl have to put into the contract for that. We also add a

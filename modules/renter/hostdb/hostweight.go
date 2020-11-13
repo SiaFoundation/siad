@@ -283,7 +283,7 @@ func (hdb *HostDB) priceAdjustments(entry modules.HostDBEntry, allowance modules
 	// into a contract.
 	//
 	contractTxnFees := txnFees.Mul64(modules.EstimatedFileContractTransactionSetSize)
-	_, _, hostCollateral, err := modules.RenterPayoutsPreTax(entry, contractExpectedFunds, types.ZeroCurrency, contractTxnFees, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, contractExpectedStorage)
+	_, _, hostCollateral, err := modules.RenterPayoutsPreTax(entry, contractExpectedFunds, contractTxnFees, types.ZeroCurrency, types.ZeroCurrency, allowance.Period, contractExpectedStorage)
 	if err != nil {
 		// Errors containing 'exceeds funding' are not logged. All it means is
 		// that the contract price (or some other price) of the host is too high
