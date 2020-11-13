@@ -83,6 +83,8 @@ func (j *jobRenew) callExecute() {
 		j.staticQueue.callReportFailure(err)
 		return
 	}
+	// Update worker cache with the new fcid.
+	w.managedUpdateCache()
 	j.staticQueue.callReportSuccess()
 }
 

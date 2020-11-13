@@ -220,4 +220,53 @@ func TestRenewContract(t *testing.T) {
 	if !reflect.DeepEqual(mvo, expectedVoidOutput) {
 		t.Fatal("wrong output")
 	}
+
+	// Get the new contract's revision from the contractor.
+	c, found := wt.renter.hostContractor.ContractByPublicKey(wt.staticHostPubKey)
+	if !found {
+		t.Fatal("contract not found in contractor")
+	}
+	rev := c.Transaction.FileContractRevisions[0]
+
+	// Check the revision.
+	if rev.NewFileMerkleRoot != merkleRoot {
+		t.Fatalf("new contract revision got wrong root %v", rev.NewFileMerkleRoot)
+	}
+	if rev.NewFileSize != size {
+		t.Fatal("new contract revision got wrong size")
+	}
+	if rev.NewWindowStart != params.EndHeight {
+		t.Fatal("wrong window start")
+	}
+	if rev.NewWindowEnd != params.EndHeight+params.Host.WindowSize {
+		t.Fatal("wrong window start")
+	}
+	if rev.NewUnlockHash != fcr.NewUnlockHash {
+		t.Fatal("unlock hash doesn't match")
+	}
+	if rev.NewRevisionNumber != 1 {
+		t.Fatal("revision number isn't 0")
+	}
+	if !reflect.DeepEqual(rev.ValidRenterOutput(), expectedValidMissedRenterOutput) {
+		t.Fatal("wrong output")
+	}
+	if !reflect.DeepEqual(rev.ValidHostOutput(), expectedValidHostOutput) {
+		t.Fatal("wrong output")
+	}
+	if !reflect.DeepEqual(rev.MissedRenterOutput(), expectedValidMissedRenterOutput) {
+		t.Fatal("wrong output")
+	}
+	if !reflect.DeepEqual(rev.MissedHostOutput(), expectedMissedHostOutput) {
+		t.Fatal("wrong output")
+	}
+
+	// Try using the contract now. Should work.
+	err = wt.UploadSnapshot(context.Background(), modules.UploadedBackup{UID: [16]byte{3, 2, 1}}, fastrand.Bytes(100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize)
+	if err != nil {
+		t.Fatal(err)
+	}
 }

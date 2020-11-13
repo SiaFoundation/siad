@@ -651,5 +651,12 @@ func (c *Contractor) RenewContract(conn net.Conn, hpk types.SiaPublicKey, params
 	if !exists {
 		return errors.New("RenewContract: failed to translate host key to contract id")
 	}
-	return c.staticContracts.RenewContract(conn, fcid, params, txnBuilder, tpool, hdb)
+	err := c.staticContracts.RenewContract(conn, fcid, params, txnBuilder, tpool, hdb)
+	if err != nil {
+		return errors.AddContext(err, "RenewContract: failed to renew contract")
+	}
+	// Update the mapping of public keys to contracts after a successful renewal.
+	c.managedCheckForDuplicates()
+	c.managedUpdatePubKeyToContractIDMap()
+	return nil
 }
