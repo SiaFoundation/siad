@@ -128,17 +128,19 @@ func TestBubbleHealth(t *testing.T) {
 		StuckHealth:                  siadir.DefaultDirHealth,
 		AggregateLastHealthCheckTime: beforeBubble,
 		AggregateMinRedundancy:       -1,
-		AggregateModTime:             beforeBubble,
 		AggregateNumStuckChunks:      0,
 		AggregateNumSubDirs:          5,
 	}
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(20, time.Second, func() error {
 		// Get Root Directory Health
 		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
-		// Check Health
+		// Set the ModTimes since those are not initialized until Bubble is Called
+		defaultMetadata.AggregateModTime = metadata.AggregateModTime
+		defaultMetadata.ModTime = metadata.ModTime
+		// Check metadata
 		if err = equalBubbledMetadata(metadata, defaultMetadata, time.Since(beforeBubble)); err != nil {
 			return err
 		}
@@ -220,24 +222,24 @@ func TestBubbleHealth(t *testing.T) {
 	// Note: this tests the edge case of bubbling an empty directory and
 	// directories with no files but do have sub directories since bubble will
 	// execute on all the parent directories
-	beforeBubble = time.Now()
-	err = rt.renter.managedBubbleMetadata(siaPath)
+	err = rt.renter.managedBubbleMetadata(subDir1_2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	expectedMetadata, err := rt.renter.managedDirectoryMetadata(subDir1_1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = build.Retry(20, time.Second, func() error {
 		// Get Root Directory Health
 		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
-		// Compare to metadata of subDir1/subDir1
-		expectedHealth, err := rt.renter.managedDirectoryMetadata(subDir1_1)
-		if err != nil {
-			return err
-		}
-		if err = equalBubbledMetadata(metadata, expectedHealth, time.Since(beforeBubble)); err != nil {
-			return err
+		// Compare the specific metadata fields we expected to be bubbled from
+		// subDir1/subDir1 to root
+		if metadata.AggregateHealth != expectedMetadata.AggregateHealth {
+			return fmt.Errorf("AggregateHealth not equal; %v and %v", metadata.AggregateHealth, expectedMetadata.AggregateHealth)
 		}
 		return nil
 	})
@@ -292,31 +294,29 @@ func TestBubbleHealth(t *testing.T) {
 	// Now when we bubble the health and check for the worst health we should still see
 	// that the health is the health of subDir1/subDir1 which was set to 1 again
 	// and the stuck health will be the health of the stuck file
-	beforeBubble = time.Now()
 	err = rt.renter.managedBubbleMetadata(subDir1_2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	expectedMetadata, err = rt.renter.managedDirectoryMetadata(subDir1_1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedMetadata.AggregateHealth = 1
+	expectedMetadata.AggregateStuckHealth = 2
+	err = build.Retry(20, time.Second, func() error {
 		// Get Root Directory Health
 		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
-		// Compare to metadata of subDir1/subDir1.
-		expectedHealth, err := rt.renter.managedDirectoryMetadata(subDir1_1)
-		if err != nil {
-			return err
+		// Compare the specific metadata fields we expected to be bubbled from
+		// subDir1/subDir1 to root
+		if metadata.AggregateHealth != expectedMetadata.AggregateHealth {
+			return fmt.Errorf("AggregateHealth not equal; %v and %v", metadata.AggregateHealth, expectedMetadata.AggregateHealth)
 		}
-		expectedHealth.AggregateHealth = 1
-		expectedHealth.AggregateStuckHealth = 2
-		expectedHealth.AggregateNumFiles = 1
-		expectedHealth.AggregateNumSubDirs = 8
-		expectedHealth.AggregateNumStuckChunks = f.NumStuckChunks()
-		expectedHealth.AggregateSize = f.Size()
-		expectedHealth.AggregateModTime = beforeBubble
-		if err = equalBubbledMetadata(metadata, expectedHealth, time.Since(beforeBubble)); err != nil {
-			return err
+		if metadata.AggregateStuckHealth != expectedMetadata.AggregateStuckHealth {
+			return fmt.Errorf("AggregateHealth not equal; %v and %v", metadata.AggregateStuckHealth, expectedMetadata.AggregateStuckHealth)
 		}
 		return nil
 	})
@@ -349,7 +349,7 @@ func TestBubbleHealth(t *testing.T) {
 		AggregateSize:                100,
 		AggregateStuckHealth:         0,
 	}
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(20, time.Second, func() error {
 		// Get Root Directory Health
 		health, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
 		if err != nil {
@@ -391,7 +391,7 @@ func TestBubbleHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(20, time.Second, func() error {
 		// Get Root Directory Health
 		health, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
 		if err != nil {
@@ -819,6 +819,19 @@ func TestDirectoryModTime(t *testing.T) {
 	if err := rt.renter.CreateDir(subDir1_2, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
+
+	// Call Bubble to update filesystem ModTimes so there are no zero times
+	err = rt.renter.managedBubbleMetadata(subDir1_2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Sleep for 1 second to allow bubbles to update filesystem. Retry doesn't
+	// work here as we are waiting for the ModTime to be fully updated but we
+	// don't know what that value will be. We need this value to be updated and
+	// static before we create the SiaFiles to be able to ensure the ModTimes of
+	// the SiaFiles are the most recent
+	time.Sleep(time.Second)
+
 	// Add files
 	sp1 := modules.RandomSiaPath()
 	rsc, _ := modules.NewRSCode(1, 1)
