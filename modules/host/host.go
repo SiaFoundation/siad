@@ -617,7 +617,7 @@ func (h *Host) BandwidthCounters() (uint64, uint64, time.Time, error) {
 
 // PriceTable returns the host's current price table.
 func (h *Host) PriceTable() modules.RPCPriceTable {
-	pt := h.staticPriceTables.current
+	pt := h.staticPriceTables.managedCurrent()
 	pt.Validity = rpcPriceGuaranteePeriod
 	return pt
 }
