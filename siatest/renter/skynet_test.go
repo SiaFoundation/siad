@@ -2,6 +2,7 @@ package renter
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"encoding/hex"
@@ -64,6 +65,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "DisableForce", Test: testSkynetDisableForce},
 		{Name: "BlocklistHash", Test: testSkynetBlocklistHash},
 		{Name: "BlocklistSkylink", Test: testSkynetBlocklistSkylink},
+		{Name: "BlocklistUpgrade", Test: testSkynetBlocklistUpgrade},
 		{Name: "Portals", Test: testSkynetPortals},
 		{Name: "HeadRequest", Test: testSkynetHeadRequest},
 		{Name: "Stats", Test: testSkynetStats},
@@ -1590,7 +1592,7 @@ func testSkynetBlocklistHash(t *testing.T, tg *siatest.TestGroup) {
 	testSkynetBlocklist(t, tg, true)
 }
 
-// testSkynetBlocklistHash tests the skynet blocklist module when submitting
+// testSkynetBlocklistSkylink tests the skynet blocklist module when submitting
 // skylinks
 func testSkynetBlocklistSkylink(t *testing.T, tg *siatest.TestGroup) {
 	testSkynetBlocklist(t, tg, false)
@@ -1871,6 +1873,82 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 	_, err = r.RenterFileRootGet(skyfilePath)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testSkynetBlocklistUpgrade tests the skynet blocklist module when submitting
+// skylinks
+func testSkynetBlocklistUpgrade(t *testing.T, tg *siatest.TestGroup) {
+	// Create renterDir and renter params
+	testDir := renterTestDir(t.Name())
+	renterDir := filepath.Join(testDir, "renter")
+	err := os.MkdirAll(renterDir, persist.DefaultDiskPermissionsTest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	params := node.Renter(testDir)
+
+	// Load compatibility blacklist persistence
+	blacklistCompatFile, err := os.Open("../../compatibility/skynetblacklistv143_siatest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	blacklistPersist, err := os.Create(filepath.Join(renterDir, "skynetblacklist"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = io.Copy(blacklistPersist, blacklistCompatFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = errors.Compose(blacklistCompatFile.Close(), blacklistPersist.Close())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Grab the Skylink that is associated with the blacklist persistence
+	skylinkFile, err := os.Open("../../compatibility/skylinkv143_siatest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scanner := bufio.NewScanner(skylinkFile)
+	scanner.Scan()
+	skylinkStr := scanner.Text()
+	var skylink modules.Skylink
+	err = skylink.LoadString(skylinkStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add the renter to the group.
+	nodes, err := tg.AddNodes(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Verify there is a skylink in the now blocklist and it is the one from the
+	// compatibility file
+	sbg, err := r.SkynetBlocklistGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sbg.Blocklist) != 1 {
+		t.Fatal("blocklist should have 1 link, found:", len(sbg.Blocklist))
+	}
+	hash := crypto.HashObject(skylink.MerkleRoot())
+	if sbg.Blocklist[0] != hash {
+		t.Fatal("unexpected hash")
+	}
+
+	// Verify trying to download the skylink fails due to it being blocked
+	//
+	// NOTE: It doesn't matter if there is a file associated with this Skylink
+	// since the blocklist check should cause the download to fail before any look
+	// ups occur.
+	_, _, err = r.SkynetSkylinkGet(skylinkStr)
+	if !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
+		t.Fatal("unexpected error:", err)
 	}
 }
 
