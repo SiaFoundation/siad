@@ -235,10 +235,10 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			if dirMetadata.AggregateLastHealthCheckTime.IsZero() {
 				dirMetadata.AggregateLastHealthCheckTime = time.Now()
 				err = r.tg.Launch(func() {
-					r.callThreadedBubbleMetadata(dirSiaPath)
+					r.callThreadedBubbleMetadata(dirMetadata.sp)
 				})
 				if err != nil {
-					r.log.Printf("WARN: unable to launch bubble for '%v'", dirSiaPath)
+					r.log.Printf("WARN: unable to launch bubble for '%v'", dirMetadata.sp)
 				}
 			}
 
