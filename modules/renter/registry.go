@@ -277,6 +277,11 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 			continue
 		}
 
+		// Skip !goodForUpload workers.
+		if !cache.staticContractUtility.GoodForUpload {
+			continue
+		}
+
 		// check for price gouging
 		// TODO: use upload gouging for some basic protection. Should be
 		// replaced as part of the gouging overhaul.

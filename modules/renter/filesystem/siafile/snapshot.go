@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"io/ioutil"
+	"math"
 	"os"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -193,15 +194,24 @@ func (s *Snapshot) UID() SiafileUID {
 	return s.staticUID
 }
 
-func (sf *SiaFile) readlockChunks() ([]chunk, error) {
+// readlockChunks reads all chunks from the siafile within the range [min;max].
+func (sf *SiaFile) readlockChunks(min, max int) ([]chunk, error) {
 	// Copy chunks.
 	chunks := make([]chunk, 0, sf.numChunks)
-	err := sf.iterateChunksReadonly(func(chunk chunk) error {
+	for chunkIndex := 0; chunkIndex < sf.numChunks; chunkIndex++ {
+		if chunkIndex < min || chunkIndex > max {
+			chunks = append(chunks, chunk{Index: chunkIndex})
+			continue
+		}
+		// Read chunk.
+		c, err := sf.chunk(chunkIndex)
+		if err != nil {
+			return nil, err
+		}
 		// Handle complete partial chunk.
-		chunks = append(chunks, chunk)
-		return nil
-	})
-	return chunks, err
+		chunks = append(chunks, c)
+	}
+	return chunks, nil
 }
 
 // readlockSnapshot creates a snapshot of the SiaFile.
@@ -292,7 +302,26 @@ func (sf *SiaFile) Snapshot(sp modules.SiaPath) (*Snapshot, error) {
 	sf.mu.RLock()
 	defer sf.mu.RUnlock()
 
-	chunks, err := sf.readlockChunks()
+	chunks, err := sf.readlockChunks(0, math.MaxInt32)
+	if err != nil {
+		return nil, err
+	}
+	return sf.readlockSnapshot(sp, chunks)
+}
+
+// SnapshotRange creates a snapshot of the Siafile over a specific range.
+func (sf *SiaFile) SnapshotRange(sp modules.SiaPath, offset, length uint64) (*Snapshot, error) {
+	sf.mu.RLock()
+	defer sf.mu.RUnlock()
+
+	minChunk := int(offset / sf.staticChunkSize())
+	maxChunk := int((offset + length) / sf.staticChunkSize())
+	maxChunkOffset := (offset + length) % sf.staticChunkSize()
+	if maxChunk > 0 && maxChunkOffset == 0 {
+		maxChunk--
+	}
+
+	chunks, err := sf.readlockChunks(minChunk, maxChunk)
 	if err != nil {
 		return nil, err
 	}

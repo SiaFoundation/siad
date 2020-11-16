@@ -1195,7 +1195,7 @@ func TestCalculateFileMetadata(t *testing.T) {
 	t.Parallel()
 
 	// Create renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1341,6 +1341,11 @@ func TestAddStuckChunksToHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// create file with no stuck chunks
 	rsc, _ := modules.NewRSCode(1, 1)

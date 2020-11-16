@@ -253,11 +253,35 @@ func testUpdatePriceTableBasic(t *testing.T, rhp *renterHostPair) {
 	if pt.TxnFeeMaxRecommended.IsZero() {
 		t.Fatal("Expected TxnFeeMaxRecommended to be set on the price table")
 	}
+
+	// ensure the ContractPrice is set
+	if pt.ContractPrice.IsZero() {
+		t.Fatal("Expected contract price to be set on the price table")
+	}
+	// ensure the CollateralCost is set
+	if pt.CollateralCost.IsZero() {
+		t.Fatal("Expected collateral to be set on the price table")
+	}
+	// ensure the MaxCollateral is set
+	if pt.MaxCollateral.IsZero() {
+		t.Fatal("Expected MaxCollateral to be set on the price table")
+	}
+	// ensure the MaxDuration is set
+	if pt.MaxDuration == 0 {
+		t.Fatal("Expected MaxDuration to be set on the price table")
+	}
+	// ensure the WindowSize is set
+	if pt.WindowSize == 0 {
+		t.Fatal("Expected WindowSize to be set on the price table")
+	}
 	if pt.RegistryEntriesLeft != left {
 		t.Fatal("Wrong number of registry entries", pt.RegistryEntriesLeft, left)
 	}
 	if pt.RegistryEntriesTotal != 128 {
 		t.Fatal("Wrong number of entries", pt.RegistryEntriesTotal, 128)
+	}
+	if !pt.RenewContractCost.Equals(modules.DefaultBaseRPCPrice) {
+		t.Fatal("Wrong renew cost", pt.RenewContractCost, modules.DefaultBaseRPCPrice)
 	}
 }
 

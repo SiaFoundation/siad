@@ -634,7 +634,7 @@ func (r *Renter) DownloadSkylinkBaseSector(link modules.Skylink, timeout time.Du
 		return nil, err
 	}
 	defer r.tg.Done()
-	baseSector, _, err := r.managedDownloadBaseSector(link, timeout)
+	baseSector, err := r.managedDownloadBaseSector(link, timeout)
 	return StreamerFromSlice(baseSector), err
 }
 
@@ -649,12 +649,22 @@ func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Durat
 		return sf.Metadata, StreamerFromSlice(sf.Content), nil
 	}
 
-	baseSector, streamer, err := r.managedDownloadBaseSector(link, timeout)
+	// Check if this skylink is already in the stream buffer set. If so, we can
+	// skip the lookup procedure and use any data that other threads have
+	// cached. Only do this if the skylink is not blocked. We still might have
+	// cached, blocked data.
+	if !r.staticSkynetBlocklist.IsBlocked(link) {
+		id := link.DataSourceID()
+		streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0)
+		if exists {
+			return streamer.Metadata(), streamer, nil
+		}
+	}
+
+	// Try downloading the base sector.
+	baseSector, err := r.managedDownloadBaseSector(link, timeout)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to perform raw download of the skyfile")
-	}
-	if streamer != nil {
-		return streamer.Metadata(), streamer, nil
 	}
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
@@ -690,38 +700,29 @@ func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Durat
 
 // managedDownloadBaseSector will download the baseSector for the skylink or
 // return the active stream
-func (r *Renter) managedDownloadBaseSector(link modules.Skylink, timeout time.Duration) ([]byte, *stream, error) {
+func (r *Renter) managedDownloadBaseSector(link modules.Skylink, timeout time.Duration) ([]byte, error) {
 	// Check if link is blocked
 	if r.staticSkynetBlocklist.IsBlocked(link) {
-		return nil, nil, ErrSkylinkBlocked
-	}
-
-	// Check if this skylink is already in the stream buffer set. If so, we can
-	// skip the lookup procedure and use any data that other threads have
-	// cached.
-	id := link.DataSourceID()
-	streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0)
-	if exists {
-		return nil, streamer, nil
+		return nil, ErrSkylinkBlocked
 	}
 
 	// Pull the offset and fetchSize out of the skylink.
 	offset, fetchSize, err := link.OffsetAndFetchSize()
 	if err != nil {
-		return nil, nil, errors.AddContext(err, "unable to parse skylink")
+		return nil, errors.AddContext(err, "unable to parse skylink")
 	}
 
 	// Fetch the leading chunk.
 	baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize, timeout)
 	if err != nil {
-		return nil, nil, errors.AddContext(err, "unable to fetch base sector of skylink")
+		return nil, errors.AddContext(err, "unable to fetch base sector of skylink")
 	}
 	if len(baseSector) < skynet.SkyfileLayoutSize {
-		return nil, nil, errors.New("download did not fetch enough data, layout cannot be decoded")
+		return nil, errors.New("download did not fetch enough data, layout cannot be decoded")
 	}
 
 	// Return the baseSector
-	return baseSector, nil, nil
+	return baseSector, nil
 }
 
 // PinSkylink will fetch the file associated with the Skylink, and then pin all

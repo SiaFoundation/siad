@@ -1963,7 +1963,7 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlocked, err)
 	}
 
-	// Try to download the BaseSector
+	// Try to download the BaseSector by Root
 	_, err = r.SkynetDownloadByRootGet(sshp.MerkleRoot, 0, modules.SectorSize, -1)
 	if err == nil {
 		t.Fatal("DownloadByRoot request should have failed")
