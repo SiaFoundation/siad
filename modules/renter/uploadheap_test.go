@@ -1217,6 +1217,11 @@ func TestRenterAddChunksToHeapPanic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := rt.renter.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Add maxConsecutiveDirHeapFailures non existent directories to the
 	// directoryHeap
