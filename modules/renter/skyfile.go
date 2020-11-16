@@ -651,13 +651,17 @@ func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Durat
 
 	// Check if this skylink is already in the stream buffer set. If so, we can
 	// skip the lookup procedure and use any data that other threads have
-	// cached.
-	id := link.DataSourceID()
-	streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0)
-	if exists {
-		return streamer.Metadata(), streamer, nil
+	// cached. Only do this if the skylink is not blocked. We still might have
+	// cached, blocked data.
+	if !r.staticSkynetBlocklist.IsBlocked(link) {
+		id := link.DataSourceID()
+		streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0)
+		if exists {
+			return streamer.Metadata(), streamer, nil
+		}
 	}
 
+	// Try downloading the base sector.
 	baseSector, err := r.managedDownloadBaseSector(link, timeout)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to perform raw download of the skyfile")
