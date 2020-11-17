@@ -265,45 +265,32 @@ func loadPersist(persistDir string) (*persist.AppendOnlyPersist, io.Reader, erro
 	tempFilePath := filepath.Join(persistDir, tempPersistFileName(blacklistPersistFile))
 	_, err := os.Stat(tempFilePath)
 	if !os.IsNotExist(err) {
-		// Temp file exists. Continue persistence update
-		// Try and convert the persistence from v1.4.3 to v1.5.0
-		err1 := convertPersistVersionFromv143Tov150(persistDir)
-		if err1 != nil {
-			// If there was an error with the conversion from v1.4.3 to v1.5.0 we try
-			// and convert the persistence from v1.5.0 to v1.5.1
-			err = convertPersistVersionFromv150Tov151(persistDir)
-			if err != nil {
-				return nil, nil, errors.AddContext(errors.Compose(err, err1), "unable to convert persistence from temp file")
-			}
-		}
-		// If the conversion from v1.4.3 to v1.5.0 was successful then we try and
-		// convert the persistence from v1.5.0 to v1.5.1
-		err = convertPersistVersionFromv150Tov151(persistDir)
+		// Temp file exists. Continue persistence update.
+		err = convertPersistence(persistDir)
 		if err != nil {
-			return nil, nil, errors.AddContext(err, "unable to convert persistence from temp file")
+			return nil, nil, errors.AddContext(err, "unable to convert persistence with the existence of a temp file")
+		}
+	}
+
+	// Check for the existence of the old persist file
+	_, err = os.Stat(filepath.Join(persistDir, blacklistPersistFile))
+	if !os.IsNotExist(err) {
+		// Old persist file exists, try and update persistence
+		err = convertPersistence(persistDir)
+		if err != nil {
+			return nil, nil, errors.AddContext(err, "unable to convert persistence when old persist file exists")
 		}
 	}
 
 	// Load Persistence
 	aop, reader, err := persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
 	if errors.Contains(err, persist.ErrWrongVersion) {
-		// Try and convert the persistence from v1.4.3 to v1.5.0
-		err1 := convertPersistVersionFromv143Tov150(persistDir)
-		if err1 != nil {
-			// If there was an error with the conversion from v1.4.3 to v1.5.0 we try
-			// and convert the persistence from v1.5.0 to v1.5.1
-			err = convertPersistVersionFromv150Tov151(persistDir)
-			if err != nil {
-				return nil, nil, errors.AddContext(errors.Compose(err, err1), "unable to convert persistence")
-			}
-		}
-		// If the conversion from v1.4.3 to v1.5.0 was successful then we try and
-		// convert the persistence from v1.5.0 to v1.5.1
-		err = convertPersistVersionFromv150Tov151(persistDir)
+		// Wrong version, try and convert persistence
+		err = convertPersistence(persistDir)
 		if err != nil {
-			return nil, nil, errors.AddContext(err, "unable to convert persistence")
+			return nil, nil, errors.AddContext(err, "unable to convert persistence after wrong version error")
 		}
-		// Load the v1.5.0 persistence
+		// Load the v1.5.1 persistence
 		aop, reader, err = persist.NewAppendOnlyPersist(persistDir, persistFile, metadataHeader, metadataVersion)
 	}
 	if err != nil {
@@ -311,4 +298,21 @@ func loadPersist(persistDir string) (*persist.AppendOnlyPersist, io.Reader, erro
 	}
 
 	return aop, reader, nil
+}
+
+// convertPersistence will try and convert the persistence from the oldest
+// persist version to the newest.
+//
+// NOTE: Errors from earlier versions will only be returned if there is an error
+// with the newest version
+func convertPersistence(persistDir string) error {
+	// Try converting persistence from v1.4.3 to v1.5.0
+	errv143Tov150 := convertPersistVersionFromv143Tov150(persistDir)
+
+	// Try converting persistence from v1.5.0 to v1.5.1
+	errv150TOv151 := convertPersistVersionFromv150Tov151(persistDir)
+	if errv150TOv151 != nil {
+		return errors.Compose(errv143Tov150, errv150TOv151)
+	}
+	return nil
 }
