@@ -126,7 +126,7 @@ func testValidateSkyfileMetadata(t *testing.T) {
 	// happy case
 	metadata := SkyfileMetadata{
 		Filename: t.Name(),
-		Length:   fastrand.Uint64n(10),
+		Length:   fastrand.Uint64n(10) + 1,
 		Subfiles: SkyfileSubfiles{
 			"validkey": SkyfileSubfileMetadata{
 				Filename: "validkey",
