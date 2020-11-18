@@ -2,6 +2,7 @@ package renter
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"encoding/hex"
@@ -64,6 +65,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "DisableForce", Test: testSkynetDisableForce},
 		{Name: "BlocklistHash", Test: testSkynetBlocklistHash},
 		{Name: "BlocklistSkylink", Test: testSkynetBlocklistSkylink},
+		{Name: "BlocklistUpgrade", Test: testSkynetBlocklistUpgrade},
 		{Name: "Portals", Test: testSkynetPortals},
 		{Name: "HeadRequest", Test: testSkynetHeadRequest},
 		{Name: "Stats", Test: testSkynetStats},
@@ -1563,7 +1565,7 @@ func testSkynetBlocklistHash(t *testing.T, tg *siatest.TestGroup) {
 	testSkynetBlocklist(t, tg, true)
 }
 
-// testSkynetBlocklistHash tests the skynet blocklist module when submitting
+// testSkynetBlocklistSkylink tests the skynet blocklist module when submitting
 // skylinks
 func testSkynetBlocklistSkylink(t *testing.T, tg *siatest.TestGroup) {
 	testSkynetBlocklist(t, tg, false)
@@ -1844,6 +1846,82 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 	_, err = r.RenterFileRootGet(skyfilePath)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testSkynetBlocklistUpgrade tests the skynet blocklist module when submitting
+// skylinks
+func testSkynetBlocklistUpgrade(t *testing.T, tg *siatest.TestGroup) {
+	// Create renterDir and renter params
+	testDir := renterTestDir(t.Name())
+	renterDir := filepath.Join(testDir, "renter")
+	err := os.MkdirAll(renterDir, persist.DefaultDiskPermissionsTest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	params := node.Renter(testDir)
+
+	// Load compatibility blacklist persistence
+	blacklistCompatFile, err := os.Open("../../compatibility/skynetblacklistv143_siatest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	blacklistPersist, err := os.Create(filepath.Join(renterDir, "skynetblacklist"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = io.Copy(blacklistPersist, blacklistCompatFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = errors.Compose(blacklistCompatFile.Close(), blacklistPersist.Close())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Grab the Skylink that is associated with the blacklist persistence
+	skylinkFile, err := os.Open("../../compatibility/skylinkv143_siatest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scanner := bufio.NewScanner(skylinkFile)
+	scanner.Scan()
+	skylinkStr := scanner.Text()
+	var skylink modules.Skylink
+	err = skylink.LoadString(skylinkStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add the renter to the group.
+	nodes, err := tg.AddNodes(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Verify there is a skylink in the now blocklist and it is the one from the
+	// compatibility file
+	sbg, err := r.SkynetBlocklistGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sbg.Blocklist) != 1 {
+		t.Fatal("blocklist should have 1 link, found:", len(sbg.Blocklist))
+	}
+	hash := crypto.HashObject(skylink.MerkleRoot())
+	if sbg.Blocklist[0] != hash {
+		t.Fatal("unexpected hash")
+	}
+
+	// Verify trying to download the skylink fails due to it being blocked
+	//
+	// NOTE: It doesn't matter if there is a file associated with this Skylink
+	// since the blocklist check should cause the download to fail before any look
+	// ups occur.
+	_, _, err = r.SkynetSkylinkGet(skylinkStr)
+	if !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
+		t.Fatal("unexpected error:", err)
 	}
 }
 
@@ -3109,7 +3187,6 @@ func TestRegistryUpdateRead(t *testing.T) {
 
 	// Create a testgroup.
 	groupParams := siatest.GroupParams{
-		Hosts:   renter.MinUpdateRegistrySuccesses,
 		Renters: 1,
 		Miners:  1,
 	}
@@ -3123,6 +3200,16 @@ func TestRegistryUpdateRead(t *testing.T) {
 		}
 	}()
 	r := tg.Renters()[0]
+
+	// Add hosts with a latency dependency.
+	deps := dependencies.NewDependencyHostBlockRPC()
+	deps.Disable()
+	host := node.HostTemplate
+	host.HostDeps = deps
+	_, err = tg.AddNodeN(host, renter.MinUpdateRegistrySuccesses)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Create some random skylinks to use later.
 	skylink1, err := modules.NewSkylinkV1(crypto.HashBytes(fastrand.Bytes(100)), 0, 100)
@@ -3140,19 +3227,14 @@ func TestRegistryUpdateRead(t *testing.T) {
 
 	// Create a signed registry value.
 	sk, pk := crypto.GenerateKeyPair()
-	fileID := modules.FileID{
-		Version: modules.FileIDVersion,
-	}
-	tweak, err := fileID.Tweak()
-	if err != nil {
-		t.Fatal(err)
-	}
+	var dataKey crypto.Hash
+	fastrand.Read(dataKey[:])
 	data1 := skylink1.Bytes()
 	data2 := skylink2.Bytes()
 	data3 := skylink3.Bytes()
-	srv1 := modules.NewRegistryValue(tweak, data1, 0).Sign(sk) // rev 0
-	srv2 := modules.NewRegistryValue(tweak, data2, 1).Sign(sk) // rev 1
-	srv3 := modules.NewRegistryValue(tweak, data3, 0).Sign(sk) // rev 0
+	srv1 := modules.NewRegistryValue(dataKey, data1, 0).Sign(sk) // rev 0
+	srv2 := modules.NewRegistryValue(dataKey, data2, 1).Sign(sk) // rev 1
+	srv3 := modules.NewRegistryValue(dataKey, data3, 0).Sign(sk) // rev 0
 	spk := types.SiaPublicKey{
 		Algorithm: types.SignatureEd25519,
 		Key:       pk[:],
@@ -3165,19 +3247,19 @@ func TestRegistryUpdateRead(t *testing.T) {
 	}
 
 	// Try to read it from the host. Shouldn't work.
-	_, err = r.RegistryRead(spk, fileID)
+	_, err = r.RegistryRead(spk, dataKey)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryEntryNotFound.Error()) {
 		t.Fatal(err)
 	}
 
 	// Update the regisry.
-	err = r.RegistryUpdate(spk, fileID, srv1.Revision, srv1.Signature, skylink1)
+	err = r.RegistryUpdate(spk, dataKey, srv1.Revision, srv1.Signature, skylink1)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Read it again. This should work.
-	readSRV, err := r.RegistryRead(spk, fileID)
+	readSRV, err := r.RegistryRead(spk, dataKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3187,14 +3269,14 @@ func TestRegistryUpdateRead(t *testing.T) {
 		t.Fatal("srvs don't match")
 	}
 
-	// Update the regisry again, with a higher revision.
-	err = r.RegistryUpdate(spk, fileID, srv2.Revision, srv2.Signature, skylink2)
+	// Update the registry again, with a higher revision.
+	err = r.RegistryUpdate(spk, dataKey, srv2.Revision, srv2.Signature, skylink2)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Read it again. This should work.
-	readSRV, err = r.RegistryRead(spk, fileID)
+	readSRV, err = r.RegistryRead(spk, dataKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3204,8 +3286,22 @@ func TestRegistryUpdateRead(t *testing.T) {
 		t.Fatal("srvs don't match")
 	}
 
-	// Update the regisry again, with the same revision. Shouldn't work.
-	err = r.RegistryUpdate(spk, fileID, srv2.Revision, srv2.Signature, skylink2)
+	// Read it again with a almost zero timeout. This should time out.
+	deps.Enable()
+	start := time.Now()
+	readSRV, err = r.RegistryReadWithTimeout(spk, dataKey, time.Second)
+	deps.Disable()
+	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryLookupTimeout.Error()) {
+		t.Fatal(err)
+	}
+
+	// Make sure it didn't take too long and timed out.
+	if time.Since(start) > 2*time.Second {
+		t.Fatalf("read took too long to time out %v > %v", time.Since(start), 2*time.Second)
+	}
+
+	// Update the registry again, with the same revision. Shouldn't work.
+	err = r.RegistryUpdate(spk, dataKey, srv2.Revision, srv2.Signature, skylink2)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateNoSuccessfulUpdates.Error()) {
 		t.Fatal(err)
 	}
@@ -3213,8 +3309,8 @@ func TestRegistryUpdateRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Update the regisry again, with a lower revision. Shouldn't work.
-	err = r.RegistryUpdate(spk, fileID, srv3.Revision, srv3.Signature, skylink3)
+	// Update the registry again, with a lower revision. Shouldn't work.
+	err = r.RegistryUpdate(spk, dataKey, srv3.Revision, srv3.Signature, skylink3)
 	if err == nil || !strings.Contains(err.Error(), renter.ErrRegistryUpdateNoSuccessfulUpdates.Error()) {
 		t.Fatal(err)
 	}
@@ -3222,10 +3318,10 @@ func TestRegistryUpdateRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Update the regisry again, with an invalid sig. Shouldn't work.
+	// Update the registry again, with an invalid sig. Shouldn't work.
 	var invalidSig crypto.Signature
 	fastrand.Read(invalidSig[:])
-	err = r.RegistryUpdate(spk, fileID, srv3.Revision, invalidSig, skylink3)
+	err = r.RegistryUpdate(spk, dataKey, srv3.Revision, invalidSig, skylink3)
 	if err == nil || !strings.Contains(err.Error(), crypto.ErrInvalidSignature.Error()) {
 		t.Fatal(err)
 	}

@@ -7,6 +7,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
@@ -175,4 +176,40 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 	}
 	// Wrap the stream in a ratelimit.
 	return ratelimit.NewRLStream(stream, w.renter.rl, w.renter.tg.StopChan()), nil
+}
+
+// managedRenew renews the contract with the worker's host.
+func (w *worker) managedRenew(params proto.ContractParams, txnBuilder modules.TransactionBuilder) error {
+	// create a new stream
+	stream, err := w.staticNewStream()
+	if err != nil {
+		return errors.AddContext(err, "managedRenew: unable to create a new stream")
+	}
+	defer func() {
+		if err := stream.Close(); err != nil {
+			w.renter.log.Println("managedRenew: failed to close stream", err)
+		}
+	}()
+
+	// write the specifier.
+	err = modules.RPCWrite(stream, modules.RPCRenewContract)
+	if err != nil {
+		return errors.AddContext(err, "managedRenew: failed to write RPC specifier")
+	}
+
+	// send price table uid
+	pt := w.staticPriceTable().staticPriceTable
+	err = modules.RPCWrite(stream, pt.UID)
+	if err != nil {
+		return errors.AddContext(err, "managedRenew: failed to write price table uid")
+	}
+
+	// have the contractset handle the renewal.
+	r := w.renter
+	err = w.renter.hostContractor.RenewContract(stream, w.staticHostPubKey, params, txnBuilder, r.tpool, r.hostDB)
+	if err != nil {
+		return errors.AddContext(err, "managedRenew: call to RenewContract failed")
+	}
+
+	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1179,6 +1180,11 @@ func TestMigrate(t *testing.T) {
 		t.Fatal("wrong capacity/length for test", r.Cap(), r.Len())
 	}
 
+	// Make sure the registry file is where we expect it to be.
+	if _, err := os.Stat(registryPathSrc); err != nil {
+		t.Fatal(err)
+	}
+
 	// Migrate the registry.
 	err = r.Migrate(registryPathDst)
 	if err != nil {
@@ -1233,6 +1239,53 @@ func TestMigrate(t *testing.T) {
 	// Try to migrate a registry to its own path. This shouldn't work.
 	err = r.Migrate(registryPathDst)
 	if !errors.Contains(err, errSamePath) {
+		t.Fatal(err)
+	}
+}
+
+// TestFailedLoadLargeRegistry makes sure that loading a registry larger than
+// the maximum size will fail.
+func TestFailedLoadLargeRegistry(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	dir := testDir(t.Name())
+
+	// Create a new registry.
+	registryPath := filepath.Join(dir, "registry")
+	r, err := New(registryPath, 128)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func(c io.Closer) {
+		if err := c.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}(r)
+
+	// Add 64 entries to it.
+	numEntries := 64
+	entries := make([]modules.SignedRegistryValue, 0, numEntries)
+	keys := make([]types.SiaPublicKey, 0, numEntries)
+	for i := 0; i < numEntries; i++ {
+		rv, v, sk := randomValue(0)
+		rv.Revision = 0 // set revision number to 0
+		rv = rv.Sign(sk)
+		_, err = r.Update(rv, v.key, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rv, _ = r.Get(v.key, v.tweak)
+		entries = append(entries, rv)
+		keys = append(keys, v.key)
+	}
+
+	// Try reload it with a bitfield size of 0. This should fail while loading the
+	// registry.
+	_, err = New(registryPath, 0)
+	if err == nil || !strings.Contains(err.Error(), "failed to load registry entries") {
 		t.Fatal(err)
 	}
 }

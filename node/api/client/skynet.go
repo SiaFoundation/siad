@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -580,35 +581,28 @@ func (c *Client) SkykeySkykeysGet() ([]skykey.Skykey, error) {
 }
 
 // RegistryRead queries the /skynet/registry [GET] endpoint.
-func (c *Client) RegistryRead(spk types.SiaPublicKey, fileID modules.FileID) (modules.SignedRegistryValue, error) {
-	// Encode the fileID.
-	fileIDBytes, err := json.Marshal(fileID)
-	if err != nil {
-		return modules.SignedRegistryValue{}, err
-	}
+func (c *Client) RegistryRead(spk types.SiaPublicKey, dataKey crypto.Hash) (modules.SignedRegistryValue, error) {
+	return c.RegistryReadWithTimeout(spk, dataKey, 0)
+}
 
+// RegistryReadWithTimeout queries the /skynet/registry [GET] endpoint with the
+// specified timeout.
+func (c *Client) RegistryReadWithTimeout(spk types.SiaPublicKey, dataKey crypto.Hash, timeout time.Duration) (modules.SignedRegistryValue, error) {
 	// Set the values.
 	values := url.Values{}
 	values.Set("publickey", spk.String())
-	values.Set("fileid", hex.EncodeToString(fileIDBytes))
+	values.Set("datakey", dataKey.String())
+	if timeout > 0 {
+		values.Set("timeout", fmt.Sprint(int(timeout.Seconds())))
+	}
 
 	// Send request.
 	var rhg api.RegistryHandlerGET
-	err = c.get(fmt.Sprintf("/skynet/registry?%v", values.Encode()), &rhg)
+	err := c.get(fmt.Sprintf("/skynet/registry?%v", values.Encode()), &rhg)
 	if err != nil {
 		return modules.SignedRegistryValue{}, err
 	}
 
-	// Decode tweak.
-	var tweak crypto.Hash
-	tweakBytes, err := hex.DecodeString(rhg.Tweak)
-	if err != nil {
-		return modules.SignedRegistryValue{}, errors.AddContext(err, "failed to decode tweak")
-	}
-	if len(tweakBytes) != len(tweak) {
-		return modules.SignedRegistryValue{}, fmt.Errorf("unexpected tweak length %v != %v", len(tweakBytes), len(tweak))
-	}
-	copy(tweak[:], tweakBytes)
 	// Decode data.
 	data, err := hex.DecodeString(rhg.Data)
 	if err != nil {
@@ -624,14 +618,14 @@ func (c *Client) RegistryRead(spk types.SiaPublicKey, fileID modules.FileID) (mo
 		return modules.SignedRegistryValue{}, fmt.Errorf("unexpected signature length %v != %v", len(sigBytes), len(sig))
 	}
 	copy(sig[:], sigBytes)
-	return modules.NewSignedRegistryValue(tweak, data, rhg.Revision, sig), nil
+	return modules.NewSignedRegistryValue(dataKey, data, rhg.Revision, sig), nil
 }
 
 // RegistryUpdate queries the /skynet/registry [POST] endpoint.
-func (c *Client) RegistryUpdate(spk types.SiaPublicKey, fileID modules.FileID, revision uint64, sig crypto.Signature, skylink modules.Skylink) error {
+func (c *Client) RegistryUpdate(spk types.SiaPublicKey, dataKey crypto.Hash, revision uint64, sig crypto.Signature, skylink modules.Skylink) error {
 	req := api.RegistryHandlerRequestPOST{
 		PublicKey: spk,
-		FileID:    fileID,
+		DataKey:   dataKey,
 		Revision:  revision,
 		Signature: sig,
 		Data:      skylink.Bytes(),

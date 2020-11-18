@@ -1,1 +1,0 @@
-- Add `Skynet-Skylink` response headers.

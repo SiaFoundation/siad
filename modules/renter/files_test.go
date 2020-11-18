@@ -15,7 +15,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 )
 
@@ -455,10 +454,7 @@ func TestRenterFileDir(t *testing.T) {
 	}
 
 	// Upload local file
-	ec, err := siafile.NewRSCode(DefaultDataPieces, DefaultParityPieces)
-	if err != nil {
-		t.Fatal(err)
-	}
+	ec := modules.NewRSCodeDefault()
 	siaPath, err := modules.NewSiaPath(fileName)
 	if err != nil {
 		t.Fatal(err)

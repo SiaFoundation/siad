@@ -192,7 +192,6 @@ are stuck waiting for more memory before they release memory.
 **Key Files**
  - [worker.go](./worker.go)
  - [workerdownload.go](./workerdownload.go)
- - [workerfetchbackups.go](./workerfetchbackups.go)
  - [workerpool.go](./workerpool.go)
  - [workerupload.go](./workerupload.go)
 
@@ -289,10 +288,6 @@ generic code and a basic reference implementation for building a job.
    - `unfinishedDownloadChunk.managedCleanUp` will use this method to re-issue
 	 work to workers that are known to have passed on a job previously, but may
 	 be required now.
- - `callQueueFetchBackupsJob` can be used to schedule a job to retrieve a list
-   of backups from a host
-   - `Renter.BackupsOnHost` will use this method to fetch a list of snapshot
-	 backups that are stored on a particular host.
  - `callQueueUploadChunk` can be used to schedule a job to participate in a
    chunk upload
    - `Renter.managedDistributeChunkToWorkers` will use this method to distribute
@@ -302,10 +297,6 @@ generic code and a basic reference implementation for building a job.
 	 but may be required now.
 
 ##### Outbound Complexities
- - `managedPerformFetchBackupsJob` will use `Renter.callDownloadSnapshotTable`
-   to fetch the list of backups from the host. The snapshot subsystem is
-   responsible for defining what the list of backups looks like and how to fetch
-   those backups from the host.
  - `managedPerformDownloadChunkJob` is a mess of complexities and needs to be
    refactored to be compliant with the new subsystem format.
  - `managedPerformUploadChunkJob` is a mess of complexities and needs to be

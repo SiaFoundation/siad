@@ -11,7 +11,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -141,11 +140,8 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams) (*filesyst
 	// Check if ec was set. If not use defaults.
 	var err error
 	if ec == nil && !repair {
-		up.ErasureCode, err = siafile.NewRSSubCode(DefaultDataPieces, DefaultParityPieces, 64)
-		if err != nil {
-			return nil, err
-		}
-		ec = up.ErasureCode
+		ec = modules.NewRSSubCodeDefault()
+		up.ErasureCode = ec
 	} else if ec != nil && repair {
 		return nil, errors.New("can't provide erasure code settings when doing repairs")
 	}

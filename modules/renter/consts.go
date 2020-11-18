@@ -31,21 +31,6 @@ func AlertCauseSiafileLowRedundancy(siaPath modules.SiaPath, health, redundancy 
 
 // Default redundancy parameters.
 var (
-	// DefaultDataPieces is the number of data pieces per erasure-coded chunk
-	DefaultDataPieces = build.Select(build.Var{
-		Dev:      1,
-		Standard: 10,
-		Testing:  1,
-	}).(int)
-
-	// DefaultParityPieces is the number of parity pieces per erasure-coded
-	// chunk
-	DefaultParityPieces = build.Select(build.Var{
-		Dev:      1,
-		Standard: 20,
-		Testing:  4,
-	}).(int)
-
 	// RepairThreshold defines the threshold at which the renter decides to
 	// repair a file. The renter will start repairing the file when the health
 	// is equal to or greater than this value.

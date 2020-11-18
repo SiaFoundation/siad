@@ -1255,7 +1255,7 @@ func TestExecuteUpdateRegistryProgram(t *testing.T) {
 
 	// Create the 'UpdateRegistry' program.
 	pt := rhp.managedPriceTable()
-	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since HasSector doesn't depend on duration.
+	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since UpdateRegistry doesn't depend on duration.
 	err = pb.AddUpdateRegistryInstruction(spk, rv)
 	if err != nil {
 		t.Fatal(err)
@@ -1394,11 +1394,10 @@ func TestExecuteUpdateRegistryProgram(t *testing.T) {
 
 	// Run it one more time. Time time with a lower revision number which should
 	// also fail.
-	pb = modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since HasSector doesn't depend on duration.
+	pb = modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since UpdateRegistry doesn't depend on duration.
 	rvLowRev := rv
 	rvLowRev.Revision--
 	rvLowRev = rvLowRev.Sign(sk)
-	println("argh", rvLowRev.Revision)
 	err = pb.AddUpdateRegistryInstruction(spk, rvLowRev)
 	if err != nil {
 		t.Fatal(err)
@@ -1519,7 +1518,7 @@ func TestExecuteReadRegistryProgram(t *testing.T) {
 
 	// Create the 'UpdateRegistry' program.
 	pt := rhp.managedPriceTable()
-	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since HasSector doesn't depend on duration.
+	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since ReadRegistry doesn't depend on duration.
 	err = pb.AddReadRegistryInstruction(spk, rv.Tweak)
 	if err != nil {
 		t.Fatal(err)
@@ -1584,9 +1583,9 @@ func TestExecuteReadRegistryProgram(t *testing.T) {
 	if len(resp.Proof) != 0 {
 		t.Fatalf("wrong Proof %v != %v", resp.Proof, []crypto.Hash{})
 	}
-	if len(resp.Output) != 186 {
-		// 186 = 64 (sig) + 8 (revision) + 114 (data)
-		t.Fatalf("wrong Output length %v != %v", len(resp.Output), 0)
+	if len(resp.Output) != 185 {
+		// 185 = 64 (sig) + 8 (revision) + 113 (data)
+		t.Fatalf("wrong Output length %v != %v", len(resp.Output), 185)
 	}
 	if !resp.TotalCost.Equals(programCost) {
 		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())

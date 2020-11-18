@@ -1,2 +1,0 @@
-- new acceptcontractadjustment in score breakdown
-- reduced default period to 2 months

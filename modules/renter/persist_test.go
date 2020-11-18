@@ -20,7 +20,7 @@ import (
 func testingFileParams() (modules.SiaPath, modules.ErasureCoder) {
 	nData := fastrand.Intn(10)
 	nParity := fastrand.Intn(10)
-	rsc, _ := siafile.NewRSCode(nData+1, nParity+1)
+	rsc, _ := modules.NewRSCode(nData+1, nParity+1)
 	return modules.RandomSiaPath(), rsc
 }
 
@@ -185,7 +185,7 @@ func TestRenterPaths(t *testing.T) {
 	}
 
 	wal := rt.renter.wal
-	rc, err := siafile.NewRSSubCode(1, 1, crypto.SegmentSize)
+	rc, err := modules.NewRSSubCode(1, 1, crypto.SegmentSize)
 	if err != nil {
 		t.Fatal(err)
 	}

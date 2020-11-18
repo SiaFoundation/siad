@@ -8,6 +8,22 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// TestHashRegistryValue tests that signing registry values results in expected
+// values.
+func TestHashRegistryValue(t *testing.T) {
+	expected := "788dddf5232807611557a3dc0fa5f34012c2650526ba91d55411a2b04ba56164"
+	dataKey := "HelloWorld"
+	tweak := crypto.HashAll(dataKey)
+	data := []byte("abc")
+	revision := uint64(123456789)
+
+	value := NewRegistryValue(tweak, data, revision)
+	hash := value.hash()
+	if hash.String() != expected {
+		t.Fatalf("expected hash %v, got %v", expected, hash.String())
+	}
+}
+
 // TestRegistryValueSignature tests signature verification on registry values.
 func TestRegistryValueSignature(t *testing.T) {
 	signedRV := func() (SignedRegistryValue, crypto.PublicKey) {

@@ -193,7 +193,7 @@ func TestSetRandom(t *testing.T) {
 		t.Fatal("bit wasn't set")
 	}
 
-	// EdgeCase: TestRandom on empty bitfield.
+	// EdgeCase: SetRandom on empty bitfield.
 	b, err = newBitfield(0)
 	if err != nil {
 		t.Fatal(err)

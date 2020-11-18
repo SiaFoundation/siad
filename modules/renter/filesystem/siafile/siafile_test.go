@@ -136,7 +136,7 @@ func TestFileNumChunks(t *testing.T) {
 
 	for _, test := range tests {
 		// Create erasure-coder
-		rsc, _ := NewRSCode(test.dataPieces, 1) // can't use 0
+		rsc, _ := modules.NewRSCode(test.dataPieces, 1) // can't use 0
 		// Create the file
 		siaFilePath, _, source, _, sk, _, _, fileMode := newTestFileParams(1, true)
 		f, _, _ := customTestFileAndWAL(siaFilePath, source, rsc, sk, test.fileSize, -1, fileMode)
@@ -186,7 +186,7 @@ func TestFileRedundancy(t *testing.T) {
 	}
 
 	for _, nData := range nDatas {
-		rsc, _ := NewRSCode(nData, 10)
+		rsc, _ := modules.NewRSCode(nData, 10)
 		siaFilePath, _, source, _, sk, fileSize, numChunks, fileMode := newTestFileParamsWithRC(2, false, rsc)
 		f, _, _ := customTestFileAndWAL(siaFilePath, source, rsc, sk, fileSize, numChunks, fileMode)
 		// If the file has a partial chunk, fake a combined chunk to make sure we can
@@ -308,7 +308,7 @@ func TestFileHealth(t *testing.T) {
 	t.Parallel()
 
 	// Create a Zero byte file
-	rsc, _ := NewRSCode(10, 20)
+	rsc, _ := modules.NewRSCode(10, 20)
 	siaFilePath, _, source, _, sk, _, _, fileMode := newTestFileParams(1, true)
 	zeroFile, _, _ := customTestFileAndWAL(siaFilePath, source, rsc, sk, 0, 0, fileMode)
 
@@ -1128,7 +1128,7 @@ func BenchmarkLoadSiaFile(b *testing.B) {
 	}
 	// Create the file.
 	wal, _ := newTestWAL()
-	rc, err := NewRSSubCode(10, 20, crypto.SegmentSize)
+	rc, err := modules.NewRSSubCode(10, 20, crypto.SegmentSize)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1180,7 +1180,7 @@ func benchmarkRandomChunkWrite(numThreads int, b *testing.B) {
 	}
 	// Create the file.
 	wal, _ := newTestWAL()
-	rc, err := NewRSSubCode(10, 20, crypto.SegmentSize)
+	rc, err := modules.NewRSSubCode(10, 20, crypto.SegmentSize)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1243,7 +1243,7 @@ func BenchmarkRandomChunkRead(b *testing.B) {
 	}
 	// Create the file.
 	wal, _ := newTestWAL()
-	rc, err := NewRSSubCode(10, 20, crypto.SegmentSize)
+	rc, err := modules.NewRSSubCode(10, 20, crypto.SegmentSize)
 	if err != nil {
 		b.Fatal(err)
 	}
