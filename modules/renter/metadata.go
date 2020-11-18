@@ -164,7 +164,6 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 				r.staticAlerter.RegisterAlert(modules.AlertIDSiafileLowRedundancy(uid), AlertMSGSiafileLowRedundancy,
 					AlertCauseSiafileLowRedundancy(fileSiaPath, maxHealth, fileMetadata.Redundancy),
 					modules.SeverityWarning)
-				r.log.Println(AlertCauseSiafileLowRedundancy(fileSiaPath, maxHealth, fileMetadata.Redundancy))
 			} else {
 				r.staticAlerter.UnregisterAlert(modules.AlertIDSiafileLowRedundancy(uid))
 			}
