@@ -221,6 +221,7 @@ func TestRenterListDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// 5 Directories because of root, foo, home, var, and snapshots
 	if len(directories) != 5 {
 		t.Fatal("Expected 5 DirectoryInfos but got", len(directories))
 	}
@@ -229,32 +230,38 @@ func TestRenterListDirectory(t *testing.T) {
 		t.Fatal("Expected 1 FileInfo but got", len(files))
 	}
 
-	// Refresh the directories.
+	// Refresh the directories blocking.
 	for _, dir := range directories {
-		go rt.renter.callThreadedBubbleMetadata(dir.SiaPath)
+		err = rt.renter.managedBubbleMetadata(dir.SiaPath)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// Wait for root directory to show proper number of files and subdirs.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		directories, err = rt.renter.DirList(modules.RootSiaPath())
+		root, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath())
 		if err != nil {
 			return err
 		}
-		root := directories[0]
+		rootMD, err := root.Metadata()
+		if err != nil {
+			return err
+		}
 		// Check the aggregate and siadir fields.
 		//
 		// Expecting /home, /home/user, /var, /var/skynet, /snapshots, /foo
-		if root.AggregateNumSubDirs != 6 {
-			return fmt.Errorf("Expected 6 subdirs in aggregate but got %v", root.AggregateNumSubDirs)
+		if rootMD.AggregateNumSubDirs != 6 {
+			return fmt.Errorf("Expected 6 subdirs in aggregate but got %v", rootMD.AggregateNumSubDirs)
 		}
-		if root.NumSubDirs != 4 {
-			return fmt.Errorf("Expected 4 subdirs but got %v", root.NumSubDirs)
+		if rootMD.NumSubDirs != 4 {
+			return fmt.Errorf("Expected 4 subdirs but got %v", rootMD.NumSubDirs)
 		}
-		if root.AggregateNumFiles != 1 {
-			return fmt.Errorf("Expected 1 file in aggregate but got %v", root.AggregateNumFiles)
+		if rootMD.AggregateNumFiles != 1 {
+			return fmt.Errorf("Expected 1 file in aggregate but got %v", rootMD.AggregateNumFiles)
 		}
-		if root.NumFiles != 1 {
-			return fmt.Errorf("Expected 1 file but got %v", root.NumFiles)
+		if rootMD.NumFiles != 1 {
+			return fmt.Errorf("Expected 1 file but got %v", rootMD.NumFiles)
 		}
 		return nil
 	})
@@ -263,54 +270,65 @@ func TestRenterListDirectory(t *testing.T) {
 	}
 
 	// Verify that the directory information matches the on disk information
-	rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath())
-	if err != nil {
-		t.Fatal(err)
-	}
-	fooDir, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	homeDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.HomeFolder)
-	if err != nil {
-		t.Fatal(err)
-	}
-	snapshotsDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.BackupFolder)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		err = errors.Compose(rootDir.Close(), fooDir.Close(), homeDir.Close(), snapshotsDir.Close())
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		rootDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.RootSiaPath())
 		if err != nil {
-			t.Fatal(err)
+			return err
 		}
-	}()
-	// Refresh Directories
-	directories, err = rt.renter.DirList(modules.RootSiaPath())
+		fooDir, err := rt.renter.staticFileSystem.OpenSiaDir(siaPath)
+		if err != nil {
+			return err
+		}
+		homeDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.HomeFolder)
+		if err != nil {
+			return err
+		}
+		snapshotsDir, err := rt.renter.staticFileSystem.OpenSiaDir(modules.BackupFolder)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			err = errors.Compose(err, rootDir.Close(), fooDir.Close(), homeDir.Close(), snapshotsDir.Close())
+		}()
+
+		// Refresh Directories
+		directories, err = rt.renter.DirList(modules.RootSiaPath())
+		if err != nil {
+			return err
+		}
+		// Sort directories.
+		sort.Slice(directories, func(i, j int) bool {
+			return strings.Compare(directories[i].SiaPath.String(), directories[j].SiaPath.String()) < 0
+		})
+		if err = compareDirectoryInfoAndMetadataCustom(directories[0], rootDir, false); err != nil {
+			return err
+		}
+		if err = compareDirectoryInfoAndMetadataCustom(directories[1], fooDir, false); err != nil {
+			return err
+		}
+		if err = compareDirectoryInfoAndMetadataCustom(directories[2], homeDir, false); err != nil {
+			return err
+		}
+		if err = compareDirectoryInfoAndMetadataCustom(directories[3], snapshotsDir, false); err != nil {
+			return err
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	// Sort directories.
-	sort.Slice(directories, func(i, j int) bool {
-		return strings.Compare(directories[i].SiaPath.String(), directories[j].SiaPath.String()) < 0
-	})
-	if err = compareDirectoryInfoAndMetadata(directories[0], rootDir); err != nil {
-		t.Error(err)
-	}
-	if err = compareDirectoryInfoAndMetadata(directories[1], fooDir); err != nil {
-		t.Error(err)
-	}
-	if err = compareDirectoryInfoAndMetadata(directories[2], homeDir); err != nil {
-		t.Error(err)
-	}
-	if err = compareDirectoryInfoAndMetadata(directories[3], snapshotsDir); err != nil {
-		t.Error(err)
 	}
 }
 
 // compareDirectoryInfoAndMetadata is a helper that compares the information in
 // a DirectoryInfo struct and a SiaDirSetEntry struct
 func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *filesystem.DirNode) error {
+	return compareDirectoryInfoAndMetadataCustom(di, siaDir, true)
+}
+
+// compareDirectoryInfoAndMetadataCustom is a helper that compares the
+// information in a DirectoryInfo struct and a SiaDirSetEntry struct with the
+// option to ignore fields based on differences in persistence
+func compareDirectoryInfoAndMetadataCustom(di modules.DirectoryInfo, siaDir *filesystem.DirNode, checkTimes bool) error {
 	md, err := siaDir.Metadata()
 	if err != nil {
 		return err
@@ -319,9 +337,6 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *filesyste
 	// Compare Aggregate Fields
 	if md.AggregateHealth != di.AggregateHealth {
 		return fmt.Errorf("AggregateHealths not equal, %v and %v", md.AggregateHealth, di.AggregateHealth)
-	}
-	if di.AggregateLastHealthCheckTime != md.AggregateLastHealthCheckTime {
-		return fmt.Errorf("AggregateLastHealthCheckTimes not equal %v and %v", di.AggregateLastHealthCheckTime, md.AggregateLastHealthCheckTime)
 	}
 	aggregateMaxHealth := math.Max(md.AggregateHealth, md.AggregateStuckHealth)
 	if di.AggregateMaxHealth != aggregateMaxHealth {
@@ -333,9 +348,6 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *filesyste
 	}
 	if md.AggregateMinRedundancy != di.AggregateMinRedundancy {
 		return fmt.Errorf("AggregateMinRedundancy not equal, %v and %v", md.AggregateMinRedundancy, di.AggregateMinRedundancy)
-	}
-	if di.AggregateMostRecentModTime != md.AggregateModTime {
-		return fmt.Errorf("AggregateModTimes not equal %v and %v", di.AggregateMostRecentModTime, md.AggregateModTime)
 	}
 	if md.AggregateNumFiles != di.AggregateNumFiles {
 		return fmt.Errorf("AggregateNumFiles not equal, %v and %v", md.AggregateNumFiles, di.AggregateNumFiles)
@@ -352,12 +364,20 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *filesyste
 	if md.NumStuckChunks != di.AggregateNumStuckChunks {
 		return fmt.Errorf("NumStuckChunks not equal, %v and %v", md.NumStuckChunks, di.AggregateNumStuckChunks)
 	}
+
+	// Compare Aggregate Time Fields
+	if checkTimes {
+		if di.AggregateLastHealthCheckTime != md.AggregateLastHealthCheckTime {
+			return fmt.Errorf("AggregateLastHealthCheckTimes not equal %v and %v", di.AggregateLastHealthCheckTime, md.AggregateLastHealthCheckTime)
+		}
+		if di.AggregateMostRecentModTime != md.AggregateModTime {
+			return fmt.Errorf("AggregateModTimes not equal %v and %v", di.AggregateMostRecentModTime, md.AggregateModTime)
+		}
+	}
+
 	// Compare Directory Fields
 	if md.Health != di.Health {
 		return fmt.Errorf("healths not equal, %v and %v", md.Health, di.Health)
-	}
-	if di.LastHealthCheckTime != md.LastHealthCheckTime {
-		return fmt.Errorf("LastHealthCheckTimes not equal %v and %v", di.LastHealthCheckTime, md.LastHealthCheckTime)
 	}
 	maxHealth := math.Max(md.Health, md.StuckHealth)
 	if di.MaxHealth != maxHealth {
@@ -369,9 +389,6 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *filesyste
 	}
 	if md.MinRedundancy != di.MinRedundancy {
 		return fmt.Errorf("MinRedundancy not equal, %v and %v", md.MinRedundancy, di.MinRedundancy)
-	}
-	if di.MostRecentModTime != md.ModTime {
-		return fmt.Errorf("ModTimes not equal %v and %v", di.MostRecentModTime, md.ModTime)
 	}
 	if md.NumFiles != di.NumFiles {
 		return fmt.Errorf("NumFiles not equal, %v and %v", md.NumFiles, di.NumFiles)
@@ -387,6 +404,16 @@ func compareDirectoryInfoAndMetadata(di modules.DirectoryInfo, siaDir *filesyste
 	}
 	if md.StuckHealth != di.StuckHealth {
 		return fmt.Errorf("stuck healths not equal, %v and %v", md.StuckHealth, di.StuckHealth)
+	}
+
+	// Compare Directory Time Fields
+	if checkTimes {
+		if di.LastHealthCheckTime != md.LastHealthCheckTime {
+			return fmt.Errorf("LastHealthCheckTimes not equal %v and %v", di.LastHealthCheckTime, md.LastHealthCheckTime)
+		}
+		if di.MostRecentModTime != md.ModTime {
+			return fmt.Errorf("ModTimes not equal %v and %v", di.MostRecentModTime, md.ModTime)
+		}
 	}
 	return nil
 }

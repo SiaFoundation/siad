@@ -172,6 +172,22 @@ var (
 		Testing:  3 * time.Second,
 	}).(time.Duration)
 
+	// healthLoopNumBatchFiles defines the number of files the health loop will
+	// try to batch together in a subtree when updating the filesystem.
+	healthLoopNumBatchFiles = build.Select(build.Var{
+		Dev:      uint64(1e3),
+		Standard: uint64(10e3),
+		Testing:  uint64(5),
+	}).(uint64)
+
+	// healthLoopNumBatchSubDirs defines the number of sub directories the health
+	// loop will try to batch together in a subtree when updating the filesystem.
+	healthLoopNumBatchSubDirs = build.Select(build.Var{
+		Dev:      uint64(100),
+		Standard: uint64(1e3),
+		Testing:  uint64(2),
+	}).(uint64)
+
 	// maxRepairLoopTime indicates the maximum amount of time that the repair
 	// loop will spend popping chunks off of the repair heap.
 	maxRepairLoopTime = build.Select(build.Var{
