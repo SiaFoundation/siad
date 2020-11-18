@@ -709,7 +709,7 @@ func (c *SafeContract) managedSyncRevision(rev types.FileContractRevision, sigs 
 	// Our current revision should always be signed. If it isn't, we have no
 	// choice but to accept the host's revision.
 	if len(c.header.Transaction.TransactionSignatures) == 0 {
-		c.header.Transaction.FileContractRevisions[0] = rev
+		c.header.Transaction.FileContractRevisions = []types.FileContractRevision{rev}
 		c.header.Transaction.TransactionSignatures = sigs
 		return nil
 	}

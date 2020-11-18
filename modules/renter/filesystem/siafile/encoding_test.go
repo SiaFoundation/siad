@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -57,7 +58,7 @@ func TestMarshalUnmarshalChunk(t *testing.T) {
 func TestMarshalUnmarshalErasureCoder(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		for j := 0; j < 20; j++ {
-			rc, err := NewRSCode(10, 20)
+			rc, err := modules.NewRSCode(10, 20)
 			if err != nil {
 				t.Fatal("failed to create reed solomon coder", err)
 			}

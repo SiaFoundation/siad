@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -36,14 +35,10 @@ func TestRenterUploadDirectory(t *testing.T) {
 		}
 	}()
 
-	ec, err := siafile.NewRSCode(DefaultDataPieces, DefaultParityPieces)
-	if err != nil {
-		t.Fatal(err)
-	}
 	params := modules.FileUploadParams{
 		Source:      testUploadPath,
 		SiaPath:     modules.RandomSiaPath(),
-		ErasureCode: ec,
+		ErasureCode: modules.NewRSCodeDefault(),
 	}
 	err = rt.renter.Upload(params)
 	if err == nil {

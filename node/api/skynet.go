@@ -2,6 +2,7 @@ package api
 
 import (
 	"compress/gzip"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,6 +21,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetportals"
 	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -121,9 +123,28 @@ type (
 		ID     string `json:"id"`   // base64 encoded Skykey ID
 		Type   string `json:"type"` // human-readable Skykey Type
 	}
+
 	// SkykeysGET contains a slice of Skykeys.
 	SkykeysGET struct {
 		Skykeys []SkykeyGET `json:"skykeys"`
+	}
+
+	// RegistryHandlerGET is the response returned by the registryHandlerGET
+	// handler.
+	RegistryHandlerGET struct {
+		Data      string `json:"data"`
+		Revision  uint64 `json:"revision"`
+		Signature string `json:"signature"`
+	}
+
+	// RegistryHandlerRequestPOST is the expected format of the json request for
+	// /skynet/registry [POST].
+	RegistryHandlerRequestPOST struct {
+		PublicKey types.SiaPublicKey `json:"publickey"`
+		DataKey   crypto.Hash        `json:"datakey"`
+		Revision  uint64             `json:"revision"`
+		Signature crypto.Signature   `json:"signature"`
+		Data      []byte             `json:"data"`
 	}
 
 	// archiveFunc is a function that serves subfiles from src to dst and
@@ -1143,4 +1164,86 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 		}
 	}
 	WriteJSON(w, res)
+}
+
+// registryHandlerPOST handles the POST calls to /skynet/registry.
+func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Decode request.
+	dec := json.NewDecoder(req.Body)
+	var rhp RegistryHandlerRequestPOST
+	err := dec.Decode(&rhp)
+	if err != nil {
+		WriteError(w, Error{"Failed to decode request: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Check data length here to be able to offer a better and faster error
+	// message than when the hosts return it.
+	if len(rhp.Data) > modules.RegistryDataSize {
+		WriteError(w, Error{fmt.Sprintf("Registry data is too big: %v > %v", len(rhp.Data), modules.RegistryDataSize)}, http.StatusBadRequest)
+		return
+	}
+
+	// Update the registry.
+	srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature)
+	err = api.renter.UpdateRegistry(rhp.PublicKey, srv, renter.DefaultRegistryUpdateTimeout)
+	if err != nil {
+		WriteError(w, Error{"Unable to update the registry: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+	WriteSuccess(w)
+}
+
+// registryHandlerGET handles the GET calls to /skynet/registry.
+func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Parse public key
+	var spk types.SiaPublicKey
+	err := spk.LoadString(req.FormValue("publickey"))
+	if err != nil {
+		WriteError(w, Error{"Unable to parse publickey param: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse datakey.
+	var dataKey crypto.Hash
+	err = dataKey.LoadString(req.FormValue("datakey"))
+	if err != nil {
+		WriteError(w, Error{"Unable to decode dataKey param: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the timeout.
+	timeout := renter.MaxRegistryReadTimeout
+	timeoutStr := req.FormValue("timeout")
+	if timeoutStr != "" {
+		timeoutInt, err := strconv.Atoi(timeoutStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		timeout = time.Duration(timeoutInt) * time.Second
+		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
+			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Read registry.
+	srv, err := api.renter.ReadRegistry(spk, dataKey, timeout)
+	if errors.Contains(err, renter.ErrRegistryEntryNotFound) ||
+		errors.Contains(err, renter.ErrRegistryLookupTimeout) {
+		WriteError(w, Error{err.Error()}, http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		WriteError(w, Error{"Unable to read from the registry: " + err.Error()}, http.StatusInternalServerError)
+		return
+	}
+
+	// Send response.
+	WriteJSON(w, RegistryHandlerGET{
+		Data:      hex.EncodeToString(srv.Data),
+		Revision:  srv.Revision,
+		Signature: hex.EncodeToString(srv.Signature[:]),
+	})
 }

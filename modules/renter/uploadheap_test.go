@@ -44,7 +44,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Create file with more than 1 chunk and mark the first chunk at stuck
-	rsc, _ := siafile.NewRSCode(1, 1)
+	rsc, _ := modules.NewRSCode(1, 1)
 	siaPath, err := modules.NewSiaPath("stuckFile")
 	if err != nil {
 		t.Fatal(err)
@@ -159,7 +159,7 @@ func TestBuildChunkHeap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rsc, _ := siafile.NewRSCode(1, 1)
+	rsc, _ := modules.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
 		Source:      source,
 		SiaPath:     modules.RandomSiaPath(),
@@ -639,7 +639,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	}()
 
 	// Create file
-	rsc, _ := siafile.NewRSCode(1, 1)
+	rsc, _ := modules.NewRSCode(1, 1)
 	siaPath, err := modules.NewSiaPath("test")
 	if err != nil {
 		t.Fatal(err)
@@ -1217,6 +1217,11 @@ func TestRenterAddChunksToHeapPanic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := rt.renter.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Add maxConsecutiveDirHeapFailures non existent directories to the
 	// directoryHeap

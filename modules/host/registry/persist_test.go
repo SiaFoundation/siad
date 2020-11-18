@@ -134,6 +134,7 @@ func TestPersistedEntryMarshalUnmarshal(t *testing.T) {
 		Expiry:   compressedBlockHeight(fastrand.Uint64n(math.MaxUint32)),
 		DataLen:  modules.RegistryDataSize,
 		Revision: fastrand.Uint64n(math.MaxUint64),
+		Type:     persistedEntryType,
 	}
 	fastrand.Read(entry.Key.Key[:])
 	fastrand.Read(entry.Tweak[:])

@@ -28,9 +28,13 @@ var noKey = compressedPublicKey{}
 // for future compatibility changes.
 var registryVersion = types.NewSpecifier("1.0.0")
 
+// persistedEntryType is the type of the entry. Right now there is only a single
+// type and that's 1.
+var persistedEntryType = uint8(1)
+
 type (
 	// pesistedEntry is an entry
-	// Size on disk: (1 + 32) + 32 + 4 + 1 + 114 + 8 + 64 = 256
+	// Size on disk: (1 + 32) + 32 + 4 + 1 + 113 + 8 + 64 + 1 = 256
 	persistedEntry struct {
 		// key data
 		Key   compressedPublicKey
@@ -42,6 +46,11 @@ type (
 		Data      [modules.RegistryDataSize]byte
 		Revision  uint64
 		Signature crypto.Signature
+
+		// utility fields
+		// Type is the type of the entry. Right now only a single one exists
+		// which will probably change in the future.
+		Type uint8
 	}
 
 	// compressedPublicKey is a version of the types.SiaPublicKey which is
@@ -143,6 +152,10 @@ func loadRegistryEntries(r io.Reader, numEntries int64, b bitfield) (map[crypto.
 		if pe.Key == noKey {
 			continue // ignore unused entries
 		}
+		// Set the type if it's not set.
+		if pe.Type == 0 {
+			pe.Type = persistedEntryType
+		}
 		// Add the entry to the store.
 		v, err := pe.Value(index)
 		if err != nil {
@@ -218,6 +231,7 @@ func (entry persistedEntry) Marshal() ([]byte, error) {
 	copy(b[77:], entry.Signature[:])
 	b[141] = byte(entry.DataLen)
 	copy(b[142:], entry.Data[:])
+	b[PersistedEntrySize-1] = entry.Type
 	return b, nil
 }
 
@@ -237,7 +251,8 @@ func (entry *persistedEntry) Unmarshal(b []byte) error {
 	if int(entry.DataLen) > len(entry.Data) {
 		return errTooMuchData
 	}
-	copy(entry.Data[:], b[142:])
+	copy(entry.Data[:], b[142:PersistedEntrySize-1])
+	entry.Type = b[PersistedEntrySize-1]
 	return nil
 }
 

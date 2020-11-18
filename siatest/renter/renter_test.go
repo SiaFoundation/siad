@@ -4242,7 +4242,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 		t.Fatal("Expected 1 passive contract but got", len(rcg.PassiveContracts))
 	}
 	// After a while we give the host a new chance and it should be active again.
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(200, 100*time.Millisecond, func() error {
 		if err := tg.Miners()[0].MineBlock(); err != nil {
 			t.Fatal(err)
 		}
@@ -4900,11 +4900,6 @@ func TestWorkerStatus(t *testing.T) {
 			// Account checks
 			if !worker.AccountBalanceTarget.Equals(types.SiacoinPrecision) {
 				return fmt.Errorf("Expected balance target to be 1SC but was %v", worker.AccountBalanceTarget.HumanString())
-			}
-
-			// Job Queues
-			if worker.BackupJobQueueSize != 0 {
-				return fmt.Errorf("Expected backup queue to be empty but was %v", worker.BackupJobQueueSize)
 			}
 
 			// AccountStatus checks

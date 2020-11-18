@@ -125,7 +125,7 @@ func (f *file) MarshalSia(w io.Writer) error {
 
 	// encode erasureCode
 	switch code := f.erasureCode.(type) {
-	case *siafile.RSCode:
+	case *modules.RSCode:
 		err = enc.EncodeAll(
 			"Reed-Solomon",
 			uint64(code.MinPieces()),
@@ -190,7 +190,7 @@ func (f *file) UnmarshalSia(r io.Reader) error {
 		if err != nil {
 			return err
 		}
-		rsc, err := siafile.NewRSCode(int(nData), int(nParity))
+		rsc, err := modules.NewRSCode(int(nData), int(nParity))
 		if err != nil {
 			return err
 		}

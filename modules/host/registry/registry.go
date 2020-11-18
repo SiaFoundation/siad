@@ -273,21 +273,26 @@ func New(path string, maxEntries uint64) (_ *Registry, err error) {
 	}
 	// Load the remaining entries.
 	reg.entries, err = loadRegistryEntries(r, fi.Size()/PersistedEntrySize, b)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to load registry entries")
+	}
 	return reg, nil
 }
 
 // Update adds an entry to the registry or if it exists already, updates it.
 // This will also verify the revision number of the new value and the signature.
-func (r *Registry) Update(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (bool, error) {
+// If an existing entry was updated it will return that entry, otherwise it
+// returns the default value for a SignedRevisionValue.
+func (r *Registry) Update(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (srv modules.SignedRegistryValue, _ error) {
 	// Check the data against the limit.
 	if len(rv.Data) > modules.RegistryDataSize {
-		return false, errTooMuchData
+		return modules.SignedRegistryValue{}, errTooMuchData
 	}
 
 	// Check the signature against the pubkey.
 	if err := rv.Verify(pubKey.ToPublicKey()); err != nil {
 		err = errors.Compose(err, errInvalidSignature)
-		return false, errors.AddContext(err, "Update: failed to verify signature")
+		return modules.SignedRegistryValue{}, errors.AddContext(err, "Update: failed to verify signature")
 	}
 
 	// Lock the registry until we have found the existing entry or a new index
@@ -303,19 +308,23 @@ func (r *Registry) Update(rv modules.SignedRegistryValue, pubKey types.SiaPublic
 		entry, err = r.newValue(rv, pubKey, expiry)
 		if err != nil {
 			r.mu.Unlock()
-			return false, errors.AddContext(err, "failed to create new value")
+			return modules.SignedRegistryValue{}, errors.AddContext(err, "failed to create new value")
 		}
 	}
 
 	// Release the global lock before acquiring the entry lock.
 	r.mu.Unlock()
 
-	// Update the entry.
 	entry.mu.Lock()
+	// If the entry existed, remember it before updating it.
+	if exists {
+		srv = modules.NewSignedRegistryValue(entry.tweak, entry.data, entry.revision, entry.signature)
+	}
+	// Update the entry.
 	err = entry.update(rv, expiry, !exists)
 	if err != nil {
 		entry.mu.Unlock()
-		return false, errors.AddContext(err, "failed to update entry")
+		return srv, errors.AddContext(err, "failed to update entry")
 	}
 
 	// Write the entry to disk.
@@ -328,10 +337,10 @@ func (r *Registry) Update(rv modules.SignedRegistryValue, pubKey types.SiaPublic
 		if !exists {
 			r.managedDeleteFromMemory(entry)
 		}
-		return exists, errors.New("failed to save new entry to disk")
+		return modules.SignedRegistryValue{}, errors.New("failed to save new entry to disk")
 	}
 	entry.mu.Unlock()
-	return exists, nil
+	return srv, nil
 }
 
 // managedDeleteFromMemory deletes an entry from the registry by freeing its

@@ -55,10 +55,6 @@ type RPCPriceTable struct {
 	// by the memory consumption of the program.
 	MemoryTimeCost types.Currency `json:"memorytimecost"`
 
-	// CollateralCost is the amount of money per byte the host is promising to
-	// lock away as collateral when adding new data to a contract.
-	CollateralCost types.Currency `json:"collateralcost"`
-
 	// Cost values specific to the bandwidth consumption.
 	DownloadBandwidthCost types.Currency `json:"downloadbandwidthcost"`
 	UploadBandwidthCost   types.Currency `json:"uploadbandwidthcost"`
@@ -74,6 +70,9 @@ type RPCPriceTable struct {
 	ReadBaseCost   types.Currency `json:"readbasecost"`
 	ReadLengthCost types.Currency `json:"readlengthcost"`
 
+	// Cost values specific to the RenewContract instruction.
+	RenewContractCost types.Currency `json:"renewcontractcost"`
+
 	// Cost values specific to the Revision command.
 	RevisionBaseCost types.Currency `json:"revisionbasecost"`
 
@@ -88,6 +87,28 @@ type RPCPriceTable struct {
 	// TxnFee estimations.
 	TxnFeeMinRecommended types.Currency `json:"txnfeeminrecommended"`
 	TxnFeeMaxRecommended types.Currency `json:"txnfeemaxrecommended"`
+
+	// ContractPrice is the additional fee a host charges when forming/renewing
+	// a contract to cover the miner fees when submitting the contract and
+	// revision to the blockchain.
+	ContractPrice types.Currency `json:"contractprice"`
+
+	// CollateralCost is the amount of money per byte the host is promising to
+	// lock away as collateral when adding new data to a contract. It's paid out
+	// to the host regardless of the outcome of the storage proof.
+	CollateralCost types.Currency `json:"collateralcost"`
+
+	// MaxCollateral is the maximum amount of collateral the host is willing to
+	// put into a single file contract.
+	MaxCollateral types.Currency `json:"maxcollateral"`
+
+	// MaxDuration is the max duration for which the host is willing to form a
+	// contract.
+	MaxDuration types.BlockHeight `json:"maxduration"`
+
+	// WindowSize is the minimum time in blocks the host requests the
+	// renewWindow of a new contract to be.
+	WindowSize types.BlockHeight `json:"windowsize"`
 
 	// Registry related fields.
 	RegistryEntriesLeft  uint64 `json:"registryentriesleft"`
@@ -109,6 +130,9 @@ var (
 
 	// RPCLatestRevision specifier
 	RPCLatestRevision = types.NewSpecifier("LatestRevision")
+
+	// RPCRenewContract specifier
+	RPCRenewContract = types.NewSpecifier("RenewContract")
 )
 
 type (
@@ -199,6 +223,42 @@ type (
 	// signal it has received payment for the price table and has tracked it,
 	// thus considering it valid.
 	RPCTrackedPriceTableResponse struct{}
+
+	// RPCRenewContractRequest contains the transaction set with both the final
+	// revision of a contract to be renewed as well as the new contract and the
+	// renter's public key used within the unlock conditions of the new
+	// contract.
+	RPCRenewContractRequest struct {
+		TSet        []types.Transaction
+		RenterPK    types.SiaPublicKey
+		FinalRevSig crypto.Signature
+	}
+
+	// RPCRenewContractCollateralResponse is the response sent by the host after
+	// adding the collateral to the transaction. It contains any new parents,
+	// inputs and outputs that were added.
+	RPCRenewContractCollateralResponse struct {
+		NewParents  []types.Transaction
+		NewInputs   []types.SiacoinInput
+		NewOutputs  []types.SiacoinOutput
+		FinalRevSig crypto.Signature
+	}
+
+	// RPCRenewContractRenterSignatures contains the renter's signatures for the
+	// final revision of the old contract, the new contract and the initial
+	// revision of the new contract.
+	RPCRenewContractRenterSignatures struct {
+		RenterTxnSigs         []types.TransactionSignature
+		RenterNoOpRevisionSig types.TransactionSignature
+	}
+
+	// RPCRenewContractHostSignatures contains the host's revisions for the
+	// final revision of the old contract, the new contract and the initial
+	// revision of the new contract.
+	RPCRenewContractHostSignatures struct {
+		ContractSignatures    []types.TransactionSignature
+		NoOpRevisionSignature types.TransactionSignature
+	}
 
 	// rpcResponse is a helper type for encoding and decoding RPC response
 	// messages.

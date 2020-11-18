@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,10 +9,13 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -574,6 +578,63 @@ func (c *Client) SkykeySkykeysGet() ([]skykey.Skykey, error) {
 		}
 	}
 	return res, nil
+}
+
+// RegistryRead queries the /skynet/registry [GET] endpoint.
+func (c *Client) RegistryRead(spk types.SiaPublicKey, dataKey crypto.Hash) (modules.SignedRegistryValue, error) {
+	return c.RegistryReadWithTimeout(spk, dataKey, 0)
+}
+
+// RegistryReadWithTimeout queries the /skynet/registry [GET] endpoint with the
+// specified timeout.
+func (c *Client) RegistryReadWithTimeout(spk types.SiaPublicKey, dataKey crypto.Hash, timeout time.Duration) (modules.SignedRegistryValue, error) {
+	// Set the values.
+	values := url.Values{}
+	values.Set("publickey", spk.String())
+	values.Set("datakey", dataKey.String())
+	if timeout > 0 {
+		values.Set("timeout", fmt.Sprint(int(timeout.Seconds())))
+	}
+
+	// Send request.
+	var rhg api.RegistryHandlerGET
+	err := c.get(fmt.Sprintf("/skynet/registry?%v", values.Encode()), &rhg)
+	if err != nil {
+		return modules.SignedRegistryValue{}, err
+	}
+
+	// Decode data.
+	data, err := hex.DecodeString(rhg.Data)
+	if err != nil {
+		return modules.SignedRegistryValue{}, errors.AddContext(err, "failed to decode signature")
+	}
+	// Decode signature.
+	var sig crypto.Signature
+	sigBytes, err := hex.DecodeString(rhg.Signature)
+	if err != nil {
+		return modules.SignedRegistryValue{}, errors.AddContext(err, "failed to decode signature")
+	}
+	if len(sigBytes) != len(sig) {
+		return modules.SignedRegistryValue{}, fmt.Errorf("unexpected signature length %v != %v", len(sigBytes), len(sig))
+	}
+	copy(sig[:], sigBytes)
+	return modules.NewSignedRegistryValue(dataKey, data, rhg.Revision, sig), nil
+}
+
+// RegistryUpdate queries the /skynet/registry [POST] endpoint.
+func (c *Client) RegistryUpdate(spk types.SiaPublicKey, dataKey crypto.Hash, revision uint64, sig crypto.Signature, skylink modules.Skylink) error {
+	req := api.RegistryHandlerRequestPOST{
+		PublicKey: spk,
+		DataKey:   dataKey,
+		Revision:  revision,
+		Signature: sig,
+		Data:      skylink.Bytes(),
+	}
+	reqBytes, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	return c.post("/skynet/registry", string(reqBytes), nil)
 }
 
 // skylinkQueryWithValues returns a skylink query based on the given skylink and

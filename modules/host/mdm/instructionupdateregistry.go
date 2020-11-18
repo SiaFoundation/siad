@@ -5,7 +5,9 @@ import (
 	"fmt"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // instructionUpdateRegistry defines an update to a value in the host's
@@ -93,7 +95,19 @@ func (i *instructionUpdateRegistry) Execute(prevOutput output) output {
 
 	// Try updating the registry.
 	rv := modules.NewSignedRegistryValue(tweak, data, revision, signature)
-	_, err = i.staticState.host.RegistryUpdate(rv, pubKey, newExpiry)
+	existingRV, err := i.staticState.host.RegistryUpdate(rv, pubKey, newExpiry)
+	if errors.Contains(err, registry.ErrLowerRevNum) || errors.Contains(err, registry.ErrSameRevNum) {
+		// If we weren't able to update the registry due to a ErrLowerRevNum or
+		// ErrSameRevNum, we need to return the existing value as proof.
+		rev := make([]byte, 8)
+		binary.LittleEndian.PutUint64(rev, existingRV.Revision)
+		return output{
+			NewSize:       prevOutput.NewSize,
+			NewMerkleRoot: prevOutput.NewMerkleRoot,
+			Output:        append(existingRV.Signature[:], append(rev, existingRV.Data...)...),
+			Error:         err,
+		}
+	}
 	if err != nil {
 		return errOutput(err)
 	}

@@ -58,10 +58,10 @@ var (
 	ErrSkykeyWithNameAlreadyExists = errors.New("Skykey name already used by another key")
 
 	// ErrNoSkykeysWithThatName indicates that the skykey manager doesn't have
-	// a key with that ID
+	// a key with that ID.
 	ErrNoSkykeysWithThatName = errors.New("No Skykey with that name")
 
-	// errSkykeyNameToolong indicates that the name is too long
+	// errSkykeyNameToolong indicates that the name is too long.
 	errSkykeyNameToolong = errors.New("Skykey name exceeds max length")
 )
 

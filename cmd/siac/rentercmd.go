@@ -3053,10 +3053,9 @@ func writeWorkers(workers []modules.WorkerStatus) {
 	uploadInfo := "\tOn Cooldown\tQueue"
 	maintenanceHeader := "\tWorker Maintenance\t \t "
 	maintenanceInfo := "\tOn Cooldown\tCooldown Time\tLast Error"
-	eaHeader := "\tWorker Account"
 	jobHeader := "\tWorker Jobs\t \t "
-	jobInfo := "\tBackups\tHas Sector"
-	fmt.Fprintln(w, "\n  "+contractHeader+downloadHeader+uploadHeader+maintenanceHeader+eaHeader+jobHeader)
+	jobInfo := "\tHas Sector\tRead Sector\tSnapshot UL\tSnapshot DL"
+	fmt.Fprintln(w, "\n  "+contractHeader+downloadHeader+uploadHeader+maintenanceHeader+jobHeader)
 	fmt.Fprintln(w, "  "+contractInfo+downloadInfo+uploadInfo+maintenanceInfo+jobInfo)
 
 	for _, worker := range workers {
@@ -3084,9 +3083,11 @@ func writeWorkers(workers []modules.WorkerStatus) {
 			sanitizeErr(worker.MaintenanceCoolDownError))
 
 		// Job Info
-		fmt.Fprintf(w, "\t%v\t%v\n",
-			worker.BackupJobQueueSize,
-			worker.HasSectorJobsStatus.JobQueueSize)
+		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\n",
+			worker.HasSectorJobsStatus.JobQueueSize,
+			worker.ReadJobsStatus.JobQueueSize,
+			worker.DownloadSnapshotJobQueueSize,
+			worker.UploadSnapshotJobQueueSize)
 	}
 	if err := w.Flush(); err != nil {
 		die("failed to flush writer:", err)

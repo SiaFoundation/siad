@@ -106,6 +106,11 @@ func (w *worker) externTryLaunchSerialJob() {
 	// perform. This scheduling allows a flood of jobs earlier in the list to
 	// starve out jobs later in the list. At some point we will probably
 	// revisit this to try and address the starvation issue.
+	job := w.staticJobRenewQueue.callNext()
+	if job != nil {
+		w.externLaunchSerialJob(job.callExecute)
+		return
+	}
 	if w.managedNeedsToUpdatePriceTable() {
 		w.externLaunchSerialJob(w.staticUpdatePriceTable)
 		return
@@ -114,11 +119,17 @@ func (w *worker) externTryLaunchSerialJob() {
 		w.externLaunchSerialJob(w.managedRefillAccount)
 		return
 	}
-	if w.staticFetchBackupsJobQueue.managedHasJob() {
-		w.externLaunchSerialJob(w.managedPerformFetchBackupsJob)
+	job = w.staticJobUploadSnapshotQueue.callNext()
+	if job != nil {
+		w.externLaunchSerialJob(job.callExecute)
 		return
 	}
-	job := w.staticJobUploadSnapshotQueue.callNext()
+	job = w.staticJobDownloadSnapshotQueue.callNext()
+	if job != nil {
+		w.externLaunchSerialJob(job.callExecute)
+		return
+	}
+	job = w.staticJobUploadSnapshotQueue.callNext()
 	if job != nil {
 		w.externLaunchSerialJob(job.callExecute)
 		return
@@ -223,7 +234,7 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		return true
 	}
 	// Check if registry jobs are supported.
-	if build.VersionCmp(cache.staticHostVersion, "1.5.1") >= 0 {
+	if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) >= 0 {
 		job = w.staticJobUpdateRegistryQueue.callNext()
 		if job != nil {
 			w.externLaunchAsyncJob(job)
@@ -284,10 +295,10 @@ func (w *worker) threadedWorkLoop() {
 	// Upon shutdown, release all jobs.
 	defer w.managedKillUploading()
 	defer w.managedKillDownloading()
-	defer w.managedKillFetchBackupsJobs()
 	defer w.staticJobHasSectorQueue.callKill()
 	defer w.staticJobUpdateRegistryQueue.callKill()
 	defer w.staticJobReadQueue.callKill()
+	defer w.staticJobDownloadSnapshotQueue.callKill()
 	defer w.staticJobUploadSnapshotQueue.callKill()
 
 	if build.VersionCmp(w.staticCache().staticHostVersion, minAsyncVersion) >= 0 {
