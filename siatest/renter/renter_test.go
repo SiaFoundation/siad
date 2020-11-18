@@ -4242,7 +4242,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 		t.Fatal("Expected 1 passive contract but got", len(rcg.PassiveContracts))
 	}
 	// After a while we give the host a new chance and it should be active again.
-	err = build.Retry(100, 100*time.Millisecond, func() error {
+	err = build.Retry(200, 100*time.Millisecond, func() error {
 		if err := tg.Miners()[0].MineBlock(); err != nil {
 			t.Fatal(err)
 		}
