@@ -1068,6 +1068,10 @@ type Renter interface {
 	// separately as well.
 	CreateSkylinkFromSiafile(SkyfileUploadParameters, SiaPath) (Skylink, error)
 
+	// DownloadByRoot will fetch data using the merkle root of that data. This
+	// uses all of the async worker primitives to improve speed and throughput.
+	DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error)
+
 	// DownloadSkylink will fetch a file from the Sia network using the skylink.
 	DownloadSkylink(Skylink, time.Duration) (SkyfileMetadata, Streamer, error)
 

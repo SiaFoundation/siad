@@ -91,9 +91,14 @@ func (sb *SkynetBlocklist) Close() error {
 
 // IsBlocked indicates if a skylink is currently blocked
 func (sb *SkynetBlocklist) IsBlocked(skylink modules.Skylink) bool {
+	hash := crypto.HashObject(skylink.MerkleRoot())
+	return sb.IsHashBlocked(hash)
+}
+
+// IsHashBlocked indicates if a hash is currently blocked
+func (sb *SkynetBlocklist) IsHashBlocked(hash crypto.Hash) bool {
 	sb.mu.Lock()
 	defer sb.mu.Unlock()
-	hash := crypto.HashObject(skylink.MerkleRoot())
 	_, ok := sb.hashes[hash]
 	return ok
 }

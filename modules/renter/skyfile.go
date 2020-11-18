@@ -141,9 +141,9 @@ func (sfr *streamerFromReader) Close() error {
 	return nil
 }
 
-// streamerFromSlice returns a modules.Streamer given a slice. This is
+// StreamerFromSlice returns a modules.Streamer given a slice. This is
 // non-trivial because a bytes.Reader does not implement Close.
-func streamerFromSlice(b []byte) modules.Streamer {
+func StreamerFromSlice(b []byte) modules.Streamer {
 	reader := bytes.NewReader(b)
 	return &streamerFromReader{
 		Reader: reader,
@@ -490,7 +490,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(lup modules.SkyfileUploadParamete
 
 	// Check if an encryption key was specified.
 	if encryptionEnabled(lup) {
-		fanoutSkykey, err := lup.FileSpecificSkykey.DeriveSubkey(fanoutNonceDerivation[:])
+		fanoutSkykey, err := lup.FileSpecificSkykey.DeriveSubkey(skynet.FanoutNonceDerivation[:])
 		if err != nil {
 			return modules.Skylink{}, errors.AddContext(err, "unable to derive fanout subkey")
 		}
@@ -635,7 +635,7 @@ func (r *Renter) DownloadSkylinkBaseSector(link modules.Skylink, timeout time.Du
 	}
 	defer r.tg.Done()
 	baseSector, err := r.managedDownloadBaseSector(link, timeout)
-	return streamerFromSlice(baseSector), err
+	return StreamerFromSlice(baseSector), err
 }
 
 // managedDownloadSkylink will take a link and turn it into the metadata and data of a
@@ -646,7 +646,7 @@ func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Durat
 		if err != nil {
 			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "failed to fetch fixture")
 		}
-		return sf.Metadata, streamerFromSlice(sf.Content), nil
+		return sf.Metadata, StreamerFromSlice(sf.Content), nil
 	}
 
 	// Check if this skylink is already in the stream buffer set. If so, we can
@@ -670,7 +670,7 @@ func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Durat
 	// Check if the base sector is encrypted, and attempt to decrypt it.
 	// This will fail if we don't have the decryption key.
 	var fileSpecificSkykey skykey.Skykey
-	if isEncryptedBaseSector(baseSector) {
+	if skynet.IsEncryptedBaseSector(baseSector) {
 		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
 		if err != nil {
 			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "Unable to decrypt skyfile base sector")
@@ -686,7 +686,7 @@ func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Durat
 	// If there is no fanout, all of the data will be contained in the base
 	// sector, return a streamer using the data from the base sector.
 	if layout.FanoutSize == 0 {
-		streamer := streamerFromSlice(baseSectorPayload)
+		streamer := StreamerFromSlice(baseSectorPayload)
 		return metadata, streamer, nil
 	}
 
@@ -747,7 +747,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
 	var fileSpecificSkykey skykey.Skykey
-	encrypted := isEncryptedBaseSector(baseSector)
+	encrypted := skynet.IsEncryptedBaseSector(baseSector)
 	if encrypted {
 		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
 		if err != nil {
@@ -777,7 +777,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 		}
 
 		// Derive the fanout key and add to the fup.
-		fanoutSkykey, err := fileSpecificSkykey.DeriveSubkey(fanoutNonceDerivation[:])
+		fanoutSkykey, err := fileSpecificSkykey.DeriveSubkey(skynet.FanoutNonceDerivation[:])
 		if err != nil {
 			return errors.AddContext(err, "Error deriving fanout skykey")
 		}
