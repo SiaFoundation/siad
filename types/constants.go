@@ -38,6 +38,11 @@ var (
 	// against replay attacks.
 	ASICHardforkReplayProtectionPrefix = []byte{0}
 
+	// FoundationHardforkReplayProtectionPrefix is a byte that prefixes
+	// SiacoinInputs and SiafundInputs when calculating SigHashes to protect
+	// against replay attacks.
+	FoundationHardforkReplayProtectionPrefix = []byte{1}
+
 	// BlockFrequency is the desired number of seconds that
 	// should elapse, on average, between successive Blocks.
 	BlockFrequency BlockHeight
