@@ -1,0 +1,1 @@
+- Fixed debug code that checks for contract header corruption.
