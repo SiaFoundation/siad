@@ -354,9 +354,8 @@ func (r *Renter) managedCalculateFileMetadatas(siaPaths []modules.SiaPath) (_ []
 	hostOfflineMap, hostGoodForRenewMap, _, _ := r.managedRenterContractsAndUtilities()
 
 	// Define components
-	numThreads := 20
 	mds := make([]bubbledSiaFileMetadata, 0, len(siaPaths))
-	siaPathChan := make(chan modules.SiaPath, numThreads)
+	siaPathChan := make(chan modules.SiaPath, numBubbleWorkerThreads)
 	var errs error
 	var errMu, mdMu sync.Mutex
 
@@ -378,7 +377,7 @@ func (r *Renter) managedCalculateFileMetadatas(siaPaths []modules.SiaPath) (_ []
 
 	// Launch Metadata workers
 	var wg sync.WaitGroup
-	for i := 0; i < numThreads; i++ {
+	for i := 0; i < numBubbleWorkerThreads; i++ {
 		wg.Add(1)
 		go func() {
 			metadataWorker()
@@ -438,9 +437,8 @@ func (r *Renter) managedCompleteBubbleUpdate(siaPath modules.SiaPath) {
 // provided siaPaths
 func (r *Renter) managedDirectoryMetadatas(siaPaths []modules.SiaPath) ([]bubbledSiaDirMetadata, error) {
 	// Define components
-	numThreads := 20
 	mds := make([]bubbledSiaDirMetadata, 0, len(siaPaths))
-	siaPathChan := make(chan modules.SiaPath, numThreads)
+	siaPathChan := make(chan modules.SiaPath, numBubbleWorkerThreads)
 	var errs error
 	var errMu, mdMu sync.Mutex
 
@@ -465,7 +463,7 @@ func (r *Renter) managedDirectoryMetadatas(siaPaths []modules.SiaPath) ([]bubble
 
 	// Launch Metadata workers
 	var wg sync.WaitGroup
-	for i := 0; i < numThreads; i++ {
+	for i := 0; i < numBubbleWorkerThreads; i++ {
 		wg.Add(1)
 		go func() {
 			metadataWorker()
