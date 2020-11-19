@@ -1626,11 +1626,15 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sbg.Blocklist) != 1 {
-		t.Fatalf("Incorrect number of blocklisted merkleroots, expected %v got %v", 1, len(sbg.Blocklist))
+	var found bool
+	for _, blocked := range sbg.Blocklist {
+		if blocked == hash {
+			found = true
+			break
+		}
 	}
-	if sbg.Blocklist[0] != hash {
-		t.Fatalf("Hashes don't match, expected %v got %v", hash, sbg.Blocklist[0])
+	if !found {
+		t.Fatal("Hash not found in blocklist")
 	}
 
 	// Try to download the file behind the skylink, this should fail because of
