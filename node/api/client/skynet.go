@@ -8,7 +8,9 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -218,6 +220,121 @@ func (c *Client) SkynetSkylinkConcatGet(skylink string) (_ []byte, _ modules.Sky
 		}
 	}
 	return fileData, sm, errors.AddContext(err, "unable to fetch skylink data")
+}
+
+// SkynetSkylinkBackup uses the /skynet/skylink endpoint to fetch a reader of
+// the file data along with the SkyfileMetadata and the SkyfileLayout and saves
+// it to disk. The path to the backup on disk is returned.
+func (c *Client) SkynetSkylinkBackup(skylink, backupDir string) (string, error) {
+	// Verify backupDir was provided
+	if backupDir == "" {
+		return "", errors.New("backupDir must be provided")
+	}
+
+	// Fetch the header and reader for the Skylink
+	getQuery := fmt.Sprintf("/skynet/skylink/%s", skylink)
+	header, reader, err := c.getReaderResponse(getQuery)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to fetch skylink data")
+	}
+	defer drainAndClose(reader)
+
+	// Read the SkyfileLayout
+	var sl modules.SkyfileLayout
+	strLayout := header.Get("Skynet-File-Layout")
+	if strLayout == "" {
+		return "", errors.AddContext(err, "no skyfile layout returned")
+	}
+	sl.Decode([]byte(strLayout))
+
+	// Read the SkyfileMetadata
+	var sm modules.SkyfileMetadata
+	strMetadata := header.Get("Skynet-File-Metadata")
+	if strMetadata == "" {
+		return "", errors.AddContext(err, "no skyfile metadata returned")
+	}
+
+	// Unmarshal the metadata so we can check for subFiles
+	err = json.Unmarshal([]byte(strMetadata), &sm)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to unmarshal skyfile metadata")
+	}
+
+	// If there are no subFiles then we have all the information we need to
+	// back up the file.
+	if len(sm.Subfiles) == 0 {
+		return modules.BackupSkylink(skylink, backupDir, reader, sl, sm)
+	}
+
+	// Grab the default path for the skyfile
+	defaultPath := strings.TrimPrefix(sm.DefaultPath, "/")
+	if defaultPath == "" {
+		defaultPath = api.DefaultSkynetDefaultPath
+	}
+
+	// Sort the subFiles by offset
+	subFiles := make([]modules.SkyfileSubfileMetadata, 0, len(sm.Subfiles))
+	for _, sfm := range sm.Subfiles {
+		subFiles = append(subFiles, sfm)
+	}
+	sort.Slice(subFiles, func(i, j int) bool {
+		return subFiles[i].Offset < subFiles[j].Offset
+	})
+
+	// Build a backup reader by downloading all the subFile data
+	var backupReader io.Reader
+	for _, sf := range subFiles {
+		// Download the data from the subFile
+		subgetQuery := fmt.Sprintf("%s/%s", getQuery, sf.Filename)
+		_, subreader, err := c.getReaderResponse(subgetQuery)
+		if err != nil {
+			return "", errors.AddContext(err, "unable to download subFile")
+		}
+		if backupReader == nil {
+			backupReader = io.MultiReader(subreader)
+			continue
+		}
+		backupReader = io.MultiReader(backupReader, subreader)
+	}
+
+	// Create the backup file on disk
+	return modules.BackupSkylink(skylink, backupDir, backupReader, sl, sm)
+}
+
+// SkynetSkylinkRestorePost uses the /skynet/restore endpoint to restore
+// a skylink from the on disk location defined by backupPath.
+func (c *Client) SkynetSkylinkRestorePost(backupPath string) (string, error) {
+	return c.SkynetSkylinkRestoreWithEncryptionPost(backupPath, "", skykey.SkykeyID{})
+}
+
+// SkynetSkylinkRestoreWithEncryptionPost uses the /skynet/restore endpoint to
+// restore a skylink, with the provided skykey information, from the on disk
+// location defined by backupPath.
+func (c *Client) SkynetSkylinkRestoreWithEncryptionPost(backupPath, skykeyName string, skykeyID skykey.SkykeyID) (string, error) {
+	// Set the url values.
+	values := url.Values{}
+
+	// Encode SkykeyName or SkykeyID.
+	if skykeyName != "" {
+		values.Set("skykeyname", skykeyName)
+	}
+	hasSkykeyID := skykeyID != skykey.SkykeyID{}
+	if hasSkykeyID {
+		values.Set("skykeyid", skykeyID.ToString())
+	}
+
+	// Submit the request
+	query := fmt.Sprintf("/skynet/restore/%s?%s", backupPath, values.Encode())
+	_, resp, err := c.postRawResponse(query, nil)
+	if err != nil {
+		return "", errors.AddContext(err, "post call to "+query+" failed")
+	}
+	var srp api.SkynetRestorePOST
+	err = json.Unmarshal(resp, &srp)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to unmarshal response")
+	}
+	return srp.Skylink, nil
 }
 
 // SkynetSkylinkReaderGet uses the /skynet/skylink endpoint to fetch a reader of

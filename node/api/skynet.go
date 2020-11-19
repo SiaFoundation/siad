@@ -88,6 +88,12 @@ type (
 		Remove []modules.NetAddress   `json:"remove"`
 	}
 
+	// SkynetRestorePOST is the response that the api returns after the
+	// /skynet/restore POST endpoint has been used.
+	SkynetRestorePOST struct {
+		Skylink string `json:"skylink"`
+	}
+
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
@@ -571,7 +577,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// Fetch the skyfile's metadata and a streamer to download the file
-	metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout)
+	layout, metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout)
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
 		return
@@ -696,9 +702,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
 		return
 	}
+	// Encode the Layout
+	encLayout := layout.Encode()
 
-	// Metadata has been parsed successfully, stop the time here for TTFB.
-	// Metadata was fetched from Skynet itself.
+	// Metadata and layout has been parsed successfully, stop the time here for
+	// TTFB.  Metadata was fetched from Skynet itself.
 	skynetPerformanceStatsMu.Lock()
 	skynetPerformanceStats.TimeToFirstByte.AddRequest(time.Since(startTime))
 	skynetPerformanceStatsMu.Unlock()
@@ -728,12 +736,20 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
 	}()
 
+	// Set the common Header fields
+	//
 	// Set the Skylink response header
 	w.Header().Set("Skynet-Skylink", skylink.String())
 
 	// Set the ETag response header
 	eTag := buildETag(skylink, req.Method, path, format)
 	w.Header().Set("ETag", fmt.Sprintf("\"%v\"", eTag))
+
+	// Set the Metadata
+	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+
+	// Set the Layout
+	w.Header().Set("Skynet-File-Layout", string(encLayout))
 
 	// Set an appropriate Content-Disposition header
 	var cdh string
@@ -1325,5 +1341,42 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 		Data:      hex.EncodeToString(srv.Data),
 		Revision:  srv.Revision,
 		Signature: hex.EncodeToString(srv.Signature[:]),
+	})
+}
+
+// skynetRestoreHandlerPOST handles the POST calls to /skynet/restore.
+func (api *API) skynetRestoreHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Grab the Backup Params
+	backupPath := ps.ByName("backuppath")
+	if backupPath == "" {
+		WriteError(w, Error{"backup path cannot be blank"}, http.StatusBadRequest)
+		return
+	}
+
+	// Check for Skykey information
+	skykeyName := req.FormValue("skykeyname")
+	var skykeyID skykey.SkykeyID
+	skykeyIDStr := req.FormValue("skykeyid")
+	if skykeyIDStr != "" && skykeyName != "" {
+		WriteError(w, Error{"only the SkykeyID or the SkykeyName should be provided"}, http.StatusBadRequest)
+		return
+	}
+	if skykeyIDStr != "" {
+		err := skykeyID.FromString(skykeyIDStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse SkykeyID: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Restore Skyfile
+	skylink, err := api.renter.RestoreSkyfile(backupPath, skykeyName, skykeyID)
+	if err != nil {
+		WriteError(w, Error{"unable to restore skyfile: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	WriteJSON(w, SkynetRestorePOST{
+		Skylink: skylink,
 	})
 }

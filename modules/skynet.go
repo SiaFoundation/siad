@@ -138,7 +138,7 @@ type (
 		// content will be automatically served for the skyfile.
 		DisableDefaultPath bool
 
-		// ContentType indicates the media  of the data supplied by the reader.
+		// ContentType indicates the media of the data supplied by the reader.
 		ContentType string
 	}
 

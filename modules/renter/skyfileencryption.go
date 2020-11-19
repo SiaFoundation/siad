@@ -176,6 +176,52 @@ func encryptBaseSectorWithSkykey(baseSector []byte, plaintextLayout modules.Skyf
 	return nil
 }
 
-func encryptionEnabled(sup modules.SkyfileUploadParameters) bool {
+// encryptionEnabled checks if encryption is enabled for the
+// SkyfileUploadParameters. It returns true if either the SkykeyName or SkykeyID
+// is set
+func encryptionEnabled(sup *modules.SkyfileUploadParameters) bool {
 	return sup.SkykeyName != "" || sup.SkykeyID != skykey.SkykeyID{}
+}
+
+// generateCipherKey generates a Cipher Key for the FileUploadParams from the
+// SkyfileUploadParameters
+func generateCipherKey(fup *modules.FileUploadParams, sup modules.SkyfileUploadParameters) error {
+	if encryptionEnabled(&sup) {
+		fanoutSkykey, err := sup.FileSpecificSkykey.DeriveSubkey(modules.FanoutNonceDerivation[:])
+		if err != nil {
+			return errors.AddContext(err, "unable to derive fanout subkey")
+		}
+		fup.CipherKey, err = fanoutSkykey.CipherKey()
+		if err != nil {
+			return errors.AddContext(err, "unable to get skykey cipherkey")
+		}
+		fup.CipherType = sup.FileSpecificSkykey.CipherType()
+	}
+	return nil
+}
+
+// generateFilekey generates the FileSpecificSkykey to be used for encryption
+// and sets it in the SkyfileUploadParameters
+func (r *Renter) generateFilekey(sup *modules.SkyfileUploadParameters) error {
+	if encryptionEnabled(sup) && sup.SkykeyName != "" {
+		key, err := r.SkykeyByName(sup.SkykeyName)
+		if err != nil {
+			return errors.AddContext(err, "UploadSkyfile unable to get skykey")
+		}
+		sup.FileSpecificSkykey, err = key.GenerateFileSpecificSubkey()
+		if err != nil {
+			return errors.AddContext(err, "UploadSkyfile unable to generate subkey")
+		}
+	} else if encryptionEnabled(sup) {
+		key, err := r.SkykeyByID(sup.SkykeyID)
+		if err != nil {
+			return errors.AddContext(err, "UploadSkyfile unable to get skykey")
+		}
+
+		sup.FileSpecificSkykey, err = key.GenerateFileSpecificSubkey()
+		if err != nil {
+			return errors.AddContext(err, "UploadSkyfile unable to generate subkey")
+		}
+	}
+	return nil
 }
