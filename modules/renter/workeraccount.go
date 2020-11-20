@@ -504,7 +504,7 @@ func (w *worker) managedRefillAccount() {
 	// If the target amount is larger than the remaining money, adjust the
 	// target. Make sure it can still cover the funding cost.
 	if contract, ok := w.renter.hostContractor.ContractByPublicKey(w.staticHostPubKey); ok {
-		if amount.Cmp(contract.RenterFunds) > 0 && contract.RenterFunds.Cmp(pt.FundAccountCost) > 0 {
+		if amount.Add(pt.FundAccountCost).Cmp(contract.RenterFunds) > 0 && contract.RenterFunds.Cmp(pt.FundAccountCost) > 0 {
 			amount = contract.RenterFunds.Sub(pt.FundAccountCost)
 		}
 	}
