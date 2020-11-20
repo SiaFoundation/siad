@@ -499,6 +499,15 @@ func (w *worker) managedRefillAccount() {
 	// maximums.
 	balance := w.staticAccount.managedMaxExpectedBalance()
 	amount := w.staticBalanceTarget.Sub(balance)
+	pt := w.staticPriceTable().staticPriceTable
+
+	// If the target amount is larger than the remaining money, adjust the
+	// target. Make sure it can still cover the funding cost.
+	if contract, ok := w.renter.hostContractor.ContractByPublicKey(w.staticHostPubKey); ok {
+		if amount.Cmp(contract.RenterFunds) > 0 && contract.RenterFunds.Cmp(pt.FundAccountCost) > 0 {
+			amount = contract.RenterFunds.Sub(pt.FundAccountCost)
+		}
+	}
 
 	// We track that there is a deposit in progress. Because filling an account
 	// is an interactive protocol with another machine, we are never sure of the
@@ -579,7 +588,6 @@ func (w *worker) managedRefillAccount() {
 	}
 
 	// send price table uid
-	pt := w.staticPriceTable().staticPriceTable
 	err = modules.RPCWrite(buffer, pt.UID)
 	if err != nil {
 		err = errors.AddContext(err, "could not write price table uid")
