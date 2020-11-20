@@ -132,7 +132,6 @@ type (
 	// RegistryHandlerGET is the response returned by the registryHandlerGET
 	// handler.
 	RegistryHandlerGET struct {
-		Tweak     string `json:"tweak"`
 		Data      string `json:"data"`
 		Revision  uint64 `json:"revision"`
 		Signature string `json:"signature"`
@@ -142,7 +141,7 @@ type (
 	// /skynet/registry [POST].
 	RegistryHandlerRequestPOST struct {
 		PublicKey types.SiaPublicKey `json:"publickey"`
-		FileID    modules.FileID     `json:"fileid"`
+		DataKey   crypto.Hash        `json:"datakey"`
 		Revision  uint64             `json:"revision"`
 		Signature crypto.Signature   `json:"signature"`
 		Data      []byte             `json:"data"`
@@ -198,7 +197,7 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 		timeout = time.Duration(timeoutInt) * time.Second
 	}
 
-	// Fetch the skyfile's  streamer to serve the basesector of the file
+	// Fetch the skyfile's streamer to serve the basesector of the file
 	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout)
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
@@ -371,6 +370,124 @@ func (api *API) skynetPortalsHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 
 	WriteSuccess(w)
+}
+
+// skynetRootHandlerGET handles the api call for a download by root request.
+// This call returns the encoded sector.
+func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+	// Start the timer for the performance measurement.
+	startTime := time.Now()
+	isErr := true
+	defer func() {
+		if isErr {
+			skynetPerformanceStats.TimeToFirstByte.AddRequest(0)
+		}
+	}()
+
+	// Parse the query params.
+	queryForm, err := url.ParseQuery(req.URL.RawQuery)
+	if err != nil {
+		WriteError(w, Error{"failed to parse query params"}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the timeout.
+	timeout := DefaultSkynetRequestTimeout
+	timeoutStr := queryForm.Get("timeout")
+	if timeoutStr != "" {
+		timeoutInt, err := strconv.Atoi(timeoutStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+
+		if timeoutInt > MaxSkynetRequestTimeout {
+			WriteError(w, Error{fmt.Sprintf("'timeout' parameter too high, maximum allowed timeout is %ds", MaxSkynetRequestTimeout)}, http.StatusBadRequest)
+			return
+		}
+		timeout = time.Duration(timeoutInt) * time.Second
+	}
+
+	// Parse the root.
+	rootStr := queryForm.Get("root")
+	if rootStr == "" {
+		WriteError(w, Error{"no root hash provided"}, http.StatusBadRequest)
+		return
+	}
+	var root crypto.Hash
+	err = root.LoadString(rootStr)
+	if err != nil {
+		WriteError(w, Error{"unable to parse 'root' parameter: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the offset.
+	offsetStr := queryForm.Get("offset")
+	if offsetStr == "" {
+		WriteError(w, Error{"no offset provided"}, http.StatusBadRequest)
+		return
+	}
+	offset, err := strconv.ParseUint(offsetStr, 10, 64)
+	if err != nil {
+		WriteError(w, Error{"unable to parse 'offset' parameter: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Parse the length.
+	lengthStr := queryForm.Get("length")
+	if lengthStr == "" {
+		WriteError(w, Error{"no length provided"}, http.StatusBadRequest)
+		return
+	}
+	length, err := strconv.ParseUint(lengthStr, 10, 64)
+	if err != nil {
+		WriteError(w, Error{"unable to parse 'length' parameter: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	// Fetch the skyfile's  streamer to serve the basesector of the file
+	sector, err := api.renter.DownloadByRoot(root, offset, length, timeout)
+	if errors.Contains(err, renter.ErrRootNotFound) {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch root: %v", err)}, http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to fetch root: %v", err)}, http.StatusInternalServerError)
+		return
+	}
+
+	// Stop the time here for TTFB.
+	skynetPerformanceStatsMu.Lock()
+	skynetPerformanceStats.TimeToFirstByte.AddRequest(time.Since(startTime))
+	skynetPerformanceStatsMu.Unlock()
+	// Defer a function to record the total performance time.
+	defer func() {
+		skynetPerformanceStatsMu.Lock()
+		defer skynetPerformanceStatsMu.Unlock()
+
+		if length <= 64e3 {
+			skynetPerformanceStats.Download64KB.AddRequest(time.Since(startTime))
+			return
+		}
+		if length <= 1e6 {
+			skynetPerformanceStats.Download1MB.AddRequest(time.Since(startTime))
+			return
+		}
+		if length <= 4e6 {
+			skynetPerformanceStats.Download4MB.AddRequest(time.Since(startTime))
+			return
+		}
+		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
+	}()
+
+	streamer := renter.StreamerFromSlice(sector)
+	defer func() {
+		_ = streamer.Close()
+	}()
+
+	// Serve the basesector
+	http.ServeContent(w, req, "", time.Time{}, streamer)
+	return
 }
 
 // skynetSkylinkHandlerGET accepts a skylink as input and will stream the data
@@ -1185,23 +1302,8 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 		return
 	}
 
-	// Check the version of the FileID object.
-	// TODO: add more sophisticated checks in the future. e.g. type, permissions
-	// etc.
-	if rhp.FileID.Version != modules.FileIDVersion {
-		WriteError(w, Error{fmt.Sprintf("Unexpected FileID version '%v' != '%v'", rhp.FileID.Version, modules.FileIDVersion)}, http.StatusBadRequest)
-		return
-	}
-
-	// Compute the tweak.
-	tweak, err := rhp.FileID.Tweak()
-	if err != nil {
-		WriteError(w, Error{"Failed to compute tweak: " + err.Error()}, http.StatusInternalServerError)
-		return
-	}
-
 	// Update the registry.
-	srv := modules.NewSignedRegistryValue(tweak, rhp.Data, rhp.Revision, rhp.Signature)
+	srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature)
 	err = api.renter.UpdateRegistry(rhp.PublicKey, srv, renter.DefaultRegistryUpdateTimeout)
 	if err != nil {
 		WriteError(w, Error{"Unable to update the registry: " + err.Error()}, http.StatusBadRequest)
@@ -1220,33 +1322,35 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 		return
 	}
 
-	// Parse tweak.
-	fileIDBytes, err := hex.DecodeString(req.FormValue("fileid"))
+	// Parse datakey.
+	var dataKey crypto.Hash
+	err = dataKey.LoadString(req.FormValue("datakey"))
 	if err != nil {
-		WriteError(w, Error{"Unable to decode fileid param: " + err.Error()}, http.StatusBadRequest)
-		return
-	}
-	// Decode fileid.
-	var fileID modules.FileID
-	err = json.Unmarshal(fileIDBytes, &fileID)
-	if err != nil {
-		WriteError(w, Error{"Unable to json decode fileid param: " + err.Error()}, http.StatusBadRequest)
-		return
-	}
-	// Compute tweak.
-	tweak, err := fileID.Tweak()
-	if err != nil {
-		WriteError(w, Error{"Unable to compute tweak: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"Unable to decode dataKey param: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 
-	srv, err := api.renter.ReadRegistry(spk, tweak, renter.DefaultRegistryReadTimeout)
-	if errors.Contains(err, renter.ErrRegistryEntryNotFound) {
-		WriteError(w, Error{"Unable to read from the registry: " + err.Error()}, http.StatusNotFound)
-		return
+	// Parse the timeout.
+	timeout := renter.MaxRegistryReadTimeout
+	timeoutStr := req.FormValue("timeout")
+	if timeoutStr != "" {
+		timeoutInt, err := strconv.Atoi(timeoutStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'timeout' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		timeout = time.Duration(timeoutInt) * time.Second
+		if timeout > renter.MaxRegistryReadTimeout || timeout == 0 {
+			WriteError(w, Error{fmt.Sprintf("Invalid 'timeout' parameter, needs to be between 1s and %ds", renter.MaxRegistryReadTimeout)}, http.StatusBadRequest)
+			return
+		}
 	}
-	if errors.Contains(err, renter.ErrRegistryLookupTimeout) {
-		WriteError(w, Error{"Unable to read from the registry: " + err.Error()}, http.StatusRequestTimeout)
+
+	// Read registry.
+	srv, err := api.renter.ReadRegistry(spk, dataKey, timeout)
+	if errors.Contains(err, renter.ErrRegistryEntryNotFound) ||
+		errors.Contains(err, renter.ErrRegistryLookupTimeout) {
+		WriteError(w, Error{err.Error()}, http.StatusNotFound)
 		return
 	}
 	if err != nil {
@@ -1256,7 +1360,6 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 
 	// Send response.
 	WriteJSON(w, RegistryHandlerGET{
-		Tweak:     hex.EncodeToString(srv.Tweak[:]),
 		Data:      hex.EncodeToString(srv.Data),
 		Revision:  srv.Revision,
 		Signature: hex.EncodeToString(srv.Signature[:]),

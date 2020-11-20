@@ -31,21 +31,6 @@ func AlertCauseSiafileLowRedundancy(siaPath modules.SiaPath, health, redundancy 
 
 // Default redundancy parameters.
 var (
-	// DefaultDataPieces is the number of data pieces per erasure-coded chunk
-	DefaultDataPieces = build.Select(build.Var{
-		Dev:      1,
-		Standard: 10,
-		Testing:  1,
-	}).(int)
-
-	// DefaultParityPieces is the number of parity pieces per erasure-coded
-	// chunk
-	DefaultParityPieces = build.Select(build.Var{
-		Dev:      1,
-		Standard: 20,
-		Testing:  4,
-	}).(int)
-
 	// RepairThreshold defines the threshold at which the renter decides to
 	// repair a file. The renter will start repairing the file when the health
 	// is equal to or greater than this value.
@@ -187,6 +172,22 @@ var (
 		Testing:  3 * time.Second,
 	}).(time.Duration)
 
+	// healthLoopNumBatchFiles defines the number of files the health loop will
+	// try to batch together in a subtree when updating the filesystem.
+	healthLoopNumBatchFiles = build.Select(build.Var{
+		Dev:      uint64(1e3),
+		Standard: uint64(10e3),
+		Testing:  uint64(5),
+	}).(uint64)
+
+	// healthLoopNumBatchSubDirs defines the number of sub directories the health
+	// loop will try to batch together in a subtree when updating the filesystem.
+	healthLoopNumBatchSubDirs = build.Select(build.Var{
+		Dev:      uint64(100),
+		Standard: uint64(1e3),
+		Testing:  uint64(2),
+	}).(uint64)
+
 	// maxRepairLoopTime indicates the maximum amount of time that the repair
 	// loop will spend popping chunks off of the repair heap.
 	maxRepairLoopTime = build.Select(build.Var{
@@ -221,6 +222,10 @@ var (
 		Standard: 20,
 		Testing:  1,
 	}).(int)
+
+	// numBubbleWorkerThreads is the number of threads used when using worker
+	// groups in various bubble methods
+	numBubbleWorkerThreads = 20
 
 	// offlineCheckFrequency is how long the renter will wait to check the
 	// online status if it is offline.

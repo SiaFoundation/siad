@@ -285,6 +285,9 @@ func New(path string, maxEntries uint64) (_ *Registry, err error) {
 	}
 	// Load the remaining entries.
 	reg.entries, err = loadRegistryEntries(r, fi.Size()/PersistedEntrySize, b)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to load registry entries")
+	}
 	return reg, nil
 }
 

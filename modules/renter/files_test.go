@@ -15,16 +15,31 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/persist"
 )
 
-// newRenterTestFile creates a test file when the test has a renter so that the
+// newSiaPath returns a new SiaPath for testing and panics on error
+func newSiaPath(str string) modules.SiaPath {
+	sp, err := modules.NewSiaPath(str)
+	if err != nil {
+		panic(err)
+	}
+	return sp
+}
+
+// createRenterTestFile creates a test file when the test has a renter so that the
 // file is properly added to the renter. It returns the SiaFileSetEntry that the
 // SiaFile is stored in
-func (r *Renter) newRenterTestFile() (*filesystem.FileNode, error) {
-	// Generate name and erasure coding
-	siaPath, rsc := testingFileParams()
+func (r *Renter) createRenterTestFile(siaPath modules.SiaPath) (*filesystem.FileNode, error) {
+	// Generate erasure coder
+	_, rsc := testingFileParams()
+	return r.createRenterTestFileWithParams(siaPath, rsc)
+}
+
+// createRenterTestFileWithParams creates a test file when the test has a renter
+// so that the file is properly added to the renter. It returns the
+// SiaFileSetEntry that the SiaFile is stored in
+func (r *Renter) createRenterTestFileWithParams(siaPath modules.SiaPath, rsc modules.ErasureCoder) (*filesystem.FileNode, error) {
 	// create the renter/files dir if it doesn't exist
 	siaFilePath := r.staticFileSystem.FilePath(siaPath)
 	dir, _ := filepath.Split(siaFilePath)
@@ -42,6 +57,15 @@ func (r *Renter) newRenterTestFile() (*filesystem.FileNode, error) {
 		return nil, err
 	}
 	return r.staticFileSystem.OpenSiaFile(up.SiaPath)
+}
+
+// newRenterTestFile creates a test file when the test has a renter so that the
+// file is properly added to the renter. It returns the SiaFileSetEntry that the
+// SiaFile is stored in
+func (r *Renter) newRenterTestFile() (*filesystem.FileNode, error) {
+	// Generate name and erasure coding
+	siaPath, rsc := testingFileParams()
+	return r.createRenterTestFileWithParams(siaPath, rsc)
 }
 
 // TestRenterFileListLocalPath verifies that FileList() returns the correct
@@ -455,10 +479,7 @@ func TestRenterFileDir(t *testing.T) {
 	}
 
 	// Upload local file
-	ec, err := siafile.NewRSCode(DefaultDataPieces, DefaultParityPieces)
-	if err != nil {
-		t.Fatal(err)
-	}
+	ec := modules.NewRSCodeDefault()
 	siaPath, err := modules.NewSiaPath(fileName)
 	if err != nil {
 		t.Fatal(err)

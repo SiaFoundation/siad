@@ -178,56 +178,6 @@ type (
 	}
 )
 
-type (
-	// ErasureCoderType is an identifier for the individual types of erasure
-	// coders.
-	ErasureCoderType [4]byte
-
-	// ErasureCoderIdentifier is an identifier that only matches another
-	// ErasureCoder's identifier if they both are of the same type and settings.
-	ErasureCoderIdentifier string
-
-	// An ErasureCoder is an error-correcting encoder and decoder.
-	ErasureCoder interface {
-		// NumPieces is the number of pieces returned by Encode.
-		NumPieces() int
-
-		// MinPieces is the minimum number of pieces that must be present to
-		// recover the original data.
-		MinPieces() int
-
-		// Encode splits data into equal-length pieces, with some pieces
-		// containing parity data.
-		Encode(data []byte) ([][]byte, error)
-
-		// Identifier returns the ErasureCoderIdentifier of the ErasureCoder.
-		Identifier() ErasureCoderIdentifier
-
-		// EncodeShards encodes the input data like Encode but accepts an already
-		// sharded input.
-		EncodeShards(data [][]byte) ([][]byte, error)
-
-		// Reconstruct recovers the full set of encoded shards from the provided
-		// pieces, of which at least MinPieces must be non-nil.
-		Reconstruct(pieces [][]byte) error
-
-		// Recover recovers the original data from pieces and writes it to w.
-		// pieces should be identical to the slice returned by Encode (length and
-		// order must be preserved), but with missing elements set to nil. n is
-		// the number of bytes to be written to w; this is necessary because
-		// pieces may have been padded with zeros during encoding.
-		Recover(pieces [][]byte, n uint64, w io.Writer) error
-
-		// SupportsPartialEncoding returns true if the ErasureCoder can be used
-		// to encode/decode any crypto.SegmentSize bytes of an encoded piece or
-		// false otherwise.
-		SupportsPartialEncoding() bool
-
-		// Type returns the type identifier of the ErasureCoder.
-		Type() ErasureCoderType
-	}
-)
-
 // An Allowance dictates how much the Renter is allowed to spend in a given
 // period. Note that funds are spent on both storage and bandwidth.
 //
@@ -703,6 +653,15 @@ type RenterContract struct {
 	SiafundFee  types.Currency
 }
 
+// Size returns the contract size
+func (rc *RenterContract) Size() uint64 {
+	var size uint64
+	if len(rc.Transaction.FileContractRevisions) != 0 {
+		size = rc.Transaction.FileContractRevisions[0].NewFileSize
+	}
+	return size
+}
+
 // ContractorSpending contains the metrics about how much the Contractor has
 // spent during the current billing period.
 type ContractorSpending struct {
@@ -800,7 +759,8 @@ type (
 		PriceTableStatus WorkerPriceTableStatus `json:"pricetablestatus"`
 
 		// Job Queues
-		BackupJobQueueSize int `json:"backupjobqueuesize"`
+		DownloadSnapshotJobQueueSize int `json:"downloadsnapshotjobqueuesize"`
+		UploadSnapshotJobQueueSize   int `json:"uploadsnapshotjobqueuesize"`
 
 		// Read Jobs Information
 		ReadJobsStatus WorkerReadJobsStatus `json:"readjobsstatus"`
@@ -1107,6 +1067,10 @@ type Renter interface {
 	// separately, and if there is a fanout expansion that needs to be uploaded
 	// separately as well.
 	CreateSkylinkFromSiafile(SkyfileUploadParameters, SiaPath) (Skylink, error)
+
+	// DownloadByRoot will fetch data using the merkle root of that data. This
+	// uses all of the async worker primitives to improve speed and throughput.
+	DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error)
 
 	// DownloadSkylink will fetch a file from the Sia network using the skylink.
 	DownloadSkylink(Skylink, time.Duration) (SkyfileMetadata, Streamer, error)

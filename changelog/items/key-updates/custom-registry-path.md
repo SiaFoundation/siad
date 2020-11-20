@@ -1,1 +1,1 @@
-- allow for migrating registry to cstom path
+- allow for migrating registry to custom path

@@ -44,13 +44,14 @@ type (
 	// HostGET contains the information that is returned after a GET request to
 	// /host - a bunch of information about the status of the host.
 	HostGET struct {
+		ConnectabilityStatus modules.HostConnectabilityStatus `json:"connectabilitystatus"`
 		ExternalSettings     modules.HostExternalSettings     `json:"externalsettings"`
 		FinancialMetrics     modules.HostFinancialMetrics     `json:"financialmetrics"`
 		InternalSettings     modules.HostInternalSettings     `json:"internalsettings"`
 		NetworkMetrics       modules.HostNetworkMetrics       `json:"networkmetrics"`
-		ConnectabilityStatus modules.HostConnectabilityStatus `json:"connectabilitystatus"`
-		WorkingStatus        modules.HostWorkingStatus        `json:"workingstatus"`
+		PriceTable           modules.RPCPriceTable            `json:"pricetable"`
 		PublicKey            types.SiaPublicKey               `json:"publickey"`
+		WorkingStatus        modules.HostWorkingStatus        `json:"workingstatus"`
 	}
 
 	// HostEstimateScoreGET contains the information that is returned from a
@@ -98,14 +99,16 @@ func (api *API) hostHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprou
 	cs := api.host.ConnectabilityStatus()
 	ws := api.host.WorkingStatus()
 	pk := api.host.PublicKey()
+	pt := api.host.PriceTable()
 	hg := HostGET{
+		ConnectabilityStatus: cs,
 		ExternalSettings:     es,
 		FinancialMetrics:     fm,
 		InternalSettings:     is,
 		NetworkMetrics:       nm,
-		ConnectabilityStatus: cs,
-		WorkingStatus:        ws,
+		PriceTable:           pt,
 		PublicKey:            pk,
+		WorkingStatus:        ws,
 	}
 
 	if api.staticDeps.Disrupt("TimeoutOnHostGET") {

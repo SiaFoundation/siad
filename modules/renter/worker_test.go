@@ -70,6 +70,15 @@ func newWorkerTesterCustomDependency(name string, renterDeps modules.Dependencie
 		return nil, err
 	}
 
+	// Wait for the price table to be updated.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		pt := w.staticPriceTable()
+		if pt.staticUpdateTime.IsZero() {
+			return errors.New("price table not updated")
+		}
+		return nil
+	})
+
 	return &workerTester{
 		rt:     rt,
 		host:   host,
@@ -142,7 +151,6 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	// Download the first sector partially and then fully since both actions
 	// require different proofs.
 	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize/2)

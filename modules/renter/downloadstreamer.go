@@ -76,7 +76,7 @@ func (s *streamer) managedFillCache() bool {
 	// the cache is actually in need of being filled. The cache will only fill
 	// if the current reader approaching the point of running out of data.
 	s.mu.Lock()
-	partialDownloadsSupported := s.staticFile.ErasureCode().SupportsPartialEncoding()
+	_, partialDownloadsSupported := s.staticFile.ErasureCode().SupportsPartialEncoding()
 	chunkSize := s.staticFile.ChunkSize()
 	cacheOffset := int64(s.cacheOffset)
 	streamOffset := s.offset

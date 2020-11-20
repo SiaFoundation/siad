@@ -19,6 +19,10 @@ const (
 	jobUpdateRegistryPerformanceDecay = 0.9
 )
 
+// errHostOutdatedProof is returned if the host provides a proof that has a
+// valid signature but is still invalid due to its revision number.
+var errHostOutdatedProof = errors.New("host returned proof with invalid revision number")
+
 type (
 	// jobUpdateRegistry contains information about a UpdateRegistry query.
 	jobUpdateRegistry struct {
@@ -42,6 +46,7 @@ type (
 
 	// jobUpdateRegistryResponse contains the result of a UpdateRegistry query.
 	jobUpdateRegistryResponse struct {
+		srv       *modules.SignedRegistryValue // only sent on ErrLowerRevNum and ErrSameRevNum
 		staticErr error
 	}
 )
@@ -61,6 +66,7 @@ func (j *jobUpdateRegistry) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
 	errLaunch := w.renter.tg.Launch(func() {
 		response := &jobUpdateRegistryResponse{
+			srv:       nil,
 			staticErr: errors.Extend(err, ErrJobDiscarded),
 		}
 		select {
@@ -80,9 +86,10 @@ func (j *jobUpdateRegistry) callExecute() {
 	w := j.staticQueue.staticWorker()
 
 	// Prepare a method to send a response asynchronously.
-	sendResponse := func(err error) {
+	sendResponse := func(srv *modules.SignedRegistryValue, err error) {
 		errLaunch := w.renter.tg.Launch(func() {
 			response := &jobUpdateRegistryResponse{
+				srv:       srv,
 				staticErr: err,
 			}
 			select {
@@ -102,19 +109,25 @@ func (j *jobUpdateRegistry) callExecute() {
 	// in the future in case we are certain that a host can't contain those
 	// errors.
 	rv, err := j.managedUpdateRegistry()
-	if err != nil && (strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) ||
-		strings.Contains(err.Error(), registry.ErrSameRevNum.Error())) {
+	if errors.Contains(err, registry.ErrLowerRevNum) || errors.Contains(err, registry.ErrSameRevNum) {
 		// Report the failure if the host can't provide a signed registry entry
 		// with the error.
 		if err := rv.Verify(j.staticSiaPublicKey.ToPublicKey()); err != nil {
-			sendResponse(err)
+			sendResponse(nil, err)
 			j.staticQueue.callReportFailure(err)
 			return
 		}
-		sendResponse(err)
+		// If the entry is valid, check if the revision number is actually
+		// invalid.
+		if j.staticSignedRegistryValue.Revision > rv.Revision {
+			sendResponse(nil, errHostOutdatedProof)
+			j.staticQueue.callReportFailure(err)
+			return
+		}
+		sendResponse(&rv, err)
 		return
 	} else if err != nil {
-		sendResponse(err)
+		sendResponse(nil, err)
 		j.staticQueue.callReportFailure(err)
 		return
 	}
@@ -123,7 +136,7 @@ func (j *jobUpdateRegistry) callExecute() {
 	jobTime := time.Since(start)
 
 	// Send the response and report success.
-	sendResponse(err)
+	sendResponse(nil, nil)
 	j.staticQueue.callReportSuccess()
 
 	// Update the performance stats on the queue.
@@ -166,8 +179,15 @@ func (j *jobUpdateRegistry) managedUpdateRegistry() (modules.SignedRegistryValue
 		// If a revision related error was returned, we try to parse the
 		// signed registry value from the response.
 		err = resp.Error
-		if err != nil && (strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) ||
-			strings.Contains(err.Error(), registry.ErrSameRevNum.Error())) {
+		// Check for ErrLowerRevNum.
+		if err != nil && strings.Contains(err.Error(), registry.ErrLowerRevNum.Error()) {
+			err = registry.ErrLowerRevNum
+		}
+		if err != nil && strings.Contains(err.Error(), registry.ErrSameRevNum.Error()) {
+			err = registry.ErrSameRevNum
+		}
+		if errors.Contains(err, registry.ErrLowerRevNum) || errors.Contains(err, registry.ErrSameRevNum) {
+			// Parse the proof.
 			rv, parseErr := parseSignedRegistryValueResponse(resp.Output, j.staticSignedRegistryValue.Tweak)
 			return rv, errors.Compose(err, parseErr)
 		}

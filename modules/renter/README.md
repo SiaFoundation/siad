@@ -192,7 +192,6 @@ are stuck waiting for more memory before they release memory.
 **Key Files**
  - [worker.go](./worker.go)
  - [workerdownload.go](./workerdownload.go)
- - [workerfetchbackups.go](./workerfetchbackups.go)
  - [workerpool.go](./workerpool.go)
  - [workerupload.go](./workerupload.go)
 
@@ -289,10 +288,6 @@ generic code and a basic reference implementation for building a job.
    - `unfinishedDownloadChunk.managedCleanUp` will use this method to re-issue
 	 work to workers that are known to have passed on a job previously, but may
 	 be required now.
- - `callQueueFetchBackupsJob` can be used to schedule a job to retrieve a list
-   of backups from a host
-   - `Renter.BackupsOnHost` will use this method to fetch a list of snapshot
-	 backups that are stored on a particular host.
  - `callQueueUploadChunk` can be used to schedule a job to participate in a
    chunk upload
    - `Renter.managedDistributeChunkToWorkers` will use this method to distribute
@@ -302,10 +297,6 @@ generic code and a basic reference implementation for building a job.
 	 but may be required now.
 
 ##### Outbound Complexities
- - `managedPerformFetchBackupsJob` will use `Renter.callDownloadSnapshotTable`
-   to fetch the list of backups from the host. The snapshot subsystem is
-   responsible for defining what the list of backups looks like and how to fetch
-   those backups from the host.
  - `managedPerformDownloadChunkJob` is a mess of complexities and needs to be
    refactored to be compliant with the new subsystem format.
  - `managedPerformUploadChunkJob` is a mess of complexities and needs to be
@@ -562,16 +553,18 @@ One of the key directory metadata fields that the health loop uses is
 is the timestamp of when a directory or file last had its health re-calculated
 during a bubble call. When determining which directory to start with when
 updating the renter's file system, the health loop follows the path of oldest
-`AggregateLastHealthCheckTime` to find the directory that is the most out of
-date. To do this, the health loop uses `managedOldestHealthCheckTime`. This
-method starts at the root level of the renter's file system and begins checking
-the `AggregateLastHealthCheckTime` of the subdirectories. It then finds which
-one is the oldest and moves into that subdirectory and continues the search.
-Once it reaches a directory that either has no subdirectories or has an older
-`AggregateLastHealthCheckTime` than any of the subdirectories, it returns that
-timestamp and the SiaPath of the directory.
+`AggregateLastHealthCheckTime` to find the directory  or sub tree that is the
+most out of date. To do this, the health loop uses
+`managedOldestHealthCheckTime`. This method starts at the root level of the
+renter's file system and begins checking the `AggregateLastHealthCheckTime` of
+the subdirectories. It then finds which one is the oldest and moves into that
+subdirectory and continues the search.  Once it reaches a directory that either
+has no subdirectories, or the current directory  has an older
+`AggregateLastHealthCheckTime` than any of the subdirectories, or it has found
+a reasonably sized sub tree defined by the health loop constants, it returns
+that timestamp and the SiaPath of the directory.
 
-Once the health loop has found the most out of date directory, it calls
+Once the health loop has found the most out of date directory or sub tree, it calls
 `managedBubbleMetadata`, to be referred to as bubble, on that directory. When a
 directory is bubbled, the metadata information is recalculated and saved to disk
 and then bubble is called on the parent directory until the top level directory

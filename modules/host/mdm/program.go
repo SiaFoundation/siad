@@ -162,9 +162,9 @@ func (mdm *MDM) ExecuteProgram(ctx context.Context, pt *modules.RPCPriceTable, p
 		defer func() {
 			err := program.staticData.Close()
 			if err != nil {
-				// This never returns an err != nila but we still want to
-				// satisfy the errcheck lint while also not missing a potential
-				// future error.
+				// This never returns an err != nil but we still want to satisfy
+				// the errcheck lint while also not missing a potential future
+				// error.
 				build.Critical(err)
 			}
 		}()

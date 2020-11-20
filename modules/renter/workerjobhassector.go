@@ -23,7 +23,7 @@ type (
 	jobHasSector struct {
 		staticSectors []crypto.Hash
 
-		staticResponseChan chan *jobHasSectorResponse // Channel to send a response down
+		staticResponseChan chan *jobHasSectorResponse
 
 		*jobGeneric
 	}
@@ -106,12 +106,11 @@ func (j *jobHasSector) callExecute() {
 	}
 
 	// Report success or failure to the queue.
-	if err == nil {
-		j.staticQueue.callReportSuccess()
-	} else {
+	if err != nil {
 		j.staticQueue.callReportFailure(err)
 		return
 	}
+	j.staticQueue.callReportSuccess()
 
 	// Job was a success, update the performance stats on the queue.
 	jq := j.staticQueue.(*jobHasSectorQueue)
