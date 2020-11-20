@@ -64,7 +64,8 @@ func TestInstructionReadRegistry(t *testing.T) {
 	}
 }
 
-// TestInstructionReadRegistry tests the ReadRegistry instruction.
+// TestInstructionReadRegistryNotFound tests the ReadRegistry instruction for
+// when an entry isn't found.
 func TestInstructionReadRegistryNotFound(t *testing.T) {
 	host := newTestHost()
 	mdm := New(host)

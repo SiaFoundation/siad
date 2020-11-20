@@ -88,6 +88,7 @@ type (
 		staticJobHasSectorQueue        *jobHasSectorQueue
 		staticJobReadQueue             *jobReadQueue
 		staticJobReadRegistryQueue     *jobReadRegistryQueue
+		staticJobRenewQueue            *jobRenewQueue
 		staticJobUpdateRegistryQueue   *jobUpdateRegistryQueue
 		staticJobUploadSnapshotQueue   *jobUploadSnapshotQueue
 
@@ -211,6 +212,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	w.newPriceTable()
 	w.initJobHasSectorQueue()
 	w.initJobReadQueue()
+	w.initJobRenewQueue()
 	w.initJobDownloadSnapshotQueue()
 	w.initJobReadRegistryQueue()
 	w.initJobUpdateRegistryQueue()

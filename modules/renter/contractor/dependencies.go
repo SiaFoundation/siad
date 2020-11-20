@@ -26,6 +26,7 @@ type (
 	transactionBuilder interface {
 		AddArbitraryData([]byte) uint64
 		AddFileContract(types.FileContract) uint64
+		AddFileContractRevision(types.FileContractRevision) uint64
 		AddMinerFee(types.Currency) uint64
 		AddParents([]types.Transaction)
 		AddSiacoinInput(types.SiacoinInput) uint64

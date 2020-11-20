@@ -1010,8 +1010,9 @@ func TestUploadHeapStreamPush(t *testing.T) {
 			fileUID: "streamchunk",
 			index:   1,
 		},
-		fileEntry:    file.Copy(),
-		sourceReader: sr,
+		fileEntry:        file.Copy(),
+		sourceReader:     sr,
+		piecesRegistered: 1, // This is so the chunk is viewed as incomplete
 	}
 
 	// Define helper
@@ -1069,8 +1070,9 @@ func TestUploadHeapStreamPush(t *testing.T) {
 
 	// Add a local chunk to the heap
 	localChunk := &unfinishedUploadChunk{
-		id:        streamChunk.id,
-		fileEntry: file.Copy(),
+		id:               streamChunk.id,
+		fileEntry:        file.Copy(),
+		piecesRegistered: 1, // This is so the chunk is viewed as incomplete
 	}
 	pushed, err = rt.renter.managedPushChunkForRepair(localChunk, chunkTypeLocalChunk)
 	if err != nil {
@@ -1168,8 +1170,9 @@ func TestUploadHeapTryUpdate(t *testing.T) {
 				fileUID: siafile.SiafileUID(test.name),
 				index:   uint64(i),
 			},
-			fileEntry:    entry.Copy(),
-			sourceReader: test.existingChunkSR,
+			fileEntry:        entry.Copy(),
+			sourceReader:     test.existingChunkSR,
+			piecesRegistered: 1, // This is so the chunk is viewed as incomplete
 		}
 		if test.existsUnstuck {
 			uh.unstuckHeapChunks[existingChunk.id] = existingChunk
@@ -1182,8 +1185,9 @@ func TestUploadHeapTryUpdate(t *testing.T) {
 			uh.repairingChunks[existingChunk.id] = existingChunk
 		}
 		newChunk := &unfinishedUploadChunk{
-			id:           existingChunk.id,
-			sourceReader: test.newChunkSR,
+			id:               existingChunk.id,
+			sourceReader:     test.newChunkSR,
+			piecesRegistered: 1, // This is so the chunk is viewed as incomplete
 		}
 
 		// Try and Update the Chunk in the Heap
@@ -1217,6 +1221,11 @@ func TestRenterAddChunksToHeapPanic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := rt.renter.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Add maxConsecutiveDirHeapFailures non existent directories to the
 	// directoryHeap

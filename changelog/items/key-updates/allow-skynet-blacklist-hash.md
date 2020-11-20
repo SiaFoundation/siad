@@ -1,1 +1,0 @@
-- Enable adding or removing hashes of skylink merkleroots to the skynet blacklist

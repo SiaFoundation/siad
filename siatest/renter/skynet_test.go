@@ -2,6 +2,7 @@ package renter
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"encoding/hex"
@@ -31,6 +32,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/Sia/skynet"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -64,6 +66,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "DisableForce", Test: testSkynetDisableForce},
 		{Name: "BlocklistHash", Test: testSkynetBlocklistHash},
 		{Name: "BlocklistSkylink", Test: testSkynetBlocklistSkylink},
+		{Name: "BlocklistUpgrade", Test: testSkynetBlocklistUpgrade},
 		{Name: "Portals", Test: testSkynetPortals},
 		{Name: "HeadRequest", Test: testSkynetHeadRequest},
 		{Name: "Stats", Test: testSkynetStats},
@@ -76,7 +79,10 @@ func TestSkynet(t *testing.T) {
 		{Name: "DefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
 		{Name: "SingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
 		{Name: "DownloadFormats", Test: testSkynetDownloadFormats},
-		{Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSector},
+		{Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSectorNoEncryption},
+		{Name: "DownloadBaseSectorEncrypted", Test: testSkynetDownloadBaseSectorEncrypted},
+		{Name: "DownloadByRoot", Test: testSkynetDownloadByRootNoEncryption},
+		{Name: "DownloadByRootEncrypted", Test: testSkynetDownloadByRootEncrypted},
 	}
 
 	// Run tests
@@ -1367,15 +1373,37 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 	}
 }
 
+// testSkynetDownloadBaseSectorEncrypted tests downloading a skylink's encrypted
+// baseSector
+func testSkynetDownloadBaseSectorEncrypted(t *testing.T, tg *siatest.TestGroup) {
+	testSkynetDownloadBaseSector(t, tg, "basesectorkey")
+}
+
+// testSkynetDownloadBaseSectorNoEncryption tests downloading a skylink's
+// baseSector
+func testSkynetDownloadBaseSectorNoEncryption(t *testing.T, tg *siatest.TestGroup) {
+	testSkynetDownloadBaseSector(t, tg, "")
+}
+
 // testSkynetDownloadBaseSector tests downloading a skylink's baseSector
-func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup) {
+func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup, skykeyName string) {
 	r := tg.Renters()[0]
 
+	// Add the SkyKey
+	var sk skykey.Skykey
+	var err error
+	if skykeyName != "" {
+		sk, err = r.SkykeyCreateKeyPost(skykeyName, skykey.TypePrivateID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	// Upload a small skyfile
-	filename := "onlyBaseSector"
+	filename := "onlyBaseSector" + persist.RandomSuffix()
 	size := 100 + siatest.Fuzz()
 	smallFileData := fastrand.Bytes(size)
-	skylink, sup, _, err := r.UploadNewSkyfileWithDataBlocking(filename, smallFileData, false)
+	skylink, sup, sshp, err := r.UploadNewEncryptedSkyfileBlocking(filename, smallFileData, skykeyName, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1387,10 +1415,21 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// Read the baseSector
-	baseSector := make([]byte, modules.SectorSize)
-	_, err = baseSectorReader.Read(baseSector)
+	baseSector, err := ioutil.ReadAll(baseSectorReader)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Check for encryption
+	encrypted := skynet.IsEncryptedBaseSector(baseSector)
+	if encrypted != (skykeyName != "") {
+		t.Fatal("wrong encrypted state", encrypted, skykeyName)
+	}
+	if encrypted {
+		_, err = skynet.DecryptBaseSector(baseSector, sk)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// Parse the skyfile metadata from the baseSector
@@ -1418,7 +1457,256 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup) {
 		t.Error("Expected 0 fanout bytes:", fanoutBytes)
 	}
 
-	// TODO - Verify Raw Format for Large file when /skynet/fanout is added
+	// Verify DownloadByRoot gives the same information
+	rootSectorReader, err := r.SkynetDownloadByRootGet(sshp.MerkleRoot, 0, modules.SectorSize, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read the rootSector
+	rootSector, err := ioutil.ReadAll(rootSectorReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check for encryption
+	encrypted = skynet.IsEncryptedBaseSector(rootSector)
+	if encrypted != (skykeyName != "") {
+		t.Fatal("wrong encrypted state", encrypted, skykeyName)
+	}
+	if encrypted {
+		_, err = skynet.DecryptBaseSector(rootSector, sk)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Parse the skyfile metadata from the rootSector
+	_, fanoutBytes, metadata, rootSectorPayload, err := skynet.ParseSkyfileMetadata(rootSector)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the metadata
+	if !reflect.DeepEqual(sup.FileMetadata, metadata) {
+		siatest.PrintJSON(sup.FileMetadata)
+		siatest.PrintJSON(metadata)
+		t.Error("Metadata not equal")
+	}
+
+	// Verify the file data
+	if !bytes.Equal(smallFileData, rootSectorPayload) {
+		t.Log("FileData bytes:", smallFileData)
+		t.Log("rootSectorPayload bytes:", rootSectorPayload)
+		t.Errorf("Bytes not equal")
+	}
+
+	// Since this was a small file upload there should be no fanout bytes
+	if len(fanoutBytes) != 0 {
+		t.Error("Expected 0 fanout bytes:", fanoutBytes)
+	}
+}
+
+// testSkynetDownloadByRootEncrypted tests encrypted downloading by root
+func testSkynetDownloadByRootEncrypted(t *testing.T, tg *siatest.TestGroup) {
+	testSkynetDownloadByRoot(t, tg, "rootkey")
+}
+
+// testSkynetDownloadByRootNoEncryption tests downloading by root
+func testSkynetDownloadByRootNoEncryption(t *testing.T, tg *siatest.TestGroup) {
+	testSkynetDownloadByRoot(t, tg, "")
+}
+
+// testSkynetDownloadByRoot tests downloading by root
+func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName string) {
+	r := tg.Renters()[0]
+
+	// Add the SkyKey
+	var sk skykey.Skykey
+	var err error
+	if skykeyName != "" {
+		sk, err = r.SkykeyCreateKeyPost(skykeyName, skykey.TypePrivateID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Upload a skyfile that will have a fanout
+	filename := "byRootLargeFile" + persist.RandomSuffix()
+	size := 2*int(modules.SectorSize) + siatest.Fuzz()
+	fileData := fastrand.Bytes(size)
+	_, sup, sshp, err := r.UploadNewEncryptedSkyfileBlocking(filename, fileData, skykeyName, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the base sector
+	reader, err := r.SkynetDownloadByRootGet(sshp.MerkleRoot, 0, modules.SectorSize, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read the baseSector
+	baseSector, err := ioutil.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check for encryption
+	encrypted := skynet.IsEncryptedBaseSector(baseSector)
+	if encrypted != (skykeyName != "") {
+		t.Fatal("wrong encrypted state", encrypted, skykeyName)
+	}
+	var fileKey skykey.Skykey
+	if encrypted {
+		fileKey, err = skynet.DecryptBaseSector(baseSector, sk)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Parse the information from the BaseSector
+	layout, fanoutBytes, metadata, baseSectorPayload, err := skynet.ParseSkyfileMetadata(baseSector)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the metadata
+	if !reflect.DeepEqual(sup.FileMetadata, metadata) {
+		siatest.PrintJSON(sup.FileMetadata)
+		siatest.PrintJSON(metadata)
+		t.Error("Metadata not equal")
+	}
+
+	// The baseSector should be empty since there is a fanout
+	if len(baseSectorPayload) != 0 {
+		t.Error("baseSectorPayload should be empty:", baseSectorPayload)
+	}
+
+	// For large files there should be fanout bytes
+	if len(fanoutBytes) == 0 {
+		t.Error("no fanout bytes")
+	}
+
+	// Decode Fanout
+	piecesPerChunk, chunkRootsSize, numChunks, err := skynet.DecodeFanout(layout, fanoutBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify fanout information
+	if encrypted {
+		if piecesPerChunk != uint64(layout.FanoutDataPieces+layout.FanoutParityPieces) {
+			t.Fatal("piecesPerChunk incorrect for encrypted 1-of-N scheme", piecesPerChunk)
+		}
+		if chunkRootsSize != crypto.HashSize*piecesPerChunk {
+			t.Fatal("chunkRootsSize incorrect for encrypted 1-of-N scheme", chunkRootsSize)
+		}
+	} else {
+		if piecesPerChunk != 1 {
+			t.Fatal("piecesPerChunk incorrect for 1-of-N scheme", piecesPerChunk)
+		}
+		if chunkRootsSize != crypto.HashSize {
+			t.Fatal("chunkRootsSize incorrect for 1-of-N scheme", chunkRootsSize)
+		}
+	}
+
+	// Derive the fanout key
+	var fanoutKey crypto.CipherKey
+	if encrypted {
+		fanoutKey, err = skynet.DeriveFanoutKey(&layout, fileKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Create the erasure coder
+	// Only the encrypted upload is erasure coded.
+	var ec modules.ErasureCoder
+	if encrypted {
+		ec, err = modules.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	chunkSize := (modules.SectorSize - layout.CipherType.Overhead()) * uint64(layout.FanoutDataPieces)
+
+	// Create list of chunk roots
+	chunkRoots := make([][]crypto.Hash, 0, numChunks)
+	for i := uint64(0); i < numChunks; i++ {
+		root := make([]crypto.Hash, piecesPerChunk)
+		for j := uint64(0); j < piecesPerChunk; j++ {
+			fanoutOffset := (i * chunkRootsSize) + (j * crypto.HashSize)
+			copy(root[j][:], fanoutBytes[fanoutOffset:])
+		}
+		chunkRoots = append(chunkRoots, root)
+	}
+
+	// Download roots
+	var rootBytes []byte
+	var blankHash crypto.Hash
+	for i := uint64(0); i < numChunks; i++ {
+		// Create the pieces for this chunk
+		pieces := make([][]byte, len(chunkRoots[i]))
+		for j := uint64(0); j < piecesPerChunk; j++ {
+			// Ignore null roots
+			if chunkRoots[i][j] == blankHash {
+				continue
+			}
+
+			// Download the sector
+			reader, err := r.SkynetDownloadByRootGet(chunkRoots[i][j], 0, modules.SectorSize, -1)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Read the sector
+			sector, err := ioutil.ReadAll(reader)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Decrypt to data if needed
+			if encrypted {
+				key := fanoutKey.Derive(i, j)
+				_, err = key.DecryptBytesInPlace(sector, j)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			// Add the sector to the list of pieces
+			pieces[j] = sector
+		}
+
+		// Decode the erasure coded chunk
+		var chunkBytes []byte
+		if ec != nil {
+			buf := bytes.NewBuffer(nil)
+			err = ec.Recover(pieces, chunkSize, buf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			chunkBytes = buf.Bytes()
+		} else {
+			// The unencrypted file is not erasure coded so just read the piece data
+			// directly
+			for _, p := range pieces {
+				chunkBytes = append(chunkBytes, p...)
+			}
+		}
+		rootBytes = append(rootBytes, chunkBytes...)
+	}
+
+	// Truncate download data to the file length
+	rootBytes = rootBytes[:sup.FileMetadata.Length]
+
+	// Verify bytes
+	if !reflect.DeepEqual(fileData, rootBytes) {
+		t.Log("FileData bytes:", fileData)
+		t.Log("root bytes:", rootBytes)
+		t.Error("Bytes not equal")
+	}
 }
 
 // testSkynetSubDirDownload verifies downloading data from a skyfile using a
@@ -1590,7 +1878,7 @@ func testSkynetBlocklistHash(t *testing.T, tg *siatest.TestGroup) {
 	testSkynetBlocklist(t, tg, true)
 }
 
-// testSkynetBlocklistHash tests the skynet blocklist module when submitting
+// testSkynetBlocklistSkylink tests the skynet blocklist module when submitting
 // skylinks
 func testSkynetBlocklistSkylink(t *testing.T, tg *siatest.TestGroup) {
 	testSkynetBlocklist(t, tg, false)
@@ -1663,6 +1951,24 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 	_, _, err = r.SkynetSkylinkGet(skylink)
 	if err == nil {
 		t.Fatal("Download should have failed")
+	}
+	if !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
+		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlocked, err)
+	}
+
+	// Try to download the BaseSector
+	_, err = r.SkynetBaseSectorGet(skylink)
+	if err == nil {
+		t.Fatal("BaseSector request should have failed")
+	}
+	if !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
+		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlocked, err)
+	}
+
+	// Try to download the BaseSector by Root
+	_, err = r.SkynetDownloadByRootGet(sshp.MerkleRoot, 0, modules.SectorSize, -1)
+	if err == nil {
+		t.Fatal("DownloadByRoot request should have failed")
 	}
 	if !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
 		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlocked, err)
@@ -1871,6 +2177,82 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 	_, err = r.RenterFileRootGet(skyfilePath)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// testSkynetBlocklistUpgrade tests the skynet blocklist module when submitting
+// skylinks
+func testSkynetBlocklistUpgrade(t *testing.T, tg *siatest.TestGroup) {
+	// Create renterDir and renter params
+	testDir := renterTestDir(t.Name())
+	renterDir := filepath.Join(testDir, "renter")
+	err := os.MkdirAll(renterDir, persist.DefaultDiskPermissionsTest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	params := node.Renter(testDir)
+
+	// Load compatibility blacklist persistence
+	blacklistCompatFile, err := os.Open("../../compatibility/skynetblacklistv143_siatest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	blacklistPersist, err := os.Create(filepath.Join(renterDir, "skynetblacklist"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = io.Copy(blacklistPersist, blacklistCompatFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = errors.Compose(blacklistCompatFile.Close(), blacklistPersist.Close())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Grab the Skylink that is associated with the blacklist persistence
+	skylinkFile, err := os.Open("../../compatibility/skylinkv143_siatest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scanner := bufio.NewScanner(skylinkFile)
+	scanner.Scan()
+	skylinkStr := scanner.Text()
+	var skylink modules.Skylink
+	err = skylink.LoadString(skylinkStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add the renter to the group.
+	nodes, err := tg.AddNodes(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := nodes[0]
+
+	// Verify there is a skylink in the now blocklist and it is the one from the
+	// compatibility file
+	sbg, err := r.SkynetBlocklistGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sbg.Blocklist) != 1 {
+		t.Fatal("blocklist should have 1 link, found:", len(sbg.Blocklist))
+	}
+	hash := crypto.HashObject(skylink.MerkleRoot())
+	if sbg.Blocklist[0] != hash {
+		t.Fatal("unexpected hash")
+	}
+
+	// Verify trying to download the skylink fails due to it being blocked
+	//
+	// NOTE: It doesn't matter if there is a file associated with this Skylink
+	// since the blocklist check should cause the download to fail before any look
+	// ups occur.
+	_, _, err = r.SkynetSkylinkGet(skylinkStr)
+	if !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
+		t.Fatal("unexpected error:", err)
 	}
 }
 
