@@ -13,6 +13,28 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
+// Delete deltes an entry from the cache without replacing it. Should only be
+// used in testing.
+func (rc *registryRevisionCache) Delete(pubKey types.SiaPublicKey, rv modules.SignedRegistryValue) {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+	mapKey := crypto.HashAll(pubKey, rv.Tweak)
+
+	entry, exists := rc.entryMap[mapKey]
+	if !exists {
+		return
+	}
+	delete(rc.entryMap, mapKey)
+	for idx := range rc.entryList {
+		if rc.entryList[idx] != entry {
+			continue
+		}
+		rc.entryList[idx] = rc.entryList[len(rc.entryList)-1]
+		rc.entryList = rc.entryList[:len(rc.entryList)-1]
+		break
+	}
+}
+
 // TestRegistryCache tests the in-memory registry type.
 func TestRegistryCache(t *testing.T) {
 	numEntries := uint64(100)
