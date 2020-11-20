@@ -305,7 +305,7 @@ func NewDependencyHostBlockRPC() *DependencyWithDisableAndEnable {
 }
 
 // NewDependencyRegistryUpdateNoOp creates a dependency, that causes
-// RegistryUpdate to return be a no-op.
+// RegistryUpdate to be a no-op.
 func NewDependencyRegistryUpdateNoOp() *DependencyWithDisableAndEnable {
 	return newDependencywithDisableAndEnable("RegistryUpdateNoOp")
 }

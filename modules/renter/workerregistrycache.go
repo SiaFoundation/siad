@@ -10,10 +10,10 @@ import (
 )
 
 type (
-	// registryCache is a helper type to cache information about registry values
+	// registryRevisionCache is a helper type to cache information about registry values
 	// in memory. It decides randomly which entries to evict to make it more
 	// unpredictable for the host.
-	registryCache struct {
+	registryRevisionCache struct {
 		entryMap   map[crypto.Hash]*cachedEntry
 		entryList  []*cachedEntry
 		maxEntries uint64
@@ -33,8 +33,8 @@ type (
 const cachedEntryEstimatedSize = 32 + 8 + 16
 
 // newRegistryCache creates a new registry cache.
-func newRegistryCache(size uint64) *registryCache {
-	return &registryCache{
+func newRegistryCache(size uint64) *registryRevisionCache {
+	return &registryRevisionCache{
 		entryMap:   make(map[crypto.Hash]*cachedEntry),
 		entryList:  nil,
 		maxEntries: size / cachedEntryEstimatedSize,
@@ -42,7 +42,7 @@ func newRegistryCache(size uint64) *registryCache {
 }
 
 // Get fetches an entry from the cache.
-func (rc *registryCache) Get(pubKey types.SiaPublicKey, tweak crypto.Hash) (uint64, bool) {
+func (rc *registryRevisionCache) Get(pubKey types.SiaPublicKey, tweak crypto.Hash) (uint64, bool) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 
@@ -54,8 +54,9 @@ func (rc *registryCache) Get(pubKey types.SiaPublicKey, tweak crypto.Hash) (uint
 	return cachedEntry.revision, true
 }
 
-// Set sets an entry in the registry.
-func (rc *registryCache) Set(pubKey types.SiaPublicKey, rv modules.SignedRegistryValue) {
+// Set sets an entry in the registry. When 'force' is false, settings a lower
+// revision number will be a no-op.
+func (rc *registryRevisionCache) Set(pubKey types.SiaPublicKey, rv modules.SignedRegistryValue, force bool) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 
@@ -64,8 +65,10 @@ func (rc *registryCache) Set(pubKey types.SiaPublicKey, rv modules.SignedRegistr
 	ce, exists := rc.entryMap[mapKey]
 
 	// If it does, update the revision.
-	if exists {
+	if exists && (rv.Revision > ce.revision || force) {
 		ce.revision = rv.Revision
+		return
+	} else if exists {
 		return
 	}
 

@@ -177,8 +177,10 @@ func (j *jobReadRegistry) callExecute() {
 	if cached && cachedRevision > srv.Revision {
 		sendResponse(nil, errHostLowerRevisionThanCache)
 		j.staticQueue.callReportFailure(errHostLowerRevisionThanCache)
-		w.staticRegistryCache.Set(j.staticSiaPublicKey, *srv) // adjust the cache
+		w.staticRegistryCache.Set(j.staticSiaPublicKey, *srv, true) // adjust the cache
 		return
+	} else if !cached || srv.Revision > cachedRevision {
+		w.staticRegistryCache.Set(j.staticSiaPublicKey, *srv, false) // adjust the cache
 	}
 
 	// Success.

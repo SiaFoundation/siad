@@ -135,7 +135,7 @@ func (j *jobUpdateRegistry) callExecute() {
 		if cached && cachedRevision > rv.Revision {
 			sendResponse(nil, errHostLowerRevisionThanCache)
 			j.staticQueue.callReportFailure(errHostLowerRevisionThanCache)
-			w.staticRegistryCache.Set(j.staticSiaPublicKey, rv) // adjust the cache
+			w.staticRegistryCache.Set(j.staticSiaPublicKey, rv, true) // adjust the cache
 			return
 		}
 		sendResponse(&rv, err)
@@ -150,7 +150,7 @@ func (j *jobUpdateRegistry) callExecute() {
 	jobTime := time.Since(start)
 
 	// Update the registry cache.
-	w.staticRegistryCache.Set(j.staticSiaPublicKey, j.staticSignedRegistryValue)
+	w.staticRegistryCache.Set(j.staticSiaPublicKey, j.staticSignedRegistryValue, false)
 
 	// Send the response and report success.
 	sendResponse(nil, nil)

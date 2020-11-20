@@ -3,10 +3,13 @@ package renter
 import (
 	"encoding/binary"
 	"testing"
+	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -28,22 +31,29 @@ func TestRegistryCache(t *testing.T) {
 	}
 
 	// Declare a helper to create registry values.
-	registryValue := func(n, revNum uint64) modules.SignedRegistryValue {
-		var tweak crypto.Hash
-		binary.LittleEndian.PutUint64(tweak[:], n)
-		return modules.NewSignedRegistryValue(tweak, []byte{}, revNum, crypto.Signature{})
+	registryValue := func(tweak, revNum uint64) modules.SignedRegistryValue {
+		var t crypto.Hash
+		binary.LittleEndian.PutUint64(t[:], tweak)
+		return modules.NewSignedRegistryValue(t, []byte{}, revNum, crypto.Signature{})
 	}
 
 	// Set an entry.
 	rv := registryValue(0, 0)
-	cache.Set(pk, rv)
+	cache.Set(pk, rv, false)
 	if len(cache.entryMap) != 1 || len(cache.entryList) != 1 {
 		t.Fatal("map and list should both have 1 element")
 	}
 
 	// Set it again with a higher revision.
 	rv = registryValue(0, 1)
-	cache.Set(pk, rv)
+	cache.Set(pk, rv, false)
+	if len(cache.entryMap) != 1 || len(cache.entryList) != 1 {
+		t.Fatal("map and list should both have 1 element")
+	}
+
+	// Set it back with force = false. This should be a no-op.
+	rv2 := registryValue(0, 0)
+	cache.Set(pk, rv2, false)
 	if len(cache.entryMap) != 1 || len(cache.entryList) != 1 {
 		t.Fatal("map and list should both have 1 element")
 	}
@@ -57,7 +67,7 @@ func TestRegistryCache(t *testing.T) {
 	// Fill up the cache with numEntries-1 more entries. All have revision
 	// number 1.
 	for i := uint64(1); i < numEntries; i++ {
-		cache.Set(pk, registryValue(i, 1))
+		cache.Set(pk, registryValue(i, 1), false)
 	}
 	if uint64(len(cache.entryMap)) != numEntries || uint64(len(cache.entryList)) != numEntries {
 		t.Fatal("map and list should both have numEntries element")
@@ -65,34 +75,43 @@ func TestRegistryCache(t *testing.T) {
 
 	// Add one more element. This time with revision number 2.
 	rv = registryValue(numEntries, 2)
-	cache.Set(pk, rv)
 
-	// The datastructures should still have the same length since a random
-	// element was evicted.
-	if uint64(len(cache.entryMap)) != numEntries || uint64(len(cache.entryList)) != numEntries {
-		t.Fatal("map and list should both have numEntries element")
-	}
+	// The following code happens in a retry since an element that is added
+	// might get evicted right away.
+	err := build.Retry(1000, time.Millisecond, func() error {
+		cache.Set(pk, rv, false)
 
-	// Both datastructures should contain an entry with number 2.
-	found := false
-	for _, v := range cache.entryMap {
-		if v.revision == 2 {
-			found = true
-			break
+		// The datastructures should still have the same length since a random
+		// element was evicted.
+		if uint64(len(cache.entryMap)) != numEntries || uint64(len(cache.entryList)) != numEntries {
+			t.Fatal("map and list should both have numEntries element")
 		}
-	}
-	if !found {
-		t.Fatal("new entry wasn't found")
-	}
-	found = false
-	for _, v := range cache.entryList {
-		if v.revision == 2 {
-			found = true
-			break
+
+		// Both datastructures should contain an entry with number 2.
+		found := false
+		for _, v := range cache.entryMap {
+			if v.revision == 2 {
+				found = true
+				break
+			}
 		}
-	}
-	if !found {
-		t.Fatal("new entry wasn't found")
+		if !found {
+			return errors.New("new entry wasn't found")
+		}
+		found = false
+		for _, v := range cache.entryList {
+			if v.revision == 2 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return errors.New("new entry wasn't found")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Get should return the same entry.

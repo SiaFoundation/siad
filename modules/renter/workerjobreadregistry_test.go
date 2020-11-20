@@ -63,6 +63,9 @@ func TestReadRegistryJob(t *testing.T) {
 	}
 }
 
+// TestReadRegistryInvalidCached checks that a host can't provide an older
+// revision for an entry if we have seen a more recent one from it in the past
+// already.
 func TestReadRegistryInvalidCached(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
