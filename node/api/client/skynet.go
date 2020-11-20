@@ -26,6 +26,21 @@ func (c *Client) SkynetBaseSectorGet(skylink string) (io.ReadCloser, error) {
 	return reader, err
 }
 
+// SkynetDownloadByRootGet uses the /skynet/root endpoint to fetch a reader of
+// a sector.
+func (c *Client) SkynetDownloadByRootGet(root crypto.Hash, offset, length uint64, timeout time.Duration) (io.ReadCloser, error) {
+	values := url.Values{}
+	values.Set("root", root.String())
+	values.Set("offset", fmt.Sprint(offset))
+	values.Set("length", fmt.Sprint(length))
+	if timeout >= 0 {
+		values.Set("timeout", fmt.Sprintf("%s", timeout))
+	}
+	getQuery := fmt.Sprintf("/skynet/root?%v", values.Encode())
+	_, reader, err := c.getReaderResponse(getQuery)
+	return reader, err
+}
+
 // SkynetSkylinkGetWithETag uses the /skynet/skylink endpoint to download a
 // skylink file setting the given ETag as value in the If-None-Match request
 // header.

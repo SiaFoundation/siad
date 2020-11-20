@@ -23,6 +23,14 @@ type TestFile struct {
 // can be downloaded using its Skylink. Returns the skylink, the parameters used
 // for the upload and potentially an error.
 func (tn *TestNode) UploadNewSkyfileWithDataBlocking(filename string, filedata []byte, force bool) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
+	return tn.UploadNewEncryptedSkyfileBlocking(filename, filedata, "", force)
+}
+
+// UploadNewEncryptedSkyfileBlocking attempts to upload a skyfile. After it has
+// successfully performed the upload, it will verify the file can be downloaded
+// using its Skylink. Returns the skylink, the parameters used for the upload
+// and potentially an error.
+func (tn *TestNode) UploadNewEncryptedSkyfileBlocking(filename string, filedata []byte, skykeyName string, force bool) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
 	// create the siapath
 	skyfilePath, err := modules.NewSiaPath(filename)
 	if err != nil {
@@ -40,6 +48,7 @@ func (tn *TestNode) UploadNewSkyfileWithDataBlocking(filename string, filedata [
 		Reader:              reader,
 		Force:               force,
 		Root:                false,
+		SkykeyName:          skykeyName,
 	}
 
 	// upload a skyfile

@@ -4863,7 +4863,7 @@ Details of the workers' has sector jobs queue
 > curl example  
 
 ```bash
-curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg"
+curl -A "Sia-Agent" "localhost:9980/skynet/basesector/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg"
 ```  
 
 downloads the basesector of a skylink using http streaming. This call blocks
@@ -5040,6 +5040,45 @@ value of 5 minutes. The minimum is 1 second.
   "signature":  "03bf093a42f4df024c765fbec308a7f083fb6c1dddad485fe73810c39ed0344ff8e0db78e79bbdbad6be9d1410e2f122f58f490ff5edf7b45e3dc9fa7983ba05" // crypto.Signature
 }
 ```
+
+## /skynet/root [GET]
+> curl example  
+
+```bash
+curl -A "Sia-Agent" "localhost:9980/skynet/root?root=QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I&offset=0&length=4096"
+```  
+
+downloads a sector of a skyfile by its root hash using http streaming. This call
+blocks until the data is received. There is a 30s default timeout applied to
+downloading a sector. If the data cannot be found within this 30s time
+constraint, a 404 will be returned. This timeout is configurable through the
+query string parameters.
+
+
+### Query String Parameters
+### Required
+**root** | hash  
+The root hash of the sector that should be downloaded.
+
+**offset** | uint64  
+The offset where the download should start within a sector.
+
+**length** | uint64  
+The amount of data to be downloaded from the sector.
+
+### OPTIONAL
+
+**timeout** | int  
+If 'timeout' is set, the download will fail if the basesector cannot be
+retrieved before it expires. Note that this timeout does not cover the actual
+download time, but rather covers the TTFB. Timeout is specified in seconds,
+a timeout value of 0 will be ignored. If no timeout is given, the default will
+be used, which is a 30 second timeout. The maximum allowed timeout is 900s (15
+minutes).
+
+### Response Body
+
+The response body is the raw data for the sector.
 
 ## /skynet/registry [POST]
 > curl example
