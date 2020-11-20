@@ -913,17 +913,15 @@ func (r *Renter) UploadSkyfile(sup modules.SkyfileUploadParameters, reader modul
 	// attempt or after a dry run
 	defer func() {
 		if err != nil || sup.DryRun {
-			go func() {
-				if err := r.DeleteFile(sup.SiaPath); err != nil && !errors.Contains(err, filesystem.ErrNotExist) {
-					r.log.Printf("error deleting siafile after upload error: %v", err)
-				}
+			if err := r.DeleteFile(sup.SiaPath); err != nil && !errors.Contains(err, filesystem.ErrNotExist) {
+				r.log.Printf("error deleting siafile after upload error: %v", err)
+			}
 
-				extendedPath := sup.SiaPath.String() + ExtendedSuffix
-				extendedSiaPath, _ := modules.NewSiaPath(extendedPath)
-				if err := r.DeleteFile(extendedSiaPath); err != nil && !errors.Contains(err, filesystem.ErrNotExist) {
-					r.log.Printf("error deleting extended siafile after upload error: %v", err)
-				}
-			}()
+			extendedPath := sup.SiaPath.String() + ExtendedSuffix
+			extendedSiaPath, _ := modules.NewSiaPath(extendedPath)
+			if err := r.DeleteFile(extendedSiaPath); err != nil && !errors.Contains(err, filesystem.ErrNotExist) {
+				r.log.Printf("error deleting extended siafile after upload error: %v\n", err)
+			}
 		}
 	}()
 
