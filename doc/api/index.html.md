@@ -5208,7 +5208,7 @@ default to the zip format and the contents will be downloaded as a zip archive.
 **no-response-metadata** | string  
 If 'no-response-metadata' is set to true, the API will not return the metadata
 in the "Skynet-File-Metadata" response header. This might be useful in cases
-where the metadata is not used, and where the size of the response header is
+where the metadata is not used, or where the size of the response header is
 proving to be an issue.
 
 **timeout** | int  
