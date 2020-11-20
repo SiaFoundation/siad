@@ -542,6 +542,17 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		return
 	}
 
+	// Parse the `no-response-metadata` query string parameter.
+	var noResponseMetadata bool
+	noResponseMetadataStr := queryForm.Get("no-response-metadata")
+	if noResponseMetadataStr != "" {
+		noResponseMetadata, err = strconv.ParseBool(noResponseMetadataStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'no-response-metadata' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Parse the timeout.
 	timeout := DefaultSkynetRequestTimeout
 	timeoutStr := queryForm.Get("timeout")
@@ -736,11 +747,16 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	w.Header().Set("Content-Disposition", cdh)
 
+	// Set the Skynet-File-Metadata
+	includeMetadata := !noResponseMetadata
+	if includeMetadata {
+		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
+	}
+
 	// If requested, serve the content as a tar archive, compressed tar
 	// archive or zip archive.
 	if format == modules.SkyfileFormatTar {
 		w.Header().Set("Content-Type", "application/x-tar")
-		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 		err = serveArchive(w, streamer, metadata, serveTar)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as tar archive: %v", err)}, http.StatusInternalServerError)
@@ -749,7 +765,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	if format == modules.SkyfileFormatTarGz {
 		w.Header().Set("Content-Type", "application/gzip")
-		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 		gzw := gzip.NewWriter(w)
 		err = serveArchive(gzw, streamer, metadata, serveTar)
 		err = errors.Compose(err, gzw.Close())
@@ -760,7 +775,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 	if format == modules.SkyfileFormatZip {
 		w.Header().Set("Content-Type", "application/zip")
-		w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 		err = serveArchive(w, streamer, metadata, serveZip)
 		if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to serve skyfile as zip archive: %v", err)}, http.StatusInternalServerError)
@@ -774,7 +788,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	if responseContentType != "" {
 		w.Header().Set("Content-Type", responseContentType)
 	}
-	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
 
 	http.ServeContent(w, req, metadata.Filename, time.Time{}, streamer)
 }

@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -69,6 +70,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "BlocklistUpgrade", Test: testSkynetBlocklistUpgrade},
 		{Name: "Portals", Test: testSkynetPortals},
 		{Name: "HeadRequest", Test: testSkynetHeadRequest},
+		{Name: "NoMetadata", Test: testSkynetNoMetadata},
 		{Name: "Stats", Test: testSkynetStats},
 		{Name: "RequestTimeout", Test: testSkynetRequestTimeout},
 		{Name: "DryRunUpload", Test: testSkynetDryRunUpload},
@@ -2483,6 +2485,52 @@ func testSkynetHeadRequest(t *testing.T, tg *siatest.TestGroup) {
 	status, header, err = r.SkynetSkylinkHead(skylink[:len(skylink)-3] + "abc")
 	if status != http.StatusNotFound {
 		t.Fatalf("Expected http.StatusNotFound for random skylink but received %v", status)
+	}
+}
+
+// testSkynetNoMetadata verifies the functionality of sending a the
+// 'no-response-metadata' query string parameter to the skylink GET route.
+func testSkynetNoMetadata(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Upload a skyfile
+	skylink, _, _, err := r.UploadNewSkyfileBlocking(t.Name(), 100, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// GET without specifying the 'no-response-metadata' query string parameter
+	_, metadata, err := r.SkynetSkylinkGetWithNoMetadata(skylink, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Length != 100 {
+		t.Fatal("unexpected")
+	}
+
+	// GET with specifying the 'no-response-metadata' query string parameter
+	_, metadata, err = r.SkynetSkylinkGetWithNoMetadata(skylink, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(metadata, modules.SkyfileMetadata{}) {
+		t.Fatal("unexpected")
+	}
+
+	// Perform a HEAD call to verify the same thing in the headers directly
+	params := url.Values{}
+	params.Set("no-response-metadata", fmt.Sprintf("%t", true))
+	status, header, err := r.SkynetSkylinkHeadWithParameters(skylink, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("Unexpected status for HEAD request, expected %v but received %v", http.StatusOK, status)
+	}
+
+	strSkynetFileMetadata := header.Get("Skynet-File-Metadata")
+	if strSkynetFileMetadata != "" {
+		t.Fatal("unexpected")
 	}
 }
 
