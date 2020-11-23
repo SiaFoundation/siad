@@ -95,8 +95,9 @@ func TestWorkerMaintenanceCoolDown(t *testing.T) {
 	}
 }
 
-// TestWorkerMaintenanceCoolDown verifies the functionality of the worker's
-// cooldown of the RHP3 related subsystems.
+// TestWorkerMaintenanceRefillLowContractFunds verifies that a contract with
+// less remaining funds than the EA balance target can still be used to refill
+// an EA.
 func TestWorkerMaintenanceRefillLowContractFunds(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
