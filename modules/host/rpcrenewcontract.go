@@ -102,13 +102,15 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	// ZeroCurrency here since the basePrice will cover the renewal rpc cost.
 	// That way the new contract pays for the renewal instead of the old one.
 	// Which means a contract can even renew if it's out of money.
-	excessPayment, err := verifyClearingRevision(currentRevision, finalRevision, bh, types.ZeroCurrency)
+	err = verifyClearingRevision(currentRevision, finalRevision, bh, types.ZeroCurrency)
 	if err != nil {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to verify final revision")
 	}
 
-	// Verify the new contract against the final revision.
-	hostCollateral, err := verifyRenewedContract(so, newContract, finalRevision, bh, is, unlockHash, pt, excessPayment, rpk, hpk, lockedCollateral)
+	// Verify the new contract against the old revision. The final one doesn't
+	// have the size set anymore which we need for collateral and base price
+	// calculations.
+	hostCollateral, err := verifyRenewedContract(so, newContract, currentRevision, bh, is, unlockHash, pt, rpk, hpk, lockedCollateral)
 	if errors.Contains(err, errCollateralBudgetExceeded) {
 		h.staticAlerter.RegisterAlert(modules.AlertIDHostInsufficientCollateral, AlertMSGHostInsufficientCollateral, "", modules.SeverityWarning)
 	} else {
@@ -118,7 +120,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to verify new contract")
 	}
 
-	// Add the collateral to the contract.
+	// Add the collateral to the contract as well as the renter's pre-payment.
 	txnBuilder, newParents, newInputs, newOutputs, err := h.managedAddRenewCollateral(hostCollateral, so, txns)
 	if err != nil {
 		return errors.AddContext(err, "managedRPCRenewContract: failed to add collateral")
@@ -278,7 +280,7 @@ func fetchRevisionAndContract(txnSet []types.Transaction) (types.FileContractRev
 
 // verifyRenewedContract is a helper method that checks if the proposed renewed
 // contract is acceptable.
-func verifyRenewedContract(so storageObligation, newContract types.FileContract, oldRevision types.FileContractRevision, blockHeight types.BlockHeight, internalSettings modules.HostInternalSettings, unlockHash types.UnlockHash, pt *modules.RPCPriceTable, renterPayment types.Currency, renterPK, hostPK types.SiaPublicKey, lockedCollateral types.Currency) (types.Currency, error) {
+func verifyRenewedContract(so storageObligation, newContract types.FileContract, oldRevision types.FileContractRevision, blockHeight types.BlockHeight, internalSettings modules.HostInternalSettings, unlockHash types.UnlockHash, pt *modules.RPCPriceTable, renterPK, hostPK types.SiaPublicKey, lockedCollateral types.Currency) (types.Currency, error) {
 	// The file size and merkle root must match the file size and merkle root
 	// from the previous file contract.
 	if newContract.FileSize != so.fileSize() {
@@ -340,14 +342,6 @@ func verifyRenewedContract(so storageObligation, newContract types.FileContract,
 	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevision, pt, newContract.WindowStart)
 	if expectedCollateral.Cmp(baseCollateral) < 0 {
 		baseCollateral = expectedCollateral
-	}
-
-	// Reduce the basePrice by up to renterPayment since the renter already paid
-	// for that using other means.
-	if basePrice.Cmp(renterPayment) < 0 {
-		basePrice = types.ZeroCurrency
-	} else {
-		basePrice = basePrice.Sub(renterPayment)
 	}
 
 	// Check that the missed proof outputs contain enough money, and that the

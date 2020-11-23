@@ -489,8 +489,8 @@ func prepareFinalRevision(contract contractHeader, payment types.Currency) (type
 	finalRev.NewFileMerkleRoot = crypto.Hash{}
 	finalRev.NewRevisionNumber = math.MaxUint64
 
-	// The missed proof outputs become the valid ones since the host won't need
-	// to provide a storage proof. We need to preserve the void output though.
+	// The valid proof outputs become the missed ones since the host won't need
+	// to provide a storage proof.
 	finalRev.NewMissedProofOutputs = finalRev.NewValidProofOutputs
 	return finalRev, nil
 }
@@ -575,12 +575,10 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	// estimation.
 	txnFee := pt.TxnFeeMaxRecommended.Mul64(2 * modules.EstimatedFileContractTransactionSetSize)
 
-	// Calculate the base cost.
+	// Calculate the base cost. This includes the RPC cost.
 	basePrice, baseCollateral := modules.RenewBaseCosts(oldRev, pt, endHeight)
 
-	// Create the final revision of the old contract. The renew cost is 0H for
-	// the final revision since the new contract will pay for it as part of the
-	// basePrice.
+	// Create the final revision of the old contract.
 	renewCost := types.ZeroCurrency
 	finalRev, err := prepareFinalRevision(oldContract, renewCost)
 	if err != nil {
@@ -688,7 +686,6 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 
 	// Create initial (no-op) revision, transaction, and signature
 	noOpRevTxn := prepareInitRevisionTxn(oldRev, fc, startHeight, ourSK, signedTxnSet[len(signedTxnSet)-1].FileContractID(0))
-
 	// Send transaction signatures and no-op revision signature to host.
 	err = modules.RPCWrite(conn, modules.RPCRenewContractRenterSignatures{
 		RenterNoOpRevisionSig: noOpRevTxn.RenterSignature(),

@@ -352,79 +352,79 @@ func verifyRevision(so storageObligation, revision types.FileContractRevision, b
 // correctly, and that the revision does not attempt any malicious or unexpected
 // changes. It also returns any excess payment from the renter. Which is the
 // amount by which the renter's payment exceeds the expectedExchange.
-func verifyClearingRevision(oldFCR, revision types.FileContractRevision, blockHeight types.BlockHeight, expectedExchange types.Currency) (excessPayment types.Currency, _ error) {
+func verifyClearingRevision(oldFCR, revision types.FileContractRevision, blockHeight types.BlockHeight, expectedExchange types.Currency) error {
 	// Check that the revision is well-formed.
 	if len(revision.NewValidProofOutputs) != 2 || len(revision.NewMissedProofOutputs) != 2 {
-		return types.Currency{}, ErrBadContractOutputCounts
+		return ErrBadContractOutputCounts
 	}
 	if !reflect.DeepEqual(revision.NewValidProofOutputs, revision.NewMissedProofOutputs) {
-		return types.Currency{}, ErrBadPayoutUnlockHashes
+		return ErrBadPayoutUnlockHashes
 	}
 
 	// Payout addresses shouldn't change.
 	if revision.ValidHostOutput().UnlockHash != oldFCR.ValidHostOutput().UnlockHash {
-		return types.Currency{}, errors.New("host payout address changed")
+		return errors.New("host payout address changed")
 	}
 	if revision.ValidRenterOutput().UnlockHash != oldFCR.ValidRenterOutput().UnlockHash {
-		return types.Currency{}, errors.New("renter payout address changed")
+		return errors.New("renter payout address changed")
 	}
 
 	// Check that all non-volatile fields are the same.
 	if oldFCR.ParentID != revision.ParentID {
-		return types.Currency{}, ErrBadContractParent
+		return ErrBadContractParent
 	}
 	if oldFCR.UnlockConditions.UnlockHash() != revision.UnlockConditions.UnlockHash() {
-		return types.Currency{}, ErrBadUnlockConditions
+		return ErrBadUnlockConditions
 	}
 	if revision.NewRevisionNumber != math.MaxUint64 {
-		return types.Currency{}, ErrBadRevisionNumber
+		return ErrBadRevisionNumber
 	}
 	if oldFCR.NewRevisionNumber >= revision.NewRevisionNumber {
-		return types.Currency{}, ErrBadRevisionNumber
+		return ErrBadRevisionNumber
 	}
 	if revision.NewFileSize != 0 {
-		return types.Currency{}, ErrBadFileSize
+		return ErrBadFileSize
 	}
 	if oldFCR.NewWindowStart != revision.NewWindowStart {
-		return types.Currency{}, ErrBadWindowStart
+		return ErrBadWindowStart
 	}
 	if oldFCR.NewWindowEnd != revision.NewWindowEnd {
-		return types.Currency{}, ErrBadWindowEnd
+		return ErrBadWindowEnd
 	}
 	if oldFCR.NewUnlockHash != revision.NewUnlockHash {
-		return types.Currency{}, ErrBadUnlockHash
+		return ErrBadUnlockHash
 	}
 
 	// Determine the amount that was transferred from the renter.
 	if revision.ValidRenterPayout().Cmp(oldFCR.ValidRenterPayout()) > 0 {
-		return types.Currency{}, extendErr("renter increased its valid proof output: ", ErrHighRenterValidOutput)
+		return extendErr("renter increased its valid proof output: ", ErrHighRenterValidOutput)
 	}
 	fromRenter := oldFCR.ValidRenterPayout().Sub(revision.ValidRenterPayout())
 	// Verify that enough money was transferred.
 	if fromRenter.Cmp(expectedExchange) < 0 {
 		s := fmt.Sprintf("expected at least %v to be exchanged, but %v was exchanged: ", expectedExchange, fromRenter)
-		return types.Currency{}, extendErr(s, ErrHighRenterValidOutput)
+		return extendErr(s, ErrHighRenterValidOutput)
 	}
 
 	// Determine the amount of money that was transferred to the host.
 	if oldFCR.ValidHostPayout().Cmp(revision.ValidHostPayout()) > 0 {
-		return types.Currency{}, extendErr("host valid proof output was decreased: ", ErrLowHostValidOutput)
+		return extendErr("host valid proof output was decreased: ", ErrLowHostValidOutput)
 	}
 	toHost := revision.ValidHostPayout().Sub(oldFCR.ValidHostPayout())
 	// Verify that enough money was transferred.
 	if !toHost.Equals(fromRenter) {
 		s := fmt.Sprintf("expected exactly %v to be transferred to the host, but %v was transferred: ", fromRenter, toHost)
-		return types.Currency{}, extendErr(s, ErrLowHostValidOutput)
+		return extendErr(s, ErrLowHostValidOutput)
 	}
 
 	// The merkle root should be blank now.
 	blank := crypto.Hash{}
 	if revision.NewFileMerkleRoot != blank {
-		return types.Currency{}, ErrBadFileMerkleRoot
+		return ErrBadFileMerkleRoot
 	}
 	// Make sure the payout sums are still the same.
 	if err := verifyPayoutSums(oldFCR, revision); err != nil {
-		return types.Currency{}, errors.Compose(ErrInvalidPayoutSums, err)
+		return errors.Compose(ErrInvalidPayoutSums, err)
 	}
-	return expectedExchange.Sub(fromRenter), nil
+	return nil
 }

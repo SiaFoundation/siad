@@ -6,8 +6,10 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestRenewContract is a unit test for the worker's RenewContract method.
@@ -29,6 +31,13 @@ func TestRenewContract(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
+
+	// Upload a snapshot to the snapshot table. This makes sure that we got some
+	// data in the contract.
+	err = wt.UploadSnapshot(context.Background(), modules.UploadedBackup{UID: [16]byte{1, 2, 3}}, fastrand.Bytes(100))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Get a transaction builder and add the funding.
 	funding := types.SiacoinPrecision
@@ -74,6 +83,17 @@ func TestRenewContract(t *testing.T) {
 	if !ok {
 		t.Fatal("oldContract not found")
 	}
+	oldRevision := oldContract.Transaction.FileContractRevisions[0]
+
+	// Old contract should not be empty.
+	size := oldRevision.NewFileSize
+	if size == 0 {
+		t.Fatal("size is zero")
+	}
+	merkleRoot := oldRevision.NewFileMerkleRoot
+	if merkleRoot == (crypto.Hash{}) {
+		t.Fatal("empty root")
+	}
 
 	// Renew the contract.
 	err = wt.RenewContract(context.Background(), params, txnBuilder)
@@ -91,9 +111,11 @@ func TestRenewContract(t *testing.T) {
 	// contract.
 	found := false
 	var fcr types.FileContractRevision
+	var newContract types.FileContract
 	for _, txn := range b.Transactions {
 		if len(txn.FileContractRevisions) == 1 && len(txn.FileContracts) == 1 {
 			fcr = txn.FileContractRevisions[0]
+			newContract = txn.FileContracts[0]
 			found = true
 			break
 		}
@@ -101,16 +123,151 @@ func TestRenewContract(t *testing.T) {
 	if !found {
 		t.Fatal("txn containing both the final revision and contract wasn't mined")
 	}
+
+	// Check final revision.
+	//
+	// ParentID should match the old contract's.
 	if fcr.ParentID != oldContract.ID {
 		t.Fatalf("expected fcr to have parent %v but was %v", oldContract.ID, fcr.ParentID)
 	}
+	// Valid and missed outputs should match.
 	if !reflect.DeepEqual(fcr.NewMissedProofOutputs, fcr.NewValidProofOutputs) {
 		t.Fatal("expected valid outputs to match missed ones")
 	}
+	// Filesize should be 0 and root should be empty.
 	if fcr.NewFileSize != 0 {
 		t.Fatal("size should be 0", fcr.NewFileSize)
 	}
 	if fcr.NewFileMerkleRoot != (crypto.Hash{}) {
 		t.Fatal("size should be 0", fcr.NewFileSize)
+	}
+	// Valid and missed outputs should match for renter and host between final
+	// revision and the one before that.
+	if !fcr.ValidRenterPayout().Equals(oldRevision.ValidRenterPayout()) {
+		t.Fatal("renter payouts don't match between old revision and final revision")
+	}
+	if !fcr.ValidHostPayout().Equals(oldRevision.ValidHostPayout()) {
+		t.Fatal("host payouts don't match between old revision and final revision")
+	}
+
+	// Compute the expected payouts of the new contract.
+	pt := wt.staticPriceTable().staticPriceTable
+	params.PriceTable = &pt
+	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevision, params.PriceTable, params.EndHeight)
+	allowance, startHeight, endHeight, host, funding := params.Allowance, params.StartHeight, params.EndHeight, params.Host, params.Funding
+	period := endHeight - startHeight
+	txnFee := pt.TxnFeeMaxRecommended.Mul64(2 * modules.EstimatedFileContractTransactionSetSize)
+	renterPayout, hostPayout, hostCollateral, err := modules.RenterPayoutsPreTax(host, funding, txnFee, basePrice, baseCollateral, period, allowance.ExpectedStorage/allowance.Hosts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	totalPayout := renterPayout.Add(hostPayout)
+
+	// Check the new contract.
+	if newContract.FileMerkleRoot != merkleRoot {
+		t.Fatal("new contract got wrong root")
+	}
+	if newContract.FileSize != size {
+		t.Fatal("new contract got wrong size")
+	}
+	if !newContract.Payout.Equals(totalPayout) {
+		t.Fatal("wrong payout")
+	}
+	if newContract.WindowStart != params.EndHeight {
+		t.Fatal("wrong window start")
+	}
+	if newContract.WindowEnd != params.EndHeight+params.Host.WindowSize {
+		t.Fatal("wrong window end")
+	}
+	if newContract.UnlockHash != fcr.NewUnlockHash {
+		t.Fatal("unlock hash doesn't match")
+	}
+	if newContract.RevisionNumber != 0 {
+		t.Fatal("revision number isn't 0")
+	}
+	expectedValidRenterOutput := types.SiacoinOutput{
+		Value:      types.PostTax(params.StartHeight, totalPayout).Sub(hostPayout),
+		UnlockHash: params.RefundAddress,
+	}
+	expectedMissedRenterOutput := expectedValidRenterOutput
+	expectedValidHostOutput := types.SiacoinOutput{
+		Value:      hostPayout,
+		UnlockHash: params.Host.UnlockHash,
+	}
+	expectedMissedHostOutput := types.SiacoinOutput{
+		Value:      hostCollateral.Sub(baseCollateral).Add(params.Host.ContractPrice),
+		UnlockHash: params.Host.UnlockHash,
+	}
+	expectedVoidOutput := types.SiacoinOutput{
+		Value:      basePrice.Add(baseCollateral),
+		UnlockHash: types.UnlockHash{},
+	}
+	if !reflect.DeepEqual(newContract.ValidRenterOutput(), expectedValidRenterOutput) {
+		t.Fatal("wrong output")
+	}
+	if !reflect.DeepEqual(newContract.ValidHostOutput(), expectedValidHostOutput) {
+		t.Fatal("wrong output")
+	}
+	if !reflect.DeepEqual(newContract.MissedRenterOutput(), expectedMissedRenterOutput) {
+		t.Fatal("wrong output")
+	}
+	if !reflect.DeepEqual(newContract.MissedHostOutput(), expectedMissedHostOutput) {
+		t.Fatal("wrong output")
+	}
+	mvo, err := newContract.MissedVoidOutput()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(mvo, expectedVoidOutput) {
+		t.Fatal("wrong output")
+	}
+
+	// Get the new contract's revision from the contractor.
+	c, found := wt.renter.hostContractor.ContractByPublicKey(wt.staticHostPubKey)
+	if !found {
+		t.Fatal("contract not found in contractor")
+	}
+	rev := c.Transaction.FileContractRevisions[0]
+
+	// Check the revision.
+	if rev.NewFileMerkleRoot != merkleRoot {
+		t.Fatalf("new contract revision got wrong root %v", rev.NewFileMerkleRoot)
+	}
+	if rev.NewFileSize != size {
+		t.Fatal("new contract revision got wrong size")
+	}
+	if rev.NewWindowStart != params.EndHeight {
+		t.Fatal("wrong window start")
+	}
+	if rev.NewWindowEnd != params.EndHeight+params.Host.WindowSize {
+		t.Fatal("wrong window end")
+	}
+	if rev.NewUnlockHash != fcr.NewUnlockHash {
+		t.Fatal("unlock hash doesn't match")
+	}
+	if rev.NewRevisionNumber != 1 {
+		t.Fatal("revision number isn't 1")
+	}
+	if !reflect.DeepEqual(rev.ValidRenterOutput(), expectedValidRenterOutput) {
+		t.Fatal("wrong output")
+	}
+	if !reflect.DeepEqual(rev.ValidHostOutput(), expectedValidHostOutput) {
+		t.Fatal("wrong output")
+	}
+	if !reflect.DeepEqual(rev.MissedRenterOutput(), expectedMissedRenterOutput) {
+		t.Fatal("wrong output")
+	}
+	if !reflect.DeepEqual(rev.MissedHostOutput(), expectedMissedHostOutput) {
+		t.Fatal("wrong output")
+	}
+
+	// Try using the contract now. Should work.
+	err = wt.UploadSnapshot(context.Background(), modules.UploadedBackup{UID: [16]byte{3, 2, 1}}, fastrand.Bytes(100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = wt.ReadOffset(context.Background(), 0, modules.SectorSize)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
