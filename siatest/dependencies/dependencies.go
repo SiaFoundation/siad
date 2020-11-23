@@ -208,6 +208,12 @@ func NewDependencyContractRenewalFail() *DependencyWithDisableAndEnable {
 	return newDependencywithDisableAndEnable("ContractRenewFail")
 }
 
+// NewDependencySkyfileUploadFail creates a new dependency that simulates
+// getting an error while uploading a skyfile.
+func NewDependencySkyfileUploadFail() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("SkyfileUploadFail")
+}
+
 // NewDependencyCustomResolver creates a dependency from a given lookupIP
 // method which returns a custom resolver that uses the specified lookupIP
 // method to resolve hostnames.

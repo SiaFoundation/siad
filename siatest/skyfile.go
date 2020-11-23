@@ -43,15 +43,12 @@ func (tn *TestNode) UploadNewEncryptedSkyfileBlocking(filename string, filedata 
 	sup = modules.SkyfileUploadParameters{
 		SiaPath:             skyfilePath,
 		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: filename,
-			Length:   uint64(len(filedata)),
-			Mode:     modules.DefaultFilePerm,
-		},
-		Reader:     reader,
-		Force:      force,
-		Root:       false,
-		SkykeyName: skykeyName,
+		Filename:            filename,
+		Mode:                modules.DefaultFilePerm,
+		Reader:              reader,
+		Force:               force,
+		Root:                false,
+		SkykeyName:          skykeyName,
 	}
 
 	// upload a skyfile
