@@ -177,7 +177,7 @@ func TestRenewContract(t *testing.T) {
 		t.Fatal("wrong window start")
 	}
 	if newContract.WindowEnd != params.EndHeight+params.Host.WindowSize {
-		t.Fatal("wrong window start")
+		t.Fatal("wrong window end")
 	}
 	if newContract.UnlockHash != fcr.NewUnlockHash {
 		t.Fatal("unlock hash doesn't match")
@@ -185,10 +185,11 @@ func TestRenewContract(t *testing.T) {
 	if newContract.RevisionNumber != 0 {
 		t.Fatal("revision number isn't 0")
 	}
-	expectedValidMissedRenterOutput := types.SiacoinOutput{
+	expectedValidRenterOutput := types.SiacoinOutput{
 		Value:      types.PostTax(params.StartHeight, totalPayout).Sub(hostPayout),
 		UnlockHash: params.RefundAddress,
 	}
+	expectedMissedRenterOutput := expectedValidRenterOutput
 	expectedValidHostOutput := types.SiacoinOutput{
 		Value:      hostPayout,
 		UnlockHash: params.Host.UnlockHash,
@@ -201,13 +202,13 @@ func TestRenewContract(t *testing.T) {
 		Value:      basePrice.Add(baseCollateral),
 		UnlockHash: types.UnlockHash{},
 	}
-	if !reflect.DeepEqual(newContract.ValidRenterOutput(), expectedValidMissedRenterOutput) {
+	if !reflect.DeepEqual(newContract.ValidRenterOutput(), expectedValidRenterOutput) {
 		t.Fatal("wrong output")
 	}
 	if !reflect.DeepEqual(newContract.ValidHostOutput(), expectedValidHostOutput) {
 		t.Fatal("wrong output")
 	}
-	if !reflect.DeepEqual(newContract.MissedRenterOutput(), expectedValidMissedRenterOutput) {
+	if !reflect.DeepEqual(newContract.MissedRenterOutput(), expectedMissedRenterOutput) {
 		t.Fatal("wrong output")
 	}
 	if !reflect.DeepEqual(newContract.MissedHostOutput(), expectedMissedHostOutput) {
@@ -239,21 +240,21 @@ func TestRenewContract(t *testing.T) {
 		t.Fatal("wrong window start")
 	}
 	if rev.NewWindowEnd != params.EndHeight+params.Host.WindowSize {
-		t.Fatal("wrong window start")
+		t.Fatal("wrong window end")
 	}
 	if rev.NewUnlockHash != fcr.NewUnlockHash {
 		t.Fatal("unlock hash doesn't match")
 	}
 	if rev.NewRevisionNumber != 1 {
-		t.Fatal("revision number isn't 0")
+		t.Fatal("revision number isn't 1")
 	}
-	if !reflect.DeepEqual(rev.ValidRenterOutput(), expectedValidMissedRenterOutput) {
+	if !reflect.DeepEqual(rev.ValidRenterOutput(), expectedValidRenterOutput) {
 		t.Fatal("wrong output")
 	}
 	if !reflect.DeepEqual(rev.ValidHostOutput(), expectedValidHostOutput) {
 		t.Fatal("wrong output")
 	}
-	if !reflect.DeepEqual(rev.MissedRenterOutput(), expectedValidMissedRenterOutput) {
+	if !reflect.DeepEqual(rev.MissedRenterOutput(), expectedMissedRenterOutput) {
 		t.Fatal("wrong output")
 	}
 	if !reflect.DeepEqual(rev.MissedHostOutput(), expectedMissedHostOutput) {
