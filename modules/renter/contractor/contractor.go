@@ -645,12 +645,15 @@ func newPayByContractRequest(rev types.FileContractRevision, sig crypto.Signatur
 // RenewContract takes an established connection to a host and renews the
 // contract with that host.
 func (c *Contractor) RenewContract(conn net.Conn, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb modules.HostDB) error {
-	err := c.staticContracts.RenewContract(conn, fcid, params, txnBuilder, tpool, hdb)
+	newContract, _, err := c.staticContracts.RenewContract(conn, fcid, params, txnBuilder, tpool, hdb)
 	if err != nil {
 		return errors.AddContext(err, "RenewContract: failed to renew contract")
 	}
-	// Update the mapping of public keys to contracts after a successful renewal.
-	c.managedCheckForDuplicates()
-	c.managedUpdatePubKeyToContractIDMap()
+	// Update various mappings in the contractor after a successful renewal.
+	c.mu.Lock()
+	c.renewedFrom[newContract.ID] = fcid
+	c.renewedTo[fcid] = newContract.ID
+	c.pubKeysToContractID[newContract.HostPublicKey.String()] = newContract.ID
+	c.mu.Unlock()
 	return nil
 }

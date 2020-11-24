@@ -557,11 +557,11 @@ func createRenewedContract(lastRev types.FileContractRevision, params modules.Co
 
 // RenewContract takes an established connection to a host and renews the
 // contract with that host.
-func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb hostDB) error {
+func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb hostDB) (modules.RenterContract, []types.Transaction, error) {
 	// Fetch the contract.
 	oldSC, ok := cs.Acquire(fcid)
 	if !ok {
-		return errors.New("RenewContract: failed to acquire contract to renew")
+		return modules.RenterContract{}, nil, errors.New("RenewContract: failed to acquire contract to renew")
 	}
 	defer cs.Return(oldSC)
 	oldContract := oldSC.header
@@ -582,19 +582,19 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	renewCost := types.ZeroCurrency
 	finalRev, err := prepareFinalRevision(oldContract, renewCost)
 	if err != nil {
-		return errors.AddContext(err, "Unable to create final revision")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "Unable to create final revision")
 	}
 
 	// Record the changes we are about to make to the contract.
 	walTxn, err := oldSC.managedRecordClearContractIntent(finalRev, renewCost)
 	if err != nil {
-		return errors.AddContext(err, "failed to record clear contract intent")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "failed to record clear contract intent")
 	}
 
 	// Create the new file contract.
 	fc, err := createRenewedContract(oldRev, params, txnFee, basePrice, baseCollateral, tpool)
 	if err != nil {
-		return errors.AddContext(err, "Unable to create new contract")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "Unable to create new contract")
 	}
 
 	// Add both the new final revision and the new contract to the same
@@ -613,7 +613,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	// Create transaction set.
 	txnSet, err := prepareTransactionSet(txnBuilder)
 	if err != nil {
-		return errors.AddContext(err, "failed to prepare txnSet with finalRev and new contract")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "failed to prepare txnSet with finalRev and new contract")
 	}
 
 	// Sign the final revision.
@@ -637,7 +637,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 		FinalRevSig: finalRevRenterSigRaw,
 	})
 	if err != nil {
-		return errors.AddContext(err, "failed to write RPCRenewContractRequest")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "failed to write RPCRenewContractRequest")
 	}
 
 	// Read the response. It contains the host's final revision sig and any
@@ -645,7 +645,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	var resp modules.RPCRenewContractCollateralResponse
 	err = modules.RPCRead(conn, &resp)
 	if err != nil {
-		return errors.AddContext(err, "failed to read RPCRenewContractCollateralResponse")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "failed to read RPCRenewContractCollateralResponse")
 	}
 
 	// Incorporate host's modifications.
@@ -674,7 +674,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	_ = txnBuilder.AddTransactionSignature(finalRevHostSig)
 	signedTxnSet, err := txnBuilder.Sign(true)
 	if err != nil {
-		return errors.AddContext(err, "failed to sign transaction set")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "failed to sign transaction set")
 	}
 
 	// Calculate signatures added by the transaction builder
@@ -692,14 +692,14 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 		RenterTxnSigs:         addedSignatures,
 	})
 	if err != nil {
-		return errors.AddContext(err, "failed to send RPCRenewContractRenterSignatures to host")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "failed to send RPCRenewContractRenterSignatures to host")
 	}
 
 	// Read the host's signatures and add them to the transactions.
 	var hostSignatureResp modules.RPCRenewContractHostSignatures
 	err = modules.RPCRead(conn, &hostSignatureResp)
 	if err != nil {
-		return errors.AddContext(err, "failed to read RPCRenewContractHostSignatures from host")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "failed to read RPCRenewContractHostSignatures from host")
 	}
 	for _, sig := range hostSignatureResp.ContractSignatures {
 		_ = txnBuilder.AddTransactionSignature(sig)
@@ -709,7 +709,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	// Construct the final transaction.
 	txnSet, err = prepareTransactionSet(txnBuilder)
 	if err != nil {
-		return errors.AddContext(err, "failed to prepare txnSet with finalRev and new contract")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "failed to prepare txnSet with finalRev and new contract")
 	}
 
 	// Submit the txn set with the final revision and new contract to the blockchain.
@@ -719,7 +719,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 		err = nil
 	}
 	if err != nil {
-		return errors.AddContext(err, "failed to submit txnSet for renewal to blockchain")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "failed to submit txnSet for renewal to blockchain")
 	}
 
 	// Construct contract header.
@@ -742,18 +742,18 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	// Get old roots
 	oldRoots, err := oldSC.merkleRoots.merkleRoots()
 	if err != nil {
-		return err
+		return modules.RenterContract{}, nil, err
 	}
 
 	// Add contract to set.
-	_, err = cs.managedInsertContract(header, oldRoots)
+	newContract, err := cs.managedInsertContract(header, oldRoots)
 	if err != nil {
-		return err
+		return modules.RenterContract{}, nil, err
 	}
 
 	// Commit changes to old contract.
 	if err := oldSC.managedCommitClearContract(walTxn, finalRevTxn, renewCost); err != nil {
-		return err
+		return modules.RenterContract{}, nil, err
 	}
-	return nil
+	return newContract, txnSet, nil
 }

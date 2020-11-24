@@ -584,18 +584,9 @@ func checkFormContractGouging(allowance modules.Allowance, hostSettings modules.
 // managedRenew negotiates a new contract for data already stored with a host.
 // It returns the new contract. This is a blocking call that performs network
 // I/O.
-func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.Currency, newEndHeight types.BlockHeight, hostSettings modules.HostExternalSettings) (modules.RenterContract, error) {
-	// For convenience
-	contract := sc.Metadata()
-	// Sanity check - should not be renewing a bad contract.
-	utility, ok := c.managedContractUtility(contract.ID)
-	if !ok || !utility.GoodForRenew {
-		c.log.Critical(fmt.Sprintf("Renewing a contract that has been marked as !GoodForRenew %v/%v",
-			ok, utility.GoodForRenew))
-	}
-
+func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKey, contractFunding types.Currency, newEndHeight types.BlockHeight, hostSettings modules.HostExternalSettings) (modules.RenterContract, error) {
 	// Fetch the host associated with this contract.
-	host, ok, err := c.hdb.Host(contract.HostPublicKey)
+	host, ok, err := c.hdb.Host(hpk)
 	if err != nil {
 		return modules.RenterContract{}, errors.AddContext(err, "error getting host from hostdb:")
 	}
@@ -692,10 +683,28 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	}
 	sweepTxn, sweepParents := txnBuilder.Sweep(output)
 
-	newContract, formationTxnSet, err := c.staticContracts.Renew(sc, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
-	if err != nil {
-		txnBuilder.Drop() // return unused outputs to wallet
-		return modules.RenterContract{}, err
+	var newContract modules.RenterContract
+	var formationTxnSet []types.Transaction
+	if build.VersionCmp(build.Version, "1.5.4") < 0 {
+		// Acquire the SafeContract.
+		oldContract, ok := c.staticContracts.Acquire(id)
+		if !ok {
+			return modules.RenterContract{}, errContractNotFound
+		}
+		if !oldContract.Utility().GoodForRenew {
+			return modules.RenterContract{}, errContractNotGFR
+		}
+		// RHP2 renewal.
+		newContract, formationTxnSet, err = c.staticContracts.Renew(oldContract, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
+		if err != nil {
+			txnBuilder.Drop()                     // return unused outputs to wallet
+			c.staticContracts.Return(oldContract) // return old contract after failure
+			return modules.RenterContract{}, err
+		}
+		// Delete the old contract.
+		c.staticContracts.Delete(oldContract)
+	} else {
+		panic("not implemented yet")
 	}
 
 	monitorContractArgs := monitorContractArgs{
@@ -789,30 +798,19 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	s.invalidate()
 	c.log.Debugln("Got session invalidation")
 
-	// Fetch the contract that we are renewing.
-	c.log.Debugln("Acquiring contract from the contract set", id)
-	oldContract, exists := c.staticContracts.Acquire(id)
-	if !exists {
-		c.log.Debugln("Contract does not seem to exist")
-		return types.ZeroCurrency, errors.New("contract no longer exists")
-	}
-	oldUtility := oldContract.Utility()
-
-	// The contract could have been marked !GFR while the contractor lock was not
-	// held.
-	if !oldUtility.GoodForRenew {
-		c.staticContracts.Return(oldContract)
-		return types.ZeroCurrency, errContractNotGFR
-	}
-
 	// Perform the actual renew. If the renew fails, return the
 	// contract. If the renew fails we check how often it has failed
 	// before. Once it has failed for a certain number of blocks in a
 	// row and reached its second half of the renew window, we give up
 	// on renewing it and set goodForRenew to false.
 	c.log.Debugln("calling managedRenew on contract", id)
-	newContract, errRenew := c.managedRenew(oldContract, amount, endHeight, hostSettings)
+	newContract, errRenew := c.managedRenew(id, hostPubKey, amount, endHeight, hostSettings)
 	c.log.Debugln("managedRenew has returned with error:", errRenew)
+	oldContract, exists := c.staticContracts.Acquire(id)
+	if !exists {
+		return types.ZeroCurrency, errors.AddContext(errContractNotFound, "failed to acquire oldContract after renewal")
+	}
+	oldUtility := oldContract.Utility()
 	if errRenew != nil {
 		// Increment the number of failed renews for the contract if it
 		// was the host's fault.
