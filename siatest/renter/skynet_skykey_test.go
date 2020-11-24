@@ -533,12 +533,10 @@ func testSkynetEncryption(t *testing.T, tg *siatest.TestGroup, skykeyType skykey
 		Force:               false,
 		Root:                false,
 		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: filename,
-			Mode:     0640, // Intentionally does not match any defaults.
-		},
-		Reader:     reader,
-		SkykeyName: encKeyName,
+		Filename:            filename,
+		Mode:                0640, // Intentionally does not match any defaults.
+		Reader:              reader,
+		SkykeyName:          encKeyName,
 	}
 
 	_, _, err = r.SkynetSkyfilePost(sup)
@@ -637,12 +635,10 @@ func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup, skykeyTy
 		Force:               false,
 		Root:                false,
 		BaseChunkRedundancy: 2,
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: filename,
-			Mode:     0640, // Intentionally does not match any defaults.
-		},
-		Reader:     reader,
-		SkykeyName: encKeyName,
+		Filename:            filename,
+		Mode:                0640, // Intentionally does not match any defaults.
+		Reader:              reader,
+		SkykeyName:          encKeyName,
 	}
 
 	_, err = r.SkykeyCreateKeyPost(encKeyName, skykeyType)

@@ -100,6 +100,11 @@ func (w *worker) externTryLaunchSerialJob() {
 	// perform. This scheduling allows a flood of jobs earlier in the list to
 	// starve out jobs later in the list. At some point we will probably
 	// revisit this to try and address the starvation issue.
+	job := w.staticJobRenewQueue.callNext()
+	if job != nil {
+		w.externLaunchSerialJob(job.callExecute)
+		return
+	}
 	if w.managedNeedsToUpdatePriceTable() {
 		w.externLaunchSerialJob(w.staticUpdatePriceTable)
 		return
@@ -108,7 +113,12 @@ func (w *worker) externTryLaunchSerialJob() {
 		w.externLaunchSerialJob(w.managedRefillAccount)
 		return
 	}
-	job := w.staticJobDownloadSnapshotQueue.callNext()
+	job = w.staticJobUploadSnapshotQueue.callNext()
+	if job != nil {
+		w.externLaunchSerialJob(job.callExecute)
+		return
+	}
+	job = w.staticJobDownloadSnapshotQueue.callNext()
 	if job != nil {
 		w.externLaunchSerialJob(job.callExecute)
 		return

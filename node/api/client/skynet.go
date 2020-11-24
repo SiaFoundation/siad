@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -25,6 +26,21 @@ func (c *Client) SkynetBaseSectorGet(skylink string) (io.ReadCloser, error) {
 	return reader, err
 }
 
+// SkynetDownloadByRootGet uses the /skynet/root endpoint to fetch a reader of
+// a sector.
+func (c *Client) SkynetDownloadByRootGet(root crypto.Hash, offset, length uint64, timeout time.Duration) (io.ReadCloser, error) {
+	values := url.Values{}
+	values.Set("root", root.String())
+	values.Set("offset", fmt.Sprint(offset))
+	values.Set("length", fmt.Sprint(length))
+	if timeout >= 0 {
+		values.Set("timeout", fmt.Sprintf("%s", timeout))
+	}
+	getQuery := fmt.Sprintf("/skynet/root?%v", values.Encode())
+	_, reader, err := c.getReaderResponse(getQuery)
+	return reader, err
+}
+
 // SkynetSkylinkGetWithETag uses the /skynet/skylink endpoint to download a
 // skylink file setting the given ETag as value in the If-None-Match request
 // header.
@@ -38,12 +54,12 @@ func (uc *UnsafeClient) SkynetSkylinkGetWithETag(skylink string, eTag string) (*
 func (uc *UnsafeClient) SkynetSkyfilePostRawResponse(params modules.SkyfileUploadParameters) (http.Header, []byte, error) {
 	// Set the url values.
 	values := url.Values{}
-	values.Set("filename", params.FileMetadata.Filename)
+	values.Set("filename", params.Filename)
 	dryRunStr := fmt.Sprintf("%t", params.DryRun)
 	values.Set("dryrun", dryRunStr)
 	forceStr := fmt.Sprintf("%t", params.Force)
 	values.Set("force", forceStr)
-	modeStr := fmt.Sprintf("%o", params.FileMetadata.Mode)
+	modeStr := fmt.Sprintf("%o", params.Mode)
 	values.Set("mode", modeStr)
 	redundancyStr := fmt.Sprintf("%v", params.BaseChunkRedundancy)
 	values.Set("basechunkredundancy", redundancyStr)
@@ -271,12 +287,12 @@ func (c *Client) SkynetSkylinkPinPostWithTimeout(skylink string, params modules.
 func (c *Client) SkynetSkyfilePost(params modules.SkyfileUploadParameters) (string, api.SkynetSkyfileHandlerPOST, error) {
 	// Set the url values.
 	values := url.Values{}
-	values.Set("filename", params.FileMetadata.Filename)
+	values.Set("filename", params.Filename)
 	dryRunStr := fmt.Sprintf("%t", params.DryRun)
 	values.Set("dryrun", dryRunStr)
 	forceStr := fmt.Sprintf("%t", params.Force)
 	values.Set("force", forceStr)
-	modeStr := fmt.Sprintf("%o", params.FileMetadata.Mode)
+	modeStr := fmt.Sprintf("%o", params.Mode)
 	values.Set("mode", modeStr)
 	redundancyStr := fmt.Sprintf("%v", params.BaseChunkRedundancy)
 	values.Set("basechunkredundancy", redundancyStr)
@@ -314,10 +330,10 @@ func (c *Client) SkynetSkyfilePost(params modules.SkyfileUploadParameters) (stri
 func (c *Client) SkynetSkyfilePostDisableForce(params modules.SkyfileUploadParameters, disableForce bool) (string, api.SkynetSkyfileHandlerPOST, error) {
 	// Set the url values.
 	values := url.Values{}
-	values.Set("filename", params.FileMetadata.Filename)
+	values.Set("filename", params.Filename)
 	forceStr := fmt.Sprintf("%t", params.Force)
 	values.Set("force", forceStr)
-	modeStr := fmt.Sprintf("%o", params.FileMetadata.Mode)
+	modeStr := fmt.Sprintf("%o", params.Mode)
 	values.Set("mode", modeStr)
 	redundancyStr := fmt.Sprintf("%v", params.BaseChunkRedundancy)
 	values.Set("basechunkredundancy", redundancyStr)
@@ -388,10 +404,10 @@ func (c *Client) SkynetSkyfileMultiPartPost(params modules.SkyfileMultipartUploa
 func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadParameters, convert modules.SiaPath) (api.SkynetSkyfileHandlerPOST, error) {
 	// Set the url values.
 	values := url.Values{}
-	values.Set("filename", lup.FileMetadata.Filename)
+	values.Set("filename", lup.Filename)
 	forceStr := fmt.Sprintf("%t", lup.Force)
 	values.Set("force", forceStr)
-	modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
+	modeStr := fmt.Sprintf("%o", lup.Mode)
 	values.Set("mode", modeStr)
 	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
 	values.Set("redundancy", redundancyStr)
@@ -581,10 +597,19 @@ func (c *Client) SkykeySkykeysGet() ([]skykey.Skykey, error) {
 
 // RegistryRead queries the /skynet/registry [GET] endpoint.
 func (c *Client) RegistryRead(spk types.SiaPublicKey, dataKey crypto.Hash) (modules.SignedRegistryValue, error) {
+	return c.RegistryReadWithTimeout(spk, dataKey, 0)
+}
+
+// RegistryReadWithTimeout queries the /skynet/registry [GET] endpoint with the
+// specified timeout.
+func (c *Client) RegistryReadWithTimeout(spk types.SiaPublicKey, dataKey crypto.Hash, timeout time.Duration) (modules.SignedRegistryValue, error) {
 	// Set the values.
 	values := url.Values{}
 	values.Set("publickey", spk.String())
 	values.Set("datakey", dataKey.String())
+	if timeout > 0 {
+		values.Set("timeout", fmt.Sprint(int(timeout.Seconds())))
+	}
 
 	// Send request.
 	var rhg api.RegistryHandlerGET

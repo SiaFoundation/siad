@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -642,5 +643,70 @@ func TestStorageProofEmptyContract(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestHostGetPriceTable confirms that the price table is returned through the
+// API
+func TestHostGetPriceTable(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create Host
+	testDir := hostTestDir(t.Name())
+
+	// Create a new group with only a host. We create a group to make sure the
+	// host is initialized with the default registry.
+	groupParams := siatest.GroupParams{
+		Miners: 1,
+		Hosts:  1,
+	}
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Call HostGet, confirm price table is not a blank table.
+	h := tg.Hosts()[0]
+	hg, err := h.HostGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reflect.DeepEqual(hg.PriceTable, modules.RPCPriceTable{}) {
+		t.Fatal("HostGet contains empty price table")
+	}
+
+	// Check the fields in the price table against its counterparts in the internal
+	// settings.
+	es := hg.ExternalSettings
+	pt := hg.PriceTable
+	if !es.UploadBandwidthPrice.Equals(pt.UploadBandwidthCost) {
+		t.Fatal("upload bandwidth doesn't match")
+	}
+	if !es.DownloadBandwidthPrice.Equals(pt.DownloadBandwidthCost) {
+		t.Fatal("download bandwidth doesn't match")
+	}
+	if !es.StoragePrice.Equals(pt.WriteStoreCost) {
+		t.Fatal("storage price doesn't match")
+	}
+
+	// Registry defaults to 0 entries.
+	if pt.RegistryEntriesTotal != pt.RegistryEntriesLeft {
+		t.Fatal("all registry entries should be free")
+	}
+	// Check for default entries. Hardcoded to make sure we notice changes.
+	if pt.RegistryEntriesTotal != 1024 {
+		t.Fatal("wrong number of total registry entries")
+	}
+	// Check that validity is set. Hardcoded for the same reasons as before.
+	if pt.Validity != time.Minute {
+		t.Fatal("invalid validity")
 	}
 }

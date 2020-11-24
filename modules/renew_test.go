@@ -8,10 +8,11 @@ import (
 
 // TestRenewBaseCost is a unit test for RenewBaseCosts.
 func TestRenewBaseCost(t *testing.T) {
-	var host HostExternalSettings
-	host.StoragePrice = types.SiacoinPrecision
-	host.Collateral = types.SiacoinPrecision.Mul64(2)
-	host.WindowSize = 50
+	var pt RPCPriceTable
+	pt.WriteStoreCost = types.SiacoinPrecision
+	pt.CollateralCost = types.SiacoinPrecision.Mul64(2)
+	pt.RenewContractCost = types.SiacoinPrecision
+	pt.WindowSize = 50
 
 	// Declare test cases.
 	tests := []struct {
@@ -28,7 +29,7 @@ func TestRenewBaseCost(t *testing.T) {
 			newEndHeight: 10,
 			storage:      0,
 
-			basePrice:      types.ZeroCurrency,
+			basePrice:      types.SiacoinPrecision,
 			baseCollateral: types.ZeroCurrency,
 		},
 		// 1 block time extension
@@ -37,7 +38,7 @@ func TestRenewBaseCost(t *testing.T) {
 			newEndHeight: 0,
 			storage:      1,
 
-			basePrice:      types.SiacoinPrecision,
+			basePrice:      types.SiacoinPrecision.Mul64(2),
 			baseCollateral: types.SiacoinPrecision.Mul64(2),
 		},
 		// 0 block time extension.
@@ -46,7 +47,7 @@ func TestRenewBaseCost(t *testing.T) {
 			newEndHeight: 0,
 			storage:      1,
 
-			basePrice:      types.ZeroCurrency,
+			basePrice:      types.SiacoinPrecision,
 			baseCollateral: types.ZeroCurrency,
 		},
 		// -1 block time extension.
@@ -55,7 +56,7 @@ func TestRenewBaseCost(t *testing.T) {
 			newEndHeight: 0,
 			storage:      1,
 
-			basePrice:      types.ZeroCurrency,
+			basePrice:      types.SiacoinPrecision,
 			baseCollateral: types.ZeroCurrency,
 		},
 		// 60 block time extension
@@ -64,7 +65,7 @@ func TestRenewBaseCost(t *testing.T) {
 			newEndHeight: 10,
 			storage:      1,
 
-			basePrice:      types.SiacoinPrecision.Mul64(60),
+			basePrice:      types.SiacoinPrecision.Mul64(61),
 			baseCollateral: types.SiacoinPrecision.Mul64(120),
 		},
 	}
@@ -75,7 +76,7 @@ func TestRenewBaseCost(t *testing.T) {
 		lastRev.NewWindowEnd = test.oldWindowEnd
 		lastRev.NewFileSize = test.storage
 		endHeight := test.newEndHeight
-		basePrice, baseCollateral := RenewBaseCosts(lastRev, host, endHeight)
+		basePrice, baseCollateral := RenewBaseCosts(lastRev, &pt, endHeight)
 
 		if !basePrice.Equals(test.basePrice) {
 			t.Fatalf("%v: expected basePrice %v but was %v", i, test.basePrice, basePrice)

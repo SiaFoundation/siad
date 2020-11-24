@@ -327,11 +327,11 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 // managedUpdatePriceTable will recalculate the RPC costs and update the host's
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
-	// set the transaction fee estimates
-	minRecommended, maxRecommended := h.tpool.FeeEstimation()
-
 	// create a new RPC price table
-	hes := h.managedExternalSettings()
+	minRecommended, maxRecommended := h.tpool.FeeEstimation()
+	h.mu.Lock()
+	hes := h.externalSettings(maxRecommended) // use externalSettings to avoid another fee estimation
+	h.mu.Unlock()
 	priceTable := modules.RPCPriceTable{
 		// TODO: hardcoded cost should be updated to use a better value.
 		AccountBalanceCost:   types.NewCurrency64(1),
@@ -357,6 +357,9 @@ func (h *Host) managedUpdatePriceTable() {
 		// Init costs.
 		InitBaseCost: hes.BaseRPCPrice,
 
+		// Contract renewal costs.
+		RenewContractCost: modules.DefaultBaseRPCPrice,
+
 		// LatestRevisionCost is set to a reasonable base + the estimated
 		// bandwidth cost of downloading a filecontract. This isn't perfect but
 		// at least scales a bit as the host updates their download bandwidth
@@ -366,6 +369,13 @@ func (h *Host) managedUpdatePriceTable() {
 		// Bandwidth related fields.
 		DownloadBandwidthCost: hes.DownloadBandwidthPrice,
 		UploadBandwidthCost:   hes.UploadBandwidthPrice,
+
+		// Contract Formation/Renewal related fields
+		ContractPrice:  hes.ContractPrice,
+		CollateralCost: hes.Collateral,
+		MaxCollateral:  hes.MaxCollateral,
+		MaxDuration:    hes.MaxDuration,
+		WindowSize:     hes.WindowSize,
 
 		// Registry related fields.
 		RegistryEntriesLeft:  h.staticRegistry.Cap() - h.staticRegistry.Len(),
@@ -605,6 +615,13 @@ func (h *Host) BandwidthCounters() (uint64, uint64, time.Time, error) {
 	return writeBytes, readBytes, startTime, nil
 }
 
+// PriceTable returns the host's current price table.
+func (h *Host) PriceTable() modules.RPCPriceTable {
+	pt := h.staticPriceTables.managedCurrent()
+	pt.Validity = rpcPriceGuaranteePeriod
+	return pt
+}
+
 // WorkingStatus returns the working state of the host, where working is
 // defined as having received more than workingStatusThreshold settings calls
 // over the period of workingStatusFrequency.
@@ -686,7 +703,7 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 	// entry.
 	settings.RegistrySize = modules.RoundRegistrySize(settings.RegistrySize)
 	if h.settings.RegistrySize != settings.RegistrySize {
-		err := h.staticRegistry.Truncate(settings.RegistrySize / modules.RegistryEntrySize)
+		err := h.staticRegistry.Truncate(settings.RegistrySize/modules.RegistryEntrySize, false)
 		if err != nil {
 			return errors.AddContext(err, "registry size not updated")
 		}
@@ -763,6 +780,14 @@ func (h *Host) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPu
 		return modules.SignedRegistryValue{}, err
 	}
 	defer h.tg.Done()
+	// On disrupt, return the most recent known value if it exists. Otherwise it
+	// will add the value.
+	if h.dependencies.Disrupt("RegistryUpdateLyingHost") {
+		srv, found := h.staticRegistry.Get(pubKey, rv.Tweak)
+		if found {
+			return srv, registry.ErrSameRevNum
+		}
+	}
 	return h.staticRegistry.Update(rv, pubKey, expiry)
 }
 

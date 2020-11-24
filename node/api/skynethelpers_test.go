@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/julienschmidt/httprouter"
-	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -23,7 +22,6 @@ func TestSkynetHelpers(t *testing.T) {
 	t.Run("BuildETag", testBuildETag)
 	t.Run("ParseSkylinkURL", testParseSkylinkURL)
 	t.Run("ParseUploadRequestParameters", testParseUploadRequestParameters)
-	t.Run("ValidDefaultPath", testValidDefaultPath)
 }
 
 // testBuildETag verifies the functionality of the buildETag helper function
@@ -251,6 +249,7 @@ func testParseUploadRequestParameters(t *testing.T) {
 	defaultParams := httprouter.Params{param}
 
 	trueStr := []string{fmt.Sprintf("%t", true)}
+	contentTypeStr := []string{"multipart/form-data; boundary=---------------------------9051914041544843365972754266"}
 
 	// verify 'Skynet-Disable-Force'
 	hdrs := http.Header{"Skynet-Disable-Force": trueStr}
@@ -296,21 +295,35 @@ func testParseUploadRequestParameters(t *testing.T) {
 	}
 
 	// verify 'defaultpath'
-	req = buildRequest(url.Values{"defaultpath": []string{"/foo/bar.txt"}}, http.Header{})
+	req = buildRequest(url.Values{"defaultpath": []string{"/foo/bar.txt"}}, http.Header{"Content-Type": contentTypeStr})
 	_, params = parseRequest(req, defaultParams)
 	if params.defaultPath != "/foo/bar.txt" {
 		t.Fatal("Unexpected")
 	}
 
+	// verify 'defaultpath' - combo with a non-multipart request
+	req = buildRequest(url.Values{"defaultpath": []string{"/foo/bar.txt"}}, http.Header{"Content-Type": []string{"text/html"}})
+	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
+	if err == nil {
+		t.Fatal("Unexpected")
+	}
+
 	// verify 'disabledefaultpath'
-	req = buildRequest(url.Values{"disabledefaultpath": trueStr}, http.Header{})
+	req = buildRequest(url.Values{"disabledefaultpath": trueStr}, http.Header{"Content-Type": contentTypeStr})
 	_, params = parseRequest(req, defaultParams)
 	if !params.disableDefaultPath {
 		t.Fatal("Unexpected")
 	}
 
 	// verify 'disabledefaultpath' - combo with 'defaultpath'
-	req = buildRequest(url.Values{"defaultpath": []string{"/foo/bar.txt"}, "disabledefaultpath": trueStr}, http.Header{})
+	req = buildRequest(url.Values{"defaultpath": []string{"/foo/bar.txt"}, "disabledefaultpath": trueStr}, http.Header{"Content-Type": contentTypeStr})
+	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
+	if err == nil {
+		t.Fatal("Unexpected")
+	}
+
+	// verify 'disabledefaultpath' - combo with a non-multipart request
+	req = buildRequest(url.Values{"disabledefaultpath": trueStr}, http.Header{"Content-Type": []string{"text/html"}})
 	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
@@ -403,105 +416,5 @@ func testParseUploadRequestParameters(t *testing.T) {
 	_, _, err = parseUploadHeadersAndRequestParameters(req, defaultParams)
 	if err == nil {
 		t.Fatal("Unexpected")
-	}
-}
-
-// testValidDefaultPath ensures the functionality of 'validDefaultPath'
-func testValidDefaultPath(t *testing.T) {
-	t.Parallel()
-
-	subfiles := func(filenames ...string) modules.SkyfileSubfiles {
-		md := make(modules.SkyfileSubfiles)
-		for _, fn := range filenames {
-			md[fn] = modules.SkyfileSubfileMetadata{Filename: fn}
-		}
-		return md
-	}
-
-	tests := []struct {
-		name       string
-		dpQuery    string
-		dpExpected string
-		subfiles   modules.SkyfileSubfiles
-		err        error
-	}{
-		{
-			name:       "empty default path - no files",
-			subfiles:   nil,
-			dpQuery:    "",
-			dpExpected: "",
-			err:        nil,
-		},
-		{
-			name:       "no default path - files",
-			subfiles:   subfiles("a.html"),
-			dpQuery:    "",
-			dpExpected: "",
-			err:        nil,
-		},
-		{
-			name:       "existing default path",
-			subfiles:   subfiles("a.html"),
-			dpQuery:    "/a.html",
-			dpExpected: "/a.html",
-			err:        nil,
-		},
-		{
-			name:       "existing default path - multiple subfiles",
-			subfiles:   subfiles("a.html", "b.html"),
-			dpQuery:    "/a.html",
-			dpExpected: "/a.html",
-			err:        nil,
-		},
-		{
-			name:       "existing default path - ensure leading slash",
-			subfiles:   subfiles("a.html"),
-			dpQuery:    "a.html",
-			dpExpected: "/a.html",
-			err:        nil,
-		},
-		{
-			name:       "non existing default path",
-			subfiles:   subfiles("b.html"),
-			dpQuery:    "a.html",
-			dpExpected: "",
-			err:        ErrInvalidDefaultPath,
-		},
-		{
-			name:       "non html default path",
-			subfiles:   subfiles("a.txt"),
-			dpQuery:    "a.txt",
-			dpExpected: "",
-			err:        ErrInvalidDefaultPath,
-		},
-		{
-			name:       "HTML file with extension 'htm' as default path",
-			subfiles:   subfiles("a.htm"),
-			dpQuery:    "a.htm",
-			dpExpected: "/a.htm",
-			err:        nil,
-		},
-		{
-			name:       "default path not at root",
-			subfiles:   subfiles("a/b/c.html"),
-			dpQuery:    "a/b/c.html",
-			dpExpected: "",
-			err:        ErrInvalidDefaultPath,
-		},
-	}
-
-	for _, subtest := range tests {
-		t.Run(subtest.name, func(t *testing.T) {
-			dp, err := validDefaultPath(subtest.dpQuery, subtest.subfiles)
-			if subtest.err != nil && !errors.Contains(err, subtest.err) {
-				t.Fatal("Unexpected error")
-			}
-			if subtest.err == nil && err != nil {
-				t.Fatal("Unexpected error", err)
-			}
-			if dp != subtest.dpExpected {
-				t.Fatal("Unexpected default path")
-			}
-		})
 	}
 }

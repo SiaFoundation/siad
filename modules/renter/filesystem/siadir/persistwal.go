@@ -225,6 +225,8 @@ func (sd *SiaDir) createDeleteUpdate() writeaheadlog.Update {
 
 // readAndApplyMetadataUpdate reads the metadata update for a file and then
 // applies it.
+//
+// NOTE: This method does not fsync after the write.
 func (sd *SiaDir) readAndApplyMetadataUpdate(file modules.File, update writeaheadlog.Update) error {
 	// Decode update.
 	data, path, err := readMetadataUpdate(update)
@@ -238,7 +240,7 @@ func (sd *SiaDir) readAndApplyMetadataUpdate(file modules.File, update writeahea
 		return nil
 	}
 
-	// Write and sync.
+	// Write.
 	n, err := file.Write(data)
 	if err != nil {
 		return err

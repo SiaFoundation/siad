@@ -155,13 +155,15 @@ func (r *Registry) Len() uint64 {
 	return uint64(len(r.entries))
 }
 
-// Truncate resizes the registry.
-func (r *Registry) Truncate(newMaxEntries uint64) error {
+// Truncate resizes the registry. If 'force' was specified, it will allow to
+// shrink the registry below its current size. This will cause random values to
+// be lost.
+func (r *Registry) Truncate(newMaxEntries uint64, force bool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	// Check if truncating is possible.
-	if newMaxEntries < uint64(len(r.entries)) {
+	if !force && newMaxEntries < uint64(len(r.entries)) {
 		return ErrInvalidTruncate
 	}
 
@@ -191,14 +193,10 @@ func (r *Registry) Truncate(newMaxEntries uint64) error {
 		// If not, remember the entry and keep it locked.
 		entriesToMove = append(entriesToMove, entry)
 	}
+
 	// Loop over the unset bits of the new bitfield and move the entries
 	// accordingly.
-	for i := uint64(0); len(entriesToMove) > 0; i++ {
-		if i >= newUsage.Len() {
-			err := errors.New("entriesToMove is longer than free entries, this shouldn't happen")
-			build.Critical(err)
-			return err
-		}
+	for i := uint64(0); i < newUsage.Len() && len(entriesToMove) > 0; i++ {
 		if newUsage.IsSet(i) {
 			continue // already in use
 		}
@@ -215,6 +213,20 @@ func (r *Registry) Truncate(newMaxEntries uint64) error {
 			return errors.AddContext(err, "failed to save value at new location")
 		}
 	}
+
+	// If 'force' wasn't specified, there should be no more entries to move.
+	if !force && len(entriesToMove) > 0 {
+		err := errors.New("entriesToMove is longer than free entries, this shouldn't happen")
+		build.Critical(err)
+		return err
+	} else if force {
+		// If 'force' was specified, the remaining entries need to be removed from
+		// the in-memory map.
+		for _, entry := range entriesToMove {
+			delete(r.entries, entry.mapKey())
+		}
+	}
+
 	// Replace the usage bitfield.
 	r.usage = newUsage
 
@@ -273,6 +285,9 @@ func New(path string, maxEntries uint64) (_ *Registry, err error) {
 	}
 	// Load the remaining entries.
 	reg.entries, err = loadRegistryEntries(r, fi.Size()/PersistedEntrySize, b)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to load registry entries")
+	}
 	return reg, nil
 }
 

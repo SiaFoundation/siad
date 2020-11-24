@@ -1,1 +1,0 @@
-- Fix skykey default type in siac
