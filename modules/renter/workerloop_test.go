@@ -189,6 +189,8 @@ func TestJobAsync(t *testing.T) {
 	w.renter = new(Renter)
 	w.renter.deps = d
 	w.staticLoopState = new(workerLoopState)
+	w.staticLoopState.atomicReadDataLimit = 10e6
+	w.staticLoopState.atomicWriteDataLimit = 10e6
 
 	// Launch a bunch of async jobs in the worker. We try to launch jobs 5ms
 	// apart, and 10 jobs are allowed to run at once, and jobs take 100ms to

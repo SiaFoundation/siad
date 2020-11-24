@@ -207,8 +207,10 @@ func TestWorkerReadJobStatus(t *testing.T) {
 	}
 
 	// prevent the worker from doing any work by manipulating its read limit
-	//
-	// TODO: Need a new way of doing this.
+	current := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
+	limit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
+	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, limit)
+
 
 	// add the job to the worker
 	ctx := context.Background()
@@ -238,8 +240,7 @@ func TestWorkerReadJobStatus(t *testing.T) {
 	}
 
 	// restore the read limit
-	//
-	// TODO: Need a new way of doing this.
+	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, current)
 
 	// verify the status in a build.Retry to allow the worker some time to
 	// process the job
@@ -333,9 +334,10 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	}
 
 	// prevent the worker from doing any work by manipulating its read limit
-	//
-	// TODO: We removed the limit so now we need a dependency injection or
-	// something.
+	current := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
+	limit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
+	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, limit)
+
 
 	// add the job to the worker
 	ctx := context.Background()
@@ -352,9 +354,7 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	}
 
 	// restore the read limit
-	//
-	// TODO: We removed the limit so now we need a dependency injection or
-	// something.
+	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, current)
 
 	// verify the status in a build.Retry to allow the worker some time to
 	// process the job
