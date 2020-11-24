@@ -27,7 +27,7 @@ package renter
 // To get a baseline, we pop of 'MinPieces' workers, tally up the financial
 // cost, and track the duration of the slowest worker. We then compute the total
 // adjusted cost of using the fastest possible set of workers. We save a copy of
-// this set as the 'bestSet', retaining the inital consturction as the
+// this set as the 'bestSet', retaining the initial construction as the
 // 'workingSet'.
 //
 // Then we iterate by popping a new worker off of the heap. Two things are at
@@ -130,7 +130,7 @@ func (wh *pdcWorkerHeap) Pop() interface{} {
 // workers with no pieces that can be resolved or workers that are currently on
 // cooldown for the read job.
 func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker) pdcWorkerHeap {
-	// Add all of the unresovled workers to the heap.
+	// Add all of the unresolved workers to the heap.
 	var workerHeap pdcWorkerHeap
 	for _, uw := range unresolvedWorkers {
 		// Determine the expected readDuration and cost for this worker. Add the
@@ -243,8 +243,8 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 	// best set, we just keep building out the working set. This is guaranteed
 	// to find the optimal best set while only using a linear amount of total
 	// computation.
-	bestSet := make([]*pdcInitialWorker, ec.NumPieces())
-	workingSet := make([]*pdcInitialWorker, ec.NumPieces())
+	bestSet := make([]*pdcInitialWorker, ec.MinPieces())
+	workingSet := make([]*pdcInitialWorker, ec.MinPieces())
 	var bestSetCost types.Currency
 	var workingSetCost types.Currency
 	var workingSetDuration time.Duration
@@ -259,7 +259,6 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 		// done.
 		nextWorker := heap.Pop(&workerHeap).(*pdcInitialWorker)
 		if nextWorker == nil {
-			// TODO: handle more gracefully
 			build.Critical("wasn't expecting to pop a nil worker")
 			break
 		}

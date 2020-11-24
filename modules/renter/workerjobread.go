@@ -232,10 +232,18 @@ func (jq *jobReadQueue) callExpectedJobTime(length uint64) time.Duration {
 
 // callExpectedJobCost returns an estimate for the price of performing a read
 // job with the given length.
-//
-// TODO: I am not sure the best way to estmiate a job cost.
 func (jq *jobReadQueue) callExpectedJobCost(length uint64) types.Currency {
-	return types.SiacoinPrecision
+	// create a dummy read program to get at the estimated cost
+	w := jq.staticWorker()
+	pt := w.staticPriceTable().staticPriceTable
+	pb := modules.NewProgramBuilder(&pt, 0)
+	pb.AddReadSectorInstruction(length, 0, crypto.Hash{}, true)
+	cost, _, _ := pb.Cost(true)
+
+	// take into account bandwidth costs
+	ulBandwidth, dlBandwidth := new(jobReadSector).callExpectedBandwidth()
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	return cost.Add(bandwidthCost)
 }
 
 // initJobReadQueue will initialize a queue for downloading sectors by
