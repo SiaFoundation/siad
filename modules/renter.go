@@ -34,10 +34,14 @@ type (
 	}
 )
 
+// WorkerPool is an interface that describes a collection of workers. It's used
+// to be able to pass the renter's workers to the contractor.
 type WorkerPool interface {
 	Worker(types.SiaPublicKey) (Worker, error)
 }
 
+// Worker is a minimal interface for a single worker. It's used to be able to
+// use workers within the contractor.
 type Worker interface {
 	RenewContract(ctx context.Context, fcid types.FileContractID, params ContractParams, txnBuilder TransactionBuilder) error
 }
