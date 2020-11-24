@@ -48,8 +48,6 @@ type pieceDownload struct {
 // safe.
 type projectDownloadChunk struct {
 	// Parameters for downloading within the chunk.
-	//
-	// TODO: These are poorly named.
 	chunkLength uint64
 	chunkOffset uint64
 	pricePerMS  types.Currency
