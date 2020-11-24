@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,32 @@ import (
 	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
+
+// ContractParams are supplied as an argument to FormContract.
+type (
+	ContractParams struct {
+		Allowance     Allowance
+		Host          HostDBEntry
+		Funding       types.Currency
+		StartHeight   types.BlockHeight
+		EndHeight     types.BlockHeight
+		RefundAddress types.UnlockHash
+		RenterSeed    EphemeralRenterSeed
+
+		// Only used by RHP3
+		PriceTable *RPCPriceTable
+
+		// TODO: add optional keypair
+	}
+)
+
+type WorkerPool interface {
+	Worker(types.SiaPublicKey) (Worker, error)
+}
+
+type Worker interface {
+	RenewContract(ctx context.Context, fcid types.FileContractID, params ContractParams, txnBuilder TransactionBuilder) error
+}
 
 var (
 	// DefaultAllowance is the set of default allowance settings that will be

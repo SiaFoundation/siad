@@ -7,7 +7,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -65,10 +64,10 @@ func TestRenewContract(t *testing.T) {
 	// Get some more vars.
 	allowance := wt.rt.renter.hostContractor.Allowance()
 	bh := wt.staticCache().staticBlockHeight
-	rs := proto.DeriveRenterSeed(seed)
+	rs := modules.DeriveRenterSeed(seed)
 
 	// Define some params for the contract.
-	params := proto.ContractParams{
+	params := modules.ContractParams{
 		Allowance:     allowance,
 		Host:          host,
 		Funding:       funding,
@@ -96,7 +95,7 @@ func TestRenewContract(t *testing.T) {
 	}
 
 	// Renew the contract.
-	err = wt.RenewContract(context.Background(), params, txnBuilder)
+	err = wt.RenewContract(context.Background(), oldContract.ID, params, txnBuilder)
 	if err != nil {
 		t.Fatal(err)
 	}

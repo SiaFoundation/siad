@@ -373,12 +373,12 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 		return types.ZeroCurrency, modules.RenterContract{}, err
 	}
 	// derive the renter seed and wipe it once we are done with it.
-	renterSeed := proto.DeriveRenterSeed(seed)
+	renterSeed := modules.DeriveRenterSeed(seed)
 	defer fastrand.Read(renterSeed[:])
 
 	// create contract params
 	c.mu.RLock()
-	params := proto.ContractParams{
+	params := modules.ContractParams{
 		Allowance:     c.allowance,
 		Host:          host,
 		Funding:       contractFunding,
@@ -655,12 +655,12 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 		return modules.RenterContract{}, err
 	}
 	// derive the renter seed and wipe it after we are done with it.
-	renterSeed := proto.DeriveRenterSeed(seed)
+	renterSeed := modules.DeriveRenterSeed(seed)
 	defer fastrand.Read(renterSeed[:])
 
 	// create contract params
 	c.mu.RLock()
-	params := proto.ContractParams{
+	params := modules.ContractParams{
 		Allowance:     c.allowance,
 		Host:          host,
 		Funding:       contractFunding,
@@ -1090,6 +1090,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		// Skip hosts that can't use the current renter-host protocol.
 		if build.VersionCmp(host.Version, modules.MinimumSupportedRenterHostProtocolVersion) < 0 {
 			c.log.Debugln("Contract skipped because host is using an outdated version", host.Version)
+			continue
 		}
 
 		// Skip any contracts which do not exist or are otherwise unworthy for

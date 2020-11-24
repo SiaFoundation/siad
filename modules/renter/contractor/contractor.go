@@ -53,6 +53,7 @@ type Contractor struct {
 	tg            threadgroup.ThreadGroup
 	tpool         modules.TransactionPool
 	wallet        modules.Wallet
+	workerPool    modules.WorkerPool
 
 	// Only one thread should be performing contract maintenance at a time.
 	interruptMaintenance chan struct{}
@@ -577,7 +578,7 @@ func (c *Contractor) callInitRecoveryScan(scanStart modules.ConsensusChangeID) (
 		return errors.AddContext(err, "failed to get wallet seed")
 	}
 	// Get the renter seed and wipe it once done.
-	rs := proto.DeriveRenterSeed(s)
+	rs := modules.DeriveRenterSeed(s)
 	// Reset the scan progress before starting the scan.
 	atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
 	// Create the scanner.
@@ -643,14 +644,7 @@ func newPayByContractRequest(rev types.FileContractRevision, sig crypto.Signatur
 
 // RenewContract takes an established connection to a host and renews the
 // contract with that host.
-func (c *Contractor) RenewContract(conn net.Conn, hpk types.SiaPublicKey, params proto.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb modules.HostDB) error {
-	// Translate host's key to contract.
-	c.mu.RLock()
-	fcid, exists := c.pubKeysToContractID[hpk.String()]
-	c.mu.RUnlock()
-	if !exists {
-		return errors.New("RenewContract: failed to translate host key to contract id")
-	}
+func (c *Contractor) RenewContract(conn net.Conn, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb modules.HostDB) error {
 	err := c.staticContracts.RenewContract(conn, fcid, params, txnBuilder, tpool, hdb)
 	if err != nil {
 		return errors.AddContext(err, "RenewContract: failed to renew contract")

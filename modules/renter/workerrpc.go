@@ -7,7 +7,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
@@ -179,7 +178,7 @@ func (w *worker) staticNewStream() (siamux.Stream, error) {
 }
 
 // managedRenew renews the contract with the worker's host.
-func (w *worker) managedRenew(params proto.ContractParams, txnBuilder modules.TransactionBuilder) error {
+func (w *worker) managedRenew(fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder) error {
 	// create a new stream
 	stream, err := w.staticNewStream()
 	if err != nil {
@@ -206,7 +205,7 @@ func (w *worker) managedRenew(params proto.ContractParams, txnBuilder modules.Tr
 
 	// have the contractset handle the renewal.
 	r := w.renter
-	err = w.renter.hostContractor.RenewContract(stream, w.staticHostPubKey, params, txnBuilder, r.tpool, r.hostDB)
+	err = w.renter.hostContractor.RenewContract(stream, fcid, params, txnBuilder, r.tpool, r.hostDB)
 	if err != nil {
 		return errors.AddContext(err, "managedRenew: call to RenewContract failed")
 	}

@@ -9,7 +9,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -30,11 +29,11 @@ import (
 // to recover them.
 type recoveryScanner struct {
 	c  *Contractor
-	rs proto.RenterSeed
+	rs modules.RenterSeed
 }
 
 // newRecoveryScanner creates a new scanner from a seed.
-func (c *Contractor) newRecoveryScanner(rs proto.RenterSeed) *recoveryScanner {
+func (c *Contractor) newRecoveryScanner(rs modules.RenterSeed) *recoveryScanner {
 	return &recoveryScanner{
 		c:  c,
 		rs: rs,
@@ -99,7 +98,7 @@ func (rs *recoveryScanner) ProcessConsensusChange(cc modules.ConsensusChange) {
 // potentially be recovered. We are not going to recover them right away though
 // since many of them could already be expired. Recovery happens periodically
 // in threadedContractMaintenance.
-func (c *Contractor) findRecoverableContracts(renterSeed proto.RenterSeed, b types.Block) {
+func (c *Contractor) findRecoverableContracts(renterSeed modules.RenterSeed, b types.Block) {
 	for _, txn := range b.Transactions {
 		// Check if the arbitrary data starts with the correct prefix.
 		csi, encryptedHostKey, hasIdentifier := hasFCIdentifier(txn)
@@ -119,7 +118,7 @@ func (c *Contractor) findRecoverableContracts(renterSeed proto.RenterSeed, b typ
 			defer fastrand.Read(rs[:])
 			// Validate the identifier.
 			hostKey, valid, err := csi.IsValid(rs, txn, encryptedHostKey)
-			if err != nil && !errors.Contains(err, proto.ErrCSIDoesNotMatchSeed) {
+			if err != nil && !errors.Contains(err, modules.ErrCSIDoesNotMatchSeed) {
 				c.log.Println("WARN: error validating the identifier:", err)
 				continue
 			}
@@ -128,7 +127,7 @@ func (c *Contractor) findRecoverableContracts(renterSeed proto.RenterSeed, b typ
 			}
 			// Make sure the contract belongs to us by comparing the unlock
 			// hash to what we would expect.
-			ourSK, ourPK := proto.GenerateKeyPair(rs, txn)
+			ourSK, ourPK := modules.GenerateContractKeyPair(rs, txn)
 			defer fastrand.Read(ourSK[:])
 			uc := types.UnlockConditions{
 				PublicKeys: []types.SiaPublicKey{
@@ -167,7 +166,7 @@ func (c *Contractor) findRecoverableContracts(renterSeed proto.RenterSeed, b typ
 
 // managedRecoverContract recovers a single contract by contacting the host it
 // was formed with and retrieving the latest revision and sector roots.
-func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs proto.EphemeralRenterSeed, blockHeight types.BlockHeight) (err error) {
+func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs modules.EphemeralRenterSeed, blockHeight types.BlockHeight) (err error) {
 	// Get the corresponding host.
 	host, ok, err := c.hdb.Host(rc.HostPublicKey)
 	if err != nil {
@@ -177,7 +176,7 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 		return errors.New("Can't recover contract with unknown host")
 	}
 	// Generate the secret key for the handshake and wipe it after using it.
-	sk, _ := proto.GenerateKeyPairWithOutputID(rs, rc.InputParentID)
+	sk, _ := modules.GenerateContractKeyPairWithOutputID(rs, rc.InputParentID)
 	defer fastrand.Read(sk[:])
 	// Start a new RPC session.
 	s, err := c.staticContracts.NewRawSession(host, blockHeight, c.hdb, c.tg.StopChan())
@@ -252,7 +251,7 @@ func (c *Contractor) callRecoverContracts() {
 		return
 	}
 	// Get the renter seed and wipe it once we are done with it.
-	renterSeed := proto.DeriveRenterSeed(ws)
+	renterSeed := modules.DeriveRenterSeed(ws)
 	defer fastrand.Read(renterSeed[:])
 	// Copy necessary fields to avoid having to hold the lock for too long.
 	c.mu.RLock()

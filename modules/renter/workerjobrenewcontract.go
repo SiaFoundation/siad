@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
+	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -14,7 +14,8 @@ type (
 	jobRenew struct {
 		staticResponseChan       chan *jobRenewResponse
 		staticTransactionBuilder modules.TransactionBuilder
-		staticParams             proto.ContractParams
+		staticParams             modules.ContractParams
+		staticFCID               types.FileContractID
 
 		*jobGeneric
 	}
@@ -62,7 +63,7 @@ func (j *jobRenew) callDiscard(err error) {
 // callExecute will run the renew job.
 func (j *jobRenew) callExecute() {
 	w := j.staticQueue.staticWorker()
-	err := w.managedRenew(j.staticParams, j.staticTransactionBuilder)
+	err := w.managedRenew(j.staticFCID, j.staticParams, j.staticTransactionBuilder)
 
 	// Send the response.
 	response := &jobRenewResponse{
@@ -109,10 +110,11 @@ func (w *worker) initJobRenewQueue() {
 }
 
 // RenewContract renews the contract with the worker's host.
-func (w *worker) RenewContract(ctx context.Context, params proto.ContractParams, txnBuilder modules.TransactionBuilder) error {
+func (w *worker) RenewContract(ctx context.Context, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder) error {
 	renewResponseChan := make(chan *jobRenewResponse)
 	params.PriceTable = &w.staticPriceTable().staticPriceTable
 	jro := &jobRenew{
+		staticFCID:               fcid,
 		staticParams:             params,
 		staticResponseChan:       renewResponseChan,
 		staticTransactionBuilder: txnBuilder,

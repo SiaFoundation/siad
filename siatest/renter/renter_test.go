@@ -25,7 +25,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -3474,7 +3473,7 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	renterSeed := proto.DeriveRenterSeed(seed)
+	renterSeed := modules.DeriveRenterSeed(seed)
 	defer fastrand.Read(renterSeed[:])
 
 	// Check the arbitrary data of each transaction and contract.
@@ -3485,7 +3484,7 @@ func TestRenterFileContractIdentifier(t *testing.T) {
 			if len(txn.ArbitraryData) != 1 {
 				t.Fatal("arbitrary data has wrong length")
 			}
-			csi := proto.ContractSignedIdentifier{}
+			csi := modules.ContractSignedIdentifier{}
 			n := copy(csi[:], txn.ArbitraryData[0])
 			encryptedHostKey := txn.ArbitraryData[0][n:]
 			// Calculate the renter seed given the WindowStart of the contract.
