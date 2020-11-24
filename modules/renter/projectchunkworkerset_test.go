@@ -8,9 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -167,7 +169,7 @@ func testMultiple(t *testing.T, wt *workerTester) {
 		ws.mu.Unlock()
 		select {
 		case <-wu:
-		case <-time.After(5 * time.Second):
+		case <-time.After(time.Minute):
 			t.Fatal("timed out")
 		}
 	}
@@ -210,13 +212,44 @@ func testMultiple(t *testing.T, wt *workerTester) {
 		t.Fatal(err)
 	}
 
+	// wait until the renter has a worker for all hosts
+	err = build.Retry(600, 100*time.Millisecond, func() error {
+		ws, err := wt.renter.WorkerPoolStatus()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ws.NumWorkers < 3 {
+			_, err = wt.rt.miner.AddBlock()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			return errors.New("workers not ready yet")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// create PCWS
 	pcws, err := wt.renter.newPCWSByRoots(context.Background(), roots, ec, ptck, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	ws := pcws.managedWorkerState()
-	waitForUpdate(ws)
+
+	// wait until all workers have resolved
+	numWorkers := len(ws.staticRenter.staticWorkerPool.callWorkers())
+	for {
+		waitForUpdate(ws)
+		ws.mu.Lock()
+		numResolved := len(ws.resolvedWorkers)
+		ws.mu.Unlock()
+		if numResolved == numWorkers {
+			break
+		}
+	}
 
 	// fetch piece indices per host
 	ws.mu.Lock()
@@ -224,17 +257,24 @@ func testMultiple(t *testing.T, wt *workerTester) {
 	ws.mu.Unlock()
 	for _, rw := range resolved {
 		var expected []uint64
+		var hostname string
 		switch rw.worker.staticHostPubKeyStr {
 		case h1PK:
 			expected = []uint64{0, 1}
+			hostname = "host1"
 		case h2PK:
 			expected = []uint64{2}
+			hostname = "host2"
 		case h3PK:
-			expected = []uint64{3, 4}
+			expected = []uint64{3}
+			hostname = "host3"
+		default:
+			hostname = "other"
+			continue
 		}
 
 		if !isEqualTo(rw.pieceIndices, expected) {
-			t.Error("unexpected pieces", rw.pieceIndices)
+			t.Error("unexpected pieces", hostname, rw.worker.staticHostPubKeyStr[64:], rw.pieceIndices)
 		}
 	}
 }
