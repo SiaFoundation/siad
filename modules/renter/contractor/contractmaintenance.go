@@ -696,13 +696,12 @@ func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKe
 		}
 		// RHP2 renewal.
 		newContract, formationTxnSet, err = c.staticContracts.Renew(oldContract, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
+		c.staticContracts.Return(oldContract)
 		if err != nil {
-			txnBuilder.Drop()                     // return unused outputs to wallet
-			c.staticContracts.Return(oldContract) // return old contract after failure
+			txnBuilder.Drop() // return unused outputs to wallet
 			return modules.RenterContract{}, err
 		}
 		// Delete the old contract.
-		c.staticContracts.Delete(oldContract)
 	} else {
 		panic("not implemented yet")
 	}
