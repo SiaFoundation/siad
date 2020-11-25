@@ -28,7 +28,9 @@ type (
 
 	// jobRenewResponse contains the result of a Renew query.
 	jobRenewResponse struct {
-		staticErr error
+		staticNewContract modules.RenterContract
+		staticTxnSet      []types.Transaction
+		staticErr         error
 
 		// The worker is included in the response so that the caller can listen
 		// on one channel for a bunch of workers and still know which worker
@@ -63,11 +65,13 @@ func (j *jobRenew) callDiscard(err error) {
 // callExecute will run the renew job.
 func (j *jobRenew) callExecute() {
 	w := j.staticQueue.staticWorker()
-	err := w.managedRenew(j.staticFCID, j.staticParams, j.staticTransactionBuilder)
+	newContract, txnSet, err := w.managedRenew(j.staticFCID, j.staticParams, j.staticTransactionBuilder)
 
 	// Send the response.
 	response := &jobRenewResponse{
-		staticErr: err,
+		staticErr:         err,
+		staticNewContract: newContract,
+		staticTxnSet:      txnSet,
 
 		staticWorker: w,
 	}
@@ -110,7 +114,7 @@ func (w *worker) initJobRenewQueue() {
 }
 
 // RenewContract renews the contract with the worker's host.
-func (w *worker) RenewContract(ctx context.Context, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder) error {
+func (w *worker) RenewContract(ctx context.Context, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder) (modules.RenterContract, []types.Transaction, error) {
 	renewResponseChan := make(chan *jobRenewResponse)
 	params.PriceTable = &w.staticPriceTable().staticPriceTable
 	jro := &jobRenew{
@@ -123,15 +127,15 @@ func (w *worker) RenewContract(ctx context.Context, fcid types.FileContractID, p
 
 	// Add the job to the queue.
 	if !w.staticJobRenewQueue.callAdd(jro) {
-		return errors.New("worker unavailable")
+		return modules.RenterContract{}, nil, errors.New("worker unavailable")
 	}
 
 	// Wait for the response.
 	var resp *jobRenewResponse
 	select {
 	case <-ctx.Done():
-		return errors.New("Renew interrupted")
+		return modules.RenterContract{}, nil, errors.New("Renew interrupted")
 	case resp = <-renewResponseChan:
 	}
-	return resp.staticErr
+	return resp.staticNewContract, resp.staticTxnSet, resp.staticErr
 }

@@ -95,7 +95,7 @@ func TestRenewContract(t *testing.T) {
 	}
 
 	// Renew the contract.
-	err = wt.RenewContract(context.Background(), oldContract.ID, params, txnBuilder)
+	_, _, err = wt.RenewContract(context.Background(), oldContract.ID, params, txnBuilder)
 	if err != nil {
 		t.Fatal(err)
 	}

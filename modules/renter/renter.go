@@ -149,11 +149,14 @@ type hostContractor interface {
 
 	// RenewContract takes an established connection to a host and renews the
 	// given contract with that host.
-	RenewContract(conn net.Conn, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb modules.HostDB) error
+	RenewContract(conn net.Conn, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb modules.HostDB) (modules.RenterContract, []types.Transaction, error)
 
 	// Synced returns a channel that is closed when the contractor is fully
 	// synced with the peer-to-peer network.
 	Synced() <-chan struct{}
+
+	// UpdateWorkerPool updates the workerpool currently in use by the contractor.
+	UpdateWorkerPool(modules.WorkerPool)
 }
 
 type renterFuseManager interface {
@@ -1035,6 +1038,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	}
 	// After persist is initialized, create the worker pool.
 	r.staticWorkerPool = r.newWorkerPool()
+
+	// Set the worker pool on the contractor.
+	r.hostContractor.UpdateWorkerPool(r.staticWorkerPool)
 
 	// Create the skykey manager.
 	// In testing, keep the skykeys with the rest of the renter data.
