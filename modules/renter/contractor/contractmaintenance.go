@@ -699,7 +699,8 @@ func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKe
 		newContract, formationTxnSet, err = c.staticContracts.Renew(oldContract, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
 		c.staticContracts.Return(oldContract)
 	} else {
-		w, err := c.workerPool.Worker(hpk)
+		var w modules.Worker
+		w, err = c.workerPool.Worker(hpk)
 		if err != nil {
 			txnBuilder.Drop() // return unused outputs to wallet
 			return modules.RenterContract{}, err

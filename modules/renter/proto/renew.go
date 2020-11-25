@@ -557,7 +557,7 @@ func createRenewedContract(lastRev types.FileContractRevision, params modules.Co
 
 // RenewContract takes an established connection to a host and renews the
 // contract with that host.
-func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb hostDB) (modules.RenterContract, []types.Transaction, error) {
+func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb hostDB) (_ modules.RenterContract, _ []types.Transaction, err error) {
 	// Fetch the contract.
 	oldSC, ok := cs.Acquire(fcid)
 	if !ok {
@@ -615,6 +615,16 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	if err != nil {
 		return modules.RenterContract{}, nil, errors.AddContext(err, "failed to prepare txnSet with finalRev and new contract")
 	}
+
+	// Increase Successful/Failed interactions accordingly
+	defer func() {
+		if err != nil {
+			hdb.IncrementFailedInteractions(host.PublicKey)
+			err = errors.Compose(err, modules.ErrHostFault)
+		} else if err == nil {
+			hdb.IncrementSuccessfulInteractions(host.PublicKey)
+		}
+	}()
 
 	// Sign the final revision.
 	finalRevRenterSig := types.TransactionSignature{
