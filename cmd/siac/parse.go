@@ -211,6 +211,18 @@ func currencyUnits(c types.Currency) string {
 	return fmt.Sprintf("%.4g %s", res, unit)
 }
 
+// currencyUnitsWithExchangeRate will format a types.Currency in the same way as
+// currencyUnits. If a non-nil exchange rate is provided, it will additionally
+// provide the result of applying the rate to the amount.
+func currencyUnitsWithExchangeRate(c types.Currency, rate *types.ExchangeRate) string {
+	cString := currencyUnits(c)
+	if rate == nil {
+		return cString
+	}
+
+	return fmt.Sprintf("%s (%s)", cString, rate.ApplyAndFormat(c))
+}
+
 // parseCurrency converts a siacoin amount to base units.
 func parseCurrency(amount string) (string, error) {
 	units := []string{"pS", "nS", "uS", "mS", "SC", "KS", "MS", "GS", "TS"}
