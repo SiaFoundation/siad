@@ -157,7 +157,6 @@ func (j *jobHasSector) managedHasSector() ([]bool, error) {
 			return nil, errors.AddContext(resp.Error, "Output error")
 		}
 		hasSectors = append(hasSectors, resp.Output[0] == 1)
-		break
 	}
 	if len(responses) != len(program) {
 		return nil, errors.New("received invalid number of responses but no error")
