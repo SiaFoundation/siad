@@ -43,7 +43,7 @@ type WorkerPool interface {
 // Worker is a minimal interface for a single worker. It's used to be able to
 // use workers within the contractor.
 type Worker interface {
-	RenewContract(ctx context.Context, fcid types.FileContractID, params ContractParams, txnBuilder TransactionBuilder) error
+	RenewContract(ctx context.Context, fcid types.FileContractID, params ContractParams, txnBuilder TransactionBuilder) (RenterContract, []types.Transaction, error)
 }
 
 var (

@@ -685,7 +685,8 @@ func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKe
 
 	var newContract modules.RenterContract
 	var formationTxnSet []types.Transaction
-	if build.VersionCmp(build.Version, "1.5.4") < 0 {
+	// TODO: remove this before merging
+	if false && build.VersionCmp(build.Version, "1.5.4") < 0 {
 		// Acquire the SafeContract.
 		oldContract, ok := c.staticContracts.Acquire(id)
 		if !ok {
@@ -697,13 +698,17 @@ func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKe
 		// RHP2 renewal.
 		newContract, formationTxnSet, err = c.staticContracts.Renew(oldContract, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
 		c.staticContracts.Return(oldContract)
+	} else {
+		w, err := c.workerPool.Worker(hpk)
 		if err != nil {
 			txnBuilder.Drop() // return unused outputs to wallet
 			return modules.RenterContract{}, err
 		}
-		// Delete the old contract.
-	} else {
-		panic("not implemented yet")
+		newContract, formationTxnSet, err = w.RenewContract(c.tg.StopCtx(), id, params, txnBuilder)
+	}
+	if err != nil {
+		txnBuilder.Drop() // return unused outputs to wallet
+		return modules.RenterContract{}, err
 	}
 
 	monitorContractArgs := monitorContractArgs{
