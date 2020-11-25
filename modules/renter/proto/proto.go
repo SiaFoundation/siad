@@ -12,6 +12,7 @@ type (
 	transactionBuilder interface {
 		AddArbitraryData(arb []byte) uint64
 		AddFileContract(types.FileContract) uint64
+		AddFileContractRevision(types.FileContractRevision) uint64
 		AddMinerFee(types.Currency) uint64
 		AddParents([]types.Transaction)
 		AddSiacoinInput(types.SiacoinInput) uint64
@@ -45,6 +46,10 @@ type ContractParams struct {
 	EndHeight     types.BlockHeight
 	RefundAddress types.UnlockHash
 	RenterSeed    EphemeralRenterSeed
+
+	// Only used by RHP3
+	PriceTable *modules.RPCPriceTable
+
 	// TODO: add optional keypair
 }
 

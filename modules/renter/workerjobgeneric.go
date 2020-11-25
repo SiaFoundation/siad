@@ -100,7 +100,7 @@ type (
 	}
 )
 
-// exMovingAvg is a helper to compute the next exponential moving average given
+// expMovingAvg is a helper to compute the next exponential moving average given
 // the last value and a new point of measurement.
 // https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average
 func expMovingAvg(oldEMA, newValue, decay float64) float64 {

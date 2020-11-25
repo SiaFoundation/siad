@@ -9,6 +9,11 @@ import (
 )
 
 type (
+	// DependencyRegistryUpdateLyingHost causes RegistryUpdate to return the
+	// most recent known value for a lookup together with a ErrSameRevNum error.
+	DependencyRegistryUpdateLyingHost struct {
+		modules.ProductionDependencies
+	}
 	// DependencyRenewFail causes the renewal to fail on the host side.
 	DependencyRenewFail struct {
 		modules.ProductionDependencies
@@ -203,6 +208,12 @@ func NewDependencyContractRenewalFail() *DependencyWithDisableAndEnable {
 	return newDependencywithDisableAndEnable("ContractRenewFail")
 }
 
+// NewDependencySkyfileUploadFail creates a new dependency that simulates
+// getting an error while uploading a skyfile.
+func NewDependencySkyfileUploadFail() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("SkyfileUploadFail")
+}
+
 // NewDependencyCustomResolver creates a dependency from a given lookupIP
 // method which returns a custom resolver that uses the specified lookupIP
 // method to resolve hostnames.
@@ -297,6 +308,11 @@ func newDependencyInterruptCountOccurrences(str string) *DependencyInterruptCoun
 // simulate an unresponsive host.
 func NewDependencyHostBlockRPC() *DependencyWithDisableAndEnable {
 	return newDependencywithDisableAndEnable("HostBlockRPC")
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyRegistryUpdateLyingHost) Disrupt(s string) bool {
+	return s == "RegistryUpdateLyingHost"
 }
 
 // Disrupt returns true if the correct string is provided.

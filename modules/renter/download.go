@@ -308,7 +308,7 @@ func (r *Renter) managedDownload(p modules.RenterDownloadParameters) (_ *downloa
 	}
 
 	// Prepare snapshot.
-	snap, err := entry.Snapshot(p.SiaPath)
+	snap, err := entry.SnapshotRange(p.SiaPath, p.Offset, p.Length)
 	if err != nil {
 		return nil, err
 	}
@@ -402,6 +402,7 @@ func (r *Renter) managedNewDownload(params downloadParams) (*download, error) {
 	d.onComplete(func(_ error) error {
 		d.endTime = time.Now()
 		d.destination = nil
+		d.staticParams.file = nil
 		return nil
 	})
 

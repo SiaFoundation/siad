@@ -488,9 +488,8 @@ func (uh *uploadHeap) managedTryUpdate(uuc *unfinishedUploadChunk, ct chunkType)
 	// map.
 	existingUUC.mu.Lock()
 	chunkComplete := existingUUC.chunkComplete()
-	piecesCompleted := existingUUC.piecesCompleted
 	existingUUC.mu.Unlock()
-	if !chunkComplete || (chunkComplete && piecesCompleted == 0) {
+	if !chunkComplete {
 		uh.managedMarkRepairDone(existingUUC.id)
 	}
 	return nil
