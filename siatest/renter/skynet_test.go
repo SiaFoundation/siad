@@ -1649,7 +1649,7 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 			// Decrypt to data if needed
 			if encrypted {
 				key := fanoutKey.Derive(i, j)
-				_, err = key.DecryptBytesInPlace(sector, j)
+				_, err = key.DecryptBytesInPlace(sector, 0)
 				if err != nil {
 					t.Fatal(err)
 				}
