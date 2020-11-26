@@ -483,12 +483,12 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// that the overdrive code is not going to be so aggressive that 5x or more
 	// overhead on download will be needed.
 	//
-	// TODO: If this ends up being a problem, we could implement the jobs
-	// process to send the result down a channel in goroutine if the first
-	// attempt to send the job fails. Then we could probably get away with a
-	// smaller buffer, since exceeding the limit currently would cause a worker
-	// to stall, where as with the goroutine-on-block method, exceeding the
-	// limit merely causes extra goroutines to be spawned.
+	// If this ends up being a problem, we could implement the jobs process to
+	// send the result down a channel in goroutine if the first attempt to send
+	// the job fails. Then we could probably get away with a smaller buffer,
+	// since exceeding the limit currently would cause a worker to stall, where
+	// as with the goroutine-on-block method, exceeding the limit merely causes
+	// extra goroutines to be spawned.
 	workerResponseChan := make(chan *jobReadResponse, ec.NumPieces()*5)
 
 	// Build the full pdc.
