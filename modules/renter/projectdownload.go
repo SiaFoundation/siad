@@ -6,12 +6,15 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )
+
+// errNotEnoughPieces is returned when there are not enough pieces found to
+// successfully complete the download
+var errNotEnoughPieces = errors.New("not enough pieces to complete download")
 
 // pieceDownload tracks a worker downloading a piece, whether that piece has
 // returned, and what time the piece is/was expected to return.
@@ -65,8 +68,13 @@ type projectDownloadChunk struct {
 	// considered after looking at the pcws. This enables the worker selection
 	// code to realize which pieces in the worker set have been resolved since
 	// the last check.
+	//
+	// workersRemaining is the number of unresolved workers at the time the
+	// available pieces were last updated. This enables counting the hopeful
+	// pieces without introducing a race condition in the finished check.
 	availablePieces        [][]pieceDownload
 	workersConsideredIndex int
+	workersRemaining       int
 
 	// dataPieces is the buffer that is used to place data as it comes back.
 	// There is one piece per chunk, and pieces can be nil. To know if the
@@ -117,6 +125,7 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 		}
 	}
 	pdc.workersConsideredIndex = len(ws.resolvedWorkers)
+	pdc.workersRemaining = len(ws.unresolvedWorkers)
 
 	// If there are more unresolved workers, fetch a channel that will be closed
 	// when more results from unresolved workers are available.
@@ -143,10 +152,6 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 
 	// Check whether the job failed.
 	if jrr.staticErr != nil {
-		// TODO: Log? - we should probably have toggle-able log levels for stuff
-		// like this. Maybe a worker.log which allows us to turn on logging just
-		// for specific workers.
-		//
 		// The download failed, update the pdc available pieces to reflect the
 		// failure.
 		for i := 0; i < len(pdc.availablePieces[pieceIndex]); i++ {
@@ -218,8 +223,6 @@ func (pdc *projectDownloadChunk) finalize() {
 	// data requested by the user and return. We have downloaded a subset of the
 	// chunk as the data, and now we must determine which subset of the data was
 	// actually requested by the user.
-	//
-	// TODO: Unit test this.
 	chunkStartWithinData := pdc.chunkOffset - chunkDLOffset
 	chunkEndWithinData := chunkStartWithinData + pdc.chunkLength
 	data = data[chunkStartWithinData:chunkEndWithinData]
@@ -234,11 +237,8 @@ func (pdc *projectDownloadChunk) finalize() {
 
 // finished returns true if the download is finished, and returns an error if
 // the download is unable to complete.
-//
-// TODO: Unit test this.
 func (pdc *projectDownloadChunk) finished() (bool, error) {
 	// Convenience variables.
-	ws := pdc.workerState
 	ec := pdc.workerSet.staticErasureCoder
 
 	// Count the number of completed pieces and hopeful pieces in our list of
@@ -271,16 +271,12 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 	}
 
 	// Count the number of workers that haven't completed their results yet.
-	//
-	// TODO: Is using this here a race condition?
-	ws.mu.Lock()
-	hopefulPieces += len(ws.unresolvedWorkers)
-	ws.mu.Unlock()
+	hopefulPieces += pdc.workersRemaining
 
 	// Ensure that there are enough pieces that could potentially become
 	// completed to finish the download.
 	if hopefulPieces < ec.MinPieces() {
-		return false, errors.New("not enough pieces to complete download")
+		return false, errNotEnoughPieces
 	}
 	return false, nil
 }
@@ -336,11 +332,7 @@ func getPieceOffsetAndLen(ec modules.ErasureCoder, offset, length uint64) (piece
 
 	// Consistency check some of the erasure coder values. If the check fails,
 	// return that the whole piece must be downloaded.
-	//
-	// TODO: I'm not completely sure why this modulus check is here, it seems to
-	// me at the moment of writing that omitting the modulus check would be
-	// fine.
-	if pieceSegmentSize == 0 || pieceSegmentSize%crypto.SegmentSize != 0 {
+	if pieceSegmentSize == 0 {
 		build.Critical("pcws has a bad erasure coder")
 		return 0, modules.SectorSize
 	}

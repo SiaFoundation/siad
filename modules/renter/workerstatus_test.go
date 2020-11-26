@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -211,7 +212,6 @@ func TestWorkerReadJobStatus(t *testing.T) {
 	limit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
 	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, limit)
 
-
 	// add the job to the worker
 	ctx := context.Background()
 	rc := make(chan *jobReadResponse)
@@ -337,7 +337,6 @@ func TestWorkerHasSectorJobStatus(t *testing.T) {
 	current := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
 	limit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
 	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, limit)
-
 
 	// add the job to the worker
 	ctx := context.Background()

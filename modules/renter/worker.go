@@ -193,7 +193,6 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 			atomicWriteDataLimit: initialConcurrentAsyncWriteData,
 		},
 
-		staticLoopState:        new(workerLoopState),
 		staticMaintenanceState: new(workerMaintenanceState),
 
 		killChan: make(chan struct{}),
