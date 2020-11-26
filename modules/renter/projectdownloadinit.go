@@ -434,7 +434,7 @@ func (pdc *projectDownloadChunk) launchFinalWorkers(finalWorkers []*pdcInitialWo
 		//
 		// TODO: ensure there is no difference between an initial worker and an
 		// overdrive worker for the launch.
-		pdc.launchOverdriveWorker(iw.worker, uint64(i))
+		pdc.launchWorker(iw.worker, uint64(i))
 	}
 }
 

@@ -199,10 +199,11 @@ func (j *jobRead) managedRead(w *worker, program modules.Program, programData []
 // callAddWithEstimate will add a job to the job read queue while providing an
 // estimate for when the job is expected to return.
 func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) {
-	// TODO: Do the add and the time estimation under the same lock, so that the
-	// estimate cannot be front-run by another job.
-	estimate := jq.callExpectedJobTime(j.staticLength)
-	if !jq.callAdd(j) {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+
+	estimate := jq.expectedJobTime(j.staticLength)
+	if !jq.add(j) {
 		return time.Time{}, false
 	}
 	return time.Now().Add(estimate), true
@@ -221,6 +222,12 @@ func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) 
 func (jq *jobReadQueue) callExpectedJobTime(length uint64) time.Duration {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
+	return jq.expectedJobTime(length)
+}
+
+// expectedJobTime returns the expected job time, based on recent performance,
+// for the given read length.
+func (jq *jobReadQueue) expectedJobTime(length uint64) time.Duration {
 	if length <= 1<<16 {
 		return time.Duration(jq.weightedJobTime64k / jq.weightedJobsCompleted64k)
 	} else if length <= 1<<20 {

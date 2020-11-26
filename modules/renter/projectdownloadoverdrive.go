@@ -177,57 +177,6 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 	return baw, uint64(bawPieceIndex), nil, nil
 }
 
-// launchOverdriveWorker will launch a worker and update the corresponding
-// available piece.
-//
-// A time is returned which indicates the expected return time of the worker's
-// download. A bool is returned which indicates whether or not the launch was
-// successful.
-//
-// TODO: Rename this function and move it back to projectdownload.go
-func (pdc *projectDownloadChunk) launchOverdriveWorker(w *worker, pieceIndex uint64) (time.Time, bool) {
-	// Create the read sector job for the worker.
-	//
-	// TODO: The launch process should minimally have as input the ctx of
-	// the pdc, that way if the pdc closes we know to garbage collect the
-	// channel and not send down it. Ideally we can even cancel the job if
-	// it is in-flight.
-	jrs := &jobReadSector{
-		jobRead: jobRead{
-			staticResponseChan: pdc.workerResponseChan,
-			staticLength:       pdc.pieceLength,
-
-			staticSector: pdc.workerSet.staticPieceRoots[pieceIndex],
-
-			jobGeneric: newJobGeneric(pdc.ctx, w.staticJobReadQueue),
-		},
-		staticOffset: pdc.pieceOffset,
-	}
-	// Submit the job.
-	expectedCompleteTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)
-
-	// Update the status of the piece that was launched. 'launched' should be
-	// set to 'true'. If the launch failed, 'failed' should be set to 'true'. If
-	// the launch succeeded, the expected completion time of the job should be
-	// set.
-	//
-	// NOTE: We don't break out of the loop when we find a piece/worker
-	// match. If all is going well, each worker should appear at most once
-	// in this piece, but for the sake of defensive programming we check all
-	// elements anyway.
-	for _, pieceDownload := range pdc.availablePieces[pieceIndex] {
-		if w.staticHostPubKeyStr == pieceDownload.worker.staticHostPubKeyStr {
-			pieceDownload.launched = true
-			if added {
-				pieceDownload.expectedCompleteTime = expectedCompleteTime
-			} else {
-				pieceDownload.failed = true
-			}
-		}
-	}
-	return expectedCompleteTime, added
-}
-
 // tryLaunchOverdriveWorker will attempt to launch an overdrive worker. A worker
 // may not be launched if the best worker is not yet available.
 //
@@ -246,7 +195,7 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 		}
 
 		// If there was a worker found, launch the worker.
-		expectedReturnTime, success := pdc.launchOverdriveWorker(worker, pieceIndex)
+		expectedReturnTime, success := pdc.launchWorker(worker, pieceIndex)
 		if !success {
 			continue
 		}
