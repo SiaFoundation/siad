@@ -598,7 +598,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 
 	// Check if the chunk is now available.
-	if uc.piecesCompleted >= uc.minimumPieces && !uc.staticAvailable() && !uc.released {
+	if uc.piecesCompleted == uc.piecesNeeded && !uc.staticAvailable() && !uc.released {
 		uc.chunkAvailableTime = time.Now()
 		close(uc.availableChan)
 	}
