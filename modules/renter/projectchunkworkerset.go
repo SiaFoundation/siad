@@ -32,7 +32,7 @@ var (
 	// the workers will do another round of HasSector queries on the network.
 	pcwsWorkerStateResetTime = build.Select(build.Var{
 		Dev:      time.Minute * 10,
-		Standard: time.Hour * 3 * 3,
+		Standard: time.Hour * 9,
 		Testing:  time.Second * 15,
 	}).(time.Duration)
 
