@@ -2762,18 +2762,13 @@ func TestRenewAlertWarningLevel(t *testing.T) {
 	}
 }
 
-func TestX(t *testing.T) {
-	for t.Run("TestLargeRenewWindow", TestLargeRenewWindow) {
-	}
-}
-
 // TestLargeRenewWindow tests that contracts form and renew as expected when the
 // renew window is larger than the period
 func TestLargeRenewWindow(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	//t.Parallel()
+	t.Parallel()
 
 	// Create Group
 	groupParams := siatest.GroupParams{

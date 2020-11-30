@@ -811,7 +811,13 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	r.lastEstimationHosts = []modules.HostDBEntry{}
 	r.mu.Unlock(id)
 	if cc.Synced {
-		r.staticWorkerPool.callUpdate()
+		if err := r.tg.Add(); err != nil {
+			return
+		}
+		go func() {
+			r.staticWorkerPool.callUpdate()
+			r.tg.Done()
+		}()
 	}
 }
 
@@ -1122,7 +1128,6 @@ func (r *Renter) threadedUpdateRenterContractsAndUtilities() {
 		case <-time.After(cachedUtilitiesUpdateInterval):
 		}
 		r.managedUpdateRenterContractsAndUtilities()
-		r.staticWorkerPool.callUpdate()
 	}
 }
 
