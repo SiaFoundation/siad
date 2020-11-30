@@ -571,6 +571,13 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	host, funding, startHeight, endHeight, pt := params.Host, params.Funding, params.StartHeight, params.EndHeight, params.PriceTable
 	ourSK := oldContract.SecretKey
 
+	// Pay the host an insufficient amount.
+	if cs.staticDeps.Disrupt("DefaultRenewSettings") {
+		ptNew := *pt
+		pt.WriteLengthCost = pt.WriteLengthCost.Sub64(1)
+		pt = &ptNew
+	}
+
 	// RHP3 contains both the contract and final revision. So we double the
 	// estimation.
 	txnFee := pt.TxnFeeMaxRecommended.Mul64(2 * modules.EstimatedFileContractTransactionSetSize)

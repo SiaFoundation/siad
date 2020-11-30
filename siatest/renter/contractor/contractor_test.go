@@ -2666,10 +2666,11 @@ func TestRenewAlertWarningLevel(t *testing.T) {
 		}
 	}()
 
-	// Add a renter with a  toggle-able dependency for using stale host settings
+	// Add a renter with a toggle-able dependency for using stale host settings
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
 	defaultSettingsDep := &dependencies.DependencyDefaultRenewSettings{}
 	renterParams.ContractorDeps = defaultSettingsDep
+	renterParams.ContractSetDeps = defaultSettingsDep
 	_, err = tg.AddNodes(renterParams)
 	if err != nil {
 		t.Fatal(err)
@@ -2729,7 +2730,7 @@ func TestRenewAlertWarningLevel(t *testing.T) {
 	// Check for alert
 	expectedAlert := modules.Alert{
 		Severity: modules.SeverityError,
-		Cause:    "rejected for high paying renter valid output",
+		Cause:    "rejected for low paying host valid output",
 		Msg:      contractor.AlertMSGFailedContractRenewal,
 		Module:   "contractor",
 	}
