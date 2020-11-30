@@ -9,6 +9,10 @@ import (
 )
 
 type (
+	// DependencyNoSnapshotSync prevents the renter from syncing snapshots.
+	DependencyNoSnapshotSync struct {
+		modules.ProductionDependencies
+	}
 	// DependencyRegistryUpdateLyingHost causes RegistryUpdate to return the
 	// most recent known value for a lookup together with a ErrSameRevNum error.
 	DependencyRegistryUpdateLyingHost struct {
@@ -343,6 +347,11 @@ func (d *DependencyNoSnapshotSyncInterruptAccountSaveOnShutdown) Disrupt(s strin
 		return true
 	}
 	return false
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyNoSnapshotSync) Disrupt(s string) bool {
+	return s == "DisableSnapshotSync"
 }
 
 // Disrupt returns true if the correct string is provided.
