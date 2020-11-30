@@ -810,6 +810,9 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	id := r.mu.Lock()
 	r.lastEstimationHosts = []modules.HostDBEntry{}
 	r.mu.Unlock(id)
+	if cc.Synced {
+		r.staticWorkerPool.callUpdate()
+	}
 }
 
 // SetIPViolationCheck is a passthrough method to the hostdb's method of the
@@ -1119,6 +1122,7 @@ func (r *Renter) threadedUpdateRenterContractsAndUtilities() {
 		case <-time.After(cachedUtilitiesUpdateInterval):
 		}
 		r.managedUpdateRenterContractsAndUtilities()
+		r.staticWorkerPool.callUpdate()
 	}
 }
 

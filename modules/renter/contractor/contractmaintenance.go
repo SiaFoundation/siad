@@ -817,6 +817,7 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	}
 	oldUtility := oldContract.Utility()
 	if errRenew != nil {
+		fmt.Println("renew failed", errRenew)
 		// Increment the number of failed renews for the contract if it
 		// was the host's fault.
 		if modules.IsHostsFault(errRenew) {
