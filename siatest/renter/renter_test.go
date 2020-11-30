@@ -798,6 +798,9 @@ func testDownloadAfterRenew(t *testing.T, tg *siatest.TestGroup) {
 func testDownloadAfterLegacyRenewAndClear(t *testing.T, tg *siatest.TestGroup) {
 	// Create a node with the right dependency.
 	params := node.Renter(renterTestDir(t.Name()))
+	numHosts := 2
+	params.Allowance = siatest.DefaultAllowance
+	params.Allowance.Hosts = uint64(numHosts)
 	params.ContractorDeps = &dependencies.DependencySkipDeleteContractAfterRenewal{}
 
 	// Add the node and remove it at the end of the test.
@@ -811,7 +814,7 @@ func testDownloadAfterLegacyRenewAndClear(t *testing.T, tg *siatest.TestGroup) {
 
 	// Upload file, creating a piece for each host in the group
 	dataPieces := uint64(1)
-	parityPieces := uint64(len(tg.Hosts())) - dataPieces
+	parityPieces := uint64(numHosts) - dataPieces
 	fileSize := 100 + siatest.Fuzz()
 	_, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
 	if err != nil {
@@ -820,16 +823,34 @@ func testDownloadAfterLegacyRenewAndClear(t *testing.T, tg *siatest.TestGroup) {
 	// Mine enough blocks for the next period to start. This means the
 	// contracts should be renewed and the data should still be available for
 	// download.
-	miner := tg.Miners()[0]
-	for i := types.BlockHeight(0); i < siatest.DefaultAllowance.Period; i++ {
-		if err := miner.MineBlock(); err != nil {
-			t.Fatal(err)
+	err = siatest.RenewContractsByRenewWindow(renter, tg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	numRetries := 0
+	err = build.Retry(600, 100*time.Millisecond, func() error {
+		if numRetries%10 == 0 {
+			err = tg.Miners()[0].MineBlock()
+			if err != nil {
+				t.Fatal(err)
+			}
+			numRetries++
 		}
+		// Expect either 2 disabled or 2 expired contracts but no active ones.
+		err1 := siatest.CheckExpectedNumberOfContracts(renter, 0, 2, 0, 0, 0, 0)
+		err2 := siatest.CheckExpectedNumberOfContracts(renter, 0, 0, 0, 2, 0, 0)
+		if err1 == nil || err2 == nil {
+			return nil
+		}
+		return errors.Compose(err1, err2)
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 	// Download the file synchronously directly into memory.
 	_, _, err = renter.DownloadByStream(remoteFile)
-	if err == nil {
-		t.Fatal("download should fail due to contract being finalized")
+	if err != nil {
+		t.Fatal("download should work since the renter uses an EA to download which doesn't require a specific contract", err)
 	}
 }
 

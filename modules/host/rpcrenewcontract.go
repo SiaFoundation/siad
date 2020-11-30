@@ -36,13 +36,12 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	// available.
 	h.mu.RLock()
 	bh := pt.HostBlockHeight
-	maxFee := pt.TxnFeeMaxRecommended
 	minFee := pt.TxnFeeMinRecommended
 	hpk := h.publicKey
 	hsk := h.secretKey
 	contractPrice := pt.ContractPrice
-	ac := h.externalSettings(maxFee).AcceptingContracts
 	is := h.settings // internal settings
+	ac := is.AcceptingContracts
 	lockedCollateral := h.financialMetrics.LockedStorageCollateral
 	unlockHash := h.unlockHash
 	h.mu.RUnlock()
