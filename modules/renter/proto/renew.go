@@ -748,8 +748,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 		ContractFee:     pt.ContractPrice,
 		TxnFee:          txnFee,
 		SiafundFee:      types.Tax(startHeight, fc.Payout),
-		StorageSpending: basePrice.Sub(pt.RenewContractCost),
-		UploadSpending:  pt.RenewContractCost,
+		StorageSpending: basePrice,
 		Utility: modules.ContractUtility{
 			GoodForUpload: true,
 			GoodForRenew:  true,
