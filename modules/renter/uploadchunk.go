@@ -16,6 +16,15 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 )
 
+// maxWaitForCompleteUpload is the maximum of time we wait to close the
+// uploadeCompleteChan and signal to the upload process the upload has completed
+// after the chunk has already been marked as available.
+var maxWaitForCompleteUpload = build.Select(build.Var{
+	Dev:      30 * time.Second,
+	Standard: 30 * time.Second,
+	Testing:  3 * time.Second,
+}).(time.Duration)
+
 // uploadChunkID is a unique identifier for each chunk in the renter.
 type uploadChunkID struct {
 	fileUID siafile.SiafileUID // Unique to each file.
@@ -108,16 +117,17 @@ type unfinishedUploadChunk struct {
 	//	+ the worker should increment the number of pieces completed
 	//	+ the worker should decrement the number of pieces registered
 	//	+ the worker should release the memory for the completed piece
-	availableChan    chan struct{} // used to signal to other processes that the chunk is available on the Sia network. Error needs to be checked.
-	err              error
-	mu               sync.Mutex
-	pieceUsage       []bool              // 'true' if a piece is either uploaded, or a worker is attempting to upload that piece.
-	piecesCompleted  int                 // number of pieces that have been fully uploaded.
-	piecesRegistered int                 // number of pieces that are being uploaded, but aren't finished yet (may fail).
-	released         bool                // whether this chunk has been released from the active chunks set.
-	unusedHosts      map[string]struct{} // hosts that aren't yet storing any pieces or performing any work.
-	workersRemaining int                 // number of inactive workers still able to upload a piece.
-	workersStandby   []*worker           // workers that can be used if other workers fail.
+	availableChan       chan struct{} // used to signal to other processes that the chunk is available on the Sia network. Error needs to be checked.
+	uploadCompletedChan chan struct{} // used to signal to other processes that the chunk has completely finished uploading to the Sia network. Error needs to be checked.
+	err                 error
+	mu                  sync.Mutex
+	pieceUsage          []bool              // 'true' if a piece is either uploaded, or a worker is attempting to upload that piece.
+	piecesCompleted     int                 // number of pieces that have been fully uploaded.
+	piecesRegistered    int                 // number of pieces that are being uploaded, but aren't finished yet (may fail).
+	released            bool                // whether this chunk has been released from the active chunks set.
+	unusedHosts         map[string]struct{} // hosts that aren't yet storing any pieces or performing any work.
+	workersRemaining    int                 // number of inactive workers still able to upload a piece.
+	workersStandby      []*worker           // workers that can be used if other workers fail.
 
 	cancelMU sync.Mutex     // cancelMU needs to be held when adding to cancelWG and reading/writing canceled.
 	canceled bool           // cancel the work on this chunk.
@@ -129,6 +139,17 @@ type unfinishedUploadChunk struct {
 func (uc *unfinishedUploadChunk) staticAvailable() bool {
 	select {
 	case <-uc.availableChan:
+		return true
+	default:
+		return false
+	}
+}
+
+// staticUploadComplete returns whether or not the chunk is fully uploaded to
+// the Sia network.
+func (uc *unfinishedUploadChunk) staticUploadComplete() bool {
+	select {
+	case <-uc.uploadCompletedChan:
 		return true
 	default:
 		return false
@@ -598,15 +619,25 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 
 	// Check if the chunk is now available.
-	if uc.piecesCompleted == uc.piecesNeeded && !uc.staticAvailable() && !uc.released {
+	if uc.piecesCompleted >= uc.minimumPieces && !uc.staticAvailable() && !uc.released {
 		uc.chunkAvailableTime = time.Now()
 		close(uc.availableChan)
+	}
+
+	// Check if the chunk can be marked as completed. This happens when the
+	// outcome of 'chunkComplete' is true, and the chunk is thus considered
+	// complete, but also when it has been available for a certain period of
+	// time, the 'maxWaitForCompleteUpload'.
+	chunkComplete := uc.chunkComplete()
+	if !uc.staticUploadComplete() {
+		if (uc.staticAvailable() && time.Now().After(uc.chunkAvailableTime.Add(maxWaitForCompleteUpload))) || chunkComplete {
+			close(uc.uploadCompletedChan)
+		}
 	}
 
 	// Check if the chunk needs to be removed from the list of active
 	// chunks. It needs to be removed if the chunk is complete, but hasn't
 	// yet been released.
-	chunkComplete := uc.chunkComplete()
 	released := uc.released
 	if chunkComplete && !released {
 		if uc.piecesCompleted >= uc.piecesNeeded {

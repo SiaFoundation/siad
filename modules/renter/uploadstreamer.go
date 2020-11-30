@@ -319,7 +319,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 	}
 	// Wait for all chunks to finish, then return.
 	for _, chunk := range chunks {
-		<-chunk.availableChan
+		<-chunk.uploadCompletedChan
 		chunk.mu.Lock()
 		err := chunk.err
 		chunk.mu.Unlock()
