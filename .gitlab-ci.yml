@@ -155,54 +155,54 @@ default: &default_params
   only:
    - schedules
 
-lint:
-  stage: lint
-  cache:
-    key: lint-cache
-    paths:
-      - .cache
-  script:
-    - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
-    - golangci-lint run -c .golangci.yml ./...
-    - make lint-analyze
-    - make markdown-spellcheck
-    - make test
+# lint:
+#   stage: lint
+#   cache:
+#     key: lint-cache
+#     paths:
+#       - .cache
+#   script:
+#     - export GOCACHE=$CI_PROJECT_DIR/.cache/gocache
+#     - golangci-lint run -c .golangci.yml ./...
+#     - make lint-analyze
+#     - make markdown-spellcheck
+#     - make test
 
-build:
-  stage: lint
-  ## go 1.13 is the minimum accepted version for building Sia.
-  image: nebulouslabs/sia-ci
-  artifacts:
-    name: "Binaries"
-    paths:
-      - $CI_PROJECT_DIR/artifacts
-  script:
-    - ./check-builds.sh
+# build:
+#   stage: lint
+#   ## go 1.13 is the minimum accepted version for building Sia.
+#   image: nebulouslabs/sia-ci
+#   artifacts:
+#     name: "Binaries"
+#     paths:
+#       - $CI_PROJECT_DIR/artifacts
+#   script:
+#     - ./check-builds.sh
 
-deploy:
-  stage: deploy
-  script:
-    - curl -X POST -H "Content-Type:application/json" --data '{"name":"'"$CI_COMMIT_REF_NAME"'"}' $docker_hub_dev_hook
-  only:
-    - master
+# deploy:
+#   stage: deploy
+#   script:
+#     - curl -X POST -H "Content-Type:application/json" --data '{"name":"'"$CI_COMMIT_REF_NAME"'"}' $docker_hub_dev_hook
+#   only:
+#     - master
 
-legacy-tests:
-  <<: *default_test_params
-  cache:
-    key: legacy-cache
-    paths:
-      - .cache
-  script:
-    - make test-long run=. pkgs="$legacy_pkgs"
+# legacy-tests:
+#   <<: *default_test_params
+#   cache:
+#     key: legacy-cache
+#     paths:
+#       - .cache
+#   script:
+#     - make test-long run=. pkgs="$legacy_pkgs"
 
-package-tests:
-  <<: *default_test_params
-  cache:
-    key: package-cache
-    paths:
-      - .cache
-  script:
-    - make test-long run=. pkgs="$package_pkgs"
+# package-tests:
+#   <<: *default_test_params
+#   cache:
+#     key: package-cache
+#     paths:
+#       - .cache
+#   script:
+#     - make test-long run=. pkgs="$package_pkgs"
 siatest-tests:
   <<: *default_test_params
   cache:
@@ -210,85 +210,85 @@ siatest-tests:
     paths:
       - .cache
   script:
-    - make test-long run=. pkgs="$siatest_pkgs"
+    - make test-long run=TestOutOfStorageHandling pkgs=./siatest/renter count=1000
 
-siatest-renter-tests:
-  <<: *default_test_params
-  cache:
-    key: siatest-renter-tests-cache
-    paths:
-      - .cache
-  script:
-    - apt-get update
-    - apt-get install -y fuse
-    - make test-long run=. pkgs="$siatest_renter_pkgs"
+# siatest-renter-tests:
+#   <<: *default_test_params
+#   cache:
+#     key: siatest-renter-tests-cache
+#     paths:
+#       - .cache
+#   script:
+#     - apt-get update
+#     - apt-get install -y fuse
+#     - make test-long run=. pkgs="$siatest_renter_pkgs"
 
-siatest-renter-sub-tests:
-  <<: *default_test_params
-  cache:
-    key: siatest-renter-sub-tests-cache
-    paths:
-      - .cache
-  script:
-    - apt-get update
-    - apt-get install -y fuse
-    - make test-long run=. pkgs="$siatest_renter_sub_pkgs"
+# siatest-renter-sub-tests:
+#   <<: *default_test_params
+#   cache:
+#     key: siatest-renter-sub-tests-cache
+#     paths:
+#       - .cache
+#   script:
+#     - apt-get update
+#     - apt-get install -y fuse
+#     - make test-long run=. pkgs="$siatest_renter_sub_pkgs"
 
-legacy-tests-nightly:
-  <<: *default_nightly_params
-  script:
-    - make test-vlong run=. pkgs="$legacy_pkgs"
+# legacy-tests-nightly:
+#   <<: *default_nightly_params
+#   script:
+#     - make test-vlong run=. pkgs="$legacy_pkgs"
 
-# Windows execution
-legacy-windows-tests-nightly:
-  <<: *default_nightly_windows_params
-  script:
-    - make test-vlong run=. pkgs="$legacy_pkgs"
+# # Windows execution
+# legacy-windows-tests-nightly:
+#   <<: *default_nightly_windows_params
+#   script:
+#     - make test-vlong run=. pkgs="$legacy_pkgs"
 
-package-tests-nightly:
-  <<: *default_nightly_params
-  script:
-    - make test-vlong run=. pkgs="$package_pkgs"
+# package-tests-nightly:
+#   <<: *default_nightly_params
+#   script:
+#     - make test-vlong run=. pkgs="$package_pkgs"
 
-# Windows execution
-package-windows-tests-nightly:
-  <<: *default_nightly_windows_params
-  script:
-    - make test-vlong run=. pkgs="$package_pkgs"
+# # Windows execution
+# package-windows-tests-nightly:
+#   <<: *default_nightly_windows_params
+#   script:
+#     - make test-vlong run=. pkgs="$package_pkgs"
 
-siatest-tests-nightly:
-  <<: *default_nightly_params
-  script:
-    - make test-vlong run=. pkgs="$siatest_pkgs"
+# siatest-tests-nightly:
+#   <<: *default_nightly_params
+#   script:
+#     - make test-vlong run=. pkgs="$siatest_pkgs"
 
-# Windows execution
-siatest-windows-tests-nightly:
-  <<: *default_nightly_windows_params
-  script:
-    - make test-vlong run=. pkgs="$siatest_pkgs"
+# # Windows execution
+# siatest-windows-tests-nightly:
+#   <<: *default_nightly_windows_params
+#   script:
+#     - make test-vlong run=. pkgs="$siatest_pkgs"
 
-siatest-renter-tests-nightly:
-  <<: *default_nightly_params
-  script:
-    - apt-get update
-    - apt-get install -y fuse
-    - make test-vlong run=. pkgs="$siatest_renter_pkgs"
+# siatest-renter-tests-nightly:
+#   <<: *default_nightly_params
+#   script:
+#     - apt-get update
+#     - apt-get install -y fuse
+#     - make test-vlong run=. pkgs="$siatest_renter_pkgs"
 
-# Windows execution
-siatest-renter-windows-tests-nightly:
-  <<: *default_nightly_windows_params
-  script:
-    - make test-vlong run=. pkgs="$siatest_renter_pkgs"
+# # Windows execution
+# siatest-renter-windows-tests-nightly:
+#   <<: *default_nightly_windows_params
+#   script:
+#     - make test-vlong run=. pkgs="$siatest_renter_pkgs"
 
-siatest-renter-sub-tests-nightly:
-  <<: *default_nightly_params
-  script:
-    - apt-get update
-    - apt-get install -y fuse
-    - make test-vlong run=. pkgs="$siatest_renter_sub_pkgs"
+# siatest-renter-sub-tests-nightly:
+#   <<: *default_nightly_params
+#   script:
+#     - apt-get update
+#     - apt-get install -y fuse
+#     - make test-vlong run=. pkgs="$siatest_renter_sub_pkgs"
 
-# Windows execution
-siatest-renter-sub-windows-tests-nightly:
-  <<: *default_nightly_windows_params
-  script:
-    - make test-vlong run=. pkgs="$siatest_renter_sub_pkgs"
+# # Windows execution
+# siatest-renter-sub-windows-tests-nightly:
+#   <<: *default_nightly_windows_params
+#   script:
+#     - make test-vlong run=. pkgs="$siatest_renter_sub_pkgs"

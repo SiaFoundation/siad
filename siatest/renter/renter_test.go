@@ -4158,6 +4158,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 	allowance.ExpectedRedundancy = float64(dataPieces+parityPieces) / float64(dataPieces)
 	allowance.ExpectedStorage = modules.SectorSize // 4 KiB
 	allowance.Hosts = 2
+	allowance.Period = 100 // Use a larger period to avoid hitting the renew window.
 	renterTemplate.Allowance = allowance
 
 	// Add the host and renter to the group.
@@ -4189,7 +4190,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 	}
 	// Make sure the host's contract is no longer good for upload but still good
 	// for renew.
-	err = build.Retry(10, time.Second, func() error {
+	err = build.Retry(15, time.Second, func() error {
 		if err := tg.Miners()[0].MineBlock(); err != nil {
 			t.Fatal(err)
 		}

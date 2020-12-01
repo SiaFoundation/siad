@@ -559,7 +559,7 @@ func (tn *TestNode) WaitForUploadHealth(rf *RemoteFile) error {
 		return ErrFileNotTracked
 	}
 	// Wait until the file is viewed as healthy by the renter
-	err := Retry(1000, 100*time.Millisecond, func() error {
+	err := Retry(1500, 100*time.Millisecond, func() error {
 		file, err := tn.File(rf)
 		if err != nil {
 			return ErrFileNotTracked
