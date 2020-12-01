@@ -56,7 +56,6 @@ func TestRenterOne(t *testing.T) {
 		{Name: "TestLocalRepair", Test: testLocalRepair},
 		{Name: "TestClearDownloadHistory", Test: testClearDownloadHistory},
 		{Name: "TestDownloadAfterRenew", Test: testDownloadAfterRenew},
-		{Name: "TestDownloadAfterLegacyRenewAndClear", Test: testDownloadAfterLegacyRenewAndClear},
 		{Name: "TestDirectories", Test: testDirectories},
 		{Name: "TestAlertsSorted", Test: testAlertsSorted},
 		{Name: "TestPriceTablesUpdated", Test: testPriceTablesUpdated},
@@ -789,79 +788,6 @@ func testDownloadAfterRenew(t *testing.T, tg *siatest.TestGroup) {
 	_, _, err = renter.DownloadByStream(remoteFile)
 	if err != nil {
 		t.Fatal(err)
-	}
-}
-
-// testDownloadAfterRenew makes sure that we can't download a file after
-// finalizing the contract and dropping the void output. This is also a
-// regression test for a index-out-of-bounds panic in siad.
-func testDownloadAfterLegacyRenewAndClear(t *testing.T, tg *siatest.TestGroup) {
-	// Create a node with the right dependency.
-	params := node.Renter(renterTestDir(t.Name()))
-	numHosts := 2
-	params.Allowance = siatest.DefaultAllowance
-	params.Allowance.Hosts = uint64(numHosts)
-	params.ContractorDeps = &dependencies.DependencySkipDeleteContractAfterRenewal{}
-
-	// Add the node and remove it at the end of the test.
-	nodes, err := tg.AddNodes(params)
-	renter := nodes[0]
-	defer func() {
-		if err := tg.RemoveNode(renter); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	// Upload file, creating a piece for each host in the group
-	dataPieces := uint64(1)
-	parityPieces := uint64(numHosts) - dataPieces
-	fileSize := 100 + siatest.Fuzz()
-	_, remoteFile, err := renter.UploadNewFileBlocking(fileSize, dataPieces, parityPieces, false)
-	if err != nil {
-		t.Fatal("Failed to upload a file for testing: ", err)
-	}
-	// Mine enough blocks for the next period to start. This means the
-	// contracts should be renewed and the data should still be available for
-	// download.
-	err = siatest.RenewContractsByRenewWindow(renter, tg)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Wait for contracts to be renewed.
-	println("retry")
-	numRetries := 0
-	err = build.Retry(600, 100*time.Millisecond, func() error {
-		if numRetries%10 == 0 {
-			if err := tg.Miners()[0].MineBlock(); err != nil {
-				t.Fatal(err)
-			}
-		}
-		numRetries++
-		acg, err := renter.RenterAllContractsGet()
-		if err != nil {
-			t.Fatal(err)
-		}
-		var numRenewed uint64
-		for _, contract := range acg.Contracts {
-			rev := contract.LastTransaction.FileContractRevisions[0]
-			if rev.NewRevisionNumber == math.MaxUint64 {
-				numRenewed++
-			}
-		}
-		if numRenewed != params.Allowance.Hosts {
-			return fmt.Errorf("expected %v renewed but got %v", params.Allowance.Hosts, numRenewed)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	println("download")
-	// Download the file synchronously directly into memory.
-	_, _, err = renter.DownloadByStream(remoteFile)
-	if err != nil {
-		t.Fatal("download should work since the renter uses an EA to download which doesn't require a specific contract", err)
 	}
 }
 
