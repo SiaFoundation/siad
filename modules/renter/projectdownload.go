@@ -290,10 +290,8 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64) (time.Time, bool) {
 	// Create the read sector job for the worker.
 	//
-	// TODO: The launch process should minimally have as input the ctx of
-	// the pdc, that way if the pdc closes we know to garbage collect the
-	// channel and not send down it. Ideally we can even cancel the job if
-	// it is in-flight.
+	// TODO: Ideally we pass the context here so the job is cancellable
+	// in-flight.
 	jrs := &jobReadSector{
 		jobRead: jobRead{
 			staticResponseChan: pdc.workerResponseChan,
@@ -510,8 +508,6 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		workerSet:            pcws,
 		workerState:          ws,
 	}
-
-	// TODO: Need to move over any completed items here.
 
 	// Launch the initial set of workers for the pdc.
 	err = pdc.launchInitialWorkers()

@@ -430,10 +430,6 @@ func (pdc *projectDownloadChunk) launchFinalWorkers(finalWorkers []*pdcInitialWo
 			continue
 		}
 
-		// Return values have no meaning.
-		//
-		// TODO: ensure there is no difference between an initial worker and an
-		// overdrive worker for the launch.
 		pdc.launchWorker(iw.worker, uint64(i))
 	}
 }
