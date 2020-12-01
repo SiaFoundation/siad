@@ -827,26 +827,37 @@ func testDownloadAfterLegacyRenewAndClear(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Wait for contracts to be renewed.
+	println("retry")
 	numRetries := 0
 	err = build.Retry(600, 100*time.Millisecond, func() error {
 		if numRetries%10 == 0 {
-			err = tg.Miners()[0].MineBlock()
-			if err != nil {
+			if err := tg.Miners()[0].MineBlock(); err != nil {
 				t.Fatal(err)
 			}
-			numRetries++
 		}
-		// Expect either 2 disabled or 2 expired contracts but no active ones.
-		err1 := siatest.CheckExpectedNumberOfContracts(renter, 0, 2, 0, 0, 0, 0)
-		err2 := siatest.CheckExpectedNumberOfContracts(renter, 0, 0, 0, 2, 0, 0)
-		if err1 == nil || err2 == nil {
-			return nil
+		numRetries++
+		acg, err := renter.RenterAllContractsGet()
+		if err != nil {
+			t.Fatal(err)
 		}
-		return errors.Compose(err1, err2)
+		var numRenewed uint64
+		for _, contract := range acg.Contracts {
+			rev := contract.LastTransaction.FileContractRevisions[0]
+			if rev.NewRevisionNumber == math.MaxUint64 {
+				numRenewed++
+			}
+		}
+		if numRenewed != params.Allowance.Hosts {
+			return fmt.Errorf("expected %v renewed but got %v", params.Allowance.Hosts, numRenewed)
+		}
+		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	println("download")
 	// Download the file synchronously directly into memory.
 	_, _, err = renter.DownloadByStream(remoteFile)
 	if err != nil {

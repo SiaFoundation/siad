@@ -145,6 +145,7 @@ func (s *Session) Settings() (modules.HostExternalSettings, error) {
 // updated contract and the Merkle root of the appended sector.
 func (s *Session) Append(data []byte) (_ modules.RenterContract, _ crypto.Hash, err error) {
 	rc, err := s.Write([]modules.LoopWriteAction{{Type: modules.WriteActionAppend, Data: data}})
+	println("rc", rc.Transaction.FileContractRevisions[0].NewRevisionNumber)
 	return rc, crypto.MerkleRoot(data), err
 }
 
@@ -181,6 +182,7 @@ func (s *Session) Write(actions []modules.LoopWriteAction) (_ modules.RenterCont
 	if !haveContract {
 		return modules.RenterContract{}, errors.New("contract not present in contract set")
 	}
+	fmt.Println("sc", sc.LastRevision().NewRevisionNumber, sc.Metadata().ID)
 	defer s.contractSet.Return(sc)
 	return s.write(sc, actions)
 }

@@ -861,10 +861,12 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	// contract to make sure we keep using the old one even though it has been
 	// finalized.
 	if c.staticDeps.Disrupt("SkipContractDeleteAfterRenew") {
+		fmt.Println("old", oldContract.LastRevision().NewRevisionNumber, oldContract.Metadata().ID)
 		c.staticContracts.Return(oldContract)
 		newSC, ok := c.staticContracts.Acquire(newContract.ID)
 		if ok {
 			c.staticContracts.Delete(newSC)
+			fmt.Println("delete", newSC.LastRevision().NewRevisionNumber, newSC.Metadata().ID)
 		}
 		return amount, nil
 	}
