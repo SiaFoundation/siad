@@ -16,12 +16,12 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 )
 
-// maxWaitForCompleteUpload is the maximum of time we wait to close the
-// uploadeCompleteChan and signal to the upload process the upload has completed
-// after the chunk has already been marked as available.
+// maxWaitForCompleteUpload is the maximum amount of time we wait to close the
+// uploadCompletedChan, and thus signal to the upload process the upload has
+// completed, after the chunk has been marked as available.
 var maxWaitForCompleteUpload = build.Select(build.Var{
-	Dev:      30 * time.Second,
-	Standard: 30 * time.Second,
+	Dev:      10 * time.Second,
+	Standard: 10 * time.Second,
 	Testing:  3 * time.Second,
 }).(time.Duration)
 
