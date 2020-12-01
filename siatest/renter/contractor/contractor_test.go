@@ -2313,7 +2313,15 @@ func TestFailedContractRenewalAlert(t *testing.T) {
 	}
 
 	// Wait for active contracts
+	numTries = 0
 	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if numTries%10 == 0 {
+			err = m.MineBlock()
+			if err != nil {
+				return err
+			}
+		}
+		numTries++
 		return siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
 	})
 	if err != nil {
