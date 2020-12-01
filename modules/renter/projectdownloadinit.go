@@ -24,14 +24,14 @@ package renter
 // 'pricePerMS' multiplied by the duration until the slowest worker would
 // finish.
 //
-// To get a baseline, we pop of 'MinPieces' workers, tally up the financial
+// To get a baseline, we pop off 'MinPieces' workers, tally up the financial
 // cost, and track the duration of the slowest worker. We then compute the total
 // adjusted cost of using the fastest possible set of workers. We save a copy of
 // this set as the 'bestSet', retaining the initial construction as the
 // 'workingSet'.
 //
 // Then we iterate by popping a new worker off of the heap. Two things are at
-// play. The first is that this worker may be cheaper that one of our existing
+// play. The first is that this worker may be cheaper than one of our existing
 // workers. And the second is that this worker is slower (due to the time sorted
 // heap), so therefore may drive the total cost up despite being cheaper. We do
 // not know at this time if the optimal set includes an even slower worker. We
