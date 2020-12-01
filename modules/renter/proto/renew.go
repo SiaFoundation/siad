@@ -574,7 +574,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	// Pay the host an insufficient amount.
 	if cs.staticDeps.Disrupt("DefaultRenewSettings") {
 		ptNew := *pt
-		pt.WriteLengthCost = pt.WriteLengthCost.Sub64(1)
+		ptNew.WriteLengthCost = ptNew.WriteLengthCost.Sub64(1)
 		pt = &ptNew
 	}
 
