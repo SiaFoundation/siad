@@ -342,6 +342,7 @@ func TestHostContracts(t *testing.T) {
 
 	prevValidPayout := hc.Contracts[0].ValidProofOutputs[1].Value
 	prevMissPayout := hc.Contracts[0].MissedProofOutputs[1].Value
+	prevID := hc.Contracts[0].ObligationId
 	_, _, err = renterNode.UploadNewFileBlocking(4096, 1, 1, true)
 	if err != nil {
 		t.Fatal(err)
@@ -392,7 +393,7 @@ func TestHostContracts(t *testing.T) {
 	}
 
 	if cmp := hc.Contracts[0].MissedProofOutputs[1].Value.Cmp(prevMissPayout); cmp != 1 {
-		t.Fatal("missed payout should be more than old missed payout", cmp)
+		t.Fatal("missed payout should be more than old missed payout", cmp, prevID, hc.Contracts[0].ObligationId)
 	}
 }
 
