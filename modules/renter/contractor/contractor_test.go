@@ -677,6 +677,9 @@ func TestLinkedContracts(t *testing.T) {
 	}
 	defer tryClose(cf, t)
 
+	// Force the legacy renewal code.
+	c.staticDeps = &dependencies.DependencyLegacyRenew{}
+
 	// Create allowance
 	a := modules.Allowance{
 		Funds:              types.SiacoinPrecision.Mul64(100),

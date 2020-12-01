@@ -29,6 +29,9 @@ func TestIntegrationAutoRenew(t *testing.T) {
 	}
 	defer tryClose(cf, t)
 
+	// Force the legacy renewal code.
+	c.staticDeps = &dependencies.DependencyLegacyRenew{}
+
 	// form a contract with the host
 	a := modules.Allowance{
 		Funds:              types.SiacoinPrecision.Mul64(100), // 100 SC

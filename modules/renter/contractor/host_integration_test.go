@@ -24,6 +24,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	modWallet "gitlab.com/NebulousLabs/Sia/modules/wallet"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 )
@@ -463,6 +464,9 @@ func TestIntegrationRenew(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tryClose(cf, t)
+
+	// Force the legacy renewal code.
+	c.staticDeps = &dependencies.DependencyLegacyRenew{}
 
 	// set an allowance and wait for a contract to be formed.
 	a := modules.DefaultAllowance
