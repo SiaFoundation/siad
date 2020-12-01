@@ -626,8 +626,8 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 
 	// Check if the chunk can be marked as completed. This happens when the
 	// outcome of 'chunkComplete' is true, and the chunk is thus considered
-	// complete, but also when it has been available for a certain period of
-	// time, the 'maxWaitForCompleteUpload'.
+	// complete, but also when it has already been available for a considerable
+	// amount of time (maxWaitForCompleteUpload).
 	chunkComplete := uc.chunkComplete()
 	if !uc.staticUploadComplete() {
 		if (uc.staticAvailable() && time.Now().After(uc.chunkAvailableTime.Add(maxWaitForCompleteUpload))) || chunkComplete {

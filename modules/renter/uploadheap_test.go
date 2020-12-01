@@ -224,6 +224,7 @@ func addChunksOfDifferentHealth(r *Renter, numChunks int, priority, fileRecently
 			health:                 float64(i),
 			onDisk:                 !remote,
 			availableChan:          make(chan struct{}),
+			uploadCompletedChan:    make(chan struct{}),
 		}
 		pushed, err := r.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
@@ -712,10 +713,11 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 				fileUID: "chunk",
 				index:   i,
 			},
-			stuck:           false,
-			piecesCompleted: -1,
-			piecesNeeded:    1,
-			availableChan:   make(chan struct{}),
+			stuck:               false,
+			piecesCompleted:     -1,
+			piecesNeeded:        1,
+			availableChan:       make(chan struct{}),
+			uploadCompletedChan: make(chan struct{}),
 		}
 		pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
@@ -792,11 +794,12 @@ func TestUploadHeapMaps(t *testing.T) {
 				fileUID: siafile.SiafileUID(fmt.Sprintf("chunk - %v", i)),
 				index:   i,
 			},
-			fileEntry:       sf.Copy(),
-			stuck:           stuck,
-			piecesCompleted: 1,
-			piecesNeeded:    1,
-			availableChan:   make(chan struct{}),
+			fileEntry:           sf.Copy(),
+			stuck:               stuck,
+			piecesCompleted:     1,
+			piecesNeeded:        1,
+			availableChan:       make(chan struct{}),
+			uploadCompletedChan: make(chan struct{}),
 		}
 		// push chunk to heap
 		pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
