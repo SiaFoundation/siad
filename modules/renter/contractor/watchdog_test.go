@@ -12,6 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -200,6 +201,9 @@ func TestWatchdogRevisionCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer tryClose(cf, t)
+
+	// Force the legacy renewal code.
+	c.staticDeps = &dependencies.DependencyLegacyRenew{}
 
 	// form a contract with the host
 	a := modules.Allowance{

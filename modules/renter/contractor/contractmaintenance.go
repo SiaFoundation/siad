@@ -685,8 +685,9 @@ func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKe
 
 	var newContract modules.RenterContract
 	var formationTxnSet []types.Transaction
-	// TODO: remove this before merging
-	if false && build.VersionCmp(build.Version, "1.5.4") < 0 {
+	// TODO: remove 'false' before merging
+	legacyRenew := c.staticDeps.Disrupt("LegacyRenew")
+	if legacyRenew || (false && build.VersionCmp(build.Version, "1.5.4") < 0) {
 		// Acquire the SafeContract.
 		oldContract, ok := c.staticContracts.Acquire(id)
 		if !ok {

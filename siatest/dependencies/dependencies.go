@@ -9,6 +9,12 @@ import (
 )
 
 type (
+	// DependencyLegacyRenew forces the contractor to use the legacy behavior
+	// when renewing a contract. This is useful for unit testing since it
+	// doesn't require a renter, workers etc.
+	DependencyLegacyRenew struct {
+		modules.ProductionDependencies
+	}
 	// DependencyNoSnapshotSync prevents the renter from syncing snapshots.
 	DependencyNoSnapshotSync struct {
 		modules.ProductionDependencies
@@ -336,6 +342,11 @@ func (d *DependencyDisableWorker) Disrupt(s string) bool {
 		return true
 	}
 	return false
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyLegacyRenew) Disrupt(s string) bool {
+	return s == "LegacyRenew"
 }
 
 // Disrupt returns true if the correct string is provided.
