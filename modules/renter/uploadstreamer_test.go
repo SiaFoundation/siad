@@ -21,9 +21,9 @@ func TestEstimateTimeUntilComplete(t *testing.T) {
 		t.Fatal("unexpected", timeUntilComplete)
 	}
 
-	// took 10s for the chunk to become available, using default Skynet EC
+	// took 120s for the chunk to become available, using default Skynet EC
 	// params, expected maxWait to return the maxWait
-	timeUntilAvail = time.Duration(10 * time.Second)
+	timeUntilAvail = time.Duration(120 * time.Second)
 	timeUntilComplete = estimateTimeUntilComplete(timeUntilAvail, minPieces, numPieces)
 	if timeUntilComplete != maxWaitForCompleteUpload {
 		t.Fatal("unexpected")

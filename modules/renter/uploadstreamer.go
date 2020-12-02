@@ -20,9 +20,9 @@ import (
 // chunk to be completely uploaded after it has become available in the upload
 // process.
 var maxWaitForCompleteUpload = build.Select(build.Var{
-	Dev:      10 * time.Second,
-	Standard: 10 * time.Second,
-	Testing:  3 * time.Second,
+	Dev:      5 * time.Minute,
+	Standard: 5 * time.Minute,
+	Testing:  5 * time.Second,
 }).(time.Duration)
 
 // Upload Streaming Overview:
@@ -355,6 +355,15 @@ LOOP:
 		case <-chunk.staticUploadCompletedChan:
 		}
 	}
+
+	// TODO: we wait until all chunks reach full redundancy because if we
+	// wouldn't do that, and the recently uploaded skyfile gets requested
+	// immediately after upload (so when it became available) the PCWS would
+	// have incomplete state.
+	//
+	// It might be a good idea to improve this and build the PCWS state object
+	// on upload, seeing as we have all information at hand, and sort of
+	// pre-cache it.
 
 	// Disrupt to force an error and ensure the fileNode is being closed
 	// correctly.
