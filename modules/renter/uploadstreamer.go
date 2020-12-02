@@ -16,6 +16,15 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// maxWaitForCompleteUpload is the maximum amount of time we wait for an upload
+// chunk to be completely uploaded after it has become available in the upload
+// process.
+var maxWaitForCompleteUpload = build.Select(build.Var{
+	Dev:      10 * time.Second,
+	Standard: 10 * time.Second,
+	Testing:  3 * time.Second,
+}).(time.Duration)
+
 // Upload Streaming Overview:
 // Most of the logic that enables upload streaming can be found within
 // UploadStreamFromReader and the StreamShard. As seen at the beginning of the
@@ -365,5 +374,11 @@ func estimateTimeUntilComplete(timeUntilAvail time.Duration, minPieces, numPiece
 	timeRemainingNS := remaining * float64(timeUntilAvailNS)
 	timeRemainingNS *= 1.1 // account for possible slowdown
 
-	return time.Duration(timeRemainingNS)
+	min := func(a, b time.Duration) time.Duration {
+		if a <= b {
+			return a
+		}
+		return b
+	}
+	return min(time.Duration(timeRemainingNS), maxWaitForCompleteUpload)
 }
