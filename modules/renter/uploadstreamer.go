@@ -334,10 +334,12 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 	// 'maxWaitForCompleteUpload' period.
 	ctx, cancel := context.WithTimeout(r.tg.StopCtx(), maxWaitForCompleteUpload)
 	defer cancel()
+
+LOOP:
 	for _, chunk := range chunks {
 		select {
 		case <-ctx.Done():
-			break
+			break LOOP
 		case <-chunk.staticUploadCompletedChan:
 		}
 	}
