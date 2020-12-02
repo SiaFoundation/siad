@@ -391,8 +391,8 @@ func (c *Contractor) Close() error {
 	return c.tg.Stop()
 }
 
-// New returns a new Contractor.
-func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, hdb modules.HostDB, rl *ratelimit.RateLimit, persistDir string) (*Contractor, <-chan error) {
+// newWithDeps returns a new Contractor.
+func newWithDeps(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, hdb modules.HostDB, rl *ratelimit.RateLimit, persistDir string, deps modules.Dependencies) (*Contractor, <-chan error) {
 	errChan := make(chan error, 1)
 	defer close(errChan)
 	// Check for nil inputs.
@@ -441,6 +441,11 @@ func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.Transacti
 
 	// Create Contractor using production dependencies.
 	return NewCustomContractor(cs, wallet, tpool, hdb, persistDir, contractSet, logger, modules.ProdDependencies)
+}
+
+// New returns a new Contractor.
+func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, hdb modules.HostDB, rl *ratelimit.RateLimit, persistDir string) (*Contractor, <-chan error) {
+	return newWithDeps(cs, wallet, tpool, hdb, rl, persistDir, modules.ProdDependencies)
 }
 
 // contractorBlockingStartup handles the blocking portion of NewCustomContractor.

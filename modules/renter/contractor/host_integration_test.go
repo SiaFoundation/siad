@@ -116,7 +116,7 @@ func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.Transact
 
 // newTestingContractor is a helper function that creates a ready-to-use
 // contractor.
-func newTestingContractor(testdir string, g modules.Gateway, cs modules.ConsensusSet, tp modules.TransactionPool, rl *ratelimit.RateLimit) (*Contractor, closeFn, error) {
+func newTestingContractor(testdir string, g modules.Gateway, cs modules.ConsensusSet, tp modules.TransactionPool, rl *ratelimit.RateLimit, deps modules.Dependencies) (*Contractor, closeFn, error) {
 	w, walletCF, err := newTestingWallet(testdir, cs, tp)
 	if err != nil {
 		return nil, nil, err
@@ -130,7 +130,7 @@ func newTestingContractor(testdir string, g modules.Gateway, cs modules.Consensu
 	if err := <-errChan; err != nil {
 		return nil, nil, err
 	}
-	contractor, errChan := New(cs, w, tp, hdb, rl, filepath.Join(testdir, "contractor"))
+	contractor, errChan := newWithDeps(cs, w, tp, hdb, rl, filepath.Join(testdir, "contractor"), deps)
 	err = <-errChan
 	if err != nil {
 		return nil, nil, err
@@ -144,6 +144,12 @@ func newTestingContractor(testdir string, g modules.Gateway, cs modules.Consensu
 // newTestingTrio creates a Host, Contractor, and TestMiner that can be
 // used for testing host/renter interactions.
 func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, closeFn, error) {
+	return newTestingTrioWithContractorDeps(name, modules.ProdDependencies)
+}
+
+// newTestingTrio creates a Host, Contractor, and TestMiner that can be
+// used for testing host/renter interactions.
+func newTestingTrioWithContractorDeps(name string, deps modules.Dependencies) (modules.Host, *Contractor, modules.TestMiner, closeFn, error) {
 	testdir := build.TempDir("contractor", name)
 
 	// create mux
@@ -153,12 +159,12 @@ func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, 
 		return nil, nil, nil, nil, err
 	}
 
-	return newCustomTestingTrio(name, mux, modules.ProdDependencies)
+	return newCustomTestingTrio(name, mux, modules.ProdDependencies, deps)
 }
 
 // newCustomTestingTrio creates a Host, Contractor, and TestMiner that can be
 // used for testing host/renter interactions. It allows to pass a custom siamux.
-func newCustomTestingTrio(name string, mux *siamux.SiaMux, hdeps modules.Dependencies) (modules.Host, *Contractor, modules.TestMiner, closeFn, error) {
+func newCustomTestingTrio(name string, mux *siamux.SiaMux, hdeps, cdeps modules.Dependencies) (modules.Host, *Contractor, modules.TestMiner, closeFn, error) {
 	testdir := build.TempDir("contractor", name)
 
 	// create miner
@@ -203,7 +209,7 @@ func newCustomTestingTrio(name string, mux *siamux.SiaMux, hdeps modules.Depende
 	if err != nil {
 		return nil, nil, nil, nil, build.ExtendErr("error creating testing host", err)
 	}
-	c, contractorCF, err := newTestingContractor(filepath.Join(testdir, "Contractor"), g, cs, tp, ratelimit.NewRateLimit(0, 0, 0))
+	c, contractorCF, err := newTestingContractor(filepath.Join(testdir, "Contractor"), g, cs, tp, ratelimit.NewRateLimit(0, 0, 0), cdeps)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -459,14 +465,11 @@ func TestIntegrationRenew(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	_, c, m, cf, err := newTestingTrio(t.Name())
+	_, c, m, cf, err := newTestingTrioWithContractorDeps(t.Name(), &dependencies.DependencyLegacyRenew{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer tryClose(cf, t)
-
-	// Force the legacy renewal code.
-	c.staticDeps = &dependencies.DependencyLegacyRenew{}
 
 	// set an allowance and wait for a contract to be formed.
 	a := modules.DefaultAllowance

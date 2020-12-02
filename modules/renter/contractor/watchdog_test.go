@@ -196,14 +196,11 @@ func TestWatchdogRevisionCheck(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	_, c, m, cf, err := newTestingTrio(t.Name())
+	_, c, m, cf, err := newTestingTrioWithContractorDeps(t.Name(), &dependencies.DependencyLegacyRenew{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer tryClose(cf, t)
-
-	// Force the legacy renewal code.
-	c.staticDeps = &dependencies.DependencyLegacyRenew{}
 
 	// form a contract with the host
 	a := modules.Allowance{
