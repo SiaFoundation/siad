@@ -320,6 +320,12 @@ func NewDependencyHostBlockRPC() *DependencyWithDisableAndEnable {
 	return newDependencywithDisableAndEnable("HostBlockRPC")
 }
 
+// NewDependencyRegistryUpdateNoOp creates a dependency, that causes
+// RegistryUpdate to be a no-op.
+func NewDependencyRegistryUpdateNoOp() *DependencyWithDisableAndEnable {
+	return newDependencywithDisableAndEnable("RegistryUpdateNoOp")
+}
+
 // Disrupt returns true if the correct string is provided.
 func (d *DependencyRegistryUpdateLyingHost) Disrupt(s string) bool {
 	return s == "RegistryUpdateLyingHost"

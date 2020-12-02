@@ -30,6 +30,10 @@ const (
 	// minRegistryVersion defines the minimum version that is required for a
 	// host to support the registry.
 	minRegistryVersion = "1.5.1"
+
+	// registryCacheSize is the cache size used by a single worker for the
+	// registry cache.
+	registryCacheSize = 1 << 20 // 1 MiB
 )
 
 const (
@@ -112,6 +116,10 @@ type (
 		// maintenance cooldown can be reset.
 		staticMaintenanceState *workerMaintenanceState
 
+		// staticRegistryCache caches information about the worker's host's
+		// registry entries.
+		staticRegistryCache *registryRevisionCache
+
 		// Utilities.
 		killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
 		mu       sync.Mutex
@@ -184,6 +192,8 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 
 		staticAccount:       account,
 		staticBalanceTarget: balanceTarget,
+
+		staticRegistryCache: newRegistryCache(registryCacheSize),
 
 		// Initialize the read and write limits for the async worker tasks.
 		// These may be updated in real time as the worker collects metrics

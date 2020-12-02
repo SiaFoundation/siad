@@ -4105,9 +4105,9 @@ func TestOutOfStorageHandling(t *testing.T) {
 	hostTemplate := node.Host(filepath.Join(testDir, "host1"))
 	hostTemplate.HostStorage = modules.SectorSize * contractmanager.MinimumSectorsPerStorageFolder
 
-	// Prepare a renter that expects to upload 1 Sector of data to 2 hosts at a 2x
-	// redundancy. We set the ExpectedStorage lower than the available storage on
-	// the host to make sure it's not penalized.
+	// Prepare a renter that expects to upload 1 Sector of data to 2 hosts at a
+	// 2x redundancy. We set the ExpectedStorage lower than the available
+	// storage on the host to make sure it's not penalized.
 	renterTemplate := node.Renter(filepath.Join(testDir, "renter"))
 	dataPieces := uint64(1)
 	parityPieces := uint64(1)
@@ -4163,8 +4163,8 @@ func TestOutOfStorageHandling(t *testing.T) {
 		if len(rcg.ActiveContracts) != 1 {
 			return fmt.Errorf("Expected 1 active contract but got %v", len(rcg.ActiveContracts))
 		}
-		// One contract should be good for renewal but not uploading and is therefore
-		// passive.
+		// One contract should be good for renewal but not uploading and is
+		// therefore passive.
 		if len(rcg.PassiveContracts) != 1 {
 			return fmt.Errorf("Expected 1 passive contract but got %v", len(rcg.PassiveContracts))
 		}
@@ -4198,16 +4198,19 @@ func TestOutOfStorageHandling(t *testing.T) {
 	if len(rcg.PassiveContracts) != 1 {
 		t.Fatal("Expected 1 passive contract but got", len(rcg.PassiveContracts))
 	}
-	// After a while we give the host a new chance and it should be active again.
-	err = build.Retry(200, 100*time.Millisecond, func() error {
-		if err := tg.Miners()[0].MineBlock(); err != nil {
-			t.Fatal(err)
-		}
+
+	// After a while we give the host a new chance and it should be active
+	// again.
+	err = build.Retry(600, 100*time.Millisecond, func() error {
 		rcg, err = renter.RenterContractsGet()
 		if err != nil {
-			return err
+			t.Fatal(err)
 		}
 		if len(rcg.ActiveContracts) != 3 {
+			if err := tg.Miners()[0].MineBlock(); err != nil {
+				t.Fatal(err)
+			}
+
 			return fmt.Errorf("Expected 3 active contracts but got %v", len(rcg.ActiveContracts))
 		}
 		return nil

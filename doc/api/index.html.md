@@ -5205,6 +5205,12 @@ returned. Currently, we support the following values:
 If the format is not specified, and the skylink points at a directory, we
 default to the zip format and the contents will be downloaded as a zip archive.
 
+**no-response-metadata** | string  
+If 'no-response-metadata' is set to true, the API will not return the metadata
+in the "Skynet-File-Metadata" response header. This might be useful in cases
+where the metadata is not used, or where the size of the response header is
+proving to be an issue.
+
 **timeout** | int  
 If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved 
 before it expires. Note that this timeout does not cover the actual download 

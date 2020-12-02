@@ -42,7 +42,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
@@ -223,7 +222,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup modules.SkyfileUploadParam
 		return modules.Skylink{}, errors.New("cipher key is not supported by the skyfile format")
 	}
 	ec := fileNode.ErasureCode()
-	if ec.Type() != siafile.ECReedSolomonSubShards64 {
+	if ec.Type() != modules.ECReedSolomonSubShards64 {
 		return modules.Skylink{}, errors.New("siafile has unsupported erasure code type")
 	}
 	// Deny the conversion of siafiles that are not 1 data piece. Not because we

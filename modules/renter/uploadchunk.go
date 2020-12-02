@@ -368,8 +368,10 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		// distributed to workers, therefore set workersRemaining equal to zero.
 		// The erasure coding memory has not been released yet, be sure to
 		// release that as well.
+		chunk.mu.Lock()
 		chunk.logicalChunkData = nil
 		chunk.workersRemaining = 0
+		chunk.mu.Unlock()
 		r.memoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
 		chunk.memoryReleased += erasureCodingMemory + pieceCompletedMemory
 		r.repairLog.Printf("Unable to fetch the logical data for chunk %v of %s - marking as stuck: %v", chunk.staticIndex, chunk.staticSiaPath, err)

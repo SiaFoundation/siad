@@ -109,6 +109,15 @@ func (c *Client) SkynetSkylinkGetWithTimeout(skylink string, timeout int) ([]byt
 	return c.skynetSkylinkGetWithParameters(skylink, params)
 }
 
+// SkynetSkylinkGetWithNoMetadata uses the /skynet/skylink endpoint to download
+// a skylink file, specifying the given value for the 'no-response-metadata'
+// parameter.
+func (c *Client) SkynetSkylinkGetWithNoMetadata(skylink string, nometadata bool) ([]byte, modules.SkyfileMetadata, error) {
+	return c.skynetSkylinkGetWithParameters(skylink, map[string]string{
+		"no-response-metadata": fmt.Sprintf("%t", nometadata),
+	})
+}
+
 // skynetSkylinkGetWithParameters uses the /skynet/skylink endpoint to download
 // a skylink file, specifying the given parameters.
 // The caller of this function is responsible for validating the parameters!
