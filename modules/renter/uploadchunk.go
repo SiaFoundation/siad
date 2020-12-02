@@ -629,6 +629,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	// complete.
 	chunkComplete := uc.chunkComplete()
 	if !uc.staticUploadComplete() && chunkComplete {
+		uc.chunkCompleteTime = time.Now()
 		close(uc.staticUploadCompletedChan)
 	}
 
@@ -648,7 +649,6 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 			close(uc.staticAvailableChan)
 		}
 		uc.released = true
-		uc.chunkCompleteTime = time.Now()
 
 		// Create a log message with all of the timings of the chunk uploading.
 		if build.DEBUG {
