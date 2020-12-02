@@ -20,8 +20,8 @@ import (
 // uploadCompletedChan, and thus signal to the upload process the upload has
 // completed, after the chunk has been marked as available.
 var maxWaitForCompleteUpload = build.Select(build.Var{
-	Dev:      10 * time.Second,
-	Standard: 10 * time.Second,
+	Dev:      5 * time.Second,
+	Standard: 5 * time.Second,
 	Testing:  3 * time.Second,
 }).(time.Duration)
 
