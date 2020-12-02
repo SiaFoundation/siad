@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -14,6 +15,15 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
+
+// maxWaitForCompleteUpload is the maximum amount of time we wait for an upload
+// chunk to be completely uploaded after it has become available in the upload
+// process.
+var maxWaitForCompleteUpload = build.Select(build.Var{
+	Dev:      10 * time.Second,
+	Standard: 10 * time.Second,
+	Testing:  3 * time.Second,
+}).(time.Duration)
 
 // Upload Streaming Overview:
 // Most of the logic that enables upload streaming can be found within
@@ -320,6 +330,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 	}
 
 	// Wait for all chunks to become available.
+	start := time.Now()
 	for _, chunk := range chunks {
 		<-chunk.staticAvailableChan
 		chunk.mu.Lock()
@@ -330,9 +341,10 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 		}
 	}
 
-	// Wait for all chunks to reach full redundancy, but only wait for the
-	// 'maxWaitForCompleteUpload' period.
-	ctx, cancel := context.WithTimeout(r.tg.StopCtx(), maxWaitForCompleteUpload)
+	// Wait for all chunks to reach full redundancy, but only wait for a limited
+	// amount of time, dependant on the time it took to reach availability.
+	ec := fileNode.ErasureCode()
+	ctx, cancel := context.WithTimeout(r.tg.StopCtx(), estimateTimeUntilComplete(time.Since(start), ec.MinPieces(), ec.NumPieces()))
 	defer cancel()
 
 LOOP:
@@ -350,4 +362,23 @@ LOOP:
 		return nil, errors.New("disrupted by failUploadStreamFromReader")
 	}
 	return fileNode, nil
+}
+
+// estimateTimeUntilComplete is a function that, depending on the time it took
+// for the chunk to become available and the parameters from the EC, returns an
+// estimate on how long it will take for the chunk to be uploaded completely
+func estimateTimeUntilComplete(timeUntilAvail time.Duration, minPieces, numPieces int) time.Duration {
+	remaining := (numPieces - minPieces) / minPieces
+
+	timeRemaining := time.Duration(remaining) * timeUntilAvail
+	timeRemaining *= 11
+	timeRemaining /= 10 // account for possible slowdown
+
+	min := func(a, b time.Duration) time.Duration {
+		if a <= b {
+			return a
+		}
+		return b
+	}
+	return min(timeRemaining, maxWaitForCompleteUpload)
 }

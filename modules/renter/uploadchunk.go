@@ -16,15 +16,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 )
 
-// maxWaitForCompleteUpload is the maximum amount of time we wait to close the
-// uploadCompletedChan, and thus signal to the upload process the upload has
-// completed, after the chunk has been marked as available.
-var maxWaitForCompleteUpload = build.Select(build.Var{
-	Dev:      5 * time.Second,
-	Standard: 5 * time.Second,
-	Testing:  1 * time.Second,
-}).(time.Duration)
-
 // uploadChunkID is a unique identifier for each chunk in the renter.
 type uploadChunkID struct {
 	fileUID siafile.SiafileUID // Unique to each file.
