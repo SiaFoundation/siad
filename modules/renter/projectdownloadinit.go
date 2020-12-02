@@ -112,9 +112,11 @@ type pdcInitialWorker struct {
 // have a sooner/earlier complete time will be popped off of the heap first.
 type pdcWorkerHeap []*pdcInitialWorker
 
-func (wh pdcWorkerHeap) Len() int            { return len(wh) }
-func (wh pdcWorkerHeap) Less(i, j int) bool  { return wh[i].completeTime.Before(wh[j].completeTime) }
-func (wh pdcWorkerHeap) Swap(i, j int)       { wh[i], wh[j] = wh[j], wh[i] }
+func (wh *pdcWorkerHeap) Len() int { return len(*wh) }
+func (wh *pdcWorkerHeap) Less(i, j int) bool {
+	return (*wh)[i].completeTime.Before((*wh)[j].completeTime)
+}
+func (wh *pdcWorkerHeap) Swap(i, j int)      { (*wh)[i], (*wh)[j] = (*wh)[j], (*wh)[i] }
 func (wh *pdcWorkerHeap) Push(x interface{}) { *wh = append(*wh, x.(*pdcInitialWorker)) }
 func (wh *pdcWorkerHeap) Pop() interface{} {
 	old := *wh
