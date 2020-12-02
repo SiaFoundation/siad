@@ -316,7 +316,11 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 			jobRead: jobRead{
 				staticResponseChan: readSectorRespChan,
 				staticLength:       length,
-				jobGeneric:         newJobGeneric(ctx, bestWorker.staticJobReadQueue),
+
+				// set metadata
+				staticSector: root,
+
+				jobGeneric: newJobGeneric(ctx, bestWorker.staticJobReadQueue),
 			},
 			staticOffset: offset,
 			staticSector: root,
@@ -420,7 +424,7 @@ func checkPDBRGouging(pt modules.RPCPriceTable, allowance modules.Allowance) err
 	pb.AddHasSectorInstruction(crypto.Hash{})
 	programCost, _, _ := pb.Cost(true)
 
-	ulbw, dlbw := hasSectorJobExpectedBandwidth()
+	ulbw, dlbw := hasSectorJobExpectedBandwidth(1)
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulbw, dlbw)
 	costHasSectorJob := programCost.Add(bandwidthCost)
 
