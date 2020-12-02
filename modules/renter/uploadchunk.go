@@ -22,7 +22,7 @@ import (
 var maxWaitForCompleteUpload = build.Select(build.Var{
 	Dev:      5 * time.Second,
 	Standard: 5 * time.Second,
-	Testing:  3 * time.Second,
+	Testing:  1 * time.Second,
 }).(time.Duration)
 
 // uploadChunkID is a unique identifier for each chunk in the renter.
