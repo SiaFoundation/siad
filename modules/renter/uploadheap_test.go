@@ -218,13 +218,13 @@ func addChunksOfDifferentHealth(r *Renter, numChunks int, priority, fileRecently
 				fileUID: UID,
 				index:   uint64(i),
 			},
-			stuck:                  stuck,
-			fileRecentlySuccessful: fileRecentlySuccessful,
-			staticPriority:         priority,
-			health:                 float64(i),
-			onDisk:                 !remote,
-			availableChan:          make(chan struct{}),
-			uploadCompletedChan:    make(chan struct{}),
+			stuck:                     stuck,
+			fileRecentlySuccessful:    fileRecentlySuccessful,
+			staticPriority:            priority,
+			health:                    float64(i),
+			onDisk:                    !remote,
+			staticAvailableChan:       make(chan struct{}),
+			staticUploadCompletedChan: make(chan struct{}),
 		}
 		pushed, err := r.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
@@ -713,11 +713,11 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 				fileUID: "chunk",
 				index:   i,
 			},
-			stuck:               false,
-			piecesCompleted:     -1,
-			piecesNeeded:        1,
-			availableChan:       make(chan struct{}),
-			uploadCompletedChan: make(chan struct{}),
+			stuck:                     false,
+			piecesCompleted:           -1,
+			piecesNeeded:              1,
+			staticAvailableChan:       make(chan struct{}),
+			staticUploadCompletedChan: make(chan struct{}),
 		}
 		pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
@@ -794,12 +794,12 @@ func TestUploadHeapMaps(t *testing.T) {
 				fileUID: siafile.SiafileUID(fmt.Sprintf("chunk - %v", i)),
 				index:   i,
 			},
-			fileEntry:           sf.Copy(),
-			stuck:               stuck,
-			piecesCompleted:     1,
-			piecesNeeded:        1,
-			availableChan:       make(chan struct{}),
-			uploadCompletedChan: make(chan struct{}),
+			fileEntry:                 sf.Copy(),
+			stuck:                     stuck,
+			piecesCompleted:           1,
+			piecesNeeded:              1,
+			staticAvailableChan:       make(chan struct{}),
+			staticUploadCompletedChan: make(chan struct{}),
 		}
 		// push chunk to heap
 		pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)

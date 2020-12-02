@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sync"
@@ -317,14 +318,27 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 			return nil, ss.err
 		}
 	}
-	// Wait for all chunks to finish, then return.
+
+	// Wait for all chunks to become available.
 	for _, chunk := range chunks {
-		<-chunk.uploadCompletedChan
+		<-chunk.staticAvailableChan
 		chunk.mu.Lock()
 		err := chunk.err
 		chunk.mu.Unlock()
 		if err != nil {
 			return nil, errors.AddContext(err, "upload streamer failed to get all data available")
+		}
+	}
+
+	// Wait for all chunks to reach full redundancy, but only wait for the
+	// 'maxWaitForCompleteUpload' period.
+	ctx, cancel := context.WithTimeout(r.tg.StopCtx(), maxWaitForCompleteUpload)
+	defer cancel()
+	for _, chunk := range chunks {
+		select {
+		case <-ctx.Done():
+			break
+		case <-chunk.staticUploadCompletedChan:
 		}
 	}
 
