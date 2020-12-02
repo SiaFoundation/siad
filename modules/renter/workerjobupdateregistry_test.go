@@ -246,3 +246,74 @@ func TestUpdateRegistryLyingHost(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestUpdateRegistryInvalidCache tests the edge case where a host tries to
+// prove an invalid revision number with a lower revision number than we have
+// stored in the cache for this particular host.
+func TestUpdateRegistryInvalidCached(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	deps := dependencies.NewDependencyRegistryUpdateNoOp()
+	deps.Disable()
+	wt, err := newWorkerTesterCustomDependency(t.Name(), modules.ProdDependencies, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Create a registry value.
+	sk, pk := crypto.GenerateKeyPair()
+	var tweak crypto.Hash
+	fastrand.Read(tweak[:])
+	data := fastrand.Bytes(modules.RegistryDataSize)
+	rev := fastrand.Uint64n(1000) + 1
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+
+	// Run the UpdateRegistryJob.
+	err = wt.UpdateRegistry(context.Background(), spk, rv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run the UpdateRegistryJob again. This time it's a no-op. The renter won't
+	// know and increment the revision in the cache.
+	rv.Revision++
+	rv = rv.Sign(sk)
+	deps.Enable()
+	err = wt.UpdateRegistry(context.Background(), spk, rv)
+	deps.Disable()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run the UpdateRegistryJob again with a lower rev num than the initial
+	// one. Causing a ErrLowerRevNumError. The host will use the latest revision
+	// it knows for the proof which is lower than the one in the worker cache.
+	rv.Revision -= 2
+	rv = rv.Sign(sk)
+	err = wt.UpdateRegistry(context.Background(), spk, rv)
+	if !errors.Contains(err, errHostLowerRevisionThanCache) {
+		t.Fatal(err)
+	}
+
+	// Make sure there is a recent error and cooldown.
+	wt.staticJobUpdateRegistryQueue.mu.Lock()
+	if !errors.Contains(wt.staticJobUpdateRegistryQueue.recentErr, errHostLowerRevisionThanCache) {
+		t.Fatal("wrong recent error", wt.staticJobUpdateRegistryQueue.recentErr)
+	}
+	if wt.staticJobUpdateRegistryQueue.cooldownUntil == (time.Time{}) {
+		t.Fatal("cooldownUntil is not set")
+	}
+	wt.staticJobUpdateRegistryQueue.mu.Unlock()
+}
