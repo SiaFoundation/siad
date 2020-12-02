@@ -35,7 +35,6 @@ type (
 		// response so that upon getting the response the caller knows which job
 		// was completed.
 		staticSector crypto.Hash
-		staticWorker *worker
 
 		*jobGeneric
 	}

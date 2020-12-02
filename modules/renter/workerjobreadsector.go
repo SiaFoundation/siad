@@ -70,7 +70,6 @@ func (w *worker) ReadSector(ctx context.Context, root crypto.Hash, offset, lengt
 			staticLength:       length,
 
 			// set metadata
-			staticWorker: w,
 			staticSector: root,
 
 			jobGeneric: newJobGeneric(ctx, w.staticJobReadQueue),

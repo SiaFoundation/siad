@@ -58,9 +58,9 @@ func TestJobReadMetadata(t *testing.T) {
 			staticResponseChan: responseChan,
 			staticLength:       modules.SectorSize,
 
-			// set metadata
-			staticWorker: w,
-			staticSector: sectorRoot,
+			// set metadata, set it to something different than the sector root
+			// to ensure the response contains the sector given in the metadata
+			staticSector: crypto.Hash{1, 2, 3},
 
 			jobGeneric: &jobGeneric{
 				staticCtx:   ctx,
@@ -76,7 +76,7 @@ func TestJobReadMetadata(t *testing.T) {
 
 	// receive response and verify if metadata is set
 	jrr := <-responseChan
-	if jrr.staticSectorRoot != sectorRoot {
+	if jrr.staticSectorRoot != (crypto.Hash{1, 2, 3}) {
 		t.Fatal("unexpected", jrr.staticSectorRoot, sectorRoot)
 	}
 	if jrr.staticWorker == nil || jrr.staticWorker.staticHostPubKeyStr != wt.host.PublicKey().String() {
