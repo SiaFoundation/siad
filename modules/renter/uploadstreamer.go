@@ -368,11 +368,11 @@ LOOP:
 // for the chunk to become available and the parameters from the EC, returns an
 // estimate on how long it will take for the chunk to be uploaded completely
 func estimateTimeUntilComplete(timeUntilAvail time.Duration, minPieces, numPieces int) time.Duration {
-	remaining := (numPieces - minPieces) / minPieces
+	timeUntilAvailNS := timeUntilAvail.Nanoseconds()
 
-	timeRemaining := time.Duration(remaining) * timeUntilAvail
-	timeRemaining *= 11
-	timeRemaining /= 10 // account for possible slowdown
+	remaining := float64(numPieces-minPieces) / float64(minPieces)
+	timeRemainingNS := remaining * float64(timeUntilAvailNS)
+	timeRemainingNS *= 1.1 // account for possible slowdown
 
 	min := func(a, b time.Duration) time.Duration {
 		if a <= b {
@@ -380,5 +380,5 @@ func estimateTimeUntilComplete(timeUntilAvail time.Duration, minPieces, numPiece
 		}
 		return b
 	}
-	return min(timeRemaining, maxWaitForCompleteUpload)
+	return min(time.Duration(timeRemainingNS), maxWaitForCompleteUpload)
 }

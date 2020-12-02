@@ -40,4 +40,13 @@ func TestEstimateTimeUntilComplete(t *testing.T) {
 		t.Fatal("unexpected", timeUntilComplete)
 	}
 
+	// took 200ms for the chunk to become available, using custom Renter EC
+	// params
+	timeUntilAvail = time.Duration(200 * time.Millisecond)
+	minPieces = 64
+	numPieces = 96
+	timeUntilComplete = estimateTimeUntilComplete(timeUntilAvail, minPieces, numPieces)
+	if timeUntilComplete.Milliseconds() != 110 {
+		t.Fatal("unexpected", timeUntilComplete)
+	}
 }
