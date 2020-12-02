@@ -440,7 +440,7 @@ func newWithDeps(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.T
 	}
 
 	// Create Contractor using production dependencies.
-	return NewCustomContractor(cs, wallet, tpool, hdb, persistDir, contractSet, logger, modules.ProdDependencies)
+	return NewCustomContractor(cs, wallet, tpool, hdb, persistDir, contractSet, logger, deps)
 }
 
 // New returns a new Contractor.
