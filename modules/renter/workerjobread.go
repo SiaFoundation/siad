@@ -29,6 +29,8 @@ type (
 
 		staticResponseChan chan *jobReadResponse
 
+		// job metadata
+		//
 		// staticSector can be set by the caller. This field is set in the job
 		// response so that upon getting the response the caller knows which job
 		// was completed.
