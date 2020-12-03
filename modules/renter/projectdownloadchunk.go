@@ -328,6 +328,44 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64) (tim
 	return expectedCompleteTime, added
 }
 
+// threadedCollectAndOverdrivePieces will wait for responses from the workers.
+// If workers fail or are late, additional workers will be launched to ensure
+// that the download still completes.
+func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
+	// Loop until the download has either failed or completed.
+	for {
+		// Check whether the download is comlete. An error means that the
+		// download has failed and can no longer make progress.
+		completed, err := pdc.finished()
+		if completed {
+			pdc.finalize()
+			return
+		}
+		if err != nil {
+			pdc.fail(err)
+			return
+		}
+
+		// Run the overdrive code. This code needs to be asynchronous so that it
+		// does not block receiving on the workerResponseChan. The overdrive
+		// code will determine whether launching an overdrive worker is
+		// necessary, and will return a channel that will be closed when enough
+		// time has elapsed that another overdrive worker should be considered.
+		workersUpdatedChan, workersLateChan := pdc.tryOverdrive()
+
+		// Determine when the next overdrive check needs to run.
+		select {
+		case <-pdc.ctx.Done():
+			pdc.fail(errors.New("download failed while waiting for responses"))
+			return
+		case jrr := <-pdc.workerResponseChan:
+			pdc.handleJobReadResponse(jrr)
+		case <-workersLateChan:
+		case <-workersUpdatedChan:
+		}
+	}
+}
+
 // getPieceOffsetAndLen is a helper function to compute the piece offset and
 // length of a chunk download, given the erasure coder for the chunk, the offset
 // within the chunk, and the length within the chunk.
