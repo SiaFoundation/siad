@@ -745,11 +745,8 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	eTag := buildETag(skylink, req.Method, path, format)
 	w.Header().Set("ETag", fmt.Sprintf("\"%v\"", eTag))
 
-	// Set the Metadata
-	w.Header().Set("Skynet-File-Metadata", string(encMetadata))
-
 	// Set the Layout
-	w.Header().Set("Skynet-File-Layout", string(encLayout))
+	w.Header().Set("Skynet-File-Layout", hex.EncodeToString(encLayout))
 
 	// Set an appropriate Content-Disposition header
 	var cdh string
@@ -1346,12 +1343,14 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 
 // skynetRestoreHandlerPOST handles the POST calls to /skynet/restore.
 func (api *API) skynetRestoreHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	// Grab the Backup Params
+	// Grab the backup path
 	backupPath := ps.ByName("backuppath")
 	if backupPath == "" {
 		WriteError(w, Error{"backup path cannot be blank"}, http.StatusBadRequest)
 		return
 	}
+	// Trim the leading slash
+	backupPath = strings.TrimPrefix(backupPath, "/")
 
 	// Check for Skykey information
 	skykeyName := req.FormValue("skykeyname")

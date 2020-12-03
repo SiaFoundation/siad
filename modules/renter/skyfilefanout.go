@@ -239,6 +239,48 @@ func skyfileEncodeFanoutFromReader(fileNode *filesystem.FileNode, reader io.Read
 	return fanout, nil
 }
 
+// skyfileEncodeFanoutFromReader will create the serialized fanout for
+// a fileNode. The encoded fanout is just the list of hashes that can be used to
+// retrieve a file concatenated together, where piece 0 of chunk 0 is first,
+// piece 1 of chunk 0 is second, etc. The full set of erasure coded pieces are
+// included.
+func skyfileEncodeFanoutFromReader(fileNode *filesystem.FileNode, reader io.Reader) ([]byte, error) {
+	var fanoutBytes []byte
+	// This is copied from the unfinishedUploadChunk padAndEncryptPiece method
+	padAndEncryptPiece := func(chunkIndex, pieceIndex uint64, logicalChunkData [][]byte) {
+		short := int(modules.SectorSize) - len(logicalChunkData[pieceIndex])
+		if short > 0 {
+			logicalChunkData[pieceIndex] = append(logicalChunkData[pieceIndex], make([]byte, short)...)
+		}
+		key := fileNode.MasterKey().Derive(chunkIndex, pieceIndex)
+		logicalChunkData[pieceIndex] = key.EncryptBytes(logicalChunkData[pieceIndex])
+	}
+
+	// Generate the remaining pieces of the each chunk to build the fanout bytes
+	var peek []byte
+	for i := uint64(0); i < fileNode.NumChunks(); i++ {
+		// Create a new shard set it to be the source reader of the chunk.
+		ss := NewStreamShard(reader, peek)
+
+		// Allocate data pieces and fill them with data from r.
+		dataPieces, _, err := readDataPieces(ss, fileNode.ErasureCode(), fileNode.PieceSize())
+		if err != nil {
+			return nil, errors.AddContext(err, "unable to get dataPieces from chunk")
+		}
+
+		// Encode the data pieces, forming the chunk's logical data.
+		logicalChunkData, _ := fileNode.ErasureCode().EncodeShards(dataPieces)
+
+		for pieceIndex := range logicalChunkData {
+			// Encrypt and pad the piece with the given index.
+			padAndEncryptPiece(uint64(i), uint64(pieceIndex), logicalChunkData)
+			root := crypto.MerkleRoot(logicalChunkData[pieceIndex])
+			fanoutBytes = append(fanoutBytes, root[:]...)
+		}
+	}
+	return fanoutBytes, nil
+}
+
 // DataSize returns the amount of file data in the underlying skyfile.
 func (fs *fanoutStreamBufferDataSource) DataSize() uint64 {
 	return fs.staticLayout.Filesize

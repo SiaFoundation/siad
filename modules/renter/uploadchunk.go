@@ -634,6 +634,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	// chunks. It needs to be removed if the chunk is complete, but hasn't
 	// yet been released.
 	released := uc.released
+	canceled := uc.canceled
 	if chunkComplete && !released {
 		if uc.piecesCompleted >= uc.piecesNeeded {
 			r.repairLog.Printf("Completed repair for chunk %v of %s, %v pieces were completed out of %v", uc.staticIndex, uc.staticSiaPath, uc.piecesCompleted, uc.piecesNeeded)
@@ -663,13 +664,13 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	Chunk Distributed: %v
 	Chunk Available: %v
 	Chunk Complete: %v
+	Chunk Canceled: %v
 	Fail Times: %v
-	Success Times: %v`, int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), failedTimes, successTimes)
+	Success Times: %v`, int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), canceled, failedTimes, successTimes)
 		}
 	}
 	uc.memoryReleased += memoryReleased
 	totalMemoryReleased := uc.memoryReleased
-	canceled := uc.canceled
 	workersRemaining := uc.workersRemaining
 	uc.mu.Unlock()
 

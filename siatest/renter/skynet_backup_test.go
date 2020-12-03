@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -67,6 +68,7 @@ func testSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 	}
 	allowance := rg.Settings.Allowance
 	allowance.PaymentContractInitialFunding = types.NewCurrency64(10000000)
+	allowance.Hosts = uint64(len(tg.Hosts()))
 	err = renter1.RenterPostAllowance(allowance)
 	if err != nil {
 		t.Fatal(err)
@@ -77,6 +79,7 @@ func testSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 	}
 	allowance = rg.Settings.Allowance
 	allowance.PaymentContractInitialFunding = types.NewCurrency64(10000000)
+	allowance.Hosts = uint64(len(tg.Hosts()))
 	err = renter2.RenterPostAllowance(allowance)
 	if err != nil {
 		t.Fatal(err)
@@ -239,7 +242,7 @@ func testConvertedSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	renter2 := renters[1]
 	backupDir := renterTestDir(t.Name())
 
-	// Renter 1 uploads a siafile
+	// Renter 1 uploads a small siafile
 	_, rf, err := renter1.UploadNewFileBlocking(100, 1, 2, false)
 	if err != nil {
 		t.Fatal(err)
@@ -247,8 +250,7 @@ func testConvertedSiaFile(t *testing.T, tg *siatest.TestGroup) {
 
 	// Renter 1 converts the siafile to a skyfile
 	sup := modules.SkyfileUploadParameters{
-		SiaPath:             rf.SiaPath(),
-		BaseChunkRedundancy: 2,
+		SiaPath: rf.SiaPath(),
 	}
 	sshp, err := renter1.SkynetConvertSiafileToSkyfilePost(sup, rf.SiaPath())
 	if err != nil {
@@ -258,7 +260,29 @@ func testConvertedSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	// Verify the backup and restoration of the skylink
 	err = verifyBackupAndRestore(tg, renter1, renter2, sshp.Skylink, sup.SiaPath.String(), backupDir)
 	if err != nil {
-		t.Error("Initial Directory Test Failed:", err)
+		t.Error("ConvertSiaFile Test Failed:", err)
+	}
+
+	// Renter 1 uploads a large siafile
+	size := 2*int(modules.SectorSize) + siatest.Fuzz()
+	_, rf, err = renter1.UploadNewFileBlocking(size, 1, 2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Renter 1 converts the siafile to a skyfile
+	sup = modules.SkyfileUploadParameters{
+		SiaPath: rf.SiaPath(),
+	}
+	sshp, err = renter1.SkynetConvertSiafileToSkyfilePost(sup, rf.SiaPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify the backup and restoration of the skylink
+	err = verifyBackupAndRestore(tg, renter1, renter2, sshp.Skylink, sup.SiaPath.String(), backupDir)
+	if err != nil {
+		t.Error("ConvertSiaFile Test Failed:", err)
 	}
 }
 
@@ -316,9 +340,19 @@ func verifyBackupAndRestore(tg *siatest.TestGroup, renter1, renter2 *siatest.Tes
 		return err
 	}
 
+	// Stop here unless vlong tests
+	if !build.VLONG {
+		return nil
+	}
+
 	// Mine to a new period to ensure the original contract data from renter 1 is
 	// dropped
 	if err = siatest.RenewContractsByRenewWindow(renter1, tg); err != nil {
+		return err
+	}
+	err1 := siatest.RenterContractsStable(renter1, tg)
+	err2 := siatest.RenterContractsStable(renter2, tg)
+	if err := errors.Compose(err1, err2); err != nil {
 		return err
 	}
 

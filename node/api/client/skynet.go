@@ -245,7 +245,11 @@ func (c *Client) SkynetSkylinkBackup(skylink, backupDir string) (string, error) 
 	if strLayout == "" {
 		return "", errors.AddContext(err, "no skyfile layout returned")
 	}
-	sl.Decode([]byte(strLayout))
+	layoutBytes, err := hex.DecodeString(strLayout)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to parse layout string")
+	}
+	sl.Decode(layoutBytes)
 
 	// Read the SkyfileMetadata
 	var sm modules.SkyfileMetadata

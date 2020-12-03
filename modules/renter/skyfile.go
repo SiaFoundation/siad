@@ -33,11 +33,9 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
-	"mime/multipart"
-	"sort"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/fixtures"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -48,10 +46,14 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-const (
+var (
 	// SkyfileDefaultBaseChunkRedundancy establishes the default redundancy for
 	// the base chunk of a skyfile.
-	SkyfileDefaultBaseChunkRedundancy = 10
+	SkyfileDefaultBaseChunkRedundancy = build.Select(build.Var{
+		Dev:      uint8(2),
+		Standard: uint8(10),
+		Testing:  uint8(2),
+	}).(uint8)
 )
 
 var (
@@ -401,6 +403,8 @@ func (r *Renter) UpdateSkynetPortals(additions []modules.SkynetPortal, removals 
 // where the fileReader contains all of the data for the file, including the
 // data that uploadSkyfileReadLeadingChunk had to read to figure out whether
 // the file was too large to fit into the leading chunk.
+//
+// TODO: This function is unused. Can it be to refactor the headerSize checks?
 func uploadSkyfileReadLeadingChunk(r io.Reader, headerSize uint64) ([]byte, io.Reader, bool, error) {
 	// Check for underflow.
 	if headerSize+1 > modules.SectorSize {
@@ -492,7 +496,6 @@ func (r *Renter) managedUploadSkyfile(sup modules.SkyfileUploadParameters, reade
 		if err != nil {
 			return modules.Skylink{}, errors.Compose(ErrInvalidMetadata, err)
 		}
-
 		// marshal the skyfile metadata into bytes
 		metadataBytes, err := modules.SkyfileMetadataBytes(metadata)
 		if err != nil {
@@ -835,7 +838,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 // RestoreSkyfile restores a skyfile from disk such that the skylink is
 // preserved.
 func (r *Renter) RestoreSkyfile(backupPath, skykeyName string, skykeyID skykey.SkykeyID) (string, error) {
-	// Restore the skylink from disk
+	// Restore the Skyfile Layout, Metadata, and reader from disk
 	skylinkStr, reader, sl, sm, err := modules.RestoreSkylink(backupPath)
 	if err != nil {
 		return "", errors.AddContext(err, "unable to restore skyfile from backup file")
@@ -862,40 +865,23 @@ func (r *Renter) RestoreSkyfile(backupPath, skykeyName string, skykeyID skykey.S
 		SkykeyID:   skykeyID,
 		SkykeyName: skykeyName,
 	}
+	skyfileEstablishDefaults(&sup)
 
-	// Create a reader for the restoration
+	// Create a reader for the restoration and a duplicate reader for siafile
+	// conversions
 	var restoreReader modules.SkyfileUploadReader
+	var convertFileBuffer bytes.Buffer
 	if len(sm.Subfiles) == 0 {
-		restoreReader = modules.NewSkyfileReader(reader, sup)
+		// Create a duplicate reader for siafile conversion to be able to generate
+		// the piece data for the fanout bits without having to wait for the full
+		// upload to be complete
+		tee := io.TeeReader(reader, &convertFileBuffer)
+		restoreReader = modules.NewSkyfileReader(tee, sup)
 	} else {
-		// Read data from reader
-		data, err := ioutil.ReadAll(reader)
+		// Create multipart reader from the subfiles
+		multiReader, err := modules.NewMultipartReader(reader, sm.Subfiles)
 		if err != nil {
-			return "", errors.AddContext(err, "unable to read data from reader")
-		}
-
-		// Sort the subFiles by offset
-		subFiles := make([]modules.SkyfileSubfileMetadata, 0, len(sm.Subfiles))
-		for _, sfm := range sm.Subfiles {
-			subFiles = append(subFiles, sfm)
-		}
-		sort.Slice(subFiles, func(i, j int) bool {
-			return subFiles[i].Offset < subFiles[j].Offset
-		})
-
-		// Build multipart reader from subFiles
-		body := new(bytes.Buffer)
-		writer := multipart.NewWriter(body)
-		var offset uint64
-		for _, sfm := range subFiles {
-			_, err = modules.AddMultipartFile(writer, data[sfm.Offset:sfm.Offset+sfm.Len], "files[]", sfm.Filename, modules.DefaultFilePerm, &offset)
-			if err != nil {
-				return "", errors.AddContext(err, "unable to add multipart file")
-			}
-		}
-		multiReader := multipart.NewReader(body, writer.Boundary())
-		if err = writer.Close(); err != nil {
-			return "", errors.AddContext(err, "unable to close writer")
+			return "", errors.AddContext(err, "unable to create multireader")
 		}
 		restoreReader = modules.NewSkyfileMultipartReader(multiReader, sup)
 	}
@@ -918,7 +904,9 @@ func (r *Renter) RestoreSkyfile(backupPath, skykeyName string, skykeyID skykey.S
 	// if we've reached EOF, we can safely fetch the metadata and calculate the
 	// actual header size, if that fits in a single sector we can upload the
 	// Skyfile as a small file
-	if errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF) {
+	trySmallFile := errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF)
+	convertFile := sl.CipherType != crypto.TypePlain
+	if trySmallFile && !convertFile {
 		// verify if it fits in a single chunk
 		headerSize := uint64(modules.SkyfileLayoutSize + len(metadataBytes))
 		if uint64(numBytes)+headerSize <= modules.SectorSize {
@@ -937,7 +925,7 @@ func (r *Renter) RestoreSkyfile(backupPath, skykeyName string, skykeyID skykey.S
 				return "", errors.AddContext(err, "failed to build the skylink")
 			}
 			if skylink.String() != skylinkStr {
-				return "", errors.AddContext(err, "skylink mismatch")
+				return "", fmt.Errorf("Skylinks not equal\nOriginal: %v\nRestored %v\n", skylinkStr, skylink.String())
 			}
 
 			// Upload the Base Sector to restore the small skyfile
@@ -959,6 +947,7 @@ func (r *Renter) RestoreSkyfile(backupPath, skykeyName string, skykeyID skykey.S
 	if err != nil {
 		return "", errors.AddContext(err, "unable to create extened siapath")
 	}
+
 	// Create the FileUploadParams
 	fup, err := fileUploadParams(extendedPath, int(sl.FanoutDataPieces), int(sl.FanoutParityPieces), sup.Force, sl.CipherType)
 	if err != nil {
@@ -966,9 +955,20 @@ func (r *Renter) RestoreSkyfile(backupPath, skykeyName string, skykeyID skykey.S
 	}
 
 	// Generate a Cipher Key for the FileUploadParams.
-	err = generateCipherKey(&fup, sup)
-	if err != nil {
-		return "", errors.AddContext(err, "unable to create Cipher key for FileUploadParams")
+	if convertFile {
+		// If the CipherKey is not TypePlain then this was a siafile conversion so
+		// the CipherKey should be a SiaKey
+		fup.CipherKey, err = crypto.NewSiaKey(sl.CipherType, sl.KeyData[:])
+		if err != nil {
+			return "", errors.AddContext(err, "unable to create Cipher key from SkyfileLayout KeyData")
+		}
+	} else {
+		// If the CipherKey is TypePlain then this was a skyfile upload so the
+		// CipherKey should be a SkyKey
+		err = generateCipherKey(&fup, sup)
+		if err != nil {
+			return "", errors.AddContext(err, "unable to create Cipher key for FileUploadParams")
+		}
 	}
 
 	// Upload the file
@@ -979,8 +979,7 @@ func (r *Renter) RestoreSkyfile(backupPath, skykeyName string, skykeyID skykey.S
 
 	// Defer closing the file
 	defer func() {
-		err := fileNode.Close()
-		if err != nil {
+		if err := fileNode.Close(); err != nil {
 			r.log.Printf("Could not close node, err: %s\n", err.Error())
 		}
 	}()
@@ -992,10 +991,19 @@ func (r *Renter) RestoreSkyfile(backupPath, skykeyName string, skykeyID skykey.S
 	}
 
 	// Generate fanoutbytes
-	fanoutBytes, err := skyfileEncodeFanout(fileNode)
-	if err != nil {
-		return "", errors.AddContext(err, "unable to encode the fanout of the siafile")
+	var fanoutBytes []byte
+	if convertFile {
+		fanoutBytes, err = skyfileEncodeFanoutFromReader(fileNode, &convertFileBuffer)
+		if err != nil {
+			return "", errors.AddContext(err, "unable to encode the fanout of the converted siafile")
+		}
+	} else {
+		fanoutBytes, err = skyfileEncodeFanout(fileNode)
+		if err != nil {
+			return "", errors.AddContext(err, "unable to encode the fanout of the skyfile")
+		}
 	}
+
 	// Check leading chunk size
 	headerSize := uint64(modules.SkyfileLayoutSize) + sl.MetadataSize + sl.FanoutSize
 	if headerSize > modules.SectorSize {
@@ -1020,7 +1028,7 @@ func (r *Renter) RestoreSkyfile(backupPath, skykeyName string, skykeyID skykey.S
 		return "", errors.AddContext(err, "unable to build skylink")
 	}
 	if skylink.String() != skylinkStr {
-		return "", errors.AddContext(err, "skylink mismatch")
+		return "", fmt.Errorf("Skylinks not equal\nOriginal: %v\nRestored %v\n", skylinkStr, skylink.String())
 	}
 
 	// Check if the new skylink is blocked
@@ -1032,7 +1040,7 @@ func (r *Renter) RestoreSkyfile(backupPath, skykeyName string, skykeyID skykey.S
 	// Add the skylink to the siafiles.
 	err = fileNode.AddSkylink(skylink)
 	if err != nil {
-		return skylinkStr, errors.AddContext(err, "unable to add skylink to the sianodes")
+		return "", errors.AddContext(err, "unable to add skylink to the sianodes")
 	}
 
 	// Upload the base sector.
