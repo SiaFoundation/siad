@@ -75,9 +75,8 @@ var (
 	// hardfork was activated.
 	FoundationHardforkHeight BlockHeight
 
-	// FoundationSubsidy is the amount sent to the Foundation address every 4320
-	// blocks.
-	FoundationSubsidy = SiacoinPrecision.Mul64(30e3).Mul64(uint64(BlocksPerMonth))
+	// FoundationSubsidy is the amount sent to the Foundation address per block.
+	FoundationSubsidy = SiacoinPrecision.Mul64(30e3)
 
 	// FutureThreshold is a temporal limit beyond which Blocks are
 	// discarded by the consensus rules. When incoming Blocks are processed, their
@@ -117,7 +116,7 @@ var (
 	// InitialFoundationSubsidy is the one-time subsidy sent to the Foundation
 	// address upon activation of the hardfork, representing one year's worth of
 	// block subsidies.
-	InitialFoundationSubsidy = FoundationSubsidy.Mul64(12)
+	InitialFoundationSubsidy = FoundationSubsidy.Mul64(uint64(BlocksPerYear))
 
 	// MaturityDelay specifies the number of blocks that a maturity-required output
 	// is required to be on hold before it can be spent on the blockchain.

@@ -209,10 +209,7 @@ func applyFileContractMaintenance(tx *bolt.Tx, pb *processedBlock) {
 // applied.
 func applyMaintenance(tx *bolt.Tx, pb *processedBlock) {
 	if pb.Height >= types.FoundationHardforkHeight {
-		// A Foundation subsidy is generated once per month.
-		if (pb.Height-types.FoundationHardforkHeight)%types.BlocksPerMonth == 0 {
-			applyFoundationSubsidy(tx, pb)
-		}
+		applyFoundationSubsidy(tx, pb)
 	}
 	applyMinerPayouts(tx, pb)
 	applyMaturedSiacoinOutputs(tx, pb)

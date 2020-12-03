@@ -52,7 +52,7 @@ func TestCalculateNumSiacoins(t *testing.T) {
 		totalCoins = totalCoins.Add(CalculateCoinbase(i))
 		if i == FoundationHardforkHeight {
 			totalCoins = totalCoins.Add(InitialFoundationSubsidy)
-		} else if i > FoundationHardforkHeight && (i-FoundationHardforkHeight)%BlocksPerMonth == 0 {
+		} else if i > FoundationHardforkHeight {
 			totalCoins = totalCoins.Add(FoundationSubsidy)
 		}
 		if totalCoins.Cmp(CalculateNumSiacoins(i)) != 0 {
