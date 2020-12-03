@@ -788,6 +788,9 @@ func (h *Host) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPu
 			return srv, registry.ErrSameRevNum
 		}
 	}
+	if h.dependencies.Disrupt("RegistryUpdateNoOp") {
+		return modules.SignedRegistryValue{}, nil
+	}
 	return h.staticRegistry.Update(rv, pubKey, expiry)
 }
 
