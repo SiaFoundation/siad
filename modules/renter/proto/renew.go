@@ -49,7 +49,7 @@ func (cs *ContractSet) managedNewRenew(oldContract *SafeContract, params Contrac
 	basePrice, baseCollateral := rhp2BaseCosts(lastRev, host, endHeight)
 
 	// Create file contract and add it together with the fee to the builder.
-	uc := createFileContractUnlockConds(params.EndHeight, fcTxn, host.PublicKey, ourPKNew)
+	uc := createFileContractUnlockConds(host.PublicKey, ourPKNew)
 	uh := uc.UnlockHash()
 	fc, err := createRenewedContract(lastRev, uh, params, txnFee, basePrice, baseCollateral, tpool)
 	if err != nil {
@@ -223,7 +223,7 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 	basePrice, baseCollateral := rhp2BaseCosts(lastRev, host, endHeight)
 
 	// Create file contract and add it together with the fee to the builder.
-	uc := createFileContractUnlockConds(params.EndHeight, fcTxn, host.PublicKey, ourPKNew)
+	uc := createFileContractUnlockConds(host.PublicKey, ourPKNew)
 	uh := uc.UnlockHash()
 	fc, err := createRenewedContract(lastRev, uh, params, txnFee, basePrice, baseCollateral, tpool)
 	if err != nil {
@@ -600,7 +600,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	}
 
 	// Create the new file contract.
-	uc := createFileContractUnlockConds(params.EndHeight, fcTxn, host.PublicKey, ourPKNew)
+	uc := createFileContractUnlockConds(host.PublicKey, ourPKNew)
 	uh := uc.UnlockHash()
 	fc, err := createRenewedContract(oldRev, uh, params, txnFee, basePrice, baseCollateral, tpool)
 	if err != nil {
@@ -638,7 +638,6 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 	finalRevTxn.TransactionSignatures = append(finalRevTxn.TransactionSignatures, finalRevRenterSig)
 	finalRevRenterSigRaw := crypto.SignHash(finalRevTxn.SigHash(0, pt.HostBlockHeight), ourSKOld)
 	finalRevRenterSig.Signature = finalRevRenterSigRaw[:]
-
 	// Write the request.
 	err = modules.RPCWrite(conn, modules.RPCRenewContractRequest{
 		TSet:        txnSet,
@@ -769,7 +768,7 @@ func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, p
 
 // createFileContractUnlockConds is a helper method to create unlock conditions
 // for forming and renewing a contract.
-func createFileContractUnlockConds(windowStart types.BlockHeight, fcTxn types.Transaction, hpk types.SiaPublicKey, ourPK crypto.PublicKey) types.UnlockConditions {
+func createFileContractUnlockConds(hpk types.SiaPublicKey, ourPK crypto.PublicKey) types.UnlockConditions {
 	return types.UnlockConditions{
 		PublicKeys: []types.SiaPublicKey{
 			types.Ed25519PublicKey(ourPK),

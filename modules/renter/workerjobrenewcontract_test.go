@@ -112,10 +112,12 @@ func TestRenewContract(t *testing.T) {
 	found := false
 	var fcr types.FileContractRevision
 	var newContract types.FileContract
+	var fcTxn types.Transaction
 	for _, txn := range b.Transactions {
 		if len(txn.FileContractRevisions) == 1 && len(txn.FileContracts) == 1 {
 			fcr = txn.FileContractRevisions[0]
 			newContract = txn.FileContracts[0]
+			fcTxn = txn
 			found = true
 			break
 		}
@@ -179,7 +181,15 @@ func TestRenewContract(t *testing.T) {
 	if newContract.WindowEnd != params.EndHeight+params.Host.WindowSize {
 		t.Fatal("wrong window end")
 	}
-	if newContract.UnlockHash != fcr.NewUnlockHash {
+	_, ourPK := proto.GenerateKeyPair(params.RenterSeed, fcTxn)
+	uh := types.UnlockConditions{
+		PublicKeys: []types.SiaPublicKey{
+			types.Ed25519PublicKey(ourPK),
+			wt.staticHostPubKey,
+		},
+		SignaturesRequired: 2,
+	}.UnlockHash()
+	if newContract.UnlockHash != uh {
 		t.Fatal("unlock hash doesn't match")
 	}
 	if newContract.RevisionNumber != 0 {
@@ -242,7 +252,7 @@ func TestRenewContract(t *testing.T) {
 	if rev.NewWindowEnd != params.EndHeight+params.Host.WindowSize {
 		t.Fatal("wrong window end")
 	}
-	if rev.NewUnlockHash != fcr.NewUnlockHash {
+	if rev.NewUnlockHash != uh {
 		t.Fatal("unlock hash doesn't match")
 	}
 	if rev.NewRevisionNumber != 1 {

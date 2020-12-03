@@ -972,6 +972,32 @@ func VerifyFileContractRevisionTransactionSignatures(fcr types.FileContractRevis
 	return txn.StandaloneValid(height)
 }
 
+// VerifyFileContractRevisionTransactionSignatures checks that the signatures on
+// a file contract and revision are valid and cover the right fields.
+func VerifyRenewalTransactionSignatures(fcr types.FileContractRevision, fc types.FileContract, tsigs []types.TransactionSignature, height types.BlockHeight) error {
+	if len(tsigs) != 2 {
+		return ErrRevisionSigCount
+	}
+	for _, tsig := range tsigs {
+		// The transaction needs to be malleable so that miner fees can be
+		// added. If the whole transaction is covered, it is doomed to have no
+		// fees.
+		if tsig.CoveredFields.WholeTransaction {
+			return ErrRevisionCoveredFields
+		}
+	}
+	txn := types.Transaction{
+		FileContracts:         []types.FileContract{fc},
+		FileContractRevisions: []types.FileContractRevision{fcr},
+		TransactionSignatures: tsigs,
+	}
+	// Check that the signatures verify. This will also check that the covered
+	// fields object is not over-aggressive, because if the object is pointing
+	// to elements that haven't been added to the transaction, verification
+	// will fail.
+	return txn.StandaloneValid(height)
+}
+
 // RenterPayoutsPreTax calculates the renterPayout before tax and the hostPayout
 // given a host, the available renter funding, the expected txnFee for the
 // transaction and an optional basePrice in case this helper is used for a
