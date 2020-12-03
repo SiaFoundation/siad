@@ -147,13 +147,6 @@ func (w *worker) externTryLaunchSerialJob() {
 // externLaunchAsyncJob accepts a function to retrieve a job and then uses that
 // to retrieve a job and launch it. The bandwidth consumption will be updated as
 // the job starts and finishes.
-//
-// TODO: Subtracting like this means that large amounts of data outstanding get
-// subtracted all at once, instead of progressively. Subtracting progressively
-// is a bit trickier though because the host may actually send more or less data
-// than expected (the amounts per job are estimates), and when everything is
-// done we would need to ensure that exactly the amount estimated was removed
-// from the counter.
 func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 	// Add the resource requirements to the worker loop state. Also add this
 	// thread to the number of jobs running.
@@ -181,31 +174,6 @@ func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 		atomic.AddUint64(&w.staticLoopState.atomicWriteDataOutstanding, -uploadBandwidth)
 		atomic.AddUint64(&w.staticLoopState.atomicAsyncJobsRunning, ^uint64(0)) // subtract 1
 		return true
-	}
-	return true
-}
-
-// managedAsyncReady will return 'false' if any of the key requirements for
-// performing async work have not been met. 'true' will be returned if the
-// worker is ready for async work.
-func (w *worker) managedAsyncReady() bool {
-	// Hosts that do not support the async protocol cannot do async jobs.
-	cache := w.staticCache()
-	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
-		w.managedDiscardAsyncJobs(errors.New("host version does not support async jobs"))
-		return false
-	}
-
-	// A valid price table is required to perform async tasks.
-	if !w.staticPriceTable().staticValid() {
-		w.managedDiscardAsyncJobs(errors.New("price table with host is no longer valid"))
-		return false
-	}
-
-	// RHP3 must not be on cooldown to perform async tasks.
-	if w.managedOnMaintenanceCooldown() {
-		w.managedDiscardAsyncJobs(errors.New("the worker account is on cooldown"))
-		return false
 	}
 	return true
 }
@@ -240,8 +208,22 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		return true
 	}
 
-	// Exit if the worker is not currently equipped to perform async tasks.
-	if !w.managedAsyncReady() {
+	// Hosts that do not support the async protocol cannot do async jobs.
+	cache := w.staticCache()
+	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
+		w.managedDiscardAsyncJobs(errors.New("host version does not support async jobs"))
+		return false
+	}
+
+	// A valid price table is required to perform async tasks.
+	if !w.staticPriceTable().staticValid() {
+		w.managedDiscardAsyncJobs(errors.New("price table with host is no longer valid"))
+		return false
+	}
+
+	// RHP3 must not be on cooldown to perform async tasks.
+	if w.managedOnMaintenanceCooldown() {
+		w.managedDiscardAsyncJobs(errors.New("the worker account is on cooldown"))
 		return false
 	}
 
@@ -252,7 +234,6 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		return true
 	}
 	// Check if registry jobs are supported.
-	cache := w.staticCache()
 	if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) >= 0 {
 		job = w.staticJobUpdateRegistryQueue.callNext()
 		if job != nil {
