@@ -213,7 +213,7 @@ func (cl *churnLimiter) managedCanChurnContract(contract modules.RenterContract)
 	return fitsInPeriodBudget && fitsInCurrentBudget
 }
 
-// managedMarkContractsUtility checks an active contract in the contractor and
+// managedMarkContractUtility checks an active contract in the contractor and
 // figures out whether the contract is useful for uploading, and whether the
 // contract should be renewed.
 func (c *Contractor) managedMarkContractUtility(contract modules.RenterContract, minScoreGFR, minScoreGFU types.Currency) (modules.HostScoreBreakdown, modules.ContractUtility, bool, error) {
