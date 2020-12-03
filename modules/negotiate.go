@@ -972,8 +972,8 @@ func VerifyFileContractRevisionTransactionSignatures(fcr types.FileContractRevis
 	return txn.StandaloneValid(height)
 }
 
-// VerifyFileContractRevisionTransactionSignatures checks that the signatures on
-// a file contract and revision are valid and cover the right fields.
+// VerifyRenewalTransactionSignatures checks that the signatures on a file
+// contract and revision are valid and cover the right fields.
 func VerifyRenewalTransactionSignatures(fcr types.FileContractRevision, fc types.FileContract, tsigs []types.TransactionSignature, height types.BlockHeight) error {
 	if len(tsigs) != 2 {
 		return ErrRevisionSigCount
