@@ -172,7 +172,9 @@ func (j *jobReadRegistry) callExecute() {
 		return
 	}
 
-	// Check if the looked up value matches our expectation.
+	// Check if we have a cached version of the looked up entry. If the new entry
+	// has a higher revision number we update it. If it has a lower one we know that
+	// the host should be punished for losing it or trying to cheat us.
 	if srv != nil {
 		cachedRevision, cached := w.staticRegistryCache.Get(j.staticSiaPublicKey, j.staticTweak)
 		if cached && cachedRevision > srv.Revision {
