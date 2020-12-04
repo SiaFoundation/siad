@@ -127,10 +127,10 @@ func (cs *ContractSet) Return(c *SafeContract) {
 	c.revisionMu.Unlock()
 }
 
-// View returns a copy of the contract with the specified host key. The
-// contracts is not locked. Certain fields, including the MerkleRoots, are set
-// to nil for safety reasons. If the contract is not present in the set, View
-// returns false and a zero-valued RenterContract.
+// View returns a copy of the contract with the specified host key. The contract
+// is not locked. Certain fields, including the MerkleRoots, are set to nil for
+// safety reasons. If the contract is not present in the set, View returns false
+// and a zero-valued RenterContract.
 func (cs *ContractSet) View(id types.FileContractID) (modules.RenterContract, bool) {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()

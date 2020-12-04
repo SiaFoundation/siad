@@ -882,6 +882,9 @@ func (cs *ContractSet) managedApplyInsertContractUpdate(update writeaheadlog.Upd
 	}
 	// Compatv144 fix missing void output.
 	cs.mu.Lock()
+	if _, exists := cs.contracts[sc.header.ID()]; exists {
+		build.Critical("trying to overwrite existing contract")
+	}
 	cs.contracts[sc.header.ID()] = sc
 	cs.pubKeys[h.HostPublicKey().String()] = sc.header.ID()
 	cs.mu.Unlock()
@@ -996,6 +999,9 @@ func (cs *ContractSet) loadSafeContract(headerFileName, rootsFileName, refCountF
 		if err := sc.managedCommitTxns(); err != nil {
 			return errors.AddContext(err, "unable to commit the wal transactions during contractset recovery")
 		}
+	}
+	if _, exists := cs.contracts[sc.header.ID()]; exists {
+		build.Critical("trying to overwrite existing contract")
 	}
 	cs.contracts[sc.header.ID()] = sc
 	cs.pubKeys[header.HostPublicKey().String()] = sc.header.ID()

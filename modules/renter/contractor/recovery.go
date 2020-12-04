@@ -279,9 +279,9 @@ func (c *Contractor) callRecoverContracts() {
 					blockHeight, rc.WindowEnd, rc.ID)
 				return
 			}
-			if rc.WindowEnd < blockHeight {
-				// Don't renew a contract that the host won't let us revise anyway.
-				c.log.Debugln("Not recovering contract past its endHeight", rc.ID, rc.WindowEnd)
+			_, exists := c.staticContracts.View(rc.ID)
+			if exists {
+				c.log.Debugln("Don't recover contract we already know", rc.ID)
 				return
 			}
 			// Get the ephemeral renter seed and wipe it after using it.

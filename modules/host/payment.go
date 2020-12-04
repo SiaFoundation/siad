@@ -285,7 +285,7 @@ func signatureFromRequest(recent types.FileContractRevision, pbcr modules.PayByC
 func verifyEAFundRevision(existingRevision, paymentRevision types.FileContractRevision, blockHeight types.BlockHeight, expectedTransfer types.Currency) error {
 	// Check that the revision count has increased.
 	if paymentRevision.NewRevisionNumber <= existingRevision.NewRevisionNumber {
-		return ErrBadRevisionNumber
+		return errors.AddContext(ErrBadRevisionNumber, fmt.Sprintf("%v <= %v", paymentRevision.NewRevisionNumber, existingRevision.NewRevisionNumber))
 	}
 
 	// Check that the revision is well-formed.
