@@ -100,7 +100,6 @@ func BackupSkylink(skylink, backupDir string, reader io.Reader, sl SkyfileLayout
 func RestoreSkylink(backupPath string) (string, io.Reader, SkyfileLayout, SkyfileMetadata, error) {
 	// Clean up backup path
 	backupPath = filepath.Clean(backupPath)
-	backupPath = strings.TrimPrefix(backupPath, "/")
 
 	// Derive the Skylink and relative path to the backup file
 	skylinkStr := SkylinkFromSysPath(backupPath)
