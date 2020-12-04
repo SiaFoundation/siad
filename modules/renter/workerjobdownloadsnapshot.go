@@ -160,9 +160,9 @@ func (w *worker) initJobDownloadSnapshotQueue() {
 	}
 }
 
-// FetchBackups is a convenience method to runs a DownloadSnapshot job on a
-// worker and formats the response to a list of UploadedBackup objects.
-func (w *worker) FetchBackups(ctx context.Context) ([]modules.UploadedBackup, error) {
+// DownloadSnapshotTable is a convenience method to runs a DownloadSnapshot job
+// on a worker and returns the snapshot table.
+func (w *worker) DownloadSnapshotTable(ctx context.Context) ([]snapshotEntry, error) {
 	downloadSnapshotRespChan := make(chan *jobDownloadSnapshotResponse)
 	jus := &jobDownloadSnapshot{
 		staticResponseChan: downloadSnapshotRespChan,
@@ -179,17 +179,27 @@ func (w *worker) FetchBackups(ctx context.Context) ([]modules.UploadedBackup, er
 	var resp *jobDownloadSnapshotResponse
 	select {
 	case <-ctx.Done():
-		return nil, errors.New("FetchBackups interrupted")
+		return nil, errors.New("DownloadSnapshotTable interrupted")
 	case resp = <-downloadSnapshotRespChan:
 	}
 
 	if resp.staticErr != nil {
-		return nil, errors.AddContext(resp.staticErr, "FetchBackups failed")
+		return nil, errors.AddContext(resp.staticErr, "DownloadSnapshotTable failed")
+	}
+	return resp.staticSnapshots, nil
+}
+
+// FetchBackups is a convenience method to runs a DownloadSnapshot job on a
+// worker and formats the response to a list of UploadedBackup objects.
+func (w *worker) FetchBackups(ctx context.Context) ([]modules.UploadedBackup, error) {
+	snapshots, err := w.DownloadSnapshotTable(ctx)
+	if err != nil {
+		return nil, errors.AddContext(err, "FetchBackups failed to download snapshot table")
 	}
 
 	// Format the response and return the response to the requester.
-	uploadedBackups := make([]modules.UploadedBackup, len(resp.staticSnapshots))
-	for i, e := range resp.staticSnapshots {
+	uploadedBackups := make([]modules.UploadedBackup, len(snapshots))
+	for i, e := range snapshots {
 		uploadedBackups[i] = modules.UploadedBackup{
 			Name:           string(bytes.TrimRight(e.Name[:], types.RuneToString(0))),
 			UID:            e.UID,

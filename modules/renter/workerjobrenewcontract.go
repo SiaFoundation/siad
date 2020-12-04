@@ -62,7 +62,18 @@ func (j *jobRenew) callDiscard(err error) {
 // callExecute will run the renew job.
 func (j *jobRenew) callExecute() {
 	w := j.staticQueue.staticWorker()
+
+	// Proactively try to fix a revision mismatch.
+	w.externTryFixRevisionMismatch()
+
 	err := w.managedRenew(j.staticParams, j.staticTransactionBuilder)
+
+	// If the error could be caused by a revision number mismatch,
+	// signal it by setting the flag.
+	if errCausedByRevisionMismatch(err) {
+		w.staticSetSuspectRevisionMismatch()
+		w.staticWake()
+	}
 
 	// Send the response.
 	response := &jobRenewResponse{

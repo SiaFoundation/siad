@@ -127,7 +127,7 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 	}
 
 	// Manually add the revision signatures from the renter.
-	finalRevHostSig, err := addRevisionSignatures(txnBuilder, finalRevision, finalRevRenterSig, hsk, rpk.ToPublicKey(), bh)
+	finalRevHostSig, err := addRevisionSignatures(txnBuilder, finalRevRenterSig, hsk, rpk.ToPublicKey(), bh)
 	if err != nil {
 		txnBuilder.Drop()
 		return errors.AddContext(err, "managedRPCRenewContract: failed to add revision signatures to transaction")
@@ -204,9 +204,18 @@ func (h *Host) managedRPCRenewContract(stream siamux.Stream) error {
 
 // addRevisionSignatures verifies the revision signature provided by the renter
 // and adds it together with the host's own signature to the txnBuilder.
-func addRevisionSignatures(txnBuilder modules.TransactionBuilder, finalRevision types.FileContractRevision, renterSigBytes crypto.Signature, sk crypto.SecretKey, rpk crypto.PublicKey, bh types.BlockHeight) (crypto.Signature, error) {
+func addRevisionSignatures(txnBuilder modules.TransactionBuilder, renterSigBytes crypto.Signature, sk crypto.SecretKey, rpk crypto.PublicKey, bh types.BlockHeight) (crypto.Signature, error) {
 	txn, _ := txnBuilder.View()
-	parentID := crypto.Hash(finalRevision.ParentID)
+	if len(txn.FileContractRevisions) != 1 {
+		return crypto.Signature{}, errors.New("addRevisionSignatures: invalid number of revisions")
+	}
+	if len(txn.FileContracts) != 1 {
+		return crypto.Signature{}, errors.New("addRevisionSignatures: invalid number of contracts")
+	}
+	contract := txn.FileContracts[0]
+	revision := txn.FileContractRevisions[0]
+
+	parentID := crypto.Hash(revision.ParentID)
 	renterSig := types.TransactionSignature{
 		ParentID: parentID,
 		CoveredFields: types.CoveredFields{
@@ -217,12 +226,12 @@ func addRevisionSignatures(txnBuilder modules.TransactionBuilder, finalRevision 
 		Signature:      renterSigBytes[:],
 	}
 	hostSig := types.TransactionSignature{
-		ParentID:       parentID,
-		PublicKeyIndex: 1,
+		ParentID: parentID,
 		CoveredFields: types.CoveredFields{
 			FileContracts:         []uint64{0},
 			FileContractRevisions: []uint64{0},
 		},
+		PublicKeyIndex: 1,
 	}
 	// Add the signatures to the builder.
 	txn.TransactionSignatures = []types.TransactionSignature{renterSig, hostSig}
@@ -230,16 +239,18 @@ func addRevisionSignatures(txnBuilder modules.TransactionBuilder, finalRevision 
 	encodedSig := crypto.SignHash(sigHash, sk)
 	hostSig.Signature = encodedSig[:]
 
-	// Verify the renter's signature.
-	renterSigHash := txn.SigHash(0, bh)
-	err := crypto.VerifyHash(renterSigHash, rpk, renterSigBytes)
-	if err != nil {
-		return crypto.Signature{}, errors.AddContext(err, "addRevisionSignatures: invalid renter signature")
-	}
-
 	// Add the signatures to the builder.
 	txnBuilder.AddTransactionSignature(renterSig)
 	txnBuilder.AddTransactionSignature(hostSig)
+
+	// Get the txn with the signatures.
+	txn, _ = txnBuilder.View()
+
+	// Verify the signatures.
+	err := modules.VerifyRenewalTransactionSignatures(revision, contract, txn.TransactionSignatures, bh)
+	if err != nil {
+		return crypto.Signature{}, errors.AddContext(err, "addRevisionSignatures: invalid renter signature")
+	}
 	return encodedSig, nil
 }
 
