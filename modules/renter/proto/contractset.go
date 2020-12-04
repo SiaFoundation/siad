@@ -340,5 +340,11 @@ func (cs *ContractSet) managedV146SplitContractHeaderAndRoots(dir string) error 
 			return err
 		}
 	}
+	// Delete the contract from memory again. We only needed to split them up on
+	// disk. They will be correctly loaded with the non-legacy contracts during
+	// the regular startup.
+	cs.mu.Lock()
+	cs.contracts = make(map[types.FileContractID]*SafeContract)
+	cs.mu.Unlock()
 	return nil
 }
