@@ -217,7 +217,7 @@ func addRevisionSignatures(txnBuilder modules.TransactionBuilder, renterSigBytes
 
 	parentID := crypto.Hash(revision.ParentID)
 	renterSig := types.TransactionSignature{
-		ParentID: crypto.Hash(parentID),
+		ParentID: parentID,
 		CoveredFields: types.CoveredFields{
 			FileContracts:         []uint64{0},
 			FileContractRevisions: []uint64{0},
@@ -226,7 +226,7 @@ func addRevisionSignatures(txnBuilder modules.TransactionBuilder, renterSigBytes
 		Signature:      renterSigBytes[:],
 	}
 	hostSig := types.TransactionSignature{
-		ParentID: crypto.Hash(parentID),
+		ParentID: parentID,
 		CoveredFields: types.CoveredFields{
 			FileContracts:         []uint64{0},
 			FileContractRevisions: []uint64{0},

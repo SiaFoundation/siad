@@ -4,7 +4,6 @@ import (
 	"context"
 	"reflect"
 	"testing"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -94,11 +93,6 @@ func TestRenewContract(t *testing.T) {
 	if oldMerkleRoot == (crypto.Hash{}) {
 		t.Fatal("empty root")
 	}
-
-	// Remove a potential cooldown to avoid NDFs.
-	wt.staticMaintenanceState.mu.Lock()
-	wt.staticMaintenanceState.cooldownUntil = time.Time{}
-	wt.staticMaintenanceState.mu.Unlock()
 
 	// Renew the contract.
 	err = wt.RenewContract(context.Background(), params, txnBuilder)
@@ -295,11 +289,6 @@ func TestRenewContract(t *testing.T) {
 	if !reflect.DeepEqual(rev.MissedHostOutput(), expectedMissedHostOutput) {
 		t.Fatal("wrong output")
 	}
-
-	// Remove a potential cooldown to avoid NDFs.
-	wt.staticJobDownloadSnapshotQueue.mu.Lock()
-	wt.staticJobDownloadSnapshotQueue.cooldownUntil = time.Time{}
-	wt.staticJobDownloadSnapshotQueue.mu.Unlock()
 
 	// Try using the contract now. Should work.
 	err = wt.UploadSnapshot(context.Background(), modules.UploadedBackup{UID: [16]byte{3, 2, 1}}, fastrand.Bytes(100))
