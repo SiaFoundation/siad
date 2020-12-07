@@ -161,6 +161,14 @@ func (wp *workerPool) callWorkers() []*worker {
 	return workers
 }
 
+// callNumWorkers returns the number of workers in the worker pool.
+func (wp *workerPool) callNumWorkers() int {
+	wp.mu.Lock()
+	l := len(wp.workers)
+	wp.mu.Unlock()
+	return l
+}
+
 // newWorkerPool will initialize and return a worker pool.
 func (r *Renter) newWorkerPool() *workerPool {
 	wp := &workerPool{

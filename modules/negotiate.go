@@ -194,8 +194,8 @@ var (
 	// RPCFormContract is the specifier for forming a contract with a host.
 	RPCFormContract = types.NewSpecifier("FormContract" + types.RuneToString(2))
 
-	// RPCRenewContract is the specifier to renewing an existing contract.
-	RPCRenewContract = types.NewSpecifier("RenewContract" + types.RuneToString(2))
+	// RPCRenewContractRHP2 is the specifier to renewing an existing contract.
+	RPCRenewContractRHP2 = types.NewSpecifier("RenewContract" + types.RuneToString(2))
 
 	// RPCReviseContract is the specifier for revising an existing file
 	// contract.
@@ -962,6 +962,32 @@ func VerifyFileContractRevisionTransactionSignatures(fcr types.FileContractRevis
 		}
 	}
 	txn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{fcr},
+		TransactionSignatures: tsigs,
+	}
+	// Check that the signatures verify. This will also check that the covered
+	// fields object is not over-aggressive, because if the object is pointing
+	// to elements that haven't been added to the transaction, verification
+	// will fail.
+	return txn.StandaloneValid(height)
+}
+
+// VerifyRenewalTransactionSignatures checks that the signatures on a file
+// contract and revision are valid and cover the right fields.
+func VerifyRenewalTransactionSignatures(fcr types.FileContractRevision, fc types.FileContract, tsigs []types.TransactionSignature, height types.BlockHeight) error {
+	if len(tsigs) != 2 {
+		return ErrRevisionSigCount
+	}
+	for _, tsig := range tsigs {
+		// The transaction needs to be malleable so that miner fees can be
+		// added. If the whole transaction is covered, it is doomed to have no
+		// fees.
+		if tsig.CoveredFields.WholeTransaction {
+			return ErrRevisionCoveredFields
+		}
+	}
+	txn := types.Transaction{
+		FileContracts:         []types.FileContract{fc},
 		FileContractRevisions: []types.FileContractRevision{fcr},
 		TransactionSignatures: tsigs,
 	}

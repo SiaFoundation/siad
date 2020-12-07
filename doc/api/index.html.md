@@ -1478,7 +1478,7 @@ The default is 0 which means no registry.
 The path of the registry on disk. If it's empty, it uses the default location
 relative to siad's host folder. Otherwise the provided path will be used.
 Changing it will trigger a registry migration which takes an arbitrary amount
-of time depending of the size of the registry.
+of time depending on the size of the registry.
 
 **revisionnumber** | int  
 The revision number indicates to the renter what iteration of settings the host
@@ -1970,7 +1970,7 @@ The default is 0 which means no registry.
 The path of the registry on disk. If it's empty, it uses the default location
 relative to siad's host folder. Otherwise the provided path will be used.
 Changing it will trigger a registry migration which takes an arbitrary amount
-of time depending of the size of the registry.
+of time depending on the size of the registry.
 
 ### Response
 
@@ -4863,7 +4863,7 @@ Details of the workers' has sector jobs queue
 > curl example  
 
 ```bash
-curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg"
+curl -A "Sia-Agent" "localhost:9980/skynet/basesector/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg"
 ```  
 
 downloads the basesector of a skylink using http streaming. This call blocks
@@ -5041,6 +5041,45 @@ value of 5 minutes. The minimum is 1 second.
 }
 ```
 
+## /skynet/root [GET]
+> curl example  
+
+```bash
+curl -A "Sia-Agent" "localhost:9980/skynet/root?root=QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I&offset=0&length=4096"
+```  
+
+downloads a sector of a skyfile by its root hash using http streaming. This call
+blocks until the data is received. There is a 30s default timeout applied to
+downloading a sector. If the data cannot be found within this 30s time
+constraint, a 404 will be returned. This timeout is configurable through the
+query string parameters.
+
+
+### Query String Parameters
+### Required
+**root** | hash  
+The root hash of the sector that should be downloaded.
+
+**offset** | uint64  
+The offset where the download should start within a sector.
+
+**length** | uint64  
+The amount of data to be downloaded from the sector.
+
+### OPTIONAL
+
+**timeout** | int  
+If 'timeout' is set, the download will fail if the basesector cannot be
+retrieved before it expires. Note that this timeout does not cover the actual
+download time, but rather covers the TTFB. Timeout is specified in seconds,
+a timeout value of 0 will be ignored. If no timeout is given, the default will
+be used, which is a 30 second timeout. The maximum allowed timeout is 900s (15
+minutes).
+
+### Response Body
+
+The response body is the raw data for the sector.
+
 ## /skynet/registry [POST]
 > curl example
 
@@ -5165,6 +5204,12 @@ returned. Currently, we support the following values:
  
 If the format is not specified, and the skylink points at a directory, we
 default to the zip format and the contents will be downloaded as a zip archive.
+
+**no-response-metadata** | string  
+If 'no-response-metadata' is set to true, the API will not return the metadata
+in the "Skynet-File-Metadata" response header. This might be useful in cases
+where the metadata is not used, or where the size of the response header is
+proving to be an issue.
 
 **timeout** | int  
 If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved 

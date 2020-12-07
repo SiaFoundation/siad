@@ -331,12 +331,9 @@ func uploadFileSet(dir modules.SiaPath, fileSize uint64, expectedFetchSize uint6
 			Root:    true,
 			Force:   true, // This will overwrite other files in the dir.
 
-			FileMetadata: modules.SkyfileMetadata{
-				Filename: strconv.Itoa(i) + ".rand",
-				Mode:     modules.DefaultFilePerm,
-			},
-
-			Reader: buf,
+			Filename: strconv.Itoa(i) + ".rand",
+			Mode:     modules.DefaultFilePerm,
+			Reader:   buf,
 		}
 		// Upload the file.
 		_, _, err = c.SkynetSkyfilePost(sup)

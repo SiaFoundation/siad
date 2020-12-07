@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 
@@ -26,7 +27,14 @@ type (
 	jobRead struct {
 		staticLength uint64
 
-		staticResponseChan chan *jobReadResponse // Channel to send a response down
+		staticResponseChan chan *jobReadResponse
+
+		// job metadata
+		//
+		// staticSector can be set by the caller. This field is set in the job
+		// response so that upon getting the response the caller knows which job
+		// was completed.
+		staticSector crypto.Hash
 
 		*jobGeneric
 	}
@@ -48,10 +56,15 @@ type (
 		*jobGenericQueue
 	}
 
-	// jobReadResponse contains the result of a hasSector query.
+	// jobReadResponse contains the result of a Read query.
 	jobReadResponse struct {
+		// The response data.
 		staticData []byte
 		staticErr  error
+
+		// Metadata related to the job query.
+		staticSectorRoot crypto.Hash
+		staticWorker     *worker
 	}
 )
 
@@ -61,6 +74,10 @@ func (j *jobRead) callDiscard(err error) {
 	errLaunch := w.renter.tg.Launch(func() {
 		response := &jobReadResponse{
 			staticErr: errors.Extend(err, ErrJobDiscarded),
+
+			staticSectorRoot: j.staticSector,
+
+			staticWorker: w,
 		}
 		select {
 		case j.staticResponseChan <- response:
@@ -85,6 +102,10 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 	response := &jobReadResponse{
 		staticData: readData,
 		staticErr:  readErr,
+
+		staticSectorRoot: j.staticSector,
+
+		staticWorker: w,
 	}
 	err := w.renter.tg.Launch(func() {
 		select {
@@ -98,12 +119,11 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 	}
 
 	// Report success or failure to the queue.
-	if readErr == nil {
-		j.staticQueue.callReportSuccess()
-	} else {
+	if readErr != nil {
 		j.staticQueue.callReportFailure(readErr)
 		return
 	}
+	j.staticQueue.callReportSuccess()
 
 	// Job succeeded.
 	//

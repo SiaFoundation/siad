@@ -907,7 +907,7 @@ func (am *accountManager) staticWaitForDepositResult(pr *persistResult) error {
 // staticWaitForWithdrawalResult will block until it receives a message on the
 // given result channel, or until it either times out or receives a stop signal.
 func (am *accountManager) staticWaitForWithdrawalResult(commitResultChan chan error) error {
-	ctx, cancel := context.WithTimeout(context.Background(), blockedWithdrawalTimeout)
+	ctx, cancel := context.WithTimeout(am.h.tg.StopCtx(), blockedWithdrawalTimeout)
 	defer cancel()
 
 	select {

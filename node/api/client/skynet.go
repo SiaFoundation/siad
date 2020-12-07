@@ -26,6 +26,21 @@ func (c *Client) SkynetBaseSectorGet(skylink string) (io.ReadCloser, error) {
 	return reader, err
 }
 
+// SkynetDownloadByRootGet uses the /skynet/root endpoint to fetch a reader of
+// a sector.
+func (c *Client) SkynetDownloadByRootGet(root crypto.Hash, offset, length uint64, timeout time.Duration) (io.ReadCloser, error) {
+	values := url.Values{}
+	values.Set("root", root.String())
+	values.Set("offset", fmt.Sprint(offset))
+	values.Set("length", fmt.Sprint(length))
+	if timeout >= 0 {
+		values.Set("timeout", fmt.Sprintf("%s", timeout))
+	}
+	getQuery := fmt.Sprintf("/skynet/root?%v", values.Encode())
+	_, reader, err := c.getReaderResponse(getQuery)
+	return reader, err
+}
+
 // SkynetSkylinkGetWithETag uses the /skynet/skylink endpoint to download a
 // skylink file setting the given ETag as value in the If-None-Match request
 // header.
@@ -39,12 +54,12 @@ func (uc *UnsafeClient) SkynetSkylinkGetWithETag(skylink string, eTag string) (*
 func (uc *UnsafeClient) SkynetSkyfilePostRawResponse(params modules.SkyfileUploadParameters) (http.Header, []byte, error) {
 	// Set the url values.
 	values := url.Values{}
-	values.Set("filename", params.FileMetadata.Filename)
+	values.Set("filename", params.Filename)
 	dryRunStr := fmt.Sprintf("%t", params.DryRun)
 	values.Set("dryrun", dryRunStr)
 	forceStr := fmt.Sprintf("%t", params.Force)
 	values.Set("force", forceStr)
-	modeStr := fmt.Sprintf("%o", params.FileMetadata.Mode)
+	modeStr := fmt.Sprintf("%o", params.Mode)
 	values.Set("mode", modeStr)
 	redundancyStr := fmt.Sprintf("%v", params.BaseChunkRedundancy)
 	values.Set("basechunkredundancy", redundancyStr)
@@ -92,6 +107,15 @@ func (c *Client) SkynetSkylinkGetWithTimeout(skylink string, timeout int) ([]byt
 		params["timeout"] = fmt.Sprintf("%d", timeout)
 	}
 	return c.skynetSkylinkGetWithParameters(skylink, params)
+}
+
+// SkynetSkylinkGetWithNoMetadata uses the /skynet/skylink endpoint to download
+// a skylink file, specifying the given value for the 'no-response-metadata'
+// parameter.
+func (c *Client) SkynetSkylinkGetWithNoMetadata(skylink string, nometadata bool) ([]byte, modules.SkyfileMetadata, error) {
+	return c.skynetSkylinkGetWithParameters(skylink, map[string]string{
+		"no-response-metadata": fmt.Sprintf("%t", nometadata),
+	})
 }
 
 // skynetSkylinkGetWithParameters uses the /skynet/skylink endpoint to download
@@ -272,12 +296,12 @@ func (c *Client) SkynetSkylinkPinPostWithTimeout(skylink string, params modules.
 func (c *Client) SkynetSkyfilePost(params modules.SkyfileUploadParameters) (string, api.SkynetSkyfileHandlerPOST, error) {
 	// Set the url values.
 	values := url.Values{}
-	values.Set("filename", params.FileMetadata.Filename)
+	values.Set("filename", params.Filename)
 	dryRunStr := fmt.Sprintf("%t", params.DryRun)
 	values.Set("dryrun", dryRunStr)
 	forceStr := fmt.Sprintf("%t", params.Force)
 	values.Set("force", forceStr)
-	modeStr := fmt.Sprintf("%o", params.FileMetadata.Mode)
+	modeStr := fmt.Sprintf("%o", params.Mode)
 	values.Set("mode", modeStr)
 	redundancyStr := fmt.Sprintf("%v", params.BaseChunkRedundancy)
 	values.Set("basechunkredundancy", redundancyStr)
@@ -315,10 +339,10 @@ func (c *Client) SkynetSkyfilePost(params modules.SkyfileUploadParameters) (stri
 func (c *Client) SkynetSkyfilePostDisableForce(params modules.SkyfileUploadParameters, disableForce bool) (string, api.SkynetSkyfileHandlerPOST, error) {
 	// Set the url values.
 	values := url.Values{}
-	values.Set("filename", params.FileMetadata.Filename)
+	values.Set("filename", params.Filename)
 	forceStr := fmt.Sprintf("%t", params.Force)
 	values.Set("force", forceStr)
-	modeStr := fmt.Sprintf("%o", params.FileMetadata.Mode)
+	modeStr := fmt.Sprintf("%o", params.Mode)
 	values.Set("mode", modeStr)
 	redundancyStr := fmt.Sprintf("%v", params.BaseChunkRedundancy)
 	values.Set("basechunkredundancy", redundancyStr)
@@ -389,10 +413,10 @@ func (c *Client) SkynetSkyfileMultiPartPost(params modules.SkyfileMultipartUploa
 func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadParameters, convert modules.SiaPath) (api.SkynetSkyfileHandlerPOST, error) {
 	// Set the url values.
 	values := url.Values{}
-	values.Set("filename", lup.FileMetadata.Filename)
+	values.Set("filename", lup.Filename)
 	forceStr := fmt.Sprintf("%t", lup.Force)
 	values.Set("force", forceStr)
-	modeStr := fmt.Sprintf("%o", lup.FileMetadata.Mode)
+	modeStr := fmt.Sprintf("%o", lup.Mode)
 	values.Set("mode", modeStr)
 	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
 	values.Set("redundancy", redundancyStr)

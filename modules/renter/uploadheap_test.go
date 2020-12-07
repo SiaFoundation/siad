@@ -218,12 +218,13 @@ func addChunksOfDifferentHealth(r *Renter, numChunks int, priority, fileRecently
 				fileUID: UID,
 				index:   uint64(i),
 			},
-			stuck:                  stuck,
-			fileRecentlySuccessful: fileRecentlySuccessful,
-			staticPriority:         priority,
-			health:                 float64(i),
-			onDisk:                 !remote,
-			availableChan:          make(chan struct{}),
+			stuck:                     stuck,
+			fileRecentlySuccessful:    fileRecentlySuccessful,
+			staticPriority:            priority,
+			health:                    float64(i),
+			onDisk:                    !remote,
+			staticAvailableChan:       make(chan struct{}),
+			staticUploadCompletedChan: make(chan struct{}),
 		}
 		pushed, err := r.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
@@ -712,10 +713,11 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 				fileUID: "chunk",
 				index:   i,
 			},
-			stuck:           false,
-			piecesCompleted: -1,
-			piecesNeeded:    1,
-			availableChan:   make(chan struct{}),
+			stuck:                     false,
+			piecesCompleted:           -1,
+			piecesNeeded:              1,
+			staticAvailableChan:       make(chan struct{}),
+			staticUploadCompletedChan: make(chan struct{}),
 		}
 		pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
@@ -792,11 +794,12 @@ func TestUploadHeapMaps(t *testing.T) {
 				fileUID: siafile.SiafileUID(fmt.Sprintf("chunk - %v", i)),
 				index:   i,
 			},
-			fileEntry:       sf.Copy(),
-			stuck:           stuck,
-			piecesCompleted: 1,
-			piecesNeeded:    1,
-			availableChan:   make(chan struct{}),
+			fileEntry:                 sf.Copy(),
+			stuck:                     stuck,
+			piecesCompleted:           1,
+			piecesNeeded:              1,
+			staticAvailableChan:       make(chan struct{}),
+			staticUploadCompletedChan: make(chan struct{}),
 		}
 		// push chunk to heap
 		pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
@@ -1010,8 +1013,9 @@ func TestUploadHeapStreamPush(t *testing.T) {
 			fileUID: "streamchunk",
 			index:   1,
 		},
-		fileEntry:    file.Copy(),
-		sourceReader: sr,
+		fileEntry:        file.Copy(),
+		sourceReader:     sr,
+		piecesRegistered: 1, // This is so the chunk is viewed as incomplete
 	}
 
 	// Define helper
@@ -1069,8 +1073,9 @@ func TestUploadHeapStreamPush(t *testing.T) {
 
 	// Add a local chunk to the heap
 	localChunk := &unfinishedUploadChunk{
-		id:        streamChunk.id,
-		fileEntry: file.Copy(),
+		id:               streamChunk.id,
+		fileEntry:        file.Copy(),
+		piecesRegistered: 1, // This is so the chunk is viewed as incomplete
 	}
 	pushed, err = rt.renter.managedPushChunkForRepair(localChunk, chunkTypeLocalChunk)
 	if err != nil {
@@ -1168,8 +1173,9 @@ func TestUploadHeapTryUpdate(t *testing.T) {
 				fileUID: siafile.SiafileUID(test.name),
 				index:   uint64(i),
 			},
-			fileEntry:    entry.Copy(),
-			sourceReader: test.existingChunkSR,
+			fileEntry:        entry.Copy(),
+			sourceReader:     test.existingChunkSR,
+			piecesRegistered: 1, // This is so the chunk is viewed as incomplete
 		}
 		if test.existsUnstuck {
 			uh.unstuckHeapChunks[existingChunk.id] = existingChunk
@@ -1182,8 +1188,9 @@ func TestUploadHeapTryUpdate(t *testing.T) {
 			uh.repairingChunks[existingChunk.id] = existingChunk
 		}
 		newChunk := &unfinishedUploadChunk{
-			id:           existingChunk.id,
-			sourceReader: test.newChunkSR,
+			id:               existingChunk.id,
+			sourceReader:     test.newChunkSR,
+			piecesRegistered: 1, // This is so the chunk is viewed as incomplete
 		}
 
 		// Try and Update the Chunk in the Heap
@@ -1217,6 +1224,11 @@ func TestRenterAddChunksToHeapPanic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := rt.renter.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Add maxConsecutiveDirHeapFailures non existent directories to the
 	// directoryHeap

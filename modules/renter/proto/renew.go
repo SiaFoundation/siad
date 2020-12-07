@@ -2,6 +2,7 @@ package proto
 
 import (
 	"math"
+	"net"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -34,8 +35,10 @@ func (cs *ContractSet) managedNewRenew(oldContract *SafeContract, params Contrac
 	contract := oldContract.header
 
 	// Extract vars from params, for convenience.
+	fcTxn, _ := txnBuilder.View()
 	host, funding, startHeight, endHeight := params.Host, params.Funding, params.StartHeight, params.EndHeight
-	ourSK := contract.SecretKey
+	ourSKOld := contract.SecretKey
+	ourSKNew, ourPKNew := GenerateKeyPair(params.RenterSeed, fcTxn)
 	lastRev := contract.LastRevision()
 
 	// Calculate the anticipated transaction fee.
@@ -46,7 +49,9 @@ func (cs *ContractSet) managedNewRenew(oldContract *SafeContract, params Contrac
 	basePrice, baseCollateral := rhp2BaseCosts(lastRev, host, endHeight)
 
 	// Create file contract and add it together with the fee to the builder.
-	fc, err := createRenewedContract(lastRev, params, txnFee, basePrice, baseCollateral, tpool)
+	uc := createFileContractUnlockConds(host.PublicKey, ourPKNew)
+	uh := uc.UnlockHash()
+	fc, err := createRenewedContract(lastRev, uh, params, txnFee, basePrice, baseCollateral, tpool)
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
@@ -54,7 +59,6 @@ func (cs *ContractSet) managedNewRenew(oldContract *SafeContract, params Contrac
 	txnBuilder.AddMinerFee(txnFee)
 
 	// Add FileContract identifier.
-	fcTxn, _ := txnBuilder.View()
 	si, hk := PrefixedSignedIdentifier(params.RenterSeed, fcTxn, host.PublicKey)
 	_ = txnBuilder.AddArbitraryData(append(si[:], hk[:]...))
 
@@ -85,7 +89,7 @@ func (cs *ContractSet) managedNewRenew(oldContract *SafeContract, params Contrac
 	}()
 
 	// Lock the contract and resynchronize if necessary
-	rev, sigs, err := s.Lock(contract.ID(), contract.SecretKey)
+	rev, sigs, err := s.Lock(contract.ID(), ourSKOld)
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	} else if err := oldContract.managedSyncRevision(rev, sigs); err != nil {
@@ -95,7 +99,7 @@ func (cs *ContractSet) managedNewRenew(oldContract *SafeContract, params Contrac
 	// Send the RenewContract request.
 	req := modules.LoopRenewContractRequest{
 		Transactions: txnSet,
-		RenterKey:    lastRev.UnlockConditions.PublicKeys[0],
+		RenterKey:    types.Ed25519PublicKey(ourPKNew),
 	}
 	if err := s.writeRequest(modules.RPCLoopRenewContract, req); err != nil {
 		return modules.RenterContract{}, nil, err
@@ -130,7 +134,7 @@ func (cs *ContractSet) managedNewRenew(oldContract *SafeContract, params Contrac
 	}
 
 	// Prepare the noop init revision.
-	revisionTxn := prepareInitRevisionTxn(lastRev, fc, startHeight, ourSK, signedTxnSet[len(signedTxnSet)-1].FileContractID(0))
+	revisionTxn := prepareInitRevisionTxn(lastRev, uc, fc, startHeight, ourSKNew, signedTxnSet[len(signedTxnSet)-1].FileContractID(0))
 
 	// Send acceptance and signatures
 	renterSigs := modules.LoopContractSignatures{
@@ -170,7 +174,7 @@ func (cs *ContractSet) managedNewRenew(oldContract *SafeContract, params Contrac
 	// Construct contract header.
 	header := contractHeader{
 		Transaction:     revisionTxn,
-		SecretKey:       ourSK,
+		SecretKey:       ourSKNew,
 		StartHeight:     startHeight,
 		TotalCost:       funding,
 		ContractFee:     host.ContractPrice,
@@ -205,8 +209,10 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 	contract := oldContract.header
 
 	// Extract vars from params, for convenience.
+	fcTxn, _ := txnBuilder.View()
 	host, funding, startHeight, endHeight := params.Host, params.Funding, params.StartHeight, params.EndHeight
-	ourSK := contract.SecretKey
+	ourSKOld := contract.SecretKey
+	ourSKNew, ourPKNew := GenerateKeyPair(params.RenterSeed, fcTxn)
 	lastRev := contract.LastRevision()
 
 	// Calculate the anticipated transaction fee.
@@ -217,7 +223,9 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 	basePrice, baseCollateral := rhp2BaseCosts(lastRev, host, endHeight)
 
 	// Create file contract and add it together with the fee to the builder.
-	fc, err := createRenewedContract(lastRev, params, txnFee, basePrice, baseCollateral, tpool)
+	uc := createFileContractUnlockConds(host.PublicKey, ourPKNew)
+	uh := uc.UnlockHash()
+	fc, err := createRenewedContract(lastRev, uh, params, txnFee, basePrice, baseCollateral, tpool)
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	}
@@ -225,7 +233,6 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 	txnBuilder.AddMinerFee(txnFee)
 
 	// Add FileContract identifier.
-	fcTxn, _ := txnBuilder.View()
 	si, hk := PrefixedSignedIdentifier(params.RenterSeed, fcTxn, host.PublicKey)
 	_ = txnBuilder.AddArbitraryData(append(si[:], hk[:]...))
 
@@ -256,7 +263,7 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 	}()
 
 	// Lock the contract and resynchronize if necessary
-	rev, sigs, err := s.Lock(contract.ID(), contract.SecretKey)
+	rev, sigs, err := s.Lock(contract.ID(), ourSKOld)
 	if err != nil {
 		return modules.RenterContract{}, nil, err
 	} else if err := oldContract.managedSyncRevision(rev, sigs); err != nil {
@@ -273,7 +280,7 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 	// Create the RenewContract request.
 	req := modules.LoopRenewAndClearContractRequest{
 		Transactions: txnSet,
-		RenterKey:    lastRev.UnlockConditions.PublicKeys[0],
+		RenterKey:    types.Ed25519PublicKey(ourPKNew),
 	}
 	for _, vpo := range finalRev.NewValidProofOutputs {
 		req.FinalValidProofValues = append(req.FinalValidProofValues, vpo.Value)
@@ -326,7 +333,7 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 			},
 		},
 	}
-	finalRevSig := crypto.SignHash(finalRevTxn.SigHash(0, s.height), contract.SecretKey)
+	finalRevSig := crypto.SignHash(finalRevTxn.SigHash(0, s.height), ourSKOld)
 	finalRevTxn.TransactionSignatures[0].Signature = finalRevSig[:]
 
 	// sign the txn
@@ -345,7 +352,7 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 	}
 
 	// create initial (no-op) revision, transaction, and signature
-	revisionTxn := prepareInitRevisionTxn(lastRev, fc, startHeight, ourSK, signedTxnSet[len(signedTxnSet)-1].FileContractID(0))
+	revisionTxn := prepareInitRevisionTxn(lastRev, uc, fc, startHeight, ourSKNew, signedTxnSet[len(signedTxnSet)-1].FileContractID(0))
 
 	// Send acceptance and signatures
 	renterSigs := modules.LoopRenewAndClearContractSignatures{
@@ -396,7 +403,7 @@ func (cs *ContractSet) managedNewRenewAndClear(oldContract *SafeContract, params
 	// Construct contract header.
 	header := contractHeader{
 		Transaction:     revisionTxn,
-		SecretKey:       ourSK,
+		SecretKey:       ourSKNew,
 		StartHeight:     startHeight,
 		TotalCost:       funding,
 		ContractFee:     host.ContractPrice,
@@ -441,10 +448,10 @@ func rhp2BaseCosts(lastRev types.FileContractRevision, host modules.HostDBEntry,
 
 // prepareInitRevisionTxn creates the initRevision, places it in a transaction and
 // adds the signature or the revision to the transaction.
-func prepareInitRevisionTxn(lastRev types.FileContractRevision, newContract types.FileContract, startHeight types.BlockHeight, renterSK crypto.SecretKey, parentID types.FileContractID) types.Transaction {
+func prepareInitRevisionTxn(lastRev types.FileContractRevision, uc types.UnlockConditions, newContract types.FileContract, startHeight types.BlockHeight, renterSK crypto.SecretKey, parentID types.FileContractID) types.Transaction {
 	initRevision := types.FileContractRevision{
 		ParentID:          parentID,
-		UnlockConditions:  lastRev.UnlockConditions,
+		UnlockConditions:  uc,
 		NewRevisionNumber: 1,
 
 		NewFileSize:           newContract.FileSize,
@@ -488,8 +495,8 @@ func prepareFinalRevision(contract contractHeader, payment types.Currency) (type
 	finalRev.NewFileMerkleRoot = crypto.Hash{}
 	finalRev.NewRevisionNumber = math.MaxUint64
 
-	// The missed proof outputs become the valid ones since the host won't need
-	// to provide a storage proof. We need to preserve the void output though.
+	// The valid proof outputs become the missed ones since the host won't need
+	// to provide a storage proof.
 	finalRev.NewMissedProofOutputs = finalRev.NewValidProofOutputs
 	return finalRev, nil
 }
@@ -510,7 +517,7 @@ func prepareTransactionSet(txnBuilder transactionBuilder) ([]types.Transaction, 
 
 // createRenewedContract creates a new contract from another contract's last
 // revision given some additional renewal parameters.
-func createRenewedContract(lastRev types.FileContractRevision, params ContractParams, txnFee, basePrice, baseCollateral types.Currency, tpool transactionPool) (types.FileContract, error) {
+func createRenewedContract(lastRev types.FileContractRevision, uh types.UnlockHash, params ContractParams, txnFee, basePrice, baseCollateral types.Currency, tpool transactionPool) (types.FileContract, error) {
 	allowance, startHeight, endHeight, host, funding := params.Allowance, params.StartHeight, params.EndHeight, params.Host, params.Funding
 
 	// Calculate the payouts for the renter, host, and whole contract.
@@ -535,7 +542,7 @@ func createRenewedContract(lastRev types.FileContractRevision, params ContractPa
 		WindowStart:    params.EndHeight,
 		WindowEnd:      params.EndHeight + params.Host.WindowSize,
 		Payout:         totalPayout,
-		UnlockHash:     lastRev.NewUnlockHash,
+		UnlockHash:     uh,
 		RevisionNumber: 0,
 		ValidProofOutputs: []types.SiacoinOutput{
 			// renter
@@ -552,4 +559,221 @@ func createRenewedContract(lastRev types.FileContractRevision, params ContractPa
 			{Value: basePrice.Add(baseCollateral), UnlockHash: types.UnlockHash{}},
 		},
 	}, nil
+}
+
+// RenewContract takes an established connection to a host and renews the
+// contract with that host.
+func (cs *ContractSet) RenewContract(conn net.Conn, fcid types.FileContractID, params ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb hostDB) error {
+	// Fetch the contract.
+	oldSC, ok := cs.Acquire(fcid)
+	if !ok {
+		return errors.New("RenewContract: failed to acquire contract to renew")
+	}
+	defer cs.Return(oldSC)
+	oldContract := oldSC.header
+	oldRev := oldContract.LastRevision()
+
+	// Extract vars from params, for convenience.
+	fcTxn, _ := txnBuilder.View()
+	host, funding, startHeight, endHeight, pt := params.Host, params.Funding, params.StartHeight, params.EndHeight, params.PriceTable
+	ourSKOld := oldContract.SecretKey
+	ourSKNew, ourPKNew := GenerateKeyPair(params.RenterSeed, fcTxn)
+
+	// RHP3 contains both the contract and final revision. So we double the
+	// estimation.
+	txnFee := pt.TxnFeeMaxRecommended.Mul64(2 * modules.EstimatedFileContractTransactionSetSize)
+
+	// Calculate the base cost. This includes the RPC cost.
+	basePrice, baseCollateral := modules.RenewBaseCosts(oldRev, pt, endHeight)
+
+	// Create the final revision of the old contract.
+	renewCost := types.ZeroCurrency
+	finalRev, err := prepareFinalRevision(oldContract, renewCost)
+	if err != nil {
+		return errors.AddContext(err, "Unable to create final revision")
+	}
+
+	// Record the changes we are about to make to the contract.
+	walTxn, err := oldSC.managedRecordClearContractIntent(finalRev, renewCost)
+	if err != nil {
+		return errors.AddContext(err, "failed to record clear contract intent")
+	}
+
+	// Create the new file contract.
+	uc := createFileContractUnlockConds(host.PublicKey, ourPKNew)
+	uh := uc.UnlockHash()
+	fc, err := createRenewedContract(oldRev, uh, params, txnFee, basePrice, baseCollateral, tpool)
+	if err != nil {
+		return errors.AddContext(err, "Unable to create new contract")
+	}
+
+	// Add both the new final revision and the new contract to the same
+	// transaction.
+	txnBuilder.AddFileContractRevision(finalRev)
+	txnBuilder.AddFileContract(fc)
+
+	// Add the fee to the transaction.
+	txnBuilder.AddMinerFee(txnFee)
+
+	// Add FileContract identifier.
+	si, hk := PrefixedSignedIdentifier(params.RenterSeed, fcTxn, host.PublicKey)
+	_ = txnBuilder.AddArbitraryData(append(si[:], hk[:]...))
+
+	// Create transaction set.
+	txnSet, err := prepareTransactionSet(txnBuilder)
+	if err != nil {
+		return errors.AddContext(err, "failed to prepare txnSet with finalRev and new contract")
+	}
+
+	// Sign the final revision.
+	finalRevRenterSig := types.TransactionSignature{
+		ParentID:       crypto.Hash(finalRev.ParentID),
+		PublicKeyIndex: 0, // renter key is first
+		CoveredFields: types.CoveredFields{
+			FileContracts:         []uint64{0},
+			FileContractRevisions: []uint64{0},
+		},
+	}
+	finalRevTxn, _ := txnBuilder.View()
+	finalRevTxn.TransactionSignatures = append(finalRevTxn.TransactionSignatures, finalRevRenterSig)
+	finalRevRenterSigRaw := crypto.SignHash(finalRevTxn.SigHash(0, pt.HostBlockHeight), ourSKOld)
+	finalRevRenterSig.Signature = finalRevRenterSigRaw[:]
+	// Write the request.
+	err = modules.RPCWrite(conn, modules.RPCRenewContractRequest{
+		TSet:        txnSet,
+		RenterPK:    types.Ed25519PublicKey(ourPKNew),
+		FinalRevSig: finalRevRenterSigRaw,
+	})
+	if err != nil {
+		return errors.AddContext(err, "failed to write RPCRenewContractRequest")
+	}
+
+	// Read the response. It contains the host's final revision sig and any
+	// additions it made.
+	var resp modules.RPCRenewContractCollateralResponse
+	err = modules.RPCRead(conn, &resp)
+	if err != nil {
+		return errors.AddContext(err, "failed to read RPCRenewContractCollateralResponse")
+	}
+
+	// Incorporate host's modifications.
+	txnBuilder.AddParents(resp.NewParents)
+	for _, input := range resp.NewInputs {
+		txnBuilder.AddSiacoinInput(input)
+	}
+	for _, output := range resp.NewOutputs {
+		txnBuilder.AddSiacoinOutput(output)
+	}
+
+	// Create the host sig for the final revision.
+	finalRevHostSigRaw := resp.FinalRevSig
+	finalRevHostSig := types.TransactionSignature{
+		ParentID:       crypto.Hash(finalRev.ParentID),
+		PublicKeyIndex: 1,
+		CoveredFields: types.CoveredFields{
+			FileContracts:         []uint64{0},
+			FileContractRevisions: []uint64{0},
+		},
+		Signature: finalRevHostSigRaw[:],
+	}
+
+	// Add the revision signatures to the transaction set and sign it.
+	_ = txnBuilder.AddTransactionSignature(finalRevRenterSig)
+	_ = txnBuilder.AddTransactionSignature(finalRevHostSig)
+	signedTxnSet, err := txnBuilder.Sign(true)
+	if err != nil {
+		return errors.AddContext(err, "failed to sign transaction set")
+	}
+
+	// Calculate signatures added by the transaction builder
+	var addedSignatures []types.TransactionSignature
+	_, _, _, addedSignatureIndices := txnBuilder.ViewAdded()
+	for _, i := range addedSignatureIndices {
+		addedSignatures = append(addedSignatures, signedTxnSet[len(signedTxnSet)-1].TransactionSignatures[i])
+	}
+
+	// Create initial (no-op) revision, transaction, and signature
+	noOpRevTxn := prepareInitRevisionTxn(oldRev, uc, fc, startHeight, ourSKNew, signedTxnSet[len(signedTxnSet)-1].FileContractID(0))
+	// Send transaction signatures and no-op revision signature to host.
+	err = modules.RPCWrite(conn, modules.RPCRenewContractRenterSignatures{
+		RenterNoOpRevisionSig: noOpRevTxn.RenterSignature(),
+		RenterTxnSigs:         addedSignatures,
+	})
+	if err != nil {
+		return errors.AddContext(err, "failed to send RPCRenewContractRenterSignatures to host")
+	}
+
+	// Read the host's signatures and add them to the transactions.
+	var hostSignatureResp modules.RPCRenewContractHostSignatures
+	err = modules.RPCRead(conn, &hostSignatureResp)
+	if err != nil {
+		return errors.AddContext(err, "failed to read RPCRenewContractHostSignatures from host")
+	}
+	for _, sig := range hostSignatureResp.ContractSignatures {
+		_ = txnBuilder.AddTransactionSignature(sig)
+	}
+	noOpRevTxn.TransactionSignatures = append(noOpRevTxn.TransactionSignatures, hostSignatureResp.NoOpRevisionSignature)
+
+	// Construct the final transaction.
+	txnSet, err = prepareTransactionSet(txnBuilder)
+	if err != nil {
+		return errors.AddContext(err, "failed to prepare txnSet with finalRev and new contract")
+	}
+
+	// Submit the txn set with the final revision and new contract to the blockchain.
+	err = tpool.AcceptTransactionSet(txnSet)
+	if err == modules.ErrDuplicateTransactionSet {
+		// As long as it made it into the transaction pool, we're good.
+		err = nil
+	}
+	if err != nil {
+		return errors.AddContext(err, "failed to submit txnSet for renewal to blockchain")
+	}
+
+	// Construct contract header.
+	header := contractHeader{
+		Transaction:     noOpRevTxn,
+		SecretKey:       ourSKNew,
+		StartHeight:     startHeight,
+		TotalCost:       funding,
+		ContractFee:     pt.ContractPrice,
+		TxnFee:          txnFee,
+		SiafundFee:      types.Tax(startHeight, fc.Payout),
+		StorageSpending: basePrice.Sub(pt.RenewContractCost),
+		UploadSpending:  pt.RenewContractCost,
+		Utility: modules.ContractUtility{
+			GoodForUpload: true,
+			GoodForRenew:  true,
+		},
+	}
+
+	// Get old roots
+	oldRoots, err := oldSC.merkleRoots.merkleRoots()
+	if err != nil {
+		return err
+	}
+
+	// Add contract to set.
+	_, err = cs.managedInsertContract(header, oldRoots)
+	if err != nil {
+		return err
+	}
+
+	// Commit changes to old contract.
+	if err := oldSC.managedCommitClearContract(walTxn, finalRevTxn, renewCost); err != nil {
+		return err
+	}
+	return nil
+}
+
+// createFileContractUnlockConds is a helper method to create unlock conditions
+// for forming and renewing a contract.
+func createFileContractUnlockConds(hpk types.SiaPublicKey, ourPK crypto.PublicKey) types.UnlockConditions {
+	return types.UnlockConditions{
+		PublicKeys: []types.SiaPublicKey{
+			types.Ed25519PublicKey(ourPK),
+			hpk,
+		},
+		SignaturesRequired: 2,
+	}
 }

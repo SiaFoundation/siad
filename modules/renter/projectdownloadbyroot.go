@@ -114,6 +114,11 @@ func (m *projectDownloadByRootManager) managedAverageProjectTime(length uint64) 
 // Unlike the exported version of this function, this function does not request
 // memory from the memory manager.
 func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64) ([]byte, error) {
+	// Check if the merkleroot is blocked
+	if r.staticSkynetBlocklist.IsHashBlocked(crypto.HashObject(root)) {
+		return nil, ErrSkylinkBlocked
+	}
+
 	// Create a context that dies when the function ends, this will cancel all
 	// of the worker jobs that get created by this function.
 	ctx, cancel := context.WithCancel(ctx)
@@ -311,7 +316,11 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 			jobRead: jobRead{
 				staticResponseChan: readSectorRespChan,
 				staticLength:       length,
-				jobGeneric:         newJobGeneric(ctx, bestWorker.staticJobReadQueue),
+
+				// set metadata
+				staticSector: root,
+
+				jobGeneric: newJobGeneric(ctx, bestWorker.staticJobReadQueue),
 			},
 			staticOffset: offset,
 			staticSector: root,
@@ -325,7 +334,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		// TODO: This worker is currently a single point of failure, if the
 		// worker takes longer to respond than the lookup timeout, the project
 		// will fail even though there are potentially more workers to be using.
-		// I think the best way to fix this is to swich to the multi-worker
+		// I think the best way to fix this is to switch to the multi-worker
 		// paradigm, where we use multiple workers to fetch a single sector
 		// root.
 		var readSectorResp *jobReadResponse
@@ -415,7 +424,7 @@ func checkPDBRGouging(pt modules.RPCPriceTable, allowance modules.Allowance) err
 	pb.AddHasSectorInstruction(crypto.Hash{})
 	programCost, _, _ := pb.Cost(true)
 
-	ulbw, dlbw := hasSectorJobExpectedBandwidth()
+	ulbw, dlbw := hasSectorJobExpectedBandwidth(1)
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulbw, dlbw)
 	costHasSectorJob := programCost.Add(bandwidthCost)
 

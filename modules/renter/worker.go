@@ -30,6 +30,10 @@ const (
 	// minRegistryVersion defines the minimum version that is required for a
 	// host to support the registry.
 	minRegistryVersion = "1.5.1"
+
+	// registryCacheSize is the cache size used by a single worker for the
+	// registry cache.
+	registryCacheSize = 1 << 20 // 1 MiB
 )
 
 const (
@@ -84,6 +88,7 @@ type (
 		staticJobHasSectorQueue        *jobHasSectorQueue
 		staticJobReadQueue             *jobReadQueue
 		staticJobReadRegistryQueue     *jobReadRegistryQueue
+		staticJobRenewQueue            *jobRenewQueue
 		staticJobUpdateRegistryQueue   *jobUpdateRegistryQueue
 		staticJobUploadSnapshotQueue   *jobUploadSnapshotQueue
 
@@ -110,6 +115,10 @@ type (
 		// related state. It is used to determine whether or not the worker's
 		// maintenance cooldown can be reset.
 		staticMaintenanceState *workerMaintenanceState
+
+		// staticRegistryCache caches information about the worker's host's
+		// registry entries.
+		staticRegistryCache *registryRevisionCache
 
 		// Utilities.
 		killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
@@ -184,6 +193,8 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 		staticAccount:       account,
 		staticBalanceTarget: balanceTarget,
 
+		staticRegistryCache: newRegistryCache(registryCacheSize),
+
 		// Initialize the read and write limits for the async worker tasks.
 		// These may be updated in real time as the worker collects metrics
 		// about itself.
@@ -201,6 +212,7 @@ func (r *Renter) newWorker(hostPubKey types.SiaPublicKey) (*worker, error) {
 	w.newPriceTable()
 	w.initJobHasSectorQueue()
 	w.initJobReadQueue()
+	w.initJobRenewQueue()
 	w.initJobDownloadSnapshotQueue()
 	w.initJobReadRegistryQueue()
 	w.initJobUpdateRegistryQueue()

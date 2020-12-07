@@ -24,6 +24,12 @@ type (
 		staticCtx context.Context
 
 		staticQueue workerJobQueue
+
+		// These fields are set when the job is added to the job queue and used
+		// after execution to log the delta between the estimated job time and
+		// the actual job time.
+		externJobStartTime         time.Time
+		externEstimatedJobDuration time.Duration
 	}
 
 	// jobGenericQueue is a generic queue for a job. It has a mutex, references
@@ -94,7 +100,7 @@ type (
 	}
 )
 
-// exMovingAvg is a helper to compute the next exponential moving average given
+// expMovingAvg is a helper to compute the next exponential moving average given
 // the last value and a new point of measurement.
 // https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average
 func expMovingAvg(oldEMA, newValue, decay float64) float64 {
@@ -132,17 +138,21 @@ func (j *jobGeneric) staticCanceled() bool {
 	}
 }
 
-// callAdd will add a job to the queue.
-func (jq *jobGenericQueue) callAdd(j workerJob) bool {
-	jq.mu.Lock()
-	defer jq.mu.Unlock()
-
+// add will add a job to the queue.
+func (jq *jobGenericQueue) add(j workerJob) bool {
 	if jq.killed || time.Now().Before(jq.cooldownUntil) {
 		return false
 	}
 	jq.jobs = append(jq.jobs, j)
 	jq.staticWorkerObj.staticWake()
 	return true
+}
+
+// callAdd will add a job to the queue.
+func (jq *jobGenericQueue) callAdd(j workerJob) bool {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	return jq.add(j)
 }
 
 // callDiscardAll will discard all jobs in the queue using the provided error.

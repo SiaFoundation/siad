@@ -23,7 +23,7 @@ type (
 	jobHasSector struct {
 		staticSectors []crypto.Hash
 
-		staticResponseChan chan *jobHasSectorResponse // Channel to send a response down
+		staticResponseChan chan *jobHasSectorResponse
 
 		*jobGeneric
 	}
@@ -51,8 +51,6 @@ type (
 	}
 )
 
-// TODO: Gouging
-
 // newJobHasSector is a helper method to create a new HasSector job.
 func (w *worker) newJobHasSector(ctx context.Context, responseChan chan *jobHasSectorResponse, roots ...crypto.Hash) *jobHasSector {
 	return &jobHasSector{
@@ -68,6 +66,8 @@ func (j *jobHasSector) callDiscard(err error) {
 	errLaunch := w.renter.tg.Launch(func() {
 		response := &jobHasSectorResponse{
 			staticErr: errors.Extend(err, ErrJobDiscarded),
+
+			staticWorker: w,
 		}
 		select {
 		case j.staticResponseChan <- response:
@@ -106,12 +106,11 @@ func (j *jobHasSector) callExecute() {
 	}
 
 	// Report success or failure to the queue.
-	if err == nil {
-		j.staticQueue.callReportSuccess()
-	} else {
+	if err != nil {
 		j.staticQueue.callReportFailure(err)
 		return
 	}
+	j.staticQueue.callReportSuccess()
 
 	// Job was a success, update the performance stats on the queue.
 	jq := j.staticQueue.(*jobHasSectorQueue)
@@ -125,11 +124,8 @@ func (j *jobHasSector) callExecute() {
 
 // callExpectedBandwidth returns the bandwidth that is expected to be consumed
 // by the job.
-//
-// TODO: These values are overly conservative, once we've got the protocol more
-// optimized we can bring these down.
 func (j *jobHasSector) callExpectedBandwidth() (ul, dl uint64) {
-	return hasSectorJobExpectedBandwidth()
+	return hasSectorJobExpectedBandwidth(len(j.staticSectors))
 }
 
 // managedHasSector returns whether or not the host has a sector with given root
@@ -154,14 +150,13 @@ func (j *jobHasSector) managedHasSector() ([]bool, error) {
 	var responses []programResponse
 	responses, _, err := w.managedExecuteProgram(program, programData, types.FileContractID{}, cost)
 	if err != nil {
-		return nil, errors.AddContext(err, "Unable to execute program")
+		return nil, errors.AddContext(err, "unable to execute program for has sector job")
 	}
 	for _, resp := range responses {
 		if resp.Error != nil {
 			return nil, errors.AddContext(resp.Error, "Output error")
 		}
 		hasSectors = append(hasSectors, resp.Output[0] == 1)
-		break
 	}
 	if len(responses) != len(program) {
 		return nil, errors.New("received invalid number of responses but no error")
@@ -169,12 +164,34 @@ func (j *jobHasSector) managedHasSector() ([]bool, error) {
 	return hasSectors, nil
 }
 
-// callAverageJobTime will return the recent performance of the worker
-// attempting to complete has sector jobs.
-func (jq *jobHasSectorQueue) callAverageJobTime() time.Duration {
+// callAddWithEstimate will add a job to the queue and return a timestamp for
+// when the job is estimated to complete. An error will be returned if the job
+// is not successfully queued.
+func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector) (time.Time, error) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
+	now := time.Now()
+	estimate := jq.expectedJobTime(uint64(len(j.staticSectors)))
+	j.externJobStartTime = now
+	j.externEstimatedJobDuration = estimate
+	if !jq.add(j) {
+		return time.Time{}, errors.New("unable to add job to queue")
+	}
+	return now.Add(estimate), nil
+}
+
+// expectedJobTime will return the amount of time that a job is expected to
+// take, given the current conditions of the queue.
+func (jq *jobHasSectorQueue) expectedJobTime(numSectors uint64) time.Duration {
 	return time.Duration(jq.weightedJobTime / jq.weightedJobsCompleted)
+}
+
+// callExpectedJobTime returns the expected amount of time that this job will
+// take to complete.
+func (jq *jobHasSectorQueue) callExpectedJobTime(numSectors uint64) time.Duration {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	return jq.expectedJobTime(numSectors)
 }
 
 // initJobHasSectorQueue will init the queue for the has sector jobs.
@@ -193,8 +210,21 @@ func (w *worker) initJobHasSectorQueue() {
 // hasSectorJobExpectedBandwidth is a helper function that returns the expected
 // bandwidth consumption of a has sector job. This helper function enables
 // getting at the expected bandwidth without having to instantiate a job.
-func hasSectorJobExpectedBandwidth() (ul, dl uint64) {
-	ul = 20e3
-	dl = 20e3
+func hasSectorJobExpectedBandwidth(numRoots int) (ul, dl uint64) {
+	// Roughly 40 roots can fit into a single frame. To be conservative, we use
+	// a value of 30.
+	//
+	// Roughly 150 responses can fit into a single frame. To be conservative, we
+	// use a value of 100.
+	uploadMult := numRoots / 30
+	downloadMult := numRoots / 100
+	// A base of 1500 is used for the packet size. On ipv4, it is technically
+	// smaller, but siamux is general and the packet size is the Ethernet MTU
+	// (1500 bytes) minus any protocol overheads. It's possible if the renter is
+	// connected directly over an interface to a host that there is no overhead,
+	// which means siamux could use the full 1500 bytes. So we use the most
+	// conservative value here as well.
+	ul = uint64(1500 * (1 + uploadMult))
+	dl = uint64(1500 * (1 + downloadMult))
 	return
 }

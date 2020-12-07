@@ -1,0 +1,1 @@
+- Fixed `uploadHead` panic related to streaming caused by bad condition check.
