@@ -75,6 +75,7 @@ package renter
 
 import (
 	"container/heap"
+	"fmt"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -173,8 +174,8 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 			w := pieceDownload.worker
 
 			// Ignore this worker if the worker is not currently equipped to
-			// perform async work.
-			if !w.managedAsyncReady() {
+			// perform async work, or if the read queue is on a cooldown.
+			if !w.managedAsyncReady() || w.staticJobReadQueue.cooldownUntil.After(time.Now()) {
 				continue
 			}
 
@@ -245,8 +246,8 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 	// best set, we just keep building out the working set. This is guaranteed
 	// to find the optimal best set while only using a linear amount of total
 	// computation.
-	bestSet := make([]*pdcInitialWorker, ec.MinPieces())
-	workingSet := make([]*pdcInitialWorker, ec.MinPieces())
+	bestSet := make([]*pdcInitialWorker, ec.NumPieces())
+	workingSet := make([]*pdcInitialWorker, ec.NumPieces())
 	var bestSetCost types.Currency
 	var workingSetCost types.Currency
 	var workingSetDuration time.Duration
@@ -416,7 +417,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 		isUnresolved = isUnresolved || worker.unresolved
 	}
 	if totalWorkers < ec.MinPieces() {
-		return nil, nil, errors.New("not enough workers to complete download")
+		return nil, nil, fmt.Errorf("not enough workers to complete download, %v < %v", totalWorkers, ec.MinPieces())
 	}
 	if isUnresolved {
 		return updateChan, nil, nil

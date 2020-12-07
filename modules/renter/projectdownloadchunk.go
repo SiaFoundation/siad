@@ -72,7 +72,7 @@ type projectDownloadChunk struct {
 	// workersRemaining is the number of unresolved workers at the time the
 	// available pieces were last updated. This enables counting the hopeful
 	// pieces without introducing a race condition in the finished check.
-	availablePieces        [][]pieceDownload
+	availablePieces        [][]*pieceDownload
 	workersConsideredIndex int
 	workersRemaining       int
 
@@ -119,7 +119,7 @@ func (pdc *projectDownloadChunk) unresolvedWorkers() ([]*pcwsUnresolvedWorker, <
 		// resolved worker has.
 		resp := ws.resolvedWorkers[i]
 		for _, pieceIndex := range resp.pieceIndices {
-			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], pieceDownload{
+			pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], &pieceDownload{
 				worker: resp.worker,
 			})
 		}

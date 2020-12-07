@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TODO: Better handling of time.After
@@ -144,9 +145,14 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 			continue
 		}
 
-		// Determine whether any worker for thie piece is better than the
+		// Determine whether any worker for the piece is better than the
 		// current baw.
 		for _, pieceDownload := range activePiece {
+			// Skip over failed pieces or pieces that have already launched.
+			if pieceDownload.failed || pieceDownload.launched {
+				continue
+			}
+
 			// Determine if this worker is better than any existing worker.
 			workerAdjustedDuration := pdc.adjustedReadDuration(pieceDownload.worker)
 			if workerAdjustedDuration < bawAdjustedDuration {
@@ -186,8 +192,23 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 // will be returned which indicates when the worker flips over to being late and
 // therefore another worker should be selected.
 func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-chan struct{}, <-chan time.Time) {
+	// delayMS is a helper function that implements a very rudimentary
+	// exponential backoff that prevents the following loop from spamming the
+	// read queue if it is on a cooldown.
+	delayMS := func(retry int) time.Duration {
+		base := int(math.Pow(2, float64(retry)))
+		base += fastrand.Intn(1000) // jitter
+
+		maxDelay := 30000 // 30s
+		if base > maxDelay {
+			return time.Duration(maxDelay) * time.Millisecond
+		}
+		return time.Duration(base) * time.Millisecond
+	}
+
 	// Loop until either a launch succeeds or until the best worker is not
 	// found.
+	retry := 0
 	for {
 		worker, pieceIndex, wakeChan, workerLateChan := pdc.findBestOverdriveWorker()
 		if worker == nil {
@@ -197,7 +218,16 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 		// If there was a worker found, launch the worker.
 		expectedReturnTime, success := pdc.launchWorker(worker, pieceIndex)
 		if !success {
-			continue
+			// If we were unable to successfully launch the worker, we retry
+			// after a certain delay. This to prevent spamming the readqueue
+			// with jobs in case the queue is on a cooldown.
+			select {
+			case <-pdc.workerSet.staticRenter.tg.StopChan():
+				return false, time.Time{}, wakeChan, workerLateChan
+			case <-time.After(delayMS(retry)):
+				retry++
+				continue
+			}
 		}
 		return true, expectedReturnTime, nil, nil
 	}

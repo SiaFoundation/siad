@@ -2,7 +2,6 @@ package renter
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -136,32 +135,6 @@ func testBasic(t *testing.T, wt *workerTester) {
 // testMultiple verifies the PCWS for a multiple sector lookup on multiple
 // hosts.
 func testMultiple(t *testing.T, wt *workerTester) {
-	// create a helper function that adds a host
-	numHosts := 0
-	addHost := func() modules.Host {
-		testdir := filepath.Join(wt.rt.dir, fmt.Sprintf("host%d", numHosts))
-		host, err := wt.rt.addCustomHost(testdir, modules.ProdDependencies)
-		if err != nil {
-			t.Fatal(err)
-		}
-		numHosts++
-		return host
-	}
-
-	// create a helper function that adds a random sector on a given host
-	addSector := func(h modules.Host) crypto.Hash {
-		// create a random sector
-		sectorData := fastrand.Bytes(int(modules.SectorSize))
-		sectorRoot := crypto.MerkleRoot(sectorData)
-
-		// add the sector to the host
-		err := h.AddSector(sectorRoot, sectorData)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return sectorRoot
-	}
-
 	// create a helper function that waits for an update
 	waitForUpdate := func(ws *pcwsWorkerState) {
 		ws.mu.Lock()
@@ -187,33 +160,13 @@ func testMultiple(t *testing.T, wt *workerTester) {
 		return true
 	}
 
-	h1 := addHost()
-	h2 := addHost()
-	h3 := addHost()
-
-	h1PK := h1.PublicKey().String()
-	h2PK := h2.PublicKey().String()
-	h3PK := h3.PublicKey().String()
-
-	r1 := addSector(h1)
-	r2 := addSector(h1)
-	r3 := addSector(h2)
-	r4 := addSector(h3)
-	r5 := crypto.MerkleRoot(fastrand.Bytes(int(modules.SectorSize)))
-	roots := []crypto.Hash{r1, r2, r3, r4, r5}
-
-	// create an EC and a passhtrough cipher key
-	ec, err := modules.NewRSCode(1, 4)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ptck, err := crypto.NewSiaKey(crypto.TypePlain, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// add a couple of hosts
+	h1 := addHost(wt, "host1")
+	h2 := addHost(wt, "host2")
+	h3 := addHost(wt, "host3")
 
 	// wait until the renter has a worker for all hosts
-	err = build.Retry(600, 100*time.Millisecond, func() error {
+	err := build.Retry(600, 100*time.Millisecond, func() error {
 		ws, err := wt.renter.WorkerPoolStatus()
 		if err != nil {
 			t.Fatal(err)
@@ -228,6 +181,24 @@ func testMultiple(t *testing.T, wt *workerTester) {
 		}
 		return nil
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// add random sectors to all hosts
+	r1 := addSector(h1)
+	r2 := addSector(h1)
+	r3 := addSector(h2)
+	r4 := addSector(h3)
+	r5 := crypto.MerkleRoot(fastrand.Bytes(int(modules.SectorSize)))
+	roots := []crypto.Hash{r1, r2, r3, r4, r5}
+
+	// create an EC and a passhtrough cipher key
+	ec, err := modules.NewRSCode(1, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ptck, err := crypto.NewSiaKey(crypto.TypePlain, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,13 +230,13 @@ func testMultiple(t *testing.T, wt *workerTester) {
 		var expected []uint64
 		var hostname string
 		switch rw.worker.staticHostPubKeyStr {
-		case h1PK:
+		case h1.PublicKey().String():
 			expected = []uint64{0, 1}
 			hostname = "host1"
-		case h2PK:
+		case h2.PublicKey().String():
 			expected = []uint64{2}
 			hostname = "host2"
-		case h3PK:
+		case h3.PublicKey().String():
 			expected = []uint64{3}
 			hostname = "host3"
 		default:
@@ -429,4 +400,28 @@ func testGouging(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+}
+
+// addHost is a helper function that adds a host to the given worker tester
+func addHost(wt *workerTester, name string) modules.Host {
+	testdir := filepath.Join(wt.rt.dir, name)
+	host, err := wt.rt.addCustomHost(testdir, modules.ProdDependencies)
+	if err != nil {
+		panic(err)
+	}
+	return host
+}
+
+// addSector is a helper function that adds a random sector on a given host
+func addSector(h modules.Host) crypto.Hash {
+	// create a random sector
+	sectorData := fastrand.Bytes(int(modules.SectorSize))
+	sectorRoot := crypto.MerkleRoot(sectorData)
+
+	// add the sector to the host
+	err := h.AddSector(sectorRoot, sectorData)
+	if err != nil {
+		panic(err)
+	}
+	return sectorRoot
 }
