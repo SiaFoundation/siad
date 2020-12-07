@@ -854,7 +854,7 @@ func (p *renterHostPair) managedAccountBalance(payByFC bool, fundAmt types.Curre
 
 // managedBeginSubscription begins a subscription on a new stream and returns
 // it.
-func (p *renterHostPair) managedBeginSubscription(payByFC bool, fundAmt types.Currency, fundAcc modules.AccountID, fcid types.FileContractID) (_ siamux.Stream, err error) {
+func (p *renterHostPair) managedBeginSubscription(payByFC bool, fundAmt types.Currency, fundAcc modules.AccountID) (_ siamux.Stream, err error) {
 	stream := p.managedNewStream()
 	defer func() {
 		if err != nil {
@@ -966,7 +966,7 @@ func (p *renterHostPair) AccountBalance(payByFC bool) (types.Currency, error) {
 // BeginSubscription starts the subscription loop and returns the stream.
 func (p *renterHostPair) BeginSubscription() (siamux.Stream, error) {
 	funding := p.pt.SubscriptionBaseCost.Add(modules.MDMReadRegistryCost(p.pt).Mul64(modules.InitialNumNotifications))
-	return p.managedBeginSubscription(false, funding, p.staticAccountID, p.staticFCID)
+	return p.managedBeginSubscription(false, funding, p.staticAccountID)
 }
 
 // LatestRevision performs a RPCLatestRevision to get the latest revision for

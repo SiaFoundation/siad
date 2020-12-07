@@ -121,7 +121,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 		t.Fatal("wrong number of subscription infos", len(subInfos), 1)
 	}
 	var info *subscriptionInfo
-	for subInfo := range subInfos {
+	for _, subInfo := range subInfos {
 		info = subInfo
 		break
 	}

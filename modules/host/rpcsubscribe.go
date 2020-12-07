@@ -8,6 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 )
 
@@ -15,12 +16,19 @@ type (
 	// registrySubscriptions is a helper type that holds all current
 	// subscriptions.
 	registrySubscriptions struct {
-		mu            sync.Mutex
-		subscriptions map[subscriptionID]map[*subscriptionInfo]struct{}
+		mu sync.Mutex
+
+		// subscriptions is a mapping of subscriptions to subscription infos.
+		// It's a map of maps since the same entry can be subscribed to by
+		// multiple peers and we want to be able to look up subscriptions in
+		// constant time.
+		subscriptions map[subscriptionID]map[subscriptionInfoID]*subscriptionInfo
 	}
 	// subscriptionInfo holds the information required to respond to a
 	// subscriber and to correctly charge it.
 	subscriptionInfo struct {
+		id                subscriptionInfoID
+		minExpectedRevNum uint64
 		notificationsLeft uint64
 		mu                sync.Mutex
 
@@ -29,8 +37,19 @@ type (
 
 	// subscriptionID is a hash derived from the public key and tweak that a
 	// renter would like to subscribe to.
-	subscriptionID crypto.Hash
+	subscriptionID     crypto.Hash
+	subscriptionInfoID types.Specifier
 )
+
+var (
+	// ErrSubscriptionRequestLimitReached is returned if too many subscribe or
+	// unsubscribe requests are sent at once.
+	ErrSubscriptionRequestLimitReached = errors.New("number of requests exceeds limit")
+)
+
+// maxSubscriptionRequests is the maximum number of subscription requests the
+// host will accept at once.
+const maxSubscriptionRequests = 10000
 
 // createSubscriptionID is a helper to derive a subscription id.
 func createSubscriptionID(pubKey types.SiaPublicKey, tweak crypto.Hash) subscriptionID {
@@ -40,24 +59,36 @@ func createSubscriptionID(pubKey types.SiaPublicKey, tweak crypto.Hash) subscrip
 // newRegistrySubscriptions creates a new registrySubscriptions instance.
 func newRegistrySubscriptions() *registrySubscriptions {
 	return &registrySubscriptions{
-		subscriptions: make(map[subscriptionID]map[*subscriptionInfo]struct{}),
+		subscriptions: make(map[subscriptionID]map[subscriptionInfoID]*subscriptionInfo),
 	}
 }
 
+// subscriptionMemoryCost is the cost of storing the given number of
+// subscriptions in memory.
 func subscriptionMemoryCost(pt *modules.RPCPriceTable, newSubscriptions uint64) types.Currency {
 	memory := newSubscriptions * modules.SubscriptionEntrySize
 	return pt.SubscriptionMemoryCost.Mul64(memory)
 }
 
-// AddSubscription adds one of multiple subscription.
+// newSubscriptionInfo creates a new subscriptionInfo object.
+func newSubscriptionInfo(stream siamux.Stream) *subscriptionInfo {
+	info := &subscriptionInfo{
+		staticStream:      stream,
+		notificationsLeft: modules.InitialNumNotifications,
+	}
+	fastrand.Read(info.id[:])
+	return info
+}
+
+// AddSubscription adds one or multiple subscriptions.
 func (rs *registrySubscriptions) AddSubscriptions(info *subscriptionInfo, entryIDs ...subscriptionID) {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 	for _, entryID := range entryIDs {
 		if _, exists := rs.subscriptions[entryID]; !exists {
-			rs.subscriptions[entryID] = make(map[*subscriptionInfo]struct{})
+			rs.subscriptions[entryID] = make(map[subscriptionInfoID]*subscriptionInfo)
 		}
-		rs.subscriptions[entryID][info] = struct{}{}
+		rs.subscriptions[entryID][info.id] = info
 	}
 }
 
@@ -70,7 +101,7 @@ func (rs *registrySubscriptions) RemoveSubscriptions(info *subscriptionInfo, ent
 		if !found {
 			continue
 		}
-		delete(infos, info)
+		delete(infos, info.id)
 
 		if len(infos) == 0 {
 			delete(rs.subscriptions, entryID)
@@ -87,6 +118,11 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 	err := modules.RPCRead(stream, &numSubs)
 	if err != nil {
 		return types.ZeroCurrency, errors.New("failed to read number of requests to expect")
+	}
+
+	// Check that this number isn't exceeding a safe limit.
+	if numSubs > maxSubscriptionRequests {
+		return types.ZeroCurrency, ErrSubscriptionRequestLimitReached
 	}
 
 	// Check payment first.
@@ -113,7 +149,7 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 	return refund, nil
 }
 
-// managedHandleSubscribeRequest handles a request to unsubscribe.
+// managedHandleUnsubscribeRequest handles a request to unsubscribe.
 func (h *Host) managedHandleUnsubscribeRequest(info *subscriptionInfo, pt *modules.RPCPriceTable, pd modules.PaymentDetails) (types.Currency, error) {
 	stream := info.staticStream
 
@@ -122,6 +158,11 @@ func (h *Host) managedHandleUnsubscribeRequest(info *subscriptionInfo, pt *modul
 	err := modules.RPCRead(stream, &numUnsubs)
 	if err != nil {
 		return types.ZeroCurrency, errors.New("failed to read number of requests to expect")
+	}
+
+	// Check that this number isn't exceeding a safe limit.
+	if numUnsubs > maxSubscriptionRequests {
+		return types.ZeroCurrency, ErrSubscriptionRequestLimitReached
 	}
 
 	// Check payment first.
@@ -208,11 +249,20 @@ func (h *Host) threadedNotifySubscribers(pubKey types.SiaPublicKey, rv modules.S
 	if !found {
 		return
 	}
-	for info := range infos {
+	for _, info := range infos {
 		go func(info *subscriptionInfo) {
 			// Lock the info while notifying the subscriber.
 			info.mu.Lock()
 			defer info.mu.Unlock()
+
+			// Check if we have already updated the subscriber with a higher
+			// revision number for that entry than the minExpectedRevNum. This
+			// might happen due to a race and should be avoided. Otherwise the
+			// subscriber might think that we are trying to cheat them.
+			if rv.Revision < info.minExpectedRevNum {
+				return
+			}
+			info.minExpectedRevNum = rv.Revision + 1
 
 			// No notification if caller ran out of prepaid notifications.
 			if info.notificationsLeft == 0 {
@@ -262,7 +312,7 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (err error) {
 	}
 
 	// Set the stream deadline.
-	deadline := time.Now().Add(modules.SubscriptionTimeExtension)
+	deadline := time.Now().Add(modules.SubscriptionPeriod)
 	err = stream.SetReadDeadline(deadline)
 	if err != nil {
 		return errors.AddContext(err, "failed to set intitial subscription deadline")
@@ -270,10 +320,7 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (err error) {
 
 	// Keep count of the unique subscriptions to be able to charge accordingly.
 	subscriptions := make(map[subscriptionID]struct{})
-	info := &subscriptionInfo{
-		staticStream:      stream,
-		notificationsLeft: modules.InitialNumNotifications,
-	}
+	info := newSubscriptionInfo(stream)
 
 	// Clean up the subscriptions at the end.
 	defer func() {

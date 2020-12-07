@@ -21,10 +21,6 @@ const (
 	// InitialNumNotifications is the initial number of notifications a caller
 	// has to pay for when opening the subsription loop with a host.
 	InitialNumNotifications = 100
-
-	// SubscriptionTimeExtension is the time for which a subscription lasts
-	// unless extended. It can be extended SubscriptionTimeExtension at a time.
-	SubscriptionTimeExtension = 5 * time.Minute
 )
 
 // Subcription request related enum.
