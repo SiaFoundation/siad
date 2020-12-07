@@ -428,6 +428,10 @@ func (c *SafeContract) applySetHeader(h contractHeader) error {
 		// read the existing header on disk, to make sure we aren't overwriting
 		// it with an older revision
 		var oldHeader contractHeader
+		_, err := c.staticHeaderFile.Seek(0, io.SeekStart)
+		if err != nil {
+			build.Critical(err)
+		}
 		headerBytes, err := ioutil.ReadAll(c.staticHeaderFile)
 		if err == nil {
 			if err := encoding.Unmarshal(headerBytes, &oldHeader); err == nil {
