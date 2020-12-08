@@ -20,7 +20,7 @@ func TestProjectDownloadChunkFinalize(t *testing.T) {
 	sectorRoot := crypto.MerkleRoot(sectorData)
 
 	// create an EC and a passhtrough cipher key
-	ec := modules.NewRSCodeDefault()
+	ec := modules.NewRSSubCodeDefault()
 	ck, err := crypto.NewSiaKey(crypto.TypePlain, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -43,18 +43,16 @@ func TestProjectDownloadChunkFinalize(t *testing.T) {
 		staticRenter: new(Renter),
 	}
 
-	// select a random number of segments to read at random offset
-	numSegments := fastrand.Uint64n(5) + 1
-	totalSegments := modules.SectorSize / crypto.SegmentSize
-	offset := fastrand.Uint64n(totalSegments-numSegments+1) * crypto.SegmentSize
-	length := numSegments * crypto.SegmentSize
+	// download a random amount of data at random offset
+	length := (fastrand.Uint64n(5) + 1) * crypto.SegmentSize
+	offset := fastrand.Uint64n(modules.SectorSize - length)
 	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
 
 	// create PDC manually
 	responseChan := make(chan *downloadResponse, 1)
 	pdc := &projectDownloadChunk{
-		chunkOffset: offset,
-		chunkLength: length,
+		dataOffset: offset,
+		dataLength: length,
 
 		pieceOffset: pieceOffset,
 		pieceLength: pieceLength,
@@ -74,8 +72,8 @@ func TestProjectDownloadChunkFinalize(t *testing.T) {
 		t.Fatal("unexpected error", downloadResponse.err)
 	}
 	if !bytes.Equal(downloadResponse.data, sectorData[offset:offset+length]) {
-		t.Log(downloadResponse.data)
-		t.Log(sectorData[offset : offset+length])
+		t.Log(downloadResponse.data, "length:", len(downloadResponse.data))
+		t.Log(sectorData[offset:offset+length], "length:", len(sectorData[offset:offset+length]))
 		t.Fatal("unexpected data")
 	}
 }

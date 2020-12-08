@@ -51,10 +51,10 @@ type pieceDownload struct {
 // orchestrates the download, which means that it does not need to be thread
 // safe.
 type projectDownloadChunk struct {
-	// Parameters for downloading within the chunk.
-	chunkLength uint64
-	chunkOffset uint64
-	pricePerMS  types.Currency
+	// Parameters for downloading a subset of the data within the chunk.
+	dataLength uint64
+	dataOffset uint64
+	pricePerMS types.Currency
 
 	// Values derived from the chunk download parameters. The offset and length
 	// specify the offset and length that will be sent to the host, which must
@@ -239,12 +239,8 @@ func (pdc *projectDownloadChunk) finalize() {
 	data := buf.Bytes()
 
 	// The full set of data is recovered, truncate it down to just the pieces of
-	// data requested by the user and return. We have downloaded a subset of the
-	// chunk as the data, and now we must determine which subset of the data was
-	// actually requested by the user.
-	chunkStartWithinData := pdc.chunkOffset - chunkDLOffset
-	chunkEndWithinData := chunkStartWithinData + pdc.chunkLength
-	data = data[chunkStartWithinData:chunkEndWithinData]
+	// data requested by the user and return.
+	data = data[pdc.dataOffset : pdc.dataOffset+pdc.dataLength]
 
 	// Return the data to the caller.
 	dr := &downloadResponse{
