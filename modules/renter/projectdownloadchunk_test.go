@@ -3,6 +3,7 @@ package renter
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -111,7 +112,7 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 
 	// mock unresolved state with hope of successful download
 	pdc.availablePieces = make([][]pieceDownload, 0)
-	pdc.workersRemaining = 4
+	pdc.unresolvedWorkersRemaining = 4
 	finished, err := pdc.finished()
 	if err != nil {
 		t.Fatal("unexpected error", err)
@@ -121,7 +122,7 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	}
 
 	// mock one completed piece - still unresolved and hopeful
-	pdc.workersRemaining = 3
+	pdc.unresolvedWorkersRemaining = 3
 	pdc.availablePieces = append(pdc.availablePieces, []pieceDownload{{completed: true}})
 	finished, err = pdc.finished()
 	if err != nil {
@@ -132,7 +133,7 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	}
 
 	// mock resolved state - not hopeful and not finished
-	pdc.workersRemaining = 0
+	pdc.unresolvedWorkersRemaining = 0
 	finished, err = pdc.finished()
 	if err != errNotEnoughPieces {
 		t.Fatal("unexpected error", err)
@@ -154,8 +155,10 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	}
 
 	// mock two failures -> hope gone again
-	pdc.availablePieces[1][0].failed = true
-	pdc.availablePieces[2][0].failed = true
+	pdc.availablePieces[1][0].completed = true
+	pdc.availablePieces[1][0].downloadErr = errors.New("failed")
+	pdc.availablePieces[2][0].completed = true
+	pdc.availablePieces[2][0].downloadErr = errors.New("failed")
 	finished, err = pdc.finished()
 	if err != errNotEnoughPieces {
 		t.Fatal("unexpected error", err)
@@ -165,7 +168,7 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	}
 
 	// undo one failure and add 2 completed -> finished
-	pdc.availablePieces[2][0].failed = false
+	pdc.availablePieces[2][0].downloadErr = nil
 	pdc.availablePieces[2][0].completed = true
 	pdc.availablePieces[3][0].completed = true
 	finished, err = pdc.finished()
