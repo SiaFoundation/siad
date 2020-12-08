@@ -51,8 +51,8 @@ func TestProjectDownloadChunkFinalize(t *testing.T) {
 	// create PDC manually
 	responseChan := make(chan *downloadResponse, 1)
 	pdc := &projectDownloadChunk{
-		dataOffset: offset,
-		dataLength: length,
+		offsetInChunk: offset,
+		lengthInChunk: length,
 
 		pieceOffset: pieceOffset,
 		pieceLength: pieceLength,

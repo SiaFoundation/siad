@@ -52,9 +52,9 @@ type pieceDownload struct {
 // safe.
 type projectDownloadChunk struct {
 	// Parameters for downloading a subset of the data within the chunk.
-	dataLength uint64
-	dataOffset uint64
-	pricePerMS types.Currency
+	lengthInChunk uint64
+	offsetInChunk uint64
+	pricePerMS    types.Currency
 
 	// Values derived from the chunk download parameters. The offset and length
 	// specify the offset and length that will be sent to the host, which must
@@ -240,7 +240,7 @@ func (pdc *projectDownloadChunk) finalize() {
 
 	// The full set of data is recovered, truncate it down to just the pieces of
 	// data requested by the user and return.
-	data = data[pdc.dataOffset : pdc.dataOffset+pdc.dataLength]
+	data = data[pdc.offsetInChunk : pdc.offsetInChunk+pdc.lengthInChunk]
 
 	// Return the data to the caller.
 	dr := &downloadResponse{
