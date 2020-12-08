@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 
@@ -305,6 +306,12 @@ func (pdc *projectDownloadChunk) finished() (bool, error) {
 // download. A bool is returned which indicates whether or not the launch was
 // successful.
 func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64) (time.Time, bool) {
+	// Sanity check that the pieceOffset and pieceLength are segment aligned.
+	if pdc.pieceOffset%crypto.SegmentSize != 0 ||
+		pdc.pieceLength%crypto.SegmentSize != 0 {
+		build.Critical("pieceOffset or pieceLength is not segment aligned")
+	}
+
 	// Create the read sector job for the worker.
 	//
 	// TODO: Ideally we pass the context here so the job is cancellable
