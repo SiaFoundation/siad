@@ -91,9 +91,12 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 
 	// subsribe to the previously created entry.
 	pt := rhp.managedPriceTable()
-	err = rhp.SubcribeToRV(stream, pt, spk, tweak)
+	rvInitial, err := rhp.SubcribeToRV(stream, pt, spk, tweak)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(rv, rvInitial) {
+		t.Fatal("initial value doesn't match")
 	}
 
 	// Make sure that the host got the subscription.
@@ -215,7 +218,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	// 4. add the InitialNumNotifications-1 unused notifications as a refund
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		expectedBalance := expectedBalance.Sub(pt.SubscriptionBaseCost.Add(modules.MDMReadRegistryCost(pt).Mul64(modules.InitialNumNotifications)))
-		expectedBalance = expectedBalance.Sub(pt.SubscriptionBaseCost.Add(subscriptionMemoryCost(pt, 1)))
+		expectedBalance = expectedBalance.Sub(pt.SubscriptionBaseCost.Add(subscriptionMemoryCost(pt, 1))).Sub(modules.MDMReadRegistryCost(pt))
 		expectedBalance = expectedBalance.Sub(pt.SubscriptionBaseCost)
 		expectedBalance = expectedBalance.Add(modules.MDMReadRegistryCost(pt).Mul64(modules.InitialNumNotifications - 1))
 		if !host.staticAccountManager.callAccountBalance(rhp.staticAccountID).Equals(expectedBalance) {

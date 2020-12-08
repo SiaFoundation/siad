@@ -128,7 +128,8 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 	// Check payment first.
 	requestCost := pt.SubscriptionBaseCost.Mul64(numSubs)
 	memoryCost := subscriptionMemoryCost(pt, numSubs)
-	cost := requestCost.Add(memoryCost)
+	fetchCost := modules.MDMReadRegistryCost(pt).Mul64(numSubs)
+	cost := requestCost.Add(memoryCost).Add(fetchCost)
 	if pd.Amount().Cmp(cost) < 0 {
 		return types.ZeroCurrency, modules.ErrInsufficientPaymentForRPC
 	}
@@ -136,6 +137,7 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 
 	// Read the requests and apply them.
 	ids := make([]subscriptionID, 0, numSubs)
+	rvs := make([]modules.SignedRegistryValue, 0, numSubs)
 	for i := uint64(0); i < numSubs; i++ {
 		var rsr modules.RPCRegistrySubscriptionRequest
 		err = modules.RPCRead(stream, &rsr)
@@ -143,6 +145,19 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 			return refund, errors.AddContext(err, "failed to read subscription request")
 		}
 		ids = append(ids, createSubscriptionID(rsr.PubKey, rsr.Tweak))
+		if rv, found := h.staticRegistry.Get(rsr.PubKey, rsr.Tweak); found {
+			rvs = append(rvs, rv)
+		}
+	}
+	// Notify the subscriber of the initial values of newly subscribed entries.
+	for _, rv := range rvs {
+		err := modules.RPCWrite(stream, modules.RPCRegistrySubscriptionNotification{
+			Type:  modules.SubscriptionResponseRegistryValue,
+			Entry: rv,
+		})
+		if err != nil {
+			return refund, errors.AddContext(err, "failed to respond with initial value")
+		}
 	}
 	// Add the subscriptions.
 	h.staticRegistrySubscriptions.AddSubscriptions(info, ids...)

@@ -976,34 +976,45 @@ func (p *renterHostPair) LatestRevision(payByFC bool) (types.FileContractRevisio
 }
 
 // SubscribeToRV subscribes to the given publickey/tweak pair.
-func (p *renterHostPair) SubcribeToRV(stream siamux.Stream, pt *modules.RPCPriceTable, pubkey types.SiaPublicKey, tweak crypto.Hash) error {
+func (p *renterHostPair) SubcribeToRV(stream siamux.Stream, pt *modules.RPCPriceTable, pubkey types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
 	// Send the type of the request.
 	err := modules.RPCWrite(stream, modules.SubscriptionRequestSubscribe)
 	if err != nil {
-		return err
+		return modules.SignedRegistryValue{}, err
 	}
 	// Send the price table id.
 	err = modules.RPCWrite(stream, pt.UID)
 	if err != nil {
-		return err
+		return modules.SignedRegistryValue{}, err
 	}
 	// Pay for the subscription.
 	memoryCost := subscriptionMemoryCost(pt, 1)
-	cost := pt.SubscriptionBaseCost.Add(memoryCost)
+	fetchCost := modules.MDMReadRegistryCost(pt)
+	cost := pt.SubscriptionBaseCost.Add(memoryCost).Add(fetchCost)
 	err = p.managedPayByEphemeralAccount(stream, cost)
 	if err != nil {
-		return err
+		return modules.SignedRegistryValue{}, err
 	}
 	// Write the number of requests we are about to send.
 	err = modules.RPCWrite(stream, uint64(1))
 	if err != nil {
-		return err
+		return modules.SignedRegistryValue{}, err
 	}
 	// Send the request.
-	return modules.RPCWrite(stream, modules.RPCRegistrySubscriptionRequest{
+	err = modules.RPCWrite(stream, modules.RPCRegistrySubscriptionRequest{
 		PubKey: pubkey,
 		Tweak:  tweak,
 	})
+	if err != nil {
+		return modules.SignedRegistryValue{}, err
+	}
+	// Read response.
+	var notification modules.RPCRegistrySubscriptionNotification
+	err = modules.RPCRead(stream, &notification)
+	if err != nil {
+		return modules.SignedRegistryValue{}, err
+	}
+	return notification.Entry, notification.Entry.Verify(pubkey.ToPublicKey())
 }
 
 // UnsubscribeFromRV unsubscribes from the given publickey/tweak pair.
