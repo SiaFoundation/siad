@@ -549,9 +549,9 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 
 	// Build the full pdc.
 	pdc := &projectDownloadChunk{
-		chunkOffset: offset,
-		chunkLength: length,
-		pricePerMS:  pricePerMS,
+		offsetInChunk: offset,
+		lengthInChunk: length,
+		pricePerMS:    pricePerMS,
 
 		pieceOffset: pieceOffset,
 		pieceLength: pieceLength,

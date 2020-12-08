@@ -147,13 +147,6 @@ func (w *worker) externTryLaunchSerialJob() {
 // externLaunchAsyncJob accepts a function to retrieve a job and then uses that
 // to retrieve a job and launch it. The bandwidth consumption will be updated as
 // the job starts and finishes.
-//
-// TODO: Subtracting like this means that large amounts of data outstanding get
-// subtracted all at once, instead of progressively. Subtracting progressively
-// is a bit trickier though because the host may actually send more or less data
-// than expected (the amounts per job are estimates), and when everything is
-// done we would need to ensure that exactly the amount estimated was removed
-// from the counter.
 func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 	// Add the resource requirements to the worker loop state. Also add this
 	// thread to the number of jobs running.

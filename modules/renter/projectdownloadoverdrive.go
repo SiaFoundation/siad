@@ -149,7 +149,7 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 		// current baw.
 		for _, pieceDownload := range activePiece {
 			// Skip over failed pieces or pieces that have already launched.
-			if pieceDownload.failed || pieceDownload.launched {
+			if pieceDownload.downloadErr != nil || pieceDownload.launched {
 				continue
 			}
 
@@ -245,7 +245,7 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 	for _, piece := range pdc.availablePieces {
 		launchedWithoutFail := false
 		for _, pieceDownload := range piece {
-			if pieceDownload.launched && !pieceDownload.failed {
+			if pieceDownload.launched && pieceDownload.downloadErr == nil {
 				launchedWithoutFail = true
 				if !pieceDownload.completed && latestReturn.Before(pieceDownload.expectedCompleteTime) {
 					latestReturn = pieceDownload.expectedCompleteTime

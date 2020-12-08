@@ -3,6 +3,7 @@ package renter
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -21,7 +22,7 @@ func TestProjectDownloadChunkFinalize(t *testing.T) {
 	sectorRoot := crypto.MerkleRoot(sectorData)
 
 	// create an EC and a passhtrough cipher key
-	ec := modules.NewRSCodeDefault()
+	ec := modules.NewRSSubCodeDefault()
 	ck, err := crypto.NewSiaKey(crypto.TypePlain, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -44,18 +45,16 @@ func TestProjectDownloadChunkFinalize(t *testing.T) {
 		staticRenter: new(Renter),
 	}
 
-	// select a random number of segments to read at random offset
-	numSegments := fastrand.Uint64n(5) + 1
-	totalSegments := modules.SectorSize / crypto.SegmentSize
-	offset := fastrand.Uint64n(totalSegments-numSegments+1) * crypto.SegmentSize
-	length := numSegments * crypto.SegmentSize
+	// download a random amount of data at random offset
+	length := (fastrand.Uint64n(5) + 1) * crypto.SegmentSize
+	offset := fastrand.Uint64n(modules.SectorSize - length)
 	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
 
 	// create PDC manually
 	responseChan := make(chan *downloadResponse, 1)
 	pdc := &projectDownloadChunk{
-		chunkOffset: offset,
-		chunkLength: length,
+		offsetInChunk: offset,
+		lengthInChunk: length,
 
 		pieceOffset: pieceOffset,
 		pieceLength: pieceLength,
@@ -75,8 +74,8 @@ func TestProjectDownloadChunkFinalize(t *testing.T) {
 		t.Fatal("unexpected error", downloadResponse.err)
 	}
 	if !bytes.Equal(downloadResponse.data, sectorData[offset:offset+length]) {
-		t.Log(downloadResponse.data)
-		t.Log(sectorData[offset : offset+length])
+		t.Log(downloadResponse.data, "length:", len(downloadResponse.data))
+		t.Log(sectorData[offset:offset+length], "length:", len(sectorData[offset:offset+length]))
 		t.Fatal("unexpected data")
 	}
 }
@@ -113,7 +112,7 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 
 	// mock unresolved state with hope of successful download
 	pdc.availablePieces = make([][]*pieceDownload, 0)
-	pdc.workersRemaining = 4
+	pdc.unresolvedWorkersRemaining = 4
 	finished, err := pdc.finished()
 	if err != nil {
 		t.Fatal("unexpected error", err)
@@ -123,7 +122,7 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	}
 
 	// mock one completed piece - still unresolved and hopeful
-	pdc.workersRemaining = 3
+	pdc.unresolvedWorkersRemaining = 3
 	pdc.availablePieces = append(pdc.availablePieces, []*pieceDownload{{completed: true}})
 	finished, err = pdc.finished()
 	if err != nil {
@@ -134,7 +133,7 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	}
 
 	// mock resolved state - not hopeful and not finished
-	pdc.workersRemaining = 0
+	pdc.unresolvedWorkersRemaining = 0
 	finished, err = pdc.finished()
 	if err != errNotEnoughPieces {
 		t.Fatal("unexpected error", err)
@@ -156,8 +155,10 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	}
 
 	// mock two failures -> hope gone again
-	pdc.availablePieces[1][0].failed = true
-	pdc.availablePieces[2][0].failed = true
+	pdc.availablePieces[1][0].completed = true
+	pdc.availablePieces[1][0].downloadErr = errors.New("failed")
+	pdc.availablePieces[2][0].completed = true
+	pdc.availablePieces[2][0].downloadErr = errors.New("failed")
 	finished, err = pdc.finished()
 	if err != errNotEnoughPieces {
 		t.Fatal("unexpected error", err)
@@ -167,7 +168,7 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	}
 
 	// undo one failure and add 2 completed -> finished
-	pdc.availablePieces[2][0].failed = false
+	pdc.availablePieces[2][0].downloadErr = nil
 	pdc.availablePieces[2][0].completed = true
 	pdc.availablePieces[3][0].completed = true
 	finished, err = pdc.finished()
@@ -227,7 +228,7 @@ func TestProjectDownloadChunkLaunchWorker(t *testing.T) {
 	for _, pieces := range pdc.availablePieces {
 		launchedWithoutFail := false
 		for _, pieceDownload := range pieces {
-			if pieceDownload.launched && !pieceDownload.failed {
+			if pieceDownload.launched && pieceDownload.downloadErr == nil {
 				launchedWithoutFail = true
 			}
 		}
@@ -249,7 +250,7 @@ func TestProjectDownloadChunkLaunchWorker(t *testing.T) {
 	numFailed := 0
 	for _, pieces := range pdc.availablePieces {
 		for _, pieceDownload := range pieces {
-			if pieceDownload.failed {
+			if pieceDownload.downloadErr != nil {
 				numFailed++
 			}
 		}
