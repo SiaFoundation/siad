@@ -17,7 +17,7 @@ import (
 func TestJobExpectedJobTime(t *testing.T) {
 	t.Parallel()
 
-	dur25MS := 25 * time.Millisecond
+	dur40MS := 40 * time.Millisecond
 	dur80MS := 80 * time.Millisecond
 	dur120MS := 120 * time.Millisecond
 
@@ -27,7 +27,7 @@ func TestJobExpectedJobTime(t *testing.T) {
 	for _, readLength := range []uint64{1 << 16, 1 << 20, 1 << 24} {
 		// verify sane default if the queue has no historic data
 		ejt := jrq.callExpectedJobTime(readLength)
-		if ejt != dur25MS {
+		if ejt != dur40MS {
 			t.Fatal("unexpected")
 		}
 

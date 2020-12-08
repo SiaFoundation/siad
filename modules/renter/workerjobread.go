@@ -226,9 +226,9 @@ func (jq *jobReadQueue) expectedJobTime(length uint64) time.Duration {
 		completed = jq.weightedJobsCompleted4m
 	}
 
-	// if we don't have any historic data yet, return a sane default of 25ms
+	// if we don't have any historic data yet, return a sane default of 40ms
 	if completed == 0 {
-		return 25 * time.Millisecond
+		return 40 * time.Millisecond
 	}
 	return time.Duration(weightedJobTime / completed)
 }
