@@ -10,7 +10,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/skykey"
-	"gitlab.com/NebulousLabs/Sia/skynet"
 
 	"github.com/aead/chacha20/chacha"
 )
@@ -19,8 +18,8 @@ var errNoSkykeyMatchesSkyfileEncryptionID = errors.New("Unable to find matching 
 
 // deriveFanoutKey returns the crypto.CipherKey that should be used for
 // decrypting the fanout stream from the skyfile stored using this layout.
-func (r *Renter) deriveFanoutKey(sl *skynet.SkyfileLayout, fileSkykey skykey.Skykey) (crypto.CipherKey, error) {
-	return skynet.DeriveFanoutKey(sl, fileSkykey)
+func (r *Renter) deriveFanoutKey(sl *modules.SkyfileLayout, fileSkykey skykey.Skykey) (crypto.CipherKey, error) {
+	return modules.DeriveFanoutKey(sl, fileSkykey)
 }
 
 // checkSkyfileEncryptionIDMatch tries to find a Skykey that can decrypt the
@@ -52,10 +51,10 @@ func (r *Renter) decryptBaseSector(baseSector []byte) (skykey.Skykey, error) {
 		build.Critical("decryptBaseSector given a baseSector that is too large")
 		return skykey.Skykey{}, errors.New("baseSector too large")
 	}
-	var sl skynet.SkyfileLayout
+	var sl modules.SkyfileLayout
 	sl.Decode(baseSector)
 
-	if !skynet.IsEncryptedLayout(sl) {
+	if !modules.IsEncryptedLayout(sl) {
 		build.Critical("Expected layout to be marked as encrypted!")
 	}
 
@@ -86,7 +85,7 @@ func (r *Renter) decryptBaseSector(baseSector []byte) (skykey.Skykey, error) {
 	}
 
 	// Derive the base sector subkey and use it to decrypt the base sector.
-	baseSectorKey, err := fileSkykey.DeriveSubkey(skynet.BaseSectorNonceDerivation[:])
+	baseSectorKey, err := fileSkykey.DeriveSubkey(modules.BaseSectorNonceDerivation[:])
 	if err != nil {
 		return skykey.Skykey{}, errors.AddContext(err, "Unable to derive baseSector subkey")
 	}
@@ -118,7 +117,7 @@ func (r *Renter) decryptBaseSector(baseSector []byte) (skykey.Skykey, error) {
 	copy(sl.KeyData[:], keyData[:])
 
 	// Now re-copy the decrypted layout into the decrypted baseSector.
-	copy(baseSector[:skynet.SkyfileLayoutSize], sl.Encode())
+	copy(baseSector[:modules.SkyfileLayoutSize], sl.Encode())
 
 	return fileSkykey, nil
 }
@@ -126,8 +125,8 @@ func (r *Renter) decryptBaseSector(baseSector []byte) (skykey.Skykey, error) {
 // encryptBaseSectorWithSkykey encrypts the baseSector in place using the given
 // Skykey. Certain fields of the layout are restored in plaintext into the
 // encrypted baseSector to indicate to downloaders what Skykey was used.
-func encryptBaseSectorWithSkykey(baseSector []byte, plaintextLayout skynet.SkyfileLayout, sk skykey.Skykey) error {
-	baseSectorKey, err := sk.DeriveSubkey(skynet.BaseSectorNonceDerivation[:])
+func encryptBaseSectorWithSkykey(baseSector []byte, plaintextLayout modules.SkyfileLayout, sk skykey.Skykey) error {
+	baseSectorKey, err := sk.DeriveSubkey(modules.BaseSectorNonceDerivation[:])
 	if err != nil {
 		return errors.AddContext(err, "Unable to derive baseSector subkey")
 	}
@@ -144,7 +143,7 @@ func encryptBaseSectorWithSkykey(baseSector []byte, plaintextLayout skynet.Skyfi
 	}
 
 	// Re-add the visible-by-default fields of the baseSector.
-	var encryptedLayout skynet.SkyfileLayout
+	var encryptedLayout modules.SkyfileLayout
 	encryptedLayout.Decode(baseSector)
 	encryptedLayout.Version = plaintextLayout.Version
 	encryptedLayout.CipherType = baseSectorKey.CipherType()
@@ -173,7 +172,7 @@ func encryptBaseSectorWithSkykey(baseSector []byte, plaintextLayout skynet.Skyfi
 	copy(encryptedLayout.KeyData[skykey.SkykeyIDLen:skykey.SkykeyIDLen+len(nonce)], nonce[:])
 
 	// Now re-copy the encrypted layout into the baseSector.
-	copy(baseSector[:skynet.SkyfileLayoutSize], encryptedLayout.Encode())
+	copy(baseSector[:modules.SkyfileLayoutSize], encryptedLayout.Encode())
 	return nil
 }
 

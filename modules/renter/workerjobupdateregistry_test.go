@@ -46,7 +46,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	}
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
 
-	// Run the UpdateRegistryJob.
+	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
 	if err != nil {
 		t.Fatal(err)
@@ -63,7 +63,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 		t.Fatal("entries don't match")
 	}
 
-	// Run the UpdateRegistryJob again. This time it should fail with an error
+	// Run the UpdateRegistry job again. This time it should fail with an error
 	// indicating that the revision number already exists.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
 	if !errors.Contains(err, registry.ErrSameRevNum) {
@@ -101,7 +101,7 @@ func TestUpdateRegistryJob(t *testing.T) {
 	wt.staticJobUpdateRegistryQueue.recentErr = nil
 	wt.staticJobUpdateRegistryQueue.mu.Unlock()
 
-	// Run the UpdateRegistryJob with a lower revision number. This time it
+	// Run the UpdateRegistry job with a lower revision number. This time it
 	// should fail with an error indicating that the revision number already
 	// exists.
 	rvLowRevNum := rv
@@ -210,7 +210,7 @@ func TestUpdateRegistryLyingHost(t *testing.T) {
 	}
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
 
-	// Run the UpdateRegistryJob.
+	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
 	if err != nil {
 		t.Fatal(err)
@@ -231,7 +231,7 @@ func TestUpdateRegistryLyingHost(t *testing.T) {
 	rv.Revision++
 	rv = rv.Sign(sk)
 
-	// Run the UpdateRegistryJob again. This time the host will respond with an
+	// Run the UpdateRegistry job again. This time the host will respond with an
 	// error and provide a proof which has a valid signature, but an outdated
 	// revision. The worker should detect the cheating host an
 	// errHostInvalidProof error but no revision errors.
@@ -280,14 +280,14 @@ func TestUpdateRegistryInvalidCached(t *testing.T) {
 	}
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
 
-	// Run the UpdateRegistryJob.
+	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Run the UpdateRegistryJob again. This time it's a no-op. The renter won't
-	// know and increment the revision in the cache.
+	// Run the UpdateRegistry job again. This time it's a no-op. The renter
+	// won't know and increment the revision in the cache.
 	rv.Revision++
 	rv = rv.Sign(sk)
 	deps.Enable()
@@ -297,7 +297,7 @@ func TestUpdateRegistryInvalidCached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Run the UpdateRegistryJob again with a lower rev num than the initial
+	// Run the UpdateRegistry job again with a lower rev num than the initial
 	// one. Causing a ErrLowerRevNumError. The host will use the latest revision
 	// it knows for the proof which is lower than the one in the worker cache.
 	rv.Revision -= 2

@@ -357,6 +357,9 @@ func verifyClearingRevision(oldFCR, revision types.FileContractRevision, blockHe
 	if len(revision.NewValidProofOutputs) != 2 || len(revision.NewMissedProofOutputs) != 2 {
 		return ErrBadContractOutputCounts
 	}
+	if oldFCR.NewRevisionNumber >= revision.NewRevisionNumber {
+		return ErrBadRevisionNumber
+	}
 	if !reflect.DeepEqual(revision.NewValidProofOutputs, revision.NewMissedProofOutputs) {
 		return ErrBadPayoutUnlockHashes
 	}
@@ -377,9 +380,6 @@ func verifyClearingRevision(oldFCR, revision types.FileContractRevision, blockHe
 		return ErrBadUnlockConditions
 	}
 	if revision.NewRevisionNumber != math.MaxUint64 {
-		return ErrBadRevisionNumber
-	}
-	if oldFCR.NewRevisionNumber >= revision.NewRevisionNumber {
 		return ErrBadRevisionNumber
 	}
 	if revision.NewFileSize != 0 {
