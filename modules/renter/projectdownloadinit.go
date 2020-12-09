@@ -425,41 +425,32 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 	return nil, bestSet, nil
 }
 
-// launchFinalWorkers will take a list of workers that is ready to go and launch
-// read jobs for each worker.
-func (pdc *projectDownloadChunk) launchFinalWorkers(finalWorkers []*pdcInitialWorker) {
-	for i, iw := range finalWorkers {
-		if iw == nil {
-			continue
-		}
-
-		pdc.launchWorker(iw.worker, uint64(i))
-	}
-}
-
 // launchInitialWorkers will pick the initial set of workers that needs to be
 // launched and then launch them. This is a non-blocking function that returns
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 	for {
-		var updateChan <-chan struct{}
 		updateChan, finalWorkers, err := pdc.createInitialWorkerSet()
 		if err != nil {
 			return errors.AddContext(err, "unable to build initial set of workers")
 		}
+
 		// If the function returned an actual set of workers, we are good to
 		// launch.
 		if finalWorkers != nil {
-			pdc.launchFinalWorkers(finalWorkers)
+			for i, fw := range finalWorkers {
+				if fw == nil {
+					continue
+				}
+				pdc.launchWorker(fw.worker, uint64(i))
+			}
 			return nil
 		}
 
-		if finalWorkers != nil {
-			select {
-			case <-updateChan:
-			case <-pdc.ctx.Done():
-				return errors.New("timed out while trying to build initial set of workers")
-			}
+		select {
+		case <-updateChan:
+		case <-pdc.ctx.Done():
+			return errors.New("timed out while trying to build initial set of workers")
 		}
 	}
 }

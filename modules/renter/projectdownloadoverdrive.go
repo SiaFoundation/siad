@@ -317,7 +317,15 @@ func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) t
 		build.Critical("pricePerMS should always be greater than zero")
 	}
 
+	// If the pricePerMS is higher or equal than the cost of the job, simply add
+	// a millisecond penalty to avoid rounding to zero on the division later.
+	// Normally this should not happen when using sane values.
 	var adjusted time.Duration
+	if pricePerMS.Cmp(jobCost) >= 0 {
+		adjusted = jobTime + time.Millisecond
+		return adjusted
+	}
+
 	penalty, err := jobCost.Div(pricePerMS).Uint64()
 	if err != nil || penalty > math.MaxInt64 {
 		adjusted = time.Duration(math.MaxInt64)

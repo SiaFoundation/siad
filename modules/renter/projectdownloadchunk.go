@@ -55,7 +55,8 @@ type projectDownloadChunk struct {
 	// Parameters for downloading a subset of the data within the chunk.
 	lengthInChunk uint64
 	offsetInChunk uint64
-	pricePerMS    types.Currency
+
+	pricePerMS types.Currency
 
 	// Values derived from the chunk download parameters. The offset and length
 	// specify the offset and length that will be sent to the host, which must

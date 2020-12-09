@@ -62,10 +62,44 @@ func TestAddCostPenalty(t *testing.T) {
 	addCostPenalty(jt, jc, types.ZeroCurrency)
 }
 
+// TestProjectDownloadChunkAdjustedReadDuration is a unit test for the
+// 'adjustedReadDuration' function on the pdc.
+func TestProjectDownloadChunkAdjustedReadDuration(t *testing.T) {
+	t.Parallel()
+
+	// mock a worker, ensure the readqueue returns a non zero time estimate
+	worker := new(worker)
+	worker.newPriceTable()
+	worker.staticPriceTable().staticPriceTable = newDefaultPriceTable()
+	worker.initJobReadQueue()
+	worker.staticJobReadQueue.weightedJobTime64k = float64(time.Second)
+	worker.staticJobReadQueue.weightedJobsCompleted64k = 10
+	jrq := worker.staticJobReadQueue
+
+	// fetch the expected job time for a 64kb download job, verify it's not 0
+	jobTime := jrq.callExpectedJobTime(1 << 16)
+	if jobTime == time.Duration(0) {
+		t.Fatal("unexpected")
+	}
+
+	// mock a pdc with a 64kb piece length
+	pdc := new(projectDownloadChunk)
+	pdc.pieceLength = 1 << 16
+	pdc.pricePerMS = types.SiacoinPrecision
+
+	// verify the adjusted read duration adds a cost penalty
+	duration := pdc.adjustedReadDuration(worker)
+	if duration <= jobTime {
+		t.Fatal("unexpected", duration, jobTime)
+	}
+}
+
 // TestProjectDownloadChunkFinalize is a unit test for the 'finalize' function
 // on the pdc. It verifies whether the returned data is properly offset to
 // include only the pieces requested by the user.
 func TestProjectDownloadChunkFinalize(t *testing.T) {
+	t.Parallel()
+
 	// create a random sector
 	sectorData := fastrand.Bytes(int(modules.SectorSize))
 	sectorRoot := crypto.MerkleRoot(sectorData)

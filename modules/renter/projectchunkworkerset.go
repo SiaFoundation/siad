@@ -454,7 +454,7 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 	return nil
 }
 
-// 'managedDownload' will download a range from a chunk. This call is
+// managedDownload will download a range from a chunk. This call is
 // asynchronous. It will return as soon as the initial sector download requests
 // have been sent to the workers. This means that it will block until enough
 // workers have reported back with HasSector results that the optimal download
@@ -498,20 +498,19 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		return nil, errors.New("invalid request performed - this chunk has encryption overhead and therefore the full chunk must be downloaded")
 	}
 
-	// Determine the offset and length that needs to be downloaded from the
-	// pieces. This is non-trivial because both the network itself and also the
-	// erasure coder have required segment sizes.
-	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
-
 	// Refresh the pcws. This will only cause a refresh if one is necessary.
 	err := pcws.managedTryUpdateWorkerState()
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to initiate download")
 	}
+
 	// After refresh, grab the worker state.
-	pcws.mu.Lock()
-	ws := pcws.workerState
-	pcws.mu.Unlock()
+	ws := pcws.managedWorkerState()
+
+	// Determine the offset and length that needs to be downloaded from the
+	// pieces. This is non-trivial because both the network itself and also the
+	// erasure coder have required segment sizes.
+	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
 
 	// Create the workerResponseChan.
 	//
@@ -538,14 +537,14 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	pdc := &projectDownloadChunk{
 		offsetInChunk: offset,
 		lengthInChunk: length,
-		pricePerMS:    pricePerMS,
+
+		pricePerMS: pricePerMS,
 
 		pieceOffset: pieceOffset,
 		pieceLength: pieceLength,
 
 		availablePieces: make([][]*pieceDownload, ec.NumPieces()),
-
-		dataPieces: make([][]byte, ec.NumPieces()),
+		dataPieces:      make([][]byte, ec.NumPieces()),
 
 		ctx:                  ctx,
 		workerResponseChan:   workerResponseChan,
