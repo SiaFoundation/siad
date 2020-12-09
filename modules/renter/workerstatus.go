@@ -112,7 +112,7 @@ func (w *worker) callReadJobStatus() modules.WorkerReadJobsStatus {
 	}
 
 	avgJobTimeInMs := func(l uint64) uint64 {
-		if d := jrq.callAverageJobTime(l); d > 0 {
+		if d := jrq.callExpectedJobTime(l); d > 0 {
 			return uint64(d.Milliseconds())
 		}
 		return 0

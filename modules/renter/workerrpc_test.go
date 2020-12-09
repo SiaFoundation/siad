@@ -106,7 +106,10 @@ func testExecuteProgramUsedBandwidthReadSector(t *testing.T, wt *workerTester) {
 	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
 	p, data := pb.Program()
 	cost, _, _ := pb.Cost(true)
-	ulBandwidth, dlBandwidth := new(jobReadSector).callExpectedBandwidth()
+
+	jrs := new(jobReadSector)
+	jrs.staticLength = modules.SectorSize
+	ulBandwidth, dlBandwidth := jrs.callExpectedBandwidth()
 	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
 	cost = cost.Add(bandwidthCost)
 
