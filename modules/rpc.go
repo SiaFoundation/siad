@@ -19,7 +19,7 @@ const (
 	SubscriptionEntrySize = 100
 
 	// InitialNumNotifications is the initial number of notifications a caller
-	// has to pay for when opening the subsription loop with a host.
+	// has to pay for when opening the subscription loop with a host.
 	InitialNumNotifications = 100
 )
 
@@ -85,6 +85,10 @@ type RPCPriceTable struct {
 	// SubscriptionMemoryCost is the cost of storing a byte of data for
 	// SubscriptionPeriod time.
 	SubscriptionMemoryCost types.Currency `json:"subscriptionmemorycost"`
+
+	// SubscriptionNotificationBaseCost is the base cost of a single
+	// notification.
+	SubscriptionNotificationBaseCost types.Currency `json:"subscriptionnotificationbasecost"`
 
 	// MDM related costs
 	//

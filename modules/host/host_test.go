@@ -965,7 +965,7 @@ func (p *renterHostPair) AccountBalance(payByFC bool) (types.Currency, error) {
 
 // BeginSubscription starts the subscription loop and returns the stream.
 func (p *renterHostPair) BeginSubscription() (siamux.Stream, error) {
-	funding := p.pt.SubscriptionBaseCost.Add(modules.MDMReadRegistryCost(p.pt).Mul64(modules.InitialNumNotifications))
+	funding := p.pt.SubscriptionBaseCost.Add(modules.SubscriptionNotificationsCost(p.pt, modules.InitialNumNotifications))
 	return p.managedBeginSubscription(false, funding, p.staticAccountID)
 }
 
@@ -989,7 +989,7 @@ func (p *renterHostPair) SubcribeToRV(stream siamux.Stream, pt *modules.RPCPrice
 	}
 	// Pay for the subscription.
 	memoryCost := subscriptionMemoryCost(pt, 1)
-	fetchCost := modules.MDMReadRegistryCost(pt)
+	fetchCost := modules.SubscriptionNotificationsCost(pt, 1)
 	cost := pt.SubscriptionBaseCost.Add(memoryCost).Add(fetchCost)
 	err = p.managedPayByEphemeralAccount(stream, cost)
 	if err != nil {

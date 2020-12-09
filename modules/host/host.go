@@ -383,8 +383,9 @@ func (h *Host) managedUpdatePriceTable() {
 		RegistryEntriesTotal: h.staticRegistry.Cap(),
 
 		// Subscription related fields.
-		SubscriptionBaseCost:   types.NewCurrency64(1),
-		SubscriptionMemoryCost: types.NewCurrency64(1),
+		SubscriptionBaseCost:             types.NewCurrency64(1),
+		SubscriptionMemoryCost:           types.NewCurrency64(1),
+		SubscriptionNotificationBaseCost: hes.DownloadBandwidthPrice.Mul64(registry.PersistedEntrySize),
 
 		// TxnFee related fields.
 		TxnFeeMinRecommended: minRecommended,

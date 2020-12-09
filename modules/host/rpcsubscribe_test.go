@@ -211,16 +211,21 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 		t.Fatal(err)
 	}
 
+	// Helper to calculate the cost of n notifications.
+	nCost := func(numNotifications uint64) types.Currency {
+		return (pt.SubscriptionNotificationBaseCost.Add(modules.MDMReadRegistryCost(pt)).Mul64(numNotifications))
+	}
+
 	// Check the balance.
 	// 1. subtract the base cost and 100 notifications for opening the loop
 	// 2. subtract the base cost and memory cost for 1 subscription
 	// 3. subtract the bast cost for unsubscribing 1 time
 	// 4. add the InitialNumNotifications-1 unused notifications as a refund
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		expectedBalance := expectedBalance.Sub(pt.SubscriptionBaseCost.Add(modules.MDMReadRegistryCost(pt).Mul64(modules.InitialNumNotifications)))
-		expectedBalance = expectedBalance.Sub(pt.SubscriptionBaseCost.Add(subscriptionMemoryCost(pt, 1))).Sub(modules.MDMReadRegistryCost(pt))
+		expectedBalance := expectedBalance.Sub(pt.SubscriptionBaseCost.Add(nCost(modules.InitialNumNotifications)))
+		expectedBalance = expectedBalance.Sub(pt.SubscriptionBaseCost.Add(subscriptionMemoryCost(pt, 1)).Add(modules.SubscriptionNotificationsCost(pt, 1)))
 		expectedBalance = expectedBalance.Sub(pt.SubscriptionBaseCost)
-		expectedBalance = expectedBalance.Add(modules.MDMReadRegistryCost(pt).Mul64(modules.InitialNumNotifications - 1))
+		expectedBalance = expectedBalance.Add(nCost(modules.InitialNumNotifications - 1))
 		if !host.staticAccountManager.callAccountBalance(rhp.staticAccountID).Equals(expectedBalance) {
 			return fmt.Errorf("invalid balance %v != %v", expectedBalance, host.staticAccountManager.callAccountBalance(rhp.staticAccountID))
 		}

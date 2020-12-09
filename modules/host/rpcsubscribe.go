@@ -1,6 +1,7 @@
 package host
 
 import (
+	"bytes"
 	"sync"
 	"time"
 
@@ -27,7 +28,7 @@ type (
 	// subscriptionInfo holds the information required to respond to a
 	// subscriber and to correctly charge it.
 	subscriptionInfo struct {
-		id                subscriptionInfoID
+		staticID          subscriptionInfoID
 		minExpectedRevNum uint64
 		notificationsLeft uint64
 		mu                sync.Mutex
@@ -76,11 +77,11 @@ func newSubscriptionInfo(stream siamux.Stream) *subscriptionInfo {
 		staticStream:      stream,
 		notificationsLeft: modules.InitialNumNotifications,
 	}
-	fastrand.Read(info.id[:])
+	fastrand.Read(info.staticID[:])
 	return info
 }
 
-// AddSubscription adds one or multiple subscriptions.
+// AddSubscriptions adds one or multiple subscriptions.
 func (rs *registrySubscriptions) AddSubscriptions(info *subscriptionInfo, entryIDs ...subscriptionID) {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
@@ -88,7 +89,7 @@ func (rs *registrySubscriptions) AddSubscriptions(info *subscriptionInfo, entryI
 		if _, exists := rs.subscriptions[entryID]; !exists {
 			rs.subscriptions[entryID] = make(map[subscriptionInfoID]*subscriptionInfo)
 		}
-		rs.subscriptions[entryID][info.id] = info
+		rs.subscriptions[entryID][info.staticID] = info
 	}
 }
 
@@ -101,7 +102,7 @@ func (rs *registrySubscriptions) RemoveSubscriptions(info *subscriptionInfo, ent
 		if !found {
 			continue
 		}
-		delete(infos, info.id)
+		delete(infos, info.staticID)
 
 		if len(infos) == 0 {
 			delete(rs.subscriptions, entryID)
@@ -128,16 +129,16 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 	// Check payment first.
 	requestCost := pt.SubscriptionBaseCost.Mul64(numSubs)
 	memoryCost := subscriptionMemoryCost(pt, numSubs)
-	fetchCost := modules.MDMReadRegistryCost(pt).Mul64(numSubs)
+	fetchCost := modules.SubscriptionNotificationsCost(pt, numSubs)
 	cost := requestCost.Add(memoryCost).Add(fetchCost)
 	if pd.Amount().Cmp(cost) < 0 {
-		return types.ZeroCurrency, modules.ErrInsufficientPaymentForRPC
+		return types.ZeroCurrency, errors.AddContext(modules.ErrInsufficientPaymentForRPC, "managedHandleSubscribeRequest")
 	}
 	refund := pd.Amount().Sub(cost)
 
 	// Read the requests and apply them.
 	ids := make([]subscriptionID, 0, numSubs)
-	rvs := make([]modules.SignedRegistryValue, 0, numSubs)
+	buf := new(bytes.Buffer)
 	for i := uint64(0); i < numSubs; i++ {
 		var rsr modules.RPCRegistrySubscriptionRequest
 		err = modules.RPCRead(stream, &rsr)
@@ -146,18 +147,20 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 		}
 		ids = append(ids, createSubscriptionID(rsr.PubKey, rsr.Tweak))
 		if rv, found := h.staticRegistry.Get(rsr.PubKey, rsr.Tweak); found {
-			rvs = append(rvs, rv)
+			// Write rv to buffer.
+			err := modules.RPCWrite(buf, modules.RPCRegistrySubscriptionNotification{
+				Type:  modules.SubscriptionResponseRegistryValue,
+				Entry: rv,
+			})
+			if err != nil {
+				return refund, errors.AddContext(err, "failed to write initial value")
+			}
 		}
 	}
-	// Notify the subscriber of the initial values of newly subscribed entries.
-	for _, rv := range rvs {
-		err := modules.RPCWrite(stream, modules.RPCRegistrySubscriptionNotification{
-			Type:  modules.SubscriptionResponseRegistryValue,
-			Entry: rv,
-		})
-		if err != nil {
-			return refund, errors.AddContext(err, "failed to respond with initial value")
-		}
+	// Write buffer to stream.
+	_, err = buf.WriteTo(stream)
+	if err != nil {
+		return refund, errors.AddContext(err, "failed to write initial values to stream")
 	}
 	// Add the subscriptions.
 	h.staticRegistrySubscriptions.AddSubscriptions(info, ids...)
@@ -183,7 +186,7 @@ func (h *Host) managedHandleUnsubscribeRequest(info *subscriptionInfo, pt *modul
 	// Check payment first.
 	cost := pt.SubscriptionBaseCost.Mul64(numUnsubs)
 	if pd.Amount().Cmp(cost) < 0 {
-		return types.ZeroCurrency, modules.ErrInsufficientPaymentForRPC
+		return types.ZeroCurrency, errors.AddContext(modules.ErrInsufficientPaymentForRPC, "managedHandleUnsubscribeRequest")
 	}
 	refund := pd.Amount().Sub(cost)
 
@@ -212,7 +215,7 @@ func (h *Host) managedHandleExtendSubscriptionRequest(stream siamux.Stream, subs
 	memoryCost := subscriptionMemoryCost(pt, uint64(len(subs)))
 	cost := pt.SubscriptionBaseCost.Add(memoryCost)
 	if pd.Amount().Cmp(cost) < 0 {
-		return types.ZeroCurrency, time.Time{}, modules.ErrInsufficientPaymentForRPC
+		return types.ZeroCurrency, time.Time{}, errors.AddContext(modules.ErrInsufficientPaymentForRPC, "managedHandleExtendSubscriptionRequest")
 	}
 	refund := pd.Amount().Sub(cost)
 
@@ -233,9 +236,9 @@ func (h *Host) managedHandlePrepayNotifications(stream siamux.Stream, info *subs
 		return types.ZeroCurrency, errors.New("failed to read number of notifications to expect")
 	}
 	// Check payment first.
-	cost := pt.SubscriptionBaseCost.Add(modules.MDMReadRegistryCost(pt).Mul64(numNotifications))
+	cost := pt.SubscriptionBaseCost.Add(modules.SubscriptionNotificationsCost(pt, numNotifications))
 	if pd.Amount().Cmp(cost) < 0 {
-		return types.ZeroCurrency, modules.ErrInsufficientPaymentForRPC
+		return types.ZeroCurrency, errors.AddContext(modules.ErrInsufficientPaymentForRPC, "managedHandlePrepayNotifications")
 	}
 	refund := pd.Amount().Sub(cost)
 
@@ -313,9 +316,9 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (err error) {
 	}
 
 	// Check payment.
-	cost := pt.SubscriptionBaseCost.Add(modules.MDMReadRegistryCost(pt).Mul64(modules.InitialNumNotifications))
+	cost := pt.SubscriptionBaseCost.Add(modules.SubscriptionNotificationsCost(pt, modules.InitialNumNotifications))
 	if pd.Amount().Cmp(cost) < 0 {
-		return modules.ErrInsufficientPaymentForRPC
+		return errors.AddContext(modules.ErrInsufficientPaymentForRPC, "managedRPCRegistrySubscribe")
 	}
 
 	// Refund excessive amount.
@@ -349,7 +352,7 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (err error) {
 		info.mu.Lock()
 		defer info.mu.Unlock()
 		if info.notificationsLeft > 0 {
-			refund := modules.MDMReadRegistryCost(pt).Mul64(info.notificationsLeft)
+			refund := modules.SubscriptionNotificationsCost(pt, info.notificationsLeft)
 			err = errors.Compose(err, h.staticAccountManager.callRefund(pd.AccountID(), refund))
 			info.notificationsLeft = 0
 		}
