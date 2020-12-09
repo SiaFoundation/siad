@@ -14,8 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestLatestRevision tests fetching the latest revision of a contract from the
-// host using RPCLatestRevision.
+// TestRPCSubscribe is a set of tests related to the registry subscription rpc.
 func TestRPCSubscribe(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
