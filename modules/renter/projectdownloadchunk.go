@@ -74,8 +74,8 @@ type projectDownloadChunk struct {
 	// time the available pieces were last updated. This enables counting the
 	// hopeful pieces without introducing a race condition in the finished
 	// check.
-	availablePieces        [][]*pieceDownload
-	workersConsideredIndex int
+	availablePieces            [][]*pieceDownload
+	workersConsideredIndex     int
 	unresolvedWorkersRemaining int
 
 	// dataPieces is the buffer that is used to place data as it comes back.
