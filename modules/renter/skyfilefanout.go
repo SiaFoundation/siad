@@ -18,7 +18,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/skykey"
-	"gitlab.com/NebulousLabs/Sia/skynet"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -30,7 +29,7 @@ type fanoutStreamBufferDataSource struct {
 	staticChunks       [][]crypto.Hash
 	staticChunkSize    uint64
 	staticErasureCoder modules.ErasureCoder
-	staticLayout       skynet.SkyfileLayout
+	staticLayout       modules.SkyfileLayout
 	staticMasterKey    crypto.CipherKey
 	staticMetadata     modules.SkyfileMetadata
 	staticStreamID     modules.DataSourceID
@@ -46,7 +45,7 @@ type fanoutStreamBufferDataSource struct {
 // newFanoutStreamer will create a modules.Streamer from the fanout of a
 // skyfile. The streamer is created by implementing the streamBufferDataSource
 // interface on the skyfile, and then passing that to the stream buffer set.
-func (r *Renter) newFanoutStreamer(link modules.Skylink, sl skynet.SkyfileLayout, metadata modules.SkyfileMetadata, fanoutBytes []byte, timeout time.Duration, sk skykey.Skykey) (modules.Streamer, error) {
+func (r *Renter) newFanoutStreamer(link modules.Skylink, sl modules.SkyfileLayout, metadata modules.SkyfileMetadata, fanoutBytes []byte, timeout time.Duration, sk skykey.Skykey) (modules.Streamer, error) {
 	masterKey, err := r.deriveFanoutKey(&sl, sk)
 	if err != nil {
 		return nil, errors.AddContext(err, "count not recover siafile fanout because cipher key was unavailable")
@@ -83,7 +82,7 @@ func (r *Renter) newFanoutStreamer(link modules.Skylink, sl skynet.SkyfileLayout
 // the staticChunks filed of the fanoutStreamBufferDataSource.
 func (fs *fanoutStreamBufferDataSource) decodeFanout(fanoutBytes []byte) error {
 	// Decode piecesPerChunk, chunkRootsSize, and numChunks
-	piecesPerChunk, chunkRootsSize, numChunks, err := skynet.DecodeFanout(fs.staticLayout, fanoutBytes)
+	piecesPerChunk, chunkRootsSize, numChunks, err := modules.DecodeFanout(fs.staticLayout, fanoutBytes)
 	if err != nil {
 		return err
 	}

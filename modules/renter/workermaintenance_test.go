@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -90,5 +92,70 @@ func TestWorkerMaintenanceCoolDown(t *testing.T) {
 	// verify the account is not on cooldown
 	if w.managedOnMaintenanceCooldown() {
 		t.Fatal("Worker's RHP3 subsystems should not be on cooldown")
+	}
+}
+
+// TestWorkerMaintenanceRefillLowContractFunds verifies that a contract with
+// less remaining funds than the EA balance target can still be used to refill
+// an EA.
+func TestWorkerMaintenanceRefillLowContractFunds(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	deps := &dependencies.DependencyDisableWorker{}
+	wt, err := newWorkerTesterCustomDependency(t.Name(), deps, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := wt.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// allow for a large balance on the host.
+	is := wt.host.InternalSettings()
+	is.MaxEphemeralAccountBalance = types.SiacoinPrecision.Mul64(math.MaxUint64)
+	err = wt.host.SetInternalSettings(is)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := wt.worker
+
+	// fetch a pricetable.
+	w.staticUpdatePriceTable()
+
+	// balance should be 0 right now.
+	w.staticAccount.mu.Lock()
+	accountBalance := w.staticAccount.balance
+	w.staticAccount.mu.Unlock()
+	if !accountBalance.IsZero() {
+		t.Fatal("balance should be zero at beginning of test")
+	}
+
+	// check remaining balance on contract.
+	contract, ok := w.renter.hostContractor.ContractByPublicKey(wt.staticHostPubKey)
+	if !ok {
+		t.Fatal("contract not found")
+	}
+	funds := contract.RenterFunds
+
+	// set the target to the balance.
+	w.staticBalanceTarget = funds
+
+	// trigger a refill.
+	w.managedRefillAccount()
+
+	// check if the balance increased.
+	w.staticAccount.mu.Lock()
+	accountBalance = w.staticAccount.balance
+	w.staticAccount.mu.Unlock()
+	expectedBalance := funds.Sub(wt.staticPriceTable().staticPriceTable.FundAccountCost)
+	if !accountBalance.Equals(expectedBalance) {
+		t.Fatalf("expected balance %v but got %v", accountBalance, expectedBalance)
 	}
 }

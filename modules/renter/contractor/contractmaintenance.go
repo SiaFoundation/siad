@@ -534,7 +534,6 @@ func (c *Contractor) managedLimitGFUHosts() {
 		c.staticContracts.Return(sc)
 		if err != nil {
 			c.log.Print("managedLimitGFUHosts: failed to update GFU contract utility")
-			c.staticContracts.Return(sc)
 			continue
 		}
 	}

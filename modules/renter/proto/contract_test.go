@@ -975,3 +975,50 @@ func TestContractRecordCommitRenewAndClearIntent(t *testing.T) {
 		t.Fatal("contract should be locked")
 	}
 }
+
+// TestPanicOnOverwritingNewerRevision tests if attempting to
+// overwrite a contract header with an old revision triggers a panic.
+func TestPanicOnOverwritingNewerRevision(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// create contract set with one contract
+	dir := build.TempDir(filepath.Join("proto", t.Name()))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(dir, rl, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := contractHeader{
+		Transaction: types.Transaction{
+			FileContractRevisions: []types.FileContractRevision{{
+				NewRevisionNumber:    2,
+				NewValidProofOutputs: []types.SiacoinOutput{{}, {}},
+				UnlockConditions: types.UnlockConditions{
+					PublicKeys: []types.SiaPublicKey{{}, {}},
+				},
+			}},
+		},
+	}
+	initialRoots := []crypto.Hash{{1}}
+	c, err := cs.managedInsertContract(header, initialRoots)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sc, ok := cs.Acquire(c.ID)
+	if !ok {
+		t.Fatal("failed to acquire contract")
+	}
+	// Trying to set a header with an older revision should trigger a panic.
+	header.Transaction.FileContractRevisions[0].NewRevisionNumber = 1
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatalf("expected panic when attempting to overwrite a newer contract header revision")
+		}
+	}()
+	if err := sc.applySetHeader(header); err != nil {
+		t.Fatal(err)
+	}
+}
