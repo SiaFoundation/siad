@@ -64,12 +64,7 @@ func TestProjectDownloadChunk_adjustedReadDuration(t *testing.T) {
 	t.Parallel()
 
 	// mock a worker, ensure the readqueue returns a non zero time estimate
-	worker := new(worker)
-	worker.newPriceTable()
-	worker.staticPriceTable().staticPriceTable = newDefaultPriceTable()
-	worker.initJobReadQueue()
-	worker.staticJobReadQueue.weightedJobTime64k = float64(time.Second)
-	worker.staticJobReadQueue.weightedJobsCompleted64k = 10
+	worker := mockWorker(10)
 	jrq := worker.staticJobReadQueue
 
 	// fetch the expected job time for a 64kb download job, verify it's not 0
@@ -90,6 +85,88 @@ func TestProjectDownloadChunk_adjustedReadDuration(t *testing.T) {
 	}
 }
 
+// TestProjectDownloadChunk_findBestOverdriveWorker is a unit test for the
+// 'findBestOverdriveWorker' function on the pdc
+func TestProjectDownloadChunk_findBestOverdriveWorker(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	ec := modules.NewRSSubCodeDefault()
+
+	// mock two workers with different traits
+	w1 := mockWorker(5) // avg 200ms job time
+	w1.staticHostPubKeyStr = "w1"
+	w2 := mockWorker(10) // avg 100ms job time
+	w2.staticHostPubKeyStr = "w2"
+
+	// mock a pdc
+	pdc := new(projectDownloadChunk)
+	pdc.pieceLength = 1 << 16
+	pdc.pricePerMS = types.SiacoinPrecision.MulFloat(1e-12) // pS
+	pdc.workerState = &pcwsWorkerState{
+		unresolvedWorkers: map[string]*pcwsUnresolvedWorker{
+			"w1": {
+				staticWorker:               w1,
+				staticExpectedCompleteTime: now.Add(50 * time.Millisecond),
+			}, // ~250ms total dur
+			"w2": {
+				staticWorker:               w2,
+				staticExpectedCompleteTime: now.Add(10 * time.Millisecond),
+			}, // ~110ms total dur
+		},
+	}
+
+	// basic case with no available cases should match the 1st case of
+	// 'TestProjectDownloadChunk_bestOverdriveUnresolvedWorker'
+	pdc.availablePieces = make([][]*pieceDownload, ec.NumPieces())
+
+	// verify the pdc currently has no good overdrive worker yet, as there are
+	// no available pieces and thus no available workers
+	worker, _, _, _ := pdc.findBestOverdriveWorker()
+	if worker != nil {
+		t.Fatal("unexpected", worker)
+	}
+
+	// add an available piece for worker 1 for the 2nd piece
+	pdc.availablePieces = make([][]*pieceDownload, ec.NumPieces())
+	delete(pdc.workerState.unresolvedWorkers, "w1")
+	pdc.availablePieces[2] = append(pdc.availablePieces[2], &pieceDownload{
+		worker: w1,
+	})
+
+	// expect the worker to still be nil, because we have an unresolved worker
+	// that has a better estimate
+	worker, _, _, _ = pdc.findBestOverdriveWorker()
+	if worker != nil {
+		t.Fatal("unexpected", worker)
+	}
+
+	// tweak it so the unresolved becomes slower than the first worker, for
+	// which we have an available piece
+	pdc.workerState.unresolvedWorkers["w2"].staticExpectedCompleteTime = now.Add(200 * time.Millisecond)
+	worker, pieceIndex, _, _ := pdc.findBestOverdriveWorker()
+	if worker != w1 {
+		t.Fatal("unexpected", worker)
+	}
+	if pieceIndex != 2 {
+		t.Fatal("unexpected", pieceIndex)
+	}
+
+	// now do the same for worker 2, because w2 is faster it should now become
+	// the best available worker
+	delete(pdc.workerState.unresolvedWorkers, "w2")
+	pdc.availablePieces[1] = append(pdc.availablePieces[1], &pieceDownload{
+		worker: w2,
+	})
+	worker, pieceIndex, _, _ = pdc.findBestOverdriveWorker()
+	if worker != w2 {
+		t.Fatal("unexpected", worker.staticHostPubKeyStr)
+	}
+	if pieceIndex != 1 {
+		t.Fatal("unexpected", pieceIndex)
+	}
+}
+
 // TestProjectDownloadChunk_bestOverdriveUnresolvedWorker is a unit test for the
 // 'bestOverdriveUnresolvedWorker' function on the pdc
 func TestProjectDownloadChunk_bestOverdriveUnresolvedWorker(t *testing.T) {
@@ -98,23 +175,10 @@ func TestProjectDownloadChunk_bestOverdriveUnresolvedWorker(t *testing.T) {
 	now := time.Now()
 	max := time.Duration(math.MaxInt64)
 
-	// mockWorker is a helper function that returns a worker with a pricetable
-	// and an initialised read queue that returns a non zero value for read
-	// estimates
-	mockWorker := func(jobsCompleted float64) *worker {
-		worker := new(worker)
-		worker.newPriceTable()
-		worker.staticPriceTable().staticPriceTable = newDefaultPriceTable()
-		worker.initJobReadQueue()
-		worker.staticJobReadQueue.weightedJobTime64k = float64(time.Second)
-		worker.staticJobReadQueue.weightedJobsCompleted64k = jobsCompleted
-		return worker
-	}
-
 	// mock a pdc
 	pdc := new(projectDownloadChunk)
 	pdc.pieceLength = 1 << 16
-	pdc.pricePerMS = types.SiacoinPrecision.Div64(1e6)
+	pdc.pricePerMS = types.SiacoinPrecision.MulFloat(1e-12) // pS
 
 	// verify return params for an empty array of unresolved workers
 	uws := []*pcwsUnresolvedWorker{}

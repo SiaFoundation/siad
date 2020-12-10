@@ -193,7 +193,7 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 		return nil, 0, updateChan, time.After(buwWaitDuration)
 	}
 
-	// Retrun the baw.
+	// Return the baw.
 	return baw, uint64(bawPieceIndex), nil, nil
 }
 

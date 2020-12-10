@@ -194,10 +194,7 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 	}
 
 	// mock a worker, ensure the readqueue returns a non zero time estimate
-	worker := new(worker)
-	worker.initJobReadQueue()
-	worker.staticJobReadQueue.weightedJobTime64k = float64(time.Second)
-	worker.staticJobReadQueue.weightedJobsCompleted64k = 10
+	worker := mockWorker(10)
 	worker.staticHostPubKeyStr = spk.String()
 
 	// mock a pcws
@@ -260,4 +257,20 @@ func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 	if numFailed != 1 {
 		t.Fatal("unexpected", numFailed)
 	}
+}
+
+// mockWorker is a helper function that returns a worker with a pricetable
+// and an initialised read queue that returns a non zero value for read
+// estimates depending on the given jobsCompleted value.
+//
+// for example, passing in 10 yields 100ms expected read time for 64kb jobs only
+// as the weightedJobTime64k is set to 1s, passing in 5 yields 200ms.
+func mockWorker(jobsCompleted float64) *worker {
+	worker := new(worker)
+	worker.newPriceTable()
+	worker.staticPriceTable().staticPriceTable = newDefaultPriceTable()
+	worker.initJobReadQueue()
+	worker.staticJobReadQueue.weightedJobTime64k = float64(time.Second)
+	worker.staticJobReadQueue.weightedJobsCompleted64k = jobsCompleted
+	return worker
 }
