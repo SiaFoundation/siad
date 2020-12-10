@@ -20,6 +20,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/node/api"
@@ -352,6 +353,11 @@ func rentercmd() {
 	}
 
 	// Print Allowance info
+	rate, err := types.ParseExchangeRate(build.ExchangeRate())
+	if err != nil {
+		fmt.Printf("Warning: ignoring exchange rate - %s\n", err)
+	}
+
 	fmt.Println()
 	fmt.Printf(`Allowance:`)
 	if rg.Settings.Allowance.Funds.IsZero() {
@@ -363,7 +369,9 @@ func rentercmd() {
 		fmt.Printf(`       %v
   Spent Funds:     %v
   Unspent Funds:   %v
-`, currencyUnits(rg.Settings.Allowance.Funds), currencyUnits(totalSpent), currencyUnits(fm.Unspent))
+`, currencyUnitsWithExchangeRate(rg.Settings.Allowance.Funds, rate),
+			currencyUnitsWithExchangeRate(totalSpent, rate),
+			currencyUnitsWithExchangeRate(fm.Unspent, rate))
 	}
 
 	// detailed allowance spending for current period
@@ -620,6 +628,11 @@ func renterallowancespending(rg api.RenterGET) {
 		unspentUnallocated = fm.Unspent.Sub(unspentAllocated)
 	}
 
+	rate, err := types.ParseExchangeRate(build.ExchangeRate())
+	if err != nil {
+		fmt.Printf("Warning: ignoring exchange rate - %s\n", err)
+	}
+
 	fmt.Printf(`
 Spending:
   Current Period Spending:`)
@@ -636,10 +649,14 @@ Spending:
     Unspent Funds:   %v
       Allocated:     %v
       Unallocated:   %v
-`, currencyUnits(totalSpent), currencyUnits(fm.StorageSpending),
-			currencyUnits(fm.UploadSpending), currencyUnits(fm.DownloadSpending),
-			currencyUnits(fm.ContractFees), currencyUnits(fm.Unspent),
-			currencyUnits(unspentAllocated), currencyUnits(unspentUnallocated))
+`, currencyUnitsWithExchangeRate(totalSpent, rate),
+			currencyUnitsWithExchangeRate(fm.StorageSpending, rate),
+			currencyUnitsWithExchangeRate(fm.UploadSpending, rate),
+			currencyUnitsWithExchangeRate(fm.DownloadSpending, rate),
+			currencyUnitsWithExchangeRate(fm.ContractFees, rate),
+			currencyUnitsWithExchangeRate(fm.Unspent, rate),
+			currencyUnitsWithExchangeRate(unspentAllocated, rate),
+			currencyUnitsWithExchangeRate(unspentUnallocated, rate))
 	}
 }
 
@@ -653,6 +670,11 @@ func renterallowancecmd() {
 	allowance := rg.Settings.Allowance
 
 	// Show allowance info
+	rate, err := types.ParseExchangeRate(build.ExchangeRate())
+	if err != nil {
+		fmt.Printf("Warning: ignoring exchange rate - %s\n", err)
+	}
+
 	fmt.Printf(`Allowance:
   Amount:               %v
   Period:               %v blocks
@@ -674,8 +696,8 @@ Price Protections:
   MaxSectorAccessPrice:      %v per million accesses
   MaxStoragePrice:           %v per TB per Month
   MaxUploadBandwidthPrice:   %v per TB
-`, currencyUnits(allowance.Funds), allowance.Period, allowance.RenewWindow,
-		allowance.Hosts, currencyUnits(allowance.PaymentContractInitialFunding),
+`, currencyUnitsWithExchangeRate(allowance.Funds, rate), allowance.Period, allowance.RenewWindow,
+		allowance.Hosts, currencyUnitsWithExchangeRate(allowance.PaymentContractInitialFunding, rate),
 		modules.FilesizeUnits(allowance.ExpectedStorage),
 		modules.FilesizeUnits(allowance.ExpectedUpload*uint64(allowance.Period)),
 		modules.FilesizeUnits(allowance.ExpectedDownload*uint64(allowance.Period)),
@@ -700,7 +722,8 @@ Price Protections:
     Withheld Funds:  %v
     Release Block:   %v
 
-`, currencyUnits(fm.PreviousSpending), currencyUnits(fm.WithheldFunds), fm.ReleaseBlock)
+`, currencyUnitsWithExchangeRate(fm.PreviousSpending, rate),
+			currencyUnitsWithExchangeRate(fm.WithheldFunds, rate), fm.ReleaseBlock)
 	}
 }
 
@@ -2638,20 +2661,25 @@ func renterpricescmd(cmd *cobra.Command, args []string) {
 	periodFactor := uint64(rpg.Allowance.Period / types.BlocksPerMonth)
 
 	// Display Estimate
+	rate, err := types.ParseExchangeRate(build.ExchangeRate())
+	if err != nil {
+		fmt.Printf("Warning: ignoring exchange rate - %s\n", err)
+	}
+
 	fmt.Println("Renter Prices (estimated):")
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "\tFees for Creating a Set of Contracts:\t", currencyUnits(rpg.FormContracts))
-	fmt.Fprintln(w, "\tDownload 1 TB:\t", currencyUnits(rpg.DownloadTerabyte))
-	fmt.Fprintln(w, "\tStore 1 TB for 1 Month:\t", currencyUnits(rpg.StorageTerabyteMonth))
-	fmt.Fprintln(w, "\tStore 1 TB for Allowance Period:\t", currencyUnits(rpg.StorageTerabyteMonth.Mul64(periodFactor)))
-	fmt.Fprintln(w, "\tUpload 1 TB:\t", currencyUnits(rpg.UploadTerabyte))
+	fmt.Fprintln(w, "\tFees for Creating a Set of Contracts:\t", currencyUnitsWithExchangeRate(rpg.FormContracts, rate))
+	fmt.Fprintln(w, "\tDownload 1 TB:\t", currencyUnitsWithExchangeRate(rpg.DownloadTerabyte, rate))
+	fmt.Fprintln(w, "\tStore 1 TB for 1 Month:\t", currencyUnitsWithExchangeRate(rpg.StorageTerabyteMonth, rate))
+	fmt.Fprintln(w, "\tStore 1 TB for Allowance Period:\t", currencyUnitsWithExchangeRate(rpg.StorageTerabyteMonth.Mul64(periodFactor), rate))
+	fmt.Fprintln(w, "\tUpload 1 TB:\t", currencyUnitsWithExchangeRate(rpg.UploadTerabyte, rate))
 	if err := w.Flush(); err != nil {
 		die("failed to flush writer:", err)
 	}
 
 	// Display allowance used for estimate
 	fmt.Println("\nAllowance used for estimate:")
-	fmt.Fprintln(w, "\tFunds:\t", currencyUnits(rpg.Allowance.Funds))
+	fmt.Fprintln(w, "\tFunds:\t", currencyUnitsWithExchangeRate(rpg.Allowance.Funds, rate))
 	fmt.Fprintln(w, "\tPeriod:\t", rpg.Allowance.Period)
 	fmt.Fprintln(w, "\tHosts:\t", rpg.Allowance.Hosts)
 	fmt.Fprintln(w, "\tRenew Window:\t", rpg.Allowance.RenewWindow)

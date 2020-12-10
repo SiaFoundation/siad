@@ -179,6 +179,38 @@ func TestCurrencyUnits(t *testing.T) {
 	}
 }
 
+// TestCurrencyUnitsWithExchangeRate probes the currencyUnitsWithExchangeRate
+// function. Here we only test for the general format. The precise formatting of
+// the foreign currency amount is further tested in types/exchangerate_test.go .
+func TestCurrencyUnitsWithExchangeRate(t *testing.T) {
+	tests := []struct {
+		cStr    string
+		rateStr string
+		result  string
+	}{
+		{"1", "", "1 H"},
+		{"1000000000000000000000", "n/a", "1 mS"},
+		{"1000000000000000000000000", "---", "1 SC"},
+		{"1000000000000000000000000000", "", "1 KS"},
+		{"1000000000000000000000000", "1 USD", "1 SC (~ 1.00 USD)"},
+		{"100000000000000000000000", "1 EUR", "100 mS (~ 0.10 EUR)"},
+		{"10000000000000000000000", "10 EUR", "10 mS (~ 0.10 EUR)"},
+		{"1000000000000000000000000000", "0.0039 USD", "1 KS (~ 3.90 USD)"},
+	}
+	for _, test := range tests {
+		i, _ := new(big.Int).SetString(test.cStr, 10)
+
+		rate, _ := types.ParseExchangeRate(test.rateStr)
+		// ignore potential parse errors; those are being tested in types/exchangerate_test.go
+
+		result := currencyUnitsWithExchangeRate(types.NewCurrency(i), rate)
+		if test.result != result {
+			t.Errorf("currencyUnitsWithExchangeRate(%v, %v): expected %#v, got %#v",
+				test.cStr, test.rateStr, test.result, result)
+		}
+	}
+}
+
 // TestRateLimitUnits probes the ratelimitUnits function
 func TestRatelimitUnits(t *testing.T) {
 	tests := []struct {

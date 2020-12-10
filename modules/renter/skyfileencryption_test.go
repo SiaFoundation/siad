@@ -8,7 +8,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/skykey"
-	"gitlab.com/NebulousLabs/Sia/skynet"
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -58,8 +57,8 @@ func testBaseSectorEncryptionWithType(t *testing.T, r *Renter, skykeyType skykey
 	if err != nil {
 		t.Fatal(err)
 	}
-	ll := skynet.SkyfileLayout{
-		Version:      skynet.SkyfileVersion,
+	ll := modules.SkyfileLayout{
+		Version:      modules.SkyfileVersion,
 		Filesize:     uint64(len(fileBytes)),
 		MetadataSize: uint64(len(metadataBytes)),
 		CipherType:   crypto.TypePlain,
@@ -163,11 +162,11 @@ func testBaseSectorEncryptionWithType(t *testing.T, r *Renter, skykeyType skykey
 
 	// All baseSectors should be equal in everything except their keydata.
 	equalExceptKeyData := func(x, y []byte) error {
-		xLayout, xFanoutBytes, xSM, xPayload, err := skynet.ParseSkyfileMetadata(x)
+		xLayout, xFanoutBytes, xSM, xPayload, err := modules.ParseSkyfileMetadata(x)
 		if err != nil {
 			return err
 		}
-		yLayout, yFanoutBytes, ySM, yPayload, err := skynet.ParseSkyfileMetadata(y)
+		yLayout, yFanoutBytes, ySM, yPayload, err := modules.ParseSkyfileMetadata(y)
 		if err != nil {
 			return err
 		}
@@ -256,7 +255,7 @@ func testBaseSectorEncryptionWithType(t *testing.T, r *Renter, skykeyType skykey
 	}
 
 	// Testing fanout key derivation.
-	layoutForFanout, _, _, _, err := skynet.ParseSkyfileMetadata(bsCopy1)
+	layoutForFanout, _, _, _, err := modules.ParseSkyfileMetadata(bsCopy1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +268,7 @@ func testBaseSectorEncryptionWithType(t *testing.T, r *Renter, skykeyType skykey
 	// Check that deriveFanoutKey produces the same derived key as a manual
 	// derivation from the original.The fact that it is different fsKey1 is
 	// guaranteed by skykey module tests.
-	fanoutKey2, err := fsKey1.DeriveSubkey(skynet.FanoutNonceDerivation[:])
+	fanoutKey2, err := fsKey1.DeriveSubkey(modules.FanoutNonceDerivation[:])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,8 +314,8 @@ func TestBaseSectorKeyID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ll := skynet.SkyfileLayout{
-		Version:      skynet.SkyfileVersion,
+	ll := modules.SkyfileLayout{
+		Version:      modules.SkyfileVersion,
 		Filesize:     uint64(len(fileBytes)),
 		MetadataSize: uint64(len(metadataBytes)),
 		CipherType:   crypto.TypePlain,
@@ -340,7 +339,7 @@ func TestBaseSectorKeyID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var encLayout skynet.SkyfileLayout
+	var encLayout modules.SkyfileLayout
 	encLayout.Decode(bsCopy)
 
 	// Check that skykey ID is stored correctly in the layout.
@@ -368,7 +367,7 @@ func TestBaseSectorKeyID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var encLayout2 skynet.SkyfileLayout
+	var encLayout2 modules.SkyfileLayout
 	encLayout2.Decode(bsCopy2)
 
 	// Check that skykey ID is NOT in the layout.

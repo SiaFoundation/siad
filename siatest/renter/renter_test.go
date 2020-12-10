@@ -4157,7 +4157,7 @@ func TestOutOfStorageHandling(t *testing.T) {
 	allowance := siatest.DefaultAllowance
 	allowance.ExpectedRedundancy = float64(dataPieces+parityPieces) / float64(dataPieces)
 	allowance.ExpectedStorage = modules.SectorSize // 4 KiB
-	allowance.Hosts = 2
+	allowance.Hosts = 3
 	renterTemplate.Allowance = allowance
 
 	// Add the host and renter to the group.
@@ -4241,10 +4241,17 @@ func TestOutOfStorageHandling(t *testing.T) {
 	if len(rcg.PassiveContracts) != 1 {
 		t.Fatal("Expected 1 passive contract but got", len(rcg.PassiveContracts))
 	}
-
 	// After a while we give the host a new chance and it should be active
 	// again.
-	err = build.Retry(600, 100*time.Millisecond, func() error {
+	i := 0
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		i++
+		if i%10 == 0 {
+			if err := tg.Miners()[0].MineBlock(); err != nil {
+				t.Fatal(err)
+			}
+		}
+
 		rcg, err = renter.RenterContractsGet()
 		if err != nil {
 			t.Fatal(err)

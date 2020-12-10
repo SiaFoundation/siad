@@ -96,14 +96,14 @@ func TestReadRegistryInvalidCached(t *testing.T) {
 	}
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
 
-	// Run the UpdateRegistryJob.
+	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Run the UpdateRegistryJob again. This time it's a no-op. The renter won't
-	// know and increment the revision in the cache.
+	// Run the UpdateRegistry job again. This time it's a no-op. The renter
+	// won't know and increment the revision in the cache.
 	rv.Revision++
 	rv = rv.Sign(sk)
 	deps.Enable()
@@ -131,9 +131,8 @@ func TestReadRegistryInvalidCached(t *testing.T) {
 	wt.staticJobReadRegistryQueue.mu.Unlock()
 }
 
-// TestUpdateRegistryInvalidCache tests the edge case where a host tries to
-// prove an invalid revision number with a lower revision number than we have
-// stored in the cache for this particular host.
+// TestReadRegistryCacheUpdated tests the registry cache functionality as used
+// by ReadRegistry jobs.
 func TestReadRegistryCachedUpdated(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
@@ -164,7 +163,7 @@ func TestReadRegistryCachedUpdated(t *testing.T) {
 	}
 	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
 
-	// Run the UpdateRegistryJob.
+	// Run the UpdateRegistry job.
 	err = wt.UpdateRegistry(context.Background(), spk, rv)
 	if err != nil {
 		t.Fatal(err)

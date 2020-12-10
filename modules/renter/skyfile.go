@@ -37,7 +37,6 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/fixtures"
-	"gitlab.com/NebulousLabs/Sia/skynet"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -216,7 +215,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup modules.SkyfileUploadParam
 	// Check that the encryption key and erasure code is compatible with the
 	// skyfile format. This is intentionally done before any heavy computation
 	// to catch early errors.
-	var sl skynet.SkyfileLayout
+	var sl modules.SkyfileLayout
 	masterKey := fileNode.MasterKey()
 	if len(masterKey.Key()) > len(sl.KeyData) {
 		return modules.Skylink{}, errors.New("cipher key is not supported by the skyfile format")
@@ -243,14 +242,14 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup modules.SkyfileUploadParam
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to encode the fanout of the siafile")
 	}
-	headerSize := uint64(skynet.SkyfileLayoutSize + len(metadataBytes) + len(fanoutBytes))
+	headerSize := uint64(modules.SkyfileLayoutSize + len(metadataBytes) + len(fanoutBytes))
 	if headerSize > modules.SectorSize {
-		return modules.Skylink{}, errors.AddContext(ErrMetadataTooBig, fmt.Sprintf("skyfile does not fit in leading chunk - metadata size plus fanout size must be less than %v bytes, metadata size is %v bytes and fanout size is %v bytes", modules.SectorSize-skynet.SkyfileLayoutSize, len(metadataBytes), len(fanoutBytes)))
+		return modules.Skylink{}, errors.AddContext(ErrMetadataTooBig, fmt.Sprintf("skyfile does not fit in leading chunk - metadata size plus fanout size must be less than %v bytes, metadata size is %v bytes and fanout size is %v bytes", modules.SectorSize-modules.SkyfileLayoutSize, len(metadataBytes), len(fanoutBytes)))
 	}
 
 	// Assemble the first chunk of the skyfile.
-	sl = skynet.SkyfileLayout{
-		Version:            skynet.SkyfileVersion,
+	sl = modules.SkyfileLayout{
+		Version:            modules.SkyfileVersion,
 		Filesize:           fileNode.Size(),
 		MetadataSize:       uint64(len(metadataBytes)),
 		FanoutSize:         uint64(len(fanoutBytes)),
@@ -523,7 +522,7 @@ func (r *Renter) managedUploadSkyfile(sup modules.SkyfileUploadParameters, reade
 		}
 
 		// verify if it fits in a single chunk
-		headerSize := uint64(skynet.SkyfileLayoutSize + len(metadataBytes))
+		headerSize := uint64(modules.SkyfileLayoutSize + len(metadataBytes))
 		if uint64(numBytes)+headerSize <= modules.SectorSize {
 			return r.managedUploadSkyfileSmallFile(sup, metadataBytes, buf)
 		}
@@ -540,8 +539,8 @@ func (r *Renter) managedUploadSkyfile(sup modules.SkyfileUploadParameters, reade
 // leading chunk of a skyfile to the Sia network and returns the skylink that
 // can be used to access the file.
 func (r *Renter) managedUploadSkyfileSmallFile(sup modules.SkyfileUploadParameters, metadataBytes, fileBytes []byte) (modules.Skylink, error) {
-	sl := skynet.SkyfileLayout{
-		Version:      skynet.SkyfileVersion,
+	sl := modules.SkyfileLayout{
+		Version:      modules.SkyfileVersion,
 		Filesize:     uint64(len(fileBytes)),
 		MetadataSize: uint64(len(metadataBytes)),
 		// No fanout is set yet.
@@ -611,7 +610,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup modules.SkyfileUploadParamete
 
 	// Check if an encryption key was specified.
 	if encryptionEnabled(sup) {
-		fanoutSkykey, err := sup.FileSpecificSkykey.DeriveSubkey(skynet.FanoutNonceDerivation[:])
+		fanoutSkykey, err := sup.FileSpecificSkykey.DeriveSubkey(modules.FanoutNonceDerivation[:])
 		if err != nil {
 			return modules.Skylink{}, errors.AddContext(err, "unable to derive fanout subkey")
 		}
@@ -711,7 +710,7 @@ func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Durat
 	// Check if the base sector is encrypted, and attempt to decrypt it.
 	// This will fail if we don't have the decryption key.
 	var fileSpecificSkykey skykey.Skykey
-	if skynet.IsEncryptedBaseSector(baseSector) {
+	if modules.IsEncryptedBaseSector(baseSector) {
 		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
 		if err != nil {
 			return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "Unable to decrypt skyfile base sector")
@@ -719,7 +718,7 @@ func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Durat
 	}
 
 	// Parse out the metadata of the skyfile.
-	layout, fanoutBytes, metadata, baseSectorPayload, err := skynet.ParseSkyfileMetadata(baseSector)
+	layout, fanoutBytes, metadata, baseSectorPayload, err := modules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "error parsing skyfile metadata")
 	}
@@ -758,7 +757,7 @@ func (r *Renter) managedDownloadBaseSector(link modules.Skylink, timeout time.Du
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to fetch base sector of skylink")
 	}
-	if len(baseSector) < skynet.SkyfileLayoutSize {
+	if len(baseSector) < modules.SkyfileLayoutSize {
 		return nil, errors.New("download did not fetch enough data, layout cannot be decoded")
 	}
 
@@ -788,7 +787,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
 	var fileSpecificSkykey skykey.Skykey
-	encrypted := skynet.IsEncryptedBaseSector(baseSector)
+	encrypted := modules.IsEncryptedBaseSector(baseSector)
 	if encrypted {
 		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
 		if err != nil {
@@ -797,7 +796,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	}
 
 	// Parse out the metadata of the skyfile.
-	layout, fanoutBytes, metadata, _, err := skynet.ParseSkyfileMetadata(baseSector)
+	layout, fanoutBytes, metadata, _, err := modules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		return errors.AddContext(err, "error parsing skyfile metadata")
 	}
@@ -818,7 +817,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 		}
 
 		// Derive the fanout key and add to the fup.
-		fanoutSkykey, err := fileSpecificSkykey.DeriveSubkey(skynet.FanoutNonceDerivation[:])
+		fanoutSkykey, err := fileSpecificSkykey.DeriveSubkey(modules.FanoutNonceDerivation[:])
 		if err != nil {
 			return errors.AddContext(err, "Error deriving fanout skykey")
 		}

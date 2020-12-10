@@ -162,7 +162,8 @@ language's corresponding bignum library. Currency values are the most common
 example where this is necessary.
 
 # Environment Variables
-There are three environment variables supported by siad.
+There are a number of environment variables supported by siad and siac.
+
  - `SIA_API_PASSWORD` is the environment variable that sets a custom API
    password if the default is not used
  - `SIA_DATA_DIR` is the environment variable that tells siad where to put the
@@ -171,6 +172,9 @@ There are three environment variables supported by siad.
    siad-specific data
  - `SIA_WALLET_PASSWORD` is the environment variable that can be set to enable
    auto unlocking the wallet
+ - `SIA_EXCHANGE_RATE` is the environment variable that can be set (e.g. to
+   "0.00018 mBTC") to extend the output of some siac subcommands when displaying
+   currency amounts
 
 # Consensus
 

@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"encoding/binary"
 	"io"
 	"math"
 	"os"
@@ -8,7 +9,33 @@ import (
 	"strings"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/skykey"
+	"gitlab.com/NebulousLabs/Sia/types"
+)
+
+const (
+	// SkyfileLayoutSize describes the amount of space within the first sector
+	// of a skyfile used to describe the rest of the skyfile.
+	SkyfileLayoutSize = 99
+
+	// SkyfileVersion establishes the current version for creating skyfiles.
+	// The skyfile versions are different from the siafile versions.
+	SkyfileVersion = 1
+
+	// layoutKeyDataSize is the size of the key-data field in a skyfileLayout.
+	layoutKeyDataSize = 64
+)
+
+var (
+	// BaseSectorNonceDerivation is the specifier used to derive a nonce for base
+	// sector encryption
+	BaseSectorNonceDerivation = types.NewSpecifier("BaseSectorNonce")
+
+	// FanoutNonceDerivation is the specifier used to derive a nonce for
+	// fanout encryption.
+	FanoutNonceDerivation = types.NewSpecifier("FanoutNonce")
 )
 
 var (
@@ -245,6 +272,77 @@ func (sm SkyfileMetadata) offset() uint64 {
 		}
 	}
 	return min
+}
+
+// SkyfileLayout explains the layout information that is used for storing data
+// inside of the skyfile. The SkyfileLayout always appears as the first bytes
+// of the leading chunk.
+type SkyfileLayout struct {
+	Version            uint8
+	Filesize           uint64
+	MetadataSize       uint64
+	FanoutSize         uint64
+	FanoutDataPieces   uint8
+	FanoutParityPieces uint8
+	CipherType         crypto.CipherType
+	KeyData            [layoutKeyDataSize]byte // keyData is incompatible with ciphers that need keys larger than 64 bytes
+}
+
+// Decode will take a []byte and load the layout from that []byte.
+func (sl *SkyfileLayout) Decode(b []byte) {
+	offset := 0
+	sl.Version = b[offset]
+	offset++
+	sl.Filesize = binary.LittleEndian.Uint64(b[offset:])
+	offset += 8
+	sl.MetadataSize = binary.LittleEndian.Uint64(b[offset:])
+	offset += 8
+	sl.FanoutSize = binary.LittleEndian.Uint64(b[offset:])
+	offset += 8
+	sl.FanoutDataPieces = b[offset]
+	offset++
+	sl.FanoutParityPieces = b[offset]
+	offset++
+	copy(sl.CipherType[:], b[offset:])
+	offset += len(sl.CipherType)
+	copy(sl.KeyData[:], b[offset:])
+	offset += len(sl.KeyData)
+
+	// Sanity check. If this check fails, decode() does not match the
+	// SkyfileLayoutSize.
+	if offset != SkyfileLayoutSize {
+		build.Critical("layout size does not match the amount of data decoded")
+	}
+}
+
+// Encode will return a []byte that has compactly encoded all of the layout
+// data.
+func (sl *SkyfileLayout) Encode() []byte {
+	b := make([]byte, SkyfileLayoutSize)
+	offset := 0
+	b[offset] = sl.Version
+	offset++
+	binary.LittleEndian.PutUint64(b[offset:], sl.Filesize)
+	offset += 8
+	binary.LittleEndian.PutUint64(b[offset:], sl.MetadataSize)
+	offset += 8
+	binary.LittleEndian.PutUint64(b[offset:], sl.FanoutSize)
+	offset += 8
+	b[offset] = sl.FanoutDataPieces
+	offset++
+	b[offset] = sl.FanoutParityPieces
+	offset++
+	copy(b[offset:], sl.CipherType[:])
+	offset += len(sl.CipherType)
+	copy(b[offset:], sl.KeyData[:])
+	offset += len(sl.KeyData)
+
+	// Sanity check. If this check fails, encode() does not match the
+	// SkyfileLayoutSize.
+	if offset != SkyfileLayoutSize {
+		build.Critical("layout size does not match the amount of data encoded")
+	}
+	return b
 }
 
 // SkyfileSubfileMetadata is all of the metadata that belongs to a subfile in a

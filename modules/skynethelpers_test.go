@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -227,6 +228,48 @@ func testEnsureSuffix(t *testing.T) {
 		out := EnsureSuffix(tt.str, tt.suf)
 		if out != tt.out {
 			t.Errorf("Expected string %s and suffix %s to result in %s but got %s\n", tt.str, tt.suf, tt.out, out)
+		}
+	}
+}
+
+// TestParseSkyfileMetadata checks that the skyfile metadata parser correctly
+// catches malformed skyfile layout data.
+//
+// NOTE: this test will become invalid once the skyfile metadata parser is able
+// to fetch larger fanouts and larger metadata than what can fit in the base
+// chunk.
+func TestParseSkyfileMetadata(t *testing.T) {
+	t.Parallel()
+	// Try some chosen skyfile layouts.
+	//
+	// Standard layout, nothing tricky.
+	layout := newTestSkyfileLayout()
+	layoutBytes := layout.Encode()
+	randData := fastrand.Bytes(int(SectorSize))
+	copy(randData, layoutBytes)
+	ParseSkyfileMetadata(randData) // no error check, just want to know it doesn't panic
+	// Overflow the fanout.
+	layout.FanoutSize = math.MaxUint64 - 14e3 - 1
+	layoutBytes = layout.Encode()
+	randData = fastrand.Bytes(int(SectorSize))
+	copy(randData, layoutBytes)
+	ParseSkyfileMetadata(randData) // no error check, just want to know it doesn't panic
+	// Overflow the metadata size
+	layout.MetadataSize = math.MaxUint64 - 75e3 - 1
+	layout.FanoutSize = 75e3
+	layoutBytes = layout.Encode()
+	randData = fastrand.Bytes(int(SectorSize))
+	copy(randData, layoutBytes)
+	ParseSkyfileMetadata(randData) // no error check, just want to know it doesn't panic
+
+	// Try a bunch of random data.
+	for i := 0; i < 10e3; i++ {
+		randData := fastrand.Bytes(int(SectorSize))
+		ParseSkyfileMetadata(randData) // no error check, just want to know it doesn't panic
+
+		// Only do 1 iteration for short testing.
+		if testing.Short() {
+			t.SkipNow()
 		}
 	}
 }

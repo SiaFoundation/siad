@@ -2,7 +2,40 @@ package modules
 
 import (
 	"testing"
+
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/fastrand"
 )
+
+// newTestSkyfileLayout is a helper that returns a SkyfileLayout with some
+// default settings for testing.
+func newTestSkyfileLayout() SkyfileLayout {
+	return SkyfileLayout{
+		Version:            SkyfileVersion,
+		Filesize:           1e6,
+		MetadataSize:       14e3,
+		FanoutSize:         75e3,
+		FanoutDataPieces:   1,
+		FanoutParityPieces: 10,
+		CipherType:         crypto.TypePlain,
+	}
+}
+
+// TestSkyfileLayoutEncoding checks that encoding and decoding a skyfile
+// layout always results in the same struct.
+func TestSkyfileLayoutEncoding(t *testing.T) {
+	t.Parallel()
+	// Try encoding an decoding a simple example.
+	llOriginal := newTestSkyfileLayout()
+	rand := fastrand.Bytes(64)
+	copy(llOriginal.KeyData[:], rand)
+	encoded := llOriginal.Encode()
+	var llRecovered SkyfileLayout
+	llRecovered.Decode(encoded)
+	if llOriginal != llRecovered {
+		t.Fatal("encoding and decoding of skyfileLayout does not match")
+	}
+}
 
 // TestSkyfileMetadata_ForPath tests the behaviour of the ForPath method.
 func TestSkyfileMetadata_ForPath(t *testing.T) {
