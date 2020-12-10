@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"math"
 	"testing"
 	"time"
 
@@ -14,86 +13,10 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestProjectDownloadChunkBestOverdriveUnresolvedWorker is a unit test for the
-// 'bestOverdriveUnresolvedWorker' function on the pdc
-func TestProjectDownloadChunkBestOverdriveUnresolvedWorker(t *testing.T) {
-	t.Parallel()
-
-	now := time.Now()
-	max := time.Duration(math.MaxInt64)
-
-	// mockWorker is a helper function that returns a worker with a pricetable
-	// and an initialised read queue that returns a non zero value for read
-	// estimates
-	mockWorker := func(jobsCompleted float64) *worker {
-		worker := new(worker)
-		worker.newPriceTable()
-		worker.staticPriceTable().staticPriceTable = newDefaultPriceTable()
-		worker.initJobReadQueue()
-		worker.staticJobReadQueue.weightedJobTime64k = float64(time.Second)
-		worker.staticJobReadQueue.weightedJobsCompleted64k = jobsCompleted
-		return worker
-	}
-
-	// mock a pdc
-	pdc := new(projectDownloadChunk)
-	pdc.pieceLength = 1 << 16
-	pdc.pricePerMS = types.SiacoinPrecision.Div64(1e6)
-
-	// verify return params for an empty array of unresolved workers
-	uws := []*pcwsUnresolvedWorker{}
-	exists, late, dur, waitDur, wIndex := pdc.bestOverdriveUnresolvedWorker(uws)
-	if exists || !late || dur != max || waitDur != max || wIndex != -1 {
-		t.Fatal("unexpected")
-	}
-
-	// mock two workers with different traits
-	w1 := mockWorker(10) // avg 100ms job time
-	w2 := mockWorker(5)  // avg 200ms job time
-	uws = []*pcwsUnresolvedWorker{
-		{
-			staticWorker:               w1,
-			staticExpectedCompleteTime: now.Add(200 * time.Millisecond),
-		}, // ~300ms total dur
-		{
-			staticWorker:               w2,
-			staticExpectedCompleteTime: now.Add(50 * time.Millisecond),
-		}, // ~250ms total dur
-	}
-
-	// verify the best overdrive worker has the expected outcome values for w2
-	exists, late, dur, waitDur, wIndex = pdc.bestOverdriveUnresolvedWorker(uws)
-	if !exists || late || wIndex != 1 {
-		t.Fatal("unexpected")
-	}
-
-	// now make w2 very expensive, the best overdrive worker should become w1
-	w2.staticPriceTable().staticPriceTable.ReadBaseCost = types.SiacoinPrecision
-	exists, late, dur, waitDur, wIndex = pdc.bestOverdriveUnresolvedWorker(uws)
-	if !exists || late || wIndex != 0 {
-		t.Fatal("unexpected")
-	}
-
-	// now alter w1 to be late, the best overdrive worker should become w2
-	uws[0].staticExpectedCompleteTime = now.Add(-50 * time.Millisecond)
-	exists, late, dur, waitDur, wIndex = pdc.bestOverdriveUnresolvedWorker(uws)
-	if !exists || late || wIndex != 1 {
-		t.Fatal("unexpected")
-	}
-
-	// now alter w2 to be late as well, we expect the worker with the lowest
-	// read time to be the best one here
-	uws[1].staticExpectedCompleteTime = now.Add(-100 * time.Millisecond)
-	exists, late, dur, waitDur, wIndex = pdc.bestOverdriveUnresolvedWorker(uws)
-	if !exists || !late || waitDur != max || wIndex != 0 {
-		t.Fatal("unexpected")
-	}
-}
-
-// TestProjectDownloadChunkFinalize is a unit test for the 'finalize' function
+// TestProjectDownloadChunk_finalize is a unit test for the 'finalize' function
 // on the pdc. It verifies whether the returned data is properly offset to
 // include only the pieces requested by the user.
-func TestProjectDownloadChunkFinalize(t *testing.T) {
+func TestProjectDownloadChunk_finalize(t *testing.T) {
 	t.Parallel()
 
 	// create a random sector
@@ -159,10 +82,10 @@ func TestProjectDownloadChunkFinalize(t *testing.T) {
 	}
 }
 
-// TestProjectDownloadChunkFinished is a unit test for the 'finished' function
+// TestProjectDownloadChunk_finished is a unit test for the 'finished' function
 // on the pdc. It verifies whether the hopeful and completed pieces are properly
 // counted and whether the return values are correct.
-func TestProjectDownloadChunkFinished(t *testing.T) {
+func TestProjectDownloadChunk_finished(t *testing.T) {
 	// create an EC
 	ec, err := modules.NewRSCode(3, 9)
 	if err != nil {
@@ -259,9 +182,9 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	}
 }
 
-// TestProjectDownloadChunkLaunchWorker is a unit test for the 'launchWorker'
+// TestProjectDownloadChunk_launchWorker is a unit test for the 'launchWorker'
 // function on the pdc.
-func TestProjectDownloadChunkLaunchWorker(t *testing.T) {
+func TestProjectDownloadChunk_launchWorker(t *testing.T) {
 	t.Parallel()
 
 	ec := modules.NewRSCodeDefault()
@@ -336,62 +259,5 @@ func TestProjectDownloadChunkLaunchWorker(t *testing.T) {
 	}
 	if numFailed != 1 {
 		t.Fatal("unexpected", numFailed)
-	}
-}
-
-// TestProjectDownloadChunkOverdriveStatus is a unit test for the
-// 'overdriveStatus' function on the pdc.
-func TestProjectDownloadChunkOverdriveStatus(t *testing.T) {
-	t.Parallel()
-
-	now := time.Now()
-
-	pcws := new(projectChunkWorkerSet)
-	pcws.staticErasureCoder = modules.NewRSCodeDefault()
-
-	pdc := new(projectDownloadChunk)
-	pdc.workerSet = pcws
-	pdc.availablePieces = [][]*pieceDownload{
-		{
-			{expectedCompleteTime: now.Add(-1 * time.Minute)},
-			{expectedCompleteTime: now.Add(-3 * time.Minute)},
-		},
-		{
-			{expectedCompleteTime: now.Add(-2 * time.Minute)},
-		},
-	}
-
-	// verify we return the correct amount of overdrive workers that need to be
-	// launched if no pieces have launched yet, also verify last return time
-	toLaunch, returnTime := pdc.overdriveStatus()
-	if toLaunch != modules.RenterDefaultDataPieces {
-		t.Fatal("unexpected")
-	}
-	if returnTime != (time.Time{}) {
-		t.Fatal("unexpected", returnTime)
-	}
-
-	// launch a piece and verify we get 1 worker to launch due to the return
-	// time being in the past
-	pdc.availablePieces[0][0].launched = true
-	toLaunch, returnTime = pdc.overdriveStatus()
-	if toLaunch != 1 {
-		t.Fatal("unexpected")
-	}
-	if returnTime != now.Add(-1*time.Minute) {
-		t.Fatal("unexpected")
-	}
-
-	// add a piecedownload that returns somewhere in the future
-	pdc.availablePieces[1] = append(pdc.availablePieces[1], &pieceDownload{
-		launched:             true,
-		expectedCompleteTime: now.Add(time.Minute),
-	})
-	toLaunch, returnTime = pdc.overdriveStatus()
-	if toLaunch != 0 {
-		t.Fatal("unexpected")
-	}
-	if returnTime != now.Add(time.Minute) {
-		t.Fatal("unexpected")
 	}
 }

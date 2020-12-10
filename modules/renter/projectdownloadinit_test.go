@@ -50,9 +50,9 @@ func TestProjectDownloadChunkHeap(t *testing.T) {
 	}
 }
 
-// TestProjectDownloadChunkInitialWorkerHeap is a small unit test that verifies
+// TestProjectDownloadChunk_initialWorkerHeap is a small unit test that verifies
 // the basic functionality of the 'initialWorkerHeap' function.
-func TestProjectDownloadChunkInitialWorkerHeap(t *testing.T) {
+func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	t.Parallel()
 
 	// define some durations
