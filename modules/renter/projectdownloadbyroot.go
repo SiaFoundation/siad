@@ -275,7 +275,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 			w := resp.staticWorker
 			jq := w.staticJobReadQueue
 			usableWorkers[responses] = w
-			goodEnough = time.Since(start)+jq.callAverageJobTime(length) < pm.managedAverageProjectTime(length)
+			goodEnough = time.Since(start)+jq.callExpectedJobTime(length) < pm.managedAverageProjectTime(length)
 		}
 
 		// Determine whether to move forward with the download or wait for more
@@ -299,7 +299,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 		var bestWorker *worker
 		var bestWorkerTime time.Duration
 		for i, w := range usableWorkers {
-			wTime := w.staticJobReadQueue.callAverageJobTime(length)
+			wTime := w.staticJobReadQueue.callExpectedJobTime(length)
 			if bestWorkerTime == 0 || wTime < bestWorkerTime {
 				bestWorkerTime = wTime
 				bestWorkerIndex = i
