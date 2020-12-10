@@ -99,7 +99,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// Make sure that the host got the subscription.
-	sid := createSubscriptionID(spk, tweak)
+	sid := deriveSubscriptionID(spk, tweak)
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		host.staticRegistrySubscriptions.mu.Lock()
 		defer host.staticRegistrySubscriptions.mu.Unlock()

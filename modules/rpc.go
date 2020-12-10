@@ -25,7 +25,7 @@ const (
 
 // Subcription request related enum.
 const (
-	SubscriptionRequestInvalid uint8 = iota
+	SubscriptionRequestInvalid = iota
 	SubscriptionRequestSubscribe
 	SubscriptionRequestUnsubscribe
 	SubscriptionRequestExtend
@@ -34,7 +34,7 @@ const (
 
 // Subcription response related enum.
 const (
-	SubscriptionResponseInvalid uint8 = iota
+	SubscriptionResponseInvalid = iota
 	SubscriptionResponseRegistryValue
 )
 

@@ -52,8 +52,8 @@ var (
 // host will accept at once.
 const maxSubscriptionRequests = 10000
 
-// createSubscriptionID is a helper to derive a subscription id.
-func createSubscriptionID(pubKey types.SiaPublicKey, tweak crypto.Hash) subscriptionID {
+// deriveSubscriptionID is a helper to derive a subscription id.
+func deriveSubscriptionID(pubKey types.SiaPublicKey, tweak crypto.Hash) subscriptionID {
 	return subscriptionID(crypto.HashAll(pubKey, tweak))
 }
 
@@ -145,7 +145,7 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 		if err != nil {
 			return refund, errors.AddContext(err, "failed to read subscription request")
 		}
-		ids = append(ids, createSubscriptionID(rsr.PubKey, rsr.Tweak))
+		ids = append(ids, deriveSubscriptionID(rsr.PubKey, rsr.Tweak))
 		if rv, found := h.staticRegistry.Get(rsr.PubKey, rsr.Tweak); found {
 			// Write rv to buffer.
 			err := modules.RPCWrite(buf, modules.RPCRegistrySubscriptionNotification{
@@ -198,7 +198,7 @@ func (h *Host) managedHandleUnsubscribeRequest(info *subscriptionInfo, pt *modul
 		if err != nil {
 			return refund, errors.AddContext(err, "failed to read subscription request")
 		}
-		ids = append(ids, createSubscriptionID(rsr.PubKey, rsr.Tweak))
+		ids = append(ids, deriveSubscriptionID(rsr.PubKey, rsr.Tweak))
 	}
 
 	// Remove the subscription.
@@ -262,7 +262,7 @@ func (h *Host) threadedNotifySubscribers(pubKey types.SiaPublicKey, rv modules.S
 	h.staticRegistrySubscriptions.mu.Lock()
 	defer h.staticRegistrySubscriptions.mu.Unlock()
 
-	id := createSubscriptionID(pubKey, rv.Tweak)
+	id := deriveSubscriptionID(pubKey, rv.Tweak)
 	infos, found := h.staticRegistrySubscriptions.subscriptions[id]
 	if !found {
 		return
