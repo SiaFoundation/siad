@@ -158,9 +158,10 @@ type Host struct {
 	modules.StorageManager
 
 	// Subsystems
-	staticAccountManager *accountManager
-	staticMDM            *mdm.MDM
-	staticRegistry       *registry.Registry
+	staticAccountManager        *accountManager
+	staticMDM                   *mdm.MDM
+	staticRegistry              *registry.Registry
+	staticRegistrySubscriptions *registrySubscriptions
 
 	// Host ACID fields - these fields need to be updated in serial, ACID
 	// transactions.
@@ -381,6 +382,11 @@ func (h *Host) managedUpdatePriceTable() {
 		RegistryEntriesLeft:  h.staticRegistry.Cap() - h.staticRegistry.Len(),
 		RegistryEntriesTotal: h.staticRegistry.Cap(),
 
+		// Subscription related fields.
+		SubscriptionBaseCost:             types.NewCurrency64(1),
+		SubscriptionMemoryCost:           types.NewCurrency64(1),
+		SubscriptionNotificationBaseCost: hes.DownloadBandwidthPrice.Mul64(registry.PersistedEntrySize),
+
 		// TxnFee related fields.
 		TxnFeeMinRecommended: minRecommended,
 		TxnFeeMaxRecommended: maxRecommended,
@@ -450,7 +456,8 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 				heap: make([]*hostRPCPriceTable, 0),
 			},
 		},
-		persistDir: persistDir,
+		staticRegistrySubscriptions: newRegistrySubscriptions(),
+		persistDir:                  persistDir,
 	}
 
 	// Create MDM.
@@ -788,10 +795,18 @@ func (h *Host) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPu
 			return srv, registry.ErrSameRevNum
 		}
 	}
+	// On disrupt, the registry shouldn't be updated.
 	if h.dependencies.Disrupt("RegistryUpdateNoOp") {
 		return modules.SignedRegistryValue{}, nil
 	}
-	return h.staticRegistry.Update(rv, pubKey, expiry)
+	// Update the registry.
+	existingSRV, err := h.staticRegistry.Update(rv, pubKey, expiry)
+	if err != nil {
+		return existingSRV, errors.AddContext(err, "failed to update registry")
+	}
+	// On success, we notify the subscribers.
+	go h.threadedNotifySubscribers(pubKey, rv)
+	return existingSRV, nil
 }
 
 // managedInitRegistry initializes the host's registry on startup. If the

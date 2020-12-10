@@ -408,6 +408,8 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 		err = h.managedRPCFundEphemeralAccount(stream)
 	case modules.RPCLatestRevision:
 		err = h.managedRPCLatestRevision(stream)
+	case modules.RPCRegistrySubscription:
+		err = h.managedRPCRegistrySubscribe(stream)
 	case modules.RPCRenewContract:
 		err = h.managedRPCRenewContract(stream)
 	default:
