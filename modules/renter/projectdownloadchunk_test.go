@@ -94,6 +94,82 @@ func TestProjectDownloadChunkAdjustedReadDuration(t *testing.T) {
 	}
 }
 
+// TestProjectDownloadChunkBestOverdriveUnresolvedWorker is a unit test for the
+// 'bestOverdriveUnresolvedWorker' function on the pdc
+func TestProjectDownloadChunkBestOverdriveUnresolvedWorker(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	max := time.Duration(math.MaxInt64)
+
+	// mockWorker is a helper function that returns a worker with a pricetable
+	// and an initialised read queue that returns a non zero value for read
+	// estimates
+	mockWorker := func(jobsCompleted float64) *worker {
+		worker := new(worker)
+		worker.newPriceTable()
+		worker.staticPriceTable().staticPriceTable = newDefaultPriceTable()
+		worker.initJobReadQueue()
+		worker.staticJobReadQueue.weightedJobTime64k = float64(time.Second)
+		worker.staticJobReadQueue.weightedJobsCompleted64k = jobsCompleted
+		return worker
+	}
+
+	// mock a pdc
+	pdc := new(projectDownloadChunk)
+	pdc.pieceLength = 1 << 16
+	pdc.pricePerMS = types.SiacoinPrecision.Div64(1e6)
+
+	// verify return params for an empty array of unresolved workers
+	uws := []*pcwsUnresolvedWorker{}
+	exists, late, dur, waitDur, wIndex := pdc.bestOverdriveUnresolvedWorker(uws)
+	if exists || !late || dur != max || waitDur != max || wIndex != -1 {
+		t.Fatal("unexpected")
+	}
+
+	// mock two workers with different traits
+	w1 := mockWorker(10) // avg 100ms job time
+	w2 := mockWorker(5)  // avg 200ms job time
+	uws = []*pcwsUnresolvedWorker{
+		{
+			staticWorker:               w1,
+			staticExpectedCompleteTime: now.Add(200 * time.Millisecond),
+		}, // ~300ms total dur
+		{
+			staticWorker:               w2,
+			staticExpectedCompleteTime: now.Add(50 * time.Millisecond),
+		}, // ~250ms total dur
+	}
+
+	// verify the best overdrive worker has the expected outcome values for w2
+	exists, late, dur, waitDur, wIndex = pdc.bestOverdriveUnresolvedWorker(uws)
+	if !exists || late || wIndex != 1 {
+		t.Fatal("unexpected")
+	}
+
+	// now make w2 very expensive, the best overdrive worker should become w1
+	w2.staticPriceTable().staticPriceTable.ReadBaseCost = types.SiacoinPrecision
+	exists, late, dur, waitDur, wIndex = pdc.bestOverdriveUnresolvedWorker(uws)
+	if !exists || late || wIndex != 0 {
+		t.Fatal("unexpected")
+	}
+
+	// now alter w1 to be late, the best overdrive worker should become w2
+	uws[0].staticExpectedCompleteTime = now.Add(-50 * time.Millisecond)
+	exists, late, dur, waitDur, wIndex = pdc.bestOverdriveUnresolvedWorker(uws)
+	if !exists || late || wIndex != 1 {
+		t.Fatal("unexpected")
+	}
+
+	// now alter w2 to be late as well, we expect the worker with the lowest
+	// read time to be the best one here
+	uws[1].staticExpectedCompleteTime = now.Add(-100 * time.Millisecond)
+	exists, late, dur, waitDur, wIndex = pdc.bestOverdriveUnresolvedWorker(uws)
+	if !exists || !late || waitDur != max || wIndex != 0 {
+		t.Fatal("unexpected")
+	}
+}
+
 // TestProjectDownloadChunkFinalize is a unit test for the 'finalize' function
 // on the pdc. It verifies whether the returned data is properly offset to
 // include only the pieces requested by the user.

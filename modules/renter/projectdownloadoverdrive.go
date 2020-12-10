@@ -39,11 +39,16 @@ func (pdc *projectDownloadChunk) adjustedReadDuration(w *worker) time.Duration {
 // bestOverdriveUnresolvedWorker will scan through a proveded list of unresolved
 // workers and find the best one to use as an overdrive worker.
 //
-// Three values are returned. The first signifies whether the best worker is
-// late. If so, any worker that is resolved should be preferred over any worker
-// that is unresolved.
+// Four values are returned.
 //
-// The second return value is the unresolved duration. This is a modified
+// The first indicates whether an unresolved worker was found that beats the
+// initial duration, which is pessimistically set to math.MaxInt64. Due to job
+// cost however an unresolved worker might not beat that value.
+//
+// The second signifies whether the best worker is late. If so, any worker that
+// is resolved should be preferred over any worker that is unresolved.
+//
+// The third return value is the unresolved duration. This is a modified
 // duration based on the combination of the amount of time until the worker has
 // completed its task plus the amount of time penalty the worker incurs for
 // being expensive.
@@ -51,15 +56,16 @@ func (pdc *projectDownloadChunk) adjustedReadDuration(w *worker) time.Duration {
 // The final return value is a wait duration, which indicates how much time
 // needs to elapse before the best unresolved worker flips over into being a
 // late worker.
-func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnresolvedWorker) (exists, late bool, duration, waitDuration time.Duration) {
+func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnresolvedWorker) (exists, late bool, duration, waitDuration time.Duration, workerIndex int) {
 	// Set the duration and late status to the most pessimistic value.
 	exists = false
 	late = true
 	duration = time.Duration(math.MaxInt64)
 	waitDuration = time.Duration(math.MaxInt64)
+	workerIndex = -1
 
 	// Loop through the unresovled workers and find the best unresovled worker.
-	for _, uw := range puws {
+	for i, uw := range puws {
 		// Figure how much time is expected to remain until the worker is
 		// available. Note that no price penalty is attached to the HasSector
 		// call, because that call is being made regardless of the cost.
@@ -76,7 +82,14 @@ func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnres
 		// Figure out how much time is expected until the worker completes the
 		// download job.
 		readTime := pdc.adjustedReadDuration(uw.staticWorker)
-		adjustedTotalDuration := hasSectorTime + readTime
+
+		// Ensure we don't overflow
+		var adjustedTotalDuration time.Duration
+		if readTime > math.MaxInt64-hasSectorTime {
+			adjustedTotalDuration = math.MaxInt64
+		} else {
+			adjustedTotalDuration = hasSectorTime + readTime
+		}
 
 		// Compare the total time (including price preference) to the current
 		// best time. Workers that are not late get preference over workers that
@@ -86,13 +99,14 @@ func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnres
 		if betterLateStatus || betterDuration {
 			exists = true
 			duration = adjustedTotalDuration
+			workerIndex = i
 			if !uwLate {
 				waitDuration = hasSectorTime
 				late = false
 			}
 		}
 	}
-	return exists, late, duration, waitDuration
+	return exists, late, duration, waitDuration, workerIndex
 }
 
 // findBestOverdriveWorker will search for the best worker to contribute to an
@@ -119,7 +133,7 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 	//
 	// buw = bestUnresolvedWorker
 	unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
-	buwExists, buwLate, buwAdjustedDuration, buwWaitDuration := pdc.bestOverdriveUnresolvedWorker(unresolvedWorkers)
+	buwExists, buwLate, buwAdjustedDuration, buwWaitDuration, _ := pdc.bestOverdriveUnresolvedWorker(unresolvedWorkers)
 
 	// Loop through the set of pieces to find the fastest worker that can be
 	// launched. Because this function is only called for overdrive workers, we
@@ -318,8 +332,7 @@ func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) t
 	}
 
 	// If the pricePerMS is higher or equal than the cost of the job, simply add
-	// a millisecond penalty to avoid rounding to zero on the division later.
-	// Normally this should not happen when using sane values.
+	// a millisecond penalty to avoid rounding errors.
 	var adjusted time.Duration
 	if pricePerMS.Cmp(jobCost) >= 0 {
 		adjusted = jobTime + time.Millisecond
@@ -332,7 +345,7 @@ func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) t
 	} else if reduced := math.MaxInt64 - int64(penalty); int64(jobTime) > reduced {
 		adjusted = time.Duration(math.MaxInt64)
 	} else {
-		adjusted = jobTime + time.Duration(penalty)
+		adjusted = jobTime + (time.Duration(penalty) * time.Millisecond)
 	}
 	return adjusted
 }
