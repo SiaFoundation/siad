@@ -2,6 +2,7 @@ package renter
 
 import (
 	"os"
+	"sort"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -46,7 +47,13 @@ func (r *Renter) managedDirList(siaPath modules.SiaPath) (dis []modules.Director
 		mu.Unlock()
 	}
 	err := r.staticFileSystem.CachedList(siaPath, false, func(modules.FileInfo) {}, dlf)
-	return dis, err
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(dis, func(i, j int) bool {
+		return dis[i].SiaPath.String() < dis[j].SiaPath.String()
+	})
+	return dis, nil
 }
 
 // RenameDir takes an existing directory and changes the path. The original
