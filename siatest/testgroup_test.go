@@ -8,7 +8,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/node"
 )
 
-// TestCreateTestGroup tests the behavior of NewGroup.
+// TestNewGroup tests the behavior of NewGroup.
 func TestNewGroup(t *testing.T) {
 	if !build.VLONG {
 		t.SkipNow()
@@ -16,6 +16,7 @@ func TestNewGroup(t *testing.T) {
 	// Specify the parameters for the group
 	groupParams := GroupParams{
 		Hosts:   5,
+		Portals: 1,
 		Renters: 2,
 		Miners:  2,
 	}
@@ -34,13 +35,21 @@ func TestNewGroup(t *testing.T) {
 	if len(tg.Hosts()) != groupParams.Hosts {
 		t.Error("Wrong number of hosts")
 	}
-	if len(tg.Renters()) != groupParams.Renters {
+	if len(tg.Portals()) != groupParams.Portals {
+		t.Error("Wrong number of portals")
+	}
+	expectedRenters := groupParams.Portals + groupParams.Renters
+	if len(tg.Renters()) != expectedRenters {
 		t.Error("Wrong number of renters")
+	}
+	if len(tg.Portals()) != groupParams.Portals {
+		t.Error("Wrong number of portals")
 	}
 	if len(tg.Miners()) != groupParams.Miners {
 		t.Error("Wrong number of miners")
 	}
-	if len(tg.Nodes()) != groupParams.Hosts+groupParams.Renters+groupParams.Miners {
+	expectedNumberNodes := groupParams.Hosts + groupParams.Portals + groupParams.Renters + groupParams.Miners
+	if len(tg.Nodes()) != expectedNumberNodes {
 		t.Error("Wrong number of nodes")
 	}
 
@@ -74,7 +83,7 @@ func TestNewGroup(t *testing.T) {
 	}
 }
 
-// TestCreateTestGroup tests NewGroup without a miner
+// TestNewGroupNoMiner tests NewGroup without a miner
 func TestNewGroupNoMiner(t *testing.T) {
 	if testing.Short() || !build.VLONG {
 		t.SkipNow()
@@ -92,7 +101,7 @@ func TestNewGroupNoMiner(t *testing.T) {
 	}
 }
 
-// TestCreateTestGroup tests NewGroup with no renter or host
+// TestNewGroupNoRenterHost tests NewGroup with no renter or host
 func TestNewGroupNoRenterHost(t *testing.T) {
 	if testing.Short() || !build.VLONG {
 		t.SkipNow()
@@ -154,5 +163,63 @@ func TestAddNewNode(t *testing.T) {
 		if oldRenter.primarySeed == renter.primarySeed {
 			t.Fatal("Returned renter is not the new renter")
 		}
+	}
+}
+
+// TestNewGroupPortal tests NewGroup with a portal
+func TestNewGroupPortal(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	// Initiate a group with hosts and a miner.
+	groupParams := GroupParams{
+		Hosts:  4,
+		Miners: 1,
+	}
+	// Create the group
+	groupDir := siatestTestDir(t.Name())
+	tg, err := NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Add two portals with allowances that only require 1 host. This tests the
+	// portals expecting more contracts than what is defined by the allowance.
+	a := DefaultAllowance
+	a.Hosts = 1
+	portal1Params := node.Renter(filepath.Join(groupDir, "/portal1"))
+	portal1Params.CreatePortal = true
+	portal1Params.Allowance = a
+	portal2Params := node.Renter(filepath.Join(groupDir, "/portal2"))
+	portal2Params.CreatePortal = true
+	portal2Params.Allowance = a
+	_, err = tg.AddNodes(portal1Params, portal2Params)
+	if err != nil {
+		t.Fatal("Failed to add portals to group: ", err)
+	}
+
+	// Grab portals
+	portals := tg.Portals()
+	p1 := portals[0]
+	p2 := portals[1]
+
+	// The Test Group should have the portal listed as a renter as well
+	if len(tg.Renters()) != len(portals) {
+		t.Fatal("Expected same number of renters and portals")
+	}
+
+	// Have 1 portal upload a skyfile and have the other portal download it
+	skylink, _, _, err := p1.UploadNewSkyfileBlocking("file", 100, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = p2.SkynetSkylinkGet(skylink)
+	if err != nil {
+		t.Fatal(err)
 	}
 }

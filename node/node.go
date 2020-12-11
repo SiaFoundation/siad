@@ -119,6 +119,10 @@ type NodeParams struct {
 	SkipHostAnnouncement bool
 	SkipWalletInit       bool
 
+	// CreatePortal is used to set PaymentContractInitialFunding allowance field
+	// for the node
+	CreatePortal bool
+
 	// The high level directory where all the persistence gets stored for the
 	// modules.
 	Dir string
