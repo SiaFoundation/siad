@@ -2,6 +2,7 @@ package renter
 
 import (
 	"os"
+	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
@@ -28,12 +29,23 @@ func (r *Renter) DeleteDir(siaPath modules.SiaPath) error {
 }
 
 // DirList lists the directories in a siadir
-func (r *Renter) DirList(siaPath modules.SiaPath) ([]modules.DirectoryInfo, error) {
+func (r *Renter) DirList(siaPath modules.SiaPath) (dis []modules.DirectoryInfo, _ error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, err
 	}
 	defer r.tg.Done()
-	_, dis, err := r.staticFileSystem.CachedList(siaPath, false)
+	return r.managedDirList(siaPath)
+}
+
+// managedDirList lists the directories in a siadir
+func (r *Renter) managedDirList(siaPath modules.SiaPath) (dis []modules.DirectoryInfo, _ error) {
+	var mu sync.Mutex
+	dlf := func(di modules.DirectoryInfo) {
+		mu.Lock()
+		dis = append(dis, di)
+		mu.Unlock()
+	}
+	err := r.staticFileSystem.CachedList(siaPath, false, func(modules.FileInfo) {}, dlf)
 	return dis, err
 }
 

@@ -8,8 +8,10 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -1483,11 +1485,21 @@ func (api *API) renterFilesHandler(w http.ResponseWriter, req *http.Request, _ h
 			return
 		}
 	}
-	files, err := api.renter.FileList(modules.UserFolder, true, c)
+	var files []modules.FileInfo
+	var mu sync.Mutex
+	err = api.renter.FileList(modules.UserFolder, true, c, func(fi modules.FileInfo) {
+		mu.Lock()
+		files = append(files, fi)
+		mu.Unlock()
+	})
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
 	}
+	// Sort slices by SiaPath.
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].SiaPath.String() < files[j].SiaPath.String()
+	})
 	files, err = trimSiaDirFolderOnFiles(files...)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusInternalServerError)
@@ -2065,7 +2077,13 @@ func (api *API) renterDirHandlerGET(w http.ResponseWriter, req *http.Request, ps
 		}
 	}
 
-	files, err := api.renter.FileList(siaPath, false, true)
+	var files []modules.FileInfo
+	var mu sync.Mutex
+	err = api.renter.FileList(siaPath, false, true, func(fi modules.FileInfo) {
+		mu.Lock()
+		files = append(files, fi)
+		mu.Unlock()
+	})
 	if err != nil {
 		WriteError(w, Error{"failed to get file infos: " + err.Error()}, http.StatusInternalServerError)
 		return

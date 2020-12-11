@@ -66,6 +66,14 @@ type DataSourceID crypto.Hash
 // mode
 type FilterMode int
 
+// FileListFunc is a type that's passed in to functions related to iterating
+// over the filesystem.
+type FileListFunc func(FileInfo)
+
+// DirListFunc is a type that's passed in to functions related to iterating
+// over the filesystem.
+type DirListFunc func(DirectoryInfo)
+
 // HostDBFilterError HostDBDisableFilter HostDBActivateBlacklist and
 // HostDBActiveWhitelist are the constants used to enable and disable the filter
 // mode of the renter's hostdb
@@ -952,7 +960,7 @@ type Renter interface {
 	// FileList returns information on all of the files stored by the renter at the
 	// specified folder. The 'cached' argument specifies whether cached values
 	// should be returned or not.
-	FileList(siaPath SiaPath, recursive, cached bool) ([]FileInfo, error)
+	FileList(siaPath SiaPath, recursive, cached bool, flf FileListFunc) error
 
 	// Filter returns the renter's hostdb's filterMode and filteredHosts
 	Filter() (FilterMode, map[string]types.SiaPublicKey, error)
