@@ -18,9 +18,12 @@ import (
 // testingFileParams generates the ErasureCoder and a random name for a testing
 // file
 func testingFileParams() (modules.SiaPath, modules.ErasureCoder) {
-	nData := fastrand.Intn(10)
-	nParity := fastrand.Intn(10)
-	rsc, _ := modules.NewRSCode(nData+1, nParity+1)
+	nData := fastrand.Intn(10) + 1
+	nParity := fastrand.Intn(10) + 1
+	return testingFileParamsCustom(nData, nParity)
+}
+func testingFileParamsCustom(dp, pp int) (modules.SiaPath, modules.ErasureCoder) {
+	rsc, _ := modules.NewRSCode(dp, pp)
 	return modules.RandomSiaPath(), rsc
 }
 
