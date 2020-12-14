@@ -147,8 +147,8 @@ func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, 
 	return newTestingTrioWithContractorDeps(name, modules.ProdDependencies)
 }
 
-// newTestingTrio creates a Host, Contractor, and TestMiner that can be
-// used for testing host/renter interactions.
+// newTestingTrioWithContractorDeps creates a Host, Contractor, and TestMiner
+// that can be used for testing host/renter interactions.
 func newTestingTrioWithContractorDeps(name string, deps modules.Dependencies) (modules.Host, *Contractor, modules.TestMiner, closeFn, error) {
 	testdir := build.TempDir("contractor", name)
 
