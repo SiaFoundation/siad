@@ -1,11 +1,9 @@
 package renter
 
 import (
-	"fmt"
 	"math"
 	"time"
 
-	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -26,11 +24,6 @@ func (pdc *projectDownloadChunk) adjustedReadDuration(w *worker) time.Duration {
 	jobTime := w.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
 	if jobTime < 0 {
 		jobTime = 0
-	}
-
-	pricePerMS := pdc.pricePerMS
-	if pricePerMS.IsZero() {
-		pricePerMS = types.NewCurrency64(1)
 	}
 
 	// Add a penalty to performance based on the cost of the job.
@@ -306,19 +299,19 @@ func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Ti
 // addCostPenalty takes a certain job time and adds a penalty to it depending on
 // the jobcost and the pdc's price per MS.
 func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) time.Duration {
-	if pricePerMS.IsZero() {
-		build.Critical("pricePerMS should always be greater than zero")
-	}
-
-	// If the pricePerMS is higher or equal than the cost of the job, simply add
-	// a millisecond penalty to avoid rounding errors.
-	var adjusted time.Duration
+	// If the pricePerMS is higher or equal than the cost of the job, simply
+	// return without penalty.
 	if pricePerMS.Cmp(jobCost) >= 0 {
-		adjusted = jobTime + time.Millisecond
-		fmt.Println("OH NO")
-		return adjusted
+		return jobTime
 	}
 
+	// If the pricePerMS is zero, initialize it to 1H to avoid division by zero
+	if pricePerMS.IsZero() {
+		pricePerMS = types.NewCurrency64(1)
+	}
+
+	// Otherwise, add a penalty
+	var adjusted time.Duration
 	penalty, err := jobCost.Div(pricePerMS).Uint64()
 	if err != nil || penalty > math.MaxInt64 {
 		adjusted = time.Duration(math.MaxInt64)

@@ -477,11 +477,6 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 // will select those workers only if the additional expense of using those
 // workers is less than 100 * pricePerMS.
 func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
-	// Sanity check pricePerMS is greater than zero
-	if pricePerMS.IsZero() {
-		build.Critical("pricePerMS is expected to be greater than zero")
-	}
-
 	// Convenience variables.
 	ec := pcws.staticErasureCoder
 
