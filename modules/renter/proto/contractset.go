@@ -92,13 +92,13 @@ func (cs *ContractSet) IDs() []types.FileContractID {
 
 // InsertContract inserts an existing contract into the set.
 func (cs *ContractSet) InsertContract(rc modules.RecoverableContract, revTxn types.Transaction, roots []crypto.Hash, sk crypto.SecretKey) (modules.RenterContract, error) {
-	initialRenterPayout := rc.FileContract.ValidRenterPayout()
-	var latestRenterPayout types.Currency
-	if len(revTxn.FileContractRevisions) == 0 {
-		build.Critical("InsertContract: revTxn doesn't contain a revision")
-	} else {
-		latestRenterPayout = revTxn.FileContractRevisions[0].ValidRenterPayout()
-	}
+	// Estimate the totalCost.
+	// NOTE: The actual totalCost is the funding amount. Which means
+	// renterPayout + txnFee + basePrice + contractPrice.
+	// Since we don't know the basePrice and contractPrice, we don't add them.
+	var totalCost types.Currency
+	totalCost = totalCost.Add(rc.FileContract.ValidRenterPayout())
+	totalCost = totalCost.Add(rc.TxnFee)
 	return cs.managedInsertContract(contractHeader{
 		Transaction:      revTxn,
 		SecretKey:        sk,
@@ -106,7 +106,7 @@ func (cs *ContractSet) InsertContract(rc modules.RecoverableContract, revTxn typ
 		DownloadSpending: types.NewCurrency64(1), // TODO set this
 		StorageSpending:  types.NewCurrency64(1), // TODO set this
 		UploadSpending:   types.NewCurrency64(1), // TODO set this
-		TotalCost:        initialRenterPayout.Sub(latestRenterPayout),
+		TotalCost:        totalCost,
 		ContractFee:      types.NewCurrency64(1), // TODO set this
 		TxnFee:           rc.TxnFee,
 		SiafundFee:       types.Tax(rc.StartHeight, rc.Payout),
