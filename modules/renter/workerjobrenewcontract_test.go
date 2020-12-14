@@ -40,14 +40,6 @@ func TestRenewContract(t *testing.T) {
 
 	// Get a transaction builder and add the funding.
 	funding := types.SiacoinPrecision
-	txnBuilder, err := wt.rt.wallet.StartTransaction()
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = txnBuilder.FundSiacoins(funding)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// Get the host from the hostdb.
 	host, _, err := wt.renter.hostDB.Host(wt.staticHostPubKey)
@@ -77,25 +69,32 @@ func TestRenewContract(t *testing.T) {
 		RenterSeed:    rs.EphemeralRenterSeed(bh + allowance.Period),
 	}
 
-	// Get the old contract and revision.
-	oldContract, ok := wt.renter.hostContractor.ContractByPublicKey(wt.staticHostPubKey)
-	if !ok {
-		t.Fatal("oldContract not found")
+	// Get a txnbuilder.
+	txnBuilder, err := wt.rt.wallet.StartTransaction()
+	if err != nil {
+		t.Fatal(err)
 	}
-	oldRevision := oldContract.Transaction.FileContractRevisions[0]
+	err = txnBuilder.FundSiacoins(funding)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	// Old contract should not be empty.
-	size := oldRevision.NewFileSize
-	if size == 0 {
-		t.Fatal("size is zero")
+	// Check contract before renewal.
+	oldContractPreRenew, ok := wt.renter.hostContractor.ContractByPublicKey(params.Host.PublicKey)
+	if !ok {
+		t.Fatal("contract doesn't exist")
 	}
-	merkleRoot := oldRevision.NewFileMerkleRoot
-	if merkleRoot == (crypto.Hash{}) {
+	if oldContractPreRenew.Size() == 0 {
+		t.Fatal("contract shouldnt be empty pre renewal")
+	}
+	oldRevisionPreRenew := oldContractPreRenew.Transaction.FileContractRevisions[0]
+	oldMerkleRoot := oldRevisionPreRenew.NewFileMerkleRoot
+	if oldMerkleRoot == (crypto.Hash{}) {
 		t.Fatal("empty root")
 	}
 
 	// Renew the contract.
-	_, _, err = wt.RenewContract(context.Background(), oldContract.ID, params, txnBuilder)
+	_, _, err = wt.RenewContract(context.Background(), oldContractPreRenew.ID, params, txnBuilder)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,16 +110,38 @@ func TestRenewContract(t *testing.T) {
 	found := false
 	var fcr types.FileContractRevision
 	var newContract types.FileContract
+	var fcTxn types.Transaction
 	for _, txn := range b.Transactions {
 		if len(txn.FileContractRevisions) == 1 && len(txn.FileContracts) == 1 {
 			fcr = txn.FileContractRevisions[0]
 			newContract = txn.FileContracts[0]
+			fcTxn = txn
 			found = true
 			break
 		}
 	}
 	if !found {
 		t.Fatal("txn containing both the final revision and contract wasn't mined")
+	}
+
+	// Get the old contract and revision.
+	var oldContract modules.RenterContract
+	oldContracts := wt.renter.OldContracts()
+	for _, c := range oldContracts {
+		if c.HostPublicKey.String() == params.Host.PublicKey.String() {
+			oldContract = c
+		}
+	}
+	oldRevision := oldContract.Transaction.FileContractRevisions[0]
+
+	// Old contract should be empty after renewal.
+	size := oldRevision.NewFileSize
+	if size != 0 {
+		t.Fatal("size should be zero")
+	}
+	merkleRoot := oldRevision.NewFileMerkleRoot
+	if merkleRoot != (crypto.Hash{}) {
+		t.Fatal("root should be empty")
 	}
 
 	// Check final revision.
@@ -152,7 +173,7 @@ func TestRenewContract(t *testing.T) {
 	// Compute the expected payouts of the new contract.
 	pt := wt.staticPriceTable().staticPriceTable
 	params.PriceTable = &pt
-	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevision, params.PriceTable, params.EndHeight)
+	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevisionPreRenew, params.PriceTable, params.EndHeight)
 	allowance, startHeight, endHeight, host, funding := params.Allowance, params.StartHeight, params.EndHeight, params.Host, params.Funding
 	period := endHeight - startHeight
 	txnFee := pt.TxnFeeMaxRecommended.Mul64(2 * modules.EstimatedFileContractTransactionSetSize)
@@ -163,10 +184,10 @@ func TestRenewContract(t *testing.T) {
 	totalPayout := renterPayout.Add(hostPayout)
 
 	// Check the new contract.
-	if newContract.FileMerkleRoot != merkleRoot {
+	if newContract.FileMerkleRoot != oldMerkleRoot {
 		t.Fatal("new contract got wrong root")
 	}
-	if newContract.FileSize != size {
+	if newContract.FileSize != oldContractPreRenew.Size() {
 		t.Fatal("new contract got wrong size")
 	}
 	if !newContract.Payout.Equals(totalPayout) {
@@ -178,7 +199,15 @@ func TestRenewContract(t *testing.T) {
 	if newContract.WindowEnd != params.EndHeight+params.Host.WindowSize {
 		t.Fatal("wrong window end")
 	}
-	if newContract.UnlockHash != fcr.NewUnlockHash {
+	_, ourPK := modules.GenerateContractKeyPair(params.RenterSeed, fcTxn)
+	uh := types.UnlockConditions{
+		PublicKeys: []types.SiaPublicKey{
+			types.Ed25519PublicKey(ourPK),
+			wt.staticHostPubKey,
+		},
+		SignaturesRequired: 2,
+	}.UnlockHash()
+	if newContract.UnlockHash != uh {
 		t.Fatal("unlock hash doesn't match")
 	}
 	if newContract.RevisionNumber != 0 {
@@ -229,10 +258,10 @@ func TestRenewContract(t *testing.T) {
 	rev := c.Transaction.FileContractRevisions[0]
 
 	// Check the revision.
-	if rev.NewFileMerkleRoot != merkleRoot {
+	if rev.NewFileMerkleRoot != oldMerkleRoot {
 		t.Fatalf("new contract revision got wrong root %v", rev.NewFileMerkleRoot)
 	}
-	if rev.NewFileSize != size {
+	if rev.NewFileSize != oldContractPreRenew.Size() {
 		t.Fatal("new contract revision got wrong size")
 	}
 	if rev.NewWindowStart != params.EndHeight {
@@ -241,7 +270,7 @@ func TestRenewContract(t *testing.T) {
 	if rev.NewWindowEnd != params.EndHeight+params.Host.WindowSize {
 		t.Fatal("wrong window end")
 	}
-	if rev.NewUnlockHash != fcr.NewUnlockHash {
+	if rev.NewUnlockHash != uh {
 		t.Fatal("unlock hash doesn't match")
 	}
 	if rev.NewRevisionNumber != 1 {

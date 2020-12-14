@@ -34,7 +34,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/skykey"
-	"gitlab.com/NebulousLabs/Sia/skynet"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -1390,19 +1389,19 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup, skykeyNam
 	}
 
 	// Check for encryption
-	encrypted := skynet.IsEncryptedBaseSector(baseSector)
+	encrypted := modules.IsEncryptedBaseSector(baseSector)
 	if encrypted != (skykeyName != "") {
 		t.Fatal("wrong encrypted state", encrypted, skykeyName)
 	}
 	if encrypted {
-		_, err = skynet.DecryptBaseSector(baseSector, sk)
+		_, err = modules.DecryptBaseSector(baseSector, sk)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Parse the skyfile metadata from the baseSector
-	_, fanoutBytes, metadata, baseSectorPayload, err := skynet.ParseSkyfileMetadata(baseSector)
+	_, fanoutBytes, metadata, baseSectorPayload, err := modules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1445,19 +1444,19 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup, skykeyNam
 	}
 
 	// Check for encryption
-	encrypted = skynet.IsEncryptedBaseSector(rootSector)
+	encrypted = modules.IsEncryptedBaseSector(rootSector)
 	if encrypted != (skykeyName != "") {
 		t.Fatal("wrong encrypted state", encrypted, skykeyName)
 	}
 	if encrypted {
-		_, err = skynet.DecryptBaseSector(rootSector, sk)
+		_, err = modules.DecryptBaseSector(rootSector, sk)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Parse the skyfile metadata from the rootSector
-	_, fanoutBytes, metadata, rootSectorPayload, err := skynet.ParseSkyfileMetadata(rootSector)
+	_, fanoutBytes, metadata, rootSectorPayload, err := modules.ParseSkyfileMetadata(rootSector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1528,20 +1527,20 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 	}
 
 	// Check for encryption
-	encrypted := skynet.IsEncryptedBaseSector(baseSector)
+	encrypted := modules.IsEncryptedBaseSector(baseSector)
 	if encrypted != (skykeyName != "") {
 		t.Fatal("wrong encrypted state", encrypted, skykeyName)
 	}
 	var fileKey skykey.Skykey
 	if encrypted {
-		fileKey, err = skynet.DecryptBaseSector(baseSector, sk)
+		fileKey, err = modules.DecryptBaseSector(baseSector, sk)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Parse the information from the BaseSector
-	layout, fanoutBytes, metadata, baseSectorPayload, err := skynet.ParseSkyfileMetadata(baseSector)
+	layout, fanoutBytes, metadata, baseSectorPayload, err := modules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1569,7 +1568,7 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 	}
 
 	// Decode Fanout
-	piecesPerChunk, chunkRootsSize, numChunks, err := skynet.DecodeFanout(layout, fanoutBytes)
+	piecesPerChunk, chunkRootsSize, numChunks, err := modules.DecodeFanout(layout, fanoutBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1594,7 +1593,7 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 	// Derive the fanout key
 	var fanoutKey crypto.CipherKey
 	if encrypted {
-		fanoutKey, err = skynet.DeriveFanoutKey(&layout, fileKey)
+		fanoutKey, err = modules.DeriveFanoutKey(&layout, fileKey)
 		if err != nil {
 			t.Fatal(err)
 		}

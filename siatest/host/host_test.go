@@ -14,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host"
 	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 	"gitlab.com/NebulousLabs/Sia/node/api/client"
@@ -708,5 +709,15 @@ func TestHostGetPriceTable(t *testing.T) {
 	// Check that validity is set. Hardcoded for the same reasons as before.
 	if pt.Validity != time.Minute {
 		t.Fatal("invalid validity")
+	}
+
+	if !pt.SubscriptionBaseCost.Equals(types.NewCurrency64(1)) {
+		t.Fatal("wrong subscription base cost")
+	}
+	if !pt.SubscriptionMemoryCost.Equals(types.NewCurrency64(1)) {
+		t.Fatal("wrong subscription memory cost")
+	}
+	if !pt.SubscriptionNotificationBaseCost.Equals(pt.DownloadBandwidthCost.Mul64(registry.PersistedEntrySize)) {
+		t.Fatal("wrong subscription notification base cost")
 	}
 }

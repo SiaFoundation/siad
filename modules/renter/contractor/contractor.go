@@ -325,7 +325,6 @@ func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKe
 			return errors.AddContext(err, "Failed to commit unknown spending intent")
 		}
 	}
-
 	return nil
 }
 

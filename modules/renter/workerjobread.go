@@ -132,34 +132,14 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 	// result in an error. Because there was no failure, the consecutive
 	// failures stat can be reset.
 	jq := j.staticQueue.(*jobReadQueue)
-	jq.mu.Lock()
-	if j.staticLength <= 1<<16 {
-		jq.weightedJobTime64k *= jobReadPerformanceDecay
-		jq.weightedJobsCompleted64k *= jobReadPerformanceDecay
-		jq.weightedJobTime64k += float64(readJobTime)
-		jq.weightedJobsCompleted64k++
-	} else if j.staticLength <= 1<<20 {
-		jq.weightedJobTime1m *= jobReadPerformanceDecay
-		jq.weightedJobsCompleted1m *= jobReadPerformanceDecay
-		jq.weightedJobTime1m += float64(readJobTime)
-		jq.weightedJobsCompleted1m++
-	} else {
-		jq.weightedJobTime4m *= jobReadPerformanceDecay
-		jq.weightedJobsCompleted4m *= jobReadPerformanceDecay
-		jq.weightedJobTime4m += float64(readJobTime)
-		jq.weightedJobsCompleted4m++
-	}
-	jq.mu.Unlock()
+	jq.managedUpdateJobTimeMetrics(j.staticLength, readJobTime)
 }
 
 // callExpectedBandwidth returns the bandwidth that gets consumed by a
 // Read program.
-//
-// TODO: These values are overly conservative, once we've got the protocol more
-// optimized we can bring these down.
 func (j *jobRead) callExpectedBandwidth() (ul, dl uint64) {
-	ul = 1 << 15                                      // 32 KiB
-	dl = uint64(float64(j.staticLength)*1.01) + 1<<14 // (readSize * 1.01 + 16 KiB)
+	ul = 1 << 12                                      // 4 KiB
+	dl = uint64(float64(j.staticLength)*1.01) + 1<<12 // (readSize * 1.01 + 4 KiB)
 	return
 }
 
@@ -200,7 +180,20 @@ func (j *jobRead) managedRead(w *worker, program modules.Program, programData []
 	return responses, nil
 }
 
-// callAverageJobTime will return the recent performance of the worker
+// callAddWithEstimate will add a job to the job read queue while providing an
+// estimate for when the job is expected to return.
+func (jq *jobReadQueue) callAddWithEstimate(j *jobReadSector) (time.Time, bool) {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+
+	estimate := jq.expectedJobTime(j.staticLength)
+	if !jq.add(j) {
+		return time.Time{}, false
+	}
+	return time.Now().Add(estimate), true
+}
+
+// callExpectedJobTime will return the recent performance of the worker
 // attempting to complete read jobs. The call distinguishes based on the
 // size of the job, breaking the jobs into 3 categories: less than 64kb, less
 // than 1mb, and up to a full sector in size.
@@ -208,15 +201,74 @@ func (j *jobRead) managedRead(w *worker, program modules.Program, programData []
 // The breakout is performed because low latency, low throughput workers are
 // common, and will have very different performance characteristics across the
 // three categories.
-func (jq *jobReadQueue) callAverageJobTime(length uint64) time.Duration {
+//
+// TODO: Make this smarter.
+func (jq *jobReadQueue) callExpectedJobTime(length uint64) time.Duration {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	return jq.expectedJobTime(length)
+}
+
+// expectedJobTime returns the expected job time, based on recent performance,
+// for the given read length.
+func (jq *jobReadQueue) expectedJobTime(length uint64) time.Duration {
+	var completed float64
+	var weightedJobTime float64
+
+	if length <= 1<<16 {
+		weightedJobTime = jq.weightedJobTime64k
+		completed = jq.weightedJobsCompleted64k
+	} else if length <= 1<<20 {
+		weightedJobTime = jq.weightedJobTime1m
+		completed = jq.weightedJobsCompleted1m
+	} else {
+		weightedJobTime = jq.weightedJobTime4m
+		completed = jq.weightedJobsCompleted4m
+	}
+
+	// if we don't have any historic data yet, return a sane default of 40ms
+	if completed == 0 {
+		return 40 * time.Millisecond
+	}
+	return time.Duration(weightedJobTime / completed)
+}
+
+// callExpectedJobCost returns an estimate for the price of performing a read
+// job with the given length.
+func (jq *jobReadQueue) callExpectedJobCost(length uint64) types.Currency {
+	// create a dummy read program to get at the estimated cost
+	w := jq.staticWorker()
+	pt := w.staticPriceTable().staticPriceTable
+	pb := modules.NewProgramBuilder(&pt, 0)
+	pb.AddReadSectorInstruction(length, 0, crypto.Hash{}, true)
+	cost, _, _ := pb.Cost(true)
+
+	// take into account bandwidth costs
+	ulBandwidth, dlBandwidth := new(jobReadSector).callExpectedBandwidth()
+	bandwidthCost := modules.MDMBandwidthCost(pt, ulBandwidth, dlBandwidth)
+	return cost.Add(bandwidthCost)
+}
+
+// managedUpdateJobTimeMetrics takes a length and the duration it took to fulfil
+// that job and uses it to update the job performance metrics on the queue.
+func (jq *jobReadQueue) managedUpdateJobTimeMetrics(length uint64, jobTime time.Duration) {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	if length <= 1<<16 {
-		return time.Duration(jq.weightedJobTime64k / jq.weightedJobsCompleted64k)
+		jq.weightedJobTime64k *= jobReadPerformanceDecay
+		jq.weightedJobsCompleted64k *= jobReadPerformanceDecay
+		jq.weightedJobTime64k += float64(jobTime)
+		jq.weightedJobsCompleted64k++
 	} else if length <= 1<<20 {
-		return time.Duration(jq.weightedJobTime1m / jq.weightedJobsCompleted1m)
+		jq.weightedJobTime1m *= jobReadPerformanceDecay
+		jq.weightedJobsCompleted1m *= jobReadPerformanceDecay
+		jq.weightedJobTime1m += float64(jobTime)
+		jq.weightedJobsCompleted1m++
 	} else {
-		return time.Duration(jq.weightedJobTime4m / jq.weightedJobsCompleted4m)
+		jq.weightedJobTime4m *= jobReadPerformanceDecay
+		jq.weightedJobsCompleted4m *= jobReadPerformanceDecay
+		jq.weightedJobTime4m += float64(jobTime)
+		jq.weightedJobsCompleted4m++
 	}
 }
 
