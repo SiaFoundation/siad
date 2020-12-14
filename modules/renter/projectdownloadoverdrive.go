@@ -64,7 +64,7 @@ func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnres
 	waitDuration = time.Duration(math.MaxInt64)
 	workerIndex = -1
 
-	// Loop through the unresovled workers and find the best unresovled worker.
+	// Loop through the unresovled workers and find the best unresolved worker.
 	for i, uw := range puws {
 		// Figure how much time is expected to remain until the worker is
 		// available. Note that no price penalty is attached to the HasSector
