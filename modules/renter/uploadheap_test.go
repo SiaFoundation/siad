@@ -413,7 +413,7 @@ func TestAddChunksToHeap(t *testing.T) {
 	}()
 
 	// Create File params
-	_, rsc := testingFileParams()
+	rsc, _ := modules.NewRSCode(1, 1) // Minimum erasure coding
 	source, err := rt.createZeroByteFileOnDisk()
 	if err != nil {
 		t.Fatal(err)
@@ -433,7 +433,8 @@ func TestAddChunksToHeap(t *testing.T) {
 			t.Fatal(err)
 		}
 		up.SiaPath = siaPath
-		err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), modules.SectorSize, persist.DefaultDiskPermissionsTest, false)
+		// File size 100 to help ensure only 1 chunk per file
+		err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -698,14 +699,10 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 	if rt.renter.uploadHeap.managedLen() != 0 {
 		t.Fatal("Expected upload heap to be empty but has length of", rt.renter.uploadHeap.managedLen())
 	}
-	// "Empty" -> gets initialized with the root dir, therefore should have one
-	// directory in it.
-	if rt.renter.directoryHeap.managedLen() != 1 {
+	// Directory Heap is also empty when using renter with dependencies.
+	if rt.renter.directoryHeap.managedLen() != 0 {
 		t.Fatal("Expected directory heap to be empty but has length of", rt.renter.directoryHeap.managedLen())
 	}
-	// Reset the dir heap to clear the root dir out, rest of test wants an empty
-	// heap.
-	rt.renter.directoryHeap.managedReset()
 
 	// Add chunks from file to uploadHeap
 	rt.renter.callBuildAndPushChunks([]*filesystem.FileNode{f}, hosts, targetUnstuckChunks, offline, goodForRenew)
