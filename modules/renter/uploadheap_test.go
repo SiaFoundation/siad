@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -424,7 +425,7 @@ func TestAddChunksToHeap(t *testing.T) {
 
 	// Create files in multiple directories
 	var numChunks uint64
-	var dirSiaPaths []modules.SiaPath
+	dirSiaPaths := rt.renter.newUniqueRefreshPaths()
 	names := []string{"rootFile", "subdir/File", "subdir2/file"}
 	for _, name := range names {
 		siaPath, err := modules.NewSiaPath(name)
@@ -451,15 +452,31 @@ func TestAddChunksToHeap(t *testing.T) {
 		if err != nil && !errors.Contains(err, filesystem.ErrExists) {
 			t.Fatal(err)
 		}
-		dirSiaPaths = append(dirSiaPaths, dirSiaPath)
-	}
-
-	// Call bubbled to ensure directory metadata is updated
-	for _, siaPath := range dirSiaPaths {
-		err := rt.renter.managedBubbleMetadata(siaPath)
+		err = dirSiaPaths.callAdd(dirSiaPath)
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+
+	// Call bubbled to ensure directory metadata is updated
+	err = dirSiaPaths.callRefreshAllBlocking()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait until the root health has been updated
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		rd, err := rt.renter.DirList(modules.RootSiaPath())
+		if err != nil {
+			return err
+		}
+		if rd[0].Health == 0 {
+			return errors.New("root health not updated")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Manually add workers to worker pool and create host map
