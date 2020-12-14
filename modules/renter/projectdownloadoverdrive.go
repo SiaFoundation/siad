@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"math"
 	"time"
 
@@ -69,12 +70,13 @@ func (pdc *projectDownloadChunk) bestOverdriveUnresolvedWorker(puws []*pcwsUnres
 		// Figure how much time is expected to remain until the worker is
 		// available. Note that no price penalty is attached to the HasSector
 		// call, because that call is being made regardless of the cost.
+		uwLate := false
 		hasSectorTime := time.Until(uw.staticExpectedCompleteTime)
 		if hasSectorTime < 0 {
 			hasSectorTime = 0
+			uwLate = true
 		}
 		// Skip this worker if the best is not late but this worker is late.
-		uwLate := hasSectorTime <= 0
 		if uwLate && !late {
 			continue
 		}
@@ -143,25 +145,16 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 	bawAdjustedDuration := time.Duration(math.MaxInt64)
 	bawPieceIndex := 0
 	var baw *worker
-	for i, activePiece := range pdc.availablePieces {
-		// This piece should be skipped if it is completed.
-		complete := false
-		for _, pieceDownload := range activePiece {
-			// No need to check the rest of the pieces if this piece is
-			// complete.
-			if pieceDownload.completed {
-				complete = true
-				break
-			}
-		}
-		// Don't consider any workers from this piece if the piece is completed.
-		if complete {
-			continue
-		}
 
-		// Determine whether any worker for the piece is better than the
-		// current baw.
+LOOP:
+	for i, activePiece := range pdc.availablePieces {
 		for _, pieceDownload := range activePiece {
+			// Don't consider any workers from this piece if the piece is
+			// completed.
+			if pieceDownload.completed {
+				break LOOP
+			}
+
 			// Skip over failed pieces or pieces that have already launched.
 			if pieceDownload.downloadErr != nil || pieceDownload.launched {
 				continue
@@ -206,20 +199,6 @@ func (pdc *projectDownloadChunk) findBestOverdriveWorker() (*worker, uint64, <-c
 // will be returned which indicates when the worker flips over to being late and
 // therefore another worker should be selected.
 func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-chan struct{}, <-chan time.Time) {
-	// delayMS is a helper function that implements a very rudimentary
-	// exponential backoff that prevents the following loop from spamming the
-	// read queue if it is on a cooldown.
-	delayMS := func(retry int) time.Duration {
-		base := int(math.Pow(2, float64(retry)))
-		base += fastrand.Intn(1000) // jitter
-
-		maxDelay := 30000 // 30s
-		if base > maxDelay {
-			return time.Duration(maxDelay) * time.Millisecond
-		}
-		return time.Duration(base) * time.Millisecond
-	}
-
 	// Loop until either a launch succeeds or until the best worker is not
 	// found.
 	retry := 0
@@ -238,7 +217,7 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 			select {
 			case <-pdc.workerSet.staticRenter.tg.StopChan():
 				return false, time.Time{}, wakeChan, workerLateChan
-			case <-time.After(delayMS(retry)):
+			case <-time.After(expBackoffDelayMS(retry)):
 				retry++
 				continue
 			}
@@ -336,6 +315,7 @@ func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) t
 	var adjusted time.Duration
 	if pricePerMS.Cmp(jobCost) >= 0 {
 		adjusted = jobTime + time.Millisecond
+		fmt.Println("OH NO")
 		return adjusted
 	}
 
@@ -348,4 +328,24 @@ func addCostPenalty(jobTime time.Duration, jobCost, pricePerMS types.Currency) t
 		adjusted = jobTime + (time.Duration(penalty) * time.Millisecond)
 	}
 	return adjusted
+}
+
+// expBackoffDelayMS is a helper function that implements a very rudimentary
+// exponential backoff delay.
+func expBackoffDelayMS(retry int) time.Duration {
+	maxDelayMS := 30000 // 30s
+	maxDelayDur := time.Duration(maxDelayMS) * time.Millisecond
+
+	// seeing as a retry of 15 guarantees a delay of 30s, return the max delay,
+	// this also prevents an overflow for large retry values
+	if retry > 15 {
+		return maxDelayDur
+	}
+
+	delayMS := int(math.Pow(2, float64(retry)))
+	delayMS += fastrand.Intn(1000) // jitter
+	if delayMS > maxDelayMS {
+		return maxDelayDur
+	}
+	return time.Duration(delayMS) * time.Millisecond
 }
