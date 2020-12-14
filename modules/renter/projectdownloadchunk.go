@@ -56,6 +56,11 @@ type projectDownloadChunk struct {
 	lengthInChunk uint64
 	offsetInChunk uint64
 
+	// pricePerMS is the amount of money we are willing to spend on faster
+	// workers. If a certain set of workers is 100ms faster, but that exceeds
+	// the pricePerMS we are willing to pay for it, we won't use that faster
+	// worker set. If it is within the budget however, we will favor the faster
+	// and more expensive worker set.
 	pricePerMS types.Currency
 
 	// Values derived from the chunk download parameters. The offset and length

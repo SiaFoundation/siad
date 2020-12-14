@@ -87,6 +87,13 @@ import (
 // pdcInitialWorker tracks information about a worker that is useful for
 // building the optimal set of launch workers.
 type pdcInitialWorker struct {
+	// The completeTime is the time at which we estimate the worker will have
+	// completed the download. It is based on the expected completion time of
+	// the  has sector job, plus the readDuration.
+	//
+	// The cost is the amount of money will be spent on fetching a single piece
+	// for this pdc.
+	//
 	// The readDuration tracks the amount of time the worker is expected to take
 	// to execute a read job. The readDuration gets added to the duration each
 	// time the worker is added back into the heap to potentially be used an
@@ -94,9 +101,6 @@ type pdcInitialWorker struct {
 	// so assuming an additional full 'readDuration' per read is overly
 	// pessimistic, at the same time we prefer to spread our downloads over
 	// multiple workers so the pessimism is not too bad.
-	//
-	// The cost is the amount of money will be spent on fetching a single piece
-	// for this pdc.
 	completeTime time.Time
 	cost         types.Currency
 	readDuration time.Duration
