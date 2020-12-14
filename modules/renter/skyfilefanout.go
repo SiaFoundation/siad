@@ -176,10 +176,10 @@ func skyfileEncodeFanoutFromFileNode(fileNode *filesystem.FileNode, onePiece boo
 					break
 				}
 			}
-			// If root is still equal to emptyHash it means that the fanout was
-			// encoded with an empty hash.
+			// If root is still equal to emptyHash it means that we didn't add a piece
+			// root for this chunk.
 			if root == emptyHash {
-				err = fmt.Errorf("Empty piece root found for chunk %v", i)
+				err = fmt.Errorf("No piece root encoded for chunk %v", i)
 				build.Critical(err)
 				return nil, err
 			}
@@ -219,14 +219,10 @@ func skyfileEncodeFanoutFromReader(fileNode *filesystem.FileNode, reader io.Read
 	// Generate the remaining pieces of the each chunk to build the fanout bytes
 	numPieces := fileNode.ErasureCode().NumPieces()
 	fanout := make([]byte, 0, fileNode.NumChunks()*uint64(numPieces)*crypto.HashSize)
-	var peek []byte
 	var emptyHash crypto.Hash
 	for i := uint64(0); i < fileNode.NumChunks(); i++ {
-		// Create a new shard set it to be the source reader of the chunk.
-		ss := NewStreamShard(reader, peek)
-
-		// Allocate data pieces and fill them with data from r.
-		dataPieces, _, err := readDataPieces(ss, fileNode.ErasureCode(), fileNode.PieceSize())
+		// Allocate data pieces and fill them with data from the reader.
+		dataPieces, _, err := readDataPieces(reader, fileNode.ErasureCode(), fileNode.PieceSize())
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to get dataPieces from chunk")
 		}

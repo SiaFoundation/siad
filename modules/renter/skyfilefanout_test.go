@@ -9,16 +9,14 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 )
 
-// TestSkyfileFanoutEmptyHash is a regression test to check that we error out if
-// there is a emptyHash found for the piece root for cases where we need all the
-// pieces of a chunk.
+// TestSkyfileFanout probes the fanout encoding.
 func TestSkyfileFanoutEmptyHash(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
 
-	// Create renter to then create test file
+	// Create a renter for the tests
 	rt, err := newRenterTester(t.Name())
 	if err != nil {
 		t.Fatal(err)
