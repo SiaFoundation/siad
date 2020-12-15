@@ -61,7 +61,7 @@ func TestBackupAndRestoreSkylink(t *testing.T) {
 			}
 		}()
 		// Backup and Restore test
-		testBackupAndRestore(t, baseSector, fileData, smallFile, smallFile)
+		testBackupAndRestore(t, baseSector, fileData, smallFile)
 	}
 
 	// Small file test
@@ -97,16 +97,22 @@ func TestBackupAndRestoreSkylink(t *testing.T) {
 }
 
 // testBackupAndRestore executes the test code for TestBackupAndRestoreSkylink
-func testBackupAndRestore(t *testing.T, baseSector []byte, fileData []byte, restoreReader io.ReadSeeker, backupWriter io.WriteSeeker) {
+func testBackupAndRestore(t *testing.T, baseSector []byte, fileData []byte, backupFile *os.File) {
 	// Create backup
 	backupReader := bytes.NewReader(fileData)
-	err := BackupSkylink(testSkylink, baseSector, backupReader, backupWriter)
+	err := BackupSkylink(testSkylink, baseSector, backupReader, backupFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Seek to the beginning of the file
+	_, err = backupFile.Seek(0, io.SeekStart)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Restore
-	skylinkStr, restoreBaseSector, err := RestoreSkylink(restoreReader)
+	skylinkStr, restoreBaseSector, err := RestoreSkylink(backupFile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +124,7 @@ func testBackupAndRestore(t *testing.T, baseSector []byte, fileData []byte, rest
 		t.Log("restored baseSector:", restoreBaseSector)
 		t.Fatal("BaseSector bytes not equal")
 	}
-	restoredData, err := ioutil.ReadAll(restoreReader)
+	restoredData, err := ioutil.ReadAll(backupFile)
 	if err != nil {
 		t.Fatal(err)
 	}

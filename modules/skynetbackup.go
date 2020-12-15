@@ -57,7 +57,7 @@ type SkyfileBackupHeader struct {
 
 // BackupSkylink backs up a skylink by writing skylink and baseSector to
 // a header and then writing the header and the reader data to the writer.
-func BackupSkylink(skylink string, baseSector []byte, reader io.Reader, writer io.WriteSeeker) error {
+func BackupSkylink(skylink string, baseSector []byte, reader io.Reader, writer io.Writer) error {
 	// Write the header
 	err := writeBackupHeader(writer, skylink, baseSector)
 	if err != nil {
@@ -71,7 +71,7 @@ func BackupSkylink(skylink string, baseSector []byte, reader io.Reader, writer i
 
 // RestoreSkylink restores a skylink by returning the Skylink and the baseSector
 // from the reader.
-func RestoreSkylink(r io.ReadSeeker) (string, []byte, error) {
+func RestoreSkylink(r io.Reader) (string, []byte, error) {
 	// Read the header
 	skylink, baseSector, err := readBackupHeader(r)
 	if err != nil {
@@ -110,16 +110,10 @@ func SkylinkToSysPath(skylinkStr string) string {
 
 // readBackupHeader reads the header from the backup file and returns the
 // Skyfile Metadata
-func readBackupHeader(r io.ReadSeeker) (string, []byte, error) {
-	// Seek to the start of the header data
-	_, err := r.Seek(0, io.SeekStart)
-	if err != nil {
-		return "", nil, errors.AddContext(err, "unable to seek to beginning of the file data")
-	}
-
+func readBackupHeader(r io.Reader) (string, []byte, error) {
 	// Read the header from disk
 	headerBytes := make([]byte, backupHeaderSize)
-	_, err = io.ReadFull(r, headerBytes)
+	_, err := io.ReadFull(r, headerBytes)
 	if err != nil {
 		return "", nil, errors.AddContext(err, "header read error")
 	}
@@ -143,19 +137,13 @@ func readBackupHeader(r io.ReadSeeker) (string, []byte, error) {
 }
 
 // writeBackupBody writes the contents of the reader to the backup file
-func writeBackupBody(w io.WriteSeeker, reader io.Reader) error {
-	// Seek to the start of the file data
-	_, err := w.Seek(backupHeaderSize, io.SeekStart)
-	if err != nil {
-		return errors.AddContext(err, "unable to seek to beginning of the file data")
-	}
-
-	_, err = io.Copy(w, reader)
+func writeBackupBody(w io.Writer, reader io.Reader) error {
+	_, err := io.Copy(w, reader)
 	return errors.AddContext(err, "unable to copy data from reader to file")
 }
 
 // writeBackupHeader writes the header of the backup file to disk
-func writeBackupHeader(w io.WriteSeeker, skylink string, baseSector []byte) error {
+func writeBackupHeader(w io.Writer, skylink string, baseSector []byte) error {
 	// Encoding the header information
 	encodedHeader := encoding.Marshal(SkyfileBackupHeader{
 		Metadata: persist.Metadata{
@@ -169,12 +157,8 @@ func writeBackupHeader(w io.WriteSeeker, skylink string, baseSector []byte) erro
 		return errors.New("encoded header is too large")
 	}
 
-	// Seek to the start of the header data
-	_, err := w.Seek(0, io.SeekStart)
-	if err != nil {
-		return errors.AddContext(err, "unable to seek to beginning of the file")
-	}
+	// Create a reader for the encoded Header and copy it to the writer
 	headerReader := bytes.NewReader(encodedHeader)
-	_, err = io.Copy(w, headerReader)
+	_, err := io.Copy(w, headerReader)
 	return errors.AddContext(err, "unable to copy header data to file")
 }
