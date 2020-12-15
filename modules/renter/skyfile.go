@@ -31,7 +31,6 @@ package renter
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"time"
@@ -73,22 +72,6 @@ var (
 	ExtendedSuffix = "-extended"
 )
 
-// skyfileBuildBaseSector will take all of the elements of the base sector and
-// copy them into a freshly created base sector.
-func skyfileBuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) ([]byte, uint64) {
-	baseSector := make([]byte, modules.SectorSize)
-	offset := 0
-	copy(baseSector[offset:], layoutBytes)
-	offset += len(layoutBytes)
-	copy(baseSector[offset:], fanoutBytes)
-	offset += len(fanoutBytes)
-	copy(baseSector[offset:], metadataBytes)
-	offset += len(metadataBytes)
-	copy(baseSector[offset:], fileBytes)
-	offset += len(fileBytes)
-	return baseSector, uint64(offset)
-}
-
 // skyfileEstablishDefaults will set any zero values in the lup to be equal to
 // the desired defaults.
 func skyfileEstablishDefaults(lup *modules.SkyfileUploadParameters) error {
@@ -96,17 +79,6 @@ func skyfileEstablishDefaults(lup *modules.SkyfileUploadParameters) error {
 		lup.BaseChunkRedundancy = SkyfileDefaultBaseChunkRedundancy
 	}
 	return nil
-}
-
-// skyfileMetadataBytes will return the marshalled/encoded bytes for the
-// skyfile metadata.
-func skyfileMetadataBytes(lm modules.SkyfileMetadata) ([]byte, error) {
-	// Compose the metadata into the leading chunk.
-	metadataBytes, err := json.Marshal(lm)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to marshal the link file metadata")
-	}
-	return metadataBytes, nil
 }
 
 // fileUploadParamsFromLUP will derive the FileUploadParams to use when
@@ -232,7 +204,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup modules.SkyfileUploadParam
 	}
 
 	// Marshal the metadata.
-	metadataBytes, err := skyfileMetadataBytes(skyfileMetadata)
+	metadataBytes, err := modules.SkyfileMetadataBytes(skyfileMetadata)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "error retrieving skyfile metadata bytes")
 	}
@@ -263,7 +235,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup modules.SkyfileUploadParam
 	}
 
 	// Create the base sector.
-	baseSector, fetchSize := skyfileBuildBaseSector(sl.Encode(), fanoutBytes, metadataBytes, nil)
+	baseSector, fetchSize := modules.BuildBaseSector(sl.Encode(), fanoutBytes, metadataBytes, nil)
 
 	// Encrypt the base sector if necessary.
 	if encryptionEnabled(sup) {
@@ -516,7 +488,7 @@ func (r *Renter) managedUploadSkyfile(sup modules.SkyfileUploadParameters, reade
 		}
 
 		// marshal the skyfile metadata into bytes
-		metadataBytes, err := skyfileMetadataBytes(metadata)
+		metadataBytes, err := modules.SkyfileMetadataBytes(metadata)
 		if err != nil {
 			return modules.Skylink{}, errors.AddContext(err, "unable to get skyfile metadata bytes")
 		}
@@ -550,7 +522,7 @@ func (r *Renter) managedUploadSkyfileSmallFile(sup modules.SkyfileUploadParamete
 
 	// Create the base sector. This is done as late as possible so that any
 	// errors are caught before a large block of memory is allocated.
-	baseSector, fetchSize := skyfileBuildBaseSector(sl.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
+	baseSector, fetchSize := modules.BuildBaseSector(sl.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
 
 	if encryptionEnabled(sup) {
 		err := encryptBaseSectorWithSkykey(baseSector, sl, sup.FileSpecificSkykey)
