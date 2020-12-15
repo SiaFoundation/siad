@@ -7,9 +7,45 @@ import (
 	"io"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
+)
+
+const (
+	// SubscriptionEntrySize is the estimated size of a single subscribed to
+	// entry takes up in memory.
+	SubscriptionEntrySize = 100
+
+	// InitialNumNotifications is the initial number of notifications a caller
+	// has to pay for when opening the subscription loop with a host.
+	InitialNumNotifications = 100
+)
+
+// Subcription request related enum.
+const (
+	SubscriptionRequestInvalid = iota
+	SubscriptionRequestSubscribe
+	SubscriptionRequestUnsubscribe
+	SubscriptionRequestExtend
+	SubscriptionRequestPrepay
+)
+
+// Subcription response related enum.
+const (
+	SubscriptionResponseInvalid = iota
+	SubscriptionResponseRegistryValue
+)
+
+var (
+	// SubscriptionPeriod is the duration by which a period gets extended after
+	// a payment.
+	SubscriptionPeriod = build.Select(build.Var{
+		Dev:      time.Minute,
+		Standard: 5 * time.Minute,
+		Testing:  5 * time.Second,
+	}).(time.Duration)
 )
 
 // RPCPriceTable contains the cost of executing a RPC on a host. Each host can
@@ -42,6 +78,17 @@ type RPCPriceTable struct {
 	// revision of a contract.
 	// TODO: should this be free?
 	LatestRevisionCost types.Currency `json:"latestrevisioncost"`
+
+	// SubscriptionBaseCost is the base cost of all subscription based requests.
+	SubscriptionBaseCost types.Currency `json:"subscriptionbasecost"`
+
+	// SubscriptionMemoryCost is the cost of storing a byte of data for
+	// SubscriptionPeriod time.
+	SubscriptionMemoryCost types.Currency `json:"subscriptionmemorycost"`
+
+	// SubscriptionNotificationBaseCost is the base cost of a single
+	// notification.
+	SubscriptionNotificationBaseCost types.Currency `json:"subscriptionnotificationbasecost"`
 
 	// MDM related costs
 	//
@@ -131,6 +178,9 @@ var (
 	// RPCLatestRevision specifier
 	RPCLatestRevision = types.NewSpecifier("LatestRevision")
 
+	// RPCRegistrySubscription specifier
+	RPCRegistrySubscription = types.NewSpecifier("Subscription")
+
 	// RPCRenewContract specifier
 	RPCRenewContract = types.NewSpecifier("RenewContract")
 )
@@ -212,6 +262,28 @@ type (
 	// TODO: might need to update this to match MDMInstructionRevisionResponse?
 	RPCLatestRevisionResponse struct {
 		Revision types.FileContractRevision
+	}
+
+	// RPCRegistrySubscriptionRequest is a request to either add or remove a
+	// subscription.
+	RPCRegistrySubscriptionRequest struct {
+		PubKey types.SiaPublicKey
+		Tweak  crypto.Hash
+
+		// Ratelimit in milliseconds. This is not used yet but carved out to
+		// avoid a breaking protocol change later on. The idea is that for every
+		// subscribed entry, a ratelimit can be specified to avoid spam and
+		// reduce cost.
+		Ratelimit uint32
+	}
+
+	// RPCRegistrySubscriptionNotification is the response received whenever a
+	// subscribed entry is updated. It contains a type to allow for different
+	// types of responses in the future. Right now there is only one type and it
+	// returns the signed registry value.
+	RPCRegistrySubscriptionNotification struct {
+		Type  uint8
+		Entry SignedRegistryValue
 	}
 
 	// RPCUpdatePriceTableResponse contains a JSON encoded RPC price table
