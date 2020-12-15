@@ -180,7 +180,10 @@ func NewSkyfileMultipartReader(reader *multipart.Reader, fanoutReader io.Reader,
 // NewSkyfileMultipartReaderFromRequest generates a multipart reader from the
 // http request and returns a SkyfileUploadReader.
 func NewSkyfileMultipartReaderFromRequest(req *http.Request, sup SkyfileUploadParameters) (SkyfileUploadReader, error) {
-	// Error checks on request pulled from http package
+	// Error checks on request pulled from http package MultipartReader()
+	// http.Request method.
+	//
+	// https://golang.org/src/net/http/request.go?s=16785:16847#L453
 	if req.MultipartForm != nil {
 		return nil, errors.New("http: multipart previously handled")
 	}

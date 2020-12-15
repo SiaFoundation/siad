@@ -206,21 +206,18 @@ func skyfileEncodeFanoutFromFileNode(fileNode *filesystem.FileNode, onePiece boo
 // piece 1 of chunk 0 is second, etc. The full set of erasure coded pieces are
 // included.
 func skyfileEncodeFanoutFromReader(fileNode *filesystem.FileNode, reader io.Reader) ([]byte, error) {
-	// This is copied from the unfinishedUploadChunk padAndEncryptPiece method
-	padAndEncryptPiece := func(chunkIndex, pieceIndex uint64, logicalChunkData [][]byte) {
-		short := int(modules.SectorSize) - len(logicalChunkData[pieceIndex])
-		if short > 0 {
-			logicalChunkData[pieceIndex] = append(logicalChunkData[pieceIndex], make([]byte, short)...)
-		}
-		key := fileNode.MasterKey().Derive(chunkIndex, pieceIndex)
-		logicalChunkData[pieceIndex] = key.EncryptBytes(logicalChunkData[pieceIndex])
+	// Safety check
+	if reader == nil {
+		err := errors.New("skyfileEncodeFanoutFromReader called with nil reader")
+		build.Critical(err)
+		return nil, err
 	}
 
 	// Generate the remaining pieces of the each chunk to build the fanout bytes
 	numPieces := fileNode.ErasureCode().NumPieces()
 	fanout := make([]byte, 0, fileNode.NumChunks()*uint64(numPieces)*crypto.HashSize)
 	var emptyHash crypto.Hash
-	for i := uint64(0); i < fileNode.NumChunks(); i++ {
+	for chunkIndex := uint64(0); chunkIndex < fileNode.NumChunks(); chunkIndex++ {
 		// Allocate data pieces and fill them with data from the reader.
 		dataPieces, _, err := readDataPieces(reader, fileNode.ErasureCode(), fileNode.PieceSize())
 		if err != nil {
@@ -231,10 +228,10 @@ func skyfileEncodeFanoutFromReader(fileNode *filesystem.FileNode, reader io.Read
 		logicalChunkData, _ := fileNode.ErasureCode().EncodeShards(dataPieces)
 		for pieceIndex := range logicalChunkData {
 			// Encrypt and pad the piece with the given index.
-			padAndEncryptPiece(uint64(i), uint64(pieceIndex), logicalChunkData)
+			padAndEncryptPiece(chunkIndex, uint64(pieceIndex), logicalChunkData, fileNode.MasterKey())
 			root := crypto.MerkleRoot(logicalChunkData[pieceIndex])
 			if root == emptyHash {
-				err = fmt.Errorf("Empty piece root at index %v found for chunk %v", pieceIndex, i)
+				err = fmt.Errorf("Empty piece root at index %v found for chunk %v", pieceIndex, chunkIndex)
 				build.Critical(err)
 				return nil, err
 			}

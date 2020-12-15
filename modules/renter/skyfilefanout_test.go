@@ -10,7 +10,7 @@ import (
 )
 
 // TestSkyfileFanout probes the fanout encoding.
-func TestSkyfileFanoutEmptyHash(t *testing.T) {
+func TestSkyfileFanout(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -31,7 +31,7 @@ func TestSkyfileFanoutEmptyHash(t *testing.T) {
 	t.Run("Reader", func(t *testing.T) { testSkyfileEncodeFanout_Reader(t, rt) })
 }
 
-// testSkyfileEncodeFanout_Panics probes the panic conditions for generating the
+// testSkyfileEncodeFanout_Panic probes the panic conditions for generating the
 // fanout
 func testSkyfileEncodeFanout_Panic(t *testing.T, rt *renterTester) {
 	// Create a file for the renter with erasure coding of 1-of-N and a PlainText
@@ -68,7 +68,7 @@ func testPanic(t *testing.T, fileNode *filesystem.FileNode, reader io.Reader) {
 	skyfileEncodeFanout(fileNode, reader)
 }
 
-// testSkyfileEncodeFanout_Reader_ probes generating the fanout from a reader
+// testSkyfileEncodeFanout_Reader probes generating the fanout from a reader
 func testSkyfileEncodeFanout_Reader(t *testing.T, rt *renterTester) {
 	// Create a file with N-of-M erasure coding and a non PlainText cipher type
 	siaPath, rsc := testingFileParamsCustom(2, 3)
