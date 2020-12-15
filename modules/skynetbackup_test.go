@@ -2,13 +2,14 @@ package modules
 
 import (
 	"bytes"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -33,78 +34,97 @@ func TestBackupAndRestoreSkylink(t *testing.T) {
 	}
 	t.Parallel()
 
-	// Small file test
-	backupDir := modulesTestDir(filepath.Join(t.Name(), "smallfile"))
-	data := []byte("Super interesting skyfile data")
+	// Create common layout and metadata bytes
+	sl := newTestSkyfileLayout()
+	layoutBytes := sl.Encode()
 	var sm SkyfileMetadata
-	testBackupAndRestore(t, backupDir, data, newTestSkyfileLayout(), sm)
-
-	// Large file test
-	backupDir = modulesTestDir(filepath.Join(t.Name(), "largefile"))
-	// NOTE: Manually creating Fuzz() since siatest would create an import cycle.
-	// Could refactor Fuzz() out of siatest later on.
-	size := int(SectorSize)*2 + fastrand.Intn(3) - 1
-	data = fastrand.Bytes(size)
-	subFiles := make(map[string]SkyfileSubfileMetadata)
-	sfm := SkyfileSubfileMetadata{
-		FileMode:    os.ModeAppend,
-		Filename:    "subfile",
-		ContentType: "secret",
-		Offset:      100,
-		Len:         100,
-	}
-	subFiles[sfm.Filename] = sfm
-	sm = SkyfileMetadata{
-		Filename:           "backupfile",
-		Length:             uint64(size),
-		Mode:               os.ModeDir,
-		Subfiles:           subFiles,
-		DefaultPath:        "thesamepath",
-		DisableDefaultPath: true,
-	}
-	testBackupAndRestore(t, backupDir, data, newTestSkyfileLayout(), sm)
-}
-
-// testBackupAndRestore executes the test code for TestBackupAndRestoreSkylink
-func testBackupAndRestore(t *testing.T, backupDir string, data []byte, sl SkyfileLayout, sm SkyfileMetadata) {
-	// Create the reader
-	reader := ioutil.NopCloser(bytes.NewReader(data))
-	defer reader.Close() // no-op so ignoring error
-
-	// Create backup
-	backupFilePath, err := BackupSkylink(testSkylink, backupDir, reader, sl, sm)
+	smBytes, err := SkyfileMetadataBytes(sm)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if backupFilePath != filepath.Join(backupDir, SkylinkToSysPath(testSkylink)) {
-		t.Fatal("bad backup path", backupFilePath)
+
+	// Helper function
+	createFileAndTest := func(t *testing.T, baseSector []byte, fileData []byte, filename string) {
+		// Create the file on disk
+		dir := filepath.Dir(filename)
+		err := os.MkdirAll(dir, persist.DefaultDiskPermissionsTest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		smallFile, err := os.Create(filename)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			if err := smallFile.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
+		// Backup and Restore test
+		testBackupAndRestore(t, baseSector, fileData, smallFile, smallFile)
+	}
+
+	// Small file test
+	//
+	// Create baseSector
+	fileData := []byte("Super interesting skyfile data")
+	baseSector, _ := BuildBaseSector(layoutBytes, nil, smBytes, fileData)
+	// Create file on disk that the back up will be written to and then read from
+	filename := filepath.Join(modulesTestDir(t.Name()), "small", SkylinkToSysPath(testSkylink))
+	// Backup and Restore test
+	createFileAndTest(t, baseSector, fileData, filename)
+
+	// Large file test
+	//
+	// Create fanout to mock 2 chunks with 3 pieces each
+	numChunks := 2
+	numPieces := 3
+	fanoutBytes := make([]byte, 0, numChunks*numPieces*crypto.HashSize)
+	for ci := 0; ci < numChunks; ci++ {
+		for pi := 0; pi < numPieces; pi++ {
+			root := fastrand.Bytes(crypto.HashSize)
+			fanoutBytes = append(fanoutBytes, root...)
+		}
+	}
+	// Create baseSector
+	baseSector, _ = BuildBaseSector(layoutBytes, fanoutBytes, smBytes, nil)
+	// Create file on disk that the back up will be written to and then read from
+	filename = filepath.Join(modulesTestDir(t.Name()), "large", SkylinkToSysPath(testSkylink))
+	// Backup and Restore test
+	size := 2 * int(SectorSize)
+	fileData = fastrand.Bytes(size)
+	createFileAndTest(t, baseSector, fileData, filename)
+}
+
+// testBackupAndRestore executes the test code for TestBackupAndRestoreSkylink
+func testBackupAndRestore(t *testing.T, baseSector []byte, fileData []byte, restoreReader io.ReadSeeker, backupWriter io.WriteSeeker) {
+	// Create backup
+	backupReader := bytes.NewReader(fileData)
+	err := BackupSkylink(testSkylink, baseSector, backupReader, backupWriter)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Restore
-	skylinkStr, backupReader, backupSL, backupSM, err := RestoreSkylink(backupFilePath)
+	skylinkStr, restoreBaseSector, err := RestoreSkylink(restoreReader)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if skylinkStr != testSkylink {
 		t.Error("Skylink back", skylinkStr)
 	}
-	if !reflect.DeepEqual(sl, backupSL) {
-		t.Log("original sl:", sl)
-		t.Log("backup sl:", backupSL)
-		t.Error("Bad Skyfile Layout")
+	if !bytes.Equal(baseSector, restoreBaseSector) {
+		t.Log("original baseSector:", baseSector)
+		t.Log("restored baseSector:", restoreBaseSector)
+		t.Fatal("BaseSector bytes not equal")
 	}
-	if !reflect.DeepEqual(sm, backupSM) {
-		t.Log("original sm:", sm)
-		t.Log("backup sm:", backupSM)
-		t.Error("Bad Skyfile Metadata")
-	}
-	backupData, err := ioutil.ReadAll(backupReader)
+	restoredData, err := ioutil.ReadAll(restoreReader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(data, backupData) {
-		t.Log("original data:", data)
-		t.Log("backup data:", backupData)
+	if !bytes.Equal(fileData, restoredData) {
+		t.Log("original data:", fileData)
+		t.Log("backup restoredData:", restoredData)
 		t.Fatal("Data bytes not equal")
 	}
 }

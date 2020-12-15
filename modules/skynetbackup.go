@@ -1,9 +1,12 @@
 package modules
 
+// The Skynet Backup subsystem handles persistence for creating and reading
+// skynet backup data. These backups contain all the information needed to
+// restore a Skyfile with the original Skylink.
+
 import (
-	"encoding/json"
+	"bytes"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -13,9 +16,8 @@ import (
 )
 
 const (
-	// backupPageSize defines the amount of data that will be written to the
-	// backup file at a time
-	backupPageSize = 4096
+	// backupHeaderSize defines the size of the encoded backup header
+	backupHeaderSize = 4196
 
 	// defaultDirDepth is the number of directories created when turning a skylink
 	// into a filepath.
@@ -29,7 +31,7 @@ const (
 	MetadataHeader = "Skyfile Backup\n"
 
 	// MetadataVersion defines the version for the backup file
-	MetadataVersion = "v1.5.4\n"
+	MetadataVersion = "v1.5.5\n"
 )
 
 var (
@@ -46,78 +48,38 @@ type SkyfileBackupHeader struct {
 	// the file
 	persist.Metadata
 
-	// SkyfileLayoutBytes is the encoded layout of the skyfile being backed up so
-	// the Skyfile can be properly restored
-	SkyfileLayoutBytes []byte
+	// BaseSector is the encoded baseSector for the backed up skyfile
+	BaseSector []byte
 
-	// SkyfileMetadataBytes is the marshaled metadata of the skyfile being backed
-	// up so the Skyfile can be properly restored
-	SkyfileMetadataBytes []byte
+	// Skylink is the skylink for the backed up skyfile
+	Skylink string
 }
 
-// BackupSkylink backs up a skylink by writing the reader data to disk
-//
-// NOTE: This action is not intended to be ACID. Additionally since the file on
-// disk that is created has a filepath derived from the skylink, running
-// BackupSkylink on the same skylink with the same backupDir will overwrite the
-// original backup file.
-func BackupSkylink(skylink, backupDir string, reader io.Reader, sl SkyfileLayout, sm SkyfileMetadata) (_ string, err error) {
-	// Create the path for the backup file
-	path := SkylinkToSysPath(skylink)
-	fullPath := filepath.Join(backupDir, path)
-
-	// Create the directory on disk
-	err = os.MkdirAll(filepath.Dir(fullPath), DefaultDirPerm)
-	if err != nil {
-		return "", errors.AddContext(err, "unable to create backup directory")
-	}
-
-	// Create the backup file on disk
-	file, err := os.Create(fullPath)
-	if err != nil {
-		return "", errors.AddContext(err, "unable to create backup file")
-	}
-	defer func() {
-		err = errors.Compose(err, file.Close())
-	}()
-
+// BackupSkylink backs up a skylink by writing skylink and baseSector to
+// a header and then writing the header and the reader data to the writer.
+func BackupSkylink(skylink string, baseSector []byte, reader io.Reader, writer io.WriteSeeker) error {
 	// Write the header
-	err = writeBackupHeader(file, sl, sm)
+	err := writeBackupHeader(writer, skylink, baseSector)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to write header to disk")
+		return errors.AddContext(err, "unable to write header to disk")
 	}
 
 	// Write the body of the skyfile to disk
-	err = writeBackupBody(file, reader)
-	if err != nil {
-		return "", errors.AddContext(err, "unable to write skyfile data to disk")
-	}
-	return fullPath, nil
+	err = writeBackupBody(writer, reader)
+	return errors.AddContext(err, "unable to write skyfile data to the writer")
 }
 
-// RestoreSkylink restores a skylink from a backed up file by returning the
-// Skyfile Metadata, original skylink, and a reader to the skyfile data
-func RestoreSkylink(backupPath string) (string, io.Reader, SkyfileLayout, SkyfileMetadata, error) {
-	// Clean up backup path
-	backupPath = filepath.Clean(backupPath)
-
-	// Derive the Skylink and relative path to the backup file
-	skylinkStr := SkylinkFromSysPath(backupPath)
-
-	// Open the file
-	f, err := os.Open(backupPath)
-	if err != nil {
-		return "", nil, SkyfileLayout{}, SkyfileMetadata{}, errors.AddContext(err, "unable to open backup file")
-	}
-
+// RestoreSkylink restores a skylink by returning the Skylink and the baseSector
+// from the reader.
+func RestoreSkylink(r io.ReadSeeker) (string, []byte, error) {
 	// Read the header
-	sl, sm, err := readBackupHeader(f)
+	skylink, baseSector, err := readBackupHeader(r)
 	if err != nil {
-		return "", nil, SkyfileLayout{}, SkyfileMetadata{}, errors.AddContext(err, "unable to read header")
+		return "", nil, errors.AddContext(err, "unable to read header")
 	}
 
 	// Return information needs to restore the Skyfile by re-uploading
-	return skylinkStr, f, sl, sm, nil
+	return skylink, baseSector, nil
 }
 
 // SkylinkFromSysPath returns a skylink string from a system path
@@ -128,14 +90,10 @@ func SkylinkFromSysPath(path string) string {
 	path = strings.TrimPrefix(path, "/")
 	path = strings.TrimSuffix(path, "/")
 
-	// Recreate the skylink by joining the split elements in reverse order. This
-	// is so we can handle absolute paths and relative paths
+	// Recreate the skylink by joining the last defaultDirDepth + 1 elements
 	els := strings.Split(path, "/")
-	skylinkStr := ""
-	for i := len(els); i >= len(els)-defaultDirDepth; i-- {
-		skylinkStr = els[i-1] + skylinkStr
-	}
-	return skylinkStr
+	start := len(els) - defaultDirDepth - 1
+	return strings.Join(els[start:], "")
 }
 
 // SkylinkToSysPath takes the string of a skylink and turns it into a filepath
@@ -152,95 +110,71 @@ func SkylinkToSysPath(skylinkStr string) string {
 
 // readBackupHeader reads the header from the backup file and returns the
 // Skyfile Metadata
-func readBackupHeader(f *os.File) (sl SkyfileLayout, sm SkyfileMetadata, err error) {
-	// Read the header from disk
-	headerBytes := make([]byte, backupPageSize)
-	_, err = f.Read(headerBytes)
+func readBackupHeader(r io.ReadSeeker) (string, []byte, error) {
+	// Seek to the start of the header data
+	_, err := r.Seek(0, io.SeekStart)
 	if err != nil {
-		err = errors.AddContext(err, "header read error")
-		return
+		return "", nil, errors.AddContext(err, "unable to seek to beginning of the file data")
+	}
+
+	// Read the header from disk
+	headerBytes := make([]byte, backupHeaderSize)
+	_, err = io.ReadFull(r, headerBytes)
+	if err != nil {
+		return "", nil, errors.AddContext(err, "header read error")
 	}
 
 	// Unmarshal the Header
 	var sbh SkyfileBackupHeader
 	err = encoding.Unmarshal(headerBytes, &sbh)
 	if err != nil {
-		err = errors.AddContext(err, "unable to unmarshal header")
-		return
+		return "", nil, errors.AddContext(err, "unable to unmarshal header")
 	}
 
 	// Header and Version Check
 	if sbh.Header != MetadataHeader {
-		err = errWrongHeader
-		return
+		return "", nil, errWrongHeader
 	}
 	if sbh.Version != MetadataVersion {
-		err = errWrongVersion
-		return
+		return "", nil, errWrongVersion
 	}
 
-	// Decode the Layout
-	sl.Decode(sbh.SkyfileLayoutBytes)
-
-	// Unmarshal the SkyfileMetadata
-	err = json.Unmarshal(sbh.SkyfileMetadataBytes, &sm)
-	if err != nil {
-		err = errors.AddContext(err, "unable to unmarshal Skyfile Metadata")
-		return
-	}
-	return
+	return sbh.Skylink, sbh.BaseSector, nil
 }
 
 // writeBackupBody writes the contents of the reader to the backup file
-func writeBackupBody(f *os.File, reader io.Reader) error {
-	// Make a buffer to write to disk in chunks
-	buf := make([]byte, backupPageSize)
-	nextWriteOffset := backupPageSize
-	for {
-		// Read a chunk
-		n, err := reader.Read(buf)
-		if err != nil && err != io.EOF {
-			return err
-		}
-		if n == 0 {
-			break
-		}
-
-		// Write a chunk
-		_, err = f.WriteAt(buf[:n], int64(nextWriteOffset))
-		if err != nil {
-			return err
-		}
-		nextWriteOffset += n
+func writeBackupBody(w io.WriteSeeker, reader io.Reader) error {
+	// Seek to the start of the file data
+	_, err := w.Seek(backupHeaderSize, io.SeekStart)
+	if err != nil {
+		return errors.AddContext(err, "unable to seek to beginning of the file data")
 	}
-	return nil
+
+	_, err = io.Copy(w, reader)
+	return errors.AddContext(err, "unable to copy data from reader to file")
 }
 
 // writeBackupHeader writes the header of the backup file to disk
-func writeBackupHeader(f *os.File, sl SkyfileLayout, sm SkyfileMetadata) error {
-	// Marshal the SkyfileMetadata
-	smBytes, err := json.Marshal(sm)
-	if err != nil {
-		return errors.AddContext(err, "unable to marshal skyfile metadata")
-	}
-
+func writeBackupHeader(w io.WriteSeeker, skylink string, baseSector []byte) error {
 	// Encoding the header information
 	encodedHeader := encoding.Marshal(SkyfileBackupHeader{
 		Metadata: persist.Metadata{
 			Header:  MetadataHeader,
 			Version: MetadataVersion,
 		},
-		SkyfileLayoutBytes:   sl.Encode(),
-		SkyfileMetadataBytes: smBytes,
+		BaseSector: baseSector,
+		Skylink:    skylink,
 	})
-	if len(encodedHeader) > backupPageSize {
+	if len(encodedHeader) > backupHeaderSize {
 		return errors.New("encoded header is too large")
 	}
 
-	// Write the data to disk
-	_, err = f.WriteAt(encodedHeader, 0)
+	// Seek to the start of the header data
+	_, err := w.Seek(0, io.SeekStart)
 	if err != nil {
-		return errors.AddContext(err, "header write failed")
+		return errors.AddContext(err, "unable to seek to beginning of the file")
 	}
-	return nil
+	headerReader := bytes.NewReader(encodedHeader)
+	_, err = io.Copy(w, headerReader)
+	return errors.AddContext(err, "unable to copy header data to file")
 }
