@@ -76,6 +76,7 @@ package renter
 import (
 	"container/heap"
 	"fmt"
+	"math/big"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -83,6 +84,10 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 )
+
+// errNotEnoughWorkers is returned if the working set does not have enough
+// workers to successfully complete the download
+var errNotEnoughWorkers = errors.New("not enough workers to complete download")
 
 // pdcInitialWorker tracks information about a worker that is useful for
 // building the optimal set of launch workers.
@@ -218,18 +223,11 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 
 // createInitialWorkerSet will go through the current set of workers and
 // determine the best set of workers to use when attempting to download a piece.
-func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*pdcInitialWorker, error) {
+// Note that we only return this best set if all workers from the worker set are
+// resolved, if that is not the case we simply return nil.
+func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap) ([]*pdcInitialWorker, error) {
 	// Convenience variable.
 	ec := pdc.workerSet.staticErasureCoder
-
-	// Get the list of unresolved workers. This will also grab an update, so any
-	// workers that have resolved recently will be reflected in the newly
-	// returned set of values.
-	unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
-
-	// Create a list of usable workers, sorted by the amount of time they are
-	// expected to take to return.
-	workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
 
 	// Keep track of the current best set, and the amount of time it will take
 	// the best set to return. And keep track of the current working set, and
@@ -253,7 +251,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 	// computation.
 	bestSet := make([]*pdcInitialWorker, ec.NumPieces())
 	workingSet := make([]*pdcInitialWorker, ec.NumPieces())
-	var bestSetCost types.Currency
+	bestSetCost := types.NewCurrency(new(big.Int).Exp(big.NewInt(10), big.NewInt(33), nil)) // 1GS
 	var workingSetCost types.Currency
 	var workingSetDuration time.Duration
 
@@ -276,7 +274,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 		// working set cannot be updated.
 		highestCost := nextWorker.cost
 		highestCostIndex := 0
-		totalWorkers := 0
+		workersInSet := 0
 		for i := 0; i < len(workingSet); i++ {
 			if workingSet[i] == nil {
 				continue
@@ -285,24 +283,25 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 				highestCost = workingSet[i].cost
 				highestCostIndex = i
 			}
-			totalWorkers++
+			workersInSet++
 		}
+
 		// Consistency check: we should never have more than MinPieces workers
 		// assigned.
-		if totalWorkers > ec.MinPieces() {
-			pdc.workerSet.staticRenter.log.Critical("total workers mistake in download code", totalWorkers, ec.MinPieces())
+		if workersInSet > ec.MinPieces() {
+			pdc.workerSet.staticRenter.log.Critical("total workers mistake in download code", workersInSet, ec.MinPieces())
 		}
 
 		// If the time cost of this worker is strictly higher than the full cost
 		// of the best set, there can be no more improvements to the best set,
 		// and the loop can exit.
-		workerTimeCost := pdc.pricePerMS.Mul64(uint64(nextWorker.readDuration))
-		if workerTimeCost.Cmp(bestSetCost) > 0 && totalWorkers == ec.MinPieces() {
+		workerTimeCost := pdc.pricePerMS.Mul64(uint64(nextWorker.readDuration.Milliseconds()))
+		if workerTimeCost.Cmp(bestSetCost) > 0 && workersInSet == ec.MinPieces() {
 			break
 		}
 		// If all workers in the working set are already cheaper than this
 		// worker, skip this worker.
-		if highestCost.Cmp(nextWorker.cost) <= 0 && totalWorkers == ec.MinPieces() {
+		if highestCost.Cmp(nextWorker.cost) <= 0 && workersInSet == ec.MinPieces() {
 			continue
 		}
 
@@ -314,7 +313,6 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 		// expensive worker in the whole working set.
 		workerUseful := false
 		bestSpotEmpty := false
-		bestSpotCost := nextWorker.cost // this will cause the loop to ignore workers that are already better than nextWorker
 		bestSpotIndex := uint64(0)
 		for _, i := range nextWorker.pieces {
 			if workingSet[i] == nil {
@@ -322,12 +320,12 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 				bestSpotIndex = i
 				break
 			}
-			if workingSet[i].cost.Cmp(bestSpotCost) > 0 {
+			if workingSet[i].cost.Cmp(nextWorker.cost) > 0 {
 				workerUseful = true
-				bestSpotCost = workingSet[i].cost
 				bestSpotIndex = i
 			}
 		}
+
 		// Check whether the worker is useful at all. It may not be useful if
 		// the only pieces it has are already available via cheaper workers.
 		if !bestSpotEmpty && !workerUseful {
@@ -350,15 +348,13 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 		// the working set. In the event of an in-place eviction, the evicted
 		// worker is put back into the heap so that we can check whether there
 		// is another more suitable slot for the evicted worker.
-		//
-		// NOTE: we could dedup code between these branches, but I felt the code
-		// was cleaner this way.
 		newWorker := false // helps determine whether the best set should be made.
 		if bestSpotEmpty {
 			workingSetCost = workingSetCost.Add(nextWorker.cost)
 			workingSet[bestSpotIndex] = nextWorker
+
 			// Only do the eviction if we already have enough workers.
-			if totalWorkers >= ec.MinPieces() {
+			if workersInSet >= ec.MinPieces() {
 				workingSetCost = workingSetCost.Sub(highestCost)
 				heap.Push(&workerHeap, workingSet[highestCostIndex])
 				workingSet[highestCostIndex] = nil
@@ -372,23 +368,14 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 			workingSet[bestSpotIndex] = nextWorker
 		}
 
-		// If the total number of workers computed in the working set prior to
-		// adding a new worker was one short, and a new worker was added without
-		// evicting an existing worker, then we have a best set for the first
-		// time. Copy the working set into the best set.
-		if totalWorkers == ec.MinPieces()-1 && newWorker {
-			// Do a copy operation. Can't set one equal to the other because
-			// then changes to the working set will update the best set.
-			copy(bestSet, workingSet)
-		}
-
 		// Determine whether the working set is now cheaper than the best set.
 		// Adding in the new worker has made the working set cheaper in terms of
 		// raw cost, but the new worker is slower, so the time penalty has gone
 		// up.
-		workingSetTimeCost := pdc.pricePerMS.Mul64(uint64(workingSetDuration))
-		workingSetTotalCost := workingSetTimeCost.Add(workingSetCost)
-		if workingSetTotalCost.Cmp(bestSetCost) < 0 {
+		workingSetTimeCost := pdc.pricePerMS.Mul64(uint64(workingSetDuration.Milliseconds()))
+		workingSetTotalCost := workingSetCost.Add(workingSetTimeCost)
+		if newWorker || workingSetTotalCost.Cmp(bestSetCost) < 0 {
+			bestSetCost = workingSetTotalCost
 			// Do a copy operation. Can't set one equal to the other because
 			// then changes to the working set will update the best set.
 			copy(bestSet, workingSet)
@@ -422,12 +409,12 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 		isUnresolved = isUnresolved || worker.unresolved
 	}
 	if totalWorkers < ec.MinPieces() {
-		return nil, nil, fmt.Errorf("not enough workers to complete download, %v < %v", totalWorkers, ec.MinPieces())
+		return nil, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", totalWorkers, ec.MinPieces()))
 	}
 	if isUnresolved {
-		return updateChan, nil, nil
+		return nil, nil
 	}
-	return nil, bestSet, nil
+	return bestSet, nil
 }
 
 // launchInitialWorkers will pick the initial set of workers that needs to be
@@ -435,7 +422,17 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet() (<-chan struct{}, []*p
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 	for {
-		updateChan, finalWorkers, err := pdc.createInitialWorkerSet()
+		// Get the list of unresolved workers. This will also grab an update, so
+		// any workers that have resolved recently will be reflected in the
+		// newly returned set of values.
+		unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
+
+		// Create a list of usable workers, sorted by the amount of time they
+		// are expected to take to return.
+		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
+
+		// Create an initial worker set
+		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
 		if err != nil {
 			return errors.AddContext(err, "unable to build initial set of workers")
 		}
