@@ -370,6 +370,13 @@ func MDMMemoryCost(pt *RPCPriceTable, usedMemory, time uint64) types.Currency {
 	return pt.MemoryTimeCost.Mul64(usedMemory * time)
 }
 
+// SubscriptionNotificationsCost is a helper to compute the cost of
+// numNotifications notifications.
+func SubscriptionNotificationsCost(pt *RPCPriceTable, numNotifications uint64) types.Currency {
+	singleCost := pt.SubscriptionNotificationBaseCost.Add(MDMReadRegistryCost(pt))
+	return singleCost.Mul64(numNotifications)
+}
+
 // MDMDropSectorsTime returns the time for a `DropSectors` instruction given
 // `numSectorsDropped`.
 func MDMDropSectorsTime(numSectorsDropped uint64) uint64 {

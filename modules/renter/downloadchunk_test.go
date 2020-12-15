@@ -5,6 +5,7 @@ import (
 
 	"gitlab.com/NebulousLabs/fastrand"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
@@ -77,7 +78,7 @@ func TestBytesToRecover(t *testing.T) {
 	}
 
 	// Get a new erasure coder and decoded segment size.
-	rsc, err := modules.NewRSSubCode(10, 20, 64)
+	rsc, err := modules.NewRSSubCode(10, 20, crypto.SegmentSize)
 	if err != nil {
 		t.Fatal(err)
 	}
