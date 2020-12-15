@@ -106,7 +106,6 @@ func (w *worker) newCache() {
 	atomic.StorePointer(&w.atomicCache, ptr)
 }
 
-
 // staticTryUpdateCache will perform a cache update on the worker.
 //
 // 'false' will be returned if the cache cannot be updated, signaling that the
