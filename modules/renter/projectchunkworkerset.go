@@ -1,18 +1,5 @@
 package renter
 
-// TODO: Currently, to optimize upload latency, we return the skylink to the
-// user as soon as a single sector has finished uploading. This can cause
-// problems if the user immediately attempts to download the file, resulting in
-// the user creating a pcws that will be immediately out of date, and will
-// remain out of date for the entire first 'pcwsWorkerStateResetTime'.
-//
-// We either need to change the upload streamer to delay returning the skylink
-// until the upload is more complete, or we need the pcws to be able to reset
-// relatively quickly the first time. Because skylinks are cross-portal, it's
-// not sufficient to get a signal from elsewhere in siad that the upload is now
-// complete, because the portal doing the download may not be the same as the
-// portal doing the upload.
-
 import (
 	"context"
 	"fmt"

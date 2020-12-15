@@ -14,7 +14,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestWorkerAccountStatus is a small unit test that verifies the output of the
@@ -170,12 +169,20 @@ func TestWorkerReadJobStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	w := wt.worker
+
+	var hostClosed bool
 	defer func() {
+		if hostClosed {
+			if err := wt.rt.Close(); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
 		if err := wt.Close(); err != nil {
 			t.Fatal(err)
 		}
 	}()
-	w := wt.worker
 
 	// allow the worker some time to fetch a PT and fund its EA
 	err = build.Retry(600, 100*time.Millisecond, func() error {
@@ -188,29 +195,21 @@ func TestWorkerReadJobStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sectorData := fastrand.Bytes(int(modules.SectorSize))
-	sectorRoot := crypto.MerkleRoot(sectorData)
-	err = wt.host.AddSector(sectorRoot, sectorData)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// fetch the worker's read jobs status and verify its output
 	status := w.callReadJobStatus()
-	if !(status.AvgJobTime64k == 0 &&
-		status.AvgJobTime1m == 0 &&
-		status.AvgJobTime4m == 0 &&
-		status.ConsecutiveFailures == 0 &&
+	if !(status.ConsecutiveFailures == 0 &&
 		status.JobQueueSize == 0 &&
 		status.RecentErr == "" &&
 		status.RecentErrTime == time.Time{}) {
 		t.Fatal("Unexpected read job status", ToJSON(status))
 	}
 
-	// prevent the worker from doing any work by manipulating its read limit
-	current := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
-	limit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
-	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, limit)
+	// close the host to ensure the job fails
+	err = wt.host.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostClosed = true
 
 	// add the job to the worker
 	ctx := context.Background()
@@ -218,50 +217,8 @@ func TestWorkerReadJobStatus(t *testing.T) {
 
 	jhs := &jobReadSector{
 		jobRead: jobRead{
-			staticResponseChan: rc,
 			staticLength:       modules.SectorSize,
-
-			// set metadata
-			staticSector: sectorRoot,
-
-			jobGeneric: &jobGeneric{
-				staticCtx:   ctx,
-				staticQueue: w.staticJobReadQueue,
-			},
-		},
-		staticOffset: 0,
-		staticSector: sectorRoot,
-	}
-	if !w.staticJobReadQueue.callAdd(jhs) {
-		t.Fatal("Could not add job to queue")
-	}
-
-	// fetch the worker's read job status again and verify its output
-	status = w.callReadJobStatus()
-	if status.JobQueueSize != 1 {
-		t.Fatal("Unexpected read job status", ToJSON(status))
-	}
-
-	// restore the read limit
-	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, current)
-
-	// verify the status in a build.Retry to allow the worker some time to
-	// process the job
-	if err := build.Retry(100, 100*time.Millisecond, func() error {
-		status = w.callReadJobStatus()
-		if status.AvgJobTime64k == 0 {
-			return fmt.Errorf("Unexpected read job status %v", ToJSON(status))
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	// add another job to the worker
-	jhs = &jobReadSector{
-		jobRead: jobRead{
 			staticResponseChan: rc,
-			staticLength:       modules.SectorSize,
 
 			// set metadata
 			staticSector: crypto.Hash{},
@@ -272,7 +229,6 @@ func TestWorkerReadJobStatus(t *testing.T) {
 			},
 		},
 		staticOffset: 0,
-		staticSector: crypto.Hash{},
 	}
 	if !w.staticJobReadQueue.callAdd(jhs) {
 		t.Fatal("Could not add job to queue")

@@ -73,6 +73,11 @@ func WalletPassword() string {
 	return os.Getenv(siaWalletPassword)
 }
 
+// ExchangeRate returns the siaExchangeRate environment variable.
+func ExchangeRate() string {
+	return os.Getenv(siaExchangeRate)
+}
+
 // apiPasswordFilePath returns the path to the API's password file. The password
 // file is stored in the Sia data directory.
 func apiPasswordFilePath() string {

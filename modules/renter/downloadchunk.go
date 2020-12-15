@@ -243,11 +243,12 @@ func (udc *unfinishedDownloadChunk) threadedRecoverLogicalData() error {
 func bytesToRecover(chunkFetchOffset, chunkFetchLength, chunkSize uint64, rs modules.ErasureCoder) uint64 {
 	// If partialDecoding is not available we downloaded the whole sector and
 	// recovered the whole chunk.
-	if _, supported := rs.SupportsPartialEncoding(); !supported {
+	segmentSize, supportsPartial := rs.SupportsPartialEncoding()
+	if !supportsPartial {
 		return chunkSize
 	}
 	// Else we need to calculate how much data we need to recover.
-	recoveredSegmentSize := uint64(rs.MinPieces() * crypto.SegmentSize)
+	recoveredSegmentSize := uint64(rs.MinPieces()) * segmentSize
 	_, numSegments := segmentsForRecovery(chunkFetchOffset, chunkFetchLength, rs)
 	return numSegments * recoveredSegmentSize
 }
@@ -258,10 +259,11 @@ func recoveredDataOffset(chunkFetchOffset uint64, rs modules.ErasureCoder) uint6
 	// If partialDecoding is not available we downloaded the whole sector and
 	// recovered the whole chunk which means the offset and length are actually
 	// equal to the chunkFetchOffset and chunkFetchLength.
-	if _, supported := rs.SupportsPartialEncoding(); !supported {
+	segmentSize, supportsPartial := rs.SupportsPartialEncoding()
+	if !supportsPartial {
 		return chunkFetchOffset
 	}
 	// Else we need to adjust the offset a bit.
-	recoveredSegmentSize := uint64(rs.MinPieces() * crypto.SegmentSize)
+	recoveredSegmentSize := uint64(rs.MinPieces()) * segmentSize
 	return chunkFetchOffset % recoveredSegmentSize
 }
