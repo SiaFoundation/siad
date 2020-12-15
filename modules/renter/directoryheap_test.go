@@ -99,18 +99,9 @@ func TestDirectoryHeap(t *testing.T) {
 	}()
 
 	// Check that the heap was initialized properly
-	if rt.renter.directoryHeap.managedLen() != 1 {
-		t.Fatal("directory heap should have length of 1 but has length of", rt.renter.directoryHeap.managedLen())
+	if rt.renter.directoryHeap.managedLen() != 0 {
+		t.Fatal("directory heap should have length of 0 but has length of", rt.renter.directoryHeap.managedLen())
 	}
-	d := rt.renter.directoryHeap.managedPop()
-	if d.explored {
-		t.Fatal("directory should be unexplored root")
-	}
-	if !d.staticSiaPath.Equals(modules.RootSiaPath()) {
-		t.Fatal("Directory should be root directory but is", d.staticSiaPath)
-	}
-	// Reset the directory heap
-	rt.renter.directoryHeap.managedReset()
 
 	// Add directories of each type to the heap
 	addDirectoriesToHeap(rt.renter, 1, true, true)
@@ -175,7 +166,7 @@ func TestDirectoryHeap(t *testing.T) {
 	// heapHealth, it should not be on the top of the heap because it is
 	// explored and therefore its heapHealth will be using the non aggregate
 	// fields
-	d = rt.renter.directoryHeap.managedPop()
+	d := rt.renter.directoryHeap.managedPop()
 	if reflect.DeepEqual(d, d4) {
 		t.Log(d)
 		t.Log(d4)
