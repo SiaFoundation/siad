@@ -36,6 +36,7 @@ const (
 const (
 	SubscriptionResponseInvalid = iota
 	SubscriptionResponseRegistryValue
+	SubscriptionResponsePaymentDone
 )
 
 var (
@@ -79,16 +80,11 @@ type RPCPriceTable struct {
 	// TODO: should this be free?
 	LatestRevisionCost types.Currency `json:"latestrevisioncost"`
 
-	// SubscriptionBaseCost is the base cost of all subscription based requests.
-	SubscriptionBaseCost types.Currency `json:"subscriptionbasecost"`
-
 	// SubscriptionMemoryCost is the cost of storing a byte of data for
 	// SubscriptionPeriod time.
 	SubscriptionMemoryCost types.Currency `json:"subscriptionmemorycost"`
 
-	// SubscriptionNotificationBaseCost is the base cost of a single
-	// notification.
-	SubscriptionNotificationBaseCost types.Currency `json:"subscriptionnotificationbasecost"`
+	SubscriptionNotificationCost types.Currency `json:"subscriptionnotificationcost"`
 
 	// MDM related costs
 	//
@@ -277,12 +273,14 @@ type (
 		Ratelimit uint32
 	}
 
-	// RPCRegistrySubscriptionNotification is the response received whenever a
-	// subscribed entry is updated. It contains a type to allow for different
-	// types of responses in the future. Right now there is only one type and it
-	// returns the signed registry value.
-	RPCRegistrySubscriptionNotification struct {
-		Type  uint8
+	// RPCRegistrySubscriptionNotificationType contains the type of the
+	// following notification.
+	RPCRegistrySubscriptionNotificationType struct {
+		Type uint8
+	}
+
+	// RPCRegistrySubscriptionNotificationEntryUpdate contains an updated entry.
+	RPCRegistrySubscriptionNotificationEntryUpdate struct {
 		Entry SignedRegistryValue
 	}
 

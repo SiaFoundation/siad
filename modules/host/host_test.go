@@ -964,9 +964,8 @@ func (p *renterHostPair) AccountBalance(payByFC bool) (types.Currency, error) {
 }
 
 // BeginSubscription starts the subscription loop and returns the stream.
-func (p *renterHostPair) BeginSubscription() (siamux.Stream, error) {
-	funding := p.pt.SubscriptionBaseCost.Add(modules.SubscriptionNotificationsCost(p.pt, modules.InitialNumNotifications))
-	return p.managedBeginSubscription(false, funding, p.staticAccountID)
+func (p *renterHostPair) BeginSubscription(budget types.Currency) (siamux.Stream, error) {
+	return p.managedBeginSubscription(false, budget, p.staticAccountID)
 }
 
 // LatestRevision performs a RPCLatestRevision to get the latest revision for
@@ -975,76 +974,89 @@ func (p *renterHostPair) LatestRevision(payByFC bool) (types.FileContractRevisio
 	return p.managedLatestRevision(payByFC, p.pt.LatestRevisionCost, p.staticAccountID, p.staticFCID)
 }
 
-// SubscribeToRV subscribes to the given publickey/tweak pair.
+// SubscribeToRV subscribes to the given publickey/tweak pair and returns the
+// cost to do so.
 func (p *renterHostPair) SubcribeToRV(stream siamux.Stream, pt *modules.RPCPriceTable, pubkey types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
 	// Send the type of the request.
 	err := modules.RPCWrite(stream, modules.SubscriptionRequestSubscribe)
 	if err != nil {
 		return modules.SignedRegistryValue{}, err
 	}
-	// Send the price table id.
-	err = modules.RPCWrite(stream, pt.UID)
-	if err != nil {
-		return modules.SignedRegistryValue{}, err
-	}
-	// Pay for the subscription.
-	memoryCost := subscriptionMemoryCost(pt, 1)
-	fetchCost := modules.SubscriptionNotificationsCost(pt, 1)
-	cost := pt.SubscriptionBaseCost.Add(memoryCost).Add(fetchCost)
-	err = p.managedPayByEphemeralAccount(stream, cost)
-	if err != nil {
-		return modules.SignedRegistryValue{}, err
-	}
-	// Write the number of requests we are about to send.
-	err = modules.RPCWrite(stream, uint64(1))
-	if err != nil {
-		return modules.SignedRegistryValue{}, err
-	}
 	// Send the request.
-	err = modules.RPCWrite(stream, modules.RPCRegistrySubscriptionRequest{
+	err = modules.RPCWrite(stream, []modules.RPCRegistrySubscriptionRequest{{
 		PubKey: pubkey,
 		Tweak:  tweak,
-	})
+	}})
 	if err != nil {
 		return modules.SignedRegistryValue{}, err
 	}
 	// Read response.
-	var notification modules.RPCRegistrySubscriptionNotification
-	err = modules.RPCRead(stream, &notification)
+	var snt modules.RPCRegistrySubscriptionNotificationType
+	err = modules.RPCRead(stream, &snt)
 	if err != nil {
 		return modules.SignedRegistryValue{}, err
 	}
-	return notification.Entry, notification.Entry.Verify(pubkey.ToPublicKey())
+	if snt.Type != modules.SubscriptionResponseRegistryValue {
+		return modules.SignedRegistryValue{}, errors.New("wrong type returned for noticiation")
+	}
+	var sneu modules.RPCRegistrySubscriptionNotificationEntryUpdate
+	err = modules.RPCRead(stream, &sneu)
+	if err != nil {
+		return modules.SignedRegistryValue{}, err
+	}
+	return sneu.Entry, sneu.Entry.Verify(pubkey.ToPublicKey())
 }
 
-// UnsubscribeFromRV unsubscribes from the given publickey/tweak pair.
+// UnsubscribeFromRV unsubscribes from the given publickey/tweak pair and
+// returns the cost to do so.
 func (p *renterHostPair) UnsubcribeFromRV(stream siamux.Stream, pt *modules.RPCPriceTable, pubkey types.SiaPublicKey, tweak crypto.Hash) error {
 	// Send the type of the request.
 	err := modules.RPCWrite(stream, modules.SubscriptionRequestUnsubscribe)
 	if err != nil {
 		return err
 	}
-	// Send the price table id.
+	// Send the request.
+	err = modules.RPCWrite(stream, []modules.RPCRegistrySubscriptionRequest{{
+		PubKey: pubkey,
+		Tweak:  tweak,
+	}})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// UnsubscribeFromRV unsubscribes from the given publickey/tweak pair and
+// returns the cost to do so.
+func (p *renterHostPair) FundSubscription(stream siamux.Stream, pt *modules.RPCPriceTable, fundAmt types.Currency) error {
+	// Send the type of the request.
+	err := modules.RPCWrite(stream, modules.SubscriptionRequestPrepay)
+	if err != nil {
+		return err
+	}
+
+	// Write the pricetable uid.
 	err = modules.RPCWrite(stream, pt.UID)
 	if err != nil {
 		return err
 	}
-	// Pay for unsubscribing.
-	cost := pt.SubscriptionBaseCost
-	err = p.managedPayByEphemeralAccount(stream, cost)
+
+	// Provide payment
+	err = p.managedPayByEphemeralAccount(stream, fundAmt)
 	if err != nil {
 		return err
 	}
-	// Write the number of requests we are about to send.
-	err = modules.RPCWrite(stream, uint64(1))
+
+	// Read response.
+	var resp modules.RPCRegistrySubscriptionNotificationType
+	err = modules.RPCRead(stream, &resp)
 	if err != nil {
 		return err
 	}
-	// Send the request.
-	return modules.RPCWrite(stream, modules.RPCRegistrySubscriptionRequest{
-		PubKey: pubkey,
-		Tweak:  tweak,
-	})
+	if resp.Type != modules.SubscriptionResponsePaymentDone {
+		return errors.New("FundSubscription: wrong type")
+	}
+	return nil
 }
 
 // UpdatePriceTable runs the UpdatePriceTableRPC on the host and sets the price

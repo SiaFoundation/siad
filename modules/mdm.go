@@ -3,13 +3,11 @@ package modules
 import (
 	"encoding/binary"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
 type (
@@ -279,8 +277,9 @@ func MDMUpdateRegistryCost(pt *RPCPriceTable) (_, _ types.Currency) {
 
 // MDMReadRegistryCost is the cost of executing a 'ReadRegistry' instruction.
 func MDMReadRegistryCost(pt *RPCPriceTable) types.Currency {
-	// Cost is the same as downloading a sector.
-	return MDMReadCost(pt, SectorSize)
+	// 10 years of storage for an entry.
+	writeCost, storeCost := MDMUpdateRegistryCost(pt)
+	return writeCost.Add(storeCost)
 }
 
 // MDMWriteCost is the cost of executing a 'Write' instruction of a certain length.
@@ -302,6 +301,19 @@ func MDMSwapCost(pt *RPCPriceTable, contractSize uint64) types.Currency {
 // MDMTruncateCost is the cost of executing a 'Truncate' instruction.
 func MDMTruncateCost(pt *RPCPriceTable, contractSize uint64) types.Currency {
 	return types.SiacoinPrecision // TODO: figure out good cost
+}
+
+// MDMSubscribeCost returns the cost of subscribing to nEntries registry
+// entries.
+func MDMSubscribeCost(pt *RPCPriceTable, nEntries uint64) types.Currency {
+	// 10 years of storage for an entry.
+	writeCost, storeCost := MDMUpdateRegistryCost(pt)
+	// 256 bytes of memory cost.
+	memoryCost := pt.SubscriptionMemoryCost.Mul64(SubscriptionEntrySize)
+	// Total cost for single entry.
+	cost := writeCost.Add(storeCost).Add(memoryCost)
+	/// Multiply with number of entries.
+	return cost.Mul64(uint64(nEntries))
 }
 
 // MDMAppendMemory returns the additional memory consumption of a 'Append'
@@ -368,13 +380,6 @@ func MDMBandwidthCost(pt RPCPriceTable, uploadBandwidth, downloadBandwidth uint6
 // MDMMemoryCost computes the memory cost given a price table, memory and time.
 func MDMMemoryCost(pt *RPCPriceTable, usedMemory, time uint64) types.Currency {
 	return pt.MemoryTimeCost.Mul64(usedMemory * time)
-}
-
-// SubscriptionNotificationsCost is a helper to compute the cost of
-// numNotifications notifications.
-func SubscriptionNotificationsCost(pt *RPCPriceTable, numNotifications uint64) types.Currency {
-	singleCost := pt.SubscriptionNotificationBaseCost.Add(MDMReadRegistryCost(pt))
-	return singleCost.Mul64(numNotifications)
 }
 
 // MDMDropSectorsTime returns the time for a `DropSectors` instruction given
@@ -496,6 +501,13 @@ func NewBudget(budget types.Currency) *RPCBudget {
 	}
 }
 
+// Deposit deposits to a budget.
+func (b *RPCBudget) Deposit(c types.Currency) {
+	b.mu.Lock()
+	b.budget = b.budget.Add(c)
+	b.mu.Unlock()
+}
+
 // Remaining returns the remaining value in the budget.
 func (b *RPCBudget) Remaining() types.Currency {
 	b.mu.Lock()
@@ -519,49 +531,69 @@ func (b *RPCBudget) Withdraw(c types.Currency) bool {
 // an RPCBudget to determine whether to allow for more bandwidth consumption or
 // not.
 type BudgetLimit struct {
-	budget          *RPCBudget
-	staticReadCost  types.Currency
-	staticWriteCost types.Currency
+	budget *RPCBudget
 
-	atomicDownloaded uint64
-	atomicUploaded   uint64
+	mu        sync.Mutex
+	readCost  types.Currency
+	writeCost types.Currency
+
+	downloaded uint64
+	uploaded   uint64
 }
 
 // NewBudgetLimit creates a new limit from a budget and priceTable.
-func NewBudgetLimit(budget *RPCBudget, readCost, writeCost types.Currency) mux.BandwidthLimit {
+func NewBudgetLimit(budget *RPCBudget, readCost, writeCost types.Currency) *BudgetLimit {
 	return &BudgetLimit{
-		budget:          budget,
-		staticReadCost:  readCost,
-		staticWriteCost: writeCost,
+		budget:    budget,
+		readCost:  readCost,
+		writeCost: writeCost,
 	}
 }
 
 // Downloaded implements the mux.BandwidthLimit interface.
 func (bl *BudgetLimit) Downloaded() uint64 {
-	return atomic.LoadUint64(&bl.atomicDownloaded)
+	bl.mu.Lock()
+	defer bl.mu.Unlock()
+	return bl.downloaded
 }
 
 // Uploaded implements the mux.BandwidthLimit interface.
 func (bl *BudgetLimit) Uploaded() uint64 {
-	return atomic.LoadUint64(&bl.atomicUploaded)
+	bl.mu.Lock()
+	defer bl.mu.Unlock()
+	return bl.uploaded
 }
 
 // RecordDownload implements the mux.BandwidthLimit interface.
 func (bl *BudgetLimit) RecordDownload(bytes uint64) error {
-	cost := bl.staticReadCost.Mul64(bytes)
+	bl.mu.Lock()
+	defer bl.mu.Unlock()
+
+	cost := bl.readCost.Mul64(bytes)
 	if !bl.budget.Withdraw(cost) {
 		return ErrInsufficientBandwidthBudget
 	}
-	atomic.AddUint64(&bl.atomicDownloaded, bytes)
+	bl.downloaded += bytes
 	return nil
 }
 
 // RecordUpload implements the mux.BandwidthLimit interface.
 func (bl *BudgetLimit) RecordUpload(bytes uint64) error {
-	cost := bl.staticWriteCost.Mul64(bytes)
+	bl.mu.Lock()
+	defer bl.mu.Unlock()
+
+	cost := bl.writeCost.Mul64(bytes)
 	if !bl.budget.Withdraw(cost) {
 		return ErrInsufficientBandwidthBudget
 	}
-	atomic.AddUint64(&bl.atomicUploaded, bytes)
+	bl.uploaded += bytes
 	return nil
+}
+
+// UpdateCosts updates the limit's underlying readCost and writeCost.
+func (bl *BudgetLimit) UpdateCosts(readCost, writeCost types.Currency) {
+	bl.mu.Lock()
+	defer bl.mu.Unlock()
+	bl.readCost = readCost
+	bl.writeCost = writeCost
 }

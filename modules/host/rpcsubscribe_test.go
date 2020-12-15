@@ -83,13 +83,22 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// begin the subscription loop.
-	stream, err := rhp.BeginSubscription()
+	initialBudget := expectedBalance.Div64(2)
+	stream, err := rhp.BeginSubscription(initialBudget)
 	if err != nil {
 		t.Fatal(err)
 	}
+	pt := rhp.managedPriceTable()
+
+	// Prepare a function to compute expected budget.
+	l := stream.Limit()
+	expectedBudget := func(costs types.Currency) types.Currency {
+		upCost := pt.UploadBandwidthCost.Mul64(l.Uploaded())
+		downCost := pt.DownloadBandwidthCost.Mul64(l.Downloaded())
+		return initialBudget.Sub(upCost).Sub(downCost).Sub(costs)
+	}
 
 	// subsribe to the previously created entry.
-	pt := rhp.managedPriceTable()
 	rvInitial, err := rhp.SubcribeToRV(stream, pt, spk, tweak)
 	if err != nil {
 		t.Fatal(err)
@@ -97,6 +106,8 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	if !reflect.DeepEqual(rv, rvInitial) {
 		t.Fatal("initial value doesn't match")
 	}
+
+	runningCost := modules.MDMSubscribeCost(pt, 1).Add(pt.SubscriptionNotificationCost)
 
 	// Make sure that the host got the subscription.
 	sid := deriveSubscriptionID(spk, tweak)
@@ -131,11 +142,14 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 
 	// The info should have the right fields set.
 	info.mu.Lock()
-	if info.notificationsLeft != modules.InitialNumNotifications {
-		t.Error("wrong number of notifications left", info.notificationsLeft)
-	}
 	if info.staticStream == nil {
 		t.Error("stream not set")
+	}
+	if !info.notificationCost.Equals(pt.SubscriptionNotificationCost) {
+		t.Error("notification cost in info doesn't match pricetable")
+	}
+	if !info.staticBudget.Remaining().Equals(expectedBudget(runningCost)) {
+		t.Fatalf("host budget doesn't match expected budget %v != %v", info.staticBudget.Remaining(), expectedBudget(types.ZeroCurrency))
 	}
 	info.mu.Unlock()
 
@@ -147,25 +161,32 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 		t.Fatal(err)
 	}
 
-	// Read the notification.
-	var notification modules.RPCRegistrySubscriptionNotification
-	err = modules.RPCRead(stream, &notification)
+	// Read the notification and make sure it's the right one.
+	var snt modules.RPCRegistrySubscriptionNotificationType
+	err = modules.RPCRead(stream, &snt)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// Make sure it's the right one.
-	if notification.Type != modules.SubscriptionResponseRegistryValue {
+	if snt.Type != modules.SubscriptionResponseRegistryValue {
 		t.Fatal("notification has wrong type")
 	}
-	if !reflect.DeepEqual(rv, notification.Entry) {
+	var sneu modules.RPCRegistrySubscriptionNotificationEntryUpdate
+	err = modules.RPCRead(stream, &sneu)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(rv, sneu.Entry) {
 		t.Fatal("wrong entry in notification")
 	}
+	runningCost = runningCost.Add(pt.SubscriptionNotificationCost)
 
-	// The info should now have fewer notifications left.
+	// Check the info again.
 	info.mu.Lock()
-	if info.notificationsLeft != modules.InitialNumNotifications-1 {
-		t.Error("wrong number of notifications left", info.notificationsLeft)
+	if !info.notificationCost.Equals(pt.SubscriptionNotificationCost) {
+		t.Error("notification cost in info doesn't match pricetable")
+	}
+	if !info.staticBudget.Remaining().Equals(expectedBudget(runningCost)) {
+		t.Fatalf("host budget doesn't match expected budget %v != %v", info.staticBudget.Remaining(), expectedBudget(types.ZeroCurrency))
 	}
 	info.mu.Unlock()
 
@@ -200,31 +221,45 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = modules.RPCRead(stream, &notification)
+	err = modules.RPCRead(stream, &snt)
 	if err == nil || !strings.Contains(err.Error(), "stream timed out") {
 		t.Fatal(err)
 	}
+
+	// Reset deadline.
+	err = stream.SetReadDeadline(time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Fund the subscription.
+	fundAmt := types.NewCurrency64(42)
+	err = rhp.FundSubscription(stream, pt, fundAmt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runningCost = runningCost.Sub(fundAmt)
+
+	// Check the info.
+	info.mu.Lock()
+	if !info.staticBudget.Remaining().Equals(expectedBudget(runningCost)) {
+		t.Fatalf("host budget doesn't match expected budget %v != %v", info.staticBudget.Remaining(), expectedBudget(runningCost))
+	}
+	info.mu.Unlock()
 
 	// Close the subscription.
 	if err := stream.Close(); err != nil {
 		t.Fatal(err)
 	}
 
-	// Helper to calculate the cost of n notifications.
-	nCost := func(numNotifications uint64) types.Currency {
-		return (pt.SubscriptionNotificationBaseCost.Add(modules.MDMReadRegistryCost(pt)).Mul64(numNotifications))
-	}
-
 	// Check the balance.
-	// 1. subtract the base cost and 100 notifications for opening the loop
-	// 2. subtract the base cost and memory cost for 1 subscription
-	// 3. subtract the bast cost for unsubscribing 1 time
-	// 4. add the InitialNumNotifications-1 unused notifications as a refund
+	// 1. subtract the initial budget.
+	// 2. add the remaining budget.
+	// 3. subtract fundAmt.
 	err = build.Retry(100, 100*time.Millisecond, func() error {
-		expectedBalance := expectedBalance.Sub(pt.SubscriptionBaseCost.Add(nCost(modules.InitialNumNotifications)))
-		expectedBalance = expectedBalance.Sub(pt.SubscriptionBaseCost.Add(subscriptionMemoryCost(pt, 1)).Add(modules.SubscriptionNotificationsCost(pt, 1)))
-		expectedBalance = expectedBalance.Sub(pt.SubscriptionBaseCost)
-		expectedBalance = expectedBalance.Add(nCost(modules.InitialNumNotifications - 1))
+		expectedBalance := expectedBalance.Sub(initialBudget)
+		expectedBalance = expectedBalance.Add(expectedBudget(runningCost))
+		expectedBalance = expectedBalance.Sub(fundAmt)
 		if !host.staticAccountManager.callAccountBalance(rhp.staticAccountID).Equals(expectedBalance) {
 			return fmt.Errorf("invalid balance %v != %v", expectedBalance, host.staticAccountManager.callAccountBalance(rhp.staticAccountID))
 		}
