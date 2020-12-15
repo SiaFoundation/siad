@@ -118,8 +118,16 @@ func TestProjectDownloadChunk_adjustedReadDuration(t *testing.T) {
 	pdc.pieceLength = 1 << 16
 	pdc.pricePerMS = types.SiacoinPrecision
 
-	// verify the adjusted read duration adds a cost penalty
+	// verify the duration is not adjusted, due to the very high pricePerMS
 	duration := pdc.adjustedReadDuration(worker)
+	if duration != jobTime {
+		t.Fatal("unexpected", duration, jobTime)
+	}
+
+	// set the pricePerMS to a sane value, that is lower than the job cost,
+	// expected the duration to be adjusted
+	pdc.pricePerMS = types.SiacoinPrecision.MulFloat(1e-12)
+	duration = pdc.adjustedReadDuration(worker)
 	if duration <= jobTime {
 		t.Fatal("unexpected", duration, jobTime)
 	}
