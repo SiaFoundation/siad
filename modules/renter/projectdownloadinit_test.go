@@ -158,6 +158,7 @@ func TestProjectDownloadChunk_createInitialWorkerSet(t *testing.T) {
 	}
 
 	// create some helper variables
+	dur5MS := 5 * time.Millisecond
 	dur15MS := 15 * time.Millisecond
 	dur50MS := 50 * time.Millisecond
 	dur75MS := 75 * time.Millisecond
@@ -178,18 +179,18 @@ func TestProjectDownloadChunk_createInitialWorkerSet(t *testing.T) {
 	// create a couple of workers
 	w1 := &pdcInitialWorker{
 		worker:       &worker{staticHostPubKeyStr: "w1"},
-		completeTime: t75MS,
-		readDuration: dur50MS,
-		pieces:       []uint64{0},
-		cost:         pS.Mul64(10),
-	} // 125
-	w2 := &pdcInitialWorker{
-		worker:       &worker{staticHostPubKeyStr: "w2"},
 		completeTime: t100MS,
 		readDuration: dur100MS,
 		pieces:       []uint64{0},
-		cost:         pS.Mul64(20),
+		cost:         pS.Mul64(10),
 	} // 200
+	w2 := &pdcInitialWorker{
+		worker:       &worker{staticHostPubKeyStr: "w2"},
+		completeTime: t75MS,
+		readDuration: dur50MS,
+		pieces:       []uint64{0},
+		cost:         pS.Mul64(20),
+	} // 175
 	w3 := &pdcInitialWorker{
 		worker:       &worker{staticHostPubKeyStr: "w3"},
 		completeTime: t50MS,
@@ -210,7 +211,14 @@ func TestProjectDownloadChunk_createInitialWorkerSet(t *testing.T) {
 		readDuration: dur15MS,
 		pieces:       []uint64{3},
 		cost:         pS.Mul64(39), // undercut w4
-	} // 175
+	} // 165
+	w6 := &pdcInitialWorker{
+		worker:       &worker{staticHostPubKeyStr: "w6"},
+		completeTime: t50MS,
+		readDuration: dur5MS, // super fast
+		pieces:       []uint64{3, 4},
+		cost:         pS.Mul64(50),
+	} // 55
 
 	// create a heap and add the first three workers
 	wh := workersToHeap(w1, w2, w3)
@@ -232,32 +240,42 @@ func TestProjectDownloadChunk_createInitialWorkerSet(t *testing.T) {
 	pdc.pricePerMS = types.SiacoinPrecision.MulFloat(1e-12) // pS
 
 	// create an initial worker set, we expect this to fail due to the fact
-	// there's not enough workers, seeing as w1 and w2 return the same pace,
-	// rendering w2 unuseful.
+	// there's not enough workers, seeing as w1 and w2 return the same piece,
+	// rendering w1 unuseful.
 	iws, err := pdc.createInitialWorkerSet(wh)
 	if !errors.Contains(err, errNotEnoughWorkers) || iws != nil {
 		t.Fatal("unexpected")
 	}
 
-	// recreate the heap but add a fourth worker, recreate the worker set, we
-	// expect it to succeed as we can download min pieces
+	// add a fourth worker, we expect it to succeed now and return an initial
+	// worker set that can download min pieces
 	wh = workersToHeap(w1, w2, w3, w4)
 	iws, err = pdc.createInitialWorkerSet(wh)
 	if err != nil {
 		t.Fatal("unepected", err)
 	}
 	if workersToString(iws) != "w1,w3,w4" {
-		t.Fatal("unepected", iws)
+		t.Fatal("unepected", workersToString(iws))
 	}
 
-	// recreate the heap and add another worker to the heap and recreate the
-	// worker set
+	// add another worker, undercutting w4 in price
 	wh = workersToHeap(w1, w2, w3, w4, w5)
 	iws, err = pdc.createInitialWorkerSet(wh)
 	if err != nil {
 		t.Fatal("unepected", err)
 	}
 	if workersToString(iws) != "w1,w3,w5" {
+		t.Fatal("unepected", workersToString(iws))
+	}
+
+	// add another worker, it's super fast and able to download two pieces in
+	// under the time it takes w3 to download 1
+	wh = workersToHeap(w1, w2, w3, w4, w5, w6)
+	iws, err = pdc.createInitialWorkerSet(wh)
+	if err != nil {
+		t.Fatal("unepected", err)
+	}
+	if workersToString(iws) != "w2,w3,w6" {
 		t.Fatal("unepected", workersToString(iws))
 	}
 }
