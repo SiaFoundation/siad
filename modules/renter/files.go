@@ -37,7 +37,8 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 	return nil
 }
 
-// FileList returns all of the files that the renter has.
+// FileList loops over all the files within the directory specified by siaPath
+// and will then call the provided listing function on the file.
 func (r *Renter) FileList(siaPath modules.SiaPath, recursive, cached bool, flf modules.FileListFunc) error {
 	if err := r.tg.Add(); err != nil {
 		return err
