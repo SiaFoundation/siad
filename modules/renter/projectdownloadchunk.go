@@ -387,7 +387,7 @@ func (pdc *projectDownloadChunk) threadedCollectAndOverdrivePieces() {
 		// Determine when the next overdrive check needs to run.
 		select {
 		case <-pdc.ctx.Done():
-			pdc.fail(errors.New("download failed while waiting for responses"))
+			pdc.fail(errors.New("download interrupted while waiting for responses"))
 			return
 		case jrr := <-pdc.workerResponseChan:
 			pdc.handleJobReadResponse(jrr)
