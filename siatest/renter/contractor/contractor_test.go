@@ -759,9 +759,6 @@ func TestRenterContractAutomaticRecoveryScan(t *testing.T) {
 			if contract.GoodForUpload != c.GoodForUpload {
 				return errors.New("GoodForRenew doesn't match")
 			}
-			if contract.TotalCost.Equals(c.Fees.Add(c.RenterFunds)) {
-				return fmt.Errorf("wrong total cost %v != %v", contract.TotalCost, c.Fees.Add(c.RenterFunds))
-			}
 
 			// Check that the watchdog has been notified of the contracts being
 			// recovered.
