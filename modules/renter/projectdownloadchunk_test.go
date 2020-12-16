@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"io"
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -11,10 +14,10 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestProjectDownloadChunkFinalize is a unit test for the 'finalize' function
+// TestProjectDownloadChunk_finalize is a unit test for the 'finalize' function
 // on the pdc. It verifies whether the returned data is properly offset to
 // include only the pieces requested by the user.
-func TestProjectDownloadChunkFinalize(t *testing.T) {
+func TestProjectDownloadChunk_finalize(t *testing.T) {
 	// create a random sector
 	sectorData := fastrand.Bytes(int(modules.SectorSize))
 	sectorRoot := crypto.MerkleRoot(sectorData)
@@ -78,10 +81,10 @@ func TestProjectDownloadChunkFinalize(t *testing.T) {
 	}
 }
 
-// TestProjectDownloadChunkFinished is a unit test for the 'finished' function
+// TestProjectDownloadChunk_finished is a unit test for the 'finished' function
 // on the pdc. It verifies whether the hopeful and completed pieces are properly
 // counted and whether the return values are correct.
-func TestProjectDownloadChunkFinished(t *testing.T) {
+func TestProjectDownloadChunk_finished(t *testing.T) {
 	// create an EC
 	ec, err := modules.NewRSCode(3, 9)
 	if err != nil {
@@ -176,4 +179,166 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	if !finished {
 		t.Fatal("unexpected")
 	}
+}
+
+// TestProjectDownloadChunk_handleJobResponse is a unit test that verifies the
+// functionality of the 'handleJobResponse' function on the ProjectDownloadChunk
+func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
+	t.Parallel()
+
+	ec := modules.NewRSSubCodeDefault()
+	ptck, err := crypto.NewSiaKey(crypto.TypePlain, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data := fastrand.Bytes(int(modules.SectorSize))
+	pieces, err := ec.Encode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := new(worker)
+	w.staticHostPubKeyStr = "w"
+
+	empty := crypto.Hash{}
+	pcws := new(projectChunkWorkerSet)
+	pcws.staticMasterKey = ptck
+	pcws.staticErasureCoder = ec
+	pcws.staticPieceRoots = []crypto.Hash{
+		empty,
+		empty,
+		empty,
+		crypto.MerkleRoot(pieces[0]),
+		empty,
+	}
+
+	pdc := new(projectDownloadChunk)
+	pdc.workerSet = pcws
+	pdc.workerSet.staticChunkIndex = 0
+	pdc.dataPieces = make([][]byte, ec.NumPieces())
+	pdc.availablePieces = [][]pieceDownload{
+		{{launched: true, worker: w}},
+		{{launched: true, worker: w}},
+		{{launched: true, worker: w}},
+		{{launched: true, worker: w}},
+		{{launched: true, worker: w}},
+	}
+
+	// verify the pdc after a successful read response for piece at index 3
+	success := &jobReadResponse{
+		staticData:       pieces[2],
+		staticErr:        nil,
+		staticSectorRoot: crypto.MerkleRoot(pieces[3]),
+		staticWorker:     w,
+	}
+	pdc.handleJobReadResponse(success)
+	if !pdc.availablePieces[3][0].completed {
+		t.Fatal("unexpected")
+	}
+	if pdc.availablePieces[3][0].downloadErr != nil {
+		t.Fatal("unexpected")
+	}
+	if !bytes.Equal(pdc.dataPieces[3], pieces[3]) {
+		t.Fatal("unexpected")
+	}
+	if success.staticData != nil {
+		t.Fatal("unexpected") // verify we unset the data
+	}
+
+	// verify the pdc after a failed read
+	pdc.handleJobReadResponse(&jobReadResponse{
+		staticData:       nil,
+		staticErr:        errors.New("read failed"),
+		staticSectorRoot: empty, // it'll see this as piece index 0
+		staticWorker:     w,
+	})
+	if !pdc.availablePieces[0][0].completed {
+		t.Fatal("unexpected")
+	}
+	if pdc.availablePieces[0][0].downloadErr == nil {
+		t.Fatal("unexpected")
+	}
+	if pdc.dataPieces[0] != nil {
+		t.Fatal("unexpected")
+	}
+
+	// rig the availablepieces in a way that it has a duplicate piece, we added
+	// a build.Critical to guard against this developer error that we want to
+	// test
+	pdc.availablePieces[3] = append(
+		pdc.availablePieces[3],
+		pieceDownload{launched: true, worker: w},
+	)
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("Expected build.Critical", r)
+		}
+	}()
+	pdc.handleJobReadResponse(success)
+}
+
+// TestGetPieceOffsetAndLen is a unit test that probes the helper function
+// getPieceOffsetAndLength
+func TestGetPieceOffsetAndLen(t *testing.T) {
+	randOff := fastrand.Uint64n(modules.SectorSize)
+	randLen := fastrand.Uint64n(modules.SectorSize)
+
+	// verify an EC that does not support partials, defaults to a segemnt size
+	// that is equal to the sectorsize
+	ec := modules.NewRSCodeDefault()
+	pieceOff, pieceLen := getPieceOffsetAndLen(ec, randOff, randLen)
+	if pieceOff != 0 || pieceLen%modules.SectorSize != 0 {
+		t.Fatal("unexpected", pieceOff, pieceLen)
+	}
+
+	// verify an EC that does support partials using the appropriate segment
+	// size and the offset are as we expect them to be
+	ec = modules.NewRSSubCodeDefault()
+	pieceOff, pieceLen = getPieceOffsetAndLen(ec, randOff, randLen)
+	if pieceOff%crypto.SegmentSize != 0 || pieceLen%crypto.SegmentSize != 0 {
+		t.Fatal("unexpected", pieceOff, pieceLen)
+	}
+
+	// verify an EC with minPieces different from 1 that supports partials
+	// encoding ensures we are reading enough data
+	dataPieces := 2
+	segmentSize := crypto.SegmentSize
+	chunkSegmentSize := uint64(dataPieces * segmentSize)
+	ec, err := modules.NewRSSubCode(2, 5, uint64(segmentSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pieceOff, pieceLen = getPieceOffsetAndLen(ec, randOff, randLen)
+	if ((pieceOff+pieceLen)*uint64(ec.MinPieces()))%chunkSegmentSize != 0 {
+		t.Fatal("unexpected", pieceOff, pieceLen)
+	}
+
+	// verify an EC that returns a segment size of 0 is considered invalid
+	ec = &mockErasureCoder{}
+	defer func() {
+		if r := recover(); r == nil || !strings.Contains(fmt.Sprintf("%v", r), "pcws has a bad erasure coder") {
+			t.Fatal("Expected build.Critical", r)
+		}
+	}()
+	getPieceOffsetAndLen(ec, 0, 0)
+}
+
+// mockErasureCoder implements the erasure coder interface, but is an invalid
+// erasure coder that returns a 0 segmentsize. It is used to test the critical
+// that is thrown when an invalid EC is passed to 'getPieceOffsetAndLen'
+type mockErasureCoder struct{}
+
+func (mec *mockErasureCoder) NumPieces() int                       { return 10 }
+func (mec *mockErasureCoder) MinPieces() int                       { return 1 }
+func (mec *mockErasureCoder) Encode(data []byte) ([][]byte, error) { return nil, nil }
+func (mec *mockErasureCoder) Identifier() modules.ErasureCoderIdentifier {
+	return modules.ErasureCoderIdentifier("mock")
+}
+func (mec *mockErasureCoder) EncodeShards(data [][]byte) ([][]byte, error)         { return nil, nil }
+func (mec *mockErasureCoder) Reconstruct(pieces [][]byte) error                    { return nil }
+func (mec *mockErasureCoder) Recover(pieces [][]byte, n uint64, w io.Writer) error { return nil }
+func (mec *mockErasureCoder) SupportsPartialEncoding() (uint64, bool)              { return 0, true }
+func (mec *mockErasureCoder) Type() modules.ErasureCoderType {
+	return modules.ErasureCoderType{9, 9, 9, 9}
 }
