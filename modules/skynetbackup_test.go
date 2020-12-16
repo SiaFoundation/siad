@@ -2,7 +2,6 @@ package modules
 
 import (
 	"bytes"
-	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -29,9 +28,6 @@ func modulesTestDir(testName string) string {
 
 // TestBackupAndRestoreSkylink probes the backup and restore skylink methods
 func TestBackupAndRestoreSkylink(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
 	t.Parallel()
 
 	// Create common layout and metadata bytes
@@ -43,36 +39,13 @@ func TestBackupAndRestoreSkylink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Helper function
-	createFileAndTest := func(t *testing.T, baseSector []byte, fileData []byte, filename string) {
-		// Create the file on disk
-		dir := filepath.Dir(filename)
-		err := os.MkdirAll(dir, persist.DefaultDiskPermissionsTest)
-		if err != nil {
-			t.Fatal(err)
-		}
-		f, err := os.Create(filename)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() {
-			if err := f.Close(); err != nil {
-				t.Fatal(err)
-			}
-		}()
-		// Backup and Restore test
-		testBackupAndRestore(t, baseSector, fileData, f)
-	}
-
 	// Small file test
 	//
 	// Create baseSector
 	fileData := []byte("Super interesting skyfile data")
 	baseSector, _ := BuildBaseSector(layoutBytes, nil, smBytes, fileData)
-	// Create file on disk that the back up will be written to and then read from
-	filename := filepath.Join(modulesTestDir(t.Name()), "small", SkylinkToSysPath(testSkylink))
 	// Backup and Restore test
-	createFileAndTest(t, baseSector, fileData, filename)
+	testBackupAndRestore(t, baseSector, fileData)
 
 	// Large file test
 	//
@@ -88,31 +61,25 @@ func TestBackupAndRestoreSkylink(t *testing.T) {
 	}
 	// Create baseSector
 	baseSector, _ = BuildBaseSector(layoutBytes, fanoutBytes, smBytes, nil)
-	// Create file on disk that the back up will be written to and then read from
-	filename = filepath.Join(modulesTestDir(t.Name()), "large", SkylinkToSysPath(testSkylink))
 	// Backup and Restore test
 	size := 2 * int(SectorSize)
 	fileData = fastrand.Bytes(size)
-	createFileAndTest(t, baseSector, fileData, filename)
+	testBackupAndRestore(t, baseSector, fileData)
 }
 
 // testBackupAndRestore executes the test code for TestBackupAndRestoreSkylink
-func testBackupAndRestore(t *testing.T, baseSector []byte, fileData []byte, backupFile *os.File) {
+func testBackupAndRestore(t *testing.T, baseSector []byte, fileData []byte) {
 	// Create backup
 	backupReader := bytes.NewReader(fileData)
-	err := BackupSkylink(testSkylink, baseSector, backupReader, backupFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Seek to the beginning of the file
-	_, err = backupFile.Seek(0, io.SeekStart)
+	var buf bytes.Buffer
+	err := BackupSkylink(testSkylink, baseSector, backupReader, &buf)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Restore
-	skylinkStr, restoreBaseSector, err := RestoreSkylink(backupFile)
+	restoreReader := bytes.NewBuffer(buf.Bytes())
+	skylinkStr, restoreBaseSector, err := RestoreSkylink(restoreReader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +91,7 @@ func testBackupAndRestore(t *testing.T, baseSector []byte, fileData []byte, back
 		t.Log("restored baseSector:", restoreBaseSector)
 		t.Fatal("BaseSector bytes not equal")
 	}
-	restoredData, err := ioutil.ReadAll(backupFile)
+	restoredData, err := ioutil.ReadAll(restoreReader)
 	if err != nil {
 		t.Fatal(err)
 	}
