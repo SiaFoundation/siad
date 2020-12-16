@@ -231,11 +231,12 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 	for _, piece := range pdc.availablePieces {
 		launchedWithoutFail := false
 		for _, pieceDownload := range piece {
-			if pieceDownload.launched && pieceDownload.downloadErr == nil {
-				launchedWithoutFail = true
-				if !pieceDownload.completed && latestReturn.Before(pieceDownload.expectedCompleteTime) {
-					latestReturn = pieceDownload.expectedCompleteTime
-				}
+			if !pieceDownload.launched || pieceDownload.downloadErr != nil {
+				continue // skip
+			}
+			launchedWithoutFail = true
+			if !pieceDownload.completed && latestReturn.Before(pieceDownload.expectedCompleteTime) {
+				latestReturn = pieceDownload.expectedCompleteTime
 			}
 		}
 		if launchedWithoutFail {
