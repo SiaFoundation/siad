@@ -84,6 +84,7 @@ func TestSkynet(t *testing.T) {
 		{Name: "DownloadBaseSectorEncrypted", Test: testSkynetDownloadBaseSectorEncrypted},
 		{Name: "DownloadByRoot", Test: testSkynetDownloadByRootNoEncryption},
 		{Name: "DownloadByRootEncrypted", Test: testSkynetDownloadByRootEncrypted},
+		{Name: "FanoutRegression", Test: testSkynetFanoutRegression},
 	}
 
 	// Run tests
@@ -1685,6 +1686,57 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 		t.Log("FileData bytes:", fileData)
 		t.Log("root bytes:", rootBytes)
 		t.Error("Bytes not equal")
+	}
+}
+
+// testSkynetFanoutRegression is a regression test that ensures the fanout bytes
+// of a skyfile don't contain any empty hashes
+func testSkynetFanoutRegression(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// Add a skykey to the renter
+	sk, err := r.SkykeyCreateKeyPost("fanout", skykey.TypePrivateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload a file with a large number of parity pieces to we can be reasonable
+	// confident that the upload will not fully complete before the fanout needs
+	// to be generated.
+	size := 2*int(modules.SectorSize) + siatest.Fuzz()
+	data := fastrand.Bytes(size)
+	skylink, _, _, _, err := r.UploadSkyfileCustom("regression", data, sk.Name, 20, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Download the basesector to check the fanout bytes
+	baseSectorReader, err := r.SkynetBaseSectorGet(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseSector, err := ioutil.ReadAll(baseSectorReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = modules.DecryptBaseSector(baseSector, sk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, fanoutBytes, _, _, err := modules.ParseSkyfileMetadata(baseSector)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// FanoutBytes should not contain any empty hashes
+	for i := 0; i < len(fanoutBytes); {
+		end := i + crypto.HashSize
+		var emptyHash crypto.Hash
+		root := fanoutBytes[i:end]
+		if bytes.Equal(root, emptyHash[:]) {
+			t.Fatal("empty hash found in fanout")
+		}
+		i = end
 	}
 }
 
