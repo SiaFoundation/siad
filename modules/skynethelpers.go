@@ -60,6 +60,16 @@ func AddMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename st
 // BuildBaseSector will take all of the elements of the base sector and copy
 // them into a freshly created base sector.
 func BuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) ([]byte, uint64) {
+	// Sanity Check
+	totalSize := len(layoutBytes) + len(fanoutBytes) + len(metadataBytes) + len(fileBytes)
+	if uint64(totalSize) > SectorSize {
+		err := fmt.Errorf("inputs too large for baseSector: totalSize %v, layoutBytes %v, fanoutBytes %v, metadataBytes %v, fileBytes %v",
+			totalSize, len(layoutBytes), len(fanoutBytes), len(metadataBytes), len(fileBytes))
+		build.Critical(err)
+		return nil, 0
+	}
+
+	// Build baseSector
 	baseSector := make([]byte, SectorSize)
 	offset := 0
 	copy(baseSector[offset:], layoutBytes)

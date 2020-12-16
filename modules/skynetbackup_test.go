@@ -51,17 +51,17 @@ func TestBackupAndRestoreSkylink(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		smallFile, err := os.Create(filename)
+		f, err := os.Create(filename)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer func() {
-			if err := smallFile.Close(); err != nil {
+			if err := f.Close(); err != nil {
 				t.Fatal(err)
 			}
 		}()
 		// Backup and Restore test
-		testBackupAndRestore(t, baseSector, fileData, smallFile)
+		testBackupAndRestore(t, baseSector, fileData, f)
 	}
 
 	// Small file test

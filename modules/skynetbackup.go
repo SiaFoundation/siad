@@ -6,6 +6,7 @@ package modules
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
@@ -61,10 +62,10 @@ func BackupSkylink(skylink string, baseSector []byte, reader io.Reader, writer i
 	// Write the header
 	err := writeBackupHeader(writer, skylink, baseSector)
 	if err != nil {
-		return errors.AddContext(err, "unable to write header to disk")
+		return errors.AddContext(err, "unable to write header")
 	}
 
-	// Write the body of the skyfile to disk
+	// Write the body of the skyfile
 	err = writeBackupBody(writer, reader)
 	return errors.AddContext(err, "unable to write skyfile data to the writer")
 }
@@ -111,7 +112,7 @@ func SkylinkToSysPath(skylinkStr string) string {
 // readBackupHeader reads the header from the backup file and returns the
 // Skyfile Metadata
 func readBackupHeader(r io.Reader) (string, []byte, error) {
-	// Read the header from disk
+	// Read the header
 	headerBytes := make([]byte, backupHeaderSize)
 	_, err := io.ReadFull(r, headerBytes)
 	if err != nil {
@@ -142,7 +143,7 @@ func writeBackupBody(w io.Writer, reader io.Reader) error {
 	return errors.AddContext(err, "unable to copy data from reader to file")
 }
 
-// writeBackupHeader writes the header of the backup file to disk
+// writeBackupHeader writes the header of the backup file
 func writeBackupHeader(w io.Writer, skylink string, baseSector []byte) error {
 	// Encoding the header information
 	encodedHeader := encoding.Marshal(SkyfileBackupHeader{
@@ -154,7 +155,7 @@ func writeBackupHeader(w io.Writer, skylink string, baseSector []byte) error {
 		Skylink:    skylink,
 	})
 	if len(encodedHeader) > backupHeaderSize {
-		return errors.New("encoded header is too large")
+		return fmt.Errorf("encoded header has length of %v; max length is %v", len(encodedHeader), backupHeaderSize)
 	}
 
 	// Create a reader for the encoded Header and copy it to the writer
