@@ -216,7 +216,6 @@ func skyfileEncodeFanoutFromReader(fileNode *filesystem.FileNode, reader io.Read
 	// Generate the remaining pieces of the each chunk to build the fanout bytes
 	numPieces := fileNode.ErasureCode().NumPieces()
 	fanout := make([]byte, 0, fileNode.NumChunks()*uint64(numPieces)*crypto.HashSize)
-	var emptyHash crypto.Hash
 	for chunkIndex := uint64(0); chunkIndex < fileNode.NumChunks(); chunkIndex++ {
 		// Allocate data pieces and fill them with data from the reader.
 		dataPieces, _, err := readDataPieces(reader, fileNode.ErasureCode(), fileNode.PieceSize())
@@ -230,11 +229,10 @@ func skyfileEncodeFanoutFromReader(fileNode *filesystem.FileNode, reader io.Read
 			// Encrypt and pad the piece with the given index.
 			padAndEncryptPiece(chunkIndex, uint64(pieceIndex), logicalChunkData, fileNode.MasterKey())
 			root := crypto.MerkleRoot(logicalChunkData[pieceIndex])
-			if root == emptyHash {
-				err = fmt.Errorf("Empty piece root at index %v found for chunk %v", pieceIndex, chunkIndex)
-				build.Critical(err)
-				return nil, err
-			}
+			// Unlike in skyfileEncodeFanoutFromFileNode we don't check for an
+			// emptyHash here since if MerkleRoot returned an emptyHash it would mean
+			// that an emptyHash is a valid MerkleRoot and a host should be able to
+			// return the corresponding data.
 			fanout = append(fanout, root[:]...)
 		}
 	}
