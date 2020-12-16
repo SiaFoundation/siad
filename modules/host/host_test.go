@@ -1007,8 +1007,7 @@ func (p *renterHostPair) SubcribeToRV(stream siamux.Stream, pt *modules.RPCPrice
 	return sneu.Entry, sneu.Entry.Verify(pubkey.ToPublicKey())
 }
 
-// UnsubscribeFromRV unsubscribes from the given publickey/tweak pair and
-// returns the cost to do so.
+// UnsubscribeFromRV unsubscribes from the given publickey/tweak pair.
 func (p *renterHostPair) UnsubcribeFromRV(stream siamux.Stream, pt *modules.RPCPriceTable, pubkey types.SiaPublicKey, tweak crypto.Hash) error {
 	// Send the type of the request.
 	err := modules.RPCWrite(stream, modules.SubscriptionRequestUnsubscribe)
@@ -1026,8 +1025,7 @@ func (p *renterHostPair) UnsubcribeFromRV(stream siamux.Stream, pt *modules.RPCP
 	return nil
 }
 
-// UnsubscribeFromRV unsubscribes from the given publickey/tweak pair and
-// returns the cost to do so.
+// FundSubscription pays the host to increase the subscription budget.
 func (p *renterHostPair) FundSubscription(stream siamux.Stream, pt *modules.RPCPriceTable, fundAmt types.Currency) error {
 	// Send the type of the request.
 	err := modules.RPCWrite(stream, modules.SubscriptionRequestPrepay)

@@ -184,6 +184,11 @@ func (h *Host) managedHandleExtendSubscriptionRequest(stream siamux.Stream, subs
 	return newDeadline, nil
 }
 
+// managedHandlePrepayBandwidth is used by the renter to increase the budget for
+// this session with the host. Due to the complicated concurrency of how we
+// track bandwidth and updating the price table, we lock the subscriptionInfo
+// during the whole operation and notify the renter when setting the new limit
+// is done.
 func (h *Host) managedHandlePrepayBandwidth(stream siamux.Stream, info *subscriptionInfo, limit *modules.BudgetLimit) (*modules.RPCPriceTable, error) {
 	// Lock the subscription info to make sure no notifications are sent in the
 	// background until this request is handled.
@@ -196,9 +201,6 @@ func (h *Host) managedHandlePrepayBandwidth(stream siamux.Stream, info *subscrip
 		return nil, errors.AddContext(err, "failed to read price table")
 	}
 
-	// Update the notification cost.
-	info.notificationCost = pt.SubscriptionNotificationCost
-
 	// Process payment.
 	pd, err := h.ProcessPayment(stream)
 	if err != nil {
@@ -208,10 +210,12 @@ func (h *Host) managedHandlePrepayBandwidth(stream siamux.Stream, info *subscrip
 	// Add to budget.
 	info.staticBudget.Deposit(pd.Amount())
 
-	// Update the limit. This happens last cause we know at this point that we
-	// are not sending any data over the stream and the client knows that it
-	// shouldn't send a new request until a confirmation of payment was
-	// received. This way the budgets stay in sync between renter and host.
+	// Update the notification cost.
+	info.notificationCost = pt.SubscriptionNotificationCost
+
+	// Update the limit. This happens here because at this point both renter and
+	// host agree on the bandwidth used. The renter will assume that we use the
+	// new table's costs for ProcessPayment.
 	limit.UpdateCosts(pt.UploadBandwidthCost, pt.DownloadBandwidthCost)
 
 	// Notify the caller that the payment is done.
@@ -360,7 +364,7 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (err error) {
 	}
 }
 
-// sendNotification marshals a entry notification and writes it to the provided
+// sendNotification marshals an entry notification and writes it to the provided
 // writer.
 func sendNotification(stream io.Writer, rv modules.SignedRegistryValue) error {
 	buf := new(bytes.Buffer)
