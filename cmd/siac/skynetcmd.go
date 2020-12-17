@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -164,6 +165,9 @@ func skynetcmd(cmd *cobra.Command, _ []string) {
 
 // skynetbackupskylinkcmd backs up a skylink, or multiple space separated
 // skylinks, by downloading the skyfile(s) to the skynetSkylinkBackupDir.
+//
+// TODO: This should be updated to accept a backup type? Or just default return
+// a tar-gz
 func skynetbackupskylinkcmd(cmd *cobra.Command, skylinks []string) {
 	if len(skylinks) == 0 {
 		_ = cmd.UsageFunc()(cmd)
@@ -177,12 +181,13 @@ func skynetbackupskylinkcmd(cmd *cobra.Command, skylinks []string) {
 	// backed up
 	for _, skylink := range skylinks {
 		// Backup the Skylink
-		backupPath, err := httpClient.SkynetSkylinkBackup(skylink, skynetSkylinkBackupDir)
+		var backup bytes.Buffer
+		err := httpClient.SkynetSkylinkBackup(skylink, &backup)
 		if err != nil {
 			fmt.Println("unable to backup skylink:", skylink, ",error:", err)
 			continue
 		}
-		fmt.Printf("Backup Successful!\nSkylink: %v\nBackup Path: %v\n", skylink, backupPath)
+		fmt.Printf("Backup Successful!\nSkylink: %v\nBackup Path: %v\n", skylink, skynetSkylinkBackupDir)
 	}
 }
 
@@ -561,6 +566,8 @@ func skynetpincmd(sourceSkylink, destSiaPath string) {
 
 // skynetrestoreskylinkcmd restores a skyfile from the backupPath, or multiple
 // skyfiles from multiple space separated backupPaths, by re-uploading the data.
+//
+// TODO: Update the have a backup as input. Read the backup from disk
 func skynetrestoreskylinkcmd(cmd *cobra.Command, backupPaths []string) {
 	if len(backupPaths) == 0 {
 		_ = cmd.UsageFunc()(cmd)
@@ -569,9 +576,14 @@ func skynetrestoreskylinkcmd(cmd *cobra.Command, backupPaths []string) {
 
 	// NOTE: Errors will be printed out so as many skylinks as possible can be
 	// restored
+	//
+	// TODO: Should probably update the backup and restore commands to have
+	// a RestoreAll option. The backupAll option would be to continue to call
+	// backup with the same backup writer.
 	for _, backupPath := range backupPaths {
 		// Backup the Skylink
-		skylink, err := httpClient.SkynetSkylinkRestorePost(backupPath)
+		var backupDst bytes.Buffer
+		skylink, err := httpClient.SkynetSkylinkRestorePost(&backupDst)
 		if err != nil {
 			fmt.Println("unable to restore file:", backupPath, ",error:", err)
 			continue

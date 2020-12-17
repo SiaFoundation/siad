@@ -642,7 +642,7 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	sup.Force = true
 
 	// Convert to a Skyfile
-	_, err = r.SkynetConvertSiafileToSkyfileEncryptedPost(sup, remoteFile.SiaPath(), sk.Name, skykey.SkykeyID{})
+	_, err = r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
 	if err == nil || !strings.Contains(err.Error(), renter.ErrEncryptionNotSupported.Error()) {
 		t.Fatalf("Expected error %v, but got %v", renter.ErrEncryptionNotSupported, err)
 	}
@@ -670,7 +670,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	//
 	// Define test func
 	testSmallFunc := func(files []siatest.TestFile, fileName, skykeyName string) {
-		skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, false, skykeyName, skykey.SkykeyID{})
+		skylink, _, _, err := r.UploadNewMultipartEncryptedSkyfileBlocking(fileName, files, "", false, false, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -741,7 +741,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	// Define test function
 	largeTestFunc := func(files []siatest.TestFile, fileName, skykeyName string) {
 		// Upload the skyfile
-		skylink, sup, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, false, skykeyName, skykey.SkykeyID{})
+		skylink, sup, _, err := r.UploadNewMultipartEncryptedSkyfileBlocking(fileName, files, "", false, false, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -136,7 +136,6 @@ func encryptBaseSectorWithSkykey(baseSector []byte, plaintextLayout modules.Skyf
 	if err != nil {
 		return errors.AddContext(err, "Unable to get baseSector cipherkey")
 	}
-
 	_, err = ck.DecryptBytesInPlace(baseSector, 0)
 	if err != nil {
 		return errors.New("Error decrypting baseSector for download")
@@ -202,26 +201,32 @@ func generateCipherKey(fup *modules.FileUploadParams, sup modules.SkyfileUploadP
 
 // generateFilekey generates the FileSpecificSkykey to be used for encryption
 // and sets it in the SkyfileUploadParameters
-func (r *Renter) generateFilekey(sup *modules.SkyfileUploadParameters) error {
-	if encryptionEnabled(sup) && sup.SkykeyName != "" {
-		key, err := r.SkykeyByName(sup.SkykeyName)
-		if err != nil {
-			return errors.AddContext(err, "UploadSkyfile unable to get skykey")
-		}
-		sup.FileSpecificSkykey, err = key.GenerateFileSpecificSubkey()
-		if err != nil {
-			return errors.AddContext(err, "UploadSkyfile unable to generate subkey")
-		}
-	} else if encryptionEnabled(sup) {
-		key, err := r.SkykeyByID(sup.SkykeyID)
-		if err != nil {
-			return errors.AddContext(err, "UploadSkyfile unable to get skykey")
-		}
+func (r *Renter) generateFilekey(sup *modules.SkyfileUploadParameters, nonce []byte) error {
+	// If encryption is not enabled then nothing to do.
+	if !encryptionEnabled(sup) {
+		return nil
+	}
 
+	// Get the Key
+	var key skykey.Skykey
+	var err error
+	if sup.SkykeyName != "" {
+		key, err = r.SkykeyByName(sup.SkykeyName)
+	} else {
+		key, err = r.SkykeyByID(sup.SkykeyID)
+	}
+	if err != nil {
+		return errors.AddContext(err, "unable to get skykey")
+	}
+
+	// Generate the Subkey
+	if len(nonce) == 0 {
 		sup.FileSpecificSkykey, err = key.GenerateFileSpecificSubkey()
-		if err != nil {
-			return errors.AddContext(err, "UploadSkyfile unable to generate subkey")
-		}
+	} else {
+		sup.FileSpecificSkykey, err = key.SubkeyWithNonce(nonce)
+	}
+	if err != nil {
+		return errors.AddContext(err, "unable to generate subkey")
 	}
 	return nil
 }

@@ -1110,9 +1110,8 @@ type Renter interface {
 	// Portals returns the list of known skynet portals.
 	Portals() ([]SkynetPortal, error)
 
-	// RestoreSkyfile restores a skyfile from disk such that the skylink is
-	// preserved.
-	RestoreSkyfile(backupPath, skykeyName string, skykeyID skykey.SkykeyID) (string, error)
+	// RestoreSkyfile restores a skyfile such that the skylink is preserved.
+	RestoreSkyfile(reader io.Reader) (string, error)
 
 	// UpdateSkynetPortals updates the list of known skynet portals.
 	UpdateSkynetPortals(additions []SkynetPortal, removals []NetAddress) error

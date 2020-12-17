@@ -1342,34 +1342,9 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 }
 
 // skynetRestoreHandlerPOST handles the POST calls to /skynet/restore.
-func (api *API) skynetRestoreHandlerPOST(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
-	// Grab the backup path
-	backupPath := ps.ByName("backuppath")
-	if backupPath == "" {
-		WriteError(w, Error{"backup path cannot be blank"}, http.StatusBadRequest)
-		return
-	}
-	// Trim the leading slash
-	backupPath = strings.TrimPrefix(backupPath, "/")
-
-	// Check for Skykey information
-	skykeyName := req.FormValue("skykeyname")
-	var skykeyID skykey.SkykeyID
-	skykeyIDStr := req.FormValue("skykeyid")
-	if skykeyIDStr != "" && skykeyName != "" {
-		WriteError(w, Error{"only the SkykeyID or the SkykeyName should be provided"}, http.StatusBadRequest)
-		return
-	}
-	if skykeyIDStr != "" {
-		err := skykeyID.FromString(skykeyIDStr)
-		if err != nil {
-			WriteError(w, Error{"unable to parse SkykeyID: " + err.Error()}, http.StatusBadRequest)
-			return
-		}
-	}
-
+func (api *API) skynetRestoreHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Restore Skyfile
-	skylink, err := api.renter.RestoreSkyfile(backupPath, skykeyName, skykeyID)
+	skylink, err := api.renter.RestoreSkyfile(req.Body)
 	if err != nil {
 		WriteError(w, Error{"unable to restore skyfile: " + err.Error()}, http.StatusBadRequest)
 		return
