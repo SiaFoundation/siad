@@ -171,7 +171,7 @@ func (h *Host) managedHandleExtendSubscriptionRequest(stream siamux.Stream, subs
 	newDeadline := oldDeadline.Add(modules.SubscriptionPeriod)
 
 	// Check payment first.
-	cost := modules.MDMSubscribeCost(pt, uint64(len(subs)))
+	cost := modules.MDMSubscriptionMemoryCost(pt, uint64(len(subs)))
 	if !info.staticBudget.Withdraw(cost) {
 		return time.Time{}, errors.AddContext(modules.ErrInsufficientPaymentForRPC, "managedHandleExtendSubscriptionRequest")
 	}
