@@ -89,7 +89,7 @@ func TestRenterFileListLocalPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	rt.renter.mu.Unlock(id)
-	files, err := rt.renter.FileList(modules.RootSiaPath(), true, false)
+	files, err := rt.renter.FileListCollect(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestRenterDeleteFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := rt.renter.FileList(modules.RootSiaPath(), true, false)
+	files, err := rt.renter.FileListCollect(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +281,7 @@ func TestRenterFileList(t *testing.T) {
 	}()
 
 	// Get the file list of an empty renter.
-	files, err := rt.renter.FileList(modules.RootSiaPath(), true, false)
+	files, err := rt.renter.FileListCollect(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +291,7 @@ func TestRenterFileList(t *testing.T) {
 
 	// Put a file in the renter.
 	entry1, _ := rt.renter.newRenterTestFile()
-	files, err = rt.renter.FileList(modules.RootSiaPath(), true, false)
+	files, err = rt.renter.FileListCollect(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,14 +306,14 @@ func TestRenterFileList(t *testing.T) {
 	// Put multiple files in the renter.
 	entry2, _ := rt.renter.newRenterTestFile()
 	entry2SP := rt.renter.staticFileSystem.FileSiaPath(entry2)
-	files, err = rt.renter.FileList(modules.RootSiaPath(), true, false)
+	files, err = rt.renter.FileListCollect(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(files) != 2 {
 		t.Fatalf("Expected %v files, got %v", 2, len(files))
 	}
-	files, err = rt.renter.FileList(modules.RootSiaPath(), true, false)
+	files, err = rt.renter.FileListCollect(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,7 +374,7 @@ func TestRenterRenameFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := rt.renter.FileList(modules.RootSiaPath(), true, false)
+	files, err := rt.renter.FileListCollect(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}

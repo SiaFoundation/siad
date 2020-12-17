@@ -309,7 +309,7 @@ func (ffn *fuseFilenode) Read(ctx context.Context, f fs.FileHandle, dest []byte,
 // Readdir will return a dirstream that can be used to look at all of the files
 // in the directory.
 func (fdn *fuseDirnode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
-	fileinfos, dirinfos, err := fdn.staticFilesystem.renter.staticFileSystem.CachedListOnNode(fdn.staticDirNode, false)
+	fileinfos, dirinfos, err := fdn.staticFilesystem.renter.staticFileSystem.CachedListOnNode(fdn.staticDirNode)
 	if err != nil {
 		siaPath := fdn.staticFilesystem.renter.staticFileSystem.DirSiaPath(fdn.staticDirNode)
 		fdn.staticFilesystem.renter.log.Printf("Unable to get file and directory list for fuse directory %v: %v", siaPath, err)
