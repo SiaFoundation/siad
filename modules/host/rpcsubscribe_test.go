@@ -1,9 +1,11 @@
 package host
 
 import (
+	"encoding/hex"
 	"fmt"
+	"io"
 	"reflect"
-	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/siamux"
 )
 
 // TestRPCSubscribe is a set of tests related to the registry subscription rpc.
@@ -50,6 +53,32 @@ func TestRPCSubscribe(t *testing.T) {
 // testRPCSubscribeBasic tests subscribing to an entry and unsubscribing without
 // hitting any edge cases.
 func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
+	// Prepare a listener for the worker.
+	notificationReader, notificationWriter := io.Pipe()
+	var sub types.Specifier
+	fastrand.Read(sub[:])
+	var notificationUploaded, notificationDownloaded uint64
+	var numNotifications uint64
+	err := rhp.staticRenterMux.NewListener(hex.EncodeToString(sub[:]), func(stream siamux.Stream) {
+		atomic.AddUint64(&numNotifications, 1)
+
+		// Copy the output to the pipe.
+		io.Copy(notificationWriter, stream)
+
+		// Collect used bandwidth.
+		atomic.AddUint64(&notificationDownloaded, stream.Limit().Downloaded())
+		atomic.AddUint64(&notificationUploaded, stream.Limit().Uploaded())
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err = rhp.staticRenterMux.CloseListener(hex.EncodeToString(sub[:]))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
 	// Create a registry value.
 	sk, pk := crypto.GenerateKeyPair()
 	var tweak crypto.Hash
@@ -65,7 +94,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 
 	// Set it on the host.
 	host := rhp.staticHT.host
-	_, err := host.RegistryUpdate(rv, spk, expiry)
+	_, err = host.RegistryUpdate(rv, spk, expiry)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +113,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 
 	// begin the subscription loop.
 	initialBudget := expectedBalance.Div64(2)
-	stream, err := rhp.BeginSubscription(initialBudget)
+	stream, err := rhp.BeginSubscription(initialBudget, sub)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,8 +122,8 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	// Prepare a function to compute expected budget.
 	l := stream.Limit()
 	expectedBudget := func(costs types.Currency) types.Currency {
-		upCost := pt.UploadBandwidthCost.Mul64(l.Uploaded())
-		downCost := pt.DownloadBandwidthCost.Mul64(l.Downloaded())
+		upCost := pt.UploadBandwidthCost.Mul64(l.Uploaded() + atomic.LoadUint64(&notificationUploaded))
+		downCost := pt.DownloadBandwidthCost.Mul64(l.Downloaded() + atomic.LoadUint64(&notificationDownloaded))
 		return initialBudget.Sub(upCost).Sub(downCost).Sub(costs)
 	}
 
@@ -163,7 +192,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 
 	// Read the notification and make sure it's the right one.
 	var snt modules.RPCRegistrySubscriptionNotificationType
-	err = modules.RPCRead(stream, &snt)
+	err = modules.RPCRead(notificationReader, &snt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +200,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 		t.Fatal("notification has wrong type")
 	}
 	var sneu modules.RPCRegistrySubscriptionNotificationEntryUpdate
-	err = modules.RPCRead(stream, &sneu)
+	err = modules.RPCRead(notificationReader, &sneu)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,6 +216,56 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	}
 	if !info.staticBudget.Remaining().Equals(expectedBudget(runningCost)) {
 		t.Fatalf("host budget doesn't match expected budget %v != %v", info.staticBudget.Remaining(), expectedBudget(types.ZeroCurrency))
+	}
+	info.mu.Unlock()
+
+	// Fund the subscription.
+	fundAmt := types.NewCurrency64(42)
+	err = rhp.FundSubscription(stream, fundAmt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runningCost = runningCost.Sub(fundAmt)
+
+	// Check the info.
+	info.mu.Lock()
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if !info.staticBudget.Remaining().Equals(expectedBudget(runningCost)) {
+			return fmt.Errorf("host budget doesn't match expected budget %v != %v", info.staticBudget.Remaining(), expectedBudget(runningCost))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	info.mu.Unlock()
+
+	// Extend the subscription.
+	err = rhp.ExtendSubscription(stream, pt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runningCost = runningCost.Add(modules.MDMSubscriptionMemoryCost(pt, 1))
+
+	// Read the "OK" response.
+	err = modules.RPCRead(notificationReader, &snt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snt.Type != modules.SubscriptionResponseSubscriptionSuccess {
+		t.Fatal("notification has wrong type")
+	}
+
+	// Check the info.
+	info.mu.Lock()
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if !info.staticBudget.Remaining().Equals(expectedBudget(runningCost)) {
+			return fmt.Errorf("host budget doesn't match expected budget %v != %v", info.staticBudget.Remaining(), expectedBudget(runningCost))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 	info.mu.Unlock()
 
@@ -216,34 +295,16 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 		t.Fatal(err)
 	}
 
-	// Shouldn't receive a notification.
-	err = stream.SetReadDeadline(time.Now().Add(time.Second))
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = modules.RPCRead(stream, &snt)
-	if err == nil || !strings.Contains(err.Error(), "stream timed out") {
-		t.Fatal(err)
-	}
-
-	// Reset deadline.
-	err = stream.SetReadDeadline(time.Time{})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Fund the subscription.
-	fundAmt := types.NewCurrency64(42)
-	err = rhp.FundSubscription(stream, pt, fundAmt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	runningCost = runningCost.Sub(fundAmt)
-
 	// Check the info.
 	info.mu.Lock()
-	if !info.staticBudget.Remaining().Equals(expectedBudget(runningCost)) {
-		t.Fatalf("host budget doesn't match expected budget %v != %v", info.staticBudget.Remaining(), expectedBudget(runningCost))
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if !info.staticBudget.Remaining().Equals(expectedBudget(runningCost)) {
+			return fmt.Errorf("host budget doesn't match expected budget %v != %v", info.staticBudget.Remaining(), expectedBudget(runningCost))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 	info.mu.Unlock()
 
@@ -267,5 +328,10 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Check number of notifications.
+	if expected := atomic.LoadUint64(&numNotifications); expected != 2 {
+		t.Fatal("wrong number of notifications", expected, 2)
 	}
 }

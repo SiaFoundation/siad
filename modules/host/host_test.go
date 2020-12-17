@@ -854,7 +854,7 @@ func (p *renterHostPair) managedAccountBalance(payByFC bool, fundAmt types.Curre
 
 // managedBeginSubscription begins a subscription on a new stream and returns
 // it.
-func (p *renterHostPair) managedBeginSubscription(payByFC bool, fundAmt types.Currency, fundAcc modules.AccountID) (_ siamux.Stream, err error) {
+func (p *renterHostPair) managedBeginSubscription(payByFC bool, fundAmt types.Currency, fundAcc modules.AccountID, subscriber types.Specifier) (_ siamux.Stream, err error) {
 	stream := p.managedNewStream()
 	defer func() {
 		if err != nil {
@@ -880,7 +880,7 @@ func (p *renterHostPair) managedBeginSubscription(payByFC bool, fundAmt types.Cu
 		return nil, err
 	}
 
-	// provide payment
+	// Provide payment
 	if payByFC {
 		err = p.managedPayByContract(stream, fundAmt, fundAcc)
 		if err != nil {
@@ -892,7 +892,9 @@ func (p *renterHostPair) managedBeginSubscription(payByFC bool, fundAmt types.Cu
 			return nil, err
 		}
 	}
-	return stream, nil
+
+	// Send the subscriber.
+	return stream, modules.RPCWrite(stream, subscriber)
 }
 
 // managedLatestRevision performs a RPCLatestRevision to get the latest revision
@@ -964,8 +966,8 @@ func (p *renterHostPair) AccountBalance(payByFC bool) (types.Currency, error) {
 }
 
 // BeginSubscription starts the subscription loop and returns the stream.
-func (p *renterHostPair) BeginSubscription(budget types.Currency) (siamux.Stream, error) {
-	return p.managedBeginSubscription(false, budget, p.staticAccountID)
+func (p *renterHostPair) BeginSubscription(budget types.Currency, subscriber types.Specifier) (siamux.Stream, error) {
+	return p.managedBeginSubscription(false, budget, p.staticAccountID, subscriber)
 }
 
 // LatestRevision performs a RPCLatestRevision to get the latest revision for
@@ -1026,15 +1028,9 @@ func (p *renterHostPair) UnsubcribeFromRV(stream siamux.Stream, pt *modules.RPCP
 }
 
 // FundSubscription pays the host to increase the subscription budget.
-func (p *renterHostPair) FundSubscription(stream siamux.Stream, pt *modules.RPCPriceTable, fundAmt types.Currency) error {
+func (p *renterHostPair) FundSubscription(stream siamux.Stream, fundAmt types.Currency) error {
 	// Send the type of the request.
 	err := modules.RPCWrite(stream, modules.SubscriptionRequestPrepay)
-	if err != nil {
-		return err
-	}
-
-	// Write the pricetable uid.
-	err = modules.RPCWrite(stream, pt.UID)
 	if err != nil {
 		return err
 	}
@@ -1044,15 +1040,21 @@ func (p *renterHostPair) FundSubscription(stream siamux.Stream, pt *modules.RPCP
 	if err != nil {
 		return err
 	}
+	return nil
+}
 
-	// Read response.
-	var resp modules.RPCRegistrySubscriptionNotificationType
-	err = modules.RPCRead(stream, &resp)
+// FundSubscription pays the host to increase the subscription budget.
+func (p *renterHostPair) ExtendSubscription(stream siamux.Stream, pt *modules.RPCPriceTable) error {
+	// Send the type of the request.
+	err := modules.RPCWrite(stream, modules.SubscriptionRequestExtend)
 	if err != nil {
 		return err
 	}
-	if resp.Type != modules.SubscriptionResponsePaymentDone {
-		return errors.New("FundSubscription: wrong type")
+
+	// Write the pricetable uid.
+	err = modules.RPCWrite(stream, pt.UID)
+	if err != nil {
+		return err
 	}
 	return nil
 }

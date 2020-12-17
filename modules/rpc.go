@@ -37,7 +37,8 @@ const (
 const (
 	SubscriptionResponseInvalid = iota
 	SubscriptionResponseRegistryValue
-	SubscriptionResponsePaymentDone
+
+	SubscriptionResponseSubscriptionSuccess
 )
 
 var (
