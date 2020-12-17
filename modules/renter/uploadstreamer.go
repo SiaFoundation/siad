@@ -16,15 +16,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// maxWaitForCompleteUpload is the maximum amount of time we wait for an upload
-// chunk to be completely uploaded after it has become available in the upload
-// process.
-var maxWaitForCompleteUpload = build.Select(build.Var{
-	Dev:      5 * time.Minute,
-	Standard: 5 * time.Minute,
-	Testing:  5 * time.Second,
-}).(time.Duration)
-
 // Upload Streaming Overview:
 // Most of the logic that enables upload streaming can be found within
 // UploadStreamFromReader and the StreamShard. As seen at the beginning of the
