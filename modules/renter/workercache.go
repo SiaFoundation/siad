@@ -97,6 +97,15 @@ func (w *worker) managedUpdateCache() {
 	})
 }
 
+// newCache will initialize an unitialized cache on the worker.
+func (w *worker) newCache() {
+	if w.staticCache() != nil {
+		w.renter.log.Critical("creating a new cache one already exists")
+	}
+	ptr := unsafe.Pointer(new(workerCache))
+	atomic.StorePointer(&w.atomicCache, ptr)
+}
+
 // staticTryUpdateCache will perform a cache update on the worker.
 //
 // 'false' will be returned if the cache cannot be updated, signaling that the

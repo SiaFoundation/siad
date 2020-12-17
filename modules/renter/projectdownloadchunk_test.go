@@ -5,16 +5,20 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestProjectDownloadChunkFinalize is a unit test for the 'finalize' function
+// TestProjectDownloadChunk_finalize is a unit test for the 'finalize' function
 // on the pdc. It verifies whether the returned data is properly offset to
 // include only the pieces requested by the user.
-func TestProjectDownloadChunkFinalize(t *testing.T) {
+func TestProjectDownloadChunk_finalize(t *testing.T) {
+	t.Parallel()
+
 	// create a random sector
 	sectorData := fastrand.Bytes(int(modules.SectorSize))
 	sectorRoot := crypto.MerkleRoot(sectorData)
@@ -78,10 +82,10 @@ func TestProjectDownloadChunkFinalize(t *testing.T) {
 	}
 }
 
-// TestProjectDownloadChunkFinished is a unit test for the 'finished' function
+// TestProjectDownloadChunk_finished is a unit test for the 'finished' function
 // on the pdc. It verifies whether the hopeful and completed pieces are properly
 // counted and whether the return values are correct.
-func TestProjectDownloadChunkFinished(t *testing.T) {
+func TestProjectDownloadChunk_finished(t *testing.T) {
 	// create an EC
 	ec, err := modules.NewRSCode(3, 9)
 	if err != nil {
@@ -109,7 +113,7 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	pdc := &projectDownloadChunk{workerSet: pcws}
 
 	// mock unresolved state with hope of successful download
-	pdc.availablePieces = make([][]pieceDownload, 0)
+	pdc.availablePieces = make([][]*pieceDownload, 0)
 	pdc.unresolvedWorkersRemaining = 4
 	finished, err := pdc.finished()
 	if err != nil {
@@ -121,7 +125,7 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 
 	// mock one completed piece - still unresolved and hopeful
 	pdc.unresolvedWorkersRemaining = 3
-	pdc.availablePieces = append(pdc.availablePieces, []pieceDownload{{completed: true}})
+	pdc.availablePieces = append(pdc.availablePieces, []*pieceDownload{{completed: true}})
 	finished, err = pdc.finished()
 	if err != nil {
 		t.Fatal("unexpected error", err)
@@ -141,9 +145,9 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	}
 
 	// mock resolves state - add 3 pieces in limbo -> hopeful again
-	pdc.availablePieces = append(pdc.availablePieces, []pieceDownload{{}})
-	pdc.availablePieces = append(pdc.availablePieces, []pieceDownload{{}})
-	pdc.availablePieces = append(pdc.availablePieces, []pieceDownload{{}})
+	pdc.availablePieces = append(pdc.availablePieces, []*pieceDownload{{}})
+	pdc.availablePieces = append(pdc.availablePieces, []*pieceDownload{{}})
+	pdc.availablePieces = append(pdc.availablePieces, []*pieceDownload{{}})
 	finished, err = pdc.finished()
 	if err != nil {
 		t.Fatal("unexpected error", err)
@@ -176,4 +180,97 @@ func TestProjectDownloadChunkFinished(t *testing.T) {
 	if !finished {
 		t.Fatal("unexpected")
 	}
+}
+
+// TestProjectDownloadChunk_launchWorker is a unit test for the 'launchWorker'
+// function on the pdc.
+func TestProjectDownloadChunk_launchWorker(t *testing.T) {
+	t.Parallel()
+
+	ec := modules.NewRSCodeDefault()
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       fastrand.Bytes(crypto.PublicKeySize),
+	}
+
+	// mock a worker, ensure the readqueue returns a non zero time estimate
+	worker := mockWorker(10)
+	worker.staticHostPubKeyStr = spk.String()
+
+	// mock a pcws
+	pcws := new(projectChunkWorkerSet)
+	pcws.staticPieceRoots = make([]crypto.Hash, ec.NumPieces())
+
+	// mock a pdc, ensure available pieces is not nil
+	pdc := new(projectDownloadChunk)
+	pdc.workerSet = pcws
+	pdc.pieceLength = 1 << 16 // 64kb
+	pdc.availablePieces = make([][]*pieceDownload, ec.NumPieces())
+	for pieceIndex := range pdc.availablePieces {
+		pdc.availablePieces[pieceIndex] = append(pdc.availablePieces[pieceIndex], &pieceDownload{
+			worker: worker,
+		})
+	}
+
+	// launch a worker and expect it to have enqueued a job and expect the
+	// complete time to be somewhere in the future
+	expectedCompleteTime, added := pdc.launchWorker(worker, 0)
+	if !added {
+		t.Fatal("unexpected")
+	}
+	if expectedCompleteTime.Before(time.Now()) {
+		t.Fatal("unexpected")
+	}
+
+	// verify one worker was launched without failure
+	numLWF := 0 // launchedWithoutFail
+	for _, pieces := range pdc.availablePieces {
+		launchedWithoutFail := false
+		for _, pieceDownload := range pieces {
+			if pieceDownload.launched && pieceDownload.downloadErr == nil {
+				launchedWithoutFail = true
+			}
+		}
+		if launchedWithoutFail {
+			numLWF++
+		}
+	}
+	if numLWF != 1 {
+		t.Fatal("unexpected", numLWF)
+	}
+
+	// launch the worker again but kill the queue, expect it to have not added
+	// the job to the queue and updated the pieceDownload's status to failed
+	worker.staticJobReadQueue.killed = true
+	_, added = pdc.launchWorker(worker, 0)
+	if added {
+		t.Fatal("unexpected")
+	}
+	numFailed := 0
+	for _, pieces := range pdc.availablePieces {
+		for _, pieceDownload := range pieces {
+			if pieceDownload.downloadErr != nil {
+				numFailed++
+			}
+		}
+	}
+	if numFailed != 1 {
+		t.Fatal("unexpected", numFailed)
+	}
+}
+
+// mockWorker is a helper function that returns a worker with a pricetable
+// and an initialised read queue that returns a non zero value for read
+// estimates depending on the given jobsCompleted value.
+//
+// for example, passing in 10 yields 100ms expected read time for 64kb jobs only
+// as the weightedJobTime64k is set to 1s, passing in 5 yields 200ms.
+func mockWorker(jobsCompleted float64) *worker {
+	worker := new(worker)
+	worker.newPriceTable()
+	worker.staticPriceTable().staticPriceTable = newDefaultPriceTable()
+	worker.initJobReadQueue()
+	worker.staticJobReadQueue.weightedJobTime64k = float64(time.Second)
+	worker.staticJobReadQueue.weightedJobsCompleted64k = jobsCompleted
+	return worker
 }
