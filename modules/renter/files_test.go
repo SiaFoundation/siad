@@ -33,13 +33,13 @@ func newSiaPath(str string) modules.SiaPath {
 func (r *Renter) createRenterTestFile(siaPath modules.SiaPath) (*filesystem.FileNode, error) {
 	// Generate erasure coder
 	_, rsc := testingFileParams()
-	return r.createRenterTestFileWithParams(siaPath, rsc)
+	return r.createRenterTestFileWithParams(siaPath, rsc, crypto.RandomCipherType())
 }
 
 // createRenterTestFileWithParams creates a test file when the test has a renter
 // so that the file is properly added to the renter. It returns the
 // SiaFileSetEntry that the SiaFile is stored in
-func (r *Renter) createRenterTestFileWithParams(siaPath modules.SiaPath, rsc modules.ErasureCoder) (*filesystem.FileNode, error) {
+func (r *Renter) createRenterTestFileWithParams(siaPath modules.SiaPath, rsc modules.ErasureCoder, ct crypto.CipherType) (*filesystem.FileNode, error) {
 	// create the renter/files dir if it doesn't exist
 	siaFilePath := r.staticFileSystem.FilePath(siaPath)
 	dir, _ := filepath.Split(siaFilePath)
@@ -52,7 +52,7 @@ func (r *Renter) createRenterTestFileWithParams(siaPath modules.SiaPath, rsc mod
 		SiaPath:     siaPath,
 		ErasureCode: rsc,
 	}
-	err := r.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 1000, persist.DefaultDiskPermissionsTest, false)
+	err := r.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(ct), 1000, persist.DefaultDiskPermissionsTest, false)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func (r *Renter) createRenterTestFileWithParams(siaPath modules.SiaPath, rsc mod
 func (r *Renter) newRenterTestFile() (*filesystem.FileNode, error) {
 	// Generate name and erasure coding
 	siaPath, rsc := testingFileParams()
-	return r.createRenterTestFileWithParams(siaPath, rsc)
+	return r.createRenterTestFileWithParams(siaPath, rsc, crypto.RandomCipherType())
 }
 
 // TestRenterFileListLocalPath verifies that FileList() returns the correct
@@ -89,7 +89,7 @@ func TestRenterFileListLocalPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	rt.renter.mu.Unlock(id)
-	files, err := rt.renter.FileList(modules.RootSiaPath(), true, false)
+	files, err := rt.renter.FileListCollect(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestRenterDeleteFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := rt.renter.FileList(modules.RootSiaPath(), true, false)
+	files, err := rt.renter.FileListCollect(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +281,7 @@ func TestRenterFileList(t *testing.T) {
 	}()
 
 	// Get the file list of an empty renter.
-	files, err := rt.renter.FileList(modules.RootSiaPath(), true, false)
+	files, err := rt.renter.FileListCollect(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +291,7 @@ func TestRenterFileList(t *testing.T) {
 
 	// Put a file in the renter.
 	entry1, _ := rt.renter.newRenterTestFile()
-	files, err = rt.renter.FileList(modules.RootSiaPath(), true, false)
+	files, err = rt.renter.FileListCollect(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,14 +306,14 @@ func TestRenterFileList(t *testing.T) {
 	// Put multiple files in the renter.
 	entry2, _ := rt.renter.newRenterTestFile()
 	entry2SP := rt.renter.staticFileSystem.FileSiaPath(entry2)
-	files, err = rt.renter.FileList(modules.RootSiaPath(), true, false)
+	files, err = rt.renter.FileListCollect(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(files) != 2 {
 		t.Fatalf("Expected %v files, got %v", 2, len(files))
 	}
-	files, err = rt.renter.FileList(modules.RootSiaPath(), true, false)
+	files, err = rt.renter.FileListCollect(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,7 +374,7 @@ func TestRenterRenameFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := rt.renter.FileList(modules.RootSiaPath(), true, false)
+	files, err := rt.renter.FileListCollect(modules.RootSiaPath(), true, false)
 	if err != nil {
 		t.Fatal(err)
 	}

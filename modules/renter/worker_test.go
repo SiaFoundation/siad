@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -181,5 +183,58 @@ func TestReadOffsetCorruptedProof(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestManagedAsyncReady is a unit test that probes the 'managedAsyncReady'
+// function on the worker
+func TestManagedAsyncReady(t *testing.T) {
+	w := new(worker)
+	w.initJobHasSectorQueue()
+	w.initJobReadQueue()
+	w.initJobUpdateRegistryQueue()
+
+	timeInFuture := time.Now().Add(time.Hour)
+	timeInPast := time.Now().Add(-time.Hour)
+
+	// ensure pt is considered valid
+	w.newPriceTable()
+	w.staticPriceTable().staticExpiryTime = timeInFuture
+
+	// ensure cache indicates host version meets min requirements
+	w.newCache()
+	atomic.StorePointer(&w.atomicCache, unsafe.Pointer(&workerCache{
+		staticHostVersion: minAsyncVersion,
+	}))
+
+	// ensure the worker has a maintenancestate, by default it will pass the
+	// checks
+	w.newMaintenanceState()
+
+	// verify worker is considered async ready
+	if !w.managedAsyncReady() {
+		t.Fatal("unexpected")
+	}
+
+	// tweak the version to make it non async ready
+	badWorkerVersion := w
+	cache := &workerCache{staticHostVersion: "1.4.8"} // pre-dates RHP3
+	atomic.StorePointer(&badWorkerVersion.atomicCache, unsafe.Pointer(cache))
+	if badWorkerVersion.managedAsyncReady() {
+		t.Fatal("unexpected")
+	}
+
+	// tweak the price table to make it not ready
+	badWorkerPriceTable := w
+	badWorkerPriceTable.staticPriceTable().staticExpiryTime = timeInPast
+	if badWorkerPriceTable.managedAsyncReady() {
+		t.Fatal("unexpected")
+	}
+
+	// tweak the maintenancestate making it non ready
+	badWorkerMaintenanceState := w
+	badWorkerMaintenanceState.staticMaintenanceState.cooldownUntil = timeInFuture
+	if badWorkerMaintenanceState.managedAsyncReady() {
+		t.Fatal("unexpected")
 	}
 }

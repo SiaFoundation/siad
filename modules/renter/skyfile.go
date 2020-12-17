@@ -177,7 +177,7 @@ func (r *Renter) CreateSkylinkFromSiafile(lup modules.SkyfileUploadParameters, s
 		Mode:     fileNode.Mode(),
 		Length:   fileNode.Size(),
 	}
-	return r.managedCreateSkylinkFromFileNode(lup, metadata, fileNode)
+	return r.managedCreateSkylinkFromFileNode(lup, metadata, fileNode, nil)
 }
 
 // managedCreateSkylinkFromFileNode creates a skylink from a file node.
@@ -185,7 +185,7 @@ func (r *Renter) CreateSkylinkFromSiafile(lup modules.SkyfileUploadParameters, s
 // The name needs to be passed in explicitly because a file node does not track
 // its own name, which allows the file to be renamed concurrently without
 // causing any race conditions.
-func (r *Renter) managedCreateSkylinkFromFileNode(sup modules.SkyfileUploadParameters, skyfileMetadata modules.SkyfileMetadata, fileNode *filesystem.FileNode) (modules.Skylink, error) {
+func (r *Renter) managedCreateSkylinkFromFileNode(sup modules.SkyfileUploadParameters, skyfileMetadata modules.SkyfileMetadata, fileNode *filesystem.FileNode, fanoutReader io.Reader) (modules.Skylink, error) {
 	// Check if the given metadata is valid
 	err := modules.ValidateSkyfileMetadata(skyfileMetadata)
 	if err != nil {
@@ -238,7 +238,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup modules.SkyfileUploadParam
 	}
 
 	// Create the fanout for the siafile.
-	fanoutBytes, err := skyfileEncodeFanout(fileNode)
+	fanoutBytes, err := skyfileEncodeFanout(fileNode, fanoutReader)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to encode the fanout of the siafile")
 	}
@@ -654,7 +654,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup modules.SkyfileUploadParamete
 
 	// Convert the new siafile we just uploaded into a skyfile using the
 	// convert function.
-	return r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode)
+	return r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, fileReader.FanoutReader())
 }
 
 // DownloadSkylink will take a link and turn it into the metadata and data of a

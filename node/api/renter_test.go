@@ -1477,11 +1477,16 @@ func TestAdversarialPriceRenewal(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		files, err := st.renter.FileList(modules.RootSiaPath(), true, false)
+		available := true
+		err := st.renter.FileList(modules.RootSiaPath(), true, false, func(fi modules.FileInfo) {
+			if !fi.Available {
+				available = false
+			}
+		})
 		if err != nil {
 			return err
 		}
-		if !files[0].Available {
+		if !available {
 			return errors.New("file did not complete uploading")
 		}
 		return nil

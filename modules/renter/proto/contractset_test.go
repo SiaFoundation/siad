@@ -349,3 +349,67 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 		t.Fatal("failed to acquire contract after applying valid update")
 	}
 }
+
+// TestInsertContractTotalCost tests that InsertContrct sets a good estimate for
+// TotalCost and TxnFee on recovered contracts.
+func TestInsertContractTotalCost(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	renterPayout := types.SiacoinPrecision
+	txnFee := types.SiacoinPrecision.Mul64(2)
+	fc := types.FileContract{
+		ValidProofOutputs: []types.SiacoinOutput{
+			{}, {},
+		},
+		MissedProofOutputs: []types.SiacoinOutput{
+			{}, {},
+		},
+	}
+	fc.SetValidRenterPayout(renterPayout)
+
+	txn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{
+			{
+				NewValidProofOutputs:  fc.ValidProofOutputs,
+				NewMissedProofOutputs: fc.MissedProofOutputs,
+				UnlockConditions: types.UnlockConditions{
+					PublicKeys: []types.SiaPublicKey{
+						{}, {},
+					},
+				},
+			},
+		},
+	}
+
+	rc := modules.RecoverableContract{
+		FileContract: fc,
+		TxnFee:       txnFee,
+	}
+
+	// get the dir of the contractset.
+	testDir := build.TempDir(t.Name())
+	if err := os.MkdirAll(testDir, modules.DefaultDirPerm); err != nil {
+		t.Fatal(err)
+	}
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(testDir, rl, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Insert the contract and check its total cost and fee.
+	contract, err := cs.InsertContract(rc, txn, []crypto.Hash{}, crypto.SecretKey{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contract.TxnFee.Equals(txnFee) {
+		t.Fatal("wrong fee", contract.TxnFee, txnFee)
+	}
+	expectedTotalCost := renterPayout.Add(txnFee)
+	if !contract.TotalCost.Equals(expectedTotalCost) {
+		t.Fatal("wrong TotalCost", contract.TotalCost, expectedTotalCost)
+	}
+}

@@ -177,7 +177,7 @@ func IsValidCipherType(ct CipherType) bool {
 // crypto package to centralize all the types within one file to make future
 // changes to them easy.
 func RandomCipherType() CipherType {
-	types := []CipherType{TypePlain, TypeTwofish}
+	types := []CipherType{TypePlain, TypeTwofish, TypeThreefish, TypeXChaCha20}
 	return types[fastrand.Intn(len(types))]
 }
 

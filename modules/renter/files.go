@@ -37,24 +37,24 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 	return nil
 }
 
-// FileList returns all of the files that the renter has.
-func (r *Renter) FileList(siaPath modules.SiaPath, recursive, cached bool) ([]modules.FileInfo, error) {
+// FileList loops over all the files within the directory specified by siaPath
+// and will then call the provided listing function on the file.
+func (r *Renter) FileList(siaPath modules.SiaPath, recursive, cached bool, flf modules.FileListFunc) error {
 	if err := r.tg.Add(); err != nil {
-		return []modules.FileInfo{}, err
+		return err
 	}
 	defer r.tg.Done()
-	var fis []modules.FileInfo
 	var err error
 	if cached {
-		fis, _, err = r.staticFileSystem.CachedList(siaPath, recursive)
+		err = r.staticFileSystem.CachedList(siaPath, recursive, flf, func(modules.DirectoryInfo) {})
 	} else {
 		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
-		fis, _, err = r.staticFileSystem.List(siaPath, recursive, offlineMap, goodForRenewMap, contractsMap)
+		err = r.staticFileSystem.List(siaPath, recursive, offlineMap, goodForRenewMap, contractsMap, flf, func(modules.DirectoryInfo) {})
 	}
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return fis, err
+	return err
 }
 
 // File returns file from siaPath queried by user.

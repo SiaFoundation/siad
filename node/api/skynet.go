@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -934,14 +935,13 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// set the reader
 	var reader modules.SkyfileUploadReader
 	if isMultipartRequest(headers.mediaType) {
-		mpr, err := req.MultipartReader()
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("could not get multipart reader from request, error: %v", err)}, http.StatusBadRequest)
-			return
-		}
-		reader = modules.NewSkyfileMultipartReader(mpr, sup)
+		reader, err = modules.NewSkyfileMultipartReaderFromRequest(req, sup)
 	} else {
 		reader = modules.NewSkyfileReader(req.Body, sup)
+	}
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("unable to create multipart reader: %v", err)}, http.StatusBadRequest)
+		return
 	}
 
 	// Check whether this is a streaming upload or a siafile conversion. If no
@@ -1014,21 +1014,22 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 // skynetStatsHandlerGET responds with a JSON with statistical data about
 // skynet, e.g. number of files uploaded, total size, etc.
 func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	files, err := api.renter.FileList(modules.SkynetFolder, true, true)
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to get the list of files: %v", err)}, http.StatusInternalServerError)
-		return
-	}
-
 	// calculate upload statistics
 	stats := SkynetStats{}
-	for _, f := range files {
+	var mu sync.Mutex
+	err := api.renter.FileList(modules.SkynetFolder, true, true, func(f modules.FileInfo) {
+		mu.Lock()
+		defer mu.Unlock()
 		// do not double-count large files by counting both the header file and
 		// the extended file
 		if !strings.HasSuffix(f.Name(), renter.ExtendedSuffix) {
 			stats.NumFiles++
 		}
 		stats.TotalSize += f.Filesize
+	})
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("failed to get the list of files: %v", err)}, http.StatusInternalServerError)
+		return
 	}
 
 	// get version

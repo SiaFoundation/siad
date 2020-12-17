@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -25,6 +26,33 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 )
+
+// CachedListCollect calls CachedList but collects the returned infos into
+// slices which are then sorted by siapath. This should only be used in testing
+// since it might result in a large memory allocation.
+func (fs *FileSystem) CachedListCollect(siaPath modules.SiaPath, recursive bool) (fis []modules.FileInfo, dis []modules.DirectoryInfo, err error) {
+	var fmu, dmu sync.Mutex
+	flf := func(fi modules.FileInfo) {
+		fmu.Lock()
+		fis = append(fis, fi)
+		fmu.Unlock()
+	}
+	dlf := func(di modules.DirectoryInfo) {
+		dmu.Lock()
+		dis = append(dis, di)
+		dmu.Unlock()
+	}
+	err = fs.CachedList(siaPath, recursive, flf, dlf)
+
+	// Sort slices by SiaPath.
+	sort.Slice(dis, func(i, j int) bool {
+		return dis[i].SiaPath.String() < dis[j].SiaPath.String()
+	})
+	sort.Slice(fis, func(i, j int) bool {
+		return fis[i].SiaPath.String() < fis[j].SiaPath.String()
+	})
+	return
+}
 
 // newTestFileSystemWithFile creates a new FileSystem and SiaFile and makes sure
 // that they are linked
@@ -2273,7 +2301,7 @@ func TestList(t *testing.T) {
 	}
 
 	// Get the cached information
-	fis, dis, err := fs.CachedList(newSiaPath(dirStructure[0]), true)
+	fis, dis, err := fs.CachedListCollect(newSiaPath(dirStructure[0]), true)
 	if err != nil {
 		t.Fatal(err)
 	}

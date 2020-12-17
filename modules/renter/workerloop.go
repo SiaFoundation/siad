@@ -178,6 +178,31 @@ func (w *worker) externLaunchAsyncJob(job workerJob) bool {
 	return true
 }
 
+// managedAsyncReady will return 'false' if any of the key requirements for
+// performing async work have not been met. 'true' will be returned if the
+// worker is ready for async work.
+func (w *worker) managedAsyncReady() bool {
+	// Hosts that do not support the async protocol cannot do async jobs.
+	cache := w.staticCache()
+	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
+		w.managedDiscardAsyncJobs(errors.New("host version does not support async jobs"))
+		return false
+	}
+
+	// A valid price table is required to perform async tasks.
+	if !w.staticPriceTable().staticValid() {
+		w.managedDiscardAsyncJobs(errors.New("price table with host is no longer valid"))
+		return false
+	}
+
+	// RHP3 must not be on cooldown to perform async tasks.
+	if w.managedOnMaintenanceCooldown() {
+		w.managedDiscardAsyncJobs(errors.New("the worker account is on cooldown"))
+		return false
+	}
+	return true
+}
+
 // externTryLaunchAsyncJob will look at the async jobs which are in the worker
 // queue and attempt to launch any that are ready. The job launcher will fail if
 // the price table is out of date or if the worker account is empty.
@@ -208,22 +233,8 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		return true
 	}
 
-	// Hosts that do not support the async protocol cannot do async jobs.
-	cache := w.staticCache()
-	if build.VersionCmp(cache.staticHostVersion, minAsyncVersion) < 0 {
-		w.managedDiscardAsyncJobs(errors.New("host version does not support async jobs"))
-		return false
-	}
-
-	// A valid price table is required to perform async tasks.
-	if !w.staticPriceTable().staticValid() {
-		w.managedDiscardAsyncJobs(errors.New("price table with host is no longer valid"))
-		return false
-	}
-
-	// RHP3 must not be on cooldown to perform async tasks.
-	if w.managedOnMaintenanceCooldown() {
-		w.managedDiscardAsyncJobs(errors.New("the worker account is on cooldown"))
+	// Exit if the worker is not currently equipped to perform async tasks.
+	if !w.managedAsyncReady() {
 		return false
 	}
 
@@ -234,6 +245,7 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 		return true
 	}
 	// Check if registry jobs are supported.
+	cache := w.staticCache()
 	if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) >= 0 {
 		job = w.staticJobUpdateRegistryQueue.callNext()
 		if job != nil {

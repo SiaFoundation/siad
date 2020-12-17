@@ -1234,7 +1234,7 @@ func TestRenterAddChunksToHeapPanic(t *testing.T) {
 	t.Parallel()
 
 	// Create Renter
-	rt, err := newRenterTester(t.Name())
+	rt, err := newRenterTesterWithDependency(t.Name(), &dependencies.DependencyDisableRepairAndHealthLoops{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1246,7 +1246,7 @@ func TestRenterAddChunksToHeapPanic(t *testing.T) {
 
 	// Add maxConsecutiveDirHeapFailures non existent directories to the
 	// directoryHeap
-	for i := 0; i < maxConsecutiveDirHeapFailures; i++ {
+	for i := 0; i <= maxConsecutiveDirHeapFailures; i++ {
 		rt.renter.directoryHeap.managedPush(&directory{
 			staticSiaPath: modules.RandomSiaPath(),
 		})
