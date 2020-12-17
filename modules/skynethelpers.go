@@ -57,6 +57,32 @@ func AddMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename st
 	return metadata, nil
 }
 
+// BuildBaseSector will take all of the elements of the base sector and copy
+// them into a freshly created base sector.
+func BuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) ([]byte, uint64) {
+	// Sanity Check
+	totalSize := len(layoutBytes) + len(fanoutBytes) + len(metadataBytes) + len(fileBytes)
+	if uint64(totalSize) > SectorSize {
+		err := fmt.Errorf("inputs too large for baseSector: totalSize %v, layoutBytes %v, fanoutBytes %v, metadataBytes %v, fileBytes %v",
+			totalSize, len(layoutBytes), len(fanoutBytes), len(metadataBytes), len(fileBytes))
+		build.Critical(err)
+		return nil, 0
+	}
+
+	// Build baseSector
+	baseSector := make([]byte, SectorSize)
+	offset := 0
+	copy(baseSector[offset:], layoutBytes)
+	offset += len(layoutBytes)
+	copy(baseSector[offset:], fanoutBytes)
+	offset += len(fanoutBytes)
+	copy(baseSector[offset:], metadataBytes)
+	offset += len(metadataBytes)
+	copy(baseSector[offset:], fileBytes)
+	offset += len(fileBytes)
+	return baseSector, uint64(offset)
+}
+
 // DecodeFanout will take the fanout bytes from a baseSector and decode them.
 func DecodeFanout(sl SkyfileLayout, fanoutBytes []byte) (piecesPerChunk, chunkRootsSize, numChunks uint64, err error) {
 	// Special case: if the data of the file is using 1-of-N erasure coding,
@@ -245,6 +271,17 @@ func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []by
 	}
 
 	return sl, fanoutBytes, sm, baseSectorPayload, nil
+}
+
+// SkyfileMetadataBytes will return the marshalled/encoded bytes for the
+// skyfile metadata.
+func SkyfileMetadataBytes(sm SkyfileMetadata) ([]byte, error) {
+	// Compose the metadata into the leading chunk.
+	metadataBytes, err := json.Marshal(sm)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to marshal the link file metadata")
+	}
+	return metadataBytes, nil
 }
 
 // ValidateSkyfileMetadata validates the given SkyfileMetadata
