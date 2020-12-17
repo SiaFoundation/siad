@@ -15,8 +15,9 @@ import (
 
 const (
 	// SubscriptionEntrySize is the estimated size of a single subscribed to
-	// entry takes up in memory.
-	SubscriptionEntrySize = 100
+	// entry takes up in memory. This is a conservative estimation to prevent
+	// DoS attacks on the host.
+	SubscriptionEntrySize = 512
 
 	// InitialNumNotifications is the initial number of notifications a caller
 	// has to pay for when opening the subscription loop with a host.

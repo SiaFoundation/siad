@@ -313,7 +313,7 @@ func MDMSubscribeCost(pt *RPCPriceTable, nEntries uint64) types.Currency {
 	cost := writeCost.Add(storeCost)
 	// Total cost for all enries.
 	cost = cost.Mul64(nEntries)
-	// 256 bytes of memory cost.
+	// Add memory cost.
 	cost = cost.Add(MDMSubscriptionMemoryCost(pt, nEntries))
 	return cost
 }
