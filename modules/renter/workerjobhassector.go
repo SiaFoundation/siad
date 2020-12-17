@@ -56,7 +56,7 @@ func (w *worker) newJobHasSector(ctx context.Context, responseChan chan *jobHasS
 	return &jobHasSector{
 		staticSectors:      roots,
 		staticResponseChan: responseChan,
-		jobGeneric:         newJobGeneric(ctx, w.staticJobHasSectorQueue),
+		jobGeneric:         newJobGeneric(ctx, w.staticJobHasSectorQueue, nil),
 	}
 }
 

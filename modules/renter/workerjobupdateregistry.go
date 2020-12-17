@@ -62,7 +62,7 @@ func (w *worker) newJobUpdateRegistry(ctx context.Context, responseChan chan *jo
 		staticSiaPublicKey:        spk,
 		staticSignedRegistryValue: srv,
 		staticResponseChan:        responseChan,
-		jobGeneric:                newJobGeneric(ctx, w.staticJobUpdateRegistryQueue),
+		jobGeneric:                newJobGeneric(ctx, w.staticJobUpdateRegistryQueue, nil),
 	}
 }
 

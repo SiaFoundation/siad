@@ -119,7 +119,7 @@ func (w *worker) newJobReadRegistry(ctx context.Context, responseChan chan *jobR
 		staticSiaPublicKey: spk,
 		staticTweak:        tweak,
 		staticResponseChan: responseChan,
-		jobGeneric:         newJobGeneric(ctx, w.staticJobReadRegistryQueue),
+		jobGeneric:         newJobGeneric(ctx, w.staticJobReadRegistryQueue, nil),
 	}
 }
 

@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -40,6 +41,11 @@ type jobTestResult struct {
 	// Generally a caller minimally needs to know if there was an error. Often
 	// the caller will also be expecting some result such as a piece of data.
 	staticErr error
+}
+
+// jobTestMetadata is a test struct that represents test job metadata.
+type jobTestMetadata struct {
+	staticField bool
 }
 
 // sendResult will send the result of a job down the resultChan. Note that
@@ -128,7 +134,7 @@ func TestWorkerJobGeneric(t *testing.T) {
 	// cancelation is working correctly.
 	resultChan := make(chan *jobTestResult, 1)
 	j := &jobTest{
-		jobGeneric: newJobGeneric(cancelCtx, jq),
+		jobGeneric: newJobGeneric(cancelCtx, jq, nil),
 
 		resultChan: resultChan,
 	}
@@ -169,7 +175,7 @@ func TestWorkerJobGeneric(t *testing.T) {
 	cancelCtx, cancel = context.WithCancel(context.Background())
 	resultChan = make(chan *jobTestResult, 1)
 	j = &jobTest{
-		jobGeneric: newJobGeneric(cancelCtx, jq),
+		jobGeneric: newJobGeneric(cancelCtx, jq, nil),
 
 		resultChan: resultChan,
 	}
@@ -181,7 +187,7 @@ func TestWorkerJobGeneric(t *testing.T) {
 	cancelCtx2, _ := context.WithCancel(context.Background())
 	resultChan2 := make(chan *jobTestResult, 1)
 	j2 := &jobTest{
-		jobGeneric: newJobGeneric(cancelCtx2, jq),
+		jobGeneric: newJobGeneric(cancelCtx2, jq, nil),
 
 		resultChan: resultChan2,
 	}
@@ -240,7 +246,7 @@ func TestWorkerJobGeneric(t *testing.T) {
 	cancelCtx, cancel = context.WithCancel(context.Background())
 	resultChan = make(chan *jobTestResult, 1)
 	j = &jobTest{
-		jobGeneric: newJobGeneric(cancelCtx, jq),
+		jobGeneric: newJobGeneric(cancelCtx, jq, nil),
 
 		resultChan: resultChan,
 
@@ -253,7 +259,7 @@ func TestWorkerJobGeneric(t *testing.T) {
 	cancelCtx2, _ = context.WithCancel(context.Background())
 	resultChan2 = make(chan *jobTestResult, 1)
 	j2 = &jobTest{
-		jobGeneric: newJobGeneric(cancelCtx2, jq),
+		jobGeneric: newJobGeneric(cancelCtx2, jq, nil),
 
 		resultChan: resultChan2,
 	}
@@ -263,7 +269,7 @@ func TestWorkerJobGeneric(t *testing.T) {
 	cancelCtx3, _ := context.WithCancel(context.Background())
 	resultChan3 := make(chan *jobTestResult, 1)
 	j3 := &jobTest{
-		jobGeneric: newJobGeneric(cancelCtx3, jq),
+		jobGeneric: newJobGeneric(cancelCtx3, jq, nil),
 
 		resultChan: resultChan3,
 	}
@@ -338,7 +344,7 @@ func TestWorkerJobGeneric(t *testing.T) {
 	cancelCtx, cancel = context.WithCancel(context.Background())
 	resultChan = make(chan *jobTestResult, 1)
 	j = &jobTest{
-		jobGeneric: newJobGeneric(cancelCtx, jq),
+		jobGeneric: newJobGeneric(cancelCtx, jq, nil),
 
 		resultChan: resultChan,
 
@@ -388,11 +394,35 @@ func TestWorkerJobGeneric(t *testing.T) {
 	// Sleep off the cooldown.
 	time.Sleep(time.Until(cu))
 
+	// Add a job with metadata to the queue
+	j5 := &jobTest{
+		jobGeneric: newJobGeneric(context.Background(), jq, jobTestMetadata{
+			staticField: true,
+		}),
+		resultChan: make(chan *jobTestResult, 1),
+	}
+	if !jq.callAdd(j5) {
+		t.Fatal("call to add job to new job queue should succeed")
+	}
+	job = jq.callNext()
+	if job == nil {
+		t.Fatal("call to grab the next job failed, there should be a job ready in the queue")
+	}
+	meta, ok := job.staticGetMetadata().(jobTestMetadata)
+	if !ok {
+		t.Fatal("expected job metadata to be present on the job", ok, job.staticGetMetadata())
+	}
+	if !reflect.DeepEqual(meta, jobTestMetadata{
+		staticField: true,
+	}) {
+		t.Fatal("unexpected metadata")
+	}
+
 	// Add one more job, and check that killing the queue kills the job.
 	cancelCtx, cancel = context.WithCancel(context.Background())
 	resultChan = make(chan *jobTestResult, 1)
 	j = &jobTest{
-		jobGeneric: newJobGeneric(cancelCtx, jq),
+		jobGeneric: newJobGeneric(cancelCtx, jq, nil),
 
 		resultChan: resultChan,
 	}
@@ -426,7 +456,7 @@ func TestWorkerJobGeneric(t *testing.T) {
 	cancelCtx, cancel = context.WithCancel(context.Background())
 	resultChan = make(chan *jobTestResult, 1)
 	j = &jobTest{
-		jobGeneric: newJobGeneric(cancelCtx, jq),
+		jobGeneric: newJobGeneric(cancelCtx, jq, nil),
 
 		resultChan: resultChan,
 	}
