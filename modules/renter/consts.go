@@ -57,6 +57,15 @@ var (
 		Standard: time.Minute * 10,
 		Testing:  time.Second * 3,
 	}).(time.Duration)
+
+	// maxWaitForCompleteUpload is the maximum amount of time we wait for an
+	// upload chunk to be completely uploaded after it has become available in
+	// the upload process.
+	maxWaitForCompleteUpload = build.Select(build.Var{
+		Dev:      5 * time.Minute,
+		Standard: 5 * time.Minute,
+		Testing:  5 * time.Second,
+	}).(time.Duration)
 )
 
 // Default memory usage parameters.
