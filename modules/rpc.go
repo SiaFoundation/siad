@@ -84,6 +84,8 @@ type RPCPriceTable struct {
 	// SubscriptionPeriod time.
 	SubscriptionMemoryCost types.Currency `json:"subscriptionmemorycost"`
 
+	// SubscriptionNotificationCost is the cost of a single notification on top
+	// of what is charged for bandwidth.
 	SubscriptionNotificationCost types.Currency `json:"subscriptionnotificationcost"`
 
 	// MDM related costs
