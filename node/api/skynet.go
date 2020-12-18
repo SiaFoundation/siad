@@ -92,15 +92,9 @@ type (
 	SkynetStatsGET struct {
 		PerformanceStats SkynetPerformanceStats `json:"performancestats"`
 
-		Uptime      int64         `json:"uptime"`
-		UploadStats SkynetStats   `json:"uploadstats"`
-		VersionInfo SkynetVersion `json:"versioninfo"`
-	}
-
-	// SkynetStats contains statistical data about skynet
-	SkynetStats struct {
-		NumFiles  int    `json:"numfiles"`
-		TotalSize uint64 `json:"totalsize"`
+		Uptime      int64               `json:"uptime"`
+		UploadStats modules.SkynetStats `json:"uploadstats"`
+		VersionInfo SkynetVersion       `json:"versioninfo"`
 	}
 
 	// SkynetVersion contains version information
@@ -975,13 +969,6 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		// Set the Skylink response header
 		w.Header().Set("Skynet-Skylink", skylink.String())
 
-		api.statsMu.Lock()
-		if api.stats != nil {
-			api.stats.NumFiles++
-			api.stats.TotalSize += file.Filesize
-		}
-		api.statsMu.Unlock()
-
 		WriteJSON(w, SkynetSkyfileHandlerPOST{
 			Skylink:    skylink.String(),
 			MerkleRoot: skylink.MerkleRoot(),
@@ -1001,11 +988,6 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		WriteError(w, Error{"invalid convertpath provided - can't rebase: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
-	fi, err := api.renter.File(convertPath)
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("can't find file with given convertPath: %v", err)}, http.StatusBadRequest)
-		return
-	}
 	skylink, err := api.renter.CreateSkylinkFromSiafile(sup, convertPath)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to convert siafile to skyfile: %v", err)}, http.StatusBadRequest)
@@ -1020,14 +1002,6 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 	// Set the Skylink response header
 	w.Header().Set("Skynet-Skylink", skylink.String())
-
-	// Update stats.
-	api.statsMu.Lock()
-	if api.stats != nil {
-		api.stats.NumFiles++
-		api.stats.TotalSize += fi.Filesize
-	}
-	api.statsMu.Unlock()
 
 	WriteJSON(w, SkynetSkyfileHandlerPOST{
 		Skylink:    skylink.String(),
@@ -1050,56 +1024,11 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		}
 	}
 
-	var stats SkynetStats
-	for {
-		api.statsMu.Lock()
-		var isScanning bool
-		select {
-		case <-api.statsChan:
-			isScanning = false
-		default:
-			isScanning = true
-		}
-
-		if cached && api.stats != nil {
-			// If a cached value is good enough, we use that if available.
-			stats = *api.stats
-			api.statsMu.Unlock()
-			break
-		} else if isScanning {
-			// Otherwise, if a scan is happening, we wait for that to finish.
-			c := api.statsChan
-			api.statsMu.Unlock()
-			<-c
-			cached = true // a cached value is good enough now
-			continue
-		} else {
-			// We don't have a recent enough value and no scan is happening. We
-			// need to start one.
-			stats, err = func() (SkynetStats, error) {
-				c := make(chan struct{})
-				defer close(c)
-				api.statsChan = c
-				api.statsMu.Unlock()
-
-				// Trigger the scan.
-				s, err := api.managedStatsScan()
-				if err != nil {
-					return SkynetStats{}, err
-				}
-
-				// Set the new value.
-				api.statsMu.Lock()
-				api.stats = &s
-				api.statsMu.Unlock()
-				return s, nil
-			}()
-			if err != nil {
-				WriteError(w, Error{"failed to get stats: " + err.Error()}, http.StatusInternalServerError)
-				return
-			}
-			break
-		}
+	// get stats
+	stats, err := api.renter.SkynetStats(cached)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
 	}
 
 	// get version
