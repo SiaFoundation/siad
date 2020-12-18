@@ -299,7 +299,6 @@ antfarm-version-tests:
   stage: test
   trigger:
     project: NebulousLabs/Sia-Ant-Farm
-    branch: sia-trigger-version-test
     strategy: depend
   variables:
     PARENT_CI_PIPELINE_SOURCE: $CI_PIPELINE_SOURCE
