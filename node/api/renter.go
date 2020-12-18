@@ -1635,10 +1635,24 @@ func (api *API) renterDeleteHandler(w http.ResponseWriter, req *http.Request, ps
 		}
 	}
 
+	fi, err := api.renter.File(siaPath)
+	if err != nil {
+		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		return
+	}
+
 	err = api.renter.DeleteFile(siaPath)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
 		return
+	}
+
+	// Check if a skynet file was deleted.
+	if strings.HasPrefix(siaPath.String(), modules.SkynetFolder.String()) {
+		api.statsMu.Lock()
+		api.stats.NumFiles--
+		api.stats.TotalSize -= fi.Filesize
+		api.statsMu.Unlock()
 	}
 
 	WriteSuccess(w)

@@ -10,6 +10,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -119,6 +120,11 @@ type (
 		staticConfigModules configModules
 		modulesSet          bool
 
+		// stats cache related fields.
+		stats     *SkynetStats
+		statsChan chan struct{}
+		statsMu   sync.Mutex
+
 		downloadMu sync.Mutex
 		downloads  map[modules.DownloadID]func()
 		router     http.Handler
@@ -222,10 +228,50 @@ func NewCustom(cfg *modules.SiadConfig, requiredUserAgent string, requiredPasswo
 		staticStartTime: time.Now(),
 	}
 
+	// Init the statsChan and close it right away to signal that no scan is
+	// going on.
+	api.statsChan = make(chan struct{})
+	close(api.statsChan)
+
 	// Register API handlers
 	api.buildHTTPRoutes()
 
+	// Start a goroutine to periodically clear the stats.
+	go api.threadedInvalidateStatsCache()
+
 	return api
+}
+
+// managedStatsScan scans the renter's filesystem and returns the SkynetStats.
+func (api *API) managedStatsScan() (SkynetStats, error) {
+	var mu sync.Mutex
+	var stats SkynetStats
+	err := api.renter.FileList(modules.SkynetFolder, true, true, func(f modules.FileInfo) {
+		mu.Lock()
+		defer mu.Unlock()
+		// do not double-count large files by counting both the header file and
+		// the extended file
+		if !strings.HasSuffix(f.Name(), renter.ExtendedSuffix) {
+			stats.NumFiles++
+		}
+		stats.TotalSize += f.Filesize
+	})
+	return stats, err
+}
+
+// threadedInvalidateStatsCache periodically clears the stats. That way a call
+// to the stats endpoint requires rebuilding them from disk.
+// NOTE: In a perfect world this is not necessary since we would just update the
+// in-memory cache whenever the state on disk changes. Unfortunately there are
+// quite a few edge cases around it, including users manually deleting files.
+// That's why this routine makes sure that the stats resync periodically.
+func (api *API) threadedInvalidateStatsCache() {
+	t := time.NewTicker(time.Hour * 8)
+	for range t.C {
+		api.statsMu.Lock()
+		api.stats = nil
+		api.statsMu.Unlock()
+	}
 }
 
 // UnrecognizedCallHandler handles calls to disabled/not-loaded modules.
