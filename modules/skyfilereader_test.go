@@ -254,7 +254,9 @@ func testSkyfileMultipartReaderBasic(t *testing.T) {
 	var buf bytes.Buffer
 	tr := io.TeeReader(reader, &buf)
 	multipartReader := multipart.NewReader(tr, writer.Boundary())
-	sfReader := NewSkyfileMultipartReader(multipartReader, &buf, sup)
+	multipartFanout := multipart.NewReader(&buf, writer.Boundary())
+	fanoutReader := newFanoutReader(multipartFanout, sup)
+	sfReader := NewSkyfileMultipartReader(multipartReader, fanoutReader, sup)
 
 	// verify we can read part 1
 	part1Data := make([]byte, 10)
