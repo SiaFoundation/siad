@@ -970,8 +970,10 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		w.Header().Set("Skynet-Skylink", skylink.String())
 
 		api.statsMu.Lock()
-		api.stats.NumFiles++
-		api.stats.TotalSize += file.Filesize
+		if api.stats != nil {
+			api.stats.NumFiles++
+			api.stats.TotalSize += file.Filesize
+		}
 		api.statsMu.Unlock()
 
 		WriteJSON(w, SkynetSkyfileHandlerPOST{
@@ -1015,8 +1017,10 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 	// Update stats.
 	api.statsMu.Lock()
-	api.stats.NumFiles++
-	api.stats.TotalSize += fi.Filesize
+	if api.stats != nil {
+		api.stats.NumFiles++
+		api.stats.TotalSize += fi.Filesize
+	}
 	api.statsMu.Unlock()
 
 	WriteJSON(w, SkynetSkyfileHandlerPOST{
