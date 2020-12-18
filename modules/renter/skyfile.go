@@ -52,6 +52,10 @@ const (
 )
 
 var (
+	// ErrEncryptionNotSupported is the error returned when Skykey encryption is
+	// not supported for a Skynet action.
+	ErrEncryptionNotSupported = errors.New("skykey encryption not supported")
+
 	// ErrInvalidMetadata is the error returned when the metadata is not valid.
 	ErrInvalidMetadata = errors.New("metadata is invalid")
 
@@ -124,12 +128,16 @@ func StreamerFromSlice(b []byte) modules.Streamer {
 
 // CreateSkylinkFromSiafile creates a skyfile from a siafile. This requires
 // uploading a new skyfile which contains fanout information pointing to the
-// siafile data. The SiaPath provided in 'lup' indicates where the new base
+// siafile data. The SiaPath provided in 'sup' indicates where the new base
 // sector skyfile will be placed, and the siaPath provided as its own input is
 // the siaPath of the file that is being used to create the skyfile.
-func (r *Renter) CreateSkylinkFromSiafile(lup modules.SkyfileUploadParameters, siaPath modules.SiaPath) (_ modules.Skylink, err error) {
-	// Set reasonable default values for any lup fields that are blank.
-	err = skyfileEstablishDefaults(&lup)
+func (r *Renter) CreateSkylinkFromSiafile(sup modules.SkyfileUploadParameters, siaPath modules.SiaPath) (_ modules.Skylink, err error) {
+	// Encryption is not supported for SiaFile conversion.
+	if encryptionEnabled(sup) {
+		return modules.Skylink{}, errors.AddContext(ErrEncryptionNotSupported, "unable to convert siafile")
+	}
+	// Set reasonable default values for any sup fields that are blank.
+	err = skyfileEstablishDefaults(&sup)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "skyfile upload parameters are incorrect")
 	}
@@ -149,7 +157,7 @@ func (r *Renter) CreateSkylinkFromSiafile(lup modules.SkyfileUploadParameters, s
 		Mode:     fileNode.Mode(),
 		Length:   fileNode.Size(),
 	}
-	return r.managedCreateSkylinkFromFileNode(lup, metadata, fileNode, nil)
+	return r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, nil)
 }
 
 // managedCreateSkylinkFromFileNode creates a skylink from a file node.
