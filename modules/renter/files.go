@@ -1,6 +1,8 @@
 package renter
 
 import (
+	"strings"
+
 	"gitlab.com/NebulousLabs/Sia/modules"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -15,10 +17,22 @@ func (r *Renter) DeleteFile(siaPath modules.SiaPath) error {
 	}
 	defer r.tg.Done()
 
+	// Fetch info before deleting the file.
+	fi, err := r.staticFileSystem.CachedFileInfo(siaPath)
+	if err != nil {
+		return errors.AddContext(err, "failed to fetch info before deleting file")
+	}
+
 	// Perform the delete operation.
 	err = r.staticFileSystem.DeleteFile(siaPath)
 	if err != nil {
 		return errors.AddContext(err, "unable to delete siafile from filesystem")
+	}
+
+	// Update stats.
+	if strings.HasPrefix(siaPath.String(), modules.SkynetFolder.String()) {
+		extended := strings.HasSuffix(siaPath.String(), modules.ExtendedSuffix)
+		r.managedRemoveFileFromSkynetStats(fi.Filesize, extended)
 	}
 
 	// Update the filesystem metadata.

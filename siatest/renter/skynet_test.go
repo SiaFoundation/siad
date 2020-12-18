@@ -871,14 +871,18 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	// create two test files with sizes below and above the sector size
 	files := make(map[string]uint64)
 	files["statfile1"] = 2033
-	files["statfile2"] = modules.SectorSize + 123
+	files["statfile2"] = 2*modules.SectorSize + 123
 
 	// upload the files and keep track of their expected impact on the stats
 	var uploadedFilesSize, uploadedFilesCount uint64
+	var sps []modules.SiaPath
 	for name, size := range files {
-		if _, _, _, err := r.UploadNewSkyfileBlocking(name, size, false); err != nil {
+		_, sup, _, err := r.UploadNewSkyfileBlocking(name, size, false)
+		if err != nil {
 			t.Fatal(err)
 		}
+		sp, _ := sup.SiaPath.Rebase(modules.RootSiaPath(), modules.SkynetFolder)
+		sps = append(sps, sp)
 
 		if size < modules.SectorSize {
 			// small files get padded up to a full sector
@@ -907,6 +911,33 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	lt := statsAfter.PerformanceStats.Upload4MB.Lifetime
 	if lt.N60ms+lt.N120ms+lt.N240ms+lt.N500ms+lt.N1000ms+lt.N2000ms+lt.N5000ms+lt.N10s+lt.NLong == 0 {
 		t.Error("lifetime upload stats are not reporting any uploads")
+	}
+
+	// Delete the files.
+	for _, sp := range sps {
+		err = r.RenterFileDeleteRootPost(sp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		extSP, err := modules.NewSiaPath(sp.String() + modules.ExtendedSuffix)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// This might not always succeed which is fine. We know how many files
+		// we expect afterwards.
+		_ = r.RenterFileDeleteRootPost(extSP)
+	}
+
+	// get the stats after the delete operation.
+	statsAfter, err = r.SkynetStatsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if statsAfter.UploadStats.NumFiles != statsBefore.UploadStats.NumFiles {
+		t.Fatal(fmt.Sprintf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.UploadStats.NumFiles), statsAfter.UploadStats.NumFiles))
+	}
+	if statsAfter.UploadStats.TotalSize != statsBefore.UploadStats.TotalSize {
+		t.Fatal(fmt.Sprintf("stats did not report the correct size. expected %d, found %d", statsBefore.UploadStats.TotalSize, statsAfter.UploadStats.TotalSize))
 	}
 }
 
@@ -1936,7 +1967,7 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	spExtended, err := modules.NewSiaPath(sp.String() + renter.ExtendedSuffix)
+	spExtended, err := modules.NewSiaPath(sp.String() + modules.ExtendedSuffix)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3813,7 +3844,7 @@ func TestSkynetCleanupOnError(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	largePathExtended, err := modules.NewSiaPath(largePath.String() + renter.ExtendedSuffix)
+	largePathExtended, err := modules.NewSiaPath(largePath.String() + modules.ExtendedSuffix)
 	if err != nil {
 		t.Fatal(err)
 	}
