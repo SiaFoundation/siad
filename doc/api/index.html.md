@@ -5313,6 +5313,8 @@ skyfile will be created. Both the new skyfile and the existing siafile are
 required to be maintained on the network in order for the skylink to remain
 active. This field is mutually exclusive with uploading streaming.
 
+**NOTE**: Converting siafiles to skyfiles does not support skykey encryption.
+
 **defaultpath** string  
 The path to the default file whose content is to be returned when the skyfile is 
 accessed at the root path. The `defaultpath` must point to a file in the root
