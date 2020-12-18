@@ -177,6 +177,7 @@ func (j *jobUploadSnapshot) callExecute() {
 	meta, ok := j.staticMetadata.(modules.UploadedBackup)
 	if !ok {
 		build.Critical("unable to cast job metadata") // sanity check
+		return
 	}
 
 	// Upload the snapshot to the host.
