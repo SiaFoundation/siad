@@ -2537,7 +2537,7 @@ func testSkynetNoMetadata(t *testing.T, tg *siatest.TestGroup) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if metadata.Length != 100 {
+	if reflect.DeepEqual(metadata, modules.SkyfileMetadata{}) {
 		t.Fatal("unexpected")
 	}
 
