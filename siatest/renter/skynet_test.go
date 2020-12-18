@@ -654,208 +654,161 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 // don't need a fanout. Large files are files what span multiple sectors
 func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
-
-	// create a multipart upload without any files
-	body := new(bytes.Buffer)
-	writer := multipart.NewWriter(body)
-	err := writer.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	reader := bytes.NewReader(body.Bytes())
-
-	uploadSiaPath, err := modules.NewSiaPath("TestNoFileUpload")
+	sk, err := r.SkykeyCreateKeyPost(t.Name(), skykey.TypePrivateID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	sup := modules.SkyfileMultipartUploadParameters{
-		SiaPath:             uploadSiaPath,
-		Force:               false,
-		Root:                false,
-		BaseChunkRedundancy: 2,
-		Reader:              reader,
-		ContentType:         writer.FormDataContentType(),
-		Filename:            "TestNoFileUpload",
-	}
-
-	if _, _, err = r.SkynetSkyfileMultiPartPost(sup); err == nil || !strings.Contains(err.Error(), "could not find multipart file") {
+	// Test no files provided
+	fileName := "TestNoFileUpload"
+	_, _, _, err = r.UploadNewMultipartSkyfileBlocking(fileName, nil, "", false, false)
+	if err == nil || !strings.Contains(err.Error(), "could not find multipart file") {
 		t.Fatal("Expected upload to fail because no files are given, err:", err)
 	}
 
 	// TEST SMALL SUBFILE
-	var offset uint64
+	//
+	// Define test func
+	testSmallFunc := func(files []siatest.TestFile, fileName, skykeyName string) {
+		skylink, _, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, false, skykeyName, skykey.SkykeyID{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var realSkylink modules.Skylink
+		err = realSkylink.LoadString(skylink)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	// create a multipart upload that uploads several files.
-	body = new(bytes.Buffer)
-	writer = multipart.NewWriter(body)
-	subfiles := make(modules.SkyfileSubfiles)
+		// Try to download the file behind the skylink.
+		_, fileMetadata, err := r.SkynetSkylinkConcatGet(skylink)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	// add a file at root level
-	data := []byte("File1Contents")
-	subfile, err := modules.AddMultipartFile(writer, data, "files[]", "file1", 0600, &offset)
-	if err != nil {
-		t.Fatal(err)
-	}
-	subfiles[subfile.Filename] = subfile
+		// Check the metadata
+		rootFile := files[0]
+		nestedFile := files[1]
+		expected := modules.SkyfileMetadata{
+			Filename: fileName,
+			Subfiles: map[string]modules.SkyfileSubfileMetadata{
+				rootFile.Name: {
+					FileMode:    os.FileMode(0644),
+					Filename:    rootFile.Name,
+					ContentType: "application/octet-stream",
+					Offset:      0,
+					Len:         uint64(len(rootFile.Data)),
+				},
+				nestedFile.Name: {
+					FileMode:    os.FileMode(0644),
+					Filename:    nestedFile.Name,
+					ContentType: "text/html; charset=utf-8",
+					Offset:      uint64(len(rootFile.Data)),
+					Len:         uint64(len(nestedFile.Data)),
+				},
+			},
+			Length: uint64(len(rootFile.Data) + len(nestedFile.Data)),
+		}
+		if !reflect.DeepEqual(expected, fileMetadata) {
+			t.Log("Expected:", expected)
+			t.Log("Actual:", fileMetadata)
+			t.Fatal("Metadata mismatch")
+		}
 
-	// add a nested file
-	data = []byte("File2Contents")
-	subfile, err = modules.AddMultipartFile(writer, data, "files[]", "nested/file2.html", 0640, &offset)
-	if err != nil {
-		t.Fatal(err)
-	}
-	subfiles[subfile.Filename] = subfile
-
-	err = writer.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	reader = bytes.NewReader(body.Bytes())
-
-	// Call the upload skyfile client call.
-	uploadSiaPath, err = modules.NewSiaPath("TestFolderUpload")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	sup = modules.SkyfileMultipartUploadParameters{
-		SiaPath:             uploadSiaPath,
-		Force:               false,
-		Root:                false,
-		BaseChunkRedundancy: 2,
-		Reader:              reader,
-		ContentType:         writer.FormDataContentType(),
-		Filename:            "TestFolderUpload",
-	}
-
-	skylink, _, err := r.SkynetSkyfileMultiPartPost(sup)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var realSkylink modules.Skylink
-	err = realSkylink.LoadString(skylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Try to download the file behind the skylink.
-	_, fileMetadata, err := r.SkynetSkylinkConcatGet(skylink)
-	if err != nil {
-		t.Fatal(err)
+		// Download the second file
+		nestedfile, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/%s", skylink, nestedFile.Name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(nestedfile, nestedFile.Data) {
+			t.Fatal("Expected only second file to be downloaded")
+		}
 	}
 
-	var length uint64
-	for _, file := range subfiles {
-		length += file.Len
-	}
+	// Add a file at root level and a nested file
+	rootFile := siatest.TestFile{Name: "file1", Data: []byte("File1Contents")}
+	nestedFile := siatest.TestFile{Name: "nested/file2.html", Data: []byte("File2Contents")}
+	files := []siatest.TestFile{rootFile, nestedFile}
+	fileName = "TestFolderUpload"
+	testSmallFunc(files, fileName, "")
 
-	expected := modules.SkyfileMetadata{Filename: uploadSiaPath.String(), Subfiles: subfiles, Length: length}
-	if !reflect.DeepEqual(expected, fileMetadata) {
-		t.Log("Expected:", expected)
-		t.Log("Actual:", fileMetadata)
-		t.Fatal("Metadata mismatch")
-	}
-
-	// Download the second file
-	nestedfile, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/%s", skylink, "nested/file2.html"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(nestedfile, data) {
-		t.Fatal("Expected only second file to be downloaded")
-	}
+	// Test Encryption
+	fileName = "TestFolderUpload_Encrtyped"
+	testSmallFunc(files, fileName, sk.Name)
 
 	// LARGE SUBFILES
+	//
+	// Define test function
+	largeTestFunc := func(files []siatest.TestFile, fileName, skykeyName string) {
+		// Upload the skyfile
+		skylink, sup, _, err := r.UploadNewMultipartSkyfileEncryptedBlocking(fileName, files, "", false, false, skykeyName, skykey.SkykeyID{})
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	// create a multipart upload that uploads several files.
-	body = new(bytes.Buffer)
-	writer = multipart.NewWriter(body)
-	subfiles = make(modules.SkyfileSubfiles)
+		// Define files
+		rootFile := files[0]
+		nestedFile := files[1]
 
-	// add a small file at root level
-	smallData := []byte("File1Contents")
-	subfile, err = modules.AddMultipartFile(writer, smallData, "files[]", "smallfile1.txt", 0600, &offset)
-	if err != nil {
-		t.Fatal(err)
+		// Download the data
+		largeFetchedData, _, err := r.SkynetSkylinkConcatGet(skylink)
+		if err != nil {
+			t.Fatal(err)
+		}
+		allData := append(rootFile.Data, nestedFile.Data...)
+		if !bytes.Equal(largeFetchedData, allData) {
+			t.Fatal("upload and download data does not match for large siafiles", len(largeFetchedData), len(allData))
+		}
+
+		// Check the metadata of the siafile, see that the metadata of the siafile
+		// has the skylink referenced.
+		largeSkyfilePath, err := modules.SkynetFolder.Join(sup.SiaPath.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		largeRenterFile, err := r.RenterFileRootGet(largeSkyfilePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(largeRenterFile.File.Skylinks) != 1 {
+			t.Fatal("expecting one skylink:", len(largeRenterFile.File.Skylinks))
+		}
+		if largeRenterFile.File.Skylinks[0] != skylink {
+			t.Log(largeRenterFile.File.Skylinks[0])
+			t.Log(skylink)
+			t.Fatal("skylinks should match")
+		}
+
+		// Test the small root file download
+		smallFetchedData, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/%s", skylink, rootFile.Name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(smallFetchedData, rootFile.Data) {
+			t.Fatal("upload and download data does not match for large siafiles with subfiles", len(smallFetchedData), len(rootFile.Data))
+		}
+
+		// Test the large nested file download
+		largeFetchedData, _, err = r.SkynetSkylinkGet(fmt.Sprintf("%s/%s", skylink, nestedFile.Name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(largeFetchedData, nestedFile.Data) {
+			t.Fatal("upload and download data does not match for large siafiles with subfiles", len(largeFetchedData), len(nestedFile.Data))
+		}
 	}
-	subfiles[subfile.Filename] = subfile
 
-	// add a large nested file
+	// Add a small file at root level and a large nested file
+	rootFile = siatest.TestFile{Name: "smallFile1.txt", Data: []byte("File1Contents")}
 	largeData := fastrand.Bytes(2 * int(modules.SectorSize))
-	subfile, err = modules.AddMultipartFile(writer, largeData, "files[]", "nested/largefile2.txt", 0644, &offset)
-	if err != nil {
-		t.Fatal(err)
-	}
-	subfiles[subfile.Filename] = subfile
+	nestedFile = siatest.TestFile{Name: "nested/largefile2.txt", Data: largeData}
+	files = []siatest.TestFile{rootFile, nestedFile}
+	fileName = "TestFolderUploadLarge"
+	largeTestFunc(files, fileName, "")
 
-	err = writer.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	allData := body.Bytes()
-	reader = bytes.NewReader(allData)
-
-	// Call the upload skyfile client call.
-	uploadSiaPath, err = modules.NewSiaPath("TestFolderUploadLarge")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	sup = modules.SkyfileMultipartUploadParameters{
-		SiaPath:             uploadSiaPath,
-		Force:               false,
-		Root:                false,
-		BaseChunkRedundancy: 2,
-		Reader:              reader,
-		Filename:            "TestFolderUploadLarge",
-		ContentType:         writer.FormDataContentType(),
-	}
-
-	largeSkylink, _, err := r.SkynetSkyfileMultiPartPost(sup)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	largeFetchedData, _, err := r.SkynetSkylinkConcatGet(largeSkylink)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(largeFetchedData, append(smallData, largeData...)) {
-		t.Fatal("upload and download data does not match for large siafiles", len(largeFetchedData), len(allData))
-	}
-
-	// Check the metadata of the siafile, see that the metadata of the siafile
-	// has the skylink referenced.
-	largeSkyfilePath, err := modules.SkynetFolder.Join(uploadSiaPath.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	largeRenterFile, err := r.RenterFileRootGet(largeSkyfilePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(largeRenterFile.File.Skylinks) != 1 {
-		t.Fatal("expecting one skylink:", len(largeRenterFile.File.Skylinks))
-	}
-	if largeRenterFile.File.Skylinks[0] != largeSkylink {
-		t.Log(largeRenterFile.File.Skylinks[0])
-		t.Log(largeSkylink)
-		t.Fatal("skylinks should match")
-	}
-
-	// Test the small download
-	smallFetchedData, _, err := r.SkynetSkylinkGet(fmt.Sprintf("%s/%s", largeSkylink, "smallfile1.txt"))
-
-	if !bytes.Equal(smallFetchedData, smallData) {
-		t.Fatal("upload and download data does not match for large siafiles with subfiles", len(smallFetchedData), len(smallData))
-	}
-
-	largeFetchedData, _, err = r.SkynetSkylinkGet(fmt.Sprintf("%s/%s", largeSkylink, "nested/largefile2.txt"))
-
-	if !bytes.Equal(largeFetchedData, largeData) {
-		t.Fatal("upload and download data does not match for large siafiles with subfiles", len(largeFetchedData), len(largeData))
-	}
+	// Test Encryption
+	fileName = "TestFolderUploadLarge_Encrypted"
+	largeTestFunc(files, fileName, sk.Name)
 }
 
 // testSkynetStats tests the validity of the response of /skynet/stats endpoint
