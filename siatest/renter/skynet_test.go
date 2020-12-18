@@ -627,6 +627,25 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	if !bytes.Equal(fetchedData, remoteData) {
 		t.Error("converted skylink data doesn't match remote data")
 	}
+
+	// Converting with encryption is not supported. Call the convert method to
+	// ensure we do not panic and we return the expected error
+	//
+	// Add SkyKey
+	sk, err := r.SkykeyCreateKeyPost(t.Name(), skykey.TypePrivateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Convert file again
+	sup.SkykeyName = sk.Name
+	sup.Force = true
+
+	// Convert to a Skyfile
+	_, err = r.SkynetConvertSiafileToSkyfileEncryptedPost(sup, remoteFile.SiaPath(), sk.Name, skykey.SkykeyID{})
+	if err == nil || !strings.Contains(err.Error(), "encrtypion not support") {
+		t.Fatalf("Expected error %v, but got %v", "", err)
+	}
 }
 
 // testSkynetMultipartUpload tests you can perform a multipart upload. It will
