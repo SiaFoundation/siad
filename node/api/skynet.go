@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -970,6 +969,11 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		// Set the Skylink response header
 		w.Header().Set("Skynet-Skylink", skylink.String())
 
+		api.statsMu.Lock()
+		api.stats.NumFiles++
+		api.stats.TotalSize += file.Filesize
+		api.statsMu.Unlock()
+
 		WriteJSON(w, SkynetSkyfileHandlerPOST{
 			Skylink:    skylink.String(),
 			MerkleRoot: skylink.MerkleRoot(),
@@ -989,6 +993,11 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		WriteError(w, Error{"invalid convertpath provided - can't rebase: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
+	fi, err := api.renter.File(convertPath)
+	if err != nil {
+		WriteError(w, Error{fmt.Sprintf("can't find file with given convertPath: %v", err)}, http.StatusBadRequest)
+		return
+	}
 	skylink, err := api.renter.CreateSkylinkFromSiafile(sup, convertPath)
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to convert siafile to skyfile: %v", err)}, http.StatusBadRequest)
@@ -1004,6 +1013,12 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// Set the Skylink response header
 	w.Header().Set("Skynet-Skylink", skylink.String())
 
+	// Update stats.
+	api.statsMu.Lock()
+	api.stats.NumFiles++
+	api.stats.TotalSize += fi.Filesize
+	api.statsMu.Unlock()
+
 	WriteJSON(w, SkynetSkyfileHandlerPOST{
 		Skylink:    skylink.String(),
 		MerkleRoot: skylink.MerkleRoot(),
@@ -1013,23 +1028,68 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 // skynetStatsHandlerGET responds with a JSON with statistical data about
 // skynet, e.g. number of files uploaded, total size, etc.
-func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	// calculate upload statistics
-	stats := SkynetStats{}
-	var mu sync.Mutex
-	err := api.renter.FileList(modules.SkynetFolder, true, true, func(f modules.FileInfo) {
-		mu.Lock()
-		defer mu.Unlock()
-		// do not double-count large files by counting both the header file and
-		// the extended file
-		if !strings.HasSuffix(f.Name(), renter.ExtendedSuffix) {
-			stats.NumFiles++
+func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// read "cached" parameter. Defaults to 'true'.
+	cached := true
+	var err error
+	if cachedStr := req.FormValue("cached"); cachedStr != "" {
+		cached, err = scanBool(cachedStr)
+		if err != nil {
+			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			return
 		}
-		stats.TotalSize += f.Filesize
-	})
-	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to get the list of files: %v", err)}, http.StatusInternalServerError)
-		return
+	}
+
+	var stats SkynetStats
+	for {
+		api.statsMu.Lock()
+		var isScanning bool
+		select {
+		case <-api.statsChan:
+			isScanning = false
+		default:
+			isScanning = true
+		}
+
+		if cached && api.stats != nil {
+			// If a cached value is good enough, we use that if available.
+			stats = *api.stats
+			api.statsMu.Unlock()
+			break
+		} else if isScanning {
+			// Otherwise, if a scan is happening, we wait for that to finish.
+			c := api.statsChan
+			api.statsMu.Unlock()
+			<-c
+			cached = true // a cached value is good enough now
+			continue
+		} else {
+			// We don't have a recent enough value and no scan is happening. We
+			// need to start one.
+			stats, err = func() (SkynetStats, error) {
+				c := make(chan struct{})
+				defer close(c)
+				api.statsChan = c
+				api.statsMu.Unlock()
+
+				// Trigger the scan.
+				s, err := api.managedStatsScan()
+				if err != nil {
+					return SkynetStats{}, err
+				}
+
+				// Set the new value.
+				api.statsMu.Lock()
+				api.stats = &s
+				api.statsMu.Unlock()
+				return s, nil
+			}()
+			if err != nil {
+				WriteError(w, Error{"failed to get stats: " + err.Error()}, http.StatusInternalServerError)
+				return
+			}
+			break
+		}
 	}
 
 	// get version
@@ -1047,7 +1107,7 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 	// Grab the siad uptime
 	uptime := time.Since(api.StartTime()).Seconds()
 
-	WriteJSON(w, SkynetStatsGET{
+	WriteJSON(w, &SkynetStatsGET{
 		PerformanceStats: perfStats,
 
 		Uptime:      int64(uptime),
