@@ -205,6 +205,9 @@ func (t Transaction) SigHash(i int, height BlockHeight) (hash crypto.Hash) {
 	return t.partialSigHash(sig.CoveredFields, height)
 }
 
+// replayPrefix returns the replay protection prefix for the specified height.
+// These prefixes are included in a transaction's SigHash; a new prefix is used
+// after each hardfork to prevent replay attacks.
 func replayPrefix(height BlockHeight) []byte {
 	switch {
 	case height >= FoundationHardforkHeight:

@@ -282,10 +282,10 @@ func validSiafunds(tx *bolt.Tx, t types.Transaction) (err error) {
 // valid in the context of the consensus set. Currently, only ArbitraryData with
 // the types.SpecifierFoundation prefix is examined.
 func validArbitraryData(tx *bolt.Tx, t types.Transaction) error {
-	for i, arb := range t.ArbitraryData {
+	for _, arb := range t.ArbitraryData {
 		if bytes.HasPrefix(arb, types.SpecifierFoundation[:]) {
-			validEncoding := encoding.Unmarshal(arb[types.SpecifierLen:], new(types.FoundationUnlockHashUpdate)) != nil
-			if !validEncoding || !foundationUpdateIsSigned(tx, t, i) {
+			validEncoding := encoding.Unmarshal(arb[types.SpecifierLen:], new(types.FoundationUnlockHashUpdate)) == nil
+			if !validEncoding || !foundationUpdateIsSigned(tx, t) {
 				return errInvalidFoundationUpdate
 			}
 		}
@@ -293,25 +293,21 @@ func validArbitraryData(tx *bolt.Tx, t types.Transaction) error {
 	return nil
 }
 
-func foundationUpdateIsSigned(tx *bolt.Tx, t types.Transaction, arbIndex int) bool {
-	// To be considered valid, the update must have a signature that
-	// covers a SiacoinInput controlled by either the primary or
-	// failsafe UnlockHash.
+// foundationUpdateIsSigned checks that the transaction has a signature that
+// covers a SiacoinInput controlled by the primary or failsafe UnlockHash. To
+// minimize surface area, the signature must cover the whole transaction.
+//
+// This function does not actually validate the signature. By the time
+// foundationUpdateIsSigned is called, all of the transaction's signatures have
+// already been validated by StandaloneValid.
+func foundationUpdateIsSigned(tx *bolt.Tx, t types.Transaction) bool {
 	primary, failsafe := getFoundationUnlockHashes(tx)
 	for _, sci := range t.SiacoinInputs {
 		if uh := sci.UnlockConditions.UnlockHash(); uh == primary || uh == failsafe {
 			// Locate the corresponding signature.
 			for _, sig := range t.TransactionSignatures {
-				if sig.ParentID == crypto.Hash(sci.ParentID) {
-					// Check whether the signature covers the update.
-					if sig.CoveredFields.WholeTransaction {
-						return true
-					}
-					for _, i := range sig.CoveredFields.ArbitraryData {
-						if i == uint64(arbIndex) {
-							return true
-						}
-					}
+				if sig.ParentID == crypto.Hash(sci.ParentID) && sig.CoveredFields.WholeTransaction {
+					return true
 				}
 			}
 		}

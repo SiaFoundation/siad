@@ -20,6 +20,9 @@ var (
 // applyFoundationSubsidy adds a block's Foundation subsidy to the consensus set
 // as delayed siacoin outputs.
 func applyFoundationSubsidy(tx *bolt.Tx, pb *processedBlock) {
+	if pb.Height < types.FoundationHardforkHeight {
+		return
+	}
 	value := types.FoundationSubsidy
 	if pb.Height == types.FoundationHardforkHeight {
 		value = types.InitialFoundationSubsidy
@@ -208,9 +211,7 @@ func applyFileContractMaintenance(tx *bolt.Tx, pb *processedBlock) {
 // Maintenance is applied after all of the transactions for the block have been
 // applied.
 func applyMaintenance(tx *bolt.Tx, pb *processedBlock) {
-	if pb.Height >= types.FoundationHardforkHeight {
-		applyFoundationSubsidy(tx, pb)
-	}
+	applyFoundationSubsidy(tx, pb)
 	applyMinerPayouts(tx, pb)
 	applyMaturedSiacoinOutputs(tx, pb)
 	applyFileContractMaintenance(tx, pb)
