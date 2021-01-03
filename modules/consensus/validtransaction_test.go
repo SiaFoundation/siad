@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
@@ -889,3 +890,83 @@ func TestValidTransaction(t *testing.T) {
 	}
 }
 */
+
+// TestValidArbitraryData probes the validArbitraryData function.
+func TestValidArbitraryData(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	cst, err := createConsensusSetTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	validate := func(t types.Transaction) error {
+		return cst.cs.db.View(func(tx *bolt.Tx) error {
+			return validArbitraryData(tx, t)
+		})
+	}
+
+	// Check an empty transaction
+	if err := validate(types.Transaction{}); err != nil {
+		t.Error(err)
+	}
+
+	// Check data with an invalid prefix -- it should be ignored
+	data := encoding.MarshalAll(types.NewSpecifier("foo"), types.FoundationUnlockHashUpdate{})
+	if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}); err != nil {
+		t.Error(err)
+	}
+
+	// Check data with an invalid update
+	data = encoding.MarshalAll(types.SpecifierFoundation, [...]byte{1, 2, 3})
+	if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}); err == nil {
+		t.Error("expected error, got nil")
+	}
+
+	// Check transaction with a valid update, but no input or signature
+	data = encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{})
+	if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}); err == nil {
+		t.Error("expected error, got nil")
+	}
+
+	// Manipulate the db manually so that we can sign a valid update.
+	//
+	// NOTE: we do not to generate a real keypair or compute a real signature.
+	// Nor does the rest of the transaction need to be valid (e.g. have inputs
+	// matching its outputs). We just need to add an input to the transaction
+	// with an input whose UnlockConditions match the current primary or
+	// failsafe UnlockHash. So we generate a random public key and use that.
+	_, pk := crypto.GenerateKeyPair()
+	input := types.SiacoinInput{
+		ParentID: types.SiacoinOutputID{1, 2, 3},
+		UnlockConditions: types.UnlockConditions{
+			PublicKeys:         []types.SiaPublicKey{types.Ed25519PublicKey(pk)},
+			SignaturesRequired: 1,
+		},
+	}
+	primaryUnlockHash := input.UnlockConditions.UnlockHash()
+	cst.cs.db.Update(func(tx *bolt.Tx) error {
+		setFoundationUnlockHashes(tx, primaryUnlockHash, types.UnlockHash{})
+		return nil
+	})
+	// Check transaction with a valid update, but no signatures
+	data = encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{})
+	txn := types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{input},
+		ArbitraryData: [][]byte{data},
+		TransactionSignatures: []types.TransactionSignature{{
+			ParentID:      crypto.Hash(input.ParentID),
+			CoveredFields: types.FullCoveredFields,
+		}},
+	}
+	if err := validate(txn); err != nil {
+		t.Error(err)
+	}
+}
