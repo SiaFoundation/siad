@@ -77,8 +77,10 @@ func CalculateNumSiacoins(height BlockHeight) (total Currency) {
 		total = total.Add(NewCurrency64(uint64(height - deflationBlocks)).Mul(CalculateCoinbase(height)))
 	}
 	if height >= FoundationHardforkHeight {
-		subsidies := (height - FoundationHardforkHeight)
-		total = total.Add(InitialFoundationSubsidy.Add(FoundationSubsidy.Mul64(uint64(subsidies))))
+		total = total.Add(InitialFoundationSubsidy)
+		perSubsidy := FoundationSubsidyPerBlock.Mul64(uint64(FoundationSubsidyFrequency))
+		subsidies := (height - FoundationHardforkHeight) / FoundationSubsidyFrequency
+		total = total.Add(perSubsidy.Mul64(uint64(subsidies)))
 	}
 	return
 }

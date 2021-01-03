@@ -17,13 +17,14 @@ var (
 	errStorageProofTiming  = errors.New("missed proof triggered for file contract that is not expiring")
 )
 
-// applyFoundationSubsidy adds a block's Foundation subsidy to the consensus set
-// as delayed siacoin outputs.
+// applyFoundationSubsidy adds a Foundation subsidy to the consensus set as a
+// delayed siacoin output. If no subsidy is due on the given block, no output is
+// added.
 func applyFoundationSubsidy(tx *bolt.Tx, pb *processedBlock) {
-	if pb.Height < types.FoundationHardforkHeight {
+	if pb.Height < types.FoundationHardforkHeight || (pb.Height-types.FoundationHardforkHeight)%types.FoundationSubsidyFrequency != 0 {
 		return
 	}
-	value := types.FoundationSubsidy
+	value := types.FoundationSubsidyPerBlock.Mul64(uint64(types.FoundationSubsidyFrequency))
 	if pb.Height == types.FoundationHardforkHeight {
 		value = types.InitialFoundationSubsidy
 	}

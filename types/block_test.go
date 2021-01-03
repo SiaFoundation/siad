@@ -52,8 +52,8 @@ func TestCalculateNumSiacoins(t *testing.T) {
 		totalCoins = totalCoins.Add(CalculateCoinbase(i))
 		if i == FoundationHardforkHeight {
 			totalCoins = totalCoins.Add(InitialFoundationSubsidy)
-		} else if i > FoundationHardforkHeight {
-			totalCoins = totalCoins.Add(FoundationSubsidy)
+		} else if i > FoundationHardforkHeight && (i-FoundationHardforkHeight)%FoundationSubsidyFrequency == 0 {
+			totalCoins = totalCoins.Add(FoundationSubsidyPerBlock.Mul64(uint64(FoundationSubsidyFrequency)))
 		}
 		if totalCoins.Cmp(CalculateNumSiacoins(i)) != 0 {
 			t.Fatal("coin miscalculation", i, totalCoins, CalculateNumSiacoins(i))

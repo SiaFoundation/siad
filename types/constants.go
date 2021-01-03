@@ -75,8 +75,15 @@ var (
 	// hardfork was activated.
 	FoundationHardforkHeight BlockHeight
 
-	// FoundationSubsidy is the amount sent to the Foundation address per block.
-	FoundationSubsidy = SiacoinPrecision.Mul64(30e3)
+	// FoundationSubsidyFrequency is the number of blocks between each
+	// Foundation subsidy payout. Although the subsidy is calculated on a
+	// per-block basis, it "pays out" much less frequently in order to reduce
+	// the number of SiacoinOutputs created.
+	FoundationSubsidyFrequency BlockHeight
+
+	// FoundationSubsidyPerBlock is the amount allocated to the Foundation
+	// subsidy per block.
+	FoundationSubsidyPerBlock = SiacoinPrecision.Mul64(30e3)
 
 	// FutureThreshold is a temporal limit beyond which Blocks are
 	// discarded by the consensus rules. When incoming Blocks are processed, their
@@ -116,7 +123,7 @@ var (
 	// InitialFoundationSubsidy is the one-time subsidy sent to the Foundation
 	// address upon activation of the hardfork, representing one year's worth of
 	// block subsidies.
-	InitialFoundationSubsidy = FoundationSubsidy.Mul64(uint64(BlocksPerYear))
+	InitialFoundationSubsidy = SiacoinPrecision.Mul64(30e3).Mul64(uint64(BlocksPerYear))
 
 	// MaturityDelay specifies the number of blocks that a maturity-required output
 	// is required to be on hold before it can be spent on the blockchain.
@@ -219,6 +226,7 @@ func init() {
 		ASICHardforkTotalTime = 800
 
 		FoundationHardforkHeight = 30
+		FoundationSubsidyFrequency = 10
 
 		BlockFrequency = 12                      // 12 seconds: slow enough for developers to see ~each block, fast enough that blocks don't waste time.
 		MaturityDelay = 10                       // 60 seconds before a delayed output matures.
@@ -271,6 +279,7 @@ func init() {
 		ASICHardforkTotalTime = 10e3
 
 		FoundationHardforkHeight = 10
+		FoundationSubsidyFrequency = 5
 
 		BlockFrequency = 1 // As fast as possible
 		MaturityDelay = 3
@@ -336,8 +345,9 @@ func init() {
 		ASICHardforkTotalTime = 120e3
 
 		// The Foundation subsidy hardfork activates at approximately 12pm EST
-		// on January 1, 2021.
-		FoundationHardforkHeight = 293210
+		// on February 1, 2021.
+		FoundationHardforkHeight = 297777
+		FoundationSubsidyFrequency = BlocksPerMonth
 
 		// A block time of 1 block per 10 minutes is chosen to follow Bitcoin's
 		// example. The security lost by lowering the block time is not
