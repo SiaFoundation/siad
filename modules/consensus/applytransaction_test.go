@@ -1,5 +1,13 @@
 package consensus
 
+import (
+	"testing"
+
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/encoding"
+)
+
 /*
 // TestApplySiacoinInputs probes the applySiacoinInputs method of the consensus
 // set.
@@ -885,3 +893,79 @@ func TestMisuseApplySiafundOutputs(t *testing.T) {
 	cst.cs.applySiafundOutputs(pb, txn)
 }
 */
+
+// TestApplyArbitraryData probes the applyArbitraryData function.
+func TestApplyArbitraryData(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	cst, err := createConsensusSetTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// set initial unlock hashes
+	primary := types.UnlockHash{1, 2, 3}
+	failsafe := types.UnlockHash{4, 5, 6}
+	cst.cs.db.Update(func(tx *bolt.Tx) error {
+		setFoundationUnlockHashes(tx, primary, failsafe)
+		return nil
+	})
+
+	apply := func(txn types.Transaction) {
+		err := cst.cs.db.Update(func(tx *bolt.Tx) error {
+			applyArbitraryData(tx, nil, txn)
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	addrsChanged := func() bool {
+		var p, f types.UnlockHash
+		cst.cs.db.View(func(tx *bolt.Tx) error {
+			p, f = getFoundationUnlockHashes(tx)
+			return nil
+		})
+		return p != primary || f != failsafe
+	}
+
+	// Apply an empty transaction
+	apply(types.Transaction{})
+	if addrsChanged() {
+		t.Error("addrs should not have changed after applying empty txn")
+	}
+
+	// Apply data with an invalid prefix -- it should be ignored
+	data := encoding.MarshalAll(types.NewSpecifier("foo"), types.FoundationUnlockHashUpdate{})
+	apply(types.Transaction{ArbitraryData: [][]byte{data}})
+	if addrsChanged() {
+		t.Error("addrs should not have changed after applying invalid txn")
+	}
+
+	// Apply a validate update
+	update := types.FoundationUnlockHashUpdate{
+		NewPrimary:  types.UnlockHash{7, 7, 7},
+		NewFailsafe: types.UnlockHash{8, 8, 8},
+	}
+	data = encoding.MarshalAll(types.SpecifierFoundation, update)
+	apply(types.Transaction{ArbitraryData: [][]byte{data}})
+	if !addrsChanged() {
+		t.Fatal("applying valid update did not change unlock hashes")
+	}
+	// Check that database was updated correctly
+	var newPrimary, newFailsafe types.UnlockHash
+	cst.cs.db.View(func(tx *bolt.Tx) error {
+		newPrimary, newFailsafe = getFoundationUnlockHashes(tx)
+		return nil
+	})
+	if newPrimary != update.NewPrimary || newFailsafe != update.NewFailsafe {
+		t.Error("applying valid update did not change unlock hashes")
+	}
+}
