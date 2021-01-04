@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -105,27 +106,19 @@ func TestSkylinkDataSource(t *testing.T) {
 	length := fastrand.Uint64n(datasize/4) + 1
 	offset := fastrand.Uint64n(datasize - length)
 
-	dataChan, errorChan := sds.ReadChannel(offset, length)
-	if errorChan == nil {
-		t.Fatal("unexpected")
-	}
-	var readErr error
+	responseChan := sds.Read(offset, length)
 	select {
-	case readErr = <-errorChan:
-	default:
-	}
-	if readErr != nil {
+	case resp := <-responseChan:
+		if resp == nil || resp.staticErr != nil {
+			t.Fatal("unexpected")
+		}
+		if !bytes.Equal(resp.staticData, allData[offset:offset+length]) {
+			t.Log("expected: ", allData[offset:offset+length], len(allData[offset:offset+length]))
+			t.Log("actual:   ", resp.staticData, len(resp.staticData))
+			t.Fatal("unexepected data")
+		}
+	case <-time.After(time.Second):
 		t.Fatal("unexpected")
-	}
-
-	buf := make([]byte, length)
-	for i := range buf {
-		buf[i] = <-dataChan
-	}
-	if !bytes.Equal(buf, allData[offset:offset+length]) {
-		t.Log("expected: ", allData[offset:offset+length], len(allData[offset:offset+length]))
-		t.Log("actual:   ", buf, len(buf))
-		t.Fatal("unexepected data")
 	}
 
 	sds.SilentClose()

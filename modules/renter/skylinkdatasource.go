@@ -45,6 +45,11 @@ type skylinkDataSource struct {
 	staticRenter     *Renter
 }
 
+type skylinkReadResponse struct {
+	staticData []byte
+	staticErr  error
+}
+
 // DataSize implements streamBufferDataSource
 func (sds *skylinkDataSource) DataSize() uint64 {
 	return sds.staticLayout.Filesize
@@ -79,19 +84,10 @@ func (sds *skylinkDataSource) SilentClose() {
 	sds.staticCancelFunc()
 }
 
-// ReadChannel implements streamBufferDataSource
-func (sds *skylinkDataSource) ReadChannel(off, fetchSize uint64) (chan byte, chan error) {
-	sendBytes := func(data []byte, dataChan chan byte) (n int64) {
-		for _, b := range data {
-			dataChan <- b
-			n++
-		}
-		return
-	}
-
-	// Prepare two channels, one to send the data over, and one to signal errors
-	dataChan := make(chan byte)
-	errorChan := make(chan error, 1)
+// Read implements streamBufferDataSource
+func (sds *skylinkDataSource) Read(off, fetchSize uint64) chan *skylinkReadResponse {
+	// Prepare the response channel
+	responseChan := make(chan *skylinkReadResponse, 1)
 
 	// Determine how large each chunk is.
 	chunkSize := uint64(sds.staticLayout.FanoutDataPieces) * modules.SectorSize
@@ -139,8 +135,10 @@ func (sds *skylinkDataSource) ReadChannel(off, fetchSize uint64) (chan byte, cha
 		// Schedule the download.
 		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(sds.staticCtx, sds.staticPricePerMS, offsetInChunk, downloadSize)
 		if err != nil {
-			errorChan <- errors.AddContext(err, "unable to start download")
-			return nil, errorChan
+			responseChan <- &skylinkReadResponse{
+				staticErr: errors.AddContext(err, "unable to start download"),
+			}
+			return responseChan
 		}
 		downloadChans = append(downloadChans, respChan)
 
@@ -148,27 +146,33 @@ func (sds *skylinkDataSource) ReadChannel(off, fetchSize uint64) (chan byte, cha
 		n += downloadSize
 	}
 
-	go func(dataChan chan byte, downloadChans []chan *downloadResponse, errorChan chan error) {
-		defer close(errorChan)
+	go func(downloadChans []chan *downloadResponse) {
+		defer close(responseChan)
 
 		err := sds.staticRenter.tg.Add()
 		if err != nil {
-			errorChan <- err
+			responseChan <- &skylinkReadResponse{
+				staticErr: err,
+			}
 			return
 		}
 		defer sds.staticRenter.tg.Done()
 
+		response := &skylinkReadResponse{staticData: make([]byte, fetchSize)}
+		offset := 0
 		for _, respChan := range downloadChans {
 			resp := <-respChan
 			if resp.err != nil {
-				errorChan <- resp.err
+				response.staticErr = resp.err
 				break
 			}
-			sendBytes(resp.data, dataChan)
+			n := copy(response.staticData[offset:], resp.data)
+			offset += n
 		}
-	}(dataChan, downloadChans, errorChan)
+		responseChan <- response
+	}(downloadChans)
 
-	return dataChan, errorChan
+	return responseChan
 }
 
 // skylinkDataSource will create a streamBufferDataSource for the data contained
