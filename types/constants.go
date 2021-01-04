@@ -233,7 +233,7 @@ func init() {
 		ASICHardforkTotalTarget = Target{0, 0, 0, 8}
 		ASICHardforkTotalTime = 800
 
-		FoundationHardforkHeight = 30
+		FoundationHardforkHeight = 100
 		FoundationSubsidyFrequency = 10
 
 		initialFoundationUnlockConditions, _ := GenerateDeterministicMultisig(2, 3, InitialFoundationTestingSpecifier)
@@ -291,7 +291,7 @@ func init() {
 		ASICHardforkTotalTarget = Target{255, 255}
 		ASICHardforkTotalTime = 10e3
 
-		FoundationHardforkHeight = 10
+		FoundationHardforkHeight = 50
 		FoundationSubsidyFrequency = 5
 
 		initialFoundationUnlockConditions, _ := GenerateDeterministicMultisig(2, 3, InitialFoundationTestingSpecifier)
