@@ -106,7 +106,7 @@ func TestSkylinkDataSource(t *testing.T) {
 	length := fastrand.Uint64n(datasize/4) + 1
 	offset := fastrand.Uint64n(datasize - length)
 
-	responseChan := sds.Read(offset, length)
+	responseChan := sds.ReadStream(offset, length)
 	select {
 	case resp := <-responseChan:
 		if resp == nil || resp.staticErr != nil {

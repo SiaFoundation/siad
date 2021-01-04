@@ -92,8 +92,8 @@ func (sds *skylinkDataSource) SilentClose() {
 	sds.staticCancelFunc()
 }
 
-// Read implements streamBufferDataSource
-func (sds *skylinkDataSource) Read(off, fetchSize uint64) chan *skylinkReadResponse {
+// ReadStream implements streamBufferDataSource
+func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkReadResponse {
 	// Prepare the response channel
 	responseChan := make(chan *skylinkReadResponse, 1)
 
