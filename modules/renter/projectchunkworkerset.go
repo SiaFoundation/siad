@@ -158,7 +158,7 @@ type projectChunkWorkerSet struct {
 }
 
 // chunkFetcher is an interface that exposes a download function, the PCWS
-// adheres this interface and is implemented by the SkyfileDataSource.
+// implements this interface.
 type chunkFetcher interface {
 	Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error)
 }

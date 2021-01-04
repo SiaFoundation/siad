@@ -2,9 +2,7 @@ package renter
 
 import (
 	"context"
-	"fmt"
 	"sync/atomic"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -14,9 +12,11 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-// skylinkDataSourceRequestSize is the size that is suggested by the data source
-// to be used when reading data from it.
-const skylinkDataSourceRequestSize = 1 << 18 // 256 KiB
+const (
+	// skylinkDataSourceRequestSize is the size that is suggested by the data
+	// source to be used when reading data from it.
+	skylinkDataSourceRequestSize = 1 << 18 // 256 KiB
+)
 
 type (
 	// skylinkDataSource implements streamBufferDataSource on a Skylink.
@@ -33,12 +33,12 @@ type (
 		staticLayout   modules.SkyfileLayout
 		staticMetadata modules.SkyfileMetadata
 
-		// The "price per millisecond", it is the budget that we are
-		// willing to spend on faster workers. See projectchunkworkset.go.
+		// The "price per millisecond" is the budget that we are willing to
+		// spend on faster workers. See projectchunkworkset.go.
 		staticPricePerMS types.Currency
 
-		// The base sector contains all of the raw data for the skylink, and the
-		// fanoutPCWS contains one pcws for every chunk in the fanout. The
+		// The first chunk contains all of the raw data for the skylink, and the
+		// chunk fetchers contains one pcws for every chunk in the fanout. The
 		// worker sets are spun up in advance so that the HasSector queries have
 		// completed by the time that someone needs to fetch the data.
 		staticFirstChunk    []byte
