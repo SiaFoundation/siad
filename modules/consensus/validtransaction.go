@@ -288,7 +288,10 @@ func validArbitraryData(tx *bolt.Tx, t types.Transaction, currentHeight types.Bl
 	for _, arb := range t.ArbitraryData {
 		if bytes.HasPrefix(arb, types.SpecifierFoundation[:]) {
 			validEncoding := encoding.Unmarshal(arb[types.SpecifierLen:], new(types.FoundationUnlockHashUpdate)) == nil
-			if !validEncoding || !foundationUpdateIsSigned(tx, t) {
+			// NOTE: this conditional is split up to better visualize test coverage
+			if !validEncoding {
+				return errInvalidFoundationUpdate
+			} else if !foundationUpdateIsSigned(tx, t) {
 				return errInvalidFoundationUpdate
 			}
 		}
@@ -306,12 +309,16 @@ func validArbitraryData(tx *bolt.Tx, t types.Transaction, currentHeight types.Bl
 func foundationUpdateIsSigned(tx *bolt.Tx, t types.Transaction) bool {
 	primary, failsafe := getFoundationUnlockHashes(tx)
 	for _, sci := range t.SiacoinInputs {
-		if uh := sci.UnlockConditions.UnlockHash(); uh == primary || uh == failsafe {
-			// Locate the corresponding signature.
-			for _, sig := range t.TransactionSignatures {
-				if sig.ParentID == crypto.Hash(sci.ParentID) && sig.CoveredFields.WholeTransaction {
-					return true
-				}
+		// NOTE: this conditional is split up to better visualize test coverage
+		if uh := sci.UnlockConditions.UnlockHash(); uh != primary {
+			if uh != failsafe {
+				continue
+			}
+		}
+		// Locate the corresponding signature.
+		for _, sig := range t.TransactionSignatures {
+			if sig.ParentID == crypto.Hash(sci.ParentID) && sig.CoveredFields.WholeTransaction {
+				return true
 			}
 		}
 	}

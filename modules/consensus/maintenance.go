@@ -21,7 +21,10 @@ var (
 // delayed siacoin output. If no subsidy is due on the given block, no output is
 // added.
 func applyFoundationSubsidy(tx *bolt.Tx, pb *processedBlock) {
-	if pb.Height < types.FoundationHardforkHeight || (pb.Height-types.FoundationHardforkHeight)%types.FoundationSubsidyFrequency != 0 {
+	// NOTE: this conditional is split up to better visualize test coverage
+	if pb.Height < types.FoundationHardforkHeight {
+		return
+	} else if (pb.Height-types.FoundationHardforkHeight)%types.FoundationSubsidyFrequency != 0 {
 		return
 	}
 	value := types.FoundationSubsidyPerBlock.Mul64(uint64(types.FoundationSubsidyFrequency))

@@ -949,30 +949,42 @@ func TestValidArbitraryData(t *testing.T) {
 	// matching its outputs). We just need to add an input to the transaction
 	// with an input whose UnlockConditions match the current primary or
 	// failsafe UnlockHash. So we generate a random public key and use that.
-	_, pk := crypto.GenerateKeyPair()
-	input := types.SiacoinInput{
-		ParentID: types.SiacoinOutputID{1, 2, 3},
-		UnlockConditions: types.UnlockConditions{
-			PublicKeys:         []types.SiaPublicKey{types.Ed25519PublicKey(pk)},
-			SignaturesRequired: 1,
-		},
+	primaryInput := types.SiacoinInput{
+		ParentID:         types.SiacoinOutputID{1, 2, 3},
+		UnlockConditions: types.UnlockConditions{Timelock: 1},
 	}
-	primaryUnlockHash := input.UnlockConditions.UnlockHash()
+	failsafeInput := types.SiacoinInput{
+		ParentID:         types.SiacoinOutputID{4, 5, 6},
+		UnlockConditions: types.UnlockConditions{Timelock: 2},
+	}
 	cst.cs.db.Update(func(tx *bolt.Tx) error {
-		setFoundationUnlockHashes(tx, primaryUnlockHash, types.UnlockHash{})
+		setFoundationUnlockHashes(tx, primaryInput.UnlockConditions.UnlockHash(), failsafeInput.UnlockConditions.UnlockHash())
 		return nil
 	})
-	// Check transaction with a valid update, but no signatures
+	// Check transaction with a valid update
 	data = encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{})
 	txn := types.Transaction{
-		SiacoinInputs: []types.SiacoinInput{input},
+		SiacoinInputs: []types.SiacoinInput{primaryInput},
 		ArbitraryData: [][]byte{data},
 		TransactionSignatures: []types.TransactionSignature{{
-			ParentID:      crypto.Hash(input.ParentID),
+			ParentID:      crypto.Hash(primaryInput.ParentID),
 			CoveredFields: types.FullCoveredFields,
 		}},
 	}
 	if err := validate(txn, types.FoundationHardforkHeight); err != nil {
 		t.Error(err)
+	}
+
+	// Try with the failsafe
+	txn.SiacoinInputs[0] = failsafeInput
+	txn.TransactionSignatures[0].ParentID = crypto.Hash(failsafeInput.ParentID)
+	if err := validate(txn, types.FoundationHardforkHeight); err != nil {
+		t.Error(err)
+	}
+
+	// Try with invalid unlock conditions
+	txn.SiacoinInputs[0].UnlockConditions = types.UnlockConditions{}
+	if err := validate(txn, types.FoundationHardforkHeight); err == nil {
+		t.Error("expected error, got nil")
 	}
 }
