@@ -919,7 +919,7 @@ func TestValidArbitraryData(t *testing.T) {
 	}
 
 	// Check data with an invalid prefix -- it should be ignored
-	data := encoding.MarshalAll(types.NewSpecifier("foo"), types.FoundationUnlockHashUpdate{})
+	data := encoding.MarshalAll(types.Specifier{'f', 'o', 'o'}, types.FoundationUnlockHashUpdate{})
 	if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight); err != nil {
 		t.Error(err)
 	}

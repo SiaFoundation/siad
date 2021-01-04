@@ -918,9 +918,9 @@ func TestApplyArbitraryData(t *testing.T) {
 		return nil
 	})
 
-	apply := func(txn types.Transaction) {
+	apply := func(txn types.Transaction, height types.BlockHeight) {
 		err := cst.cs.db.Update(func(tx *bolt.Tx) error {
-			applyArbitraryData(tx, nil, txn)
+			applyArbitraryData(tx, &processedBlock{Height: height}, txn)
 			return nil
 		})
 		if err != nil {
@@ -937,25 +937,30 @@ func TestApplyArbitraryData(t *testing.T) {
 	}
 
 	// Apply an empty transaction
-	apply(types.Transaction{})
+	apply(types.Transaction{}, types.FoundationHardforkHeight)
 	if addrsChanged() {
 		t.Error("addrs should not have changed after applying empty txn")
 	}
 
 	// Apply data with an invalid prefix -- it should be ignored
-	data := encoding.MarshalAll(types.NewSpecifier("foo"), types.FoundationUnlockHashUpdate{})
-	apply(types.Transaction{ArbitraryData: [][]byte{data}})
+	data := encoding.MarshalAll(types.Specifier{'f', 'o', 'o'}, types.FoundationUnlockHashUpdate{})
+	apply(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight)
 	if addrsChanged() {
 		t.Error("addrs should not have changed after applying invalid txn")
 	}
 
-	// Apply a validate update
+	// Apply a validate update before the hardfork -- it should be ignored
 	update := types.FoundationUnlockHashUpdate{
 		NewPrimary:  types.UnlockHash{7, 7, 7},
 		NewFailsafe: types.UnlockHash{8, 8, 8},
 	}
 	data = encoding.MarshalAll(types.SpecifierFoundation, update)
-	apply(types.Transaction{ArbitraryData: [][]byte{data}})
+	apply(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight-1)
+	if addrsChanged() {
+		t.Fatal("applying valid update before hardfork should not change unlock hashes")
+	}
+	// Apply the update after the hardfork
+	apply(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight)
 	if !addrsChanged() {
 		t.Fatal("applying valid update did not change unlock hashes")
 	}
