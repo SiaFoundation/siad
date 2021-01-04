@@ -943,11 +943,13 @@ func TestValidArbitraryData(t *testing.T) {
 	}
 
 	// Check transaction with a valid update
+	primaryUC, _ := types.GenerateDeterministicMultisig(2, 3, types.InitialFoundationTestingSpecifier)
+	failsafeUC, _ := types.GenerateDeterministicMultisig(2, 3, types.InitialFoundationFailsafeTestingSpecifier)
 	data = encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{})
 	txn := types.Transaction{
 		SiacoinInputs: []types.SiacoinInput{{
 			ParentID:         types.SiacoinOutputID{1, 2, 3},
-			UnlockConditions: types.InitialFoundationUnlockConditions,
+			UnlockConditions: primaryUC,
 		}},
 		ArbitraryData: [][]byte{data},
 		TransactionSignatures: []types.TransactionSignature{{
@@ -960,7 +962,7 @@ func TestValidArbitraryData(t *testing.T) {
 	}
 
 	// Try with the failsafe
-	txn.SiacoinInputs[0].UnlockConditions = types.InitialFoundationFailsafeUnlockConditions
+	txn.SiacoinInputs[0].UnlockConditions = failsafeUC
 	if err := validate(txn, types.FoundationHardforkHeight); err != nil {
 		t.Error(err)
 	}

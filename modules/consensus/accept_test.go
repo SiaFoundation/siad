@@ -7,8 +7,10 @@ import (
 	"unsafe"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -1231,5 +1233,176 @@ func TestChainedAcceptBlock(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// TestFoundationUpdateBlocks tests various scenarios involving blocks that
+// contain a FoundationUnlockHashUpdate.
+func TestFoundationUpdateBlocks(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	cst, err := createConsensusSetTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Mine until the initial subsidy has matured.
+	for cst.cs.Height() < types.FoundationHardforkHeight+types.MaturityDelay {
+		if _, err := cst.miner.AddBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	foundationOutput := func(height types.BlockHeight) (dscod modules.DelayedSiacoinOutputDiff, exists bool) {
+		cst.cs.db.View(func(tx *bolt.Tx) error {
+			bid, err := getPath(tx, height)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pb, err := getBlockMap(tx, bid)
+			for _, diff := range pb.DelayedSiacoinOutputDiffs {
+				if diff.ID == pb.Block.FoundationSubsidyID() {
+					dscod = diff
+					exists = true
+					break
+				}
+			}
+			return nil
+		})
+		return
+	}
+
+	mineTxn := func(txn types.Transaction) error {
+		block, target, err := cst.miner.BlockForWork()
+		if err != nil {
+			t.Fatal(err)
+		}
+		block.Transactions = append(block.Transactions, txn)
+		block, _ = cst.miner.SolveBlock(block, target)
+		return cst.cs.AcceptBlock(block)
+	}
+
+	// Sign and submit a transaction that sends the initial subsidy output to the void
+	outputHeight := types.FoundationHardforkHeight
+	dscod, ok := foundationOutput(outputHeight)
+	if !ok {
+		t.Fatal("initial subsidy should exist")
+	}
+	primaryUC, primaryKeys := types.GenerateDeterministicMultisig(2, 3, types.InitialFoundationTestingSpecifier)
+	txn := types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         dscod.ID,
+			UnlockConditions: primaryUC,
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{{
+			Value:      dscod.SiacoinOutput.Value,
+			UnlockHash: types.UnlockHash{},
+		}},
+		TransactionSignatures: make([]types.TransactionSignature, primaryUC.SignaturesRequired),
+	}
+	for i := range txn.TransactionSignatures {
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(dscod.ID)
+		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(txn.SigHash(i, cst.cs.Height()), primaryKeys[i])
+		txn.TransactionSignatures[i].Signature = sig[:]
+	}
+	if err := mineTxn(txn); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mine until the next subsidy matures.
+	outputHeight += types.FoundationSubsidyFrequency
+	for cst.cs.Height() < outputHeight+types.MaturityDelay {
+		if _, err := cst.miner.AddBlock(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Sign and submit a transaction that changes the primary address to the void.
+	// Also send 1 SC to the primary and failsafe addresses for later use.
+	dscod, ok = foundationOutput(outputHeight)
+	if !ok {
+		t.Fatal("first subsidy should exist")
+	}
+	txn = types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         dscod.ID,
+			UnlockConditions: primaryUC,
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{
+			{Value: dscod.SiacoinOutput.Value.Sub(types.SiacoinPrecision.Mul64(2)), UnlockHash: types.UnlockHash{}},
+			{Value: types.SiacoinPrecision, UnlockHash: types.InitialFoundationUnlockHash},
+			{Value: types.SiacoinPrecision, UnlockHash: types.InitialFoundationFailsafeUnlockHash},
+		},
+		ArbitraryData: [][]byte{encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
+			NewPrimary:  types.UnlockHash{},
+			NewFailsafe: types.InitialFoundationFailsafeUnlockHash,
+		})},
+		TransactionSignatures: make([]types.TransactionSignature, primaryUC.SignaturesRequired),
+	}
+	for i := range txn.TransactionSignatures {
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(dscod.ID)
+		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(txn.SigHash(i, cst.cs.Height()), primaryKeys[i])
+		txn.TransactionSignatures[i].Signature = sig[:]
+	}
+	if err := mineTxn(txn); err != nil {
+		t.Fatal(err)
+	}
+	primarySCOD := txn.SiacoinOutputID(1)
+	failsafeSCOD := txn.SiacoinOutputID(2)
+
+	// Attempt to change the primary address back.
+	txn = types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         primarySCOD,
+			UnlockConditions: primaryUC,
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{{
+			Value:      types.SiacoinPrecision,
+			UnlockHash: types.UnlockHash{},
+		}},
+		ArbitraryData: [][]byte{encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
+			NewPrimary:  types.InitialFoundationUnlockHash,
+			NewFailsafe: types.InitialFoundationFailsafeUnlockHash,
+		})},
+		TransactionSignatures: make([]types.TransactionSignature, primaryUC.SignaturesRequired),
+	}
+	for i := range txn.TransactionSignatures {
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(primarySCOD)
+		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(txn.SigHash(i, cst.cs.Height()), primaryKeys[i])
+		txn.TransactionSignatures[i].Signature = sig[:]
+	}
+	if err := mineTxn(txn); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	// Change back using the failsafe.
+	failsafeUC, failsafeKeys := types.GenerateDeterministicMultisig(3, 5, types.InitialFoundationFailsafeTestingSpecifier)
+	txn.SiacoinInputs[0] = types.SiacoinInput{
+		ParentID:         failsafeSCOD,
+		UnlockConditions: failsafeUC,
+	}
+	txn.TransactionSignatures = make([]types.TransactionSignature, failsafeUC.SignaturesRequired)
+	for i := range txn.TransactionSignatures {
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(failsafeSCOD)
+		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(txn.SigHash(i, cst.cs.Height()), failsafeKeys[i])
+		txn.TransactionSignatures[i].Signature = sig[:]
+	}
+	if err := mineTxn(txn); err != nil {
+		t.Fatal(err)
 	}
 }
