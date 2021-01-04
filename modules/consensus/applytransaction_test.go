@@ -910,14 +910,6 @@ func TestApplyArbitraryData(t *testing.T) {
 		}
 	}()
 
-	// set initial unlock hashes
-	primary := types.UnlockHash{1, 2, 3}
-	failsafe := types.UnlockHash{4, 5, 6}
-	cst.cs.db.Update(func(tx *bolt.Tx) error {
-		setFoundationUnlockHashes(tx, primary, failsafe)
-		return nil
-	})
-
 	apply := func(txn types.Transaction, height types.BlockHeight) {
 		err := cst.cs.db.Update(func(tx *bolt.Tx) error {
 			applyArbitraryData(tx, &processedBlock{Height: height}, txn)
@@ -933,7 +925,7 @@ func TestApplyArbitraryData(t *testing.T) {
 			p, f = getFoundationUnlockHashes(tx)
 			return nil
 		})
-		return p != primary || f != failsafe
+		return p != types.InitialFoundationUnlockHash || f != types.InitialFoundationFailsafeUnlockHash
 	}
 
 	// Apply an empty transaction
@@ -951,8 +943,8 @@ func TestApplyArbitraryData(t *testing.T) {
 
 	// Apply a validate update before the hardfork -- it should be ignored
 	update := types.FoundationUnlockHashUpdate{
-		NewPrimary:  types.UnlockHash{7, 7, 7},
-		NewFailsafe: types.UnlockHash{8, 8, 8},
+		NewPrimary:  types.UnlockHash{1, 2, 3},
+		NewFailsafe: types.UnlockHash{4, 5, 6},
 	}
 	data = encoding.MarshalAll(types.SpecifierFoundation, update)
 	apply(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight-1)

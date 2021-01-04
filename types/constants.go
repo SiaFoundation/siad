@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 )
 
 var (
@@ -113,13 +114,19 @@ var (
 	// InitialFoundationUnlockHash is the primary Foundation subsidy address. It
 	// receives the initial Foundation subsidy. The keys that this address was
 	// derived from can also be used to set a new primary and failsafe address.
-	InitialFoundationUnlockHash = UnlockHash{1, 2, 3} // TODO
+	InitialFoundationUnlockHash UnlockHash
+	// InitialFoundationUnlockConditions contains the UnlockConditions of the
+	// InitialFoundationUnlockHash during testing.
+	InitialFoundationUnlockConditions UnlockConditions
 	// InitialFoundationFailsafeUnlockHash is the "backup" Foundation address.
 	// It does not receive the Foundation subsidy, but its keys can be used to
 	// set a new primary and failsafe address. These UnlockConditions should
 	// also be subject to a timelock that prevents the failsafe from being used
 	// immediately.
-	InitialFoundationFailsafeUnlockHash = UnlockHash{4, 5, 6} // TODO
+	InitialFoundationFailsafeUnlockHash UnlockHash
+	// InitialFoundationFailsafeUnlockConditions contains the UnlockConditions
+	// of the InitialFoundationFailsafeUnlockHash during testing.
+	InitialFoundationFailsafeUnlockConditions UnlockConditions
 	// InitialFoundationSubsidy is the one-time subsidy sent to the Foundation
 	// address upon activation of the hardfork, representing one year's worth of
 	// block subsidies.
@@ -228,6 +235,11 @@ func init() {
 		FoundationHardforkHeight = 30
 		FoundationSubsidyFrequency = 10
 
+		InitialFoundationFailsafeUnlockConditions, _ = generateDeterministicMultisig(2, 3, NewSpecifier("primaryuc"))
+		InitialFoundationUnlockConditions, _ = generateDeterministicMultisig(3, 5, NewSpecifier("failsafeuc"))
+		InitialFoundationUnlockHash = InitialFoundationFailsafeUnlockConditions.UnlockHash()
+		InitialFoundationFailsafeUnlockHash = InitialFoundationUnlockConditions.UnlockHash()
+
 		BlockFrequency = 12                      // 12 seconds: slow enough for developers to see ~each block, fast enough that blocks don't waste time.
 		MaturityDelay = 10                       // 60 seconds before a delayed output matures.
 		GenesisTimestamp = Timestamp(1424139000) // Change as necessary.
@@ -280,6 +292,11 @@ func init() {
 
 		FoundationHardforkHeight = 10
 		FoundationSubsidyFrequency = 5
+
+		InitialFoundationFailsafeUnlockConditions, _ = generateDeterministicMultisig(2, 3, NewSpecifier("primaryuc"))
+		InitialFoundationUnlockConditions, _ = generateDeterministicMultisig(3, 5, NewSpecifier("failsafeuc"))
+		InitialFoundationUnlockHash = InitialFoundationFailsafeUnlockConditions.UnlockHash()
+		InitialFoundationFailsafeUnlockHash = InitialFoundationUnlockConditions.UnlockHash()
 
 		BlockFrequency = 1 // As fast as possible
 		MaturityDelay = 3
@@ -348,6 +365,9 @@ func init() {
 		// on February 1, 2021.
 		FoundationHardforkHeight = 297777
 		FoundationSubsidyFrequency = BlocksPerMonth
+
+		InitialFoundationUnlockHash = UnlockHash{1, 2, 3}         // TODO
+		InitialFoundationFailsafeUnlockHash = UnlockHash{1, 2, 3} // TODO
 
 		// A block time of 1 block per 10 minutes is chosen to follow Bitcoin's
 		// example. The security lost by lowering the block time is not
@@ -648,4 +668,22 @@ func init() {
 	}
 	// Calculate the genesis ID.
 	GenesisID = GenesisBlock.ID()
+}
+
+// generateDeterministicMultisig is a helper function that generates a set of
+// multisig UnlockConditions along with their signing keys.
+func generateDeterministicMultisig(m, n int, salt Specifier) (UnlockConditions, []crypto.SecretKey) {
+	uc := UnlockConditions{
+		PublicKeys:         make([]SiaPublicKey, n),
+		SignaturesRequired: uint64(m),
+	}
+	keys := make([]crypto.SecretKey, n)
+
+	entropy := crypto.HashBytes(salt[:])
+	for i := range keys {
+		sk, pk := crypto.GenerateKeyPairDeterministic(entropy)
+		keys[i], uc.PublicKeys[i] = sk, Ed25519PublicKey(pk)
+		entropy = crypto.HashBytes(entropy[:])
+	}
+	return uc, keys
 }

@@ -942,32 +942,16 @@ func TestValidArbitraryData(t *testing.T) {
 		t.Error(err)
 	}
 
-	// Manipulate the db manually so that we can sign a valid update.
-	//
-	// NOTE: we do not to generate a real keypair or compute a real signature.
-	// Nor does the rest of the transaction need to be valid (e.g. have inputs
-	// matching its outputs). We just need to add an input to the transaction
-	// with an input whose UnlockConditions match the current primary or
-	// failsafe UnlockHash. So we generate a random public key and use that.
-	primaryInput := types.SiacoinInput{
-		ParentID:         types.SiacoinOutputID{1, 2, 3},
-		UnlockConditions: types.UnlockConditions{Timelock: 1},
-	}
-	failsafeInput := types.SiacoinInput{
-		ParentID:         types.SiacoinOutputID{4, 5, 6},
-		UnlockConditions: types.UnlockConditions{Timelock: 2},
-	}
-	cst.cs.db.Update(func(tx *bolt.Tx) error {
-		setFoundationUnlockHashes(tx, primaryInput.UnlockConditions.UnlockHash(), failsafeInput.UnlockConditions.UnlockHash())
-		return nil
-	})
 	// Check transaction with a valid update
 	data = encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{})
 	txn := types.Transaction{
-		SiacoinInputs: []types.SiacoinInput{primaryInput},
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         types.SiacoinOutputID{1, 2, 3},
+			UnlockConditions: types.InitialFoundationUnlockConditions,
+		}},
 		ArbitraryData: [][]byte{data},
 		TransactionSignatures: []types.TransactionSignature{{
-			ParentID:      crypto.Hash(primaryInput.ParentID),
+			ParentID:      crypto.Hash{1, 2, 3},
 			CoveredFields: types.FullCoveredFields,
 		}},
 	}
@@ -976,8 +960,7 @@ func TestValidArbitraryData(t *testing.T) {
 	}
 
 	// Try with the failsafe
-	txn.SiacoinInputs[0] = failsafeInput
-	txn.TransactionSignatures[0].ParentID = crypto.Hash(failsafeInput.ParentID)
+	txn.SiacoinInputs[0].UnlockConditions = types.InitialFoundationFailsafeUnlockConditions
 	if err := validate(txn, types.FoundationHardforkHeight); err != nil {
 		t.Error(err)
 	}
