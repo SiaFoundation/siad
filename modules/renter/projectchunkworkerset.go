@@ -157,6 +157,17 @@ type projectChunkWorkerSet struct {
 	mu           sync.Mutex
 }
 
+// chunkFetcher is an interface that exposes a download function, the PCWS
+// adheres this interface and it is used by the SkyfileDataSource.
+type chunkFetcher interface {
+	Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error)
+}
+
+// Download will download a range from a chunk.
+func (pcws *projectChunkWorkerSet) Download(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
+	return pcws.managedDownload(ctx, pricePerMS, offset, length)
+}
+
 // checkPCWSGouging verifies the cost of grabbing the HasSector information from
 // a host is reasonble. The cost of completing the download is not checked.
 //
@@ -477,6 +488,11 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 // will select those workers only if the additional expense of using those
 // workers is less than 100 * pricePerMS.
 func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
+	// Potentially force a timeout via a disrupt for testing.
+	if pcws.staticRenter.deps.Disrupt("timeoutProjectDownloadByRoot") {
+		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
+	}
+
 	// Convenience variables.
 	ec := pcws.staticErasureCoder
 
@@ -551,7 +567,7 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 	// Launch the initial set of workers for the pdc.
 	err = pdc.launchInitialWorkers()
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to launch initial set of workers")
+		return nil, errors.Compose(err, ErrRootNotFound)
 	}
 
 	// All initial workers have been launched. The function can return now,

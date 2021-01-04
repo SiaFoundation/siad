@@ -658,8 +658,8 @@ func (r *Renter) DownloadSkylinkBaseSector(link modules.Skylink, timeout time.Du
 	return StreamerFromSlice(baseSector), err
 }
 
-// managedDownloadSkylink will take a link and turn it into the metadata and data of a
-// download.
+// managedDownloadSkylink will take a link and turn it into the metadata and
+// data of a download.
 func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Duration) (modules.SkyfileMetadata, modules.Streamer, error) {
 	if r.deps.Disrupt("resolveSkylinkToFixture") {
 		sf, err := fixtures.LoadSkylinkFixture(link)
