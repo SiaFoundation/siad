@@ -163,9 +163,6 @@ func (b Block) MinerPayoutID(i uint64) SiacoinOutputID {
 // FoundationSubsidyID returns the ID of the Foundation subsidy, which is
 // calculated by hashing the concatenation of the BlockID and
 // SpecifierFoundation.
-func (b Block) FoundationSubsidyID() SiacoinOutputID {
-	return SiacoinOutputID(crypto.HashAll(
-		b.ID(),
-		SpecifierFoundation,
-	))
+func (bid BlockID) FoundationSubsidyID() SiacoinOutputID {
+	return SiacoinOutputID(crypto.HashAll(bid, SpecifierFoundation))
 }

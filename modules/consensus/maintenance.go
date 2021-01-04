@@ -35,7 +35,7 @@ func applyFoundationSubsidy(tx *bolt.Tx, pb *processedBlock) {
 	addr, _ := getFoundationUnlockHashes(tx)
 	dscod := modules.DelayedSiacoinOutputDiff{
 		Direction: modules.DiffApply,
-		ID:        pb.Block.FoundationSubsidyID(),
+		ID:        pb.Block.ID().FoundationSubsidyID(),
 		SiacoinOutput: types.SiacoinOutput{
 			Value:      value,
 			UnlockHash: addr,

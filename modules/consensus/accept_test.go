@@ -1268,7 +1268,7 @@ func TestFoundationUpdateBlocks(t *testing.T) {
 			}
 			pb, err := getBlockMap(tx, bid)
 			for _, diff := range pb.DelayedSiacoinOutputDiffs {
-				if diff.ID == pb.Block.FoundationSubsidyID() {
+				if diff.ID == bid.FoundationSubsidyID() {
 					dscod = diff
 					exists = true
 					break
