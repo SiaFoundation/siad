@@ -206,6 +206,9 @@ func applySiafundOutputs(tx *bolt.Tx, pb *processedBlock, t types.Transaction) {
 // applyArbitraryData applies arbitrary data to the consensus set. Currently,
 // only arbitrary data with the types.SpecifierFoundation prefix is handled.
 func applyArbitraryData(tx *bolt.Tx, pb *processedBlock, t types.Transaction) {
+	if pb.Height < types.FoundationHardforkHeight {
+		return
+	}
 	for _, arb := range t.ArbitraryData {
 		if bytes.HasPrefix(arb, types.SpecifierFoundation[:]) {
 			var update types.FoundationUnlockHashUpdate

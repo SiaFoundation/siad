@@ -281,7 +281,10 @@ func validSiafunds(tx *bolt.Tx, t types.Transaction) (err error) {
 // validArbitraryData checks that the ArbitraryData portions of the transaction are
 // valid in the context of the consensus set. Currently, only ArbitraryData with
 // the types.SpecifierFoundation prefix is examined.
-func validArbitraryData(tx *bolt.Tx, t types.Transaction) error {
+func validArbitraryData(tx *bolt.Tx, t types.Transaction, currentHeight types.BlockHeight) error {
+	if currentHeight < types.FoundationHardforkHeight {
+		return nil
+	}
 	for _, arb := range t.ArbitraryData {
 		if bytes.HasPrefix(arb, types.SpecifierFoundation[:]) {
 			validEncoding := encoding.Unmarshal(arb[types.SpecifierLen:], new(types.FoundationUnlockHashUpdate)) == nil
@@ -320,7 +323,8 @@ func foundationUpdateIsSigned(tx *bolt.Tx, t types.Transaction) bool {
 func validTransaction(tx *bolt.Tx, t types.Transaction) error {
 	// StandaloneValid will check things like signatures and properties that
 	// should be inherent to the transaction. (storage proof rules, etc.)
-	err := t.StandaloneValid(blockHeight(tx))
+	currentHeight := blockHeight(tx)
+	err := t.StandaloneValid(currentHeight)
 	if err != nil {
 		return err
 	}
@@ -343,7 +347,7 @@ func validTransaction(tx *bolt.Tx, t types.Transaction) error {
 	if err != nil {
 		return err
 	}
-	err = validArbitraryData(tx, t)
+	err = validArbitraryData(tx, t, currentHeight)
 	if err != nil {
 		return err
 	}

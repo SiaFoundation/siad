@@ -907,33 +907,39 @@ func TestValidArbitraryData(t *testing.T) {
 		}
 	}()
 
-	validate := func(t types.Transaction) error {
+	validate := func(t types.Transaction, height types.BlockHeight) error {
 		return cst.cs.db.View(func(tx *bolt.Tx) error {
-			return validArbitraryData(tx, t)
+			return validArbitraryData(tx, t, height)
 		})
 	}
 
 	// Check an empty transaction
-	if err := validate(types.Transaction{}); err != nil {
+	if err := validate(types.Transaction{}, types.FoundationHardforkHeight); err != nil {
 		t.Error(err)
 	}
 
 	// Check data with an invalid prefix -- it should be ignored
 	data := encoding.MarshalAll(types.NewSpecifier("foo"), types.FoundationUnlockHashUpdate{})
-	if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}); err != nil {
+	if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight); err != nil {
 		t.Error(err)
 	}
 
 	// Check data with an invalid update
 	data = encoding.MarshalAll(types.SpecifierFoundation, [...]byte{1, 2, 3})
-	if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}); err == nil {
+	if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight); err == nil {
 		t.Error("expected error, got nil")
+	}
+	// Check same transaction prior to hardfork -- it should be ignored
+	if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight-1); err != nil {
+		t.Error(err)
 	}
 
 	// Check transaction with a valid update, but no input or signature
 	data = encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{})
-	if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}); err == nil {
+	if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight); err == nil {
 		t.Error("expected error, got nil")
+	} else if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight-1); err != nil {
+		t.Error(err)
 	}
 
 	// Manipulate the db manually so that we can sign a valid update.
@@ -966,7 +972,7 @@ func TestValidArbitraryData(t *testing.T) {
 			CoveredFields: types.FullCoveredFields,
 		}},
 	}
-	if err := validate(txn); err != nil {
+	if err := validate(txn, types.FoundationHardforkHeight); err != nil {
 		t.Error(err)
 	}
 }
