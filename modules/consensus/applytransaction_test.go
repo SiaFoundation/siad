@@ -920,11 +920,7 @@ func TestApplyArbitraryData(t *testing.T) {
 		}
 	}
 	addrsChanged := func() bool {
-		var p, f types.UnlockHash
-		cst.cs.db.View(func(tx *bolt.Tx) error {
-			p, f = getFoundationUnlockHashes(tx)
-			return nil
-		})
+		p, f := cst.cs.FoundationUnlockHashes()
 		return p != types.InitialFoundationUnlockHash || f != types.InitialFoundationFailsafeUnlockHash
 	}
 

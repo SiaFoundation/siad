@@ -412,3 +412,18 @@ func (cs *ConsensusSet) StorageProofSegment(fcid types.FileContractID) (index ui
 	})
 	return index, err
 }
+
+// FoundationUnlockHashes returns the current primary and failsafe Foundation
+// UnlockHashes.
+func (cs *ConsensusSet) FoundationUnlockHashes() (primary, failsafe types.UnlockHash) {
+	if err := cs.tg.Add(); err != nil {
+		return
+	}
+	defer cs.tg.Done()
+
+	_ = cs.db.View(func(tx *bolt.Tx) error {
+		primary, failsafe = getFoundationUnlockHashes(tx)
+		return nil
+	})
+	return
+}
