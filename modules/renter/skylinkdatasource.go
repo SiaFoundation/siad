@@ -194,7 +194,7 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkRea
 //
 // TODO: this should return a streamBufferDataSource, and will do so when we
 // have adjusted the interface
-func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Currency, downloadTimeout time.Duration) (*skylinkDataSource, error) {
+func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Currency) (*skylinkDataSource, error) {
 	// Create the context for the data source - a child of the renter
 	// threadgroup but otherwise independent.
 	ctx, cancelFunc := context.WithCancel(r.tg.StopCtx())
@@ -208,17 +208,6 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Curren
 			cancelFunc()
 		}
 	}()
-
-	// Create the context for the download - the user might have passed a custom
-	// timeout that has to be applied within the scope of a single request. This
-	// needs to be different from the data source context as that outlives the
-	// single request scope.
-	dlCtx := r.tg.StopCtx()
-	if downloadTimeout > 0 {
-		var dlCancel context.CancelFunc
-		dlCtx, dlCancel = context.WithTimeout(r.tg.StopCtx(), downloadTimeout)
-		defer dlCancel()
-	}
 
 	// Create the pcws for the first chunk, which is just a single root with
 	// both passthrough encryption and passthrough erasure coding.
@@ -238,11 +227,8 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Curren
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to parse skylink")
 	}
-	respChan, err := pcws.managedDownload(dlCtx, pricePerMS, offset, fetchSize)
+	respChan, err := pcws.managedDownload(ctx, pricePerMS, offset, fetchSize)
 	if err != nil {
-		if errors.Contains(err, ErrProjectTimedOut) {
-			err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", downloadTimeout.Seconds()))
-		}
 		return nil, errors.AddContext(err, "unable to start download")
 	}
 	resp := <-respChan
