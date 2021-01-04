@@ -96,7 +96,7 @@ func TestSkylinkDataSource(t *testing.T) {
 	}) {
 		t.Fatal("unexpected")
 	}
-	if sds.RequestSize() != 1<<18 {
+	if sds.RequestSize() != skylinkDataSourceRequestSize {
 		t.Fatal("unexpected")
 	}
 

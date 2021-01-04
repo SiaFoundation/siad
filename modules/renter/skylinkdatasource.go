@@ -14,6 +14,10 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
+// skylinkDataSourceRequestSize is the size that is suggested by the data source
+// to be used when reading data from it.
+const skylinkDataSourceRequestSize = 1 << 18 // 256 KiB
+
 // skylinkDataSource implements streamBufferDataSource on a Skylink. Notably, it
 // creates a pcws for every single chunk in the Skylink and keeps them in
 // memory, to reduce latency on seeking through the file.
@@ -67,7 +71,7 @@ func (sds *skylinkDataSource) Metadata() modules.SkyfileMetadata {
 
 // RequestSize implements streamBufferDataSource
 func (sds *skylinkDataSource) RequestSize() uint64 {
-	return 1 << 18 // 256 KiB
+	return skylinkDataSourceRequestSize
 }
 
 // SilentClose implements streamBufferDataSource
