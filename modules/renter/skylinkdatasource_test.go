@@ -104,28 +104,8 @@ func TestSkylinkDataSource(t *testing.T) {
 
 	length := fastrand.Uint64n(datasize/4) + 1
 	offset := fastrand.Uint64n(datasize - length)
-	buf := make([]byte, length)
 
-	n, err := sds.ReadAt(buf, int64(offset))
-	if n != int(length) {
-		t.Fatal("unexpected size read", n)
-	}
-	if err != nil {
-		t.Fatal("unexpected err", err)
-	}
-	if !bytes.Equal(buf, allData[offset:offset+length]) {
-		t.Fatal("unexepected data")
-		t.Log("expected: ", allData[offset:offset+length], len(allData[offset:offset+length]))
-		t.Log("actual:   ", buf, len(buf))
-	}
-
-	sds.SilentClose()
-	closed = atomic.LoadUint64(&sds.atomicClosed)
-	if closed != 1 {
-		t.Fatal("unexpected")
-	}
-
-	dataChan, errorChan := sds.ReadChannel(int64(offset), int64(length))
+	dataChan, errorChan := sds.ReadChannel(offset, length)
 	if errorChan == nil {
 		t.Fatal("unexpected")
 	}
@@ -138,7 +118,7 @@ func TestSkylinkDataSource(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	buf = make([]byte, length)
+	buf := make([]byte, length)
 	for i := range buf {
 		buf[i] = <-dataChan
 	}
@@ -146,5 +126,11 @@ func TestSkylinkDataSource(t *testing.T) {
 		t.Log("expected: ", allData[offset:offset+length], len(allData[offset:offset+length]))
 		t.Log("actual:   ", buf, len(buf))
 		t.Fatal("unexepected data")
+	}
+
+	sds.SilentClose()
+	closed = atomic.LoadUint64(&sds.atomicClosed)
+	if closed != 1 {
+		t.Fatal("unexpected")
 	}
 }
