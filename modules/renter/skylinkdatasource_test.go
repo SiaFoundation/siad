@@ -96,7 +96,7 @@ func TestSkylinkDataSource(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 	if sds.RequestSize() != 1<<18 {
-		t.Fatal("unexpected") // TODO why is this hardcoded to 256kb
+		t.Fatal("unexpected")
 	}
 
 	allData := append(baseChunk, fanoutChunk1...)
