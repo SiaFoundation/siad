@@ -19,13 +19,13 @@ import (
 const skylinkDataSourceRequestSize = 1 << 18 // 256 KiB
 
 type (
-	// skylinkDataSource implements streamBufferDataSource on a Skylink. Notably, it
-	// creates a pcws for every single chunk in the Skylink and keeps them in
-	// memory, to reduce latency on seeking through the file.
+	// skylinkDataSource implements streamBufferDataSource on a Skylink.
+	// Notably, it creates a pcws for every single chunk in the Skylink and
+	// keeps them in memory, to reduce latency on seeking through the file.
 	skylinkDataSource struct {
-		// atomicClosed is an atomic variable to check if the data source has been
-		// closed yet. This is primarily used to ensure that the cancelFunc is only
-		// called once.
+		// atomicClosed is an atomic variable to check if the data source has
+		// been closed yet. This is primarily used to ensure that the cancelFunc
+		// is only called once.
 		atomicClosed uint64
 
 		// Metadata.
@@ -38,9 +38,9 @@ type (
 		staticPricePerMS types.Currency
 
 		// The base sector contains all of the raw data for the skylink, and the
-		// fanoutPCWS contains one pcws for every chunk in the fanout. The worker
-		// sets are spun up in advance so that the HasSector queries have completed
-		// by the time that someone needs to fetch the data.
+		// fanoutPCWS contains one pcws for every chunk in the fanout. The
+		// worker sets are spun up in advance so that the HasSector queries have
+		// completed by the time that someone needs to fetch the data.
 		staticFirstChunk    []byte
 		staticChunkFetchers []chunkFetcher
 
