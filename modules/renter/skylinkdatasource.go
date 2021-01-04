@@ -18,41 +18,45 @@ import (
 // to be used when reading data from it.
 const skylinkDataSourceRequestSize = 1 << 18 // 256 KiB
 
-// skylinkDataSource implements streamBufferDataSource on a Skylink. Notably, it
-// creates a pcws for every single chunk in the Skylink and keeps them in
-// memory, to reduce latency on seeking through the file.
-type skylinkDataSource struct {
-	// atomicClosed is an atomic variable to check if the data source has been
-	// closed yet. This is primarily used to ensure that the cancelFunc is only
-	// called once.
-	atomicClosed uint64
+type (
+	// skylinkDataSource implements streamBufferDataSource on a Skylink. Notably, it
+	// creates a pcws for every single chunk in the Skylink and keeps them in
+	// memory, to reduce latency on seeking through the file.
+	skylinkDataSource struct {
+		// atomicClosed is an atomic variable to check if the data source has been
+		// closed yet. This is primarily used to ensure that the cancelFunc is only
+		// called once.
+		atomicClosed uint64
 
-	// Metadata.
-	staticID       modules.DataSourceID
-	staticLayout   modules.SkyfileLayout
-	staticMetadata modules.SkyfileMetadata
+		// Metadata.
+		staticID       modules.DataSourceID
+		staticLayout   modules.SkyfileLayout
+		staticMetadata modules.SkyfileMetadata
 
-	// The "price per millisecond", it is the budget that we are
-	// willing to spend on faster workers. See projectchunkworkset.go.
-	staticPricePerMS types.Currency
+		// The "price per millisecond", it is the budget that we are
+		// willing to spend on faster workers. See projectchunkworkset.go.
+		staticPricePerMS types.Currency
 
-	// The base sector contains all of the raw data for the skylink, and the
-	// fanoutPCWS contains one pcws for every chunk in the fanout. The worker
-	// sets are spun up in advance so that the HasSector queries have completed
-	// by the time that someone needs to fetch the data.
-	staticFirstChunk    []byte
-	staticChunkFetchers []chunkFetcher
+		// The base sector contains all of the raw data for the skylink, and the
+		// fanoutPCWS contains one pcws for every chunk in the fanout. The worker
+		// sets are spun up in advance so that the HasSector queries have completed
+		// by the time that someone needs to fetch the data.
+		staticFirstChunk    []byte
+		staticChunkFetchers []chunkFetcher
 
-	// Utilities
-	staticCancelFunc context.CancelFunc
-	staticCtx        context.Context
-	staticRenter     *Renter
-}
+		// Utilities
+		staticCancelFunc context.CancelFunc
+		staticCtx        context.Context
+		staticRenter     *Renter
+	}
 
-type skylinkReadResponse struct {
-	staticData []byte
-	staticErr  error
-}
+	// skylinkReadResponse is a helper struct that contains the download
+	// response
+	skylinkReadResponse struct {
+		staticData []byte
+		staticErr  error
+	}
+)
 
 // DataSize implements streamBufferDataSource
 func (sds *skylinkDataSource) DataSize() uint64 {
