@@ -196,6 +196,7 @@ func commitFoundationUpdate(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDir
 		if exists {
 			setFoundationUnlockHashes(tx, primary, failsafe)
 			deletePriorFoundationUnlockHashes(tx, pb.Height)
+			transferFoundationOutputs(tx, primary)
 		}
 	}
 }

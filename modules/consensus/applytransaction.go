@@ -231,7 +231,39 @@ func applyArbitraryData(tx *bolt.Tx, pb *processedBlock, t types.Transaction) {
 			}
 			setPriorFoundationUnlockHashes(tx, pb.Height)
 			setFoundationUnlockHashes(tx, update.NewPrimary, update.NewFailsafe)
+			transferFoundationOutputs(tx, update.NewPrimary)
 		}
+	}
+}
+
+// transferFoundationOutputs transfers (up to) the 24 most recent subsidy
+// outputs to newPrimary. This allows subsidies to be recovered in the event
+// that the primary key is lost or unusable when a subsidy is created.
+func transferFoundationOutputs(tx *bolt.Tx, newPrimary types.UnlockHash) {
+	currentHeight := blockHeight(tx)
+	subsidies := (currentHeight - types.FoundationHardforkHeight) / types.FoundationSubsidyFrequency
+	if subsidies > 24 {
+		subsidies -= 24
+	} else {
+		subsidies = 0
+	}
+	start := types.FoundationHardforkHeight + subsidies*types.FoundationSubsidyFrequency
+	for height := start; height < currentHeight; height += types.FoundationSubsidyFrequency {
+		bid, err := getPath(tx, height)
+		if err != nil {
+			if build.DEBUG {
+				panic(err)
+			}
+			continue
+		}
+		id := bid.FoundationSubsidyID()
+		sco, err := getSiacoinOutput(tx, id)
+		if err != nil {
+			continue // output has already been spent
+		}
+		sco.UnlockHash = newPrimary
+		removeSiacoinOutput(tx, id)
+		addSiacoinOutput(tx, id, sco)
 	}
 }
 
