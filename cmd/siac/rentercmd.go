@@ -77,6 +77,14 @@ var (
 		Run:   wrap(renterbackuplistcmd),
 	}
 
+	renterCleanCmd = &cobra.Command{
+		Use:   "clean",
+		Short: "Cleans up lost files",
+		Long: `WARNING: This action will permanently delete any files associated with
+the renter that do not have a local copy on disk and have a redundancy of < 1.`,
+		Run: wrap(rentercleancmd),
+	}
+
 	renterCmd = &cobra.Command{
 		Use:   "renter",
 		Short: "Perform renter actions",
@@ -324,6 +332,13 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 		Long:  "Display a health summary of uploaded files",
 		Run:   wrap(renterhealthsummarycmd),
 	}
+
+	renterLostCmd = &cobra.Command{
+		Use:   "lost",
+		Short: "Display the renter's lost files",
+		Long:  "Display the renter's lost files",
+		Run:   wrap(renterlostcmd),
+	}
 )
 
 // abs returns the absolute representation of a path.
@@ -335,6 +350,36 @@ func abs(path string) string {
 		return path
 	}
 	return abspath
+}
+
+// rentercleancmd cleans any lost files from the renter.
+func rentercleancmd() {
+	br := bufio.NewReader(os.Stdin)
+	readString := func() string {
+		str, _ := br.ReadString('\n')
+		return strings.TrimSpace(str)
+	}
+
+	fmt.Println("WARNING: This command will delete lost files and cannot be undone!")
+	// TODO: Is this for loop needed?
+	for {
+		fmt.Print("Are you sure you want to continue? (y/n): ")
+		answer := readString()
+		if answer == "n" || answer == "N" {
+			return
+		}
+		if answer == "y" || answer == "Y" {
+			break
+		}
+		fmt.Println("Invalid response")
+		return
+	}
+
+	// Clean up lost files
+	err := httpClient.RenterCleanPost()
+	if err != nil {
+		die("unable to clean renter's lost files: ", err)
+	}
 }
 
 // rentercmd displays the renter's financial metrics and high level renter info
@@ -411,6 +456,16 @@ func rentercmd() {
 	rateLimitSummary(rg.Settings.MaxDownloadSpeed, rg.Settings.MaxUploadSpeed)
 }
 
+// renterlostcmd is the handler for displaying the renter's lost files.
+func renterlostcmd() {
+	// Print out the lost files of the renter
+	dirs := getDir(modules.RootSiaPath(), true, true)
+	_, _, err := fileHealthBreakdown(dirs, true)
+	if err != nil {
+		die(err)
+	}
+}
+
 // renterhealthsummarycmd is the handler for displaying the overall health
 // summary for uploaded files.
 func renterhealthsummarycmd() {
@@ -422,7 +477,7 @@ func renterhealthsummarycmd() {
 // renterFileHealthSummary prints out a summary of the status of all the files
 // in the renter to track the progress of the files
 func renterFileHealthSummary(dirs []directoryInfo) {
-	percentages, numStuck, err := fileHealthBreakdown(dirs)
+	percentages, numStuck, err := fileHealthBreakdown(dirs, false)
 	if err != nil {
 		die(err)
 	}
@@ -445,7 +500,7 @@ func renterFileHealthSummary(dirs []directoryInfo) {
 
 // fileHealthBreakdown returns a percentage breakdown of the renter's files'
 // healths and the number of stuck files
-func fileHealthBreakdown(dirs []directoryInfo) ([]float64, int, error) {
+func fileHealthBreakdown(dirs []directoryInfo, printLostFiles bool) ([]float64, int, error) {
 	// Check for nil input
 	if len(dirs) == 0 {
 		return nil, 0, errors.New("No Directories Found")
@@ -476,8 +531,17 @@ func fileHealthBreakdown(dirs []directoryInfo) ([]float64, int, error) {
 				greater0++
 			default:
 				unrecoverable++
+				if printLostFiles {
+					fmt.Println(file.SiaPath)
+				}
 			}
 		}
+	}
+
+	// Print out total lost files
+	if printLostFiles {
+		fmt.Println()
+		fmt.Println(unrecoverable, "lost files found.")
 	}
 
 	// Check for no files uploaded

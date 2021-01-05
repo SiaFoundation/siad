@@ -154,6 +154,13 @@ func escapeSiaPath(siaPath modules.SiaPath) string {
 	return strings.Join(escapedSegments, "/")
 }
 
+// RenterCleanPost uses the /renter/clean endpoint to clean any lost files from
+// the renter
+func (c *Client) RenterCleanPost() (err error) {
+	err = c.post("/renter/clean", "", nil)
+	return
+}
+
 // RenterContractorChurnStatus uses the /renter/contractorchurnstatus endpoint
 // to get the current contractor churn status.
 func (c *Client) RenterContractorChurnStatus() (churnStatus modules.ContractorChurnStatus, err error) {

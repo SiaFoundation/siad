@@ -326,10 +326,10 @@ func initCmds() *cobra.Command {
 
 	root.AddCommand(renterCmd)
 	renterCmd.AddCommand(renterAllowanceCmd, renterBackupCreateCmd, renterBackupListCmd, renterBackupLoadCmd,
-		renterContractsCmd, renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd,
+		renterCleanCmd, renterContractsCmd, renterContractsRecoveryScanProgressCmd, renterDownloadCancelCmd,
 		renterDownloadsCmd, renterExportCmd, renterFilesDeleteCmd, renterFilesDownloadCmd,
 		renterFilesListCmd, renterFilesRenameCmd, renterFilesUnstuckCmd, renterFilesUploadCmd,
-		renterFuseCmd, renterPricesCmd, renterRatelimitCmd, renterSetAllowanceCmd,
+		renterFuseCmd, renterLostCmd, renterPricesCmd, renterRatelimitCmd, renterSetAllowanceCmd,
 		renterSetLocalPathCmd, renterTriggerContractRecoveryScanCmd, renterUploadsCmd, renterWorkersCmd,
 		renterHealthSummaryCmd)
 	renterWorkersCmd.AddCommand(renterWorkersAccountsCmd, renterWorkersDownloadsCmd, renterWorkersPriceTableCmd, renterWorkersReadJobsCmd, renterWorkersHasSectorJobSCmd, renterWorkersUploadsCmd)
