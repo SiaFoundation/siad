@@ -927,43 +927,17 @@ func (api *API) renterAllowanceCancelHandlerPOST(w http.ResponseWriter, _ *http.
 
 // renterCleanHandlerPOST handles the API call to clean lost files from a Renter.
 func (api *API) renterCleanHandlerPOST(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	// Since file deletion requires absolute SiaPaths we first handle the
-	// UserFolder
 	var deleteErrs error
-	userFolderCleanFunc := func(fi modules.FileInfo) {
+	cleanFunc := func(fi modules.FileInfo) {
 		if fi.OnDisk || fi.Redundancy >= 1 {
 			return
 		}
-		siaPath, err := modules.UserFolder.Join(fi.SiaPath.String())
-		if err != nil {
-			deleteErrs = errors.Compose(deleteErrs, err)
-			return
-		}
-		deleteErrs = errors.Compose(deleteErrs, api.renter.DeleteFile(siaPath))
+		deleteErrs = errors.Compose(deleteErrs, api.renter.DeleteFile(fi.SiaPath))
 	}
-	err := api.renter.FileList(modules.UserFolder, true, false, userFolderCleanFunc)
+	err := api.renter.FileList(modules.RootSiaPath(), true, false, cleanFunc)
 	err = errors.Compose(err, deleteErrs)
 	if err != nil {
-		WriteError(w, Error{"unable to clear lost files from /home/user: " + err.Error()}, http.StatusBadRequest)
-		return
-	}
-
-	// Now Handle the SkynetFolder
-	skynetFolderCleanFunc := func(fi modules.FileInfo) {
-		if fi.OnDisk || fi.Redundancy >= 1 {
-			return
-		}
-		siaPath, err := modules.SkynetFolder.Join(fi.SiaPath.String())
-		if err != nil {
-			deleteErrs = errors.Compose(deleteErrs, err)
-			return
-		}
-		deleteErrs = errors.Compose(deleteErrs, api.renter.DeleteFile(siaPath))
-	}
-	err = api.renter.FileList(modules.SkynetFolder, true, false, skynetFolderCleanFunc)
-	err = errors.Compose(err, deleteErrs)
-	if err != nil {
-		WriteError(w, Error{"unable to clear lost files from /home/user: " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"unable to clear lost files: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 
