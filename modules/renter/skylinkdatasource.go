@@ -108,25 +108,24 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkRea
 	}
 	downloadChans := make([]chan *downloadResponse, 0, numChunks)
 
-	// Determine if we need to read from the first chunk first
-	var n uint64
-	if off < firstChunkLength {
-		n = firstChunkLength - off
-		if fetchSize < n {
-			n = fetchSize
+	// If there is data in the first chunk it means we are dealing with a small
+	// skyfile without fanout bytes, that means we can simply read from that and
+	// return early.
+	if len(sds.staticFirstChunk) != 0 {
+		bytesLeft := firstChunkLength - off
+		if fetchSize > bytesLeft {
+			fetchSize = bytesLeft
 		}
-		firstChunkData := sds.staticFirstChunk[off : off+n]
-		off += n
-
-		mockResponseChan := make(chan *downloadResponse, 1)
-		mockResponseChan <- &downloadResponse{data: firstChunkData}
-		downloadChans = append(downloadChans, mockResponseChan)
+		responseChan <- &skylinkReadResponse{
+			staticData: sds.staticFirstChunk[off : off+fetchSize],
+		}
+		return responseChan
 	}
 
-	// Ignore data in the first chunk.
-	off -= firstChunkLength
-
-	// Keep reading from chunks until all the data has been read.
+	// Otherwise we are dealing with a large skyfile and have to aggregate the
+	// download responses for every chunk in the fanout. We keep reading from
+	// chunks until all the data has been read.
+	var n uint64
 	for n < fetchSize && off < sds.staticLayout.Filesize {
 		// Determine which chunk the offset is currently in.
 		chunkIndex := off / chunkSize

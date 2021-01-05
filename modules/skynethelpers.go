@@ -251,8 +251,9 @@ func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []by
 	}
 
 	// Parse the fanout.
-	// NOTE: we copy the fanoutBytes instead of returning a slice into baseSector
-	// because in PinSkylink the baseSector may be re-encrypted.
+	//
+	// NOTE: we copy the fanoutBytes instead of returning a slice into
+	// baseSector because in PinSkylink the baseSector may be re-encrypted.
 	fanoutBytes = make([]byte, sl.FanoutSize)
 	copy(fanoutBytes, baseSector[offset:offset+sl.FanoutSize])
 	offset += sl.FanoutSize

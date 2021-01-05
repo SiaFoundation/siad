@@ -45,6 +45,7 @@ func newChunkFetcher(data []byte, err error) chunkFetcher {
 // SkylinkDataSource. Note that we are using mocked data, testing of the
 // datasource with live PCWSs attached will happen through integration tests.
 func TestSkylinkDataSource(t *testing.T) {
+	t.Parallel()
 	t.Run("small", testSkylinkDataSourceSmallFile)
 	t.Run("large", testSkylinkDataSourceLargeFile)
 }
@@ -127,13 +128,13 @@ func testSkylinkDataSourceSmallFile(t *testing.T) {
 	}
 }
 
-// testSkylinkDataSourceSmallFile verifies we can read from a datasource for a
+// testSkylinkDataSourceLargeFile verifies we can read from a datasource for a
 // large skyfile.
 func testSkylinkDataSourceLargeFile(t *testing.T) {
-	baseChunk := make([]byte, int(modules.SectorSize))
 	fanoutChunk1 := fastrand.Bytes(int(modules.SectorSize))
 	fanoutChunk2 := fastrand.Bytes(int(modules.SectorSize) / 2)
-	datasize := modules.SectorSize*2 + modules.SectorSize/2
+	allData := append(fanoutChunk1, fanoutChunk2...)
+	datasize := uint64(len(allData))
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -153,7 +154,7 @@ func testSkylinkDataSourceLargeFile(t *testing.T) {
 			Length:   datasize,
 		},
 
-		staticFirstChunk: baseChunk,
+		staticFirstChunk: make([]byte, 0),
 		staticChunkFetchers: []chunkFetcher{
 			newChunkFetcher(fanoutChunk1, nil),
 			newChunkFetcher(fanoutChunk2, nil),
@@ -185,12 +186,8 @@ func testSkylinkDataSourceLargeFile(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	allData := append(baseChunk, fanoutChunk1...)
-	allData = append(allData, fanoutChunk2...)
-
 	length := fastrand.Uint64n(datasize/4) + 1
 	offset := fastrand.Uint64n(datasize - length)
-
 	responseChan := sds.ReadStream(offset, length)
 	select {
 	case resp := <-responseChan:
