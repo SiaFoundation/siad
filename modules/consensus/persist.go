@@ -69,6 +69,12 @@ func (cs *ConsensusSet) loadDB() error {
 		if genesisID != cs.blockRoot.Block.ID() {
 			return errors.New("blockchain has wrong genesis block")
 		}
+
+		// Compute initial checksum.
+		if build.DEBUG {
+			cs.blockRoot.ConsensusChecksum = consensusChecksum(tx)
+			addBlockMap(tx, &cs.blockRoot)
+		}
 		return nil
 	})
 }

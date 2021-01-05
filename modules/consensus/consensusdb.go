@@ -140,12 +140,8 @@ func (cs *ConsensusSet) createConsensusDB(tx *bolt.Tx) error {
 		UnlockHash: types.UnlockHash{},
 	})
 
-	// Add the genesis block to the block structures - checksum must be taken
-	// after pushing the genesis block into the path.
+	// Add the genesis block to the block structures.
 	pushPath(tx, cs.blockRoot.Block.ID())
-	if build.DEBUG {
-		cs.blockRoot.ConsensusChecksum = consensusChecksum(tx)
-	}
 	addBlockMap(tx, &cs.blockRoot)
 	return nil
 }
