@@ -124,7 +124,7 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkRea
 	}
 
 	// Ignore data in the first chunk.
-	off -= uint64(len(sds.staticFirstChunk))
+	off -= firstChunkLength
 
 	// Keep reading from chunks until all the data has been read.
 	for n < fetchSize && off < sds.staticLayout.Filesize {
@@ -154,6 +154,8 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkRea
 		n += downloadSize
 	}
 
+	// Spin a goroutine that collects all download responses, aggregates them
+	// and sends it as a single response over the response channel.
 	go func(downloadChans []chan *downloadResponse) {
 		defer close(responseChan)
 
@@ -255,7 +257,7 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Curren
 	if err != nil {
 		return nil, errors.AddContext(err, "error parsing skyfile metadata")
 	}
-	fanoutChunks, err := decodeFanout(layout, fanoutBytes)
+	fanoutChunks, err := decodeFanoutIntoChunks(layout, fanoutBytes)
 	if err != nil {
 		return nil, errors.AddContext(err, "error parsing skyfile fanout")
 	}
@@ -294,9 +296,9 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Curren
 	return sds, nil
 }
 
-// decodeFanout will take the fanout bytes from a skyfile and decode them in to
-// the staticChunks filed of the fanoutStreamBufferDataSource.
-func decodeFanout(ll modules.SkyfileLayout, fanoutBytes []byte) ([][]crypto.Hash, error) {
+// decodeFanoutIntoChunks will take the fanout bytes from a skyfile and decode
+// them in to chunks.
+func decodeFanoutIntoChunks(ll modules.SkyfileLayout, fanoutBytes []byte) ([][]crypto.Hash, error) {
 	// There is no fanout if there are no fanout settings.
 	if len(fanoutBytes) == 0 {
 		return nil, nil
