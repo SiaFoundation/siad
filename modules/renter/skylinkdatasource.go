@@ -86,7 +86,7 @@ func (sds *skylinkDataSource) SilentClose() {
 		return // already closed
 	}
 
-	// Cancelling the context for the data source should be sufficient. as all
+	// Cancelling the context for the data source should be sufficient. As all
 	// child processes (such as the pcws for each chunk) should be using
 	// contexts derived from the sds context.
 	sds.staticCancelFunc()
