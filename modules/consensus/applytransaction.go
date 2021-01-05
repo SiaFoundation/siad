@@ -236,19 +236,12 @@ func applyArbitraryData(tx *bolt.Tx, pb *processedBlock, t types.Transaction) {
 	}
 }
 
-// transferFoundationOutputs transfers (up to) the 24 most recent subsidy
-// outputs to newPrimary. This allows subsidies to be recovered in the event
-// that the primary key is lost or unusable when a subsidy is created.
+// transferFoundationOutputs transfers all unspent subsidy outputs to
+// newPrimary. This allows subsidies to be recovered in the event that the
+// primary key is lost or unusable when a subsidy is created.
 func transferFoundationOutputs(tx *bolt.Tx, newPrimary types.UnlockHash) {
 	currentHeight := blockHeight(tx)
-	subsidies := (currentHeight - types.FoundationHardforkHeight) / types.FoundationSubsidyFrequency
-	if subsidies > 24 {
-		subsidies -= 24
-	} else {
-		subsidies = 0
-	}
-	start := types.FoundationHardforkHeight + subsidies*types.FoundationSubsidyFrequency
-	for height := start; height < currentHeight; height += types.FoundationSubsidyFrequency {
+	for height := types.FoundationHardforkHeight; height < currentHeight; height += types.FoundationSubsidyFrequency {
 		bid, err := getPath(tx, height)
 		if err != nil {
 			if build.DEBUG {
