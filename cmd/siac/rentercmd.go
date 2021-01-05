@@ -361,25 +361,29 @@ func rentercleancmd() {
 	}
 
 	fmt.Println("WARNING: This command will delete lost files and cannot be undone!")
-	// TODO: Is this for loop needed?
 	for {
 		fmt.Print("Are you sure you want to continue? (y/n): ")
 		answer := readString()
-		if answer == "n" || answer == "N" {
+		n := answer == "n" || answer == "N"
+		no := answer == "no" || answer == "No"
+		if n || no {
 			return
 		}
-		if answer == "y" || answer == "Y" {
+		y := answer == "y" || answer == "Y"
+		yes := answer == "yes" || answer == "Yes"
+		if y || yes {
 			break
 		}
 		fmt.Println("Invalid response")
-		return
 	}
 
 	// Clean up lost files
+	fmt.Println("Cleaning lost files...")
 	err := httpClient.RenterCleanPost()
 	if err != nil {
 		die("unable to clean renter's lost files: ", err)
 	}
+	fmt.Println("Successfully cleaned lost files!")
 }
 
 // rentercmd displays the renter's financial metrics and high level renter info
