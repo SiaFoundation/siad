@@ -13,6 +13,8 @@ func TestNewGroup(t *testing.T) {
 	if !build.VLONG {
 		t.SkipNow()
 	}
+	t.Parallel()
+
 	// Specify the parameters for the group
 	groupParams := GroupParams{
 		Hosts:   5,
@@ -34,9 +36,6 @@ func TestNewGroup(t *testing.T) {
 	// Check if the correct number of nodes was created
 	if len(tg.Hosts()) != groupParams.Hosts {
 		t.Error("Wrong number of hosts")
-	}
-	if len(tg.Portals()) != groupParams.Portals {
-		t.Error("Wrong number of portals")
 	}
 	expectedRenters := groupParams.Portals + groupParams.Renters
 	if len(tg.Renters()) != expectedRenters {
@@ -85,9 +84,11 @@ func TestNewGroup(t *testing.T) {
 
 // TestNewGroupNoMiner tests NewGroup without a miner
 func TestNewGroupNoMiner(t *testing.T) {
-	if testing.Short() || !build.VLONG {
+	if !build.VLONG {
 		t.SkipNow()
 	}
+	t.Parallel()
+
 	// Try to create a group without miners
 	groupParams := GroupParams{
 		Hosts:   5,
@@ -103,9 +104,11 @@ func TestNewGroupNoMiner(t *testing.T) {
 
 // TestNewGroupNoRenterHost tests NewGroup with no renter or host
 func TestNewGroupNoRenterHost(t *testing.T) {
-	if testing.Short() || !build.VLONG {
+	if !build.VLONG {
 		t.SkipNow()
 	}
+	t.Parallel()
+
 	// Create a group with nothing but miners
 	groupParams := GroupParams{
 		Hosts:   0,
@@ -129,13 +132,15 @@ func TestAddNewNode(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 
 	// Create a group
 	groupParams := GroupParams{
 		Renters: 2,
 		Miners:  1,
 	}
-	tg, err := NewGroupFromTemplate(siatestTestDir(t.Name()), groupParams)
+	groupDir := siatestTestDir(t.Name())
+	tg, err := NewGroupFromTemplate(groupDir, groupParams)
 	if err != nil {
 		t.Fatal("Failed to create group: ", err)
 	}
@@ -149,8 +154,7 @@ func TestAddNewNode(t *testing.T) {
 	oldRenters := tg.Renters()
 
 	// Test adding a node
-	testDir := TestDir(t.Name())
-	renterTemplate := node.Renter(filepath.Join(testDir, "/renter"))
+	renterTemplate := node.Renter(filepath.Join(groupDir, "renter"))
 	nodes, err := tg.AddNodes(renterTemplate)
 	if err != nil {
 		t.Fatal(err)
@@ -171,6 +175,8 @@ func TestNewGroupPortal(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
+
 	// Initiate a group with hosts and a miner.
 	groupParams := GroupParams{
 		Hosts:  4,
