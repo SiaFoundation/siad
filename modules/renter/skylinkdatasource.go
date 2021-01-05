@@ -211,8 +211,12 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Curren
 		}
 	}()
 
-	// Create the pcws for the first chunk, which is just a single root with
-	// both passthrough encryption and passthrough erasure coding.
+	// Create the pcws for the first chunk. We use a passthrough cipher and
+	// erasure coder. If the base sector is encrypted, we will notice and be
+	// able to decrypt it once we have fully downloaded it and are able to
+	// access the layout. We can make the assumption on the erasure coding being
+	// of 1-n seeing as we currently always upload the basechunk using 1-N
+	// redundancy.
 	ptec := modules.NewPassthroughErasureCoder()
 	tpsk, err := crypto.NewSiaKey(crypto.TypePlain, nil)
 	if err != nil {

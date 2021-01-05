@@ -194,7 +194,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup modules.SkyfileUploadParam
 
 	// Check that the encryption key and erasure code is compatible with the
 	// skyfile format. This is intentionally done before any heavy computation
-	// to catch early errors.
+	// to catch errors early on.
 	var sl modules.SkyfileLayout
 	masterKey := fileNode.MasterKey()
 	if len(masterKey.Key()) > len(sl.KeyData) {
