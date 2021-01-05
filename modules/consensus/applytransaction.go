@@ -217,6 +217,19 @@ func applyArbitraryData(tx *bolt.Tx, pb *processedBlock, t types.Transaction) {
 				// validArbitraryData should guarantee that decoding will not fail
 				panic(err)
 			}
+			// Apply the update. First, save a copy of the old (i.e. current)
+			// unlock hashes, so that we can revert later. Then set the new
+			// unlock hashes.
+			//
+			// Importantly, we must only do this once per block; otherwise, for
+			// complicated reasons involving diffs, we would not be able to
+			// revert updates safely. So if we see that a copy has already been
+			// recorded, we simply ignore the update; i.e. only the first update
+			// in a block will be applied.
+			if tx.Bucket(FoundationUnlockHashes).Get(encoding.Marshal(pb.Height)) != nil {
+				continue
+			}
+			setPriorFoundationUnlockHashes(tx, pb.Height)
 			setFoundationUnlockHashes(tx, update.NewPrimary, update.NewFailsafe)
 		}
 	}

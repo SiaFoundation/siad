@@ -183,6 +183,23 @@ func updateCurrentPath(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirectio
 	}
 }
 
+// commitFoundationUpdate updates the current Foundation unlock hashes in
+// accordance with the specified block and direction.
+func commitFoundationUpdate(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
+	if dir == modules.DiffApply {
+		for i := range pb.Block.Transactions {
+			applyArbitraryData(tx, pb, pb.Block.Transactions[i])
+		}
+	} else {
+		// Look for a set of prior unlock hashes for this height.
+		primary, failsafe, exists := getPriorFoundationUnlockHashes(tx, pb.Height)
+		if exists {
+			setFoundationUnlockHashes(tx, primary, failsafe)
+			deletePriorFoundationUnlockHashes(tx, pb.Height)
+		}
+	}
+}
+
 // commitDiffSet applies or reverts the diffs in a blockNode.
 func commitDiffSet(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
 	// Sanity checks - there are a few so they were moved to another function.
@@ -193,7 +210,9 @@ func commitDiffSet(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
 	createUpcomingDelayedOutputMaps(tx, pb, dir)
 	commitNodeDiffs(tx, pb, dir)
 	deleteObsoleteDelayedOutputMaps(tx, pb, dir)
+	commitFoundationUpdate(tx, pb, dir)
 	updateCurrentPath(tx, pb, dir)
+
 }
 
 // generateAndApplyDiff will verify the block and then integrate it into the

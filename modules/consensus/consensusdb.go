@@ -510,6 +510,31 @@ func setFoundationUnlockHashes(tx *bolt.Tx, primary, failsafe types.UnlockHash) 
 	}
 }
 
+// getPriorFoundationUnlockHashes returns the primary and failsafe Foundation
+// addresses immediately prior to the application of the specified block.
+func getPriorFoundationUnlockHashes(tx *bolt.Tx, height types.BlockHeight) (primary, failsafe types.UnlockHash, exists bool) {
+	exists = encoding.UnmarshalAll(tx.Bucket(FoundationUnlockHashes).Get(encoding.Marshal(height)), &primary, &failsafe) == nil
+	return
+}
+
+// setPriorFoundationUnlockHashes sets the primary and failsafe Foundation
+// addresses immediately prior to the application of the specified block.
+func setPriorFoundationUnlockHashes(tx *bolt.Tx, height types.BlockHeight) {
+	err := tx.Bucket(FoundationUnlockHashes).Put(encoding.Marshal(height), encoding.MarshalAll(getFoundationUnlockHashes(tx)))
+	if build.DEBUG && err != nil {
+		panic(err)
+	}
+}
+
+// deletePriorFoundationUnlockHashes deletes the primary and failsafe Foundation
+// addresses for the specified height.
+func deletePriorFoundationUnlockHashes(tx *bolt.Tx, height types.BlockHeight) {
+	err := tx.Bucket(FoundationUnlockHashes).Delete(encoding.Marshal(height))
+	if build.DEBUG && err != nil {
+		panic(err)
+	}
+}
+
 // addDSCO adds a delayed siacoin output to the consnesus set.
 func addDSCO(tx *bolt.Tx, bh types.BlockHeight, id types.SiacoinOutputID, sco types.SiacoinOutput) {
 	// Sanity check - dsco should never have a value of zero.

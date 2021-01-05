@@ -944,7 +944,7 @@ func TestValidArbitraryData(t *testing.T) {
 
 	// Check transaction with a valid update
 	primaryUC, _ := types.GenerateDeterministicMultisig(2, 3, types.InitialFoundationTestingSpecifier)
-	failsafeUC, _ := types.GenerateDeterministicMultisig(2, 3, types.InitialFoundationFailsafeTestingSpecifier)
+	failsafeUC, _ := types.GenerateDeterministicMultisig(3, 5, types.InitialFoundationFailsafeTestingSpecifier)
 	data = encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{})
 	txn := types.Transaction{
 		SiacoinInputs: []types.SiacoinInput{{
