@@ -666,7 +666,12 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration, pr
 		defer cancel()
 	}
 
-	return r.managedDownloadSkylink(ctx, link, pricePerMS)
+	// Download the data
+	metadata, streamer, err := r.managedDownloadSkylink(ctx, link, pricePerMS)
+	if errors.Contains(err, ErrProjectTimedOut) {
+		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
+	}
+	return metadata, streamer, err
 }
 
 // DownloadSkylinkBaseSector will take a link and turn it into the data of
@@ -677,28 +682,8 @@ func (r *Renter) DownloadSkylinkBaseSector(link modules.Skylink, timeout time.Du
 	}
 	defer r.tg.Done()
 
-	// Find the fetch size.
-	_, fetchSize, err := link.OffsetAndFetchSize()
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to get fetch size")
-	}
-
-	// Block until there is memory available, and ensure it gets returned.
-	if !r.memoryManager.Request(fetchSize, memoryPriorityHigh) {
-		return nil, errors.New("renter shut down before memory could be allocated for the download")
-	}
-	defer r.memoryManager.Return(fetchSize)
-
-	// Create the context
-	ctx := r.tg.StopCtx()
-	if timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
-		defer cancel()
-	}
-
 	// Download the base sector
-	baseSector, err := r.managedDownloadSkylinkBaseSector(ctx, link, pricePerMS)
+	baseSector, err := r.managedDownloadSkylinkBaseSector(link, timeout, pricePerMS)
 	return StreamerFromSlice(baseSector), err
 }
 
@@ -738,7 +723,7 @@ func (r *Renter) managedDownloadSkylink(ctx context.Context, link modules.Skylin
 
 // managedDownloadSkylinkBaseSector will download the baseSector for the skylink
 // or return the active stream
-func (r *Renter) managedDownloadSkylinkBaseSector(ctx context.Context, link modules.Skylink, pricePerMS types.Currency) ([]byte, error) {
+func (r *Renter) managedDownloadSkylinkBaseSector(link modules.Skylink, timeout time.Duration, pricePerMS types.Currency) ([]byte, error) {
 	// Check if link is blocked
 	if r.staticSkynetBlocklist.IsBlocked(link) {
 		return nil, ErrSkylinkBlocked
@@ -750,28 +735,12 @@ func (r *Renter) managedDownloadSkylinkBaseSector(ctx context.Context, link modu
 		return nil, errors.AddContext(err, "unable to parse skylink")
 	}
 
-	// Create the data source
-	id := link.DataSourceID()
-	stream, exists := r.staticStreamBufferSet.callNewStreamFromID(ctx, id, offset)
-	if !exists {
-		dataSource, err := r.skylinkDataSource(ctx, link, pricePerMS)
-		if err != nil {
-			return nil, errors.AddContext(err, "unable to create data source")
-		}
-		stream = r.staticStreamBufferSet.callNewStream(ctx, dataSource, offset)
-	}
-
-	baseSector := make([]byte, fetchSize)
-	n, err := stream.Read(baseSector)
+	// Fetch the leading chunk.
+	baseSector, err := r.DownloadByRoot(link.MerkleRoot(), offset, fetchSize, timeout)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to fetch base sector of skylink")
 	}
-	if n < modules.SkyfileLayoutSize {
-		return nil, errors.New("download did not fetch enough data, layout cannot be decoded")
-	}
-
-	// Return the baseSector
-	return baseSector, nil
+	return baseSector, err
 }
 
 // PinSkylink will fetch the file associated with the Skylink, and then pin all
@@ -781,9 +750,6 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	if r.staticSkynetBlocklist.IsBlocked(skylink) {
 		return ErrSkylinkBlocked
 	}
-
-	// Set sane defaults for unspecified values.
-	skyfileEstablishDefaults(&lup)
 
 	// Fetch the leading chunk.
 	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, modules.SectorSize, timeout)
@@ -809,6 +775,9 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	if err != nil {
 		return errors.AddContext(err, "error parsing skyfile metadata")
 	}
+
+	// Set sane defaults for unspecified values.
+	skyfileEstablishDefaults(&lup)
 
 	// Start setting up the FUP.
 	fup := modules.FileUploadParams{

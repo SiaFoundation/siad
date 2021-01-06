@@ -241,7 +241,7 @@ func ParseSkyfileMetadata(baseSector []byte) (sl SkyfileLayout, fanoutBytes []by
 
 	// Check the version.
 	if sl.Version != 1 {
-		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, errors.New("unsupported skyfile version")
+		return SkyfileLayout{}, nil, SkyfileMetadata{}, nil, fmt.Errorf("unsupported skyfile version %v", sl.Version)
 	}
 
 	// Currently there is no support for skyfiles with fanout + metadata that

@@ -58,33 +58,33 @@ func TestSkynetSuite(t *testing.T) {
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
 		{Name: "Basic", Test: testSkynetBasic},
-		// {Name: "ConvertSiaFile", Test: testConvertSiaFile},
-		// {Name: "LargeMetadata", Test: testSkynetLargeMetadata},
-		// {Name: "MultipartUpload", Test: testSkynetMultipartUpload},
-		// {Name: "InvalidFilename", Test: testSkynetInvalidFilename},
-		// {Name: "SubDirDownload", Test: testSkynetSubDirDownload},
-		// {Name: "DisableForce", Test: testSkynetDisableForce},
-		// {Name: "BlocklistHash", Test: testSkynetBlocklistHash},
-		// {Name: "BlocklistSkylink", Test: testSkynetBlocklistSkylink},
-		// {Name: "BlocklistUpgrade", Test: testSkynetBlocklistUpgrade},
-		// {Name: "Portals", Test: testSkynetPortals},
-		// {Name: "HeadRequest", Test: testSkynetHeadRequest},
-		// {Name: "NoMetadata", Test: testSkynetNoMetadata},
-		// {Name: "Stats", Test: testSkynetStats},
-		// {Name: "RequestTimeout", Test: testSkynetRequestTimeout},
-		// {Name: "DryRunUpload", Test: testSkynetDryRunUpload},
-		// {Name: "RegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
-		// {Name: "RenameSiaPath", Test: testRenameSiaPath},
-		// {Name: "NoWorkers", Test: testSkynetNoWorkers},
-		// {Name: "DefaultPath", Test: testSkynetDefaultPath},
-		// {Name: "DefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
-		// {Name: "SingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
-		// {Name: "DownloadFormats", Test: testSkynetDownloadFormats},
-		// {Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSectorNoEncryption},
-		// {Name: "DownloadBaseSectorEncrypted", Test: testSkynetDownloadBaseSectorEncrypted},
-		// {Name: "DownloadByRoot", Test: testSkynetDownloadByRootNoEncryption},
-		// {Name: "DownloadByRootEncrypted", Test: testSkynetDownloadByRootEncrypted},
-		// {Name: "FanoutRegression", Test: testSkynetFanoutRegression},
+		{Name: "ConvertSiaFile", Test: testConvertSiaFile},
+		{Name: "LargeMetadata", Test: testSkynetLargeMetadata},
+		{Name: "MultipartUpload", Test: testSkynetMultipartUpload},
+		{Name: "InvalidFilename", Test: testSkynetInvalidFilename},
+		{Name: "SubDirDownload", Test: testSkynetSubDirDownload},
+		{Name: "DisableForce", Test: testSkynetDisableForce},
+		{Name: "BlocklistHash", Test: testSkynetBlocklistHash},
+		{Name: "BlocklistSkylink", Test: testSkynetBlocklistSkylink},
+		{Name: "BlocklistUpgrade", Test: testSkynetBlocklistUpgrade},
+		{Name: "Portals", Test: testSkynetPortals},
+		{Name: "HeadRequest", Test: testSkynetHeadRequest},
+		{Name: "NoMetadata", Test: testSkynetNoMetadata},
+		{Name: "Stats", Test: testSkynetStats},
+		{Name: "RequestTimeout", Test: testSkynetRequestTimeout},
+		{Name: "DryRunUpload", Test: testSkynetDryRunUpload},
+		{Name: "RegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
+		{Name: "RenameSiaPath", Test: testRenameSiaPath},
+		{Name: "NoWorkers", Test: testSkynetNoWorkers},
+		{Name: "DefaultPath", Test: testSkynetDefaultPath},
+		{Name: "DefaultPath_TableTest", Test: testSkynetDefaultPath_TableTest},
+		{Name: "SingleFileNoSubfiles", Test: testSkynetSingleFileNoSubfiles},
+		{Name: "DownloadFormats", Test: testSkynetDownloadFormats},
+		{Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSectorNoEncryption},
+		{Name: "DownloadBaseSectorEncrypted", Test: testSkynetDownloadBaseSectorEncrypted},
+		{Name: "DownloadByRoot", Test: testSkynetDownloadByRootNoEncryption},
+		{Name: "DownloadByRootEncrypted", Test: testSkynetDownloadByRootEncrypted},
+		{Name: "FanoutRegression", Test: testSkynetFanoutRegression},
 	}
 
 	// Run tests
@@ -2613,7 +2613,7 @@ func testSkynetNoWorkers(t *testing.T, tg *siatest.TestGroup) {
 	_, _, err = r.SkynetSkylinkGet(modules.Skylink{}.String())
 	if err == nil {
 		t.Fatal("Error is nil, expected error due to not enough workers")
-	} else if !strings.Contains(err.Error(), modules.ErrNotEnoughWorkersInWorkerPool.Error()) {
+	} else if !(strings.Contains(err.Error(), modules.ErrNotEnoughWorkersInWorkerPool.Error()) || strings.Contains(err.Error(), "not enough workers to complete download")) {
 		t.Errorf("Expected error containing '%v' but got %v", modules.ErrNotEnoughWorkersInWorkerPool, err)
 	}
 }

@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -86,21 +87,11 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 	// Prepare the response channel
 	responseChan := make(chan *readResponse, 1)
 
-	// Determine how large each chunk is.
-	chunkSize := uint64(sds.staticLayout.FanoutDataPieces) * modules.SectorSize
-	firstChunkLength := uint64(len(sds.staticFirstChunk))
-
-	// Prepare an array of download chans on which we'll receive the data.
-	numChunks := fetchSize / chunkSize
-	if fetchSize%chunkSize != 0 {
-		numChunks += 1
-	}
-	downloadChans := make([]chan *downloadResponse, 0, numChunks)
-
 	// If there is data in the first chunk it means we are dealing with a small
 	// skyfile without fanout bytes, that means we can simply read from that and
 	// return early.
-	if len(sds.staticFirstChunk) != 0 {
+	firstChunkLength := uint64(len(sds.staticFirstChunk))
+	if firstChunkLength != 0 {
 		bytesLeft := firstChunkLength - off
 		if fetchSize > bytesLeft {
 			fetchSize = bytesLeft
@@ -110,6 +101,16 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 		}
 		return responseChan
 	}
+
+	// Determine how large each chunk is.
+	chunkSize := uint64(sds.staticLayout.FanoutDataPieces) * modules.SectorSize
+
+	// Prepare an array of download chans on which we'll receive the data.
+	numChunks := fetchSize / chunkSize
+	if fetchSize%chunkSize != 0 {
+		numChunks += 1
+	}
+	downloadChans := make([]chan *downloadResponse, 0, numChunks)
 
 	// Otherwise we are dealing with a large skyfile and have to aggregate the
 	// download responses for every chunk in the fanout. We keep reading from
@@ -231,6 +232,7 @@ func (r *Renter) skylinkDataSource(ctx context.Context, link modules.Skylink, pr
 	if len(baseSector) < modules.SkyfileLayoutSize {
 		return nil, errors.New("download did not fetch enough data, layout cannot be decoded")
 	}
+	fmt.Println("received base sector", baseSector)
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
 	// This will fail if we don't have the decryption key.
@@ -248,28 +250,35 @@ func (r *Renter) skylinkDataSource(ctx context.Context, link modules.Skylink, pr
 		return nil, errors.AddContext(err, "error parsing skyfile metadata")
 	}
 
-	// Derive the fanout key and erasure coder
-	fanoutKey, err := r.deriveFanoutKey(&layout, fileSpecificSkykey)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to derive encryption key")
-	}
-	ec, err := modules.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to derive erasure coding settings for fanout")
-	}
+	fmt.Println("first chunk", firstChunk)
 
-	// Create PCWSs for every chunk in the fanout
-	fanoutChunks, err := decodeFanoutIntoChunks(layout, fanoutBytes)
-	if err != nil {
-		return nil, errors.AddContext(err, "error parsing skyfile fanout")
-	}
-	fanoutChunkFetchers := make([]chunkFetcher, len(fanoutChunks))
-	for i, chunk := range fanoutChunks {
-		pcws, err := r.newPCWSByRoots(dsCtx, chunk, ec, fanoutKey, uint64(i))
+	// If there's a fanout create a PCWS for every chunk.
+	var fanoutChunkFetchers []chunkFetcher
+	if len(fanoutBytes) > 0 {
+		// Derive the fanout key
+		fanoutKey, err := r.deriveFanoutKey(&layout, fileSpecificSkykey)
 		if err != nil {
-			return nil, errors.AddContext(err, "unable to create worker set for all chunk indices")
+			return nil, errors.AddContext(err, "unable to derive encryption key")
 		}
-		fanoutChunkFetchers[i] = pcws
+
+		// Create the erasure coder
+		ec, err := modules.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
+		if err != nil {
+			return nil, errors.AddContext(err, "unable to derive erasure coding settings for fanout")
+		}
+
+		// Create a PCWS for every chunk
+		fanoutChunks, err := decodeFanoutIntoChunks(layout, fanoutBytes)
+		if err != nil {
+			return nil, errors.AddContext(err, "error parsing skyfile fanout")
+		}
+		for i, chunk := range fanoutChunks {
+			pcws, err := r.newPCWSByRoots(dsCtx, chunk, ec, fanoutKey, uint64(i))
+			if err != nil {
+				return nil, errors.AddContext(err, "unable to create worker set for all chunk indices")
+			}
+			fanoutChunkFetchers = append(fanoutChunkFetchers, pcws)
+		}
 	}
 
 	cancel = false

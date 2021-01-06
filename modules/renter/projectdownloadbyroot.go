@@ -384,7 +384,11 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	}
 
 	// Fetch the data
-	return r.managedDownloadByRoot(ctx, root, offset, length)
+	data, err := r.managedDownloadByRoot(ctx, root, offset, length)
+	if errors.Contains(err, ErrProjectTimedOut) {
+		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
+	}
+	return data, err
 }
 
 // checkPDBRGouging verifies the cost of executing the jobs performed by the
