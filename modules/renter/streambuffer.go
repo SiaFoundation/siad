@@ -128,7 +128,7 @@ type streamBufferDataSource interface {
 
 	// ReadStream allows the stream buffer to request specific data chunks from
 	// the data source. It returns a channel containing a read response.
-	ReadStream(uint64, uint64, time.Duration, types.Currency) chan *readResponse
+	ReadStream(context.Context, uint64, uint64, types.Currency) chan *readResponse
 }
 
 // readResponse is a helper struct that is returned when reading from the data
@@ -170,6 +170,7 @@ type stream struct {
 
 	mu                 sync.Mutex
 	staticStreamBuffer *streamBuffer
+	staticCtx          context.Context
 }
 
 // streamBuffer is a buffer for a single dataSource.
@@ -226,7 +227,7 @@ func newStreamBufferSet(tg *threadgroup.ThreadGroup) *streamBufferSet {
 // Each stream has a separate LRU for determining what data to buffer. Because
 // the LRU is distinct to the stream, the shared cache feature will not result
 // in one stream evicting data from another stream's LRU.
-func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, initialOffset uint64) *stream {
+func (sbs *streamBufferSet) callNewStream(ctx context.Context, dataSource streamBufferDataSource, initialOffset uint64) *stream {
 	// Grab the streamBuffer for the provided sourceID. If no streamBuffer for
 	// the sourceID exists, create a new one.
 	sourceID := dataSource.ID()
@@ -250,14 +251,14 @@ func (sbs *streamBufferSet) callNewStream(dataSource streamBufferDataSource, ini
 	}
 	streamBuf.externRefCount++
 	sbs.mu.Unlock()
-	return streamBuf.managedPrepareNewStream(initialOffset)
+	return streamBuf.managedPrepareNewStream(ctx, initialOffset)
 }
 
 // callNewStreamFromID will check the stream buffer set to see if a stream
 // buffer exists for the given data source id. If so, a new stream will be
 // created using the data source, and the bool will be set to 'true'. Otherwise,
 // the stream returned will be nil and the bool will be set to 'false'.
-func (sbs *streamBufferSet) callNewStreamFromID(id modules.DataSourceID, initialOffset uint64) (*stream, bool) {
+func (sbs *streamBufferSet) callNewStreamFromID(ctx context.Context, id modules.DataSourceID, initialOffset uint64) (*stream, bool) {
 	sbs.mu.Lock()
 	streamBuf, exists := sbs.streams[id]
 	if !exists {
@@ -266,7 +267,7 @@ func (sbs *streamBufferSet) callNewStreamFromID(id modules.DataSourceID, initial
 	}
 	streamBuf.externRefCount++
 	sbs.mu.Unlock()
-	return streamBuf.managedPrepareNewStream(initialOffset), true
+	return streamBuf.managedPrepareNewStream(ctx, initialOffset), true
 }
 
 // managedData will block until the data for a data section is available, and
@@ -479,7 +480,7 @@ func (sb *streamBuffer) callRemoveDataSection(index uint64) {
 // managedPrepareNewStream creates a new stream from an existing stream buffer.
 // The ref count for the buffer needs to be incremented under the
 // streamBufferSet lock, before this method is called.
-func (sb *streamBuffer) managedPrepareNewStream(initialOffset uint64) *stream {
+func (sb *streamBuffer) managedPrepareNewStream(ctx context.Context, initialOffset uint64) *stream {
 	// Determine how many data sections the stream should cache.
 	dataSectionsToCache := bytesBufferedPerStream / sb.staticDataSectionSize
 	if dataSectionsToCache < minimumDataSections {
@@ -491,6 +492,7 @@ func (sb *streamBuffer) managedPrepareNewStream(initialOffset uint64) *stream {
 		lru:    newLeastRecentlyUsedCache(dataSectionsToCache, sb),
 		offset: initialOffset,
 
+		staticCtx:          ctx,
 		staticStreamBuffer: sb,
 	}
 	stream.prepareOffset()
@@ -537,7 +539,7 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 		defer sb.tg.Done()
 
 		// Grab the data from the data source.
-		responseChan := sb.staticDataSource.ReadStream(index*dataSectionSize, fetchSize)
+		responseChan := sb.staticDataSource.ReadStream(sb.tg.StopCtx(), index*dataSectionSize, fetchSize, types.ZeroCurrency)
 
 		select {
 		case response := <-responseChan:

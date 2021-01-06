@@ -2,6 +2,7 @@ package renter
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -11,6 +12,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/threadgroup"
@@ -63,7 +65,7 @@ func (mds *mockDataSource) RequestSize() uint64 {
 }
 
 // ReadStream implements streamBufferDataSource.
-func (mds *mockDataSource) ReadStream(offset, fetchSize uint64) chan *readResponse {
+func (mds *mockDataSource) ReadStream(ctx context.Context, offset, fetchSize uint64, pricePerMS types.Currency) chan *readResponse {
 	mds.mu.Lock()
 	defer mds.mu.Unlock()
 
@@ -113,7 +115,7 @@ func TestStreamSmoke(t *testing.T) {
 	dataSectionSize := uint64(16)
 	dataSource := newMockDataSource(data, dataSectionSize)
 	sbs := newStreamBufferSet(&tg)
-	stream := sbs.callNewStream(dataSource, 0)
+	stream := sbs.callNewStream(context.Background(), dataSource, 0)
 
 	// Check that there is one reference in the stream buffer.
 	sbs.mu.Lock()
@@ -123,7 +125,7 @@ func TestStreamSmoke(t *testing.T) {
 		t.Fatal("bad")
 	}
 	// Create a new stream from an id, check that the ref count goes up.
-	streamFromID, exists := sbs.callNewStreamFromID(dataSource.ID(), 0)
+	streamFromID, exists := sbs.callNewStreamFromID(context.Background(), dataSource.ID(), 0)
 	if !exists {
 		t.Fatal("bad")
 	}
@@ -136,7 +138,7 @@ func TestStreamSmoke(t *testing.T) {
 	// Create a second, different data source with the same id and try to use
 	// that.
 	dataSource2 := newMockDataSource(data, dataSectionSize)
-	repeatStream := sbs.callNewStream(dataSource2, 0)
+	repeatStream := sbs.callNewStream(context.Background(), dataSource2, 0)
 	sbs.mu.Lock()
 	refs = stream.staticStreamBuffer.externRefCount
 	sbs.mu.Unlock()
@@ -307,7 +309,7 @@ func TestStreamSmoke(t *testing.T) {
 	// the same ID, they are actually separate objects which need to be closed
 	// individually.
 	dataSource3 := newMockDataSource(data, dataSectionSize)
-	stream2 := sbs.callNewStream(dataSource3, 0)
+	stream2 := sbs.callNewStream(context.Background(), dataSource3, 0)
 	bytesRead, err = io.ReadFull(stream2, buf)
 	if err != nil {
 		t.Fatal(err)
@@ -435,7 +437,7 @@ func TestStreamSmoke(t *testing.T) {
 
 	// Check that if the tg is stopped, the stream closes immediately.
 	dataSource4 := newMockDataSource(data, dataSectionSize)
-	stream3 := sbs.callNewStream(dataSource4, 0)
+	stream3 := sbs.callNewStream(context.Background(), dataSource4, 0)
 	bytesRead, err = io.ReadFull(stream3, buf)
 	if err != nil {
 		t.Fatal(err)

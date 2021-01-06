@@ -640,17 +640,38 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup modules.SkyfileUploadParamete
 
 // DownloadSkylink will take a link and turn it into the metadata and data of a
 // download.
-func (r *Renter) DownloadSkylink(link modules.Skylink, pricePerMS types.Currency) (modules.SkyfileMetadata, modules.Streamer, error) {
+func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration, pricePerMS types.Currency) (modules.SkyfileMetadata, modules.Streamer, error) {
 	if err := r.tg.Add(); err != nil {
 		return modules.SkyfileMetadata{}, nil, err
 	}
 	defer r.tg.Done()
-	return r.managedDownloadSkylink(link, pricePerMS)
+
+	// Find the fetch size.
+	_, fetchSize, err := link.OffsetAndFetchSize()
+	if err != nil {
+		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to get fetch size")
+	}
+
+	// Block until there is memory available, and ensure it gets returned.
+	if !r.memoryManager.Request(fetchSize, memoryPriorityHigh) {
+		return modules.SkyfileMetadata{}, nil, errors.New("renter shut down before memory could be allocated for the download")
+	}
+	defer r.memoryManager.Return(fetchSize)
+
+	// Create the context
+	ctx := r.tg.StopCtx()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
+		defer cancel()
+	}
+
+	return r.managedDownloadSkylink(ctx, link, pricePerMS)
 }
 
 // DownloadSkylinkBaseSector will take a link and turn it into the data of
 // a basesector without any decoding of the metadata, fanout, or decryption.
-func (r *Renter) DownloadSkylinkBaseSector(ctx context.Context, link modules.Skylink, pricePerMS types.Currency) (modules.Streamer, error) {
+func (r *Renter) DownloadSkylinkBaseSector(link modules.Skylink, timeout time.Duration, pricePerMS types.Currency) (modules.Streamer, error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, err
 	}
@@ -668,6 +689,14 @@ func (r *Renter) DownloadSkylinkBaseSector(ctx context.Context, link modules.Sky
 	}
 	defer r.memoryManager.Return(fetchSize)
 
+	// Create the context
+	ctx := r.tg.StopCtx()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
+		defer cancel()
+	}
+
 	// Download the base sector
 	baseSector, err := r.managedDownloadSkylinkBaseSector(ctx, link, pricePerMS)
 	return StreamerFromSlice(baseSector), err
@@ -675,7 +704,7 @@ func (r *Renter) DownloadSkylinkBaseSector(ctx context.Context, link modules.Sky
 
 // managedDownloadSkylink will take a link and turn it into the metadata and
 // data of a download.
-func (r *Renter) managedDownloadSkylink(link modules.Skylink, pricePerMS types.Currency) (modules.SkyfileMetadata, modules.Streamer, error) {
+func (r *Renter) managedDownloadSkylink(ctx context.Context, link modules.Skylink, pricePerMS types.Currency) (modules.SkyfileMetadata, modules.Streamer, error) {
 	if r.deps.Disrupt("resolveSkylinkToFixture") {
 		sf, err := fixtures.LoadSkylinkFixture(link)
 		if err != nil {
@@ -693,17 +722,17 @@ func (r *Renter) managedDownloadSkylink(link modules.Skylink, pricePerMS types.C
 	// skip the lookup procedure and use any data that other threads have
 	// cached.
 	id := link.DataSourceID()
-	streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(id, 0)
+	streamer, exists := r.staticStreamBufferSet.callNewStreamFromID(ctx, id, 0)
 	if exists {
 		return streamer.Metadata(), streamer, nil
 	}
 
 	// Create the data source and add it to the stream buffer set.
-	dataSource, err := r.skylinkDataSource(link, pricePerMS)
+	dataSource, err := r.skylinkDataSource(ctx, link, pricePerMS)
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create data source for skylink")
 	}
-	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0)
+	stream := r.staticStreamBufferSet.callNewStream(ctx, dataSource, 0)
 	return dataSource.Metadata(), stream, nil
 }
 
@@ -723,15 +752,14 @@ func (r *Renter) managedDownloadSkylinkBaseSector(ctx context.Context, link modu
 
 	// Create the data source
 	id := link.DataSourceID()
-	stream, exists := r.staticStreamBufferSet.callNewStreamFromID(id, offset)
+	stream, exists := r.staticStreamBufferSet.callNewStreamFromID(ctx, id, offset)
 	if !exists {
-		dataSource, err := r.skylinkDataSource(link, pricePerMS)
+		dataSource, err := r.skylinkDataSource(ctx, link, pricePerMS)
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to create data source")
 		}
-		stream = r.staticStreamBufferSet.callNewStream(dataSource, offset)
+		stream = r.staticStreamBufferSet.callNewStream(ctx, dataSource, offset)
 	}
-
 
 	baseSector := make([]byte, fetchSize)
 	n, err := stream.Read(baseSector)
@@ -757,17 +785,8 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	// Set sane defaults for unspecified values.
 	skyfileEstablishDefaults(&lup)
 
-	// Create a context. If the timeout is greater than zero, have the context
-	// expire when the timeout triggers.
-	ctx := r.tg.StopCtx()
-	if timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
-		defer cancel()
-	}
-
 	// Fetch the leading chunk.
-	baseSector, err := r.DownloadByRoot(ctx, skylink.MerkleRoot(), 0, modules.SectorSize, timeout)
+	baseSector, err := r.DownloadByRoot(skylink.MerkleRoot(), 0, modules.SectorSize, timeout)
 	if err != nil {
 		return errors.AddContext(err, "unable to fetch base sector of skylink")
 	}
@@ -845,12 +864,20 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 		return errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
 	}
 
+	// Create the context
+	ctx := r.tg.StopCtx()
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
+		defer cancel()
+	}
+
 	// Create the data source and add it to the stream buffer set.
-	dataSource, err := r.skylinkDataSource(skylink, pricePerMS)
+	dataSource, err := r.skylinkDataSource(ctx, skylink, pricePerMS)
 	if err != nil {
 		return errors.AddContext(err, "unable to create data source for skylink")
 	}
-	stream := r.staticStreamBufferSet.callNewStream(dataSource, 0)
+	stream := r.staticStreamBufferSet.callNewStream(ctx, dataSource, 0)
 
 	// Upload directly from the stream.
 	fileNode, err := r.callUploadStreamFromReader(fup, stream)

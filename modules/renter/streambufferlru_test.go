@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"testing"
 
 	"gitlab.com/NebulousLabs/fastrand"
@@ -22,7 +23,7 @@ func TestStreamLRU(t *testing.T) {
 	data := fastrand.Bytes(15999) // 1 byte short of 1000 data sections.
 	dataSource := newMockDataSource(data, 16)
 	sbs := newStreamBufferSet(&tg)
-	stream := sbs.callNewStream(dataSource, 0)
+	stream := sbs.callNewStream(context.Background(), dataSource, 0)
 
 	// Extract the LRU from the stream to test it directly.
 	lru := stream.lru

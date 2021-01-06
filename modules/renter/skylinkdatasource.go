@@ -3,7 +3,6 @@ package renter
 import (
 	"context"
 	"sync/atomic"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -42,8 +41,8 @@ type (
 		staticChunkFetchers []chunkFetcher
 
 		// Utilities
-		staticCancelFunc context.CancelFunc
 		staticCtx        context.Context
+		staticCancelFunc context.CancelFunc
 		staticRenter     *Renter
 	}
 )
@@ -83,7 +82,7 @@ func (sds *skylinkDataSource) SilentClose() {
 }
 
 // ReadStream implements streamBufferDataSource
-func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64, timeout time.Duration, pricePerMS types.Currency) chan *readResponse {
+func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uint64, pricePerMS types.Currency) chan *readResponse {
 	// Prepare the response channel
 	responseChan := make(chan *readResponse, 1)
 
@@ -130,8 +129,6 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64, timeout time.Dur
 		}
 
 		// Schedule the download.
-		// TODO: how to handle the cancel fns?
-		ctx, _ := context.WithTimeout(sds.staticCtx, timeout)
 		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(ctx, pricePerMS, offsetInChunk, downloadSize)
 		if err != nil {
 			responseChan <- &readResponse{
@@ -173,14 +170,17 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64, timeout time.Dur
 // inside of a Skylink. The function will not return until the base sector and
 // all skyfile metadata has been retrieved.
 //
-// NOTE: Because multiple different callers may want to use the same data
-// source, we want the data source to outlive the initial call. That is why
-// there is no input for a context - the data source will live as long as the
-// stream buffer determines is appropriate.
-func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Currency) (streamBufferDataSource, error) {
+// NOTE: Skylink data sources are cached and outlive the user's request because
+// multiple different callers may want to use the same data source. We do have
+// to pass in a context though to adhere to a possible user-imposed request
+// timeout. This can be optimized to always create the data source when it was
+// requested, but we should only do so after gathering some real world feedback
+// that indicates we would benefit from this.
+func (r *Renter) skylinkDataSource(ctx context.Context, link modules.Skylink, pricePerMS types.Currency) (streamBufferDataSource, error) {
 	// Create the context for the data source - a child of the renter
-	// threadgroup but otherwise independent.
-	ctx, cancelFunc := context.WithCancel(r.tg.StopCtx())
+	// threadgroup but otherwise independent. This is very important as the
+	// datasource is cached and outlives the request scope.
+	dsCtx, cancelFunc := context.WithCancel(r.tg.StopCtx())
 
 	// If this function exits with an error we need to call cancel, due to the
 	// many returns here we use a boolean that cancels by default, only if we
@@ -208,12 +208,17 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Curren
 		return nil, errors.AddContext(err, "unable to create the worker set for this skylink")
 	}
 
-	// Download the base sector. The base sector contains the metadata, without
-	// it we can't provide a completed data source.
+	// Get the offset and fetchsize from the skylink
 	offset, fetchSize, err := link.OffsetAndFetchSize()
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to parse skylink")
 	}
+
+	// Download the base sector. The base sector contains the metadata, without
+	// it we can't provide a completed data source.
+	//
+	// NOTE: we pass in the provided context here, if the user imposed a timeout
+	// on the download request, this will fire if it takes too long.
 	respChan, err := pcws.managedDownload(ctx, pricePerMS, offset, fetchSize)
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to start download")
@@ -260,7 +265,7 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Curren
 	}
 	fanoutChunkFetchers := make([]chunkFetcher, len(fanoutChunks))
 	for i, chunk := range fanoutChunks {
-		pcws, err := r.newPCWSByRoots(ctx, chunk, ec, fanoutKey, uint64(i))
+		pcws, err := r.newPCWSByRoots(dsCtx, chunk, ec, fanoutKey, uint64(i))
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to create worker set for all chunk indices")
 		}
@@ -276,6 +281,7 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Curren
 		staticFirstChunk:    firstChunk,
 		staticChunkFetchers: fanoutChunkFetchers,
 
+		staticCtx:        dsCtx,
 		staticCancelFunc: cancelFunc,
 		staticRenter:     r,
 	}

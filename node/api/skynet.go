@@ -191,8 +191,11 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 		timeout = time.Duration(timeoutInt) * time.Second
 	}
 
+	// TODO: define pricePerMS
+	pricePerMS := types.ZeroCurrency
+
 	// Fetch the skyfile's streamer to serve the basesector of the file
-	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout)
+	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
 		return
@@ -568,7 +571,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	pricePerMS := types.ZeroCurrency
 
 	// Fetch the skyfile's metadata and a streamer to download the file
-	metadata, streamer, err := api.renter.DownloadSkylink(skylink, pricePerMS)
+	metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
 		return
@@ -580,11 +583,6 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	defer func() {
 		_ = streamer.Close()
 	}()
-
-	// TODO: impose read timeout on the streamer
-	if time.Now().Before(time.Time{}) {
-		time.Sleep(timeout) // never executes
-	}
 
 	// Validate Metadata
 	if metadata.DefaultPath != "" && len(metadata.Subfiles) == 0 {

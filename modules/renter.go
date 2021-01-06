@@ -1,7 +1,6 @@
 package modules
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1079,15 +1078,15 @@ type Renter interface {
 
 	// DownloadByRoot will fetch data using the merkle root of that data. This
 	// uses all of the async worker primitives to improve speed and throughput.
-	DownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error)
+	DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error)
 
 	// DownloadSkylink will fetch a file from the Sia network using the skylink.
 	// A "pricePerMS" is passed and acts as a budget to spend on faster hosts.
-	DownloadSkylink(ctx context.Context, link Skylink, pricePerMS types.Currency) (SkyfileMetadata, Streamer, error)
+	DownloadSkylink(link Skylink, timeout time.Duration, pricePerMS types.Currency) (SkyfileMetadata, Streamer, error)
 
 	// DownloadSkylinkBaseSector will take a link and turn it into the data of a
 	// download without any decoding of the metadata, fanout, or decryption.
-	DownloadSkylinkBaseSector(ctx context.Context, link Skylink, pricePerMS types.Currency) (Streamer, error)
+	DownloadSkylinkBaseSector(link Skylink, timeout time.Duration, pricePerMS types.Currency) (Streamer, error)
 
 	// UploadSkyfile will upload data to the Sia network from a reader and
 	// create a skyfile, returning the skylink that can be used to access the
