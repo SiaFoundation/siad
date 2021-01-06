@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1028,8 +1029,8 @@ type Renter interface {
 	// Upload uploads a file using the input parameters.
 	Upload(FileUploadParams) error
 
-	// UploadStreamFromReader reads from the provided reader until io.EOF is reached and
-	// upload the data to the Sia network.
+	// UploadStreamFromReader reads from the provided reader until io.EOF is
+	// reached and upload the data to the Sia network.
 	UploadStreamFromReader(up FileUploadParams, reader io.Reader) error
 
 	// CreateDir creates a directory for the renter
@@ -1047,8 +1048,8 @@ type Renter interface {
 	// CreateSkykey creates a new Skykey with the given name and SkykeyType.
 	CreateSkykey(string, skykey.SkykeyType) (skykey.Skykey, error)
 
-	// DeleteSkykeyByID deletes the Skykey with the given name from the renter's skykey
-	// manager if it exists.
+	// DeleteSkykeyByID deletes the Skykey with the given name from the renter's
+	// skykey manager if it exists.
 	DeleteSkykeyByID(skykey.SkykeyID) error
 
 	// DeleteSkykeyByName deletes the Skykey with the given name from the renter's skykey
@@ -1078,14 +1079,15 @@ type Renter interface {
 
 	// DownloadByRoot will fetch data using the merkle root of that data. This
 	// uses all of the async worker primitives to improve speed and throughput.
-	DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error)
+	DownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error)
 
 	// DownloadSkylink will fetch a file from the Sia network using the skylink.
-	DownloadSkylink(Skylink, time.Duration) (SkyfileMetadata, Streamer, error)
+	// A "pricePerMS" is passed and acts as a budget to spend on faster hosts.
+	DownloadSkylink(ctx context.Context, link Skylink, pricePerMS types.Currency) (SkyfileMetadata, Streamer, error)
 
-	// DownloadSkylinkBaseSector will take a link and turn it into the data of a download
-	// without any decoding of the metadata, fanout, or decryption.
-	DownloadSkylinkBaseSector(Skylink, time.Duration) (Streamer, error)
+	// DownloadSkylinkBaseSector will take a link and turn it into the data of a
+	// download without any decoding of the metadata, fanout, or decryption.
+	DownloadSkylinkBaseSector(ctx context.Context, link Skylink, pricePerMS types.Currency) (Streamer, error)
 
 	// UploadSkyfile will upload data to the Sia network from a reader and
 	// create a skyfile, returning the skylink that can be used to access the
@@ -1100,15 +1102,19 @@ type Renter interface {
 	// Blocklist returns the merkleroots that are blocked
 	Blocklist() ([]crypto.Hash, error)
 
-	// UpdateSkynetBlocklist updates the list of hashed merkleroots that are blocked
-	UpdateSkynetBlocklist(additions, removals []crypto.Hash) error
-
 	// PinSkylink re-uploads the data stored at the file under that skylink with
-	// the given parameters.
-	PinSkylink(Skylink, SkyfileUploadParameters, time.Duration) error
+	// the given parameters. Alongside the parameters we can pass a timeout and
+	// a price per millisecond. The timeout ensures fetching the base sector
+	// does not surpass it, the price per millisecond is the budget we are
+	// allowed to spend on faster hosts.
+	PinSkylink(Skylink, SkyfileUploadParameters, time.Duration, types.Currency) error
 
 	// Portals returns the list of known skynet portals.
 	Portals() ([]SkynetPortal, error)
+
+	// UpdateSkynetBlocklist updates the list of hashed merkleroots that are
+	// blocked
+	UpdateSkynetBlocklist(additions, removals []crypto.Hash) error
 
 	// UpdateSkynetPortals updates the list of known skynet portals.
 	UpdateSkynetPortals(additions []SkynetPortal, removals []NetAddress) error

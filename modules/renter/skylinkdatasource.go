@@ -3,6 +3,7 @@ package renter
 import (
 	"context"
 	"sync/atomic"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -33,10 +34,6 @@ type (
 		staticLayout   modules.SkyfileLayout
 		staticMetadata modules.SkyfileMetadata
 
-		// The "price per millisecond" is the budget that we are willing to
-		// spend on faster workers. See projectchunkworkset.go.
-		staticPricePerMS types.Currency
-
 		// The first chunk contains all of the raw data for the skylink, and the
 		// chunk fetchers contains one pcws for every chunk in the fanout. The
 		// worker sets are spun up in advance so that the HasSector queries have
@@ -48,13 +45,6 @@ type (
 		staticCancelFunc context.CancelFunc
 		staticCtx        context.Context
 		staticRenter     *Renter
-	}
-
-	// skylinkReadResponse is a helper struct that contains the download
-	// response
-	skylinkReadResponse struct {
-		staticData []byte
-		staticErr  error
 	}
 )
 
@@ -93,9 +83,9 @@ func (sds *skylinkDataSource) SilentClose() {
 }
 
 // ReadStream implements streamBufferDataSource
-func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkReadResponse {
+func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64, timeout time.Duration, pricePerMS types.Currency) chan *readResponse {
 	// Prepare the response channel
-	responseChan := make(chan *skylinkReadResponse, 1)
+	responseChan := make(chan *readResponse, 1)
 
 	// Determine how large each chunk is.
 	chunkSize := uint64(sds.staticLayout.FanoutDataPieces) * modules.SectorSize
@@ -116,7 +106,7 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkRea
 		if fetchSize > bytesLeft {
 			fetchSize = bytesLeft
 		}
-		responseChan <- &skylinkReadResponse{
+		responseChan <- &readResponse{
 			staticData: sds.staticFirstChunk[off : off+fetchSize],
 		}
 		return responseChan
@@ -140,9 +130,11 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkRea
 		}
 
 		// Schedule the download.
-		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(sds.staticCtx, sds.staticPricePerMS, offsetInChunk, downloadSize)
+		// TODO: how to handle the cancel fns?
+		ctx, _ := context.WithTimeout(sds.staticCtx, timeout)
+		respChan, err := sds.staticChunkFetchers[chunkIndex].Download(ctx, pricePerMS, offsetInChunk, downloadSize)
 		if err != nil {
-			responseChan <- &skylinkReadResponse{
+			responseChan <- &readResponse{
 				staticErr: errors.AddContext(err, "unable to start download"),
 			}
 			return responseChan
@@ -163,16 +155,16 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkRea
 		for _, respChan := range downloadChans {
 			resp := <-respChan
 			if resp.err != nil {
-				responseChan <- &skylinkReadResponse{staticErr: resp.err}
+				responseChan <- &readResponse{staticErr: resp.err}
 				break
 			}
 			n := copy(data[offset:], resp.data)
 			offset += n
 		}
-		responseChan <- &skylinkReadResponse{staticData: data}
+		responseChan <- &readResponse{staticData: data}
 	})
 	if err != nil {
-		responseChan <- &skylinkReadResponse{staticErr: err}
+		responseChan <- &readResponse{staticErr: err}
 	}
 	return responseChan
 }
@@ -185,10 +177,7 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkRea
 // source, we want the data source to outlive the initial call. That is why
 // there is no input for a context - the data source will live as long as the
 // stream buffer determines is appropriate.
-//
-// TODO: this should return a streamBufferDataSource, and will do so when we
-// have adjusted the interface
-func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Currency) (*skylinkDataSource, error) {
+func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Currency) (streamBufferDataSource, error) {
 	// Create the context for the data source - a child of the renter
 	// threadgroup but otherwise independent.
 	ctx, cancelFunc := context.WithCancel(r.tg.StopCtx())
@@ -284,13 +273,10 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Curren
 		staticLayout:   layout,
 		staticMetadata: metadata,
 
-		staticPricePerMS: pricePerMS,
-
 		staticFirstChunk:    firstChunk,
 		staticChunkFetchers: fanoutChunkFetchers,
 
 		staticCancelFunc: cancelFunc,
-		staticCtx:        ctx,
 		staticRenter:     r,
 	}
 	return sds, nil

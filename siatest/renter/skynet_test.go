@@ -39,9 +39,9 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestSkynet verifies the functionality of Skynet, a decentralized CDN and
+// TestSkynetSuite verifies the functionality of Skynet, a decentralized CDN and
 // sharing platform.
-func TestSkynet(t *testing.T) {
+func TestSkynetSuite(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}

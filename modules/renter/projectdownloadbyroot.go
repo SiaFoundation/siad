@@ -362,7 +362,7 @@ func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, of
 
 // DownloadByRoot will fetch data using the merkle root of that data. This uses
 // all of the async worker primitives to improve speed and throughput.
-func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
+func (r *Renter) DownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, err
 	}
@@ -375,20 +375,8 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	}
 	defer r.memoryManager.Return(length)
 
-	// Create a context. If the timeout is greater than zero, have the context
-	// expire when the timeout triggers.
-	ctx := r.tg.StopCtx()
-	if timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
-		defer cancel()
-	}
-
-	data, err := r.managedDownloadByRoot(ctx, root, offset, length)
-	if errors.Contains(err, ErrProjectTimedOut) {
-		err = errors.AddContext(err, fmt.Sprintf("timed out after %vs", timeout.Seconds()))
-	}
-	return data, err
+	// Fetch the data
+	return r.managedDownloadByRoot(ctx, root, offset, length)
 }
 
 // checkPDBRGouging verifies the cost of executing the jobs performed by the

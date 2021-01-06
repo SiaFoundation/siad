@@ -12,97 +12,13 @@ package renter
 import (
 	"fmt"
 	"io"
-	"sync"
-	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
-	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
 )
-
-// fanoutStreamBufferDataSource implements streamBufferDataSource with the
-// skyfile so that it can be used to open a stream from the streamBufferSet.
-type fanoutStreamBufferDataSource struct {
-	// Each chunk is an array of sector hashes that correspond to pieces which
-	// can be fetched.
-	staticChunks       [][]crypto.Hash
-	staticChunkSize    uint64
-	staticErasureCoder modules.ErasureCoder
-	staticLayout       modules.SkyfileLayout
-	staticMasterKey    crypto.CipherKey
-	staticMetadata     modules.SkyfileMetadata
-	staticStreamID     modules.DataSourceID
-
-	// staticTimeout defines a timeout that is applied to every chunk download
-	staticTimeout time.Duration
-
-	// Utils.
-	staticRenter *Renter
-	mu           sync.Mutex
-}
-
-// newFanoutStreamer will create a modules.Streamer from the fanout of a
-// skyfile. The streamer is created by implementing the streamBufferDataSource
-// interface on the skyfile, and then passing that to the stream buffer set.
-func (r *Renter) newFanoutStreamer(link modules.Skylink, sl modules.SkyfileLayout, metadata modules.SkyfileMetadata, fanoutBytes []byte, timeout time.Duration, sk skykey.Skykey) (modules.Streamer, error) {
-	masterKey, err := r.deriveFanoutKey(&sl, sk)
-	if err != nil {
-		return nil, errors.AddContext(err, "count not recover siafile fanout because cipher key was unavailable")
-	}
-
-	// Create the erasure coder
-	ec, err := modules.NewRSSubCode(int(sl.FanoutDataPieces), int(sl.FanoutParityPieces), crypto.SegmentSize)
-	if err != nil {
-		return nil, errors.New("unable to initialize erasure code")
-	}
-
-	// Build the base streamer object.
-	fs := &fanoutStreamBufferDataSource{
-		staticChunkSize:    modules.SectorSize * uint64(sl.FanoutDataPieces),
-		staticErasureCoder: ec,
-		staticLayout:       sl,
-		staticMasterKey:    masterKey,
-		staticMetadata:     metadata,
-		staticStreamID:     link.DataSourceID(),
-		staticTimeout:      timeout,
-		staticRenter:       r,
-	}
-	err = fs.decodeFanout(fanoutBytes)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to decode fanout of skyfile")
-	}
-
-	// Grab and return the stream.
-	stream := r.staticStreamBufferSet.callNewStream(fs, 0)
-	return stream, nil
-}
-
-// decodeFanout will take the fanout bytes from a skyfile and decode them in to
-// the staticChunks filed of the fanoutStreamBufferDataSource.
-func (fs *fanoutStreamBufferDataSource) decodeFanout(fanoutBytes []byte) error {
-	// Decode piecesPerChunk, chunkRootsSize, and numChunks
-	piecesPerChunk, chunkRootsSize, numChunks, err := modules.DecodeFanout(fs.staticLayout, fanoutBytes)
-	if err != nil {
-		return err
-	}
-
-	// Decode the fanout data into the list of chunks for the
-	// fanoutStreamBufferDataSource.
-	fs.staticChunks = make([][]crypto.Hash, 0, numChunks)
-	for i := uint64(0); i < numChunks; i++ {
-		chunk := make([]crypto.Hash, piecesPerChunk)
-		for j := uint64(0); j < piecesPerChunk; j++ {
-			fanoutOffset := (i * chunkRootsSize) + (j * crypto.HashSize)
-			copy(chunk[j][:], fanoutBytes[fanoutOffset:])
-		}
-		fs.staticChunks = append(fs.staticChunks, chunk)
-	}
-	return nil
-}
 
 // skyfileEncodeFanout will create the serialized fanout for a fileNode. The
 // encoded fanout is just the list of hashes that can be used to retrieve a file
@@ -230,71 +146,11 @@ func skyfileEncodeFanoutFromReader(fileNode *filesystem.FileNode, reader io.Read
 			padAndEncryptPiece(chunkIndex, uint64(pieceIndex), logicalChunkData, fileNode.MasterKey())
 			root := crypto.MerkleRoot(logicalChunkData[pieceIndex])
 			// Unlike in skyfileEncodeFanoutFromFileNode we don't check for an
-			// emptyHash here since if MerkleRoot returned an emptyHash it would mean
-			// that an emptyHash is a valid MerkleRoot and a host should be able to
-			// return the corresponding data.
+			// emptyHash here since if MerkleRoot returned an emptyHash it would
+			// mean that an emptyHash is a valid MerkleRoot and a host should be
+			// able to return the corresponding data.
 			fanout = append(fanout, root[:]...)
 		}
 	}
 	return fanout, nil
-}
-
-// DataSize returns the amount of file data in the underlying skyfile.
-func (fs *fanoutStreamBufferDataSource) DataSize() uint64 {
-	return fs.staticLayout.Filesize
-}
-
-// ID returns the id of the skylink being fetched, this is just the hash of the
-// skylink.
-func (fs *fanoutStreamBufferDataSource) ID() modules.DataSourceID {
-	return fs.staticStreamID
-}
-
-// Metadata returns the metadata of the skylink being fetched.
-func (fs *fanoutStreamBufferDataSource) Metadata() modules.SkyfileMetadata {
-	return fs.staticMetadata
-}
-
-// ReadAt will fetch data from the siafile at the provided offset.
-func (fs *fanoutStreamBufferDataSource) ReadAt(b []byte, offset int64) (int, error) {
-	// Input checking.
-	if offset < 0 {
-		return 0, errors.New("cannot read from a negative offset")
-	}
-	// Can only grab one chunk.
-	if uint64(len(b)) > fs.staticChunkSize {
-		return 0, errors.New("request needs to be no more than RequestSize()")
-	}
-	// Must start at the chunk boundary.
-	if uint64(offset)%fs.staticChunkSize != 0 {
-		return 0, errors.New("request needs to be aligned to RequestSize()")
-	}
-	// Must not go beyond the end of the file.
-	if uint64(offset)+uint64(len(b)) > fs.staticLayout.Filesize {
-		return 0, errors.New("making a read request that goes beyond the boundaries of the file")
-	}
-
-	// Determine which chunk contains the data.
-	chunkIndex := uint64(offset) / fs.staticChunkSize
-
-	// Perform a download to fetch the chunk.
-	chunkData, err := fs.managedFetchChunk(chunkIndex)
-	if err != nil {
-		return 0, errors.AddContext(err, "unable to fetch chunk in ReadAt call on fanout streamer")
-	}
-	n := copy(b, chunkData)
-	return n, nil
-}
-
-// RequestSize implements streamBufferDataSource and will return the size of a
-// logical data chunk.
-func (fs *fanoutStreamBufferDataSource) RequestSize() uint64 {
-	return fs.staticChunkSize
-}
-
-// SilentClose will clean up any resources that the fanoutStreamBufferDataSource
-// keeps open.
-func (fs *fanoutStreamBufferDataSource) SilentClose() {
-	// Nothing to clean up.
-	return
 }

@@ -62,8 +62,8 @@ func (mds *mockDataSource) RequestSize() uint64 {
 	return mds.staticRequestSize
 }
 
-// ReadAt implements streamBufferDataSource.
-func (mds *mockDataSource) ReadAt(b []byte, offset int64) (int, error) {
+// ReadStream implements streamBufferDataSource.
+func (mds *mockDataSource) ReadStream(offset, fetchSize uint64) chan *readResponse {
 	mds.mu.Lock()
 	defer mds.mu.Unlock()
 
@@ -74,21 +74,23 @@ func (mds *mockDataSource) ReadAt(b []byte, offset int64) (int, error) {
 	if offset < 0 {
 		panic("bad call to mocked ReadAt")
 	}
-	if uint64(offset+int64(len(b))) > mds.staticDataLen {
-		str := fmt.Sprintf("call to ReadAt is asking for data that exceeds the data size: %v - %v", offset+int64(len(b)), mds.staticDataLen)
+	if offset+fetchSize > mds.staticDataLen {
+		str := fmt.Sprintf("call to ReadAt is asking for data that exceeds the data size: %v - %v", offset+fetchSize, mds.staticDataLen)
 		panic(str)
 	}
-	if uint64(offset)%mds.RequestSize() != 0 {
+	if offset%mds.RequestSize() != 0 {
 		panic("bad call to mocked ReadAt")
 	}
-	if uint64(len(b)) > mds.staticDataLen {
+	if fetchSize > mds.staticDataLen {
 		panic("bad call to mocked ReadAt")
 	}
-	if uint64(len(b)) != mds.RequestSize() && uint64(offset+int64(len(b))) != mds.staticDataLen {
+	if fetchSize != mds.RequestSize() && offset+fetchSize != mds.staticDataLen {
 		panic("bad call to mocked ReadAt")
 	}
-	n := copy(b, mds.data[offset:])
-	return n, nil
+
+	responseChan := make(chan *readResponse, 1)
+	responseChan <- &readResponse{staticData: mds.data[offset : offset+fetchSize]}
+	return responseChan
 }
 
 // SilentClose implements streamBufferDataSource.

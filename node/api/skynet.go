@@ -564,8 +564,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		timeout = time.Duration(timeoutInt) * time.Second
 	}
 
+	// TODO: set pricePerMS
+	pricePerMS := types.ZeroCurrency
+
 	// Fetch the skyfile's metadata and a streamer to download the file
-	metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout)
+	metadata, streamer, err := api.renter.DownloadSkylink(skylink, pricePerMS)
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
 		return
@@ -577,6 +580,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	defer func() {
 		_ = streamer.Close()
 	}()
+
+	// TODO: impose read timeout on the streamer
+	if time.Now().Before(time.Time{}) {
+		time.Sleep(timeout) // never executes
+	}
 
 	// Validate Metadata
 	if metadata.DefaultPath != "" && len(metadata.Subfiles) == 0 {
@@ -622,12 +630,11 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			return
 		}
 		isSkapp := strings.HasSuffix(defaultPath, ".html") || strings.HasSuffix(defaultPath, ".htm")
-		// If we don't have a subPath and the skylink doesn't end with a trailing
-		// slash we need to redirect in order to add the trailing slash.
-		// This is only true for skapps - they need it in order to properly work
-		// with relative paths.
-		// We also don't need to redirect if this is a HEAD request or if it's a
-		// download as attachment.
+		// If we don't have a subPath and the skylink doesn't end with a
+		// trailing slash we need to redirect in order to add the trailing
+		// slash. This is only true for skapps - they need it in order to
+		// properly work with relative paths. We also don't need to redirect if
+		// this is a HEAD request or if it's a download as attachment.
 		if isSkapp && !attachment && req.Method == http.MethodGet && !strings.HasSuffix(skylinkStringNoQuery, "/") {
 			location := skylinkStringNoQuery + "/"
 			if req.URL.RawQuery != "" {
@@ -883,7 +890,10 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 		BaseChunkRedundancy: redundancy,
 	}
 
-	err = api.renter.PinSkylink(skylink, lup, timeout)
+	// TODO: set pricePerMS
+	pricePerMS := types.ZeroCurrency
+
+	err = api.renter.PinSkylink(skylink, lup, timeout, pricePerMS)
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("Failed to pin file to Skynet: %v", err)}, http.StatusNotFound)
 		return

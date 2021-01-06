@@ -12,12 +12,14 @@ package renter
 // lru, and cause data fetches to be evicted before they become useful.
 
 import (
+	"context"
 	"io"
 	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/threadgroup"
@@ -124,8 +126,17 @@ type streamBufferDataSource interface {
 	// if the closing fails.
 	SilentClose()
 
-	// ReaderAt allows the stream buffer to request specific data chunks.
-	io.ReaderAt
+	// ReadStream allows the stream buffer to request specific data chunks from
+	// the data source. It returns a channel containing a read response.
+	ReadStream(uint64, uint64, time.Duration, types.Currency) chan *readResponse
+}
+
+// readResponse is a helper struct that is returned when reading from the data
+// source. It contains the data being downloaded and an error in case of
+// failure.
+type readResponse struct {
+	staticData []byte
+	staticErr  error
 }
 
 // dataSection represents a section of data from a data source. The data section
@@ -515,6 +526,8 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 	// Perform the data fetch in a goroutine. The dataAvailable channel will be
 	// closed when the data is available.
 	go func() {
+		defer close(ds.dataAvailable)
+
 		// Ensure that the streambuffer has not closed.
 		err := sb.tg.Add()
 		if err != nil {
@@ -524,11 +537,15 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 		defer sb.tg.Done()
 
 		// Grab the data from the data source.
-		_, err = sb.staticDataSource.ReadAt(ds.externData, int64(index*dataSectionSize))
-		if err != nil {
-			ds.externErr = errors.AddContext(err, "data section ReadAt failed")
+		responseChan := sb.staticDataSource.ReadStream(index*dataSectionSize, fetchSize)
+
+		select {
+		case response := <-responseChan:
+			ds.externErr = errors.AddContext(response.staticErr, "data section ReadStream failed")
+			ds.externData = response.staticData
+		case <-sb.tg.StopChan():
+			ds.externErr = errors.New("failed to read response from ReadStream")
 		}
-		close(ds.dataAvailable)
 	}()
 	return ds
 }
