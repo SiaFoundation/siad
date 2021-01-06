@@ -153,34 +153,27 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkRea
 		n += downloadSize
 	}
 
-	// Spin a goroutine that collects all download responses, aggregates them
+	// Launch a goroutine that collects all download responses, aggregates them
 	// and sends it as a single response over the response channel.
-	go func(downloadChans []chan *downloadResponse) {
+	err := sds.staticRenter.tg.Launch(func() {
 		defer close(responseChan)
 
-		err := sds.staticRenter.tg.Add()
-		if err != nil {
-			responseChan <- &skylinkReadResponse{
-				staticErr: err,
-			}
-			return
-		}
-		defer sds.staticRenter.tg.Done()
-
-		response := &skylinkReadResponse{staticData: make([]byte, fetchSize)}
+		data := make([]byte, fetchSize)
 		offset := 0
 		for _, respChan := range downloadChans {
 			resp := <-respChan
 			if resp.err != nil {
-				response.staticErr = resp.err
+				responseChan <- &skylinkReadResponse{staticErr: resp.err}
 				break
 			}
-			n := copy(response.staticData[offset:], resp.data)
+			n := copy(data[offset:], resp.data)
 			offset += n
 		}
-		responseChan <- response
-	}(downloadChans)
-
+		responseChan <- &skylinkReadResponse{staticData: data}
+	})
+	if err != nil {
+		responseChan <- &skylinkReadResponse{staticErr: err}
+	}
 	return responseChan
 }
 
@@ -260,21 +253,25 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Curren
 	if err != nil {
 		return nil, errors.AddContext(err, "error parsing skyfile metadata")
 	}
+
+	// Derive the fanout key and erasure coder
+	fanoutKey, err := r.deriveFanoutKey(&layout, fileSpecificSkykey)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to derive encryption key")
+	}
+	ec, err := modules.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to derive erasure coding settings for fanout")
+	}
+
+	// Create PCWSs for every chunk in the fanout
 	fanoutChunks, err := decodeFanoutIntoChunks(layout, fanoutBytes)
 	if err != nil {
 		return nil, errors.AddContext(err, "error parsing skyfile fanout")
 	}
 	fanoutChunkFetchers := make([]chunkFetcher, len(fanoutChunks))
-	for i, fanoutChunk := range fanoutChunks {
-		masterKey, err := r.deriveFanoutKey(&layout, fileSpecificSkykey)
-		if err != nil {
-			return nil, errors.AddContext(err, "unable to derive encryption key")
-		}
-		ec, err := modules.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
-		if err != nil {
-			return nil, errors.AddContext(err, "unable to derive erasure coding settings for fanout")
-		}
-		pcws, err := r.newPCWSByRoots(ctx, fanoutChunk, ec, masterKey, uint64(i))
+	for i, chunk := range fanoutChunks {
+		pcws, err := r.newPCWSByRoots(ctx, chunk, ec, fanoutKey, uint64(i))
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to create worker set for all chunk indices")
 		}
