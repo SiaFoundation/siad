@@ -362,10 +362,13 @@ func init() {
 		ASICHardforkTotalTarget = Target{0, 0, 0, 0, 0, 0, 0, 0, 32}
 		ASICHardforkTotalTime = 120e3
 
-		// The Foundation subsidy hardfork activates at approximately 12pm EST
-		// on February 1, 2021.
-		FoundationHardforkHeight = 297777
-		FoundationSubsidyFrequency = BlocksPerMonth
+		// The Foundation subsidy hardfork activates at approximately 11pm EST
+		// on February 3, 2021.
+		FoundationHardforkHeight = 298000
+		// Subsidies are paid out approximately once per month. Since actual
+		// months vary in length, we instead divide the total number of blocks
+		// per year by 12.
+		FoundationSubsidyFrequency = BlocksPerYear / 12
 
 		InitialFoundationUnlockHash = UnlockHash{1, 2, 3}         // TODO
 		InitialFoundationFailsafeUnlockHash = UnlockHash{1, 2, 3} // TODO
