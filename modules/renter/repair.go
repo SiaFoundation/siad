@@ -642,13 +642,14 @@ func (r *Renter) threadedUpdateRenterHealth() {
 // the metadatas for all the files in the subtree and updating the
 // LastHealthCheckTime for the supplied root directory.
 func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath) (*uniqueRefreshPaths, error) {
-	// Get the list of directories from the subtree
-	var mu sync.Mutex
+	// Initiate helpers
 	urp := r.newUniqueRefreshPaths()
 	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
 	aggregateLastHealthCheckTime := time.Now()
 
+	// Define DirectoryInfo function
 	var err error
+	var mu sync.Mutex
 	dlf := func(di modules.DirectoryInfo) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -676,6 +677,7 @@ func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath) (*uniqueRefres
 		}
 	}
 
+	// Execute the function on the FileSystem
 	errList := r.staticFileSystem.CachedList(rootDir, true, func(modules.FileInfo) {}, dlf)
 	if errList != nil {
 		err = errors.Compose(err, errList)
