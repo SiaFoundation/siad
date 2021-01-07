@@ -907,7 +907,11 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (string, error) {
 		if err != nil {
 			return "", errors.AddContext(err, "unable to create multireader")
 		}
-		restoreReader = modules.NewSkyfileMultipartReader(multiReader, &buf, sup)
+		multiReaderFanout, err := modules.NewMultipartReader(&buf, sm.Subfiles)
+		if err != nil {
+			return "", errors.AddContext(err, "unable to create multireader")
+		}
+		restoreReader = modules.NewSkyfileMultipartReader(multiReader, multiReaderFanout, sup)
 	}
 
 	// Re-encrypt the baseSector for upload and add the fanout key to the fup.
