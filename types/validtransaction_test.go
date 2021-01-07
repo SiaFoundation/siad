@@ -146,7 +146,7 @@ func TestCorrectArbitraryData(t *testing.T) {
 	txn := Transaction{
 		ArbitraryData: [][]byte{encoding.MarshalAll(SpecifierFoundation, [...]byte{1, 2, 3})},
 	}
-	if err := txn.correctArbitraryData(0); err != nil {
+	if err := txn.correctArbitraryData(FoundationHardforkHeight - 1); err != nil {
 		t.Error(err)
 	}
 	// Try after the hardfork height.
@@ -156,7 +156,7 @@ func TestCorrectArbitraryData(t *testing.T) {
 
 	// Try an uninitialized update prior to the hardfork height.
 	txn.ArbitraryData[0] = encoding.MarshalAll(SpecifierFoundation, FoundationUnlockHashUpdate{})
-	if err := txn.correctArbitraryData(0); err != nil {
+	if err := txn.correctArbitraryData(FoundationHardforkHeight - 1); err != nil {
 		t.Error(err)
 	}
 	// Try after the hardfork height.
@@ -169,7 +169,7 @@ func TestCorrectArbitraryData(t *testing.T) {
 		NewPrimary:  UnlockHash{1, 2, 3},
 		NewFailsafe: UnlockHash{4, 5, 6},
 	})
-	if err := txn.correctArbitraryData(0); err != nil {
+	if err := txn.correctArbitraryData(FoundationHardforkHeight - 1); err != nil {
 		t.Error(err)
 	}
 	// Try after the hardfork height.

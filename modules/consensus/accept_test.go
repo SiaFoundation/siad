@@ -1261,7 +1261,7 @@ func TestFoundationUpdateBlocks(t *testing.T) {
 	}
 
 	foundationOutput := func(height types.BlockHeight) (id types.SiacoinOutputID, sco types.SiacoinOutput, exists bool) {
-		cst.cs.db.View(func(tx *bolt.Tx) error {
+		err := cst.cs.db.View(func(tx *bolt.Tx) error {
 			bid, err := getPath(tx, height)
 			if err != nil {
 				t.Fatal(err)
@@ -1271,6 +1271,9 @@ func TestFoundationUpdateBlocks(t *testing.T) {
 			exists = err == nil
 			return nil
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
 		return
 	}
 

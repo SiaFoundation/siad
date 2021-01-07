@@ -912,6 +912,8 @@ func TestApplyArbitraryData(t *testing.T) {
 
 	apply := func(txn types.Transaction, height types.BlockHeight) {
 		err := cst.cs.db.Update(func(tx *bolt.Tx) error {
+			// applyArbitraryData expects a BlockPath entry at this height
+			tx.Bucket(BlockPath).Put(encoding.Marshal(height), encoding.Marshal(types.BlockID{}))
 			applyArbitraryData(tx, &processedBlock{Height: height}, txn)
 			return nil
 		})
@@ -953,12 +955,23 @@ func TestApplyArbitraryData(t *testing.T) {
 		t.Fatal("applying valid update did not change unlock hashes")
 	}
 	// Check that database was updated correctly
-	var newPrimary, newFailsafe types.UnlockHash
-	cst.cs.db.View(func(tx *bolt.Tx) error {
-		newPrimary, newFailsafe = getFoundationUnlockHashes(tx)
-		return nil
-	})
-	if newPrimary != update.NewPrimary || newFailsafe != update.NewFailsafe {
+	if newPrimary, newFailsafe := cst.cs.FoundationUnlockHashes(); newPrimary != update.NewPrimary || newFailsafe != update.NewFailsafe {
 		t.Error("applying valid update did not change unlock hashes")
+	}
+
+	// Apply a transaction with two updates; only the first should be applied
+	up1 := types.FoundationUnlockHashUpdate{
+		NewPrimary:  types.UnlockHash{1, 1, 1},
+		NewFailsafe: types.UnlockHash{2, 2, 2},
+	}
+	up2 := types.FoundationUnlockHashUpdate{
+		NewPrimary:  types.UnlockHash{3, 3, 3},
+		NewFailsafe: types.UnlockHash{4, 4, 4},
+	}
+	data1 := encoding.MarshalAll(types.SpecifierFoundation, up1)
+	data2 := encoding.MarshalAll(types.SpecifierFoundation, up2)
+	apply(types.Transaction{ArbitraryData: [][]byte{data1, data2}}, types.FoundationHardforkHeight+1)
+	if newPrimary, newFailsafe := cst.cs.FoundationUnlockHashes(); newPrimary != up1.NewPrimary || newFailsafe != up1.NewFailsafe {
+		t.Error("applying two updates did not apply only the first", newPrimary, newFailsafe)
 	}
 }
