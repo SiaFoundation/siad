@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"container/list"
 	"context"
 	"sync"
 	"time"
@@ -37,7 +38,7 @@ type (
 	// timer. It does not have an array of jobs that are in the queue, because
 	// those are type specific.
 	jobGenericQueue struct {
-		jobs []workerJob
+		jobs *list.List
 
 		killed bool
 
@@ -124,6 +125,7 @@ func newJobGeneric(ctx context.Context, queue workerJobQueue) *jobGeneric {
 // newJobGenericQueue will return an initialized generic job queue.
 func newJobGenericQueue(w *worker) *jobGenericQueue {
 	return &jobGenericQueue{
+		jobs:            list.New(),
 		staticWorkerObj: w,
 	}
 }
@@ -143,7 +145,7 @@ func (jq *jobGenericQueue) add(j workerJob) bool {
 	if jq.killed || time.Now().Before(jq.cooldownUntil) {
 		return false
 	}
-	jq.jobs = append(jq.jobs, j)
+	jq.jobs.PushBack(j)
 	jq.staticWorkerObj.staticWake()
 	return true
 }
@@ -181,14 +183,17 @@ func (jq *jobGenericQueue) callNext() workerJob {
 
 	// Loop through the jobs, looking for the first job that hasn't yet been
 	// canceled. Remove jobs from the queue along the way.
-	for len(jq.jobs) > 0 {
-		job := jq.jobs[0]
-		jq.jobs = jq.jobs[1:]
-		if job.staticCanceled() {
-			job.callDiscard(errors.New("callNext: skipping and discarding already canceled job"))
+	for job := jq.jobs.Front(); job != nil; job = job.Next() {
+		// Remove the job from the list.
+		jq.jobs.Remove(job)
+
+		// Check if the job is already canceled.
+		wj := job.Value.(workerJob)
+		if wj.staticCanceled() {
+			wj.callDiscard(errors.New("callNext: skipping and discarding already canceled job"))
 			continue
 		}
-		return job
+		return wj
 	}
 
 	// Job queue is empty, return nil.
@@ -226,7 +231,7 @@ func (jq *jobGenericQueue) callStatus() workerJobQueueStatus {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	return workerJobQueueStatus{
-		size:                uint64(len(jq.jobs)),
+		size:                uint64(jq.jobs.Len()),
 		cooldownUntil:       jq.cooldownUntil,
 		consecutiveFailures: jq.consecutiveFailures,
 		recentErr:           jq.recentErr,
@@ -236,10 +241,11 @@ func (jq *jobGenericQueue) callStatus() workerJobQueueStatus {
 
 // discardAll will drop all jobs from the queue.
 func (jq *jobGenericQueue) discardAll(err error) {
-	for _, job := range jq.jobs {
-		job.callDiscard(err)
+	for job := jq.jobs.Front(); job != nil; job = job.Next() {
+		wj := job.Value.(workerJob)
+		wj.callDiscard(err)
 	}
-	jq.jobs = nil
+	jq.jobs = list.New()
 }
 
 // staticWorker will return the worker that is associated with this job queue.
