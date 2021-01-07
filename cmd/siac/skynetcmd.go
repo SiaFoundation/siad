@@ -23,7 +23,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -159,8 +158,8 @@ func skynetblocklistremovecmd(cmd *cobra.Command, args []string) {
 
 // skynetBlocklistUpdate adds/removes trimmed skylinks to the blocklist
 func skynetBlocklistUpdate(additions, removals []string) {
-	additions = skynetBlocklistTrimLinks(additions)
-	removals = skynetBlocklistTrimLinks(removals)
+	additions = sanitizeSkylinks(additions)
+	removals = sanitizeSkylinks(removals)
 
 	err := httpClient.SkynetBlocklistHashPost(additions, removals, skynetBlocklistHash)
 	if err != nil {
@@ -168,18 +167,6 @@ func skynetBlocklistUpdate(additions, removals []string) {
 	}
 
 	fmt.Println("Skynet Blocklist updated")
-}
-
-// skynetBlocklistTrimLinks will trim away `sia://` from skylinks
-func skynetBlocklistTrimLinks(links []string) []string {
-	var result []string
-
-	for _, link := range links {
-		trimmed := strings.TrimPrefix(link, "sia://")
-		result = append(result, trimmed)
-	}
-
-	return result
 }
 
 // skynetblocklistgetcmd will return the list of hashed merkleroots that are blocked
@@ -880,26 +867,6 @@ func skynetUploadDirectory(sourcePath, destSiaPath string) {
 	fmt.Println("Successfully uploaded directory:", skylink)
 }
 
-// parseAndAddSkykey is a helper that parses any supplied skykey and adds it to
-// the SkyfileUploadParameters
-func parseAndAddSkykey(sup modules.SkyfileUploadParameters) modules.SkyfileUploadParameters {
-	if skykeyName != "" && skykeyID != "" {
-		die("Can only use either skykeyname or skykeyid flag, not both.")
-	}
-	// Set Encrypt param to true if a skykey ID or name is set.
-	if skykeyName != "" {
-		sup.SkykeyName = skykeyName
-	} else if skykeyID != "" {
-		var ID skykey.SkykeyID
-		err := ID.FromString(skykeyID)
-		if err != nil {
-			die("Unable to parse skykey ID")
-		}
-		sup.SkykeyID = ID
-	}
-	return sup
-}
-
 // skynetUploadFileFromReader is a helper method that uploads a file to Skynet
 func skynetUploadFileFromReader(source io.Reader, filename string, siaPath modules.SiaPath, mode os.FileMode) (skylink string) {
 	// Upload the file and return a skylink
@@ -919,41 +886,6 @@ func skynetUploadFileFromReader(source io.Reader, filename string, siaPath modul
 		die("could not upload file to Skynet:", err)
 	}
 	return skylink
-}
-
-// newProgressReader is a helper method for adding a new progress bar to an
-// existing *mpb.Progress object.
-func newProgressReader(pbs *mpb.Progress, size int64, filename string, file io.Reader) (*mpb.Bar, io.ReadCloser) {
-	bar := pbs.AddBar(
-		size,
-		mpb.PrependDecorators(
-			decor.Name(pBarJobUpload, decor.WC{W: 10}),
-			decor.Percentage(decor.WC{W: 6}),
-		),
-		mpb.AppendDecorators(
-			decor.Name(filename, decor.WC{W: len(filename) + 1, C: decor.DidentRight}),
-		),
-	)
-	return bar, bar.ProxyReader(file)
-}
-
-// newProgressSpinner creates a spinner that is queued after `afterBar` is
-// complete.
-func newProgressSpinner(pbs *mpb.Progress, afterBar *mpb.Bar, filename string) *mpb.Bar {
-	return pbs.AddSpinner(
-		1,
-		mpb.SpinnerOnMiddle,
-		mpb.SpinnerStyle([]string{"∙∙∙", "●∙∙", "∙●∙", "∙∙●", "∙∙∙"}),
-		mpb.BarQueueAfter(afterBar),
-		mpb.BarFillerClearOnComplete(),
-		mpb.PrependDecorators(
-			decor.OnComplete(decor.Name(pBarJobProcess, decor.WC{W: 10}), pBarJobDone),
-			decor.Name("", decor.WC{W: 6, C: decor.DidentRight}),
-		),
-		mpb.AppendDecorators(
-			decor.Name(filename, decor.WC{W: len(filename) + 1, C: decor.DidentRight}),
-		),
-	)
 }
 
 // newProgressSkylink creates a static progress bar that starts after `afterBar`

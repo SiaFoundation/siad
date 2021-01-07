@@ -26,6 +26,10 @@ type (
 
 		staticQueue workerJobQueue
 
+		// staticMetadata is a generic field on the job that can be set and
+		// casted by implementations of a job
+		staticMetadata interface{}
+
 		// These fields are set when the job is added to the job queue and used
 		// after execution to log the delta between the estimated job time and
 		// the actual job time.
@@ -64,6 +68,9 @@ type (
 		// callExpectedBandwidth will return the amount of bandwidth that a job
 		// expects to consume.
 		callExpectedBandwidth() (upload uint64, download uint64)
+
+		// staticGetMetadata returns a metadata object.
+		staticGetMetadata() interface{}
 
 		// staticCanceled returns true if the job has been canceled, false
 		// otherwise.
@@ -114,11 +121,11 @@ func expMovingAvg(oldEMA, newValue, decay float64) float64 {
 // newJobGeneric returns an initialized jobGeneric. The queue that is associated
 // with the job should be used as the input to this function. The job will
 // cancel itself if the cancelChan is closed.
-func newJobGeneric(ctx context.Context, queue workerJobQueue) *jobGeneric {
+func newJobGeneric(ctx context.Context, queue workerJobQueue, metadata interface{}) *jobGeneric {
 	return &jobGeneric{
-		staticCtx: ctx,
-
-		staticQueue: queue,
+		staticCtx:      ctx,
+		staticQueue:    queue,
+		staticMetadata: metadata,
 	}
 }
 
@@ -138,6 +145,11 @@ func (j *jobGeneric) staticCanceled() bool {
 	default:
 		return false
 	}
+}
+
+// staticGetMetadata returns the job's metadata.
+func (j *jobGeneric) staticGetMetadata() interface{} {
+	return j.staticMetadata
 }
 
 // add will add a job to the queue.

@@ -167,7 +167,7 @@ func (w *worker) DownloadSnapshotTable(ctx context.Context) ([]snapshotEntry, er
 	jus := &jobDownloadSnapshot{
 		staticResponseChan: downloadSnapshotRespChan,
 
-		jobGeneric: newJobGeneric(ctx, w.staticJobDownloadSnapshotQueue),
+		jobGeneric: newJobGeneric(ctx, w.staticJobDownloadSnapshotQueue, nil),
 	}
 
 	// Add the job to the queue.
