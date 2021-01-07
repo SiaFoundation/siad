@@ -591,6 +591,12 @@ func (r *Renter) newPCWSByRoots(ctx context.Context, roots []crypto.Hash, ec mod
 		return nil, fmt.Errorf("%v roots provided, but erasure coder specifies %v pieces", len(roots), ec.NumPieces())
 	}
 
+	// Check that the given cipher is not nil, if no encryption is required a
+	// plain text cipher key should be passed
+	if masterKey == nil {
+		return nil, errors.New("master key is nil, if no decryption is required pass a plaintext cipher key")
+	}
+
 	// Create the worker set.
 	pcws := &projectChunkWorkerSet{
 		staticChunkIndex:   chunkIndex,
