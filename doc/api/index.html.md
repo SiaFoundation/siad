@@ -203,7 +203,7 @@ Also returns the set of constants in use in the consensus code.
   "target":       [0,0,0,0,0,0,11,48,125,79,116,89,136,74,42,27,5,14,10,31,23,53,226,238,202,219,5,204,38,32,59,165], // hash
   "difficulty":   "1234" // arbitrary-precision integer
 
-  "foundationprimaryunlockhash": "b4bf662170622944a7c838c7e75665a9a4cf76c4cebd97d0e5dcecaefad1c8df312f90070966",
+  "foundationprimaryunlockhash":  "b4bf662170622944a7c838c7e75665a9a4cf76c4cebd97d0e5dcecaefad1c8df312f90070966",
   "foundationfailsafeunlockhash": "17d25299caeccaa7d1598751f239dd47570d148bb08658e596112d917dfa6bc8400b44f239bb",
 
   "blockfrequency":         600,        // seconds per block
