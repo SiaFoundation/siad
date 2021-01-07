@@ -375,13 +375,19 @@ func RenterContractsStable(renter *TestNode, tg *TestGroup) error {
 		return err
 	}
 	renewWindow := int(rg.Settings.Allowance.RenewWindow)
-	numHosts := rg.Settings.Allowance.Hosts
+	isPortal := !rg.Settings.Allowance.PaymentContractInitialFunding.IsZero()
+	numContracts := int(rg.Settings.Allowance.Hosts)
+	if isPortal || len(tg.Hosts()) < numContracts {
+		numContracts = len(tg.Hosts())
+	}
 	miner := tg.Miners()[0]
 	count := 1
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		// Mine a block every 10 iterations
-		if err := miner.MineBlock(); err != nil {
-			return err
+		if count%10 == 0 {
+			if err := miner.MineBlock(); err != nil {
+				return err
+			}
 		}
 		count++
 
@@ -396,7 +402,7 @@ func RenterContractsStable(renter *TestNode, tg *TestGroup) error {
 		}
 
 		// Check for active contracts
-		if len(rc.ActiveContracts) == int(numHosts) {
+		if len(rc.ActiveContracts) != numContracts {
 			return errors.New("Not enough Active Contracts")
 		}
 
