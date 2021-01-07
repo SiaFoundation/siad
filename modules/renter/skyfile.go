@@ -35,7 +35,6 @@ import (
 	"io"
 	"time"
 
-	"github.com/aead/chacha20/chacha"
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/fixtures"
 
@@ -110,18 +109,18 @@ func fileUploadParams(siaPath modules.SiaPath, dataPieces, parityPieces int, for
 	}, nil
 }
 
-// fileUploadParamsFromLUP will derive the FileUploadParams to use when
+// fileUploadParamsFromSUP will derive the FileUploadParams to use when
 // uploading the base chunk siafile of a skyfile using the skyfile's upload
 // parameters.
-func fileUploadParamsFromLUP(lup modules.SkyfileUploadParameters) (modules.FileUploadParams, error) {
+func fileUploadParamsFromSUP(sup modules.SkyfileUploadParameters) (modules.FileUploadParams, error) {
 	// Establish defaults
-	skyfileEstablishDefaults(&lup)
+	skyfileEstablishDefaults(&sup)
 
 	// Create parameters to upload the file with 1-of-N erasure coding and no
 	// encryption. This should cause all of the pieces to have the same Merkle
 	// root, which is critical to making the file discoverable to viewnodes and
 	// also resilient to host failures.
-	return fileUploadParams(lup.SiaPath, 1, int(lup.BaseChunkRedundancy)-1, lup.Force, crypto.TypePlain)
+	return fileUploadParams(sup.SiaPath, 1, int(sup.BaseChunkRedundancy)-1, sup.Force, crypto.TypePlain)
 }
 
 // streamerFromReader wraps a bytes.Reader to give it a Close() method, which
@@ -452,7 +451,7 @@ func uploadSkyfileReadLeadingChunk(r io.Reader, headerSize uint64) ([]byte, io.R
 // returning the resulting merkle root, and the fileNode of the siafile that is
 // tracking the base sector.
 func (r *Renter) managedUploadBaseSector(lup modules.SkyfileUploadParameters, baseSector []byte, skylink modules.Skylink) (err error) {
-	fileUploadParams, err := fileUploadParamsFromLUP(lup)
+	fileUploadParams, err := fileUploadParamsFromSUP(lup)
 	if err != nil {
 		return errors.AddContext(err, "failed to create siafile upload parameters")
 	}
@@ -838,7 +837,6 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 
 // RestoreSkyfile restores a skyfile from disk such that the skylink is
 // preserved.
-// func (r *Renter) RestoreSkyfile(reader io.Reader, skykeyName string, skykeyID skykey.SkykeyID) (string, error) {
 func (r *Renter) RestoreSkyfile(reader io.Reader) (string, error) {
 	// Restore the skylink and baseSector from the reader
 	skylinkStr, baseSector, err := modules.RestoreSkylink(reader)
@@ -855,7 +853,6 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (string, error) {
 
 	// Check if the new skylink is blocked
 	if r.staticSkynetBlocklist.IsBlocked(skylink) {
-		// Skylink is blocked, return error and try and delete file
 		return "", ErrSkylinkBlocked
 	}
 
@@ -895,6 +892,18 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (string, error) {
 	}
 	skyfileEstablishDefaults(&sup)
 
+	// Re-encrypt the baseSector for upload and set the Skykey fields of the sup.
+	if encrypted {
+		err = encryptBaseSectorWithSkykey(baseSector, sl, fileSpecificSkykey)
+		if err != nil {
+			return "", errors.AddContext(err, "error re-encrypting base sector")
+		}
+
+		// Set the Skykey fields
+		sup.SkykeyName = fileSpecificSkykey.Name
+		sup.FileSpecificSkykey = fileSpecificSkykey
+	}
+
 	// Create the SkyfileUploadReader for the restoration
 	var restoreReader modules.SkyfileUploadReader
 	var buf bytes.Buffer
@@ -914,32 +923,6 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (string, error) {
 		restoreReader = modules.NewSkyfileMultipartReader(multiReader, multiReaderFanout, sup)
 	}
 
-	// Re-encrypt the baseSector for upload and add the fanout key to the fup.
-	if encrypted {
-		// restoreLayout.CipherType = crypto.TypePlain
-		// err := encryptBaseSectorWithSkykey(baseSector, restoreLayout, sup.FileSpecificSkykey)
-		// if err != nil {
-		// 	return "", errors.AddContext(err, "Failed to encrypt base sector for upload")
-		// }
-		err = encryptBaseSectorWithSkykey(baseSector, sl, fileSpecificSkykey)
-		if err != nil {
-			return "", errors.AddContext(err, "error re-encrypting base sector")
-		}
-
-		// These fields aren't used yet, but we'll set them anyway to mimic behavior in
-		// upload/download code for consistency.
-		sup.SkykeyName = fileSpecificSkykey.Name
-		sup.FileSpecificSkykey = fileSpecificSkykey
-	}
-
-	// Get the nonce to be used for getting private-id skykeys, and for deriving the
-	// file-specific skykey.
-	nonce := make([]byte, chacha.XNonceSize)
-	copy(nonce[:], sl.KeyData[skykey.SkykeyIDLen:skykey.SkykeyIDLen+chacha.XNonceSize])
-	// If a skykey name or ID was specified, generate a file-specific key for
-	// this upload.
-	r.generateFilekey(&sup, nonce)
-
 	// Upload the Base Sector of the skyfile
 	err = r.managedUploadBaseSector(sup, baseSector, skylink)
 	if err != nil {
@@ -950,8 +933,6 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (string, error) {
 	if sl.FanoutSize == 0 {
 		return skylinkStr, nil
 	}
-
-	// restoreLayout.CipherType = sl.CipherType
 
 	// Create erasure coder and FileUploadParams
 	extendedPath, err := modules.NewSiaPath(sup.SiaPath.String() + ExtendedSuffix)
@@ -1007,7 +988,8 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (string, error) {
 	// Add the skylink to the siafiles.
 	err = fileNode.AddSkylink(skylink)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to add skylink to the sianodes")
+		err = errors.AddContext(err, "unable to add skylink to the sianodes")
+		return "", errors.Compose(err, r.DeleteFile(sup.SiaPath))
 	}
 
 	return skylinkStr, nil

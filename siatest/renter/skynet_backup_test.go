@@ -98,7 +98,6 @@ func testSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 
 	// Define test function
 	singleFileTest := func(filename, skykeyName string, data []byte) {
-		fmt.Println("===", filename)
 		// Renter 1 uploads the skyfile
 		skylink, sup, _, err := renter1.UploadNewEncryptedSkyfileBlocking(filename, data, skykeyName, false)
 		if err != nil {
@@ -148,7 +147,6 @@ func testSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 
 	// Define test function
 	multiFileTest := func(filename, skykeyName string, files []siatest.TestFile) {
-		fmt.Println("===", filename)
 		// Renter 1 uploads the multipart skyfile
 		skylink, sup, _, err := renter1.UploadNewMultipartEncryptedSkyfileBlocking(filename, files, "", false, false, skykeyName, skykey.SkykeyID{})
 		if err != nil {
@@ -205,7 +203,6 @@ func testDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 
 	// Define test function
 	directoryTest := func(filename, skykeyName, defaultPath string, files []siatest.TestFile, disableDefaultPath, force bool) {
-		fmt.Println("===", filename)
 		// Renter 1 uploads the directory
 		skylink, sup, _, err := renter1.UploadNewMultipartEncryptedSkyfileBlocking(filename, files, defaultPath, disableDefaultPath, force, skykeyName, skykey.SkykeyID{})
 		if err != nil {
@@ -228,7 +225,7 @@ func testDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 	}
 	directoryTest("DirectoryBasic_LargeFile", "", "", files, false, false)
 	// Basic Encrypted Directory with Large Subfile
-	// directoryTest("DirectoryBasic_LargeFile_Encryption", sk.Name, "", files, false, false)
+	directoryTest("DirectoryBasic_LargeFile_Encryption", sk.Name, "", files, false, false)
 
 	// Basic directory
 	files = []siatest.TestFile{
@@ -270,7 +267,6 @@ func testDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 
 	// Define test function
 	directoryTest := func(filename, skykeyName string, files []siatest.TestFile) {
-		fmt.Println("===", filename)
 		// Renter 1 uploads the directory
 		skylink, sup, _, err := renter1.UploadNewMultipartEncryptedSkyfileBlocking(filename, files, "", false, false, skykeyName, skykey.SkykeyID{})
 		if err != nil {
@@ -317,7 +313,6 @@ func testConvertedSiaFile(t *testing.T, tg *siatest.TestGroup) {
 
 	// Define test function
 	convertTest := func(filename, skykeyName string, size int) {
-		fmt.Println("===", filename)
 		// Renter 1 uploads a siafile
 		_, rf, err := renter1.UploadNewFileBlocking(size, 1, 2, false)
 		if err != nil {
@@ -330,10 +325,13 @@ func testConvertedSiaFile(t *testing.T, tg *siatest.TestGroup) {
 			SkykeyName: skykeyName,
 		}
 		sshp, err := renter1.SkynetConvertSiafileToSkyfilePost(sup, rf.SiaPath())
-		if skykeyName != "" && err == nil {
-			// Future proofing the test to fail when siafile conversion with encryption are
-			// supported
-			t.Fatal("Siafile Conversions with Encryption now supported, update test")
+		if skykeyName != "" {
+			if err == nil {
+				// Future proofing the test to fail when siafile conversion with
+				// encryption is supported
+				t.Fatal("Siafile Conversions with Encryption now supported, update test")
+			}
+			return
 		}
 		if err != nil {
 			t.Fatalf("Test %v failed to convert siafile: %v", filename, err)
@@ -353,11 +351,11 @@ func testConvertedSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	// Small siafile
 	convertTest("smallSiafile", "", smallSize)
 	// Small siafile with encrypted conversion
-	// convertTest("smallSiafile_Encryption", sk.Name, smallSize)
+	convertTest("smallSiafile_Encryption", sk.Name, smallSize)
 	// Large siafile
 	convertTest("largeSiafile", "", largeSize)
 	// Large siafile with encrypted conversion
-	// convertTest("largeSiafile_Encryption", sk.Name, largeSize)
+	convertTest("largeSiafile_Encryption", sk.Name, largeSize)
 }
 
 // verifyBackupAndRestore verifies the backup and restore functionality of
@@ -417,6 +415,8 @@ func verifyBackupAndRestore(tg *siatest.TestGroup, renter1, renter2 *siatest.Tes
 	}
 
 	// Stop here unless vlong tests
+	//
+	// Saves ~3min on the test suite.
 	if !build.VLONG {
 		return nil
 	}
