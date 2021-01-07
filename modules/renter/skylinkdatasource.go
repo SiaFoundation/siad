@@ -232,7 +232,6 @@ func (r *Renter) skylinkDataSource(ctx context.Context, link modules.Skylink, pr
 	if len(baseSector) < modules.SkyfileLayoutSize {
 		return nil, errors.New("download did not fetch enough data, layout cannot be decoded")
 	}
-	fmt.Println("received base sector", baseSector)
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
 	// This will fail if we don't have the decryption key.
@@ -249,8 +248,6 @@ func (r *Renter) skylinkDataSource(ctx context.Context, link modules.Skylink, pr
 	if err != nil {
 		return nil, errors.AddContext(err, "error parsing skyfile metadata")
 	}
-
-	fmt.Println("first chunk", firstChunk)
 
 	// If there's a fanout create a PCWS for every chunk.
 	var fanoutChunkFetchers []chunkFetcher
