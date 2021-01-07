@@ -376,7 +376,7 @@ func rentercleancmd() {
 	fmt.Println("Cleaning lost files...")
 	err := httpClient.RenterCleanPost()
 	if err != nil {
-		die("Unable to clean renter's lost files: ", err)
+		die("Unable to clean renter's lost files:", err)
 	}
 	fmt.Println("Successfully cleaned lost files!")
 }
