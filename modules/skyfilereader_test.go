@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/ioutil"
 	"mime/multipart"
-	"os"
 	"reflect"
 	"testing"
 	"time"
@@ -30,7 +29,7 @@ func testSkyfileReaderBasic(t *testing.T) {
 	// create upload parameters
 	sup := SkyfileUploadParameters{
 		Filename: t.Name(),
-		Mode:     os.FileMode(644),
+		Mode:     DefaultFilePerm,
 	}
 
 	// create a reader
@@ -109,7 +108,7 @@ func testSkyfileReaderReadBuffer(t *testing.T) {
 	// create upload parameters
 	sup := SkyfileUploadParameters{
 		Filename: t.Name(),
-		Mode:     os.FileMode(644),
+		Mode:     DefaultFilePerm,
 	}
 
 	// create a reader
@@ -173,7 +172,7 @@ func testSkyfileReaderMetadataTimeout(t *testing.T) {
 	// create upload parameters
 	sup := SkyfileUploadParameters{
 		Filename: t.Name(),
-		Mode:     os.FileMode(644),
+		Mode:     DefaultFilePerm,
 	}
 
 	// create a reader
@@ -225,7 +224,7 @@ func testSkyfileMultipartReaderBasic(t *testing.T) {
 	// create upload parameters
 	sup := SkyfileUploadParameters{
 		Filename: t.Name(),
-		Mode:     os.FileMode(644),
+		Mode:     DefaultFilePerm,
 	}
 
 	// create a multipart writer
@@ -316,7 +315,7 @@ func testSkyfileMultipartReaderIllegalFormName(t *testing.T) {
 	// create upload parameters
 	sup := SkyfileUploadParameters{
 		Filename: t.Name(),
-		Mode:     os.FileMode(644),
+		Mode:     DefaultFilePerm,
 	}
 
 	// create a multipart writer
@@ -359,7 +358,7 @@ func testSkyfileMultipartReaderRandomReadSize(t *testing.T) {
 	// create upload parameters
 	sup := SkyfileUploadParameters{
 		Filename: t.Name(),
-		Mode:     os.FileMode(644),
+		Mode:     DefaultFilePerm,
 	}
 
 	// create a multipart writer
@@ -457,7 +456,7 @@ func testSkyfileMultipartReaderEmptyFilename(t *testing.T) {
 	// create upload parameters
 	sup := SkyfileUploadParameters{
 		Filename: t.Name(),
-		Mode:     os.FileMode(644),
+		Mode:     DefaultFilePerm,
 	}
 
 	// create a multipart writer
@@ -500,7 +499,7 @@ func testSkyfileMultipartReaderReadBuffer(t *testing.T) {
 	// create upload parameters
 	sup := SkyfileUploadParameters{
 		Filename: t.Name(),
-		Mode:     os.FileMode(644),
+		Mode:     DefaultFilePerm,
 	}
 
 	// create a multipart writer
@@ -560,7 +559,7 @@ func testSkyfileMultipartReaderMetadataTimeout(t *testing.T) {
 	// create upload parameters
 	sup := SkyfileUploadParameters{
 		Filename: t.Name(),
-		Mode:     os.FileMode(644),
+		Mode:     DefaultFilePerm,
 	}
 
 	// create a multipart writer

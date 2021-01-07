@@ -51,11 +51,6 @@ func testSkyfileEncodeFanout_Panic(t *testing.T, rt *renterTester) {
 		t.Fatal(err)
 	}
 	testPanic(t, file, nil)
-
-	// The case where a reader is used does not panic since even with a reader to
-	// empty data, that null data is erasure coded which results in a non empty
-	// root hash. A dependency would be require to force the empty hash, which
-	// would only be testing the if condition that triggers the panic.
 }
 
 // testPanic executes the function and recovers from the expected panic.

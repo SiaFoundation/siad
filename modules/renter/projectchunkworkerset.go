@@ -9,6 +9,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -451,6 +452,113 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 	pcws.mu.Unlock()
 	close(pcws.updateFinishedChan)
 	return nil
+}
+
+// managedDownload will download a range from a chunk. This call is
+// asynchronous. It will return as soon as the initial sector download requests
+// have been sent to the workers. This means that it will block until enough
+// workers have reported back with HasSector results that the optimal download
+// request can be made. Where possible, the projectChunkWorkerSet should be
+// created in advance of the download call, so that the HasSector calls have as
+// long as possible to complete, reducing the latency of the actual download
+// call.
+//
+// Blocking until all of the piece downloads have been put into job queues
+// ensures that the workers will account for the bandwidth overheads associated
+// with these jobs before new downloads are requested. Multiple calls to
+// 'managedDownload' from the same thread will generally follow the rule that
+// the first calls will return first. This rule cannot be enforced if the call
+// to managedDownload returns before the download jobs are queued into the
+// workers.
+//
+// pricePerMS is "price per millisecond". This gives the download code a budget
+// to spend on faster workers. For example, if a faster set of workers is
+// expected to trim 100 milliseconds off of the download time, the download code
+// will select those workers only if the additional expense of using those
+// workers is less than 100 * pricePerMS.
+func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
+	// Convenience variables.
+	ec := pcws.staticErasureCoder
+
+	// Depending on the encryption type we might have to download the entire
+	// entire chunk. For the ciphers we support, this will be the case when the
+	// overhead is not zero. This is due to the overhead being a checksum that
+	// has to be verified against the entire piece.
+	//
+	// NOTE: These checks assume that any upload with encryption overhead needs
+	// to be downloaded as full sectors. This feels reasonable because smaller
+	// sectors were not supported when encryption schemes with overhead were
+	// being suggested.
+	if pcws.staticMasterKey.Type().Overhead() != 0 && (offset != 0 || length != modules.SectorSize*uint64(ec.MinPieces())) {
+		return nil, errors.New("invalid request performed - this chunk has encryption overhead and therefore the full chunk must be downloaded")
+	}
+
+	// Refresh the pcws. This will only cause a refresh if one is necessary.
+	err := pcws.managedTryUpdateWorkerState()
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to initiate download")
+	}
+
+	// After refresh, grab the worker state.
+	ws := pcws.managedWorkerState()
+
+	// Determine the offset and length that needs to be downloaded from the
+	// pieces. This is non-trivial because both the network itself and also the
+	// erasure coder have required segment sizes.
+	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
+
+	// Create the workerResponseChan.
+	//
+	// The worker response chan is allocated to be quite large. This is because
+	// in the worst case, the total number of jobs submitted will be equal to
+	// the number of workers multiplied by the number of pieces. We do not want
+	// workers blocking when they are trying to send down the channel, so a very
+	// large buffered channel is used. Each element in the channel is only 8
+	// bytes (it is just a pointer), so allocating a large buffer doesn't
+	// actually have too much overhead. Instead of buffering for a full
+	// workers*pieces slots, we buffer for pieces*5 slots, under the assumption
+	// that the overdrive code is not going to be so aggressive that 5x or more
+	// overhead on download will be needed.
+	//
+	// If this ends up being a problem, we could implement the jobs process to
+	// send the result down a channel in goroutine if the first attempt to send
+	// the job fails. Then we could probably get away with a smaller buffer,
+	// since exceeding the limit currently would cause a worker to stall, where
+	// as with the goroutine-on-block method, exceeding the limit merely causes
+	// extra goroutines to be spawned.
+	workerResponseChan := make(chan *jobReadResponse, ec.NumPieces()*5)
+
+	// Build the full pdc.
+	pdc := &projectDownloadChunk{
+		offsetInChunk: offset,
+		lengthInChunk: length,
+
+		pricePerMS: pricePerMS,
+
+		pieceOffset: pieceOffset,
+		pieceLength: pieceLength,
+
+		availablePieces: make([][]*pieceDownload, ec.NumPieces()),
+		dataPieces:      make([][]byte, ec.NumPieces()),
+
+		ctx:                  ctx,
+		workerResponseChan:   workerResponseChan,
+		downloadResponseChan: make(chan *downloadResponse, 1),
+		workerSet:            pcws,
+		workerState:          ws,
+	}
+
+	// Launch the initial set of workers for the pdc.
+	err = pdc.launchInitialWorkers()
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to launch initial set of workers")
+	}
+
+	// All initial workers have been launched. The function can return now,
+	// unblocking the caller. A background thread will be launched to collect
+	// the responses and launch overdrive workers when necessary.
+	go pdc.threadedCollectAndOverdrivePieces()
+	return pdc.downloadResponseChan, nil
 }
 
 // newPCWSByRoots will create a worker set to download a chunk given just the
