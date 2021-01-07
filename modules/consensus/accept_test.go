@@ -1353,13 +1353,13 @@ func TestFoundationUpdateBlocks(t *testing.T) {
 	if err := mineTxn(txn); err != nil {
 		t.Fatal(err)
 	}
-	primarySCOD := txn.SiacoinOutputID(1)
-	failsafeSCOD := txn.SiacoinOutputID(2)
+	primarySCOID := txn.SiacoinOutputID(1)
+	failsafeSCOID := txn.SiacoinOutputID(2)
 
 	// Attempt to change the primary address back.
 	txn = types.Transaction{
 		SiacoinInputs: []types.SiacoinInput{{
-			ParentID:         primarySCOD,
+			ParentID:         primarySCOID,
 			UnlockConditions: primaryUC,
 		}},
 		SiacoinOutputs: []types.SiacoinOutput{{
@@ -1373,7 +1373,7 @@ func TestFoundationUpdateBlocks(t *testing.T) {
 		TransactionSignatures: make([]types.TransactionSignature, primaryUC.SignaturesRequired),
 	}
 	for i := range txn.TransactionSignatures {
-		txn.TransactionSignatures[i].ParentID = crypto.Hash(primarySCOD)
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(primarySCOID)
 		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
 		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
 		sig := crypto.SignHash(txn.SigHash(i, cst.cs.Height()), primaryKeys[i])
@@ -1395,12 +1395,12 @@ func TestFoundationUpdateBlocks(t *testing.T) {
 	// be transferred to the primary.
 	failsafeUC, failsafeKeys := types.GenerateDeterministicMultisig(3, 5, types.InitialFoundationFailsafeTestingSpecifier)
 	txn.SiacoinInputs[0] = types.SiacoinInput{
-		ParentID:         failsafeSCOD,
+		ParentID:         failsafeSCOID,
 		UnlockConditions: failsafeUC,
 	}
 	txn.TransactionSignatures = make([]types.TransactionSignature, failsafeUC.SignaturesRequired)
 	for i := range txn.TransactionSignatures {
-		txn.TransactionSignatures[i].ParentID = crypto.Hash(failsafeSCOD)
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(failsafeSCOID)
 		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
 		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
 		sig := crypto.SignHash(txn.SigHash(i, cst.cs.Height()), failsafeKeys[i])
