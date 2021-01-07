@@ -1,6 +1,8 @@
 package renter
 
 import (
+	"runtime"
+	"runtime/debug"
 	"sync"
 	"testing"
 	"time"
@@ -433,4 +435,57 @@ func TestWorkerJobGeneric(t *testing.T) {
 	if jq.callAdd(j) {
 		t.Fatal("should not be able to add jobs after the queue has been killed")
 	}
+}
+
+// TestQueueMemoryLeak makes sure that adding jobs to a queue in a tight loop
+// won't cause too many allocated objects in memory.
+func TestQueueMemoryLeak(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create queue.
+	w := new(worker)
+	w.renter = new(Renter)
+	jq := newJobGenericQueue(w)
+
+	// Prepare a job.
+	cancelCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	resultChan := make(chan *jobTestResult, 1)
+	j := &jobTest{
+		jobGeneric: newJobGeneric(cancelCtx, jq),
+		resultChan: resultChan,
+	}
+
+	// Add the job 1 million times and remove it again.
+	n := 1000000
+	for i := 0; i < n; i++ {
+		if !jq.callAdd(j) {
+			t.Fatal("failed to add job")
+		}
+		jq.callNext()
+	}
+
+	// Get the memory stats and print them.
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	t.Log("before gc", ms.HeapObjects, ms.HeapAlloc)
+
+	// Less than 100k objects should be allocated.
+	// NOTE: This number was chosen after manually testing and printing the
+	// stats. During testing it turned out that running the loop above 1 million
+	// times would cause the number of objects to be at around 65k vs 200+k with
+	// the old code.
+	if ms.HeapObjects > 100000 {
+		t.Fatal("Too many allocated objects", ms.HeapObjects)
+	}
+
+	// Free memory.
+	debug.FreeOSMemory()
+
+	// Print the stats again.
+	runtime.ReadMemStats(&ms)
+	t.Log("after gc", ms.HeapObjects, ms.HeapAlloc)
 }
