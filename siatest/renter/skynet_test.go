@@ -627,6 +627,25 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	if !bytes.Equal(fetchedData, remoteData) {
 		t.Error("converted skylink data doesn't match remote data")
 	}
+
+	// Converting with encryption is not supported. Call the convert method to
+	// ensure we do not panic and we return the expected error
+	//
+	// Add SkyKey
+	sk, err := r.SkykeyCreateKeyPost(t.Name(), skykey.TypePrivateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Convert file again
+	sup.SkykeyName = sk.Name
+	sup.Force = true
+
+	// Convert to a Skyfile
+	_, err = r.SkynetConvertSiafileToSkyfileEncryptedPost(sup, remoteFile.SiaPath(), sk.Name, skykey.SkykeyID{})
+	if err == nil || !strings.Contains(err.Error(), renter.ErrEncryptionNotSupported.Error()) {
+		t.Fatalf("Expected error %v, but got %v", renter.ErrEncryptionNotSupported, err)
+	}
 }
 
 // testSkynetMultipartUpload tests you can perform a multipart upload. It will
@@ -2131,30 +2150,27 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 	}
 
 	// Upload a normal siafile with 1-of-N redundancy
-	convertData := fastrand.Bytes(int(size))
-	reader := bytes.NewReader(convertData)
-	siafileSiaPath := modules.RandomSiaPath()
-	err = r.RenterUploadStreamPost(reader, siafileSiaPath, 1, 2, false)
+	_, rf, err := r.UploadNewFileBlocking(int(size), 1, 2, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Convert to a skyfile
 	convertUP := modules.SkyfileUploadParameters{
-		SiaPath: siafileSiaPath,
+		SiaPath: rf.SiaPath(),
 	}
-	convertSSHP, err := r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
+	convertSSHP, err := r.SkynetConvertSiafileToSkyfilePost(convertUP, rf.SiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
 	convertSkylink := convertSSHP.Skylink
 
 	// Confirm there is a siafile and a skyfile
-	_, err = r.RenterFileGet(siafileSiaPath)
+	_, err = r.RenterFileGet(rf.SiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	skyfilePath, err := modules.SkynetFolder.Join(siafileSiaPath.String())
+	skyfilePath, err := modules.SkynetFolder.Join(rf.SiaPath().String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2201,13 +2217,13 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 	// Try and convert to skylink again, should fail. Set the Force Flag to true
 	// to avoid error for file already existing
 	convertUP.Force = true
-	_, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
+	_, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, rf.SiaPath())
 	if err == nil || !strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) {
 		t.Fatalf("Expected error %v but got %v", renter.ErrSkylinkBlocked, err)
 	}
 
 	// This should delete the skyfile but not the siafile
-	_, err = r.RenterFileGet(siafileSiaPath)
+	_, err = r.RenterFileGet(rf.SiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2236,7 +2252,7 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 	}
 
 	// Convert should succeed
-	_, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, siafileSiaPath)
+	_, err = r.SkynetConvertSiafileToSkyfilePost(convertUP, rf.SiaPath())
 	if err != nil {
 		t.Fatal(err)
 	}

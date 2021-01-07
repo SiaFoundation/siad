@@ -411,6 +411,15 @@ func (c *Client) SkynetSkyfileMultiPartPost(params modules.SkyfileMultipartUploa
 // of the upload params is the name that will be used for the base sector of the
 // skyfile.
 func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadParameters, convert modules.SiaPath) (api.SkynetSkyfileHandlerPOST, error) {
+	return c.SkynetConvertSiafileToSkyfileEncryptedPost(lup, convert, "", skykey.SkykeyID{})
+}
+
+// SkynetConvertSiafileToSkyfileEncryptedPost uses the /skynet/skyfile endpoint
+// to convert an existing siafile to a skyfile. The input SiaPath 'convert' is
+// the siapath of the siafile that should be converted. The siapath provided
+// inside of the upload params is the name that will be used for the base sector
+// of the skyfile.
+func (c *Client) SkynetConvertSiafileToSkyfileEncryptedPost(lup modules.SkyfileUploadParameters, convert modules.SiaPath, skykeyName string, skykeyID skykey.SkykeyID) (api.SkynetSkyfileHandlerPOST, error) {
 	// Set the url values.
 	values := url.Values{}
 	values.Set("filename", lup.Filename)
@@ -421,6 +430,11 @@ func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadPara
 	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
 	values.Set("redundancy", redundancyStr)
 	values.Set("convertpath", convert.String())
+	values.Set("skykeyname", skykeyName)
+	var nilKey skykey.SkykeyID
+	if skykeyID != nilKey {
+		values.Set("skykeyid", skykeyID.ToString())
+	}
 
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", lup.SiaPath.String(), values.Encode())
