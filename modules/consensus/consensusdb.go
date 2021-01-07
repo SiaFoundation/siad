@@ -70,8 +70,10 @@ var (
 	// siafund pool.
 	SiafundPool = []byte("SiafundPool")
 
-	// FoundationUnlockHashes is a database bucket storing the current primary
-	// and failsafe Foundation UnlockHashes.
+	// FoundationUnlockHashes is a database bucket storing primary and failsafe
+	// Foundation UnlockHashes. It stores both the current values (keyed by
+	// "FoundationUnlockHashes") and the values at specific blocks (keyed by
+	// block height).
 	FoundationUnlockHashes = []byte("FoundationUnlockHashes")
 )
 

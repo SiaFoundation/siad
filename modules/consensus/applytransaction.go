@@ -203,9 +203,17 @@ func applySiafundOutputs(tx *bolt.Tx, pb *processedBlock, t types.Transaction) {
 	}
 }
 
-// applyArbitraryData applies arbitrary data to the consensus set. Currently,
-// only arbitrary data with the types.SpecifierFoundation prefix is handled.
+// applyArbitraryData applies arbitrary data to the consensus set. ArbitraryData
+// is a field of the Transaction type whose structure is not fixed. This means
+// that, via hardfork, new types of transaction can be introduced with minimal
+// breakage by updating consensus code to recognize and act upon values encoded
+// within the ArbitraryData field.
+//
+// Accordingly, this function dispatches on the various ArbitraryData values
+// that are recognized by consensus. Currently, types.FoundationUnlockHashUpdate
+// is the only recognized value.
 func applyArbitraryData(tx *bolt.Tx, pb *processedBlock, t types.Transaction) {
+	// No ArbitraryData values were recognized prior to the Foundation hardfork.
 	if pb.Height < types.FoundationHardforkHeight {
 		return
 	}
@@ -231,7 +239,7 @@ func applyArbitraryData(tx *bolt.Tx, pb *processedBlock, t types.Transaction) {
 			}
 			setPriorFoundationUnlockHashes(tx, pb.Height)
 			setFoundationUnlockHashes(tx, update.NewPrimary, update.NewFailsafe)
-			transferFoundationOutputs(tx, update.NewPrimary)
+			transferFoundationOutputs(tx, pb.Height, update.NewPrimary)
 		}
 	}
 }
@@ -239,17 +247,16 @@ func applyArbitraryData(tx *bolt.Tx, pb *processedBlock, t types.Transaction) {
 // transferFoundationOutputs transfers all unspent subsidy outputs to
 // newPrimary. This allows subsidies to be recovered in the event that the
 // primary key is lost or unusable when a subsidy is created.
-func transferFoundationOutputs(tx *bolt.Tx, newPrimary types.UnlockHash) {
-	currentHeight := blockHeight(tx)
+func transferFoundationOutputs(tx *bolt.Tx, currentHeight types.BlockHeight, newPrimary types.UnlockHash) {
 	for height := types.FoundationHardforkHeight; height < currentHeight; height += types.FoundationSubsidyFrequency {
-		bid, err := getPath(tx, height)
+		blockID, err := getPath(tx, height)
 		if err != nil {
 			if build.DEBUG {
 				panic(err)
 			}
 			continue
 		}
-		id := bid.FoundationSubsidyID()
+		id := blockID.FoundationSubsidyID()
 		sco, err := getSiacoinOutput(tx, id)
 		if err != nil {
 			continue // output has already been spent

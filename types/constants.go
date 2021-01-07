@@ -115,19 +115,19 @@ var (
 	// receives the initial Foundation subsidy. The keys that this address was
 	// derived from can also be used to set a new primary and failsafe address.
 	InitialFoundationUnlockHash UnlockHash
-	// InitialFoundationTestingSpecifier is the specifier used to generate the
+	// InitialFoundationTestingSalt is the salt used to generate the
 	// UnlockConditions and signing keys for the InitialFoundationUnlockHash.
-	InitialFoundationTestingSpecifier = NewSpecifier("genprimary")
+	InitialFoundationTestingSalt = "saltgenprimary"
 	// InitialFoundationFailsafeUnlockHash is the "backup" Foundation address.
 	// It does not receive the Foundation subsidy, but its keys can be used to
 	// set a new primary and failsafe address. These UnlockConditions should
 	// also be subject to a timelock that prevents the failsafe from being used
 	// immediately.
 	InitialFoundationFailsafeUnlockHash UnlockHash
-	// InitialFoundationFailsafeTestingSpecifier is the specifier used to
-	// generate the UnlockConditions and signing keys for the
+	// InitialFoundationFailsafeTestingSalt is the salt used to generate the
+	// UnlockConditions and signing keys for the
 	// InitialFoundationFailsafeUnlockHash.
-	InitialFoundationFailsafeTestingSpecifier = NewSpecifier("genfailsafe")
+	InitialFoundationFailsafeTestingSalt = "saltgenfailsafe"
 	// InitialFoundationSubsidy is the one-time subsidy sent to the Foundation
 	// address upon activation of the hardfork, representing one year's worth of
 	// block subsidies.
@@ -236,8 +236,8 @@ func init() {
 		FoundationHardforkHeight = 100
 		FoundationSubsidyFrequency = 10
 
-		initialFoundationUnlockConditions, _ := GenerateDeterministicMultisig(2, 3, InitialFoundationTestingSpecifier)
-		initialFoundationFailsafeUnlockConditions, _ := GenerateDeterministicMultisig(3, 5, InitialFoundationFailsafeTestingSpecifier)
+		initialFoundationUnlockConditions, _ := GenerateDeterministicMultisig(2, 3, InitialFoundationTestingSalt)
+		initialFoundationFailsafeUnlockConditions, _ := GenerateDeterministicMultisig(3, 5, InitialFoundationFailsafeTestingSalt)
 		InitialFoundationUnlockHash = initialFoundationUnlockConditions.UnlockHash()
 		InitialFoundationFailsafeUnlockHash = initialFoundationFailsafeUnlockConditions.UnlockHash()
 
@@ -294,8 +294,8 @@ func init() {
 		FoundationHardforkHeight = 50
 		FoundationSubsidyFrequency = 5
 
-		initialFoundationUnlockConditions, _ := GenerateDeterministicMultisig(2, 3, InitialFoundationTestingSpecifier)
-		initialFoundationFailsafeUnlockConditions, _ := GenerateDeterministicMultisig(3, 5, InitialFoundationFailsafeTestingSpecifier)
+		initialFoundationUnlockConditions, _ := GenerateDeterministicMultisig(2, 3, InitialFoundationTestingSalt)
+		initialFoundationFailsafeUnlockConditions, _ := GenerateDeterministicMultisig(3, 5, InitialFoundationFailsafeTestingSalt)
 		InitialFoundationUnlockHash = initialFoundationUnlockConditions.UnlockHash()
 		InitialFoundationFailsafeUnlockHash = initialFoundationFailsafeUnlockConditions.UnlockHash()
 
@@ -676,14 +676,14 @@ func init() {
 
 // GenerateDeterministicMultisig is a helper function that generates a set of
 // multisig UnlockConditions along with their signing keys.
-func GenerateDeterministicMultisig(m, n int, salt Specifier) (UnlockConditions, []crypto.SecretKey) {
+func GenerateDeterministicMultisig(m, n int, salt string) (UnlockConditions, []crypto.SecretKey) {
 	uc := UnlockConditions{
 		PublicKeys:         make([]SiaPublicKey, n),
 		SignaturesRequired: uint64(m),
 	}
 	keys := make([]crypto.SecretKey, n)
 
-	entropy := crypto.HashBytes(salt[:])
+	entropy := crypto.HashObject(salt)
 	for i := range keys {
 		sk, pk := crypto.GenerateKeyPairDeterministic(entropy)
 		keys[i], uc.PublicKeys[i] = sk, Ed25519PublicKey(pk)

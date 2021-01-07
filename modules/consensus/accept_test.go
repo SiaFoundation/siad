@@ -1290,7 +1290,7 @@ func TestFoundationUpdateBlocks(t *testing.T) {
 	if !ok {
 		t.Fatal("initial subsidy should exist")
 	}
-	primaryUC, primaryKeys := types.GenerateDeterministicMultisig(2, 3, types.InitialFoundationTestingSpecifier)
+	primaryUC, primaryKeys := types.GenerateDeterministicMultisig(2, 3, types.InitialFoundationTestingSalt)
 	txn := types.Transaction{
 		SiacoinInputs: []types.SiacoinInput{{
 			ParentID:         scoid,
@@ -1383,7 +1383,10 @@ func TestFoundationUpdateBlocks(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 
-	// Mine multiple subsidies; they will all be sent to the void.
+	// In the next transaction, we will successfully change the primary back
+	// using the failsafe. Before we do that, mine a few subsidies. These
+	// subsidies will all be sent to the void, but once the primary is updated,
+	// they will be transferred back to the primary.
 	outputHeight += 3 * types.FoundationSubsidyFrequency
 	for cst.cs.Height() < outputHeight+types.MaturityDelay {
 		if _, err := cst.miner.AddBlock(); err != nil {
@@ -1391,9 +1394,10 @@ func TestFoundationUpdateBlocks(t *testing.T) {
 		}
 	}
 
-	// Change the primary back using the failsafe. The previous subsidies should
-	// be transferred to the primary.
-	failsafeUC, failsafeKeys := types.GenerateDeterministicMultisig(3, 5, types.InitialFoundationFailsafeTestingSpecifier)
+	// Change the primary back using the failsafe. Note that, rather than
+	// recreate the entire transaction, we simply replace the input and the
+	// signatures.
+	failsafeUC, failsafeKeys := types.GenerateDeterministicMultisig(3, 5, types.InitialFoundationFailsafeTestingSalt)
 	txn.SiacoinInputs[0] = types.SiacoinInput{
 		ParentID:         failsafeSCOID,
 		UnlockConditions: failsafeUC,
@@ -1409,6 +1413,12 @@ func TestFoundationUpdateBlocks(t *testing.T) {
 	if err := mineTxn(txn); err != nil {
 		t.Fatal(err)
 	}
+	// Confirm that the update was applied.
+	if p, f := cst.cs.FoundationUnlockHashes(); p != types.InitialFoundationUnlockHash || f != types.InitialFoundationFailsafeUnlockHash {
+		t.Fatal("transaction did not reset foundation unlock hashes")
+	}
+
+	// The previous subsidies should have been transferred to the primary.
 	scoid, sco, ok = foundationOutput(outputHeight)
 	if !ok {
 		t.Fatal("output should exist")

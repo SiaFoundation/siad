@@ -215,8 +215,8 @@ func applyFileContractMaintenance(tx *bolt.Tx, pb *processedBlock) {
 // Maintenance is applied after all of the transactions for the block have been
 // applied.
 func applyMaintenance(tx *bolt.Tx, pb *processedBlock) {
-	applyFoundationSubsidy(tx, pb)
 	applyMinerPayouts(tx, pb)
+	applyFoundationSubsidy(tx, pb)
 	applyMaturedSiacoinOutputs(tx, pb)
 	applyFileContractMaintenance(tx, pb)
 }

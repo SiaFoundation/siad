@@ -69,12 +69,12 @@ func CalculateCoinbase(height BlockHeight) Currency {
 func CalculateNumSiacoins(height BlockHeight) (total Currency) {
 	total = numGenesisSiacoins
 	deflationBlocks := BlockHeight(InitialCoinbase - MinimumCoinbase)
-	avgDeflationSiacoins := CalculateCoinbase(0).Add(CalculateCoinbase(height)).Div(NewCurrency64(2))
+	avgDeflationSiacoins := CalculateCoinbase(0).Add(CalculateCoinbase(height)).Div64(2)
 	if height <= deflationBlocks {
-		total = total.Add(avgDeflationSiacoins.Mul(NewCurrency64(uint64(height + 1))))
+		total = total.Add(avgDeflationSiacoins.Mul64(uint64(height + 1)))
 	} else {
 		total = total.Add(avgDeflationSiacoins.Mul(NewCurrency64(uint64(deflationBlocks + 1))))
-		total = total.Add(NewCurrency64(uint64(height - deflationBlocks)).Mul(CalculateCoinbase(height)))
+		total = total.Add(CalculateCoinbase(height).Mul64(uint64(height - deflationBlocks)))
 	}
 	if height >= FoundationHardforkHeight {
 		total = total.Add(InitialFoundationSubsidy)

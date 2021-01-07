@@ -93,7 +93,7 @@ func (cs *ConsensusSet) initFoundation(tx *bolt.Tx) error {
 	// If the current height is greater than the hardfork trigger date, return
 	// an error and refuse to initialize.
 	height := blockHeight(tx)
-	if height > types.FoundationHardforkHeight {
+	if height >= types.FoundationHardforkHeight {
 		return errFoundationHardforkIncompatibility
 	}
 	// Set the initial Foundation addresses.

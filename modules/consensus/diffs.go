@@ -196,7 +196,7 @@ func commitFoundationUpdate(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDir
 		if exists {
 			setFoundationUnlockHashes(tx, primary, failsafe)
 			deletePriorFoundationUnlockHashes(tx, pb.Height)
-			transferFoundationOutputs(tx, primary)
+			transferFoundationOutputs(tx, pb.Height, primary)
 		}
 	}
 }
@@ -213,7 +213,6 @@ func commitDiffSet(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
 	deleteObsoleteDelayedOutputMaps(tx, pb, dir)
 	commitFoundationUpdate(tx, pb, dir)
 	updateCurrentPath(tx, pb, dir)
-
 }
 
 // generateAndApplyDiff will verify the block and then integrate it into the
