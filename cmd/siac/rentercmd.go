@@ -81,7 +81,10 @@ var (
 		Use:   "clean",
 		Short: "Cleans up lost files",
 		Long: `WARNING: This action will permanently delete any files associated with
-the renter that do not have a local copy on disk and have a redundancy of < 1.`,
+the renter that do not have a local copy on disk and have a redundancy of < 1.
+
+You will be asked if you want to see these lost files. Additionally you can use
+the command 'siac renter lost' to see the renter's lost files.`,
 		Run: wrap(rentercleancmd),
 	}
 
@@ -354,34 +357,26 @@ func abs(path string) string {
 
 // rentercleancmd cleans any lost files from the renter.
 func rentercleancmd() {
-	br := bufio.NewReader(os.Stdin)
-	readString := func() string {
-		str, _ := br.ReadString('\n')
-		return strings.TrimSpace(str)
+	// Print initial warning
+	fmt.Println("WARNING: This command will delete lost files and cannot be undone!")
+
+	// Ask user if they want to see the lost files they are about to delete.
+	confirmed := askForConfirmation("Would you like see the lost files that will be deleted?")
+	if confirmed {
+		renterlostcmd()
 	}
 
-	fmt.Println("WARNING: This command will delete lost files and cannot be undone!")
-	for {
-		fmt.Print("Are you sure you want to continue? (y/n): ")
-		answer := readString()
-		n := answer == "n" || answer == "N"
-		no := answer == "no" || answer == "No"
-		if n || no {
-			return
-		}
-		y := answer == "y" || answer == "Y"
-		yes := answer == "yes" || answer == "Yes"
-		if y || yes {
-			break
-		}
-		fmt.Println("Invalid response")
+	// Confirm user wants to proceed
+	confirmed = askForConfirmation("Are you sure you want to continue and delete the lost files?")
+	if !confirmed {
+		return
 	}
 
 	// Clean up lost files
 	fmt.Println("Cleaning lost files...")
 	err := httpClient.RenterCleanPost()
 	if err != nil {
-		die("unable to clean renter's lost files: ", err)
+		die("Unable to clean renter's lost files: ", err)
 	}
 	fmt.Println("Successfully cleaned lost files!")
 }
@@ -466,7 +461,7 @@ func renterlostcmd() {
 	dirs := getDir(modules.RootSiaPath(), true, true)
 	_, _, err := fileHealthBreakdown(dirs, true)
 	if err != nil {
-		die(err)
+		die("Unable to display lost files:", err)
 	}
 }
 

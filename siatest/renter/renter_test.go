@@ -5362,7 +5362,7 @@ func TestRenterClean(t *testing.T) {
 	}
 
 	// Define test function
-	test := func(numSiaFiles, numSkyFiles int) {
+	cleanAndVerify := func(numSiaFiles, numSkyFiles int) {
 		// Clean renter
 		err = r.RenterCleanPost()
 		if err != nil {
@@ -5398,7 +5398,7 @@ func TestRenterClean(t *testing.T) {
 	}
 
 	// First test should only remove the 1 unrecoverable Siafile
-	test(1, 1)
+	cleanAndVerify(1, 1)
 
 	// Take down the hosts
 	for _, h := range tg.Hosts() {
@@ -5415,5 +5415,5 @@ func TestRenterClean(t *testing.T) {
 	}
 
 	// Second test should remove the now unrecoverable Skyfile
-	test(1, 0)
+	cleanAndVerify(1, 0)
 }
