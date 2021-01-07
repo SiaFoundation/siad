@@ -379,12 +379,11 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 	queued := 0
 	for _, w := range workers {
 		job := &jobUploadSnapshot{
-			staticMetadata:    meta,
 			staticSiaFileData: dotSia,
 
 			staticResponseChan: responseChan,
 
-			jobGeneric: newJobGeneric(maxWait, w.staticJobUploadSnapshotQueue),
+			jobGeneric: newJobGeneric(maxWait, w.staticJobUploadSnapshotQueue, meta),
 		}
 
 		// If a job is not added correctly, count this as a failed response.

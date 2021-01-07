@@ -10,7 +10,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -107,7 +106,7 @@ Use sighash to calculate the hash of a transaction.
 		Short: "verify seed is formatted correctly",
 		Long: `Verify that a seed has correct number of words, no extra whitespace,
 and all words appear in the Sia dictionary. The language may be english (default), japanese, or german`,
-		Run: wrap(utilsverifyseed),
+		Run: wrap(utilsverifyseedcmd),
 	}
 
 	utilsDisplayAPIPasswordCmd = &cobra.Command{
@@ -115,7 +114,7 @@ and all words appear in the Sia dictionary. The language may be english (default
 		Short: "display the API password",
 		Long: `Display the API password.  The API password is required for some 3rd 
 party integrations such as Duplicati`,
-		Run: wrap(utilsdisplayapipassword),
+		Run: wrap(utilsdisplayapipasswordcmd),
 	}
 
 	utilsBruteForceSeedCmd = &cobra.Command{
@@ -123,7 +122,7 @@ party integrations such as Duplicati`,
 		Short: "attempt to brute force seed",
 		Long: `Attempts to brute force a partial Sia seed.  Accepts a 27 or 28 word
 seed and returns a valid 28 or 29 word seed`,
-		Run: wrap(utilsbruteforceseed),
+		Run: wrap(utilsbruteforceseedcmd),
 	}
 
 	utilsUploadedsizeCmd = &cobra.Command{
@@ -263,10 +262,10 @@ func utilschecksigcmd(base64Sig, hexHash, pkStr string) {
 	}
 }
 
-// utilsverifyseed is the handler for the command `siac utils verify-seed`.
+// utilsverifyseedcmd is the handler for the command `siac utils verify-seed`.
 // verifies a seed matches the required formatting.  This can be used to help
 // troubleshot seeds that are not being accepted by siad.
-func utilsverifyseed() {
+func utilsverifyseedcmd() {
 	seed, err := passwordPrompt("Please enter your seed: ")
 	if err != nil {
 		die("Could not read seed")
@@ -279,17 +278,17 @@ func utilsverifyseed() {
 	fmt.Println("No issues detected with your seed")
 }
 
-// utilsdisplayapipassword is the handler for the command `siac utils
+// utilsdisplayapipasswordcmd is the handler for the command `siac utils
 // display-api-password`.
 // displays the API Password to the user.
-func utilsdisplayapipassword() {
+func utilsdisplayapipasswordcmd() {
 	fmt.Println(httpClient.Password)
 }
 
-// utilsbruteforceseed is the handler for the command `siac utils
+// utilsbruteforceseedcmd is the handler for the command `siac utils
 // bruteforce-seed`
 // attempts to find the one word missing from a seed.
-func utilsbruteforceseed() {
+func utilsbruteforceseedcmd() {
 	fmt.Println("Enter partial seed: ")
 	s := bufio.NewScanner(os.Stdin)
 	s.Scan()
@@ -397,56 +396,4 @@ Files: %v
 			modules.FilesizeUnits(calculateAverageUint64(fileSizes)),
 			modules.FilesizeUnits(calculateMedianUint64(fileSizes)))
 	}
-}
-
-// askForConfirmation prints a question and waits for confirmation until the
-// user gives a valid answer ("y", "yes", "n", "no" with any capitalization).
-func askForConfirmation(s string) bool {
-	r := bufio.NewReader(os.Stdin)
-	for {
-		fmt.Printf("%s [y/n]: ", s)
-		answer, err := r.ReadString('\n')
-		if err != nil {
-			log.Fatal(err)
-		}
-		answer = strings.ToLower(strings.TrimSpace(answer))
-		if answer == "y" || answer == "yes" {
-			return true
-		} else if answer == "n" || answer == "no" {
-			return false
-		}
-	}
-}
-
-// calculateAverageUint64 calculates the average of a uint64 slice and returns the average as a uint64
-func calculateAverageUint64(input []uint64) uint64 {
-	total := uint64(0)
-	if len(input) == 0 {
-		return 0
-	}
-	for _, v := range input {
-		total += v
-	}
-	return total / uint64(len(input))
-}
-
-// calculateMedianUint64 calculates the median of a uint64 slice and returns the median as a uint64
-func calculateMedianUint64(mm []uint64) uint64 {
-	sort.Slice(mm, func(i, j int) bool { return mm[i] < mm[j] }) // sort the numbers
-
-	mNumber := len(mm) / 2
-
-	if len(mm)%2 == 0 {
-		return mm[mNumber]
-	}
-
-	return (mm[mNumber-1] + mm[mNumber]) / 2
-}
-
-func fileExists(filename string) bool {
-	info, err := os.Stat(filename)
-	if os.IsNotExist(err) {
-		return false
-	}
-	return !info.IsDir()
 }

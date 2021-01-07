@@ -327,11 +327,10 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64) (tim
 			staticResponseChan: pdc.workerResponseChan,
 			staticLength:       pdc.pieceLength,
 
-			staticSector: pdc.workerSet.staticPieceRoots[pieceIndex],
-
-			jobGeneric: newJobGeneric(pdc.ctx, w.staticJobReadQueue),
+			jobGeneric: newJobGeneric(pdc.ctx, w.staticJobReadQueue, jobReadSectorMetadata{staticSector: pdc.workerSet.staticPieceRoots[pieceIndex]}),
 		},
 		staticOffset: pdc.pieceOffset,
+		staticSector: pdc.workerSet.staticPieceRoots[pieceIndex],
 	}
 	// Submit the job.
 	expectedCompleteTime, added := w.staticJobReadQueue.callAddWithEstimate(jrs)

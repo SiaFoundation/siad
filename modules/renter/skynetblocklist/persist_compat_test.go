@@ -18,7 +18,7 @@ import (
 
 // TestPersistCompatTwoFiles tests the handling of the persist code when
 // a blocklist persist file was created without converting the blacklist
-// persistepersistence
+// persistence
 func TestPersistCompatTwoFiles(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()

@@ -127,7 +127,7 @@ func (w *worker) RenewContract(ctx context.Context, params proto.ContractParams,
 		staticParams:             params,
 		staticResponseChan:       renewResponseChan,
 		staticTransactionBuilder: txnBuilder,
-		jobGeneric:               newJobGeneric(ctx, w.staticJobReadQueue),
+		jobGeneric:               newJobGeneric(ctx, w.staticJobReadQueue, nil),
 	}
 
 	// Add the job to the queue.
