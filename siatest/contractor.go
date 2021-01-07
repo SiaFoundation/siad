@@ -3,7 +3,9 @@ package siatest
 import (
 	"fmt"
 	"math/big"
+	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
@@ -363,4 +365,54 @@ func RenewContractsByRenewWindow(renter *TestNode, tg *TestGroup) error {
 		return err
 	}
 	return nil
+}
+
+// RenterContractsStable verifies that the renter's contracts are in a stable
+// state and no contracts are renewing to avoid errors.
+func RenterContractsStable(renter *TestNode, tg *TestGroup) error {
+	rg, err := renter.RenterGet()
+	if err != nil {
+		return err
+	}
+	renewWindow := int(rg.Settings.Allowance.RenewWindow)
+	numHosts := rg.Settings.Allowance.Hosts
+	miner := tg.Miners()[0]
+	count := 1
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		// Mine a block every 10 iterations
+		if err := miner.MineBlock(); err != nil {
+			return err
+		}
+		count++
+
+		// Get consensus and renter contracts
+		cg, err := renter.ConsensusGet()
+		if err != nil {
+			return err
+		}
+		rc, err := renter.RenterContractsGet()
+		if err != nil {
+			return err
+		}
+
+		// Check for active contracts
+		if len(rc.ActiveContracts) == int(numHosts) {
+			return errors.New("Not enough Active Contracts")
+		}
+
+		// Check if any of the active contracts are in the renew window
+		for _, contract := range rc.ActiveContracts {
+			inRenewWindow := int(contract.EndHeight)-renewWindow-int(cg.Height) <= 0
+			if inRenewWindow {
+				return errors.New("contract in renew window")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// Waiting for nodes to sync
+	return tg.Sync()
 }

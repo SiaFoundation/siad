@@ -220,6 +220,14 @@ func TestNewGroupPortal(t *testing.T) {
 	p1 := portals[0]
 	p2 := portals[1]
 
+	// Check that neither portal is in a renew window
+	err1 := RenterContractsStable(p1, tg)
+	err2 := RenterContractsStable(p2, tg)
+	err = errors.Compose(err1, err2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// They should have the same number of contracts
 	rc1, err1 := p1.RenterAllContractsGet()
 	rc2, err2 := p2.RenterAllContractsGet()
@@ -236,12 +244,16 @@ func TestNewGroupPortal(t *testing.T) {
 		t.Fatal("Not enough contracts have formed")
 	}
 
-	// Have 1 portal upload a skyfile and have the other portal download it
+	// Have 1 portal upload a skyfile and have both portals download it
 	skylink, _, _, err := p1.UploadNewSkyfileBlocking("file", 100, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = p2.SkynetSkylinkGet(skylink)
+	_, _, err1 = p2.SkynetSkylinkGet(skylink)
+	err1 = errors.AddContext(err1, "p1 download failed")
+	_, _, err2 = p2.SkynetSkylinkGet(skylink)
+	err2 = errors.AddContext(err2, "p2 download failed")
+	err = errors.Compose(err1, err2)
 	if err != nil {
 		t.Fatal(err)
 	}
