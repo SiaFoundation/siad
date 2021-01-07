@@ -154,7 +154,9 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 	isErr := true
 	defer func() {
 		if isErr {
+			skynetPerformanceStatsMu.Lock()
 			skynetPerformanceStats.TimeToFirstByte.AddRequest(0)
+			skynetPerformanceStatsMu.Unlock()
 		}
 	}()
 
@@ -374,7 +376,9 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 	isErr := true
 	defer func() {
 		if isErr {
+			skynetPerformanceStatsMu.Lock()
 			skynetPerformanceStats.TimeToFirstByte.AddRequest(0)
+			skynetPerformanceStatsMu.Unlock()
 		}
 	}()
 
@@ -492,7 +496,9 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	isErr := true
 	defer func() {
 		if isErr {
+			skynetPerformanceStatsMu.Lock()
 			skynetPerformanceStats.TimeToFirstByte.AddRequest(0)
+			skynetPerformanceStatsMu.Unlock()
 		}
 	}()
 
