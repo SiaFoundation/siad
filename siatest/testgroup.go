@@ -576,6 +576,12 @@ func (tg *TestGroup) AddNodes(nps ...node.NodeParams) ([]*TestNode, error) {
 			tg.renters[node] = struct{}{}
 			newRenters[node] = struct{}{}
 		}
+		// Add node to portals. No need to create a newPortals as the node is
+		// a renter and the set up will be handled by newRenters
+		if np.CreatePortal {
+			tg.portals[node] = struct{}{}
+		}
+
 		// Add node to miners
 		if np.Miner != nil || np.CreateMiner {
 			tg.miners[node] = struct{}{}

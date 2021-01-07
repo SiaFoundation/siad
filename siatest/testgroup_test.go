@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/node"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestNewGroup tests the behavior of NewGroup.
@@ -188,7 +189,7 @@ func TestNewGroupPortal(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create group: ", err)
 	}
-	func() {
+	defer func() {
 		if err := tg.Close(); err != nil {
 			t.Fatal(err)
 		}
@@ -209,14 +210,30 @@ func TestNewGroupPortal(t *testing.T) {
 		t.Fatal("Failed to add portals to group: ", err)
 	}
 
-	// Grab portals
+	// The Test Group should have the portal listed as a renter as well
 	portals := tg.Portals()
+	if len(tg.Renters()) != len(portals) {
+		t.Fatal("Expected same number of renters and portals")
+	}
+
+	// Grab portals
 	p1 := portals[0]
 	p2 := portals[1]
 
-	// The Test Group should have the portal listed as a renter as well
-	if len(tg.Renters()) != len(portals) {
-		t.Fatal("Expected same number of renters and portals")
+	// They should have the same number of contracts
+	rc1, err1 := p1.RenterAllContractsGet()
+	rc2, err2 := p2.RenterAllContractsGet()
+	err = errors.Compose(err1, err2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p1Contracts := len(rc1.ActiveContracts) + len(rc1.PassiveContracts)
+	p2Contracts := len(rc2.ActiveContracts) + len(rc2.PassiveContracts)
+	if p1Contracts != p2Contracts || p1Contracts != groupParams.Hosts {
+		t.Log("Portal 1 # of Contracts:", p1Contracts)
+		t.Log("Portal 2 # of Contracts:", p2Contracts)
+		t.Log("# of Hosts:", groupParams.Hosts)
+		t.Fatal("Not enough contracts have formed")
 	}
 
 	// Have 1 portal upload a skyfile and have the other portal download it
