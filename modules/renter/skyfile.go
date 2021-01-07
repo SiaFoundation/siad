@@ -403,8 +403,6 @@ func (r *Renter) UpdateSkynetPortals(additions []modules.SkynetPortal, removals 
 // where the fileReader contains all of the data for the file, including the
 // data that uploadSkyfileReadLeadingChunk had to read to figure out whether
 // the file was too large to fit into the leading chunk.
-//
-// TODO: This function is unused. Can it be to refactor the headerSize checks?
 func uploadSkyfileReadLeadingChunk(r io.Reader, headerSize uint64) ([]byte, io.Reader, bool, error) {
 	// Check for underflow.
 	if headerSize+1 > modules.SectorSize {

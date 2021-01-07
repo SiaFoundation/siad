@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -34,14 +33,6 @@ var (
 		Long: `Perform actions related to Skynet, a file sharing and data publication platform
 on top of Sia.`,
 		Run: skynetcmd,
-	}
-
-	skynetBackupSkylinkCmd = &cobra.Command{
-		Use:   "backup [flags] [skylink] ...",
-		Short: "Backs up a skylink to the skynetSkylinkBackupDir",
-		Long: `Backs up a skylink, or multiple space separated skylinks, by downloading 
-the skyfile(s) to the skynetSkylinkBackupDir`,
-		Run: skynetbackupskylinkcmd,
 	}
 
 	skynetBlocklistCmd = &cobra.Command{
@@ -124,14 +115,6 @@ by --public if you want it to be publicly available.`,
 		Run:   wrap(skynetportalsremovecmd),
 	}
 
-	skynetRestoreSkylinkCmd = &cobra.Command{
-		Use:   "restore [backupPath] ...",
-		Short: "Restores a skyfile from the backupPath",
-		Long: `Restores a skyfile from the backupPath, or multiple skyfiles from multiple space 
-separated backupPaths, by re-uploading the data.`,
-		Run: skynetrestoreskylinkcmd,
-	}
-
 	skynetUnpinCmd = &cobra.Command{
 		Use:   "unpin [siapath]",
 		Short: "Unpin pinned skyfiles or directories.",
@@ -161,34 +144,6 @@ flag to fetch the skylink without actually uploading the file.`,
 func skynetcmd(cmd *cobra.Command, _ []string) {
 	_ = cmd.UsageFunc()(cmd)
 	os.Exit(exitCodeUsage)
-}
-
-// skynetbackupskylinkcmd backs up a skylink, or multiple space separated
-// skylinks, by downloading the skyfile(s) to the skynetSkylinkBackupDir.
-//
-// TODO: This should be updated to accept a backup type? Or just default return
-// a tar-gz
-func skynetbackupskylinkcmd(cmd *cobra.Command, skylinks []string) {
-	if len(skylinks) == 0 {
-		_ = cmd.UsageFunc()(cmd)
-		os.Exit(exitCodeUsage)
-	}
-	if skynetSkylinkBackupDir == "" {
-		die("backup dir needs to be defined")
-	}
-
-	// NOTE: Errors will be printed out so as many skylinks as possible can be
-	// backed up
-	for _, skylink := range skylinks {
-		// Backup the Skylink
-		var backup bytes.Buffer
-		err := httpClient.SkynetSkylinkBackup(skylink, &backup)
-		if err != nil {
-			fmt.Println("Unable to backup skylink:", skylink, ",error:", err)
-			continue
-		}
-		fmt.Printf("Backup Successful! Skylink: %v\tBackup Path: %v\n", skylink, skynetSkylinkBackupDir)
-	}
 }
 
 // skynetblocklistaddcmd adds skylinks to the blocklist
@@ -276,49 +231,50 @@ func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 	skylink := args[0]
 	skylink = strings.TrimPrefix(skylink, "sia://")
 	filename := args[1]
-	err := downloadSkylink(skylink, filename)
-	if err != nil {
-		die("unable to download skylink", err)
-	}
-}
-
-// downloadSkylink downloads the skylink to the destination filename
-func downloadSkylink(skylink, filename string) (err error) {
 	file, err := os.Create(filename)
 	if err != nil {
-		return errors.AddContext(err, "unable to create destination file")
+		die("Unable to create destination file:", err)
 	}
 	defer func() {
-		err = errors.Compose(err, file.Close())
+		if err := file.Close(); err != nil {
+			die(err)
+		}
 	}()
 
 	// Check whether the portal flag is set, if so use the portal download
 	// method.
 	var reader io.ReadCloser
-	defer func() {
-		err = errors.Compose(err, reader.Close())
-	}()
 	if skynetDownloadPortal != "" {
 		url := skynetDownloadPortal + "/" + skylink
 		resp, err := http.Get(url)
 		if err != nil {
-			return errors.AddContext(err, "unable to download from portal")
+			die("Unable to download from portal:", err)
 		}
 		reader = resp.Body
+		defer func() {
+			err = reader.Close()
+			if err != nil {
+				die("unable to close reader:", err)
+			}
+		}()
 	} else {
 		// Try to perform a download using the client package.
 		reader, err = httpClient.SkynetSkylinkReaderGet(skylink)
 		if err != nil {
-			return errors.AddContext(err, "unable to fetch skylink")
+			die("Unable to fetch skylink:", err)
 		}
+		defer func() {
+			err = reader.Close()
+			if err != nil {
+				die("unable to close reader:", err)
+			}
+		}()
 	}
 
-	// Write data to disk
 	_, err = io.Copy(file, reader)
 	if err != nil {
-		return errors.AddContext(err, "unable to write full data")
+		die("Unable to write full data:", err)
 	}
-	return nil
 }
 
 // skynetlscmd is the handler for the command `siac skynet ls`. Works very
@@ -562,32 +518,6 @@ func skynetpincmd(sourceSkylink, destSiaPath string) {
 		die("Unable to Pin Skyfile:", err)
 	}
 	fmt.Printf("Skyfile pinned successfully\nSkylink: sia://%v\n", skylink)
-}
-
-// skynetrestoreskylinkcmd restores a skyfile from the backupPath, or multiple
-// skyfiles from multiple space separated backupPaths, by re-uploading the data.
-func skynetrestoreskylinkcmd(cmd *cobra.Command, backupPaths []string) {
-	if len(backupPaths) == 0 {
-		_ = cmd.UsageFunc()(cmd)
-		os.Exit(exitCodeUsage)
-	}
-
-	// NOTE: Errors will be printed out so as many skylinks as possible can be
-	// restored
-	for _, backupPath := range backupPaths {
-		// Backup the Skylink
-		f, err := os.Open(backupPath)
-		if err != nil {
-			fmt.Println("unable to open backup file:", backupPath, ",error:", err)
-			continue
-		}
-		skylink, err := httpClient.SkynetSkylinkRestorePost(f)
-		if err != nil {
-			fmt.Println("unable to restore file:", backupPath, ",error:", err)
-			continue
-		}
-		fmt.Printf("Restore Successful! Skylink: %v\tBackup Path: %v\n", skylink, backupPath)
-	}
 }
 
 // skynetunpincmd will unpin and delete either a single or multiple files or

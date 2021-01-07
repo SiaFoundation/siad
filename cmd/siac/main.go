@@ -80,7 +80,6 @@ var (
 	skynetLsRecursive              bool   // List files of folder recursively.
 	skynetLsRoot                   bool   // Use root as the base instead of the Skynet folder.
 	skynetPinPortal                string // Portal to use when trying to pin a skylink.
-	skynetSkylinkBackupDir         string // The local directory where the backup will be saved to.
 	skynetUnpinRoot                bool   // Use root as the base instead of the Skynet folder.
 	skynetUploadDefaultPath        string // Specify the file to serve when no specific file is specified.
 	skynetUploadDisableDefaultPath bool   // This skyfile will not have a default path. The only way to use it is to download it.
@@ -372,7 +371,7 @@ func initCmds() *cobra.Command {
 	renterFuseMountCmd.Flags().BoolVarP(&renterFuseMountAllowOther, "allow-other", "", false, "Allow users other than the user that mounted the fuse directory to access and use the fuse directory")
 
 	root.AddCommand(skynetCmd)
-	skynetCmd.AddCommand(skynetBackupSkylinkCmd, skynetBlocklistCmd, skynetConvertCmd, skynetDownloadCmd, skynetLsCmd, skynetPinCmd, skynetPortalsCmd, skynetRestoreSkylinkCmd, skynetUnpinCmd, skynetUploadCmd)
+	skynetCmd.AddCommand(skynetBlocklistCmd, skynetConvertCmd, skynetDownloadCmd, skynetLsCmd, skynetPinCmd, skynetPortalsCmd, skynetUnpinCmd, skynetUploadCmd)
 	skynetConvertCmd.Flags().StringVar(&skykeyName, "skykeyname", "", "Specify the skykey to be used by name.")
 	skynetConvertCmd.Flags().StringVar(&skykeyID, "skykeyid", "", "Specify the skykey to be used by id.")
 	skynetUploadCmd.Flags().BoolVar(&skynetUploadRoot, "root", false, "Use the root folder as the base instead of the Skynet folder")
@@ -393,7 +392,6 @@ func initCmds() *cobra.Command {
 	skynetBlocklistRemoveCmd.Flags().BoolVar(&skynetBlocklistHash, "hash", false, "Indicates if the input is already a hash of the Skylink's Merkleroot")
 	skynetPortalsCmd.AddCommand(skynetPortalsAddCmd, skynetPortalsRemoveCmd)
 	skynetPortalsAddCmd.Flags().BoolVar(&skynetPortalPublic, "public", false, "Add this Skynet portal as public")
-	skynetBackupSkylinkCmd.Flags().StringVar(&skynetSkylinkBackupDir, "backup-dir", "", "The local directory where the backup will be saved to")
 
 	root.AddCommand(skykeyCmd)
 	skykeyCmd.AddCommand(skykeyAddCmd, skykeyCreateCmd, skykeyDeleteCmd, skykeyGetCmd, skykeyGetIDCmd, skykeyListCmd)
