@@ -924,11 +924,6 @@ func TestValidArbitraryData(t *testing.T) {
 		t.Error(err)
 	}
 
-	// Check data with an invalid update
-	data = encoding.MarshalAll(types.SpecifierFoundation, [...]byte{1, 2, 3})
-	if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight); err == nil {
-		t.Error("expected error, got nil")
-	}
 	// Check same transaction prior to hardfork -- it should be ignored
 	if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight-1); err != nil {
 		t.Error(err)
@@ -936,8 +931,8 @@ func TestValidArbitraryData(t *testing.T) {
 
 	// Check transaction with a valid update, but no input or signature
 	data = encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{})
-	if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight); err == nil {
-		t.Error("expected error, got nil")
+	if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight); err != errUnsignedFoundationUpdate {
+		t.Error("expected errUnsignedFoundationUpdate, got", err)
 	} else if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight-1); err != nil {
 		t.Error(err)
 	}
@@ -969,7 +964,7 @@ func TestValidArbitraryData(t *testing.T) {
 
 	// Try with invalid unlock conditions
 	txn.SiacoinInputs[0].UnlockConditions = types.UnlockConditions{}
-	if err := validate(txn, types.FoundationHardforkHeight); err == nil {
-		t.Error("expected error, got nil")
+	if err := validate(txn, types.FoundationHardforkHeight); err != errUnsignedFoundationUpdate {
+		t.Error("expected errUnsignedFoundationUpdate, got", err)
 	}
 }

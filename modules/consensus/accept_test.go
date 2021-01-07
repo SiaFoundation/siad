@@ -1338,7 +1338,7 @@ func TestFoundationUpdateBlocks(t *testing.T) {
 			{Value: types.SiacoinPrecision, UnlockHash: types.InitialFoundationFailsafeUnlockHash},
 		},
 		ArbitraryData: [][]byte{encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
-			NewPrimary:  types.UnlockHash{},
+			NewPrimary:  types.UnlockHash{'v', 'o', 'i', 'd'},
 			NewFailsafe: types.InitialFoundationFailsafeUnlockHash,
 		})},
 		TransactionSignatures: make([]types.TransactionSignature, primaryUC.SignaturesRequired),
@@ -1426,7 +1426,7 @@ func TestFoundationUpdateBlocks(t *testing.T) {
 		t.Fatal("output should have been transferred")
 	}
 
-	// confirm that we can actually spend a transferred subsidy
+	// Confirm that we can actually spend a transferred subsidy.
 	txn = types.Transaction{
 		SiacoinInputs: []types.SiacoinInput{{
 			ParentID:         scoid,
@@ -1447,5 +1447,52 @@ func TestFoundationUpdateBlocks(t *testing.T) {
 	}
 	if err := mineTxn(txn); err != nil {
 		t.Fatal(err)
+	}
+
+	// Sign and submit a transaction that contains multiple updates. Only the
+	// first should be applied.
+	scoid, sco, ok = foundationOutput(outputHeight - types.FoundationSubsidyFrequency)
+	if !ok {
+		t.Fatal("subsidy should exist")
+	}
+	txn = types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         scoid,
+			UnlockConditions: primaryUC,
+		}},
+		SiacoinOutputs: []types.SiacoinOutput{
+			{Value: sco.Value.Sub(types.SiacoinPrecision.Mul64(2)), UnlockHash: types.UnlockHash{}},
+			{Value: types.SiacoinPrecision, UnlockHash: types.InitialFoundationUnlockHash},
+			{Value: types.SiacoinPrecision, UnlockHash: types.InitialFoundationFailsafeUnlockHash},
+		},
+		ArbitraryData: [][]byte{
+			encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
+				NewPrimary:  types.UnlockHash{'v', 'o', 'i', 'd'},
+				NewFailsafe: types.UnlockHash{'v', 'o', 'i', 'd'},
+			}),
+			encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
+				NewPrimary:  types.UnlockHash{'i', 'g', 'n', 'o', 'r', 'e'},
+				NewFailsafe: types.UnlockHash{'i', 'g', 'n', 'o', 'r', 'e'},
+			}),
+			encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{
+				NewPrimary:  types.UnlockHash{'i', 'g', 'n', 'o', 'r', 'e'},
+				NewFailsafe: types.UnlockHash{'i', 'g', 'n', 'o', 'r', 'e'},
+			}),
+		},
+		TransactionSignatures: make([]types.TransactionSignature, primaryUC.SignaturesRequired),
+	}
+	for i := range txn.TransactionSignatures {
+		txn.TransactionSignatures[i].ParentID = crypto.Hash(scoid)
+		txn.TransactionSignatures[i].CoveredFields = types.FullCoveredFields
+		txn.TransactionSignatures[i].PublicKeyIndex = uint64(i)
+		sig := crypto.SignHash(txn.SigHash(i, cst.cs.Height()), primaryKeys[i])
+		txn.TransactionSignatures[i].Signature = sig[:]
+	}
+	if err := mineTxn(txn); err != nil {
+		t.Fatal(err)
+	}
+	// Confirm that the update was applied.
+	if p, f := cst.cs.FoundationUnlockHashes(); p != (types.UnlockHash{'v', 'o', 'i', 'd'}) || f != (types.UnlockHash{'v', 'o', 'i', 'd'}) {
+		t.Fatal("transaction did not correctly update foundation unlock hashes")
 	}
 }

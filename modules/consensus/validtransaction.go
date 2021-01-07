@@ -25,7 +25,7 @@ var (
 	errUnfinishedFileContract     = errors.New("file contract window has not yet openend")
 	errUnrecognizedFileContractID = errors.New("cannot fetch storage proof segment for unknown file contract")
 	errWrongUnlockConditions      = errors.New("transaction contains incorrect unlock conditions")
-	errInvalidFoundationUpdate    = errors.New("transaction contains an invalid or unsigned Foundation UnlockHash update")
+	errUnsignedFoundationUpdate   = errors.New("transaction contains an Foundation UnlockHash update with missing or invalid signatures")
 )
 
 // validSiacoins checks that the siacoin inputs and outputs are valid in the
@@ -287,12 +287,9 @@ func validArbitraryData(tx *bolt.Tx, t types.Transaction, currentHeight types.Bl
 	}
 	for _, arb := range t.ArbitraryData {
 		if bytes.HasPrefix(arb, types.SpecifierFoundation[:]) {
-			validEncoding := encoding.Unmarshal(arb[types.SpecifierLen:], new(types.FoundationUnlockHashUpdate)) == nil
-			// NOTE: this conditional is split up to better visualize test coverage
-			if !validEncoding {
-				return errInvalidFoundationUpdate
-			} else if !foundationUpdateIsSigned(tx, t) {
-				return errInvalidFoundationUpdate
+			// NOTE: (Transaction).StandaloneValid ensures that the update is correctly encoded.
+			if !foundationUpdateIsSigned(tx, t) {
+				return errUnsignedFoundationUpdate
 			}
 		}
 	}

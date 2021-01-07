@@ -185,6 +185,9 @@ func updateCurrentPath(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirectio
 
 // commitFoundationUpdate updates the current Foundation unlock hashes in
 // accordance with the specified block and direction.
+//
+// Because these updates do not have associated diffs, we cannot apply multiple
+// updates per block. Instead, we apply the first update and ignore the rest.
 func commitFoundationUpdate(tx *bolt.Tx, pb *processedBlock, dir modules.DiffDirection) {
 	if dir == modules.DiffApply {
 		for i := range pb.Block.Transactions {

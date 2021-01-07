@@ -222,7 +222,7 @@ func applyArbitraryData(tx *bolt.Tx, pb *processedBlock, t types.Transaction) {
 			var update types.FoundationUnlockHashUpdate
 			err := encoding.Unmarshal(arb[types.SpecifierLen:], &update)
 			if build.DEBUG && err != nil {
-				// validArbitraryData should guarantee that decoding will not fail
+				// (Transaction).StandaloneValid ensures that decoding will not fail
 				panic(err)
 			}
 			// Apply the update. First, save a copy of the old (i.e. current)
