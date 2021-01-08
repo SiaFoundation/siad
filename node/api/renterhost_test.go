@@ -1689,7 +1689,7 @@ func TestUploadedBytesReporting(t *testing.T) {
 		return nil
 	})
 	if err != nil {
-		t.Fatal("allowance setting failed")
+		t.Fatal(err)
 	}
 
 	// Create a file to upload.

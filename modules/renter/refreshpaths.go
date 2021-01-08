@@ -79,6 +79,14 @@ func (ufp *uniqueRefreshPaths) callNumChildDirs() int {
 	return len(ufp.childDirs)
 }
 
+// callNumParentDirs returns the number of parent directories currently being
+// tracked.
+func (ufp *uniqueRefreshPaths) callNumParentDirs() int {
+	ufp.mu.Lock()
+	defer ufp.mu.Unlock()
+	return len(ufp.parentDirs)
+}
+
 // callRefreshAll uses the uniqueRefreshPaths's Renter to call
 // callThreadedBubbleMetadata on all the directories in the childDir map
 func (ufp *uniqueRefreshPaths) callRefreshAll() {

@@ -448,6 +448,11 @@ func TestAddChunksToHeap(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// Close File
+		err = f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
 		// Make sure directories are created
 		err = rt.renter.CreateDir(dirSiaPath, modules.DefaultDirPerm)
 		if err != nil && !errors.Contains(err, filesystem.ErrExists) {
