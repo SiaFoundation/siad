@@ -541,7 +541,7 @@ func TestFoundationHardfork(t *testing.T) {
 	}
 	mineBlock()
 	//
-	// Get the new height, which is needed to sign transcations.
+	// Get the new height, which is needed to sign transactions.
 	height, err = w.BlockHeight()
 	if err != nil {
 		t.Fatal(height)
@@ -847,7 +847,7 @@ func TestFoundationHardfork(t *testing.T) {
 	}
 
 	// Mine until the second monthly output is created. Then create a
-	// transaction that spends the subisdy while also changing the foundation
+	// transaction that spends the subsidy while also changing the foundation
 	// addresses using the current primary address.
 	//
 	// Mine until the second monthly subsidy has been allocated.
@@ -921,8 +921,8 @@ func TestFoundationHardfork(t *testing.T) {
 		t.Fatal("unexpected balance")
 	}
 
-	// Mine until the third monthly output is created. Try to spend the thrid
-	// monthly output using the old foundation address. Ensure it fails.  Then
+	// Mine until the third monthly output is created. Try to spend the third
+	// monthly output using the old foundation address. Ensure it fails. Then
 	// try to spend the third monthly output using the updated foundation
 	// address. Ensure that it succeeds.
 	//
