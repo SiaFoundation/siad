@@ -268,7 +268,7 @@ func downloadProgress(tfs []trackedFile) []api.DownloadInfo {
 
 // fileHealthBreakdown returns a percentage breakdown of the renter's files'
 // healths and the number of stuck files
-func fileHealthBreakdown(dirs []directoryInfo) ([]float64, int, error) {
+func fileHealthBreakdown(dirs []directoryInfo, printLostFiles bool) ([]float64, int, error) {
 	// Check for nil input
 	if len(dirs) == 0 {
 		return nil, 0, errors.New("No Directories Found")
@@ -299,8 +299,17 @@ func fileHealthBreakdown(dirs []directoryInfo) ([]float64, int, error) {
 				greater0++
 			default:
 				unrecoverable++
+				if printLostFiles {
+					fmt.Println(file.SiaPath)
+				}
 			}
 		}
+	}
+
+	// Print out total lost files
+	if printLostFiles {
+		fmt.Println()
+		fmt.Println(unrecoverable, "lost files found.")
 	}
 
 	// Check for no files uploaded
@@ -546,7 +555,7 @@ func renterFilesDownload(path, destination string) {
 // renterFileHealthSummary prints out a summary of the status of all the files
 // in the renter to track the progress of the files
 func renterFileHealthSummary(dirs []directoryInfo) {
-	percentages, numStuck, err := fileHealthBreakdown(dirs)
+	percentages, numStuck, err := fileHealthBreakdown(dirs, false)
 	if err != nil {
 		die(err)
 	}
