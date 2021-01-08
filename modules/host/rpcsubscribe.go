@@ -321,8 +321,7 @@ func (h *Host) threadedNotifySubscribers(pubKey types.SiaPublicKey, rv modules.S
 // subscriptionResponseStream opens a response stream using the given siamux to
 // a subsriber.
 func subscriptionResponseStream(info *subscriptionInfo, sm *siamux.SiaMux) (siamux.Stream, error) {
-	m := info.staticStream.Mux()
-	stream, err := sm.NewStreamFromMux(info.staticSubscriber, siamux.DefaultNewStreamTimeout, m)
+	stream, err := sm.NewResponseStream(info.staticSubscriber, siamux.DefaultNewStreamTimeout, info.staticStream)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to open stream for notifying subscriber")
 	}
