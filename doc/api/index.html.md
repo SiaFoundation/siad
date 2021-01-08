@@ -5222,6 +5222,12 @@ time, but rather covers the TTFB. Timeout is specified in seconds, a timeout
 value of 0 will be ignored. If no timeout is given, the default will be used,
 which is a 30 second timeout. The maximum allowed timeout is 900s (15 minutes).
 
+**priceperms** | string  
+If 'priceperms' is set, the renter will use it as a budget to spend on faster,
+and thus potentially more expensive, hosts. Note that you can provide a unit, if
+no unit is provided it will be treated as hastings. If no value is provided the
+default is used which is zero.
+
 ### Response Header
 
 **Skynet-File-Metadata** | SkyfileMetadata

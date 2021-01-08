@@ -572,8 +572,21 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		timeout = time.Duration(timeoutInt) * time.Second
 	}
 
-	// TODO: set pricePerMS
-	pricePerMS := types.ZeroCurrency
+	// Parse pricePerMS.
+	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMSStr := queryForm.Get("priceperms")
+	if pricePerMSStr != "" {
+		pricePerMSParsed, err := parseCurrency(pricePerMSStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		_, err = fmt.Sscan(pricePerMSParsed, &pricePerMS)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
 
 	// Fetch the skyfile's metadata and a streamer to download the file
 	metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)

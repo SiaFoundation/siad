@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"fmt"
 	"io"
+	"math/big"
 	"mime"
 	"net/http"
 	"net/url"
@@ -62,6 +63,40 @@ func buildETag(skylink modules.Skylink, method, path string, format modules.Skyf
 // matches that of a multipart form.
 func isMultipartRequest(mediaType string) bool {
 	return strings.HasPrefix(mediaType, "multipart/form-data")
+}
+
+// parseCurrency converts a siacoin amount to base units.
+func parseCurrency(amount string) (string, error) {
+	units := []string{"pS", "nS", "uS", "mS", "SC", "KS", "MS", "GS", "TS"}
+	amount = strings.TrimSpace(amount)
+	for i, unit := range units {
+		if strings.HasSuffix(amount, unit) {
+			// Trim spaces after removing the suffix to allow spaces between the
+			// value and the unit.
+			value := strings.TrimSpace(strings.TrimSuffix(amount, unit))
+			// scan into big.Rat
+			r, ok := new(big.Rat).SetString(value)
+			if !ok {
+				return "", errors.New("malformed amount")
+			}
+			// convert units
+			exp := 24 + 3*(int64(i)-4)
+			mag := new(big.Int).Exp(big.NewInt(10), big.NewInt(exp), nil)
+			r.Mul(r, new(big.Rat).SetInt(mag))
+			// r must be an integer at this point
+			if !r.IsInt() {
+				return "", errors.New("non-integer number of hastings")
+			}
+			return r.RatString(), nil
+		}
+	}
+
+	// check for hastings separately
+	if strings.HasSuffix(amount, "H") {
+		return strings.TrimSuffix(amount, "H"), nil
+	}
+
+	return "", errors.New("amount is missing currency units")
 }
 
 // parseSkylinkURL splits a raw skylink URL into its components - a skylink, a
