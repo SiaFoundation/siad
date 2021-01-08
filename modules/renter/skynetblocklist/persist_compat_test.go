@@ -32,7 +32,7 @@ func TestPersistCompat(t *testing.T) {
 
 // testPersistCompatTwoFiles tests the handling of the persist code when
 // a blocklist persist file was created without converting the blacklist
-// persistepersistence
+// persistence
 func testPersistCompatTwoFiles(t *testing.T) {
 	t.Parallel()
 	// Create new blocklist persistence by loading a new SkynetBlocklist
@@ -204,7 +204,7 @@ func testPersistCompatClean(t *testing.T, testdir, oldPersistFile, newPersistFil
 // testPersistCompatTempFile tests the persist compat code for the case when
 // there was an unclean shutdown that left an invalid temp file
 func testPersistCompatTempFile(t *testing.T, testdir, oldPersistFile, newPersistFile string, oldHeader, newHeader, oldVersion, newVersion types.Specifier) {
-	// Test 2A: Empty Temp File Exists
+	// Test 1: Empty Temp File Exists
 
 	// Create sub test directory
 	subTestDir := filepath.Join(testdir, "EmptyTempFile")
@@ -236,7 +236,7 @@ func testPersistCompatTempFile(t *testing.T, testdir, oldPersistFile, newPersist
 		t.Fatal(err)
 	}
 
-	// Test 2B: Temp File Exists with an invalid checksum
+	// Test 2: Temp File Exists with an invalid checksum
 
 	// Create sub test directory
 	subTestDir = filepath.Join(testdir, "InvalidChecksum")
@@ -277,8 +277,6 @@ func testPersistCompatTempFile(t *testing.T, testdir, oldPersistFile, newPersist
 // when there was an unclean shutdown that left a temp file with a valid
 // checksum
 func testPersistCompatValidCheckSum(t *testing.T, testdir, oldPersistFile, newPersistFile string, oldHeader, newHeader, oldVersion, newVersion types.Specifier) {
-	// Test 3: Temp File Exists with a valid checksum
-
 	// Create sub test directory
 	subTestDir := filepath.Join(testdir, "ValidChecksum")
 	err := os.MkdirAll(subTestDir, modules.DefaultDirPerm)
