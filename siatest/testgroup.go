@@ -489,7 +489,7 @@ func waitForContracts(miner *TestNode, renters map[*TestNode]struct{}, hosts map
 			expectedContracts = uint64(len(hosts))
 		}
 		if renter.params.CreatePortal {
-			// If the renter is a portal then it should form contracts will all hosts
+			// If the renter is a portal then it should form contracts with all hosts
 			expectedContracts = uint64(len(hosts))
 		}
 		// Subtract hosts which the renter doesn't know yet because they
@@ -575,11 +575,11 @@ func (tg *TestGroup) AddNodes(nps ...node.NodeParams) ([]*TestNode, error) {
 		if np.Renter != nil || np.CreateRenter {
 			tg.renters[node] = struct{}{}
 			newRenters[node] = struct{}{}
-		}
-		// Add node to portals. No need to create a newPortals as the node is
-		// a renter and the set up will be handled by newRenters
-		if np.CreatePortal {
-			tg.portals[node] = struct{}{}
+			// Add node to portals. No need to create a newPortals as the node is
+			// a renter and the set up will be handled by newRenters
+			if np.CreatePortal {
+				tg.portals[node] = struct{}{}
+			}
 		}
 
 		// Add node to miners
