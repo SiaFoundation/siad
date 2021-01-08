@@ -375,6 +375,13 @@ func (c *Client) SkynetSkyfilePostDisableForce(params modules.SkyfileUploadParam
 // skyfile using multipart form data.  The resulting skylink is returned along
 // with an error.
 func (c *Client) SkynetSkyfileMultiPartPost(params modules.SkyfileMultipartUploadParameters) (string, api.SkynetSkyfileHandlerPOST, error) {
+	return c.SkynetSkyfileMultiPartEncryptedPost(params, "", skykey.SkykeyID{})
+}
+
+// SkynetSkyfileMultiPartEncryptedPost uses the /skynet/skyfile endpoint to
+// upload a skyfile using multipart form data.  The resulting skylink is
+// returned along with an error.
+func (c *Client) SkynetSkyfileMultiPartEncryptedPost(params modules.SkyfileMultipartUploadParameters, skykeyName string, skykeyID skykey.SkykeyID) (string, api.SkynetSkyfileHandlerPOST, error) {
 	// Set the url values.
 	values := url.Values{}
 	values.Set("filename", params.Filename)
@@ -386,6 +393,10 @@ func (c *Client) SkynetSkyfileMultiPartPost(params modules.SkyfileMultipartUploa
 	values.Set("basechunkredundancy", redundancyStr)
 	rootStr := fmt.Sprintf("%t", params.Root)
 	values.Set("root", rootStr)
+	values.Set("skykeyname", skykeyName)
+	if skykeyID != (skykey.SkykeyID{}) {
+		values.Set("skykeyid", skykeyID.ToString())
+	}
 
 	// Make the call to upload the file.
 	query := fmt.Sprintf("/skynet/skyfile/%s?%s", params.SiaPath.String(), values.Encode())
@@ -431,8 +442,7 @@ func (c *Client) SkynetConvertSiafileToSkyfileEncryptedPost(lup modules.SkyfileU
 	values.Set("redundancy", redundancyStr)
 	values.Set("convertpath", convert.String())
 	values.Set("skykeyname", skykeyName)
-	var nilKey skykey.SkykeyID
-	if skykeyID != nilKey {
+	if skykeyID != (skykey.SkykeyID{}) {
 		values.Set("skykeyid", skykeyID.ToString())
 	}
 

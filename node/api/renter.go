@@ -925,6 +925,25 @@ func (api *API) renterAllowanceCancelHandlerPOST(w http.ResponseWriter, _ *http.
 	WriteSuccess(w)
 }
 
+// renterCleanHandlerPOST handles the API call to clean lost files from a Renter.
+func (api *API) renterCleanHandlerPOST(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+	var deleteErrs error
+	cleanFunc := func(fi modules.FileInfo) {
+		if fi.OnDisk || fi.Redundancy >= 1 {
+			return
+		}
+		deleteErrs = errors.Compose(deleteErrs, api.renter.DeleteFile(fi.SiaPath))
+	}
+	err := api.renter.FileList(modules.RootSiaPath(), true, false, cleanFunc)
+	err = errors.Compose(err, deleteErrs)
+	if err != nil {
+		WriteError(w, Error{"unable to clear lost files: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	WriteSuccess(w)
+}
+
 // renterContractCancelHandler handles the API call to cancel a specific Renter contract.
 func (api *API) renterContractCancelHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	var fcid types.FileContractID
