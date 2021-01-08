@@ -2,7 +2,6 @@ package renter
 
 import (
 	"context"
-	"fmt"
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"

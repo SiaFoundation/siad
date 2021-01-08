@@ -676,14 +676,14 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration, pr
 
 // DownloadSkylinkBaseSector will take a link and turn it into the data of
 // a basesector without any decoding of the metadata, fanout, or decryption.
-func (r *Renter) DownloadSkylinkBaseSector(link modules.Skylink, timeout time.Duration, pricePerMS types.Currency) (modules.Streamer, error) {
+func (r *Renter) DownloadSkylinkBaseSector(link modules.Skylink, timeout time.Duration) (modules.Streamer, error) {
 	if err := r.tg.Add(); err != nil {
 		return nil, err
 	}
 	defer r.tg.Done()
 
 	// Download the base sector
-	baseSector, err := r.managedDownloadSkylinkBaseSector(link, timeout, pricePerMS)
+	baseSector, err := r.managedDownloadSkylinkBaseSector(link, timeout)
 	return StreamerFromSlice(baseSector), err
 }
 
@@ -723,7 +723,7 @@ func (r *Renter) managedDownloadSkylink(ctx context.Context, link modules.Skylin
 
 // managedDownloadSkylinkBaseSector will download the baseSector for the skylink
 // or return the active stream
-func (r *Renter) managedDownloadSkylinkBaseSector(link modules.Skylink, timeout time.Duration, pricePerMS types.Currency) ([]byte, error) {
+func (r *Renter) managedDownloadSkylinkBaseSector(link modules.Skylink, timeout time.Duration) ([]byte, error) {
 	// Check if link is blocked
 	if r.staticSkynetBlocklist.IsBlocked(link) {
 		return nil, ErrSkylinkBlocked

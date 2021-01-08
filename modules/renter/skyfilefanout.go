@@ -92,8 +92,8 @@ func skyfileEncodeFanoutFromFileNode(fileNode *filesystem.FileNode, onePiece boo
 					break
 				}
 			}
-			// If root is still equal to emptyHash it means that we didn't add a piece
-			// root for this chunk.
+			// If root is still equal to emptyHash it means that we didn't add a
+			// piece root for this chunk.
 			if root == emptyHash {
 				err = fmt.Errorf("No piece root encoded for chunk %v", i)
 				build.Critical(err)

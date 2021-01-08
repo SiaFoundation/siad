@@ -44,6 +44,14 @@ const (
 	MaxSkynetRequestTimeout = 15 * 60 // in seconds
 )
 
+var (
+	// DefaultSkynetPricePerMS is the default price per millisecond the renter
+	// is able to spend on faster workers when downloading a Skyfile. By default
+	// this is zero and thus acts as if there were no budget, meaning faster
+	// workers will always be favored.
+	DefaultSkynetPricePerMS = types.ZeroCurrency
+)
+
 type (
 	// SkynetSkyfileHandlerPOST is the response that the api returns after the
 	// /skynet/ POST endpoint has been used.
@@ -191,11 +199,8 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 		timeout = time.Duration(timeoutInt) * time.Second
 	}
 
-	// TODO: define pricePerMS
-	pricePerMS := types.ZeroCurrency
-
 	// Fetch the skyfile's streamer to serve the basesector of the file
-	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
+	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout)
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
 		return

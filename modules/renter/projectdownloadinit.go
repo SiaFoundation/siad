@@ -140,7 +140,9 @@ func (wh *pdcWorkerHeap) Pop() interface{} {
 // this piece. It will include all of the unresolved workers, and it will
 // attempt to exclude any workers that are known to be non-viable - for example
 // workers with no pieces that can be resolved or workers that are currently on
-// cooldown for the read job.
+// cooldown for the read job. The worker heap optimizes for speed, not cost.
+// Cost is taken into account at a later point where the initial worker set is
+// built.
 func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnresolvedWorker) pdcWorkerHeap {
 	// Add all of the unresolved workers to the heap.
 	var workerHeap pdcWorkerHeap
@@ -261,8 +263,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	// time that the working set is better than the best set, overwrite the best
 	// set with the new working set.
 	for len(workerHeap) > 0 {
-		// Grab the next worker from the heap. If the heap is empty, we are
-		// done.
+		// Grab the next worker from the heap.
 		nextWorker := heap.Pop(&workerHeap).(*pdcInitialWorker)
 		if nextWorker == nil {
 			build.Critical("wasn't expecting to pop a nil worker")
@@ -299,6 +300,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		if workerTimeCost.Cmp(bestSetCost) > 0 && workersInSet == ec.MinPieces() {
 			break
 		}
+
 		// If all workers in the working set are already cheaper than this
 		// worker, skip this worker.
 		if highestCost.Cmp(nextWorker.cost) <= 0 && workersInSet == ec.MinPieces() {

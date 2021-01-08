@@ -252,20 +252,20 @@ func TestProjectDownloadChunk_createInitialWorkerSet(t *testing.T) {
 	wh = workersToHeap(w1, w2, w3, w4)
 	iws, err = pdc.createInitialWorkerSet(wh)
 	if err != nil {
-		t.Fatal("unepected", err)
+		t.Fatal("unexpected", err)
 	}
 	if workersToString(iws) != "w1,w3,w4" {
-		t.Fatal("unepected", workersToString(iws))
+		t.Fatal("unexpected", workersToString(iws))
 	}
 
 	// add another worker, undercutting w4 in price
 	wh = workersToHeap(w1, w2, w3, w4, w5)
 	iws, err = pdc.createInitialWorkerSet(wh)
 	if err != nil {
-		t.Fatal("unepected", err)
+		t.Fatal("unexpected", err)
 	}
 	if workersToString(iws) != "w1,w3,w5" {
-		t.Fatal("unepected", workersToString(iws))
+		t.Fatal("unexpected", workersToString(iws))
 	}
 
 	// add another worker, it's super fast and able to download two pieces in
@@ -273,9 +273,9 @@ func TestProjectDownloadChunk_createInitialWorkerSet(t *testing.T) {
 	wh = workersToHeap(w1, w2, w3, w4, w5, w6)
 	iws, err = pdc.createInitialWorkerSet(wh)
 	if err != nil {
-		t.Fatal("unepected", err)
+		t.Fatal("unexpected", err)
 	}
 	if workersToString(iws) != "w2,w3,w6" {
-		t.Fatal("unepected", workersToString(iws))
+		t.Fatal("unexpected", workersToString(iws))
 	}
 }
