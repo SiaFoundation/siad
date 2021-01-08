@@ -1043,7 +1043,7 @@ func (p *renterHostPair) FundSubscription(stream siamux.Stream, fundAmt types.Cu
 	return nil
 }
 
-// FundSubscription pays the host to increase the subscription budget.
+// ExtendSubscription extends the subscription with the given price table.
 func (p *renterHostPair) ExtendSubscription(stream siamux.Stream, pt *modules.RPCPriceTable) error {
 	// Send the type of the request.
 	err := modules.RPCWrite(stream, modules.SubscriptionRequestExtend)

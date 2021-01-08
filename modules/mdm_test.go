@@ -150,6 +150,37 @@ func TestBudgetLimit(t *testing.T) {
 	if limit.Uploaded() != 1 {
 		t.Fatalf("expected %v but got %v", 1, limit.Uploaded())
 	}
+
+	// Not enough budget to either write or read at first but after the update.
+	totalCost := types.NewCurrency64(readCost + writeCost)
+	budget = NewBudget(totalCost)
+	limit = NewBudgetLimit(budget, totalCost.Add64(1), totalCost.Add64(1))
+	err = limit.RecordDownload(1)
+	if !errors.Contains(err, ErrInsufficientBandwidthBudget) {
+		t.Fatal("expected error but got", err)
+	}
+	err = limit.RecordUpload(1)
+	if !errors.Contains(err, ErrInsufficientBandwidthBudget) {
+		t.Fatal("expected error but got", err)
+	}
+	limit.UpdateCosts(types.NewCurrency64(readCost), types.NewCurrency64(writeCost))
+	err = limit.RecordDownload(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = limit.RecordUpload(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if limit.Downloaded() != 1 {
+		t.Fatalf("expected %v but got %v", 1, limit.Downloaded())
+	}
+	if limit.Uploaded() != 1 {
+		t.Fatalf("expected %v but got %v", 1, limit.Uploaded())
+	}
+	if !budget.Remaining().IsZero() {
+		t.Fatal("budget should be empty")
+	}
 }
 
 // TestRequiresReadonlyAndSnapshot is a unit test for the program's ReadOnly and

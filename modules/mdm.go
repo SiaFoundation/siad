@@ -544,12 +544,13 @@ func (b *RPCBudget) Withdraw(c types.Currency) bool {
 type BudgetLimit struct {
 	budget *RPCBudget
 
-	mu        sync.Mutex
 	readCost  types.Currency
 	writeCost types.Currency
 
 	downloaded uint64
 	uploaded   uint64
+
+	mu sync.Mutex
 }
 
 // NewBudgetLimit creates a new limit from a budget and priceTable.

@@ -3,7 +3,6 @@ package host
 import (
 	"bytes"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -338,7 +337,6 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (err error) {
 
 	// Make sure the price table is valid.
 	if !h.managedPriceTableValidFor(pt, modules.SubscriptionPeriod) {
-		fmt.Println("argh")
 		return errors.New("can't begin subscription due to price table expiring soon")
 	}
 
