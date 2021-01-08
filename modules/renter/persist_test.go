@@ -15,12 +15,18 @@ import (
 	"gitlab.com/NebulousLabs/ratelimit"
 )
 
-// testingFileParams generates the ErasureCoder and a random name for a testing
-// file
+// testingFileParams generates the ErasureCoder with random dataPieces and
+// parityPieces and a random name for a testing file
 func testingFileParams() (modules.SiaPath, modules.ErasureCoder) {
-	nData := fastrand.Intn(10)
-	nParity := fastrand.Intn(10)
-	rsc, _ := modules.NewRSCode(nData+1, nParity+1)
+	nData := fastrand.Intn(10) + 1
+	nParity := fastrand.Intn(10) + 1
+	return testingFileParamsCustom(nData, nParity)
+}
+
+// testingFileParamsCustom generates the ErasureCoder from the provided
+// dataPieces and parityPices and a random name for a testing file
+func testingFileParamsCustom(dataPieces, parityPieces int) (modules.SiaPath, modules.ErasureCoder) {
+	rsc, _ := modules.NewRSCode(dataPieces, parityPieces)
 	return modules.RandomSiaPath(), rsc
 }
 

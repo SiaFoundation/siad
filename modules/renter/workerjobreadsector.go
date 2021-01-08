@@ -10,11 +10,16 @@ import (
 )
 
 type (
-	// jobReadSector contains information about a hasSector query.
+	// jobReadSector contains information about a readSector query.
 	jobReadSector struct {
 		jobRead
 
 		staticOffset uint64
+		staticSector crypto.Hash
+	}
+
+	// jobReadSectorMetadata contains meta information about a readSector job.
+	jobReadSectorMetadata struct {
 		staticSector crypto.Hash
 	}
 )
@@ -69,10 +74,7 @@ func (w *worker) ReadSector(ctx context.Context, root crypto.Hash, offset, lengt
 			staticResponseChan: readSectorRespChan,
 			staticLength:       length,
 
-			// set metadata
-			staticSector: root,
-
-			jobGeneric: newJobGeneric(ctx, w.staticJobReadQueue),
+			jobGeneric: newJobGeneric(ctx, w.staticJobReadQueue, &jobReadSectorMetadata{staticSector: root}),
 		},
 		staticOffset: offset,
 		staticSector: root,

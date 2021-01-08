@@ -3205,6 +3205,23 @@ Cancel the Renter's allowance.
 standard success or error response. See [standard
 responses](#standard-responses).
 
+## /renter/clean [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword>  "localhost:9980/renter/clean"
+```
+
+clears any lost files from the renter. A lost file is a file that is viewed as
+unrecoverable. A file is unrecoverable when there is not a local copy on disk
+and the file's redundancy is less than 1. This means the file can not be
+repaired.
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
 ## /renter/contract/cancel [POST]
 > curl example  
 
@@ -5312,6 +5329,8 @@ The siapath of an existing siafile that should be converted to a skylink. A new
 skyfile will be created. Both the new skyfile and the existing siafile are
 required to be maintained on the network in order for the skylink to remain
 active. This field is mutually exclusive with uploading streaming.
+
+**NOTE**: Converting siafiles to skyfiles does not support skykey encryption.
 
 **defaultpath** string  
 The path to the default file whose content is to be returned when the skyfile is 

@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +17,24 @@ import (
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/errors"
 )
+
+// FileListCollect returns information on all of the files stored by the
+// renter at the specified folder. The 'cached' argument specifies whether
+// cached values should be returned or not.
+func (r *Renter) FileListCollect(siaPath modules.SiaPath, recursive, cached bool) ([]modules.FileInfo, error) {
+	var files []modules.FileInfo
+	var mu sync.Mutex
+	err := r.FileList(siaPath, recursive, cached, func(fi modules.FileInfo) {
+		mu.Lock()
+		files = append(files, fi)
+		mu.Unlock()
+	})
+	// Sort slices by SiaPath.
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].SiaPath.String() < files[j].SiaPath.String()
+	})
+	return files, err
+}
 
 // TestRenterCreateDirectories checks that the renter properly created metadata files
 // for direcotries
@@ -225,7 +244,10 @@ func TestRenterListDirectory(t *testing.T) {
 	if len(directories) != 5 {
 		t.Fatal("Expected 5 DirectoryInfos but got", len(directories))
 	}
-	files, err := rt.renter.FileList(modules.RootSiaPath(), false, false)
+	files, err := rt.renter.FileListCollect(modules.RootSiaPath(), false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(files) != 1 {
 		t.Fatal("Expected 1 FileInfo but got", len(files))
 	}

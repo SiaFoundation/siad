@@ -194,7 +194,7 @@ func skykeygetcmd() {
 
 // skykeyGet retrieves the skykey using a name or id flag.
 func skykeyGet(c client.Client, name, id string) (string, error) {
-	err := validateNameAndIDUsage(name, id)
+	err := validateSkyKeyNameAndIDUsage(name, id)
 	if err != nil {
 		return "", errors.AddContext(err, "cannot validate skykey name and ID usage to get skykey")
 	}
@@ -282,16 +282,4 @@ func skykeyListKeys(c client.Client, showPrivateKeys bool) (string, error) {
 		return "", err
 	}
 	return b.String(), nil
-}
-
-// validateNameAndIDUsage validates the usage of name and ID, ensuring that only
-// one is used.
-func validateNameAndIDUsage(name, id string) error {
-	if name == "" && id == "" {
-		return errNeitherNameNorIDUsed
-	}
-	if name != "" && id != "" {
-		return errBothNameAndIDUsed
-	}
-	return nil
 }

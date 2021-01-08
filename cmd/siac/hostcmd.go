@@ -537,22 +537,13 @@ func hostfolderremovecmd(path string) {
 	if hostFolderRemoveForce {
 		fmt.Println(`Forced removing will completely destroy your renter's data,
 	and you will lose your locked collateral.`)
-	again:
-		fmt.Print("Do you want to continue? [y/n] ")
-		var resp string
-		fmt.Scanln(&resp)
-		switch strings.ToLower(resp) {
-		case "y", "yes":
-			// continue below
-		case "n", "no":
+		confirmed := askForConfirmation("Do you want to continue?")
+		if !confirmed {
 			return
-		default:
-			goto again
 		}
 	}
 
 	err := httpClient.HostStorageFoldersRemovePost(abs(path), hostFolderRemoveForce)
-
 	if err != nil {
 		die("Could not remove folder:", err)
 	}

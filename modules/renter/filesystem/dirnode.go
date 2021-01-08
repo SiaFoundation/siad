@@ -6,7 +6,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -171,12 +170,11 @@ func (n *DirNode) UpdateMetadata(md siadir.Metadata) error {
 // managedList returns the files and dirs within the SiaDir specified by siaPath.
 // offlineMap, goodForRenewMap and contractMap don't need to be provided if
 // 'cached' is set to 'true'.
-func (n *DirNode) managedList(fsRoot string, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) (fis []modules.FileInfo, dis []modules.DirectoryInfo, _ error) {
+func (n *DirNode) managedList(fsRoot string, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract, flf modules.FileListFunc, dlf modules.DirListFunc) error {
 	// Prepare a pool of workers.
 	numThreads := 40
 	dirLoadChan := make(chan *DirNode, numThreads)
 	fileLoadChan := make(chan func() (*FileNode, error), numThreads)
-	var fisMu, disMu sync.Mutex
 	dirWorker := func() {
 		for sd := range dirLoadChan {
 			var di modules.DirectoryInfo
@@ -194,9 +192,7 @@ func (n *DirNode) managedList(fsRoot string, recursive, cached bool, offlineMap 
 				n.staticLog.Debugf("Failed to get DirectoryInfo of '%v': %v", sd.managedAbsPath(), err)
 				continue
 			}
-			disMu.Lock()
-			dis = append(dis, di)
-			disMu.Unlock()
+			dlf(di)
 		}
 	}
 	fileWorker := func() {
@@ -219,9 +215,7 @@ func (n *DirNode) managedList(fsRoot string, recursive, cached bool, offlineMap 
 				n.staticLog.Debugf("Failed to get FileInfo of '%v': %v", sf.managedAbsPath(), err)
 				continue
 			}
-			fisMu.Lock()
-			fis = append(fis, fi)
-			fisMu.Unlock()
+			flf(fi)
 		}
 	}
 	// Spin the workers up.
@@ -244,13 +238,7 @@ func (n *DirNode) managedList(fsRoot string, recursive, cached bool, offlineMap 
 	close(dirLoadChan)
 	close(fileLoadChan)
 	wg.Wait()
-	sort.Slice(dis, func(i, j int) bool {
-		return dis[i].SiaPath.String() < dis[j].SiaPath.String()
-	})
-	sort.Slice(fis, func(i, j int) bool {
-		return fis[i].SiaPath.String() < fis[j].SiaPath.String()
-	})
-	return fis, dis, err
+	return err
 }
 
 // managedRecursiveList returns the files and dirs within the SiaDir.

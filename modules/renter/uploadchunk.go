@@ -230,24 +230,30 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 	r.managedCleanUpUploadChunk(uc)
 }
 
-// padAndEncryptPiece will add padding to a piece and then encrypt it.
+// padAndEncryptPiece will add padding to a unfinishedUploadChunk's piece at
+// index i and then encrypt it.
 func (uc *unfinishedUploadChunk) padAndEncryptPiece(i int) {
+	padAndEncryptPiece(uc.staticIndex, uint64(i), uc.logicalChunkData, uc.fileEntry.MasterKey())
+}
+
+// padAndEncryptPiece will add padding to a piece and then encrypt it.
+func padAndEncryptPiece(chunkIndex, pieceIndex uint64, logicalChunkData [][]byte, masterKey crypto.CipherKey) {
 	// If the piece is not a full sector, pad it with empty bytes. The padding
 	// is done before applying encryption, meaning the data fed to the host does
 	// not have a bunch of zeroes in it.
 	//
 	// This has the extra benefit of making the result deterministic, which is
 	// important when checking the integrity of a local file later on.
-	short := int(modules.SectorSize) - len(uc.logicalChunkData[i])
+	short := int(modules.SectorSize) - len(logicalChunkData[pieceIndex])
 	if short > 0 {
 		// The form `append(obj, make([]T, n))` will be optimized by the
 		// compiler to eliminate unneeded allocations starting go 1.11.
-		uc.logicalChunkData[i] = append(uc.logicalChunkData[i], make([]byte, short)...)
+		logicalChunkData[pieceIndex] = append(logicalChunkData[pieceIndex], make([]byte, short)...)
 	}
 	// Encrypt the piece.
-	key := uc.fileEntry.MasterKey().Derive(uc.staticIndex, uint64(i))
+	key := masterKey.Derive(chunkIndex, pieceIndex)
 	// TODO: Switch this to perform in-place encryption.
-	uc.logicalChunkData[i] = key.EncryptBytes(uc.logicalChunkData[i])
+	logicalChunkData[pieceIndex] = key.EncryptBytes(logicalChunkData[pieceIndex])
 }
 
 // managedDownloadLogicalChunkData will fetch the logical chunk data by sending a

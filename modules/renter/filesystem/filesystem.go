@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -203,14 +204,34 @@ func (fs *FileSystem) CachedFileInfo(siaPath modules.SiaPath) (modules.FileInfo,
 }
 
 // CachedList lists the files and directories within a SiaDir.
-func (fs *FileSystem) CachedList(siaPath modules.SiaPath, recursive bool) ([]modules.FileInfo, []modules.DirectoryInfo, error) {
-	return fs.managedList(siaPath, recursive, true, nil, nil, nil)
+func (fs *FileSystem) CachedList(siaPath modules.SiaPath, recursive bool, flf modules.FileListFunc, dlf modules.DirListFunc) error {
+	return fs.managedList(siaPath, recursive, true, nil, nil, nil, flf, dlf)
 }
 
 // CachedListOnNode will return the files and directories within a given siadir
-// node.
-func (fs *FileSystem) CachedListOnNode(d *DirNode, recursive bool) ([]modules.FileInfo, []modules.DirectoryInfo, error) {
-	return d.managedList(fs.managedAbsPath(), recursive, true, nil, nil, nil)
+// node in a non-recursive way.
+func (fs *FileSystem) CachedListOnNode(d *DirNode) (fis []modules.FileInfo, dis []modules.DirectoryInfo, err error) {
+	var fmu, dmu sync.Mutex
+	flf := func(fi modules.FileInfo) {
+		fmu.Lock()
+		fis = append(fis, fi)
+		fmu.Unlock()
+	}
+	dlf := func(di modules.DirectoryInfo) {
+		dmu.Lock()
+		dis = append(dis, di)
+		dmu.Unlock()
+	}
+	err = d.managedList(fs.managedAbsPath(), false, true, nil, nil, nil, flf, dlf)
+
+	// Sort slices by SiaPath.
+	sort.Slice(dis, func(i, j int) bool {
+		return dis[i].SiaPath.String() < dis[j].SiaPath.String()
+	})
+	sort.Slice(fis, func(i, j int) bool {
+		return fis[i].SiaPath.String() < fis[j].SiaPath.String()
+	})
+	return
 }
 
 // DeleteDir deletes a dir from the filesystem. The dir will be marked as
@@ -270,8 +291,8 @@ func (fs *FileSystem) FileNodeInfo(n *FileNode) (modules.FileInfo, error) {
 }
 
 // List lists the files and directories within a SiaDir.
-func (fs *FileSystem) List(siaPath modules.SiaPath, recursive bool, offlineMap, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) ([]modules.FileInfo, []modules.DirectoryInfo, error) {
-	return fs.managedList(siaPath, recursive, false, offlineMap, goodForRenewMap, contractsMap)
+func (fs *FileSystem) List(siaPath modules.SiaPath, recursive bool, offlineMap, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract, flf modules.FileListFunc, dlf modules.DirListFunc) error {
+	return fs.managedList(siaPath, recursive, false, offlineMap, goodForRenewMap, contractsMap, flf, dlf)
 }
 
 // FileExists checks to see if a file with the provided siaPath already exists
@@ -608,16 +629,16 @@ func (fs *FileSystem) managedFileInfo(siaPath modules.SiaPath, cached bool, offl
 // managedList returns the files and dirs within the SiaDir specified by siaPath.
 // offlineMap, goodForRenewMap and contractMap don't need to be provided if
 // 'cached' is set to 'true'.
-func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) (fis []modules.FileInfo, dis []modules.DirectoryInfo, err error) {
+func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract, flf modules.FileListFunc, dlf modules.DirListFunc) (err error) {
 	// Open the folder.
 	dir, err := fs.managedOpenDir(siaPath.String())
 	if err != nil {
-		return nil, nil, errors.AddContext(err, fmt.Sprintf("failed to open folder '%v' specified by FileList", siaPath))
+		return errors.AddContext(err, fmt.Sprintf("failed to open folder '%v' specified by FileList", siaPath))
 	}
 	defer func() {
 		err = errors.Compose(err, dir.Close())
 	}()
-	return dir.managedList(fs.managedAbsPath(), recursive, cached, offlineMap, goodForRenewMap, contractsMap)
+	return dir.managedList(fs.managedAbsPath(), recursive, cached, offlineMap, goodForRenewMap, contractsMap, flf, dlf)
 }
 
 // managedNewSiaDir creates the folder at the specified siaPath.

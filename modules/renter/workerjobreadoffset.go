@@ -104,7 +104,7 @@ func (w *worker) ReadOffset(ctx context.Context, offset, length uint64) ([]byte,
 		jobRead: jobRead{
 			staticResponseChan: readOffsetRespChan,
 			staticLength:       length,
-			jobGeneric:         newJobGeneric(ctx, w.staticJobReadQueue),
+			jobGeneric:         newJobGeneric(ctx, w.staticJobReadQueue, nil),
 		},
 		staticOffset: offset,
 	}

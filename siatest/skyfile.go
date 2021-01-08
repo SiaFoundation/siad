@@ -7,6 +7,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/node/api"
+	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -31,6 +32,12 @@ func (tn *TestNode) UploadNewSkyfileWithDataBlocking(filename string, filedata [
 // using its Skylink. Returns the skylink, the parameters used for the upload
 // and potentially an error.
 func (tn *TestNode) UploadNewEncryptedSkyfileBlocking(filename string, filedata []byte, skykeyName string, force bool) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
+	return tn.UploadSkyfileBlockingCustom(filename, filedata, skykeyName, 2, force)
+}
+
+// UploadSkyfileCustom attempts to upload a skyfile. Returns the skylink, the
+// parameters used for the upload and potentially an error.
+func (tn *TestNode) UploadSkyfileCustom(filename string, filedata []byte, skykeyName string, baseChunkRedundancy uint8, force bool) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, rf *RemoteFile, err error) {
 	// create the siapath
 	skyfilePath, err := modules.NewSiaPath(filename)
 	if err != nil {
@@ -42,7 +49,7 @@ func (tn *TestNode) UploadNewEncryptedSkyfileBlocking(filename string, filedata 
 	reader := bytes.NewReader(filedata)
 	sup = modules.SkyfileUploadParameters{
 		SiaPath:             skyfilePath,
-		BaseChunkRedundancy: 2,
+		BaseChunkRedundancy: baseChunkRedundancy,
 		Filename:            filename,
 		Mode:                modules.DefaultFilePerm,
 		Reader:              reader,
@@ -65,10 +72,26 @@ func (tn *TestNode) UploadNewEncryptedSkyfileBlocking(filename string, filedata 
 			return
 		}
 	}
-	rf := &RemoteFile{
+	// Return the Remote File for callers to block for upload progress
+	rf = &RemoteFile{
 		checksum: crypto.HashBytes(filedata),
 		siaPath:  skyfilePath,
 		root:     true,
+	}
+	return
+}
+
+// UploadSkyfileBlockingCustom attempts to upload a skyfile. After it has
+// successfully performed the upload, it will verify the file can be downloaded
+// using its Skylink. Returns the skylink, the parameters used for the upload
+// and potentially an error.
+func (tn *TestNode) UploadSkyfileBlockingCustom(filename string, filedata []byte, skykeyName string, baseChunkRedundancy uint8, force bool) (skylink string, sup modules.SkyfileUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
+	// Upload the file
+	var rf *RemoteFile
+	skylink, sup, sshp, rf, err = tn.UploadSkyfileCustom(filename, filedata, skykeyName, baseChunkRedundancy, force)
+	if err != nil {
+		err = errors.AddContext(err, "Skyfile upload failed")
+		return
 	}
 
 	// Wait until upload reached the specified progress
@@ -101,6 +124,15 @@ func (tn *TestNode) UploadNewSkyfileBlocking(filename string, filesize uint64, f
 // skylink, the parameters used for the upload and potentially an error.
 // The `files` argument is a map of filepath->fileContent.
 func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files []TestFile, defaultPath string, disableDefaultPath bool, force bool) (skylink string, sup modules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
+	return tn.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, defaultPath, disableDefaultPath, force, "", skykey.SkykeyID{})
+}
+
+// UploadNewMultipartSkyfileEncryptedBlocking uploads a multipart skyfile that
+// contains several files. After it has successfully performed the upload, it
+// will verify the file can be downloaded using its Skylink. Returns the
+// skylink, the parameters used for the upload and potentially an error.  The
+// `files` argument is a map of filepath->fileContent.
+func (tn *TestNode) UploadNewMultipartSkyfileEncryptedBlocking(filename string, files []TestFile, defaultPath string, disableDefaultPath bool, force bool, skykeyName string, skykeyID skykey.SkykeyID) (skylink string, sup modules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {
 	// create the siapath
 	skyfilePath, err := modules.NewSiaPath(filename)
 	if err != nil {
@@ -138,7 +170,7 @@ func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files []T
 	}
 
 	// upload a skyfile
-	skylink, sshp, err = tn.SkynetSkyfileMultiPartPost(sup)
+	skylink, sshp, err = tn.SkynetSkyfileMultiPartEncryptedPost(sup, skykeyName, skykeyID)
 	if err != nil {
 		err = errors.AddContext(err, "Failed to upload skyfile")
 		return
