@@ -13,7 +13,6 @@ import (
 // either cached stats will be returned or a full disk scan will either be
 // started or if it's already ongoing, waited for.
 func (r *Renter) SkynetStats(cached bool) (modules.SkynetStats, error) {
-	var stats modules.SkynetStats
 	for {
 		r.statsMu.Lock()
 		var isScanning bool
@@ -26,7 +25,7 @@ func (r *Renter) SkynetStats(cached bool) (modules.SkynetStats, error) {
 
 		if cached && r.stats != nil {
 			// If a cached value is good enough, we use that if available.
-			stats = *r.stats
+			stats := *r.stats
 			r.statsMu.Unlock()
 			return stats, nil
 		} else if isScanning {
@@ -54,7 +53,7 @@ func (r *Renter) SkynetStats(cached bool) (modules.SkynetStats, error) {
 			r.statsMu.Lock()
 			r.stats = &s
 			r.statsMu.Unlock()
-			return stats, err
+			return s, err
 		}
 	}
 }
@@ -121,6 +120,11 @@ func (r *Renter) threadedInvalidateStatsCache() {
 		return
 	}
 	defer r.tg.Done()
+
+	// Dependency injection to disable cache invalidation.
+	if r.deps.Disrupt("DisableInvalidateStatsCache") {
+		return
+	}
 
 	t := time.NewTicker(statsCacheInvalidationInterval)
 	defer t.Stop()

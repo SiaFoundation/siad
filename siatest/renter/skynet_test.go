@@ -70,7 +70,8 @@ func TestSkynet(t *testing.T) {
 		{Name: "Portals", Test: testSkynetPortals},
 		{Name: "HeadRequest", Test: testSkynetHeadRequest},
 		{Name: "NoMetadata", Test: testSkynetNoMetadata},
-		{Name: "Stats", Test: testSkynetStats},
+		{Name: "Stats", Test: testSkynetStatsNoInvalidate},
+		{Name: "Stats", Test: testSkynetStatsInvalidate},
 		{Name: "RequestTimeout", Test: testSkynetRequestTimeout},
 		{Name: "DryRunUpload", Test: testSkynetDryRunUpload},
 		{Name: "RegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
@@ -811,11 +812,38 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	largeTestFunc(files, fileName, sk.Name)
 }
 
+// testSkynetStatsInvalidate runs testSkynetStats without cache invalidation.
+func testSkynetStatsNoInvalidate(t *testing.T, tg *siatest.TestGroup) {
+	testSkynetStats(t, tg, false)
+}
+
+// testSkynetStatsInvalidate runs testSkynetStats with cache invalidation.
+func testSkynetStatsInvalidate(t *testing.T, tg *siatest.TestGroup) {
+	testSkynetStats(t, tg, true)
+}
+
 // testSkynetStats tests the validity of the response of /skynet/stats endpoint
 // by uploading some test files and verifying that the reported statistics
 // change proportionally
-func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
+func testSkynetStats(t *testing.T, tg *siatest.TestGroup, invalidateCache bool) {
 	r := tg.Renters()[0]
+
+	// If we run this test with a disabled cache invalidation loop, we need to
+	// inject a custom renter.
+	if invalidateCache {
+		rt := node.RenterTemplate
+		rt.RenterDeps = &dependencies.DependencyInvalidateStatsCache{}
+		nodes, err := tg.AddNodes(rt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r = nodes[0]
+		defer func() {
+			if err := tg.RemoveNode(r); err != nil {
+				t.Fatal(err)
+			}
+		}()
+	}
 
 	// get the stats
 	stats, err := r.SkynetStatsGet()
