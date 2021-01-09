@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -302,6 +303,7 @@ func TestFoundationHardfork(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
 	// Create a testgroup. Include hosts and renters to check that basic renting
 	// functions continue to work after the fork.
 	groupParams := siatest.GroupParams{
@@ -372,7 +374,7 @@ func TestFoundationHardfork(t *testing.T) {
 		// background, if we mine blocks too quickly we may reach the point
 		// where the contracts have expired before the renter and host have had
 		// time to run the renewal protocol. By waiting a full second after each
-		// block, we ensure that there is plety of time for renewals to happen.
+		// block, we ensure that there is plenty of time for renewals to happen.
 		time.Sleep(time.Second)
 	}
 
@@ -807,7 +809,8 @@ func TestFoundationHardfork(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if balance.Cmp(originalBalance.Add(subsidyCoins).Sub(types.SiacoinPrecision)) < 0 {
+		expectedBalance := originalBalance.Add(subsidyCoins).Sub(types.SiacoinPrecision)
+		if balance.Cmp(expectedBalance) < 0 {
 			return errors.New("wallet does not seem to possess the foundation subsidy")
 		}
 		return nil
@@ -817,11 +820,18 @@ func TestFoundationHardfork(t *testing.T) {
 	}
 	//
 	// Verify that the wallet can send those coins like any other coins.
+	//
+	// NOTE: we drain the entire balance to ensure that the outputs we care
+	// about are used.
+	balance, err = w.ConfirmedBalance()
+	if err != nil {
+		t.Fatal(err)
+	}
 	wag, err = m.WalletAddressGet()
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = w.WalletSiacoinsPost(subsidyCoins, wag.Address, false)
+	_, err = w.WalletSiacoinsPost(balance.Sub(types.SiacoinPrecision), wag.Address, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -837,7 +847,7 @@ func TestFoundationHardfork(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if balance.Cmp(originalBalance) >= 0 {
+		if balance.Cmp(types.SiacoinPrecision) >= 0 {
 			return errors.New("wallet does not seem to have sent the foundation subsidy")
 		}
 		return nil
@@ -970,7 +980,7 @@ func TestFoundationHardfork(t *testing.T) {
 	//
 	// Get the transaction onto the blockchain.
 	err = m.TransactionPoolRawPost(txn, nil)
-	if err == nil {
+	if err == nil || !strings.Contains(err.Error(), types.ErrFrivolousSignature.Error()) {
 		t.Fatal("the transaction is supposed to be rejected as invalid")
 	}
 	tptg, err = m.TransactionPoolTransactionsGet()
@@ -1063,7 +1073,7 @@ func TestFoundationHardfork(t *testing.T) {
 		txn.TransactionSignatures[i].Signature = sig[:]
 	}
 	err = txn.StandaloneValid(mineToHeight)
-	if err == nil {
+	if err == nil || !strings.Contains(err.Error(), types.ErrTimelockNotSatisfied.Error()) {
 		t.Fatal("there's supposed to be a timelock err here")
 	}
 
