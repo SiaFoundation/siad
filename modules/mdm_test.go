@@ -161,7 +161,7 @@ func TestBudgetLimit(t *testing.T) {
 	}
 	err = limit.RecordUpload(1)
 	if !errors.Contains(err, ErrInsufficientBandwidthBudget) {
-		t.Fatal("expected error but got", err)
+		t.Fatalf("expected error %v but got %v",ErrInsufficientBandwidthBudget err)
 	}
 	limit.UpdateCosts(types.NewCurrency64(readCost), types.NewCurrency64(writeCost))
 	err = limit.RecordDownload(1)
