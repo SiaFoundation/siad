@@ -157,7 +157,7 @@ func (sr *skyfileReader) Read(p []byte) (n int, err error) {
 	return
 }
 
-// NewMultipartReader creates a multipar.Reader from an io.Reader and the
+// NewMultipartReader creates a multipart.Reader from an io.Reader and the
 // provided subfiles. This reader can then be used to create
 // a NewSkyfileMultipartReader.
 func NewMultipartReader(reader io.Reader, subFiles SkyfileSubfiles) (*multipart.Reader, error) {

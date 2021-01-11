@@ -849,6 +849,9 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (string, error) {
 	// Create the SkyfileUploadReader for the restoration
 	var restoreReader modules.SkyfileUploadReader
 	var buf bytes.Buffer
+	// Define a TeeReader for the underlying io.Reader. This allows the fanout
+	// bytes to be generated before the upload has completed by reading the data
+	// from the buffer rather than the chunks.
 	tee := io.TeeReader(reader, &buf)
 	if len(sm.Subfiles) == 0 {
 		restoreReader = modules.NewSkyfileReader(tee, sup)
@@ -858,6 +861,7 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (string, error) {
 		if err != nil {
 			return "", errors.AddContext(err, "unable to create multireader")
 		}
+		// Create the multipart reader for the fanout using the TeeReader's buffer.
 		multiReaderFanout, err := modules.NewMultipartReader(&buf, sm.Subfiles)
 		if err != nil {
 			return "", errors.AddContext(err, "unable to create multireader")
@@ -879,7 +883,7 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (string, error) {
 	// Create erasure coder and FileUploadParams
 	extendedPath, err := modules.NewSiaPath(sup.SiaPath.String() + ExtendedSuffix)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to create extened siapath")
+		return "", errors.AddContext(err, "unable to create extended siapath")
 	}
 
 	// Create the FileUploadParams
@@ -938,11 +942,11 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (string, error) {
 }
 
 // UploadSkyfile will upload the provided data with the provided metadata,
-// returning a skylink which can be used by any viewnode to recover the full
+// returning a skylink which can be used by any portal to recover the full
 // original file and metadata. The skylink will be unique to the combination of
 // both the file data and metadata.
 func (r *Renter) UploadSkyfile(sup modules.SkyfileUploadParameters, reader modules.SkyfileUploadReader) (skylink modules.Skylink, err error) {
-	// Set reasonable default values for any lup fields that are blank.
+	// Set reasonable default values for any sup fields that are blank.
 	skyfileEstablishDefaults(&sup)
 
 	// If a skykey name or ID was specified, generate a file-specific key for

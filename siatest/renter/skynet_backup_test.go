@@ -13,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/skykey"
-	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -26,11 +25,11 @@ func TestSkynetBackupAndRestore(t *testing.T) {
 	}
 	t.Parallel()
 
-	// Create a testgroup with 2 renters.
+	// Create a testgroup with 2 portals.
 	groupParams := siatest.GroupParams{
 		Hosts:   5,
 		Miners:  1,
-		Renters: 2,
+		Portals: 2,
 	}
 	groupDir := renterTestDir(t.Name())
 
@@ -52,60 +51,31 @@ func TestSkynetBackupAndRestore(t *testing.T) {
 // testSingleFileRegular verifies that a single skyfile can be backed up by its
 // skylink and then restored.
 func testSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
-	// Grab the renters
-	renters := tg.Renters()
-	renter1 := renters[0]
-	renter2 := renters[1]
+	// Grab the portals
+	portals := tg.Portals()
+	portal1 := portals[0]
+	portal2 := portals[1]
 
-	// Add a SkyKey to both renters
-	sk, err := renter1.SkykeyCreateKeyPost("singlefile", skykey.TypePrivateID)
+	// Add a SkyKey to both portals
+	sk, err := portal1.SkykeyCreateKeyPost("singlefile", skykey.TypePrivateID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = renter2.SkykeyAddKeyPost(sk)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// TODO: This code is setting the renters to act as portals, we should
-	// probably make this a setting within the testgroup and testnode and make
-	// sure all the Skynet tests are using this setting.
-	//
-	// NOTE: Until then, subsequent subtests will fail unless this code is
-	// unnecessarily added to them or this subtest is run first.
-	rg, err := renter1.RenterGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	allowance := rg.Settings.Allowance
-	allowance.PaymentContractInitialFunding = types.NewCurrency64(10000000)
-	allowance.Hosts = uint64(len(tg.Hosts()))
-	err = renter1.RenterPostAllowance(allowance)
-	if err != nil {
-		t.Fatal(err)
-	}
-	rg, err = renter2.RenterGet()
-	if err != nil {
-		t.Fatal(err)
-	}
-	allowance = rg.Settings.Allowance
-	allowance.PaymentContractInitialFunding = types.NewCurrency64(10000000)
-	allowance.Hosts = uint64(len(tg.Hosts()))
-	err = renter2.RenterPostAllowance(allowance)
+	err = portal2.SkykeyAddKeyPost(sk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Define test function
 	singleFileTest := func(filename, skykeyName string, data []byte) {
-		// Renter 1 uploads the skyfile
-		skylink, sup, _, err := renter1.UploadNewEncryptedSkyfileBlocking(filename, data, skykeyName, false)
+		// Portal 1 uploads the skyfile
+		skylink, sup, _, err := portal1.UploadNewEncryptedSkyfileBlocking(filename, data, skykeyName, false)
 		if err != nil {
 			t.Fatalf("Test %v failed to upload: %v", filename, err)
 		}
 
 		// Verify the backup and restoration of the skylink
-		err = verifyBackupAndRestore(tg, renter1, renter2, skylink, sup.SiaPath.String())
+		err = verifyBackupAndRestore(tg, portal1, portal2, skylink, sup.SiaPath.String())
 		if err != nil {
 			t.Errorf("Test %v failed to backup and restore: %v", filename, err)
 		}
@@ -130,31 +100,31 @@ func testSingleFileRegular(t *testing.T, tg *siatest.TestGroup) {
 // testSingleFileMultiPart verifies that a single skyfile uploaded using the
 // multiplart upload can be backed up by its skylink and then restored.
 func testSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
-	// Grab the renters
-	renters := tg.Renters()
-	renter1 := renters[0]
-	renter2 := renters[1]
+	// Grab the portals
+	portals := tg.Portals()
+	portal1 := portals[0]
+	portal2 := portals[1]
 
-	// Add a SkyKey to both renters
-	sk, err := renter1.SkykeyCreateKeyPost("multipartfile", skykey.TypePrivateID)
+	// Add a SkyKey to both portals
+	sk, err := portal1.SkykeyCreateKeyPost("multipartfile", skykey.TypePrivateID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = renter2.SkykeyAddKeyPost(sk)
+	err = portal2.SkykeyAddKeyPost(sk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Define test function
 	multiFileTest := func(filename, skykeyName string, files []siatest.TestFile) {
-		// Renter 1 uploads the multipart skyfile
-		skylink, sup, _, err := renter1.UploadNewMultipartEncryptedSkyfileBlocking(filename, files, "", false, false, skykeyName, skykey.SkykeyID{})
+		// Portal 1 uploads the multipart skyfile
+		skylink, sup, _, err := portal1.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, false, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatalf("Test %v failed to upload: %v", filename, err)
 		}
 
 		// Verify the backup and restoration of the skylink
-		err = verifyBackupAndRestore(tg, renter1, renter2, skylink, sup.SiaPath.String())
+		err = verifyBackupAndRestore(tg, portal1, portal2, skylink, sup.SiaPath.String())
 		if err != nil {
 			t.Errorf("Test %v failed to backup and restore: %v", filename, err)
 		}
@@ -186,31 +156,31 @@ func testSingleFileMultiPart(t *testing.T, tg *siatest.TestGroup) {
 // testDirectoryBasic verifies that a directory skyfile can be backed up by its
 // skylink and then restored.
 func testDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
-	// Grab the renters
-	renters := tg.Renters()
-	renter1 := renters[0]
-	renter2 := renters[1]
+	// Grab the portals
+	portals := tg.Portals()
+	portal1 := portals[0]
+	portal2 := portals[1]
 
-	// Add a SkyKey to both renters
-	sk, err := renter1.SkykeyCreateKeyPost("directoryBasic", skykey.TypePrivateID)
+	// Add a SkyKey to both portals
+	sk, err := portal1.SkykeyCreateKeyPost("directoryBasic", skykey.TypePrivateID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = renter2.SkykeyAddKeyPost(sk)
+	err = portal2.SkykeyAddKeyPost(sk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Define test function
 	directoryTest := func(filename, skykeyName, defaultPath string, files []siatest.TestFile, disableDefaultPath, force bool) {
-		// Renter 1 uploads the directory
-		skylink, sup, _, err := renter1.UploadNewMultipartEncryptedSkyfileBlocking(filename, files, defaultPath, disableDefaultPath, force, skykeyName, skykey.SkykeyID{})
+		// Portal 1 uploads the directory
+		skylink, sup, _, err := portal1.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, defaultPath, disableDefaultPath, force, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatalf("Test %v failed to upload: %v", filename, err)
 		}
 
 		// Verify the backup and restoration of the skylink
-		err = verifyBackupAndRestore(tg, renter1, renter2, skylink, sup.SiaPath.String())
+		err = verifyBackupAndRestore(tg, portal1, portal2, skylink, sup.SiaPath.String())
 		if err != nil {
 			t.Errorf("Test %v failed to backup and restore: %v", filename, err)
 		}
@@ -250,31 +220,31 @@ func testDirectoryBasic(t *testing.T, tg *siatest.TestGroup) {
 // testDirectoryNested verifies that a nested directory skyfile can be backed up
 // by its skylink and then restored.
 func testDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
-	// Grab the renters
-	renters := tg.Renters()
-	renter1 := renters[0]
-	renter2 := renters[1]
+	// Grab the portals
+	portals := tg.Portals()
+	portal1 := portals[0]
+	portal2 := portals[1]
 
-	// Add a SkyKey to both renters
-	sk, err := renter1.SkykeyCreateKeyPost("directoryNested", skykey.TypePrivateID)
+	// Add a SkyKey to both portals
+	sk, err := portal1.SkykeyCreateKeyPost("directoryNested", skykey.TypePrivateID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = renter2.SkykeyAddKeyPost(sk)
+	err = portal2.SkykeyAddKeyPost(sk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Define test function
 	directoryTest := func(filename, skykeyName string, files []siatest.TestFile) {
-		// Renter 1 uploads the directory
-		skylink, sup, _, err := renter1.UploadNewMultipartEncryptedSkyfileBlocking(filename, files, "", false, false, skykeyName, skykey.SkykeyID{})
+		// Portal 1 uploads the directory
+		skylink, sup, _, err := portal1.UploadNewMultipartSkyfileEncryptedBlocking(filename, files, "", false, false, skykeyName, skykey.SkykeyID{})
 		if err != nil {
 			t.Fatalf("Test %v failed to upload: %v", filename, err)
 		}
 
 		// Verify the backup and restoration of the skylink
-		err = verifyBackupAndRestore(tg, renter1, renter2, skylink, sup.SiaPath.String())
+		err = verifyBackupAndRestore(tg, portal1, portal2, skylink, sup.SiaPath.String())
 		if err != nil {
 			t.Errorf("Test %v failed to backup and restore: %v", filename, err)
 		}
@@ -296,35 +266,35 @@ func testDirectoryNested(t *testing.T, tg *siatest.TestGroup) {
 // testConvertedSiaFile verifies that a skyfile that was converted from
 // a siafile can be backed up by its skylink and then restored.
 func testConvertedSiaFile(t *testing.T, tg *siatest.TestGroup) {
-	// Grab the renters
-	renters := tg.Renters()
-	renter1 := renters[0]
-	renter2 := renters[1]
+	// Grab the portals
+	portals := tg.Portals()
+	portal1 := portals[0]
+	portal2 := portals[1]
 
-	// Add a SkyKey to both renters
-	sk, err := renter1.SkykeyCreateKeyPost("convertedsiafile", skykey.TypePrivateID)
+	// Add a SkyKey to both portals
+	sk, err := portal1.SkykeyCreateKeyPost("convertedsiafile", skykey.TypePrivateID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = renter2.SkykeyAddKeyPost(sk)
+	err = portal2.SkykeyAddKeyPost(sk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Define test function
 	convertTest := func(filename, skykeyName string, size int) {
-		// Renter 1 uploads a siafile
-		_, rf, err := renter1.UploadNewFileBlocking(size, 1, 2, false)
+		// Portal 1 uploads a siafile
+		_, rf, err := portal1.UploadNewFileBlocking(size, 1, 2, false)
 		if err != nil {
 			t.Fatalf("Test %v failed to upload siafile: %v", filename, err)
 		}
 
-		// Renter 1 converts the siafile to a skyfile
+		// Portal 1 converts the siafile to a skyfile
 		sup := modules.SkyfileUploadParameters{
 			SiaPath:    rf.SiaPath(),
 			SkykeyName: skykeyName,
 		}
-		sshp, err := renter1.SkynetConvertSiafileToSkyfilePost(sup, rf.SiaPath())
+		sshp, err := portal1.SkynetConvertSiafileToSkyfilePost(sup, rf.SiaPath())
 		if skykeyName != "" {
 			if err == nil {
 				// Future proofing the test to fail when siafile conversion with
@@ -338,7 +308,7 @@ func testConvertedSiaFile(t *testing.T, tg *siatest.TestGroup) {
 		}
 
 		// Verify the backup and restoration of the skylink
-		err = verifyBackupAndRestore(tg, renter1, renter2, sshp.Skylink, sup.SiaPath.String())
+		err = verifyBackupAndRestore(tg, portal1, portal2, sshp.Skylink, sup.SiaPath.String())
 		if err != nil {
 			t.Errorf("Test %v failed to backup and restore: %v", filename, err)
 		}
@@ -360,19 +330,19 @@ func testConvertedSiaFile(t *testing.T, tg *siatest.TestGroup) {
 
 // verifyBackupAndRestore verifies the backup and restore functionality of
 // skynet for the provided skylink
-func verifyBackupAndRestore(tg *siatest.TestGroup, renter1, renter2 *siatest.TestNode, skylink, siaPath string) error {
-	// Verify both renters can download the file
-	err := verifyDownloadByAll(renter1, renter2, skylink)
+func verifyBackupAndRestore(tg *siatest.TestGroup, portal1, portal2 *siatest.TestNode, skylink, siaPath string) error {
+	// Verify both portals can download the file
+	err := verifyDownloadByAll(portal1, portal2, skylink)
 	if err != nil {
 		return errors.AddContext(err, "initial download failed")
 	}
 
-	// Have Renter 1 delete the file
+	// Have Portal 1 delete the file
 	skySiaPath, err := modules.SkynetFolder.Join(siaPath)
 	if err != nil {
 		return err
 	}
-	err = renter1.RenterFileDeleteRootPost(skySiaPath)
+	err = portal1.RenterFileDeleteRootPost(skySiaPath)
 	if err != nil {
 		return err
 	}
@@ -380,27 +350,27 @@ func verifyBackupAndRestore(tg *siatest.TestGroup, renter1, renter2 *siatest.Tes
 	if err != nil {
 		return err
 	}
-	err = renter1.RenterFileDeleteRootPost(skySiaPathExtended)
+	err = portal1.RenterFileDeleteRootPost(skySiaPathExtended)
 	if err != nil && !strings.Contains(err.Error(), filesystem.ErrNotExist.Error()) {
 		return err
 	}
 
-	// Verify both renters can still download the file
-	err = verifyDownloadByAll(renter1, renter2, skylink)
+	// Verify both portals can still download the file
+	err = verifyDownloadByAll(portal1, portal2, skylink)
 	if err != nil {
 		return errors.AddContext(err, "download after delete failed")
 	}
 
-	// Renter 2 Backups the skyfile
+	// Portal 2 Backups the skyfile
 	var backupDst bytes.Buffer
-	err = renter2.SkynetSkylinkBackup(skylink, &backupDst)
+	err = portal2.SkynetSkylinkBackup(skylink, &backupDst)
 	if err != nil {
 		return errors.AddContext(err, "backup call failed")
 	}
 
-	// Renter 2 Restores the Skyfile
+	// Portal 2 Restores the Skyfile
 	backupSrc := bytes.NewReader(backupDst.Bytes())
-	backupSkylink, err := renter2.SkynetSkylinkRestorePost(backupSrc)
+	backupSkylink, err := portal2.SkynetSkylinkRestorePost(backupSrc)
 	if err != nil {
 		return errors.AddContext(err, "restore call failed")
 	}
@@ -408,8 +378,8 @@ func verifyBackupAndRestore(tg *siatest.TestGroup, renter1, renter2 *siatest.Tes
 		return fmt.Errorf("Skylinks not equal\nOriginal: %v\nBackup %v\n", skylink, backupSkylink)
 	}
 
-	// Verify both renters can download the restored file
-	err = verifyDownloadByAll(renter1, renter2, backupSkylink)
+	// Verify both portals can download the restored file
+	err = verifyDownloadByAll(portal1, portal2, backupSkylink)
 	if err != nil {
 		return errors.AddContext(err, "download after restore failed")
 	}
@@ -423,17 +393,17 @@ func verifyBackupAndRestore(tg *siatest.TestGroup, renter1, renter2 *siatest.Tes
 
 	// Mine to a new period to ensure the original contract data from renter 1 is
 	// dropped
-	if err = siatest.RenewContractsByRenewWindow(renter1, tg); err != nil {
+	if err = siatest.RenewContractsByRenewWindow(portal1, tg); err != nil {
 		return err
 	}
-	err1 := siatest.RenterContractsStable(renter1, tg)
-	err2 := siatest.RenterContractsStable(renter2, tg)
+	err1 := siatest.RenterContractsStable(portal1, tg)
+	err2 := siatest.RenterContractsStable(portal2, tg)
 	if err := errors.Compose(err1, err2); err != nil {
 		return err
 	}
 
-	// Renter 1 and Renter 2 can still download the file
-	err = verifyDownloadByAll(renter1, renter2, backupSkylink)
+	// Portal 1 and Portal 2 can still download the file
+	err = verifyDownloadByAll(portal1, portal2, backupSkylink)
 	if err != nil {
 		return errors.AddContext(err, "download after renewal failed")
 	}
@@ -442,17 +412,19 @@ func verifyBackupAndRestore(tg *siatest.TestGroup, renter1, renter2 *siatest.Tes
 }
 
 // verifyDownloadByAll verifies that both the renter's can download the skylink.
-func verifyDownloadByAll(renter1, renter2 *siatest.TestNode, skylink string) error {
-	data1, sm1, err1 := renter1.SkynetSkylinkGet(skylink)
-	data2, sm2, err2 := renter2.SkynetSkylinkGet(skylink)
+func verifyDownloadByAll(portal1, portal2 *siatest.TestNode, skylink string) error {
+	data1, sm1, err1 := portal1.SkynetSkylinkGet(skylink)
+	err1 = errors.AddContext(err1, "portal 1 download error")
+	data2, sm2, err2 := portal2.SkynetSkylinkGet(skylink)
+	err2 = errors.AddContext(err2, "portal 2 download error")
 	if err := errors.Compose(err1, err2); err != nil {
 		return err
 	}
 	if !bytes.Equal(data1, data2) {
-		return fmt.Errorf("Bytes not equal\nRenter 1 Download: %v\nRenter 2 Download: %v\n", data1, data2)
+		return fmt.Errorf("Bytes not equal\nPortal 1 Download: %v\nPortal 2 Download: %v\n", data1, data2)
 	}
 	if !reflect.DeepEqual(sm1, sm2) {
-		return fmt.Errorf("Metadata not equal\nRenter 1 Download: %v\nRenter 2 Download: %v\n", sm1, sm2)
+		return fmt.Errorf("Metadata not equal\nPortal 1 Download: %v\nPortal 2 Download: %v\n", sm1, sm2)
 	}
 	return nil
 }

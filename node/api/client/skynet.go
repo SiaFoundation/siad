@@ -222,9 +222,9 @@ func (c *Client) SkynetSkylinkConcatGet(skylink string) (_ []byte, _ modules.Sky
 	return fileData, sm, errors.AddContext(err, "unable to fetch skylink data")
 }
 
-// SkynetSkylinkBackup uses the /skynet/skylink endpoint to fetch a reader of
-// the file data along with the SkyfileMetadata and the SkyfileLayout and saves
-// it to disk. The path to the backup on disk is returned.
+// SkynetSkylinkBackup uses the /skynet/skylink endpoint to fetch the Skyfile's
+// basesector, and reader for large Skyfiles, and writes it to the backupDst
+// writer.
 func (c *Client) SkynetSkylinkBackup(skylink string, backupDst io.Writer) error {
 	// Download the BaseSector first
 	baseSectorReader, err := c.SkynetBaseSectorGet(skylink)
