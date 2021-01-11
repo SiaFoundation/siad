@@ -84,6 +84,12 @@ func (sds *skylinkDataSource) SilentClose() {
 func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkReadResponse {
 	// Prepare the response channel
 	responseChan := make(chan *skylinkReadResponse, 1)
+	if off+fetchSize > sds.staticLayout.Filesize {
+		responseChan <- &skylinkReadResponse{
+			staticErr: errors.New("given offset and fetchsize exceed the underlying filesize"),
+		}
+		return responseChan
+	}
 
 	// Determine how large each chunk is.
 	chunkSize := uint64(sds.staticLayout.FanoutDataPieces) * modules.SectorSize
@@ -92,9 +98,6 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkRea
 	// Prepare an array of download chans on which we'll receive the data.
 	numChunks := fetchSize / chunkSize
 	if fetchSize%chunkSize != 0 {
-		numChunks += 1
-	}
-	if off%chunkSize != 0 {
 		numChunks += 1
 	}
 	downloadChans := make([]chan *downloadResponse, 0, numChunks)
@@ -139,12 +142,6 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkRea
 			return responseChan
 		}
 		downloadChans = append(downloadChans, respChan)
-		if len(downloadChans) > int(numChunks) {
-			responseChan <- &skylinkReadResponse{
-				staticErr: errors.New("unexpected amount of chunks scheduled for download"),
-			}
-			return responseChan
-		}
 
 		off += downloadSize
 		n += downloadSize

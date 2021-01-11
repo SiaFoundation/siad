@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -97,10 +98,23 @@ func testSkylinkDataSourceSmallFile(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
+	// verify invalid offset and length
+	responseChan := sds.ReadStream(1, modules.SectorSize)
+	select {
+	case resp := <-responseChan:
+		if resp == nil || resp.staticErr == nil {
+			t.Fatal("unexpected")
+		}
+		if !strings.Contains(resp.staticErr.Error(), "given offset and fetchsize exceed the underlying filesize") {
+			t.Fatal("unexpected")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("unexpected")
+	}
+
 	length := fastrand.Uint64n(datasize/4) + 1
 	offset := fastrand.Uint64n(datasize - length)
-
-	responseChan := sds.ReadStream(offset, length)
+	responseChan = sds.ReadStream(offset, length)
 	select {
 	case resp := <-responseChan:
 		if resp == nil || resp.staticErr != nil {
