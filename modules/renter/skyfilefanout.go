@@ -127,9 +127,9 @@ func skyfileEncodeFanout(fileNode *filesystem.FileNode, reader io.Reader) ([]byt
 		return skyfileEncodeFanoutFromFileNode(fileNode, onlyOnePieceNeeded)
 	}
 
-	// If we need all the pieces, then we need to generate the encoded fanout from
-	// the reader since we cannot assume that all the parity pieces have been
-	// uploaded.
+	// If we need all the pieces, then we need to generate the encoded fanout
+	// from the reader since we cannot assume that all the parity pieces have
+	// been uploaded.
 	return skyfileEncodeFanoutFromReader(fileNode, reader)
 }
 

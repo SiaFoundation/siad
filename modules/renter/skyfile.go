@@ -194,7 +194,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup modules.SkyfileUploadParam
 
 	// Check that the encryption key and erasure code is compatible with the
 	// skyfile format. This is intentionally done before any heavy computation
-	// to catch early errors.
+	// to catch errors early on.
 	var sl modules.SkyfileLayout
 	masterKey := fileNode.MasterKey()
 	if len(masterKey.Key()) > len(sl.KeyData) {
@@ -387,62 +387,6 @@ func (r *Renter) UpdateSkynetPortals(additions []modules.SkynetPortal, removals 
 	}
 	defer r.tg.Done()
 	return r.staticSkynetPortals.UpdatePortals(additions, removals)
-}
-
-// uploadSkyfileReadLeadingChunk will read the leading chunk of a skyfile. If
-// entire file is small enough to fit inside of the leading chunk, the return
-// value will be:
-//
-//   (fileBytes, nil, false, nil)
-//
-// And if the entire file is too large to fit inside of the leading chunk, the
-// return value will be:
-//
-//   (nil, fileReader, true, nil)
-//
-// where the fileReader contains all of the data for the file, including the
-// data that uploadSkyfileReadLeadingChunk had to read to figure out whether
-// the file was too large to fit into the leading chunk.
-func uploadSkyfileReadLeadingChunk(r io.Reader, headerSize uint64) ([]byte, io.Reader, bool, error) {
-	// Check for underflow.
-	if headerSize+1 > modules.SectorSize {
-		return nil, nil, false, ErrMetadataTooBig
-	}
-	// Read data from the reader to fill out the remainder of the first sector.
-	fileBytes := make([]byte, modules.SectorSize-headerSize, modules.SectorSize-headerSize+1) // +1 capacity for the peek byte
-	size, err := io.ReadFull(r, fileBytes)
-	if errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF) {
-		err = nil
-	}
-	if err != nil {
-		return nil, nil, false, errors.AddContext(err, "unable to read the file data")
-	}
-	// Set fileBytes to the right size.
-	fileBytes = fileBytes[:size]
-
-	// See whether there is more data in the reader. If there is no more data in
-	// the reader, a small file will be signaled and the data that has been read
-	// will be returned.
-	peek := make([]byte, 1)
-	n, peekErr := io.ReadFull(r, peek)
-	if errors.Contains(peekErr, io.EOF) || errors.Contains(peekErr, io.ErrUnexpectedEOF) {
-		peekErr = nil
-	}
-	if peekErr != nil {
-		return nil, nil, false, errors.AddContext(err, "too much data provided, cannot create skyfile")
-	}
-	if n == 0 {
-		// There is no more data, return the data that was read from the reader
-		// and signal a small file.
-		return fileBytes, nil, false, nil
-	}
-
-	// There is more data. Create a prepend reader using the data we've already
-	// read plus the reader that we read from, effectively creating a new reader
-	// that is identical to the one that was passed in if no data had been read.
-	prependData := append(fileBytes, peek...)
-	fullReader := io.MultiReader(bytes.NewReader(prependData), r)
-	return nil, fullReader, true, nil
 }
 
 // managedUploadBaseSector will take the raw baseSector bytes and upload them,
@@ -638,8 +582,8 @@ func (r *Renter) DownloadSkylinkBaseSector(link modules.Skylink, timeout time.Du
 	return StreamerFromSlice(baseSector), err
 }
 
-// managedDownloadSkylink will take a link and turn it into the metadata and data of a
-// download.
+// managedDownloadSkylink will take a link and turn it into the metadata and
+// data of a download.
 func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Duration) (modules.SkyfileLayout, modules.SkyfileMetadata, modules.Streamer, error) {
 	if r.deps.Disrupt("resolveSkylinkToFixture") {
 		sf, err := fixtures.LoadSkylinkFixture(link)

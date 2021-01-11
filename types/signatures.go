@@ -205,6 +205,20 @@ func (t Transaction) SigHash(i int, height BlockHeight) (hash crypto.Hash) {
 	return t.partialSigHash(sig.CoveredFields, height)
 }
 
+// replayPrefix returns the replay protection prefix for the specified height.
+// These prefixes are included in a transaction's SigHash; a new prefix is used
+// after each hardfork to prevent replay attacks.
+func replayPrefix(height BlockHeight) []byte {
+	switch {
+	case height >= FoundationHardforkHeight:
+		return FoundationHardforkReplayProtectionPrefix
+	case height >= ASICHardforkHeight:
+		return ASICHardforkReplayProtectionPrefix
+	default:
+		return nil
+	}
+}
+
 // wholeSigHash calculates the hash for a signature that specifies
 // WholeTransaction = true.
 func (t *Transaction) wholeSigHash(sig TransactionSignature, height BlockHeight) (hash crypto.Hash) {
@@ -213,9 +227,7 @@ func (t *Transaction) wholeSigHash(sig TransactionSignature, height BlockHeight)
 
 	e.WriteInt(len((t.SiacoinInputs)))
 	for i := range t.SiacoinInputs {
-		if height >= ASICHardforkHeight {
-			e.Write(ASICHardforkReplayProtectionPrefix)
-		}
+		e.Write(replayPrefix(height))
 		t.SiacoinInputs[i].MarshalSia(e)
 	}
 	e.WriteInt(len((t.SiacoinOutputs)))
@@ -236,9 +248,7 @@ func (t *Transaction) wholeSigHash(sig TransactionSignature, height BlockHeight)
 	}
 	e.WriteInt(len((t.SiafundInputs)))
 	for i := range t.SiafundInputs {
-		if height >= ASICHardforkHeight {
-			e.Write(ASICHardforkReplayProtectionPrefix)
-		}
+		e.Write(replayPrefix(height))
 		t.SiafundInputs[i].MarshalSia(e)
 	}
 	e.WriteInt(len((t.SiafundOutputs)))
@@ -272,9 +282,7 @@ func (t *Transaction) partialSigHash(cf CoveredFields, height BlockHeight) (hash
 	h := crypto.NewHash()
 
 	for _, input := range cf.SiacoinInputs {
-		if height >= ASICHardforkHeight {
-			h.Write(ASICHardforkReplayProtectionPrefix)
-		}
+		h.Write(replayPrefix(height))
 		t.SiacoinInputs[input].MarshalSia(h)
 	}
 	for _, output := range cf.SiacoinOutputs {
@@ -290,9 +298,7 @@ func (t *Transaction) partialSigHash(cf CoveredFields, height BlockHeight) (hash
 		t.StorageProofs[storageProof].MarshalSia(h)
 	}
 	for _, siafundInput := range cf.SiafundInputs {
-		if height >= ASICHardforkHeight {
-			h.Write(ASICHardforkReplayProtectionPrefix)
-		}
+		h.Write(replayPrefix(height))
 		t.SiafundInputs[siafundInput].MarshalSia(h)
 	}
 	for _, siafundOutput := range cf.SiafundOutputs {

@@ -77,6 +77,17 @@ var (
 		Run:   wrap(renterbackuplistcmd),
 	}
 
+	renterCleanCmd = &cobra.Command{
+		Use:   "clean",
+		Short: "Cleans up lost files",
+		Long: `WARNING: This action will permanently delete any files associated with
+the renter that do not have a local copy on disk and have a redundancy of < 1.
+
+You will be asked if you want to see these lost files. Additionally you can use
+the command 'siac renter lost' to see the renter's lost files.`,
+		Run: wrap(rentercleancmd),
+	}
+
 	renterCmd = &cobra.Command{
 		Use:   "renter",
 		Short: "Perform renter actions",
@@ -324,7 +335,40 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 		Long:  "Display a health summary of uploaded files",
 		Run:   wrap(renterhealthsummarycmd),
 	}
+
+	renterLostCmd = &cobra.Command{
+		Use:   "lost",
+		Short: "Display the renter's lost files",
+		Long:  "Display the renter's lost files",
+		Run:   wrap(renterlostcmd),
+	}
 )
+
+// rentercleancmd cleans any lost files from the renter.
+func rentercleancmd() {
+	// Print initial warning
+	fmt.Println("WARNING: This command will delete lost files and cannot be undone!")
+
+	// Ask user if they want to see the lost files they are about to delete.
+	confirmed := askForConfirmation("Would you like see the lost files that will be deleted?")
+	if confirmed {
+		renterlostcmd()
+	}
+
+	// Confirm user wants to proceed
+	confirmed = askForConfirmation("Are you sure you want to continue and delete the lost files?")
+	if !confirmed {
+		return
+	}
+
+	// Clean up lost files
+	fmt.Println("Cleaning lost files...")
+	err := httpClient.RenterCleanPost()
+	if err != nil {
+		die("Unable to clean renter's lost files:", err)
+	}
+	fmt.Println("Successfully cleaned lost files!")
+}
 
 // rentercmd displays the renter's financial metrics and high level renter info
 func rentercmd() {
@@ -398,6 +442,16 @@ func rentercmd() {
 	// Print out ratelimit info about the renter
 	fmt.Println()
 	rateLimitSummary(rg.Settings.MaxDownloadSpeed, rg.Settings.MaxUploadSpeed)
+}
+
+// renterlostcmd is the handler for displaying the renter's lost files.
+func renterlostcmd() {
+	// Print out the lost files of the renter
+	dirs := getDir(modules.RootSiaPath(), true, true)
+	_, _, err := fileHealthBreakdown(dirs, true)
+	if err != nil {
+		die("Unable to display lost files:", err)
+	}
 }
 
 // renterhealthsummarycmd is the handler for displaying the overall health

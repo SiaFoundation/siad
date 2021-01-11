@@ -120,6 +120,7 @@ func (api *API) buildHTTPRoutes() {
 		router.GET("/renter/backups", RequirePassword(api.renterBackupsHandlerGET, requiredPassword))
 		router.POST("/renter/backups/create", RequirePassword(api.renterBackupsCreateHandlerPOST, requiredPassword))
 		router.POST("/renter/backups/restore", RequirePassword(api.renterBackupsRestoreHandlerGET, requiredPassword))
+		router.POST("/renter/clean", RequirePassword(api.renterCleanHandlerPOST, requiredPassword))
 		router.POST("/renter/contract/cancel", RequirePassword(api.renterContractCancelHandler, requiredPassword))
 		router.GET("/renter/contracts", api.renterContractsHandler)
 		router.GET("/renter/contractorchurnstatus", api.renterContractorChurnStatus)
