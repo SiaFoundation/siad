@@ -62,6 +62,24 @@ var (
 	ErrParseTimeoutUnits = errors.New("amount is missing timeout units")
 )
 
+// bandwidthUnit takes bps (bits per second) as an argument and converts
+// them into a more human-readable string with a unit.
+func bandwidthUnit(bps uint64) string {
+	units := []string{"Bps", "Kbps", "Mbps", "Gbps", "Tbps", "Pbps", "Ebps", "Zbps", "Ybps"}
+	mag := uint64(1)
+	unit := ""
+	for _, unit = range units {
+		if bps < 1e3*mag {
+			break
+		} else if unit != units[len(units)-1] {
+			// don't want to perform this multiply on the last iter; that
+			// would give us 1.235 Ybps instead of 1235 Ybps
+			mag *= 1e3
+		}
+	}
+	return fmt.Sprintf("%.2f %s", float64(bps)/float64(mag), unit)
+}
+
 // parseFilesize converts strings of form '10GB' or '10 gb' to a size in bytes.
 // Fractional sizes are truncated at the byte size.
 func parseFilesize(strSize string) (string, error) {

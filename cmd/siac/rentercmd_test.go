@@ -16,10 +16,10 @@ func TestFilePercentageBreakdown(t *testing.T) {
 	//
 	// Test with empty slice
 	var dirs []directoryInfo
-	fileHealthBreakdown(dirs)
+	fileHealthBreakdown(dirs, false)
 	// Test with empty struct
 	dirs = append(dirs, directoryInfo{})
-	fileHealthBreakdown(dirs)
+	fileHealthBreakdown(dirs, false)
 
 	// Test basic directory info
 	dir := modules.DirectoryInfo{AggregateNumFiles: 7}
@@ -35,7 +35,7 @@ func TestFilePercentageBreakdown(t *testing.T) {
 		dir:   dir,
 		files: files,
 	}
-	percentages, numStuck, err := fileHealthBreakdown(dirs)
+	percentages, numStuck, err := fileHealthBreakdown(dirs, false)
 	if err != nil {
 		t.Fatal(err)
 	}

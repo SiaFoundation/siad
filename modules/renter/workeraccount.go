@@ -74,7 +74,7 @@ var (
 	accountIdleMaxWait = build.Select(build.Var{
 		Dev:      10 * time.Minute,
 		Standard: 40 * time.Minute,
-		Testing:  time.Minute, // needs to be long even in testing
+		Testing:  5 * time.Minute, // needs to be long even in testing
 	}).(time.Duration)
 )
 

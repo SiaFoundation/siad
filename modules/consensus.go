@@ -242,6 +242,10 @@ type (
 		// a given file contract.
 		StorageProofSegment(types.FileContractID) (uint64, error)
 
+		// FoundationUnlockHashes returns the current primary and failsafe
+		// Foundation UnlockHashes.
+		FoundationUnlockHashes() (primary, failsafe types.UnlockHash)
+
 		// TryTransactionSet checks whether the transaction set would be valid if
 		// it were added in the next block. A consensus change is returned
 		// detailing the diffs that would result from the application of the

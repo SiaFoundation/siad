@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"container/list"
 	"context"
 	"sync"
 	"time"
@@ -25,6 +26,10 @@ type (
 
 		staticQueue workerJobQueue
 
+		// staticMetadata is a generic field on the job that can be set and
+		// casted by implementations of a job
+		staticMetadata interface{}
+
 		// These fields are set when the job is added to the job queue and used
 		// after execution to log the delta between the estimated job time and
 		// the actual job time.
@@ -37,7 +42,7 @@ type (
 	// timer. It does not have an array of jobs that are in the queue, because
 	// those are type specific.
 	jobGenericQueue struct {
-		jobs []workerJob
+		jobs *list.List
 
 		killed bool
 
@@ -63,6 +68,9 @@ type (
 		// callExpectedBandwidth will return the amount of bandwidth that a job
 		// expects to consume.
 		callExpectedBandwidth() (upload uint64, download uint64)
+
+		// staticGetMetadata returns a metadata object.
+		staticGetMetadata() interface{}
 
 		// staticCanceled returns true if the job has been canceled, false
 		// otherwise.
@@ -113,17 +121,18 @@ func expMovingAvg(oldEMA, newValue, decay float64) float64 {
 // newJobGeneric returns an initialized jobGeneric. The queue that is associated
 // with the job should be used as the input to this function. The job will
 // cancel itself if the cancelChan is closed.
-func newJobGeneric(ctx context.Context, queue workerJobQueue) *jobGeneric {
+func newJobGeneric(ctx context.Context, queue workerJobQueue, metadata interface{}) *jobGeneric {
 	return &jobGeneric{
-		staticCtx: ctx,
-
-		staticQueue: queue,
+		staticCtx:      ctx,
+		staticQueue:    queue,
+		staticMetadata: metadata,
 	}
 }
 
 // newJobGenericQueue will return an initialized generic job queue.
 func newJobGenericQueue(w *worker) *jobGenericQueue {
 	return &jobGenericQueue{
+		jobs:            list.New(),
 		staticWorkerObj: w,
 	}
 }
@@ -138,12 +147,17 @@ func (j *jobGeneric) staticCanceled() bool {
 	}
 }
 
+// staticGetMetadata returns the job's metadata.
+func (j *jobGeneric) staticGetMetadata() interface{} {
+	return j.staticMetadata
+}
+
 // add will add a job to the queue.
 func (jq *jobGenericQueue) add(j workerJob) bool {
 	if jq.killed || time.Now().Before(jq.cooldownUntil) {
 		return false
 	}
-	jq.jobs = append(jq.jobs, j)
+	jq.jobs.PushBack(j)
 	jq.staticWorkerObj.staticWake()
 	return true
 }
@@ -181,14 +195,17 @@ func (jq *jobGenericQueue) callNext() workerJob {
 
 	// Loop through the jobs, looking for the first job that hasn't yet been
 	// canceled. Remove jobs from the queue along the way.
-	for len(jq.jobs) > 0 {
-		job := jq.jobs[0]
-		jq.jobs = jq.jobs[1:]
-		if job.staticCanceled() {
-			job.callDiscard(errors.New("callNext: skipping and discarding already canceled job"))
+	for job := jq.jobs.Front(); job != nil; job = job.Next() {
+		// Remove the job from the list.
+		jq.jobs.Remove(job)
+
+		// Check if the job is already canceled.
+		wj := job.Value.(workerJob)
+		if wj.staticCanceled() {
+			wj.callDiscard(errors.New("callNext: skipping and discarding already canceled job"))
 			continue
 		}
-		return job
+		return wj
 	}
 
 	// Job queue is empty, return nil.
@@ -226,7 +243,7 @@ func (jq *jobGenericQueue) callStatus() workerJobQueueStatus {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 	return workerJobQueueStatus{
-		size:                uint64(len(jq.jobs)),
+		size:                uint64(jq.jobs.Len()),
 		cooldownUntil:       jq.cooldownUntil,
 		consecutiveFailures: jq.consecutiveFailures,
 		recentErr:           jq.recentErr,
@@ -236,10 +253,11 @@ func (jq *jobGenericQueue) callStatus() workerJobQueueStatus {
 
 // discardAll will drop all jobs from the queue.
 func (jq *jobGenericQueue) discardAll(err error) {
-	for _, job := range jq.jobs {
-		job.callDiscard(err)
+	for job := jq.jobs.Front(); job != nil; job = job.Next() {
+		wj := job.Value.(workerJob)
+		wj.callDiscard(err)
 	}
-	jq.jobs = nil
+	jq.jobs = list.New()
 }
 
 // staticWorker will return the worker that is associated with this job queue.

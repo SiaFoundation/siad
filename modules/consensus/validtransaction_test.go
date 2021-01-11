@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
@@ -889,3 +890,81 @@ func TestValidTransaction(t *testing.T) {
 	}
 }
 */
+
+// TestValidArbitraryData probes the validArbitraryData function.
+func TestValidArbitraryData(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	cst, err := createConsensusSetTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	validate := func(t types.Transaction, height types.BlockHeight) error {
+		return cst.cs.db.View(func(tx *bolt.Tx) error {
+			return validArbitraryData(tx, t, height)
+		})
+	}
+
+	// Check an empty transaction
+	if err := validate(types.Transaction{}, types.FoundationHardforkHeight); err != nil {
+		t.Error(err)
+	}
+
+	// Check data with an invalid prefix -- it should be ignored
+	data := encoding.MarshalAll(types.Specifier{'f', 'o', 'o'}, types.FoundationUnlockHashUpdate{})
+	if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight); err != nil {
+		t.Error(err)
+	}
+
+	// Check same transaction prior to hardfork -- it should be ignored
+	if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight-1); err != nil {
+		t.Error(err)
+	}
+
+	// Check transaction with a valid update, but no input or signature
+	data = encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{})
+	if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight); err != errUnsignedFoundationUpdate {
+		t.Error("expected errUnsignedFoundationUpdate, got", err)
+	} else if err := validate(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight-1); err != nil {
+		t.Error(err)
+	}
+
+	// Check transaction with a valid update
+	primaryUC, _ := types.GenerateDeterministicMultisig(2, 3, types.InitialFoundationTestingSalt)
+	failsafeUC, _ := types.GenerateDeterministicMultisig(3, 5, types.InitialFoundationFailsafeTestingSalt)
+	data = encoding.MarshalAll(types.SpecifierFoundation, types.FoundationUnlockHashUpdate{})
+	txn := types.Transaction{
+		SiacoinInputs: []types.SiacoinInput{{
+			ParentID:         types.SiacoinOutputID{1, 2, 3},
+			UnlockConditions: primaryUC,
+		}},
+		ArbitraryData: [][]byte{data},
+		TransactionSignatures: []types.TransactionSignature{{
+			ParentID:      crypto.Hash{1, 2, 3},
+			CoveredFields: types.FullCoveredFields,
+		}},
+	}
+	if err := validate(txn, types.FoundationHardforkHeight); err != nil {
+		t.Error(err)
+	}
+
+	// Try with the failsafe
+	txn.SiacoinInputs[0].UnlockConditions = failsafeUC
+	if err := validate(txn, types.FoundationHardforkHeight); err != nil {
+		t.Error(err)
+	}
+
+	// Try with invalid unlock conditions
+	txn.SiacoinInputs[0].UnlockConditions = types.UnlockConditions{}
+	if err := validate(txn, types.FoundationHardforkHeight); err != errUnsignedFoundationUpdate {
+		t.Error("expected errUnsignedFoundationUpdate, got", err)
+	}
+}

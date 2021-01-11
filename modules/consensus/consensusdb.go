@@ -69,6 +69,12 @@ var (
 	// SiafundPool is a database bucket storing the current value of the
 	// siafund pool.
 	SiafundPool = []byte("SiafundPool")
+
+	// FoundationUnlockHashes is a database bucket storing primary and failsafe
+	// Foundation UnlockHashes. It stores both the current values (keyed by
+	// "FoundationUnlockHashes") and the values at specific blocks (keyed by
+	// block height).
+	FoundationUnlockHashes = []byte("FoundationUnlockHashes")
 )
 
 var (
@@ -136,12 +142,8 @@ func (cs *ConsensusSet) createConsensusDB(tx *bolt.Tx) error {
 		UnlockHash: types.UnlockHash{},
 	})
 
-	// Add the genesis block to the block structures - checksum must be taken
-	// after pushing the genesis block into the path.
+	// Add the genesis block to the block structures.
 	pushPath(tx, cs.blockRoot.Block.ID())
-	if build.DEBUG {
-		cs.blockRoot.ConsensusChecksum = consensusChecksum(tx)
-	}
 	addBlockMap(tx, &cs.blockRoot)
 	return nil
 }
@@ -486,6 +488,50 @@ func getSiafundPool(tx *bolt.Tx) (pool types.Currency) {
 // setSiafundPool updates the saved siafund pool on disk
 func setSiafundPool(tx *bolt.Tx, c types.Currency) {
 	err := tx.Bucket(SiafundPool).Put(SiafundPool, encoding.Marshal(c))
+	if build.DEBUG && err != nil {
+		panic(err)
+	}
+}
+
+// getFoundationUnlockHashes returns the current primary and failsafe Foundation
+// addresses.
+func getFoundationUnlockHashes(tx *bolt.Tx) (primary, failsafe types.UnlockHash) {
+	err := encoding.UnmarshalAll(tx.Bucket(FoundationUnlockHashes).Get(FoundationUnlockHashes), &primary, &failsafe)
+	if build.DEBUG && err != nil {
+		panic(err)
+	}
+	return
+}
+
+// setFoundationUnlockHashes updates the primary and failsafe Foundation
+// addresses.
+func setFoundationUnlockHashes(tx *bolt.Tx, primary, failsafe types.UnlockHash) {
+	err := tx.Bucket(FoundationUnlockHashes).Put(FoundationUnlockHashes, encoding.MarshalAll(primary, failsafe))
+	if build.DEBUG && err != nil {
+		panic(err)
+	}
+}
+
+// getPriorFoundationUnlockHashes returns the primary and failsafe Foundation
+// addresses immediately prior to the application of the specified block.
+func getPriorFoundationUnlockHashes(tx *bolt.Tx, height types.BlockHeight) (primary, failsafe types.UnlockHash, exists bool) {
+	exists = encoding.UnmarshalAll(tx.Bucket(FoundationUnlockHashes).Get(encoding.Marshal(height)), &primary, &failsafe) == nil
+	return
+}
+
+// setPriorFoundationUnlockHashes sets the primary and failsafe Foundation
+// addresses immediately prior to the application of the specified block.
+func setPriorFoundationUnlockHashes(tx *bolt.Tx, height types.BlockHeight) {
+	err := tx.Bucket(FoundationUnlockHashes).Put(encoding.Marshal(height), encoding.MarshalAll(getFoundationUnlockHashes(tx)))
+	if build.DEBUG && err != nil {
+		panic(err)
+	}
+}
+
+// deletePriorFoundationUnlockHashes deletes the primary and failsafe Foundation
+// addresses for the specified height.
+func deletePriorFoundationUnlockHashes(tx *bolt.Tx, height types.BlockHeight) {
+	err := tx.Bucket(FoundationUnlockHashes).Delete(encoding.Marshal(height))
 	if build.DEBUG && err != nil {
 		panic(err)
 	}
