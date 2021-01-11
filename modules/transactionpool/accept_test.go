@@ -3,6 +3,7 @@ package transactionpool
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -20,7 +21,11 @@ func TestAcceptTransactionSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Check that the transaction pool is empty.
 	if len(tpt.tpool.transactionSets) != 0 {
@@ -38,7 +43,7 @@ func TestAcceptTransactionSet(t *testing.T) {
 
 	// Submit the transaction set again to trigger a duplication error.
 	err = tpt.tpool.AcceptTransactionSet(txns)
-	if err != modules.ErrDuplicateTransactionSet {
+	if !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		t.Error(err)
 	}
 
@@ -71,7 +76,11 @@ func TestConflictingTransactionSets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Fund a partial transaction.
 	fund := types.NewCurrency64(30e6)
@@ -132,7 +141,11 @@ func TestCheckMinerFees(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Prepare a bunch of outputs for a series of graphs to fill up the
 	// transaction pool.
@@ -181,7 +194,7 @@ func TestCheckMinerFees(t *testing.T) {
 
 	// Add another transaction, this one should fail for having too few fees.
 	err = tpt.tpool.AcceptTransactionSet([]types.Transaction{{}})
-	if err != errLowMinerFees {
+	if !errors.Contains(err, errLowMinerFees) {
 		t.Error(err)
 	}
 
@@ -228,7 +241,7 @@ func TestCheckMinerFees(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = tpt.tpool.AcceptTransactionSet(lowFeeGraph)
-	if err != errLowMinerFees {
+	if !errors.Contains(err, errLowMinerFees) {
 		t.Fatal(err)
 	}
 }
@@ -245,7 +258,11 @@ func TestTransactionGraph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a transaction sending money to an output that TransactionGraph can
 	// spent (the empty UnlockConditions).
@@ -287,7 +304,11 @@ func TestTransactionGraphDiamond(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a transaction sending money to an output that TransactionGraph can
 	// spent (the empty UnlockConditions).
@@ -335,7 +356,11 @@ func TestTransactionSuperset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Fund a partial transaction.
 	fund := types.NewCurrency64(30e6)
@@ -377,11 +402,11 @@ func TestTransactionSuperset(t *testing.T) {
 	// Try resubmitting the individual transaction and the superset, a
 	// duplication error should be returned for each case.
 	err = tpt.tpool.AcceptTransactionSet(txnSet[:1])
-	if err != modules.ErrDuplicateTransactionSet {
+	if !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		t.Fatal(err)
 	}
 	err = tpt.tpool.AcceptTransactionSet(txnSet)
-	if err != modules.ErrDuplicateTransactionSet {
+	if !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		t.Fatal("super setting is not working:", err)
 	}
 }
@@ -397,7 +422,11 @@ func TestTransactionSubset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Fund a partial transaction.
 	fund := types.NewCurrency64(30e6)
@@ -431,7 +460,7 @@ func TestTransactionSubset(t *testing.T) {
 		t.Fatal("super setting is not working:", err)
 	}
 	err = tpt.tpool.AcceptTransactionSet(txnSet[:1])
-	if err != modules.ErrDuplicateTransactionSet {
+	if !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		t.Fatal(err)
 	}
 }
@@ -447,7 +476,11 @@ func TestTransactionChild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Fund a partial transaction.
 	fund := types.NewCurrency64(30e6)
@@ -496,7 +529,11 @@ func TestNilAccept(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err = tpt.tpool.AcceptTransactionSet(nil)
 	if err == nil {
@@ -520,7 +557,11 @@ func TestAcceptFCAndConflictingRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create and fund a valid file contract.
 	builder, err := tpt.wallet.StartTransaction()
@@ -579,7 +620,11 @@ func TestPartialConfirmation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create and fund a valid file contract.
 	builder, err := tpt.wallet.StartTransaction()
@@ -659,7 +704,11 @@ func TestPartialConfirmationWeave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tpt.Close()
+	defer func() {
+		if err := tpt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a transaction with a single output to a fully controlled address.
 	emptyUH := types.UnlockConditions{}.UnlockHash()

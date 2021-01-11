@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/julienschmidt/httprouter"
 
@@ -43,13 +44,14 @@ type (
 	// HostGET contains the information that is returned after a GET request to
 	// /host - a bunch of information about the status of the host.
 	HostGET struct {
+		ConnectabilityStatus modules.HostConnectabilityStatus `json:"connectabilitystatus"`
 		ExternalSettings     modules.HostExternalSettings     `json:"externalsettings"`
 		FinancialMetrics     modules.HostFinancialMetrics     `json:"financialmetrics"`
 		InternalSettings     modules.HostInternalSettings     `json:"internalsettings"`
 		NetworkMetrics       modules.HostNetworkMetrics       `json:"networkmetrics"`
-		ConnectabilityStatus modules.HostConnectabilityStatus `json:"connectabilitystatus"`
-		WorkingStatus        modules.HostWorkingStatus        `json:"workingstatus"`
+		PriceTable           modules.RPCPriceTable            `json:"pricetable"`
 		PublicKey            types.SiaPublicKey               `json:"publickey"`
+		WorkingStatus        modules.HostWorkingStatus        `json:"workingstatus"`
 	}
 
 	// HostEstimateScoreGET contains the information that is returned from a
@@ -80,7 +82,7 @@ func folderIndex(folderPath string, storageFolders []modules.StorageFolderMetada
 
 // hostContractInfoHandler handles the API call to get the contract information of the host.
 // Information is retrieved via the storage obligations from the host database.
-func (api *API) hostContractInfoHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) hostContractInfoHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	cg := ContractInfoGET{
 		Contracts: api.host.StorageObligations(),
 	}
@@ -89,7 +91,7 @@ func (api *API) hostContractInfoHandler(w http.ResponseWriter, req *http.Request
 
 // hostHandlerGET handles GET requests to the /host API endpoint, returning key
 // information about the host.
-func (api *API) hostHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) hostHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	es := api.host.ExternalSettings()
 	fm := api.host.FinancialMetrics()
 	is := api.host.InternalSettings()
@@ -97,24 +99,31 @@ func (api *API) hostHandlerGET(w http.ResponseWriter, req *http.Request, _ httpr
 	cs := api.host.ConnectabilityStatus()
 	ws := api.host.WorkingStatus()
 	pk := api.host.PublicKey()
+	pt := api.host.PriceTable()
 	hg := HostGET{
+		ConnectabilityStatus: cs,
 		ExternalSettings:     es,
 		FinancialMetrics:     fm,
 		InternalSettings:     is,
 		NetworkMetrics:       nm,
-		ConnectabilityStatus: cs,
-		WorkingStatus:        ws,
+		PriceTable:           pt,
 		PublicKey:            pk,
+		WorkingStatus:        ws,
 	}
+
+	if api.staticDeps.Disrupt("TimeoutOnHostGET") {
+		time.Sleep(httpServerTimeout + 5*time.Second)
+	}
+
 	WriteJSON(w, hg)
 }
 
 // hostsBandwidthHandlerGET handles GET requests to the /host/bandwidth API endpoint,
 // returning bandwidth usage data from the host module
-func (api *API) hostBandwidthHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) hostBandwidthHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	sent, receive, startTime, err := api.host.BandwidthCounters()
 	if err != nil {
-		WriteError(w, Error{"failed to get hosts's bandwidth usage " + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"failed to get hosts's bandwidth usage: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteJSON(w, GatewayBandwidthGET{
@@ -258,7 +267,7 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 		if err != nil {
 			return modules.HostInternalSettings{}, err
 		}
-		settings.EphemeralAccountExpiry = x
+		settings.EphemeralAccountExpiry = time.Duration(x) * time.Second
 	}
 	if req.FormValue("maxephemeralaccountbalance") != "" {
 		var x types.Currency
@@ -275,6 +284,17 @@ func (api *API) parseHostSettings(req *http.Request) (modules.HostInternalSettin
 			return modules.HostInternalSettings{}, err
 		}
 		settings.MaxEphemeralAccountRisk = x
+	}
+	if req.FormValue("registrysize") != "" {
+		var x uint64
+		_, err := fmt.Sscan(req.FormValue("registrysize"), &x)
+		if err != nil {
+			return modules.HostInternalSettings{}, err
+		}
+		settings.RegistrySize = x
+	}
+	if req.FormValue("customregistrypath") != "" {
+		settings.CustomRegistryPath = req.FormValue("customregistrypath")
 	}
 
 	// Validate the RPC, Sector Access, and Download Prices
@@ -328,6 +348,9 @@ func (api *API) hostEstimateScoreGET(w http.ResponseWriter, req *http.Request, _
 		DownloadBandwidthPrice: settings.MinDownloadBandwidthPrice,
 		StoragePrice:           settings.MinStoragePrice,
 		UploadBandwidthPrice:   settings.MinUploadBandwidthPrice,
+
+		EphemeralAccountExpiry:     settings.EphemeralAccountExpiry,
+		MaxEphemeralAccountBalance: settings.MaxEphemeralAccountBalance,
 
 		Version: build.Version,
 	}
@@ -383,7 +406,7 @@ func (api *API) hostAnnounceHandler(w http.ResponseWriter, req *http.Request, _ 
 
 // storageHandler returns a bunch of information about storage management on
 // the host.
-func (api *API) storageHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) storageHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	WriteJSON(w, StorageGET{
 		Folders: api.host.StorageFolders(),
 	})
@@ -462,7 +485,7 @@ func (api *API) storageFoldersRemoveHandler(w http.ResponseWriter, req *http.Req
 
 // storageSectorsDeleteHandler handles the call to delete a sector from the
 // storage manager.
-func (api *API) storageSectorsDeleteHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) storageSectorsDeleteHandler(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	sectorRoot, err := scanHash(ps.ByName("merkleroot"))
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusBadRequest)

@@ -129,7 +129,9 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 	if err != nil {
 		return modules.RenterContract{}, nil, types.Transaction{}, nil, err
 	}
-	defer s.Close()
+	defer func() {
+		err = errors.Compose(err, s.Close())
+	}()
 
 	// Send the FormContract request.
 	req := modules.LoopFormContractRequest{
@@ -226,7 +228,7 @@ func (cs *ContractSet) FormContract(params ContractParams, txnBuilder transactio
 
 	// Submit to blockchain.
 	err = tpool.AcceptTransactionSet(minSet)
-	if err == modules.ErrDuplicateTransactionSet {
+	if errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 		// As long as it made it into the transaction pool, we're good.
 		err = nil
 	}

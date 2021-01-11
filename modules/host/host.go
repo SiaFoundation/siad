@@ -64,11 +64,12 @@ package host
 // TODO: update_test.go has commented out tests.
 
 import (
-	"errors"
 	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -76,10 +77,11 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/host/contractmanager"
 	"gitlab.com/NebulousLabs/Sia/modules/host/mdm"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
-	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/errors"
 	connmonitor "gitlab.com/NebulousLabs/monitor"
 	"gitlab.com/NebulousLabs/siamux"
 )
@@ -156,8 +158,10 @@ type Host struct {
 	modules.StorageManager
 
 	// Subsystems
-	staticAccountManager *accountManager
-	staticMDM            *mdm.MDM
+	staticAccountManager        *accountManager
+	staticMDM                   *mdm.MDM
+	staticRegistry              *registry.Registry
+	staticRegistrySubscriptions *registrySubscriptions
 
 	// Host ACID fields - these fields need to be updated in serial, ACID
 	// transactions.
@@ -189,6 +193,10 @@ type Host struct {
 	// subject to various conditions specific to the RPC in question. Examples
 	// of such conditions are congestion, load, liquidity, etc.
 	staticPriceTables *hostPrices
+
+	// Fields related to RHP3 bandwidhth.
+	atomicStreamUpload   uint64
+	atomicStreamDownload uint64
 
 	// Misc state.
 	db            *persist.BoltDatabase
@@ -321,7 +329,10 @@ func (h *Host) managedInternalSettings() modules.HostInternalSettings {
 // price table accordingly.
 func (h *Host) managedUpdatePriceTable() {
 	// create a new RPC price table
-	es := h.managedExternalSettings()
+	minRecommended, maxRecommended := h.tpool.FeeEstimation()
+	h.mu.Lock()
+	hes := h.externalSettings(maxRecommended) // use externalSettings to avoid another fee estimation
+	h.mu.Unlock()
 	priceTable := modules.RPCPriceTable{
 		// TODO: hardcoded cost should be updated to use a better value.
 		AccountBalanceCost:   types.NewCurrency64(1),
@@ -329,19 +340,57 @@ func (h *Host) managedUpdatePriceTable() {
 		UpdatePriceTableCost: types.NewCurrency64(1),
 
 		// TODO: hardcoded MDM costs should be updated to use better values.
-		HasSectorBaseCost: types.NewCurrency64(1),
-		InitBaseCost:      types.NewCurrency64(1),
-		MemoryTimeCost:    types.NewCurrency64(1),
-		ReadBaseCost:      types.NewCurrency64(1),
-		ReadLengthCost:    types.NewCurrency64(1),
-		StoreLengthCost:   types.NewCurrency64(1),
+		HasSectorBaseCost:   types.NewCurrency64(1),
+		MemoryTimeCost:      types.NewCurrency64(1),
+		DropSectorsBaseCost: types.NewCurrency64(1),
+		DropSectorsUnitCost: types.NewCurrency64(1),
+		SwapSectorCost:      types.NewCurrency64(1),
+
+		// Read related costs.
+		ReadBaseCost:   hes.SectorAccessPrice,
+		ReadLengthCost: types.NewCurrency64(1),
+
+		// Write related costs.
+		WriteBaseCost:   types.NewCurrency64(1),
+		WriteLengthCost: types.NewCurrency64(1),
+		WriteStoreCost:  hes.StoragePrice,
+
+		// Init costs.
+		InitBaseCost: hes.BaseRPCPrice,
+
+		// Contract renewal costs.
+		RenewContractCost: modules.DefaultBaseRPCPrice,
+
+		// LatestRevisionCost is set to a reasonable base + the estimated
+		// bandwidth cost of downloading a filecontract. This isn't perfect but
+		// at least scales a bit as the host updates their download bandwidth
+		// prices.
+		LatestRevisionCost: modules.DefaultBaseRPCPrice.Add(hes.DownloadBandwidthPrice.Mul64(modules.EstimatedFileContractTransactionSetSize)),
 
 		// Bandwidth related fields.
-		DownloadBandwidthCost: es.DownloadBandwidthPrice,
-		UploadBandwidthCost:   es.UploadBandwidthPrice,
-	}
-	fastrand.Read(priceTable.UID[:])
+		DownloadBandwidthCost: hes.DownloadBandwidthPrice,
+		UploadBandwidthCost:   hes.UploadBandwidthPrice,
 
+		// Contract Formation/Renewal related fields
+		ContractPrice:  hes.ContractPrice,
+		CollateralCost: hes.Collateral,
+		MaxCollateral:  hes.MaxCollateral,
+		MaxDuration:    hes.MaxDuration,
+		WindowSize:     hes.WindowSize,
+
+		// Registry related fields.
+		RegistryEntriesLeft:  h.staticRegistry.Cap() - h.staticRegistry.Len(),
+		RegistryEntriesTotal: h.staticRegistry.Cap(),
+
+		// Subscription related fields.
+		SubscriptionBaseCost:             types.NewCurrency64(1),
+		SubscriptionMemoryCost:           types.NewCurrency64(1),
+		SubscriptionNotificationBaseCost: hes.DownloadBandwidthPrice.Mul64(registry.PersistedEntrySize),
+
+		// TxnFee related fields.
+		TxnFeeMinRecommended: minRecommended,
+		TxnFeeMaxRecommended: maxRecommended,
+	}
 	// update the pricetable
 	h.staticPriceTables.managedSetCurrent(priceTable)
 }
@@ -376,7 +425,7 @@ func (h *Host) threadedPruneExpiredPriceTables() {
 // mocked such that the dependencies can return unexpected errors or unique
 // behaviors during testing, enabling easier testing of the failure modes of
 // the Host.
-func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, mux *siamux.SiaMux, listenerAddress string, persistDir string) (*Host, error) {
+func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs modules.ConsensusSet, g modules.Gateway, tpool modules.TransactionPool, wallet modules.Wallet, mux *siamux.SiaMux, listenerAddress string, persistDir string) (_ *Host, err error) {
 	// Check that all the dependencies were provided.
 	if cs == nil {
 		return nil, errNilCS
@@ -407,17 +456,17 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 				heap: make([]*hostRPCPriceTable, 0),
 			},
 		},
-		persistDir: persistDir,
+		staticRegistrySubscriptions: newRegistrySubscriptions(),
+		persistDir:                  persistDir,
 	}
 
 	// Create MDM.
 	h.staticMDM = mdm.New(h)
 
 	// Call stop in the event of a partial startup.
-	var err error
 	defer func() {
 		if err != nil {
-			err = composeErrors(h.tg.Stop(), err)
+			err = errors.Compose(h.tg.Stop(), err)
 		}
 	}()
 
@@ -435,7 +484,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 	}
 
 	h.tg.AfterStop(func() {
-		err = h.log.Close()
+		err := h.log.Close()
 		if err != nil {
 			// State of the logger is uncertain, a Println will have to
 			// suffice.
@@ -451,7 +500,7 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		return nil, err
 	}
 	h.tg.AfterStop(func() {
-		err = h.StorageManager.Close()
+		err := h.StorageManager.Close()
 		if err != nil {
 			h.log.Println("Could not close storage manager:", err)
 		}
@@ -464,11 +513,17 @@ func newHost(dependencies modules.Dependencies, smDeps modules.Dependencies, cs 
 		return nil, err
 	}
 	h.tg.AfterStop(func() {
-		err = h.saveSync()
+		err := h.saveSync()
 		if err != nil {
 			h.log.Println("Could not save host upon shutdown:", err)
 		}
 	})
+
+	// Load the registry.
+	err = h.managedInitRegistry()
+	if err != nil {
+		return nil, err
+	}
 
 	// Add the account manager subsystem
 	h.staticAccountManager, err = h.newAccountManager()
@@ -550,9 +605,28 @@ func (h *Host) BandwidthCounters() (uint64, uint64, time.Time, error) {
 		return 0, 0, time.Time{}, err
 	}
 	defer h.tg.Done()
+
+	// Get the bandwidth usage for RHP1 & RHP2 connections.
 	readBytes, writeBytes := h.staticMonitor.Counts()
+
+	// Get the bandwidth usage for RHP3 connections. Unfortunately we can't just
+	// wrap the siamux streams since that wouldn't give us the raw data sent over
+	// the TCP connection. Since we want this to be as accurate as possible, we
+	// use the `Limit` method on the streams before closing them to get the
+	// accurate amount of data sent and received. This includes overhead such as
+	// frame headers and encryption.
+	readBytes += atomic.LoadUint64(&h.atomicStreamDownload)
+	writeBytes += atomic.LoadUint64(&h.atomicStreamUpload)
+
 	startTime := h.staticMonitor.StartTime()
 	return writeBytes, readBytes, startTime, nil
+}
+
+// PriceTable returns the host's current price table.
+func (h *Host) PriceTable() modules.RPCPriceTable {
+	pt := h.staticPriceTables.managedCurrent()
+	pt.Validity = rpcPriceGuaranteePeriod
+	return pt
 }
 
 // WorkingStatus returns the working state of the host, where working is
@@ -600,7 +674,12 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 		return err
 	}
 	defer h.tg.Done()
+
 	h.mu.Lock()
+	// By updating the internal settings the user might influence the host's
+	// price table, we defer a call to update the price table to ensure it
+	// reflects the updated settings.
+	defer h.managedUpdatePriceTable()
 	defer h.mu.Unlock()
 
 	// The host should not be accepting file contracts if it does not have an
@@ -624,6 +703,30 @@ func (h *Host) SetInternalSettings(settings modules.HostInternalSettings) error 
 	// another blockchain announcement.
 	if h.settings.NetAddress != settings.NetAddress && settings.NetAddress != h.autoAddress {
 		h.announced = false
+	}
+
+	// Translate the size of the registry in bytes to the number of entries. Adjust
+	// the input in case it's not a multiple of 64 times the size of a persisted
+	// entry.
+	settings.RegistrySize = modules.RoundRegistrySize(settings.RegistrySize)
+	if h.settings.RegistrySize != settings.RegistrySize {
+		err := h.staticRegistry.Truncate(settings.RegistrySize/modules.RegistryEntrySize, false)
+		if err != nil {
+			return errors.AddContext(err, "registry size not updated")
+		}
+	}
+
+	// Migrate the registry if necessary.
+	if h.settings.CustomRegistryPath != settings.CustomRegistryPath {
+		path := settings.CustomRegistryPath
+		if path == "" {
+			// If path is blank use the default.
+			path = filepath.Join(h.persistDir, modules.HostRegistryFile)
+		}
+		err = h.staticRegistry.Migrate(path)
+		if err != nil {
+			return errors.AddContext(err, "failed to move registry to new location")
+		}
 	}
 
 	h.settings = settings
@@ -661,7 +764,104 @@ func (h *Host) BlockHeight() types.BlockHeight {
 // cannot be set by the user (host is configured through InternalSettings), and
 // are the values that get displayed to other hosts on the network.
 func (h *Host) managedExternalSettings() modules.HostExternalSettings {
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.externalSettings()
+	return h.externalSettings(maxFee)
+}
+
+// RegistryGet retrieves a value from the registry.
+func (h *Host) RegistryGet(pubKey types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, bool) {
+	err := h.tg.Add()
+	if err != nil {
+		return modules.SignedRegistryValue{}, false
+	}
+	defer h.tg.Done()
+	return h.staticRegistry.Get(pubKey, tweak)
+}
+
+// RegistryUpdate updates a value in the registry.
+func (h *Host) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (modules.SignedRegistryValue, error) {
+	err := h.tg.Add()
+	if err != nil {
+		return modules.SignedRegistryValue{}, err
+	}
+	defer h.tg.Done()
+	// On disrupt, return the most recent known value if it exists. Otherwise it
+	// will add the value.
+	if h.dependencies.Disrupt("RegistryUpdateLyingHost") {
+		srv, found := h.staticRegistry.Get(pubKey, rv.Tweak)
+		if found {
+			return srv, registry.ErrSameRevNum
+		}
+	}
+	// On disrupt, the registry shouldn't be updated.
+	if h.dependencies.Disrupt("RegistryUpdateNoOp") {
+		return modules.SignedRegistryValue{}, nil
+	}
+	// Update the registry.
+	existingSRV, err := h.staticRegistry.Update(rv, pubKey, expiry)
+	if err != nil {
+		return existingSRV, errors.AddContext(err, "failed to update registry")
+	}
+	// On success, we notify the subscribers.
+	go h.threadedNotifySubscribers(pubKey, rv)
+	return existingSRV, nil
+}
+
+// managedInitRegistry initializes the host's registry on startup. If the
+// registry on disk is larger than the expected size in the settings, it updates
+// the settings to allow the host to boot. Since a registry should not be
+// resized that way, the user will be notified.
+func (h *Host) managedInitRegistry() error {
+	// Get the registry path from the settings. If it isn't set, use the default
+	// which is relative to the host dir.
+	is := h.managedInternalSettings()
+	path := is.CustomRegistryPath
+	if path == "" {
+		path = filepath.Join(h.persistDir, modules.HostRegistryFile)
+	}
+
+	// If there is a registry on disk, get its size in entries.
+	fi, err := os.Stat(path)
+	onDiskEntries := uint64(0)
+	if err == nil && fi.Size() > modules.RegistryEntrySize {
+		// We subtract -1 to account for the metadata page.
+		onDiskEntries = (uint64(fi.Size()) / modules.RegistryEntrySize) - 1
+	}
+
+	// Also get the size in entries from the internal settings.
+	settingsEntries := modules.RoundRegistrySize(is.RegistrySize) / modules.RegistryEntrySize
+
+	// If the registry on disk is larger than the limit specified in settings,
+	// we assume that the user made manual changes and update the settings.
+	// Otherwise the user won't be able to start the host and as a result won't
+	// be able to adjust the settings through the API.
+	// Since it's not recommended to resize/move the registry that way, a
+	// build.Critical is used to notify the user upon startup.
+	if onDiskEntries > settingsEntries {
+		settingsEntries = onDiskEntries
+		h.mu.Lock()
+		h.settings.RegistrySize = settingsEntries * modules.RegistryEntrySize
+		h.mu.Unlock()
+		build.Critical("Host registry on disk was larger than specified in settings. Settings have been updated.")
+	}
+
+	// Load the registry.
+	registry, err := registry.New(path, settingsEntries)
+	if err != nil {
+		return errors.AddContext(err, "failed to load host registry")
+	}
+	h.staticRegistry = registry
+
+	// Make sure the registry is closed on shutdown.
+	h.tg.AfterStop(func() {
+		err := h.staticRegistry.Close()
+		if err != nil {
+			// State of the registry is uncertain, a Println will have to
+			// suffice.
+			fmt.Println("Error when closing the registry:", err)
+		}
+	})
+	return nil
 }

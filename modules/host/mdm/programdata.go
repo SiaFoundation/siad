@@ -11,6 +11,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 // programData is a buffer for the program data. It will read packets from r and
@@ -23,9 +25,6 @@ type programData struct {
 	// amount of data that was paid for and not more than that will be read from
 	// the reader. Less data will be considered an unexpected EOF.
 	staticLength uint64
-
-	// r is the reader used to fetch more data.
-	r io.Reader
 
 	// readErr contains the first error encountered by threadedFetchData.
 	readErr error
@@ -53,13 +52,12 @@ type dataRequest struct {
 func openProgramData(r io.Reader, dataLength uint64) *programData {
 	pd := &programData{
 		cancel:       make(chan struct{}),
-		r:            r,
 		staticLength: dataLength,
 	}
 	pd.wg.Add(1)
 	go func() {
 		defer pd.wg.Done()
-		pd.threadedFetchData()
+		pd.threadedFetchData(r)
 	}()
 	return pd
 }
@@ -67,7 +65,7 @@ func openProgramData(r io.Reader, dataLength uint64) *programData {
 // threadedFetchData fetches the program's data from the underlying reader of
 // the ProgramData. It will read from the reader until io.EOF is reached or
 // until the maximum number of packets are read.
-func (pd *programData) threadedFetchData() {
+func (pd *programData) threadedFetchData(r io.Reader) {
 	var packet [1024]byte // 1kib
 	remainingData := int64(pd.staticLength)
 	quit := func(err error) {
@@ -95,9 +93,7 @@ func (pd *programData) threadedFetchData() {
 		if remainingData <= int64(cap(d)) {
 			d = d[:remainingData]
 		}
-		pd.mu.Lock()
-		n, err := pd.r.Read(d)
-		pd.mu.Unlock()
+		n, err := r.Read(d)
 		if err != nil {
 			quit(err)
 			return
@@ -186,6 +182,31 @@ func (pd *programData) Hash(offset uint64) (crypto.Hash, error) {
 	var h crypto.Hash
 	copy(h[:], d)
 	return h, nil
+}
+
+// SiaPublicKey reads a types.SiaPublicKey from the programData. Given an offset
+// and a key length. The length includes the specifier size.
+func (pd *programData) SiaPublicKey(offset, length uint64) (types.SiaPublicKey, error) {
+	d, err := pd.managedBytes(offset, length)
+	if err != nil {
+		return types.SiaPublicKey{}, err
+	}
+	var spk types.SiaPublicKey
+	err = encoding.Unmarshal(d, &spk)
+	return spk, err
+}
+
+// Signature returns the next crypto.SignatureSize bytes at the specified offset
+// within the program data as a crypto.Signature. This call will block if the
+// data at the specified offset hasn't been fetched yet.
+func (pd *programData) Signature(offset uint64) (crypto.Signature, error) {
+	d, err := pd.managedBytes(offset, crypto.SignatureSize)
+	if err != nil {
+		return crypto.Signature{}, err
+	}
+	var sig crypto.Signature
+	copy(sig[:], d)
+	return sig, nil
 }
 
 // Bytes returns 'length' bytes from offset 'offset' from the programData.

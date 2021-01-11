@@ -7,6 +7,7 @@ package types
 
 import (
 	"errors"
+	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/encoding"
@@ -37,6 +38,11 @@ var (
 	SpecifierSiafundOutput        = NewSpecifier("siafund output")
 	SpecifierStorageProofOutput   = NewSpecifier("storage proof")
 )
+
+// SpecifierFoundation is used for calculating the OutputID of Foundation
+// subsidy outputs. It also serves as the arbitrary data prefix when encoding
+// FoundationUnlockHashUpdates.
+var SpecifierFoundation = NewSpecifier("foundation")
 
 type (
 	// IDs are used to refer to a type without revealing its contents. They
@@ -143,6 +149,13 @@ func (t Transaction) ID() TransactionID {
 	return txid
 }
 
+// RuneToString converts a rune type to a string.
+func RuneToString(r rune) string {
+	var sb strings.Builder
+	sb.WriteRune(r)
+	return sb.String()
+}
+
 // SiacoinOutputID returns the ID of a siacoin output at the given index,
 // which is calculated by hashing the concatenation of the SiacoinOutput
 // Specifier, all of the fields in the transaction (except the signatures),
@@ -215,8 +228,21 @@ func (t Transaction) HostSignature() TransactionSignature {
 	return t.TransactionSignatures[1]
 }
 
+// RenterSignature returns the host's transaction signature
+func (t Transaction) RenterSignature() TransactionSignature {
+	return t.TransactionSignatures[0]
+}
+
 // SiaClaimOutputID returns the ID of the SiacoinOutput that is created when
 // the siafund output is spent. The ID is the hash the SiafundOutputID.
 func (id SiafundOutputID) SiaClaimOutputID() SiacoinOutputID {
 	return SiacoinOutputID(crypto.HashObject(id))
+}
+
+// A FoundationUnlockHashUpdate directs the consensus set to update its
+// Foundation-related UnlockHashes. Updates are submitted to the chain via the
+// ArbitraryData field of a transaction.
+type FoundationUnlockHashUpdate struct {
+	NewPrimary  UnlockHash
+	NewFailsafe UnlockHash
 }

@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/big"
 	"reflect"
+	"sort"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -42,7 +43,6 @@ type (
 		id         types.FileContractID
 		amount     types.Currency
 		hostPubKey types.SiaPublicKey
-		endHeight  types.BlockHeight
 	}
 )
 
@@ -271,7 +271,7 @@ func (c *Contractor) callInterruptContractMaintenance() {
 
 // managedFindMinAllowedHostScores uses a set of random hosts from the hostdb to
 // calculate minimum acceptable score for a host to be marked GFR and GFU.
-func (c *Contractor) managedFindMinAllowedHostScores() (error, types.Currency, types.Currency) {
+func (c *Contractor) managedFindMinAllowedHostScores() (types.Currency, types.Currency, error) {
 	// Pull a new set of hosts from the hostdb that could be used as a new set
 	// to match the allowance. The lowest scoring host of these new hosts will
 	// be used as a baseline for determining whether our existing contracts are
@@ -281,11 +281,11 @@ func (c *Contractor) managedFindMinAllowedHostScores() (error, types.Currency, t
 	c.mu.RUnlock()
 	hosts, err := c.hdb.RandomHosts(hostCount+randomHostsBufferForScore, nil, nil)
 	if err != nil {
-		return err, types.Currency{}, types.Currency{}
+		return types.Currency{}, types.Currency{}, err
 	}
 
 	if len(hosts) == 0 {
-		return errors.New("No hosts returned in RandomHosts"), types.Currency{}, types.Currency{}
+		return types.Currency{}, types.Currency{}, errors.New("No hosts returned in RandomHosts")
 	}
 
 	// Find the minimum score that a host is allowed to have to be considered
@@ -293,14 +293,14 @@ func (c *Contractor) managedFindMinAllowedHostScores() (error, types.Currency, t
 	var minScoreGFR, minScoreGFU types.Currency
 	sb, err := c.hdb.ScoreBreakdown(hosts[0])
 	if err != nil {
-		return err, types.Currency{}, types.Currency{}
+		return types.Currency{}, types.Currency{}, err
 	}
 
 	lowestScore := sb.Score
 	for i := 1; i < len(hosts); i++ {
 		score, err := c.hdb.ScoreBreakdown(hosts[i])
 		if err != nil {
-			return err, types.Currency{}, types.Currency{}
+			return types.Currency{}, types.Currency{}, err
 		}
 		if score.Score.Cmp(lowestScore) < 0 {
 			lowestScore = score.Score
@@ -316,7 +316,7 @@ func (c *Contractor) managedFindMinAllowedHostScores() (error, types.Currency, t
 		for i := 1; i < len(hosts); i++ {
 			score, err := c.hdb.ScoreBreakdown(hosts[i])
 			if err != nil {
-				return err, types.Currency{}, types.Currency{}
+				return types.Currency{}, types.Currency{}, err
 			}
 			if score.Score.Cmp(maxScore) > 0 {
 				maxScore = score.Score
@@ -325,7 +325,7 @@ func (c *Contractor) managedFindMinAllowedHostScores() (error, types.Currency, t
 		minScoreGFR = maxScore.Mul64(2)
 	}
 
-	return nil, minScoreGFR, minScoreGFU
+	return minScoreGFR, minScoreGFU, nil
 }
 
 // managedNewContract negotiates an initial file contract with the specified
@@ -479,6 +479,66 @@ func (c *Contractor) managedPrunedRedundantAddressRange() {
 	}
 }
 
+// managedLimitGFUHosts caps the number of GFU hosts for non-portals to
+// allowance.Hosts.
+func (c *Contractor) managedLimitGFUHosts() {
+	c.mu.Lock()
+	portalMode := c.allowance.PortalMode()
+	wantedHosts := c.allowance.Hosts
+	c.mu.Unlock()
+	if portalMode {
+		// Nothing to do for portal.
+		return
+	}
+	// Get all GFU contracts and their score.
+	type gfuContract struct {
+		c     modules.RenterContract
+		score types.Currency
+	}
+	var gfuContracts []gfuContract
+	for _, contract := range c.Contracts() {
+		if !contract.Utility.GoodForUpload {
+			continue
+		}
+		host, ok, err := c.hdb.Host(contract.HostPublicKey)
+		if !ok || err != nil {
+			c.log.Print("managedLimitGFUHosts was run after updating contract utility but found contract without host in hostdb that's GFU", contract.HostPublicKey)
+			continue
+		}
+		score, err := c.hdb.ScoreBreakdown(host)
+		if err != nil {
+			c.log.Print("managedLimitGFUHosts: failed to get score breakdown for GFU host")
+			continue
+		}
+		gfuContracts = append(gfuContracts, gfuContract{
+			c:     contract,
+			score: score.Score,
+		})
+	}
+	// Sort gfuContracts by score.
+	sort.Slice(gfuContracts, func(i, j int) bool {
+		return gfuContracts[i].score.Cmp(gfuContracts[j].score) < 0
+	})
+	// Mark them bad for upload until we are below the expected number of hosts.
+	var contract gfuContract
+	for uint64(len(gfuContracts)) > wantedHosts {
+		contract, gfuContracts = gfuContracts[0], gfuContracts[1:]
+		sc, ok := c.staticContracts.Acquire(contract.c.ID)
+		if !ok {
+			c.log.Print("managedLimitGFUHosts: failed to acquire GFU contract")
+			continue
+		}
+		u := sc.Utility()
+		u.GoodForUpload = false
+		err := c.managedUpdateContractUtility(sc, u)
+		c.staticContracts.Return(sc)
+		if err != nil {
+			c.log.Print("managedLimitGFUHosts: failed to update GFU contract utility")
+			continue
+		}
+	}
+}
+
 // staticCheckFormPaymentContractGouging will check whether the pricing from the
 // host for forming a payment contract is too high to justify forming a contract
 // with this host.
@@ -613,12 +673,25 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	// wipe the renter seed once we are done using it.
 	defer fastrand.Read(params.RenterSeed[:])
 
-	// execute negotiation protocol
+	// create a transaction builder with the correct amount of funding for the renewal.
 	txnBuilder, err := c.wallet.StartTransaction()
 	if err != nil {
 		return modules.RenterContract{}, err
 	}
-	newContract, formationTxnSet, sweepTxn, sweepParents, err := c.staticContracts.Renew(sc, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
+	err = txnBuilder.FundSiacoins(params.Funding)
+	if err != nil {
+		txnBuilder.Drop() // return unused outputs to wallet
+		return modules.RenterContract{}, err
+	}
+	// Add an output that sends all fund back to the refundAddress.
+	// Note that in order to send this transaction, a miner fee will have to be subtracted.
+	output := types.SiacoinOutput{
+		Value:      params.Funding,
+		UnlockHash: params.RefundAddress,
+	}
+	sweepTxn, sweepParents := txnBuilder.Sweep(output)
+
+	newContract, formationTxnSet, err := c.staticContracts.Renew(sc, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
 	if err != nil {
 		txnBuilder.Drop() // return unused outputs to wallet
 		return modules.RenterContract{}, err
@@ -722,15 +795,12 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 		c.log.Debugln("Contract does not seem to exist")
 		return types.ZeroCurrency, errors.New("contract no longer exists")
 	}
-	oldUtility, exists := c.managedContractUtility(id)
-	if !exists {
-		c.log.Printf("Contract %v slated for renew could not be found in the utility lookup", id)
-		return types.ZeroCurrency, errors.New("contract utility could not be found")
-	}
+	oldUtility := oldContract.Utility()
 
 	// The contract could have been marked !GFR while the contractor lock was not
 	// held.
 	if !oldUtility.GoodForRenew {
+		c.staticContracts.Return(oldContract)
 		return types.ZeroCurrency, errContractNotGFR
 	}
 
@@ -776,8 +846,8 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 
 		// Seems like it doesn't have to be replaced yet. Log the
 		// failure and number of renews that have failed so far.
-		c.log.Printf("WARN: failed to renew contract %v [%v]: %v\n",
-			oldContract.Metadata().HostPublicKey, numRenews, errRenew)
+		c.log.Printf("WARN: failed to renew contract %v [%v]: '%v', current height: %v, proposed end height: %v, max duration: %v",
+			oldContract.Metadata().HostPublicKey, numRenews, errRenew, blockHeight, endHeight, hostSettings.MaxDuration)
 		c.staticContracts.Return(oldContract)
 		return types.ZeroCurrency, errors.AddContext(errRenew, "contract renewal with host was unsuccessful")
 	}
@@ -965,6 +1035,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		c.log.Println("Unable to update hostdb contracts:", err)
 		return
 	}
+	c.managedLimitGFUHosts()
 
 	// If there are no hosts requested by the allowance, there is no remaining
 	// work.
@@ -1045,7 +1116,6 @@ func (c *Contractor) threadedContractMaintenance() {
 				id:         contract.ID,
 				amount:     renewAmount,
 				hostPubKey: contract.HostPublicKey,
-				endHeight:  contract.EndHeight,
 			})
 			c.log.Debugln("Contract has been added to the renew set for being past the renew height")
 			continue
@@ -1076,11 +1146,15 @@ func (c *Contractor) threadedContractMaintenance() {
 			// does mean that a larger percentage of funds get locked away from
 			// the user in the event that the user stops uploading immediately
 			// after the renew.
+			refreshAmount := contract.TotalCost.Mul64(2)
+			minimum := allowance.Funds.MulFloat(fileContractMinimumFunding).Div64(allowance.Hosts)
+			if refreshAmount.Cmp(minimum) < 0 {
+				refreshAmount = minimum
+			}
 			refreshSet = append(refreshSet, fileContractRenewal{
 				id:         contract.ID,
-				amount:     contract.TotalCost.Mul64(2),
+				amount:     refreshAmount,
 				hostPubKey: contract.HostPublicKey,
-				endHeight:  contract.EndHeight,
 			})
 			c.log.Debugln("Contract identified as needing to be added to refresh set", contract.RenterFunds, sectorPrice.Mul64(3), percentRemaining, MinContractFundRenewalThreshold)
 		} else {
@@ -1197,7 +1271,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		} else if err != nil {
 			c.log.Println("Error renewing a contract", renewal.id, err)
 			renewErr = errors.Compose(renewErr, err)
-			numRenewFails += 1
+			numRenewFails++
 		} else {
 			c.log.Println("Renewal completed without error")
 		}
@@ -1237,7 +1311,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		if err != nil {
 			c.log.Println("Error refreshing a contract", renewal.id, err)
 			renewErr = errors.Compose(renewErr, err)
-			numRenewFails += 1
+			numRenewFails++
 		} else {
 			c.log.Println("Refresh completed without error")
 		}
@@ -1402,7 +1476,7 @@ func (c *Contractor) threadedContractMaintenance() {
 
 	// Portals will need to form additional contracts with any hosts that they
 	// do not currently have contracts with. All other nodes can exit here.
-	if allowance.PaymentContractInitialFunding.IsZero() {
+	if !allowance.PortalMode() {
 		return
 	}
 
@@ -1427,31 +1501,24 @@ func (c *Contractor) threadedContractMaintenance() {
 		default:
 		}
 
-		// Check that the price settings of the host are acceptable.
-		hostSettings := host.HostExternalSettings
-		err := staticCheckFormPaymentContractGouging(allowance, hostSettings)
-		if err != nil {
-			c.log.Debugf("payment contract loop igorning host %v for gouging: %v", hostSettings, err)
+		// Check if there is already a contract with this host.
+		_, exists := currentContracts[host.PublicKey.String()]
+		if exists {
 			continue
 		}
 
-		// Check if there is already a contract with this host.
-		contract, exists := currentContracts[host.PublicKey.String()]
-		if exists {
-			// Check whether the contract is marked GoodForRenew. If not, mark
-			// it as GoodForRenew, but only if the contract has no data in it.
-			gfr := contract.Utility.GoodForRenew
-			locked := contract.Utility.Locked
-			bad := contract.Utility.BadContract
-			noData := len(contract.Transaction.FileContracts) > 0 && contract.Transaction.FileContracts[0].FileSize == 0
-			if !gfr && !locked && !bad && noData {
-				utility := contract.Utility
-				utility.GoodForRenew = true
-				err := c.managedAcquireAndUpdateContractUtility(contract.ID, utility)
-				if err != nil {
-					c.log.Printf("Failed to update contract utility for host %v: %v", contract.HostPublicKey.String(), err)
-				}
-			}
+		// Skip host if it has a dead score.
+		sb, err := c.hdb.ScoreBreakdown(host)
+		if err != nil || sb.Score.Equals(types.NewCurrency64(1)) {
+			c.log.Debugf("skipping host %v due to dead or unknown score (%v)", host.PublicKey, err)
+			continue
+		}
+
+		// Check that the price settings of the host are acceptable.
+		hostSettings := host.HostExternalSettings
+		err = staticCheckFormPaymentContractGouging(allowance, hostSettings)
+		if err != nil {
+			c.log.Debugf("payment contract loop igorning host %v for gouging: %v", hostSettings, err)
 			continue
 		}
 
@@ -1488,14 +1555,6 @@ func (c *Contractor) threadedContractMaintenance() {
 		c.log.Println("A view contract has been formed with a host:", newContract.ID)
 
 		// Add this contract to the contractor and save.
-		err = c.managedAcquireAndUpdateContractUtility(newContract.ID, modules.ContractUtility{
-			GoodForUpload: false,
-			GoodForRenew:  true,
-		})
-		if err != nil {
-			c.log.Println("Failed to update the contract utilities", err)
-			return
-		}
 		c.mu.Lock()
 		err = c.save()
 		c.mu.Unlock()

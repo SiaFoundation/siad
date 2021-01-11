@@ -11,9 +11,8 @@ import (
 // testProgramBuilder is a helper used for constructing test programs and
 // implicitly testing the modules.MDMProgramBuilder.
 type testProgramBuilder struct {
-	readonly       bool
-	staticDuration types.BlockHeight
-	staticPT       *modules.RPCPriceTable
+	readonly bool
+	staticPT *modules.RPCPriceTable
 
 	// staticPB is an instance of the production program builder.
 	staticPB *modules.ProgramBuilder
@@ -26,11 +25,10 @@ type testProgramBuilder struct {
 // newTestProgramBuilder creates a new testBuilder.
 func newTestProgramBuilder(pt *modules.RPCPriceTable, duration types.BlockHeight) *testProgramBuilder {
 	return &testProgramBuilder{
-		readonly:       true,
-		staticDuration: duration,
-		staticPT:       pt,
+		readonly: true,
+		staticPT: pt,
 
-		staticPB:     modules.NewProgramBuilder(pt),
+		staticPB:     modules.NewProgramBuilder(pt, duration),
 		staticValues: NewTestValues(pt, duration),
 	}
 }
@@ -64,7 +62,10 @@ func (tb *testProgramBuilder) Cost() TestValues {
 // AddAppendInstruction adds an append instruction to the builder, keeping
 // track of running values.
 func (tb *testProgramBuilder) AddAppendInstruction(data []byte, merkleProof bool) {
-	tb.staticPB.AddAppendInstruction(data, tb.staticDuration, merkleProof)
+	err := tb.staticPB.AddAppendInstruction(data, merkleProof)
+	if err != nil {
+		panic(err)
+	}
 	tb.staticValues.AddAppendInstruction(data)
 }
 
@@ -93,6 +94,40 @@ func (tb *testProgramBuilder) AddReadOffsetInstruction(length, offset uint64, me
 func (tb *testProgramBuilder) AddReadSectorInstruction(length, offset uint64, merkleRoot crypto.Hash, merkleProof bool) {
 	tb.staticPB.AddReadSectorInstruction(length, offset, merkleRoot, merkleProof)
 	tb.staticValues.AddReadSectorInstruction(length)
+}
+
+// AddRevisionInstruction adds a revision instruction to the builder, keeping
+// track of running values.
+func (tb *testProgramBuilder) AddRevisionInstruction() {
+	tb.staticPB.AddRevisionInstruction()
+	tb.staticValues.AddRevisionInstruction()
+}
+
+// AddSwapSectorInstruction adds a SwapSector instruction to the builder,
+// keeping track of running values.
+func (tb *testProgramBuilder) AddSwapSectorInstruction(sector1Idx, sector2Idx uint64, merkleProof bool) {
+	tb.staticPB.AddSwapSectorInstruction(sector1Idx, sector2Idx, merkleProof)
+	tb.staticValues.AddSwapSectorInstruction()
+}
+
+// AddUpdateRegistryInstruction adds an UpdateRegistry instruction to the
+// builder, keeping track of running values.
+func (tb *testProgramBuilder) AddUpdateRegistryInstruction(spk types.SiaPublicKey, rv modules.SignedRegistryValue) {
+	err := tb.staticPB.AddUpdateRegistryInstruction(spk, rv)
+	if err != nil {
+		panic(err)
+	}
+	tb.staticValues.AddUpdateRegistryInstruction(spk, rv)
+}
+
+// AddReadRegistryInstruction adds an ReadRegistry instruction to the
+// builder, keeping track of running values.
+func (tb *testProgramBuilder) AddReadRegistryInstruction(spk types.SiaPublicKey, tweak crypto.Hash) {
+	err := tb.staticPB.AddReadRegistryInstruction(spk, tweak)
+	if err != nil {
+		panic(err)
+	}
+	tb.staticValues.AddReadRegistryInstruction(spk)
 }
 
 // Program returns the built program.

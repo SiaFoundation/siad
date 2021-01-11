@@ -2,19 +2,23 @@ package host
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -45,7 +49,11 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rhp.Close()
+	defer func() {
+		if err := rhp.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// prefund the EA
 	his := rhp.staticHT.host.managedInternalSettings()
@@ -56,7 +64,11 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 
 	// create stream
 	stream := rhp.managedNewStream()
-	defer stream.Close()
+	defer func() {
+		if err := stream.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// create a random sector
 	sectorRoot, _, err := addRandomSector(rhp)
@@ -66,7 +78,7 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 
 	// create the 'ReadSector' program.
 	pt := rhp.managedPriceTable()
-	pb := modules.NewProgramBuilder(pt)
+	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since ReadSector doesn't depend on duration.
 	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
 	program, data := pb.Program()
 
@@ -79,7 +91,7 @@ func TestExecuteProgramWriteDeadline(t *testing.T) {
 
 	// execute program.
 	budget := types.NewCurrency64(math.MaxUint64)
-	_, _, err = rhp.managedExecuteProgram(epr, data, budget, false)
+	_, _, err = rhp.managedExecuteProgram(epr, data, budget, false, true)
 	if !errors.Contains(err, io.ErrClosedPipe) {
 		t.Fatal("Expected managedExecuteProgram to fail with an ErrClosedPipe, instead err was", err)
 	}
@@ -124,10 +136,10 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 
 	// create the 'ReadSector' program.
 	pt := rhp.managedPriceTable()
-	pb := modules.NewProgramBuilder(pt)
+	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since ReadSector doesn't depend on duration.
 	pb.AddReadSectorInstruction(modules.SectorSize, 0, sectorRoot, true)
 	program, data := pb.Program()
-	programCost, refund, collateral := pb.Cost(true)
+	programCost, storageCost, collateral := pb.Cost(true)
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
@@ -150,15 +162,15 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	// this particular program on the "renter" side. This way we can test that
 	// the bandwidth measured by the renter is large enough to be accepted by
 	// the host.
-	expectedDownload := uint64(7300) // download
-	expectedUpload := uint64(10220)  // upload
+	expectedDownload := uint64(4380) // download
+	expectedUpload := uint64(1460)   // upload
 	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
 	bandwidthCost := downloadCost.Add(uploadCost)
 	cost := programCost.Add(bandwidthCost)
 
 	// execute program.
-	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true)
+	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
 	if err != nil {
 		t.Log("cost", cost.HumanString())
 		t.Log("expected ea balance", rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
@@ -194,8 +206,8 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	if !resp.AdditionalCollateral.Equals(collateral) {
 		t.Fatalf("collateral doesnt't match expected collateral: %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
 	}
-	if !resp.PotentialRefund.Equals(refund) {
-		t.Fatalf("refund doesn't match expected refund: %v != %v", resp.PotentialRefund.HumanString(), refund.HumanString())
+	if !resp.StorageCost.Equals(storageCost) {
+		t.Fatalf("storage cost doesn't match expected storage cost: %v != %v", resp.StorageCost.HumanString(), storageCost.HumanString())
 	}
 	if uint64(len(resp.Output)) != modules.SectorSize {
 		t.Fatalf("expected returned data to have length %v but was %v", modules.SectorSize, len(resp.Output))
@@ -221,7 +233,7 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	// cost, we expect this to return ErrInsufficientBandwidthBudget
 	program, data = pb.Program()
 	cost = cost.Sub64(1)
-	_, limit, err = rhp.managedExecuteProgram(epr, data, cost, true)
+	_, limit, err = rhp.managedExecuteProgram(epr, data, cost, true, true)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientBandwidthBudget.Error()) {
 		t.Fatalf("expected ExecuteProgram to fail due to insufficient bandwidth budget: %v", err)
 	}
@@ -237,6 +249,20 @@ func TestExecuteReadSectorProgram(t *testing.T) {
 	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Check bandwidth tallies.
+	down := atomic.LoadUint64(&rhp.staticHT.host.atomicStreamDownload)
+	up := atomic.LoadUint64(&rhp.staticHT.host.atomicStreamUpload)
+	if down == 0 || up == 0 {
+		t.Fatal("bandwidth tallies weren't updated", down, up)
+	}
+	up2, down2, _, _ := rhp.staticHT.host.BandwidthCounters()
+	if up2 != up {
+		t.Fatal("bandwidth counters don't match internal tallies", up, up2)
+	}
+	if down2 != down {
+		t.Fatal("bandwidth counters don't match internal tallies", down, down2)
 	}
 }
 
@@ -260,12 +286,6 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 		}
 	}()
 	ht := rhp.staticHT
-
-	// get a snapshot of the SO before running the program.
-	sos, err := ht.host.managedGetStorageObligationSnapshot(rhp.staticFCID)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// create a random sector
 	sectorData := fastrand.Bytes(int(modules.SectorSize))
@@ -291,14 +311,14 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 
 	// create the 'ReadSector' program.
 	pt := rhp.managedPriceTable()
-	pb := modules.NewProgramBuilder(pt)
+	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since ReadSector doesn't depend on duration.
 	pb.AddReadSectorInstruction(length, offset, sectorRoot, true)
 	program, data := pb.Program()
 	programCost, refund, collateral := pb.Cost(true)
 
 	// prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
-		FileContractID:    rhp.staticFCID, // TODO: leave this empty since it's not required for a readonly program.
+		FileContractID:    types.FileContractID{},
 		Program:           program,
 		ProgramDataLength: uint64(len(data)),
 	}
@@ -315,15 +335,15 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	// this particular program on the "renter" side. This way we can test that
 	// the bandwidth measured by the renter is large enough to be accepted by
 	// the host.
-	expectedDownload := uint64(10220)
-	expectedUpload := uint64(18980)
+	expectedDownload := uint64(1460)
+	expectedUpload := uint64(1460)
 	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
 	bandwidthCost := downloadCost.Add(uploadCost)
 	cost := programCost.Add(bandwidthCost)
 
 	// execute program.
-	resps, bandwidth, err := rhp.managedExecuteProgram(epr, data, cost, true)
+	resps, bandwidth, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
 	if err != nil {
 		t.Log("cost", cost.HumanString())
 		t.Log("expected ea balance", rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
@@ -339,17 +359,18 @@ func TestExecuteReadPartialSectorProgram(t *testing.T) {
 	if resp.Error != nil {
 		t.Fatal(resp.Error)
 	}
-	if resp.NewSize != sos.staticContractSize {
-		t.Fatalf("expected contract size to stay the same: %v != %v", sos.staticContractSize, resp.NewSize)
+	if resp.NewSize != 0 {
+		t.Fatalf("expected contract size to stay the same: %v != %v", 0, resp.NewSize)
 	}
-	if resp.NewMerkleRoot != sos.staticMerkleRoot {
-		t.Fatalf("expected merkle root to stay the same: %v != %v", sos.staticMerkleRoot, resp.NewMerkleRoot)
+	zeroRoot := crypto.Hash{}
+	if resp.NewMerkleRoot != zeroRoot {
+		t.Fatalf("expected merkle root to stay the same: %v != %v", zeroRoot, resp.NewMerkleRoot)
 	}
 	if !resp.AdditionalCollateral.Equals(collateral) {
 		t.Fatalf("collateral doesnt't match expected collateral: %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
 	}
-	if !resp.PotentialRefund.Equals(refund) {
-		t.Fatalf("refund doesn't match expected refund: %v != %v", resp.PotentialRefund.HumanString(), refund.HumanString())
+	if !resp.StorageCost.Equals(refund) {
+		t.Fatalf("storage cost doesn't match expected storage cost: %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
 	}
 	if uint64(len(resp.Output)) != length {
 		t.Fatalf("expected returned data to have length %v but was %v", length, len(resp.Output))
@@ -413,14 +434,14 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 
 	// Create the 'HasSector' program.
 	pt := rhp.managedPriceTable()
-	pb := modules.NewProgramBuilder(pt)
+	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since HasSector doesn't depend on duration.
 	pb.AddHasSectorInstruction(sectorRoot)
 	program, data := pb.Program()
 	programCost, refund, collateral := pb.Cost(true)
 
 	// Prepare the request.
 	epr := modules.RPCExecuteProgramRequest{
-		FileContractID:    rhp.staticFCID, // TODO: leave this empty since it's not required for a readonly program.
+		FileContractID:    rhp.staticFCID,
 		Program:           program,
 		ProgramDataLength: uint64(len(data)),
 	}
@@ -438,15 +459,15 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	// this particular program on the "renter" side. This way we can test that
 	// the bandwidth measured by the renter is large enough to be accepted by
 	// the host.
-	expectedDownload := uint64(4380) // download
-	expectedUpload := uint64(10220)  // upload
+	expectedDownload := uint64(1460) // download
+	expectedUpload := uint64(1460)   // upload
 	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
 	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
 	bandwidthCost := downloadCost.Add(uploadCost)
 
 	// Execute program.
 	cost := programCost.Add(bandwidthCost)
-	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true)
+	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -481,8 +502,8 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 	if !resp.TotalCost.Equals(programCost) {
 		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
 	}
-	if !resp.PotentialRefund.Equals(refund) {
-		t.Fatalf("wrong PotentialRefund %v != %v", resp.PotentialRefund.HumanString(), refund.HumanString())
+	if !resp.StorageCost.Equals(refund) {
+		t.Fatalf("wrong StorageCost %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
 	}
 	// Make sure the right amount of money remains on the EA.
 	am := rhp.staticHT.host.staticAccountManager
@@ -492,10 +513,11 @@ func TestExecuteHasSectorProgram(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Execute program again. This time pay for 1 less byte of bandwidth. This should fail.
+	// Execute program again. This time pay for 1 less byte of bandwidth. This
+	// should fail.
 	program, data = pb.Program()
 	cost = programCost.Add(bandwidthCost.Sub64(1))
-	_, limit, err = rhp.managedExecuteProgram(epr, data, cost, true)
+	_, limit, err = rhp.managedExecuteProgram(epr, data, cost, true, true)
 	if err == nil || !strings.Contains(err.Error(), modules.ErrInsufficientBandwidthBudget.Error()) {
 		t.Fatalf("expected ExecuteProgram to fail due to insufficient bandwidth budget: %v", err)
 	}
@@ -563,4 +585,1030 @@ func verifyBalance(am *accountManager, id modules.AccountID, expected types.Curr
 		}
 		return nil
 	})
+}
+
+// TestExecuteReadOffsetProgram tests the managedRPCExecuteProgram with a valid
+// 'ReadOffset' program that only reads from a sector.
+func TestExecuteReadOffsetProgram(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a blank host tester
+	rhp, err := newRenterHostPair(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := rhp.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+	ht := rhp.staticHT
+
+	// get a snapshot of the SO before running the program.
+	sos, err := ht.host.managedGetStorageObligationSnapshot(rhp.staticFCID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create a random sector
+	sectorData := fastrand.Bytes(int(modules.SectorSize))
+	sectorRoot := crypto.MerkleRoot(sectorData)
+	// modify the host's storage obligation to add the sector
+	so, err := ht.host.managedGetStorageObligation(rhp.staticFCID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	so.SectorRoots = []crypto.Hash{sectorRoot}
+	ht.host.managedLockStorageObligation(rhp.staticFCID)
+	err = ht.host.managedModifyStorageObligation(so, []crypto.Hash{}, map[crypto.Hash][]byte{sectorRoot: sectorData})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ht.host.managedUnlockStorageObligation(rhp.staticFCID)
+
+	// select a random number of segments to read at random offset
+	numSegments := fastrand.Uint64n(5) + 1
+	totalSegments := modules.SectorSize / crypto.SegmentSize
+	offset := fastrand.Uint64n(totalSegments-numSegments+1) * crypto.SegmentSize
+	length := numSegments * crypto.SegmentSize
+
+	// create the 'ReadOffset' program.
+	pt := rhp.managedPriceTable()
+	pb := modules.NewProgramBuilder(pt, 0)
+	pb.AddReadOffsetInstruction(length, offset, true)
+	program, data := pb.Program()
+	programCost, refund, collateral := pb.Cost(true)
+
+	// prepare the request.
+	epr := modules.RPCExecuteProgramRequest{
+		FileContractID:    rhp.staticFCID,
+		Program:           program,
+		ProgramDataLength: uint64(len(data)),
+	}
+
+	// fund an account.
+	fundingAmt := rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance.Add(pt.FundAccountCost)
+	_, err = rhp.managedFundEphemeralAccount(fundingAmt, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compute expected bandwidth cost. These hardcoded values were chosen after
+	// running this test with a high budget and measuring the used bandwidth for
+	// this particular program on the "renter" side. This way we can test that
+	// the bandwidth measured by the renter is large enough to be accepted by
+	// the host.
+	expectedDownload := uint64(1460)
+	expectedUpload := uint64(1460)
+	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
+	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
+	bandwidthCost := downloadCost.Add(uploadCost)
+	cost := programCost.Add(bandwidthCost)
+
+	// execute program.
+	resps, bandwidth, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
+	if err != nil {
+		t.Log("cost", cost.HumanString())
+		t.Log("expected ea balance", rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance.HumanString())
+		t.Fatal(err)
+	}
+	// there should only be a single response.
+	if len(resps) != 1 {
+		t.Fatalf("expected 1 response but got %v", len(resps))
+	}
+	resp := resps[0]
+
+	// check response.
+	if resp.Error != nil {
+		t.Fatal(resp.Error)
+	}
+	if resp.NewSize != sos.staticContractSize {
+		t.Fatalf("expected contract size to stay the same: %v != %v", sos.staticContractSize, resp.NewSize)
+	}
+	if resp.NewMerkleRoot != sos.staticMerkleRoot {
+		t.Fatalf("expected merkle root to stay the same: %v != %v", sos.staticMerkleRoot, resp.NewMerkleRoot)
+	}
+	if !resp.AdditionalCollateral.Equals(collateral) {
+		t.Fatalf("collateral doesnt't match expected collateral: %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
+	}
+	if !resp.StorageCost.Equals(refund) {
+		t.Fatalf("refund doesn't match expected refund: %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
+	}
+	if uint64(len(resp.Output)) != length {
+		t.Fatalf("expected returned data to have length %v but was %v", length, len(resp.Output))
+	}
+
+	if !bytes.Equal(sectorData[offset:offset+length], resp.Output) {
+		t.Fatal("Unexpected data")
+	}
+
+	// verify the proof
+	proofStart := int(offset) / crypto.SegmentSize
+	proofEnd := int(offset+length) / crypto.SegmentSize
+	proof := crypto.MerkleRangeProof(sectorData, proofStart, proofEnd)
+	if !reflect.DeepEqual(proof, resp.Proof) {
+		t.Fatal("proof doesn't match expected proof")
+	}
+
+	// verify the cost
+	if !resp.TotalCost.Equals(programCost) {
+		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
+	}
+
+	t.Logf("Used bandwidth (read offset program): %v down, %v up", bandwidth.Downloaded(), bandwidth.Uploaded())
+}
+
+// TestVerifyExecuteProgramRevision is a unit test covering
+// verifyExecuteProgramRevision.
+func TestVerifyExecuteProgramRevision(t *testing.T) {
+	t.Parallel()
+
+	// create a current revision and a payment revision
+	height := types.BlockHeight(0)
+	curr := types.FileContractRevision{
+		NewValidProofOutputs: []types.SiacoinOutput{
+			{Value: types.NewCurrency64(100)}, // renter
+			{Value: types.NewCurrency64(50)},  // host
+		},
+		NewMissedProofOutputs: []types.SiacoinOutput{
+			{Value: types.NewCurrency64(100)}, // renter
+			{Value: types.NewCurrency64(50)},  // host
+			{Value: types.ZeroCurrency},       // void
+		},
+		NewWindowStart:    types.BlockHeight(revisionSubmissionBuffer) + 1,
+		NewFileSize:       fastrand.Uint64n(1000) * modules.SectorSize,
+		NewRevisionNumber: fastrand.Uint64n(1000),
+	}
+
+	// deepCopy is a helper function that makes a deep copy of a revision
+	deepCopy := func(rev types.FileContractRevision) (revCopy types.FileContractRevision) {
+		rBytes := encoding.Marshal(rev)
+		err := encoding.Unmarshal(rBytes, &revCopy)
+		if err != nil {
+			panic(err)
+		}
+		return
+	}
+
+	// create a valid revision as a baseline for the test.
+	newFileSize := curr.NewFileSize + modules.SectorSize
+	newRevisionNumber := curr.NewRevisionNumber + 1
+	transferred := types.NewCurrency64(20)
+	newRoot := crypto.Hash{}
+	fastrand.Read(newRoot[:])
+	validRevision, err := curr.ExecuteProgramRevision(newRevisionNumber, transferred, newRoot, newFileSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// verify a properly created payment revision is accepted
+	err = verifyExecuteProgramRevision(curr, validRevision, height, transferred, newFileSize, newRoot)
+	if err != nil {
+		t.Fatal("Unexpected error when verifying revision, ", err)
+	}
+
+	// expect ErrBadContractOutputCounts
+	badOutputs := []types.SiacoinOutput{validRevision.NewMissedProofOutputs[0]}
+	badRevision := deepCopy(validRevision)
+	badRevision.NewMissedProofOutputs = badOutputs
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if !errors.Contains(err, ErrBadContractOutputCounts) {
+		t.Fatalf("Expected ErrBadContractOutputCounts but received '%v'", err)
+	}
+
+	// same but for missed outputs
+	badOutputs = []types.SiacoinOutput{validRevision.NewMissedProofOutputs[0]}
+	badRevision = deepCopy(validRevision)
+	badRevision.NewMissedProofOutputs = badOutputs
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if !errors.Contains(err, ErrBadContractOutputCounts) {
+		t.Fatalf("Expected ErrBadContractOutputCounts but received '%v'", err)
+	}
+
+	// expect ErrLateRevision
+	badCurr := deepCopy(curr)
+	badCurr.NewWindowStart = curr.NewWindowStart - 1
+	err = verifyExecuteProgramRevision(badCurr, validRevision, height, transferred, newFileSize, newRoot)
+	if !errors.Contains(err, ErrLateRevision) {
+		t.Fatalf("Expected ErrLateRevision but received '%v'", err)
+	}
+
+	// expect host payout address changed
+	hash := crypto.HashBytes([]byte("random"))
+	badRevision = deepCopy(validRevision)
+	badRevision.NewValidProofOutputs[1].UnlockHash = types.UnlockHash(hash)
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if err == nil || !strings.Contains(err.Error(), "valid host output address changed") {
+		t.Fatalf("Expected host payout error but received '%v'", err)
+	}
+
+	// expect host payout address changed
+	badRevision = deepCopy(validRevision)
+	badRevision.NewMissedProofOutputs[1].UnlockHash = types.UnlockHash(hash)
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if err == nil || !strings.Contains(err.Error(), "missed host output address changed") {
+		t.Fatalf("Expected host payout error but received '%v'", err)
+	}
+
+	// expect lost collateral address changed
+	badRevision = deepCopy(validRevision)
+	badRevision.NewMissedProofOutputs[2].UnlockHash = types.UnlockHash(hash)
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if !errors.Contains(err, ErrVoidAddressChanged) {
+		t.Fatalf("Expected lost collaterall error but received '%v'", err)
+	}
+
+	// renter valid payout changed.
+	badRevision = deepCopy(validRevision)
+	badRevision.NewValidProofOutputs[0].Value = badRevision.NewValidProofOutputs[0].Value.Add64(1)
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if !errors.Contains(err, ErrValidRenterPayoutChanged) {
+		t.Fatalf("Expected ErrValidRenterPayoutChanged error but received '%v'", err)
+	}
+
+	// renter missed payout changed.
+	badRevision = deepCopy(validRevision)
+	badRevision.NewMissedProofOutputs[0].Value = badRevision.NewMissedProofOutputs[0].Value.Add64(1)
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if !errors.Contains(err, ErrMissedRenterPayoutChanged) {
+		t.Fatalf("Expected ErrMissedRenterPayoutChanged error but received '%v'", err)
+	}
+
+	// host valid payout changed.
+	badRevision = deepCopy(validRevision)
+	badRevision.NewValidProofOutputs[1].Value = badRevision.NewValidProofOutputs[1].Value.Add64(1)
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if !errors.Contains(err, ErrValidHostPayoutChanged) {
+		t.Fatalf("Expected ErrValidHostPayoutChanged error but received '%v'", err)
+	}
+
+	// expect ErrLowHostMissedOutput
+	badCurr = deepCopy(curr)
+	currOut := curr.MissedHostOutput()
+	currOut.Value = currOut.Value.Add64(1)
+	badCurr.NewMissedProofOutputs[1] = currOut
+	err = verifyExecuteProgramRevision(badCurr, validRevision, height, transferred, newFileSize, newRoot)
+	if err == nil || !strings.Contains(err.Error(), string(ErrLowHostMissedOutput)) {
+		t.Fatalf("Expected '%v' but received '%v'", string(ErrLowHostMissedOutput), err)
+	}
+
+	// expect an error saying too much money was transferred
+	badRevision = deepCopy(validRevision)
+	badRevision.NewMissedProofOutputs[1].Value = badRevision.NewMissedProofOutputs[1].Value.Sub64(1)
+	badRevision.NewMissedProofOutputs[2].Value = badRevision.NewMissedProofOutputs[2].Value.Add64(1)
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if !errors.Contains(err, ErrLowHostMissedOutput) {
+		t.Fatalf("Expected '%v' but received '%v'", ErrLowHostMissedOutput.Error(), err)
+	}
+
+	// expect ErrHighRenterMissedOutput
+	badCurr = deepCopy(curr)
+	badCurr.SetMissedRenterPayout(badCurr.MissedRenterPayout().Sub64(1))
+	badRevision = deepCopy(badCurr)
+	badRevision.NewRevisionNumber++
+	err = verifyExecuteProgramRevision(badCurr, badRevision, height, transferred, newFileSize, newRoot)
+	if err == nil || !strings.Contains(err.Error(), string(ErrHighRenterMissedOutput)) {
+		t.Fatalf("Expected '%v' but received '%v'", string(ErrHighRenterMissedOutput), err)
+	}
+
+	// expect ErrBadRevisionNumber
+	badOutputs = []types.SiacoinOutput{validRevision.NewMissedProofOutputs[0]}
+	badRevision = deepCopy(validRevision)
+	badRevision.NewMissedProofOutputs = badOutputs
+	badRevision.NewRevisionNumber--
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if !errors.Contains(err, ErrBadRevisionNumber) {
+		t.Fatalf("Expected ErrBadRevisionNumber but received '%v'", err)
+	}
+
+	// expect ErrBadParentID
+	badRevision = deepCopy(validRevision)
+	badRevision.ParentID = types.FileContractID(hash)
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if !errors.Contains(err, ErrBadParentID) {
+		t.Fatalf("Expected ErrBadParentID but received '%v'", err)
+	}
+
+	// expect ErrBadUnlockConditions
+	badRevision = deepCopy(validRevision)
+	badRevision.UnlockConditions.Timelock = validRevision.UnlockConditions.Timelock + 1
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if !errors.Contains(err, ErrBadUnlockConditions) {
+		t.Fatalf("Expected ErrBadUnlockConditions but received '%v'", err)
+	}
+
+	// expect ErrBadFileSize
+	badRevision = deepCopy(validRevision)
+	badRevision.NewFileSize = validRevision.NewFileSize + 1
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if !errors.Contains(err, ErrBadFileSize) {
+		t.Fatalf("Expected ErrBadFileSize but received '%v'", err)
+	}
+
+	// expect ErrBadFileMerkleRoot
+	badRevision = deepCopy(validRevision)
+	badRevision.NewFileMerkleRoot = hash
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if !errors.Contains(err, ErrBadFileMerkleRoot) {
+		t.Fatalf("Expected ErrBadFileMerkleRoot but received '%v'", err)
+	}
+
+	// expect ErrBadWindowStart
+	badRevision = deepCopy(validRevision)
+	badRevision.NewWindowStart = curr.NewWindowStart + 1
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if !errors.Contains(err, ErrBadWindowStart) {
+		t.Fatalf("Expected ErrBadWindowStart but received '%v'", err)
+	}
+
+	// expect ErrBadWindowEnd
+	badRevision = deepCopy(validRevision)
+	badRevision.NewWindowEnd = curr.NewWindowEnd - 1
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if !errors.Contains(err, ErrBadWindowEnd) {
+		t.Fatalf("Expected ErrBadWindowEnd but received '%v'", err)
+	}
+
+	// expect ErrBadUnlockHash
+	badRevision = deepCopy(validRevision)
+	badRevision.NewUnlockHash = types.UnlockHash(hash)
+	err = verifyExecuteProgramRevision(curr, badRevision, height, transferred, newFileSize, newRoot)
+	if !errors.Contains(err, ErrBadUnlockHash) {
+		t.Fatalf("Expected ErrBadUnlockHash but received '%v'", err)
+	}
+}
+
+// TestExecuteAppendProgram tests the managedRPCExecuteProgram with a valid
+// 'Append' program.
+func TestExecuteAppendProgram(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a testing pair.
+	rhp, err := newRenterHostPair(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := rhp.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// helper to get current revision's number.
+	revNum := func() uint64 {
+		recent, err := rhp.managedRecentHostRevision()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return recent.NewRevisionNumber
+	}
+
+	// Prepare data to upload.
+	data := fastrand.Bytes(int(modules.SectorSize))
+	sectorRoot := crypto.MerkleRoot(data)
+
+	// Get the remaining contract duration.
+	so, err := rhp.staticHT.host.managedGetStorageObligation(rhp.staticFCID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	duration := so.proofDeadline() - rhp.staticHT.host.BlockHeight()
+
+	// create the 'Append' program.
+	pt := rhp.managedPriceTable()
+	pb := modules.NewProgramBuilder(pt, duration)
+	err = pb.AddAppendInstruction(data, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, data := pb.Program()
+	programCost, storageCost, collateral := pb.Cost(true)
+	totalCost, _, _ := pb.Cost(false)
+
+	// prepare the request.
+	epr := modules.RPCExecuteProgramRequest{
+		FileContractID:    rhp.staticFCID,
+		Program:           program,
+		ProgramDataLength: uint64(len(data)),
+	}
+
+	// fund an account.
+	his := rhp.staticHT.host.managedInternalSettings()
+	maxBalance := his.MaxEphemeralAccountBalance
+	fundingAmt := maxBalance.Add(pt.FundAccountCost)
+	_, err = rhp.managedFundEphemeralAccount(fundingAmt, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compute expected bandwidth cost. These hardcoded values were chosen after
+	// running this test with a high budget and measuring the used bandwidth for
+	// this particular program on the "renter" side. This way we can test that
+	// the bandwidth measured by the renter is large enough to be accepted by
+	// the host.
+	expectedDownload := uint64(2920) // download
+	expectedUpload := uint64(7300)   // upload
+	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
+	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
+	bandwidthCost := downloadCost.Add(uploadCost)
+	cost := programCost.Add(bandwidthCost)
+
+	// check contract revision number before executing the program.
+	revNumBefore := revNum()
+
+	// execute program.
+	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// the revision number should have increased by 1.
+	revNumAfter := revNum()
+	if revNumAfter != revNumBefore+1 {
+		t.Errorf("revision number wasn't incremented by 1 %v %v", revNumBefore, revNumAfter)
+	}
+
+	// Log the bandwidth used by this RPC.
+	t.Logf("Used bandwidth (append sector program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+
+	// there should only be a single response.
+	if len(resps) != 1 {
+		t.Fatalf("expected 1 response but got %v", len(resps))
+	}
+	resp := resps[0]
+
+	// check response.
+	if resp.Error != nil {
+		t.Fatal(resp.Error)
+	}
+	// programs that don't require a snapshot return a 0 contract size.
+	if resp.NewSize != modules.SectorSize {
+		t.Fatalf("expected contract size to stay the same: %v != %v", modules.SectorSize, resp.NewSize)
+	}
+	// programs that don't require a snapshot return a zero hash.
+	if resp.NewMerkleRoot != sectorRoot {
+		t.Fatalf("expected merkle root to stay the same: %v != %v", sectorRoot, resp.NewMerkleRoot)
+	}
+	if len(resp.Proof) != 0 {
+		t.Fatalf("expected proof length to be %v but was %v", 0, len(resp.Proof))
+	}
+
+	if !resp.AdditionalCollateral.Equals(collateral) {
+		t.Fatalf("collateral doesnt't match expected collateral: %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
+	}
+	if !resp.StorageCost.Equals(storageCost) {
+		t.Fatalf("storage cost doesn't match expected storage cost: %v != %v", resp.StorageCost.HumanString(), storageCost.HumanString())
+	}
+	if uint64(len(resp.Output)) != 0 {
+		t.Fatalf("expected returned data to have length %v but was %v", 0, len(resp.Output))
+	}
+
+	// verify the cost
+	if !resp.TotalCost.Equals(totalCost) {
+		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
+	}
+
+	// verify the EA balance
+	am := rhp.staticHT.host.staticAccountManager
+	expectedBalance := maxBalance.Sub(cost)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// execute program but this time without finalizing it to check for the
+	// refund.
+	programCost, _, _ = pb.Cost(false)
+	expectedDownload = uint64(5840) // download
+	expectedUpload = uint64(4380)   // upload
+	downloadCost = pt.DownloadBandwidthCost.Mul64(expectedDownload)
+	uploadCost = pt.UploadBandwidthCost.Mul64(expectedUpload)
+	bandwidthCost = downloadCost.Add(uploadCost)
+	cost = programCost.Add(bandwidthCost)
+
+	resps, limit, err = rhp.managedExecuteProgram(epr, data, cost, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Log the bandwidth used by this RPC.
+	t.Logf("Used bandwidth (append sector program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+
+	// verify the EA balance
+	expectedBalance = expectedBalance.Sub(cost)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestExecuteHasSectorProgramBatching tests the managedRPCExecuteProgram with a
+// valid 'HasSector' program containing multiple HasSector instructions.
+func TestExecuteHasSectorProgramBatching(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a blank host tester
+	rhp, err := newRenterHostPair(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := rhp.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+	ht := rhp.staticHT
+
+	// Add a sector to the host but not the storage obligation or contract. This
+	// instruction should also work for foreign sectors.
+	sectorData := fastrand.Bytes(int(modules.SectorSize))
+	sectorRoot := crypto.MerkleRoot(sectorData)
+	err = ht.host.AddSector(sectorRoot, sectorData)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create the 'HasSector' program.
+	pt := rhp.managedPriceTable()
+	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since HasSector doesn't depend on duration.
+	for i := 0; i < 10; i++ {
+		pb.AddHasSectorInstruction(sectorRoot)
+	}
+	program, data := pb.Program()
+	programCost, _, _ := pb.Cost(true)
+
+	// Prepare the request.
+	epr := modules.RPCExecuteProgramRequest{
+		FileContractID:    rhp.staticFCID,
+		Program:           program,
+		ProgramDataLength: uint64(len(data)),
+	}
+
+	// Fund an account with the max balance.
+	maxBalance := rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance
+	fundingAmt := maxBalance.Add(pt.FundAccountCost)
+	_, err = rhp.managedFundEphemeralAccount(fundingAmt, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compute expected bandwidth cost. These hardcoded values were chosen after
+	// running this test with a high budget and measuring the used bandwidth for
+	// this particular program on the "renter" side. This way we can test that
+	// the bandwidth measured by the renter is large enough to be accepted by
+	// the host.
+	expectedDownload := uint64(1460) // download
+	expectedUpload := uint64(1460)   // upload
+	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
+	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
+	bandwidthCost := downloadCost.Add(uploadCost)
+
+	// Execute program.
+	cost := programCost.Add(bandwidthCost)
+	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Log the bandwidth used by this RPC.
+	t.Logf("Used bandwidth (valid has sector program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+	// There should only be a single response.
+	if len(resps) != 10 {
+		t.Fatalf("expected 10 responses but got %v", len(resps))
+	}
+
+	// Check response.
+	for _, resp := range resps {
+		if resp.Error != nil {
+			t.Fatal(resp.Error)
+		}
+		if resp.Output[0] != 1 {
+			t.Fatalf("wrong Output %v != %v", resp.Output[0], []byte{1})
+		}
+	}
+
+	// Make sure the right amount of money remains on the EA.
+	am := rhp.staticHT.host.staticAccountManager
+	expectedBalance := maxBalance.Sub(cost)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestExecuteUpdateRegistryProgram tests the managedRPCExecuteProgram with a
+// valid 'UpdateRegistry' program.
+func TestExecuteUpdateRegistryProgram(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a blank host tester
+	rhp, err := newRenterHostPair(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := rhp.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// Grow the registry.
+	h := rhp.staticHT.host
+	is := h.InternalSettings()
+	is.RegistrySize = 64 * modules.RegistryEntrySize
+	err = h.SetInternalSettings(is)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// get a snapshot of the SO before running the program.
+	sos, err := rhp.staticHT.host.managedGetStorageObligationSnapshot(rhp.staticFCID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a signed registry value.
+	sk, pk := crypto.GenerateKeyPair()
+	tweak := crypto.Hash{1, 2, 3}
+	data := fastrand.Bytes(modules.RegistryDataSize)
+	rev := uint64(1)
+	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+
+	// Create the 'UpdateRegistry' program.
+	pt := rhp.managedPriceTable()
+	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since UpdateRegistry doesn't depend on duration.
+	err = pb.AddUpdateRegistryInstruction(spk, rv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, data := pb.Program()
+	programCost, refund, collateral := pb.Cost(true)
+
+	// Prepare the request.
+	epr := modules.RPCExecuteProgramRequest{
+		FileContractID:    rhp.staticFCID,
+		Program:           program,
+		ProgramDataLength: uint64(len(data)),
+	}
+
+	// Fund an account with the max balance.
+	maxBalance := rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance
+	fundingAmt := maxBalance.Add(pt.FundAccountCost)
+	_, err = rhp.managedFundEphemeralAccount(fundingAmt, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compute expected bandwidth cost. These hardcoded values were chosen after
+	// running this test with a high budget and measuring the used bandwidth for
+	// this particular program on the "renter" side. This way we can test that
+	// the bandwidth measured by the renter is large enough to be accepted by
+	// the host.
+	expectedDownload := uint64(1460) // download
+	expectedUpload := uint64(1460)   // upload
+	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
+	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
+	bandwidthCost := downloadCost.Add(uploadCost)
+
+	// Execute program.
+	cost := programCost.Add(bandwidthCost)
+	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Log the bandwidth used by this RPC.
+	t.Logf("Used bandwidth (valid UpdateRegistry program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+	// There should only be a single response.
+	if len(resps) != 1 {
+		t.Fatalf("expected 1 response but got %v", len(resps))
+	}
+	resp := resps[0]
+
+	// Check response.
+	if resp.Error != nil {
+		t.Fatal(resp.Error)
+	}
+	if !resp.AdditionalCollateral.Equals(collateral) {
+		t.Fatalf("wrong AdditionalCollateral %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
+	}
+	if resp.NewMerkleRoot != sos.MerkleRoot() {
+		t.Fatalf("wrong NewMerkleRoot %v != %v", resp.NewMerkleRoot, sos.MerkleRoot())
+	}
+	if resp.NewSize != 0 {
+		t.Fatalf("wrong NewSize %v != %v", resp.NewSize, 0)
+		t.Fatal("wrong NewSize")
+	}
+	if len(resp.Proof) != 0 {
+		t.Fatalf("wrong Proof %v != %v", resp.Proof, []crypto.Hash{})
+	}
+	if len(resp.Output) != 0 {
+		t.Fatalf("wrong Output length %v != %v", len(resp.Output), 0)
+	}
+	if !resp.TotalCost.Equals(programCost) {
+		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
+	}
+	if !resp.StorageCost.Equals(refund) {
+		t.Fatalf("wrong StorageCost %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
+	}
+	// Make sure the right amount of money remains on the EA.
+	am := rhp.staticHT.host.staticAccountManager
+	expectedBalance := maxBalance.Sub(cost)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run the same program again. Should fail due to the revision number being
+	// the same.
+	resps, limit, err = rhp.managedExecuteProgram(epr, data, cost, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Log the bandwidth used by this RPC.
+	t.Logf("Used bandwidth (valid UpdateRegistry program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+	// There should only be a single response.
+	if len(resps) != 1 {
+		t.Fatalf("expected 1 response but got %v", len(resps))
+	}
+	resp = resps[0]
+
+	// Check response.
+	if resp.Error == nil || !strings.Contains(resp.Error.Error(), registry.ErrSameRevNum.Error()) {
+		t.Fatal(resp.Error)
+	}
+	if !resp.AdditionalCollateral.Equals(collateral) {
+		t.Fatalf("wrong AdditionalCollateral %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
+	}
+	if resp.NewMerkleRoot != sos.MerkleRoot() {
+		t.Fatalf("wrong NewMerkleRoot %v != %v", resp.NewMerkleRoot, sos.MerkleRoot())
+	}
+	if resp.NewSize != 0 {
+		t.Fatalf("wrong NewSize %v != %v", resp.NewSize, 0)
+	}
+	if len(resp.Proof) != 0 {
+		t.Fatalf("wrong Proof %v != %v", resp.Proof, []crypto.Hash{})
+	}
+	if !resp.TotalCost.Equals(programCost) {
+		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
+	}
+	if !resp.StorageCost.Equals(refund) {
+		t.Fatalf("wrong StorageCost %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
+	}
+	// Parse response.
+	var sig2 crypto.Signature
+	copy(sig2[:], resp.Output[:crypto.SignatureSize])
+	rev2 := binary.LittleEndian.Uint64(resp.Output[crypto.SignatureSize:])
+	data2 := resp.Output[crypto.SignatureSize+8:]
+	rv2 := modules.NewSignedRegistryValue(tweak, data2, rev2, sig2)
+	if !reflect.DeepEqual(rv, rv2) {
+		t.Log(rv)
+		t.Log(rv2)
+		t.Fatal("rvs don't match")
+	}
+
+	// Make sure the right amount of money remains on the EA.
+	expectedBalance = expectedBalance.Sub(cost).Add(refund)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Run it one more time. Time time with a lower revision number which should
+	// also fail.
+	pb = modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since UpdateRegistry doesn't depend on duration.
+	rvLowRev := rv
+	rvLowRev.Revision--
+	rvLowRev = rvLowRev.Sign(sk)
+	err = pb.AddUpdateRegistryInstruction(spk, rvLowRev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, data = pb.Program()
+
+	// Prepare the request.
+	epr = modules.RPCExecuteProgramRequest{
+		FileContractID:    rhp.staticFCID,
+		Program:           program,
+		ProgramDataLength: uint64(len(data)),
+	}
+
+	resps, limit, err = rhp.managedExecuteProgram(epr, data, cost, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Log the bandwidth used by this RPC.
+	t.Logf("Used bandwidth (valid UpdateRegistry program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+	// There should only be a single response.
+	if len(resps) != 1 {
+		t.Fatalf("expected 1 response but got %v", len(resps))
+	}
+	resp = resps[0]
+
+	// Check response.
+	if resp.Error == nil || !strings.Contains(resp.Error.Error(), registry.ErrLowerRevNum.Error()) {
+		t.Fatal(resp.Error)
+	}
+	if !resp.AdditionalCollateral.Equals(collateral) {
+		t.Fatalf("wrong AdditionalCollateral %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
+	}
+	if resp.NewMerkleRoot != sos.MerkleRoot() {
+		t.Fatalf("wrong NewMerkleRoot %v != %v", resp.NewMerkleRoot, sos.MerkleRoot())
+	}
+	if resp.NewSize != 0 {
+		t.Fatalf("wrong NewSize %v != %v", resp.NewSize, 0)
+	}
+	if len(resp.Proof) != 0 {
+		t.Fatalf("wrong Proof %v != %v", resp.Proof, []crypto.Hash{})
+	}
+	if !resp.TotalCost.Equals(programCost) {
+		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
+	}
+	if !resp.StorageCost.Equals(refund) {
+		t.Fatalf("wrong StorageCost %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
+	}
+	// Parse response.
+	copy(sig2[:], resp.Output[:crypto.SignatureSize])
+	rev2 = binary.LittleEndian.Uint64(resp.Output[crypto.SignatureSize:])
+	data2 = resp.Output[crypto.SignatureSize+8:]
+	rv2 = modules.NewSignedRegistryValue(tweak, data2, rev2, sig2)
+	if !reflect.DeepEqual(rv, rv2) {
+		t.Log(rv)
+		t.Log(rv2)
+		t.Fatal("rvs don't match")
+	}
+
+	// Make sure the right amount of money remains on the EA.
+	expectedBalance = expectedBalance.Sub(cost).Add(refund)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestExecuteReadRegistryProgram tests the managedRPCExecuteProgram with a
+// valid 'ReadRegistry' program.
+func TestExecuteReadRegistryProgram(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a blank host tester
+	rhp, err := newRenterHostPair(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		err := rhp.Close()
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// Grow the registry.
+	h := rhp.staticHT.host
+	is := h.InternalSettings()
+	is.RegistrySize = 64 * modules.RegistryEntrySize
+	err = h.SetInternalSettings(is)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// get a snapshot of the SO before running the program.
+	sos, err := rhp.staticHT.host.managedGetStorageObligationSnapshot(rhp.staticFCID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a signed registry value.
+	sk, pk := crypto.GenerateKeyPair()
+	tweak := crypto.Hash{1, 2, 3}
+	data := fastrand.Bytes(modules.RegistryDataSize)
+	rev := uint64(0)
+	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+
+	// Update the registry.
+	_, err = h.RegistryUpdate(rv, spk, 123)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create the 'UpdateRegistry' program.
+	pt := rhp.managedPriceTable()
+	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since ReadRegistry doesn't depend on duration.
+	err = pb.AddReadRegistryInstruction(spk, rv.Tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+	program, data := pb.Program()
+	programCost, refund, collateral := pb.Cost(true)
+
+	// Prepare the request.
+	epr := modules.RPCExecuteProgramRequest{
+		FileContractID:    rhp.staticFCID,
+		Program:           program,
+		ProgramDataLength: uint64(len(data)),
+	}
+
+	// Fund an account with the max balance.
+	maxBalance := rhp.staticHT.host.managedInternalSettings().MaxEphemeralAccountBalance
+	fundingAmt := maxBalance.Add(pt.FundAccountCost)
+	_, err = rhp.managedFundEphemeralAccount(fundingAmt, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Compute expected bandwidth cost. These hardcoded values were chosen after
+	// running this test with a high budget and measuring the used bandwidth for
+	// this particular program on the "renter" side. This way we can test that
+	// the bandwidth measured by the renter is large enough to be accepted by
+	// the host.
+	expectedDownload := uint64(1460) // download
+	expectedUpload := uint64(1460)   // upload
+	downloadCost := pt.DownloadBandwidthCost.Mul64(expectedDownload)
+	uploadCost := pt.UploadBandwidthCost.Mul64(expectedUpload)
+	bandwidthCost := downloadCost.Add(uploadCost)
+
+	// Execute program.
+	cost := programCost.Add(bandwidthCost)
+	resps, limit, err := rhp.managedExecuteProgram(epr, data, cost, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Log the bandwidth used by this RPC.
+	t.Logf("Used bandwidth (valid UpdateRegistry program): %v down, %v up", limit.Downloaded(), limit.Uploaded())
+	// There should only be a single response.
+	if len(resps) != 1 {
+		t.Fatalf("expected 1 response but got %v", len(resps))
+	}
+	resp := resps[0]
+
+	// Check response.
+	if resp.Error != nil {
+		t.Fatal(resp.Error)
+	}
+	if !resp.AdditionalCollateral.Equals(collateral) {
+		t.Fatalf("wrong AdditionalCollateral %v != %v", resp.AdditionalCollateral.HumanString(), collateral.HumanString())
+	}
+	if resp.NewMerkleRoot != sos.MerkleRoot() {
+		t.Fatalf("wrong NewMerkleRoot %v != %v", resp.NewMerkleRoot, sos.MerkleRoot())
+	}
+	if resp.NewSize != 0 {
+		t.Fatalf("wrong NewSize %v != %v", resp.NewSize, 0)
+		t.Fatal("wrong NewSize")
+	}
+	if len(resp.Proof) != 0 {
+		t.Fatalf("wrong Proof %v != %v", resp.Proof, []crypto.Hash{})
+	}
+	if len(resp.Output) != 185 {
+		// 185 = 64 (sig) + 8 (revision) + 113 (data)
+		t.Fatalf("wrong Output length %v != %v", len(resp.Output), 185)
+	}
+	if !resp.TotalCost.Equals(programCost) {
+		t.Fatalf("wrong TotalCost %v != %v", resp.TotalCost.HumanString(), programCost.HumanString())
+	}
+	if !resp.StorageCost.Equals(refund) {
+		t.Fatalf("wrong StorageCost %v != %v", resp.StorageCost.HumanString(), refund.HumanString())
+	}
+
+	// Parse output.
+	var sig2 crypto.Signature
+	copy(sig2[:], resp.Output[:crypto.SignatureSize])
+	rev2 := binary.LittleEndian.Uint64(resp.Output[crypto.SignatureSize:])
+	data2 := resp.Output[crypto.SignatureSize+8:]
+	rv2 := modules.NewSignedRegistryValue(tweak, data2, rev2, sig2)
+	if rv2.Verify(pk) != nil {
+		t.Fatal("verification failed", err)
+	}
+
+	// Make sure the right amount of money remains on the EA.
+	am := rhp.staticHT.host.staticAccountManager
+	expectedBalance := maxBalance.Sub(cost)
+	err = verifyBalance(am, rhp.staticAccountID, expectedBalance)
+	if err != nil {
+		t.Fatal(err)
+	}
 }

@@ -1,9 +1,12 @@
 package renter
 
 import (
+	"container/list"
+	"context"
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -19,9 +22,19 @@ var (
 type (
 	// jobGeneric implements the basic functionality for a job.
 	jobGeneric struct {
-		staticCancelChan <-chan struct{}
+		staticCtx context.Context
 
 		staticQueue workerJobQueue
+
+		// staticMetadata is a generic field on the job that can be set and
+		// casted by implementations of a job
+		staticMetadata interface{}
+
+		// These fields are set when the job is added to the job queue and used
+		// after execution to log the delta between the estimated job time and
+		// the actual job time.
+		externJobStartTime         time.Time
+		externEstimatedJobDuration time.Duration
 	}
 
 	// jobGenericQueue is a generic queue for a job. It has a mutex, references
@@ -29,13 +42,14 @@ type (
 	// timer. It does not have an array of jobs that are in the queue, because
 	// those are type specific.
 	jobGenericQueue struct {
-		jobs []workerJob
+		jobs *list.List
 
 		killed bool
 
 		cooldownUntil       time.Time
 		consecutiveFailures uint64
 		recentErr           error
+		recentErrTime       time.Time
 
 		staticWorkerObj *worker // name conflict with staticWorker method
 		mu              sync.Mutex
@@ -55,6 +69,9 @@ type (
 		// expects to consume.
 		callExpectedBandwidth() (upload uint64, download uint64)
 
+		// staticGetMetadata returns a metadata object.
+		staticGetMetadata() interface{}
+
 		// staticCanceled returns true if the job has been canceled, false
 		// otherwise.
 		staticCanceled() bool
@@ -67,32 +84,55 @@ type (
 		callDiscardAll(error)
 
 		// callReportFailure should be called on the queue every time that a job
-		// failes, and include the error associated with the failure.
+		// fails, and include the error associated with the failure.
 		callReportFailure(error)
 
 		// callReportSuccess should be called on the queue every time that a job
 		// succeeds.
 		callReportSuccess()
 
+		// callStatus returns the status of the queue
+		callStatus() workerJobQueueStatus
+
 		// staticWorker will return the worker of the job queue.
 		staticWorker() *worker
 	}
+
+	// workerJobQueueStatus is a struct that reflects the status of the queue
+	workerJobQueueStatus struct {
+		size                uint64
+		cooldownUntil       time.Time
+		consecutiveFailures uint64
+		recentErr           error
+		recentErrTime       time.Time
+	}
 )
+
+// expMovingAvg is a helper to compute the next exponential moving average given
+// the last value and a new point of measurement.
+// https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average
+func expMovingAvg(oldEMA, newValue, decay float64) float64 {
+	if decay < 0 || decay > 1 {
+		build.Critical("decay has to be a value in range 0 <= x <= 1")
+	}
+	return newValue*decay + (1-decay)*oldEMA
+}
 
 // newJobGeneric returns an initialized jobGeneric. The queue that is associated
 // with the job should be used as the input to this function. The job will
 // cancel itself if the cancelChan is closed.
-func newJobGeneric(queue workerJobQueue, cancelChan <-chan struct{}) *jobGeneric {
+func newJobGeneric(ctx context.Context, queue workerJobQueue, metadata interface{}) *jobGeneric {
 	return &jobGeneric{
-		staticCancelChan: cancelChan,
-
-		staticQueue: queue,
+		staticCtx:      ctx,
+		staticQueue:    queue,
+		staticMetadata: metadata,
 	}
 }
 
 // newJobGenericQueue will return an initialized generic job queue.
 func newJobGenericQueue(w *worker) *jobGenericQueue {
 	return &jobGenericQueue{
+		jobs:            list.New(),
 		staticWorkerObj: w,
 	}
 }
@@ -100,24 +140,33 @@ func newJobGenericQueue(w *worker) *jobGenericQueue {
 // staticCanceled returns whether or not the job has been canceled.
 func (j *jobGeneric) staticCanceled() bool {
 	select {
-	case <-j.staticCancelChan:
+	case <-j.staticCtx.Done():
 		return true
 	default:
 		return false
 	}
 }
 
+// staticGetMetadata returns the job's metadata.
+func (j *jobGeneric) staticGetMetadata() interface{} {
+	return j.staticMetadata
+}
+
+// add will add a job to the queue.
+func (jq *jobGenericQueue) add(j workerJob) bool {
+	if jq.killed || time.Now().Before(jq.cooldownUntil) {
+		return false
+	}
+	jq.jobs.PushBack(j)
+	jq.staticWorkerObj.staticWake()
+	return true
+}
+
 // callAdd will add a job to the queue.
 func (jq *jobGenericQueue) callAdd(j workerJob) bool {
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
-
-	if jq.killed || time.Now().Before(jq.cooldownUntil) {
-		return false
-	}
-	jq.jobs = append(jq.jobs, j)
-	jq.staticWorkerObj.staticWake()
-	return true
+	return jq.add(j)
 }
 
 // callDiscardAll will discard all jobs in the queue using the provided error.
@@ -146,13 +195,17 @@ func (jq *jobGenericQueue) callNext() workerJob {
 
 	// Loop through the jobs, looking for the first job that hasn't yet been
 	// canceled. Remove jobs from the queue along the way.
-	for len(jq.jobs) > 0 {
-		job := jq.jobs[0]
-		jq.jobs = jq.jobs[1:]
-		if job.staticCanceled() {
+	for job := jq.jobs.Front(); job != nil; job = job.Next() {
+		// Remove the job from the list.
+		jq.jobs.Remove(job)
+
+		// Check if the job is already canceled.
+		wj := job.Value.(workerJob)
+		if wj.staticCanceled() {
+			wj.callDiscard(errors.New("callNext: skipping and discarding already canceled job"))
 			continue
 		}
-		return job
+		return wj
 	}
 
 	// Job queue is empty, return nil.
@@ -171,6 +224,7 @@ func (jq *jobGenericQueue) callReportFailure(err error) {
 	jq.cooldownUntil = cooldownUntil(jq.consecutiveFailures)
 	jq.consecutiveFailures++
 	jq.recentErr = err
+	jq.recentErrTime = time.Now()
 }
 
 // callReportSuccess lets the job queue know that there was a successsful job.
@@ -184,12 +238,26 @@ func (jq *jobGenericQueue) callReportSuccess() {
 	jq.mu.Unlock()
 }
 
+// callStatus returns the queue status
+func (jq *jobGenericQueue) callStatus() workerJobQueueStatus {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	return workerJobQueueStatus{
+		size:                uint64(jq.jobs.Len()),
+		cooldownUntil:       jq.cooldownUntil,
+		consecutiveFailures: jq.consecutiveFailures,
+		recentErr:           jq.recentErr,
+		recentErrTime:       jq.recentErrTime,
+	}
+}
+
 // discardAll will drop all jobs from the queue.
 func (jq *jobGenericQueue) discardAll(err error) {
-	for _, job := range jq.jobs {
-		job.callDiscard(err)
+	for job := jq.jobs.Front(); job != nil; job = job.Next() {
+		wj := job.Value.(workerJob)
+		wj.callDiscard(err)
 	}
-	jq.jobs = nil
+	jq.jobs = list.New()
 }
 
 // staticWorker will return the worker that is associated with this job queue.

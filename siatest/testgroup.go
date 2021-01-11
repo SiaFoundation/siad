@@ -230,7 +230,8 @@ func addStorageFolderToHosts(hosts map[*TestNode]struct{}) error {
 	return errors.Compose(errs...)
 }
 
-// announceHosts adds storage to each host and announces them to the group
+// announceHosts adds storage and a registry to each host and announces them to
+// the group
 func announceHosts(hosts map[*TestNode]struct{}) error {
 	for host := range hosts {
 		if host.params.SkipHostAnnouncement {
@@ -238,6 +239,9 @@ func announceHosts(hosts map[*TestNode]struct{}) error {
 		}
 		if err := host.HostModifySettingPost(client.HostParamAcceptingContracts, true); err != nil {
 			return errors.AddContext(err, "failed to set host to accepting contracts")
+		}
+		if err := host.HostModifySettingPost(client.HostParamRegistrySize, 1<<18); err != nil {
+			return errors.AddContext(err, "failed to set host's default registry size")
 		}
 		if err := host.HostAnnouncePost(); err != nil {
 			return errors.AddContext(err, "failed to announce host")
@@ -249,7 +253,7 @@ func announceHosts(hosts map[*TestNode]struct{}) error {
 // connectNodes connects two nodes
 func connectNodes(nodeA, nodeB *TestNode) error {
 	err := build.Retry(100, 100*time.Millisecond, func() error {
-		if err := nodeA.GatewayConnectPost(nodeB.GatewayAddress()); err != nil && err != client.ErrPeerExists {
+		if err := nodeA.GatewayConnectPost(nodeB.GatewayAddress()); err != nil && !errors.Contains(err, client.ErrPeerExists) {
 			return errors.AddContext(err, "failed to connect to peer")
 		}
 		isPeer1, err1 := nodeA.hasPeer(nodeB)
@@ -401,6 +405,10 @@ func synchronizationCheck(nodes map[*TestNode]struct{}) error {
 			if err != nil {
 				return err
 			}
+			ngg, err := n.GatewayGet()
+			if err != nil {
+				return err
+			}
 			// If the CurrentBlock's match we are done.
 			if lcg.CurrentBlock == ncg.CurrentBlock {
 				return nil
@@ -408,7 +416,7 @@ func synchronizationCheck(nodes map[*TestNode]struct{}) error {
 			// If the miner's height is greater than the node's we need to
 			// wait a bit longer for them to sync.
 			if lcg.Height != ncg.Height {
-				return fmt.Errorf("blockHeight doesn't match, %v vs %v", lcg.Height, ncg.Height)
+				return fmt.Errorf("blockHeight doesn't match, %v vs %v (%v peers)", lcg.Height, ncg.Height, len(ngg.Peers))
 			}
 			// If the miner's height is smaller than the node's we need a
 			// bit longer for them to sync.
@@ -519,7 +527,8 @@ func (tg *TestGroup) AddNodes(nps ...node.NodeParams) ([]*TestNode, error) {
 	newHosts := make(map[*TestNode]struct{})
 	newRenters := make(map[*TestNode]struct{})
 	newMiners := make(map[*TestNode]struct{})
-	for _, np := range nps {
+	for i := range nps {
+		np := nps[i]
 		// Create the nodes and add them to the group.
 		randomNodeDir(tg.dir, &np)
 		node, err := NewCleanNode(np)

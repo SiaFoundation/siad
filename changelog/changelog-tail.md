@@ -1,3 +1,131 @@
+## Nov 10, 2020:
+### v1.5.3
+**Bugs Fixed**
+- Updated siafile snapshots to only store range of chunks needed for repair to
+  address OOM during large file repairs
+
+## Nov 9, 2020:
+### v1.5.2
+**Key Updates**
+- RHP3 Renewal RPC now only uses the Host's price table
+
+**Bugs Fixed**
+- Add missing error check in registry creation
+
+**Other**
+- Registry lookup to always return 404 even for timeouts
+
+## Nov 2, 2020:
+### v1.5.1
+**Key Updates**
+- Add basic watchdog to the feemanager
+- Add `/skynet/basesector` to the API.
+- Add `--portal` flag to `siac skynet pin`
+- Add the ability to start and stop the profile via the API
+- Add Skykey flags to convert command for encryption
+- Enable adding or removing hashes of skylink merkleroots to the skynet
+  blacklist
+- allow for migrating registry to cstom path
+- Update the upload streamer code to send chunks directly to the workers instead
+  of through the `uploadHeap`.
+- new acceptcontractadjustment in score breakdown
+- reduced default period to 2 months
+- extend /host [GET] to contain pricetable
+- add API support for setting registry size
+- move health summary from `siac renter -v` to `siac renter health`
+- add timeout param to read registry api call
+- add root flag to download endpoints
+- add root flag to list downloads endpoint
+- Add support for skykey delete in siac.
+- Add support for uploading entire directories as skyfiles (e.g. `siac skynet
+  upload dir skyfile_name`). The previous behavior of uploading all files
+  individually is now available when the `--separately` flag is passed.
+  Additional flags: `--defaultpath` and `--disabledefaultpath`. Those are full
+  equivalents to the flags with the same names on the `/skynet/skyfile/*siapath*
+  [POST]` endpoint.
+- Added feature to use pipes with 'siac skynet upload'. e.g. 
+  'dd if=/dev/zero bs=1M count=1000 | siac skynet upload 1GB.dat'
+
+**Bugs Fixed**
+- Fix unit of `EphemeralAccountExpiry` in the host persistence.
+- Fix bug in append only persist code that left a file handle open.
+- Ensure that only full paths are accepted when resolving skylinks.
+- Properly handle URL-encoded characters in `GET /skynet/skylink` route.
+ - Fix bug in Filesystem list that duplicated directories returned for recursive
+     calls
+- Fixed edge case with the health loop where it would not find the correct
+  directory to call bubble on due to the metadatas being out of sync from
+  a shutdown with pending bubbles.
+- Fix skykey default type in siac
+
+**Other**
+- Split out `siac renter workers` download and upload info
+- Rename `skynetblacklist` to `skynetblocklist`
+- Add ETag response header
+- Fix setting `GORACE` for `test-vlong` in `Makefile` for Windows Gitlab
+  runner.
+- Update the `README` to remove the outdated raspberry pi info and link the
+  official release locations.
+- Add `Skynet-Skylink` response headers.
+- Add the ability to parse base32 encoded Skylinks
+
+## Aug 5, 2020:
+### v1.5.0
+**Key Updates**
+- Add `zip` download format and set it as default format.
+- add support for write MDM programs to host
+- Added `defaultpath` - a new optional path parameter when creating Skylinks. It
+  determines which is the default file to open in a multi-file skyfile.
+- Add `configModules` to the API so that the siad modules can be return in
+  `/daemon/settings [GET]`
+- Allow the renew window to be larger than the period
+- Convert skynetblacklist from merkleroots to hashes of the merkleroots
+- split up the custom http status code returned by the API for unloaded modules
+  into 2 distinct codes.
+- Add `daemon/stack` endpoint to get the current stack trace.
+- Add Skykey delete methods to API.
+- Add `disabledefaultpath` - a new optional path parameter when creating
+  Skylinks. It disables the default path functionality, guaranteeing that the
+  user will not be automatically redirected to `/index.html` if it exists in the
+  skyfile.
+- Add 'siac' commands for the FeeManager
+- Add `TypePrivateID` Skykeys with skyfile encryption support
+- Added available and priority memory output to `siac renter -v`
+
+**Bugs Fixed**
+- Set 'Content-Disposition' header for archives.
+- fixed bug in rotation of fingerprint buckets
+- fix issue where priority tasks could wait for low priority tasks to complete
+- Fix panic in backup code due to not using `newJobGeneric`
+- Skynet filenames are now validated when uploading. Previously you could upload
+  files called e.g. "../foo" which would be inaccessible.
+- The Skykey encryption API docs were updated to fix some discrepancies. In
+  particular, the skykeyid section was removed.
+- The createskykey endpoint was fixed as it was not returning the full Skykey
+  that was created.
+- integrade download cooldown system into download jobs
+- fix bug which could prevent downloads from making progress
+- Fix panic in the wal of the siadir and siafile if a delete update was
+  submitted as the last update in a set of updates.
+
+**Other**
+- Add `EphemeralAccountExpiry` and `MaxEphemeralAccountBalance` to the Host's
+  ExternalSettings
+- Add testing infrastructure to validate the output of siac commands.
+- Add root siac Cobra command test with subtests.
+- Optimise writes when we execute an MDM program on the host to lower overall
+  (upload) bandwidth consumption.
+- Change status returned when module is not loaded from 404 to 490
+- Add `siac renter workers ea` command to siac
+- Add `siac renter workers pt` command to siac
+- Add `siac renter workers rj` command to siac
+- Add `siac renter workers hsj` command to siac
+- Add testing for blacklisting skylinks associated with siafile conversions
+- Rename `Gateway` `blacklist` to `blocklist`
+- Allow host netAddress and announcements with local network IP on dev builds.
+- Add default timeouts to opening a stream on the mux
+- Update to bolt version with upstream fixes. This enables builds with Go 1.14.
+
 ## Jun 5, 2020:
 ### v1.4.11
 **Bugs Fixed**

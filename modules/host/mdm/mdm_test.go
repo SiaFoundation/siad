@@ -11,6 +11,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/host/registry"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
@@ -25,13 +26,18 @@ type (
 		generateSectors bool
 		blockHeight     types.BlockHeight
 		sectors         map[crypto.Hash][]byte
+		registry        map[crypto.Hash]modules.SignedRegistryValue
 		mu              sync.Mutex
 	}
 	// TestStorageObligation is a dummy storage obligation for testing which
 	// satisfies the StorageObligation interface.
 	TestStorageObligation struct {
+		host        *TestHost
 		sectorMap   map[crypto.Hash][]byte
 		sectorRoots []crypto.Hash
+
+		// contract related fields.
+		sk crypto.SecretKey
 	}
 )
 
@@ -42,13 +48,17 @@ func newTestHost() *TestHost {
 func newCustomTestHost(generateSectors bool) *TestHost {
 	return &TestHost{
 		generateSectors: generateSectors,
+		registry:        make(map[crypto.Hash]modules.SignedRegistryValue),
 		sectors:         make(map[crypto.Hash][]byte),
 	}
 }
 
-func newTestStorageObligation(locked bool) *TestStorageObligation {
+func (h *TestHost) newTestStorageObligation(locked bool) *TestStorageObligation {
+	sk, _ := crypto.GenerateKeyPair()
 	return &TestStorageObligation{
+		host:      h,
 		sectorMap: make(map[crypto.Hash][]byte),
+		sk:        sk,
 	}
 }
 
@@ -69,6 +79,35 @@ func (h *TestHost) HasSector(sectorRoot crypto.Hash) bool {
 	return exists
 }
 
+// RegistryGet retrieves a value from the registry.
+func (h *TestHost) RegistryGet(pubKey types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	v, exists := h.registry[crypto.HashAll(pubKey, tweak)]
+	if !exists {
+		return modules.SignedRegistryValue{}, false
+	}
+	return v, true
+}
+
+// RegistryUpdate updates a value in the registry.
+func (h *TestHost) RegistryUpdate(rv modules.SignedRegistryValue, pubKey types.SiaPublicKey, expiry types.BlockHeight) (modules.SignedRegistryValue, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	key := crypto.HashAll(pubKey, rv.Tweak)
+	oldRV, exists := h.registry[key]
+
+	if exists && rv.Revision < oldRV.Revision {
+		return oldRV, registry.ErrLowerRevNum
+	}
+	if exists && rv.Revision == oldRV.Revision {
+		return oldRV, registry.ErrSameRevNum
+	}
+
+	h.registry[key] = rv
+	return oldRV, nil
+}
+
 // ReadSector implements the Host interface by returning a random sector for
 // each root. Calling ReadSector multiple times on the same root will result in
 // the same data.
@@ -85,6 +124,23 @@ func (h *TestHost) ReadSector(sectorRoot crypto.Hash) ([]byte, error) {
 	return data, nil
 }
 
+// AddRandomSector adds a random sector to the obligation and corresponding
+// host.
+func (so *TestStorageObligation) AddRandomSector() {
+	data := fastrand.Bytes(int(modules.SectorSize))
+	root := crypto.MerkleRoot(data)
+	so.host.sectors[root] = data
+	so.sectorRoots = append(so.sectorRoots, root)
+}
+
+// AddRandomSectors adds n random sectors to the obligation and corresponding
+// host.
+func (so *TestStorageObligation) AddRandomSectors(n int) {
+	for i := 0; i < n; i++ {
+		so.AddRandomSector()
+	}
+}
+
 // ContractSize implements the StorageObligation interface.
 func (so *TestStorageObligation) ContractSize() uint64 {
 	return uint64(len(so.sectorRoots)) * modules.SectorSize
@@ -96,6 +152,37 @@ func (so *TestStorageObligation) MerkleRoot() crypto.Hash {
 		return crypto.Hash{}
 	}
 	return cachedMerkleRoot(so.sectorRoots)
+}
+
+// RecentRevision implements the StorageObligation interface.
+func (so *TestStorageObligation) RecentRevision() types.FileContractRevision {
+	return types.FileContractRevision{
+		NewFileMerkleRoot: so.MerkleRoot(),
+		NewFileSize:       so.ContractSize(),
+	}
+}
+
+// RevisionTxn returns the revision transaction for the obligation including a
+// renter sig.
+func (so *TestStorageObligation) RevisionTxn() types.Transaction {
+	revTxn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{
+			so.RecentRevision(),
+		},
+		TransactionSignatures: []types.TransactionSignature{
+			{
+				ParentID:       crypto.Hash(types.FileContractID{}),
+				PublicKeyIndex: 0,
+				CoveredFields: types.CoveredFields{
+					FileContractRevisions: []uint64{0},
+				},
+			},
+		},
+	}
+	hash := revTxn.SigHash(0, so.host.BlockHeight())
+	sig := crypto.SignHash(hash, so.sk)
+	revTxn.TransactionSignatures[0].Signature = sig[:]
+	return revTxn
 }
 
 // SectorRoots implements the StorageObligation interface.
@@ -127,8 +214,11 @@ func newTestPriceTable() *modules.RPCPriceTable {
 	return &modules.RPCPriceTable{
 		Validity: time.Minute,
 
+		AccountBalanceCost:   types.NewCurrency64(1),
+		FundAccountCost:      types.NewCurrency64(1),
 		UpdatePriceTableCost: types.NewCurrency64(1),
 		InitBaseCost:         types.NewCurrency64(1),
+		LatestRevisionCost:   types.NewCurrency64(1),
 		MemoryTimeCost:       types.NewCurrency64(1),
 		CollateralCost:       types.NewCurrency64(1),
 
@@ -138,7 +228,7 @@ func newTestPriceTable() *modules.RPCPriceTable {
 		HasSectorBaseCost:   types.NewCurrency64(1),
 		ReadBaseCost:        types.NewCurrency64(1),
 		ReadLengthCost:      types.NewCurrency64(1),
-		StoreLengthCost:     types.NewCurrency64(1),
+		SwapSectorCost:      types.NewCurrency64(1),
 		WriteBaseCost:       types.NewCurrency64(1),
 		WriteLengthCost:     types.NewCurrency64(1),
 		WriteStoreCost:      types.NewCurrency64(1),
@@ -215,21 +305,25 @@ func (mdm *MDM) ExecuteProgramWithBuilderManualFinalize(tb *testProgramBuilder, 
 // assert asserts an output against the provided values. Costs should be
 // asserted using the TestValues type or they will be asserted implicitly when
 // using ExecuteProgramWithBuilder.
-func (o Output) assert(newSize uint64, newMerkleRoot crypto.Hash, proof []crypto.Hash, output []byte) error {
-	if o.Error != nil {
+func (o Output) assert(newSize uint64, newMerkleRoot crypto.Hash, proof []crypto.Hash, output []byte, err error) error {
+	if err != nil && o.Error == nil {
+		return fmt.Errorf("output didn't contain error")
+	} else if err == nil && o.Error != nil {
 		return fmt.Errorf("output contained error: %v", o.Error)
+	} else if o.Error != nil && err != nil && o.Error.Error() != err.Error() {
+		return fmt.Errorf("output errors don't match %v != %v", o.Error, err)
 	}
 	if o.NewSize != newSize {
 		return fmt.Errorf("expected newSize %v but got %v", newSize, o.NewSize)
 	}
 	if o.NewMerkleRoot != newMerkleRoot {
-		return fmt.Errorf("expected newMerkleRoot %v but got %v", newSize, o.NewMerkleRoot)
+		return fmt.Errorf("expected newMerkleRoot %v but got %v", newMerkleRoot, o.NewMerkleRoot)
+	}
+	if !bytes.Equal(o.Output, output) {
+		return fmt.Errorf("expected output %v\n but got %v", output, o.Output)
 	}
 	if len(o.Proof)+len(proof) != 0 && !reflect.DeepEqual(o.Proof, proof) {
 		return fmt.Errorf("expected proof %v but got %v", proof, o.Proof)
-	}
-	if !bytes.Equal(o.Output, output) {
-		return fmt.Errorf("expected o %v but got %v", o, o.Output)
 	}
 	return nil
 }

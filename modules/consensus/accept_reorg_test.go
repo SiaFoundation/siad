@@ -6,6 +6,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // reorgSets contains multiple consensus sets that share a genesis block, which
@@ -166,7 +167,11 @@ func TestIntegrationSimpleReorg(t *testing.T) {
 	}
 	t.Parallel()
 	rs := createReorgSets(t.Name())
-	defer rs.Close()
+	defer func() {
+		if err := rs.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Give a simple block to cstMain.
 	rs.cstMain.testSimpleBlock()
@@ -184,7 +189,11 @@ func TestIntegrationSiacoinReorg(t *testing.T) {
 	}
 	t.Parallel()
 	rs := createReorgSets(t.Name())
-	defer rs.Close()
+	defer func() {
+		if err := rs.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Give a siacoin block to cstMain.
 	rs.cstMain.testSpendSiacoinsBlock()
@@ -202,7 +211,11 @@ func TestIntegrationValidStorageProofReorg(t *testing.T) {
 	}
 	t.Parallel()
 	rs := createReorgSets(t.Name())
-	defer rs.Close()
+	defer func() {
+		if err := rs.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Give a series of blocks containing a file contract and a valid storage
 	// proof to cstMain.
@@ -221,7 +234,11 @@ func TestIntegrationMissedStorageProofReorg(t *testing.T) {
 	}
 	t.Parallel()
 	rs := createReorgSets(t.Name())
-	defer rs.Close()
+	defer func() {
+		if err := rs.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Give a series of blocks containing a file contract and a valid storage
 	// proof to cstMain.
@@ -240,7 +257,11 @@ func TestIntegrationFileContractRevisionReorg(t *testing.T) {
 	}
 	t.Parallel()
 	rs := createReorgSets(t.Name())
-	defer rs.Close()
+	defer func() {
+		if err := rs.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Give a series of blocks containing a file contract and a valid storage
 	// proof to cstMain.
@@ -259,7 +280,11 @@ func TestIntegrationComplexReorg(t *testing.T) {
 	}
 	t.Parallel()
 	rs := createReorgSets(t.Name())
-	defer rs.Close()
+	defer func() {
+		if err := rs.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Give a wide variety of block types to cstMain.
 	for i := 0; i < 3; i++ {
@@ -291,7 +316,11 @@ func TestBuriedBadFork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	pb := cst.cs.dbCurrentProcessedBlock()
 
 	// Create a bad block that builds on a parent, so that it is part of not
@@ -310,7 +339,7 @@ func TestBuriedBadFork(t *testing.T) {
 	}
 	badBlock, _ = cst.miner.SolveBlock(badBlock, parent.ChildTarget)
 	err = cst.cs.AcceptBlock(badBlock)
-	if err != modules.ErrNonExtendingBlock {
+	if !errors.Contains(err, modules.ErrNonExtendingBlock) {
 		t.Fatal(err)
 	}
 

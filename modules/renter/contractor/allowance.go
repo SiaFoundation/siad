@@ -87,22 +87,27 @@ func (c *Contractor) SetAllowance(a modules.Allowance) error {
 	} else if !c.cs.Synced() {
 		return errAllowanceNotSynced
 	}
-
 	c.log.Println("INFO: setting allowance to", a)
-	c.mu.Lock()
+
 	// Set the current period if the existing allowance is empty.
 	//
+	// When setting the current period we want to ensure that it aligns with the
+	// start and endheights of the contracts as we would expect. To do this we
+	// have to consider the following. First, that the current period value is
+	// incremented by the allowance period, and second, that the total length of
+	// a contract is the period + renew window. This means the that contracts are
+	// always overlapping periods, and we want that overlap to be the renew
+	// window. In order to create this overlap we set the current period as such.
+	//
 	// If the renew window is less than the period the current period is set in
-	// the past by the renew window to make sure the first period aligns with the
-	// first period contracts in the same way that future periods align with
-	// contracts
+	// the past by the renew window.
 	//
 	// If the renew window is greater than or equal to the period we set the
-	// current period to the current block height to avoid having the next period
-	// in the past as well.
+	// current period to the current block height.
 	//
 	// Also remember that we might have to unlock our contracts if the allowance
 	// was set to the empty allowance before.
+	c.mu.Lock()
 	unlockContracts := false
 	if reflect.DeepEqual(c.allowance, modules.Allowance{}) {
 		c.currentPeriod = c.blockHeight

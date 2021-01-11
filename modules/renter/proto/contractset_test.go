@@ -11,6 +11,7 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -20,9 +21,9 @@ import (
 	"gitlab.com/NebulousLabs/encoding"
 )
 
-// mustAcquire is a convenience function for acquiring contracts that are
+// managedMustAcquire is a convenience function for acquiring contracts that are
 // known to be in the set.
-func (cs *ContractSet) mustAcquire(t *testing.T, id types.FileContractID) *SafeContract {
+func (cs *ContractSet) managedMustAcquire(t *testing.T, id types.FileContractID) *SafeContract {
 	t.Helper()
 	c, ok := cs.Acquire(id)
 	if !ok {
@@ -39,7 +40,8 @@ func TestContractSet(t *testing.T) {
 	t.Parallel()
 	// create contract set
 	testDir := build.TempDir(t.Name())
-	cs, err := NewContractSet(testDir, modules.ProdDependencies)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(testDir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +77,7 @@ func TestContractSet(t *testing.T) {
 	}
 
 	// uncontested acquire/release
-	c1 := cs.mustAcquire(t, id1)
+	c1 := cs.managedMustAcquire(t, id1)
 	cs.Return(c1)
 
 	// 100 concurrent serialized mutations
@@ -84,30 +86,30 @@ func TestContractSet(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			c1 := cs.mustAcquire(t, id1)
+			c1 := cs.managedMustAcquire(t, id1)
 			c1.header.Transaction.FileContractRevisions[0].NewRevisionNumber++
 			time.Sleep(time.Duration(fastrand.Intn(100)))
 			cs.Return(c1)
 		}()
 	}
 	wg.Wait()
-	c1 = cs.mustAcquire(t, id1)
+	c1 = cs.managedMustAcquire(t, id1)
 	cs.Return(c1)
 	if c1.header.LastRevision().NewRevisionNumber != 100 {
 		t.Fatal("expected exactly 100 increments, got", c1.header.LastRevision().NewRevisionNumber)
 	}
 
 	// a blocked acquire shouldn't prevent a return
-	c1 = cs.mustAcquire(t, id1)
+	c1 = cs.managedMustAcquire(t, id1)
 	go func() {
 		time.Sleep(time.Millisecond)
 		cs.Return(c1)
 	}()
-	c1 = cs.mustAcquire(t, id1)
+	c1 = cs.managedMustAcquire(t, id1)
 	cs.Return(c1)
 
 	// delete and reinsert id2
-	c2 := cs.mustAcquire(t, id2)
+	c2 := cs.managedMustAcquire(t, id2)
 	cs.Delete(c2)
 	roots, err := c2.merkleRoots.merkleRoots()
 	if err != nil {
@@ -121,8 +123,8 @@ func TestContractSet(t *testing.T) {
 		func() { cs.IDs() },
 		func() { cs.View(id1); cs.View(id2) },
 		func() { cs.ViewAll() },
-		func() { cs.Return(cs.mustAcquire(t, id1)) },
-		func() { cs.Return(cs.mustAcquire(t, id2)) },
+		func() { cs.Return(cs.managedMustAcquire(t, id1)) },
+		func() { cs.Return(cs.managedMustAcquire(t, id2)) },
 		func() {
 			header3 := contractHeader{
 				Transaction: types.Transaction{
@@ -140,7 +142,7 @@ func TestContractSet(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			c3 := cs.mustAcquire(t, id3)
+			c3 := cs.managedMustAcquire(t, id3)
 			cs.Delete(c3)
 		},
 	}
@@ -204,7 +206,8 @@ func TestCompatV146SplitContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	// load contract set
-	cs, err := NewContractSet(testDir, modules.ProdDependencies)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(testDir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,12 +270,13 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	invalidUpdate.Name = "invalidname"
 	// create contract set and close it.
 	testDir := build.TempDir(t.Name())
-	cs, err := NewContractSet(testDir, modules.ProdDependencies)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(testDir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Prepare the insertion of the invalid contract.
-	txn, err := cs.wal.NewTransaction([]writeaheadlog.Update{invalidUpdate})
+	txn, err := cs.staticWal.NewTransaction([]writeaheadlog.Update{invalidUpdate})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +289,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Load the set again. This should ignore the invalid update and succeed.
-	cs, err = NewContractSet(testDir, modules.ProdDependencies)
+	cs, err = NewContractSet(testDir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +300,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	}
 	// Prepare the insertion of 2 valid contracts within a single txn. This
 	// should be ignored at startup.
-	txn, err = cs.wal.NewTransaction([]writeaheadlog.Update{validUpdate, validUpdate})
+	txn, err = cs.staticWal.NewTransaction([]writeaheadlog.Update{validUpdate, validUpdate})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +314,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	}
 	// Load the set again. This should apply the invalid update and fail at
 	// startup.
-	cs, err = NewContractSet(testDir, modules.ProdDependencies)
+	cs, err = NewContractSet(testDir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +325,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	}
 	// Prepare the insertion of a valid contract by writing the change to the
 	// wal but not applying it.
-	txn, err = cs.wal.NewTransaction([]writeaheadlog.Update{validUpdate})
+	txn, err = cs.staticWal.NewTransaction([]writeaheadlog.Update{validUpdate})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,7 +339,7 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	}
 	// Load the set again. This should apply the valid update and not return an
 	// error.
-	cs, err = NewContractSet(testDir, modules.ProdDependencies)
+	cs, err = NewContractSet(testDir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,5 +347,69 @@ func TestContractSetApplyInsertUpdateAtStartup(t *testing.T) {
 	_, ok = cs.Acquire(header.ID())
 	if !ok {
 		t.Fatal("failed to acquire contract after applying valid update")
+	}
+}
+
+// TestInsertContractTotalCost tests that InsertContrct sets a good estimate for
+// TotalCost and TxnFee on recovered contracts.
+func TestInsertContractTotalCost(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	renterPayout := types.SiacoinPrecision
+	txnFee := types.SiacoinPrecision.Mul64(2)
+	fc := types.FileContract{
+		ValidProofOutputs: []types.SiacoinOutput{
+			{}, {},
+		},
+		MissedProofOutputs: []types.SiacoinOutput{
+			{}, {},
+		},
+	}
+	fc.SetValidRenterPayout(renterPayout)
+
+	txn := types.Transaction{
+		FileContractRevisions: []types.FileContractRevision{
+			{
+				NewValidProofOutputs:  fc.ValidProofOutputs,
+				NewMissedProofOutputs: fc.MissedProofOutputs,
+				UnlockConditions: types.UnlockConditions{
+					PublicKeys: []types.SiaPublicKey{
+						{}, {},
+					},
+				},
+			},
+		},
+	}
+
+	rc := modules.RecoverableContract{
+		FileContract: fc,
+		TxnFee:       txnFee,
+	}
+
+	// get the dir of the contractset.
+	testDir := build.TempDir(t.Name())
+	if err := os.MkdirAll(testDir, modules.DefaultDirPerm); err != nil {
+		t.Fatal(err)
+	}
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(testDir, rl, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Insert the contract and check its total cost and fee.
+	contract, err := cs.InsertContract(rc, txn, []crypto.Hash{}, crypto.SecretKey{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contract.TxnFee.Equals(txnFee) {
+		t.Fatal("wrong fee", contract.TxnFee, txnFee)
+	}
+	expectedTotalCost := renterPayout.Add(txnFee)
+	if !contract.TotalCost.Equals(expectedTotalCost) {
+		t.Fatal("wrong TotalCost", contract.TotalCost, expectedTotalCost)
 	}
 }

@@ -2,17 +2,19 @@ package renter
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"sort"
+	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
@@ -22,8 +24,8 @@ import (
 )
 
 var (
-	// snapshotKeySpecifier is the specifier used for deriving the secret used to
-	// encrypt a snapshot from the RenterSeed.
+	// snapshotKeySpecifier is the specifier used for deriving the secret used
+	// to encrypt a snapshot from the RenterSeed.
 	snapshotKeySpecifier = types.NewSpecifier("snapshot")
 
 	// snapshotTableSpecifier is the specifier used to identify a snapshot entry
@@ -32,6 +34,11 @@ var (
 )
 
 var (
+	// errEmptyContract is returned when we are trying to read from an empty
+	// contract, this can be the case when downloading a snapshot from a host
+	// that does not have one yet.
+	errEmptyContract = errors.New("empty contract")
+
 	// maxSnapshotUploadTime defines the total amount of time that the renter
 	// will allocate to complete an upload of a snapshot .sia file to all hosts.
 	// This is done with each host in parallel, and the .sia file is not
@@ -97,14 +104,7 @@ func (r *Renter) BackupsOnHost(hostKey types.SiaPublicKey) ([]modules.UploadedBa
 		return nil, errors.AddContext(err, "host not found in the worker table")
 	}
 
-	// Create and queue the job.
-	resultChan := w.callQueueFetchBackupsJob()
-
-	// Block until a result is returned from the worker. Note that `AddContext`
-	// will return nil if result.err is nil.
-	result := <-resultChan
-	result.err = errors.AddContext(result.err, "fetch backups job failed")
-	return result.uploadedBackups, result.err
+	return w.FetchBackups(r.tg.StopCtx())
 }
 
 // UploadBackup creates a backup of the renter which is uploaded to the sia
@@ -124,12 +124,20 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 		return errors.New("name is too long")
 	}
 
+	// Check if snapshot already exists.
+	if r.managedSnapshotExists(name) {
+		s := fmt.Sprintf("snapshot with name '%s' already exists", name)
+		return errors.AddContext(filesystem.ErrExists, s)
+	}
+
 	// Open the backup for uploading.
 	backup, err := os.Open(src)
 	if err != nil {
 		return errors.AddContext(err, "failed to open backup for uploading")
 	}
-	defer backup.Close()
+	defer func() {
+		err = errors.Compose(err, backup.Close())
+	}()
 
 	// Prepare the siapath.
 	sp, err := modules.BackupFolder.Join(name)
@@ -143,7 +151,7 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 		dataPieces = 1
 	}
 	parityPieces := allowance.Hosts - dataPieces
-	ec, err := siafile.NewRSSubCode(int(dataPieces), int(parityPieces), crypto.SegmentSize)
+	ec, err := modules.NewRSSubCode(int(dataPieces), int(parityPieces), crypto.SegmentSize)
 	if err != nil {
 		return err
 	}
@@ -156,7 +164,7 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 	}
 	// Begin uploading the backup. When the upload finishes, the backup .sia
 	// file will be uploaded by r.threadedSynchronizeSnapshots and then deleted.
-	fileNode, err := r.callUploadStreamFromReader(up, backup, true)
+	fileNode, err := r.callUploadStreamFromReader(up, backup)
 	if err != nil {
 		return errors.AddContext(err, "failed to upload backup")
 	}
@@ -180,7 +188,7 @@ func (r *Renter) managedUploadBackup(src, name string) error {
 }
 
 // DownloadBackup downloads the specified backup.
-func (r *Renter) DownloadBackup(dst string, name string) error {
+func (r *Renter) DownloadBackup(dst string, name string) (err error) {
 	if err := r.tg.Add(); err != nil {
 		return err
 	}
@@ -190,7 +198,9 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+	defer func() {
+		err = errors.Compose(err, dstFile.Close())
+	}()
 	// search for backup
 	if len(name) > 96 {
 		return errors.New("no record of a backup with that name")
@@ -231,16 +241,30 @@ func (r *Renter) DownloadBackup(dst string, name string) error {
 	if err != nil {
 		return err
 	}
-	defer entry.Close()
+	defer func() {
+		err = errors.Compose(err, entry.Close())
+	}()
 	// Use .sia file to download snapshot.
 	snap, err := entry.Snapshot(siaPath)
 	if err != nil {
 		return err
 	}
 	s := r.managedStreamer(snap, false)
-	defer s.Close()
 	_, err = io.Copy(dstFile, s)
-	return err
+	return errors.Compose(err, s.Close())
+}
+
+// managedSnapshotExists returns true if a snapshot with a given name already
+// exists.
+func (r *Renter) managedSnapshotExists(name string) bool {
+	id := r.mu.Lock()
+	defer r.mu.Unlock(id)
+	for _, ub := range r.persist.UploadedBackups {
+		if ub.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // managedSaveSnapshot saves snapshot metadata to disk.
@@ -282,6 +306,57 @@ func (r *Renter) managedSaveSnapshot(meta modules.UploadedBackup) error {
 	return nil
 }
 
+// managedDownloadSnapshotTable will fetch the snapshot table from the host.
+func (r *Renter) managedDownloadSnapshotTable(host *worker) ([]snapshotEntry, error) {
+	// Get the wallet seed.
+	ws, _, err := r.w.PrimarySeed()
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to get wallet's primary seed")
+	}
+	// Derive the renter seed and wipe the memory once we are done using it.
+	rs := proto.DeriveRenterSeed(ws)
+	defer fastrand.Read(rs[:])
+	// Derive the secret and wipe it afterwards.
+	secret := crypto.HashAll(rs, snapshotKeySpecifier)
+	defer fastrand.Read(secret[:])
+
+	// Create an empty entryTable
+	var entryTable []snapshotEntry
+
+	// Fetch the contract and see if it's empty, if that is the case return an
+	// empty entryTable and appropriate error.
+	contract, ok := r.hostContractor.ContractByPublicKey(host.staticHostPubKey)
+	if !ok {
+		return nil, errors.New("failed to host contract")
+	}
+	if contract.Size() == 0 {
+		return entryTable, errEmptyContract
+	}
+
+	// Download the table of snapshots that the host is storing.
+	tableSector, err := host.ReadOffset(r.tg.StopCtx(), 0, modules.SectorSize)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to perform a download by index on this contract")
+	}
+
+	// decrypt the table
+	c, _ := crypto.NewSiaKey(crypto.TypeThreefish, secret[:])
+	encTable, err := c.DecryptBytesInPlace(tableSector, 0)
+	if err != nil || !bytes.Equal(encTable[:16], snapshotTableSpecifier[:]) {
+		// either the first sector was not an entry table, or it got corrupted
+		// somehow; either way, it's not retrievable, so we'll treat this as
+		// equivalent to having no entry table at all. This is not an error; it
+		// just means that when we upload a snapshot, we'll have to create a new
+		// table.
+		return nil, errors.AddContext(err, "error decrypting bytes")
+	}
+
+	if err := encoding.Unmarshal(encTable[16:], &entryTable); err != nil {
+		return nil, errors.AddContext(err, "error unmarshaling the entry table")
+	}
+	return entryTable, nil
+}
+
 // managedUploadSnapshot uploads a snapshot .sia file to all hosts.
 func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byte) error {
 	// Grab all of the workers that are good for upload.
@@ -298,18 +373,17 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 	// Submit a job to each worker. Make sure the response channel has enough
 	// room in the buffer for all results, this way workers are not being
 	// blocked when returning their results.
-	cancelChan := make(chan struct{})
-	defer close(cancelChan)
+	maxWait, cancel := context.WithTimeout(r.tg.StopCtx(), maxSnapshotUploadTime)
+	defer cancel()
 	responseChan := make(chan *jobUploadSnapshotResponse, len(workers))
 	queued := 0
 	for _, w := range workers {
 		job := &jobUploadSnapshot{
-			staticMetadata:    meta,
 			staticSiaFileData: dotSia,
 
 			staticResponseChan: responseChan,
 
-			jobGeneric: newJobGeneric(w.staticJobUploadSnapshotQueue, cancelChan),
+			jobGeneric: newJobGeneric(maxWait, w.staticJobUploadSnapshotQueue, meta),
 		}
 
 		// If a job is not added correctly, count this as a failed response.
@@ -318,25 +392,17 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 		}
 	}
 
-	// Cap the total amount of time that we wait for results.
-	maxWait := time.NewTimer(maxSnapshotUploadTime)
-	defer func() {
-		if !maxWait.Stop() {
-			<-maxWait.C
-		}
-	}()
-
 	// Iteratively grab the responses from the workers.
 	responses := 0
 	successes := 0
+
+LOOP:
 	for responses < queued {
 		var resp *jobUploadSnapshotResponse
 		select {
 		case resp = <-responseChan:
-		case <-maxWait.C:
-			break
-		case <-r.tg.StopChan():
-			return errors.New("renter is shutting down")
+		case <-maxWait.Done():
+			break LOOP
 		}
 		responses++
 
@@ -355,6 +421,13 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 			continue
 		}
 		successes++
+	}
+
+	// Check for shutdown.
+	select {
+	case <-r.tg.StopChan():
+		return errors.New("renter is shutting down")
+	default:
 	}
 
 	// Check if there were too few successes to count this as a successful
@@ -406,16 +479,17 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 		return contracts[i].Utility.GoodForUpload && !contracts[j].Utility.GoodForUpload
 	})
 	for i := range contracts {
-		err := func() error {
-			host, err := r.hostContractor.Session(contracts[i].HostPublicKey, r.tg.StopChan())
+		err := func() (err error) {
+			w, err := r.staticWorkerPool.callWorker(contracts[i].HostPublicKey)
 			if err != nil {
 				return err
 			}
-			defer host.Close()
-			entryTable, err := r.managedDownloadSnapshotTable(host)
+			// download the snapshot table
+			entryTable, err := w.DownloadSnapshotTable(r.tg.StopCtx())
 			if err != nil {
 				return err
 			}
+
 			// search for the desired snapshot
 			var entry *snapshotEntry
 			for j := range entryTable {
@@ -430,7 +504,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 			// download the entry
 			dotSia = nil
 			for _, root := range entry.DataSectors {
-				data, err := host.Download(root, 0, uint32(modules.SectorSize))
+				data, err := w.ReadSector(r.tg.StopCtx(), root, 0, modules.SectorSize)
 				if err != nil {
 					return err
 				}
@@ -441,7 +515,7 @@ func (r *Renter) managedDownloadSnapshot(uid [16]byte) (ub modules.UploadedBacku
 				}
 			}
 			ub = modules.UploadedBackup{
-				Name:           string(bytes.TrimRight(entry.Name[:], string(0))),
+				Name:           string(bytes.TrimRight(entry.Name[:], types.RuneToString(0))),
 				UID:            entry.UID,
 				CreationDate:   entry.CreationDate,
 				Size:           entry.Size,
@@ -476,7 +550,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		for _, e := range entryTable {
 			if _, ok := known[e.UID]; !ok {
 				unknown = append(unknown, modules.UploadedBackup{
-					Name:           string(bytes.TrimRight(e.Name[:], string(0))),
+					Name:           string(bytes.TrimRight(e.Name[:], types.RuneToString(0))),
 					UID:            e.UID,
 					CreationDate:   e.CreationDate,
 					Size:           e.Size,
@@ -509,15 +583,16 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			}
 			continue
 		}
+		r.staticWorkerPool.callUpdate()
 
 		// First, process any snapshot siafiles that may have finished uploading.
-		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
 		root := modules.BackupFolder
-		finfos, _, err := r.staticFileSystem.List(root, true, offlineMap, goodForRenewMap, contractsMap)
-		if err != nil {
-			r.log.Println("Could not get un-uploaded snapshots:", err)
-		}
-		for _, info := range finfos {
+		var mu sync.Mutex
+		flf := func(info modules.FileInfo) {
+			// Make sure we only look at a single info at a time.
+			mu.Lock()
+			defer mu.Unlock()
+
 			// locate corresponding entry
 			id = r.mu.RLock()
 			var meta modules.UploadedBackup
@@ -532,19 +607,19 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			r.mu.RUnlock(id)
 			if !found {
 				r.log.Println("Could not locate entry for file in backup set")
-				continue
+				return
 			}
 
 			// record current UploadProgress
 			meta.UploadProgress = calcSnapshotUploadProgress(info.UploadProgress, 0)
 			if err := r.managedSaveSnapshot(meta); err != nil {
 				r.log.Println("Could not save upload progress:", err)
-				continue
+				return
 			}
 
 			if info.Health >= RepairThreshold {
 				// not ready for upload yet
-				continue
+				return
 			}
 			r.log.Println("Uploading snapshot", info.SiaPath)
 			err := func() error {
@@ -556,8 +631,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				// Read the siafile from disk.
 				sr, err := entry.SnapshotReader()
 				if err != nil {
-					entry.Close()
-					return err
+					return errors.Compose(err, entry.Close())
 				}
 				// NOTE: The snapshot reader needs to be closed before
 				// entry.Close is called, and unfortunately also before
@@ -577,20 +651,21 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 				// Need to work around the snapshot reader lock issue as well.
 				dotSia, err := ioutil.ReadAll(sr)
 				if err := sr.Close(); err != nil {
-					entry.Close()
-					return err
+					return errors.Compose(err, entry.Close())
 				}
 
 				// Upload the snapshot to the network.
 				meta.UploadProgress = calcSnapshotUploadProgress(100, 0)
 				meta.Size = uint64(len(dotSia))
 				if err := r.managedUploadSnapshot(meta, dotSia); err != nil {
-					entry.Close()
-					return err
+					return errors.Compose(err, entry.Close())
 				}
 
 				// Close out the entry.
-				entry.Close()
+				err = entry.Close()
+				if err != nil {
+					return err
+				}
 
 				// Delete the local siafile.
 				if err := r.staticFileSystem.DeleteFile(info.SiaPath); err != nil {
@@ -601,6 +676,11 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			if err != nil {
 				r.log.Println("Failed to upload snapshot .sia:", err)
 			}
+		}
+		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
+		err := r.staticFileSystem.List(root, true, offlineMap, goodForRenewMap, contractsMap, flf, func(modules.DirectoryInfo) {})
+		if err != nil {
+			r.log.Println("Could not get un-uploaded snapshots:", err)
 		}
 
 		// Build a set of the snapshots we already have.
@@ -655,14 +735,15 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 
 		// Synchronize the host.
 		r.log.Debugln("Synchronizing snapshots on host", c.HostPublicKey)
-		err = func() error {
-			// Download the host's entry table.
-			host, err := r.hostContractor.Session(c.HostPublicKey, r.tg.StopChan())
+		err = func() (err error) {
+			// Get the right worker for the host.
+			w, err := r.staticWorkerPool.callWorker(c.HostPublicKey)
 			if err != nil {
 				return err
 			}
-			defer host.Close()
-			entryTable, err := r.managedDownloadSnapshotTable(host)
+
+			// download the snapshot table
+			entryTable, err := w.DownloadSnapshotTable(r.tg.StopCtx())
 			if err != nil {
 				return err
 			}
@@ -699,7 +780,7 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 					// TODO: if snapshot can't be found on any host, delete it
 					return err
 				}
-				if err := r.managedUploadSnapshotHost(ub, dotSia, host); err != nil {
+				if err := w.UploadSnapshot(r.tg.StopCtx(), ub, dotSia); err != nil {
 					return err
 				}
 				r.log.Printf("Replicated missing snapshot %q to host %v", ub.Name, c.HostPublicKey)

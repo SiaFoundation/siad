@@ -11,6 +11,7 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/siamux"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -67,8 +68,8 @@ func newTestingWallet(testdir string, cs modules.ConsensusSet, tp modules.Transa
 	return w, cf, nil
 }
 
-// newTestingHost is a helper function that creates a ready-to-use host.
-func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool, mux *siamux.SiaMux) (modules.Host, closeFn, error) {
+// newCustomTestingHost is a helper function that creates a ready-to-use host.
+func newCustomTestingHost(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool, mux *siamux.SiaMux, deps modules.Dependencies) (modules.Host, closeFn, error) {
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
 		return nil, nil, err
@@ -77,7 +78,7 @@ func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.Transact
 	if err != nil {
 		return nil, nil, err
 	}
-	h, err := host.NewCustomHost(modules.ProdDependencies, cs, g, tp, w, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
+	h, err := host.NewCustomHost(deps, cs, g, tp, w, mux, "localhost:0", filepath.Join(testdir, modules.HostDir))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -107,24 +108,34 @@ func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.Transact
 	return h, cf, nil
 }
 
+// newTestingHost is a helper function that creates a ready-to-use host.
+func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.TransactionPool, mux *siamux.SiaMux) (modules.Host, closeFn, error) {
+	return newCustomTestingHost(testdir, cs, tp, mux, modules.ProdDependencies)
+}
+
 // newTestingContractor is a helper function that creates a ready-to-use
 // contractor.
-func newTestingContractor(testdir string, g modules.Gateway, cs modules.ConsensusSet, tp modules.TransactionPool) (*Contractor, closeFn, error) {
+func newTestingContractor(testdir string, g modules.Gateway, cs modules.ConsensusSet, tp modules.TransactionPool, rl *ratelimit.RateLimit) (*Contractor, closeFn, error) {
 	w, walletCF, err := newTestingWallet(testdir, cs, tp)
 	if err != nil {
 		return nil, nil, err
 	}
-	hdb, errChan := hostdb.New(g, cs, tp, filepath.Join(testdir, "hostdb"))
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	if err != nil {
+		return nil, nil, err
+	}
+	hdb, errChan := hostdb.New(g, cs, tp, mux, filepath.Join(testdir, "hostdb"))
 	if err := <-errChan; err != nil {
 		return nil, nil, err
 	}
-	contractor, errChan := New(cs, w, tp, hdb, filepath.Join(testdir, "contractor"))
+	contractor, errChan := New(cs, w, tp, hdb, rl, filepath.Join(testdir, "contractor"))
 	err = <-errChan
 	if err != nil {
 		return nil, nil, err
 	}
 	cf := func() error {
-		return errors.Compose(contractor.Close(), hdb.Close(), walletCF())
+		return errors.Compose(contractor.Close(), hdb.Close(), mux.Close(), walletCF())
 	}
 	return contractor, cf, <-errChan
 }
@@ -141,12 +152,12 @@ func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, 
 		return nil, nil, nil, nil, err
 	}
 
-	return newCustomTestingTrio(name, mux)
+	return newCustomTestingTrio(name, mux, modules.ProdDependencies)
 }
 
 // newCustomTestingTrio creates a Host, Contractor, and TestMiner that can be
 // used for testing host/renter interactions. It allows to pass a custom siamux.
-func newCustomTestingTrio(name string, mux *siamux.SiaMux) (modules.Host, *Contractor, modules.TestMiner, closeFn, error) {
+func newCustomTestingTrio(name string, mux *siamux.SiaMux, hdeps modules.Dependencies) (modules.Host, *Contractor, modules.TestMiner, closeFn, error) {
 	testdir := build.TempDir("contractor", name)
 
 	// create miner
@@ -187,11 +198,11 @@ func newCustomTestingTrio(name string, mux *siamux.SiaMux) (modules.Host, *Contr
 	}
 
 	// create host and contractor, using same consensus set and gateway
-	h, hostCF, err := newTestingHost(filepath.Join(testdir, "Host"), cs, tp, mux)
+	h, hostCF, err := newCustomTestingHost(filepath.Join(testdir, "Host"), cs, tp, mux, hdeps)
 	if err != nil {
 		return nil, nil, nil, nil, build.ExtendErr("error creating testing host", err)
 	}
-	c, contractorCF, err := newTestingContractor(filepath.Join(testdir, "Contractor"), g, cs, tp)
+	c, contractorCF, err := newTestingContractor(filepath.Join(testdir, "Contractor"), g, cs, tp, ratelimit.NewRateLimit(0, 0, 0))
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -629,7 +640,9 @@ func TestIntegrationDownloaderCaching(t *testing.T) {
 
 	// close one of the downloaders; it should not fully close, since d1 is
 	// still using it
-	d2.Close()
+	if err := d2.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	c.mu.RLock()
 	_, ok := c.downloaders[contract.ID]
@@ -651,8 +664,12 @@ func TestIntegrationDownloaderCaching(t *testing.T) {
 	}
 
 	// close both downloaders
-	d1.Close()
-	d2.Close()
+	if err := d1.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := d2.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	c.mu.RLock()
 	_, ok = c.downloaders[contract.ID]
@@ -738,7 +755,9 @@ func TestIntegrationEditorCaching(t *testing.T) {
 
 	// close one of the editors; it should not fully close, since d1 is
 	// still using it
-	d2.Close()
+	if err := d2.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	c.mu.RLock()
 	_, ok := c.editors[contract.ID]
@@ -760,8 +779,12 @@ func TestIntegrationEditorCaching(t *testing.T) {
 	}
 
 	// close both editors
-	d1.Close()
-	d2.Close()
+	if err := d1.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := d2.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	c.mu.RLock()
 	_, ok = c.editors[contract.ID]

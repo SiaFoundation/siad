@@ -21,7 +21,11 @@ func TestSignTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// load siafunds into the wallet
 	err = wt.wallet.LoadSiagKeys(wt.walletMasterKey, []string{"../../types/siag0of1of1.siakey"})
@@ -192,7 +196,11 @@ func TestUnspentOutputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// create a dummy address and send coins to it
 	addr := types.UnlockHash{1}
@@ -285,7 +293,11 @@ func TestWatchOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// create an address manually and send coins to it
 	sk := generateSpendableKey(modules.Seed{}, 1234)
@@ -416,7 +428,11 @@ func TestUnlockConditions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer wt.closeWt()
+	defer func() {
+		if err := wt.closeWt(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// add some random unlock conditions
 	sk := generateSpendableKey(modules.Seed{}, 1234)

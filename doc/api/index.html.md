@@ -100,6 +100,18 @@ may specify other 2xx status codes on success.
 The standard error response indicating the request failed for any reason, is a
 4xx or 5xx HTTP status code with an error JSON object describing the error.
 
+### Module Not Loaded
+
+A module that is not reachable due to not being loaded by siad will return
+the custom status code `490 ModuleNotLoaded`. This is only returned during
+startup. Once the startup is complete and the module is still not available,
+ModuleDisabled will be returned.
+
+### Module Disabled
+
+A module that is not reachable due to being disabled, will return the custom
+status code `491 ModuleDisabled`.
+
 # Authentication
 > Example POST curl call with Authentication
 
@@ -150,7 +162,8 @@ language's corresponding bignum library. Currency values are the most common
 example where this is necessary.
 
 # Environment Variables
-There are three environment variables supported by siad.
+There are a number of environment variables supported by siad and siac.
+
  - `SIA_API_PASSWORD` is the environment variable that sets a custom API
    password if the default is not used
  - `SIA_DATA_DIR` is the environment variable that tells siad where to put the
@@ -159,6 +172,9 @@ There are three environment variables supported by siad.
    siad-specific data
  - `SIA_WALLET_PASSWORD` is the environment variable that can be set to enable
    auto unlocking the wallet
+ - `SIA_EXCHANGE_RATE` is the environment variable that can be set (e.g. to
+   "0.00018 mBTC") to extend the output of some siac subcommands when displaying
+   currency amounts
 
 # Consensus
 
@@ -186,6 +202,9 @@ Also returns the set of constants in use in the consensus code.
   "currentblock": "00000000000008a84884ba827bdc868a17ba9c14011de33ff763bd95779a9cf1", // hash
   "target":       [0,0,0,0,0,0,11,48,125,79,116,89,136,74,42,27,5,14,10,31,23,53,226,238,202,219,5,204,38,32,59,165], // hash
   "difficulty":   "1234" // arbitrary-precision integer
+
+  "foundationprimaryunlockhash":  "b4bf662170622944a7c838c7e75665a9a4cf76c4cebd97d0e5dcecaefad1c8df312f90070966",
+  "foundationfailsafeunlockhash": "17d25299caeccaa7d1598751f239dd47570d148bb08658e596112d917dfa6bc8400b44f239bb",
 
   "blockfrequency":         600,        // seconds per block
   "blocksizelimit":         2000000,    // bytes
@@ -530,7 +549,7 @@ Returns the some of the constants that the Sia daemon uses.
   "rootdepth":  // target
   [255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255],
   
-  "allowance":  // allowance
+  "defaultallowance":  // allowance
     {
       "funds":"250000000000000000000000000000",  // currency
       "hosts":50,                       // uint64
@@ -620,7 +639,8 @@ cumulated difficulty yet.
 
 **defaultallowance** | allowance  
 DefaultAllowance is the set of default allowance settings that will be used when
-allowances are not set or not fully set
+allowances are not set or not fully set. See [/renter GET](#renter-get) for an
+explanation of the fields.
 
 **maxtargetadjustmentup** | big.Rat  
 MaxTargetAdjustmentUp restrict how much the block difficulty is allowed to
@@ -676,6 +696,29 @@ set.
 
 **modules** | struct  
 Is a list of the siad modules with a bool indicating if the module was launched.
+
+## /daemon/stack [GET]
+**UNSTABLE**
+> curl example  
+
+```go
+curl -A "Sia-Agent" "localhost:9980/daemon/stack"
+```
+Returns the daemon's current stack trace. The maximum buffer size that will be
+returned is 64MB. If the stack trace is larger than 64MB the first 64MB are
+returned.
+
+### JSON Response
+> JSON Response Example
+ 
+```go
+{
+  "stack": [1,2,21,1,13,32,14,141,13,2,41,120], // []byte
+}
+```
+
+**stack** | []byte  
+Current stack trace. 
 
 ## /daemon/settings [POST]
 > curl example  
@@ -820,7 +863,9 @@ The unique application identifier for the application that set the fee.
 
 ### OPTIONAL
 **recurring** | bool  
-Indicates whether or not this fee will be a recurring fee. 
+Indicates whether or not this fee will be a recurring fee.  
+**NOTE:** This is only informational, the application charging the fee is
+responsible for submitting the fee on the recurring interval. 
 
 ### JSON Response
 > JSON Response Example
@@ -1158,21 +1203,21 @@ Example IPV6 address: [123::456]:789
 standard success or error response. See [standard
 responses](#standard-responses).
 
-## /gateway/blacklist [GET]
+## /gateway/blocklist [GET]
 > curl example  
 
 ```go
-curl -A "Sia-Agent" "localhost:9980/gateway/blacklist"
+curl -A "Sia-Agent" "localhost:9980/gateway/blocklist"
 ```
 
-fetches the list of blacklisted addresses.
+fetches the list of blocklisted addresses.
 
 ### JSON Response
 > JSON Response Example
 
 ```go
 {
-  "blacklist":
+  "blocklist":
     [
     "123.123.123.123",  // string
     "123.123.123.123",  // string
@@ -1180,35 +1225,35 @@ fetches the list of blacklisted addresses.
     ],
 }
 ```
-**blacklist** | string  
-blacklist is a list of blacklisted address
+**blocklist** | string  
+blocklist is a list of blocklisted address
 
-## /gateway/blacklist [POST]
+## /gateway/blocklist [POST]
 > curl example  
 
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"append","addresses":["123.123.123.123","123.123.123.123","123.123.123.123"]}' "localhost:9980/gateway/blacklist"
+curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"append","addresses":["123.123.123.123","123.123.123.123","123.123.123.123"]}' "localhost:9980/gateway/blocklist"
 ```
 ```go
-curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"set","addresses":[]}' "localhost:9980/gateway/blacklist"
+curl -A "Sia-Agent" -u "":<apipassword> --data '{"action":"set","addresses":[]}' "localhost:9980/gateway/blocklist"
 ```
 
-performs actions on the Gateway's blacklist. There are three `actions` that can
+performs actions on the Gateway's blocklist. There are three `actions` that can
 be performed. `append` and `remove` are used for appending or removing addresses
-from the Gateway's blacklist. `set` is used to define all the addresses in the
-blacklist. If a list of addresses is provided with `set`, that list of addresses
-will become the Gateway's blacklist, replacing any blacklist that was currently
-in place. To clear the Gateway's blacklist, submit an empty list with `set`.
+from the Gateway's blocklist. `set` is used to define all the addresses in the
+blocklist. If a list of addresses is provided with `set`, that list of addresses
+will become the Gateway's blocklist, replacing any blocklist that was currently
+in place. To clear the Gateway's blocklist, submit an empty list with `set`.
 
 ### Path Parameters
 ### REQUIRED
 **action** | string  
-this is the action to be performed on the blacklist. Allowed inputs are
+this is the action to be performed on the blocklist. Allowed inputs are
 `append`, `remove`, and `set`.
 
 **addresses** | string  
 this is a comma separated list of addresses that are to be appended to or
-removed from the blacklist. If the action is `append` or `remove` this field is
+removed from the blocklist. If the action is `append` or `remove` this field is
 required.
 
 ### Response
@@ -1256,8 +1301,10 @@ fetches status information about the host.
     "storageprice":           "231481481481",               // hastings / byte / block
     "uploadbandwidthprice":   "100000000000000",            // hastings / byte
 
-    "revisionnumber": 0,      // int
-    "version":        "1.0.0" // string
+    "registrysize":       16384,  // int
+    "customregistrypath": ""      // string
+    "revisionnumber":     0,      // int
+    "version":            "1.0.0" // string
   },
 
   "financialmetrics": {
@@ -1318,6 +1365,38 @@ fetches status information about the host.
   "publickey": {
     "algorithm": "ed25519", // string
     "key":       "RW50cm9weSBpc24ndCB3aGF0IGl0IHVzZWQgdG8gYmU=" // string
+  },
+
+"pricetable": {
+  "uid":                        "00000000000000000000000000000000", // types.Specifier
+  "validity":                   60000000000, // time.Duration
+  "hostblockheight":            0, // types.BlockHeight
+
+  "updatepricetablecost":       "1", // types.Currency
+  "accountbalancecost":         "1", // types.Currency
+  "fundaccountcost":            "1", // types.Currency
+  "latestrevisioncost":         "151200000000000000", // types.Currency
+  "initbasecost":               "100000000000000000", // types.Currency
+  "memorytimecost":             "1", // types.Currency
+  "collateralcost":             "0", // types.Currency
+  "downloadbandwidthcost":      "25000000000000", // types.Currency
+  "uploadbandwidthcost":        "1000000000000", // types.Currency
+  "dropsectorsbasecost":        "1", // types.Currency
+  "dropsectorsunitcost":        "1", // types.Currency
+  "hassectorbasecost":          "1", // types.Currency
+  "readbasecost":               "2000000000000000000", // types.Currency
+  "readlengthcost":             "1", // types.Currency
+  "revisionbasecost":           "0", // types.Currency
+  "swapsectorcost":             "1", // types.Currency
+  "writebasecost":              "1", // types.Currency
+  "writelengthcost":            "1", // types.Currency
+  "writestorecost":             "11574074074", // types.Currency
+
+  "txnfeeminrecommended":       "10000000000000000000", // types.Currency
+  "txnfeemaxrecommended":       "30000000000000000000", // types.Currency
+
+  "registryentriesleft":        1024, // uint64
+  "registryentriestotal":       1024, // uint64
   },
 }
 ```
@@ -1395,6 +1474,18 @@ The price that a renter has to pay to store files with the host.
 
 **uploadbandwidthprice** | hastings / byte  
 The price that a renter has to pay when uploading data to the host.  
+
+**registrysize** | int  
+The size of the registry in bytes. One entry requires 256 bytes of storage on
+disk and the size of the registry needs to be a multiple of 64 entries.
+Therefore any provided number >0 bytes will be rounded to the nearest 16kib.
+The default is 0 which means no registry.
+
+**customregistrypath** | string  
+The path of the registry on disk. If it's empty, it uses the default location
+relative to siad's host folder. Otherwise the provided path will be used.
+Changing it will trigger a registry migration which takes an arbitrary amount
+of time depending on the size of the registry.
 
 **revisionnumber** | int  
 The revision number indicates to the renter what iteration of settings the host
@@ -1637,6 +1728,93 @@ the host is being actively used by renters.
 **publickey** | SiaPublicKey  
 Public key used to identify the host.
 
+**uid** | types.Specifier  
+UID of the current price table. Only filled in for renters over the
+peer-to-peer protocol. In the API it's always zeros.
+
+**valdity** | time.Duration  
+The duration for which a fresh price table is valid.
+
+**hostblockheight** | types.BlockHeight  
+Blockheight as seen by the host at the last time the table was updated.
+
+**updatepricetablecost** | types.Currency  
+Cost for the UpdatePriceTable RPC.
+
+**accountbalanceCost** | types.Currency  
+Cost for the AccountBalance RPC.
+
+**fundaccountcost** | types.Currency  
+Cost for the FundAccount RPC.
+
+**latestrevisioncost** | types.Currency  
+Cost for the LatestRevision RPC.
+
+**initbasecost** | types.Currency  
+InitBaseCost is the amount of cost that is incurred when an MDM program
+starts to run. This doesn't include the memory used by the program data. The
+total cost to initialize a program is calculated as
+InitCost = InitBaseCost + MemoryTimeCost * Time
+
+**memorytimecost** | types.Currency  
+MemoryTimeCost is the amount of cost per byte per time that is incurred by
+the memory consumption of the program.
+
+**collateralcost** | types.Currency  
+CollateralCost is the amount of money per byte the host is promising to lock
+away as collateral when adding new data to a contract.
+
+**downloadbandwidthcost** | types.Currency  
+Cost per byte of downloading from a host.
+
+**uploadbandwidthcost** | types.Currency  
+Cost per byte of uploading from a host.
+
+**dropsectorbasecost** | types.Currency  
+Base cost of a drop sector MDM instruction.
+
+**dropsectorunitcost** | types.Currency  
+Additional per-sector cost of a drop sector MDM instruction.
+
+**hassectorbasecost** | types.Currency  
+Cost of a has sector MDM instruction.
+
+**readbasecost** | types.Currency  
+Base cost of a read instruction.
+
+**readlengthcost** | types.Currency  
+Additional per-byte cost of a read instruction.
+
+**revisionbasecost** | types.Currency  
+Cost of a revision instruction.
+
+**swapsectorcost** | types.Currency  
+Cost of swapping 2 sectors with a swap sector instruction.
+
+**writebasecost** | types.Currency  
+Base cost of a write instruction.
+
+**writelengthcost** | types.Currency  
+Additional per-byte cost of a write instruction.
+
+**writestorecost** | types.Currency  
+Addition per-byte per-block cost of a write instruction. Only applies to
+adding new data, not overwriting data.
+
+**txnfeeminrecommended** | types.Currency  
+Minimum per-byte txnfee recommendation as seen by the host's transaction
+pool.
+
+**txnfeemaxrecommended** | types.Currency  
+Maximum per-byte txnfee recommendation as seen by the host's transaction
+pool.
+
+**registryentriesleft** | uint64  
+number of registry entries not in use.
+
+**registryentriestotal** | uint64  
+total number of registry entries the host has allocated.
+
 ## /host/bandwidth [GET]
 > curl example
 
@@ -1788,6 +1966,18 @@ the amount at risk will be minuscule unless the host experiences an unclean
 shutdown while in the middle of many transactions with many users at once. This
 value should be larger than 'maxephemeralaccountbalance but does not need to be
 significantly larger.
+
+**registrysize** | int  
+The size of the registry in bytes. One entry requires 256 bytes of storage on
+disk and the size of the registry needs to be a multiple of 64 entries.
+Therefore any provided number >0 bytes will be rounded to the nearest 16kib.
+The default is 0 which means no registry.
+
+**customregistrypath** | string  
+The path of the registry on disk. If it's empty, it uses the default location
+relative to siad's host folder. Otherwise the provided path will be used.
+Changing it will trigger a registry migration which takes an arbitrary amount
+of time depending on the size of the registry.
 
 ### Response
 
@@ -2447,6 +2637,7 @@ ed25519:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
   },
   "scorebreakdown": {
     "score":                      1,        // big int
+    "acceptcontractadjustment":   1,        // float64
     "ageadjustment":              0.1234,   // float64
     "basepriceadjustment":        1,        // float64
     "burnadjustment":             0.1234,   // float64
@@ -2479,6 +2670,9 @@ configurations, and different versions the absolute scores for a given host can
 be off by many orders of magnitude. When displaying to a human, some form of
 normalization with respect to the other hosts (for example, divide all scores by
 the median score of the hosts) is recommended.  
+
+**acceptcontractadjustment** | float64  
+The multiplier that gets applied to the host based on whether its accepting contracts or not. Typically "1" if they do and "0" if they don't.
 
 **ageadjustment** | float64  
 The multiplier that gets applied to the host based on how long it has been a
@@ -2884,21 +3078,23 @@ and bandwidth needs while spending significantly less than the overall
 allowance.
 
 **expectedupload** | bytes  
-Expected upload tells siad how much uploading the user expects to do each month.
-If this value is high, siad will more strongly prefer hosts that have a low
-upload bandwidth price. If this value is low, siad will focus on other metrics
-than upload bandwidth pricing, because even if the host charges a lot for upload
-bandwidth, it will not impact the total cost to the user very much.
+Expected upload tells siad how many bytes per block the user expects to upload
+during the configured period. If this value is high, siad will more strongly
+prefer hosts that have a low upload bandwidth price. If this value is low, siad
+will focus on metrics other than upload bandwidth pricing, because even if the
+host charges a lot for upload bandwidth, it will not impact the total cost to
+the user very much.
 
 The user should not consider upload bandwidth used during repairs, siad will
 consider repair bandwidth separately.
 
 **expecteddownload** | bytes  
-Expected download tells siad how much downloading the user expects to do each
-month. If this value is high, siad will more strongly prefer hosts that have a
-low download bandwidth price. If this value is low, siad will focus on other
-metrics than download bandwidth pricing, because even if the host charges a lot
-for downloads, it will not impact the total cost to the user very much.
+Expected download tells siad how many bytes per block the user expects to
+download during the configured period. If this value is high, siad will more
+strongly prefer hosts that have a low download bandwidth price. If this value is
+low, siad will focus on metrics other than download bandwidth pricing, because
+even if the host charges a lot for downloads, it will not impact the total cost
+to the user very much.
 
 The user should not consider download bandwidth used during repairs, siad will
 consider repair bandwidth separately.
@@ -3006,6 +3202,23 @@ curl -A "Sia-Agent" -u "":<apipassword>  "localhost:9980/renter/allowance/cancel
 ```
 
 Cancel the Renter's allowance.
+
+### Response
+
+standard success or error response. See [standard
+responses](#standard-responses).
+
+## /renter/clean [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword>  "localhost:9980/renter/clean"
+```
+
+clears any lost files from the renter. A lost file is a file that is viewed as
+unrecoverable. A file is unrecoverable when there is not a local copy on disk
+and the file's redundancy is less than 1. This means the file can not be
+repaired.
 
 ### Response
 
@@ -3387,6 +3600,12 @@ retrieves the contents of a directory on the sia network
 **siapath** | string  
 Path to the directory on the sia network  
 
+### OPTIONAL
+**root** | bool  
+Whether or not to treat the siapath as being relative to the user's home
+directory. If this field is not set, the siapath will be interpreted as
+relative to 'home/user/'.  
+
 ### JSON Response
 > JSON Response Example
 
@@ -3476,7 +3695,8 @@ Location where the directory will reside in the renter on the network. The path
 must be non-empty, may not include any path traversal strings ("./", "../"), and
 may not begin with a forward-slash character.  
 
-**root** | bool
+### OPTIONAL
+**root** | bool  
 Whether or not to treat the siapath as being relative to the user's home
 directory. If this field is not set, the siapath will be interpreted as
 relative to 'home/user/'.  
@@ -3490,14 +3710,14 @@ Action can be either `create`, `delete` or `rename`.
    return an error if the target is a file.
  - `rename` will rename a directory on the sia network
 
- **newsiapath** | string  
- The new siapath of the renamed folder. Only required for the `rename` action.
+**newsiapath** | string  
+The new siapath of the renamed folder. Only required for the `rename` action.
 
- ### OPTIONAL
- **mode** | uint32  
- The mode can be specified in addition to the `create` action to create the
- directory with specific permissions. If not specified, the default
- permissions 0755 will be used.
+### OPTIONAL
+**mode** | uint32  
+The mode can be specified in addition to the `create` action to create the
+directory with specific permissions. If not specified, the default permissions
+0755 will be used.
 
 ### Response
 
@@ -3593,6 +3813,12 @@ curl -A "Sia-Agent" "localhost:9980/renter/downloads"
 ```
 
 Lists all files in the download queue.
+
+### Query String Parameters
+### REQUIRED
+**root** | boolean  
+If root is set, the downloads will contain their absolute paths instead of
+the relative ones starting at home/user.
 
 ### JSON Response
 > JSON Response Example
@@ -3920,6 +4146,15 @@ character.
 If provided, this parameter changes the tracking path of a file to the
 specified path. Useful if moving the file to a different location on disk.
 
+**stuck** | bool  
+if set a file will be marked as either stuck or not stuck by marking all of
+its chunks.
+
+**root** | bool  
+Whether or not to treat the siapath as being relative to the user's home
+directory. If this field is not set, the siapath will be interpreted as
+relative to 'home/user/'.  
+
 ### Response
 
 standard success or error response. See [standard
@@ -3982,6 +4217,9 @@ httpresp.
 **disablelocalfetch** | boolean  
 If disablelocalfetch is true, downloads won't be served from disk even if the
 file is available locally.
+
+**root** | boolean  
+If root is true, the provided siapath will not be prefixed with /home/user but is instead taken as an absolute path.
 
 **length** | bytes  
 Length of the requested data. Has to be <= filesize-offset.  
@@ -4252,6 +4490,9 @@ Path to the file in the renter on the network.
 If disablelocalfetch is true, downloads won't be served from disk even if the
 file is available locally.
 
+**root** | boolean  
+If root is true, the provided siapath will not be prefixed with /home/user but is instead taken as an absolute path.
+
 ### Response
 
 standard success or error response. See [standard
@@ -4442,7 +4683,10 @@ siapath to test.
 standard success or error response, a successful response means a valid siapath.
 See [standard responses](#standard-responses).
 
-## /renter/wokers [GET]
+## /renter/workers [GET] 
+
+**UNSTABLE - subject to change**
+
 > curl example
 
 ```go
@@ -4458,6 +4702,7 @@ returns the the status of all the workers in the renter's workerpool.
 {
   "numworkers":            2, // int
   "totaldownloadcooldown": 0, // int
+  "totalmaintenancecooldown": 0, // int
   "totaluploadcooldown":   0, // int
   
   "workers": [ // []WorkerStatus
@@ -4475,9 +4720,11 @@ returns the the status of all the workers in the renter's workerpool.
         "key": "BervnaN85yB02PzIA66y/3MfWpsjRIgovCU9/L4d8zQ=" // hash
       },
       
-      "downloadoncooldown": false, // boolean
-      "downloadqueuesize":  0,     // int
-      "downloadterminated": false, // boolean
+      "downloadcooldownerror": "",                   // string
+      "downloadcooldowntime":  -9223372036854775808, // time.Duration
+      "downloadoncooldown":    false,                // boolean
+      "downloadqueuesize":     0,                    // int
+      "downloadterminated":    false,                // boolean
       
       "uploadcooldownerror": "",                   // string
       "uploadcooldowntime":  -9223372036854775808, // time.Duration
@@ -4485,21 +4732,62 @@ returns the the status of all the workers in the renter's workerpool.
       "uploadqueuesize":     0,                    // int
       "uploadterminated":    false,                // boolean
       
-      "availablebalance":    "0", // hastings
       "balancetarget":       "0", // hastings
-      
-      "backupjobqueuesize":       0, // int
-      "downloadrootjobqueuesize": 0  // int
+
+      "downloadsnapshotjobqueuesize": 0 // int
+      "uploadsnapshotjobqueuesize": 0   // int
+
+      "maintenanceoncooldown": false,                      // bool
+      "maintenancerecenterr": "",                          // string
+      "maintenancerecenterrtime": "0001-01-01T00:00:00Z",  // time
+
+      "accountstatus": {
+        "availablebalance": "1000000000000000000000000", // hasting
+        "negativebalance": "0",                          // hasting
+        "recenterr": "",                                 // string
+        "recenterrtime": "0001-01-01T00:00:00Z"          // time
+        "recentsuccesstime": "0001-01-01T00:00:00Z"      // time
+      },
+
+      "pricetablestatus": {
+        "expirytime": "2020-06-15T16:17:01.040481+02:00", // time
+        "updatetime": "2020-06-15T16:12:01.040481+02:00", // time
+        "active": true,                                   // boolean
+        "recenterr": "",                                  // string
+        "recenterrtime": "0001-01-01T00:00:00Z"           // time
+      },
+
+      "readjobsstatus": {
+        "avgjobtime64k": 0,                               // int
+        "avgjobtime1m": 0,                                // int
+        "avgjobtime4m": 0,                                // int
+        "consecutivefailures": 0,                         // int
+        "jobqueuesize": 0,                                // int
+        "recenterr": "",                                  // string
+        "recenterrtime": "0001-01-01T00:00:00Z"           // time
+      },
+
+      "hassectorjobsstatus": {
+        "avgjobtime": 0,                                  // int
+        "consecutivefailures": 0,                         // int
+        "jobqueuesize": 0,                                // int
+        "recenterr": "",                                  // string
+        "recenterrtime": "0001-01-01T00:00:00Z"           // time
+      }
     }
   ]
 }
 ```
+
 
 **numworkers** | int  
 Number of workers in the workerpool
 
 **totaldownloadcooldown** | int  
 Number of workers on download cooldown
+
+**totalmaintenancecooldown** | int  
+Number of workers on maintenance cooldown
 
 **totaluploadcooldown** | int  
 Number of workers on upload cooldown
@@ -4529,6 +4817,12 @@ The worker's contract's utility is locked
 
 **hostpublickey** | SiaPublicKey  
 Public key of the host that the file contract is formed with.  
+
+**downloadcooldownerror** | error  
+The error reason for the worker being on download cooldown
+
+**downloadcooldowntime** | time.Duration  
+How long the worker is on download cooldown
 
 **downloadoncooldown** | boolean  
 Indicates if the worker is on download cooldown
@@ -4560,59 +4854,121 @@ The worker's Ephemeral Account available balance
 **balancetarget** | hastings  
 The worker's Ephemeral Account target balance
 
-**backupjobqueuesize** | int  
-The size of the worker's backup job queue
+**downloadsnapshotjobqueuesize** | int  
+The size of the worker's download snapshot job queue
 
-**downloadrootjobqueuesize** | int  
-The size of the worker's download by root job queue
+**uploadsnapshotjobqueuesize** | int  
+The size of the worker's upload snapshot job queue
+
+**maintenanceoncooldown** | boolean  
+Indicates if the worker is on maintenance cooldown
+
+**maintenancecooldownerror** | string  
+The error reason for the worker being on maintenance cooldown
+
+**maintenancecooldowntime** | time.Duration  
+How long the worker is on maintenance cooldown
+
+**accountstatus** | object
+Detailed information about the workers' ephemeral account status
+
+**pricetablestatus** | object
+Detailed information about the workers' price table status
+
+**readjobsstatus** | object
+Details of the workers' read jobs queue
+
+**hassectorjobsstatus** | object
+Details of the workers' has sector jobs queue
 
 # Skynet
 
-## /skynet/blacklist [GET]
+## /skynet/basesector/*skylink* [GET]
+> curl example  
+
+```bash
+curl -A "Sia-Agent" "localhost:9980/skynet/basesector/CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg"
+```  
+
+downloads the basesector of a skylink using http streaming. This call blocks
+until the data is received. There is a 30s default timeout applied to
+downloading a basesector. If the data cannot be found within this 30s time
+constraint, a 404 will be returned. This timeout is configurable through the
+query string parameters.
+
+
+### Path Parameters 
+### Required
+**skylink** | string  
+The skylink of the basesector that should be downloaded.
+
+### Query String Parameters
+### OPTIONAL
+
+**timeout** | int  
+If 'timeout' is set, the download will fail if the basesector cannot be
+retrieved before it expires. Note that this timeout does not cover the actual
+download time, but rather covers the TTFB. Timeout is specified in seconds,
+a timeout value of 0 will be ignored. If no timeout is given, the default will
+be used, which is a 30 second timeout. The maximum allowed timeout is 900s (15
+minutes).
+
+### Response Body
+
+The response body is the raw data for the basesector.
+
+## /skynet/blocklist [GET]
 > curl example
 
 ```go
-curl -A "Sia-Agent" "localhost:9980/skynet/blacklist"
+curl -A "Sia-Agent" "localhost:9980/skynet/blocklist"
 ```
 
-returns the list of merkleroots that are blacklisted.
+returns the list of hashed merkleroots that are blocked. 
+
+NOTE: these are not the same values that were submitted via the POST endpoint.
+This is intentional so that it is harder to find the blocked content.
+	
+NOTE: With v1.5.0 the return value for the Blocklist changed. Pre v1.5.0 the
+[]crypto.Hash was a slice of MerkleRoots. Post v1.5.0 the []crypto.Hash is
+a slice of the Hashes of the MerkleRoots
 
 ### JSON Response
 > JSON Response Example
 
 ```go
 {
-  "blacklist": {
+  "blocklist": {
     "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
     "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
     "QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I" // hash
   }
 }
 ```
-**blacklist** | Hashes  
-The blacklist is a list of merkle roots, which are hashes, that are blacklisted.
+**blocklist** | Hashes  
+The blocklist is a list of hashed merkleroots, that are blocked.
 
-## /skynet/blacklist [POST]
+## /skynet/blocklist [POST]
 > curl example
 
 ```go
-curl -A "Sia-Agent" --user "":<apipassword> --data '{"add" : ["GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"]}' "localhost:9980/skynet/blacklist"
+curl -A "Sia-Agent" --user "":<apipassword> --data '{"add" : ["GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"]}' "localhost:9980/skynet/blocklist"
 
-curl -A "Sia-Agent" --user "":<apipassword> --data '{"remove" : ["GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"]}' "localhost:9980/skynet/blacklist"
+curl -A "Sia-Agent" --user "":<apipassword> --data '{"remove" : ["GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g","GAC38Gan6YHVpLl-bfefa7aY85fn4C0EEOt5KJ6SPmEy4g"]}' "localhost:9980/skynet/blocklist"
 ```
 
-updates the list of skylinks that should be blacklisted from Skynet. This
-endpoint can be used to both add and remove skylinks from the blacklist.
+updates the list of skylinks that should be blocked from Skynet. This endpoint
+can be used to both add and remove skylinks from the blocklist.
 
 ### Path Parameters
 ### REQUIRED
 At least one of the following fields needs to be non empty.
 
 **add** | array of strings  
-add is an array of skylinks that should be added to the blacklist.
+add is an array of skylinks that should be added to the blocklist.
 
 **remove** | array of strings  
-remove is an array of skylinks that should be removed from the blacklist.
+remove is an array of skylinks that should be removed from the blocklist.
 
 ### Response
 
@@ -4675,6 +5031,126 @@ list of portals.
 standard success or error response. See [standard
 responses](#standard-responses).
 
+## /skynet/registry [GET]
+> curl example
+
+```go
+curl -A "Sia-Agent" "localhost:9980/skynet/registry?publickey=ed25519%3A69de1a15f17050e6855dd03202eed0cac31fe41865a074a43299ff4a598fe4d2&datakey=3f39b735c705edc2b3b5c5fe465da0de0a0755f5f637a556186f12687225259a
+```
+
+This curl command performs a GET request that fetches a registry entry for a publickey and datakey.  
+### Query String Parameters
+### REQUIRED
+
+**publickey** | SiaPublicKey  
+The public key for which to fetch the entry.
+
+**datakey** | Hash  
+The hash for which to fetch the entry.
+
+### OPTIONAL
+**timeout** | uint64  
+The timeout in seconds. Specifies how long it takes the request to time out
+in case no registry entry can be found. The default is the maximum allowed
+value of 5 minutes. The minimum is 1 second.
+
+### Response
+> JSON Response Example
+
+```go
+{
+  "data": "414141446168453132624d6c715f57663973356b35526d70652d4a4b76566c314b74416d6c70786f4a5f77613241", // []byte
+  "revision": 149, // uint64
+  "signature":  "03bf093a42f4df024c765fbec308a7f083fb6c1dddad485fe73810c39ed0344ff8e0db78e79bbdbad6be9d1410e2f122f58f490ff5edf7b45e3dc9fa7983ba05" // crypto.Signature
+}
+```
+
+## /skynet/root [GET]
+> curl example  
+
+```bash
+curl -A "Sia-Agent" "localhost:9980/skynet/root?root=QAf9Q7dBSbMarLvyeE6HTQmwhr7RX9VMrP9xIMzpU3I&offset=0&length=4096"
+```  
+
+downloads a sector of a skyfile by its root hash using http streaming. This call
+blocks until the data is received. There is a 30s default timeout applied to
+downloading a sector. If the data cannot be found within this 30s time
+constraint, a 404 will be returned. This timeout is configurable through the
+query string parameters.
+
+
+### Query String Parameters
+### Required
+**root** | hash  
+The root hash of the sector that should be downloaded.
+
+**offset** | uint64  
+The offset where the download should start within a sector.
+
+**length** | uint64  
+The amount of data to be downloaded from the sector.
+
+### OPTIONAL
+
+**timeout** | int  
+If 'timeout' is set, the download will fail if the basesector cannot be
+retrieved before it expires. Note that this timeout does not cover the actual
+download time, but rather covers the TTFB. Timeout is specified in seconds,
+a timeout value of 0 will be ignored. If no timeout is given, the default will
+be used, which is a 30 second timeout. The maximum allowed timeout is 900s (15
+minutes).
+
+### Response Body
+
+The response body is the raw data for the sector.
+
+## /skynet/registry [POST]
+> curl example
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> --data "<json-encoded-body>" "localhost:9980/skynet/registry"
+```
+
+> json body example
+```go
+{
+  "publickey":{
+    "algorithm":"ed25519",
+    "key":"UDBtQAKGsVcdGk4LT3W3QJNhYirzCzff8T7RucKED+8="
+  },
+  "datakey":"5345e582d27a2ff7e3d45e2ce3d77acca0dd2cf23d3eaa5592c4095ccee502db",
+  "revision":0,
+  "signature":[127,39,167,244,6,164,160,7,184,232,14,101,46,148,149,73,52,108,194,195,22,46,188,46,200,20,8,5,71,1,138,216,25,4,29,105,127,63,195,46,214,64,112,72,174,228,66,84,211,254,140,18,181,203,46,199,174,173,112,8,218,238,200,6],
+  "data":"AAC0rdNrjqEO2cDMonNlncRf0wu4bBs05rBWy6cQlgVMEA=="
+}
+```
+
+This curl command performs a POST request that updates a registry entry for a
+publickey and datakey.
+
+### JSON Parameters
+### REQUIRED
+
+**publickey** | SiaPublicKey  
+The public key for which to update the entry.
+
+**datakey** | Hash  
+The key for which to update the entry.
+
+**revision** | uint64  
+The revision of the entry. Needs to be greater than the most recent
+registered entry.
+
+**signature** | uint8 array  
+64 byte signature that covers the datakey, data and revision.
+
+**data** | string  
+base64 encoded data to register. Up to 113 bytes.
+
+### Response
+standard success or error response. See [standard
+responses](#standard-responses).
+
 ## /skynet/skylink/*skylink* [HEAD]
 > curl example
 
@@ -4717,8 +5193,14 @@ curl -A "Sia-Agent" "localhost:9980/skynet/skylink/CABAB_1Dt0FJsxqsu_J4TodNCbCGv
 
 downloads a skylink using http streaming. This call blocks until the data is
 received. There is a 30s default timeout applied to downloading a skylink. If
-the data can not be found within this 30s time constraint, a 404 will be
+the data cannot be found within this 30s time constraint, a 404 will be
 returned. This timeout is configurable through the query string parameters.
+
+In order to make sure skapps function correctly when they rely on relative paths
+within the same skyfile, we need the skylink to be followed by a trailing slash.
+If that is not the case the API responds with a redirect to the same skylink,
+adding that trailing slash. This redirect only happens if the skyfile holds a 
+skapp.
 
 ### Path Parameters 
 ### Required
@@ -4738,11 +5220,23 @@ the file as though it is an attachment instead of rendering it.
 **format** | string  
 If 'format' is set, the skylink can point to a directory and it will return the
 data inside that directory. Format will decide the format in which it is
-returned. Currently we only support 'concat', which will return the concatenated
-data of all subfiles in that directory.
+returned. Currently, we support the following values:  
+ * 'concat' will return the concatenated data of all subfiles in that directory
+ * 'tar' will return a tar archive of all subfiles in that directory
+ * 'targz' will return a gzipped tar archive of all subfiles in that directory.  
+ * 'zip' will return a zip archive
+ 
+If the format is not specified, and the skylink points at a directory, we
+default to the zip format and the contents will be downloaded as a zip archive.
+
+**no-response-metadata** | string  
+If 'no-response-metadata' is set to true, the API will not return the metadata
+in the "Skynet-File-Metadata" response header. This might be useful in cases
+where the metadata is not used, or where the size of the response header is
+proving to be an issue.
 
 **timeout** | int  
-If 'timeout' is set, the download will fail if the Skyfile can not be retrieved 
+If 'timeout' is set, the download will fail if the Skyfile cannot be retrieved 
 before it expires. Note that this timeout does not cover the actual download 
 time, but rather covers the TTFB. Timeout is specified in seconds, a timeout 
 value of 0 will be ignored. If no timeout is given, the default will be used,
@@ -4760,19 +5254,36 @@ supplied, this metadata will be relative to the given path.
 
 ```go
 {
-"mode":     640,      // os.FileMode
-"filename": "folder", // string
-"subfiles": [         // []SkyfileSubfileMetadata | null
-  {
-  "mode":         640,                // os.FileMode
-  "filename":     "folder/file1.txt", // string
-  "contenttype":  "text/plain",       // string
-  "offset":       0,                  // uint64
-  "len":          6                   // uint64
+  "mode":     640,      // os.FileMode
+  "filename": "folder", // string
+  "subfiles": {         // map[string]SkyfileSubfileMetadata | null
+    "folder/file1.txt": {                 // string
+      "mode":         640,                // os.FileMode
+      "filename":     "folder/file1.txt", // string
+      "contenttype":  "text/plain",       // string
+      "offset":       0,                  // uint64
+      "len":          6                   // uint64
+    }
   }
-]
 }
 ```
+
+**Skynet-Skylink** | string
+
+The value of "Skynet-Skylink" is a string representation of the base64 encoded
+Skylink that was requested.
+
+**ETag** | string
+
+The ETag response header contains a hash that can be supplied using the
+"If-None-Match" request header. If that header is supplied, and if we find that
+the requested data has not changed, siad will respond with a '304 Not Modified'
+response, letting the caller know it can safely reuse it previously cached
+response data.
+
+See
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/ETag for more
+information on the ETag header.
 
 ### Response Body
 
@@ -4785,12 +5296,21 @@ The response body is the raw data for the file.
 // This command uploads the file 'myImage.png' to the Sia folder
 // 'var/skynet/images/myImage.png'. Users who download the file will see the name
 // 'image.png'.
-curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png?filename=image.png" --data-binary @myImage.png
+curl -A Sia-Agent -u "":<apipassword> "localhost:9980/skynet/skyfile/images/myImage.png" -F 'file=@image.png'
+
+// This command uploads a directory with the local files `src/main.rs` and
+// `src/test.c` to the Sia folder 'var/skynet/src'.
+curl -A Sia-Agent -u "":<apipassword> "localhost:9980/skynet/skyfile/src?filename=src" -F 'files[]=@./src/main.rs' -F 'files[]=@./src/test.c'
 ```
 
-uploads a file to the network using a stream. If the upload stream POST call
+Uploads a file to the network using a stream. If the upload stream POST call
 fails or quits before the file is fully uploaded, the file can be repaired by a
 subsequent call to the upload stream endpoint using the `repair` flag.
+
+It is also possible to upload a directory as a single piece of content using
+multipart uploads. Doing this will allow you to address your content under one
+skylink, and access the files by their path. This is especially useful for
+webapps.
 
 ### Path Parameters
 ### REQUIRED
@@ -4813,10 +5333,34 @@ skyfile will be created. Both the new skyfile and the existing siafile are
 required to be maintained on the network in order for the skylink to remain
 active. This field is mutually exclusive with uploading streaming.
 
+**NOTE**: Converting siafiles to skyfiles does not support skykey encryption.
+
+**defaultpath** string  
+The path to the default file whose content is to be returned when the skyfile is 
+accessed at the root path. The `defaultpath` must point to a file in the root
+directory of the skyfile (except for skyfiles with a single file in them). If
+the `defaultpath` parameter is not provided, it will default to `index.html` 
+for directories that have that file, or it will default to the only file in the 
+directory, if a single file directory is uploaded. This behaviour can be 
+disabled using the `disabledefaultpath` parameter. The two parameters are 
+mutually exclusive and only one can be specified. Neither one is applicable to 
+skyfiles without subfiles.
+
+**disabledefaultpath** bool  
+The `disabledefaultpath` allows to disable the default path behaviour. If this
+parameter is set to `true`, there will be no automatic default to `index.html`,
+nor to the single file in directory upload. This parameter is mutually exclusive
+with `defaultpath` and specifying both will result in an error. Neither one is 
+applicable to skyfiles without subfiles.
+
 **filename** | string  
 The name of the file. This name will be encoded into the skyfile metadata, and
 will be a part of the skylink. If the name changes, the skylink will change as
-well.
+well. The name must be non-empty, may not include any path traversal strings
+("./", "../"), and may not begin with a forward-slash character. When uploading
+a single file using multipart form upload (the recommended method), this
+parameter is optional; the name will be taken from the filename of the only
+subfile.
 
 **dryrun** | bool  
 If dryrun is set to true, the request will return the Skylink of the file
@@ -4839,14 +5383,12 @@ this field is not set, the siapath will be interpreted as relative to
 'var/skynet'.
 
 
-**UNSTABLE - subject to change in v1.4.9**
 **skykeyname** | string  
 The name of the skykey that will be used to encrypt this skyfile. Only the
 name or the ID of the skykey should be specified.
 
 **OR**
 
-**UNSTABLE - subject to change in v1.4.9**
 **skykeyid** | string  
 The ID of the skykey that will be used to encrypt this skyfile. Only the
 name or the ID of the skykey should be specified.
@@ -4869,6 +5411,13 @@ for Skynet portal operators that would like to have some control over the
 requests that are being passed to siad. To avoid having to parse query string
 parameters and overrule them that way, this header can be set to disable the
 force flag and disallow overwriting the file at the given siapath.
+
+### Response Header
+
+**Skynet-Skylink** | string
+
+The value of "Skynet-Skylink" is a string representation of the base64 encoded
+Skylink that was uploaded.
 
 ### JSON Response
 > JSON Response Example
@@ -4937,9 +5486,9 @@ Versioninfo is an object that contains the node's version information.
 Version is the siad version the node is running.
 
 **gitrevision** | string  
-Gitrevision refers to the commit hash used to build said.
+Gitrevision refers to the commit hash used to build siad.
 
-**performancestats** | object - api.SkynetPerforamnceStats  
+**performancestats** | object - api.SkynetPerformanceStats  
 PerformanceStats is an object that contains a breakdown of performance metrics
 for the skynet endpoints. Things are broken down into containers based on the
 type of action performed. For example, there is a container for downloads less
@@ -4968,7 +5517,6 @@ The performance stats fields are not protected by a compatibility promise, and
 may change over time.
 
 
-**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/addskykey [POST]
 > curl example
 
@@ -4976,7 +5524,7 @@ may change over time.
 curl -A "Sia-Agent"  -u "":<apipassword> --data "skykey=BAAAAAAAAABrZXkxAAAAAAAAAAQgAAAAAAAAADiObVg49-0juJ8udAx4qMW-TEHgDxfjA0fjJSNBuJ4a" "localhost:9980/skynet/addskykey"
 ```
 
-Stores the given skykey with the renter's skykey manager.
+Stores the given skykey with the skykey manager.
 
 ### Path Parameters
 ### REQUIRED
@@ -5005,21 +5553,21 @@ Returns a list of all Skykeys.
 {
   "skykeys": [
   {
-    "skykey": "skykey:AUI0eAOXWXHwW6KOLyI5O1OYduVvHxAA8qUR_fJ8Kluasb-ykPlHBEjDczrL21hmjhH0zAoQ3-Qq?name=testskykey1"
-    "name": "testskykey1"
-    "id": "ai5z8cf5NWbcvPBaBn0DFQ=="
+    "skykey": "skykey:AUI0eAOXWXHwW6KOLyI5O1OYduVvHxAA8qUR_fJ8Kluasb-ykPlHBEjDczrL21hmjhH0zAoQ3-Qq?name=testskykey1",
+    "name": "testskykey1",
+    "id": "ai5z8cf5NWbcvPBaBn0DFQ==",
     "type": "private-id"
   },
   {
-    "skykey": "skykey:AUqG0aQmgzCIlse2JxFLBGHCriZNz20IEKQu81XxYsak3rzmuVbZ2P6ZqeJHIlN5bjPqEmC67U8E?name=testskykey2"
-    "name": "testskykey2"
-    "id": "bi5z8cf5NWbcvPBaBn0DFQ=="
+    "skykey": "skykey:AUqG0aQmgzCIlse2JxFLBGHCriZNz20IEKQu81XxYsak3rzmuVbZ2P6ZqeJHIlN5bjPqEmC67U8E?name=testskykey2",
+    "name": "testskykey2",
+    "id": "bi5z8cf5NWbcvPBaBn0DFQ==",
     "type": "private-id"
   },
   {
-    "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey3"
-    "name": "testskykey3"
-    "id": "ci5z8cf5NWbcvPBaBn0DFQ=="
+    "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey3",
+    "name": "testskykey3",
+    "id": "ci5z8cf5NWbcvPBaBn0DFQ==",
     "type": "public-id"
   }
 }
@@ -5031,7 +5579,6 @@ information.
 
 
 
-**UNSTABLE - subject to change in v1.4.9**
 ## /skynet/createskykey [POST]
 > curl example
 
@@ -5058,15 +5605,43 @@ skyfiles are encrypted with the same skykey.
 
 ```go
 {
-  "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey"
+  "skykey": "skykey:AUI0eAOXWXHwW6KOLyI5O1OYduVvHxAA8qUR_fJ8Kluasb-ykPlHBEjDczrL21hmjhH0zAoQ3-Qq?name=testskykey1",
+  "name": "key_to_the_castle",
+  "id": "ai5z8cf5NWbcvPBaBn0DFQ==",
+  "type": "private-id"
 }
 ```
 
-**skykey** | string  
-base-64 encoded skykey
+**skykey** | skykey  
+Skykey. See the documentation for /skynet/skykey for more detailed information.
 
 
-**UNSTABLE - subject to change in v1.4.9**
+## /skynet/deleteskykey [POST]
+> curl example
+
+```go
+curl -A "Sia-Agent"  -u "":<apipassword> --data "name=key_to_the_castle" "localhost:9980/skynet/deleteskykey"
+```
+
+Deletes the skykey with that name or ID.
+
+### Path Parameters
+### REQUIRED
+**name** | string  
+name of the skykey being deleted
+
+or
+
+**id** | string  
+base-64 encoded ID of the skykey being deleted
+
+
+### Response
+standard success or error response, a successful response means the skykey was
+deleted.
+See [standard responses](#standard-responses).
+
+
 ## /skynet/skykey [GET]
 > curl example
 
@@ -5093,9 +5668,9 @@ base-64 encoded ID of the skykey being queried
 
 ```go
 {
-  "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey"
-  "name": "testskykey"
-  "id": "gi5z8cf5NWbcvPBaBn0DFQ=="
+  "skykey": "skykey:AShQI8fzxoIMc52ZRkoKjOE50bXnCpiPd4zrBl_E-CkmyLgfinAJSdWkJT2QOR6XCRYYgZb63OHw?name=testskykey",
+  "name": "testskykey",
+  "id": "gi5z8cf5NWbcvPBaBn0DFQ==",
   "type": "private-id"
 }
 ```
@@ -5112,35 +5687,6 @@ base-64 encoded skykey ID
 **type** | string  
 human-readable skykey type. See the documentation for /skynet/createskykey for
 type information.
-
-**UNSTABLE - subject to change in v1.4.9**
-## /skynet/skykeyid [GET]
-> curl example
-
-```go
-curl -A "Sia-Agent"  -u "":<apipassword> --data "name=key_to_the_castle" "localhost:9980/skynet/skykeyid"
-```
-
-Returns the base-64 encoded ID of the skykey stored under that name.
-
-### Path Parameters
-### REQUIRED
-**name** | string  
-name of the skykey being queried
-
-
-### JSON Response
-> JSON Response Example
- 
-```go
-{
-  "skykeyid": "gi5z8cf5NWbcvPBaBn0DFQ=="
-}
-```
-
-**skykeyid** | string  
-base-64 encoded skykey ID
-
 
 
 # Transaction Pool

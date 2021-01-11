@@ -7,7 +7,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/gateway"
 )
 
-// TestGatewayStatus checks that the /gateway/status call is returning a corect
+// TestGatewayStatus checks that the /gateway/status call is returning a correct
 // peerlist.
 func TestGatewayStatus(t *testing.T) {
 	if testing.Short() {
@@ -21,7 +21,10 @@ func TestGatewayStatus(t *testing.T) {
 	defer st.server.panicClose()
 
 	var info GatewayGET
-	st.getAPI("/gateway", &info)
+	err = st.getAPI("/gateway", &info)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(info.Peers) != 0 {
 		t.Fatal("/gateway gave bad peer list:", info.Peers)
 	}
@@ -94,7 +97,10 @@ func TestGatewayPeerDisconnect(t *testing.T) {
 	}
 
 	var info GatewayGET
-	st.getAPI("/gateway", &info)
+	err = st.getAPI("/gateway", &info)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(info.Peers) != 1 || info.Peers[0].NetAddress != peer.Address() {
 		t.Fatal("/gateway/connect did not connect to peer", peer.Address())
 	}

@@ -6,7 +6,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -75,8 +74,8 @@ func (n *DirNode) Delete() error {
 // Deleted is a wrapper for SiaDir.Deleted.
 func (n *DirNode) Deleted() (bool, error) {
 	n.mu.Lock()
-	defer n.mu.Unlock()
 	sd, err := n.siaDir()
+	n.mu.Unlock()
 	if err != nil {
 		return false, err
 	}
@@ -171,12 +170,11 @@ func (n *DirNode) UpdateMetadata(md siadir.Metadata) error {
 // managedList returns the files and dirs within the SiaDir specified by siaPath.
 // offlineMap, goodForRenewMap and contractMap don't need to be provided if
 // 'cached' is set to 'true'.
-func (n *DirNode) managedList(fsRoot string, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) (fis []modules.FileInfo, dis []modules.DirectoryInfo, _ error) {
+func (n *DirNode) managedList(fsRoot string, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract, flf modules.FileListFunc, dlf modules.DirListFunc) error {
 	// Prepare a pool of workers.
 	numThreads := 40
 	dirLoadChan := make(chan *DirNode, numThreads)
 	fileLoadChan := make(chan func() (*FileNode, error), numThreads)
-	var fisMu, disMu sync.Mutex
 	dirWorker := func() {
 		for sd := range dirLoadChan {
 			var di modules.DirectoryInfo
@@ -187,16 +185,14 @@ func (n *DirNode) managedList(fsRoot string, recursive, cached bool, offlineMap 
 				di, err = sd.managedInfo(nodeSiaPath(fsRoot, &sd.node))
 			}
 			sd.Close()
-			if err == ErrNotExist {
+			if errors.Contains(err, ErrNotExist) {
 				continue
 			}
 			if err != nil {
 				n.staticLog.Debugf("Failed to get DirectoryInfo of '%v': %v", sd.managedAbsPath(), err)
 				continue
 			}
-			disMu.Lock()
-			dis = append(dis, di)
-			disMu.Unlock()
+			dlf(di)
 		}
 	}
 	fileWorker := func() {
@@ -212,16 +208,14 @@ func (n *DirNode) managedList(fsRoot string, recursive, cached bool, offlineMap 
 			} else {
 				fi, err = sf.managedFileInfo(nodeSiaPath(fsRoot, &sf.node), offlineMap, goodForRenewMap, contractsMap)
 			}
-			if err == ErrNotExist {
+			if errors.Contains(err, ErrNotExist) {
 				continue
 			}
 			if err != nil {
 				n.staticLog.Debugf("Failed to get FileInfo of '%v': %v", sf.managedAbsPath(), err)
 				continue
 			}
-			fisMu.Lock()
-			fis = append(fis, fi)
-			fisMu.Unlock()
+			flf(fi)
 		}
 	}
 	// Spin the workers up.
@@ -244,13 +238,7 @@ func (n *DirNode) managedList(fsRoot string, recursive, cached bool, offlineMap 
 	close(dirLoadChan)
 	close(fileLoadChan)
 	wg.Wait()
-	sort.Slice(dis, func(i, j int) bool {
-		return dis[i].SiaPath.String() < dis[j].SiaPath.String()
-	})
-	sort.Slice(fis, func(i, j int) bool {
-		return fis[i].SiaPath.String() < fis[j].SiaPath.String()
-	})
-	return fis, dis, err
+	return err
 }
 
 // managedRecursiveList returns the files and dirs within the SiaDir.
@@ -287,11 +275,12 @@ func (n *DirNode) managedRecursiveList(recursive, cached bool, fileLoadChan chan
 		if err != nil {
 			return err
 		}
-		// Hand a copy to the worker. It will handle closing it.
-		dirLoadChan <- dir.managedCopy()
-		// Call managedList on the child if 'recursive' was specified.
 		if recursive {
+			// Call managedList on the child if 'recursive' was specified.
 			err = dir.managedRecursiveList(recursive, cached, fileLoadChan, dirLoadChan)
+		} else {
+			// If not recursive, hand a copy to the worker. It will handle closing it.
+			dirLoadChan <- dir.managedCopy()
 		}
 		if err != nil {
 			return err
@@ -479,8 +468,8 @@ func (n *DirNode) managedDelete() error {
 	var filesToDelete []*FileNode
 	var lockedNodes []*node
 	for _, file := range n.childFiles() {
-		file.mu.Lock()
-		file.Lock()
+		file.node.mu.Lock()
+		file.SiaFile.Lock()
 		lockedNodes = append(lockedNodes, &file.node)
 		filesToDelete = append(filesToDelete, file)
 	}
@@ -504,8 +493,8 @@ func (n *DirNode) managedDelete() error {
 		lockedNodes = append(lockedNodes, &d.node)
 		// Remember the open files.
 		for _, file := range d.files {
-			file.mu.Lock()
-			file.Lock()
+			file.node.mu.Lock()
+			file.SiaFile.Lock()
 			lockedNodes = append(lockedNodes, &file.node)
 			filesToDelete = append(filesToDelete, file)
 		}
@@ -719,11 +708,11 @@ func (n *DirNode) readonlyOpenFile(fileName string) (*FileNode, error) {
 	// Load file from disk.
 	filePath := filepath.Join(n.absPath(), fileName+modules.SiaFileExtension)
 	sf, err := siafile.LoadSiaFile(filePath, n.staticWal)
-	if err == siafile.ErrUnknownPath || os.IsNotExist(err) {
+	if errors.Contains(err, siafile.ErrUnknownPath) || os.IsNotExist(err) {
 		return nil, ErrNotExist
 	}
 	if err != nil {
-		return nil, errors.AddContext(err, "failed to load SiaFile from disk")
+		return nil, errors.AddContext(err, fmt.Sprintf("failed to load SiaFile '%v' from disk", filePath))
 	}
 	fn = &FileNode{
 		node:    newNode(n, filePath, fileName, 0, n.staticWal, n.staticLog),
@@ -749,6 +738,16 @@ func (n *DirNode) openDir(dirName string) (*DirNode, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Make sure the metadata exists too.
+	dirMDPath := filepath.Join(dirPath, modules.SiaDirExtension)
+	_, err = os.Stat(dirMDPath)
+	if os.IsNotExist(err) {
+		return nil, ErrNotExist
+	}
+	if err != nil {
+		return nil, err
+	}
+	// Add the dir to the opened dirs.
 	dir = &DirNode{
 		node:        newNode(n, dirPath, dirName, 0, n.staticWal, n.staticLog),
 		directories: make(map[string]*DirNode),
@@ -779,7 +778,7 @@ func (n *DirNode) managedCopy() *DirNode {
 }
 
 // managedOpenDir opens a SiaDir.
-func (n *DirNode) managedOpenDir(path string) (*DirNode, error) {
+func (n *DirNode) managedOpenDir(path string) (_ *DirNode, err error) {
 	// Get the name of the next sub directory.
 	pathList := strings.Split(path, string(filepath.Separator))
 	n.mu.Lock()
@@ -794,7 +793,9 @@ func (n *DirNode) managedOpenDir(path string) (*DirNode, error) {
 		return subNode, nil
 	}
 	// Otherwise open the next dir.
-	defer subNode.Close()
+	defer func() {
+		err = errors.Compose(err, subNode.Close())
+	}()
 	return subNode.managedOpenDir(filepath.Join(pathList...))
 }
 
@@ -843,8 +844,8 @@ func (n *DirNode) managedRename(newName string, oldParent, newParent *DirNode) e
 	var filesToRename []*FileNode
 	var lockedNodes []*node
 	for _, file := range n.childFiles() {
-		file.mu.Lock()
-		file.Lock()
+		file.node.mu.Lock()
+		file.SiaFile.Lock()
 		lockedNodes = append(lockedNodes, &file.node)
 		filesToRename = append(filesToRename, file)
 	}
@@ -869,8 +870,8 @@ func (n *DirNode) managedRename(newName string, oldParent, newParent *DirNode) e
 		dirsToRename = append(dirsToRename, d)
 		// Lock the open files.
 		for _, file := range d.files {
-			file.mu.Lock()
-			file.Lock()
+			file.node.mu.Lock()
+			file.SiaFile.Lock()
 			lockedNodes = append(lockedNodes, &file.node)
 			filesToRename = append(filesToRename, file)
 		}
@@ -912,7 +913,10 @@ func (n *DirNode) managedRename(newName string, oldParent, newParent *DirNode) e
 		if *dir.lazySiaDir == nil {
 			continue // dir isn't loaded
 		}
-		(*dir.lazySiaDir).SetPath(*dir.path)
+		err = (*dir.lazySiaDir).SetPath(*dir.path)
+		if err != nil {
+			return errors.AddContext(err, fmt.Sprintf("unable to set path for %v", *dir.path))
+		}
 	}
 	return err
 }

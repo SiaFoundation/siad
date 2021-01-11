@@ -89,17 +89,30 @@ func (s *sectors) hasSector(sectorRoot crypto.Hash) bool {
 	return false
 }
 
+// swapSectors swaps the sectors at idx1 and idx2 and returns the new merkle
+// root.
+func (s *sectors) swapSectors(idx1, idx2 uint64) (crypto.Hash, error) {
+	if idx1 >= uint64(len(s.merkleRoots)) {
+		return crypto.Hash{}, fmt.Errorf("idx1 out-of-bounds: %v >= %v", idx1, len(s.merkleRoots))
+	}
+	if idx2 >= uint64(len(s.merkleRoots)) {
+		return crypto.Hash{}, fmt.Errorf("idx2 out-of-bounds: %v >= %v", idx2, len(s.merkleRoots))
+	}
+	s.merkleRoots[idx1], s.merkleRoots[idx2] = s.merkleRoots[idx2], s.merkleRoots[idx1]
+	return cachedMerkleRoot(s.merkleRoots), nil
+}
+
 // translateOffset translates an offset within a filecontract into a relative
-// offset within a sector and the sector root.
-func (s *sectors) translateOffset(offset uint64) (uint64, crypto.Hash, error) {
+// offset within a sector and the sector's index within the contract.
+func (s *sectors) translateOffset(offset uint64) (uint64, uint64, error) {
 	// Compute the sector offset.
 	secOff := offset / modules.SectorSize
 	relOff := offset % modules.SectorSize
 	// Check for out of bounds.
 	if uint64(len(s.merkleRoots)) <= secOff {
-		return 0, crypto.Hash{}, fmt.Errorf("translateOffset: secOff out of bounds %v >= %v", len(s.merkleRoots), secOff)
+		return 0, 0, fmt.Errorf("translateOffset: secOff out of bounds %v >= %v", len(s.merkleRoots), secOff)
 	}
-	return relOff, s.merkleRoots[secOff], nil
+	return relOff, secOff, nil
 }
 
 // readSector reads data from the given root, returning the entire sector.

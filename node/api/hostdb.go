@@ -59,10 +59,10 @@ type (
 
 // hostdbHandler handles the API call asking for the list of active
 // hosts.
-func (api *API) hostdbHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) hostdbHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	isc, err := api.renter.InitialScanComplete()
 	if err != nil {
-		WriteError(w, Error{"Failed to get initial scan status" + err.Error()}, http.StatusInternalServerError)
+		WriteError(w, Error{"Failed to get initial scan status: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
 	WriteJSON(w, HostdbGet{
@@ -112,7 +112,7 @@ func (api *API) hostdbActiveHandler(w http.ResponseWriter, req *http.Request, _ 
 }
 
 // hostdbAllHandler handles the API call asking for the list of all hosts.
-func (api *API) hostdbAllHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) hostdbAllHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	// Get the set of all hosts and convert them into extended hosts.
 	hosts, err := api.renter.AllHosts()
 	if err != nil {
@@ -134,7 +134,7 @@ func (api *API) hostdbAllHandler(w http.ResponseWriter, req *http.Request, _ htt
 
 // hostdbHostsHandler handles the API call asking for a specific host,
 // returning detailed information about that host.
-func (api *API) hostdbHostsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) hostdbHostsHandler(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	var pk types.SiaPublicKey
 	pk.LoadString(ps.ByName("pubkey"))
 

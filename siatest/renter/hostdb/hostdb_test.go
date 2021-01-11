@@ -19,6 +19,69 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// TestSiamuxRequired checks that the hostdb will count a host as offline if the
+// host is not running siamux.
+func TestSiamuxRequired(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Get a directory for testing.
+	testDir := hostdbTestDir(t.Name())
+
+	// Create a group. The renter should block the scanning thread using a
+	// dependency.
+	deps := &dependencies.DependencyDisableHostSiamux{}
+	renterTemplate := node.Renter(filepath.Join(testDir, "renter"))
+	renterTemplate.SkipSetAllowance = true
+	renterTemplate.SkipHostDiscovery = true
+	hostTemplate := node.Host(filepath.Join(testDir, "host"))
+	hostTemplate.HostDeps = deps
+
+	tg, err := siatest.NewGroup(testDir, renterTemplate, hostTemplate, node.Miner(filepath.Join(testDir, "miner")))
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// The renter should have 1 offline host in its database and
+	// initialScanComplete should be false.
+	renter := tg.Renters()[0]
+	err = build.Retry(600, 100*time.Millisecond, func() error {
+		hdag, err := renter.HostDbAllGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		hdg, err := renter.HostDbGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hdg.InitialScanComplete {
+			return fmt.Errorf("Initial scan is not complete even though it should be")
+		}
+		if len(hdag.Hosts) != 1 {
+			return fmt.Errorf("HostDB should have 1 host but had %v", len(hdag.Hosts))
+		}
+		if hdag.Hosts[0].ScanHistory.Len() == 0 {
+			return fmt.Errorf("Host should have >0 scans but had %v", hdag.Hosts[0].ScanHistory.Len())
+		}
+		if hdag.Hosts[0].ScanHistory[0].Success {
+			// t.Fatal here instead of returning an error because retrying isn't
+			// going to change the results.
+			t.Fatal("there should not be a successful scan")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestInitialScanComplete tests if the initialScanComplete field is set
 // correctly.
 func TestInitialScanComplete(t *testing.T) {
@@ -357,6 +420,7 @@ func TestSelectRandomCanceledHost(t *testing.T) {
 		}
 	})
 	renterTemplate.ContractorDeps = renterTemplate.HostDBDeps
+	renterTemplate.ContractSetDeps = renterTemplate.HostDBDeps
 
 	// Create renter.
 	_, err = tg.AddNodes(renterTemplate)
@@ -673,10 +737,11 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 	}
 	allowHosts := int(rg.Settings.Allowance.Hosts)
 
-	// Confirm we are starting with expected number of contracts
+	// Confirm we are starting with expected number of contracts and active
+	// hosts.
 	loop := 0
 	m := tg.Miners()[0]
-	err = build.Retry(50, 100*time.Millisecond, func() error {
+	err = build.Retry(100, 100*time.Millisecond, func() error {
 		// Mine a block every 10 iterations to make sure
 		// threadedContractMaintenance is being triggered
 		if loop%10 == 0 {
@@ -691,6 +756,13 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 		}
 		if len(rc.ActiveContracts) < allowHosts {
 			return fmt.Errorf("Contracts did not form as expected, have %v expected at least %v", len(rc.ActiveContracts), allowHosts)
+		}
+		hdbActive, err := renter.HostDbActiveGet()
+		if err != nil {
+			return err
+		}
+		if len(hdbActive.Hosts) != len(tg.Hosts()) {
+			return fmt.Errorf("expected %v active hosts but got %v", len(tg.Hosts()), len(hdbActive.Hosts))
 		}
 		return nil
 	})
@@ -853,8 +925,12 @@ func testFilterMode(tg *siatest.TestGroup, renter *siatest.TestNode, fm modules.
 	if err != nil {
 		return err
 	}
+	hdbag, err := renter.HostDbAllGet()
+	if err != nil {
+		return err
+	}
 	if len(hdbActive.Hosts) != len(tg.Hosts()) {
-		return fmt.Errorf("Not expected number of active hosts after disabling FilterMode: got %v expected %v", len(hdbActive.Hosts), len(tg.Hosts()))
+		return fmt.Errorf("Unexpected number of active hosts after disabling FilterMode: got %v expected %v (%v)", len(hdbActive.Hosts), len(tg.Hosts()), len(hdbag.Hosts))
 	}
 
 	// Confirm that contracts will form with non listed hosts again by

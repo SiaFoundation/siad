@@ -26,7 +26,7 @@ func TestEvictionPolicy(t *testing.T) {
 	// transactions to eachother in a way that ensures transaction set
 	// minimization is occurring correctly.
 	groupParams := siatest.GroupParams{
-		Miners: 1,
+		Miners: 2,
 	}
 	testDir := tpoolTestDir(t.Name())
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
@@ -39,6 +39,28 @@ func TestEvictionPolicy(t *testing.T) {
 		}
 	}()
 	minerA := tg.Miners()[0]
+	minerB := tg.Miners()[1]
+
+	// Mine until we are above the foundation hardfork height to prevent
+	// transactions from becoming invalid as they cross the hardfork threshold.
+	err = tg.Sync()
+	if err != nil {
+		t.Fatal(err)
+	}
+	height, err := minerA.BlockHeight()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := height; i <= types.FoundationHardforkHeight; i++ {
+		err = minerB.MineBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = tg.Sync()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// Create source outputs for transaction graphs.
 	var sources []types.SiacoinOutputID
@@ -184,6 +206,9 @@ func TestEvictionPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(tptg.Transactions) != 3 {
+		for _, txn := range tptg.Transactions {
+			t.Log(txn.ID())
+		}
 		t.Fatal("expecting 3 transactions after mining block, got", len(tptg.Transactions))
 	}
 

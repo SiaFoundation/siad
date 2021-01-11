@@ -21,7 +21,11 @@ func TestIntegrationChangeLog(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.Close()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Add a mocked subscriber and check that it receives the correct number of
 	// blocks.

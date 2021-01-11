@@ -17,15 +17,15 @@ func main() {
 
 	// Determine which port to use when talking to siad.
 	args := os.Args
-	var addr string
+	port := 9980
 	var cmd string
 	if len(args) == 1 {
 		cmd = "dl"
-		addr = "localhost:9980"
 	} else if len(args) == 2 {
 		cmd = args[1]
-		addr = "localhost:9980"
 	} else if len(args) == 3 {
+		cmd = args[1]
+
 		// Parse port.
 		num, err := strconv.Atoi(args[2])
 		if err != nil {
@@ -34,11 +34,12 @@ func main() {
 		if num > 65535 {
 			fmt.Println("Invalid port number")
 		}
-		addr = "localhost:" + args[2]
+		port = num
 	} else if len(args) > 3 {
 		fmt.Println("Usage: ./skynet-benchmark [optional: which test to run] [optional: port for siad api]\n\tTest options: 'dl' and 'basic'")
 		return
 	}
+	addr := fmt.Sprintf("localhost:%d", port)
 
 	// Create the client that will be used to talk to siad.
 	opts, err := client.DefaultOptions()
@@ -59,5 +60,5 @@ func main() {
 		return
 	}
 
-	fmt.Println("Commnad not recognized. Options are 'dl' and 'basic'")
+	fmt.Printf("Command '%v' not recognized. Options are 'dl' and 'basic'\n", cmd)
 }

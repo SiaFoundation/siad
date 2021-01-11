@@ -66,6 +66,9 @@ Available settings:
      ephemeralaccountexpiry:     seconds
      maxephemeralaccountbalance: currency
      maxephemeralaccountrisk:    currency
+	 
+     registrysize:       filesize
+     customregistrypath: string
 
 Currency units can be specified, e.g. 10SC; run 'siac help wallet' for details.
 
@@ -203,7 +206,7 @@ func hostcmd() {
 		connectabilityString = "Host is not connectable (re-checks every few minutes)."
 	}
 
-	if hostVerbose {
+	if verbose {
 		// describe net address
 		fmt.Printf(`General Info:
 	Connectability Status: %v
@@ -228,9 +231,12 @@ Host Internal Settings:
 	minstorageprice:           %v / TB / Month
 	minuploadbandwidthprice:   %v / TB
 
-	ephemeralaccountexpiry:     %v
+	ephemeralaccountexpiry:     %vs
 	maxephemeralaccountbalance: %v
 	maxephemeralaccountrisk:    %v
+
+	registrysize:       %v
+	customregistrypath: %v
 
 Host Financials:
 	Contract Count:               %v
@@ -280,9 +286,11 @@ RPC Stats:
 			currencyUnits(is.MinStoragePrice.Mul(modules.BlockBytesPerMonthTerabyte)),
 			currencyUnits(is.MinUploadBandwidthPrice.Mul(modules.BytesPerTerabyte)),
 
-			is.EphemeralAccountExpiry,
+			is.EphemeralAccountExpiry.Seconds(),
 			currencyUnits(is.MaxEphemeralAccountBalance),
 			currencyUnits(is.MaxEphemeralAccountRisk),
+			modules.FilesizeUnits(is.RegistrySize),
+			is.CustomRegistryPath,
 
 			fm.ContractCount, currencyUnits(fm.ContractCompensation),
 			currencyUnits(fm.PotentialContractCompensation),
@@ -353,7 +361,9 @@ RPC Stats:
 		pctUsed := 100 * (float64(curSize) / float64(folder.Capacity))
 		fmt.Fprintf(w, "\t%s\t%s\t%.2f\t%s\n", modules.FilesizeUnits(uint64(curSize)), modules.FilesizeUnits(folder.Capacity), pctUsed, folder.Path)
 	}
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		die("failed to flush writer")
+	}
 }
 
 // hostconfigcmd is the handler for the command `siac host config [setting] [value]`.
@@ -404,6 +414,13 @@ func hostconfigcmd(param, value string) {
 			die("Could not parse "+param+":", err)
 		}
 
+	// filesize (convert to bytes)
+	case "registrysize":
+		value, err = parseFilesize(value)
+		if err != nil {
+			die("Could not parse "+param+":", err)
+		}
+
 	// timeout (convert to seconds)
 	case "ephemeralaccountexpiry":
 		value, err = parseTimeout(value)
@@ -412,7 +429,7 @@ func hostconfigcmd(param, value string) {
 		}
 
 	// other valid settings
-	case "maxdownloadbatchsize", "maxrevisebatchsize", "netaddress":
+	case "maxdownloadbatchsize", "maxrevisebatchsize", "netaddress", "customregistrypath":
 
 	// invalid settings
 	default:
@@ -461,7 +478,9 @@ func hostcontractcmd() {
 	default:
 		die("\"" + hostContractOutputType + "\" is not a format")
 	}
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		die("failed to flush writer")
+	}
 }
 
 // hostannouncecmd is the handler for the command `siac host announce`.
@@ -475,7 +494,7 @@ func hostannouncecmd(cmd *cobra.Command, args []string) {
 	case 1:
 		err = httpClient.HostAnnounceAddrPost(modules.NetAddress(args[0]))
 	default:
-		cmd.UsageFunc()(cmd)
+		_ = cmd.UsageFunc()(cmd)
 		os.Exit(exitCodeUsage)
 	}
 	if err != nil {
@@ -518,22 +537,13 @@ func hostfolderremovecmd(path string) {
 	if hostFolderRemoveForce {
 		fmt.Println(`Forced removing will completely destroy your renter's data,
 	and you will lose your locked collateral.`)
-	again:
-		fmt.Print("Do you want to continue? [y/n] ")
-		var resp string
-		fmt.Scanln(&resp)
-		switch strings.ToLower(resp) {
-		case "y", "yes":
-			// continue below
-		case "n", "no":
+		confirmed := askForConfirmation("Do you want to continue?")
+		if !confirmed {
 			return
-		default:
-			goto again
 		}
 	}
 
 	err := httpClient.HostStorageFoldersRemovePost(abs(path), hostFolderRemoveForce)
-
 	if err != nil {
 		die("Could not remove folder:", err)
 	}

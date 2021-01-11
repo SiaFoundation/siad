@@ -41,14 +41,20 @@ func (p *program) staticDecodeHasSectorInstruction(instruction modules.Instructi
 	}, nil
 }
 
+// Batch declares whether or not this instruction can be batched together with
+// the previous instruction.
+func (i instructionHasSector) Batch() bool {
+	return true
+}
+
 // Collateral is zero for the HasSector instruction.
 func (i *instructionHasSector) Collateral() types.Currency {
 	return modules.MDMHasSectorCollateral()
 }
 
 // Cost returns the cost of executing this instruction.
-func (i *instructionHasSector) Cost() (executionCost, refund types.Currency, err error) {
-	executionCost, refund = modules.MDMHasSectorCost(i.staticState.priceTable)
+func (i *instructionHasSector) Cost() (executionCost, _ types.Currency, err error) {
+	executionCost = modules.MDMHasSectorCost(i.staticState.priceTable)
 	return
 }
 

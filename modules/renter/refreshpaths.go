@@ -71,6 +71,14 @@ func (ufp *uniqueRefreshPaths) callAdd(path modules.SiaPath) error {
 	return nil
 }
 
+// callNumChildDirs returns the number of child directories currently being
+// tracked.
+func (ufp *uniqueRefreshPaths) callNumChildDirs() int {
+	ufp.mu.Lock()
+	defer ufp.mu.Unlock()
+	return len(ufp.childDirs)
+}
+
 // callRefreshAll uses the uniqueRefreshPaths's Renter to call
 // callThreadedBubbleMetadata on all the directories in the childDir map
 func (ufp *uniqueRefreshPaths) callRefreshAll() {
@@ -79,4 +87,15 @@ func (ufp *uniqueRefreshPaths) callRefreshAll() {
 	for sp := range ufp.childDirs {
 		go ufp.r.callThreadedBubbleMetadata(sp)
 	}
+}
+
+// callRefreshAllBlocking uses the uniqueRefreshPaths's Renter to call
+// managedBubbleMetadata on all the directories in the childDir map
+func (ufp *uniqueRefreshPaths) callRefreshAllBlocking() (err error) {
+	ufp.mu.Lock()
+	defer ufp.mu.Unlock()
+	for sp := range ufp.childDirs {
+		err = errors.Compose(err, ufp.r.managedBubbleMetadata(sp))
+	}
+	return
 }

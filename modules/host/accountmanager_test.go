@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"math/rand"
 	"sort"
 	"strings"
 	"sync"
@@ -572,16 +571,16 @@ func TestAccountRiskBenchmark(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				for w := 0; w < withdrawals/threads; w++ {
-					randIndex := rand.Intn(len(accountIDs))
+					randIndex := fastrand.Intn(len(accountIDs))
 					msg, sig := prepareWithdrawal(accountIDs[randIndex], withdrawalSize, types.BlockHeight(atomic.LoadUint64(&atomicBlockHeight)+bucketBlockRange/2), accountSKs[randIndex])
 
 					withdrawn, _ := withdrawalSize.Uint64()
 					atomic.AddUint64(&atomicWithdrawn[randIndex], withdrawn)
 
 					wErr := callWithdraw(am, msg, sig)
-					if wErr == errMaxRiskReached {
+					if errors.Contains(wErr, errMaxRiskReached) {
 						atomic.StoreUint64(&atomicMaxRiskReached, 1)
-					} else if wErr == ErrBalanceInsufficient {
+					} else if errors.Contains(wErr, ErrBalanceInsufficient) {
 						if dErr := callDeposit(am, accountIDs[randIndex], maxBalance); dErr != nil {
 							atomic.AddUint64(&atomicWithdrawalErrs, 1)
 							t.Log(wErr)
@@ -689,7 +688,7 @@ func TestAccountWithdrawalBenchmark(t *testing.T) {
 			msgs[t] = make([]*modules.WithdrawalMessage, withdrawals/threads)
 			sigs[t] = make([]crypto.Signature, withdrawals/threads)
 			for w := 0; w < withdrawals/threads; w++ {
-				randIndex := rand.Intn(len(accountIDs))
+				randIndex := fastrand.Intn(len(accountIDs))
 				msgs[t][w], sigs[t][w] = prepareWithdrawal(accountIDs[randIndex], oneCurr, am.h.blockHeight, accountSKs[randIndex])
 			}
 		}
@@ -1004,7 +1003,7 @@ func TestAccountIndexRecycling(t *testing.T) {
 		t.Fatal(err)
 	}
 	hIS := ht.host.InternalSettings()
-	hIS.EphemeralAccountExpiry = 2
+	hIS.EphemeralAccountExpiry = 2 * time.Second
 	err = ht.host.SetInternalSettings(hIS)
 	if err != nil {
 		t.Fatal(err)

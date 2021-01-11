@@ -213,7 +213,7 @@ func (cl *churnLimiter) managedCanChurnContract(contract modules.RenterContract)
 	return fitsInPeriodBudget && fitsInCurrentBudget
 }
 
-// managedMarkContractsUtility checks an active contract in the contractor and
+// managedMarkContractUtility checks an active contract in the contractor and
 // figures out whether the contract is useful for uploading, and whether the
 // contract should be renewed.
 func (c *Contractor) managedMarkContractUtility(contract modules.RenterContract, minScoreGFR, minScoreGFU types.Currency) (modules.HostScoreBreakdown, modules.ContractUtility, bool, error) {
@@ -243,7 +243,7 @@ func (c *Contractor) managedMarkContractUtility(contract modules.RenterContract,
 	}
 
 	// Do critical contract checks and update the utility if any checks fail.
-	u, needsUpdate = c.managedCriticalUtilityChecks(contract, host)
+	u, needsUpdate = c.managedCriticalUtilityChecks(sc, host)
 	if needsUpdate {
 		err := c.managedUpdateContractUtility(sc, u)
 		if err != nil {
@@ -302,7 +302,7 @@ func (c *Contractor) managedMarkContractUtility(contract modules.RenterContract,
 // figures out whether the contract is useful for uploading, and whether the
 // contract should be renewed.
 func (c *Contractor) managedMarkContractsUtility() error {
-	err, minScoreGFR, minScoreGFU := c.managedFindMinAllowedHostScores()
+	minScoreGFR, minScoreGFU, err := c.managedFindMinAllowedHostScores()
 	if err != nil {
 		return err
 	}
@@ -321,7 +321,6 @@ func (c *Contractor) managedMarkContractsUtility() error {
 			suggestedUpdateQueue = append(suggestedUpdateQueue, contractScoreAndUtil{contract, sb.Score, utility})
 		}
 	}
-
 	// Process the suggested updates through the churn limiter.
 	err = c.staticChurnLimiter.managedProcessSuggestedUpdates(suggestedUpdateQueue)
 	if err != nil {

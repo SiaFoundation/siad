@@ -4,7 +4,6 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
 const (
@@ -47,16 +46,6 @@ const (
 	CombinedChunkStatusInvalid    = iota // status wasn't initialized
 	CombinedChunkStatusInComplete        // partial chunk is included in an incomplete combined chunk.
 	CombinedChunkStatusCompleted         // partial chunk is included in a completed combined chunk.
-)
-
-var (
-	// ECReedSolomon is the marshaled type of the reed solomon coder.
-	ECReedSolomon = modules.ErasureCoderType{0, 0, 0, 1}
-
-	// ECReedSolomonSubShards64 is the marshaled type of the reed solomon coder
-	// for files where every 64 bytes of an encoded piece can be decoded
-	// separately.
-	ECReedSolomonSubShards64 = modules.ErasureCoderType{0, 0, 0, 2}
 )
 
 // marshaledChunkSize is a helper method that returns the size of a chunk on

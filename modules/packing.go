@@ -1,10 +1,10 @@
 package modules
 
 import (
-	"errors"
 	"sort"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var (
@@ -114,7 +114,7 @@ func PackFiles(files map[string]uint64) ([]FilePlacement, uint64, error) {
 		}
 
 		bucketIndex, err := findBucket(file.size, buckets)
-		if err == errBucketNotFound {
+		if errors.Contains(err, errBucketNotFound) {
 			// Create a new sector and bucket. We have already ensured above
 			// that the file will fit into this new sector-bucket.
 			buckets, numSectors = extendSectors(buckets, numSectors)

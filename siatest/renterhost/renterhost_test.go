@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/log"
+	"gitlab.com/NebulousLabs/ratelimit"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -38,11 +40,16 @@ func TestSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// manually grab a renter contract
 	renter := tg.Renters()[0]
-	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), new(modules.ProductionDependencies))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +65,7 @@ func TestSession(t *testing.T) {
 	}
 
 	// begin the RPC session
-	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, log.DiscardLogger, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +149,7 @@ func TestSession(t *testing.T) {
 	}
 	hhg.Entry.HostDBEntry.NetAddress = hg.ExternalSettings.NetAddress
 	// initiate session
-	s, err = cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	s, err = cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, log.DiscardLogger, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,11 +177,16 @@ func TestHostLockTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// manually grab a renter contract
 	renter := tg.Renters()[0]
-	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), new(modules.ProductionDependencies))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,14 +202,14 @@ func TestHostLockTimeout(t *testing.T) {
 	}
 
 	// Begin an RPC session. This will lock the contract.
-	s1, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	s1, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, log.DiscardLogger, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Attempt to begin a separate RPC session. This will block while waiting
 	// to acquire the contract lock, and eventually fail.
-	_, err = cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	_, err = cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, log.DiscardLogger, nil)
 	if err == nil || !strings.Contains(err.Error(), "contract is locked by another party") {
 		t.Fatal("expected contract lock error, got", err)
 	}
@@ -209,11 +221,15 @@ func TestHostLockTimeout(t *testing.T) {
 			panic(err) // can't call t.Fatal from goroutine
 		}
 	})
-	s2, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	s2, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, log.DiscardLogger, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s2.Close()
+	defer func() {
+		if err := s2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Attempt to begin a separate RPC session. This will block while waiting to
 	// acquire the contract lock. In the meantime, modify the contract, then
@@ -224,13 +240,17 @@ func TestHostLockTimeout(t *testing.T) {
 	go func() {
 		// NOTE: the ContractSet uses a local mutex to serialize RPCs, so this
 		// test requires a separate ContractSet.
-		cs2, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), new(modules.ProductionDependencies))
+		cs2, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
 		if err != nil {
 			errCh <- err
 			return
 		}
-		defer cs2.Close()
-		s1, err = cs2.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+		defer func() {
+			if err := cs2.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
+		s1, err = cs2.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, log.DiscardLogger, nil)
 		if err != nil {
 			errCh <- err
 			return
@@ -278,11 +298,16 @@ func TestHostBaseRPCPrice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// manually grab a renter contract
 	renter := tg.Renters()[0]
-	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), new(modules.ProductionDependencies))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +323,7 @@ func TestHostBaseRPCPrice(t *testing.T) {
 	}
 
 	// Begin an RPC session.
-	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, log.DiscardLogger, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,11 +368,16 @@ func TestMultiRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer tg.Close()
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// manually grab a renter contract
 	renter := tg.Renters()[0]
-	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), new(modules.ProductionDependencies))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := proto.NewContractSet(filepath.Join(renter.Dir, "renter", "contracts"), rl, new(modules.ProductionDependencies))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -363,7 +393,7 @@ func TestMultiRead(t *testing.T) {
 	}
 
 	// begin the RPC session
-	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, nil)
+	s, err := cs.NewSession(hhg.Entry.HostDBEntry, contract.ID, cg.Height, stubHostDB{}, log.DiscardLogger, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

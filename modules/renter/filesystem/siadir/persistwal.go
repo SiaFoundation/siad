@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -20,7 +21,7 @@ func applyUpdate(deps modules.Dependencies, update writeaheadlog.Update) error {
 	case updateMetadataName:
 		return readAndApplyMetadataUpdate(deps, update)
 	default:
-		return fmt.Errorf("Update not recognized: %v", update.Name)
+		return fmt.Errorf("update not recognized: %v", update.Name)
 	}
 }
 
@@ -59,7 +60,7 @@ func readAndApplyDeleteUpdate(update writeaheadlog.Update) error {
 // readAndApplyMetadataUpdate reads the metadata update and then applies it.
 // This helper assumes that the file is not currently open and so should only be
 // called on startup before any siadir is loaded from disk
-func readAndApplyMetadataUpdate(deps modules.Dependencies, update writeaheadlog.Update) error {
+func readAndApplyMetadataUpdate(deps modules.Dependencies, update writeaheadlog.Update) (err error) {
 	if !IsSiaDirUpdate(update) {
 		err := errors.New("readAndApplyMetadataUpdate can't read non-SiaDir update")
 		build.Critical(err)
@@ -67,6 +68,12 @@ func readAndApplyMetadataUpdate(deps modules.Dependencies, update writeaheadlog.
 	}
 	// Decode update.
 	data, path, err := readMetadataUpdate(update)
+	if err != nil {
+		return err
+	}
+
+	// Create the folder if it doesn't exist yet.
+	err = os.MkdirAll(filepath.Dir(path), modules.DefaultDirPerm)
 	if err != nil {
 		return err
 	}
@@ -123,16 +130,16 @@ func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
 	// the file while holding a open file handle.
 	for i := len(updates) - 1; i >= 0; i-- {
 		u := updates[i]
-		switch u.Name {
-		case updateDeleteName:
-			if err := readAndApplyDeleteUpdate(u); err != nil {
-				return err
-			}
-			updates = updates[i+1:]
-			break
-		default:
+		if u.Name != updateDeleteName {
 			continue
 		}
+		// Read and apply the delete update.
+		if err := readAndApplyDeleteUpdate(u); err != nil {
+			return err
+		}
+		// Truncate the updates and break out of the for loop.
+		updates = updates[i+1:]
+		break
 	}
 	if len(updates) == 0 {
 		return nil
@@ -163,7 +170,7 @@ func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
 			case updateMetadataName:
 				return sd.readAndApplyMetadataUpdate(file, u)
 			default:
-				return fmt.Errorf("Update not recognized: %v", u.Name)
+				return fmt.Errorf("update not recognized: %v", u.Name)
 			}
 		}()
 		if err != nil {
@@ -175,7 +182,7 @@ func (sd *SiaDir) applyUpdates(updates ...writeaheadlog.Update) error {
 
 // createAndApplyTransaction is a helper method that creates a writeaheadlog
 // transaction and applies it.
-func (sd *SiaDir) createAndApplyTransaction(updates ...writeaheadlog.Update) error {
+func (sd *SiaDir) createAndApplyTransaction(updates ...writeaheadlog.Update) (err error) {
 	// This should never be called on a deleted directory.
 	if sd.deleted {
 		return errors.New("shouldn't apply updates on deleted directory")
@@ -189,6 +196,13 @@ func (sd *SiaDir) createAndApplyTransaction(updates ...writeaheadlog.Update) err
 	if err := <-txn.SignalSetupComplete(); err != nil {
 		return errors.AddContext(err, "failed to signal setup completion")
 	}
+	// Starting at this point the changes to be made are written to the WAL.
+	// This means we need to panic in case applying the updates fails.
+	defer func() {
+		if err != nil {
+			panic(err)
+		}
+	}()
 	// Apply the updates.
 	if err := sd.applyUpdates(updates...); err != nil {
 		return errors.AddContext(err, "failed to apply updates")
@@ -211,6 +225,8 @@ func (sd *SiaDir) createDeleteUpdate() writeaheadlog.Update {
 
 // readAndApplyMetadataUpdate reads the metadata update for a file and then
 // applies it.
+//
+// NOTE: This method does not fsync after the write.
 func (sd *SiaDir) readAndApplyMetadataUpdate(file modules.File, update writeaheadlog.Update) error {
 	// Decode update.
 	data, path, err := readMetadataUpdate(update)
@@ -224,7 +240,7 @@ func (sd *SiaDir) readAndApplyMetadataUpdate(file modules.File, update writeahea
 		return nil
 	}
 
-	// Write and sync.
+	// Write.
 	n, err := file.Write(data)
 	if err != nil {
 		return err

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/threadgroup"
 )
 
 // TestStreamLRU checks that all of the code that forms the LRU for a
@@ -17,9 +18,10 @@ func TestStreamLRU(t *testing.T) {
 
 	// Create a usable stream, this creates the stream buffer that the LRU talks
 	// to and gives a good opporutnity to probe the LRU.
+	var tg threadgroup.ThreadGroup
 	data := fastrand.Bytes(15999) // 1 byte short of 1000 data sections.
 	dataSource := newMockDataSource(data, 16)
-	sbs := newStreamBufferSet()
+	sbs := newStreamBufferSet(&tg)
 	stream := sbs.callNewStream(dataSource, 0)
 
 	// Extract the LRU from the stream to test it directly.
@@ -284,45 +286,34 @@ func TestStreamLRU(t *testing.T) {
 		t.Fatal("bad")
 	}
 
-	// Attempt a direct evict on a node that doesn't exist. Nothing should
-	// happen.
-	lru.callEvict(500)
+	// Add another node and attempt to evict the tail node.
+	lru.callUpdate(2)
+	lru.managedEvict()
 	if len(lru.nodes) != 4 {
 		t.Fatal("bad", len(lru.nodes))
 	}
 	if len(sb.dataSections) != 4 {
-		t.Fatal("bad")
+		t.Fatal("bad", len(sb.dataSections))
 	}
-
-	// Attempt to evict the head node.
-	lru.callEvict(10)
-	if len(lru.nodes) != 3 {
-		t.Fatal("bad", len(lru.nodes))
+	if lru.head.index != 2 {
+		t.Fatal("bad", lru.head.index)
 	}
-	if len(sb.dataSections) != 3 {
-		t.Fatal("bad")
+	if lru.head.next.index != 10 {
+		t.Fatal("bad", lru.head.next.index)
 	}
-	if lru.head.index != 3 {
-		t.Fatal("bad")
-	}
-	if lru.head.next.index != 1 {
-		t.Fatal("bad")
-	}
-	if lru.head.next.next.index != 4 {
-		t.Fatal("bad")
-	}
-	if lru.tail.index != 4 {
+	if lru.tail.index != 1 {
 		t.Fatal("bad", lru.tail.index)
 	}
-	if lru.tail.prev.index != 1 {
-		t.Fatal("bad")
-	}
-	if lru.tail.prev.prev.index != 3 {
-		t.Fatal("bad")
+	if lru.tail.prev.index != 3 {
+		t.Fatal("bad", lru.tail.prev.index)
 	}
 
-	// streamBuffer should have data pieces 1,3,4.
+	// streamBuffer should have data pieces 1,2,3,10.
 	_, exists = sb.dataSections[1]
+	if !exists {
+		t.Fatal("bad")
+	}
+	_, exists = sb.dataSections[2]
 	if !exists {
 		t.Fatal("bad")
 	}
@@ -330,30 +321,15 @@ func TestStreamLRU(t *testing.T) {
 	if !exists {
 		t.Fatal("bad")
 	}
-	_, exists = sb.dataSections[4]
+	_, exists = sb.dataSections[10]
 	if !exists {
 		t.Fatal("bad")
 	}
 
-	// Attempt to evict the tail node.
-	lru.callEvict(4)
-	if len(lru.nodes) != 2 {
+	// Evict again. Should be a no-op now.
+	lru.managedEvict()
+	if len(lru.nodes) != 4 {
 		t.Fatal("bad", len(lru.nodes))
-	}
-	if len(sb.dataSections) != 2 {
-		t.Fatal("bad")
-	}
-	if lru.head.index != 3 {
-		t.Fatal("bad")
-	}
-	if lru.head.next.index != 1 {
-		t.Fatal("bad")
-	}
-	if lru.tail.index != 1 {
-		t.Fatal("bad", lru.tail.index)
-	}
-	if lru.tail.prev.index != 3 {
-		t.Fatal("bad")
 	}
 
 	// streamBuffer should have data pieces 1,3.

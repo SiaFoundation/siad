@@ -33,10 +33,15 @@ type (
 		// UserAgent must match the User-Agent required by the siad server. If not
 		// set, it defaults to "Sia-Agent".
 		UserAgent string
+
+		// CheckRedirect is an optional handler to be called if the request
+		// receives a redirect status code.
+		// For more see https://golang.org/pkg/net/http/#Client
+		CheckRedirect func(req *http.Request, via []*http.Request) error
 	}
 
-	// A UnsafeClient is a Client with additional access to unsafe methods that are
-	// easy to misuse. It should only be used for testing.
+	// A UnsafeClient is a Client with additional access to unsafe methods that
+	// are easy to misuse. It should only be used for testing.
 	UnsafeClient struct {
 		Client
 	}
@@ -59,8 +64,27 @@ func (uc *UnsafeClient) Get(resource string, obj interface{}) error {
 	return uc.get(resource, obj)
 }
 
+// GetWithHeaders requests the specified resource using the given
+// request headers.
+func (uc *UnsafeClient) GetWithHeaders(resource string, headers http.Header) (*http.Response, error) {
+	req, err := uc.NewRequest("GET", resource, nil)
+	if err != nil {
+		return nil, errors.AddContext(err, "failed to construct GET request")
+	}
+
+	// Decorate the headers on the request object
+	for k, v := range headers {
+		for _, vv := range v {
+			req.Header.Add(k, vv)
+		}
+	}
+
+	httpClient := http.Client{CheckRedirect: uc.CheckRedirect}
+	return httpClient.Do(req)
+}
+
 // New creates a new Client using the provided address. The password will be set
-// using build.APIPasssword and the user agent will be set to "Sia-Agent". Both
+// using build.APIPassword and the user agent will be set to "Sia-Agent". Both
 // can be changed manually by the caller after the client is returned.
 func New(opts Options) *Client {
 	return &Client{
@@ -137,7 +161,7 @@ func (c *Client) getRawResponse(resource string) (http.Header, []byte, error) {
 	}
 	defer drainAndClose(reader)
 	d, err := ioutil.ReadAll(reader)
-	return header, d, err
+	return header, d, errors.AddContext(err, "failed to read all bytes from reader")
 }
 
 // getReaderResponse requests the specified resource. The response, if provided,
@@ -147,14 +171,15 @@ func (c *Client) getReaderResponse(resource string) (http.Header, io.ReadCloser,
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "failed to construct GET request")
 	}
-	res, err := http.DefaultClient.Do(req)
+	httpClient := http.Client{CheckRedirect: c.CheckRedirect}
+	res, err := httpClient.Do(req)
 	if err != nil {
 		return nil, nil, errors.AddContext(err, "GET request failed")
 	}
 
-	// Add ErrAPICallNotRecognized if StatusCode is StatusNotFound to allow for
-	// handling of modules that are not loaded
-	if res.StatusCode == http.StatusNotFound {
+	// Add ErrAPICallNotRecognized if StatusCode is StatusModuleNotLoaded to
+	// allow for handling of modules that are not loaded
+	if res.StatusCode == api.StatusModuleNotLoaded || res.StatusCode == api.StatusModuleDisabled {
 		err = errors.Compose(readAPIError(res.Body), api.ErrAPICallNotRecognized)
 		return nil, nil, errors.AddContext(err, "unable to perform GET on "+resource)
 	}
@@ -184,15 +209,16 @@ func (c *Client) getRawPartialResponse(resource string, from, to uint64) ([]byte
 	}
 	req.Header.Add("Range", fmt.Sprintf("bytes=%d-%d", from, to-1))
 
-	res, err := http.DefaultClient.Do(req)
+	httpClient := http.Client{CheckRedirect: c.CheckRedirect}
+	res, err := httpClient.Do(req)
 	if err != nil {
 		return nil, errors.AddContext(err, "GET request failed")
 	}
 	defer drainAndClose(res.Body)
 
-	// Add ErrAPICallNotRecognized if StatusCode is StatusNotFound to allow for
+	// Add ErrAPICallNotRecognized if StatusCode is StatusModuleNotLoaded to allow for
 	// handling of modules that are not loaded
-	if res.StatusCode == http.StatusNotFound {
+	if res.StatusCode == api.StatusModuleNotLoaded || res.StatusCode == api.StatusModuleDisabled {
 		err = errors.Compose(readAPIError(res.Body), api.ErrAPICallNotRecognized)
 		return nil, errors.AddContext(err, "unable to perform GET on "+resource)
 	}
@@ -240,7 +266,8 @@ func (c *Client) head(resource string) (int, http.Header, error) {
 	if err != nil {
 		return 0, nil, errors.AddContext(err, "failed to construct HEAD request")
 	}
-	res, err := http.DefaultClient.Do(req)
+	httpClient := http.Client{CheckRedirect: c.CheckRedirect}
+	res, err := httpClient.Do(req)
 	if err != nil {
 		return 0, nil, errors.AddContext(err, "HEAD request failed")
 	}
@@ -254,13 +281,13 @@ func (c *Client) postRawResponse(resource string, body io.Reader) (http.Header, 
 	// if the caller is performing a multipart form-data upload he can do so by
 	// using `postRawResponseWithHeaders` and manually set the Content-Type
 	// header himself.
-	headers := map[string]string{"Content-Type": "application/x-www-form-urlencoded"}
+	headers := http.Header{"Content-Type": []string{"application/x-www-form-urlencoded"}}
 	return c.postRawResponseWithHeaders(resource, body, headers)
 }
 
 // postRawResponseWithHeaders requests the specified resource and allows to pass
 // custom headers. The response, if provided, will be returned in a byte slice
-func (c *Client) postRawResponseWithHeaders(resource string, body io.Reader, headers map[string]string) (http.Header, []byte, error) {
+func (c *Client) postRawResponseWithHeaders(resource string, body io.Reader, headers http.Header) (http.Header, []byte, error) {
 	req, err := c.NewRequest("POST", resource, body)
 	if err != nil {
 		return http.Header{}, nil, errors.AddContext(err, "failed to construct POST request")
@@ -268,18 +295,21 @@ func (c *Client) postRawResponseWithHeaders(resource string, body io.Reader, hea
 
 	// Decorate the headers on the request object
 	for k, v := range headers {
-		req.Header.Set(k, v)
+		for _, vv := range v {
+			req.Header.Add(k, vv)
+		}
 	}
 
-	res, err := http.DefaultClient.Do(req)
+	httpClient := http.Client{CheckRedirect: c.CheckRedirect}
+	res, err := httpClient.Do(req)
 	if err != nil {
 		return http.Header{}, nil, errors.AddContext(err, "POST request failed")
 	}
 	defer drainAndClose(res.Body)
 
-	// Add ErrAPICallNotRecognized if StatusCode is StatusNotFound to allow for
+	// Add ErrAPICallNotRecognized if StatusCode is StatusModuleNotLoaded to allow for
 	// handling of modules that are not loaded
-	if res.StatusCode == http.StatusNotFound {
+	if res.StatusCode == api.StatusModuleNotLoaded || res.StatusCode == api.StatusModuleDisabled {
 		err = errors.Compose(readAPIError(res.Body), api.ErrAPICallNotRecognized)
 		return http.Header{}, nil, errors.AddContext(err, "unable to perform POST on "+resource)
 	}

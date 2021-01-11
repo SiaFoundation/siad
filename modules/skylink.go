@@ -5,22 +5,16 @@ package modules
 // subsections of a sector.
 
 import (
+	"encoding/base32"
 	"encoding/base64"
 	"encoding/binary"
 	"math/bits"
 	"strings"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
+
 	"gitlab.com/NebulousLabs/errors"
-)
-
-const (
-	// rawSkylinkSize is the raw size of the data that gets put into a link.
-	rawSkylinkSize = 34
-
-	// encodedSkylinkSize is the size of the Skylink after it has been encoded
-	// using base64.
-	encodedSkylinkSize = 46
 )
 
 const (
@@ -30,18 +24,38 @@ const (
 	// modules.SectorSize directly because during testing that value is too
 	// small to properly test the link format.
 	SkylinkMaxFetchSize = 1 << 22
+
+	// base32EncodedSkylinkSize is the size of the Skylink after it has been
+	// encoded using base32.
+	base32EncodedSkylinkSize = 55
+
+	// base64EncodedSkylinkSize is the size of the Skylink after it has been
+	// encoded using base64.
+	base64EncodedSkylinkSize = 46
+
+	// rawSkylinkSize is the raw size of the data that gets put into a link.
+	rawSkylinkSize = 34
 )
 
-// Skylink contains all of the information that can be encoded into a skylink.
-// This information consists of a 32 byte MerkleRoot and a 2 byte bitfield.
-//
-// The first two bits of the bitfield (values 1 and 2 in decimal) determine the
-// version of the skylink. The skylink version determines how the remaining bits
-// are used. Not all values of the bitfield are legal.
-type Skylink struct {
-	bitfield   uint16
-	merkleRoot crypto.Hash
-}
+var (
+	// ErrSkylinkIncorrectSize is returned when a string could not be decoded
+	// into a Skylink due to it having an incorrect size.
+	ErrSkylinkIncorrectSize = errors.New("skylink has incorrect size")
+)
+
+type (
+	// Skylink contains all of the information that can be encoded into a
+	// skylink. This information consists of a 32 byte MerkleRoot and a 2 byte
+	// bitfield.
+	//
+	// The first two bits of the bitfield (values 1 and 2 in decimal) determine
+	// the version of the skylink. The skylink version determines how the
+	// remaining bits are used. Not all values of the bitfield are legal.
+	Skylink struct {
+		bitfield   uint16
+		merkleRoot crypto.Hash
+	}
+)
 
 // NewSkylinkV1 will return a v1 Skylink object with the version set to 1 and
 // the remaining fields set appropriately. Note that the offset needs to be
@@ -126,6 +140,20 @@ func (sl *Skylink) Bitfield() uint16 {
 	return sl.bitfield
 }
 
+// Bytes returns the raw bytes representation of a Skylink
+func (sl *Skylink) Bytes() []byte {
+	raw := make([]byte, rawSkylinkSize)
+	binary.LittleEndian.PutUint16(raw, sl.bitfield)
+	copy(raw[2:], sl.merkleRoot[:])
+	return raw
+}
+
+// DataSourceID returns a resource ID for the Skylink. This ID is typically used
+// inside of the renter to uniquely identify a stream buffer.
+func (sl Skylink) DataSourceID() DataSourceID {
+	return DataSourceID(crypto.HashObject(sl.String()))
+}
+
 // LoadString converts from a string and loads the result into sl.
 func (sl *Skylink) LoadString(s string) error {
 	// Trim any parameters that may exist after a question mark. Eventually, it
@@ -144,30 +172,14 @@ func (sl *Skylink) LoadString(s string) error {
 		base = splits[0]
 	}
 
-	// Input check, ensure that this string is the expected size.
-	if len(base) != encodedSkylinkSize {
-		return errors.New("not a skylink, skylinks are always 46 bytes")
-	}
-
-	// Decode the skylink from base64 into raw.
-	raw, err := base64.RawURLEncoding.DecodeString(base)
+	// Decode the base into raw data
+	raw, err := decodeSkylink(base)
 	if err != nil {
 		return errors.AddContext(err, "unable to decode skylink")
 	}
 
-	// Load and check the bitfield. The bitfield is checked before modifying the
-	// Skylink so that the Skylink remains unchanged if there is any error
-	// parsing the string.
-	bitfield := binary.LittleEndian.Uint16(raw)
-	_, _, err = validateAndParseV1Bitfield(bitfield)
-	if err != nil {
-		return errors.AddContext(err, "skylink failed verification")
-	}
-
-	// Load the raw data.
-	sl.bitfield = bitfield
-	copy(sl.merkleRoot[:], raw[2:])
-	return nil
+	// Load the raw data
+	return sl.LoadBytes(raw)
 }
 
 // MerkleRoot returns the merkle root of the Skylink.
@@ -286,13 +298,8 @@ func (sl Skylink) OffsetAndFetchSize() (offset uint64, fetchSize uint64, err err
 
 // String converts Skylink to a string.
 func (sl Skylink) String() string {
-	// Build the raw string.
-	raw := make([]byte, rawSkylinkSize)
-	binary.LittleEndian.PutUint16(raw, sl.bitfield)
-	copy(raw[2:], sl.merkleRoot[:])
-
 	// Encode the raw bytes to base64.
-	return base64.RawURLEncoding.EncodeToString(raw)
+	return base64.RawURLEncoding.EncodeToString(sl.Bytes())
 }
 
 // Version will pull the version out of the bitfield and return it. The version
@@ -301,6 +308,29 @@ func (sl Skylink) String() string {
 // [1, 4], so we increment the bitwise result.
 func (sl Skylink) Version() uint16 {
 	return (sl.bitfield & 3) + 1
+}
+
+// LoadBytes loads the given raw data onto the skylink.
+func (sl *Skylink) LoadBytes(data []byte) error {
+	// Sanity check the size of the given data
+	if len(data) != rawSkylinkSize {
+		build.Critical("raw skylink data has the incorrect size")
+		return errors.New("failed to load skylink data")
+	}
+
+	// Load and check the bitfield. The bitfield is checked before modifying the
+	// Skylink so that the Skylink remains unchanged if there is any error
+	// parsing the string.
+	bitfield := binary.LittleEndian.Uint16(data)
+	_, _, err := validateAndParseV1Bitfield(bitfield)
+	if err != nil {
+		return errors.AddContext(err, "skylink failed verification")
+	}
+
+	// Load the raw data.
+	sl.bitfield = bitfield
+	copy(sl.merkleRoot[:], data[2:])
+	return nil
 }
 
 // setOffsetAndFetchSize will set the offset and fetch size of the data within
@@ -373,4 +403,18 @@ func (sl *Skylink) setOffsetAndFetchSize(offset, fetchSize uint64) error {
 	// Set the bitfield and return.
 	sl.bitfield = bitfield
 	return nil
+}
+
+// decodeSkylink is a helper function that decodes the given string
+// representation of a skylink  into raw bytes. It either performs a base32
+// decoding, or base64 decoding, depending on the length.
+func decodeSkylink(encoded string) ([]byte, error) {
+	switch len(encoded) {
+	case base32EncodedSkylinkSize:
+		return base32.HexEncoding.WithPadding(base32.NoPadding).DecodeString(strings.ToUpper(encoded))
+	case base64EncodedSkylinkSize:
+		return base64.RawURLEncoding.DecodeString(encoded)
+	default:
+		return nil, ErrSkylinkIncorrectSize
+	}
 }

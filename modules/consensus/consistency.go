@@ -40,6 +40,7 @@ func consensusChecksum(tx *bolt.Tx) crypto.Hash {
 		tx.Bucket(FileContracts),
 		tx.Bucket(SiafundOutputs),
 		tx.Bucket(SiafundPool),
+		tx.Bucket(FoundationUnlockHashes),
 	}
 	for i := range consensusSetBuckets {
 		err := consensusSetBuckets[i].ForEach(func(k, v []byte) error {

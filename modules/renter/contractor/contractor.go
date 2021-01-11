@@ -1,7 +1,9 @@
 package contractor
 
 import (
-	"fmt"
+	"bytes"
+	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,7 +11,7 @@ import (
 	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/siamux"
+	"gitlab.com/NebulousLabs/ratelimit"
 	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -48,7 +50,7 @@ type Contractor struct {
 	persistDir    string
 	staticAlerter *modules.GenericAlerter
 	staticDeps    modules.Dependencies
-	tg            siasync.ThreadGroup
+	tg            threadgroup.ThreadGroup
 	tpool         modules.TransactionPool
 	wallet        modules.Wallet
 
@@ -104,6 +106,18 @@ func (c *Contractor) Allowance() modules.Allowance {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.allowance
+}
+
+// ContractPublicKey returns the public key capable of verifying the renter's
+// signature on a contract.
+func (c *Contractor) ContractPublicKey(pk types.SiaPublicKey) (crypto.PublicKey, bool) {
+	c.mu.RLock()
+	id, ok := c.pubKeysToContractID[pk.String()]
+	c.mu.RUnlock()
+	if !ok {
+		return crypto.PublicKey{}, false
+	}
+	return c.staticContracts.PublicKey(id)
 }
 
 // InitRecoveryScan starts scanning the whole blockchain for recoverable
@@ -202,7 +216,11 @@ func (c *Contractor) CurrentPeriod() types.BlockHeight {
 
 // ProvidePayment fulfills the PaymentProvider interface. It uses the given
 // stream and necessary payment details to perform payment for an RPC call.
-func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
+//
+// Note that this implementation performs a `Read` on the stream object.
+// Therefor you should not be passing in a buffer here to optimise writes. This
+// function however does optimise its writes as much as possible.
+func (c *Contractor) ProvidePayment(stream io.ReadWriter, host types.SiaPublicKey, rpc types.Specifier, amount types.Currency, refundAccount modules.AccountID, blockHeight types.BlockHeight) error {
 	// verify we do not specify a refund account on the fund account RPC
 	if rpc == modules.RPCFundAccount && !refundAccount.IsZeroAccount() {
 		return errRefundAccountInvalid
@@ -239,22 +257,38 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 		return errors.AddContext(err, "Failed to record payment intent")
 	}
 
+	// prepare a buffer so we can optimize our writes
+	buffer := bytes.NewBuffer(nil)
+
 	// send PaymentRequest
-	err = modules.RPCWrite(stream, modules.PaymentRequest{Type: modules.PayByContract})
+	err = modules.RPCWrite(buffer, modules.PaymentRequest{Type: modules.PayByContract})
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to write payment request to host")
 	}
 
 	// send PayByContractRequest
-	err = modules.RPCWrite(stream, newPayByContractRequest(rev, sig, refundAccount))
+	err = modules.RPCWrite(buffer, newPayByContractRequest(rev, sig, refundAccount))
 	if err != nil {
-		return err
+		return errors.AddContext(err, "unable to write the pay by contract request")
+	}
+
+	// write contents of the buffer to the stream
+	_, err = stream.Write(buffer.Bytes())
+	if err != nil {
+		return errors.AddContext(err, "could not write the buffer contents")
 	}
 
 	// receive PayByContractResponse
 	var payByResponse modules.PayByContractResponse
 	if err := modules.RPCRead(stream, &payByResponse); err != nil {
-		return err
+		if strings.Contains(err.Error(), "storage obligation not found") {
+			c.log.Printf("Marking contract %v as bad because host %v did not recognize it: %v", contract.ID, host, err)
+			mbcErr := c.managedMarkContractBad(sc)
+			if mbcErr != nil {
+				c.log.Printf("Unable to mark contract %v on host %v as bad: %v", contract.ID, host, mbcErr)
+			}
+		}
+		return errors.AddContext(err, "unable to read the pay by contract response")
 	}
 
 	// TODO: Check for revision mismatch and recover by applying the contract
@@ -269,18 +303,13 @@ func (c *Contractor) ProvidePayment(stream siamux.Stream, host types.SiaPublicKe
 	}
 
 	// commit payment intent
-	err = sc.CommitPaymentIntent(walTxn, signedTxn, amount, rpc)
-	if err != nil {
-		return errors.AddContext(err, "Failed to commit unknown spending intent")
+	if !c.staticDeps.Disrupt("DisableCommitPaymentIntent") {
+		err = sc.CommitPaymentIntent(walTxn, signedTxn, amount, rpc)
+		if err != nil {
+			return errors.AddContext(err, "Failed to commit unknown spending intent")
+		}
 	}
-
 	return nil
-}
-
-// RateLimits sets the bandwidth limits for connections created by the
-// contractSet.
-func (c *Contractor) RateLimits() (readBPW int64, writeBPS int64, packetSize uint64) {
-	return c.staticContracts.RateLimits()
 }
 
 // RecoveryScanStatus returns a bool indicating if a scan for recoverable
@@ -332,12 +361,6 @@ func (c *Contractor) RefreshedContract(fcid types.FileContractID) bool {
 	return newContract.EndHeight == contract.EndHeight
 }
 
-// SetRateLimits sets the bandwidth limits for connections created by the
-// contractSet.
-func (c *Contractor) SetRateLimits(readBPS int64, writeBPS int64, packetSize uint64) {
-	c.staticContracts.SetRateLimits(readBPS, writeBPS, packetSize)
-}
-
 // Synced returns a channel that is closed when the contractor is synced with
 // the peer-to-peer network.
 func (c *Contractor) Synced() <-chan struct{} {
@@ -352,7 +375,7 @@ func (c *Contractor) Close() error {
 }
 
 // New returns a new Contractor.
-func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, hdb modules.HostDB, persistDir string) (*Contractor, <-chan error) {
+func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, hdb modules.HostDB, rl *ratelimit.RateLimit, persistDir string) (*Contractor, <-chan error) {
 	errChan := make(chan error, 1)
 	defer close(errChan)
 	// Check for nil inputs.
@@ -381,13 +404,13 @@ func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.Transacti
 
 	// Convert the old persist file(s), if necessary. This must occur before
 	// loading the contract set.
-	if err := convertPersist(persistDir); err != nil {
+	if err := convertPersist(persistDir, rl); err != nil {
 		errChan <- err
 		return nil, errChan
 	}
 
 	// Create the contract set.
-	contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), modules.ProdDependencies)
+	contractSet, err := proto.NewContractSet(filepath.Join(persistDir, "contracts"), rl, modules.ProdDependencies)
 	if err != nil {
 		errChan <- err
 		return nil, errChan
@@ -434,17 +457,21 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 	c.staticWatchdog = newWatchdog(c)
 
 	// Close the contract set and logger upon shutdown.
-	c.tg.AfterStop(func() {
+	err := c.tg.AfterStop(func() error {
 		if err := c.staticContracts.Close(); err != nil {
-			c.log.Println("Failed to close contract set:", err)
+			return errors.AddContext(err, "failed to close contract set")
 		}
 		if err := c.log.Close(); err != nil {
-			fmt.Println("Failed to close the contractor logger:", err)
+			return errors.AddContext(err, "failed to close the contractor logger")
 		}
+		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	// Load the prior persistence structures.
-	err := c.load()
+	err = c.load()
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
@@ -453,9 +480,13 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 	c.managedUpdatePubKeyToContractIDMap()
 
 	// Unsubscribe from the consensus set upon shutdown.
-	c.tg.OnStop(func() {
+	err = c.tg.OnStop(func() error {
 		cs.Unsubscribe(c)
+		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	// We may have upgraded persist or resubscribed. Save now so that we don't
 	// lose our work.
@@ -481,7 +512,7 @@ func contractorAsyncStartup(c *Contractor, cs modules.ConsensusSet) error {
 		return nil
 	}
 	err := cs.ConsensusSetSubscribe(c, c.lastChange, c.tg.StopChan())
-	if err == modules.ErrInvalidConsensusChangeID {
+	if errors.Contains(err, modules.ErrInvalidConsensusChangeID) {
 		// Reset the contractor consensus variables and try rescanning.
 		c.blockHeight = 0
 		c.lastChange = modules.ConsensusChangeBeginning
@@ -607,4 +638,24 @@ func newPayByContractRequest(rev types.FileContractRevision, sig crypto.Signatur
 		req.NewMissedProofValues[i] = o.Value
 	}
 	return req
+}
+
+// RenewContract takes an established connection to a host and renews the
+// contract with that host.
+func (c *Contractor) RenewContract(conn net.Conn, hpk types.SiaPublicKey, params proto.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb modules.HostDB) error {
+	// Translate host's key to contract.
+	c.mu.RLock()
+	fcid, exists := c.pubKeysToContractID[hpk.String()]
+	c.mu.RUnlock()
+	if !exists {
+		return errors.New("RenewContract: failed to translate host key to contract id")
+	}
+	err := c.staticContracts.RenewContract(conn, fcid, params, txnBuilder, tpool, hdb)
+	if err != nil {
+		return errors.AddContext(err, "RenewContract: failed to renew contract")
+	}
+	// Update the mapping of public keys to contracts after a successful renewal.
+	c.managedCheckForDuplicates()
+	c.managedUpdatePubKeyToContractIDMap()
+	return nil
 }

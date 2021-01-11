@@ -84,9 +84,6 @@ func verifySettings(conn net.Conn, host modules.HostDBEntry) (modules.HostDBEntr
 		UploadBandwidthPrice:   recvSettings.UploadBandwidthPrice,
 		RevisionNumber:         recvSettings.RevisionNumber,
 		Version:                recvSettings.Version,
-		// New fields are set to zero.
-		BaseRPCPrice:      types.ZeroCurrency,
-		SectorAccessPrice: types.ZeroCurrency,
 	}
 	return host, nil
 }
@@ -179,7 +176,7 @@ func negotiateRevision(conn net.Conn, rev types.FileContractRevision, secretKey 
 	// NOTE: if the host sends ErrStopResponse, we should continue processing
 	// the revision, but return the error anyway.
 	responseErr := modules.ReadNegotiationAcceptance(conn)
-	if responseErr != nil && responseErr != modules.ErrStopResponse {
+	if responseErr != nil && !errors.Contains(responseErr, modules.ErrStopResponse) {
 		return types.Transaction{}, errors.New("host did not accept transaction signature: " + responseErr.Error())
 	}
 	var hostSig types.TransactionSignature

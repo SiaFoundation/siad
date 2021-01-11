@@ -1,10 +1,12 @@
 package contractor
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,8 +18,12 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
+
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/ratelimit"
+	"gitlab.com/NebulousLabs/siamux"
 )
 
 // Create a closeFn type that allows helpers which need to be closed to return
@@ -33,31 +39,45 @@ func tryClose(cf closeFn, t *testing.T) {
 }
 
 // newModules initializes the modules needed to test creating a new contractor
-func newModules(testdir string) (modules.ConsensusSet, modules.Wallet, modules.TransactionPool, modules.HostDB, closeFn, error) {
+func newModules(testdir string) (modules.ConsensusSet, modules.Wallet, modules.TransactionPool, *siamux.SiaMux, modules.HostDB, closeFn, error) {
 	g, err := gateway.New("localhost:0", false, filepath.Join(testdir, modules.GatewayDir))
 	if err != nil {
-		return nil, nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, nil, err
 	}
 	cs, errChan := consensus.New(g, false, filepath.Join(testdir, modules.ConsensusDir))
 	if err := <-errChan; err != nil {
-		return nil, nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, nil, err
 	}
 	tp, err := transactionpool.New(cs, g, filepath.Join(testdir, modules.TransactionPoolDir))
 	if err != nil {
-		return nil, nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, nil, err
 	}
 	w, err := wallet.New(cs, tp, filepath.Join(testdir, modules.WalletDir))
 	if err != nil {
-		return nil, nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, nil, err
 	}
-	hdb, errChanHDB := hostdb.New(g, cs, tp, testdir)
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	if err != nil {
+		return nil, nil, nil, nil, nil, nil, err
+	}
+	hdb, errChanHDB := hostdb.New(g, cs, tp, mux, testdir)
 	if err := <-errChanHDB; err != nil {
-		return nil, nil, nil, nil, nil, err
+		return nil, nil, nil, nil, nil, nil, err
 	}
 	cf := func() error {
-		return errors.Compose(hdb.Close(), w.Close(), tp.Close(), cs.Close(), g.Close())
+		return errors.Compose(hdb.Close(), mux.Close(), w.Close(), tp.Close(), cs.Close(), g.Close())
 	}
-	return cs, w, tp, hdb, cf, nil
+	return cs, w, tp, mux, hdb, cf, nil
+}
+
+// newStream is a helper to get a ready-to-use stream that is connected to a
+// host.
+func newStream(mux *siamux.SiaMux, h modules.Host) (siamux.Stream, error) {
+	hes := h.ExternalSettings()
+	muxAddress := fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
+	muxPK := modules.SiaPKToMuxPK(h.PublicKey())
+	return mux.NewStream(modules.HostSiaMuxSubscriberName, muxAddress, muxPK)
 }
 
 // TestNew tests the New function.
@@ -67,43 +87,44 @@ func TestNew(t *testing.T) {
 	}
 	// Create the modules.
 	dir := build.TempDir("contractor", t.Name())
-	cs, w, tpool, hdb, closeFn, err := newModules(dir)
+	cs, w, tpool, _, hdb, closeFn, err := newModules(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer tryClose(closeFn, t)
 
 	// Sane values.
-	_, errChan := New(cs, w, tpool, hdb, dir)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	_, errChan := New(cs, w, tpool, hdb, rl, dir)
 	if err := <-errChan; err != nil {
 		t.Fatalf("expected nil, got %v", err)
 	}
 
 	// Nil consensus set.
-	_, errChan = New(nil, w, tpool, hdb, dir)
-	if err := <-errChan; err != errNilCS {
+	_, errChan = New(nil, w, tpool, hdb, rl, dir)
+	if err := <-errChan; !errors.Contains(err, errNilCS) {
 		t.Fatalf("expected %v, got %v", errNilCS, err)
 	}
 
 	// Nil wallet.
-	_, errChan = New(cs, nil, tpool, hdb, dir)
-	if err := <-errChan; err != errNilWallet {
+	_, errChan = New(cs, nil, tpool, hdb, rl, dir)
+	if err := <-errChan; !errors.Contains(err, errNilWallet) {
 		t.Fatalf("expected %v, got %v", errNilWallet, err)
 	}
 
 	// Nil transaction pool.
-	_, errChan = New(cs, w, nil, hdb, dir)
-	if err := <-errChan; err != errNilTpool {
+	_, errChan = New(cs, w, nil, hdb, rl, dir)
+	if err := <-errChan; !errors.Contains(err, errNilTpool) {
 		t.Fatalf("expected %v, got %v", errNilTpool, err)
 	}
 	// Nil hostdb.
-	_, errChan = New(cs, w, tpool, nil, dir)
-	if err := <-errChan; err != errNilHDB {
+	_, errChan = New(cs, w, tpool, nil, rl, dir)
+	if err := <-errChan; !errors.Contains(err, errNilHDB) {
 		t.Fatalf("expected %v, got %v", errNilHDB, err)
 	}
 
 	// Bad persistDir.
-	_, errChan = New(cs, w, tpool, hdb, "")
+	_, errChan = New(cs, w, tpool, hdb, rl, "")
 	if err := <-errChan; !os.IsNotExist(err) {
 		t.Fatalf("expected invalid directory, got %v", err)
 	}
@@ -187,54 +208,54 @@ func TestIntegrationSetAllowance(t *testing.T) {
 	// bad args
 	a.Hosts = 1
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceZeroFunds {
+	if !errors.Contains(err, ErrAllowanceZeroFunds) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroFunds, err)
 	}
 	a.Funds = types.SiacoinPrecision
 	a.Hosts = 0
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceNoHosts {
+	if !errors.Contains(err, ErrAllowanceNoHosts) {
 		t.Errorf("expected %q, got %q", ErrAllowanceNoHosts, err)
 	}
 	a.Hosts = 1
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceZeroPeriod {
+	if !errors.Contains(err, ErrAllowanceZeroPeriod) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroPeriod, err)
 	}
 	a.Period = 20
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceZeroWindow {
+	if !errors.Contains(err, ErrAllowanceZeroWindow) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroWindow, err)
 	}
 	// There should not be any errors related to RenewWindow size
 	a.RenewWindow = 30
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceZeroExpectedStorage {
+	if !errors.Contains(err, ErrAllowanceZeroExpectedStorage) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedStorage, err)
 	}
 	a.RenewWindow = 20
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceZeroExpectedStorage {
+	if !errors.Contains(err, ErrAllowanceZeroExpectedStorage) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedStorage, err)
 	}
 	a.RenewWindow = 10
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceZeroExpectedStorage {
+	if !errors.Contains(err, ErrAllowanceZeroExpectedStorage) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedStorage, err)
 	}
 	a.ExpectedStorage = modules.DefaultAllowance.ExpectedStorage
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceZeroExpectedUpload {
+	if !errors.Contains(err, ErrAllowanceZeroExpectedUpload) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedUpload, err)
 	}
 	a.ExpectedUpload = modules.DefaultAllowance.ExpectedUpload
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceZeroExpectedDownload {
+	if !errors.Contains(err, ErrAllowanceZeroExpectedDownload) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedDownload, err)
 	}
 	a.ExpectedDownload = modules.DefaultAllowance.ExpectedDownload
 	err = c.SetAllowance(a)
-	if err != ErrAllowanceZeroExpectedRedundancy {
+	if !errors.Contains(err, ErrAllowanceZeroExpectedRedundancy) {
 		t.Errorf("expected %q, got %q", ErrAllowanceZeroExpectedRedundancy, err)
 	}
 	a.ExpectedRedundancy = modules.DefaultAllowance.ExpectedRedundancy
@@ -349,7 +370,7 @@ func TestHostMaxDuration(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Let host settings permeate
-	err = build.Retry(50, 100*time.Millisecond, func() error {
+	err = build.Retry(1000, 100*time.Millisecond, func() error {
 		host, _, err := c.hdb.Host(h.PublicKey())
 		if err != nil {
 			return err
@@ -478,6 +499,15 @@ func TestPayment(t *testing.T) {
 	}
 	t.Parallel()
 
+	// newStream is a helper to get a ready-to-use stream that is connected to a
+	// host.
+	newStream := func(mux *siamux.SiaMux, h modules.Host) (siamux.Stream, error) {
+		hes := h.ExternalSettings()
+		muxAddress := fmt.Sprintf("%s:%s", hes.NetAddress.Host(), hes.SiaMuxPort)
+		muxPK := modules.SiaPKToMuxPK(h.PublicKey())
+		return mux.NewStream(modules.HostSiaMuxSubscriberName, muxAddress, muxPK)
+	}
+
 	// create a siamux
 	testdir := build.TempDir("contractor", t.Name())
 	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
@@ -487,7 +517,7 @@ func TestPayment(t *testing.T) {
 	}
 
 	// create a testing trio with our mux injected
-	h, c, _, cf, err := newCustomTestingTrio(t.Name(), mux)
+	h, c, _, cf, err := newCustomTestingTrio(t.Name(), mux, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -499,12 +529,6 @@ func TestPayment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = build.Retry(50, 100*time.Millisecond, func() error {
-		if len(c.Contracts()) == 0 {
-			return errors.New("no contract created")
-		}
-		return nil
-	})
 
 	// create a refund account
 	aid, _ := modules.NewAccountID()
@@ -528,7 +552,7 @@ func TestPayment(t *testing.T) {
 	initial := contract.RenterFunds
 
 	// write the rpc id
-	stream, err := modules.NewHostStream(mux, h)
+	stream, err := newStream(mux, h)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -572,24 +596,33 @@ func TestPayment(t *testing.T) {
 		t.Fatalf("Expected renter contract to reflect the payment, the renter funds should be %v but were %v", expected.HumanString(), remaining.HumanString())
 	}
 
+	// prepare a buffer so we can optimize our writes
+	buffer := bytes.NewBuffer(nil)
+
 	// write the rpc id
-	stream, err = modules.NewHostStream(mux, h)
+	stream, err = newStream(mux, h)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = modules.RPCWrite(stream, modules.RPCFundAccount)
+	err = modules.RPCWrite(buffer, modules.RPCFundAccount)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// write the price table uid
-	err = modules.RPCWrite(stream, pt.UID)
+	err = modules.RPCWrite(buffer, pt.UID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// send fund account request (re-use the refund account)
-	err = modules.RPCWrite(stream, modules.FundAccountRequest{Account: aid})
+	err = modules.RPCWrite(buffer, modules.FundAccountRequest{Account: aid})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// write contents of the buffer to the stream
+	_, err = stream.Write(buffer.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -737,5 +770,101 @@ func TestLinkedContracts(t *testing.T) {
 		map[%v:%v]
 		got:
 		%v`, c.OldContracts()[0].ID, c.Contracts()[0].ID, c.renewedTo)
+	}
+}
+
+// TestPaymentMissingStorageObligation tests the case where a host can't find a
+// storage obligation with which to pay.
+func TestPaymentMissingStorageObligation(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// create a siamux
+	testdir := build.TempDir("contractor", t.Name())
+	siaMuxDir := filepath.Join(testdir, modules.SiaMuxDir)
+	mux, err := modules.NewSiaMux(siaMuxDir, testdir, "localhost:0", "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create a testing trio with our mux injected
+	deps := &dependencies.DependencyStorageObligationNotFound{}
+	h, c, _, cf, err := newCustomTestingTrio(t.Name(), mux, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cf()
+	hpk := h.PublicKey()
+
+	// set an allowance and wait for contracts
+	err = c.SetAllowance(modules.DefaultAllowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create a refund account
+	aid, _ := modules.NewAccountID()
+
+	// Fetch the contracts, there's a race condition between contract creation
+	// and the contractor knowing the contract exists, so do this in a retry.
+	var contract modules.RenterContract
+	err = build.Retry(200, 100*time.Millisecond, func() error {
+		var ok bool
+		contract, ok = c.ContractByPublicKey(hpk)
+		if !ok {
+			return errors.New("contract not found")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// get a stream
+	stream, err := newStream(mux, h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// write the rpc id
+	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// read the updated response
+	var update modules.RPCUpdatePriceTableResponse
+	err = modules.RPCRead(stream, &update)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// unmarshal the JSON into a price table
+	var pt modules.RPCPriceTable
+	err = json.Unmarshal(update.PriceTableJSON, &pt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// provide payment
+	err = c.ProvidePayment(stream, contract.HostPublicKey, modules.RPCUpdatePriceTable, pt.UpdatePriceTableCost, aid, c.blockHeight)
+	if err == nil || !strings.Contains(err.Error(), "storage obligation not found") {
+		t.Fatal("expected storage obligation not found but got", err)
+	}
+
+	// verify the contract was updated
+	contract, _ = c.ContractByPublicKey(hpk)
+	if contract.Utility.GoodForRenew {
+		t.Fatal("GFR should be false")
+	}
+	if contract.Utility.GoodForUpload {
+		t.Fatal("GFU should be false")
+	}
+	if !contract.Utility.BadContract {
+		t.Fatal("Contract should be bad")
+	}
+	if contract.Utility.Locked {
+		t.Fatal("Contract should not be locked")
 	}
 }

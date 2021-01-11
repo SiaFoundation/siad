@@ -15,6 +15,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/fastrand"
+	"gitlab.com/NebulousLabs/ratelimit"
 )
 
 // dependencyInterruptContractInsertion will interrupt inserting a contract
@@ -129,7 +130,8 @@ func testContractUncomittedTxn(t *testing.T, initialHeader contractHeader, updat
 	t.Parallel()
 	// create contract set with one contract
 	dir := build.TempDir(filepath.Join("proto", t.Name()))
-	cs, err := NewContractSet(dir, modules.ProdDependencies)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +142,7 @@ func testContractUncomittedTxn(t *testing.T, initialHeader contractHeader, updat
 	}
 
 	// apply an update to the contract, but don't commit it
-	sc := cs.mustAcquire(t, c.ID)
+	sc := cs.managedMustAcquire(t, c.ID)
 	walTxn, revisedRoots, revisedHeader, err := updateFunc(sc)
 	if err != nil {
 		t.Fatal(err)
@@ -163,12 +165,12 @@ func testContractUncomittedTxn(t *testing.T, initialHeader contractHeader, updat
 	if err := cs.Close(); err != nil {
 		t.Fatal(err)
 	}
-	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// the uncommitted transaction should be stored in the contract
-	sc = cs.mustAcquire(t, c.ID)
+	sc = cs.managedMustAcquire(t, c.ID)
 	if len(sc.unappliedTxns) != 1 {
 		t.Fatal("expected 1 unappliedTxn, got", len(sc.unappliedTxns))
 	} else if !bytes.Equal(sc.unappliedTxns[0].Updates[0].Instructions, walTxn.Updates[0].Instructions) {
@@ -208,12 +210,12 @@ func testContractUncomittedTxn(t *testing.T, initialHeader contractHeader, updat
 	if err := cs.Close(); err != nil {
 		t.Fatal(err)
 	}
-	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// the uncommitted transaction should be gone.
-	sc = cs.mustAcquire(t, c.ID)
+	sc = cs.managedMustAcquire(t, c.ID)
 	if len(sc.unappliedTxns) != 0 {
 		t.Fatal("expected 0 unappliedTxn, got", len(sc.unappliedTxns))
 	}
@@ -229,7 +231,8 @@ func TestContractIncompleteWrite(t *testing.T) {
 	t.Parallel()
 	// create contract set with one contract
 	dir := build.TempDir(filepath.Join("proto", t.Name()))
-	cs, err := NewContractSet(dir, modules.ProdDependencies)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +254,7 @@ func TestContractIncompleteWrite(t *testing.T) {
 	}
 
 	// apply an update to the contract, but don't commit it
-	sc := cs.mustAcquire(t, c.ID)
+	sc := cs.managedMustAcquire(t, c.ID)
 	revisedHeader := contractHeader{
 		Transaction: types.Transaction{
 			FileContractRevisions: []types.FileContractRevision{{
@@ -308,12 +311,12 @@ func TestContractIncompleteWrite(t *testing.T) {
 	if err := cs.Close(); err != nil {
 		t.Fatal(err)
 	}
-	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// the uncommitted txn should be gone.
-	sc = cs.mustAcquire(t, c.ID)
+	sc = cs.managedMustAcquire(t, c.ID)
 	if len(sc.unappliedTxns) != 0 {
 		t.Fatal("expected 0 unappliedTxn, got", len(sc.unappliedTxns))
 	}
@@ -333,7 +336,8 @@ func TestContractLargeHeader(t *testing.T) {
 	t.Parallel()
 	// create contract set with one contract
 	dir := build.TempDir(filepath.Join("proto", t.Name()))
-	cs, err := NewContractSet(dir, modules.ProdDependencies)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -374,7 +378,8 @@ func TestContractSetInsertInterrupted(t *testing.T) {
 	t.Parallel()
 	// create contract set with a custom dependency.
 	dir := build.TempDir(filepath.Join("proto", t.Name()))
-	cs, err := NewContractSet(dir, &dependencyInterruptContractInsertion{})
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(dir, rl, &dependencyInterruptContractInsertion{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +402,7 @@ func TestContractSetInsertInterrupted(t *testing.T) {
 	}
 
 	// Reload the contract set. The contract should be there.
-	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -431,7 +436,8 @@ func TestContractRecordAndCommitPaymentIntent(t *testing.T) {
 
 	// create contract set
 	dir := build.TempDir(filepath.Join("proto", t.Name()))
-	cs, err := NewContractSet(dir, modules.ProdDependencies)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -461,7 +467,7 @@ func TestContractRecordAndCommitPaymentIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc := cs.mustAcquire(t, contract.ID)
+	sc := cs.managedMustAcquire(t, contract.ID)
 
 	// create a payment revision
 	curr := sc.LastRevision()
@@ -489,11 +495,11 @@ func TestContractRecordAndCommitPaymentIntent(t *testing.T) {
 	}
 
 	// reload the contract set
-	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc = cs.mustAcquire(t, contract.ID)
+	sc = cs.managedMustAcquire(t, contract.ID)
 
 	if sc.LastRevision().NewRevisionNumber != rev.NewRevisionNumber {
 		t.Fatal("Unexpected revision number after reloading the contract set")
@@ -512,7 +518,8 @@ func TestContractRefCounter(t *testing.T) {
 
 	// create a contract set
 	dir := build.TempDir(filepath.Join("proto", t.Name()))
-	cs, err := NewContractSet(dir, modules.ProdDependencies)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -533,7 +540,7 @@ func TestContractRefCounter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc := cs.mustAcquire(t, c.ID)
+	sc := cs.managedMustAcquire(t, c.ID)
 	// verify that the refcounter exists and has the correct size
 	if sc.staticRC == nil {
 		t.Fatal("refCounter was not created with the contract.")
@@ -618,7 +625,8 @@ func TestContractRecordCommitDownloadIntent(t *testing.T) {
 
 	// create contract set
 	dir := build.TempDir(filepath.Join("proto", t.Name()))
-	cs, err := NewContractSet(dir, modules.ProdDependencies)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -648,7 +656,7 @@ func TestContractRecordCommitDownloadIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc := cs.mustAcquire(t, contract.ID)
+	sc := cs.managedMustAcquire(t, contract.ID)
 
 	// create a download revision
 	curr := sc.LastRevision()
@@ -674,11 +682,11 @@ func TestContractRecordCommitDownloadIntent(t *testing.T) {
 
 	// don't commit the download. Instead simulate a crash by reloading the
 	// contract set.
-	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc = cs.mustAcquire(t, contract.ID)
+	sc = cs.managedMustAcquire(t, contract.ID)
 
 	if sc.LastRevision().NewRevisionNumber != curr.NewRevisionNumber {
 		t.Fatal("Unexpected revision number after reloading the contract set")
@@ -706,11 +714,11 @@ func TestContractRecordCommitDownloadIntent(t *testing.T) {
 	}
 
 	// restart again. We still expect 0 unapplied txns.
-	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc = cs.mustAcquire(t, contract.ID)
+	sc = cs.managedMustAcquire(t, contract.ID)
 
 	if sc.LastRevision().NewRevisionNumber != rev.NewRevisionNumber {
 		t.Fatal("Unexpected revision number after reloading the contract set")
@@ -732,7 +740,8 @@ func TestContractRecordCommitAppendIntent(t *testing.T) {
 
 	// create contract set
 	dir := build.TempDir(filepath.Join("proto", t.Name()))
-	cs, err := NewContractSet(dir, modules.ProdDependencies)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -762,7 +771,7 @@ func TestContractRecordCommitAppendIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc := cs.mustAcquire(t, contract.ID)
+	sc := cs.managedMustAcquire(t, contract.ID)
 
 	// create a append revision
 	curr := sc.LastRevision()
@@ -791,11 +800,11 @@ func TestContractRecordCommitAppendIntent(t *testing.T) {
 
 	// don't commit the download. Instead simulate a crash by reloading the
 	// contract set.
-	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc = cs.mustAcquire(t, contract.ID)
+	sc = cs.managedMustAcquire(t, contract.ID)
 
 	if sc.LastRevision().NewRevisionNumber != curr.NewRevisionNumber {
 		t.Fatal("Unexpected revision number after reloading the contract set")
@@ -823,11 +832,11 @@ func TestContractRecordCommitAppendIntent(t *testing.T) {
 	}
 
 	// restart again. We still expect 0 unapplied txns.
-	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc = cs.mustAcquire(t, contract.ID)
+	sc = cs.managedMustAcquire(t, contract.ID)
 
 	if sc.LastRevision().NewRevisionNumber != rev.NewRevisionNumber {
 		t.Fatal("Unexpected revision number after reloading the contract set")
@@ -849,7 +858,8 @@ func TestContractRecordCommitRenewAndClearIntent(t *testing.T) {
 
 	// create contract set
 	dir := build.TempDir(filepath.Join("proto", t.Name()))
-	cs, err := NewContractSet(dir, modules.ProdDependencies)
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -879,7 +889,7 @@ func TestContractRecordCommitRenewAndClearIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc := cs.mustAcquire(t, contract.ID)
+	sc := cs.managedMustAcquire(t, contract.ID)
 
 	// create a renew revision. It's the same as a payment revision with small
 	// differences.
@@ -911,11 +921,11 @@ func TestContractRecordCommitRenewAndClearIntent(t *testing.T) {
 
 	// don't commit the download. Instead simulate a crash by reloading the
 	// contract set.
-	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc = cs.mustAcquire(t, contract.ID)
+	sc = cs.managedMustAcquire(t, contract.ID)
 
 	if sc.LastRevision().NewRevisionNumber != curr.NewRevisionNumber {
 		t.Fatal("Unexpected revision number after reloading the contract set")
@@ -943,16 +953,72 @@ func TestContractRecordCommitRenewAndClearIntent(t *testing.T) {
 	}
 
 	// restart again. We still expect 0 unapplied txns.
-	cs, err = NewContractSet(dir, modules.ProdDependencies)
+	cs, err = NewContractSet(dir, rl, modules.ProdDependencies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	sc = cs.mustAcquire(t, contract.ID)
+	sc = cs.managedMustAcquire(t, contract.ID)
 
 	if sc.LastRevision().NewRevisionNumber != rev.NewRevisionNumber {
 		t.Fatal("Unexpected revision number after reloading the contract set")
 	}
 	if len(sc.unappliedTxns) != 0 {
 		t.Fatalf("expected %v unapplied txns but got %v", 0, len(sc.unappliedTxns))
+	}
+	if sc.Utility().GoodForRenew {
+		t.Fatal("contract shouldn't be good for renew")
+	}
+	if sc.Utility().GoodForUpload {
+		t.Fatal("contract shouldn't be good for upload")
+	}
+	if !sc.Utility().Locked {
+		t.Fatal("contract should be locked")
+	}
+}
+
+// TestPanicOnOverwritingNewerRevision tests if attempting to
+// overwrite a contract header with an old revision triggers a panic.
+func TestPanicOnOverwritingNewerRevision(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	// create contract set with one contract
+	dir := build.TempDir(filepath.Join("proto", t.Name()))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	cs, err := NewContractSet(dir, rl, modules.ProdDependencies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := contractHeader{
+		Transaction: types.Transaction{
+			FileContractRevisions: []types.FileContractRevision{{
+				NewRevisionNumber:    2,
+				NewValidProofOutputs: []types.SiacoinOutput{{}, {}},
+				UnlockConditions: types.UnlockConditions{
+					PublicKeys: []types.SiaPublicKey{{}, {}},
+				},
+			}},
+		},
+	}
+	initialRoots := []crypto.Hash{{1}}
+	c, err := cs.managedInsertContract(header, initialRoots)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sc, ok := cs.Acquire(c.ID)
+	if !ok {
+		t.Fatal("failed to acquire contract")
+	}
+	// Trying to set a header with an older revision should trigger a panic.
+	header.Transaction.FileContractRevisions[0].NewRevisionNumber = 1
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatalf("expected panic when attempting to overwrite a newer contract header revision")
+		}
+	}()
+	if err := sc.applySetHeader(header); err != nil {
+		t.Fatal(err)
 	}
 }

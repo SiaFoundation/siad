@@ -6,6 +6,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -25,8 +26,8 @@ func (h *Host) upgradeFromV120ToV143() error {
 	}
 
 	// Add the ephemeral account defaults
-	p.Settings.EphemeralAccountExpiry = defaultEphemeralAccountExpiry
-	p.Settings.MaxEphemeralAccountBalance = defaultMaxEphemeralAccountBalance
+	p.Settings.EphemeralAccountExpiry = modules.DefaultEphemeralAccountExpiry
+	p.Settings.MaxEphemeralAccountBalance = modules.DefaultMaxEphemeralAccountBalance
 	p.Settings.MaxEphemeralAccountRisk = defaultMaxEphemeralAccountRisk
 
 	// Load it on the host
@@ -43,7 +44,7 @@ func (h *Host) upgradeFromV120ToV143() error {
 	}
 
 	// Save the updated persist so that the upgrade is not triggered again.
-	err = h.saveSync()
+	err = persist.SaveJSON(modules.Hostv143PersistMetadata, h.persistData(), filepath.Join(h.persistDir, settingsFile))
 	if err != nil {
 		return build.ExtendErr("could not save persistence object", err)
 	}

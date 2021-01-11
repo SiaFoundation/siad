@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"errors"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -10,6 +9,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 func TestRPCID(t *testing.T) {
@@ -45,7 +45,11 @@ func TestRegisterRPC(t *testing.T) {
 	}
 	t.Parallel()
 	g := newTestingGateway(t)
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	g.RegisterRPC("Foo", func(conn modules.PeerConn) error { return nil })
 	defer func() {
@@ -64,9 +68,17 @@ func TestUnregisterRPC(t *testing.T) {
 	}
 	t.Parallel()
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err := g2.Connect(g1.Address())
 	if err != nil {
@@ -89,7 +101,7 @@ func TestUnregisterRPC(t *testing.T) {
 	// Unregister RPC and check that calling it fails.
 	g1.UnregisterRPC("Foo")
 	err = g2.RPC(g1.Address(), "Foo", dummyFunc)
-	if err != io.EOF {
+	if !errors.Contains(err, io.EOF) {
 		t.Errorf("calling unregistered RPC on g1 returned %q instead of io.EOF", err)
 	}
 
@@ -110,7 +122,11 @@ func TestRegisterConnectCall(t *testing.T) {
 	}
 	t.Parallel()
 	g := newTestingGateway(t)
-	defer g.Close()
+	defer func() {
+		if err := g.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Register an on-connect call.
 	g.RegisterConnectCall("Foo", func(conn modules.PeerConn) error { return nil })
@@ -130,9 +146,17 @@ func TestUnregisterConnectCallPanics(t *testing.T) {
 	}
 	t.Parallel()
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	rpcChan := make(chan struct{})
 
@@ -180,14 +204,22 @@ func TestRPC(t *testing.T) {
 	}
 	t.Parallel()
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	if err := g1.RPC("foo.com:123", "", nil); err == nil {
 		t.Fatal("RPC on unconnected peer succeeded")
 	}
 
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err := g1.Connect(g2.Address())
 	if err != nil {
@@ -256,9 +288,17 @@ func TestThreadedHandleConn(t *testing.T) {
 	}
 	t.Parallel()
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err := g1.Connect(g2.Address())
 	if err != nil {
@@ -283,7 +323,11 @@ func TestThreadedHandleConn(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		defer func() {
+			if err := conn.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 		return fn(conn)
 	}
 
@@ -320,11 +364,23 @@ func TestBroadcast(t *testing.T) {
 	}
 	t.Parallel()
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g3 := newNamedTestingGateway(t, "3")
-	defer g3.Close()
+	defer func() {
+		if err := g3.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err := g1.Connect(g2.Address())
 	if err != nil {
@@ -444,9 +500,17 @@ func TestOutboundAndInboundRPCs(t *testing.T) {
 	}
 	t.Parallel()
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	rpcChanG1 := make(chan struct{})
 	rpcChanG2 := make(chan struct{})
@@ -493,9 +557,17 @@ func TestCallingRPCFromRPC(t *testing.T) {
 	}
 	t.Parallel()
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	errChan := make(chan error)
 	g1.RegisterRPC("FOO", func(conn modules.PeerConn) error {
@@ -553,9 +625,17 @@ func TestRPCRatelimit(t *testing.T) {
 	}
 	t.Parallel()
 	g1 := newNamedTestingGateway(t, "1")
-	defer g1.Close()
+	defer func() {
+		if err := g1.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	g2 := newNamedTestingGateway(t, "2")
-	defer g2.Close()
+	defer func() {
+		if err := g2.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	var atomicCalls, atomicErrs uint64
 	g2.RegisterRPC("recv", func(conn modules.PeerConn) error {

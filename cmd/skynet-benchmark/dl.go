@@ -48,6 +48,9 @@ const (
 	filesPerDir = 200
 )
 
+// dl is a command that downloads skyfiles from Skynet in various sizes, ranging
+// from 64kb up until 10mb. Before it can download this function will upload
+// those files in four separate directories.
 func dl() {
 	fmt.Println("Performing dl command")
 
@@ -287,14 +290,12 @@ func uploadFileSet(dir modules.SiaPath, fileSize uint64, expectedFetchSize uint6
 		buf := bytes.NewReader(fastrand.Bytes(int(fileSize)))
 		// Fill out the upload parameters.
 		sup := modules.SkyfileUploadParameters{
-			SiaPath: sp,
-			Root:    true,
-			Force:   true, // This will overwrite other files in the dir.
+			SiaPath:  sp,
+			Filename: strconv.Itoa(i) + ".rand",
+			Mode:     modules.DefaultFilePerm,
 
-			FileMetadata: modules.SkyfileMetadata{
-				Filename: strconv.Itoa(i) + ".rand",
-				Mode:     modules.DefaultFilePerm,
-			},
+			Root:  true,
+			Force: true, // This will overwrite other files in the dir.
 
 			Reader: buf,
 		}

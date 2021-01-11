@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -71,8 +72,8 @@ func (h *Host) establishDefaults() error {
 		MinStoragePrice:           modules.DefaultStoragePrice,
 		MinUploadBandwidthPrice:   modules.DefaultUploadBandwidthPrice,
 
-		EphemeralAccountExpiry:     defaultEphemeralAccountExpiry,
-		MaxEphemeralAccountBalance: defaultMaxEphemeralAccountBalance,
+		EphemeralAccountExpiry:     modules.DefaultEphemeralAccountExpiry,
+		MaxEphemeralAccountBalance: modules.DefaultMaxEphemeralAccountBalance,
 		MaxEphemeralAccountRisk:    defaultMaxEphemeralAccountRisk,
 	}
 
@@ -168,23 +169,28 @@ func (h *Host) load() error {
 	// the most recent version, but older versions need to be updated to the
 	// more recent structures.
 	p := new(persistence)
-	err = h.dependencies.LoadFile(modules.Hostv143PersistMetadata, p, filepath.Join(h.persistDir, settingsFile))
+	err = h.dependencies.LoadFile(modules.Hostv151PersistMetadata, p, filepath.Join(h.persistDir, settingsFile))
 	if err == nil {
 		// Copy in the persistence.
 		h.loadPersistObject(p)
 	} else if os.IsNotExist(err) {
 		// There is no host.json file, set up sane defaults.
 		return h.establishDefaults()
-	} else if err == persist.ErrBadVersion {
+	} else if errors.Contains(err, persist.ErrBadVersion) {
 		// Attempt an upgrade from V112 to V120.
 		err = h.upgradeFromV112ToV120()
 		if err != nil {
 			h.log.Println("WARNING: v112 to v120 host upgrade failed, trying v120 to v143 next", err)
 		}
-		// Then upgrade from V120 to V143.
+		// Attempt an upgrade from V120 to V143.
 		err = h.upgradeFromV120ToV143()
 		if err != nil {
-			h.log.Println("WARNING: v120 to v143 host upgrade failed, nothing left to try", err)
+			h.log.Println("WARNING: v120 to v143 host upgrade failed, trying v143 to v151 next", err)
+		}
+		// Then upgrade from V143 to V151.
+		err = h.upgradeFromV143ToV151()
+		if err != nil {
+			h.log.Println("WARNING: v143 to v151 host upgrade failed, nothing left to try", err)
 			return err
 		}
 
@@ -253,5 +259,5 @@ func (h *Host) load() error {
 
 // saveSync stores all of the persist data to disk and then syncs to disk.
 func (h *Host) saveSync() error {
-	return persist.SaveJSON(modules.Hostv143PersistMetadata, h.persistData(), filepath.Join(h.persistDir, settingsFile))
+	return persist.SaveJSON(modules.Hostv151PersistMetadata, h.persistData(), filepath.Join(h.persistDir, settingsFile))
 }

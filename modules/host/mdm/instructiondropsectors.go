@@ -42,6 +42,12 @@ func (p *program) staticDecodeDropSectorsInstruction(instruction modules.Instruc
 	}, nil
 }
 
+// Batch declares whether or not this instruction can be batched together with
+// the previous instruction.
+func (i instructionDropSectors) Batch() bool {
+	return false
+}
+
 // Execute executes the 'DropSectors' instruction.
 //
 // If the number of sectors is 0 this instruction is a noop.
@@ -101,13 +107,13 @@ func (i *instructionDropSectors) Collateral() types.Currency {
 }
 
 // Cost returns the Cost of the DropSectors instruction.
-func (i *instructionDropSectors) Cost() (executionCost, refund types.Currency, err error) {
+func (i *instructionDropSectors) Cost() (executionCost, _ types.Currency, err error) {
 	numSectorsDropped, err := i.staticData.Uint64(i.numSectorsOffset)
 	if err != nil {
 		err = fmt.Errorf("bad input: numSectorsOffset: %v", err)
 		return
 	}
-	executionCost, refund = modules.MDMDropSectorsCost(i.staticState.priceTable, numSectorsDropped)
+	executionCost = modules.MDMDropSectorsCost(i.staticState.priceTable, numSectorsDropped)
 	return
 }
 

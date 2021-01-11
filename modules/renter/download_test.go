@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -18,7 +19,11 @@ func TestClearDownloads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rt.Close()
+	defer func() {
+		if err := rt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Test clearing empty download history
 	if err := rt.renter.ClearDownloadHistory(time.Time{}, time.Time{}); err != nil {
@@ -263,7 +268,7 @@ func clearDownloadHistory(rt *renterTester, after, before int) (int, error) {
 	for i := 2; i < 10; i++ {
 		if i != 5 && i != 7 {
 			d := &download{
-				staticUID:       modules.DownloadID(string(i)),
+				staticUID:       modules.DownloadID(fmt.Sprint(i)),
 				staticStartTime: time.Unix(int64(i), 0),
 			}
 			downloads[d.UID()] = d

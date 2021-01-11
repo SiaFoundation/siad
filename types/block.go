@@ -66,16 +66,23 @@ func CalculateCoinbase(height BlockHeight) Currency {
 
 // CalculateNumSiacoins calculates the number of siacoins in circulation at a
 // given height.
-func CalculateNumSiacoins(height BlockHeight) Currency {
+func CalculateNumSiacoins(height BlockHeight) (total Currency) {
+	total = numGenesisSiacoins
 	deflationBlocks := BlockHeight(InitialCoinbase - MinimumCoinbase)
-	avgDeflationSiacoins := CalculateCoinbase(0).Add(CalculateCoinbase(height)).Div(NewCurrency64(2))
+	avgDeflationSiacoins := CalculateCoinbase(0).Add(CalculateCoinbase(height)).Div64(2)
 	if height <= deflationBlocks {
-		deflationSiacoins := avgDeflationSiacoins.Mul(NewCurrency64(uint64(height + 1)))
-		return numGenesisSiacoins.Add(deflationSiacoins)
+		total = total.Add(avgDeflationSiacoins.Mul64(uint64(height + 1)))
+	} else {
+		total = total.Add(avgDeflationSiacoins.Mul(NewCurrency64(uint64(deflationBlocks + 1))))
+		total = total.Add(CalculateCoinbase(height).Mul64(uint64(height - deflationBlocks)))
 	}
-	deflationSiacoins := avgDeflationSiacoins.Mul(NewCurrency64(uint64(deflationBlocks + 1)))
-	trailingSiacoins := NewCurrency64(uint64(height - deflationBlocks)).Mul(CalculateCoinbase(height))
-	return numGenesisSiacoins.Add(deflationSiacoins).Add(trailingSiacoins)
+	if height >= FoundationHardforkHeight {
+		total = total.Add(InitialFoundationSubsidy)
+		perSubsidy := FoundationSubsidyPerBlock.Mul64(uint64(FoundationSubsidyFrequency))
+		subsidies := (height - FoundationHardforkHeight) / FoundationSubsidyFrequency
+		total = total.Add(perSubsidy.Mul64(uint64(subsidies)))
+	}
+	return
 }
 
 var numGenesisSiacoins = func() Currency {
@@ -151,4 +158,11 @@ func (b Block) MinerPayoutID(i uint64) SiacoinOutputID {
 		b.ID(),
 		i,
 	))
+}
+
+// FoundationSubsidyID returns the ID of the Foundation subsidy, which is
+// calculated by hashing the concatenation of the BlockID and
+// SpecifierFoundation.
+func (bid BlockID) FoundationSubsidyID() SiacoinOutputID {
+	return SiacoinOutputID(crypto.HashAll(bid, SpecifierFoundation))
 }

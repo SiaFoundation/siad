@@ -21,6 +21,14 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+// closeFileInTest is a small helper for calling close on a file in a test
+func closeFileInTest(t *testing.T, f *os.File) {
+	err := f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // equalFiles is a helper that compares two SiaFiles for equality.
 func equalFiles(sf, sf2 *SiaFile) error {
 	// Backup the metadata structs for both files.
@@ -187,7 +195,7 @@ func newTestFile() *SiaFile {
 // newTestFileParams creates the required parameters for creating a siafile and
 // creates a directory for the file
 func newTestFileParams(minChunks int, partialChunk bool) (string, modules.SiaPath, string, modules.ErasureCoder, crypto.CipherKey, uint64, int, os.FileMode) {
-	rc, err := NewRSCode(10, 20)
+	rc, err := modules.NewRSCode(10, 20)
 	if err != nil {
 		panic(err)
 	}
@@ -298,7 +306,7 @@ func TestNewFile(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to open file", err)
 	}
-	defer f.Close()
+	defer closeFileInTest(t, f)
 	// Check the filesize. It should be equal to the offset of the last chunk
 	// on disk + its marshaled length.
 	fi, err := f.Stat()
@@ -316,6 +324,8 @@ func TestNewFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(readMD, md) {
+		t.Log(string(readMD))
+		t.Log(string(md))
 		t.Fatal("metadata doesn't equal on-disk metadata")
 	}
 	// Compare the pubKeyTable to the on-disk pubKeyTable.
@@ -331,7 +341,7 @@ func TestNewFile(t *testing.T) {
 	readChunk := make([]byte, int(sf.staticMetadata.StaticPagesPerChunk)*pageSize)
 	err = sf.iterateChunksReadonly(func(chunk chunk) error {
 		_, err := f.ReadAt(readChunk, sf.chunkOffset(chunk.Index))
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Contains(err, io.EOF) {
 			t.Fatal(err)
 		}
 		if !bytes.Equal(readChunk[:len(chunks[chunk.Index])], chunks[chunk.Index]) {
@@ -565,7 +575,7 @@ func TestSaveSmallHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to open file", err)
 	}
-	defer f.Close()
+	defer closeFileInTest(t, f)
 
 	// Make sure the metadata was written to disk correctly.
 	rawMetadata, err := marshalMetadata(sf.staticMetadata)
@@ -614,7 +624,7 @@ func TestSaveLargeHeader(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to open file", err)
 	}
-	defer f.Close()
+	defer closeFileInTest(t, f)
 
 	// Write some data right after the ChunkOffset as a checksum.
 	chunkData := fastrand.Bytes(100)
@@ -825,7 +835,7 @@ func TestSaveChunk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer closeFileInTest(t, f)
 
 	readChunk := make([]byte, len(marshaledChunk))
 	if n, err := f.ReadAt(readChunk, sf.chunkOffset(chunkIndex)); err != nil {
@@ -1006,4 +1016,55 @@ func TestSetCombinedChunkSingle(t *testing.T) {
 	if sf2.partialsSiaFile.NumChunks() != 2 {
 		t.Fatal("expected partialsSiaFile to have two chunks but had", sf.partialsSiaFile.NumChunks())
 	}
+}
+
+// TestCreateAndApplyTransactionPanic verifies that the
+// createAndApplyTransaction helpers panic when the updates can't be applied.
+func TestCreateAndApplyTransactionPanic(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create invalid update that triggers a panic.
+	update := writeaheadlog.Update{
+		Name: "invalid name",
+	}
+
+	// Declare a helper to check for a panic.
+	assertRecover := func() {
+		if r := recover(); r == nil {
+			t.Fatalf("Expected a panic")
+		}
+	}
+
+	// Run the test for both the method and function
+	sf := newBlankTestFile()
+	func() {
+		defer assertRecover()
+		_ = sf.createAndApplyTransaction(update)
+	}()
+	func() {
+		defer assertRecover()
+		_ = createAndApplyTransaction(sf.wal, update)
+	}()
+}
+
+// TestDeleteUpdateRegression is a regression test that ensure apply updates
+// won't panic when called with a set of updates with the last one being
+// a delete update.
+func TestDeleteUpdateRegression(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create siafile
+	sf := newBlankTestFile()
+
+	// Apply updates with the last update as a delete update. This use to trigger
+	// a panic. No need to check the return value as we are only concerned with the
+	// panic
+	update := sf.createDeleteUpdate()
+	sf.createAndApplyTransaction(update, update)
 }

@@ -25,7 +25,7 @@ func (h *Host) capacity() (total, remaining uint64) {
 }
 
 // externalSettings compiles and returns the external settings for the host.
-func (h *Host) externalSettings() modules.HostExternalSettings {
+func (h *Host) externalSettings(maxFeeEstimation types.Currency) modules.HostExternalSettings {
 	// Increment the revision number for the external settings
 	h.revisionNumber++
 
@@ -38,8 +38,7 @@ func (h *Host) externalSettings() modules.HostExternalSettings {
 	}
 
 	// Calculate contract price
-	_, maxFee := h.tpool.FeeEstimation()
-	contractPrice := maxFee.Mul64(modules.EstimatedFileContractRevisionAndProofTransactionSetSize)
+	contractPrice := maxFeeEstimation.Mul64(modules.EstimatedFileContractRevisionAndProofTransactionSetSize)
 	if contractPrice.Cmp(h.settings.MinContractPrice) < 0 {
 		contractPrice = h.settings.MinContractPrice
 	}
@@ -93,6 +92,9 @@ func (h *Host) externalSettings() modules.HostExternalSettings {
 		StoragePrice:           h.settings.MinStoragePrice,
 		UploadBandwidthPrice:   h.settings.MinUploadBandwidthPrice,
 
+		EphemeralAccountExpiry:     h.settings.EphemeralAccountExpiry,
+		MaxEphemeralAccountBalance: h.settings.MaxEphemeralAccountBalance,
+
 		RevisionNumber: h.revisionNumber,
 		Version:        build.Version,
 
@@ -117,9 +119,10 @@ func (h *Host) managedRPCSettings(conn net.Conn) error {
 	// external settings.
 	var hes modules.HostExternalSettings
 	var secretKey crypto.SecretKey
+	_, maxFee := h.tpool.FeeEstimation()
 	h.mu.Lock()
 	secretKey = h.secretKey
-	hes = h.externalSettings()
+	hes = h.externalSettings(maxFee)
 	h.mu.Unlock()
 
 	// Convert the settings to the pre-v1.4.0 version.

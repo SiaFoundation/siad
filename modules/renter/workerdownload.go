@@ -28,12 +28,13 @@ const (
 func segmentsForRecovery(chunkFetchOffset, chunkFetchLength uint64, rs modules.ErasureCoder) (uint64, uint64) {
 	// If partialDecoding is not available we need to download the whole
 	// sector.
-	if !rs.SupportsPartialEncoding() {
+	segmentSize, supportsPartial := rs.SupportsPartialEncoding()
+	if !supportsPartial {
 		return 0, uint64(modules.SectorSize) / crypto.SegmentSize
 	}
 	// Else we need to figure out what segments of the piece we need to
 	// download for the recovered data to contain the data we want.
-	recoveredSegmentSize := uint64(rs.MinPieces() * crypto.SegmentSize)
+	recoveredSegmentSize := uint64(rs.MinPieces()) * segmentSize
 	// Calculate the offset of the download.
 	startSegment := chunkFetchOffset / recoveredSegmentSize
 	// Calculate the length of the download.
@@ -60,20 +61,16 @@ func sectorOffsetAndLength(chunkFetchOffset, chunkFetchLength uint64, rs modules
 // size and assumes that data is actually being appended to the host. As the
 // worker gains more modification actions on the host, this check can be split
 // into different checks that vary based on the operation being performed.
-func checkDownloadGouging(allowance modules.Allowance, hostSettings modules.HostExternalSettings) error {
+func checkDownloadGouging(allowance modules.Allowance, pt *modules.RPCPriceTable) error {
 	// Check whether the base RPC price is too high.
-	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(hostSettings.BaseRPCPrice) < 0 {
-		errStr := fmt.Sprintf("rpc price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.BaseRPCPrice, allowance.MaxRPCPrice)
+	rpcCost := modules.MDMReadCost(pt, modules.StreamDownloadSize)
+	if !allowance.MaxRPCPrice.IsZero() && allowance.MaxRPCPrice.Cmp(rpcCost) < 0 {
+		errStr := fmt.Sprintf("rpc price of host is %v, which is above the maximum allowed by the allowance: %v", rpcCost, allowance.MaxRPCPrice)
 		return errors.New(errStr)
 	}
 	// Check whether the download bandwidth price is too high.
-	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(hostSettings.DownloadBandwidthPrice) < 0 {
-		errStr := fmt.Sprintf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.DownloadBandwidthPrice, allowance.MaxDownloadBandwidthPrice)
-		return errors.New(errStr)
-	}
-	// Check whether the sector access price is too high.
-	if !allowance.MaxSectorAccessPrice.IsZero() && allowance.MaxSectorAccessPrice.Cmp(hostSettings.SectorAccessPrice) < 0 {
-		errStr := fmt.Sprintf("sector access price of host is %v, which is above the maximum allowed by the allowance: %v", hostSettings.SectorAccessPrice, allowance.MaxSectorAccessPrice)
+	if !allowance.MaxDownloadBandwidthPrice.IsZero() && allowance.MaxDownloadBandwidthPrice.Cmp(pt.DownloadBandwidthCost) < 0 {
+		errStr := fmt.Sprintf("download bandwidth price of host is %v, which is above the maximum allowed by the allowance: %v", pt.DownloadBandwidthCost, allowance.MaxDownloadBandwidthPrice)
 		return errors.New(errStr)
 	}
 
@@ -91,16 +88,33 @@ func checkDownloadGouging(allowance modules.Allowance, hostSettings modules.Host
 	// is determined on a case-by-case basis. If the host is too expensive to
 	// even satisfy a faction of the user's total desired resource consumption,
 	// the action will be blocked for price gouging.
-	singleDownloadCost := hostSettings.SectorAccessPrice.Add(hostSettings.BaseRPCPrice).Add(hostSettings.DownloadBandwidthPrice.Mul64(modules.StreamDownloadSize))
+	singleDownloadCost := rpcCost.Add(pt.DownloadBandwidthCost.Mul64(modules.StreamDownloadSize))
 	fullCostPerByte := singleDownloadCost.Div64(modules.StreamDownloadSize)
 	allowanceDownloadCost := fullCostPerByte.Mul64(allowance.ExpectedDownload)
 	reducedCost := allowanceDownloadCost.Div64(downloadGougingFractionDenom)
 	if reducedCost.Cmp(allowance.Funds) > 0 {
-		errStr := fmt.Sprintf("combined download pricing of host yields %v, which is more than the renter is willing to pay for storage: %v - price gouging protection enabled", reducedCost, allowance.Funds)
+		errStr := fmt.Sprintf("combined download pricing of host yields %v, which is more than the renter is willing to pay for the download: %v - price gouging protection enabled", reducedCost, allowance.Funds)
 		return errors.New(errStr)
 	}
 
 	return nil
+}
+
+// managedDownloadFailed records an error that caused a download to fail,
+// increases the cooldown timer, and then dumps all existing jobs for the
+// worker.
+func (w *worker) managedDownloadFailed(err error) {
+	// No penalties if the whole renter is offline. Still drop chunks though.
+	if !w.renter.g.Online() {
+		w.managedDropDownloadChunks()
+		return
+	}
+	w.downloadMu.Lock()
+	w.downloadConsecutiveFailures++
+	w.downloadRecentFailure = time.Now()
+	w.downloadRecentFailureErr = err
+	w.downloadMu.Unlock()
+	w.managedDropDownloadChunks()
 }
 
 // managedHasDownloadJob will return true if the worker has a download job that
@@ -137,34 +151,33 @@ func (w *worker) managedPerformDownloadChunkJob() {
 	// whether successful or failed, the worker needs to be removed.
 	defer udc.managedRemoveWorker()
 
-	// Fetch the sector. If fetching the sector fails, the worker needs to be
-	// unregistered with the chunk.
-	d, err := w.renter.hostContractor.Downloader(w.staticHostPubKey, w.renter.tg.StopChan())
-	if err != nil {
-		w.renter.log.Debugln("worker failed to create downloader:", err)
-		udc.managedUnregisterWorker(w)
-		return
-	}
-	defer d.Close()
-
 	// Before performing the download, check for price gouging.
 	allowance := w.renter.hostContractor.Allowance()
-	hostSettings := d.HostSettings()
-	err = checkDownloadGouging(allowance, hostSettings)
+	err := checkDownloadGouging(allowance, &w.staticPriceTable().staticPriceTable)
 	if err != nil {
 		w.renter.log.Debugln("worker downloader is not being used because price gouging was detected:", err)
+		w.managedDownloadFailed(err)
 		udc.managedUnregisterWorker(w)
 		return
 	}
 
+	// Fetch the sector. If fetching the sector fails, the worker needs to be
+	// unregistered with the chunk.
 	fetchOffset, fetchLength := sectorOffsetAndLength(udc.staticFetchOffset, udc.staticFetchLength, udc.erasureCode)
 	root := udc.staticChunkMap[w.staticHostPubKey.String()].root
-	pieceData, err := d.Download(root, uint32(fetchOffset), uint32(fetchLength))
+	pieceData, err := w.ReadSector(w.renter.tg.StopCtx(), root, fetchOffset, fetchLength)
 	if err != nil {
 		w.renter.log.Debugln("worker failed to download sector:", err)
+		w.managedDownloadFailed(err)
 		udc.managedUnregisterWorker(w)
 		return
 	}
+
+	// Reset the consecutive failures for the download cooldown.
+	w.downloadMu.Lock()
+	w.downloadConsecutiveFailures = 0
+	w.downloadMu.Unlock()
+
 	// TODO: Instead of adding the whole sector after the download completes,
 	// have the 'd.Sector' call add to this value ongoing as the sector comes
 	// in. Perhaps even include the data from creating the downloader and other
@@ -221,17 +234,25 @@ func (w *worker) managedPerformDownloadChunkJob() {
 // managedKillDownloading will drop all of the download work given to the
 // worker, and set a signal to prevent the worker from accepting more download
 // work.
+func (w *worker) managedKillDownloading() {
+	w.downloadMu.Lock()
+	w.downloadTerminated = true
+	w.downloadMu.Unlock()
+
+	w.managedDropDownloadChunks()
+}
+
+// managedDropDownloadChunks will drop all download chunks in the queue.
 //
 // The chunk cleanup needs to occur after the worker mutex is released so that
 // the worker is not locked while chunk cleanup is happening.
-func (w *worker) managedKillDownloading() {
+func (w *worker) managedDropDownloadChunks() {
 	w.downloadMu.Lock()
 	var removedChunks []*unfinishedDownloadChunk
 	for i := 0; i < len(w.downloadChunks); i++ {
 		removedChunks = append(removedChunks, w.downloadChunks[i])
 	}
 	w.downloadChunks = w.downloadChunks[:0]
-	w.downloadTerminated = true
 	w.downloadMu.Unlock()
 	for i := 0; i < len(removedChunks); i++ {
 		removedChunks[i].managedRemoveWorker()
@@ -244,8 +265,10 @@ func (w *worker) callQueueDownloadChunk(udc *unfinishedDownloadChunk) {
 	// chunk needs to happen under the same lock as fetching the termination
 	// status.
 	w.downloadMu.Lock()
+	onCooldown := w.onDownloadCooldown()
 	terminated := w.downloadTerminated
-	if !terminated {
+	goodWorker := !terminated && !onCooldown
+	if goodWorker {
 		// Accept the chunk and issue a notification to the master thread that
 		// there is a new download.
 		w.downloadChunks = append(w.downloadChunks, udc)
@@ -253,9 +276,9 @@ func (w *worker) callQueueDownloadChunk(udc *unfinishedDownloadChunk) {
 	}
 	w.downloadMu.Unlock()
 
-	// If the worker has terminated, remove it from the udc. This call needs to
+	// If the worker is not usable, remove it from the udc. This call needs to
 	// happen without holding the worker lock.
-	if terminated {
+	if !goodWorker {
 		udc.managedRemoveWorker()
 	}
 }
@@ -295,12 +318,17 @@ func (w *worker) managedProcessDownloadChunk(udc *unfinishedDownloadChunk) *unfi
 	// dropped.
 	udc.mu.Lock()
 	chunkComplete := udc.piecesCompleted >= udc.erasureCode.MinPieces() || udc.download.staticComplete()
-	chunkFailed := udc.piecesCompleted+udc.workersRemaining < udc.erasureCode.MinPieces()
+	chunkFailed := udc.piecesCompleted+udc.workersRemaining < udc.erasureCode.MinPieces() || udc.failed
 	pieceData, workerHasPiece := udc.staticChunkMap[w.staticHostPubKey.String()]
 	pieceCompleted := udc.completedPieces[pieceData.index]
 	if chunkComplete || chunkFailed || onCooldown || !workerHasPiece || pieceCompleted {
 		udc.mu.Unlock()
 		udc.managedRemoveWorker()
+
+		// Extra check - if a worker is unusable, drop all the queued jobs.
+		if onCooldown {
+			w.managedDropDownloadChunks()
+		}
 		return nil
 	}
 	defer udc.mu.Unlock()

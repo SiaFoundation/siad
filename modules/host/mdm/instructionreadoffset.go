@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
@@ -44,6 +45,12 @@ func (p *program) staticDecodeReadOffsetInstruction(instruction modules.Instruct
 	}, nil
 }
 
+// Batch declares whether or not this instruction can be batched together with
+// the previous instruction.
+func (i instructionReadOffset) Batch() bool {
+	return false
+}
+
 // Execute executes the 'ReadOffset' instruction.
 func (i *instructionReadOffset) Execute(previousOutput output) output {
 	// Fetch the operands.
@@ -56,11 +63,36 @@ func (i *instructionReadOffset) Execute(previousOutput output) output {
 		return errOutput(err)
 	}
 	// Translate the offset to a root.
-	relOffset, sectorRoot, err := i.staticState.sectors.translateOffset(offset)
+	relOffset, secIdx, err := i.staticState.sectors.translateOffset(offset)
 	if err != nil {
 		return errOutput(err)
 	}
-	return executeReadSector(previousOutput, i.staticState, length, relOffset, sectorRoot, i.staticMerkleProof)
+	sectorRoot := i.staticState.sectors.merkleRoots[secIdx]
+
+	// Execute it like a ReadSector instruction but without a proof since we
+	// will add that manually later.
+	output, fullSec := executeReadSector(previousOutput, i.staticState, length, relOffset, sectorRoot, false)
+	if !i.staticMerkleProof || output.Error != nil {
+		return output
+	}
+
+	// Compute the proof range.
+	proofStart := int(offset) / crypto.SegmentSize
+	proofEnd := int(offset+length) / crypto.SegmentSize
+
+	// Create the proof.
+	if length == modules.SectorSize {
+		// If a full sector was downloaded, we don't need to pass in the data
+		// but instead pass in all roots.
+		sectorHashes := i.staticState.sectors.merkleRoots
+		output.Proof = crypto.MerkleMixedRangeProof(sectorHashes, nil, int(modules.SectorSize), proofStart, proofEnd)
+	} else {
+		// If a partial sector was downloaded, we pass in all sector roots
+		// except for the partial one and pass in the data as well.
+		sectorHashes := append(i.staticState.sectors.merkleRoots[:secIdx], i.staticState.sectors.merkleRoots[secIdx+1:]...)
+		output.Proof = crypto.MerkleMixedRangeProof(sectorHashes, fullSec, int(modules.SectorSize), proofStart, proofEnd)
+	}
+	return output
 }
 
 // Collateral is zero for the ReadSector instruction.
@@ -69,12 +101,13 @@ func (i *instructionReadOffset) Collateral() types.Currency {
 }
 
 // Cost returns the cost of a ReadSector instruction.
-func (i *instructionReadOffset) Cost() (executionCost, refund types.Currency, err error) {
-	length, err := i.staticData.Uint64(i.lengthOffset)
+func (i *instructionReadOffset) Cost() (executionCost, _ types.Currency, err error) {
+	var length uint64
+	length, err = i.staticData.Uint64(i.lengthOffset)
 	if err != nil {
 		return
 	}
-	executionCost, refund = modules.MDMReadCost(i.staticState.priceTable, length)
+	executionCost = modules.MDMReadCost(i.staticState.priceTable, length)
 	return
 }
 

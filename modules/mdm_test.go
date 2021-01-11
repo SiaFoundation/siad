@@ -151,3 +151,61 @@ func TestBudgetLimit(t *testing.T) {
 		t.Fatalf("expected %v but got %v", 1, limit.Uploaded())
 	}
 }
+
+// TestRequiresReadonlyAndSnapshot is a unit test for the program's ReadOnly and
+// RequiresSnapshot methods.
+func TestRequiresReadonlyAndSnapshot(t *testing.T) {
+	tests := []struct {
+		specifier        InstructionSpecifier
+		readonly         bool
+		requiresSnapshot bool
+	}{
+		{
+			SpecifierAppend,
+			false,
+			true,
+		},
+		{
+			SpecifierDropSectors,
+			false,
+			true,
+		},
+		{
+			SpecifierHasSector,
+			true,
+			false,
+		},
+		{
+			SpecifierReadOffset,
+			true,
+			true,
+		},
+		{
+			SpecifierReadSector,
+			true,
+			false,
+		},
+		{
+			SpecifierRevision,
+			true,
+			true,
+		},
+		{
+			SpecifierSwapSector,
+			false,
+			true,
+		},
+	}
+
+	for i, test := range tests {
+		p := Program{Instruction{Specifier: test.specifier}}
+		readonly := test.readonly
+		requiresSnapshot := test.requiresSnapshot
+		if p.ReadOnly() != readonly {
+			t.Fatalf("%v: expected %v but got %v", i, readonly, p.ReadOnly())
+		}
+		if p.RequiresSnapshot() != requiresSnapshot {
+			t.Fatalf("%v: expected %v but got %v", i, requiresSnapshot, p.RequiresSnapshot())
+		}
+	}
+}

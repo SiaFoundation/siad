@@ -3,6 +3,8 @@ package host
 import (
 	"container/heap"
 	"encoding/json"
+	"fmt"
+	"io"
 	"sync"
 	"time"
 
@@ -94,7 +96,10 @@ func (pth *rpcPriceTableHeap) Pop() interface{} {
 // managedRPCUpdatePriceTable returns a copy of the host's current rpc price
 // table. These prices are valid for the duration of the
 // rpcPriceGuaranteePeriod, which is defined by the price table's Expiry
-func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
+func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) (err error) {
+	// update the price table to make sure it has the most recent information.
+	h.managedUpdatePriceTable()
+
 	// copy the host's price table and give it a random UID
 	pt := h.staticPriceTables.managedCurrent()
 	fastrand.Read(pt.UID[:])
@@ -124,6 +129,9 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 	// been added to the map, which means that the renter has to pay for it in
 	// order for it to became active and accepted by the host.
 	payment, err := h.ProcessPayment(stream)
+	if errors.Contains(err, io.ErrClosedPipe) {
+		return nil // renter didn't intend to pay
+	}
 	if err != nil {
 		return errors.AddContext(err, "Failed to process payment")
 	}
@@ -133,19 +141,18 @@ func (h *Host) managedRPCUpdatePriceTable(stream siamux.Stream) error {
 		return modules.ErrInsufficientPaymentForRPC
 	}
 
+	// refund the money we didn't use.
+	defer func() {
+		refund := payment.Amount().Sub(pt.UpdatePriceTableCost)
+		err = errors.Compose(err, h.staticAccountManager.callRefund(payment.AccountID(), refund))
+	}()
+
 	// after payment has been received, track the price table in the host's list
 	// of price tables and signal the renter we consider the price table valid
 	h.staticPriceTables.managedTrack(&hostRPCPriceTable{pt, time.Now()})
 	var tracked modules.RPCTrackedPriceTableResponse
 	if err = modules.RPCWrite(stream, tracked); err != nil {
 		return errors.AddContext(err, "Failed to signal renter we tracked the price table")
-	}
-
-	// refund the money we didn't use.
-	refund := payment.Amount().Sub(pt.UpdatePriceTableCost)
-	err = h.staticAccountManager.callRefund(payment.AccountID(), refund)
-	if err != nil {
-		return errors.AddContext(err, "failed to refund client")
 	}
 	return nil
 }
@@ -157,19 +164,19 @@ func (h *Host) staticReadPriceTableID(stream siamux.Stream) (*modules.RPCPriceTa
 	var uid modules.UniqueID
 	err := modules.RPCRead(stream, &uid)
 	if err != nil {
-		return nil, errors.AddContext(err, "Failed to read price table UID")
+		return nil, errors.AddContext(err, "failed to read price table UID")
 	}
 
 	// check if we know the uid, if we do return it
 	var found bool
 	pt, found := h.staticPriceTables.managedGet(uid)
 	if !found {
-		return nil, ErrPriceTableNotFound
+		return nil, errors.AddContext(ErrPriceTableNotFound, fmt.Sprint(uid))
 	}
 
 	// make sure the table isn't expired.
 	if time.Now().After(pt.Expiry()) {
-		return nil, ErrPriceTableExpired
+		return nil, errors.AddContext(ErrPriceTableExpired, fmt.Sprint(uid))
 	}
 	return &pt.RPCPriceTable, nil
 }

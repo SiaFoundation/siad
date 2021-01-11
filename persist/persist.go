@@ -3,6 +3,7 @@ package persist
 import (
 	"bytes"
 	"encoding/base32"
+	"encoding/hex"
 	"io"
 	"os"
 	"sync"
@@ -29,6 +30,9 @@ const (
 	// persistDir defines the folder that is used for testing the persist
 	// package.
 	persistDir = "persist"
+
+	// randomBytes is the number of bytes to use to ensure sufficient randomness
+	randomBytes = 20
 
 	// tempSuffix is the suffix that is applied to the temporary/backup versions
 	// of the files being persisted.
@@ -65,6 +69,12 @@ var (
 	activeFilesMu sync.Mutex
 )
 
+var (
+	// MetadataVersionv150 is a common metadata version specifier to avoid
+	// types.Specifier conflicts
+	MetadataVersionv150 = types.NewSpecifier("v1.5.0\n")
+)
+
 // Metadata contains the header and version of the data being stored.
 type Metadata struct {
 	Header  string
@@ -82,8 +92,13 @@ type FixedMetadata struct {
 // 100 bits of entropy, and a very low probability of colliding with existing
 // files unintentionally.
 func RandomSuffix() string {
-	str := base32.StdEncoding.EncodeToString(fastrand.Bytes(20))
+	str := base32.StdEncoding.EncodeToString(fastrand.Bytes(randomBytes))
 	return str[:20]
+}
+
+// UID returns a hexadecimal encoded string that can be used as an unique ID.
+func UID() string {
+	return hex.EncodeToString(fastrand.Bytes(randomBytes))
 }
 
 // RemoveFile removes an atomic file from disk, along with any uncommitted

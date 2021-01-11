@@ -1,11 +1,15 @@
 package renter
 
 import (
+	"reflect"
+	"runtime"
+	"runtime/debug"
 	"sync"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"golang.org/x/net/context"
 
 	"gitlab.com/NebulousLabs/errors"
 )
@@ -41,6 +45,11 @@ type jobTestResult struct {
 	staticErr error
 }
 
+// jobTestMetadata is a test struct that represents test job metadata.
+type jobTestMetadata struct {
+	staticField bool
+}
+
 // sendResult will send the result of a job down the resultChan. Note that
 // sending the result should be done in a goroutine so that the worker does not
 // get blocked if nobody is listening on the resultChan. Note that also the
@@ -49,13 +58,16 @@ type jobTestResult struct {
 // that we should implement precautions on both ends.
 func (j *jobTest) sendResult(result *jobTestResult) {
 	w := j.staticQueue.staticWorker()
-	w.renter.tg.Launch(func() {
+	err := w.renter.tg.Launch(func() {
 		select {
 		case j.resultChan <- result:
 		case <-w.renter.tg.StopChan():
-		case <-j.staticCancelChan:
+		case <-j.staticCtx.Done():
 		}
 	})
+	if err != nil {
+		panic(err)
+	}
 }
 
 // callDiscard expires the job. This typically requires telling the caller that
@@ -118,13 +130,13 @@ func TestWorkerJobGeneric(t *testing.T) {
 	w := new(worker)
 	w.renter = new(Renter)
 	jq := newJobGenericQueue(w)
-	cancelChan := make(chan struct{})
+	cancelCtx, cancel := context.WithCancel(context.Background())
 
 	// Create a job, add the job to the queue, and then ensure that the
 	// cancelation is working correctly.
 	resultChan := make(chan *jobTestResult, 1)
 	j := &jobTest{
-		jobGeneric: newJobGeneric(jq, cancelChan),
+		jobGeneric: newJobGeneric(cancelCtx, jq, nil),
 
 		resultChan: resultChan,
 	}
@@ -134,7 +146,7 @@ func TestWorkerJobGeneric(t *testing.T) {
 	if !jq.callAdd(j) {
 		t.Fatal("call to add job to new job queue should succeed")
 	}
-	close(cancelChan)
+	cancel()
 	job := jq.callNext()
 	if job != nil {
 		t.Error("queue should not be returning canceled jobs")
@@ -146,8 +158,8 @@ func TestWorkerJobGeneric(t *testing.T) {
 	discarded := j.discarded
 	executed := j.executed
 	j.mu.Unlock()
-	if discarded || executed {
-		t.Error("job should not have executed or been discarded")
+	if !discarded || executed {
+		t.Error("job should not have executed but discarded")
 	}
 	// NOTE: the job is not expected to send a result when it has been
 	// explicitly canceled. Check that no result was sent.
@@ -162,10 +174,10 @@ func TestWorkerJobGeneric(t *testing.T) {
 
 	// Create two new jobs, add them to the queue, and then simulate the work
 	// loop executing the jobs.
-	cancelChan = make(chan struct{})
+	cancelCtx, cancel = context.WithCancel(context.Background())
 	resultChan = make(chan *jobTestResult, 1)
 	j = &jobTest{
-		jobGeneric: newJobGeneric(jq, cancelChan),
+		jobGeneric: newJobGeneric(cancelCtx, jq, nil),
 
 		resultChan: resultChan,
 	}
@@ -174,10 +186,10 @@ func TestWorkerJobGeneric(t *testing.T) {
 	}
 	// Add a second job to the queue to check that the queue function is working
 	// correctly.
-	cancelChan2 := make(chan struct{})
+	cancelCtx2, _ := context.WithCancel(context.Background())
 	resultChan2 := make(chan *jobTestResult, 1)
 	j2 := &jobTest{
-		jobGeneric: newJobGeneric(jq, cancelChan2),
+		jobGeneric: newJobGeneric(cancelCtx2, jq, nil),
 
 		resultChan: resultChan2,
 	}
@@ -233,10 +245,10 @@ func TestWorkerJobGeneric(t *testing.T) {
 	// Create several jobs and add them to the queue. Have the first job fail,
 	// this should result in the worker going on cooldown and cause all of the
 	// rest of the jobs to fail as well.
-	cancelChan = make(chan struct{})
+	cancelCtx, cancel = context.WithCancel(context.Background())
 	resultChan = make(chan *jobTestResult, 1)
 	j = &jobTest{
-		jobGeneric: newJobGeneric(jq, cancelChan),
+		jobGeneric: newJobGeneric(cancelCtx, jq, nil),
 
 		resultChan: resultChan,
 
@@ -246,20 +258,20 @@ func TestWorkerJobGeneric(t *testing.T) {
 	if !jq.callAdd(j) {
 		t.Fatal("call to add job to new job queue should succeed")
 	}
-	cancelChan2 = make(chan struct{})
+	cancelCtx2, _ = context.WithCancel(context.Background())
 	resultChan2 = make(chan *jobTestResult, 1)
 	j2 = &jobTest{
-		jobGeneric: newJobGeneric(jq, cancelChan2),
+		jobGeneric: newJobGeneric(cancelCtx2, jq, nil),
 
 		resultChan: resultChan2,
 	}
 	if !jq.callAdd(j2) {
 		t.Fatal("call to add job to new job queue should succeed")
 	}
-	cancelChan3 := make(chan struct{})
+	cancelCtx3, _ := context.WithCancel(context.Background())
 	resultChan3 := make(chan *jobTestResult, 1)
 	j3 := &jobTest{
-		jobGeneric: newJobGeneric(jq, cancelChan3),
+		jobGeneric: newJobGeneric(cancelCtx3, jq, nil),
 
 		resultChan: resultChan3,
 	}
@@ -331,10 +343,10 @@ func TestWorkerJobGeneric(t *testing.T) {
 	jq.mu.Unlock()
 
 	// The queue should be on cooldown now, adding a new job should fail.
-	cancelChan = make(chan struct{})
+	cancelCtx, cancel = context.WithCancel(context.Background())
 	resultChan = make(chan *jobTestResult, 1)
 	j = &jobTest{
-		jobGeneric: newJobGeneric(jq, cancelChan),
+		jobGeneric: newJobGeneric(cancelCtx, jq, nil),
 
 		resultChan: resultChan,
 
@@ -384,11 +396,35 @@ func TestWorkerJobGeneric(t *testing.T) {
 	// Sleep off the cooldown.
 	time.Sleep(time.Until(cu))
 
+	// Add a job with metadata to the queue
+	j5 := &jobTest{
+		jobGeneric: newJobGeneric(context.Background(), jq, jobTestMetadata{
+			staticField: true,
+		}),
+		resultChan: make(chan *jobTestResult, 1),
+	}
+	if !jq.callAdd(j5) {
+		t.Fatal("call to add job to new job queue should succeed")
+	}
+	job = jq.callNext()
+	if job == nil {
+		t.Fatal("call to grab the next job failed, there should be a job ready in the queue")
+	}
+	meta, ok := job.staticGetMetadata().(jobTestMetadata)
+	if !ok {
+		t.Fatal("expected job metadata to be present on the job", ok, job.staticGetMetadata())
+	}
+	if !reflect.DeepEqual(meta, jobTestMetadata{
+		staticField: true,
+	}) {
+		t.Fatal("unexpected metadata")
+	}
+
 	// Add one more job, and check that killing the queue kills the job.
-	cancelChan = make(chan struct{})
+	cancelCtx, cancel = context.WithCancel(context.Background())
 	resultChan = make(chan *jobTestResult, 1)
 	j = &jobTest{
-		jobGeneric: newJobGeneric(jq, cancelChan),
+		jobGeneric: newJobGeneric(cancelCtx, jq, nil),
 
 		resultChan: resultChan,
 	}
@@ -419,14 +455,67 @@ func TestWorkerJobGeneric(t *testing.T) {
 	j.mu.Unlock()
 
 	// Try adding a new job, this should fail because the queue was killed.
-	cancelChan = make(chan struct{})
+	cancelCtx, cancel = context.WithCancel(context.Background())
 	resultChan = make(chan *jobTestResult, 1)
 	j = &jobTest{
-		jobGeneric: newJobGeneric(jq, cancelChan),
+		jobGeneric: newJobGeneric(cancelCtx, jq, nil),
 
 		resultChan: resultChan,
 	}
 	if jq.callAdd(j) {
 		t.Fatal("should not be able to add jobs after the queue has been killed")
 	}
+}
+
+// TestQueueMemoryLeak makes sure that adding jobs to a queue in a tight loop
+// won't cause too many allocated objects in memory.
+func TestQueueMemoryLeak(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create queue.
+	w := new(worker)
+	w.renter = new(Renter)
+	jq := newJobGenericQueue(w)
+
+	// Prepare a job.
+	cancelCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	resultChan := make(chan *jobTestResult, 1)
+	j := &jobTest{
+		jobGeneric: newJobGeneric(cancelCtx, jq, nil),
+		resultChan: resultChan,
+	}
+
+	// Add the job 1 million times and remove it again.
+	n := 1000000
+	for i := 0; i < n; i++ {
+		if !jq.callAdd(j) {
+			t.Fatal("failed to add job")
+		}
+		jq.callNext()
+	}
+
+	// Get the memory stats and print them.
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	t.Log("before gc", ms.HeapObjects, ms.HeapAlloc)
+
+	// Less than 100k objects should be allocated.
+	// NOTE: This number was chosen after manually testing and printing the
+	// stats. During testing it turned out that running the loop above 1 million
+	// times would cause the number of objects to be at around 65k vs 200+k with
+	// the old code.
+	if ms.HeapObjects > 100000 {
+		t.Fatal("Too many allocated objects", ms.HeapObjects)
+	}
+
+	// Free memory.
+	debug.FreeOSMemory()
+
+	// Print the stats again.
+	runtime.ReadMemStats(&ms)
+	t.Log("after gc", ms.HeapObjects, ms.HeapAlloc)
 }

@@ -167,7 +167,7 @@ func (c *Contractor) findRecoverableContracts(renterSeed proto.RenterSeed, b typ
 
 // managedRecoverContract recovers a single contract by contacting the host it
 // was formed with and retrieving the latest revision and sector roots.
-func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs proto.EphemeralRenterSeed, blockHeight types.BlockHeight) error {
+func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs proto.EphemeralRenterSeed, blockHeight types.BlockHeight) (err error) {
 	// Get the corresponding host.
 	host, ok, err := c.hdb.Host(rc.HostPublicKey)
 	if err != nil {
@@ -184,7 +184,9 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 	if err != nil {
 		return err
 	}
-	defer s.Close()
+	defer func() {
+		err = errors.Compose(err, s.Close())
+	}()
 	// Get the most recent revision.
 	rev, sigs, err := s.Lock(rc.ID, sk)
 	if err != nil {
@@ -231,7 +233,7 @@ func (c *Contractor) managedRecoverContract(rc modules.RecoverableContract, rs p
 		revisionTxn: contract.Transaction,
 	}
 	err = c.staticWatchdog.callMonitorContract(monitorContractArgs)
-	if err == errAlreadyWatchingContract {
+	if errors.Contains(err, errAlreadyWatchingContract) {
 		c.log.Debugln("Watchdog already aware of recovered contract")
 		err = nil
 	}
@@ -277,18 +279,9 @@ func (c *Contractor) callRecoverContracts() {
 					blockHeight, rc.WindowEnd, rc.ID)
 				return
 			}
-			// Check if we already have an active contract with the host.
-			_, exists := c.managedContractByPublicKey(rc.HostPublicKey)
+			_, exists := c.staticContracts.View(rc.ID)
 			if exists {
-				// TODO this is tricky. For now we probably want to ignore a
-				// contract if we already have an active contract with the same
-				// host but there could still be files which are only accessible
-				// using one contract and not the other. We might need to somehow
-				// merge them.
-				// For now we ignore that contract and don't delete it. We
-				// might want to recover it later.
-				c.log.Debugln("Not recovering contract since we already have a contract with that host",
-					rc.ID, rc.HostPublicKey.String())
+				c.log.Debugln("Don't recover contract we already know", rc.ID)
 				return
 			}
 			// Get the ephemeral renter seed and wipe it after using it.

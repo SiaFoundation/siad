@@ -20,7 +20,6 @@ package contractor
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -31,6 +30,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 var journalMeta = persist.Metadata{
@@ -99,7 +99,7 @@ func openJournal(filename string, data *journalPersist) (*journal, error) {
 	// Decode each set of updates and apply them to data.
 	for {
 		var set updateSet
-		if err = dec.Decode(&set); err == io.EOF || err == io.ErrUnexpectedEOF {
+		if err = dec.Decode(&set); errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF) {
 			// unexpected EOF means the last update was corrupted; skip it
 			break
 		} else if err != nil {

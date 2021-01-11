@@ -23,7 +23,11 @@ func TestStorageProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// create a file contract
 	fc := types.FileContract{
@@ -115,7 +119,11 @@ func TestInitRescan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Check that the host's persistent variables have incorporated the first
 	// few blocks.
@@ -150,7 +158,11 @@ func TestIntegrationAutoRescan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Check that the host's persistent variables have incorporated the first
 	// few blocks.

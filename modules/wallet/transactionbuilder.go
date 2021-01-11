@@ -2,10 +2,10 @@ package wallet
 
 import (
 	"bytes"
-	"errors"
 	"sort"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -191,6 +191,9 @@ func (tb *transactionBuilder) MarkWalletInputs() bool {
 // correct value. The siacoin input will not be signed until 'Sign' is called
 // on the transaction builder.
 func (tb *transactionBuilder) FundSiacoins(amount types.Currency) error {
+	if amount.IsZero() {
+		return nil
+	}
 	// dustThreshold has to be obtained separate from the lock
 	dustThreshold, err := tb.wallet.DustThreshold()
 	if err != nil {
@@ -243,7 +246,7 @@ func (tb *transactionBuilder) FundSiacoins(amount types.Currency) error {
 		sco := so.outputs[i]
 		// Check that the output can be spent.
 		if err := tb.wallet.checkOutput(tb.wallet.dbTx, consensusHeight, scoid, sco, dustThreshold); err != nil {
-			if err == errSpendHeightTooHigh {
+			if errors.Contains(err, errSpendHeightTooHigh) {
 				potentialFund = potentialFund.Add(sco.Value)
 			}
 			continue
@@ -333,6 +336,10 @@ func (tb *transactionBuilder) FundSiacoins(amount types.Currency) error {
 // correct value. The siafund input will not be signed until 'Sign' is called
 // on the transaction builder.
 func (tb *transactionBuilder) FundSiafunds(amount types.Currency) error {
+	if amount.IsZero() {
+		return nil
+	}
+
 	tb.wallet.mu.Lock()
 	defer tb.wallet.mu.Unlock()
 
@@ -457,6 +464,14 @@ func (tb *transactionBuilder) FundSiafunds(amount types.Currency) error {
 		}
 	}
 	return nil
+}
+
+// Sweep creates a funded txn that sends the inputs of this transactionBuilder
+// to the specified output if submitted to the blockchain.
+func (tb *transactionBuilder) Sweep(output types.SiacoinOutput) (txn types.Transaction, parents []types.Transaction) {
+	builder := tb.Copy()
+	builder.AddSiacoinOutput(output)
+	return builder.View()
 }
 
 // UnconfirmedParents returns the unconfirmed parents of the transaction set

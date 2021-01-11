@@ -7,12 +7,15 @@ package renter
 //
 // The fanout is encoded such that the first 32 bytes are chunk 0 index 0, the
 // second 32 bytes are chunk 0 index 1, etc... and then the second chunk is
-// appended immedately after, and so on.
+// appended immediately after, and so on.
 
 import (
+	"fmt"
+	"io"
 	"sync"
 	"time"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -29,9 +32,10 @@ type fanoutStreamBufferDataSource struct {
 	staticChunks       [][]crypto.Hash
 	staticChunkSize    uint64
 	staticErasureCoder modules.ErasureCoder
-	staticLayout       skyfileLayout
+	staticLayout       modules.SkyfileLayout
 	staticMasterKey    crypto.CipherKey
-	staticStreamID     streamDataSourceID
+	staticMetadata     modules.SkyfileMetadata
+	staticStreamID     modules.DataSourceID
 
 	// staticTimeout defines a timeout that is applied to every chunk download
 	staticTimeout time.Duration
@@ -44,25 +48,26 @@ type fanoutStreamBufferDataSource struct {
 // newFanoutStreamer will create a modules.Streamer from the fanout of a
 // skyfile. The streamer is created by implementing the streamBufferDataSource
 // interface on the skyfile, and then passing that to the stream buffer set.
-func (r *Renter) newFanoutStreamer(link modules.Skylink, ll skyfileLayout, fanoutBytes []byte, timeout time.Duration, sk skykey.Skykey) (modules.Streamer, error) {
-	masterKey, err := r.deriveFanoutKey(&ll, sk)
+func (r *Renter) newFanoutStreamer(link modules.Skylink, sl modules.SkyfileLayout, metadata modules.SkyfileMetadata, fanoutBytes []byte, timeout time.Duration, sk skykey.Skykey) (modules.Streamer, error) {
+	masterKey, err := r.deriveFanoutKey(&sl, sk)
 	if err != nil {
 		return nil, errors.AddContext(err, "count not recover siafile fanout because cipher key was unavailable")
 	}
 
 	// Create the erasure coder
-	ec, err := siafile.NewRSSubCode(int(ll.fanoutDataPieces), int(ll.fanoutParityPieces), crypto.SegmentSize)
+	ec, err := modules.NewRSSubCode(int(sl.FanoutDataPieces), int(sl.FanoutParityPieces), crypto.SegmentSize)
 	if err != nil {
 		return nil, errors.New("unable to initialize erasure code")
 	}
 
 	// Build the base streamer object.
 	fs := &fanoutStreamBufferDataSource{
-		staticChunkSize:    modules.SectorSize * uint64(ll.fanoutDataPieces),
+		staticChunkSize:    modules.SectorSize * uint64(sl.FanoutDataPieces),
 		staticErasureCoder: ec,
-		staticLayout:       ll,
+		staticLayout:       sl,
 		staticMasterKey:    masterKey,
-		staticStreamID:     streamDataSourceID(crypto.HashObject(link.String())),
+		staticMetadata:     metadata,
+		staticStreamID:     link.DataSourceID(),
 		staticTimeout:      timeout,
 		staticRenter:       r,
 	}
@@ -79,26 +84,11 @@ func (r *Renter) newFanoutStreamer(link modules.Skylink, ll skyfileLayout, fanou
 // decodeFanout will take the fanout bytes from a skyfile and decode them in to
 // the staticChunks filed of the fanoutStreamBufferDataSource.
 func (fs *fanoutStreamBufferDataSource) decodeFanout(fanoutBytes []byte) error {
-	// Special case: if the data of the file is using 1-of-N erasure coding,
-	// each piece will be identical, so the fanout will only have encoded a
-	// single piece for each chunk.
-	ll := fs.staticLayout
-	var piecesPerChunk uint64
-	var chunkRootsSize uint64
-	if ll.fanoutDataPieces == 1 && ll.cipherType == crypto.TypePlain {
-		piecesPerChunk = 1
-		chunkRootsSize = crypto.HashSize
-	} else {
-		// This is the case where the file data is not 1-of-N. Every piece is
-		// different, so every piece must get enumerated.
-		piecesPerChunk = uint64(ll.fanoutDataPieces) + uint64(ll.fanoutParityPieces)
-		chunkRootsSize = crypto.HashSize * piecesPerChunk
+	// Decode piecesPerChunk, chunkRootsSize, and numChunks
+	piecesPerChunk, chunkRootsSize, numChunks, err := modules.DecodeFanout(fs.staticLayout, fanoutBytes)
+	if err != nil {
+		return err
 	}
-	// Sanity check - the fanout bytes should be an even number of chunks.
-	if uint64(len(fanoutBytes))%chunkRootsSize != 0 {
-		return errors.New("the fanout bytes do not contain an even number of chunks")
-	}
-	numChunks := uint64(len(fanoutBytes)) / chunkRootsSize
 
 	// Decode the fanout data into the list of chunks for the
 	// fanoutStreamBufferDataSource.
@@ -116,26 +106,42 @@ func (fs *fanoutStreamBufferDataSource) decodeFanout(fanoutBytes []byte) error {
 
 // skyfileEncodeFanout will create the serialized fanout for a fileNode. The
 // encoded fanout is just the list of hashes that can be used to retrieve a file
-// concatenated together, where piece 0 of chunk 0 is first, piece 1 of chunk 0
-// is second, etc. The full set of erasure coded pieces are included.
+// concatenated together, where piece 0 of chunk 0 is first, piece 1 of chunk
+// 0 is second, etc. The full set of erasure coded pieces are included.
 //
 // There is a special case for unencrypted 1-of-N files. Because every piece is
 // identical for an unencrypted 1-of-N file, only the first piece of each chunk
 // is included.
-func skyfileEncodeFanout(fileNode *filesystem.FileNode) ([]byte, error) {
+//
+// NOTE: This method should not be called unless the fileNode is available,
+// meaning that all the dataPieces have been uploaded.
+func skyfileEncodeFanout(fileNode *filesystem.FileNode, reader io.Reader) ([]byte, error) {
 	// Grab the erasure coding scheme and encryption scheme from the file.
 	cipherType := fileNode.MasterKey().Type()
 	dataPieces := fileNode.ErasureCode().MinPieces()
-	numPieces := fileNode.ErasureCode().NumPieces()
 	onlyOnePieceNeeded := dataPieces == 1 && cipherType == crypto.TypePlain
 
-	// Allocate the memory for the fanout.
-	var fanout []byte
-	if onlyOnePieceNeeded {
-		fanout = make([]byte, 0, fileNode.NumChunks()*crypto.HashSize)
-	} else {
-		fanout = make([]byte, 0, fileNode.NumChunks()*uint64(numPieces)*crypto.HashSize)
+	// If only one piece is needed, or if no reader was passed in, then we can
+	// generate the encoded fanout from the fileNode.
+	if onlyOnePieceNeeded || reader == nil {
+		return skyfileEncodeFanoutFromFileNode(fileNode, onlyOnePieceNeeded)
 	}
+
+	// If we need all the pieces, then we need to generate the encoded fanout from
+	// the reader since we cannot assume that all the parity pieces have been
+	// uploaded.
+	return skyfileEncodeFanoutFromReader(fileNode, reader)
+}
+
+// skyfileEncodeFanoutFromFileNode will create the serialized fanout for
+// a fileNode. The encoded fanout is just the list of hashes that can be used to
+// retrieve a file concatenated together, where piece 0 of chunk 0 is first,
+// piece 1 of chunk 0 is second, etc. This method assumes the  special case for
+// unencrypted 1-of-N files. Because every piece is identical for an unencrypted
+// 1-of-N file, only the first piece of each chunk is included.
+func skyfileEncodeFanoutFromFileNode(fileNode *filesystem.FileNode, onePiece bool) ([]byte, error) {
+	// Allocate the memory for the fanout.
+	fanout := make([]byte, 0, fileNode.NumChunks()*crypto.HashSize)
 
 	// findPieceInPieceSet will scan through a piece set and return the first
 	// non-empty piece in the set. If the set is empty, or every piece in the
@@ -161,20 +167,72 @@ func skyfileEncodeFanout(fileNode *filesystem.FileNode) ([]byte, error) {
 		// Special case: if only one piece is needed, only use the first piece
 		// that is available. This is because 1-of-N files are encoded more
 		// compactly in the fanout.
-		if onlyOnePieceNeeded {
+		if onePiece {
+			root := emptyHash
 			for _, pieceSet := range allPieces {
-				root := findPieceInPieceSet(pieceSet)
+				root = findPieceInPieceSet(pieceSet)
 				if root != emptyHash {
 					fanout = append(fanout, root[:]...)
 					break
 				}
 			}
+			// If root is still equal to emptyHash it means that we didn't add a piece
+			// root for this chunk.
+			if root == emptyHash {
+				err = fmt.Errorf("No piece root encoded for chunk %v", i)
+				build.Critical(err)
+				return nil, err
+			}
 			continue
 		}
 
-		// General case: get one root per piece.
-		for _, pieceSet := range allPieces {
+		// Generate all the piece roots
+		for pi, pieceSet := range allPieces {
 			root := findPieceInPieceSet(pieceSet)
+			if root == emptyHash {
+				err = fmt.Errorf("Empty piece root at index %v found for chunk %v", pi, i)
+				build.Critical(err)
+				return nil, err
+			}
+			fanout = append(fanout, root[:]...)
+		}
+	}
+	return fanout, nil
+}
+
+// skyfileEncodeFanoutFromReader will create the serialized fanout for
+// a fileNode. The encoded fanout is just the list of hashes that can be used to
+// retrieve a file concatenated together, where piece 0 of chunk 0 is first,
+// piece 1 of chunk 0 is second, etc. The full set of erasure coded pieces are
+// included.
+func skyfileEncodeFanoutFromReader(fileNode *filesystem.FileNode, reader io.Reader) ([]byte, error) {
+	// Safety check
+	if reader == nil {
+		err := errors.New("skyfileEncodeFanoutFromReader called with nil reader")
+		build.Critical(err)
+		return nil, err
+	}
+
+	// Generate the remaining pieces of the each chunk to build the fanout bytes
+	numPieces := fileNode.ErasureCode().NumPieces()
+	fanout := make([]byte, 0, fileNode.NumChunks()*uint64(numPieces)*crypto.HashSize)
+	for chunkIndex := uint64(0); chunkIndex < fileNode.NumChunks(); chunkIndex++ {
+		// Allocate data pieces and fill them with data from the reader.
+		dataPieces, _, err := readDataPieces(reader, fileNode.ErasureCode(), fileNode.PieceSize())
+		if err != nil {
+			return nil, errors.AddContext(err, "unable to get dataPieces from chunk")
+		}
+
+		// Encode the data pieces, forming the chunk's logical data.
+		logicalChunkData, _ := fileNode.ErasureCode().EncodeShards(dataPieces)
+		for pieceIndex := range logicalChunkData {
+			// Encrypt and pad the piece with the given index.
+			padAndEncryptPiece(chunkIndex, uint64(pieceIndex), logicalChunkData, fileNode.MasterKey())
+			root := crypto.MerkleRoot(logicalChunkData[pieceIndex])
+			// Unlike in skyfileEncodeFanoutFromFileNode we don't check for an
+			// emptyHash here since if MerkleRoot returned an emptyHash it would mean
+			// that an emptyHash is a valid MerkleRoot and a host should be able to
+			// return the corresponding data.
 			fanout = append(fanout, root[:]...)
 		}
 	}
@@ -183,13 +241,18 @@ func skyfileEncodeFanout(fileNode *filesystem.FileNode) ([]byte, error) {
 
 // DataSize returns the amount of file data in the underlying skyfile.
 func (fs *fanoutStreamBufferDataSource) DataSize() uint64 {
-	return fs.staticLayout.filesize
+	return fs.staticLayout.Filesize
 }
 
 // ID returns the id of the skylink being fetched, this is just the hash of the
 // skylink.
-func (fs *fanoutStreamBufferDataSource) ID() streamDataSourceID {
+func (fs *fanoutStreamBufferDataSource) ID() modules.DataSourceID {
 	return fs.staticStreamID
+}
+
+// Metadata returns the metadata of the skylink being fetched.
+func (fs *fanoutStreamBufferDataSource) Metadata() modules.SkyfileMetadata {
+	return fs.staticMetadata
 }
 
 // ReadAt will fetch data from the siafile at the provided offset.
@@ -207,7 +270,7 @@ func (fs *fanoutStreamBufferDataSource) ReadAt(b []byte, offset int64) (int, err
 		return 0, errors.New("request needs to be aligned to RequestSize()")
 	}
 	// Must not go beyond the end of the file.
-	if uint64(offset)+uint64(len(b)) > fs.staticLayout.filesize {
+	if uint64(offset)+uint64(len(b)) > fs.staticLayout.Filesize {
 		return 0, errors.New("making a read request that goes beyond the boundaries of the file")
 	}
 

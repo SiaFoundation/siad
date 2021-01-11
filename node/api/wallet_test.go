@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -590,7 +591,7 @@ func TestWalletTransactionGETid(t *testing.T) {
 	// A call to /wallet/transactions without startheight and endheight parameters
 	// should return a descriptive error message.
 	err = st.getAPI("/wallet/transactions", &wtg)
-	if err == nil || err.Error() != "startheight and endheight must be provided to a /wallet/transactions call." {
+	if err == nil || !strings.Contains(err.Error(), "startheight and endheight must be provided to a /wallet/transactions call.") {
 		t.Error("expecting /wallet/transactions call with empty parameters to error")
 	}
 
@@ -756,7 +757,7 @@ func TestWalletTransactionGETid(t *testing.T) {
 
 	// Reconnect st2 and st.
 	err = fullyConnectNodes([]*serverTester{st, st2})
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), "already connected to this peer") {
 		t.Fatal(err)
 	}
 
@@ -805,7 +806,11 @@ func TestWalletTransactionGETid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st2.server.Close()
+	defer func() {
+		if err := st2.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	err = st2.getAPI("/wallet/transactions?startheight=0&endheight=10000", &wtg)
 	if err != nil {
 		t.Fatal(err)
@@ -863,12 +868,12 @@ func TestWalletRelativePathErrorBackup(t *testing.T) {
 	backupAbsoluteError := "error when calling /wallet/backup: destination must be an absolute path"
 	// This should error.
 	err = st.stdGetAPI("/wallet/backup?destination=test_wallet.backup")
-	if err == nil || err.Error() != backupAbsoluteError {
+	if err == nil || !strings.Contains(err.Error(), backupAbsoluteError) {
 		t.Fatal(err)
 	}
 	// This as well.
 	err = st.stdGetAPI("/wallet/backup?destination=../test_wallet.backup")
-	if err == nil || err.Error() != backupAbsoluteError {
+	if err == nil || !strings.Contains(err.Error(), backupAbsoluteError) {
 		t.Fatal(err)
 	}
 	// This should succeed.
@@ -914,7 +919,7 @@ func TestWalletRelativePathError033x(t *testing.T) {
 	load033xValues := url.Values{}
 	load033xValues.Set("source", "test.dat")
 	err = st.stdPostAPI("/wallet/033x", load033xValues)
-	if err == nil || err.Error() != load033xAbsoluteError {
+	if err == nil || !strings.Contains(err.Error(), load033xAbsoluteError) {
 		t.Fatal(err)
 	}
 
@@ -922,7 +927,7 @@ func TestWalletRelativePathError033x(t *testing.T) {
 	load033xValues = url.Values{}
 	load033xValues.Set("source", "../test.dat")
 	err = st.stdPostAPI("/wallet/033x", load033xValues)
-	if err == nil || err.Error() != load033xAbsoluteError {
+	if err == nil || !strings.Contains(err.Error(), load033xAbsoluteError) {
 		t.Fatal(err)
 	}
 
@@ -969,7 +974,7 @@ func TestWalletRelativePathErrorSiag(t *testing.T) {
 	loadSiagValues := url.Values{}
 	loadSiagValues.Set("keyfiles", "test.dat")
 	err = st.stdPostAPI("/wallet/siagkey", loadSiagValues)
-	if err == nil || err.Error() != loadSiagAbsoluteError {
+	if err == nil || !strings.Contains(err.Error(), loadSiagAbsoluteError) {
 		t.Fatal(err)
 	}
 
@@ -977,7 +982,7 @@ func TestWalletRelativePathErrorSiag(t *testing.T) {
 	loadSiagValues = url.Values{}
 	loadSiagValues.Set("keyfiles", "../test.dat")
 	err = st.stdPostAPI("/wallet/siagkey", loadSiagValues)
-	if err == nil || err.Error() != loadSiagAbsoluteError {
+	if err == nil || !strings.Contains(err.Error(), loadSiagAbsoluteError) {
 		t.Fatal(err)
 	}
 
@@ -985,7 +990,7 @@ func TestWalletRelativePathErrorSiag(t *testing.T) {
 	loadSiagValues = url.Values{}
 	loadSiagValues.Set("keyfiles", "/test.dat,test.dat,../test.dat")
 	err = st.stdPostAPI("/wallet/siagkey", loadSiagValues)
-	if err == nil || err.Error() != loadSiagAbsoluteError {
+	if err == nil || !strings.Contains(err.Error(), loadSiagAbsoluteError) {
 		t.Fatal(err)
 	}
 
@@ -993,7 +998,7 @@ func TestWalletRelativePathErrorSiag(t *testing.T) {
 	loadSiagValues = url.Values{}
 	loadSiagValues.Set("keyfiles", "../test.dat,/test.dat")
 	err = st.stdPostAPI("/wallet/siagkey", loadSiagValues)
-	if err == nil || err.Error() != loadSiagAbsoluteError {
+	if err == nil || !strings.Contains(err.Error(), loadSiagAbsoluteError) {
 		t.Fatal(err)
 	}
 
@@ -1404,27 +1409,47 @@ func TestWalletSiacoins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st2.server.Close()
+	defer func() {
+		if err := st2.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	st3, err := blankServerTester(t.Name() + "-wallet3")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st3.server.Close()
+	defer func() {
+		if err := st3.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	st4, err := blankServerTester(t.Name() + "-wallet4")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st4.server.Close()
+	defer func() {
+		if err := st4.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	st5, err := blankServerTester(t.Name() + "-wallet5")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st5.server.Close()
+	defer func() {
+		if err := st5.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	st6, err := blankServerTester(t.Name() + "-wallet6")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st6.server.Close()
+	defer func() {
+		if err := st6.server.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Mine two more blocks with 'st' to get extra outputs to spend.
 	for i := 0; i < 2; i++ {
@@ -1605,7 +1630,7 @@ func testWalletTransactionsEndpoint(t *testing.T, st *serverTester, expectedConf
 
 	queriedTxns = 0
 	batchSize := types.BlockHeight(5)
-	for i := types.BlockHeight(0); i <= st.cs.Height(); i += (batchSize + 1) {
+	for i := types.BlockHeight(0); i <= st.cs.Height(); i += batchSize + 1 {
 		err := st.getAPI(fmt.Sprintf("/wallet/transactions?startheight=%v&endheight=%v", i, i+batchSize), &wtg)
 		if err != nil {
 			t.Fatal(err)

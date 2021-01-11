@@ -2,6 +2,10 @@ package skykey
 
 import (
 	"bytes"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -100,7 +104,7 @@ func TestSkykeyManager(t *testing.T) {
 	randomNameBytes := fastrand.Bytes(24)
 	randomName := string(randomNameBytes)
 	id, err = keyMan.IDByName(randomName)
-	if err != errNoSkykeysWithThatName {
+	if !errors.Contains(err, ErrNoSkykeysWithThatName) {
 		t.Fatal(err)
 	}
 
@@ -108,7 +112,7 @@ func TestSkykeyManager(t *testing.T) {
 	var randomID SkykeyID
 	fastrand.Read(randomID[:])
 	_, err = keyMan.KeyByID(randomID)
-	if err != ErrNoSkykeysWithThatID {
+	if !errors.Contains(err, ErrNoSkykeysWithThatID) {
 		t.Fatal(err)
 	}
 
@@ -170,8 +174,8 @@ func TestSkykeyManager(t *testing.T) {
 
 	// Check that AddKey works properly by re-adding all the keys from the first
 	// 2 key managers into a new one.
-	persistDir = build.TempDir(t.Name(), "add-only-keyman")
-	addKeyMan, err := NewSkykeyManager(persistDir)
+	newPersistDir := build.TempDir(t.Name(), "add-only-keyman")
+	addKeyMan, err := NewSkykeyManager(newPersistDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,14 +215,30 @@ func TestSkykeyDerivations(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	skykey, err := keyMan.CreateKey("derivation_test_key", TypePublicID)
+	// Hard-code some expected values.
+	skykey := Skykey{"derivation_test_key", TypePublicID, []byte{51, 90, 115, 73, 121, 179, 94, 117, 153, 74, 70, 80, 127, 55, 231, 196, 104, 244, 83, 157, 198, 159, 118, 79, 213, 32, 112, 255, 8, 84, 83, 183, 125, 30, 213, 34, 252, 152, 144, 42, 231, 151, 254, 145, 149, 205, 135, 169, 44, 185, 223, 52, 250, 126, 119, 249}}
+	err = keyMan.AddKey(skykey)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	masterNonce := skykey.Nonce()
 
 	derivationPath1 := []byte("derivationtest1")
 	derivationPath2 := []byte("path2")
+
+	// Derive a subkey and check that it matches saved values.
+	dk1, err := skykey.DeriveSubkey(derivationPath1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := []byte{51, 90, 115, 73, 121, 179, 94, 117, 153, 74, 70, 80, 127, 55, 231, 196, 104, 244, 83, 157, 198, 159, 118, 79, 213, 32, 112, 255, 8, 84, 83, 183, 121, 171, 176, 232, 96, 47, 177, 154, 180, 144, 145, 29, 220, 178, 39, 220, 182, 53, 153, 191, 167, 116, 108, 221}
+	if !bytes.Equal(dk1.Entropy, expected) {
+		t.Fatal("unexpected subkey entropy")
+	}
+	if !bytes.Equal(dk1.Entropy[:chacha.KeySize], skykey.Entropy[:chacha.KeySize]) {
+		t.Fatal("did not preserve key part of master key's entropy")
+	}
 
 	// Create file-specific keys.
 	numDerivedSkykeys := 5
@@ -640,7 +660,7 @@ func TestSkykeyTypeStrings(t *testing.T) {
 
 	var invalidSt SkykeyType
 	err = invalidSt.FromString(invalidTypeString)
-	if err != ErrInvalidSkykeyType {
+	if !errors.Contains(err, ErrInvalidSkykeyType) {
 		t.Fatal(err)
 	}
 
@@ -716,7 +736,7 @@ func TestSkyfileEncryptionIDs(t *testing.T) {
 	privIDKeys := make([]Skykey, nPrivIDKeys)
 	privIDKeys[0] = privSkykey
 	for i := 0; i < nPrivIDKeys-1; i++ {
-		privIDKeys[i+1], err = keyMan.CreateKey("private_id"+t.Name()+string(i+1), TypePrivateID)
+		privIDKeys[i+1], err = keyMan.CreateKey("private_id"+t.Name()+fmt.Sprint(i+1), TypePrivateID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -769,5 +789,231 @@ func TestSkyfileEncryptionIDs(t *testing.T) {
 	_, err = privIDKeys[0].MatchesSkyfileEncryptionID(encIDs[0][:SkykeyIDLen-1], nonces[0][:chacha.XNonceSize-1])
 	if !errors.Contains(err, errInvalidIDorNonceLength) {
 		t.Fatal(err)
+	}
+}
+
+// TestSkykeyDelete tests the Delete methods for the skykey manager.
+func TestSkykeyDelete(t *testing.T) {
+	// Create a key manager.
+	persistDir := build.TempDir("skykey", t.Name())
+	keyMan, err := NewSkykeyManager(persistDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add several keys and delete them all.
+	keys := make([]Skykey, 0)
+	for i := 0; i < 5; i++ {
+		sk, err := keyMan.CreateKey("keys-to-delete"+fmt.Sprint(i), TypePrivateID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keys = append(keys, sk)
+	}
+	for _, key := range keys {
+		err = keyMan.DeleteKeyByID(key.ID())
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Check that keyMan doesn't recognize them anymore.
+	for _, key := range keys {
+		_, err = keyMan.KeyByID(key.ID())
+		if !errors.Contains(err, ErrNoSkykeysWithThatID) {
+			t.Fatal(err)
+		}
+	}
+
+	// checkForExpectedKeys checks that the keys in expectedKeySet are the only
+	// ones stored by keyMan, and also checks that a new keyManager loaded from
+	// the same persist also stores only this exact set of skykeys.
+	checkForExpectedKeys := func(expectedKeySet map[SkykeyID]struct{}) {
+		allSkykeys := keyMan.Skykeys()
+		if len(allSkykeys) != len(expectedKeySet) {
+			t.Fatalf("Expected %d keys, got %d", len(expectedKeySet), len(allSkykeys))
+		}
+		for _, sk := range allSkykeys {
+			_, ok := expectedKeySet[sk.ID()]
+			if !ok {
+				t.Fatal("Did not find key in expected key set")
+			}
+		}
+
+		freshKeyMan, err := NewSkykeyManager(persistDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		loadedSkykeys := freshKeyMan.Skykeys()
+		if len(loadedSkykeys) != len(expectedKeySet) {
+			t.Fatalf("Fresh load: Expected %d keys, got %d", len(expectedKeySet), len(loadedSkykeys))
+		}
+
+		for _, sk := range loadedSkykeys {
+			_, ok := expectedKeySet[sk.ID()]
+			if !ok {
+				t.Fatal("Fresh load: Did not find key in expected key set")
+			}
+		}
+	}
+
+	// There should be no keys remaining.
+	checkForExpectedKeys(make(map[SkykeyID]struct{}))
+
+	// Add a bunch of keys again.
+	expectedKeySet := make(map[SkykeyID]struct{})
+	nKeys := 10
+	keys = make([]Skykey, 0)
+	for i := 0; i < nKeys; i++ {
+		sk, err := keyMan.CreateKey("key"+fmt.Sprint(i), TypePrivateID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		keys = append(keys, sk)
+		expectedKeySet[sk.ID()] = struct{}{}
+	}
+	checkForExpectedKeys(expectedKeySet)
+
+	// Delete the first key.
+	err = keyMan.DeleteKeyByID(keys[0].ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(expectedKeySet, keys[0].ID())
+
+	// Check keyManager deletion.
+	checkForExpectedKeys(expectedKeySet)
+
+	// Delete a middle key and do the same checks.
+	midIdx := nKeys / 2
+	err = keyMan.DeleteKeyByID(keys[midIdx].ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(expectedKeySet, keys[midIdx].ID())
+	checkForExpectedKeys(expectedKeySet)
+
+	// Delete the last key and do the same checks.
+	endIdx := nKeys - 1
+	err = keyMan.DeleteKeyByID(keys[endIdx].ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(expectedKeySet, keys[endIdx].ID())
+	checkForExpectedKeys(expectedKeySet)
+
+	// Add a few more keys.
+	for i := 0; i < nKeys; i++ {
+		sk, err := keyMan.CreateKey("extra-key"+fmt.Sprint(i), TypePrivateID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectedKeySet[sk.ID()] = struct{}{}
+	}
+	checkForExpectedKeys(expectedKeySet)
+
+	// Sanity check on DeleteKeyByName by deleting some of the new keys.
+	for i := 0; i < len(expectedKeySet)/2; i += 2 {
+		sk, err := keyMan.KeyByName("extra-key" + fmt.Sprint(i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = keyMan.DeleteKeyByName(sk.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		delete(expectedKeySet, sk.ID())
+	}
+	checkForExpectedKeys(expectedKeySet)
+}
+
+// TestSkykeyDelete tests the Delete methods for the skykey manager, starting
+// with a file containing skykeys created using the older format.
+func TestSkykeyDeleteCompat(t *testing.T) {
+	// Create a persist dir.
+	persistDir := build.TempDir("skykey", t.Name())
+	err := os.MkdirAll(persistDir, defaultDirPerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// copy the testdata file over to it.
+	persistFileName := filepath.Join(persistDir, SkykeyPersistFilename)
+	persistFile, err := os.Create(persistFileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := persistFile.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	testDataFileName := filepath.Join("testdata", "v144_and_v149_skykeys.dat")
+	testDataFile, err := os.Open(testDataFileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := testDataFile.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	_, err = io.Copy(persistFile, testDataFile)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a key manager.
+	keyMan, err := NewSkykeyManager(persistDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nKeys := 8
+	keys := keyMan.Skykeys()
+	if len(keys) != nKeys {
+		t.Fatalf("Expected %d keys got %d", nKeys, len(keys))
+	}
+
+	// Delete all the keys.
+	for i, sk := range keys {
+		err = keyMan.DeleteKeyByName(sk.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(keyMan.Skykeys()) != nKeys-(i+1) {
+			t.Fatalf("Expected %d keys got %d", len(keyMan.Skykeys()), nKeys-(i+1))
+		}
+	}
+
+	// Sanity check: create a new key and check for it.
+	sk, err := keyMan.CreateKey("sanity-check", TypePrivateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys = keyMan.Skykeys()
+	if len(keys) != 1 {
+		t.Fatal("Expected 1 key", keys)
+	}
+	if !keys[0].equals(sk) {
+		t.Fatal("keys don't match")
+	}
+
+	// Sanity check: check that the new key is loaded from a fresh persist.
+	freshKeyMan, err := NewSkykeyManager(persistDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loadedSkykeys := freshKeyMan.Skykeys()
+	if len(loadedSkykeys) != 1 {
+		t.Fatal("Expected 1 key", keys)
+	}
+	if !loadedSkykeys[0].equals(sk) {
+		t.Fatal("keys don't match")
 	}
 }

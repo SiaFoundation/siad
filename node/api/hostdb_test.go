@@ -20,6 +20,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	"gitlab.com/NebulousLabs/Sia/modules/wallet"
+	"gitlab.com/NebulousLabs/ratelimit"
 )
 
 // TestHostDBHostsActiveHandler checks the behavior of the call to
@@ -190,6 +191,9 @@ func TestHostDBHostsHandler(t *testing.T) {
 	if hh.ScoreBreakdown.Score.IsZero() {
 		t.Error("Zero vaue score in score breakdown")
 	}
+	if hh.ScoreBreakdown.AcceptContractAdjustment == 0 {
+		t.Error("Zero value in host score breakdown")
+	}
 	if hh.ScoreBreakdown.AgeAdjustment == 0 {
 		t.Error("Zero value in host score breakdown")
 	}
@@ -311,7 +315,8 @@ func assembleHostPort(key crypto.CipherKey, hostHostname string, testdir string)
 	if err != nil {
 		return nil, err
 	}
-	r, errChan := renter.New(g, cs, w, tp, mux, filepath.Join(testdir, modules.RenterDir))
+	rl := ratelimit.NewRateLimit(0, 0, 0)
+	r, errChan := renter.New(g, cs, w, tp, mux, rl, filepath.Join(testdir, modules.RenterDir))
 	if err := <-errChan; err != nil {
 		return nil, err
 	}
@@ -532,7 +537,10 @@ func TestHostDBAndRenterDownloadDynamicIPs(t *testing.T) {
 	// Only one piece will be uploaded (10% at current redundancy).
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
@@ -755,7 +763,10 @@ func TestHostDBAndRenterUploadDynamicIPs(t *testing.T) {
 	// Only one piece will be uploaded (10% at current redundancy).
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
@@ -841,7 +852,10 @@ func TestHostDBAndRenterUploadDynamicIPs(t *testing.T) {
 	}
 	// Only one piece will be uploaded (10% at current redundancy).
 	for i := 0; i < 200 && (len(rf.Files) != 2 || rf.Files[0].UploadProgress < 10 || rf.Files[1].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if len(rf.Files) != 2 || rf.Files[0].UploadProgress < 10 || rf.Files[1].UploadProgress < 10 {
@@ -1070,7 +1084,10 @@ func TestHostDBAndRenterFormDynamicIPs(t *testing.T) {
 	// Only one piece will be uploaded (10% at current redundancy).
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {
@@ -1205,7 +1222,10 @@ func TestHostDBAndRenterRenewDynamicIPs(t *testing.T) {
 	// Only one piece will be uploaded (10% at current redundancy).
 	var rf RenterFiles
 	for i := 0; i < 200 && (len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10); i++ {
-		st.getAPI("/renter/files", &rf)
+		err = st.getAPI("/renter/files", &rf)
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
 	if len(rf.Files) != 1 || rf.Files[0].UploadProgress < 10 {

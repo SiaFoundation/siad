@@ -15,23 +15,24 @@ require (
 	github.com/spf13/cobra v1.0.0
 	github.com/vbauerster/mpb/v5 v5.0.3
 	github.com/xtaci/smux v1.3.3
-	gitlab.com/NebulousLabs/bolt v1.4.0
+	gitlab.com/NebulousLabs/bolt v1.4.4
 	gitlab.com/NebulousLabs/demotemutex v0.0.0-20151003192217-235395f71c40
 	gitlab.com/NebulousLabs/encoding v0.0.0-20200604091946-456c3dc907fe
 	gitlab.com/NebulousLabs/entropy-mnemonics v0.0.0-20181018051301-7532f67e3500
-	gitlab.com/NebulousLabs/errors v0.0.0-20171229012116-7ead97ef90b8
+	gitlab.com/NebulousLabs/errors v0.0.0-20200929122200-06c536cf6975
 	gitlab.com/NebulousLabs/fastrand v0.0.0-20181126182046-603482d69e40
 	gitlab.com/NebulousLabs/go-upnp v0.0.0-20181011194642-3a71999ed0d3
-	gitlab.com/NebulousLabs/log v0.0.0-20200529173103-40b250c2d92c
+	gitlab.com/NebulousLabs/log v0.0.0-20200604091839-0ba4a941cdc2
 	gitlab.com/NebulousLabs/merkletree v0.0.0-20200118113624-07fbf710afc4
 	gitlab.com/NebulousLabs/monitor v0.0.0-20191205095550-2b0fd3e1012a
-	gitlab.com/NebulousLabs/ratelimit v0.0.0-20191111145210-66b93e150b27
-	gitlab.com/NebulousLabs/siamux v0.0.0-20200608161853-c47559bf00a2
+	gitlab.com/NebulousLabs/ratelimit v0.0.0-20200811080431-99b8f0768b2e
+	gitlab.com/NebulousLabs/siamux v0.0.0-20201105164950-869a9dc7edcf
 	gitlab.com/NebulousLabs/threadgroup v0.0.0-20200608151952-38921fbef213
-	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20200602160622-fa13ea29f677
-	golang.org/x/crypto v0.0.0-20200510223506-06a226fb4e37
-	golang.org/x/net v0.0.0-20200226121028-0de0cce0169b // indirect
-	golang.org/x/sys v0.0.0-20200420163511-1957bb5e6d1f // indirect
+	gitlab.com/NebulousLabs/writeaheadlog v0.0.0-20200618142844-c59a90f49130
+	golang.org/x/crypto v0.0.0-20200709230013-948cd5f35899
+	golang.org/x/net v0.0.0-20200707034311-ab3426394381
+	golang.org/x/sys v0.0.0-20200625212154-ddb9806d33ae // indirect
+	golang.org/x/text v0.3.3 // indirect
 )
 
 replace github.com/xtaci/smux => ./vendor/github.com/xtaci/smux

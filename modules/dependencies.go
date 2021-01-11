@@ -35,7 +35,7 @@ type (
 
 		// AtLeastOne will return a value that is at least one. In production,
 		// the value should always be one. This function is used to test the
-		// idempotency of actions, so during testing sometimes the value
+		// idempotence of actions, so during testing sometimes the value
 		// returned will be higher, causing an idempotent action to be
 		// committed multiple times. If the action is truly idempotent,
 		// committing it multiple times should not cause any problems or
@@ -258,7 +258,7 @@ func (*ProductionDependencies) LoadFile(meta persist.Metadata, data interface{},
 // LookupIP resolves a hostname to a number of IP addresses. If an IP address
 // is provided as an argument it will just return that IP.
 func (*ProductionDependencies) LookupIP(host string) ([]net.IP, error) {
-	return net.LookupIP(host)
+	return (ProductionResolver{}).LookupIP(host)
 }
 
 // SaveFileSync writes JSON encoded data to a file and syncs the file to disk

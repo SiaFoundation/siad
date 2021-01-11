@@ -25,28 +25,12 @@ const (
 
 // AlertCauseSiafileLowRedundancy creates a customized "cause" for a siafile
 // with a certain path and health.
-func AlertCauseSiafileLowRedundancy(siaPath modules.SiaPath, health float64) string {
-	siaPath, _ = siaPath.Rebase(modules.UserFolder, modules.RootSiaPath())
-	return fmt.Sprintf("Siafile '%v' has a health of %v", siaPath.String(), health)
+func AlertCauseSiafileLowRedundancy(siaPath modules.SiaPath, health, redundancy float64) string {
+	return fmt.Sprintf("Siafile '%v' has a health of %v and redundancy of %v", siaPath.String(), health, redundancy)
 }
 
 // Default redundancy parameters.
 var (
-	// DefaultDataPieces is the number of data pieces per erasure-coded chunk
-	DefaultDataPieces = build.Select(build.Var{
-		Dev:      1,
-		Standard: 10,
-		Testing:  1,
-	}).(int)
-
-	// DefaultParityPieces is the number of parity pieces per erasure-coded
-	// chunk
-	DefaultParityPieces = build.Select(build.Var{
-		Dev:      1,
-		Standard: 20,
-		Testing:  4,
-	}).(int)
-
 	// RepairThreshold defines the threshold at which the renter decides to
 	// repair a file. The renter will start repairing the file when the health
 	// is equal to or greater than this value.
@@ -65,19 +49,40 @@ var (
 		Standard: time.Second * 5,
 		Testing:  time.Second,
 	}).(time.Duration)
+
+	// cachedUtilitiesUpdateInterval is how often the renter updates the
+	// cachedUtilities.
+	cachedUtilitiesUpdateInterval = build.Select(build.Var{
+		Dev:      time.Minute,
+		Standard: time.Minute * 10,
+		Testing:  time.Second * 3,
+	}).(time.Duration)
+
+	// maxWaitForCompleteUpload is the maximum amount of time we wait for an
+	// upload chunk to be completely uploaded after it has become available in
+	// the upload process.
+	maxWaitForCompleteUpload = build.Select(build.Var{
+		Dev:      5 * time.Minute,
+		Standard: 5 * time.Minute,
+		Testing:  5 * time.Second,
+	}).(time.Duration)
 )
 
 // Default memory usage parameters.
 var (
-	// defaultMemory establishes the default amount of memory that the renter
+	// memoryDefault establishes the default amount of memory that the renter
 	// will use when performing uploads and downloads. The mapping is currently
 	// not perfect due to GC overhead and other places where we don't count all
 	// of the memory usage accurately.
-	defaultMemory = build.Select(build.Var{
+	memoryDefault = build.Select(build.Var{
 		Dev:      uint64(1 << 28), // 256 MiB
 		Standard: uint64(1 << 30), // 1 GiB
 		Testing:  uint64(1 << 17), // 128 KiB - 4 KiB sector size, need to test memory exhaustion
 	}).(uint64)
+
+	// defaultPriorityMemory is the amount of memory that is held in reserve
+	// explicitly for priority actions such as download streaming.
+	memoryPriorityDefault = memoryDefault / 4
 
 	// initialStreamerCacheSize defines the cache size that each streamer will
 	// start using when it is created. A lower initial cache size will mean that
@@ -137,6 +142,11 @@ const (
 
 // Constants that tune the health and repair processes.
 const (
+	// maxConsecutiveDirHeapFailures is the maximum number of consecutive times
+	// the repair heap is allowed to fail to get a directory from the Directory
+	// Heap
+	maxConsecutiveDirHeapFailures = 5
+
 	// maxRandomStuckChunksAddToHeap is the maximum number of random stuck
 	// chunks that the stuck loop will add to the uploadHeap at a time. Random
 	// stuck chunks are the stuck chunks chosen at random from the file system
@@ -170,6 +180,22 @@ var (
 		Standard: 30 * time.Second,
 		Testing:  3 * time.Second,
 	}).(time.Duration)
+
+	// healthLoopNumBatchFiles defines the number of files the health loop will
+	// try to batch together in a subtree when updating the filesystem.
+	healthLoopNumBatchFiles = build.Select(build.Var{
+		Dev:      uint64(1e3),
+		Standard: uint64(10e3),
+		Testing:  uint64(5),
+	}).(uint64)
+
+	// healthLoopNumBatchSubDirs defines the number of sub directories the health
+	// loop will try to batch together in a subtree when updating the filesystem.
+	healthLoopNumBatchSubDirs = build.Select(build.Var{
+		Dev:      uint64(100),
+		Standard: uint64(1e3),
+		Testing:  uint64(2),
+	}).(uint64)
 
 	// maxRepairLoopTime indicates the maximum amount of time that the repair
 	// loop will spend popping chunks off of the repair heap.
@@ -205,6 +231,10 @@ var (
 		Standard: 20,
 		Testing:  1,
 	}).(int)
+
+	// numBubbleWorkerThreads is the number of threads used when using worker
+	// groups in various bubble methods
+	numBubbleWorkerThreads = 20
 
 	// offlineCheckFrequency is how long the renter will wait to check the
 	// online status if it is offline.

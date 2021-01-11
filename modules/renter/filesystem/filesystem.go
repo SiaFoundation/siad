@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -170,7 +171,7 @@ func New(root string, log *persist.Logger, wal *writeaheadlog.WAL) (*FileSystem,
 // already exists with a different UID, the UID will be updated and a unique
 // path will be chosen. If no file exists, the UID will be updated but the path
 // remains the same.
-func (fs *FileSystem) AddSiaFileFromReader(rs io.ReadSeeker, siaPath modules.SiaPath) error {
+func (fs *FileSystem) AddSiaFileFromReader(rs io.ReadSeeker, siaPath modules.SiaPath) (err error) {
 	// Load the file.
 	path := fs.FilePath(siaPath)
 	sf, chunks, err := siafile.LoadSiaFileFromReaderWithChunks(rs, path, fs.staticWal)
@@ -190,7 +191,9 @@ func (fs *FileSystem) AddSiaFileFromReader(rs io.ReadSeeker, siaPath modules.Sia
 	if err != nil {
 		return err
 	}
-	defer dir.Close()
+	defer func() {
+		err = errors.Compose(err, dir.Close())
+	}()
 	// Add the file to the dir.
 	return dir.managedNewSiaFileFromExisting(sf, chunks)
 }
@@ -201,14 +204,34 @@ func (fs *FileSystem) CachedFileInfo(siaPath modules.SiaPath) (modules.FileInfo,
 }
 
 // CachedList lists the files and directories within a SiaDir.
-func (fs *FileSystem) CachedList(siaPath modules.SiaPath, recursive bool) ([]modules.FileInfo, []modules.DirectoryInfo, error) {
-	return fs.managedList(siaPath, recursive, true, nil, nil, nil)
+func (fs *FileSystem) CachedList(siaPath modules.SiaPath, recursive bool, flf modules.FileListFunc, dlf modules.DirListFunc) error {
+	return fs.managedList(siaPath, recursive, true, nil, nil, nil, flf, dlf)
 }
 
 // CachedListOnNode will return the files and directories within a given siadir
-// node.
-func (fs *FileSystem) CachedListOnNode(d *DirNode, recursive bool) ([]modules.FileInfo, []modules.DirectoryInfo, error) {
-	return d.managedList(fs.managedAbsPath(), recursive, true, nil, nil, nil)
+// node in a non-recursive way.
+func (fs *FileSystem) CachedListOnNode(d *DirNode) (fis []modules.FileInfo, dis []modules.DirectoryInfo, err error) {
+	var fmu, dmu sync.Mutex
+	flf := func(fi modules.FileInfo) {
+		fmu.Lock()
+		fis = append(fis, fi)
+		fmu.Unlock()
+	}
+	dlf := func(di modules.DirectoryInfo) {
+		dmu.Lock()
+		dis = append(dis, di)
+		dmu.Unlock()
+	}
+	err = d.managedList(fs.managedAbsPath(), false, true, nil, nil, nil, flf, dlf)
+
+	// Sort slices by SiaPath.
+	sort.Slice(dis, func(i, j int) bool {
+		return dis[i].SiaPath.String() < dis[j].SiaPath.String()
+	})
+	sort.Slice(fis, func(i, j int) bool {
+		return fis[i].SiaPath.String() < fis[j].SiaPath.String()
+	})
+	return
 }
 
 // DeleteDir deletes a dir from the filesystem. The dir will be marked as
@@ -232,12 +255,14 @@ func (fs *FileSystem) DeleteFile(siaPath modules.SiaPath) error {
 }
 
 // DirInfo returns the Directory Information of the siadir
-func (fs *FileSystem) DirInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, error) {
+func (fs *FileSystem) DirInfo(siaPath modules.SiaPath) (_ modules.DirectoryInfo, err error) {
 	dir, err := fs.managedOpenDir(siaPath.String())
 	if err != nil {
 		return modules.DirectoryInfo{}, nil
 	}
-	defer dir.Close()
+	defer func() {
+		err = errors.Compose(err, dir.Close())
+	}()
 	di, err := dir.managedInfo(siaPath)
 	if err != nil {
 		return modules.DirectoryInfo{}, err
@@ -266,8 +291,8 @@ func (fs *FileSystem) FileNodeInfo(n *FileNode) (modules.FileInfo, error) {
 }
 
 // List lists the files and directories within a SiaDir.
-func (fs *FileSystem) List(siaPath modules.SiaPath, recursive bool, offlineMap, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) ([]modules.FileInfo, []modules.DirectoryInfo, error) {
-	return fs.managedList(siaPath, recursive, false, offlineMap, goodForRenewMap, contractsMap)
+func (fs *FileSystem) List(siaPath modules.SiaPath, recursive bool, offlineMap, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract, flf modules.FileListFunc, dlf modules.DirListFunc) error {
+	return fs.managedList(siaPath, recursive, false, offlineMap, goodForRenewMap, contractsMap, flf, dlf)
 }
 
 // FileExists checks to see if a file with the provided siaPath already exists
@@ -304,11 +329,19 @@ func (fs *FileSystem) NewSiaFile(siaPath modules.SiaPath, source string, ec modu
 	return fs.managedNewSiaFile(siaPath.String(), source, ec, mk, fileSize, fileMode, disablePartialUpload)
 }
 
-// ReadDir is a wrapper of ioutil.ReadDir which takes a SiaPath as an argument
-// instead of a system path.
+// ReadDir reads all the fileinfos of the specified dir.
 func (fs *FileSystem) ReadDir(siaPath modules.SiaPath) ([]os.FileInfo, error) {
+	// Open dir.
 	dirPath := siaPath.SiaDirSysPath(fs.managedAbsPath())
-	return ioutil.ReadDir(dirPath)
+	f, err := os.Open(dirPath)
+	if err != nil {
+		return nil, err
+	}
+	// Read it and close it.
+	fis, err1 := f.Readdir(-1)
+	err2 := f.Close()
+	err = errors.Compose(err1, err2)
+	return fis, err
 }
 
 // DirExists checks to see if a dir with the provided siaPath already exists in
@@ -343,12 +376,14 @@ func (fs *FileSystem) DirSiaPath(n *DirNode) (sp modules.SiaPath) {
 }
 
 // UpdateDirMetadata updates the metadata of a SiaDir.
-func (fs *FileSystem) UpdateDirMetadata(siaPath modules.SiaPath, metadata siadir.Metadata) error {
+func (fs *FileSystem) UpdateDirMetadata(siaPath modules.SiaPath, metadata siadir.Metadata) (err error) {
 	dir, err := fs.OpenSiaDir(siaPath)
 	if err != nil {
 		return err
 	}
-	defer dir.Close()
+	defer func() {
+		err = errors.Compose(err, dir.Close())
+	}()
 	return dir.UpdateMetadata(metadata)
 }
 
@@ -380,7 +415,7 @@ func (fs *FileSystem) WriteFile(siaPath modules.SiaPath, data []byte, perm os.Fi
 
 // NewSiaFileFromLegacyData creates a new SiaFile from data that was previously loaded
 // from a legacy file.
-func (fs *FileSystem) NewSiaFileFromLegacyData(fd siafile.FileData) (*FileNode, error) {
+func (fs *FileSystem) NewSiaFileFromLegacyData(fd siafile.FileData) (_ *FileNode, err error) {
 	// Get file's SiaPath.
 	sp, err := modules.UserFolder.Join(fd.Name)
 	if err != nil {
@@ -400,7 +435,9 @@ func (fs *FileSystem) NewSiaFileFromLegacyData(fd siafile.FileData) (*FileNode, 
 	if err != nil {
 		return nil, err
 	}
-	defer dir.Close()
+	defer func() {
+		err = errors.Compose(err, dir.Close())
+	}()
 	// Add the file to the dir.
 	return dir.managedNewSiaFileFromLegacyData(sp.Name(), fd)
 }
@@ -408,7 +445,23 @@ func (fs *FileSystem) NewSiaFileFromLegacyData(fd siafile.FileData) (*FileNode, 
 // OpenSiaDir opens a SiaDir and adds it and all of its parents to the
 // filesystem tree.
 func (fs *FileSystem) OpenSiaDir(siaPath modules.SiaPath) (*DirNode, error) {
-	return fs.managedOpenSiaDir(siaPath)
+	return fs.OpenSiaDirCustom(siaPath, false)
+}
+
+// OpenSiaDirCustom opens a SiaDir and adds it and all of its parents to the
+// filesystem tree. If create is true it will create the dir if it doesn't
+// exist.
+func (fs *FileSystem) OpenSiaDirCustom(siaPath modules.SiaPath, create bool) (*DirNode, error) {
+	dn, err := fs.managedOpenSiaDir(siaPath)
+	if create && errors.Contains(err, ErrNotExist) {
+		// If siadir doesn't exist create one
+		err = fs.NewSiaDir(siaPath, modules.DefaultDirPerm)
+		if err != nil && !errors.Contains(err, ErrExists) {
+			return nil, err
+		}
+		return fs.managedOpenSiaDir(siaPath)
+	}
+	return dn, err
 }
 
 // OpenSiaFile opens a SiaFile and adds it and all of its parents to the
@@ -422,7 +475,7 @@ func (fs *FileSystem) OpenSiaFile(siaPath modules.SiaPath) (*FileNode, error) {
 }
 
 // RenameFile renames the file with oldSiaPath to newSiaPath.
-func (fs *FileSystem) RenameFile(oldSiaPath, newSiaPath modules.SiaPath) error {
+func (fs *FileSystem) RenameFile(oldSiaPath, newSiaPath modules.SiaPath) (err error) {
 	// Open SiaDir for file at old location.
 	oldDirSiaPath, err := oldSiaPath.Dir()
 	if err != nil {
@@ -432,16 +485,20 @@ func (fs *FileSystem) RenameFile(oldSiaPath, newSiaPath modules.SiaPath) error {
 	if err != nil {
 		return err
 	}
-	defer oldDir.Close()
+	defer func() {
+		err = errors.Compose(err, oldDir.Close())
+	}()
 	// Open the file.
 	sf, err := oldDir.managedOpenFile(oldSiaPath.Name())
-	if err == ErrNotExist {
+	if errors.Contains(err, ErrNotExist) {
 		return ErrNotExist
 	}
 	if err != nil {
 		return errors.AddContext(err, "failed to open file for renaming")
 	}
-	defer sf.Close()
+	defer func() {
+		err = errors.Compose(err, sf.Close())
+	}()
 
 	// Create and Open SiaDir for file at new location.
 	newDirSiaPath, err := newSiaPath.Dir()
@@ -455,7 +512,9 @@ func (fs *FileSystem) RenameFile(oldSiaPath, newSiaPath modules.SiaPath) error {
 	if err != nil {
 		return err
 	}
-	defer newDir.Close()
+	defer func() {
+		err = errors.Compose(err, newDir.Close())
+	}()
 	// Rename the file.
 	return sf.managedRename(newSiaPath.Name(), oldDir, newDir)
 }
@@ -478,7 +537,7 @@ func (fs *FileSystem) RenameDir(oldSiaPath, newSiaPath modules.SiaPath) error {
 	}()
 	// Open the dir to rename.
 	sd, err := oldDir.managedOpenDir(oldSiaPath.Name())
-	if err == ErrNotExist {
+	if errors.Contains(err, ErrNotExist) {
 		return ErrNotExist
 	}
 	if err != nil {
@@ -514,7 +573,7 @@ func (fs *FileSystem) RenameDir(oldSiaPath, newSiaPath modules.SiaPath) error {
 
 // managedDeleteFile opens the parent folder of the file to delete and calls
 // managedDeleteFile on it.
-func (fs *FileSystem) managedDeleteFile(relPath string) error {
+func (fs *FileSystem) managedDeleteFile(relPath string) (err error) {
 	// Open the folder that contains the file.
 	dirPath, fileName := filepath.Split(relPath)
 	var dir *DirNode
@@ -528,14 +587,16 @@ func (fs *FileSystem) managedDeleteFile(relPath string) error {
 		}
 		// Close the dir since we are not returning it. The open file keeps it
 		// loaded in memory.
-		defer dir.Close()
+		defer func() {
+			err = errors.Compose(err, dir.Close())
+		}()
 	}
 	return dir.managedDeleteFile(fileName)
 }
 
 // managedDeleteDir opens the parent folder of the dir to delete and calls
 // managedDelete on it.
-func (fs *FileSystem) managedDeleteDir(path string) error {
+func (fs *FileSystem) managedDeleteDir(path string) (err error) {
 	// Open the dir.
 	dir, err := fs.managedOpenDir(path)
 	if err != nil {
@@ -543,18 +604,22 @@ func (fs *FileSystem) managedDeleteDir(path string) error {
 	}
 	// Close the dir since we are not returning it. The open file keeps it
 	// loaded in memory.
-	defer dir.Close()
+	defer func() {
+		err = errors.Compose(err, dir.Close())
+	}()
 	return dir.managedDelete()
 }
 
 // managedFileInfo returns the FileInfo of the siafile.
-func (fs *FileSystem) managedFileInfo(siaPath modules.SiaPath, cached bool, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (modules.FileInfo, error) {
+func (fs *FileSystem) managedFileInfo(siaPath modules.SiaPath, cached bool, offline map[string]bool, goodForRenew map[string]bool, contracts map[string]modules.RenterContract) (_ modules.FileInfo, err error) {
 	// Open the file.
 	file, err := fs.managedOpenFile(siaPath.String())
 	if err != nil {
 		return modules.FileInfo{}, err
 	}
-	defer file.Close()
+	defer func() {
+		err = errors.Compose(err, file.Close())
+	}()
 	if cached {
 		return file.staticCachedInfo(siaPath)
 	}
@@ -564,18 +629,20 @@ func (fs *FileSystem) managedFileInfo(siaPath modules.SiaPath, cached bool, offl
 // managedList returns the files and dirs within the SiaDir specified by siaPath.
 // offlineMap, goodForRenewMap and contractMap don't need to be provided if
 // 'cached' is set to 'true'.
-func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract) (fis []modules.FileInfo, dis []modules.DirectoryInfo, _ error) {
+func (fs *FileSystem) managedList(siaPath modules.SiaPath, recursive, cached bool, offlineMap map[string]bool, goodForRenewMap map[string]bool, contractsMap map[string]modules.RenterContract, flf modules.FileListFunc, dlf modules.DirListFunc) (err error) {
 	// Open the folder.
 	dir, err := fs.managedOpenDir(siaPath.String())
 	if err != nil {
-		return nil, nil, errors.AddContext(err, fmt.Sprintf("failed to open folder '%v' specified by FileList", siaPath))
+		return errors.AddContext(err, fmt.Sprintf("failed to open folder '%v' specified by FileList", siaPath))
 	}
-	defer dir.Close()
-	return dir.managedList(fs.managedAbsPath(), recursive, cached, offlineMap, goodForRenewMap, contractsMap)
+	defer func() {
+		err = errors.Compose(err, dir.Close())
+	}()
+	return dir.managedList(fs.managedAbsPath(), recursive, cached, offlineMap, goodForRenewMap, contractsMap, flf, dlf)
 }
 
 // managedNewSiaDir creates the folder at the specified siaPath.
-func (fs *FileSystem) managedNewSiaDir(siaPath modules.SiaPath, mode os.FileMode) error {
+func (fs *FileSystem) managedNewSiaDir(siaPath modules.SiaPath, mode os.FileMode) (err error) {
 	// If siaPath is the root dir we just create the metadata for it.
 	if siaPath.IsRoot() {
 		fs.mu.Lock()
@@ -594,7 +661,7 @@ func (fs *FileSystem) managedNewSiaDir(siaPath modules.SiaPath, mode os.FileMode
 		return err
 	}
 	parent, err := fs.managedOpenDir(parentPath.String())
-	if err == ErrNotExist {
+	if errors.Contains(err, ErrNotExist) {
 		// If the parent doesn't exist yet we create it.
 		err = fs.managedNewSiaDir(parentPath, mode)
 		if err == nil {
@@ -604,14 +671,16 @@ func (fs *FileSystem) managedNewSiaDir(siaPath modules.SiaPath, mode os.FileMode
 	if err != nil {
 		return err
 	}
-	defer parent.Close()
+	defer func() {
+		err = errors.Compose(err, parent.Close())
+	}()
 	// Create the dir within the parent.
 	return parent.managedNewSiaDir(siaPath.Name(), fs.managedAbsPath(), mode)
 }
 
 // managedOpenFile opens a SiaFile and adds it and all of its parents to the
 // filesystem tree.
-func (fs *FileSystem) managedOpenFile(relPath string) (*FileNode, error) {
+func (fs *FileSystem) managedOpenFile(relPath string) (_ *FileNode, err error) {
 	// Open the folder that contains the file.
 	dirPath, fileName := filepath.Split(relPath)
 	var dir *DirNode
@@ -625,14 +694,16 @@ func (fs *FileSystem) managedOpenFile(relPath string) (*FileNode, error) {
 		}
 		// Close the dir since we are not returning it. The open file keeps it
 		// loaded in memory.
-		defer dir.Close()
+		defer func() {
+			err = errors.Compose(err, dir.Close())
+		}()
 	}
 	return dir.managedOpenFile(fileName)
 }
 
 // managedNewSiaFile opens the parent folder of the new SiaFile and calls
 // managedNewSiaFile on it.
-func (fs *FileSystem) managedNewSiaFile(relPath string, source string, ec modules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode, disablePartialUpload bool) error {
+func (fs *FileSystem) managedNewSiaFile(relPath string, source string, ec modules.ErasureCoder, mk crypto.CipherKey, fileSize uint64, fileMode os.FileMode, disablePartialUpload bool) (err error) {
 	// Open the folder that contains the file.
 	dirPath, fileName := filepath.Split(relPath)
 	var dir *DirNode
@@ -644,7 +715,9 @@ func (fs *FileSystem) managedNewSiaFile(relPath string, source string, ec module
 		if err != nil {
 			return errors.AddContext(err, "failed to open parent dir of new file")
 		}
-		defer dir.Close()
+		defer func() {
+			err = errors.Compose(err, dir.Close())
+		}()
 	}
 	return dir.managedNewSiaFile(fileName, source, ec, mk, fileSize, fileMode, disablePartialUpload)
 }
@@ -653,6 +726,11 @@ func (fs *FileSystem) managedNewSiaFile(relPath string, source string, ec module
 // filesystem tree.
 func (fs *FileSystem) managedOpenSiaDir(siaPath modules.SiaPath) (*DirNode, error) {
 	if siaPath.IsRoot() {
+		// Make sure the metadata exists.
+		_, err := os.Stat(filepath.Join(fs.absPath(), modules.SiaDirExtension))
+		if os.IsNotExist(err) {
+			return nil, ErrNotExist
+		}
 		return fs.DirNode.managedCopy(), nil
 	}
 	dir, err := fs.DirNode.managedOpenDir(siaPath.String())

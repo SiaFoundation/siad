@@ -62,6 +62,24 @@ var (
 	ErrParseTimeoutUnits = errors.New("amount is missing timeout units")
 )
 
+// bandwidthUnit takes bps (bits per second) as an argument and converts
+// them into a more human-readable string with a unit.
+func bandwidthUnit(bps uint64) string {
+	units := []string{"Bps", "Kbps", "Mbps", "Gbps", "Tbps", "Pbps", "Ebps", "Zbps", "Ybps"}
+	mag := uint64(1)
+	unit := ""
+	for _, unit = range units {
+		if bps < 1e3*mag {
+			break
+		} else if unit != units[len(units)-1] {
+			// don't want to perform this multiply on the last iter; that
+			// would give us 1.235 Ybps instead of 1235 Ybps
+			mag *= 1e3
+		}
+	}
+	return fmt.Sprintf("%.2f %s", float64(bps)/float64(mag), unit)
+}
+
 // parseFilesize converts strings of form '10GB' or '10 gb' to a size in bytes.
 // Fractional sizes are truncated at the byte size.
 func parseFilesize(strSize string) (string, error) {
@@ -209,6 +227,18 @@ func currencyUnits(c types.Currency) string {
 	res, _ := new(big.Rat).Mul(num, denom.Inv(denom)).Float64()
 
 	return fmt.Sprintf("%.4g %s", res, unit)
+}
+
+// currencyUnitsWithExchangeRate will format a types.Currency in the same way as
+// currencyUnits. If a non-nil exchange rate is provided, it will additionally
+// provide the result of applying the rate to the amount.
+func currencyUnitsWithExchangeRate(c types.Currency, rate *types.ExchangeRate) string {
+	cString := currencyUnits(c)
+	if rate == nil {
+		return cString
+	}
+
+	return fmt.Sprintf("%s (%s)", cString, rate.ApplyAndFormat(c))
 }
 
 // parseCurrency converts a siacoin amount to base units.
@@ -439,4 +469,44 @@ func parsePercentages(values []float64) []float64 {
 	}
 
 	return values
+}
+
+// sizeString converts the uint64 size to a string with appropriate units and
+// truncates to 4 significant digits.
+func sizeString(size uint64) string {
+	sizes := []struct {
+		unit   string
+		factor float64
+	}{
+		{"EB", 1e18},
+		{"PB", 1e15},
+		{"TB", 1e12},
+		{"GB", 1e9},
+		{"MB", 1e6},
+		{"KB", 1e3},
+		{"B", 1e0},
+	}
+
+	// Convert size to a float
+	for i, s := range sizes {
+		// Check to see if we are at the right order of magnitude.
+		res := float64(size) / s.factor
+		if res < 1 {
+			continue
+		}
+		// Create the string
+		str := fmt.Sprintf("%.4g %s", res, s.unit)
+		// Check for rounding to three 0s
+		if !strings.Contains(str, "000") {
+			return str
+		}
+		// If we are at the max unit then there is no trimming to do
+		if i == 0 {
+			build.Critical("input uint64 overflows uint64, shouldn't be possible")
+			return str
+		}
+		// Trim the trailing three 0s and round to the next unit size
+		return fmt.Sprintf("1 %s", sizes[i-1].unit)
+	}
+	return "0 B"
 }

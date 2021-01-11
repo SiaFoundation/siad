@@ -19,6 +19,8 @@ const (
 	testSiaDirBasic = "var/skynet-benchmark-basic"
 )
 
+// basicULDL is a helper function that creates a skyfile of given filesize and
+// performs a basic upload and download.
 func basicULDL(fileSize uint64) error {
 	// Create the filename.
 	name := strconv.Itoa(int(fileSize) / 1e3)
@@ -31,18 +33,18 @@ func basicULDL(fileSize uint64) error {
 	if err != nil {
 		return errors.AddContext(err, "error creating full sia path")
 	}
+
 	// Create a file for uploading.
 	buf := bytes.NewReader(fastrand.Bytes(int(fileSize)))
+
 	// Fill out the upload parameters.
 	sup := modules.SkyfileUploadParameters{
-		SiaPath: sp,
-		Root:    true,
-		Force:   true, // This will overwrite other files in the dir.
+		SiaPath:  sp,
+		Filename: name + "kb.rand",
+		Mode:     modules.DefaultFilePerm,
 
-		FileMetadata: modules.SkyfileMetadata{
-			Filename: name + "kb.rand",
-			Mode:     modules.DefaultFilePerm,
-		},
+		Root:  true,
+		Force: true, // This will overwrite other files in the dir.
 
 		Reader: buf,
 	}
@@ -55,12 +57,6 @@ func basicULDL(fileSize uint64) error {
 		return errors.AddContext(err, "error uploading file")
 	}
 	fmt.Println("\t\t"+name+"kb Upload Time:", time.Since(start))
-
-	// Sleep for a multiple of the total amount of time the initial upload took
-	// to allow the upload to process further.
-	time.Sleep(time.Since(start) * 3)
-	// Sleep for 10 additional seconds to allow the upload to process further.
-	time.Sleep(time.Second * 30)
 
 	// Download the file.
 	fmt.Println("\t" + name + "kb Download:")

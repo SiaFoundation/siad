@@ -5,12 +5,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/node"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -355,6 +357,11 @@ func TestRemoteBackup(t *testing.T) {
 	if err := createSnapshot("foo"); err != nil {
 		t.Fatal(err)
 	}
+	// Create a snapshot with the same name again. This should fail.
+	err = createSnapshot("foo")
+	if err == nil || !strings.Contains(err.Error(), filesystem.ErrExists.Error()) {
+		t.Fatal("creating a snapshot with the same name should fail", err)
+	}
 	// Delete the file locally.
 	if err := lf.Delete(); err != nil {
 		t.Fatal(err)
@@ -574,7 +581,10 @@ func TestRemoteBackup(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(backups.Backups) != 2 {
-			t.Error("Wrong number of backups detected", len(backups.Backups))
+			for i, backup := range backups.Backups {
+				t.Logf("%v: %v", i, backup.Name)
+			}
+			t.Error("Wrong number of backups detected", len(backups.Backups), 2)
 		}
 	}
 
@@ -583,5 +593,162 @@ func TestRemoteBackup(t *testing.T) {
 	_, err = r.RenterBackupsOnHost(types.SiaPublicKey{})
 	if err == nil {
 		t.Error(err)
+	}
+}
+
+// TestBackupRenew tests that a backup can be restored after a set of contract
+// has been renewed.
+func TestBackupRenew(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Test Params.
+	filesSize := int(20e3)
+
+	// Create a testgroup.
+	//
+	// Need 5 hosts to address an NDF with the snapshot upload code.
+	groupParams := siatest.GroupParams{
+		Hosts:   5,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group: ", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Create a subdir in the renter's files folder.
+	r := tg.Renters()[0]
+	subDir, err := r.FilesDir().CreateDir("subDir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add a file to that dir.
+	lf, err := subDir.NewFile(filesSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Upload the file.
+	dataPieces := uint64(2) // for use with 5 hosts, minimizes exposure to the upload failure NDF
+	parityPieces := uint64(1)
+	rf, err := r.UploadBlocking(lf, dataPieces, parityPieces, false)
+	if err != nil {
+		t.Fatal("Failed to upload a file for testing: ", err)
+	}
+	// Create a snapshot.
+	createSnapshot := func(name string) error {
+		if err := r.RenterCreateBackupPost(name); err != nil {
+			return err
+		}
+		// wait for backup to upload
+		return build.Retry(60, time.Second, func() error {
+			ubs, _ := r.RenterBackups()
+			for _, ub := range ubs.Backups {
+				if ub.Name != name {
+					continue
+				} else if ub.UploadProgress != 100 {
+					return fmt.Errorf("backup not uploaded: %v", ub.UploadProgress)
+				}
+				return nil
+			}
+			return errors.New("backup not found")
+		})
+	}
+	if err := createSnapshot("foo"); err != nil {
+		t.Fatal(err)
+	}
+	// Delete the file locally.
+	if err := lf.Delete(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Snapshot should be listed.
+	ubs, err := r.RenterBackups()
+	if err != nil {
+		t.Fatal(err)
+	} else if len(ubs.Backups) != 1 {
+		t.Fatal("expected one backup, got", ubs)
+	}
+
+	// Renew all contracts and then wait for them to expire.
+	err = siatest.RenewContractsByRenewWindow(r, tg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	numRetries := 0
+	build.Retry(600, 100*time.Millisecond, func() error {
+		if numRetries%10 == 0 {
+			err = tg.Miners()[0].MineBlock()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		numRetries++
+		return siatest.CheckExpectedNumberOfContracts(r, len(tg.Hosts()), 0, 0, 0, len(tg.Hosts()), 0)
+	})
+
+	// Recover from backups.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		if numRetries%10 == 0 {
+			err = tg.Miners()[0].MineBlock()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		numRetries++
+		return r.RenterRecoverBackupPost("foo")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// We should be able to download the first file.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		_, _, err = r.DownloadToDisk(rf, false)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Delete the renter entirely and create a new renter with the same seed.
+	wsg, err := r.WalletSeedsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed := wsg.PrimarySeed
+	if err := tg.RemoveNode(r); err != nil {
+		t.Fatal(err)
+	}
+	renterParams := node.Renter(filepath.Join(testDir, "renter_recovered"))
+	renterParams.PrimarySeed = seed
+	nodes, err := tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r = nodes[0]
+
+	// Recover from backups.
+	err = build.Retry(600, 100*time.Millisecond, func() error {
+		return r.RenterRecoverBackupPost("foo")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// We should be able to download the first file.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		_, _, err = r.DownloadToDisk(rf, false)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

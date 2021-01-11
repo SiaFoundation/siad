@@ -132,7 +132,7 @@ func TestRPCExecuteProgramResponseMarshalSia(t *testing.T) {
 		Proof:                randomProof(),
 		Error:                randomError(),
 		TotalCost:            types.NewCurrency64(fastrand.Uint64n(100)),
-		PotentialRefund:      types.NewCurrency64(fastrand.Uint64n(100)),
+		StorageCost:          types.NewCurrency64(fastrand.Uint64n(100)),
 	}
 	// Marshal
 	b := encoding.Marshal(epr)
@@ -181,9 +181,9 @@ func TestRPCExecuteProgramResponseMarshalSia(t *testing.T) {
 		t.Log(epr2.TotalCost)
 		t.Fatal("field doesn't match")
 	}
-	if !epr.PotentialRefund.Equals(epr2.PotentialRefund) {
-		t.Log(epr.PotentialRefund)
-		t.Log(epr2.PotentialRefund)
+	if !epr.StorageCost.Equals(epr2.StorageCost) {
+		t.Log(epr.StorageCost)
+		t.Log(epr2.StorageCost)
 		t.Fatal("field doesn't match")
 	}
 }

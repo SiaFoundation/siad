@@ -42,6 +42,12 @@ func (p *program) staticDecodeAppendInstruction(instruction modules.Instruction)
 	}, nil
 }
 
+// Batch declares whether or not this instruction can be batched together with
+// the previous instruction.
+func (i instructionAppend) Batch() bool {
+	return false
+}
+
 // Execute executes the 'Append' instruction.
 func (i *instructionAppend) Execute(prevOutput output) output {
 	// Fetch the data.
@@ -82,9 +88,9 @@ func (i *instructionAppend) Collateral() types.Currency {
 }
 
 // Cost returns the Cost of this `Append` instruction.
-func (i *instructionAppend) Cost() (executionCost, refund types.Currency, err error) {
+func (i *instructionAppend) Cost() (executionCost, storage types.Currency, err error) {
 	duration := i.staticState.staticRemainingDuration
-	executionCost, refund = modules.MDMAppendCost(i.staticState.priceTable, duration)
+	executionCost, storage = modules.MDMAppendCost(i.staticState.priceTable, duration)
 	return
 }
 

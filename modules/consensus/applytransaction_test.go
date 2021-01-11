@@ -1,12 +1,14 @@
 package consensus
 
-/*
 import (
 	"testing"
-	"gitlab.com/NebulousLabs/Sia/modules"
+
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/encoding"
 )
 
+/*
 // TestApplySiacoinInputs probes the applySiacoinInputs method of the consensus
 // set.
 func TestApplySiacoinInputs(t *testing.T) {
@@ -20,7 +22,11 @@ func TestApplySiacoinInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	b, _ := cst.miner.FindBlock()
 	err = cst.cs.AcceptBlock(b)
 	if err != nil {
@@ -86,7 +92,11 @@ func TestMisuseApplySiacoinInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -126,7 +136,11 @@ func TestApplySiacoinOutputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -190,7 +204,11 @@ func TestMisuseApplySiacoinOutputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -222,7 +240,11 @@ func TestApplyFileContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -289,7 +311,11 @@ func TestMisuseApplyFileContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -321,7 +347,11 @@ func TestApplyFileContractRevisions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -423,7 +453,11 @@ func TestMisuseApplyFileContractRevisions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -451,7 +485,11 @@ func TestApplyStorageProofs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -573,7 +611,11 @@ func TestNonexistentStorageProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -602,7 +644,11 @@ func TestDuplicateStorageProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node.
 	pb := new(processedBlock)
@@ -649,7 +695,11 @@ func TestApplySiafundInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -699,7 +749,11 @@ func TestMisuseApplySiafundInputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -741,7 +795,11 @@ func TestApplySiafundOutputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	cst.cs.siafundPool = types.NewCurrency64(101)
 
 	// Create a block node to use with application.
@@ -809,7 +867,11 @@ func TestMisuseApplySiafundOutputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer cst.closeCst()
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create a block node to use with application.
 	pb := new(processedBlock)
@@ -831,3 +893,85 @@ func TestMisuseApplySiafundOutputs(t *testing.T) {
 	cst.cs.applySiafundOutputs(pb, txn)
 }
 */
+
+// TestApplyArbitraryData probes the applyArbitraryData function.
+func TestApplyArbitraryData(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	cst, err := createConsensusSetTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := cst.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	apply := func(txn types.Transaction, height types.BlockHeight) {
+		err := cst.cs.db.Update(func(tx *bolt.Tx) error {
+			// applyArbitraryData expects a BlockPath entry at this height
+			tx.Bucket(BlockPath).Put(encoding.Marshal(height), encoding.Marshal(types.BlockID{}))
+			applyArbitraryData(tx, &processedBlock{Height: height}, txn)
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	addrsChanged := func() bool {
+		p, f := cst.cs.FoundationUnlockHashes()
+		return p != types.InitialFoundationUnlockHash || f != types.InitialFoundationFailsafeUnlockHash
+	}
+
+	// Apply an empty transaction
+	apply(types.Transaction{}, types.FoundationHardforkHeight)
+	if addrsChanged() {
+		t.Error("addrs should not have changed after applying empty txn")
+	}
+
+	// Apply data with an invalid prefix -- it should be ignored
+	data := encoding.MarshalAll(types.Specifier{'f', 'o', 'o'}, types.FoundationUnlockHashUpdate{})
+	apply(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight)
+	if addrsChanged() {
+		t.Error("addrs should not have changed after applying invalid txn")
+	}
+
+	// Apply a validate update before the hardfork -- it should be ignored
+	update := types.FoundationUnlockHashUpdate{
+		NewPrimary:  types.UnlockHash{1, 2, 3},
+		NewFailsafe: types.UnlockHash{4, 5, 6},
+	}
+	data = encoding.MarshalAll(types.SpecifierFoundation, update)
+	apply(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight-1)
+	if addrsChanged() {
+		t.Fatal("applying valid update before hardfork should not change unlock hashes")
+	}
+	// Apply the update after the hardfork
+	apply(types.Transaction{ArbitraryData: [][]byte{data}}, types.FoundationHardforkHeight)
+	if !addrsChanged() {
+		t.Fatal("applying valid update did not change unlock hashes")
+	}
+	// Check that database was updated correctly
+	if newPrimary, newFailsafe := cst.cs.FoundationUnlockHashes(); newPrimary != update.NewPrimary || newFailsafe != update.NewFailsafe {
+		t.Error("applying valid update did not change unlock hashes")
+	}
+
+	// Apply a transaction with two updates; only the first should be applied
+	up1 := types.FoundationUnlockHashUpdate{
+		NewPrimary:  types.UnlockHash{1, 1, 1},
+		NewFailsafe: types.UnlockHash{2, 2, 2},
+	}
+	up2 := types.FoundationUnlockHashUpdate{
+		NewPrimary:  types.UnlockHash{3, 3, 3},
+		NewFailsafe: types.UnlockHash{4, 4, 4},
+	}
+	data1 := encoding.MarshalAll(types.SpecifierFoundation, up1)
+	data2 := encoding.MarshalAll(types.SpecifierFoundation, up2)
+	apply(types.Transaction{ArbitraryData: [][]byte{data1, data2}}, types.FoundationHardforkHeight+1)
+	if newPrimary, newFailsafe := cst.cs.FoundationUnlockHashes(); newPrimary != up1.NewPrimary || newFailsafe != up1.NewFailsafe {
+		t.Error("applying two updates did not apply only the first", newPrimary, newFailsafe)
+	}
+}

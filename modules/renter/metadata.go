@@ -6,13 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siadir"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 )
@@ -20,6 +20,20 @@ import (
 // bubbleStatus indicates the status of a bubble being executed on a
 // directory
 type bubbleStatus int
+
+// bubbledSiaDirMetadata is a wrapper for siadir.Metadata that also contains the
+// siapath for convenience.
+type bubbledSiaDirMetadata struct {
+	sp modules.SiaPath
+	siadir.Metadata
+}
+
+// bubbledSiaFileMetadata is a wrapper for siafile.BubbledMetadata that also
+// contains the siapath for convenience.
+type bubbledSiaFileMetadata struct {
+	sp modules.SiaPath
+	bm siafile.BubbledMetadata
+}
 
 // bubbleError, bubbleInit, bubbleActive, and bubblePending are the constants
 // used to determine the status of a bubble being executed on a directory
@@ -55,9 +69,10 @@ func (r *Renter) managedPrepareBubble(siaPath modules.SiaPath) bool {
 // be bubbled up
 func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metadata, error) {
 	// Set default metadata values to start
+	now := time.Now()
 	metadata := siadir.Metadata{
 		AggregateHealth:              siadir.DefaultDirHealth,
-		AggregateLastHealthCheckTime: time.Now(),
+		AggregateLastHealthCheckTime: now,
 		AggregateMinRedundancy:       math.MaxFloat64,
 		AggregateModTime:             time.Time{},
 		AggregateNumFiles:            uint64(0),
@@ -68,7 +83,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		AggregateStuckHealth:         siadir.DefaultDirHealth,
 
 		Health:              siadir.DefaultDirHealth,
-		LastHealthCheckTime: time.Now(),
+		LastHealthCheckTime: now,
 		MinRedundancy:       math.MaxFloat64,
 		ModTime:             time.Time{},
 		NumFiles:            uint64(0),
@@ -85,7 +100,8 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		return siadir.Metadata{}, err
 	}
 
-	// Iterate over directory
+	// Iterate over directory and collect the file and dir siapaths.
+	var fileSiaPaths, dirSiaPaths []modules.SiaPath
 	for _, fi := range fileinfos {
 		// Check to make sure renter hasn't been shutdown
 		select {
@@ -93,36 +109,76 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			return siadir.Metadata{}, err
 		default:
 		}
-
-		// Aggregate Fields
-		var aggregateHealth, aggregateRemoteHealth, aggregateStuckHealth, aggregateMinRedundancy float64
-		var aggregateLastHealthCheckTime, aggregateModTime time.Time
-		var fileMetadata siafile.BubbledMetadata
+		// Sort by file and dirs.
 		ext := filepath.Ext(fi.Name())
-		// Check for SiaFiles and Directories
 		if ext == modules.SiaFileExtension {
-			// SiaFile found, calculate the needed metadata information of the siafile
+			// SiaFile found.
 			fName := strings.TrimSuffix(fi.Name(), modules.SiaFileExtension)
 			fileSiaPath, err := siaPath.Join(fName)
 			if err != nil {
 				r.log.Println("unable to join siapath with dirpath while calculating directory metadata:", err)
 				continue
 			}
-			fileMetadata, err = r.managedCalculateAndUpdateFileMetadata(fileSiaPath)
+			fileSiaPaths = append(fileSiaPaths, fileSiaPath)
+		} else if fi.IsDir() {
+			// Directory is found, read the directory metadata file
+			dirSiaPath, err := siaPath.Join(fi.Name())
 			if err != nil {
-				r.log.Printf("failed to calculate file metadata %v: %v", fi.Name(), err)
+				r.log.Println("unable to join siapath with dirpath while calculating directory metadata:", err)
 				continue
 			}
+			dirSiaPaths = append(dirSiaPaths, dirSiaPath)
+		}
+	}
 
+	// Calculate the Files' bubbleMetadata first.
+	// Note: We don't need to abort on error. It's likely that only one or a few
+	// files failed and that the remaining metadatas are good to use.
+	bubbledMetadatas, err := r.managedCalculateFileMetadatas(fileSiaPaths)
+	if err != nil {
+		r.log.Printf("failed to calculate file metadata: %v", err)
+	}
+
+	// Get all the Directory Metadata
+	// Note: We don't need to abort on error. It's likely that only one or a few
+	// directories failed and that the remaining metadatas are good to use.
+	dirMetadatas, err := r.managedDirectoryMetadatas(dirSiaPaths)
+	if err != nil {
+		r.log.Printf("failed to calculate file metadata: %v", err)
+	}
+
+	for len(bubbledMetadatas)+len(dirMetadatas) > 0 {
+		// Aggregate Fields
+		var aggregateHealth, aggregateRemoteHealth, aggregateStuckHealth, aggregateMinRedundancy float64
+		var aggregateLastHealthCheckTime, aggregateModTime time.Time
+		if len(bubbledMetadatas) > 0 {
+			// Get next file's metadata.
+			bubbledMetadata := bubbledMetadatas[0]
+			bubbledMetadatas = bubbledMetadatas[1:]
+			fileSiaPath := bubbledMetadata.sp
+			fileMetadata := bubbledMetadata.bm
 			// If 75% or more of the redundancy is missing, register an alert
 			// for the file.
 			uid := string(fileMetadata.UID)
 			if maxHealth := math.Max(fileMetadata.Health, fileMetadata.StuckHealth); maxHealth >= AlertSiafileLowRedundancyThreshold {
 				r.staticAlerter.RegisterAlert(modules.AlertIDSiafileLowRedundancy(uid), AlertMSGSiafileLowRedundancy,
-					AlertCauseSiafileLowRedundancy(fileSiaPath, maxHealth),
+					AlertCauseSiafileLowRedundancy(fileSiaPath, maxHealth, fileMetadata.Redundancy),
 					modules.SeverityWarning)
 			} else {
 				r.staticAlerter.UnregisterAlert(modules.AlertIDSiafileLowRedundancy(uid))
+			}
+
+			// If the file's LastHealthCheckTime is still zero, set it as now since it
+			// it currently being checked.
+			//
+			// The LastHealthCheckTime is not a field that is initialized when a file
+			// is created, so we can reach this point by one of two ways. If a file is
+			// created in the directory after the health loop has decided it needs to
+			// be bubbled, or a file is created in a directory that gets a bubble
+			// called on it outside of the health loop before the health loop as been
+			// able to set the LastHealthCheckTime.
+			if fileMetadata.LastHealthCheckTime.IsZero() {
+				fileMetadata.LastHealthCheckTime = time.Now()
 			}
 
 			// Record Values that compare against sub directories
@@ -158,15 +214,27 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			}
 			metadata.Size += fileMetadata.Size
 			metadata.StuckHealth = math.Max(metadata.StuckHealth, fileMetadata.StuckHealth)
-		} else if fi.IsDir() {
-			// Directory is found, read the directory metadata file
-			dirSiaPath, err := siaPath.Join(fi.Name())
-			if err != nil {
-				return siadir.Metadata{}, err
-			}
-			dirMetadata, err := r.managedDirectoryMetadata(dirSiaPath)
-			if err != nil {
-				return siadir.Metadata{}, err
+		} else if len(dirMetadatas) > 0 {
+			// Get next dir's metadata.
+			dirMetadata := dirMetadatas[0]
+			dirMetadatas = dirMetadatas[1:]
+
+			// Check if the directory's AggregateLastHealthCheckTime is Zero. If so
+			// set the time to now and call bubble on that directory to try and fix
+			// the directories metadata.
+			//
+			// The LastHealthCheckTime is not a field that is initialized when
+			// a directory is created, so we can reach this point if a directory is
+			// created and gets a bubble called on it outside of the health loop
+			// before the health loop has been able to set the LastHealthCheckTime.
+			if dirMetadata.AggregateLastHealthCheckTime.IsZero() {
+				dirMetadata.AggregateLastHealthCheckTime = time.Now()
+				err = r.tg.Launch(func() {
+					r.callThreadedBubbleMetadata(dirMetadata.sp)
+				})
+				if err != nil {
+					r.log.Printf("WARN: unable to launch bubble for '%v'", dirMetadata.sp)
+				}
 			}
 
 			// Record Values that compare against files
@@ -188,9 +256,6 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 
 			// Update siadir fields
 			metadata.NumSubDirs++
-		} else {
-			// Ignore everything that is not a SiaFile or a directory
-			continue
 		}
 		// Track the max value of aggregate health values
 		metadata.AggregateHealth = math.Max(metadata.AggregateHealth, aggregateHealth)
@@ -209,6 +274,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			metadata.AggregateModTime = aggregateModTime
 		}
 	}
+
 	// Sanity check on ModTime. If mod time is still zero it means there were no
 	// files or subdirectories. Set ModTime to now since we just updated this
 	// directory
@@ -230,49 +296,95 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 	return metadata, nil
 }
 
-// managedCalculateAndUpdateFileMetadata calculates and returns the necessary
-// metadata information of a siafile that needs to be bubbled. The calculated
-// metadata information is also updated and saved to disk
-func (r *Renter) managedCalculateAndUpdateFileMetadata(siaPath modules.SiaPath) (siafile.BubbledMetadata, error) {
-	// Load the Siafile.
+// managedCalculateFileMetadata calculates and returns the necessary metadata
+// information of a siafiles that needs to be bubbled.
+func (r *Renter) managedCalculateFileMetadata(siaPath modules.SiaPath, hostOfflineMap, hostGoodForRenewMap map[string]bool) (bubbledSiaFileMetadata, error) {
+	// Open SiaFile in a read only state so that it doesn't need to be
+	// closed
 	sf, err := r.staticFileSystem.OpenSiaFile(siaPath)
 	if err != nil {
-		return siafile.BubbledMetadata{}, err
+		return bubbledSiaFileMetadata{}, err
 	}
-	defer sf.Close()
-
-	// Get offline and goodforrenew maps
-	hostOfflineMap, hostGoodForRenewMap, _ := r.managedRenterContractsAndUtilities([]*filesystem.FileNode{sf})
+	defer func() {
+		err = errors.Compose(err, sf.Close())
+	}()
 
 	// Calculate file health
 	health, stuckHealth, _, _, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
-
-	// Set the LastHealthCheckTime
-	sf.SetLastHealthCheckTime()
 
 	// Calculate file Redundancy and check if local file is missing and
 	// redundancy is less than one
 	redundancy, _, err := sf.Redundancy(hostOfflineMap, hostGoodForRenewMap)
 	if err != nil {
-		return siafile.BubbledMetadata{}, err
+		return bubbledSiaFileMetadata{}, err
 	}
 	_, err = os.Stat(sf.LocalPath())
 	onDisk := err == nil
 	if !onDisk && redundancy < 1 {
 		r.log.Debugf("File not found on disk and possibly unrecoverable: LocalPath %v; SiaPath %v", sf.LocalPath(), siaPath.String())
 	}
+	return bubbledSiaFileMetadata{
+		sp: siaPath,
+		bm: siafile.BubbledMetadata{
+			Health:              health,
+			LastHealthCheckTime: sf.LastHealthCheckTime(),
+			ModTime:             sf.ModTime(),
+			NumStuckChunks:      numStuckChunks,
+			OnDisk:              onDisk,
+			Redundancy:          redundancy,
+			Size:                sf.Size(),
+			StuckHealth:         stuckHealth,
+			UID:                 sf.UID(),
+		},
+	}, nil
+}
 
-	return siafile.BubbledMetadata{
-		Health:              health,
-		LastHealthCheckTime: sf.LastHealthCheckTime(),
-		ModTime:             sf.ModTime(),
-		NumStuckChunks:      numStuckChunks,
-		OnDisk:              onDisk,
-		Redundancy:          redundancy,
-		Size:                sf.Size(),
-		StuckHealth:         stuckHealth,
-		UID:                 sf.UID(),
-	}, sf.SaveMetadata()
+// managedCalculateFileMetadatas calculates and returns the necessary metadata
+// information of multiple siafiles that need to be bubbled. Usually the return
+// value of a method is ignored when the returned error != nil. For
+// managedCalculateFileMetadatas we make an exception. The caller can decide
+// themselves whether to use the output in case of an error or not.
+func (r *Renter) managedCalculateFileMetadatas(siaPaths []modules.SiaPath) (_ []bubbledSiaFileMetadata, err error) {
+	/// Get cached offline and goodforrenew maps.
+	hostOfflineMap, hostGoodForRenewMap, _, _ := r.managedRenterContractsAndUtilities()
+
+	// Define components
+	mds := make([]bubbledSiaFileMetadata, 0, len(siaPaths))
+	siaPathChan := make(chan modules.SiaPath, numBubbleWorkerThreads)
+	var errs error
+	var errMu, mdMu sync.Mutex
+
+	// Create function for loading SiaFiles and calculating the metadata
+	metadataWorker := func() {
+		for siaPath := range siaPathChan {
+			md, err := r.managedCalculateFileMetadata(siaPath, hostOfflineMap, hostGoodForRenewMap)
+			if err != nil {
+				errMu.Lock()
+				errs = errors.Compose(errs, err)
+				errMu.Unlock()
+				continue
+			}
+			mdMu.Lock()
+			mds = append(mds, md)
+			mdMu.Unlock()
+		}
+	}
+
+	// Launch Metadata workers
+	var wg sync.WaitGroup
+	for i := 0; i < numBubbleWorkerThreads; i++ {
+		wg.Add(1)
+		go func() {
+			metadataWorker()
+			wg.Done()
+		}()
+	}
+	for _, siaPath := range siaPaths {
+		siaPathChan <- siaPath
+	}
+	close(siaPathChan)
+	wg.Wait()
+	return mds, errs
 }
 
 // managedCompleteBubbleUpdate completes the bubble update and updates and/or
@@ -316,9 +428,54 @@ func (r *Renter) managedCompleteBubbleUpdate(siaPath modules.SiaPath) {
 	}()
 }
 
+// managedDirectoryMetadatas returns all the metadatas of the SiaDirs for the
+// provided siaPaths
+func (r *Renter) managedDirectoryMetadatas(siaPaths []modules.SiaPath) ([]bubbledSiaDirMetadata, error) {
+	// Define components
+	mds := make([]bubbledSiaDirMetadata, 0, len(siaPaths))
+	siaPathChan := make(chan modules.SiaPath, numBubbleWorkerThreads)
+	var errs error
+	var errMu, mdMu sync.Mutex
+
+	// Create function for getting the directory metadata
+	metadataWorker := func() {
+		for siaPath := range siaPathChan {
+			md, err := r.managedDirectoryMetadata(siaPath)
+			if err != nil {
+				errMu.Lock()
+				errs = errors.Compose(errs, err)
+				errMu.Unlock()
+				continue
+			}
+			mdMu.Lock()
+			mds = append(mds, bubbledSiaDirMetadata{
+				siaPath,
+				md,
+			})
+			mdMu.Unlock()
+		}
+	}
+
+	// Launch Metadata workers
+	var wg sync.WaitGroup
+	for i := 0; i < numBubbleWorkerThreads; i++ {
+		wg.Add(1)
+		go func() {
+			metadataWorker()
+			wg.Done()
+		}()
+	}
+	for _, siaPath := range siaPaths {
+		siaPathChan <- siaPath
+	}
+	close(siaPathChan)
+	wg.Wait()
+	return mds, errs
+}
+
 // managedDirectoryMetadata reads the directory metadata and returns the bubble
 // metadata
-func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metadata, error) {
+func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (_ siadir.Metadata, err error) {
 	// Check for bad paths and files
 	fi, err := r.staticFileSystem.Stat(siaPath)
 	if err != nil {
@@ -329,36 +486,16 @@ func (r *Renter) managedDirectoryMetadata(siaPath modules.SiaPath) (siadir.Metad
 	}
 
 	//  Open SiaDir
-	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath)
-	if err != nil && errors.Contains(err, filesystem.ErrNotExist) {
-		// If siadir doesn't exist create one
-		err = r.staticFileSystem.NewSiaDir(siaPath, modules.DefaultDirPerm)
-		if err != nil {
-			return siadir.Metadata{}, err
-		}
-		siaDir, err = r.staticFileSystem.OpenSiaDir(siaPath)
-		if err != nil {
-			return siadir.Metadata{}, err
-		}
-	} else if err != nil {
+	siaDir, err := r.staticFileSystem.OpenSiaDirCustom(siaPath, true)
+	if err != nil {
 		return siadir.Metadata{}, err
 	}
-	defer siaDir.Close()
+	defer func() {
+		err = errors.Compose(err, siaDir.Close())
+	}()
 
 	// Grab the metadata.
-	md, err := siaDir.Metadata()
-	if err != nil && errors.Contains(err, filesystem.ErrNotExist) {
-		// If metadata doesn't exist create it.
-		err = r.staticFileSystem.NewSiaDir(siaPath, modules.DefaultDirPerm)
-		if err != nil {
-			return siadir.Metadata{}, err
-		}
-		// Try loading Metadata again.
-		return siaDir.Metadata()
-	} else if err != nil {
-		return siadir.Metadata{}, err
-	}
-	return md, nil
+	return siaDir.Metadata()
 }
 
 // managedUpdateLastHealthCheckTime updates the LastHealthCheckTime and
@@ -408,8 +545,8 @@ func (r *Renter) managedUpdateLastHealthCheckTime(siaPath modules.SiaPath) error
 	if err != nil {
 		return err
 	}
-	defer entry.Close()
-	return entry.UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, time.Now())
+	err = entry.UpdateLastHealthCheckTime(aggregateLastHealthCheckTime, time.Now())
+	return errors.Compose(err, entry.Close())
 }
 
 // callThreadedBubbleMetadata is the thread safe method used to call
@@ -459,7 +596,9 @@ func (r *Renter) managedPerformBubbleMetadata(siaPath modules.SiaPath) (err erro
 		e := fmt.Sprintf("could not open directory %v", siaPath.String())
 		err = errors.AddContext(err, e)
 	} else {
-		defer siaDir.Close()
+		defer func() {
+			err = errors.Compose(err, siaDir.Close())
+		}()
 		err = siaDir.UpdateBubbledMetadata(metadata)
 		if err != nil {
 			e := fmt.Sprintf("could not update the metadata of the directory %v", siaPath.String())

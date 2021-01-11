@@ -26,6 +26,10 @@ type ConsensusGET struct {
 	Target       types.Target      `json:"target"`
 	Difficulty   types.Currency    `json:"difficulty"`
 
+	// Foundation unlock hashes.
+	FoundationPrimaryUnlockHash  types.UnlockHash `json:"foundationprimaryunlockhash"`
+	FoundationFailsafeUnlockHash types.UnlockHash `json:"foundationfailsafeunlockhash"`
+
 	// Consensus code constants.
 	BlockFrequency         types.BlockHeight `json:"blockfrequency"`
 	BlockSizeLimit         uint64            `json:"blocksizelimit"`
@@ -196,7 +200,7 @@ func consensusBlocksGetFromBlock(b types.Block, h types.BlockHeight, d types.Cur
 }
 
 // consensusHandler handles the API calls to /consensus.
-func (api *API) consensusHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+func (api *API) consensusHandler(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	height := api.cs.Height()
 	b, found := api.cs.BlockAtHeight(height)
 	if !found {
@@ -207,12 +211,16 @@ func (api *API) consensusHandler(w http.ResponseWriter, req *http.Request, _ htt
 	}
 	cbid := b.ID()
 	currentTarget, _ := api.cs.ChildTarget(cbid)
+	primary, failsafe := api.cs.FoundationUnlockHashes()
 	WriteJSON(w, ConsensusGET{
 		Synced:       api.cs.Synced(),
 		Height:       height,
 		CurrentBlock: cbid,
 		Target:       currentTarget,
 		Difficulty:   currentTarget.Difficulty(),
+
+		FoundationPrimaryUnlockHash:  primary,
+		FoundationFailsafeUnlockHash: failsafe,
 
 		BlockFrequency:         types.BlockFrequency,
 		BlockSizeLimit:         types.BlockSizeLimit,
@@ -236,7 +244,7 @@ func (api *API) consensusHandler(w http.ResponseWriter, req *http.Request, _ htt
 
 // consensusBlocksIDHandler handles the API calls to /consensus/blocks
 // endpoint.
-func (api *API) consensusBlocksHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) consensusBlocksHandler(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
 	// Get query params and check them.
 	id, height := req.FormValue("id"), req.FormValue("height")
 	if id != "" && height != "" {
@@ -267,7 +275,7 @@ func (api *API) consensusBlocksHandler(w http.ResponseWriter, req *http.Request,
 			WriteError(w, Error{"failed to parse block height"}, http.StatusBadRequest)
 			return
 		}
-		b, exists = api.cs.BlockAtHeight(types.BlockHeight(h))
+		b, exists = api.cs.BlockAtHeight(h)
 	}
 	// Check if block was found
 	if !exists {

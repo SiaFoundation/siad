@@ -2,6 +2,7 @@ package renter
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -167,6 +168,9 @@ func (w *worker) managedPerformUploadChunkJob() {
 	nextChunk.cancelMU.Lock()
 	if nextChunk.canceled {
 		nextChunk.cancelMU.Unlock()
+		// If the chunk was canceled then we drop the chunk. This will decrement the
+		// chunk's remainingWorkers and perform any clean up work necessary
+		w.managedDropChunk(nextChunk)
 		return
 	}
 	// Add this worker to the chunk's cancelWG for the duration of this method.
@@ -191,7 +195,11 @@ func (w *worker) managedPerformUploadChunkJob() {
 		w.managedUploadFailed(uc, pieceIndex, failureErr)
 		return
 	}
-	defer e.Close()
+	defer func() {
+		if err := e.Close(); err != nil {
+			w.renter.log.Print("managedPerformUploadChunkJob: failed to close editor", err)
+		}
+	}()
 
 	// Before performing the upload, check for price gouging.
 	allowance := w.renter.hostContractor.Allowance()
@@ -266,17 +274,22 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 	uc.mu.Lock()
 	_, candidateHost := uc.unusedHosts[w.staticHostPubKey.String()]
 	chunkComplete := uc.piecesNeeded <= uc.piecesCompleted
-	needsHelp := uc.piecesNeeded > uc.piecesCompleted+uc.piecesRegistered
 	// If the chunk does not need help from this worker, release the chunk.
 	if chunkComplete || !candidateHost || !goodForUpload || onCooldown {
 		// This worker no longer needs to track this chunk.
 		uc.mu.Unlock()
 		w.managedDropChunk(uc)
+
+		// Extra check - if a worker is unusable, drop all the queued chunks.
+		if onCooldown || !goodForUpload {
+			w.managedDropUploadChunks()
+		}
 		return nil, 0
 	}
 
 	// If the worker does not need help, add the worker to the sent of standby
 	// chunks.
+	needsHelp := uc.piecesNeeded > uc.piecesCompleted+uc.piecesRegistered
 	if !needsHelp {
 		uc.workersStandby = append(uc.workersStandby, w)
 		uc.mu.Unlock()
@@ -314,7 +327,7 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint64, failureErr error) {
 	// Mark the failure in the worker if the gateway says we are online. It's
 	// not the worker's fault if we are offline.
-	if w.renter.g.Online() && !errors.Contains(failureErr, siafile.ErrDeleted) {
+	if w.renter.g.Online() && !(strings.Contains(failureErr.Error(), siafile.ErrDeleted.Error()) || errors.Contains(failureErr, siafile.ErrDeleted)) {
 		w.mu.Lock()
 		w.uploadRecentFailure = time.Now()
 		w.uploadRecentFailureErr = failureErr

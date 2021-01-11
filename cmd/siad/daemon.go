@@ -78,21 +78,6 @@ func processModules(modules string) (string, error) {
 	return modules, nil
 }
 
-// processProfileFlags checks that the flags given for profiling are valid.
-func processProfileFlags(profile string) (string, error) {
-	profile = strings.ToLower(profile)
-	validProfiles := "cmt"
-
-	invalidProfiles := profile
-	for _, p := range validProfiles {
-		invalidProfiles = strings.Replace(invalidProfiles, string(p), "", 1)
-	}
-	if len(invalidProfiles) > 0 {
-		return "", errors.New("Unable to parse --profile flags, unrecognized or duplicate flags: " + invalidProfiles)
-	}
-	return profile, nil
-}
-
 // processConfig checks the configuration values and performs cleanup on
 // incorrect-but-allowed values.
 func processConfig(config Config) (Config, error) {
@@ -101,7 +86,9 @@ func processConfig(config Config) (Config, error) {
 	config.Siad.RPCaddr = processNetAddr(config.Siad.RPCaddr)
 	config.Siad.HostAddr = processNetAddr(config.Siad.HostAddr)
 	config.Siad.Modules, err1 = processModules(config.Siad.Modules)
-	config.Siad.Profile, err2 = processProfileFlags(config.Siad.Profile)
+	if config.Siad.Profile != "" {
+		config.Siad.Profile, err2 = profile.ProcessProfileFlags(config.Siad.Profile)
+	}
 	err3 := verifyAPISecurity(config)
 	err := build.JoinErrors([]error{err1, err2, err3}, ", and ")
 	if err != nil {
@@ -185,11 +172,6 @@ func tryAutoUnlock(srv *server.Server) {
 // siad.
 func startDaemon(config Config) (err error) {
 	loadStart := time.Now()
-	// Process the config variables after they are parsed by cobra.
-	config, err = processConfig(config)
-	if err != nil {
-		return errors.AddContext(err, "failed to parse input parameter")
-	}
 
 	// Load API password.
 	config, err = loadAPIPassword(config)
@@ -224,7 +206,7 @@ func startDaemon(config Config) (err error) {
 
 	// Print a 'startup complete' message.
 	startupTime := time.Since(loadStart)
-	fmt.Printf("Finished full setup in %.3f seconds\n", startupTime.Seconds())
+	fmt.Printf("Finished full setup in %s\n", startupTime.Truncate(time.Second).String())
 
 	// wait for Serve to return or for kill signal to be caught
 	err = func() error {
@@ -240,34 +222,44 @@ func startDaemon(config Config) (err error) {
 		build.Critical(err)
 	}
 
+	// Wait for server to complete shutdown.
+	srv.WaitClose()
+
 	return nil
 }
 
 // startDaemonCmd is a passthrough function for startDaemon.
 func startDaemonCmd(cmd *cobra.Command, _ []string) {
-	var profileCPU, profileMem, profileTrace bool
+	// Process the config variables after they are parsed by cobra.
+	config, err := processConfig(globalConfig)
+	if err != nil {
+		die(errors.AddContext(err, "failed to parse input parameter"))
+	}
 
-	profileCPU = strings.Contains(globalConfig.Siad.Profile, "c")
-	profileMem = strings.Contains(globalConfig.Siad.Profile, "m")
-	profileTrace = strings.Contains(globalConfig.Siad.Profile, "t")
+	// Parse profile flags
+	profileCPU := strings.Contains(config.Siad.Profile, "c")
+	profileMem := strings.Contains(config.Siad.Profile, "m")
+	profileTrace := strings.Contains(config.Siad.Profile, "t")
 
+	// Always run CPU and memory profiles on debug
 	if build.DEBUG {
 		profileCPU = true
 		profileMem = true
 	}
 
+	// Launch any profiles
 	if profileCPU || profileMem || profileTrace {
 		var profileDir string
 		if cmd.Root().Flag("profile-directory").Changed {
-			profileDir = globalConfig.Siad.ProfileDir
+			profileDir = config.Siad.ProfileDir
 		} else {
-			profileDir = filepath.Join(globalConfig.Siad.SiaDir, globalConfig.Siad.ProfileDir)
+			profileDir = filepath.Join(config.Siad.SiaDir, config.Siad.ProfileDir)
 		}
 		go profile.StartContinuousProfile(profileDir, profileCPU, profileMem, profileTrace)
 	}
 
 	// Start siad. startDaemon will only return when it is shutting down.
-	err := startDaemon(globalConfig)
+	err = startDaemon(config)
 	if err != nil {
 		die(err)
 	}

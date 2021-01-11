@@ -3,12 +3,12 @@ package consensus
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"os"
 	"time"
 
 	"gitlab.com/NebulousLabs/bolt"
+	"gitlab.com/NebulousLabs/errors"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -251,11 +251,11 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 			parent, err := cs.validateHeaderAndBlock(boltTxWrapper{tx}, blocks[i], blockIDs[i])
 			cs.log.Debugf("validateHeaderAndBlock time: %v", time.Since(startTime).Round(time.Millisecond))
 
-			if err == modules.ErrBlockKnown {
+			if errors.Contains(err, modules.ErrBlockKnown) {
 				// Skip over known blocks.
 				continue
 			}
-			if err == ErrFutureTimestamp {
+			if errors.Contains(err, ErrFutureTimestamp) {
 				// Queue the block to be tried again if it is a future block.
 				go cs.threadedSleepOnFutureBlock(blocks[i])
 			}
@@ -279,7 +279,7 @@ func (cs *ConsensusSet) managedAcceptBlocks(blocks []types.Block) (blockchainExt
 					reverted = append(reverted, b.String()[:6])
 				}
 			}
-			if err == modules.ErrNonExtendingBlock {
+			if errors.Contains(err, modules.ErrNonExtendingBlock) {
 				err = nil
 			}
 			if err != nil {

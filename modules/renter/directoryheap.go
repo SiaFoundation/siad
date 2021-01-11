@@ -2,10 +2,12 @@ package renter
 
 import (
 	"container/heap"
+	"fmt"
 	"math"
 	"sync"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -246,7 +248,7 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 	for {
 		select {
 		case <-r.tg.StopChan():
-			return nil, errors.New("renter shutdown before directory could be returned")
+			return nil, errors.AddContext(threadgroup.ErrStopped, "renter shutdown before directory could be returned")
 		default:
 		}
 
@@ -272,7 +274,8 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 		// Add Sub directories
 		err := r.managedPushSubDirectories(d)
 		if err != nil {
-			return nil, err
+			contextStr := fmt.Sprintf("unable to push subdirectories for `%v`", d.staticSiaPath)
+			return nil, errors.AddContext(err, contextStr)
 		}
 
 		// Add popped directory back to heap with explored now set to true.
@@ -285,12 +288,14 @@ func (r *Renter) managedNextExploredDirectory() (*directory, error) {
 func (r *Renter) managedPushSubDirectories(d *directory) error {
 	subDirs, err := r.managedSubDirectories(d.staticSiaPath)
 	if err != nil {
-		return err
+		contextStr := fmt.Sprintf("unable to get subdirectories for `%v`", d.staticSiaPath)
+		return errors.AddContext(err, contextStr)
 	}
 	for _, subDir := range subDirs {
 		err = r.managedPushUnexploredDirectory(subDir)
 		if err != nil {
-			return err
+			contextStr := fmt.Sprintf("unable to push unexplored directory `%v`", subDir)
+			return errors.AddContext(err, contextStr)
 		}
 	}
 	return nil
@@ -298,13 +303,15 @@ func (r *Renter) managedPushSubDirectories(d *directory) error {
 
 // managedPushUnexploredDirectory reads the health from the siadir metadata and
 // pushes an unexplored directory element onto the heap
-func (r *Renter) managedPushUnexploredDirectory(siaPath modules.SiaPath) error {
-	// Grab the siadir metadata.
-	siaDir, err := r.staticFileSystem.OpenSiaDir(siaPath)
+func (r *Renter) managedPushUnexploredDirectory(siaPath modules.SiaPath) (err error) {
+	// Grab the siadir metadata. If it doesn't exist, create it.
+	siaDir, err := r.staticFileSystem.OpenSiaDirCustom(siaPath, true)
 	if err != nil {
 		return err
 	}
-	defer siaDir.Close()
+	defer func() {
+		err = errors.Compose(err, siaDir.Close())
+	}()
 	metadata, err := siaDir.Metadata()
 	if err != nil {
 		return err

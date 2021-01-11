@@ -184,7 +184,6 @@ func TestMarshalMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
 
 	// Manually create struct of a persist object and set the length. Not using
 	// the New method to avoid overwriting the persist file on disk.
@@ -197,8 +196,13 @@ func TestMarshalMetadata(t *testing.T) {
 
 			Length: MetadataPageSize,
 		},
+		staticF: f,
 	}
-	defer aop.Close()
+	defer func() {
+		if err := aop.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Marshal the metadata and write to disk
 	metadataBytes := encoding.Marshal(aop.metadata)

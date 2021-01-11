@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
@@ -27,7 +28,17 @@ func TestPriceTableMarshaling(t *testing.T) {
 		ReadBaseCost:         types.SiacoinPrecision.Mul64(1e4),
 		ReadLengthCost:       types.SiacoinPrecision.Mul64(1e5),
 		HasSectorBaseCost:    types.SiacoinPrecision.Mul64(1e6),
-		StoreLengthCost:      types.SiacoinPrecision.Mul64(1e7),
+		TxnFeeMinRecommended: types.SiacoinPrecision.Mul64(1e7),
+		TxnFeeMaxRecommended: types.SiacoinPrecision.Mul64(1e8),
+		DropSectorsBaseCost:  types.SiacoinPrecision.Mul64(1e9),
+		DropSectorsUnitCost:  types.SiacoinPrecision.Mul64(1e10),
+		WriteBaseCost:        types.SiacoinPrecision.Mul64(1e11),
+		WriteLengthCost:      types.SiacoinPrecision.Mul64(1e12),
+		WriteStoreCost:       types.SiacoinPrecision.Mul64(1e13),
+		LatestRevisionCost:   types.SiacoinPrecision.Mul64(1e14),
+		FundAccountCost:      types.SiacoinPrecision.Mul64(1e15),
+		AccountBalanceCost:   types.SiacoinPrecision.Mul64(1e16),
+		SwapSectorCost:       types.SiacoinPrecision.Mul64(1e17),
 	}
 	fastrand.Read(pt.UID[:])
 
@@ -162,6 +173,9 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 	t.Run("Basic", func(t *testing.T) {
 		testUpdatePriceTableBasic(t, rhp)
 	})
+	t.Run("AfterSettingsUpdate", func(t *testing.T) {
+		testUpdatePriceTableAfterSettingsUpdate(t, rhp)
+	})
 	t.Run("InsufficientPayment", func(t *testing.T) {
 		testUpdatePriceTableInsufficientPayment(t, rhp)
 	})
@@ -173,6 +187,31 @@ func TestUpdatePriceTableRPC(t *testing.T) {
 // testUpdatePriceTableBasic verifies the basic functionality of the update
 // price table RPC
 func testUpdatePriceTableBasic(t *testing.T, rhp *renterHostPair) {
+	// set the registry size to a known value.
+	host := rhp.staticHT.host
+	is := host.InternalSettings()
+	is.RegistrySize = 128 * modules.RegistryEntrySize
+	err := rhp.staticHT.host.SetInternalSettings(is)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add 64 entries.
+	for i := 0; i < 64; i++ {
+		sk, pk := crypto.GenerateKeyPair()
+		var spk types.SiaPublicKey
+		spk.Algorithm = types.SignatureEd25519
+		spk.Key = pk[:]
+		var tweak crypto.Hash
+		fastrand.Read(tweak[:])
+		rv := modules.NewRegistryValue(tweak, fastrand.Bytes(modules.RegistryDataSize), 0).Sign(sk)
+		_, err := host.RegistryUpdate(rv, spk, 1337)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	left := host.staticRegistry.Cap() - host.staticRegistry.Len()
+
 	// create a payment revision
 	current := rhp.staticHT.host.staticPriceTables.managedCurrent()
 	rev, sig, err := rhp.managedEAFundRevision(current.UpdatePriceTableCost)
@@ -205,6 +244,81 @@ func testUpdatePriceTableBasic(t *testing.T, rhp *renterHostPair) {
 	// just the initial value
 	if pt.HostBlockHeight == 0 {
 		t.Fatal("Expected host blockheight to be not 0")
+	}
+
+	// ensure it has the txn fee estimates
+	if pt.TxnFeeMinRecommended.IsZero() {
+		t.Fatal("Expected TxnFeeMinRecommended to be set on the price table")
+	}
+	if pt.TxnFeeMaxRecommended.IsZero() {
+		t.Fatal("Expected TxnFeeMaxRecommended to be set on the price table")
+	}
+
+	// ensure the ContractPrice is set
+	if pt.ContractPrice.IsZero() {
+		t.Fatal("Expected contract price to be set on the price table")
+	}
+	// ensure the CollateralCost is set
+	if pt.CollateralCost.IsZero() {
+		t.Fatal("Expected collateral to be set on the price table")
+	}
+	// ensure the MaxCollateral is set
+	if pt.MaxCollateral.IsZero() {
+		t.Fatal("Expected MaxCollateral to be set on the price table")
+	}
+	// ensure the MaxDuration is set
+	if pt.MaxDuration == 0 {
+		t.Fatal("Expected MaxDuration to be set on the price table")
+	}
+	// ensure the WindowSize is set
+	if pt.WindowSize == 0 {
+		t.Fatal("Expected WindowSize to be set on the price table")
+	}
+	if pt.RegistryEntriesLeft != left {
+		t.Fatal("Wrong number of registry entries", pt.RegistryEntriesLeft, left)
+	}
+	if pt.RegistryEntriesTotal != 128 {
+		t.Fatal("Wrong number of entries", pt.RegistryEntriesTotal, 128)
+	}
+	if !pt.RenewContractCost.Equals(modules.DefaultBaseRPCPrice) {
+		t.Fatal("Wrong renew cost", pt.RenewContractCost, modules.DefaultBaseRPCPrice)
+	}
+}
+
+// testUpdatePriceTableAfterSettingsUpdate verifies the price table is updated
+// after the host updates its internal settings
+func testUpdatePriceTableAfterSettingsUpdate(t *testing.T, rhp *renterHostPair) {
+	// ensure the price table has valid upload and download bandwidth costs
+	pt := rhp.staticHT.host.staticPriceTables.managedCurrent()
+	if pt.DownloadBandwidthCost.IsZero() {
+		t.Fatal("Expected DownloadBandwidthCost to be non zero")
+	}
+	if pt.UploadBandwidthCost.IsZero() {
+		t.Fatal("Expected DownloadBandwidthCost to be non zero")
+	}
+
+	// update the host's internal settings
+	his := rhp.staticHT.host.InternalSettings()
+	his.MinDownloadBandwidthPrice = types.ZeroCurrency
+	his.MinUploadBandwidthPrice = types.ZeroCurrency
+	err := rhp.staticHT.host.SetInternalSettings(his)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// trigger a price table update
+	err = rhp.managedUpdatePriceTable(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// ensure the pricetable reflects our changes
+	pt = rhp.staticHT.host.staticPriceTables.managedCurrent()
+	if !pt.DownloadBandwidthCost.IsZero() {
+		t.Error("Expected DownloadBandwidthCost to be zero")
+	}
+	if !pt.UploadBandwidthCost.IsZero() {
+		t.Error("Expected UploadBandwidthCost to be zero")
 	}
 }
 
@@ -253,12 +367,14 @@ func testUpdatePriceTableHostNoStreamClose(t *testing.T, rhp *renterHostPair) {
 // runUpdatePriceTableRPCWithRequest is a helper function that performs the
 // renter-side of the update price table RPC using a custom PayByContractRequest
 // to similate various edge cases or error flows.
-func runUpdatePriceTableRPCWithRequest(rhp *renterHostPair, pbcRequest modules.PayByContractRequest) (*modules.RPCPriceTable, error) {
+func runUpdatePriceTableRPCWithRequest(rhp *renterHostPair, pbcRequest modules.PayByContractRequest) (_ *modules.RPCPriceTable, err error) {
 	stream := rhp.managedNewStream()
-	defer stream.Close()
+	defer func() {
+		err = errors.Compose(err, stream.Close())
+	}()
 
 	// initiate the RPC
-	err := modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
+	err = modules.RPCWrite(stream, modules.RPCUpdatePriceTable)
 	if err != nil {
 		return nil, err
 	}

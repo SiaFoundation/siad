@@ -3,10 +3,10 @@ package main
 import (
 	"math"
 	"math/big"
-	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
@@ -179,6 +179,38 @@ func TestCurrencyUnits(t *testing.T) {
 	}
 }
 
+// TestCurrencyUnitsWithExchangeRate probes the currencyUnitsWithExchangeRate
+// function. Here we only test for the general format. The precise formatting of
+// the foreign currency amount is further tested in types/exchangerate_test.go .
+func TestCurrencyUnitsWithExchangeRate(t *testing.T) {
+	tests := []struct {
+		cStr    string
+		rateStr string
+		result  string
+	}{
+		{"1", "", "1 H"},
+		{"1000000000000000000000", "n/a", "1 mS"},
+		{"1000000000000000000000000", "---", "1 SC"},
+		{"1000000000000000000000000000", "", "1 KS"},
+		{"1000000000000000000000000", "1 USD", "1 SC (~ 1.00 USD)"},
+		{"100000000000000000000000", "1 EUR", "100 mS (~ 0.10 EUR)"},
+		{"10000000000000000000000", "10 EUR", "10 mS (~ 0.10 EUR)"},
+		{"1000000000000000000000000000", "0.0039 USD", "1 KS (~ 3.90 USD)"},
+	}
+	for _, test := range tests {
+		i, _ := new(big.Int).SetString(test.cStr, 10)
+
+		rate, _ := types.ParseExchangeRate(test.rateStr)
+		// ignore potential parse errors; those are being tested in types/exchangerate_test.go
+
+		result := currencyUnitsWithExchangeRate(types.NewCurrency(i), rate)
+		if test.result != result {
+			t.Errorf("currencyUnitsWithExchangeRate(%v, %v): expected %#v, got %#v",
+				test.cStr, test.rateStr, test.result, result)
+		}
+	}
+}
+
 // TestRateLimitUnits probes the ratelimitUnits function
 func TestRatelimitUnits(t *testing.T) {
 	tests := []struct {
@@ -236,7 +268,7 @@ func TestParseRatelimit(t *testing.T) {
 
 	for _, test := range tests {
 		res, err := parseRatelimit(test.in)
-		if res != test.out || (err != test.err && !strings.Contains(err.Error(), test.err.Error())) {
+		if res != test.out || (err != test.err && !errors.Contains(err, test.err)) {
 			t.Errorf("parsePeriod(%v): expected %v %v, got %v %v", test.in, test.out, test.err, res, err)
 		}
 	}
@@ -327,4 +359,49 @@ func randomPercentages() []float64 {
 	}
 
 	return p
+}
+
+// TestSizeString probes the sizeString function
+func TestSizeString(t *testing.T) {
+	tests := []struct {
+		in  uint64
+		out string
+	}{
+		{0, "0 B"},
+		{1, "1 B"},
+		{123, "123 B"},
+		{999, "999 B"},
+		{1000, "1 KB"},
+		{1001, "1.001 KB"},
+		{1234, "1.234 KB"},
+		{12340, "12.34 KB"},
+		{123400, "123.4 KB"},
+		{1234000, "1.234 MB"},
+		{500000, "500 KB"},
+		{900000, "900 KB"},
+		{998999, "999 KB"},
+		{999001, "999 KB"},
+		{999998, "1 MB"}, // Should round up to 1MB
+		{999999, "1 MB"}, // Should round up to 1MB
+		{1000001, "1 MB"},
+		{1999999, "2 MB"}, // Should round up to 2MB
+		{2000001, "2 MB"},
+		{1234000, "1.234 MB"},
+		{1235000000, "1.235 GB"},       // Verifies it doesn't round the last digit
+		{1234500000000, "1.234 TB"},    // Verifies it truncates and doesn't round
+		{1234490000000000, "1.234 PB"}, // Verifies it truncates and doesn't round
+		{1234000000000000000, "1.234 EB"},
+		{math.MaxUint64, "18.45 EB"},
+	}
+	for _, test := range tests {
+		out := sizeString(test.in)
+		if out != test.out {
+			t.Errorf("sizeString(%v): expected %v, got %v", test.in, test.out, out)
+		}
+	}
+
+	// Add some random tests for any edge case panics
+	for i := 0; i < 1e3; i++ {
+		sizeString(fastrand.Uint64n(math.MaxUint64))
+	}
 }

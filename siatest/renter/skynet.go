@@ -1,61 +1,84 @@
 package renter
 
 import (
-	"fmt"
-	"mime/multipart"
-	"net/textproto"
-	"os"
-	"strings"
+	"archive/tar"
+	"archive/zip"
+	"bytes"
+	"io"
+	"io/ioutil"
 
-	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/errors"
 )
 
-// escapeQuotes escapes the quotes in the given string.
-func escapeQuotes(s string) string {
-	quoteEscaper := strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
-	return quoteEscaper.Replace(s)
+// fileMap is a helper type that maps filenames onto the raw file data
+type fileMap map[string][]byte
+
+// readTarArchive is a helper function that takes a reader containing a tar
+// archive and returns an fileMap, which is a small helper struct that maps the
+// filename to the data.
+func readTarArchive(r io.Reader) (fileMap, error) {
+	a := make(fileMap)
+	tr := tar.NewReader(r)
+	for {
+		header, err := tr.Next()
+		if errors.Contains(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		data, err := ioutil.ReadAll(tr)
+		if err != nil {
+			return nil, err
+		}
+		a[header.Name] = data
+	}
+	return a, nil
 }
 
-// createFormFileHeaders builds a header from the given params. These headers
-// are used when creating the parts in a multi-part form upload.
-func createFormFileHeaders(fieldname, filename, filemode string) textproto.MIMEHeader {
-	fieldname = escapeQuotes(fieldname)
-	filename = escapeQuotes(filename)
+// readZipArchive is a helper function that takes a reader containing a zip
+// archive and returns an fileMap, which is a small helper struct that maps the
+// filename to the data.
+func readZipArchive(r io.Reader) (fileMap, error) {
+	a := make(fileMap)
 
-	h := make(textproto.MIMEHeader)
-	h.Set("Content-Type", "application/octet-stream")
-	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fieldname, filename))
-	h.Set("mode", filemode)
-	return h
-}
-
-// addMultipartField is a helper function to add a file to the multipart form-
-// data. Note that the given data will be treated as binary data, and the multi
-// part 's ContentType header will be set accordingly.
-func addMultipartFile(w *multipart.Writer, filedata []byte, filekey, filename string, filemode uint64, offset *uint64) modules.SkyfileSubfileMetadata {
-	filemodeStr := fmt.Sprintf("%o", filemode)
-	partHeader := createFormFileHeaders(filekey, filename, filemodeStr)
-	part, err := w.CreatePart(partHeader)
+	// copy all data to a buffer (this is necessary because the zipreader
+	// expects a `ReaderAt`)
+	buff := bytes.NewBuffer([]byte{})
+	size, err := io.Copy(buff, r)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-
-	_, err = part.Write(filedata)
+	reader := bytes.NewReader(buff.Bytes())
+	zr, err := zip.NewReader(reader, size)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	metadata := modules.SkyfileSubfileMetadata{
-		Filename:    filename,
-		ContentType: "application/octet-stream",
-		FileMode:    os.FileMode(filemode),
-		Len:         uint64(len(filedata)),
-	}
+	for _, f := range zr.File {
+		data, err := func() (data []byte, err error) {
+			var rc io.ReadCloser
+			rc, err = f.Open()
+			if err != nil {
+				return
+			}
 
-	if offset != nil {
-		metadata.Offset = *offset
-		*offset += metadata.Len
-	}
+			defer func() {
+				err = errors.Compose(err, rc.Close())
+			}()
 
-	return metadata
+			data, err = ioutil.ReadAll(rc)
+			return
+		}()
+
+		if errors.Contains(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		a[f.FileHeader.Name] = data
+	}
+	return a, nil
 }

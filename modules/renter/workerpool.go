@@ -39,16 +39,18 @@ func (wp *workerPool) callStatus() modules.WorkerPoolStatus {
 
 	// Fetch the list of workers from the worker pool.
 
-	var totalDownloadCoolDown, totalUploadCoolDown int
+	var totalDownloadCoolDown, totalMaintenanceCoolDown, totalUploadCoolDown int
 	var statuss []modules.WorkerStatus // Plural of status is statuss, deal with it.
 	workers := wp.callWorkers()
+
+	// Loop all workers and collect their status objects.
 	for _, w := range workers {
-		// Get the status of the worker.
-		w.mu.Lock()
-		status := w.status()
-		w.mu.Unlock()
+		status := w.callStatus()
 		if status.DownloadOnCoolDown {
 			totalDownloadCoolDown++
+		}
+		if status.MaintenanceOnCooldown {
+			totalMaintenanceCoolDown++
 		}
 		if status.UploadOnCoolDown {
 			totalUploadCoolDown++
@@ -56,10 +58,11 @@ func (wp *workerPool) callStatus() modules.WorkerPoolStatus {
 		statuss = append(statuss, status)
 	}
 	return modules.WorkerPoolStatus{
-		NumWorkers:            len(wp.workers),
-		TotalDownloadCoolDown: totalDownloadCoolDown,
-		TotalUploadCoolDown:   totalUploadCoolDown,
-		Workers:               statuss,
+		NumWorkers:               len(wp.workers),
+		TotalDownloadCoolDown:    totalDownloadCoolDown,
+		TotalMaintenanceCoolDown: totalMaintenanceCoolDown,
+		TotalUploadCoolDown:      totalUploadCoolDown,
+		Workers:                  statuss,
 	}
 }
 
@@ -70,6 +73,10 @@ func (wp *workerPool) callUpdate() {
 	contractSlice := wp.renter.hostContractor.Contracts()
 	contractMap := make(map[string]modules.RenterContract, len(contractSlice))
 	for _, contract := range contractSlice {
+		if contract.Utility.BadContract {
+			// Do not create workers for bad contracts.
+			continue
+		}
 		contractMap[contract.HostPublicKey.String()] = contract
 	}
 
@@ -152,6 +159,14 @@ func (wp *workerPool) callWorkers() []*worker {
 	}
 	wp.mu.RUnlock()
 	return workers
+}
+
+// callNumWorkers returns the number of workers in the worker pool.
+func (wp *workerPool) callNumWorkers() int {
+	wp.mu.Lock()
+	l := len(wp.workers)
+	wp.mu.Unlock()
+	return l
 }
 
 // newWorkerPool will initialize and return a worker pool.

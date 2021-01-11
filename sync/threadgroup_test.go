@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 // TestThreadGroupStopEarly tests that a thread group can correctly interrupt
@@ -165,11 +166,11 @@ func TestThreadGroupStop(t *testing.T) {
 
 	// Add and Stop should return errors.
 	err = tg.Add()
-	if err != ErrStopped {
+	if !errors.Contains(err, ErrStopped) {
 		t.Error("expected ErrStopped, got", err)
 	}
 	err = tg.Stop()
-	if err != ErrStopped {
+	if !errors.Contains(err, ErrStopped) {
 		t.Error("expected ErrStopped, got", err)
 	}
 
@@ -222,31 +223,35 @@ func TestThreadGroupConcurrentAdd(t *testing.T) {
 // properly initialized.
 func TestThreadGroupOnce(t *testing.T) {
 	tg := new(ThreadGroup)
-	if tg.stopChan != nil {
+	if tg.stopCtx != nil {
 		t.Error("expected nil stopChan")
 	}
 
 	// these methods should cause stopChan to be initialized
 	tg.StopChan()
-	if tg.stopChan == nil {
+	if tg.stopCtx == nil {
 		t.Error("stopChan should have been initialized by StopChan")
 	}
 
 	tg = new(ThreadGroup)
 	tg.isStopped()
-	if tg.stopChan == nil {
+	if tg.stopCtx == nil {
 		t.Error("stopChan should have been initialized by isStopped")
 	}
 
 	tg = new(ThreadGroup)
-	tg.Add()
-	if tg.stopChan == nil {
+	if err := tg.Add(); err != nil {
+		t.Error(err)
+	}
+	if tg.stopCtx == nil {
 		t.Error("stopChan should have been initialized by Add")
 	}
 
 	tg = new(ThreadGroup)
-	tg.Stop()
-	if tg.stopChan == nil {
+	if err := tg.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	if tg.stopCtx == nil {
 		t.Error("stopChan should have been initialized by Stop")
 	}
 }
@@ -268,14 +273,18 @@ func TestThreadGroupOnStop(t *testing.T) {
 
 	// send on channel when listener is closed
 	var closed bool
-	tg.Add()
+	if err := tg.Add(); err != nil {
+		t.Error(err)
+	}
 	go func() {
 		defer tg.Done()
 		_, err := l.Accept()
 		closed = err != nil
 	}()
 
-	tg.Stop()
+	if err := tg.Stop(); err != nil {
+		t.Fatal(err)
+	}
 	if !closed {
 		t.Fatal("Stop did not close listener")
 	}
@@ -395,7 +404,9 @@ func TestThreadGroupSiaExample(t *testing.T) {
 		threadFinished = true
 		tg.Done()
 	}()
-	tg.Flush()
+	if err := tg.Flush(); err != nil {
+		t.Fatal(err)
+	}
 	if !threadFinished {
 		t.Error("call to Flush should have allowed the working thread to finish")
 	}
@@ -416,7 +427,9 @@ func TestThreadGroupSiaExample(t *testing.T) {
 		threadFinished2 = true
 		tg.Done()
 	}()
-	tg.Stop()
+	if err := tg.Stop(); err != nil {
+		t.Fatal(err)
+	}
 	if !threadFinished2 || !listenerCleanedUp || !fileClosed {
 		t.Error("stop did not block until all running resources had closed")
 	}
@@ -478,10 +491,14 @@ func TestAddOnStop(t *testing.T) {
 func BenchmarkThreadGroup(b *testing.B) {
 	var tg ThreadGroup
 	for i := 0; i < b.N; i++ {
-		tg.Add()
+		if err := tg.Add(); err != nil {
+			b.Error(err)
+		}
 		go tg.Done()
 	}
-	tg.Stop()
+	if err := tg.Stop(); err != nil {
+		b.Fatal(err)
+	}
 }
 
 // BenchmarkWaitGroup times how long it takes to add a ton of threads to a wait

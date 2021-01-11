@@ -11,10 +11,10 @@ import (
 
 	"gitlab.com/NebulousLabs/bolt"
 	"gitlab.com/NebulousLabs/demotemutex"
+	"gitlab.com/NebulousLabs/threadgroup"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/persist"
-	siasync "gitlab.com/NebulousLabs/Sia/sync"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 )
@@ -92,7 +92,7 @@ type ConsensusSet struct {
 	log        *persist.Logger
 	mu         demotemutex.DemoteMutex
 	persistDir string
-	tg         siasync.ThreadGroup
+	tg         threadgroup.ThreadGroup
 }
 
 // consensusSetBlockingStartup handles the blocking portion of NewCustomConsensusSet.
@@ -173,12 +173,16 @@ func consensusSetAsyncStartup(cs *ConsensusSet, bootstrap bool) error {
 	cs.gateway.RegisterRPC("RelayHeader", cs.threadedRPCRelayHeader)
 	cs.gateway.RegisterRPC("SendBlk", cs.rpcSendBlk)
 	cs.gateway.RegisterConnectCall("SendBlocks", cs.threadedReceiveBlocks)
-	cs.tg.OnStop(func() {
+	err := cs.tg.OnStop(func() error {
 		cs.gateway.UnregisterRPC("SendBlocks")
 		cs.gateway.UnregisterRPC("RelayHeader")
 		cs.gateway.UnregisterRPC("SendBlk")
 		cs.gateway.UnregisterConnectCall("SendBlocks")
+		return nil
 	})
+	if err != nil {
+		return err
+	}
 
 	// Mark that we are synced with the network.
 	cs.mu.Lock()
@@ -320,12 +324,6 @@ func (cs *ConsensusSet) CurrentBlock() (block types.Block) {
 	return block
 }
 
-// Flush will block until the consensus set has finished all in-progress
-// routines.
-func (cs *ConsensusSet) Flush() error {
-	return cs.tg.Flush()
-}
-
 // Height returns the height of the consensus set.
 func (cs *ConsensusSet) Height() (height types.BlockHeight) {
 	// A call to a closed database can cause undefined behavior.
@@ -413,4 +411,19 @@ func (cs *ConsensusSet) StorageProofSegment(fcid types.FileContractID) (index ui
 		return nil
 	})
 	return index, err
+}
+
+// FoundationUnlockHashes returns the current primary and failsafe Foundation
+// UnlockHashes.
+func (cs *ConsensusSet) FoundationUnlockHashes() (primary, failsafe types.UnlockHash) {
+	if err := cs.tg.Add(); err != nil {
+		return
+	}
+	defer cs.tg.Done()
+
+	_ = cs.db.View(func(tx *bolt.Tx) error {
+		primary, failsafe = getFoundationUnlockHashes(tx)
+		return nil
+	})
+	return
 }

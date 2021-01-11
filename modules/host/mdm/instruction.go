@@ -8,12 +8,15 @@ import (
 // instruction is the interface an instruction needs to implement to be part of
 // a program.
 type instruction interface {
+	// Batch indicates whether an instruction can be batched together with its
+	// predecessor.
+	Batch() bool
 	// Collateral returns the amount of additional collateral the host is
 	// expected to put up for this instruction after execution.
 	Collateral() (collateral types.Currency)
 	// Cost returns the cost of executing the instruction and the potential
 	// refund should the program not be committed.
-	Cost() (executionCost types.Currency, refund types.Currency, _ error)
+	Cost() (executionCost types.Currency, storageCost types.Currency, _ error)
 	// Execute executes the instruction without committing the changes to the
 	// storage obligation.
 	Execute(output) output
@@ -29,13 +32,18 @@ type instruction interface {
 type Output struct {
 	output
 
+	// Batch indicates whether or not the caller is recommended to hold off on
+	// sending the output over the wire in favor of batching the writes with the
+	// result of the next instruction.
+	Batch bool
 	// ExecutionCost contains the running program value for the execution cost.
 	ExecutionCost types.Currency
 	// AdditionalCollateral contains the running program value for the
 	// additional collateral.
 	AdditionalCollateral types.Currency
-	// PotentialRefund contains the running program value for the refund.
-	PotentialRefund types.Currency
+	// AdditionalStorageCost contains the running program value for the cost of additional
+	// storage used after executing it.
+	AdditionalStorageCost types.Currency
 }
 
 // output is the type returned by all instructions when being executed.

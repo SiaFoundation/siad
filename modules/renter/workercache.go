@@ -29,6 +29,8 @@ type (
 		staticContractID      types.FileContractID
 		staticContractUtility modules.ContractUtility
 		staticHostVersion     string
+		staticRenterAllowance modules.Allowance
+		staticHostMuxAddress  string
 		staticSynced          bool
 
 		staticLastUpdate time.Time
@@ -72,7 +74,9 @@ func (w *worker) managedUpdateCache() {
 		staticBlockHeight:     w.renter.cs.Height(),
 		staticContractID:      renterContract.ID,
 		staticContractUtility: renterContract.Utility,
+		staticHostMuxAddress:  host.SiaMuxAddress(),
 		staticHostVersion:     host.Version,
+		staticRenterAllowance: w.renter.hostContractor.Allowance(),
 		staticSynced:          w.renter.cs.Synced(),
 
 		staticLastUpdate: time.Now(),
@@ -93,6 +97,15 @@ func (w *worker) managedUpdateCache() {
 	})
 }
 
+// newCache will initialize an unitialized cache on the worker.
+func (w *worker) newCache() {
+	if w.staticCache() != nil {
+		w.renter.log.Critical("creating a new cache one already exists")
+	}
+	ptr := unsafe.Pointer(new(workerCache))
+	atomic.StorePointer(&w.atomicCache, ptr)
+}
+
 // staticTryUpdateCache will perform a cache update on the worker.
 //
 // 'false' will be returned if the cache cannot be updated, signaling that the
@@ -107,7 +120,10 @@ func (w *worker) staticTryUpdateCache() {
 	// Get the new cache in a goroutine. This is because the cache update grabs
 	// a lock on the consensus object, which can sometimes take a while if there
 	// are new blocks being processed or a reorg being processed.
-	w.renter.tg.Launch(w.managedUpdateCache)
+	err := w.renter.tg.Launch(w.managedUpdateCache)
+	if err != nil {
+		w.renter.log.Print("staticTryUpdateCache: failed to launch cache update", err)
+	}
 }
 
 // staticCache returns the current worker cache object.

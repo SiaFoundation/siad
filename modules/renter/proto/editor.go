@@ -161,7 +161,7 @@ func (he *Editor) Upload(data []byte) (_ modules.RenterContract, _ crypto.Hash, 
 	// send revision to host and exchange signatures
 	extendDeadline(he.conn, connTimeout)
 	signedTxn, err := negotiateRevision(he.conn, rev, contract.SecretKey, he.height)
-	if err == modules.ErrStopResponse {
+	if errors.Contains(err, modules.ErrStopResponse) {
 		// if host gracefully closed, close our connection as well; this will
 		// cause the next operation to fail
 		he.conn.Close()
@@ -205,7 +205,7 @@ func (cs *ContractSet) NewEditor(host modules.HostDBEntry, id types.FileContract
 		}
 	}()
 
-	conn, closeChan, err := initiateRevisionLoop(host, sc, modules.RPCReviseContract, cancel, cs.rl)
+	conn, closeChan, err := initiateRevisionLoop(host, sc, modules.RPCReviseContract, cancel, cs.staticRL)
 	if err != nil {
 		return nil, errors.AddContext(err, "failed to initiate revision loop")
 	}
@@ -222,7 +222,7 @@ func (cs *ContractSet) NewEditor(host modules.HostDBEntry, id types.FileContract
 		contractSet: cs,
 		conn:        conn,
 		closeChan:   closeChan,
-		deps:        cs.deps,
+		deps:        cs.staticDeps,
 
 		height: currentHeight,
 	}, nil

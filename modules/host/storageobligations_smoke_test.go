@@ -69,7 +69,7 @@ func (ht *hostTester) newTesterStorageObligation() (storageObligation, error) {
 	// Fund the file contract with a payout. The payout needs to be big enough
 	// that the expected revenue is larger than the fee that the host may end
 	// up paying.
-	payout := types.SiacoinPrecision.Mul64(1e3)
+	payout := types.SiacoinPrecision.Mul64(10e3)
 	err = builder.FundSiacoins(payout)
 	if err != nil {
 		return storageObligation{}, err
@@ -131,7 +131,11 @@ func TestBlankStorageObligation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// The number of contracts reported by the host should be zero.
 	fm := ht.host.FinancialMetrics()
@@ -147,7 +151,7 @@ func TestBlankStorageObligation(t *testing.T) {
 		t.Fatal(err)
 	}
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
+	err = ht.host.managedAddStorageObligation(so)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +286,7 @@ func TestPruneStaleStorageObligations(t *testing.T) {
 		so.ContractCost = contractCost
 		so.LockedCollateral = lockedCollateral
 		ht.host.managedLockStorageObligation(so.id())
-		err = ht.host.managedAddStorageObligation(so, false)
+		err = ht.host.managedAddStorageObligation(so)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -327,8 +331,8 @@ func TestPruneStaleStorageObligations(t *testing.T) {
 		so.ContractCost = contractCost
 		so.LockedCollateral = lockedCollateral
 		ht.host.managedLockStorageObligation(so.id())
-		err = ht.host.managedAddStorageObligation(so, false)
-		if err != transactionpool.ErrTxnSetNotAccepted {
+		err = ht.host.managedAddStorageObligation(so)
+		if !errors.Contains(err, transactionpool.ErrTxnSetNotAccepted) {
 			t.Error("Wrong error:", err)
 		}
 		ht.host.managedUnlockStorageObligation(so.id())
@@ -472,7 +476,10 @@ func TestPruneStaleStorageObligations(t *testing.T) {
 
 	// These 2 stale contracts will forever lock storage collateral. Use the
 	// PruneStaleStorgageObligations method to remove them.
-	ht.host.PruneStaleStorageObligations()
+	err = ht.host.PruneStaleStorageObligations()
+	if err != nil {
+		t.Error(err)
+	}
 
 	// Check the financials.
 	fm = ht.host.FinancialMetrics()
@@ -557,7 +564,11 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Start by adding a storage obligation to the host. To emulate conditions
 	// of a renter creating the first contract, the storage obligation has no
@@ -567,7 +578,7 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 		t.Fatal(err)
 	}
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
+	err = ht.host.managedAddStorageObligation(so)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -596,7 +607,7 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 		FileContractRevisions: []types.FileContractRevision{{
 			ParentID:          so.id(),
 			UnlockConditions:  types.UnlockConditions{},
-			NewRevisionNumber: 1,
+			NewRevisionNumber: 2,
 
 			NewFileSize:           uint64(len(sectorData)),
 			NewFileMerkleRoot:     sectorRoot,
@@ -607,6 +618,7 @@ func TestSingleSectorStorageObligationStack(t *testing.T) {
 			NewUnlockHash:         types.UnlockConditions{}.UnlockHash(),
 		}},
 	}}
+	so.RevisionTransactionSet = revisionSet
 	ht.host.managedLockStorageObligation(so.id())
 	err = ht.host.managedModifyStorageObligation(so, nil, map[crypto.Hash][]byte{sectorRoot: sectorData})
 	if err != nil {
@@ -752,7 +764,11 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Start by adding a storage obligation to the host. To emulate conditions
 	// of a renter creating the first contract, the storage obligation has no
@@ -762,7 +778,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 		t.Fatal(err)
 	}
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
+	err = ht.host.managedAddStorageObligation(so)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -814,7 +830,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 		FileContractRevisions: []types.FileContractRevision{{
 			ParentID:          so.id(),
 			UnlockConditions:  types.UnlockConditions{},
-			NewRevisionNumber: 1,
+			NewRevisionNumber: 2,
 
 			NewFileSize:           uint64(len(sectorData)),
 			NewFileMerkleRoot:     sectorRoot,
@@ -825,6 +841,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 			NewUnlockHash:         types.UnlockConditions{}.UnlockHash(),
 		}},
 	}}
+	so.RevisionTransactionSet = revisionSet
 	ht.host.managedLockStorageObligation(so.id())
 
 	err = ht.host.managedModifyStorageObligation(so, nil, map[crypto.Hash][]byte{sectorRoot: sectorData})
@@ -863,7 +880,7 @@ func TestMultiSectorStorageObligationStack(t *testing.T) {
 		FileContractRevisions: []types.FileContractRevision{{
 			ParentID:          so.id(),
 			UnlockConditions:  types.UnlockConditions{},
-			NewRevisionNumber: 2,
+			NewRevisionNumber: 3,
 
 			NewFileSize:           uint64(len(sectorData) + len(sectorData2)),
 			NewFileMerkleRoot:     combinedRoot,
@@ -1011,7 +1028,11 @@ func TestAutoRevisionSubmission(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Start by adding a storage obligation to the host. To emulate conditions
 	// of a renter creating the first contract, the storage obligation has no
@@ -1021,7 +1042,7 @@ func TestAutoRevisionSubmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	ht.host.managedLockStorageObligation(so.id())
-	err = ht.host.managedAddStorageObligation(so, false)
+	err = ht.host.managedAddStorageObligation(so)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1159,7 +1180,11 @@ func TestLargeContractBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create 2 storage obligations for the test and add them to the host.
 	so1, err := ht.newTesterStorageObligation()
@@ -1167,7 +1192,7 @@ func TestLargeContractBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	ht.host.managedLockStorageObligation(so1.id())
-	err = ht.host.managedAddStorageObligation(so1, false)
+	err = ht.host.managedAddStorageObligation(so1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1177,7 +1202,7 @@ func TestLargeContractBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 	ht.host.managedLockStorageObligation(so2.id())
-	err = ht.host.managedAddStorageObligation(so2, false)
+	err = ht.host.managedAddStorageObligation(so2)
 	if err != nil {
 		t.Fatal(err)
 	}

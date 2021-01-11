@@ -1,6 +1,7 @@
 package host
 
 import (
+	"context"
 	"math"
 	"math/bits"
 	"sync"
@@ -64,7 +65,7 @@ var (
 	blockedWithdrawalTimeout = build.Select(build.Var{
 		Standard: 15 * time.Minute,
 		Dev:      5 * time.Minute,
-		Testing:  2 * time.Second,
+		Testing:  5 * time.Second,
 	}).(time.Duration)
 )
 
@@ -444,7 +445,7 @@ func (am *accountManager) callConsensusChanged(cc modules.ConsensusChange, oldHe
 	// Rotate in memory only if the on-disk rotation succeeded
 	if errRotate == nil {
 		am.fingerprints.rotate()
-	} else if errRotate != errRotationDisabled {
+	} else if !errors.Contains(errRotate, errRotationDisabled) {
 		am.h.log.Critical("ERROR: Could not rotate fingerprints on disk, withdrawals have been deactivated", errRotate)
 	}
 
@@ -845,7 +846,7 @@ func (am *accountManager) unblockWithdrawals(allowance types.Currency, bh types.
 func (am *accountManager) threadedPruneExpiredAccounts() {
 	for {
 		his := am.h.managedInternalSettings()
-		accountExpiryTimeout := int64(his.EphemeralAccountExpiry)
+		accountExpiryTimeout := int64(his.EphemeralAccountExpiry.Seconds())
 
 		func() {
 			// A timeout of zero means the host never wants to expire accounts.
@@ -906,10 +907,13 @@ func (am *accountManager) staticWaitForDepositResult(pr *persistResult) error {
 // staticWaitForWithdrawalResult will block until it receives a message on the
 // given result channel, or until it either times out or receives a stop signal.
 func (am *accountManager) staticWaitForWithdrawalResult(commitResultChan chan error) error {
+	ctx, cancel := context.WithTimeout(am.h.tg.StopCtx(), blockedWithdrawalTimeout)
+	defer cancel()
+
 	select {
 	case err := <-commitResultChan:
 		return err
-	case <-time.After(blockedWithdrawalTimeout):
+	case <-ctx.Done():
 		return ErrBalanceInsufficient
 	case <-am.h.tg.StopChan():
 		return ErrWithdrawalCancelled
@@ -1074,7 +1078,7 @@ func (a *account) depositExceedsMaxBalance(deposit, maxBalance types.Currency) b
 // withdrawalExceedsBalance returns true if withdrawal is larger than the
 // account balance.
 func (a *account) withdrawalExceedsBalance(withdrawal types.Currency) bool {
-	return a.balance.Cmp(withdrawal) < 0
+	return withdrawal.Cmp(a.balance) > 0
 }
 
 // sendResult will send the given result to the result channels that are waiting

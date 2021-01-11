@@ -6,6 +6,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -13,6 +14,7 @@ type (
 	// TestValues contains associated values for a test program. It implements
 	// the same functions as the MDMProgramBuilder for easier testing.
 	TestValues struct {
+		batch         bool
 		executionCost types.Currency
 		refund        types.Currency
 		collateral    types.Currency
@@ -54,54 +56,112 @@ func (v *TestValues) AddAppendInstruction(data []byte) {
 	time := uint64(modules.MDMTimeAppend)
 	newData := len(data)
 	readonly := false
-	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly)
+	batch := false
+	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly, batch)
 }
 
 // AddDropSectorsInstruction adds the cost of a drop sectors instruction to the
 // object.
 func (v *TestValues) AddDropSectorsInstruction(numSectors uint64) {
 	collateral := modules.MDMDropSectorsCollateral()
-	cost, refund := modules.MDMDropSectorsCost(v.staticPT, numSectors)
+	cost := modules.MDMDropSectorsCost(v.staticPT, numSectors)
 	memory := modules.MDMDropSectorsMemory()
 	time := modules.MDMDropSectorsTime(numSectors)
 	newData := 8
 	readonly := false
-	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly)
+	batch := false
+	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, newData, readonly, batch)
 }
 
-// AddHasSectorInstruction adds a hassector instruction to the builder, keeping track of running values.
+// AddHasSectorInstruction adds a hassector instruction to the builder, keeping
+// track of running values.
 func (v *TestValues) AddHasSectorInstruction() {
 	collateral := modules.MDMHasSectorCollateral()
-	cost, refund := modules.MDMHasSectorCost(v.staticPT)
+	cost := modules.MDMHasSectorCost(v.staticPT)
 	memory := modules.MDMHasSectorMemory()
 	time := uint64(modules.MDMTimeHasSector)
 	newData := crypto.HashSize
 	readonly := true
-	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly)
+	batch := true
+	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, newData, readonly, batch)
 }
 
 // AddReadOffsetInstruction adds a readoffset instruction to the builder,
 // keeping track of running values.
 func (v *TestValues) AddReadOffsetInstruction(length uint64) {
 	collateral := modules.MDMReadCollateral()
-	cost, refund := modules.MDMReadCost(v.staticPT, length)
+	cost := modules.MDMReadCost(v.staticPT, length)
 	memory := modules.MDMReadMemory()
 	time := uint64(modules.MDMTimeReadOffset)
 	newData := 8 + 8
 	readonly := true
-	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly)
+	batch := false
+	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, newData, readonly, batch)
 }
 
 // AddReadSectorInstruction adds a readsector instruction to the builder,
 // keeping track of running values.
 func (v *TestValues) AddReadSectorInstruction(length uint64) {
 	collateral := modules.MDMReadCollateral()
-	cost, refund := modules.MDMReadCost(v.staticPT, length)
+	cost := modules.MDMReadCost(v.staticPT, length)
 	memory := modules.MDMReadMemory()
 	time := uint64(modules.MDMTimeReadSector)
 	newData := 8 + 8 + crypto.HashSize
 	readonly := true
-	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly)
+	batch := false
+	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, newData, readonly, batch)
+}
+
+// AddRevisionInstruction adds a revision instruction to the builder, keeping
+// track of running values.
+func (v *TestValues) AddRevisionInstruction() {
+	collateral := modules.MDMRevisionCollateral()
+	cost := modules.MDMRevisionCost(v.staticPT)
+	memory := modules.MDMRevisionMemory()
+	time := uint64(modules.MDMTimeRevision)
+	readonly := true
+	batch := false
+	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, 0, readonly, batch)
+}
+
+// AddSwapSectorInstruction adds a revision instruction to the builder, keeping
+// track of running values.
+func (v *TestValues) AddSwapSectorInstruction() {
+	collateral := modules.MDMSwapSectorCollateral()
+	cost := modules.MDMSwapSectorCost(v.staticPT)
+	memory := modules.MDMSwapSectorMemory()
+	time := uint64(modules.MDMTimeSwapSector)
+	newData := 8 + 8
+	readonly := false
+	batch := false
+	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, newData, readonly, batch)
+}
+
+// AddUpdateRegistryInstruction adds a revision instruction to the builder, keeping
+// track of running values.
+func (v *TestValues) AddUpdateRegistryInstruction(spk types.SiaPublicKey, rv modules.SignedRegistryValue) {
+	memory := modules.MDMUpdateRegistryMemory()
+	collateral := modules.MDMUpdateRegistryCollateral()
+	cost, refund := modules.MDMUpdateRegistryCost(v.staticPT)
+	time := uint64(modules.MDMTimeUpdateRegistry)
+	newData := crypto.HashSize + 8 + crypto.SignatureSize + len(rv.Data) + len(encoding.Marshal(spk))
+	readonly := true
+	batch := true
+	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly, batch)
+}
+
+// AddReadRegistryInstruction adds a revision instruction to the builder, keeping
+// track of running values.
+func (v *TestValues) AddReadRegistryInstruction(spk types.SiaPublicKey) {
+	memory := modules.MDMReadRegistryMemory()
+	collateral := modules.MDMReadRegistryCollateral()
+	cost := modules.MDMReadRegistryCost(v.staticPT)
+	refund := types.ZeroCurrency
+	time := uint64(modules.MDMTimeReadRegistry)
+	newData := crypto.HashSize + len(encoding.Marshal(spk))
+	readonly := true
+	batch := true
+	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly, batch)
 }
 
 // Cost returns the current cost of the program which would result . If
@@ -138,8 +198,11 @@ func (v *TestValues) AssertOutputs(outputs []Output) error {
 		}
 		output, outputs = outputs[0], outputs[1:]
 
+		// Determine whether we expect the instruction to be batched.
+		batch := i < len(v.history)-1 && value.batch
+
 		// Assert the output.
-		err := value.AssertOutput(output)
+		err := value.AssertOutput(output, batch)
 		if err != nil {
 			return errors.AddContext(err, fmt.Sprintf("output #%v", i))
 		}
@@ -152,15 +215,15 @@ func (v *TestValues) AssertOutputs(outputs []Output) error {
 }
 
 // AssertOutput compares the TestValues to the costs within the provided output.
-func (v *TestValues) AssertOutput(output Output) error {
+func (v *TestValues) AssertOutput(output Output, batch bool) error {
 	cost, refund, collateral := v.Cost()
 	if !output.ExecutionCost.Equals(cost) {
 		return fmt.Errorf("execution costs don't match: %v != %v",
 			cost.HumanString(), output.ExecutionCost.HumanString())
 	}
-	if !output.PotentialRefund.Equals(refund) {
+	if !output.AdditionalStorageCost.Equals(refund) {
 		return fmt.Errorf("refund doesn't match: %v != %v",
-			refund.HumanString(), output.PotentialRefund.HumanString())
+			refund.HumanString(), output.AdditionalStorageCost.HumanString())
 	}
 	if !output.AdditionalCollateral.Equals(collateral) {
 		return fmt.Errorf("collateral doesn't match: %v != %v",
@@ -171,7 +234,7 @@ func (v *TestValues) AssertOutput(output Output) error {
 
 // addInstruction adds the collateral, cost, refund and memory cost of an
 // instruction to the value's state.
-func (v *TestValues) addInstruction(collateral, cost, refund types.Currency, memory, time uint64, newData int, readonly bool) {
+func (v *TestValues) addInstruction(collateral, cost, refund types.Currency, memory, time uint64, newData int, readonly, batch bool) {
 	// Update collateral
 	v.collateral = v.collateral.Add(collateral)
 	// Update memory and memory cost.
@@ -185,6 +248,7 @@ func (v *TestValues) addInstruction(collateral, cost, refund types.Currency, mem
 	*v.numInstructions++
 	*v.programDataLength += newData
 	v.readonly = v.readonly && readonly
+	v.batch = batch
 	// Add the new values to the history.
 	v.history = append(v.history, *v)
 }

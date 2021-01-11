@@ -1,9 +1,11 @@
 package renter
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"gitlab.com/NebulousLabs/errors"
 
@@ -11,7 +13,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
@@ -108,7 +109,7 @@ func (ss *StreamShard) Read(b []byte) (int, error) {
 		}
 		b[0] = ss.peek[0]
 		b = b[1:]
-		ss.n += 1
+		ss.n++
 		ss.peek = ss.peek[:0]
 		peekBytes++
 	}
@@ -127,7 +128,7 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 	defer r.tg.Done()
 
 	// Perform the upload, close the filenode, and return.
-	fileNode, err := r.callUploadStreamFromReader(up, reader, false)
+	fileNode, err := r.callUploadStreamFromReader(up, reader)
 	if err != nil {
 		return errors.AddContext(err, "unable to stream an upload from a reader")
 	}
@@ -136,16 +137,13 @@ func (r *Renter) UploadStreamFromReader(up modules.FileUploadParams, reader io.R
 
 // managedInitUploadStream verifies the upload parameters and prepares an empty
 // SiaFile for the upload.
-func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup bool) (*filesystem.FileNode, error) {
+func (r *Renter) managedInitUploadStream(up modules.FileUploadParams) (*filesystem.FileNode, error) {
 	siaPath, ec, force, repair, cipherType := up.SiaPath, up.ErasureCode, up.Force, up.Repair, up.CipherType
 	// Check if ec was set. If not use defaults.
 	var err error
 	if ec == nil && !repair {
-		up.ErasureCode, err = siafile.NewRSSubCode(DefaultDataPieces, DefaultParityPieces, 64)
-		if err != nil {
-			return nil, err
-		}
-		ec = up.ErasureCode
+		ec = modules.NewRSSubCodeDefault()
+		up.ErasureCode = ec
 	} else if ec != nil && repair {
 		return nil, errors.New("can't provide erasure code settings when doing repairs")
 	}
@@ -204,15 +202,16 @@ func (r *Renter) managedInitUploadStream(up modules.FileUploadParams, backup boo
 // the Sia network, this will happen faster than the entire upload is complete -
 // the streamer may continue uploading in the background after returning while
 // it is boosting redundancy.
-func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader io.Reader, backup bool) (fileNode *filesystem.FileNode, err error) {
+func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader io.Reader) (fileNode *filesystem.FileNode, err error) {
 	// Check the upload params first.
-	fileNode, err = r.managedInitUploadStream(up, backup)
+	fileNode, err = r.managedInitUploadStream(up)
 	if err != nil {
 		return nil, err
 	}
 	// Need to make a copy of this value for the defer statement. Because
 	// 'fileNode' is a named value, if you run the call `return nil, err`, then
-	// 'fileNode' will be set to 'nil' when defer calls 'fileNode.Close()'.
+	// 'fileNode' will be set to 'nil' when 'fileNode.Close()' gets called in
+	// the 'defer'.
 	fn := fileNode
 	defer func() {
 		// Ensure the fileNode is closed if there is an error upon return.
@@ -261,7 +260,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 
 		// Start the chunk upload.
 		offline, goodForRenew, _ := r.managedContractUtilityMaps()
-		uuc, err := r.managedBuildUnfinishedChunk(fileNode, chunkIndex, hosts, pks, true, offline, goodForRenew)
+		uuc, err := r.managedBuildUnfinishedChunk(fileNode, chunkIndex, hosts, pks, memoryPriorityHigh, offline, goodForRenew)
 		if err != nil {
 			return nil, errors.AddContext(err, "unable to fetch chunk for stream")
 		}
@@ -272,21 +271,20 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 
 		// Check if the chunk needs any work or if we can skip it.
 		if uuc.piecesCompleted < uuc.piecesNeeded {
-			// Add the chunk to the upload heap.
-			if !r.uploadHeap.managedPush(uuc) {
-				// The chunk can't be added to the heap. It's probably already being
-				// repaired. Flush the shard and move on to the next one.
+			// Add the chunk to the upload heap's repair map.
+			pushed, err := r.managedPushChunkForRepair(uuc, chunkTypeStreamChunk)
+			if err != nil {
+				return nil, errors.AddContext(err, "unable to push chunk")
+			}
+			if !pushed {
+				// The chunk wasn't added to the repair map meaning it must have
+				// already been in the repair map
 				_, _ = io.ReadFull(ss, make([]byte, fileNode.ChunkSize()))
 				if err := ss.Close(); err != nil {
 					return nil, err
 				}
 			}
-			// Notify the upload loop.
 			chunks = append(chunks, uuc)
-			select {
-			case r.uploadHeap.newUploads <- struct{}{}:
-			default:
-			}
 		} else {
 			// The chunk doesn't need any work. We still need to read a chunk
 			// from the shard though. Otherwise we will upload the wrong chunk
@@ -306,7 +304,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 
 		// If an io.EOF error occurred or less than chunkSize was read, we are
 		// done. Otherwise we report the error.
-		if _, err := ss.Result(); err == io.EOF {
+		if _, err := ss.Result(); errors.Contains(err, io.EOF) {
 			// All chunks successfully submitted.
 			break
 		} else if ss.err != nil {
@@ -315,15 +313,17 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 
 		// Call Peek to make sure that there's more data for another shard.
 		peek, err = ss.Peek()
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF) {
 			break
 		} else if err != nil {
 			return nil, ss.err
 		}
 	}
-	// Wait for all chunks to finish, then return.
+
+	// Wait for all chunks to become available.
+	start := time.Now()
 	for _, chunk := range chunks {
-		<-chunk.availableChan
+		<-chunk.staticAvailableChan
 		chunk.mu.Lock()
 		err := chunk.err
 		chunk.mu.Unlock()
@@ -332,10 +332,53 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 		}
 	}
 
+	// Wait for all chunks to reach full redundancy, but only wait for a limited
+	// amount of time, dependant on the time it took to reach availability.
+	ec := fileNode.ErasureCode()
+	ctx, cancel := context.WithTimeout(r.tg.StopCtx(), estimateTimeUntilComplete(time.Since(start), ec.MinPieces(), ec.NumPieces()))
+	defer cancel()
+
+LOOP:
+	for _, chunk := range chunks {
+		select {
+		case <-ctx.Done():
+			break LOOP
+		case <-chunk.staticUploadCompletedChan:
+		}
+	}
+
+	// TODO: we wait until all chunks reach full redundancy because if we
+	// wouldn't do that, and the recently uploaded skyfile gets requested
+	// immediately after upload (so when it became available) the PCWS would
+	// have incomplete state.
+	//
+	// It might be a good idea to improve this and build the PCWS state object
+	// on upload, seeing as we have all information at hand, and sort of
+	// pre-cache it.
+
 	// Disrupt to force an error and ensure the fileNode is being closed
 	// correctly.
 	if r.deps.Disrupt("failUploadStreamFromReader") {
 		return nil, errors.New("disrupted by failUploadStreamFromReader")
 	}
 	return fileNode, nil
+}
+
+// estimateTimeUntilComplete is a function that, depending on the time it took
+// for the chunk to become available and the parameters from the EC, returns an
+// estimate on how long it will take for the chunk to be uploaded completely
+func estimateTimeUntilComplete(timeUntilAvail time.Duration, minPieces, numPieces int) time.Duration {
+	timeUntilAvailNS := timeUntilAvail.Nanoseconds()
+
+	remaining := float64(numPieces-minPieces) / float64(minPieces)
+	timeRemainingNS := remaining * float64(timeUntilAvailNS)
+	timeRemainingNS *= 1.1 // account for possible slowdown
+
+	min := func(a, b time.Duration) time.Duration {
+		if a <= b {
+			return a
+		}
+		return b
+	}
+	return min(time.Duration(timeRemainingNS), maxWaitForCompleteUpload)
 }

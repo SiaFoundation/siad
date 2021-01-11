@@ -29,7 +29,7 @@ Here is a list of technical documentation to help understand the different parts
     * [HostDB](../modules/renter/hostdb/README.md)
         * [Hosttree](../modules/renter/hostdb/hosttree/README.md)
     * [Proto](../modules/renter/proto/README.md)
-    * [Skynet Blacklist](../modules/renter/skynetblacklist/README.md)
+    * [Skynet Blocklist](../modules/renter/skynetblocklist/README.md)
 * Transaction Pool - `coming soon`
 * [Wallet](../modules/wallet/README.md)
 

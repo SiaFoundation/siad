@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/ratelimit"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
@@ -169,11 +170,11 @@ func (c *Contractor) save() error {
 
 // convertPersist converts the pre-v1.3.1 contractor persist formats to the new
 // formats.
-func convertPersist(dir string) error {
+func convertPersist(dir string, rl *ratelimit.RateLimit) (err error) {
 	// Try loading v1.3.1 persist. If it has the correct version number, no
 	// further action is necessary.
 	persistPath := filepath.Join(dir, PersistFilename)
-	err := persist.LoadJSON(persistMeta, nil, persistPath)
+	err = persist.LoadJSON(persistMeta, nil, persistPath)
 	if err == nil {
 		return nil
 	}
@@ -219,11 +220,13 @@ func convertPersist(dir string) error {
 	}
 
 	// create the contracts directory if it does not yet exist
-	cs, err := proto.NewContractSet(filepath.Join(dir, "contracts"), modules.ProdDependencies)
+	cs, err := proto.NewContractSet(filepath.Join(dir, "contracts"), rl, modules.ProdDependencies)
 	if err != nil {
 		return err
 	}
-	defer cs.Close()
+	defer func() {
+		err = errors.Compose(err, cs.Close())
+	}()
 
 	// convert contracts to contract files
 	for _, c := range p.Contracts {

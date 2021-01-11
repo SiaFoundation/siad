@@ -11,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
+	"gitlab.com/NebulousLabs/errors"
 )
 
 type (
@@ -52,7 +53,7 @@ func decodeTransactionID(txidStr string) (types.TransactionID, error) {
 
 // tpoolFeeHandlerGET returns the current estimated fee. Transactions with
 // fees are lower than the estimated fee may take longer to confirm.
-func (api *API) tpoolFeeHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) tpoolFeeHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
 	min, max := api.tpool.FeeEstimation()
 	WriteJSON(w, TpoolFeeGET{
 		Minimum: min,
@@ -62,10 +63,10 @@ func (api *API) tpoolFeeHandlerGET(w http.ResponseWriter, req *http.Request, ps 
 
 // tpoolRawHandlerGET will provide the raw byte representation of a
 // transaction that matches the input id.
-func (api *API) tpoolRawHandlerGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) tpoolRawHandlerGET(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	txid, err := decodeTransactionID(ps.ByName("id"))
 	if err != nil {
-		WriteError(w, Error{"error decoding transaction id:" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"error decoding transaction id: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	txn, parents, exists := api.tpool.Transaction(txid)
@@ -95,7 +96,7 @@ func (api *API) tpoolRawHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 			rawParents = []byte(req.FormValue("parents"))
 		}
 		if err := encoding.Unmarshal(rawParents, &parents); err != nil {
-			WriteError(w, Error{"error decoding parents:" + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"error decoding parents: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}
@@ -105,7 +106,7 @@ func (api *API) tpoolRawHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 			rawTransaction = []byte(req.FormValue("transaction"))
 		}
 		if err := encoding.Unmarshal(rawTransaction, &txn); err != nil {
-			WriteError(w, Error{"error decoding transaction:" + err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{"error decoding transaction: " + err.Error()}, http.StatusBadRequest)
 			return
 		}
 	}
@@ -114,8 +115,8 @@ func (api *API) tpoolRawHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 	txnSet := append(parents, txn)
 	api.tpool.Broadcast(txnSet)
 	err := api.tpool.AcceptTransactionSet(txnSet)
-	if err != nil && err != modules.ErrDuplicateTransactionSet {
-		WriteError(w, Error{"error accepting transaction set:" + err.Error()}, http.StatusBadRequest)
+	if err != nil && !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
+		WriteError(w, Error{"error accepting transaction set: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteSuccess(w)
@@ -123,15 +124,15 @@ func (api *API) tpoolRawHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 
 // tpoolConfirmedGET returns whether the specified transaction has
 // been seen on the blockchain.
-func (api *API) tpoolConfirmedGET(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) tpoolConfirmedGET(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	txid, err := decodeTransactionID(ps.ByName("id"))
 	if err != nil {
-		WriteError(w, Error{"error decoding transaction id:" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"error decoding transaction id: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	confirmed, err := api.tpool.TransactionConfirmed(txid)
 	if err != nil {
-		WriteError(w, Error{"error fetching transaction status:" + err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{"error fetching transaction status: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
 	WriteJSON(w, TpoolConfirmedGET{
@@ -141,7 +142,7 @@ func (api *API) tpoolConfirmedGET(w http.ResponseWriter, req *http.Request, ps h
 
 // tpoolTransactionsHandler returns the current transactions of the transaction
 // pool
-func (api *API) tpoolTransactionsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
+func (api *API) tpoolTransactionsHandler(w http.ResponseWriter, _ *http.Request, ps httprouter.Params) {
 	txns := api.tpool.Transactions()
 	WriteJSON(w, TpoolTxnsGET{
 		Transactions: txns,

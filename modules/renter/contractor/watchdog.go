@@ -154,7 +154,7 @@ func (w *watchdog) callAllowanceUpdated(a modules.Allowance) {
 func (w *watchdog) callMonitorContract(args monitorContractArgs) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.contractor.log.Debugln("callMonitorContract", args.fcID)
+	w.contractor.log.Debugf("callMonitorContract for contract: %v at height %v (Watchdog height: %v)", args.fcID, args.blockHeight, w.blockHeight)
 
 	if _, ok := w.contracts[args.fcID]; ok {
 		w.contractor.log.Println("watchdog asked to watch contract it already knowns: ", args.fcID)
@@ -204,14 +204,20 @@ func (w *watchdog) callMonitorContract(args monitorContractArgs) error {
 // callScanConsensusChange scans applied and reverted blocks, updating the
 // watchdog's state with all information relevant to monitored contracts.
 func (w *watchdog) callScanConsensusChange(cc modules.ConsensusChange) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	for _, block := range cc.RevertedBlocks {
-		w.blockHeight--
-		w.managedScanRevertedBlock(block)
+		if block.ID() != types.GenesisID {
+			w.blockHeight--
+		}
+		w.scanRevertedBlock(block)
 	}
 
 	for _, block := range cc.AppliedBlocks {
-		w.blockHeight++
-		w.managedScanAppliedBlock(block)
+		if block.ID() != types.GenesisID {
+			w.blockHeight++
+		}
+		w.scanAppliedBlock(block)
 	}
 }
 
@@ -235,7 +241,7 @@ func (w *watchdog) sendTxnSet(txnSet []types.Transaction, reason string) {
 		defer w.contractor.tg.Done()
 
 		err = w.tpool.AcceptTransactionSet(txnSet)
-		if err != nil && err != modules.ErrDuplicateTransactionSet {
+		if err != nil && !errors.Contains(err, modules.ErrDuplicateTransactionSet) {
 			w.contractor.log.Println("watchdog send transaction error: "+reason, err)
 		}
 	}()
@@ -359,13 +365,12 @@ func removeTxnFromSet(txn types.Transaction, txnSet []types.Transaction) ([]type
 	return nil, errTxnNotInSet
 }
 
-// managedScanAppliedBlock updates the watchdog's state with data from a newly
+// scanAppliedBlock updates the watchdog's state with data from a newly
 // connected block. It checks for contracts, revisions, and proofs of monitored
 // contracts and also for double-spends of any outputs which monitored contracts
 // depend on.
-func (w *watchdog) managedScanAppliedBlock(block types.Block) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+func (w *watchdog) scanAppliedBlock(block types.Block) {
+	w.contractor.log.Debugln("Watchdog scanning applied block at height: ", w.blockHeight)
 
 	for _, txn := range block.Transactions {
 		for i := range txn.FileContracts {
@@ -480,14 +485,12 @@ func (w *watchdog) findDependencySpends(txn types.Transaction) {
 	}
 }
 
-// managedScanRevertedBlock updates the watchdog's state with data from a newly
+// scanRevertedBlock updates the watchdog's state with data from a newly
 // reverted block. It checks for the removal of contracts, revisions, and proofs
 // of monitored contracts and also for the creation of any new dependencies for
 // monitored formation transaction sets.
-func (w *watchdog) managedScanRevertedBlock(block types.Block) {
-	w.contractor.log.Debugln("processing reverted block at height: ", w.blockHeight)
-	w.mu.Lock()
-	defer w.mu.Unlock()
+func (w *watchdog) scanRevertedBlock(block types.Block) {
+	w.contractor.log.Debugln("Watchdog scanning reverted block at height: ", w.blockHeight)
 
 	outputsCreatedInBlock := make(map[types.SiacoinOutputID]*types.Transaction)
 	for i := 0; i < len(block.Transactions); i++ {

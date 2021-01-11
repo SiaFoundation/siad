@@ -76,7 +76,11 @@ func TestHostAnnounce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer af.Close()
+	defer func() {
+		if err := af.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create an announcement, then use the address finding module to scan the
 	// blockchain for the host's address.
@@ -110,7 +114,11 @@ func TestHostAnnounceAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create an announcement finder to scan the blockchain for host
 	// announcements.
@@ -118,7 +126,11 @@ func TestHostAnnounceAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer af.Close()
+	defer func() {
+		if err := af.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	// Create an announcement, then use the address finding module to scan the
 	// blockchain for the host's address.
@@ -153,7 +165,11 @@ func TestHostAnnounceCheckUnlockHash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ht.Close()
+	defer func() {
+		if err := ht.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	ht.host.mu.RLock()
 	oldUnlockHash := ht.host.unlockHash
