@@ -17,6 +17,7 @@ func main() {
 	// Determine which port to use when talking to siad.
 	args := os.Args
 	addr := "localhost:9980"
+	var password string
 	var cmd string
 	if len(args) == 1 {
 		cmd = "dl"
@@ -25,8 +26,12 @@ func main() {
 	} else if len(args) == 3 {
 		cmd = args[1]
 		addr = args[2]
-	} else if len(args) > 3 {
-		fmt.Println("Usage: ./skynet-benchmark [optional: which test to run] [optional: endpoint for siad api, defaults to \"localhost:9980\"]\n\tTest options: 'dl' and 'basic'")
+	} else if len(args) == 3 {
+		cmd = args[1]
+		addr = args[2]
+		password = args[3]
+	} else if len(args) > 4 {
+		fmt.Println("Usage: ./skynet-benchmark [optional: which test to run] [optional: endpoint for siad api, defaults to \"localhost:9980\"] [optional: api password]\n\tTest options: 'dl' and 'basic'")
 		return
 	}
 
@@ -37,6 +42,9 @@ func main() {
 		return
 	}
 	opts.Address = addr
+	if password != "" {
+		opts.Password = password
+	}
 	c = client.New(opts)
 
 	// Parse the options.
