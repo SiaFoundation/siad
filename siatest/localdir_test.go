@@ -14,6 +14,8 @@ func TestCreateDir(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	t.Parallel()
+
 	// Specify the parameters for the group
 	groupParams := GroupParams{
 		Miners: 1,
