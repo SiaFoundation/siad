@@ -327,6 +327,12 @@ func testNewPCWSByRoots(t *testing.T) {
 	if err != nil {
 		t.Fatal("unexpected")
 	}
+
+	// verify passing nil for the master key returns an error
+	_, err = r.newPCWSByRoots(context.Background(), roots[:1], ptec, nil, 0)
+	if err == nil {
+		t.Fatal("unexpected")
+	}
 }
 
 // testGouging checks that the gouging check is triggering at the right

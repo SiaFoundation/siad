@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"reflect"
-	"sync/atomic"
+	"strings"
 	"testing"
 	"time"
 
@@ -82,11 +82,6 @@ func testSkylinkDataSourceSmallFile(t *testing.T) {
 		staticRenter:     new(Renter),
 	}
 
-	closed := atomic.LoadUint64(&sds.atomicClosed)
-	if closed != 0 {
-		t.Fatal("unexpected")
-	}
-
 	if sds.DataSize() != datasize {
 		t.Fatal("unexpected", sds.DataSize(), datasize)
 	}
@@ -103,10 +98,23 @@ func testSkylinkDataSourceSmallFile(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
+	// verify invalid offset and length
+	responseChan := sds.ReadStream(context.Background(), 1, modules.SectorSize, types.ZeroCurrency)
+	select {
+	case resp := <-responseChan:
+		if resp == nil || resp.staticErr == nil {
+			t.Fatal("unexpected")
+		}
+		if !strings.Contains(resp.staticErr.Error(), "given offset and fetchsize exceed the underlying filesize") {
+			t.Fatal("unexpected")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("unexpected")
+	}
+
 	length := fastrand.Uint64n(datasize/4) + 1
 	offset := fastrand.Uint64n(datasize - length)
-
-	responseChan := sds.ReadStream(context.Background(), offset, length, types.ZeroCurrency)
+	responseChan = sds.ReadStream(context.Background(), offset, length, types.ZeroCurrency)
 	select {
 	case resp := <-responseChan:
 		if resp == nil || resp.staticErr != nil {
@@ -121,9 +129,15 @@ func testSkylinkDataSourceSmallFile(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	sds.SilentClose()
-	closed = atomic.LoadUint64(&sds.atomicClosed)
-	if closed != 1 {
+	select {
+	case <-sds.staticCtx.Done():
+		t.Fatal("unexpected")
+	case <-time.After(10 * time.Millisecond):
+		sds.SilentClose()
+	}
+	select {
+	case <-sds.staticCtx.Done():
+	case <-time.After(10 * time.Millisecond):
 		t.Fatal("unexpected")
 	}
 }
@@ -165,11 +179,6 @@ func testSkylinkDataSourceLargeFile(t *testing.T) {
 		staticRenter:     new(Renter),
 	}
 
-	closed := atomic.LoadUint64(&sds.atomicClosed)
-	if closed != 0 {
-		t.Fatal("unexpected")
-	}
-
 	if sds.DataSize() != datasize {
 		t.Fatal("unexpected", sds.DataSize(), datasize)
 	}
@@ -193,10 +202,10 @@ func testSkylinkDataSourceLargeFile(t *testing.T) {
 	select {
 	case resp := <-responseChan:
 		if resp == nil || resp.staticErr != nil {
-			t.Fatal("unexpected")
+			t.Fatal("unexpected", resp.staticErr)
 		}
 		if !bytes.Equal(resp.staticData, allData[offset:offset+length]) {
-			t.Log("expected: ", allData[offset:offset+length], len(allData[offset:offset+length]))
+			t.Log("expected: ", allData[offset:offset+length], len(allData[offset:offset+length]), length)
 			t.Log("actual:   ", resp.staticData, len(resp.staticData))
 			t.Fatal("unexepected data")
 		}
@@ -204,9 +213,15 @@ func testSkylinkDataSourceLargeFile(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	sds.SilentClose()
-	closed = atomic.LoadUint64(&sds.atomicClosed)
-	if closed != 1 {
+	select {
+	case <-sds.staticCtx.Done():
+		t.Fatal("unexpected")
+	case <-time.After(10 * time.Millisecond):
+		sds.SilentClose()
+	}
+	select {
+	case <-sds.staticCtx.Done():
+	case <-time.After(10 * time.Millisecond):
 		t.Fatal("unexpected")
 	}
 }
