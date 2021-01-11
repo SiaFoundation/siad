@@ -51,7 +51,7 @@ func TestSkynet(t *testing.T) {
 	groupParams := siatest.GroupParams{
 		Hosts:   3,
 		Miners:  1,
-		Renters: 1,
+		Portals: 1,
 	}
 	groupDir := renterTestDir(t.Name())
 
@@ -3373,7 +3373,7 @@ func BenchmarkSkynetSingleSector(b *testing.B) {
 	groupParams := siatest.GroupParams{
 		Hosts:   3,
 		Miners:  1,
-		Renters: 1,
+		Portals: 1,
 	}
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
@@ -3736,6 +3736,8 @@ func TestSkynetCleanupOnError(t *testing.T) {
 
 	// Add a new renter with that dependency to interrupt skyfile uploads.
 	rt := node.RenterTemplate
+	rt.Allowance = siatest.DefaultAllowance
+	rt.Allowance.PaymentContractInitialFunding = siatest.DefaultPaymentContractInitialFunding
 	rt.RenterDeps = deps
 	nodes, err := tg.AddNodes(rt)
 	if err != nil {
