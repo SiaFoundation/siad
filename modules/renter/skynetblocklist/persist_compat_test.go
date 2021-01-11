@@ -100,7 +100,7 @@ func testPersistCompatTwoFiles(t *testing.T) {
 	}
 }
 
-// testPersistCompatv143Tov150 tests converting the skynet blacklist persistence
+// testPersistCompatv143Tov150 tests converting the skynet blocklist persistence
 // from v1.4.3 to v1.5.0
 func testPersistCompatv143Tov150(t *testing.T) {
 	t.Parallel()
