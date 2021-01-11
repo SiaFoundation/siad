@@ -3,6 +3,7 @@ package types
 import (
 	"testing"
 
+	"gitlab.com/NebulousLabs/encoding"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -135,6 +136,45 @@ func TestCorrectFileContractRevisions(t *testing.T) {
 	err = txn.correctFileContractRevisions(0)
 	if !errors.Contains(err, ErrFileContractOutputSumViolation) {
 		t.Error("Expecting ErrFileContractOutputSumViolation:", err)
+	}
+}
+
+// TestCorrectArbitraryData probes the correctArbitraryData
+// method of the Transaction type.
+func TestCorrectArbitraryData(t *testing.T) {
+	// Try an invalid update prior to the hardfork height.
+	txn := Transaction{
+		ArbitraryData: [][]byte{encoding.MarshalAll(SpecifierFoundation, [...]byte{1, 2, 3})},
+	}
+	if err := txn.correctArbitraryData(FoundationHardforkHeight - 1); err != nil {
+		t.Error(err)
+	}
+	// Try after the hardfork height.
+	if err := txn.correctArbitraryData(FoundationHardforkHeight); !errors.Contains(err, ErrInvalidFoundationUpdateEncoding) {
+		t.Error(err)
+	}
+
+	// Try an uninitialized update prior to the hardfork height.
+	txn.ArbitraryData[0] = encoding.MarshalAll(SpecifierFoundation, FoundationUnlockHashUpdate{})
+	if err := txn.correctArbitraryData(FoundationHardforkHeight - 1); err != nil {
+		t.Error(err)
+	}
+	// Try after the hardfork height.
+	if err := txn.correctArbitraryData(FoundationHardforkHeight); !errors.Contains(err, ErrUninitializedFoundationUpdate) {
+		t.Error(err)
+	}
+
+	// Try an valid update prior to the hardfork height.
+	txn.ArbitraryData[0] = encoding.MarshalAll(SpecifierFoundation, FoundationUnlockHashUpdate{
+		NewPrimary:  UnlockHash{1, 2, 3},
+		NewFailsafe: UnlockHash{4, 5, 6},
+	})
+	if err := txn.correctArbitraryData(FoundationHardforkHeight - 1); err != nil {
+		t.Error(err)
+	}
+	// Try after the hardfork height.
+	if err := txn.correctArbitraryData(FoundationHardforkHeight); err != nil {
+		t.Error(err)
 	}
 }
 
