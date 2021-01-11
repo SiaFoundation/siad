@@ -781,11 +781,6 @@ func TestStorageFolderUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := st.server.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
 
 	err = st.getAPI("/host/storage", &sfs)
 	if err != nil {
@@ -842,11 +837,6 @@ func TestStorageFolderUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := st.server.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
 
 	// storage folder should still be good
 	err = st.getAPI("/host/storage", &sfs)

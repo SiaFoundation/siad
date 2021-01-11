@@ -2048,11 +2048,6 @@ func TestRemoteFileRepairMassive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() {
-		if err := stH1.server.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
 	testGroup := []*serverTester{st, stH1}
 
 	// Connect the testers to eachother so that they are all on the same
