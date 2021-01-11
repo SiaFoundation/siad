@@ -2,7 +2,6 @@ package renter
 
 import (
 	"context"
-	"sync/atomic"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -23,11 +22,6 @@ type (
 	// Notably, it creates a pcws for every single chunk in the Skylink and
 	// keeps them in memory, to reduce latency on seeking through the file.
 	skylinkDataSource struct {
-		// atomicClosed is an atomic variable to check if the data source has
-		// been closed yet. This is primarily used to ensure that the cancelFunc
-		// is only called once.
-		atomicClosed uint64
-
 		// Metadata.
 		staticID       modules.DataSourceID
 		staticLayout   modules.SkyfileLayout
@@ -80,12 +74,6 @@ func (sds *skylinkDataSource) RequestSize() uint64 {
 
 // SilentClose implements streamBufferDataSource
 func (sds *skylinkDataSource) SilentClose() {
-	// Check if SilentClose has already been called.
-	swapped := atomic.CompareAndSwapUint64(&sds.atomicClosed, 0, 1)
-	if !swapped {
-		return // already closed
-	}
-
 	// Cancelling the context for the data source should be sufficient. As all
 	// child processes (such as the pcws for each chunk) should be using
 	// contexts derived from the sds context.
@@ -104,6 +92,9 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkRea
 	// Prepare an array of download chans on which we'll receive the data.
 	numChunks := fetchSize / chunkSize
 	if fetchSize%chunkSize != 0 {
+		numChunks += 1
+	}
+	if off%chunkSize != 0 {
 		numChunks += 1
 	}
 	downloadChans := make([]chan *downloadResponse, 0, numChunks)
@@ -148,6 +139,12 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkRea
 			return responseChan
 		}
 		downloadChans = append(downloadChans, respChan)
+		if len(downloadChans) > int(numChunks) {
+			responseChan <- &skylinkReadResponse{
+				staticErr: errors.New("unexpected amount of chunks scheduled for download"),
+			}
+			return responseChan
+		}
 
 		off += downloadSize
 		n += downloadSize
@@ -156,20 +153,27 @@ func (sds *skylinkDataSource) ReadStream(off, fetchSize uint64) chan *skylinkRea
 	// Launch a goroutine that collects all download responses, aggregates them
 	// and sends it as a single response over the response channel.
 	err := sds.staticRenter.tg.Launch(func() {
-		defer close(responseChan)
-
 		data := make([]byte, fetchSize)
 		offset := 0
+		failed := false
 		for _, respChan := range downloadChans {
 			resp := <-respChan
-			if resp.err != nil {
-				responseChan <- &skylinkReadResponse{staticErr: resp.err}
-				break
+			if resp.err == nil {
+				n := copy(data[offset:], resp.data)
+				offset += n
+				continue
 			}
-			n := copy(data[offset:], resp.data)
-			offset += n
+			if !failed {
+				failed = true
+				responseChan <- &skylinkReadResponse{staticErr: resp.err}
+				close(responseChan)
+			}
 		}
-		responseChan <- &skylinkReadResponse{staticData: data}
+
+		if !failed {
+			responseChan <- &skylinkReadResponse{staticData: data}
+			close(responseChan)
+		}
 	})
 	if err != nil {
 		responseChan <- &skylinkReadResponse{staticErr: err}
@@ -265,7 +269,7 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Curren
 	}
 
 	// Create PCWSs for every chunk in the fanout
-	fanoutChunks, err := decodeFanoutIntoChunks(layout, fanoutBytes)
+	fanoutChunks, err := layout.DecodeFanoutIntoChunks(fanoutBytes)
 	if err != nil {
 		return nil, errors.AddContext(err, "error parsing skyfile fanout")
 	}
@@ -294,46 +298,4 @@ func (r *Renter) skylinkDataSource(link modules.Skylink, pricePerMS types.Curren
 		staticRenter:     r,
 	}
 	return sds, nil
-}
-
-// decodeFanoutIntoChunks will take the fanout bytes from a skyfile and decode
-// them in to chunks.
-func decodeFanoutIntoChunks(ll modules.SkyfileLayout, fanoutBytes []byte) ([][]crypto.Hash, error) {
-	// There is no fanout if there are no fanout settings.
-	if len(fanoutBytes) == 0 {
-		return nil, nil
-	}
-
-	// Special case: if the data of the file is using 1-of-N erasure coding,
-	// each piece will be identical, so the fanout will only have encoded a
-	// single piece for each chunk.
-	var piecesPerChunk uint64
-	var chunkRootsSize uint64
-	if ll.FanoutDataPieces == 1 && ll.CipherType == crypto.TypePlain {
-		piecesPerChunk = 1
-		chunkRootsSize = crypto.HashSize
-	} else {
-		// This is the case where the file data is not 1-of-N. Every piece is
-		// different, so every piece must get enumerated.
-		piecesPerChunk = uint64(ll.FanoutDataPieces) + uint64(ll.FanoutParityPieces)
-		chunkRootsSize = crypto.HashSize * piecesPerChunk
-	}
-	// Sanity check - the fanout bytes should be an even number of chunks.
-	if uint64(len(fanoutBytes))%chunkRootsSize != 0 {
-		return nil, errors.New("the fanout bytes do not contain an even number of chunks")
-	}
-	numChunks := uint64(len(fanoutBytes)) / chunkRootsSize
-
-	// Decode the fanout data into the list of chunks for the
-	// fanoutStreamBufferDataSource.
-	chunks := make([][]crypto.Hash, 0, numChunks)
-	for i := uint64(0); i < numChunks; i++ {
-		chunk := make([]crypto.Hash, piecesPerChunk)
-		for j := uint64(0); j < piecesPerChunk; j++ {
-			fanoutOffset := (i * chunkRootsSize) + (j * crypto.HashSize)
-			copy(chunk[j][:], fanoutBytes[fanoutOffset:])
-		}
-		chunks = append(chunks, chunk)
-	}
-	return chunks, nil
 }

@@ -2,6 +2,7 @@ package modules
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 	"math"
 	"os"
@@ -313,6 +314,48 @@ func (sl *SkyfileLayout) Decode(b []byte) {
 	if offset != SkyfileLayoutSize {
 		build.Critical("layout size does not match the amount of data decoded")
 	}
+}
+
+// DecodeFanoutIntoChunks will take the fanout bytes from a skyfile and decode
+// them in to chunks.
+func (sl *SkyfileLayout) DecodeFanoutIntoChunks(fanoutBytes []byte) ([][]crypto.Hash, error) {
+	// There is no fanout if there are no fanout settings.
+	if len(fanoutBytes) == 0 {
+		return nil, nil
+	}
+
+	// Special case: if the data of the file is using 1-of-N erasure coding,
+	// each piece will be identical, so the fanout will only have encoded a
+	// single piece for each chunk.
+	var piecesPerChunk uint64
+	var chunkRootsSize uint64
+	if sl.FanoutDataPieces == 1 && sl.CipherType == crypto.TypePlain {
+		piecesPerChunk = 1
+		chunkRootsSize = crypto.HashSize
+	} else {
+		// This is the case where the file data is not 1-of-N. Every piece is
+		// different, so every piece must get enumerated.
+		piecesPerChunk = uint64(sl.FanoutDataPieces) + uint64(sl.FanoutParityPieces)
+		chunkRootsSize = crypto.HashSize * piecesPerChunk
+	}
+	// Sanity check - the fanout bytes should be an even number of chunks.
+	if uint64(len(fanoutBytes))%chunkRootsSize != 0 {
+		return nil, errors.New("the fanout bytes do not contain an even number of chunks")
+	}
+	numChunks := uint64(len(fanoutBytes)) / chunkRootsSize
+
+	// Decode the fanout data into the list of chunks for the
+	// fanoutStreamBufferDataSource.
+	chunks := make([][]crypto.Hash, 0, numChunks)
+	for i := uint64(0); i < numChunks; i++ {
+		chunk := make([]crypto.Hash, piecesPerChunk)
+		for j := uint64(0); j < piecesPerChunk; j++ {
+			fanoutOffset := (i * chunkRootsSize) + (j * crypto.HashSize)
+			copy(chunk[j][:], fanoutBytes[fanoutOffset:])
+		}
+		chunks = append(chunks, chunk)
+	}
+	return chunks, nil
 }
 
 // Encode will return a []byte that has compactly encoded all of the layout
