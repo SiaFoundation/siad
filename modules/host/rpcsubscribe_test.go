@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 
@@ -59,15 +59,23 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	fastrand.Read(sub[:])
 	var notificationUploaded, notificationDownloaded uint64
 	var numNotifications uint64
+	var notificationMu sync.Mutex
 	err := rhp.staticRenterMux.NewListener(hex.EncodeToString(sub[:]), func(stream siamux.Stream) {
-		atomic.AddUint64(&numNotifications, 1)
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		defer func() {
+			if err := stream.Close(); err != nil {
+				t.Error(err)
+			}
+		}()
+		numNotifications++
 
 		// Copy the output to the pipe.
 		io.Copy(notificationWriter, stream)
 
 		// Collect used bandwidth.
-		atomic.AddUint64(&notificationDownloaded, stream.Limit().Downloaded())
-		atomic.AddUint64(&notificationUploaded, stream.Limit().Uploaded())
+		notificationDownloaded += stream.Limit().Downloaded()
+		notificationUploaded += stream.Limit().Uploaded()
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -122,8 +130,10 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	// Prepare a function to compute expected budget.
 	l := stream.Limit()
 	expectedBudget := func(costs types.Currency) types.Currency {
-		upCost := pt.UploadBandwidthCost.Mul64(l.Uploaded() + atomic.LoadUint64(&notificationUploaded))
-		downCost := pt.DownloadBandwidthCost.Mul64(l.Downloaded() + atomic.LoadUint64(&notificationDownloaded))
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		upCost := pt.UploadBandwidthCost.Mul64(l.Uploaded() + notificationUploaded)
+		downCost := pt.DownloadBandwidthCost.Mul64(l.Downloaded() + notificationDownloaded)
 		return initialBudget.Sub(upCost).Sub(downCost).Sub(costs)
 	}
 
@@ -331,7 +341,9 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// Check number of notifications.
-	if expected := atomic.LoadUint64(&numNotifications); expected != 2 {
-		t.Fatal("wrong number of notifications", expected, 2)
+	notificationMu.Lock()
+	if expected := numNotifications; expected != 2 {
+		t.Error("wrong number of notifications", expected, 2)
 	}
+	notificationMu.Unlock()
 }
