@@ -26,7 +26,7 @@ func main() {
 	} else if len(args) == 3 {
 		cmd = args[1]
 		addr = args[2]
-	} else if len(args) == 3 {
+	} else if len(args) == 4 {
 		cmd = args[1]
 		addr = args[2]
 		password = args[3]
