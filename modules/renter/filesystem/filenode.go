@@ -44,8 +44,7 @@ func (n *FileNode) Close() error {
 	// If a parent exists, we need to lock it while closing a child.
 	parent := n.node.managedLockWithParent()
 
-	// Set SiaFile 'nil' in test builds to prevent using the siafile after
-	// calling close.
+	// Mark node as closed and sanity check that it hasn't been closed before.
 	if n.closed {
 		build.Critical("close called multiple times on same FileNode")
 	}
