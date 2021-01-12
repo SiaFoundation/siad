@@ -1519,7 +1519,7 @@ func TestExecuteReadRegistryProgram(t *testing.T) {
 	// Create the 'UpdateRegistry' program.
 	pt := rhp.managedPriceTable()
 	pb := modules.NewProgramBuilder(pt, types.BlockHeight(fastrand.Uint64n(1000))) // random duration since ReadRegistry doesn't depend on duration.
-	err = pb.AddReadRegistryInstruction(spk, rv.Tweak)
+	_, err = pb.AddReadRegistryInstruction(spk, rv.Tweak)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -269,17 +269,18 @@ func MDMSwapSectorCost(pt *RPCPriceTable) types.Currency {
 // MDMUpdateRegistryCost is the cost of executing a 'UpdateRegistry'
 // instruction.
 func MDMUpdateRegistryCost(pt *RPCPriceTable) (_, _ types.Currency) {
-	// Cost is the same as uploading and storing a registry entry for 10 years.
+	// Cost is the same as uploading and storing a registry entry for 5 years.
 	writeCost := MDMWriteCost(pt, RegistryEntrySize)
-	storeCost := pt.WriteStoreCost.Mul64(RegistryEntrySize).Mul64(uint64(10 * types.BlocksPerYear))
+	storeCost := pt.WriteStoreCost.Mul64(RegistryEntrySize).Mul64(uint64(5 * types.BlocksPerYear))
 	return writeCost.Add(storeCost), storeCost
 }
 
 // MDMReadRegistryCost is the cost of executing a 'ReadRegistry' instruction.
-func MDMReadRegistryCost(pt *RPCPriceTable) types.Currency {
-	// 10 years of storage for an entry.
-	cost, _ := MDMUpdateRegistryCost(pt)
-	return cost
+func MDMReadRegistryCost(pt *RPCPriceTable) (_, _ types.Currency) {
+	// Cost is the same as uploading and storing a registry entry for 10 years.
+	writeCost := MDMWriteCost(pt, RegistryEntrySize)
+	storeCost := pt.WriteStoreCost.Mul64(RegistryEntrySize).Mul64(uint64(10 * types.BlocksPerYear))
+	return writeCost.Add(storeCost), storeCost
 }
 
 // MDMWriteCost is the cost of executing a 'Write' instruction of a certain length.

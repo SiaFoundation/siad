@@ -19,7 +19,7 @@ type instruction interface {
 	Cost() (executionCost types.Currency, storageCost types.Currency, _ error)
 	// Execute executes the instruction without committing the changes to the
 	// storage obligation.
-	Execute(output) output
+	Execute(output) (output, types.Currency)
 	// Memory returns the amount of memory allocated by the instruction which
 	// sticks around beyond the scope of the instruction until the program gets
 	// committed/canceled.

@@ -47,15 +47,15 @@ func (p *program) staticDecodeReadRegistryInstruction(instruction modules.Instru
 }
 
 // Execute executes the 'ReadRegistry' instruction.
-func (i *instructionReadRegistry) Execute(prevOutput output) output {
+func (i *instructionReadRegistry) Execute(prevOutput output) (output, types.Currency) {
 	// Fetch the args.
 	pubKey, err := i.staticData.SiaPublicKey(i.pubKeyOffset, i.pubKeyLength)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 	tweak, err := i.staticData.Hash(i.tweakOffset)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 
 	// Prepare the output. An empty output.Output means the data wasn't found.
@@ -68,14 +68,15 @@ func (i *instructionReadRegistry) Execute(prevOutput output) output {
 	// Get the value. If this fails we are done.
 	rv, found := i.staticState.host.RegistryGet(pubKey, tweak)
 	if !found {
-		return out
+		_, refund := modules.MDMReadRegistryCost(i.staticState.priceTable)
+		return out, refund
 	}
 
 	// Return the signature followed by the data.
 	rev := make([]byte, 8)
 	binary.LittleEndian.PutUint64(rev, rv.Revision)
 	out.Output = append(rv.Signature[:], append(rev, rv.Data...)...)
-	return out
+	return out, types.ZeroCurrency
 }
 
 // Registry reads can be batched, because they are both tiny, and low latency.
@@ -92,8 +93,8 @@ func (i *instructionReadRegistry) Collateral() types.Currency {
 }
 
 // Cost returns the Cost of this `ReadRegistry` instruction.
-func (i *instructionReadRegistry) Cost() (executionCost, _ types.Currency, err error) {
-	executionCost = modules.MDMReadRegistryCost(i.staticState.priceTable)
+func (i *instructionReadRegistry) Cost() (executionCost, storeCost types.Currency, err error) {
+	executionCost, storeCost = modules.MDMReadRegistryCost(i.staticState.priceTable)
 	return
 }
 

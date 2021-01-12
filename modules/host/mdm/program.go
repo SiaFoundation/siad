@@ -202,6 +202,12 @@ func (p *program) addCost(cost types.Currency) error {
 	return nil
 }
 
+// refundCost refunds an instructions cost to the program.
+func (p *program) refundCost(cost types.Currency) {
+	p.staticBudget.Deposit(cost)
+	p.executionCost = p.executionCost.Sub(cost)
+}
+
 // executeInstructions executes the programs instructions sequentially while
 // returning the results to the caller using outputChan.
 func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot crypto.Hash) error {
@@ -209,6 +215,7 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		NewSize:       fcSize,
 		NewMerkleRoot: fcRoot,
 	}
+	var refund types.Currency
 	for idx, i := range p.instructions {
 		select {
 		case <-ctx.Done(): // Check for interrupt
@@ -251,7 +258,11 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		// batched and if it's not the last instruction in the program.
 		batch := idx < len(p.instructions)-1 && p.instructions[idx+1].Batch()
 		// Execute next instruction.
-		output = i.Execute(output)
+		output, refund = i.Execute(output)
+		// Issue potential refund.
+		if !refund.IsZero() {
+			p.refundCost(refund)
+		}
 		p.outputChan <- Output{
 			output:                output,
 			Batch:                 batch,
