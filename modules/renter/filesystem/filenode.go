@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -19,6 +21,19 @@ type (
 		*siafile.SiaFile
 	}
 )
+
+// AddPiece wraps siafile.AddPiece to guarantee that it's not called when the
+// fileNode was already closed.
+func (n *FileNode) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64, merkleRoot crypto.Hash) (err error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.SiaFile == nil {
+		err := errors.New("AddPiece called on close FileNode")
+		build.Critical(err)
+		return err
+	}
+	return n.SiaFile.AddPiece(pk, chunkIndex, pieceIndex, merkleRoot)
+}
 
 // Close calls close on the FileNode and also removes the FileNode from its
 // parent if it's no longer being used and if it doesn't have any children which
