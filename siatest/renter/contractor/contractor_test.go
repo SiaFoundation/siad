@@ -1451,6 +1451,27 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 	goodMiner := miners[0]
 	reorgMiner := miners[1]
 
+	// Mine until we are above the foundation hardfork height to prevent
+	// transactions from becoming invalid as they cross the hardfork threshold.
+	err = tg.Sync()
+	if err != nil {
+		t.Fatal(err)
+	}
+	height, err := goodMiner.BlockHeight()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := height; i <= types.FoundationHardforkHeight; i++ {
+		err = reorgMiner.MineBlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	err = tg.Sync()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Setup a renter with a toggle-able watchdog.
 	renterParams := node.Renter(filepath.Join(testDir, "renter"))
 	toggleDep := &dependencies.DependencyToggleWatchdogBroadcast{}
@@ -1664,7 +1685,7 @@ func testWatchdogRebroadcastOrSweep(t *testing.T, testSweep bool) {
 			return nil
 		}
 		if !status.ContractFound {
-			return errors.New("contract not marked as found)")
+			return errors.New("contract not marked as found")
 		}
 		return nil
 	})

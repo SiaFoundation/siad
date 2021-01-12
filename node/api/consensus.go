@@ -26,6 +26,10 @@ type ConsensusGET struct {
 	Target       types.Target      `json:"target"`
 	Difficulty   types.Currency    `json:"difficulty"`
 
+	// Foundation unlock hashes.
+	FoundationPrimaryUnlockHash  types.UnlockHash `json:"foundationprimaryunlockhash"`
+	FoundationFailsafeUnlockHash types.UnlockHash `json:"foundationfailsafeunlockhash"`
+
 	// Consensus code constants.
 	BlockFrequency         types.BlockHeight `json:"blockfrequency"`
 	BlockSizeLimit         uint64            `json:"blocksizelimit"`
@@ -207,12 +211,16 @@ func (api *API) consensusHandler(w http.ResponseWriter, _ *http.Request, _ httpr
 	}
 	cbid := b.ID()
 	currentTarget, _ := api.cs.ChildTarget(cbid)
+	primary, failsafe := api.cs.FoundationUnlockHashes()
 	WriteJSON(w, ConsensusGET{
 		Synced:       api.cs.Synced(),
 		Height:       height,
 		CurrentBlock: cbid,
 		Target:       currentTarget,
 		Difficulty:   currentTarget.Difficulty(),
+
+		FoundationPrimaryUnlockHash:  primary,
+		FoundationFailsafeUnlockHash: failsafe,
 
 		BlockFrequency:         types.BlockFrequency,
 		BlockSizeLimit:         types.BlockSizeLimit,

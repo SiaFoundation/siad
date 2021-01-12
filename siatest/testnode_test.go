@@ -15,6 +15,8 @@ func TestNextNodeAddress(t *testing.T) {
 	if !testing.Short() || runtime.GOOS == "darwin" {
 		t.SkipNow()
 	}
+	t.Parallel()
+
 	// Confirm testNodeAddressCounter is initialized correctly
 	ac := newNodeAddressCounter()
 	if ac.address.String() != "127.1.0.0" {

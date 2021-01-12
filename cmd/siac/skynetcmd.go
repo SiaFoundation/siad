@@ -20,6 +20,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/vbauerster/mpb/v5/decor"
 
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -73,6 +74,15 @@ on top of Sia.`,
 node is configured as a skynet portal. Use the --portal flag to fetch a skylink
 file from a chosen skynet portal.`,
 		Run: skynetdownloadcmd,
+	}
+
+	skynetIsBlockedCmd = &cobra.Command{
+		Use:   "isblocked [skylink] ...",
+		Short: "Checks if a skylink is on the blocklist.",
+		Long: `Checks if a skylink, or a list of space separated skylinks, is on the blocklist 
+since the list returned from 'siac skynet blocklist' is a list of hashes of the skylinks' 
+merkleroots so they cannot be visually verified.`,
+		Run: skynetisblockedcmd,
 	}
 
 	skynetLsCmd = &cobra.Command{
@@ -274,6 +284,41 @@ func skynetdownloadcmd(cmd *cobra.Command, args []string) {
 	_, err = io.Copy(file, reader)
 	if err != nil {
 		die("Unable to write full data:", err)
+	}
+}
+
+// skynetisblockedcmd will check if a skylink, or list of skylinks, is on the
+// blocklist.
+func skynetisblockedcmd(_ *cobra.Command, skylinkStrs []string) {
+	// Get the blocklist
+	response, err := httpClient.SkynetBlocklistGet()
+	if err != nil {
+		die("Unable to get skynet blocklist:", err)
+	}
+
+	// Parse the slice response into a map
+	blocklistMap := make(map[crypto.Hash]struct{})
+	for _, hash := range response.Blocklist {
+		blocklistMap[hash] = struct{}{}
+	}
+
+	// Check the skylinks
+	//
+	// NOTE: errors are printed and won't cause the function to exit.
+	for _, skylinkStr := range skylinkStrs {
+		// Load the string
+		var skylink modules.Skylink
+		err := skylink.LoadString(skylinkStr)
+		if err != nil {
+			fmt.Printf("Skylink %v \tis an invalid skylink: %v\n", skylinkStr, err)
+			continue
+		}
+		// Generate the hash of the merkleroot and check the blocklist
+		hash := crypto.HashObject(skylink.MerkleRoot())
+		_, blocked := blocklistMap[hash]
+		if blocked {
+			fmt.Printf("Skylink %v \tis on the blocklist\n", skylinkStr)
+		}
 	}
 }
 

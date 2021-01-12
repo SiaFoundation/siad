@@ -6,7 +6,10 @@ package types
 // other rules that are inherent to how a transaction should be constructed.
 
 import (
+	"bytes"
 	"errors"
+
+	"gitlab.com/NebulousLabs/encoding"
 )
 
 var (
@@ -45,6 +48,14 @@ var (
 	// ErrZeroRevision is an error when a transaction has a file contract
 	// revision with RevisionNumber=0
 	ErrZeroRevision = errors.New("transaction has a file contract revision with RevisionNumber=0")
+	// ErrInvalidFoundationUpdateEncoding is returned when a transaction
+	// contains an improperly-encoded FoundationUnlockHashUpdate
+	ErrInvalidFoundationUpdateEncoding = errors.New("transaction contains an improperly-encoded FoundationUnlockHashUpdate")
+	// ErrUninitializedFoundationUpdate is returned when a transaction contains
+	// an uninitialized FoundationUnlockHashUpdate. To prevent accidental
+	// misuse, updates cannot set the Foundation addresses to the empty ("void")
+	// UnlockHash.
+	ErrUninitializedFoundationUpdate = errors.New("transaction contains an uninitialized FoundationUnlockHashUpdate")
 )
 
 // correctFileContracts checks that the file contracts adhere to the file
@@ -123,6 +134,25 @@ func (t Transaction) correctFileContractRevisions(currentHeight BlockHeight) err
 		}
 		if validProofOutputSum.Cmp(missedProofOutputSum) != 0 {
 			return ErrFileContractOutputSumViolation
+		}
+	}
+	return nil
+}
+
+// correctArbitraryData checks that any consensus-recognized ArbitraryData
+// values are correctly encoded.
+func (t Transaction) correctArbitraryData(currentHeight BlockHeight) error {
+	if currentHeight < FoundationHardforkHeight {
+		return nil
+	}
+	for _, arb := range t.ArbitraryData {
+		if bytes.HasPrefix(arb, SpecifierFoundation[:]) {
+			var update FoundationUnlockHashUpdate
+			if encoding.Unmarshal(arb[SpecifierLen:], &update) != nil {
+				return ErrInvalidFoundationUpdateEncoding
+			} else if update.NewPrimary == (UnlockHash{}) || update.NewFailsafe == (UnlockHash{}) {
+				return ErrUninitializedFoundationUpdate
+			}
 		}
 	}
 	return nil
@@ -313,6 +343,10 @@ func (t Transaction) StandaloneValid(currentHeight BlockHeight) (err error) {
 		return
 	}
 	err = t.correctFileContractRevisions(currentHeight)
+	if err != nil {
+		return
+	}
+	err = t.correctArbitraryData(currentHeight)
 	if err != nil {
 		return
 	}

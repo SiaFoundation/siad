@@ -50,8 +50,8 @@ func convertPersistVersionFromv143Tov150(persistDir string) (err error) {
 	}
 
 	// Delete the v1.4.3 persist file
-	err = os.Remove(persistFilePath)
-	if err != nil && !os.IsNotExist(err) {
+	err = os.RemoveAll(persistFilePath)
+	if err != nil {
 		return errors.AddContext(err, "unable to remove v1.4.3 persist file from disk")
 	}
 
@@ -68,7 +68,10 @@ func convertPersistVersionFromv143Tov150(persistDir string) (err error) {
 		hash := crypto.HashObject(mr)
 		pe := persistEntry{hash, true}
 		bytes := encoding.Marshal(pe)
-		buf.Write(bytes)
+		_, err = buf.Write(bytes)
+		if err != nil {
+			return errors.AddContext(err, "unable to write merkleroot to buffer")
+		}
 	}
 
 	// Initialize new v1.5.0 persistence
@@ -112,8 +115,8 @@ func convertPersistVersionFromv150Tov151(persistDir string) error {
 	}
 
 	// Delete the v1.5.0 persist file
-	err = os.Remove(persistFilePath)
-	if err != nil && !os.IsNotExist(err) {
+	err = os.RemoveAll(persistFilePath)
+	if err != nil {
 		return errors.AddContext(err, "unable to remove v1.5.0 persist file from disk")
 	}
 
@@ -162,8 +165,8 @@ func createTempFileFromPersistFile(persistDir, fileName string, header, version 
 
 	// If there was an error loading the temporary file then we want to remove any
 	// file in that location.
-	err = os.Remove(tempFilePath)
-	if err != nil && !os.IsNotExist(err) {
+	err = os.RemoveAll(tempFilePath)
+	if err != nil {
 		return nil, err
 	}
 
@@ -196,6 +199,10 @@ func createTempFileFromPersistFile(persistDir, fileName string, header, version 
 
 	// Write the data to the temp file, leaving space for the checksum at the
 	// beginning of the file
+	//
+	// We write the checksum second to protect against unclean shut downs. If we
+	// wrote the checksum first and then there was an unclean shut down, we would
+	// not be able to simply check for a checksum at the beginning of the file.
 	offset := int64(len(checksum))
 	_, err = f.WriteAt(data, offset)
 	if err != nil {
