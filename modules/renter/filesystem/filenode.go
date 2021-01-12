@@ -30,6 +30,9 @@ func (n *FileNode) Close() error {
 
 	// Set SiaFile 'nil' in test builds to prevent using the siafile after
 	// calling close.
+	if n.SiaFile == nil {
+		build.Critical("close called multiple times on same FileNode")
+	}
 	if build.Release == "testing" {
 		n.SiaFile = nil
 	}
