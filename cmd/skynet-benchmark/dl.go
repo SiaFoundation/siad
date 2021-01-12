@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/montanaflynn/stats"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 
@@ -116,29 +117,39 @@ func dl() {
 	threadss := []uint64{1, 4, 16, 64} // threadss is the plural of threads
 	downloadStart := time.Now()
 	for _, threads := range threadss {
-		err = downloadFileSet(dir64kbPath, exactSize64kb, threads)
+		timings, err := downloadFileSet(dir64kbPath, exactSize64kb, threads)
 		if err != nil {
 			fmt.Println("Unable to download all 64kb files:", err)
 		}
 		fmt.Printf("64kb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
+		fmt.Println(getPercentilesString(timings))
+
 		downloadStart = time.Now()
-		err = downloadFileSet(dir1mbPath, exactSize1mb, threads)
+		timings, err = downloadFileSet(dir1mbPath, exactSize1mb, threads)
 		if err != nil {
 			fmt.Println("Unable to download all 1mb files:", err)
 		}
 		fmt.Printf("1mb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
+		fmt.Println(getPercentilesString(timings))
+
 		downloadStart = time.Now()
-		err = downloadFileSet(dir4mbPath, exactSize4mb, threads)
+		timings, err = downloadFileSet(dir4mbPath, exactSize4mb, threads)
 		if err != nil {
 			fmt.Println("Unable to download all 4mb files:", err)
 		}
-		fmt.Printf("4mb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
+		fmt.Printf("4mb downloads on %v threads finished in %v\n", threads,
+			time.Since(downloadStart))
+
+		fmt.Println(getPercentilesString(timings))
+
 		downloadStart = time.Now()
-		err = downloadFileSet(dir10mbPath, exactSize10mb, threads)
+		timings, err = downloadFileSet(dir10mbPath, exactSize10mb, threads)
 		if err != nil {
 			fmt.Println("Unable to download all 10mb files:", err)
 		}
 		fmt.Printf("10mb downloads on %v threads finished in %v\n", threads, time.Since(downloadStart))
+
+		fmt.Println(getPercentilesString(timings))
 		downloadStart = time.Now()
 		fmt.Println()
 	}
@@ -146,7 +157,10 @@ func dl() {
 
 // downloadFileSet will download all of the files of the expected fetch size in
 // a dir.
-func downloadFileSet(dir modules.SiaPath, fileSize int, threads uint64) error {
+func downloadFileSet(dir modules.SiaPath, fileSize int, threads uint64) (stats.Float64Data, error) {
+	// Create a list of timings
+	timings := make([]float64, filesPerDir)
+
 	// Create a thread pool and fill it. Need to grab a struct from the pool
 	// before launching a thread, need to drop the object back into the pool
 	// when done.
@@ -187,6 +201,10 @@ func downloadFileSet(dir modules.SiaPath, fileSize int, threads uint64) error {
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
+
+			// Keep track of the elapsed time
+			start := time.Now()
+
 			// Get a reader / stream for the download.
 			reader, err := c.SkynetSkylinkReaderGet(rf.File.Skylinks[0])
 			if err != nil {
@@ -208,15 +226,38 @@ func downloadFileSet(dir modules.SiaPath, fileSize int, threads uint64) error {
 				atomic.AddUint64(&atomicDownloadErrors, 1)
 				return
 			}
+
+			elapsed := time.Since(start)
+			timings[i] = float64(elapsed.Milliseconds())
 		}(i)
 	}
 	wg.Wait()
 
 	// Don't need to use atomics, all threads have returned.
 	if atomicDownloadErrors != 0 {
-		return fmt.Errorf("there were %v errors while downloading", atomicDownloadErrors)
+		return nil, fmt.Errorf("there were %v errors while downloading", atomicDownloadErrors)
 	}
-	return nil
+	return timings, nil
+}
+
+func getPercentilesString(timings stats.Float64Data) string {
+	p90, err := timings.Percentile(90)
+	if err != nil {
+		return err.Error()
+	}
+	p95, err := timings.Percentile(95)
+	if err != nil {
+		return err.Error()
+	}
+	p99, err := timings.Percentile(99)
+	if err != nil {
+		return err.Error()
+	}
+	p999, err := timings.Percentile(99.9)
+	if err != nil {
+		return err.Error()
+	}
+	return fmt.Sprintf("90p: %vms\n95p: %vms\n99p: %vms\n999p: %vms\n\n", p90, p95, p99, p999)
 }
 
 // getMissingFiles will fetch a map of all the files that are missing or don't
