@@ -242,6 +242,8 @@ consume an additional 40 MiB of storage.
 * `siac skynet download [skylink] [destination]` downloads a file from Skynet
   using a skylink.
 
+* `siac skynet isblocked` will check if a skylink(s) is on the blocklist.
+
 * `siac skynet ls` lists all skyfiles and subdirectories that the user has
   pinned along with the corresponding skylinks. By default, only files in
 var/skynet/ will be displayed. Files that are not tracking skylinks are not

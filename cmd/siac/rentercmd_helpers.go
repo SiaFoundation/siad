@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -65,13 +64,14 @@ type directoryInfo struct {
 	subDirs []modules.DirectoryInfo
 }
 
-// helper type used for measurements.
-type measurement struct {
+// progressMeasurement is a helper type used for measuring the progress of
+// a download.
+type progressMeasurement struct {
 	progress uint64
 	time     time.Time
 }
 
-// trackedFile...
+// trackedFile is a helper struct for tracking files related to downloads
 type trackedFile struct {
 	siaPath modules.SiaPath
 	dst     string
@@ -164,10 +164,10 @@ func downloadProgress(tfs []trackedFile) []api.DownloadInfo {
 	// Create a map of all tracked files for faster lookups and also a measurement
 	// map which is initialized with 0 progress for all tracked files.
 	tfsMap := make(map[modules.SiaPath]trackedFile)
-	measurements := make(map[modules.SiaPath][]measurement)
+	measurements := make(map[modules.SiaPath][]progressMeasurement)
 	for _, tf := range tfs {
 		tfsMap[tf.siaPath] = tf
-		measurements[tf.siaPath] = []measurement{{
+		measurements[tf.siaPath] = []progressMeasurement{{
 			progress: 0,
 			time:     time.Now(),
 		}}
@@ -229,7 +229,7 @@ func downloadProgress(tfs []trackedFile) []api.DownloadInfo {
 				continue
 			}
 			// Add the current progress to the measurements.
-			m = append(m, measurement{
+			m = append(m, progressMeasurement{
 				progress: d.Received,
 				time:     time.Now(),
 			})
@@ -574,18 +574,6 @@ func renterFileHealthSummary(dirs []directoryInfo) {
 	if err := w.Flush(); err != nil {
 		die("failed to flush writer:", err)
 	}
-}
-
-// sanitizeSkylinks will trim away `sia://` from skylinks
-func sanitizeSkylinks(links []string) []string {
-	var result []string
-
-	for _, link := range links {
-		trimmed := strings.TrimPrefix(link, "sia://")
-		result = append(result, trimmed)
-	}
-
-	return result
 }
 
 // writeContracts is a helper function to display contracts

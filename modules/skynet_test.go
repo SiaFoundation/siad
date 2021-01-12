@@ -1,6 +1,8 @@
 package modules
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -34,6 +36,51 @@ func TestSkyfileLayoutEncoding(t *testing.T) {
 	llRecovered.Decode(encoded)
 	if llOriginal != llRecovered {
 		t.Fatal("encoding and decoding of skyfileLayout does not match")
+	}
+}
+
+// TestSkyfileLayout_DecodeFanoutIntoChunks verifies the functionality of
+// 'DecodeFanoutIntoChunks' on the SkyfileLayout object.
+func TestSkyfileLayout_DecodeFanoutIntoChunks(t *testing.T) {
+	t.Parallel()
+
+	// no bytes
+	sl := newTestSkyfileLayout()
+	chunks, err := sl.DecodeFanoutIntoChunks(make([]byte, 0))
+	if chunks != nil || err != nil {
+		t.Fatal("unexpected")
+	}
+
+	// not even number of chunks
+	fanoutBytes := fastrand.Bytes(crypto.HashSize + 1)
+	_, err = sl.DecodeFanoutIntoChunks(fanoutBytes)
+	if err == nil || !strings.Contains(err.Error(), "the fanout bytes do not contain an even number of chunks") {
+		t.Fatal("unexpected")
+	}
+
+	// valid fanout bytes
+	fanoutBytes = fastrand.Bytes(3 * crypto.HashSize)
+	chunks, err = sl.DecodeFanoutIntoChunks(fanoutBytes)
+	if err != nil {
+		t.Fatal("unexpected")
+	}
+	if len(chunks) != 3 || len(chunks[0]) != 1 {
+		t.Fatal("unexpected")
+	}
+	if !bytes.Equal(chunks[0][0][:], fanoutBytes[:crypto.HashSize]) {
+		t.Fatal("unexpected")
+	}
+
+	// not 1-N
+	sl.FanoutDataPieces = 4
+	ppc := int(sl.FanoutDataPieces + sl.FanoutParityPieces) // pieces per chunk
+	fanoutBytes = fastrand.Bytes(3 * ppc * crypto.HashSize) // 3 chunks
+	chunks, err = sl.DecodeFanoutIntoChunks(fanoutBytes)
+	if err != nil {
+		t.Fatal("unexpected", err)
+	}
+	if len(chunks) != 3 || len(chunks[0]) != ppc {
+		t.Fatal("unexpected")
 	}
 }
 
