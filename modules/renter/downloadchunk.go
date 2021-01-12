@@ -100,7 +100,8 @@ func (udc *unfinishedDownloadChunk) managedCleanUp() {
 	// Check if the chunk is newly failed.
 	udc.mu.Lock()
 	if udc.workersRemaining+udc.piecesCompleted < udc.erasureCode.MinPieces() && !udc.failed {
-		udc.fail(errors.New("not enough workers to continue download"))
+		str := fmt.Sprintf("workers remaining %v, pieces completed %v, min pieces %v", udc.workersRemaining, udc.piecesCompleted, udc.erasureCode.MinPieces())
+		udc.fail(errors.AddContext(errNotEnoughWorkers, str))
 	}
 	// Return any excess memory.
 	udc.returnMemory()
