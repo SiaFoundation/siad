@@ -79,6 +79,7 @@ func (n *FileNode) managedCopy() *FileNode {
 	n.node.mu.Lock()
 	defer n.node.mu.Unlock()
 	newNode := *n
+	newNode.closed = false
 	newNode.threadUID = newThreadUID()
 	newNode.threads[newNode.threadUID] = struct{}{}
 	return &newNode
