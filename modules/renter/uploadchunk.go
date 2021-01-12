@@ -726,7 +726,6 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 // closes the fileEntry.
 func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, stuck bool) error {
 	// Update chunk stuck status and close file.
-	fmt.Println("6", uc.fileEntry.SiaFile, stuck)
 	errStuck := uc.fileEntry.SetStuck(uc.staticIndex, stuck)
 	errClose := uc.fileEntry.Close()
 
