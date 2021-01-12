@@ -17,6 +17,7 @@ type (
 	// FileNode is a node which references a SiaFile.
 	FileNode struct {
 		node
+		closed bool
 
 		*siafile.SiaFile
 	}
@@ -27,7 +28,7 @@ type (
 func (n *FileNode) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64, merkleRoot crypto.Hash) (err error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	if n.SiaFile == nil {
+	if n.closed {
 		err := errors.New("AddPiece called on close FileNode")
 		build.Critical(err)
 		return err
@@ -45,12 +46,10 @@ func (n *FileNode) Close() error {
 
 	// Set SiaFile 'nil' in test builds to prevent using the siafile after
 	// calling close.
-	if n.SiaFile == nil {
+	if n.closed {
 		build.Critical("close called multiple times on same FileNode")
 	}
-	if build.Release == "testing" {
-		n.SiaFile = nil
-	}
+	n.closed = true
 
 	// Call common close method.
 	n.node.closeNode()
