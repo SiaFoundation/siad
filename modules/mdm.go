@@ -278,8 +278,8 @@ func MDMUpdateRegistryCost(pt *RPCPriceTable) (_, _ types.Currency) {
 // MDMReadRegistryCost is the cost of executing a 'ReadRegistry' instruction.
 func MDMReadRegistryCost(pt *RPCPriceTable) types.Currency {
 	// 10 years of storage for an entry.
-	writeCost, storeCost := MDMUpdateRegistryCost(pt)
-	return writeCost.Add(storeCost)
+	cost, _ := MDMUpdateRegistryCost(pt)
+	return cost
 }
 
 // MDMWriteCost is the cost of executing a 'Write' instruction of a certain length.
