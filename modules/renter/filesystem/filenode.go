@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
 	"gitlab.com/NebulousLabs/errors"
@@ -26,6 +27,12 @@ type (
 func (n *FileNode) Close() error {
 	// If a parent exists, we need to lock it while closing a child.
 	parent := n.node.managedLockWithParent()
+
+	// Set SiaFile 'nil' in test builds to prevent using the siafile after
+	// calling close.
+	if build.Release == "testing" {
+		n.SiaFile = nil
+	}
 
 	// Call common close method.
 	n.node.closeNode()
