@@ -1167,9 +1167,9 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 		// For stuck chunk repairs, check to see if file has stuck chunks
 		if target == targetStuckChunks && file.NumStuckChunks() == 0 {
 			// Close unneeded files
-			file.Close()
+			err = file.Close()
 			if err != nil {
-				r.log.Println("WARN: Could not close file:", err)
+				r.log.Println("WARN: Could not close file:", file.SiaFilePath(), err)
 			}
 			continue
 		}
@@ -1183,7 +1183,10 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 		// repair
 		ignore := file.NumChunks() == file.NumStuckChunks() || file.Metadata().CachedHealth < RepairThreshold
 		if target == targetUnstuckChunks && ignore {
-			file.Close()
+			err = file.Close()
+			if err != nil {
+				r.log.Println("WARN: Could not close file:", file.SiaFilePath(), err)
+			}
 			continue
 		}
 
@@ -1222,7 +1225,10 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 			return files[i].Metadata().CachedHealth > files[j].Metadata().CachedHealth
 		})
 		for i := maxUploadHeapChunks; i < len(files); i++ {
-			files[i].Close()
+			err = files[i].Close()
+			if err != nil {
+				r.log.Println("WARN: Could not close file:", files[i].SiaFilePath(), err)
+			}
 		}
 		files = files[:maxUploadHeapChunks]
 	}
@@ -1243,7 +1249,10 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 
 	// Close all files
 	for _, file := range files {
-		file.Close()
+		err = file.Close()
+		if err != nil {
+			r.log.Println("WARN: Could not close file:", file.SiaFilePath(), err)
+		}
 	}
 }
 
