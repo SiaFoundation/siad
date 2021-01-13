@@ -1019,7 +1019,7 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 	if cachedStr := req.FormValue("cached"); cachedStr != "" {
 		cached, err = scanBool(cachedStr)
 		if err != nil {
-			WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+			WriteError(w, Error{fmt.Sprintf("error parsing 'cached' parameter: %v", err)}, http.StatusBadRequest)
 			return
 		}
 	}
@@ -1027,7 +1027,7 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 	// get stats
 	stats, err := api.renter.SkynetStats(cached)
 	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusBadRequest)
+		WriteError(w, Error{err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
