@@ -41,7 +41,7 @@ import (
 
 // TestSkynet verifies the functionality of Skynet, a decentralized CDN and
 // sharing platform.
-func TestSkynetX(t *testing.T) {
+func TestSkynet(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -70,8 +70,9 @@ func TestSkynetX(t *testing.T) {
 		{Name: "Portals", Test: testSkynetPortals},
 		{Name: "HeadRequest", Test: testSkynetHeadRequest},
 		{Name: "NoMetadata", Test: testSkynetNoMetadata},
-		{Name: "Stats", Test: testSkynetStatsNoInvalidate},
-		{Name: "Stats", Test: testSkynetStatsInvalidate},
+		{Name: "StatsNoCache", Test: testSkynetStatsNoCache},
+		{Name: "StatsNoInvalidate", Test: testSkynetStatsNoInvalidate},
+		{Name: "StatsInvalidate", Test: testSkynetStatsInvalidate},
 		{Name: "RequestTimeout", Test: testSkynetRequestTimeout},
 		{Name: "DryRunUpload", Test: testSkynetDryRunUpload},
 		{Name: "RegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
@@ -812,20 +813,25 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	largeTestFunc(files, fileName, sk.Name)
 }
 
+// testSkynetStatsNoCache runs testSkynetStats without any caching.
+func testSkynetStatsNoCache(t *testing.T, tg *siatest.TestGroup) {
+	testSkynetStats(t, tg, false, false)
+}
+
 // testSkynetStatsNoInvalidate runs testSkynetStats without cache invalidation.
 func testSkynetStatsNoInvalidate(t *testing.T, tg *siatest.TestGroup) {
-	testSkynetStats(t, tg, false)
+	testSkynetStats(t, tg, false, true)
 }
 
 // testSkynetStatsInvalidate runs testSkynetStats with cache invalidation.
 func testSkynetStatsInvalidate(t *testing.T, tg *siatest.TestGroup) {
-	testSkynetStats(t, tg, true)
+	testSkynetStats(t, tg, true, true)
 }
 
 // testSkynetStats tests the validity of the response of /skynet/stats endpoint
 // by uploading some test files and verifying that the reported statistics
 // change proportionally
-func testSkynetStats(t *testing.T, tg *siatest.TestGroup, invalidateCache bool) {
+func testSkynetStats(t *testing.T, tg *siatest.TestGroup, invalidateCache, cached bool) {
 	r := tg.Renters()[0]
 
 	// If we run this test with a disabled cache invalidation loop, we need to
@@ -846,7 +852,7 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup, invalidateCache bool) 
 	}
 
 	// get the stats
-	stats, err := r.SkynetStatsGet()
+	stats, err := r.SkynetStatsGetCached(cached)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -898,7 +904,7 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup, invalidateCache bool) 
 	}
 
 	// get the stats after the upload of the test files
-	statsAfter, err := r.SkynetStatsGet()
+	statsAfter, err := r.SkynetStatsGetCached(cached)
 	if err != nil {
 		t.Fatal(err)
 	}
