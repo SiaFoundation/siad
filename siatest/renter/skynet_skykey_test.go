@@ -26,7 +26,7 @@ func TestSkykey(t *testing.T) {
 	groupParams := siatest.GroupParams{
 		Hosts:   3,
 		Miners:  1,
-		Renters: 1,
+		Portals: 1,
 	}
 	groupDir := renterTestDir(t.Name())
 
