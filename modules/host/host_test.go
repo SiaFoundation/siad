@@ -665,7 +665,7 @@ func (p *renterHostPair) managedFinalizeWriteProgram(stream siamux.Stream, lastO
 	}
 
 	// Construct the new revision.
-	transfer := lastOutput.AdditionalCollateral.Add(lastOutput.StorageCost)
+	transfer := lastOutput.AdditionalCollateral.Add(lastOutput.FailureRefund)
 	newRevision, err := recent.ExecuteProgramRevision(recent.NewRevisionNumber+1, transfer, lastOutput.NewMerkleRoot, lastOutput.NewSize)
 	if err != nil {
 		return err

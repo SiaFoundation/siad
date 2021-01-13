@@ -16,9 +16,9 @@ type (
 	TestValues struct {
 		batch         bool
 		executionCost types.Currency
-		refund        types.Currency
+		failureRefund types.Currency
 		collateral    types.Currency
-		successRefund types.Currency
+		earlyRefund   types.Currency
 		memory        uint64
 
 		// These are pointers to share them between the whole history. That way,
@@ -170,14 +170,14 @@ func (v *TestValues) AddReadRegistryInstruction(spk types.SiaPublicKey, refunded
 
 // Cost returns the current cost of the program which would result . If
 // 'finalized' is 'true', the memory cost of finalizing the program is included.
-func (v TestValues) Cost() (cost, refund, collateral, instructionRefund types.Currency) {
+func (v TestValues) Cost() (cost, failureRefund, collateral, instructionRefund types.Currency) {
 	// Calculate the init cost.
 	cost = modules.MDMInitCost(v.staticPT, uint64(*v.programDataLength), uint64(*v.numInstructions))
 
 	// Add the cost of the added instructions
 	cost = cost.Add(v.executionCost)
 
-	return cost, v.refund, v.collateral, v.successRefund
+	return cost, v.failureRefund, v.collateral, v.earlyRefund
 }
 
 // Budget is a convenience method which returns a budget that will exactly be
@@ -225,9 +225,9 @@ func (v *TestValues) AssertOutput(output Output, batch bool) error {
 		return fmt.Errorf("execution costs don't match: %v != %v",
 			cost.HumanString(), output.ExecutionCost.Sub(instructionRefund).HumanString())
 	}
-	if !output.AdditionalStorageCost.Equals(refund) {
+	if !output.FailureRefund.Equals(refund.Sub(instructionRefund)) {
 		return fmt.Errorf("refund doesn't match: %v != %v",
-			refund.HumanString(), output.AdditionalStorageCost.HumanString())
+			refund.HumanString(), output.FailureRefund.HumanString())
 	}
 	if !output.AdditionalCollateral.Equals(collateral) {
 		return fmt.Errorf("collateral doesn't match: %v != %v",
@@ -240,7 +240,7 @@ func (v *TestValues) AssertOutput(output Output, batch bool) error {
 // instruction to the value's state.
 func (v *TestValues) addInstruction(collateral, cost, refund, successRefund types.Currency, memory, time uint64, newData int, readonly, batch bool) {
 	// Update instruction refund.
-	v.successRefund = v.successRefund.Add(successRefund)
+	v.earlyRefund = v.earlyRefund.Add(successRefund)
 	// Update collateral
 	v.collateral = v.collateral.Add(collateral)
 	// Update memory and memory cost.
@@ -249,7 +249,7 @@ func (v *TestValues) addInstruction(collateral, cost, refund, successRefund type
 	v.executionCost = v.executionCost.Add(memoryCost)
 	// Update execution cost and refund.
 	v.executionCost = v.executionCost.Add(cost)
-	v.refund = v.refund.Add(refund)
+	v.failureRefund = v.failureRefund.Add(refund)
 	// Update instructions, data and readonly states.
 	*v.numInstructions++
 	*v.programDataLength += newData

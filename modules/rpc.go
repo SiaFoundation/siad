@@ -233,7 +233,7 @@ type (
 		Proof                []crypto.Hash
 		Error                error
 		TotalCost            types.Currency
-		StorageCost          types.Currency
+		FailureRefund        types.Currency
 	}
 
 	// RPCExecuteProgramRevisionSigningRequest is the request sent by the renter
@@ -356,7 +356,7 @@ func (epr RPCExecuteProgramResponse) MarshalSia(w io.Writer) error {
 	_ = ec.Encode(epr.Proof)
 	_ = ec.Encode(errStr)
 	_ = ec.Encode(epr.TotalCost)
-	_ = ec.Encode(epr.StorageCost)
+	_ = ec.Encode(epr.FailureRefund)
 	return ec.Err()
 }
 
@@ -371,7 +371,7 @@ func (epr *RPCExecuteProgramResponse) UnmarshalSia(r io.Reader) error {
 	_ = dc.Decode(&epr.Proof)
 	_ = dc.Decode(&errStr)
 	_ = dc.Decode(&epr.TotalCost)
-	_ = dc.Decode(&epr.StorageCost)
+	_ = dc.Decode(&epr.FailureRefund)
 	if errStr != "" {
 		epr.Error = errors.New(errStr)
 	}

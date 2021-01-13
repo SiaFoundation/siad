@@ -165,19 +165,19 @@ func (h *Host) managedRPCExecuteProgram(stream siamux.Stream) error {
 			NewMerkleRoot:        output.NewMerkleRoot,
 			NewSize:              output.NewSize,
 			OutputLength:         uint64(len(output.Output)),
-			StorageCost:          output.AdditionalStorageCost,
+			FailureRefund:        output.FailureRefund,
 			Proof:                output.Proof,
 			TotalCost:            output.ExecutionCost,
 		}
 		// Update cost and refund.
-		if output.ExecutionCost.Cmp(output.AdditionalStorageCost) < 0 {
+		if output.ExecutionCost.Cmp(output.FailureRefund) < 0 {
 			err = errors.New("executionCost can never be smaller than the storage cost")
 			build.Critical(err)
 			return err
 		}
 		// The additional storage cost is refunded if the program is not
 		// committed.
-		programRefund = resp.StorageCost
+		programRefund = resp.FailureRefund
 		// Remember that the execution wasn't successful.
 		executionFailed = output.Error != nil
 
@@ -289,7 +289,7 @@ func (h *Host) managedFinalizeWriteProgram(stream io.ReadWriter, fcid types.File
 	if err != nil {
 		return errors.AddContext(err, "failed to get current revision")
 	}
-	transfer := lastOutput.AdditionalCollateral.Add(lastOutput.AdditionalStorageCost)
+	transfer := lastOutput.AdditionalCollateral.Add(lastOutput.FailureRefund)
 	newRevision, err := currentRevision.ExecuteProgramRevision(req.NewRevisionNumber, transfer, lastOutput.NewMerkleRoot, lastOutput.NewSize)
 	if err != nil {
 		return errors.AddContext(err, "failed to construct execute program revision")
@@ -297,7 +297,7 @@ func (h *Host) managedFinalizeWriteProgram(stream io.ReadWriter, fcid types.File
 
 	// The host is expected to move the additional storage cost and collateral
 	// from the missed output to the missed void output.
-	maxTransfer := lastOutput.AdditionalCollateral.Add(lastOutput.AdditionalStorageCost)
+	maxTransfer := lastOutput.AdditionalCollateral.Add(lastOutput.FailureRefund)
 
 	// Verify the revision.
 	err = verifyExecuteProgramRevision(currentRevision, newRevision, bh, maxTransfer, lastOutput.NewSize, lastOutput.NewMerkleRoot)
