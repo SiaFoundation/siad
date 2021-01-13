@@ -608,13 +608,22 @@ func (r *Renter) threadedUpdateRenterHealth() {
 		// Prepare the subtree for being bubbled
 		urp, err := r.managedPrepareForBubble(siaPath)
 		if err != nil {
-			// Log the error but don't sleep for the error duration as some refresh
-			// paths might have been returned
+			// Log the error
 			r.log.Println("Error calling managedUpdateFilesAndGetDirPaths on `", siaPath.String(), "`:", err)
+			// Check if we should sleep for the error duration as some refresh paths
+			// might have been returned
+			if urp == nil {
+				select {
+				case <-time.After(healthLoopErrorSleepDuration):
+				case <-r.tg.StopChan():
+					return
+				}
+				continue
+			}
 		}
+		// Treat a urp with no ChildDirs as an error and sleep to prevent potential
+		// rapid cycling.
 		if urp.callNumChildDirs() == 0 {
-			// Treat a urp with no ChildDirs as an error and sleep to prevent
-			// potential rapid cycling.
 			r.log.Debugf("WARN: No refresh paths returned from '%v'", siaPath)
 			select {
 			case <-time.After(healthLoopErrorSleepDuration):
