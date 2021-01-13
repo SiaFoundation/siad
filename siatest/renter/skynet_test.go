@@ -41,7 +41,7 @@ import (
 
 // TestSkynet verifies the functionality of Skynet, a decentralized CDN and
 // sharing platform.
-func TestSkynet(t *testing.T) {
+func TestSkynetX(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
@@ -812,7 +812,7 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	largeTestFunc(files, fileName, sk.Name)
 }
 
-// testSkynetStatsInvalidate runs testSkynetStats without cache invalidation.
+// testSkynetStatsNoInvalidate runs testSkynetStats without cache invalidation.
 func testSkynetStatsNoInvalidate(t *testing.T, tg *siatest.TestGroup) {
 	testSkynetStats(t, tg, false)
 }
@@ -881,7 +881,10 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup, invalidateCache bool) 
 		if err != nil {
 			t.Fatal(err)
 		}
-		sp, _ := sup.SiaPath.Rebase(modules.RootSiaPath(), modules.SkynetFolder)
+		sp, err := sup.SiaPath.Rebase(modules.RootSiaPath(), modules.SkynetFolder)
+		if err != nil {
+			t.Fatal(err)
+		}
 		sps = append(sps, sp)
 
 		if size < modules.SectorSize {

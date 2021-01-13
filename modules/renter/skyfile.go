@@ -639,8 +639,8 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup modules.SkyfileUploadParamete
 	}
 
 	// Update the stats.
-	r.managedAddFileToSkynetStats(fileNode.Size(), false)
-	r.managedAddFileToSkynetStats(modules.SectorSize, true)
+	r.managedAddFileToSkynetStats(fileNode.Size(), true)
+	r.managedAddFileToSkynetStats(modules.SectorSize, false)
 	return skylink, nil
 }
 
