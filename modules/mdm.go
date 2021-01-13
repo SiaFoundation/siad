@@ -305,15 +305,16 @@ func MDMTruncateCost(pt *RPCPriceTable, contractSize uint64) types.Currency {
 }
 
 // MDMSubscribeCost returns the cost of subscribing to nEntries registry
-// entries.
+// entries and retrieving nFound of them.
 // Subscribing involves paying for 10 years of storage + the memory cost.
-func MDMSubscribeCost(pt *RPCPriceTable, nEntries uint64) types.Currency {
-	// 10 years of storage for an entry.
-	writeCost, storeCost := MDMUpdateRegistryCost(pt)
-	// Total cost for single entry.
-	cost := writeCost.Add(storeCost)
+func MDMSubscribeCost(pt *RPCPriceTable, nFound, nEntries uint64) types.Currency {
+	if nFound > nEntries {
+		build.Critical("nFound has to be <= nEntries")
+	}
+	// Cost of retrieving single entry.
+	cost, _ := MDMReadRegistryCost(pt)
 	// Total cost for all enries.
-	cost = cost.Mul64(nEntries)
+	cost = cost.Mul64(nFound)
 	// Add memory cost.
 	cost = cost.Add(MDMSubscriptionMemoryCost(pt, nEntries))
 	return cost

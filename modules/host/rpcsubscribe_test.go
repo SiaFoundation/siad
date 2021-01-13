@@ -146,7 +146,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 		t.Fatal("initial value doesn't match")
 	}
 
-	runningCost := modules.MDMSubscribeCost(pt, 1).Add(pt.SubscriptionNotificationCost)
+	runningCost := modules.MDMSubscribeCost(pt, 1, 1)
 
 	// Make sure that the host got the subscription.
 	sid := deriveSubscriptionID(spk, tweak)

@@ -117,26 +117,28 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 		return errors.AddContext(err, "failed to read subscription request")
 	}
 
-	// Compute the subscription cost.
-	cost := modules.MDMSubscribeCost(pt, uint64(len(rsrs)))
+	// Send initial values.
+	ids := make([]subscriptionID, 0, len(rsrs))
+	var nFound uint64
+	for _, rsr := range rsrs {
+		ids = append(ids, deriveSubscriptionID(rsr.PubKey, rsr.Tweak))
+		rv, found := h.staticRegistry.Get(rsr.PubKey, rsr.Tweak)
+		if !found {
+			continue
+		}
+		// Write rv to buffer.
+		err = sendNotification(buf, rv)
+		nFound++
+	}
 
-	// Add the cost of initial notification.
-	cost = cost.Add(pt.SubscriptionNotificationCost.Mul64(uint64(len(rsrs))))
+	// Compute the subscription cost.
+	cost := modules.MDMSubscribeCost(pt, nFound, uint64(len(ids)))
 
 	// Withdraw from the budget.
 	if !info.staticBudget.Withdraw(cost) {
 		return errors.AddContext(modules.ErrInsufficientPaymentForRPC, "managedHandleSubscribeRequest")
 	}
 
-	// Send notifications.
-	ids := make([]subscriptionID, 0, len(rsrs))
-	for _, rsr := range rsrs {
-		ids = append(ids, deriveSubscriptionID(rsr.PubKey, rsr.Tweak))
-		if rv, found := h.staticRegistry.Get(rsr.PubKey, rsr.Tweak); found {
-			// Write rv to buffer.
-			err = sendNotification(buf, rv)
-		}
-	}
 	// Write buffer to stream.
 	_, err = buf.WriteTo(stream)
 	if err != nil {
