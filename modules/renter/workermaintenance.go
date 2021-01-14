@@ -153,15 +153,17 @@ func (w *worker) managedTrackPriceTableUpdateErr(err error) time.Time {
 // managedTrackRevisionMismatchFix tracks the outcome of an attempted revision
 // mismatch fix, this method will increment the cooldown on failure, and attempt
 // a cooldown reset on success. It returns the cooldown until.
-func (w *worker) managedTrackRevisionMismatchFixErr(err error) time.Time {
+func (w *worker) managedTrackRevisionMismatchFixErr(err error) {
 	wms := w.staticMaintenanceState
 	wms.mu.Lock()
 	defer wms.mu.Unlock()
 	wms.revisionsMismatchFixSucceeded = err == nil
 	if wms.revisionsMismatchFixSucceeded {
-		return wms.tryResetMaintenanceCooldown()
+		wms.tryResetMaintenanceCooldown()
+		return
 	}
-	return wms.incrementMaintenanceCooldown(err)
+	wms.incrementMaintenanceCooldown(err)
+	return
 }
 
 // newMaintenanceState will initialize a maintenance state on the worker.

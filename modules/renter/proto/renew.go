@@ -537,7 +537,7 @@ func createRenewedContract(lastRev types.FileContractRevision, uh types.UnlockHa
 		return types.FileContract{}, errors.New("insufficient funds to pay both siafund fee and also host payout")
 	}
 
-	return types.FileContract{
+	fc := types.FileContract{
 		FileSize:       lastRev.NewFileSize,
 		FileMerkleRoot: lastRev.NewFileMerkleRoot,
 		WindowStart:    params.EndHeight,
@@ -559,7 +559,8 @@ func createRenewedContract(lastRev types.FileContractRevision, uh types.UnlockHa
 			// void gets the spent storage fees, plus the collateral being risked
 			{Value: basePrice.Add(baseCollateral), UnlockHash: types.UnlockHash{}},
 		},
-	}, nil
+	}
+	return fc, nil
 }
 
 // RenewContract takes an established connection to a host and renews the
