@@ -1,8 +1,41 @@
+## Jan 12, 2021:
+### v1.5.4
+**Key Updates**
+- Adds `/skynet/root` GET request to allow downloading a specific sector of a skyfile
+- allow for migrating registry to custom path
+- extend `siac renter` with optional currency conversion based on
+    SIA_EXCHANGE_RATE env variable
+- Update health loop to batch bubbles by subtree instead of individual
+    directories
+- add RHP3 RPC for atomic contract renewal
+- Add `/renter/clean` API route with `siac renter clean` to remove lost files
+ from renter. Also added `siac renter lost` to view lost files that would be
+ removed.
+
+**Bugs Fixed**
+- Fixed `uploadHead` panic related to streaming caused by bad condition check.
+- Fixed debug code that checks for contract header corruption.
+- Fixed bug in skyfile fanout encoding that allowed for encoding empty piece root hashes.
+- Fix panic condition in siafile conversion when attempted with encryption.
+- Fixed bug in the skynet blocklist persist compat code where the compat code
+    was not being triggered.
+
+**Other**
+- Add worker groups to the bubble code
+- Add `Portals` to the `TestGroup` for skynet related testing.
+- Add 'no-response-metadata' query string parameter that allows hiding the
+  'Skynet-File-Metadata' header from the response.
+- Added a job to `.gitlab-ci.yml` to trigger Sia Antfarm version tests on Sia
+  master updates and on Sia nightly executions.
+- Add `siac skynet isblocked` command as a helper to check if a skylink is
+blocked since `siac skynet blocklist` returns a list of hashed merkleroots, so
+the list cannot be visually verified.
+
 ## Nov 10, 2020:
 ### v1.5.3
 **Bugs Fixed**
 - Updated siafile snapshots to only store range of chunks needed for repair to
-  address OOM during large file repairs
+ address OOM during large file repairs
 
 ## Nov 9, 2020:
 ### v1.5.2
