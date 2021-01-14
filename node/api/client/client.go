@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/node/api"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -189,6 +190,14 @@ func (c *Client) getReaderResponse(resource string) (http.Header, io.ReadCloser,
 	if res.StatusCode < 200 || res.StatusCode > 299 {
 		err := readAPIError(res.Body)
 		drainAndClose(res.Body)
+
+		// Sanity check blocked skylink error in testing.
+		if build.Release == "testing" {
+			if strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) && res.StatusCode != http.StatusUnavailableForLegalReasons {
+				build.Critical("ErrSkylinkBlocked should also be returned with StatusUnavailableForLegalReasons")
+			}
+		}
+
 		return nil, nil, errors.AddContext(err, "GET request error")
 	}
 
