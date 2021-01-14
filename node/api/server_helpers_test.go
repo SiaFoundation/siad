@@ -462,6 +462,10 @@ func createServerTesterWithDeps(name string, gDeps, cDeps, tDeps, wDeps, hDeps, 
 		}
 	}
 
+	// Wait until the desired height was reached.
+	for st.cs.Height() < types.TaxHardforkHeight+types.MaturityDelay {
+		time.Sleep(10 * time.Millisecond)
+	}
 	return st, nil
 }
 
