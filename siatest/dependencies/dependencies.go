@@ -9,6 +9,11 @@ import (
 )
 
 type (
+	// DependencyInvalidateStatsCache invalidates the
+	// threadeInvalidateStatsCache loop.
+	DependencyInvalidateStatsCache struct {
+		modules.ProductionDependencies
+	}
 	// DependencyRegistryUpdateLyingHost causes RegistryUpdate to return the
 	// most recent known value for a lookup together with a ErrSameRevNum error.
 	DependencyRegistryUpdateLyingHost struct {
@@ -319,6 +324,11 @@ func NewDependencyRegistryUpdateNoOp() *DependencyWithDisableAndEnable {
 // Disrupt returns true if the correct string is provided.
 func (d *DependencyRegistryUpdateLyingHost) Disrupt(s string) bool {
 	return s == "RegistryUpdateLyingHost"
+}
+
+// Disrupt returns true if the correct string is provided.
+func (d *DependencyInvalidateStatsCache) Disrupt(s string) bool {
+	return s == "DisableInvalidateStatsCache"
 }
 
 // Disrupt returns true if the correct string is provided.
