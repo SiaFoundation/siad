@@ -18,7 +18,9 @@ type instruction interface {
 	// refund should the program not be committed.
 	Cost() (executionCost types.Currency, failureRefund types.Currency, _ error)
 	// Execute executes the instruction without committing the changes to the
-	// storage obligation.
+	// storage obligation. It returns the new output and a refund that is issued
+	// by the instruction. This refund is not the same as the failureRefund.
+	// Instead it is refunded directly after executing the instruction.
 	Execute(output) (output, types.Currency)
 	// Memory returns the amount of memory allocated by the instruction which
 	// sticks around beyond the scope of the instruction until the program gets

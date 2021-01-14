@@ -238,7 +238,7 @@ func (v *TestValues) AssertOutput(output Output, batch bool) error {
 
 // addInstruction adds the collateral, cost, refund and memory cost of an
 // instruction to the value's state.
-func (v *TestValues) addInstruction(collateral, cost, refund, successRefund types.Currency, memory, time uint64, newData int, readonly, batch bool) {
+func (v *TestValues) addInstruction(collateral, cost, failureRefund, successRefund types.Currency, memory, time uint64, newData int, readonly, batch bool) {
 	// Update instruction refund.
 	v.earlyRefund = v.earlyRefund.Add(successRefund)
 	// Update collateral
@@ -249,7 +249,7 @@ func (v *TestValues) addInstruction(collateral, cost, refund, successRefund type
 	v.executionCost = v.executionCost.Add(memoryCost)
 	// Update execution cost and refund.
 	v.executionCost = v.executionCost.Add(cost)
-	v.failureRefund = v.failureRefund.Add(refund)
+	v.failureRefund = v.failureRefund.Add(failureRefund)
 	// Update instructions, data and readonly states.
 	*v.numInstructions++
 	*v.programDataLength += newData

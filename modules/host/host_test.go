@@ -976,8 +976,7 @@ func (p *renterHostPair) LatestRevision(payByFC bool) (types.FileContractRevisio
 	return p.managedLatestRevision(payByFC, p.pt.LatestRevisionCost, p.staticAccountID, p.staticFCID)
 }
 
-// SubscribeToRV subscribes to the given publickey/tweak pair and returns the
-// cost to do so.
+// SubscribeToRV subscribes to the given publickey/tweak pair.
 func (p *renterHostPair) SubcribeToRV(stream siamux.Stream, pt *modules.RPCPriceTable, pubkey types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
 	// Send the type of the request.
 	err := modules.RPCWrite(stream, modules.SubscriptionRequestSubscribe)

@@ -128,6 +128,9 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 		}
 		// Write rv to buffer.
 		err = sendNotification(buf, rv)
+		if err != nil {
+			return errors.AddContext(err, "failed to write notification to buffer")
+		}
 		nFound++
 	}
 
@@ -304,15 +307,9 @@ func (h *Host) threadedNotifySubscribers(pubKey types.SiaPublicKey, rv modules.S
 			defer stream.Close()
 
 			// Notify the caller.
-			buf := new(bytes.Buffer)
-			err = sendNotification(buf, rv)
+			err = sendNotification(stream, rv)
 			if err != nil {
 				h.log.Debug("failed to write notification to buffer", err)
-				return
-			}
-			_, err = buf.WriteTo(stream)
-			if err != nil {
-				h.log.Debug("failed to send notification", err)
 				return
 			}
 		}(info)

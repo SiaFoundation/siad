@@ -94,9 +94,6 @@ func (i *instructionReadRegistry) Collateral() types.Currency {
 
 // Cost returns the Cost of this `ReadRegistry` instruction.
 func (i *instructionReadRegistry) Cost() (executionCost, refund types.Currency, err error) {
-	// We ignore the refund here since ReadRegistry doesn't provide a storage
-	// refund. Instead, the instruction will handle the refund itself within
-	// 'Execute'.
 	executionCost, refund = modules.MDMReadRegistryCost(i.staticState.priceTable)
 	return
 }
