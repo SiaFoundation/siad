@@ -16,8 +16,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
-// ContractParams are supplied as an argument to FormContract.
 type (
+	// ContractParams are supplied as an argument to FormContract.
 	ContractParams struct {
 		Allowance     Allowance
 		Host          HostDBEntry
