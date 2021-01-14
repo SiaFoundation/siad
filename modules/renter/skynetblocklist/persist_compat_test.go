@@ -16,15 +16,25 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 )
 
-// TestPersistCompatTwoFiles tests the handling of the persist code when
-// a blocklist persist file was created without converting the blacklist
-// persistepersistence
-func TestPersistCompatTwoFiles(t *testing.T) {
+// TestPersistCompat tests the compat code for the skynet blocklist
+// persistence.
+func TestPersistCompat(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
 	t.Parallel()
 
+	t.Run("V143ToV150", testPersistCompatv143Tov150)
+	t.Run("V143ToV151", testPersistCompatv143Tov151)
+	t.Run("V150ToV151", testPersistCompatv150Tov151)
+	t.Run("BadCompatTwoFiles", testPersistCompatTwoFiles)
+}
+
+// testPersistCompatTwoFiles tests the handling of the persist code when
+// a blocklist persist file was created without converting the blacklist
+// persistence
+func testPersistCompatTwoFiles(t *testing.T) {
+	t.Parallel()
 	// Create new blocklist persistence by loading a new SkynetBlocklist
 	testdir := testDir(t.Name())
 	sb, err := New(testdir)
@@ -90,49 +100,46 @@ func TestPersistCompatTwoFiles(t *testing.T) {
 	}
 }
 
-// TestPersistCompatv143Tov150 tests converting the skynet blacklist persistence
+// testPersistCompatv143Tov150 tests converting the skynet blocklist persistence
 // from v1.4.3 to v1.5.0
-func TestPersistCompatv143Tov150(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
+func testPersistCompatv143Tov150(t *testing.T) {
 	t.Parallel()
-
 	testdir := testDir(t.Name())
-
 	testPersistCompat(t, testdir, blacklistPersistFile, blacklistPersistFile, blacklistMetadataHeader, blacklistMetadataHeader, metadataVersionV143, persist.MetadataVersionv150)
 }
 
-// TestPersistCompatv143Tov151 tests converting the skynet blacklist persistence
+// testPersistCompatv143Tov151 tests converting the skynet blacklist persistence
 // from v1.4.3 to v1.5.1
-func TestPersistCompatv143Tov151(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
+func testPersistCompatv143Tov151(t *testing.T) {
 	t.Parallel()
-
 	testdir := testDir(t.Name())
-
-	// Test v1.4.3 to v1.5.1
 	testPersistCompat(t, testdir, blacklistPersistFile, persistFile, blacklistMetadataHeader, metadataHeader, metadataVersionV143, metadataVersion)
 }
 
-// TestPersistCompatv150Tov151 tests converting the skynet blacklist persistence
+// testPersistCompatv150Tov151 tests converting the skynet blacklist persistence
 // from v1.5.0 to v1.5.1
-func TestPersistCompatv150Tov151(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
+func testPersistCompatv150Tov151(t *testing.T) {
 	t.Parallel()
-
 	testdir := testDir(t.Name())
-
-	// Test v1.5.0 to v1.5.1
 	testPersistCompat(t, testdir, blacklistPersistFile, persistFile, blacklistMetadataHeader, metadataHeader, persist.MetadataVersionv150, metadataVersion)
 }
 
 // testPersistCompat tests the persist compat code going between two versions
 func testPersistCompat(t *testing.T, testdir, oldPersistFile, newPersistFile string, oldHeader, newHeader, oldVersion, newVersion types.Specifier) {
+	t.Run("Clean", func(t *testing.T) {
+		testPersistCompatClean(t, testdir, oldPersistFile, newPersistFile, oldHeader, newHeader, oldVersion, newVersion)
+	})
+	t.Run("TempFile", func(t *testing.T) {
+		testPersistCompatTempFile(t, testdir, oldPersistFile, newPersistFile, oldHeader, newHeader, oldVersion, newVersion)
+	})
+	t.Run("ValidChecksum", func(t *testing.T) {
+		testPersistCompatValidCheckSum(t, testdir, oldPersistFile, newPersistFile, oldHeader, newHeader, oldVersion, newVersion)
+	})
+}
+
+// testPersistCompatClean tests the expected execution of the persist compat
+// code
+func testPersistCompatClean(t *testing.T, testdir, oldPersistFile, newPersistFile string, oldHeader, newHeader, oldVersion, newVersion types.Specifier) {
 	// Test 1: Clean conversion
 
 	// Create sub test directory
@@ -154,7 +161,7 @@ func testPersistCompat(t *testing.T, testdir, oldPersistFile, newPersistFile str
 		t.Fatal(err)
 	}
 
-	// Test 1B: Clean conversion just calling loadPersist
+	// Test 2: Clean conversion just calling loadPersist
 
 	// Create sub test directory
 	subTestDir = filepath.Join(testdir, "CleanConvertB")
@@ -192,12 +199,16 @@ func testPersistCompat(t *testing.T, testdir, oldPersistFile, newPersistFile str
 	if err != nil {
 		t.Fatal(err)
 	}
+}
 
-	// Test 2A: Empty Temp File Exists
+// testPersistCompatTempFile tests the persist compat code for the case when
+// there was an unclean shutdown that left an invalid temp file
+func testPersistCompatTempFile(t *testing.T, testdir, oldPersistFile, newPersistFile string, oldHeader, newHeader, oldVersion, newVersion types.Specifier) {
+	// Test 1: Empty Temp File Exists
 
 	// Create sub test directory
-	subTestDir = filepath.Join(testdir, "EmptyTempFile")
-	err = os.MkdirAll(subTestDir, modules.DefaultDirPerm)
+	subTestDir := filepath.Join(testdir, "EmptyTempFile")
+	err := os.MkdirAll(subTestDir, modules.DefaultDirPerm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +236,7 @@ func testPersistCompat(t *testing.T, testdir, oldPersistFile, newPersistFile str
 		t.Fatal(err)
 	}
 
-	// Test 2B: Temp File Exists with an invalid checksum
+	// Test 2: Temp File Exists with an invalid checksum
 
 	// Create sub test directory
 	subTestDir = filepath.Join(testdir, "InvalidChecksum")
@@ -260,12 +271,15 @@ func testPersistCompat(t *testing.T, testdir, oldPersistFile, newPersistFile str
 	if err != nil {
 		t.Fatal(err)
 	}
+}
 
-	// Test 3: Temp File Exists with a valid checksum
-
+// testPersistCompatValidCheckSum tests the persist compat code for the case
+// when there was an unclean shutdown that left a temp file with a valid
+// checksum
+func testPersistCompatValidCheckSum(t *testing.T, testdir, oldPersistFile, newPersistFile string, oldHeader, newHeader, oldVersion, newVersion types.Specifier) {
 	// Create sub test directory
-	subTestDir = filepath.Join(testdir, "ValidChecksum")
-	err = os.MkdirAll(subTestDir, modules.DefaultDirPerm)
+	subTestDir := filepath.Join(testdir, "ValidChecksum")
+	err := os.MkdirAll(subTestDir, modules.DefaultDirPerm)
 	if err != nil {
 		t.Fatal(err)
 	}

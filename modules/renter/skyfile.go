@@ -31,7 +31,6 @@ package renter
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"time"
@@ -53,6 +52,10 @@ const (
 )
 
 var (
+	// ErrEncryptionNotSupported is the error returned when Skykey encryption is
+	// not supported for a Skynet action.
+	ErrEncryptionNotSupported = errors.New("skykey encryption not supported")
+
 	// ErrInvalidMetadata is the error returned when the metadata is not valid.
 	ErrInvalidMetadata = errors.New("metadata is invalid")
 
@@ -73,22 +76,6 @@ var (
 	ExtendedSuffix = "-extended"
 )
 
-// skyfileBuildBaseSector will take all of the elements of the base sector and
-// copy them into a freshly created base sector.
-func skyfileBuildBaseSector(layoutBytes, fanoutBytes, metadataBytes, fileBytes []byte) ([]byte, uint64) {
-	baseSector := make([]byte, modules.SectorSize)
-	offset := 0
-	copy(baseSector[offset:], layoutBytes)
-	offset += len(layoutBytes)
-	copy(baseSector[offset:], fanoutBytes)
-	offset += len(fanoutBytes)
-	copy(baseSector[offset:], metadataBytes)
-	offset += len(metadataBytes)
-	copy(baseSector[offset:], fileBytes)
-	offset += len(fileBytes)
-	return baseSector, uint64(offset)
-}
-
 // skyfileEstablishDefaults will set any zero values in the lup to be equal to
 // the desired defaults.
 func skyfileEstablishDefaults(lup *modules.SkyfileUploadParameters) error {
@@ -96,17 +83,6 @@ func skyfileEstablishDefaults(lup *modules.SkyfileUploadParameters) error {
 		lup.BaseChunkRedundancy = SkyfileDefaultBaseChunkRedundancy
 	}
 	return nil
-}
-
-// skyfileMetadataBytes will return the marshalled/encoded bytes for the
-// skyfile metadata.
-func skyfileMetadataBytes(lm modules.SkyfileMetadata) ([]byte, error) {
-	// Compose the metadata into the leading chunk.
-	metadataBytes, err := json.Marshal(lm)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to marshal the link file metadata")
-	}
-	return metadataBytes, nil
 }
 
 // fileUploadParamsFromLUP will derive the FileUploadParams to use when
@@ -152,12 +128,16 @@ func StreamerFromSlice(b []byte) modules.Streamer {
 
 // CreateSkylinkFromSiafile creates a skyfile from a siafile. This requires
 // uploading a new skyfile which contains fanout information pointing to the
-// siafile data. The SiaPath provided in 'lup' indicates where the new base
+// siafile data. The SiaPath provided in 'sup' indicates where the new base
 // sector skyfile will be placed, and the siaPath provided as its own input is
 // the siaPath of the file that is being used to create the skyfile.
-func (r *Renter) CreateSkylinkFromSiafile(lup modules.SkyfileUploadParameters, siaPath modules.SiaPath) (_ modules.Skylink, err error) {
-	// Set reasonable default values for any lup fields that are blank.
-	err = skyfileEstablishDefaults(&lup)
+func (r *Renter) CreateSkylinkFromSiafile(sup modules.SkyfileUploadParameters, siaPath modules.SiaPath) (_ modules.Skylink, err error) {
+	// Encryption is not supported for SiaFile conversion.
+	if encryptionEnabled(sup) {
+		return modules.Skylink{}, errors.AddContext(ErrEncryptionNotSupported, "unable to convert siafile")
+	}
+	// Set reasonable default values for any sup fields that are blank.
+	err = skyfileEstablishDefaults(&sup)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "skyfile upload parameters are incorrect")
 	}
@@ -177,7 +157,7 @@ func (r *Renter) CreateSkylinkFromSiafile(lup modules.SkyfileUploadParameters, s
 		Mode:     fileNode.Mode(),
 		Length:   fileNode.Size(),
 	}
-	return r.managedCreateSkylinkFromFileNode(lup, metadata, fileNode)
+	return r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, nil)
 }
 
 // managedCreateSkylinkFromFileNode creates a skylink from a file node.
@@ -185,7 +165,7 @@ func (r *Renter) CreateSkylinkFromSiafile(lup modules.SkyfileUploadParameters, s
 // The name needs to be passed in explicitly because a file node does not track
 // its own name, which allows the file to be renamed concurrently without
 // causing any race conditions.
-func (r *Renter) managedCreateSkylinkFromFileNode(sup modules.SkyfileUploadParameters, skyfileMetadata modules.SkyfileMetadata, fileNode *filesystem.FileNode) (modules.Skylink, error) {
+func (r *Renter) managedCreateSkylinkFromFileNode(sup modules.SkyfileUploadParameters, skyfileMetadata modules.SkyfileMetadata, fileNode *filesystem.FileNode, fanoutReader io.Reader) (modules.Skylink, error) {
 	// Check if the given metadata is valid
 	err := modules.ValidateSkyfileMetadata(skyfileMetadata)
 	if err != nil {
@@ -214,7 +194,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup modules.SkyfileUploadParam
 
 	// Check that the encryption key and erasure code is compatible with the
 	// skyfile format. This is intentionally done before any heavy computation
-	// to catch early errors.
+	// to catch errors early on.
 	var sl modules.SkyfileLayout
 	masterKey := fileNode.MasterKey()
 	if len(masterKey.Key()) > len(sl.KeyData) {
@@ -232,13 +212,13 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup modules.SkyfileUploadParam
 	}
 
 	// Marshal the metadata.
-	metadataBytes, err := skyfileMetadataBytes(skyfileMetadata)
+	metadataBytes, err := modules.SkyfileMetadataBytes(skyfileMetadata)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "error retrieving skyfile metadata bytes")
 	}
 
 	// Create the fanout for the siafile.
-	fanoutBytes, err := skyfileEncodeFanout(fileNode)
+	fanoutBytes, err := skyfileEncodeFanout(fileNode, fanoutReader)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to encode the fanout of the siafile")
 	}
@@ -263,7 +243,7 @@ func (r *Renter) managedCreateSkylinkFromFileNode(sup modules.SkyfileUploadParam
 	}
 
 	// Create the base sector.
-	baseSector, fetchSize := skyfileBuildBaseSector(sl.Encode(), fanoutBytes, metadataBytes, nil)
+	baseSector, fetchSize := modules.BuildBaseSector(sl.Encode(), fanoutBytes, metadataBytes, nil)
 
 	// Encrypt the base sector if necessary.
 	if encryptionEnabled(sup) {
@@ -409,62 +389,6 @@ func (r *Renter) UpdateSkynetPortals(additions []modules.SkynetPortal, removals 
 	return r.staticSkynetPortals.UpdatePortals(additions, removals)
 }
 
-// uploadSkyfileReadLeadingChunk will read the leading chunk of a skyfile. If
-// entire file is small enough to fit inside of the leading chunk, the return
-// value will be:
-//
-//   (fileBytes, nil, false, nil)
-//
-// And if the entire file is too large to fit inside of the leading chunk, the
-// return value will be:
-//
-//   (nil, fileReader, true, nil)
-//
-// where the fileReader contains all of the data for the file, including the
-// data that uploadSkyfileReadLeadingChunk had to read to figure out whether
-// the file was too large to fit into the leading chunk.
-func uploadSkyfileReadLeadingChunk(r io.Reader, headerSize uint64) ([]byte, io.Reader, bool, error) {
-	// Check for underflow.
-	if headerSize+1 > modules.SectorSize {
-		return nil, nil, false, ErrMetadataTooBig
-	}
-	// Read data from the reader to fill out the remainder of the first sector.
-	fileBytes := make([]byte, modules.SectorSize-headerSize, modules.SectorSize-headerSize+1) // +1 capacity for the peek byte
-	size, err := io.ReadFull(r, fileBytes)
-	if errors.Contains(err, io.EOF) || errors.Contains(err, io.ErrUnexpectedEOF) {
-		err = nil
-	}
-	if err != nil {
-		return nil, nil, false, errors.AddContext(err, "unable to read the file data")
-	}
-	// Set fileBytes to the right size.
-	fileBytes = fileBytes[:size]
-
-	// See whether there is more data in the reader. If there is no more data in
-	// the reader, a small file will be signaled and the data that has been read
-	// will be returned.
-	peek := make([]byte, 1)
-	n, peekErr := io.ReadFull(r, peek)
-	if errors.Contains(peekErr, io.EOF) || errors.Contains(peekErr, io.ErrUnexpectedEOF) {
-		peekErr = nil
-	}
-	if peekErr != nil {
-		return nil, nil, false, errors.AddContext(err, "too much data provided, cannot create skyfile")
-	}
-	if n == 0 {
-		// There is no more data, return the data that was read from the reader
-		// and signal a small file.
-		return fileBytes, nil, false, nil
-	}
-
-	// There is more data. Create a prepend reader using the data we've already
-	// read plus the reader that we read from, effectively creating a new reader
-	// that is identical to the one that was passed in if no data had been read.
-	prependData := append(fileBytes, peek...)
-	fullReader := io.MultiReader(bytes.NewReader(prependData), r)
-	return nil, fullReader, true, nil
-}
-
 // managedUploadBaseSector will take the raw baseSector bytes and upload them,
 // returning the resulting merkle root, and the fileNode of the siafile that is
 // tracking the base sector.
@@ -516,7 +440,7 @@ func (r *Renter) managedUploadSkyfile(sup modules.SkyfileUploadParameters, reade
 		}
 
 		// marshal the skyfile metadata into bytes
-		metadataBytes, err := skyfileMetadataBytes(metadata)
+		metadataBytes, err := modules.SkyfileMetadataBytes(metadata)
 		if err != nil {
 			return modules.Skylink{}, errors.AddContext(err, "unable to get skyfile metadata bytes")
 		}
@@ -550,7 +474,7 @@ func (r *Renter) managedUploadSkyfileSmallFile(sup modules.SkyfileUploadParamete
 
 	// Create the base sector. This is done as late as possible so that any
 	// errors are caught before a large block of memory is allocated.
-	baseSector, fetchSize := skyfileBuildBaseSector(sl.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
+	baseSector, fetchSize := modules.BuildBaseSector(sl.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
 
 	if encryptionEnabled(sup) {
 		err := encryptBaseSectorWithSkykey(baseSector, sl, sup.FileSpecificSkykey)
@@ -654,7 +578,7 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup modules.SkyfileUploadParamete
 
 	// Convert the new siafile we just uploaded into a skyfile using the
 	// convert function.
-	return r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode)
+	return r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, fileReader.FanoutReader())
 }
 
 // DownloadSkylink will take a link and turn it into the metadata and data of a
@@ -678,8 +602,8 @@ func (r *Renter) DownloadSkylinkBaseSector(link modules.Skylink, timeout time.Du
 	return StreamerFromSlice(baseSector), err
 }
 
-// managedDownloadSkylink will take a link and turn it into the metadata and data of a
-// download.
+// managedDownloadSkylink will take a link and turn it into the metadata and
+// data of a download.
 func (r *Renter) managedDownloadSkylink(link modules.Skylink, timeout time.Duration) (modules.SkyfileMetadata, modules.Streamer, error) {
 	if r.deps.Disrupt("resolveSkylinkToFixture") {
 		sf, err := fixtures.LoadSkylinkFixture(link)

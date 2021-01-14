@@ -106,7 +106,8 @@ func isStandardTransaction(t types.Transaction) (uint64, error) {
 		copy(prefix[:], arb)
 		if prefix == modules.PrefixHostAnnouncement ||
 			prefix == modules.PrefixNonSia ||
-			prefix == modules.PrefixFileContractIdentifier {
+			prefix == modules.PrefixFileContractIdentifier ||
+			prefix == types.SpecifierFoundation {
 			continue
 		}
 

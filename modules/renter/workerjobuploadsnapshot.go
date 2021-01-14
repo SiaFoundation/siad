@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
@@ -26,7 +27,6 @@ type (
 	// jobUploadSnapshot is a job for the worker to upload a snapshot to its
 	// respective host.
 	jobUploadSnapshot struct {
-		staticMetadata    modules.UploadedBackup
 		staticSiaFileData []byte
 
 		staticResponseChan chan *jobUploadSnapshotResponse
@@ -172,8 +172,15 @@ func (j *jobUploadSnapshot) callExecute() {
 		return
 	}
 
+	// Safe cast the metadata to the expected type
+	meta, ok := j.staticMetadata.(modules.UploadedBackup)
+	if !ok {
+		build.Critical("unable to cast job metadata") // sanity check
+		return
+	}
+
 	// Upload the snapshot to the host.
-	err = w.renter.managedUploadSnapshotHost(j.staticMetadata, j.staticSiaFileData, sess, w)
+	err = w.renter.managedUploadSnapshotHost(meta, j.staticSiaFileData, sess, w)
 	if err != nil {
 		w.renter.log.Debugln("uploading a snapshot to a host failed:", err)
 		err = errors.AddContext(err, "uploading a snapshot to a host failed")
@@ -294,11 +301,10 @@ func (r *Renter) managedUploadSnapshotHost(meta modules.UploadedBackup, dotSia [
 func (w *worker) UploadSnapshot(ctx context.Context, meta modules.UploadedBackup, dotSia []byte) error {
 	uploadSnapshotRespChan := make(chan *jobUploadSnapshotResponse)
 	jus := &jobUploadSnapshot{
-		staticMetadata:     meta,
 		staticSiaFileData:  dotSia,
 		staticResponseChan: uploadSnapshotRespChan,
 
-		jobGeneric: newJobGeneric(ctx, w.staticJobUploadSnapshotQueue),
+		jobGeneric: newJobGeneric(ctx, w.staticJobUploadSnapshotQueue, meta),
 	}
 
 	// Add the job to the queue.

@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"sort"
+	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -377,12 +378,11 @@ func (r *Renter) managedUploadSnapshot(meta modules.UploadedBackup, dotSia []byt
 	queued := 0
 	for _, w := range workers {
 		job := &jobUploadSnapshot{
-			staticMetadata:    meta,
 			staticSiaFileData: dotSia,
 
 			staticResponseChan: responseChan,
 
-			jobGeneric: newJobGeneric(maxWait, w.staticJobUploadSnapshotQueue),
+			jobGeneric: newJobGeneric(maxWait, w.staticJobUploadSnapshotQueue, meta),
 		}
 
 		// If a job is not added correctly, count this as a failed response.
@@ -585,13 +585,13 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 		r.staticWorkerPool.callUpdate()
 
 		// First, process any snapshot siafiles that may have finished uploading.
-		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
 		root := modules.BackupFolder
-		finfos, _, err := r.staticFileSystem.List(root, true, offlineMap, goodForRenewMap, contractsMap)
-		if err != nil {
-			r.log.Println("Could not get un-uploaded snapshots:", err)
-		}
-		for _, info := range finfos {
+		var mu sync.Mutex
+		flf := func(info modules.FileInfo) {
+			// Make sure we only look at a single info at a time.
+			mu.Lock()
+			defer mu.Unlock()
+
 			// locate corresponding entry
 			id = r.mu.RLock()
 			var meta modules.UploadedBackup
@@ -606,19 +606,19 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			r.mu.RUnlock(id)
 			if !found {
 				r.log.Println("Could not locate entry for file in backup set")
-				continue
+				return
 			}
 
 			// record current UploadProgress
 			meta.UploadProgress = calcSnapshotUploadProgress(info.UploadProgress, 0)
 			if err := r.managedSaveSnapshot(meta); err != nil {
 				r.log.Println("Could not save upload progress:", err)
-				continue
+				return
 			}
 
 			if info.Health >= RepairThreshold {
 				// not ready for upload yet
-				continue
+				return
 			}
 			r.log.Println("Uploading snapshot", info.SiaPath)
 			err := func() error {
@@ -675,6 +675,11 @@ func (r *Renter) threadedSynchronizeSnapshots() {
 			if err != nil {
 				r.log.Println("Failed to upload snapshot .sia:", err)
 			}
+		}
+		offlineMap, goodForRenewMap, contractsMap := r.managedContractUtilityMaps()
+		err := r.staticFileSystem.List(root, true, offlineMap, goodForRenewMap, contractsMap, flf, func(modules.DirectoryInfo) {})
+		if err != nil {
+			r.log.Println("Could not get un-uploaded snapshots:", err)
 		}
 
 		// Build a set of the snapshots we already have.

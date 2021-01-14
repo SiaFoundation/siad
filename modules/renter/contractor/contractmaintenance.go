@@ -1149,9 +1149,14 @@ func (c *Contractor) threadedContractMaintenance() {
 			// does mean that a larger percentage of funds get locked away from
 			// the user in the event that the user stops uploading immediately
 			// after the renew.
+			refreshAmount := contract.TotalCost.Mul64(2)
+			minimum := allowance.Funds.MulFloat(fileContractMinimumFunding).Div64(allowance.Hosts)
+			if refreshAmount.Cmp(minimum) < 0 {
+				refreshAmount = minimum
+			}
 			refreshSet = append(refreshSet, fileContractRenewal{
 				id:         contract.ID,
-				amount:     contract.TotalCost.Mul64(2),
+				amount:     refreshAmount,
 				hostPubKey: contract.HostPublicKey,
 			})
 			c.log.Debugln("Contract identified as needing to be added to refresh set", contract.RenterFunds, sectorPrice.Mul64(3), percentRemaining, MinContractFundRenewalThreshold)

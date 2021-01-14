@@ -133,7 +133,7 @@ func (w *worker) RenewContract(ctx context.Context, fcid types.FileContractID, p
 		staticParams:             params,
 		staticResponseChan:       renewResponseChan,
 		staticTransactionBuilder: txnBuilder,
-		jobGeneric:               newJobGeneric(ctx, w.staticJobReadQueue),
+		jobGeneric:               newJobGeneric(ctx, w.staticJobReadQueue, nil),
 	}
 
 	// Add the job to the queue.

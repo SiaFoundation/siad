@@ -304,7 +304,7 @@ func (tp *TransactionPool) acceptTransactionSet(ts []types.Transaction, txnFn fu
 	}
 	cc, err := txnFn(ts)
 	if err != nil {
-		return nil, modules.NewConsensusConflict("provided transaction set is standalone and invalid: " + err.Error())
+		return nil, modules.NewConsensusConflict("provided transaction set is invalid: " + err.Error())
 	}
 
 	// Add the transaction set to the pool.

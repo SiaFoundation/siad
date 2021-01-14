@@ -72,7 +72,10 @@ func (cs *ContractSet) Delete(c *SafeContract) {
 	// delete contract file
 	headerPath := filepath.Join(cs.staticDir, c.header.ID().String()+contractHeaderExtension)
 	rootsPath := filepath.Join(cs.staticDir, c.header.ID().String()+contractRootsExtension)
-	err := errors.Compose(c.staticHeaderFile.Close(), os.Remove(headerPath), os.Remove(rootsPath))
+	// close header and root files.
+	err := errors.Compose(c.staticHeaderFile.Close(), c.merkleRoots.rootsFile.Close())
+	// remove the files.
+	err = errors.Compose(err, os.Remove(headerPath), os.Remove(rootsPath))
 	if err != nil {
 		build.Critical("Failed to delete SafeContract from disk:", err)
 	}
@@ -92,6 +95,13 @@ func (cs *ContractSet) IDs() []types.FileContractID {
 
 // InsertContract inserts an existing contract into the set.
 func (cs *ContractSet) InsertContract(rc modules.RecoverableContract, revTxn types.Transaction, roots []crypto.Hash, sk crypto.SecretKey) (modules.RenterContract, error) {
+	// Estimate the totalCost.
+	// NOTE: The actual totalCost is the funding amount. Which means
+	// renterPayout + txnFee + basePrice + contractPrice.
+	// Since we don't know the basePrice and contractPrice, we don't add them.
+	var totalCost types.Currency
+	totalCost = totalCost.Add(rc.FileContract.ValidRenterPayout())
+	totalCost = totalCost.Add(rc.TxnFee)
 	return cs.managedInsertContract(contractHeader{
 		Transaction:      revTxn,
 		SecretKey:        sk,
@@ -99,7 +109,7 @@ func (cs *ContractSet) InsertContract(rc modules.RecoverableContract, revTxn typ
 		DownloadSpending: types.NewCurrency64(1), // TODO set this
 		StorageSpending:  types.NewCurrency64(1), // TODO set this
 		UploadSpending:   types.NewCurrency64(1), // TODO set this
-		TotalCost:        types.NewCurrency64(1), // TODO set this
+		TotalCost:        totalCost,
 		ContractFee:      types.NewCurrency64(1), // TODO set this
 		TxnFee:           rc.TxnFee,
 		SiafundFee:       types.Tax(rc.StartHeight, rc.Payout),
@@ -169,11 +179,13 @@ func (cs *ContractSet) ViewAll() []modules.RenterContract {
 func (cs *ContractSet) Close() error {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
+	var err error
 	for _, c := range cs.contracts {
-		c.staticHeaderFile.Close()
+		err = errors.Compose(err, c.staticHeaderFile.Close())
+		err = errors.Compose(err, c.merkleRoots.rootsFile.Close())
 	}
-	_, err := cs.staticWal.CloseIncomplete()
-	return err
+	_, errWal := cs.staticWal.CloseIncomplete()
+	return errors.Compose(err, errWal)
 }
 
 // NewContractSet returns a ContractSet storing its contracts in the specified

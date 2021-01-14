@@ -53,7 +53,7 @@ func testBaseSectorEncryptionWithType(t *testing.T, r *Renter, skykeyType skykey
 		Filename: "encryption_test_file",
 	}
 	// Grab the metadata bytes.
-	metadataBytes, err := skyfileMetadataBytes(metadata)
+	metadataBytes, err := modules.SkyfileMetadataBytes(metadata)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func testBaseSectorEncryptionWithType(t *testing.T, r *Renter, skykeyType skykey
 		MetadataSize: uint64(len(metadataBytes)),
 		CipherType:   crypto.TypePlain,
 	}
-	baseSector, _ := skyfileBuildBaseSector(ll.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
+	baseSector, _ := modules.BuildBaseSector(ll.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
 
 	// Make a helper function for producing copies of the basesector
 	// because encryption is done in-place.
@@ -310,7 +310,7 @@ func TestBaseSectorKeyID(t *testing.T) {
 		Filename: "encryption_test_file",
 	}
 	// Grab the metadata bytes.
-	metadataBytes, err := skyfileMetadataBytes(metadata)
+	metadataBytes, err := modules.SkyfileMetadataBytes(metadata)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,7 @@ func TestBaseSectorKeyID(t *testing.T) {
 		MetadataSize: uint64(len(metadataBytes)),
 		CipherType:   crypto.TypePlain,
 	}
-	baseSector, _ := skyfileBuildBaseSector(ll.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
+	baseSector, _ := modules.BuildBaseSector(ll.Encode(), nil, metadataBytes, fileBytes) // 'nil' because there is no fanout
 
 	// Make a helper function for producing copies of the basesector
 	// because encryption is done in-place.

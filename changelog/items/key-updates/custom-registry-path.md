@@ -1,1 +1,0 @@
-- allow for migrating registry to custom path

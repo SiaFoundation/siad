@@ -5260,3 +5260,117 @@ func TestRenterLimitGFUContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestRenterClean tests the /renter/clean endpoint functionality.
+func TestRenterClean(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create test group
+	groupParams := siatest.GroupParams{
+		Miners:  1,
+		Hosts:   1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	r := tg.Renters()[0]
+	numHosts := len(tg.Hosts())
+
+	// Upload 2 SiaFiles then delete one of the SiaFile's localFile so that it
+	// will appear as unrecoverable.
+	//
+	// We use datapieces > numHosts to ensure the redundancy for both files will
+	// be < 1.
+	dp := uint64(numHosts + 1)
+	pp := dp + 1
+	lf, _, err := r.UploadNewFile(100, dp, pp, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = lf.Delete()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, rf2, err := r.UploadNewFile(100, dp, pp, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Upload a SkyFile.
+	//
+	// Since it doesn't have a local file it will appear as unrecoverable if the
+	// hosts are taken down.
+	data := fastrand.Bytes(100)
+	_, _, _, rf3, err := r.UploadSkyfileCustom("skyfile", data, "", 2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Define test function
+	cleanAndVerify := func(numSiaFiles, numSkyFiles int) {
+		// Clean renter
+		err = r.RenterCleanPost()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Check for the expected SiaFiles
+		rds, err := r.RenterDirRootGet(modules.UserFolder)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rds.Files) != numSiaFiles {
+			t.Fatal("unexpected number of files in user folder:", len(rds.Files))
+		}
+		// The file should be the 2nd siafile uploaded.
+		siaPath := rds.Files[0].SiaPath
+		expected, err := modules.UserFolder.Join(rf2.SiaPath().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !siaPath.Equals(expected) {
+			t.Fatalf("unexpected siapath; expected %v got %v", expected, siaPath)
+		}
+
+		// Check for the expected SkyFiles
+		rds, err = r.RenterDirRootGet(modules.SkynetFolder)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rds.Files) != numSkyFiles {
+			t.Fatal("unexpected number of files in skynet folder:", len(rds.Files))
+		}
+	}
+
+	// First test should only remove the 1 unrecoverable Siafile
+	cleanAndVerify(1, 1)
+
+	// Take down the hosts
+	for _, h := range tg.Hosts() {
+		err = tg.StopNode(h)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Make sure the redundancy of the Skyfile drops
+	err = r.WaitForDecreasingRedundancy(rf3, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Second test should remove the now unrecoverable Skyfile
+	cleanAndVerify(1, 0)
+}

@@ -39,6 +39,11 @@ var (
 	SpecifierStorageProofOutput   = NewSpecifier("storage proof")
 )
 
+// SpecifierFoundation is used for calculating the OutputID of Foundation
+// subsidy outputs. It also serves as the arbitrary data prefix when encoding
+// FoundationUnlockHashUpdates.
+var SpecifierFoundation = NewSpecifier("foundation")
+
 type (
 	// IDs are used to refer to a type without revealing its contents. They
 	// are constructed by hashing specific fields of the type, along with a
@@ -232,4 +237,12 @@ func (t Transaction) RenterSignature() TransactionSignature {
 // the siafund output is spent. The ID is the hash the SiafundOutputID.
 func (id SiafundOutputID) SiaClaimOutputID() SiacoinOutputID {
 	return SiacoinOutputID(crypto.HashObject(id))
+}
+
+// A FoundationUnlockHashUpdate directs the consensus set to update its
+// Foundation-related UnlockHashes. Updates are submitted to the chain via the
+// ArbitraryData field of a transaction.
+type FoundationUnlockHashUpdate struct {
+	NewPrimary  UnlockHash
+	NewFailsafe UnlockHash
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"gitlab.com/NebulousLabs/errors"
@@ -268,7 +269,7 @@ func (r *Renter) managedStuckDirectory() (modules.SiaPath, error) {
 		default:
 		}
 
-		_, directories, err := r.staticFileSystem.CachedList(siaPath, false)
+		directories, err := r.managedDirList(siaPath)
 		if err != nil {
 			return modules.SiaPath{}, err
 		}
@@ -641,32 +642,32 @@ func (r *Renter) threadedUpdateRenterHealth() {
 // the metadatas for all the files in the subtree and updating the
 // LastHealthCheckTime for the supplied root directory.
 func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath) (*uniqueRefreshPaths, error) {
-	// Get the list of directories from the subtree
-	_, dis, err := r.staticFileSystem.CachedList(rootDir, true)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to get cached list of sub directories")
-	}
-
-	// Add directory paths to uniqueRefreshPaths while tracking the most recent
-	// LastHealthCheckTime that is skipped
+	// Initiate helpers
 	urp := r.newUniqueRefreshPaths()
 	offlineMap, goodForRenewMap, contracts, used := r.managedRenterContractsAndUtilities()
 	aggregateLastHealthCheckTime := time.Now()
-	for _, di := range dis {
+
+	// Define DirectoryInfo function
+	var err error
+	var mu sync.Mutex
+	dlf := func(di modules.DirectoryInfo) {
+		mu.Lock()
+		defer mu.Unlock()
+
 		// Skip any directories that have been updated recently
 		if time.Since(di.LastHealthCheckTime) < healthCheckInterval {
 			// Track the LastHealthCheckTime of the skipped directory
 			if di.LastHealthCheckTime.Before(aggregateLastHealthCheckTime) {
 				aggregateLastHealthCheckTime = di.LastHealthCheckTime
 			}
-			continue
+			return
 		}
 		// Add the directory to uniqueRefreshPaths
 		addErr := urp.callAdd(di.SiaPath)
 		if addErr != nil {
 			r.log.Printf("WARN: unable to add siapath `%v` to uniqueRefreshPaths; err: %v", di.SiaPath, addErr)
 			err = errors.Compose(err, addErr)
-			continue
+			return
 		}
 		// Update files in the directory.
 		updateErr := r.managedUpdateFileMetadatasParams(di.SiaPath, offlineMap, goodForRenewMap, contracts, used)
@@ -674,6 +675,13 @@ func (r *Renter) managedPrepareForBubble(rootDir modules.SiaPath) (*uniqueRefres
 			r.log.Println("Error calling managedUpdateFileMetadatas on `", di.SiaPath, "`:", updateErr)
 			err = errors.Compose(err, updateErr)
 		}
+	}
+
+	// Execute the function on the FileSystem
+	errList := r.staticFileSystem.CachedList(rootDir, true, func(modules.FileInfo) {}, dlf)
+	if errList != nil {
+		err = errors.Compose(err, errList)
+		return nil, errors.AddContext(err, "unable to get cached list of sub directories")
 	}
 
 	// Update the root directory's LastHealthCheckTime to signal that this sub

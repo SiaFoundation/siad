@@ -1039,12 +1039,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		return nil, err
 	}
 
-	// After persist is initialized, push the root directory onto the directory
-	// heap for the repair process.
-	err = r.managedPushUnexploredDirectory(modules.RootSiaPath())
-	if err != nil {
-		return nil, err
-	}
 	// After persist is initialized, create the worker pool.
 	r.staticWorkerPool = r.newWorkerPool()
 
@@ -1070,6 +1064,11 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	// Spin up background threads which are not depending on the renter being
 	// up-to-date with consensus.
 	if !r.deps.Disrupt("DisableRepairAndHealthLoops") {
+		// Push the root directory onto the directory heap for the repair process.
+		err = r.managedPushUnexploredDirectory(modules.RootSiaPath())
+		if err != nil {
+			return nil, err
+		}
 		go r.threadedUpdateRenterHealth()
 	}
 	// Unsubscribe on shutdown.
