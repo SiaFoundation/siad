@@ -231,6 +231,11 @@ type Renter struct {
 	// The renter's bandwidth ratelimit.
 	rl *ratelimit.RateLimit
 
+	// stats cache related fields.
+	stats     *modules.SkynetStats
+	statsChan chan struct{}
+	statsMu   sync.Mutex
+
 	// Utilities.
 	cs                    modules.ConsensusSet
 	deps                  modules.Dependencies
@@ -992,6 +997,11 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	r.staticStreamBufferSet = newStreamBufferSet(&r.tg)
 	close(r.uploadHeap.pauseChan)
 
+	// Init the statsChan and close it right away to signal that no scan is
+	// going on.
+	r.statsChan = make(chan struct{})
+	close(r.statsChan)
+
 	// Initialize the loggers so that they are available for the components as
 	// the components start up.
 	var err error
@@ -1055,6 +1065,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	if err != nil {
 		return nil, err
 	}
+
+	// Start a goroutine to periodically clear the stats.
+	go r.threadedInvalidateStatsCache()
 
 	// Calculate the initial cached utilities and kick off a thread that updates
 	// the utilities regularly.
