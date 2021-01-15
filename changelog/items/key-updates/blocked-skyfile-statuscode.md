@@ -1,0 +1,1 @@
+- Change http status code for blocked content from 500 to 451
