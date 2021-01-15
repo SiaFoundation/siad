@@ -96,25 +96,23 @@ type memoryRequest struct {
 
 // memoryQueue is a queue of memory requests.
 type memoryQueue struct {
-	list.List
+	*list.List
 }
 
 // newMemoryQueue initializes a new queue.
 func newMemoryQueue() *memoryQueue {
-	var l list.List
-	l.Init()
 	return &memoryQueue{
-		l,
+		List: list.New(),
 	}
 }
 
 // Pop removes the first element of the queue.
 func (queue *memoryQueue) Pop() *memoryRequest {
-	mr := queue.List.Front()
+	mr := queue.Front()
 	if mr == nil {
 		return nil
 	}
-	return queue.Remove(mr).(*memoryRequest)
+	return queue.List.Remove(mr).(*memoryRequest)
 }
 
 // handleStarvation will check whether high priority items have spent a
