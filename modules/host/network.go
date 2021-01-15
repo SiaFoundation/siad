@@ -38,6 +38,11 @@ const defaultConnectionDeadline = 5 * time.Minute
 // rpcSettingsDeprecated is a specifier for a deprecated settings request.
 var rpcSettingsDeprecated = types.NewSpecifier("Settings")
 
+// cleanUpFn is a function that can be returned by a rpc handler. It will be
+// called at the very end of the rpc after closing the stream, to make sure
+// tings like refunding bandwidth can accurately be handled.
+type cleanUpFn func()
+
 // threadedUpdateHostname periodically runs 'managedLearnHostname', which
 // checks if the host's hostname has changed, and makes an updated host
 // announcement if so.
@@ -346,6 +351,7 @@ func (h *Host) threadedHandleConn(conn net.Conn) {
 // threadedHandleStream handles incoming SiaMux streams.
 func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	// close the stream when the method terminates
+	var cleanup cleanUpFn
 	defer func() {
 		if h.dependencies.Disrupt("DisableStreamClose") {
 			return
@@ -354,10 +360,16 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 		if err != nil {
 			h.log.Println("ERROR: failed to close stream:", err)
 		}
+
 		// Update used bandwidth.
 		l := stream.Limit()
 		atomic.AddUint64(&h.atomicStreamUpload, l.Uploaded())
 		atomic.AddUint64(&h.atomicStreamDownload, l.Downloaded())
+
+		// Call rpc specific cleanup if necessary.
+		if cleanup != nil {
+			cleanup()
+		}
 	}()
 
 	// If the right dependency was injected we block here until it's disabled
@@ -409,7 +421,7 @@ func (h *Host) threadedHandleStream(stream siamux.Stream) {
 	case modules.RPCLatestRevision:
 		err = h.managedRPCLatestRevision(stream)
 	case modules.RPCRegistrySubscription:
-		err = h.managedRPCRegistrySubscribe(stream)
+		cleanup, err = h.managedRPCRegistrySubscribe(stream)
 	case modules.RPCRenewContract:
 		err = h.managedRPCRenewContract(stream)
 	default:

@@ -110,7 +110,6 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 	stream := info.staticStream
 
 	// Read the requests.
-	buf := new(bytes.Buffer)
 	var rsrs []modules.RPCRegistrySubscriptionRequest
 	err := modules.RPCRead(stream, &rsrs)
 	if err != nil {
@@ -119,31 +118,26 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 
 	// Send initial values.
 	ids := make([]subscriptionID, 0, len(rsrs))
-	var nFound uint64
+	rvs := make([]modules.SignedRegistryValue, 0, len(ids))
 	for _, rsr := range rsrs {
 		ids = append(ids, deriveSubscriptionID(rsr.PubKey, rsr.Tweak))
 		rv, found := h.staticRegistry.Get(rsr.PubKey, rsr.Tweak)
 		if !found {
 			continue
 		}
-		// Write rv to buffer.
-		err = sendNotification(buf, rv)
-		if err != nil {
-			return errors.AddContext(err, "failed to write notification to buffer")
-		}
-		nFound++
+		rvs = append(rvs, rv)
 	}
 
 	// Compute the subscription cost.
-	cost := modules.MDMSubscribeCost(pt, nFound, uint64(len(ids)))
+	cost := modules.MDMSubscribeCost(pt, uint64(len(rvs)), uint64(len(ids)))
 
 	// Withdraw from the budget.
 	if !info.staticBudget.Withdraw(cost) {
 		return errors.AddContext(modules.ErrInsufficientPaymentForRPC, "managedHandleSubscribeRequest")
 	}
 
-	// Write buffer to stream.
-	_, err = buf.WriteTo(stream)
+	// Write initial values to the stream.
+	err = modules.RPCWrite(stream, rvs)
 	if err != nil {
 		return errors.AddContext(err, "failed to write initial values to stream")
 	}
@@ -327,22 +321,22 @@ func subscriptionResponseStream(info *subscriptionInfo, sm *siamux.SiaMux) (siam
 }
 
 // managedRPCRegistrySubscribe handles the RegistrySubscribe rpc.
-func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (err error) {
+func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ cleanUpFn, err error) {
 	// Read the price table
 	pt, err := h.staticReadPriceTableID(stream)
 	if err != nil {
-		return errors.AddContext(err, "failed to read price table")
+		return nil, errors.AddContext(err, "failed to read price table")
 	}
 
 	// Make sure the price table is valid.
 	if !h.managedPriceTableValidFor(pt, modules.SubscriptionPeriod) {
-		return errors.New("can't begin subscription due to price table expiring soon")
+		return nil, errors.New("can't begin subscription due to price table expiring soon")
 	}
 
 	// Process bandwidth payment.
 	pd, err := h.ProcessPayment(stream)
 	if err != nil {
-		return errors.AddContext(err, "failed to process payment")
+		return nil, errors.AddContext(err, "failed to process payment")
 	}
 
 	// Fetch the subscriber. This will later allow us to open a stream to the
@@ -350,24 +344,31 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (err error) {
 	var subscriber types.Specifier
 	err = modules.RPCRead(stream, &subscriber)
 	if err != nil {
-		return errors.AddContext(err, "failed to read subscriber")
+		return nil, errors.AddContext(err, "failed to read subscriber")
 	}
 
 	// Add limit to the stream. The readCost is the UploadBandwidthCost since
 	// reading from the stream means uploading from the host's perspective. That
 	// makes the writeCost the DownloadBandwidthCost.
 	budget := modules.NewBudget(pd.Amount())
+	// Prepare a refund method which is called at the end of the rpc.
+	refund := func() {
+		// Refund the unused budget
+		if !budget.Remaining().IsZero() {
+			err = errors.Compose(err, h.staticAccountManager.callRefund(pd.AccountID(), budget.Remaining()))
+		}
+	}
 	bandwidthLimit := modules.NewBudgetLimit(budget, pt.UploadBandwidthCost, pt.DownloadBandwidthCost)
 	err = stream.SetLimit(bandwidthLimit)
 	if err != nil {
-		return errors.AddContext(err, "failed to set budget limit on stream")
+		return refund, errors.AddContext(err, "failed to set budget limit on stream")
 	}
 
 	// Set the stream deadline.
 	deadline := time.Now().Add(modules.SubscriptionPeriod)
 	err = stream.SetReadDeadline(deadline)
 	if err != nil {
-		return errors.AddContext(err, "failed to set intitial subscription deadline")
+		return refund, errors.AddContext(err, "failed to set intitial subscription deadline")
 	}
 
 	// Keep count of the unique subscriptions to be able to charge accordingly.
@@ -381,13 +382,6 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (err error) {
 			entryIDs = append(entryIDs, entryID)
 		}
 		h.staticRegistrySubscriptions.RemoveSubscriptions(info, entryIDs...)
-
-		// Refund the unused bandwidth.
-		info.mu.Lock()
-		defer info.mu.Unlock()
-		if !budget.Remaining().IsZero() {
-			err = errors.Compose(err, h.staticAccountManager.callRefund(pd.AccountID(), budget.Remaining()))
-		}
 	}()
 
 	// The subscription RPC is a request/response loop that continues for as
@@ -397,7 +391,7 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (err error) {
 		var requestType uint8
 		err = modules.RPCRead(stream, &requestType)
 		if err != nil {
-			return errors.AddContext(err, "failed to read request type")
+			return refund, errors.AddContext(err, "failed to read request type")
 		}
 
 		// Handle requests.
@@ -411,11 +405,11 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (err error) {
 		case modules.SubscriptionRequestPrepay:
 			err = h.managedHandlePrepayBandwidth(stream, info)
 		default:
-			return errors.New("unknown request type")
+			return refund, errors.New("unknown request type")
 		}
 		// Check the errors.
 		if err != nil {
-			return errors.AddContext(err, "failed to handle request")
+			return refund, errors.AddContext(err, "failed to handle request")
 		}
 	}
 }
