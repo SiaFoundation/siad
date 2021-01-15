@@ -61,7 +61,7 @@ type program struct {
 	staticCollateralBudget types.Currency
 	executionCost          types.Currency
 	additionalCollateral   types.Currency // collateral the host is required to add
-	additionalStorageCost  types.Currency // cost of additional storage. This is refunded if the program doesn't commit.
+	failureRefund          types.Currency // This is refunded if the program doesn't commit.
 	usedMemory             uint64
 
 	outputChan chan Output
@@ -77,9 +77,9 @@ func outputFromError(err error, collateral, cost, refund types.Currency) Output 
 			Error: err,
 		},
 
-		ExecutionCost:         cost,
-		AdditionalCollateral:  collateral,
-		AdditionalStorageCost: refund,
+		ExecutionCost:        cost,
+		AdditionalCollateral: collateral,
+		FailureRefund:        refund,
 	}
 }
 
@@ -202,6 +202,21 @@ func (p *program) addCost(cost types.Currency) error {
 	return nil
 }
 
+// refundCost refunds an instruction's refund to the budget. This also includes
+// subtracting the refund from the program cost as well as from the storage
+// cost. This is necessary because an instruction might want to refund storage
+// cost not only when the program fails, but also when a certain condition in
+// the instruction is met. If that condition is met we refund right after
+// executing the instruction and subtract from additionalStorageCost to make
+// sure we don't refund twice. Otherwise a renter might form a program that hits
+// the refund condition within the instruction but also fails every time,
+// allowing the renter to exploit the host to create money.
+func (p *program) refundCost(cost types.Currency) {
+	p.staticBudget.Deposit(cost)
+	p.executionCost = p.executionCost.Sub(cost)
+	p.failureRefund = p.failureRefund.Sub(cost)
+}
+
 // executeInstructions executes the programs instructions sequentially while
 // returning the results to the caller using outputChan.
 func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot crypto.Hash) error {
@@ -209,10 +224,11 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		NewSize:       fcSize,
 		NewMerkleRoot: fcRoot,
 	}
+	var refund types.Currency
 	for idx, i := range p.instructions {
 		select {
 		case <-ctx.Done(): // Check for interrupt
-			p.outputChan <- outputFromError(ErrInterrupted, p.additionalCollateral, p.executionCost, p.additionalStorageCost)
+			p.outputChan <- outputFromError(ErrInterrupted, p.additionalCollateral, p.executionCost, p.failureRefund)
 			return ErrInterrupted
 		default:
 		}
@@ -220,7 +236,7 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		collateral := i.Collateral()
 		err := p.addCollateral(collateral)
 		if err != nil {
-			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.additionalStorageCost)
+			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.failureRefund)
 			return err
 		}
 		// Add the memory the next instruction is going to allocate to the
@@ -228,36 +244,40 @@ func (p *program) executeInstructions(ctx context.Context, fcSize uint64, fcRoot
 		p.usedMemory += i.Memory()
 		time, err := i.Time()
 		if err != nil {
-			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.additionalStorageCost)
+			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.failureRefund)
 		}
 		memoryCost := modules.MDMMemoryCost(p.staticProgramState.priceTable, p.usedMemory, time)
 		// Get the instruction cost and storageCost.
-		instructionCost, storageCost, err := i.Cost()
+		instructionCost, failureRefund, err := i.Cost()
 		if err != nil {
-			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.additionalStorageCost)
+			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.failureRefund)
 			return err
 		}
 		cost := memoryCost.Add(instructionCost)
 		// Increment the cost.
 		err = p.addCost(cost)
 		if err != nil {
-			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.additionalStorageCost)
+			p.outputChan <- outputFromError(err, p.additionalCollateral, p.executionCost, p.failureRefund)
 			return err
 		}
 		// Add the instruction's potential refund to the total.
-		p.additionalStorageCost = p.additionalStorageCost.Add(storageCost)
+		p.failureRefund = p.failureRefund.Add(failureRefund)
 		// Figure out whether to recommend the caller to batch this instruction
 		// with the next one. We batch if the instruction is supposed to be
 		// batched and if it's not the last instruction in the program.
 		batch := idx < len(p.instructions)-1 && p.instructions[idx+1].Batch()
 		// Execute next instruction.
-		output = i.Execute(output)
+		output, refund = i.Execute(output)
+		// Issue potential refund.
+		if !refund.IsZero() {
+			p.refundCost(refund)
+		}
 		p.outputChan <- Output{
-			output:                output,
-			Batch:                 batch,
-			ExecutionCost:         p.executionCost,
-			AdditionalCollateral:  p.additionalCollateral,
-			AdditionalStorageCost: p.additionalStorageCost,
+			output:               output,
+			Batch:                batch,
+			ExecutionCost:        p.executionCost,
+			AdditionalCollateral: p.additionalCollateral,
+			FailureRefund:        p.failureRefund,
 		}
 		// Abort if the last output contained an error.
 		if output.Error != nil {

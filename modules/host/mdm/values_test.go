@@ -16,8 +16,9 @@ type (
 	TestValues struct {
 		batch         bool
 		executionCost types.Currency
-		refund        types.Currency
+		failureRefund types.Currency
 		collateral    types.Currency
+		earlyRefund   types.Currency
 		memory        uint64
 
 		// These are pointers to share them between the whole history. That way,
@@ -57,7 +58,7 @@ func (v *TestValues) AddAppendInstruction(data []byte) {
 	newData := len(data)
 	readonly := false
 	batch := false
-	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly, batch)
+	v.addInstruction(collateral, cost, refund, types.ZeroCurrency, memory, time, newData, readonly, batch)
 }
 
 // AddDropSectorsInstruction adds the cost of a drop sectors instruction to the
@@ -70,7 +71,7 @@ func (v *TestValues) AddDropSectorsInstruction(numSectors uint64) {
 	newData := 8
 	readonly := false
 	batch := false
-	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, newData, readonly, batch)
+	v.addInstruction(collateral, cost, types.ZeroCurrency, types.ZeroCurrency, memory, time, newData, readonly, batch)
 }
 
 // AddHasSectorInstruction adds a hassector instruction to the builder, keeping
@@ -83,7 +84,7 @@ func (v *TestValues) AddHasSectorInstruction() {
 	newData := crypto.HashSize
 	readonly := true
 	batch := true
-	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, newData, readonly, batch)
+	v.addInstruction(collateral, cost, types.ZeroCurrency, types.ZeroCurrency, memory, time, newData, readonly, batch)
 }
 
 // AddReadOffsetInstruction adds a readoffset instruction to the builder,
@@ -96,7 +97,7 @@ func (v *TestValues) AddReadOffsetInstruction(length uint64) {
 	newData := 8 + 8
 	readonly := true
 	batch := false
-	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, newData, readonly, batch)
+	v.addInstruction(collateral, cost, types.ZeroCurrency, types.ZeroCurrency, memory, time, newData, readonly, batch)
 }
 
 // AddReadSectorInstruction adds a readsector instruction to the builder,
@@ -109,7 +110,7 @@ func (v *TestValues) AddReadSectorInstruction(length uint64) {
 	newData := 8 + 8 + crypto.HashSize
 	readonly := true
 	batch := false
-	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, newData, readonly, batch)
+	v.addInstruction(collateral, cost, types.ZeroCurrency, types.ZeroCurrency, memory, time, newData, readonly, batch)
 }
 
 // AddRevisionInstruction adds a revision instruction to the builder, keeping
@@ -121,7 +122,7 @@ func (v *TestValues) AddRevisionInstruction() {
 	time := uint64(modules.MDMTimeRevision)
 	readonly := true
 	batch := false
-	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, 0, readonly, batch)
+	v.addInstruction(collateral, cost, types.ZeroCurrency, types.ZeroCurrency, memory, time, 0, readonly, batch)
 }
 
 // AddSwapSectorInstruction adds a revision instruction to the builder, keeping
@@ -134,7 +135,7 @@ func (v *TestValues) AddSwapSectorInstruction() {
 	newData := 8 + 8
 	readonly := false
 	batch := false
-	v.addInstruction(collateral, cost, types.ZeroCurrency, memory, time, newData, readonly, batch)
+	v.addInstruction(collateral, cost, types.ZeroCurrency, types.ZeroCurrency, memory, time, newData, readonly, batch)
 }
 
 // AddUpdateRegistryInstruction adds a revision instruction to the builder, keeping
@@ -147,39 +148,42 @@ func (v *TestValues) AddUpdateRegistryInstruction(spk types.SiaPublicKey, rv mod
 	newData := crypto.HashSize + 8 + crypto.SignatureSize + len(rv.Data) + len(encoding.Marshal(spk))
 	readonly := true
 	batch := true
-	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly, batch)
+	v.addInstruction(collateral, cost, refund, types.ZeroCurrency, memory, time, newData, readonly, batch)
 }
 
 // AddReadRegistryInstruction adds a revision instruction to the builder, keeping
 // track of running values.
-func (v *TestValues) AddReadRegistryInstruction(spk types.SiaPublicKey) {
+func (v *TestValues) AddReadRegistryInstruction(spk types.SiaPublicKey, refunded bool) {
 	memory := modules.MDMReadRegistryMemory()
 	collateral := modules.MDMReadRegistryCollateral()
-	cost := modules.MDMReadRegistryCost(v.staticPT)
-	refund := types.ZeroCurrency
+	cost, refund := modules.MDMReadRegistryCost(v.staticPT)
 	time := uint64(modules.MDMTimeReadRegistry)
 	newData := crypto.HashSize + len(encoding.Marshal(spk))
 	readonly := true
 	batch := true
-	v.addInstruction(collateral, cost, refund, memory, time, newData, readonly, batch)
+	var successRefund types.Currency
+	if refunded {
+		successRefund = refund
+	}
+	v.addInstruction(collateral, cost, refund, successRefund, memory, time, newData, readonly, batch)
 }
 
 // Cost returns the current cost of the program which would result . If
 // 'finalized' is 'true', the memory cost of finalizing the program is included.
-func (v TestValues) Cost() (cost, refund, collateral types.Currency) {
+func (v TestValues) Cost() (cost, failureRefund, collateral, instructionRefund types.Currency) {
 	// Calculate the init cost.
 	cost = modules.MDMInitCost(v.staticPT, uint64(*v.programDataLength), uint64(*v.numInstructions))
 
 	// Add the cost of the added instructions
 	cost = cost.Add(v.executionCost)
 
-	return cost, v.refund, v.collateral
+	return cost, v.failureRefund, v.collateral, v.earlyRefund
 }
 
 // Budget is a convenience method which returns a budget that will exactly be
 // enough for running the instructions previously added to the TestValues.
 func (v TestValues) Budget(finalized bool) *modules.RPCBudget {
-	cost, _, _ := v.Cost()
+	cost, _, _, _ := v.Cost()
 	// Add the cost of finalizing the program.
 	if !v.readonly && finalized {
 		cost = cost.Add(modules.MDMMemoryCost(v.staticPT, v.memory, modules.MDMTimeCommit))
@@ -216,14 +220,14 @@ func (v *TestValues) AssertOutputs(outputs []Output) error {
 
 // AssertOutput compares the TestValues to the costs within the provided output.
 func (v *TestValues) AssertOutput(output Output, batch bool) error {
-	cost, refund, collateral := v.Cost()
-	if !output.ExecutionCost.Equals(cost) {
+	cost, refund, collateral, instructionRefund := v.Cost()
+	if !output.ExecutionCost.Equals(cost.Sub(instructionRefund)) {
 		return fmt.Errorf("execution costs don't match: %v != %v",
-			cost.HumanString(), output.ExecutionCost.HumanString())
+			cost.HumanString(), output.ExecutionCost.Sub(instructionRefund).HumanString())
 	}
-	if !output.AdditionalStorageCost.Equals(refund) {
+	if !output.FailureRefund.Equals(refund.Sub(instructionRefund)) {
 		return fmt.Errorf("refund doesn't match: %v != %v",
-			refund.HumanString(), output.AdditionalStorageCost.HumanString())
+			refund.HumanString(), output.FailureRefund.HumanString())
 	}
 	if !output.AdditionalCollateral.Equals(collateral) {
 		return fmt.Errorf("collateral doesn't match: %v != %v",
@@ -234,7 +238,9 @@ func (v *TestValues) AssertOutput(output Output, batch bool) error {
 
 // addInstruction adds the collateral, cost, refund and memory cost of an
 // instruction to the value's state.
-func (v *TestValues) addInstruction(collateral, cost, refund types.Currency, memory, time uint64, newData int, readonly, batch bool) {
+func (v *TestValues) addInstruction(collateral, cost, failureRefund, successRefund types.Currency, memory, time uint64, newData int, readonly, batch bool) {
+	// Update instruction refund.
+	v.earlyRefund = v.earlyRefund.Add(successRefund)
 	// Update collateral
 	v.collateral = v.collateral.Add(collateral)
 	// Update memory and memory cost.
@@ -243,7 +249,7 @@ func (v *TestValues) addInstruction(collateral, cost, refund types.Currency, mem
 	v.executionCost = v.executionCost.Add(memoryCost)
 	// Update execution cost and refund.
 	v.executionCost = v.executionCost.Add(cost)
-	v.refund = v.refund.Add(refund)
+	v.failureRefund = v.failureRefund.Add(failureRefund)
 	// Update instructions, data and readonly states.
 	*v.numInstructions++
 	*v.programDataLength += newData

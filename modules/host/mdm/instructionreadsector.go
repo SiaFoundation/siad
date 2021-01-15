@@ -97,22 +97,22 @@ func executeReadSector(previousOutput output, ps *programState, length, offset u
 }
 
 // Execute executes the 'ReadSector' instruction.
-func (i *instructionReadSector) Execute(previousOutput output) output {
+func (i *instructionReadSector) Execute(previousOutput output) (output, types.Currency) {
 	// Fetch the operands.
 	length, err := i.staticData.Uint64(i.lengthOffset)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 	offset, err := i.staticData.Uint64(i.offsetOffset)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 	sectorRoot, err := i.staticData.Hash(i.merkleRootOffset)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 	output, _ := executeReadSector(previousOutput, i.staticState, length, offset, sectorRoot, i.staticMerkleProof)
-	return output
+	return output, types.ZeroCurrency
 }
 
 // Collateral is zero for the ReadSector instruction.
