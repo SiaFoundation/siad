@@ -13,9 +13,85 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
 	"gitlab.com/NebulousLabs/fastrand"
 	"gitlab.com/NebulousLabs/siamux"
 )
+
+// randomRegistryValue is a helper to create a signed registry value for
+// testing.
+func randomRegistryValue() (modules.SignedRegistryValue, types.SiaPublicKey, crypto.SecretKey) {
+	// Create a registry value.
+	sk, pk := crypto.GenerateKeyPair()
+	var tweak crypto.Hash
+	fastrand.Read(tweak[:])
+	data := fastrand.Bytes(modules.RegistryDataSize)
+	rev := fastrand.Uint64n(1000)
+	spk := types.SiaPublicKey{
+		Algorithm: types.SignatureEd25519,
+		Key:       pk[:],
+	}
+	rv := modules.NewRegistryValue(tweak, data, rev).Sign(sk)
+	return rv, spk, sk
+}
+
+func assertInfo(info *subscriptionInfo, numNotifications uint64) error {
+	info.mu.Lock()
+	defer info.mu.Unlock()
+	if info.notificationsLeft != numNotifications {
+		return fmt.Errorf("wrong number of notifications left %v != %v", info.notificationsLeft, numNotifications)
+	}
+	if info.staticStream == nil {
+		return errors.New("stream not set")
+	}
+	return nil
+}
+
+func assertNumSubscriptions(host *Host, n int) error {
+	host.staticRegistrySubscriptions.mu.Lock()
+	defer host.staticRegistrySubscriptions.mu.Unlock()
+	if len(host.staticRegistrySubscriptions.subscriptions) != n {
+		return fmt.Errorf("invalid number of subscriptions %v != %v", len(host.staticRegistrySubscriptions.subscriptions), n)
+	}
+	return nil
+}
+
+func assertSubscriptionInfos(host *Host, spk types.SiaPublicKey, tweak crypto.Hash, n int) ([]*subscriptionInfo, error) {
+	sid := deriveSubscriptionID(spk, tweak)
+	host.staticRegistrySubscriptions.mu.Lock()
+	subInfos, found := host.staticRegistrySubscriptions.subscriptions[sid]
+	if !found {
+		host.staticRegistrySubscriptions.mu.Unlock()
+		return nil, errors.New("subscription not found for id")
+	}
+	if len(subInfos) != 1 {
+		host.staticRegistrySubscriptions.mu.Unlock()
+		return nil, fmt.Errorf("wrong number of subscription infos %v != %v", len(subInfos), n)
+	}
+	var infos []*subscriptionInfo
+	for _, info := range subInfos {
+		infos = append(infos, info)
+	}
+	host.staticRegistrySubscriptions.mu.Unlock()
+	return infos, nil
+}
+
+func readAndAssertRegistryValueNotification(rv modules.SignedRegistryValue, stream io.Reader) error {
+	var notification modules.RPCRegistrySubscriptionNotification
+	err := modules.RPCRead(stream, &notification)
+	if err != nil {
+		return err
+	}
+
+	// Make sure it's the right one.
+	if notification.Type != modules.SubscriptionResponseRegistryValue {
+		return errors.New("notification has wrong type")
+	}
+	if !reflect.DeepEqual(rv, notification.Entry) {
+		return errors.New("wrong entry in notification")
+	}
+	return nil
+}
 
 // TestRPCSubscribe is a set of tests related to the registry subscription rpc.
 func TestRPCSubscribe(t *testing.T) {
