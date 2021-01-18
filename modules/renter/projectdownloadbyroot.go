@@ -365,13 +365,6 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	}
 	defer r.tg.Done()
 
-	// Block until there is memory available, and then ensure the memory gets
-	// returned.
-	if !r.memoryManager.Request(length, memoryPriorityHigh) {
-		return nil, errors.New("renter shut down before memory could be allocated for the project")
-	}
-	defer r.memoryManager.Return(length)
-
 	// Create a context. If the timeout is greater than zero, have the context
 	// expire when the timeout triggers.
 	ctx := r.tg.StopCtx()
@@ -380,6 +373,13 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
 		defer cancel()
 	}
+
+	// Block until there is memory available, and then ensure the memory gets
+	// returned.
+	if !r.memoryManager.Request(ctx, length, memoryPriorityHigh) {
+		return nil, errors.New("renter shut down before memory could be allocated for the project")
+	}
+	defer r.memoryManager.Return(length)
 
 	data, err := r.managedDownloadByRoot(ctx, root, offset, length)
 	if errors.Contains(err, ErrProjectTimedOut) {

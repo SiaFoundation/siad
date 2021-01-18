@@ -90,8 +90,9 @@ type memoryManager struct {
 
 // memoryRequest is a single thread that is blocked while waiting for memory.
 type memoryRequest struct {
-	amount uint64
-	done   chan struct{}
+	amount   uint64
+	canceled chan struct{}
+	done     chan struct{}
 }
 
 // handleStarvation will check whether high priority items have spent a
@@ -160,18 +161,11 @@ func (mm *memoryManager) try(amount uint64, priority bool) (success bool) {
 	return false
 }
 
-// Request is a blocking request for memory. The request will return when the
-// memory has been acquired. If 'false' is returned, it means that the renter
-// shut down before the memory could be allocated.
-func (mm *memoryManager) Request(amount uint64, priority bool) bool {
-	return mm.RequestWithContext(context.Background(), amount, priority)
-}
-
-// RequestWithContext is a blocking request for memory. The request will return
+// Request is a blocking request for memory. The request will return
 // when the memory has been acquired, or when the given context gets canceled.
 // If 'false' is returned, it means that the function returned before the memory
 // could be allocated.
-func (mm *memoryManager) RequestWithContext(ctx context.Context, amount uint64, priority bool) bool {
+func (mm *memoryManager) Request(ctx context.Context, amount uint64, priority bool) bool {
 	// If this is a priority request and the low priority fifo is not empty,
 	// increment the starvation tracker, because either this request will be
 	// granted or this request will be put in the queue to fire ahead of any low
@@ -189,8 +183,9 @@ func (mm *memoryManager) RequestWithContext(ctx context.Context, amount uint64, 
 	}
 	// There is not enough memory available for this request, join the fifo.
 	myRequest := &memoryRequest{
-		amount: amount,
-		done:   make(chan struct{}),
+		amount:   amount,
+		canceled: make(chan struct{}),
+		done:     make(chan struct{}),
 	}
 	if priority {
 		mm.priorityFifo = append(mm.priorityFifo, myRequest)
@@ -216,6 +211,7 @@ func (mm *memoryManager) RequestWithContext(ctx context.Context, amount uint64, 
 	case <-myRequest.done:
 		return true
 	case <-ctx.Done():
+		close(myRequest.canceled)
 		return false
 	case <-mm.stop:
 		return false
@@ -260,6 +256,14 @@ func (mm *memoryManager) Return(amount uint64) {
 
 	// Release as many of the priority threads blocking in the fifo as possible.
 	for len(mm.priorityFifo) > 0 {
+		// Check whether the request got canceled, if so simply drop it
+		select {
+		case <-mm.priorityFifo[0].canceled:
+			mm.priorityFifo = mm.priorityFifo[1:]
+			continue
+		default:
+		}
+
 		// Check whether the starvation tracker thinks that low priority
 		// requests should be bumped to the high priority queue. This is done to
 		// prevent the high priority requests from fully starving the low
@@ -277,6 +281,14 @@ func (mm *memoryManager) Return(amount uint64) {
 
 	// Release as many of the threads blocking in the fifo as possible.
 	for len(mm.fifo) > 0 {
+		// Check whether the request got canceled, if so simply drop it
+		select {
+		case <-mm.fifo[0].canceled:
+			mm.fifo = mm.fifo[1:]
+			continue
+		default:
+		}
+
 		if !mm.try(mm.fifo[0].amount, memoryPriorityLow) {
 			// There is not enough memory to grant the next request, meaning no
 			// future requests should be checked either.
@@ -295,8 +307,8 @@ func (mm *memoryManager) callStatus() modules.MemoryStatus {
 	defer mm.mu.Unlock()
 	var available, requested, priorityAvailable, priorityRequested uint64
 
-	// Determine available memory and priority memory. All memory is available as
-	// priority memory. If there is more memory available than the amount
+	// Determine available memory and priority memory. All memory is available
+	// as priority memory. If there is more memory available than the amount
 	// reserved for priority memory then there is also regular memory
 	// availability.
 	priorityAvailable = mm.available
