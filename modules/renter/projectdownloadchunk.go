@@ -156,12 +156,18 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	}
 
 	// Figure out which index this read corresponds to.
-	pieceIndex := 0
+	pieceIndex := -1
 	for i, root := range pdc.workerSet.staticPieceRoots {
 		if jrr.staticSectorRoot == root {
 			pieceIndex = i
 			break
 		}
+	}
+
+	// Sanity check the root matches one of the worker set's piece roots
+	if pieceIndex == -1 {
+		pdc.workerSet.staticRenter.log.Critical("received job read response with a sector root that is not present in the worker set 's piece roots")
+		return
 	}
 
 	// Check whether the job failed.

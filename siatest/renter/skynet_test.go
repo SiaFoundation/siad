@@ -82,8 +82,6 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "DownloadFormats", Test: testSkynetDownloadFormats},
 		{Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSectorNoEncryption},
 		{Name: "DownloadBaseSectorEncrypted", Test: testSkynetDownloadBaseSectorEncrypted},
-		{Name: "DownloadByRoot", Test: testSkynetDownloadByRootNoEncryption},
-		{Name: "DownloadByRootEncrypted", Test: testSkynetDownloadByRootEncrypted},
 		{Name: "FanoutRegression", Test: testSkynetFanoutRegression},
 	}
 
@@ -91,6 +89,52 @@ func TestSkynetSuite(t *testing.T) {
 	if err := siatest.RunSubTests(t, groupParams, groupDir, subTests); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// TestSkynetDownloadByRoot verifies the functionality of the download by root
+// routes. It is separate as it requires an amount of hosts equal to the total
+// amount of pieces per chunk.
+func TestSkynetDownloadByRoot(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Define the parameters.
+	groupParams := siatest.GroupParams{
+		Hosts:   6,
+		Miners:  1,
+		Renters: 1,
+	}
+	groupDir := renterTestDir(t.Name())
+
+	// Create a testgroup.
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(errors.AddContext(err, "failed to create group"))
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Update the renter's allowance to support 6 hosts
+	r := tg.Renters()[0]
+	allowance := siatest.DefaultAllowance
+	allowance.Hosts = 6
+	err = r.RenterPostAllowance(allowance)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test the standard flow.
+	t.Run("NoEncryption", func(t *testing.T) {
+		testSkynetDownloadByRoot(t, tg, "")
+	})
+	t.Run("Encrypted", func(t *testing.T) {
+		testSkynetDownloadByRoot(t, tg, "rootkey")
+	})
 }
 
 // testSkynetBasic provides basic end-to-end testing for uploading skyfiles and
@@ -580,14 +624,11 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 		SiaPath: modules.RandomSiaPath(),
 	}
 
-	// Try and convert to a Skyfile, this should fail due to the original
-	// siafile being a N-of-M redundancy
+	// Try and convert to a Skyfile, this should succeed, even if the original
+	// siafile is of N-of-M redundancy and not 1-N
 	_, err = r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
-	if err == nil {
-		t.Fatal("Expected conversion from Siafile to Skyfile Post to fail.")
-	}
-	if !strings.Contains(err.Error(), renter.ErrRedundancyNotSupported.Error()) {
-		t.Fatalf("Expected Error to contain %v but got %v", renter.ErrRedundancyNotSupported, err)
+	if err != nil {
+		t.Fatal("Expected conversion from Siafile to Skyfile Post to succeed.")
 	}
 
 	// Upload a new file with a 1-N redundancy by setting the datapieces to 1
@@ -604,6 +645,11 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	_, remoteData, err := r.DownloadByStream(remoteFile)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Recreate Skyfile Upload Parameters
+	sup = modules.SkyfileUploadParameters{
+		SiaPath: modules.RandomSiaPath(),
 	}
 
 	// Convert to a Skyfile
@@ -1454,16 +1500,6 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup, skykeyNam
 	}
 }
 
-// testSkynetDownloadByRootEncrypted tests encrypted downloading by root
-func testSkynetDownloadByRootEncrypted(t *testing.T, tg *siatest.TestGroup) {
-	testSkynetDownloadByRoot(t, tg, "rootkey")
-}
-
-// testSkynetDownloadByRootNoEncryption tests downloading by root
-func testSkynetDownloadByRootNoEncryption(t *testing.T, tg *siatest.TestGroup) {
-	testSkynetDownloadByRoot(t, tg, "")
-}
-
 // testSkynetDownloadByRoot tests downloading by root
 func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName string) {
 	r := tg.Renters()[0]
@@ -1486,6 +1522,8 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	time.Sleep(20 * time.Second)
 
 	// Download the base sector
 	reader, err := r.SkynetDownloadByRootGet(sshp.MerkleRoot, 0, modules.SectorSize, -1)
@@ -1537,7 +1575,7 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 
 	// For large files there should be fanout bytes
 	if len(fanoutBytes) == 0 {
-		t.Error("no fanout bytes")
+		t.Fatal("no fanout bytes")
 	}
 
 	// Decode Fanout
@@ -1547,20 +1585,11 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 	}
 
 	// Verify fanout information
-	if encrypted {
-		if piecesPerChunk != uint64(layout.FanoutDataPieces+layout.FanoutParityPieces) {
-			t.Fatal("piecesPerChunk incorrect for encrypted 1-of-N scheme", piecesPerChunk)
-		}
-		if chunkRootsSize != crypto.HashSize*piecesPerChunk {
-			t.Fatal("chunkRootsSize incorrect for encrypted 1-of-N scheme", chunkRootsSize)
-		}
-	} else {
-		if piecesPerChunk != 1 {
-			t.Fatal("piecesPerChunk incorrect for 1-of-N scheme", piecesPerChunk)
-		}
-		if chunkRootsSize != crypto.HashSize {
-			t.Fatal("chunkRootsSize incorrect for 1-of-N scheme", chunkRootsSize)
-		}
+	if piecesPerChunk != uint64(layout.FanoutDataPieces+layout.FanoutParityPieces) {
+		t.Fatal("piecesPerChunk incorrect", piecesPerChunk)
+	}
+	if chunkRootsSize != crypto.HashSize*piecesPerChunk {
+		t.Fatal("chunkRootsSize incorrect", chunkRootsSize)
 	}
 
 	// Derive the fanout key
@@ -1573,14 +1602,11 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 	}
 
 	// Create the erasure coder
-	// Only the encrypted upload is erasure coded.
-	var ec modules.ErasureCoder
-	if encrypted {
-		ec, err = modules.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
-		if err != nil {
-			t.Fatal(err)
-		}
+	ec, err := modules.NewRSSubCode(int(layout.FanoutDataPieces), int(layout.FanoutParityPieces), crypto.SegmentSize)
+	if err != nil {
+		t.Fatal(err)
 	}
+
 	chunkSize := (modules.SectorSize - layout.CipherType.Overhead()) * uint64(layout.FanoutDataPieces)
 
 	// Create list of chunk roots
@@ -1641,8 +1667,8 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 			}
 			chunkBytes = buf.Bytes()
 		} else {
-			// The unencrypted file is not erasure coded so just read the piece data
-			// directly
+			// The unencrypted file is not erasure coded so just read the piece
+			// data directly
 			for _, p := range pieces {
 				chunkBytes = append(chunkBytes, p...)
 			}
@@ -1655,8 +1681,8 @@ func testSkynetDownloadByRoot(t *testing.T, tg *siatest.TestGroup, skykeyName st
 
 	// Verify bytes
 	if !reflect.DeepEqual(fileData, rootBytes) {
-		t.Log("FileData bytes:", fileData)
-		t.Log("root bytes:", rootBytes)
+		t.Log("FileData bytes:", len(fileData))
+		t.Log("root bytes:", len(rootBytes))
 		t.Error("Bytes not equal")
 	}
 }

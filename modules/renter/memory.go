@@ -6,6 +6,7 @@ package renter
 // memory for the memory manager.
 
 import (
+	"context"
 	"runtime"
 	"runtime/debug"
 	"sync"
@@ -163,6 +164,14 @@ func (mm *memoryManager) try(amount uint64, priority bool) (success bool) {
 // memory has been acquired. If 'false' is returned, it means that the renter
 // shut down before the memory could be allocated.
 func (mm *memoryManager) Request(amount uint64, priority bool) bool {
+	return mm.RequestWithContext(context.Background(), amount, priority)
+}
+
+// RequestWithContext is a blocking request for memory. The request will return
+// when the memory has been acquired, or when the given context gets canceled.
+// If 'false' is returned, it means that the function returned before the memory
+// could be allocated.
+func (mm *memoryManager) RequestWithContext(ctx context.Context, amount uint64, priority bool) bool {
 	// If this is a priority request and the low priority fifo is not empty,
 	// increment the starvation tracker, because either this request will be
 	// granted or this request will be put in the queue to fire ahead of any low
@@ -200,12 +209,14 @@ func (mm *memoryManager) Request(amount uint64, priority bool) bool {
 		}
 	}
 
-	// Block until memory is available or until shutdown. The thread that closes
-	// the 'available' channel will also handle updating the memoryManager
-	// variables.
+	// Block until memory is available or until shutdown/timeout. The thread
+	// that closes the 'available' channel will also handle updating the
+	// memoryManager variables.
 	select {
 	case <-myRequest.done:
 		return true
+	case <-ctx.Done():
+		return false
 	case <-mm.stop:
 		return false
 	}

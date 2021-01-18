@@ -29,13 +29,6 @@ type (
 
 		staticResponseChan chan *jobReadResponse
 
-		// job metadata
-		//
-		// staticSector can be set by the caller. This field is set in the job
-		// response so that upon getting the response the caller knows which job
-		// was completed.
-		staticSector crypto.Hash
-
 		*jobGeneric
 	}
 
@@ -71,13 +64,21 @@ type (
 // callDiscard will discard a job, forwarding the error to the caller.
 func (j *jobRead) callDiscard(err error) {
 	w := j.staticQueue.staticWorker()
+
+	// Extract the sector root from the metadata that's potentially set through
+	// the job's metadata
+	var root crypto.Hash
+	meta, ok := j.staticMetadata.(jobReadSectorMetadata)
+	if ok {
+		root = meta.staticSector
+	}
+
 	errLaunch := w.renter.tg.Launch(func() {
 		response := &jobReadResponse{
 			staticErr: errors.Extend(err, ErrJobDiscarded),
 
-			staticSectorRoot: j.staticSector,
-
-			staticWorker: w,
+			staticSectorRoot: root,
+			staticWorker:     w,
 		}
 		select {
 		case j.staticResponseChan <- response:
@@ -96,6 +97,14 @@ func (j *jobRead) callDiscard(err error) {
 func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTime time.Duration) {
 	w := j.staticQueue.staticWorker()
 
+	// Extract the sector root from the metadata that's potentially set through
+	// the job's metadata
+	var root crypto.Hash
+	meta, ok := j.staticMetadata.(jobReadSectorMetadata)
+	if ok {
+		root = meta.staticSector
+	}
+
 	// Send the response in a goroutine so that the worker resources can be
 	// released faster. Need to check if the job was canceled so that the
 	// goroutine will exit.
@@ -103,9 +112,8 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 		staticData: readData,
 		staticErr:  readErr,
 
-		staticSectorRoot: j.staticSector,
-
-		staticWorker: w,
+		staticSectorRoot: root,
+		staticWorker:     w,
 	}
 	err := w.renter.tg.Launch(func() {
 		select {

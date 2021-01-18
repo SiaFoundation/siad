@@ -1076,17 +1076,27 @@ type Renter interface {
 	// separately as well.
 	CreateSkylinkFromSiafile(SkyfileUploadParameters, SiaPath) (Skylink, error)
 
-	// DownloadByRoot will fetch data using the merkle root of that data. This
-	// uses all of the async worker primitives to improve speed and throughput.
-	DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error)
+	// DownloadByRoot will fetch data using the merkle root of that data. The
+	// given timeout will make sure this call won't block for a time that
+	// exceeds the given timeout value. Passing a timeout of 0 is considered as
+	// no timeout. The pricePerMS acts as a budget to spend on faster, and thus
+	// potentially more expensive, hosts.
+	DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration, pricePerMS types.Currency) ([]byte, error)
 
-	// DownloadSkylink will fetch a file from the Sia network using the skylink.
-	// A "pricePerMS" is passed and acts as a budget to spend on faster hosts.
+	// DownloadSkylink will fetch a file from the Sia network using the given
+	// skylink. The given timeout will make sure this call won't block for a
+	// time that exceeds the given timeout value. Passing a timeout of 0 is
+	// considered as no timeout. The pricePerMS acts as a budget to spend on
+	// faster, and thus potentially more expensive, hosts.
 	DownloadSkylink(link Skylink, timeout time.Duration, pricePerMS types.Currency) (SkyfileMetadata, Streamer, error)
 
 	// DownloadSkylinkBaseSector will take a link and turn it into the data of a
-	// download without any decoding of the metadata, fanout, or decryption.
-	DownloadSkylinkBaseSector(link Skylink, timeout time.Duration) (Streamer, error)
+	// download without any decoding of the metadata, fanout, or decryption. The
+	// given timeout will make sure this call won't block for a time that
+	// exceeds the given timeout value. Passing a timeout of 0 is considered as
+	// no timeout. The pricePerMS acts as a budget to spend on faster, and thus
+	// potentially more expensive, hosts.
+	DownloadSkylinkBaseSector(link Skylink, timeout time.Duration, pricePerMS types.Currency) (Streamer, error)
 
 	// UploadSkyfile will upload data to the Sia network from a reader and
 	// create a skyfile, returning the skylink that can be used to access the

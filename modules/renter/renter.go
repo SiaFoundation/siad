@@ -221,11 +221,6 @@ type Renter struct {
 	bubbleUpdatesMu sync.Mutex
 	cachedUtilities cachedUtilities
 
-	// Stateful variables related to projects the worker can launch. Typically
-	// projects manage all of their own state, but for example they may track
-	// metrics across running the project multiple times.
-	staticProjectDownloadByRootManager *projectDownloadByRootManager
-
 	// The renter's bandwidth ratelimit.
 	rl *ratelimit.RateLimit
 
@@ -962,8 +957,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 		bubbleUpdates:   make(map[string]bubbleStatus),
 		downloadHistory: make(map[modules.DownloadID]*download),
-
-		staticProjectDownloadByRootManager: new(projectDownloadByRootManager),
 
 		cs:             cs,
 		deps:           deps,

@@ -15,6 +15,13 @@ import (
 )
 
 var (
+	// ErrRootNotFound is returned if all workers were unable to recover the
+	// root
+	ErrRootNotFound = errors.New("workers were unable to recover the data by sector root - all workers failed")
+
+	// ErrProjectTimedOut is returned when the project timed out
+	ErrProjectTimedOut = errors.New("project timed out")
+
 	// pcwsWorkerStateResetTime defines the amount of time that the pcws will
 	// wait before resetting / refreshing the worker state, meaning that all of
 	// the workers will do another round of HasSector queries on the network.
@@ -33,6 +40,10 @@ var (
 		Standard: time.Minute * 3,
 		Testing:  time.Second * 10,
 	}).(time.Duration)
+
+	// sectorLookupToDownloadRatio is an arbitrary ratio that resembles the
+	// amount of lookups vs downloads. It is used in price gouging checks.
+	sectorLookupToDownloadRatio = 16
 )
 
 const (

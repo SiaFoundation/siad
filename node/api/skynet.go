@@ -201,8 +201,24 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 		timeout = time.Duration(timeoutInt) * time.Second
 	}
 
+	// Parse pricePerMS.
+	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMSStr := queryForm.Get("priceperms")
+	if pricePerMSStr != "" {
+		pricePerMSParsed, err := parseCurrency(pricePerMSStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		_, err = fmt.Sscan(pricePerMSParsed, &pricePerMS)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Fetch the skyfile's streamer to serve the basesector of the file
-	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout)
+	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
 		return
@@ -451,8 +467,11 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 		return
 	}
 
+	// TODO
+	pricePerMS := types.ZeroCurrency
+
 	// Fetch the skyfile's  streamer to serve the basesector of the file
-	sector, err := api.renter.DownloadByRoot(root, offset, length, timeout)
+	sector, err := api.renter.DownloadByRoot(root, offset, length, timeout, pricePerMS)
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch root: %v", err)}, http.StatusNotFound)
 		return

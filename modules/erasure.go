@@ -21,7 +21,7 @@ var (
 	RenterDefaultDataPieces = build.Select(build.Var{
 		Dev:      1,
 		Standard: 10,
-		Testing:  1,
+		Testing:  2,
 	}).(int)
 
 	// RenterDefaultParityPieces is the number of parity pieces per

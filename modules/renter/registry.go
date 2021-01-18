@@ -158,10 +158,11 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 		}
 
 		// check for price gouging
-		// TODO: use PDBR gouging for some basic protection. Should be replaced
-		// as part of the gouging overhaul.
+		//
+		// TODO: use 'checkProjectDownloadGouging' gouging for some basic
+		// protection. Should be replaced as part of the gouging overhaul.
 		pt := worker.staticPriceTable().staticPriceTable
-		err := checkPDBRGouging(pt, cache.staticRenterAllowance)
+		err := checkProjectDownloadGouging(pt, cache.staticRenterAllowance)
 		if err != nil {
 			r.log.Debugf("price gouging detected in worker %v, err: %v\n", worker.staticHostPubKeyStr, err)
 			continue

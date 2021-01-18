@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"sync"
@@ -627,5 +628,48 @@ func TestMemoryManagerStatus(t *testing.T) {
 		t.Log("Expected:", expectedStatus)
 		t.Log("Status:", ms)
 		t.Fatal("MemoryStatus not as expected")
+	}
+}
+
+// TestMemoryManagerRequestMemoryWithContext verifies the behaviour of
+// RequestWithContext method on the memory manager
+func TestMemoryManagerRequestMemoryWithContext(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create memory manager
+	stopChan := make(chan struct{})
+	mm := newMemoryManager(memoryDefault, memoryPriorityDefault, stopChan)
+
+	// Request all available memory
+	mm.mu.Lock()
+	request := mm.available
+	mm.mu.Unlock()
+	requested := mm.Request(request, memoryPriorityHigh)
+	if !requested {
+		t.Fatal("Priority request should have succeeded")
+	}
+
+	// Validate that requesting more memory, without passing a context with
+	// timeout blocks...
+	doneChan := make(chan struct{})
+	go func() {
+		mm.Request(1, memoryPriorityHigh)
+		close(doneChan)
+	}()
+	select {
+	case <-doneChan:
+		t.Fatal("Priority request should have been blocking...")
+	case <-time.After(time.Second):
+	}
+
+	// Request more memory, this time pass a context that times out after 10ms
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	requested = mm.RequestWithContext(ctx, 1, memoryPriorityHigh)
+	if requested {
+		t.Fatal("Priority request should have timed out")
 	}
 }

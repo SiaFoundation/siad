@@ -167,6 +167,52 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 	return responseChan
 }
 
+// managedDownloadByRoot will fetch data using the merkle root of that data.
+// Unlike the exported version of this function, this function does not request
+// memory from the memory manager.
+func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64, pricePerMS types.Currency) ([]byte, error) {
+	// Create a context that dies when the function ends, this will cancel all
+	// of the worker jobs that get created by this function.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Create the pcws for the first chunk. We use a passthrough cipher and
+	// erasure coder. If the base sector is encrypted, we will notice and be
+	// able to decrypt it once we have fully downloaded it and are able to
+	// access the layout. We can make the assumption on the erasure coding being
+	// of 1-N seeing as we currently always upload the basechunk using 1-N
+	// redundancy.
+	ptec := modules.NewPassthroughErasureCoder()
+	tpsk, err := crypto.NewSiaKey(crypto.TypePlain, nil)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to create plain skykey")
+	}
+	pcws, err := r.newPCWSByRoots(ctx, []crypto.Hash{root}, ptec, tpsk, 0)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to create the worker set for this skylink")
+	}
+
+	// Download the base sector. The base sector contains the metadata, without
+	// it we can't provide a completed data source.
+	//
+	// NOTE: we pass in the provided context here, if the user imposed a timeout
+	// on the download request, this will fire if it takes too long.
+	respChan, err := pcws.managedDownload(ctx, pricePerMS, offset, length)
+	if err != nil {
+		return nil, errors.AddContext(err, "unable to start download")
+	}
+	resp := <-respChan
+	if resp.err != nil {
+		return nil, errors.AddContext(err, "base sector download did not succeed")
+	}
+	baseSector := resp.data
+	if len(baseSector) < modules.SkyfileLayoutSize {
+		return nil, errors.New("download did not fetch enough data, layout cannot be decoded")
+	}
+
+	return baseSector, nil
+}
+
 // skylinkDataSource will create a streamBufferDataSource for the data contained
 // inside of a Skylink. The function will not return until the base sector and
 // all skyfile metadata has been retrieved.
