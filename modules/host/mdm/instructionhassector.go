@@ -65,11 +65,11 @@ func (i *instructionHasSector) Memory() uint64 {
 }
 
 // Execute executes the 'HasSector' instruction.
-func (i *instructionHasSector) Execute(prevOutput output) output {
+func (i *instructionHasSector) Execute(prevOutput output) (output, types.Currency) {
 	// Fetch the operands.
 	sectorRoot, err := i.staticData.Hash(i.merkleRootOffset)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 
 	// Fetch the requested information.
@@ -85,7 +85,7 @@ func (i *instructionHasSector) Execute(prevOutput output) output {
 		NewSize:       prevOutput.NewSize,       // size stays the same
 		NewMerkleRoot: prevOutput.NewMerkleRoot, // root stays the same
 		Output:        out,
-	}
+	}, types.ZeroCurrency
 }
 
 // Time returns the execution time of an 'HasSector' instruction.

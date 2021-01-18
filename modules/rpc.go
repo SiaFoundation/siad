@@ -15,8 +15,9 @@ import (
 
 const (
 	// SubscriptionEntrySize is the estimated size of a single subscribed to
-	// entry takes up in memory.
-	SubscriptionEntrySize = 100
+	// entry takes up in memory. This is a conservative estimation to prevent
+	// DoS attacks on the host.
+	SubscriptionEntrySize = 512
 
 	// InitialNumNotifications is the initial number of notifications a caller
 	// has to pay for when opening the subscription loop with a host.
@@ -36,6 +37,8 @@ const (
 const (
 	SubscriptionResponseInvalid = iota
 	SubscriptionResponseRegistryValue
+
+	SubscriptionResponseSubscriptionSuccess
 )
 
 var (
@@ -79,16 +82,13 @@ type RPCPriceTable struct {
 	// TODO: should this be free?
 	LatestRevisionCost types.Currency `json:"latestrevisioncost"`
 
-	// SubscriptionBaseCost is the base cost of all subscription based requests.
-	SubscriptionBaseCost types.Currency `json:"subscriptionbasecost"`
-
 	// SubscriptionMemoryCost is the cost of storing a byte of data for
 	// SubscriptionPeriod time.
 	SubscriptionMemoryCost types.Currency `json:"subscriptionmemorycost"`
 
-	// SubscriptionNotificationBaseCost is the base cost of a single
-	// notification.
-	SubscriptionNotificationBaseCost types.Currency `json:"subscriptionnotificationbasecost"`
+	// SubscriptionNotificationCost is the cost of a single notification on top
+	// of what is charged for bandwidth.
+	SubscriptionNotificationCost types.Currency `json:"subscriptionnotificationcost"`
 
 	// MDM related costs
 	//
@@ -233,7 +233,7 @@ type (
 		Proof                []crypto.Hash
 		Error                error
 		TotalCost            types.Currency
-		StorageCost          types.Currency
+		FailureRefund        types.Currency
 	}
 
 	// RPCExecuteProgramRevisionSigningRequest is the request sent by the renter
@@ -277,12 +277,14 @@ type (
 		Ratelimit uint32
 	}
 
-	// RPCRegistrySubscriptionNotification is the response received whenever a
-	// subscribed entry is updated. It contains a type to allow for different
-	// types of responses in the future. Right now there is only one type and it
-	// returns the signed registry value.
-	RPCRegistrySubscriptionNotification struct {
-		Type  uint8
+	// RPCRegistrySubscriptionNotificationType contains the type of the
+	// following notification.
+	RPCRegistrySubscriptionNotificationType struct {
+		Type uint8
+	}
+
+	// RPCRegistrySubscriptionNotificationEntryUpdate contains an updated entry.
+	RPCRegistrySubscriptionNotificationEntryUpdate struct {
 		Entry SignedRegistryValue
 	}
 
@@ -354,7 +356,7 @@ func (epr RPCExecuteProgramResponse) MarshalSia(w io.Writer) error {
 	_ = ec.Encode(epr.Proof)
 	_ = ec.Encode(errStr)
 	_ = ec.Encode(epr.TotalCost)
-	_ = ec.Encode(epr.StorageCost)
+	_ = ec.Encode(epr.FailureRefund)
 	return ec.Err()
 }
 
@@ -369,7 +371,7 @@ func (epr *RPCExecuteProgramResponse) UnmarshalSia(r io.Reader) error {
 	_ = dc.Decode(&epr.Proof)
 	_ = dc.Decode(&errStr)
 	_ = dc.Decode(&epr.TotalCost)
-	_ = dc.Decode(&epr.StorageCost)
+	_ = dc.Decode(&epr.FailureRefund)
 	if errStr != "" {
 		epr.Error = errors.New(errStr)
 	}

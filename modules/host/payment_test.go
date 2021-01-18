@@ -700,6 +700,7 @@ func (s testStream) Write(b []byte) (n int, err error) { return s.c.Write(b) }
 func (s testStream) Close() error                      { return s.c.Close() }
 
 func (s testStream) LocalAddr() net.Addr            { panic("not implemented") }
+func (s testStream) Mux() *mux.Mux                  { panic("not implemented") }
 func (s testStream) RemoteAddr() net.Addr           { panic("not implemented") }
 func (s testStream) SetDeadline(t time.Time) error  { panic("not implemented") }
 func (s testStream) SetPriority(priority int) error { panic("not implemented") }

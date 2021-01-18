@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -101,15 +100,9 @@ type (
 	SkynetStatsGET struct {
 		PerformanceStats SkynetPerformanceStats `json:"performancestats"`
 
-		Uptime      int64         `json:"uptime"`
-		UploadStats SkynetStats   `json:"uploadstats"`
-		VersionInfo SkynetVersion `json:"versioninfo"`
-	}
-
-	// SkynetStats contains statistical data about skynet
-	SkynetStats struct {
-		NumFiles  int    `json:"numfiles"`
-		TotalSize uint64 `json:"totalsize"`
+		Uptime      int64               `json:"uptime"`
+		UploadStats modules.SkynetStats `json:"uploadstats"`
+		VersionInfo SkynetVersion       `json:"versioninfo"`
 	}
 
 	// SkynetVersion contains version information
@@ -219,6 +212,10 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 
 	// Fetch the skyfile's streamer to serve the basesector of the file
 	streamer, err := api.renter.DownloadSkylinkBaseSector(skylink, timeout, pricePerMS)
+	if errors.Contains(err, renter.ErrSkylinkBlocked) {
+		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
+		return
+	}
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
 		return
@@ -467,11 +464,28 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 		return
 	}
 
-	// TODO
-	pricePerMS := types.ZeroCurrency
+	// Parse pricePerMS.
+	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMSStr := queryForm.Get("priceperms")
+	if pricePerMSStr != "" {
+		pricePerMSParsed, err := parseCurrency(pricePerMSStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		_, err = fmt.Sscan(pricePerMSParsed, &pricePerMS)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
 
 	// Fetch the skyfile's  streamer to serve the basesector of the file
 	sector, err := api.renter.DownloadByRoot(root, offset, length, timeout, pricePerMS)
+	if errors.Contains(err, renter.ErrSkylinkBlocked) {
+		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
+		return
+	}
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch root: %v", err)}, http.StatusNotFound)
 		return
@@ -615,6 +629,10 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 
 	// Fetch the skyfile's metadata and a streamer to download the file
 	metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout, pricePerMS)
+	if errors.Contains(err, renter.ErrSkylinkBlocked) {
+		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
+		return
+	}
 	if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("failed to fetch skylink: %v", err)}, http.StatusNotFound)
 		return
@@ -883,6 +901,22 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 		return
 	}
 
+	// Parse pricePerMS.
+	pricePerMS := DefaultSkynetPricePerMS
+	pricePerMSStr := queryForm.Get("priceperms")
+	if pricePerMSStr != "" {
+		pricePerMSParsed, err := parseCurrency(pricePerMSStr)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+		_, err = fmt.Sscan(pricePerMSParsed, &pricePerMS)
+		if err != nil {
+			WriteError(w, Error{"unable to parse 'pricePerMS' parameter: " + err.Error()}, http.StatusBadRequest)
+			return
+		}
+	}
+
 	// Check whether force upload is allowed. Skynet portals might disallow
 	// passing the force flag, if they want to they can set overrule the force
 	// flag by passing in the 'Skynet-Disable-Force' header
@@ -931,11 +965,11 @@ func (api *API) skynetSkylinkPinHandlerPOST(w http.ResponseWriter, req *http.Req
 		BaseChunkRedundancy: redundancy,
 	}
 
-	// TODO: set pricePerMS
-	pricePerMS := types.ZeroCurrency
-
 	err = api.renter.PinSkylink(skylink, lup, timeout, pricePerMS)
-	if errors.Contains(err, renter.ErrRootNotFound) {
+	if errors.Contains(err, renter.ErrSkylinkBlocked) {
+		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
+		return
+	} else if errors.Contains(err, renter.ErrRootNotFound) {
 		WriteError(w, Error{fmt.Sprintf("Failed to pin file to Skynet: %v", err)}, http.StatusNotFound)
 		return
 	} else if err != nil {
@@ -1000,7 +1034,10 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// streaming upload.
 	if params.convertPath == "" {
 		skylink, err := api.renter.UploadSkyfile(sup, reader)
-		if err != nil {
+		if errors.Contains(err, renter.ErrSkylinkBlocked) {
+			WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
+			return
+		} else if err != nil {
 			WriteError(w, Error{fmt.Sprintf("failed to upload file to Skynet: %v", err)}, http.StatusBadRequest)
 			return
 		}
@@ -1041,6 +1078,10 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 		return
 	}
 	skylink, err := api.renter.CreateSkylinkFromSiafile(sup, convertPath)
+	if errors.Contains(err, renter.ErrSkylinkBlocked) {
+		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
+		return
+	}
 	if err != nil {
 		WriteError(w, Error{fmt.Sprintf("failed to convert siafile to skyfile: %v", err)}, http.StatusBadRequest)
 		return
@@ -1064,22 +1105,22 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 // skynetStatsHandlerGET responds with a JSON with statistical data about
 // skynet, e.g. number of files uploaded, total size, etc.
-func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-	// calculate upload statistics
-	stats := SkynetStats{}
-	var mu sync.Mutex
-	err := api.renter.FileList(modules.SkynetFolder, true, true, func(f modules.FileInfo) {
-		mu.Lock()
-		defer mu.Unlock()
-		// do not double-count large files by counting both the header file and
-		// the extended file
-		if !strings.HasSuffix(f.Name(), renter.ExtendedSuffix) {
-			stats.NumFiles++
+func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// read "cached" parameter. Defaults to 'true'.
+	cached := true
+	var err error
+	if cachedStr := req.FormValue("cached"); cachedStr != "" {
+		cached, err = scanBool(cachedStr)
+		if err != nil {
+			WriteError(w, Error{fmt.Sprintf("error parsing 'cached' parameter: %v", err)}, http.StatusBadRequest)
+			return
 		}
-		stats.TotalSize += f.Filesize
-	})
+	}
+
+	// get stats
+	stats, err := api.renter.SkynetStats(cached)
 	if err != nil {
-		WriteError(w, Error{fmt.Sprintf("failed to get the list of files: %v", err)}, http.StatusInternalServerError)
+		WriteError(w, Error{err.Error()}, http.StatusInternalServerError)
 		return
 	}
 
@@ -1098,7 +1139,7 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, _ *http.Request, _ 
 	// Grab the siad uptime
 	uptime := time.Since(api.StartTime()).Seconds()
 
-	WriteJSON(w, SkynetStatsGET{
+	WriteJSON(w, &SkynetStatsGET{
 		PerformanceStats: perfStats,
 
 		Uptime:      int64(uptime),

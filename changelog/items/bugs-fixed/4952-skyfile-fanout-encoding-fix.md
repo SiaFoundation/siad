@@ -1,1 +1,0 @@
-- Fixed bug in skyfile fanout encoding that allowed for encoding empty piece root hashes.
