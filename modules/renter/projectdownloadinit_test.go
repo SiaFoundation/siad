@@ -280,7 +280,6 @@ func TestProjectDownloadChunk_createInitialWorkerSet(t *testing.T) {
 	}
 }
 
-
 // TestProjectDownloadGouging checks that `checkProjectDownloadGouging` is
 // correctly detecting price gouging from a host.
 func TestProjectDownloadGouging(t *testing.T) {
