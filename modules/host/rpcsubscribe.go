@@ -195,7 +195,10 @@ func (h *Host) managedHandleExtendSubscriptionRequest(stream siamux.Stream, subs
 		return nil, time.Time{}, errors.AddContext(modules.ErrInsufficientPaymentForRPC, "managedHandleExtendSubscriptionRequest")
 	}
 
-	// Update the notification cost.
+	// Update the notification cost. Grab a lock while doing so to make sure no
+	// notifications are sent in the meantime.
+	info.mu.Lock()
+	defer info.mu.Unlock()
 	info.notificationCost = pt.SubscriptionNotificationCost
 
 	// Update the limit.

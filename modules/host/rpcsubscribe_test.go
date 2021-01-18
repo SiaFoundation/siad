@@ -158,6 +158,9 @@ func TestRPCSubscribe(t *testing.T) {
 	t.Run("Timeout", func(t *testing.T) {
 		testRPCSubscribeSessionTimeout(t, rhp)
 	})
+	t.Run("ExtendTimeout", func(t *testing.T) {
+		testRPCSubscribeExtendTimeout(t, rhp)
+	})
 }
 
 // testRPCSubscribeBasic tests subscribing to an entry and unsubscribing without
@@ -656,7 +659,122 @@ func testRPCSubscribeSessionTimeout(t *testing.T, rhp *renterHostPair) {
 	currentBalance = host.staticAccountManager.callAccountBalance(rhp.staticAccountID)
 	expectedBalance = expectedBalance.Sub(cost)
 	if !currentBalance.Equals(expectedBalance) {
-		t.Fatal("wrong balance after timeout", currentBalance.HumanString(), expectedBalance)
+		t.Fatal("wrong balance after timeout", currentBalance, expectedBalance)
+	}
+
+	// Check total subscriptions.
+	err = assertNumSubscriptions(host, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// testRPCSubscribeExtendTimeout makes sure a session doesn't time out as long
+// as it's being extended.
+func testRPCSubscribeExtendTimeout(t *testing.T, rhp *renterHostPair) {
+	var sub types.Specifier
+	fastrand.Read(sub[:])
+
+	// Register a listener for notifications.
+	notificationReader, notificationWriter := io.Pipe()
+	var notificationUploaded, notificationDownloaded uint64
+	var notificationMu sync.Mutex
+	err := rhp.staticRenterMux.NewListener(hex.EncodeToString(sub[:]), func(stream siamux.Stream) {
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		defer func() {
+			if err := stream.Close(); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		// Copy the output to the pipe.
+		io.Copy(notificationWriter, stream)
+
+		// Collect used bandwidth.
+		notificationDownloaded += stream.Limit().Downloaded()
+		notificationUploaded += stream.Limit().Uploaded()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a registry value.
+	rv, spk, _ := randomRegistryValue()
+	tweak := rv.Tweak
+	host := rhp.staticHT.host
+
+	// fund the account.
+	currentBalance := host.staticAccountManager.callAccountBalance(rhp.staticAccountID)
+	expectedBalance := modules.DefaultHostExternalSettings().MaxEphemeralAccountBalance
+	_, err = rhp.managedFundEphemeralAccount(rhp.pt.FundAccountCost.Add(expectedBalance).Sub(currentBalance), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// check the account balance.
+	if !host.staticAccountManager.callAccountBalance(rhp.staticAccountID).Equals(expectedBalance) {
+		t.Fatal("invalid balance", expectedBalance, host.staticAccountManager.callAccountBalance(rhp.staticAccountID))
+	}
+
+	// begin the subscription loop.
+	initialBudget := expectedBalance.Div64(2)
+	stream, err := rhp.BeginSubscription(initialBudget, sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pt := rhp.managedPriceTable()
+
+	// Subscribe to a value.
+	_, err = rhp.SubcribeToRV(stream, pt, spk, tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Sleep for half the period and extend it three times.
+	n := 3
+	for i := 0; i < n; i++ {
+		time.Sleep(modules.SubscriptionPeriod / 2)
+		err = rhp.ExtendSubscription(stream, pt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = readAndAssertOkResponse(notificationReader)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Send a request. This should still work even though we just slept 1.5
+	// times the period because we extended it 3 times the period.
+	_, err = rhp.SubcribeToRV(stream, pt, spk, tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Close connection to get the refund.
+	if err := stream.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check balance afterwards.
+	l := stream.Limit()
+	err = build.Retry(10, time.Second, func() error {
+		upCost := pt.UploadBandwidthCost.Mul64(l.Uploaded() + notificationUploaded)
+		downCost := pt.DownloadBandwidthCost.Mul64(l.Downloaded() + notificationDownloaded)
+		bandwidthCost := upCost.Add(downCost)
+		cost := bandwidthCost.Add(modules.MDMSubscribeCost(pt, 0, 1).Mul64(2))
+		cost = cost.Add(modules.MDMSubscriptionMemoryCost(pt, 1).Mul64(uint64(n)))
+
+		currentBalance = host.staticAccountManager.callAccountBalance(rhp.staticAccountID)
+		expected := expectedBalance.Sub(cost)
+		if !currentBalance.Equals(expected) {
+			return fmt.Errorf("wrong balance %v != %v", currentBalance, expected)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Check total subscriptions.
