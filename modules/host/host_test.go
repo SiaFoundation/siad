@@ -977,11 +977,11 @@ func (p *renterHostPair) LatestRevision(payByFC bool) (types.FileContractRevisio
 }
 
 // SubscribeToRV subscribes to the given publickey/tweak pair.
-func (p *renterHostPair) SubcribeToRV(stream siamux.Stream, pt *modules.RPCPriceTable, pubkey types.SiaPublicKey, tweak crypto.Hash) (modules.SignedRegistryValue, error) {
+func (p *renterHostPair) SubcribeToRV(stream siamux.Stream, pt *modules.RPCPriceTable, pubkey types.SiaPublicKey, tweak crypto.Hash) (*modules.SignedRegistryValue, error) {
 	// Send the type of the request.
 	err := modules.RPCWrite(stream, modules.SubscriptionRequestSubscribe)
 	if err != nil {
-		return modules.SignedRegistryValue{}, err
+		return nil, err
 	}
 	// Send the request.
 	err = modules.RPCWrite(stream, []modules.RPCRegistrySubscriptionRequest{{
@@ -989,23 +989,22 @@ func (p *renterHostPair) SubcribeToRV(stream siamux.Stream, pt *modules.RPCPrice
 		Tweak:  tweak,
 	}})
 	if err != nil {
-		return modules.SignedRegistryValue{}, err
+		return nil, err
 	}
 	// Read response.
-	var snt modules.RPCRegistrySubscriptionNotificationType
-	err = modules.RPCRead(stream, &snt)
+	var rvs []modules.SignedRegistryValue
+	err = modules.RPCRead(stream, &rvs)
 	if err != nil {
-		return modules.SignedRegistryValue{}, err
+		return nil, err
 	}
-	if snt.Type != modules.SubscriptionResponseRegistryValue {
-		return modules.SignedRegistryValue{}, errors.New("wrong type returned for noticiation")
+	var rv *modules.SignedRegistryValue
+	if len(rvs) > 1 {
+		build.Critical("more responses than subscribed to values")
+	} else if len(rvs) == 1 {
+		rv = &rvs[0]
+		err = rv.Verify(pubkey.ToPublicKey())
 	}
-	var sneu modules.RPCRegistrySubscriptionNotificationEntryUpdate
-	err = modules.RPCRead(stream, &sneu)
-	if err != nil {
-		return modules.SignedRegistryValue{}, err
-	}
-	return sneu.Entry, sneu.Entry.Verify(pubkey.ToPublicKey())
+	return rv, err
 }
 
 // UnsubscribeFromRV unsubscribes from the given publickey/tweak pair.
