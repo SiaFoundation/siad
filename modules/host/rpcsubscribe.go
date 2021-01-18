@@ -321,7 +321,7 @@ func subscriptionResponseStream(info *subscriptionInfo, sm *siamux.SiaMux) (siam
 }
 
 // managedRPCRegistrySubscribe handles the RegistrySubscribe rpc.
-func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ cleanUpFn, err error) {
+func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ afterCloseFn, err error) {
 	// Read the price table
 	pt, err := h.staticReadPriceTableID(stream)
 	if err != nil {

@@ -2024,14 +2024,14 @@ func testRedundancyReporting(t *testing.T, tg *siatest.TestGroup) {
 		}
 		// If host is not active, announce it again and mine a block.
 		if err := host.HostAnnouncePost(); err != nil {
-			return (err)
+			return err
 		}
 		miner := tg.Miners()[0]
 		if err := miner.MineBlock(); err != nil {
-			return (err)
+			return err
 		}
 		if err := tg.Sync(); err != nil {
-			return (err)
+			return err
 		}
 		hg, err := host.HostGet()
 		if err != nil {

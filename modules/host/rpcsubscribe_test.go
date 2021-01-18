@@ -91,7 +91,7 @@ func readAndAssertRegistryValueNotification(rv modules.SignedRegistryValue, r io
 	var snt modules.RPCRegistrySubscriptionNotificationType
 	err := modules.RPCRead(r, &snt)
 	if err != nil {
-		return (err)
+		return err
 	}
 	if snt.Type != modules.SubscriptionResponseRegistryValue {
 		return errors.New("notification has wrong type")
@@ -99,7 +99,7 @@ func readAndAssertRegistryValueNotification(rv modules.SignedRegistryValue, r io
 	var sneu modules.RPCRegistrySubscriptionNotificationEntryUpdate
 	err = modules.RPCRead(r, &sneu)
 	if err != nil {
-		return (err)
+		return err
 	}
 	if !reflect.DeepEqual(rv, sneu.Entry) {
 		return errors.New("wrong entry in notification")
@@ -113,7 +113,7 @@ func readAndAssertOkResponse(r io.Reader) error {
 	var snt modules.RPCRegistrySubscriptionNotificationType
 	err := modules.RPCRead(r, &snt)
 	if err != nil {
-		return (err)
+		return err
 	}
 	if snt.Type != modules.SubscriptionResponseSubscriptionSuccess {
 		return errors.New("notification has wrong type")
