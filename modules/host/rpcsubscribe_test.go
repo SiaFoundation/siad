@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
 	"strings"
 	"sync"
@@ -160,6 +161,9 @@ func TestRPCSubscribe(t *testing.T) {
 	})
 	t.Run("ExtendTimeout", func(t *testing.T) {
 		testRPCSubscribeExtendTimeout(t, rhp)
+	})
+	t.Run("Concurrent", func(t *testing.T) {
+		testRPCSubscribeConcurrent(t, rhp)
 	})
 }
 
@@ -354,7 +358,7 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// Close the subscription.
-	if err := stream.Close(); err != nil {
+	if err := rhp.StopSubscription(stream); err != nil {
 		t.Fatal(err)
 	}
 
@@ -362,17 +366,11 @@ func testRPCSubscribeBasic(t *testing.T, rhp *renterHostPair) {
 	// 1. subtract the initial budget.
 	// 2. add the remaining budget.
 	// 3. subtract fundAmt.
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		expectedBalance := expectedBalance.Sub(initialBudget)
-		expectedBalance = expectedBalance.Add(expectedBudget(runningCost))
-		expectedBalance = expectedBalance.Sub(fundAmt)
-		if !host.staticAccountManager.callAccountBalance(rhp.staticAccountID).Equals(expectedBalance) {
-			return fmt.Errorf("invalid balance %v != %v", expectedBalance, host.staticAccountManager.callAccountBalance(rhp.staticAccountID))
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
+	expectedBalance = expectedBalance.Sub(initialBudget)
+	expectedBalance = expectedBalance.Add(expectedBudget(runningCost))
+	expectedBalance = expectedBalance.Sub(fundAmt)
+	if !host.staticAccountManager.callAccountBalance(rhp.staticAccountID).Equals(expectedBalance) {
+		t.Fatalf("invalid balance %v != %v", expectedBalance, host.staticAccountManager.callAccountBalance(rhp.staticAccountID))
 	}
 
 	// Check total subscriptions.
@@ -574,7 +572,7 @@ func testRPCSubscribeBeforeAvailable(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// Close the subscription.
-	if err := stream.Close(); err != nil {
+	if err := rhp.StopSubscription(stream); err != nil {
 		t.Fatal(err)
 	}
 
@@ -582,17 +580,11 @@ func testRPCSubscribeBeforeAvailable(t *testing.T, rhp *renterHostPair) {
 	// 1. subtract the initial budget.
 	// 2. add the remaining budget.
 	// 3. subtract fundAmt.
-	err = build.Retry(100, 100*time.Millisecond, func() error {
-		expectedBalance := expectedBalance.Sub(initialBudget)
-		expectedBalance = expectedBalance.Add(expectedBudget(runningCost))
-		expectedBalance = expectedBalance.Sub(fundAmt)
-		if !host.staticAccountManager.callAccountBalance(rhp.staticAccountID).Equals(expectedBalance) {
-			return fmt.Errorf("invalid balance %v != %v", expectedBalance, host.staticAccountManager.callAccountBalance(rhp.staticAccountID))
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
+	expectedBalance = expectedBalance.Sub(initialBudget)
+	expectedBalance = expectedBalance.Add(expectedBudget(runningCost))
+	expectedBalance = expectedBalance.Sub(fundAmt)
+	if !host.staticAccountManager.callAccountBalance(rhp.staticAccountID).Equals(expectedBalance) {
+		t.Fatalf("invalid balance %v != %v", expectedBalance, host.staticAccountManager.callAccountBalance(rhp.staticAccountID))
 	}
 
 	// Check total subscriptions.
@@ -753,7 +745,7 @@ func testRPCSubscribeExtendTimeout(t *testing.T, rhp *renterHostPair) {
 	}
 
 	// Close connection to get the refund.
-	if err := stream.Close(); err != nil {
+	if err := rhp.StopSubscription(stream); err != nil {
 		t.Fatal(err)
 	}
 
@@ -775,6 +767,158 @@ func testRPCSubscribeExtendTimeout(t *testing.T, rhp *renterHostPair) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// Check total subscriptions.
+	err = assertNumSubscriptions(host, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// testRPCSubscribeConcurrent tests that extending a subscription with an
+// ongoing stream of incoming updates works and that both parties assume the
+// same consumed bandwidth.
+func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
+	var sub types.Specifier
+	fastrand.Read(sub[:])
+
+	// Register a listener for notifications.
+	var notificationUploaded, notificationDownloaded uint64
+	var notificationMu sync.Mutex
+	numNotifications := 0
+	var wg sync.WaitGroup
+	err := rhp.staticRenterMux.NewListener(hex.EncodeToString(sub[:]), func(stream siamux.Stream) {
+		wg.Add(1)
+		defer wg.Done()
+		notificationMu.Lock()
+		defer notificationMu.Unlock()
+		defer func() {
+			if err := stream.Close(); err != nil {
+				t.Error(err)
+			}
+		}()
+
+		// Read the notification type.
+		var snt modules.RPCRegistrySubscriptionNotificationType
+		err := modules.RPCRead(stream, &snt)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Handle the response.
+		switch snt.Type {
+		case modules.SubscriptionResponseSubscriptionSuccess:
+		case modules.SubscriptionResponseRegistryValue:
+			// Read the update.
+			var sneu modules.RPCRegistrySubscriptionNotificationEntryUpdate
+			err = modules.RPCRead(stream, &sneu)
+			if err != nil {
+				t.Fatal(err)
+			}
+			numNotifications++
+		default:
+			t.Fatal("invalid notification type", snt.Type)
+		}
+
+		// Read until the stream is closed by the peer.
+		_, err = stream.Read(make([]byte, 1))
+		if err == nil || !strings.Contains(err.Error(), io.ErrClosedPipe.Error()) {
+			t.Fatal(err)
+		}
+
+		// Close the stream.
+		if err = stream.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		// Collect stats.
+		notificationDownloaded += stream.Limit().Downloaded()
+		notificationUploaded += stream.Limit().Uploaded()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a registry value.
+	rv, spk, sk := randomRegistryValue()
+	tweak := rv.Tweak
+	host := rhp.staticHT.host
+
+	// Start a goroutine that continuously sets it to a new value on the host.
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	go func(rv modules.SignedRegistryValue) {
+		for range ticker.C {
+			host := rhp.staticHT.host
+			rv.Revision++
+			rv = rv.Sign(sk)
+			_, err := host.RegistryUpdate(rv, spk, math.MaxUint64)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+		}
+	}(rv)
+
+	// fund the account.
+	currentBalance := host.staticAccountManager.callAccountBalance(rhp.staticAccountID)
+	expectedBalance := modules.DefaultHostExternalSettings().MaxEphemeralAccountBalance
+	_, err = rhp.managedFundEphemeralAccount(rhp.pt.FundAccountCost.Add(expectedBalance).Sub(currentBalance), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// check the account balance.
+	if !host.staticAccountManager.callAccountBalance(rhp.staticAccountID).Equals(expectedBalance) {
+		t.Fatal("invalid balance", expectedBalance, host.staticAccountManager.callAccountBalance(rhp.staticAccountID))
+	}
+
+	// begin the subscription loop.
+	initialBudget := expectedBalance.Div64(2)
+	stream, err := rhp.BeginSubscription(initialBudget, sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pt := rhp.managedPriceTable()
+
+	// Subscribe to a value.
+	_, err = rhp.SubcribeToRV(stream, pt, spk, tweak)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Sleep for half the period and extend it three times.
+	n := 3
+	for i := 0; i < n; i++ {
+		time.Sleep(modules.SubscriptionPeriod / 2)
+		err = rhp.ExtendSubscription(stream, pt)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Stop session.
+	if err := rhp.StopSubscription(stream); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for last notification to finish.
+	wg.Wait()
+
+	// Check balance afterwards.
+	l := stream.Limit()
+	upCost := pt.UploadBandwidthCost.Mul64(l.Uploaded() + notificationUploaded)
+	downCost := pt.DownloadBandwidthCost.Mul64(l.Downloaded() + notificationDownloaded)
+	bandwidthCost := upCost.Add(downCost)
+	cost := bandwidthCost.Add(modules.MDMSubscribeCost(pt, 1, 1))
+	cost = cost.Add(modules.MDMSubscriptionMemoryCost(pt, 1).Mul64(uint64(n)))
+	cost = cost.Add(pt.SubscriptionNotificationCost.Mul64(uint64(numNotifications)))
+
+	currentBalance = host.staticAccountManager.callAccountBalance(rhp.staticAccountID)
+	expected := expectedBalance.Sub(cost)
+	if !currentBalance.Equals(expected) {
+		t.Fatalf("wrong balance %v != %v", currentBalance, expected)
 	}
 
 	// Check total subscriptions.

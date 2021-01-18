@@ -30,6 +30,7 @@ type (
 	// subscriptionInfo holds the information required to respond to a
 	// subscriber and to correctly charge it.
 	subscriptionInfo struct {
+		closed            bool
 		notificationCost  types.Currency
 		minExpectedRevNum uint64
 		mu                sync.Mutex
@@ -147,6 +148,16 @@ func (h *Host) managedHandleSubscribeRequest(info *subscriptionInfo, pt *modules
 	for _, id := range ids {
 		subs[id] = struct{}{}
 	}
+	return nil
+}
+
+// managedHandleStopSubscription gracefully disables notifications and waits for
+// ongoing notifications to be sent.
+func (h *Host) managedHandleStopSubscription(info *subscriptionInfo) error {
+	// Flush notifications and prevent new ones.
+	info.mu.Lock()
+	info.closed = true
+	info.mu.Unlock()
 	return nil
 }
 
@@ -279,6 +290,9 @@ func (h *Host) threadedNotifySubscribers(pubKey types.SiaPublicKey, rv modules.S
 			// to allow for multiple notifications in parallel.
 			info.mu.Lock()
 			defer info.mu.Unlock()
+			if info.closed {
+				return
+			}
 
 			// Check if we have already updated the subscriber with a higher
 			// revision number for that entry than the minExpectedRevNum. This
@@ -354,6 +368,7 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ afterCloseFn
 	// reading from the stream means uploading from the host's perspective. That
 	// makes the writeCost the DownloadBandwidthCost.
 	budget := modules.NewBudget(pd.Amount())
+	bandwidthLimit := modules.NewBudgetLimit(budget, pt.UploadBandwidthCost, pt.DownloadBandwidthCost)
 	// Prepare a refund method which is called at the end of the rpc.
 	refund := func() {
 		// Refund the unused budget
@@ -361,7 +376,6 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ afterCloseFn
 			err = errors.Compose(err, h.staticAccountManager.callRefund(pd.AccountID(), budget.Remaining()))
 		}
 	}
-	bandwidthLimit := modules.NewBudgetLimit(budget, pt.UploadBandwidthCost, pt.DownloadBandwidthCost)
 	err = stream.SetLimit(bandwidthLimit)
 	if err != nil {
 		return refund, errors.AddContext(err, "failed to set budget limit on stream")
@@ -407,6 +421,9 @@ func (h *Host) managedRPCRegistrySubscribe(stream siamux.Stream) (_ afterCloseFn
 			pt, deadline, err = h.managedHandleExtendSubscriptionRequest(stream, subscriptions, deadline, info, bandwidthLimit)
 		case modules.SubscriptionRequestPrepay:
 			err = h.managedHandlePrepayBandwidth(stream, info)
+		case modules.SubscriptionRequestStop:
+			err = h.managedHandleStopSubscription(info)
+			return refund, err
 		default:
 			return refund, errors.New("unknown request type")
 		}
