@@ -596,7 +596,7 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
-	if !r.memoryManager.RequestWithContext(ctx, length, memoryPriorityHigh) {
+	if !r.memoryManager.Request(ctx, length, memoryPriorityHigh) {
 		return nil, errors.New("call timed out, or renter shut down, before memory could be allocated for the download")
 	}
 	defer r.memoryManager.Return(length)
@@ -637,7 +637,7 @@ func (r *Renter) DownloadSkylink(link modules.Skylink, timeout time.Duration, pr
 	}
 
 	// Block until there is memory available, and ensure it gets returned.
-	if !r.memoryManager.RequestWithContext(ctx, fetchSize, memoryPriorityHigh) {
+	if !r.memoryManager.Request(ctx, fetchSize, memoryPriorityHigh) {
 		return modules.SkyfileMetadata{}, nil, errors.New("renter shut down before memory could be allocated for the download")
 	}
 	defer r.memoryManager.Return(fetchSize)
@@ -679,7 +679,7 @@ func (r *Renter) DownloadSkylinkBaseSector(link modules.Skylink, timeout time.Du
 
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
-	if !r.memoryManager.RequestWithContext(ctx, fetchSize, memoryPriorityHigh) {
+	if !r.memoryManager.Request(ctx, fetchSize, memoryPriorityHigh) {
 		return nil, errors.New("call timed out, or renter shut down, before memory could be allocated for the download")
 	}
 	defer r.memoryManager.Return(fetchSize)

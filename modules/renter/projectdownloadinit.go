@@ -192,6 +192,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 			// Ignore this worker if its host is considered to be price gouging.
 			err := checkProjectDownloadGouging(pt, allowance)
 			if err != nil {
+				fmt.Println("GOUGING")
 				pdc.workerState.staticRenter.log.Debugf("price gouging detected in worker %v, err: %v\n", w.staticHostPubKeyStr, err)
 				continue
 			}
@@ -199,6 +200,7 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 			// Ignore this worker if the worker is not currently equipped to
 			// perform async work, or if the read queue is on a cooldown.
 			if !w.managedAsyncReady() || w.staticJobReadQueue.cooldownUntil.After(time.Now()) {
+				fmt.Println("NOT ASYNC | CD")
 				continue
 			}
 
@@ -434,16 +436,27 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 // launched and then launch them. This is a non-blocking function that returns
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
+	fmt.Println("launch initial workers")
 	for {
 		// Get the list of unresolved workers. This will also grab an update, so
 		// any workers that have resolved recently will be reflected in the
 		// newly returned set of values.
 		unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
 
+		ws := pdc.workerState
+		ws.mu.Lock()
+		// fmt.Println(pdc)
+		fmt.Println("workers considered:", pdc.workersConsideredIndex)
+		fmt.Println("num resolved      :", len(ws.resolvedWorkers))
+		fmt.Println("num unresolved    :", len(ws.unresolvedWorkers))
+		fmt.Println("num avail pieces  :", pdc.availablePieces)
+		fmt.Println("")
+		ws.mu.Unlock()
+
 		// Create a list of usable workers, sorted by the amount of time they
 		// are expected to take to return.
 		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
-
+		// fmt.Println("num heap", len(workerHeap))
 		// Create an initial worker set
 		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
 		if err != nil {

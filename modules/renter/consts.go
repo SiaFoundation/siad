@@ -2,6 +2,7 @@ package renter
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -37,7 +38,7 @@ var (
 	RepairThreshold = build.Select(build.Var{
 		Dev:      0.25,
 		Standard: 0.25,
-		Testing:  0.25,
+		Testing:  math.SmallestNonzeroFloat64,
 	}).(float64)
 
 	// syncCheckInterval is how often the repair heap checks the consensus code
