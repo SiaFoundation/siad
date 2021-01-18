@@ -600,11 +600,11 @@ func TestMemoryManagerStatus(t *testing.T) {
 	err := build.Retry(100, 10*time.Millisecond, func() error {
 		mm.mu.Lock()
 		defer mm.mu.Unlock()
-		if len(mm.fifo) != 1 {
-			return fmt.Errorf("FIFO queue should have 1 request but has %v", len(mm.fifo))
+		if mm.fifo.Len() != 1 {
+			return fmt.Errorf("FIFO queue should have 1 request but has %v", mm.fifo.Len())
 		}
-		if len(mm.priorityFifo) != 1 {
-			return fmt.Errorf("Priority FIFO queue should have 1 request but has %v", len(mm.priorityFifo))
+		if mm.priorityFifo.Len() != 1 {
+			return fmt.Errorf("Priority FIFO queue should have 1 request but has %v", mm.priorityFifo.Len())
 		}
 		return nil
 	})
