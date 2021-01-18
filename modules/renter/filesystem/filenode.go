@@ -5,8 +5,11 @@ import (
 	"os"
 	"path/filepath"
 
+	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
+	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -14,10 +17,24 @@ type (
 	// FileNode is a node which references a SiaFile.
 	FileNode struct {
 		node
+		closed bool
 
 		*siafile.SiaFile
 	}
 )
+
+// AddPiece wraps siafile.AddPiece to guarantee that it's not called when the
+// fileNode was already closed.
+func (n *FileNode) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64, merkleRoot crypto.Hash) (err error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	if n.closed {
+		err := errors.New("AddPiece called on close FileNode")
+		build.Critical(err)
+		return err
+	}
+	return n.SiaFile.AddPiece(pk, chunkIndex, pieceIndex, merkleRoot)
+}
 
 // Close calls close on the FileNode and also removes the FileNode from its
 // parent if it's no longer being used and if it doesn't have any children which
@@ -26,6 +43,12 @@ type (
 func (n *FileNode) Close() error {
 	// If a parent exists, we need to lock it while closing a child.
 	parent := n.node.managedLockWithParent()
+
+	// Mark node as closed and sanity check that it hasn't been closed before.
+	if n.closed {
+		build.Critical("close called multiple times on same FileNode")
+	}
+	n.closed = true
 
 	// Call common close method.
 	n.node.closeNode()
@@ -55,6 +78,7 @@ func (n *FileNode) managedCopy() *FileNode {
 	n.node.mu.Lock()
 	defer n.node.mu.Unlock()
 	newNode := *n
+	newNode.closed = false
 	newNode.threadUID = newThreadUID()
 	newNode.threads[newNode.threadUID] = struct{}{}
 	return &newNode
