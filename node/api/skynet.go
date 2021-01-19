@@ -1366,6 +1366,6 @@ func (api *API) skynetRestoreHandlerPOST(w http.ResponseWriter, req *http.Reques
 	}
 
 	WriteJSON(w, SkynetRestorePOST{
-		Skylink: skylink,
+		Skylink: skylink.String(),
 	})
 }

@@ -225,9 +225,19 @@ func (c *Client) SkynetSkylinkConcatGet(skylink string) (_ []byte, _ modules.Sky
 // SkynetSkylinkBackup uses the /skynet/skylink endpoint to fetch the Skyfile's
 // basesector, and reader for large Skyfiles, and writes it to the backupDst
 // writer.
-func (c *Client) SkynetSkylinkBackup(skylink string, backupDst io.Writer) error {
+func (c *Client) SkynetSkylinkBackup(skylinkStr string, backupDst io.Writer) error {
+	// Check the skylink
+	var skylink modules.Skylink
+	err := skylink.LoadString(skylinkStr)
+	if err != nil {
+		return errors.AddContext(err, "unable to load skylink")
+	}
+	if !skylink.IsSkylinkV1() {
+		return errors.New("Skylink backup code only supports V1 skylinks")
+	}
+
 	// Download the BaseSector first
-	baseSectorReader, err := c.SkynetBaseSectorGet(skylink)
+	baseSectorReader, err := c.SkynetBaseSectorGet(skylinkStr)
 	if err != nil {
 		return errors.AddContext(err, "unable to download baseSector")
 	}
@@ -246,7 +256,7 @@ func (c *Client) SkynetSkylinkBackup(skylink string, backupDst io.Writer) error 
 		}
 		// If there is no fanout then we just need to backup the baseSector
 		if sl.FanoutSize == 0 {
-			return modules.BackupSkylink(skylink, baseSector, nil, backupDst)
+			return modules.BackupSkylink(skylinkStr, baseSector, nil, backupDst)
 		}
 	}
 
@@ -255,7 +265,7 @@ func (c *Client) SkynetSkylinkBackup(skylink string, backupDst io.Writer) error 
 	// for the remaining information needed for the backup
 
 	// Fetch the header and reader for the Skylink
-	getQuery := fmt.Sprintf("/skynet/skylink/%s", skylink)
+	getQuery := fmt.Sprintf("/skynet/skylink/%s", skylinkStr)
 	header, reader, err := c.getReaderResponse(getQuery)
 	if err != nil {
 		return errors.AddContext(err, "unable to fetch skylink data")
@@ -278,7 +288,7 @@ func (c *Client) SkynetSkylinkBackup(skylink string, backupDst io.Writer) error 
 	// If there are no subFiles then we have all the information we need to
 	// back up the file.
 	if len(sm.Subfiles) == 0 {
-		return modules.BackupSkylink(skylink, baseSector, reader, backupDst)
+		return modules.BackupSkylink(skylinkStr, baseSector, reader, backupDst)
 	}
 
 	// Grab the default path for the skyfile
@@ -313,7 +323,7 @@ func (c *Client) SkynetSkylinkBackup(skylink string, backupDst io.Writer) error 
 	}
 
 	// Create the backup file on disk
-	return modules.BackupSkylink(skylink, baseSector, backupReader, backupDst)
+	return modules.BackupSkylink(skylinkStr, baseSector, backupReader, backupDst)
 }
 
 // SkynetSkylinkRestorePost uses the /skynet/restore endpoint to restore

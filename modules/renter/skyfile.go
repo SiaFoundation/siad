@@ -786,23 +786,23 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 
 // RestoreSkyfile restores a skyfile from disk such that the skylink is
 // preserved.
-func (r *Renter) RestoreSkyfile(reader io.Reader) (string, error) {
+func (r *Renter) RestoreSkyfile(reader io.Reader) (modules.Skylink, error) {
 	// Restore the skylink and baseSector from the reader
 	skylinkStr, baseSector, err := modules.RestoreSkylink(reader)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to restore skyfile from backup")
+		return modules.Skylink{}, errors.AddContext(err, "unable to restore skyfile from backup")
 	}
 
 	// Load the skylink
 	var skylink modules.Skylink
 	err = skylink.LoadString(skylinkStr)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to load skylink")
+		return modules.Skylink{}, errors.AddContext(err, "unable to load skylink")
 	}
 
 	// Check if the new skylink is blocked
 	if r.staticSkynetBlocklist.IsBlocked(skylink) {
-		return "", ErrSkylinkBlocked
+		return modules.Skylink{}, ErrSkylinkBlocked
 	}
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.
@@ -812,20 +812,20 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (string, error) {
 	if encrypted {
 		fileSpecificSkykey, err = r.decryptBaseSector(baseSector)
 		if err != nil {
-			return "", errors.AddContext(err, "Unable to decrypt skyfile base sector")
+			return modules.Skylink{}, errors.AddContext(err, "Unable to decrypt skyfile base sector")
 		}
 	}
 
 	// Parse the baseSector.
 	sl, _, sm, _, err := modules.ParseSkyfileMetadata(baseSector)
 	if err != nil {
-		return "", errors.AddContext(err, "error parsing the baseSector")
+		return modules.Skylink{}, errors.AddContext(err, "error parsing the baseSector")
 	}
 
 	// Create the upload parameters
 	siaPath, err := modules.SkynetFolder.Join(skylinkStr)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to create siapath")
+		return modules.Skylink{}, errors.AddContext(err, "unable to create siapath")
 	}
 	sup := modules.SkyfileUploadParameters{
 		BaseChunkRedundancy: sl.FanoutDataPieces + sl.FanoutParityPieces,
@@ -845,7 +845,7 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (string, error) {
 	if encrypted {
 		err = encryptBaseSectorWithSkykey(baseSector, sl, fileSpecificSkykey)
 		if err != nil {
-			return "", errors.AddContext(err, "error re-encrypting base sector")
+			return modules.Skylink{}, errors.AddContext(err, "error re-encrypting base sector")
 		}
 
 		// Set the Skykey fields
@@ -866,12 +866,12 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (string, error) {
 		// Create multipart reader from the subfiles
 		multiReader, err := modules.NewMultipartReader(tee, sm.Subfiles)
 		if err != nil {
-			return "", errors.AddContext(err, "unable to create multireader")
+			return modules.Skylink{}, errors.AddContext(err, "unable to create multireader")
 		}
 		// Create the multipart reader for the fanout using the TeeReader's buffer.
 		multiReaderFanout, err := modules.NewMultipartReader(&buf, sm.Subfiles)
 		if err != nil {
-			return "", errors.AddContext(err, "unable to create multireader")
+			return modules.Skylink{}, errors.AddContext(err, "unable to create multireader")
 		}
 		restoreReader = modules.NewSkyfileMultipartReader(multiReader, multiReaderFanout, sup)
 	}
@@ -879,24 +879,24 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (string, error) {
 	// Upload the Base Sector of the skyfile
 	err = r.managedUploadBaseSector(sup, baseSector, skylink)
 	if err != nil {
-		return "", errors.AddContext(err, "failed to upload base sector")
+		return modules.Skylink{}, errors.AddContext(err, "failed to upload base sector")
 	}
 
 	// If there was no fanout then we are done.
 	if sl.FanoutSize == 0 {
-		return skylinkStr, nil
+		return skylink, nil
 	}
 
 	// Create erasure coder and FileUploadParams
 	extendedPath, err := modules.NewSiaPath(sup.SiaPath.String() + modules.ExtendedSuffix)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to create extended siapath")
+		return modules.Skylink{}, errors.AddContext(err, "unable to create extended siapath")
 	}
 
 	// Create the FileUploadParams
 	fup, err := fileUploadParams(extendedPath, int(sl.FanoutDataPieces), int(sl.FanoutParityPieces), sup.Force, sl.CipherType)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to create FileUploadParams for large file")
+		return modules.Skylink{}, errors.AddContext(err, "unable to create FileUploadParams for large file")
 	}
 
 	// Generate a Cipher Key for the FileUploadParams.
@@ -910,19 +910,19 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (string, error) {
 		// For converted files we need to generate a SiaKey
 		fup.CipherKey, err = crypto.NewSiaKey(sl.CipherType, sl.KeyData[:])
 		if err != nil {
-			return "", errors.AddContext(err, "unable to create Cipher key from SkyfileLayout KeyData")
+			return modules.Skylink{}, errors.AddContext(err, "unable to create Cipher key from SkyfileLayout KeyData")
 		}
 	} else {
 		err = generateCipherKey(&fup, sup)
 		if err != nil {
-			return "", errors.AddContext(err, "unable to create Cipher key for FileUploadParams")
+			return modules.Skylink{}, errors.AddContext(err, "unable to create Cipher key for FileUploadParams")
 		}
 	}
 
 	// Upload the file
 	fileNode, err := r.callUploadStreamFromReader(fup, restoreReader)
 	if err != nil {
-		return "", errors.AddContext(err, "unable to upload large skyfile")
+		return modules.Skylink{}, errors.AddContext(err, "unable to upload large skyfile")
 	}
 
 	// Defer closing the file
@@ -935,17 +935,17 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (string, error) {
 	// Check if any of the skylinks associated with the siafile are blocked
 	if r.isFileNodeBlocked(fileNode) {
 		// Skylink is blocked, return error and try and delete file
-		return "", errors.Compose(ErrSkylinkBlocked, r.DeleteFile(sup.SiaPath))
+		return modules.Skylink{}, errors.Compose(ErrSkylinkBlocked, r.DeleteFile(sup.SiaPath))
 	}
 
 	// Add the skylink to the siafiles.
 	err = fileNode.AddSkylink(skylink)
 	if err != nil {
 		err = errors.AddContext(err, "unable to add skylink to the sianodes")
-		return "", errors.Compose(err, r.DeleteFile(sup.SiaPath))
+		return modules.Skylink{}, errors.Compose(err, r.DeleteFile(sup.SiaPath))
 	}
 
-	return skylinkStr, nil
+	return skylink, nil
 }
 
 // UploadSkyfile will upload the provided data with the provided metadata,

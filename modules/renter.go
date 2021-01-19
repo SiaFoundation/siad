@@ -1122,7 +1122,7 @@ type Renter interface {
 	Portals() ([]SkynetPortal, error)
 
 	// RestoreSkyfile restores a skyfile such that the skylink is preserved.
-	RestoreSkyfile(reader io.Reader) (string, error)
+	RestoreSkyfile(reader io.Reader) (Skylink, error)
 
 	// UpdateSkynetPortals updates the list of known skynet portals.
 	UpdateSkynetPortals(additions []SkynetPortal, removals []NetAddress) error
