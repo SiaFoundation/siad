@@ -93,52 +93,6 @@ func TestSkynetSuite(t *testing.T) {
 	}
 }
 
-// TestSkynetDownloadByRoot verifies the functionality of the download by root
-// routes. It is separate as it requires an amount of hosts equal to the total
-// amount of pieces per chunk.
-func TestSkynetDownloadByRoot(t *testing.T) {
-	if testing.Short() {
-		t.SkipNow()
-	}
-	t.Parallel()
-
-	// Define the parameters.
-	groupParams := siatest.GroupParams{
-		Hosts:   6,
-		Miners:  1,
-		Renters: 1,
-	}
-	groupDir := renterTestDir(t.Name())
-
-	// Create a testgroup.
-	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
-	if err != nil {
-		t.Fatal(errors.AddContext(err, "failed to create group"))
-	}
-	defer func() {
-		if err := tg.Close(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	// Update the renter's allowance to support 6 hosts
-	r := tg.Renters()[0]
-	allowance := siatest.DefaultAllowance
-	allowance.Hosts = 6
-	err = r.RenterPostAllowance(allowance)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Test the standard flow.
-	t.Run("NoEncryption", func(t *testing.T) {
-		testSkynetDownloadByRoot(t, tg, "")
-	})
-	// t.Run("Encrypted", func(t *testing.T) {
-	// 	testSkynetDownloadByRoot(t, tg, "rootkey")
-	// })
-}
-
 // testSkynetBasic provides basic end-to-end testing for uploading skyfiles and
 // downloading the resulting skylinks.
 func testSkynetBasic(t *testing.T, tg *siatest.TestGroup) {
@@ -1443,7 +1397,7 @@ func testSkynetDownloadBaseSectorNoEncryption(t *testing.T, tg *siatest.TestGrou
 // testSkynetDownloadBaseSector tests downloading a skylink's baseSector
 func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup, skykeyName string) {
 	r := tg.Renters()[0]
-	fmt.Println("renter dir", r.Dir)
+
 	// Add the SkyKey
 	var sk skykey.Skykey
 	var err error
@@ -1566,6 +1520,52 @@ func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup, skykeyNam
 	if len(fanoutBytes) != 0 {
 		t.Error("Expected 0 fanout bytes:", fanoutBytes)
 	}
+}
+
+// TestSkynetDownloadByRoot verifies the functionality of the download by root
+// routes. It is separate as it requires an amount of hosts equal to the total
+// amount of pieces per chunk.
+func TestSkynetDownloadByRoot(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Define the parameters.
+	numHosts := 6
+	groupParams := siatest.GroupParams{
+		Hosts:  numHosts,
+		Miners: 1,
+	}
+	groupDir := renterTestDir(t.Name())
+
+	// Create a testgroup.
+	tg, err := siatest.NewGroupFromTemplate(groupDir, groupParams)
+	if err != nil {
+		t.Fatal(errors.AddContext(err, "failed to create group"))
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Update the renter's allowance to support 6 hosts
+	renterParams := node.Renter(filepath.Join(groupDir, "renter"))
+	renterParams.Allowance = siatest.DefaultAllowance
+	renterParams.Allowance.Hosts = uint64(numHosts)
+	_, err = tg.AddNodes(renterParams)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test the standard flow.
+	t.Run("NoEncryption", func(t *testing.T) {
+		testSkynetDownloadByRoot(t, tg, "")
+	})
+	t.Run("Encrypted", func(t *testing.T) {
+		testSkynetDownloadByRoot(t, tg, "rootkey")
+	})
 }
 
 // testSkynetDownloadByRoot tests downloading by root

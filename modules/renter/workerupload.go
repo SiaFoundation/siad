@@ -225,8 +225,6 @@ func (w *worker) managedPerformUploadChunkJob() {
 	w.uploadConsecutiveFailures = 0
 	w.mu.Unlock()
 
-	fmt.Printf("uploaded root %v to host %v\n", root, w.staticHostPubKeyStr[64:])
-
 	// Add piece to renterFile
 	err = uc.fileEntry.AddPiece(w.staticHostPubKey, uc.staticIndex, pieceIndex, root)
 	if err != nil {
