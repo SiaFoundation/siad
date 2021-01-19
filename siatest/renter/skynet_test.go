@@ -1443,7 +1443,7 @@ func testSkynetDownloadBaseSectorNoEncryption(t *testing.T, tg *siatest.TestGrou
 // testSkynetDownloadBaseSector tests downloading a skylink's baseSector
 func testSkynetDownloadBaseSector(t *testing.T, tg *siatest.TestGroup, skykeyName string) {
 	r := tg.Renters()[0]
-
+	fmt.Println("renter dir", r.Dir)
 	// Add the SkyKey
 	var sk skykey.Skykey
 	var err error

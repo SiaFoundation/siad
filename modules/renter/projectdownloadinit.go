@@ -436,22 +436,22 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 // launched and then launch them. This is a non-blocking function that returns
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
-	fmt.Println("launch initial workers")
+	// fmt.Println("launch initial workers")
 	for {
 		// Get the list of unresolved workers. This will also grab an update, so
 		// any workers that have resolved recently will be reflected in the
 		// newly returned set of values.
 		unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
 
-		ws := pdc.workerState
-		ws.mu.Lock()
+		// ws := pdc.workerState
+		// ws.mu.Lock()
 		// fmt.Println(pdc)
-		fmt.Println("workers considered:", pdc.workersConsideredIndex)
-		fmt.Println("num resolved      :", len(ws.resolvedWorkers))
-		fmt.Println("num unresolved    :", len(ws.unresolvedWorkers))
-		fmt.Println("num avail pieces  :", pdc.availablePieces)
-		fmt.Println("")
-		ws.mu.Unlock()
+		// fmt.Println("workers considered:", pdc.workersConsideredIndex)
+		// fmt.Println("num resolved      :", len(ws.resolvedWorkers))
+		// fmt.Println("num unresolved    :", len(ws.unresolvedWorkers))
+		// fmt.Println("num avail pieces  :", pdc.availablePieces)
+		// fmt.Println("")
+		// ws.mu.Unlock()
 
 		// Create a list of usable workers, sorted by the amount of time they
 		// are expected to take to return.

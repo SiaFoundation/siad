@@ -499,7 +499,6 @@ func (pcws *projectChunkWorkerSet) managedTryUpdateWorkerState() error {
 // will select those workers only if the additional expense of using those
 // workers is less than 100 * pricePerMS.
 func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePerMS types.Currency, offset, length uint64) (chan *downloadResponse, error) {
-	fmt.Println("managedDownload of", pcws.staticPieceRoots)
 	// Potentially force a timeout via a disrupt for testing.
 	if pcws.staticRenter.deps.Disrupt("timeoutProjectDownloadByRoot") {
 		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
