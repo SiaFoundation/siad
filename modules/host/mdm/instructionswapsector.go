@@ -53,15 +53,15 @@ func (i instructionSwapSector) Batch() bool {
 }
 
 // Execute executes the 'SwapSector' instruction.
-func (i *instructionSwapSector) Execute(prevOutput output) output {
+func (i *instructionSwapSector) Execute(prevOutput output) (output, types.Currency) {
 	// Fetch the data.
 	offset1, err := i.staticData.Uint64(i.sector1Offset)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 	offset2, err := i.staticData.Uint64(i.sector2Offset)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 
 	// Order the offsets so we don't need to do that later.
@@ -72,7 +72,7 @@ func (i *instructionSwapSector) Execute(prevOutput output) output {
 	ps := i.staticState
 	newMerkleRoot, err := ps.sectors.swapSectors(offset1, offset2)
 	if err != nil {
-		return errOutput(err)
+		return errOutput(err), types.ZeroCurrency
 	}
 
 	// If no proof was requested we are done.
@@ -80,7 +80,7 @@ func (i *instructionSwapSector) Execute(prevOutput output) output {
 		return output{
 			NewSize:       prevOutput.NewSize,
 			NewMerkleRoot: newMerkleRoot,
-		}
+		}, types.ZeroCurrency
 	}
 
 	// Get the swapped sectors. Since they have been swapped, the indices are
@@ -121,7 +121,7 @@ func (i *instructionSwapSector) Execute(prevOutput output) output {
 		NewMerkleRoot: newMerkleRoot,
 		Output:        data,
 		Proof:         proof,
-	}
+	}, types.ZeroCurrency
 }
 
 // Collateral returns the collateral cost of adding one full sector.

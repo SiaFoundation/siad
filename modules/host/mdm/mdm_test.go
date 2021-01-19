@@ -255,24 +255,35 @@ func TestNew(t *testing.T) {
 // It runs the program constructed by tb with the storage obligation so. It will
 // also return the outputs as a slice for convenience.
 func (mdm *MDM) ExecuteProgramWithBuilder(tb *testProgramBuilder, so *TestStorageObligation, duration types.BlockHeight, finalized bool) ([]Output, error) {
-	// Execute the program.
-	finalize, budget, outputs, err := mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, duration, finalized)
+	outputs, budget, err := mdm.ExecuteProgramWithBuilderCustomBudget(tb, so, duration, finalized)
 	if err != nil {
 		return nil, err
-	}
-	// Finalize the program if finalized is true.
-	if finalize == nil && finalized {
-		return nil, errors.New("finalize method was 'nil' but finalized was 'true'")
-	} else if finalized {
-		if err = finalize(so); err != nil {
-			return nil, err
-		}
 	}
 	// Budget should be drained now.
 	if !budget.Remaining().IsZero() {
 		return nil, fmt.Errorf("remaining budget should be empty but was %v", budget.Remaining())
 	}
 	return outputs, nil
+}
+
+// ExecuteProgramWithBuilderCustomBudget is a convenience wrapper around
+// mdm.ExecuteProgram. It runs the program constructed by tb with the storage
+// obligation so. It will also return the outputs as a slice for convenience.
+func (mdm *MDM) ExecuteProgramWithBuilderCustomBudget(tb *testProgramBuilder, so *TestStorageObligation, duration types.BlockHeight, finalized bool) ([]Output, *modules.RPCBudget, error) {
+	// Execute the program.
+	finalize, budget, outputs, err := mdm.ExecuteProgramWithBuilderManualFinalize(tb, so, duration, finalized)
+	if err != nil {
+		return nil, nil, err
+	}
+	// Finalize the program if finalized is true.
+	if finalize == nil && finalized {
+		return nil, nil, errors.New("finalize method was 'nil' but finalized was 'true'")
+	} else if finalized {
+		if err = finalize(so); err != nil {
+			return nil, nil, err
+		}
+	}
+	return outputs, budget, nil
 }
 
 // ExecuteProgramWithBuilderManualFinalize is a convenience wrapper around
@@ -283,7 +294,7 @@ func (mdm *MDM) ExecuteProgramWithBuilderManualFinalize(tb *testProgramBuilder, 
 	ctx := context.Background()
 	program, programData := tb.Program()
 	values := tb.Cost()
-	_, _, collateral := values.Cost()
+	_, _, collateral, _ := values.Cost()
 	budget := values.Budget(finalized)
 	finalize, outputChan, err := mdm.ExecuteProgram(ctx, tb.staticPT, program, budget, collateral, so, duration, uint64(len(programData)), bytes.NewReader(programData))
 	if err != nil {

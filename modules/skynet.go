@@ -37,6 +37,10 @@ var (
 	// FanoutNonceDerivation is the specifier used to derive a nonce for
 	// fanout encryption.
 	FanoutNonceDerivation = types.NewSpecifier("FanoutNonce")
+
+	// ExtendedSuffix is the suffix that is added to a skyfile siapath if it is
+	// a large file upload
+	ExtendedSuffix = "-extended"
 )
 
 var (

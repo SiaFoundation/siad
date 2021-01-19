@@ -723,23 +723,22 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 }
 
-// managedSetStuckAndClose sets the unfinishedUploadChunk's stuck status,
-// triggers threadedBubble to update the directory, and then closes the
-// fileEntry
+// managedSetStuckAndClose sets the unfinishedUploadChunk's stuck status and
+// closes the fileEntry.
 func (r *Renter) managedSetStuckAndClose(uc *unfinishedUploadChunk, stuck bool) error {
-	// Update chunk stuck status
-	err := uc.fileEntry.SetStuck(uc.staticIndex, stuck)
-	if err != nil {
-		return fmt.Errorf("WARN: unable to update chunk stuck status for file %v: %v", uc.fileEntry.SiaFilePath(), err)
-	}
-	// Close SiaFile
-	uc.fileEntry.Close()
-	if err != nil {
-		return fmt.Errorf("WARN: unable to close siafile %v", uc.fileEntry.SiaFilePath())
-	}
+	// Update chunk stuck status and close file.
+	errStuck := uc.fileEntry.SetStuck(uc.staticIndex, stuck)
+	errClose := uc.fileEntry.Close()
+
 	// Signal garbage collector to free memory.
 	uc.physicalChunkData = nil
 	uc.logicalChunkData = nil
+
+	// Return potential errors.
+	err := errors.Compose(errStuck, errClose)
+	if err != nil {
+		return fmt.Errorf("WARN: unable to update chunk stuck status for file and close it %v: %v", uc.fileEntry.SiaFilePath(), err)
+	}
 	return nil
 }
 

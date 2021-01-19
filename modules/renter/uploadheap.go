@@ -641,7 +641,7 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		// There are not enough workers for the chunk to reach minimum
 		// redundancy. Check if the allowance has enough hosts for the chunk to
 		// reach minimum redundancy
-		r.log.Debugln("Not building any chunks from file as there are not enough workers")
+		r.log.Debugf("Not building any chunks from file: %v: num workers %v, min pieces %v", modules.ErrNotEnoughWorkersInWorkerPool, workerPoolLen, minPieces)
 		allowance := r.hostContractor.Allowance()
 		// Only perform this check when we are looking for unstuck chunks. This
 		// will prevent log spam from repeatedly logging to the user the issue
@@ -731,17 +731,14 @@ func (r *Renter) managedBuildUnfinishedChunks(entry *filesystem.FileNode, hosts 
 		}
 
 		// If a chunk is not able to be repaired, mark it as stuck.
+		var stuck bool
 		if !repairable {
 			r.log.Println("Marking chunk", chunk.id, "as stuck due to not being repairable")
-			err := r.managedSetStuckAndClose(chunk, true)
-			if err != nil {
-				r.log.Debugln("WARN: unable to set chunk stuck status and close:", err)
-			}
-			continue
+			stuck = true
 		}
 
 		// Close entry of completed chunk
-		err := r.managedSetStuckAndClose(chunk, false)
+		err := r.managedSetStuckAndClose(chunk, stuck)
 		if err != nil {
 			r.log.Debugln("WARN: unable to set chunk stuck status and close:", err)
 		}
@@ -1167,9 +1164,9 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 		// For stuck chunk repairs, check to see if file has stuck chunks
 		if target == targetStuckChunks && file.NumStuckChunks() == 0 {
 			// Close unneeded files
-			file.Close()
+			err = file.Close()
 			if err != nil {
-				r.log.Println("WARN: Could not close file:", err)
+				r.log.Println("WARN: Could not close file:", file.SiaFilePath(), err)
 			}
 			continue
 		}
@@ -1183,7 +1180,10 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 		// repair
 		ignore := file.NumChunks() == file.NumStuckChunks() || file.Metadata().CachedHealth < RepairThreshold
 		if target == targetUnstuckChunks && ignore {
-			file.Close()
+			err = file.Close()
+			if err != nil {
+				r.log.Println("WARN: Could not close file:", file.SiaFilePath(), err)
+			}
 			continue
 		}
 
@@ -1222,7 +1222,10 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 			return files[i].Metadata().CachedHealth > files[j].Metadata().CachedHealth
 		})
 		for i := maxUploadHeapChunks; i < len(files); i++ {
-			files[i].Close()
+			err = files[i].Close()
+			if err != nil {
+				r.log.Println("WARN: Could not close file:", files[i].SiaFilePath(), err)
+			}
 		}
 		files = files[:maxUploadHeapChunks]
 	}
@@ -1243,7 +1246,10 @@ func (r *Renter) managedBuildChunkHeap(dirSiaPath modules.SiaPath, hosts map[str
 
 	// Close all files
 	for _, file := range files {
-		file.Close()
+		err = file.Close()
+		if err != nil {
+			r.log.Println("WARN: Could not close file:", file.SiaFilePath(), err)
+		}
 	}
 }
 

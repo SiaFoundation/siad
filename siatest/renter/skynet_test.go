@@ -51,7 +51,7 @@ func TestSkynet(t *testing.T) {
 	groupParams := siatest.GroupParams{
 		Hosts:   3,
 		Miners:  1,
-		Renters: 1,
+		Portals: 1,
 	}
 	groupDir := renterTestDir(t.Name())
 
@@ -70,7 +70,9 @@ func TestSkynet(t *testing.T) {
 		{Name: "Portals", Test: testSkynetPortals},
 		{Name: "HeadRequest", Test: testSkynetHeadRequest},
 		{Name: "NoMetadata", Test: testSkynetNoMetadata},
-		{Name: "Stats", Test: testSkynetStats},
+		{Name: "StatsNoCache", Test: testSkynetStatsNoCache},
+		{Name: "StatsNoInvalidate", Test: testSkynetStatsNoInvalidate},
+		{Name: "StatsInvalidate", Test: testSkynetStatsInvalidate},
 		{Name: "RequestTimeout", Test: testSkynetRequestTimeout},
 		{Name: "DryRunUpload", Test: testSkynetDryRunUpload},
 		{Name: "RegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
@@ -811,14 +813,46 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	largeTestFunc(files, fileName, sk.Name)
 }
 
+// testSkynetStatsNoCache runs testSkynetStats without any caching.
+func testSkynetStatsNoCache(t *testing.T, tg *siatest.TestGroup) {
+	testSkynetStats(t, tg, false, false)
+}
+
+// testSkynetStatsNoInvalidate runs testSkynetStats without cache invalidation.
+func testSkynetStatsNoInvalidate(t *testing.T, tg *siatest.TestGroup) {
+	testSkynetStats(t, tg, false, true)
+}
+
+// testSkynetStatsInvalidate runs testSkynetStats with cache invalidation.
+func testSkynetStatsInvalidate(t *testing.T, tg *siatest.TestGroup) {
+	testSkynetStats(t, tg, true, true)
+}
+
 // testSkynetStats tests the validity of the response of /skynet/stats endpoint
 // by uploading some test files and verifying that the reported statistics
 // change proportionally
-func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
+func testSkynetStats(t *testing.T, tg *siatest.TestGroup, invalidateCache, cached bool) {
 	r := tg.Renters()[0]
 
+	// If we run this test with a disabled cache invalidation loop, we need to
+	// inject a custom renter.
+	if invalidateCache {
+		rt := node.RenterTemplate
+		rt.RenterDeps = &dependencies.DependencyInvalidateStatsCache{}
+		nodes, err := tg.AddNodes(rt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r = nodes[0]
+		defer func() {
+			if err := tg.RemoveNode(r); err != nil {
+				t.Fatal(err)
+			}
+		}()
+	}
+
 	// get the stats
-	stats, err := r.SkynetStatsGet()
+	stats, err := r.SkynetStatsGetCached(cached)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -843,14 +877,21 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	// create two test files with sizes below and above the sector size
 	files := make(map[string]uint64)
 	files["statfile1"] = 2033
-	files["statfile2"] = modules.SectorSize + 123
+	files["statfile2"] = 2*modules.SectorSize + 123
 
 	// upload the files and keep track of their expected impact on the stats
 	var uploadedFilesSize, uploadedFilesCount uint64
+	var sps []modules.SiaPath
 	for name, size := range files {
-		if _, _, _, err := r.UploadNewSkyfileBlocking(name, size, false); err != nil {
+		_, sup, _, err := r.UploadNewSkyfileBlocking(name, size, false)
+		if err != nil {
 			t.Fatal(err)
 		}
+		sp, err := sup.SiaPath.Rebase(modules.RootSiaPath(), modules.SkynetFolder)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sps = append(sps, sp)
 
 		if size < modules.SectorSize {
 			// small files get padded up to a full sector
@@ -863,7 +904,7 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	}
 
 	// get the stats after the upload of the test files
-	statsAfter, err := r.SkynetStatsGet()
+	statsAfter, err := r.SkynetStatsGetCached(cached)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -879,6 +920,33 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	lt := statsAfter.PerformanceStats.Upload4MB.Lifetime
 	if lt.N60ms+lt.N120ms+lt.N240ms+lt.N500ms+lt.N1000ms+lt.N2000ms+lt.N5000ms+lt.N10s+lt.NLong == 0 {
 		t.Error("lifetime upload stats are not reporting any uploads")
+	}
+
+	// Delete the files.
+	for _, sp := range sps {
+		err = r.RenterFileDeleteRootPost(sp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		extSP, err := modules.NewSiaPath(sp.String() + modules.ExtendedSuffix)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// This might not always succeed which is fine. We know how many files
+		// we expect afterwards.
+		_ = r.RenterFileDeleteRootPost(extSP)
+	}
+
+	// get the stats after the delete operation.
+	statsAfter, err = r.SkynetStatsGet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if statsAfter.UploadStats.NumFiles != statsBefore.UploadStats.NumFiles {
+		t.Fatal(fmt.Sprintf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.UploadStats.NumFiles), statsAfter.UploadStats.NumFiles))
+	}
+	if statsAfter.UploadStats.TotalSize != statsBefore.UploadStats.TotalSize {
+		t.Fatal(fmt.Sprintf("stats did not report the correct size. expected %d, found %d", statsBefore.UploadStats.TotalSize, statsAfter.UploadStats.TotalSize))
 	}
 }
 
@@ -1908,7 +1976,7 @@ func testSkynetBlocklist(t *testing.T, tg *siatest.TestGroup, isHash bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	spExtended, err := modules.NewSiaPath(sp.String() + renter.ExtendedSuffix)
+	spExtended, err := modules.NewSiaPath(sp.String() + modules.ExtendedSuffix)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -3373,7 +3441,7 @@ func BenchmarkSkynetSingleSector(b *testing.B) {
 	groupParams := siatest.GroupParams{
 		Hosts:   3,
 		Miners:  1,
-		Renters: 1,
+		Portals: 1,
 	}
 	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
 	if err != nil {
@@ -3736,6 +3804,8 @@ func TestSkynetCleanupOnError(t *testing.T) {
 
 	// Add a new renter with that dependency to interrupt skyfile uploads.
 	rt := node.RenterTemplate
+	rt.Allowance = siatest.DefaultAllowance
+	rt.Allowance.PaymentContractInitialFunding = siatest.DefaultPaymentContractInitialFunding
 	rt.RenterDeps = deps
 	nodes, err := tg.AddNodes(rt)
 	if err != nil {
@@ -3782,7 +3852,7 @@ func TestSkynetCleanupOnError(t *testing.T) {
 		t.Fatal("unexpected")
 	}
 
-	largePathExtended, err := modules.NewSiaPath(largePath.String() + renter.ExtendedSuffix)
+	largePathExtended, err := modules.NewSiaPath(largePath.String() + modules.ExtendedSuffix)
 	if err != nil {
 		t.Fatal(err)
 	}

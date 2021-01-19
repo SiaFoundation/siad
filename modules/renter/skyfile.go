@@ -75,10 +75,6 @@ var (
 
 	// ErrSkylinkBlocked is the error returned when a skylink is blocked
 	ErrSkylinkBlocked = errors.New("skylink is blocked")
-
-	// ExtendedSuffix is the suffix that is added to a skyfile siapath if it is
-	// a large file upload
-	ExtendedSuffix = "-extended"
 )
 
 // skyfileEstablishDefaults will set any zero values in the lup to be equal to
@@ -499,6 +495,9 @@ func (r *Renter) managedUploadSkyfileSmallFile(sup modules.SkyfileUploadParamete
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "failed to upload base sector")
 	}
+
+	// Update the stats. A small skyfile is padded to a sector.
+	r.managedAddFileToSkynetStats(modules.SectorSize, false)
 	return skylink, nil
 }
 
@@ -509,7 +508,7 @@ func (r *Renter) managedUploadSkyfileSmallFile(sup modules.SkyfileUploadParamete
 func (r *Renter) managedUploadSkyfileLargeFile(sup modules.SkyfileUploadParameters, fileReader modules.SkyfileUploadReader) (modules.Skylink, error) {
 	// Create the siapath for the skyfile extra data. This is going to be the
 	// same as the skyfile upload siapath, except with a suffix.
-	siaPath, err := modules.NewSiaPath(sup.SiaPath.String() + ExtendedSuffix)
+	siaPath, err := modules.NewSiaPath(sup.SiaPath.String() + modules.ExtendedSuffix)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
 	}
@@ -558,7 +557,15 @@ func (r *Renter) managedUploadSkyfileLargeFile(sup modules.SkyfileUploadParamete
 
 	// Convert the new siafile we just uploaded into a skyfile using the
 	// convert function.
-	return r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, fileReader.FanoutReader())
+	skylink, err := r.managedCreateSkylinkFromFileNode(sup, metadata, fileNode, fileReader.FanoutReader())
+	if err != nil {
+		return modules.Skylink{}, errors.AddContext(err, "unable to create skylink from filenode")
+	}
+
+	// Update the stats.
+	r.managedAddFileToSkynetStats(fileNode.Size(), true)
+	r.managedAddFileToSkynetStats(modules.SectorSize, false)
+	return skylink, nil
 }
 
 // DownloadSkylink will take a link and turn it into the metadata and data of a
@@ -754,7 +761,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	}
 	// Create the siapath for the skyfile extra data. This is going to be the
 	// same as the skyfile upload siapath, except with a suffix.
-	fup.SiaPath, err = modules.NewSiaPath(lup.SiaPath.String() + ExtendedSuffix)
+	fup.SiaPath, err = modules.NewSiaPath(lup.SiaPath.String() + modules.ExtendedSuffix)
 	if err != nil {
 		return errors.AddContext(err, "unable to create SiaPath for large skyfile extended data")
 	}
@@ -881,7 +888,7 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (string, error) {
 	}
 
 	// Create erasure coder and FileUploadParams
-	extendedPath, err := modules.NewSiaPath(sup.SiaPath.String() + ExtendedSuffix)
+	extendedPath, err := modules.NewSiaPath(sup.SiaPath.String() + modules.ExtendedSuffix)
 	if err != nil {
 		return "", errors.AddContext(err, "unable to create extended siapath")
 	}
@@ -961,7 +968,7 @@ func (r *Renter) UploadSkyfile(sup modules.SkyfileUploadParameters, reader modul
 				r.log.Printf("error deleting siafile after upload error: %v", err)
 			}
 
-			extendedPath := sup.SiaPath.String() + ExtendedSuffix
+			extendedPath := sup.SiaPath.String() + modules.ExtendedSuffix
 			extendedSiaPath, _ := modules.NewSiaPath(extendedPath)
 			if err := r.DeleteFile(extendedSiaPath); err != nil && !errors.Contains(err, filesystem.ErrNotExist) {
 				r.log.Printf("error deleting extended siafile after upload error: %v\n", err)

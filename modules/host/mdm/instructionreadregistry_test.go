@@ -35,7 +35,7 @@ func TestInstructionReadRegistry(t *testing.T) {
 	so := host.newTestStorageObligation(true)
 	pt := newTestPriceTable()
 	tb := newTestProgramBuilder(pt, 0)
-	tb.AddReadRegistryInstruction(spk, tweak)
+	tb.AddReadRegistryInstruction(spk, tweak, false)
 
 	// Execute it.
 	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, 0, false)
@@ -81,10 +81,10 @@ func TestInstructionReadRegistryNotFound(t *testing.T) {
 	so := host.newTestStorageObligation(true)
 	pt := newTestPriceTable()
 	tb := newTestProgramBuilder(pt, 0)
-	tb.AddReadRegistryInstruction(spk, crypto.Hash{})
+	refund := tb.AddReadRegistryInstruction(spk, crypto.Hash{}, true)
 
 	// Execute it.
-	outputs, err := mdm.ExecuteProgramWithBuilder(tb, so, 0, false)
+	outputs, remainingBudget, err := mdm.ExecuteProgramWithBuilderCustomBudget(tb, so, 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,5 +93,8 @@ func TestInstructionReadRegistryNotFound(t *testing.T) {
 	}
 	if len(outputs[0].Output) != 0 {
 		t.Fatal("expected empty output")
+	}
+	if !remainingBudget.Remaining().Equals(refund) {
+		t.Fatal("remaining budget should equal refund", remainingBudget.Remaining().HumanString(), refund.HumanString())
 	}
 }

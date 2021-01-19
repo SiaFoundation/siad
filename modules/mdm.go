@@ -3,13 +3,11 @@ package modules
 import (
 	"encoding/binary"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/siamux/mux"
 )
 
 type (
@@ -271,16 +269,18 @@ func MDMSwapSectorCost(pt *RPCPriceTable) types.Currency {
 // MDMUpdateRegistryCost is the cost of executing a 'UpdateRegistry'
 // instruction.
 func MDMUpdateRegistryCost(pt *RPCPriceTable) (_, _ types.Currency) {
-	// Cost is the same as uploading and storing a registry entry for 10 years.
+	// Cost is the same as uploading and storing a registry entry for 5 years.
 	writeCost := MDMWriteCost(pt, RegistryEntrySize)
-	storeCost := pt.WriteStoreCost.Mul64(RegistryEntrySize).Mul64(uint64(10 * types.BlocksPerYear))
+	storeCost := pt.WriteStoreCost.Mul64(RegistryEntrySize).Mul64(uint64(5 * types.BlocksPerYear))
 	return writeCost.Add(storeCost), storeCost
 }
 
 // MDMReadRegistryCost is the cost of executing a 'ReadRegistry' instruction.
-func MDMReadRegistryCost(pt *RPCPriceTable) types.Currency {
-	// Cost is the same as downloading a sector.
-	return MDMReadCost(pt, SectorSize)
+func MDMReadRegistryCost(pt *RPCPriceTable) (_, _ types.Currency) {
+	// Cost is the same as uploading and storing a registry entry for 10 years.
+	writeCost := MDMWriteCost(pt, RegistryEntrySize)
+	storeCost := pt.WriteStoreCost.Mul64(RegistryEntrySize).Mul64(uint64(10 * types.BlocksPerYear))
+	return writeCost.Add(storeCost), storeCost
 }
 
 // MDMWriteCost is the cost of executing a 'Write' instruction of a certain length.
@@ -302,6 +302,31 @@ func MDMSwapCost(pt *RPCPriceTable, contractSize uint64) types.Currency {
 // MDMTruncateCost is the cost of executing a 'Truncate' instruction.
 func MDMTruncateCost(pt *RPCPriceTable, contractSize uint64) types.Currency {
 	return types.SiacoinPrecision // TODO: figure out good cost
+}
+
+// MDMSubscribeCost returns the cost of subscribing to nEntries registry
+// entries and retrieving nFound of them.
+// Subscribing involves paying for 10 years of storage + the memory cost.
+func MDMSubscribeCost(pt *RPCPriceTable, nFound, nEntries uint64) types.Currency {
+	if nFound > nEntries {
+		build.Critical("nFound has to be <= nEntries")
+	}
+	// Cost of retrieving single entry.
+	cost, _ := MDMReadRegistryCost(pt)
+	// Total cost for all enries.
+	cost = cost.Mul64(nFound)
+	// Add memory cost.
+	cost = cost.Add(MDMSubscriptionMemoryCost(pt, nEntries))
+	return cost
+}
+
+// MDMSubscriptionMemoryCost computes the memory cost of subscribing to an
+// entry.
+func MDMSubscriptionMemoryCost(pt *RPCPriceTable, nEntries uint64) types.Currency {
+	// Single entry memory cost.
+	memoryCost := pt.SubscriptionMemoryCost.Mul64(SubscriptionEntrySize)
+	// Cost for all entries.
+	return memoryCost.Mul64(nEntries)
 }
 
 // MDMAppendMemory returns the additional memory consumption of a 'Append'
@@ -368,13 +393,6 @@ func MDMBandwidthCost(pt RPCPriceTable, uploadBandwidth, downloadBandwidth uint6
 // MDMMemoryCost computes the memory cost given a price table, memory and time.
 func MDMMemoryCost(pt *RPCPriceTable, usedMemory, time uint64) types.Currency {
 	return pt.MemoryTimeCost.Mul64(usedMemory * time)
-}
-
-// SubscriptionNotificationsCost is a helper to compute the cost of
-// numNotifications notifications.
-func SubscriptionNotificationsCost(pt *RPCPriceTable, numNotifications uint64) types.Currency {
-	singleCost := pt.SubscriptionNotificationBaseCost.Add(MDMReadRegistryCost(pt))
-	return singleCost.Mul64(numNotifications)
 }
 
 // MDMDropSectorsTime returns the time for a `DropSectors` instruction given
@@ -496,6 +514,13 @@ func NewBudget(budget types.Currency) *RPCBudget {
 	}
 }
 
+// Deposit deposits to a budget.
+func (b *RPCBudget) Deposit(c types.Currency) {
+	b.mu.Lock()
+	b.budget = b.budget.Add(c)
+	b.mu.Unlock()
+}
+
 // Remaining returns the remaining value in the budget.
 func (b *RPCBudget) Remaining() types.Currency {
 	b.mu.Lock()
@@ -519,49 +544,70 @@ func (b *RPCBudget) Withdraw(c types.Currency) bool {
 // an RPCBudget to determine whether to allow for more bandwidth consumption or
 // not.
 type BudgetLimit struct {
-	budget          *RPCBudget
-	staticReadCost  types.Currency
-	staticWriteCost types.Currency
+	budget *RPCBudget
 
-	atomicDownloaded uint64
-	atomicUploaded   uint64
+	readCost  types.Currency
+	writeCost types.Currency
+
+	downloaded uint64
+	uploaded   uint64
+
+	mu sync.Mutex
 }
 
 // NewBudgetLimit creates a new limit from a budget and priceTable.
-func NewBudgetLimit(budget *RPCBudget, readCost, writeCost types.Currency) mux.BandwidthLimit {
+func NewBudgetLimit(budget *RPCBudget, readCost, writeCost types.Currency) *BudgetLimit {
 	return &BudgetLimit{
-		budget:          budget,
-		staticReadCost:  readCost,
-		staticWriteCost: writeCost,
+		budget:    budget,
+		readCost:  readCost,
+		writeCost: writeCost,
 	}
 }
 
 // Downloaded implements the mux.BandwidthLimit interface.
 func (bl *BudgetLimit) Downloaded() uint64 {
-	return atomic.LoadUint64(&bl.atomicDownloaded)
+	bl.mu.Lock()
+	defer bl.mu.Unlock()
+	return bl.downloaded
 }
 
 // Uploaded implements the mux.BandwidthLimit interface.
 func (bl *BudgetLimit) Uploaded() uint64 {
-	return atomic.LoadUint64(&bl.atomicUploaded)
+	bl.mu.Lock()
+	defer bl.mu.Unlock()
+	return bl.uploaded
 }
 
 // RecordDownload implements the mux.BandwidthLimit interface.
 func (bl *BudgetLimit) RecordDownload(bytes uint64) error {
-	cost := bl.staticReadCost.Mul64(bytes)
+	bl.mu.Lock()
+	defer bl.mu.Unlock()
+
+	cost := bl.readCost.Mul64(bytes)
 	if !bl.budget.Withdraw(cost) {
 		return ErrInsufficientBandwidthBudget
 	}
-	atomic.AddUint64(&bl.atomicDownloaded, bytes)
+	bl.downloaded += bytes
 	return nil
 }
 
 // RecordUpload implements the mux.BandwidthLimit interface.
 func (bl *BudgetLimit) RecordUpload(bytes uint64) error {
-	cost := bl.staticWriteCost.Mul64(bytes)
+	bl.mu.Lock()
+	defer bl.mu.Unlock()
+
+	cost := bl.writeCost.Mul64(bytes)
 	if !bl.budget.Withdraw(cost) {
 		return ErrInsufficientBandwidthBudget
 	}
-	atomic.AddUint64(&bl.atomicUploaded, bytes)
+	bl.uploaded += bytes
 	return nil
+}
+
+// UpdateCosts updates the limit's underlying readCost and writeCost.
+func (bl *BudgetLimit) UpdateCosts(readCost, writeCost types.Currency) {
+	bl.mu.Lock()
+	defer bl.mu.Unlock()
+	bl.readCost = readCost
+	bl.writeCost = writeCost
 }

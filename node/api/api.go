@@ -10,6 +10,7 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -242,6 +243,12 @@ func (api *API) UnrecognizedCallHandler(w http.ResponseWriter, _ *http.Request) 
 
 // WriteError an error to the API caller.
 func WriteError(w http.ResponseWriter, err Error, code int) {
+	// Sanity check specific errors for which we expect certain http status
+	// codes to be returned.
+	if strings.Contains(err.Error(), renter.ErrSkylinkBlocked.Error()) && code != http.StatusUnavailableForLegalReasons {
+		build.Critical("ErrSkynetBlocked should always be returned with http.StatusUnavailableForLegalReasons")
+	}
+
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(code)
 	encodingErr := json.NewEncoder(w).Encode(err)

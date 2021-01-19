@@ -9,7 +9,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/siatest"
 	"gitlab.com/NebulousLabs/Sia/skykey"
@@ -346,7 +345,7 @@ func verifyBackupAndRestore(tg *siatest.TestGroup, portal1, portal2 *siatest.Tes
 	if err != nil {
 		return err
 	}
-	skySiaPathExtended, err := skySiaPath.Join(renter.ExtendedSuffix)
+	skySiaPathExtended, err := skySiaPath.Join(modules.ExtendedSuffix)
 	if err != nil {
 		return err
 	}

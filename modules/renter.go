@@ -74,6 +74,12 @@ type FileListFunc func(FileInfo)
 // over the filesystem.
 type DirListFunc func(DirectoryInfo)
 
+// SkynetStats contains statistical data about skynet
+type SkynetStats struct {
+	NumFiles  int    `json:"numfiles"`
+	TotalSize uint64 `json:"totalsize"`
+}
+
 // HostDBFilterError HostDBDisableFilter HostDBActivateBlacklist and
 // HostDBActiveWhitelist are the constants used to enable and disable the filter
 // mode of the renter's hostdb
@@ -891,6 +897,11 @@ type Renter interface {
 
 	// MountInfo returns the list of currently mounted FUSE filesystems.
 	MountInfo() []MountInfo
+
+	// SkynetStats returns the SkynetStats of the renter. Depending on the input,
+	// either cached stats will be returned or a full disk scan will either be
+	// started or if it's already ongoing, waited for.
+	SkynetStats(bool) (SkynetStats, error)
 
 	// Unmount unmounts the FUSE filesystem currently mounted at mountPoint.
 	Unmount(mountPoint string) error
