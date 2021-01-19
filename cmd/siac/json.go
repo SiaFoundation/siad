@@ -25,7 +25,7 @@ var (
 // them together to produce a single dump of information.
 //
 // If this ever gets split into multiple subcommands, the current implementation
-// would specfically be 'json renter' as the focus of the current implementation
+// would specifically be 'json renter' as the focus of the current implementation
 // is on pulling together a large amount of renter information.
 func jsoncmd() {
 	var rs modules.RenterStats
