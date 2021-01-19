@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"strconv"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -29,6 +31,32 @@ func init() {
 	} else if build.Release == "testing" {
 		SafeMutexDelay = 30 * time.Second
 	}
+}
+
+// AddCommas produces a string form of the given number in base 10 with commas
+// after every three orders of magnitude.
+//
+// e.g. AddCommas(834142) -> 834,142
+//
+// This code was pulled from the 'humanize' package at
+// github.com/dustin/go-humanize - thanks Dustin!
+func AddCommas(v uint64) string {
+	parts := []string{"", "", "", "", "", "", ""}
+	j := len(parts) - 1
+
+	for v > 999 {
+		parts[j] = strconv.FormatUint(v%1000, 10)
+		switch len(parts[j]) {
+		case 2:
+			parts[j] = "0" + parts[j]
+		case 1:
+			parts[j] = "00" + parts[j]
+		}
+		v = v / 1000
+		j--
+	}
+	parts[j] = strconv.Itoa(int(v))
+	return strings.Join(parts[j:], ",")
 }
 
 // CurrencyUnits converts a types.Currency to a string with human-readable

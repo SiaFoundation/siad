@@ -30,6 +30,13 @@ var (
 func jsoncmd() {
 	var rs modules.RenterStats
 
+	// Grab any alerts.
+	alerts, err := httpClient.DaemonAlertsGet()
+	if err != nil {
+		die("Could not fetch alerts:", err)
+	}
+	rs.Alerts = alerts.CriticalAlerts
+
 	// Grab the contract statistics.
 	rc, err := httpClient.RenterDisabledContractsGet()
 	if err != nil {
@@ -63,6 +70,18 @@ func jsoncmd() {
 		die("could not get the wallet balance:", err)
 	}
 	rs.TotalWalletFunds = wg.ConfirmedSiacoinBalance.Add(wg.UnconfirmedIncomingSiacoins).Sub(wg.UnconfirmedOutgoingSiacoins)
+
+	// Get information on the memory.
+	rg, err := httpClient.RenterGet()
+	if err != nil {
+		die("could not get the renter status:", err)
+	}
+	if rg.MemoryStatus.Available > 0 {
+		rs.HasRenterMemory = true
+	}
+	if rg.MemoryStatus.PriorityAvailable > 0 {
+		rs.HasPriorityRenterMemory = true
+	}
 
 	// Convert the rs to marshalled json.
 	json, err := json.MarshalIndent(rs, "", "\t")

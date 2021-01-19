@@ -88,6 +88,9 @@ type RenterStats struct {
 	// A name for this renter.
 	Name string
 
+	// Any alerts that are in place for this renter.
+	Alerts []Alert
+
 	// The total amount of contract data that hosts are maintaining on behalf of
 	// the renter is the sum of these fields.
 	ActiveContractData  uint64
@@ -101,6 +104,11 @@ type RenterStats struct {
 	TotalContractRemainingFunds types.Currency
 
 	TotalWalletFunds types.Currency // Includes unconfirmed
+
+	// Information about the status of the memory queue. If the memory is all
+	// used up, jobs will start blocking eachother.
+	HasRenterMemory         bool
+	HasPriorityRenterMemory bool
 }
 
 // HostDBFilterError HostDBDisableFilter HostDBActivateBlacklist and
