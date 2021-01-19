@@ -55,7 +55,7 @@ func TestRenterOne(t *testing.T) {
 		{Name: "TestDownloadMultipleLargeSectors", Test: testDownloadMultipleLargeSectors},
 		{Name: "TestLocalRepair", Test: testLocalRepair},
 		{Name: "TestClearDownloadHistory", Test: testClearDownloadHistory},
-		{Name: "TestDownloadAfterLegacyRenewAndClear", Test: testDownloadAfterRenewAndClear},
+		{Name: "TestDownloadAfterRenewAndClear", Test: testDownloadAfterRenewAndClear},
 		{Name: "TestDownloadAfterRenew", Test: testDownloadAfterRenew},
 		{Name: "TestDirectories", Test: testDirectories},
 		{Name: "TestAlertsSorted", Test: testAlertsSorted},

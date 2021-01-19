@@ -425,7 +425,7 @@ func (d *DependencyDisableStreamClose) Disrupt(s string) bool {
 
 // Disrupt returns true if the correct string is provided.
 func (d *DependencySkipDeleteContractAfterRenewal) Disrupt(s string) bool {
-	return s == "SkipContractDeleteAfterRenew"
+	return s == "SkipContractDeleteAfterRenew" || s == "DisableContractRecovery"
 }
 
 // Disrupt causes contract formation to fail due to low allowance funds.
