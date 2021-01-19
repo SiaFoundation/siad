@@ -14,10 +14,10 @@ import (
 
 var (
 	jsonCmd = &cobra.Command{
-		Use: "json",
+		Use:   "json",
 		Short: "provide a json dump of siad's current status",
-		Long: "queries a large number of endpoints in the siad api and produces a json dump with all of the information",
-		Run: wrap(jsoncmd),
+		Long:  "queries a large number of endpoints in the siad api and produces a json dump with all of the information",
+		Run:   wrap(jsoncmd),
 	}
 )
 

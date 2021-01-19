@@ -90,19 +90,18 @@ type RenterStats struct {
 
 	// The total amount of contract data that hosts are maintaining on behalf of
 	// the renter is the sum of these fields.
-	ActiveContractData uint64
+	ActiveContractData  uint64
 	PassiveContractData uint64
-	WastedContractData uint64
+	WastedContractData  uint64
 
 	TotalSiafiles uint64
 
-	TotalContractSpentFunds types.Currency // Includes fees
-	TotalContractFeeSpending types.Currency
+	TotalContractSpentFunds     types.Currency // Includes fees
+	TotalContractFeeSpending    types.Currency
 	TotalContractRemainingFunds types.Currency
 
 	TotalWalletFunds types.Currency // Includes unconfirmed
 }
-
 
 // HostDBFilterError HostDBDisableFilter HostDBActivateBlacklist and
 // HostDBActiveWhitelist are the constants used to enable and disable the filter

@@ -18,8 +18,8 @@ import (
 var (
 	// General Flags
 	alertSuppress bool
-	siaDir  string // Path to sia data dir
-	verbose bool   // Display additional information
+	siaDir        string // Path to sia data dir
+	verbose       bool   // Display additional information
 
 	// Module Specific Flags
 	//
