@@ -125,18 +125,13 @@ func (w *worker) managedHasDownloadJob() bool {
 	return len(w.downloadChunks) > 0
 }
 
-// managedPerformDownloadChunkJob will perform some download work if any is
+// threadedScheduleDownloadChunkJob will perform some download work if any is
 // available, returning false if no work is available.
-func (w *worker) managedPerformDownloadChunkJob() {
-	w.downloadMu.Lock()
-	if len(w.downloadChunks) == 0 {
-		w.downloadMu.Unlock()
+func (w *worker) threadedScheduleDownloadChunkJob(udc *unfinishedDownloadChunk) {
+	if err := w.renter.tg.Add(); err != nil {
 		return
 	}
-	udc := w.downloadChunks[0]
-	w.downloadChunks = w.downloadChunks[1:]
-	w.downloadMu.Unlock()
-
+	defer w.renter.tg.Done()
 	// Process this chunk. If the worker is not fit to do the download, or is
 	// put on standby, 'nil' will be returned. After the chunk has been
 	// processed, the worker will be registered with the chunk.
@@ -256,30 +251,6 @@ func (w *worker) managedDropDownloadChunks() {
 	w.downloadMu.Unlock()
 	for i := 0; i < len(removedChunks); i++ {
 		removedChunks[i].managedRemoveWorker()
-	}
-}
-
-// callQueueDownloadChunk adds a chunk to the worker's queue.
-func (w *worker) callQueueDownloadChunk(udc *unfinishedDownloadChunk) {
-	// Accept the chunk unless the worker has been terminated. Accepting the
-	// chunk needs to happen under the same lock as fetching the termination
-	// status.
-	w.downloadMu.Lock()
-	onCooldown := w.onDownloadCooldown()
-	terminated := w.downloadTerminated
-	goodWorker := !terminated && !onCooldown
-	if goodWorker {
-		// Accept the chunk and issue a notification to the master thread that
-		// there is a new download.
-		w.downloadChunks = append(w.downloadChunks, udc)
-		w.staticWake()
-	}
-	w.downloadMu.Unlock()
-
-	// If the worker is not usable, remove it from the udc. This call needs to
-	// happen without holding the worker lock.
-	if !goodWorker {
-		udc.managedRemoveWorker()
 	}
 }
 

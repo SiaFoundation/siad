@@ -134,10 +134,6 @@ func (w *worker) externTryLaunchSerialJob() {
 		w.externLaunchSerialJob(job.callExecute)
 		return
 	}
-	if w.managedHasDownloadJob() {
-		w.externLaunchSerialJob(w.managedPerformDownloadChunkJob)
-		return
-	}
 	if w.managedHasUploadJob() {
 		w.externLaunchSerialJob(w.managedPerformUploadChunkJob)
 		return
