@@ -3,6 +3,7 @@ package siatest
 import (
 	"bytes"
 	"mime/multipart"
+	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -105,6 +106,13 @@ func (tn *TestNode) UploadSkyfileBlockingCustom(filename string, filedata []byte
 		err = errors.AddContext(err, "Skyfile upload failed, health did not reach the repair threshold")
 		return
 	}
+
+	// TODO: this method does not properly block until all pieces have been
+	// successfully uploaded, this only happens (as far as I know) when the
+	// amount of hosts is equal to the amount of piece roots that need to be
+	// uploaded. The upload code escapes when 5/6 pieces are uploaded and both
+	// of the checks above don't catch this. I don't know how to solve this.
+	time.Sleep(5 * time.Second)
 
 	return
 }
