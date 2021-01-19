@@ -816,13 +816,7 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	r.lastEstimationHosts = []modules.HostDBEntry{}
 	r.mu.Unlock(id)
 	if cc.Synced {
-		if err := r.tg.Add(); err != nil {
-			return
-		}
-		go func() {
-			r.staticWorkerPool.callUpdate()
-			r.tg.Done()
-		}()
+		_ = r.tg.Launch(r.staticWorkerPool.callUpdate)
 	}
 }
 
