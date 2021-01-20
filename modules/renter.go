@@ -98,12 +98,15 @@ type RenterStats struct {
 	WastedContractData  uint64
 
 	TotalSiafiles uint64
+	TotalSiadirs  uint64
 
 	TotalContractSpentFunds     types.Currency // Includes fees
 	TotalContractFeeSpending    types.Currency
 	TotalContractRemainingFunds types.Currency
 
-	TotalWalletFunds types.Currency // Includes unconfirmed
+	AllowanceFunds              types.Currency
+	AllowanceUnspentUnallocated types.Currency
+	WalletFunds                 types.Currency // Includes unconfirmed
 
 	// Information about the status of the memory queue. If the memory is all
 	// used up, jobs will start blocking eachother.

@@ -63,19 +63,24 @@ func jsoncmd() {
 		die("Cound not get the renter root dir:", err)
 	}
 	rs.TotalSiafiles = rf.Directories[0].AggregateNumFiles
+	rs.TotalSiadirs = rf.Directories[0].AggregateNumSubDirs
+
+	// Get information on the allowance.
+	rg, err := httpClient.RenterGet()
+	if err != nil {
+		die("could not get the renter status:", err)
+	}
+	rs.AllowanceFunds = rg.Settings.Allowance.Funds
+	_, _, rs.AllowanceUnspentUnallocated = renterallowancespendingbreakdown(rg)
 
 	// Get the wallet balance.
 	wg, err := httpClient.WalletGet()
 	if err != nil {
 		die("could not get the wallet balance:", err)
 	}
-	rs.TotalWalletFunds = wg.ConfirmedSiacoinBalance.Add(wg.UnconfirmedIncomingSiacoins).Sub(wg.UnconfirmedOutgoingSiacoins)
+	rs.WalletFunds = wg.ConfirmedSiacoinBalance.Add(wg.UnconfirmedIncomingSiacoins).Sub(wg.UnconfirmedOutgoingSiacoins)
 
 	// Get information on the memory.
-	rg, err := httpClient.RenterGet()
-	if err != nil {
-		die("could not get the renter status:", err)
-	}
 	if rg.MemoryStatus.Available > 0 {
 		rs.HasRenterMemory = true
 	}
