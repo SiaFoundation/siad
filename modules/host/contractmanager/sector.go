@@ -2,6 +2,7 @@ package contractmanager
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -52,6 +53,18 @@ type (
 		mu      sync.Mutex
 	}
 )
+
+// MarshalText implements the TextMarshaler interface.
+func (id sectorID) MarshalText() (text []byte, err error) {
+	return []byte(hex.EncodeToString(id[:])), nil
+}
+
+// MarshalText implements the TextUnmarshaler interface.
+func (id *sectorID) UnmarshalText(text []byte) error {
+	b, err := hex.DecodeString(string(text))
+	copy(id[:], b)
+	return err
+}
 
 // readPartialSector will read a sector from the storage manager, returning the
 // 'length' bytes at offset 'offset' that match the input sector root.

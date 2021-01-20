@@ -111,8 +111,9 @@ func (cm *ContractManager) Close() error {
 // the provided dependencies.
 func newContractManager(dependencies modules.Dependencies, persistDir string) (_ *ContractManager, err error) {
 	cm := &ContractManager{
-		storageFolders:  make(map[uint16]*storageFolder),
-		sectorLocations: make(map[sectorID]sectorLocation),
+		storageFolders:               make(map[uint16]*storageFolder),
+		sectorLocations:              make(map[sectorID]sectorLocation),
+		sectorLocationsCountOverflow: make(map[sectorID]uint64),
 
 		lockedSectors: make(map[sectorID]*sectorLock),
 
