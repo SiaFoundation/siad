@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,36 @@ import (
 	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
+
+type (
+	// ContractParams are supplied as an argument to FormContract.
+	ContractParams struct {
+		Allowance     Allowance
+		Host          HostDBEntry
+		Funding       types.Currency
+		StartHeight   types.BlockHeight
+		EndHeight     types.BlockHeight
+		RefundAddress types.UnlockHash
+		RenterSeed    EphemeralRenterSeed
+
+		// Only used by RHP3
+		PriceTable *RPCPriceTable
+
+		// TODO: add optional keypair
+	}
+)
+
+// WorkerPool is an interface that describes a collection of workers. It's used
+// to be able to pass the renter's workers to the contractor.
+type WorkerPool interface {
+	Worker(types.SiaPublicKey) (Worker, error)
+}
+
+// Worker is a minimal interface for a single worker. It's used to be able to
+// use workers within the contractor.
+type Worker interface {
+	RenewContract(ctx context.Context, fcid types.FileContractID, params ContractParams, txnBuilder TransactionBuilder) (RenterContract, []types.Transaction, error)
+}
 
 var (
 	// DefaultAllowance is the set of default allowance settings that will be

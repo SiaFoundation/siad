@@ -373,12 +373,12 @@ func (c *Contractor) managedNewContract(host modules.HostDBEntry, contractFundin
 		return types.ZeroCurrency, modules.RenterContract{}, err
 	}
 	// derive the renter seed and wipe it once we are done with it.
-	renterSeed := proto.DeriveRenterSeed(seed)
+	renterSeed := modules.DeriveRenterSeed(seed)
 	defer fastrand.Read(renterSeed[:])
 
 	// create contract params
 	c.mu.RLock()
-	params := proto.ContractParams{
+	params := modules.ContractParams{
 		Allowance:     c.allowance,
 		Host:          host,
 		Funding:       contractFunding,
@@ -583,18 +583,9 @@ func checkFormContractGouging(allowance modules.Allowance, hostSettings modules.
 // managedRenew negotiates a new contract for data already stored with a host.
 // It returns the new contract. This is a blocking call that performs network
 // I/O.
-func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.Currency, newEndHeight types.BlockHeight, hostSettings modules.HostExternalSettings) (modules.RenterContract, error) {
-	// For convenience
-	contract := sc.Metadata()
-	// Sanity check - should not be renewing a bad contract.
-	utility, ok := c.managedContractUtility(contract.ID)
-	if !ok || !utility.GoodForRenew {
-		c.log.Critical(fmt.Sprintf("Renewing a contract that has been marked as !GoodForRenew %v/%v",
-			ok, utility.GoodForRenew))
-	}
-
+func (c *Contractor) managedRenew(id types.FileContractID, hpk types.SiaPublicKey, contractFunding types.Currency, newEndHeight types.BlockHeight, hostSettings modules.HostExternalSettings) (modules.RenterContract, error) {
 	// Fetch the host associated with this contract.
-	host, ok, err := c.hdb.Host(contract.HostPublicKey)
+	host, ok, err := c.hdb.Host(hpk)
 	if err != nil {
 		return modules.RenterContract{}, errors.AddContext(err, "error getting host from hostdb:")
 	}
@@ -654,12 +645,12 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 		return modules.RenterContract{}, err
 	}
 	// derive the renter seed and wipe it after we are done with it.
-	renterSeed := proto.DeriveRenterSeed(seed)
+	renterSeed := modules.DeriveRenterSeed(seed)
 	defer fastrand.Read(renterSeed[:])
 
 	// create contract params
 	c.mu.RLock()
-	params := proto.ContractParams{
+	params := modules.ContractParams{
 		Allowance:     c.allowance,
 		Host:          host,
 		Funding:       contractFunding,
@@ -691,7 +682,29 @@ func (c *Contractor) managedRenew(sc *proto.SafeContract, contractFunding types.
 	}
 	sweepTxn, sweepParents := txnBuilder.Sweep(output)
 
-	newContract, formationTxnSet, err := c.staticContracts.Renew(sc, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
+	var newContract modules.RenterContract
+	var formationTxnSet []types.Transaction
+	if c.staticDeps.Disrupt("LegacyRenew") || build.VersionCmp(host.Version, "1.5.4") < 0 {
+		// Acquire the SafeContract.
+		oldContract, ok := c.staticContracts.Acquire(id)
+		if !ok {
+			return modules.RenterContract{}, errContractNotFound
+		}
+		if !oldContract.Utility().GoodForRenew {
+			return modules.RenterContract{}, errContractNotGFR
+		}
+		// RHP2 renewal.
+		newContract, formationTxnSet, err = c.staticContracts.Renew(oldContract, params, txnBuilder, c.tpool, c.hdb, c.tg.StopChan())
+		c.staticContracts.Return(oldContract)
+	} else {
+		var w modules.Worker
+		w, err = c.workerPool.Worker(hpk)
+		if err != nil {
+			txnBuilder.Drop() // return unused outputs to wallet
+			return modules.RenterContract{}, err
+		}
+		newContract, formationTxnSet, err = w.RenewContract(c.tg.StopCtx(), id, params, txnBuilder)
+	}
 	if err != nil {
 		txnBuilder.Drop() // return unused outputs to wallet
 		return modules.RenterContract{}, err
@@ -788,30 +801,19 @@ func (c *Contractor) managedRenewContract(renewInstructions fileContractRenewal,
 	s.invalidate()
 	c.log.Debugln("Got session invalidation")
 
-	// Fetch the contract that we are renewing.
-	c.log.Debugln("Acquiring contract from the contract set", id)
-	oldContract, exists := c.staticContracts.Acquire(id)
-	if !exists {
-		c.log.Debugln("Contract does not seem to exist")
-		return types.ZeroCurrency, errors.New("contract no longer exists")
-	}
-	oldUtility := oldContract.Utility()
-
-	// The contract could have been marked !GFR while the contractor lock was not
-	// held.
-	if !oldUtility.GoodForRenew {
-		c.staticContracts.Return(oldContract)
-		return types.ZeroCurrency, errContractNotGFR
-	}
-
 	// Perform the actual renew. If the renew fails, return the
 	// contract. If the renew fails we check how often it has failed
 	// before. Once it has failed for a certain number of blocks in a
 	// row and reached its second half of the renew window, we give up
 	// on renewing it and set goodForRenew to false.
 	c.log.Debugln("calling managedRenew on contract", id)
-	newContract, errRenew := c.managedRenew(oldContract, amount, endHeight, hostSettings)
+	newContract, errRenew := c.managedRenew(id, hostPubKey, amount, endHeight, hostSettings)
 	c.log.Debugln("managedRenew has returned with error:", errRenew)
+	oldContract, exists := c.staticContracts.Acquire(id)
+	if !exists {
+		return types.ZeroCurrency, errors.AddContext(errContractNotFound, "failed to acquire oldContract after renewal")
+	}
+	oldUtility := oldContract.Utility()
 	if errRenew != nil {
 		// Increment the number of failed renews for the contract if it
 		// was the host's fault.
@@ -1089,6 +1091,7 @@ func (c *Contractor) threadedContractMaintenance() {
 		// Skip hosts that can't use the current renter-host protocol.
 		if build.VersionCmp(host.Version, modules.MinimumSupportedRenterHostProtocolVersion) < 0 {
 			c.log.Debugln("Contract skipped because host is using an outdated version", host.Version)
+			continue
 		}
 
 		// Skip any contracts which do not exist or are otherwise unworthy for

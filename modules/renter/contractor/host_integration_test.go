@@ -24,6 +24,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
 	"gitlab.com/NebulousLabs/Sia/modules/transactionpool"
 	modWallet "gitlab.com/NebulousLabs/Sia/modules/wallet"
+	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 )
@@ -115,7 +116,7 @@ func newTestingHost(testdir string, cs modules.ConsensusSet, tp modules.Transact
 
 // newTestingContractor is a helper function that creates a ready-to-use
 // contractor.
-func newTestingContractor(testdir string, g modules.Gateway, cs modules.ConsensusSet, tp modules.TransactionPool, rl *ratelimit.RateLimit) (*Contractor, closeFn, error) {
+func newTestingContractor(testdir string, g modules.Gateway, cs modules.ConsensusSet, tp modules.TransactionPool, rl *ratelimit.RateLimit, deps modules.Dependencies) (*Contractor, closeFn, error) {
 	w, walletCF, err := newTestingWallet(testdir, cs, tp)
 	if err != nil {
 		return nil, nil, err
@@ -129,7 +130,7 @@ func newTestingContractor(testdir string, g modules.Gateway, cs modules.Consensu
 	if err := <-errChan; err != nil {
 		return nil, nil, err
 	}
-	contractor, errChan := New(cs, w, tp, hdb, rl, filepath.Join(testdir, "contractor"))
+	contractor, errChan := newWithDeps(cs, w, tp, hdb, rl, filepath.Join(testdir, "contractor"), deps)
 	err = <-errChan
 	if err != nil {
 		return nil, nil, err
@@ -143,6 +144,12 @@ func newTestingContractor(testdir string, g modules.Gateway, cs modules.Consensu
 // newTestingTrio creates a Host, Contractor, and TestMiner that can be
 // used for testing host/renter interactions.
 func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, closeFn, error) {
+	return newTestingTrioWithContractorDeps(name, modules.ProdDependencies)
+}
+
+// newTestingTrioWithContractorDeps creates a Host, Contractor, and TestMiner
+// that can be used for testing host/renter interactions.
+func newTestingTrioWithContractorDeps(name string, deps modules.Dependencies) (modules.Host, *Contractor, modules.TestMiner, closeFn, error) {
 	testdir := build.TempDir("contractor", name)
 
 	// create mux
@@ -152,12 +159,12 @@ func newTestingTrio(name string) (modules.Host, *Contractor, modules.TestMiner, 
 		return nil, nil, nil, nil, err
 	}
 
-	return newCustomTestingTrio(name, mux, modules.ProdDependencies)
+	return newCustomTestingTrio(name, mux, modules.ProdDependencies, deps)
 }
 
 // newCustomTestingTrio creates a Host, Contractor, and TestMiner that can be
 // used for testing host/renter interactions. It allows to pass a custom siamux.
-func newCustomTestingTrio(name string, mux *siamux.SiaMux, hdeps modules.Dependencies) (modules.Host, *Contractor, modules.TestMiner, closeFn, error) {
+func newCustomTestingTrio(name string, mux *siamux.SiaMux, hdeps, cdeps modules.Dependencies) (modules.Host, *Contractor, modules.TestMiner, closeFn, error) {
 	testdir := build.TempDir("contractor", name)
 
 	// create miner
@@ -202,7 +209,7 @@ func newCustomTestingTrio(name string, mux *siamux.SiaMux, hdeps modules.Depende
 	if err != nil {
 		return nil, nil, nil, nil, build.ExtendErr("error creating testing host", err)
 	}
-	c, contractorCF, err := newTestingContractor(filepath.Join(testdir, "Contractor"), g, cs, tp, ratelimit.NewRateLimit(0, 0, 0))
+	c, contractorCF, err := newTestingContractor(filepath.Join(testdir, "Contractor"), g, cs, tp, ratelimit.NewRateLimit(0, 0, 0), cdeps)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -458,7 +465,7 @@ func TestIntegrationRenew(t *testing.T) {
 	}
 	t.Parallel()
 	// create testing trio
-	_, c, m, cf, err := newTestingTrio(t.Name())
+	_, c, m, cf, err := newTestingTrioWithContractorDeps(t.Name(), &dependencies.DependencyLegacyRenew{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -523,15 +530,10 @@ func TestIntegrationRenew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldContract, ok := c.staticContracts.Acquire(contract.ID)
-	if !ok {
-		t.Fatal("failed to acquire contract")
-	}
-	contract, err = c.managedRenew(oldContract, types.SiacoinPrecision.Mul64(50), c.blockHeight+200, hostSettings)
+	contract, err = c.managedRenew(contract.ID, contract.HostPublicKey, types.SiacoinPrecision.Mul64(50), c.blockHeight+200, hostSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.staticContracts.Return(oldContract)
 
 	// check renewed contract
 	if contract.EndHeight != c.blockHeight+200 {
@@ -560,12 +562,10 @@ func TestIntegrationRenew(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	oldContract, _ = c.staticContracts.Acquire(contract.ID)
-	contract, err = c.managedRenew(oldContract, types.SiacoinPrecision.Mul64(50), c.blockHeight+100, hostSettings)
+	contract, err = c.managedRenew(contract.ID, contract.HostPublicKey, types.SiacoinPrecision.Mul64(50), c.blockHeight+100, hostSettings)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.staticContracts.Return(oldContract)
 	if contract.EndHeight != c.blockHeight+100 {
 		t.Fatal(contract.EndHeight)
 	}

@@ -135,7 +135,7 @@ func (c *Contractor) Editor(pk types.SiaPublicKey, cancel <-chan struct{}) (_ Ed
 	}
 	if renewing {
 		// Cannot use the editor if the contract is being renewed.
-		return nil, errors.New("currently renewing that contract")
+		return nil, ErrContractRenewing
 	} else if haveEditor {
 		// This editor already exists. Mark that there are now two routines
 		// using the editor, and then return the editor that already exists.

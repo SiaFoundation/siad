@@ -1,4 +1,4 @@
-package proto
+package modules
 
 import (
 	"bytes"
@@ -7,14 +7,13 @@ import (
 	"gitlab.com/NebulousLabs/fastrand"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // TestEphemeralRenterSeed tests the ephemeralRenterSeed methods.
 func TestEphemeralRenterSeed(t *testing.T) {
 	// Create random wallet seed.
-	var walletSeed modules.Seed
+	var walletSeed Seed
 	fastrand.Read(walletSeed[:])
 
 	renterSeed := DeriveRenterSeed(walletSeed)
