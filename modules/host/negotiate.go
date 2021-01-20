@@ -124,6 +124,10 @@ var (
 	// funds to the void output.
 	ErrLowVoidOutput = ErrorCommunication("rejected for low value void output")
 
+	// ErrMaxVirtualSectors is returned when a sector cannot be added because
+	// the maximum number of virtual sectors for that sector id already exist.
+	ErrMaxVirtualSectors = errors.New("sector collides with a physical sector that already has the maximum allowed number of virtual sectors")
+
 	// ErrMismatchedHostPayouts is returned if the renter incorrectly sets the
 	// host valid and missed payouts to different values during contract
 	// formation.

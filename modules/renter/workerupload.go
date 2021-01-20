@@ -8,6 +8,8 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem/siafile"
+	"gitlab.com/NebulousLabs/Sia/persist"
+
 	"gitlab.com/NebulousLabs/errors"
 )
 
@@ -325,9 +327,34 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 // managedUploadFailed is called if a worker failed to upload part of an unfinished
 // chunk.
 func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint64, failureErr error) {
+	// If we're getting a max virtual sectors error, log the data that couldn't
+	// be uploaded so we can investigate what's going on.
+	maxVirtual := strings.Contains(failureErr.Error(), modules.ErrMaxVirtualSectors.Error())
+	if maxVirtual {
+		filename := fmt.Sprintf("max-root-%s-%s", udc.staticExpectedPieceRoots[pieceIndex], persist.RandomSuffix())
+		r.log.Println("Saving the sector the was unable to be uploaded due to max virtual sectors:" filename, " :: ", udc.staticExpectedPieceRoots[pieceIndex], " :: ", w.staticHostPubKey, " :: ", pieceIndex)
+		f, err := os.Create(filename)
+		if err != nil {
+			r.log.Println("saving failed")
+		} else {
+			// Don't bother checking errors, this is debug code.
+			f.Write(udc.physicalChunkData[pieceIndex])
+			f.Close()
+		}
+	}
+
 	// Mark the failure in the worker if the gateway says we are online. It's
 	// not the worker's fault if we are offline.
-	if w.renter.g.Online() && !(strings.Contains(failureErr.Error(), siafile.ErrDeleted.Error()) || errors.Contains(failureErr, siafile.ErrDeleted)) {
+	//
+	// TODO: Temporary, not great fix... if the host reported max virtual
+	// sectors, we will not be putting the host on cooldown. This is a game
+	// theory problem, because it means that hosts can avoid going on cooldown
+	// by explicitly choosing the right error to return. A short term fix would
+	// be to ensure renter-side that we don't get collisions, but this is
+	// problematic in the long run for people pinning the same files over and
+	// over. The long term fix is to upgrade the host to be able to handle more
+	// than 2^16 of the same sector.
+	if w.renter.g.Online() && !(strings.Contains(failureErr.Error(), siafile.ErrDeleted.Error()) || errors.Contains(failureErr, siafile.ErrDeleted) || maxVirtual) {
 		w.mu.Lock()
 		w.uploadRecentFailure = time.Now()
 		w.uploadRecentFailureErr = failureErr
