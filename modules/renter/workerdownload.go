@@ -129,6 +129,9 @@ func (w *worker) threadedScheduleDownloadChunkJob(udc *unfinishedDownloadChunk) 
 		return
 	}
 
+	// Everything seems to be fine. Wake the worker.
+	w.staticWake()
+
 	// Fetch the sector. If fetching the sector fails, the worker needs to be
 	// unregistered with the chunk.
 	fetchOffset, fetchLength := sectorOffsetAndLength(udc.staticFetchOffset, udc.staticFetchLength, udc.erasureCode)
