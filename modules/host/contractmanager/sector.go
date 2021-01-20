@@ -42,7 +42,7 @@ type (
 		// physical sector described by this object. A maximum of 2^16 virtual
 		// sectors are allowed for each sector. Proper use by the renter should
 		// mean that the host never has more than 3 virtual sectors for any sector.
-		count uint16
+		count uint64
 	}
 
 	// sectorLock contains a lock plus a count of the number of threads

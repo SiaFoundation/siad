@@ -45,6 +45,10 @@ const (
 	// interrupted by power outages, etc., and is therefore written to a
 	// temporary file before being atomically renamed to the correct name.
 	walFileTmp = "contractmanager.wal_temp"
+
+	// sectorOverflowFile is the path to the file used if a virtual sector's
+	// counter becomes greater than the max value of a uint16.
+	sectorOverflowFile = "sector_overflow.json"
 )
 
 const (

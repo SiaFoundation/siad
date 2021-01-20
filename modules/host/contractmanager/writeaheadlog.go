@@ -16,7 +16,7 @@ import (
 type (
 	// sectorUpdate is an idempotent update to the sector metadata.
 	sectorUpdate struct {
-		Count  uint16
+		Count  sectorLocationCount
 		Folder uint16
 		ID     sectorID
 		Index  uint32
@@ -92,6 +92,7 @@ type (
 		// guaranteed to have completed.
 		fileSettingsTmp    modules.File
 		fileWALTmp         modules.File
+		overflowFilePath   string
 		syncChan           chan struct{}
 		uncommittedChanges []stateChange
 		committedSettings  savedSettings

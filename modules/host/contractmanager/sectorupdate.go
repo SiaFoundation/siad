@@ -7,8 +7,15 @@ import (
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/errors"
 )
+
+// overflowMetadata is the metadata of the sector overflow persistence.
+var overflowMetadata = persist.Metadata{
+	Header:  "SectorOverflow",
+	Version: "1.5.5",
+}
 
 // commitUpdateSector will commit a sector update to the contract manager,
 // writing in metadata and usage info if the sector still exists, and deleting
@@ -38,7 +45,7 @@ func (wal *writeAheadLog) commitUpdateSector(su sectorUpdate) {
 
 // managedAddPhysicalSector is a WAL operation to add a physical sector to the
 // contract manager.
-func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, count uint16) error {
+func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte) error {
 	// Sanity check - data should have modules.SectorSize bytes.
 	if uint64(len(data)) != modules.SectorSize {
 		wal.cm.log.Critical("sector has the wrong size", modules.SectorSize, len(data))
@@ -103,6 +110,7 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, cou
 			}
 
 			// Try writing the sector metadata to disk.
+			count := uint64(1)
 			su := sectorUpdate{
 				Count:  count,
 				ID:     id,
@@ -162,10 +170,6 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, cou
 
 // managedAddVirtualSector will add a virtual sector to the contract manager.
 func (wal *writeAheadLog) managedAddVirtualSector(id sectorID, location sectorLocation) error {
-	// Update the location count.
-	if location.count == 65535 {
-		return errMaxVirtualSectors
-	}
 	location.count++
 
 	// Prepare the sector update.
@@ -248,6 +252,7 @@ func (wal *writeAheadLog) managedDeleteSector(id sectorID) error {
 
 		// Delete the sector and mark the usage as available.
 		delete(wal.cm.sectorLocations, id)
+		delete(wal.cm.sectorLocationsCountOverflow, id)
 		sf.availableSectors[id] = location.index
 
 		// Block until the change has been committed.
@@ -306,9 +311,10 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 		})
 
 		// Update the in-memeory representation of the sector.
-		if location.count == 0 {
+		if location.count.Value() == 0 {
 			// Delete the sector and mark it as available.
 			delete(wal.cm.sectorLocations, id)
+			delete(wal.cm.sectorLocationsCountOverflow, id)
 			sf.availableSectors[id] = location.index
 		} else {
 			// Reduce the sector usage.
@@ -339,15 +345,16 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 			return build.ExtendErr("failed to write sector metadata", err)
 		}
 	}
-
 	// Only update the usage after the sector removal has been committed to
 	// disk entirely. The usage is not updated until after the commit has
 	// completed to prevent the actual sector data from being overwritten in
 	// the event of unclean shutdown.
-	if location.count == 0 {
+	if location.count.Value() == 0 {
 		wal.mu.Lock()
 		sf.clearUsage(location.index)
 		delete(sf.availableSectors, id)
+		delete(wal.cm.sectorLocations, id)
+		delete(wal.cm.sectorLocationsCountOverflow, id)
 		wal.mu.Unlock()
 	}
 	return nil
@@ -356,11 +363,26 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 // writeSectorMetadata will take a sector update and write the related metadata
 // to disk.
 func (wal *writeAheadLog) writeSectorMetadata(sf *storageFolder, su sectorUpdate) error {
-	err := writeSectorMetadata(sf.metadataFile, su.Index, su.ID, su.Count)
+	count, overflow := su.Count.Count()
+	err := writeSectorMetadata(sf.metadataFile, su.Index, su.ID, count)
 	if err != nil {
 		wal.cm.log.Printf("ERROR: unable to write sector metadata to folder %v when adding sector: %v\n", su.Folder, err)
 		atomic.AddUint64(&sf.atomicFailedWrites, 1)
 		return err
+	}
+
+	// Persist sector location overflow too if necessary.
+	existingOverflow, exist := wal.cm.sectorLocationsCountOverflow[su.ID]
+	// Only persist if there is a value > 0 that we haven't persisted yet, or if
+	// the persisted value is outdated.
+	if !exist && su.Count.Value() > 0 || existingOverflow != overflow {
+		err = wal.cm.dependencies.SaveFileSync(overflowMetadata, wal.cm.sectorLocationsCountOverflow, wal.overflowFilePath)
+		if err != nil {
+			wal.cm.log.Printf("ERROR: unable to write sector overflow metadata when adding sector: %v\n", err)
+			atomic.AddUint64(&sf.atomicFailedWrites, 1)
+			return err
+		}
+		wal.cm.sectorLocationsCountOverflow[su.ID] = overflow
 	}
 	atomic.AddUint64(&sf.atomicSuccessfulWrites, 1)
 	return nil
@@ -401,7 +423,7 @@ func (cm *ContractManager) AddSector(root crypto.Hash, sectorData []byte) error 
 	if exists {
 		err = cm.wal.managedAddVirtualSector(id, location)
 	} else {
-		err = cm.wal.managedAddPhysicalSector(id, sectorData, 1)
+		err = cm.wal.managedAddPhysicalSector(id, sectorData)
 	}
 	if errors.Contains(err, errDiskTrouble) {
 		cm.staticAlerter.RegisterAlert(modules.AlertIDHostDiskTrouble, AlertMSGHostDiskTrouble, "", modules.SeverityCritical)

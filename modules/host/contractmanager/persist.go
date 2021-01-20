@@ -71,6 +71,16 @@ func (cm *ContractManager) loadSettings() error {
 		return errors.AddContext(err, "error loading the contract manager settings file")
 	}
 
+	// Load the overflow file.
+	err = cm.dependencies.LoadFile(overflowMetadata, &cm.sectorLocationsCountOverflow, filepath.Join(cm.persistDir, sectorOverflowFile))
+	if os.IsNotExist(err) {
+		// There is no overflow file yet. This is fine.
+		cm.sectorLocationsCountOverflow = make(map[sectorID]uint64)
+	} else if err != nil {
+		cm.log.Println("ERROR: unable to load the sector overflow file:", err)
+		return errors.AddContext(err, "error loading the sector overflow file")
+	}
+
 	// Copy the saved settings into the contract manager.
 	cm.sectorSalt = ss.SectorSalt
 	for i := range ss.StorageFolders {
@@ -122,10 +132,17 @@ func (cm *ContractManager) loadSectorLocations(sf *storageFolder) {
 		var id sectorID
 		copy(id[:], sectorLookupBytes[readHead:readHead+12])
 		count := binary.LittleEndian.Uint16(sectorLookupBytes[readHead+12 : readHead+14])
+
+		// Get the potential overflow and add it.
+		count64 := uint64(count)
+		overflow := cm.sectorLocationsCountOverflow[id]
+		count64 += overflow
+
+		// Create the location.
 		sl := sectorLocation{
 			index:         sectorIndex,
 			storageFolder: sf.index,
-			count:         count,
+			count:         count64,
 		}
 
 		// Add the sector to the sector location map.
