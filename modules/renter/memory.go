@@ -234,6 +234,10 @@ func (mm *memoryManager) Request(ctx context.Context, amount uint64, priority bo
 		return true
 	case <-ctx.Done():
 		close(myRequest.canceled)
+		// Return 0 memory, this will purge both fifo queues of the cancelled
+		// request message and ensure the stats call reflect an accurate number
+		// for amount of memory requested.
+		mm.Return(0)
 		return false
 	case <-mm.stop:
 		return false
