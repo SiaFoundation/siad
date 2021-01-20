@@ -1146,7 +1146,7 @@ type Renter interface {
 	DownloadByRoot(root crypto.Hash, offset, length uint64, timeout time.Duration) ([]byte, error)
 
 	// DownloadSkylink will fetch a file from the Sia network using the skylink.
-	DownloadSkylink(Skylink, time.Duration) (SkyfileMetadata, Streamer, error)
+	DownloadSkylink(Skylink, time.Duration) (SkyfileLayout, SkyfileMetadata, Streamer, error)
 
 	// DownloadSkylinkBaseSector will take a link and turn it into the data of a download
 	// without any decoding of the metadata, fanout, or decryption.
@@ -1174,6 +1174,9 @@ type Renter interface {
 
 	// Portals returns the list of known skynet portals.
 	Portals() ([]SkynetPortal, error)
+
+	// RestoreSkyfile restores a skyfile such that the skylink is preserved.
+	RestoreSkyfile(reader io.Reader) (Skylink, error)
 
 	// UpdateSkynetPortals updates the list of known skynet portals.
 	UpdateSkynetPortals(additions []SkynetPortal, removals []NetAddress) error

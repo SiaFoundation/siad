@@ -129,7 +129,7 @@ func (tn *TestNode) UploadNewMultipartSkyfileBlocking(filename string, files []T
 
 // UploadNewMultipartSkyfileEncryptedBlocking uploads a multipart skyfile that
 // contains several files. After it has successfully performed the upload, it
-// will verify the file can be downloaded using its Skylink. Returns the
+// will verify if the file can be downloaded using its Skylink. Returns the
 // skylink, the parameters used for the upload and potentially an error.  The
 // `files` argument is a map of filepath->fileContent.
 func (tn *TestNode) UploadNewMultipartSkyfileEncryptedBlocking(filename string, files []TestFile, defaultPath string, disableDefaultPath bool, force bool, skykeyName string, skykeyID skykey.SkykeyID) (skylink string, sup modules.SkyfileMultipartUploadParameters, sshp api.SkynetSkyfileHandlerPOST, err error) {

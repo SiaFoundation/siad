@@ -57,6 +57,11 @@ func (mds *mockDataSource) Metadata() modules.SkyfileMetadata {
 	return modules.SkyfileMetadata{}
 }
 
+// Layout implements streamBufferDataSource
+func (mds *mockDataSource) Layout() modules.SkyfileLayout {
+	return modules.SkyfileLayout{}
+}
+
 // RequestSize implements streamBufferDataSource.
 func (mds *mockDataSource) RequestSize() uint64 {
 	return mds.staticRequestSize

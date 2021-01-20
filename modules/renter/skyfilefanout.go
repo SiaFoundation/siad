@@ -255,6 +255,11 @@ func (fs *fanoutStreamBufferDataSource) Metadata() modules.SkyfileMetadata {
 	return fs.staticMetadata
 }
 
+// Layout returns the layout of the skylink being fetched.
+func (fs *fanoutStreamBufferDataSource) Layout() modules.SkyfileLayout {
+	return fs.staticLayout
+}
+
 // ReadAt will fetch data from the siafile at the provided offset.
 func (fs *fanoutStreamBufferDataSource) ReadAt(b []byte, offset int64) (int, error) {
 	// Input checking.
