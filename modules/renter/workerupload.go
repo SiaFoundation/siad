@@ -2,6 +2,7 @@ package renter
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -331,14 +332,14 @@ func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint6
 	// be uploaded so we can investigate what's going on.
 	maxVirtual := strings.Contains(failureErr.Error(), modules.ErrMaxVirtualSectors.Error())
 	if maxVirtual {
-		filename := fmt.Sprintf("max-root-%s-%s", udc.staticExpectedPieceRoots[pieceIndex], persist.RandomSuffix())
-		r.log.Println("Saving the sector the was unable to be uploaded due to max virtual sectors:" filename, " :: ", udc.staticExpectedPieceRoots[pieceIndex], " :: ", w.staticHostPubKey, " :: ", pieceIndex)
+		filename := fmt.Sprintf("max-root-%s-%s", uc.staticExpectedPieceRoots[pieceIndex], persist.RandomSuffix())
+		w.renter.log.Println("Saving the sector the was unable to be uploaded due to max virtual sectors:", filename, " :: ", uc.staticExpectedPieceRoots[pieceIndex], " :: ", w.staticHostPubKey, " :: ", pieceIndex)
 		f, err := os.Create(filename)
 		if err != nil {
-			r.log.Println("saving failed")
+			w.renter.log.Println("saving failed")
 		} else {
 			// Don't bother checking errors, this is debug code.
-			f.Write(udc.physicalChunkData[pieceIndex])
+			f.Write(uc.physicalChunkData[pieceIndex])
 			f.Close()
 		}
 	}

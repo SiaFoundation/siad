@@ -164,6 +164,10 @@ var (
 	// announcement is not a type of signature that is recognized.
 	ErrAnnUnrecognizedSignature = errors.New("the signature provided in the host announcement is not recognized")
 
+	// ErrMaxVirtualSectors is returned when a sector cannot be added because
+	// the maximum number of virtual sectors for that sector id already exist.
+	ErrMaxVirtualSectors = errors.New("sector collides with a physical sector that already has the maximum allowed number of virtual sectors")
+
 	// ErrRevisionCoveredFields is returned if there is a covered fields object
 	// in a transaction signature which has the 'WholeTransaction' field set to
 	// true, meaning that miner fees cannot be added to the transaction without
