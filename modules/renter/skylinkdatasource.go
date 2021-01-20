@@ -239,22 +239,6 @@ func (r *Renter) skylinkDataSource(ctx context.Context, link modules.Skylink, pr
 		}
 	}()
 
-	// Create the pcws for the first chunk. We use a passthrough cipher and
-	// erasure coder. If the base sector is encrypted, we will notice and be
-	// able to decrypt it once we have fully downloaded it and are able to
-	// access the layout. We can make the assumption on the erasure coding being
-	// of 1-n seeing as we currently always upload the basechunk using 1-N
-	// redundancy.
-	ptec := modules.NewPassthroughErasureCoder()
-	tpsk, err := crypto.NewSiaKey(crypto.TypePlain, nil)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to create plain skykey")
-	}
-	pcws, err := r.newPCWSByRoots(ctx, []crypto.Hash{link.MerkleRoot()}, ptec, tpsk, 0)
-	if err != nil {
-		return nil, errors.AddContext(err, "unable to create the worker set for this skylink")
-	}
-
 	// Get the offset and fetchsize from the skylink
 	offset, fetchSize, err := link.OffsetAndFetchSize()
 	if err != nil {
@@ -266,17 +250,9 @@ func (r *Renter) skylinkDataSource(ctx context.Context, link modules.Skylink, pr
 	//
 	// NOTE: we pass in the provided context here, if the user imposed a timeout
 	// on the download request, this will fire if it takes too long.
-	respChan, err := pcws.managedDownload(ctx, pricePerMS, offset, fetchSize)
+	baseSector, err := r.managedDownloadByRoot(ctx, link.MerkleRoot(), offset, fetchSize, pricePerMS)
 	if err != nil {
-		return nil, errors.AddContext(err, "unable to start download")
-	}
-	resp := <-respChan
-	if resp.err != nil {
-		return nil, errors.AddContext(err, "base sector download did not succeed")
-	}
-	baseSector := resp.data
-	if len(baseSector) < modules.SkyfileLayoutSize {
-		return nil, errors.New("download did not fetch enough data, layout cannot be decoded")
+		return nil, errors.AddContext(err, "unable to download base sector")
 	}
 
 	// Check if the base sector is encrypted, and attempt to decrypt it.

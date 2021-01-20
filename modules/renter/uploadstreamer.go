@@ -16,6 +16,15 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
+const (
+	// pieceUploadExpectedSlowdown is a used when we are estimating the time
+	// until all pieces are uploaded, based on the time it took to upload a
+	// certain amount of pieces. We do not want this value to be overly
+	// optimistic which is why we account for a possible slowdown when it comes
+	// to uploading the remainder of the pieces.
+	pieceUploadExpectedSlowdown = 1.2
+)
+
 // Upload Streaming Overview:
 // Most of the logic that enables upload streaming can be found within
 // UploadStreamFromReader and the StreamShard. As seen at the beginning of the
@@ -320,24 +329,38 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 		}
 	}
 
+	// Prepare a context that will allow us some extra time, after all chunks
+	// have become available, to wait for the chunk to be fully complete. After
+	// the chunk becoming available we do not want to wait a very long time
+	// either, but allowing it some time brings benefit to the PCWS in edges
+	// where an upload is immediately followed by a downloda, causing a
+	// potential sub-optimal download that lasts until the state resets.
+	var ctx context.Context
+
 	// Wait for all chunks to become available.
 	start := time.Now()
 	for _, chunk := range chunks {
-		<-chunk.staticAvailableChan
-		chunk.mu.Lock()
-		err := chunk.err
-		chunk.mu.Unlock()
-		if err != nil {
-			return nil, errors.AddContext(err, "upload streamer failed to get all data available")
+		select {
+		case <-r.tg.StopCtx().Done():
+			return nil, errors.AddContext(err, "upload streamer failed to get all data available, renter shut down")
+		case <-chunk.staticAvailableChan:
+			chunk.mu.Lock()
+			err := chunk.err
+			chunk.mu.Unlock()
+			if err != nil {
+				return nil, errors.AddContext(err, "upload streamer failed to get all data available")
+			}
+
+			if ctx == nil {
+				var cancel context.CancelFunc
+				ec := fileNode.ErasureCode()
+				ctx, cancel = context.WithTimeout(r.tg.StopCtx(), estimateTimeUntilComplete(time.Since(start), ec.MinPieces(), ec.NumPieces()))
+				defer cancel()
+			}
 		}
 	}
 
-	// Wait for all chunks to reach full redundancy, but only wait for a limited
-	// amount of time, dependant on the time it took to reach availability.
-	ec := fileNode.ErasureCode()
-	ctx, cancel := context.WithTimeout(r.tg.StopCtx(), estimateTimeUntilComplete(time.Since(start), ec.MinPieces(), ec.NumPieces()))
-	defer cancel()
-
+	// Wait for all chunks to reach full redundancy
 LOOP:
 	for _, chunk := range chunks {
 		select {
@@ -346,15 +369,6 @@ LOOP:
 		case <-chunk.staticUploadCompletedChan:
 		}
 	}
-
-	// TODO: we wait until all chunks reach full redundancy because if we
-	// wouldn't do that, and the recently uploaded skyfile gets requested
-	// immediately after upload (so when it became available) the PCWS would
-	// have incomplete state.
-	//
-	// It might be a good idea to improve this and build the PCWS state object
-	// on upload, seeing as we have all information at hand, and sort of
-	// pre-cache it.
 
 	// Disrupt to force an error and ensure the fileNode is being closed
 	// correctly.
@@ -372,7 +386,7 @@ func estimateTimeUntilComplete(timeUntilAvail time.Duration, minPieces, numPiece
 
 	remaining := float64(numPieces-minPieces) / float64(minPieces)
 	timeRemainingNS := remaining * float64(timeUntilAvailNS)
-	timeRemainingNS *= 1.1 // account for possible slowdown
+	timeRemainingNS *= pieceUploadExpectedSlowdown // account for possible slowdown
 
 	min := func(a, b time.Duration) time.Duration {
 		if a <= b {
