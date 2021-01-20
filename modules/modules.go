@@ -6,9 +6,11 @@ package modules
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 var (
@@ -29,14 +31,33 @@ func init() {
 	}
 }
 
-// PeekErr checks if a chan error has an error waiting to be returned. If it has
-// it will return that error. Otherwise it returns 'nil'.
-func PeekErr(errChan <-chan error) (err error) {
-	select {
-	case err = <-errChan:
-	default:
+// CurrencyUnits converts a types.Currency to a string with human-readable
+// units. The unit used will be the largest unit that results in a value
+// greater than 1. The value is rounded to 4 significant digits.
+func CurrencyUnits(c types.Currency) string {
+	pico := types.SiacoinPrecision.Div64(1e12)
+	if c.Cmp(pico) < 0 {
+		return c.String() + " H"
 	}
-	return
+
+	// iterate until we find a unit greater than c
+	mag := pico
+	unit := ""
+	for _, unit = range []string{"pS", "nS", "uS", "mS", "SC", "KS", "MS", "GS", "TS"} {
+		if c.Cmp(mag.Mul64(1e3)) < 0 {
+			break
+		} else if unit != "TS" {
+			// don't want to perform this multiply on the last iter; that
+			// would give us 1.235 TS instead of 1235 TS
+			mag = mag.Mul64(1e3)
+		}
+	}
+
+	num := new(big.Rat).SetInt(c.Big())
+	denom := new(big.Rat).SetInt(mag.Big())
+	res, _ := new(big.Rat).Mul(num, denom.Inv(denom)).Float64()
+
+	return fmt.Sprintf("%.4g %s", res, unit)
 }
 
 // FilesizeUnits returns a string that displays a filesize in human-readable units.
@@ -47,4 +68,14 @@ func FilesizeUnits(size uint64) string {
 	sizes := []string{" B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"}
 	i := int(math.Log10(float64(size)) / 3)
 	return fmt.Sprintf("%.*f %s", i, float64(size)/math.Pow10(3*i), sizes[i])
+}
+
+// PeekErr checks if a chan error has an error waiting to be returned. If it has
+// it will return that error. Otherwise it returns 'nil'.
+func PeekErr(errChan <-chan error) (err error) {
+	select {
+	case err = <-errChan:
+	default:
+	}
+	return
 }

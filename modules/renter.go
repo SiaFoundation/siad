@@ -111,6 +111,29 @@ type SkynetStats struct {
 	TotalSize uint64 `json:"totalsize"`
 }
 
+// RenterStats is a struct which tracks key metrics in a single renter. This
+// struct is intended to give a large overview / large dump of data related to
+// the renter, which can then be aggregated across a fleet of renters by a
+// program which monitors for inconsistencies or other challenges.
+type RenterStats struct {
+	// A name for this renter.
+	Name string
+
+	// The total amount of contract data that hosts are maintaining on behalf of
+	// the renter is the sum of these fields.
+	ActiveContractData  uint64
+	PassiveContractData uint64
+	WastedContractData  uint64
+
+	TotalSiafiles uint64
+
+	TotalContractSpentFunds     types.Currency // Includes fees
+	TotalContractFeeSpending    types.Currency
+	TotalContractRemainingFunds types.Currency
+
+	TotalWalletFunds types.Currency // Includes unconfirmed
+}
+
 // HostDBFilterError HostDBDisableFilter HostDBActivateBlacklist and
 // HostDBActiveWhitelist are the constants used to enable and disable the filter
 // mode of the renter's hostdb
