@@ -6,6 +6,7 @@ package renter
 // memory for the memory manager.
 
 import (
+	"container/list"
 	"context"
 	"runtime"
 	"runtime/debug"
@@ -76,8 +77,8 @@ type memoryManager struct {
 	priorityReserve     uint64 // Memory set aside for priority requests.
 	underflow           uint64 // Large requests cause underflow.
 
-	fifo         []*memoryRequest
-	priorityFifo []*memoryRequest
+	fifo         *memoryQueue
+	priorityFifo *memoryQueue
 
 	// The blocking channel receives a message (sent in a non-blocking way)
 	// every time a request blocks for more memory. This is used in testing to
@@ -95,6 +96,27 @@ type memoryRequest struct {
 	done     chan struct{}
 }
 
+// memoryQueue is a queue of memory requests.
+type memoryQueue struct {
+	*list.List
+}
+
+// newMemoryQueue initializes a new queue.
+func newMemoryQueue() *memoryQueue {
+	return &memoryQueue{
+		List: list.New(),
+	}
+}
+
+// Pop removes the first element of the queue.
+func (queue *memoryQueue) Pop() *memoryRequest {
+	mr := queue.Front()
+	if mr == nil {
+		return nil
+	}
+	return queue.List.Remove(mr).(*memoryRequest)
+}
+
 // handleStarvation will check whether high priority items have spent a
 // significant amount of time blocking low priority items. If low priority items
 // have not had a turn in a while, handleStarvation will bump a couple of low
@@ -108,10 +130,10 @@ func (mm *memoryManager) handleStarvation() {
 	}
 	// Bump a limited number of low priority items into the high priority queue.
 	totalBumped := uint64(0)
-	for totalBumped < mm.base/memoryPriorityStarvationDivisor && len(mm.fifo) > 0 {
-		totalBumped += mm.fifo[0].amount
-		mm.priorityFifo = append(mm.priorityFifo, mm.fifo[0])
-		mm.fifo = mm.fifo[1:]
+	for totalBumped < mm.base/memoryPriorityStarvationDivisor && mm.fifo.Len() > 0 {
+		req := mm.fifo.Pop()
+		totalBumped += req.amount
+		mm.priorityFifo.PushBack(req)
 	}
 	// Reset the starvation tracker.
 	mm.memSinceLowPriority = 0
@@ -171,12 +193,12 @@ func (mm *memoryManager) Request(ctx context.Context, amount uint64, priority bo
 	// granted or this request will be put in the queue to fire ahead of any low
 	// priority request currently in the queue.
 	mm.mu.Lock()
-	if priority && len(mm.fifo) != 0 {
+	if priority && mm.fifo.Len() != 0 {
 		mm.memSinceLowPriority += amount
 		mm.handleStarvation()
 	}
 	// Try to request the memory.
-	shouldTry := len(mm.priorityFifo) == 0 && (priority || len(mm.fifo) == 0)
+	shouldTry := mm.priorityFifo.Len() == 0 && (priority || mm.fifo.Len() == 0)
 	if shouldTry && mm.try(amount, priority) {
 		mm.mu.Unlock()
 		return true
@@ -188,9 +210,9 @@ func (mm *memoryManager) Request(ctx context.Context, amount uint64, priority bo
 		done:     make(chan struct{}),
 	}
 	if priority {
-		mm.priorityFifo = append(mm.priorityFifo, myRequest)
+		mm.priorityFifo.PushBack(myRequest)
 	} else {
-		mm.fifo = append(mm.fifo, myRequest)
+		mm.fifo.PushBack(myRequest)
 	}
 	mm.mu.Unlock()
 
@@ -255,11 +277,12 @@ func (mm *memoryManager) Return(amount uint64) {
 	}
 
 	// Release as many of the priority threads blocking in the fifo as possible.
-	for len(mm.priorityFifo) > 0 {
-		// Check whether the request got canceled, if so simply drop it
+	for mm.priorityFifo.Len() > 0 {
+		req := mm.priorityFifo.Pop()
+
+		// Ignore the request in case it got canceled
 		select {
-		case <-mm.priorityFifo[0].canceled:
-			mm.priorityFifo = mm.priorityFifo[1:]
+		case <-req.canceled:
 			continue
 		default:
 		}
@@ -268,36 +291,37 @@ func (mm *memoryManager) Return(amount uint64) {
 		// requests should be bumped to the high priority queue. This is done to
 		// prevent the high priority requests from fully starving the low
 		// priority requests.
-		if !mm.try(mm.priorityFifo[0].amount, memoryPriorityHigh) {
+		if !mm.try(req.amount, memoryPriorityHigh) {
 			// There is not enough memory to grant the next request, meaning no
 			// future requests should be checked either.
+			mm.priorityFifo.PushFront(req)
 			return
 		}
 		// There is enough memory to grant the next request. Unblock that
 		// request and continue checking the next requests.
-		close(mm.priorityFifo[0].done)
-		mm.priorityFifo = mm.priorityFifo[1:]
+		close(req.done)
 	}
 
 	// Release as many of the threads blocking in the fifo as possible.
-	for len(mm.fifo) > 0 {
-		// Check whether the request got canceled, if so simply drop it
+	for mm.fifo.Len() > 0 {
+		req := mm.fifo.Pop()
+
+		// Ignore the request in case it got canceled
 		select {
-		case <-mm.fifo[0].canceled:
-			mm.fifo = mm.fifo[1:]
+		case <-req.canceled:
 			continue
 		default:
 		}
 
-		if !mm.try(mm.fifo[0].amount, memoryPriorityLow) {
+		if !mm.try(req.amount, memoryPriorityLow) {
 			// There is not enough memory to grant the next request, meaning no
 			// future requests should be checked either.
+			mm.fifo.PushFront(req)
 			return
 		}
 		// There is enough memory to grant the next request. Unblock that
 		// request and continue checking the next requests.
-		close(mm.fifo[0].done)
-		mm.fifo = mm.fifo[1:]
+		close(req.done)
 	}
 }
 
@@ -317,11 +341,13 @@ func (mm *memoryManager) callStatus() modules.MemoryStatus {
 	}
 
 	// Calculate how much memory has been requested for each
-	for _, request := range mm.fifo {
-		requested += request.amount
+	for ele := mm.fifo.Front(); ele != nil; ele = ele.Next() {
+		req := ele.Value.(*memoryRequest)
+		requested += req.amount
 	}
-	for _, request := range mm.priorityFifo {
-		priorityRequested += request.amount
+	for ele := mm.priorityFifo.Front(); ele != nil; ele = ele.Next() {
+		req := ele.Value.(*memoryRequest)
+		priorityRequested += req.amount
 	}
 
 	return modules.MemoryStatus{
@@ -342,6 +368,9 @@ func newMemoryManager(baseMemory uint64, priorityMemory uint64, stopChan <-chan 
 		available:       baseMemory,
 		base:            baseMemory,
 		priorityReserve: priorityMemory,
+
+		fifo:         newMemoryQueue(),
+		priorityFifo: newMemoryQueue(),
 
 		blocking: make(chan struct{}, 1),
 		stop:     stopChan,

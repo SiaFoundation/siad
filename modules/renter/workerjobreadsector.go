@@ -66,12 +66,10 @@ func (j *jobReadSector) managedReadSector() ([]byte, error) {
 	return data, nil
 }
 
-// ReadSector is a helper method to run a ReadSector job on a worker.
-func (w *worker) ReadSector(ctx context.Context, root crypto.Hash, offset, length uint64) ([]byte, error) {
-	readSectorRespChan := make(chan *jobReadResponse)
-	jro := &jobReadSector{
+func (w *worker) newJobReadSector(ctx context.Context, respChan chan *jobReadResponse, root crypto.Hash, offset, length uint64) *jobReadSector {
+	return &jobReadSector{
 		jobRead: jobRead{
-			staticResponseChan: readSectorRespChan,
+			staticResponseChan: respChan,
 			staticLength:       length,
 
 			jobGeneric: newJobGeneric(ctx, w.staticJobReadQueue, &jobReadSectorMetadata{staticSector: root}),
@@ -79,6 +77,12 @@ func (w *worker) ReadSector(ctx context.Context, root crypto.Hash, offset, lengt
 		staticOffset: offset,
 		staticSector: root,
 	}
+}
+
+// ReadSector is a helper method to run a ReadSector job on a worker.
+func (w *worker) ReadSector(ctx context.Context, root crypto.Hash, offset, length uint64) ([]byte, error) {
+	readSectorRespChan := make(chan *jobReadResponse)
+	jro := w.newJobReadSector(ctx, readSectorRespChan, root, offset, length)
 
 	// Add the job to the queue.
 	if !w.staticJobReadQueue.callAdd(jro) {
