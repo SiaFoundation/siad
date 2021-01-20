@@ -101,7 +101,7 @@ type RenterStats struct {
 	TotalSiadirs  uint64
 
 	TotalContractSpentFunds     types.Currency // Includes fees
-	TotalContractFeeSpending    types.Currency
+	TotalContractSpentFees      types.Currency
 	TotalContractRemainingFunds types.Currency
 
 	AllowanceFunds              types.Currency

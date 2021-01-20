@@ -55,6 +55,7 @@ func jsoncmd() {
 	spentToHost := activeSpent.Add(passiveSpent).Add(refreshedSpent).Add(disabledSpent)
 	spentToFees := activeFees.Add(passiveFees).Add(refreshedFees).Add(disabledFees)
 	rs.TotalContractSpentFunds = spentToHost.Add(spentToFees)
+	rs.TotalContractSpentFees = spentToFees
 	rs.TotalContractRemainingFunds = activeRemaining.Add(passiveRemaining).Add(refreshedRemaining).Add(disabledRemaining)
 
 	// Get the number of files on the system.
