@@ -1,6 +1,7 @@
 package contractmanager
 
 import (
+	"math"
 	"sync"
 	"sync/atomic"
 
@@ -311,7 +312,7 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 		})
 
 		// Update the in-memeory representation of the sector.
-		if location.count.Value() == 0 {
+		if location.count == 0 {
 			// Delete the sector and mark it as available.
 			delete(wal.cm.sectorLocations, id)
 			delete(wal.cm.sectorLocationsCountOverflow, id)
@@ -349,7 +350,7 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 	// disk entirely. The usage is not updated until after the commit has
 	// completed to prevent the actual sector data from being overwritten in
 	// the event of unclean shutdown.
-	if location.count.Value() == 0 {
+	if location.count == 0 {
 		wal.mu.Lock()
 		sf.clearUsage(location.index)
 		delete(sf.availableSectors, id)
@@ -363,7 +364,15 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 // writeSectorMetadata will take a sector update and write the related metadata
 // to disk.
 func (wal *writeAheadLog) writeSectorMetadata(sf *storageFolder, su sectorUpdate) error {
-	count, overflow := su.Count.Count()
+	var count uint16
+	var overflow uint64
+	if su.Count > math.MaxUint16 {
+		count = math.MaxUint16
+		overflow = su.Count - math.MaxUint16
+	} else {
+		count = uint16(su.Count)
+	}
+
 	err := writeSectorMetadata(sf.metadataFile, su.Index, su.ID, count)
 	if err != nil {
 		wal.cm.log.Printf("ERROR: unable to write sector metadata to folder %v when adding sector: %v\n", su.Folder, err)
@@ -375,7 +384,7 @@ func (wal *writeAheadLog) writeSectorMetadata(sf *storageFolder, su sectorUpdate
 	existingOverflow, exist := wal.cm.sectorLocationsCountOverflow[su.ID]
 	// Only persist if there is a value > 0 that we haven't persisted yet, or if
 	// the persisted value is outdated.
-	if !exist && su.Count.Value() > 0 || existingOverflow != overflow {
+	if (!exist && su.Count > 0) || (existingOverflow != overflow) {
 		err = wal.cm.dependencies.SaveFileSync(overflowMetadata, wal.cm.sectorLocationsCountOverflow, wal.overflowFilePath)
 		if err != nil {
 			wal.cm.log.Printf("ERROR: unable to write sector overflow metadata when adding sector: %v\n", err)

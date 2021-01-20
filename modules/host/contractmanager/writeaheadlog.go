@@ -16,7 +16,7 @@ import (
 type (
 	// sectorUpdate is an idempotent update to the sector metadata.
 	sectorUpdate struct {
-		Count  sectorLocationCount
+		Count  uint64
 		Folder uint16
 		ID     sectorID
 		Index  uint32

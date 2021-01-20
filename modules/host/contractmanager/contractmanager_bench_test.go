@@ -33,7 +33,7 @@ func BenchmarkSectorLocations(b *testing.B) {
 				sectorLocations[j] = sectorLocation{
 					index:         uint32(fastrand.Intn(1 << 32)),
 					storageFolder: uint16(fastrand.Intn(1 << 16)),
-					count:         uint16(fastrand.Intn(1 << 16)),
+					count:         uint64(fastrand.Intn(1 << 16)),
 				}
 			}
 		}(i)

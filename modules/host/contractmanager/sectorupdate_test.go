@@ -901,7 +901,7 @@ func TestAddVirtualSectorMassiveParallel(t *testing.T) {
 		index = sf.index
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != parallelAdds {
+		if sl.count != uint64(parallelAdds) {
 			t.Error("Sector location should only be reporting one sector:", sl.count)
 		}
 		if sl.storageFolder != index {
@@ -955,7 +955,7 @@ func TestAddVirtualSectorMassiveParallel(t *testing.T) {
 		index = sf.index
 	}
 	for _, sl := range cmt.cm.sectorLocations {
-		if sl.count != parallelAdds {
+		if sl.count != uint64(parallelAdds) {
 			t.Error("Sector location should only be reporting one sector:", sl.count)
 		}
 		if sl.storageFolder != index {
