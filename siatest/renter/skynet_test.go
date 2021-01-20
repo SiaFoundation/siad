@@ -644,7 +644,7 @@ func testConvertSiaFile(t *testing.T, tg *siatest.TestGroup) {
 	sup.Force = true
 
 	// Convert to a Skyfile
-	_, err = r.SkynetConvertSiafileToSkyfileEncryptedPost(sup, remoteFile.SiaPath(), sk.Name, skykey.SkykeyID{})
+	_, err = r.SkynetConvertSiafileToSkyfilePost(sup, remoteFile.SiaPath())
 	if err == nil || !strings.Contains(err.Error(), renter.ErrEncryptionNotSupported.Error()) {
 		t.Fatalf("Expected error %v, but got %v", renter.ErrEncryptionNotSupported, err)
 	}

@@ -28,7 +28,7 @@ func TestIntegrationConsensusGET(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cg.Height != 4 {
+	if cg.Height != 4+types.TaxHardforkHeight {
 		t.Error("wrong height returned in consensus GET call")
 	}
 	if cg.CurrentBlock != st.server.api.cs.CurrentBlock().ID() {

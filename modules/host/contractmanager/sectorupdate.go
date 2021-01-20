@@ -171,6 +171,10 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte) err
 
 // managedAddVirtualSector will add a virtual sector to the contract manager.
 func (wal *writeAheadLog) managedAddVirtualSector(id sectorID, location sectorLocation) error {
+	// Update the location count.
+	if location.count == math.MaxUint64 {
+		return errMaxVirtualSectors
+	}
 	location.count++
 
 	// Prepare the sector update.

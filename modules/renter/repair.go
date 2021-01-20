@@ -612,7 +612,7 @@ func (r *Renter) threadedUpdateRenterHealth() {
 			// paths might have been returned
 			r.log.Println("Error calling managedUpdateFilesAndGetDirPaths on `", siaPath.String(), "`:", err)
 		}
-		if urp.callNumChildDirs() == 0 {
+		if urp == nil || urp.callNumChildDirs() == 0 {
 			// Treat a urp with no ChildDirs as an error and sleep to prevent
 			// potential rapid cycling.
 			r.log.Debugf("WARN: No refresh paths returned from '%v'", siaPath)

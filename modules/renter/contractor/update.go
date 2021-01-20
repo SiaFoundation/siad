@@ -5,28 +5,27 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
 
 // hasFCIdentifier checks the transaction for a ContractSignedIdentifier and
 // returns the first one it finds with a bool indicating if an identifier was
 // found.
-func hasFCIdentifier(txn types.Transaction) (proto.ContractSignedIdentifier, crypto.Ciphertext, bool) {
+func hasFCIdentifier(txn types.Transaction) (modules.ContractSignedIdentifier, crypto.Ciphertext, bool) {
 	// We don't verify the host key here so we only need to make sure the
 	// identifier fits into the arbitrary data.
-	if len(txn.ArbitraryData) != 1 || len(txn.ArbitraryData[0]) < proto.FCSignedIdentiferSize {
-		return proto.ContractSignedIdentifier{}, nil, false
+	if len(txn.ArbitraryData) != 1 || len(txn.ArbitraryData[0]) < modules.FCSignedIdentiferSize {
+		return modules.ContractSignedIdentifier{}, nil, false
 	}
 	// Verify the prefix.
 	var prefix types.Specifier
 	copy(prefix[:], txn.ArbitraryData[0])
 	if prefix != modules.PrefixFileContractIdentifier &&
 		prefix != modules.PrefixNonSia {
-		return proto.ContractSignedIdentifier{}, nil, false
+		return modules.ContractSignedIdentifier{}, nil, false
 	}
 	// We found an identifier.
-	var csi proto.ContractSignedIdentifier
+	var csi modules.ContractSignedIdentifier
 	n := copy(csi[:], txn.ArbitraryData[0])
 	hostKey := txn.ArbitraryData[0][n:]
 	return csi, hostKey, true
@@ -83,9 +82,9 @@ func (c *Contractor) ProcessConsensusChange(cc modules.ConsensusChange) {
 		haveSeed = false
 	}
 	// Get the master renter seed and wipe it once we are done with it.
-	var renterSeed proto.RenterSeed
+	var renterSeed modules.RenterSeed
 	if haveSeed {
-		renterSeed = proto.DeriveRenterSeed(s)
+		renterSeed = modules.DeriveRenterSeed(s)
 		defer fastrand.Read(renterSeed[:])
 	}
 
