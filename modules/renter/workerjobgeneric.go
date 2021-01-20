@@ -154,7 +154,7 @@ func (j *jobGeneric) staticGetMetadata() interface{} {
 
 // add will add a job to the queue.
 func (jq *jobGenericQueue) add(j workerJob) bool {
-	if jq.killed || time.Now().Before(jq.cooldownUntil) {
+	if jq.killed || jq.onCooldown() {
 		return false
 	}
 	jq.jobs.PushBack(j)
@@ -263,4 +263,23 @@ func (jq *jobGenericQueue) discardAll(err error) {
 // staticWorker will return the worker that is associated with this job queue.
 func (jq *jobGenericQueue) staticWorker() *worker {
 	return jq.staticWorkerObj
+}
+
+// onCooldown returns whether the queue is on cooldown.
+func (jq *jobGenericQueue) onCooldown() bool {
+	return time.Now().Before(jq.cooldownUntil)
+}
+
+// callOnCooldown returns whether the queue is on cooldown.
+func (jq *jobGenericQueue) callOnCooldown() bool {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	return jq.onCooldown()
+}
+
+// callLen returns the number of jobs in the queue.
+func (jq *jobGenericQueue) callLen() int {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	return jq.jobs.Len()
 }

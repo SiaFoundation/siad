@@ -8,16 +8,17 @@ import (
 
 // callStatus returns the status of the worker.
 func (w *worker) callStatus() modules.WorkerStatus {
-	w.downloadMu.Lock()
-	downloadOnCoolDown := w.onDownloadCooldown()
-	downloadTerminated := w.downloadTerminated
-	downloadQueueSize := len(w.downloadChunks)
+	downloadQueue := w.staticJobLowPrioReadQueue
+	downloadQueue.mu.Lock()
+	downloadOnCoolDown := downloadQueue.onCooldown()
+	downloadTerminated := downloadQueue.killed
+	downloadQueueSize := downloadQueue.jobs.Len()
+	downloadCoolDownTime := downloadQueue.cooldownUntil.Sub(time.Now())
 	var downloadCoolDownErr string
-	if w.downloadRecentFailureErr != nil {
-		downloadCoolDownErr = w.downloadRecentFailureErr.Error()
+	if downloadQueue.recentErr != nil {
+		downloadCoolDownErr = downloadQueue.recentErr.Error()
 	}
-	downloadCoolDownTime := w.downloadRecentFailure.Add(downloadFailureCooldown).Sub(time.Now())
-	w.downloadMu.Unlock()
+	downloadQueue.mu.Unlock()
 
 	w.mu.Lock()
 	defer w.mu.Unlock()
