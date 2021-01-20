@@ -192,7 +192,9 @@ func TestManagedAsyncReady(t *testing.T) {
 	w := new(worker)
 	w.initJobHasSectorQueue()
 	w.initJobReadQueue()
+	w.initJobLowPrioReadQueue()
 	w.initJobUpdateRegistryQueue()
+	w.initJobReadRegistryQueue()
 
 	timeInFuture := time.Now().Add(time.Hour)
 	timeInPast := time.Now().Add(-time.Hour)
