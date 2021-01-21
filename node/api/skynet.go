@@ -1084,22 +1084,20 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 // skynetStatsHandlerGET responds with a JSON with statistical data about
 // skynet, e.g. number of files uploaded, total size, etc.
 func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	// read "cached" parameter. Defaults to 'true'.
-	cached := true
-	var err error
-	if cachedStr := req.FormValue("cached"); cachedStr != "" {
-		cached, err = scanBool(cachedStr)
-		if err != nil {
-			WriteError(w, Error{fmt.Sprintf("error parsing 'cached' parameter: %v", err)}, http.StatusBadRequest)
-			return
-		}
-	}
-
-	// get stats
-	stats, err := api.renter.SkynetStats(cached)
+	// get file stats
+	dis, err := api.renter.DirList(modules.SkynetFolder)
 	if err != nil {
 		WriteError(w, Error{err.Error()}, http.StatusInternalServerError)
 		return
+	}
+	if len(dis) == 0 {
+		WriteError(w, Error{"skynetfolder doesn't contain any dirs"}, http.StatusInternalServerError)
+		return
+	}
+	di := dis[0]
+	stats := modules.SkynetStats{
+		NumFiles:  int(di.AggregateNumFiles),
+		TotalSize: di.AggregateSize,
 	}
 
 	// get version
