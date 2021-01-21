@@ -384,32 +384,36 @@ func (wal *writeAheadLog) writeSectorMetadata(sf *storageFolder, su sectorUpdate
 
 	// We should only ever need to update the overflow file when the count has
 	// reached the maximum.
-	if count == math.MaxUint16 {
-		wal.cm.sectorLocationsCountOverflowMu.Lock()
-		// Persist sector location overflow too if necessary.
-		existingOverflow, exist := wal.cm.sectorLocationsCountOverflow[su.ID]
-		// Only persist if there is a value > 0 that we haven't persisted yet, or if
-		// the persisted value is outdated.
-		if (!exist && su.Count > 0) || (existingOverflow != overflow) {
-			if overflow == 0 {
+	if count != math.MaxUint16 {
+		atomic.AddUint64(&sf.atomicSuccessfulWrites, 1)
+		return nil
+	}
+
+	wal.cm.sectorLocationsCountOverflowMu.Lock()
+	defer wal.cm.sectorLocationsCountOverflowMu.Unlock()
+
+	// Check the existing overflow for potential recovery.
+	existingOverflow, exist := wal.cm.sectorLocationsCountOverflow[su.ID]
+
+	// Only persist if there is a value > 0 that we haven't persisted yet, or if
+	// the persisted value is outdated.
+	if (!exist && su.Count > 0) || (existingOverflow != overflow) {
+		if overflow == 0 {
+			delete(wal.cm.sectorLocationsCountOverflow, su.ID)
+		} else {
+			wal.cm.sectorLocationsCountOverflow[su.ID] = overflow
+		}
+		err = wal.cm.dependencies.SaveFileSync(overflowMetadata, wal.cm.sectorLocationsCountOverflow, wal.overflowFilePath)
+		if err != nil {
+			if !exist {
 				delete(wal.cm.sectorLocationsCountOverflow, su.ID)
 			} else {
-				wal.cm.sectorLocationsCountOverflow[su.ID] = overflow
+				wal.cm.sectorLocationsCountOverflow[su.ID] = existingOverflow
 			}
-			err = wal.cm.dependencies.SaveFileSync(overflowMetadata, wal.cm.sectorLocationsCountOverflow, wal.overflowFilePath)
-			if err != nil {
-				if !exist {
-					delete(wal.cm.sectorLocationsCountOverflow, su.ID)
-				} else {
-					wal.cm.sectorLocationsCountOverflow[su.ID] = existingOverflow
-				}
-				wal.cm.log.Printf("ERROR: unable to write sector overflow metadata when adding sector: %v\n", err)
-				atomic.AddUint64(&sf.atomicFailedWrites, 1)
-				wal.cm.sectorLocationsCountOverflowMu.Unlock()
-				return err
-			}
+			wal.cm.log.Printf("ERROR: unable to write sector overflow metadata when adding sector: %v\n", err)
+			atomic.AddUint64(&sf.atomicFailedWrites, 1)
+			return err
 		}
-		wal.cm.sectorLocationsCountOverflowMu.Unlock()
 	}
 	atomic.AddUint64(&sf.atomicSuccessfulWrites, 1)
 	return nil
