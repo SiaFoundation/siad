@@ -57,6 +57,7 @@ func TestSkynet(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
+		{Name: "Stats", Test: testSkynetStats}, // Move to first to reduce NDFs
 		{Name: "Basic", Test: testSkynetBasic},
 		{Name: "ConvertSiaFile", Test: testConvertSiaFile},
 		{Name: "LargeMetadata", Test: testSkynetLargeMetadata},
@@ -70,7 +71,6 @@ func TestSkynet(t *testing.T) {
 		{Name: "Portals", Test: testSkynetPortals},
 		{Name: "HeadRequest", Test: testSkynetHeadRequest},
 		{Name: "NoMetadata", Test: testSkynetNoMetadata},
-		{Name: "Stats", Test: testSkynetStats},
 		{Name: "RequestTimeout", Test: testSkynetRequestTimeout},
 		{Name: "DryRunUpload", Test: testSkynetDryRunUpload},
 		{Name: "RegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
@@ -866,18 +866,19 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 		} else {
 			// large files have an extra sector with header data
 			uploadedFilesSize += size + modules.SectorSize
-			uploadedFilesCount += 2 // +1 .extended file
+			// +1 .extended file, this incorrect but was added due to knowing the
+			// current stats is inaccurate
+			uploadedFilesCount += 2
 		}
 	}
 
 	// Check that the right stats were returned.
-	var statsBefore api.SkynetStatsGET
+	statsBefore := stats
 	err = build.Retry(100, 100*time.Millisecond, func() error {
 		statsAfter, err := r.SkynetStatsGet()
 		if err != nil {
 			return err
 		}
-		statsBefore := stats
 		if uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount != uint64(statsAfter.UploadStats.NumFiles) {
 			return fmt.Errorf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount, statsAfter.UploadStats.NumFiles)
 		}
