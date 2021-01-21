@@ -27,9 +27,6 @@ type (
 		RefundAddress types.UnlockHash
 		RenterSeed    EphemeralRenterSeed
 
-		// Only used by RHP3
-		PriceTable *RPCPriceTable
-
 		// TODO: add optional keypair
 	}
 )

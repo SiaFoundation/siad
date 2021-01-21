@@ -664,8 +664,8 @@ func newPayByContractRequest(rev types.FileContractRevision, sig crypto.Signatur
 
 // RenewContract takes an established connection to a host and renews the
 // contract with that host.
-func (c *Contractor) RenewContract(conn net.Conn, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb modules.HostDB) (modules.RenterContract, []types.Transaction, error) {
-	newContract, txnSet, err := c.staticContracts.RenewContract(conn, fcid, params, txnBuilder, tpool, hdb)
+func (c *Contractor) RenewContract(conn net.Conn, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb modules.HostDB, pt *modules.RPCPriceTable) (modules.RenterContract, []types.Transaction, error) {
+	newContract, txnSet, err := c.staticContracts.RenewContract(conn, fcid, params, txnBuilder, tpool, hdb, pt)
 	if err != nil {
 		return modules.RenterContract{}, nil, errors.AddContext(err, "RenewContract: failed to renew contract")
 	}
