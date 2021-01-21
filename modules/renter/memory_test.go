@@ -696,23 +696,14 @@ func TestMemoryManagerRequestMemoryWithContext(t *testing.T) {
 
 	// Validate the current status
 	status = mm.callStatus()
-	if status.PriorityAvailable != 0 || status.PriorityRequested != 10 {
+	if status.PriorityAvailable != 0 || status.PriorityRequested != 0 {
 		t.Fatal("unexpected")
 	}
 
-	// Return some memory
-	mm.Return(available / 2)
-
-	// Validate the current status
+	// Return all available memory
+	mm.Return(available)
 	status = mm.callStatus()
-	if status.PriorityRequested != 0 {
-		t.Fatal("unexpected")
-	}
-
-	// Return the remainder
-	mm.Return(available / 2)
-	status = mm.callStatus()
-	if status.PriorityAvailable != available || status.PriorityRequested != 0 {
+	if status.PriorityAvailable != available {
 		t.Fatal("unexpected")
 	}
 }

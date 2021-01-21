@@ -209,10 +209,13 @@ func (mm *memoryManager) Request(ctx context.Context, amount uint64, priority bo
 		canceled: make(chan struct{}),
 		done:     make(chan struct{}),
 	}
+
+	// Keep track of the list element so we remove it in case we time out
+	var el *list.Element
 	if priority {
-		mm.priorityFifo.PushBack(myRequest)
+		el = mm.priorityFifo.PushBack(myRequest)
 	} else {
-		mm.fifo.PushBack(myRequest)
+		el = mm.fifo.PushBack(myRequest)
 	}
 	mm.mu.Unlock()
 
@@ -234,6 +237,20 @@ func (mm *memoryManager) Request(ctx context.Context, amount uint64, priority bo
 		return true
 	case <-ctx.Done():
 		close(myRequest.canceled)
+
+		// Try and remove the element from the queue, this is pure cosmetical
+		// and will make sure the requested memory in the MemoryStatus more
+		// accurately reflects the actual memory being requested still. There's
+		// an edge case where the element has been moved to the priority queue
+		// due to the starvation code, in which case the remove here won't be
+		// successful.
+		mm.mu.Lock()
+		if priority {
+			mm.priorityFifo.Remove(el)
+		} else {
+			mm.fifo.Remove(el)
+		}
+		mm.mu.Unlock()
 		return false
 	case <-mm.stop:
 		return false
@@ -280,7 +297,7 @@ func (mm *memoryManager) Return(amount uint64) {
 	for mm.priorityFifo.Len() > 0 {
 		req := mm.priorityFifo.Pop()
 
-		// Ignore the request in case it got canceled
+		// Check whether the request got canceled, if so ignore it and continue
 		select {
 		case <-req.canceled:
 			continue
@@ -306,7 +323,7 @@ func (mm *memoryManager) Return(amount uint64) {
 	for mm.fifo.Len() > 0 {
 		req := mm.fifo.Pop()
 
-		// Ignore the request in case it got canceled
+		// Check whether the request got canceled, if so ignore it and continue
 		select {
 		case <-req.canceled:
 			continue
