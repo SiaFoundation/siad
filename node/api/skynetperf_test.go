@@ -12,6 +12,6 @@ import (
 func BenchmarkHalfLifeDistribution(b *testing.B) {
 	hld := NewHalfLifeDistribution()
 	for i := 0; i < b.N; i++ {
-		hld.AddRequest(time.Millisecond)
+		hld.AddRequest(time.Millisecond, 0)
 	}
 }
