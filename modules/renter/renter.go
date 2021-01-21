@@ -149,7 +149,7 @@ type hostContractor interface {
 
 	// RenewContract takes an established connection to a host and renews the
 	// given contract with that host.
-	RenewContract(conn net.Conn, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb modules.HostDB) (modules.RenterContract, []types.Transaction, error)
+	RenewContract(conn net.Conn, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb modules.HostDB, pt *modules.RPCPriceTable) (modules.RenterContract, []types.Transaction, error)
 
 	// Synced returns a channel that is closed when the contractor is fully
 	// synced with the peer-to-peer network.
@@ -1059,9 +1059,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	if err != nil {
 		return nil, err
 	}
-
-	// Start a goroutine to periodically clear the stats.
-	go r.threadedInvalidateStatsCache()
 
 	// Calculate the initial cached utilities and kick off a thread that updates
 	// the utilities regularly.

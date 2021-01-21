@@ -27,9 +27,6 @@ type (
 		RefundAddress types.UnlockHash
 		RenterSeed    EphemeralRenterSeed
 
-		// Only used by RHP3
-		PriceTable *RPCPriceTable
-
 		// TODO: add optional keypair
 	}
 )
@@ -966,11 +963,6 @@ type Renter interface {
 
 	// MountInfo returns the list of currently mounted FUSE filesystems.
 	MountInfo() []MountInfo
-
-	// SkynetStats returns the SkynetStats of the renter. Depending on the input,
-	// either cached stats will be returned or a full disk scan will either be
-	// started or if it's already ongoing, waited for.
-	SkynetStats(bool) (SkynetStats, error)
 
 	// Unmount unmounts the FUSE filesystem currently mounted at mountPoint.
 	Unmount(mountPoint string) error

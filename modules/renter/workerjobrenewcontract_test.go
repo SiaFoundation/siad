@@ -172,8 +172,7 @@ func TestRenewContract(t *testing.T) {
 
 	// Compute the expected payouts of the new contract.
 	pt := wt.staticPriceTable().staticPriceTable
-	params.PriceTable = &pt
-	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevisionPreRenew, params.PriceTable, params.EndHeight)
+	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevisionPreRenew, &pt, params.EndHeight)
 	allowance, startHeight, endHeight, host, funding := params.Allowance, params.StartHeight, params.EndHeight, params.Host, params.Funding
 	period := endHeight - startHeight
 	txnFee := pt.TxnFeeMaxRecommended.Mul64(2 * modules.EstimatedFileContractTransactionSetSize)
