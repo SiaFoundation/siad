@@ -18,10 +18,6 @@ const (
 	// entry takes up in memory. This is a conservative estimation to prevent
 	// DoS attacks on the host.
 	SubscriptionEntrySize = 512
-
-	// InitialNumNotifications is the initial number of notifications a caller
-	// has to pay for when opening the subscription loop with a host.
-	InitialNumNotifications = 100
 )
 
 // Subcription request related enum.
@@ -31,6 +27,7 @@ const (
 	SubscriptionRequestUnsubscribe
 	SubscriptionRequestExtend
 	SubscriptionRequestPrepay
+	SubscriptionRequestStop
 )
 
 // Subcription response related enum.
