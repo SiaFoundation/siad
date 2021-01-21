@@ -45,7 +45,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules/renter/contractor"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/hostdb"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetblocklist"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/skynetportals"
 	"gitlab.com/NebulousLabs/Sia/persist"
@@ -149,12 +148,15 @@ type hostContractor interface {
 	RefreshedContract(fcid types.FileContractID) bool
 
 	// RenewContract takes an established connection to a host and renews the
-	// contract with that host.
-	RenewContract(conn net.Conn, hpk types.SiaPublicKey, params proto.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb modules.HostDB) error
+	// given contract with that host.
+	RenewContract(conn net.Conn, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb modules.HostDB) (modules.RenterContract, []types.Transaction, error)
 
 	// Synced returns a channel that is closed when the contractor is fully
 	// synced with the peer-to-peer network.
 	Synced() <-chan struct{}
+
+	// UpdateWorkerPool updates the workerpool currently in use by the contractor.
+	UpdateWorkerPool(modules.WorkerPool)
 }
 
 type renterFuseManager interface {
@@ -813,6 +815,9 @@ func (r *Renter) ProcessConsensusChange(cc modules.ConsensusChange) {
 	id := r.mu.Lock()
 	r.lastEstimationHosts = []modules.HostDBEntry{}
 	r.mu.Unlock(id)
+	if cc.Synced {
+		_ = r.tg.Launch(r.staticWorkerPool.callUpdate)
+	}
 }
 
 // SetIPViolationCheck is a passthrough method to the hostdb's method of the
@@ -1040,6 +1045,9 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 
 	// After persist is initialized, create the worker pool.
 	r.staticWorkerPool = r.newWorkerPool()
+
+	// Set the worker pool on the contractor.
+	r.hostContractor.UpdateWorkerPool(r.staticWorkerPool)
 
 	// Create the skykey manager.
 	// In testing, keep the skykeys with the rest of the renter data.

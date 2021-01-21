@@ -73,6 +73,11 @@ func NewSkylinkV1(merkleRoot crypto.Hash, offset, length uint64) (Skylink, error
 	return sl, nil
 }
 
+// isSkylinkV1 returns a boolean indicating if the Skylink is a V1 skylink
+func isSkylinkV1(bitfield uint16) bool {
+	return bitfield&3 == 0
+}
+
 // validateAndParseV1Bitfield is a helper method which validates that a bitfield
 // is valid and also parses the offset and fetch size from the bitfield. These
 // two actions are performed at once because performing full validation requires
@@ -83,7 +88,7 @@ func validateAndParseV1Bitfield(bitfield uint16) (offset uint64, fetchSize uint6
 	// Parse the version and ensure that the version is set to '1'. The first
 	// two bits are the version bits, and semantically are upshifted. So '00'
 	// corresponds to version 1, '01' corresponds to version 2, up to version 4.
-	if bitfield&3 != 0 {
+	if !isSkylinkV1(bitfield) {
 		return 0, SkylinkMaxFetchSize, errors.New("bitfield is not set to v1")
 	}
 	// Shift out the version bits.
@@ -152,6 +157,11 @@ func (sl *Skylink) Bytes() []byte {
 // inside of the renter to uniquely identify a stream buffer.
 func (sl Skylink) DataSourceID() DataSourceID {
 	return DataSourceID(crypto.HashObject(sl.String()))
+}
+
+// IsSkylinkV1 returns a boolean indicating if the Skylink is a V1 skylink
+func (sl Skylink) IsSkylinkV1() bool {
+	return isSkylinkV1(sl.bitfield)
 }
 
 // LoadString converts from a string and loads the result into sl.

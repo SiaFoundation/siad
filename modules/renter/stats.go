@@ -9,52 +9,58 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 )
 
+// statsScanSlowdown is the time interval used to slow down a skynet stats scan.
+// After statsScanSlowdown time, the scan sleeps for the same amount of time.
+var statsScanSlowdown = build.Select(build.Var{
+	Dev:      time.Duration(time.Millisecond * 10),
+	Standard: time.Duration(time.Millisecond * 100),
+	Testing:  time.Duration(time.Millisecond * 5),
+}).(time.Duration)
+
 // SkynetStats returns the SkynetStats of the renter. Depending on the input,
 // either cached stats will be returned or a full disk scan will either be
 // started or if it's already ongoing, waited for.
 func (r *Renter) SkynetStats(cached bool) (modules.SkynetStats, error) {
-	for {
+	r.statsMu.Lock()
+	var isScanning bool
+	select {
+	case <-r.statsChan:
+		isScanning = false
+	default:
+		isScanning = true
+	}
+
+	if cached && r.stats != nil {
+		// If a cached value is good enough, we use that if available.
+		stats := *r.stats
+		r.statsMu.Unlock()
+		return stats, nil
+	} else if isScanning {
+		// Otherwise, if a scan is happening, we wait for that to finish.
+		c := r.statsChan
+		r.statsMu.Unlock()
+		<-c
+		// Try again. A cached value is good enough now.
+		return r.SkynetStats(true)
+	} else {
+		// We don't have a recent enough value and no scan is happening. We
+		// need to start one.
+		c := make(chan struct{})
+		defer close(c)
+		r.statsChan = c
+		r.statsMu.Unlock()
+
+		// Trigger the scan.
+		s, err := r.managedStatsScan()
+		if err != nil {
+			return modules.SkynetStats{}, err
+		}
+
+		// Set the new value.
 		r.statsMu.Lock()
-		var isScanning bool
-		select {
-		case <-r.statsChan:
-			isScanning = false
-		default:
-			isScanning = true
-		}
-
-		if cached && r.stats != nil {
-			// If a cached value is good enough, we use that if available.
-			stats := *r.stats
-			r.statsMu.Unlock()
-			return stats, nil
-		} else if isScanning {
-			// Otherwise, if a scan is happening, we wait for that to finish.
-			c := r.statsChan
-			r.statsMu.Unlock()
-			<-c
-			cached = true // a cached value is good enough now
-			continue
-		} else {
-			// We don't have a recent enough value and no scan is happening. We
-			// need to start one.
-			c := make(chan struct{})
-			defer close(c)
-			r.statsChan = c
-			r.statsMu.Unlock()
-
-			// Trigger the scan.
-			s, err := r.managedStatsScan()
-			if err != nil {
-				return modules.SkynetStats{}, err
-			}
-
-			// Set the new value.
-			r.statsMu.Lock()
-			r.stats = &s
-			r.statsMu.Unlock()
-			return s, err
-		}
+		r.stats = &s
+		r.statsMu.Unlock()
+		return s, err
 	}
 }
 
@@ -87,9 +93,17 @@ func (r *Renter) managedRemoveFileFromSkynetStats(size uint64, extended bool) {
 func (r *Renter) managedStatsScan() (modules.SkynetStats, error) {
 	var mu sync.Mutex
 	var stats modules.SkynetStats
+	t := time.Now()
 	err := r.FileList(modules.SkynetFolder, true, true, func(f modules.FileInfo) {
 		mu.Lock()
 		defer mu.Unlock()
+
+		// slow down the scan to avoid too much cpu or disk utilization.
+		if time.Since(t) > statsScanSlowdown {
+			time.Sleep(statsScanSlowdown)
+			t = time.Now()
+		}
+
 		// do not double-count large files by counting both the header file and
 		// the extended file
 		if !strings.HasSuffix(f.Name(), modules.ExtendedSuffix) {

@@ -87,6 +87,12 @@ type (
 		Remove []modules.NetAddress   `json:"remove"`
 	}
 
+	// SkynetRestorePOST is the response that the api returns after the
+	// /skynet/restore POST endpoint has been used.
+	SkynetRestorePOST struct {
+		Skylink string `json:"skylink"`
+	}
+
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
@@ -148,7 +154,7 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 	defer func() {
 		if isErr {
 			skynetPerformanceStatsMu.Lock()
-			skynetPerformanceStats.TimeToFirstByte.AddRequest(0)
+			skynetPerformanceStats.TimeToFirstByte.AddRequest(0, 0)
 			skynetPerformanceStatsMu.Unlock()
 		}
 	}()
@@ -206,7 +212,7 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 
 	// Stop the time here for TTFB.
 	skynetPerformanceStatsMu.Lock()
-	skynetPerformanceStats.TimeToFirstByte.AddRequest(time.Since(startTime))
+	skynetPerformanceStats.TimeToFirstByte.AddRequest(time.Since(startTime), 0)
 	skynetPerformanceStatsMu.Unlock()
 	// Defer a function to record the total performance time.
 	defer func() {
@@ -218,18 +224,18 @@ func (api *API) skynetBaseSectorHandlerGET(w http.ResponseWriter, req *http.Requ
 			return
 		}
 		if fetchSize <= 64e3 {
-			skynetPerformanceStats.Download64KB.AddRequest(time.Since(startTime))
+			skynetPerformanceStats.Download64KB.AddRequest(time.Since(startTime), fetchSize)
 			return
 		}
 		if fetchSize <= 1e6 {
-			skynetPerformanceStats.Download1MB.AddRequest(time.Since(startTime))
+			skynetPerformanceStats.Download1MB.AddRequest(time.Since(startTime), fetchSize)
 			return
 		}
 		if fetchSize <= 4e6 {
-			skynetPerformanceStats.Download4MB.AddRequest(time.Since(startTime))
+			skynetPerformanceStats.Download4MB.AddRequest(time.Since(startTime), fetchSize)
 			return
 		}
-		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
+		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime), fetchSize)
 	}()
 
 	// Serve the basesector
@@ -374,7 +380,7 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 	defer func() {
 		if isErr {
 			skynetPerformanceStatsMu.Lock()
-			skynetPerformanceStats.TimeToFirstByte.AddRequest(0)
+			skynetPerformanceStats.TimeToFirstByte.AddRequest(0, 0)
 			skynetPerformanceStatsMu.Unlock()
 		}
 	}()
@@ -457,7 +463,7 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 
 	// Stop the time here for TTFB.
 	skynetPerformanceStatsMu.Lock()
-	skynetPerformanceStats.TimeToFirstByte.AddRequest(time.Since(startTime))
+	skynetPerformanceStats.TimeToFirstByte.AddRequest(time.Since(startTime), 0)
 	skynetPerformanceStatsMu.Unlock()
 	// Defer a function to record the total performance time.
 	defer func() {
@@ -465,18 +471,18 @@ func (api *API) skynetRootHandlerGET(w http.ResponseWriter, req *http.Request, p
 		defer skynetPerformanceStatsMu.Unlock()
 
 		if length <= 64e3 {
-			skynetPerformanceStats.Download64KB.AddRequest(time.Since(startTime))
+			skynetPerformanceStats.Download64KB.AddRequest(time.Since(startTime), length)
 			return
 		}
 		if length <= 1e6 {
-			skynetPerformanceStats.Download1MB.AddRequest(time.Since(startTime))
+			skynetPerformanceStats.Download1MB.AddRequest(time.Since(startTime), length)
 			return
 		}
 		if length <= 4e6 {
-			skynetPerformanceStats.Download4MB.AddRequest(time.Since(startTime))
+			skynetPerformanceStats.Download4MB.AddRequest(time.Since(startTime), length)
 			return
 		}
-		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
+		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime), length)
 	}()
 
 	streamer := renter.StreamerFromSlice(sector)
@@ -498,7 +504,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	defer func() {
 		if isErr {
 			skynetPerformanceStatsMu.Lock()
-			skynetPerformanceStats.TimeToFirstByte.AddRequest(0)
+			skynetPerformanceStats.TimeToFirstByte.AddRequest(0, 0)
 			skynetPerformanceStatsMu.Unlock()
 		}
 	}()
@@ -572,7 +578,7 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 	}
 
 	// Fetch the skyfile's metadata and a streamer to download the file
-	metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout)
+	layout, metadata, streamer, err := api.renter.DownloadSkylink(skylink, timeout)
 	if errors.Contains(err, renter.ErrSkylinkBlocked) {
 		WriteError(w, Error{err.Error()}, http.StatusUnavailableForLegalReasons)
 		return
@@ -701,11 +707,13 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 		WriteError(w, Error{fmt.Sprintf("failed to write skylink metadata: %v", err)}, http.StatusInternalServerError)
 		return
 	}
+	// Encode the Layout
+	encLayout := layout.Encode()
 
-	// Metadata has been parsed successfully, stop the time here for TTFB.
-	// Metadata was fetched from Skynet itself.
+	// Metadata and layout has been parsed successfully, stop the time here for
+	// TTFB.  Metadata was fetched from Skynet itself.
 	skynetPerformanceStatsMu.Lock()
-	skynetPerformanceStats.TimeToFirstByte.AddRequest(time.Since(startTime))
+	skynetPerformanceStats.TimeToFirstByte.AddRequest(time.Since(startTime), 0)
 	skynetPerformanceStatsMu.Unlock()
 
 	// No more errors, defer a function to record the total performance time.
@@ -719,26 +727,31 @@ func (api *API) skynetSkylinkHandlerGET(w http.ResponseWriter, req *http.Request
 			return
 		}
 		if fetchSize <= 64e3 {
-			skynetPerformanceStats.Download64KB.AddRequest(time.Since(startTime))
+			skynetPerformanceStats.Download64KB.AddRequest(time.Since(startTime), fetchSize)
 			return
 		}
 		if fetchSize <= 1e6 {
-			skynetPerformanceStats.Download1MB.AddRequest(time.Since(startTime))
+			skynetPerformanceStats.Download1MB.AddRequest(time.Since(startTime), fetchSize)
 			return
 		}
 		if fetchSize <= 4e6 {
-			skynetPerformanceStats.Download4MB.AddRequest(time.Since(startTime))
+			skynetPerformanceStats.Download4MB.AddRequest(time.Since(startTime), fetchSize)
 			return
 		}
-		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime))
+		skynetPerformanceStats.DownloadLarge.AddRequest(time.Since(startTime), fetchSize)
 	}()
 
+	// Set the common Header fields
+	//
 	// Set the Skylink response header
 	w.Header().Set("Skynet-Skylink", skylink.String())
 
 	// Set the ETag response header
 	eTag := buildETag(skylink, req.Method, path, format)
 	w.Header().Set("ETag", fmt.Sprintf("\"%v\"", eTag))
+
+	// Set the Layout
+	w.Header().Set("Skynet-File-Layout", hex.EncodeToString(encLayout))
 
 	// Set an appropriate Content-Disposition header
 	var cdh string
@@ -973,14 +986,50 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 		// Determine whether the file is large or not, and update the
 		// appropriate bucket.
+		//
+		// The way we have to count is a bit gross, because there are two files
+		// that we need to consider when looking for the size of the final
+		// upload. The first is the siapath, and then the second is the siapath
+		// of the extended file, which needs to be separated out because it can
+		// have different erasure code settings. To get the full filesize we add
+		// the size of the normal file, and then the size of the extended file.
+		// But the extended file may not exist, so we have to be careful with
+		// how we consider extending it. And then just in general the error
+		// handling here is a bit messy.
+		//
+		// It seems that in practice, all files report a size of 4 MB,
+		// regardless of how big the actual upload was. I didn't think this was
+		// the case, but to handle it correctly we consider anything that is
+		// smaller than 4300e3 bytes to be "small". Just a little fudging to
+		// match the performance bucket to the thing we are actually trying to
+		// measure.
 		file, err := api.renter.File(sup.SiaPath)
-		if err == nil && file.Filesize <= 4e6 {
+		extendedPath := sup.SiaPath
+		extendedPath.Path = extendedPath.Path + ".extended"
+		file2, err2 := api.renter.File(extendedPath)
+		var filesize uint64
+		if err == nil {
+			filesize = file.Filesize
+		}
+		if err == nil && err2 == nil {
+			filesize += file2.Filesize
+		}
+		if err == nil && filesize <= 4300e3 {
 			skynetPerformanceStatsMu.Lock()
-			skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime))
+			skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime), filesize)
 			skynetPerformanceStatsMu.Unlock()
 		} else if err == nil {
 			skynetPerformanceStatsMu.Lock()
-			skynetPerformanceStats.UploadLarge.AddRequest(time.Since(startTime))
+			skynetPerformanceStats.UploadLarge.AddRequest(time.Since(startTime), filesize)
+			skynetPerformanceStatsMu.Unlock()
+		} else if err != nil {
+			// Mark an errored upload.
+			//
+			// NOTE: This shouldn't really happen, and I almost want to drop a
+			// build.Critical here. If there weren't any other errors up until
+			// this point, there shouldn't be any errors grabbing the file.
+			skynetPerformanceStatsMu.Lock()
+			skynetPerformanceStats.UploadLarge.AddRequest(0, 0)
 			skynetPerformanceStatsMu.Unlock()
 		}
 
@@ -1019,7 +1068,7 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 	// No more errors, add metrics for the upload time. A convert is a 4MB
 	// upload.
 	skynetPerformanceStatsMu.Lock()
-	skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime))
+	skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime), 0)
 	skynetPerformanceStatsMu.Unlock()
 
 	// Set the Skylink response header
@@ -1263,6 +1312,8 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 
 // registryHandlerPOST handles the POST calls to /skynet/registry.
 func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	startTime := time.Now()
+
 	// Decode request.
 	dec := json.NewDecoder(req.Body)
 	var rhp RegistryHandlerRequestPOST
@@ -1286,11 +1337,19 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 		WriteError(w, Error{"Unable to update the registry: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
+
+	// Update the registry write stats.
+	skynetPerformanceStatsMu.Lock()
+	skynetPerformanceStats.RegistryWrite.AddRequest(time.Since(startTime), 0)
+	skynetPerformanceStatsMu.Unlock()
 	WriteSuccess(w)
 }
 
 // registryHandlerGET handles the GET calls to /skynet/registry.
 func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Grab a start time for the registry read stats.
+	startTime := time.Now()
+
 	// Parse public key
 	var spk types.SiaPublicKey
 	err := spk.LoadString(req.FormValue("publickey"))
@@ -1335,10 +1394,29 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 		return
 	}
 
+	// Update the registry read stats.
+	skynetPerformanceStatsMu.Lock()
+	skynetPerformanceStats.RegistryRead.AddRequest(time.Since(startTime), 0)
+	skynetPerformanceStatsMu.Unlock()
+
 	// Send response.
 	WriteJSON(w, RegistryHandlerGET{
 		Data:      hex.EncodeToString(srv.Data),
 		Revision:  srv.Revision,
 		Signature: hex.EncodeToString(srv.Signature[:]),
+	})
+}
+
+// skynetRestoreHandlerPOST handles the POST calls to /skynet/restore.
+func (api *API) skynetRestoreHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Restore Skyfile
+	skylink, err := api.renter.RestoreSkyfile(req.Body)
+	if err != nil {
+		WriteError(w, Error{"unable to restore skyfile: " + err.Error()}, http.StatusBadRequest)
+		return
+	}
+
+	WriteJSON(w, SkynetRestorePOST{
+		Skylink: skylink.String(),
 	})
 }

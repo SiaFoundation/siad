@@ -104,6 +104,9 @@ type streamBufferDataSource interface {
 	// Metadata returns the Skyfile metadata of a data source.
 	Metadata() modules.SkyfileMetadata
 
+	// Layout returns the Skyfile layout of a data source.
+	Layout() modules.SkyfileLayout
+
 	// RequestSize should return the request size that the dataSource expects
 	// the streamBuffer to use. The streamBuffer will always make ReadAt calls
 	// that are of the suggested request size and byte aligned.
@@ -296,6 +299,11 @@ func (s *stream) Close() error {
 // Metadata returns the skyfile metadata associated with this stream.
 func (s *stream) Metadata() modules.SkyfileMetadata {
 	return s.staticStreamBuffer.staticDataSource.Metadata()
+}
+
+// Layout returns the skyfile layout associated with this stream.
+func (s *stream) Layout() modules.SkyfileLayout {
+	return s.staticStreamBuffer.staticDataSource.Layout()
 }
 
 // Read will read data into 'b', returning the number of bytes read and any

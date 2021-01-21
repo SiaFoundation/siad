@@ -12,6 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/threadgroup"
 )
 
 const (
@@ -165,7 +166,25 @@ func (w *worker) managedPerformDownloadChunkJob() {
 	// unregistered with the chunk.
 	fetchOffset, fetchLength := sectorOffsetAndLength(udc.staticFetchOffset, udc.staticFetchLength, udc.erasureCode)
 	root := udc.staticChunkMap[w.staticHostPubKey.String()].root
-	pieceData, err := w.ReadSector(w.renter.tg.StopCtx(), root, fetchOffset, fetchLength)
+
+	// Prepare a read job and run it.
+	readSectorRespChan := make(chan *jobReadResponse, 1)
+	jrs := w.newJobReadSector(w.renter.tg.StopCtx(), readSectorRespChan, root, fetchOffset, fetchLength)
+	jrs.callExecute()
+
+	// Get the result.
+	var resp *jobReadResponse
+	select {
+	case _ = <-w.renter.tg.StopChan():
+		w.renter.log.Debugln("worker shut down before download completed")
+		w.managedDownloadFailed(threadgroup.ErrStopped)
+		udc.managedUnregisterWorker(w)
+		return
+	case resp = <-readSectorRespChan:
+	}
+
+	// Extract the result.
+	pieceData, err := resp.staticData, resp.staticErr
 	if err != nil {
 		w.renter.log.Debugln("worker failed to download sector:", err)
 		w.managedDownloadFailed(err)

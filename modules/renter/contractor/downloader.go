@@ -14,6 +14,10 @@ import (
 
 var errInvalidDownloader = errors.New("downloader has been invalidated because its contract is being renewed")
 
+// ErrContractRenewing is returned by operations that can't be completed due to
+// the contract being renewed.
+var ErrContractRenewing = errors.New("currently renewing that contract")
+
 // An Downloader retrieves sectors from with a host. It requests one sector at
 // a time, and revises the file contract to transfer money to the host
 // proportional to the data retrieved.
@@ -113,7 +117,7 @@ func (c *Contractor) Downloader(pk types.SiaPublicKey, cancel <-chan struct{}) (
 		return nil, errors.New("failed to get filecontract id from key")
 	}
 	if renewing {
-		return nil, errors.New("currently renewing that contract")
+		return nil, ErrContractRenewing
 	} else if haveDownloader {
 		// increment number of clients and return
 		cachedDownloader.mu.Lock()
