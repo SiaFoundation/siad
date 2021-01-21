@@ -7,7 +7,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/modules/renter/proto"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -57,10 +56,10 @@ func TestRenewContract(t *testing.T) {
 	// Get some more vars.
 	allowance := wt.rt.renter.hostContractor.Allowance()
 	bh := wt.staticCache().staticBlockHeight
-	rs := proto.DeriveRenterSeed(seed)
+	rs := modules.DeriveRenterSeed(seed)
 
 	// Define some params for the contract.
-	params := proto.ContractParams{
+	params := modules.ContractParams{
 		Allowance:     allowance,
 		Host:          host,
 		Funding:       funding,
@@ -95,7 +94,7 @@ func TestRenewContract(t *testing.T) {
 	}
 
 	// Renew the contract.
-	err = wt.RenewContract(context.Background(), params, txnBuilder)
+	_, _, err = wt.RenewContract(context.Background(), oldContractPreRenew.ID, params, txnBuilder)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,8 +172,7 @@ func TestRenewContract(t *testing.T) {
 
 	// Compute the expected payouts of the new contract.
 	pt := wt.staticPriceTable().staticPriceTable
-	params.PriceTable = &pt
-	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevisionPreRenew, params.PriceTable, params.EndHeight)
+	basePrice, baseCollateral := modules.RenewBaseCosts(oldRevisionPreRenew, &pt, params.EndHeight)
 	allowance, startHeight, endHeight, host, funding := params.Allowance, params.StartHeight, params.EndHeight, params.Host, params.Funding
 	period := endHeight - startHeight
 	txnFee := pt.TxnFeeMaxRecommended.Mul64(2 * modules.EstimatedFileContractTransactionSetSize)
@@ -200,7 +198,7 @@ func TestRenewContract(t *testing.T) {
 	if newContract.WindowEnd != params.EndHeight+params.Host.WindowSize {
 		t.Fatal("wrong window end")
 	}
-	_, ourPK := proto.GenerateKeyPair(params.RenterSeed, fcTxn)
+	_, ourPK := modules.GenerateContractKeyPair(params.RenterSeed, fcTxn)
 	uh := types.UnlockConditions{
 		PublicKeys: []types.SiaPublicKey{
 			types.Ed25519PublicKey(ourPK),

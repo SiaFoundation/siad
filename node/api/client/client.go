@@ -137,7 +137,9 @@ func drainAndClose(rc io.ReadCloser) {
 // readAPIError decodes and returns an api.Error.
 func readAPIError(r io.Reader) error {
 	var apiErr api.Error
-	if err := json.NewDecoder(r).Decode(&apiErr); err != nil {
+	b, _ := ioutil.ReadAll(r)
+	if err := json.NewDecoder(bytes.NewReader(b)).Decode(&apiErr); err != nil {
+		fmt.Println("raw resp", string(b))
 		return errors.AddContext(err, "could not read error response")
 	}
 

@@ -453,14 +453,19 @@ func createServerTesterWithDeps(name string, gDeps, cDeps, tDeps, wDeps, hDeps, 
 		return nil, err
 	}
 
-	// Mine blocks until the wallet has confirmed money.
-	for i := types.BlockHeight(0); i <= types.MaturityDelay; i++ {
+	// Mine blocks until the wallet has confirmed money and we are beyond the
+	// tax hardfork height.
+	for i := types.BlockHeight(0); i <= types.TaxHardforkHeight+types.MaturityDelay; i++ {
 		_, err := st.miner.AddBlock()
 		if err != nil {
 			return nil, err
 		}
 	}
 
+	// Wait until the desired height was reached.
+	for st.cs.Height() < types.TaxHardforkHeight+types.MaturityDelay {
+		time.Sleep(10 * time.Millisecond)
+	}
 	return st, nil
 }
 

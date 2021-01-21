@@ -214,7 +214,7 @@ func (c *Contractor) Session(pk types.SiaPublicKey, cancel <-chan struct{}) (_ S
 	}
 	if renewing {
 		// Cannot use the session if the contract is being renewed.
-		return nil, errors.New("currently renewing that contract")
+		return nil, ErrContractRenewing
 	} else if haveSession {
 		// This session already exists. Mark that there are now two routines
 		// using the session, and then return the session that already exists.

@@ -17,10 +17,6 @@ var (
 	// disk have prevented the host from successfully adding the sector.
 	errDiskTrouble = errors.New("host unable to add sector despite having the storage capacity to do so")
 
-	// errMaxVirtualSectors is returned when a sector cannot be added because
-	// the maximum number of virtual sectors for that sector id already exist.
-	errMaxVirtualSectors = errors.New("sector collides with a physical sector that already has the maximum allowed number of virtual sectors")
-
 	// ErrSectorNotFound is returned when a lookup for a sector fails.
 	ErrSectorNotFound = errors.New("could not find the desired sector")
 )

@@ -164,7 +164,7 @@ func (wal *writeAheadLog) managedAddPhysicalSector(id sectorID, data []byte, cou
 func (wal *writeAheadLog) managedAddVirtualSector(id sectorID, location sectorLocation) error {
 	// Update the location count.
 	if location.count == 65535 {
-		return errMaxVirtualSectors
+		return modules.ErrMaxVirtualSectors
 	}
 	location.count++
 

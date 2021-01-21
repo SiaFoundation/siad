@@ -125,6 +125,12 @@ func (wp *workerPool) callUpdate() {
 	}
 }
 
+// Worker will return the worker associated with the provided public key.
+// If no worker is found, an error will be returned.
+func (wp *workerPool) Worker(hostPubKey types.SiaPublicKey) (modules.Worker, error) {
+	return wp.callWorker(hostPubKey)
+}
+
 // callWorker will return the worker associated with the provided public key.
 // If no worker is found, an error will be returned.
 func (wp *workerPool) callWorker(hostPubKey types.SiaPublicKey) (*worker, error) {

@@ -56,6 +56,11 @@ func (sds *skylinkDataSource) ID() modules.DataSourceID {
 	return sds.staticID
 }
 
+// Layout implements streamBufferDataSource
+func (sds *skylinkDataSource) Layout() modules.SkyfileLayout {
+	return sds.staticLayout
+}
+
 // Metadata implements streamBufferDataSource
 func (sds *skylinkDataSource) Metadata() modules.SkyfileMetadata {
 	return sds.staticMetadata

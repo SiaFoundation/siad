@@ -1,4 +1,4 @@
-package proto
+package modules
 
 import (
 	"bytes"
@@ -9,7 +9,6 @@ import (
 
 	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/encoding"
 )
@@ -23,19 +22,36 @@ const (
 // created with the current seed used by the renter.
 var ErrCSIDoesNotMatchSeed = errors.New("ContractSignedIdentifier signature bytes not equal")
 
+var (
+	// The following specifiers are used for deriving different seeds from the
+	// wallet seed.
+	identifierSeedSpecifier = types.NewSpecifier("identifierseed")
+	renterSeedSpecifier     = types.NewSpecifier("renter")
+	secretKeySeedSpecifier  = types.NewSpecifier("secretkeyseed")
+	signingKeySeedSpecifier = types.NewSpecifier("signingkeyseed")
+
+	// ephemeralSeedInterval is the amount of blocks after which we use a new
+	// renter seed for creating file contracts.
+	ephemeralSeedInterval = build.Select(build.Var{
+		Dev:      types.BlockHeight(100),
+		Standard: types.BlockHeight(1000),
+		Testing:  types.BlockHeight(10),
+	}).(types.BlockHeight)
+)
+
 // Declaration of individual seed types for additional type safety.
 type (
 	// identifierSeed is the seed used to derive identifiers for file contracts.
-	identifierSeed modules.Seed
+	identifierSeed Seed
 	// identifierSigningSeed is the seed used to derive a signing key for the
 	// identifier.
-	identifierSigningSeed modules.Seed
+	identifierSigningSeed Seed
 	// secretKeySeed is the seed used to derive the secret key for file
 	// contracts.
-	secretKeySeed modules.Seed
+	secretKeySeed Seed
 	// RenterSeed is the master seed of the renter which is used to derive
 	// other seeds.
-	RenterSeed modules.Seed
+	RenterSeed Seed
 	// EphemeralRenterSeed is a renter seed derived from the master renter
 	// seed. The master seed should never be used directly.
 	EphemeralRenterSeed RenterSeed
@@ -107,15 +123,15 @@ func (rs RenterSeed) EphemeralRenterSeed(windowStart types.BlockHeight) Ephemera
 	return ephemeralSeed
 }
 
-// GenerateKeyPair generates a secret and a public key for a contract to be used
-// in its unlock conditions.
-func GenerateKeyPair(renterSeed EphemeralRenterSeed, txn types.Transaction) (sk crypto.SecretKey, pk crypto.PublicKey) {
-	return GenerateKeyPairWithOutputID(renterSeed, txn.SiacoinInputs[0].ParentID)
+// GenerateContractKeyPair generates a secret and a public key for a contract to
+// be used in its unlock conditions.
+func GenerateContractKeyPair(renterSeed EphemeralRenterSeed, txn types.Transaction) (sk crypto.SecretKey, pk crypto.PublicKey) {
+	return GenerateContractKeyPairWithOutputID(renterSeed, txn.SiacoinInputs[0].ParentID)
 }
 
-// GenerateKeyPairWithOutputID generates a secret and a public key for a
+// GenerateContractKeyPairWithOutputID generates a secret and a public key for a
 // contract to be used in its unlock conditions.
-func GenerateKeyPairWithOutputID(renterSeed EphemeralRenterSeed, inputParentID types.SiacoinOutputID) (sk crypto.SecretKey, pk crypto.PublicKey) {
+func GenerateContractKeyPairWithOutputID(renterSeed EphemeralRenterSeed, inputParentID types.SiacoinOutputID) (sk crypto.SecretKey, pk crypto.PublicKey) {
 	// Get the secret key seed and wipe it afterwards.
 	csks := renterSeed.contractSecretKeySeed()
 	defer fastrand.Read(csks[:])
@@ -132,7 +148,7 @@ func GenerateKeyPairWithOutputID(renterSeed EphemeralRenterSeed, inputParentID t
 // DeriveRenterSeed creates a renterSeed for creating file contracts.
 // NOTE: The seed returned by this function should be wiped once it's no longer
 // in use.
-func DeriveRenterSeed(walletSeed modules.Seed) RenterSeed {
+func DeriveRenterSeed(walletSeed Seed) RenterSeed {
 	var renterSeed RenterSeed
 	rs := crypto.HashAll(walletSeed, renterSeedSpecifier)
 	copy(renterSeed[:], rs[:])
@@ -178,7 +194,7 @@ func PrefixedSignedIdentifier(renterSeed EphemeralRenterSeed, txn types.Transact
 	encryptedKey := sk.EncryptBytes(append(marshaledKey, make([]byte, padding)...))
 	// Create the signed identifier object.
 	var csi ContractSignedIdentifier
-	copy(csi[:16], modules.PrefixNonSia[:])
+	copy(csi[:16], PrefixNonSia[:])
 	copy(csi[16:48], identifier[:])
 	copy(csi[48:80], signature[:])
 	return csi, encryptedKey

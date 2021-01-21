@@ -39,6 +39,14 @@ var (
 	metricsContractID = types.FileContractID{'m', 'e', 't', 'r', 'i', 'c', 's'}
 )
 
+// emptyWorkerPool is the workerpool that a contractor is initialized with.
+type emptyWorkerPool struct{}
+
+// Worker implements the WorkerPool interface.
+func (emptyWorkerPool) Worker(_ types.SiaPublicKey) (modules.Worker, error) {
+	return nil, errors.New("empty worker pool")
+}
+
 // A Contractor negotiates, revises, renews, and provides access to file
 // contracts.
 type Contractor struct {
@@ -53,6 +61,7 @@ type Contractor struct {
 	tg            threadgroup.ThreadGroup
 	tpool         modules.TransactionPool
 	wallet        modules.Wallet
+	workerPool    modules.WorkerPool
 
 	// Only one thread should be performing contract maintenance at a time.
 	interruptMaintenance chan struct{}
@@ -212,6 +221,13 @@ func (c *Contractor) CurrentPeriod() types.BlockHeight {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.currentPeriod
+}
+
+// UpdateWorkerPool updates the workerpool currently in use by the contractor.
+func (c *Contractor) UpdateWorkerPool(wp modules.WorkerPool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.workerPool = wp
 }
 
 // ProvidePayment fulfills the PaymentProvider interface. It uses the given
@@ -374,8 +390,8 @@ func (c *Contractor) Close() error {
 	return c.tg.Stop()
 }
 
-// New returns a new Contractor.
-func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, hdb modules.HostDB, rl *ratelimit.RateLimit, persistDir string) (*Contractor, <-chan error) {
+// newWithDeps returns a new Contractor.
+func newWithDeps(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, hdb modules.HostDB, rl *ratelimit.RateLimit, persistDir string, deps modules.Dependencies) (*Contractor, <-chan error) {
 	errChan := make(chan error, 1)
 	defer close(errChan)
 	// Check for nil inputs.
@@ -423,7 +439,12 @@ func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.Transacti
 	}
 
 	// Create Contractor using production dependencies.
-	return NewCustomContractor(cs, wallet, tpool, hdb, persistDir, contractSet, logger, modules.ProdDependencies)
+	return NewCustomContractor(cs, wallet, tpool, hdb, persistDir, contractSet, logger, deps)
+}
+
+// New returns a new Contractor.
+func New(cs modules.ConsensusSet, wallet modules.Wallet, tpool modules.TransactionPool, hdb modules.HostDB, rl *ratelimit.RateLimit, persistDir string) (*Contractor, <-chan error) {
+	return newWithDeps(cs, wallet, tpool, hdb, rl, persistDir, modules.ProdDependencies)
 }
 
 // contractorBlockingStartup handles the blocking portion of NewCustomContractor.
@@ -452,6 +473,7 @@ func contractorBlockingStartup(cs modules.ConsensusSet, w modules.Wallet, tp mod
 		renewing:             make(map[types.FileContractID]bool),
 		renewedFrom:          make(map[types.FileContractID]types.FileContractID),
 		renewedTo:            make(map[types.FileContractID]types.FileContractID),
+		workerPool:           emptyWorkerPool{},
 	}
 	c.staticChurnLimiter = newChurnLimiter(c)
 	c.staticWatchdog = newWatchdog(c)
@@ -576,7 +598,7 @@ func (c *Contractor) callInitRecoveryScan(scanStart modules.ConsensusChangeID) (
 		return errors.AddContext(err, "failed to get wallet seed")
 	}
 	// Get the renter seed and wipe it once done.
-	rs := proto.DeriveRenterSeed(s)
+	rs := modules.DeriveRenterSeed(s)
 	// Reset the scan progress before starting the scan.
 	atomic.StoreInt64(&c.atomicRecoveryScanHeight, 0)
 	// Create the scanner.
@@ -642,20 +664,16 @@ func newPayByContractRequest(rev types.FileContractRevision, sig crypto.Signatur
 
 // RenewContract takes an established connection to a host and renews the
 // contract with that host.
-func (c *Contractor) RenewContract(conn net.Conn, hpk types.SiaPublicKey, params proto.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb modules.HostDB) error {
-	// Translate host's key to contract.
-	c.mu.RLock()
-	fcid, exists := c.pubKeysToContractID[hpk.String()]
-	c.mu.RUnlock()
-	if !exists {
-		return errors.New("RenewContract: failed to translate host key to contract id")
-	}
-	err := c.staticContracts.RenewContract(conn, fcid, params, txnBuilder, tpool, hdb)
+func (c *Contractor) RenewContract(conn net.Conn, fcid types.FileContractID, params modules.ContractParams, txnBuilder modules.TransactionBuilder, tpool modules.TransactionPool, hdb modules.HostDB, pt *modules.RPCPriceTable) (modules.RenterContract, []types.Transaction, error) {
+	newContract, txnSet, err := c.staticContracts.RenewContract(conn, fcid, params, txnBuilder, tpool, hdb, pt)
 	if err != nil {
-		return errors.AddContext(err, "RenewContract: failed to renew contract")
+		return modules.RenterContract{}, nil, errors.AddContext(err, "RenewContract: failed to renew contract")
 	}
-	// Update the mapping of public keys to contracts after a successful renewal.
-	c.managedCheckForDuplicates()
-	c.managedUpdatePubKeyToContractIDMap()
-	return nil
+	// Update various mappings in the contractor after a successful renewal.
+	c.mu.Lock()
+	c.renewedFrom[newContract.ID] = fcid
+	c.renewedTo[fcid] = newContract.ID
+	c.pubKeysToContractID[newContract.HostPublicKey.String()] = newContract.ID
+	c.mu.Unlock()
+	return newContract, txnSet, nil
 }

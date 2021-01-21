@@ -8,7 +8,9 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -137,7 +139,7 @@ func (c *Client) skynetSkylinkGetWithParameters(skylink string, params map[strin
 	getQuery := skylinkQueryWithValues(skylink, values)
 	header, fileData, err := c.getRawResponse(getQuery)
 	if err != nil {
-		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "error fetching api response for GET with parameters")
+		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "skynetSkylnkGet with parameters failed getRawResponse")
 	}
 
 	var sm modules.SkyfileMetadata
@@ -213,7 +215,7 @@ func (c *Client) SkynetSkylinkConcatGet(skylink string) (_ []byte, _ modules.Sky
 	// Read the fileData.
 	fileData, err := ioutil.ReadAll(reader)
 	if err != nil {
-		return nil, modules.SkyfileMetadata{}, err
+		return nil, modules.SkyfileMetadata{}, errors.AddContext(err, "unable to reader data from reader")
 	}
 
 	var sm modules.SkyfileMetadata
@@ -225,6 +227,126 @@ func (c *Client) SkynetSkylinkConcatGet(skylink string) (_ []byte, _ modules.Sky
 		}
 	}
 	return fileData, sm, errors.AddContext(err, "unable to fetch skylink data")
+}
+
+// SkynetSkylinkBackup uses the /skynet/skylink endpoint to fetch the Skyfile's
+// basesector, and reader for large Skyfiles, and writes it to the backupDst
+// writer.
+func (c *Client) SkynetSkylinkBackup(skylinkStr string, backupDst io.Writer) error {
+	// Check the skylink
+	var skylink modules.Skylink
+	err := skylink.LoadString(skylinkStr)
+	if err != nil {
+		return errors.AddContext(err, "unable to load skylink")
+	}
+	if !skylink.IsSkylinkV1() {
+		return errors.New("Skylink backup code only supports V1 skylinks")
+	}
+
+	// Download the BaseSector first
+	baseSectorReader, err := c.SkynetBaseSectorGet(skylinkStr)
+	if err != nil {
+		return errors.AddContext(err, "unable to download baseSector")
+	}
+	baseSector, err := ioutil.ReadAll(baseSectorReader)
+	if err != nil {
+		return errors.AddContext(err, "unable to read baseSector reader")
+	}
+
+	// If the baseSector isn't encrypted, parse out the layout and see if we can
+	// return early.
+	if !modules.IsEncryptedBaseSector(baseSector) {
+		// Parse the layout from the baseSector
+		sl, _, _, _, err := modules.ParseSkyfileMetadata(baseSector)
+		if err != nil {
+			return errors.AddContext(err, "unable to parse baseSector")
+		}
+		// If there is no fanout then we just need to backup the baseSector
+		if sl.FanoutSize == 0 {
+			return modules.BackupSkylink(skylinkStr, baseSector, nil, backupDst)
+		}
+	}
+
+	// To avoid having the caller provide the Skykey, we treat encrypted skyfiles the
+	// same as skyfiles that have a fanout. Which means calling /skynet/skylink
+	// for the remaining information needed for the backup
+
+	// Fetch the header and reader for the Skylink
+	getQuery := fmt.Sprintf("/skynet/skylink/%s", skylinkStr)
+	header, reader, err := c.getReaderResponse(getQuery)
+	if err != nil {
+		return errors.AddContext(err, "unable to fetch skylink data")
+	}
+	defer drainAndClose(reader)
+
+	// Read the SkyfileMetadata
+	var sm modules.SkyfileMetadata
+	strMetadata := header.Get("Skynet-File-Metadata")
+	if strMetadata == "" {
+		return errors.AddContext(err, "no skyfile metadata returned")
+	}
+
+	// Unmarshal the metadata so we can check for subFiles
+	err = json.Unmarshal([]byte(strMetadata), &sm)
+	if err != nil {
+		return errors.AddContext(err, "unable to unmarshal skyfile metadata")
+	}
+
+	// If there are no subFiles then we have all the information we need to
+	// back up the file.
+	if len(sm.Subfiles) == 0 {
+		return modules.BackupSkylink(skylinkStr, baseSector, reader, backupDst)
+	}
+
+	// Grab the default path for the skyfile
+	defaultPath := strings.TrimPrefix(sm.DefaultPath, "/")
+	if defaultPath == "" {
+		defaultPath = api.DefaultSkynetDefaultPath
+	}
+
+	// Sort the subFiles by offset
+	subFiles := make([]modules.SkyfileSubfileMetadata, 0, len(sm.Subfiles))
+	for _, sfm := range sm.Subfiles {
+		subFiles = append(subFiles, sfm)
+	}
+	sort.Slice(subFiles, func(i, j int) bool {
+		return subFiles[i].Offset < subFiles[j].Offset
+	})
+
+	// Build a backup reader by downloading all the subFile data
+	var backupReader io.Reader
+	for _, sf := range subFiles {
+		// Download the data from the subFile
+		subgetQuery := fmt.Sprintf("%s/%s", getQuery, sf.Filename)
+		_, subreader, err := c.getReaderResponse(subgetQuery)
+		if err != nil {
+			return errors.AddContext(err, "unable to download subFile")
+		}
+		if backupReader == nil {
+			backupReader = io.MultiReader(subreader)
+			continue
+		}
+		backupReader = io.MultiReader(backupReader, subreader)
+	}
+
+	// Create the backup file on disk
+	return modules.BackupSkylink(skylinkStr, baseSector, backupReader, backupDst)
+}
+
+// SkynetSkylinkRestorePost uses the /skynet/restore endpoint to restore
+// a skylink from the backup.
+func (c *Client) SkynetSkylinkRestorePost(backup io.Reader) (string, error) {
+	// Submit the request
+	_, resp, err := c.postRawResponse("/skynet/restore", backup)
+	if err != nil {
+		return "", errors.AddContext(err, "post call to /skynet/restore failed")
+	}
+	var srp api.SkynetRestorePOST
+	err = json.Unmarshal(resp, &srp)
+	if err != nil {
+		return "", errors.AddContext(err, "unable to unmarshal response")
+	}
+	return srp.Skylink, nil
 }
 
 // SkynetSkylinkReaderGet uses the /skynet/skylink endpoint to fetch a reader of
@@ -386,8 +508,8 @@ func (c *Client) SkynetSkyfileMultiPartPost(params modules.SkyfileMultipartUploa
 }
 
 // SkynetSkyfileMultiPartEncryptedPost uses the /skynet/skyfile endpoint to
-// upload a skyfile using multipart form data.  The resulting skylink is
-// returned along with an error.
+// upload a skyfile using multipart form data with Skykey params.  The resulting
+// skylink is returned along with an error.
 func (c *Client) SkynetSkyfileMultiPartEncryptedPost(params modules.SkyfileMultipartUploadParameters, skykeyName string, skykeyID skykey.SkykeyID) (string, api.SkynetSkyfileHandlerPOST, error) {
 	// Set the url values.
 	values := url.Values{}
@@ -429,15 +551,6 @@ func (c *Client) SkynetSkyfileMultiPartEncryptedPost(params modules.SkyfileMulti
 // of the upload params is the name that will be used for the base sector of the
 // skyfile.
 func (c *Client) SkynetConvertSiafileToSkyfilePost(lup modules.SkyfileUploadParameters, convert modules.SiaPath) (api.SkynetSkyfileHandlerPOST, error) {
-	return c.SkynetConvertSiafileToSkyfileEncryptedPost(lup, convert, "", skykey.SkykeyID{})
-}
-
-// SkynetConvertSiafileToSkyfileEncryptedPost uses the /skynet/skyfile endpoint
-// to convert an existing siafile to a skyfile. The input SiaPath 'convert' is
-// the siapath of the siafile that should be converted. The siapath provided
-// inside of the upload params is the name that will be used for the base sector
-// of the skyfile.
-func (c *Client) SkynetConvertSiafileToSkyfileEncryptedPost(lup modules.SkyfileUploadParameters, convert modules.SiaPath, skykeyName string, skykeyID skykey.SkykeyID) (api.SkynetSkyfileHandlerPOST, error) {
 	// Set the url values.
 	values := url.Values{}
 	values.Set("filename", lup.Filename)
@@ -448,9 +561,9 @@ func (c *Client) SkynetConvertSiafileToSkyfileEncryptedPost(lup modules.SkyfileU
 	redundancyStr := fmt.Sprintf("%v", lup.BaseChunkRedundancy)
 	values.Set("redundancy", redundancyStr)
 	values.Set("convertpath", convert.String())
-	values.Set("skykeyname", skykeyName)
-	if skykeyID != (skykey.SkykeyID{}) {
-		values.Set("skykeyid", skykeyID.ToString())
+	values.Set("skykeyname", lup.SkykeyName)
+	if lup.SkykeyID != (skykey.SkykeyID{}) {
+		values.Set("skykeyid", lup.SkykeyID.ToString())
 	}
 
 	// Make the call to upload the file.

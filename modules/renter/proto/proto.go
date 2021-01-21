@@ -37,22 +37,6 @@ type (
 	}
 )
 
-// ContractParams are supplied as an argument to FormContract.
-type ContractParams struct {
-	Allowance     modules.Allowance
-	Host          modules.HostDBEntry
-	Funding       types.Currency
-	StartHeight   types.BlockHeight
-	EndHeight     types.BlockHeight
-	RefundAddress types.UnlockHash
-	RenterSeed    EphemeralRenterSeed
-
-	// Only used by RHP3
-	PriceTable *modules.RPCPriceTable
-
-	// TODO: add optional keypair
-}
-
 // A revisionNumberMismatchError occurs if the host reports a different revision
 // number than expected.
 type revisionNumberMismatchError struct {

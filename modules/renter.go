@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,33 @@ import (
 	"gitlab.com/NebulousLabs/Sia/skykey"
 	"gitlab.com/NebulousLabs/Sia/types"
 )
+
+type (
+	// ContractParams are supplied as an argument to FormContract.
+	ContractParams struct {
+		Allowance     Allowance
+		Host          HostDBEntry
+		Funding       types.Currency
+		StartHeight   types.BlockHeight
+		EndHeight     types.BlockHeight
+		RefundAddress types.UnlockHash
+		RenterSeed    EphemeralRenterSeed
+
+		// TODO: add optional keypair
+	}
+)
+
+// WorkerPool is an interface that describes a collection of workers. It's used
+// to be able to pass the renter's workers to the contractor.
+type WorkerPool interface {
+	Worker(types.SiaPublicKey) (Worker, error)
+}
+
+// Worker is a minimal interface for a single worker. It's used to be able to
+// use workers within the contractor.
+type Worker interface {
+	RenewContract(ctx context.Context, fcid types.FileContractID, params ContractParams, txnBuilder TransactionBuilder) (RenterContract, []types.Transaction, error)
+}
 
 var (
 	// DefaultAllowance is the set of default allowance settings that will be
@@ -78,6 +106,29 @@ type DirListFunc func(DirectoryInfo)
 type SkynetStats struct {
 	NumFiles  int    `json:"numfiles"`
 	TotalSize uint64 `json:"totalsize"`
+}
+
+// RenterStats is a struct which tracks key metrics in a single renter. This
+// struct is intended to give a large overview / large dump of data related to
+// the renter, which can then be aggregated across a fleet of renters by a
+// program which monitors for inconsistencies or other challenges.
+type RenterStats struct {
+	// A name for this renter.
+	Name string
+
+	// The total amount of contract data that hosts are maintaining on behalf of
+	// the renter is the sum of these fields.
+	ActiveContractData  uint64
+	PassiveContractData uint64
+	WastedContractData  uint64
+
+	TotalSiafiles uint64
+
+	TotalContractSpentFunds     types.Currency // Includes fees
+	TotalContractFeeSpending    types.Currency
+	TotalContractRemainingFunds types.Currency
+
+	TotalWalletFunds types.Currency // Includes unconfirmed
 }
 
 // HostDBFilterError HostDBDisableFilter HostDBActivateBlacklist and
@@ -1099,7 +1150,7 @@ type Renter interface {
 	// time that exceeds the given timeout value. Passing a timeout of 0 is
 	// considered as no timeout. The pricePerMS acts as a budget to spend on
 	// faster, and thus potentially more expensive, hosts.
-	DownloadSkylink(link Skylink, timeout time.Duration, pricePerMS types.Currency) (SkyfileMetadata, Streamer, error)
+	DownloadSkylink(link Skylink, timeout time.Duration, pricePerMS types.Currency) (SkyfileLayout, SkyfileMetadata, Streamer, error)
 
 	// DownloadSkylinkBaseSector will take a link and turn it into the data of a
 	// download without any decoding of the metadata, fanout, or decryption. The
@@ -1131,6 +1182,9 @@ type Renter interface {
 
 	// Portals returns the list of known skynet portals.
 	Portals() ([]SkynetPortal, error)
+
+	// RestoreSkyfile restores a skyfile such that the skylink is preserved.
+	RestoreSkyfile(reader io.Reader) (Skylink, error)
 
 	// UpdateSkynetBlocklist updates the list of hashed merkleroots that are
 	// blocked

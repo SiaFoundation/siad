@@ -5071,6 +5071,25 @@ value of 5 minutes. The minimum is 1 second.
 }
 ```
 
+## /skynet/restore [POST]
+> curl example  
+
+```go
+curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/skynet/restore" --data-binary @backup.dat
+```
+
+restore a skyfile from a backup reader. The backup reader should be generated
+from the `client` package method `SkynetSkylinkBackup`.
+
+### Response
+> JSON Response Example
+
+```go
+{
+  "skylink": "CABAB_1Dt0FJsxqsu_J4TodNCbCGvtFf1Uys_3EgzOlTcg", // string
+}
+```
+
 ## /skynet/root [GET]
 > curl example  
 

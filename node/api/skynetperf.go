@@ -39,6 +39,8 @@ type (
 		N10s    float64 `json:"n10s"`
 		NLong   float64 `json:"nlong"` // Requests taking longer than 10 seconds.
 		NErr    float64 `json:"nerr"`  // Requests that errored out.
+
+		TotalSize float64 `json:"totalsize"`
 	}
 
 	// HalfLifeDistribution contains a set of RequestTimeDistributions with
@@ -72,6 +74,9 @@ type (
 		// NOTE: errored uploads are not counted.
 		Upload4MB   HalfLifeDistribution `json:"upload4mb"`
 		UploadLarge HalfLifeDistribution `json:"uploadlarge"`
+
+		RegistryRead  HalfLifeDistribution `json:"registryread"`
+		RegistryWrite HalfLifeDistribution `json:"registrywrite"`
 	}
 )
 
@@ -101,9 +106,16 @@ func NewSkynetPerformanceStats() *SkynetPerformanceStats {
 
 // AddRequest will add a request to the half life distribution. Each call to add
 // a request will update the bucket.
-func (hld *HalfLifeDistribution) AddRequest(speed time.Duration) {
+func (hld *HalfLifeDistribution) AddRequest(speed time.Duration, size uint64) {
 	// Update the bucket so that all of the decay is in place.
 	hld.Update()
+
+	// Add the size of the request to the total size for the bucket.
+	hld.OneMinute.TotalSize += float64(size)
+	hld.FiveMinutes.TotalSize += float64(size)
+	hld.FifteenMinutes.TotalSize += float64(size)
+	hld.TwentyFourHours.TotalSize += float64(size)
+	hld.Lifetime.TotalSize += float64(size)
 
 	// If speed is zero, add this as an error.
 	if speed == 0 {
@@ -218,6 +230,7 @@ func (hld *HalfLifeDistribution) Update() {
 		buckets[i].N10s *= multiples[i]
 		buckets[i].NLong *= multiples[i]
 		buckets[i].NErr *= multiples[i]
+		buckets[i].TotalSize *= multiples[i]
 	}
 }
 
