@@ -133,6 +133,7 @@ type RenterStats struct {
 
 	TotalSiafiles uint64 `json:"totalsiafiles"`
 	TotalSiadirs  uint64 `json:"totalsiadirs"`
+	TotalSize     uint64 `json:"totalsize"`
 
 	TotalContractSpentFunds     types.Currency `json:"totalcontractspentfunds"` // Includes fees
 	TotalContractSpentFees      types.Currency `json:"totalcontractspentfees"`

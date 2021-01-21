@@ -72,6 +72,7 @@ func jsoncmd() {
 	}
 	rs.TotalSiafiles = rf.Directories[0].AggregateNumFiles
 	rs.TotalSiadirs = rf.Directories[0].AggregateNumSubDirs
+	rs.TotalSize = rf.Directories[0].AggregateSize
 
 	// Get information on the allowance.
 	rg, err := httpClient.RenterGet()
