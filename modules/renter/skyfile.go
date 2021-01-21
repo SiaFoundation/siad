@@ -714,7 +714,7 @@ func (r *Renter) managedDownloadSkylink(ctx context.Context, link modules.Skylin
 	if err != nil {
 		return modules.SkyfileMetadata{}, nil, errors.AddContext(err, "unable to create data source for skylink")
 	}
-	stream := r.staticStreamBufferSet.callNewStream(ctx, dataSource, 0)
+	stream := r.staticStreamBufferSet.callNewStream(ctx, dataSource, 0, pricePerMS)
 	return dataSource.Metadata(), stream, nil
 }
 
@@ -821,7 +821,7 @@ func (r *Renter) PinSkylink(skylink modules.Skylink, lup modules.SkyfileUploadPa
 	if err != nil {
 		return errors.AddContext(err, "unable to create data source for skylink")
 	}
-	stream := r.staticStreamBufferSet.callNewStream(ctx, dataSource, 0)
+	stream := r.staticStreamBufferSet.callNewStream(ctx, dataSource, 0, pricePerMS)
 
 	// Upload directly from the stream.
 	fileNode, err := r.callUploadStreamFromReader(fup, stream)

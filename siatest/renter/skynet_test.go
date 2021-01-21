@@ -85,6 +85,7 @@ func TestSkynetSuite(t *testing.T) {
 		{Name: "DownloadBaseSector", Test: testSkynetDownloadBaseSectorNoEncryption},
 		{Name: "DownloadBaseSectorEncrypted", Test: testSkynetDownloadBaseSectorEncrypted},
 		{Name: "FanoutRegression", Test: testSkynetFanoutRegression},
+		{Name: "DownloadRangeEncrypted", Test: testSkynetDownloadRangeEncrypted},
 	}
 
 	// Run tests
@@ -1379,6 +1380,49 @@ func testSkynetDownloadFormats(t *testing.T, tg *siatest.TestGroup) {
 	ct := header.Get("Content-Type")
 	if ct != "application/zip" {
 		t.Fatal("unexpected content type: ", ct)
+	}
+}
+
+// testSkynetDownloadRangeEncrypted verifies we can download a certain range
+// within an encrypted large skyfile. This test was added to verify whether
+// `DecryptBytesInPlace` was properly decrypting the fanout bytes for offsets
+// other than 0.
+func testSkynetDownloadRangeEncrypted(t *testing.T, tg *siatest.TestGroup) {
+	r := tg.Renters()[0]
+
+	// add a skykey
+	sk, err := r.SkykeyCreateKeyPost(t.Name(), skykey.TypePrivateID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// generate file params
+	name := t.Name() + persist.RandomSuffix()
+	size := uint64(4 * int(modules.SectorSize))
+	data := fastrand.Bytes(int(size))
+
+	// upload a large encrypted skyfile to ensure we have a fanout
+	_, _, sshp, err := r.UploadNewEncryptedSkyfileBlocking(name, data, sk.Name, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// calculate random range parameters
+	segment := uint64(crypto.SegmentSize)
+	offset := fastrand.Uint64n(size-modules.SectorSize) + modules.SectorSize
+	length := fastrand.Uint64n(size-offset-segment) + segment
+
+	// fetch the data at given range
+	result, err := r.SkynetSkylinkRange(sshp.Skylink, offset, offset+length)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(result, data[offset:offset+length]) {
+		t.Logf("range %v-%v\n", offset, offset+length)
+		t.Log("expected:", data[offset:offset+length], len(data[offset:offset+length]))
+		t.Log("actual:", result, len(result))
+		t.Fatal("unexpected")
 	}
 }
 

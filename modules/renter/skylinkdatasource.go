@@ -3,6 +3,7 @@ package renter
 import (
 	"context"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/skykey"
@@ -11,10 +12,14 @@ import (
 	"gitlab.com/NebulousLabs/errors"
 )
 
-const (
+var (
 	// skylinkDataSourceRequestSize is the size that is suggested by the data
 	// source to be used when reading data from it.
-	skylinkDataSourceRequestSize = 1 << 18 // 256 KiB
+	skylinkDataSourceRequestSize = build.Select(build.Var{
+		Dev:      uint64(1 << 18), // 256 KiB
+		Standard: uint64(1 << 18), // 256 KiB
+		Testing:  uint64(1 << 9),  // 512 B
+	}).(uint64)
 )
 
 type (
@@ -168,8 +173,6 @@ func (sds *skylinkDataSource) ReadStream(ctx context.Context, off, fetchSize uin
 }
 
 // managedDownloadByRoot will fetch data using the merkle root of that data.
-// Unlike the exported version of this function, this function does not request
-// memory from the memory manager.
 func (r *Renter) managedDownloadByRoot(ctx context.Context, root crypto.Hash, offset, length uint64, pricePerMS types.Currency) ([]byte, error) {
 	// Create a context that dies when the function ends, this will cancel all
 	// of the worker jobs that get created by this function.

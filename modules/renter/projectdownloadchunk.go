@@ -189,12 +189,8 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 	}
 
 	// Decrypt the piece that has come back.
-	//
-	// TODO: The input to DecryptBytesInPlace needs to accept a block index, if
-	// we aren't decrypting from the beginning of the chunk this will probably
-	// fail.
 	key := pdc.workerSet.staticMasterKey.Derive(pdc.workerSet.staticChunkIndex, uint64(pieceIndex))
-	_, err := key.DecryptBytesInPlace(jrr.staticData, 0)
+	_, err := key.DecryptBytesInPlace(jrr.staticData, pdc.pieceOffset/crypto.SegmentSize)
 	if err != nil {
 		pdc.workerSet.staticRenter.log.Println("decryption of a piece failed")
 		return
@@ -239,21 +235,15 @@ func (pdc *projectDownloadChunk) finalize() {
 	//
 	// NOTE: This is one of the places where we assume we are using maximum
 	// distance separable erasure codes.
-	chunkDLOffset := pdc.pieceOffset * uint64(ec.MinPieces())
-	chunkDLLength := pdc.pieceLength * uint64(ec.MinPieces())
 
 	// Recover the pieces in to a single byte slice.
 	buf := bytes.NewBuffer(nil)
-	err := pdc.workerSet.staticErasureCoder.Recover(pdc.dataPieces, chunkDLOffset+chunkDLLength, buf)
+	err := pdc.workerSet.staticErasureCoder.Recover(pdc.dataPieces, pdc.pieceLength*uint64(ec.MinPieces()), buf)
 	if err != nil {
 		pdc.fail(errors.AddContext(err, "unable to complete erasure decode of download"))
 		return
 	}
 	data := buf.Bytes()
-
-	// The full set of data is recovered, truncate it down to just the pieces of
-	// data requested by the user and return.
-	data = data[pdc.offsetInChunk : pdc.offsetInChunk+pdc.lengthInChunk]
 
 	// Return the data to the caller.
 	dr := &downloadResponse{
@@ -325,9 +315,6 @@ func (pdc *projectDownloadChunk) launchWorker(w *worker, pieceIndex uint64) (tim
 	}
 
 	// Create the read sector job for the worker.
-	//
-	// TODO: Ideally we pass the context here so the job is cancellable
-	// in-flight.
 	jrs := &jobReadSector{
 		jobRead: jobRead{
 			staticResponseChan: pdc.workerResponseChan,

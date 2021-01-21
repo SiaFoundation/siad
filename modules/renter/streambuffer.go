@@ -192,6 +192,7 @@ type streamBuffer struct {
 	staticDataSectionSize uint64
 	staticStreamBufferSet *streamBufferSet
 	staticStreamID        modules.DataSourceID
+	staticPricePerMS      types.Currency
 }
 
 // streamBufferSet tracks all of the stream buffers that are currently active.
@@ -227,7 +228,7 @@ func newStreamBufferSet(tg *threadgroup.ThreadGroup) *streamBufferSet {
 // Each stream has a separate LRU for determining what data to buffer. Because
 // the LRU is distinct to the stream, the shared cache feature will not result
 // in one stream evicting data from another stream's LRU.
-func (sbs *streamBufferSet) callNewStream(ctx context.Context, dataSource streamBufferDataSource, initialOffset uint64) *stream {
+func (sbs *streamBufferSet) callNewStream(ctx context.Context, dataSource streamBufferDataSource, initialOffset uint64, pricePerMS types.Currency) *stream {
 	// Grab the streamBuffer for the provided sourceID. If no streamBuffer for
 	// the sourceID exists, create a new one.
 	sourceID := dataSource.ID()
@@ -539,7 +540,7 @@ func (sb *streamBuffer) newDataSection(index uint64) *dataSection {
 		defer sb.tg.Done()
 
 		// Grab the data from the data source.
-		responseChan := sb.staticDataSource.ReadStream(sb.tg.StopCtx(), index*dataSectionSize, fetchSize, types.ZeroCurrency)
+		responseChan := sb.staticDataSource.ReadStream(sb.tg.StopCtx(), index*dataSectionSize, fetchSize, sb.staticPricePerMS)
 
 		select {
 		case response := <-responseChan:

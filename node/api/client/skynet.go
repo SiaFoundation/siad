@@ -97,6 +97,13 @@ func (c *Client) SkynetSkylinkGet(skylink string) ([]byte, modules.SkyfileMetada
 	return c.SkynetSkylinkGetWithTimeout(skylink, -1)
 }
 
+// SkynetSkylinkRange uses the /skynet/skylink endpoint to download a range from
+// a skylink file.
+func (c *Client) SkynetSkylinkRange(skylink string, from, to uint64) ([]byte, error) {
+	getQuery := skylinkQueryWithValues(skylink, url.Values{})
+	return c.getRawPartialResponse(getQuery, from, to)
+}
+
 // SkynetSkylinkGetWithTimeout uses the /skynet/skylink endpoint to download a
 // skylink file, specifying the given timeout.
 func (c *Client) SkynetSkylinkGetWithTimeout(skylink string, timeout int) ([]byte, modules.SkyfileMetadata, error) {

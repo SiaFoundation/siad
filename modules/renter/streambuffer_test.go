@@ -115,7 +115,7 @@ func TestStreamSmoke(t *testing.T) {
 	dataSectionSize := uint64(16)
 	dataSource := newMockDataSource(data, dataSectionSize)
 	sbs := newStreamBufferSet(&tg)
-	stream := sbs.callNewStream(context.Background(), dataSource, 0)
+	stream := sbs.callNewStream(context.Background(), dataSource, 0, types.ZeroCurrency)
 
 	// Check that there is one reference in the stream buffer.
 	sbs.mu.Lock()
@@ -138,7 +138,7 @@ func TestStreamSmoke(t *testing.T) {
 	// Create a second, different data source with the same id and try to use
 	// that.
 	dataSource2 := newMockDataSource(data, dataSectionSize)
-	repeatStream := sbs.callNewStream(context.Background(), dataSource2, 0)
+	repeatStream := sbs.callNewStream(context.Background(), dataSource2, 0, types.ZeroCurrency)
 	sbs.mu.Lock()
 	refs = stream.staticStreamBuffer.externRefCount
 	sbs.mu.Unlock()
@@ -309,7 +309,7 @@ func TestStreamSmoke(t *testing.T) {
 	// the same ID, they are actually separate objects which need to be closed
 	// individually.
 	dataSource3 := newMockDataSource(data, dataSectionSize)
-	stream2 := sbs.callNewStream(context.Background(), dataSource3, 0)
+	stream2 := sbs.callNewStream(context.Background(), dataSource3, 0, types.ZeroCurrency)
 	bytesRead, err = io.ReadFull(stream2, buf)
 	if err != nil {
 		t.Fatal(err)
@@ -437,7 +437,7 @@ func TestStreamSmoke(t *testing.T) {
 
 	// Check that if the tg is stopped, the stream closes immediately.
 	dataSource4 := newMockDataSource(data, dataSectionSize)
-	stream3 := sbs.callNewStream(context.Background(), dataSource4, 0)
+	stream3 := sbs.callNewStream(context.Background(), dataSource4, 0, types.ZeroCurrency)
 	bytesRead, err = io.ReadFull(stream3, buf)
 	if err != nil {
 		t.Fatal(err)
