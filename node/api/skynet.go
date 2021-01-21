@@ -986,8 +986,16 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 
 		// Determine whether the file is large or not, and update the
 		// appropriate bucket.
+		//
+		// NOTE: To count all 4MB single-sector files as part of the 4 MB
+		// bucket, we set the limit to 4300e3 instead of 4e6, because the
+		// siafile size is going to report slightly above 4 MB regardless of the
+		// actual size of the upload. When we switch to supporting smaller
+		// sectors we can add a new bucket. We can't change the value of the
+		// bucket name because that breaks api compatibility, we just have to
+		// know that '4 MB' in practice means something slightly larger.
 		file, err := api.renter.File(sup.SiaPath)
-		if err == nil && file.Filesize <= 4e6 {
+		if err == nil && file.Filesize <= 4300e3 {
 			skynetPerformanceStatsMu.Lock()
 			skynetPerformanceStats.Upload4MB.AddRequest(time.Since(startTime))
 			skynetPerformanceStatsMu.Unlock()
@@ -1276,6 +1284,8 @@ func (api *API) skykeysHandlerGET(w http.ResponseWriter, _ *http.Request, _ http
 
 // registryHandlerPOST handles the POST calls to /skynet/registry.
 func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	start := time.Now()
+
 	// Decode request.
 	dec := json.NewDecoder(req.Body)
 	var rhp RegistryHandlerRequestPOST
@@ -1299,11 +1309,19 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 		WriteError(w, Error{"Unable to update the registry: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
+
+	// Update the registry write stats.
+	skynetPerformanceStatsMu.Lock()
+	skynetPerformanceStats.RegistryWrite.AddRequest(time.Since(startTime))
+	skynetPerformanceStatsMu.Unlock()
 	WriteSuccess(w)
 }
 
 // registryHandlerGET handles the GET calls to /skynet/registry.
 func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
+	// Grab a start time for the registry read stats.
+	startTime := time.Now()
+
 	// Parse public key
 	var spk types.SiaPublicKey
 	err := spk.LoadString(req.FormValue("publickey"))
@@ -1347,6 +1365,11 @@ func (api *API) registryHandlerGET(w http.ResponseWriter, req *http.Request, _ h
 		WriteError(w, Error{"Unable to read from the registry: " + err.Error()}, http.StatusInternalServerError)
 		return
 	}
+
+	// Update the registry read stats.
+	skynetPerformanceStatsMu.Lock()
+	skynetPerformanceStats.RegistryRead.AddRequest(time.Since(startTime))
+	skynetPerformanceStatsMu.Unlock()
 
 	// Send response.
 	WriteJSON(w, RegistryHandlerGET{

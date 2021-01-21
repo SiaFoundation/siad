@@ -72,6 +72,9 @@ type (
 		// NOTE: errored uploads are not counted.
 		Upload4MB   HalfLifeDistribution `json:"upload4mb"`
 		UploadLarge HalfLifeDistribution `json:"uploadlarge"`
+
+		RegistryRead  HalfLifeDistribution `json:"registryread"`
+		RegistryWrite HalfLifeDistribution `json:"registrywrite"`
 	}
 )
 
