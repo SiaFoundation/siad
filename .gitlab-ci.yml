@@ -295,12 +295,12 @@ siatest-renter-sub-windows-tests-nightly:
 
 # Updates to master and nightly schedule pipelines will trigger Sia Antfarm
 # version tests
-antfarm-version-tests:
-  stage: test
-  trigger:
-    project: NebulousLabs/Sia-Ant-Farm
-    strategy: depend
-  variables:
-    PARENT_CI_PIPELINE_SOURCE: $CI_PIPELINE_SOURCE
-  only:
-    - master
+# antfarm-version-tests:
+#   stage: test
+#   trigger:
+#     project: NebulousLabs/Sia-Ant-Farm
+#     # strategy: depend
+#   variables:
+#     PARENT_CI_PIPELINE_SOURCE: $CI_PIPELINE_SOURCE
+#   only:
+#     - master
