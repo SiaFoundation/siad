@@ -257,7 +257,6 @@ func (wal *writeAheadLog) managedDeleteSector(id sectorID) error {
 
 		// Delete the sector and mark the usage as available.
 		delete(wal.cm.sectorLocations, id)
-		delete(wal.cm.sectorLocationsCountOverflow, id)
 		sf.availableSectors[id] = location.index
 
 		// Block until the change has been committed.
@@ -319,7 +318,6 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 		if location.count == 0 {
 			// Delete the sector and mark it as available.
 			delete(wal.cm.sectorLocations, id)
-			delete(wal.cm.sectorLocationsCountOverflow, id)
 			sf.availableSectors[id] = location.index
 		} else {
 			// Reduce the sector usage.
@@ -350,6 +348,7 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 			return build.ExtendErr("failed to write sector metadata", err)
 		}
 	}
+
 	// Only update the usage after the sector removal has been committed to
 	// disk entirely. The usage is not updated until after the commit has
 	// completed to prevent the actual sector data from being overwritten in
@@ -359,7 +358,6 @@ func (wal *writeAheadLog) managedRemoveSector(id sectorID) error {
 		sf.clearUsage(location.index)
 		delete(sf.availableSectors, id)
 		delete(wal.cm.sectorLocations, id)
-		delete(wal.cm.sectorLocationsCountOverflow, id)
 		wal.mu.Unlock()
 	}
 	return nil
@@ -384,18 +382,34 @@ func (wal *writeAheadLog) writeSectorMetadata(sf *storageFolder, su sectorUpdate
 		return err
 	}
 
-	// Persist sector location overflow too if necessary.
-	existingOverflow, exist := wal.cm.sectorLocationsCountOverflow[su.ID]
-	// Only persist if there is a value > 0 that we haven't persisted yet, or if
-	// the persisted value is outdated.
-	if (!exist && su.Count > 0) || (existingOverflow != overflow) {
-		err = wal.cm.dependencies.SaveFileSync(overflowMetadata, wal.cm.sectorLocationsCountOverflow, wal.overflowFilePath)
-		if err != nil {
-			wal.cm.log.Printf("ERROR: unable to write sector overflow metadata when adding sector: %v\n", err)
-			atomic.AddUint64(&sf.atomicFailedWrites, 1)
-			return err
+	// We should only ever need to update the overflow file when the count has
+	// reached the maximum.
+	if count == math.MaxUint16 {
+		wal.cm.sectorLocationsCountOverflowMu.Lock()
+		// Persist sector location overflow too if necessary.
+		existingOverflow, exist := wal.cm.sectorLocationsCountOverflow[su.ID]
+		// Only persist if there is a value > 0 that we haven't persisted yet, or if
+		// the persisted value is outdated.
+		if (!exist && su.Count > 0) || (existingOverflow != overflow) {
+			if overflow == 0 {
+				delete(wal.cm.sectorLocationsCountOverflow, su.ID)
+			} else {
+				wal.cm.sectorLocationsCountOverflow[su.ID] = overflow
+			}
+			err = wal.cm.dependencies.SaveFileSync(overflowMetadata, wal.cm.sectorLocationsCountOverflow, wal.overflowFilePath)
+			if err != nil {
+				if !exist {
+					delete(wal.cm.sectorLocationsCountOverflow, su.ID)
+				} else {
+					wal.cm.sectorLocationsCountOverflow[su.ID] = existingOverflow
+				}
+				wal.cm.log.Printf("ERROR: unable to write sector overflow metadata when adding sector: %v\n", err)
+				atomic.AddUint64(&sf.atomicFailedWrites, 1)
+				wal.cm.sectorLocationsCountOverflowMu.Unlock()
+				return err
+			}
 		}
-		wal.cm.sectorLocationsCountOverflow[su.ID] = overflow
+		wal.cm.sectorLocationsCountOverflowMu.Unlock()
 	}
 	atomic.AddUint64(&sf.atomicSuccessfulWrites, 1)
 	return nil

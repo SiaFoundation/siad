@@ -12,6 +12,7 @@ package contractmanager
 import (
 	"bytes"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -866,14 +867,19 @@ func TestAddVirtualSectorMassiveParallel(t *testing.T) {
 	// Add the sector many times in parallel to make sure it is handled
 	// gracefully.
 	var wg sync.WaitGroup
-	parallelAdds := uint16(20)
-	for i := uint16(0); i < parallelAdds; i++ {
+	nThreads := uint16(10)
+	nAdds := uint16(10)
+	parallelAdds := nThreads * nAdds
+	for i := uint16(0); i < nThreads; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			err := cmt.cm.AddSector(root, data)
-			if err != nil {
-				t.Fatal(err)
+			for j := uint16(0); j < nAdds; j++ {
+				err := cmt.cm.AddSector(root, data)
+				if err != nil {
+					t.Error(err)
+					return
+				}
 			}
 		}()
 	}
@@ -1946,5 +1952,220 @@ func TestFailingStorageFolder(t *testing.T) {
 		if sl.index > 128 {
 			t.Error("sector index within storage folder also being reported incorrectly")
 		}
+	}
+}
+
+// TestAddVirtualSectorOverflow tests the overflow file in series and parallel.
+func TestAddVirtualSectorOverflow(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+	cmt, err := newContractManagerTester("TestAddVirtualSectorMassiveParallel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cmt.panicClose()
+
+	// Add a storage folder to the contract manager tester.
+	storageFolderDir := filepath.Join(cmt.persistDir, "storageFolderOne")
+	// Create the storage folder dir.
+	err = os.MkdirAll(storageFolderDir, 0700)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = cmt.cm.AddStorageFolder(storageFolderDir, modules.SectorSize*64)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be 1 storage folder.
+	if len(cmt.cm.storageFolders) != 1 {
+		t.Fatal("there should be 1 storage folder")
+	}
+	var sf *storageFolder
+	for _, storageFolder := range cmt.cm.storageFolders {
+		sf = storageFolder
+		break
+	}
+
+	// Fabricate a sector and add it to the contract manager.
+	root, data := randSector()
+
+	// Add sector once.
+	err = cmt.cm.AddSector(root, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// There should be one sector location.
+	if len(cmt.cm.sectorLocations) != 1 {
+		t.Fatal("there should be one sector reported in the sectorLocations map")
+	}
+	var sl sectorLocation
+	var id sectorID
+	for sid, loc := range cmt.cm.sectorLocations {
+		sl = loc
+		id = sid
+		break
+	}
+	if sl.count != 1 {
+		t.Fatal("sector should have a count of 1")
+	}
+
+	// Update the count to math.MaxUint16
+	su := sectorUpdate{
+		Count:  math.MaxUint16,
+		Folder: sf.index,
+		ID:     id,
+		Index:  sl.index,
+	}
+	sl.count = su.Count
+
+	// Manually apply update.
+	err = cmt.cm.wal.writeSectorMetadata(sf, su)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmt.cm.sectorLocations[id] = sl
+
+	// Add the same sector one more time. This pushes it to math.MAxUint16+1.
+	err = cmt.cm.AddSector(root, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The overflow should be registered.
+	overflow := cmt.cm.sectorLocationsCountOverflow[id]
+	if overflow != 1 {
+		t.Fatal("wrong overflow", overflow)
+	}
+
+	// Load the overflow file and confirm that the change was persisted.
+	loaded := make(map[sectorID]uint64)
+	err = cmt.cm.dependencies.LoadFile(overflowMetadata, &loaded, cmt.cm.wal.overflowFilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loadedOverflow := loaded[id]
+	if loadedOverflow != 1 {
+		t.Fatal("wrong overflow", loadedOverflow)
+	}
+
+	// Remove the sector.
+	err = cmt.cm.RemoveSector(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The count should now be math.MaxUint16 again.
+	for sid, loc := range cmt.cm.sectorLocations {
+		sl = loc
+		id = sid
+		break
+	}
+	if sl.count != math.MaxUint16 {
+		t.Fatal("wrong count after removing sector")
+	}
+
+	// The overflow map should be cleaned up.
+	_, exists := cmt.cm.sectorLocationsCountOverflow[id]
+	if exists {
+		t.Fatal("overflow entry should be cleared")
+	}
+
+	// Load the overflow file and confirm that the change was persisted.
+	loaded = make(map[sectorID]uint64)
+	err = cmt.cm.dependencies.LoadFile(overflowMetadata, &loaded, cmt.cm.wal.overflowFilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, exists = loaded[id]
+	if exists {
+		t.Fatal("overflow entry should be cleared")
+	}
+
+	// Create multiple threads, all adding sectors at the same time.
+	nWrites := 10
+	nThreads := 10
+	var wg sync.WaitGroup
+	for i := 0; i < nThreads; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < nWrites; j++ {
+				err := cmt.cm.AddSector(root, data)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+
+	// New count should be incremented by the total number of writes.
+	expected := math.MaxUint16 + uint64(nWrites*nThreads)
+	for sid, loc := range cmt.cm.sectorLocations {
+		sl = loc
+		id = sid
+		break
+	}
+	if sl.count != expected {
+		t.Fatal("wrong count after removing sector")
+	}
+
+	// Load the overflow file and confirm that the change was persisted.
+	loaded = make(map[sectorID]uint64)
+	err = cmt.cm.dependencies.LoadFile(overflowMetadata, &loaded, cmt.cm.wal.overflowFilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loadedOverflow = loaded[id]
+	if loadedOverflow != uint64(nWrites*nThreads) {
+		t.Fatal("wrong overflow", loadedOverflow)
+	}
+
+	// Create multiple threads, all of them removing sectors.
+	for i := 0; i < nThreads; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < nWrites; j++ {
+				err := cmt.cm.RemoveSector(root)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+
+	// The count should now be math.MaxUint16 again.
+	for sid, loc := range cmt.cm.sectorLocations {
+		sl = loc
+		id = sid
+		break
+	}
+	if sl.count != math.MaxUint16 {
+		t.Fatal("wrong count after removing sector")
+	}
+
+	// The overflow map should be cleaned up.
+	_, exists = cmt.cm.sectorLocationsCountOverflow[id]
+	if exists {
+		t.Fatal("overflow entry should be cleared")
+	}
+
+	// Load the overflow file and confirm that the change was persisted.
+	loaded = make(map[sectorID]uint64)
+	err = cmt.cm.dependencies.LoadFile(overflowMetadata, &loaded, cmt.cm.wal.overflowFilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, exists = loaded[id]
+	if exists {
+		t.Fatal("overflow entry should be cleared")
 	}
 }
