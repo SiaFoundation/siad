@@ -99,9 +99,9 @@ func checkDownloadGouging(allowance modules.Allowance, pt *modules.RPCPriceTable
 	return nil
 }
 
-// threadedScheduleDownloadChunkJob will perform some download work if any is
-// available, returning false if no work is available.
-func (w *worker) threadedScheduleDownloadChunkJob(udc *unfinishedDownloadChunk) {
+// threadedPerformDownloadChunkJob will schedule some download work, wait for
+// it to be done and try to recover the logical data of the chunk if possible.
+func (w *worker) threadedPerformDownloadChunkJob(udc *unfinishedDownloadChunk) {
 	if err := w.renter.tg.Add(); err != nil {
 		return
 	}
@@ -128,9 +128,6 @@ func (w *worker) threadedScheduleDownloadChunkJob(udc *unfinishedDownloadChunk) 
 		udc.managedUnregisterWorker(w)
 		return
 	}
-
-	// Everything seems to be fine. Wake the worker.
-	w.staticWake()
 
 	// Fetch the sector. If fetching the sector fails, the worker needs to be
 	// unregistered with the chunk.
