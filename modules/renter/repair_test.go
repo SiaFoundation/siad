@@ -32,33 +32,23 @@ func equalBubbledMetadata(md1, md2 siadir.Metadata, delta time.Duration) error {
 		}
 		return true
 	}
+	// Aggregate Fields
+	//
 	// Check AggregateHealth
 	if md1.AggregateHealth != md2.AggregateHealth {
 		return fmt.Errorf("AggregateHealth not equal, %v and %v", md1.AggregateHealth, md2.AggregateHealth)
 	}
-	// Check AggregateNumFiles
-	if md1.AggregateNumFiles != md2.AggregateNumFiles {
-		return fmt.Errorf("AggregateNumFiles not equal, %v and %v", md1.AggregateNumFiles, md2.AggregateNumFiles)
-	}
-	// Check AggregateSize
-	if md1.AggregateSize != md2.AggregateSize {
-		return fmt.Errorf("aggregate sizes not equal, %v and %v", md1.AggregateSize, md2.AggregateSize)
-	}
-	// Check AggregateHealth
-	if md1.AggregateHealth != md2.AggregateHealth {
-		return fmt.Errorf("AggregateHealths not equal, %v and %v", md1.AggregateHealth, md2.AggregateHealth)
-	}
-	// Check AggregateLastHealthCheckTimes
+	// Check AggregateLastHealthCheckTime
 	if !timeEquals(md2.AggregateLastHealthCheckTime, md1.AggregateLastHealthCheckTime) {
 		return fmt.Errorf("AggregateLastHealthCheckTimes not equal %v and %v (%v)", md1.AggregateLastHealthCheckTime, md2.AggregateLastHealthCheckTime, delta)
 	}
-	// Check MinRedundancy
+	// Check AggregateMinRedundancy
 	if md1.AggregateMinRedundancy != md2.AggregateMinRedundancy {
 		return fmt.Errorf("AggregateMinRedundancy not equal, %v and %v", md1.AggregateMinRedundancy, md2.AggregateMinRedundancy)
 	}
-	// Check Mod Times
+	// Check AggregateModTime
 	if !timeEquals(md2.AggregateModTime, md1.AggregateModTime) {
-		return fmt.Errorf("AggregateModTimes not equal %v and %v (%v)", md1.AggregateModTime, md2.AggregateModTime, delta)
+		return fmt.Errorf("AggregateModTime not equal %v and %v (%v)", md1.AggregateModTime, md2.AggregateModTime, delta)
 	}
 	// Check AggregateNumFiles
 	if md1.AggregateNumFiles != md2.AggregateNumFiles {
@@ -66,19 +56,88 @@ func equalBubbledMetadata(md1, md2 siadir.Metadata, delta time.Duration) error {
 	}
 	// Check AggregateNumStuckChunks
 	if md1.AggregateNumStuckChunks != md2.AggregateNumStuckChunks {
-		return fmt.Errorf("NumStuckChunks not equal, %v and %v", md1.AggregateNumStuckChunks, md2.AggregateNumStuckChunks)
+		return fmt.Errorf("AggregateNumStuckChunks not equal, %v and %v", md1.AggregateNumStuckChunks, md2.AggregateNumStuckChunks)
 	}
 	// Check AggregateNumSubDirs
 	if md1.AggregateNumSubDirs != md2.AggregateNumSubDirs {
 		return fmt.Errorf("AggregateNumSubDirs not equal, %v and %v", md1.AggregateNumSubDirs, md2.AggregateNumSubDirs)
 	}
+	// Check AggregateRemoteHealth
+	if md1.AggregateRemoteHealth != md2.AggregateRemoteHealth {
+		return fmt.Errorf("AggregateRemoteHealth not equal, %v and %v", md1.AggregateRemoteHealth, md2.AggregateRemoteHealth)
+	}
 	// Check AggregateSize
 	if md1.AggregateSize != md2.AggregateSize {
-		return fmt.Errorf("sizes not equal, %v and %v", md1.AggregateSize, md2.AggregateSize)
+		return fmt.Errorf("AggregateSize not equal, %v and %v", md1.AggregateSize, md2.AggregateSize)
 	}
 	// Check AggregateStuckHealth
 	if md1.AggregateStuckHealth != md2.AggregateStuckHealth {
-		return fmt.Errorf("stuck healths not equal, %v and %v", md1.AggregateStuckHealth, md2.AggregateStuckHealth)
+		return fmt.Errorf("AggregateStuckHealth not equal, %v and %v", md1.AggregateStuckHealth, md2.AggregateStuckHealth)
+	}
+
+	// Aggregate Skynet Fields
+	//
+	// Check AggregateSkynetFiles
+	if md1.AggregateSkynetFiles != md2.AggregateSkynetFiles {
+		return fmt.Errorf("AggregateSkynetFiles not equal, %v and %v", md1.AggregateSkynetFiles, md2.AggregateSkynetFiles)
+	}
+	// Check AggregateSkynetSize
+	if md1.AggregateSkynetSize != md2.AggregateSkynetSize {
+		return fmt.Errorf("AggregateSkynetSize not equal, %v and %v", md1.AggregateSkynetSize, md2.AggregateSkynetSize)
+	}
+
+	// Non Aggregate Fields
+	//
+	// Check Health
+	if md1.Health != md2.Health {
+		return fmt.Errorf("Health not equal, %v and %v", md1.Health, md2.Health)
+	}
+	// Check LastHealthCheckTime
+	if !timeEquals(md2.LastHealthCheckTime, md1.LastHealthCheckTime) {
+		return fmt.Errorf("LastHealthCheckTimes not equal %v and %v (%v)", md1.LastHealthCheckTime, md2.LastHealthCheckTime, delta)
+	}
+	// Check MinRedundancy
+	if md1.MinRedundancy != md2.MinRedundancy {
+		return fmt.Errorf("MinRedundancy not equal, %v and %v", md1.MinRedundancy, md2.MinRedundancy)
+	}
+	// Check ModTime
+	if !timeEquals(md2.ModTime, md1.ModTime) {
+		return fmt.Errorf("ModTime not equal %v and %v (%v)", md1.ModTime, md2.ModTime, delta)
+	}
+	// Check NumFiles
+	if md1.NumFiles != md2.NumFiles {
+		return fmt.Errorf("NumFiles not equal, %v and %v", md1.NumFiles, md2.NumFiles)
+	}
+	// Check NumStuckChunks
+	if md1.NumStuckChunks != md2.NumStuckChunks {
+		return fmt.Errorf("NumStuckChunks not equal, %v and %v", md1.NumStuckChunks, md2.NumStuckChunks)
+	}
+	// Check NumSubDirs
+	if md1.NumSubDirs != md2.NumSubDirs {
+		return fmt.Errorf("NumSubDirs not equal, %v and %v", md1.NumSubDirs, md2.NumSubDirs)
+	}
+	// Check RemoteHealth
+	if md1.RemoteHealth != md2.RemoteHealth {
+		return fmt.Errorf("RemoteHealth not equal, %v and %v", md1.RemoteHealth, md2.RemoteHealth)
+	}
+	// Check Size
+	if md1.Size != md2.Size {
+		return fmt.Errorf("Size not equal, %v and %v", md1.Size, md2.Size)
+	}
+	// Check StuckHealth
+	if md1.StuckHealth != md2.StuckHealth {
+		return fmt.Errorf("StuckHealth not equal, %v and %v", md1.StuckHealth, md2.StuckHealth)
+	}
+
+	// Skynet Fields
+	//
+	// Check SkynetFiles
+	if md1.SkynetFiles != md2.SkynetFiles {
+		return fmt.Errorf("SkynetFiles not equal, %v and %v", md1.SkynetFiles, md2.SkynetFiles)
+	}
+	// Check SkynetSize
+	if md1.SkynetSize != md2.SkynetSize {
+		return fmt.Errorf("SkynetSize not equal, %v and %v", md1.SkynetSize, md2.SkynetSize)
 	}
 	return nil
 }
@@ -691,6 +750,8 @@ func TestNumFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// TODO: Add test for Skynet
 }
 
 // TestDirectorySize verifies that the Size of a directory is accurately
@@ -1343,6 +1404,8 @@ func TestCalculateFileMetadata(t *testing.T) {
 	if !fileMetadata.ModTime.Equal(modTime) {
 		t.Fatalf("Unexpected modtime, expected %v got %v", modTime, fileMetadata.ModTime)
 	}
+
+	// TODO: add NumSkylinks check
 }
 
 // TestCreateMissingSiaDir confirms that the repair code creates a siadir file
