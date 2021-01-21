@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -23,6 +24,18 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
+
+// The SkynetPerformanceStats are stateful and tracked globally, bound by a
+// mutex.
+var (
+	skynetPerformanceStats   *modules.SkynetPerformanceStats
+	skynetPerformanceStatsMu sync.Mutex
+)
+
+// Initialize the global performance tracking.
+func init() {
+	skynetPerformanceStats = modules.NewSkynetPerformanceStats()
+}
 
 const (
 	// DefaultSkynetDefaultPath is the defaultPath value we use when the user
@@ -96,7 +109,7 @@ type (
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
-		PerformanceStats SkynetPerformanceStats `json:"performancestats"`
+		PerformanceStats modules.SkynetPerformanceStats `json:"performancestats"`
 
 		Uptime      int64               `json:"uptime"`
 		UploadStats modules.SkynetStats `json:"uploadstats"`

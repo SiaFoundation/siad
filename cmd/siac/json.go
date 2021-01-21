@@ -37,6 +37,13 @@ func jsoncmd() {
 	}
 	rs.Alerts = alerts.CriticalAlerts
 
+	// Grab skynet performance statistics.
+	perfStats, err := httpClient.SkynetStatsGet()
+	if err != nil {
+		die("Could not fetch skynet stats:", err)
+	}
+	rs.SkynetPerformance = perfStats.PerformanceStats
+
 	// Grab the contract statistics.
 	rc, err := httpClient.RenterDisabledContractsGet()
 	if err != nil {
