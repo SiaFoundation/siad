@@ -1053,9 +1053,6 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 		return nil, err
 	}
 
-	// Start a goroutine to periodically clear the stats.
-	go r.threadedInvalidateStatsCache()
-
 	// Calculate the initial cached utilities and kick off a thread that updates
 	// the utilities regularly.
 	r.managedUpdateRenterContractsAndUtilities()
