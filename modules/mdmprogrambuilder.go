@@ -215,6 +215,41 @@ func (pb *ProgramBuilder) AddUpdateRegistryInstruction(spk types.SiaPublicKey, r
 	return nil
 }
 
+// V154AddUpdateRegistryInstruction adds an UpdateRegistry instruction to the
+// program as done in host version 1.5.4 and below.
+func (pb *ProgramBuilder) V154AddUpdateRegistryInstruction(spk types.SiaPublicKey, rv SignedRegistryValue) error {
+	// Marshal pubKey.
+	pk := encoding.Marshal(spk)
+	// Compute the argument offsets.
+	tweakOff := uint64(pb.programData.Len())
+	revisionOff := tweakOff + crypto.HashSize
+	signatureOff := revisionOff + 8
+	pubKeyOff := signatureOff + crypto.SignatureSize
+	pubKeyLen := uint64(len(pk))
+	dataOff := pubKeyOff + pubKeyLen
+	dataLen := uint64(len(rv.Data))
+	// Extend the programData.
+	_, err1 := pb.programData.Write(rv.Tweak[:])
+	err2 := binary.Write(pb.programData, binary.LittleEndian, rv.Revision)
+	_, err3 := pb.programData.Write(rv.Signature[:])
+	_, err4 := pb.programData.Write(pk)
+	_, err5 := pb.programData.Write(rv.Data)
+	if err := errors.Compose(err1, err2, err3, err4, err5); err != nil {
+		return errors.AddContext(err, "AddUpdateRegistryInstruction: failed to extend programData")
+	}
+	// Create the instruction.
+	i := NewUpdateRegistryInstruction(tweakOff, revisionOff, signatureOff, pubKeyOff, pubKeyLen, dataOff, dataLen)
+	// Append instruction
+	pb.program = append(pb.program, i)
+	// Update cost, collateral and memory usage.
+	collateral := MDMUpdateRegistryCollateral()
+	cost, refund := V154MDMUpdateRegistryCost(pb.staticPT)
+	memory := MDMUpdateRegistryMemory()
+	time := uint64(MDMTimeUpdateRegistry)
+	pb.addInstruction(collateral, cost, refund, memory, time)
+	return nil
+}
+
 // AddReadRegistryInstruction adds an ReadRegistry instruction to the program.
 func (pb *ProgramBuilder) AddReadRegistryInstruction(spk types.SiaPublicKey, tweak crypto.Hash) (types.Currency, error) {
 	// Marshal pubKey.
