@@ -417,9 +417,6 @@ func TestBubbleHealth(t *testing.T) {
 	// Now when we bubble the health and check for the worst health we should still see
 	// that the health is the health of subDir1/subDir1 which was set to 1 again
 	// and the stuck health will be the health of the stuck file
-
-	// expectedMetadata.AggregateHealth = 1
-	// expectedMetadata.AggregateStuckHealth = 2
 	tc = "Adding stuck file"
 	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_2, 1, 8)
 
@@ -713,7 +710,8 @@ func TestNumFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Add skylink to root file
+	// Add skylink to root file. This should not count towards the number of
+	// skyfiles
 	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
 	if err != nil {
 		t.Fatal(err)
@@ -748,9 +746,11 @@ func TestNumFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Call bubble on lowest lever and confirm top level reports accurate number
-	// of files and aggregate number of files
-	err = rt.renter.managedBubbleMetadata(subDir1_2)
+	// Call bubble on lowest level and skynet folder and confirm top level reports
+	// accurate number of files and aggregate number of files
+	err1 := rt.renter.managedBubbleMetadata(subDir1_2)
+	err2 := rt.renter.managedBubbleMetadata(modules.SkynetFolder)
+	err = errors.Compose(err1, err2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -767,11 +767,11 @@ func TestNumFiles(t *testing.T) {
 			return fmt.Errorf("AggregateNumFiles incorrect, got %v expected %v", dirInfo.AggregateNumFiles, 3)
 		}
 		// Skyfiles
-		if dirInfo.SkynetFiles != 1 {
-			return fmt.Errorf("SkynetFiles incorrect, got %v expected %v", dirInfo.NumFiles, 1)
+		if dirInfo.SkynetFiles != 0 {
+			return fmt.Errorf("SkynetFiles incorrect, got %v expected %v", dirInfo.SkynetFiles, 0)
 		}
-		if dirInfo.AggregateSkynetFiles != 2 {
-			return fmt.Errorf("AggregateSkynetFiles incorrect, got %v expected %v", dirInfo.AggregateNumFiles, 2)
+		if dirInfo.AggregateSkynetFiles != 1 {
+			return fmt.Errorf("AggregateSkynetFiles incorrect, got %v expected %v", dirInfo.AggregateSkynetFiles, 1)
 		}
 		return nil
 	})

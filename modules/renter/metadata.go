@@ -225,17 +225,23 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			//
 			// If the current directory is under the Skynet Folder, or the siafile
 			// contains a skylink in the metadata, then we count the file towards the
-			// number of SkynetFiles. We only count the size if it is not an extended
-			// file.
+			// Skynet Stats.
+			//
+			// For all case we count the size.
+			//
+			// We only count the file towards the number of files if it is in the
+			// skynet folder and is not extended. We do not count files outside of the
+			// skynet folder because they should be treated as an extended file.
 			isSkynetDir := strings.Contains(siaPath.String(), modules.SkynetFolder.String())
 			isExtended := strings.Contains(fileSiaPath.String(), modules.ExtendedSuffix)
-			if isSkynetDir || fileMetadata.NumSkylinks > 0 {
-				if !isExtended {
-					metadata.AggregateSkynetFiles++
-					metadata.SkynetFiles++
-				}
+			hasSkylinks := fileMetadata.NumSkylinks > 0
+			if isSkynetDir || hasSkylinks {
 				metadata.AggregateSkynetSize += fileMetadata.Size
 				metadata.SkynetSize += fileMetadata.Size
+			}
+			if isSkynetDir && !isExtended {
+				metadata.AggregateSkynetFiles++
+				metadata.SkynetFiles++
 			}
 		} else if len(dirMetadatas) > 0 {
 			// Get next dir's metadata.

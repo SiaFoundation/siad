@@ -1095,8 +1095,8 @@ func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, 
 		// Update the stats with the information from the root directory
 		di := dis[0]
 		stats = modules.SkynetStats{
-			NumFiles:  int(di.AggregateNumFiles),
-			TotalSize: di.AggregateSize,
+			NumFiles:  int(di.AggregateSkynetFiles),
+			TotalSize: di.AggregateSkynetSize,
 		}
 	}
 
