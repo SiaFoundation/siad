@@ -87,6 +87,9 @@ func TestRenewContract(t *testing.T) {
 	if oldContractPreRenew.Size() == 0 {
 		t.Fatal("contract shouldnt be empty pre renewal")
 	}
+	if len(oldContractPreRenew.Transaction.FileContractRevisions) == 0 {
+		t.Fatal("no Revisions")
+	}
 	oldRevisionPreRenew := oldContractPreRenew.Transaction.FileContractRevisions[0]
 	oldMerkleRoot := oldRevisionPreRenew.NewFileMerkleRoot
 	if oldMerkleRoot == (crypto.Hash{}) {
@@ -131,6 +134,9 @@ func TestRenewContract(t *testing.T) {
 		if c.HostPublicKey.String() == params.Host.PublicKey.String() {
 			oldContract = c
 		}
+	}
+	if len(oldContract.Transaction.FileContractRevisions) == 0 {
+		t.Fatal("no Revisions")
 	}
 	oldRevision := oldContract.Transaction.FileContractRevisions[0]
 
@@ -253,6 +259,9 @@ func TestRenewContract(t *testing.T) {
 	c, found := wt.renter.hostContractor.ContractByPublicKey(wt.staticHostPubKey)
 	if !found {
 		t.Fatal("contract not found in contractor")
+	}
+	if len(c.Transaction.FileContractRevisions) == 0 {
+		t.Fatal("no Revisions")
 	}
 	rev := c.Transaction.FileContractRevisions[0]
 
