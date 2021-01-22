@@ -661,3 +661,41 @@ func writeWorkerDownloadUploadInfo(download bool, w *tabwriter.Writer, rw module
 			worker.UploadTerminated)
 	}
 }
+
+// writeWorkerReadUpdateRegistryInfo is a helper function for writing the read registry
+// or update registry information to the tabwriter.
+func writeWorkerReadUpdateRegistryInfo(read bool, w *tabwriter.Writer, rw modules.WorkerPoolStatus) {
+	// print summary
+	fmt.Fprintf(w, "Worker Pool Summary \n")
+	fmt.Fprintf(w, "  Total Workers: \t%v\n", rw.NumWorkers)
+	if read {
+		fmt.Fprintf(w, "  Workers On ReadRegistry Cooldown:\t%v\n", rw.TotalDownloadCoolDown)
+	} else {
+		fmt.Fprintf(w, "  Workers On UpdateRegistry Cooldown:\t%v\n", rw.TotalUploadCoolDown)
+	}
+
+	// print header
+	hostInfo := "Host PubKey"
+	info := "\tOn Cooldown\tCooldown Time\tLast Error\tLast Error Time\tQueue"
+	header := hostInfo + info
+	if read {
+		fmt.Fprintln(w, "\nWorker ReadRegistry Detail  \n\n"+header)
+	} else {
+		fmt.Fprintln(w, "\nWorker UpdateRegistry Detail  \n\n"+header)
+	}
+
+	// print rows
+	for _, worker := range rw.Workers {
+		// Host Info
+		fmt.Fprintf(w, "%v", worker.HostPubKey.String())
+
+		// Qeue Info
+		status := worker.ReadRegistryJobsStatus
+		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
+			status.OnCooldown,
+			absDuration(time.Until(status.OnCooldownUntil)),
+			sanitizeErr(status.RecentErr),
+			status.RecentErrTime,
+			status.JobQueueSize)
+	}
+}

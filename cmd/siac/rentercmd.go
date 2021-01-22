@@ -329,6 +329,20 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 		Run:   wrap(renterworkersuploadscmd),
 	}
 
+	renterWorkersReadRegistryCmd = &cobra.Command{
+		Use:   "rrj",
+		Short: "View the workers' read registry jobs",
+		Long:  "View detailed information of the workers' read registry jobs",
+		Run:   wrap(renterworkersuploadscmd),
+	}
+
+	renterWorkersUpdateRegistryCmd = &cobra.Command{
+		Use:   "urj",
+		Short: "View the workers' update registry jobs",
+		Long:  "View detailed information of the workers' update registry jobs",
+		Run:   wrap(renterworkersuploadscmd),
+	}
+
 	renterHealthSummaryCmd = &cobra.Command{
 		Use:   "health",
 		Short: "Display a health summary of uploaded files",
@@ -2504,4 +2518,55 @@ func writeWorkers(workers []modules.WorkerStatus) {
 	if err := w.Flush(); err != nil {
 		die("failed to flush writer:", err)
 	}
+}
+
+// renterworkerreadregistrycmd is the handler for the command `siac renter workers
+// rrj`.  It lists the status of the read registry jobs of every worker.
+func renterworkersreadregistrycmd() {
+	rw, err := httpClient.RenterWorkersGet()
+	if err != nil {
+		die("Could not get worker statuses:", err)
+	}
+
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
+
+	// Create tab writer
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	defer func() {
+		err := w.Flush()
+		if err != nil {
+			die("Could not flush tabwriter:", err)
+		}
+	}()
+	// Write Upload Info
+	writeWorkerDownloadUploadInfo(true, w, rw)
+}
+
+// renterworkerupdateregistrycmd is the handler for the command `siac renter
+// workers urj`. It lists the status of the update registry jobs of every
+// worker.
+func renterworkersupdateregistrycmd() {
+	rw, err := httpClient.RenterWorkersGet()
+	if err != nil {
+		die("Could not get worker statuses:", err)
+	}
+
+	// Sort workers by public key.
+	sort.Slice(rw.Workers, func(i, j int) bool {
+		return rw.Workers[i].HostPubKey.String() < rw.Workers[j].HostPubKey.String()
+	})
+
+	// Create tab writer
+	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
+	defer func() {
+		err := w.Flush()
+		if err != nil {
+			die("Could not flush tabwriter:", err)
+		}
+	}()
+	// Write Upload Info
+	writeWorkerDownloadUploadInfo(false, w, rw)
 }

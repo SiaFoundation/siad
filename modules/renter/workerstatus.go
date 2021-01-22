@@ -173,6 +173,8 @@ func callGenericWorkerJobStatus(queue *jobGenericQueue) modules.WorkerGenericJob
 	return modules.WorkerGenericJobsStatus{
 		ConsecutiveFailures: status.consecutiveFailures,
 		JobQueueSize:        status.size,
+		OnCooldown:          time.Now().Before(status.cooldownUntil),
+		OnCooldownUntil:     status.cooldownUntil,
 		RecentErr:           recentErrStr,
 		RecentErrTime:       status.recentErrTime,
 	}

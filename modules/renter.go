@@ -844,6 +844,8 @@ type (
 	WorkerGenericJobsStatus struct {
 		ConsecutiveFailures uint64    `json:"consecutivefailures"`
 		JobQueueSize        uint64    `json:"jobqueuesize"`
+		OnCooldown          bool      `json:"oncooldown"`
+		OnCooldownUntil     time.Time `json:"oncooldownuntil"`
 		RecentErr           string    `json:"recenterr"`
 		RecentErrTime       time.Time `json:"recenterrtime"`
 	}

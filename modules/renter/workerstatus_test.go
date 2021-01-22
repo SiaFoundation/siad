@@ -406,16 +406,20 @@ func TestWorkerRegistryJobStatus(t *testing.T) {
 	statusRead := w.callReadRegistryJobsStatus()
 	if !(statusRead.ConsecutiveFailures == 0 &&
 		statusRead.JobQueueSize == 0 &&
+		statusRead.OnCooldown == false &&
+		statusRead.OnCooldownUntil == time.Time{} &&
 		statusRead.RecentErr == "" &&
 		statusRead.RecentErrTime == time.Time{}) {
-		t.Fatal("Unexpected has sector job status", ToJSON(statusRead))
+		t.Fatal("Unexpected job status", ToJSON(statusRead))
 	}
 	statusUpdate := w.callUpdateRegistryJobsStatus()
 	if !(statusUpdate.ConsecutiveFailures == 0 &&
 		statusUpdate.JobQueueSize == 0 &&
+		statusUpdate.OnCooldown == false &&
+		statusUpdate.OnCooldownUntil == time.Time{} &&
 		statusUpdate.RecentErr == "" &&
 		statusUpdate.RecentErrTime == time.Time{}) {
-		t.Fatal("Unexpected has sector job status", ToJSON(statusUpdate))
+		t.Fatal("Unexpected job status", ToJSON(statusUpdate))
 	}
 
 	// prevent the worker from doing any work by manipulating its read limit
@@ -461,12 +465,16 @@ func TestWorkerRegistryJobStatus(t *testing.T) {
 	if err := build.Retry(100, 100*time.Millisecond, func() error {
 		statusRead = w.callReadRegistryJobsStatus()
 		if !(statusRead.ConsecutiveFailures == 1 &&
+			statusRead.OnCooldown == true &&
+			statusRead.OnCooldownUntil != time.Time{} &&
 			statusRead.RecentErr != "" &&
 			statusRead.RecentErrTime != time.Time{}) {
 			return fmt.Errorf("Unexpected job %v", ToJSON(statusRead))
 		}
 		statusUpdate = w.callUpdateRegistryJobsStatus()
 		if !(statusUpdate.ConsecutiveFailures == 1 &&
+			statusUpdate.OnCooldown == true &&
+			statusUpdate.OnCooldownUntil != time.Time{} &&
 			statusUpdate.RecentErr != "" &&
 			statusUpdate.RecentErrTime != time.Time{}) {
 			return fmt.Errorf("Unexpected job %v", ToJSON(statusUpdate))
