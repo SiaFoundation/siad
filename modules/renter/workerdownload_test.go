@@ -275,85 +275,105 @@ func TestProcessDownloadChunk(t *testing.T) {
 		t.Fatalf("expected 1 standby worker but got %v", len(udc.workersStandby))
 	}
 
+	// helper to add jobs to the queue.
+	addBlankJobs := func(n int) {
+		for i := 0; i < n; i++ {
+			udc = chunk()
+			wt.mu.Lock()
+			wt.downloadChunks.PushBack(udc)
+			wt.mu.Unlock()
+		}
+	}
+
 	// Invalid chunk, not on cooldown.
 	//
 	// download complete
-	wt.downloadChunks = []*unfinishedDownloadChunk{udc, udc, udc}
-	udc = chunk()
+	queue := wt.downloadChunks
+	addBlankJobs(3)
 	close(udc.download.completeChan)
 	udc.download.err = errors.New("test error to prevent critical")
 	c = wt.managedProcessDownloadChunk(udc)
 	if c != nil {
 		t.Fatal("c should be nil")
 	}
-	if len(wt.downloadChunks) != len(wt.downloadChunks) {
-		t.Fatalf("expected 0 download chunk but got %v", len(wt.downloadChunks))
+	if udc.workersRemaining != udc.erasureCode.MinPieces()-1 {
+		t.Fatalf("expected %v remaining workers but got %v", udc.erasureCode.MinPieces()-1, udc.workersRemaining)
+	}
+	if queue.Len() != 3 {
+		t.Fatalf("expected 3 download chunks but got %v", queue.Len())
 	}
 	// min pieces completed
-	wt.downloadChunks = []*unfinishedDownloadChunk{udc, udc, udc}
 	udc = chunk()
 	udc.piecesCompleted = rc.MinPieces()
 	c = wt.managedProcessDownloadChunk(udc)
 	if c != nil {
 		t.Fatal("c should be nil")
 	}
-	if len(wt.downloadChunks) != len(wt.downloadChunks) {
-		t.Fatalf("expected 0 download chunk but got %v", len(wt.downloadChunks))
+	if udc.workersRemaining != udc.erasureCode.MinPieces()-1 {
+		t.Fatalf("expected %v remaining workers but got %v", udc.erasureCode.MinPieces()-1, udc.workersRemaining)
+	}
+	if queue.Len() != 3 {
+		t.Fatalf("expected 3 download chunk but got %v", queue.Len())
 	}
 	// udc failed
-	wt.downloadChunks = []*unfinishedDownloadChunk{udc, udc, udc}
 	udc = chunk()
 	udc.failed = true
 	c = wt.managedProcessDownloadChunk(udc)
 	if c != nil {
 		t.Fatal("c should be nil")
 	}
-	if len(wt.downloadChunks) != len(wt.downloadChunks) {
-		t.Fatalf("expected 0 download chunk but got %v", len(wt.downloadChunks))
+	if udc.workersRemaining != udc.erasureCode.MinPieces()-1 {
+		t.Fatalf("expected %v remaining workers but got %v", udc.erasureCode.MinPieces()-1, udc.workersRemaining)
+	}
+	if queue.Len() != 3 {
+		t.Fatalf("expected 3 download chunk but got %v", queue.Len())
 	}
 	// insufficient number of workers remaining
-	wt.downloadChunks = []*unfinishedDownloadChunk{udc, udc, udc}
 	udc = chunk()
-	udc.workersRemaining = rc.MinPieces() - 1
+	udc.workersRemaining = udc.erasureCode.MinPieces() - 1
 	c = wt.managedProcessDownloadChunk(udc)
 	if c != nil {
 		t.Fatal("c should be nil")
 	}
-	if len(wt.downloadChunks) != len(wt.downloadChunks) {
-		t.Fatalf("expected 0 download chunk but got %v", len(wt.downloadChunks))
+	if udc.workersRemaining != -1 {
+		t.Fatalf("expected %v remaining workers but got %v", -1, udc.workersRemaining)
+	}
+	if queue.Len() != 3 {
+		t.Fatalf("expected 3 download chunk but got %v", queue.Len())
 	}
 	// worker has no piece
-	wt.downloadChunks = []*unfinishedDownloadChunk{udc, udc, udc}
 	udc = chunk()
 	udc.staticChunkMap = make(map[string]downloadPieceInfo)
 	c = wt.managedProcessDownloadChunk(udc)
 	if c != nil {
 		t.Fatal("c should be nil")
 	}
-	if len(wt.downloadChunks) != len(wt.downloadChunks) {
-		t.Fatalf("expected 0 download chunk but got %v", len(wt.downloadChunks))
+	if udc.workersRemaining != udc.erasureCode.MinPieces()-1 {
+		t.Fatalf("expected %v remaining workers but got %v", udc.erasureCode.MinPieces()-1, udc.workersRemaining)
+	}
+	if queue.Len() != 3 {
+		t.Fatalf("expected 3 download chunk but got %v", queue.Len())
 	}
 	// piece is completed
-	wt.downloadChunks = []*unfinishedDownloadChunk{udc, udc, udc}
 	udc = chunk()
 	udc.completedPieces[pieceIndex] = true
 	c = wt.managedProcessDownloadChunk(udc)
 	if c != nil {
 		t.Fatal("c should be nil")
 	}
-	if len(wt.downloadChunks) != len(wt.downloadChunks) {
-		t.Fatalf("expected 0 download chunk but got %v", len(wt.downloadChunks))
+	if udc.workersRemaining != udc.erasureCode.MinPieces()-1 {
+		t.Fatalf("expected %v remaining workers but got %v", udc.erasureCode.MinPieces()-1, udc.workersRemaining)
 	}
-	// set download recent failure for cooldown cases.
-	wt.mu.Lock()
-	wt.downloadRecentFailure = time.Now()
-	wt.mu.Unlock()
+	if queue.Len() != 3 {
+		t.Fatalf("expected 3 download chunk but got %v", queue.Len())
+	}
 	// Invalid chunk, on cooldown.
 	// download complete
-	wt.downloadChunks = []*unfinishedDownloadChunk{udc, udc, udc}
-	wt.downloadMu.Lock()
+	addBlankJobs(3)
+	wt.mu.Lock()
 	wt.downloadConsecutiveFailures = 100
-	wt.downloadMu.Unlock()
+	wt.downloadRecentFailure = time.Now()
+	wt.mu.Unlock()
 	udc = chunk()
 	close(udc.download.completeChan)
 	udc.download.err = errors.New("test error to prevent critical")
@@ -361,77 +381,77 @@ func TestProcessDownloadChunk(t *testing.T) {
 	if c != nil {
 		t.Fatal("c should be nil")
 	}
-	if len(wt.downloadChunks) != len(wt.downloadChunks) {
-		t.Fatalf("expected 0 download chunk but got %v", len(wt.downloadChunks))
+	if queue.Len() != 0 {
+		t.Fatalf("expected 0 download chunk but got %v", queue.Len())
 	}
 	// min pieces completed
-	wt.downloadChunks = []*unfinishedDownloadChunk{udc, udc, udc}
-	wt.downloadMu.Lock()
-	wt.downloadConsecutiveFailures = 100
-	wt.downloadMu.Unlock()
+	addBlankJobs(3)
 	udc = chunk()
 	udc.piecesCompleted = rc.MinPieces()
 	c = wt.managedProcessDownloadChunk(udc)
 	if c != nil {
 		t.Fatal("c should be nil")
 	}
-	if len(wt.downloadChunks) != len(wt.downloadChunks) {
-		t.Fatalf("expected 0 download chunk but got %v", len(wt.downloadChunks))
+	if udc.workersRemaining != udc.erasureCode.MinPieces()-1 {
+		t.Fatalf("expected %v remaining workers but got %v", udc.erasureCode.MinPieces()-1, udc.workersRemaining)
+	}
+	if queue.Len() != 0 {
+		t.Fatalf("expected 0 download chunk but got %v", queue.Len())
 	}
 	// udc failed
-	wt.downloadChunks = []*unfinishedDownloadChunk{udc, udc, udc}
-	wt.downloadMu.Lock()
-	wt.downloadConsecutiveFailures = 100
-	wt.downloadMu.Unlock()
+	addBlankJobs(3)
 	udc = chunk()
 	udc.failed = true
 	c = wt.managedProcessDownloadChunk(udc)
 	if c != nil {
 		t.Fatal("c should be nil")
 	}
-	if len(wt.downloadChunks) != len(wt.downloadChunks) {
-		t.Fatalf("expected 0 download chunk but got %v", len(wt.downloadChunks))
+	if udc.workersRemaining != udc.erasureCode.MinPieces()-1 {
+		t.Fatalf("expected %v remaining workers but got %v", udc.erasureCode.MinPieces()-1, udc.workersRemaining)
+	}
+	if queue.Len() != 0 {
+		t.Fatalf("expected 0 download chunk but got %v", queue.Len())
 	}
 	// insufficient number of workers remaining
-	wt.downloadChunks = []*unfinishedDownloadChunk{udc, udc, udc}
-	wt.downloadMu.Lock()
-	wt.downloadConsecutiveFailures = 100
-	wt.downloadMu.Unlock()
+	addBlankJobs(3)
 	udc = chunk()
-	udc.workersRemaining = rc.MinPieces() - 1
+	udc.workersRemaining = udc.erasureCode.MinPieces() - 1
 	c = wt.managedProcessDownloadChunk(udc)
 	if c != nil {
 		t.Fatal("c should be nil")
 	}
-	if len(wt.downloadChunks) != len(wt.downloadChunks) {
-		t.Fatalf("expected 0 download chunk but got %v", len(wt.downloadChunks))
+	if udc.workersRemaining != -1 {
+		t.Fatalf("expected %v remaining workers but got %v", -1, udc.workersRemaining)
+	}
+	if queue.Len() != 0 {
+		t.Fatalf("expected 0 download chunk but got %v", queue.Len())
 	}
 	// worker has no piece
-	wt.downloadChunks = []*unfinishedDownloadChunk{udc, udc, udc}
-	wt.downloadMu.Lock()
-	wt.downloadConsecutiveFailures = 100
-	wt.downloadMu.Unlock()
+	addBlankJobs(3)
 	udc = chunk()
 	udc.staticChunkMap = make(map[string]downloadPieceInfo)
 	c = wt.managedProcessDownloadChunk(udc)
 	if c != nil {
 		t.Fatal("c should be nil")
 	}
-	if len(wt.downloadChunks) != len(wt.downloadChunks) {
-		t.Fatalf("expected 0 download chunk but got %v", len(wt.downloadChunks))
+	if udc.workersRemaining != udc.erasureCode.MinPieces()-1 {
+		t.Fatalf("expected %v remaining workers but got %v", udc.erasureCode.MinPieces()-1, udc.workersRemaining)
+	}
+	if queue.Len() != 0 {
+		t.Fatalf("expected 0 download chunk but got %v", queue.Len())
 	}
 	// piece is completed
-	wt.downloadChunks = []*unfinishedDownloadChunk{udc, udc, udc}
-	wt.downloadMu.Lock()
-	wt.downloadConsecutiveFailures = 100
-	wt.downloadMu.Unlock()
+	addBlankJobs(3)
 	udc = chunk()
 	udc.completedPieces[pieceIndex] = true
 	c = wt.managedProcessDownloadChunk(udc)
 	if c != nil {
 		t.Fatal("c should be nil")
 	}
-	if len(wt.downloadChunks) != len(wt.downloadChunks) {
-		t.Fatalf("expected 0 download chunk but got %v", len(wt.downloadChunks))
+	if udc.workersRemaining != udc.erasureCode.MinPieces()-1 {
+		t.Fatalf("expected %v remaining workers but got %v", udc.erasureCode.MinPieces()-1, udc.workersRemaining)
+	}
+	if queue.Len() != 0 {
+		t.Fatalf("expected 0 download chunk but got %v", queue.Len())
 	}
 }

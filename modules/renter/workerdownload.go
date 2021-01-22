@@ -123,19 +123,18 @@ func (w *worker) managedDownloadFailed(err error) {
 func (w *worker) managedHasDownloadJob() bool {
 	w.downloadMu.Lock()
 	defer w.downloadMu.Unlock()
-	return len(w.downloadChunks) > 0
+	return w.downloadChunks.Len() > 0
 }
 
 // managedPerformDownloadChunkJob will perform some download work if any is
 // available, returning false if no work is available.
 func (w *worker) managedPerformDownloadChunkJob() {
 	w.downloadMu.Lock()
-	if len(w.downloadChunks) == 0 {
+	udc := w.downloadChunks.Pop()
+	if udc == nil {
 		w.downloadMu.Unlock()
 		return
 	}
-	udc := w.downloadChunks[0]
-	w.downloadChunks = w.downloadChunks[1:]
 	w.downloadMu.Unlock()
 
 	// Process this chunk. If the worker is not fit to do the download, or is
@@ -268,10 +267,9 @@ func (w *worker) managedKillDownloading() {
 func (w *worker) managedDropDownloadChunks() {
 	w.downloadMu.Lock()
 	var removedChunks []*unfinishedDownloadChunk
-	for i := 0; i < len(w.downloadChunks); i++ {
-		removedChunks = append(removedChunks, w.downloadChunks[i])
+	for removedChunk := w.downloadChunks.Pop(); removedChunk != nil; removedChunk = w.downloadChunks.Pop() {
+		removedChunks = append(removedChunks, removedChunk)
 	}
-	w.downloadChunks = w.downloadChunks[:0]
 	w.downloadMu.Unlock()
 	for i := 0; i < len(removedChunks); i++ {
 		removedChunks[i].managedRemoveWorker()
@@ -290,7 +288,7 @@ func (w *worker) callQueueDownloadChunk(udc *unfinishedDownloadChunk) {
 	if goodWorker {
 		// Accept the chunk and issue a notification to the master thread that
 		// there is a new download.
-		w.downloadChunks = append(w.downloadChunks, udc)
+		w.downloadChunks.PushBack(udc)
 		w.staticWake()
 	}
 	w.downloadMu.Unlock()
