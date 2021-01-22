@@ -1332,6 +1332,9 @@ func (api *API) registryHandlerPOST(w http.ResponseWriter, req *http.Request, _ 
 	srv := modules.NewSignedRegistryValue(rhp.DataKey, rhp.Data, rhp.Revision, rhp.Signature)
 	err = api.renter.UpdateRegistry(rhp.PublicKey, srv, renter.DefaultRegistryUpdateTimeout)
 	if err != nil {
+		skynetPerformanceStatsMu.Lock()
+		skynetPerformanceStats.RegistryWrite.AddRequest(0, 0)
+		skynetPerformanceStatsMu.Unlock()
 		WriteError(w, Error{"Unable to update the registry: " + err.Error()}, http.StatusBadRequest)
 		return
 	}
