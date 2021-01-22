@@ -377,7 +377,7 @@ func (r *Renter) DownloadByRoot(root crypto.Hash, offset, length uint64, timeout
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
 	if !r.memoryManager.Request(ctx, length, memoryPriorityHigh) {
-		return nil, errors.New("renter shut down before memory could be allocated for the project")
+		return nil, errors.New("timeout while waiting in the download queue - server is busy")
 	}
 	defer r.memoryManager.Return(length)
 
