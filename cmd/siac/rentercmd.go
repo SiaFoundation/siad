@@ -2542,7 +2542,7 @@ func renterworkersreadregistrycmd() {
 		}
 	}()
 	// Write Upload Info
-	writeWorkerDownloadUploadInfo(true, w, rw)
+	writeWorkerReadUpdateRegistryInfo(true, w, rw)
 }
 
 // renterworkerupdateregistrycmd is the handler for the command `siac renter
@@ -2568,5 +2568,5 @@ func renterworkersupdateregistrycmd() {
 		}
 	}()
 	// Write Upload Info
-	writeWorkerDownloadUploadInfo(false, w, rw)
+	writeWorkerReadUpdateRegistryInfo(false, w, rw)
 }
