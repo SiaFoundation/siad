@@ -319,6 +319,23 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 		return err
 	}
 
+	// Check whether the worker is on RHP3
+	if !w.managedAsyncReady() {
+		return errors.New("worker is not RHP3 ready")
+	}
+
+	// Check whether the worker is on a cooldown, seeing as the PCWS is cached
+	// we do not want to exclude this worker, however we do want to take into
+	// consideration the cooldown period when we estimate the expected
+	// completion time.
+	var coolDownPenalty time.Duration
+	if w.managedOnMaintenanceCooldown() {
+		wms := w.staticMaintenanceState
+		wms.mu.Lock()
+		coolDownPenalty = time.Until(wms.cooldownUntil)
+		wms.mu.Unlock()
+	}
+
 	// Create and launch the job.
 	jhs := w.newJobHasSector(ctx, responseChan, pcws.staticPieceRoots...)
 	expectedCompleteTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs)
@@ -326,6 +343,14 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 		pcws.staticRenter.log.Debugf("unable to add has sector job to %v, err %v", w.staticHostPubKeyStr, err)
 		return err
 	}
+	expectedCompleteTime = expectedCompleteTime.Add(coolDownPenalty)
+
+	// TODO: remove
+	jhsq := w.staticJobHasSectorQueue
+	jhsq.mu.Lock()
+	remaining := time.Until(expectedCompleteTime).Milliseconds()
+	jhsq.mu.Unlock()
+	fmt.Printf("%v expected to complete in %vms | job time %v jobs completed %v\n", w.staticHostPubKeyStr, remaining, jhsq.weightedJobTime, jhsq.weightedJobsCompleted)
 
 	// Create the unresolved worker for this job.
 	uw := &pcwsUnresolvedWorker{

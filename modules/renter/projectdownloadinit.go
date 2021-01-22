@@ -192,7 +192,6 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 			// Ignore this worker if its host is considered to be price gouging.
 			err := checkProjectDownloadGouging(pt, allowance)
 			if err != nil {
-				fmt.Println("GOUGING")
 				pdc.workerState.staticRenter.log.Debugf("price gouging detected in worker %v, err: %v\n", w.staticHostPubKeyStr, err)
 				continue
 			}
@@ -200,7 +199,6 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 			// Ignore this worker if the worker is not currently equipped to
 			// perform async work, or if the read queue is on a cooldown.
 			if !w.managedAsyncReady() || w.staticJobReadQueue.cooldownUntil.After(time.Now()) {
-				fmt.Println("NOT ASYNC | CD")
 				continue
 			}
 
@@ -344,6 +342,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		// Check whether the worker is useful at all. It may not be useful if
 		// the only pieces it has are already available via cheaper workers.
 		if !bestSpotEmpty && !workerUseful {
+			fmt.Println("worker considered unuseful because piece is covered and it's more expensive")
 			continue
 		}
 
@@ -416,19 +415,30 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	// return the best set and everything else is nil.
 	totalWorkers := 0
 	isUnresolved := false
+
+	unresolvedWorkers := make([]string, ec.MinPieces())
 	for _, worker := range bestSet {
 		if worker == nil {
 			continue
 		}
 		totalWorkers++
 		isUnresolved = isUnresolved || worker.unresolved
+		if worker.unresolved {
+			unresolvedWorkers = append(unresolvedWorkers, worker.worker.staticHostPubKeyStr)
+		}
 	}
+
 	if totalWorkers < ec.MinPieces() {
+		fmt.Println("total workers <", ec.MinPieces())
 		return nil, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", totalWorkers, ec.MinPieces()))
 	}
+
+	fmt.Println("workers in best set:    ", len(bestSet))
 	if isUnresolved {
+		fmt.Println("worker still unresolved", unresolvedWorkers)
 		return nil, nil
 	}
+
 	return bestSet, nil
 }
 
@@ -436,27 +446,17 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 // launched and then launch them. This is a non-blocking function that returns
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
-	// fmt.Println("launch initial workers")
 	for {
 		// Get the list of unresolved workers. This will also grab an update, so
 		// any workers that have resolved recently will be reflected in the
 		// newly returned set of values.
 		unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
-
-		// ws := pdc.workerState
-		// ws.mu.Lock()
-		// fmt.Println(pdc)
-		// fmt.Println("workers considered:", pdc.workersConsideredIndex)
-		// fmt.Println("num resolved      :", len(ws.resolvedWorkers))
-		// fmt.Println("num unresolved    :", len(ws.unresolvedWorkers))
-		// fmt.Println("num avail pieces  :", pdc.availablePieces)
-		// fmt.Println("")
-		// ws.mu.Unlock()
+		fmt.Println("num unresolved workers", len(unresolvedWorkers))
 
 		// Create a list of usable workers, sorted by the amount of time they
 		// are expected to take to return.
 		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
-		// fmt.Println("num heap", len(workerHeap))
+
 		// Create an initial worker set
 		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
 		if err != nil {
@@ -470,6 +470,7 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 				if fw == nil {
 					continue
 				}
+				fmt.Printf("launching worker for piece %v\n", i)
 				pdc.launchWorker(fw.worker, uint64(i))
 			}
 			return nil

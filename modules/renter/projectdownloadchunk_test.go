@@ -3,15 +3,18 @@ package renter
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"strings"
 	"testing"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/fastrand"
 )
@@ -22,8 +25,16 @@ import (
 func TestProjectDownloadChunk_finalize(t *testing.T) {
 	t.Parallel()
 
+	size := 512
 	// create a random sector
-	sectorData := fastrand.Bytes(int(modules.SectorSize))
+	// sectorData := fastrand.Bytes(int(modules.SectorSize))
+	sectorData := make([]byte, size)
+	cntr := 0
+	for i := 0; i < int(size); i += 2 {
+		fmt.Println("adding ", uint64(cntr))
+		binary.LittleEndian.PutUint64(sectorData[i:], uint64(cntr))
+		cntr += 1
+	}
 	sectorRoot := crypto.MerkleRoot(sectorData)
 
 	// create an EC and a passhtrough cipher key
@@ -53,7 +64,12 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 	// download a random amount of data at random offset
 	length := (fastrand.Uint64n(5) + 1) * crypto.SegmentSize
 	offset := fastrand.Uint64n(modules.SectorSize - length)
+	offset = 128
+	length = 192
 	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
+
+	fmt.Println("piece offset", pieceOffset)
+	fmt.Println("piece length", pieceLength)
 
 	// create PDC manually
 	responseChan := make(chan *downloadResponse, 1)
@@ -79,8 +95,12 @@ func TestProjectDownloadChunk_finalize(t *testing.T) {
 		t.Fatal("unexpected error", downloadResponse.err)
 	}
 	if !bytes.Equal(downloadResponse.data, sectorData[offset:offset+length]) {
-		t.Log(downloadResponse.data, "length:", len(downloadResponse.data))
-		t.Log(sectorData[offset:offset+length], "length:", len(sectorData[offset:offset+length]))
+		t.Log("offset", offset)
+		t.Log("length", length)
+		t.Log("bytes downloaded", len(downloadResponse.data))
+
+		t.Log("expected:\n", downloadResponse.data)
+		t.Log("actual:\n", sectorData[offset:offset+length])
 		t.Fatal("unexpected data")
 	}
 }
@@ -213,9 +233,17 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 		empty,
 		empty,
 		empty,
-		crypto.MerkleRoot(pieces[0]),
+		crypto.MerkleRoot(pieces[3]),
 		empty,
 	}
+
+	renter := new(Renter)
+	logger, err := persist.NewLogger(ioutil.Discard)
+	if err != nil {
+		t.Fatal("unexpected")
+	}
+	renter.log = logger
+	pcws.staticRenter = renter
 
 	pdc := new(projectDownloadChunk)
 	pdc.workerSet = pcws
@@ -231,7 +259,7 @@ func TestProjectDownloadChunk_handleJobResponse(t *testing.T) {
 
 	// verify the pdc after a successful read response for piece at index 3
 	success := &jobReadResponse{
-		staticData:       pieces[2],
+		staticData:       pieces[3],
 		staticErr:        nil,
 		staticSectorRoot: crypto.MerkleRoot(pieces[3]),
 		staticWorker:     w,

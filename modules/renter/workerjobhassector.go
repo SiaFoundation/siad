@@ -183,6 +183,12 @@ func (jq *jobHasSectorQueue) callAddWithEstimate(j *jobHasSector) (time.Time, er
 // expectedJobTime will return the amount of time that a job is expected to
 // take, given the current conditions of the queue.
 func (jq *jobHasSectorQueue) expectedJobTime(numSectors uint64) time.Duration {
+	// if we don't have any historic data yet, return a sane (slightly
+	// pessimistic) default of 100ms
+	if jq.weightedJobsCompleted == 0 {
+		return 100 * time.Millisecond
+	}
+
 	return time.Duration(jq.weightedJobTime / jq.weightedJobsCompleted)
 }
 
