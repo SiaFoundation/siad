@@ -11,7 +11,7 @@ func (w *worker) callStatus() modules.WorkerStatus {
 	w.downloadMu.Lock()
 	downloadOnCoolDown := w.onDownloadCooldown()
 	downloadTerminated := w.downloadTerminated
-	downloadQueueSize := len(w.downloadChunks)
+	downloadQueueSize := w.downloadChunks.Len()
 	var downloadCoolDownErr string
 	if w.downloadRecentFailureErr != nil {
 		downloadCoolDownErr = w.downloadRecentFailureErr.Error()
