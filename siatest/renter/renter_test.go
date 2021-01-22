@@ -4906,6 +4906,28 @@ func TestWorkerStatus(t *testing.T) {
 			if worker.HasSectorJobsStatus.ConsecutiveFailures != 0 {
 				return fmt.Errorf("Expected consecutive failures to be 0 but was %v", worker.HasSectorJobsStatus.ConsecutiveFailures)
 			}
+
+			// ReadRegistryJobStatus checks
+			if worker.ReadRegistryJobsStatus.RecentErr != "" {
+				return fmt.Errorf("Expected recent err to be nil but was %v", worker.ReadRegistryJobsStatus.RecentErr)
+			}
+			if worker.ReadRegistryJobsStatus.JobQueueSize != 0 {
+				return fmt.Errorf("Expected job queue size to be 0 but was %v", worker.ReadRegistryJobsStatus.JobQueueSize)
+			}
+			if worker.ReadRegistryJobsStatus.ConsecutiveFailures != 0 {
+				return fmt.Errorf("Expected consecutive failures to be 0 but was %v", worker.ReadRegistryJobsStatus.ConsecutiveFailures)
+			}
+
+			// UpdateRegistryJobStatus checks
+			if worker.UpdateRegistryJobsStatus.RecentErr != "" {
+				return fmt.Errorf("Expected recent err to be nil but was %v", worker.UpdateRegistryJobsStatus.RecentErr)
+			}
+			if worker.UpdateRegistryJobsStatus.JobQueueSize != 0 {
+				return fmt.Errorf("Expected job queue size to be 0 but was %v", worker.UpdateRegistryJobsStatus.JobQueueSize)
+			}
+			if worker.UpdateRegistryJobsStatus.ConsecutiveFailures != 0 {
+				return fmt.Errorf("Expected consecutive failures to be 0 but was %v", worker.UpdateRegistryJobsStatus.ConsecutiveFailures)
+			}
 		}
 		return nil
 	})

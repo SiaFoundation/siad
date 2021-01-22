@@ -365,3 +365,114 @@ func ToJSON(a interface{}) string {
 	}
 	return string(json)
 }
+
+// TestWorkerRegistryJobStatus tests the ReadRegistry and UpdateRegistry related
+// stats.
+func TestWorkerRegistryJobStatus(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	wt, err := newWorkerTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hostClosed bool
+	defer func() {
+		if hostClosed {
+			if err := wt.rt.Close(); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+		if err := wt.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	w := wt.worker
+
+	// allow the worker some time to fetch a PT and fund its EA
+	if err := build.Retry(600, 100*time.Millisecond, func() error {
+		if w.staticAccount.managedMinExpectedBalance().IsZero() {
+			return errors.New("account not funded yet")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// fetch the worker's has sector jobs status and verify its output
+	statusRead := w.callReadRegistryJobsStatus()
+	if !(statusRead.ConsecutiveFailures == 0 &&
+		statusRead.JobQueueSize == 0 &&
+		statusRead.RecentErr == "" &&
+		statusRead.RecentErrTime == time.Time{}) {
+		t.Fatal("Unexpected has sector job status", ToJSON(statusRead))
+	}
+	statusUpdate := w.callUpdateRegistryJobsStatus()
+	if !(statusUpdate.ConsecutiveFailures == 0 &&
+		statusUpdate.JobQueueSize == 0 &&
+		statusUpdate.RecentErr == "" &&
+		statusUpdate.RecentErrTime == time.Time{}) {
+		t.Fatal("Unexpected has sector job status", ToJSON(statusUpdate))
+	}
+
+	// prevent the worker from doing any work by manipulating its read limit
+	current := atomic.LoadUint64(&w.staticLoopState.atomicReadDataOutstanding)
+	limit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
+	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, limit)
+
+	// add 1 job each to the worker.
+	ctx := context.Background()
+	rrc := make(chan *jobReadRegistryResponse)
+	urc := make(chan *jobUpdateRegistryResponse)
+	jrr := w.newJobReadRegistry(ctx, rrc, types.SiaPublicKey{}, crypto.Hash{})
+	jur := w.newJobUpdateRegistry(ctx, urc, types.SiaPublicKey{}, modules.SignedRegistryValue{})
+	if !w.staticJobReadRegistryQueue.callAdd(jrr) {
+		t.Fatal("Could not add job to queue")
+	}
+	if !w.staticJobUpdateRegistryQueue.callAdd(jur) {
+		t.Fatal("Could not add job to queue")
+	}
+
+	// fetch the worker's jobs status again.
+	statusRead = w.callReadRegistryJobsStatus()
+	statusUpdate = w.callUpdateRegistryJobsStatus()
+	if statusRead.JobQueueSize != 1 {
+		t.Fatal("Unexpected job status", ToJSON(statusRead))
+	}
+	if statusUpdate.JobQueueSize != 1 {
+		t.Fatal("Unexpected job status", ToJSON(statusUpdate))
+	}
+
+	// close the host to ensure the jobs will fail
+	err = wt.host.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostClosed = true
+
+	// restore the read limit
+	atomic.StoreUint64(&w.staticLoopState.atomicReadDataLimit, current)
+
+	// verify the status in a build.Retry to allow the worker some time to
+	// process the jobs
+	if err := build.Retry(100, 100*time.Millisecond, func() error {
+		statusRead = w.callReadRegistryJobsStatus()
+		if !(statusRead.ConsecutiveFailures == 1 &&
+			statusRead.RecentErr != "" &&
+			statusRead.RecentErrTime != time.Time{}) {
+			return fmt.Errorf("Unexpected job %v", ToJSON(statusRead))
+		}
+		statusUpdate = w.callUpdateRegistryJobsStatus()
+		if !(statusUpdate.ConsecutiveFailures == 1 &&
+			statusUpdate.RecentErr != "" &&
+			statusUpdate.RecentErrTime != time.Time{}) {
+			return fmt.Errorf("Unexpected job %v", ToJSON(statusUpdate))
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}

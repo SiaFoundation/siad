@@ -832,6 +832,20 @@ type (
 
 		// HasSector Job Information
 		HasSectorJobsStatus WorkerHasSectorJobsStatus `json:"hassectorjobsstatus"`
+
+		// ReadRegistry Job Information
+		ReadRegistryJobsStatus WorkerReadRegistryJobStatus `json:"readregistryjobsstatus"`
+
+		// UpdateRegistry Job information
+		UpdateRegistryJobsStatus WorkerUpdateRegistryJobStatus `json:"updateregistryjobsstatus"`
+	}
+
+	// WorkerGenericJobsStatus contains the common information for worker jobs.
+	WorkerGenericJobsStatus struct {
+		ConsecutiveFailures uint64    `json:"consecutivefailures"`
+		JobQueueSize        uint64    `json:"jobqueuesize"`
+		RecentErr           string    `json:"recenterr"`
+		RecentErrTime       time.Time `json:"recenterrtime"`
 	}
 
 	// WorkerAccountStatus contains detailed information about the account
@@ -881,6 +895,18 @@ type (
 
 		RecentErr     string    `json:"recenterr"`
 		RecentErrTime time.Time `json:"recenterrtime"`
+	}
+
+	// WorkerReadRegistryJobStatus contains detailed information about the read
+	// registry jobs.
+	WorkerReadRegistryJobStatus struct {
+		WorkerGenericJobsStatus
+	}
+
+	// WorkerUpdateRegistryJobStatus contains detailed information about the update
+	// registry jobs.
+	WorkerUpdateRegistryJobStatus struct {
+		WorkerGenericJobsStatus
 	}
 )
 

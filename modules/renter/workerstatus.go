@@ -78,6 +78,12 @@ func (w *worker) callStatus() modules.WorkerStatus {
 
 		// HasSector Job Information
 		HasSectorJobsStatus: w.callHasSectorJobStatus(),
+
+		// ReadRegistry Job Information
+		ReadRegistryJobsStatus: w.callReadRegistryJobsStatus(),
+
+		// UpdateRegistry Job Information
+		UpdateRegistryJobsStatus: w.callUpdateRegistryJobsStatus(),
 	}
 }
 
@@ -152,5 +158,36 @@ func (w *worker) callHasSectorJobStatus() modules.WorkerHasSectorJobsStatus {
 		JobQueueSize:        status.size,
 		RecentErr:           recentErrStr,
 		RecentErrTime:       status.recentErrTime,
+	}
+}
+
+// callGenericWorkerJobStatus returns the status for the generic job queue.
+func callGenericWorkerJobStatus(queue *jobGenericQueue) modules.WorkerGenericJobsStatus {
+	status := queue.callStatus()
+
+	var recentErrStr string
+	if status.recentErr != nil {
+		recentErrStr = status.recentErr.Error()
+	}
+
+	return modules.WorkerGenericJobsStatus{
+		ConsecutiveFailures: status.consecutiveFailures,
+		JobQueueSize:        status.size,
+		RecentErr:           recentErrStr,
+		RecentErrTime:       status.recentErrTime,
+	}
+}
+
+// callUpdateRegistryJobsStatus returns the status for the ReadRegistry queue.
+func (w *worker) callReadRegistryJobsStatus() modules.WorkerReadRegistryJobStatus {
+	return modules.WorkerReadRegistryJobStatus{
+		WorkerGenericJobsStatus: callGenericWorkerJobStatus(w.staticJobReadRegistryQueue.jobGenericQueue),
+	}
+}
+
+// callUpdateRegistryJobsStatus returns the status for the UpdateRegistry queue.
+func (w *worker) callUpdateRegistryJobsStatus() modules.WorkerUpdateRegistryJobStatus {
+	return modules.WorkerUpdateRegistryJobStatus{
+		WorkerGenericJobsStatus: callGenericWorkerJobStatus(w.staticJobUpdateRegistryQueue.jobGenericQueue),
 	}
 }
