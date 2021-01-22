@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"sync"
@@ -20,7 +21,7 @@ func TestMemoryManager(t *testing.T) {
 
 	// Low priority memory should have no issues requesting up to 75 memory.
 	for i := 0; i < 75; i++ {
-		if !mm.Request(1, memoryPriorityLow) {
+		if !mm.Request(context.Background(), 1, memoryPriorityLow) {
 			t.Error("unable to get memory")
 		}
 	}
@@ -29,7 +30,7 @@ func TestMemoryManager(t *testing.T) {
 	// memory has been returned.
 	memoryCompleted1 := make(chan struct{})
 	go func() {
-		if !mm.Request(1, memoryPriorityLow) {
+		if !mm.Request(context.Background(), 1, memoryPriorityLow) {
 			t.Error("unable to get memory")
 		}
 		close(memoryCompleted1)
@@ -38,7 +39,7 @@ func TestMemoryManager(t *testing.T) {
 
 	// Request some priority memory.
 	for i := 0; i < 25; i++ {
-		if !mm.Request(1, memoryPriorityHigh) {
+		if !mm.Request(context.Background(), 1, memoryPriorityHigh) {
 			t.Error("unable to get memory")
 		}
 	}
@@ -49,7 +50,7 @@ func TestMemoryManager(t *testing.T) {
 	// non-priority memory for the non-priority request.
 	memoryCompleted2 := make(chan struct{})
 	go func() {
-		if !mm.Request(27, memoryPriorityHigh) {
+		if !mm.Request(context.Background(), 27, memoryPriorityHigh) {
 			t.Error("unable to get memory")
 		}
 		close(memoryCompleted2)
@@ -89,7 +90,7 @@ func TestMemoryManager(t *testing.T) {
 	// block all future requests until all memory has been returned.
 	memoryCompleted3 := make(chan struct{})
 	go func() {
-		if !mm.Request(250, memoryPriorityHigh) {
+		if !mm.Request(context.Background(), 250, memoryPriorityHigh) {
 			t.Error("unable to get memory")
 		}
 		close(memoryCompleted3)
@@ -101,7 +102,7 @@ func TestMemoryManager(t *testing.T) {
 	// respecting priority.
 	memoryCompleted6 := make(chan struct{})
 	go func() {
-		if !mm.Request(1, memoryPriorityLow) {
+		if !mm.Request(context.Background(), 1, memoryPriorityLow) {
 			t.Error("unable to get memory")
 		}
 		close(memoryCompleted6)
@@ -109,7 +110,7 @@ func TestMemoryManager(t *testing.T) {
 	<-mm.blocking // wait until the goroutine is in the fifo.
 	memoryCompleted7 := make(chan struct{})
 	go func() {
-		if !mm.Request(1, memoryPriorityLow) {
+		if !mm.Request(context.Background(), 1, memoryPriorityLow) {
 			t.Error("unable to get memory")
 		}
 		close(memoryCompleted7)
@@ -117,7 +118,7 @@ func TestMemoryManager(t *testing.T) {
 	<-mm.blocking // wait until the goroutine is in the fifo.
 	memoryCompleted4 := make(chan struct{})
 	go func() {
-		if !mm.Request(30, memoryPriorityHigh) {
+		if !mm.Request(context.Background(), 30, memoryPriorityHigh) {
 			t.Error("unable to get memory")
 		}
 		close(memoryCompleted4)
@@ -125,7 +126,7 @@ func TestMemoryManager(t *testing.T) {
 	<-mm.blocking // wait until the goroutine is in the fifo.
 	memoryCompleted5 := make(chan struct{})
 	go func() {
-		if !mm.Request(1, memoryPriorityHigh) {
+		if !mm.Request(context.Background(), 1, memoryPriorityHigh) {
 			t.Error("unable to get memory")
 		}
 		close(memoryCompleted5)
@@ -240,7 +241,7 @@ func TestMemoryManager(t *testing.T) {
 	mm.Return(74) // There is still 1 memory unreturned.
 	memoryCompleted8 := make(chan struct{})
 	go func() {
-		if !mm.Request(250, memoryPriorityLow) {
+		if !mm.Request(context.Background(), 250, memoryPriorityLow) {
 			t.Error("unable to get memory")
 		}
 		close(memoryCompleted8)
@@ -248,13 +249,13 @@ func TestMemoryManager(t *testing.T) {
 	<-mm.blocking // wait until the goroutine is in the fifo.
 
 	// Do some priority requests.
-	if !mm.Request(10, memoryPriorityHigh) {
+	if !mm.Request(context.Background(), 10, memoryPriorityHigh) {
 		t.Error("unable to get 10 memory")
 	}
-	if !mm.Request(5, memoryPriorityHigh) {
+	if !mm.Request(context.Background(), 5, memoryPriorityHigh) {
 		t.Error("unable to get 10 memory")
 	}
-	if !mm.Request(20, memoryPriorityHigh) {
+	if !mm.Request(context.Background(), 20, memoryPriorityHigh) {
 		t.Error("unable to get 10 memory")
 	}
 	// Clean up.
@@ -267,12 +268,12 @@ func TestMemoryManager(t *testing.T) {
 
 	// Handle an edge case around awkwardly sized low priority memory requests.
 	// The low priority request will go through.
-	if !mm.Request(85, memoryPriorityLow) {
+	if !mm.Request(context.Background(), 85, memoryPriorityLow) {
 		t.Error("could not get memory")
 	}
 	memoryCompleted9 := make(chan struct{})
 	go func() {
-		if !mm.Request(20, memoryPriorityHigh) {
+		if !mm.Request(context.Background(), 20, memoryPriorityHigh) {
 			t.Error("unable to get memory")
 		}
 		close(memoryCompleted9)
@@ -300,14 +301,14 @@ func TestMemoryManager(t *testing.T) {
 	// priority memory that should starve out the low priority memory. The
 	// starvation detector should make sure that eventually, the low priority
 	// memory is able to make progress.
-	if !mm.Request(100, memoryPriorityHigh) {
+	if !mm.Request(context.Background(), 100, memoryPriorityHigh) {
 		t.Error("could not get memory through")
 	}
 	// Add 3 low priority requests each for 10 memory. All 3 should be unblocked
 	// by the starvation detector at the same time.
 	memoryCompleted10 := make(chan struct{})
 	go func() {
-		if !mm.Request(10, memoryPriorityLow) {
+		if !mm.Request(context.Background(), 10, memoryPriorityLow) {
 			t.Error("unable to get memory")
 		}
 		close(memoryCompleted10)
@@ -315,7 +316,7 @@ func TestMemoryManager(t *testing.T) {
 	<-mm.blocking
 	memoryCompleted11 := make(chan struct{})
 	go func() {
-		if !mm.Request(10, memoryPriorityLow) {
+		if !mm.Request(context.Background(), 10, memoryPriorityLow) {
 			t.Error("unable to get memory")
 		}
 		close(memoryCompleted11)
@@ -323,7 +324,7 @@ func TestMemoryManager(t *testing.T) {
 	<-mm.blocking
 	memoryCompleted12 := make(chan struct{})
 	go func() {
-		if !mm.Request(10, memoryPriorityLow) {
+		if !mm.Request(context.Background(), 10, memoryPriorityLow) {
 			t.Error("unable to get memory")
 		}
 		close(memoryCompleted12)
@@ -333,7 +334,7 @@ func TestMemoryManager(t *testing.T) {
 	// starvation detector much later than the previous 3.
 	memoryCompleted13 := make(chan struct{})
 	go func() {
-		if !mm.Request(30, memoryPriorityLow) {
+		if !mm.Request(context.Background(), 30, memoryPriorityLow) {
 			t.Error("unable to get memory")
 		}
 		close(memoryCompleted13)
@@ -345,7 +346,7 @@ func TestMemoryManager(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		memoryCompletedL := make(chan struct{})
 		go func() {
-			if !mm.Request(100, memoryPriorityHigh) {
+			if !mm.Request(context.Background(), 100, memoryPriorityHigh) {
 				t.Error("unable to get memory")
 			}
 			close(memoryCompletedL)
@@ -359,7 +360,7 @@ func TestMemoryManager(t *testing.T) {
 	// set of low priority items should go through.
 	memoryCompleted14 := make(chan struct{})
 	go func() {
-		if !mm.Request(100, memoryPriorityHigh) {
+		if !mm.Request(context.Background(), 100, memoryPriorityHigh) {
 			t.Error("unable to get memory")
 		}
 		close(memoryCompleted14)
@@ -384,7 +385,7 @@ func TestMemoryManager(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		memoryCompletedL := make(chan struct{})
 		go func() {
-			if !mm.Request(100, memoryPriorityHigh) {
+			if !mm.Request(context.Background(), 100, memoryPriorityHigh) {
 				t.Error("unable to get memory")
 			}
 			close(memoryCompletedL)
@@ -402,7 +403,7 @@ func TestMemoryManager(t *testing.T) {
 	}
 	memoryCompleted15 := make(chan struct{})
 	go func() {
-		if !mm.Request(100, memoryPriorityHigh) {
+		if !mm.Request(context.Background(), 100, memoryPriorityHigh) {
 			t.Error("unable to get memory")
 		}
 		close(memoryCompleted15)
@@ -450,7 +451,7 @@ func TestMemoryManagerConcurrent(t *testing.T) {
 			}
 
 			// Perform the request.
-			if !mm.Request(memNeeded, priority) {
+			if !mm.Request(context.Background(), memNeeded, priority) {
 				select {
 				case <-stopChan:
 					return
@@ -527,12 +528,12 @@ func TestMemoryManagerStatus(t *testing.T) {
 
 	// Request memory
 	normalRequest := uint64(100)
-	requested := mm.Request(normalRequest, memoryPriorityLow)
+	requested := mm.Request(context.Background(), normalRequest, memoryPriorityLow)
 	if !requested {
 		t.Error("Normal request should have succeeded")
 	}
 	priorityRequest := uint64(123)
-	requested = mm.Request(priorityRequest, memoryPriorityHigh)
+	requested = mm.Request(context.Background(), priorityRequest, memoryPriorityHigh)
 	if !requested {
 		t.Error("Priority request should have succeeded")
 	}
@@ -559,7 +560,7 @@ func TestMemoryManagerStatus(t *testing.T) {
 	mm.mu.Lock()
 	request := mm.available
 	mm.mu.Unlock()
-	requested = mm.Request(request, memoryPriorityHigh)
+	requested = mm.Request(context.Background(), request, memoryPriorityHigh)
 	if !requested {
 		t.Error("Priority request should have succeeded")
 	}
@@ -588,10 +589,10 @@ func TestMemoryManagerStatus(t *testing.T) {
 	// care about the calls returning since the block is after the request is
 	// added to the FIFO queue which is what the test is concerned with.
 	go func() {
-		_ = mm.Request(memoryDefault, memoryPriorityLow)
+		_ = mm.Request(context.Background(), memoryDefault, memoryPriorityLow)
 	}()
 	go func() {
-		_ = mm.Request(memoryDefault, memoryPriorityHigh)
+		_ = mm.Request(context.Background(), memoryDefault, memoryPriorityHigh)
 	}()
 
 	// Since the requests are being handled in a go routine, wait until each
@@ -627,5 +628,82 @@ func TestMemoryManagerStatus(t *testing.T) {
 		t.Log("Expected:", expectedStatus)
 		t.Log("Status:", ms)
 		t.Fatal("MemoryStatus not as expected")
+	}
+}
+
+// TestMemoryManagerRequestMemoryWithContext verifies the behaviour of
+// RequestWithContext method on the memory manager
+func TestMemoryManagerRequestMemoryWithContext(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create memory manager
+	stopChan := make(chan struct{})
+	mm := newMemoryManager(memoryDefault, memoryPriorityDefault, stopChan)
+
+	// Get the total available memory
+	mm.mu.Lock()
+	available := mm.available
+	mm.mu.Unlock()
+
+	// Request all available memory
+	requested := mm.Request(context.Background(), available, memoryPriorityHigh)
+	if !requested {
+		t.Fatal("Priority request should have succeeded")
+	}
+
+	// Validate that requesting more memory blocks
+	doneChan := make(chan struct{})
+	go func() {
+		mm.Request(context.Background(), 1, memoryPriorityHigh)
+		close(doneChan)
+	}()
+	select {
+	case <-doneChan:
+		t.Fatal("Priority request should have been blocking...")
+	case <-time.After(time.Second):
+	}
+
+	// Validate the current status
+	status := mm.callStatus()
+	if status.PriorityAvailable != 0 || status.PriorityRequested != 1 {
+		t.Fatal("unexpected")
+	}
+
+	// Return some memory, this should unblock the previously queued request
+	mm.Return(1)
+	select {
+	case <-time.After(time.Second):
+		t.Fatal("Request should have been unblocked now")
+	case <-doneChan:
+	}
+
+	// Validate the current status
+	status = mm.callStatus()
+	if status.PriorityAvailable != 0 || status.PriorityRequested != 0 {
+		t.Fatal("unexpected")
+	}
+
+	// Request some memory, this time pass a context that times out
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	requested = mm.Request(ctx, 10, memoryPriorityHigh)
+	if requested {
+		t.Fatal("Priority request should have timed out")
+	}
+
+	// Validate the current status
+	status = mm.callStatus()
+	if status.PriorityAvailable != 0 || status.PriorityRequested != 0 {
+		t.Fatal("unexpected")
+	}
+
+	// Return all available memory
+	mm.Return(available)
+	status = mm.callStatus()
+	if status.PriorityAvailable != available {
+		t.Fatal("unexpected")
 	}
 }
