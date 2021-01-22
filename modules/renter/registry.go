@@ -319,6 +319,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 	highestInvalidRevNum := uint64(0)
 	invalidRevNum := false
 
+	var respErrs error
 	for successfulResponses < MinUpdateRegistrySuccesses && workersLeft+successfulResponses >= MinUpdateRegistrySuccesses {
 		// Check deadline.
 		var resp *jobUpdateRegistryResponse
@@ -345,6 +346,7 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 				highestInvalidRevNum = resp.srv.Revision
 				invalidRevNum = true
 			}
+			respErrs = errors.Compose(respErrs, resp.staticErr)
 			continue
 		}
 
@@ -365,9 +367,11 @@ func (r *Renter) managedUpdateRegistry(ctx context.Context, spk types.SiaPublicK
 
 	// Check if we ran out of workers.
 	if successfulResponses == 0 {
+		r.log.Print("RegistryUpdate failed with 0 successful responses: ", err)
 		return errors.Compose(err, ErrRegistryUpdateNoSuccessfulUpdates)
 	}
 	if successfulResponses < MinUpdateRegistrySuccesses {
+		r.log.Printf("RegistryUpdate failed with %v < %v successful responses: %v", successfulResponses, MinUpdateRegistrySuccesses, err)
 		return errors.Compose(err, ErrRegistryUpdateInsufficientRedundancy)
 	}
 	return nil
