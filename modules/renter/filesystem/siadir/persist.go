@@ -353,6 +353,7 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	sd.metadata.AggregateNumStuckChunks = metadata.AggregateNumStuckChunks
 	sd.metadata.AggregateNumSubDirs = metadata.AggregateNumSubDirs
 	sd.metadata.AggregateRemoteHealth = metadata.AggregateRemoteHealth
+	sd.metadata.AggregateRepairSize = metadata.AggregateRepairSize
 	sd.metadata.AggregateSize = metadata.AggregateSize
 	sd.metadata.AggregateStuckHealth = metadata.AggregateStuckHealth
 
@@ -368,6 +369,7 @@ func (sd *SiaDir) updateMetadata(metadata Metadata) error {
 	sd.metadata.NumStuckChunks = metadata.NumStuckChunks
 	sd.metadata.NumSubDirs = metadata.NumSubDirs
 	sd.metadata.RemoteHealth = metadata.RemoteHealth
+	sd.metadata.RepairSize = metadata.RepairSize
 	sd.metadata.Size = metadata.Size
 	sd.metadata.StuckHealth = metadata.StuckHealth
 

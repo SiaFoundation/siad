@@ -747,7 +747,7 @@ func (r *Renter) managedUpdateFileMetadata(sf *filesystem.FileNode, offlineMap, 
 		return errors.AddContext(err, "WARN: Could not update cached redundancy")
 	}
 	// Update cached health values.
-	_, _, _, _, _ = sf.Health(offlineMap, goodForRenew)
+	_, _, _, _, _, _ = sf.Health(offlineMap, goodForRenew)
 	// Set the LastHealthCheckTime
 	sf.SetLastHealthCheckTime()
 	// Update the cached expiration of the siafile.

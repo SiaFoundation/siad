@@ -83,6 +83,10 @@ func equalBubbledAggregateMetadata(md1, md2 siadir.Metadata, delta time.Duration
 	if md1.AggregateRemoteHealth != md2.AggregateRemoteHealth {
 		return fmt.Errorf("AggregateRemoteHealth not equal, %v and %v", md1.AggregateRemoteHealth, md2.AggregateRemoteHealth)
 	}
+	// Check AggregateRepairSize
+	if md1.AggregateRepairSize != md2.AggregateRepairSize {
+		return fmt.Errorf("AggregateRepairSize not equal, %v and %v", md1.AggregateRepairSize, md2.AggregateRepairSize)
+	}
 	// Check AggregateSize
 	if md1.AggregateSize != md2.AggregateSize {
 		return fmt.Errorf("AggregateSize not equal, %v and %v", md1.AggregateSize, md2.AggregateSize)
@@ -143,6 +147,10 @@ func equalBubbledDirectoryMetadata(md1, md2 siadir.Metadata, delta time.Duration
 	if md1.RemoteHealth != md2.RemoteHealth {
 		return fmt.Errorf("RemoteHealth not equal, %v and %v", md1.RemoteHealth, md2.RemoteHealth)
 	}
+	// Check RepairSize
+	if md1.RepairSize != md2.RepairSize {
+		return fmt.Errorf("RepairSize not equal, %v and %v", md1.RepairSize, md2.RepairSize)
+	}
 	// Check Size
 	if md1.Size != md2.Size {
 		return fmt.Errorf("Size not equal, %v and %v", md1.Size, md2.Size)
@@ -174,6 +182,8 @@ func (rt *renterTester) openAndUpdateDir(siapath modules.SiaPath, metadata siadi
 	err = siadir.UpdateMetadata(metadata)
 	return errors.Compose(err, siadir.Close())
 }
+
+// TODO: Add test for repair size
 
 // TestBubbleHealth tests to make sure that the health of the most in need file
 // in a directory is bubbled up to the right levels and probes the supporting
@@ -400,7 +410,7 @@ func TestBubbleHealth(t *testing.T) {
 	// but no sub directories
 	rt.renter.managedUpdateRenterContractsAndUtilities()
 	offline, goodForRenew, _, _ := rt.renter.managedRenterContractsAndUtilities()
-	fileHealth, _, _, _, _ := f.Health(offline, goodForRenew)
+	fileHealth, _, _, _, _, _ := f.Health(offline, goodForRenew)
 	if fileHealth != 2 {
 		t.Fatalf("Expected heath to be 2, got %v", fileHealth)
 	}
@@ -1434,7 +1444,7 @@ func TestCalculateFileMetadata(t *testing.T) {
 	// Grab initial metadata values
 	rt.renter.managedUpdateRenterContractsAndUtilities()
 	offline, goodForRenew, _, _ := rt.renter.managedRenterContractsAndUtilities()
-	health, stuckHealth, _, _, numStuckChunks := sf.Health(offline, goodForRenew)
+	health, stuckHealth, _, _, numStuckChunks, repairBytes := sf.Health(offline, goodForRenew)
 	redundancy, _, err := sf.Redundancy(offline, goodForRenew)
 	if err != nil {
 		t.Fatal(err)
@@ -1464,6 +1474,9 @@ func TestCalculateFileMetadata(t *testing.T) {
 	}
 	if fileMetadata.Redundancy != redundancy {
 		t.Fatalf("redundancy incorrect, expected %v got %v", redundancy, fileMetadata.Redundancy)
+	}
+	if fileMetadata.RepairBytes != repairBytes {
+		t.Fatalf("reduRepairBytesncorrect, expected %v got %v", repairBytes, fileMetadata.RepairBytes)
 	}
 	if fileMetadata.Size != fileSize {
 		t.Fatalf("size incorrect, expected %v got %v", fileSize, fileMetadata.Size)

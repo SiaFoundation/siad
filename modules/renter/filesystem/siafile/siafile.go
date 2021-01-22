@@ -426,7 +426,7 @@ func (sf *SiaFile) AddPiece(pk types.SiaPublicKey, chunkIndex, pieceIndex uint64
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk or repair by upload streaming
-func (sf *SiaFile) chunkHealth(chunk chunk, offlineMap map[string]bool, goodForRenewMap map[string]bool) (h float64, uh float64, err error) {
+func (sf *SiaFile) chunkHealth(chunk chunk, offlineMap map[string]bool, goodForRenewMap map[string]bool) (h float64, uh float64, _ uint64, err error) {
 	// Handle returning health of complete partial chunk.
 	incomplete := sf.isIncompletePartialChunk(uint64(chunk.Index))
 	if cci, ok := sf.isIncludedPartialChunk(uint64(chunk.Index)); ok && !incomplete {
@@ -441,24 +441,29 @@ func (sf *SiaFile) chunkHealth(chunk chunk, offlineMap map[string]bool, goodForR
 	chunkHealth := 1 - (float64(int(goodPieces)-minPieces) / targetPieces)
 	// Handle health of incomplete partial chunk.
 	if sf.isIncompletePartialChunk(uint64(chunk.Index)) {
-		return chunkHealth, 0, nil // Partial chunk has full health if not yet included in combined chunk
+		return chunkHealth, 0, 0, nil // Partial chunk has full health if not yet included in combined chunk
 	}
 	// Sanity Check, if something went wrong, default to minimum health
 	if int(goodPieces) > numPieces || goodPieces < 0 {
 		build.Critical("unexpected number of goodPieces for chunkHealth")
 		goodPieces = 0
 	}
-	return chunkHealth, chunkHealth, nil
+	// Determine repairBytesRemaing
+	var repairBytes uint64
+	if uint64(numPieces) > goodPieces {
+		repairBytes = (uint64(numPieces) - goodPieces) * modules.SectorSize
+	}
+	return chunkHealth, chunkHealth, repairBytes, nil
 }
 
 // ChunkHealth returns the health of the chunk which is defined as the percent
 // of parity pieces remaining.
-func (sf *SiaFile) ChunkHealth(index int, offlineMap map[string]bool, goodForRenewMap map[string]bool) (float64, float64, error) {
+func (sf *SiaFile) ChunkHealth(index int, offlineMap map[string]bool, goodForRenewMap map[string]bool) (float64, float64, uint64, error) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	chunk, err := sf.chunk(index)
 	if err != nil {
-		return 0, 0, errors.AddContext(err, "failed to read chunk")
+		return 0, 0, 0, errors.AddContext(err, "failed to read chunk")
 	}
 	return sf.chunkHealth(chunk, offlineMap, goodForRenewMap)
 }
@@ -622,7 +627,7 @@ func (sf *SiaFile) Expiration(contracts map[string]modules.RenterContract) types
 //
 // health = 0 is full redundancy, health <= 1 is recoverable, health > 1 needs
 // to be repaired from disk
-func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool) (h float64, sh float64, uh float64, ush float64, nsc uint64) {
+func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool) (h float64, sh float64, uh float64, ush float64, nsc uint64, rbr uint64) {
 	numPieces := float64(sf.staticMetadata.staticErasureCode.NumPieces())
 	minPieces := float64(sf.staticMetadata.staticErasureCode.MinPieces())
 	worstHealth := 1 - ((0 - minPieces) / (numPieces - minPieces))
@@ -639,18 +644,20 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 	if sf.deleted {
 		// Don't return health information of a deleted file to prevent
 		// misrepresenting the health information of a directory
-		return 0, 0, 0, 0, 0
+		return 0, 0, 0, 0, 0, 0
 	}
 	// Check for Zero byte files
 	if sf.staticMetadata.FileSize == 0 {
 		// Return default health information for zero byte files to prevent
 		// misrepresenting the health information of a directory
-		return 0, 0, 0, 0, 0
+		return 0, 0, 0, 0, 0, 0
 	}
+
+	// Iterate over the chunks to gather the health information
 	var health, stuckHealth, userHealth, userStuckHealth float64
-	var numStuckChunks uint64
+	var numStuckChunks, repairBytesRemaing uint64
 	err := sf.iterateChunksReadonly(func(c chunk) error {
-		chunkHealth, userChunkHealth, err := sf.chunkHealth(c, offline, goodForRenew)
+		chunkHealth, userChunkHealth, chunkRepairBytesRemaining, err := sf.chunkHealth(c, offline, goodForRenew)
 		if err != nil {
 			return err
 		}
@@ -674,12 +681,16 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 				userHealth = userChunkHealth
 			}
 		}
+
+		// Determine the repairBytesRemaining
+		repairBytesRemaing += chunkRepairBytesRemaining
+
 		return nil
 	})
 	if err != nil {
 		err = fmt.Errorf("failed to iterate over chunks of file '%v': %v", sf.siaFilePath, err)
 		build.Critical(err)
-		return 0, 0, 0, 0, 0
+		return 0, 0, 0, 0, 0, 0
 	}
 
 	// Check if all chunks are stuck, if so then set health to max health to
@@ -705,7 +716,7 @@ func (sf *SiaFile) Health(offline map[string]bool, goodForRenew map[string]bool)
 		// metadata with the information read directly from the chunks
 		sf.staticMetadata.NumStuckChunks = numStuckChunks
 	}
-	return health, stuckHealth, userHealth, userStuckHealth, numStuckChunks
+	return health, stuckHealth, userHealth, userStuckHealth, numStuckChunks, repairBytesRemaing
 }
 
 // HostPublicKeys returns all the public keys of hosts the file has ever been

@@ -177,6 +177,7 @@ type (
 		NumStuckChunks      uint64
 		OnDisk              bool
 		Redundancy          float64
+		RepairBytes         uint64
 		Size                uint64
 		StuckHealth         float64
 		UID                 SiafileUID

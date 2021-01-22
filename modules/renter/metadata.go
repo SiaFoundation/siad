@@ -79,6 +79,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		AggregateNumStuckChunks:      uint64(0),
 		AggregateNumSubDirs:          uint64(0),
 		AggregateRemoteHealth:        siadir.DefaultDirHealth,
+		AggregateRepairSize:          uint64(0),
 		AggregateSize:                uint64(0),
 		AggregateStuckHealth:         siadir.DefaultDirHealth,
 
@@ -93,6 +94,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		NumStuckChunks:      uint64(0),
 		NumSubDirs:          uint64(0),
 		RemoteHealth:        siadir.DefaultDirHealth,
+		RepairSize:          uint64(0),
 		Size:                uint64(0),
 		StuckHealth:         siadir.DefaultDirHealth,
 
@@ -187,6 +189,10 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 				fileMetadata.LastHealthCheckTime = time.Now()
 			}
 
+			// Update repair fields
+			metadata.AggregateRepairSize += fileMetadata.RepairBytes
+			metadata.RepairSize += fileMetadata.RepairBytes
+
 			// Record Values that compare against sub directories
 			aggregateHealth = fileMetadata.Health
 			aggregateStuckHealth = fileMetadata.StuckHealth
@@ -278,6 +284,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			metadata.AggregateNumFiles += dirMetadata.AggregateNumFiles
 			metadata.AggregateNumStuckChunks += dirMetadata.AggregateNumStuckChunks
 			metadata.AggregateNumSubDirs += dirMetadata.AggregateNumSubDirs
+			metadata.AggregateRepairSize += dirMetadata.AggregateRepairSize
 			metadata.AggregateSize += dirMetadata.AggregateSize
 
 			// Update aggregate Skynet fields
@@ -343,7 +350,7 @@ func (r *Renter) managedCalculateFileMetadata(siaPath modules.SiaPath, hostOffli
 	}()
 
 	// Calculate file health
-	health, stuckHealth, _, _, numStuckChunks := sf.Health(hostOfflineMap, hostGoodForRenewMap)
+	health, stuckHealth, _, _, numStuckChunks, repairBytes := sf.Health(hostOfflineMap, hostGoodForRenewMap)
 
 	// Calculate file Redundancy and check if local file is missing and
 	// redundancy is less than one
@@ -371,6 +378,7 @@ func (r *Renter) managedCalculateFileMetadata(siaPath modules.SiaPath, hostOffli
 			NumStuckChunks:      numStuckChunks,
 			OnDisk:              onDisk,
 			Redundancy:          redundancy,
+			RepairBytes:         repairBytes,
 			Size:                sf.Size(),
 			StuckHealth:         stuckHealth,
 			UID:                 sf.UID(),

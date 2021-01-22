@@ -5396,3 +5396,85 @@ func TestRenterClean(t *testing.T) {
 	// Second test should remove the now unrecoverable Skyfile
 	cleanAndVerify(1, 0)
 }
+
+// TestRenterRepairSize test the RepairSize field of the metadata
+func TestRenterRepairSize(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	t.Parallel()
+
+	// Create a group for testing
+	groupParams := siatest.GroupParams{
+		Hosts:   4,
+		Miners:  1,
+		Renters: 1,
+	}
+	testDir := renterTestDir(t.Name())
+	tg, err := siatest.NewGroupFromTemplate(testDir, groupParams)
+	if err != nil {
+		t.Fatal("Failed to create group:", err)
+	}
+	defer func() {
+		if err := tg.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	// Grab renter
+	r := tg.Renters()[0]
+
+	// Define helper
+	checkRepairSize := func(aggregateExpected, expected uint64) error {
+		return build.Retry(100, 100*time.Millisecond, func() error {
+			dis, err := r.RenterDirRootGet(modules.RootSiaPath())
+			if err != nil {
+				return err
+			}
+			var err1, err2 error
+			dir := dis.Directories[0]
+			if dir.AggregateRepairSize != aggregateExpected {
+				err1 = fmt.Errorf("AggregateRepairSize should be %v but was %v", aggregateExpected, dir.AggregateRepairSize)
+			}
+			if dir.RepairSize != expected {
+				err2 = fmt.Errorf("RepairSize should be %v but was %v", expected, dir.RepairSize)
+			}
+			return errors.Compose(err1, err2)
+		})
+	}
+
+	// Renter root directory should show 0 repair bytes needed
+	if err := checkRepairSize(0, 0); err != nil {
+		t.Log("Initial Check Failed")
+		t.Error(err)
+	}
+
+	// Upload a file
+	dp := 1
+	pp := len(tg.Hosts()) - dp
+	_, _, err = r.UploadNewFileBlocking(100, uint64(dp), uint64(pp), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Renter root directory should show 0 repair bytes needed
+	if err := checkRepairSize(0, 0); err != nil {
+		t.Log("After Upload Check Failed")
+		t.Error(err)
+	}
+
+	// Take down hosts one by one and verify the repair values are dropping.
+	hosts := tg.Hosts()
+	for i, host := range hosts {
+		// Stop the host
+		if err := tg.StopNode(host); err != nil {
+			t.Fatal(err)
+		}
+		// Check that the aggregate repair size increases
+		expected := uint64(i+1) * modules.SectorSize
+		if err := checkRepairSize(expected, 0); err != nil {
+			t.Log("Host loop failed", i)
+			t.Error(err)
+		}
+	}
+}
