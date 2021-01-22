@@ -520,46 +520,25 @@ func testSkynetEncryption(t *testing.T, tg *siatest.TestGroup, skykeyType skykey
 
 	// Create some data to upload as a skyfile.
 	data := fastrand.Bytes(100 + siatest.Fuzz())
-	// Need it to be a reader.
-	reader := bytes.NewReader(data)
 	// Call the upload skyfile client call.
 	filename := "testEncryptSmall-" + skykeyType.ToString()
-	uploadSiaPath, err := modules.NewSiaPath(filename)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sup := modules.SkyfileUploadParameters{
-		SiaPath:             uploadSiaPath,
-		Force:               false,
-		Root:                false,
-		BaseChunkRedundancy: 2,
-		Filename:            filename,
-		Mode:                0640, // Intentionally does not match any defaults.
-		Reader:              reader,
-		SkykeyName:          encKeyName,
-	}
-
-	_, _, err = r.SkynetSkyfilePost(sup)
+	_, _, _, err := r.UploadNewEncryptedSkyfileBlocking(filename, data, encKeyName, false)
 	if err == nil {
 		t.Fatal("Expected error for using unknown key")
 	}
 
 	// Try again after adding a key.
-	// Note we must create a new reader in the params!
-	sup.Reader = bytes.NewReader(data)
-
 	_, err = r.SkykeyCreateKeyPost(encKeyName, skykeyType)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	skylink, sfMeta, err := r.SkynetSkyfilePost(sup)
+	skylink, _, _, err := r.UploadNewEncryptedSkyfileBlocking(filename, data, encKeyName, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Try to download the file behind the skylink.
-	fetchedData, metadata, err := r.SkynetSkylinkGet(sfMeta.Skylink)
+	fetchedData, metadata, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -573,12 +552,6 @@ func testSkynetEncryption(t *testing.T, tg *siatest.TestGroup, skykeyType skykey
 	}
 	if metadata.Filename != filename {
 		t.Error("bad filename")
-	}
-
-	if sfMeta.Skylink != skylink {
-		t.Log(sfMeta.Skylink)
-		t.Log(skylink)
-		t.Fatal("Expected metadata skylink to match returned skylink")
 	}
 
 	// Pin the encrypted Skyfile.
@@ -622,43 +595,23 @@ func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup, skykeyTy
 
 	// Create some data to upload as a skyfile.
 	data := fastrand.Bytes(5 * int(modules.SectorSize))
-	// Need it to be a reader.
-	reader := bytes.NewReader(data)
 	// Call the upload skyfile client call.
 	filename := "testEncryptLarge-" + skykeyType.ToString()
-	uploadSiaPath, err := modules.NewSiaPath(filename)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sup := modules.SkyfileUploadParameters{
-		SiaPath:             uploadSiaPath,
-		Force:               false,
-		Root:                false,
-		BaseChunkRedundancy: 2,
-		Filename:            filename,
-		Mode:                0640, // Intentionally does not match any defaults.
-		Reader:              reader,
-		SkykeyName:          encKeyName,
-	}
 
-	_, err = r.SkykeyCreateKeyPost(encKeyName, skykeyType)
+	// Add Skykey to renter
+	_, err := r.SkykeyCreateKeyPost(encKeyName, skykeyType)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	skylink, sfMeta, err := r.SkynetSkyfilePost(sup)
+	// Upload file
+	skylink, _, _, err := r.UploadNewEncryptedSkyfileBlocking(filename, data, encKeyName, false)
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	if sfMeta.Skylink != skylink {
-		t.Log(sfMeta.Skylink)
-		t.Log(skylink)
-		t.Fatal("Expected metadata skylink to match returned skylink")
 	}
 
 	// Try to download the file behind the skylink.
-	fetchedData, metadata, err := r.SkynetSkylinkGet(sfMeta.Skylink)
+	fetchedData, metadata, err := r.SkynetSkylinkGet(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
