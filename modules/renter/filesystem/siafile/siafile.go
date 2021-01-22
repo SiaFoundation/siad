@@ -299,7 +299,7 @@ func (sf *SiaFile) SetFileSize(fileSize uint64) (err error) {
 		if sf.numChunks > 0 {
 			// Last fullChunk is replaced by a partial chunk so we remove it.
 			if err := sf.removeLastChunk(); err != nil {
-				return (err)
+				return err
 			}
 		}
 		sf.staticMetadata.HasPartialChunk = true

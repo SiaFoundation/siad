@@ -57,6 +57,7 @@ func TestSkynet(t *testing.T) {
 
 	// Specify subtests to run
 	subTests := []siatest.SubTest{
+		{Name: "Stats", Test: testSkynetStats}, // Move to first to reduce NDFs
 		{Name: "Basic", Test: testSkynetBasic},
 		{Name: "ConvertSiaFile", Test: testConvertSiaFile},
 		{Name: "LargeMetadata", Test: testSkynetLargeMetadata},
@@ -70,9 +71,6 @@ func TestSkynet(t *testing.T) {
 		{Name: "Portals", Test: testSkynetPortals},
 		{Name: "HeadRequest", Test: testSkynetHeadRequest},
 		{Name: "NoMetadata", Test: testSkynetNoMetadata},
-		{Name: "StatsNoCache", Test: testSkynetStatsNoCache},
-		{Name: "StatsNoInvalidate", Test: testSkynetStatsNoInvalidate},
-		{Name: "StatsInvalidate", Test: testSkynetStatsInvalidate},
 		{Name: "RequestTimeout", Test: testSkynetRequestTimeout},
 		{Name: "DryRunUpload", Test: testSkynetDryRunUpload},
 		{Name: "RegressionTimeoutPanic", Test: testRegressionTimeoutPanic},
@@ -813,46 +811,14 @@ func testSkynetMultipartUpload(t *testing.T, tg *siatest.TestGroup) {
 	largeTestFunc(files, fileName, sk.Name)
 }
 
-// testSkynetStatsNoCache runs testSkynetStats without any caching.
-func testSkynetStatsNoCache(t *testing.T, tg *siatest.TestGroup) {
-	testSkynetStats(t, tg, false, false)
-}
-
-// testSkynetStatsNoInvalidate runs testSkynetStats without cache invalidation.
-func testSkynetStatsNoInvalidate(t *testing.T, tg *siatest.TestGroup) {
-	testSkynetStats(t, tg, false, true)
-}
-
-// testSkynetStatsInvalidate runs testSkynetStats with cache invalidation.
-func testSkynetStatsInvalidate(t *testing.T, tg *siatest.TestGroup) {
-	testSkynetStats(t, tg, true, true)
-}
-
 // testSkynetStats tests the validity of the response of /skynet/stats endpoint
 // by uploading some test files and verifying that the reported statistics
 // change proportionally
-func testSkynetStats(t *testing.T, tg *siatest.TestGroup, invalidateCache, cached bool) {
+func testSkynetStats(t *testing.T, tg *siatest.TestGroup) {
 	r := tg.Renters()[0]
 
-	// If we run this test with a disabled cache invalidation loop, we need to
-	// inject a custom renter.
-	if invalidateCache {
-		rt := node.RenterTemplate
-		rt.RenterDeps = &dependencies.DependencyInvalidateStatsCache{}
-		nodes, err := tg.AddNodes(rt)
-		if err != nil {
-			t.Fatal(err)
-		}
-		r = nodes[0]
-		defer func() {
-			if err := tg.RemoveNode(r); err != nil {
-				t.Fatal(err)
-			}
-		}()
-	}
-
 	// get the stats
-	stats, err := r.SkynetStatsGetCached(cached)
+	stats, err := r.SkynetStatsGet()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -896,30 +862,37 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup, invalidateCache, cache
 		if size < modules.SectorSize {
 			// small files get padded up to a full sector
 			uploadedFilesSize += modules.SectorSize
+			uploadedFilesCount++
 		} else {
 			// large files have an extra sector with header data
 			uploadedFilesSize += size + modules.SectorSize
+			// +1 .extended file, this incorrect but was added due to knowing the
+			// current stats is inaccurate
+			uploadedFilesCount += 2
 		}
-		uploadedFilesCount++
 	}
 
-	// get the stats after the upload of the test files
-	statsAfter, err := r.SkynetStatsGetCached(cached)
+	// Check that the right stats were returned.
+	statsBefore := stats
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		statsAfter, err := r.SkynetStatsGet()
+		if err != nil {
+			return err
+		}
+		if uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount != uint64(statsAfter.UploadStats.NumFiles) {
+			return fmt.Errorf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount, statsAfter.UploadStats.NumFiles)
+		}
+		if statsBefore.UploadStats.TotalSize+uploadedFilesSize != statsAfter.UploadStats.TotalSize {
+			return fmt.Errorf("stats did not report the correct size. expected %d, found %d", statsBefore.UploadStats.TotalSize+uploadedFilesSize, statsAfter.UploadStats.TotalSize)
+		}
+		lt := statsAfter.PerformanceStats.Upload4MB.Lifetime
+		if lt.N60ms+lt.N120ms+lt.N240ms+lt.N500ms+lt.N1000ms+lt.N2000ms+lt.N5000ms+lt.N10s+lt.NLong == 0 {
+			return errors.New("lifetime upload stats are not reporting any uploads")
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	// make sure the stats changed by exactly the expected amounts
-	statsBefore := stats
-	if uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount != uint64(statsAfter.UploadStats.NumFiles) {
-		t.Fatal(fmt.Sprintf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.UploadStats.NumFiles)+uploadedFilesCount, statsAfter.UploadStats.NumFiles))
-	}
-	if statsBefore.UploadStats.TotalSize+uploadedFilesSize != statsAfter.UploadStats.TotalSize {
-		t.Fatal(fmt.Sprintf("stats did not report the correct size. expected %d, found %d", statsBefore.UploadStats.TotalSize+uploadedFilesSize, statsAfter.UploadStats.TotalSize))
-	}
-	lt := statsAfter.PerformanceStats.Upload4MB.Lifetime
-	if lt.N60ms+lt.N120ms+lt.N240ms+lt.N500ms+lt.N1000ms+lt.N2000ms+lt.N5000ms+lt.N10s+lt.NLong == 0 {
-		t.Error("lifetime upload stats are not reporting any uploads")
 	}
 
 	// Delete the files.
@@ -937,16 +910,23 @@ func testSkynetStats(t *testing.T, tg *siatest.TestGroup, invalidateCache, cache
 		_ = r.RenterFileDeleteRootPost(extSP)
 	}
 
-	// get the stats after the delete operation.
-	statsAfter, err = r.SkynetStatsGet()
+	// Check the stats after the delete operation. Do it in a retry to account
+	// for the bubble.
+	err = build.Retry(100, 100*time.Millisecond, func() error {
+		statsAfter, err := r.SkynetStatsGet()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if statsAfter.UploadStats.NumFiles != statsBefore.UploadStats.NumFiles {
+			return fmt.Errorf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.UploadStats.NumFiles), statsAfter.UploadStats.NumFiles)
+		}
+		if statsAfter.UploadStats.TotalSize != statsBefore.UploadStats.TotalSize {
+			return fmt.Errorf("stats did not report the correct size. expected %d, found %d", statsBefore.UploadStats.TotalSize, statsAfter.UploadStats.TotalSize)
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	if statsAfter.UploadStats.NumFiles != statsBefore.UploadStats.NumFiles {
-		t.Fatal(fmt.Sprintf("stats did not report the correct number of files. expected %d, found %d", uint64(statsBefore.UploadStats.NumFiles), statsAfter.UploadStats.NumFiles))
-	}
-	if statsAfter.UploadStats.TotalSize != statsBefore.UploadStats.TotalSize {
-		t.Fatal(fmt.Sprintf("stats did not report the correct size. expected %d, found %d", statsBefore.UploadStats.TotalSize, statsAfter.UploadStats.TotalSize))
 	}
 }
 

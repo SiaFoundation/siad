@@ -628,14 +628,6 @@ func (c *Client) SkynetStatsGet() (stats api.SkynetStatsGET, err error) {
 	return
 }
 
-// SkynetStatsGetCached requests the /skynet/stats Get endpoint
-func (c *Client) SkynetStatsGetCached(cached bool) (stats api.SkynetStatsGET, err error) {
-	values := url.Values{}
-	values.Set("cached", fmt.Sprint(cached))
-	err = c.get("/skynet/stats?"+values.Encode(), &stats)
-	return
-}
-
 // SkykeyGetByName requests the /skynet/skykey Get endpoint using the key name.
 func (c *Client) SkykeyGetByName(name string) (skykey.Skykey, error) {
 	values := url.Values{}
