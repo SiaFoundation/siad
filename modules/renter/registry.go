@@ -79,14 +79,6 @@ var (
 // response. Otherwise the response with the highest revision number will be
 // used.
 func (r *Renter) ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout time.Duration) (modules.SignedRegistryValue, error) {
-	// Block until there is memory available, and then ensure the memory gets
-	// returned.
-	// Since registry entries are very small we use a fairly generous multiple.
-	if !r.memoryManager.Request(readRegistryMemory, memoryPriorityHigh) {
-		return modules.SignedRegistryValue{}, errors.New("renter shut down before memory could be allocated for the project")
-	}
-	defer r.memoryManager.Return(readRegistryMemory)
-
 	// Create a context. If the timeout is greater than zero, have the context
 	// expire when the timeout triggers.
 	ctx := r.tg.StopCtx()
@@ -95,6 +87,14 @@ func (r *Renter) ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout
 		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
 		defer cancel()
 	}
+
+	// Block until there is memory available, and then ensure the memory gets
+	// returned.
+	// Since registry entries are very small we use a fairly generous multiple.
+	if !r.memoryManager.Request(ctx, readRegistryMemory, memoryPriorityHigh) {
+		return modules.SignedRegistryValue{}, errors.New("renter shut down before memory could be allocated for the project")
+	}
+	defer r.memoryManager.Return(readRegistryMemory)
 
 	// Start the ReadRegistry jobs.
 	srv, err := r.managedReadRegistry(ctx, spk, tweak)
@@ -107,14 +107,6 @@ func (r *Renter) ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout
 // UpdateRegistry updates the registries on all workers with the given
 // registry value.
 func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegistryValue, timeout time.Duration) error {
-	// Block until there is memory available, and then ensure the memory gets
-	// returned.
-	// Since registry entries are very small we use a fairly generous multiple.
-	if !r.memoryManager.Request(updateRegistryMemory, memoryPriorityHigh) {
-		return errors.New("renter shut down before memory could be allocated for the project")
-	}
-	defer r.memoryManager.Return(updateRegistryMemory)
-
 	// Create a context. If the timeout is greater than zero, have the context
 	// expire when the timeout triggers.
 	ctx := r.tg.StopCtx()
@@ -123,6 +115,14 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 		ctx, cancel = context.WithTimeout(r.tg.StopCtx(), timeout)
 		defer cancel()
 	}
+
+	// Block until there is memory available, and then ensure the memory gets
+	// returned.
+	// Since registry entries are very small we use a fairly generous multiple.
+	if !r.memoryManager.Request(ctx, updateRegistryMemory, memoryPriorityHigh) {
+		return errors.New("renter shut down before memory could be allocated for the project")
+	}
+	defer r.memoryManager.Return(updateRegistryMemory)
 
 	// Start the UpdateRegistry jobs.
 	err := r.managedUpdateRegistry(ctx, spk, srv)
