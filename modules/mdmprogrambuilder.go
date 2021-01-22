@@ -215,6 +215,35 @@ func (pb *ProgramBuilder) AddUpdateRegistryInstruction(spk types.SiaPublicKey, r
 	return nil
 }
 
+// V154AddReadRegistryInstruction adds an ReadRegistry instruction to the
+// program for pre 155 hosts.
+func (pb *ProgramBuilder) V154AddReadRegistryInstruction(spk types.SiaPublicKey, tweak crypto.Hash) (types.Currency, error) {
+	// Marshal pubKey.
+	pk := encoding.Marshal(spk)
+	// Compute the argument offsets.
+	pubKeyOff := uint64(pb.programData.Len())
+	pubKeyLen := uint64(len(pk))
+	tweakOff := pubKeyOff + pubKeyLen
+	// Extend the programData.
+	_, err1 := pb.programData.Write(pk)
+	_, err2 := pb.programData.Write(tweak[:])
+	if err := errors.Compose(err1, err2); err != nil {
+		return types.ZeroCurrency, errors.AddContext(err, "AddReadRegistryInstruction: failed to extend programData")
+	}
+	// Create the instruction.
+	i := NewReadRegistryInstruction(pubKeyOff, pubKeyLen, tweakOff)
+	// Append instruction
+	pb.program = append(pb.program, i)
+	// Read cost, collateral and memory usage.
+	collateral := MDMReadRegistryCollateral()
+	cost := V154MDMReadRegistryCost(pb.staticPT)
+	refund := types.ZeroCurrency
+	memory := MDMReadRegistryMemory()
+	time := uint64(MDMTimeReadRegistry)
+	pb.addInstruction(collateral, cost, refund, memory, time)
+	return refund, nil
+}
+
 // AddReadRegistryInstruction adds an ReadRegistry instruction to the program.
 func (pb *ProgramBuilder) AddReadRegistryInstruction(spk types.SiaPublicKey, tweak crypto.Hash) (types.Currency, error) {
 	// Marshal pubKey.
