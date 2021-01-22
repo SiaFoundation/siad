@@ -333,14 +333,14 @@ have a reasonable number (>30) of hosts in your hostdb.`,
 		Use:   "rrj",
 		Short: "View the workers' read registry jobs",
 		Long:  "View detailed information of the workers' read registry jobs",
-		Run:   wrap(renterworkersuploadscmd),
+		Run:   wrap(renterworkersreadregistrycmd),
 	}
 
 	renterWorkersUpdateRegistryCmd = &cobra.Command{
 		Use:   "urj",
 		Short: "View the workers' update registry jobs",
 		Long:  "View detailed information of the workers' update registry jobs",
-		Run:   wrap(renterworkersuploadscmd),
+		Run:   wrap(renterworkersupdateregistrycmd),
 	}
 
 	renterHealthSummaryCmd = &cobra.Command{
