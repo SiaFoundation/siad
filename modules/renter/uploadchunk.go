@@ -83,6 +83,11 @@ type unfinishedUploadChunk struct {
 	chunkAvailableTime       time.Time
 	chunkCompleteTime        time.Time
 
+	// Channels used to signal the progress of the chunk.
+	staticWorkDistributedChan chan struct{} // used to signal that the chunk has been distributed to workers.
+	staticAvailableChan       chan struct{} // used to signal that the chunk is available on the Sia network. Error needs to be checked.
+	staticUploadCompletedChan chan struct{} // used to signal that the chunk has finished uploading to the Sia network. Error needs to be checked.
+
 	// Worker synchronization fields. The mutex only protects these fields.
 	//
 	// When a worker passes over a piece for upload to go on standby:
@@ -110,8 +115,6 @@ type unfinishedUploadChunk struct {
 	//	+ the worker should increment the number of pieces completed
 	//	+ the worker should decrement the number of pieces registered
 	//	+ the worker should release the memory for the completed piece
-	staticAvailableChan       chan struct{} // used to signal to other processes that the chunk is available on the Sia network. Error needs to be checked.
-	staticUploadCompletedChan chan struct{} // used to signal to other processes that the chunk has completely finished uploading to the Sia network. Error needs to be checked.
 	err                       error
 	mu                        sync.Mutex
 	pieceUsage                []bool              // 'true' if a piece is either uploaded, or a worker is attempting to upload that piece.
@@ -212,9 +215,22 @@ func readDataPieces(r io.Reader, ec modules.ErasureCoder, pieceSize uint64) ([][
 	return dataPieces, total, nil
 }
 
-// managedDistributeChunkToWorkers will take a chunk with fully prepared
-// physical data and distribute it to the worker pool.
-func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
+// managedQueueChunkDistribution will take a chunk with fully prepared physical
+// data and queue it to be distributed to the worker pool.
+func (r *Renter) managedQueueChunkDistribution(uc *unfinishedUploadChunk) {
+	r.uploadChunkDistributionQueue.addUC(uc)
+
+	// TODO: This function can be called in parallel by multiple uploads (stream
+	// and repair) that all want their data to be distributed. So we need to
+	// insert a priority queue here that will accept the chunks and then form
+	// some sort of priority line, deciding which chunks get distributed first.
+	//
+	// TODO: After that, we need to write code to scan through the worker pool
+	// and determine whether there is space for a new chunk. If not, we need
+	// some sort of block-and-wake strategy. Naively, sleeping. More
+	// intelligently, we could have the workers wake this thread by dropping a
+	// signal down a global channel in the renter.
+
 	// Give the chunk to each worker, marking the number of workers that have
 	// received the chunk. Filter through the workers, ignoring any that are not
 	// good for upload, and ignoring any that are on upload cooldown.
@@ -431,7 +447,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	}
 
 	// Distribute the chunk to the workers.
-	r.managedDistributeChunkToWorkers(chunk)
+	r.managedQueueChunkDistribution(chunk)
 }
 
 // staticEncryptAndCheckIntegrity will run through the pieces that are
