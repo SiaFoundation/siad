@@ -2,6 +2,10 @@ package renter
 
 // TODO: Shift all arrays to lists so that we aren't abusing memory so much.
 
+import (
+	"sync"
+)
+
 // uploadchunkdistributionqueue.go creates a queue for distributing upload
 // chunks to workers. The queue has two lanes, one for priority upload work and
 // one for low priority upload work. Priority upload work always goes first if
@@ -38,11 +42,19 @@ const (
 type uploadChunkDistributionQueue struct {
 	processThreadRunning bool
 
-	priorityBuildup uint64
-	priorityLane []*unfinishedUploadChunk
+	priorityBuildup float64
+	priorityLane    []*unfinishedUploadChunk
 	lowPriorityLane []*unfinishedUploadChunk
 
-	mu sync.Mutex
+	mu           sync.Mutex
+	staticRenter *Renter
+}
+
+// newUploadChunkDistributionQueue will initialize a ucdq for the renter.
+func newUploadChunkDistributionQueue(r *Renter) *uploadChunkDistributionQueue {
+	return &uploadChunkDistributionQueue{
+		staticRenter: r,
+	}
 }
 
 // addUC will add an unfinished upload chunk to the queue. The chunk will be put
@@ -67,13 +79,13 @@ func (ucdq *uploadChunkDistributionQueue) addUC(uc *unfinishedUploadChunk) {
 	// low priority chunks will have to wait a long time even if they get
 	// bumped.
 	ucdq.priorityLane = append(ucdq.priorityLane, uc)
-	ucdq.priorityBuildup += lowPriorityMinThroughput * uc.memoryNeeded
+	ucdq.priorityBuildup += lowPriorityMinThroughput * float64(uc.memoryNeeded)
 
 	// Add items from the low priority lane until there is no more buildup.
-	for len(lowPriorityLane) > 0 && ucdq.priorityBuildup > lowPriorityLane[0].memoryNeeded {
-		udcdq.priorityBuildup -= lowPriorityLane[0].memoryNeeded
+	for len(ucdq.lowPriorityLane) > 0 && ucdq.priorityBuildup > float64(ucdq.lowPriorityLane[0].memoryNeeded) {
+		ucdq.priorityBuildup -= float64(ucdq.lowPriorityLane[0].memoryNeeded)
 		ucdq.priorityLane = append(ucdq.priorityLane, uc)
-		lowPriorityLane = lowPriorityLane[1:]
+		ucdq.lowPriorityLane = ucdq.lowPriorityLane[1:]
 	}
 
 	// Check if there is a thread running to process the queue.
@@ -82,53 +94,48 @@ func (ucdq *uploadChunkDistributionQueue) addUC(uc *unfinishedUploadChunk) {
 	}
 }
 
-// threadedProcessQueue is a thread that runs and distributes chunks from the
-// queue to workers. It ensures that work is being distributed evenly among
-// workers, and that work is not being distributed if workers are already busy,
-// and that no work is being distributed to workers that are overloaded.
+// threadedProcessQueue serializes the processing of chunks in the distribution
+// queue. If there are priority chunks, it'll handle those first,and then if
+// there are no chunks in the priority lane it'll handle things in the non
+// priority lane. Each lane is treated like a FIFO.
 //
-// 
+// When de-queuing, if the priority lane is empty and chunks are being pulled
+// out of the non-priority lane, the priority buildup can be reset because there
+// is no starvation happening of low priority jobs.
 func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 	for {
 		// Extract the next item in the queue.
 		ucdq.mu.Lock()
 		// First check for the exit condition - the queue is empty. While
 		// holding the lock, release the process bool and then exit.
-		if len(priorityLane) == 0 && len(lowPriorityLane) == 0 {
-			processThreadRunning = false
+		if len(ucdq.priorityLane) == 0 && len(ucdq.lowPriorityLane) == 0 {
+			ucdq.processThreadRunning = false
 			ucdq.mu.Unlock()
 			return
 		}
 		// At least one uc exists in the queue. Prefer to grab the priority
 		// one, if there is no priority one grab the low priority one.
-		var nextUUC *unfinishedUploadChunk
-		if len(priorityLane) > 0 {
-			nextUUC = priorityLane[0]
-			priorityLane = priorityLane[1:]
+		var nextUC *unfinishedUploadChunk
+		if len(ucdq.priorityLane) > 0 {
+			nextUC = ucdq.priorityLane[0]
+			ucdq.priorityLane = ucdq.priorityLane[1:]
 		} else {
-			nextUUC = lowPriorityLane[0]
-			lowPriorityLane = lowPriorityLane[1:]
+			nextUC = ucdq.lowPriorityLane[0]
+			ucdq.lowPriorityLane = ucdq.lowPriorityLane[1:]
+			ucdq.priorityBuildup = 0
 		}
 		ucdq.mu.Unlock()
 
 		// While not holding the lock but still blocking, pass the chunk off to
 		// the thread that will distribute the chunk to workers.
-		ucdq.staticRenter.managedDistributeChunkToWorkers(uc)
+		ucdq.staticRenter.managedDistributeChunkToWorkers(nextUC)
 	}
 }
 
+// managedDistributeChunkToWorkers is a function which will block until workers
+// are ready to perform upload jobs, and then will distribute the input chunk to
+// the workers
 func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
-	// TODO: This function can be called in parallel by multiple uploads (stream
-	// and repair) that all want their data to be distributed. So we need to
-	// insert a priority queue here that will accept the chunks and then form
-	// some sort of priority line, deciding which chunks get distributed first.
-	//
-	// TODO: After that, we need to write code to scan through the worker pool
-	// and determine whether there is space for a new chunk. If not, we need
-	// some sort of block-and-wake strategy. Naively, sleeping. More
-	// intelligently, we could have the workers wake this thread by dropping a
-	// signal down a global channel in the renter.
-
 	// Give the chunk to each worker, marking the number of workers that have
 	// received the chunk. Filter through the workers, ignoring any that are not
 	// good for upload, and ignoring any that are on upload cooldown.
@@ -140,6 +147,7 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 			jobsDistributed++
 		}
 	}
+	close(uc.staticWorkDistributedChan)
 
 	uc.managedUpdateDistributionTime()
 	r.repairLog.Printf("Distributed chunk %v of %s to %v workers.", uc.staticIndex, uc.staticSiaPath, jobsDistributed)

@@ -115,15 +115,15 @@ type unfinishedUploadChunk struct {
 	//	+ the worker should increment the number of pieces completed
 	//	+ the worker should decrement the number of pieces registered
 	//	+ the worker should release the memory for the completed piece
-	err                       error
-	mu                        sync.Mutex
-	pieceUsage                []bool              // 'true' if a piece is either uploaded, or a worker is attempting to upload that piece.
-	piecesCompleted           int                 // number of pieces that have been fully uploaded.
-	piecesRegistered          int                 // number of pieces that are being uploaded, but aren't finished yet (may fail).
-	released                  bool                // whether this chunk has been released from the active chunks set.
-	unusedHosts               map[string]struct{} // hosts that aren't yet storing any pieces or performing any work.
-	workersRemaining          int                 // number of inactive workers still able to upload a piece.
-	workersStandby            []*worker           // workers that can be used if other workers fail.
+	err              error
+	mu               sync.Mutex
+	pieceUsage       []bool              // 'true' if a piece is either uploaded, or a worker is attempting to upload that piece.
+	piecesCompleted  int                 // number of pieces that have been fully uploaded.
+	piecesRegistered int                 // number of pieces that are being uploaded, but aren't finished yet (may fail).
+	released         bool                // whether this chunk has been released from the active chunks set.
+	unusedHosts      map[string]struct{} // hosts that aren't yet storing any pieces or performing any work.
+	workersRemaining int                 // number of inactive workers still able to upload a piece.
+	workersStandby   []*worker           // workers that can be used if other workers fail.
 
 	cancelMU sync.Mutex     // cancelMU needs to be held when adding to cancelWG and reading/writing canceled.
 	canceled bool           // cancel the work on this chunk.
@@ -213,39 +213,6 @@ func readDataPieces(r io.Reader, ec modules.ErasureCoder, pieceSize uint64) ([][
 		}
 	}
 	return dataPieces, total, nil
-}
-
-// managedQueueChunkDistribution will take a chunk with fully prepared physical
-// data and queue it to be distributed to the worker pool.
-func (r *Renter) managedQueueChunkDistribution(uc *unfinishedUploadChunk) {
-	r.uploadChunkDistributionQueue.addUC(uc)
-
-	// TODO: This function can be called in parallel by multiple uploads (stream
-	// and repair) that all want their data to be distributed. So we need to
-	// insert a priority queue here that will accept the chunks and then form
-	// some sort of priority line, deciding which chunks get distributed first.
-	//
-	// TODO: After that, we need to write code to scan through the worker pool
-	// and determine whether there is space for a new chunk. If not, we need
-	// some sort of block-and-wake strategy. Naively, sleeping. More
-	// intelligently, we could have the workers wake this thread by dropping a
-	// signal down a global channel in the renter.
-
-	// Give the chunk to each worker, marking the number of workers that have
-	// received the chunk. Filter through the workers, ignoring any that are not
-	// good for upload, and ignoring any that are on upload cooldown.
-	workers := r.staticWorkerPool.callWorkers()
-	uc.managedIncreaseRemainingWorkers(len(workers))
-	jobsDistributed := 0
-	for _, w := range workers {
-		if w.callQueueUploadChunk(uc) {
-			jobsDistributed++
-		}
-	}
-
-	uc.managedUpdateDistributionTime()
-	r.repairLog.Printf("Distributed chunk %v of %s to %v workers.", uc.staticIndex, uc.staticSiaPath, jobsDistributed)
-	r.managedCleanUpUploadChunk(uc)
 }
 
 // padAndEncryptPiece will add padding to a unfinishedUploadChunk's piece at
@@ -447,7 +414,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	}
 
 	// Distribute the chunk to the workers.
-	r.managedQueueChunkDistribution(chunk)
+	r.staticUploadChunkDistributionQueue.addUC(chunk)
 }
 
 // staticEncryptAndCheckIntegrity will run through the pieces that are
