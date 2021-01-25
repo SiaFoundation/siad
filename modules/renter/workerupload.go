@@ -301,7 +301,7 @@ func (w *worker) managedProcessUploadChunk(uc *unfinishedUploadChunk) (nextChunk
 		}
 	}
 	if index == -1 {
-		build.Critical("worker was supposed to upload but couldn't find unused piece")
+		build.Critical("worker was supposed to upload but couldn't find unused piece:", len(uc.pieceUsage))
 		uc.mu.Unlock()
 		w.managedDropChunk(uc)
 		return nil, 0
