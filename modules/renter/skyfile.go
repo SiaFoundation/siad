@@ -951,7 +951,10 @@ func (r *Renter) UploadSkyfile(sup modules.SkyfileUploadParameters, reader modul
 
 	// If a skykey name or ID was specified, generate a file-specific key for
 	// this upload.
-	r.generateFilekey(&sup, nil)
+	err = r.generateFilekey(&sup, nil)
+	if err != nil {
+		return modules.Skylink{}, errors.AddContext(err, "unable to upload skyfile")
+	}
 
 	// defer a function that cleans up the siafiles after a failed upload
 	// attempt or after a dry run
