@@ -448,6 +448,15 @@ func rentercmd() {
 	fmt.Fprintf(w, "\n  Available Priority Memory\t%v\n", sizeString(ms.PriorityAvailable))
 	fmt.Fprintf(w, "  Starting Priority Memory\t%v\n", sizeString(ms.PriorityBase))
 	fmt.Fprintf(w, "  Requested Priority Memory\t%v\n", sizeString(ms.PriorityRequested))
+
+	// Print out if the uploads are paused
+	if verbose {
+		fmt.Fprintf(w, "\nUploads Status\n")
+		fmt.Fprintf(w, "  Paused:\t%v\n", yesNo(rg.Settings.UploadsStatus.Paused))
+		fmt.Fprintf(w, "  Pause End Time:\t%v\n", time.Until(rg.Settings.UploadsStatus.PauseEndTime))
+	}
+
+	// Flush the writer
 	err = w.Flush()
 	if err != nil {
 		die(err)
