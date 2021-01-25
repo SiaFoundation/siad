@@ -167,7 +167,7 @@ func (j *jobUpdateRegistry) callExecute() {
 // callExpectedBandwidth returns the bandwidth that is expected to be consumed
 // by the job.
 func (j *jobUpdateRegistry) callExpectedBandwidth() (ul, dl uint64) {
-	return updateRegistryJobExpectedBandwidth()
+	return 0, 0 // updateRegistryJobExpectedBandwidth()
 }
 
 // managedUpdateRegistry updates a registry entry on a host. If the error is

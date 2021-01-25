@@ -290,6 +290,7 @@ func (w *worker) managedBlockUntilReady() bool {
 func (w *worker) managedDiscardAsyncJobs(err error) {
 	w.staticJobHasSectorQueue.callDiscardAll(err)
 	w.staticJobUpdateRegistryQueue.callDiscardAll(err)
+	w.staticJobReadRegistryQueue.callDiscardAll(err)
 	w.staticJobReadQueue.callDiscardAll(err)
 }
 
