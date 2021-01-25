@@ -429,7 +429,6 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	}
 
 	if totalWorkers < ec.MinPieces() {
-		fmt.Println("total workers <", ec.MinPieces())
 		return nil, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", totalWorkers, ec.MinPieces()))
 	}
 
@@ -446,12 +445,12 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 // launched and then launch them. This is a non-blocking function that returns
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
+	start := time.Now()
 	for {
 		// Get the list of unresolved workers. This will also grab an update, so
 		// any workers that have resolved recently will be reflected in the
 		// newly returned set of values.
 		unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
-		fmt.Println("num unresolved workers", len(unresolvedWorkers))
 
 		// Create a list of usable workers, sorted by the amount of time they
 		// are expected to take to return.
@@ -466,11 +465,11 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		// If the function returned an actual set of workers, we are good to
 		// launch.
 		if finalWorkers != nil {
+			fmt.Printf("took %v ms to find final workers\n", time.Since(start).Milliseconds())
 			for i, fw := range finalWorkers {
 				if fw == nil {
 					continue
 				}
-				fmt.Printf("launching worker for piece %v\n", i)
 				pdc.launchWorker(fw.worker, uint64(i))
 			}
 			return nil
