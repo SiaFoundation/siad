@@ -379,6 +379,10 @@ type DirectoryInfo struct {
 	AggregateSize                uint64    `json:"aggregatesize"`
 	AggregateStuckHealth         float64   `json:"aggregatestuckhealth"`
 
+	// Skynet Fields
+	AggregateSkynetFiles uint64 `json:"aggregateskynetfiles"`
+	AggregateSkynetSize  uint64 `json:"aggregateskynetsize"`
+
 	// The following fields are information specific to the siadir that is not
 	// an aggregate of the entire sub directory tree
 	Health              float64     `json:"health"`
@@ -395,6 +399,10 @@ type DirectoryInfo struct {
 	DirSize             uint64      `json:"size,siamismatch"` // Stays as 'size' in json for compatibility
 	StuckHealth         float64     `json:"stuckhealth"`
 	UID                 uint64      `json:"uid"`
+
+	// Skynet Fields
+	SkynetFiles uint64 `json:"skynetfiles"`
+	SkynetSize  uint64 `json:"skynetsize"`
 }
 
 // Name implements os.FileInfo.
