@@ -345,13 +345,6 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 	}
 	expectedCompleteTime = expectedCompleteTime.Add(coolDownPenalty)
 
-	// TODO: remove
-	jhsq := w.staticJobHasSectorQueue
-	jhsq.mu.Lock()
-	remaining := time.Until(expectedCompleteTime).Milliseconds()
-	jhsq.mu.Unlock()
-	fmt.Printf("%v expected to complete in %vms | job time %v jobs completed %v\n", w.staticHostPubKeyStr, remaining, jhsq.weightedJobTime, jhsq.weightedJobsCompleted)
-
 	// Create the unresolved worker for this job.
 	uw := &pcwsUnresolvedWorker{
 		staticWorker: w,

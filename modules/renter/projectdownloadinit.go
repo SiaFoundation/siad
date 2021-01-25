@@ -432,9 +432,8 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		return nil, errors.AddContext(errNotEnoughWorkers, fmt.Sprintf("%v < %v", totalWorkers, ec.MinPieces()))
 	}
 
-	fmt.Println("workers in best set:    ", len(bestSet))
 	if isUnresolved {
-		fmt.Println("worker still unresolved", unresolvedWorkers)
+		fmt.Println("waiting for workers", unresolvedWorkers)
 		return nil, nil
 	}
 
