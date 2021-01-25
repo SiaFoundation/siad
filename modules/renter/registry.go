@@ -92,7 +92,7 @@ func (r *Renter) ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout
 	// returned.
 	// Since registry entries are very small we use a fairly generous multiple.
 	if !r.memoryManager.Request(ctx, readRegistryMemory, memoryPriorityHigh) {
-		return modules.SignedRegistryValue{}, errors.New("renter shut down before memory could be allocated for the project")
+		return modules.SignedRegistryValue{}, errors.New("timeout while waiting in job queue - server is busy")
 	}
 	defer r.memoryManager.Return(readRegistryMemory)
 
@@ -120,7 +120,7 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 	// returned.
 	// Since registry entries are very small we use a fairly generous multiple.
 	if !r.memoryManager.Request(ctx, updateRegistryMemory, memoryPriorityHigh) {
-		return errors.New("renter shut down before memory could be allocated for the project")
+		return errors.New("timeout while waiting in job queue - server is busy")
 	}
 	defer r.memoryManager.Return(updateRegistryMemory)
 
