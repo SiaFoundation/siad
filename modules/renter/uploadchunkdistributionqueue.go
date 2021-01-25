@@ -60,8 +60,26 @@ func newUploadChunkDistributionQueue(r *Renter) *uploadChunkDistributionQueue {
 // addUC will add an unfinished upload chunk to the queue. The chunk will be put
 // into a lane based on whether the memory was requested with priority or not.
 func (ucdq *uploadChunkDistributionQueue) addUC(uc *unfinishedUploadChunk) {
+	// We need to hold a lock for the whole process of adding a UC.
+	// defer ucdq.threadedProcessQueue()
 	ucdq.mu.Lock()
 	defer ucdq.mu.Unlock()
+
+	// Since we're definitely going to add a uc to the queue, we also need to
+	// make sure that a processing thread is launched to process it. If there's
+	// already a processing thread running, nothing will happen. If there is not
+	// a processing thread running, we need to set the thread running bool to
+	// true whole still holding the ucdq lock, which is why this function is
+	// deferred after the unlock.
+	defer func() {
+		// Check if there is a thread running to process the queue.
+		if !ucdq.processThreadRunning {
+			ucdq.processThreadRunning = true
+			ucdq.staticRenter.tg.Launch(func() {
+				ucdq.threadedProcessQueue()
+			})
+		}
+	}()
 
 	// If the chunk is not a priority chunk, put it in the low priority lane.
 	if !uc.staticPriority {
@@ -87,21 +105,17 @@ func (ucdq *uploadChunkDistributionQueue) addUC(uc *unfinishedUploadChunk) {
 		ucdq.priorityLane = append(ucdq.priorityLane, uc)
 		ucdq.lowPriorityLane = ucdq.lowPriorityLane[1:]
 	}
-
-	// Check if there is a thread running to process the queue.
-	if !ucdq.processThreadRunning {
-		go ucdq.threadedProcessQueue()
-	}
 }
 
 // threadedProcessQueue serializes the processing of chunks in the distribution
-// queue. If there are priority chunks, it'll handle those first,and then if
+// queue. If there are priority chunks, it'll handle those first, and then if
 // there are no chunks in the priority lane it'll handle things in the non
 // priority lane. Each lane is treated like a FIFO.
 //
 // When de-queuing, if the priority lane is empty and chunks are being pulled
-// out of the non-priority lane, the priority buildup can be reset because there
-// is no starvation happening of low priority jobs.
+// out of the non-priority lane, the priority buildup can be reduced because
+// there is no starvation of the low priority lane. Ensure that the reductions
+// don't go negative.
 func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 	for {
 		// Extract the next item in the queue.
@@ -122,7 +136,10 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 		} else {
 			nextUC = ucdq.lowPriorityLane[0]
 			ucdq.lowPriorityLane = ucdq.lowPriorityLane[1:]
-			ucdq.priorityBuildup = 0
+			ucdq.priorityBuildup -= float64(ucdq.lowPriorityLane[0].memoryNeeded)
+			if ucdq.priorityBuildup < 0 {
+				ucdq.priorityBuildup = 0
+			}
 		}
 		ucdq.mu.Unlock()
 
@@ -151,5 +168,7 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 
 	uc.managedUpdateDistributionTime()
 	r.repairLog.Printf("Distributed chunk %v of %s to %v workers.", uc.staticIndex, uc.staticSiaPath, jobsDistributed)
+	// Cleanup is required after distribution to ensure that memory is released
+	// for any pieces which don't have a worker.
 	r.managedCleanUpUploadChunk(uc)
 }

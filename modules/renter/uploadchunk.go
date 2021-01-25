@@ -356,16 +356,6 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		}
 	}
 
-	// Ensure that memory is released and that the chunk is cleaned up properly
-	// after the chunk is distributed.
-	//
-	// Need to ensure the erasure coding memory is released as well as the
-	// physical chunk memory. Physical chunk memory is released by setting
-	// 'workersRemaining' to zero if the repair fails before being distributed
-	// to workers. Erasure coding memory is released manually if the repair
-	// fails before the erasure coding occurs.
-	defer r.managedCleanUpUploadChunk(chunk)
-
 	// Fetch the logical data for the chunk.
 	err = r.managedFetchLogicalChunkData(chunk)
 	if err != nil {
