@@ -121,6 +121,9 @@ type (
 		// registry entries.
 		staticRegistryCache *registryRevisionCache
 
+		// subscription-related fields
+		staticSubscriber types.Specifier
+
 		// Utilities.
 		killChan chan struct{} // Worker will shut down if a signal is sent down this channel.
 		mu       sync.Mutex
