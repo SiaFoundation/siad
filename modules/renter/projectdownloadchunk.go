@@ -3,6 +3,7 @@ package renter
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -187,6 +188,8 @@ func (pdc *projectDownloadChunk) handleJobReadResponse(jrr *jobReadResponse) {
 		}
 		return
 	}
+
+	fmt.Printf("read job took %v ms\n", jrr.staticJobTime.Milliseconds())
 
 	// Decrypt the piece that has come back.
 	key := pdc.workerSet.staticMasterKey.Derive(pdc.workerSet.staticChunkIndex, uint64(pieceIndex))

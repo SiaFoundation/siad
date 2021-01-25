@@ -272,13 +272,16 @@ func (ws *pcwsWorkerState) managedHandleResponse(resp *jobHasSectorResponse) {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 
+	// Defer closing the update chans to signal we've received and processed an
+	// HS response.
+	defer ws.closeUpdateChans()
+
 	// Delete the worker from the set of unresolved workers.
 	w := resp.staticWorker
 	if w == nil {
 		ws.staticRenter.log.Critical("nil worker provided in resp")
 	}
 	delete(ws.unresolvedWorkers, w.staticHostPubKeyStr)
-	ws.closeUpdateChans()
 
 	// If the response contained an error, add this worker to the set of
 	// resolved workers as supporting no indices.
@@ -398,6 +401,7 @@ func (pcws *projectChunkWorkerSet) threadedFindWorkers(allWorkersLaunchedChan ch
 	// this loop should be active is a little bit longer than the full timeout
 	// for a single HasSector job.
 	workersResponded := 0
+	available := 0
 	for workersResponded < workersLaunched {
 		// Block until there is a worker response. Give up if the context times
 		// out.
@@ -418,6 +422,10 @@ func (pcws *projectChunkWorkerSet) threadedFindWorkers(allWorkersLaunchedChan ch
 			continue
 		}
 
+		if available <= 10 && resp.staticErr == nil && resp.staticAvailables[0] == true {
+			available++
+			fmt.Printf("PCWS pos HS response %v/10 took %vms for worker %v\n", available, resp.staticJobTime.Milliseconds(), resp.staticWorker.staticHostPubKeyStr)
+		}
 		// Parse the response.
 		ws.managedHandleResponse(resp)
 	}

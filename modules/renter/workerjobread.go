@@ -58,6 +58,10 @@ type (
 		// Metadata related to the job query.
 		staticSectorRoot crypto.Hash
 		staticWorker     *worker
+
+		// The time it took for this job to complete is included for debugging
+		// purposes.
+		staticJobTime time.Duration
 	}
 )
 
@@ -114,6 +118,8 @@ func (j *jobRead) managedFinishExecute(readData []byte, readErr error, readJobTi
 
 		staticSectorRoot: root,
 		staticWorker:     w,
+
+		staticJobTime: readJobTime,
 	}
 	err := w.renter.tg.Launch(func() {
 		select {

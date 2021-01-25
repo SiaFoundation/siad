@@ -2,7 +2,6 @@ package renter
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -49,6 +48,10 @@ type (
 		// on one channel for a bunch of workers and still know which worker
 		// successfully found the sector root.
 		staticWorker *worker
+
+		// The time it took for this job to complete is included for debugging
+		// purposes.
+		staticJobTime time.Duration
 	}
 )
 
@@ -92,8 +95,8 @@ func (j *jobHasSector) callExecute() {
 	response := &jobHasSectorResponse{
 		staticAvailables: availables,
 		staticErr:        err,
-
-		staticWorker: w,
+		staticJobTime:    jobTime,
+		staticWorker:     w,
 	}
 	err2 := w.renter.tg.Launch(func() {
 		select {

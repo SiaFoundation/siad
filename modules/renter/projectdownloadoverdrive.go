@@ -1,7 +1,6 @@
 package renter
 
 import (
-	"fmt"
 	"math"
 	"time"
 
@@ -269,14 +268,9 @@ func (pdc *projectDownloadChunk) overdriveStatus() (int, time.Time) {
 // there are no more overdrive workers to try, these channels may both be 'nil'
 // and therefore will never fire.
 func (pdc *projectDownloadChunk) tryOverdrive() (<-chan struct{}, <-chan time.Time) {
-	start := time.Now()
-	defer func() {
-		fmt.Printf("tryOverdrive took %vms\n", time.Since(start).Milliseconds())
-	}()
 	// Fetch the number of overdrive workers that are needed, and the latest
 	// return time of any active worker.
 	neededOverdriveWorkers, latestReturn := pdc.overdriveStatus()
-	fmt.Println("needed overdrive workers", neededOverdriveWorkers)
 
 	// Launch all of the workers that are needed. If at any point a launch
 	// fails, return the status channels to try again.
