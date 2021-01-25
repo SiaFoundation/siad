@@ -4,6 +4,7 @@ package renter
 
 import (
 	"sync"
+	"time"
 )
 
 // uploadchunkdistributionqueue.go creates a queue for distributing upload
@@ -135,8 +136,8 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 			ucdq.priorityLane = ucdq.priorityLane[1:]
 		} else {
 			nextUC = ucdq.lowPriorityLane[0]
-			ucdq.lowPriorityLane = ucdq.lowPriorityLane[1:]
 			ucdq.priorityBuildup -= float64(ucdq.lowPriorityLane[0].memoryNeeded)
+			ucdq.lowPriorityLane = ucdq.lowPriorityLane[1:]
 			if ucdq.priorityBuildup < 0 {
 				ucdq.priorityBuildup = 0
 			}
@@ -153,10 +154,18 @@ func (ucdq *uploadChunkDistributionQueue) threadedProcessQueue() {
 // are ready to perform upload jobs, and then will distribute the input chunk to
 // the workers
 func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
+	// Grab the best set of workers to receive this chunk. This function may
+	// take a significant amount of time to return, as it will wait until there
+	// are enough workers available to accept the chunk. This waiting pressure
+	// keeps throughput high because most workers will continue to be busy all
+	// the time, but it also significantly improves latency for high priority
+	// chunks because the distribution queue can ensure that priority chunks
+	// always get to the front of the worker line.
+	workers := r.managedFindBestUploadWorkerSet(uc)
+
 	// Give the chunk to each worker, marking the number of workers that have
-	// received the chunk. Filter through the workers, ignoring any that are not
-	// good for upload, and ignoring any that are on upload cooldown.
-	workers := r.staticWorkerPool.callWorkers()
+	// received the chunk. Only count the worker if the worker's upload queue
+	// accepts the job.
 	uc.managedIncreaseRemainingWorkers(len(workers))
 	jobsDistributed := 0
 	for _, w := range workers {
@@ -173,4 +182,35 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 	// Cleanup is required after distribution to ensure that memory is released
 	// for any pieces which don't have a worker.
 	r.managedCleanUpUploadChunk(uc)
+}
+
+// managedFindBestUploadWorkerSet will look through the set of available workers
+// and hand-pick the workers that should be used for the upload chunk. It may
+// also choose to wait until more workers are available, which means this
+// function can potentially block for long periods of time.
+func (r *Renter) managedFindBestUploadWorkerSet(uc *unfinishedUploadChunk) []*worker {
+	for {
+		workers, finalized := r.managedCheckForUploadWorkers(uc)
+		if finalized {
+			return workers
+		}
+		// TODO: use tg to make this a soft sleep.
+		//
+		// TODO: Use a channel instead or some sort of counter as workers finish
+		// so that we know when to scan again, instead of doing this sleep
+		// thing.
+		time.Sleep(time.Millisecond * 25)
+	}
+}
+
+// managedCheckForUploadWorkers will scan through the list of upload workers and
+// determine if there is a good set for uploading. If there is a good set for
+// uploading, that set will be returned with the finalized flag set to 'true',
+// indicating that this set of workers should be treated as the best we can do.
+// If there is not a good set, and a better set will likely appear after waiting
+// for some of the current workers to process their queue further, 'false' will
+// be returned.
+func (r *Renter) managedCheckForUploadWorkers(uc *unfinishedUploadChunk) ([]*worker, bool) {
+	// TODO: Actually filter for a good set of workers LOL.
+	return r.staticWorkerPool.callWorkers(), true
 }
