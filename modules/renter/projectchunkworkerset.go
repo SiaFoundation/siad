@@ -522,6 +522,12 @@ func (pcws *projectChunkWorkerSet) managedDownload(ctx context.Context, pricePer
 		return nil, errors.Compose(ErrProjectTimedOut, ErrRootNotFound)
 	}
 
+	// If the price per ms is zero, set it to 1H to avoid multiplication by 0
+	// cancelling out certain parts of a formula.
+	if pricePerMS.IsZero() {
+		pricePerMS = types.NewCurrency64(1) // 1H
+	}
+
 	// Convenience variables.
 	ec := pcws.staticErasureCoder
 

@@ -309,6 +309,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		// and the loop can exit.
 		workerTimeCost := pdc.pricePerMS.Mul64(uint64(nextWorker.readDuration.Milliseconds()))
 		if workerTimeCost.Cmp(bestSetCost) > 0 && workersInSet == ec.MinPieces() {
+			fmt.Println("time cost is strictly higher")
 			break
 		}
 
@@ -415,17 +416,12 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	// return the best set and everything else is nil.
 	totalWorkers := 0
 	isUnresolved := false
-
-	unresolvedWorkers := make([]string, ec.MinPieces())
 	for _, worker := range bestSet {
 		if worker == nil {
 			continue
 		}
 		totalWorkers++
 		isUnresolved = isUnresolved || worker.unresolved
-		if worker.unresolved {
-			unresolvedWorkers = append(unresolvedWorkers, worker.worker.staticHostPubKeyStr)
-		}
 	}
 
 	if totalWorkers < ec.MinPieces() {
@@ -433,7 +429,6 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	}
 
 	if isUnresolved {
-		fmt.Println("waiting for workers", unresolvedWorkers)
 		return nil, nil
 	}
 
@@ -445,6 +440,8 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 	start := time.Now()
+
+	workersInHeap := -1
 	for {
 		// Get the list of unresolved workers. This will also grab an update, so
 		// any workers that have resolved recently will be reflected in the
@@ -454,6 +451,11 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		// Create a list of usable workers, sorted by the amount of time they
 		// are expected to take to return.
 		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
+
+		if workersInHeap == -1 {
+			workersInHeap = len(workerHeap)
+			fmt.Println("workers in heap", workersInHeap)
+		}
 
 		// Create an initial worker set
 		finalWorkers, err := pdc.createInitialWorkerSet(workerHeap)
