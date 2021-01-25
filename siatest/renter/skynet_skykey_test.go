@@ -547,7 +547,7 @@ func testSkynetEncryption(t *testing.T, tg *siatest.TestGroup, skykeyType skykey
 		t.Log(data)
 		t.Log(fetchedData)
 	}
-	if metadata.Mode != 0640 {
+	if metadata.Mode != modules.DefaultFilePerm {
 		t.Error("bad mode")
 	}
 	if metadata.Filename != filename {
@@ -620,7 +620,7 @@ func testSkynetEncryptionLargeFile(t *testing.T, tg *siatest.TestGroup, skykeyTy
 		t.Log(data)
 		t.Log(fetchedData)
 	}
-	if metadata.Mode != 0640 {
+	if metadata.Mode != modules.DefaultFilePerm {
 		t.Error("bad mode")
 	}
 	if metadata.Filename != filename {
