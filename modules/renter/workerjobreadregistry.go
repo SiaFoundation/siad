@@ -216,7 +216,7 @@ func (j *jobReadRegistry) callExecute() {
 // callExpectedBandwidth returns the bandwidth that is expected to be consumed
 // by the job.
 func (j *jobReadRegistry) callExpectedBandwidth() (ul, dl uint64) {
-	return 0, 0 // readRegistryJobExpectedBandwidth()
+	return readRegistryJobExpectedBandwidth()
 }
 
 // initJobReadRegistryQueue will init the queue for the ReadRegistry jobs.
