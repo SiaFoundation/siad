@@ -2,6 +2,7 @@ package renter
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/crypto"
@@ -112,6 +113,9 @@ func (j *jobHasSector) callExecute() {
 	}
 	j.staticQueue.callReportSuccess()
 
+	if w.staticHostPubKeyStr == "ed25519:80123282887700bef150939d5f4196cf9b8145882e5ba850391431e183968449" {
+		fmt.Println("HS took", jobTime.Milliseconds())
+	}
 	// Job was a success, update the performance stats on the queue.
 	jq := j.staticQueue.(*jobHasSectorQueue)
 	jq.mu.Lock()
