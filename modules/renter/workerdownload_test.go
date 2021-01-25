@@ -368,10 +368,6 @@ func TestProcessDownloadChunk(t *testing.T) {
 	if queue.callLen() != 3 {
 		t.Fatalf("expected 3 download chunk but got %v", queue.callLen())
 	}
-	// set download recent failure for cooldown cases.
-	//	queue.mu.Lock()
-	//	queue.cooldownUntil = time.Now().Add(time.Minute)
-	//	queue.mu.Unlock()
 	// Invalid chunk, on cooldown.
 	// download complete
 	addBlankJobs(3)

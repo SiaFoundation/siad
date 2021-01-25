@@ -187,6 +187,13 @@ func (jq *jobGenericQueue) callKill() {
 	jq.killed = true
 }
 
+// callLen returns the number of jobs in the queue.
+func (jq *jobGenericQueue) callLen() int {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	return jq.jobs.Len()
+}
+
 // callNext returns the next job in the worker queue. If there is no job in the
 // queue, 'nil' will be returned.
 func (jq *jobGenericQueue) callNext() workerJob {
@@ -210,6 +217,13 @@ func (jq *jobGenericQueue) callNext() workerJob {
 
 	// Job queue is empty, return nil.
 	return nil
+}
+
+// callOnCooldown returns whether the queue is on cooldown.
+func (jq *jobGenericQueue) callOnCooldown() bool {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+	return jq.onCooldown()
 }
 
 // callReportFailure reports that a job has failed within the queue. This will
@@ -268,18 +282,4 @@ func (jq *jobGenericQueue) staticWorker() *worker {
 // onCooldown returns whether the queue is on cooldown.
 func (jq *jobGenericQueue) onCooldown() bool {
 	return time.Now().Before(jq.cooldownUntil)
-}
-
-// callOnCooldown returns whether the queue is on cooldown.
-func (jq *jobGenericQueue) callOnCooldown() bool {
-	jq.mu.Lock()
-	defer jq.mu.Unlock()
-	return jq.onCooldown()
-}
-
-// callLen returns the number of jobs in the queue.
-func (jq *jobGenericQueue) callLen() int {
-	jq.mu.Lock()
-	defer jq.mu.Unlock()
-	return jq.jobs.Len()
 }
