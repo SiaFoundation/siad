@@ -114,21 +114,36 @@ type SkynetStats struct {
 // program which monitors for inconsistencies or other challenges.
 type RenterStats struct {
 	// A name for this renter.
-	Name string
+	Name string `json:"name"`
+
+	// Any alerts that are in place for this renter.
+	Alerts []Alert `json:"alerts"`
+
+	// Performance and throughput information related to the API.
+	SkynetPerformance SkynetPerformanceStats `json:"skynetperformance"`
 
 	// The total amount of contract data that hosts are maintaining on behalf of
 	// the renter is the sum of these fields.
-	ActiveContractData  uint64
-	PassiveContractData uint64
-	WastedContractData  uint64
+	ActiveContractData  uint64 `json:"activecontractdata"`
+	PassiveContractData uint64 `json:"passivecontractdata"`
+	WastedContractData  uint64 `json:"wastedcontractdata"`
 
-	TotalSiafiles uint64
+	TotalSiafiles uint64 `json:"totalsiafiles"`
+	TotalSiadirs  uint64 `json:"totalsiadirs"`
+	TotalSize     uint64 `json:"totalsize"`
 
-	TotalContractSpentFunds     types.Currency // Includes fees
-	TotalContractFeeSpending    types.Currency
-	TotalContractRemainingFunds types.Currency
+	TotalContractSpentFunds     types.Currency `json:"totalcontractspentfunds"` // Includes fees
+	TotalContractSpentFees      types.Currency `json:"totalcontractspentfees"`
+	TotalContractRemainingFunds types.Currency `json:"totalcontractremainingfunds"`
 
-	TotalWalletFunds types.Currency // Includes unconfirmed
+	AllowanceFunds              types.Currency `json:"allowancefunds"`
+	AllowanceUnspentUnallocated types.Currency `json:"allowanceunspentunallocated"`
+	WalletFunds                 types.Currency `json:"walletfunds"` // Includes unconfirmed
+
+	// Information about the status of the memory queue. If the memory is all
+	// used up, jobs will start blocking eachother.
+	HasRenterMemory         bool `json:"hasrentermemory"`
+	HasPriorityRenterMemory bool `json:"haspriorityrentermemory"`
 }
 
 // HostDBFilterError HostDBDisableFilter HostDBActivateBlacklist and

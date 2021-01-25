@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"strconv"
+	"strings"
 	"time"
 
 	"gitlab.com/NebulousLabs/Sia/build"
@@ -29,6 +31,50 @@ func init() {
 	} else if build.Release == "testing" {
 		SafeMutexDelay = 30 * time.Second
 	}
+}
+
+// AddCommas produces a string form of the given number in base 10 with commas
+// after every three orders of magnitude.
+//
+// e.g. AddCommas(834142) -> 834,142
+//
+// This code was pulled from the 'humanize' package at
+// github.com/dustin/go-humanize - thanks Dustin!
+func AddCommas(v uint64) string {
+	parts := []string{"", "", "", "", "", "", ""}
+	j := len(parts) - 1
+
+	for v > 999 {
+		parts[j] = strconv.FormatUint(v%1000, 10)
+		switch len(parts[j]) {
+		case 2:
+			parts[j] = "0" + parts[j]
+		case 1:
+			parts[j] = "00" + parts[j]
+		}
+		v = v / 1000
+		j--
+	}
+	parts[j] = strconv.Itoa(int(v))
+	return strings.Join(parts[j:], ",")
+}
+
+// BandwidthUnits takes bps (bits per second) as an argument and converts them
+// into a more human-readable string with a unit.
+func BandwidthUnits(bps uint64) string {
+	units := []string{"Bps", "Kbps", "Mbps", "Gbps", "Tbps", "Pbps", "Ebps", "Zbps", "Ybps"}
+	mag := uint64(1)
+	unit := ""
+	for _, unit = range units {
+		if bps < 1e3*mag {
+			break
+		} else if unit != units[len(units)-1] {
+			// don't want to perform this multiply on the last iter; that
+			// would give us 1.235 Ybps instead of 1235 Ybps
+			mag *= 1e3
+		}
+	}
+	return fmt.Sprintf("%.2f %s", float64(bps)/float64(mag), unit)
 }
 
 // CurrencyUnits converts a types.Currency to a string with human-readable

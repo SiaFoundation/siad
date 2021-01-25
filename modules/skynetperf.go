@@ -1,22 +1,9 @@
-package api
+package modules
 
 import (
 	"math"
-	"sync"
 	"time"
 )
-
-// The SkynetPerformanceStats are stateful and tracked globally, bound by a
-// mutex.
-var (
-	skynetPerformanceStats   *SkynetPerformanceStats
-	skynetPerformanceStatsMu sync.Mutex
-)
-
-// Initialize the global performance tracking.
-func init() {
-	skynetPerformanceStats = NewSkynetPerformanceStats()
-}
 
 type (
 	// RequestTimeDistribution contains a distribution of requests, bucketed by
