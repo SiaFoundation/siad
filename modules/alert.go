@@ -215,3 +215,18 @@ func (a *GenericAlerter) registerTestAlerts() {
 	a.RegisterAlert(AlertID(a.module+" - Dummy2"), "msg2", "cause2", SeverityError)
 	a.RegisterAlert(AlertID(a.module+" - Dummy3"), "msg3", "cause3", SeverityCritical)
 }
+
+// PrintAlerts is a helper function to print details of a slice of alerts
+// with given severity description to command line
+func PrintAlerts(alerts []Alert, as AlertSeverity) {
+	fmt.Printf("\n  There are %v %s alerts\n", len(alerts), as.String())
+	for _, a := range alerts {
+		fmt.Printf(`
+------------------
+  Module:   %s
+  Severity: %s
+  Message:  %s
+  Cause:    %s`, a.Module, a.Severity.String(), a.Msg, a.Cause)
+	}
+	fmt.Printf("\n------------------\n\n")
+}
