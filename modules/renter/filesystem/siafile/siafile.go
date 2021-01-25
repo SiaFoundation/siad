@@ -448,11 +448,8 @@ func (sf *SiaFile) chunkHealth(chunk chunk, offlineMap map[string]bool, goodForR
 		build.Critical("unexpected number of goodPieces for chunkHealth")
 		goodPieces = 0
 	}
-	// Determine repairBytesRemaing
-	var repairBytes uint64
-	if uint64(numPieces) > goodPieces {
-		repairBytes = (uint64(numPieces) - goodPieces) * modules.SectorSize
-	}
+	// Determine repairBytesRemaining
+	repairBytes := (uint64(numPieces) - goodPieces) * modules.SectorSize
 	return chunkHealth, chunkHealth, repairBytes, nil
 }
 

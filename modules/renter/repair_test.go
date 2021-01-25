@@ -183,8 +183,6 @@ func (rt *renterTester) openAndUpdateDir(siapath modules.SiaPath, metadata siadi
 	return errors.Compose(err, siadir.Close())
 }
 
-// TODO: Add test for repair size
-
 // TestBubbleHealth tests to make sure that the health of the most in need file
 // in a directory is bubbled up to the right levels and probes the supporting
 // functions as well
