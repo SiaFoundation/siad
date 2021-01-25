@@ -82,6 +82,9 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		AggregateSize:                uint64(0),
 		AggregateStuckHealth:         siadir.DefaultDirHealth,
 
+		AggregateSkynetFiles: uint64(0),
+		AggregateSkynetSize:  uint64(0),
+
 		Health:              siadir.DefaultDirHealth,
 		LastHealthCheckTime: now,
 		MinRedundancy:       math.MaxFloat64,
@@ -92,6 +95,9 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 		RemoteHealth:        siadir.DefaultDirHealth,
 		Size:                uint64(0),
 		StuckHealth:         siadir.DefaultDirHealth,
+
+		SkynetFiles: uint64(0),
+		SkynetSize:  uint64(0),
 	}
 	// Read directory
 	fileinfos, err := r.staticFileSystem.ReadDir(siaPath)
@@ -214,6 +220,29 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			}
 			metadata.Size += fileMetadata.Size
 			metadata.StuckHealth = math.Max(metadata.StuckHealth, fileMetadata.StuckHealth)
+
+			// Update Skynet Fields
+			//
+			// If the current directory is under the Skynet Folder, or the siafile
+			// contains a skylink in the metadata, then we count the file towards the
+			// Skynet Stats.
+			//
+			// For all case we count the size.
+			//
+			// We only count the file towards the number of files if it is in the
+			// skynet folder and is not extended. We do not count files outside of the
+			// skynet folder because they should be treated as an extended file.
+			isSkynetDir := strings.Contains(siaPath.String(), modules.SkynetFolder.String())
+			isExtended := strings.Contains(fileSiaPath.String(), modules.ExtendedSuffix)
+			hasSkylinks := fileMetadata.NumSkylinks > 0
+			if isSkynetDir || hasSkylinks {
+				metadata.AggregateSkynetSize += fileMetadata.Size
+				metadata.SkynetSize += fileMetadata.Size
+			}
+			if isSkynetDir && !isExtended {
+				metadata.AggregateSkynetFiles++
+				metadata.SkynetFiles++
+			}
 		} else if len(dirMetadatas) > 0 {
 			// Get next dir's metadata.
 			dirMetadata := dirMetadatas[0]
@@ -250,6 +279,10 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			metadata.AggregateNumStuckChunks += dirMetadata.AggregateNumStuckChunks
 			metadata.AggregateNumSubDirs += dirMetadata.AggregateNumSubDirs
 			metadata.AggregateSize += dirMetadata.AggregateSize
+
+			// Update aggregate Skynet fields
+			metadata.AggregateSkynetFiles += dirMetadata.AggregateSkynetFiles
+			metadata.AggregateSkynetSize += dirMetadata.AggregateSkynetSize
 
 			// Add 1 to the AggregateNumSubDirs to account for this subdirectory.
 			metadata.AggregateNumSubDirs++
@@ -323,12 +356,18 @@ func (r *Renter) managedCalculateFileMetadata(siaPath modules.SiaPath, hostOffli
 	if !onDisk && redundancy < 1 {
 		r.log.Debugf("File not found on disk and possibly unrecoverable: LocalPath %v; SiaPath %v", sf.LocalPath(), siaPath.String())
 	}
+
+	// Grab the number of skylinks
+	numSkylinks := len(sf.Metadata().Skylinks)
+
+	// Return the metadata
 	return bubbledSiaFileMetadata{
 		sp: siaPath,
 		bm: siafile.BubbledMetadata{
 			Health:              health,
 			LastHealthCheckTime: sf.LastHealthCheckTime(),
 			ModTime:             sf.ModTime(),
+			NumSkylinks:         uint64(numSkylinks),
 			NumStuckChunks:      numStuckChunks,
 			OnDisk:              onDisk,
 			Redundancy:          redundancy,

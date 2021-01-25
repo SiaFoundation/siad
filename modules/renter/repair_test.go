@@ -2,7 +2,9 @@ package renter
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"testing"
 	"time"
@@ -18,47 +20,52 @@ import (
 	"gitlab.com/NebulousLabs/Sia/siatest/dependencies"
 )
 
+// timeEquals is a helper function for checking if two times are equal
+//
+// Since we can't check timestamps for equality cause they are often set to
+// `time.Now()` by methods, we allow a timestamp to be off by a certain delta.
+func timeEquals(t1, t2 time.Time, delta time.Duration) bool {
+	if t1.After(t2) && t1.After(t2.Add(delta)) {
+		return false
+	}
+	if t2.After(t1) && t2.After(t1.Add(delta)) {
+		return false
+	}
+	return true
+}
+
 // equalBubbledMetadata is a helper that checks for equality in the siadir
 // metadata that gets bubbled
+//
 // Since we can't check timestamps for equality cause they are often set to
 // `time.Now()` by methods, we allow a timestamp to be off by a certain delta.
 func equalBubbledMetadata(md1, md2 siadir.Metadata, delta time.Duration) error {
-	timeEquals := func(t1, t2 time.Time) bool {
-		if t1.After(t2) && t1.After(t2.Add(delta)) {
-			return false
-		}
-		if t2.After(t1) && t2.After(t1.Add(delta)) {
-			return false
-		}
-		return true
-	}
+	err1 := equalBubbledAggregateMetadata(md1, md2, delta)
+	err2 := equalBubbledDirectoryMetadata(md1, md2, delta)
+	return errors.Compose(err1, err2)
+}
+
+// equalBubbledAggregateMetadata is a helper that checks for equality in the
+// aggregate siadir metadata fields that gets bubbled
+//
+// Since we can't check timestamps for equality cause they are often set to
+// `time.Now()` by methods, we allow a timestamp to be off by a certain delta.
+func equalBubbledAggregateMetadata(md1, md2 siadir.Metadata, delta time.Duration) error {
 	// Check AggregateHealth
 	if md1.AggregateHealth != md2.AggregateHealth {
 		return fmt.Errorf("AggregateHealth not equal, %v and %v", md1.AggregateHealth, md2.AggregateHealth)
 	}
-	// Check AggregateNumFiles
-	if md1.AggregateNumFiles != md2.AggregateNumFiles {
-		return fmt.Errorf("AggregateNumFiles not equal, %v and %v", md1.AggregateNumFiles, md2.AggregateNumFiles)
-	}
-	// Check AggregateSize
-	if md1.AggregateSize != md2.AggregateSize {
-		return fmt.Errorf("aggregate sizes not equal, %v and %v", md1.AggregateSize, md2.AggregateSize)
-	}
-	// Check AggregateHealth
-	if md1.AggregateHealth != md2.AggregateHealth {
-		return fmt.Errorf("AggregateHealths not equal, %v and %v", md1.AggregateHealth, md2.AggregateHealth)
-	}
-	// Check AggregateLastHealthCheckTimes
-	if !timeEquals(md2.AggregateLastHealthCheckTime, md1.AggregateLastHealthCheckTime) {
+	// Check AggregateLastHealthCheckTime
+	if !timeEquals(md1.AggregateLastHealthCheckTime, md2.AggregateLastHealthCheckTime, delta) {
 		return fmt.Errorf("AggregateLastHealthCheckTimes not equal %v and %v (%v)", md1.AggregateLastHealthCheckTime, md2.AggregateLastHealthCheckTime, delta)
 	}
-	// Check MinRedundancy
+	// Check AggregateMinRedundancy
 	if md1.AggregateMinRedundancy != md2.AggregateMinRedundancy {
 		return fmt.Errorf("AggregateMinRedundancy not equal, %v and %v", md1.AggregateMinRedundancy, md2.AggregateMinRedundancy)
 	}
-	// Check Mod Times
-	if !timeEquals(md2.AggregateModTime, md1.AggregateModTime) {
-		return fmt.Errorf("AggregateModTimes not equal %v and %v (%v)", md1.AggregateModTime, md2.AggregateModTime, delta)
+	// Check AggregateModTime
+	if !timeEquals(md2.AggregateModTime, md1.AggregateModTime, delta) {
+		return fmt.Errorf("AggregateModTime not equal %v and %v (%v)", md1.AggregateModTime, md2.AggregateModTime, delta)
 	}
 	// Check AggregateNumFiles
 	if md1.AggregateNumFiles != md2.AggregateNumFiles {
@@ -66,19 +73,94 @@ func equalBubbledMetadata(md1, md2 siadir.Metadata, delta time.Duration) error {
 	}
 	// Check AggregateNumStuckChunks
 	if md1.AggregateNumStuckChunks != md2.AggregateNumStuckChunks {
-		return fmt.Errorf("NumStuckChunks not equal, %v and %v", md1.AggregateNumStuckChunks, md2.AggregateNumStuckChunks)
+		return fmt.Errorf("AggregateNumStuckChunks not equal, %v and %v", md1.AggregateNumStuckChunks, md2.AggregateNumStuckChunks)
 	}
 	// Check AggregateNumSubDirs
 	if md1.AggregateNumSubDirs != md2.AggregateNumSubDirs {
 		return fmt.Errorf("AggregateNumSubDirs not equal, %v and %v", md1.AggregateNumSubDirs, md2.AggregateNumSubDirs)
 	}
+	// Check AggregateRemoteHealth
+	if md1.AggregateRemoteHealth != md2.AggregateRemoteHealth {
+		return fmt.Errorf("AggregateRemoteHealth not equal, %v and %v", md1.AggregateRemoteHealth, md2.AggregateRemoteHealth)
+	}
 	// Check AggregateSize
 	if md1.AggregateSize != md2.AggregateSize {
-		return fmt.Errorf("sizes not equal, %v and %v", md1.AggregateSize, md2.AggregateSize)
+		return fmt.Errorf("AggregateSize not equal, %v and %v", md1.AggregateSize, md2.AggregateSize)
 	}
 	// Check AggregateStuckHealth
 	if md1.AggregateStuckHealth != md2.AggregateStuckHealth {
-		return fmt.Errorf("stuck healths not equal, %v and %v", md1.AggregateStuckHealth, md2.AggregateStuckHealth)
+		return fmt.Errorf("AggregateStuckHealth not equal, %v and %v", md1.AggregateStuckHealth, md2.AggregateStuckHealth)
+	}
+
+	// Aggregate Skynet Fields
+	//
+	// Check AggregateSkynetFiles
+	if md1.AggregateSkynetFiles != md2.AggregateSkynetFiles {
+		return fmt.Errorf("AggregateSkynetFiles not equal, %v and %v", md1.AggregateSkynetFiles, md2.AggregateSkynetFiles)
+	}
+	// Check AggregateSkynetSize
+	if md1.AggregateSkynetSize != md2.AggregateSkynetSize {
+		return fmt.Errorf("AggregateSkynetSize not equal, %v and %v", md1.AggregateSkynetSize, md2.AggregateSkynetSize)
+	}
+	return nil
+}
+
+// equalBubbledDirectoryMetadata is a helper that checks for equality in the
+// non-aggregate siadir metadata fields that gets bubbled
+//
+// Since we can't check timestamps for equality cause they are often set to
+// `time.Now()` by methods, we allow a timestamp to be off by a certain delta.
+func equalBubbledDirectoryMetadata(md1, md2 siadir.Metadata, delta time.Duration) error {
+	// Check Health
+	if md1.Health != md2.Health {
+		return fmt.Errorf("Health not equal, %v and %v", md1.Health, md2.Health)
+	}
+	// Check LastHealthCheckTime
+	if !timeEquals(md1.LastHealthCheckTime, md2.LastHealthCheckTime, delta) {
+		return fmt.Errorf("LastHealthCheckTimes not equal %v and %v (%v)", md1.LastHealthCheckTime, md2.LastHealthCheckTime, delta)
+	}
+	// Check MinRedundancy
+	if md1.MinRedundancy != md2.MinRedundancy {
+		return fmt.Errorf("MinRedundancy not equal, %v and %v", md1.MinRedundancy, md2.MinRedundancy)
+	}
+	// Check ModTime
+	if !timeEquals(md2.ModTime, md1.ModTime, delta) {
+		return fmt.Errorf("ModTime not equal %v and %v (%v)", md1.ModTime, md2.ModTime, delta)
+	}
+	// Check NumFiles
+	if md1.NumFiles != md2.NumFiles {
+		return fmt.Errorf("NumFiles not equal, %v and %v", md1.NumFiles, md2.NumFiles)
+	}
+	// Check NumStuckChunks
+	if md1.NumStuckChunks != md2.NumStuckChunks {
+		return fmt.Errorf("NumStuckChunks not equal, %v and %v", md1.NumStuckChunks, md2.NumStuckChunks)
+	}
+	// Check NumSubDirs
+	if md1.NumSubDirs != md2.NumSubDirs {
+		return fmt.Errorf("NumSubDirs not equal, %v and %v", md1.NumSubDirs, md2.NumSubDirs)
+	}
+	// Check RemoteHealth
+	if md1.RemoteHealth != md2.RemoteHealth {
+		return fmt.Errorf("RemoteHealth not equal, %v and %v", md1.RemoteHealth, md2.RemoteHealth)
+	}
+	// Check Size
+	if md1.Size != md2.Size {
+		return fmt.Errorf("Size not equal, %v and %v", md1.Size, md2.Size)
+	}
+	// Check StuckHealth
+	if md1.StuckHealth != md2.StuckHealth {
+		return fmt.Errorf("StuckHealth not equal, %v and %v", md1.StuckHealth, md2.StuckHealth)
+	}
+
+	// Skynet Fields
+	//
+	// Check SkynetFiles
+	if md1.SkynetFiles != md2.SkynetFiles {
+		return fmt.Errorf("SkynetFiles not equal, %v and %v", md1.SkynetFiles, md2.SkynetFiles)
+	}
+	// Check SkynetSize
+	if md1.SkynetSize != md2.SkynetSize {
+		return fmt.Errorf("SkynetSize not equal, %v and %v", md1.SkynetSize, md2.SkynetSize)
 	}
 	return nil
 }
@@ -123,13 +205,20 @@ func TestBubbleHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	defaultMetadata := siadir.Metadata{
-		AggregateHealth:              siadir.DefaultDirHealth,
-		Health:                       siadir.DefaultDirHealth,
-		StuckHealth:                  siadir.DefaultDirHealth,
+		AggregateHealth: siadir.DefaultDirHealth,
+		Health:          siadir.DefaultDirHealth,
+
+		AggregateStuckHealth: siadir.DefaultDirHealth,
+		StuckHealth:          siadir.DefaultDirHealth,
+
 		AggregateLastHealthCheckTime: beforeBubble,
-		AggregateMinRedundancy:       -1,
-		AggregateNumStuckChunks:      0,
-		AggregateNumSubDirs:          5,
+		LastHealthCheckTime:          beforeBubble,
+
+		AggregateMinRedundancy: siadir.DefaultDirRedundancy,
+		MinRedundancy:          siadir.DefaultDirRedundancy,
+
+		AggregateNumSubDirs: 5,
+		NumSubDirs:          3,
 	}
 	err = build.Retry(20, time.Second, func() error {
 		// Get Root Directory Health
@@ -194,7 +283,7 @@ func TestBubbleHealth(t *testing.T) {
 		AggregateLastHealthCheckTime: checkTime,
 		LastHealthCheckTime:          checkTime,
 	}
-	// Create OpenAndUpdateDir helper method
+	// Update the metadatas
 	if err := rt.openAndUpdateDir(modules.RootSiaPath(), metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
@@ -206,11 +295,61 @@ func TestBubbleHealth(t *testing.T) {
 	if err := rt.openAndUpdateDir(siaPath, metadataUpdate); err != nil {
 		t.Fatal(err)
 	}
-	// Set health of subDir1/subDir2 to be the worst and set the
+	// Set health of subDir1/subDir2 to be the worst health
 	siaPath = subDir1_2
 	metadataUpdate.Health = 4
 	if err := rt.openAndUpdateDir(siaPath, metadataUpdate); err != nil {
 		t.Fatal(err)
+	}
+
+	// Define test helper
+	bubbleAndVerifyMetadata := func(testCase string, dirToBubble, expectedMDDir modules.SiaPath, anf, ansd uint64) {
+		// Bubble target directory
+		beforeBubble := time.Now()
+		err = rt.renter.managedBubbleMetadata(dirToBubble)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Check metadata from expectedMDDir to root
+		var expectedMetadata, metadata siadir.Metadata
+		if err = build.Retry(100, 100*time.Millisecond, func() error {
+			// Get Expected Directory Metadata
+			expectedMetadata, err = rt.renter.managedDirectoryMetadata(expectedMDDir)
+			if err != nil {
+				return err
+			}
+			// Get Root Directory Metadata
+			metadata, err = rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
+			if err != nil {
+				return err
+			}
+
+			// Set values for the expected Aggregate fields
+			expectedMetadata.AggregateNumFiles = anf
+			expectedMetadata.AggregateNumSubDirs = ansd
+
+			// Set expected health values
+			ef := float64(expectedMetadata.AggregateHealth)
+			rf := float64(metadata.AggregateHealth)
+			expectedMetadata.AggregateHealth = math.Max(ef, rf)
+
+			// Mod Times are impacted by the bubbles so use the root directory values
+			expectedMetadata.AggregateModTime = metadata.AggregateModTime
+
+			// Compare the aggregate fields from the expectedMDDir and root
+			return equalBubbledAggregateMetadata(metadata, expectedMetadata, time.Since(beforeBubble))
+		}); err != nil {
+			t.Log("Test case:", testCase)
+			expectedData, _ := json.MarshalIndent(expectedMetadata, "", " ")
+			data, _ := json.MarshalIndent(metadata, "", " ")
+			t.Logf("Bubbling %v, expected %v", dirToBubble, expectedMDDir)
+			t.Log("Expected Metadata")
+			t.Log(string(expectedData))
+			t.Log("Root Metadata")
+			t.Log(string(data))
+			t.Fatal(err)
+		}
 	}
 
 	// Bubble the health of the directory that has the worst pre set health
@@ -222,30 +361,8 @@ func TestBubbleHealth(t *testing.T) {
 	// Note: this tests the edge case of bubbling an empty directory and
 	// directories with no files but do have sub directories since bubble will
 	// execute on all the parent directories
-	err = rt.renter.managedBubbleMetadata(subDir1_2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	expectedMetadata, err := rt.renter.managedDirectoryMetadata(subDir1_1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = build.Retry(20, time.Second, func() error {
-		// Get Root Directory Health
-		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
-		if err != nil {
-			return err
-		}
-		// Compare the specific metadata fields we expected to be bubbled from
-		// subDir1/subDir1 to root
-		if metadata.AggregateHealth != expectedMetadata.AggregateHealth {
-			return fmt.Errorf("AggregateHealth not equal; %v and %v", metadata.AggregateHealth, expectedMetadata.AggregateHealth)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	tc := "Empty directory reset"
+	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_1, 0, 8)
 
 	// Add a file to the lowest level
 	//
@@ -268,6 +385,12 @@ func TestBubbleHealth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
 	// Since we are just adding the file, no chunks will have been uploaded
 	// meaning the health of the file should be the worst case health. Now the
 	// health that is bubbled up should be the health of the file added to
@@ -294,35 +417,8 @@ func TestBubbleHealth(t *testing.T) {
 	// Now when we bubble the health and check for the worst health we should still see
 	// that the health is the health of subDir1/subDir1 which was set to 1 again
 	// and the stuck health will be the health of the stuck file
-	err = rt.renter.managedBubbleMetadata(subDir1_2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	expectedMetadata, err = rt.renter.managedDirectoryMetadata(subDir1_1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	expectedMetadata.AggregateHealth = 1
-	expectedMetadata.AggregateStuckHealth = 2
-	err = build.Retry(20, time.Second, func() error {
-		// Get Root Directory Health
-		metadata, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
-		if err != nil {
-			return err
-		}
-		// Compare the specific metadata fields we expected to be bubbled from
-		// subDir1/subDir1 to root
-		if metadata.AggregateHealth != expectedMetadata.AggregateHealth {
-			return fmt.Errorf("AggregateHealth not equal; %v and %v", metadata.AggregateHealth, expectedMetadata.AggregateHealth)
-		}
-		if metadata.AggregateStuckHealth != expectedMetadata.AggregateStuckHealth {
-			return fmt.Errorf("AggregateHealth not equal; %v and %v", metadata.AggregateStuckHealth, expectedMetadata.AggregateStuckHealth)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	tc = "Adding stuck file"
+	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_2, 1, 8)
 
 	// Mark the file as un-stuck
 	f.SetStuck(0, false)
@@ -335,35 +431,8 @@ func TestBubbleHealth(t *testing.T) {
 
 	// Now if we bubble the health and check for the worst health we should see
 	// that the health is the health of the file
-	beforeBubble = time.Now()
-	err = rt.renter.managedBubbleMetadata(subDir1_2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	expectedHealth := siadir.Metadata{
-		AggregateHealth:              2,
-		AggregateLastHealthCheckTime: beforeBubble,
-		AggregateModTime:             beforeBubble,
-		AggregateNumFiles:            1,
-		AggregateNumSubDirs:          8,
-		AggregateSize:                100,
-		AggregateStuckHealth:         0,
-	}
-	err = build.Retry(20, time.Second, func() error {
-		// Get Root Directory Health
-		health, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
-		if err != nil {
-			return err
-		}
-		// Check Health
-		if err = equalBubbledMetadata(health, expectedHealth, time.Since(beforeBubble)); err != nil {
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	tc = "Un-stuck file"
+	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_2, 1, 8)
 
 	// Add a sub directory to the directory that contains the file that has a
 	// worst health than the file and confirm that health gets bubbled up.
@@ -377,38 +446,18 @@ func TestBubbleHealth(t *testing.T) {
 	if err := rt.renter.CreateDir(subDir1_2_1, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
+
 	// Reset metadataUpdate with expected values
-	beforeBubble = time.Now()
-	expectedHealth = siadir.Metadata{
+	md := siadir.Metadata{
 		AggregateHealth:              4,
 		AggregateLastHealthCheckTime: beforeBubble,
 		AggregateModTime:             beforeBubble,
 	}
-	if err := rt.openAndUpdateDir(subDir1_2_1, expectedHealth); err != nil {
+	if err := rt.openAndUpdateDir(subDir1_2_1, md); err != nil {
 		t.Fatal(err)
 	}
-	err = rt.renter.managedBubbleMetadata(subDir1_2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = build.Retry(20, time.Second, func() error {
-		// Get Root Directory Health
-		health, err := rt.renter.managedDirectoryMetadata(modules.RootSiaPath())
-		if err != nil {
-			return err
-		}
-		// Check Health
-		expectedHealth.AggregateNumFiles = 1
-		expectedHealth.AggregateNumSubDirs = 9
-		expectedHealth.AggregateSize = 100
-		if err = equalBubbledMetadata(health, expectedHealth, time.Since(beforeBubble)); err != nil {
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	tc = "Empty lowest level directory"
+	bubbleAndVerifyMetadata(tc, subDir1_2, subDir1_2, 1, 9)
 }
 
 // TestOldestHealthCheckTime probes managedOldestHealthCheckTime to verify that
@@ -649,7 +698,7 @@ func TestNumFiles(t *testing.T) {
 	if err := rt.renter.CreateDir(subDir1_2, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
-	// Add files
+	// Add file to root
 	rsc, _ := modules.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
 		Source:      "",
@@ -660,6 +709,24 @@ func TestNumFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Add skylink to root file. This should not count towards the number of
+	// skyfiles
+	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var skylink modules.Skylink
+	err = f.AddSkylink(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add file to subdir
 	up.SiaPath, err = subDir1_2.Join(hex.EncodeToString(fastrand.Bytes(8)))
 	if err != nil {
 		t.Fatal(err)
@@ -669,9 +736,21 @@ func TestNumFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Call bubble on lowest lever and confirm top level reports accurate number
-	// of files and aggregate number of files
-	err = rt.renter.managedBubbleMetadata(subDir1_2)
+	// Add a file to the skynet folder
+	up.SiaPath, err = modules.SkynetFolder.Join(hex.EncodeToString(fastrand.Bytes(8)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), 100, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Call bubble on lowest level and skynet folder and confirm top level reports
+	// accurate number of files and aggregate number of files
+	err1 := rt.renter.managedBubbleMetadata(subDir1_2)
+	err2 := rt.renter.managedBubbleMetadata(modules.SkynetFolder)
+	err = errors.Compose(err1, err2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -680,11 +759,19 @@ func TestNumFiles(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		// Siafiles
 		if dirInfo.NumFiles != 1 {
 			return fmt.Errorf("NumFiles incorrect, got %v expected %v", dirInfo.NumFiles, 1)
 		}
-		if dirInfo.AggregateNumFiles != 2 {
-			return fmt.Errorf("AggregateNumFiles incorrect, got %v expected %v", dirInfo.AggregateNumFiles, 2)
+		if dirInfo.AggregateNumFiles != 3 {
+			return fmt.Errorf("AggregateNumFiles incorrect, got %v expected %v", dirInfo.AggregateNumFiles, 3)
+		}
+		// Skyfiles
+		if dirInfo.SkynetFiles != 0 {
+			return fmt.Errorf("SkynetFiles incorrect, got %v expected %v", dirInfo.SkynetFiles, 0)
+		}
+		if dirInfo.AggregateSkynetFiles != 1 {
+			return fmt.Errorf("AggregateSkynetFiles incorrect, got %v expected %v", dirInfo.AggregateSkynetFiles, 1)
 		}
 		return nil
 	})
@@ -737,7 +824,8 @@ func TestDirectorySize(t *testing.T) {
 	if err := rt.renter.CreateDir(subDir1_2, modules.DefaultDirPerm); err != nil {
 		t.Fatal(err)
 	}
-	// Add files
+
+	// Add file to root
 	rsc, _ := modules.NewRSCode(1, 1)
 	up := modules.FileUploadParams{
 		Source:      "",
@@ -749,7 +837,34 @@ func TestDirectorySize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	// Add skylink to root file
+	f, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var skylink modules.Skylink
+	err = f.AddSkylink(skylink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add file to subdir
 	up.SiaPath, err = subDir1_2.Join(hex.EncodeToString(fastrand.Bytes(8)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = rt.renter.staticFileSystem.NewSiaFile(up.SiaPath, up.Source, up.ErasureCode, crypto.GenerateSiaKey(crypto.RandomCipherType()), fileSize, persist.DefaultDiskPermissionsTest, up.DisablePartialChunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Add file to skynet folder
+	up.SiaPath, err = modules.SkynetFolder.Join(hex.EncodeToString(fastrand.Bytes(8)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -765,8 +880,19 @@ func TestDirectorySize(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if dirInfo.AggregateSize != 2*fileSize {
-			return fmt.Errorf("AggregateSize incorrect, got %v expected %v", dirInfo.AggregateSize, 2*fileSize)
+		// Size
+		if dirInfo.DirSize != fileSize {
+			return fmt.Errorf("Size incorrect, got %v expected %v", dirInfo.DirSize, fileSize)
+		}
+		if dirInfo.AggregateSize != 3*fileSize {
+			return fmt.Errorf("AggregateSize incorrect, got %v expected %v", dirInfo.AggregateSize, 3*fileSize)
+		}
+		// Skynet Size
+		if dirInfo.SkynetSize != fileSize {
+			return fmt.Errorf("Size SkynetSize, got %v expected %v", dirInfo.DirSize, fileSize)
+		}
+		if dirInfo.AggregateSkynetSize != 2*fileSize {
+			return fmt.Errorf("AggregateSkynetSize incorrect, got %v expected %v", dirInfo.AggregateSize, 2*fileSize)
 		}
 		return nil
 	})
@@ -1274,7 +1400,7 @@ func TestCalculateFileMetadata(t *testing.T) {
 		}
 	}()
 
-	// Create a file
+	// Create a file at root with a skylink
 	rsc, _ := modules.NewRSCode(1, 1)
 	siaPath, err := modules.NewSiaPath("rootFile")
 	if err != nil {
@@ -1291,6 +1417,16 @@ func TestCalculateFileMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	sf, err := rt.renter.staticFileSystem.OpenSiaFile(up.SiaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := sf.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	var skylink modules.Skylink
+	err = sf.AddSkylink(skylink)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1342,6 +1478,9 @@ func TestCalculateFileMetadata(t *testing.T) {
 	}
 	if !fileMetadata.ModTime.Equal(modTime) {
 		t.Fatalf("Unexpected modtime, expected %v got %v", modTime, fileMetadata.ModTime)
+	}
+	if fileMetadata.NumSkylinks != 1 {
+		t.Fatalf("NumSkylinks incorrect, expected %v got %v", 1, fileMetadata.NumSkylinks)
 	}
 }
 

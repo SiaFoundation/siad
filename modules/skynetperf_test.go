@@ -1,4 +1,4 @@
-package api
+package modules
 
 import (
 	"testing"

@@ -173,6 +173,7 @@ type (
 		Health              float64
 		LastHealthCheckTime time.Time
 		ModTime             time.Time
+		NumSkylinks         uint64
 		NumStuckChunks      uint64
 		OnDisk              bool
 		Redundancy          float64

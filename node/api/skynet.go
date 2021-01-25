@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/julienschmidt/httprouter"
@@ -23,6 +24,18 @@ import (
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
 )
+
+// The SkynetPerformanceStats are stateful and tracked globally, bound by a
+// mutex.
+var (
+	skynetPerformanceStats   *modules.SkynetPerformanceStats
+	skynetPerformanceStatsMu sync.Mutex
+)
+
+// Initialize the global performance tracking.
+func init() {
+	skynetPerformanceStats = modules.NewSkynetPerformanceStats()
+}
 
 const (
 	// DefaultSkynetDefaultPath is the defaultPath value we use when the user
@@ -96,7 +109,7 @@ type (
 	// SkynetStatsGET contains the information queried for the /skynet/stats
 	// GET endpoint
 	SkynetStatsGET struct {
-		PerformanceStats SkynetPerformanceStats `json:"performancestats"`
+		PerformanceStats modules.SkynetPerformanceStats `json:"performancestats"`
 
 		Uptime      int64               `json:"uptime"`
 		UploadStats modules.SkynetStats `json:"uploadstats"`
@@ -1084,20 +1097,20 @@ func (api *API) skynetSkyfileHandlerPOST(w http.ResponseWriter, req *http.Reques
 // skynetStatsHandlerGET responds with a JSON with statistical data about
 // skynet, e.g. number of files uploaded, total size, etc.
 func (api *API) skynetStatsHandlerGET(w http.ResponseWriter, req *http.Request, _ httprouter.Params) {
-	// get file stats
-	dis, err := api.renter.DirList(modules.SkynetFolder)
-	if err != nil {
-		WriteError(w, Error{err.Error()}, http.StatusInternalServerError)
-		return
-	}
-	if len(dis) == 0 {
-		WriteError(w, Error{"skynetfolder doesn't contain any dirs"}, http.StatusInternalServerError)
-		return
-	}
-	di := dis[0]
-	stats := modules.SkynetStats{
-		NumFiles:  int(di.AggregateNumFiles),
-		TotalSize: di.AggregateSize,
+	// Define the SkynetStats
+	var stats modules.SkynetStats
+
+	// Pull the skynet stats from the root directory
+	dis, err := api.renter.DirList(modules.RootSiaPath())
+	if err == nil {
+		// If there is an error we just return null stats
+		//
+		// Update the stats with the information from the root directory
+		di := dis[0]
+		stats = modules.SkynetStats{
+			NumFiles:  int(di.AggregateSkynetFiles),
+			TotalSize: di.AggregateSkynetSize,
+		}
 	}
 
 	// get version
