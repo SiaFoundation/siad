@@ -164,6 +164,8 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 			jobsDistributed++
 		}
 	}
+	// Signal to the thread that scheduled the upload that this chunk has made
+	// it through the queue and it's okay to move onto the next chunk.
 	close(uc.staticWorkDistributedChan)
 
 	uc.managedUpdateDistributionTime()
