@@ -211,6 +211,11 @@ func (r *Renter) managedFindBestUploadWorkerSet(uc *unfinishedUploadChunk) []*wo
 // for some of the current workers to process their queue further, 'false' will
 // be returned.
 func (r *Renter) managedCheckForUploadWorkers(uc *unfinishedUploadChunk) ([]*worker, bool) {
+	workers := r.staticWorkerPool.callWorkers()
+
+	// Scan through the workers and determine how many workers have available
+	// slots to uploading.
+
 	// TODO: Actually filter for a good set of workers LOL.
 	return r.staticWorkerPool.callWorkers(), true
 }
