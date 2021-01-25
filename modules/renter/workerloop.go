@@ -213,6 +213,8 @@ func (w *worker) managedAsyncReady() bool {
 // queued at once to prevent jobs from being spread too thin and sharing too
 // much bandwidth.
 func (w *worker) externTryLaunchAsyncJob() bool {
+	rrjs := callReadRegistryJobStatus()
+	size := rrjs.JobQueueSize
 	// Verify that the worker has not reached its limits for doing multiple
 	// jobs at once.
 	readLimit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
@@ -222,6 +224,9 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	if readOutstanding > readLimit || writeOutstanding > writeLimit {
 		// Worker does not need to discard jobs, it is making progress, it's
 		// just not launching any new jobs until its current jobs finish up.
+		if size > 10 {
+			w.renter.repairLog.Println("read and write limit hit, ignoring async job launch")
+		}
 		return false
 	}
 
@@ -230,11 +235,17 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	// so it needs to happen after the ratelimit checks but before the cache,
 	// price table, and account checks.
 	if w.renter.deps.Disrupt("TestAsyncJobLaunches") {
+		if size > 10 {
+			w.renter.repairLog.Println("disrupt, ignoring async job launch")
+		}
 		return true
 	}
 
 	// Exit if the worker is not currently equipped to perform async tasks.
 	if !w.managedAsyncReady() {
+		if size > 10 {
+			w.renter.repairLog.Println("worker is not async ready, ignoring async job launch")
+		}
 		return false
 	}
 
@@ -262,6 +273,9 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 	if job != nil {
 		w.externLaunchAsyncJob(job)
 		return true
+	}
+	if size > 10 {
+		w.renter.repairLog.Println("doesn't seem like there are any jobs, ignoring async job launch... THIS IS BAD WE KNOW THERE ARE JOBS")
 	}
 	return false
 }
