@@ -292,9 +292,12 @@ func (r *Renter) MemoryStatus() (modules.MemoryStatus, error) {
 	}
 	defer r.tg.Done()
 
-	// TODO: fix
-
-	return modules.MemoryStatus{}, nil
+	repairStatus := r.repairMemoryManager.callStatus()
+	userDownloadStatus := r.userDownloadMemoryManager.callStatus()
+	userUploadStatus := r.userUploadMemoryManager.callStatus()
+	registryStatus := r.registryMemoryManager.callStatus()
+	total := repairStatus.Add(userDownloadStatus).Add(userUploadStatus).Add(registryStatus).Add(repairStatus)
+	return total, nil
 }
 
 // PriceEstimation estimates the cost in siacoins of performing various storage
