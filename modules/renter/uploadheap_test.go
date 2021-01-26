@@ -86,7 +86,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 
 	// Call managedBuildUnfinishedChunks as not stuck loop, all un stuck chunks
 	// should be returned
-	uucs := rt.renter.managedBuildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew)
+	uucs := rt.renter.managedBuildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew, rt.renter.repairMemoryManager)
 	if len(uucs) != int(f.NumChunks())-1 {
 		t.Fatalf("Incorrect number of chunks returned, expected %v got %v", int(f.NumChunks())-1, len(uucs))
 	}
@@ -98,7 +98,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 
 	// Call managedBuildUnfinishedChunks as stuck loop, all stuck chunks should
 	// be returned
-	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew)
+	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew, rt.renter.repairMemoryManager)
 	if len(uucs) != 1 {
 		t.Fatalf("Incorrect number of chunks returned, expected 1 got %v", len(uucs))
 	}
@@ -116,7 +116,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 
 	// Call managedBuildUnfinishedChunks as not stuck loop, since the file is
 	// now not repairable it should return no chunks
-	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew)
+	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew, rt.renter.repairMemoryManager)
 	if len(uucs) != 0 {
 		t.Fatalf("Incorrect number of chunks returned, expected 0 got %v", len(uucs))
 	}
@@ -125,7 +125,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	// returned because they should have been marked as stuck by the previous
 	// call and stuck chunks should still be returned if the file is not
 	// repairable
-	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew)
+	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew, rt.renter.repairMemoryManager)
 	if len(uucs) != int(f.NumChunks()) {
 		t.Fatalf("Incorrect number of chunks returned, expected %v got %v", f.NumChunks(), len(uucs))
 	}
