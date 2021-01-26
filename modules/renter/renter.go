@@ -241,7 +241,9 @@ type Renter struct {
 	// registryMemoryManager is used for updating registry entries and reading
 	// them.
 	//
-	// userMemoryManager is used for user-initiated uploads and downloads
+	// userUploadManager is used for user-initiated uploads
+	//
+	// userDownloadMemoryManager is used for user-initiated downloads
 	//
 	// repairMemoryManager is used for repair work scheduled by siad
 	//

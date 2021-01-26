@@ -118,12 +118,12 @@ var (
 	// explicitly for priority actions.
 	userUploadMemoryPriorityDefault = uint64(0)
 
-	// defaultPriorityMemory is the amount of memory that is held in reserve
-	// explicitly for priority actions.
+	// userDownloadMemoryPriorityDefault is the amount of memory that is held in
+	// reserve explicitly for priority actions.
 	userDownloadMemoryPriorityDefault = uint64(0)
 
-	// defaultPriorityMemory is the amount of memory that is held in reserve
-	// explicitly for priority actions.
+	// repairMemoryPriorityDefault is the amount of memory that is held in
+	// reserve explicitly for priority actions.
 	repairMemoryPriorityDefault = repairMemoryDefault
 
 	// gcMemoryThreshold is the amount of memory after which a memory manager
