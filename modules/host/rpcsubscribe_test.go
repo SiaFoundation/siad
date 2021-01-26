@@ -923,6 +923,7 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 
 	// Stop the ticker and wait for the goroutine to finish.
 	close(cancelTicker)
+	updateWG.Wait()
 
 	// Check balance afterwards.
 	l := stream.Limit()
