@@ -385,9 +385,11 @@ func (pcws *projectChunkWorkerSet) threadedFindWorkers(allWorkersLaunchedChan ch
 	// in size to the number of queries so that none of the workers sending
 	// reponses get blocked sending down the channel.
 	workers := ws.staticRenter.staticWorkerPool.callWorkers()
+	timings := make(map[string]time.Time, len(workers))
 	workersLaunched := 0
 	responseChan := make(chan *jobHasSectorResponse, len(workers))
 	for _, w := range workers {
+		timings[w.staticHostPubKeyStr] = time.Now()
 		err := pcws.managedLaunchWorker(ctx, w, responseChan, ws)
 		if err == nil {
 			workersLaunched++
@@ -423,8 +425,9 @@ func (pcws *projectChunkWorkerSet) threadedFindWorkers(allWorkersLaunchedChan ch
 		}
 
 		if available <= 10 && resp.staticErr == nil && resp.staticAvailables[0] == true {
+			start := timings[resp.staticWorker.staticHostPubKeyStr]
 			available++
-			fmt.Printf("PCWS pos HS response %v/10 took %vms for worker %v\n", available, resp.staticJobTime.Milliseconds(), resp.staticWorker.staticHostPubKeyStr)
+			fmt.Printf("%v PCWS pos HS response %v/10 took %vms (total %vms) for worker %v\n", time.Now(), time.Since(start), available, resp.staticJobTime.Milliseconds(), resp.staticWorker.staticHostPubKeyStr)
 		}
 		// Parse the response.
 		ws.managedHandleResponse(resp)

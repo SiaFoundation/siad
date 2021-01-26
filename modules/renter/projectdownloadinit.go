@@ -465,7 +465,7 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 		// If the function returned an actual set of workers, we are good to
 		// launch.
 		if finalWorkers != nil {
-			fmt.Printf("took %v ms to find final workers\n", time.Since(start).Milliseconds())
+			fmt.Printf("%v took %v ms to find final workers\n", time.Now(), time.Since(start).Milliseconds())
 			for i, fw := range finalWorkers {
 				if fw == nil {
 					continue
