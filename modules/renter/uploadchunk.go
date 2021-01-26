@@ -9,6 +9,7 @@ import (
 
 	"gitlab.com/NebulousLabs/errors"
 
+	"gitlab.com/NebulousLabs/Sia/build"
 	"gitlab.com/NebulousLabs/Sia/crypto"
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/modules/renter/filesystem"
@@ -648,15 +649,16 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		uc.released = true
 
 		// Create a log message with all of the timings of the chunk uploading.
-		failedTimes := make([]int, 0, len(uc.chunkFailedProcessTimes))
-		for _, ft := range uc.chunkFailedProcessTimes {
-			failedTimes = append(failedTimes, int(time.Since(ft)/time.Millisecond))
-		}
-		successTimes := make([]int, 0, len(uc.chunkSuccessProcessTimes))
-		for _, st := range uc.chunkSuccessProcessTimes {
-			successTimes = append(successTimes, int(time.Since(st)/time.Millisecond))
-		}
-		r.repairLog.Printf(`
+		if build.DEBUG {
+			failedTimes := make([]int, 0, len(uc.chunkFailedProcessTimes))
+			for _, ft := range uc.chunkFailedProcessTimes {
+				failedTimes = append(failedTimes, int(time.Since(ft)/time.Millisecond))
+			}
+			successTimes := make([]int, 0, len(uc.chunkSuccessProcessTimes))
+			for _, st := range uc.chunkSuccessProcessTimes {
+				successTimes = append(successTimes, int(time.Since(st)/time.Millisecond))
+			}
+			r.repairLog.Printf(`
 	Chunk Created: %v
 	Chunk Popped: %v
 	Chunk Distributed: %v
@@ -665,6 +667,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	Chunk Canceled: %v
 	Fail Times: %v
 	Success Times: %v`, int(time.Since(uc.chunkCreationTime)/time.Millisecond), int(time.Since(uc.chunkPoppedFromHeapTime)/time.Millisecond), int(time.Since(uc.chunkDistributionTime)/time.Millisecond), int(time.Since(uc.chunkAvailableTime)/time.Millisecond), int(time.Since(uc.chunkCompleteTime)/time.Millisecond), canceled, failedTimes, successTimes)
+		}
 	}
 	uc.memoryReleased += memoryReleased
 	totalMemoryReleased := uc.memoryReleased
