@@ -1,7 +1,7 @@
 package renter
 
 import (
-	// "context"
+	"context"
 	"fmt"
 	"io"
 	"sync"
@@ -241,7 +241,6 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 	// Read the chunks we want to upload one by one from the input stream using
 	// shards. A shard will signal completion after reading the input but
 	// before the upload is done.
-	r.repairLog.Println("beginning core upload loop")
 	var peek []byte
 	var chunks []*unfinishedUploadChunk
 	for chunkIndex := uint64(0); ; chunkIndex++ {
@@ -320,7 +319,6 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 			return nil, ss.err
 		}
 	}
-	r.repairLog.Println("core upload loop completed, all chunks should be in the repair system")
 
 	// Wait for all chunks to become available.
 	start := time.Now()
@@ -333,27 +331,22 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 			return nil, errors.AddContext(err, "upload streamer failed to get all data available")
 		}
 	}
-	r.repairLog.Println("all chunks now available via the upload streamer")
 
 	// Wait for all chunks to reach full redundancy, but only wait for a limited
 	// amount of time, dependant on the time it took to reach availability.
 	ec := fileNode.ErasureCode()
 	etuc := estimateTimeUntilComplete(time.Since(start), ec.MinPieces(), ec.NumPieces())
-	r.repairLog.Println("etuc:", etuc)
-	/*
-			ctx, cancel := context.WithTimeout(r.tg.StopCtx(), etuc)
-			defer cancel()
+	ctx, cancel := context.WithTimeout(r.tg.StopCtx(), etuc)
+	defer cancel()
 
-		LOOP:
-			for _, chunk := range chunks {
-				select {
-				case <-ctx.Done():
-					break LOOP
-				case <-chunk.staticUploadCompletedChan:
-				}
-			}
-			r.repairLog.Println("done")
-	*/
+LOOP:
+	for _, chunk := range chunks {
+		select {
+		case <-ctx.Done():
+			break LOOP
+		case <-chunk.staticUploadCompletedChan:
+		}
+	}
 
 	// TODO: we wait until all chunks reach full redundancy because if we
 	// wouldn't do that, and the recently uploaded skyfile gets requested
