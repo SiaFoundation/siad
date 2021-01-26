@@ -496,8 +496,9 @@ func (d *download) Start() error {
 			physicalChunkData: make([][]byte, params.file.ErasureCode().NumPieces()),
 			pieceUsage:        make([]bool, params.file.ErasureCode().NumPieces()),
 
-			download:   d,
-			renterFile: params.file,
+			download:            d,
+			staticMemoryManager: params.staticMemoryManager,
+			renterFile:          params.file,
 		}
 
 		// Set the fetchOffset - the offset within the chunk that we start
