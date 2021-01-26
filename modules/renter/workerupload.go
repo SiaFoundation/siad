@@ -183,9 +183,6 @@ func (w *worker) managedPerformUploadChunkJob() {
 	// because there may be more chunks in the queue.
 	uc, pieceIndex := w.managedProcessUploadChunk(nextChunk)
 	if uc == nil {
-		nextChunk.mu.Lock()
-		nextChunk.chunkFailedProcessTimes = append(nextChunk.chunkFailedProcessTimes, time.Now())
-		nextChunk.mu.Unlock()
 		return
 	}
 	// Open an editing connection to the host.
