@@ -505,6 +505,8 @@ func TestMemoryManagerStatus(t *testing.T) {
 	t.Parallel()
 
 	// Create memory manager
+	memoryDefault := repairMemoryDefault
+	memoryPriorityDefault := memoryDefault / 4
 	stopChan := make(chan struct{})
 	mm := newMemoryManager(memoryDefault, memoryPriorityDefault, stopChan)
 
@@ -641,7 +643,7 @@ func TestMemoryManagerRequestMemoryWithContext(t *testing.T) {
 
 	// Create memory manager
 	stopChan := make(chan struct{})
-	mm := newMemoryManager(memoryDefault, memoryPriorityDefault, stopChan)
+	mm := newMemoryManager(repairMemoryDefault, repairMemoryPriorityDefault, stopChan)
 
 	// Get the total available memory
 	mm.mu.Lock()

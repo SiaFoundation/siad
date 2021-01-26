@@ -182,6 +182,8 @@ func (s *streamer) managedFillCache() bool {
 		offset:        uint64(fetchOffset),
 		overdrive:     5,    // TODO: high default until full overdrive support is added.
 		priority:      1000, // TODO: high default until full priority support is added.
+
+		staticMemoryManager: s.r.userDownloadMemoryManager, // user initiated download
 	})
 	if err != nil {
 		closeErr := ddw.Close()

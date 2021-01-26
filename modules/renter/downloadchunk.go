@@ -54,6 +54,7 @@ type unfinishedDownloadChunk struct {
 	staticDisableDiskFetch bool
 	staticLatencyTarget    time.Duration
 	staticNeedsMemory      bool // Set to true if memory was not pre-allocated for this chunk.
+	staticMemoryManager    *memoryManager
 	staticOverdrive        int
 	staticPriority         uint64
 
@@ -208,7 +209,7 @@ func (udc *unfinishedDownloadChunk) returnMemory() {
 	}
 	// Return any memory we don't need.
 	if uint64(udc.memoryAllocated) > maxMemory {
-		udc.download.r.memoryManager.Return(udc.memoryAllocated - maxMemory)
+		udc.staticMemoryManager.Return(udc.memoryAllocated - maxMemory)
 		udc.memoryAllocated = maxMemory
 	}
 }

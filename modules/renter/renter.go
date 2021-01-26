@@ -236,6 +236,20 @@ type Renter struct {
 	statsChan chan struct{}
 	statsMu   sync.Mutex
 
+	// Memory management
+	//
+	// registryMemoryManager is used for updating registry entries and reading
+	// them.
+	//
+	// userMemoryManager is used for user-initiated uploads and downloads
+	//
+	// repairMemoryManager is used for repair work scheduled by siad
+	//
+	registryMemoryManager     *memoryManager
+	userUploadMemoryManager   *memoryManager
+	userDownloadMemoryManager *memoryManager
+	repairMemoryManager       *memoryManager
+
 	// Utilities.
 	cs                    modules.ConsensusSet
 	deps                  modules.Dependencies
@@ -246,7 +260,6 @@ type Renter struct {
 	log                   *persist.Logger
 	persist               persistence
 	persistDir            string
-	memoryManager         *memoryManager
 	mu                    *siasync.RWMutex
 	repairLog             *persist.Logger
 	staticAccountManager  *accountManager
@@ -278,7 +291,10 @@ func (r *Renter) MemoryStatus() (modules.MemoryStatus, error) {
 		return modules.MemoryStatus{}, err
 	}
 	defer r.tg.Done()
-	return r.memoryManager.callStatus(), nil
+
+	// TODO: fix
+
+	return modules.MemoryStatus{}, nil
 }
 
 // PriceEstimation estimates the cost in siacoins of performing various storage
@@ -1019,7 +1035,12 @@ func renterBlockingStartup(g modules.Gateway, cs modules.ConsensusSet, tpool mod
 	if err != nil {
 		return nil, errors.AddContext(err, "unable to create account manager")
 	}
-	r.memoryManager = newMemoryManager(memoryDefault, memoryPriorityDefault, r.tg.StopChan())
+
+	r.registryMemoryManager = newMemoryManager(registryMemoryDefault, registryMemoryPriorityDefault, r.tg.StopChan())
+	r.userUploadMemoryManager = newMemoryManager(userUploadMemoryDefault, userUploadMemoryPriorityDefault, r.tg.StopChan())
+	r.userDownloadMemoryManager = newMemoryManager(userDownloadMemoryDefault, userDownloadMemoryPriorityDefault, r.tg.StopChan())
+	r.repairMemoryManager = newMemoryManager(repairMemoryDefault, repairMemoryPriorityDefault, r.tg.StopChan())
+
 	r.staticFuseManager = newFuseManager(r)
 	r.stuckStack = callNewStuckStack()
 

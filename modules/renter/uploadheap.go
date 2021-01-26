@@ -544,6 +544,8 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 		staticIndex:   chunkIndex,
 		staticSiaPath: entryCopy.SiaFilePath(),
 
+		staticMemoryManager: r.repairMemoryManager,
+
 		// memoryNeeded has to also include the logical data, and also
 		// include the overhead for encryption.
 		//
@@ -1311,7 +1313,7 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk) error {
 	// Grab the next chunk, loop until we have enough memory, update the amount
 	// of memory available, and then spin up a thread to asynchronously handle
 	// the rest of the chunk tasks.
-	if !r.memoryManager.Request(context.Background(), uuc.memoryNeeded, uuc.staticPriority) {
+	if !uuc.staticMemoryManager.Request(context.Background(), uuc.memoryNeeded, uuc.staticPriority) {
 		return errors.New("couldn't request memory")
 	}
 	// Fetch the chunk in a separate goroutine, as it can take a long time and
