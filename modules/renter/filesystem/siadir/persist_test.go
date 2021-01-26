@@ -12,6 +12,7 @@ import (
 	"gitlab.com/NebulousLabs/writeaheadlog"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/persist"
 )
 
 // equalMetadatas is a helper that compares two siaDirMetadatas. If using this
@@ -101,11 +102,20 @@ func equalMetadatas(md, md2 Metadata) error {
 	return nil
 }
 
+// newSiaDirTestDir creates a test directory for a siadir test
+func newSiaDirTestDir(testDir string) (string, error) {
+	rootPath := filepath.Join(os.TempDir(), "siadirs", testDir)
+	if err := os.RemoveAll(rootPath); err != nil {
+		return "", err
+	}
+	return rootPath, os.MkdirAll(rootPath, persist.DefaultDiskPermissionsTest)
+}
+
 // newTestDir creates a new SiaDir for testing, the test Name should be passed
 // in as the rootDir
 func newTestDir(rootDir string) (*SiaDir, error) {
-	rootPath := filepath.Join(os.TempDir(), "siadirs", rootDir)
-	if err := os.RemoveAll(rootPath); err != nil {
+	rootPath, err := newSiaDirTestDir(rootDir)
+	if err != nil {
 		return nil, err
 	}
 	wal, _ := newTestWAL()
@@ -398,4 +408,13 @@ func TestCreateAndApplyTransactionPanic(t *testing.T) {
 		defer assertRecover()
 		_ = CreateAndApplyTransaction(siadir.wal, update)
 	}()
+}
+
+// TestCreateDirMetadataAll probes the case of a potential infinite loop in
+// createDirMetadataAll
+func TestCreateDirMetadataAll(t *testing.T) {
+	// Ignoring errors, only checking that the functions return
+	createDirMetadataAll("path", "", persist.DefaultDiskPermissionsTest)
+	createDirMetadataAll("path", ".", persist.DefaultDiskPermissionsTest)
+	createDirMetadataAll("path", "/", persist.DefaultDiskPermissionsTest)
 }
