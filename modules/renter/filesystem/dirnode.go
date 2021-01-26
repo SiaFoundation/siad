@@ -588,6 +588,10 @@ func (n *DirNode) managedInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, e
 		AggregateSize:                metadata.AggregateSize,
 		AggregateStuckHealth:         metadata.AggregateStuckHealth,
 
+		// Skynet Fields
+		AggregateSkynetFiles: metadata.AggregateSkynetFiles,
+		AggregateSkynetSize:  metadata.AggregateSkynetSize,
+
 		// SiaDir Fields
 		Health:              metadata.Health,
 		LastHealthCheckTime: metadata.LastHealthCheckTime,
@@ -603,6 +607,10 @@ func (n *DirNode) managedInfo(siaPath modules.SiaPath) (modules.DirectoryInfo, e
 		StuckHealth:         metadata.StuckHealth,
 		SiaPath:             siaPath,
 		UID:                 n.staticUID,
+
+		// Skynet Fields
+		SkynetFiles: metadata.SkynetFiles,
+		SkynetSize:  metadata.SkynetSize,
 	}, nil
 }
 

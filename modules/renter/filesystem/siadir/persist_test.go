@@ -50,6 +50,14 @@ func equalMetadatas(md, md2 Metadata) error {
 		return fmt.Errorf("AggregateStuckHealths not equal, %v and %v", md.AggregateStuckHealth, md2.AggregateStuckHealth)
 	}
 
+	// Aggregate Skynet Fields
+	if md.AggregateSkynetFiles != md2.AggregateSkynetFiles {
+		return fmt.Errorf("AggregateSkynetFiles not equal, %v and %v", md.AggregateSkynetFiles, md2.AggregateSkynetFiles)
+	}
+	if md.AggregateSkynetSize != md2.AggregateSkynetSize {
+		return fmt.Errorf("AggregateSkynetSize not equal, %v and %v", md.AggregateSkynetSize, md2.AggregateSkynetSize)
+	}
+
 	// Check SiaDir Fields
 	if md.Health != md2.Health {
 		return fmt.Errorf("Healths not equal, %v and %v", md.Health, md2.Health)
@@ -80,6 +88,14 @@ func equalMetadatas(md, md2 Metadata) error {
 	}
 	if md.StuckHealth != md2.StuckHealth {
 		return fmt.Errorf("StuckHealths not equal, %v and %v", md.StuckHealth, md2.StuckHealth)
+	}
+
+	// Skynet Fields
+	if md.SkynetFiles != md2.SkynetFiles {
+		return fmt.Errorf("SkynetFiles not equal, %v and %v", md.SkynetFiles, md2.SkynetFiles)
+	}
+	if md.SkynetSize != md2.SkynetSize {
+		return fmt.Errorf("SkynetSize not equal, %v and %v", md.SkynetSize, md2.SkynetSize)
 	}
 
 	return nil

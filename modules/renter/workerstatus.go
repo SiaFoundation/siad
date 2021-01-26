@@ -54,7 +54,7 @@ func (w *worker) callStatus() modules.WorkerStatus {
 		UploadCoolDownError: uploadCoolDownErr,
 		UploadCoolDownTime:  uploadCoolDownTime,
 		UploadOnCoolDown:    uploadOnCoolDown,
-		UploadQueueSize:     len(w.unprocessedChunks),
+		UploadQueueSize:     w.unprocessedChunks.Len(),
 		UploadTerminated:    w.uploadTerminated,
 
 		// Job Queues
