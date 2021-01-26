@@ -848,8 +848,17 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 	// Start a goroutine that continuously sets it to a new value on the host.
 	ticker := time.NewTicker(time.Millisecond)
 	defer ticker.Stop()
+	cancelTicker := make(chan struct{})
+	var updateWG sync.WaitGroup
+	updateWG.Add(1)
 	go func(rv modules.SignedRegistryValue) {
-		for range ticker.C {
+		defer updateWG.Done()
+		for {
+			select {
+			case <-ticker.C:
+			case <-cancelTicker:
+				return
+			}
 			host := rhp.staticHT.host
 			rv.Revision++
 			rv = rv.Sign(sk)
@@ -903,8 +912,17 @@ func testRPCSubscribeConcurrent(t *testing.T, rhp *renterHostPair) {
 		t.Fatal(err)
 	}
 
+	// Close listener to prevent new incoming notifications.
+	err = rhp.staticRenterMux.CloseListener(hex.EncodeToString(sub[:]))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Wait for last notification to finish.
 	wg.Wait()
+
+	// Stop the ticker and wait for the goroutine to finish.
+	close(cancelTicker)
 
 	// Check balance afterwards.
 	l := stream.Limit()
