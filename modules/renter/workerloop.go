@@ -106,13 +106,13 @@ func (w *worker) externTryLaunchSerialJob() {
 	// perform. This scheduling allows a flood of jobs earlier in the list to
 	// starve out jobs later in the list. At some point we will probably
 	// revisit this to try and address the starvation issue.
+	if w.managedNeedsToUpdatePriceTable() {
+		w.externLaunchSerialJob(w.staticUpdatePriceTable)
+		return
+	}
 	job := w.staticJobRenewQueue.callNext()
 	if job != nil {
 		w.externLaunchSerialJob(job.callExecute)
-		return
-	}
-	if w.managedNeedsToUpdatePriceTable() {
-		w.externLaunchSerialJob(w.staticUpdatePriceTable)
 		return
 	}
 	if w.managedNeedsToRefillAccount() {
@@ -215,6 +215,15 @@ func (w *worker) managedAsyncReady() bool {
 func (w *worker) externTryLaunchAsyncJob() bool {
 	rrjs := w.callReadRegistryJobsStatus()
 	size := rrjs.JobQueueSize
+
+	// Exit if the worker is not currently equipped to perform async tasks.
+	if !w.managedAsyncReady() {
+		if size > 10 {
+			w.renter.repairLog.Println("worker is not async ready, ignoring async job launch")
+		}
+		return false
+	}
+
 	// Verify that the worker has not reached its limits for doing multiple
 	// jobs at once.
 	readLimit := atomic.LoadUint64(&w.staticLoopState.atomicReadDataLimit)
@@ -239,14 +248,6 @@ func (w *worker) externTryLaunchAsyncJob() bool {
 			w.renter.repairLog.Println("disrupt, ignoring async job launch")
 		}
 		return true
-	}
-
-	// Exit if the worker is not currently equipped to perform async tasks.
-	if !w.managedAsyncReady() {
-		if size > 10 {
-			w.renter.repairLog.Println("worker is not async ready, ignoring async job launch")
-		}
-		return false
 	}
 
 	// Check every potential async job that can be launched.
