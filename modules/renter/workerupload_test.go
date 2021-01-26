@@ -563,16 +563,17 @@ func TestProcessUploadChunk(t *testing.T) {
 			unusedHosts: map[string]struct{}{
 				wt.staticHostPubKey.String(): {},
 			},
-			piecesNeeded:        pieces,
-			piecesCompleted:     0,
-			piecesRegistered:    0,
-			pieceUsage:          make([]bool, pieces),
-			released:            true,
-			workersRemaining:    1,
-			physicalChunkData:   make([][]byte, pieces),
-			logicalChunkData:    make([][]byte, pieces),
-			staticAvailableChan: make(chan struct{}),
-			memoryNeeded:        uint64(pieces) * modules.SectorSize,
+			piecesNeeded:              pieces,
+			piecesCompleted:           0,
+			piecesRegistered:          0,
+			pieceUsage:                make([]bool, pieces),
+			released:                  true,
+			workersRemaining:          1,
+			physicalChunkData:         make([][]byte, pieces),
+			logicalChunkData:          make([][]byte, pieces),
+			staticAvailableChan:       make(chan struct{}),
+			staticUploadCompletedChan: make(chan struct{}),
+			memoryNeeded:              uint64(pieces) * modules.SectorSize,
 		}
 	}
 
