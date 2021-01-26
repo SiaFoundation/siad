@@ -341,18 +341,18 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 	etuc := estimateTimeUntilComplete(time.Since(start), ec.MinPieces(), ec.NumPieces())
 	r.repairLog.Println("etuc:", etuc)
 	/*
-	ctx, cancel := context.WithTimeout(r.tg.StopCtx(), etuc)
-	defer cancel()
+			ctx, cancel := context.WithTimeout(r.tg.StopCtx(), etuc)
+			defer cancel()
 
-LOOP:
-	for _, chunk := range chunks {
-		select {
-		case <-ctx.Done():
-			break LOOP
-		case <-chunk.staticUploadCompletedChan:
-		}
-	}
-	r.repairLog.Println("done")
+		LOOP:
+			for _, chunk := range chunks {
+				select {
+				case <-ctx.Done():
+					break LOOP
+				case <-chunk.staticUploadCompletedChan:
+				}
+			}
+			r.repairLog.Println("done")
 	*/
 
 	// TODO: we wait until all chunks reach full redundancy because if we
