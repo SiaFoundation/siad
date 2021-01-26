@@ -145,7 +145,7 @@ func testProcessUploadChunkBasic(t *testing.T, chunk func(wt *workerTester) *unf
 	uuc.mu.Lock()
 	uuc.pieceUsage[0] = true // mark first piece as used
 	uuc.mu.Unlock()
-	_ = wt.renter.memoryManager.Request(context.Background(), modules.SectorSize*uint64(uuc.piecesNeeded-1), true)
+	_ = wt.renter.repairMemoryManager.Request(context.Background(), modules.SectorSize*uint64(uuc.piecesNeeded-1), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc == nil {
 		t.Error("next chunk shouldn't be nil")
@@ -202,7 +202,7 @@ func testProcessUploadChunkNoHelpNeeded(t *testing.T, chunk func(wt *workerTeste
 	uuc.piecesRegistered = uuc.piecesNeeded
 	uuc.mu.Unlock()
 	println("request", modules.SectorSize*uint64(pieces))
-	_ = wt.renter.memoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
+	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc != nil {
 		t.Error("next chunk should be nil")
@@ -264,7 +264,7 @@ func testProcessUploadChunkNotACandidate(t *testing.T, chunk func(wt *workerTest
 	uuc.mu.Lock()
 	uuc.unusedHosts = make(map[string]struct{})
 	uuc.mu.Unlock()
-	_ = wt.renter.memoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
+	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc != nil {
 		t.Error("next chunk should be nil")
@@ -326,7 +326,7 @@ func testProcessUploadChunkCompleted(t *testing.T, chunk func(wt *workerTester) 
 	uuc.mu.Lock()
 	uuc.piecesCompleted = uuc.piecesNeeded
 	uuc.mu.Unlock()
-	_ = wt.renter.memoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
+	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc != nil {
 		t.Error("next chunk should be nil")
@@ -391,7 +391,7 @@ func testProcessUploadChunk_NotACandidateCooldown(t *testing.T, chunk func(wt *w
 	uuc.mu.Lock()
 	uuc.unusedHosts = make(map[string]struct{})
 	uuc.mu.Unlock()
-	_ = wt.renter.memoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
+	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc != nil {
 		t.Error("next chunk should be nil")
@@ -455,7 +455,7 @@ func testProcessUploadChunkCompletedCooldown(t *testing.T, chunk func(wt *worker
 	uuc.mu.Lock()
 	uuc.piecesCompleted = uuc.piecesNeeded
 	uuc.mu.Unlock()
-	_ = wt.renter.memoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
+	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc != nil {
 		t.Error("next chunk should be nil")
@@ -521,7 +521,7 @@ func testProcessUploadChunkNotGoodForUpload(t *testing.T, chunk func(wt *workerT
 		t.Fatal(err)
 	}
 	wt.managedUpdateCache()
-	_ = wt.renter.memoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
+	_ = uuc.staticMemoryManager.Request(context.Background(), modules.SectorSize*uint64(pieces), true)
 	nc, pieceIndex := wt.managedProcessUploadChunk(uuc)
 	if nc != nil {
 		t.Error("next chunk should be nil")
@@ -583,6 +583,7 @@ func TestProcessUploadChunk(t *testing.T) {
 			staticAvailableChan:       make(chan struct{}),
 			staticUploadCompletedChan: make(chan struct{}),
 			memoryNeeded:              uint64(pieces) * modules.SectorSize,
+			staticMemoryManager:       wt.renter.repairMemoryManager,
 		}
 	}
 

@@ -48,6 +48,8 @@ type unfinishedUploadChunk struct {
 	stuck                  bool   // indicates if the chunk was marked as stuck during last repair
 	stuckRepair            bool   // indicates if the chunk was identified for repair by the stuck loop
 
+	staticMemoryManager *memoryManager
+
 	// Static cached fields.
 	staticIndex    uint64
 	staticSiaPath  string
@@ -293,6 +295,8 @@ func (r *Renter) managedDownloadLogicalChunkData(chunk *unfinishedUploadChunk) e
 		offset:        uint64(chunk.offset),
 		overdrive:     0, // No need to rush the latency on repair downloads.
 		priority:      0, // Repair downloads are completely de-prioritized.
+
+		staticMemoryManager: chunk.staticMemoryManager, // Same memory manager as upload chunk
 	})
 	if err != nil {
 		return err
@@ -390,7 +394,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 		chunk.logicalChunkData = nil
 		chunk.workersRemaining = 0
 		chunk.mu.Unlock()
-		r.memoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
+		chunk.staticMemoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
 		chunk.memoryReleased += erasureCodingMemory + pieceCompletedMemory
 		r.repairLog.Printf("Unable to fetch the logical data for chunk %v of %s - marking as stuck: %v", chunk.staticIndex, chunk.staticSiaPath, err)
 
@@ -410,7 +414,7 @@ func (r *Renter) threadedFetchAndRepairChunk(chunk *unfinishedUploadChunk) {
 	}
 	// Return the erasure coding memory. This is not handled by the data
 	// fetching, where the erasure coding occurs.
-	r.memoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
+	chunk.staticMemoryManager.Return(erasureCodingMemory + pieceCompletedMemory)
 	chunk.memoryReleased += erasureCodingMemory + pieceCompletedMemory
 	// Swap the physical chunk data and the logical chunk data. There is
 	// probably no point to having both, given that we perform such a clean
@@ -708,7 +712,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 	}
 	// If required, return the memory to the renter.
 	if memoryReleased > 0 {
-		r.memoryManager.Return(memoryReleased)
+		uc.staticMemoryManager.Return(memoryReleased)
 	}
 	// Make sure file is closed for canceled chunks when all workers are done
 	if canceled && workersRemaining == 0 && !chunkComplete {

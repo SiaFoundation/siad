@@ -586,6 +586,19 @@ type MemoryStatus struct {
 	PriorityReserve   uint64 `json:"priorityreserve"`
 }
 
+// Add combines two MemoryStatus objects into one.
+func (ms MemoryStatus) Add(ms2 MemoryStatus) MemoryStatus {
+	return MemoryStatus{
+		Available:         ms.Available + ms2.Available,
+		Base:              ms.Base + ms2.Base,
+		Requested:         ms.Requested + ms2.Requested,
+		PriorityAvailable: ms.PriorityAvailable + ms2.PriorityAvailable,
+		PriorityBase:      ms.PriorityBase + ms2.PriorityBase,
+		PriorityRequested: ms.PriorityRequested + ms2.PriorityRequested,
+		PriorityReserve:   ms.PriorityReserve + ms2.PriorityReserve,
+	}
+}
+
 // MountInfo contains information about a mounted FUSE filesystem.
 type MountInfo struct {
 	MountPoint string  `json:"mountpoint"`

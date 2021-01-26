@@ -86,7 +86,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 
 	// Call managedBuildUnfinishedChunks as not stuck loop, all un stuck chunks
 	// should be returned
-	uucs := rt.renter.managedBuildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew)
+	uucs := rt.renter.managedBuildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew, rt.renter.repairMemoryManager)
 	if len(uucs) != int(f.NumChunks())-1 {
 		t.Fatalf("Incorrect number of chunks returned, expected %v got %v", int(f.NumChunks())-1, len(uucs))
 	}
@@ -98,7 +98,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 
 	// Call managedBuildUnfinishedChunks as stuck loop, all stuck chunks should
 	// be returned
-	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew)
+	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew, rt.renter.repairMemoryManager)
 	if len(uucs) != 1 {
 		t.Fatalf("Incorrect number of chunks returned, expected 1 got %v", len(uucs))
 	}
@@ -116,7 +116,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 
 	// Call managedBuildUnfinishedChunks as not stuck loop, since the file is
 	// now not repairable it should return no chunks
-	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew)
+	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetUnstuckChunks, offline, goodForRenew, rt.renter.repairMemoryManager)
 	if len(uucs) != 0 {
 		t.Fatalf("Incorrect number of chunks returned, expected 0 got %v", len(uucs))
 	}
@@ -125,7 +125,7 @@ func TestBuildUnfinishedChunks(t *testing.T) {
 	// returned because they should have been marked as stuck by the previous
 	// call and stuck chunks should still be returned if the file is not
 	// repairable
-	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew)
+	uucs = rt.renter.managedBuildUnfinishedChunks(f, hosts, targetStuckChunks, offline, goodForRenew, rt.renter.repairMemoryManager)
 	if len(uucs) != int(f.NumChunks()) {
 		t.Fatalf("Incorrect number of chunks returned, expected %v got %v", f.NumChunks(), len(uucs))
 	}
@@ -226,6 +226,7 @@ func addChunksOfDifferentHealth(r *Renter, numChunks int, priority, fileRecently
 			onDisk:                    !remote,
 			staticAvailableChan:       make(chan struct{}),
 			staticUploadCompletedChan: make(chan struct{}),
+			staticMemoryManager:       r.repairMemoryManager,
 		}
 		pushed, err := r.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
@@ -732,6 +733,7 @@ func TestAddDirectoryBackToHeap(t *testing.T) {
 			piecesNeeded:              1,
 			staticAvailableChan:       make(chan struct{}),
 			staticUploadCompletedChan: make(chan struct{}),
+			staticMemoryManager:       rt.renter.repairMemoryManager,
 		}
 		pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
 		if err != nil {
@@ -814,6 +816,7 @@ func TestUploadHeapMaps(t *testing.T) {
 			piecesNeeded:              1,
 			staticAvailableChan:       make(chan struct{}),
 			staticUploadCompletedChan: make(chan struct{}),
+			staticMemoryManager:       rt.renter.repairMemoryManager,
 		}
 		// push chunk to heap
 		pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
@@ -945,6 +948,7 @@ func TestChunkSwitchStuckStatus(t *testing.T) {
 			fileUID: siafile.SiafileUID("chunk"),
 			index:   0,
 		},
+		staticMemoryManager: rt.renter.repairMemoryManager,
 	}
 	// push chunk to heap
 	pushed, err := rt.renter.managedPushChunkForRepair(chunk, chunkTypeLocalChunk)
@@ -1027,9 +1031,10 @@ func TestUploadHeapStreamPush(t *testing.T) {
 			fileUID: "streamchunk",
 			index:   1,
 		},
-		fileEntry:        file.Copy(),
-		sourceReader:     sr,
-		piecesRegistered: 1, // This is so the chunk is viewed as incomplete
+		fileEntry:           file.Copy(),
+		sourceReader:        sr,
+		piecesRegistered:    1, // This is so the chunk is viewed as incomplete
+		staticMemoryManager: rt.renter.repairMemoryManager,
 	}
 
 	// Define helper
@@ -1087,9 +1092,10 @@ func TestUploadHeapStreamPush(t *testing.T) {
 
 	// Add a local chunk to the heap
 	localChunk := &unfinishedUploadChunk{
-		id:               streamChunk.id,
-		fileEntry:        file.Copy(),
-		piecesRegistered: 1, // This is so the chunk is viewed as incomplete
+		id:                  streamChunk.id,
+		fileEntry:           file.Copy(),
+		piecesRegistered:    1, // This is so the chunk is viewed as incomplete
+		staticMemoryManager: rt.renter.repairMemoryManager,
 	}
 	pushed, err = rt.renter.managedPushChunkForRepair(localChunk, chunkTypeLocalChunk)
 	if err != nil {
@@ -1187,9 +1193,10 @@ func TestUploadHeapTryUpdate(t *testing.T) {
 				fileUID: siafile.SiafileUID(test.name),
 				index:   uint64(i),
 			},
-			fileEntry:        entry.Copy(),
-			sourceReader:     test.existingChunkSR,
-			piecesRegistered: 1, // This is so the chunk is viewed as incomplete
+			fileEntry:           entry.Copy(),
+			sourceReader:        test.existingChunkSR,
+			piecesRegistered:    1, // This is so the chunk is viewed as incomplete
+			staticMemoryManager: rt.renter.repairMemoryManager,
 		}
 		if test.existsUnstuck {
 			uh.unstuckHeapChunks[existingChunk.id] = existingChunk
@@ -1202,9 +1209,10 @@ func TestUploadHeapTryUpdate(t *testing.T) {
 			uh.repairingChunks[existingChunk.id] = existingChunk
 		}
 		newChunk := &unfinishedUploadChunk{
-			id:               existingChunk.id,
-			sourceReader:     test.newChunkSR,
-			piecesRegistered: 1, // This is so the chunk is viewed as incomplete
+			id:                  existingChunk.id,
+			sourceReader:        test.newChunkSR,
+			piecesRegistered:    1, // This is so the chunk is viewed as incomplete
+			staticMemoryManager: rt.renter.repairMemoryManager,
 		}
 
 		// Try and Update the Chunk in the Heap

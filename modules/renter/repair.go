@@ -54,7 +54,7 @@ func (r *Renter) managedAddRandomStuckChunks(hosts map[string]struct{}) ([]modul
 		}
 
 		// Add stuck chunk to upload heap and signal repair needed
-		err = r.managedBuildAndPushRandomChunk(siaPath, hosts, targetStuckChunks)
+		err = r.managedBuildAndPushRandomChunk(siaPath, hosts, targetStuckChunks, r.repairMemoryManager)
 		if err != nil {
 			return dirSiaPaths, errors.AddContext(err, "unable to push random stuck chunk from '"+siaPath.String()+"' of '"+dirSiaPath.String()+"'")
 		}
@@ -130,7 +130,7 @@ func (r *Renter) managedAddStuckChunksToHeap(siaPath modules.SiaPath, hosts map[
 
 	// Build unfinished stuck chunks
 	var allErrors error
-	unfinishedStuckChunks := r.managedBuildUnfinishedChunks(sf, hosts, targetStuckChunks, offline, goodForRenew)
+	unfinishedStuckChunks := r.managedBuildUnfinishedChunks(sf, hosts, targetStuckChunks, offline, goodForRenew, r.repairMemoryManager)
 	defer func() {
 		// Close out remaining file entries
 		for _, chunk := range unfinishedStuckChunks {

@@ -91,10 +91,10 @@ func (r *Renter) ReadRegistry(spk types.SiaPublicKey, tweak crypto.Hash, timeout
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
 	// Since registry entries are very small we use a fairly generous multiple.
-	if !r.memoryManager.Request(ctx, readRegistryMemory, memoryPriorityHigh) {
+	if !r.registryMemoryManager.Request(ctx, readRegistryMemory, memoryPriorityHigh) {
 		return modules.SignedRegistryValue{}, errors.New("timeout while waiting in job queue - server is busy")
 	}
-	defer r.memoryManager.Return(readRegistryMemory)
+	defer r.registryMemoryManager.Return(readRegistryMemory)
 
 	// Start the ReadRegistry jobs.
 	srv, err := r.managedReadRegistry(ctx, spk, tweak)
@@ -119,10 +119,10 @@ func (r *Renter) UpdateRegistry(spk types.SiaPublicKey, srv modules.SignedRegist
 	// Block until there is memory available, and then ensure the memory gets
 	// returned.
 	// Since registry entries are very small we use a fairly generous multiple.
-	if !r.memoryManager.Request(ctx, updateRegistryMemory, memoryPriorityHigh) {
+	if !r.registryMemoryManager.Request(ctx, updateRegistryMemory, memoryPriorityHigh) {
 		return errors.New("timeout while waiting in job queue - server is busy")
 	}
-	defer r.memoryManager.Return(updateRegistryMemory)
+	defer r.registryMemoryManager.Return(updateRegistryMemory)
 
 	// Start the UpdateRegistry jobs.
 	err := r.managedUpdateRegistry(ctx, spk, srv)
