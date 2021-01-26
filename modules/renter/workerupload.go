@@ -90,8 +90,6 @@ func (w *worker) managedDropChunk(uc *unfinishedUploadChunk) {
 // managedDropUploadChunks will release all of the upload chunks that the worker
 // has received.
 func (w *worker) managedDropUploadChunks() {
-	// Make a copy of the slice under lock, clear the slice, then drop the
-	// chunks without a lock (managed function).
 	w.mu.Lock()
 	chunksToDrop := w.unprocessedChunks
 	w.unprocessedChunks = newUploadChunks()
@@ -155,11 +153,10 @@ func (w *worker) managedPerformUploadChunkJob() {
 	// false.
 	w.mu.Lock()
 	nextChunk := w.unprocessedChunks.Pop()
+	w.mu.Unlock()
 	if nextChunk == nil {
-		w.mu.Unlock()
 		return
 	}
-	w.mu.Unlock()
 
 	// Make sure the chunk wasn't canceled.
 	nextChunk.cancelMU.Lock()

@@ -196,7 +196,7 @@ func testProcessUploadChunkNoHelpNeeded(t *testing.T, chunk func(wt *workerTeste
 	uuc := chunk(wt)
 	pieces := uuc.piecesNeeded
 	wt.mu.Lock()
-	wt.unprocessedChunks = nil
+	wt.unprocessedChunks = newUploadChunks()
 	wt.mu.Unlock()
 	uuc.mu.Lock()
 	uuc.piecesRegistered = uuc.piecesNeeded
