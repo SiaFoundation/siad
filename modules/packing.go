@@ -93,9 +93,10 @@ type (
 //     ii. If the file does not go to the end of the bucket, make a new bucket
 //     that goes from the end of the file to the end of the old bucket.
 //
-// 4. Return the array of file placements in the order that they were packed
+// 4. Return the slice of file placements in the order that they were packed
 // chronologically. Note that they may be out of order positionally, as smaller
-// files may be packed in earlier positions than larger files.
+// files may be packed in lower offsets than larger files despite appearing
+// later in the slice.
 func PackFiles(files map[string]uint64) ([]FilePlacement, uint64, error) {
 	filesSorted := sortByFileSizeDescending(files)
 

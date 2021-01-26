@@ -59,8 +59,9 @@ func TestPackFiles(t *testing.T) {
 			},
 			num: 1,
 		},
-		// Test case to ensure that the smallest file is not packed in the last
-		// position, if there are small previous buckets available.
+		// Test case to ensure that the smallest file, despite being packed
+		// last, does not have the highest offset of all the files if there are
+		// small previous buckets available.
 		//
 		// NOTE: The packer picks the first of the *largest* available buckets,
 		// so we must first fill up the whole sector before smaller previous
