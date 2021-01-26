@@ -5075,6 +5075,9 @@ curl -A "Sia-Agent" -u "":<apipassword> "localhost:9980/skynet/restore" --data-b
 restore a skyfile from a backup reader. The backup reader should be generated
 from the `client` package method `SkynetSkylinkBackup`.
 
+**NOTE:** The `/skynet/restore` endpoint is intended to use the backup created
+with the `SkynetSkylinkBackup` `client` method. 
+
 ### Response
 > JSON Response Example
 

@@ -227,7 +227,7 @@ func (r *Renter) managedCalculateDirectoryMetadata(siaPath modules.SiaPath) (sia
 			// contains a skylink in the metadata, then we count the file towards the
 			// Skynet Stats.
 			//
-			// For all case we count the size.
+			// For all cases we count the size.
 			//
 			// We only count the file towards the number of files if it is in the
 			// skynet folder and is not extended. We do not count files outside of the
