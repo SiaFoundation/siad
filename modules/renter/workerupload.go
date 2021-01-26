@@ -92,17 +92,14 @@ func (w *worker) managedDropChunk(uc *unfinishedUploadChunk) {
 func (w *worker) managedDropUploadChunks() {
 	// Make a copy of the slice under lock, clear the slice, then drop the
 	// chunks without a lock (managed function).
-	var chunksToDrop []*unfinishedUploadChunk
 	w.mu.Lock()
-	for i := 0; i < len(w.unprocessedChunks); i++ {
-		chunksToDrop = append(chunksToDrop, w.unprocessedChunks[i])
-	}
-	w.unprocessedChunks = w.unprocessedChunks[:0]
+	chunksToDrop := w.unprocessedChunks
+	w.unprocessedChunks = newUploadChunks()
 	w.mu.Unlock()
 
-	for i := 0; i < len(chunksToDrop); i++ {
-		w.managedDropChunk(chunksToDrop[i])
-		w.renter.repairLog.Debugf("dropping chunk %v of %s because the worker is dropping all chunks", chunksToDrop[i].staticIndex, chunksToDrop[i].staticSiaPath)
+	for chunkToDrop := chunksToDrop.Pop(); chunkToDrop != nil; chunkToDrop = chunksToDrop.Pop() {
+		w.managedDropChunk(chunkToDrop)
+		w.renter.repairLog.Debugf("dropping chunk %v of %s because the worker is dropping all chunks", chunkToDrop.staticIndex, chunkToDrop.staticSiaPath)
 	}
 }
 
@@ -136,7 +133,7 @@ func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) bool {
 		w.managedDropChunk(uc)
 		return false
 	}
-	w.unprocessedChunks = append(w.unprocessedChunks, uc)
+	w.unprocessedChunks.PushBack(uc)
 	w.mu.Unlock()
 
 	// Send a signal informing the work thread that there is work.
@@ -149,7 +146,7 @@ func (w *worker) callQueueUploadChunk(uc *unfinishedUploadChunk) bool {
 func (w *worker) managedHasUploadJob() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return len(w.unprocessedChunks) > 0
+	return w.unprocessedChunks.Len() > 0
 }
 
 // managedPerformUploadChunkJob will perform some upload work.
@@ -157,12 +154,11 @@ func (w *worker) managedPerformUploadChunkJob() {
 	// Fetch any available chunk for uploading. If no chunk is found, return
 	// false.
 	w.mu.Lock()
-	if len(w.unprocessedChunks) == 0 {
+	nextChunk := w.unprocessedChunks.Pop()
+	if nextChunk == nil {
 		w.mu.Unlock()
 		return
 	}
-	nextChunk := w.unprocessedChunks[0]
-	w.unprocessedChunks = w.unprocessedChunks[1:]
 	w.mu.Unlock()
 
 	// Make sure the chunk wasn't canceled.
