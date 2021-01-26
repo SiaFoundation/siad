@@ -656,7 +656,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		for _, st := range uc.chunkSuccessProcessTimes {
 			successTimes = append(successTimes, int(time.Since(st)/time.Millisecond))
 		}
-		r.repairLog.Debugf(`
+		r.repairLog.Printf(`
 	Chunk Created: %v
 	Chunk Popped: %v
 	Chunk Distributed: %v
