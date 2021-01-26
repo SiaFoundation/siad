@@ -696,12 +696,22 @@ func writeWorkerReadUpdateRegistryInfo(read bool, w *tabwriter.Writer, rw module
 		fmt.Fprintf(w, "%v", worker.HostPubKey.String())
 
 		// Qeue Info
-		status := worker.ReadRegistryJobsStatus
-		fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
-			status.OnCooldown,
-			absDuration(time.Until(status.OnCooldownUntil)),
-			sanitizeErr(status.RecentErr),
-			status.RecentErrTime,
-			status.JobQueueSize)
+		if read {
+			status := worker.ReadRegistryJobsStatus
+			fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
+				status.OnCooldown,
+				absDuration(time.Until(status.OnCooldownUntil)),
+				sanitizeErr(status.RecentErr),
+				status.RecentErrTime,
+				status.JobQueueSize)
+		} else {
+			status := worker.UpdateRegistryJobsStatus
+			fmt.Fprintf(w, "\t%v\t%v\t%v\t%v\t%v\n",
+				status.OnCooldown,
+				absDuration(time.Until(status.OnCooldownUntil)),
+				sanitizeErr(status.RecentErr),
+				status.RecentErrTime,
+				status.JobQueueSize)
+		}
 	}
 }

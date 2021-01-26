@@ -176,9 +176,6 @@ func (w *worker) managedPerformUploadChunkJob() {
 	// because there may be more chunks in the queue.
 	uc, pieceIndex := w.managedProcessUploadChunk(nextChunk)
 	if uc == nil {
-		nextChunk.mu.Lock()
-		nextChunk.chunkFailedProcessTimes = append(nextChunk.chunkFailedProcessTimes, time.Now())
-		nextChunk.mu.Unlock()
 		return
 	}
 	// Open an editing connection to the host.
@@ -331,7 +328,7 @@ func (w *worker) managedUploadFailed(uc *unfinishedUploadChunk, pieceIndex uint6
 		w.uploadConsecutiveFailures++
 		failures := w.uploadConsecutiveFailures
 		w.mu.Unlock()
-		w.renter.repairLog.Debugf("Worker upload failed. Worker: %v, Consecutive Failures: %v, Chunk: %v of %s, Error: %v", w.staticHostPubKey, failures, uc.staticIndex, uc.staticSiaPath, failureErr)
+		w.renter.repairLog.Printf("Worker upload failed. Worker: %v, Consecutive Failures: %v, Chunk: %v of %s, Error: %v", w.staticHostPubKey, failures, uc.staticIndex, uc.staticSiaPath, failureErr)
 	}
 
 	// Unregister the piece from the chunk and hunt for a replacement.
