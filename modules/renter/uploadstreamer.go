@@ -1,7 +1,7 @@
 package renter
 
 import (
-	"context"
+	// "context"
 	"fmt"
 	"io"
 	"sync"
@@ -338,7 +338,10 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 	// Wait for all chunks to reach full redundancy, but only wait for a limited
 	// amount of time, dependant on the time it took to reach availability.
 	ec := fileNode.ErasureCode()
-	ctx, cancel := context.WithTimeout(r.tg.StopCtx(), estimateTimeUntilComplete(time.Since(start), ec.MinPieces(), ec.NumPieces()))
+	etuc := estimateTimeUntilComplete(time.Since(start), ec.MinPieces(), ec.NumPieces())
+	r.repairLog.Println("etuc:", etuc)
+	/*
+	ctx, cancel := context.WithTimeout(r.tg.StopCtx(), etuc)
 	defer cancel()
 
 LOOP:
@@ -349,6 +352,8 @@ LOOP:
 		case <-chunk.staticUploadCompletedChan:
 		}
 	}
+	r.repairLog.Println("done")
+	*/
 
 	// TODO: we wait until all chunks reach full redundancy because if we
 	// wouldn't do that, and the recently uploaded skyfile gets requested
