@@ -108,17 +108,16 @@ type unfinishedUploadChunk struct {
 	//	+ the worker should increment the number of pieces completed
 	//	+ the worker should decrement the number of pieces registered
 	//	+ the worker should release the memory for the completed piece
-	staticAvailableChan       chan struct{} // used to signal to other processes that the chunk is available on the Sia network. Error needs to be checked.
-	staticUploadCompletedChan chan struct{} // used to signal to other processes that the chunk has completely finished uploading to the Sia network. Error needs to be checked.
-	err                       error
-	mu                        sync.Mutex
-	pieceUsage                []bool              // 'true' if a piece is either uploaded, or a worker is attempting to upload that piece.
-	piecesCompleted           int                 // number of pieces that have been fully uploaded.
-	piecesRegistered          int                 // number of pieces that are being uploaded, but aren't finished yet (may fail).
-	released                  bool                // whether this chunk has been released from the active chunks set.
-	unusedHosts               map[string]struct{} // hosts that aren't yet storing any pieces or performing any work.
-	workersRemaining          int                 // number of inactive workers still able to upload a piece.
-	workersStandby            []*worker           // workers that can be used if other workers fail.
+	staticAvailableChan chan struct{} // used to signal to other processes that the chunk is available on the Sia network. Error needs to be checked.
+	err                 error
+	mu                  sync.Mutex
+	pieceUsage          []bool              // 'true' if a piece is either uploaded, or a worker is attempting to upload that piece.
+	piecesCompleted     int                 // number of pieces that have been fully uploaded.
+	piecesRegistered    int                 // number of pieces that are being uploaded, but aren't finished yet (may fail).
+	released            bool                // whether this chunk has been released from the active chunks set.
+	unusedHosts         map[string]struct{} // hosts that aren't yet storing any pieces or performing any work.
+	workersRemaining    int                 // number of inactive workers still able to upload a piece.
+	workersStandby      []*worker           // workers that can be used if other workers fail.
 
 	cancelMU sync.Mutex     // cancelMU needs to be held when adding to cancelWG and reading/writing canceled.
 	canceled bool           // cancel the work on this chunk.
@@ -130,17 +129,6 @@ type unfinishedUploadChunk struct {
 func (uc *unfinishedUploadChunk) staticAvailable() bool {
 	select {
 	case <-uc.staticAvailableChan:
-		return true
-	default:
-		return false
-	}
-}
-
-// staticUploadComplete returns whether or not the chunk is fully uploaded to
-// the Sia network.
-func (uc *unfinishedUploadChunk) staticUploadComplete() bool {
-	select {
-	case <-uc.staticUploadCompletedChan:
 		return true
 	default:
 		return false
@@ -621,20 +609,12 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 		close(uc.staticAvailableChan)
 	}
 
-	// Check if the chunk can be marked as completed. This happens when the
-	// outcome of 'chunkComplete' is true, and the chunk is thus considered
-	// complete.
-	chunkComplete := uc.chunkComplete()
-	if !uc.staticUploadComplete() && chunkComplete {
-		uc.chunkCompleteTime = time.Now()
-		close(uc.staticUploadCompletedChan)
-	}
-
 	// Check if the chunk needs to be removed from the list of active
 	// chunks. It needs to be removed if the chunk is complete, but hasn't
 	// yet been released.
 	released := uc.released
 	canceled := uc.canceled
+	chunkComplete := uc.chunkComplete()
 	if chunkComplete && !released {
 		if uc.piecesCompleted >= uc.piecesNeeded {
 			r.repairLog.Printf("Completed repair for chunk %v of %s, %v pieces were completed out of %v", uc.staticIndex, uc.staticSiaPath, uc.piecesCompleted, uc.piecesNeeded)
@@ -647,6 +627,7 @@ func (r *Renter) managedCleanUpUploadChunk(uc *unfinishedUploadChunk) {
 			close(uc.staticAvailableChan)
 		}
 		uc.released = true
+		uc.chunkCompleteTime = time.Now()
 
 		// Create a log message with all of the timings of the chunk uploading.
 		if build.DEBUG {

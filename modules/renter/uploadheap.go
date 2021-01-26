@@ -561,10 +561,9 @@ func (r *Renter) managedBuildUnfinishedChunk(entry *filesystem.FileNode, chunkIn
 		physicalChunkData:        make([][]byte, entry.ErasureCode().NumPieces()),
 		staticExpectedPieceRoots: make([]crypto.Hash, entry.ErasureCode().NumPieces()),
 
-		staticAvailableChan:       make(chan struct{}),
-		staticUploadCompletedChan: make(chan struct{}),
-		pieceUsage:                make([]bool, entry.ErasureCode().NumPieces()),
-		unusedHosts:               make(map[string]struct{}, len(hosts)),
+		staticAvailableChan: make(chan struct{}),
+		pieceUsage:          make([]bool, entry.ErasureCode().NumPieces()),
+		unusedHosts:         make(map[string]struct{}, len(hosts)),
 	}
 
 	// Every chunk can have a different set of unused hosts.
