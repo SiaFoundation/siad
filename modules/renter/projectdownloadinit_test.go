@@ -2,6 +2,7 @@ package renter
 
 import (
 	"container/heap"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
+	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestProjectDownloadChunkHeap is a unit test that covers the functionality of
@@ -54,6 +56,39 @@ func TestProjectDownloadChunkHeap(t *testing.T) {
 	}
 }
 
+func TestProjectDownloadChunkHeap2(t *testing.T) {
+	t.Parallel()
+
+	var wh pdcWorkerHeap
+	if wh.Len() != 0 {
+		t.Fatal("unexpected")
+	}
+
+	now := time.Now()
+	iws := make([]*pdcInitialWorker, 10)
+	for i := 0; i < 10; i++ {
+		rand := fastrand.Uint64n(30)
+		pos := fastrand.Uint64n(2)
+		if pos == 0 {
+			iws[i] = &pdcInitialWorker{completeTime: now.Add(time.Duration(rand) * time.Millisecond)}
+		} else {
+			iws[i] = &pdcInitialWorker{completeTime: now.Add(-time.Duration(rand) * time.Millisecond)}
+		}
+	}
+
+	for i := 0; i < 10; i++ {
+		heap.Push(&wh, iws[i])
+	}
+	for i := 0; i < 10; i++ {
+		fmt.Println(time.Until(wh[i].completeTime))
+	}
+	fmt.Println("---")
+	for i := 0; i < 10; i++ {
+		el := heap.Pop(&wh).(*pdcInitialWorker)
+		fmt.Println(time.Until(el.completeTime))
+	}
+}
+
 // TestProjectDownloadChunk_initialWorkerHeap is a small unit test that verifies
 // the basic functionality of the 'initialWorkerHeap' function.
 func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
@@ -82,19 +117,19 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 	worker3 := mockWorker("host3", dur50MS)
 
 	// define a list of unresolved workers, note that the expected order is
-	// influenced here by `staticExpectedCompleteTime`
+	// influenced here by `staticExpectedResolvedTime`
 	now := time.Now()
 	unresolvedWorkers := []*pcwsUnresolvedWorker{
 		{
-			staticExpectedCompleteTime: now.Add(dur100MS),
+			staticExpectedResolvedTime: now.Add(dur100MS),
 			staticWorker:               worker1,
 		}, // 300ms
 		{
-			staticExpectedCompleteTime: now.Add(dur50MS),
+			staticExpectedResolvedTime: now.Add(dur50MS),
 			staticWorker:               worker2,
 		}, // 150ms
 		{
-			staticExpectedCompleteTime: now.Add(dur200MS),
+			staticExpectedResolvedTime: now.Add(dur200MS),
 			staticWorker:               worker3,
 		}, // 250ms
 	}

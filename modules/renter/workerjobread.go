@@ -241,10 +241,11 @@ func (jq *jobReadQueue) expectedJobTime(length uint64) time.Duration {
 	}
 
 	// if we don't have any historic data yet, return a sane (slightly
-	// pessimistic) default of 100ms
+	// pessimistic) default of 400ms
 	if completed == 0 {
-		return 100 * time.Millisecond
+		return 400 * time.Millisecond
 	}
+
 	return time.Duration(weightedJobTime / completed)
 }
 

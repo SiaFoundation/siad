@@ -4917,7 +4917,8 @@ minutes).
 If 'priceperms' is set, the renter will use it as a budget to spend on faster,
 and thus potentially more expensive, hosts. If no unit is provided, the given
 value will be treated as hastings. Valid units are: "pS", "nS", "uS", "mS",
-"SC", "KS", "MS", "GS", "TS". If no value is provided a default of zero is used.
+"SC", "KS", "MS", "GS", "TS". If no value is provided a default of 1SC is used,
+favouring fast hosts.
 
 ### Response Body
 
@@ -5271,7 +5272,8 @@ which is a 30 second timeout. The maximum allowed timeout is 900s (15 minutes).
 If 'priceperms' is set, the renter will use it as a budget to spend on faster,
 and thus potentially more expensive, hosts. If no unit is provided, the given
 value will be treated as hastings. Valid units are: "pS", "nS", "uS", "mS",
-"SC", "KS", "MS", "GS", "TS". If no value is provided a default of zero is used.
+"SC", "KS", "MS", "GS", "TS". If no value is provided a default of 1SC is used,
+favouring fast hosts.
 
 ### Response Header
 

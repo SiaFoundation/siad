@@ -46,9 +46,9 @@ const (
 var (
 	// DefaultSkynetPricePerMS is the default price per millisecond the renter
 	// is able to spend on faster workers when downloading a Skyfile. By default
-	// this is zero and thus acts as if there were no budget, meaning faster
-	// workers will always be favored.
-	DefaultSkynetPricePerMS = types.ZeroCurrency
+	// this is 1SC and thus very high, meaning faster workers will always be
+	// favored.
+	DefaultSkynetPricePerMS = types.SiacoinPrecision
 )
 
 type (

@@ -67,7 +67,7 @@ const (
 type pcwsUnresolvedWorker struct {
 	// The expected time that the HasSector job will finish, and the worker will
 	// be able to resolve.
-	staticExpectedCompleteTime time.Time
+	staticExpectedResolvedTime time.Time
 
 	// The worker that is performing the HasSector job.
 	staticWorker *worker
@@ -341,18 +341,17 @@ func (pcws *projectChunkWorkerSet) managedLaunchWorker(ctx context.Context, w *w
 
 	// Create and launch the job.
 	jhs := w.newJobHasSector(ctx, responseChan, pcws.staticPieceRoots...)
-	expectedCompleteTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs)
+	expectedHSTime, err := w.staticJobHasSectorQueue.callAddWithEstimate(jhs)
 	if err != nil {
 		pcws.staticRenter.log.Debugf("unable to add has sector job to %v, err %v", w.staticHostPubKeyStr, err)
 		return err
 	}
-	expectedCompleteTime = expectedCompleteTime.Add(coolDownPenalty)
+	expectedResolveTime := expectedHSTime.Add(coolDownPenalty)
 
 	// Create the unresolved worker for this job.
 	uw := &pcwsUnresolvedWorker{
-		staticWorker: w,
-
-		staticExpectedCompleteTime: expectedCompleteTime,
+		staticWorker:               w,
+		staticExpectedResolvedTime: expectedResolveTime,
 	}
 
 	// Add the unresolved worker to the worker state. Technically this doesn't
@@ -424,10 +423,10 @@ func (pcws *projectChunkWorkerSet) threadedFindWorkers(allWorkersLaunchedChan ch
 			continue
 		}
 
-		if available <= 10 && resp.staticErr == nil && resp.staticAvailables[0] == true {
+		if available < 3 && resp.staticErr == nil && resp.staticAvailables[0] == true {
 			start := timings[resp.staticWorker.staticHostPubKeyStr]
 			available++
-			fmt.Printf("%v PCWS pos HS response %v/10 took %vms (total %vms) for worker %v\n", time.Now(), time.Since(start), available, resp.staticJobTime.Milliseconds(), resp.staticWorker.staticHostPubKeyStr)
+			fmt.Printf("PCWS pos HS response %v/3 took %vms (total %vms) for worker %v\n", available, resp.staticJobTime.Milliseconds(), time.Since(start).Milliseconds(), resp.staticWorker.staticHostPubKeyStr)
 		}
 		// Parse the response.
 		ws.managedHandleResponse(resp)

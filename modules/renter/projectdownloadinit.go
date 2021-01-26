@@ -1,5 +1,18 @@
 package renter
 
+import (
+	"container/heap"
+	"fmt"
+	"math/big"
+	"time"
+
+	"gitlab.com/NebulousLabs/Sia/build"
+	"gitlab.com/NebulousLabs/Sia/crypto"
+	"gitlab.com/NebulousLabs/Sia/modules"
+	"gitlab.com/NebulousLabs/Sia/types"
+	"gitlab.com/NebulousLabs/errors"
+)
+
 // projectdownloadinit.go implements an algorithm to select the best set of
 // initial workers for completing a download. This algorithm is balancing
 // between two different criteria. The first is the amount of time that the
@@ -73,18 +86,8 @@ package renter
 // pessimistic, but guarantees that we do not overload a particular worker and
 // slow the entire download down.
 
-import (
-	"container/heap"
-	"fmt"
-	"math/big"
-	"time"
-
-	"gitlab.com/NebulousLabs/Sia/build"
-	"gitlab.com/NebulousLabs/Sia/crypto"
-	"gitlab.com/NebulousLabs/Sia/modules"
-	"gitlab.com/NebulousLabs/Sia/types"
-
-	"gitlab.com/NebulousLabs/errors"
+const (
+	unresolvedWorkerTimePenalty = 300 * time.Millisecond
 )
 
 // errNotEnoughWorkers is returned if the working set does not have enough
@@ -149,14 +152,16 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 	// Add all of the unresolved workers to the heap.
 	var workerHeap pdcWorkerHeap
 	for _, uw := range unresolvedWorkers {
+		jrq := uw.staticWorker.staticJobReadQueue
+
 		// Determine the expected readDuration and cost for this worker. Add the
 		// readDuration to the staticExpectedCompleteTime to get the full
 		// complete time for the download - staticExpectedCompleteTime in the
 		// unresolved worker here refers to the expected complete time of the
 		// HasSector job.
-		cost := uw.staticWorker.staticJobReadQueue.callExpectedJobCost(pdc.pieceLength)
-		readDuration := uw.staticWorker.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
-		completeTime := uw.staticExpectedCompleteTime.Add(readDuration)
+		cost := jrq.callExpectedJobCost(pdc.pieceLength)
+		readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
+		completeTime := uw.staticExpectedResolvedTime.Add(readDuration).Add(unresolvedWorkerTimePenalty)
 
 		// Create the pieces for the unresolved worker. Because the unresolved
 		// worker could be potentially used to fetch any piece (we won't know
@@ -199,7 +204,8 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 
 			// Ignore this worker if the worker is not currently equipped to
 			// perform async work, or if the read queue is on a cooldown.
-			if !w.managedAsyncReady() || w.staticJobReadQueue.cooldownUntil.After(time.Now()) {
+			jrq := w.staticJobReadQueue
+			if !w.managedAsyncReady() || jrq.cooldownUntil.After(time.Now()) {
 				fmt.Println("not async ready or on cooldown!", w.staticHostPubKeyStr)
 				continue
 			}
@@ -212,10 +218,10 @@ func (pdc *projectDownloadChunk) initialWorkerHeap(unresolvedWorkers []*pcwsUnre
 				// Elem is a pointer, so the map does not need to be updated.
 				elem.pieces = append(elem.pieces, uint64(i))
 			} else {
-				cost := w.staticJobReadQueue.callExpectedJobCost(pdc.pieceLength)
-				readDuration := w.staticJobReadQueue.callExpectedJobTime(pdc.pieceLength)
+				cost := jrq.callExpectedJobCost(pdc.pieceLength)
+				readDuration := jrq.callExpectedJobTime(pdc.pieceLength)
 				resolvedWorkersMap[w.staticHostPubKeyStr] = &pdcInitialWorker{
-					completeTime: pieceDownload.expectedCompleteTime,
+					completeTime: time.Now().Add(readDuration),
 					cost:         cost,
 					readDuration: readDuration,
 
@@ -305,12 +311,11 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 			pdc.workerSet.staticRenter.log.Critical("total workers mistake in download code", workersInSet, ec.MinPieces())
 		}
 
-		// If the time cost of this worker is strictly higher than the full cost
-		// of the best set, there can be no more improvements to the best set,
-		// and the loop can exit.
+		// If the time cost of this worker is not cheaper than the full cost of
+		// the best set, there can be no more improvements to the best set, and
+		// the loop can exit.
 		workerTimeCost := pdc.pricePerMS.Mul64(uint64(nextWorker.readDuration.Milliseconds()))
-		if workerTimeCost.Cmp(bestSetCost) > 0 && workersInSet == ec.MinPieces() {
-			fmt.Println("time cost is strictly higher")
+		if workerTimeCost.Cmp(bestSetCost) >= 0 && workersInSet == ec.MinPieces() {
 			break
 		}
 
@@ -378,6 +383,9 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 				newWorker = true
 			}
 		} else {
+			// fmt.Printf("swapping worker %v complete in %v ms for %v set to complete in %v ms (index %v)\n", workingSet[bestSpotIndex].worker.staticHostPubKeyStr[:24], time.Until(workingSet[bestSpotIndex].completeTime).Milliseconds(),
+			// 	nextWorker.worker.staticHostPubKeyStr[:24], time.Until(nextWorker.completeTime).Milliseconds(), bestSpotIndex)
+
 			workingSetCost = workingSetCost.Add(nextWorker.cost)
 			workingSetCost = workingSetCost.Sub(workingSet[bestSpotIndex].cost)
 			heap.Push(&workerHeap, workingSet[bestSpotIndex])
@@ -440,18 +448,22 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 // launched and then launch them. This is a non-blocking function that returns
 // once jobs have been scheduled for MinPieces workers.
 func (pdc *projectDownloadChunk) launchInitialWorkers() error {
+	var worker string
 	start := time.Now()
+	id := start.Unix()
+	fmt.Println("INIT", id)
+
+	defer func() {
+		fmt.Printf("DONE %v in %vms on %v\n", id, time.Since(start).Milliseconds(), worker)
+	}()
 	for {
 		// Get the list of unresolved workers. This will also grab an update, so
 		// any workers that have resolved recently will be reflected in the
 		// newly returned set of values.
-		iter := time.Now()
 		unresolvedWorkers, updateChan := pdc.unresolvedWorkers()
-		fmt.Printf("took %v ms to fetch unresolved workers\n", time.Since(iter).Milliseconds())
 
 		// Create a list of usable workers, sorted by the amount of time they
 		// are expected to take to return.
-		iter = time.Now()
 		workerHeap := pdc.initialWorkerHeap(unresolvedWorkers)
 
 		// Create an initial worker set
@@ -460,17 +472,16 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 			return errors.AddContext(err, "unable to build initial set of workers")
 		}
 
-		fmt.Printf("took %v ms to create initial workers\n", time.Since(iter).Milliseconds())
-
 		// If the function returned an actual set of workers, we are good to
 		// launch.
 		if finalWorkers != nil {
-			fmt.Printf("%v took %v ms to find final workers\n", time.Now(), time.Since(start).Milliseconds())
+			// fmt.Printf("took %v ms to find final workers\n", time.Since(start).Milliseconds())
 			for i, fw := range finalWorkers {
 				if fw == nil {
 					continue
 				}
-				fmt.Println("worker", fw.worker.staticHostPubKeyStr)
+				worker = fw.worker.staticHostPubKeyStr
+				// fmt.Println("worker", fw.worker.staticHostPubKeyStr)
 				pdc.launchWorker(fw.worker, uint64(i))
 			}
 			return nil
