@@ -213,9 +213,6 @@ func (w *worker) managedAsyncReady() bool {
 // queued at once to prevent jobs from being spread too thin and sharing too
 // much bandwidth.
 func (w *worker) externTryLaunchAsyncJob() bool {
-	rrjs := w.callReadRegistryJobsStatus()
-	size := rrjs.JobQueueSize
-
 	// Exit if the worker is not currently equipped to perform async tasks.
 	if !w.managedAsyncReady() {
 		return false

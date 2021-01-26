@@ -161,9 +161,6 @@ func (r *Renter) managedReadRegistry(ctx context.Context, spk types.SiaPublicKey
 		if build.VersionCmp(cache.staticHostVersion, minRegistryVersion) < 0 {
 			continue
 		}
-		if !worker.managedAsyncReady() {
-			continue
-		}
 
 		// check for price gouging
 		// TODO: use PDBR gouging for some basic protection. Should be replaced
