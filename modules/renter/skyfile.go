@@ -398,6 +398,7 @@ func (r *Renter) managedUploadBaseSector(lup modules.SkyfileUploadParameters, ba
 	// Perform the actual upload. This will require turning the base sector into
 	// a reader.
 	baseSectorReader := bytes.NewReader(baseSector)
+	r.repairLog.Println("uploadstream from reader being called now for the base sector upload")
 	fileNode, err := r.callUploadStreamFromReader(fileUploadParams, baseSectorReader)
 	if err != nil {
 		return errors.AddContext(err, "failed to stream upload small skyfile")
@@ -443,6 +444,7 @@ func (r *Renter) managedUploadSkyfile(sup modules.SkyfileUploadParameters, reade
 		// verify if it fits in a single chunk
 		headerSize := uint64(modules.SkyfileLayoutSize + len(metadataBytes))
 		if uint64(numBytes)+headerSize <= modules.SectorSize {
+			r.repairLog.Println("uploading small skyfile starting now")
 			return r.managedUploadSkyfileSmallFile(sup, metadataBytes, buf)
 		}
 	}
@@ -451,6 +453,7 @@ func (r *Renter) managedUploadSkyfile(sup modules.SkyfileUploadParameters, reade
 	// data combined with the header exceeds a single sector, we add the data we
 	// already read and upload as a large file
 	reader.AddReadBuffer(buf)
+	r.repairLog.Println("uploading large skyfile starting now")
 	return r.managedUploadSkyfileLargeFile(sup, reader)
 }
 
@@ -491,6 +494,7 @@ func (r *Renter) managedUploadSkyfileSmallFile(sup modules.SkyfileUploadParamete
 	}
 
 	// Upload the base sector.
+	r.repairLog.Println("starting the upload of the base sector now")
 	err = r.managedUploadBaseSector(sup, baseSector, skylink)
 	if err != nil {
 		return modules.Skylink{}, errors.AddContext(err, "failed to upload base sector")
@@ -946,6 +950,8 @@ func (r *Renter) RestoreSkyfile(reader io.Reader) (modules.Skylink, error) {
 // original file and metadata. The skylink will be unique to the combination of
 // both the file data and metadata.
 func (r *Renter) UploadSkyfile(sup modules.SkyfileUploadParameters, reader modules.SkyfileUploadReader) (skylink modules.Skylink, err error) {
+	start := time.Now()
+	r.repairLog.Println("uploading a skyfile, timer starts now")
 	// Set reasonable default values for any sup fields that are blank.
 	skyfileEstablishDefaults(&sup)
 
@@ -983,6 +989,7 @@ func (r *Renter) UploadSkyfile(sup modules.SkyfileUploadParameters, reader modul
 		return modules.Skylink{}, ErrSkylinkBlocked
 	}
 
+	r.repairLog.Println("skyfile is done, time elapsed:", time.Since(start).Milliseconds())
 	return skylink, nil
 }
 

@@ -241,6 +241,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 	// Read the chunks we want to upload one by one from the input stream using
 	// shards. A shard will signal completion after reading the input but
 	// before the upload is done.
+	r.repairLog.Println("beginning core upload loop")
 	var peek []byte
 	var chunks []*unfinishedUploadChunk
 	for chunkIndex := uint64(0); ; chunkIndex++ {
@@ -319,6 +320,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 			return nil, ss.err
 		}
 	}
+	r.repairLog.Println("core upload loop completed, all chunks should be in the repair system")
 
 	// Wait for all chunks to become available.
 	start := time.Now()
@@ -331,6 +333,7 @@ func (r *Renter) callUploadStreamFromReader(up modules.FileUploadParams, reader 
 			return nil, errors.AddContext(err, "upload streamer failed to get all data available")
 		}
 	}
+	r.repairLog.Println("all chunks now available via the upload streamer")
 
 	// Wait for all chunks to reach full redundancy, but only wait for a limited
 	// amount of time, dependant on the time it took to reach availability.
