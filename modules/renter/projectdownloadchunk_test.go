@@ -37,46 +37,52 @@ func TestProjectDownloadChunk_isolated(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// random length
-	length := (fastrand.Uint64n(5) + 1) * crypto.SegmentSize
-	offset := fastrand.Uint64n(modules.SectorSize - length)
-	offset = 0
-	length = crypto.SegmentSize
-	pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
-	// pieceOffset = 0
-	// pieceLength = 64
-	fmt.Println("offset", offset)
-	fmt.Println("length", length)
+	// Declare helper for testing.
+	run := func(offset, length uint64) {
+		pieceOffset, pieceLength := getPieceOffsetAndLen(ec, offset, length)
+		skipLength := offset % (crypto.SegmentSize * uint64(ec.MinPieces()))
 
-	fmt.Println("pieceOffset", pieceOffset)
-	fmt.Println("pieceLength", pieceLength)
+		sliced := make([][]byte, len(pieces))
+		for i, piece := range pieces {
+			sliced[i] = make([]byte, pieceLength)
+			copy(sliced[i], piece[pieceOffset:pieceOffset+pieceLength])
+		}
 
-	sliced := make([][]byte, len(pieces))
-	for i, piece := range pieces {
-		sliced[i] = make([]byte, len(piece))
-		copy(sliced[i], piece[pieceOffset:pieceOffset+pieceLength])
+		buf := bytes.NewBuffer(nil)
+		skipWriter := &skipWriter{
+			writer: buf,
+			skip:   int(skipLength),
+		}
+		err = ec.Recover(sliced, length+uint64(skipLength), skipWriter)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual := buf.Bytes()
+
+		expected := originalData[offset : offset+length]
+		if !bytes.Equal(actual, expected) {
+			t.Log("Input       :", offset, length, pieceOffset, pieceLength)
+			t.Log("original    :", originalData[:crypto.SegmentSize*8])
+			t.Log("expected    :", expected)
+			t.Log("expected len:", len(expected))
+			t.Log("actual      :", actual)
+			t.Log("actual   len:", len(actual))
+			t.Fatal("unexpected")
+		}
 	}
 
-	buf := bytes.NewBuffer(nil)
-	err = ec.Recover(sliced, length, buf)
-	// skipWriter := &skipWriter{
-	// 	writer: buf,
-	// 	skip:   int(offset),
-	// }
-	// err = ec.Recover(sliced, length, skipWriter)
-	if err != nil {
-		t.Fatal(err)
-	}
-	actual := buf.Bytes()
+	// Test some cases manually.
+	run(0, crypto.SegmentSize)
+	run(crypto.SegmentSize, crypto.SegmentSize)
+	run(2*crypto.SegmentSize, crypto.SegmentSize)
+	run(crypto.SegmentSize, 2*crypto.SegmentSize)
 
-	expected := originalData[offset : offset+length]
-	if !bytes.Equal(actual, expected) {
-		t.Log("original    :", originalData[:crypto.SegmentSize*8])
-		t.Log("expected    :", expected)
-		t.Log("expected len:", len(expected))
-		t.Log("actual      :", actual)
-		t.Log("actual   len:", len(actual))
-		t.Fatal("unexpected")
+	// Test random inputs.
+	for rounds := 0; rounds < 100; rounds++ {
+		// random length and offset
+		length := (fastrand.Uint64n(5*crypto.SegmentSize) + 1)
+		offset := fastrand.Uint64n(modules.SectorSize - length)
+		run(offset, length)
 	}
 }
 
