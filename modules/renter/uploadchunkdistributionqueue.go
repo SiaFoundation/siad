@@ -221,12 +221,14 @@ func (r *Renter) managedFindBestUploadWorkerSet(uc *unfinishedUploadChunk) []*wo
 		if finalized {
 			return workers
 		}
-		// TODO: use tg to make this a soft sleep.
-		//
+
 		// TODO: Use a channel instead or some sort of counter as workers finish
 		// so that we know when to scan again, instead of doing this sleep
-		// thing.
-		time.Sleep(time.Millisecond * 25)
+		// thing. The sleep thing will spin more than it needs to and also be
+		// late sometimes.
+		if !r.tg.Sleep(time.Millisecond*25) {
+			return nil
+		}
 	}
 }
 
