@@ -2,7 +2,6 @@ package renter
 
 import (
 	"sync/atomic"
-	"testing"
 	"unsafe"
 
 	"gitlab.com/NebulousLabs/Sia/modules"
@@ -27,6 +26,7 @@ func newOverloadedWorker() *worker {
 	return w
 }
 
+/*
 // TestManagedCheckForUploadWorkers will probe the various edge cases of
 // managedCheckForUploadWorkers and ensure that all of the logic is running as
 // expected.
@@ -136,3 +136,4 @@ func TestManagedCheckForUploadWorkers(t *testing.T) {
 		t.Fatal("bad")
 	}
 }
+*/
