@@ -299,7 +299,14 @@ func (r *Renter) MemoryStatus() (modules.MemoryStatus, error) {
 	userUploadStatus := r.userUploadMemoryManager.callStatus()
 	registryStatus := r.registryMemoryManager.callStatus()
 	total := repairStatus.Add(userDownloadStatus).Add(userUploadStatus).Add(registryStatus).Add(repairStatus)
-	return total, nil
+	return modules.MemoryStatus{
+		MemoryManagerStatus: total,
+
+		Registry:     registryStatus,
+		System:       repairStatus,
+		UserDownload: userDownloadStatus,
+		UserUpload:   userUploadStatus,
+	}, nil
 }
 
 // PriceEstimation estimates the cost in siacoins of performing various storage

@@ -512,7 +512,7 @@ func TestMemoryManagerStatus(t *testing.T) {
 
 	// Check status
 	ms := mm.callStatus()
-	expectedStatus := modules.MemoryStatus{
+	expectedStatus := modules.MemoryManagerStatus{
 		Available: memoryDefault - memoryPriorityDefault,
 		Base:      memoryDefault - memoryPriorityDefault,
 		Requested: 0,
@@ -542,7 +542,7 @@ func TestMemoryManagerStatus(t *testing.T) {
 
 	// Check status
 	ms = mm.callStatus()
-	expectedStatus = modules.MemoryStatus{
+	expectedStatus = modules.MemoryManagerStatus{
 		Available: memoryDefault - memoryPriorityDefault - normalRequest - priorityRequest,
 		Base:      memoryDefault - memoryPriorityDefault,
 		Requested: 0,
@@ -569,7 +569,7 @@ func TestMemoryManagerStatus(t *testing.T) {
 
 	// Check status
 	ms = mm.callStatus()
-	expectedStatus = modules.MemoryStatus{
+	expectedStatus = modules.MemoryManagerStatus{
 		Available: 0,
 		Base:      memoryDefault - memoryPriorityDefault,
 		Requested: 0,
@@ -616,7 +616,7 @@ func TestMemoryManagerStatus(t *testing.T) {
 
 	// Check Status
 	ms = mm.callStatus()
-	expectedStatus = modules.MemoryStatus{
+	expectedStatus = modules.MemoryManagerStatus{
 		Available: 0,
 		Base:      memoryDefault - memoryPriorityDefault,
 		Requested: memoryDefault,

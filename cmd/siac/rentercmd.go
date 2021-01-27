@@ -440,14 +440,19 @@ func rentercmd() {
 
 	// Print out the memory information for the renter
 	ms := rg.MemoryStatus
+	ud := ms.UserDownload
+	uu := ms.UserUpload
+	reg := ms.Registry
+	sys := ms.System
 	w := tabwriter.NewWriter(os.Stdout, 2, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "\nMemory Status\n")
-	fmt.Fprintf(w, "  Available Memory\t%v\n", sizeString(ms.Available))
-	fmt.Fprintf(w, "  Starting Memory\t%v\n", sizeString(ms.Base))
-	fmt.Fprintf(w, "  Requested Memory\t%v\n", sizeString(ms.Requested))
-	fmt.Fprintf(w, "\n  Available Priority Memory\t%v\n", sizeString(ms.PriorityAvailable))
-	fmt.Fprintf(w, "  Starting Priority Memory\t%v\n", sizeString(ms.PriorityBase))
-	fmt.Fprintf(w, "  Requested Priority Memory\t%v\n", sizeString(ms.PriorityRequested))
+	fmt.Fprintf(w, "\nMemory Status\tUser Download\tUser Upload\tRegistry\tSystem\tTotal\n")
+	fmt.Fprintf(w, "  Available Memory\t%v\t%v\t%v\t%v\t%v\n", sizeString(ud.Available), sizeString(uu.Available), sizeString(reg.Available), sizeString(sys.Available), sizeString(ms.Available))
+	fmt.Fprintf(w, "  Starting Memory\t%v\t%v\t%v\t%v\t%v\n", sizeString(ud.Base), sizeString(uu.Base), sizeString(reg.Base), sizeString(sys.Base), sizeString(ms.Base))
+	fmt.Fprintf(w, "  Requested Memory\t%v\t%v\t%v\t%v\t%v\n", sizeString(ud.Requested), sizeString(uu.Requested), sizeString(reg.Requested), sizeString(sys.Requested), sizeString(ms.Requested))
+	fmt.Fprintf(w, "\n  Available Priority Memory\t%v\t%v\t%v\t%v\t%v\n", sizeString(ud.PriorityAvailable), sizeString(uu.PriorityAvailable), sizeString(reg.PriorityAvailable), sizeString(sys.PriorityAvailable), sizeString(ms.PriorityAvailable))
+	fmt.Fprintf(w, "  Starting Priority Memory\t%v\t%v\t%v\t%v\t%v\n", sizeString(ud.PriorityBase), sizeString(uu.PriorityBase), sizeString(reg.PriorityBase), sizeString(sys.PriorityBase), sizeString(ms.PriorityBase))
+	fmt.Fprintf(w, "  Requested Priority Memory\t%v\t%v\t%v\t%v\t%v\n", sizeString(ud.PriorityRequested), sizeString(uu.PriorityRequested), sizeString(reg.PriorityRequested), sizeString(sys.PriorityRequested), sizeString(ms.PriorityRequested))
+	fmt.Fprintln(w, "")
 
 	// Print out if the uploads are paused
 	if verbose {
