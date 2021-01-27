@@ -76,6 +76,10 @@ func TestProjectDownloadChunk_isolated(t *testing.T) {
 	run(crypto.SegmentSize, crypto.SegmentSize)
 	run(2*crypto.SegmentSize, crypto.SegmentSize)
 	run(crypto.SegmentSize, 2*crypto.SegmentSize)
+	run(1, crypto.SegmentSize)
+	run(0, crypto.SegmentSize-1)
+	run(0, crypto.SegmentSize+1)
+	run(crypto.SegmentSize-1, crypto.SegmentSize+1)
 
 	// Test random inputs.
 	for rounds := 0; rounds < 100; rounds++ {

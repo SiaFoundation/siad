@@ -111,7 +111,7 @@ func TestProjectDownloadChunk_initialWorkerHeap(t *testing.T) {
 
 	// create the initial worker heap and validate the order in which the
 	// unresolved workers were added
-	wh := pdc.initialWorkerHeap(unresolvedWorkers)
+	wh := pdc.initialWorkerHeap(unresolvedWorkers, 0)
 	first := heap.Pop(&wh).(*pdcInitialWorker)
 	if first.worker.staticHostPubKeyStr != worker2.staticHostPubKeyStr {
 		t.Fatal("unexpected")
