@@ -1,5 +1,9 @@
 package renter
 
+// TODO: We can potentially re-write the queue so that we're continually
+// checking each time a distribution fails whether there's a new chunk we should
+// be grabbing from priority instead. Might be a little complicated to do that.
+
 import (
 	"container/list"
 	"sync"
@@ -227,7 +231,10 @@ func (r *Renter) managedDistributeChunkToWorkers(uc *unfinishedUploadChunk) {
 // function can potentially block for long periods of time.
 func (r *Renter) managedFindBestUploadWorkerSet(uc *unfinishedUploadChunk) []*worker {
 	for {
-		workers, finalized := managedCheckForUploadWorkers(uc, r.staticWorkerPool.callWorkers())
+		// Grab the set of workers to upload. If 'finalized' is false, it means
+		// that all of the good workers are already busy, and we need to wait
+		// before distributing the chunk.
+		workers, finalized := managedSelectWorkersForUploading(uc, r.staticWorkerPool.callWorkers())
 		if finalized {
 			return workers
 		}
@@ -242,17 +249,15 @@ func (r *Renter) managedFindBestUploadWorkerSet(uc *unfinishedUploadChunk) []*wo
 	}
 }
 
-// managedCheckForUploadWorkers will scan through the list of upload workers and
-// determine if there is a good set for uploading. If there is a good set for
-// uploading, that set will be returned with the finalized flag set to 'true',
-// indicating that this set of workers should be treated as the best we can do.
-// If there is not a good set, and a better set will likely appear after waiting
-// for some of the current workers to process their queue further, 'false' will
-// be returned.
+// managedSelectWorkersForUploading is a function that will select workers to be
+// used in uploading a chunk to the network. This function can fail if there are
+// not enough workers that are ready to take on more work, in which case the
+// caller needs to wait before trying again.
 //
-// The workers are provided as an input to the function so that it is easier to
-// unit test.
-func managedCheckForUploadWorkers(uc *unfinishedUploadChunk, workers []*worker) ([]*worker, bool) {
+// This function is meant to only be called by 'managedFindBestUploadWorkerSet',
+// which handles the retry mechanism for you. The functions are split up this
+// way to make the retry logic easier to understand.
+func managedSelectWorkersForUploading(uc *unfinishedUploadChunk, workers []*worker) ([]*worker, bool) {
 	// Scan through the workers and determine how many workers have available
 	// slots to upload. Available workers and busy workers are both counted as
 	// viable candidates for receiving work. 'busy' workers have more than 0
