@@ -330,7 +330,7 @@ func (mm *memoryManager) Return(amount uint64) {
 }
 
 // callAvailable returns the current status of the memory manager.
-func (mm *memoryManager) callStatus() modules.MemoryStatus {
+func (mm *memoryManager) callStatus() modules.MemoryManagerStatus {
 	mm.mu.Lock()
 	defer mm.mu.Unlock()
 	var available, requested, priorityAvailable, priorityRequested uint64
@@ -354,7 +354,7 @@ func (mm *memoryManager) callStatus() modules.MemoryStatus {
 		priorityRequested += req.amount
 	}
 
-	return modules.MemoryStatus{
+	return modules.MemoryManagerStatus{
 		Available: available,
 		Base:      mm.base - mm.priorityReserve,
 		Requested: requested,
