@@ -1324,16 +1324,19 @@ func (r *Renter) managedPrepareNextChunk(uuc *unfinishedUploadChunk) error {
 	// a stream of data does not clog up the worker memory if all workers are
 	// already busy.
 	//
-	// In the case of the upload heap, it will keep new chunks from added from
-	// the upload heap even if there is enough memory, ensuring that latency is
-	// reduced for higher priority uploads like streaming uploads, which would
-	// otherwise have to wait in line behind repair chunks that were already
-	// distributed to workers.
+	// In the case of the upload heap, it will keep new chunks from being added
+	// from the upload heap even if there is enough memory, ensuring that
+	// latency is reduced for higher priority uploads like streaming uploads,
+	// which would otherwise have to wait in line behind repair chunks that were
+	// already distributed to workers.
 	//
 	// In the case of streaming uploads, it gives a little bit better balance
 	// between different streams that are competing for the same bandwidth in
 	// the worker queues.
-	<-uuc.staticWorkDistributedChan
+	select {
+	case <-r.tg.StopChan():
+	case <-uuc.staticWorkDistributedChan:
+	}
 	return nil
 }
 

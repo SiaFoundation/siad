@@ -90,9 +90,8 @@ func (u *ucdqFifo) Pop() *unfinishedUploadChunk {
 
 // addUC will add an unfinished upload chunk to the queue. The chunk will be put
 // into a lane based on whether the memory was requested with priority or not.
-func (ucdq *uploadChunkDistributionQueue) addUC(uc *unfinishedUploadChunk) {
+func (ucdq *uploadChunkDistributionQueue) callAddUC(uc *unfinishedUploadChunk) {
 	// We need to hold a lock for the whole process of adding a UC.
-	// defer ucdq.threadedProcessQueue()
 	ucdq.mu.Lock()
 	defer ucdq.mu.Unlock()
 
