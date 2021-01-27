@@ -400,7 +400,6 @@ func (pcws *projectChunkWorkerSet) threadedFindWorkers(allWorkersLaunchedChan ch
 	// this loop should be active is a little bit longer than the full timeout
 	// for a single HasSector job.
 	workersResponded := 0
-	available := 0
 	for workersResponded < workersLaunched {
 		// Block until there is a worker response. Give up if the context times
 		// out.
@@ -421,10 +420,6 @@ func (pcws *projectChunkWorkerSet) threadedFindWorkers(allWorkersLaunchedChan ch
 			continue
 		}
 
-		if available < 3 && resp.staticErr == nil && resp.staticAvailables[0] == true {
-			available++
-			fmt.Printf("HS %v/3 came in for %v after %vms\n", available, resp.staticWorker.staticHostPubKeyStr, resp.staticJobTime.Milliseconds())
-		}
 		// Parse the response.
 		ws.managedHandleResponse(resp)
 	}

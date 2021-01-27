@@ -276,6 +276,7 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 	var workingSetCost types.Currency
 	var workingSetDuration time.Duration
 
+	cnt := 0
 	// Build the best set that we can. Each iteration will attempt to improve
 	// the working set by adding a new worker. This may or may not succeed,
 	// depending on how cheap the worker is and how slow the worker is. Each
@@ -287,6 +288,11 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		if nextWorker == nil {
 			build.Critical("wasn't expecting to pop a nil worker")
 			break
+		}
+
+		if cnt < 3 {
+			cnt++
+			fmt.Printf("worker %v (%v/3)  is set to complete in %vms\n", nextWorker.worker.staticHostPubKeyStr, cnt, time.Until(nextWorker.completeTime).Milliseconds())
 		}
 
 		// Iterate through the working set and determine the cost and index of
@@ -441,6 +447,9 @@ func (pdc *projectDownloadChunk) createInitialWorkerSet(workerHeap pdcWorkerHeap
 		}
 		totalWorkers++
 		isUnresolved = isUnresolved || worker.unresolved
+		if worker.unresolved {
+			fmt.Printf("worker %v is set to complete in %vms but is currently unresolved\n", worker.worker.staticHostPubKeyStr, time.Until(worker.completeTime).Milliseconds())
+		}
 	}
 
 	if totalWorkers < ec.MinPieces() {
@@ -487,8 +496,8 @@ func (pdc *projectDownloadChunk) launchInitialWorkers() error {
 				if fw == nil {
 					continue
 				}
+				fmt.Printf("launching initial worker %v after %vms with complete time %v\n", fw.worker.staticHostPubKeyStr, time.Since(start).Milliseconds(), fw.completeTime)
 				pdc.launchWorker(fw.worker, uint64(i))
-				fmt.Printf("launched %v after %vms\n", fw.worker.staticHostPubKeyStr, time.Since(start).Milliseconds())
 			}
 			return nil
 		}

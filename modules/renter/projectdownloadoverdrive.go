@@ -1,6 +1,7 @@
 package renter
 
 import (
+	"fmt"
 	"math"
 	"time"
 
@@ -202,6 +203,7 @@ func (pdc *projectDownloadChunk) tryLaunchOverdriveWorker() (bool, time.Time, <-
 		}
 
 		// If there was a worker found, launch the worker.
+		fmt.Printf("launching overdrive worker %v after %vretries\n", worker.staticHostPubKeyStr, retry)
 		expectedReturnTime, success := pdc.launchWorker(worker, pieceIndex)
 		if !success {
 			// If we were unable to successfully launch the worker, we retry
