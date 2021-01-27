@@ -2,7 +2,6 @@ package renter
 
 import (
 	"container/heap"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -11,7 +10,6 @@ import (
 	"gitlab.com/NebulousLabs/Sia/modules"
 	"gitlab.com/NebulousLabs/Sia/types"
 	"gitlab.com/NebulousLabs/errors"
-	"gitlab.com/NebulousLabs/fastrand"
 )
 
 // TestProjectDownloadChunkHeap is a unit test that covers the functionality of
@@ -53,39 +51,6 @@ func TestProjectDownloadChunkHeap(t *testing.T) {
 	worker = heap.Pop(&wh).(*pdcInitialWorker)
 	if worker == nil || worker.completeTime != tMin10 {
 		t.Fatal("unexpected")
-	}
-}
-
-func TestProjectDownloadChunkHeap2(t *testing.T) {
-	t.Parallel()
-
-	var wh pdcWorkerHeap
-	if wh.Len() != 0 {
-		t.Fatal("unexpected")
-	}
-
-	now := time.Now()
-	iws := make([]*pdcInitialWorker, 10)
-	for i := 0; i < 10; i++ {
-		rand := fastrand.Uint64n(30)
-		pos := fastrand.Uint64n(2)
-		if pos == 0 {
-			iws[i] = &pdcInitialWorker{completeTime: now.Add(time.Duration(rand) * time.Millisecond)}
-		} else {
-			iws[i] = &pdcInitialWorker{completeTime: now.Add(-time.Duration(rand) * time.Millisecond)}
-		}
-	}
-
-	for i := 0; i < 10; i++ {
-		heap.Push(&wh, iws[i])
-	}
-	for i := 0; i < 10; i++ {
-		fmt.Println(time.Until(wh[i].completeTime))
-	}
-	fmt.Println("---")
-	for i := 0; i < 10; i++ {
-		el := heap.Pop(&wh).(*pdcInitialWorker)
-		fmt.Println(time.Until(el.completeTime))
 	}
 }
 
